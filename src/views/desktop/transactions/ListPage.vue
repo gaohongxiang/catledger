@@ -141,29 +141,33 @@
                                     <v-card-text class="pt-0">
                                         <div class="transaction-list-datetime-range d-flex align-center">
                                             <span class="text-body-large">{{ tt('Date Range') }}</span>
-                                            <span class="text-body-large transaction-list-datetime-range-text ms-2"
+                                            <div class="d-flex transaction-list-datetime-range-text ms-2"
                                                   v-if="!query.minTime && !query.maxTime">
                                                 <span class="text-body-medium">{{ tt('All') }}</span>
-                                            </span>
-                                            <span class="text-body-large transaction-list-datetime-range-text ms-2"
+                                            </div>
+                                            <div class="d-flex transaction-list-datetime-range-text ms-2"
                                                   v-else-if="query.minTime || query.maxTime">
-                                                <v-btn class="button-icon-with-direction me-1" size="small"
+                                                <v-btn class="button-icon-with-direction" size="small"
                                                        density="compact" color="default" variant="outlined"
-                                                       :icon="mdiArrowLeft" :disabled="loading"
-                                                       @click="shiftDateRange(query.minTime, query.maxTime, -1)"/>
-                                                <span class="text-body-medium">{{ `${queryMinTime} - ${queryMaxTime}` }}</span>
-                                                <v-btn class="button-icon-with-direction ms-1" size="small"
+                                                       :icon="true" :disabled="loading"
+                                                       @click="shiftDateRange(query.minTime, query.maxTime, -1)">
+                                                    <v-icon :icon="mdiArrowLeft" size="14" />
+                                                </v-btn>
+                                                <span class="text-body-medium mx-1">{{ `${queryMinTime} - ${queryMaxTime}` }}</span>
+                                                <v-btn class="button-icon-with-direction" size="small"
                                                        density="compact" color="default" variant="outlined"
-                                                       :icon="mdiArrowRight" :disabled="loading"
-                                                       @click="shiftDateRange(query.minTime, query.maxTime, 1)"/>
-                                            </span>
+                                                       :icon="true" :disabled="loading"
+                                                       @click="shiftDateRange(query.minTime, query.maxTime, 1)">
+                                                    <v-icon :icon="mdiArrowRight" size="14" />
+                                                </v-btn>
+                                            </div>
                                             <v-spacer/>
                                             <div class="skeleton-no-margin d-flex align-center" v-if="showTotalAmountInTransactionListPage && currentMonthTotalAmount">
                                                 <span class="ms-2 text-body-large">{{ queryAllFilterAccountIdsCount ? tt('Total Inflows') : tt('Total Income') }}</span>
                                                 <span class="text-income ms-2" v-if="loading">
                                                     <v-skeleton-loader type="text" style="width: 60px" :loading="true"></v-skeleton-loader>
                                                 </span>
-                                                <span class="text-income ms-2" v-else-if="!loading">
+                                                <span class="text-body-large text-income ms-2" v-else-if="!loading">
                                                     {{ currentMonthTotalAmount.income }}
                                                     <v-tooltip activator="parent" v-if="!currentMonthTotalAmount.incomeIsZero && currentMonthTotalAmount.incomeInDefaultCurrency !== currentMonthTotalAmount.income">
                                                         <span>{{ currentMonthTotalAmount.incomeInDefaultCurrency }}</span>
@@ -173,7 +177,7 @@
                                                 <span class="text-expense ms-2" v-if="loading">
                                                     <v-skeleton-loader type="text" style="width: 60px" :loading="true"></v-skeleton-loader>
                                                 </span>
-                                                <span class="text-expense ms-2" v-else-if="!loading">
+                                                <span class="text-body-large text-expense ms-2" v-else-if="!loading">
                                                     {{ currentMonthTotalAmount.expense }}
                                                     <v-tooltip activator="parent" v-if="!currentMonthTotalAmount.expenseIsZero && currentMonthTotalAmount.expenseInDefaultCurrency !== currentMonthTotalAmount.expense">
                                                         <span>{{ currentMonthTotalAmount.expenseInDefaultCurrency }}</span>
