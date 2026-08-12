@@ -419,7 +419,15 @@ func startWebServer(c *core.CliContext) error {
 				apiV1Route.POST("/transactions/parse_import.json", bindApi(api.Transactions.TransactionParseImportFileHandler, config))
 				apiV1Route.POST("/transactions/import.json", bindApi(api.Transactions.TransactionImportHandler, config))
 				apiV1Route.GET("/transactions/import/process.json", bindApi(api.Transactions.TransactionImportProcessHandler, config))
+
+				apiV1Route.POST("/personal_finance/import_files/upload.json", bindApi(api.PersonalFinanceImports.ImportFileUploadHandler, config))
 			}
+
+			apiV1Route.GET("/personal_finance/import_files/list.json", bindApi(api.PersonalFinanceImports.ImportFileListHandler, config))
+			apiV1Route.GET("/personal_finance/import_files/get.json", bindApi(api.PersonalFinanceImports.ImportFileGetHandler, config))
+			apiV1Route.GET("/personal_finance/import_batches/list.json", bindApi(api.PersonalFinanceImports.ImportBatchListHandler, config))
+			apiV1Route.GET("/personal_finance/import_batches/get.json", bindApi(api.PersonalFinanceImports.ImportBatchGetHandler, config))
+			apiV1Route.GET("/personal_finance/import_batches/rows.json", bindApi(api.PersonalFinanceImports.RawImportRowListHandler, config))
 
 			// Transaction Pictures
 			if config.EnableTransactionPictures {
