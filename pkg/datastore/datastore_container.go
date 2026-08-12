@@ -31,7 +31,7 @@ var (
 
 // InitializeDataStore initializes data storage according to the config
 func InitializeDataStore(config *settings.Config) error {
-	database, err := initializeDatabase(config.DatabaseConfig)
+	database, err := OpenDatabase(config.DatabaseConfig)
 
 	if err != nil {
 		return err
@@ -60,7 +60,9 @@ func InitializeDataStore(config *settings.Config) error {
 	return nil
 }
 
-func initializeDatabase(dbConfig *settings.DatabaseConfig) (*Database, error) {
+// OpenDatabase opens an independent database according to the config.
+// Callers that do not transfer ownership to Container must close it.
+func OpenDatabase(dbConfig *settings.DatabaseConfig) (*Database, error) {
 	var connStr string
 	var err error
 
@@ -129,7 +131,7 @@ func getMysqlConnectionString(dbConfig *settings.DatabaseConfig) (string, error)
 
 func getPostgresConnectionString(dbConfig *settings.DatabaseConfig) (string, error) {
 	if strings.HasPrefix(dbConfig.DatabaseHost, "/") { // unix socket path
-		return fmt.Sprintf("postgres:///%s?sslmode=%s&host=%s&user=%s&password=%s",
+		return fmt.Sprintf("postgres:///%s?sslmode=%s&host=%s&user=%s&password=%s&search_path=public",
 			dbConfig.DatabaseName, dbConfig.DatabaseSSLMode, dbConfig.DatabaseHost, url.QueryEscape(dbConfig.DatabaseUser), url.QueryEscape(dbConfig.DatabasePassword)), nil
 	} else {
 		host, port, err := net.SplitHostPort(dbConfig.DatabaseHost)
@@ -138,7 +140,7 @@ func getPostgresConnectionString(dbConfig *settings.DatabaseConfig) (string, err
 			return "", errs.ErrDatabaseHostInvalid
 		}
 
-		return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s&search_path=public",
 			url.QueryEscape(dbConfig.DatabaseUser), url.QueryEscape(dbConfig.DatabasePassword), host, port, dbConfig.DatabaseName, dbConfig.DatabaseSSLMode), nil
 	}
 }

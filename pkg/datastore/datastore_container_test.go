@@ -37,7 +37,7 @@ func TestGetMysqlConnectionString_UnixSocket(t *testing.T) {
 }
 
 func TestGetPostgreSQLConnectionString_TCP(t *testing.T) {
-	expectedValue := "postgres://username:password@1.2.3.4:5432/dbname?sslmode=disable"
+	expectedValue := "postgres://username:password@1.2.3.4:5432/dbname?sslmode=disable&search_path=public"
 	actualValue, err := getPostgresConnectionString(&settings.DatabaseConfig{
 		DatabaseType:     "postgres",
 		DatabaseHost:     "1.2.3.4:5432",
@@ -52,7 +52,7 @@ func TestGetPostgreSQLConnectionString_TCP(t *testing.T) {
 }
 
 func TestGetPostgreSQLConnectionString_UnixSocket(t *testing.T) {
-	expectedValue := "postgres:///dbname?sslmode=disable&host=/path/to/postgres.sock&user=username&password=password"
+	expectedValue := "postgres:///dbname?sslmode=disable&host=/path/to/postgres.sock&user=username&password=password&search_path=public"
 	actualValue, err := getPostgresConnectionString(&settings.DatabaseConfig{
 		DatabaseType:     "postgres",
 		DatabaseHost:     "/path/to/postgres.sock",

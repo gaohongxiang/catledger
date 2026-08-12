@@ -9,6 +9,7 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      - --log-bin-trust-function-creators=1
     tmpfs:
       - /var/lib/mysql:rw,nosuid,size=768m
     healthcheck:
@@ -53,6 +54,7 @@ services:
       EBK_WORK_DIR: /testwork
       EBK_LOG_MODE: console
       EBK_STORAGE_LOCAL_FILESYSTEM_PATH: /testwork/storage
+      PF_DB_TEST_SENTINEL: ezbookkeeping-pf-isolated-compose-v1
     tmpfs:
       - /testwork:rw,exec,nosuid,size=1g
     profiles:

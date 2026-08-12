@@ -1,0 +1,1080 @@
+//go:build pf_db_integration
+
+package migrations
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/settings"
+)
+
+var (
+	integrationDatabase *datastore.Database
+	integrationConfig   *settings.DatabaseConfig
+)
+
+const integrationDatabaseSentinel = "ezbookkeeping-pf-isolated-compose-v1"
+
+func TestMain(m *testing.M) {
+	if os.Getenv("PF_DB_INTEGRATION") != "1" {
+		fmt.Fprintln(os.Stderr, "pf_db_integration requires PF_DB_INTEGRATION=1")
+		os.Exit(2)
+	}
+
+	config, err := integrationDatabaseConfig()
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid personal finance integration database: %v\n", err)
+		os.Exit(2)
+	}
+
+	integrationConfig = config
+	integrationDatabase, err = datastore.OpenDatabase(config)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open personal finance integration database: %v\n", err)
+		os.Exit(2)
+	}
+
+	if err = integrationDatabase.Ping(); err != nil {
+		fmt.Fprintf(os.Stderr, "ping personal finance integration database: %v\n", err)
+		_ = integrationDatabase.Close()
+		os.Exit(2)
+	}
+
+	if err = cleanupPersonalFinanceTables(integrationDatabase); err != nil {
+		fmt.Fprintf(os.Stderr, "prepare personal finance integration database: %v\n", err)
+		_ = integrationDatabase.Close()
+		os.Exit(2)
+	}
+
+	result := m.Run()
+
+	if err = cleanupPersonalFinanceTables(integrationDatabase); err != nil {
+		fmt.Fprintf(os.Stderr, "clean personal finance integration database: %v\n", err)
+		result = 1
+	}
+
+	if err = integrationDatabase.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "close personal finance integration database: %v\n", err)
+		result = 1
+	}
+
+	os.Exit(result)
+}
+
+func TestMigrationProtocol(t *testing.T) {
+	t.Run("schema operations honor cancellation", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		c, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		if _, err := integrationDatabase.SchemaTablesWithContext(c); !errors.Is(err, context.Canceled) {
+			t.Fatalf("schema metadata query ignored cancellation: %v", err)
+		}
+
+		if err := integrationDatabase.SyncStructsWithStoreEngineContext(c, "InnoDB", schemaBeansV001()[0]); !errors.Is(err, context.Canceled) {
+			t.Fatalf("schema sync ignored cancellation: %v", err)
+		}
+	})
+
+	t.Run("fresh upgrade and repeat are exact", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+
+		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "fresh"}); err != nil {
+			t.Fatalf("first upgrade failed: %v", err)
+		}
+
+		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "repeat"}); err != nil {
+			t.Fatalf("repeat upgrade failed: %v", err)
+		}
+
+		if err := verifyMigrationTable(integrationDatabase); err != nil {
+			t.Fatalf("migration table is not exact: %v", err)
+		}
+
+		if err := verifySchemaV001(integrationDatabase); err != nil {
+			t.Fatalf("v001 schema is not exact: %v", err)
+		}
+
+		record := requireMigrationRecord(t, integrationDatabase, 1)
+
+		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
+			t.Fatalf("unexpected successful migration record: %+v", record)
+		}
+	})
+
+	t.Run("checksum mismatch is refused", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+
+		sess := integrationDatabase.NewSession(nil)
+		updated, err := sess.Table(new(SchemaMigration)).ID(int64(1)).Cols("checksum").Update(&SchemaMigration{Checksum: strings.Repeat("0", 64)})
+		sess.Close()
+
+		if err != nil || updated != 1 {
+			t.Fatalf("corrupt checksum: updated=%d err=%v", updated, err)
+		}
+
+		err = Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "checksum"})
+
+		if !errors.Is(err, ErrMigrationChecksumMismatch) {
+			t.Fatalf("expected checksum mismatch, got %v", err)
+		}
+	})
+
+	t.Run("schema drift after success is refused", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+
+		sess := integrationDatabase.NewSession(nil)
+		_, err := sess.Exec("CREATE INDEX IDX_pf_import_file_unexpected ON pf_import_file(uid)")
+		sess.Close()
+
+		if err != nil {
+			t.Fatalf("create unexpected index: %v", err)
+		}
+
+		err = Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "drift"})
+
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected schema drift error, got %v", err)
+		}
+	})
+
+	t.Run("weakened identity unique index is refused", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+		weakenIdentityUniqueIndex(t)
+
+		err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "weak-index"})
+
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected weakened unique index to be rejected, got %v", err)
+		}
+	})
+
+	t.Run("forbidden trigger is refused", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+		createForbiddenTrigger(t)
+
+		err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "trigger"})
+
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected trigger to be rejected, got %v", err)
+		}
+	})
+
+	t.Run("non-transactional MySQL table engine is refused", func(t *testing.T) {
+		if integrationDatabase.DatabaseType() != settings.MySqlDbType {
+			t.Skip("MySQL-specific table engine contract")
+		}
+
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+		sess := integrationDatabase.NewSession(nil)
+		_, err := sess.Exec("ALTER TABLE pf_raw_import_row ENGINE=MyISAM")
+		sess.Close()
+
+		if err != nil {
+			t.Fatalf("weaken MySQL table engine: %v", err)
+		}
+
+		err = Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "engine-drift"})
+
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected non-transactional table engine to be rejected, got %v", err)
+		}
+	})
+
+	t.Run("unknown higher version is refused", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+		now := requireDatabaseUnixTime(t, integrationDatabase)
+		applied := now
+		insertMigrationRecord(t, integrationDatabase, &SchemaMigration{
+			Version:              2,
+			Name:                 "future_migration",
+			Checksum:             strings.Repeat("f", 64),
+			ApplicationVersion:   "future",
+			ApplicationCommit:    "future",
+			RunnerId:             strings.Repeat("a", 32),
+			ClaimToken:           strings.Repeat("b", 32),
+			FirstStartedUnixTime: now,
+			StartedUnixTime:      now,
+			UpdatedUnixTime:      now,
+			LeaseExpiresUnixTime: now,
+			AppliedUnixTime:      &applied,
+			Success:              true,
+			FailureCode:          "",
+		})
+
+		err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "future"})
+
+		if !errors.Is(err, ErrMigrationVersionTooNew) {
+			t.Fatalf("expected version-too-new error, got %v", err)
+		}
+	})
+
+	t.Run("active claim is not stolen", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		runner := newIntegrationRunner(t, "active")
+
+		if err := runner.bootstrapMigrationTable(integrationDatabase); err != nil {
+			t.Fatalf("bootstrap migration table: %v", err)
+		}
+
+		now := requireDatabaseUnixTime(t, integrationDatabase)
+		item := registeredMigrations()[0]
+		insertMigrationRecord(t, integrationDatabase, failedOrActiveRecord(item, now, "", now+migrationLeaseSeconds))
+		store := integrationDataStore(t, integrationDatabase)
+		err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "active"})
+
+		if !errors.Is(err, ErrMigrationInProgress) {
+			t.Fatalf("expected migration-in-progress error, got %v", err)
+		}
+	})
+
+	t.Run("partial DDL failure resumes safely", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		injectedFailure := errors.New("injected migration failure")
+		runner := newIntegrationRunner(t, "partial")
+		item := runner.migrations[0]
+		item.steps = []migrationStep{
+			{
+				name: "create_first_table",
+				run: func(c context.Context, db *datastore.Database) error {
+					return db.SyncStructsWithContext(c, schemaBeansV001()[0])
+				},
+			},
+			{
+				name: "inject_failure",
+				run: func(context.Context, *datastore.Database) error {
+					return injectedFailure
+				},
+			},
+		}
+		runner.migrations = []migration{item}
+
+		err := runner.upgradeDatabase(integrationDatabase)
+
+		if !errors.Is(err, injectedFailure) {
+			t.Fatalf("expected injected migration failure, got %v", err)
+		}
+
+		failed := requireMigrationRecord(t, integrationDatabase, 1)
+
+		if failed.Success || failed.FailureCode != "migration_up_failed" {
+			t.Fatalf("unexpected failed migration record: %+v", failed)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+
+		if err = verifySchemaV001(integrationDatabase); err != nil {
+			t.Fatalf("recovered schema is not exact: %v", err)
+		}
+
+		recovered := requireMigrationRecord(t, integrationDatabase, 1)
+
+		if !recovered.Success || recovered.FirstStartedUnixTime != failed.FirstStartedUnixTime || recovered.ClaimToken == failed.ClaimToken {
+			t.Fatalf("unexpected recovered migration record: %+v", recovered)
+		}
+	})
+
+	t.Run("incompatible existing schema is preserved and refused", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		sess := integrationDatabase.NewSession(nil)
+		_, err := sess.Exec("CREATE TABLE pf_import_file (uid TEXT NOT NULL, file_id BIGINT NOT NULL PRIMARY KEY)")
+		sess.Close()
+
+		if err != nil {
+			t.Fatalf("create incompatible schema: %v", err)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		err = Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "incompatible"})
+
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected incompatible-schema error, got %v", err)
+		}
+
+		record := requireMigrationRecord(t, integrationDatabase, 1)
+
+		if record.Success || record.FailureCode != "schema_preflight_failed" {
+			t.Fatalf("unexpected incompatible-schema record: %+v", record)
+		}
+	})
+
+	t.Run("partial existing table is refused before Sync2 mutates it", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		sess := integrationDatabase.NewSession(nil)
+		_, err := sess.Exec("CREATE TABLE pf_import_file (uid BIGINT NOT NULL)")
+		sess.Close()
+
+		if err != nil {
+			t.Fatalf("create partial schema: %v", err)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		err = Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "partial-preflight"})
+
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected partial schema error, got %v", err)
+		}
+
+		tables, readErr := readSchemaTables(integrationDatabase)
+
+		if readErr != nil {
+			t.Fatalf("read partial schema after refusal: %v", readErr)
+		}
+
+		partialTable := findTable(tables, "pf_import_file")
+
+		if partialTable == nil || len(partialTable.Columns()) != 1 || normalizeIdentifier(partialTable.Columns()[0].Name) != "uid" {
+			t.Fatalf("preflight refusal mutated partial table: %+v", partialTable)
+		}
+	})
+
+	t.Run("migration ledger itself is verified", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		sess := integrationDatabase.NewSession(nil)
+		_, err := sess.Exec("CREATE TABLE pf_schema_migration (version BIGINT NOT NULL PRIMARY KEY)")
+		sess.Close()
+
+		if err != nil {
+			t.Fatalf("create incompatible migration ledger: %v", err)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		err = Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "ledger"})
+
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected migration-ledger schema error, got %v", err)
+		}
+	})
+
+	t.Run("stale claim token is fenced", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		firstRunner := newIntegrationRunner(t, "first")
+		secondRunner := newIntegrationRunner(t, "second")
+
+		if err := firstRunner.bootstrapMigrationTable(integrationDatabase); err != nil {
+			t.Fatalf("bootstrap migration table: %v", err)
+		}
+
+		item := registeredMigrations()[0]
+		now := requireDatabaseUnixTime(t, integrationDatabase)
+		firstClaim, alreadyApplied, err := firstRunner.claimMigration(integrationDatabase, item, nil, now)
+
+		if err != nil || alreadyApplied {
+			t.Fatalf("first claim failed: already=%t err=%v", alreadyApplied, err)
+		}
+
+		existing := requireMigrationRecord(t, integrationDatabase, 1)
+		takeoverTime := existing.LeaseExpiresUnixTime + 1
+		secondClaim, alreadyApplied, err := secondRunner.claimMigration(integrationDatabase, item, existing, takeoverTime)
+
+		if err != nil || alreadyApplied {
+			t.Fatalf("second claim takeover failed: already=%t err=%v", alreadyApplied, err)
+		}
+
+		assertClaimLost(t, firstRunner.renewMigrationLease(integrationDatabase, firstClaim))
+		assertClaimLost(t, firstRunner.markMigrationFailed(integrationDatabase, firstClaim, "stale"))
+		assertClaimLost(t, firstRunner.markMigrationSucceeded(integrationDatabase, firstClaim))
+
+		if err = secondRunner.markMigrationFailed(integrationDatabase, secondClaim, "test_complete"); err != nil {
+			t.Fatalf("release second claim: %v", err)
+		}
+	})
+
+	t.Run("MySQL lock wait cannot renew an expired lease", func(t *testing.T) {
+		if integrationDatabase.DatabaseType() != settings.MySqlDbType {
+			t.Skip("MySQL statement time has the lock-wait edge case")
+		}
+
+		resetPersonalFinanceTables(t)
+		runner := newIntegrationRunner(t, "mysql-lock-wait")
+		runner.leaseSeconds = 2
+
+		if err := runner.bootstrapMigrationTable(integrationDatabase); err != nil {
+			t.Fatalf("bootstrap migration table: %v", err)
+		}
+
+		item := registeredMigrations()[0]
+		now := requireDatabaseUnixTime(t, integrationDatabase)
+		claim, alreadyApplied, err := runner.claimMigration(integrationDatabase, item, nil, now)
+
+		if err != nil || alreadyApplied {
+			t.Fatalf("claim migration: already=%t err=%v", alreadyApplied, err)
+		}
+
+		record := requireMigrationRecord(t, integrationDatabase, item.version)
+		lockingDatabase := openIntegrationDatabase(t)
+		lockingSession := lockingDatabase.NewSessionWithContext(context.Background())
+		defer lockingSession.Close()
+
+		if err = lockingSession.Begin(); err != nil {
+			t.Fatalf("begin locking transaction: %v", err)
+		}
+
+		lockCommitted := false
+		defer func() {
+			if !lockCommitted {
+				_ = lockingSession.Rollback()
+			}
+		}()
+
+		lockedRecord := new(SchemaMigration)
+		found, err := lockingSession.ForUpdate().Where("version=?", item.version).Get(lockedRecord)
+
+		if err != nil || !found {
+			t.Fatalf("lock migration row: found=%t err=%v", found, err)
+		}
+
+		renewDatabase := openIntegrationDatabase(t)
+		renewResult := make(chan error, 1)
+		go func() {
+			renewResult <- runner.renewMigrationLease(renewDatabase, claim)
+		}()
+
+		select {
+		case renewErr := <-renewResult:
+			t.Fatalf("renewal did not wait for the ledger row lock: %v", renewErr)
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		deadline := time.Now().Add(10 * time.Second)
+
+		for requireDatabaseUnixTime(t, integrationDatabase) <= record.LeaseExpiresUnixTime {
+			if time.Now().After(deadline) {
+				t.Fatal("database clock did not pass the test lease expiry")
+			}
+
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		if err = lockingSession.Commit(); err != nil {
+			t.Fatalf("release migration row lock: %v", err)
+		}
+
+		lockCommitted = true
+
+		select {
+		case renewErr := <-renewResult:
+			assertClaimLost(t, renewErr)
+		case <-time.After(5 * time.Second):
+			t.Fatal("renewal did not finish after the ledger row lock was released")
+		}
+	})
+
+	t.Run("takeover between time read and renewal fences old step", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		firstRunner := newIntegrationRunner(t, "checkpoint-first")
+		secondRunner := newIntegrationRunner(t, "checkpoint-second")
+
+		if err := firstRunner.bootstrapMigrationTable(integrationDatabase); err != nil {
+			t.Fatalf("bootstrap migration table: %v", err)
+		}
+
+		item := registeredMigrations()[0]
+		now := requireDatabaseUnixTime(t, integrationDatabase)
+		firstClaim, alreadyApplied, err := firstRunner.claimMigration(integrationDatabase, item, nil, now)
+
+		if err != nil || alreadyApplied {
+			t.Fatalf("first claim failed: already=%t err=%v", alreadyApplied, err)
+		}
+
+		existing := requireMigrationRecord(t, integrationDatabase, 1)
+		takeoverTime := existing.LeaseExpiresUnixTime + 1
+		secondClaim, alreadyApplied, err := secondRunner.claimMigration(integrationDatabase, item, existing, takeoverTime)
+
+		if err != nil || alreadyApplied {
+			t.Fatalf("second claim during checkpoint: already=%t err=%v", alreadyApplied, err)
+		}
+
+		preflightRan := false
+		item.preflight = func(context.Context, *datastore.Database) error {
+			preflightRan = true
+			return nil
+		}
+		heartbeat := &migrationHeartbeat{lost: make(chan struct{})}
+		_, err = firstRunner.runClaimedMigration(integrationDatabase, item, firstClaim, heartbeat)
+
+		if !errors.Is(err, ErrMigrationClaimLost) || preflightRan {
+			t.Fatalf("stale runner entered a migration step: preflight=%t err=%v", preflightRan, err)
+		}
+
+		if err = secondRunner.markMigrationFailed(integrationDatabase, secondClaim, "test_complete"); err != nil {
+			t.Fatalf("release takeover claim: %v", err)
+		}
+	})
+
+	t.Run("concurrent runners acquire exactly one claim", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		firstDatabase := openIntegrationDatabase(t)
+		secondDatabase := openIntegrationDatabase(t)
+		firstRunner := newIntegrationRunner(t, "concurrent-first")
+		secondRunner := newIntegrationRunner(t, "concurrent-second")
+
+		if err := firstRunner.bootstrapMigrationTable(firstDatabase); err != nil {
+			t.Fatalf("bootstrap migration table: %v", err)
+		}
+
+		item := registeredMigrations()[0]
+		now := requireDatabaseUnixTime(t, firstDatabase)
+		start := make(chan struct{})
+		results := make(chan concurrentClaimResult, 2)
+
+		go claimConcurrently(start, results, firstRunner, firstDatabase, item, now)
+		go claimConcurrently(start, results, secondRunner, secondDatabase, item, now)
+		close(start)
+
+		firstResult := <-results
+		secondResult := <-results
+		claimResults := []concurrentClaimResult{firstResult, secondResult}
+		winnerCount := 0
+		var winner concurrentClaimResult
+
+		for _, result := range claimResults {
+			if result.err == nil && !result.alreadyApplied {
+				winnerCount++
+				winner = result
+			}
+		}
+
+		if winnerCount != 1 {
+			t.Fatalf("expected exactly one claim winner, got %+v", claimResults)
+		}
+
+		if firstResult.err == nil && secondResult.err == nil {
+			t.Fatalf("both concurrent runners reported success: %+v", claimResults)
+		}
+
+		for _, result := range claimResults {
+			if result.err != nil && !errors.Is(result.err, ErrMigrationInProgress) && !errors.Is(result.err, ErrMigrationClaimLost) {
+				t.Fatalf("concurrent loser failed for an unexpected reason: %v", result.err)
+			}
+		}
+
+		if err := winner.runner.markMigrationFailed(winner.database, winner.claim, "test_complete"); err != nil {
+			t.Fatalf("release concurrent winner: %v", err)
+		}
+
+		records := readMigrationRecords(t, integrationDatabase)
+
+		if len(records) != 1 {
+			t.Fatalf("expected one durable claim record, got %d", len(records))
+		}
+	})
+
+	t.Run("repository queries are isolated by uid", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+		repository, err := importing.NewRepository(store)
+
+		if err != nil {
+			t.Fatalf("create personal finance repository: %v", err)
+		}
+
+		const firstUid = int64(1001)
+		const secondUid = int64(2002)
+		const firstBaseId = int64(1100)
+		const secondBaseId = int64(2100)
+		fileSHA256 := strings.Repeat("1", 64)
+		sourceAccountKey := strings.Repeat("2", 64)
+		identityKey := strings.Repeat("3", 64)
+		coreDigest := strings.Repeat("4", 64)
+		insertRepositoryFixture(t, firstUid, firstBaseId, fileSHA256, sourceAccountKey, identityKey, coreDigest)
+		insertRepositoryFixture(t, secondUid, secondBaseId, fileSHA256, sourceAccountKey, identityKey, coreDigest)
+
+		if record, findErr := repository.FindImportFileById(nil, firstUid, secondBaseId+1); findErr != nil || record != nil {
+			t.Fatalf("cross-user import file was visible: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindImportFileBySHA256(nil, firstUid, fileSHA256); findErr != nil || record == nil || record.Uid != firstUid || record.FileId != firstBaseId+1 {
+			t.Fatalf("file hash lookup escaped uid: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindImportFileBySHA256(nil, secondUid, fileSHA256); findErr != nil || record == nil || record.Uid != secondUid || record.FileId != secondBaseId+1 {
+			t.Fatalf("second user's file hash lookup escaped uid: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindSourceAccountById(nil, firstUid, secondBaseId+2); findErr != nil || record != nil {
+			t.Fatalf("cross-user source account was visible: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindSourceAccountByKey(nil, firstUid, importing.SOURCE_TYPE_ALIPAY, sourceAccountKey); findErr != nil || record == nil || record.Uid != firstUid || record.SourceAccountId != firstBaseId+2 {
+			t.Fatalf("source account key lookup escaped uid: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindSourceAccountByKey(nil, secondUid, importing.SOURCE_TYPE_ALIPAY, sourceAccountKey); findErr != nil || record == nil || record.Uid != secondUid || record.SourceAccountId != secondBaseId+2 {
+			t.Fatalf("second user's source account key lookup escaped uid: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindImportBatchById(nil, firstUid, secondBaseId+3); findErr != nil || record != nil {
+			t.Fatalf("cross-user import batch was visible: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindSourceIdentityByKey(nil, firstUid, identityKey); findErr != nil || record == nil || record.Uid != firstUid || record.IdentityId != firstBaseId+4 {
+			t.Fatalf("source identity lookup escaped uid: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindSourceIdentityByKey(nil, secondUid, identityKey); findErr != nil || record == nil || record.Uid != secondUid || record.IdentityId != secondBaseId+4 {
+			t.Fatalf("second user's source identity lookup escaped uid: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindRawImportRowById(nil, firstUid, secondBaseId+5); findErr != nil || record != nil {
+			t.Fatalf("cross-user raw row was visible: record=%+v err=%v", record, findErr)
+		}
+
+		if record, findErr := repository.FindRawImportRowById(nil, secondUid, secondBaseId+5); findErr != nil || record == nil ||
+			record.Currency != "" || record.ObservedSourceIdentityKey != "" || record.ObservedSourceCoreDigest != "" {
+			t.Fatalf("empty raw-row sentinels did not round-trip exactly: record=%+v err=%v", record, findErr)
+		}
+
+		rows, listErr := repository.ListRawImportRows(nil, firstUid, secondBaseId+3)
+
+		if listErr != nil || len(rows) != 0 {
+			t.Fatalf("cross-user batch rows were visible: rows=%+v err=%v", rows, listErr)
+		}
+
+		rows, listErr = repository.ListRawImportRows(nil, firstUid, firstBaseId+3)
+
+		if listErr != nil || len(rows) != 1 || rows[0].Uid != firstUid || rows[0].RowId != firstBaseId+5 {
+			t.Fatalf("own batch rows lookup failed: rows=%+v err=%v", rows, listErr)
+		}
+	})
+}
+
+type concurrentClaimResult struct {
+	runner         *migrationRunner
+	database       *datastore.Database
+	claim          *migrationClaim
+	alreadyApplied bool
+	err            error
+}
+
+func claimConcurrently(start <-chan struct{}, results chan<- concurrentClaimResult, runner *migrationRunner, db *datastore.Database, item migration, now int64) {
+	<-start
+	claim, alreadyApplied, err := runner.claimMigration(db, item, nil, now)
+	results <- concurrentClaimResult{
+		runner:         runner,
+		database:       db,
+		claim:          claim,
+		alreadyApplied: alreadyApplied,
+		err:            err,
+	}
+}
+
+func integrationDatabaseConfig() (*settings.DatabaseConfig, error) {
+	if os.Getenv("PF_DB_TEST_SENTINEL") != integrationDatabaseSentinel {
+		return nil, fmt.Errorf("isolated Compose sentinel is missing")
+	}
+
+	databaseType := os.Getenv("EBK_DATABASE_TYPE")
+	config := &settings.DatabaseConfig{
+		DatabaseType:          databaseType,
+		DatabaseHost:          os.Getenv("EBK_DATABASE_HOST"),
+		DatabaseName:          os.Getenv("EBK_DATABASE_NAME"),
+		DatabaseUser:          os.Getenv("EBK_DATABASE_USER"),
+		DatabasePassword:      os.Getenv("EBK_DATABASE_PASSWD"),
+		DatabaseSSLMode:       os.Getenv("EBK_DATABASE_SSL_MODE"),
+		DatabasePath:          os.Getenv("EBK_DATABASE_DB_PATH"),
+		MaxIdleConnection:     2,
+		MaxOpenConnection:     8,
+		ConnectionMaxLifeTime: 60,
+	}
+
+	switch databaseType {
+	case settings.Sqlite3DbType:
+		path := filepath.Clean(config.DatabasePath)
+
+		if !filepath.IsAbs(path) || !strings.HasPrefix(path, "/testwork/") {
+			return nil, fmt.Errorf("SQLite path must be inside /testwork")
+		}
+
+		config.DatabasePath = path
+	case settings.MySqlDbType:
+		if config.DatabaseName != "ezbookkeeping_pf_test" {
+			return nil, fmt.Errorf("database name must be ezbookkeeping_pf_test")
+		}
+
+		if config.DatabaseHost != "mysql:3306" || config.DatabaseUser != "pf_test" || config.DatabasePassword != "pf_test_password" {
+			return nil, fmt.Errorf("MySQL must use the isolated Compose service and synthetic credentials")
+		}
+	case settings.PostgresDbType:
+		if config.DatabaseName != "ezbookkeeping_pf_test" {
+			return nil, fmt.Errorf("database name must be ezbookkeeping_pf_test")
+		}
+
+		if config.DatabaseHost != "postgres:5432" || config.DatabaseUser != "pf_test" ||
+			config.DatabasePassword != "pf_test_password" || config.DatabaseSSLMode != "disable" {
+			return nil, fmt.Errorf("PostgreSQL must use the isolated Compose service and synthetic credentials")
+		}
+	default:
+		return nil, fmt.Errorf("unsupported database type %q", databaseType)
+	}
+
+	return config, nil
+}
+
+func resetPersonalFinanceTables(t *testing.T) {
+	t.Helper()
+
+	if err := cleanupPersonalFinanceTables(integrationDatabase); err != nil {
+		t.Fatalf("reset personal finance tables: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := cleanupPersonalFinanceTables(integrationDatabase); err != nil {
+			t.Errorf("clean personal finance tables: %v", err)
+		}
+	})
+}
+
+func cleanupPersonalFinanceTables(db *datastore.Database) error {
+	tables := []string{
+		"pf_raw_import_row",
+		"pf_source_identity",
+		"pf_import_batch",
+		"pf_source_account",
+		"pf_import_file",
+		"pf_schema_migration",
+	}
+
+	for _, tableName := range tables {
+		sess := db.NewSession(nil)
+		_, err := sess.Exec("DROP TABLE IF EXISTS " + tableName)
+		sess.Close()
+
+		if err != nil {
+			return fmt.Errorf("drop test table %s: %w", tableName, err)
+		}
+	}
+
+	if db.DatabaseType() == settings.PostgresDbType {
+		sess := db.NewSession(nil)
+		_, err := sess.Exec("DROP FUNCTION IF EXISTS pf_test_trigger_function()")
+		sess.Close()
+
+		if err != nil {
+			return fmt.Errorf("drop PostgreSQL test trigger function: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func createForbiddenTrigger(t *testing.T) {
+	t.Helper()
+	statements := []string(nil)
+
+	switch integrationDatabase.DatabaseType() {
+	case settings.Sqlite3DbType:
+		statements = []string{"CREATE TRIGGER pf_test_trigger AFTER INSERT ON pf_import_file BEGIN SELECT 1; END"}
+	case settings.MySqlDbType:
+		statements = []string{"CREATE TRIGGER pf_test_trigger BEFORE INSERT ON pf_import_file FOR EACH ROW SET NEW.original_file_name=NEW.original_file_name"}
+	case settings.PostgresDbType:
+		statements = []string{
+			"CREATE FUNCTION pf_test_trigger_function() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+			"CREATE TRIGGER pf_test_trigger BEFORE INSERT ON pf_import_file FOR EACH ROW EXECUTE FUNCTION pf_test_trigger_function()",
+		}
+	default:
+		t.Fatalf("unsupported integration database type %s", integrationDatabase.DatabaseType())
+	}
+
+	for _, statement := range statements {
+		sess := integrationDatabase.NewSession(nil)
+		_, err := sess.Exec(statement)
+		sess.Close()
+
+		if err != nil {
+			t.Fatalf("create forbidden trigger fixture: %v", err)
+		}
+	}
+}
+
+func weakenIdentityUniqueIndex(t *testing.T) {
+	t.Helper()
+	dropSQL := "DROP INDEX UQE_pf_source_identity_uid_key"
+	createSQL := ""
+
+	switch integrationDatabase.DatabaseType() {
+	case settings.Sqlite3DbType:
+		createSQL = "CREATE UNIQUE INDEX UQE_pf_source_identity_uid_key ON pf_source_identity(uid, source_identity_key) WHERE 0"
+	case settings.MySqlDbType:
+		dropSQL = "DROP INDEX UQE_pf_source_identity_uid_key ON pf_source_identity"
+		createSQL = "CREATE UNIQUE INDEX UQE_pf_source_identity_uid_key ON pf_source_identity(uid, source_identity_key(1))"
+	case settings.PostgresDbType:
+		dropSQL = `DROP INDEX "UQE_pf_source_identity_uid_key"`
+		createSQL = `CREATE UNIQUE INDEX "UQE_pf_source_identity_uid_key" ON pf_source_identity(uid, source_identity_key) WHERE false`
+	default:
+		t.Fatalf("unsupported integration database type %s", integrationDatabase.DatabaseType())
+	}
+
+	sess := integrationDatabase.NewSession(nil)
+	_, err := sess.Exec(dropSQL)
+	sess.Close()
+
+	if err != nil {
+		t.Fatalf("drop identity unique index: %v", err)
+	}
+
+	sess = integrationDatabase.NewSession(nil)
+	_, err = sess.Exec(createSQL)
+	sess.Close()
+
+	if err != nil {
+		t.Fatalf("create weakened identity unique index: %v", err)
+	}
+}
+
+func openIntegrationDatabase(t *testing.T) *datastore.Database {
+	t.Helper()
+	config := *integrationConfig
+	db, err := datastore.OpenDatabase(&config)
+
+	if err != nil {
+		t.Fatalf("open independent integration database: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close independent integration database: %v", err)
+		}
+	})
+	return db
+}
+
+func integrationDataStore(t *testing.T, db *datastore.Database) *datastore.DataStore {
+	t.Helper()
+	store, err := datastore.NewDataStore(db)
+
+	if err != nil {
+		t.Fatalf("create integration data store: %v", err)
+	}
+
+	return store
+}
+
+func newIntegrationRunner(t *testing.T, commit string) *migrationRunner {
+	t.Helper()
+	runnerId, err := newRandomHex(migrationRunnerIdByteCount)
+
+	if err != nil {
+		t.Fatalf("create migration runner id: %v", err)
+	}
+
+	return &migrationRunner{
+		applicationInfo: ApplicationInfo{Version: "integration", Commit: commit},
+		runnerId:        runnerId,
+		databaseNow:     currentDatabaseUnixTimeWithContext,
+		leaseSeconds:    migrationLeaseSeconds,
+		migrations:      registeredMigrations(),
+	}
+}
+
+func requireUpgrade(t *testing.T, store *datastore.DataStore) {
+	t.Helper()
+
+	if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "test"}); err != nil {
+		t.Fatalf("upgrade personal finance schema: %v", err)
+	}
+}
+
+func requireDatabaseUnixTime(t *testing.T, db *datastore.Database) int64 {
+	t.Helper()
+	now, err := currentDatabaseUnixTime(db)
+
+	if err != nil {
+		t.Fatalf("read database time: %v", err)
+	}
+
+	return now
+}
+
+func requireMigrationRecord(t *testing.T, db *datastore.Database, version int64) *SchemaMigration {
+	t.Helper()
+	sess := db.NewSession(nil)
+	defer sess.Close()
+	record := new(SchemaMigration)
+	found, err := sess.ID(version).Get(record)
+
+	if err != nil || !found {
+		t.Fatalf("read migration %d: found=%t err=%v", version, found, err)
+	}
+
+	return record
+}
+
+func readMigrationRecords(t *testing.T, db *datastore.Database) []*SchemaMigration {
+	t.Helper()
+	sess := db.NewSession(nil)
+	defer sess.Close()
+	records := make([]*SchemaMigration, 0)
+
+	if err := sess.Asc("version").Find(&records); err != nil {
+		t.Fatalf("read migration records: %v", err)
+	}
+
+	return records
+}
+
+func insertMigrationRecord(t *testing.T, db *datastore.Database, record *SchemaMigration) {
+	t.Helper()
+	sess := db.NewSession(nil)
+	inserted, err := sess.Insert(record)
+	sess.Close()
+
+	if err != nil || inserted != 1 {
+		t.Fatalf("insert migration record: inserted=%d err=%v", inserted, err)
+	}
+}
+
+func insertRepositoryFixture(t *testing.T, uid int64, baseId int64, fileSHA256 string, sourceAccountKey string, identityKey string, coreDigest string) {
+	t.Helper()
+	now := requireDatabaseUnixTime(t, integrationDatabase)
+	fileId := baseId + 1
+	sourceAccountId := baseId + 2
+	batchId := baseId + 3
+	identityId := baseId + 4
+	rowId := baseId + 5
+	file := &importing.ImportFile{
+		Uid:              uid,
+		ContentState:     importing.IMPORT_FILE_CONTENT_STATE_AVAILABLE,
+		OriginalFileName: "sanitized.csv",
+		FileSize:         128,
+		FileSha256:       fileSHA256,
+		MimeType:         "text/csv",
+		FileExtension:    ".csv",
+		StorageObjectKey: "pf/test/object",
+		CreatedIp:        "127.0.0.1",
+		CreatedUnixTime:  now,
+		UpdatedUnixTime:  now,
+		FileId:           fileId,
+	}
+	account := &importing.SourceAccount{
+		Uid:                     uid,
+		SourceType:              importing.SOURCE_TYPE_ALIPAY,
+		SourceAccountKey:        sourceAccountKey,
+		SourceAccountKeyVersion: importing.SOURCE_ACCOUNT_KEY_VERSION_V1,
+		Status:                  importing.SOURCE_ACCOUNT_STATUS_ACTIVE,
+		MaskedDisplayName:       "test***account",
+		DiscoveryMethod:         importing.SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED,
+		CreatedUnixTime:         now,
+		UpdatedUnixTime:         now,
+		SourceAccountId:         sourceAccountId,
+	}
+	batch := &importing.ImportBatch{
+		Uid:                  uid,
+		FileId:               fileId,
+		SourceAccountId:      &sourceAccountId,
+		Status:               importing.IMPORT_BATCH_STATUS_READY,
+		SourceTypeSnapshot:   importing.SOURCE_TYPE_ALIPAY,
+		ParserName:           "integration",
+		ParserVersion:        "parser-v1",
+		NormalizationVersion: "normalization-v1",
+		IdentityKeyVersion:   importing.IDENTITY_KEY_VERSION_V1,
+		CoreDigestVersion:    importing.CORE_DIGEST_VERSION_V1,
+		FingerprintVersion:   importing.FINGERPRINT_VERSION_V1,
+		RawSnapshotVersion:   importing.RAW_SNAPSHOT_VERSION_V1,
+		ParseOptionsDigest:   strings.Repeat("5", 64),
+		TotalRowCount:        1,
+		InvalidRowCount:      1,
+		ErrorCode:            "",
+		ErrorSummary:         "",
+		CreatedUnixTime:      now,
+		CompletedUnixTime:    &now,
+		UpdatedUnixTime:      now,
+		BatchId:              batchId,
+	}
+	identity := &importing.SourceIdentity{
+		Uid:                uid,
+		SourceAccountId:    sourceAccountId,
+		IdentityKind:       importing.IDENTITY_KIND_SOURCE_TRANSACTION_ID,
+		SourceIdentityKey:  identityKey,
+		SourceCoreDigest:   coreDigest,
+		IdentityKeyVersion: importing.IDENTITY_KEY_VERSION_V1,
+		CoreDigestVersion:  importing.CORE_DIGEST_VERSION_V1,
+		FingerprintVersion: importing.FINGERPRINT_VERSION_V1,
+		FirstSeenUnixTime:  now,
+		LastSeenUnixTime:   now,
+		IdentityId:         identityId,
+	}
+	row := &importing.RawImportRow{
+		Uid:                  uid,
+		BatchId:              batchId,
+		ParseState:           importing.PARSE_STATE_INVALID,
+		IdentityState:        importing.IDENTITY_STATE_NOT_EVALUATED,
+		ProcessingState:      importing.PROCESSING_STATE_IGNORED,
+		RowNumber:            1,
+		SourceLocator:        "v1:csv:2:2",
+		RawFieldsJson:        "[]",
+		IssuesJson:           "[]",
+		RawSnapshotVersion:   importing.RAW_SNAPSHOT_VERSION_V1,
+		ParserVersion:        "parser-v1",
+		NormalizationVersion: "normalization-v1",
+		IdentityKeyVersion:   importing.IDENTITY_KEY_VERSION_V1,
+		CoreDigestVersion:    importing.CORE_DIGEST_VERSION_V1,
+		FingerprintVersion:   importing.FINGERPRINT_VERSION_V1,
+		SemanticEligibility:  importing.SEMANTIC_ELIGIBILITY_NON_POSTABLE,
+		Disposition:          importing.IMPORT_DISPOSITION_NON_POSTABLE,
+		CreatedUnixTime:      now,
+		RowId:                rowId,
+	}
+	sess := integrationDatabase.NewSession(nil)
+	defer sess.Close()
+
+	for _, bean := range []any{file, account, batch, identity, row} {
+		inserted, err := sess.Insert(bean)
+
+		if err != nil || inserted != 1 {
+			t.Fatalf("insert repository fixture %T: inserted=%d err=%v", bean, inserted, err)
+		}
+	}
+}
+
+func failedOrActiveRecord(item migration, now int64, failureCode string, leaseExpires int64) *SchemaMigration {
+	return &SchemaMigration{
+		Version:              item.version,
+		Name:                 item.name,
+		Checksum:             item.checksum,
+		ApplicationVersion:   "previous",
+		ApplicationCommit:    "previous",
+		RunnerId:             strings.Repeat("a", 32),
+		ClaimToken:           strings.Repeat("b", 32),
+		FirstStartedUnixTime: now,
+		StartedUnixTime:      now,
+		UpdatedUnixTime:      now,
+		LeaseExpiresUnixTime: leaseExpires,
+		Success:              false,
+		FailureCode:          failureCode,
+	}
+}
+
+func assertClaimLost(t *testing.T, err error) {
+	t.Helper()
+
+	if !errors.Is(err, ErrMigrationClaimLost) {
+		t.Fatalf("expected stale claim to be fenced, got %v", err)
+	}
+}

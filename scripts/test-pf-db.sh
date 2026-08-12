@@ -17,9 +17,9 @@ show_help() {
 用法：
     scripts/test-pf-db.sh [sqlite|mysql|postgres|all]
 
-每种数据库都在独立进程中执行两次 database update。MySQL 和 PostgreSQL
-只运行在随机命名的内部 Docker 网络与 tmpfs 中，不发布宿主端口，也不挂载
-仓库的 data、log 或 storage 目录。
+每种数据库都在独立进程中执行迁移协议集成测试和两次 database update。
+MySQL 和 PostgreSQL 只运行在随机命名的内部 Docker 网络与 tmpfs 中，
+不发布宿主端口，也不挂载仓库的 data、log 或 storage 目录。
 EOF
 }
 
@@ -49,7 +49,9 @@ cleanup_best_effort() {
 
     case "$PROJECT_NAME" in
         ezbk-pfqa-*)
-            compose down --volumes --remove-orphans --rmi local >/dev/null 2>&1 || true
+            if ! compose down --volumes --remove-orphans --rmi local >/dev/null 2>&1; then
+                printf '警告：隔离测试资源自动清理失败，请检查 Compose 项目 %s\n' "$PROJECT_NAME" >&2
+            fi
             ;;
         *)
             printf '拒绝清理未识别的 Compose 项目：%s\n' "$PROJECT_NAME" >&2
@@ -75,6 +77,13 @@ build_runner() {
     compose build runner
 }
 
+run_personal_finance_unit_tests() {
+    printf '\n运行个人财务普通单元测试...\n'
+    compose run --rm --no-deps runner sh -ec '
+        go test -buildvcs=false -mod=readonly -count=1 ./pkg/personalfinance/...
+    '
+}
+
 run_database_update() {
     database_type=$1
     shift
@@ -88,6 +97,9 @@ run_database_update() {
             test ! -e /workspace/log
             test ! -e /workspace/storage
             mkdir -p /testwork/data /testwork/public /testwork/storage
+            PF_DB_INTEGRATION=1 go test -buildvcs=false -mod=readonly \
+                -tags=pf_db_integration -count=1 -timeout=10m \
+                ./pkg/personalfinance/migrations
             go build -buildvcs=false -mod=readonly -o /testwork/ezbookkeeping ./ezbookkeeping.go
             /testwork/ezbookkeeping --conf-path=/workspace/conf/ezbookkeeping.ini --no-boot-log database update
             /testwork/ezbookkeeping --conf-path=/workspace/conf/ezbookkeeping.ini --no-boot-log database update
@@ -143,6 +155,7 @@ trap 'exit 143' TERM
 cd "$REPOSITORY_ROOT"
 printf '隔离项目：%s\n' "$PROJECT_NAME"
 build_runner
+run_personal_finance_unit_tests
 
 case "$TARGET" in
     sqlite)

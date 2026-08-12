@@ -7,6 +7,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/log"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
 )
 
 // Database represents the database command
@@ -172,6 +173,17 @@ func updateAllDatabaseTablesStructure(c *core.CliContext) error {
 	}
 
 	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] insights explorer table maintained successfully")
+
+	err = migrations.Upgrade(c, datastore.Container.UserDataStore, migrations.ApplicationInfo{
+		Version: core.Version,
+		Commit:  core.CommitHash,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] personal finance schema migrated successfully")
 
 	return nil
 }

@@ -42,7 +42,7 @@ func (s *DataStore) SyncStructs(beans ...any) error {
 	var err error
 
 	for i := 0; i < len(s.databases); i++ {
-		err = s.databases[i].engineGroup.Sync2(beans...)
+		err = s.databases[i].SyncStructs(beans...)
 
 		if err != nil {
 			return err
