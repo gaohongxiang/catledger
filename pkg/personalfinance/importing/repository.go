@@ -9,6 +9,8 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 )
 
+const maximumRepositoryPageSize = 100
+
 // Repository 只访问当前用户所在的 UserDataStore 分片。
 // 所有公开查询都要求 uid，并在 SQL 条件中同时限定 uid。
 type Repository struct {
@@ -136,6 +138,106 @@ func (r *Repository) FindImportFileBySHA256(c core.Context, uid int64, fileSHA25
 	return file, nil
 }
 
+// InsertImportFile 创建一条 pending 原文件记录。
+// uid + SHA-256 的唯一约束仍是并发上传的最终裁决。
+func (r *Repository) InsertImportFile(c core.Context, file *ImportFile) error {
+	if file == nil || file.Uid < 1 || file.FileId < 1 ||
+		!isLowerHexSHA256(file.FileSha256) ||
+		file.ContentState != IMPORT_FILE_CONTENT_STATE_PENDING ||
+		file.StorageObjectKey == "" {
+		return fmt.Errorf("invalid personal finance import file")
+	}
+
+	return r.DoTransaction(c, file.Uid, func(tx *RepositoryTransaction) error {
+		inserted, err := tx.session.Insert(file)
+
+		if err != nil {
+			return err
+		}
+
+		if inserted != 1 {
+			return fmt.Errorf("personal finance import file was not inserted")
+		}
+
+		return nil
+	})
+}
+
+// UpdateImportFileContentState 只在当前状态属于 expectedStates 时推进补偿状态机。
+// 返回 false 表示另一个并发请求已经改变了状态。
+func (r *Repository) UpdateImportFileContentState(c core.Context, uid int64, fileId int64, expectedStates []ImportFileContentState, nextState ImportFileContentState, updatedUnixTime int64) (bool, error) {
+	if uid < 1 || fileId < 1 || len(expectedStates) < 1 ||
+		!isValidImportFileContentState(nextState) || updatedUnixTime < 1 {
+		return false, fmt.Errorf("invalid import file state transition")
+	}
+
+	expected := make([]string, len(expectedStates))
+
+	for i, state := range expectedStates {
+		if !isValidImportFileContentState(state) {
+			return false, fmt.Errorf("invalid expected import file content state")
+		}
+
+		expected[i] = string(state)
+	}
+
+	db, _ := r.database(uid)
+	sess := db.NewPrivacySession(c)
+	defer sess.Close()
+
+	update := &ImportFile{
+		ContentState:    nextState,
+		UpdatedUnixTime: updatedUnixTime,
+	}
+	columns := []string{"content_state", "updated_unix_time"}
+
+	if nextState == IMPORT_FILE_CONTENT_STATE_PENDING && containsImportFileContentState(expectedStates, IMPORT_FILE_CONTENT_STATE_DELETED) {
+		// 显式重传已删除内容时清除旧删除时间；唯一文件身份与历史批次保持不变。
+		columns = append(columns, "content_deleted_unix_time")
+		update.ContentDeletedUnixTime = nil
+	}
+
+	updated, err := sess.Where("uid=? AND file_id=?", uid, fileId).
+		In("content_state", expected).
+		Cols(columns...).
+		Update(update)
+
+	if err != nil {
+		return false, fmt.Errorf("update personal finance import file content state: %w", err)
+	}
+
+	return updated == 1, nil
+}
+
+// ListImportFiles 按创建时间和文件 ID 倒序稳定分页。
+func (r *Repository) ListImportFiles(c core.Context, uid int64, offset int, limit int) ([]*ImportFile, int64, error) {
+	if uid < 1 || !isValidRepositoryPage(offset, limit) {
+		return nil, 0, fmt.Errorf("invalid import file page")
+	}
+
+	db, _ := r.database(uid)
+	countSession := db.NewPrivacySession(c)
+	totalCount, err := countSession.Where("uid=?", uid).Count(new(ImportFile))
+	countSession.Close()
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("count personal finance import files: %w", err)
+	}
+
+	files := make([]*ImportFile, 0)
+	listSession := db.NewPrivacySession(c)
+	defer listSession.Close()
+
+	if err := listSession.Where("uid=?", uid).
+		Desc("created_unix_time", "file_id").
+		Limit(limit, offset).
+		Find(&files); err != nil {
+		return nil, 0, fmt.Errorf("list personal finance import files: %w", err)
+	}
+
+	return files, totalCount, nil
+}
+
 // FindSourceAccountById 按用户和来源账户 ID 查询，不存在时返回 (nil, nil)。
 func (r *Repository) FindSourceAccountById(c core.Context, uid int64, sourceAccountId int64) (*SourceAccount, error) {
 	if uid < 1 || sourceAccountId < 1 {
@@ -208,6 +310,73 @@ func (r *Repository) FindImportBatchById(c core.Context, uid int64, batchId int6
 	return batch, nil
 }
 
+// FindLatestImportBatchByFileId 返回同一用户文件最近创建的解析批次。
+func (r *Repository) FindLatestImportBatchByFileId(c core.Context, uid int64, fileId int64) (*ImportBatch, error) {
+	if uid < 1 || fileId < 1 {
+		return nil, fmt.Errorf("invalid import batch owner or file id")
+	}
+
+	db, _ := r.database(uid)
+	batch := new(ImportBatch)
+	sess := db.NewPrivacySession(c)
+	defer sess.Close()
+
+	found, err := sess.Where("uid=? AND file_id=?", uid, fileId).
+		Desc("created_unix_time", "batch_id").
+		Limit(1).
+		Get(batch)
+
+	if err != nil {
+		return nil, fmt.Errorf("find latest personal finance import batch: %w", err)
+	}
+
+	if !found {
+		return nil, nil
+	}
+
+	return batch, nil
+}
+
+// ListImportBatches 按创建时间和批次 ID 倒序稳定分页。
+// fileId 为 0 时列出全部文件的批次，否则只列出指定文件的批次。
+func (r *Repository) ListImportBatches(c core.Context, uid int64, fileId int64, offset int, limit int) ([]*ImportBatch, int64, error) {
+	if uid < 1 || fileId < 0 || !isValidRepositoryPage(offset, limit) {
+		return nil, 0, fmt.Errorf("invalid import batch page")
+	}
+
+	db, _ := r.database(uid)
+	countSession := db.NewPrivacySession(c)
+	countQuery := countSession.Where("uid=?", uid)
+
+	if fileId > 0 {
+		countQuery = countQuery.And("file_id=?", fileId)
+	}
+
+	totalCount, err := countQuery.Count(new(ImportBatch))
+	countSession.Close()
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("count personal finance import batches: %w", err)
+	}
+
+	batches := make([]*ImportBatch, 0)
+	listSession := db.NewPrivacySession(c)
+	defer listSession.Close()
+	listQuery := listSession.Where("uid=?", uid)
+
+	if fileId > 0 {
+		listQuery = listQuery.And("file_id=?", fileId)
+	}
+
+	if err := listQuery.Desc("created_unix_time", "batch_id").
+		Limit(limit, offset).
+		Find(&batches); err != nil {
+		return nil, 0, fmt.Errorf("list personal finance import batches: %w", err)
+	}
+
+	return batches, totalCount, nil
+}
+
 // FindSourceIdentityByKey 按用户和来源身份 key 查询，不存在时返回 (nil, nil)。
 func (r *Repository) FindSourceIdentityByKey(c core.Context, uid int64, sourceIdentityKey string) (*SourceIdentity, error) {
 	if uid < 1 || !isLowerHexSHA256(sourceIdentityKey) {
@@ -272,6 +441,62 @@ func (r *Repository) ListRawImportRows(c core.Context, uid int64, batchId int64)
 	}
 
 	return rows, nil
+}
+
+// ListRawImportRowsPage 按逻辑行号和行 ID 正序稳定分页。
+func (r *Repository) ListRawImportRowsPage(c core.Context, uid int64, batchId int64, offset int, limit int) ([]*RawImportRow, int64, error) {
+	if uid < 1 || batchId < 1 || !isValidRepositoryPage(offset, limit) {
+		return nil, 0, fmt.Errorf("invalid raw import row page")
+	}
+
+	db, _ := r.database(uid)
+	countSession := db.NewPrivacySession(c)
+	totalCount, err := countSession.Where("uid=? AND batch_id=?", uid, batchId).Count(new(RawImportRow))
+	countSession.Close()
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("count personal finance raw import rows: %w", err)
+	}
+
+	rows := make([]*RawImportRow, 0)
+	listSession := db.NewPrivacySession(c)
+	defer listSession.Close()
+
+	if err := listSession.Where("uid=? AND batch_id=?", uid, batchId).
+		Asc("row_number", "row_id").
+		Limit(limit, offset).
+		Find(&rows); err != nil {
+		return nil, 0, fmt.Errorf("list personal finance raw import rows page: %w", err)
+	}
+
+	return rows, totalCount, nil
+}
+
+func isValidImportFileContentState(state ImportFileContentState) bool {
+	switch state {
+	case IMPORT_FILE_CONTENT_STATE_PENDING,
+		IMPORT_FILE_CONTENT_STATE_AVAILABLE,
+		IMPORT_FILE_CONTENT_STATE_MISSING,
+		IMPORT_FILE_CONTENT_STATE_FAILED,
+		IMPORT_FILE_CONTENT_STATE_DELETED:
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidRepositoryPage(offset int, limit int) bool {
+	return offset >= 0 && limit > 0 && limit <= maximumRepositoryPageSize
+}
+
+func containsImportFileContentState(states []ImportFileContentState, expected ImportFileContentState) bool {
+	for _, state := range states {
+		if state == expected {
+			return true
+		}
+	}
+
+	return false
 }
 
 func isValidSourceType(sourceType SourceType) bool {
