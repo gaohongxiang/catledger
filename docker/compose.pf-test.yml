@@ -40,7 +40,6 @@ services:
     restart: "no"
 
   runner:
-    image: ezbookkeeping-pf-test-runner:go1.26.4
     build:
       context: ..
       dockerfile: docker/pf-test-runner.Dockerfile
@@ -54,10 +53,12 @@ services:
       EBK_WORK_DIR: /testwork
       EBK_LOG_MODE: console
       EBK_STORAGE_LOCAL_FILESYSTEM_PATH: /testwork/storage
-    volumes:
-      - ..:/workspace:ro
     tmpfs:
       - /testwork:rw,exec,nosuid,size=1g
     profiles:
       - runner
     restart: "no"
+
+networks:
+  default:
+    internal: true

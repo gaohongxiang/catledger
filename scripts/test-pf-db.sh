@@ -6,7 +6,9 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPOSITORY_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 COMPOSE_FILE="$REPOSITORY_ROOT/docker/compose.pf-test.yml"
 TARGET=${1:-all}
-PROJECT_NAME="ezbk-pfqa-$(date '+%Y%m%d%H%M%S')-$$"
+PROJECT_RANDOM=$(LC_ALL=C od -An -N4 -tx1 /dev/urandom | tr -d '[:space:]')
+PROJECT_NAME="ezbk-pfqa-$(date '+%Y%m%d%H%M%S')-$$-$PROJECT_RANDOM"
+CLEANUP_DONE=0
 
 show_help() {
     cat <<'EOF'
@@ -30,15 +32,42 @@ compose() {
     docker compose --project-name "$PROJECT_NAME" --file "$COMPOSE_FILE" "$@"
 }
 
-cleanup() {
+validate_project_name() {
     case "$PROJECT_NAME" in
         ezbk-pfqa-*)
-            compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+            ;;
+        *)
+            fail "拒绝清理未识别的 Compose 项目 $PROJECT_NAME"
+            ;;
+    esac
+}
+
+cleanup_best_effort() {
+    if [ "$CLEANUP_DONE" -eq 1 ]; then
+        return
+    fi
+
+    case "$PROJECT_NAME" in
+        ezbk-pfqa-*)
+            compose down --volumes --remove-orphans --rmi local >/dev/null 2>&1 || true
             ;;
         *)
             printf '拒绝清理未识别的 Compose 项目：%s\n' "$PROJECT_NAME" >&2
             ;;
     esac
+}
+
+cleanup_checked() {
+    validate_project_name
+    compose down --volumes --remove-orphans --rmi local
+    CLEANUP_DONE=1
+}
+
+handle_exit() {
+    exit_status=$?
+    trap - EXIT
+    cleanup_best_effort
+    exit "$exit_status"
 }
 
 build_runner() {
@@ -55,6 +84,9 @@ run_database_update() {
         -e "EBK_DATABASE_TYPE=$database_type" \
         "$@" \
         runner sh -ec '
+            test ! -e /workspace/data
+            test ! -e /workspace/log
+            test ! -e /workspace/storage
             mkdir -p /testwork/data /testwork/public /testwork/storage
             go build -buildvcs=false -mod=readonly -o /testwork/ezbookkeeping ./ezbookkeeping.go
             /testwork/ezbookkeeping --conf-path=/workspace/conf/ezbookkeeping.ini --no-boot-log database update
@@ -102,16 +134,14 @@ esac
 command -v docker >/dev/null 2>&1 || fail "找不到 docker"
 docker compose version >/dev/null 2>&1 || fail "docker compose 不可用"
 
-case "$PROJECT_NAME" in
-    ezbk-pfqa-*)
-        ;;
-    *)
-        fail "无法生成安全的 Compose 项目名"
-        ;;
-esac
+validate_project_name
 
-trap cleanup EXIT HUP INT TERM
+trap handle_exit EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 cd "$REPOSITORY_ROOT"
+printf '隔离项目：%s\n' "$PROJECT_NAME"
 build_runner
 
 case "$TARGET" in
@@ -131,4 +161,5 @@ case "$TARGET" in
         ;;
 esac
 
+cleanup_checked
 printf '\n%s 数据库基线验证通过。\n' "$TARGET"

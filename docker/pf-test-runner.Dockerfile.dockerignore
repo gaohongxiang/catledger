@@ -1,3 +1,9 @@
+.git/
+.github/
+.idea/
+.vscode/
+.codex/
+.planning/
 node_modules/
 dist/
 data/
