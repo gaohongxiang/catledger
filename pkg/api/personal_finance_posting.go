@@ -14,6 +14,7 @@ import (
 
 type personalFinancePostingApplication interface {
 	PostImportBatch(c core.Context, request importing.PostImportBatchRequest, clientTimezone *time.Location) (*importing.ImportPostingResult, error)
+	GetTransactionEvidence(c core.Context, uid int64, transactionId int64) (*importing.TransactionEvidenceResult, error)
 }
 
 type personalFinancePostingRequest struct {

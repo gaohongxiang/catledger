@@ -337,6 +337,24 @@ func (r *Repository) FindLatestImportBatchByFileId(c core.Context, uid int64, fi
 	return batch, nil
 }
 
+// ListImportBatchIssues 按持久 issue_order 返回文档级问题。
+func (r *Repository) ListImportBatchIssues(c core.Context, uid int64, batchId int64) ([]*ImportBatchIssue, error) {
+	if uid < 1 || batchId < 1 {
+		return nil, fmt.Errorf("invalid import batch issue owner or id")
+	}
+
+	db, _ := r.database(uid)
+	issues := make([]*ImportBatchIssue, 0)
+	sess := db.NewPrivacySession(c)
+	defer sess.Close()
+
+	if err := sess.Where("uid=? AND batch_id=?", uid, batchId).Asc("issue_order", "issue_id").Find(&issues); err != nil {
+		return nil, fmt.Errorf("list personal finance import batch issues: %w", err)
+	}
+
+	return issues, nil
+}
+
 // ListImportBatches 按创建时间和批次 ID 倒序稳定分页。
 // fileId 为 0 时列出全部文件的批次，否则只列出指定文件的批次。
 func (r *Repository) ListImportBatches(c core.Context, uid int64, fileId int64, offset int, limit int) ([]*ImportBatch, int64, error) {

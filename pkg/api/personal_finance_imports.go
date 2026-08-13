@@ -37,6 +37,7 @@ type PersonalFinanceImportsApi struct {
 	config                *settings.ConfigContainer
 	users                 personalFinanceUserReader
 	serviceFactory        func() (personalFinanceImportApplication, error)
+	flowServiceFactory    func() (personalFinanceFlowApplication, error)
 	postingServiceFactory func() (personalFinancePostingApplication, error)
 }
 
@@ -59,6 +60,7 @@ var PersonalFinanceImports = &PersonalFinanceImportsApi{
 			},
 		)
 	},
+	flowServiceFactory: newPersonalFinanceFlowApplication,
 	postingServiceFactory: func() (personalFinancePostingApplication, error) {
 		repository, err := importing.NewRepository(datastore.Container.UserDataStore)
 
@@ -128,37 +130,44 @@ type personalFinanceImportFilePageResponse struct {
 }
 
 type personalFinanceImportBatchResponse struct {
-	Id                         int64                              `json:"id,string"`
-	FileId                     int64                              `json:"fileId,string"`
-	SourceAccountId            *int64                             `json:"sourceAccountId,string,omitempty"`
-	Status                     importing.ImportBatchStatus        `json:"status"`
-	SourceType                 importing.SourceType               `json:"sourceType"`
-	LedgerAccountId            *int64                             `json:"ledgerAccountId,string,omitempty"`
-	ParserName                 string                             `json:"parserName"`
-	ParserVersion              importing.RuleVersion              `json:"parserVersion"`
-	NormalizationVersion       importing.RuleVersion              `json:"normalizationVersion"`
-	IdentityKeyVersion         importing.RuleVersion              `json:"identityKeyVersion"`
-	CoreDigestVersion          importing.RuleVersion              `json:"coreDigestVersion"`
-	FingerprintVersion         importing.RuleVersion              `json:"fingerprintVersion"`
-	RawSnapshotVersion         importing.RuleVersion              `json:"rawSnapshotVersion"`
-	ReparseReasonCode          string                             `json:"reparseReasonCode"`
-	StatementStartUnixTime     *int64                             `json:"statementStartUnixTime,omitempty"`
-	StatementEndUnixTime       *int64                             `json:"statementEndUnixTime,omitempty"`
-	StatementTimezoneUtcOffset *int16                             `json:"statementTimezoneUtcOffset,omitempty"`
-	TotalRowCount              int64                              `json:"totalRowCount"`
-	ValidRowCount              int64                              `json:"validRowCount"`
-	InvalidRowCount            int64                              `json:"invalidRowCount"`
-	ExactDuplicateRowCount     int64                              `json:"exactDuplicateRowCount"`
-	IdentityConflictRowCount   int64                              `json:"identityConflictRowCount"`
-	PendingRowCount            int64                              `json:"pendingRowCount"`
-	PostedRowCount             int64                              `json:"postedRowCount"`
-	ErrorCode                  string                             `json:"errorCode"`
-	ErrorSummary               string                             `json:"errorSummary"`
-	CreatedUnixTime            int64                              `json:"createdUnixTime"`
-	StartedUnixTime            *int64                             `json:"startedUnixTime,omitempty"`
-	CompletedUnixTime          *int64                             `json:"completedUnixTime,omitempty"`
-	UpdatedUnixTime            int64                              `json:"updatedUnixTime"`
-	File                       *personalFinanceImportFileResponse `json:"file,omitempty"`
+	Id                         int64                                `json:"id,string"`
+	FileId                     int64                                `json:"fileId,string"`
+	SourceAccountId            *int64                               `json:"sourceAccountId,string,omitempty"`
+	Status                     importing.ImportBatchStatus          `json:"status"`
+	SourceType                 importing.SourceType                 `json:"sourceType"`
+	LedgerAccountId            *int64                               `json:"ledgerAccountId,string,omitempty"`
+	ParserName                 string                               `json:"parserName"`
+	ParserVersion              importing.RuleVersion                `json:"parserVersion"`
+	NormalizationVersion       importing.RuleVersion                `json:"normalizationVersion"`
+	IdentityKeyVersion         importing.RuleVersion                `json:"identityKeyVersion"`
+	CoreDigestVersion          importing.RuleVersion                `json:"coreDigestVersion"`
+	FingerprintVersion         importing.RuleVersion                `json:"fingerprintVersion"`
+	RawSnapshotVersion         importing.RuleVersion                `json:"rawSnapshotVersion"`
+	ReparseReasonCode          string                               `json:"reparseReasonCode"`
+	StatementStartUnixTime     *int64                               `json:"statementStartUnixTime,omitempty"`
+	StatementEndUnixTime       *int64                               `json:"statementEndUnixTime,omitempty"`
+	StatementTimezoneUtcOffset *int16                               `json:"statementTimezoneUtcOffset,omitempty"`
+	TotalRowCount              int64                                `json:"totalRowCount"`
+	ValidRowCount              int64                                `json:"validRowCount"`
+	InvalidRowCount            int64                                `json:"invalidRowCount"`
+	ExactDuplicateRowCount     int64                                `json:"exactDuplicateRowCount"`
+	IdentityConflictRowCount   int64                                `json:"identityConflictRowCount"`
+	PendingRowCount            int64                                `json:"pendingRowCount"`
+	PostedRowCount             int64                                `json:"postedRowCount"`
+	ErrorCode                  string                               `json:"errorCode"`
+	ErrorSummary               string                               `json:"errorSummary"`
+	CreatedUnixTime            int64                                `json:"createdUnixTime"`
+	StartedUnixTime            *int64                               `json:"startedUnixTime,omitempty"`
+	CompletedUnixTime          *int64                               `json:"completedUnixTime,omitempty"`
+	UpdatedUnixTime            int64                                `json:"updatedUnixTime"`
+	File                       *personalFinanceImportFileResponse   `json:"file,omitempty"`
+	Issues                     []*personalFinanceBatchIssueResponse `json:"issues,omitempty"`
+}
+
+type personalFinanceBatchIssueResponse struct {
+	Code     importing.IssueCode     `json:"code"`
+	Severity importing.IssueSeverity `json:"severity"`
+	Field    string                  `json:"field,omitempty"`
 }
 
 type personalFinanceImportBatchPageResponse struct {
@@ -507,7 +516,7 @@ func newPersonalFinanceImportBatchResponse(details *importing.ImportBatchDetails
 	}
 
 	batch := details.Batch
-	return &personalFinanceImportBatchResponse{
+	response := &personalFinanceImportBatchResponse{
 		Id:                         batch.BatchId,
 		FileId:                     batch.FileId,
 		SourceAccountId:            batch.SourceAccountId,
@@ -540,6 +549,23 @@ func newPersonalFinanceImportBatchResponse(details *importing.ImportBatchDetails
 		UpdatedUnixTime:            batch.UpdatedUnixTime,
 		File:                       newPersonalFinanceImportFileResponse(details.File),
 	}
+
+	if len(details.Issues) > 0 {
+		response.Issues = make([]*personalFinanceBatchIssueResponse, 0, len(details.Issues))
+		for _, issue := range details.Issues {
+			if issue == nil {
+				continue
+			}
+
+			response.Issues = append(response.Issues, &personalFinanceBatchIssueResponse{
+				Code:     issue.Code,
+				Severity: issue.Severity,
+				Field:    issue.Field,
+			})
+		}
+	}
+
+	return response
 }
 
 func newPersonalFinanceRawImportRowResponse(row *importing.RawImportRow, includeRawSnapshot bool) *personalFinanceRawImportRowResponse {

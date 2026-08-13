@@ -27,6 +27,7 @@ const (
 	personalFinanceTemporaryKeyPrefix  = "temporary"
 	personalFinanceAvailableKeyPrefix  = "objects"
 	personalFinanceOpaqueKeyHexLength  = 64
+	personalFinanceMaximumReadBytes    = int64(128 * 1024 * 1024)
 )
 
 // PersonalFinanceStorageAdapter 是原文件存储的窄适配器。
@@ -35,6 +36,42 @@ type PersonalFinanceStorageAdapter struct {
 	config        *settings.ConfigContainer
 	mutex         sync.Mutex
 	objectStorage storage.ObjectStorage
+}
+
+// ReadAvailable 读取最终对象并在同一次流式读取中核对长度与 SHA-256。
+// 返回值只在内存中交给解析器，不进入日志或响应。
+func (s *PersonalFinanceStorageAdapter) ReadAvailable(c core.Context, objectKey string, expectedSHA256 string, expectedSize int64) ([]byte, error) {
+	if !isPersonalFinanceObjectKey(objectKey, personalFinanceAvailableKeyPrefix) ||
+		!isLowerHexDigest(expectedSHA256) || expectedSize < 1 || s == nil || s.config == nil {
+		return nil, errs.ErrParameterInvalid
+	}
+
+	if expectedSize > personalFinanceMaximumReadBytes {
+		return nil, errs.ErrParameterInvalid
+	}
+
+	objectStorage, err := s.currentStorage()
+	if err != nil {
+		return nil, err
+	}
+
+	object, err := objectStorage.Read(c, objectKey)
+	if err != nil {
+		return nil, err
+	}
+	defer object.Close()
+
+	content, err := io.ReadAll(io.LimitReader(object, expectedSize+1))
+	if err != nil {
+		return nil, err
+	}
+
+	digest := sha256.Sum256(content)
+	if int64(len(content)) != expectedSize || hex.EncodeToString(digest[:]) != expectedSHA256 {
+		return nil, errs.ErrOperationFailed
+	}
+
+	return content, nil
 }
 
 // PersonalFinanceImportFilesStorage 是 API 组合根使用的默认原文件存储适配器。

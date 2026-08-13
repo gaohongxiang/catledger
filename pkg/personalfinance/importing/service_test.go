@@ -621,6 +621,10 @@ func (r *memoryImportRepository) FindLatestImportBatchByFileId(_ core.Context, u
 	return latest, nil
 }
 
+func (r *memoryImportRepository) ListImportBatchIssues(_ core.Context, _ int64, _ int64) ([]*ImportBatchIssue, error) {
+	return []*ImportBatchIssue{}, nil
+}
+
 func (r *memoryImportRepository) ListImportBatches(_ core.Context, uid int64, fileId int64, offset int, limit int) ([]*ImportBatch, int64, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

@@ -421,7 +421,9 @@ func startWebServer(c *core.CliContext) error {
 				apiV1Route.GET("/transactions/import/process.json", bindApi(api.Transactions.TransactionImportProcessHandler, config))
 
 				apiV1Route.POST("/personal_finance/import_files/upload.json", bindApi(api.PersonalFinanceImports.ImportFileUploadHandler, config))
+				apiV1Route.POST("/personal_finance/import_batches/reparse.json", bindApi(api.PersonalFinanceImports.ImportBatchReparseHandler, config))
 				apiV1Route.POST("/personal_finance/import_batches/post.json", bindApi(api.PersonalFinanceImports.ImportBatchPostHandler, config))
+				apiV1Route.POST("/personal_finance/source_accounts/save.json", bindApi(api.PersonalFinanceImports.SourceAccountSaveHandler, config))
 			}
 
 			apiV1Route.GET("/personal_finance/import_files/list.json", bindApi(api.PersonalFinanceImports.ImportFileListHandler, config))
@@ -429,6 +431,8 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.GET("/personal_finance/import_batches/list.json", bindApi(api.PersonalFinanceImports.ImportBatchListHandler, config))
 			apiV1Route.GET("/personal_finance/import_batches/get.json", bindApi(api.PersonalFinanceImports.ImportBatchGetHandler, config))
 			apiV1Route.GET("/personal_finance/import_batches/rows.json", bindApi(api.PersonalFinanceImports.RawImportRowListHandler, config))
+			apiV1Route.GET("/personal_finance/source_accounts/list.json", bindApi(api.PersonalFinanceImports.SourceAccountListHandler, config))
+			apiV1Route.GET("/personal_finance/transactions/evidence.json", bindApi(api.PersonalFinanceImports.TransactionEvidenceHandler, config))
 
 			// Transaction Pictures
 			if config.EnableTransactionPictures {

@@ -109,6 +109,15 @@ func TestPersonalFinanceStorageAdapterLocalCompensationFlow(t *testing.T) {
 		t.Fatalf("verify available import object")
 	}
 
+	readContent, err := adapter.ReadAvailable(c, availableKey, digestText, int64(len(content)))
+	if err != nil || !bytes.Equal(readContent, content) {
+		t.Fatalf("read verified available import object")
+	}
+
+	if _, err := adapter.ReadAvailable(c, availableKey, strings.Repeat("0", sha256.Size*2), int64(len(content))); err == nil {
+		t.Fatalf("read accepted an object with a mismatched digest")
+	}
+
 	if err := adapter.Delete(c, temporaryKey); err != nil {
 		t.Fatalf("delete temporary import object: %v", err)
 	}
