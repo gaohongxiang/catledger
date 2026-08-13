@@ -34,9 +34,10 @@ type personalFinanceUserReader interface {
 
 // PersonalFinanceImportsApi 提供独立命名空间下的持久导入纵切面。
 type PersonalFinanceImportsApi struct {
-	config         *settings.ConfigContainer
-	users          personalFinanceUserReader
-	serviceFactory func() (personalFinanceImportApplication, error)
+	config                *settings.ConfigContainer
+	users                 personalFinanceUserReader
+	serviceFactory        func() (personalFinanceImportApplication, error)
+	postingServiceFactory func() (personalFinancePostingApplication, error)
 }
 
 // PersonalFinanceImports 是 Web 路由使用的默认 API 实例。
@@ -53,6 +54,22 @@ var PersonalFinanceImports = &PersonalFinanceImportsApi{
 		return importing.NewImportService(
 			repository,
 			services.PersonalFinanceImportFilesStorage,
+			func() int64 {
+				return uuid.Container.GenerateUuid(uuid.UUID_TYPE_PERSONAL_FINANCE)
+			},
+		)
+	},
+	postingServiceFactory: func() (personalFinancePostingApplication, error) {
+		repository, err := importing.NewRepository(datastore.Container.UserDataStore)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return importing.NewPostingService(
+			repository,
+			services.PersonalFinancePostingAuthorization,
+			services.Transactions,
 			func() int64 {
 				return uuid.Container.GenerateUuid(uuid.UUID_TYPE_PERSONAL_FINANCE)
 			},

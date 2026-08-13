@@ -103,11 +103,11 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("migration table is not exact: %v", err)
 		}
 
-		if err := verifySchemaV001(integrationDatabase); err != nil {
-			t.Fatalf("v001 schema is not exact: %v", err)
+		if err := verifySchemaV002(integrationDatabase); err != nil {
+			t.Fatalf("v002 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 1)
+		record := requireMigrationRecord(t, integrationDatabase, 2)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected successful migration record: %+v", record)
@@ -210,7 +210,7 @@ func TestMigrationProtocol(t *testing.T) {
 		now := requireDatabaseUnixTime(t, integrationDatabase)
 		applied := now
 		insertMigrationRecord(t, integrationDatabase, &SchemaMigration{
-			Version:              2,
+			Version:              3,
 			Name:                 "future_migration",
 			Checksum:             strings.Repeat("f", 64),
 			ApplicationVersion:   "future",
@@ -288,7 +288,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV001(integrationDatabase); err != nil {
+		if err = verifySchemaV002(integrationDatabase); err != nil {
 			t.Fatalf("recovered schema is not exact: %v", err)
 		}
 
@@ -753,6 +753,9 @@ func resetPersonalFinanceTables(t *testing.T) {
 
 func cleanupPersonalFinanceTables(db *datastore.Database) error {
 	tables := []string{
+		"pf_raw_row_transaction_link",
+		"pf_import_batch_issue",
+		"pf_import_posting",
 		"pf_raw_import_row",
 		"pf_source_identity",
 		"pf_import_batch",

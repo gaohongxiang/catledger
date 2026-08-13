@@ -207,6 +207,18 @@ func (tx *RepositoryTransaction) persistEvidenceBatch(persistence *EvidenceBatch
 		return fmt.Errorf("personal finance import batch was not inserted")
 	}
 
+	for _, issue := range persistence.DocumentIssues {
+		inserted, err = tx.session.Insert(issue)
+
+		if err != nil {
+			return fmt.Errorf("insert personal finance import batch issue: %w", err)
+		}
+
+		if inserted != 1 {
+			return fmt.Errorf("personal finance import batch issue was not inserted")
+		}
+	}
+
 	for index := range persistence.Rows {
 		inserted, err = tx.session.Insert(persistence.Rows[index].Row)
 
@@ -437,6 +449,17 @@ func validateEvidenceBatchPersistence(persistence *EvidenceBatchPersistence) err
 		return fmt.Errorf("invalid personal finance evidence statement timezone")
 	}
 
+	for index, issue := range persistence.DocumentIssues {
+		if issue == nil || issue.Uid != batch.Uid || issue.BatchId != batch.BatchId ||
+			issue.IssueOrder != int64(index+1) || issue.IssueId < 1 ||
+			issue.CreatedUnixTime != batch.CreatedUnixTime || !isValidIssueCode(issue.Code) ||
+			!isValidIssueSeverity(issue.Severity) ||
+			len(issue.Field) > 64 || !utf8.ValidString(issue.Field) ||
+			validateIssueCodesForSource(batch.SourceTypeSnapshot, []EvidenceIssue{{Code: issue.Code, Field: issue.Field, Severity: issue.Severity}}) != nil {
+			return fmt.Errorf("invalid personal finance import batch issue persistence")
+		}
+	}
+
 	totalSnapshotBytes := 0
 
 	for index := range persistence.Rows {
@@ -621,6 +644,12 @@ func cloneEvidenceBatchPersistence(source *EvidenceBatchPersistence) *EvidenceBa
 	batch.StartedUnixTime = cloneInt64Pointer(source.Batch.StartedUnixTime)
 	batch.CompletedUnixTime = cloneInt64Pointer(source.Batch.CompletedUnixTime)
 	rows := make([]EvidenceBatchPersistenceRow, len(source.Rows))
+	documentIssues := make([]*ImportBatchIssue, len(source.DocumentIssues))
+
+	for index := range source.DocumentIssues {
+		issue := *source.DocumentIssues[index]
+		documentIssues[index] = &issue
+	}
 
 	for index := range source.Rows {
 		rows[index] = source.Rows[index]
@@ -636,6 +665,7 @@ func cloneEvidenceBatchPersistence(source *EvidenceBatchPersistence) *EvidenceBa
 	return &EvidenceBatchPersistence{
 		Batch:                    &batch,
 		ExpectedSourceAccountKey: source.ExpectedSourceAccountKey,
+		DocumentIssues:           documentIssues,
 		Rows:                     rows,
 	}
 }

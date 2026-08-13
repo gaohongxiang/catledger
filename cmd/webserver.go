@@ -421,6 +421,7 @@ func startWebServer(c *core.CliContext) error {
 				apiV1Route.GET("/transactions/import/process.json", bindApi(api.Transactions.TransactionImportProcessHandler, config))
 
 				apiV1Route.POST("/personal_finance/import_files/upload.json", bindApi(api.PersonalFinanceImports.ImportFileUploadHandler, config))
+				apiV1Route.POST("/personal_finance/import_batches/post.json", bindApi(api.PersonalFinanceImports.ImportBatchPostHandler, config))
 			}
 
 			apiV1Route.GET("/personal_finance/import_files/list.json", bindApi(api.PersonalFinanceImports.ImportFileListHandler, config))

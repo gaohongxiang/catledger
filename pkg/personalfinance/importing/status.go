@@ -27,6 +27,9 @@ const (
 	CORE_DIGEST_VERSION_V1        RuleVersion = "core-digest-v1"
 	FINGERPRINT_VERSION_V1        RuleVersion = "fingerprint-v1"
 	RAW_SNAPSHOT_VERSION_V1       RuleVersion = "raw-snapshot-v1"
+	IDEMPOTENCY_KEY_VERSION_V1    RuleVersion = "idempotency-key-v1"
+	POSTING_REQUEST_VERSION_V1    RuleVersion = "posting-request-v1"
+	POSTING_LINK_VERSION_V1       RuleVersion = "posting-link-v1"
 )
 
 // CentralRuleVersions 是 parser 不得覆盖的中心规则版本集合。
@@ -180,6 +183,32 @@ const (
 	PROCESSING_STATE_LINKED  ProcessingState = "linked"
 	PROCESSING_STATE_IGNORED ProcessingState = "ignored"
 	PROCESSING_STATE_FAILED  ProcessingState = "failed"
+)
+
+// ImportPostingStatus 表示一次持久幂等入账命令的状态。
+type ImportPostingStatus string
+
+const (
+	IMPORT_POSTING_STATUS_READY     ImportPostingStatus = "ready"
+	IMPORT_POSTING_STATUS_POSTING   ImportPostingStatus = "posting"
+	IMPORT_POSTING_STATUS_COMPLETED ImportPostingStatus = "completed"
+	IMPORT_POSTING_STATUS_FAILED    ImportPostingStatus = "failed"
+)
+
+// RawRowTransactionRelationRole 表示证据链接对应逻辑交易的哪一侧。
+type RawRowTransactionRelationRole string
+
+const (
+	RAW_ROW_TRANSACTION_RELATION_PRIMARY              RawRowTransactionRelationRole = "primary"
+	RAW_ROW_TRANSACTION_RELATION_TRANSFER_COUNTERPART RawRowTransactionRelationRole = "transfer_counterpart"
+)
+
+// RawRowTransactionCreationMethod 表示正式交易或证据链接的来源。
+type RawRowTransactionCreationMethod string
+
+const (
+	RAW_ROW_TRANSACTION_CREATION_POSTING_CREATED       RawRowTransactionCreationMethod = "posting_created"
+	RAW_ROW_TRANSACTION_CREATION_EXACT_IDENTITY_REUSED RawRowTransactionCreationMethod = "exact_identity_reused"
 )
 
 // EconomicEffect 是来源状态映射后的稳定经济语义。

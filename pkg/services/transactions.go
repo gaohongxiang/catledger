@@ -564,62 +564,10 @@ func (s *TransactionService) GetTransactionCount(c core.Context, uid int64, maxT
 
 // CreateTransaction saves a new transaction to database
 func (s *TransactionService) CreateTransaction(c core.Context, transaction *models.Transaction, tagIds []int64, pictureIds []int64) error {
-	if transaction.Uid <= 0 {
-		return errs.ErrUserIdInvalid
-	}
-
-	// Check whether account id is valid
-	err := s.isAccountIdValid(transaction)
+	transactionTagIndexes, uniqueTagIds, now, err := s.prepareTransactionForCreate(transaction, tagIds)
 
 	if err != nil {
 		return err
-	}
-
-	now := time.Now().Unix()
-
-	needTransactionUuidCount := 1
-
-	if transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
-		needTransactionUuidCount = 2
-	}
-
-	transactionUuids := s.GenerateUuids(uuid.UUID_TYPE_TRANSACTION, uint16(needTransactionUuidCount))
-
-	if len(transactionUuids) < needTransactionUuidCount {
-		return errs.ErrSystemIsBusy
-	}
-
-	tagIds = utils.ToUniqueInt64Slice(tagIds)
-	needTagIndexUuidCount := uint16(len(tagIds))
-	tagIndexUuids := s.GenerateUuids(uuid.UUID_TYPE_TAG_INDEX, needTagIndexUuidCount)
-
-	if len(tagIndexUuids) < int(needTagIndexUuidCount) {
-		return errs.ErrSystemIsBusy
-	}
-
-	transaction.TransactionId = transactionUuids[0]
-
-	if transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
-		transaction.RelatedId = transactionUuids[1]
-	}
-
-	transaction.TransactionTime = utils.GetMinTransactionTimeFromUnixTime(utils.GetUnixTimeFromTransactionTime(transaction.TransactionTime))
-
-	transaction.CreatedUnixTime = now
-	transaction.UpdatedUnixTime = now
-
-	transactionTagIndexes := make([]*models.TransactionTagIndex, len(tagIds))
-
-	for i := 0; i < len(tagIds); i++ {
-		transactionTagIndexes[i] = &models.TransactionTagIndex{
-			TagIndexId:      tagIndexUuids[i],
-			Uid:             transaction.Uid,
-			Deleted:         false,
-			TagId:           tagIds[i],
-			TransactionId:   transaction.TransactionId,
-			CreatedUnixTime: now,
-			UpdatedUnixTime: now,
-		}
 	}
 
 	pictureUpdateModel := &models.TransactionPictureInfo{
@@ -630,8 +578,63 @@ func (s *TransactionService) CreateTransaction(c core.Context, transaction *mode
 	userDataDb := s.UserDataDB(transaction.Uid)
 
 	return userDataDb.DoTransaction(c, func(sess *xorm.Session) error {
-		return s.doCreateTransaction(c, userDataDb, sess, transaction, transactionTagIndexes, tagIds, pictureIds, pictureUpdateModel)
+		return s.doCreateTransaction(c, userDataDb, sess, transaction, transactionTagIndexes, uniqueTagIds, pictureIds, pictureUpdateModel)
 	})
+}
+
+func (s *TransactionService) prepareTransactionForCreate(transaction *models.Transaction, tagIds []int64) ([]*models.TransactionTagIndex, []int64, int64, error) {
+	if transaction == nil || transaction.Uid <= 0 {
+		return nil, nil, 0, errs.ErrUserIdInvalid
+	}
+
+	if err := s.isAccountIdValid(transaction); err != nil {
+		return nil, nil, 0, err
+	}
+
+	now := time.Now().Unix()
+	needTransactionUuidCount := 1
+
+	if transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
+		needTransactionUuidCount = 2
+	}
+
+	transactionUuids := s.GenerateUuids(uuid.UUID_TYPE_TRANSACTION, uint16(needTransactionUuidCount))
+
+	if len(transactionUuids) < needTransactionUuidCount {
+		return nil, nil, 0, errs.ErrSystemIsBusy
+	}
+
+	uniqueTagIds := utils.ToUniqueInt64Slice(tagIds)
+	tagIndexUuids := s.GenerateUuids(uuid.UUID_TYPE_TAG_INDEX, uint16(len(uniqueTagIds)))
+
+	if len(tagIndexUuids) < len(uniqueTagIds) {
+		return nil, nil, 0, errs.ErrSystemIsBusy
+	}
+
+	transaction.TransactionId = transactionUuids[0]
+
+	if needTransactionUuidCount == 2 {
+		transaction.RelatedId = transactionUuids[1]
+	}
+
+	transaction.TransactionTime = utils.GetMinTransactionTimeFromUnixTime(utils.GetUnixTimeFromTransactionTime(transaction.TransactionTime))
+	transaction.CreatedUnixTime = now
+	transaction.UpdatedUnixTime = now
+	transactionTagIndexes := make([]*models.TransactionTagIndex, len(uniqueTagIds))
+
+	for i := range uniqueTagIds {
+		transactionTagIndexes[i] = &models.TransactionTagIndex{
+			TagIndexId:      tagIndexUuids[i],
+			Uid:             transaction.Uid,
+			Deleted:         false,
+			TagId:           uniqueTagIds[i],
+			TransactionId:   transaction.TransactionId,
+			CreatedUnixTime: now,
+			UpdatedUnixTime: now,
+		}
+	}
+
+	return transactionTagIndexes, uniqueTagIds, now, nil
 }
 
 // BatchCreateTransactions saves new transactions to database

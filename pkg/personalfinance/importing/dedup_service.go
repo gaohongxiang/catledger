@@ -41,6 +41,7 @@ type EvidenceDedupRepository interface {
 type EvidenceBatchPersistence struct {
 	Batch                    *ImportBatch
 	ExpectedSourceAccountKey string
+	DocumentIssues           []*ImportBatchIssue
 	Rows                     []EvidenceBatchPersistenceRow
 }
 
@@ -250,7 +251,27 @@ func (s *DedupService) buildEvidenceBatchPersistence(request PersistEvidenceDocu
 		BatchId:                    batchId,
 	}
 	rows := make([]EvidenceBatchPersistenceRow, len(request.Document.Rows))
+	documentIssues := make([]*ImportBatchIssue, len(request.Document.Issues))
 	totalSnapshotBytes := 0
+
+	for index, issue := range request.Document.Issues {
+		issueId := s.generateId()
+
+		if issueId < 1 {
+			return nil, ErrImportIdentifierUnavailable
+		}
+
+		documentIssues[index] = &ImportBatchIssue{
+			Uid:             request.Uid,
+			BatchId:         batchId,
+			IssueOrder:      int64(index + 1),
+			Code:            issue.Code,
+			Severity:        issue.Severity,
+			Field:           issue.Field,
+			CreatedUnixTime: now,
+			IssueId:         issueId,
+		}
+	}
 
 	for index, evidenceRow := range request.Document.Rows {
 		rowId := s.generateId()
@@ -306,6 +327,7 @@ func (s *DedupService) buildEvidenceBatchPersistence(request PersistEvidenceDocu
 	return &EvidenceBatchPersistence{
 		Batch:                    batch,
 		ExpectedSourceAccountKey: account.SourceAccountKey,
+		DocumentIssues:           documentIssues,
 		Rows:                     rows,
 	}, nil
 }

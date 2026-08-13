@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
@@ -113,7 +114,18 @@ func importingIntegrationDatabaseConfig() (*settings.DatabaseConfig, error) {
 }
 
 func cleanupImportingIntegrationTables(database *datastore.Database) error {
+	coreSession := database.NewPrivacySession(nil)
+	err := coreSession.DropTable(new(models.Transaction))
+	coreSession.Close()
+
+	if err != nil {
+		return fmt.Errorf("drop isolated transaction table: %w", err)
+	}
+
 	tables := []string{
+		"pf_raw_row_transaction_link",
+		"pf_import_batch_issue",
+		"pf_import_posting",
 		"pf_raw_import_row",
 		"pf_source_identity",
 		"pf_import_batch",

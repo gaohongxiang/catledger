@@ -156,6 +156,16 @@ func (db *Database) DoPrivacyTransaction(c core.Context, fn func(sess *xorm.Sess
 	return db.doTransaction(c, true, fn)
 }
 
+// ValidateTransactionSession 校验 sess 属于当前数据库且已有活动事务。
+func (db *Database) ValidateTransactionSession(sess *xorm.Session) error {
+	if db == nil || db.engineGroup == nil || sess == nil ||
+		sess.Engine() != db.engineGroup.Master() || sess.Tx() == nil {
+		return fmt.Errorf("database transaction session is invalid")
+	}
+
+	return nil
+}
+
 func (db *Database) doTransaction(c core.Context, privacy bool, fn func(sess *xorm.Session) error) (err error) {
 	sess := db.engineGroup.NewSession()
 

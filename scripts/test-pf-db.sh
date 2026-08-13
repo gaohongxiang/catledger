@@ -17,7 +17,7 @@ show_help() {
 用法：
     scripts/test-pf-db.sh [sqlite|mysql|postgres|all]
 
-每种数据库都在独立进程中执行迁移协议集成测试和两次 database update。
+每种数据库都在独立进程中执行迁移、导入持久层集成测试和两次 database update。
 MySQL 和 PostgreSQL 只运行在随机命名的内部 Docker 网络与 tmpfs 中，
 不发布宿主端口，也不挂载仓库的 data、log 或 storage 目录。
 EOF
@@ -100,6 +100,9 @@ run_database_update() {
             PF_DB_INTEGRATION=1 go test -buildvcs=false -mod=readonly \
                 -tags=pf_db_integration -count=1 -timeout=10m \
                 ./pkg/personalfinance/migrations
+            PF_DB_INTEGRATION=1 go test -buildvcs=false -mod=readonly \
+                -tags=pf_importing_db_integration -count=1 -timeout=10m \
+                ./pkg/personalfinance/importing
             go build -buildvcs=false -mod=readonly -o /testwork/ezbookkeeping ./ezbookkeeping.go
             /testwork/ezbookkeeping --conf-path=/workspace/conf/ezbookkeeping.ini --no-boot-log database update
             /testwork/ezbookkeeping --conf-path=/workspace/conf/ezbookkeeping.ini --no-boot-log database update

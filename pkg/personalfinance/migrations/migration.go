@@ -173,12 +173,25 @@ func Upgrade(c core.Context, store *datastore.DataStore, applicationInfo Applica
 }
 
 func registeredMigrations() []migration {
-	checksum := sha256.Sum256([]byte(canonicalSchemaManifestV001()))
-	steps := make([]migrationStep, 0, len(schemaBeansV001()))
+	v001Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV001()))
+	v001Steps := make([]migrationStep, 0, len(schemaBeansV001()))
 
 	for _, bean := range schemaBeansV001() {
 		tableName := bean.(interface{ TableName() string }).TableName()
-		steps = append(steps, migrationStep{
+		v001Steps = append(v001Steps, migrationStep{
+			name: "create_" + tableName,
+			run: func(c context.Context, db *datastore.Database) error {
+				return db.SyncStructsWithStoreEngineContext(c, "InnoDB", bean)
+			},
+		})
+	}
+
+	v002Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV002()))
+	v002Steps := make([]migrationStep, 0, len(schemaBeansV002()))
+
+	for _, bean := range schemaBeansV002() {
+		tableName := bean.(interface{ TableName() string }).TableName()
+		v002Steps = append(v002Steps, migrationStep{
 			name: "create_" + tableName,
 			run: func(c context.Context, db *datastore.Database) error {
 				return db.SyncStructsWithStoreEngineContext(c, "InnoDB", bean)
@@ -190,10 +203,18 @@ func registeredMigrations() []migration {
 		{
 			version:   1,
 			name:      "initial_import_evidence_schema",
-			checksum:  hex.EncodeToString(checksum[:]),
+			checksum:  hex.EncodeToString(v001Checksum[:]),
 			preflight: validateSchemaV001PreflightWithContext,
-			steps:     steps,
+			steps:     v001Steps,
 			verify:    verifySchemaV001WithContext,
+		},
+		{
+			version:   2,
+			name:      "posting_links_and_batch_issues",
+			checksum:  hex.EncodeToString(v002Checksum[:]),
+			preflight: validateSchemaV002PreflightWithContext,
+			steps:     v002Steps,
+			verify:    verifySchemaV002WithContext,
 		},
 	}
 }
@@ -850,6 +871,20 @@ func canonicalSchemaManifestV001() string {
 	}
 
 	builder.WriteString("raw-fields=ordered-json-array-v1\n")
+	return builder.String()
+}
+
+func canonicalSchemaManifestV002() string {
+	var builder strings.Builder
+	builder.WriteString("pf-schema-v002\n")
+
+	for _, bean := range schemaBeansV002() {
+		appendBeanManifest(&builder, bean)
+	}
+
+	builder.WriteString("idempotency-key=idempotency-key-v1\n")
+	builder.WriteString("posting-request=posting-request-v1\n")
+	builder.WriteString("posting-link=posting-link-v1\n")
 	return builder.String()
 }
 

@@ -155,3 +155,65 @@ type RawImportRow struct {
 func (RawImportRow) TableName() string {
 	return "pf_raw_import_row"
 }
+
+// ImportPosting 保存一次持久幂等的确认入账命令与结果。
+type ImportPosting struct {
+	Uid                     int64               `xorm:"BIGINT UNIQUE(UQE_pf_import_posting_uid_key) INDEX(IDX_pf_import_posting_uid_batch_created) INDEX(IDX_pf_import_posting_uid_status_updated) NOT NULL"`
+	BatchId                 int64               `xorm:"BIGINT INDEX(IDX_pf_import_posting_uid_batch_created) NOT NULL"`
+	IdempotencyKeyDigest    string              `xorm:"CHAR(64) UNIQUE(UQE_pf_import_posting_uid_key) NOT NULL"`
+	IdempotencyKeyVersion   RuleVersion         `xorm:"VARCHAR(32) NOT NULL"`
+	RequestDigest           string              `xorm:"CHAR(64) NOT NULL"`
+	RequestDigestVersion    RuleVersion         `xorm:"VARCHAR(32) NOT NULL"`
+	Status                  ImportPostingStatus `xorm:"VARCHAR(32) INDEX(IDX_pf_import_posting_uid_status_updated) NOT NULL"`
+	SelectedRowCount        int64               `xorm:"BIGINT NOT NULL"`
+	CreatedTransactionCount int64               `xorm:"BIGINT NOT NULL"`
+	ReusedTransactionCount  int64               `xorm:"BIGINT NOT NULL"`
+	ErrorCode               string              `xorm:"VARCHAR(64) NOT NULL"`
+	CreatedUnixTime         int64               `xorm:"BIGINT INDEX(IDX_pf_import_posting_uid_batch_created) NOT NULL"`
+	StartedUnixTime         *int64              `xorm:"BIGINT NULL"`
+	CompletedUnixTime       *int64              `xorm:"BIGINT NULL"`
+	FailedUnixTime          *int64              `xorm:"BIGINT NULL"`
+	UpdatedUnixTime         int64               `xorm:"BIGINT INDEX(IDX_pf_import_posting_uid_status_updated) NOT NULL"`
+	PostingId               int64               `xorm:"BIGINT PK INDEX(IDX_pf_import_posting_uid_batch_created) INDEX(IDX_pf_import_posting_uid_status_updated) NOT NULL"`
+}
+
+// TableName 返回固定的个人财务表名。
+func (ImportPosting) TableName() string {
+	return "pf_import_posting"
+}
+
+// RawRowTransactionLink 建立不可删除原始证据与正式账本交易的关系。
+type RawRowTransactionLink struct {
+	Uid                        int64                           `xorm:"BIGINT UNIQUE(UQE_pf_raw_row_tx_link_uid_relation) INDEX(IDX_pf_raw_row_tx_link_uid_transaction) INDEX(IDX_pf_raw_row_tx_link_uid_posting) NOT NULL"`
+	RowId                      int64                           `xorm:"BIGINT UNIQUE(UQE_pf_raw_row_tx_link_uid_relation) NOT NULL"`
+	TransactionId              int64                           `xorm:"BIGINT UNIQUE(UQE_pf_raw_row_tx_link_uid_relation) INDEX(IDX_pf_raw_row_tx_link_uid_transaction) NOT NULL"`
+	RelationRole               RawRowTransactionRelationRole   `xorm:"VARCHAR(32) UNIQUE(UQE_pf_raw_row_tx_link_uid_relation) NOT NULL"`
+	CreationMethod             RawRowTransactionCreationMethod `xorm:"VARCHAR(32) NOT NULL"`
+	PostingId                  int64                           `xorm:"BIGINT INDEX(IDX_pf_raw_row_tx_link_uid_posting) NOT NULL"`
+	RuleVersion                RuleVersion                     `xorm:"VARCHAR(32) NOT NULL"`
+	TransactionUpdatedUnixTime int64                           `xorm:"BIGINT NOT NULL"`
+	CreatedUnixTime            int64                           `xorm:"BIGINT NOT NULL"`
+	LinkId                     int64                           `xorm:"BIGINT PK INDEX(IDX_pf_raw_row_tx_link_uid_transaction) INDEX(IDX_pf_raw_row_tx_link_uid_posting) NOT NULL"`
+}
+
+// TableName 返回固定的个人财务表名。
+func (RawRowTransactionLink) TableName() string {
+	return "pf_raw_row_transaction_link"
+}
+
+// ImportBatchIssue 保存不属于单一原始行的文档级问题。
+type ImportBatchIssue struct {
+	Uid             int64         `xorm:"BIGINT UNIQUE(UQE_pf_import_batch_issue_uid_order) NOT NULL"`
+	BatchId         int64         `xorm:"BIGINT UNIQUE(UQE_pf_import_batch_issue_uid_order) NOT NULL"`
+	IssueOrder      int64         `xorm:"BIGINT UNIQUE(UQE_pf_import_batch_issue_uid_order) NOT NULL"`
+	Code            IssueCode     `xorm:"VARCHAR(64) NOT NULL"`
+	Severity        IssueSeverity `xorm:"VARCHAR(32) NOT NULL"`
+	Field           string        `xorm:"VARCHAR(64) NOT NULL"`
+	CreatedUnixTime int64         `xorm:"BIGINT NOT NULL"`
+	IssueId         int64         `xorm:"BIGINT PK NOT NULL"`
+}
+
+// TableName 返回固定的个人财务表名。
+func (ImportBatchIssue) TableName() string {
+	return "pf_import_batch_issue"
+}

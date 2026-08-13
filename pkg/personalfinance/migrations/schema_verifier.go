@@ -66,7 +66,23 @@ func verifySchemaV001WithContext(c context.Context, db *datastore.Database) erro
 }
 
 func verifySchemaV001TablesWithContext(c context.Context, db *datastore.Database, mode schemaVerificationMode) error {
-	expectedTables, err := describeTables(db, schemaBeansV001())
+	return verifyPersonalFinanceTablesWithContext(c, db, schemaBeansV001(), mode)
+}
+
+func validateSchemaV002PreflightWithContext(c context.Context, db *datastore.Database) error {
+	return verifyPersonalFinanceTablesWithContext(c, db, schemaBeansThroughV002(), schemaCompatibleSubset)
+}
+
+func verifySchemaV002WithContext(c context.Context, db *datastore.Database) error {
+	return verifyPersonalFinanceTablesWithContext(c, db, schemaBeansThroughV002(), schemaExact)
+}
+
+func verifySchemaV002(db *datastore.Database) error {
+	return verifySchemaV002WithContext(context.Background(), db)
+}
+
+func verifyPersonalFinanceTablesWithContext(c context.Context, db *datastore.Database, beans []any, mode schemaVerificationMode) error {
+	expectedTables, err := describeTables(db, beans)
 
 	if err != nil {
 		return err
