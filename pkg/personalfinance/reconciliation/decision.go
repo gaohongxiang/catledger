@@ -463,6 +463,8 @@ func replayDecisionResult(value *Decision) (*DecisionResult, error) {
 
 func publicDecisionFailure(code string) error {
 	switch code {
+	case "case_not_found":
+		return ErrDecisionCaseNotFound
 	case "authorization_failed":
 		return ErrDecisionAuthorizationFailed
 	case "case_version_conflict":

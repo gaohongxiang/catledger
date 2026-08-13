@@ -12,11 +12,28 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
 )
 
-const postingQueryChunkSize = 400
+const (
+	postingQueryChunkSize              = 400
+	maximumTransactionEvidenceLinkRows = 2000
+)
 
 type postingExistingEvent struct {
 	primary     *models.Transaction
 	counterpart *models.Transaction
+}
+
+// activeReconciliationEvidenceLink 是 v003 只读投影，避免 importing 反向依赖 reconciliation。
+type activeReconciliationEvidenceLink struct {
+	Uid                        int64
+	DecisionId                 int64
+	RowId                      int64
+	TransactionId              int64
+	RelationRole               string
+	CreationMethod             string
+	RuleVersion                string
+	TransactionUpdatedUnixTime int64
+	CreatedUnixTime            int64
+	LinkId                     int64
 }
 
 // CreateOrFindImportPosting 持久化 ready 命令；uid+幂等摘要唯一约束负责并发裁决。
@@ -156,19 +173,49 @@ func (r *Repository) ListTransactionEvidence(c core.Context, uid int64, transact
 
 	links := make([]*RawRowTransactionLink, 0)
 
-	if err = sess.Where("uid=? AND transaction_id=?", uid, transactionId).Asc("link_id").Find(&links); err != nil {
+	if err = sess.Where("uid=? AND transaction_id=?", uid, transactionId).Asc("link_id").Limit(maximumTransactionEvidenceLinkRows + 1).Find(&links); err != nil {
 		return nil, wrapPostingPersistence("list transaction evidence links", err)
+	}
+
+	activeLinks := make([]*activeReconciliationEvidenceLink, 0)
+	query := sess.Table("pf_reconciliation_transaction_link").Alias("l").
+		Join("INNER", "pf_reconciliation_decision", "pf_reconciliation_decision.uid=l.uid AND pf_reconciliation_decision.decision_id=l.decision_id").
+		Join("INNER", "pf_reconciliation_case", "pf_reconciliation_case.uid=l.uid AND pf_reconciliation_case.current_decision_id=l.decision_id").
+		Select("l.uid, l.decision_id, l.row_id, l.transaction_id, l.relation_role, l.creation_method, l.rule_version, l.transaction_updated_unix_time, l.created_unix_time, l.link_id").
+		Where("l.uid=? AND pf_reconciliation_decision.uid=? AND pf_reconciliation_case.uid=? AND l.transaction_id=?", uid, uid, uid, transactionId).
+		Asc("l.link_id").Limit(maximumTransactionEvidenceLinkRows + 1)
+	if err = query.Find(&activeLinks); err != nil {
+		return nil, wrapPostingPersistence("list active reconciliation evidence links", err)
+	}
+	if len(links)+len(activeLinks) > maximumTransactionEvidenceLinkRows {
+		return nil, errPostingEvidenceInvalid
+	}
+	for _, link := range activeLinks {
+		if !validActiveReconciliationEvidenceLink(link, uid, transactionId) {
+			return nil, errPostingEvidenceInvalid
+		}
+		links = append(links, &RawRowTransactionLink{
+			Uid: uid, RowId: link.RowId, TransactionId: link.TransactionId,
+			RelationRole: RawRowTransactionRelationRole(link.RelationRole), CreationMethod: RawRowTransactionCreationMethod(link.CreationMethod),
+			PostingId: 0, RuleVersion: RuleVersion(link.RuleVersion), TransactionUpdatedUnixTime: link.TransactionUpdatedUnixTime,
+			CreatedUnixTime: link.CreatedUnixTime, LinkId: link.LinkId,
+		})
 	}
 
 	if len(links) < 1 {
 		return []*TransactionEvidenceItem{}, nil
 	}
 
-	rowIds := make([]int64, 0, len(links))
+	rowIdSet := make(map[int64]struct{}, len(links))
 
 	for _, link := range links {
-		rowIds = append(rowIds, link.RowId)
+		rowIdSet[link.RowId] = struct{}{}
 	}
+	rowIds := make([]int64, 0, len(rowIdSet))
+	for rowId := range rowIdSet {
+		rowIds = append(rowIds, rowId)
+	}
+	sort.Slice(rowIds, func(i, j int) bool { return rowIds[i] < rowIds[j] })
 
 	rows := make([]*RawImportRow, 0, len(rowIds))
 
@@ -251,6 +298,18 @@ func (r *Repository) ListTransactionEvidence(c core.Context, uid int64, transact
 	}
 
 	return items, nil
+}
+
+func validActiveReconciliationEvidenceLink(link *activeReconciliationEvidenceLink, uid int64, transactionId int64) bool {
+	if link == nil || link.Uid != uid || link.DecisionId < 1 || link.RowId < 1 || link.TransactionId != transactionId || link.LinkId < 1 ||
+		link.TransactionUpdatedUnixTime < 1 || link.CreatedUnixTime < 1 || link.RuleVersion != "reconciliation-link-v1" {
+		return false
+	}
+	if link.CreationMethod != "attached_existing" && link.CreationMethod != "reconciliation_created" {
+		return false
+	}
+	return link.RelationRole == "primary" || link.RelationRole == "transfer_counterpart" ||
+		link.RelationRole == "refund_original" || link.RelationRole == "refund_transaction"
 }
 
 func (tx *RepositoryTransaction) executeImportPosting(c core.Context, execution *postingExecution, ledger PostingLedgerWriter, generateId func() int64, now int64) (*ImportPosting, error) {

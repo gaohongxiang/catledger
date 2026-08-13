@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"time"
 
 	"xorm.io/xorm"
 
@@ -177,10 +176,20 @@ func (r *decisionRepository) executeDecisionTransaction(c core.Context, database
 
 	decisionStatus := DECISION_STATUS_ACTION_REQUIRED
 	caseStatus := CASE_STATUS_ACTION_REQUIRED
+	keepCurrentDecision := false
 	if len(reasonCodes) == 0 {
 		switch execution.decisionType {
 		case DECISION_TYPE_SAME_EVENT, DECISION_TYPE_INTERNAL_TRANSFER, DECISION_TYPE_REFUND_REVERSAL:
-			reasonCodes = append(reasonCodes, "decision_execution_not_implemented")
+			matchingReasons, applyErr := applyMatchingDecision(c, database, sess, execution, ledger, generateId, now, members)
+			if applyErr != nil {
+				return nil, applyErr
+			}
+			if len(matchingReasons) > 0 {
+				reasonCodes = append(reasonCodes, matchingReasons...)
+			} else {
+				decisionStatus = DECISION_STATUS_APPLIED
+				caseStatus = CASE_STATUS_RESOLVED
+			}
 		case DECISION_TYPE_INDEPENDENT:
 			if err := updateIndependentRows(sess, execution.uid, members, now); err != nil {
 				return nil, err
@@ -191,19 +200,16 @@ func (r *decisionRepository) executeDecisionTransaction(c core.Context, database
 			decisionStatus = DECISION_STATUS_DEFERRED
 			caseStatus = CASE_STATUS_DEFERRED
 		case DECISION_TYPE_REOPEN:
-			// 完整账本撤销在后续窄实现中执行；无账本效果的决定可直接 reopen。
-			impact, impactErr := getUndoImpactInSession(sess, execution.uid, caseRecord)
-			if impactErr != nil {
-				return nil, impactErr
+			outcome, reopenErr := applyReopenDecision(c, database, sess, execution, ledger, generateId, now, caseRecord, members)
+			if reopenErr != nil {
+				return nil, reopenErr
 			}
-			if impact.TransactionCount == 0 {
-				if err := restoreIndependentRows(sess, execution.uid, members); err != nil {
-					return nil, err
-				}
+			keepCurrentDecision = outcome.keepCurrentDecision
+			if len(outcome.reasonCodes) == 0 {
 				decisionStatus = DECISION_STATUS_APPLIED
 				caseStatus = CASE_STATUS_OPEN
 			} else {
-				reasonCodes = append(reasonCodes, "undo_requires_ledger_validation")
+				reasonCodes = append(reasonCodes, outcome.reasonCodes...)
 			}
 		default:
 			return nil, fmt.Errorf("invalid reconciliation decision type")
@@ -211,7 +217,11 @@ func (r *decisionRepository) executeDecisionTransaction(c core.Context, database
 	}
 
 	nextVersion := caseRecord.Version + 1
-	caseUpdate := &Case{Status: caseStatus, Version: nextVersion, CurrentDecisionId: &execution.decisionId, UpdatedUnixTime: now}
+	currentDecisionId := execution.decisionId
+	if keepCurrentDecision && execution.previousDecisionId != nil {
+		currentDecisionId = *execution.previousDecisionId
+	}
+	caseUpdate := &Case{Status: caseStatus, Version: nextVersion, CurrentDecisionId: &currentDecisionId, UpdatedUnixTime: now}
 	query := sess.Where("uid=? AND case_id=? AND version=?", execution.uid, execution.caseId, execution.expectedCaseVersion)
 	if execution.previousDecisionId == nil {
 		query = query.And("current_decision_id IS NULL")
@@ -287,93 +297,11 @@ func (r *decisionRepository) getUndoImpact(c core.Context, uid int64, caseId int
 }
 
 func getUndoImpactInSession(sess *xorm.Session, uid int64, caseRecord *Case) (*UndoImpact, error) {
-	impact := &UndoImpact{CaseId: caseRecord.CaseId}
-	if caseRecord.CurrentDecisionId == nil {
-		impact.ReasonCodes = []UndoImpactReason{UNDO_REASON_NO_CURRENT_DECISION}
-		return impact, nil
-	}
-	impact.DecisionId = *caseRecord.CurrentDecisionId
-	decision := new(Decision)
-	found, err := sess.Where("uid=? AND decision_id=? AND case_id=?", uid, impact.DecisionId, caseRecord.CaseId).Get(decision)
-	if err != nil || !found {
-		return nil, fmt.Errorf("reconciliation current decision invariant mismatch")
-	}
-	if decision.DecisionType == DECISION_TYPE_REOPEN {
-		impact.ReasonCodes = []UndoImpactReason{UNDO_REASON_NO_CURRENT_DECISION}
-		return impact, nil
-	}
-	links := make([]*TransactionLink, 0)
-	if err := sess.Where("uid=? AND decision_id=?", uid, impact.DecisionId).Asc("link_id").Limit(maximumDecisionEvidenceLinks + 1).Find(&links); err != nil {
-		return nil, err
-	}
-	if len(links) > maximumDecisionEvidenceLinks {
-		impact.ReasonCodes = []UndoImpactReason{UNDO_REASON_EVIDENCE_LIMIT_REACHED}
-		return impact, nil
-	}
-	txMethods := make(map[int64]TransactionCreationMethod)
-	txSnapshots := make(map[int64]int64)
-	for _, link := range links {
-		if previous, exists := txMethods[link.TransactionId]; exists && previous != link.CreationMethod {
-			return nil, fmt.Errorf("reconciliation creation method invariant mismatch")
-		}
-		txMethods[link.TransactionId] = link.CreationMethod
-		if previous, exists := txSnapshots[link.TransactionId]; exists && previous != link.TransactionUpdatedUnixTime {
-			return nil, fmt.Errorf("reconciliation transaction snapshot invariant mismatch")
-		}
-		txSnapshots[link.TransactionId] = link.TransactionUpdatedUnixTime
-	}
-	impact.TransactionCount = int64(len(txMethods))
-	for _, method := range txMethods {
-		if method == TRANSACTION_CREATION_METHOD_ATTACHED_EXISTING {
-			impact.AttachedExistingCount++
-		} else if method == TRANSACTION_CREATION_METHOD_RECONCILIATION_CREATED {
-			impact.ReconciliationCreatedCount++
-		} else {
-			return nil, fmt.Errorf("invalid reconciliation creation method")
-		}
-	}
-	transactions, err := loadDecisionTransactions(sess, uid, decisionMapKeys(txMethods))
+	inspection, err := inspectUndoInSession(sess, uid, caseRecord)
 	if err != nil {
 		return nil, err
 	}
-	reasons := make(map[UndoImpactReason]struct{})
-	for transactionId, method := range txMethods {
-		if method != TRANSACTION_CREATION_METHOD_RECONCILIATION_CREATED {
-			continue
-		}
-		transaction := transactions[transactionId]
-		if transaction == nil || transaction.Deleted {
-			impact.MissingTransactionCount++
-			reasons[UNDO_REASON_TRANSACTION_MISSING] = struct{}{}
-			continue
-		}
-		if transaction.UpdatedUnixTime != txSnapshots[transactionId] {
-			impact.ModifiedTransactionCount++
-			reasons[UNDO_REASON_TRANSACTION_MODIFIED] = struct{}{}
-		}
-		legacyCount, countErr := sess.Where("uid=? AND transaction_id=?", uid, transactionId).Count(new(importing.RawRowTransactionLink))
-		if countErr != nil {
-			return nil, countErr
-		}
-		if legacyCount > 0 {
-			impact.BatchRelationCount++
-			reasons[UNDO_REASON_BATCH_RELATION_PRESENT] = struct{}{}
-		}
-		sharedCount, countErr := sess.Table(new(TransactionLink)).Alias("l").
-			Join("INNER", "pf_reconciliation_case", "pf_reconciliation_case.uid=l.uid AND pf_reconciliation_case.current_decision_id=l.decision_id").
-			Where("l.uid=? AND pf_reconciliation_case.uid=? AND l.transaction_id=? AND l.decision_id<>?", uid, uid, transactionId, impact.DecisionId).Count(new(TransactionLink))
-		if countErr != nil {
-			return nil, countErr
-		}
-		if sharedCount > 0 {
-			impact.SharedTransactionCount++
-			reasons[UNDO_REASON_TRANSACTION_SHARED] = struct{}{}
-		}
-	}
-	impact.ReasonCodes = sortedUndoImpactReasons(reasons)
-	impact.CanAutomaticallyDelete = impact.ReconciliationCreatedCount > 0 && len(impact.ReasonCodes) == 0
-	impact.CanReopen = impact.ReconciliationCreatedCount == 0 || impact.CanAutomaticallyDelete
-	return impact, nil
+	return inspection.impact, nil
 }
 
 func validateDecisionCaseAvailability(sess *xorm.Session, execution *decisionExecution, caseRecord *Case) error {
@@ -428,17 +356,14 @@ func updateIndependentRows(sess *xorm.Session, uid int64, members []*caseMemberR
 	return recomputeDecisionBatches(sess, uid, members, now)
 }
 
-func restoreIndependentRows(sess *xorm.Session, uid int64, members []*caseMemberRows) error {
+func restoreIndependentRows(sess *xorm.Session, uid int64, members []*caseMemberRows, now int64) error {
 	for _, member := range members {
 		for _, row := range member.rows {
 			if row.ProcessingState != importing.PROCESSING_STATE_IGNORED || row.ParseState != importing.PARSE_STATE_VALID ||
 				(row.SemanticEligibility != importing.SEMANTIC_ELIGIBILITY_POSTABLE && row.SemanticEligibility != importing.SEMANTIC_ELIGIBILITY_REVIEW_REQUIRED) {
 				continue
 			}
-			disposition := importing.IMPORT_DISPOSITION_REVIEW_REQUIRED
-			if row.SemanticEligibility == importing.SEMANTIC_ELIGIBILITY_POSTABLE && row.IdentityState == importing.IDENTITY_STATE_NEW {
-				disposition = importing.IMPORT_DISPOSITION_POSTABLE
-			}
+			disposition := pendingDisposition(row)
 			updated, err := sess.Where("uid=? AND row_id=? AND processing_state=?", uid, row.RowId, importing.PROCESSING_STATE_IGNORED).
 				Cols("processing_state", "disposition").Update(&importing.RawImportRow{ProcessingState: importing.PROCESSING_STATE_PENDING, Disposition: disposition})
 			if err != nil {
@@ -449,7 +374,7 @@ func restoreIndependentRows(sess *xorm.Session, uid int64, members []*caseMember
 			}
 		}
 	}
-	return recomputeDecisionBatches(sess, uid, members, time.Now().Unix())
+	return recomputeDecisionBatches(sess, uid, members, now)
 }
 
 func targetMemberRowIds(members []*caseMemberRows, state importing.ProcessingState) []int64 {
