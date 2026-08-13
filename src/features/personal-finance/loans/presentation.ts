@@ -61,6 +61,19 @@ export function getLoanComponentTypeKey(type: LoanComponentType): string {
     return componentTypeKeys[type];
 }
 
+const reasonKeys: Record<string, string> = {
+    transaction_modified: 'personalFinance.loans.reason.transactionModified',
+    transaction_missing: 'personalFinance.loans.reason.transactionMissing',
+    incomplete_transfer_pair: 'personalFinance.loans.reason.incompleteTransfer',
+    ledger_liability_mismatch: 'personalFinance.loans.reason.liabilityMismatch',
+    allocation_action_required: 'personalFinance.loans.reason.allocationReview',
+    outstanding_balance_remaining: 'personalFinance.loans.reason.outstandingRemaining'
+};
+
+export function getLoanReasonKey(code: string): string {
+    return reasonKeys[code] ?? 'personalFinance.loans.reason.generic';
+}
+
 export function getLoanStatusColor(status: LoanContractStatus | LoanInstallmentDisplayStatus): string {
     if (status === 'paid' || status === 'closed') {
         return 'success';

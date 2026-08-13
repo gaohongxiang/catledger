@@ -489,7 +489,9 @@ export function normalizeLoanContractDetail(value: unknown): LoanContractDetail 
         installments: asArray(detail['installments']).map(normalizeInstallment),
         allocations: normalizeAllocationSummary(detail['allocations']),
         liabilityComparison: normalizeLiabilityComparison(detail['liabilityComparison']),
-        asOfDate: asCivilDate(detail['asOfDate'])
+        asOfDate: asCivilDate(detail['asOfDate']),
+        actionRequired: asBoolean(detail['actionRequired']),
+        reasonCodes: normalizeReasons(detail['reasonCodes'])
     };
 }
 

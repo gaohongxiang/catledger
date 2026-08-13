@@ -47,6 +47,12 @@
                     </router-link>
                 </li>
                 <li class="nav-link">
+                    <router-link to="/personal-finance/loans">
+                        <v-icon class="nav-item-icon" :icon="mdiBankOutline"/>
+                        <span class="nav-item-title">{{ tt('personalFinance.loans.nav') }}</span>
+                    </router-link>
+                </li>
+                <li class="nav-link">
                     <router-link to="/statistics/transaction">
                         <v-icon class="nav-item-icon" :icon="mdiChartPieOutline"/>
                         <span class="nav-item-title">{{ tt('Statistics & Analysis') }}</span>
@@ -240,6 +246,7 @@ import {
     mdiListBoxOutline,
     mdiTrayArrowDown,
     mdiLinkVariant,
+    mdiBankOutline,
     mdiPlusCircle,
     mdiCreditCardOutline,
     mdiViewDashboardOutline,

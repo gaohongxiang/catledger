@@ -194,6 +194,8 @@ function detail(overrides: Record<string, unknown> = {}): Record<string, unknown
             reasonCodes: []
         },
         asOfDate: '2026-08-14',
+        actionRequired: false,
+        reasonCodes: [],
         transactionComment: 'must-not-enter-browser-model',
         ...overrides
     };
@@ -310,7 +312,11 @@ describe('personal finance loan HTTP service', () => {
             items: [contractSummary()],
             nextCursor: { status: 'active', updatedUnixTime: 1001, contractId: '101' }
         }));
-        serviceMocks.getPersonalFinanceLoanContract.mockResolvedValue(apiResponse(detail({ installments: [] })));
+        serviceMocks.getPersonalFinanceLoanContract.mockResolvedValue(apiResponse(detail({
+            installments: [],
+            actionRequired: true,
+            reasonCodes: [{ code: 'transaction_modified', count: 1 }]
+        })));
 
         const page = await loanApi.listContracts({
             status: 'active',
@@ -329,6 +335,8 @@ describe('personal finance loan HTTP service', () => {
         expect(page.items[0]?.nextInstallment?.id).toBe('301');
         expect(page.nextCursor?.contractId).toBe('101');
         expect(current.installments).toEqual([]);
+        expect(current.actionRequired).toBe(true);
+        expect(current.reasonCodes).toEqual([{ code: 'transaction_modified', count: 1 }]);
         expect(current.contract).not.toHaveProperty('uid');
         expect(current).not.toHaveProperty('transactionComment');
     });

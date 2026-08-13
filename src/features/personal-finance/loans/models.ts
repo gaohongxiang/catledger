@@ -178,6 +178,8 @@ export interface LoanContractDetail {
     readonly allocations: LoanAllocationSummary;
     readonly liabilityComparison: LoanLiabilityComparison;
     readonly asOfDate: string;
+    readonly actionRequired: boolean;
+    readonly reasonCodes: LoanReason[];
 }
 
 export interface LoanContractCursor {

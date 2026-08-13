@@ -118,6 +118,17 @@ export function canCancelLoanContract(detail: LoanContractDetail | null): boolea
     return detail?.contract.status === 'active' && detail.allocations.activeAllocationCount === 0;
 }
 
+export function getLoanSettlementDraftDate(
+    detail: LoanContractDetail,
+    installmentId: string | undefined,
+    componentType: LoanComponentType
+): string {
+    if (!installmentId && (componentType === 'disbursement' || componentType === 'fee')) {
+        return detail.currentRevision.input.effectiveDate;
+    }
+    return detail.installments.find(item => item.id === installmentId)?.dueDate ?? '';
+}
+
 export function getNextLoanInstallment(summary: LoanContractSummary): LoanInstallment | undefined {
     return summary.nextInstallment?.progress.outstandingPaymentAmount
         ? summary.nextInstallment
@@ -141,14 +152,16 @@ export function buildLoanSettlementApplyRequest(params: {
     }
 
     const componentTypes = new Set<LoanComponentType>();
-    const hasDisbursement = params.components.some(component => component.componentType === 'disbursement');
-    if (hasDisbursement ? !!params.installmentId || params.components.length !== 1 : !params.installmentId) {
-        throw new LoanValidationError('component_context_mismatch');
-    }
+    const allowedTypes = params.installmentId
+        ? new Set<LoanComponentType>(['principal', 'interest', 'fee'])
+        : new Set<LoanComponentType>(['disbursement', 'fee']);
 
     const components = params.components.map(component => {
         if (componentTypes.has(component.componentType)) {
             throw new LoanValidationError('component_duplicate');
+        }
+        if (!allowedTypes.has(component.componentType)) {
+            throw new LoanValidationError('component_context_mismatch');
         }
         componentTypes.add(component.componentType);
 

@@ -17,6 +17,7 @@ import HomePage from '@/views/desktop/HomePage.vue';
 import TransactionListPage from '@/views/desktop/transactions/ListPage.vue';
 import PersonalFinanceImportWorkbenchPage from '@/features/personal-finance/desktop/ImportWorkbenchPage.vue';
 import PersonalFinanceReconciliationWorkbenchPage from '@/features/personal-finance/reconciliation/desktop/ReconciliationWorkbenchPage.vue';
+import PersonalFinanceLoanWorkbenchPage from '@/features/personal-finance/loans/desktop/LoanWorkbenchPage.vue';
 
 import StatisticsTransactionPage from '@/views/desktop/statistics/TransactionPage.vue';
 
@@ -129,6 +130,11 @@ const router = createRouter({
                 {
                     path: '/personal-finance/reconciliation',
                     component: PersonalFinanceReconciliationWorkbenchPage,
+                    beforeEnter: checkLogin
+                },
+                {
+                    path: '/personal-finance/loans',
+                    component: PersonalFinanceLoanWorkbenchPage,
                     beforeEnter: checkLogin
                 },
                 {

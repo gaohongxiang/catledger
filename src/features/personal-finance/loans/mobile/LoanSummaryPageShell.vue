@@ -56,7 +56,13 @@
             </f7-list-item>
         </f7-list>
 
-        <f7-block class="empty-summary text-align-center" v-else>
+        <f7-block class="text-align-center" v-if="hasMore">
+            <f7-button outline :disabled="loading" @click="emit('loadMore')">
+                {{ tt('personalFinance.loans.contracts.loadMore') }}
+            </f7-button>
+        </f7-block>
+
+        <f7-block class="empty-summary text-align-center" v-else-if="!items.length">
             <f7-icon f7="doc_text_search" size="48" />
             <p class="font-weight-medium">{{ tt('personalFinance.loans.mobile.empty') }}</p>
             <p class="text-color-gray">{{ tt('personalFinance.loans.mobile.desktopHint') }}</p>
@@ -85,6 +91,9 @@
                     </f7-block>
 
                     <f7-block-title>{{ tt('personalFinance.loans.mobile.progress') }}</f7-block-title>
+                    <f7-block strong inset class="action-note" v-if="detail.actionRequired">
+                        {{ tt('personalFinance.loans.reason.generic') }}
+                    </f7-block>
                     <f7-list strong inset dividers>
                         <f7-list-item
                             :title="tt('personalFinance.loans.schedule.plannedOutstanding')"
@@ -135,14 +144,17 @@ const props = withDefaults(defineProps<{
     items: LoanContractSummary[];
     detail?: LoanContractDetail | null;
     loading?: boolean;
+    hasMore?: boolean;
 }>(), {
     detail: null,
-    loading: false
+    loading: false,
+    hasMore: false
 });
 
 const emit = defineEmits<{
     (e: 'refresh', done?: () => void): void;
     (e: 'select', contractId: string): void;
+    (e: 'loadMore'): void;
     (e: 'closeDetail'): void;
 }>();
 
@@ -176,6 +188,11 @@ function formatAmount(amount: number, currency: string): string {
 
 .accounting-note {
     border-inline-start: 3px solid var(--f7-theme-color);
+}
+
+.action-note {
+    color: var(--f7-color-red);
+    border-inline-start: 3px solid var(--f7-color-red);
 }
 
 .progress-mark {

@@ -11,8 +11,8 @@
                 </div>
             </div>
             <v-spacer />
-            <v-chip color="warning" size="small" variant="tonal">
-                {{ tt('personalFinance.loans.settlement.shellOnly') }}
+            <v-chip color="success" size="small" variant="tonal" v-if="installment">
+                {{ tt('personalFinance.loans.settlement.ready') }}
             </v-chip>
         </div>
 
@@ -92,7 +92,7 @@
             </div>
 
             <div class="d-flex flex-wrap justify-end ga-2 mt-5">
-                <v-btn variant="text" :disabled="submitting" @click="emit('inspectUndo')">
+                <v-btn variant="text" :disabled="submitting || !canInspectUndo" @click="emit('inspectUndo')">
                     {{ tt('personalFinance.loans.settlement.inspectUndo') }}
                 </v-btn>
                 <v-btn color="primary" :disabled="!components.length" :loading="submitting" @click="emit('apply')">
@@ -168,13 +168,15 @@ const props = withDefaults(defineProps<{
     undoImpact?: LoanSettlementUndoImpact | null;
     loadingComponent?: LoanComponentType;
     submitting?: boolean;
+    canInspectUndo?: boolean;
 }>(), {
     installment: null,
     candidates: null,
     components: () => [],
     undoImpact: null,
     loadingComponent: undefined,
-    submitting: false
+    submitting: false,
+    canInspectUndo: false
 });
 
 const emit = defineEmits<{

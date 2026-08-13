@@ -13,6 +13,7 @@ import {
     canReviseLoanContract,
     createDefaultLoanCalculationInput,
     getLoanInstallmentDisplayStatus,
+    getLoanSettlementDraftDate,
     LoanValidationError,
     validateLoanCalculationInput
 } from './state.ts';
@@ -117,6 +118,16 @@ describe('personal finance loan shell state', () => {
         })).rateQuoteType).toBe('installment');
     });
 
+    it('uses the effective date for nil-installment disbursement and upfront-fee drafts', () => {
+        const detail = {
+            currentRevision: { input: calculationInput() },
+            installments: [installment()]
+        } as LoanContractDetail;
+        expect(getLoanSettlementDraftDate(detail, undefined, 'disbursement')).toBe('2026-08-14');
+        expect(getLoanSettlementDraftDate(detail, undefined, 'fee')).toBe('2026-08-14');
+        expect(getLoanSettlementDraftDate(detail, '301', 'fee')).toBe('2026-09-13');
+    });
+
     it('derives payment state from allocations and never marks a due plan paid by date alone', () => {
         expect(getLoanInstallmentDisplayStatus(installment({
             progress: { ...installment().progress, overdue: true }
@@ -199,7 +210,7 @@ describe('personal finance loan shell state', () => {
         }).components[0]?.componentType).toBe('interest');
     });
 
-    it('keeps disbursement outside installments and rejects duplicate component types', () => {
+    it('allows only disbursement and upfront fee without an installment and keeps installment components separate', () => {
         expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
             contractId: '101',
             contractVersion: 7,
@@ -212,6 +223,32 @@ describe('personal finance loan shell state', () => {
                 expectedUpdatedUnixTime: 1000,
                 expectedCounterpartUpdatedUnixTime: 1001
             }]
+        }), 'component_context_mismatch');
+
+        const funding = buildLoanSettlementApplyRequest({
+            contractId: '101',
+            contractVersion: 7,
+            idempotencyKey: 'key',
+            components: [{
+                componentType: 'disbursement',
+                allocatedAmount: 5000000,
+                existingTransactionId: '104',
+                expectedUpdatedUnixTime: 1000,
+                expectedCounterpartUpdatedUnixTime: 1001
+            }, {
+                componentType: 'fee',
+                allocatedAmount: 100000,
+                existingTransactionId: '105',
+                expectedUpdatedUnixTime: 1002
+            }]
+        });
+        expect(funding.components.map(component => component.componentType)).toEqual(['disbursement', 'fee']);
+
+        expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
+            contractId: '101',
+            contractVersion: 7,
+            idempotencyKey: 'key',
+            components: [existingComponent('principal', 200000)]
         }), 'component_context_mismatch');
 
         expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
@@ -236,7 +273,7 @@ describe('personal finance loan shell state', () => {
                 componentType: 'interest',
                 allocatedAmount: 50000,
                 existingTransactionId: '102'
-            } as LoanSettlementComponent]
+            } as unknown as LoanSettlementComponent]
         }), 'component_source_invalid');
         expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
             ...base,
@@ -281,7 +318,7 @@ describe('personal finance loan shell state', () => {
                     amount: 50000,
                     currency: 'CNY'
                 }
-            } as LoanSettlementComponent]
+            } as unknown as LoanSettlementComponent]
         }), 'component_source_invalid');
 
         const request = buildLoanSettlementApplyRequest({
@@ -324,14 +361,14 @@ describe('personal finance loan shell state', () => {
             idempotencyKey: 'key',
             components: [{
                 componentType: 'disbursement',
-                allocatedAmount: 4900000,
+                allocatedAmount: 5000000,
                 ledgerDraft: {
                     transactionType: 'transfer',
                     transactionDate: '2026-08-14',
                     sourceAccountId: '1001',
                     destinationAccountId: '1002',
                     categoryId: '2002',
-                    amount: 4900000,
+                    amount: 5000000,
                     currency: 'CNY'
                 }
             }]

@@ -58,6 +58,15 @@
                 <v-col cols="12" sm="6">
                     <v-text-field
                         type="date"
+                        :label="tt('personalFinance.loans.field.effectiveDate')"
+                        :disabled="disabled || loading"
+                        :model-value="modelValue.effectiveDate"
+                        @update:model-value="value => updateField('effectiveDate', value)"
+                    />
+                </v-col>
+                <v-col cols="12" sm="6">
+                    <v-text-field
+                        type="date"
                         :label="tt('personalFinance.loans.field.contractDate')"
                         :disabled="disabled || loading"
                         :model-value="modelValue.contractDate"
