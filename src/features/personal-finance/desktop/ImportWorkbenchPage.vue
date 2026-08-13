@@ -128,7 +128,7 @@
                                     <v-btn
                                         variant="tonal"
                                         :prepend-icon="mdiReload"
-                                        :disabled="personalFinanceStore.submitting"
+                                        :disabled="personalFinanceStore.selectedBatch.file?.contentState !== 'available' || personalFinanceStore.submitting"
                                         @click="reparseSelectedBatch"
                                     >
                                         {{ tt('personalFinance.reparse') }}
@@ -423,9 +423,10 @@ async function reload(): Promise<void> {
 
 async function discardSelectedBatch(): Promise<void> {
 	const batch = personalFinanceStore.selectedBatch;
-	if (!batch) return;
+	const dialog = confirmDialog.value;
+	if (!batch || !dialog) return;
 	try {
-		await confirmDialog.value?.open('personalFinance.operations.discardConfirm', { pending: batch.pendingRowCount, posted: batch.postedRowCount, color: 'warning' });
+		await dialog.open('personalFinance.operations.discardConfirm', { pending: batch.pendingRowCount, posted: batch.postedRowCount, color: 'warning' });
 		await personalFinanceStore.discardBatch(batch.id);
 		snackbar.value?.showMessage('personalFinance.operations.discarded');
 	} catch (error: unknown) {
@@ -435,9 +436,10 @@ async function discardSelectedBatch(): Promise<void> {
 
 async function deleteSelectedFileContent(): Promise<void> {
 	const batch = personalFinanceStore.selectedBatch;
-	if (!batch?.file) return;
+	const dialog = confirmDialog.value;
+	if (!batch?.file || !dialog) return;
 	try {
-		await confirmDialog.value?.open('personalFinance.operations.deleteContentConfirm', { pending: batch.pendingRowCount, posted: batch.postedRowCount, color: 'error' });
+		await dialog.open('personalFinance.operations.deleteContentConfirm', { pending: batch.pendingRowCount, posted: batch.postedRowCount, color: 'error' });
 		await personalFinanceStore.deleteFileContent(batch.file.id, batch.id);
 		snackbar.value?.showMessage('personalFinance.operations.contentDeleted');
 	} catch (error: unknown) {
@@ -532,14 +534,14 @@ async function reparseDuplicate(): Promise<void> {
 }
 
 async function reparseSelectedBatch(): Promise<void> {
-    const fileId = personalFinanceStore.selectedBatch?.fileId;
+    const file = personalFinanceStore.selectedBatch?.file;
 
-    if (!fileId) {
+    if (!file || file.contentState !== 'available') {
         return;
     }
 
     try {
-        await reparseFile(fileId, 'user_requested');
+        await reparseFile(file.id, 'user_requested');
     } catch {
         snackbar.value?.showMessage('personalFinance.error.operationFailed');
     }
