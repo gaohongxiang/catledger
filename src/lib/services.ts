@@ -179,6 +179,20 @@ import type {
 import type {
     RecognizedTransactionResponse
 } from '@/models/large_language_model.ts';
+import type {
+    PersonalFinanceEvidenceResult,
+    PersonalFinanceImportBatch,
+    PersonalFinanceImportBatchPage,
+    PersonalFinanceImportRowPage,
+    PersonalFinanceImportUploadResult,
+    PersonalFinancePostingRequest,
+    PersonalFinancePostingResult,
+    PersonalFinanceReparseRequest,
+    PersonalFinanceReparseResult,
+    PersonalFinanceSourceAccount,
+    PersonalFinanceSourceAccountPage,
+    PersonalFinanceSourceAccountSaveRequest
+} from '@/features/personal-finance/models.ts';
 
 import {
     getCurrentToken,
@@ -867,6 +881,37 @@ export default {
             timeout: DEFAULT_LLM_API_TIMEOUT,
             cancelableUuid: cancelableUuid
         } as ApiRequestConfig);
+    },
+    uploadPersonalFinanceImportFile: ({ file }: { file: File }): ApiResponsePromise<PersonalFinanceImportUploadResult> => {
+        return axios.postForm<ApiResponse<PersonalFinanceImportUploadResult>>('v1/personal_finance/import_files/upload.json', {
+            file
+        }, {
+            timeout: DEFAULT_UPLOAD_API_TIMEOUT
+        });
+    },
+    listPersonalFinanceImportBatches: ({ page, count }: { page: number, count: number }): ApiResponsePromise<PersonalFinanceImportBatchPage> => {
+        return axios.get<ApiResponse<PersonalFinanceImportBatchPage>>(`v1/personal_finance/import_batches/list.json?page=${page}&count=${count}`);
+    },
+    getPersonalFinanceImportBatch: ({ batchId }: { batchId: string }): ApiResponsePromise<PersonalFinanceImportBatch> => {
+        return axios.get<ApiResponse<PersonalFinanceImportBatch>>(`v1/personal_finance/import_batches/get.json?batch_id=${encodeURIComponent(batchId)}`);
+    },
+    listPersonalFinanceImportRows: ({ batchId, page, count }: { batchId: string, page: number, count: number }): ApiResponsePromise<PersonalFinanceImportRowPage> => {
+        return axios.get<ApiResponse<PersonalFinanceImportRowPage>>(`v1/personal_finance/import_batches/rows.json?batch_id=${encodeURIComponent(batchId)}&page=${page}&count=${count}`);
+    },
+    reparsePersonalFinanceImportFile: (request: PersonalFinanceReparseRequest): ApiResponsePromise<PersonalFinanceReparseResult> => {
+        return axios.post<ApiResponse<PersonalFinanceReparseResult>>('v1/personal_finance/import_batches/reparse.json', request);
+    },
+    listPersonalFinanceSourceAccounts: (): ApiResponsePromise<PersonalFinanceSourceAccountPage> => {
+        return axios.get<ApiResponse<PersonalFinanceSourceAccountPage>>('v1/personal_finance/source_accounts/list.json');
+    },
+    savePersonalFinanceSourceAccount: (request: PersonalFinanceSourceAccountSaveRequest): ApiResponsePromise<PersonalFinanceSourceAccount> => {
+        return axios.post<ApiResponse<PersonalFinanceSourceAccount>>('v1/personal_finance/source_accounts/save.json', request);
+    },
+    postPersonalFinanceImportBatch: (request: PersonalFinancePostingRequest): ApiResponsePromise<PersonalFinancePostingResult> => {
+        return axios.post<ApiResponse<PersonalFinancePostingResult>>('v1/personal_finance/import_batches/post.json', request);
+    },
+    getPersonalFinanceTransactionEvidence: ({ transactionId }: { transactionId: string }): ApiResponsePromise<PersonalFinanceEvidenceResult> => {
+        return axios.get<ApiResponse<PersonalFinanceEvidenceResult>>(`v1/personal_finance/transactions/evidence.json?transaction_id=${encodeURIComponent(transactionId)}`);
     },
     getLatestExchangeRates: (param: { ignoreError?: boolean }): ApiResponsePromise<LatestExchangeRateResponse> => {
         return axios.get<ApiResponse<LatestExchangeRateResponse>>('v1/exchange_rates/latest.json', {

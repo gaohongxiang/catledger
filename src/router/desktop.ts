@@ -15,6 +15,7 @@ import UnlockPage from '@/views/desktop/UnlockPage.vue';
 import HomePage from '@/views/desktop/HomePage.vue';
 
 import TransactionListPage from '@/views/desktop/transactions/ListPage.vue';
+import PersonalFinanceImportWorkbenchPage from '@/features/personal-finance/desktop/ImportWorkbenchPage.vue';
 
 import StatisticsTransactionPage from '@/views/desktop/statistics/TransactionPage.vue';
 
@@ -118,6 +119,11 @@ const router = createRouter({
                         initKeyword: route.query['keyword'],
                         initMatchMode: route.query['matchMode']
                     })
+                },
+                {
+                    path: '/personal-finance/imports',
+                    component: PersonalFinanceImportWorkbenchPage,
+                    beforeEnter: checkLogin
                 },
                 {
                     path: '/statistics/transaction',

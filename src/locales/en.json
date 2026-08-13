@@ -2754,5 +2754,135 @@
     "An error occurred": "An error occurred",
     "Parameter Invalid": "Parameter Invalid",
     "Numeric Overflow": "Numeric Overflow",
-    "Click to close": "Click to close"
+    "Click to close": "Click to close",
+    "personalFinance": {
+        "nav": "Personal Finance Imports",
+        "eyebrow": "Traceable imports",
+        "title": "Personal Finance Import Workbench",
+        "subtitle": "Keep source evidence, explain duplicates and conflicts, then confirm each transaction before it reaches your ledger.",
+        "upload": "Upload Statement",
+        "history": "Import History",
+        "batch": "Import Batch",
+        "batchCount": "{count} batches",
+        "pendingCount": "{count} pending",
+        "noHistory": "No import history yet",
+        "noHistoryHint": "Upload an Alipay or WeChat statement to start a traceable import.",
+        "selectBatch": "Select an import batch",
+        "selectBatchHint": "Review its summary, row evidence, duplicates and conflicts here.",
+        "reparse": "Reparse",
+        "preview": "Evidence Preview",
+        "previewHint": "Raw identifiers and storage fields are intentionally excluded from this view.",
+        "rowNumber": "Row",
+        "transaction": "Source Transaction",
+        "noRows": "No rows in this batch",
+        "confirmRow": "Confirm",
+        "confirmDuplicate": "Confirm Duplicate",
+        "parseCompleted": "The statement has been parsed",
+        "documentIssues": "Statement-level notes",
+        "sourceAccount": "Source account profile",
+        "metric": {
+            "total": "Total",
+            "pending": "Pending",
+            "posted": "Posted",
+            "duplicates": "Duplicates",
+            "conflicts": "Conflicts",
+            "invalid": "Invalid"
+        },
+        "source": {
+            "alipay": "Alipay",
+            "wechat": "WeChat Pay"
+        },
+        "status": {
+            "receiving": "Receiving",
+            "parsing": "Parsing",
+            "awaitingSourceAccount": "Account required",
+            "ready": "Ready",
+            "posting": "Posting",
+            "partiallyPosted": "Partially posted",
+            "completed": "Completed",
+            "failed": "Failed",
+            "discarded": "Discarded"
+        },
+        "identity": {
+            "notEvaluated": "Not evaluated",
+            "new": "New evidence",
+            "exactDuplicate": "Exact duplicate",
+            "conflict": "Identity conflict",
+            "batchLocal": "Batch-local identity"
+        },
+        "row": {
+            "newExplanation": "No matching source identity exists; confirm ledger fields before posting.",
+            "duplicateExplanation": "The same source identity and economic facts already exist. Confirm the ledger fields; the server reuses a complete existing transaction relationship or creates one if none exists.",
+            "conflictExplanation": "The same source identity has incompatible amount, currency, direction or economic effect. Posting is blocked.",
+            "reviewExplanation": "The evidence is usable but requires explicit human confirmation.",
+            "nonPostableExplanation": "This row is not eligible for posting.",
+            "invalidExplanation": "This row could not be parsed reliably and is preserved only as evidence.",
+            "linkedExplanation": "This evidence is already linked to the formal ledger."
+        },
+        "duplicateDialog": {
+            "title": "This statement was uploaded before",
+            "message": "The original file remains unchanged. Open its latest batch, or explicitly create a new immutable parsing batch.",
+            "openLatest": "Open Latest Batch",
+            "reparse": "Create New Batch"
+        },
+        "sourceDialog": {
+            "title": "Choose the statement account",
+            "weakEvidence": "The statement only contains masked or display-only account evidence. Choose a profile explicitly; the app will not guess an identity.",
+            "noDisplayName": "No account display name was found",
+            "useExisting": "Use Existing",
+            "createNew": "Create Profile",
+            "noExisting": "No active profile for this source",
+            "displayName": "Masked display name",
+            "ledgerMapping": "Default ledger account",
+            "ledgerMappingHint": "Optional. This only pre-fills confirmations and does not change source identity.",
+            "noLedgerMapping": "No ledger mapping"
+        },
+        "posting": {
+            "title": "Confirm Ledger Transaction",
+            "reuseTitle": "Confirm Exact Duplicate",
+            "sourceEvidence": "Source evidence summary",
+            "ledgerAccount": "Ledger account",
+            "noMatchingAccount": "No visible ledger account uses {currency}. Create or enable a matching account first.",
+            "confirm": "Post Transaction",
+            "confirmDuplicate": "Confirm Duplicate",
+            "completed": "The selected evidence has been linked to the ledger"
+        },
+        "evidence": {
+            "title": "Source Evidence",
+            "none": "This transaction has no personal-finance source evidence.",
+            "batchRow": "Batch {batch}, row {row}",
+            "privacyNote": "Only normalized, redacted evidence is shown here.",
+            "creation": {
+                "posting_created": "Created by confirmation",
+                "exact_identity_reused": "Exact identity reused"
+            },
+            "role": {
+                "primary": "Primary transaction",
+                "transfer_counterpart": "Transfer counterpart"
+            }
+        },
+        "mobile": {
+            "title": "Import History",
+            "readOnly": "Mobile view is read-only. Upload and confirmation remain on desktop.",
+            "counts": "Pending {pending} · Duplicate {duplicate} · Conflict {conflict} · Posted {posted}",
+            "desktopHint": "Use the desktop workbench to upload and confirm statements."
+        },
+        "issue": {
+            "file_format_invalid": "The statement format is invalid",
+            "file_encoding_invalid": "The statement encoding is invalid",
+            "file_structure_invalid": "The statement structure is invalid",
+            "row_field_missing": "A required field is missing",
+            "row_time_invalid": "A transaction time is invalid",
+            "row_amount_invalid": "An amount is invalid",
+            "row_currency_invalid": "A currency is invalid",
+            "row_direction_unknown": "A transaction direction is unknown",
+            "row_status_unknown": "A transaction status is unknown",
+            "row_transaction_type_unknown": "A transaction type is unknown",
+            "row_identifier_invalid": "A source identifier is invalid",
+            "row_unsupported": "A statement row is unsupported"
+        },
+        "error": {
+            "operationFailed": "Unable to complete the personal finance operation"
+        }
+    }
 }

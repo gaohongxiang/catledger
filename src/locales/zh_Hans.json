@@ -2754,5 +2754,135 @@
     "An error occurred": "发生错误",
     "Parameter Invalid": "参数错误",
     "Numeric Overflow": "数值溢出",
-    "Click to close": "点击关闭"
+    "Click to close": "点击关闭",
+    "personalFinance": {
+        "nav": "个人财务导入",
+        "eyebrow": "可追溯导入",
+        "title": "个人财务导入工作台",
+        "subtitle": "保留来源证据，清楚解释重复与冲突，逐笔确认后再进入正式账本。",
+        "upload": "上传账单",
+        "history": "导入历史",
+        "batch": "导入批次",
+        "batchCount": "共 {count} 个批次",
+        "pendingCount": "{count} 笔待处理",
+        "noHistory": "暂无导入记录",
+        "noHistoryHint": "上传支付宝或微信账单，开始一条可追溯的导入流程。",
+        "selectBatch": "请选择一个导入批次",
+        "selectBatchHint": "这里会展示批次摘要、逐行证据、重复项和冲突项。",
+        "reparse": "重新解析",
+        "preview": "证据预览",
+        "previewHint": "此处有意不展示原始标识和对象存储字段。",
+        "rowNumber": "行号",
+        "transaction": "来源交易",
+        "noRows": "这个批次没有明细行",
+        "confirmRow": "确认入账",
+        "confirmDuplicate": "确认重复项",
+        "parseCompleted": "账单解析完成",
+        "documentIssues": "账单级提示",
+        "sourceAccount": "来源账户档案",
+        "metric": {
+            "total": "总行数",
+            "pending": "待处理",
+            "posted": "已入账",
+            "duplicates": "精确重复",
+            "conflicts": "身份冲突",
+            "invalid": "无效行"
+        },
+        "source": {
+            "alipay": "支付宝",
+            "wechat": "微信支付"
+        },
+        "status": {
+            "receiving": "接收中",
+            "parsing": "解析中",
+            "awaitingSourceAccount": "待选择账户",
+            "ready": "待确认",
+            "posting": "入账中",
+            "partiallyPosted": "部分已入账",
+            "completed": "已完成",
+            "failed": "失败",
+            "discarded": "已放弃"
+        },
+        "identity": {
+            "notEvaluated": "尚未判定",
+            "new": "新证据",
+            "exactDuplicate": "精确重复",
+            "conflict": "身份冲突",
+            "batchLocal": "批次内身份"
+        },
+        "row": {
+            "newExplanation": "没有匹配的来源身份，确认账本字段后可入账。",
+            "duplicateExplanation": "相同来源身份和经济事实已经存在。请确认账本字段；服务端会复用完整的既有交易关系，若不存在则按本次确认创建。",
+            "conflictExplanation": "同一来源身份的金额、币种、方向或经济效果不一致，已禁止入账。",
+            "reviewExplanation": "证据可用，但必须由您明确确认。",
+            "nonPostableExplanation": "这一行不具备入账资格。",
+            "invalidExplanation": "这一行无法可靠解析，仅作为原始证据保留。",
+            "linkedExplanation": "这条证据已经关联到正式账本。"
+        },
+        "duplicateDialog": {
+            "title": "这份账单曾经上传过",
+            "message": "原文件不会被覆盖。您可以打开最近一次批次，也可以明确创建一个新的不可变解析批次。",
+            "openLatest": "打开最近批次",
+            "reparse": "创建新批次"
+        },
+        "sourceDialog": {
+            "title": "选择账单所属账户",
+            "weakEvidence": "账单只提供了掩码或展示型账户信息。请明确选择档案，系统不会猜测账户身份。",
+            "noDisplayName": "账单中没有可用的账户展示名",
+            "useExisting": "使用已有档案",
+            "createNew": "新建档案",
+            "noExisting": "这个来源没有启用中的档案",
+            "displayName": "脱敏展示名",
+            "ledgerMapping": "默认账本账户",
+            "ledgerMappingHint": "可选。只用于预填确认信息，不会改变来源身份。",
+            "noLedgerMapping": "未映射账本账户"
+        },
+        "posting": {
+            "title": "确认正式交易",
+            "reuseTitle": "确认精确重复项",
+            "sourceEvidence": "来源证据摘要",
+            "ledgerAccount": "账本账户",
+            "noMatchingAccount": "没有使用 {currency} 的可见账本账户，请先新建或启用匹配账户。",
+            "confirm": "确认入账",
+            "confirmDuplicate": "确认重复项",
+            "completed": "所选证据已关联到正式账本"
+        },
+        "evidence": {
+            "title": "来源证据",
+            "none": "这笔交易没有个人财务来源证据。",
+            "batchRow": "批次 {batch}，第 {row} 行",
+            "privacyNote": "此处只展示标准化且已脱敏的证据。",
+            "creation": {
+                "posting_created": "确认时创建",
+                "exact_identity_reused": "复用精确身份"
+            },
+            "role": {
+                "primary": "主交易",
+                "transfer_counterpart": "转账对端"
+            }
+        },
+        "mobile": {
+            "title": "导入历史",
+            "readOnly": "移动端仅供查看，上传和确认入账请使用桌面版。",
+            "counts": "待处理 {pending} · 重复 {duplicate} · 冲突 {conflict} · 已入账 {posted}",
+            "desktopHint": "请使用桌面工作台上传并确认账单。"
+        },
+        "issue": {
+            "file_format_invalid": "账单格式无效",
+            "file_encoding_invalid": "账单编码无效",
+            "file_structure_invalid": "账单结构无效",
+            "row_field_missing": "缺少必填字段",
+            "row_time_invalid": "交易时间无效",
+            "row_amount_invalid": "金额无效",
+            "row_currency_invalid": "币种无效",
+            "row_direction_unknown": "无法判断收支方向",
+            "row_status_unknown": "无法判断交易状态",
+            "row_transaction_type_unknown": "无法判断交易类型",
+            "row_identifier_invalid": "来源标识无效",
+            "row_unsupported": "暂不支持这一行数据"
+        },
+        "error": {
+            "operationFailed": "个人财务操作未能完成"
+        }
+    }
 }

@@ -13,6 +13,13 @@
                 </v-btn>
                 <v-btn density="compact" color="default" variant="text" class="ms-2" :icon="true"
                        :disabled="loading || submitting || recognizing"
+                       v-if="mode === TransactionEditPageMode.View && type === TransactionEditPageType.Transaction && !!transaction.id"
+                       @click="transactionEvidenceDialog?.open(transaction.id)">
+                    <v-icon :icon="mdiFileDocumentCheckOutline" size="22"/>
+                    <v-tooltip activator="parent">{{ tt('personalFinance.evidence.title') }}</v-tooltip>
+                </v-btn>
+                <v-btn density="compact" color="default" variant="text" class="ms-2" :icon="true"
+                       :disabled="loading || submitting || recognizing"
                        v-if="mode !== TransactionEditPageMode.View && type === TransactionEditPageType.Transaction && activeTab === 'basicInfo' && isTransactionFromAITextRecognitionEnabled()"
                        @click="recognizeFromClipboard">
                     <v-icon :icon="mdiMagicStaff" size="22" v-if="!recognizing"/>
@@ -503,6 +510,7 @@
     </v-dialog>
 
     <confirm-dialog ref="confirmDialog"/>
+    <transaction-evidence-dialog ref="transactionEvidenceDialog" />
     <snack-bar ref="snackbar" />
     <input ref="pictureInput" type="file" style="display: none" :accept="SUPPORTED_IMAGE_EXTENSIONS" @change="onUploadPicture($event)" />
 </template>
@@ -511,6 +519,7 @@
 import MapView from '@/components/common/MapView.vue';
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
+import TransactionEvidenceDialog from '@/features/personal-finance/components/TransactionEvidenceDialog.vue';
 
 import { ref, computed, useTemplateRef, watch, nextTick } from 'vue';
 
@@ -579,7 +588,8 @@ import {
     mdiMenuDown,
     mdiImagePlusOutline,
     mdiTrashCanOutline,
-    mdiFullscreen
+    mdiFullscreen,
+    mdiFileDocumentCheckOutline
 } from '@mdi/js';
 
 export interface TransactionEditOptions extends SetTransactionOptions {
@@ -600,6 +610,7 @@ interface TransactionEditResponse {
 type MapViewType = InstanceType<typeof MapView>;
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
+type TransactionEvidenceDialogType = InstanceType<typeof TransactionEvidenceDialog>;
 
 const props = defineProps<{
     type: TransactionEditPageType;
@@ -674,6 +685,7 @@ const transactionTemplatesStore = useTransactionTemplatesStore();
 const map = useTemplateRef<MapViewType>('map');
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
+const transactionEvidenceDialog = useTemplateRef<TransactionEvidenceDialogType>('transactionEvidenceDialog');
 const pictureInput = useTemplateRef<HTMLInputElement>('pictureInput');
 
 let resolveFunc: ((response?: TransactionEditResponse) => void) | null = null;

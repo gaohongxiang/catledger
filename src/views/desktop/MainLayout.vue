@@ -35,6 +35,12 @@
                     </router-link>
                 </li>
                 <li class="nav-link">
+                    <router-link to="/personal-finance/imports">
+                        <v-icon class="nav-item-icon" :icon="mdiTrayArrowDown"/>
+                        <span class="nav-item-title">{{ tt('personalFinance.nav') }}</span>
+                    </router-link>
+                </li>
+                <li class="nav-link">
                     <router-link to="/statistics/transaction">
                         <v-icon class="nav-item-icon" :icon="mdiChartPieOutline"/>
                         <span class="nav-item-title">{{ tt('Statistics & Analysis') }}</span>
@@ -226,6 +232,7 @@ import {
     mdiMenu,
     mdiHomeOutline,
     mdiListBoxOutline,
+    mdiTrayArrowDown,
     mdiPlusCircle,
     mdiCreditCardOutline,
     mdiViewDashboardOutline,
@@ -338,4 +345,3 @@ function showAddDialogInTransactionListPage(): void {
 
 clearShareImageCache();
 </script>
-
