@@ -257,8 +257,8 @@ export default defineConfig(() => {
                                 test: id => {
                                     if (/[\\/]src[\\/](core|consts|models|stores)[\\/]/i.test(id)) {
                                         return true;
-                                    // PF 共享核心同时被桌面端和移动端引用，归入 common 以避免跨分块循环初始化。
-                                    } else if (/[\\/]src[\\/]features[\\/]personal-finance[\\/][^\\/]+\.(js|ts)$/i.test(id)) {
+                                    // PF 各层共享 TypeScript 源文件统一归入 common；排除 Vue SFC 的 ?lang.ts 虚拟模块，避免脚本与模板被拆到不同分块。
+                                    } else if (/[\\/]src[\\/]features[\\/]personal-finance[\\/][^?]+\.(js|ts)(?:\?|$)/i.test(id)) {
                                         return true;
                                     } else if (/[\\/]src[\\/]lib[\\/](map[\\/]|ui[\\/]common|calendar[\\/]|[a-zA-Z0-9-_]+\.(js|ts))/i.test(id)) {
                                         return true;
