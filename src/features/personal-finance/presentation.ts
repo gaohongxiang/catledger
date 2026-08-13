@@ -46,7 +46,11 @@ export function getBatchStatusColor(status: PersonalFinanceBatchStatus): string 
 }
 
 export function getSourceTypeKey(sourceType: PersonalFinanceSourceType): string {
-    return sourceType === 'alipay' ? 'personalFinance.source.alipay' : 'personalFinance.source.wechat';
+    if (sourceType === 'alipay') {
+        return 'personalFinance.source.alipay';
+    }
+
+    return sourceType === 'wechat' ? 'personalFinance.source.wechat' : 'personalFinance.source.bank';
 }
 
 export function getIdentityStateKey(identityState: PersonalFinanceIdentityState): string {

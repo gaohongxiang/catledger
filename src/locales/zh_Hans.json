@@ -2766,7 +2766,7 @@
         "batchCount": "共 {count} 个批次",
         "pendingCount": "{count} 笔待处理",
         "noHistory": "暂无导入记录",
-        "noHistoryHint": "上传支付宝或微信账单，开始一条可追溯的导入流程。",
+        "noHistoryHint": "上传支付宝、微信或银行账单，开始一条可追溯的导入流程。",
         "selectBatch": "请选择一个导入批次",
         "selectBatchHint": "这里会展示批次摘要、逐行证据、重复项和冲突项。",
         "reparse": "重新解析",
@@ -2790,7 +2790,8 @@
         },
         "source": {
             "alipay": "支付宝",
-            "wechat": "微信支付"
+            "wechat": "微信支付",
+            "bank": "银行"
         },
         "status": {
             "receiving": "接收中",
@@ -2837,6 +2838,77 @@
             "ledgerMappingHint": "可选。只用于预填确认信息，不会改变来源身份。",
             "noLedgerMapping": "未映射账本账户"
         },
+        "genericBank": {
+            "title": "配置通用银行 CSV",
+            "configure": "按通用银行 CSV 配置",
+            "templateNotice": "这是通用模板，不含银行专属规则。请按文件实际列结构填写。",
+            "privacyNotice": "列映射只随本次解析请求提交；界面不会记录完整账号或原始字段。",
+            "autoDetectionFailed": "未自动识别账单，已打开通用银行 CSV 配置。",
+            "sourceSection": "银行来源账户",
+            "sourceHint": "必须选择或创建银行来源档案，并映射一个正式账本账户。",
+            "noUsableSourceAccount": "没有已映射账本账户的银行档案",
+            "unmappedProfiles": "另有 {count} 个银行档案未映射账本账户，不能用于本次导入。",
+            "ledgerRequired": "必填。银行流水必须明确进入哪个账本账户。",
+            "fileSection": "文件与时间",
+            "columnNumberHint": "界面列号从 1 开始；留空表示不使用。表头行也从 1 开始。",
+            "encoding": "文件编码",
+            "delimiter": "分隔符",
+            "headerRow": "表头所在行",
+            "timeFormat": "时间格式",
+            "amountSection": "金额与方向",
+            "amountHint": "只选择与当前文件一致的一种金额结构。其他模式的列不会提交。",
+            "signedPositiveDirection": "正数表示",
+            "incomeValues": "收入方向值",
+            "expenseValues": "支出方向值",
+            "directionValuesHint": "输入后按 Enter 添加；大小写和首尾空格会规范化。",
+            "optionalColumns": "可选证据列",
+            "optionalColumnsHint": "只填写文件中确实存在且含义明确的列。",
+            "requiredColumn": "必填，列号从 1 开始",
+            "optionalColumn": "可选，留空表示不使用",
+            "parse": "按此映射解析",
+            "encodingOption": {
+                "utf8": "UTF-8",
+                "gb18030": "GB18030",
+                "gbk": "GBK"
+            },
+            "delimiterOption": {
+                "comma": "逗号",
+                "tab": "制表符"
+            },
+            "amountMode": {
+                "signed": "带正负号金额",
+                "amountDirection": "金额列 + 方向列",
+                "incomeExpense": "收入列 + 支出列"
+            },
+            "column": {
+                "time": "交易时间列",
+                "amount": "金额列",
+                "direction": "方向列",
+                "income": "收入金额列",
+                "expense": "支出金额列",
+                "currency": "币种列",
+                "transactionId": "来源交易号列",
+                "orderId": "订单号列",
+                "merchantOrderId": "商户订单号列",
+                "counterparty": "交易对手列",
+                "item": "商品或摘要列",
+                "paymentMethod": "支付方式列",
+                "status": "状态列",
+                "transactionType": "交易类型列",
+                "note": "备注列"
+            },
+            "error": {
+                "header_row_required": "表头行必须是 1 到 10000 的整数。",
+                "column_required": "请填写当前金额模式所需的全部列。",
+                "column_out_of_range": "列号必须是 1 到 1024 的整数。",
+                "column_duplicate": "同一列不能映射到多个字段。",
+                "direction_values_required": "收入和支出方向值都不能为空。",
+                "direction_values_invalid": "方向值不能为空、重复、过长或包含控制字符。",
+                "direction_values_overlap": "收入和支出方向值不能重叠。",
+                "source_account_required": "请选择启用中的银行来源账户。",
+                "ledger_account_required": "银行来源账户必须映射账本账户。"
+            }
+        },
         "posting": {
             "title": "确认正式交易",
             "reuseTitle": "确认精确重复项",
@@ -2879,7 +2951,8 @@
             "row_status_unknown": "无法判断交易状态",
             "row_transaction_type_unknown": "无法判断交易类型",
             "row_identifier_invalid": "来源标识无效",
-            "row_unsupported": "暂不支持这一行数据"
+            "row_unsupported": "暂不支持这一行数据",
+            "bank_row_column_mismatch": "这一行的列数与表头不一致"
         },
 		"operations": {
 			"undoImpact": "查看撤销影响",

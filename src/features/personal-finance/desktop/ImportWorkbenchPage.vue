@@ -62,7 +62,7 @@
                                 >
                                     <template #prepend>
                                         <v-avatar :color="getBatchStatusColor(batch.status)" variant="tonal">
-                                            <v-icon :icon="batch.sourceType === 'alipay' ? mdiWalletOutline : mdiChatOutline" />
+                                            <v-icon :icon="batch.sourceType === 'alipay' ? mdiWalletOutline : (batch.sourceType === 'wechat' ? mdiChatOutline : mdiBankOutline)" />
                                         </v-avatar>
                                     </template>
                                     <v-list-item-title class="font-weight-medium">
@@ -132,6 +132,15 @@
                                         @click="reparseSelectedBatch"
                                     >
                                         {{ tt('personalFinance.reparse') }}
+                                    </v-btn>
+                                    <v-btn
+                                        variant="tonal"
+                                        color="primary"
+                                        :prepend-icon="mdiTableCog"
+                                        :disabled="!canConfigureSelectedFileAsGenericBank || personalFinanceStore.submitting"
+                                        @click="configureSelectedAsGenericBank"
+                                    >
+                                        {{ tt('personalFinance.genericBank.configure') }}
                                     </v-btn>
 									<v-btn
 										variant="tonal"
@@ -291,6 +300,7 @@
 	</v-dialog>
 
     <source-account-dialog ref="sourceAccountDialog" @parsed="onParsed" />
+    <generic-bank-import-dialog ref="genericBankImportDialog" @parsed="onParsed" />
     <posting-dialog ref="postingDialog" @posted="onPosted" />
 	<confirm-dialog ref="confirmDialog" />
     <snack-bar ref="snackbar" />
@@ -301,6 +311,7 @@ import SnackBar from '@/components/desktop/SnackBar.vue';
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import PostingDialog from '../components/PostingDialog.vue';
 import SourceAccountDialog from '../components/SourceAccountDialog.vue';
+import GenericBankImportDialog from '../components/GenericBankImportDialog.vue';
 
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue';
 
@@ -318,11 +329,12 @@ import {
     getRowExplanationKey,
     getSourceTypeKey
 } from '../presentation.ts';
-import { canDeleteImportFileContent, canDiscardImportBatch, getRowAction, getUploadAction } from '../state.ts';
+import { canConfigureGenericBankCsv, canDeleteImportFileContent, canDiscardImportBatch, getRowAction, getUploadAction } from '../state.ts';
 import { usePersonalFinanceStore } from '../store.ts';
 
 import {
     mdiChatOutline,
+	mdiBankOutline,
 	mdiCancel,
 	mdiDeleteOutline,
     mdiFileDocumentOutline,
@@ -331,12 +343,14 @@ import {
 	mdiInformationOutline,
     mdiReload,
     mdiTrayArrowUp,
+	mdiTableCog,
     mdiWalletOutline
 } from '@mdi/js';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
 type PostingDialogType = InstanceType<typeof PostingDialog>;
 type SourceAccountDialogType = InstanceType<typeof SourceAccountDialog>;
+type GenericBankImportDialogType = InstanceType<typeof GenericBankImportDialog>;
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 
 const HISTORY_PAGE_SIZE = 20;
@@ -349,6 +363,7 @@ const personalFinanceStore = usePersonalFinanceStore();
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput');
 const postingDialog = useTemplateRef<PostingDialogType>('postingDialog');
 const sourceAccountDialog = useTemplateRef<SourceAccountDialogType>('sourceAccountDialog');
+const genericBankImportDialog = useTemplateRef<GenericBankImportDialogType>('genericBankImportDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 
@@ -364,6 +379,9 @@ const canDiscardSelectedBatch = computed<boolean>(() => {
 });
 const canDeleteSelectedFile = computed<boolean>(() => {
 	return canDeleteImportFileContent(personalFinanceStore.selectedBatch?.file);
+});
+const canConfigureSelectedFileAsGenericBank = computed<boolean>(() => {
+    return canConfigureGenericBankCsv(personalFinanceStore.selectedBatch?.file);
 });
 
 const batchPageCount = computed<number>(() => Math.max(1, Math.ceil(personalFinanceStore.totalBatchCount / HISTORY_PAGE_SIZE)));
@@ -469,18 +487,30 @@ async function upload(event: Event): Promise<void> {
         return;
     }
 
+    let result: PersonalFinanceImportUploadResult;
+
     try {
-        const result = await personalFinanceStore.uploadFile(file);
-
-        if (getUploadAction(result) === 'choose_duplicate_action') {
-            duplicateUpload.value = result;
-            showDuplicateDialog.value = true;
-            return;
-        }
-
-        await reparseFile(result.file.id, 'initial_upload');
+        result = await personalFinanceStore.uploadFile(file);
     } catch {
         snackbar.value?.showMessage('personalFinance.error.operationFailed');
+        return;
+    }
+
+    if (getUploadAction(result) === 'choose_duplicate_action') {
+        duplicateUpload.value = result;
+        showDuplicateDialog.value = true;
+        return;
+    }
+
+    try {
+        await reparseFile(result.file.id, 'initial_upload');
+    } catch {
+        if (canConfigureGenericBankCsv(result.file)) {
+            openGenericBankImport(result.file.id, 'initial_upload_generic_fallback');
+            snackbar.value?.showMessage('personalFinance.genericBank.autoDetectionFailed');
+        } else {
+            snackbar.value?.showMessage('personalFinance.error.operationFailed');
+        }
     }
 }
 
@@ -519,7 +549,8 @@ async function openLatestDuplicate(): Promise<void> {
 }
 
 async function reparseDuplicate(): Promise<void> {
-    const fileId = duplicateUpload.value?.file.id;
+    const file = duplicateUpload.value?.file;
+    const fileId = file?.id;
     showDuplicateDialog.value = false;
 
     if (!fileId) {
@@ -529,22 +560,57 @@ async function reparseDuplicate(): Promise<void> {
     try {
         await reparseFile(fileId, 'duplicate_upload_reparse');
     } catch {
-        snackbar.value?.showMessage('personalFinance.error.operationFailed');
+        if (canConfigureGenericBankCsv(file)) {
+            openGenericBankImport(fileId, 'duplicate_upload_generic_fallback');
+            snackbar.value?.showMessage('personalFinance.genericBank.autoDetectionFailed');
+        } else {
+            snackbar.value?.showMessage('personalFinance.error.operationFailed');
+        }
     }
 }
 
 async function reparseSelectedBatch(): Promise<void> {
-    const file = personalFinanceStore.selectedBatch?.file;
+    const batch = personalFinanceStore.selectedBatch;
+    const file = batch?.file;
 
     if (!file || file.contentState !== 'available') {
+        return;
+    }
+
+    if (batch?.parserName === 'generic_bank_csv') {
+        openGenericBankImport(file.id, 'user_requested_generic_reparse');
         return;
     }
 
     try {
         await reparseFile(file.id, 'user_requested');
     } catch {
-        snackbar.value?.showMessage('personalFinance.error.operationFailed');
+        if (canConfigureGenericBankCsv(file)) {
+            openGenericBankImport(file.id, 'user_requested_generic_fallback');
+            snackbar.value?.showMessage('personalFinance.genericBank.autoDetectionFailed');
+        } else {
+            snackbar.value?.showMessage('personalFinance.error.operationFailed');
+        }
     }
+}
+
+function openGenericBankImport(fileId: string, reasonCode: string): void {
+    genericBankImportDialog.value?.open({
+        fileId,
+        currency: userStore.currentUserDefaultCurrency,
+        timezoneUtcOffset: getTimezoneOffsetMinutes(getCurrentUnixTime()),
+        reasonCode
+    });
+}
+
+function configureSelectedAsGenericBank(): void {
+    const file = personalFinanceStore.selectedBatch?.file;
+
+    if (!file || !canConfigureGenericBankCsv(file)) {
+        return;
+    }
+
+    openGenericBankImport(file.id, 'user_selected_generic_bank');
 }
 
 function openPosting(row: PersonalFinanceImportRow): void {

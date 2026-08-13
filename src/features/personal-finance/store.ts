@@ -13,12 +13,13 @@ import type {
     PersonalFinancePostingDraft,
     PersonalFinancePostingResult,
     PersonalFinanceUndoImpact,
+    PersonalFinanceGenericCsvMapping,
     PersonalFinanceReparseResult,
     PersonalFinanceSourceAccount,
     PersonalFinanceSourceAccountPage,
     PersonalFinanceSourceAccountSaveRequest
 } from './models.ts';
-import { buildSingleRowPostingRequest } from './state.ts';
+import { buildPersonalFinanceReparseRequest, buildSingleRowPostingRequest } from './state.ts';
 
 async function unwrapResponse<T>(request: ApiResponsePromise<T>, fallbackMessage: string): Promise<T> {
     const response = await request;
@@ -97,21 +98,25 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
     async function reparseFile(params: {
         fileId: string;
         sourceAccountId?: string;
+        parserName?: string;
         currency: string;
         timezoneUtcOffset: number;
         reasonCode?: string;
+        genericCsvMapping?: PersonalFinanceGenericCsvMapping;
     }): Promise<PersonalFinanceReparseResult> {
         submitting.value = true;
 
         try {
             const result = await unwrapResponse(
-                services.reparsePersonalFinanceImportFile({
+                services.reparsePersonalFinanceImportFile(buildPersonalFinanceReparseRequest({
                     fileId: params.fileId,
                     sourceAccountId: params.sourceAccountId,
+                    parserName: params.parserName,
                     currency: params.currency,
                     timezoneUtcOffset: params.timezoneUtcOffset,
-                    reasonCode: params.reasonCode ?? 'user_requested'
-                }),
+                    reasonCode: params.reasonCode ?? 'user_requested',
+                    genericCsvMapping: params.genericCsvMapping
+                })),
                 'Unable to parse personal finance import file'
             );
 
