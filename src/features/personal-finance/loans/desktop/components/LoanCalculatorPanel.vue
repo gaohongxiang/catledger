@@ -274,8 +274,8 @@ const rateQuoteTypeOptions = computed(() => [
 const discountTypeOptions = computed(() => [
     { title: tt('personalFinance.loans.discount.none'), value: 'none' },
     { title: tt('personalFinance.loans.discount.interestRate'), value: 'interest_rate' },
-    { title: tt('personalFinance.loans.discount.perPeriodAmount'), value: 'per_period_amount' },
-    { title: tt('personalFinance.loans.discount.totalAmount'), value: 'total_amount' }
+    { title: tt('personalFinance.loans.discount.perPeriodAmount'), value: 'per_period' },
+    { title: tt('personalFinance.loans.discount.totalAmount'), value: 'total' }
 ]);
 
 function updateField(field: keyof LoanCalculationInput, value: unknown): void {
