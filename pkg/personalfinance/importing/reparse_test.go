@@ -188,6 +188,62 @@ func TestReparseServiceRejectsHighestConfidenceTie(t *testing.T) {
 	}
 }
 
+func TestReparseServiceSkipsGenericBankUnlessExplicitlySelected(t *testing.T) {
+	descriptor := importing.ParserDescriptor{
+		Name: "generic_bank_csv", SourceType: importing.SOURCE_TYPE_BANK, Format: importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV,
+		ParserVersion: "generic-bank-parser-v1", NormalizationVersion: "generic-bank-normalization-v1", ExplicitSelectionOnly: true,
+	}
+	parser := &flowTestParser{
+		descriptor: descriptor,
+		probe:      importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_POSSIBLE, SourceType: importing.SOURCE_TYPE_BANK, Format: importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV},
+		document: &importing.EvidenceDocument{Metadata: importing.DocumentMetadata{SourceType: importing.SOURCE_TYPE_BANK, SourceAccount: importing.SourceAccountCandidate{
+			Kind: importing.SOURCE_ACCOUNT_EVIDENCE_MISSING, DiscoveryMethod: importing.SOURCE_ACCOUNT_DISCOVERY_MISSING,
+		}}},
+	}
+	ledgerAccountId := int64(701)
+	accounts := &flowTestSourceAccounts{selected: &importing.SourceAccount{
+		Uid: 101, SourceAccountId: 301, SourceType: importing.SOURCE_TYPE_BANK, LedgerAccountId: &ledgerAccountId,
+		Status: importing.SOURCE_ACCOUNT_STATUS_ACTIVE, SourceAccountKey: strings.Repeat("b", 64), SourceAccountKeyVersion: importing.SOURCE_ACCOUNT_KEY_VERSION_V1,
+	}}
+	persister := new(flowTestPersister)
+	service := newFlowTestService(t, []byte("time,amount\n"), []importing.ImportEvidenceParser{parser}, accounts, persister)
+	mapping := importing.GenericCSVMapping{
+		Encoding: importing.GENERIC_CSV_ENCODING_UTF8, Delimiter: importing.GENERIC_CSV_DELIMITER_COMMA, HeaderRow: 1,
+		TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, AmountMode: importing.GENERIC_CSV_AMOUNT_MODE_SIGNED,
+		SignedPositiveDirection: importing.NORMALIZED_DIRECTION_EXPENSE, TimeColumn: 0, AmountColumn: 1,
+		DirectionColumn: -1, IncomeColumn: -1, ExpenseColumn: -1, CurrencyColumn: -1, TransactionIdColumn: -1,
+		OrderIdColumn: -1, MerchantOrderIdColumn: -1, CounterpartyColumn: -1, ItemColumn: -1,
+		PaymentMethodColumn: -1, StatusColumn: -1, TransactionTypeColumn: -1, NoteColumn: -1,
+	}
+	base := importing.ReparseImportFileRequest{
+		Uid: 101, FileId: 201, SourceAccountId: 301,
+		ParseOptions:      importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericCSVMapping: &mapping},
+		ReparseReasonCode: "generic_bank_test",
+	}
+	if _, err := service.ReparseImportFile(nil, base); !errors.Is(err, importing.ErrImportFormatInvalid) || parser.parseCalls != 0 {
+		t.Fatalf("auto detection did not skip explicit-only parser: calls=%d err=%v", parser.parseCalls, err)
+	}
+	base.ParserName = descriptor.Name
+	base.SourceAccountId = 0
+	discovery, err := service.ReparseImportFile(nil, base)
+	if err != nil || discovery == nil || discovery.Batch != nil || discovery.Discovery == nil || discovery.Discovery.SourceType != importing.SOURCE_TYPE_BANK || persister.calls != 0 {
+		t.Fatalf("generic bank parser did not require explicit source account selection: result=%+v calls=%d err=%v", discovery, persister.calls, err)
+	}
+	base.SourceAccountId = 301
+	accounts.selected.LedgerAccountId = nil
+	if _, err := service.ReparseImportFile(nil, base); !errors.Is(err, importing.ErrImportSourceAccountUnavailable) || persister.calls != 0 {
+		t.Fatalf("unmapped bank source account was accepted: calls=%d err=%v", persister.calls, err)
+	}
+	accounts.selected.LedgerAccountId = &ledgerAccountId
+	result, err := service.ReparseImportFile(nil, base)
+	if err != nil || result == nil || result.Batch == nil || persister.calls != 1 || parser.parseCalls != 3 {
+		t.Fatalf("explicit generic bank reparse failed: result=%+v calls=%d parse=%d err=%v", result, persister.calls, parser.parseCalls, err)
+	}
+	if persister.request.ParseOptions.GenericCSVMapping == nil || persister.request.Descriptor.Name != descriptor.Name {
+		t.Fatalf("explicit parser or mapping was not carried to persistence: %+v", persister.request)
+	}
+}
+
 func newFlowTestService(t *testing.T, content []byte, parsers []importing.ImportEvidenceParser, accounts *flowTestSourceAccounts, persister *flowTestPersister) *importing.ReparseService {
 	t.Helper()
 	repository := &flowTestFileRepository{file: &importing.ImportFile{

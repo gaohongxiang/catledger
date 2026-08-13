@@ -1,6 +1,7 @@
 package importing_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -72,5 +73,11 @@ func TestSourceAccountServicePreservesIdentityAndClearsLedgerMapping(t *testing.
 		created.MaskedDisplayName != "138****8000" ||
 		created.DiscoveryMethod != importing.SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED {
 		t.Fatalf("manual source account identity is unsafe: %+v", created)
+	}
+
+	if _, err := service.SaveSourceAccount(nil, importing.SourceAccountSaveRequest{
+		Uid: account.Uid, SourceType: importing.SOURCE_TYPE_BANK, DisplayName: "bank profile", Status: importing.SOURCE_ACCOUNT_STATUS_ACTIVE,
+	}); !errors.Is(err, importing.ErrImportRequestInvalid) {
+		t.Fatalf("unmapped manual bank source account was accepted: %v", err)
 	}
 }

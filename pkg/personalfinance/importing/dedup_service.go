@@ -14,6 +14,7 @@ const (
 	maximumEvidenceBatchSnapshotBytes   = 16 * 1024 * 1024
 	maximumPersistentSourceLocatorBytes = 255
 	parseOptionsDigestVersionV1         = "parse-options-v1"
+	genericParseOptionsDigestVersionV1  = "generic-parse-options-v1"
 )
 
 var (
@@ -166,7 +167,7 @@ func validatePersistEvidenceDocumentRequest(request PersistEvidenceDocumentReque
 		return nil, ErrImportRequestInvalid
 	}
 
-	if err := request.ParseOptions.Validate(); err != nil {
+	if err := request.ParseOptions.ValidateForDescriptor(request.Descriptor); err != nil {
 		return nil, err
 	}
 
@@ -204,6 +205,9 @@ func validateSelectedSourceAccount(request PersistEvidenceDocumentRequest, accou
 		account.SourceAccountKeyVersion != versions.SourceAccountKeyVersion ||
 		!isLowerHexSHA256(account.SourceAccountKey) ||
 		(account.LedgerAccountId != nil && *account.LedgerAccountId < 1) {
+		return ErrImportSourceAccountUnavailable
+	}
+	if account.SourceType == SOURCE_TYPE_BANK && account.LedgerAccountId == nil {
 		return ErrImportSourceAccountUnavailable
 	}
 
@@ -427,6 +431,28 @@ func persistentEvidenceSnapshotBytes(row *RawImportRow) int {
 }
 
 func computeParseOptionsDigest(options ResolvedParseOptions) string {
+	if options.GenericCSVMapping != nil {
+		mapping, err := NormalizeGenericCSVMapping(*options.GenericCSVMapping)
+		if err != nil {
+			return ""
+		}
+		values := []string{
+			genericParseOptionsDigestVersionV1, options.Currency, strconv.FormatInt(int64(options.TimezoneUtcOffset), 10),
+			string(mapping.Encoding), string(mapping.Delimiter), strconv.Itoa(mapping.HeaderRow), string(mapping.TimeFormat),
+			string(mapping.AmountMode), string(mapping.SignedPositiveDirection),
+			strconv.Itoa(mapping.TimeColumn), strconv.Itoa(mapping.AmountColumn), strconv.Itoa(mapping.DirectionColumn),
+			strconv.Itoa(mapping.IncomeColumn), strconv.Itoa(mapping.ExpenseColumn), strconv.Itoa(mapping.CurrencyColumn),
+			strconv.Itoa(mapping.TransactionIdColumn), strconv.Itoa(mapping.OrderIdColumn), strconv.Itoa(mapping.MerchantOrderIdColumn),
+			strconv.Itoa(mapping.CounterpartyColumn), strconv.Itoa(mapping.ItemColumn), strconv.Itoa(mapping.PaymentMethodColumn),
+			strconv.Itoa(mapping.StatusColumn), strconv.Itoa(mapping.TransactionTypeColumn), strconv.Itoa(mapping.NoteColumn),
+			strconv.Itoa(len(mapping.IncomeValues)),
+		}
+		values = append(values, mapping.IncomeValues...)
+		values = append(values, strconv.Itoa(len(mapping.ExpenseValues)))
+		values = append(values, mapping.ExpenseValues...)
+		digest := sha256.Sum256(encodeLengthPrefixed(values...))
+		return hex.EncodeToString(digest[:])
+	}
 	digest := sha256.Sum256(encodeLengthPrefixed(
 		parseOptionsDigestVersionV1,
 		options.Currency,

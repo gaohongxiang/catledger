@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -77,6 +78,129 @@ func NormalizeSourceAccountIdentifier(sourceType SourceType, identifier string) 
 		return "", fmt.Errorf("source account identifier is not a full email or phone number")
 	}
 
+	return normalized, nil
+}
+
+const (
+	maximumGenericCSVColumnIndex = 1023
+	maximumGenericCSVHeaderRow   = 10000
+	maximumGenericCSVValues      = 32
+)
+
+// NormalizeGenericCSVMapping 完整校验并规范化通用 CSV 映射，供解析与摘要共同消费。
+func NormalizeGenericCSVMapping(mapping GenericCSVMapping) (GenericCSVMapping, error) {
+	if mapping.Encoding != GENERIC_CSV_ENCODING_UTF8 && mapping.Encoding != GENERIC_CSV_ENCODING_GB18030 && mapping.Encoding != GENERIC_CSV_ENCODING_GBK {
+		return GenericCSVMapping{}, fmt.Errorf("invalid generic CSV encoding")
+	}
+	if mapping.Delimiter != GENERIC_CSV_DELIMITER_COMMA && mapping.Delimiter != GENERIC_CSV_DELIMITER_TAB {
+		return GenericCSVMapping{}, fmt.Errorf("invalid generic CSV delimiter")
+	}
+	if mapping.HeaderRow < 1 || mapping.HeaderRow > maximumGenericCSVHeaderRow || !isValidGenericCSVTimeFormat(mapping.TimeFormat) {
+		return GenericCSVMapping{}, fmt.Errorf("invalid generic CSV header row or time format")
+	}
+
+	columns := []*int{
+		&mapping.TimeColumn, &mapping.AmountColumn, &mapping.DirectionColumn, &mapping.IncomeColumn, &mapping.ExpenseColumn,
+		&mapping.CurrencyColumn, &mapping.TransactionIdColumn, &mapping.OrderIdColumn, &mapping.MerchantOrderIdColumn,
+		&mapping.CounterpartyColumn, &mapping.ItemColumn, &mapping.PaymentMethodColumn, &mapping.StatusColumn,
+		&mapping.TransactionTypeColumn, &mapping.NoteColumn,
+	}
+	seen := make(map[int]struct{}, len(columns))
+	for _, column := range columns {
+		if *column < -1 || *column > maximumGenericCSVColumnIndex {
+			return GenericCSVMapping{}, fmt.Errorf("generic CSV column is out of range")
+		}
+		if *column >= 0 {
+			if _, exists := seen[*column]; exists {
+				return GenericCSVMapping{}, fmt.Errorf("generic CSV columns must be unique")
+			}
+			seen[*column] = struct{}{}
+		}
+	}
+	if mapping.TimeColumn < 0 {
+		return GenericCSVMapping{}, fmt.Errorf("generic CSV time column is required")
+	}
+
+	var err error
+	mapping.IncomeValues, err = normalizeGenericCSVValues(mapping.IncomeValues)
+	if err != nil {
+		return GenericCSVMapping{}, err
+	}
+	mapping.ExpenseValues, err = normalizeGenericCSVValues(mapping.ExpenseValues)
+	if err != nil {
+		return GenericCSVMapping{}, err
+	}
+
+	switch mapping.AmountMode {
+	case GENERIC_CSV_AMOUNT_MODE_SIGNED:
+		if mapping.AmountColumn < 0 || mapping.DirectionColumn != -1 || mapping.IncomeColumn != -1 || mapping.ExpenseColumn != -1 ||
+			(mapping.SignedPositiveDirection != NORMALIZED_DIRECTION_INCOME && mapping.SignedPositiveDirection != NORMALIZED_DIRECTION_EXPENSE) ||
+			len(mapping.IncomeValues) != 0 || len(mapping.ExpenseValues) != 0 {
+			return GenericCSVMapping{}, fmt.Errorf("invalid signed amount mapping")
+		}
+	case GENERIC_CSV_AMOUNT_MODE_AMOUNT_DIRECTION:
+		if mapping.AmountColumn < 0 || mapping.DirectionColumn < 0 || mapping.IncomeColumn != -1 || mapping.ExpenseColumn != -1 ||
+			mapping.SignedPositiveDirection != "" || len(mapping.IncomeValues) == 0 || len(mapping.ExpenseValues) == 0 {
+			return GenericCSVMapping{}, fmt.Errorf("invalid amount-direction mapping")
+		}
+		values := make(map[string]struct{}, len(mapping.IncomeValues))
+		for _, value := range mapping.IncomeValues {
+			values[value] = struct{}{}
+		}
+		for _, value := range mapping.ExpenseValues {
+			if _, exists := values[value]; exists {
+				return GenericCSVMapping{}, fmt.Errorf("generic CSV direction values overlap")
+			}
+		}
+	case GENERIC_CSV_AMOUNT_MODE_INCOME_EXPENSE:
+		if mapping.AmountColumn != -1 || mapping.DirectionColumn != -1 || mapping.IncomeColumn < 0 || mapping.ExpenseColumn < 0 ||
+			mapping.SignedPositiveDirection != "" || len(mapping.IncomeValues) != 0 || len(mapping.ExpenseValues) != 0 {
+			return GenericCSVMapping{}, fmt.Errorf("invalid income-expense mapping")
+		}
+	default:
+		return GenericCSVMapping{}, fmt.Errorf("invalid generic CSV amount mode")
+	}
+
+	return mapping, nil
+}
+
+func isValidGenericCSVTimeFormat(value GenericCSVTimeFormat) bool {
+	switch value {
+	case GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, GENERIC_CSV_TIME_FORMAT_DATE_TIME_MINUTES,
+		GENERIC_CSV_TIME_FORMAT_SLASH_DATE_TIME_SECONDS, GENERIC_CSV_TIME_FORMAT_SLASH_DATE_TIME_MINUTES,
+		GENERIC_CSV_TIME_FORMAT_DATE, GENERIC_CSV_TIME_FORMAT_SLASH_DATE:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeGenericCSVValues(values []string) ([]string, error) {
+	if len(values) > maximumGenericCSVValues {
+		return nil, fmt.Errorf("too many generic CSV direction values")
+	}
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if !utf8.ValidString(value) {
+			return nil, fmt.Errorf("generic CSV direction value is invalid UTF-8")
+		}
+		value = strings.ToLower(normalizeIdentifier(value))
+		if value == "" || utf8.RuneCountInString(value) > 64 {
+			return nil, fmt.Errorf("generic CSV direction value is empty or too long")
+		}
+		for _, char := range value {
+			if unicode.IsControl(char) {
+				return nil, fmt.Errorf("generic CSV direction value contains control characters")
+			}
+		}
+		if _, exists := seen[value]; exists {
+			return nil, fmt.Errorf("generic CSV direction values contain duplicates")
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	sort.Strings(normalized)
 	return normalized, nil
 }
 
@@ -330,7 +454,7 @@ func isValidFileIssueCode(code IssueCode) bool {
 	}
 
 	value := string(code)
-	return strings.HasPrefix(value, "file_") || strings.HasPrefix(value, "alipay_file_") || strings.HasPrefix(value, "wechat_file_")
+	return strings.HasPrefix(value, "file_") || strings.HasPrefix(value, "alipay_file_") || strings.HasPrefix(value, "wechat_file_") || strings.HasPrefix(value, "bank_file_")
 }
 
 // isSourceSpecificIssueCode 允许解析器在自己的命名空间扩展稳定问题码，
@@ -338,7 +462,7 @@ func isValidFileIssueCode(code IssueCode) bool {
 func isSourceSpecificIssueCode(code IssueCode) bool {
 	value := string(code)
 
-	if len(value) > 64 || (!strings.HasPrefix(value, "alipay_") && !strings.HasPrefix(value, "wechat_")) {
+	if len(value) > 64 || (!strings.HasPrefix(value, "alipay_") && !strings.HasPrefix(value, "wechat_") && !strings.HasPrefix(value, "bank_")) {
 		return false
 	}
 
@@ -357,7 +481,7 @@ func validateIssueCodesForSource(sourceType SourceType, issues []EvidenceIssue) 
 	for _, issue := range issues {
 		value := string(issue.Code)
 
-		if (strings.HasPrefix(value, "alipay_") || strings.HasPrefix(value, "wechat_")) && !strings.HasPrefix(value, prefix) {
+		if (strings.HasPrefix(value, "alipay_") || strings.HasPrefix(value, "wechat_") || strings.HasPrefix(value, "bank_")) && !strings.HasPrefix(value, prefix) {
 			return fmt.Errorf("evidence issue code does not belong to source type")
 		}
 	}

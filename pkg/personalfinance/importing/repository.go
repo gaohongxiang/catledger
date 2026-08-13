@@ -518,5 +518,5 @@ func containsImportFileContentState(states []ImportFileContentState, expected Im
 }
 
 func isValidSourceType(sourceType SourceType) bool {
-	return sourceType == SOURCE_TYPE_ALIPAY || sourceType == SOURCE_TYPE_WECHAT
+	return sourceType == SOURCE_TYPE_ALIPAY || sourceType == SOURCE_TYPE_WECHAT || sourceType == SOURCE_TYPE_BANK
 }

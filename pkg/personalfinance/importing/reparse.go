@@ -38,6 +38,7 @@ type ReparseImportFileRequest struct {
 	Uid               int64
 	FileId            int64
 	SourceAccountId   int64
+	ParserName        string
 	ParseOptions      ResolvedParseOptions
 	ReparseReasonCode string
 }
@@ -125,6 +126,7 @@ func NewReparseService(repository ReparseImportRepository, storage ImportAvailab
 // ReparseImportFile 只在来源账户归属明确时写批次；弱证据不会自动创建来源身份。
 func (s *ReparseService) ReparseImportFile(c core.Context, request ReparseImportFileRequest) (*ReparseImportFileResult, error) {
 	if request.Uid < 1 || request.FileId < 1 || request.SourceAccountId < 0 ||
+		(request.ParserName != "" && !isTechnicalIdentifier(request.ParserName, 64)) ||
 		!isTechnicalIdentifier(request.ReparseReasonCode, 64) || request.ParseOptions.Validate() != nil {
 		return nil, ErrImportRequestInvalid
 	}
@@ -148,9 +150,12 @@ func (s *ReparseService) ReparseImportFile(c core.Context, request ReparseImport
 	}
 
 	evidenceFile := EvidenceFile{OriginalFileName: file.OriginalFileName, Content: content}
-	parser, descriptor, err := s.selectParser(c, evidenceFile)
+	parser, descriptor, err := s.selectParser(c, evidenceFile, request.ParserName)
 	if err != nil {
 		return nil, err
+	}
+	if err := request.ParseOptions.ValidateForDescriptor(descriptor); err != nil {
+		return nil, ErrImportRequestInvalid
 	}
 
 	parseContext := context.Context(c)
@@ -206,7 +211,7 @@ func (s *ReparseService) ReparseImportFile(c core.Context, request ReparseImport
 	return result, nil
 }
 
-func (s *ReparseService) selectParser(c core.Context, file EvidenceFile) (ImportEvidenceParser, ParserDescriptor, error) {
+func (s *ReparseService) selectParser(c core.Context, file EvidenceFile, parserName string) (ImportEvidenceParser, ParserDescriptor, error) {
 	probeContext := context.Context(c)
 	if probeContext == nil {
 		probeContext = context.Background()
@@ -223,6 +228,12 @@ func (s *ReparseService) selectParser(c core.Context, file EvidenceFile) (Import
 		}
 
 		descriptor := parser.Descriptor()
+		if parserName == "" && descriptor.ExplicitSelectionOnly {
+			continue
+		}
+		if parserName != "" && descriptor.Name != parserName {
+			continue
+		}
 		probe := parser.Probe(probeContext, file)
 		if probe.Validate(descriptor) != nil {
 			return nil, ParserDescriptor{}, &ImportFormatError{Code: ISSUE_CODE_FILE_FORMAT_INVALID}
@@ -272,7 +283,18 @@ func (s *ReparseService) resolveSourceAccount(c core.Context, request ReparseImp
 			return nil, nil, ErrImportSourceAccountNotFound
 		}
 
+		if account.SourceType != descriptor.SourceType || account.Status != SOURCE_ACCOUNT_STATUS_ACTIVE {
+			return nil, nil, ErrImportSourceAccountUnavailable
+		}
+		if descriptor.SourceType == SOURCE_TYPE_BANK && account.LedgerAccountId == nil {
+			return nil, nil, ErrImportSourceAccountUnavailable
+		}
+
 		return account, discovery, nil
+	}
+
+	if descriptor.SourceType == SOURCE_TYPE_BANK {
+		return nil, discovery, nil
 	}
 
 	if candidate.Kind != SOURCE_ACCOUNT_EVIDENCE_STABLE_IDENTIFIER {

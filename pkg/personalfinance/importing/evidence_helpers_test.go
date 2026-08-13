@@ -68,6 +68,7 @@ func TestIssueCodeNamespaces(t *testing.T) {
 		ISSUE_CODE_ROW_STATUS_UNKNOWN,
 		"alipay_unknown_export_status",
 		"wechat_xlsx_formula_unsupported",
+		"bank_row_column_mismatch",
 	}
 
 	for _, code := range valid {
@@ -82,6 +83,42 @@ func TestIssueCodeNamespaces(t *testing.T) {
 		if _, err := MarshalEvidenceIssues([]EvidenceIssue{{Code: code, Severity: ISSUE_SEVERITY_WARNING}}); err == nil {
 			t.Fatalf("invalid issue code %q was accepted", code)
 		}
+	}
+}
+
+func TestGenericCSVMappingValidationAndCanonicalization(t *testing.T) {
+	mapping := validGenericCSVMapping()
+	mapping.IncomeValues = []string{" Credit ", "IN"}
+	mapping.ExpenseValues = []string{"debit", "OUT"}
+	normalized, err := NormalizeGenericCSVMapping(mapping)
+	if err != nil {
+		t.Fatalf("valid mapping rejected: %v", err)
+	}
+	if strings.Join(normalized.IncomeValues, ",") != "credit,in" || strings.Join(normalized.ExpenseValues, ",") != "debit,out" {
+		t.Fatalf("direction values were not canonicalized: %+v", normalized)
+	}
+
+	invalid := []GenericCSVMapping{mapping, mapping, mapping, mapping, mapping}
+	invalid[0].TimeColumn = -2
+	invalid[1].AmountColumn = invalid[1].TimeColumn
+	invalid[2].IncomeValues = []string{"credit", " CREDIT "}
+	invalid[3].ExpenseValues = []string{"credit"}
+	invalid[4].IncomeColumn = 4
+	for index, candidate := range invalid {
+		if _, err := NormalizeGenericCSVMapping(candidate); err == nil {
+			t.Fatalf("invalid mapping %d was accepted: %+v", index, candidate)
+		}
+	}
+}
+
+func validGenericCSVMapping() GenericCSVMapping {
+	return GenericCSVMapping{
+		Encoding: GENERIC_CSV_ENCODING_UTF8, Delimiter: GENERIC_CSV_DELIMITER_COMMA, HeaderRow: 1,
+		TimeFormat: GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, AmountMode: GENERIC_CSV_AMOUNT_MODE_AMOUNT_DIRECTION,
+		TimeColumn: 0, AmountColumn: 1, DirectionColumn: 2, IncomeColumn: -1, ExpenseColumn: -1,
+		CurrencyColumn: -1, TransactionIdColumn: -1, OrderIdColumn: -1, MerchantOrderIdColumn: -1,
+		CounterpartyColumn: -1, ItemColumn: -1, PaymentMethodColumn: -1, StatusColumn: -1,
+		TransactionTypeColumn: -1, NoteColumn: -1, IncomeValues: []string{"credit"}, ExpenseValues: []string{"debit"},
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/mayswind/ezbookkeeping/pkg/converters/alipay"
+	"github.com/mayswind/ezbookkeeping/pkg/converters/genericbank"
 	"github.com/mayswind/ezbookkeeping/pkg/converters/wechat"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
@@ -64,6 +65,7 @@ func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error)
 			alipay.AlipayWebImportEvidenceParser,
 			wechat.WeChatPayImportEvidenceCsvParser,
 			wechat.WeChatPayImportEvidenceXlsxParser,
+			genericbank.ImportEvidenceParser,
 		},
 		sourceAccounts,
 		dedup,
@@ -76,11 +78,39 @@ func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error)
 }
 
 type personalFinanceReparseRequest struct {
-	FileId            int64  `json:"fileId,string" binding:"required,min=1"`
-	SourceAccountId   int64  `json:"sourceAccountId,string" binding:"omitempty,min=1"`
-	Currency          string `json:"currency" binding:"required,len=3"`
-	TimezoneUtcOffset int16  `json:"timezoneUtcOffset" binding:"min=-720,max=840"`
-	ReasonCode        string `json:"reasonCode" binding:"required,max=64"`
+	FileId            int64                             `json:"fileId,string" binding:"required,min=1"`
+	SourceAccountId   int64                             `json:"sourceAccountId,string" binding:"omitempty,min=1"`
+	ParserName        string                            `json:"parserName" binding:"omitempty,max=64"`
+	Currency          string                            `json:"currency" binding:"required,len=3"`
+	TimezoneUtcOffset int16                             `json:"timezoneUtcOffset" binding:"min=-720,max=840"`
+	ReasonCode        string                            `json:"reasonCode" binding:"required,max=64"`
+	GenericCSVMapping *personalFinanceGenericCSVMapping `json:"genericCsvMapping"`
+}
+
+type personalFinanceGenericCSVMapping struct {
+	Encoding                importing.GenericCSVEncoding   `json:"encoding"`
+	Delimiter               importing.GenericCSVDelimiter  `json:"delimiter"`
+	HeaderRow               int                            `json:"headerRow"`
+	TimeFormat              importing.GenericCSVTimeFormat `json:"timeFormat"`
+	AmountMode              importing.GenericCSVAmountMode `json:"amountMode"`
+	SignedPositiveDirection importing.NormalizedDirection  `json:"signedPositiveDirection"`
+	TimeColumn              int                            `json:"timeColumn"`
+	AmountColumn            int                            `json:"amountColumn"`
+	DirectionColumn         int                            `json:"directionColumn"`
+	IncomeColumn            int                            `json:"incomeColumn"`
+	ExpenseColumn           int                            `json:"expenseColumn"`
+	CurrencyColumn          int                            `json:"currencyColumn"`
+	TransactionIdColumn     int                            `json:"transactionIdColumn"`
+	OrderIdColumn           int                            `json:"orderIdColumn"`
+	MerchantOrderIdColumn   int                            `json:"merchantOrderIdColumn"`
+	CounterpartyColumn      int                            `json:"counterpartyColumn"`
+	ItemColumn              int                            `json:"itemColumn"`
+	PaymentMethodColumn     int                            `json:"paymentMethodColumn"`
+	StatusColumn            int                            `json:"statusColumn"`
+	TransactionTypeColumn   int                            `json:"transactionTypeColumn"`
+	NoteColumn              int                            `json:"noteColumn"`
+	IncomeValues            []string                       `json:"incomeValues"`
+	ExpenseValues           []string                       `json:"expenseValues"`
 }
 
 type personalFinanceSourceAccountSaveRequest struct {
@@ -179,9 +209,11 @@ func (a *PersonalFinanceImportsApi) ImportBatchReparseHandler(c *core.WebContext
 		Uid:             uid,
 		FileId:          request.FileId,
 		SourceAccountId: request.SourceAccountId,
+		ParserName:      request.ParserName,
 		ParseOptions: importing.ResolvedParseOptions{
 			Currency:          request.Currency,
 			TimezoneUtcOffset: request.TimezoneUtcOffset,
+			GenericCSVMapping: newGenericCSVMapping(request.GenericCSVMapping),
 		},
 		ReparseReasonCode: request.ReasonCode,
 	})
@@ -203,6 +235,22 @@ func (a *PersonalFinanceImportsApi) ImportBatchReparseHandler(c *core.WebContext
 		SourceType:            result.Descriptor.SourceType,
 		Format:                result.Descriptor.Format,
 	}, nil
+}
+
+func newGenericCSVMapping(mapping *personalFinanceGenericCSVMapping) *importing.GenericCSVMapping {
+	if mapping == nil {
+		return nil
+	}
+	return &importing.GenericCSVMapping{
+		Encoding: mapping.Encoding, Delimiter: mapping.Delimiter, HeaderRow: mapping.HeaderRow,
+		TimeFormat: mapping.TimeFormat, AmountMode: mapping.AmountMode, SignedPositiveDirection: mapping.SignedPositiveDirection,
+		TimeColumn: mapping.TimeColumn, AmountColumn: mapping.AmountColumn, DirectionColumn: mapping.DirectionColumn,
+		IncomeColumn: mapping.IncomeColumn, ExpenseColumn: mapping.ExpenseColumn, CurrencyColumn: mapping.CurrencyColumn,
+		TransactionIdColumn: mapping.TransactionIdColumn, OrderIdColumn: mapping.OrderIdColumn, MerchantOrderIdColumn: mapping.MerchantOrderIdColumn,
+		CounterpartyColumn: mapping.CounterpartyColumn, ItemColumn: mapping.ItemColumn, PaymentMethodColumn: mapping.PaymentMethodColumn,
+		StatusColumn: mapping.StatusColumn, TransactionTypeColumn: mapping.TransactionTypeColumn, NoteColumn: mapping.NoteColumn,
+		IncomeValues: append([]string(nil), mapping.IncomeValues...), ExpenseValues: append([]string(nil), mapping.ExpenseValues...),
+	}
 }
 
 // SourceAccountListHandler 返回不含身份哈希的来源账户档案。

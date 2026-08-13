@@ -6,16 +6,18 @@ type SourceType string
 const (
 	SOURCE_TYPE_ALIPAY SourceType = "alipay"
 	SOURCE_TYPE_WECHAT SourceType = "wechat"
+	SOURCE_TYPE_BANK   SourceType = "bank"
 )
 
 // EvidenceFormat 精确区分来源与导出格式，避免不同解析器争抢同一文件。
 type EvidenceFormat string
 
 const (
-	EVIDENCE_FORMAT_ALIPAY_APP_CSV EvidenceFormat = "alipay_app_csv"
-	EVIDENCE_FORMAT_ALIPAY_WEB_CSV EvidenceFormat = "alipay_web_csv"
-	EVIDENCE_FORMAT_WECHAT_CSV     EvidenceFormat = "wechat_csv"
-	EVIDENCE_FORMAT_WECHAT_XLSX    EvidenceFormat = "wechat_xlsx"
+	EVIDENCE_FORMAT_ALIPAY_APP_CSV   EvidenceFormat = "alipay_app_csv"
+	EVIDENCE_FORMAT_ALIPAY_WEB_CSV   EvidenceFormat = "alipay_web_csv"
+	EVIDENCE_FORMAT_WECHAT_CSV       EvidenceFormat = "wechat_csv"
+	EVIDENCE_FORMAT_WECHAT_XLSX      EvidenceFormat = "wechat_xlsx"
+	EVIDENCE_FORMAT_BANK_GENERIC_CSV EvidenceFormat = "bank_generic_csv"
 )
 
 // RuleVersion 是会影响持久证据或身份结果的显式规则版本。
@@ -84,6 +86,44 @@ const (
 	SOURCE_ACCOUNT_DISCOVERY_WECHAT_PREAMBLE_NICKNAME SourceAccountDiscoveryMethod = "wechat_preamble_nickname"
 	SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED            SourceAccountDiscoveryMethod = "user_selected"
 	SOURCE_ACCOUNT_DISCOVERY_MISSING                  SourceAccountDiscoveryMethod = "missing"
+)
+
+// GenericCSVEncoding 是通用银行 CSV 显式支持的字符编码。
+type GenericCSVEncoding string
+
+const (
+	GENERIC_CSV_ENCODING_UTF8    GenericCSVEncoding = "utf8"
+	GENERIC_CSV_ENCODING_GB18030 GenericCSVEncoding = "gb18030"
+	GENERIC_CSV_ENCODING_GBK     GenericCSVEncoding = "gbk"
+)
+
+// GenericCSVDelimiter 是通用银行 CSV 显式支持的分隔符。
+type GenericCSVDelimiter string
+
+const (
+	GENERIC_CSV_DELIMITER_COMMA GenericCSVDelimiter = "comma"
+	GENERIC_CSV_DELIMITER_TAB   GenericCSVDelimiter = "tab"
+)
+
+// GenericCSVAmountMode 描述金额和方向来自哪些列。
+type GenericCSVAmountMode string
+
+const (
+	GENERIC_CSV_AMOUNT_MODE_SIGNED           GenericCSVAmountMode = "signed"
+	GENERIC_CSV_AMOUNT_MODE_AMOUNT_DIRECTION GenericCSVAmountMode = "amount_direction"
+	GENERIC_CSV_AMOUNT_MODE_INCOME_EXPENSE   GenericCSVAmountMode = "income_expense"
+)
+
+// GenericCSVTimeFormat 是受限时间格式枚举；值同时是固定 Go layout，但不接受枚举外 layout。
+type GenericCSVTimeFormat string
+
+const (
+	GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS       GenericCSVTimeFormat = "2006-01-02 15:04:05"
+	GENERIC_CSV_TIME_FORMAT_DATE_TIME_MINUTES       GenericCSVTimeFormat = "2006-01-02 15:04"
+	GENERIC_CSV_TIME_FORMAT_SLASH_DATE_TIME_SECONDS GenericCSVTimeFormat = "2006/01/02 15:04:05"
+	GENERIC_CSV_TIME_FORMAT_SLASH_DATE_TIME_MINUTES GenericCSVTimeFormat = "2006/01/02 15:04"
+	GENERIC_CSV_TIME_FORMAT_DATE                    GenericCSVTimeFormat = "2006-01-02"
+	GENERIC_CSV_TIME_FORMAT_SLASH_DATE              GenericCSVTimeFormat = "2006/01/02"
 )
 
 // LocatorKind 表示证据行的物理定位方式。

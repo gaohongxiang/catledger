@@ -51,7 +51,7 @@ func BuildIdentityCandidate(input IdentityBuildInput) (*IdentityCandidate, error
 		return nil, err
 	}
 
-	if input.SourceType != SOURCE_TYPE_ALIPAY && input.SourceType != SOURCE_TYPE_WECHAT {
+	if !isValidSourceType(input.SourceType) {
 		return nil, fmt.Errorf("invalid source type")
 	}
 

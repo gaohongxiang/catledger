@@ -169,6 +169,18 @@ func TestIdentityAndCoreDigestGolden(t *testing.T) {
 	}
 }
 
+func TestBankIdentityUsesFrozenV1Encoding(t *testing.T) {
+	unixin, amount := int64(1720000000), int64(1234)
+	candidate, err := BuildIdentityCandidate(IdentityBuildInput{
+		ParseState: PARSE_STATE_VALID, SourceType: SOURCE_TYPE_BANK, SourceAccountKey: strings.Repeat("a", 64), BatchId: 1, RowNumber: 1,
+		Identifiers: SourceIdentifiers{TransactionId: "bank-txn-1"},
+		Normalized:  NormalizedEvidence{UnixTime: &unixin, TimezoneUtcOffset: 480, Amount: &amount, Currency: "CNY", Direction: NORMALIZED_DIRECTION_EXPENSE, TransactionType: SOURCE_TRANSACTION_TYPE_OTHER, EconomicEffect: ECONOMIC_EFFECT_NORMAL},
+	})
+	if err != nil || candidate == nil || candidate.IdentityKeyVersion != IDENTITY_KEY_VERSION_V1 || candidate.CoreDigestVersion != CORE_DIGEST_VERSION_V1 {
+		t.Fatalf("bank identity did not reuse frozen v1 semantics: %+v %v", candidate, err)
+	}
+}
+
 func TestIdentityPriorityAndInvalidRows(t *testing.T) {
 	unixTime := int64(1720000000)
 	amount := int64(1)

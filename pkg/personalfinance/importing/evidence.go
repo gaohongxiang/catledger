@@ -28,11 +28,12 @@ type EvidenceFile struct {
 
 // ParserDescriptor 固定一套解析与规则版本。
 type ParserDescriptor struct {
-	Name                 string
-	SourceType           SourceType
-	Format               EvidenceFormat
-	ParserVersion        RuleVersion
-	NormalizationVersion RuleVersion
+	Name                  string
+	SourceType            SourceType
+	Format                EvidenceFormat
+	ParserVersion         RuleVersion
+	NormalizationVersion  RuleVersion
+	ExplicitSelectionOnly bool
 }
 
 // Validate 防止两个来源解析器声明冲突的格式或空版本。
@@ -45,12 +46,16 @@ func (d ParserDescriptor) Validate() error {
 
 	switch d.Format {
 	case EVIDENCE_FORMAT_ALIPAY_APP_CSV, EVIDENCE_FORMAT_ALIPAY_WEB_CSV:
-		if d.SourceType != SOURCE_TYPE_ALIPAY {
+		if d.SourceType != SOURCE_TYPE_ALIPAY || d.ExplicitSelectionOnly {
 			return fmt.Errorf("Alipay evidence format requires Alipay source type")
 		}
 	case EVIDENCE_FORMAT_WECHAT_CSV, EVIDENCE_FORMAT_WECHAT_XLSX:
-		if d.SourceType != SOURCE_TYPE_WECHAT {
+		if d.SourceType != SOURCE_TYPE_WECHAT || d.ExplicitSelectionOnly {
 			return fmt.Errorf("WeChat evidence format requires WeChat source type")
+		}
+	case EVIDENCE_FORMAT_BANK_GENERIC_CSV:
+		if d.SourceType != SOURCE_TYPE_BANK || !d.ExplicitSelectionOnly {
+			return fmt.Errorf("generic bank CSV evidence format requires explicit bank selection")
 		}
 	default:
 		return fmt.Errorf("invalid evidence format")
@@ -99,6 +104,34 @@ func (r ProbeResult) Validate(descriptor ParserDescriptor) error {
 type ResolvedParseOptions struct {
 	Currency          string
 	TimezoneUtcOffset int16
+	GenericCSVMapping *GenericCSVMapping
+}
+
+// GenericCSVMapping 是显式通用银行 CSV 的规范化列映射。列索引从 0 开始，未使用列固定为 -1。
+type GenericCSVMapping struct {
+	Encoding                GenericCSVEncoding
+	Delimiter               GenericCSVDelimiter
+	HeaderRow               int
+	TimeFormat              GenericCSVTimeFormat
+	AmountMode              GenericCSVAmountMode
+	SignedPositiveDirection NormalizedDirection
+	TimeColumn              int
+	AmountColumn            int
+	DirectionColumn         int
+	IncomeColumn            int
+	ExpenseColumn           int
+	CurrencyColumn          int
+	TransactionIdColumn     int
+	OrderIdColumn           int
+	MerchantOrderIdColumn   int
+	CounterpartyColumn      int
+	ItemColumn              int
+	PaymentMethodColumn     int
+	StatusColumn            int
+	TransactionTypeColumn   int
+	NoteColumn              int
+	IncomeValues            []string
+	ExpenseValues           []string
 }
 
 // Validate 验证影响标准化和身份结果的解析选项。
@@ -117,6 +150,32 @@ func (o ResolvedParseOptions) Validate() error {
 		return fmt.Errorf("timezone UTC offset is out of range")
 	}
 
+	if o.GenericCSVMapping != nil {
+		if _, err := NormalizeGenericCSVMapping(*o.GenericCSVMapping); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ValidateForDescriptor 绑定通用映射与显式 parser，避免旧来源请求改变既有解析语义。
+func (o ResolvedParseOptions) ValidateForDescriptor(descriptor ParserDescriptor) error {
+	if err := descriptor.Validate(); err != nil {
+		return err
+	}
+	if err := o.Validate(); err != nil {
+		return err
+	}
+	if descriptor.Format == EVIDENCE_FORMAT_BANK_GENERIC_CSV {
+		if o.GenericCSVMapping == nil {
+			return fmt.Errorf("generic bank CSV mapping is required")
+		}
+		return nil
+	}
+	if o.GenericCSVMapping != nil {
+		return fmt.Errorf("generic CSV mapping is only valid for the generic bank parser")
+	}
 	return nil
 }
 
@@ -147,7 +206,7 @@ type SourceAccountCandidate struct {
 
 // Validate 强制来源账户候选的判别字段一致，避免把掩码或微信昵称当成稳定身份。
 func (c SourceAccountCandidate) Validate(sourceType SourceType) error {
-	if sourceType != SOURCE_TYPE_ALIPAY && sourceType != SOURCE_TYPE_WECHAT {
+	if !isValidSourceType(sourceType) {
 		return fmt.Errorf("invalid source type")
 	}
 

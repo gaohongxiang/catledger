@@ -104,6 +104,9 @@ func (s *SourceAccountService) SaveSourceAccount(c core.Context, request SourceA
 	if err != nil {
 		return nil, err
 	}
+	if request.SourceType == SOURCE_TYPE_BANK && ledgerAccountId == nil {
+		return nil, ErrImportRequestInvalid
+	}
 
 	now := s.now().Unix()
 

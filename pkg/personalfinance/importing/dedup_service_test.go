@@ -24,6 +24,25 @@ func TestParseOptionsDigestGolden(t *testing.T) {
 	}
 }
 
+func TestGenericParseOptionsDigestIncludesCanonicalMapping(t *testing.T) {
+	mapping := validGenericCSVMapping()
+	mapping.IncomeValues = []string{"IN", " Credit "}
+	first := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericCSVMapping: &mapping})
+	const expected = "8fca32a958301d4678fa25117f40f3f403b006743712546944c0807143305a67"
+	if first != expected {
+		t.Fatalf("generic parse-options digest changed: got %s, expected %s", first, expected)
+	}
+	mapping.IncomeValues = []string{"credit", "in"}
+	second := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericCSVMapping: &mapping})
+	if first == "" || first != second {
+		t.Fatalf("canonical generic digest is unstable: %q %q", first, second)
+	}
+	mapping.NoteColumn = 3
+	if changed := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericCSVMapping: &mapping}); changed == first {
+		t.Fatal("column mapping did not change generic parse-options digest")
+	}
+}
+
 func TestPersistentEvidenceSnapshotBytesCoversEveryRawString(t *testing.T) {
 	row := &RawImportRow{
 		SourceLocator:         "1",
