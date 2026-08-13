@@ -7,6 +7,8 @@ import type {
     PersonalFinanceSourceTransactionType,
     PersonalFinanceSourceType
 } from '../models.ts';
+import type { PersonalFinancePostingDraft } from '../models.ts';
+import type { TransactionType } from '@/core/transaction.ts';
 
 export type ReconciliationCaseStatus = 'open' | 'resolved' | 'action_required' | 'deferred';
 export type ReconciliationDecisionType = 'same_event' | 'internal_transfer' | 'refund_reversal' | 'independent' | 'defer';
@@ -87,6 +89,33 @@ export interface ReconciliationDecisionRequest {
     readonly expectedCaseVersion: number;
     readonly idempotencyKey: string;
     readonly decisionType: ReconciliationDecisionType;
+    readonly fieldSelection: ReconciliationFieldSelection;
+    readonly primaryDraft?: PersonalFinancePostingDraft;
+    readonly refundOriginalDraft?: PersonalFinancePostingDraft;
+    readonly refundTransactionDraft?: PersonalFinancePostingDraft;
+}
+
+export type ReconciliationMemberOrder = 0 | 1 | 2;
+
+export interface ReconciliationFieldSelection {
+    readonly accountAmountMemberOrder: ReconciliationMemberOrder;
+    readonly merchantItemMemberOrder: ReconciliationMemberOrder;
+    readonly refundOriginalMemberOrder: ReconciliationMemberOrder;
+}
+
+export interface ReconciliationDraftForm {
+    type: TransactionType | null;
+    categoryId: string;
+    sourceAccountId: string;
+    destinationAccountId: string;
+}
+
+export interface ReconciliationDecisionComposition {
+    readonly decisionType: ReconciliationDecisionType;
+    readonly fieldSelection: ReconciliationFieldSelection;
+    readonly primaryDraft?: ReconciliationDraftForm;
+    readonly refundOriginalDraft?: ReconciliationDraftForm;
+    readonly refundTransactionDraft?: ReconciliationDraftForm;
 }
 
 export interface ReconciliationDecisionResult {
