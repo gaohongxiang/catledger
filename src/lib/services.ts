@@ -197,6 +197,18 @@ import type {
     PersonalFinanceUndoImpact,
     PersonalFinanceConsistencyReport
 } from '@/features/personal-finance/models.ts';
+import type {
+    LoanCalculationInput,
+    LoanCloseContractRequest,
+    LoanContractLifecycleRequest,
+    LoanContractStatus,
+    LoanCreateContractRequest,
+    LoanReviseContractRequest,
+    LoanSettlementApplyRequest,
+    LoanSettlementCandidatesRequest,
+    LoanSettlementUndoImpactRequest,
+    LoanSettlementUndoRequest
+} from '@/features/personal-finance/loans/models.ts';
 
 interface PersonalFinanceReconciliationDecisionRequest {
     readonly caseId: string;
@@ -964,6 +976,46 @@ export default {
     },
     undoPersonalFinanceReconciliationCase: (request: { caseId: string, expectedCaseVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/reconciliation/cases/undo.json', request);
+    },
+    calculatePersonalFinanceLoan: (request: LoanCalculationInput): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/loans/calculate.json', request);
+    },
+    listPersonalFinanceLoanContracts: (params: { status: LoanContractStatus, cursor?: { updatedUnixTime: number, contractId: string }, limit: number }): ApiResponsePromise<unknown> => {
+        const cursor = params.cursor
+            ? `&cursor_updated_unix_time=${params.cursor.updatedUnixTime}&cursor_contract_id=${encodeURIComponent(params.cursor.contractId)}`
+            : '';
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/loans/contracts/list.json?status=${encodeURIComponent(params.status)}&limit=${params.limit}${cursor}`);
+    },
+    getPersonalFinanceLoanContract: ({ contractId }: { contractId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/loans/contracts/get.json?contract_id=${encodeURIComponent(contractId)}`);
+    },
+    createPersonalFinanceLoanContract: (request: LoanCreateContractRequest): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/loans/contracts/create.json', request);
+    },
+    revisePersonalFinanceLoanContract: (request: LoanReviseContractRequest): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/loans/contracts/revise.json', request);
+    },
+    closePersonalFinanceLoanContract: (request: LoanCloseContractRequest): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/loans/contracts/close.json', request);
+    },
+    reopenPersonalFinanceLoanContract: (request: LoanContractLifecycleRequest): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/loans/contracts/reopen.json', request);
+    },
+    cancelPersonalFinanceLoanContract: (request: LoanContractLifecycleRequest): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/loans/contracts/cancel.json', request);
+    },
+    listPersonalFinanceLoanSettlementCandidates: (request: LoanSettlementCandidatesRequest): ApiResponsePromise<unknown> => {
+        const installment = request.installmentId ? `&installment_id=${encodeURIComponent(request.installmentId)}` : '';
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/loans/settlements/candidates.json?contract_id=${encodeURIComponent(request.contractId)}&component_type=${encodeURIComponent(request.componentType)}${installment}`);
+    },
+    applyPersonalFinanceLoanSettlement: (request: LoanSettlementApplyRequest): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/loans/settlements/apply.json', request);
+    },
+    getPersonalFinanceLoanSettlementUndoImpact: (request: LoanSettlementUndoImpactRequest): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/loans/settlements/undo_impact.json?contract_id=${encodeURIComponent(request.contractId)}&action_id=${encodeURIComponent(request.actionId)}`);
+    },
+    undoPersonalFinanceLoanSettlement: (request: LoanSettlementUndoRequest): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/loans/settlements/undo.json', request);
     },
     getLatestExchangeRates: (param: { ignoreError?: boolean }): ApiResponsePromise<LatestExchangeRateResponse> => {
         return axios.get<ApiResponse<LatestExchangeRateResponse>>('v1/exchange_rates/latest.json', {

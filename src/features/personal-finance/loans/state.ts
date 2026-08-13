@@ -13,7 +13,6 @@ import type {
 
 export type LoanValidationCode =
     'date_invalid' |
-    'first_due_date_before_contract' |
     'amount_invalid' |
     'actual_disbursement_mismatch' |
     'term_invalid' |
@@ -51,6 +50,7 @@ export function createDefaultLoanCalculationInput(): LoanCalculationInput {
         inputMode: 'rate',
         repaymentMethod: 'equal_payment',
         rateQuoteType: 'annual',
+        effectiveDate: '',
         contractDate: '',
         firstDueDate: '',
         principalAmount: 0,
@@ -65,11 +65,8 @@ export function createDefaultLoanCalculationInput(): LoanCalculationInput {
 }
 
 export function validateLoanCalculationInput(input: LoanCalculationInput): LoanCalculationInput {
-    if (!isCivilDate(input.contractDate) || !isCivilDate(input.firstDueDate)) {
+    if (!isCivilDate(input.effectiveDate) || !isCivilDate(input.contractDate) || !isCivilDate(input.firstDueDate)) {
         throw new LoanValidationError('date_invalid');
-    }
-    if (input.firstDueDate < input.contractDate) {
-        throw new LoanValidationError('first_due_date_before_contract');
     }
     if (!isPositiveAmount(input.principalAmount) || !isPositiveAmount(input.actualDisbursementAmount) ||
         !isNonNegativeAmount(input.upfrontFeeAmount) || !isNonNegativeAmount(input.perPeriodFeeAmount) ||
@@ -83,11 +80,14 @@ export function validateLoanCalculationInput(input: LoanCalculationInput): LoanC
         throw new LoanValidationError('term_invalid');
     }
     if (input.inputMode === 'rate') {
-        if (!isPptr(input.quotedRatePptr) || typeof input.paymentBasisAmount !== 'undefined') {
+        if (!isRateQuoteType(input.rateQuoteType) || !isPptr(input.quotedRatePptr) || typeof input.paymentBasisAmount !== 'undefined') {
             throw new LoanValidationError('rate_required');
         }
-    } else if (!isPositiveAmount(input.paymentBasisAmount) || typeof input.quotedRatePptr !== 'undefined') {
-        throw new LoanValidationError('payment_required');
+    } else {
+        if (input.inputMode !== 'repayment' || input.rateQuoteType !== '' ||
+            !isPositiveAmount(input.paymentBasisAmount) || typeof input.quotedRatePptr !== 'undefined') {
+            throw new LoanValidationError('payment_required');
+        }
     }
     if (input.rateQuoteType === 'installment' && input.repaymentMethod !== 'flat') {
         throw new LoanValidationError('installment_quote_requires_flat');
@@ -131,7 +131,9 @@ export function buildLoanSettlementApplyRequest(params: {
     idempotencyKey: string;
     components: readonly LoanSettlementComponent[];
 }): LoanSettlementApplyRequest {
-    if (!params.contractId || !Number.isSafeInteger(params.contractVersion) || params.contractVersion < 1 || !params.idempotencyKey) {
+    if (!isPositiveIdentifier(params.contractId) ||
+        (typeof params.installmentId !== 'undefined' && !isPositiveIdentifier(params.installmentId)) ||
+        !Number.isSafeInteger(params.contractVersion) || params.contractVersion < 1 || !params.idempotencyKey) {
         throw new LoanValidationError('contract_invalid');
     }
     if (!params.components.length) {
@@ -153,8 +155,7 @@ export function buildLoanSettlementApplyRequest(params: {
         if (!isPositiveAmount(component.allocatedAmount)) {
             throw new LoanValidationError('amount_invalid');
         }
-        validateSettlementSource(component);
-        return component;
+        return copySettlementComponent(component);
     });
 
     return {
@@ -172,7 +173,7 @@ export function buildLoanSettlementUndoRequest(params: {
     actionId: string;
     idempotencyKey: string;
 }): LoanSettlementUndoRequest {
-    if (!params.contractId || !params.actionId || !params.idempotencyKey ||
+    if (!isPositiveIdentifier(params.contractId) || !isPositiveIdentifier(params.actionId) || !params.idempotencyKey ||
         !Number.isSafeInteger(params.contractVersion) || params.contractVersion < 1) {
         throw new LoanValidationError('undo_invalid');
     }
@@ -203,9 +204,20 @@ function validateDiscount(input: LoanCalculationInput): void {
 }
 
 function validateSettlementSource(component: LoanSettlementComponent): void {
-    const hasExisting = typeof component.existingTransactionId === 'string' && !!component.existingTransactionId;
+    const hasExisting = typeof component.existingTransactionId === 'string' && isPositiveIdentifier(component.existingTransactionId);
     const hasDraft = typeof component.ledgerDraft !== 'undefined';
     if (hasExisting === hasDraft) {
+        throw new LoanValidationError('component_source_invalid');
+    }
+    if (hasExisting) {
+        const requiresTransfer = component.componentType === 'disbursement' || component.componentType === 'principal';
+        const hasCounterpartSnapshot = typeof component.expectedCounterpartUpdatedUnixTime !== 'undefined';
+        if (!isPositiveAmount(component.expectedUpdatedUnixTime) || requiresTransfer !== hasCounterpartSnapshot ||
+            (hasCounterpartSnapshot && !isPositiveAmount(component.expectedCounterpartUpdatedUnixTime))) {
+            throw new LoanValidationError('component_source_invalid');
+        }
+    } else if (typeof component.expectedUpdatedUnixTime !== 'undefined' ||
+        typeof component.expectedCounterpartUpdatedUnixTime !== 'undefined') {
         throw new LoanValidationError('component_source_invalid');
     }
     if (component.ledgerDraft) {
@@ -213,14 +225,35 @@ function validateSettlementSource(component: LoanSettlementComponent): void {
     }
 }
 
+function copySettlementComponent(component: LoanSettlementComponent): LoanSettlementComponent {
+    validateSettlementSource(component);
+    if (component.ledgerDraft) {
+        return {
+            componentType: component.componentType,
+            allocatedAmount: component.allocatedAmount,
+            ledgerDraft: { ...component.ledgerDraft }
+        };
+    }
+    return {
+        componentType: component.componentType,
+        allocatedAmount: component.allocatedAmount,
+        existingTransactionId: component.existingTransactionId,
+        expectedUpdatedUnixTime: component.expectedUpdatedUnixTime,
+        ...(typeof component.expectedCounterpartUpdatedUnixTime === 'undefined'
+            ? {}
+            : { expectedCounterpartUpdatedUnixTime: component.expectedCounterpartUpdatedUnixTime })
+    };
+}
+
 function validateLedgerDraft(componentType: LoanComponentType, amount: number, draft: LoanLedgerDraft): void {
     if (!isCivilDate(draft.transactionDate) || !isPositiveAmount(draft.amount) || draft.amount !== amount ||
-        !/^[A-Z]{3}$/.test(draft.currency) || !draft.sourceAccountId) {
+        !/^[A-Z]{3}$/.test(draft.currency) || !isPositiveIdentifier(draft.sourceAccountId) ||
+        !isPositiveIdentifier(draft.categoryId)) {
         throw new LoanValidationError('ledger_draft_invalid');
     }
     const requiresTransfer = componentType === 'disbursement' || componentType === 'principal';
     if (requiresTransfer) {
-        if (draft.transactionType !== 'transfer' || !draft.destinationAccountId || draft.destinationAccountId === draft.sourceAccountId) {
+        if (draft.transactionType !== 'transfer' || !isPositiveIdentifier(draft.destinationAccountId) || draft.destinationAccountId === draft.sourceAccountId) {
             throw new LoanValidationError('ledger_semantics_invalid');
         }
         return;
@@ -246,10 +279,18 @@ function isPptr(value?: string): value is string {
     return typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value);
 }
 
+function isRateQuoteType(value: string): boolean {
+    return value === 'annual' || value === 'monthly' || value === 'daily' || value === 'installment';
+}
+
 function isPositiveAmount(value?: number): value is number {
     return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
 function isNonNegativeAmount(value?: number): value is number {
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isPositiveIdentifier(value: string): boolean {
+    return /^[1-9]\d*$/.test(value) && BigInt(value) <= 9223372036854775807n;
 }

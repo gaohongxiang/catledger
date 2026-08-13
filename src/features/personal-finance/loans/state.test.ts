@@ -20,6 +20,7 @@ import {
 function calculationInput(overrides: Partial<LoanCalculationInput> = {}): LoanCalculationInput {
     return {
         ...createDefaultLoanCalculationInput(),
+        effectiveDate: '2026-08-14',
         contractDate: '2026-08-13',
         firstDueDate: '2026-09-13',
         principalAmount: 5000000,
@@ -67,7 +68,9 @@ function existingComponent(componentType: 'principal' | 'interest' | 'fee', amou
     return {
         componentType,
         allocatedAmount: amount,
-        existingTransactionId: `tx-${componentType}`
+        existingTransactionId: componentType === 'principal' ? '101' : componentType === 'interest' ? '102' : '103',
+        expectedUpdatedUnixTime: 1000 + amount,
+        ...(componentType === 'principal' ? { expectedCounterpartUpdatedUnixTime: 2000 + amount } : {})
     };
 }
 
@@ -76,9 +79,27 @@ describe('personal finance loan shell state', () => {
         expect(validateLoanCalculationInput(calculationInput()).quotedRatePptr).toBe('120000000000');
         expect(validateLoanCalculationInput(calculationInput({
             inputMode: 'repayment',
+            rateQuoteType: '',
             quotedRatePptr: undefined,
             paymentBasisAmount: 446059
         })).paymentBasisAmount).toBe(446059);
+        expectValidationCode(calculationInput({
+            inputMode: 'repayment',
+            quotedRatePptr: undefined,
+            paymentBasisAmount: 446059
+        }), 'payment_required');
+        expectValidationCode(calculationInput({ rateQuoteType: '' }), 'rate_required');
+    });
+
+    it('requires all three explicit civil dates without inventing relative ordering', () => {
+        expectValidationCode(calculationInput({ effectiveDate: '' }), 'date_invalid');
+        expectValidationCode(calculationInput({ contractDate: '2026-02-30' }), 'date_invalid');
+        expectValidationCode(calculationInput({ firstDueDate: 'not-a-date' }), 'date_invalid');
+        expect(validateLoanCalculationInput(calculationInput({
+            effectiveDate: '2026-08-20',
+            contractDate: '2026-09-20',
+            firstDueDate: '2026-08-20'
+        })).firstDueDate).toBe('2026-08-20');
     });
 
     it('keeps net disbursement and first-version quote rules explicit', () => {
@@ -128,6 +149,11 @@ describe('personal finance loan shell state', () => {
 
         expect(request.expectedContractVersion).toBe(7);
         expect(request.components.map(component => component.componentType)).toEqual(['principal', 'interest', 'fee']);
+        expect(request.components[0]).toMatchObject({
+            existingTransactionId: '101',
+            expectedUpdatedUnixTime: 401000,
+            expectedCounterpartUpdatedUnixTime: 402000
+        });
     });
 
     it('requires principal to use transfer semantics and interest or fee to use expense semantics', () => {
@@ -142,8 +168,8 @@ describe('personal finance loan shell state', () => {
                 ledgerDraft: {
                     transactionType: 'expense',
                     transactionDate: '2026-09-13',
-                    sourceAccountId: 'asset',
-                    categoryId: 'expense-category',
+                    sourceAccountId: '1001',
+                    categoryId: '2001',
                     amount: 400000,
                     currency: 'CNY'
                 }
@@ -161,8 +187,8 @@ describe('personal finance loan shell state', () => {
                 ledgerDraft: {
                     transactionType: 'expense',
                     transactionDate: '2026-09-13',
-                    sourceAccountId: 'asset',
-                    categoryId: 'interest-category',
+                    sourceAccountId: '1001',
+                    categoryId: '2001',
                     amount: 50000,
                     currency: 'CNY'
                 }
@@ -179,7 +205,9 @@ describe('personal finance loan shell state', () => {
             components: [{
                 componentType: 'disbursement',
                 allocatedAmount: 4900000,
-                existingTransactionId: 'tx-disbursement'
+                existingTransactionId: '104',
+                expectedUpdatedUnixTime: 1000,
+                expectedCounterpartUpdatedUnixTime: 1001
             }]
         }), 'component_context_mismatch');
 
@@ -190,6 +218,126 @@ describe('personal finance loan shell state', () => {
             idempotencyKey: 'key',
             components: [existingComponent('principal', 200000), existingComponent('principal', 200000)]
         }), 'component_duplicate');
+    });
+
+    it('requires complete existing snapshots and keeps draft and existing sources strictly exclusive', () => {
+        const base = {
+            contractId: '101',
+            contractVersion: 7,
+            installmentId: '301',
+            idempotencyKey: 'key'
+        };
+        expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
+            ...base,
+            components: [{
+                componentType: 'interest',
+                allocatedAmount: 50000,
+                existingTransactionId: '102'
+            } as LoanSettlementComponent]
+        }), 'component_source_invalid');
+        expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
+            ...base,
+            components: [{
+                componentType: 'interest',
+                allocatedAmount: 50000,
+                existingTransactionId: '102',
+                expectedUpdatedUnixTime: 0
+            }]
+        }), 'component_source_invalid');
+        expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
+            ...base,
+            components: [{
+                componentType: 'principal',
+                allocatedAmount: 400000,
+                existingTransactionId: '101',
+                expectedUpdatedUnixTime: 1000
+            }]
+        }), 'component_source_invalid');
+        expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
+            ...base,
+            components: [{
+                componentType: 'interest',
+                allocatedAmount: 50000,
+                existingTransactionId: '102',
+                expectedUpdatedUnixTime: 1000,
+                expectedCounterpartUpdatedUnixTime: 1001
+            }]
+        }), 'component_source_invalid');
+        expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
+            ...base,
+            components: [{
+                componentType: 'interest',
+                allocatedAmount: 50000,
+                existingTransactionId: '102',
+                expectedUpdatedUnixTime: 1000,
+                ledgerDraft: {
+                    transactionType: 'expense',
+                    transactionDate: '2026-09-13',
+                    sourceAccountId: '1001',
+                    categoryId: '2001',
+                    amount: 50000,
+                    currency: 'CNY'
+                }
+            } as LoanSettlementComponent]
+        }), 'component_source_invalid');
+
+        const request = buildLoanSettlementApplyRequest({
+            ...base,
+            components: [{
+                componentType: 'interest',
+                allocatedAmount: 50000,
+                ledgerDraft: {
+                    transactionType: 'expense',
+                    transactionDate: '2026-09-13',
+                    sourceAccountId: '1001',
+                    categoryId: '2001',
+                    amount: 50000,
+                    currency: 'CNY'
+                }
+            }]
+        });
+        expect(request.components[0]).not.toHaveProperty('expectedUpdatedUnixTime');
+        expect(request.components[0]).not.toHaveProperty('expectedCounterpartUpdatedUnixTime');
+    });
+
+    it('requires positive int64 IDs and an explicit transfer category in ledger drafts', () => {
+        expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
+            contractId: 'not-an-id',
+            contractVersion: 7,
+            idempotencyKey: 'key',
+            components: []
+        }), 'contract_invalid');
+        expectLoanValidationCode(() => buildLoanSettlementApplyRequest({
+            contractId: '101',
+            contractVersion: 7,
+            installmentId: '9223372036854775808',
+            idempotencyKey: 'key',
+            components: [existingComponent('principal', 400000)]
+        }), 'contract_invalid');
+
+        const request = buildLoanSettlementApplyRequest({
+            contractId: '101',
+            contractVersion: 7,
+            idempotencyKey: 'key',
+            components: [{
+                componentType: 'disbursement',
+                allocatedAmount: 4900000,
+                ledgerDraft: {
+                    transactionType: 'transfer',
+                    transactionDate: '2026-08-14',
+                    sourceAccountId: '1001',
+                    destinationAccountId: '1002',
+                    categoryId: '2002',
+                    amount: 4900000,
+                    currency: 'CNY'
+                }
+            }]
+        });
+        expect(request.components[0]?.ledgerDraft).toMatchObject({
+            sourceAccountId: '1001',
+            destinationAccountId: '1002',
+            categoryId: '2002'
+        });
     });
 
     it('only permits revision and cancellation before any active ledger allocation', () => {

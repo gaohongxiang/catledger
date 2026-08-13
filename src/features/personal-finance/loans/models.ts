@@ -29,7 +29,8 @@ export interface LoanCalculationInput {
     readonly fundingType: LoanFundingType;
     readonly inputMode: LoanInputMode;
     readonly repaymentMethod: LoanRepaymentMethod;
-    readonly rateQuoteType: LoanRateQuoteType;
+    readonly rateQuoteType: LoanRateQuoteType | '';
+    readonly effectiveDate: string;
     readonly contractDate: string;
     readonly firstDueDate: string;
     readonly principalAmount: number;
@@ -75,9 +76,9 @@ export interface LoanCalculatedInstallment {
 }
 
 export interface LoanCalculationResult {
-    readonly calculationVersion: 'loan-calculation-v1' | string;
-    readonly roundingVersion: 'loan-rounding-half-up-v1' | string;
-    readonly irrVersion: 'periodic-irr-v1' | string;
+    readonly calculationVersion: 'loan-calculation-v1';
+    readonly roundingVersion: 'loan-rounding-half-up-v1';
+    readonly irrVersion: 'periodic-irr-v1';
     readonly summary: LoanCalculationSummary;
     readonly installments: LoanCalculatedInstallment[];
 }
@@ -195,6 +196,7 @@ export interface LoanTransferLedgerDraft {
     readonly transactionDate: string;
     readonly sourceAccountId: string;
     readonly destinationAccountId: string;
+    readonly categoryId: string;
     readonly amount: number;
     readonly currency: string;
 }
@@ -221,6 +223,7 @@ export interface LoanSettlementCandidate {
     readonly eligible: boolean;
     readonly reasonCodes: LoanReason[];
     readonly updatedUnixTime: number;
+    readonly counterpartUpdatedUnixTime?: number;
 }
 
 export interface LoanSettlementCandidateGroup {
@@ -238,8 +241,18 @@ export interface LoanSettlementCandidatesResult {
 }
 
 export type LoanSettlementSource =
-    { readonly existingTransactionId: string; readonly ledgerDraft?: never } |
-    { readonly existingTransactionId?: never; readonly ledgerDraft: LoanLedgerDraft };
+    {
+        readonly existingTransactionId: string;
+        readonly expectedUpdatedUnixTime: number;
+        readonly expectedCounterpartUpdatedUnixTime?: number;
+        readonly ledgerDraft?: never;
+    } |
+    {
+        readonly existingTransactionId?: never;
+        readonly expectedUpdatedUnixTime?: never;
+        readonly expectedCounterpartUpdatedUnixTime?: never;
+        readonly ledgerDraft: LoanLedgerDraft;
+    };
 
 export type LoanSettlementComponent = LoanSettlementSource & {
     readonly componentType: LoanComponentType;
@@ -275,7 +288,6 @@ export interface LoanActionResult {
     readonly allocations: LoanSettlementAllocation[];
     readonly replayed: boolean;
     readonly reasonCodes: LoanReason[];
-    readonly errorCode: string;
 }
 
 export interface LoanSettlementUndoImpact {
