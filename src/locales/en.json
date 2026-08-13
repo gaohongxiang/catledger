@@ -2757,6 +2757,127 @@
     "Click to close": "Click to close",
     "personalFinance": {
         "nav": "Personal Finance Imports",
+        "reconciliation": {
+            "nav": "Reconciliation",
+            "eyebrow": "Cross-source evidence review",
+            "title": "Reconciliation Workbench",
+            "subtitle": "Compare payment-platform and funding-account evidence side by side, understand each candidate, and decide the real relationship.",
+            "anchorBatch": "Candidate anchor batch",
+            "generate": "Generate Candidates",
+            "pending": "Pending",
+            "total": "All Cases",
+            "score": "score",
+            "scoreValue": "Candidate score {score}",
+            "noCases": "No reconciliation cases",
+            "noCasesHint": "Choose a parsed batch to generate candidates, or refresh later.",
+            "selectCase": "Select a reconciliation case",
+            "selectCaseHint": "Safe evidence, matching reasons, and persisted human decisions appear here.",
+            "caseTitle": "Evidence Comparison",
+            "version": "Case version {version}",
+            "lastEvaluated": "Last evaluated {time}",
+            "whyMatched": "Why this is a candidate",
+            "noReason": "No display-safe candidate reason was returned",
+            "evidenceTitle": "Source Evidence",
+            "evidencePrivacy": "Only backend-provided masked summaries are shown. Internal hashes, full source accounts, and raw payloads never enter this view.",
+            "maskedSource": "Masked source account",
+            "counterparty": "Counterparty",
+            "item": "Item or summary",
+            "paymentMethod": "Payment method",
+            "decisionTitle": "Human Decision",
+            "decisionHint": "Choose the economic relationship and confirm explicitly. The request carries the current case version and a new idempotency key.",
+            "currentDecision": "Saved decision: {decision}",
+            "confirmDecision": "Confirm Relationship",
+            "generated": "Candidates generated",
+            "generatedWithLimit": "Candidates generated; this bounded scan reached its limit",
+            "decisionSaved": "Human decision saved",
+            "filter": {
+                "all": "All",
+                "pending": "Pending",
+                "action": "Action",
+                "resolved": "Resolved"
+            },
+            "status": {
+                "open": "Pending",
+                "resolved": "Resolved",
+                "actionRequired": "Action required",
+                "deferred": "Deferred"
+            },
+            "direction": {
+                "income": "Income",
+                "expense": "Expense",
+                "neutral": "Neutral",
+                "unknown": "Unknown direction"
+            },
+            "decision": {
+                "sameEvent": "Same economic event",
+                "internalTransfer": "Internal transfer sides",
+                "refundReversal": "Refund or reversal",
+                "independent": "Independent",
+                "defer": "Defer",
+                "reopen": "Reopen"
+            },
+            "decisionHintByType": {
+                "same_event": "Multiple source records support one formal transaction.",
+                "internal_transfer": "The records are the funding sides of one internal transfer.",
+                "refund_reversal": "Keep the original and refund as separate events with a relationship.",
+                "independent": "Persist that they do not match, avoiding repeated prompts.",
+                "defer": "Keep the candidate without changing the ledger or source-row state."
+            },
+            "reason": {
+                "amountCurrencyExact": "Amount and currency match",
+                "identifierMatch": "Order or business identifiers are related",
+                "ledgerAccountMatch": "Ledger-account evidence matches",
+                "oppositeDirection": "Cash-flow directions are opposite",
+                "paymentMethodMatch": "Payment-method evidence matches",
+                "refundSignal": "Refund or reversal signal found",
+                "sameDirection": "Cash-flow directions are the same",
+                "textSimilarity": "Merchant or item summaries are similar",
+                "timeDistance": "Transactions are {value} seconds apart",
+                "timeProximity": "Transaction times are close",
+                "transferSignal": "Internal-transfer signal found",
+                "transactionModified": "A formal transaction changed after the decision",
+                "transactionMissing": "A linked formal transaction is missing",
+                "sharedDependency": "A formal transaction has another dependency",
+                "multipleLedgerEvents": "Members already link to different ledger events",
+                "transferPairIncomplete": "The transfer pair is incomplete",
+                "loanDependency": "A loan or installment plan uses this transaction",
+                "otherActiveCase": "Another active case still uses this transaction",
+                "unknown": "Server reason: {code}"
+            },
+            "confirm": {
+                "title": "Confirm Human Decision",
+                "message": "Mark this case as “{decision}”. The decision is persisted and will not be silently overwritten by overlapping imports.",
+                "versionNotice": "The server checks the current case version. If evidence changed, refresh and review again."
+            },
+            "undo": {
+                "inspect": "Inspect Undo Impact",
+                "title": "Undo Impact and Reopen",
+                "allowed": "This impact currently qualifies for automatic undo. Confirmation creates a new reopen revision.",
+                "actionRequired": "This impact cannot safely change balances automatically. Confirmation only records an action-required reopen flow.",
+                "reasons": "Limiting reasons",
+                "confirm": "Undo and Reopen",
+                "confirmActionRequired": "Send to Manual Action",
+                "saved": "Undo request saved",
+                "metric": {
+                    "affected": "Affected",
+                    "created": "Created",
+                    "attached": "Attached",
+                    "modified": "Modified",
+                    "missing": "Missing",
+                    "shared": "Shared"
+                }
+            },
+            "mobile": {
+                "title": "Reconciliation Summary",
+                "readOnly": "Mobile is read-only. Decisions and undo actions are unavailable.",
+                "desktopHint": "Generate candidates, make decisions, and confirm undo impact on desktop.",
+                "version": "v{version}"
+            },
+            "error": {
+                "operationFailed": "Reconciliation operation failed",
+                "staleOrFailed": "The case may have changed or the operation failed. Refresh and try again."
+            }
+        },
         "eyebrow": "Traceable imports",
         "title": "Personal Finance Import Workbench",
         "subtitle": "Keep source evidence, explain duplicates and conflicts, then confirm each transaction before it reaches your ledger.",
