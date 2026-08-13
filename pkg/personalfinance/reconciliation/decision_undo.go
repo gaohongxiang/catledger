@@ -12,6 +12,10 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 )
 
+type activeLoanTransactionBinding struct{}
+
+func (activeLoanTransactionBinding) TableName() string { return "pf_loan_transaction_binding" }
+
 type undoInspection struct {
 	impact       *UndoImpact
 	decision     *Decision
@@ -95,6 +99,21 @@ func inspectUndoInSession(sess *xorm.Session, uid int64, caseRecord *Case) (*und
 		return nil, err
 	}
 	inspection.transactions = transactions
+	loanCandidateIds := make(map[int64]struct{})
+	for transactionId, method := range inspection.methods {
+		if method != TRANSACTION_CREATION_METHOD_RECONCILIATION_CREATED {
+			continue
+		}
+		loanCandidateIds[transactionId] = struct{}{}
+		if transaction := transactions[transactionId]; transaction != nil && isTransferTransaction(transaction) && transaction.RelatedId > 0 {
+			loanCandidateIds[transaction.RelatedId] = struct{}{}
+		}
+	}
+	loanRelationCount, err := countActiveLoanRelations(sess, uid, loanCandidateIds)
+	if err != nil {
+		return nil, err
+	}
+	inspection.impact.LoanRelationCount = loanRelationCount
 
 	createdEffects := make(map[int64]*LedgerEffect)
 	effects := make([]*LedgerEffect, 0)
@@ -117,6 +136,9 @@ func inspectUndoInSession(sess *xorm.Session, uid int64, caseRecord *Case) (*und
 	}
 
 	reasons := make(map[UndoImpactReason]struct{})
+	if inspection.impact.LoanRelationCount > 0 {
+		reasons[UNDO_REASON_LOAN_RELATION_PRESENT] = struct{}{}
+	}
 	incompleteTransferEvents := make(map[string]struct{})
 	for transactionId, method := range inspection.methods {
 		if method != TRANSACTION_CREATION_METHOD_RECONCILIATION_CREATED {
@@ -169,6 +191,28 @@ func inspectUndoInSession(sess *xorm.Session, uid int64, caseRecord *Case) (*und
 	inspection.impact.CanAutomaticallyDelete = inspection.impact.ReconciliationCreatedCount > 0 && len(inspection.impact.ReasonCodes) == 0
 	inspection.impact.CanReopen = inspection.impact.ReconciliationCreatedCount == 0 || inspection.impact.CanAutomaticallyDelete
 	return inspection, nil
+}
+
+func countActiveLoanRelations(sess *xorm.Session, uid int64, transactionIds map[int64]struct{}) (int64, error) {
+	if sess == nil || uid < 1 {
+		return 0, ErrDecisionRequestInvalid
+	}
+	if len(transactionIds) == 0 {
+		return 0, nil
+	}
+	ids := make([]int64, 0, len(transactionIds))
+	for transactionId := range transactionIds {
+		if transactionId < 1 {
+			return 0, fmt.Errorf("reconciliation loan relation candidate invariant mismatch")
+		}
+		ids = append(ids, transactionId)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	count, err := sess.Where("uid=? AND current_allocation_id IS NOT NULL", uid).In("transaction_id", ids).Count(new(activeLoanTransactionBinding))
+	if err != nil {
+		return 0, fmt.Errorf("count reconciliation active loan relations: %w", err)
+	}
+	return count, nil
 }
 
 func applyReopenDecision(c core.Context, database *datastore.Database, sess *xorm.Session, execution *decisionExecution, ledger DecisionLedger, generateId func() int64, now int64, caseRecord *Case, members []*caseMemberRows) (*reopenOutcome, error) {

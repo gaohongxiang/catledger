@@ -190,6 +190,7 @@ type personalFinanceReconciliationUndoImpactResponse struct {
 	ModifiedTransactionCount    int64                             `json:"modifiedTransactionCount"`
 	SharedTransactionCount      int64                             `json:"sharedTransactionCount"`
 	BatchRelationCount          int64                             `json:"batchRelationCount"`
+	LoanRelationCount           int64                             `json:"loanRelationCount"`
 	IncompleteTransferPairCount int64                             `json:"incompleteTransferPairCount"`
 	CanReopen                   bool                              `json:"canReopen"`
 	CanAutomaticallyDelete      bool                              `json:"canAutomaticallyDelete"`
@@ -204,6 +205,7 @@ var personalFinanceReconciliationDecisionReasonCodes = map[string]struct{}{
 	"ledger_event_missing":           {},
 	"ledger_event_modified":          {},
 	"ledger_event_type_mismatch":     {},
+	"loan_relation_present":          {},
 	"multiple_existing_events":       {},
 	"refund_events_not_distinct":     {},
 	"refund_roles_ambiguous":         {},
@@ -229,6 +231,7 @@ var personalFinanceReconciliationUndoReasonCodes = map[reconciliation.UndoImpact
 	reconciliation.UNDO_REASON_TRANSACTION_MODIFIED:     {},
 	reconciliation.UNDO_REASON_TRANSACTION_SHARED:       {},
 	reconciliation.UNDO_REASON_BATCH_RELATION_PRESENT:   {},
+	reconciliation.UNDO_REASON_LOAN_RELATION_PRESENT:    {},
 	reconciliation.UNDO_REASON_TRANSFER_PAIR_INCOMPLETE: {},
 	reconciliation.UNDO_REASON_EVIDENCE_LIMIT_REACHED:   {},
 }
@@ -696,7 +699,7 @@ func newPersonalFinanceReconciliationUndoImpactResponse(value *reconciliation.Un
 		return nil, errors.New("reconciliation undo impact is invalid")
 	}
 	for _, count := range []int64{value.AttachedExistingCount, value.ReconciliationCreatedCount, value.TransactionCount, value.MissingTransactionCount,
-		value.ModifiedTransactionCount, value.SharedTransactionCount, value.BatchRelationCount, value.IncompleteTransferPairCount} {
+		value.ModifiedTransactionCount, value.SharedTransactionCount, value.BatchRelationCount, value.LoanRelationCount, value.IncompleteTransferPairCount} {
 		if count < 0 {
 			return nil, errors.New("reconciliation undo impact count is invalid")
 		}
@@ -721,6 +724,7 @@ func newPersonalFinanceReconciliationUndoImpactResponse(value *reconciliation.Un
 		ReconciliationCreatedCount: value.ReconciliationCreatedCount, TransactionCount: value.TransactionCount,
 		MissingTransactionCount: value.MissingTransactionCount, ModifiedTransactionCount: value.ModifiedTransactionCount,
 		SharedTransactionCount: value.SharedTransactionCount, BatchRelationCount: value.BatchRelationCount,
+		LoanRelationCount:           value.LoanRelationCount,
 		IncompleteTransferPairCount: value.IncompleteTransferPairCount, CanReopen: value.CanReopen,
 		CanAutomaticallyDelete: value.CanAutomaticallyDelete, ReasonCodes: reasons,
 	}, nil

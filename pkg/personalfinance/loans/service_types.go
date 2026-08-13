@@ -310,6 +310,8 @@ type ContractSummary struct {
 	Contract        *ContractResult
 	CurrentRevision *RevisionResult
 	Progress        PlanProgress
+	ActionRequired  bool
+	ReasonCodes     []ServiceErrorCode
 }
 
 type ContractListResult struct {
@@ -372,6 +374,9 @@ type ContractDetail struct {
 	Remaining                  PlanRemaining
 	LedgerOutstandingAmount    *int64
 	LedgerPlanDifferenceAmount *int64
+	InvalidAllocationCount     int64
+	ActionRequired             bool
+	ReasonCodes                []ServiceErrorCode
 }
 
 func calculationInput(terms CalculationTerms) calculation.Input {

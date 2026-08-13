@@ -117,8 +117,8 @@ func TestReconciliationCaseDecideHandlerRejectsNonWhitelistedOrIncompleteRequest
 func TestReconciliationUndoHandlersUseCurrentUidAndAggregateOnly(t *testing.T) {
 	stub := &reconciliationAPITestService{
 		impact: &reconciliation.UndoImpact{CaseId: 3001, DecisionId: 4001, AttachedExistingCount: 1, ReconciliationCreatedCount: 2,
-			TransactionCount: 3, ModifiedTransactionCount: 1, CanReopen: false, CanAutomaticallyDelete: false,
-			ReasonCodes: []reconciliation.UndoImpactReason{reconciliation.UNDO_REASON_TRANSACTION_MODIFIED}},
+			TransactionCount: 3, ModifiedTransactionCount: 1, LoanRelationCount: 1, CanReopen: false, CanAutomaticallyDelete: false,
+			ReasonCodes: []reconciliation.UndoImpactReason{reconciliation.UNDO_REASON_TRANSACTION_MODIFIED, reconciliation.UNDO_REASON_LOAN_RELATION_PRESENT}},
 		decision: validReconciliationDecision(reconciliation.DECISION_TYPE_REOPEN),
 	}
 	api := newReconciliationTestAPI(t, stub)
@@ -127,7 +127,8 @@ func TestReconciliationUndoHandlersUseCurrentUidAndAggregateOnly(t *testing.T) {
 		t.Fatalf("get undo impact: response=%v error=%v uid=%d case=%d", impactResponse, apiErr, stub.impactUid, stub.impactCaseId)
 	}
 	impactText := marshalReconciliationResponse(t, impactResponse)
-	if !strings.Contains(impactText, `"reasonCodes":["transaction_modified"]`) || !strings.Contains(impactText, `"transactionCount":3`) {
+	if !strings.Contains(impactText, `"reasonCodes":["transaction_modified","loan_relation_present"]`) ||
+		!strings.Contains(impactText, `"transactionCount":3`) || !strings.Contains(impactText, `"loanRelationCount":1`) {
 		t.Fatalf("undo impact omitted aggregate: %s", impactText)
 	}
 	assertReconciliationResponseDoesNotContain(t, impactText, "transactionId", "comment", "sourceAccount", "raw", "digest", "uid")

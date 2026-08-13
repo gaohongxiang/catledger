@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"xorm.io/xorm"
+
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
@@ -358,6 +360,26 @@ func TestServiceAccountValidationAndRollback(t *testing.T) {
 	}
 }
 
+func TestServiceWithoutSettlementGatewayRejectsActiveAllocationReads(t *testing.T) {
+	repository, _ := newSQLiteServiceRepository(t, 1)
+	accounts := newTestAccountReader()
+	accounts.addDefaults(1001)
+	ids := new(atomic.Int64)
+	ids.Store(580_000)
+	service, err := NewService(repository, accounts, nil, func() int64 { return ids.Add(1) })
+	if err != nil {
+		t.Fatalf("create calculation-only loan service: %v", err)
+	}
+	service.now = func() time.Time { return time.Unix(1_700_000_000, 0) }
+	created := mustCreateServiceContract(t, service, 1001, "create-without-settlement-gateway")
+	installment := created.Installments[0]
+	insertServiceAllocation(t, repository, 1001, created.Action.ContractId, installment.InstallmentId,
+		COMPONENT_TYPE_PRINCIPAL, installment.PrincipalAmount/2, ALLOCATION_STATUS_ACTIVE, 980_001, 990_001)
+	if _, err = service.GetContract(nil, 1001, created.Action.ContractId, installment.DueDate); !errors.Is(err, ErrServiceLedgerValidationRequired) || ServiceErrorCodeOf(err) != SERVICE_ERROR_LEDGER_VALIDATION_REQUIRED {
+		t.Fatalf("active allocation was silently counted without ledger validation: %v", err)
+	}
+}
+
 func TestServiceUnicodeLimitsAndRedactedErrors(t *testing.T) {
 	spec := serviceTestSpec()
 	spec.Name = strings.Repeat("贷", maximumContractNameCharacters)
@@ -487,7 +509,8 @@ func newSQLiteLoanServiceWithLedger(t *testing.T, maxConnections uint16, firstId
 	accounts.addDefaults(1001)
 	ids := new(atomic.Int64)
 	ids.Store(firstId)
-	service, err := NewService(repository, accounts, ledger, func() int64 { return ids.Add(1) })
+	settlementLedger := &testServiceSettlementLedger{repository: repository, accounts: accounts, liability: ledger}
+	service, err := NewServiceWithSettlementLedger(repository, settlementLedger, func() int64 { return ids.Add(1) })
 	if err != nil {
 		t.Fatal("create loan service failed")
 	}
@@ -525,22 +548,32 @@ func insertServiceAllocation(t *testing.T, repository *Repository, uid int64, co
 	component ComponentType, amount int64, status AllocationStatus, allocationId int64, bindingId int64) (int64, int64) {
 	t.Helper()
 	transactionId := bindingId + 100_000
+	counterpartBindingId := bindingId + 1_000_000
+	counterpartTransactionId := transactionId + 2_000_000
 	err := repository.DoTransaction(nil, uid, func(tx *RepositoryTransaction) error {
 		binding := &TransactionBinding{Uid: uid, TransactionId: transactionId, Version: 1, CreatedUnixTime: 1_700_000_001,
 			UpdatedUnixTime: 1_700_000_001, BindingId: bindingId}
 		if _, created, err := tx.CreateOrFindTransactionBinding(binding); err != nil || !created {
 			return errors.New("binding insert failed")
 		}
+		counterpart := &TransactionBinding{Uid: uid, TransactionId: counterpartTransactionId, Version: 1,
+			CreatedUnixTime: 1_700_000_001, UpdatedUnixTime: 1_700_000_001, BindingId: counterpartBindingId}
+		if _, created, err := tx.CreateOrFindTransactionBinding(counterpart); err != nil || !created {
+			return errors.New("counterpart binding insert failed")
+		}
 		allocation := &TransactionAllocation{Uid: uid, ContractId: contractId, InstallmentId: &installmentId,
-			PrimaryBindingId: bindingId, ComponentType: component, AllocatedAmount: amount,
+			PrimaryBindingId: bindingId, CounterpartBindingId: &counterpartBindingId, ComponentType: component, AllocatedAmount: amount,
 			CreationMethod: ALLOCATION_CREATION_METHOD_ATTACHED_EXISTING, Status: ALLOCATION_STATUS_ACTIVE,
-			TransactionUpdatedUnixTime: 1_700_000_001, CreatedActionId: 1, LastActionId: 1,
+			TransactionUpdatedUnixTime: 1_700_000_001, CounterpartUpdatedUnixTime: func() *int64 { value := int64(1_700_000_001); return &value }(), CreatedActionId: 1, LastActionId: 1,
 			CreatedUnixTime: 1_700_000_001, UpdatedUnixTime: 1_700_000_001, AllocationId: allocationId}
 		if err := tx.InsertAllocation(allocation); err != nil {
 			return err
 		}
 		if updated, err := tx.UpdateTransactionBindingCAS(bindingId, 1, nil, &allocationId, 1_700_000_001); err != nil || !updated {
 			return errors.New("binding assignment failed")
+		}
+		if updated, err := tx.UpdateTransactionBindingCAS(counterpartBindingId, 1, nil, &allocationId, 1_700_000_001); err != nil || !updated {
+			return errors.New("counterpart binding assignment failed")
 		}
 		if status != ALLOCATION_STATUS_ACTIVE {
 			if updated, err := tx.UpdateAllocationStatus(allocationId, ALLOCATION_STATUS_ACTIVE, status, 1, 1_700_000_002); err != nil || !updated {
@@ -561,6 +594,9 @@ func reverseServiceAllocation(t *testing.T, repository *Repository, uid int64, a
 		if updated, err := tx.UpdateTransactionBindingCAS(bindingId, 2, &allocationId, nil, 1_700_000_003); err != nil || !updated {
 			return errors.New("binding release failed")
 		}
+		if updated, err := tx.UpdateTransactionBindingCAS(bindingId+1_000_000, 2, &allocationId, nil, 1_700_000_003); err != nil || !updated {
+			return errors.New("counterpart binding release failed")
+		}
 		if updated, err := tx.UpdateAllocationStatus(allocationId, ALLOCATION_STATUS_ACTIVE, ALLOCATION_STATUS_REVERSED, lastActionId, 1_700_000_003); err != nil || !updated {
 			return errors.New("allocation reversal failed")
 		}
@@ -569,4 +605,109 @@ func reverseServiceAllocation(t *testing.T, repository *Repository, uid int64, a
 	if err != nil {
 		t.Fatal("reverse allocation fixture failed")
 	}
+}
+
+type testServiceSettlementLedger struct {
+	repository *Repository
+	accounts   *testAccountReader
+	liability  LiabilityOutstandingReader
+}
+
+func (l *testServiceSettlementLedger) LoadAccountSnapshots(c core.Context, uid int64, accountIds []int64) ([]AccountSnapshot, error) {
+	return l.accounts.LoadAccountSnapshots(c, uid, accountIds)
+}
+
+func (l *testServiceSettlementLedger) ReadLiabilityOutstanding(c core.Context, uid int64, liabilityAccountId int64) (*int64, error) {
+	if l.liability == nil {
+		return nil, nil
+	}
+	return l.liability.ReadLiabilityOutstanding(c, uid, liabilityAccountId)
+}
+
+func (*testServiceSettlementLedger) AuthorizeSettlementCreation(core.Context, int64, *time.Location, []LedgerCreateDraft) error {
+	return nil
+}
+
+func (*testServiceSettlementLedger) ListSettlementCandidates(core.Context, int64, LedgerCandidateFilter) (*LedgerCandidatePage, error) {
+	return &LedgerCandidatePage{}, nil
+}
+
+func (l *testServiceSettlementLedger) LoadSettlementEvents(c core.Context, uid int64, transactionIds []int64) (map[int64]*LedgerEventSnapshot, error) {
+	database, err := l.repository.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	return l.loadEvents(sess, uid, transactionIds)
+}
+
+func (l *testServiceSettlementLedger) LoadSettlementEventsInSession(_ core.Context, _ *datastore.Database, sess *xorm.Session, uid int64, transactionIds []int64) (map[int64]*LedgerEventSnapshot, error) {
+	return l.loadEvents(sess, uid, transactionIds)
+}
+
+func (*testServiceSettlementLedger) ValidateSettlementDraftInSession(core.Context, *datastore.Database, *xorm.Session, LedgerCreateDraft) (*LedgerEventSnapshot, error) {
+	return nil, errors.New("not implemented by lifecycle fixture")
+}
+
+func (*testServiceSettlementLedger) CreateSettlementEventInSession(core.Context, *datastore.Database, *xorm.Session, LedgerCreateDraft) (*LedgerEventSnapshot, error) {
+	return nil, errors.New("not implemented by lifecycle fixture")
+}
+
+func (l *testServiceSettlementLedger) loadEvents(sess *xorm.Session, uid int64, transactionIds []int64) (map[int64]*LedgerEventSnapshot, error) {
+	result := make(map[int64]*LedgerEventSnapshot, len(transactionIds))
+	for _, transactionId := range transactionIds {
+		binding := new(TransactionBinding)
+		found, err := sess.Where("uid=? AND transaction_id=?", uid, transactionId).Get(binding)
+		if err != nil || !found || binding.CurrentAllocationId == nil {
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		allocation := new(TransactionAllocation)
+		found, err = sess.Where("uid=? AND allocation_id=?", uid, *binding.CurrentAllocationId).Get(allocation)
+		if err != nil || !found {
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		primaryBinding := new(TransactionBinding)
+		found, err = sess.Where("uid=? AND binding_id=?", uid, allocation.PrimaryBindingId).Get(primaryBinding)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, errors.New("primary binding fixture missing")
+		}
+		counterpartBinding := new(TransactionBinding)
+		found, err = sess.Where("uid=? AND binding_id=?", uid, *allocation.CounterpartBindingId).Get(counterpartBinding)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, errors.New("counterpart binding fixture missing")
+		}
+		contract := new(Contract)
+		found, err = sess.Where("uid=? AND contract_id=?", uid, allocation.ContractId).Get(contract)
+		if err != nil {
+			return nil, err
+		}
+		if !found || contract.DefaultPaymentAccountId == nil {
+			return nil, errors.New("contract fixture missing")
+		}
+		counterpartId := counterpartBinding.TransactionId
+		counterpartUpdated := *allocation.CounterpartUpdatedUnixTime
+		l.accounts.mu.RLock()
+		source := l.accounts.accounts[uid][*contract.DefaultPaymentAccountId]
+		destination := l.accounts.accounts[uid][contract.LiabilityAccountId]
+		l.accounts.mu.RUnlock()
+		result[transactionId] = &LedgerEventSnapshot{PrimaryTransactionId: primaryBinding.TransactionId,
+			CounterpartTransactionId: &counterpartId, Kind: LEDGER_EVENT_KIND_TRANSFER, CategoryId: 1,
+			CategoryKind: LEDGER_CATEGORY_KIND_TRANSFER, SourceAccount: source, DestinationAccount: &destination,
+			Amount: allocation.AllocatedAmount, UpdatedUnixTime: allocation.TransactionUpdatedUnixTime,
+			CounterpartUpdatedUnixTime: &counterpartUpdated, TransferComplete: true}
+	}
+	return result, nil
 }

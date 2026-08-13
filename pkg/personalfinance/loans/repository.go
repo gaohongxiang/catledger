@@ -1047,6 +1047,9 @@ func isValidNewAllocation(value *TransactionAllocation, uid int64) bool {
 	if value.ComponentType == COMPONENT_TYPE_DISBURSEMENT {
 		return value.InstallmentId == nil
 	}
+	if value.ComponentType == COMPONENT_TYPE_FEE {
+		return value.InstallmentId == nil || *value.InstallmentId > 0
+	}
 
 	return value.InstallmentId != nil && *value.InstallmentId > 0
 }

@@ -21,7 +21,8 @@ func (s *Service) ListContracts(c core.Context, uid int64, status ContractStatus
 		if detailErr != nil {
 			return nil, detailErr
 		}
-		result.Items = append(result.Items, &ContractSummary{Contract: contractResult(contract), CurrentRevision: detail.CurrentRevision, Progress: detail.Progress})
+		result.Items = append(result.Items, &ContractSummary{Contract: contractResult(contract), CurrentRevision: detail.CurrentRevision,
+			Progress: detail.Progress, ActionRequired: detail.ActionRequired, ReasonCodes: append([]ServiceErrorCode(nil), detail.ReasonCodes...)})
 	}
 	return result, nil
 }
@@ -56,16 +57,18 @@ func (s *Service) getContractFromSelector(c core.Context, uid int64, contract *C
 	if int64(len(installments)) != revision.TermCount {
 		return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
 	}
-	aggregates, err := s.repository.AggregateActiveAllocations(c, uid, contract.ContractId)
+	validation, err := s.validateActiveAllocations(c, nil, contract, revision, installments)
 	if err != nil {
-		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		return nil, err
 	}
-	rows, progress, remaining, err := derivePlanProgress(installments, aggregates, asOfDate)
+	rows, progress, remaining, err := derivePlanProgress(installments, validation.aggregates, asOfDate)
 	if err != nil {
 		return nil, err
 	}
 	detail := &ContractDetail{Contract: contractResult(contract), CurrentRevision: revisionResult(revision), Installments: installmentResults(installments),
-		ActiveAllocationAggregates: aggregates, InstallmentProgress: rows, Progress: progress, Remaining: remaining}
+		ActiveAllocationAggregates: validation.aggregates, InstallmentProgress: rows, Progress: progress, Remaining: remaining,
+		InvalidAllocationCount: validation.invalidCount, ActionRequired: validation.invalidCount > 0,
+		ReasonCodes: append([]ServiceErrorCode(nil), validation.reasonCodes...)}
 	if includeLedger && s.liabilityReader != nil {
 		outstanding, readErr := s.liabilityReader.ReadLiabilityOutstanding(c, uid, contract.LiabilityAccountId)
 		if readErr != nil {
@@ -174,7 +177,7 @@ func derivePlanProgress(installments []*Installment, aggregates []*AllocationAgg
 		if aggregate == nil || aggregate.AllocatedAmount < 0 || aggregate.AllocationCount < 1 {
 			return nil, PlanProgress{}, PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
 		}
-		if aggregate.ComponentType == COMPONENT_TYPE_DISBURSEMENT {
+		if aggregate.ComponentType == COMPONENT_TYPE_DISBURSEMENT || (aggregate.ComponentType == COMPONENT_TYPE_FEE && aggregate.InstallmentId == nil) {
 			if aggregate.InstallmentId != nil {
 				return nil, PlanProgress{}, PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
 			}

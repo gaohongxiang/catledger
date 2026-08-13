@@ -14,6 +14,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
 )
 
 type decisionSQLiteEnvironment struct {
@@ -333,6 +334,81 @@ func TestDecisionServiceSQLiteUndoAttachedCreatedModifiedSharedAndIncompletePair
 	if err != nil || impact.IncompleteTransferPairCount != 1 || impact.CanReopen {
 		t.Fatalf("incomplete transfer impact mismatch: %+v %v", impact, err)
 	}
+}
+
+func TestDecisionServiceSQLiteUndoLoanRelationGuardsPreviewAndTransactionalRecheck(t *testing.T) {
+	environment := newDecisionSQLiteEnvironment(t)
+	uid := int64(4404)
+	insertDecisionLedgerAccounts(t, environment.database, uid, "CNY")
+	fixture := insertDecisionCaseFixture(t, environment.database, uid, 210_000, importing.NORMALIZED_DIRECTION_INCOME, importing.ECONOMIC_EFFECT_NORMAL)
+	draft := expenseDraft(fixture, 500)
+	draft.Type = models.TRANSACTION_TYPE_TRANSFER
+	draft.DestinationAccountId = 99
+	draft.DestinationAmount = 500
+	decision, err := environment.service.DecideCase(nil, DecideCaseRequest{Uid: uid, CaseId: fixture.caseId,
+		ExpectedCaseVersion: 1, DecisionType: DECISION_TYPE_INTERNAL_TRANSFER, IdempotencyKey: "undo-loan-relation-decide",
+		CreatedIp: "192.0.2.10", PrimaryDraft: draft}, time.UTC)
+	if err != nil {
+		t.Fatalf("create loan-relation guard fixture: %v", err)
+	}
+	transactionIds := decisionEffectTransactionIds(t, environment.database, uid, decision.DecisionId)
+	if len(transactionIds) != 2 {
+		t.Fatalf("transfer fixture does not have two rows: %v", transactionIds)
+	}
+
+	insertDecisionLoanBinding(t, environment.database, uid+1, transactionIds[1], 8_800_001, 8_900_001)
+	impact, err := environment.service.GetUndoImpact(nil, uid, fixture.caseId)
+	if err != nil || !impact.CanAutomaticallyDelete || impact.LoanRelationCount != 0 {
+		t.Fatalf("cross-user loan relation blocked undo: %+v %v", impact, err)
+	}
+
+	// Preview 与提交之间新增本用户活动关系；UndoCase 内部必须再次检查并拒绝删除完整逻辑事件。
+	insertDecisionLoanBinding(t, environment.database, uid, transactionIds[1], 8_800_002, 8_900_002)
+	undo, err := environment.service.UndoCase(nil, UndoCaseRequest{Uid: uid, CaseId: fixture.caseId,
+		ExpectedCaseVersion: decision.AppliedCaseVersion, IdempotencyKey: "undo-loan-relation-guard"}, time.UTC)
+	if err != nil || undo.Status != DECISION_STATUS_ACTION_REQUIRED ||
+		!containsDecisionReason(undo.ReasonCodes, string(UNDO_REASON_LOAN_RELATION_PRESENT)) {
+		t.Fatalf("transactional loan guard did not return stable action_required: %+v %v", undo, err)
+	}
+	for _, transactionId := range transactionIds {
+		if loadDecisionTransaction(t, environment.database, uid, transactionId).Deleted {
+			t.Fatal("loan-related transfer row was automatically deleted")
+		}
+	}
+	impact, err = environment.service.GetUndoImpact(nil, uid, fixture.caseId)
+	if err != nil || impact.LoanRelationCount != 1 || impact.CanReopen || impact.CanAutomaticallyDelete ||
+		!containsUndoReason(impact.ReasonCodes, UNDO_REASON_LOAN_RELATION_PRESENT) {
+		t.Fatalf("loan relation impact aggregate mismatch: %+v %v", impact, err)
+	}
+}
+
+func insertDecisionLoanBinding(t *testing.T, database *datastore.Database, uid int64, transactionId int64, bindingId int64, allocationId int64) {
+	t.Helper()
+	sess := database.NewPrivacySession(nil)
+	defer sess.Close()
+	binding := &loans.TransactionBinding{Uid: uid, TransactionId: transactionId, CurrentAllocationId: &allocationId,
+		Version: 2, CreatedUnixTime: 1_900_000_001, UpdatedUnixTime: 1_900_000_002, BindingId: bindingId}
+	if inserted, err := sess.Insert(binding); err != nil || inserted != 1 {
+		t.Fatalf("insert active loan binding: inserted=%d err=%v", inserted, err)
+	}
+}
+
+func containsDecisionReason(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func containsUndoReason(values []UndoImpactReason, expected UndoImpactReason) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func newDecisionSQLiteEnvironment(t *testing.T) *decisionSQLiteEnvironment {

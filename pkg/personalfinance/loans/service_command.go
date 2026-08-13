@@ -11,11 +11,26 @@ import (
 
 // Service 编排纯计算、合同生命周期、持久幂等和只读进度派生。
 type Service struct {
-	repository      *Repository
-	accounts        AccountSnapshotReader
-	liabilityReader LiabilityOutstandingReader
-	generateId      func() int64
-	now             func() time.Time
+	repository       *Repository
+	accounts         AccountSnapshotReader
+	liabilityReader  LiabilityOutstandingReader
+	settlementLedger SettlementLedgerGateway
+	generateId       func() int64
+	now              func() time.Time
+}
+
+// NewServiceWithSettlementLedger 创建可用于生产组合的完整贷款服务。
+// 交易漂移校验、候选、apply 和 undo 依赖同一个必填窄账本适配器，不能静默降级。
+func NewServiceWithSettlementLedger(repository *Repository, ledger SettlementLedgerGateway, generateId func() int64) (*Service, error) {
+	if ledger == nil {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	service, err := NewService(repository, ledger, ledger, generateId)
+	if err != nil {
+		return nil, err
+	}
+	service.settlementLedger = ledger
+	return service, nil
 }
 
 // NewService 创建贷款领域服务。liabilityReader 可为 nil，此时账本负债及差异返回 NULL。
@@ -343,14 +358,23 @@ func (s *Service) lifecycle(c core.Context, request ContractCommandRequest, acti
 		}
 		if actionType == ACTION_TYPE_CLOSE_CONTRACT && closeReason == CLOSE_REASON_PAID_OFF {
 			revision, revisionErr := tx.FindRevisionById(contract.CurrentRevisionId)
-			aggregates, aggregateErr := tx.AggregateActiveAllocations(contract.ContractId)
 			if revisionErr != nil {
 				return revisionErr
 			}
-			if aggregateErr != nil {
-				return aggregateErr
+			if revision == nil || revision.ContractId != contract.ContractId {
+				return serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
 			}
-			remaining, remainingErr := remainingFromRevision(revision, aggregates)
+			validation, validationErr := s.validateActiveAllocations(c, tx, contract, revision, nil)
+			if validationErr != nil {
+				return validationErr
+			}
+			if validation.invalidCount > 0 {
+				code := validation.reasonCodes[0]
+				persisted, startErr = completeAction(tx, started, ACTION_STATUS_ACTION_REQUIRED, 0, code, validation.reasonCodes, now)
+				adjudicated = serviceError(ErrServiceLedgerEventRejected, code)
+				return startErr
+			}
+			remaining, remainingErr := remainingFromRevision(revision, validation.aggregates)
 			if remainingErr != nil {
 				return remainingErr
 			}
@@ -675,6 +699,15 @@ func errorFromAction(action *Action) error {
 		return serviceError(ErrServiceAllocationHistory, code)
 	case SERVICE_ERROR_PLAN_NOT_PAID_OFF:
 		return serviceError(ErrServicePlanNotPaidOff, code)
+	case SERVICE_ERROR_SETTLEMENT_NOT_FOUND:
+		return serviceError(ErrServiceSettlementNotFound, code)
+	case SERVICE_ERROR_INSTALLMENT_NOT_FOUND, SERVICE_ERROR_REVISION_MISMATCH, SERVICE_ERROR_COMPONENT_MISMATCH,
+		SERVICE_ERROR_AMOUNT_EXCEEDED, SERVICE_ERROR_LEDGER_EVENT_MISSING, SERVICE_ERROR_LEDGER_EVENT_MODIFIED,
+		SERVICE_ERROR_LEDGER_EVENT_TYPE, SERVICE_ERROR_LEDGER_EVENT_ACCOUNT, SERVICE_ERROR_LEDGER_EVENT_CURRENCY,
+		SERVICE_ERROR_LEDGER_EVENT_AMOUNT, SERVICE_ERROR_LEDGER_CATEGORY, SERVICE_ERROR_TRANSFER_INCOMPLETE,
+		SERVICE_ERROR_BINDING_CONFLICT, SERVICE_ERROR_SETTLEMENT_ALREADY_REVERSED, SERVICE_ERROR_ALLOCATION_LIMIT,
+		SERVICE_ERROR_LEDGER_VALIDATION_REQUIRED:
+		return serviceError(ErrServiceSettlementRejected, code)
 	default:
 		return serviceError(ErrServiceCommandUnavailable, SERVICE_ERROR_COMMAND_UNAVAILABLE)
 	}
@@ -759,6 +792,9 @@ func remainingFromRevision(revision *ContractRevision, aggregates []*AllocationA
 		case COMPONENT_TYPE_INTEREST:
 			remaining.InterestAmount -= aggregate.AllocatedAmount
 		case COMPONENT_TYPE_FEE:
+			if aggregate.InstallmentId == nil {
+				continue
+			}
 			remaining.FeeAmount -= aggregate.AllocatedAmount
 		default:
 			return PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)

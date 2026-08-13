@@ -99,6 +99,7 @@ const (
 	UNDO_REASON_TRANSACTION_MODIFIED     UndoImpactReason = "transaction_modified"
 	UNDO_REASON_TRANSACTION_SHARED       UndoImpactReason = "transaction_shared"
 	UNDO_REASON_BATCH_RELATION_PRESENT   UndoImpactReason = "batch_relation_present"
+	UNDO_REASON_LOAN_RELATION_PRESENT    UndoImpactReason = "loan_relation_present"
 	UNDO_REASON_TRANSFER_PAIR_INCOMPLETE UndoImpactReason = "transfer_pair_incomplete"
 	UNDO_REASON_EVIDENCE_LIMIT_REACHED   UndoImpactReason = "evidence_limit_reached"
 )
@@ -114,6 +115,7 @@ type UndoImpact struct {
 	ModifiedTransactionCount    int64
 	SharedTransactionCount      int64
 	BatchRelationCount          int64
+	LoanRelationCount           int64
 	IncompleteTransferPairCount int64
 	CanReopen                   bool
 	CanAutomaticallyDelete      bool
