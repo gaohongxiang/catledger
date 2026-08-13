@@ -171,6 +171,7 @@ type personalFinanceReconciliationDecisionResponse struct {
 	PreviousDecisionId  *int64                        `json:"previousDecisionId,string,omitempty"`
 	Status              reconciliation.DecisionStatus `json:"status"`
 	ReasonCodes         []string                      `json:"reasonCodes"`
+	ErrorCode           string                        `json:"errorCode,omitempty"`
 	CreatedUnixTime     int64                         `json:"createdUnixTime"`
 	StartedUnixTime     *int64                        `json:"startedUnixTime,omitempty"`
 	CompletedUnixTime   *int64                        `json:"completedUnixTime,omitempty"`
@@ -196,9 +197,30 @@ type personalFinanceReconciliationUndoImpactResponse struct {
 }
 
 var personalFinanceReconciliationDecisionReasonCodes = map[string]struct{}{
-	"decision_execution_not_implemented": {},
-	"evidence_limit_reached":             {},
-	"undo_requires_ledger_validation":    {},
+	"batch_relation_present":         {},
+	"evidence_limit_reached":         {},
+	"ledger_draft_mismatch":          {},
+	"ledger_draft_required":          {},
+	"ledger_event_missing":           {},
+	"ledger_event_modified":          {},
+	"ledger_event_type_mismatch":     {},
+	"multiple_existing_events":       {},
+	"refund_events_not_distinct":     {},
+	"refund_roles_ambiguous":         {},
+	"refund_semantics_invalid":       {},
+	"transaction_missing_or_deleted": {},
+	"transaction_modified":           {},
+	"transaction_shared":             {},
+	"transfer_pair_incomplete":       {},
+}
+
+var personalFinanceReconciliationDecisionErrorCodes = map[string]struct{}{
+	"authorization_failed":    {},
+	"case_not_available":      {},
+	"case_not_found":          {},
+	"case_version_conflict":   {},
+	"ledger_rejected":         {},
+	"persistence_unavailable": {},
 }
 
 var personalFinanceReconciliationUndoReasonCodes = map[reconciliation.UndoImpactReason]struct{}{
@@ -654,14 +676,16 @@ func newPersonalFinanceReconciliationDecisionResponse(value *reconciliation.Deci
 		seen[reason] = struct{}{}
 	}
 	if value.ErrorCode != "" {
-		if _, ok := personalFinanceReconciliationDecisionReasonCodes[value.ErrorCode]; !ok {
+		_, reasonCode := personalFinanceReconciliationDecisionReasonCodes[value.ErrorCode]
+		_, failureCode := personalFinanceReconciliationDecisionErrorCodes[value.ErrorCode]
+		if !reasonCode && !failureCode {
 			return nil, errors.New("reconciliation decision error code is not stable")
 		}
 	}
 	return &personalFinanceReconciliationDecisionResponse{
 		Id: value.DecisionId, CaseId: value.CaseId, ExpectedCaseVersion: value.ExpectedCaseVersion, AppliedCaseVersion: value.AppliedCaseVersion,
 		DecisionType: value.DecisionType, PreviousDecisionId: clonePersonalFinanceInt64(value.PreviousDecisionId), Status: value.Status,
-		ReasonCodes: reasons, CreatedUnixTime: value.CreatedUnixTime, StartedUnixTime: clonePersonalFinanceInt64(value.StartedUnixTime),
+		ReasonCodes: reasons, ErrorCode: value.ErrorCode, CreatedUnixTime: value.CreatedUnixTime, StartedUnixTime: clonePersonalFinanceInt64(value.StartedUnixTime),
 		CompletedUnixTime: clonePersonalFinanceInt64(value.CompletedUnixTime), FailedUnixTime: clonePersonalFinanceInt64(value.FailedUnixTime),
 		UpdatedUnixTime: value.UpdatedUnixTime, Replayed: value.Replayed,
 	}, nil

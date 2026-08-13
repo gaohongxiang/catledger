@@ -59,6 +59,12 @@ func startWebServer(c *core.CliContext) error {
 		}
 	}
 
+	err = api.InitializePersonalFinanceReconciliationApi()
+	if err != nil {
+		log.BootErrorf(c, "[webserver.startWebServer] initializes personal finance reconciliation API failed, because %s", err.Error())
+		return err
+	}
+
 	err = requestid.InitializeRequestIdGenerator(c, config)
 
 	if err != nil {
@@ -438,6 +444,11 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.GET("/personal_finance/consistency.json", bindApi(api.PersonalFinanceImports.PersonalFinanceConsistencyHandler, config))
 			apiV1Route.GET("/personal_finance/source_accounts/list.json", bindApi(api.PersonalFinanceImports.SourceAccountListHandler, config))
 			apiV1Route.GET("/personal_finance/transactions/evidence.json", bindApi(api.PersonalFinanceImports.TransactionEvidenceHandler, config))
+			apiV1Route.GET("/personal_finance/reconciliation/cases/list.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseListHandler, config))
+			apiV1Route.GET("/personal_finance/reconciliation/cases/get.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseGetHandler, config))
+			apiV1Route.POST("/personal_finance/reconciliation/cases/decide.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseDecideHandler, config))
+			apiV1Route.GET("/personal_finance/reconciliation/cases/undo_impact.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseUndoImpactHandler, config))
+			apiV1Route.POST("/personal_finance/reconciliation/cases/undo.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseUndoHandler, config))
 
 			// Transaction Pictures
 			if config.EnableTransactionPictures {
