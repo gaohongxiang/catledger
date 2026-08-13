@@ -55,7 +55,7 @@ export const reconciliationCaseStatuses: readonly ReconciliationCaseStatus[] = [
 ];
 
 export function canDecideReconciliationCase(reconciliationCase: ReconciliationCaseDetail | null): boolean {
-    return !!reconciliationCase && reconciliationCase.status !== 'resolved';
+    return reconciliationCase?.status === 'open';
 }
 
 export function canInspectReconciliationUndo(reconciliationCase: ReconciliationCaseDetail | null): boolean {

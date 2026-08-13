@@ -315,8 +315,10 @@ describe('personal finance reconciliation state', () => {
         }
     });
 
-    test('keeps resolved decisions read-only and exposes undo only with a persisted decision', () => {
+    test('allows new decisions only for open cases and exposes undo only with a persisted decision', () => {
         expect(canDecideReconciliationCase(reconciliationCase())).toBe(true);
+        expect(canDecideReconciliationCase(reconciliationCase({ status: 'action_required' }))).toBe(false);
+        expect(canDecideReconciliationCase(reconciliationCase({ status: 'deferred' }))).toBe(false);
         expect(canDecideReconciliationCase(reconciliationCase({ status: 'resolved' }))).toBe(false);
         expect(canInspectReconciliationUndo(reconciliationCase({ status: 'resolved' }))).toBe(false);
         expect(canInspectReconciliationUndo(reconciliationCase({
