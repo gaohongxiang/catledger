@@ -123,6 +123,11 @@ func cleanupImportingIntegrationTables(database *datastore.Database) error {
 	}
 
 	tables := []string{
+		"pf_reconciliation_ledger_effect",
+		"pf_reconciliation_transaction_link",
+		"pf_reconciliation_decision",
+		"pf_reconciliation_case_member",
+		"pf_reconciliation_case",
 		"pf_raw_row_transaction_link",
 		"pf_import_batch_issue",
 		"pf_import_posting",

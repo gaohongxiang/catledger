@@ -14,6 +14,7 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
 )
 
@@ -103,14 +104,44 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("migration table is not exact: %v", err)
 		}
 
-		if err := verifySchemaV002(integrationDatabase); err != nil {
-			t.Fatalf("v002 schema is not exact: %v", err)
+		if err := verifySchemaV003(integrationDatabase); err != nil {
+			t.Fatalf("v003 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 2)
+		record := requireMigrationRecord(t, integrationDatabase, 3)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected successful migration record: %+v", record)
+		}
+	})
+
+	t.Run("v002 advances continuously to v003", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		runner := newIntegrationRunner(t, "through-v002")
+		runner.migrations = runner.migrations[:2]
+
+		if err := runner.upgradeDatabase(integrationDatabase); err != nil {
+			t.Fatalf("upgrade through v002: %v", err)
+		}
+
+		if err := verifySchemaV002(integrationDatabase); err != nil {
+			t.Fatalf("v002 baseline is not exact: %v", err)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+
+		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "to-v003"}); err != nil {
+			t.Fatalf("advance to v003: %v", err)
+		}
+
+		if err := verifySchemaV003(integrationDatabase); err != nil {
+			t.Fatalf("advanced v003 schema is not exact: %v", err)
+		}
+
+		record := requireMigrationRecord(t, integrationDatabase, 3)
+
+		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
+			t.Fatalf("unexpected v003 migration record: %+v", record)
 		}
 	})
 
@@ -210,7 +241,7 @@ func TestMigrationProtocol(t *testing.T) {
 		now := requireDatabaseUnixTime(t, integrationDatabase)
 		applied := now
 		insertMigrationRecord(t, integrationDatabase, &SchemaMigration{
-			Version:              3,
+			Version:              4,
 			Name:                 "future_migration",
 			Checksum:             strings.Repeat("f", 64),
 			ApplicationVersion:   "future",
@@ -288,7 +319,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV002(integrationDatabase); err != nil {
+		if err = verifySchemaV003(integrationDatabase); err != nil {
 			t.Fatalf("recovered schema is not exact: %v", err)
 		}
 
@@ -297,6 +328,191 @@ func TestMigrationProtocol(t *testing.T) {
 		if !recovered.Success || recovered.FirstStartedUnixTime != failed.FirstStartedUnixTime || recovered.ClaimToken == failed.ClaimToken {
 			t.Fatalf("unexpected recovered migration record: %+v", recovered)
 		}
+	})
+
+	t.Run("partial v003 table is refused before Sync2 mutates it", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		runner := newIntegrationRunner(t, "v003-partial-baseline")
+		runner.migrations = runner.migrations[:2]
+
+		if err := runner.upgradeDatabase(integrationDatabase); err != nil {
+			t.Fatalf("prepare v002 baseline: %v", err)
+		}
+
+		sess := integrationDatabase.NewSession(nil)
+		_, err := sess.Exec("CREATE TABLE pf_reconciliation_case (uid BIGINT NOT NULL)")
+		sess.Close()
+
+		if err != nil {
+			t.Fatalf("create partial v003 table: %v", err)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		err = Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v003-partial"})
+
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected partial v003 schema error, got %v", err)
+		}
+
+		record := requireMigrationRecord(t, integrationDatabase, 3)
+
+		if record.Success || record.FailureCode != "schema_preflight_failed" {
+			t.Fatalf("unexpected v003 preflight record: %+v", record)
+		}
+
+		tables, readErr := readSchemaTables(integrationDatabase)
+
+		if readErr != nil {
+			t.Fatalf("read partial v003 schema after refusal: %v", readErr)
+		}
+
+		partialTable := findTable(tables, "pf_reconciliation_case")
+
+		if partialTable == nil || len(partialTable.Columns()) != 1 || normalizeIdentifier(partialTable.Columns()[0].Name) != "uid" {
+			t.Fatalf("v003 preflight refusal mutated partial table: %+v", partialTable)
+		}
+	})
+
+	t.Run("partial v003 DDL failure resumes safely", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		baselineRunner := newIntegrationRunner(t, "v003-resume-baseline")
+		baselineRunner.migrations = baselineRunner.migrations[:2]
+
+		if err := baselineRunner.upgradeDatabase(integrationDatabase); err != nil {
+			t.Fatalf("prepare v002 baseline: %v", err)
+		}
+
+		injectedFailure := errors.New("injected v003 migration failure")
+		failingRunner := newIntegrationRunner(t, "v003-resume-failure")
+		v003 := failingRunner.migrations[2]
+		v003.steps = []migrationStep{
+			v003.steps[0],
+			{
+				name: "inject_v003_failure",
+				run: func(context.Context, *datastore.Database) error {
+					return injectedFailure
+				},
+			},
+		}
+		failingRunner.migrations[2] = v003
+
+		err := failingRunner.upgradeDatabase(integrationDatabase)
+
+		if !errors.Is(err, injectedFailure) {
+			t.Fatalf("expected injected v003 failure, got %v", err)
+		}
+
+		failed := requireMigrationRecord(t, integrationDatabase, 3)
+
+		if failed.Success || failed.FailureCode != "migration_up_failed" {
+			t.Fatalf("unexpected failed v003 record: %+v", failed)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+
+		if err = verifySchemaV003(integrationDatabase); err != nil {
+			t.Fatalf("resumed v003 schema is not exact: %v", err)
+		}
+
+		recovered := requireMigrationRecord(t, integrationDatabase, 3)
+
+		if !recovered.Success || recovered.FirstStartedUnixTime != failed.FirstStartedUnixTime || recovered.ClaimToken == failed.ClaimToken {
+			t.Fatalf("unexpected recovered v003 migration record: %+v", recovered)
+		}
+	})
+
+	t.Run("v003 unique scopes match the frozen contract", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+		now := requireDatabaseUnixTime(t, integrationDatabase)
+		firstCase := reconciliationFixtureCase(1001, 101, strings.Repeat("1", 64), now)
+		requireInsertBean(t, firstCase)
+
+		duplicateCaseKey := *firstCase
+		duplicateCaseKey.CaseId = 102
+		requireInsertBeanFailure(t, &duplicateCaseKey)
+
+		secondUserCase := *firstCase
+		secondUserCase.Uid = 2002
+		secondUserCase.CaseId = 201
+		requireInsertBean(t, &secondUserCase)
+
+		firstMember := &reconciliation.CaseMember{
+			Uid:             firstCase.Uid,
+			CaseId:          firstCase.CaseId,
+			MemberOrder:     0,
+			MemberKind:      reconciliation.MEMBER_KIND_SOURCE_IDENTITY,
+			MemberRefId:     301,
+			MemberRole:      reconciliation.MemberRole("anchor"),
+			CreatedUnixTime: now,
+			MemberId:        401,
+		}
+		requireInsertBean(t, firstMember)
+
+		duplicateMemberOrder := *firstMember
+		duplicateMemberOrder.MemberId = 402
+		duplicateMemberOrder.MemberRefId = 302
+		requireInsertBeanFailure(t, &duplicateMemberOrder)
+
+		duplicateMemberReference := *firstMember
+		duplicateMemberReference.MemberId = 403
+		duplicateMemberReference.MemberOrder = 1
+		requireInsertBeanFailure(t, &duplicateMemberReference)
+
+		firstDecision := reconciliationFixtureDecision(firstCase.Uid, firstCase.CaseId, 501, strings.Repeat("2", 64), now)
+		requireInsertBean(t, firstDecision)
+
+		sameRevisionDifferentKey := *firstDecision
+		sameRevisionDifferentKey.DecisionId = 502
+		sameRevisionDifferentKey.IdempotencyKeyDigest = strings.Repeat("3", 64)
+		sameRevisionDifferentKey.RequestDigest = strings.Repeat("4", 64)
+		requireInsertBean(t, &sameRevisionDifferentKey)
+
+		duplicateIdempotencyKey := *firstDecision
+		duplicateIdempotencyKey.DecisionId = 503
+		duplicateIdempotencyKey.RequestDigest = strings.Repeat("5", 64)
+		requireInsertBeanFailure(t, &duplicateIdempotencyKey)
+
+		firstLink := &reconciliation.TransactionLink{
+			Uid:                        firstCase.Uid,
+			DecisionId:                 firstDecision.DecisionId,
+			RowId:                      601,
+			TransactionId:              701,
+			RelationRole:               reconciliation.TRANSACTION_RELATION_ROLE_PRIMARY,
+			CreationMethod:             reconciliation.TRANSACTION_CREATION_METHOD_ATTACHED_EXISTING,
+			RuleVersion:                reconciliation.TRANSACTION_LINK_VERSION_V1,
+			TransactionUpdatedUnixTime: now,
+			CreatedUnixTime:            now,
+			LinkId:                     801,
+		}
+		requireInsertBean(t, firstLink)
+
+		duplicateLink := *firstLink
+		duplicateLink.LinkId = 802
+		requireInsertBean(t, &duplicateLink)
+
+		firstEffect := &reconciliation.LedgerEffect{
+			Uid:                        firstCase.Uid,
+			DecisionId:                 firstDecision.DecisionId,
+			TransactionId:              firstLink.TransactionId,
+			EffectType:                 reconciliation.LEDGER_EFFECT_TYPE_CREATED,
+			TransactionUpdatedUnixTime: now,
+			CreatedUnixTime:            now,
+			EffectId:                   901,
+		}
+		requireInsertBean(t, firstEffect)
+
+		duplicateEffect := *firstEffect
+		duplicateEffect.EffectId = 902
+		requireInsertBeanFailure(t, &duplicateEffect)
+
+		differentEffectType := *firstEffect
+		differentEffectType.EffectId = 903
+		differentEffectType.EffectType = reconciliation.LEDGER_EFFECT_TYPE_SOFT_DELETED
+		differentEffectType.TransactionDeletedUnixTime = &now
+		requireInsertBean(t, &differentEffectType)
 	})
 
 	t.Run("incompatible existing schema is preserved and refused", func(t *testing.T) {
@@ -753,6 +969,11 @@ func resetPersonalFinanceTables(t *testing.T) {
 
 func cleanupPersonalFinanceTables(db *datastore.Database) error {
 	tables := []string{
+		"pf_reconciliation_ledger_effect",
+		"pf_reconciliation_transaction_link",
+		"pf_reconciliation_decision",
+		"pf_reconciliation_case_member",
+		"pf_reconciliation_case",
 		"pf_raw_row_transaction_link",
 		"pf_import_batch_issue",
 		"pf_import_posting",
@@ -1053,6 +1274,71 @@ func insertRepositoryFixture(t *testing.T, uid int64, baseId int64, fileSHA256 s
 		if err != nil || inserted != 1 {
 			t.Fatalf("insert repository fixture %T: inserted=%d err=%v", bean, inserted, err)
 		}
+	}
+}
+
+func reconciliationFixtureCase(uid int64, caseId int64, caseKey string, now int64) *reconciliation.Case {
+	return &reconciliation.Case{
+		Uid:                   uid,
+		CaseKey:               caseKey,
+		CaseKeyVersion:        reconciliation.CASE_KEY_VERSION_V1,
+		Status:                reconciliation.CASE_STATUS_OPEN,
+		Version:               0,
+		MemberCount:           2,
+		SuggestedRelationType: reconciliation.DECISION_TYPE_SAME_EVENT,
+		CandidateScore:        100,
+		CandidateRuleVersion:  reconciliation.CANDIDATE_RULE_VERSION_V1,
+		ExplanationVersion:    reconciliation.EXPLANATION_VERSION_V1,
+		ReasonCodesJson:       "[]",
+		CreatedUnixTime:       now,
+		LastEvaluatedUnixTime: now,
+		UpdatedUnixTime:       now,
+		CaseId:                caseId,
+	}
+}
+
+func reconciliationFixtureDecision(uid int64, caseId int64, decisionId int64, idempotencyDigest string, now int64) *reconciliation.Decision {
+	return &reconciliation.Decision{
+		Uid:                   uid,
+		CaseId:                caseId,
+		ExpectedCaseVersion:   0,
+		AppliedCaseVersion:    1,
+		DecisionType:          reconciliation.DECISION_TYPE_SAME_EVENT,
+		IdempotencyKeyDigest:  idempotencyDigest,
+		IdempotencyKeyVersion: reconciliation.IDEMPOTENCY_KEY_VERSION_V1,
+		RequestDigest:         strings.Repeat("a", 64),
+		RequestDigestVersion:  reconciliation.DECISION_REQUEST_VERSION_V1,
+		Status:                reconciliation.DECISION_STATUS_APPLIED,
+		FieldSelectionJson:    "{}",
+		ReasonCodesJson:       "[]",
+		ErrorCode:             "",
+		CreatedUnixTime:       now,
+		StartedUnixTime:       &now,
+		CompletedUnixTime:     &now,
+		UpdatedUnixTime:       now,
+		DecisionId:            decisionId,
+	}
+}
+
+func requireInsertBean(t *testing.T, bean any) {
+	t.Helper()
+	sess := integrationDatabase.NewSession(nil)
+	inserted, err := sess.Insert(bean)
+	sess.Close()
+
+	if err != nil || inserted != 1 {
+		t.Fatalf("insert %T: inserted=%d err=%v", bean, inserted, err)
+	}
+}
+
+func requireInsertBeanFailure(t *testing.T, bean any) {
+	t.Helper()
+	sess := integrationDatabase.NewSession(nil)
+	_, err := sess.Insert(bean)
+	sess.Close()
+
+	if err == nil {
+		t.Fatalf("expected insert %T to violate a frozen unique constraint", bean)
 	}
 }
 

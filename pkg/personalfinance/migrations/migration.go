@@ -199,6 +199,19 @@ func registeredMigrations() []migration {
 		})
 	}
 
+	v003Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV003()))
+	v003Steps := make([]migrationStep, 0, len(schemaBeansV003()))
+
+	for _, bean := range schemaBeansV003() {
+		tableName := bean.(interface{ TableName() string }).TableName()
+		v003Steps = append(v003Steps, migrationStep{
+			name: "create_" + tableName,
+			run: func(c context.Context, db *datastore.Database) error {
+				return syncFrozenSchemaBeanWithIndexes(c, db, bean)
+			},
+		})
+	}
+
 	return []migration{
 		{
 			version:   1,
@@ -215,6 +228,14 @@ func registeredMigrations() []migration {
 			preflight: validateSchemaV002PreflightWithContext,
 			steps:     v002Steps,
 			verify:    verifySchemaV002WithContext,
+		},
+		{
+			version:   3,
+			name:      "reconciliation_cases_and_decisions",
+			checksum:  hex.EncodeToString(v003Checksum[:]),
+			preflight: validateSchemaV003PreflightWithContext,
+			steps:     v003Steps,
+			verify:    verifySchemaV003WithContext,
 		},
 	}
 }
@@ -885,6 +906,23 @@ func canonicalSchemaManifestV002() string {
 	builder.WriteString("idempotency-key=idempotency-key-v1\n")
 	builder.WriteString("posting-request=posting-request-v1\n")
 	builder.WriteString("posting-link=posting-link-v1\n")
+	return builder.String()
+}
+
+func canonicalSchemaManifestV003() string {
+	var builder strings.Builder
+	builder.WriteString("pf-schema-v003\n")
+
+	for _, bean := range schemaBeansV003() {
+		appendBeanManifest(&builder, bean)
+	}
+
+	builder.WriteString("case-key=reconciliation-case-key-v1:sorted-stable-member-tokens\n")
+	builder.WriteString("candidate-rule=reconciliation-candidate-v1\n")
+	builder.WriteString("explanation=reconciliation-explanation-v1\n")
+	builder.WriteString("decision-idempotency=idempotency-key-v1\n")
+	builder.WriteString("decision-request=reconciliation-request-v1\n")
+	builder.WriteString("transaction-link=reconciliation-link-v1\n")
 	return builder.String()
 }
 

@@ -3,6 +3,7 @@ package migrations
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -79,6 +80,204 @@ func verifySchemaV002WithContext(c context.Context, db *datastore.Database) erro
 
 func verifySchemaV002(db *datastore.Database) error {
 	return verifySchemaV002WithContext(context.Background(), db)
+}
+
+func validateSchemaV003Preflight(db *datastore.Database) error {
+	return validateSchemaV003PreflightWithContext(context.Background(), db)
+}
+
+func validateSchemaV003PreflightWithContext(c context.Context, db *datastore.Database) error {
+	return verifyPersonalFinanceMigrationPreflightWithContext(c, db, schemaBeansThroughV002(), schemaBeansV003())
+}
+
+func verifySchemaV003WithContext(c context.Context, db *datastore.Database) error {
+	return verifyPersonalFinanceTablesWithContext(c, db, schemaBeansThroughV003(), schemaExact)
+}
+
+func verifySchemaV003(db *datastore.Database) error {
+	return verifySchemaV003WithContext(context.Background(), db)
+}
+
+// syncFrozenSchemaBeanWithIndexes 补足 Sync2 在两个复合索引共享前缀时可能漏建的索引。
+// 每个 v003 表仍作为一个可重入迁移步骤执行，重试只创建确实缺失的冻结索引。
+func syncFrozenSchemaBeanWithIndexes(c context.Context, db *datastore.Database, bean any) error {
+	if err := db.SyncStructsWithStoreEngineContext(c, "InnoDB", bean); err != nil {
+		return err
+	}
+
+	expected, err := db.TableInfo(bean)
+
+	if err != nil {
+		return fmt.Errorf("describe personal finance schema after sync: %w", err)
+	}
+
+	actualTables, err := readSchemaTablesWithContext(c, db)
+
+	if err != nil {
+		return fmt.Errorf("read personal finance schema after sync: %w", err)
+	}
+
+	actual := findTable(actualTables, expected.Name)
+
+	if actual == nil {
+		return schemaError(expected.Name, "table is missing after sync")
+	}
+
+	expectedIndexes := physicalIndexes(expected)
+	actualIndexes := physicalIndexes(actual)
+	missingIndexNames := make([]string, 0, len(expectedIndexes))
+	actualIndexNames := make([]string, 0, len(actualIndexes))
+
+	for indexName := range actualIndexes {
+		actualIndexNames = append(actualIndexNames, indexName)
+	}
+
+	sort.Strings(actualIndexNames)
+
+	for indexName := range expectedIndexes {
+		if actualIndexes[indexName] == nil {
+			missingIndexNames = append(missingIndexNames, indexName)
+		}
+	}
+
+	sort.Strings(missingIndexNames)
+
+	for _, indexName := range missingIndexNames {
+		index := expectedIndexes[indexName]
+		quotedIndexName, quoteErr := quoteSchemaIdentifier(db.DatabaseType(), indexName)
+
+		if quoteErr != nil {
+			return schemaError(expected.Name, quoteErr.Error())
+		}
+
+		quotedTableName, quoteErr := quoteSchemaIdentifier(db.DatabaseType(), expected.Name)
+
+		if quoteErr != nil {
+			return schemaError(expected.Name, quoteErr.Error())
+		}
+
+		quotedColumns := make([]string, len(index.Cols))
+
+		for columnIndex, columnName := range index.Cols {
+			quotedColumns[columnIndex], quoteErr = quoteSchemaIdentifier(db.DatabaseType(), columnName)
+
+			if quoteErr != nil {
+				return schemaError(expected.Name, quoteErr.Error())
+			}
+		}
+
+		indexModifier := ""
+
+		if index.Type == schemas.UniqueType {
+			indexModifier = "UNIQUE "
+		} else if index.Type != schemas.IndexType {
+			return schemaError(expected.Name, fmt.Sprintf("index %s has unsupported type", indexName))
+		}
+
+		statement := fmt.Sprintf("CREATE %sINDEX %s ON %s (%s)", indexModifier, quotedIndexName, quotedTableName, strings.Join(quotedColumns, ", "))
+		sess := db.NewSessionWithContext(c)
+		_, execErr := sess.Exec(statement)
+		sess.Close()
+
+		if execErr != nil {
+			return fmt.Errorf("create personal finance index %s (catalog indexes %v): %w", indexName, actualIndexNames, execErr)
+		}
+	}
+
+	return nil
+}
+
+func quoteSchemaIdentifier(databaseType string, value string) (string, error) {
+	if !isSafeCatalogIdentifier(value) {
+		return "", fmt.Errorf("unsafe schema identifier %s", value)
+	}
+
+	if databaseType == settings.MySqlDbType {
+		return "`" + value + "`", nil
+	}
+
+	return `"` + value + `"`, nil
+}
+
+// verifyPersonalFinanceMigrationPreflightWithContext 要求已发布基线仍然精确，
+// 并只允许本次新增表完全不存在，或列、主键完整兼容且至多缺少预期索引。
+func verifyPersonalFinanceMigrationPreflightWithContext(c context.Context, db *datastore.Database, existingBeans []any, newBeans []any) error {
+	existingTables, err := describeTables(db, existingBeans)
+
+	if err != nil {
+		return err
+	}
+
+	newTables, err := describeTables(db, newBeans)
+
+	if err != nil {
+		return err
+	}
+
+	allowed := make(map[string]struct{}, len(existingTables)+len(newTables)+1)
+	allowed[strings.ToLower((SchemaMigration{}).TableName())] = struct{}{}
+
+	for tableName := range existingTables {
+		allowed[tableName] = struct{}{}
+	}
+
+	for tableName := range newTables {
+		if _, exists := allowed[tableName]; exists {
+			return schemaError(tableName, "duplicate expected table across migration versions")
+		}
+
+		allowed[tableName] = struct{}{}
+	}
+
+	actualTables, err := readSchemaTablesWithContext(c, db)
+
+	if err != nil {
+		return fmt.Errorf("read database schema for personal finance migration preflight: %w", err)
+	}
+
+	for _, actual := range actualTables {
+		actualName := normalizeIdentifier(actual.Name)
+
+		if strings.HasPrefix(actualName, "pf_") {
+			if _, exists := allowed[actualName]; !exists {
+				return schemaError(actual.Name, "unknown personal finance table")
+			}
+		}
+	}
+
+	for tableName, expected := range existingTables {
+		actual := findTable(actualTables, tableName)
+
+		if actual == nil {
+			return schemaError(tableName, "table is missing")
+		}
+
+		if err = verifyTable(db.DatabaseType(), expected, actual, schemaExact); err != nil {
+			return err
+		}
+
+		if err = verifyDialectTableSchemaWithContext(c, db, expected.Name); err != nil {
+			return err
+		}
+	}
+
+	for tableName, expected := range newTables {
+		actual := findTable(actualTables, tableName)
+
+		if actual == nil {
+			continue
+		}
+
+		if err = verifyTable(db.DatabaseType(), expected, actual, schemaCompatibleSubset); err != nil {
+			return err
+		}
+
+		if err = verifyDialectTableSchemaWithContext(c, db, expected.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func verifyPersonalFinanceTablesWithContext(c context.Context, db *datastore.Database, beans []any, mode schemaVerificationMode) error {

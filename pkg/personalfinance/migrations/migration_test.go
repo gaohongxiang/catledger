@@ -3,17 +3,19 @@ package migrations
 import (
 	"errors"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 )
 
 func TestSchemaV001ChecksumGolden(t *testing.T) {
 	migrations := registeredMigrations()
 
-	if len(migrations) != 2 {
+	if len(migrations) != 3 {
 		t.Fatalf("unexpected registered migration count %d", len(migrations))
 	}
 
@@ -27,6 +29,30 @@ func TestSchemaV001ChecksumGolden(t *testing.T) {
 		!strings.Contains(canonicalSchemaManifestV001(), "table=pf_raw_import_row\n") ||
 		!strings.Contains(canonicalSchemaManifestV001(), "SMALLINT NULL") {
 		t.Fatal("v001 manifest does not include the frozen ledger, raw rows, and SMALLINT fields")
+	}
+}
+
+func TestSchemaV003ChecksumGolden(t *testing.T) {
+	migrations := registeredMigrations()
+	const expectedChecksum = "e192a9469607ad0603aba6d9e356aac68d810badcc94f67ed8f5a25630a93875"
+
+	if migrations[2].version != 3 || migrations[2].name != "reconciliation_cases_and_decisions" || migrations[2].checksum != expectedChecksum {
+		t.Fatalf("v003 identity changed: version=%d name=%s checksum=%s", migrations[2].version, migrations[2].name, migrations[2].checksum)
+	}
+
+	manifest := canonicalSchemaManifestV003()
+
+	for _, required := range []string{
+		"table=pf_reconciliation_case\n",
+		"table=pf_reconciliation_case_member\n",
+		"table=pf_reconciliation_decision\n",
+		"table=pf_reconciliation_transaction_link\n",
+		"table=pf_reconciliation_ledger_effect\n",
+		"case-key=reconciliation-case-key-v1:sorted-stable-member-tokens\n",
+	} {
+		if !strings.Contains(manifest, required) {
+			t.Fatalf("v003 manifest does not include %q", required)
+		}
 	}
 }
 
@@ -161,6 +187,127 @@ func TestRuntimeModelsMatchFrozenSchemaV002(t *testing.T) {
 			if frozenField.Name != runtimeField.Name || runtimeField.Tag.Get("xorm") != frozenField.Tag.Get("xorm") {
 				t.Fatalf("runtime model %s field %d differs from v002: runtime=%s %q frozen=%s %q",
 					runtimeType.Name(), index, runtimeField.Name, runtimeField.Tag.Get("xorm"), frozenField.Name, frozenField.Tag.Get("xorm"))
+			}
+		}
+	}
+}
+
+func TestRuntimeModelsMatchFrozenSchemaV003(t *testing.T) {
+	pairs := []struct {
+		frozen  any
+		runtime any
+	}{
+		{new(reconciliationCaseV003), new(reconciliation.Case)},
+		{new(reconciliationCaseMemberV003), new(reconciliation.CaseMember)},
+		{new(reconciliationDecisionV003), new(reconciliation.Decision)},
+		{new(reconciliationTransactionLinkV003), new(reconciliation.TransactionLink)},
+		{new(reconciliationLedgerEffectV003), new(reconciliation.LedgerEffect)},
+	}
+
+	for _, pair := range pairs {
+		frozenType := reflect.TypeOf(pair.frozen).Elem()
+		runtimeType := reflect.TypeOf(pair.runtime).Elem()
+
+		if frozenType.NumField() != runtimeType.NumField() {
+			t.Fatalf("runtime model %s has %d fields, frozen v003 has %d", runtimeType.Name(), runtimeType.NumField(), frozenType.NumField())
+		}
+
+		for index := 0; index < frozenType.NumField(); index++ {
+			frozenField := frozenType.Field(index)
+			runtimeField := runtimeType.Field(index)
+
+			if frozenField.Name != runtimeField.Name || runtimeField.Tag.Get("xorm") != frozenField.Tag.Get("xorm") {
+				t.Fatalf("runtime model %s field %d differs from v003: runtime=%s %q frozen=%s %q",
+					runtimeType.Name(), index, runtimeField.Name, runtimeField.Tag.Get("xorm"), frozenField.Name, frozenField.Tag.Get("xorm"))
+			}
+		}
+	}
+}
+
+func TestSchemaV003NullableAndUniqueContract(t *testing.T) {
+	nullableFields := map[string]struct{}{
+		"pf_reconciliation_case.CurrentDecisionId":                   {},
+		"pf_reconciliation_decision.PreviousDecisionId":              {},
+		"pf_reconciliation_decision.StartedUnixTime":                 {},
+		"pf_reconciliation_decision.CompletedUnixTime":               {},
+		"pf_reconciliation_decision.FailedUnixTime":                  {},
+		"pf_reconciliation_ledger_effect.TransactionDeletedUnixTime": {},
+	}
+	expectedUniqueIndexes := map[string]map[string][]string{
+		"pf_reconciliation_case": {
+			"UQE_pf_reconciliation_case_uid_key": {"Uid", "CaseKey"},
+		},
+		"pf_reconciliation_case_member": {
+			"UQE_pf_reconciliation_case_member_uid_order": {"Uid", "CaseId", "MemberOrder"},
+			"UQE_pf_reconciliation_case_member_uid_ref":   {"Uid", "CaseId", "MemberKind", "MemberRefId"},
+		},
+		"pf_reconciliation_decision": {
+			"UQE_pf_reconciliation_decision_uid_key": {"Uid", "IdempotencyKeyDigest"},
+		},
+		"pf_reconciliation_transaction_link": {},
+		"pf_reconciliation_ledger_effect": {
+			"UQE_pf_reconciliation_effect_uid_decision_tx_type": {"Uid", "DecisionId", "TransactionId", "EffectType"},
+		},
+	}
+
+	for _, bean := range schemaBeansV003() {
+		beanType := reflect.TypeOf(bean).Elem()
+		tableName := reflect.New(beanType).Interface().(interface{ TableName() string }).TableName()
+		uniqueIndexes := make(map[string][]string)
+
+		for fieldIndex := 0; fieldIndex < beanType.NumField(); fieldIndex++ {
+			field := beanType.Field(fieldIndex)
+			fieldKey := tableName + "." + field.Name
+			fieldTag := field.Tag.Get("xorm")
+			_, shouldBeNullable := nullableFields[fieldKey]
+			isNullable := field.Type.Kind() == reflect.Ptr && strings.HasSuffix(fieldTag, " NULL") && !strings.HasSuffix(fieldTag, " NOT NULL")
+
+			if isNullable != shouldBeNullable {
+				t.Fatalf("v003 field %s nullable=%t, expected %t", fieldKey, isNullable, shouldBeNullable)
+			}
+
+			for _, tagPart := range strings.Fields(fieldTag) {
+				isUnique := strings.HasPrefix(tagPart, "UNIQUE(") && strings.HasSuffix(tagPart, ")")
+				isIndex := strings.HasPrefix(tagPart, "INDEX(") && strings.HasSuffix(tagPart, ")")
+
+				if isUnique || isIndex {
+					indexName := strings.TrimSuffix(tagPart[strings.IndexByte(tagPart, '(')+1:], ")")
+
+					if len(indexName) > 63 || !isSafeCatalogIdentifier(indexName) {
+						t.Fatalf("v003 index name %q must be ASCII-safe and at most 63 bytes", indexName)
+					}
+
+					if !isUnique {
+						continue
+					}
+
+					uniqueIndexes[indexName] = append(uniqueIndexes[indexName], field.Name)
+				}
+			}
+		}
+
+		actualIndexNames := make([]string, 0, len(uniqueIndexes))
+
+		for indexName := range uniqueIndexes {
+			actualIndexNames = append(actualIndexNames, indexName)
+		}
+
+		sort.Strings(actualIndexNames)
+		expectedIndexNames := make([]string, 0, len(expectedUniqueIndexes[tableName]))
+
+		for indexName := range expectedUniqueIndexes[tableName] {
+			expectedIndexNames = append(expectedIndexNames, indexName)
+		}
+
+		sort.Strings(expectedIndexNames)
+
+		if !equalStrings(actualIndexNames, expectedIndexNames) {
+			t.Fatalf("v003 table %s unique indexes are %v, expected %v", tableName, actualIndexNames, expectedIndexNames)
+		}
+
+		for indexName, expectedColumns := range expectedUniqueIndexes[tableName] {
+			if !equalStrings(uniqueIndexes[indexName], expectedColumns) {
+				t.Fatalf("v003 index %s columns are %v, expected %v", indexName, uniqueIndexes[indexName], expectedColumns)
 			}
 		}
 	}
