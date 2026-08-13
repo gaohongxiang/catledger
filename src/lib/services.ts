@@ -182,6 +182,7 @@ import type {
 import type {
     PersonalFinanceEvidenceResult,
     PersonalFinanceImportBatch,
+    PersonalFinanceImportFile,
     PersonalFinanceImportBatchPage,
     PersonalFinanceImportRowPage,
     PersonalFinanceImportUploadResult,
@@ -191,7 +192,9 @@ import type {
     PersonalFinanceReparseResult,
     PersonalFinanceSourceAccount,
     PersonalFinanceSourceAccountPage,
-    PersonalFinanceSourceAccountSaveRequest
+    PersonalFinanceSourceAccountSaveRequest,
+    PersonalFinanceUndoImpact,
+    PersonalFinanceConsistencyReport
 } from '@/features/personal-finance/models.ts';
 
 import {
@@ -913,6 +916,18 @@ export default {
     getPersonalFinanceTransactionEvidence: ({ transactionId }: { transactionId: string }): ApiResponsePromise<PersonalFinanceEvidenceResult> => {
         return axios.get<ApiResponse<PersonalFinanceEvidenceResult>>(`v1/personal_finance/transactions/evidence.json?transaction_id=${encodeURIComponent(transactionId)}`);
     },
+	discardPersonalFinanceImportBatch: ({ batchId }: { batchId: string }): ApiResponsePromise<PersonalFinanceImportBatch> => {
+		return axios.post<ApiResponse<PersonalFinanceImportBatch>>('v1/personal_finance/import_batches/discard.json', { batchId });
+	},
+	deletePersonalFinanceImportFileContent: ({ fileId }: { fileId: string }): ApiResponsePromise<PersonalFinanceImportFile> => {
+		return axios.post<ApiResponse<PersonalFinanceImportFile>>('v1/personal_finance/import_files/delete_content.json', { fileId });
+	},
+	getPersonalFinanceImportBatchUndoImpact: ({ batchId }: { batchId: string }): ApiResponsePromise<PersonalFinanceUndoImpact> => {
+		return axios.get<ApiResponse<PersonalFinanceUndoImpact>>(`v1/personal_finance/import_batches/undo_impact.json?batch_id=${encodeURIComponent(batchId)}`);
+	},
+	getPersonalFinanceConsistency: (): ApiResponsePromise<PersonalFinanceConsistencyReport> => {
+		return axios.get<ApiResponse<PersonalFinanceConsistencyReport>>('v1/personal_finance/consistency.json');
+	},
     getLatestExchangeRates: (param: { ignoreError?: boolean }): ApiResponsePromise<LatestExchangeRateResponse> => {
         return axios.get<ApiResponse<LatestExchangeRateResponse>>('v1/exchange_rates/latest.json', {
             ignoreError: !!param.ignoreError,

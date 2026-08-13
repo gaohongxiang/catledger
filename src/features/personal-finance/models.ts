@@ -226,3 +226,30 @@ export interface PersonalFinanceEvidenceResult {
     readonly transactionId: string;
     readonly items: PersonalFinanceEvidenceItem[];
 }
+
+export interface PersonalFinanceUndoImpact {
+	readonly batchId: string;
+	readonly linkedTransactionCount: number;
+	readonly postingCreatedCount: number;
+	readonly postingReusedCount: number;
+	readonly modifiedTransactionCount: number;
+	readonly missingTransactionCount: number;
+	readonly sharedTransactionCount: number;
+	readonly reasonCodes: string[];
+}
+
+export interface PersonalFinanceConsistencyReport {
+	readonly importFileCount: number;
+	readonly importBatchCount: number;
+	readonly rawImportRowCount: number;
+	readonly batchCountMismatchCount: number;
+	readonly orphanBatchCount: number;
+	readonly orphanRawRowCount: number;
+	readonly orphanSourceIdentityCount: number;
+	readonly orphanPostingCount: number;
+	readonly orphanBatchIssueCount: number;
+	readonly orphanEvidenceLinkCount: number;
+	readonly missingOrDeletedTransactionCount: number;
+	readonly fileContentMismatchCount: number;
+	readonly fileContentCheckFailureCount: number;
+}

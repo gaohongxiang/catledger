@@ -9,3 +9,9 @@ type ObjectStorage interface {
 	Save(ctx core.Context, path string, object ObjectInStorage) error
 	Delete(ctx core.Context, path string) error
 }
+
+// ObjectKeyLister is an optional maintenance-only capability. Normal storage
+// callers must continue to depend only on ObjectStorage.
+type ObjectKeyLister interface {
+	ListObjectKeys(ctx core.Context) ([]string, error)
+}

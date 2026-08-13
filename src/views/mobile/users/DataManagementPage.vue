@@ -11,6 +11,9 @@
             <f7-list-item title="Transaction Tags" after="Count"></f7-list-item>
             <f7-list-item title="Transaction Templates" after="Count"></f7-list-item>
             <f7-list-item title="Scheduled Transactions" after="Count"></f7-list-item>
+			<f7-list-item title="Import files" after="Count"></f7-list-item>
+			<f7-list-item title="Import batches" after="Count"></f7-list-item>
+			<f7-list-item title="Raw evidence rows" after="Count"></f7-list-item>
         </f7-list>
 
         <f7-list strong inset dividers class="margin-vertical-half" v-else-if="!loading">
@@ -22,6 +25,9 @@
             <f7-list-item :title="tt('Transaction Tags')" :after="displayDataStatistics ? displayDataStatistics.totalTransactionTagCount : '-'"></f7-list-item>
             <f7-list-item :title="tt('Transaction Templates')" :after="displayDataStatistics ? displayDataStatistics.totalTransactionTemplateCount : '-'"></f7-list-item>
             <f7-list-item :title="tt('Scheduled Transactions')" :after="displayDataStatistics ? displayDataStatistics.totalScheduledTransactionCount : '-'"></f7-list-item>
+			<f7-list-item :title="tt('personalFinance.dataManagement.files')" :after="displayDataStatistics ? displayDataStatistics.totalPersonalFinanceImportFileCount : '-'"></f7-list-item>
+			<f7-list-item :title="tt('personalFinance.dataManagement.batches')" :after="displayDataStatistics ? displayDataStatistics.totalPersonalFinanceImportBatchCount : '-'"></f7-list-item>
+			<f7-list-item :title="tt('personalFinance.dataManagement.rows')" :after="displayDataStatistics ? displayDataStatistics.totalPersonalFinanceRawRowCount : '-'"></f7-list-item>
         </f7-list>
 
         <f7-list strong inset dividers class="margin-vertical" :class="{ 'disabled': loading }">
@@ -78,7 +84,7 @@
         </password-input-sheet>
 
         <password-input-sheet :title="tt('Are you sure you want to clear all data?')"
-                              :hint="tt('You CANNOT undo this action. This will clear your accounts, categories, tags and transactions data. Please enter your current password to confirm.')"
+							  :hint="tt('personalFinance.dataManagement.clearAllHint')"
                               :confirm-disabled="clearingData"
                               :cancel-disabled="clearingData"
                               color="red"

@@ -157,6 +157,11 @@ func (s *PostingService) PostImportBatch(c core.Context, request PostImportBatch
 		return nil, ErrImportPostingRequestInvalid
 	}
 
+	// 正常部署为单应用实例；与废弃动作共用批次分片锁，避免在“无 posting”
+	// 核对和持久 posting 之间产生进程内竞态。数据库条件更新仍是最终状态裁决。
+	unlockBatch := lockBatchMutation(request.Uid, request.BatchId)
+	defer unlockBatch()
+
 	postingId := s.generateId()
 	now := s.now().Unix()
 

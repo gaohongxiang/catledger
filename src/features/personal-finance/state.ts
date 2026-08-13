@@ -1,6 +1,8 @@
 import { TransactionType } from '@/core/transaction.ts';
 
 import type {
+	PersonalFinanceImportBatch,
+	PersonalFinanceImportFile,
     PersonalFinanceImportRow,
     PersonalFinanceImportUploadResult,
     PersonalFinancePostingDraft,
@@ -11,6 +13,14 @@ import type {
 
 export type PersonalFinanceUploadAction = 'reparse' | 'choose_duplicate_action';
 export type PersonalFinanceRowAction = 'create' | 'create_or_reuse' | 'blocked';
+
+export function canDiscardImportBatch(batch: PersonalFinanceImportBatch | null): boolean {
+	return !!batch && (batch.status === 'awaiting_source_account' || batch.status === 'ready') && batch.postedRowCount === 0;
+}
+
+export function canDeleteImportFileContent(file: PersonalFinanceImportFile | undefined): boolean {
+	return !!file && file.contentState !== 'pending' && file.contentState !== 'deleted';
+}
 
 export function getUploadAction(result: PersonalFinanceImportUploadResult): PersonalFinanceUploadAction {
     if (result.duplicate && result.latestBatch) {

@@ -8,9 +8,11 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/converters"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/log"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/services"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
@@ -33,6 +35,12 @@ type DataManagementsApi struct {
 	templates               *services.TransactionTemplateService
 	userCustomExchangeRates *services.UserCustomExchangeRatesService
 	insightsExploreres      *services.InsightsExplorerService
+	personalFinanceFactory  func() (personalFinanceDataLifecycle, error)
+}
+
+type personalFinanceDataLifecycle interface {
+	GetImportDataStatistics(c core.Context, uid int64) (*importing.ImportDataStatistics, error)
+	ClearUserData(c core.Context, uid int64) error
 }
 
 // Initialize a data management api singleton instance
@@ -52,6 +60,13 @@ var (
 		templates:               services.TransactionTemplates,
 		userCustomExchangeRates: services.UserCustomExchangeRates,
 		insightsExploreres:      services.InsightsExplorers,
+		personalFinanceFactory: func() (personalFinanceDataLifecycle, error) {
+			repository, err := importing.NewRepository(datastore.Container.UserDataStore)
+			if err != nil {
+				return nil, err
+			}
+			return importing.NewLifecycleService(repository, services.PersonalFinanceImportFilesStorage, nil)
+		},
 	}
 )
 
@@ -124,15 +139,29 @@ func (a *DataManagementsApi) DataStatisticsHandler(c *core.WebContext) (any, *er
 		return nil, errs.ErrOperationFailed
 	}
 
+	personalFinance, err := a.personalFinanceFactory()
+	if err != nil {
+		log.Errorf(c, "[data_managements.DataStatisticsHandler] personal finance statistics service is unavailable for user \"uid:%d\"", uid)
+		return nil, errs.ErrOperationFailed
+	}
+	personalFinanceStatistics, err := personalFinance.GetImportDataStatistics(c, uid)
+	if err != nil {
+		log.Errorf(c, "[data_managements.DataStatisticsHandler] failed to get personal finance statistics for user \"uid:%d\"", uid)
+		return nil, errs.ErrOperationFailed
+	}
+
 	dataStatisticsResp := &models.DataStatisticsResponse{
-		TotalAccountCount:              totalAccountCount,
-		TotalTransactionCategoryCount:  totalTransactionCategoryCount,
-		TotalTransactionTagCount:       totalTransactionTagCount,
-		TotalTransactionCount:          totalTransactionCount,
-		TotalTransactionPictureCount:   totalTransactionPictureCount,
-		TotalExplorationCount:          totalExplorationCount,
-		TotalTransactionTemplateCount:  totalTransactionTemplateCount,
-		TotalScheduledTransactionCount: totalScheduledTransactionCount,
+		TotalAccountCount:                    totalAccountCount,
+		TotalTransactionCategoryCount:        totalTransactionCategoryCount,
+		TotalTransactionTagCount:             totalTransactionTagCount,
+		TotalTransactionCount:                totalTransactionCount,
+		TotalTransactionPictureCount:         totalTransactionPictureCount,
+		TotalExplorationCount:                totalExplorationCount,
+		TotalTransactionTemplateCount:        totalTransactionTemplateCount,
+		TotalScheduledTransactionCount:       totalScheduledTransactionCount,
+		TotalPersonalFinanceImportFileCount:  personalFinanceStatistics.ImportFileCount,
+		TotalPersonalFinanceImportBatchCount: personalFinanceStatistics.ImportBatchCount,
+		TotalPersonalFinanceRawRowCount:      personalFinanceStatistics.RawImportRowCount,
 	}
 
 	return dataStatisticsResp, nil
@@ -165,6 +194,16 @@ func (a *DataManagementsApi) ClearAllDataHandler(c *core.WebContext) (any, *errs
 
 	if user.FeatureRestriction.Contains(core.USER_FEATURE_RESTRICTION_TYPE_CLEAR_ALL_DATA) {
 		return nil, errs.ErrNotPermittedToPerformThisAction
+	}
+
+	personalFinance, err := a.personalFinanceFactory()
+	if err != nil {
+		log.Errorf(c, "[data_managements.ClearAllDataHandler] personal finance cleanup service is unavailable for user \"uid:%d\"", uid)
+		return nil, errs.ErrOperationFailed
+	}
+	if err = personalFinance.ClearUserData(c, uid); err != nil {
+		log.Errorf(c, "[data_managements.ClearAllDataHandler] failed to clear personal finance data for user \"uid:%d\"", uid)
+		return nil, errs.ErrOperationFailed
 	}
 
 	err = a.templates.DeleteAllTemplates(c, uid)

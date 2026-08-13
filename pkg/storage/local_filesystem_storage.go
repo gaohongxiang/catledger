@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -62,6 +63,29 @@ func (s *LocalFileSystemObjectStorage) Save(ctx core.Context, path string, objec
 // Delete returns whether delete the object according to specified the file path successfully
 func (s *LocalFileSystemObjectStorage) Delete(ctx core.Context, path string) error {
 	return os.Remove(s.getFinalPath(path))
+}
+
+// ListObjectKeys implements the optional maintenance-only object inventory.
+func (s *LocalFileSystemObjectStorage) ListObjectKeys(ctx core.Context) ([]string, error) {
+	keys := make([]string, 0)
+	err := filepath.WalkDir(s.rootPath, func(filePath string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(s.rootPath, filePath)
+		if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) {
+			return errors.New("invalid object path during inventory")
+		}
+		keys = append(keys, filepath.ToSlash(relative))
+		return nil
+	})
+	return keys, err
 }
 
 func (s *LocalFileSystemObjectStorage) getFinalPath(path string) string {

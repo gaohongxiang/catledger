@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PersonalFinanceImportRow, PersonalFinanceImportUploadResult, PersonalFinancePostingDraft, PersonalFinanceSourceAccount } from './models.ts';
-import { buildSingleRowPostingRequest, getCompatibleSourceAccounts, getRowAction, getUploadAction } from './state.ts';
+import type { PersonalFinanceImportBatch, PersonalFinanceImportFile, PersonalFinanceImportRow, PersonalFinanceImportUploadResult, PersonalFinancePostingDraft, PersonalFinanceSourceAccount } from './models.ts';
+import { buildSingleRowPostingRequest, canDeleteImportFileContent, canDiscardImportBatch, getCompatibleSourceAccounts, getRowAction, getUploadAction } from './state.ts';
 import { TransactionType } from '@/core/transaction.ts';
 
 function row(overrides: Partial<PersonalFinanceImportRow> = {}): PersonalFinanceImportRow {
@@ -94,4 +94,16 @@ describe('personal finance import workflow state', () => {
         expect(getRowAction(row({ parseState: 'invalid' }))).toBe('blocked');
         expect(getRowAction(row({ processingState: 'linked' }))).toBe('blocked');
     });
+
+	it('only enables lifecycle actions for server-eligible states', () => {
+		const batch = { status: 'ready', postedRowCount: 0 } as PersonalFinanceImportBatch;
+		expect(canDiscardImportBatch(batch)).toBe(true);
+		expect(canDiscardImportBatch({ ...batch, status: 'partially_posted' })).toBe(false);
+		expect(canDiscardImportBatch({ ...batch, postedRowCount: 1 })).toBe(false);
+
+		const file = { contentState: 'available' } as PersonalFinanceImportFile;
+		expect(canDeleteImportFileContent(file)).toBe(true);
+		expect(canDeleteImportFileContent({ ...file, contentState: 'pending' })).toBe(false);
+		expect(canDeleteImportFileContent({ ...file, contentState: 'deleted' })).toBe(false);
+	});
 });

@@ -431,6 +431,10 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.GET("/personal_finance/import_batches/list.json", bindApi(api.PersonalFinanceImports.ImportBatchListHandler, config))
 			apiV1Route.GET("/personal_finance/import_batches/get.json", bindApi(api.PersonalFinanceImports.ImportBatchGetHandler, config))
 			apiV1Route.GET("/personal_finance/import_batches/rows.json", bindApi(api.PersonalFinanceImports.RawImportRowListHandler, config))
+			apiV1Route.POST("/personal_finance/import_batches/discard.json", bindApi(api.PersonalFinanceImports.ImportBatchDiscardHandler, config))
+			apiV1Route.POST("/personal_finance/import_files/delete_content.json", bindApi(api.PersonalFinanceImports.ImportFileDeleteContentHandler, config))
+			apiV1Route.GET("/personal_finance/import_batches/undo_impact.json", bindApi(api.PersonalFinanceImports.ImportBatchUndoImpactHandler, config))
+			apiV1Route.GET("/personal_finance/consistency.json", bindApi(api.PersonalFinanceImports.PersonalFinanceConsistencyHandler, config))
 			apiV1Route.GET("/personal_finance/source_accounts/list.json", bindApi(api.PersonalFinanceImports.SourceAccountListHandler, config))
 			apiV1Route.GET("/personal_finance/transactions/evidence.json", bindApi(api.PersonalFinanceImports.TransactionEvidenceHandler, config))
 

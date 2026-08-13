@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -101,6 +102,11 @@ func TestPersonalFinanceStorageAdapterLocalCompensationFlow(t *testing.T) {
 
 	if err := adapter.Promote(c, temporaryKey, availableKey); err != nil {
 		t.Fatalf("promote import object: %v", err)
+	}
+
+	keys, err := adapter.ListObjectKeys(c)
+	if err != nil || len(keys) != 2 {
+		t.Fatalf("list local personal finance objects: %v", err)
 	}
 
 	valid, err = adapter.Verify(c, availableKey, digestText, int64(len(content)))
@@ -232,5 +238,12 @@ func TestPersonalFinanceStorageAdapterPrivateWebDAVFlow(t *testing.T) {
 
 	if err := adapter.Delete(c, temporaryKey); err != nil {
 		t.Fatalf("delete private WebDAV temporary object: %v", err)
+	}
+}
+
+func TestPersonalFinanceStorageAdapterWebDAVInventoryIsExplicitlyUnsupported(t *testing.T) {
+	adapter := &PersonalFinanceStorageAdapter{config: settings.Container, objectStorage: &personalFinanceWebDAVObjectStorage{}}
+	if _, err := adapter.ListObjectKeys(core.NewNullContext()); !errors.Is(err, ErrPersonalFinanceObjectListingUnsupported) {
+		t.Fatalf("WebDAV inventory did not return the explicit unsupported error: %v", err)
 	}
 }

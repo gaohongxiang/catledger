@@ -2881,6 +2881,28 @@
             "row_identifier_invalid": "来源标识无效",
             "row_unsupported": "暂不支持这一行数据"
         },
+		"operations": {
+			"undoImpact": "查看撤销影响",
+			"undoImpactTitle": "正式账本影响",
+			"noAutomaticUndo": "本阶段不会自动撤销正式账本交易。这里仅提供只读影响汇总，用于安排人工处理。",
+			"linkedTransactions": "已关联交易",
+			"createdTransactions": "入账时创建",
+			"reusedTransactions": "入账时复用",
+			"modifiedOrMissing": "已修改或缺失",
+			"sharedTransactions": "被其他批次共享",
+			"discard": "废弃批次",
+			"discardConfirm": "确定废弃这个未入账批次吗？当前有 {pending} 笔待处理、{posted} 笔已入账。证据仍会保留，但此批次以后不能再入账。",
+			"discarded": "导入批次已废弃",
+			"deleteContent": "删除原文件",
+			"deleteContentConfirm": "确定删除原账单字节吗？当前批次有 {pending} 笔待处理、{posted} 笔已入账。文件元数据和全部证据仍会保留；除非重新上传同一文件，否则字节内容无法恢复。",
+			"contentDeleted": "原账单内容已删除"
+		},
+		"dataManagement": {
+			"files": "个人财务原文件",
+			"batches": "个人财务导入批次",
+			"rows": "个人财务证据行",
+			"clearAllHint": "您不能撤销该操作。“清除所有数据”也会删除个人财务原文件、导入证据、账户、分类、标签和交易。请输入当前密码以确认。"
+		},
         "error": {
             "operationFailed": "个人财务操作未能完成"
         }

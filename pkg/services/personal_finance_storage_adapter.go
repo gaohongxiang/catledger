@@ -30,6 +30,8 @@ const (
 	personalFinanceMaximumReadBytes    = int64(128 * 1024 * 1024)
 )
 
+var ErrPersonalFinanceObjectListingUnsupported = errors.New("personal finance object listing is unsupported")
+
 // PersonalFinanceStorageAdapter 是原文件存储的窄适配器。
 // 它只接受服务生成的不透明 key，避免原文件名或账户标识进入对象路径。
 type PersonalFinanceStorageAdapter struct {
@@ -193,6 +195,20 @@ func (s *PersonalFinanceStorageAdapter) Delete(c core.Context, objectKey string)
 	}
 
 	return err
+}
+
+// ListObjectKeys 枚举 PF 存储根下对象，仅供停服运维命令使用。
+// WebDAV 未提供可靠通用枚举时明确失败，绝不静默报告健康。
+func (s *PersonalFinanceStorageAdapter) ListObjectKeys(c core.Context) ([]string, error) {
+	objectStorage, err := s.currentStorage()
+	if err != nil {
+		return nil, err
+	}
+	lister, ok := objectStorage.(storage.ObjectKeyLister)
+	if !ok {
+		return nil, ErrPersonalFinanceObjectListingUnsupported
+	}
+	return lister.ListObjectKeys(c)
 }
 
 func (s *PersonalFinanceStorageAdapter) currentStorage() (storage.ObjectStorage, error) {

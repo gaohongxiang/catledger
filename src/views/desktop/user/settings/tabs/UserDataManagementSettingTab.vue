@@ -66,6 +66,24 @@
                                 count: displayDataStatistics ? displayDataStatistics.totalScheduledTransactionCount : '-',
                                 icon: mdiClipboardTextClockOutline,
                                 color: 'success-darken-1'
+							},
+							{
+								title: 'personalFinance.dataManagement.files',
+								count: displayDataStatistics ? displayDataStatistics.totalPersonalFinanceImportFileCount : '-',
+								icon: mdiFileDocumentMultipleOutline,
+								color: 'indigo'
+							},
+							{
+								title: 'personalFinance.dataManagement.batches',
+								count: displayDataStatistics ? displayDataStatistics.totalPersonalFinanceImportBatchCount : '-',
+								icon: mdiDatabaseOutline,
+								color: 'deep-purple'
+							},
+							{
+								title: 'personalFinance.dataManagement.rows',
+								count: displayDataStatistics ? displayDataStatistics.totalPersonalFinanceRawRowCount : '-',
+								icon: mdiTable,
+								color: 'blue-grey'
                             }
                         ]">
                             <div class="d-flex align-center">
@@ -122,7 +140,7 @@
 
                 <v-card-text class="mt-2 py-0">
                     <v-alert type="error" variant="tonal" :icon="mdiAlert">
-                        {{ tt('You CANNOT undo this action. "Clear All Transactions" will clear all your transactions data, and "Clear All Data" will clear your accounts, categories, tags and transactions data. Please enter your current password to confirm.') }}
+						{{ tt('personalFinance.dataManagement.clearAllHint') }}
                     </v-alert>
                 </v-card-text>
 
@@ -193,6 +211,9 @@ import {
     mdiTagOutline,
     mdiClipboardTextOutline,
     mdiClipboardTextClockOutline,
+	mdiDatabaseOutline,
+	mdiFileDocumentMultipleOutline,
+	mdiTable,
     mdiAlert
 } from '@mdi/js';
 

@@ -28,6 +28,9 @@ export interface DataStatisticsResponse {
     readonly totalExplorationCount: string;
     readonly totalTransactionTemplateCount: string;
     readonly totalScheduledTransactionCount: string;
+	readonly totalPersonalFinanceImportFileCount: string;
+	readonly totalPersonalFinanceImportBatchCount: string;
+	readonly totalPersonalFinanceRawRowCount: string;
 }
 
 export interface DisplayDataStatistics {
@@ -39,4 +42,7 @@ export interface DisplayDataStatistics {
     readonly totalExplorationCount: string;
     readonly totalTransactionTemplateCount: string;
     readonly totalScheduledTransactionCount: string;
+	readonly totalPersonalFinanceImportFileCount: string;
+	readonly totalPersonalFinanceImportBatchCount: string;
+	readonly totalPersonalFinanceRawRowCount: string;
 }

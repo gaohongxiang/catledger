@@ -133,6 +133,32 @@
                                     >
                                         {{ tt('personalFinance.reparse') }}
                                     </v-btn>
+									<v-btn
+										variant="tonal"
+										:prepend-icon="mdiInformationOutline"
+										:disabled="personalFinanceStore.submitting"
+										@click="showUndoImpact"
+									>
+										{{ tt('personalFinance.operations.undoImpact') }}
+									</v-btn>
+									<v-btn
+										variant="tonal"
+										color="warning"
+										:prepend-icon="mdiCancel"
+										:disabled="!canDiscardSelectedBatch || personalFinanceStore.submitting"
+										@click="discardSelectedBatch"
+									>
+										{{ tt('personalFinance.operations.discard') }}
+									</v-btn>
+									<v-btn
+										variant="tonal"
+										color="error"
+										:prepend-icon="mdiDeleteOutline"
+										:disabled="!canDeleteSelectedFile || personalFinanceStore.submitting"
+										@click="deleteSelectedFileContent"
+									>
+										{{ tt('personalFinance.operations.deleteContent') }}
+									</v-btn>
                                 </div>
 
                                 <v-row class="mt-4">
@@ -246,13 +272,33 @@
         </v-card>
     </v-dialog>
 
+	<v-dialog width="620" v-model="showUndoImpactDialog">
+		<v-card>
+			<v-card-title class="pa-5">{{ tt('personalFinance.operations.undoImpactTitle') }}</v-card-title>
+			<v-card-text class="px-5 pb-5">
+				<v-alert type="info" variant="tonal">{{ tt('personalFinance.operations.noAutomaticUndo') }}</v-alert>
+				<v-list density="compact" class="mt-3" v-if="undoImpact">
+					<v-list-item :title="tt('personalFinance.operations.linkedTransactions')" :subtitle="String(undoImpact.linkedTransactionCount)" />
+					<v-list-item :title="tt('personalFinance.operations.createdTransactions')" :subtitle="String(undoImpact.postingCreatedCount)" />
+					<v-list-item :title="tt('personalFinance.operations.reusedTransactions')" :subtitle="String(undoImpact.postingReusedCount)" />
+					<v-list-item :title="tt('personalFinance.operations.modifiedOrMissing')" :subtitle="String(undoImpact.modifiedTransactionCount + undoImpact.missingTransactionCount)" />
+					<v-list-item :title="tt('personalFinance.operations.sharedTransactions')" :subtitle="String(undoImpact.sharedTransactionCount)" />
+				</v-list>
+				<v-progress-linear indeterminate class="mt-4" v-else />
+			</v-card-text>
+			<v-card-actions class="px-5 pb-5"><v-spacer /><v-btn @click="showUndoImpactDialog = false">{{ tt('Close') }}</v-btn></v-card-actions>
+		</v-card>
+	</v-dialog>
+
     <source-account-dialog ref="sourceAccountDialog" @parsed="onParsed" />
     <posting-dialog ref="postingDialog" @posted="onPosted" />
+	<confirm-dialog ref="confirmDialog" />
     <snack-bar ref="snackbar" />
 </template>
 
 <script setup lang="ts">
 import SnackBar from '@/components/desktop/SnackBar.vue';
+import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import PostingDialog from '../components/PostingDialog.vue';
 import SourceAccountDialog from '../components/SourceAccountDialog.vue';
 
@@ -264,7 +310,7 @@ import { useUserStore } from '@/stores/user.ts';
 import { getCurrentUnixTime, getTimezoneOffsetMinutes, parseDateTimeFromUnixTimeWithBrowserTimezone } from '@/lib/datetime.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 
-import type { PersonalFinanceImportRow, PersonalFinanceImportUploadResult } from '../models.ts';
+import type { PersonalFinanceImportRow, PersonalFinanceImportUploadResult, PersonalFinanceUndoImpact } from '../models.ts';
 import {
     getBatchStatusColor,
     getBatchStatusKey,
@@ -272,14 +318,17 @@ import {
     getRowExplanationKey,
     getSourceTypeKey
 } from '../presentation.ts';
-import { getRowAction, getUploadAction } from '../state.ts';
+import { canDeleteImportFileContent, canDiscardImportBatch, getRowAction, getUploadAction } from '../state.ts';
 import { usePersonalFinanceStore } from '../store.ts';
 
 import {
     mdiChatOutline,
+	mdiCancel,
+	mdiDeleteOutline,
     mdiFileDocumentOutline,
     mdiFileSearchOutline,
     mdiRefresh,
+	mdiInformationOutline,
     mdiReload,
     mdiTrayArrowUp,
     mdiWalletOutline
@@ -288,6 +337,7 @@ import {
 type SnackBarType = InstanceType<typeof SnackBar>;
 type PostingDialogType = InstanceType<typeof PostingDialog>;
 type SourceAccountDialogType = InstanceType<typeof SourceAccountDialog>;
+type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 
 const HISTORY_PAGE_SIZE = 20;
 const ROW_PAGE_SIZE = 25;
@@ -300,11 +350,21 @@ const fileInput = useTemplateRef<HTMLInputElement>('fileInput');
 const postingDialog = useTemplateRef<PostingDialogType>('postingDialog');
 const sourceAccountDialog = useTemplateRef<SourceAccountDialogType>('sourceAccountDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
+const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 
 const batchPage = ref<number>(1);
 const rowPage = ref<number>(1);
 const showDuplicateDialog = ref<boolean>(false);
 const duplicateUpload = ref<PersonalFinanceImportUploadResult | null>(null);
+const showUndoImpactDialog = ref<boolean>(false);
+const undoImpact = ref<PersonalFinanceUndoImpact | null>(null);
+
+const canDiscardSelectedBatch = computed<boolean>(() => {
+	return canDiscardImportBatch(personalFinanceStore.selectedBatch);
+});
+const canDeleteSelectedFile = computed<boolean>(() => {
+	return canDeleteImportFileContent(personalFinanceStore.selectedBatch?.file);
+});
 
 const batchPageCount = computed<number>(() => Math.max(1, Math.ceil(personalFinanceStore.totalBatchCount / HISTORY_PAGE_SIZE)));
 const rowPageCount = computed<number>(() => Math.max(1, Math.ceil(personalFinanceStore.totalRowCount / ROW_PAGE_SIZE)));
@@ -359,6 +419,43 @@ async function reload(): Promise<void> {
     } catch {
         snackbar.value?.showMessage('personalFinance.error.operationFailed');
     }
+}
+
+async function discardSelectedBatch(): Promise<void> {
+	const batch = personalFinanceStore.selectedBatch;
+	if (!batch) return;
+	try {
+		await confirmDialog.value?.open('personalFinance.operations.discardConfirm', { pending: batch.pendingRowCount, posted: batch.postedRowCount, color: 'warning' });
+		await personalFinanceStore.discardBatch(batch.id);
+		snackbar.value?.showMessage('personalFinance.operations.discarded');
+	} catch (error: unknown) {
+		if (error) snackbar.value?.showMessage('personalFinance.error.operationFailed');
+	}
+}
+
+async function deleteSelectedFileContent(): Promise<void> {
+	const batch = personalFinanceStore.selectedBatch;
+	if (!batch?.file) return;
+	try {
+		await confirmDialog.value?.open('personalFinance.operations.deleteContentConfirm', { pending: batch.pendingRowCount, posted: batch.postedRowCount, color: 'error' });
+		await personalFinanceStore.deleteFileContent(batch.file.id, batch.id);
+		snackbar.value?.showMessage('personalFinance.operations.contentDeleted');
+	} catch (error: unknown) {
+		if (error) snackbar.value?.showMessage('personalFinance.error.operationFailed');
+	}
+}
+
+async function showUndoImpact(): Promise<void> {
+	const batch = personalFinanceStore.selectedBatch;
+	if (!batch) return;
+	undoImpact.value = null;
+	showUndoImpactDialog.value = true;
+	try {
+		undoImpact.value = await personalFinanceStore.getUndoImpact(batch.id);
+	} catch {
+		showUndoImpactDialog.value = false;
+		snackbar.value?.showMessage('personalFinance.error.operationFailed');
+	}
 }
 
 async function upload(event: Event): Promise<void> {

@@ -32,13 +32,21 @@ type personalFinanceUserReader interface {
 	GetUserById(c core.Context, uid int64) (*models.User, error)
 }
 
+type personalFinanceLifecycleApplication interface {
+	DiscardImportBatch(c core.Context, uid int64, batchId int64) (*importing.ImportBatch, error)
+	DeleteImportFileContent(c core.Context, uid int64, fileId int64) (*importing.ImportFile, error)
+	GetUndoImpact(c core.Context, uid int64, batchId int64) (*importing.UndoImpact, error)
+	CheckUserConsistency(c core.Context, uid int64) (*importing.UserConsistencyReport, error)
+}
+
 // PersonalFinanceImportsApi 提供独立命名空间下的持久导入纵切面。
 type PersonalFinanceImportsApi struct {
-	config                *settings.ConfigContainer
-	users                 personalFinanceUserReader
-	serviceFactory        func() (personalFinanceImportApplication, error)
-	flowServiceFactory    func() (personalFinanceFlowApplication, error)
-	postingServiceFactory func() (personalFinancePostingApplication, error)
+	config                  *settings.ConfigContainer
+	users                   personalFinanceUserReader
+	serviceFactory          func() (personalFinanceImportApplication, error)
+	flowServiceFactory      func() (personalFinanceFlowApplication, error)
+	postingServiceFactory   func() (personalFinancePostingApplication, error)
+	lifecycleServiceFactory func() (personalFinanceLifecycleApplication, error)
 }
 
 // PersonalFinanceImports 是 Web 路由使用的默认 API 实例。
@@ -77,6 +85,13 @@ var PersonalFinanceImports = &PersonalFinanceImportsApi{
 			},
 		)
 	},
+	lifecycleServiceFactory: func() (personalFinanceLifecycleApplication, error) {
+		repository, err := importing.NewRepository(datastore.Container.UserDataStore)
+		if err != nil {
+			return nil, err
+		}
+		return importing.NewLifecycleService(repository, services.PersonalFinanceImportFilesStorage, services.PersonalFinanceImportFilesStorage)
+	},
 }
 
 type personalFinanceImportBatchListRequest struct {
@@ -103,6 +118,25 @@ type personalFinanceRawImportRowListRequest struct {
 	Page               int32 `form:"page" binding:"omitempty,min=0"`
 	Count              int32 `form:"count" binding:"omitempty,min=1,max=100"`
 	IncludeRawSnapshot bool  `form:"include_raw_snapshot"`
+}
+
+type personalFinanceImportBatchDiscardRequest struct {
+	BatchId int64 `json:"batchId,string" binding:"required,min=1"`
+}
+
+type personalFinanceImportFileDeleteContentRequest struct {
+	FileId int64 `json:"fileId,string" binding:"required,min=1"`
+}
+
+type personalFinanceUndoImpactResponse struct {
+	BatchId                  int64                        `json:"batchId,string"`
+	LinkedTransactionCount   int64                        `json:"linkedTransactionCount"`
+	PostingCreatedCount      int64                        `json:"postingCreatedCount"`
+	PostingReusedCount       int64                        `json:"postingReusedCount"`
+	ModifiedTransactionCount int64                        `json:"modifiedTransactionCount"`
+	MissingTransactionCount  int64                        `json:"missingTransactionCount"`
+	SharedTransactionCount   int64                        `json:"sharedTransactionCount"`
+	ReasonCodes              []importing.UndoImpactReason `json:"reasonCodes"`
 }
 
 type personalFinanceImportFileResponse struct {
@@ -478,6 +512,75 @@ func (a *PersonalFinanceImportsApi) RawImportRowListHandler(c *core.WebContext) 
 	}, nil
 }
 
+// ImportBatchDiscardHandler 废弃尚未产生任何账本影响的批次。
+func (a *PersonalFinanceImportsApi) ImportBatchDiscardHandler(c *core.WebContext) (any, *errs.Error) {
+	request := new(personalFinanceImportBatchDiscardRequest)
+	if err := c.ShouldBindJSON(request); err != nil {
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+	service, err := a.lifecycleServiceFactory()
+	if err != nil {
+		return nil, errs.ErrOperationFailed
+	}
+	batch, err := service.DiscardImportBatch(c, c.GetCurrentUid(), request.BatchId)
+	if err != nil {
+		return nil, personalFinanceImportError(err)
+	}
+	return newPersonalFinanceImportBatchResponse(&importing.ImportBatchDetails{Batch: batch}), nil
+}
+
+// ImportFileDeleteContentHandler 只删除原文件字节，不删除证据链。
+func (a *PersonalFinanceImportsApi) ImportFileDeleteContentHandler(c *core.WebContext) (any, *errs.Error) {
+	request := new(personalFinanceImportFileDeleteContentRequest)
+	if err := c.ShouldBindJSON(request); err != nil {
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+	service, err := a.lifecycleServiceFactory()
+	if err != nil {
+		return nil, errs.ErrOperationFailed
+	}
+	file, err := service.DeleteImportFileContent(c, c.GetCurrentUid(), request.FileId)
+	if err != nil {
+		return nil, personalFinanceImportError(err)
+	}
+	return newPersonalFinanceImportFileResponse(file), nil
+}
+
+// ImportBatchUndoImpactHandler 返回聚合影响，绝不执行账本撤销。
+func (a *PersonalFinanceImportsApi) ImportBatchUndoImpactHandler(c *core.WebContext) (any, *errs.Error) {
+	request := new(personalFinanceImportBatchGetRequest)
+	if err := c.ShouldBindQuery(request); err != nil {
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+	service, err := a.lifecycleServiceFactory()
+	if err != nil {
+		return nil, errs.ErrOperationFailed
+	}
+	impact, err := service.GetUndoImpact(c, c.GetCurrentUid(), request.BatchId)
+	if err != nil {
+		return nil, personalFinanceImportError(err)
+	}
+	return &personalFinanceUndoImpactResponse{
+		BatchId: impact.BatchId, LinkedTransactionCount: impact.LinkedTransactionCount,
+		PostingCreatedCount: impact.PostingCreatedCount, PostingReusedCount: impact.PostingReusedCount,
+		ModifiedTransactionCount: impact.ModifiedTransactionCount, MissingTransactionCount: impact.MissingTransactionCount,
+		SharedTransactionCount: impact.SharedTransactionCount, ReasonCodes: impact.ReasonCodes,
+	}, nil
+}
+
+// PersonalFinanceConsistencyHandler 返回当前用户的脱敏一致性聚合。
+func (a *PersonalFinanceImportsApi) PersonalFinanceConsistencyHandler(c *core.WebContext) (any, *errs.Error) {
+	service, err := a.lifecycleServiceFactory()
+	if err != nil {
+		return nil, errs.ErrOperationFailed
+	}
+	report, err := service.CheckUserConsistency(c, c.GetCurrentUid())
+	if err != nil {
+		return nil, personalFinanceImportError(err)
+	}
+	return report, nil
+}
+
 func personalFinanceImportError(err error) *errs.Error {
 	switch {
 	case errors.Is(err, importing.ErrImportRequestInvalid):
@@ -487,6 +590,8 @@ func personalFinanceImportError(err error) *errs.Error {
 		return errs.ErrParameterInvalid
 	case errors.Is(err, importing.ErrImportIdentifierUnavailable):
 		return errs.ErrSystemIsBusy
+	case errors.Is(err, importing.ErrImportBatchNotDiscardable), errors.Is(err, importing.ErrImportFileContentNotDeletable):
+		return errs.ErrNotPermittedToPerformThisAction
 	default:
 		return errs.ErrOperationFailed
 	}

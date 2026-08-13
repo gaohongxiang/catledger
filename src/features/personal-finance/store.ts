@@ -12,6 +12,7 @@ import type {
     PersonalFinanceImportUploadResult,
     PersonalFinancePostingDraft,
     PersonalFinancePostingResult,
+    PersonalFinanceUndoImpact,
     PersonalFinanceReparseResult,
     PersonalFinanceSourceAccount,
     PersonalFinanceSourceAccountPage,
@@ -173,6 +174,30 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         }
     }
 
+	async function discardBatch(batchId: string): Promise<void> {
+		submitting.value = true;
+		try {
+			await unwrapResponse(services.discardPersonalFinanceImportBatch({ batchId }), 'Unable to discard personal finance import batch');
+			await Promise.allSettled([loadBatches(), openBatch(batchId)]);
+		} finally {
+			submitting.value = false;
+		}
+	}
+
+	async function deleteFileContent(fileId: string, batchId: string): Promise<void> {
+		submitting.value = true;
+		try {
+			await unwrapResponse(services.deletePersonalFinanceImportFileContent({ fileId }), 'Unable to delete personal finance import file content');
+			await Promise.allSettled([loadBatches(), openBatch(batchId)]);
+		} finally {
+			submitting.value = false;
+		}
+	}
+
+	async function getUndoImpact(batchId: string): Promise<PersonalFinanceUndoImpact> {
+		return unwrapResponse(services.getPersonalFinanceImportBatchUndoImpact({ batchId }), 'Unable to retrieve undo impact');
+	}
+
     function clearSelection(): void {
         selectedBatch.value = null;
         rows.value = [];
@@ -196,6 +221,9 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         loadSourceAccounts,
         saveSourceAccount,
         postRow,
+		discardBatch,
+		deleteFileContent,
+		getUndoImpact,
         clearSelection
     };
 });

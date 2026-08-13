@@ -2881,6 +2881,28 @@
             "row_identifier_invalid": "A source identifier is invalid",
             "row_unsupported": "A statement row is unsupported"
         },
+		"operations": {
+			"undoImpact": "View Undo Impact",
+			"undoImpactTitle": "Ledger Impact",
+			"noAutomaticUndo": "This version does not automatically undo formal ledger transactions. Use this read-only impact summary to plan manual handling.",
+			"linkedTransactions": "Linked transactions",
+			"createdTransactions": "Created by posting",
+			"reusedTransactions": "Reused by posting",
+			"modifiedOrMissing": "Modified or missing",
+			"sharedTransactions": "Shared with other batches",
+			"discard": "Discard Batch",
+			"discardConfirm": "Discard this unposted batch? It has {pending} pending and {posted} posted rows. Evidence remains available, but this batch cannot be posted afterward.",
+			"discarded": "The import batch has been discarded",
+			"deleteContent": "Delete Original File",
+			"deleteContentConfirm": "Delete the original statement bytes? This batch has {pending} pending and {posted} posted rows. File metadata and all evidence remain, but the bytes are not recoverable unless the same file is uploaded again.",
+			"contentDeleted": "The original statement content has been deleted"
+		},
+		"dataManagement": {
+			"files": "PF Import Files",
+			"batches": "PF Import Batches",
+			"rows": "PF Evidence Rows",
+			"clearAllHint": "You CANNOT undo this action. Clear All Data also deletes personal-finance source files, import evidence, accounts, categories, tags and transactions. Enter your current password to confirm."
+		},
         "error": {
             "operationFailed": "Unable to complete the personal finance operation"
         }

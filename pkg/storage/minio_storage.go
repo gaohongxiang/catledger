@@ -92,6 +92,22 @@ func (s *MinIOObjectStorage) Delete(ctx core.Context, path string) error {
 	return s.minIOClient.RemoveObject(ctx, s.minIOConfig.Bucket, s.getFinalPath(path), minio.RemoveObjectOptions{})
 }
 
+// ListObjectKeys implements the optional maintenance-only object inventory.
+func (s *MinIOObjectStorage) ListObjectKeys(ctx core.Context) ([]string, error) {
+	prefix := s.getFinalPath("")
+	keys := make([]string, 0)
+	for object := range s.minIOClient.ListObjects(ctx, s.minIOConfig.Bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if object.Err != nil {
+			return nil, object.Err
+		}
+		key := strings.TrimPrefix(object.Key, prefix)
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return keys, nil
+}
+
 func (s *MinIOObjectStorage) getFinalPath(path string) string {
 	rootPath := s.rootPath
 
