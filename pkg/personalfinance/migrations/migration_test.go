@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 )
 
 func TestSchemaV001ChecksumGolden(t *testing.T) {
 	migrations := registeredMigrations()
 
-	if len(migrations) != 3 {
+	if len(migrations) != 4 {
 		t.Fatalf("unexpected registered migration count %d", len(migrations))
 	}
 
@@ -68,6 +69,50 @@ func TestSchemaV002ChecksumGolden(t *testing.T) {
 		!strings.Contains(canonicalSchemaManifestV002(), "table=pf_raw_row_transaction_link\n") ||
 		!strings.Contains(canonicalSchemaManifestV002(), "table=pf_import_batch_issue\n") {
 		t.Fatal("v002 manifest does not include posting, links, and batch issues")
+	}
+}
+
+func TestSchemaV004ChecksumGolden(t *testing.T) {
+	migrations := registeredMigrations()
+	const expectedChecksum = "125dd0ed5dc1e613eee569296c6730381e153e8c9774e81cdd84086e5a15d5ab"
+
+	if migrations[3].version != 4 || migrations[3].name != "loan_contracts_schedules_and_allocations" || migrations[3].checksum != expectedChecksum {
+		t.Fatalf("v004 identity changed: version=%d name=%s checksum=%s", migrations[3].version, migrations[3].name, migrations[3].checksum)
+	}
+
+	manifest := canonicalSchemaManifestV004()
+
+	for _, required := range []string{
+		"table=pf_loan_contract\n",
+		"table=pf_loan_contract_revision\n",
+		"table=pf_loan_installment\n",
+		"table=pf_loan_action\n",
+		"table=pf_loan_transaction_binding\n",
+		"table=pf_loan_transaction_allocation\n",
+		"calculation=loan-calculation-v1\n",
+		"action-request=loan-action-request-v1\n",
+	} {
+		if !strings.Contains(manifest, required) {
+			t.Fatalf("v004 manifest does not include %q", required)
+		}
+	}
+
+	expectedSteps := []string{
+		"create_pf_loan_contract",
+		"create_pf_loan_contract_revision",
+		"create_pf_loan_installment",
+		"create_pf_loan_action",
+		"create_pf_loan_transaction_binding",
+		"create_pf_loan_transaction_allocation",
+	}
+	actualSteps := make([]string, 0, len(migrations[3].steps))
+
+	for _, step := range migrations[3].steps {
+		actualSteps = append(actualSteps, step.name)
+	}
+
+	if !equalStrings(actualSteps, expectedSteps) {
+		t.Fatalf("v004 migration steps are %v, expected %v", actualSteps, expectedSteps)
 	}
 }
 
@@ -224,6 +269,39 @@ func TestRuntimeModelsMatchFrozenSchemaV003(t *testing.T) {
 	}
 }
 
+func TestRuntimeModelsMatchFrozenSchemaV004(t *testing.T) {
+	pairs := []struct {
+		frozen  any
+		runtime any
+	}{
+		{new(loanContractV004), new(loans.Contract)},
+		{new(loanContractRevisionV004), new(loans.ContractRevision)},
+		{new(loanInstallmentV004), new(loans.Installment)},
+		{new(loanActionV004), new(loans.Action)},
+		{new(loanTransactionBindingV004), new(loans.TransactionBinding)},
+		{new(loanTransactionAllocationV004), new(loans.TransactionAllocation)},
+	}
+
+	for _, pair := range pairs {
+		frozenType := reflect.TypeOf(pair.frozen).Elem()
+		runtimeType := reflect.TypeOf(pair.runtime).Elem()
+
+		if frozenType.NumField() != runtimeType.NumField() {
+			t.Fatalf("runtime model %s has %d fields, frozen v004 has %d", runtimeType.Name(), runtimeType.NumField(), frozenType.NumField())
+		}
+
+		for index := 0; index < frozenType.NumField(); index++ {
+			frozenField := frozenType.Field(index)
+			runtimeField := runtimeType.Field(index)
+
+			if frozenField.Name != runtimeField.Name || runtimeField.Tag.Get("xorm") != frozenField.Tag.Get("xorm") {
+				t.Fatalf("runtime model %s field %d differs from v004: runtime=%s %q frozen=%s %q",
+					runtimeType.Name(), index, runtimeField.Name, runtimeField.Tag.Get("xorm"), frozenField.Name, frozenField.Tag.Get("xorm"))
+			}
+		}
+	}
+}
+
 func TestSchemaV003NullableAndUniqueContract(t *testing.T) {
 	nullableFields := map[string]struct{}{
 		"pf_reconciliation_case.CurrentDecisionId":                   {},
@@ -308,6 +386,115 @@ func TestSchemaV003NullableAndUniqueContract(t *testing.T) {
 		for indexName, expectedColumns := range expectedUniqueIndexes[tableName] {
 			if !equalStrings(uniqueIndexes[indexName], expectedColumns) {
 				t.Fatalf("v003 index %s columns are %v, expected %v", indexName, uniqueIndexes[indexName], expectedColumns)
+			}
+		}
+	}
+}
+
+func TestSchemaV004NullableAndIndexContract(t *testing.T) {
+	type expectedIndex struct {
+		unique  bool
+		columns []string
+	}
+
+	nullableFields := map[string]struct{}{
+		"pf_loan_contract.DefaultPaymentAccountId":                  {},
+		"pf_loan_contract.ClosedUnixTime":                           {},
+		"pf_loan_contract_revision.PreviousRevisionId":              {},
+		"pf_loan_contract_revision.PaymentBasisAmount":              {},
+		"pf_loan_contract_revision.QuotedRatePptr":                  {},
+		"pf_loan_contract_revision.DiscountRatePptr":                {},
+		"pf_loan_contract_revision.MonthlyIrrPptr":                  {},
+		"pf_loan_contract_revision.SimpleAprPptr":                   {},
+		"pf_loan_contract_revision.EffectiveAprPptr":                {},
+		"pf_loan_action.PreviousActionId":                           {},
+		"pf_loan_action.StartedUnixTime":                            {},
+		"pf_loan_action.CompletedUnixTime":                          {},
+		"pf_loan_action.FailedUnixTime":                             {},
+		"pf_loan_transaction_binding.CurrentAllocationId":           {},
+		"pf_loan_transaction_allocation.InstallmentId":              {},
+		"pf_loan_transaction_allocation.CounterpartBindingId":       {},
+		"pf_loan_transaction_allocation.CounterpartUpdatedUnixTime": {},
+	}
+	expectedIndexes := map[string]map[string]expectedIndex{
+		"pf_loan_contract": {
+			"IDX_pf_loan_contract_uid_status_updated": {columns: []string{"Uid", "Status", "UpdatedUnixTime", "ContractId"}},
+			"IDX_pf_loan_contract_uid_liability":      {columns: []string{"Uid", "LiabilityAccountId", "Status", "ContractId"}},
+		},
+		"pf_loan_contract_revision": {
+			"UQE_pf_loan_revision_uid_number":           {unique: true, columns: []string{"Uid", "ContractId", "RevisionNumber"}},
+			"UQE_pf_loan_revision_uid_action":           {unique: true, columns: []string{"Uid", "ActionId"}},
+			"IDX_pf_loan_revision_uid_contract_created": {columns: []string{"Uid", "ContractId", "CreatedUnixTime", "RevisionId"}},
+		},
+		"pf_loan_installment": {
+			"UQE_pf_loan_installment_uid_revision_number": {unique: true, columns: []string{"Uid", "RevisionId", "InstallmentNumber"}},
+			"IDX_pf_loan_installment_uid_contract_due":    {columns: []string{"Uid", "ContractId", "DueDate", "InstallmentId"}},
+			"IDX_pf_loan_installment_uid_revision_number": {columns: []string{"Uid", "RevisionId", "InstallmentNumber", "InstallmentId"}},
+		},
+		"pf_loan_action": {
+			"UQE_pf_loan_action_uid_key":              {unique: true, columns: []string{"Uid", "IdempotencyKeyDigest"}},
+			"IDX_pf_loan_action_uid_contract_created": {columns: []string{"Uid", "ContractId", "CreatedUnixTime", "ActionId"}},
+			"IDX_pf_loan_action_uid_status_updated":   {columns: []string{"Uid", "Status", "UpdatedUnixTime", "ActionId"}},
+		},
+		"pf_loan_transaction_binding": {
+			"UQE_pf_loan_binding_uid_transaction": {unique: true, columns: []string{"Uid", "TransactionId"}},
+			"IDX_pf_loan_binding_uid_current":     {columns: []string{"Uid", "CurrentAllocationId", "BindingId"}},
+		},
+		"pf_loan_transaction_allocation": {
+			"IDX_pf_loan_allocation_uid_contract_status": {columns: []string{"Uid", "ContractId", "Status", "UpdatedUnixTime", "AllocationId"}},
+			"IDX_pf_loan_allocation_uid_installment":     {columns: []string{"Uid", "ContractId", "InstallmentId", "Status", "AllocationId"}},
+			"IDX_pf_loan_allocation_uid_action":          {columns: []string{"Uid", "CreatedActionId", "AllocationId"}},
+		},
+	}
+
+	for _, bean := range schemaBeansV004() {
+		beanType := reflect.TypeOf(bean).Elem()
+		tableName := reflect.New(beanType).Interface().(interface{ TableName() string }).TableName()
+		actualIndexes := make(map[string]expectedIndex)
+
+		for fieldIndex := 0; fieldIndex < beanType.NumField(); fieldIndex++ {
+			field := beanType.Field(fieldIndex)
+			fieldKey := tableName + "." + field.Name
+			fieldTag := field.Tag.Get("xorm")
+			_, shouldBeNullable := nullableFields[fieldKey]
+			isNullable := field.Type.Kind() == reflect.Ptr && strings.HasSuffix(fieldTag, " NULL") && !strings.HasSuffix(fieldTag, " NOT NULL")
+
+			if isNullable != shouldBeNullable {
+				t.Fatalf("v004 field %s nullable=%t, expected %t", fieldKey, isNullable, shouldBeNullable)
+			}
+
+			for _, tagPart := range strings.Fields(fieldTag) {
+				isUnique := strings.HasPrefix(tagPart, "UNIQUE(") && strings.HasSuffix(tagPart, ")")
+				isIndex := strings.HasPrefix(tagPart, "INDEX(") && strings.HasSuffix(tagPart, ")")
+
+				if !isUnique && !isIndex {
+					continue
+				}
+
+				indexName := strings.TrimSuffix(tagPart[strings.IndexByte(tagPart, '(')+1:], ")")
+
+				if len(indexName) > 63 || !isSafeCatalogIdentifier(indexName) {
+					t.Fatalf("v004 index name %q must be ASCII-safe and at most 63 bytes", indexName)
+				}
+
+				index := actualIndexes[indexName]
+				if len(index.columns) > 0 && index.unique != isUnique {
+					t.Fatalf("v004 index %s mixes unique and ordinary declarations", indexName)
+				}
+				index.unique = isUnique
+				index.columns = append(index.columns, field.Name)
+				actualIndexes[indexName] = index
+			}
+		}
+
+		if len(actualIndexes) != len(expectedIndexes[tableName]) {
+			t.Fatalf("v004 table %s indexes are %v, expected %v", tableName, actualIndexes, expectedIndexes[tableName])
+		}
+
+		for indexName, expected := range expectedIndexes[tableName] {
+			actual, exists := actualIndexes[indexName]
+			if !exists || actual.unique != expected.unique || !equalStrings(actual.columns, expected.columns) {
+				t.Fatalf("v004 index %s is %+v, expected %+v", indexName, actual, expected)
 			}
 		}
 	}

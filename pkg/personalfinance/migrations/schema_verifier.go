@@ -98,8 +98,24 @@ func verifySchemaV003(db *datastore.Database) error {
 	return verifySchemaV003WithContext(context.Background(), db)
 }
 
+func validateSchemaV004Preflight(db *datastore.Database) error {
+	return validateSchemaV004PreflightWithContext(context.Background(), db)
+}
+
+func validateSchemaV004PreflightWithContext(c context.Context, db *datastore.Database) error {
+	return verifyPersonalFinanceMigrationPreflightWithContext(c, db, schemaBeansThroughV003(), schemaBeansV004())
+}
+
+func verifySchemaV004WithContext(c context.Context, db *datastore.Database) error {
+	return verifyPersonalFinanceTablesWithContext(c, db, schemaBeansThroughV004(), schemaExact)
+}
+
+func verifySchemaV004(db *datastore.Database) error {
+	return verifySchemaV004WithContext(context.Background(), db)
+}
+
 // syncFrozenSchemaBeanWithIndexes 补足 Sync2 在两个复合索引共享前缀时可能漏建的索引。
-// 每个 v003 表仍作为一个可重入迁移步骤执行，重试只创建确实缺失的冻结索引。
+// v003 起每张新增表仍作为一个可重入迁移步骤执行，重试只创建确实缺失的冻结索引。
 func syncFrozenSchemaBeanWithIndexes(c context.Context, db *datastore.Database, bean any) error {
 	if err := db.SyncStructsWithStoreEngineContext(c, "InnoDB", bean); err != nil {
 		return err
@@ -402,15 +418,16 @@ func readSchemaTablesWithContext(c context.Context, db *datastore.Database) ([]*
 func readSQLiteTableWithContext(c context.Context, db *datastore.Database, metadata *schemas.Table) (*schemas.Table, error) {
 	tableName := strings.ReplaceAll(metadata.Name, "\"", "\"\"")
 	sess := db.NewSessionWithContext(c)
-	defer sess.Close()
 
 	rows, err := sess.QueryString(`PRAGMA table_info("` + tableName + `")`)
 
 	if err != nil {
+		sess.Close()
 		return nil, fmt.Errorf("read SQLite table %s: %w", metadata.Name, err)
 	}
 
 	createRows, err := sess.QueryString(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, metadata.Name)
+	sess.Close()
 
 	if err != nil {
 		return nil, fmt.Errorf("read SQLite table definition %s: %w", metadata.Name, err)
@@ -418,7 +435,11 @@ func readSQLiteTableWithContext(c context.Context, db *datastore.Database, metad
 
 	hasAutoIncrement := len(createRows) == 1 && strings.Contains(strings.ToUpper(createRows[0]["sql"]), "AUTOINCREMENT")
 	table := schemas.NewTable(metadata.Name, nil)
-	table.Indexes = metadata.Indexes
+	table.Indexes, err = readSQLiteIndexesWithContext(c, db, metadata.Name)
+
+	if err != nil {
+		return nil, err
+	}
 
 	for _, row := range rows {
 		columnType, length := splitSQLiteType(row["type"])
@@ -433,6 +454,78 @@ func readSQLiteTableWithContext(c context.Context, db *datastore.Database, metad
 	}
 
 	return table, nil
+}
+
+func readSQLiteIndexesWithContext(c context.Context, db *datastore.Database, tableName string) (map[string]*schemas.Index, error) {
+	indexRows, err := querySchemaRows(c, db, "PRAGMA index_list("+quoteSQLiteIdentifier(tableName)+")")
+
+	if err != nil {
+		return nil, fmt.Errorf("read SQLite indexes for %s: %w", tableName, err)
+	}
+
+	indexes := make(map[string]*schemas.Index)
+
+	for _, row := range indexRows {
+		indexName := schemaRowValue(row, "name")
+
+		if strings.HasPrefix(indexName, "sqlite_autoindex_") {
+			continue
+		}
+		if schemaRowInt(row, "partial") == 1 {
+			return nil, schemaError(tableName, fmt.Sprintf("index %s is partial", indexName))
+		}
+
+		if !isSafeCatalogIdentifier(indexName) {
+			return nil, schemaError(tableName, fmt.Sprintf("index %s has an unsafe name", indexName))
+		}
+
+		indexType := schemas.IndexType
+
+		if schemaRowInt(row, "unique") == 1 {
+			indexType = schemas.UniqueType
+		}
+
+		columnRows, queryErr := querySchemaRows(c, db, "PRAGMA index_xinfo("+quoteSQLiteIdentifier(indexName)+")")
+
+		if queryErr != nil {
+			return nil, fmt.Errorf("read SQLite index %s: %w", indexName, queryErr)
+		}
+
+		type indexedColumn struct {
+			sequence int64
+			name     string
+		}
+
+		columns := make([]indexedColumn, 0, len(columnRows))
+
+		for _, columnRow := range columnRows {
+			if schemaRowInt(columnRow, "key") != 1 {
+				continue
+			}
+
+			columnName := schemaRowValue(columnRow, "name")
+
+			if columnName == "" || schemaRowInt(columnRow, "cid") < 0 {
+				return nil, schemaError(tableName, fmt.Sprintf("index %s contains an expression", indexName))
+			}
+
+			columns = append(columns, indexedColumn{sequence: schemaRowInt(columnRow, "seqno"), name: columnName})
+		}
+
+		sort.Slice(columns, func(left int, right int) bool {
+			return columns[left].sequence < columns[right].sequence
+		})
+
+		index := schemas.NewIndex(indexName, indexType)
+
+		for _, column := range columns {
+			index.AddColumn(column.name)
+		}
+
+		indexes[indexName] = index
+	}
+
+	return indexes, nil
 }
 
 func splitSQLiteType(value string) (string, int64) {

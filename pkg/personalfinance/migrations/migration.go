@@ -212,6 +212,19 @@ func registeredMigrations() []migration {
 		})
 	}
 
+	v004Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV004()))
+	v004Steps := make([]migrationStep, 0, len(schemaBeansV004()))
+
+	for _, bean := range schemaBeansV004() {
+		tableName := bean.(interface{ TableName() string }).TableName()
+		v004Steps = append(v004Steps, migrationStep{
+			name: "create_" + tableName,
+			run: func(c context.Context, db *datastore.Database) error {
+				return syncFrozenSchemaBeanWithIndexes(c, db, bean)
+			},
+		})
+	}
+
 	return []migration{
 		{
 			version:   1,
@@ -236,6 +249,14 @@ func registeredMigrations() []migration {
 			preflight: validateSchemaV003PreflightWithContext,
 			steps:     v003Steps,
 			verify:    verifySchemaV003WithContext,
+		},
+		{
+			version:   4,
+			name:      "loan_contracts_schedules_and_allocations",
+			checksum:  hex.EncodeToString(v004Checksum[:]),
+			preflight: validateSchemaV004PreflightWithContext,
+			steps:     v004Steps,
+			verify:    verifySchemaV004WithContext,
 		},
 	}
 }
@@ -923,6 +944,22 @@ func canonicalSchemaManifestV003() string {
 	builder.WriteString("decision-idempotency=idempotency-key-v1\n")
 	builder.WriteString("decision-request=reconciliation-request-v1\n")
 	builder.WriteString("transaction-link=reconciliation-link-v1\n")
+	return builder.String()
+}
+
+func canonicalSchemaManifestV004() string {
+	var builder strings.Builder
+	builder.WriteString("pf-schema-v004\n")
+
+	for _, bean := range schemaBeansV004() {
+		appendBeanManifest(&builder, bean)
+	}
+
+	builder.WriteString("calculation=loan-calculation-v1\n")
+	builder.WriteString("rounding=loan-rounding-half-up-v1\n")
+	builder.WriteString("irr=periodic-irr-v1\n")
+	builder.WriteString("action-idempotency=idempotency-key-v1\n")
+	builder.WriteString("action-request=loan-action-request-v1\n")
 	return builder.String()
 }
 
