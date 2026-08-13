@@ -75,10 +75,10 @@ func (loanContractRevisionV004) TableName() string {
 }
 
 type loanInstallmentV004 struct {
-	Uid                       int64  `xorm:"BIGINT UNIQUE(UQE_pf_loan_installment_uid_revision_number) INDEX(IDX_pf_loan_installment_uid_contract_due) INDEX(IDX_pf_loan_installment_uid_revision_number) NOT NULL"`
+	Uid                       int64  `xorm:"BIGINT UNIQUE(UQE_pf_loan_installment_uid_revision_number) INDEX(IDX_pf_loan_installment_uid_contract_due) INDEX(IDX_pf_loan_installment_uid_revision_order) NOT NULL"`
 	ContractId                int64  `xorm:"BIGINT INDEX(IDX_pf_loan_installment_uid_contract_due) NOT NULL"`
-	RevisionId                int64  `xorm:"BIGINT UNIQUE(UQE_pf_loan_installment_uid_revision_number) INDEX(IDX_pf_loan_installment_uid_revision_number) NOT NULL"`
-	InstallmentNumber         int64  `xorm:"BIGINT UNIQUE(UQE_pf_loan_installment_uid_revision_number) INDEX(IDX_pf_loan_installment_uid_revision_number) NOT NULL"`
+	RevisionId                int64  `xorm:"BIGINT UNIQUE(UQE_pf_loan_installment_uid_revision_number) INDEX(IDX_pf_loan_installment_uid_revision_order) NOT NULL"`
+	InstallmentNumber         int64  `xorm:"BIGINT UNIQUE(UQE_pf_loan_installment_uid_revision_number) INDEX(IDX_pf_loan_installment_uid_revision_order) NOT NULL"`
 	DueDate                   string `xorm:"CHAR(10) INDEX(IDX_pf_loan_installment_uid_contract_due) NOT NULL"`
 	BeginningPrincipalAmount  int64  `xorm:"BIGINT NOT NULL"`
 	PrincipalAmount           int64  `xorm:"BIGINT NOT NULL"`
@@ -91,7 +91,7 @@ type loanInstallmentV004 struct {
 	PreDiscountFeeAmount      int64  `xorm:"BIGINT NOT NULL"`
 	PreDiscountPaymentAmount  int64  `xorm:"BIGINT NOT NULL"`
 	CreatedUnixTime           int64  `xorm:"BIGINT NOT NULL"`
-	InstallmentId             int64  `xorm:"BIGINT PK INDEX(IDX_pf_loan_installment_uid_contract_due) INDEX(IDX_pf_loan_installment_uid_revision_number) NOT NULL"`
+	InstallmentId             int64  `xorm:"BIGINT PK INDEX(IDX_pf_loan_installment_uid_contract_due) INDEX(IDX_pf_loan_installment_uid_revision_order) NOT NULL"`
 }
 
 func (loanInstallmentV004) TableName() string {

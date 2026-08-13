@@ -74,7 +74,7 @@ func TestSchemaV002ChecksumGolden(t *testing.T) {
 
 func TestSchemaV004ChecksumGolden(t *testing.T) {
 	migrations := registeredMigrations()
-	const expectedChecksum = "125dd0ed5dc1e613eee569296c6730381e153e8c9774e81cdd84086e5a15d5ab"
+	const expectedChecksum = "8c6c188b4f265cb5c089cc40a60d77e99fc6656687f29f774a7ff766912186ad"
 
 	if migrations[3].version != 4 || migrations[3].name != "loan_contracts_schedules_and_allocations" || migrations[3].checksum != expectedChecksum {
 		t.Fatalf("v004 identity changed: version=%d name=%s checksum=%s", migrations[3].version, migrations[3].name, migrations[3].checksum)
@@ -429,7 +429,7 @@ func TestSchemaV004NullableAndIndexContract(t *testing.T) {
 		"pf_loan_installment": {
 			"UQE_pf_loan_installment_uid_revision_number": {unique: true, columns: []string{"Uid", "RevisionId", "InstallmentNumber"}},
 			"IDX_pf_loan_installment_uid_contract_due":    {columns: []string{"Uid", "ContractId", "DueDate", "InstallmentId"}},
-			"IDX_pf_loan_installment_uid_revision_number": {columns: []string{"Uid", "RevisionId", "InstallmentNumber", "InstallmentId"}},
+			"IDX_pf_loan_installment_uid_revision_order":  {columns: []string{"Uid", "RevisionId", "InstallmentNumber", "InstallmentId"}},
 		},
 		"pf_loan_action": {
 			"UQE_pf_loan_action_uid_key":              {unique: true, columns: []string{"Uid", "IdempotencyKeyDigest"}},
