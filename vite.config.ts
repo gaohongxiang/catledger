@@ -257,6 +257,9 @@ export default defineConfig(() => {
                                 test: id => {
                                     if (/[\\/]src[\\/](core|consts|models|stores)[\\/]/i.test(id)) {
                                         return true;
+                                    // PF 共享核心同时被桌面端和移动端引用，归入 common 以避免跨分块循环初始化。
+                                    } else if (/[\\/]src[\\/]features[\\/]personal-finance[\\/][^\\/]+\.(js|ts)$/i.test(id)) {
+                                        return true;
                                     } else if (/[\\/]src[\\/]lib[\\/](map[\\/]|ui[\\/]common|calendar[\\/]|[a-zA-Z0-9-_]+\.(js|ts))/i.test(id)) {
                                         return true;
                                     } else if (/[\\/]src[\\/]components[\\/](base|common)[\\/]/i.test(id)) {
