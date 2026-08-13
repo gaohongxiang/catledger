@@ -198,6 +198,15 @@ func applySingleEventDecision(c core.Context, database *datastore.Database, sess
 	if execution.decisionType == DECISION_TYPE_INTERNAL_TRANSFER && event.counterpart == nil {
 		return []string{decisionReasonEventTypeMismatch}, nil
 	}
+	if !created {
+		eventMatches, err := decisionLedgerEventMatchesRows(sess, execution.uid, event, flattenDecisionRows(resolution.rowsByMember), execution.decisionType)
+		if err != nil {
+			return nil, err
+		}
+		if !eventMatches {
+			return []string{decisionReasonEventTypeMismatch}, nil
+		}
+	}
 
 	method := TRANSACTION_CREATION_METHOD_ATTACHED_EXISTING
 	if created {
@@ -292,6 +301,24 @@ func applyRefundDecision(c core.Context, database *datastore.Database, sess *xor
 	if original.counterpart != nil || refund.counterpart != nil || original.primary.TransactionId == refund.primary.TransactionId ||
 		original.primary.Amount != refund.primary.Amount || !ordinaryDirectionsOpposite(original.primary, refund.primary) {
 		return nil, fmt.Errorf("created refund ledger event invariant mismatch")
+	}
+	if !originalCreated {
+		eventMatches, err := decisionLedgerEventMatchesRows(sess, execution.uid, original, resolution.rowsByMember[originalIndex], DECISION_TYPE_REFUND_REVERSAL)
+		if err != nil {
+			return nil, err
+		}
+		if !eventMatches {
+			return []string{decisionReasonRefundSemanticsInvalid}, nil
+		}
+	}
+	if !refundCreated {
+		eventMatches, err := decisionLedgerEventMatchesRows(sess, execution.uid, refund, resolution.rowsByMember[refundIndex], DECISION_TYPE_REFUND_REVERSAL)
+		if err != nil {
+			return nil, err
+		}
+		if !eventMatches {
+			return []string{decisionReasonRefundSemanticsInvalid}, nil
+		}
 	}
 	if originalCreated {
 		if err := insertCreatedEventEffects(sess, execution, original, generateId, now); err != nil {
@@ -539,6 +566,13 @@ func decisionDraftAccountsMatchRows(sess *xorm.Session, uid int64, transaction *
 		}
 	}
 	return true, nil
+}
+
+func decisionLedgerEventMatchesRows(sess *xorm.Session, uid int64, event *decisionLedgerEvent, rows []*importing.RawImportRow, decisionType DecisionType) (bool, error) {
+	if event == nil || event.primary == nil || !decisionDraftMatchesRows(event.primary, rows, decisionType) {
+		return false, nil
+	}
+	return decisionDraftAccountsMatchRows(sess, uid, event.primary, rows)
 }
 
 func refundOriginalMemberIndex(selection DecisionFieldSelection, rows [][]*importing.RawImportRow) (int, bool) {

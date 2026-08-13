@@ -196,6 +196,13 @@ func TestDecisionServiceSQLiteZeroOneMultipleTransferRefundAndRollback(t *testin
 		t.Fatalf("one-event attachment failed: %+v %v", oneResult, err)
 	}
 
+	incompatible := insertDecisionCaseFixture(t, environment.database, uid, 55_000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.ECONOMIC_EFFECT_NORMAL)
+	insertDecisionExistingEvent(t, environment.database, incompatible, 1, 700, models.TRANSACTION_DB_TYPE_EXPENSE, 70_051)
+	incompatibleResult, err := environment.service.DecideCase(nil, sameEventRequest(incompatible, "same-incompatible", nil), time.UTC)
+	if err != nil || incompatibleResult.Status != DECISION_STATUS_ACTION_REQUIRED || len(incompatibleResult.ReasonCodes) != 1 || incompatibleResult.ReasonCodes[0] != decisionReasonEventTypeMismatch {
+		t.Fatalf("incompatible existing event was attached: %+v %v", incompatibleResult, err)
+	}
+
 	multiple := insertDecisionCaseFixture(t, environment.database, uid, 60_000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.ECONOMIC_EFFECT_NORMAL)
 	insertDecisionExistingEvent(t, environment.database, multiple, 1, 500, models.TRANSACTION_DB_TYPE_EXPENSE, 70_101)
 	insertDecisionExistingEvent(t, environment.database, multiple, 2, 500, models.TRANSACTION_DB_TYPE_EXPENSE, 70_102)
