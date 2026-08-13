@@ -85,10 +85,10 @@ const FREQUENCY_TYPE_MONTHLY FrequencyType = "monthly"
 type DiscountType string
 
 const (
-	DISCOUNT_TYPE_NONE                 DiscountType = "none"
-	DISCOUNT_TYPE_INTEREST_DISCOUNT    DiscountType = "interest_discount"
-	DISCOUNT_TYPE_PER_PERIOD_REDUCTION DiscountType = "per_period_reduction"
-	DISCOUNT_TYPE_TOTAL_REDUCTION      DiscountType = "total_reduction"
+	DISCOUNT_TYPE_NONE          DiscountType = "none"
+	DISCOUNT_TYPE_INTEREST_RATE DiscountType = "interest_rate"
+	DISCOUNT_TYPE_PER_PERIOD    DiscountType = "per_period"
+	DISCOUNT_TYPE_TOTAL         DiscountType = "total"
 )
 
 // IRRStatus 表示月度 IRR 求解结果；非 solved 状态不得持久化率值。
@@ -194,8 +194,8 @@ func isRateQuoteType(value RateQuoteType) bool {
 }
 
 func isDiscountType(value DiscountType) bool {
-	return value == DISCOUNT_TYPE_NONE || value == DISCOUNT_TYPE_INTEREST_DISCOUNT ||
-		value == DISCOUNT_TYPE_PER_PERIOD_REDUCTION || value == DISCOUNT_TYPE_TOTAL_REDUCTION
+	return value == DISCOUNT_TYPE_NONE || value == DISCOUNT_TYPE_INTEREST_RATE ||
+		value == DISCOUNT_TYPE_PER_PERIOD || value == DISCOUNT_TYPE_TOTAL
 }
 
 func isIRRStatus(value IRRStatus) bool {
