@@ -10,6 +10,49 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 )
 
+const maximumDashboardAllocationCount = 100000
+
+// ListDashboardAllocations 返回所有活动分配及其主正式交易，供只读可信总览分类。
+// current pointer 与 allocation 状态必须同时匹配，避免撤销关系进入实际现金流分类。
+func (r *Repository) ListDashboardAllocations(c core.Context, uid int64) ([]*DashboardAllocation, error) {
+	if uid < 1 {
+		return nil, fmt.Errorf("invalid dashboard loan allocation owner")
+	}
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	values := make([]*DashboardAllocation, 0)
+	err = sess.SQL(`SELECT b.transaction_id, a.contract_id, a.allocation_id, a.component_type, a.allocated_amount
+		FROM pf_loan_transaction_allocation a
+		INNER JOIN pf_loan_transaction_binding b
+			ON b.uid = a.uid AND b.binding_id = a.primary_binding_id
+		WHERE a.uid = ? AND b.uid = ? AND a.status = ?
+			AND b.current_allocation_id = a.allocation_id
+		ORDER BY a.allocation_id ASC
+		LIMIT 100001`, uid, uid, ALLOCATION_STATUS_ACTIVE).Find(&values)
+	if err != nil {
+		return nil, fmt.Errorf("list dashboard loan allocations: %w", err)
+	}
+	if len(values) > maximumDashboardAllocationCount {
+		return nil, fmt.Errorf("dashboard loan allocation read limit reached")
+	}
+	seenTransactions := make(map[int64]struct{}, len(values))
+	for _, value := range values {
+		if value == nil || value.TransactionId < 1 || value.ContractId < 1 || value.AllocationId < 1 ||
+			value.AllocatedAmount < 1 || !isComponentType(value.ComponentType) {
+			return nil, fmt.Errorf("dashboard loan allocation invariant mismatch")
+		}
+		if _, exists := seenTransactions[value.TransactionId]; exists {
+			return nil, fmt.Errorf("dashboard loan transaction is allocated more than once")
+		}
+		seenTransactions[value.TransactionId] = struct{}{}
+	}
+	return values, nil
+}
+
 // LedgerResources 只向注入的核心账本适配器暴露当前 caller-owned privacy transaction。
 func (tx *RepositoryTransaction) LedgerResources() (*datastore.Database, *xorm.Session, error) {
 	if err := tx.validate(); err != nil {

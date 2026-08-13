@@ -1017,6 +1017,9 @@ export default {
     undoPersonalFinanceLoanSettlement: (request: LoanSettlementUndoRequest): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/loans/settlements/undo.json', request);
     },
+    getPersonalFinanceDashboardOverview: (params: { startDate: string, asOfDate: string, months: number }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/dashboard/overview.json?start_date=${encodeURIComponent(params.startDate)}&as_of_date=${encodeURIComponent(params.asOfDate)}&months=${params.months}`);
+    },
     getLatestExchangeRates: (param: { ignoreError?: boolean }): ApiResponsePromise<LatestExchangeRateResponse> => {
         return axios.get<ApiResponse<LatestExchangeRateResponse>>('v1/exchange_rates/latest.json', {
             ignoreError: !!param.ignoreError,

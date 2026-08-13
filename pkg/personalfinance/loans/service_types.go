@@ -388,6 +388,16 @@ type ContractDetail struct {
 	LatestSettlementActionId   *int64
 }
 
+// DashboardAllocation 是可信总览分类实际现金流所需的最小活动关系。
+// 它只暴露正式交易 ID、组件和金额，不暴露 binding、action 或幂等摘要。
+type DashboardAllocation struct {
+	TransactionId   int64
+	ContractId      int64
+	AllocationId    int64
+	ComponentType   ComponentType
+	AllocatedAmount int64
+}
+
 func calculationInput(terms CalculationTerms) calculation.Input {
 	return calculation.Input{
 		PrincipalAmount: terms.PrincipalAmount, ActualDisbursementAmount: terms.ActualDisbursementAmount,

@@ -6,6 +6,18 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 )
 
+// ListDashboardAllocations 返回可信总览分类所需的最小活动分配事实。
+func (s *Service) ListDashboardAllocations(c core.Context, uid int64) ([]*DashboardAllocation, error) {
+	if s == nil || s.repository == nil || uid < 1 {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	values, err := s.repository.ListDashboardAllocations(c, uid)
+	if err != nil {
+		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	return values, nil
+}
+
 // ListContracts 复用仓储稳定游标，并为每个合同派生当前计划的有界进度摘要。
 func (s *Service) ListContracts(c core.Context, uid int64, status ContractStatus, cursor *ContractCursor, limit int, asOfDate string) (*ContractListResult, error) {
 	if s == nil || s.repository == nil || uid < 1 || !isContractStatus(status) || !isCivilDate(asOfDate) {

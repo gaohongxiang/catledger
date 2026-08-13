@@ -13,6 +13,7 @@
             <f7-list-item :title="tt('personalFinance.nav')" link="/personal-finance/imports"></f7-list-item>
             <f7-list-item :title="tt('personalFinance.reconciliation.nav')" link="/personal-finance/reconciliation"></f7-list-item>
             <f7-list-item :title="tt('personalFinance.loans.nav')" link="/personal-finance/loans"></f7-list-item>
+            <f7-list-item :title="tt('personalFinance.dashboard.nav')" link="/personal-finance/dashboard"></f7-list-item>
             <f7-list-item :title="tt('Two-Factor Authentication')" link="/user/2fa"></f7-list-item>
             <f7-list-item :title="tt('Device & Sessions')" link="/user/sessions"></f7-list-item>
             <f7-list-button :class="{ 'disabled': logouting }" @click="logout">{{ tt('Log Out') }}</f7-list-button>

@@ -71,6 +71,12 @@ func startWebServer(c *core.CliContext) error {
 		return err
 	}
 
+	err = api.InitializePersonalFinanceDashboardApi()
+	if err != nil {
+		log.BootErrorf(c, "[webserver.startWebServer] initializes personal finance dashboard API failed, because %s", err.Error())
+		return err
+	}
+
 	err = requestid.InitializeRequestIdGenerator(c, config)
 
 	if err != nil {
@@ -469,6 +475,9 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/personal_finance/loans/settlements/apply.json", bindApi(api.PersonalFinanceLoans.LoanSettlementApplyHandler, config))
 			apiV1Route.GET("/personal_finance/loans/settlements/undo_impact.json", bindApi(api.PersonalFinanceLoans.LoanSettlementUndoImpactHandler, config))
 			apiV1Route.POST("/personal_finance/loans/settlements/undo.json", bindApi(api.PersonalFinanceLoans.LoanSettlementUndoHandler, config))
+
+			// Personal Finance Dashboard
+			apiV1Route.GET("/personal_finance/dashboard/overview.json", bindApi(api.PersonalFinanceDashboard.OverviewHandler, config))
 
 			// Transaction Pictures
 			if config.EnableTransactionPictures {

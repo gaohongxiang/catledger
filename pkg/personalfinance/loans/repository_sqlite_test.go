@@ -461,6 +461,16 @@ func assertBindingAllocationAndAggregate(t *testing.T, repository *loans.Reposit
 		t.Fatalf("cross-user allocation count leaked: count=%d err=%v", count, err)
 	}
 
+	dashboardAllocations, err := repository.ListDashboardAllocations(nil, firstUid)
+	if err != nil || len(dashboardAllocations) != 2 || dashboardAllocations[0].TransactionId != 9001 ||
+		dashboardAllocations[0].ComponentType != loans.COMPONENT_TYPE_INTEREST || dashboardAllocations[0].AllocatedAmount != 40 ||
+		dashboardAllocations[1].TransactionId != 9002 || dashboardAllocations[1].AllocatedAmount != 60 {
+		t.Fatalf("dashboard allocation projection mismatch: values=%+v err=%v", dashboardAllocations, err)
+	}
+	if dashboardAllocations, err = repository.ListDashboardAllocations(nil, secondUid); err != nil || len(dashboardAllocations) != 0 {
+		t.Fatalf("dashboard allocation projection leaked across users: values=%+v err=%v", dashboardAllocations, err)
+	}
+
 	firstAllocationId := int64(901)
 	if err := repository.DoTransaction(nil, firstUid, func(tx *loans.RepositoryTransaction) error {
 		updated, updateErr := tx.UpdateTransactionBindingCAS(firstBinding.BindingId, 1, nil, nil, 34)
@@ -500,6 +510,11 @@ func assertBindingAllocationAndAggregate(t *testing.T, repository *loans.Reposit
 
 	if count, err = repository.CountAllocations(nil, firstUid, 101); err != nil || count != 2 {
 		t.Fatalf("allocation history count mismatch: count=%d err=%v", count, err)
+	}
+
+	dashboardAllocations, err = repository.ListDashboardAllocations(nil, firstUid)
+	if err != nil || len(dashboardAllocations) != 1 || dashboardAllocations[0].TransactionId != 9002 {
+		t.Fatalf("reversed allocation remained in dashboard projection: values=%+v err=%v", dashboardAllocations, err)
 	}
 
 	binding, err := repository.FindTransactionBindingByTransactionId(nil, firstUid, firstBinding.TransactionId)
