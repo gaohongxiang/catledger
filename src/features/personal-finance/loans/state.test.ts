@@ -14,7 +14,11 @@ import {
     createDefaultLoanCalculationInput,
     getLoanInstallmentDisplayStatus,
     getLoanSettlementDraftDate,
+    formatLoanPptrAsPercentage,
     LoanValidationError,
+    normalizeLoanPercentageInput,
+    parseLoanPercentageToPptr,
+    updateLoanCalculationAmount,
     validateLoanCalculationInput
 } from './state.ts';
 
@@ -76,6 +80,36 @@ function existingComponent(componentType: 'principal' | 'interest' | 'fee', amou
 }
 
 describe('personal finance loan shell state', () => {
+    it('keeps displayed currency amounts in internal integers and derives net disbursement atomically', () => {
+        const principal = updateLoanCalculationAmount(calculationInput(), 'principalAmount', 5000000);
+        expect(principal.principalAmount).toBe(5000000); // AmountInput emits 50000.00 as 5000000.
+        expect(principal.actualDisbursementAmount).toBe(4900000);
+
+        const withFee = updateLoanCalculationAmount(principal, 'upfrontFeeAmount', 125000);
+        expect(withFee.actualDisbursementAmount).toBe(4875000);
+        expect(validateLoanCalculationInput(withFee).actualDisbursementAmount).toBe(4875000);
+    });
+
+    it('converts ordinary decimal percentages to exact fixed-point strings in both directions', () => {
+        expect(parseLoanPercentageToPptr('12')).toBe('120000000000');
+        expect(formatLoanPptrAsPercentage('120000000000')).toBe('12');
+        expect(parseLoanPercentageToPptr('70', '1000000000000')).toBe('700000000000');
+        expect(formatLoanPptrAsPercentage('700000000000')).toBe('70');
+        expect(parseLoanPercentageToPptr('12.1234567890')).toBe('121234567890');
+        expect(parseLoanPercentageToPptr('12.12345678901')).toBeUndefined();
+        expect(parseLoanPercentageToPptr('100.0000000001', '1000000000000')).toBeUndefined();
+    });
+
+    it('invalidates stale percentage input and rejects a zero interest-rate discount', () => {
+        expect(normalizeLoanPercentageInput('12')).toBe('120000000000');
+        expect(normalizeLoanPercentageInput('')).toBe('');
+        expect(normalizeLoanPercentageInput('invalid')).toBe('');
+        expect(normalizeLoanPercentageInput('0', '1000000000000', false)).toBe('');
+        expectValidationCode(calculationInput({
+            discountType: 'interest_rate', discountRatePptr: '0'
+        }), 'discount_invalid');
+    });
+
     it('validates the frozen rate and repayment input modes without converting pptr to number', () => {
         expect(validateLoanCalculationInput(calculationInput()).quotedRatePptr).toBe('120000000000');
         expect(validateLoanCalculationInput(calculationInput({

@@ -44,6 +44,67 @@ export const loanAccountingBoundaryKeys = [
     'personalFinance.loans.boundary.combinedPaymentMustBeSplit'
 ] as const;
 
+const PPTR_PER_PERCENT = 10000000000n;
+const MAX_LOAN_PPTR = 9223372036854775807n;
+
+export type LoanEditableAmountField =
+    'principalAmount' |
+    'upfrontFeeAmount' |
+    'perPeriodFeeAmount' |
+    'paymentBasisAmount' |
+    'discountAmount';
+
+export function updateLoanCalculationAmount(
+    input: LoanCalculationInput,
+    field: LoanEditableAmountField,
+    amount: number
+): LoanCalculationInput {
+    const updated = { ...input, [field]: amount };
+    if (field === 'principalAmount' || field === 'upfrontFeeAmount') {
+        updated.actualDisbursementAmount = updated.principalAmount - updated.upfrontFeeAmount;
+    }
+    return updated;
+}
+
+export function parseLoanPercentageToPptr(value: string, maximumPptr: string = MAX_LOAN_PPTR.toString()): string | undefined {
+    const match = /^\s*(\d+)(?:\.(\d{0,10}))?\s*$/.exec(value);
+    const wholeText = match?.[1];
+    if (!wholeText || wholeText.length > 10 || !/^(0|[1-9]\d*)$/.test(maximumPptr)) {
+        return undefined;
+    }
+
+    const whole = BigInt(wholeText);
+    const fraction = (match[2] ?? '').padEnd(10, '0');
+    const pptr = whole * PPTR_PER_PERCENT + BigInt(fraction || '0');
+    if (pptr > BigInt(maximumPptr)) {
+        return undefined;
+    }
+    return pptr.toString();
+}
+
+export function normalizeLoanPercentageInput(
+    value: string,
+    maximumPptr: string = MAX_LOAN_PPTR.toString(),
+    allowZero: boolean = true
+): string {
+    const parsed = parseLoanPercentageToPptr(value, maximumPptr);
+    if (typeof parsed === 'undefined' || (!allowZero && parsed === '0')) {
+        return '';
+    }
+    return parsed;
+}
+
+export function formatLoanPptrAsPercentage(value?: string): string {
+    if (!value || !/^(0|[1-9]\d*)$/.test(value) || BigInt(value) > MAX_LOAN_PPTR) {
+        return '';
+    }
+
+    const pptr = BigInt(value);
+    const whole = pptr / PPTR_PER_PERCENT;
+    const fraction = (pptr % PPTR_PER_PERCENT).toString().padStart(10, '0').replace(/0+$/, '');
+    return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
 export function createDefaultLoanCalculationInput(): LoanCalculationInput {
     return {
         fundingType: 'cash_disbursement',
@@ -206,7 +267,7 @@ function validateDiscount(input: LoanCalculationInput): void {
         return;
     }
     if (input.discountType === 'interest_rate') {
-        if (!isPptr(input.discountRatePptr) || BigInt(input.discountRatePptr) > 1000000000000n || input.discountAmount !== 0) {
+        if (!isPptr(input.discountRatePptr) || BigInt(input.discountRatePptr) < 1n || BigInt(input.discountRatePptr) > 1000000000000n || input.discountAmount !== 0) {
             throw new LoanValidationError('discount_invalid');
         }
         return;

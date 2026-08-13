@@ -97,6 +97,7 @@ function mockService(): LoanService {
 describe('loan workbench controller', () => {
     it('connects all twelve endpoints and explicitly refreshes list and detail after every action', async () => {
         const service = mockService();
+        vi.mocked(service.getContract).mockResolvedValue({ ...detail, latestSettlementActionId: '501' });
         const controller = createLoanWorkbenchController({ service, createIdempotencyKey: () => 'intent-key' });
         controller.calculationInput.value = input;
 
@@ -111,8 +112,8 @@ describe('loan workbench controller', () => {
         controller.selectInstallment(undefined);
         const disbursement = await controller.loadSettlementCandidates('disbursement');
         const fee = await controller.loadSettlementCandidates('fee');
-        controller.selectCandidate('disbursement', disbursement.groups[0]!.candidates[0]!, 5000000);
-        controller.selectCandidate('fee', fee.groups[0]!.candidates[0]!, 100000);
+        controller.selectCandidate('disbursement', disbursement.groups[0]!.candidates[0]!);
+        controller.selectCandidate('fee', fee.groups[0]!.candidates[0]!);
         await controller.applySettlement();
         await controller.inspectUndo();
         await controller.undoSettlement();
@@ -150,13 +151,47 @@ describe('loan workbench controller', () => {
         expect(requests.map(request => request.idempotencyKey)).toEqual(['key-1', 'key-1', 'key-2']);
     });
 
-    it('rejects over-allocation before calling the service', async () => {
+    it('always submits the full existing candidate amount without client-side truncation', async () => {
         const service = mockService();
         const controller = createLoanWorkbenchController({ service });
         await controller.reload(true);
         const result = await controller.loadSettlementCandidates('disbursement');
-        expect(() => controller.selectCandidate('disbursement', result.groups[0]!.candidates[0]!, 5000001)).toThrow('loan_allocation_amount_invalid');
-        expect(service.applySettlement).not.toHaveBeenCalled();
+        const candidate = { ...result.groups[0]!.candidates[0]!, amount: 4900000 };
+        controller.selectCandidate('disbursement', candidate);
+        await controller.applySettlement();
+        expect(service.applySettlement).toHaveBeenCalledWith(expect.objectContaining({
+            components: [expect.objectContaining({ allocatedAmount: 4900000, existingTransactionId: '401' })]
+        }));
+    });
+
+    it('submits a ledger draft amount as the same internal integer entered through AmountInput', async () => {
+        const service = mockService();
+        const controller = createLoanWorkbenchController({ service });
+        await controller.reload(true);
+        controller.setLedgerDraft('fee', 75000, {
+            transactionType: 'expense', transactionDate: '2026-08-14', sourceAccountId: '12', categoryId: '21',
+            amount: 75000, currency: 'CNY'
+        });
+        await controller.applySettlement();
+        expect(service.applySettlement).toHaveBeenCalledWith(expect.objectContaining({
+            components: [expect.objectContaining({
+                componentType: 'fee', allocatedAmount: 75000,
+                ledgerDraft: expect.objectContaining({ amount: 75000 })
+            })]
+        }));
+    });
+
+    it('restores and clears the latest active settlement action from refreshed detail', async () => {
+        const service = mockService();
+        vi.mocked(service.getContract)
+            .mockResolvedValueOnce({ ...detail, latestSettlementActionId: '501' })
+            .mockResolvedValueOnce({ ...detail, latestSettlementActionId: undefined });
+        const controller = createLoanWorkbenchController({ service });
+
+        await controller.reload(true);
+        expect(controller.lastSettlementActionId.value).toBe('501');
+        await controller.openContract('101');
+        expect(controller.lastSettlementActionId.value).toBeUndefined();
     });
 
     it('allows only an upfront-fee nil-installment action for purchase installments', async () => {
@@ -171,7 +206,7 @@ describe('loan workbench controller', () => {
 
         await expect(controller.loadSettlementCandidates('disbursement')).rejects.toThrow('loan_disbursement_not_allowed');
         const fee = await controller.loadSettlementCandidates('fee');
-        controller.selectCandidate('fee', fee.groups[0]!.candidates[0]!, 100000);
+        controller.selectCandidate('fee', fee.groups[0]!.candidates[0]!);
         await controller.applySettlement();
 
         expect(service.applySettlement).toHaveBeenCalledWith(expect.objectContaining({

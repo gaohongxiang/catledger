@@ -37,7 +37,7 @@
                         <loan-contract-list
                             :items="items"
                             :loading="loadingList"
-                            :next-cursor="nextCursor"
+                            :has-more="!!nextCursor"
                             :selected-contract-id="selectedDetail?.contract.id"
                             @create="startCreate"
                             @load-more="loadMore"
@@ -102,6 +102,16 @@
                                     </div>
                                 </v-alert>
                             </div>
+
+                            <v-divider />
+
+                            <loan-calculation-result-panel
+                                class="pa-5 pa-lg-6"
+                                :input="selectedDetail.currentRevision.input"
+                                :result="selectedDetail.currentRevision.calculation"
+                                :currency="selectedDetail.contract.currency"
+                                :show-installments="false"
+                            />
 
                             <v-divider />
 
@@ -261,21 +271,6 @@
         </v-card>
     </v-dialog>
 
-    <v-dialog max-width="560" v-model="showCandidateDialog">
-        <v-card>
-            <v-card-title class="px-5 pt-5">{{ tt('personalFinance.loans.settlement.candidateAmountTitle') }}</v-card-title>
-            <v-card-text class="px-5 pb-2">
-                <v-text-field type="number" min="1" :max="candidateOutstanding" :label="tt('personalFinance.loans.settlement.allocatedAmount')" v-model.number="candidateAmount" />
-                <v-alert type="info" variant="tonal">{{ tt('personalFinance.loans.settlement.partialHint') }}</v-alert>
-            </v-card-text>
-            <v-card-actions class="px-5 pb-5">
-                <v-spacer />
-                <v-btn variant="text" @click="showCandidateDialog = false">{{ tt('Cancel') }}</v-btn>
-                <v-btn color="primary" :disabled="!candidateAmountValid" @click="selectCandidateAmount">{{ tt('OK') }}</v-btn>
-            </v-card-actions>
-        </v-card>
-    </v-dialog>
-
     <v-dialog max-width="680" v-model="showDraftDialog">
         <v-card>
             <v-card-title class="px-5 pt-5">{{ tt('personalFinance.loans.settlement.draftTitle') }}</v-card-title>
@@ -295,7 +290,10 @@
                         <v-text-field type="date" :label="tt('personalFinance.loans.settlement.transactionDate')" v-model="draft.transactionDate" />
                     </v-col>
                     <v-col cols="12" sm="6">
-                        <v-text-field type="number" min="1" :max="draftOutstanding" :label="tt('personalFinance.loans.settlement.allocatedAmount')" v-model.number="draft.amount" />
+                        <amount-input :label="tt('personalFinance.loans.settlement.allocatedAmount')"
+                                      :currency="selectedDetail?.contract.currency ?? userStore.currentUserDefaultCurrency" show-currency
+                                      v-model="draft.amount" />
+                        <div class="text-caption text-medium-emphasis mt-1">{{ tt('personalFinance.loans.settlement.draftAmountHint') }}</div>
                     </v-col>
                     <v-col cols="12" sm="6">
                         <v-text-field readonly :label="tt('Currency')" :model-value="selectedDetail?.contract.currency" />
@@ -334,6 +332,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef } f
 import { mdiBankOutline, mdiClose, mdiDotsVertical, mdiPlus, mdiRefresh } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
+import AmountInput from '@/components/desktop/AmountInput.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import { AccountCategory, AccountType } from '@/core/account.ts';
 import { CategoryType } from '@/core/category.ts';
@@ -366,6 +365,7 @@ import {
 } from '../presentation.ts';
 import { canCancelLoanContract, canReviseLoanContract, createDefaultLoanCalculationInput, getLoanSettlementDraftDate } from '../state.ts';
 import LoanCalculatorPanel from './components/LoanCalculatorPanel.vue';
+import LoanCalculationResultPanel from './components/LoanCalculationResultPanel.vue';
 import LoanContractForm from './components/LoanContractForm.vue';
 import LoanContractList from './components/LoanContractList.vue';
 import LoanSchedulePanel from './components/LoanSchedulePanel.vue';
@@ -393,9 +393,6 @@ const allAccounts = ref<Account[]>([]);
 const allCategories = ref<Record<number, TransactionCategory[]>>({});
 const showComposer = ref(false);
 const composerMode = ref<ComposerMode>('create');
-const showCandidateDialog = ref(false);
-const candidateSelection = ref<{ componentType: LoanComponentType; candidate: LoanSettlementCandidate }>();
-const candidateAmount = ref(0);
 const showDraftDialog = ref(false);
 const draftComponent = ref<LoanComponentType>('principal');
 const draft = reactive({ sourceAccountId: '', destinationAccountId: '', categoryId: '', transactionDate: '', amount: 0 });
@@ -447,8 +444,6 @@ const canRecordFundingComponents = computed(() => canRecordDisbursement.value ||
 const fundingCandidateTypes = computed<LoanComponentType[]>(() => candidates.value?.installmentId
     ? []
     : candidates.value?.groups.map(group => group.componentType).filter(type => type === 'disbursement' || type === 'fee') ?? []);
-const candidateOutstanding = computed(() => candidateSelection.value ? candidateGroup(candidateSelection.value.componentType)?.outstandingAmount ?? 0 : 0);
-const candidateAmountValid = computed(() => Number.isSafeInteger(candidateAmount.value) && candidateAmount.value > 0 && candidateAmount.value <= candidateOutstanding.value);
 const draftNeedsDestination = computed(() => draftComponent.value === 'disbursement' || draftComponent.value === 'principal');
 const draftOutstanding = computed(() => candidateGroup(draftComponent.value)?.outstandingAmount ?? componentOutstanding(draftComponent.value));
 const draftSourceAccounts = computed(() => {
@@ -596,15 +591,7 @@ async function loadCandidates(componentType: LoanComponentType): Promise<void> {
 }
 
 function openCandidate(componentType: LoanComponentType, candidate: LoanSettlementCandidate): void {
-    candidateSelection.value = { componentType, candidate };
-    candidateAmount.value = Math.min(candidate.amount, candidateGroup(componentType)?.outstandingAmount ?? candidate.amount);
-    showCandidateDialog.value = true;
-}
-
-function selectCandidateAmount(): void {
-    if (!candidateSelection.value || !candidateAmountValid.value) return;
-    controller.selectCandidate(candidateSelection.value.componentType, candidateSelection.value.candidate, candidateAmount.value);
-    showCandidateDialog.value = false;
+    controller.selectCandidate(componentType, candidate);
 }
 
 function openDraft(componentType: LoanComponentType): void {

@@ -83,23 +83,23 @@
                     />
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
-                    <v-text-field
-                        type="number"
-                        min="1"
+                    <amount-input
                         :label="tt('personalFinance.loans.field.principal')"
+                        :currency="currency"
+                        show-currency
                         :disabled="disabled || loading"
                         :model-value="modelValue.principalAmount"
                         @update:model-value="value => updateAmount('principalAmount', value)"
                     />
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
-                    <v-text-field
-                        type="number"
-                        min="1"
+                    <amount-input
                         :label="tt('personalFinance.loans.field.actualDisbursement')"
+                        :currency="currency"
+                        show-currency
+                        readonly
                         :disabled="disabled || loading"
                         :model-value="modelValue.actualDisbursementAmount"
-                        @update:model-value="value => updateAmount('actualDisbursementAmount', value)"
                     />
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
@@ -109,36 +109,36 @@
                         :label="tt('personalFinance.loans.field.termCount')"
                         :disabled="disabled || loading"
                         :model-value="modelValue.termCount"
-                        @update:model-value="value => updateAmount('termCount', value)"
+                        @update:model-value="updateTermCount"
                     />
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
-                    <v-text-field
-                        type="number"
-                        min="0"
+                    <amount-input
                         :label="tt('personalFinance.loans.field.upfrontFee')"
+                        :currency="currency"
+                        show-currency
                         :disabled="disabled || loading"
                         :model-value="modelValue.upfrontFeeAmount"
                         @update:model-value="value => updateAmount('upfrontFeeAmount', value)"
                     />
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
-                    <v-text-field
-                        type="number"
-                        min="0"
+                    <amount-input
                         :label="tt('personalFinance.loans.field.perPeriodFee')"
+                        :currency="currency"
+                        show-currency
                         :disabled="disabled || loading"
                         :model-value="modelValue.perPeriodFeeAmount"
                         @update:model-value="value => updateAmount('perPeriodFeeAmount', value)"
                     />
                 </v-col>
                 <v-col cols="12" sm="6" md="4" v-if="modelValue.inputMode === 'repayment'">
-                    <v-text-field
-                        type="number"
-                        min="1"
+                    <amount-input
                         :label="tt('personalFinance.loans.field.paymentBasis')"
+                        :currency="currency"
+                        show-currency
                         :disabled="disabled || loading"
-                        :model-value="modelValue.paymentBasisAmount"
+                        :model-value="modelValue.paymentBasisAmount ?? 0"
                         @update:model-value="value => updateAmount('paymentBasisAmount', value)"
                     />
                 </v-col>
@@ -156,13 +156,15 @@
                     </v-col>
                     <v-col cols="12" sm="6" md="4">
                         <v-text-field
-                            inputmode="numeric"
-                            :label="tt('personalFinance.loans.field.quotedRatePptr')"
-                            :hint="tt('personalFinance.loans.field.pptrHint')"
+                            inputmode="decimal"
+                            suffix="%"
+                            :label="tt('personalFinance.loans.field.quotedRatePercent')"
+                            :hint="tt('personalFinance.loans.field.percentageHint')"
+                            :error="quotedRateInvalid"
                             persistent-hint
                             :disabled="disabled || loading"
-                            :model-value="modelValue.quotedRatePptr"
-                            @update:model-value="value => updateField('quotedRatePptr', value)"
+                            v-model="quotedRatePercent"
+                            @blur="normalizeQuotedRate"
                         />
                     </v-col>
                 </template>
@@ -179,18 +181,22 @@
                 </v-col>
                 <v-col cols="12" md="4" v-if="modelValue.discountType === 'interest_rate'">
                     <v-text-field
-                        inputmode="numeric"
-                        :label="tt('personalFinance.loans.field.discountRatePptr')"
+                        inputmode="decimal"
+                        suffix="%"
+                        :label="tt('personalFinance.loans.field.discountRatePercent')"
+                        :hint="tt('personalFinance.loans.field.percentageHint')"
+                        :error="discountRateInvalid"
+                        persistent-hint
                         :disabled="disabled || loading"
-                        :model-value="modelValue.discountRatePptr"
-                        @update:model-value="value => updateField('discountRatePptr', value)"
+                        v-model="discountRatePercent"
+                        @blur="normalizeDiscountRate"
                     />
                 </v-col>
                 <v-col cols="12" md="4" v-else-if="modelValue.discountType !== 'none'">
-                    <v-text-field
-                        type="number"
-                        min="1"
+                    <amount-input
                         :label="tt('personalFinance.loans.field.discountAmount')"
+                        :currency="currency"
+                        show-currency
                         :disabled="disabled || loading"
                         :model-value="modelValue.discountAmount"
                         @update:model-value="value => updateAmount('discountAmount', value)"
@@ -207,33 +213,16 @@
 
         <template v-if="result">
             <v-divider />
-            <div class="result-grid pa-5 pa-lg-6">
-                <div class="result-primary">
-                    <span>{{ tt('personalFinance.loans.result.totalPayment') }}</span>
-                    <strong>{{ formatAmount(result.summary.totalPaymentAmount) }}</strong>
-                </div>
-                <div>
-                    <span>{{ tt('personalFinance.loans.result.totalCost') }}</span>
-                    <strong>{{ formatAmount(result.summary.totalCostAmount) }}</strong>
-                </div>
-                <div>
-                    <span>{{ tt('personalFinance.loans.result.effectiveApr') }}</span>
-                    <strong>{{ formatPptr(result.summary.effectiveAprPptr) }}</strong>
-                </div>
-                <div>
-                    <span>{{ tt('personalFinance.loans.result.installments') }}</span>
-                    <strong>{{ result.installments.length }}</strong>
-                </div>
-            </div>
+            <loan-calculation-result-panel class="pa-5 pa-lg-6" :input="modelValue" :result="result" :currency="currency" />
         </template>
     </v-card>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 
+import AmountInput from '@/components/desktop/AmountInput.vue';
 import { useI18n } from '@/locales/helpers.ts';
-import { parseBigDecimal } from '@/lib/numeral.ts';
 
 import type {
     LoanCalculationInput,
@@ -242,6 +231,13 @@ import type {
     LoanInputMode,
     LoanRepaymentMethod
 } from '../../models.ts';
+import {
+    formatLoanPptrAsPercentage,
+    normalizeLoanPercentageInput,
+    type LoanEditableAmountField,
+    updateLoanCalculationAmount
+} from '../../state.ts';
+import LoanCalculationResultPanel from './LoanCalculationResultPanel.vue';
 
 const props = withDefaults(defineProps<{
     modelValue: LoanCalculationInput;
@@ -260,7 +256,7 @@ const emit = defineEmits<{
     (e: 'calculate'): void;
 }>();
 
-const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
+const { tt } = useI18n();
 
 const fundingTypeOptions = computed(() => [
     { title: tt('personalFinance.loans.fundingType.cashDisbursement'), value: 'cash_disbursement' },
@@ -286,14 +282,47 @@ const discountTypeOptions = computed(() => [
     { title: tt('personalFinance.loans.discount.perPeriodAmount'), value: 'per_period' },
     { title: tt('personalFinance.loans.discount.totalAmount'), value: 'total' }
 ]);
+const quotedRatePercent = ref(formatLoanPptrAsPercentage(props.modelValue.quotedRatePptr));
+const discountRatePercent = ref(formatLoanPptrAsPercentage(props.modelValue.discountRatePptr));
+const quotedRatePptr = computed(() => normalizeLoanPercentageInput(quotedRatePercent.value));
+const discountRatePptr = computed(() => normalizeLoanPercentageInput(discountRatePercent.value, '1000000000000', false));
+const quotedRateInvalid = computed(() => !quotedRatePptr.value);
+const discountRateInvalid = computed(() => !discountRatePptr.value);
+
+watch(() => props.modelValue.quotedRatePptr, value => {
+    const formatted = formatLoanPptrAsPercentage(value);
+    if (formatted !== formatLoanPptrAsPercentage(quotedRatePptr.value)) quotedRatePercent.value = formatted;
+});
+watch(() => props.modelValue.discountRatePptr, value => {
+    const formatted = formatLoanPptrAsPercentage(value);
+    if (formatted !== formatLoanPptrAsPercentage(discountRatePptr.value)) discountRatePercent.value = formatted;
+});
+watch(quotedRatePptr, value => {
+    if (props.modelValue.inputMode === 'rate' && value !== props.modelValue.quotedRatePptr) updateField('quotedRatePptr', value);
+});
+watch(discountRatePptr, value => {
+    if (props.modelValue.discountType === 'interest_rate' && value !== props.modelValue.discountRatePptr) updateField('discountRatePptr', value);
+});
 
 function updateField(field: keyof LoanCalculationInput, value: unknown): void {
     emit('update:modelValue', { ...props.modelValue, [field]: value });
 }
 
-function updateAmount(field: keyof LoanCalculationInput, value: unknown): void {
-    const amount = typeof value === 'number' ? value : Number(value ?? 0);
-    updateField(field, Number.isFinite(amount) ? amount : 0);
+function updateAmount(field: LoanEditableAmountField, value: number): void {
+    emit('update:modelValue', updateLoanCalculationAmount(props.modelValue, field, value));
+}
+
+function updateTermCount(value: unknown): void {
+    const termCount = typeof value === 'number' ? value : Number(value ?? 0);
+    updateField('termCount', Number.isFinite(termCount) ? termCount : 0);
+}
+
+function normalizeQuotedRate(): void {
+    quotedRatePercent.value = formatLoanPptrAsPercentage(props.modelValue.quotedRatePptr);
+}
+
+function normalizeDiscountRate(): void {
+    discountRatePercent.value = formatLoanPptrAsPercentage(props.modelValue.discountRatePptr);
 }
 
 function changeInputMode(value: LoanInputMode): void {
@@ -324,13 +353,6 @@ function changeDiscountType(value: LoanDiscountType): void {
     });
 }
 
-function formatAmount(amount: number): string {
-    return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(amount), props.currency);
-}
-
-function formatPptr(value?: string): string {
-    return value ? `${parseBigDecimal(value).divide(10000000000).toString()}%` : tt('Unknown');
-}
 </script>
 
 <style scoped>
@@ -352,49 +374,10 @@ function formatPptr(value?: string): string {
     flex: 1;
 }
 
-.result-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
-    background: rgba(var(--v-theme-primary), 0.035);
-}
-
-.result-grid > div {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 16px;
-    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-    border-radius: 12px;
-    background: rgb(var(--v-theme-surface));
-}
-
-.result-grid span {
-    color: rgba(var(--v-theme-on-surface), 0.62);
-    font-size: 0.78rem;
-}
-
-.result-grid strong {
-    font-size: 1.08rem;
-}
-
-.result-grid .result-primary {
-    border-color: rgba(var(--v-theme-primary), 0.4);
-}
-
-@media (max-width: 959px) {
-    .result-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
 @media (max-width: 599px) {
     .calculator-heading {
         flex-direction: column;
     }
 
-    .result-grid {
-        grid-template-columns: 1fr;
-    }
 }
 </style>

@@ -139,6 +139,10 @@ export function createLoanWorkbenchController(options: LoanWorkbenchControllerOp
                 selectedInstallmentId.value = undefined;
                 clearSettlementComposer();
             }
+            lastSettlementActionId.value = detail.latestSettlementActionId;
+            if (!detail.latestSettlementActionId) {
+                undoImpact.value = null;
+            }
         } catch (cause) {
             if (alive && epoch === detailEpoch) {
                 setFailure(cause);
@@ -331,7 +335,7 @@ export function createLoanWorkbenchController(options: LoanWorkbenchControllerOp
         }
     }
 
-    function selectCandidate(componentType: LoanComponentType, candidate: LoanSettlementCandidate, allocatedAmount: number): void {
+    function selectCandidate(componentType: LoanComponentType, candidate: LoanSettlementCandidate): void {
         if (!selectedInstallmentId.value && componentType === 'disbursement' &&
             requireDetail().currentRevision.input.fundingType !== 'cash_disbursement') {
             throw new Error('loan_disbursement_not_allowed');
@@ -340,12 +344,12 @@ export function createLoanWorkbenchController(options: LoanWorkbenchControllerOp
             throw new Error('loan_candidate_ineligible');
         }
         const outstanding = candidates.value?.groups.find(group => group.componentType === componentType)?.outstandingAmount;
-        if (!Number.isSafeInteger(allocatedAmount) || allocatedAmount < 1 || typeof outstanding !== 'number' || allocatedAmount > outstanding) {
+        if (!Number.isSafeInteger(candidate.amount) || candidate.amount < 1 || typeof outstanding !== 'number' || candidate.amount > outstanding) {
             throw new Error('loan_allocation_amount_invalid');
         }
         replaceComponent({
             componentType,
-            allocatedAmount,
+            allocatedAmount: candidate.amount,
             existingTransactionId: candidate.transactionId,
             expectedUpdatedUnixTime: candidate.updatedUnixTime,
             ...(typeof candidate.counterpartUpdatedUnixTime === 'undefined'

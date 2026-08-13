@@ -483,6 +483,7 @@ function normalizeAllocationSummary(value: unknown) {
 
 export function normalizeLoanContractDetail(value: unknown): LoanContractDetail {
     const detail = asRecord(value);
+    const latestSettlementActionId = asOptionalIdentifier(detail['latestSettlementActionId']);
     return {
         contract: normalizeContract(detail['contract']),
         currentRevision: normalizeRevision(detail['currentRevision']),
@@ -491,7 +492,8 @@ export function normalizeLoanContractDetail(value: unknown): LoanContractDetail 
         liabilityComparison: normalizeLiabilityComparison(detail['liabilityComparison']),
         asOfDate: asCivilDate(detail['asOfDate']),
         actionRequired: asBoolean(detail['actionRequired']),
-        reasonCodes: normalizeReasons(detail['reasonCodes'])
+        reasonCodes: normalizeReasons(detail['reasonCodes']),
+        ...(latestSettlementActionId ? { latestSettlementActionId } : {})
     };
 }
 

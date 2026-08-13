@@ -180,6 +180,7 @@ export interface LoanContractDetail {
     readonly asOfDate: string;
     readonly actionRequired: boolean;
     readonly reasonCodes: LoanReason[];
+    readonly latestSettlementActionId?: string;
 }
 
 export interface LoanContractCursor {

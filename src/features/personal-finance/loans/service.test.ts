@@ -21,7 +21,8 @@ import type { LoanCalculationInput } from './models.ts';
 import {
     loanApi,
     loanApiPaths,
-    LoanProtocolError
+    LoanProtocolError,
+    normalizeLoanContractDetail
 } from './service.ts';
 
 function apiResponse(result: unknown): unknown {
@@ -315,7 +316,8 @@ describe('personal finance loan HTTP service', () => {
         serviceMocks.getPersonalFinanceLoanContract.mockResolvedValue(apiResponse(detail({
             installments: [],
             actionRequired: true,
-            reasonCodes: [{ code: 'transaction_modified', count: 1 }]
+            reasonCodes: [{ code: 'transaction_modified', count: 1 }],
+            latestSettlementActionId: '501'
         })));
 
         const page = await loanApi.listContracts({
@@ -337,8 +339,16 @@ describe('personal finance loan HTTP service', () => {
         expect(current.installments).toEqual([]);
         expect(current.actionRequired).toBe(true);
         expect(current.reasonCodes).toEqual([{ code: 'transaction_modified', count: 1 }]);
+        expect(current.latestSettlementActionId).toBe('501');
         expect(current.contract).not.toHaveProperty('uid');
         expect(current).not.toHaveProperty('transactionComment');
+    });
+
+    it('accepts only a nullable positive int64 latest settlement action ID', () => {
+        expect(normalizeLoanContractDetail(detail({ latestSettlementActionId: null }))).not.toHaveProperty('latestSettlementActionId');
+        expect(() => normalizeLoanContractDetail(detail({ latestSettlementActionId: 501 }))).toThrow();
+        expect(() => normalizeLoanContractDetail(detail({ latestSettlementActionId: '0' }))).toThrow();
+        expect(() => normalizeLoanContractDetail(detail({ latestSettlementActionId: '9223372036854775808' }))).toThrow();
     });
 
     it('sends create, revise, close, reopen and cancel through their exact thin methods', async () => {
