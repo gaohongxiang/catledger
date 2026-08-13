@@ -43,3 +43,14 @@ func (s *TransactionService) CreateTransactionInSession(c core.Context, database
 
 	return &transaction, counterpart, nil
 }
+
+// DeleteTransactionInSession 在调用方持有的事务中按不可变快照条件软删一个完整逻辑账本事件。
+// 本方法不提交或回滚 sess；普通事件的 related 参数必须均为零，转账必须显式提供完整对端。
+func (s *TransactionService) DeleteTransactionInSession(c core.Context, database *datastore.Database, sess *xorm.Session, uid int64, transactionId int64, expectedUpdatedUnixTime int64, relatedTransactionId int64, expectedRelatedUpdatedUnixTime int64, deletedUnixTime int64) (*models.Transaction, *models.Transaction, error) {
+	if s == nil || uid < 1 || transactionId < 1 || expectedUpdatedUnixTime < 1 || deletedUnixTime < 1 || database == nil ||
+		database != s.UserDataDB(uid) || database.ValidateTransactionSession(sess) != nil {
+		return nil, nil, fmt.Errorf("invalid caller-owned ledger transaction deletion")
+	}
+
+	return s.deleteTransactionInSession(c, sess, uid, transactionId, expectedUpdatedUnixTime, relatedTransactionId, expectedRelatedUpdatedUnixTime, deletedUnixTime, true)
+}

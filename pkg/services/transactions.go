@@ -2017,148 +2017,198 @@ func (s *TransactionService) DeleteTransaction(c core.Context, uid int64, transa
 	}
 
 	now := time.Now().Unix()
+	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		_, _, err := s.deleteTransactionInSession(c, sess, uid, transactionId, 0, 0, 0, now, false)
+		return err
+	})
+}
+
+// deleteTransactionInSession 是 DeleteTransaction 与个人财务 caller-owned 适配器共用的唯一软删除算法。
+// enforceSnapshot 仅供调用方持有事务时启用，公开 DeleteTransaction 的既有校验与错误语义保持不变。
+func (s *TransactionService) deleteTransactionInSession(c core.Context, sess *xorm.Session, uid int64, transactionId int64, expectedUpdatedUnixTime int64, relatedTransactionId int64, expectedRelatedUpdatedUnixTime int64, deletedUnixTime int64, enforceSnapshot bool) (*models.Transaction, *models.Transaction, error) {
+	if sess == nil || uid <= 0 || transactionId <= 0 || deletedUnixTime <= 0 {
+		return nil, nil, errs.ErrTransactionNotFound
+	}
 
 	updateModel := &models.Transaction{
 		Deleted:         true,
-		DeletedUnixTime: now,
+		DeletedUnixTime: deletedUnixTime,
 	}
 
 	tagIndexUpdateModel := &models.TransactionTagIndex{
 		Deleted:         true,
-		DeletedUnixTime: now,
+		DeletedUnixTime: deletedUnixTime,
 	}
 
 	pictureUpdateModel := &models.TransactionPictureInfo{
 		Deleted:         true,
-		DeletedUnixTime: now,
+		DeletedUnixTime: deletedUnixTime,
 	}
 
-	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
-		// Get and verify current transaction
-		oldTransaction := &models.Transaction{}
-		has, err := sess.ID(transactionId).Where("uid=? AND deleted=?", uid, false).Get(oldTransaction)
+	// Get and verify current transaction
+	oldTransaction := &models.Transaction{}
+	has, err := sess.ID(transactionId).Where("uid=? AND deleted=?", uid, false).Get(oldTransaction)
+	if err != nil {
+		return nil, nil, err
+	} else if !has {
+		return nil, nil, errs.ErrTransactionNotFound
+	}
 
+	isTransfer := oldTransaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || oldTransaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN
+	var oldRelatedTransaction *models.Transaction
+	if isTransfer && enforceSnapshot {
+		oldRelatedTransaction = new(models.Transaction)
+		has, err = sess.ID(oldTransaction.RelatedId).Where("uid=? AND deleted=?", uid, false).Get(oldRelatedTransaction)
 		if err != nil {
-			return err
+			return nil, nil, err
 		} else if !has {
-			return errs.ErrTransactionNotFound
+			return nil, nil, errs.ErrTransactionNotFound
 		}
+	}
 
-		// Get and verify source and destination account
-		sourceAccount, destinationAccount, err := s.getAccountModels(sess, oldTransaction)
+	if enforceSnapshot {
+		if expectedUpdatedUnixTime <= 0 || oldTransaction.UpdatedUnixTime != expectedUpdatedUnixTime {
+			return nil, nil, errs.ErrTransactionNotFound
+		}
+		if isTransfer {
+			if relatedTransactionId <= 0 || expectedRelatedUpdatedUnixTime <= 0 ||
+				oldTransaction.Type != models.TRANSACTION_DB_TYPE_TRANSFER_OUT || oldTransaction.RelatedId != relatedTransactionId ||
+				oldRelatedTransaction.UpdatedUnixTime != expectedRelatedUpdatedUnixTime || !isCompleteTransferPair(oldTransaction, oldRelatedTransaction) {
+				return nil, nil, errs.ErrTransactionNotFound
+			}
+		} else if relatedTransactionId != 0 || expectedRelatedUpdatedUnixTime != 0 {
+			return nil, nil, errs.ErrTransactionNotFound
+		}
+	}
 
+	// Get and verify source and destination account
+	sourceAccount, destinationAccount, err := s.getAccountModels(sess, oldTransaction)
+	if err != nil {
+		return nil, nil, err
+	}
+	if sourceAccount.Hidden || (destinationAccount != nil && destinationAccount.Hidden) {
+		return nil, nil, errs.ErrCannotDeleteTransactionInHiddenAccount
+	}
+	if sourceAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS || (destinationAccount != nil && destinationAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS) {
+		return nil, nil, errs.ErrCannotDeleteTransactionInParentAccount
+	}
+	if isTransfer && oldRelatedTransaction == nil {
+		oldRelatedTransaction = new(models.Transaction)
+		has, err = sess.ID(oldTransaction.RelatedId).Where("uid=? AND deleted=?", uid, false).Get(oldRelatedTransaction)
 		if err != nil {
-			return err
+			return nil, nil, err
+		} else if !has {
+			return nil, nil, errs.ErrTransactionNotFound
 		}
+	}
 
-		if sourceAccount.Hidden || (destinationAccount != nil && destinationAccount.Hidden) {
-			return errs.ErrCannotDeleteTransactionInHiddenAccount
+	// Update transaction row to deleted
+	deleteQuery := sess.ID(oldTransaction.TransactionId).Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false)
+	if enforceSnapshot {
+		deleteQuery = deleteQuery.And("updated_unix_time=?", expectedUpdatedUnixTime)
+	}
+	deletedRows, err := deleteQuery.Update(updateModel)
+	if err != nil {
+		return nil, nil, err
+	} else if deletedRows < 1 {
+		return nil, nil, errs.ErrTransactionNotFound
+	}
+
+	if isTransfer {
+		relatedDeleteQuery := sess.ID(oldTransaction.RelatedId).Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false)
+		if enforceSnapshot {
+			relatedDeleteQuery = relatedDeleteQuery.And("updated_unix_time=?", expectedRelatedUpdatedUnixTime)
 		}
-
-		if sourceAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS || (destinationAccount != nil && destinationAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS) {
-			return errs.ErrCannotDeleteTransactionInParentAccount
-		}
-
-		// Update transaction row to deleted
-		deletedRows, err := sess.ID(oldTransaction.TransactionId).Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).Update(updateModel)
-
+		deletedRows, err = relatedDeleteQuery.Update(updateModel)
 		if err != nil {
-			return err
+			return nil, nil, err
 		} else if deletedRows < 1 {
-			return errs.ErrTransactionNotFound
+			return nil, nil, errs.ErrTransactionNotFound
 		}
+	}
 
-		if oldTransaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || oldTransaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
-			deletedRows, err = sess.ID(oldTransaction.RelatedId).Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).Update(updateModel)
+	// Update transaction tag index
+	_, err = sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=? AND transaction_id=?", uid, false, oldTransaction.TransactionId).Update(tagIndexUpdateModel)
+	if err != nil {
+		return nil, nil, err
+	}
 
+	// Update transaction picture
+	_, err = sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=? AND transaction_id=?", uid, false, oldTransaction.TransactionId).Update(pictureUpdateModel)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Update account table
+	if oldTransaction.Type == models.TRANSACTION_DB_TYPE_MODIFY_BALANCE {
+		if oldTransaction.RelatedAccountAmount != 0 {
+			sourceAccount.UpdatedUnixTime = time.Now().Unix()
+			updatedRows, err := s.updateAccountBalance(sess, sourceAccount, -oldTransaction.RelatedAccountAmount)
 			if err != nil {
-				return err
-			} else if deletedRows < 1 {
-				return errs.ErrTransactionNotFound
+				return nil, nil, err
+			} else if updatedRows < 1 {
+				log.Errorf(c, "[transactions.DeleteTransaction] failed to update account balance")
+				return nil, nil, errs.ErrDatabaseOperationFailed
 			}
 		}
-
-		// Update transaction tag index
-		_, err = sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=? AND transaction_id=?", uid, false, oldTransaction.TransactionId).Update(tagIndexUpdateModel)
-
-		if err != nil {
-			return err
+	} else if oldTransaction.Type == models.TRANSACTION_DB_TYPE_INCOME {
+		if oldTransaction.Amount != 0 {
+			sourceAccount.UpdatedUnixTime = time.Now().Unix()
+			updatedRows, err := s.updateAccountBalance(sess, sourceAccount, -oldTransaction.Amount)
+			if err != nil {
+				return nil, nil, err
+			} else if updatedRows < 1 {
+				log.Errorf(c, "[transactions.DeleteTransaction] failed to update account balance")
+				return nil, nil, errs.ErrDatabaseOperationFailed
+			}
 		}
-
-		// Update transaction picture
-		_, err = sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=? AND transaction_id=?", uid, false, oldTransaction.TransactionId).Update(pictureUpdateModel)
-
-		if err != nil {
-			return err
+	} else if oldTransaction.Type == models.TRANSACTION_DB_TYPE_EXPENSE {
+		if oldTransaction.Amount != 0 {
+			sourceAccount.UpdatedUnixTime = time.Now().Unix()
+			updatedRows, err := s.updateAccountBalance(sess, sourceAccount, oldTransaction.Amount)
+			if err != nil {
+				return nil, nil, err
+			} else if updatedRows < 1 {
+				log.Errorf(c, "[transactions.DeleteTransaction] failed to update account balance")
+				return nil, nil, errs.ErrDatabaseOperationFailed
+			}
 		}
-
-		// Update account table
-		if oldTransaction.Type == models.TRANSACTION_DB_TYPE_MODIFY_BALANCE {
-			if oldTransaction.RelatedAccountAmount != 0 {
-				sourceAccount.UpdatedUnixTime = time.Now().Unix()
-				updatedRows, err := s.updateAccountBalance(sess, sourceAccount, -oldTransaction.RelatedAccountAmount)
-
-				if err != nil {
-					return err
-				} else if updatedRows < 1 {
-					log.Errorf(c, "[transactions.DeleteTransaction] failed to update account balance")
-					return errs.ErrDatabaseOperationFailed
-				}
+	} else if oldTransaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT {
+		if oldTransaction.Amount != 0 {
+			sourceAccount.UpdatedUnixTime = time.Now().Unix()
+			updatedSourceRows, err := s.updateAccountBalance(sess, sourceAccount, oldTransaction.Amount)
+			if err != nil {
+				return nil, nil, err
+			} else if updatedSourceRows < 1 {
+				log.Errorf(c, "[transactions.DeleteTransaction] failed to update account balance")
+				return nil, nil, errs.ErrDatabaseOperationFailed
 			}
-		} else if oldTransaction.Type == models.TRANSACTION_DB_TYPE_INCOME {
-			if oldTransaction.Amount != 0 {
-				sourceAccount.UpdatedUnixTime = time.Now().Unix()
-				updatedRows, err := s.updateAccountBalance(sess, sourceAccount, -oldTransaction.Amount)
-
-				if err != nil {
-					return err
-				} else if updatedRows < 1 {
-					log.Errorf(c, "[transactions.DeleteTransaction] failed to update account balance")
-					return errs.ErrDatabaseOperationFailed
-				}
-			}
-		} else if oldTransaction.Type == models.TRANSACTION_DB_TYPE_EXPENSE {
-			if oldTransaction.Amount != 0 {
-				sourceAccount.UpdatedUnixTime = time.Now().Unix()
-				updatedRows, err := s.updateAccountBalance(sess, sourceAccount, oldTransaction.Amount)
-
-				if err != nil {
-					return err
-				} else if updatedRows < 1 {
-					log.Errorf(c, "[transactions.DeleteTransaction] failed to update account balance")
-					return errs.ErrDatabaseOperationFailed
-				}
-			}
-		} else if oldTransaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT {
-			if oldTransaction.Amount != 0 {
-				sourceAccount.UpdatedUnixTime = time.Now().Unix()
-				updatedSourceRows, err := s.updateAccountBalance(sess, sourceAccount, oldTransaction.Amount)
-
-				if err != nil {
-					return err
-				} else if updatedSourceRows < 1 {
-					log.Errorf(c, "[transactions.DeleteTransaction] failed to update account balance")
-					return errs.ErrDatabaseOperationFailed
-				}
-			}
-
-			if oldTransaction.RelatedAccountAmount != 0 {
-				destinationAccount.UpdatedUnixTime = time.Now().Unix()
-				updatedDestinationRows, err := s.updateAccountBalance(sess, destinationAccount, -oldTransaction.RelatedAccountAmount)
-
-				if err != nil {
-					return err
-				} else if updatedDestinationRows < 1 {
-					log.Errorf(c, "[transactions.DeleteTransaction] failed to update related account balance")
-					return errs.ErrDatabaseOperationFailed
-				}
-			}
-		} else if oldTransaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
-			return errs.ErrTransactionTypeInvalid
 		}
+		if oldTransaction.RelatedAccountAmount != 0 {
+			destinationAccount.UpdatedUnixTime = time.Now().Unix()
+			updatedDestinationRows, err := s.updateAccountBalance(sess, destinationAccount, -oldTransaction.RelatedAccountAmount)
+			if err != nil {
+				return nil, nil, err
+			} else if updatedDestinationRows < 1 {
+				log.Errorf(c, "[transactions.DeleteTransaction] failed to update related account balance")
+				return nil, nil, errs.ErrDatabaseOperationFailed
+			}
+		}
+	} else if oldTransaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
+		return nil, nil, errs.ErrTransactionTypeInvalid
+	}
 
-		return err
-	})
+	return oldTransaction, oldRelatedTransaction, nil
+}
+
+func isCompleteTransferPair(transaction *models.Transaction, related *models.Transaction) bool {
+	return transaction != nil && related != nil &&
+		transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT && related.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN &&
+		transaction.Uid == related.Uid && transaction.TransactionId == related.RelatedId && transaction.RelatedId == related.TransactionId &&
+		transaction.AccountId == related.RelatedAccountId && transaction.RelatedAccountId == related.AccountId &&
+		transaction.Amount == related.RelatedAccountAmount && transaction.RelatedAccountAmount == related.Amount &&
+		transaction.TransactionTime+1 == related.TransactionTime && transaction.CategoryId == related.CategoryId &&
+		transaction.TimezoneUtcOffset == related.TimezoneUtcOffset
 }
 
 // DeleteAllTransactions deletes all existed transactions from database
