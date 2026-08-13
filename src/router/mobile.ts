@@ -11,6 +11,7 @@ import TransactionListPage from '@/views/mobile/transactions/ListPage.vue';
 import TransactionEditPage from '@/views/mobile/transactions/EditPage.vue';
 import TransactionAmountFilterPage from '@/views/mobile/transactions/AmountFilterPage.vue';
 import PersonalFinanceImportHistoryPage from '@/features/personal-finance/mobile/ImportHistoryPage.vue';
+import PersonalFinanceReconciliationSummaryPage from '@/features/personal-finance/reconciliation/mobile/ReconciliationSummaryPage.vue';
 
 import AccountListPage from '@/views/mobile/accounts/ListPage.vue';
 import AccountEditPage from '@/views/mobile/accounts/EditPage.vue';
@@ -186,6 +187,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/personal-finance/imports',
         async: asyncResolve(PersonalFinanceImportHistoryPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/personal-finance/reconciliation',
+        async: asyncResolve(PersonalFinanceReconciliationSummaryPage),
         beforeEnter: [checkLogin]
     },
     {

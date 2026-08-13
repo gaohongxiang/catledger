@@ -928,6 +928,27 @@ export default {
 	getPersonalFinanceConsistency: (): ApiResponsePromise<PersonalFinanceConsistencyReport> => {
 		return axios.get<ApiResponse<PersonalFinanceConsistencyReport>>('v1/personal_finance/consistency.json');
 	},
+    generatePersonalFinanceReconciliationCandidates: (request: { batchId: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/reconciliation/candidates/generate.json', request);
+    },
+    listPersonalFinanceReconciliationCases: (params: { status: string, cursor?: { updatedUnixTime: number, caseId: string }, limit: number }): ApiResponsePromise<unknown> => {
+        const cursor = params.cursor
+            ? `&cursor_updated_unix_time=${params.cursor.updatedUnixTime}&cursor_case_id=${encodeURIComponent(params.cursor.caseId)}`
+            : '';
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/reconciliation/cases/list.json?status=${encodeURIComponent(params.status)}&limit=${params.limit}${cursor}`);
+    },
+    getPersonalFinanceReconciliationCase: ({ caseId }: { caseId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/reconciliation/cases/get.json?case_id=${encodeURIComponent(caseId)}`);
+    },
+    decidePersonalFinanceReconciliationCase: (request: { caseId: string, expectedCaseVersion: number, idempotencyKey: string, decisionType: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/reconciliation/cases/decide.json', request);
+    },
+    getPersonalFinanceReconciliationUndoImpact: ({ caseId }: { caseId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/reconciliation/cases/undo_impact.json?case_id=${encodeURIComponent(caseId)}`);
+    },
+    undoPersonalFinanceReconciliationCase: (request: { caseId: string, expectedCaseVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/reconciliation/cases/undo.json', request);
+    },
     getLatestExchangeRates: (param: { ignoreError?: boolean }): ApiResponsePromise<LatestExchangeRateResponse> => {
         return axios.get<ApiResponse<LatestExchangeRateResponse>>('v1/exchange_rates/latest.json', {
             ignoreError: !!param.ignoreError,

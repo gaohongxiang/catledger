@@ -2757,6 +2757,165 @@
     "Click to close": "点击关闭",
     "personalFinance": {
         "nav": "个人财务导入",
+        "reconciliation": {
+            "nav": "人工对账",
+            "eyebrow": "跨来源证据审阅",
+            "title": "人工对账工作台",
+            "subtitle": "把支付平台与资金账户证据并排核对，解释候选原因，由您决定它们的真实关系。",
+            "anchorBatch": "选择候选锚点批次",
+            "generate": "生成候选",
+            "pending": "待处理",
+            "loaded": "当前已加载",
+            "moreAvailable": "还有更多",
+            "loadMore": "加载更多",
+            "score": "分",
+            "scoreValue": "候选分 {score}",
+            "noCases": "暂无对账案例",
+            "noCasesHint": "选择一个已解析批次生成候选，或稍后刷新查看。",
+            "selectCase": "请选择一个对账案例",
+            "selectCaseHint": "这里会并排展示安全证据、匹配原因和已保存的人工决定。",
+            "caseTitle": "证据对照",
+            "version": "案例版本 {version}",
+            "lastEvaluated": "最近评估 {time}",
+            "whyMatched": "为什么成为候选",
+            "noReason": "后端未返回可展示的候选原因",
+            "evidenceTitle": "来源证据",
+            "evidencePrivacy": "仅展示后端提供的脱敏摘要；内部哈希、完整来源账号和原始 payload 不会进入此界面。",
+            "maskedSource": "已脱敏来源账户",
+            "evidence": {
+                "transactionType": "标准交易类型",
+                "economicEffect": "经济效果",
+                "processingState": "处理状态",
+                "transactions": "关联正式交易",
+                "limitReached": "该成员还有更多证据，本卡片仅显示后端返回的安全摘要。",
+                "transactionTypeValue": {
+                    "payment": "支付",
+                    "transfer": "转账",
+                    "top_up": "充值",
+                    "withdrawal": "提现",
+                    "fee": "费用",
+                    "other": "其他",
+                    "unknown": "未知"
+                },
+                "economicEffectValue": {
+                    "normal": "正常",
+                    "refund": "退款",
+                    "closed": "已关闭",
+                    "failed": "失败",
+                    "unknown": "未知"
+                },
+                "processingStateValue": {
+                    "pending": "待处理",
+                    "linked": "已关联",
+                    "ignored": "已忽略",
+                    "failed": "处理失败"
+                }
+            },
+            "decisionTitle": "人工决定",
+            "decisionHint": "选择经济关系后明确确认。提交会携带当前案例版本和新的幂等键，过期版本由服务端拒绝。",
+            "activeDecision": "此案例已有活动决定，可查看撤销影响；接口未返回决定类型，因此不会在此猜测。",
+            "confirmDecision": "确认此关系",
+            "generated": "候选生成完成",
+            "generatedWithLimit": "候选生成完成，已达到本次有界扫描上限",
+            "decisionSaved": "人工决定已保存",
+            "filter": {
+                "pending": "待处理",
+                "action": "需操作",
+                "deferred": "暂缓",
+                "resolved": "已解决"
+            },
+            "status": {
+                "open": "待处理",
+                "resolved": "已解决",
+                "actionRequired": "需要人工操作",
+                "deferred": "暂缓"
+            },
+            "direction": {
+                "income": "收入",
+                "expense": "支出",
+                "neutral": "中性",
+                "unknown": "方向未知"
+            },
+            "decision": {
+                "sameEvent": "同一经济事件",
+                "internalTransfer": "内部转账两侧",
+                "refundReversal": "退款或撤销关系",
+                "independent": "相互独立",
+                "defer": "暂不处理",
+                "reopen": "重新打开"
+            },
+            "decisionHintByType": {
+                "same_event": "多条来源记录共同证明一笔正式交易。",
+                "internal_transfer": "两条记录是同一内部转账的资金两侧。",
+                "refund_reversal": "保留原交易与退款两件事件，并建立关系。",
+                "independent": "明确记录它们互不匹配，避免后续重复询问。",
+                "defer": "保留候选，不改变账本或原始行状态。"
+            },
+            "reason": {
+                "amountCurrencyExact": "金额与币种一致",
+                "identifierMatch": "订单或业务标识可关联",
+                "ledgerAccountMatch": "账本账户线索一致",
+                "oppositeDirection": "资金方向相反",
+                "paymentMethodMatch": "支付方式线索一致",
+                "refundSignal": "存在退款或撤销信号",
+                "sameDirection": "资金方向相同",
+                "textSimilarity": "商户或商品摘要相似",
+                "timeDistance": "时间相差 {value} 秒",
+                "timeProximity": "交易时间接近",
+                "transferSignal": "存在内部转账信号",
+                "transactionModified": "正式交易在决定后已被修改",
+                "transactionMissing": "关联的正式交易已缺失",
+                "sharedDependency": "正式交易还被其他关系依赖",
+                "multipleLedgerEvents": "成员已关联多个不同账本事件",
+                "transferPairIncomplete": "转账两侧不完整",
+                "loanDependency": "正式交易已被贷款或分期计划使用",
+                "otherActiveCase": "正式交易仍被其他活动案例使用",
+                "unknown": "服务端原因：{code}"
+            },
+            "confirm": {
+                "title": "确认人工决定",
+                "message": "将此案例标记为“{decision}”。该决定会持久保存，后续重叠导入不会静默覆盖。",
+                "versionNotice": "服务端会用当前案例版本做并发校验；若证据已变化，请刷新后重新确认。"
+            },
+            "undo": {
+                "inspect": "查看撤销影响",
+                "inspectAvailable": "可查看影响",
+                "title": "撤销影响与重新打开",
+                "outcome": {
+                    "automaticDelete": "可以安全重新打开，并自动删除仅由本次对账创建且未被修改的账本效果。",
+                    "reopenOnly": "可以安全重新打开并解除附着关系，但不会删除任何正式交易。",
+                    "actionRequired": "不能安全自动重新打开。确认后只会形成 action_required 留痕，不会自动改动余额。"
+                },
+                "button": {
+                    "automaticDelete": "确认删除对账效果并重新打开",
+                    "reopenOnly": "确认解除附着并重新打开",
+                    "actionRequired": "确认转为人工处理"
+                },
+                "reasons": "限制原因",
+                "saved": "撤销请求已保存",
+                "metric": {
+                    "affected": "受影响交易",
+                    "created": "对账创建",
+                    "attached": "附着既有",
+                    "modified": "已修改",
+                    "missing": "已缺失",
+                    "shared": "共享交易",
+                    "batchRelations": "批次关系",
+                    "incompleteTransfer": "不完整转账对"
+                }
+            },
+            "mobile": {
+                "title": "对账摘要",
+                "readOnly": "移动端仅供查看，不提供决定或撤销操作。",
+                "desktopHint": "候选生成、人工决定和撤销确认请在桌面端完成。",
+                "loadedPending": "当前已加载待处理案例",
+                "version": "v{version}"
+            },
+            "error": {
+                "operationFailed": "对账操作失败",
+                "staleOrFailed": "案例可能已更新或操作失败，请刷新后重试"
+            }
+        },
         "eyebrow": "可追溯导入",
         "title": "个人财务导入工作台",
         "subtitle": "保留来源证据，清楚解释重复与冲突，逐笔确认后再进入正式账本。",
