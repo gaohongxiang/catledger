@@ -139,6 +139,8 @@ func TestLoanContractReviseHandlerReusesServerIdentityAtExpectedVersion(t *testi
 func TestLoanContractListHandlerUsesStableCursorAndClientCivilDate(t *testing.T) {
 	stub := &loanContractsAPITestApplication{page: &loans.ContractListResult{Items: []*loans.ContractSummary{{
 		Contract: validLoanContract(), CurrentRevision: validLoanRevision(), Progress: validLoanPlanProgress(),
+		NextInstallment: validLoanNextInstallment(), ActionRequired: true,
+		ReasonCodes: []loans.ServiceErrorCode{loans.SERVICE_ERROR_LEDGER_EVENT_MODIFIED},
 	}}, NextCursor: &loans.ContractCursor{UpdatedUnixTime: 2000, ContractId: 5000}}}
 	api := newLoanContractsTestAPI(t, stub)
 	api.now = func() time.Time { return time.Date(2026, 1, 1, 17, 30, 0, 0, time.UTC) }
@@ -152,7 +154,8 @@ func TestLoanContractListHandlerUsesStableCursorAndClientCivilDate(t *testing.T)
 		t.Fatalf("unexpected list request: uid=%d status=%s cursor=%+v limit=%d asOf=%s", stub.listUid, stub.listStatus, stub.listCursor, stub.listLimit, stub.listAsOfDate)
 	}
 	text := marshalLoanContractsResponse(t, response)
-	for _, expected := range []string{`"id":"5001"`, `"liabilityAccountId":"701"`, `"currentRevisionId":"6001"`, `"contractId":"5000"`} {
+	for _, expected := range []string{`"id":"5001"`, `"liabilityAccountId":"701"`, `"currentRevisionId":"6001"`,
+		`"contractId":"5000"`, `"nextInstallment":{"installmentNumber":1`, `"actionRequired":true`, `"code":"ledger_event_modified"`} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("loan page omitted %s: %s", expected, text)
 		}
@@ -167,7 +170,13 @@ func TestLoanContractListHandlerUsesStableCursorAndClientCivilDate(t *testing.T)
 }
 
 func TestLoanContractGetHandlerReturnsDetailShapeAndStringIds(t *testing.T) {
-	stub := &loanContractsAPITestApplication{detail: validLoanContractDetail()}
+	detail := validLoanContractDetail()
+	latestActionId := int64(9001)
+	detail.InvalidAllocationCount = 1
+	detail.ActionRequired = true
+	detail.ReasonCodes = []loans.ServiceErrorCode{loans.SERVICE_ERROR_LEDGER_EVENT_MODIFIED}
+	detail.LatestSettlementActionId = &latestActionId
+	stub := &loanContractsAPITestApplication{detail: detail}
 	api := newLoanContractsTestAPI(t, stub)
 	api.now = func() time.Time { return time.Date(2026, 1, 2, 1, 0, 0, 0, time.UTC) }
 	response, apiErr := api.LoanContractGetHandler(newLoanContractsTestContext(t, http.MethodGet, "/get?contract_id=5001", ""))
@@ -178,12 +187,38 @@ func TestLoanContractGetHandlerReturnsDetailShapeAndStringIds(t *testing.T) {
 		t.Fatalf("unexpected get request: uid=%d contract=%d asOf=%s", stub.getUid, stub.getContractId, stub.getAsOfDate)
 	}
 	text := marshalLoanContractsResponse(t, response)
-	for _, expected := range []string{`"id":"7001"`, `"revisionId":"6001"`, `"asOfDate":"2026-01-02"`, `"quotedRatePptr":"120000000000"`, `"discountRatePptr"`} {
+	for _, expected := range []string{`"id":"7001"`, `"revisionId":"6001"`, `"asOfDate":"2026-01-02"`,
+		`"quotedRatePptr":"120000000000"`, `"discountRatePptr"`, `"activeAllocationCount":1`,
+		`"actionRequiredAllocationCount":1`, `"latestSettlementActionId":"9001"`, `"code":"ledger_event_modified"`} {
 		if strings.Contains(text, expected) != (expected != `"discountRatePptr"`) {
 			t.Fatalf("unexpected nullable/detail field %s: %s", expected, text)
 		}
 	}
 	assertLoanContractsResponseOmits(t, text, "scheduleDigest", "actionId", "uid", "transaction", "comment", "errorCode")
+}
+
+func TestLoanContractDetailRejectsContradictoryLatestSettlementAction(t *testing.T) {
+	detail := validLoanContractDetail()
+	invalidActionId := int64(-1)
+	detail.LatestSettlementActionId = &invalidActionId
+	if response, err := newPersonalFinanceLoanContractDetailResponse(detail, "2026-01-02"); response != nil || err == nil {
+		t.Fatalf("negative latest settlement action was accepted: response=%v error=%v", response, err)
+	}
+
+	detail = validLoanContractDetail()
+	actionId := int64(9001)
+	detail.LatestSettlementActionId = &actionId
+	if response, err := newPersonalFinanceLoanContractDetailResponse(detail, "2026-01-02"); response != nil || err == nil {
+		t.Fatalf("latest action without an active allocation was accepted: response=%v error=%v", response, err)
+	}
+
+	detail = validLoanContractDetail()
+	detail.InvalidAllocationCount = 1
+	detail.ActionRequired = true
+	detail.ReasonCodes = []loans.ServiceErrorCode{loans.SERVICE_ERROR_LEDGER_EVENT_MODIFIED}
+	if response, err := newPersonalFinanceLoanContractDetailResponse(detail, "2026-01-02"); response != nil || err == nil {
+		t.Fatalf("active allocation without a latest action was accepted: response=%v error=%v", response, err)
+	}
 }
 
 func TestLoanLifecycleHandlersInjectUidAndKeepEmptyAllocations(t *testing.T) {
@@ -240,6 +275,9 @@ func TestLoanHandlersMapDomainErrorsAndRejectUnstableActionCodes(t *testing.T) {
 		{err: loans.ErrServiceAllocationHistory, expected: errs.ErrRepeatedRequest},
 		{err: loans.ErrServicePlanNotPaidOff, expected: errs.ErrRepeatedRequest},
 		{err: loans.ErrServiceCommandUnavailable, expected: errs.ErrRepeatedRequest},
+		{err: loans.ErrServiceLedgerEventRejected, expected: errs.ErrRepeatedRequest},
+		{err: loans.ErrServiceSettlementRejected, expected: errs.ErrRepeatedRequest},
+		{err: loans.ErrServiceSettlementNotFound, expected: errs.ErrParameterInvalid},
 		{err: loans.ErrServicePersistenceFailed, expected: errs.ErrOperationFailed},
 		{err: loans.ErrServiceInvariantViolation, expected: errs.ErrOperationFailed},
 	}
@@ -413,6 +451,11 @@ func validLoanContractDetail() *loans.ContractDetail {
 				OutstandingPrincipal: 1000, OutstandingInterest: 100, OutstandingFee: 10}, OutstandingPayment: 1110}},
 		Progress: validLoanPlanProgress(), Remaining: loans.PlanRemaining{PaymentAmount: 1110, PrincipalAmount: 1000, InterestAmount: 100, FeeAmount: 10},
 		LedgerOutstandingAmount: &ledger, LedgerPlanDifferenceAmount: &difference}
+}
+
+func validLoanNextInstallment() *loans.ContractNextInstallment {
+	detail := validLoanContractDetail()
+	return &loans.ContractNextInstallment{Installment: detail.Installments[0], Progress: detail.InstallmentProgress[0]}
 }
 
 func validLoanCommandResult(actionType loans.ActionType) *loans.CommandResult {

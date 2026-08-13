@@ -65,6 +65,12 @@ func startWebServer(c *core.CliContext) error {
 		return err
 	}
 
+	err = api.InitializePersonalFinanceLoansApi()
+	if err != nil {
+		log.BootErrorf(c, "[webserver.startWebServer] initializes personal finance loans API failed, because %s", err.Error())
+		return err
+	}
+
 	err = requestid.InitializeRequestIdGenerator(c, config)
 
 	if err != nil {
@@ -449,6 +455,20 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/personal_finance/reconciliation/cases/decide.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseDecideHandler, config))
 			apiV1Route.GET("/personal_finance/reconciliation/cases/undo_impact.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseUndoImpactHandler, config))
 			apiV1Route.POST("/personal_finance/reconciliation/cases/undo.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseUndoHandler, config))
+
+			// Personal Finance Loans
+			apiV1Route.POST("/personal_finance/loans/calculate.json", bindApi(api.PersonalFinanceLoans.LoanCalculateHandler, config))
+			apiV1Route.GET("/personal_finance/loans/contracts/list.json", bindApi(api.PersonalFinanceLoans.LoanContractListHandler, config))
+			apiV1Route.GET("/personal_finance/loans/contracts/get.json", bindApi(api.PersonalFinanceLoans.LoanContractGetHandler, config))
+			apiV1Route.POST("/personal_finance/loans/contracts/create.json", bindApi(api.PersonalFinanceLoans.LoanContractCreateHandler, config))
+			apiV1Route.POST("/personal_finance/loans/contracts/revise.json", bindApi(api.PersonalFinanceLoans.LoanContractReviseHandler, config))
+			apiV1Route.POST("/personal_finance/loans/contracts/close.json", bindApi(api.PersonalFinanceLoans.LoanContractCloseHandler, config))
+			apiV1Route.POST("/personal_finance/loans/contracts/reopen.json", bindApi(api.PersonalFinanceLoans.LoanContractReopenHandler, config))
+			apiV1Route.POST("/personal_finance/loans/contracts/cancel.json", bindApi(api.PersonalFinanceLoans.LoanContractCancelHandler, config))
+			apiV1Route.GET("/personal_finance/loans/settlements/candidates.json", bindApi(api.PersonalFinanceLoans.LoanSettlementCandidatesHandler, config))
+			apiV1Route.POST("/personal_finance/loans/settlements/apply.json", bindApi(api.PersonalFinanceLoans.LoanSettlementApplyHandler, config))
+			apiV1Route.GET("/personal_finance/loans/settlements/undo_impact.json", bindApi(api.PersonalFinanceLoans.LoanSettlementUndoImpactHandler, config))
+			apiV1Route.POST("/personal_finance/loans/settlements/undo.json", bindApi(api.PersonalFinanceLoans.LoanSettlementUndoHandler, config))
 
 			// Transaction Pictures
 			if config.EnableTransactionPictures {

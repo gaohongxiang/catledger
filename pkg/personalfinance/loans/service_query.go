@@ -21,10 +21,38 @@ func (s *Service) ListContracts(c core.Context, uid int64, status ContractStatus
 		if detailErr != nil {
 			return nil, detailErr
 		}
+		nextInstallment, nextErr := contractNextInstallment(detail)
+		if nextErr != nil {
+			return nil, nextErr
+		}
 		result.Items = append(result.Items, &ContractSummary{Contract: contractResult(contract), CurrentRevision: detail.CurrentRevision,
-			Progress: detail.Progress, ActionRequired: detail.ActionRequired, ReasonCodes: append([]ServiceErrorCode(nil), detail.ReasonCodes...)})
+			Progress: detail.Progress, NextInstallment: nextInstallment, ActionRequired: detail.ActionRequired,
+			ReasonCodes: append([]ServiceErrorCode(nil), detail.ReasonCodes...)})
 	}
 	return result, nil
+}
+
+func contractNextInstallment(detail *ContractDetail) (*ContractNextInstallment, error) {
+	if detail == nil || len(detail.Installments) != len(detail.InstallmentProgress) {
+		return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+	}
+	for index, progress := range detail.InstallmentProgress {
+		installment := detail.Installments[index]
+		if installment == nil || progress == nil || installment.InstallmentId != progress.InstallmentId ||
+			installment.InstallmentNumber != progress.InstallmentNumber || installment.DueDate != progress.DueDate {
+			return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+		}
+		if progress.OutstandingPayment > 0 {
+			if detail.Progress.NextDueDate == nil || *detail.Progress.NextDueDate != progress.DueDate {
+				return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+			}
+			return &ContractNextInstallment{Installment: installment, Progress: progress}, nil
+		}
+	}
+	if detail.Progress.NextDueDate != nil {
+		return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+	}
+	return nil, nil
 }
 
 // GetContract 按 uid 读取合同、唯一当前 revision、完整当前计划与活动 allocation 聚合。
@@ -69,6 +97,13 @@ func (s *Service) getContractFromSelector(c core.Context, uid int64, contract *C
 		ActiveAllocationAggregates: validation.aggregates, InstallmentProgress: rows, Progress: progress, Remaining: remaining,
 		InvalidAllocationCount: validation.invalidCount, ActionRequired: validation.invalidCount > 0,
 		ReasonCodes: append([]ServiceErrorCode(nil), validation.reasonCodes...)}
+	if includeLedger {
+		latestActionId, latestErr := s.latestSettlementActionId(c, contract.Uid, contract.ContractId, validation)
+		if latestErr != nil {
+			return nil, latestErr
+		}
+		detail.LatestSettlementActionId = latestActionId
+	}
 	if includeLedger && s.liabilityReader != nil {
 		outstanding, readErr := s.liabilityReader.ReadLiabilityOutstanding(c, uid, contract.LiabilityAccountId)
 		if readErr != nil {
@@ -87,6 +122,79 @@ func (s *Service) getContractFromSelector(c core.Context, uid int64, contract *C
 		}
 	}
 	return detail, nil
+}
+
+func (s *Service) latestSettlementActionId(c core.Context, uid int64, contractId int64, validation *allocationValidationReport) (*int64, error) {
+	if s == nil || s.repository == nil || uid < 1 || contractId < 1 || validation == nil {
+		return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+	}
+	limitReached := false
+	for _, reason := range validation.reasonCodes {
+		if reason == SERVICE_ERROR_ALLOCATION_LIMIT {
+			limitReached = true
+			break
+		}
+	}
+	if !limitReached {
+		return latestSettlementActionIdFromAllocations(uid, contractId, validation.allocations)
+	}
+
+	var latest *TransactionAllocation
+	var cursor *AllocationCursor
+	for {
+		page, err := s.repository.ListAllocations(c, uid, contractId, ALLOCATION_STATUS_ACTIVE, cursor, maximumRepositoryPageSize)
+		if err != nil || page == nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		for _, allocation := range page.Items {
+			if err := validateLatestSettlementAllocation(uid, contractId, allocation); err != nil {
+				return nil, err
+			}
+			if latest == nil || allocation.CreatedUnixTime > latest.CreatedUnixTime ||
+				(allocation.CreatedUnixTime == latest.CreatedUnixTime && allocation.AllocationId > latest.AllocationId) {
+				latest = allocation
+			}
+		}
+		if page.NextCursor == nil {
+			break
+		}
+		if cursor != nil && (page.NextCursor.UpdatedUnixTime > cursor.UpdatedUnixTime ||
+			(page.NextCursor.UpdatedUnixTime == cursor.UpdatedUnixTime && page.NextCursor.AllocationId >= cursor.AllocationId)) {
+			return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+		}
+		cursor = page.NextCursor
+	}
+	if latest == nil {
+		return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+	}
+	actionId := latest.CreatedActionId
+	return &actionId, nil
+}
+
+func latestSettlementActionIdFromAllocations(uid int64, contractId int64, allocations []*TransactionAllocation) (*int64, error) {
+	var latest *TransactionAllocation
+	for _, allocation := range allocations {
+		if err := validateLatestSettlementAllocation(uid, contractId, allocation); err != nil {
+			return nil, err
+		}
+		if latest == nil || allocation.CreatedUnixTime > latest.CreatedUnixTime ||
+			(allocation.CreatedUnixTime == latest.CreatedUnixTime && allocation.AllocationId > latest.AllocationId) {
+			latest = allocation
+		}
+	}
+	if latest == nil {
+		return nil, nil
+	}
+	actionId := latest.CreatedActionId
+	return &actionId, nil
+}
+
+func validateLatestSettlementAllocation(uid int64, contractId int64, allocation *TransactionAllocation) error {
+	if allocation == nil || allocation.Uid != uid || allocation.ContractId != contractId || allocation.Status != ALLOCATION_STATUS_ACTIVE ||
+		allocation.AllocationId < 1 || allocation.CreatedActionId < 1 || allocation.CreatedUnixTime < 1 {
+		return serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+	}
+	return nil
 }
 
 func contractResult(contract *Contract) *ContractResult {

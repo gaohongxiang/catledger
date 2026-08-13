@@ -261,12 +261,15 @@ type personalFinanceLoanLiabilityComparisonResponse struct {
 }
 
 type personalFinanceLoanContractDetailResponse struct {
-	Contract            *personalFinanceLoanContractResponse            `json:"contract"`
-	CurrentRevision     *personalFinanceLoanRevisionResponse            `json:"currentRevision"`
-	Installments        []*personalFinanceLoanInstallmentResponse       `json:"installments"`
-	Allocations         *personalFinanceLoanAllocationSummaryResponse   `json:"allocations"`
-	LiabilityComparison *personalFinanceLoanLiabilityComparisonResponse `json:"liabilityComparison"`
-	AsOfDate            string                                          `json:"asOfDate"`
+	Contract                 *personalFinanceLoanContractResponse            `json:"contract"`
+	CurrentRevision          *personalFinanceLoanRevisionResponse            `json:"currentRevision"`
+	Installments             []*personalFinanceLoanInstallmentResponse       `json:"installments"`
+	Allocations              *personalFinanceLoanAllocationSummaryResponse   `json:"allocations"`
+	LiabilityComparison      *personalFinanceLoanLiabilityComparisonResponse `json:"liabilityComparison"`
+	AsOfDate                 string                                          `json:"asOfDate"`
+	ActionRequired           bool                                            `json:"actionRequired"`
+	ReasonCodes              []*personalFinanceLoanReasonResponse            `json:"reasonCodes"`
+	LatestSettlementActionId *int64                                          `json:"latestSettlementActionId,string,omitempty"`
 }
 
 type personalFinanceLoanContractSummaryResponse struct {
@@ -277,6 +280,7 @@ type personalFinanceLoanContractSummaryResponse struct {
 	TotalInstallmentCount      int64                                          `json:"totalInstallmentCount"`
 	OutstandingPrincipalAmount int64                                          `json:"outstandingPrincipalAmount"`
 	OutstandingPaymentAmount   int64                                          `json:"outstandingPaymentAmount"`
+	NextInstallment            *personalFinanceLoanInstallmentResponse        `json:"nextInstallment,omitempty"`
 	ActionRequired             bool                                           `json:"actionRequired"`
 	ReasonCodes                []*personalFinanceLoanReasonResponse           `json:"reasonCodes"`
 }
@@ -293,11 +297,11 @@ type personalFinanceLoanPageResponse struct {
 }
 
 type personalFinanceLoanActionResponse struct {
-	ActionId    int64                                `json:"actionId,string"`
-	Status      loans.ActionStatus                   `json:"status"`
-	Allocations []any                                `json:"allocations"`
-	Replayed    bool                                 `json:"replayed"`
-	ReasonCodes []*personalFinanceLoanReasonResponse `json:"reasonCodes"`
+	ActionId    int64                                              `json:"actionId,string"`
+	Status      loans.ActionStatus                                 `json:"status"`
+	Allocations []*personalFinanceLoanSettlementAllocationResponse `json:"allocations"`
+	Replayed    bool                                               `json:"replayed"`
+	ReasonCodes []*personalFinanceLoanReasonResponse               `json:"reasonCodes"`
 }
 
 // LoanCalculateHandler 执行无持久化副作用的规范贷款计算。
@@ -953,10 +957,29 @@ func newPersonalFinanceLoanPageResponse(value *loans.ContractListResult, status 
 		if err != nil || !isPersonalFinanceLoanProgress(item.Progress) {
 			return nil, errors.New("loan contract progress is invalid")
 		}
+		reasons, err := newPersonalFinanceLoanReasonResponses(item.ReasonCodes)
+		if err != nil || item.ActionRequired != (len(reasons) > 0) {
+			return nil, errors.New("loan contract action-required state is invalid")
+		}
+		var nextInstallment *personalFinanceLoanInstallmentResponse
+		if item.NextInstallment != nil {
+			if item.NextInstallment.Installment == nil || item.NextInstallment.Progress == nil || item.Progress.NextDueDate == nil ||
+				item.NextInstallment.Progress.DueDate != *item.Progress.NextDueDate || item.NextInstallment.Progress.OutstandingPayment < 1 {
+				return nil, errors.New("loan next installment is invalid")
+			}
+			nextInstallment, err = newPersonalFinanceLoanInstallmentResponse(item.NextInstallment.Installment,
+				item.NextInstallment.Progress, item.CurrentRevision.RevisionId)
+			if err != nil {
+				return nil, err
+			}
+		} else if item.Progress.NextDueDate != nil || item.Progress.OutstandingPayment != 0 {
+			return nil, errors.New("loan next installment is missing")
+		}
 		response.Items = append(response.Items, &personalFinanceLoanContractSummaryResponse{Contract: contract, Calculation: calculationSummary,
 			PaidInstallmentCount: item.Progress.PaidInstallmentCount, PartialInstallmentCount: item.Progress.PartialInstallmentCount,
 			TotalInstallmentCount: item.Progress.InstallmentCount, OutstandingPrincipalAmount: item.Progress.OutstandingPrincipal,
-			OutstandingPaymentAmount: item.Progress.OutstandingPayment, ReasonCodes: []*personalFinanceLoanReasonResponse{}})
+			OutstandingPaymentAmount: item.Progress.OutstandingPayment, NextInstallment: nextInstallment,
+			ActionRequired: item.ActionRequired, ReasonCodes: reasons})
 	}
 	if value.NextCursor != nil {
 		if value.NextCursor.ContractId < 1 || value.NextCursor.UpdatedUnixTime < 1 || !isPersonalFinanceLoanSafeNumber(value.NextCursor.UpdatedUnixTime) {
@@ -1009,15 +1032,15 @@ func newPersonalFinanceLoanContractDetailResponse(value *loans.ContractDetail, a
 		allocatedInterest += progress.Components.AllocatedInterestAmount
 		allocatedFee += progress.Components.AllocatedFeeAmount
 		allocationCount += progress.AllocationCount
-		installments = append(installments, &personalFinanceLoanInstallmentResponse{personalFinanceLoanCalculatedInstallmentResponse: revision.Calculation.Installments[index],
-			Id: item.InstallmentId, RevisionId: value.CurrentRevision.RevisionId, Progress: &personalFinanceLoanInstallmentProgressResponse{
-				SettlementStatus: progress.Status, Overdue: progress.Overdue, AllocatedPrincipalAmount: progress.Components.AllocatedPrincipalAmount,
-				AllocatedInterestAmount: progress.Components.AllocatedInterestAmount, AllocatedFeeAmount: progress.Components.AllocatedFeeAmount,
-				OutstandingPrincipalAmount: progress.Components.OutstandingPrincipal, OutstandingInterestAmount: progress.Components.OutstandingInterest,
-				OutstandingFeeAmount: progress.Components.OutstandingFee, OutstandingPaymentAmount: progress.OutstandingPayment,
-				ReasonCodes: []*personalFinanceLoanReasonResponse{}}})
+		mapped, mapErr := newPersonalFinanceLoanInstallmentResponse(item, progress, value.CurrentRevision.RevisionId)
+		if mapErr != nil || mapped.personalFinanceLoanCalculatedInstallmentResponse == nil ||
+			*mapped.personalFinanceLoanCalculatedInstallmentResponse != *revision.Calculation.Installments[index] {
+			return nil, errors.New("loan installment response is inconsistent")
+		}
+		installments = append(installments, mapped)
 	}
-	allocations, err := newPersonalFinanceLoanAllocationSummary(value.ActiveAllocationAggregates)
+	allocations, err := newPersonalFinanceLoanAllocationSummary(value.ActiveAllocationAggregates, value.InvalidAllocationCount)
+	reasons, reasonErr := newPersonalFinanceLoanReasonResponses(value.ReasonCodes)
 	if err != nil || !isPersonalFinanceLoanProgress(value.Progress) || !isPersonalFinanceLoanAmount(value.Remaining.PrincipalAmount, false) ||
 		!isPersonalFinanceLoanAmount(value.Remaining.PaymentAmount, false) || !isPersonalFinanceLoanAmount(value.Remaining.InterestAmount, false) ||
 		!isPersonalFinanceLoanAmount(value.Remaining.FeeAmount, false) || value.Remaining.PaymentAmount != value.Progress.OutstandingPayment ||
@@ -1025,17 +1048,54 @@ func newPersonalFinanceLoanContractDetailResponse(value *loans.ContractDetail, a
 		value.Remaining.FeeAmount != value.Progress.OutstandingFee || allocatedPrincipal != allocations.AllocatedPrincipalAmount ||
 		allocatedInterest != allocations.AllocatedInterestAmount || allocatedFee != allocations.AllocatedFeeAmount || allocationCount > allocations.ActiveAllocationCount ||
 		!isPersonalFinanceLoanAmount(*value.LedgerOutstandingAmount, false) || !isPersonalFinanceLoanSafeSignedNumber(*value.LedgerPlanDifferenceAmount) ||
-		*value.LedgerPlanDifferenceAmount != *value.LedgerOutstandingAmount-value.Remaining.PrincipalAmount {
+		*value.LedgerPlanDifferenceAmount != *value.LedgerOutstandingAmount-value.Remaining.PrincipalAmount || reasonErr != nil ||
+		value.ActionRequired != (value.InvalidAllocationCount > 0) || value.ActionRequired != (len(reasons) > 0) ||
+		(value.LatestSettlementActionId != nil && *value.LatestSettlementActionId < 1) ||
+		(allocations.ActiveAllocationCount > 0) != (value.LatestSettlementActionId != nil) {
 		return nil, errors.New("loan liability comparison is invalid")
 	}
 	return &personalFinanceLoanContractDetailResponse{Contract: contract, CurrentRevision: revision, Installments: installments, Allocations: allocations,
 		LiabilityComparison: &personalFinanceLoanLiabilityComparisonResponse{PlannedOutstandingPrincipalAmount: value.Remaining.PrincipalAmount,
 			LedgerOutstandingLiabilityAmount: *value.LedgerOutstandingAmount, DifferenceAmount: *value.LedgerPlanDifferenceAmount,
-			ActionRequired: *value.LedgerPlanDifferenceAmount != 0, ReasonCodes: []*personalFinanceLoanReasonResponse{}}, AsOfDate: asOfDate}, nil
+			ActionRequired: *value.LedgerPlanDifferenceAmount != 0, ReasonCodes: []*personalFinanceLoanReasonResponse{}}, AsOfDate: asOfDate,
+		ActionRequired: value.ActionRequired, ReasonCodes: reasons,
+		LatestSettlementActionId: clonePersonalFinanceLoanInt64(value.LatestSettlementActionId)}, nil
 }
 
-func newPersonalFinanceLoanAllocationSummary(values []*loans.AllocationAggregate) (*personalFinanceLoanAllocationSummaryResponse, error) {
-	response := new(personalFinanceLoanAllocationSummaryResponse)
+func newPersonalFinanceLoanInstallmentResponse(item *loans.InstallmentResult, progress *loans.InstallmentProgress, revisionId int64) (*personalFinanceLoanInstallmentResponse, error) {
+	if item == nil || progress == nil || item.InstallmentId < 1 || revisionId < 1 || progress.InstallmentId != item.InstallmentId ||
+		progress.InstallmentNumber != item.InstallmentNumber || progress.DueDate != item.DueDate || !isPersonalFinanceLoanInstallmentProgress(progress) ||
+		progress.Components.PlannedPrincipalAmount != item.PrincipalAmount || progress.Components.PlannedInterestAmount != item.InterestAmount ||
+		progress.Components.PlannedFeeAmount != item.FeeAmount || progress.Components.AllocatedPrincipalAmount > item.PrincipalAmount ||
+		progress.Components.AllocatedInterestAmount > item.InterestAmount || progress.Components.AllocatedFeeAmount > item.FeeAmount ||
+		progress.Components.OutstandingPrincipal != item.PrincipalAmount-progress.Components.AllocatedPrincipalAmount ||
+		progress.Components.OutstandingInterest != item.InterestAmount-progress.Components.AllocatedInterestAmount ||
+		progress.Components.OutstandingFee != item.FeeAmount-progress.Components.AllocatedFeeAmount {
+		return nil, errors.New("loan installment progress components are inconsistent")
+	}
+	calculated, err := newPersonalFinanceLoanCalculatedInstallment(calculation.Installment{InstallmentNumber: item.InstallmentNumber,
+		DueDate: item.DueDate, BeginningPrincipalAmount: item.BeginningPrincipalAmount, PrincipalAmount: item.PrincipalAmount,
+		InterestAmount: item.InterestAmount, FeeAmount: item.FeeAmount, DiscountAmount: item.DiscountAmount,
+		PaymentAmount: item.PaymentAmount, EndingPrincipalAmount: item.EndingPrincipalAmount,
+		PreDiscountInterestAmount: item.PreDiscountInterestAmount, PreDiscountFeeAmount: item.PreDiscountFeeAmount,
+		PreDiscountPaymentAmount: item.PreDiscountPaymentAmount})
+	if err != nil {
+		return nil, err
+	}
+	return &personalFinanceLoanInstallmentResponse{personalFinanceLoanCalculatedInstallmentResponse: calculated,
+		Id: item.InstallmentId, RevisionId: revisionId, Progress: &personalFinanceLoanInstallmentProgressResponse{
+			SettlementStatus: progress.Status, Overdue: progress.Overdue, AllocatedPrincipalAmount: progress.Components.AllocatedPrincipalAmount,
+			AllocatedInterestAmount: progress.Components.AllocatedInterestAmount, AllocatedFeeAmount: progress.Components.AllocatedFeeAmount,
+			OutstandingPrincipalAmount: progress.Components.OutstandingPrincipal, OutstandingInterestAmount: progress.Components.OutstandingInterest,
+			OutstandingFeeAmount: progress.Components.OutstandingFee, OutstandingPaymentAmount: progress.OutstandingPayment,
+			ActionRequired: false, ReasonCodes: []*personalFinanceLoanReasonResponse{}}}, nil
+}
+
+func newPersonalFinanceLoanAllocationSummary(values []*loans.AllocationAggregate, invalidCount int64) (*personalFinanceLoanAllocationSummaryResponse, error) {
+	if invalidCount < 0 || !isPersonalFinanceLoanSafeNumber(invalidCount) {
+		return nil, errors.New("loan action-required allocation count is invalid")
+	}
+	response := &personalFinanceLoanAllocationSummaryResponse{ActionRequiredAllocationCount: invalidCount, ActiveAllocationCount: invalidCount}
 	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		if value == nil || value.AllocationCount < 1 || !isPersonalFinanceLoanSafeNumber(value.AllocationCount) || !isPersonalFinanceLoanAmount(value.AllocatedAmount, true) {
@@ -1078,6 +1138,22 @@ func newPersonalFinanceLoanAllocationSummary(values []*loans.AllocationAggregate
 	return response, nil
 }
 
+func newPersonalFinanceLoanReasonResponses(values []loans.ServiceErrorCode) ([]*personalFinanceLoanReasonResponse, error) {
+	seen := make(map[loans.ServiceErrorCode]struct{}, len(values))
+	reasons := make([]*personalFinanceLoanReasonResponse, 0, len(values))
+	for _, code := range values {
+		if !isPersonalFinanceLoanServiceCode(code) {
+			return nil, errors.New("loan reason is not stable")
+		}
+		if _, duplicate := seen[code]; duplicate {
+			return nil, errors.New("loan reason is duplicated")
+		}
+		seen[code] = struct{}{}
+		reasons = append(reasons, &personalFinanceLoanReasonResponse{Code: string(code)})
+	}
+	return reasons, nil
+}
+
 func newPersonalFinanceLoanActionResponse(value *loans.CommandResult) (*personalFinanceLoanActionResponse, error) {
 	if value == nil || value.Action == nil {
 		return nil, errors.New("loan action result is required")
@@ -1096,17 +1172,9 @@ func newPersonalFinanceLoanActionResponse(value *loans.CommandResult) (*personal
 		action.StartedUnixTime == nil || (action.Status != loans.ACTION_STATUS_FAILED && action.CompletedUnixTime == nil) {
 		return nil, errors.New("loan action terminal state is invalid")
 	}
-	seen := make(map[loans.ServiceErrorCode]struct{}, len(action.ReasonCodes))
-	reasons := make([]*personalFinanceLoanReasonResponse, 0, len(action.ReasonCodes))
-	for _, code := range action.ReasonCodes {
-		if !isPersonalFinanceLoanServiceCode(code) {
-			return nil, errors.New("loan action reason is not stable")
-		}
-		if _, duplicate := seen[code]; duplicate {
-			return nil, errors.New("loan action reason is duplicated")
-		}
-		seen[code] = struct{}{}
-		reasons = append(reasons, &personalFinanceLoanReasonResponse{Code: string(code)})
+	reasons, err := newPersonalFinanceLoanReasonResponses(action.ReasonCodes)
+	if err != nil {
+		return nil, err
 	}
 	if action.ErrorCode != "" && !isPersonalFinanceLoanServiceCode(action.ErrorCode) {
 		return nil, errors.New("loan action error is not stable")
@@ -1125,7 +1193,8 @@ func newPersonalFinanceLoanActionResponse(value *loans.CommandResult) (*personal
 			return nil, errors.New("failed loan action is incomplete")
 		}
 	}
-	return &personalFinanceLoanActionResponse{ActionId: action.ActionId, Status: action.Status, Allocations: []any{}, Replayed: value.Replayed,
+	return &personalFinanceLoanActionResponse{ActionId: action.ActionId, Status: action.Status,
+		Allocations: []*personalFinanceLoanSettlementAllocationResponse{}, Replayed: value.Replayed,
 		ReasonCodes: reasons}, nil
 }
 
@@ -1232,7 +1301,8 @@ func isPersonalFinanceLoanInstallmentStatus(value loans.InstallmentProgressStatu
 
 func isPersonalFinanceLoanActionType(value loans.ActionType) bool {
 	return value == loans.ACTION_TYPE_CREATE_CONTRACT || value == loans.ACTION_TYPE_REVISE_CONTRACT || value == loans.ACTION_TYPE_CLOSE_CONTRACT ||
-		value == loans.ACTION_TYPE_REOPEN_CONTRACT || value == loans.ACTION_TYPE_CANCEL_CONTRACT
+		value == loans.ACTION_TYPE_REOPEN_CONTRACT || value == loans.ACTION_TYPE_CANCEL_CONTRACT || value == loans.ACTION_TYPE_APPLY_SETTLEMENT ||
+		value == loans.ACTION_TYPE_REVERSE_SETTLEMENT
 }
 
 func isPersonalFinanceLoanActionStatus(value loans.ActionStatus) bool {
@@ -1248,7 +1318,12 @@ func isPersonalFinanceLoanServiceCode(value loans.ServiceErrorCode) bool {
 		loans.SERVICE_ERROR_CONTRACT_NOT_FOUND, loans.SERVICE_ERROR_IDEMPOTENCY_CONFLICT, loans.SERVICE_ERROR_VERSION_CONFLICT,
 		loans.SERVICE_ERROR_STATE_CONFLICT, loans.SERVICE_ERROR_ACTIVE_ALLOCATION, loans.SERVICE_ERROR_ALLOCATION_HISTORY,
 		loans.SERVICE_ERROR_PLAN_NOT_PAID_OFF, loans.SERVICE_ERROR_COMMAND_UNAVAILABLE, loans.SERVICE_ERROR_PERSISTENCE,
-		loans.SERVICE_ERROR_INVARIANT:
+		loans.SERVICE_ERROR_INVARIANT, loans.SERVICE_ERROR_LEDGER_VALIDATION_REQUIRED, loans.SERVICE_ERROR_INSTALLMENT_NOT_FOUND,
+		loans.SERVICE_ERROR_REVISION_MISMATCH, loans.SERVICE_ERROR_COMPONENT_MISMATCH, loans.SERVICE_ERROR_AMOUNT_EXCEEDED,
+		loans.SERVICE_ERROR_LEDGER_EVENT_MISSING, loans.SERVICE_ERROR_LEDGER_EVENT_MODIFIED, loans.SERVICE_ERROR_LEDGER_EVENT_TYPE,
+		loans.SERVICE_ERROR_LEDGER_EVENT_ACCOUNT, loans.SERVICE_ERROR_LEDGER_EVENT_CURRENCY, loans.SERVICE_ERROR_LEDGER_EVENT_AMOUNT,
+		loans.SERVICE_ERROR_LEDGER_CATEGORY, loans.SERVICE_ERROR_TRANSFER_INCOMPLETE, loans.SERVICE_ERROR_BINDING_CONFLICT,
+		loans.SERVICE_ERROR_SETTLEMENT_NOT_FOUND, loans.SERVICE_ERROR_SETTLEMENT_ALREADY_REVERSED, loans.SERVICE_ERROR_ALLOCATION_LIMIT:
 		return true
 	default:
 		return false
@@ -1257,12 +1332,14 @@ func isPersonalFinanceLoanServiceCode(value loans.ServiceErrorCode) bool {
 
 func personalFinanceLoanServiceError(err error) *errs.Error {
 	switch {
-	case errors.Is(err, loans.ErrServiceInvalidRequest), errors.Is(err, loans.ErrServiceAccountRejected), errors.Is(err, loans.ErrServiceContractNotFound):
+	case errors.Is(err, loans.ErrServiceInvalidRequest), errors.Is(err, loans.ErrServiceAccountRejected), errors.Is(err, loans.ErrServiceContractNotFound),
+		errors.Is(err, loans.ErrServiceSettlementNotFound):
 		return errs.ErrParameterInvalid
 	case errors.Is(err, loans.ErrServiceIdempotencyConflict), errors.Is(err, loans.ErrServiceVersionConflict),
 		errors.Is(err, loans.ErrServiceStateConflict), errors.Is(err, loans.ErrServiceActiveAllocation),
 		errors.Is(err, loans.ErrServiceAllocationHistory), errors.Is(err, loans.ErrServicePlanNotPaidOff),
-		errors.Is(err, loans.ErrServiceCommandUnavailable):
+		errors.Is(err, loans.ErrServiceCommandUnavailable), errors.Is(err, loans.ErrServiceLedgerEventRejected),
+		errors.Is(err, loans.ErrServiceSettlementRejected):
 		return errs.ErrRepeatedRequest
 	default:
 		return errs.ErrOperationFailed

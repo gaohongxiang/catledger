@@ -305,11 +305,19 @@ type InstallmentResult struct {
 	PreDiscountPaymentAmount  int64
 }
 
+// ContractNextInstallment 是列表展示下一笔待还所需的最小计划切片。
+// 计划行与进度必须来自同一次 ContractDetail 派生，避免列表重新计算第二套状态。
+type ContractNextInstallment struct {
+	Installment *InstallmentResult
+	Progress    *InstallmentProgress
+}
+
 // ContractSummary 是列表使用的有界摘要。
 type ContractSummary struct {
 	Contract        *ContractResult
 	CurrentRevision *RevisionResult
 	Progress        PlanProgress
+	NextInstallment *ContractNextInstallment
 	ActionRequired  bool
 	ReasonCodes     []ServiceErrorCode
 }
@@ -377,6 +385,7 @@ type ContractDetail struct {
 	InvalidAllocationCount     int64
 	ActionRequired             bool
 	ReasonCodes                []ServiceErrorCode
+	LatestSettlementActionId   *int64
 }
 
 func calculationInput(terms CalculationTerms) calculation.Input {

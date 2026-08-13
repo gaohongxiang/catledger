@@ -267,7 +267,10 @@ func TestServiceLifecycleAllocationGuardsAndProgress(t *testing.T) {
 		t.Fatal("progress, overdue, or ledger difference derivation failed")
 	}
 	list, err := service.ListContracts(nil, 1001, CONTRACT_STATUS_ACTIVE, nil, 10, "2026-10-01")
-	if err != nil || len(list.Items) < 1 || list.Items[0].CurrentRevision == nil {
+	if err != nil || len(list.Items) < 1 || list.Items[0].CurrentRevision == nil || list.Items[0].NextInstallment == nil ||
+		list.Items[0].NextInstallment.Installment == nil || list.Items[0].NextInstallment.Progress == nil ||
+		list.Items[0].Progress.NextDueDate == nil || list.Items[0].NextInstallment.Installment.DueDate != *list.Items[0].Progress.NextDueDate ||
+		list.Items[0].NextInstallment.Progress.OutstandingPayment < 1 {
 		t.Fatal("contract list omitted the current calculation summary")
 	}
 
