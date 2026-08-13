@@ -11,12 +11,8 @@
 
         <f7-block class="case-summary margin-vertical-half">
             <div>
-                <strong>{{ reconciliationStore.pendingCaseCount }}</strong>
-                <span>{{ tt('personalFinance.reconciliation.pending') }}</span>
-            </div>
-            <div>
-                <strong>{{ reconciliationStore.totalCaseCount }}</strong>
-                <span>{{ tt('personalFinance.reconciliation.total') }}</span>
+                <strong>{{ reconciliationStore.cases.length }}</strong>
+                <span>{{ tt('personalFinance.reconciliation.mobile.loadedPending') }}</span>
             </div>
         </f7-block>
 
@@ -50,6 +46,12 @@
                 </template>
             </f7-list-item>
         </f7-list>
+
+        <f7-block v-if="reconciliationStore.nextCursor">
+            <f7-button fill :loading="loading" @click="loadMore">
+                {{ tt('personalFinance.reconciliation.loadMore') }}
+            </f7-button>
+        </f7-block>
 
         <f7-block class="empty-history text-align-center" v-else>
             <f7-icon f7="rectangle_stack_badge_person_crop" size="48" />
@@ -94,18 +96,21 @@
 
                     <f7-block-title>{{ tt('personalFinance.reconciliation.evidenceTitle') }}</f7-block-title>
                     <f7-list strong inset media-list dividers>
-                        <f7-list-item :key="`${member.order}-${index}`" v-for="(member, index) in reconciliationStore.selectedCase.members">
+                        <f7-list-item :key="`${evidence.order}-${index}`" v-for="(evidence, index) in reconciliationStore.selectedCase.evidence">
                             <template #media>
-                                <f7-icon :f7="getSourceIcon(member.sourceType)" />
+                                <f7-icon :f7="getSourceIcon(evidence.sourceType)" />
                             </template>
                             <template #title>
-                                <span>{{ tt(getSourceTypeKey(member.sourceType)) }} · {{ formatAmount(member.normalizedAmount, member.currency) }}</span>
+                                <span>{{ tt(getSourceTypeKey(evidence.sourceType)) }} · {{ formatAmount(evidence.normalizedAmount, evidence.currency) }}</span>
                             </template>
                             <template #subtitle>
-                                <span>{{ member.sourceDisplayName || tt('personalFinance.reconciliation.maskedSource') }} · {{ formatTime(member.normalizedUnixTime) }}</span>
+                                <span>{{ evidence.maskedSourceAccount || tt('personalFinance.reconciliation.maskedSource') }} · {{ formatTime(evidence.normalizedUnixTime) }}</span>
                             </template>
                             <template #text>
-                                <span>{{ member.counterparty || member.item || tt('Unknown') }}</span>
+                                <span>
+                                    {{ tt(`personalFinance.reconciliation.evidence.transactionTypeValue.${evidence.normalizedTransactionType}`) }} ·
+                                    {{ tt(`personalFinance.reconciliation.evidence.processingStateValue.${evidence.processingState}`) }}
+                                </span>
                             </template>
                         </f7-list-item>
                     </f7-list>
@@ -114,13 +119,13 @@
                         {{ tt('personalFinance.reconciliation.evidencePrivacy') }}
                     </f7-block>
 
-                    <f7-block-title v-if="reconciliationStore.selectedCase.currentDecision">
+                    <f7-block-title v-if="reconciliationStore.selectedCase.currentDecisionId">
                         {{ tt('personalFinance.reconciliation.decisionTitle') }}
                     </f7-block-title>
-                    <f7-list strong inset v-if="reconciliationStore.selectedCase.currentDecision">
+                    <f7-list strong inset v-if="reconciliationStore.selectedCase.currentDecisionId">
                         <f7-list-item
-                            :title="tt(getReconciliationDecisionTypeKey(reconciliationStore.selectedCase.currentDecision.decisionType))"
-                            :after="reconciliationStore.selectedCase.currentDecision.status"
+                            :title="tt('personalFinance.reconciliation.activeDecision')"
+                            :after="tt('personalFinance.reconciliation.undo.inspectAvailable')"
                         />
                     </f7-list>
                 </template>
@@ -193,18 +198,26 @@ function getBadgeColor(status: ReconciliationCaseStatus): string {
     return status === 'deferred' ? 'orange' : 'blue';
 }
 
-function reload(done?: () => void): void {
+function loadCases(append: boolean, done?: () => void): void {
     if (loading.value) {
         done?.();
         return;
     }
     loading.value = true;
-    reconciliationStore.loadCases({ count: 50 })
+    reconciliationStore.loadCases({ status: 'open', append, limit: 100 })
         .catch(() => showToast('personalFinance.reconciliation.error.operationFailed'))
         .finally(() => {
             loading.value = false;
             done?.();
         });
+}
+
+function reload(done?: () => void): void {
+    loadCases(false, done);
+}
+
+function loadMore(): void {
+    loadCases(true);
 }
 
 async function openCase(caseId: string): Promise<void> {
@@ -227,9 +240,7 @@ onMounted(() => reload());
 }
 
 .case-summary {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    display: block;
 }
 
 .case-summary div {

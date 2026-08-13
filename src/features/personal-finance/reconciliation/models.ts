@@ -1,6 +1,10 @@
 import type {
+    PersonalFinanceDisposition,
+    PersonalFinanceIdentityState,
     PersonalFinanceNormalizedDirection,
+    PersonalFinanceParseState,
     PersonalFinanceProcessingState,
+    PersonalFinanceSourceTransactionType,
     PersonalFinanceSourceType
 } from '../models.ts';
 
@@ -20,26 +24,31 @@ export interface ReconciliationCaseSummary {
     readonly suggestedRelationType: ReconciliationDecisionType;
     readonly candidateScore: number;
     readonly reasonCodes: ReconciliationReason[];
+    readonly currentDecisionId?: string;
     readonly createdUnixTime: number;
     readonly lastEvaluatedUnixTime: number;
     readonly updatedUnixTime: number;
 }
 
-export interface ReconciliationCaseMember {
+export interface ReconciliationEvidenceCard {
     readonly order: number;
+    readonly kind: string;
     readonly role: string;
     readonly sourceType: PersonalFinanceSourceType;
-    readonly sourceDisplayName: string;
-    readonly normalizedAmount?: string;
+    readonly maskedSourceAccount: string;
+    readonly evidenceLimitReached: boolean;
+    readonly normalizedAmount: string;
     readonly currency: string;
     readonly normalizedDirection: PersonalFinanceNormalizedDirection;
-    readonly normalizedUnixTime?: number;
-    readonly normalizedTimezoneUtcOffset?: number;
-    readonly counterparty: string;
-    readonly item: string;
-    readonly paymentMethod: string;
+    readonly normalizedUnixTime: number;
+    readonly normalizedTimezoneUtcOffset: number;
+    readonly normalizedTransactionType: PersonalFinanceSourceTransactionType;
     readonly economicEffect: string;
-    readonly processingState?: PersonalFinanceProcessingState;
+    readonly parseState: PersonalFinanceParseState;
+    readonly identityState: PersonalFinanceIdentityState;
+    readonly disposition: PersonalFinanceDisposition;
+    readonly processingState: PersonalFinanceProcessingState;
+    readonly transactionCount: number;
 }
 
 export interface ReconciliationDecision {
@@ -54,14 +63,17 @@ export interface ReconciliationDecision {
 }
 
 export interface ReconciliationCaseDetail extends ReconciliationCaseSummary {
-    readonly members: ReconciliationCaseMember[];
-    readonly currentDecision?: ReconciliationDecision;
+    readonly evidence: ReconciliationEvidenceCard[];
+}
+
+export interface ReconciliationCaseCursor {
+    readonly updatedUnixTime: number;
+    readonly caseId: string;
 }
 
 export interface ReconciliationCasePage {
     readonly items: ReconciliationCaseSummary[];
-    readonly totalCount: number;
-    readonly pendingCount: number;
+    readonly nextCursor?: ReconciliationCaseCursor;
 }
 
 export interface ReconciliationCandidateGenerateResult {
@@ -85,14 +97,17 @@ export interface ReconciliationDecisionResult {
 
 export interface ReconciliationUndoImpact {
     readonly caseId: string;
-    readonly expectedCaseVersion: number;
-    readonly automaticUndoAllowed: boolean;
-    readonly affectedTransactionCount: number;
-    readonly createdTransactionCount: number;
-    readonly attachedExistingTransactionCount: number;
+    readonly decisionId: string;
+    readonly attachedExistingCount: number;
+    readonly reconciliationCreatedCount: number;
+    readonly transactionCount: number;
     readonly modifiedTransactionCount: number;
     readonly missingTransactionCount: number;
-    readonly sharedDependencyCount: number;
+    readonly sharedTransactionCount: number;
+    readonly batchRelationCount: number;
+    readonly incompleteTransferPairCount: number;
+    readonly canReopen: boolean;
+    readonly canAutomaticallyDelete: boolean;
     readonly reasonCodes: ReconciliationReason[];
 }
 

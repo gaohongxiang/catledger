@@ -42,13 +42,17 @@
 
                 <div class="summary-strip px-5 py-4">
                     <div class="summary-item">
-                        <span class="summary-value text-primary">{{ reconciliationStore.pendingCaseCount }}</span>
-                        <span class="text-body-small text-medium-emphasis">{{ tt('personalFinance.reconciliation.pending') }}</span>
+                        <span class="summary-value text-primary">{{ reconciliationStore.cases.length }}</span>
+                        <span class="text-body-small text-medium-emphasis">{{ tt('personalFinance.reconciliation.loaded') }}</span>
                     </div>
                     <v-divider vertical />
                     <div class="summary-item">
-                        <span class="summary-value">{{ reconciliationStore.totalCaseCount }}</span>
-                        <span class="text-body-small text-medium-emphasis">{{ tt('personalFinance.reconciliation.total') }}</span>
+                        <v-chip size="small" :color="getReconciliationCaseStatusColor(statusFilter)" variant="tonal">
+                            {{ tt(getReconciliationCaseStatusKey(statusFilter)) }}
+                        </v-chip>
+                        <span class="text-body-small text-medium-emphasis" v-if="reconciliationStore.nextCursor">
+                            {{ tt('personalFinance.reconciliation.moreAvailable') }}
+                        </span>
                     </div>
                     <v-spacer />
                     <v-btn
@@ -76,9 +80,9 @@
                                 variant="outlined"
                                 v-model="statusFilter"
                             >
-                                <v-btn value="all">{{ tt('personalFinance.reconciliation.filter.all') }}</v-btn>
                                 <v-btn value="open">{{ tt('personalFinance.reconciliation.filter.pending') }}</v-btn>
                                 <v-btn value="action_required">{{ tt('personalFinance.reconciliation.filter.action') }}</v-btn>
+                                <v-btn value="deferred">{{ tt('personalFinance.reconciliation.filter.deferred') }}</v-btn>
                                 <v-btn value="resolved">{{ tt('personalFinance.reconciliation.filter.resolved') }}</v-btn>
                             </v-btn-toggle>
                         </div>
@@ -124,13 +128,11 @@
                             <div class="text-body-medium text-medium-emphasis mt-1">{{ tt('personalFinance.reconciliation.noCasesHint') }}</div>
                         </div>
 
-                        <v-pagination
-                            class="my-3"
-                            density="comfortable"
-                            :length="casePageCount"
-                            v-if="casePageCount > 1"
-                            v-model="casePage"
-                        />
+                        <div class="pa-4 text-center" v-if="reconciliationStore.nextCursor">
+                            <v-btn variant="tonal" :loading="reconciliationStore.loadingCases" @click="loadMoreCases">
+                                {{ tt('personalFinance.reconciliation.loadMore') }}
+                            </v-btn>
+                        </div>
                     </v-col>
 
                     <v-divider vertical class="d-none d-lg-block" />
@@ -195,37 +197,44 @@
                                 </div>
 
                                 <div class="evidence-grid mt-4">
-                                    <article class="evidence-card pa-5" :key="`${member.order}-${index}`" v-for="(member, index) in reconciliationStore.selectedCase.members">
+                                    <article class="evidence-card pa-5" :key="`${evidence.order}-${index}`" v-for="(evidence, index) in reconciliationStore.selectedCase.evidence">
                                         <div class="d-flex align-center ga-3">
                                             <v-avatar color="primary" variant="tonal">
-                                                <v-icon :icon="getSourceIcon(member.sourceType)" />
+                                                <v-icon :icon="getSourceIcon(evidence.sourceType)" />
                                             </v-avatar>
                                             <div>
-                                                <div class="font-weight-bold">{{ tt(getSourceTypeKey(member.sourceType)) }}</div>
+                                                <div class="font-weight-bold">{{ tt(getSourceTypeKey(evidence.sourceType)) }}</div>
                                                 <div class="text-body-small text-medium-emphasis">
-                                                    {{ member.sourceDisplayName || tt('personalFinance.reconciliation.maskedSource') }}
+                                                    {{ evidence.maskedSourceAccount || tt('personalFinance.reconciliation.maskedSource') }}
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="evidence-amount mt-5">{{ formatAmount(member.normalizedAmount, member.currency) }}</div>
+                                        <div class="evidence-amount mt-5">{{ formatAmount(evidence.normalizedAmount, evidence.currency) }}</div>
                                         <div class="text-body-small text-medium-emphasis mt-1">
-                                            {{ tt(`personalFinance.reconciliation.direction.${member.normalizedDirection}`) }} · {{ formatTime(member.normalizedUnixTime) }}
+                                            {{ tt(`personalFinance.reconciliation.direction.${evidence.normalizedDirection}`) }} · {{ formatTime(evidence.normalizedUnixTime) }}
                                         </div>
                                         <v-divider class="my-4" />
                                         <dl class="evidence-fields">
                                             <div>
-                                                <dt>{{ tt('personalFinance.reconciliation.counterparty') }}</dt>
-                                                <dd>{{ member.counterparty || tt('Unknown') }}</dd>
+                                                <dt>{{ tt('personalFinance.reconciliation.evidence.transactionType') }}</dt>
+                                                <dd>{{ tt(`personalFinance.reconciliation.evidence.transactionTypeValue.${evidence.normalizedTransactionType}`) }}</dd>
                                             </div>
                                             <div>
-                                                <dt>{{ tt('personalFinance.reconciliation.item') }}</dt>
-                                                <dd>{{ member.item || tt('Unknown') }}</dd>
+                                                <dt>{{ tt('personalFinance.reconciliation.evidence.economicEffect') }}</dt>
+                                                <dd>{{ tt(`personalFinance.reconciliation.evidence.economicEffectValue.${evidence.economicEffect}`) }}</dd>
                                             </div>
                                             <div>
-                                                <dt>{{ tt('personalFinance.reconciliation.paymentMethod') }}</dt>
-                                                <dd>{{ member.paymentMethod || tt('Unknown') }}</dd>
+                                                <dt>{{ tt('personalFinance.reconciliation.evidence.processingState') }}</dt>
+                                                <dd>{{ tt(`personalFinance.reconciliation.evidence.processingStateValue.${evidence.processingState}`) }}</dd>
+                                            </div>
+                                            <div>
+                                                <dt>{{ tt('personalFinance.reconciliation.evidence.transactions') }}</dt>
+                                                <dd>{{ evidence.transactionCount }}</dd>
                                             </div>
                                         </dl>
+                                        <v-alert class="mt-4" density="compact" type="info" variant="tonal" v-if="evidence.evidenceLimitReached">
+                                            {{ tt('personalFinance.reconciliation.evidence.limitReached') }}
+                                        </v-alert>
                                     </article>
                                 </div>
                             </div>
@@ -238,10 +247,8 @@
                                     <div class="text-body-small text-medium-emphasis">{{ tt('personalFinance.reconciliation.decisionHint') }}</div>
                                 </div>
 
-                                <v-alert class="mt-4" type="success" variant="tonal" v-if="reconciliationStore.selectedCase.currentDecision">
-                                    {{ tt('personalFinance.reconciliation.currentDecision', {
-                                        decision: tt(getReconciliationDecisionTypeKey(reconciliationStore.selectedCase.currentDecision.decisionType))
-                                    }) }}
+                                <v-alert class="mt-4" type="success" variant="tonal" v-if="reconciliationStore.selectedCase.currentDecisionId">
+                                    {{ tt('personalFinance.reconciliation.activeDecision') }}
                                 </v-alert>
 
                                 <v-radio-group class="decision-options mt-3" hide-details v-model="selectedDecision" v-if="canDecide">
@@ -295,10 +302,8 @@
             <v-card-text class="px-5 pb-5">
                 <v-progress-linear indeterminate v-if="loadingUndoImpact" />
                 <template v-else-if="undoImpact">
-                    <v-alert :type="undoImpact.automaticUndoAllowed ? 'warning' : 'error'" variant="tonal">
-                        {{ tt(undoImpact.automaticUndoAllowed
-                            ? 'personalFinance.reconciliation.undo.allowed'
-                            : 'personalFinance.reconciliation.undo.actionRequired') }}
+                    <v-alert :type="undoOutcomeType" variant="tonal">
+                        {{ tt(`personalFinance.reconciliation.undo.outcome.${undoOutcome}`) }}
                     </v-alert>
                     <v-row class="mt-3">
                         <v-col cols="6" sm="4" :key="metric.label" v-for="metric in undoMetrics">
@@ -327,9 +332,7 @@
                     :loading="reconciliationStore.submitting"
                     @click="submitUndo"
                 >
-                    {{ tt(undoImpact?.automaticUndoAllowed
-                        ? 'personalFinance.reconciliation.undo.confirm'
-                        : 'personalFinance.reconciliation.undo.confirmActionRequired') }}
+                    {{ tt(`personalFinance.reconciliation.undo.button.${undoOutcome}`) }}
                 </v-btn>
             </v-card-actions>
         </v-card>
@@ -351,6 +354,7 @@ import { usePersonalFinanceStore } from '../../store.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
 import type { PersonalFinanceSourceType } from '../../models.ts';
 import type {
+    ReconciliationCaseStatus,
     ReconciliationDecisionType,
     ReconciliationReason,
     ReconciliationUndoImpact
@@ -380,9 +384,9 @@ import {
 } from '@mdi/js';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
-type StatusFilter = 'all' | 'open' | 'action_required' | 'resolved';
+type UndoOutcome = 'automaticDelete' | 'reopenOnly' | 'actionRequired';
 
-const CASE_PAGE_SIZE = 20;
+const CASE_PAGE_LIMIT = 100;
 
 const { tt, formatDateTimeToShortDateTime, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
 const personalFinanceStore = usePersonalFinanceStore();
@@ -390,13 +394,13 @@ const reconciliationStore = useReconciliationStore();
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 
 const anchorBatchId = ref<string>('');
-const casePage = ref<number>(1);
-const statusFilter = ref<StatusFilter>('all');
+const statusFilter = ref<ReconciliationCaseStatus>('open');
 const selectedDecision = ref<ReconciliationDecisionType | null>(null);
 const showDecisionDialog = ref<boolean>(false);
 const showUndoDialog = ref<boolean>(false);
 const loadingUndoImpact = ref<boolean>(false);
 const undoImpact = ref<ReconciliationUndoImpact | null>(null);
+let suppressStatusReload = false;
 
 const anchorBatchItems = computed(() => personalFinanceStore.batches
     .filter(batch => !!batch.sourceAccountId && batch.status !== 'receiving' && batch.status !== 'parsing' &&
@@ -405,17 +409,33 @@ const anchorBatchItems = computed(() => personalFinanceStore.batches
         value: batch.id,
         title: `${tt(getSourceTypeKey(batch.sourceType))} · ${formatTime(batch.createdUnixTime)}`
     })));
-const casePageCount = computed<number>(() => Math.max(1, Math.ceil(reconciliationStore.totalCaseCount / CASE_PAGE_SIZE)));
 const canDecide = computed<boolean>(() => canDecideReconciliationCase(reconciliationStore.selectedCase));
 const canInspectUndo = computed<boolean>(() => canInspectReconciliationUndo(reconciliationStore.selectedCase));
 const undoMetrics = computed(() => undoImpact.value ? [
-    { label: 'personalFinance.reconciliation.undo.metric.affected', value: undoImpact.value.affectedTransactionCount },
-    { label: 'personalFinance.reconciliation.undo.metric.created', value: undoImpact.value.createdTransactionCount },
-    { label: 'personalFinance.reconciliation.undo.metric.attached', value: undoImpact.value.attachedExistingTransactionCount },
+    { label: 'personalFinance.reconciliation.undo.metric.affected', value: undoImpact.value.transactionCount },
+    { label: 'personalFinance.reconciliation.undo.metric.created', value: undoImpact.value.reconciliationCreatedCount },
+    { label: 'personalFinance.reconciliation.undo.metric.attached', value: undoImpact.value.attachedExistingCount },
     { label: 'personalFinance.reconciliation.undo.metric.modified', value: undoImpact.value.modifiedTransactionCount },
     { label: 'personalFinance.reconciliation.undo.metric.missing', value: undoImpact.value.missingTransactionCount },
-    { label: 'personalFinance.reconciliation.undo.metric.shared', value: undoImpact.value.sharedDependencyCount }
+    { label: 'personalFinance.reconciliation.undo.metric.shared', value: undoImpact.value.sharedTransactionCount },
+    { label: 'personalFinance.reconciliation.undo.metric.batchRelations', value: undoImpact.value.batchRelationCount },
+    { label: 'personalFinance.reconciliation.undo.metric.incompleteTransfer', value: undoImpact.value.incompleteTransferPairCount }
 ] : []);
+const undoOutcome = computed<UndoOutcome>(() => {
+    if (undoImpact.value?.canAutomaticallyDelete) {
+        return 'automaticDelete';
+    }
+    if (undoImpact.value?.canReopen) {
+        return 'reopenOnly';
+    }
+    return 'actionRequired';
+});
+const undoOutcomeType = computed<'warning' | 'info' | 'error'>(() => {
+    if (undoOutcome.value === 'automaticDelete') {
+        return 'warning';
+    }
+    return undoOutcome.value === 'reopenOnly' ? 'info' : 'error';
+});
 
 function formatTime(unixTime?: number): string {
     return unixTime
@@ -457,13 +477,16 @@ function getScoreBand(score: number): string {
     return 'low';
 }
 
-async function loadCases(openFirst = false): Promise<void> {
+async function loadCases(openFirst = false, append = false): Promise<void> {
     try {
         await reconciliationStore.loadCases({
-            status: statusFilter.value === 'all' ? undefined : statusFilter.value,
-            page: casePage.value - 1,
-            count: CASE_PAGE_SIZE
+            status: statusFilter.value,
+            append,
+            limit: CASE_PAGE_LIMIT
         });
+        if (append) {
+            return;
+        }
         const selectedStillVisible = reconciliationStore.cases.some(item => item.id === reconciliationStore.selectedCase?.id);
         if ((openFirst || !selectedStillVisible) && reconciliationStore.cases[0]) {
             await reconciliationStore.openCase(reconciliationStore.cases[0].id);
@@ -473,6 +496,10 @@ async function loadCases(openFirst = false): Promise<void> {
     } catch {
         snackbar.value?.showMessage('personalFinance.reconciliation.error.operationFailed');
     }
+}
+
+async function loadMoreCases(): Promise<void> {
+    await loadCases(false, true);
 }
 
 async function reload(): Promise<void> {
@@ -502,8 +529,9 @@ async function generateCandidates(): Promise<void> {
     }
     try {
         const result = await reconciliationStore.generateCandidates(anchorBatchId.value);
-        statusFilter.value = 'all';
-        casePage.value = 1;
+        suppressStatusReload = true;
+        statusFilter.value = 'open';
+        suppressStatusReload = false;
         await loadCases();
         if (result.cases[0]) {
             await openCase(result.cases[0].id);
@@ -564,10 +592,11 @@ async function submitUndo(): Promise<void> {
 }
 
 watch(statusFilter, () => {
-    casePage.value = 1;
+    if (suppressStatusReload) {
+        return;
+    }
     void loadCases(true);
 });
-watch(casePage, () => void loadCases(true));
 
 onMounted(async () => {
     await Promise.allSettled([

@@ -2,8 +2,9 @@ import services from '@/lib/services.ts';
 
 import type {
     ReconciliationCandidateGenerateResult,
+    ReconciliationCaseCursor,
     ReconciliationCaseDetail,
-    ReconciliationCaseMember,
+    ReconciliationEvidenceCard,
     ReconciliationCasePage,
     ReconciliationCaseStatus,
     ReconciliationCaseSummary,
@@ -56,6 +57,17 @@ function asNumber(value: unknown, fallback = 0): number {
         return Number.isFinite(parsed) ? parsed : fallback;
     }
     return fallback;
+}
+
+function asOptionalNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === 'string' && value.length > 0) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
 }
 
 function asBoolean(value: unknown, fallback = false): boolean {
@@ -125,47 +137,75 @@ export function normalizeReconciliationCaseSummary(value: unknown): Reconciliati
         suggestedRelationType: normalizeDecisionType(field(value, 'suggestedRelationType', 'suggestedDecisionType')),
         candidateScore: asNumber(field(value, 'candidateScore', 'score')),
         reasonCodes: normalizeReasons(field(value, 'reasonCodes', 'reasons')),
+        currentDecisionId: asIdentifier(field(value, 'currentDecisionId')) || undefined,
         createdUnixTime: asNumber(field(value, 'createdUnixTime')),
         lastEvaluatedUnixTime: asNumber(field(value, 'lastEvaluatedUnixTime')),
         updatedUnixTime: asNumber(field(value, 'updatedUnixTime'))
     };
 }
 
-function normalizeMember(value: unknown, index: number): ReconciliationCaseMember | null {
+function normalizeEvidenceCard(value: unknown, member: UnknownRecord, evidenceIndex: number): ReconciliationEvidenceCard | null {
     if (!isRecord(value)) {
         return null;
     }
 
-    const sourceTypeValue = field(value, 'sourceType', 'source');
+    const sourceTypeValue = field(member, 'sourceType');
     if (sourceTypeValue !== 'alipay' && sourceTypeValue !== 'wechat' && sourceTypeValue !== 'bank') {
         return null;
     }
-    const sourceType = sourceTypeValue;
-    const directionValue = field(value, 'normalizedDirection', 'direction');
+    const directionValue = field(value, 'normalizedDirection');
     const normalizedDirection = directionValue === 'income' || directionValue === 'expense' || directionValue === 'neutral'
         ? directionValue
         : 'unknown';
     const processingStateValue = field(value, 'processingState');
-    const processingState = processingStateValue === 'pending' || processingStateValue === 'linked' || processingStateValue === 'ignored' || processingStateValue === 'failed'
-        ? processingStateValue
-        : undefined;
+    if (processingStateValue !== 'pending' && processingStateValue !== 'linked' && processingStateValue !== 'ignored' && processingStateValue !== 'failed') {
+        return null;
+    }
+    const parseStateValue = field(value, 'parseState');
+    const identityStateValue = field(value, 'identityState');
+    const dispositionValue = field(value, 'disposition');
+    const transactionTypeValue = field(value, 'normalizedTransactionType');
+    const economicEffectValue = field(value, 'economicEffect');
+    if ((parseStateValue !== 'valid' && parseStateValue !== 'invalid') ||
+        (identityStateValue !== 'not_evaluated' && identityStateValue !== 'new' && identityStateValue !== 'exact_duplicate' &&
+            identityStateValue !== 'identity_conflict' && identityStateValue !== 'batch_local') ||
+        (dispositionValue !== 'postable' && dispositionValue !== 'review_required' && dispositionValue !== 'non_postable') ||
+        (transactionTypeValue !== 'payment' && transactionTypeValue !== 'transfer' && transactionTypeValue !== 'top_up' &&
+            transactionTypeValue !== 'withdrawal' && transactionTypeValue !== 'fee' && transactionTypeValue !== 'other' && transactionTypeValue !== 'unknown') ||
+        (economicEffectValue !== 'normal' && economicEffectValue !== 'refund' && economicEffectValue !== 'closed' &&
+            economicEffectValue !== 'failed' && economicEffectValue !== 'unknown')) {
+        return null;
+    }
 
     return {
-        order: asNumber(field(value, 'order', 'memberOrder'), index + 1),
-        role: asString(field(value, 'role', 'memberRole'), 'evidence'),
-        sourceType,
-        sourceDisplayName: asString(field(value, 'sourceDisplayName', 'sourceAccountDisplayName', 'maskedSourceAccountName')),
-        normalizedAmount: asString(field(value, 'normalizedAmount', 'amount')) || undefined,
+        order: asNumber(field(member, 'order'), evidenceIndex + 1),
+        kind: asString(field(member, 'kind')),
+        role: asString(field(member, 'role')),
+        sourceType: sourceTypeValue,
+        maskedSourceAccount: asString(field(member, 'maskedSourceAccount')),
+        evidenceLimitReached: asBoolean(field(member, 'evidenceLimitReached')),
+        normalizedAmount: asString(field(value, 'normalizedAmount')),
         currency: asString(field(value, 'currency')),
         normalizedDirection,
-        normalizedUnixTime: asNumber(field(value, 'normalizedUnixTime', 'transactionUnixTime')) || undefined,
-        normalizedTimezoneUtcOffset: asNumber(field(value, 'normalizedTimezoneUtcOffset', 'timezoneUtcOffset')) || undefined,
-        counterparty: asString(field(value, 'counterparty', 'counterpartySummary')),
-        item: asString(field(value, 'item', 'itemSummary', 'description')),
-        paymentMethod: asString(field(value, 'paymentMethod', 'paymentMethodSummary')),
-        economicEffect: asString(field(value, 'economicEffect'), 'unknown'),
-        processingState
+        normalizedUnixTime: asNumber(field(value, 'normalizedUnixTime')),
+        normalizedTimezoneUtcOffset: asNumber(field(value, 'normalizedTimezoneUtcOffset')),
+        normalizedTransactionType: transactionTypeValue,
+        economicEffect: economicEffectValue,
+        parseState: parseStateValue,
+        identityState: identityStateValue,
+        disposition: dispositionValue,
+        processingState: processingStateValue,
+        transactionCount: asArray(field(value, 'transactions')).length
     };
+}
+
+function normalizeMemberEvidence(value: unknown): ReconciliationEvidenceCard[] {
+    if (!isRecord(value)) {
+        return [];
+    }
+    return asArray(field(value, 'evidence'))
+        .map((evidence, evidenceIndex) => normalizeEvidenceCard(evidence, value, evidenceIndex))
+        .filter((evidence): evidence is ReconciliationEvidenceCard => !!evidence);
 }
 
 function normalizeDecision(value: unknown): ReconciliationDecision | undefined {
@@ -199,14 +239,24 @@ export function normalizeReconciliationCaseDetail(value: unknown): Reconciliatio
 
     const caseValue = isRecord(value['case']) ? value['case'] : value;
     const summary = normalizeReconciliationCaseSummary(caseValue);
-    const membersValue = field(value, 'members', 'evidenceMembers') ?? field(caseValue, 'members', 'evidenceMembers');
-    const decisionValue = field(value, 'currentDecision', 'decision') ?? field(caseValue, 'currentDecision', 'decision');
+    const membersValue = field(caseValue, 'members');
 
     return {
         ...summary,
-        members: asArray(membersValue).map(normalizeMember).filter((member): member is ReconciliationCaseMember => !!member),
-        currentDecision: normalizeDecision(decisionValue)
+        evidence: asArray(membersValue).flatMap(normalizeMemberEvidence)
     };
+}
+
+function normalizeCursor(value: unknown): ReconciliationCaseCursor | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const updatedUnixTime = asOptionalNumber(field(value, 'updatedUnixTime'));
+    const caseId = asIdentifier(field(value, 'caseId'));
+    if (typeof updatedUnixTime === 'undefined' || !caseId) {
+        throw new Error('invalid_reconciliation_case_cursor');
+    }
+    return { updatedUnixTime, caseId };
 }
 
 function unwrapApiResponse(response: unknown): unknown {
@@ -223,7 +273,7 @@ function normalizeDecisionResult(value: unknown): ReconciliationDecisionResult {
 
     const caseValue = field(value, 'case', 'reconciliationCase');
     const reconciliationCase = isRecord(caseValue) ? normalizeReconciliationCaseDetail(caseValue) : undefined;
-    const decision = normalizeDecision(field(value, 'decision', 'currentDecision') ?? value) ?? reconciliationCase?.currentDecision;
+    const decision = normalizeDecision(field(value, 'decision', 'currentDecision') ?? value);
     if (!decision) {
         throw new Error('invalid_reconciliation_decision_result');
     }
@@ -248,16 +298,15 @@ export const reconciliationApi = {
         };
     },
 
-    async listCases(params: { status?: ReconciliationCaseStatus, page: number, count: number }): Promise<ReconciliationCasePage> {
+    async listCases(params: { status: ReconciliationCaseStatus, cursor?: ReconciliationCaseCursor, limit: number }): Promise<ReconciliationCasePage> {
         const result = unwrapApiResponse(await services.listPersonalFinanceReconciliationCases(params));
         if (!isRecord(result)) {
             throw new Error('invalid_reconciliation_case_page');
         }
-        const items = asArray(field(result, 'items', 'cases')).map(normalizeReconciliationCaseSummary);
+        const items = asArray(field(result, 'items')).map(normalizeReconciliationCaseSummary);
         return {
             items,
-            totalCount: asNumber(field(result, 'totalCount'), items.length),
-            pendingCount: asNumber(field(result, 'pendingCount', 'openCount'), items.filter(item => item.status !== 'resolved').length)
+            nextCursor: normalizeCursor(field(result, 'nextCursor'))
         };
     },
 
@@ -276,15 +325,18 @@ export const reconciliationApi = {
         }
         return {
             caseId: asIdentifier(field(result, 'caseId')) || caseId,
-            expectedCaseVersion: asNumber(field(result, 'expectedCaseVersion', 'caseVersion')),
-            automaticUndoAllowed: asBoolean(field(result, 'automaticUndoAllowed', 'canAutomaticallyUndo', 'canUndo')),
-            affectedTransactionCount: asNumber(field(result, 'affectedTransactionCount', 'linkedTransactionCount')),
-            createdTransactionCount: asNumber(field(result, 'createdTransactionCount', 'reconciliationCreatedCount')),
-            attachedExistingTransactionCount: asNumber(field(result, 'attachedExistingTransactionCount', 'attachedExistingCount')),
+            decisionId: asIdentifier(field(result, 'decisionId')),
+            attachedExistingCount: asNumber(field(result, 'attachedExistingCount')),
+            reconciliationCreatedCount: asNumber(field(result, 'reconciliationCreatedCount')),
+            transactionCount: asNumber(field(result, 'transactionCount')),
             modifiedTransactionCount: asNumber(field(result, 'modifiedTransactionCount')),
             missingTransactionCount: asNumber(field(result, 'missingTransactionCount')),
-            sharedDependencyCount: asNumber(field(result, 'sharedDependencyCount', 'sharedTransactionCount')),
-            reasonCodes: normalizeReasons(field(result, 'reasonCodes', 'blockingReasonCodes'))
+            sharedTransactionCount: asNumber(field(result, 'sharedTransactionCount')),
+            batchRelationCount: asNumber(field(result, 'batchRelationCount')),
+            incompleteTransferPairCount: asNumber(field(result, 'incompleteTransferPairCount')),
+            canReopen: asBoolean(field(result, 'canReopen')),
+            canAutomaticallyDelete: asBoolean(field(result, 'canAutomaticallyDelete')),
+            reasonCodes: normalizeReasons(field(result, 'reasonCodes'))
         };
     },
 

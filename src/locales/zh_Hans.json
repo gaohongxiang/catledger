@@ -2765,7 +2765,9 @@
             "anchorBatch": "选择候选锚点批次",
             "generate": "生成候选",
             "pending": "待处理",
-            "total": "全部案例",
+            "loaded": "当前已加载",
+            "moreAvailable": "还有更多",
+            "loadMore": "加载更多",
             "score": "分",
             "scoreValue": "候选分 {score}",
             "noCases": "暂无对账案例",
@@ -2780,20 +2782,46 @@
             "evidenceTitle": "来源证据",
             "evidencePrivacy": "仅展示后端提供的脱敏摘要；内部哈希、完整来源账号和原始 payload 不会进入此界面。",
             "maskedSource": "已脱敏来源账户",
-            "counterparty": "对手方",
-            "item": "商品或摘要",
-            "paymentMethod": "支付方式",
+            "evidence": {
+                "transactionType": "标准交易类型",
+                "economicEffect": "经济效果",
+                "processingState": "处理状态",
+                "transactions": "关联正式交易",
+                "limitReached": "该成员还有更多证据，本卡片仅显示后端返回的安全摘要。",
+                "transactionTypeValue": {
+                    "payment": "支付",
+                    "transfer": "转账",
+                    "top_up": "充值",
+                    "withdrawal": "提现",
+                    "fee": "费用",
+                    "other": "其他",
+                    "unknown": "未知"
+                },
+                "economicEffectValue": {
+                    "normal": "正常",
+                    "refund": "退款",
+                    "closed": "已关闭",
+                    "failed": "失败",
+                    "unknown": "未知"
+                },
+                "processingStateValue": {
+                    "pending": "待处理",
+                    "linked": "已关联",
+                    "ignored": "已忽略",
+                    "failed": "处理失败"
+                }
+            },
             "decisionTitle": "人工决定",
             "decisionHint": "选择经济关系后明确确认。提交会携带当前案例版本和新的幂等键，过期版本由服务端拒绝。",
-            "currentDecision": "已保存决定：{decision}",
+            "activeDecision": "此案例已有活动决定，可查看撤销影响；接口未返回决定类型，因此不会在此猜测。",
             "confirmDecision": "确认此关系",
             "generated": "候选生成完成",
             "generatedWithLimit": "候选生成完成，已达到本次有界扫描上限",
             "decisionSaved": "人工决定已保存",
             "filter": {
-                "all": "全部",
                 "pending": "待处理",
                 "action": "需操作",
+                "deferred": "暂缓",
                 "resolved": "已解决"
             },
             "status": {
@@ -2851,12 +2879,19 @@
             },
             "undo": {
                 "inspect": "查看撤销影响",
+                "inspectAvailable": "可查看影响",
                 "title": "撤销影响与重新打开",
-                "allowed": "当前影响满足自动撤销条件。确认后会留下新的 reopen 修订记录。",
-                "actionRequired": "当前影响不能安全自动改动余额。确认后只会进入需要人工操作的留痕流程。",
+                "outcome": {
+                    "automaticDelete": "可以安全重新打开，并自动删除仅由本次对账创建且未被修改的账本效果。",
+                    "reopenOnly": "可以安全重新打开并解除附着关系，但不会删除任何正式交易。",
+                    "actionRequired": "不能安全自动重新打开。确认后只会形成 action_required 留痕，不会自动改动余额。"
+                },
+                "button": {
+                    "automaticDelete": "确认删除对账效果并重新打开",
+                    "reopenOnly": "确认解除附着并重新打开",
+                    "actionRequired": "确认转为人工处理"
+                },
                 "reasons": "限制原因",
-                "confirm": "确认撤销并重新打开",
-                "confirmActionRequired": "确认转为人工处理",
                 "saved": "撤销请求已保存",
                 "metric": {
                     "affected": "受影响交易",
@@ -2864,13 +2899,16 @@
                     "attached": "附着既有",
                     "modified": "已修改",
                     "missing": "已缺失",
-                    "shared": "共享依赖"
+                    "shared": "共享交易",
+                    "batchRelations": "批次关系",
+                    "incompleteTransfer": "不完整转账对"
                 }
             },
             "mobile": {
                 "title": "对账摘要",
                 "readOnly": "移动端仅供查看，不提供决定或撤销操作。",
                 "desktopHint": "候选生成、人工决定和撤销确认请在桌面端完成。",
+                "loadedPending": "当前已加载待处理案例",
                 "version": "v{version}"
             },
             "error": {

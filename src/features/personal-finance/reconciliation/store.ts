@@ -7,6 +7,7 @@ import { reconciliationApi } from './service.ts';
 import { buildReconciliationDecisionRequest, buildReconciliationUndoRequest } from './state.ts';
 import type {
     ReconciliationCandidateGenerateResult,
+    ReconciliationCaseCursor,
     ReconciliationCaseDetail,
     ReconciliationCasePage,
     ReconciliationCaseStatus,
@@ -19,28 +20,26 @@ import type {
 
 export const useReconciliationStore = defineStore('personalFinanceReconciliation', () => {
     const cases = ref<ReconciliationCaseSummary[]>([]);
-    const totalCaseCount = ref<number>(0);
-    const pendingCaseCount = ref<number>(0);
+    const nextCursor = ref<ReconciliationCaseCursor | undefined>(undefined);
     const selectedCase = ref<ReconciliationCaseDetail | null>(null);
     const loadingCases = ref<boolean>(false);
     const loadingDetail = ref<boolean>(false);
     const submitting = ref<boolean>(false);
 
     async function loadCases(params: {
-        status?: ReconciliationCaseStatus;
-        page?: number;
-        count?: number;
-    } = {}): Promise<ReconciliationCasePage> {
+        status: ReconciliationCaseStatus;
+        append?: boolean;
+        limit?: number;
+    }): Promise<ReconciliationCasePage> {
         loadingCases.value = true;
         try {
             const result = await reconciliationApi.listCases({
                 status: params.status,
-                page: params.page ?? 0,
-                count: params.count ?? 20
+                cursor: params.append ? nextCursor.value : undefined,
+                limit: params.limit ?? 100
             });
-            cases.value = result.items;
-            totalCaseCount.value = result.totalCount;
-            pendingCaseCount.value = result.pendingCount;
+            cases.value = params.append ? [...cases.value, ...result.items] : result.items;
+            nextCursor.value = result.nextCursor;
             return result;
         } finally {
             loadingCases.value = false;
@@ -119,8 +118,7 @@ export const useReconciliationStore = defineStore('personalFinanceReconciliation
 
     return {
         cases,
-        totalCaseCount,
-        pendingCaseCount,
+        nextCursor,
         selectedCase,
         loadingCases,
         loadingDetail,

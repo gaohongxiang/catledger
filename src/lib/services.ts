@@ -931,9 +931,11 @@ export default {
     generatePersonalFinanceReconciliationCandidates: (request: { batchId: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/reconciliation/candidates/generate.json', request);
     },
-    listPersonalFinanceReconciliationCases: (params: { status?: string, page: number, count: number }): ApiResponsePromise<unknown> => {
-        const status = params.status ? `&status=${encodeURIComponent(params.status)}` : '';
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/reconciliation/cases/list.json?page=${params.page}&count=${params.count}${status}`);
+    listPersonalFinanceReconciliationCases: (params: { status: string, cursor?: { updatedUnixTime: number, caseId: string }, limit: number }): ApiResponsePromise<unknown> => {
+        const cursor = params.cursor
+            ? `&cursor_updated_unix_time=${params.cursor.updatedUnixTime}&cursor_case_id=${encodeURIComponent(params.cursor.caseId)}`
+            : '';
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/reconciliation/cases/list.json?status=${encodeURIComponent(params.status)}&limit=${params.limit}${cursor}`);
     },
     getPersonalFinanceReconciliationCase: ({ caseId }: { caseId: string }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/reconciliation/cases/get.json?case_id=${encodeURIComponent(caseId)}`);

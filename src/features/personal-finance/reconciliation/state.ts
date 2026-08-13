@@ -26,7 +26,7 @@ export function canDecideReconciliationCase(reconciliationCase: ReconciliationCa
 }
 
 export function canInspectReconciliationUndo(reconciliationCase: ReconciliationCaseDetail | null): boolean {
-    return !!reconciliationCase?.currentDecision && reconciliationCase.status !== 'open';
+    return !!reconciliationCase?.currentDecisionId && reconciliationCase.status !== 'open';
 }
 
 export function buildReconciliationDecisionRequest(params: {
@@ -50,7 +50,7 @@ export function buildReconciliationUndoRequest(params: {
     reconciliationCase: ReconciliationCaseDetail;
     idempotencyKey: string;
 }): ReconciliationUndoRequest {
-    if (!params.reconciliationCase.currentDecision || params.reconciliationCase.version < 1 || !params.idempotencyKey) {
+    if (!params.reconciliationCase.currentDecisionId || params.reconciliationCase.version < 1 || !params.idempotencyKey) {
         throw new Error('invalid_reconciliation_undo');
     }
 
