@@ -7,7 +7,7 @@ SKIP_TESTS="${SKIP_TESTS}"
 RELEASE=${RELEASE_BUILD:-"0"}
 RELEASE_TYPE="unknown"
 VERSION=""
-COMMIT_HASH=""
+COMMIT_HASH="${COMMIT_HASH:-}"
 BUILD_UNIXTIME="${BUILD_UNIXTIME}"
 BUILD_DATE="${BUILD_DATE}"
 PACKAGE_FILENAME=""
@@ -118,7 +118,9 @@ check_type_dependencies() {
 
 set_build_parameters() {
     VERSION="$(grep '"version": ' package.json | awk -F ':' '{print $2}' | tr -d ' ' | tr -d ',' | tr -d '"')"
-    COMMIT_HASH="$(git rev-parse --short=7 HEAD)"
+    if [ -z "$COMMIT_HASH" ]; then
+        COMMIT_HASH="$(git rev-parse --short=7 HEAD)"
+    fi
 
     if [ -z "$BUILD_UNIXTIME" ]; then
         BUILD_UNIXTIME="$(date '+%s')"
