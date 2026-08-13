@@ -2766,7 +2766,7 @@
         "batchCount": "{count} batches",
         "pendingCount": "{count} pending",
         "noHistory": "No import history yet",
-        "noHistoryHint": "Upload an Alipay or WeChat statement to start a traceable import.",
+        "noHistoryHint": "Upload an Alipay, WeChat or bank statement to start a traceable import.",
         "selectBatch": "Select an import batch",
         "selectBatchHint": "Review its summary, row evidence, duplicates and conflicts here.",
         "reparse": "Reparse",
@@ -2790,7 +2790,8 @@
         },
         "source": {
             "alipay": "Alipay",
-            "wechat": "WeChat Pay"
+            "wechat": "WeChat Pay",
+            "bank": "Bank"
         },
         "status": {
             "receiving": "Receiving",
@@ -2837,6 +2838,77 @@
             "ledgerMappingHint": "Optional. This only pre-fills confirmations and does not change source identity.",
             "noLedgerMapping": "No ledger mapping"
         },
+        "genericBank": {
+            "title": "Configure Generic Bank CSV",
+            "configure": "Configure as Generic Bank CSV",
+            "templateNotice": "This is a generic template without bank-specific rules. Map it to the file's actual columns.",
+            "privacyNotice": "The column mapping is submitted only with this parse request. Full account numbers and raw fields are not logged by this view.",
+            "autoDetectionFailed": "The statement was not detected automatically. Generic bank CSV setup is now open.",
+            "sourceSection": "Bank Source Account",
+            "sourceHint": "Choose or create a bank source profile with a required formal ledger-account mapping.",
+            "noUsableSourceAccount": "No bank profile has a ledger-account mapping",
+            "unmappedProfiles": "{count} other bank profile(s) have no ledger mapping and cannot be used for this import.",
+            "ledgerRequired": "Required. A bank statement must map to a specific ledger account.",
+            "fileSection": "File and Time",
+            "columnNumberHint": "Column numbers in this form start at 1; leave optional columns blank. The header row also starts at 1.",
+            "encoding": "File Encoding",
+            "delimiter": "Delimiter",
+            "headerRow": "Header Row",
+            "timeFormat": "Time Format",
+            "amountSection": "Amount and Direction",
+            "amountHint": "Choose the one amount structure used by this file. Columns from other modes are not submitted.",
+            "signedPositiveDirection": "Positive Values Mean",
+            "incomeValues": "Income Direction Values",
+            "expenseValues": "Expense Direction Values",
+            "directionValuesHint": "Type a value and press Enter. Case and surrounding whitespace are normalized.",
+            "optionalColumns": "Optional Evidence Columns",
+            "optionalColumnsHint": "Only map columns that clearly exist and have the stated meaning.",
+            "requiredColumn": "Required; column numbering starts at 1",
+            "optionalColumn": "Optional; blank means unused",
+            "parse": "Parse with This Mapping",
+            "encodingOption": {
+                "utf8": "UTF-8",
+                "gb18030": "GB18030",
+                "gbk": "GBK"
+            },
+            "delimiterOption": {
+                "comma": "Comma",
+                "tab": "Tab"
+            },
+            "amountMode": {
+                "signed": "Signed Amount",
+                "amountDirection": "Amount + Direction",
+                "incomeExpense": "Income + Expense Columns"
+            },
+            "column": {
+                "time": "Transaction Time Column",
+                "amount": "Amount Column",
+                "direction": "Direction Column",
+                "income": "Income Amount Column",
+                "expense": "Expense Amount Column",
+                "currency": "Currency Column",
+                "transactionId": "Source Transaction ID Column",
+                "orderId": "Order ID Column",
+                "merchantOrderId": "Merchant Order ID Column",
+                "counterparty": "Counterparty Column",
+                "item": "Item or Summary Column",
+                "paymentMethod": "Payment Method Column",
+                "status": "Status Column",
+                "transactionType": "Transaction Type Column",
+                "note": "Note Column"
+            },
+            "error": {
+                "header_row_required": "The header row must be an integer from 1 to 10000.",
+                "column_required": "Complete every column required by the selected amount mode.",
+                "column_out_of_range": "Column numbers must be integers from 1 to 1024.",
+                "column_duplicate": "A column cannot be mapped to more than one field.",
+                "direction_values_required": "Income and expense direction values are both required.",
+                "direction_values_invalid": "Direction values cannot be empty, duplicated, too long or contain control characters.",
+                "direction_values_overlap": "Income and expense direction values cannot overlap.",
+                "source_account_required": "Choose an active bank source account.",
+                "ledger_account_required": "The bank source account must map to a ledger account."
+            }
+        },
         "posting": {
             "title": "Confirm Ledger Transaction",
             "reuseTitle": "Confirm Exact Duplicate",
@@ -2879,7 +2951,8 @@
             "row_status_unknown": "A transaction status is unknown",
             "row_transaction_type_unknown": "A transaction type is unknown",
             "row_identifier_invalid": "A source identifier is invalid",
-            "row_unsupported": "A statement row is unsupported"
+            "row_unsupported": "A statement row is unsupported",
+            "bank_row_column_mismatch": "The row has a different number of columns than the header"
         },
 		"operations": {
 			"undoImpact": "View Undo Impact",

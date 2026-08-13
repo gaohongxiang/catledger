@@ -1,6 +1,6 @@
 import type { TransactionType } from '@/core/transaction.ts';
 
-export type PersonalFinanceSourceType = 'alipay' | 'wechat';
+export type PersonalFinanceSourceType = 'alipay' | 'wechat' | 'bank';
 export type PersonalFinanceBatchStatus = 'receiving' | 'parsing' | 'awaiting_source_account' | 'ready' | 'posting' | 'partially_posted' | 'completed' | 'failed' | 'discarded';
 export type PersonalFinanceParseState = 'valid' | 'invalid';
 export type PersonalFinanceIdentityState = 'not_evaluated' | 'new' | 'exact_duplicate' | 'identity_conflict' | 'batch_local';
@@ -136,9 +136,74 @@ export interface PersonalFinanceSourceAccountDiscovery {
 export interface PersonalFinanceReparseRequest {
     readonly fileId: string;
     readonly sourceAccountId?: string;
+    readonly parserName?: string;
     readonly currency: string;
     readonly timezoneUtcOffset: number;
     readonly reasonCode: string;
+    readonly genericCsvMapping?: PersonalFinanceGenericCsvMapping;
+}
+
+export type PersonalFinanceGenericCsvEncoding = 'utf8' | 'gb18030' | 'gbk';
+export type PersonalFinanceGenericCsvDelimiter = 'comma' | 'tab';
+export type PersonalFinanceGenericCsvAmountMode = 'signed' | 'amount_direction' | 'income_expense';
+export type PersonalFinanceGenericCsvTimeFormat =
+    '2006-01-02 15:04:05' |
+    '2006-01-02 15:04' |
+    '2006/01/02 15:04:05' |
+    '2006/01/02 15:04' |
+    '2006-01-02' |
+    '2006/01/02';
+
+export interface PersonalFinanceGenericCsvMapping {
+    readonly encoding: PersonalFinanceGenericCsvEncoding;
+    readonly delimiter: PersonalFinanceGenericCsvDelimiter;
+    readonly headerRow: number;
+    readonly timeFormat: PersonalFinanceGenericCsvTimeFormat;
+    readonly amountMode: PersonalFinanceGenericCsvAmountMode;
+    readonly signedPositiveDirection: 'income' | 'expense' | '';
+    readonly timeColumn: number;
+    readonly amountColumn: number;
+    readonly directionColumn: number;
+    readonly incomeColumn: number;
+    readonly expenseColumn: number;
+    readonly currencyColumn: number;
+    readonly transactionIdColumn: number;
+    readonly orderIdColumn: number;
+    readonly merchantOrderIdColumn: number;
+    readonly counterpartyColumn: number;
+    readonly itemColumn: number;
+    readonly paymentMethodColumn: number;
+    readonly statusColumn: number;
+    readonly transactionTypeColumn: number;
+    readonly noteColumn: number;
+    readonly incomeValues: string[];
+    readonly expenseValues: string[];
+}
+
+export interface PersonalFinanceGenericBankMappingForm {
+    encoding: PersonalFinanceGenericCsvEncoding;
+    delimiter: PersonalFinanceGenericCsvDelimiter;
+    headerRow: number | null;
+    timeFormat: PersonalFinanceGenericCsvTimeFormat;
+    amountMode: PersonalFinanceGenericCsvAmountMode;
+    signedPositiveDirection: 'income' | 'expense';
+    timeColumn: number | null;
+    amountColumn: number | null;
+    directionColumn: number | null;
+    incomeColumn: number | null;
+    expenseColumn: number | null;
+    currencyColumn: number | null;
+    transactionIdColumn: number | null;
+    orderIdColumn: number | null;
+    merchantOrderIdColumn: number | null;
+    counterpartyColumn: number | null;
+    itemColumn: number | null;
+    paymentMethodColumn: number | null;
+    statusColumn: number | null;
+    transactionTypeColumn: number | null;
+    noteColumn: number | null;
+    incomeValues: string[];
+    expenseValues: string[];
 }
 
 export interface PersonalFinanceReparseResult {
