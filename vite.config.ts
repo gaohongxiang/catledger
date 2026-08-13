@@ -66,7 +66,7 @@ function injectFramework7CssFile({ htmlFileName, placeHolders }: { htmlFileName:
 export default defineConfig(() => {
     const licenseContent = fs.readFileSync('./LICENSE', { encoding: 'utf-8' });
     const buildUnixTime = process.env['buildUnixTime'] || '';
-    const buildCommitHash = process.env['buildCommitHash'] || git.short();
+    const buildCommitHash = process.env['COMMIT_HASH'] || git.short();
 
     const options: UserConfig = {
         root: SRC_DIR,
