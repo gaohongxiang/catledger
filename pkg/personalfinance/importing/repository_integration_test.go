@@ -1,4 +1,4 @@
-//go:build pf_store_db_integration
+//go:build pf_store_db_integration || pf_importing_db_integration
 
 package importing_test
 
@@ -15,10 +15,10 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
 )
 
-const storeIntegrationDatabaseSentinel = "ezbookkeeping-pf-isolated-compose-v1"
+const importingIntegrationDatabaseSentinel = "ezbookkeeping-pf-isolated-compose-v1"
 
 func TestRepositoryIntegrationContract(t *testing.T) {
-	config, err := storeIntegrationDatabaseConfig()
+	config, err := importingIntegrationDatabaseConfig()
 
 	if err != nil {
 		t.Fatalf("invalid STORE-101 integration database: %v", err)
@@ -31,7 +31,7 @@ func TestRepositoryIntegrationContract(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		if err := cleanupStoreIntegrationTables(database); err != nil {
+		if err := cleanupImportingIntegrationTables(database); err != nil {
 			t.Errorf("clean STORE-101 integration database: %v", err)
 		}
 
@@ -44,7 +44,7 @@ func TestRepositoryIntegrationContract(t *testing.T) {
 		t.Fatalf("ping STORE-101 integration database: %v", err)
 	}
 
-	if err := cleanupStoreIntegrationTables(database); err != nil {
+	if err := cleanupImportingIntegrationTables(database); err != nil {
 		t.Fatalf("prepare STORE-101 integration database: %v", err)
 	}
 
@@ -67,8 +67,8 @@ func TestRepositoryIntegrationContract(t *testing.T) {
 	assertRepositoryContract(t, repository, database)
 }
 
-func storeIntegrationDatabaseConfig() (*settings.DatabaseConfig, error) {
-	if os.Getenv("PF_DB_INTEGRATION") != "1" || os.Getenv("PF_DB_TEST_SENTINEL") != storeIntegrationDatabaseSentinel {
+func importingIntegrationDatabaseConfig() (*settings.DatabaseConfig, error) {
+	if os.Getenv("PF_DB_INTEGRATION") != "1" || os.Getenv("PF_DB_TEST_SENTINEL") != importingIntegrationDatabaseSentinel {
 		return nil, fmt.Errorf("isolated Compose sentinel is missing")
 	}
 
@@ -112,7 +112,7 @@ func storeIntegrationDatabaseConfig() (*settings.DatabaseConfig, error) {
 	return config, nil
 }
 
-func cleanupStoreIntegrationTables(database *datastore.Database) error {
+func cleanupImportingIntegrationTables(database *datastore.Database) error {
 	tables := []string{
 		"pf_raw_import_row",
 		"pf_source_identity",
