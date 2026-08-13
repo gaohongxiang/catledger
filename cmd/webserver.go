@@ -424,6 +424,7 @@ func startWebServer(c *core.CliContext) error {
 				apiV1Route.POST("/personal_finance/import_batches/reparse.json", bindApi(api.PersonalFinanceImports.ImportBatchReparseHandler, config))
 				apiV1Route.POST("/personal_finance/import_batches/post.json", bindApi(api.PersonalFinanceImports.ImportBatchPostHandler, config))
 				apiV1Route.POST("/personal_finance/source_accounts/save.json", bindApi(api.PersonalFinanceImports.SourceAccountSaveHandler, config))
+				apiV1Route.POST("/personal_finance/reconciliation/candidates/generate.json", bindApi(api.PersonalFinanceImports.ReconciliationCandidateGenerateHandler, config))
 			}
 
 			apiV1Route.GET("/personal_finance/import_files/list.json", bindApi(api.PersonalFinanceImports.ImportFileListHandler, config))

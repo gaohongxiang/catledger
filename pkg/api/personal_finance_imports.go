@@ -12,6 +12,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/log"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 	"github.com/mayswind/ezbookkeeping/pkg/services"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
@@ -47,6 +48,7 @@ type PersonalFinanceImportsApi struct {
 	flowServiceFactory      func() (personalFinanceFlowApplication, error)
 	postingServiceFactory   func() (personalFinancePostingApplication, error)
 	lifecycleServiceFactory func() (personalFinanceLifecycleApplication, error)
+	candidateServiceFactory func() (personalFinanceCandidateApplication, error)
 }
 
 // PersonalFinanceImports 是 Web 路由使用的默认 API 实例。
@@ -91,6 +93,9 @@ var PersonalFinanceImports = &PersonalFinanceImportsApi{
 			return nil, err
 		}
 		return importing.NewLifecycleService(repository, services.PersonalFinanceImportFilesStorage, services.PersonalFinanceImportFilesStorage)
+	},
+	candidateServiceFactory: func() (personalFinanceCandidateApplication, error) {
+		return reconciliation.NewCandidateService(datastore.Container.UserDataStore, uuid.Container)
 	},
 }
 
