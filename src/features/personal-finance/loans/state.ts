@@ -276,7 +276,7 @@ function isCivilDate(value: string): boolean {
 }
 
 function isPptr(value?: string): value is string {
-    return typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value);
+    return typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value) && BigInt(value) <= 9223372036854775807n;
 }
 
 function isRateQuoteType(value: string): boolean {

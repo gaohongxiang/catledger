@@ -103,6 +103,9 @@ describe('personal finance loan shell state', () => {
     });
 
     it('keeps net disbursement and first-version quote rules explicit', () => {
+        expect(validateLoanCalculationInput(calculationInput({ quotedRatePptr: '9223372036854775807' })).quotedRatePptr)
+            .toBe('9223372036854775807');
+        expectValidationCode(calculationInput({ quotedRatePptr: '9223372036854775808' }), 'rate_required');
         expectValidationCode(calculationInput({ actualDisbursementAmount: 5000000 }), 'actual_disbursement_mismatch');
         expectValidationCode(calculationInput({
             rateQuoteType: 'installment',

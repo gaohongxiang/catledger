@@ -389,18 +389,6 @@ describe('personal finance loan HTTP service', () => {
                     updatedUnixTime: 1000,
                     counterpartUpdatedUnixTime: 1001,
                     comment: 'must-not-enter-browser-model'
-                }, {
-                    transactionId: '403',
-                    transactionType: 'transfer',
-                    transactionDate: '2026-09-13',
-                    amount: 400000,
-                    currency: 'CNY',
-                    maskedSourceAccount: '账户 ·· 03',
-                    maskedDestinationAccount: null,
-                    eligible: false,
-                    reasonCodes: [{ code: 'incomplete_transfer_pair' }],
-                    updatedUnixTime: 1002,
-                    counterpartUpdatedUnixTime: null
                 }],
                 limitReached: false
             }]
@@ -422,7 +410,6 @@ describe('personal finance loan HTTP service', () => {
             counterpartUpdatedUnixTime: 1001
         });
         expect(result.groups[0]?.candidates[0]).not.toHaveProperty('comment');
-        expect(result.groups[0]?.candidates[1]).not.toHaveProperty('counterpartUpdatedUnixTime');
 
         serviceMocks.listPersonalFinanceLoanSettlementCandidates.mockResolvedValue(apiResponse({
             contractId: '101',
@@ -438,6 +425,7 @@ describe('personal finance loan HTTP service', () => {
                     amount: 50000,
                     currency: 'CNY',
                     maskedSourceAccount: '账户 ·· 01',
+                    maskedDestinationAccount: 'must-not-exist-for-expense',
                     eligible: true,
                     reasonCodes: [],
                     updatedUnixTime: 1000,
@@ -451,6 +439,63 @@ describe('personal finance loan HTTP service', () => {
             installmentId: '301',
             componentType: 'interest'
         })).rejects.toMatchObject({ code: 'invalid_loan_transfer_snapshot' });
+
+        serviceMocks.listPersonalFinanceLoanSettlementCandidates.mockResolvedValue(apiResponse({
+            contractId: '101',
+            installmentId: '301',
+            groups: [{
+                componentType: 'principal',
+                expectedAmount: 400000,
+                outstandingAmount: 400000,
+                candidates: [{
+                    transactionId: '403',
+                    transactionType: 'transfer',
+                    transactionDate: '2026-09-13',
+                    amount: 400000,
+                    currency: 'CNY',
+                    maskedSourceAccount: '账户 ·· 03',
+                    maskedDestinationAccount: null,
+                    eligible: false,
+                    reasonCodes: [{ code: 'incomplete_transfer_pair' }],
+                    updatedUnixTime: 1002,
+                    counterpartUpdatedUnixTime: null
+                }],
+                limitReached: false
+            }]
+        }));
+        await expect(loanApi.listSettlementCandidates({
+            contractId: '101',
+            installmentId: '301',
+            componentType: 'principal'
+        })).rejects.toMatchObject({ code: 'invalid_loan_transfer_snapshot' });
+
+        serviceMocks.listPersonalFinanceLoanSettlementCandidates.mockResolvedValue(apiResponse({
+            contractId: '101',
+            installmentId: '301',
+            groups: [{
+                componentType: 'interest',
+                expectedAmount: 50000,
+                outstandingAmount: 50000,
+                candidates: [{
+                    transactionId: '404',
+                    transactionType: 'expense',
+                    transactionDate: '2026-09-13',
+                    amount: 50000,
+                    currency: 'CNY',
+                    maskedSourceAccount: '账户 ·· 04',
+                    eligible: true,
+                    reasonCodes: [],
+                    updatedUnixTime: 0,
+                    counterpartUpdatedUnixTime: null
+                }],
+                limitReached: false
+            }]
+        }));
+        await expect(loanApi.listSettlementCandidates({
+            contractId: '101',
+            installmentId: '301',
+            componentType: 'interest'
+        })).rejects.toMatchObject({ code: 'invalid_loan_integer' });
     });
 
     it('preserves existing snapshots and explicit transfer category while applying settlement', async () => {
@@ -548,7 +593,8 @@ describe('personal finance loan HTTP service', () => {
         const invalidResults = [
             calculationResult({ summary: calculationSummary({ irrStatus: 'future_status' }) }),
             calculationResult({ installments: [calculatedInstallment({ installmentNumber: -1 })] }),
-            calculationResult({ summary: calculationSummary({ costRatioPptr: 110400000000 }) })
+            calculationResult({ summary: calculationSummary({ costRatioPptr: 110400000000 }) }),
+            calculationResult({ summary: calculationSummary({ costRatioPptr: '9223372036854775808' }) })
         ];
         for (const value of invalidResults) {
             serviceMocks.calculatePersonalFinanceLoan.mockResolvedValueOnce(apiResponse(value));

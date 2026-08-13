@@ -209,7 +209,7 @@ function asCivilDate(value: unknown): string {
 }
 
 function asPptr(value: unknown): LoanPptr {
-    if (typeof value !== 'string' || !/^(0|[1-9]\d*)$/.test(value)) {
+    if (typeof value !== 'string' || !/^(0|[1-9]\d*)$/.test(value) || BigInt(value) > 9223372036854775807n) {
         fail('invalid_loan_pptr');
     }
     return value;
@@ -533,11 +533,23 @@ function normalizeContractPage(value: unknown): LoanContractPage {
 function normalizeCandidate(value: unknown): LoanSettlementCandidate {
     const candidate = asRecord(value);
     const transactionType = asEnum(candidate['transactionType'], ['transfer', 'expense'] as const);
-    const counterpartUpdatedUnixTime = asOptionalNonNegativeInteger(candidate['counterpartUpdatedUnixTime']);
-    if (transactionType === 'expense' && typeof counterpartUpdatedUnixTime !== 'undefined') {
+    const updatedUnixTime = asPositiveInteger(candidate['updatedUnixTime']);
+    const counterpartValue = candidate['counterpartUpdatedUnixTime'];
+    const counterpartUpdatedUnixTime = counterpartValue === null || typeof counterpartValue === 'undefined'
+        ? undefined
+        : asPositiveInteger(counterpartValue);
+    const destinationValue = candidate['maskedDestinationAccount'];
+    const maskedDestinationAccount = typeof destinationValue === 'string' && destinationValue.length > 0
+        ? destinationValue
+        : undefined;
+    const hasDestinationField = destinationValue !== null && typeof destinationValue !== 'undefined';
+    if (transactionType === 'transfer') {
+        if (typeof counterpartUpdatedUnixTime === 'undefined' || typeof maskedDestinationAccount === 'undefined') {
+            fail('invalid_loan_transfer_snapshot');
+        }
+    } else if (typeof counterpartUpdatedUnixTime !== 'undefined' || hasDestinationField) {
         fail('invalid_loan_transfer_snapshot');
     }
-    const maskedDestinationAccount = candidate['maskedDestinationAccount'];
     return {
         transactionId: asIdentifier(candidate['transactionId']),
         transactionType,
@@ -545,13 +557,11 @@ function normalizeCandidate(value: unknown): LoanSettlementCandidate {
         amount: asNonNegativeInteger(candidate['amount']),
         currency: normalizeCurrency(candidate['currency']),
         maskedSourceAccount: asString(candidate['maskedSourceAccount']),
-        ...(maskedDestinationAccount === null || typeof maskedDestinationAccount === 'undefined'
-            ? {}
-            : { maskedDestinationAccount: asString(maskedDestinationAccount) }),
+        ...(transactionType === 'transfer' ? { maskedDestinationAccount: maskedDestinationAccount as string } : {}),
         eligible: asBoolean(candidate['eligible']),
         reasonCodes: normalizeReasons(candidate['reasonCodes']),
-        updatedUnixTime: asNonNegativeInteger(candidate['updatedUnixTime']),
-        ...(typeof counterpartUpdatedUnixTime === 'undefined' ? {} : { counterpartUpdatedUnixTime })
+        updatedUnixTime,
+        ...(transactionType === 'transfer' ? { counterpartUpdatedUnixTime: counterpartUpdatedUnixTime as number } : {})
     };
 }
 
