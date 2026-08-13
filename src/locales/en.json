@@ -2877,6 +2877,30 @@
                 "message": "Mark this case as “{decision}”. The decision is persisted and will not be silently overwritten by overlapping imports.",
                 "versionNotice": "The server checks the current case version. If evidence changed, refresh and review again."
             },
+            "composer": {
+                "title": "Confirm Field Sources and Ledger Handling",
+                "privacy": "Select only backend-provided masked member summaries. Field-source choices do not copy raw payloads, and draft comments remain empty.",
+                "accountSource": "Account and amount source member",
+                "merchantSource": "Merchant and description source member",
+                "refundOriginal": "Original transaction member",
+                "sourceAccount": "Ledger account",
+                "primaryDraft": "Required ledger draft",
+                "originalDraft": "Original transaction draft",
+                "refundDraft": "Refund transaction draft",
+                "noDraft": "A related member already has a formal event, or this decision creates no ledger draft. Only field sources and the relationship are saved.",
+                "validation": {
+                    "field_source_required": "Explicitly select the account/amount source member and the merchant/description source member.",
+                    "refund_original_required": "Explicitly select the original transaction member for this refund relationship.",
+                    "evidence_incomplete": "Normalized evidence lacks a valid amount, currency, or time, so a safe ledger draft cannot be created.",
+                    "currency_mismatch": "Member currencies differ, so the frontend cannot create a ledger draft.",
+                    "draft_required": "This relationship has no existing formal event. Complete the required ledger draft.",
+                    "transaction_type_required": "The evidence direction is unclear. Explicitly choose income or expense.",
+                    "category_invalid": "Select a valid category matching the transaction type.",
+                    "account_invalid": "Select a valid ledger account matching the evidence currency.",
+                    "transfer_accounts_must_differ": "Internal-transfer source and destination accounts must differ.",
+                    "refund_types_must_be_opposite": "The original transaction and refund must use opposite income/expense types."
+                }
+            },
             "undo": {
                 "inspect": "Inspect Undo Impact",
                 "inspectAvailable": "Impact available",

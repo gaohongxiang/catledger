@@ -5,6 +5,7 @@ import { generateRandomUUID } from '@/lib/misc.ts';
 
 import { reconciliationApi } from './service.ts';
 import { buildReconciliationDecisionRequest, buildReconciliationUndoRequest } from './state.ts';
+import type { ReconciliationDecisionBuildContext } from './state.ts';
 import type {
     ReconciliationCandidateGenerateResult,
     ReconciliationCaseCursor,
@@ -13,7 +14,7 @@ import type {
     ReconciliationCaseStatus,
     ReconciliationCaseSummary,
     ReconciliationDecisionResult,
-    ReconciliationDecisionType,
+    ReconciliationDecisionComposition,
     ReconciliationUndoImpact,
     ReconciliationUndoResult
 } from './models.ts';
@@ -66,7 +67,10 @@ export const useReconciliationStore = defineStore('personalFinanceReconciliation
         }
     }
 
-    async function decide(decisionType: ReconciliationDecisionType): Promise<ReconciliationDecisionResult> {
+    async function decide(
+        composition: ReconciliationDecisionComposition,
+        context: ReconciliationDecisionBuildContext
+    ): Promise<ReconciliationDecisionResult> {
         if (!selectedCase.value) {
             throw new Error('reconciliation_case_required');
         }
@@ -75,7 +79,8 @@ export const useReconciliationStore = defineStore('personalFinanceReconciliation
         try {
             const result = await reconciliationApi.decide(buildReconciliationDecisionRequest({
                 reconciliationCase: selectedCase.value,
-                decisionType,
+                composition,
+                context,
                 idempotencyKey: `pf-rec-ui-v1:${generateRandomUUID()}`
             }));
             const refreshedCase = result.case ?? await reconciliationApi.getCase(selectedCase.value.id);

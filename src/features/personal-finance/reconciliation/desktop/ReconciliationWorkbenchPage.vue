@@ -251,24 +251,13 @@
                                     {{ tt('personalFinance.reconciliation.activeDecision') }}
                                 </v-alert>
 
-                                <v-radio-group class="decision-options mt-3" hide-details v-model="selectedDecision" v-if="canDecide">
-                                    <div class="decision-option" :key="decisionType" v-for="decisionType in reconciliationDecisionTypes">
-                                        <v-radio :value="decisionType">
-                                            <template #label>
-                                                <div>
-                                                    <div class="font-weight-medium">{{ tt(getReconciliationDecisionTypeKey(decisionType)) }}</div>
-                                                    <div class="text-body-small text-medium-emphasis">{{ tt(`personalFinance.reconciliation.decisionHintByType.${decisionType}`) }}</div>
-                                                </div>
-                                            </template>
-                                        </v-radio>
-                                    </div>
-                                </v-radio-group>
-
-                                <div class="d-flex justify-end mt-4" v-if="canDecide">
-                                    <v-btn color="primary" :disabled="!selectedDecision" :loading="reconciliationStore.submitting" @click="showDecisionDialog = true">
-                                        {{ tt('personalFinance.reconciliation.confirmDecision') }}
-                                    </v-btn>
-                                </div>
+                                <decision-composer
+                                    ref="decisionComposer"
+                                    :reconciliation-case="reconciliationStore.selectedCase"
+                                    :submitting="reconciliationStore.submitting"
+                                    @submit="submitDecision"
+                                    v-if="canDecide"
+                                />
                             </div>
                         </template>
                     </v-col>
@@ -276,25 +265,6 @@
             </v-card>
         </v-col>
     </v-row>
-
-    <v-dialog width="560" v-model="showDecisionDialog">
-        <v-card>
-            <v-card-title class="pa-5">{{ tt('personalFinance.reconciliation.confirm.title') }}</v-card-title>
-            <v-card-text class="px-5 pb-5">
-                <p class="mb-3">{{ tt('personalFinance.reconciliation.confirm.message', {
-                    decision: selectedDecision ? tt(getReconciliationDecisionTypeKey(selectedDecision)) : ''
-                }) }}</p>
-                <v-alert type="info" variant="tonal">{{ tt('personalFinance.reconciliation.confirm.versionNotice') }}</v-alert>
-            </v-card-text>
-            <v-card-actions class="px-5 pb-5">
-                <v-spacer />
-                <v-btn variant="text" @click="showDecisionDialog = false">{{ tt('Cancel') }}</v-btn>
-                <v-btn color="primary" :loading="reconciliationStore.submitting" @click="submitDecision">
-                    {{ tt('Confirm') }}
-                </v-btn>
-            </v-card-actions>
-        </v-card>
-    </v-dialog>
 
     <v-dialog width="640" v-model="showUndoDialog">
         <v-card>
@@ -343,6 +313,7 @@
 
 <script setup lang="ts">
 import SnackBar from '@/components/desktop/SnackBar.vue';
+import DecisionComposer from '../components/DecisionComposer.vue';
 
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue';
 
@@ -355,10 +326,11 @@ import { getSourceTypeKey } from '../../presentation.ts';
 import type { PersonalFinanceSourceType } from '../../models.ts';
 import type {
     ReconciliationCaseStatus,
-    ReconciliationDecisionType,
+    ReconciliationDecisionComposition,
     ReconciliationReason,
     ReconciliationUndoImpact
 } from '../models.ts';
+import type { ReconciliationDecisionBuildContext } from '../state.ts';
 import {
     getReconciliationCaseStatusColor,
     getReconciliationCaseStatusKey,
@@ -367,8 +339,7 @@ import {
 } from '../presentation.ts';
 import {
     canDecideReconciliationCase,
-    canInspectReconciliationUndo,
-    reconciliationDecisionTypes
+    canInspectReconciliationUndo
 } from '../state.ts';
 import { useReconciliationStore } from '../store.ts';
 
@@ -384,6 +355,7 @@ import {
 } from '@mdi/js';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
+type DecisionComposerType = InstanceType<typeof DecisionComposer>;
 type UndoOutcome = 'automaticDelete' | 'reopenOnly' | 'actionRequired';
 
 const CASE_PAGE_LIMIT = 100;
@@ -392,11 +364,10 @@ const { tt, formatDateTimeToShortDateTime, formatAmountToLocalizedNumeralsWithCu
 const personalFinanceStore = usePersonalFinanceStore();
 const reconciliationStore = useReconciliationStore();
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
+const decisionComposer = useTemplateRef<DecisionComposerType>('decisionComposer');
 
 const anchorBatchId = ref<string>('');
 const statusFilter = ref<ReconciliationCaseStatus>('open');
-const selectedDecision = ref<ReconciliationDecisionType | null>(null);
-const showDecisionDialog = ref<boolean>(false);
 const showUndoDialog = ref<boolean>(false);
 const loadingUndoImpact = ref<boolean>(false);
 const undoImpact = ref<ReconciliationUndoImpact | null>(null);
@@ -514,10 +485,8 @@ async function reload(): Promise<void> {
 }
 
 async function openCase(caseId: string): Promise<void> {
-    selectedDecision.value = null;
     try {
         await reconciliationStore.openCase(caseId);
-        selectedDecision.value = reconciliationStore.selectedCase?.suggestedRelationType ?? null;
     } catch {
         snackbar.value?.showMessage('personalFinance.reconciliation.error.operationFailed');
     }
@@ -544,17 +513,16 @@ async function generateCandidates(): Promise<void> {
     }
 }
 
-async function submitDecision(): Promise<void> {
-    if (!selectedDecision.value) {
-        return;
-    }
+async function submitDecision(
+    composition: ReconciliationDecisionComposition,
+    context: ReconciliationDecisionBuildContext
+): Promise<void> {
     try {
-        await reconciliationStore.decide(selectedDecision.value);
+        await reconciliationStore.decide(composition, context);
         await loadCases();
-        showDecisionDialog.value = false;
+        decisionComposer.value?.close();
         snackbar.value?.showMessage('personalFinance.reconciliation.decisionSaved');
     } catch {
-        showDecisionDialog.value = false;
         snackbar.value?.showMessage('personalFinance.reconciliation.error.staleOrFailed');
     }
 }
@@ -604,7 +572,6 @@ onMounted(async () => {
         loadCases(true)
     ]);
     anchorBatchId.value = personalFinanceStore.batches[0]?.id ?? '';
-    selectedDecision.value = reconciliationStore.selectedCase?.suggestedRelationType ?? null;
 });
 </script>
 

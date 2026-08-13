@@ -2877,6 +2877,30 @@
                 "message": "将此案例标记为“{decision}”。该决定会持久保存，后续重叠导入不会静默覆盖。",
                 "versionNotice": "服务端会用当前案例版本做并发校验；若证据已变化，请刷新后重新确认。"
             },
+            "composer": {
+                "title": "确认字段来源与账本处理",
+                "privacy": "只选择后端提供的脱敏成员摘要。字段来源记录不会复制原始 payload，草稿备注保持为空。",
+                "accountSource": "账户与金额来源成员",
+                "merchantSource": "商户与说明来源成员",
+                "refundOriginal": "退款关系中的原交易成员",
+                "sourceAccount": "账本账户",
+                "primaryDraft": "必要账本草稿",
+                "originalDraft": "原交易账本草稿",
+                "refundDraft": "退款账本草稿",
+                "noDraft": "相关成员已有正式事件，或该决定不产生账本草稿；本次只保存字段来源与关系决定。",
+                "validation": {
+                    "field_source_required": "请明确选择账户/金额来源成员和商户/说明来源成员。",
+                    "refund_original_required": "请明确选择退款关系中的原交易成员。",
+                    "evidence_incomplete": "规范化证据缺少有效金额、币种或时间，无法创建安全账本草稿。",
+                    "currency_mismatch": "成员币种不一致，不能在前端生成账本草稿。",
+                    "draft_required": "该关系没有既有正式事件，必须完整填写必要账本草稿。",
+                    "transaction_type_required": "证据方向不明确，请显式选择收入或支出类型。",
+                    "category_invalid": "请选择与交易类型匹配的有效分类。",
+                    "account_invalid": "请选择与证据币种匹配的有效账本账户。",
+                    "transfer_accounts_must_differ": "内部转账的源账户与目标账户必须不同。",
+                    "refund_types_must_be_opposite": "原交易与退款必须使用相反的收入/支出类型。"
+                }
+            },
             "undo": {
                 "inspect": "查看撤销影响",
                 "inspectAvailable": "可查看影响",

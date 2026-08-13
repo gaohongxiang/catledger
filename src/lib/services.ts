@@ -187,6 +187,7 @@ import type {
     PersonalFinanceImportRowPage,
     PersonalFinanceImportUploadResult,
     PersonalFinancePostingRequest,
+    PersonalFinancePostingDraft,
     PersonalFinancePostingResult,
     PersonalFinanceReparseRequest,
     PersonalFinanceReparseResult,
@@ -196,6 +197,21 @@ import type {
     PersonalFinanceUndoImpact,
     PersonalFinanceConsistencyReport
 } from '@/features/personal-finance/models.ts';
+
+interface PersonalFinanceReconciliationDecisionRequest {
+    readonly caseId: string;
+    readonly expectedCaseVersion: number;
+    readonly idempotencyKey: string;
+    readonly decisionType: string;
+    readonly fieldSelection: {
+        readonly accountAmountMemberOrder: 0 | 1 | 2;
+        readonly merchantItemMemberOrder: 0 | 1 | 2;
+        readonly refundOriginalMemberOrder: 0 | 1 | 2;
+    };
+    readonly primaryDraft?: PersonalFinancePostingDraft;
+    readonly refundOriginalDraft?: PersonalFinancePostingDraft;
+    readonly refundTransactionDraft?: PersonalFinancePostingDraft;
+}
 
 import {
     getCurrentToken,
@@ -940,7 +956,7 @@ export default {
     getPersonalFinanceReconciliationCase: ({ caseId }: { caseId: string }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/reconciliation/cases/get.json?case_id=${encodeURIComponent(caseId)}`);
     },
-    decidePersonalFinanceReconciliationCase: (request: { caseId: string, expectedCaseVersion: number, idempotencyKey: string, decisionType: string }): ApiResponsePromise<unknown> => {
+    decidePersonalFinanceReconciliationCase: (request: PersonalFinanceReconciliationDecisionRequest): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/reconciliation/cases/decide.json', request);
     },
     getPersonalFinanceReconciliationUndoImpact: ({ caseId }: { caseId: string }): ApiResponsePromise<unknown> => {
