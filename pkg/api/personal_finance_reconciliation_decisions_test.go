@@ -201,6 +201,27 @@ func TestReconciliationWritePermissionAndErrorMappings(t *testing.T) {
 	}
 }
 
+func TestReconciliationDecisionResponseUsesFinalStableReasonCodes(t *testing.T) {
+	result := validReconciliationDecision(reconciliation.DECISION_TYPE_SAME_EVENT)
+	result.Status = reconciliation.DECISION_STATUS_ACTION_REQUIRED
+	result.ReasonCodes = []string{"ledger_draft_required"}
+	result.ErrorCode = "ledger_draft_required"
+
+	response, err := newPersonalFinanceReconciliationDecisionResponse(result)
+	if err != nil {
+		t.Fatalf("convert final reconciliation reason: %v", err)
+	}
+	text := marshalReconciliationResponse(t, response)
+	if !strings.Contains(text, `"reasonCodes":["ledger_draft_required"]`) || !strings.Contains(text, `"errorCode":"ledger_draft_required"`) {
+		t.Fatalf("final reconciliation reason was omitted: %s", text)
+	}
+
+	result.ReasonCodes = []string{"private_dynamic_reason"}
+	if response, err = newPersonalFinanceReconciliationDecisionResponse(result); err == nil || response != nil {
+		t.Fatalf("unstable reconciliation reason was accepted: response=%v error=%v", response, err)
+	}
+}
+
 type reconciliationAPITestService struct {
 	page                                       *reconciliation.CasePage
 	detail                                     *reconciliation.CaseDetail
