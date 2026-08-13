@@ -711,6 +711,42 @@ func countActiveAllocations(sess *xorm.Session, uid int64, contractId int64) (in
 	return count, nil
 }
 
+// CountAllocations 返回当前合同全部当前或历史分配行数。
+func (r *Repository) CountAllocations(c core.Context, uid int64, contractId int64) (int64, error) {
+	if uid < 1 || contractId < 1 {
+		return 0, fmt.Errorf("invalid loan allocation history count")
+	}
+
+	database, err := r.database(uid)
+
+	if err != nil {
+		return 0, err
+	}
+
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	return countAllocations(sess, uid, contractId)
+}
+
+// CountAllocations 在当前隐私事务中读取全部当前或历史分配行数。
+func (tx *RepositoryTransaction) CountAllocations(contractId int64) (int64, error) {
+	if err := tx.validate(); err != nil || contractId < 1 {
+		return 0, fmt.Errorf("invalid loan allocation history transaction count")
+	}
+
+	return countAllocations(tx.session, tx.uid, contractId)
+}
+
+func countAllocations(sess *xorm.Session, uid int64, contractId int64) (int64, error) {
+	count, err := sess.Where("uid=? AND contract_id=?", uid, contractId).Count(new(TransactionAllocation))
+
+	if err != nil {
+		return 0, fmt.Errorf("count loan allocation history: %w", err)
+	}
+
+	return count, nil
+}
+
 // InsertContract 在当前隐私事务中创建合同。
 func (tx *RepositoryTransaction) InsertContract(contract *Contract) error {
 	if err := tx.validate(); err != nil || !isValidNewContract(contract, tx.uid) {
@@ -960,10 +996,19 @@ func isValidNewRevision(value *ContractRevision, uid int64) bool {
 		value.CreatedUnixTime > 0 && value.TermCount > 0 && value.FrequencyInterval > 0 && value.PrincipalAmount > 0 &&
 		value.ActualDisbursementAmount > 0 && isLowerHexSHA256(value.ScheduleDigest) && isCivilDate(value.EffectiveDate) &&
 		isCivilDate(value.ContractDate) && isCivilDate(value.FirstDueDate) && isFundingType(value.FundingType) &&
-		isInputMode(value.InputMode) && isRepaymentMethod(value.RepaymentMethod) && isRateQuoteType(value.RateQuoteType) &&
+		isInputMode(value.InputMode) && isRepaymentMethod(value.RepaymentMethod) &&
+		isValidRevisionRateQuote(value.InputMode, value.RateQuoteType, value.QuotedRatePptr, value.PaymentBasisAmount) &&
 		value.FrequencyType == FREQUENCY_TYPE_MONTHLY && isDiscountType(value.DiscountType) && isIRRStatus(value.IrrStatus) &&
 		value.CalculationVersion != "" && value.RoundingVersion != "" && value.IrrVersion != "" &&
 		isNilOrPositive(value.PreviousRevisionId)
+}
+
+func isValidRevisionRateQuote(inputMode InputMode, rateQuoteType RateQuoteType, quotedRate *int64, paymentBasis *int64) bool {
+	if inputMode == INPUT_MODE_REPAYMENT {
+		return rateQuoteType == "" && quotedRate == nil && paymentBasis != nil
+	}
+
+	return inputMode == INPUT_MODE_RATE && isRateQuoteType(rateQuoteType) && quotedRate != nil && paymentBasis == nil
 }
 
 func isValidNewInstallment(value *Installment, uid int64) bool {

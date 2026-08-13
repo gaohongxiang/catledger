@@ -268,6 +268,39 @@ func TestRepositorySQLiteConcurrentUniqueAdjudication(t *testing.T) {
 	}
 }
 
+func TestRepositorySQLitePersistsRepaymentRevision(t *testing.T) {
+	repository, _ := newSQLiteLoanRepository(t)
+	const uid = int64(4004)
+	contract := testContract(uid, 401, 601, 50)
+	revision := testRevision(uid, contract.ContractId, contract.CurrentRevisionId, 701, 50)
+	payment := int64(500)
+	revision.InputMode = loans.INPUT_MODE_REPAYMENT
+	revision.RateQuoteType = ""
+	revision.QuotedRatePptr = nil
+	revision.PaymentBasisAmount = &payment
+
+	if err := repository.DoTransaction(nil, uid, func(tx *loans.RepositoryTransaction) error {
+		if err := tx.InsertContract(contract); err != nil {
+			return err
+		}
+		if err := tx.InsertRevision(revision); err != nil {
+			return err
+		}
+		return tx.InsertInstallments([]*loans.Installment{
+			testInstallment(uid, contract.ContractId, revision.RevisionId, 801, 1, "2026-09-15", 50),
+			testInstallment(uid, contract.ContractId, revision.RevisionId, 802, 2, "2026-10-15", 50),
+		})
+	}); err != nil {
+		t.Fatalf("persist repayment revision: %v", err)
+	}
+
+	persisted, err := repository.FindRevisionById(nil, uid, revision.RevisionId)
+	if err != nil || persisted == nil || persisted.RateQuoteType != "" || persisted.QuotedRatePptr != nil ||
+		persisted.PaymentBasisAmount == nil || *persisted.PaymentBasisAmount != payment {
+		t.Fatalf("repayment revision fields were not preserved: err=%v", err)
+	}
+}
+
 func assertActionIdempotency(t *testing.T, repository *loans.Repository, firstUid int64, secondUid int64) {
 	t.Helper()
 	digest := strings.Repeat("a", 64)
@@ -465,6 +498,10 @@ func assertBindingAllocationAndAggregate(t *testing.T, repository *loans.Reposit
 		t.Fatalf("reversed allocation remained active: count=%d err=%v", count, err)
 	}
 
+	if count, err = repository.CountAllocations(nil, firstUid, 101); err != nil || count != 2 {
+		t.Fatalf("allocation history count mismatch: count=%d err=%v", count, err)
+	}
+
 	binding, err := repository.FindTransactionBindingByTransactionId(nil, firstUid, firstBinding.TransactionId)
 
 	if err != nil || binding == nil || binding.CurrentAllocationId != nil || binding.Version != 3 {
@@ -536,6 +573,7 @@ func testContract(uid int64, contractId int64, revisionId int64, now int64) *loa
 
 func testRevision(uid int64, contractId int64, revisionId int64, actionId int64, now int64) *loans.ContractRevision {
 	zero := int64(0)
+	quotedRate := int64(0)
 	return &loans.ContractRevision{
 		Uid:                           uid,
 		ContractId:                    contractId,
@@ -548,6 +586,7 @@ func testRevision(uid int64, contractId int64, revisionId int64, actionId int64,
 		InputMode:                     loans.INPUT_MODE_RATE,
 		RepaymentMethod:               loans.REPAYMENT_METHOD_EQUAL_PAYMENT,
 		RateQuoteType:                 loans.RATE_QUOTE_TYPE_ANNUAL,
+		QuotedRatePptr:                &quotedRate,
 		FrequencyType:                 loans.FREQUENCY_TYPE_MONTHLY,
 		FrequencyInterval:             1,
 		PrincipalAmount:               1000,
