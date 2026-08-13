@@ -182,7 +182,13 @@ func applySingleEventDecision(c core.Context, database *datastore.Database, sess
 		if !decisionDraftMatchesRows(execution.primaryDraft.transaction, flattenDecisionRows(resolution.rowsByMember), execution.decisionType) {
 			return []string{decisionReasonDraftMismatch}, nil
 		}
-		var err error
+		accountsMatch, err := decisionDraftAccountsMatchRows(sess, execution.uid, execution.primaryDraft.transaction, flattenDecisionRows(resolution.rowsByMember))
+		if err != nil {
+			return nil, err
+		}
+		if !accountsMatch {
+			return []string{decisionReasonDraftMismatch}, nil
+		}
 		event, err = createDecisionLedgerEvent(c, database, sess, execution.uid, execution.primaryDraft, ledger)
 		if err != nil {
 			return nil, err
@@ -233,6 +239,24 @@ func applyRefundDecision(c core.Context, database *datastore.Database, sess *xor
 	if original == nil && !decisionDraftMatchesRows(execution.refundOriginalDraft.transaction, resolution.rowsByMember[originalIndex], DECISION_TYPE_REFUND_REVERSAL) ||
 		refund == nil && !decisionDraftMatchesRows(execution.refundTransactionDraft.transaction, resolution.rowsByMember[refundIndex], DECISION_TYPE_REFUND_REVERSAL) {
 		return []string{decisionReasonDraftMismatch}, nil
+	}
+	if original == nil {
+		accountsMatch, err := decisionDraftAccountsMatchRows(sess, execution.uid, execution.refundOriginalDraft.transaction, resolution.rowsByMember[originalIndex])
+		if err != nil {
+			return nil, err
+		}
+		if !accountsMatch {
+			return []string{decisionReasonDraftMismatch}, nil
+		}
+	}
+	if refund == nil {
+		accountsMatch, err := decisionDraftAccountsMatchRows(sess, execution.uid, execution.refundTransactionDraft.transaction, resolution.rowsByMember[refundIndex])
+		if err != nil {
+			return nil, err
+		}
+		if !accountsMatch {
+			return []string{decisionReasonDraftMismatch}, nil
+		}
 	}
 	originalPrimary := execution.refundOriginalDraft
 	if original != nil {
@@ -475,6 +499,46 @@ func decisionDraftMatchesRows(transaction *models.Transaction, rows []*importing
 		}
 	}
 	return true
+}
+
+func decisionDraftAccountsMatchRows(sess *xorm.Session, uid int64, transaction *models.Transaction, rows []*importing.RawImportRow) (bool, error) {
+	if sess == nil || uid < 1 || transaction == nil || transaction.AccountId < 1 || len(rows) == 0 {
+		return false, nil
+	}
+
+	expectedCurrency := ""
+	for _, row := range rows {
+		if row == nil || row.Currency == "" {
+			return false, nil
+		}
+		if expectedCurrency == "" {
+			expectedCurrency = row.Currency
+		} else if row.Currency != expectedCurrency {
+			return false, nil
+		}
+	}
+
+	accountIds := []int64{transaction.AccountId}
+	if isTransferTransaction(transaction) {
+		if transaction.RelatedAccountId < 1 || transaction.RelatedAccountId == transaction.AccountId {
+			return false, nil
+		}
+		accountIds = append(accountIds, transaction.RelatedAccountId)
+	}
+
+	accounts := make([]*models.Account, 0, len(accountIds))
+	if err := sess.Where("uid=? AND deleted=?", uid, false).In("account_id", accountIds).Find(&accounts); err != nil {
+		return false, err
+	}
+	if len(accounts) != len(accountIds) {
+		return false, nil
+	}
+	for _, account := range accounts {
+		if account == nil || account.Currency != expectedCurrency {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func refundOriginalMemberIndex(selection DecisionFieldSelection, rows [][]*importing.RawImportRow) (int, bool) {

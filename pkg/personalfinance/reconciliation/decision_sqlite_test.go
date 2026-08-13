@@ -180,6 +180,7 @@ func TestCaseAndDecisionServiceSQLiteIdempotencyCASIsolationAndRowOnlyDecisions(
 func TestDecisionServiceSQLiteZeroOneMultipleTransferRefundAndRollback(t *testing.T) {
 	environment := newDecisionSQLiteEnvironment(t)
 	uid := int64(2202)
+	insertDecisionLedgerAccounts(t, environment.database, uid, "CNY")
 
 	zero := insertDecisionCaseFixture(t, environment.database, uid, 40_000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.ECONOMIC_EFFECT_NORMAL)
 	zeroResult, err := environment.service.DecideCase(nil, sameEventRequest(zero, "same-zero", expenseDraft(zero, 500)), time.UTC)
@@ -228,6 +229,14 @@ func TestDecisionServiceSQLiteZeroOneMultipleTransferRefundAndRollback(t *testin
 	}
 	assertDecisionTransactionsNotDeleted(t, environment.database, uid, refundResult.DecisionId)
 
+	wrongCurrency := insertDecisionCaseFixture(t, environment.database, uid, 85_000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.ECONOMIC_EFFECT_NORMAL)
+	setDecisionLedgerAccountCurrency(t, environment.database, uid, 1, "USD")
+	wrongCurrencyResult, err := environment.service.DecideCase(nil, sameEventRequest(wrongCurrency, "same-wrong-currency", expenseDraft(wrongCurrency, 500)), time.UTC)
+	if err != nil || wrongCurrencyResult.Status != DECISION_STATUS_ACTION_REQUIRED || len(wrongCurrencyResult.ReasonCodes) != 1 || wrongCurrencyResult.ReasonCodes[0] != decisionReasonDraftMismatch {
+		t.Fatalf("wrong account currency was not rejected: %+v %v", wrongCurrencyResult, err)
+	}
+	setDecisionLedgerAccountCurrency(t, environment.database, uid, 1, "CNY")
+
 	rollback := insertDecisionCaseFixture(t, environment.database, uid, 90_000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.ECONOMIC_EFFECT_NORMAL)
 	environment.ledger.failCreate.Store(true)
 	_, err = environment.service.DecideCase(nil, sameEventRequest(rollback, "same-rollback", expenseDraft(rollback, 500)), time.UTC)
@@ -244,6 +253,7 @@ func TestDecisionServiceSQLiteZeroOneMultipleTransferRefundAndRollback(t *testin
 func TestDecisionServiceSQLiteUndoAttachedCreatedModifiedSharedAndIncompletePair(t *testing.T) {
 	environment := newDecisionSQLiteEnvironment(t)
 	uid := int64(3303)
+	insertDecisionLedgerAccounts(t, environment.database, uid, "CNY")
 
 	attached := insertDecisionCaseFixture(t, environment.database, uid, 100_000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.ECONOMIC_EFFECT_NORMAL)
 	existing := insertDecisionExistingEvent(t, environment.database, attached, 1, 500, models.TRANSACTION_DB_TYPE_EXPENSE, 170_001)
@@ -321,7 +331,7 @@ func TestDecisionServiceSQLiteUndoAttachedCreatedModifiedSharedAndIncompletePair
 func newDecisionSQLiteEnvironment(t *testing.T) *decisionSQLiteEnvironment {
 	t.Helper()
 	_, database := newCandidateSQLiteService(t, &sequentialCandidateIds{})
-	if err := database.SyncStructs(new(models.Transaction)); err != nil {
+	if err := database.SyncStructs(new(models.Account), new(models.Transaction)); err != nil {
 		t.Fatalf("create decision ledger schema: %v", err)
 	}
 	store, err := datastore.NewDataStore(database)
@@ -381,6 +391,24 @@ func sameEventRequest(fixture decisionCaseFixture, key string, draft *importing.
 
 func expenseDraft(fixture decisionCaseFixture, amount int64) *importing.LedgerTransactionDraft {
 	return &importing.LedgerTransactionDraft{Type: models.TRANSACTION_TYPE_EXPENSE, CategoryId: 1, UnixTime: 1_720_000_000 + fixture.caseId, SourceAccountId: 1, SourceAmount: amount}
+}
+
+func insertDecisionLedgerAccounts(t *testing.T, database *datastore.Database, uid int64, currency string) {
+	t.Helper()
+	insertCandidateFixtures(t, database,
+		&models.Account{AccountId: 1, Uid: uid, Category: models.ACCOUNT_CATEGORY_CASH, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Name: "source", Currency: currency, CreatedUnixTime: 1, UpdatedUnixTime: 1},
+		&models.Account{AccountId: 99, Uid: uid, Category: models.ACCOUNT_CATEGORY_CASH, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Name: "destination", Currency: currency, CreatedUnixTime: 1, UpdatedUnixTime: 1},
+	)
+}
+
+func setDecisionLedgerAccountCurrency(t *testing.T, database *datastore.Database, uid int64, accountId int64, currency string) {
+	t.Helper()
+	sess := database.NewPrivacySession(nil)
+	defer sess.Close()
+	updated, err := sess.Where("uid=? AND account_id=?", uid, accountId).Cols("currency").Update(&models.Account{Currency: currency})
+	if err != nil || updated != 1 {
+		t.Fatalf("update decision ledger account currency: updated=%d err=%v", updated, err)
+	}
 }
 
 func insertDecisionExistingEvent(t *testing.T, database *datastore.Database, fixture decisionCaseFixture, member int, amount int64, transactionType models.TransactionDbType, transactionId int64) *models.Transaction {
