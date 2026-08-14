@@ -12,8 +12,6 @@ import ResetPasswordPage from '@/views/desktop/ResetPasswordPage.vue';
 import OAuth2CallbackPage from '@/views/desktop/OAuth2CallbackPage.vue';
 import UnlockPage from '@/views/desktop/UnlockPage.vue';
 
-import HomePage from '@/views/desktop/HomePage.vue';
-
 import TransactionListPage from '@/views/desktop/transactions/ListPage.vue';
 import PersonalFinanceImportWorkbenchPage from '@/features/personal-finance/desktop/ImportWorkbenchPage.vue';
 import PersonalFinanceReconciliationWorkbenchPage from '@/features/personal-finance/reconciliation/desktop/ReconciliationWorkbenchPage.vue';
@@ -102,7 +100,7 @@ const router = createRouter({
             children: [
                 {
                     path: '',
-                    component: HomePage,
+                    component: PersonalFinanceDashboardPage,
                     beforeEnter: checkLogin
                 },
                 {
@@ -140,7 +138,7 @@ const router = createRouter({
                 },
                 {
                     path: '/personal-finance/dashboard',
-                    component: PersonalFinanceDashboardPage,
+                    redirect: () => ({ path: '/', replace: true }),
                     beforeEnter: checkLogin
                 },
                 {
