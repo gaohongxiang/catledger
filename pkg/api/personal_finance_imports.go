@@ -33,6 +33,10 @@ type personalFinanceUserReader interface {
 	GetUserById(c core.Context, uid int64) (*models.User, error)
 }
 
+type personalFinanceAccountReader interface {
+	GetAccountByAccountId(c core.Context, uid int64, accountId int64) (*models.Account, error)
+}
+
 type personalFinanceLifecycleApplication interface {
 	DiscardImportBatch(c core.Context, uid int64, batchId int64) (*importing.ImportBatch, error)
 	DeleteImportFileContent(c core.Context, uid int64, fileId int64) (*importing.ImportFile, error)
@@ -44,6 +48,7 @@ type personalFinanceLifecycleApplication interface {
 type PersonalFinanceImportsApi struct {
 	config                  *settings.ConfigContainer
 	users                   personalFinanceUserReader
+	accounts                personalFinanceAccountReader
 	serviceFactory          func() (personalFinanceImportApplication, error)
 	flowServiceFactory      func() (personalFinanceFlowApplication, error)
 	postingServiceFactory   func() (personalFinancePostingApplication, error)
@@ -53,8 +58,9 @@ type PersonalFinanceImportsApi struct {
 
 // PersonalFinanceImports 是 Web 路由使用的默认 API 实例。
 var PersonalFinanceImports = &PersonalFinanceImportsApi{
-	config: settings.Container,
-	users:  services.Users,
+	config:   settings.Container,
+	users:    services.Users,
+	accounts: services.Accounts,
 	serviceFactory: func() (personalFinanceImportApplication, error) {
 		repository, err := importing.NewRepository(datastore.Container.UserDataStore)
 

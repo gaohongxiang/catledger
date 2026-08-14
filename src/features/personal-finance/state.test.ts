@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PersonalFinanceImportBatch, PersonalFinanceImportFile, PersonalFinanceImportRow, PersonalFinanceImportUploadResult, PersonalFinancePostingDraft, PersonalFinanceSourceAccount } from './models.ts';
+import type { PersonalFinanceImportBatch, PersonalFinanceImportFile, PersonalFinanceImportRow, PersonalFinanceImportUploadResult, PersonalFinancePaymentAccountGroup, PersonalFinancePostingDraft, PersonalFinanceSourceAccount } from './models.ts';
 import {
     buildGenericBankReparseRequest,
     buildPersonalFinanceReparseRequest,
@@ -9,12 +9,18 @@ import {
     canDeleteImportFileContent,
     canDiscardImportBatch,
     createDefaultGenericBankMappingForm,
+    findPaymentAccountGroupForRow,
+    getSafePaymentAccountDisplayName,
     getCompatibleSourceAccounts,
     getRowAction,
     getUploadAction,
+    inferPaymentAccountCategory,
+    normalizePaymentAccountName,
+    suggestPaymentAccount,
     toGenericCsvApiColumnIndex,
     validateGenericBankMappingForm
 } from './state.ts';
+import { AccountCategory } from '@/core/account.ts';
 import { TransactionType } from '@/core/transaction.ts';
 
 function row(overrides: Partial<PersonalFinanceImportRow> = {}): PersonalFinanceImportRow {
@@ -257,5 +263,62 @@ describe('generic bank CSV mapping state', () => {
         });
         expect('parserName' in request).toBe(false);
         expect('genericCsvMapping' in request).toBe(false);
+    });
+});
+
+describe('payment account suggestions', () => {
+    const group = {
+        sourceType: 'wechat',
+        currency: 'CNY',
+        displayName: '兴业银行信用卡（6106）',
+        rowCount: 12,
+        pendingRowCount: 12,
+        sampleRowId: '901',
+        mapped: false
+    } as PersonalFinancePaymentAccountGroup;
+
+    it('normalizes punctuation and tail-label variants without dropping the card tail', () => {
+        expect(normalizePaymentAccountName('兴业银行信用卡（6106）')).toBe('兴业银行信用卡6106');
+        expect(normalizePaymentAccountName(' 兴业银行信用卡 尾号 6106 ')).toBe('兴业银行信用卡6106');
+        expect(normalizePaymentAccountName('兴业银行信用卡 6222600000006106')).toBe('兴业银行信用卡6106');
+        expect(getSafePaymentAccountDisplayName('兴业银行信用卡 6222600000006106')).toBe('兴业银行信用卡 ****6106');
+    });
+
+    it('suggests one uniquely matching existing account and never guesses between ties', () => {
+        const accounts = [
+            { id: 'xingye', name: '兴业信用卡 6106', currency: 'CNY' },
+            { id: 'guangda', name: '光大银行信用卡(2690)', currency: 'CNY' },
+            { id: 'usd', name: '兴业银行信用卡6106', currency: 'USD' }
+        ];
+
+        expect(suggestPaymentAccount(group, accounts).ledgerAccountId).toBe('xingye');
+        expect(suggestPaymentAccount(group, [
+            ...accounts,
+            { id: 'xingye-duplicate', name: '兴业信用卡(6106)', currency: 'CNY' }
+        ]).ledgerAccountId).toBeUndefined();
+    });
+
+    it('infers a sensible editable category for cards and wallets', () => {
+        expect(inferPaymentAccountCategory('江苏银行信用购', 'alipay')).toBe(AccountCategory.CreditCard.type);
+        expect(inferPaymentAccountCategory('微信零钱', 'wechat')).toBe(AccountCategory.VirtualAccount.type);
+        expect(inferPaymentAccountCategory('浙江农商联合银行储蓄卡(5564)', 'wechat')).toBe(AccountCategory.CheckingAccount.type);
+    });
+
+    it('associates a row with its batch group across equivalent formatting', () => {
+        const matched = findPaymentAccountGroupForRow(row({
+            rawPaymentMethod: '兴业银行信用卡 尾号6106'
+        }), [group]);
+
+        expect(matched?.sampleRowId).toBe('901');
+        expect(findPaymentAccountGroupForRow(row({ rawPaymentMethod: '光大银行信用卡(2690)' }), [group])).toBeUndefined();
+    });
+
+    it('prefers a unique exact group over an earlier approximate group and closes on ties', () => {
+        const approximate = { ...group, displayName: '兴业信用卡(6106)', sampleRowId: '902' };
+        const exact = { ...group, displayName: '兴业银行信用卡(6106)', sampleRowId: '903' };
+        const currentRow = row({ rawPaymentMethod: '兴业银行信用卡（6106）' });
+
+        expect(findPaymentAccountGroupForRow(currentRow, [approximate, exact])?.sampleRowId).toBe('903');
+        expect(findPaymentAccountGroupForRow(currentRow, [exact, { ...exact, sampleRowId: '904' }])).toBeUndefined();
     });
 });

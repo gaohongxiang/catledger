@@ -10,6 +10,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/log"
+	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/services"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
@@ -19,11 +20,14 @@ type personalFinanceFlowApplication interface {
 	ReparseImportFile(c core.Context, request importing.ReparseImportFileRequest) (*importing.ReparseImportFileResult, error)
 	ListSourceAccounts(c core.Context, uid int64) ([]*importing.SourceAccount, error)
 	SaveSourceAccount(c core.Context, request importing.SourceAccountSaveRequest) (*importing.SourceAccount, error)
+	ListBatchPaymentAccounts(c core.Context, uid int64, batchId int64) ([]*importing.PaymentAccountGroup, error)
+	ConfirmBatchPaymentAccount(c core.Context, request importing.PaymentAccountConfirmRequest) (*importing.PaymentAccountGroup, error)
 }
 
 type personalFinanceFlowService struct {
-	reparse        *importing.ReparseService
-	sourceAccounts *importing.SourceAccountService
+	reparse         *importing.ReparseService
+	sourceAccounts  *importing.SourceAccountService
+	paymentAccounts *importing.PaymentAccountService
 }
 
 func (s *personalFinanceFlowService) ReparseImportFile(c core.Context, request importing.ReparseImportFileRequest) (*importing.ReparseImportFileResult, error) {
@@ -36,6 +40,14 @@ func (s *personalFinanceFlowService) ListSourceAccounts(c core.Context, uid int6
 
 func (s *personalFinanceFlowService) SaveSourceAccount(c core.Context, request importing.SourceAccountSaveRequest) (*importing.SourceAccount, error) {
 	return s.sourceAccounts.SaveSourceAccount(c, request)
+}
+
+func (s *personalFinanceFlowService) ListBatchPaymentAccounts(c core.Context, uid int64, batchId int64) ([]*importing.PaymentAccountGroup, error) {
+	return s.paymentAccounts.ListBatchPaymentAccounts(c, uid, batchId)
+}
+
+func (s *personalFinanceFlowService) ConfirmBatchPaymentAccount(c core.Context, request importing.PaymentAccountConfirmRequest) (*importing.PaymentAccountGroup, error) {
+	return s.paymentAccounts.ConfirmBatchPaymentAccount(c, request)
 }
 
 func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error) {
@@ -53,6 +65,10 @@ func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error)
 	}
 
 	dedup, err := importing.NewDedupService(repository, generateId)
+	if err != nil {
+		return nil, err
+	}
+	paymentAccounts, err := importing.NewPaymentAccountService(repository, generateId)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +90,7 @@ func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error)
 		return nil, err
 	}
 
-	return &personalFinanceFlowService{reparse: reparse, sourceAccounts: sourceAccounts}, nil
+	return &personalFinanceFlowService{reparse: reparse, sourceAccounts: sourceAccounts, paymentAccounts: paymentAccounts}, nil
 }
 
 type personalFinanceReparseRequest struct {
@@ -130,6 +146,31 @@ type personalFinanceSourceAccountResponse struct {
 	DiscoveryMethod importing.SourceAccountDiscoveryMethod `json:"discoveryMethod"`
 	CreatedUnixTime int64                                  `json:"createdUnixTime"`
 	UpdatedUnixTime int64                                  `json:"updatedUnixTime"`
+}
+
+type personalFinancePaymentAccountListRequest struct {
+	BatchId int64 `form:"batch_id,string" binding:"required,min=1"`
+}
+
+type personalFinancePaymentAccountConfirmRequest struct {
+	BatchId         int64 `json:"batchId,string" binding:"required,min=1"`
+	RowId           int64 `json:"rowId,string" binding:"required,min=1"`
+	LedgerAccountId int64 `json:"ledgerAccountId,string" binding:"required,min=1"`
+}
+
+type personalFinancePaymentAccountResponse struct {
+	SourceType      importing.SourceType `json:"sourceType"`
+	Currency        string               `json:"currency"`
+	DisplayName     string               `json:"displayName"`
+	RowCount        int64                `json:"rowCount"`
+	PendingRowCount int64                `json:"pendingRowCount"`
+	SampleRowId     int64                `json:"sampleRowId,string"`
+	LedgerAccountId *int64               `json:"ledgerAccountId,string,omitempty"`
+	Mapped          bool                 `json:"mapped"`
+}
+
+type personalFinancePaymentAccountListResponse struct {
+	Items []*personalFinancePaymentAccountResponse `json:"items"`
 }
 
 type personalFinanceSourceAccountListResponse struct {
@@ -304,6 +345,90 @@ func (a *PersonalFinanceImportsApi) SourceAccountSaveHandler(c *core.WebContext)
 	return newPersonalFinanceSourceAccountResponse(account), nil
 }
 
+// PaymentAccountListHandler 按整个批次汇总支付宝/微信实际付款方式，不受行分页影响。
+func (a *PersonalFinanceImportsApi) PaymentAccountListHandler(c *core.WebContext) (any, *errs.Error) {
+	request := new(personalFinancePaymentAccountListRequest)
+	if err := c.ShouldBindQuery(request); err != nil {
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	service, err := a.newPersonalFinanceFlowService()
+	if err != nil {
+		return nil, errs.ErrOperationFailed
+	}
+	groups, err := service.ListBatchPaymentAccounts(c, c.GetCurrentUid(), request.BatchId)
+	if err != nil {
+		return nil, personalFinanceFlowError(err)
+	}
+	if a.accounts == nil {
+		return nil, errs.ErrOperationFailed
+	}
+	items := make([]*personalFinancePaymentAccountResponse, 0, len(groups))
+	for _, group := range groups {
+		if group != nil && group.LedgerAccountId != nil {
+			account, accountErr := a.accounts.GetAccountByAccountId(c, c.GetCurrentUid(), *group.LedgerAccountId)
+			if accountErr != nil && !errors.Is(accountErr, errs.ErrAccountNotFound) {
+				return nil, errs.ErrOperationFailed
+			}
+			if !isPersonalFinancePaymentLedgerAccountUsable(account, group.Currency) {
+				group.LedgerAccountId = nil
+				group.Mapped = false
+			}
+		}
+		response := newPersonalFinancePaymentAccountResponse(group)
+		if response == nil {
+			return nil, errs.ErrOperationFailed
+		}
+		items = append(items, response)
+	}
+	return &personalFinancePaymentAccountListResponse{Items: items}, nil
+}
+
+// PaymentAccountConfirmHandler 确认一个付款方式映射，并统一应用到该批次同组待处理行。
+func (a *PersonalFinanceImportsApi) PaymentAccountConfirmHandler(c *core.WebContext) (any, *errs.Error) {
+	if writeErr := a.ensurePersonalFinanceImportWriteAllowed(c); writeErr != nil {
+		return nil, writeErr
+	}
+
+	request := new(personalFinancePaymentAccountConfirmRequest)
+	if err := c.ShouldBindJSON(request); err != nil {
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+	if a.accounts == nil {
+		return nil, errs.ErrOperationFailed
+	}
+
+	uid := c.GetCurrentUid()
+	account, err := a.accounts.GetAccountByAccountId(c, uid, request.LedgerAccountId)
+	if err != nil && !errors.Is(err, errs.ErrAccountNotFound) {
+		return nil, errs.ErrOperationFailed
+	}
+	if account == nil || !isPersonalFinancePaymentLedgerAccountUsable(account, account.Currency) {
+		return nil, errs.ErrParameterInvalid
+	}
+
+	service, err := a.newPersonalFinanceFlowService()
+	if err != nil {
+		return nil, errs.ErrOperationFailed
+	}
+	group, err := service.ConfirmBatchPaymentAccount(c, importing.PaymentAccountConfirmRequest{
+		Uid: uid, BatchId: request.BatchId, RowId: request.RowId,
+		LedgerAccountId: request.LedgerAccountId, LedgerAccountCurrency: account.Currency,
+	})
+	if err != nil {
+		return nil, personalFinanceFlowError(err)
+	}
+	response := newPersonalFinancePaymentAccountResponse(group)
+	if response == nil {
+		return nil, errs.ErrOperationFailed
+	}
+	return response, nil
+}
+
+func isPersonalFinancePaymentLedgerAccountUsable(account *models.Account, currency string) bool {
+	return account != nil && !account.Deleted && !account.Hidden && account.Type == models.ACCOUNT_TYPE_SINGLE_ACCOUNT && account.Currency == currency
+}
+
 // TransactionEvidenceHandler 返回不含原始标识、原始字段、备注和存储 key 的证据摘要。
 func (a *PersonalFinanceImportsApi) TransactionEvidenceHandler(c *core.WebContext) (any, *errs.Error) {
 	request := new(personalFinanceTransactionEvidenceRequest)
@@ -437,12 +562,29 @@ func newPersonalFinanceSourceAccountDiscoveryResponse(discovery *importing.Sourc
 	}
 }
 
+func newPersonalFinancePaymentAccountResponse(group *importing.PaymentAccountGroup) *personalFinancePaymentAccountResponse {
+	if group == nil || group.SampleRowId < 1 || group.RowCount < 1 || group.PendingRowCount < 0 || group.PendingRowCount > group.RowCount ||
+		group.DisplayName == "" || (group.LedgerAccountId != nil && *group.LedgerAccountId < 1) || group.Mapped != (group.LedgerAccountId != nil) {
+		return nil
+	}
+	return &personalFinancePaymentAccountResponse{
+		SourceType: group.SourceType, Currency: group.Currency, DisplayName: group.DisplayName,
+		RowCount: group.RowCount, PendingRowCount: group.PendingRowCount, SampleRowId: group.SampleRowId,
+		LedgerAccountId: group.LedgerAccountId, Mapped: group.Mapped,
+	}
+}
+
 func personalFinanceFlowError(err error) *errs.Error {
 	switch {
 	case errors.Is(err, importing.ErrImportFormatInvalid),
 		errors.Is(err, importing.ErrImportSourceAccountNotFound),
 		errors.Is(err, importing.ErrImportSourceAccountUnavailable),
-		errors.Is(err, importing.ErrImportSourceAccountConflict):
+		errors.Is(err, importing.ErrImportSourceAccountConflict),
+		errors.Is(err, importing.ErrPaymentAccountRequestInvalid),
+		errors.Is(err, importing.ErrPaymentAccountBatchNotFound),
+		errors.Is(err, importing.ErrPaymentAccountRowNotFound),
+		errors.Is(err, importing.ErrPaymentAccountAliasUnavailable),
+		errors.Is(err, importing.ErrPaymentAccountLedgerUnavailable):
 		return errs.ErrParameterInvalid
 	default:
 		return personalFinanceImportError(err)

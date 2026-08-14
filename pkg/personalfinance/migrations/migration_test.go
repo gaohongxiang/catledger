@@ -16,7 +16,7 @@ import (
 func TestSchemaV001ChecksumGolden(t *testing.T) {
 	migrations := registeredMigrations()
 
-	if len(migrations) != 4 {
+	if len(migrations) != 5 {
 		t.Fatalf("unexpected registered migration count %d", len(migrations))
 	}
 
@@ -113,6 +113,29 @@ func TestSchemaV004ChecksumGolden(t *testing.T) {
 
 	if !equalStrings(actualSteps, expectedSteps) {
 		t.Fatalf("v004 migration steps are %v, expected %v", actualSteps, expectedSteps)
+	}
+}
+
+func TestSchemaV005ChecksumGolden(t *testing.T) {
+	migrations := registeredMigrations()
+	const expectedChecksum = "c0a150b4933f03b8b807b41ed32513e85c393e98336368cba9b8412a5ac5f9cd"
+
+	if migrations[4].version != 5 || migrations[4].name != "payment_account_mappings" || migrations[4].checksum != expectedChecksum {
+		t.Fatalf("v005 identity changed: version=%d name=%s checksum=%s", migrations[4].version, migrations[4].name, migrations[4].checksum)
+	}
+
+	manifest := canonicalSchemaManifestV005()
+	for _, required := range []string{
+		"table=pf_payment_account_mapping\n",
+		"payment-account-alias=payment-account-alias-v1\n",
+	} {
+		if !strings.Contains(manifest, required) {
+			t.Fatalf("v005 manifest does not include %q", required)
+		}
+	}
+
+	if len(migrations[4].steps) != 1 || migrations[4].steps[0].name != "create_pf_payment_account_mapping" {
+		t.Fatalf("unexpected v005 migration steps: %+v", migrations[4].steps)
 	}
 }
 
@@ -299,6 +322,72 @@ func TestRuntimeModelsMatchFrozenSchemaV004(t *testing.T) {
 					runtimeType.Name(), index, runtimeField.Name, runtimeField.Tag.Get("xorm"), frozenField.Name, frozenField.Tag.Get("xorm"))
 			}
 		}
+	}
+}
+
+func TestRuntimeModelsMatchFrozenSchemaV005(t *testing.T) {
+	frozenType := reflect.TypeOf(new(paymentAccountMappingV005)).Elem()
+	runtimeType := reflect.TypeOf(new(importing.PaymentAccountMapping)).Elem()
+
+	if frozenType.NumField() != runtimeType.NumField() {
+		t.Fatalf("runtime model %s has %d fields, frozen v005 has %d", runtimeType.Name(), runtimeType.NumField(), frozenType.NumField())
+	}
+
+	for index := 0; index < frozenType.NumField(); index++ {
+		frozenField := frozenType.Field(index)
+		runtimeField := runtimeType.Field(index)
+
+		if frozenField.Name != runtimeField.Name || runtimeField.Tag.Get("xorm") != frozenField.Tag.Get("xorm") {
+			t.Fatalf("runtime model %s field %d differs from v005: runtime=%s %q frozen=%s %q",
+				runtimeType.Name(), index, runtimeField.Name, runtimeField.Tag.Get("xorm"), frozenField.Name, frozenField.Tag.Get("xorm"))
+		}
+	}
+}
+
+func TestSchemaV005UniqueAndIndexContract(t *testing.T) {
+	type expectedV005Index struct {
+		unique  bool
+		columns []string
+	}
+	beanType := reflect.TypeOf(new(paymentAccountMappingV005)).Elem()
+	actualIndexes := make(map[string]expectedV005Index)
+
+	for fieldIndex := 0; fieldIndex < beanType.NumField(); fieldIndex++ {
+		field := beanType.Field(fieldIndex)
+		fieldTag := field.Tag.Get("xorm")
+		if field.Type.Kind() == reflect.Ptr || !strings.HasSuffix(fieldTag, " NOT NULL") {
+			t.Fatalf("v005 field %s must be non-nullable: %s", field.Name, fieldTag)
+		}
+		for _, tagPart := range strings.Fields(fieldTag) {
+			isUnique := strings.HasPrefix(tagPart, "UNIQUE(") && strings.HasSuffix(tagPart, ")")
+			isIndex := strings.HasPrefix(tagPart, "INDEX(") && strings.HasSuffix(tagPart, ")")
+			if !isUnique && !isIndex {
+				continue
+			}
+			indexName := strings.TrimSuffix(tagPart[strings.IndexByte(tagPart, '(')+1:], ")")
+			if len(indexName) > 63 || !isSafeCatalogIdentifier(indexName) {
+				t.Fatalf("v005 index name %q must be ASCII-safe and at most 63 bytes", indexName)
+			}
+			index := actualIndexes[indexName]
+			if len(index.columns) > 0 && index.unique != isUnique {
+				t.Fatalf("v005 index %s mixes unique and ordinary declarations", indexName)
+			}
+			index.unique = isUnique
+			index.columns = append(index.columns, field.Name)
+			actualIndexes[indexName] = index
+		}
+	}
+
+	expectedIndexes := map[string]expectedV005Index{
+		"UQE_pf_payacct_map_uid_type_currency_key": {
+			unique: true, columns: []string{"Uid", "SourceType", "Currency", "AliasKey"},
+		},
+		"IDX_pf_payacct_map_uid_ledger_updated": {
+			columns: []string{"Uid", "LedgerAccountId", "UpdatedUnixTime", "MappingId"},
+		},
+	}
+	if !reflect.DeepEqual(actualIndexes, expectedIndexes) {
+		t.Fatalf("v005 indexes are %v, expected %v", actualIndexes, expectedIndexes)
 	}
 }
 

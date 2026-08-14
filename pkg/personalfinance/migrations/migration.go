@@ -225,6 +225,19 @@ func registeredMigrations() []migration {
 		})
 	}
 
+	v005Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV005()))
+	v005Steps := make([]migrationStep, 0, len(schemaBeansV005()))
+
+	for _, bean := range schemaBeansV005() {
+		tableName := bean.(interface{ TableName() string }).TableName()
+		v005Steps = append(v005Steps, migrationStep{
+			name: "create_" + tableName,
+			run: func(c context.Context, db *datastore.Database) error {
+				return syncFrozenSchemaBeanWithIndexes(c, db, bean)
+			},
+		})
+	}
+
 	return []migration{
 		{
 			version:   1,
@@ -257,6 +270,14 @@ func registeredMigrations() []migration {
 			preflight: validateSchemaV004PreflightWithContext,
 			steps:     v004Steps,
 			verify:    verifySchemaV004WithContext,
+		},
+		{
+			version:   5,
+			name:      "payment_account_mappings",
+			checksum:  hex.EncodeToString(v005Checksum[:]),
+			preflight: validateSchemaV005PreflightWithContext,
+			steps:     v005Steps,
+			verify:    verifySchemaV005WithContext,
 		},
 	}
 }
@@ -960,6 +981,18 @@ func canonicalSchemaManifestV004() string {
 	builder.WriteString("irr=periodic-irr-v1\n")
 	builder.WriteString("action-idempotency=idempotency-key-v1\n")
 	builder.WriteString("action-request=loan-action-request-v1\n")
+	return builder.String()
+}
+
+func canonicalSchemaManifestV005() string {
+	var builder strings.Builder
+	builder.WriteString("pf-schema-v005\n")
+
+	for _, bean := range schemaBeansV005() {
+		appendBeanManifest(&builder, bean)
+	}
+
+	builder.WriteString("payment-account-alias=payment-account-alias-v1\n")
 	return builder.String()
 }
 

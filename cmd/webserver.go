@@ -442,6 +442,7 @@ func startWebServer(c *core.CliContext) error {
 				apiV1Route.POST("/personal_finance/import_batches/reparse.json", bindApi(api.PersonalFinanceImports.ImportBatchReparseHandler, config))
 				apiV1Route.POST("/personal_finance/import_batches/post.json", bindApi(api.PersonalFinanceImports.ImportBatchPostHandler, config))
 				apiV1Route.POST("/personal_finance/source_accounts/save.json", bindApi(api.PersonalFinanceImports.SourceAccountSaveHandler, config))
+				apiV1Route.POST("/personal_finance/import_batches/payment_accounts/confirm.json", bindApi(api.PersonalFinanceImports.PaymentAccountConfirmHandler, config))
 				apiV1Route.POST("/personal_finance/reconciliation/candidates/generate.json", bindApi(api.PersonalFinanceImports.ReconciliationCandidateGenerateHandler, config))
 			}
 
@@ -455,6 +456,7 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.GET("/personal_finance/import_batches/undo_impact.json", bindApi(api.PersonalFinanceImports.ImportBatchUndoImpactHandler, config))
 			apiV1Route.GET("/personal_finance/consistency.json", bindApi(api.PersonalFinanceImports.PersonalFinanceConsistencyHandler, config))
 			apiV1Route.GET("/personal_finance/source_accounts/list.json", bindApi(api.PersonalFinanceImports.SourceAccountListHandler, config))
+			apiV1Route.GET("/personal_finance/import_batches/payment_accounts.json", bindApi(api.PersonalFinanceImports.PaymentAccountListHandler, config))
 			apiV1Route.GET("/personal_finance/transactions/evidence.json", bindApi(api.PersonalFinanceImports.TransactionEvidenceHandler, config))
 			apiV1Route.GET("/personal_finance/reconciliation/cases/list.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseListHandler, config))
 			apiV1Route.GET("/personal_finance/reconciliation/cases/get.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseGetHandler, config))

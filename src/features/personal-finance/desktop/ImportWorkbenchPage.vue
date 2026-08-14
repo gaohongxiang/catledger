@@ -190,6 +190,38 @@
                                         {{ tt(`personalFinance.issue.${issue.code}`) }}<span v-if="issue.field"> · {{ issue.field }}</span>
                                     </div>
                                 </v-alert>
+
+                                <v-alert
+                                    class="mt-4"
+                                    :type="unresolvedPaymentAccountCount > 0 ? 'warning' : 'success'"
+                                    variant="tonal"
+                                    v-if="personalFinanceStore.paymentAccounts.length > 0"
+                                >
+                                    <div class="d-flex flex-wrap align-center ga-3">
+                                        <div>
+                                            <div class="font-weight-medium">
+                                                {{ unresolvedPaymentAccountCount > 0
+                                                    ? tt('personalFinance.paymentAccount.batchNeedsConfirmation', { total: personalFinanceStore.paymentAccounts.length, count: unresolvedPaymentAccountCount })
+                                                    : tt('personalFinance.paymentAccount.batchMapped', { count: personalFinanceStore.paymentAccounts.length }) }}
+                                            </div>
+                                            <div class="text-body-small mt-1">
+                                                {{ tt('personalFinance.paymentAccount.batchHint') }}
+                                            </div>
+                                        </div>
+                                        <v-spacer />
+                                        <v-btn
+                                            size="small"
+                                            :color="unresolvedPaymentAccountCount > 0 ? 'warning' : 'success'"
+                                            variant="tonal"
+                                            :prepend-icon="mdiCreditCardSearchOutline"
+                                            @click="openPaymentAccountSetup"
+                                        >
+                                            {{ unresolvedPaymentAccountCount > 0
+                                                ? tt('personalFinance.paymentAccount.review')
+                                                : tt('personalFinance.paymentAccount.viewMapping') }}
+                                        </v-btn>
+                                    </div>
+                                </v-alert>
                             </div>
 
                             <v-divider />
@@ -207,6 +239,7 @@
                                     <tr>
                                         <th>{{ tt('personalFinance.rowNumber') }}</th>
                                         <th>{{ tt('personalFinance.transaction') }}</th>
+                                        <th>{{ tt('personalFinance.paymentAccount.paymentMethod') }}</th>
                                         <th>{{ tt('Amount') }}</th>
                                         <th>{{ tt('Status') }}</th>
                                         <th class="text-end">{{ tt('Operation') }}</th>
@@ -214,10 +247,10 @@
                                     </thead>
                                     <tbody>
                                     <tr v-if="personalFinanceStore.loadingRows">
-                                        <td colspan="5"><v-progress-linear indeterminate /></td>
+                                        <td colspan="6"><v-progress-linear indeterminate /></td>
                                     </tr>
                                     <tr v-else-if="personalFinanceStore.rows.length < 1">
-                                        <td colspan="5" class="text-center text-medium-emphasis py-8">{{ tt('personalFinance.noRows') }}</td>
+                                        <td colspan="6" class="text-center text-medium-emphasis py-8">{{ tt('personalFinance.noRows') }}</td>
                                     </tr>
                                     <tr :key="row.id" v-for="row in personalFinanceStore.rows">
                                         <td class="text-medium-emphasis">#{{ row.rowNumber }}</td>
@@ -226,6 +259,23 @@
                                             <div class="text-body-small text-medium-emphasis text-truncate row-summary">
                                                 {{ row.rawTransactionTime || formatTime(row.normalizedUnixTime) }} · {{ row.rawTransactionType || row.normalizedTransactionType }}
                                             </div>
+                                        </td>
+                                        <td>
+                                            <div class="font-weight-medium text-truncate payment-method" v-if="row.rawPaymentMethod">
+                                                {{ getRowPaymentAccountGroup(row)?.displayName ?? getSafePaymentAccountDisplayName(row.rawPaymentMethod) }}
+                                            </div>
+                                            <span class="text-medium-emphasis" v-else>—</span>
+                                            <v-chip
+                                                class="mt-1"
+                                                size="x-small"
+                                                :color="getRowPaymentAccountGroup(row)?.mapped ? 'success' : 'warning'"
+                                                variant="tonal"
+                                                v-if="getRowPaymentAccountGroup(row)"
+                                            >
+                                                {{ getRowPaymentAccountGroup(row)?.mapped
+                                                    ? tt('personalFinance.paymentAccount.mapped')
+                                                    : tt('personalFinance.paymentAccount.needsConfirmation') }}
+                                            </v-chip>
                                         </td>
                                         <td class="text-no-wrap">{{ formatAmount(row.normalizedAmount, row.currency, row.rawAmount) }}</td>
                                         <td>
@@ -239,13 +289,15 @@
                                         <td class="text-end">
                                             <v-btn
                                                 size="small"
-                                                color="primary"
+                                                :color="isRowPaymentAccountUnresolved(row) ? 'warning' : 'primary'"
                                                 variant="tonal"
                                                 :disabled="personalFinanceStore.submitting"
-                                                @click="openPosting(row)"
+                                                @click="isRowPaymentAccountUnresolved(row) ? openPaymentAccountSetup() : openPosting(row)"
                                                 v-if="getRowAction(row) !== 'blocked'"
                                             >
-                                                {{ getRowAction(row) === 'create_or_reuse' ? tt('personalFinance.confirmDuplicate') : tt('personalFinance.confirmRow') }}
+                                                {{ isRowPaymentAccountUnresolved(row)
+                                                    ? tt('personalFinance.paymentAccount.confirmFirst')
+                                                    : (getRowAction(row) === 'create_or_reuse' ? tt('personalFinance.confirmDuplicate') : tt('personalFinance.confirmRow')) }}
                                             </v-btn>
                                             <span class="text-body-small text-medium-emphasis" v-else>—</span>
                                         </td>
@@ -301,6 +353,7 @@
 
     <source-account-dialog ref="sourceAccountDialog" @parsed="onParsed" />
     <generic-bank-import-dialog ref="genericBankImportDialog" @parsed="onParsed" />
+    <payment-account-setup-dialog ref="paymentAccountSetupDialog" @saved="onPaymentAccountsSaved" />
     <posting-dialog ref="postingDialog" @posted="onPosted" />
 	<confirm-dialog ref="confirmDialog" />
     <snack-bar ref="snackbar" />
@@ -312,6 +365,7 @@ import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import PostingDialog from '../components/PostingDialog.vue';
 import SourceAccountDialog from '../components/SourceAccountDialog.vue';
 import GenericBankImportDialog from '../components/GenericBankImportDialog.vue';
+import PaymentAccountSetupDialog from '../components/PaymentAccountSetupDialog.vue';
 
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue';
 
@@ -321,7 +375,7 @@ import { useUserStore } from '@/stores/user.ts';
 import { getCurrentUnixTime, getTimezoneOffsetMinutes, parseDateTimeFromUnixTimeWithBrowserTimezone } from '@/lib/datetime.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 
-import type { PersonalFinanceImportRow, PersonalFinanceImportUploadResult, PersonalFinanceUndoImpact } from '../models.ts';
+import type { PersonalFinanceImportRow, PersonalFinanceImportUploadResult, PersonalFinancePaymentAccountGroup, PersonalFinanceUndoImpact } from '../models.ts';
 import {
     getBatchStatusColor,
     getBatchStatusKey,
@@ -329,7 +383,15 @@ import {
     getRowExplanationKey,
     getSourceTypeKey
 } from '../presentation.ts';
-import { canConfigureGenericBankCsv, canDeleteImportFileContent, canDiscardImportBatch, getRowAction, getUploadAction } from '../state.ts';
+import {
+    canConfigureGenericBankCsv,
+    canDeleteImportFileContent,
+    canDiscardImportBatch,
+    findPaymentAccountGroupForRow,
+    getRowAction,
+    getSafePaymentAccountDisplayName,
+    getUploadAction
+} from '../state.ts';
 import { usePersonalFinanceStore } from '../store.ts';
 
 withDefaults(defineProps<{
@@ -342,6 +404,7 @@ import {
     mdiChatOutline,
 	mdiBankOutline,
 	mdiCancel,
+    mdiCreditCardSearchOutline,
 	mdiDeleteOutline,
     mdiFileDocumentOutline,
     mdiFileSearchOutline,
@@ -357,6 +420,7 @@ type SnackBarType = InstanceType<typeof SnackBar>;
 type PostingDialogType = InstanceType<typeof PostingDialog>;
 type SourceAccountDialogType = InstanceType<typeof SourceAccountDialog>;
 type GenericBankImportDialogType = InstanceType<typeof GenericBankImportDialog>;
+type PaymentAccountSetupDialogType = InstanceType<typeof PaymentAccountSetupDialog>;
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 
 const HISTORY_PAGE_SIZE = 20;
@@ -370,6 +434,7 @@ const fileInput = useTemplateRef<HTMLInputElement>('fileInput');
 const postingDialog = useTemplateRef<PostingDialogType>('postingDialog');
 const sourceAccountDialog = useTemplateRef<SourceAccountDialogType>('sourceAccountDialog');
 const genericBankImportDialog = useTemplateRef<GenericBankImportDialogType>('genericBankImportDialog');
+const paymentAccountSetupDialog = useTemplateRef<PaymentAccountSetupDialogType>('paymentAccountSetupDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 
@@ -379,6 +444,8 @@ const showDuplicateDialog = ref<boolean>(false);
 const duplicateUpload = ref<PersonalFinanceImportUploadResult | null>(null);
 const showUndoImpactDialog = ref<boolean>(false);
 const undoImpact = ref<PersonalFinanceUndoImpact | null>(null);
+
+const unresolvedPaymentAccountCount = computed<number>(() => personalFinanceStore.paymentAccounts.filter(group => !group.mapped).length);
 
 const canDiscardSelectedBatch = computed<boolean>(() => {
 	return canDiscardImportBatch(personalFinanceStore.selectedBatch);
@@ -540,6 +607,7 @@ async function reparseFile(fileId: string, reasonCode: string): Promise<void> {
     }
 
     snackbar.value?.showMessage('personalFinance.parseCompleted');
+    maybeOpenPaymentAccountSetup();
 }
 
 async function openLatestDuplicate(): Promise<void> {
@@ -624,11 +692,49 @@ function openPosting(row: PersonalFinanceImportRow): void {
         return;
     }
 
-    postingDialog.value?.open(row, personalFinanceStore.selectedBatch);
+    postingDialog.value?.open(row, personalFinanceStore.selectedBatch, getRowPaymentAccountGroup(row)?.ledgerAccountId);
 }
 
 function onParsed(): void {
     snackbar.value?.showMessage('personalFinance.parseCompleted');
+    maybeOpenPaymentAccountSetup();
+}
+
+function getRowPaymentAccountGroup(row: PersonalFinanceImportRow): PersonalFinancePaymentAccountGroup | undefined {
+    if (!row.rawPaymentMethod) {
+        return undefined;
+    }
+    return findPaymentAccountGroupForRow(row, personalFinanceStore.paymentAccounts);
+}
+
+function isRowPaymentAccountUnresolved(row: PersonalFinanceImportRow): boolean {
+    const group = getRowPaymentAccountGroup(row);
+    return !!group && !group.mapped;
+}
+
+function openPaymentAccountSetup(): void {
+    const currentBatchId = personalFinanceStore.selectedBatch?.id;
+    if (currentBatchId) {
+        paymentAccountSetupDialog.value?.open(currentBatchId);
+    }
+}
+
+function maybeOpenPaymentAccountSetup(): void {
+    if (unresolvedPaymentAccountCount.value > 0) {
+        openPaymentAccountSetup();
+    }
+}
+
+async function onPaymentAccountsSaved(): Promise<void> {
+    const currentBatchId = personalFinanceStore.selectedBatch?.id;
+    if (currentBatchId) {
+        try {
+            await personalFinanceStore.openBatch(currentBatchId, rowPage.value - 1, ROW_PAGE_SIZE);
+            snackbar.value?.showMessage('personalFinance.paymentAccount.saved');
+        } catch {
+            snackbar.value?.showMessage('personalFinance.error.operationFailed');
+        }
+    }
 }
 
 function onPosted(): void {
@@ -690,7 +796,7 @@ onMounted(reload);
 }
 
 .rows-table {
-    min-width: 820px;
+    min-width: 980px;
 }
 
 .row-summary {
@@ -700,6 +806,10 @@ onMounted(reload);
 .row-explanation {
     max-width: 280px;
     white-space: normal;
+}
+
+.payment-method {
+    max-width: 220px;
 }
 
 .empty-state {

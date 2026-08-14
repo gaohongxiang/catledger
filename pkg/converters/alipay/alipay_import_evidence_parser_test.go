@@ -172,6 +172,9 @@ func TestAlipayAppEvidenceParserGoldenDocument(t *testing.T) {
 	if first.Raw.Counterparty != "  合成商户甲  " || first.Normalized.Counterparty != "合成商户甲" {
 		t.Fatalf("trim 前后证据未分离: raw=%q normalized=%q", first.Raw.Counterparty, first.Normalized.Counterparty)
 	}
+	if first.Raw.PaymentMethod != "合成银行卡(尾号0001)" || first.Normalized.PaymentMethod != "合成银行卡(尾号0001)" {
+		t.Fatalf("付款方式列未进入规范化证据: raw=%q normalized=%q", first.Raw.PaymentMethod, first.Normalized.PaymentMethod)
+	}
 
 	if first.Raw.Note != "合成备注第一行\n合成备注第二行" || first.RawFields[2].Name != "交易对方" || first.RawFields[2].Value != "  合成商户甲  " {
 		t.Fatalf("有序原始快照错误: raw_note=%q raw_field=%+v", first.Raw.Note, first.RawFields[2])

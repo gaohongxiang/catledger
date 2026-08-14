@@ -22,6 +22,10 @@
                         {{ row.rawTransactionTime || formatUnixTime(row.normalizedUnixTime) }} ·
                         {{ row.rawAmount || formatAmount(row.normalizedAmount, row.currency) }}
                     </div>
+                    <div class="text-body-small mt-2" v-if="row.rawPaymentMethod">
+                        <span class="text-medium-emphasis">{{ tt('personalFinance.paymentAccount.paymentMethod') }}：</span>
+                        <span class="font-weight-medium">{{ getSafePaymentAccountDisplayName(row.rawPaymentMethod) }}</span>
+                    </div>
                 </div>
 
                 <template v-if="action !== 'blocked'">
@@ -146,7 +150,7 @@ import type {
     PersonalFinancePostingDraft
 } from '../models.ts';
 import { getIdentityStateKey, getRowExplanationKey } from '../presentation.ts';
-import { getRowAction, getSuggestedTransactionType, type PersonalFinanceRowAction } from '../state.ts';
+import { getRowAction, getSafePaymentAccountDisplayName, getSuggestedTransactionType, type PersonalFinanceRowAction } from '../state.ts';
 import { usePersonalFinanceStore } from '../store.ts';
 
 import { mdiClose } from '@mdi/js';
@@ -258,7 +262,7 @@ function setFirstCategory(): void {
     categoryId.value = categoryOptions.value[0]?.value ?? '';
 }
 
-function open(currentRow: PersonalFinanceImportRow, currentBatch: PersonalFinanceImportBatch): void {
+function open(currentRow: PersonalFinanceImportRow, currentBatch: PersonalFinanceImportBatch, paymentLedgerAccountId?: string): void {
     row.value = currentRow;
     batch.value = currentBatch;
     action.value = getRowAction(currentRow);
@@ -278,7 +282,9 @@ function open(currentRow: PersonalFinanceImportRow, currentBatch: PersonalFinanc
         accountsStore.loadAllAccounts({ force: false }),
         categoriesStore.loadAllCategories({ force: false })
     ]).then(() => {
-        const mappedAccountId = currentRow.ledgerAccountId ?? currentBatch.ledgerAccountId;
+        const mappedAccountId = paymentLedgerAccountId ?? (!currentRow.rawPaymentMethod.trim()
+            ? (currentRow.ledgerAccountId ?? currentBatch.ledgerAccountId)
+            : undefined);
         const mappedAccount = mappedAccountId ? accountsStore.allAccountsMap[mappedAccountId] : undefined;
         sourceAccountId.value = mappedAccount && !mappedAccount.hidden && mappedAccount.currency === currentRow.currency
             ? mappedAccount.id

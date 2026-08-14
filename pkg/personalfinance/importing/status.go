@@ -24,14 +24,15 @@ const (
 type RuleVersion string
 
 const (
-	SOURCE_ACCOUNT_KEY_VERSION_V1 RuleVersion = "source-account-key-v1"
-	IDENTITY_KEY_VERSION_V1       RuleVersion = "identity-key-v1"
-	CORE_DIGEST_VERSION_V1        RuleVersion = "core-digest-v1"
-	FINGERPRINT_VERSION_V1        RuleVersion = "fingerprint-v1"
-	RAW_SNAPSHOT_VERSION_V1       RuleVersion = "raw-snapshot-v1"
-	IDEMPOTENCY_KEY_VERSION_V1    RuleVersion = "idempotency-key-v1"
-	POSTING_REQUEST_VERSION_V1    RuleVersion = "posting-request-v1"
-	POSTING_LINK_VERSION_V1       RuleVersion = "posting-link-v1"
+	SOURCE_ACCOUNT_KEY_VERSION_V1    RuleVersion = "source-account-key-v1"
+	IDENTITY_KEY_VERSION_V1          RuleVersion = "identity-key-v1"
+	CORE_DIGEST_VERSION_V1           RuleVersion = "core-digest-v1"
+	FINGERPRINT_VERSION_V1           RuleVersion = "fingerprint-v1"
+	RAW_SNAPSHOT_VERSION_V1          RuleVersion = "raw-snapshot-v1"
+	IDEMPOTENCY_KEY_VERSION_V1       RuleVersion = "idempotency-key-v1"
+	POSTING_REQUEST_VERSION_V1       RuleVersion = "posting-request-v1"
+	POSTING_LINK_VERSION_V1          RuleVersion = "posting-link-v1"
+	PAYMENT_ACCOUNT_ALIAS_VERSION_V1 RuleVersion = "payment-account-alias-v1"
 )
 
 // CentralRuleVersions 是 parser 不得覆盖的中心规则版本集合。

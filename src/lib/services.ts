@@ -186,6 +186,9 @@ import type {
     PersonalFinanceImportBatchPage,
     PersonalFinanceImportRowPage,
     PersonalFinanceImportUploadResult,
+    PersonalFinancePaymentAccountConfirmRequest,
+    PersonalFinancePaymentAccountGroup,
+    PersonalFinancePaymentAccountPage,
     PersonalFinancePostingRequest,
     PersonalFinancePostingDraft,
     PersonalFinancePostingResult,
@@ -937,6 +940,12 @@ export default {
     },
     savePersonalFinanceSourceAccount: (request: PersonalFinanceSourceAccountSaveRequest): ApiResponsePromise<PersonalFinanceSourceAccount> => {
         return axios.post<ApiResponse<PersonalFinanceSourceAccount>>('v1/personal_finance/source_accounts/save.json', request);
+    },
+    listPersonalFinancePaymentAccounts: ({ batchId }: { batchId: string }): ApiResponsePromise<PersonalFinancePaymentAccountPage> => {
+        return axios.get<ApiResponse<PersonalFinancePaymentAccountPage>>(`v1/personal_finance/import_batches/payment_accounts.json?batch_id=${encodeURIComponent(batchId)}`);
+    },
+    confirmPersonalFinancePaymentAccount: (request: PersonalFinancePaymentAccountConfirmRequest): ApiResponsePromise<PersonalFinancePaymentAccountGroup> => {
+        return axios.post<ApiResponse<PersonalFinancePaymentAccountGroup>>('v1/personal_finance/import_batches/payment_accounts/confirm.json', request);
     },
     postPersonalFinanceImportBatch: (request: PersonalFinancePostingRequest): ApiResponsePromise<PersonalFinancePostingResult> => {
         return axios.post<ApiResponse<PersonalFinancePostingResult>>('v1/personal_finance/import_batches/post.json', request);

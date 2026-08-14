@@ -149,6 +149,8 @@ func assertRepositoryContract(t *testing.T, repository *importing.Repository, da
 	if err != nil || totalCount != 0 || len(rows) != 0 {
 		t.Fatalf("cross-user raw rows were visible")
 	}
+
+	assertPaymentAccountRepositoryContract(t, repository, database, firstUid)
 }
 
 func newSQLiteRepository(t *testing.T) (*importing.Repository, *datastore.Database) {

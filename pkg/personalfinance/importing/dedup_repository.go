@@ -137,6 +137,11 @@ func (tx *RepositoryTransaction) persistEvidenceBatch(persistence *EvidenceBatch
 	}
 
 	batch.LedgerAccountId = cloneInt64Pointer(account.LedgerAccountId)
+	paymentAccountMappings, err := tx.paymentAccountMappingLookup(batch.Uid, batch.SourceTypeSnapshot)
+
+	if err != nil {
+		return err
+	}
 	resetImportBatchCounts(batch)
 	resolutionOrder := evidenceIdentityResolutionOrder(persistence.Rows)
 
@@ -180,11 +185,7 @@ func (tx *RepositoryTransaction) persistEvidenceBatch(persistence *EvidenceBatch
 			row.IdentityState = IDENTITY_STATE_NOT_EVALUATED
 		}
 
-		row.LedgerAccountId = nil
-
-		if row.ParseState == PARSE_STATE_VALID {
-			row.LedgerAccountId = cloneInt64Pointer(account.LedgerAccountId)
-		}
+		row.LedgerAccountId = resolveEvidenceLedgerAccount(account, batch.SourceTypeSnapshot, row, paymentAccountMappings)
 
 		outcome, err := ResolveImportDisposition(row.ParseState, row.SemanticEligibility, row.IdentityState, false)
 

@@ -1,3 +1,4 @@
+import { AccountCategory } from '@/core/account.ts';
 import { TransactionType } from '@/core/transaction.ts';
 
 import type {
@@ -7,6 +8,7 @@ import type {
 	PersonalFinanceImportFile,
     PersonalFinanceImportRow,
     PersonalFinanceImportUploadResult,
+    PersonalFinancePaymentAccountGroup,
     PersonalFinancePostingDraft,
     PersonalFinancePostingRequest,
     PersonalFinanceReparseRequest,
@@ -27,6 +29,18 @@ export type PersonalFinanceGenericBankMappingError =
     'source_account_required' |
     'ledger_account_required';
 
+export interface PersonalFinanceLedgerAccountCandidate {
+    readonly id: string;
+    readonly name: string;
+    readonly currency: string;
+    readonly hidden?: boolean;
+}
+
+export interface PersonalFinancePaymentAccountSuggestion {
+    readonly ledgerAccountId?: string;
+    readonly accountCategory: number;
+}
+
 const MAXIMUM_GENERIC_CSV_COLUMN = 1024;
 const MAXIMUM_GENERIC_CSV_HEADER_ROW = 10000;
 const MAXIMUM_GENERIC_CSV_DIRECTION_VALUES = 32;
@@ -42,6 +56,10 @@ const OPTIONAL_GENERIC_CSV_COLUMNS = [
     'statusColumn',
     'transactionTypeColumn',
     'noteColumn'
+] as const;
+
+const PAYMENT_ACCOUNT_GENERIC_NAME_TOKENS = [
+    '信用卡', '贷记卡', '借记卡', '储蓄卡', '银行卡', '银行', '账户', '账号', '支付', '付款'
 ] as const;
 
 export function canDiscardImportBatch(batch: PersonalFinanceImportBatch | null): boolean {
@@ -73,6 +91,132 @@ export function getCompatibleSourceAccounts(
 
 export function getUsableBankSourceAccounts(accounts: PersonalFinanceSourceAccount[]): PersonalFinanceSourceAccount[] {
     return getCompatibleSourceAccounts(accounts, 'bank').filter(account => !!account.ledgerAccountId);
+}
+
+export function normalizePaymentAccountName(value: string): string {
+    let normalized = value.normalize('NFKC').trim().toLowerCase();
+    normalized = normalized.replace(/(?:末四位|后四位|尾号|卡号)/gu, '');
+    normalized = normalized.replace(/[x*＊•·]{2,}/gu, '');
+    normalized = normalized.replace(/\d{8,}/gu, digits => digits.slice(-4));
+    return normalized.replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+export function getSafePaymentAccountDisplayName(value: string): string {
+    const cleaned = value.normalize('NFKC')
+        .replace(/[\p{Cc}\p{Cf}]/gu, '')
+        .replace(/\s+/gu, ' ')
+        .trim()
+        .replace(/\d{8,}/gu, digits => `****${digits.slice(-4)}`);
+    return [...cleaned].slice(0, 128).join('');
+}
+
+function getPaymentAccountTail(value: string): string {
+    return normalizePaymentAccountName(value).match(/(\d{4})$/u)?.[1] ?? '';
+}
+
+function getPaymentAccountBase(value: string): string {
+    let normalized = normalizePaymentAccountName(value).replace(/\d+/gu, '');
+
+    for (const token of PAYMENT_ACCOUNT_GENERIC_NAME_TOKENS) {
+        normalized = normalized.replaceAll(token, '');
+    }
+    return normalized;
+}
+
+function stripPaymentPlatform(value: string, sourceType: PersonalFinanceSourceType): string {
+    const normalized = normalizePaymentAccountName(value);
+
+    if (sourceType === 'wechat') {
+        return normalized.replace(/^微信(?:支付)?/u, '');
+    }
+    if (sourceType === 'alipay') {
+        return normalized.replace(/^支付宝/u, '');
+    }
+    return normalized;
+}
+
+function getPaymentAccountMatchScore(group: PersonalFinancePaymentAccountGroup, accountName: string): number {
+    const sourceName = normalizePaymentAccountName(group.displayName);
+    const candidateName = normalizePaymentAccountName(accountName);
+
+    if (!sourceName || !candidateName) {
+        return 0;
+    }
+    if (sourceName === candidateName) {
+        return 100;
+    }
+
+    const sourceTail = getPaymentAccountTail(group.displayName);
+    const candidateTail = getPaymentAccountTail(accountName);
+    const sourceBase = getPaymentAccountBase(group.displayName);
+    const candidateBase = getPaymentAccountBase(accountName);
+
+    if (sourceTail && sourceTail === candidateTail && sourceBase.length >= 2 && candidateBase.length >= 2 &&
+        (sourceBase === candidateBase || sourceBase.includes(candidateBase) || candidateBase.includes(sourceBase))) {
+        return 90;
+    }
+
+    const sourceWithoutPlatform = stripPaymentPlatform(group.displayName, group.sourceType);
+    const candidateWithoutPlatform = stripPaymentPlatform(accountName, group.sourceType);
+    if (sourceWithoutPlatform && sourceWithoutPlatform === candidateWithoutPlatform) {
+        return 80;
+    }
+    return 0;
+}
+
+export function inferPaymentAccountCategory(displayName: string, sourceType: PersonalFinanceSourceType): number {
+    const normalized = normalizePaymentAccountName(displayName);
+
+    if (/(?:信用卡|贷记卡|信用购|花呗|白条)/u.test(normalized)) {
+        return AccountCategory.CreditCard.type;
+    }
+    if (/(?:微信|支付宝|零钱|余额|余额宝|零钱通|小荷包)/u.test(normalized)) {
+        return AccountCategory.VirtualAccount.type;
+    }
+    if (/(?:现金)/u.test(normalized)) {
+        return AccountCategory.Cash.type;
+    }
+    if (/(?:银行|借记卡|储蓄卡)/u.test(normalized)) {
+        return AccountCategory.CheckingAccount.type;
+    }
+    return sourceType === 'wechat' || sourceType === 'alipay'
+        ? AccountCategory.VirtualAccount.type
+        : AccountCategory.CheckingAccount.type;
+}
+
+export function suggestPaymentAccount(
+    group: PersonalFinancePaymentAccountGroup,
+    accounts: PersonalFinanceLedgerAccountCandidate[]
+): PersonalFinancePaymentAccountSuggestion {
+    const candidates = accounts
+        .filter(account => !account.hidden && account.currency === group.currency)
+        .map(account => ({ account, score: getPaymentAccountMatchScore(group, account.name) }))
+        .filter(candidate => candidate.score > 0)
+        .sort((left, right) => right.score - left.score || left.account.name.localeCompare(right.account.name));
+    const best = candidates[0];
+    const isUniqueBest = !!best && candidates.filter(candidate => candidate.score === best.score).length === 1;
+
+    return {
+        ...(isUniqueBest ? { ledgerAccountId: best.account.id } : {}),
+        accountCategory: inferPaymentAccountCategory(group.displayName, group.sourceType)
+    };
+}
+
+export function findPaymentAccountGroupForRow(
+    row: PersonalFinanceImportRow,
+    groups: PersonalFinancePaymentAccountGroup[]
+): PersonalFinancePaymentAccountGroup | undefined {
+    const matches = groups
+        .filter(group => group.currency === row.currency)
+        .map(group => ({ group, score: getPaymentAccountMatchScore(group, row.rawPaymentMethod) }))
+        .filter(match => match.score >= 80)
+        .sort((left, right) => right.score - left.score);
+    const best = matches[0];
+
+    if (!best || matches.filter(match => match.score === best.score).length !== 1) {
+        return undefined;
+    }
+    return best.group;
 }
 
 export function createDefaultGenericBankMappingForm(): PersonalFinanceGenericBankMappingForm {

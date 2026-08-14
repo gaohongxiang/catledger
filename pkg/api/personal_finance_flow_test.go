@@ -5,8 +5,29 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 )
+
+func TestPaymentLedgerAccountUsabilityRequiresVisibleSingleAccountAndCurrency(t *testing.T) {
+	account := &models.Account{Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Currency: "CNY"}
+	if !isPersonalFinancePaymentLedgerAccountUsable(account, "CNY") {
+		t.Fatal("visible single-currency account was rejected")
+	}
+	if isPersonalFinancePaymentLedgerAccountUsable(account, "USD") {
+		t.Fatal("currency mismatch was accepted")
+	}
+	hidden := *account
+	hidden.Hidden = true
+	if isPersonalFinancePaymentLedgerAccountUsable(&hidden, "CNY") {
+		t.Fatal("hidden account was accepted")
+	}
+	parent := *account
+	parent.Type = models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS
+	if isPersonalFinancePaymentLedgerAccountUsable(&parent, "CNY") || isPersonalFinancePaymentLedgerAccountUsable(nil, "CNY") {
+		t.Fatal("parent or missing account was accepted")
+	}
+}
 
 func TestTransactionEvidenceResponseRedactsRawIdentityAndStorageFields(t *testing.T) {
 	amount := int64(1234)

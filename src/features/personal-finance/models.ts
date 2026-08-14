@@ -126,6 +126,27 @@ export interface PersonalFinanceSourceAccountPage {
     readonly items: PersonalFinanceSourceAccount[];
 }
 
+export interface PersonalFinancePaymentAccountGroup {
+    readonly sourceType: PersonalFinanceSourceType;
+    readonly currency: string;
+    readonly displayName: string;
+    readonly rowCount: number;
+    readonly pendingRowCount: number;
+    readonly sampleRowId: string;
+    readonly ledgerAccountId?: string;
+    readonly mapped: boolean;
+}
+
+export interface PersonalFinancePaymentAccountPage {
+    readonly items: PersonalFinancePaymentAccountGroup[];
+}
+
+export interface PersonalFinancePaymentAccountConfirmRequest {
+    readonly batchId: string;
+    readonly rowId: string;
+    readonly ledgerAccountId: string;
+}
+
 export interface PersonalFinanceSourceAccountDiscovery {
     readonly sourceType: PersonalFinanceSourceType;
     readonly evidenceKind: 'stable_identifier' | 'masked_display_only' | 'display_only' | 'missing';

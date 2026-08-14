@@ -10,6 +10,9 @@ import type {
     PersonalFinanceImportRow,
     PersonalFinanceImportRowPage,
     PersonalFinanceImportUploadResult,
+    PersonalFinancePaymentAccountConfirmRequest,
+    PersonalFinancePaymentAccountGroup,
+    PersonalFinancePaymentAccountPage,
     PersonalFinancePostingDraft,
     PersonalFinancePostingResult,
     PersonalFinanceUndoImpact,
@@ -39,8 +42,10 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
     const rows = ref<PersonalFinanceImportRow[]>([]);
     const totalRowCount = ref<number>(0);
     const sourceAccounts = ref<PersonalFinanceSourceAccount[]>([]);
+    const paymentAccounts = ref<PersonalFinancePaymentAccountGroup[]>([]);
     const loadingBatches = ref<boolean>(false);
     const loadingRows = ref<boolean>(false);
+    const loadingPaymentAccounts = ref<boolean>(false);
     const submitting = ref<boolean>(false);
 
     async function loadBatches(page = 0, count = 20): Promise<PersonalFinanceImportBatchPage> {
@@ -63,7 +68,7 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         loadingRows.value = true;
 
         try {
-            const [batch, rowPageResult] = await Promise.all([
+            const [batch, rowPageResult, paymentAccountPage] = await Promise.all([
                 unwrapResponse(
                     services.getPersonalFinanceImportBatch({ batchId }),
                     'Unable to retrieve personal finance import batch'
@@ -71,11 +76,16 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
                 unwrapResponse(
                     services.listPersonalFinanceImportRows({ batchId, page: rowPage, count: rowCount }),
                     'Unable to retrieve personal finance import rows'
+                ),
+                unwrapResponse(
+                    services.listPersonalFinancePaymentAccounts({ batchId }),
+                    'Unable to retrieve personal finance payment accounts'
                 )
             ]);
             selectedBatch.value = batch;
             rows.value = rowPageResult.items;
             totalRowCount.value = rowPageResult.totalCount;
+            paymentAccounts.value = paymentAccountPage.items;
             return rowPageResult;
         } finally {
             loadingRows.value = false;
@@ -159,6 +169,42 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         return result;
     }
 
+    async function loadPaymentAccounts(batchId: string): Promise<PersonalFinancePaymentAccountGroup[]> {
+        loadingPaymentAccounts.value = true;
+
+        try {
+            const result: PersonalFinancePaymentAccountPage = await unwrapResponse(
+                services.listPersonalFinancePaymentAccounts({ batchId }),
+                'Unable to retrieve personal finance payment accounts'
+            );
+            paymentAccounts.value = result.items;
+            return result.items;
+        } finally {
+            loadingPaymentAccounts.value = false;
+        }
+    }
+
+    async function confirmPaymentAccount(request: PersonalFinancePaymentAccountConfirmRequest): Promise<PersonalFinancePaymentAccountGroup> {
+        submitting.value = true;
+
+        try {
+            const result = await unwrapResponse(
+                services.confirmPersonalFinancePaymentAccount(request),
+                'Unable to confirm personal finance payment account'
+            );
+            const existingIndex = paymentAccounts.value.findIndex(group => group.sampleRowId === request.rowId);
+
+            if (existingIndex >= 0) {
+                paymentAccounts.value.splice(existingIndex, 1, result);
+            } else {
+                await loadPaymentAccounts(request.batchId);
+            }
+            return result;
+        } finally {
+            submitting.value = false;
+        }
+    }
+
     async function postRow(row: PersonalFinanceImportRow, draft?: PersonalFinancePostingDraft): Promise<PersonalFinancePostingResult> {
         submitting.value = true;
 
@@ -207,6 +253,7 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         selectedBatch.value = null;
         rows.value = [];
         totalRowCount.value = 0;
+        paymentAccounts.value = [];
     }
 
     return {
@@ -216,8 +263,10 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         rows,
         totalRowCount,
         sourceAccounts,
+        paymentAccounts,
         loadingBatches,
         loadingRows,
+        loadingPaymentAccounts,
         submitting,
         loadBatches,
         openBatch,
@@ -225,6 +274,8 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         reparseFile,
         loadSourceAccounts,
         saveSourceAccount,
+        loadPaymentAccounts,
+        confirmPaymentAccount,
         postRow,
 		discardBatch,
 		deleteFileContent,

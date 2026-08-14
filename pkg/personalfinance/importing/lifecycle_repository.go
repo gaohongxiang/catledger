@@ -243,6 +243,7 @@ func (r *Repository) ClearPersonalFinanceUserData(c core.Context, uid int64) err
 		beans := []any{
 			new(RawRowTransactionLink), new(ImportPosting), new(ImportBatchIssue),
 			new(RawImportRow), new(SourceIdentity), new(ImportBatch),
+			new(PaymentAccountMapping),
 			new(SourceAccount), new(ImportFile),
 		}
 		for _, bean := range beans {
