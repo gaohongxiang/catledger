@@ -2869,10 +2869,48 @@
                 "mobileGap": "{count} source accounts have coverage gaps.",
                 "empty": "No statement source accounts are configured."
             },
-            "drilldown": { "accounts": "View accounts", "transactions": "View transactions", "loans": "View loans", "imports": "View imports" },
+            "gettingStarted": {
+                "open": "How to start",
+                "eyebrow": "First time here",
+                "title": "Start in three steps, without entering every purchase",
+                "subtitle": "Check your real accounts, upload statements in batches, then review only the few items that need a decision.",
+                "dismiss": "Got it",
+                "account": "Check real accounts",
+                "accountHint": "Create only the money and debts you actually hold, with their current balances.",
+                "imports": "Upload statements in batches",
+                "importsHint": "Import Alipay, WeChat Pay, bank, and credit-card statements weekly or monthly.",
+                "review": "Review a few exceptions",
+                "reviewHint": "Confirm duplicate purchases, internal transfers, and refunds.",
+                "boundary": "Electronic payments do not need day-to-day manual entry. Use “new transaction” for cash, events without electronic evidence, or anything you want to see immediately."
+            },
+            "drilldown": { "accounts": "View accounts", "transactions": "View transactions", "loans": "View loans", "imports": "Organize statements" },
             "mobile": { "title": "Financial Overview", "heading": "Your position today", "subtitle": "Net worth, upcoming debt, actual cash flow, and statement coverage at a glance.", "automatic": "Formal ledger included automatically through today" }
         },
-        "nav": "Personal Finance Imports",
+        "simpleNav": {
+            "daily": "Everyday bookkeeping",
+            "transactions": "Transactions",
+            "more": "More tools"
+        },
+        "organizer": {
+            "nav": "Statement Organizer",
+            "eyebrow": "Batch statements · fewer decisions",
+            "title": "Statement Organizer",
+            "subtitle": "You do not need to enter every electronic payment by hand. Upload Alipay, WeChat Pay, bank, and credit-card statements; the system organizes them first and asks only about ambiguous items.",
+            "flowLabel": "Statement organization flow",
+            "tab": {
+                "imports": "Upload & post",
+                "reconciliation": "Review overlaps"
+            },
+            "step": {
+                "upload": "Upload statements",
+                "uploadHint": "Import weekly or monthly",
+                "organize": "System organizes",
+                "organizeHint": "Find duplicates and overlaps",
+                "review": "Review exceptions",
+                "reviewHint": "Count each event only once"
+            }
+        },
+        "nav": "Statement Organizer",
         "loans": {
             "nav": "Loans & Installments",
             "eyebrow": "Debt agreements and actual ledger effects",
@@ -2893,6 +2931,7 @@
             "discount": { "none": "No discount", "interestRate": "Interest-rate discount", "perPeriodAmount": "Per-period reduction", "totalAmount": "Total reduction" },
             "field": { "name": "Contract name", "lenderName": "Lender", "contractType": "Contract type", "liabilityAccount": "Liability account", "defaultPaymentAccount": "Default payment account", "fundingType": "Funding type", "repaymentMethod": "Repayment method", "effectiveDate": "Effective date", "contractDate": "Contract date", "firstDueDate": "First due date", "principal": "Contract principal", "actualDisbursement": "Net amount received", "termCount": "Number of installments", "upfrontFee": "Upfront fee", "perPeriodFee": "Per-period fee", "paymentBasis": "Known payment", "rateQuoteType": "Rate quote", "quotedRatePercent": "Quoted rate", "percentageHint": "Enter a percentage with up to 10 decimal places", "discountType": "Discount type", "discountRatePercent": "Discount rate", "discountAmount": "Discount amount" },
             "calculator": { "eyebrow": "Pure calculation", "title": "Agreement calculator", "subtitle": "All three business dates are explicit. Calculating never changes an account balance.", "calculate": "Calculate" },
+            "advanced": { "title": "Agreement cost and calculation details", "hint": "Expand rates, effective APR, and total-cost details when needed. For everyday use, start with principal left, the next due date, and the repayment plan." },
             "result": { "actualDisbursement": "Net amount received", "principal": "Contract principal", "totalPayment": "Total payment", "totalInterest": "Total interest", "totalFees": "Total fees", "totalCost": "Total cost", "effectiveApr": "Effective APR", "costRatio": "Total cost / principal", "scheduleTitle": "Calculated repayment schedule", "period": "Period", "dueDate": "Due date", "principalPayment": "Principal", "interest": "Interest", "fee": "Fee", "payment": "Payment", "remainingPrincipal": "Remaining principal" },
             "contractForm": { "title": "Contract identity", "identityOnly": "Identity fields", "subtitle": "Link the agreement to one eligible liability account and an optional asset payment account in the same currency.", "accountBoundary": "Only visible single credit-card/debt accounts can hold the liability; payment accounts must be visible assets in the same currency." },
             "create": { "title": "Create loan contract", "submit": "Create contract" },
@@ -2908,10 +2947,10 @@
             "error": { "operationFailed": "The loan operation could not be completed. Refresh and review the current state before retrying.", "referenceDataFailed": "Accounts or categories could not be loaded. Ledger drafts remain unavailable until they are refreshed." }
         },
         "reconciliation": {
-            "nav": "Reconciliation",
+            "nav": "Review overlaps",
             "eyebrow": "Cross-source evidence review",
-            "title": "Reconciliation Workbench",
-            "subtitle": "Compare payment-platform and funding-account evidence side by side, understand each candidate, and decide the real relationship.",
+            "title": "Review duplicates, transfers, and refunds",
+            "subtitle": "The system finds likely duplicate purchases and transfers between your accounts; you only decide the few ambiguous items.",
             "anchorBatch": "Candidate anchor batch",
             "generate": "Generate Candidates",
             "pending": "Pending",
@@ -3090,9 +3129,9 @@
                 "staleOrFailed": "The case may have changed or the operation failed. Refresh and try again."
             }
         },
-        "eyebrow": "Traceable imports",
-        "title": "Personal Finance Import Workbench",
-        "subtitle": "Keep source evidence, explain duplicates and conflicts, then confirm each transaction before it reaches your ledger.",
+        "eyebrow": "Batch statements · automatic organization",
+        "title": "Upload and organize statements",
+        "subtitle": "Upload electronic statements weekly or monthly. Source evidence is preserved, duplicates are detected, and only a few exceptions need confirmation before posting to the formal ledger.",
         "upload": "Upload Statement",
         "history": "Import History",
         "batch": "Import Batch",

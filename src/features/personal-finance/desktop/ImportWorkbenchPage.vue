@@ -2,9 +2,9 @@
     <v-row class="match-height">
         <v-col cols="12">
             <v-card class="workbench-card overflow-hidden">
-                <div class="workbench-hero pa-6 pa-lg-8">
+                <div :class="embedded ? 'workbench-toolbar px-5 py-3' : 'workbench-hero pa-6 pa-lg-8'">
                     <div class="d-flex flex-wrap align-center ga-4">
-                        <div>
+                        <div v-if="!embedded">
                             <div class="text-overline text-primary">{{ tt('personalFinance.eyebrow') }}</div>
                             <h2 class="text-h4 font-weight-bold mt-1">{{ tt('personalFinance.title') }}</h2>
                             <p class="text-body-large text-medium-emphasis mt-2 mb-0">
@@ -14,7 +14,7 @@
                         <v-spacer />
                         <v-btn
                             color="primary"
-                            size="large"
+                            :size="embedded ? 'default' : 'large'"
                             :prepend-icon="mdiTrayArrowUp"
                             :loading="personalFinanceStore.submitting"
                             @click="fileInput?.click()"
@@ -23,7 +23,7 @@
                         </v-btn>
                         <v-btn
                             variant="tonal"
-                            size="large"
+                            :size="embedded ? 'default' : 'large'"
                             :icon="mdiRefresh"
                             :loading="personalFinanceStore.loadingBatches"
                             @click="reload"
@@ -331,6 +331,12 @@ import {
 } from '../presentation.ts';
 import { canConfigureGenericBankCsv, canDeleteImportFileContent, canDiscardImportBatch, getRowAction, getUploadAction } from '../state.ts';
 import { usePersonalFinanceStore } from '../store.ts';
+
+withDefaults(defineProps<{
+    embedded?: boolean;
+}>(), {
+    embedded: false
+});
 
 import {
     mdiChatOutline,
@@ -655,6 +661,10 @@ onMounted(reload);
     background:
         radial-gradient(circle at 90% 20%, rgba(var(--v-theme-primary), 0.12), transparent 32%),
         linear-gradient(135deg, rgba(var(--v-theme-surface-variant), 0.58), rgba(var(--v-theme-surface), 0));
+}
+
+.workbench-toolbar {
+    background: rgba(var(--v-theme-primary), 0.035);
 }
 
 .history-column,

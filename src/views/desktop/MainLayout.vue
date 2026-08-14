@@ -19,13 +19,13 @@
                 </li>
                 <li class="nav-section-title">
                     <div class="title-wrapper">
-                        <span class="title-text">{{ tt('Transaction Data') }}</span>
+                        <span class="title-text">{{ tt('personalFinance.simpleNav.daily') }}</span>
                     </div>
                 </li>
                 <li class="nav-link">
                     <router-link to="/transaction/list?pageType=0&dateType=7">
                         <v-icon class="nav-item-icon" :icon="mdiListBoxOutline"/>
-                        <span class="nav-item-title d-inline-block">{{ tt('Transaction Details') }}</span>
+                        <span class="nav-item-title d-inline-block">{{ tt('personalFinance.simpleNav.transactions') }}</span>
                         <v-btn density="compact" color="secondary" variant="text" size="22"
                                class="ms-1" :icon="true" v-if="showAddTransactionButtonInDesktopNavbar"
                                @click="showAddDialogInTransactionListPage">
@@ -35,15 +35,9 @@
                     </router-link>
                 </li>
                 <li class="nav-link">
-                    <router-link to="/personal-finance/imports">
+                    <router-link to="/personal-finance/bills">
                         <v-icon class="nav-item-icon" :icon="mdiTrayArrowDown"/>
-                        <span class="nav-item-title">{{ tt('personalFinance.nav') }}</span>
-                    </router-link>
-                </li>
-                <li class="nav-link">
-                    <router-link to="/personal-finance/reconciliation">
-                        <v-icon class="nav-item-icon" :icon="mdiLinkVariant"/>
-                        <span class="nav-item-title">{{ tt('personalFinance.reconciliation.nav') }}</span>
+                        <span class="nav-item-title">{{ tt('personalFinance.organizer.nav') }}</span>
                     </router-link>
                 </li>
                 <li class="nav-link">
@@ -52,76 +46,86 @@
                         <span class="nav-item-title">{{ tt('personalFinance.loans.nav') }}</span>
                     </router-link>
                 </li>
-                <li class="nav-link">
-                    <router-link to="/statistics/transaction">
-                        <v-icon class="nav-item-icon" :icon="mdiChartPieOutline"/>
-                        <span class="nav-item-title">{{ tt('Statistics & Analysis') }}</span>
-                    </router-link>
+
+                <li class="nav-section-title nav-section-title--toggle">
+                    <button type="button" :aria-expanded="advancedNavigationExpanded" @click="advancedNavigationExpanded = !advancedNavigationExpanded">
+                        <span>{{ tt('personalFinance.simpleNav.more') }}</span>
+                        <v-icon :class="{ 'advanced-nav-chevron--open': advancedNavigationExpanded }" :icon="mdiChevronDown" size="17" />
+                    </button>
                 </li>
-                <li class="nav-link">
-                    <router-link to="/insights/explorer">
-                        <v-icon class="nav-item-icon" :icon="mdiCompassOutline"/>
-                        <span class="nav-item-title">{{ tt('Insights Explorer') }}</span>
-                    </router-link>
-                </li>
-                <li class="nav-section-title">
-                    <div class="title-wrapper">
-                        <span class="title-text">{{ tt('Basis Data') }}</span>
-                    </div>
-                </li>
-                <li class="nav-link">
-                    <router-link to="/account/list">
-                        <v-icon class="nav-item-icon" :icon="mdiCreditCardOutline"/>
-                        <span class="nav-item-title">{{ tt('Accounts') }}</span>
-                    </router-link>
-                </li>
-                <li class="nav-link">
-                    <router-link to="/category/list">
-                        <v-icon class="nav-item-icon" :icon="mdiViewDashboardOutline"/>
-                        <span class="nav-item-title">{{ tt('Transaction Categories') }}</span>
-                    </router-link>
-                </li>
-                <li class="nav-link">
-                    <router-link to="/tag/list">
-                        <v-icon class="nav-item-icon" :icon="mdiTagOutline"/>
-                        <span class="nav-item-title">{{ tt('Transaction Tags') }}</span>
-                    </router-link>
-                </li>
-                <li class="nav-link">
-                    <router-link to="/template/list">
-                        <v-icon class="nav-item-icon" :icon="mdiClipboardTextOutline"/>
-                        <span class="nav-item-title">{{ tt('Transaction Templates') }}</span>
-                    </router-link>
-                </li>
-                <li class="nav-link" v-if="isUserScheduledTransactionEnabled()">
-                    <router-link to="/schedule/list">
-                        <v-icon class="nav-item-icon" :icon="mdiClipboardTextClockOutline"/>
-                        <span class="nav-item-title">{{ tt('Scheduled Transactions') }}</span>
-                    </router-link>
-                </li>
-                <li class="nav-section-title">
-                    <div class="title-wrapper">
-                        <span class="title-text">{{ tt('Miscellaneous') }}</span>
-                    </div>
-                </li>
-                <li class="nav-link">
-                    <router-link to="/exchange_rates">
-                        <v-icon class="nav-item-icon" :icon="mdiSwapHorizontal"/>
-                        <span class="nav-item-title">{{ tt('Exchange Rates Data') }}</span>
-                    </router-link>
-                </li>
-                <li class="nav-link">
-                    <a href="javascript:void(0);" @click="showMobileQrCode = true">
-                        <v-icon class="nav-item-icon" :icon="mdiCellphone"/>
-                        <span class="nav-item-title">{{ tt('Use on Mobile Device') }}</span>
-                    </a>
-                </li>
-                <li class="nav-link">
-                    <router-link to="/about">
-                        <v-icon class="nav-item-icon" :icon="mdiInformationOutline"/>
-                        <span class="nav-item-title">{{ tt('About') }}</span>
-                    </router-link>
-                </li>
+
+                <template v-if="advancedNavigationExpanded">
+                    <li class="nav-link">
+                        <router-link to="/statistics/transaction">
+                            <v-icon class="nav-item-icon" :icon="mdiChartPieOutline"/>
+                            <span class="nav-item-title">{{ tt('Statistics & Analysis') }}</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-link">
+                        <router-link to="/insights/explorer">
+                            <v-icon class="nav-item-icon" :icon="mdiCompassOutline"/>
+                            <span class="nav-item-title">{{ tt('Insights Explorer') }}</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-section-title">
+                        <div class="title-wrapper">
+                            <span class="title-text">{{ tt('Basis Data') }}</span>
+                        </div>
+                    </li>
+                    <li class="nav-link">
+                        <router-link to="/account/list">
+                            <v-icon class="nav-item-icon" :icon="mdiCreditCardOutline"/>
+                            <span class="nav-item-title">{{ tt('Accounts') }}</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-link">
+                        <router-link to="/category/list">
+                            <v-icon class="nav-item-icon" :icon="mdiViewDashboardOutline"/>
+                            <span class="nav-item-title">{{ tt('Transaction Categories') }}</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-link">
+                        <router-link to="/tag/list">
+                            <v-icon class="nav-item-icon" :icon="mdiTagOutline"/>
+                            <span class="nav-item-title">{{ tt('Transaction Tags') }}</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-link">
+                        <router-link to="/template/list">
+                            <v-icon class="nav-item-icon" :icon="mdiClipboardTextOutline"/>
+                            <span class="nav-item-title">{{ tt('Transaction Templates') }}</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-link" v-if="isUserScheduledTransactionEnabled()">
+                        <router-link to="/schedule/list">
+                            <v-icon class="nav-item-icon" :icon="mdiClipboardTextClockOutline"/>
+                            <span class="nav-item-title">{{ tt('Scheduled Transactions') }}</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-section-title">
+                        <div class="title-wrapper">
+                            <span class="title-text">{{ tt('Miscellaneous') }}</span>
+                        </div>
+                    </li>
+                    <li class="nav-link">
+                        <router-link to="/exchange_rates">
+                            <v-icon class="nav-item-icon" :icon="mdiSwapHorizontal"/>
+                            <span class="nav-item-title">{{ tt('Exchange Rates Data') }}</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-link">
+                        <a href="javascript:void(0);" @click="showMobileQrCode = true">
+                            <v-icon class="nav-item-icon" :icon="mdiCellphone"/>
+                            <span class="nav-item-title">{{ tt('Use on Mobile Device') }}</span>
+                        </a>
+                    </li>
+                    <li class="nav-link">
+                        <router-link to="/about">
+                            <v-icon class="nav-item-icon" :icon="mdiInformationOutline"/>
+                            <span class="nav-item-title">{{ tt('About') }}</span>
+                        </router-link>
+                    </li>
+                </template>
             </ul>
         </div>
 
@@ -220,7 +224,7 @@
 <script setup lang="ts">
 import SnackBar from '@/components/desktop/SnackBar.vue';
 
-import { ref, computed, useTemplateRef } from 'vue';
+import { ref, computed, useTemplateRef, watch } from 'vue';
 
 import { useDisplay, useTheme } from 'vuetify';
 import { useRoute, useRouter } from 'vue-router';
@@ -245,8 +249,8 @@ import {
     mdiHomeOutline,
     mdiListBoxOutline,
     mdiTrayArrowDown,
-    mdiLinkVariant,
     mdiBankOutline,
+    mdiChevronDown,
     mdiPlusCircle,
     mdiCreditCardOutline,
     mdiViewDashboardOutline,
@@ -288,6 +292,25 @@ const logouting = ref<boolean>(false);
 const showVerticalOverlayMenu = ref<boolean>(false);
 const showLoading = ref<boolean>(false);
 const showMobileQrCode = ref<boolean>(false);
+const advancedRoutePrefixes = [
+    '/statistics',
+    '/insights',
+    '/account',
+    '/category',
+    '/tag',
+    '/template',
+    '/schedule',
+    '/exchange_rates',
+    '/about'
+];
+const isAdvancedRoute = (path: string): boolean => advancedRoutePrefixes.some(prefix => path.startsWith(prefix));
+const advancedNavigationExpanded = ref<boolean>(isAdvancedRoute(route.path));
+
+watch(() => route.path, path => {
+    if (isAdvancedRoute(path)) {
+        advancedNavigationExpanded.value = true;
+    }
+});
 
 const currentRoutePath = computed<string>(() => route.path);
 

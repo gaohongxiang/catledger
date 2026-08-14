@@ -68,6 +68,40 @@
         text-transform: uppercase;
     }
 
+    .nav-section-title--toggle {
+        padding-block-start: var(--ebk-space-4);
+
+        > button {
+            display: flex;
+            width: 100%;
+            min-height: 2rem;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--ebk-space-2);
+            border: 0;
+            border-radius: var(--ebk-radius-md);
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            font: inherit;
+            letter-spacing: 0.05em;
+            text-transform: inherit;
+
+            &:hover {
+                background: rgba(var(--v-theme-primary), 0.055);
+                color: rgb(var(--v-theme-primary));
+            }
+        }
+
+        .v-icon {
+            transition: transform var(--ebk-transition-fast);
+        }
+
+        .advanced-nav-chevron--open {
+            transform: rotate(180deg);
+        }
+    }
+
     .nav-link {
         margin-block: 0.125rem;
 

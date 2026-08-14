@@ -2869,10 +2869,48 @@
                 "mobileGap": "有 {count} 个来源账户存在覆盖空档。",
                 "empty": "尚未配置账单来源账户。"
             },
-            "drilldown": { "accounts": "查看账户", "transactions": "查看交易", "loans": "查看贷款", "imports": "查看导入" },
+            "gettingStarted": {
+                "open": "使用指南",
+                "eyebrow": "第一次使用",
+                "title": "三步开始，不用逐笔手记",
+                "subtitle": "先核对真实账户，再批量上传账单，最后只处理少量待确认项。",
+                "dismiss": "知道了",
+                "account": "核对真实账户",
+                "accountHint": "只建立实际持有的钱和负债，并填写当前余额。",
+                "imports": "批量上传账单",
+                "importsHint": "支付宝、微信、银行卡和信用卡可以按周或月导入。",
+                "review": "处理少数待确认项",
+                "reviewHint": "把重复消费、内部转账和退款确认清楚。",
+                "boundary": "电子支付不必平时逐笔录入；现金、无电子证据或希望即时查看的交易再使用“记一笔”。"
+            },
+            "drilldown": { "accounts": "查看账户", "transactions": "查看交易", "loans": "查看贷款", "imports": "整理账单" },
             "mobile": { "title": "财务总览", "heading": "今天的财务位置", "subtitle": "一屏查看净资产、近期还款、真实现金流和账单覆盖。", "automatic": "自动纳入截至今天的正式账本" }
         },
-        "nav": "个人财务导入",
+        "simpleNav": {
+            "daily": "日常记账",
+            "transactions": "记账与明细",
+            "more": "更多功能"
+        },
+        "organizer": {
+            "nav": "账单整理",
+            "eyebrow": "批量账单 · 少量确认",
+            "title": "账单整理",
+            "subtitle": "电子支付不用逐笔手记。上传支付宝、微信、银行和信用卡账单，系统先整理，只把有歧义的项目交给你。",
+            "flowLabel": "账单整理流程",
+            "tab": {
+                "imports": "上传与入账",
+                "reconciliation": "处理重复与转账"
+            },
+            "step": {
+                "upload": "上传账单",
+                "uploadHint": "按周或月集中上传",
+                "organize": "系统先整理",
+                "organizeHint": "识别重复与重叠来源",
+                "review": "只确认异常",
+                "reviewHint": "正式账本只统计一次"
+            }
+        },
+        "nav": "账单整理",
         "loans": {
             "nav": "贷款与分期",
             "eyebrow": "合同计划与真实账本效果",
@@ -2893,6 +2931,7 @@
             "discount": { "none": "无优惠", "interestRate": "利率折扣", "perPeriodAmount": "每期减免", "totalAmount": "总额减免" },
             "field": { "name": "合同名称", "lenderName": "机构或出借方", "contractType": "合同类型", "liabilityAccount": "负债账户", "defaultPaymentAccount": "默认付款账户", "fundingType": "资金类型", "repaymentMethod": "还款方式", "effectiveDate": "生效日期", "contractDate": "合同日期", "firstDueDate": "首次还款日", "principal": "合同本金", "actualDisbursement": "实际净到账", "termCount": "期数", "upfrontFee": "前置费用", "perPeriodFee": "每期费用", "paymentBasis": "已知每期还款额", "rateQuoteType": "利率口径", "quotedRatePercent": "合同利率", "percentageHint": "请输入百分比，最多保留 10 位小数", "discountType": "优惠类型", "discountRatePercent": "折扣比例", "discountAmount": "减免金额" },
             "calculator": { "eyebrow": "纯测算", "title": "合同计算器", "subtitle": "三个业务日期均需显式填写；测算不会改变任何账户余额。", "calculate": "开始测算" },
+            "advanced": { "title": "合同成本与计算详情", "hint": "利率、有效年化、总成本等专业信息按需展开；日常先看剩余本金、下一期和还款计划。" },
             "result": { "actualDisbursement": "实际净到账", "principal": "合同本金", "totalPayment": "总还款", "totalInterest": "总利息", "totalFees": "总费用", "totalCost": "总成本", "effectiveApr": "有效年化", "costRatio": "总成本占本金比例", "scheduleTitle": "逐期还款明细", "period": "期次", "dueDate": "到期日", "principalPayment": "本金", "interest": "利息", "fee": "费用", "payment": "应还", "remainingPrincipal": "剩余本金" },
             "contractForm": { "title": "合同身份", "identityOnly": "身份字段", "subtitle": "合同关联一个合格负债账户，并可选择同币种资产账户作为默认付款账户。", "accountBoundary": "负债账户只允许可见的单一信用卡或债务账户；付款账户必须是同币种、可见的单一资产账户。" },
             "create": { "title": "新建贷款合同", "submit": "创建合同" },
@@ -2908,10 +2947,10 @@
             "error": { "operationFailed": "贷款操作未能完成。请刷新并核对当前状态后重试。", "referenceDataFailed": "账户或分类加载失败；刷新成功前不能创建账本草稿。" }
         },
         "reconciliation": {
-            "nav": "人工对账",
+            "nav": "处理重复与转账",
             "eyebrow": "跨来源证据审阅",
-            "title": "人工对账工作台",
-            "subtitle": "把支付平台与资金账户证据并排核对，解释候选原因，由您决定它们的真实关系。",
+            "title": "处理重复、转账和退款",
+            "subtitle": "系统先找出可能重复的消费和账户间转账；你只需确认少量有歧义的项目。",
             "anchorBatch": "选择候选锚点批次",
             "generate": "生成候选",
             "pending": "待处理",
@@ -3090,9 +3129,9 @@
                 "staleOrFailed": "案例可能已更新或操作失败，请刷新后重试"
             }
         },
-        "eyebrow": "可追溯导入",
-        "title": "个人财务导入工作台",
-        "subtitle": "保留来源证据，清楚解释重复与冲突，逐笔确认后再进入正式账本。",
+        "eyebrow": "批量账单 · 自动整理",
+        "title": "上传并整理账单",
+        "subtitle": "按周或月上传电子账单；系统保留来源证据、识别重复，只让你确认少量异常后再进入正式账本。",
         "upload": "上传账单",
         "history": "导入历史",
         "batch": "导入批次",

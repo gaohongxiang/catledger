@@ -10,10 +10,6 @@
                             {{ tt('personalFinance.loans.subtitle') }}
                         </p>
                     </div>
-                    <v-spacer />
-                    <v-btn color="primary" size="large" :prepend-icon="mdiPlus" @click="startCreate">
-                        {{ tt('personalFinance.loans.contracts.create') }}
-                    </v-btn>
                 </div>
 
                 <v-divider />
@@ -105,13 +101,26 @@
 
                             <v-divider />
 
-                            <loan-calculation-result-panel
-                                class="pa-5 pa-lg-6"
-                                :input="selectedDetail.currentRevision.input"
-                                :result="selectedDetail.currentRevision.calculation"
-                                :currency="selectedDetail.contract.currency"
-                                :show-installments="false"
-                            />
+                            <v-expansion-panels class="calculation-disclosure pa-5 pa-lg-6" variant="accordion">
+                                <v-expansion-panel elevation="0">
+                                    <v-expansion-panel-title>
+                                        <div>
+                                            <strong>{{ tt('personalFinance.loans.advanced.title') }}</strong>
+                                            <div class="text-body-small text-medium-emphasis mt-1">
+                                                {{ tt('personalFinance.loans.advanced.hint') }}
+                                            </div>
+                                        </div>
+                                    </v-expansion-panel-title>
+                                    <v-expansion-panel-text>
+                                        <loan-calculation-result-panel
+                                            :input="selectedDetail.currentRevision.input"
+                                            :result="selectedDetail.currentRevision.calculation"
+                                            :currency="selectedDetail.contract.currency"
+                                            :show-installments="false"
+                                        />
+                                    </v-expansion-panel-text>
+                                </v-expansion-panel>
+                            </v-expansion-panels>
 
                             <v-divider />
 
@@ -329,7 +338,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef } from 'vue';
-import { mdiBankOutline, mdiClose, mdiDotsVertical, mdiPlus, mdiRefresh } from '@mdi/js';
+import { mdiBankOutline, mdiClose, mdiDotsVertical, mdiRefresh } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import AmountInput from '@/components/desktop/AmountInput.vue';
@@ -715,6 +724,7 @@ onBeforeUnmount(() => controller.dispose());
 .toolbar, .detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .contract-column { min-height: 680px; }
 .detail-column { min-width: 0; }
+.calculation-disclosure :deep(.v-expansion-panel) { border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
 .candidate-rail { display: flex; flex-wrap: wrap; gap: 8px; }
 .funding-component { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 0; }
 .funding-component + .funding-component { border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }

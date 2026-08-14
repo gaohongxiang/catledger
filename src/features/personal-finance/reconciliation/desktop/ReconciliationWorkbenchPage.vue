@@ -2,9 +2,9 @@
     <v-row class="match-height">
         <v-col cols="12">
             <v-card class="reconciliation-workbench overflow-hidden">
-                <div class="reconciliation-hero pa-6 pa-lg-8">
+                <div :class="embedded ? 'reconciliation-toolbar px-5 py-3' : 'reconciliation-hero pa-6 pa-lg-8'">
                     <div class="d-flex flex-wrap align-center ga-4">
-                        <div class="hero-copy">
+                        <div class="hero-copy" v-if="!embedded">
                             <div class="text-overline text-primary">{{ tt('personalFinance.reconciliation.eyebrow') }}</div>
                             <h2 class="text-h4 font-weight-bold mt-1">{{ tt('personalFinance.reconciliation.title') }}</h2>
                             <p class="text-body-large text-medium-emphasis mt-2 mb-0">
@@ -26,7 +26,7 @@
                             />
                             <v-btn
                                 color="primary"
-                                size="large"
+                                :size="embedded ? 'default' : 'large'"
                                 :disabled="!anchorBatchId"
                                 :loading="reconciliationStore.submitting"
                                 :prepend-icon="mdiAutoFix"
@@ -343,6 +343,12 @@ import {
 } from '../state.ts';
 import { useReconciliationStore } from '../store.ts';
 
+withDefaults(defineProps<{
+    embedded?: boolean;
+}>(), {
+    embedded: false
+});
+
 import {
     mdiAutoFix,
     mdiBackupRestore,
@@ -584,6 +590,10 @@ onMounted(async () => {
     background:
         linear-gradient(115deg, rgba(var(--v-theme-primary), 0.10), transparent 46%),
         linear-gradient(180deg, rgba(var(--v-theme-surface), 0.98), rgba(var(--v-theme-surface), 0.92));
+}
+
+.reconciliation-toolbar {
+    background: rgba(var(--v-theme-primary), 0.035);
 }
 
 .hero-copy {

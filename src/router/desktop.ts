@@ -13,8 +13,7 @@ import OAuth2CallbackPage from '@/views/desktop/OAuth2CallbackPage.vue';
 import UnlockPage from '@/views/desktop/UnlockPage.vue';
 
 import TransactionListPage from '@/views/desktop/transactions/ListPage.vue';
-import PersonalFinanceImportWorkbenchPage from '@/features/personal-finance/desktop/ImportWorkbenchPage.vue';
-import PersonalFinanceReconciliationWorkbenchPage from '@/features/personal-finance/reconciliation/desktop/ReconciliationWorkbenchPage.vue';
+import PersonalFinanceBillOrganizerPage from '@/features/personal-finance/desktop/BillOrganizerPage.vue';
 import PersonalFinanceLoanWorkbenchPage from '@/features/personal-finance/loans/desktop/LoanWorkbenchPage.vue';
 import PersonalFinanceDashboardPage from '@/features/personal-finance/dashboard/desktop/DashboardPage.vue';
 
@@ -122,13 +121,26 @@ const router = createRouter({
                     })
                 },
                 {
+                    path: '/personal-finance/bills',
+                    component: PersonalFinanceBillOrganizerPage,
+                    beforeEnter: checkLogin
+                },
+                {
                     path: '/personal-finance/imports',
-                    component: PersonalFinanceImportWorkbenchPage,
+                    redirect: route => ({
+                        path: '/personal-finance/bills',
+                        query: { ...route.query, view: 'imports' },
+                        replace: true
+                    }),
                     beforeEnter: checkLogin
                 },
                 {
                     path: '/personal-finance/reconciliation',
-                    component: PersonalFinanceReconciliationWorkbenchPage,
+                    redirect: route => ({
+                        path: '/personal-finance/bills',
+                        query: { ...route.query, view: 'reconciliation' },
+                        replace: true
+                    }),
                     beforeEnter: checkLogin
                 },
                 {

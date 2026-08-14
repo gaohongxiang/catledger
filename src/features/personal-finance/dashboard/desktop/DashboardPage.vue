@@ -16,6 +16,9 @@
                            :prepend-icon="showAmounts ? mdiEyeOffOutline : mdiEyeOutline" @click="showAmounts = !showAmounts">
                         {{ tt(showAmounts ? 'Hide Amount' : 'Show Amount') }}
                     </v-btn>
+                    <v-btn size="small" variant="text" :prepend-icon="mdiBookOpenPageVariantOutline" @click="showGettingStarted = !showGettingStarted">
+                        {{ tt('personalFinance.dashboard.gettingStarted.open') }}
+                    </v-btn>
                 </div>
             </div>
             <div class="automatic-scope">
@@ -26,6 +29,40 @@
                     {{ tt('personalFinance.dashboard.refresh') }}
                 </v-btn>
             </div>
+        </section>
+
+        <section class="getting-started mt-5" v-if="showGettingStarted">
+            <div class="getting-started__head">
+                <div>
+                    <span>{{ tt('personalFinance.dashboard.gettingStarted.eyebrow') }}</span>
+                    <h3>{{ tt('personalFinance.dashboard.gettingStarted.title') }}</h3>
+                    <p>{{ tt('personalFinance.dashboard.gettingStarted.subtitle') }}</p>
+                </div>
+                <v-btn size="small" variant="text" :prepend-icon="mdiClose" @click="dismissGettingStarted">
+                    {{ tt('personalFinance.dashboard.gettingStarted.dismiss') }}
+                </v-btn>
+            </div>
+            <div class="getting-started__steps">
+                <router-link to="/account/list">
+                    <v-icon :icon="mdiCreditCardOutline" />
+                    <span>01</span>
+                    <strong>{{ tt('personalFinance.dashboard.gettingStarted.account') }}</strong>
+                    <small>{{ tt('personalFinance.dashboard.gettingStarted.accountHint') }}</small>
+                </router-link>
+                <router-link to="/personal-finance/bills?view=imports">
+                    <v-icon :icon="mdiTrayArrowDown" />
+                    <span>02</span>
+                    <strong>{{ tt('personalFinance.dashboard.gettingStarted.imports') }}</strong>
+                    <small>{{ tt('personalFinance.dashboard.gettingStarted.importsHint') }}</small>
+                </router-link>
+                <router-link to="/personal-finance/bills?view=reconciliation">
+                    <v-icon :icon="mdiCheckCircleOutline" />
+                    <span>03</span>
+                    <strong>{{ tt('personalFinance.dashboard.gettingStarted.review') }}</strong>
+                    <small>{{ tt('personalFinance.dashboard.gettingStarted.reviewHint') }}</small>
+                </router-link>
+            </div>
+            <p class="getting-started__boundary">{{ tt('personalFinance.dashboard.gettingStarted.boundary') }}</p>
         </section>
 
         <v-alert class="mt-5" type="error" variant="tonal" v-if="error">
@@ -245,7 +282,7 @@
                         <h3>{{ tt('personalFinance.dashboard.coverage.title') }}</h3>
                         <p>{{ tt('personalFinance.dashboard.coverage.subtitle') }}</p>
                     </div>
-                    <router-link class="section-link" :to="overview.drilldown.imports">{{ tt('personalFinance.dashboard.drilldown.imports') }} →</router-link>
+                    <router-link class="section-link" to="/personal-finance/bills?view=imports">{{ tt('personalFinance.dashboard.drilldown.imports') }} →</router-link>
                 </div>
 
                 <div class="coverage-summary">
@@ -293,10 +330,15 @@ import { computed, onMounted, ref } from 'vue';
 import {
     mdiAlertCircleOutline,
     mdiArrowTopRight,
+    mdiBookOpenPageVariantOutline,
+    mdiCheckCircleOutline,
+    mdiClose,
+    mdiCreditCardOutline,
     mdiEyeOffOutline,
     mdiEyeOutline,
     mdiRefresh,
     mdiShieldCheckOutline,
+    mdiTrayArrowDown,
     mdiTimelineClockOutline
 } from '@mdi/js';
 
@@ -333,7 +375,9 @@ const {
 
 const periodOptions: DashboardCashFlowPeriodKind[] = ['today', 'week', 'month', 'year'];
 const trendMonthOptions = [6, 12, 24];
+const gettingStartedStorageKey = 'personal-finance-getting-started-dismissed-v1';
 const selectedPeriodKind = ref<DashboardCashFlowPeriodKind>('month');
+const showGettingStarted = ref<boolean>(localStorage.getItem(gettingStartedStorageKey) !== '1');
 const selectedPeriod = computed(() => overview.value?.cashFlowPeriods.find(period => period.kind === selectedPeriodKind.value));
 const selectedPeriodLabel = computed(() => tt(`personalFinance.dashboard.quick.period.${selectedPeriodKind.value}`));
 const latestMonth = computed(() => overview.value?.monthlyCashFlow.at(-1));
@@ -358,6 +402,11 @@ const coverageHeadline = computed(() => {
 
 function refresh(): void {
     dashboard.load().catch(() => undefined);
+}
+
+function dismissGettingStarted(): void {
+    showGettingStarted.value = false;
+    localStorage.setItem(gettingStartedStorageKey, '1');
 }
 
 function changeTrendMonths(value: unknown): void {
@@ -476,6 +525,21 @@ onMounted(async () => {
 .automatic-scope p { margin: 0 0 5px; color: rgba(var(--v-theme-on-surface), .63); font-size: .8rem; line-height: 1.5; }
 .amount-visibility { align-self: center; }
 
+.getting-started { overflow: hidden; border: 1px solid var(--dash-rule); border-radius: 18px 5px 18px 5px; background: var(--dash-paper); }
+.getting-started__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 20px 22px; background: rgba(var(--v-theme-primary), .065); }
+.getting-started__head span { color: rgb(var(--v-theme-primary)); font-size: .68rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.getting-started__head h3 { margin: 4px 0 0; font-size: 1.2rem; }
+.getting-started__head p { margin: 5px 0 0; color: rgba(var(--v-theme-on-surface), .63); font-size: .82rem; }
+.getting-started__steps { display: grid; grid-template-columns: repeat(3, 1fr); }
+.getting-started__steps > a { position: relative; display: grid; grid-template-columns: auto 1fr; column-gap: 12px; min-height: 132px; padding: 20px 22px; border-inline-start: 1px solid var(--dash-rule); color: inherit; text-decoration: none; transition: background-color .18s ease; }
+.getting-started__steps > a:first-child { border-inline-start: 0; }
+.getting-started__steps > a:hover { background: rgba(var(--v-theme-primary), .045); }
+.getting-started__steps .v-icon { grid-row: 1 / 4; color: rgb(var(--v-theme-primary)); }
+.getting-started__steps span { color: rgba(var(--v-theme-on-surface), .42); font-size: .65rem; font-weight: 800; letter-spacing: .1em; }
+.getting-started__steps strong { margin-top: 2px; font-size: .96rem; }
+.getting-started__steps small { margin-top: 5px; color: rgba(var(--v-theme-on-surface), .6); font-size: .75rem; line-height: 1.45; }
+.getting-started__boundary { margin: 0; padding: 12px 22px; border-top: 1px solid var(--dash-rule); color: rgba(var(--v-theme-on-surface), .62); font-size: .76rem; }
+
 .snapshot-grid { display: grid; grid-template-columns: 1.25fr repeat(3, 1fr); gap: 14px; }
 .metric-card { color: inherit; text-decoration: none; padding: 24px; min-height: 154px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--dash-rule); border-radius: 5px 18px 5px 18px; background: var(--dash-paper); transition: transform .18s ease, border-color .18s ease; }
 .metric-card:hover { transform: translateY(-3px); border-color: rgba(var(--v-theme-primary), .5); }
@@ -558,6 +622,9 @@ onMounted(async () => {
 
 @media (max-width: 1100px) {
     .dashboard-masthead { grid-template-columns: 1fr; }
+    .getting-started__steps { grid-template-columns: 1fr; }
+    .getting-started__steps > a { border-top: 1px solid var(--dash-rule); border-inline-start: 0; }
+    .getting-started__steps > a:first-child { border-top: 0; }
     .snapshot-grid { grid-template-columns: repeat(2, 1fr); }
     .period-metrics { grid-template-columns: repeat(3, 1fr); }
     .period-metrics > a { border-top: 1px solid var(--dash-rule); }
@@ -569,6 +636,7 @@ onMounted(async () => {
 }
 
 @media (max-width: 640px) {
+    .getting-started__head { flex-direction: column; }
     .snapshot-grid { grid-template-columns: 1fr; }
     .period-overview__head, .trend-heading { align-items: flex-start; flex-direction: column; }
     .period-overview__actions { justify-content: flex-start; }
