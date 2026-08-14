@@ -44,7 +44,7 @@ func TestDeriveLedgerOverviewSeparatesLoanCashFlowAndReversesAfterAsOf(t *testin
 		{TransactionId: 9, ContractId: 1, AllocationId: 4, ComponentType: loans.COMPONENT_TYPE_DISBURSEMENT, AllocatedAmount: 5000},
 	}
 
-	snapshot, months, issues, err := deriveLedgerOverview(data, allocations, start, asOf, 2, location)
+	snapshot, months, periods, issues, err := deriveLedgerOverview(data, allocations, start, asOf, 2, 1, location)
 	if err != nil {
 		t.Fatalf("derive ledger overview: %v", err)
 	}
@@ -65,15 +65,68 @@ func TestDeriveLedgerOverviewSeparatesLoanCashFlowAndReversesAfterAsOf(t *testin
 	if len(months[1].Amounts) != 0 {
 		t.Fatalf("empty month must remain explicit: %#v", months[1])
 	}
+	if len(periods) != 4 || periods[0].Kind != CashFlowPeriodToday || periods[1].Kind != CashFlowPeriodWeek ||
+		periods[2].Kind != CashFlowPeriodMonth || periods[3].Kind != CashFlowPeriodYear || len(periods[3].Amounts) != 1 {
+		t.Fatalf("unexpected stable cash-flow periods: %#v", periods)
+	}
+	if periods[3].Amounts[0].Income != flow.Income || periods[3].Amounts[0].LoanPrincipal != flow.LoanPrincipal {
+		t.Fatalf("year period did not reuse monthly classification: %#v", periods[3])
+	}
+}
+
+func TestDeriveLedgerOverviewBuildsTodayWeekMonthAndYearFromUserWeekStart(t *testing.T) {
+	location := time.UTC
+	start, _ := parseCivilDate("2024-01-01", location)
+	asOf, _ := parseCivilDate("2024-08-14", location)
+	transaction := func(id int64, date string, amount int64) *LedgerTransaction {
+		instant, _ := time.Parse(time.DateOnly, date)
+		return &LedgerTransaction{TransactionId: id, Type: LedgerTransactionIncome, AccountId: 1, TransactionTime: instant.Add(12*time.Hour).Unix() * 1000, Amount: amount}
+	}
+	data := &LedgerData{
+		Accounts: []*LedgerAccount{{AccountId: 1, Kind: LedgerAccountKindAsset, Currency: "CNY", CurrentBalance: 200, Liquid: true, Single: true}},
+		Transactions: []*LedgerTransaction{
+			transaction(1, "2024-01-02", 100),
+			transaction(2, "2024-08-01", 10),
+			transaction(3, "2024-08-11", 20),
+			transaction(4, "2024-08-12", 30),
+			transaction(5, "2024-08-14", 40),
+			transaction(6, "2024-08-15", 50),
+		},
+	}
+
+	_, _, periods, _, err := deriveLedgerOverview(data, nil, start, asOf, 1, int(time.Monday), location)
+	if err != nil {
+		t.Fatalf("derive quick cash-flow periods: %v", err)
+	}
+	want := []struct {
+		kind      CashFlowPeriodKind
+		startDate string
+		income    int64
+	}{
+		{CashFlowPeriodToday, "2024-08-14", 40},
+		{CashFlowPeriodWeek, "2024-08-12", 70},
+		{CashFlowPeriodMonth, "2024-08-01", 100},
+		{CashFlowPeriodYear, "2024-01-01", 200},
+	}
+	if len(periods) != len(want) {
+		t.Fatalf("unexpected period count: %#v", periods)
+	}
+	for index, expected := range want {
+		period := periods[index]
+		if period.Kind != expected.kind || period.StartDate != expected.startDate || period.EndDate != "2024-08-14" ||
+			len(period.Amounts) != 1 || period.Amounts[0].Income != expected.income {
+			t.Fatalf("unexpected period %d: %#v", index, period)
+		}
+	}
 }
 
 func TestDeriveLedgerOverviewFailsClosedOnAmountOverflow(t *testing.T) {
 	start, _ := parseCivilDate("2024-01-01", time.UTC)
 	asOf, _ := parseCivilDate("2024-01-31", time.UTC)
-	_, _, _, err := deriveLedgerOverview(&LedgerData{Accounts: []*LedgerAccount{
+	_, _, _, _, err := deriveLedgerOverview(&LedgerData{Accounts: []*LedgerAccount{
 		{AccountId: 1, Kind: LedgerAccountKindAsset, Currency: "CNY", CurrentBalance: int64(^uint64(0) >> 1), Single: true},
 		{AccountId: 2, Kind: LedgerAccountKindAsset, Currency: "CNY", CurrentBalance: 1, Single: true},
-	}}, nil, start, asOf, 1, time.UTC)
+	}}, nil, start, asOf, 1, 0, time.UTC)
 	if err == nil {
 		t.Fatal("overflowed account aggregation returned a partial dashboard")
 	}

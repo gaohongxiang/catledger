@@ -2762,9 +2762,11 @@
             "title": "个人财务总览",
             "subtitle": "把资产负债、真实收支、贷款计划与账单覆盖放在同一张可追溯的视图中。",
             "refresh": "刷新总览",
+            "automaticScope": "全部正式账户 · 截至 {date}",
+            "automaticScopeHint": "资产取正式账户权威余额；现金流按所选实际周期自动汇总。",
             "reportStartDate": "报表起始日",
             "period": { "start": "报表起始日", "asOf": "截至日期", "months": "现金流月数" },
-            "error": { "load": "无法加载财务总览，请检查日期后重试。" },
+            "error": { "load": "无法加载财务总览，请稍后刷新重试。" },
             "snapshot": {
                 "title": "资产负债快照",
                 "netWorth": "净资产",
@@ -2776,7 +2778,7 @@
                 "debtAccountsLabel": "借贷账户负债",
                 "debtAccounts": "借贷账户 {amount}",
                 "authority": "来自正式账户余额",
-                "asOf": "截至 {date} 的历史快照",
+                "asOf": "截至 {date} 的正式账本快照",
                 "ledgerNotPlan": "账本实际值，不以还款计划替代",
                 "liquidScope": "现金、活期、储蓄及虚拟账户"
             },
@@ -2787,19 +2789,23 @@
                 "coverageGaps": "账单覆盖需关注",
                 "ready": "数据口径可用",
                 "review": "存在需复核项目",
-                "range": "统计区间 {start} 至 {end}",
+                "range": "覆盖核对区间 {start} 至 {end}",
                 "transactions": "纳入 {count} 笔正式交易",
                 "unconfirmedExcluded": "待确认导入行未计入余额与现金流"
             },
             "quick": {
-                "eyebrow": "最近月速览",
-                "title": "{month} 的真实收支",
-                "subtitle": "保留原总览的一眼可读，并统一采用正式账本口径。",
+                "eyebrow": "快捷现金流",
+                "title": "{period}真实现金流",
+                "subtitle": "同一套正式账本口径，切换周期不改变分类规则。",
+                "range": "{start} 至 {end}",
+                "period": { "today": "今日", "week": "本周", "month": "本月", "year": "今年" },
                 "income": "收入",
+                "outflow": "现金流出",
+                "outflowHint": "消费＋还本＋利息＋费用",
                 "consumption": "生活消费",
                 "debtService": "实际偿债",
                 "liquidChange": "流动资金净变化",
-                "viewTransactions": "查看本月交易"
+                "viewTransactions": "查看该周期交易"
             },
             "debt": {
                 "title": "负债日历",
@@ -2829,6 +2835,11 @@
                 "disbursement": "贷款放款",
                 "debtBurden": "偿债/收入",
                 "liquidChange": "可用资金净变动",
+                "trendTitle": "收入、消费与偿债趋势",
+                "trendSubtitle": "消费与实际偿债分开呈现，避免把还本重复算作日常消费。",
+                "trendMonths": "近 {count} 个月",
+                "debtService": "实际偿债",
+                "amountsHidden": "金额已隐藏，趋势形状同时隐藏",
                 "debtBurdenRatio": "最近月偿债/收入 {value}%",
                 "debtBurdenUnavailable": "最近月偿债/收入暂不可算",
                 "boundary": "金额按币种保存；跨币种展示使用当前汇率。缺少汇率时以 * 标记不完整汇总。余额调整单列，不伪装成收入或消费。"
@@ -2859,7 +2870,7 @@
                 "empty": "尚未配置账单来源账户。"
             },
             "drilldown": { "accounts": "查看账户", "transactions": "查看交易", "loans": "查看贷款", "imports": "查看导入" },
-            "mobile": { "title": "财务总览", "heading": "今天的财务位置", "subtitle": "一屏查看净资产、近期还款、真实现金流和账单覆盖。" }
+            "mobile": { "title": "财务总览", "heading": "今天的财务位置", "subtitle": "一屏查看净资产、近期还款、真实现金流和账单覆盖。", "automatic": "自动纳入截至今天的正式账本" }
         },
         "nav": "个人财务导入",
         "loans": {

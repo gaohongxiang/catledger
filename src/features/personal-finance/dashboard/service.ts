@@ -4,6 +4,8 @@ import type {
     DashboardAccountAmount,
     DashboardCashFlowAmount,
     DashboardCashFlowMonth,
+    DashboardCashFlowPeriod,
+    DashboardCashFlowPeriodKind,
     DashboardCoverageSummary,
     DashboardDateRange,
     DashboardDebtAmount,
@@ -136,6 +138,17 @@ function cashFlowMonth(value: unknown): DashboardCashFlowMonth {
     return { month: month(item['month']), amounts: array(item['amounts']).map(cashFlowAmount) };
 }
 
+const cashFlowPeriodKinds: DashboardCashFlowPeriodKind[] = ['today', 'week', 'month', 'year'];
+
+function cashFlowPeriod(value: unknown, expectedKind: DashboardCashFlowPeriodKind, asOfDate: string): DashboardCashFlowPeriod {
+    const item = record(value);
+    const kind = string(item['kind']);
+    const startDate = date(item['startDate']);
+    const endDate = date(item['endDate']);
+    if (kind !== expectedKind || startDate > endDate || endDate !== asOfDate) fail();
+    return { kind: expectedKind, startDate, endDate, amounts: array(item['amounts']).map(cashFlowAmount) };
+}
+
 function debtAmount(value: unknown): DashboardDebtAmount {
     const item = record(value);
     return {
@@ -246,12 +259,15 @@ export function normalizeDashboardOverview(value: unknown): PersonalFinanceDashb
     const startDate = date(item['startDate']);
     const asOfDate = date(item['asOfDate']);
     if (startDate > asOfDate) fail();
+    const periodValues = array(item['cashFlowPeriods']);
+    if (periodValues.length !== cashFlowPeriodKinds.length) fail();
     return {
         startDate,
         asOfDate,
         generatedUnixTime: integer(item['generatedUnixTime']),
         accountSnapshot: array(item['accountSnapshot']).map(accountAmount),
         monthlyCashFlow: array(item['monthlyCashFlow']).map(cashFlowMonth),
+        cashFlowPeriods: periodValues.map((period, index) => cashFlowPeriod(period, cashFlowPeriodKinds[index] as DashboardCashFlowPeriodKind, asOfDate)),
         debt: debtSummary(item['debt']),
         coverage: coverageSummary(item['coverage']),
         trust: trustSummary(item['trust']),
@@ -267,6 +283,7 @@ function unwrap(response: unknown): unknown {
 }
 
 export async function getDashboardOverview(query: DashboardQuery): Promise<PersonalFinanceDashboardOverview> {
-    if (query.months < 1 || query.months > 24 || !Number.isSafeInteger(query.months)) fail();
+    if (query.months < 1 || query.months > 24 || !Number.isSafeInteger(query.months) ||
+        query.firstDayOfWeek < 0 || query.firstDayOfWeek > 6 || !Number.isSafeInteger(query.firstDayOfWeek)) fail();
     return normalizeDashboardOverview(unwrap(await services.getPersonalFinanceDashboardOverview(query)));
 }

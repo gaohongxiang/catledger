@@ -1,7 +1,6 @@
 import type { DashboardAccountAmount, DashboardCashFlowMonth, DashboardDebtAmount, DashboardQuery } from './models.ts';
 
-export const DASHBOARD_REPORT_START_STORAGE_KEY = 'personalFinance.dashboard.reportStartDate';
-export const DASHBOARD_DEFAULT_MONTHS = 6;
+export const DASHBOARD_DEFAULT_MONTHS = 12;
 
 function isCivilDate(value: string): boolean {
     const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -17,18 +16,26 @@ export function todayCivilDate(now: Date = new Date()): string {
     return `${year}-${month}-${day}`;
 }
 
-export function defaultReportStartDate(asOfDate: string): string {
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(asOfDate);
-    if (!match) return asOfDate;
-    return `${match[1]}-01-01`;
+function formatUtcCivilDate(value: Date): string {
+    return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
 }
 
-export function createDashboardQuery(startDate: string, asOfDate: string, months: number = DASHBOARD_DEFAULT_MONTHS): DashboardQuery {
-    if (!isCivilDate(startDate) || !isCivilDate(asOfDate) ||
-        startDate > asOfDate || !Number.isSafeInteger(months) || months < 1 || months > 24) {
+export function automaticReportStartDate(asOfDate: string, months: number = DASHBOARD_DEFAULT_MONTHS): string {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(asOfDate);
+    if (!match || !isCivilDate(asOfDate) || !Number.isSafeInteger(months) || months < 1 || months > 24) {
         throw new Error('invalid_dashboard_query');
     }
-    return { startDate, asOfDate, months };
+    const yearStart = `${match[1]}-01-01`;
+    const trendStart = formatUtcCivilDate(new Date(Date.UTC(Number(match[1]), Number(match[2]) - months, 1)));
+    return trendStart < yearStart ? trendStart : yearStart;
+}
+
+export function createDashboardQuery(asOfDate: string, months: number = DASHBOARD_DEFAULT_MONTHS, firstDayOfWeek: number = 0): DashboardQuery {
+    if (!isCivilDate(asOfDate) || !Number.isSafeInteger(months) || months < 1 || months > 24 ||
+        !Number.isSafeInteger(firstDayOfWeek) || firstDayOfWeek < 0 || firstDayOfWeek > 6) {
+        throw new Error('invalid_dashboard_query');
+    }
+    return { startDate: automaticReportStartDate(asOfDate, months), asOfDate, months, firstDayOfWeek };
 }
 
 export function findAccountAmount(values: DashboardAccountAmount[], currency: string): DashboardAccountAmount | undefined {

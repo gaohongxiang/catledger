@@ -56,6 +56,13 @@ type personalFinanceDashboardCashFlowResponse struct {
 	Amounts []*personalFinanceDashboardCashFlowAmountResponse `json:"amounts"`
 }
 
+type personalFinanceDashboardCashFlowPeriodResponse struct {
+	Kind      dashboard.CashFlowPeriodKind                      `json:"kind"`
+	StartDate string                                            `json:"startDate"`
+	EndDate   string                                            `json:"endDate"`
+	Amounts   []*personalFinanceDashboardCashFlowAmountResponse `json:"amounts"`
+}
+
 type personalFinanceDashboardDebtAmountResponse struct {
 	Currency                  string `json:"currency"`
 	PlannedRemainingPrincipal string `json:"plannedRemainingPrincipal"`
@@ -144,22 +151,23 @@ type personalFinanceDashboardDrilldownResponse struct {
 }
 
 type personalFinanceDashboardResponse struct {
-	StartDate         string                                           `json:"startDate"`
-	AsOfDate          string                                           `json:"asOfDate"`
-	GeneratedUnixTime int64                                            `json:"generatedUnixTime"`
-	AccountSnapshot   []*personalFinanceDashboardAccountAmountResponse `json:"accountSnapshot"`
-	MonthlyCashFlow   []*personalFinanceDashboardCashFlowResponse      `json:"monthlyCashFlow"`
-	Debt              *personalFinanceDashboardDebtResponse            `json:"debt"`
-	Coverage          *personalFinanceDashboardCoverageResponse        `json:"coverage"`
-	Trust             *personalFinanceDashboardTrustResponse           `json:"trust"`
-	Drilldown         *personalFinanceDashboardDrilldownResponse       `json:"drilldown"`
+	StartDate         string                                            `json:"startDate"`
+	AsOfDate          string                                            `json:"asOfDate"`
+	GeneratedUnixTime int64                                             `json:"generatedUnixTime"`
+	AccountSnapshot   []*personalFinanceDashboardAccountAmountResponse  `json:"accountSnapshot"`
+	MonthlyCashFlow   []*personalFinanceDashboardCashFlowResponse       `json:"monthlyCashFlow"`
+	CashFlowPeriods   []*personalFinanceDashboardCashFlowPeriodResponse `json:"cashFlowPeriods"`
+	Debt              *personalFinanceDashboardDebtResponse             `json:"debt"`
+	Coverage          *personalFinanceDashboardCoverageResponse         `json:"coverage"`
+	Trust             *personalFinanceDashboardTrustResponse            `json:"trust"`
+	Drilldown         *personalFinanceDashboardDrilldownResponse        `json:"drilldown"`
 }
 
 func (a *PersonalFinanceDashboardApi) OverviewHandler(c *core.WebContext) (any, *errs.Error) {
 	if a == nil || a.application == nil || c == nil || c.Request == nil {
 		return nil, errs.ErrOperationFailed
 	}
-	startDate, asOfDate, months, err := parsePersonalFinanceDashboardQuery(c.Request.URL.Query())
+	startDate, asOfDate, months, firstDayOfWeek, err := parsePersonalFinanceDashboardQuery(c.Request.URL.Query())
 	if err != nil {
 		return nil, errs.ErrParameterInvalid
 	}
@@ -168,7 +176,8 @@ func (a *PersonalFinanceDashboardApi) OverviewHandler(c *core.WebContext) (any, 
 		return nil, errs.ErrClientTimezoneOffsetInvalid
 	}
 	result, serviceErr := a.application.GetOverview(c, dashboard.Query{
-		Uid: c.GetCurrentUid(), StartDate: startDate, AsOfDate: asOfDate, Months: months, Location: location,
+		Uid: c.GetCurrentUid(), StartDate: startDate, AsOfDate: asOfDate, Months: months,
+		FirstDayOfWeek: firstDayOfWeek, Location: location,
 	})
 	if serviceErr != nil {
 		if errors.Is(serviceErr, dashboard.ErrInvalidQuery) {
@@ -185,20 +194,35 @@ func (a *PersonalFinanceDashboardApi) OverviewHandler(c *core.WebContext) (any, 
 	return response, nil
 }
 
-func parsePersonalFinanceDashboardQuery(values url.Values) (string, string, int, error) {
-	if len(values) != 3 || len(values["start_date"]) != 1 || len(values["as_of_date"]) != 1 || len(values["months"]) != 1 {
-		return "", "", 0, errors.New("dashboard query keys are invalid")
+func parsePersonalFinanceDashboardQuery(values url.Values) (string, string, int, int, error) {
+	if len(values) < 3 || len(values) > 4 || len(values["start_date"]) != 1 || len(values["as_of_date"]) != 1 || len(values["months"]) != 1 {
+		return "", "", 0, 0, errors.New("dashboard query keys are invalid")
+	}
+	for key := range values {
+		if key != "start_date" && key != "as_of_date" && key != "months" && key != "week_start" {
+			return "", "", 0, 0, errors.New("dashboard query key is unknown")
+		}
 	}
 	months, err := strconv.Atoi(values.Get("months"))
 	if err != nil || months < dashboard.MinimumCashFlowMonths || months > dashboard.MaximumCashFlowMonths {
-		return "", "", 0, errors.New("dashboard month count is invalid")
+		return "", "", 0, 0, errors.New("dashboard month count is invalid")
 	}
 	startDate := values.Get("start_date")
 	asOfDate := values.Get("as_of_date")
 	if startDate == "" || asOfDate == "" {
-		return "", "", 0, errors.New("dashboard dates are required")
+		return "", "", 0, 0, errors.New("dashboard dates are required")
 	}
-	return startDate, asOfDate, months, nil
+	firstDayOfWeek := dashboard.MinimumFirstDayOfWeek
+	if raw, exists := values["week_start"]; exists {
+		if len(raw) != 1 {
+			return "", "", 0, 0, errors.New("dashboard week start is repeated")
+		}
+		firstDayOfWeek, err = strconv.Atoi(raw[0])
+		if err != nil || firstDayOfWeek < dashboard.MinimumFirstDayOfWeek || firstDayOfWeek > dashboard.MaximumFirstDayOfWeek {
+			return "", "", 0, 0, errors.New("dashboard week start is invalid")
+		}
+	}
+	return startDate, asOfDate, months, firstDayOfWeek, nil
 }
 
 func newPersonalFinanceDashboardResponse(value *dashboard.Overview) (*personalFinanceDashboardResponse, error) {
@@ -213,6 +237,7 @@ func newPersonalFinanceDashboardResponse(value *dashboard.Overview) (*personalFi
 		StartDate: value.StartDate, AsOfDate: value.AsOfDate, GeneratedUnixTime: value.GeneratedUnixTime,
 		AccountSnapshot: make([]*personalFinanceDashboardAccountAmountResponse, 0, len(value.AccountSnapshot)),
 		MonthlyCashFlow: make([]*personalFinanceDashboardCashFlowResponse, 0, len(value.MonthlyCashFlow)),
+		CashFlowPeriods: make([]*personalFinanceDashboardCashFlowPeriodResponse, 0, len(value.CashFlowPeriods)),
 		Debt: &personalFinanceDashboardDebtResponse{
 			Amounts:     make([]*personalFinanceDashboardDebtAmountResponse, 0, len(value.Debt.Amounts)),
 			Contracts:   make([]*personalFinanceDashboardDebtContractResponse, 0, len(value.Debt.Contracts)),
@@ -245,20 +270,29 @@ func newPersonalFinanceDashboardResponse(value *dashboard.Overview) (*personalFi
 		if month == nil {
 			return nil, errors.New("dashboard cash flow month is nil")
 		}
-		mapped := &personalFinanceDashboardCashFlowResponse{Month: month.Month, Amounts: make([]*personalFinanceDashboardCashFlowAmountResponse, 0, len(month.Amounts))}
-		for _, item := range month.Amounts {
-			if item == nil {
-				return nil, errors.New("dashboard cash flow amount is nil")
-			}
-			mapped.Amounts = append(mapped.Amounts, &personalFinanceDashboardCashFlowAmountResponse{
-				Currency: item.Currency, Income: formatDashboardAmount(item.Income), Consumption: formatDashboardAmount(item.Consumption),
-				BalanceAdjustment: formatDashboardAmount(item.BalanceAdjustment), LoanPrincipal: formatDashboardAmount(item.LoanPrincipal),
-				LoanInterest: formatDashboardAmount(item.LoanInterest), LoanFee: formatDashboardAmount(item.LoanFee),
-				LoanDisbursement: formatDashboardAmount(item.LoanDisbursement), InternalTransfer: formatDashboardAmount(item.InternalTransfer),
-				LiquidFundsNetChange: formatDashboardAmount(item.LiquidFundsNetChange),
-			})
+		amounts, err := dashboardCashFlowAmountResponses(month.Amounts)
+		if err != nil {
+			return nil, err
 		}
-		response.MonthlyCashFlow = append(response.MonthlyCashFlow, mapped)
+		response.MonthlyCashFlow = append(response.MonthlyCashFlow, &personalFinanceDashboardCashFlowResponse{Month: month.Month, Amounts: amounts})
+	}
+	expectedPeriods := []dashboard.CashFlowPeriodKind{
+		dashboard.CashFlowPeriodToday, dashboard.CashFlowPeriodWeek, dashboard.CashFlowPeriodMonth, dashboard.CashFlowPeriodYear,
+	}
+	if len(value.CashFlowPeriods) != len(expectedPeriods) {
+		return nil, errors.New("dashboard cash flow periods are incomplete")
+	}
+	for index, period := range value.CashFlowPeriods {
+		if period == nil || period.Kind != expectedPeriods[index] || period.StartDate == "" || period.EndDate != value.AsOfDate || period.StartDate > period.EndDate {
+			return nil, errors.New("dashboard cash flow period is invalid")
+		}
+		amounts, err := dashboardCashFlowAmountResponses(period.Amounts)
+		if err != nil {
+			return nil, err
+		}
+		response.CashFlowPeriods = append(response.CashFlowPeriods, &personalFinanceDashboardCashFlowPeriodResponse{
+			Kind: period.Kind, StartDate: period.StartDate, EndDate: period.EndDate, Amounts: amounts,
+		})
 	}
 	for _, item := range value.Debt.Amounts {
 		if item == nil {
@@ -296,6 +330,23 @@ func newPersonalFinanceDashboardResponse(value *dashboard.Overview) (*personalFi
 		response.Debt.FutureCurve = append(response.Debt.FutureCurve, mapped)
 	}
 	return response, nil
+}
+
+func dashboardCashFlowAmountResponses(values []*dashboard.CashFlowCurrency) ([]*personalFinanceDashboardCashFlowAmountResponse, error) {
+	result := make([]*personalFinanceDashboardCashFlowAmountResponse, 0, len(values))
+	for _, item := range values {
+		if item == nil {
+			return nil, errors.New("dashboard cash flow amount is nil")
+		}
+		result = append(result, &personalFinanceDashboardCashFlowAmountResponse{
+			Currency: item.Currency, Income: formatDashboardAmount(item.Income), Consumption: formatDashboardAmount(item.Consumption),
+			BalanceAdjustment: formatDashboardAmount(item.BalanceAdjustment), LoanPrincipal: formatDashboardAmount(item.LoanPrincipal),
+			LoanInterest: formatDashboardAmount(item.LoanInterest), LoanFee: formatDashboardAmount(item.LoanFee),
+			LoanDisbursement: formatDashboardAmount(item.LoanDisbursement), InternalTransfer: formatDashboardAmount(item.InternalTransfer),
+			LiquidFundsNetChange: formatDashboardAmount(item.LiquidFundsNetChange),
+		})
+	}
+	return result, nil
 }
 
 func dashboardCoverageResponse(value *dashboard.CoverageSummary) (*personalFinanceDashboardCoverageResponse, error) {

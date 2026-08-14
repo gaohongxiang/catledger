@@ -2762,9 +2762,11 @@
             "title": "Personal Finance Overview",
             "subtitle": "See assets, liabilities, actual cash flow, debt plans, and statement coverage in one traceable view.",
             "refresh": "Refresh overview",
+            "automaticScope": "All formal accounts · as of {date}",
+            "automaticScopeHint": "Assets use authoritative formal-account balances; cash flow is aggregated for the selected actual period.",
             "reportStartDate": "Report start date",
             "period": { "start": "Report start", "asOf": "As of", "months": "Cash-flow months" },
-            "error": { "load": "The financial overview could not be loaded. Check the dates and try again." },
+            "error": { "load": "The financial overview could not be loaded. Refresh and try again." },
             "snapshot": {
                 "title": "Balance-sheet snapshot",
                 "netWorth": "Net worth",
@@ -2776,7 +2778,7 @@
                 "debtAccountsLabel": "Debt-account liability",
                 "debtAccounts": "Debt accounts {amount}",
                 "authority": "From formal account balances",
-                "asOf": "Historical snapshot as of {date}",
+                "asOf": "Formal-ledger snapshot as of {date}",
                 "ledgerNotPlan": "Actual ledger value, not a repayment forecast",
                 "liquidScope": "Cash, checking, savings, and virtual accounts"
             },
@@ -2787,19 +2789,23 @@
                 "coverageGaps": "Statement coverage needs attention",
                 "ready": "Data scope is ready",
                 "review": "Review required",
-                "range": "Reporting period {start} to {end}",
+                "range": "Coverage check {start} to {end}",
                 "transactions": "{count} formal transactions included",
                 "unconfirmedExcluded": "Unconfirmed import rows are excluded from balances and cash flow"
             },
             "quick": {
-                "eyebrow": "Latest month at a glance",
-                "title": "Actual cash flow for {month}",
-                "subtitle": "Keeps the original overview's quick scan while using one formal-ledger definition.",
+                "eyebrow": "Quick cash flow",
+                "title": "Actual cash flow · {period}",
+                "subtitle": "Switch periods without changing the formal-ledger classification rules.",
+                "range": "{start} to {end}",
+                "period": { "today": "Today", "week": "This week", "month": "This month", "year": "This year" },
                 "income": "Income",
+                "outflow": "Cash outflow",
+                "outflowHint": "Consumption + principal + interest + fees",
                 "consumption": "Living consumption",
                 "debtService": "Actual debt service",
                 "liquidChange": "Liquid-funds change",
-                "viewTransactions": "View monthly transactions"
+                "viewTransactions": "View period transactions"
             },
             "debt": {
                 "title": "Debt calendar",
@@ -2829,6 +2835,11 @@
                 "disbursement": "Loan proceeds",
                 "debtBurden": "Debt service / income",
                 "liquidChange": "Available-funds change",
+                "trendTitle": "Income, consumption & debt-service trend",
+                "trendSubtitle": "Consumption and actual debt service stay separate so principal is never counted as living consumption.",
+                "trendMonths": "Last {count} months",
+                "debtService": "Actual debt service",
+                "amountsHidden": "Amounts and trend shape are hidden",
                 "debtBurdenRatio": "Latest debt service / income {value}%",
                 "debtBurdenUnavailable": "Latest debt service / income unavailable",
                 "boundary": "Amounts stay grouped by currency; cross-currency display uses current rates. An * marks an incomplete total when a rate is missing. Balance adjustments remain separate from income and consumption."
@@ -2859,7 +2870,7 @@
                 "empty": "No statement source accounts are configured."
             },
             "drilldown": { "accounts": "View accounts", "transactions": "View transactions", "loans": "View loans", "imports": "View imports" },
-            "mobile": { "title": "Financial Overview", "heading": "Your position today", "subtitle": "Net worth, upcoming debt, actual cash flow, and statement coverage at a glance." }
+            "mobile": { "title": "Financial Overview", "heading": "Your position today", "subtitle": "Net worth, upcoming debt, actual cash flow, and statement coverage at a glance.", "automatic": "Formal ledger included automatically through today" }
         },
         "nav": "Personal Finance Imports",
         "loans": {

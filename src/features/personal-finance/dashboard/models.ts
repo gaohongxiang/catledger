@@ -26,6 +26,15 @@ export interface DashboardCashFlowMonth {
     amounts: DashboardCashFlowAmount[];
 }
 
+export type DashboardCashFlowPeriodKind = 'today' | 'week' | 'month' | 'year';
+
+export interface DashboardCashFlowPeriod {
+    kind: DashboardCashFlowPeriodKind;
+    startDate: string;
+    endDate: string;
+    amounts: DashboardCashFlowAmount[];
+}
+
 export interface DashboardDebtAmount {
     currency: string;
     plannedRemainingPrincipal: string;
@@ -119,6 +128,7 @@ export interface PersonalFinanceDashboardOverview {
     generatedUnixTime: number;
     accountSnapshot: DashboardAccountAmount[];
     monthlyCashFlow: DashboardCashFlowMonth[];
+    cashFlowPeriods: DashboardCashFlowPeriod[];
     debt: DashboardDebtSummary;
     coverage: DashboardCoverageSummary;
     trust: DashboardTrustSummary;
@@ -129,4 +139,5 @@ export interface DashboardQuery {
     startDate: string;
     asOfDate: string;
     months: number;
+    firstDayOfWeek: number;
 }

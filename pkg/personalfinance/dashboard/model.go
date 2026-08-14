@@ -16,6 +16,8 @@ const (
 	MinimumCashFlowMonths          = 1
 	MaximumCashFlowMonths          = 24
 	FutureDebtCurveMonths          = 12
+	MinimumFirstDayOfWeek          = 0
+	MaximumFirstDayOfWeek          = 6
 )
 
 var (
@@ -85,12 +87,13 @@ type ImportReader interface {
 }
 
 type Query struct {
-	Uid         int64
-	StartDate   string
-	AsOfDate    string
-	Months      int
-	Location    *time.Location
-	GeneratedAt time.Time
+	Uid            int64
+	StartDate      string
+	AsOfDate       string
+	Months         int
+	FirstDayOfWeek int
+	Location       *time.Location
+	GeneratedAt    time.Time
 }
 
 type AccountCurrencySnapshot struct {
@@ -119,6 +122,22 @@ type CashFlowCurrency struct {
 type MonthlyCashFlow struct {
 	Month   string
 	Amounts []*CashFlowCurrency
+}
+
+type CashFlowPeriodKind string
+
+const (
+	CashFlowPeriodToday CashFlowPeriodKind = "today"
+	CashFlowPeriodWeek  CashFlowPeriodKind = "week"
+	CashFlowPeriodMonth CashFlowPeriodKind = "month"
+	CashFlowPeriodYear  CashFlowPeriodKind = "year"
+)
+
+type CashFlowPeriod struct {
+	Kind      CashFlowPeriodKind
+	StartDate string
+	EndDate   string
+	Amounts   []*CashFlowCurrency
 }
 
 type DebtCurrencySummary struct {
@@ -207,6 +226,7 @@ type Overview struct {
 	GeneratedUnixTime int64
 	AccountSnapshot   []*AccountCurrencySnapshot
 	MonthlyCashFlow   []*MonthlyCashFlow
+	CashFlowPeriods   []*CashFlowPeriod
 	Debt              *DebtSummary
 	Coverage          *CoverageSummary
 	Trust             *TrustSummary

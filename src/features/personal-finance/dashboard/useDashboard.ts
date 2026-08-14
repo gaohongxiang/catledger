@@ -18,12 +18,11 @@ import { getDashboardOverview } from './service.ts';
 import {
     createDashboardQuery,
     DASHBOARD_DEFAULT_MONTHS,
-    DASHBOARD_REPORT_START_STORAGE_KEY,
-    defaultReportStartDate,
     todayCivilDate
 } from './state.ts';
 
 type CurrencyBucket = { currency: string };
+type CashFlowAmountField = Exclude<keyof DashboardCashFlowAmount, 'currency'>;
 
 export function useDashboard() {
     const { formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
@@ -31,8 +30,6 @@ export function useDashboard() {
     const settingsStore = useSettingsStore();
     const exchangeRatesStore = useExchangeRatesStore();
     const asOfDate = ref(todayCivilDate());
-    const storedStart = localStorage.getItem(DASHBOARD_REPORT_START_STORAGE_KEY);
-    const startDate = ref(storedStart && storedStart <= asOfDate.value ? storedStart : defaultReportStartDate(asOfDate.value));
     const months = ref(DASHBOARD_DEFAULT_MONTHS);
     const overview = ref<PersonalFinanceDashboardOverview>();
     const loading = ref(false);
@@ -47,9 +44,9 @@ export function useDashboard() {
         loading.value = true;
         error.value = false;
         try {
-            const query = createDashboardQuery(startDate.value, asOfDate.value, months.value);
+            asOfDate.value = todayCivilDate();
+            const query = createDashboardQuery(asOfDate.value, months.value, userStore.currentUserFirstDayOfWeek);
             overview.value = await getDashboardOverview(query);
-            localStorage.setItem(DASHBOARD_REPORT_START_STORAGE_KEY, query.startDate);
         } catch (reason) {
             error.value = true;
             throw reason;
@@ -96,32 +93,36 @@ export function useDashboard() {
         return format(total(overview.value?.debt.amounts ?? [], field));
     }
 
-    function cashFlowTotal(value: DashboardCashFlowAmount[] | undefined, field: keyof DashboardCashFlowAmount): string {
-        return format(total(value ?? [], field));
+    function cashFlowTotal(value: DashboardCashFlowAmount[] | undefined, field: CashFlowAmountField): string {
+        return format(cashFlowValue(value, [field]));
+    }
+
+    function cashFlowValue(value: DashboardCashFlowAmount[] | undefined, fields: CashFlowAmountField[]): BigDecimalWithSuffix {
+        let result = BIG_DECIMAL_ZERO;
+        let incomplete = false;
+        for (const field of fields) {
+            const fieldTotal = total(value ?? [], field);
+            result = result.add(fieldTotal.value);
+            incomplete = incomplete || !!fieldTotal.suffix;
+        }
+        return { value: result, suffix: incomplete ? INCOMPLETE_AMOUNT_SUFFIX : '' };
     }
 
     function cashFlowDebtServiceTotal(value: DashboardCashFlowAmount[] | undefined): string {
-        const values = value ?? [];
-        const principal = total(values, 'loanPrincipal');
-        const interest = total(values, 'loanInterest');
-        const fee = total(values, 'loanFee');
-        return format({
-            value: principal.value.add(interest.value).add(fee.value),
-            suffix: principal.suffix || interest.suffix || fee.suffix ? INCOMPLETE_AMOUNT_SUFFIX : ''
-        });
+        return format(cashFlowValue(value, ['loanPrincipal', 'loanInterest', 'loanFee']));
+    }
+
+    function cashFlowOutflowTotal(value: DashboardCashFlowAmount[] | undefined): string {
+        return format(cashFlowValue(value, ['consumption', 'loanPrincipal', 'loanInterest', 'loanFee']));
     }
 
     function cashFlowDebtRatio(value: DashboardCashFlowAmount[] | undefined): string | undefined {
-        const values = value ?? [];
-        const income = total(values, 'income');
-        const principal = total(values, 'loanPrincipal');
-        const interest = total(values, 'loanInterest');
-        const fee = total(values, 'loanFee');
-        if (income.suffix || principal.suffix || interest.suffix || fee.suffix || !income.value.isPositive()) {
+        const income = cashFlowValue(value, ['income']);
+        const debtService = cashFlowValue(value, ['loanPrincipal', 'loanInterest', 'loanFee']);
+        if (income.suffix || debtService.suffix || !income.value.isPositive()) {
             return undefined;
         }
-        const debtService = principal.value.add(interest.value).add(fee.value);
-        const ratio = debtService.divide(income.value).multiply(100).toDoubleNumber();
+        const ratio = debtService.value.divide(income.value).multiply(100).toDoubleNumber();
         return Number.isFinite(ratio) ? ratio.toFixed(1) : undefined;
     }
 
@@ -134,7 +135,6 @@ export function useDashboard() {
 
     return {
         asOfDate,
-        startDate,
         months,
         overview,
         loading,
@@ -145,7 +145,9 @@ export function useDashboard() {
         accountTotal,
         debtTotal,
         cashFlowTotal,
+        cashFlowValue,
         cashFlowDebtServiceTotal,
+        cashFlowOutflowTotal,
         cashFlowDebtRatio,
         formatRawAmount
     };

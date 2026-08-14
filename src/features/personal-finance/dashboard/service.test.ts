@@ -21,6 +21,12 @@ function overview(overrides: Record<string, unknown> = {}): Record<string, unkno
             debtAccountLiability: '1'
         }],
         monthlyCashFlow: [],
+        cashFlowPeriods: [
+            { kind: 'today', startDate: '2026-08-14', endDate: '2026-08-14', amounts: [] },
+            { kind: 'week', startDate: '2026-08-10', endDate: '2026-08-14', amounts: [] },
+            { kind: 'month', startDate: '2026-08-01', endDate: '2026-08-14', amounts: [] },
+            { kind: 'year', startDate: '2026-01-01', endDate: '2026-08-14', amounts: [] }
+        ],
         debt: { amounts: [], contracts: [], futureCurve: [] },
         coverage: {
             sourceAccountCount: 0,
@@ -66,6 +72,7 @@ describe('dashboard response protocol', () => {
         { accountSnapshot: [{ currency: 'CNY', assets: 1 }] },
         { startDate: '2026-02-30' },
         { generatedUnixTime: Number.MAX_SAFE_INTEGER + 1 },
+        { cashFlowPeriods: [{ kind: 'month', startDate: '2026-08-01', endDate: '2026-08-14', amounts: [] }] },
         { drilldown: { accounts: 'https://example.com', transactions: '/transaction/list', loans: '/personal-finance/loans', imports: '/personal-finance/imports' } }
     ])('rejects malformed or unsafe payloads', value => {
         expect(() => normalizeDashboardOverview(overview(value))).toThrow(DashboardProtocolError);

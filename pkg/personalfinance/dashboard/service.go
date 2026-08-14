@@ -50,7 +50,9 @@ func (s *Service) GetOverview(c core.Context, query Query) (*Overview, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: loan allocations", ErrDependencyFailure)
 	}
-	snapshot, cashFlow, classificationIssues, err := deriveLedgerOverview(ledgerData, allocations, start, asOf, query.Months, query.Location)
+	snapshot, cashFlow, cashFlowPeriods, classificationIssues, err := deriveLedgerOverview(
+		ledgerData, allocations, start, asOf, query.Months, query.FirstDayOfWeek, query.Location,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -74,12 +76,14 @@ func (s *Service) GetOverview(c core.Context, query Query) (*Overview, error) {
 	trust.HasWarnings = !coverage.Complete || classificationIssues > 0 || loanWarnings
 	return &Overview{
 		StartDate: query.StartDate, AsOfDate: query.AsOfDate, GeneratedUnixTime: generatedAt.Unix(),
-		AccountSnapshot: snapshot, MonthlyCashFlow: cashFlow, Debt: debt, Coverage: coverage, Trust: trust,
+		AccountSnapshot: snapshot, MonthlyCashFlow: cashFlow, CashFlowPeriods: cashFlowPeriods,
+		Debt: debt, Coverage: coverage, Trust: trust,
 	}, nil
 }
 
 func validateQuery(query Query) (time.Time, time.Time, error) {
-	if query.Uid < 1 || query.Location == nil || query.Months < MinimumCashFlowMonths || query.Months > MaximumCashFlowMonths {
+	if query.Uid < 1 || query.Location == nil || query.Months < MinimumCashFlowMonths || query.Months > MaximumCashFlowMonths ||
+		query.FirstDayOfWeek < MinimumFirstDayOfWeek || query.FirstDayOfWeek > MaximumFirstDayOfWeek {
 		return time.Time{}, time.Time{}, ErrInvalidQuery
 	}
 	start, err := parseCivilDate(query.StartDate, query.Location)
@@ -87,10 +91,20 @@ func validateQuery(query Query) (time.Time, time.Time, error) {
 		return time.Time{}, time.Time{}, ErrInvalidQuery
 	}
 	asOf, err := parseCivilDate(query.AsOfDate, query.Location)
-	if err != nil || start.After(asOf) {
+	if err != nil || start.After(asOf) || start.After(cashFlowRequiredStart(asOf, query.Months, query.Location)) {
 		return time.Time{}, time.Time{}, ErrInvalidQuery
 	}
 	return start, asOf, nil
+}
+
+func cashFlowRequiredStart(asOf time.Time, months int, location *time.Location) time.Time {
+	asOfMonth := time.Date(asOf.Year(), asOf.Month(), 1, 0, 0, 0, 0, location)
+	trendStart := asOfMonth.AddDate(0, -(months - 1), 0)
+	yearStart := time.Date(asOf.Year(), time.January, 1, 0, 0, 0, 0, location)
+	if trendStart.Before(yearStart) {
+		return trendStart
+	}
+	return yearStart
 }
 
 func parseCivilDate(value string, location *time.Location) (time.Time, error) {
@@ -116,15 +130,20 @@ func unixMilliseconds(value time.Time) (int64, error) {
 	return seconds * 1000, nil
 }
 
-func deriveLedgerOverview(data *LedgerData, allocations []*loans.DashboardAllocation, start time.Time, asOf time.Time, months int, location *time.Location) ([]*AccountCurrencySnapshot, []*MonthlyCashFlow, int64, error) {
-	if data == nil || location == nil {
-		return nil, nil, 0, ErrInvariantViolation
+func deriveLedgerOverview(data *LedgerData, allocations []*loans.DashboardAllocation, start time.Time, asOf time.Time, months int, firstDayOfWeek int, location *time.Location) ([]*AccountCurrencySnapshot, []*MonthlyCashFlow, []*CashFlowPeriod, int64, error) {
+	if data == nil || location == nil || months < MinimumCashFlowMonths || months > MaximumCashFlowMonths ||
+		firstDayOfWeek < MinimumFirstDayOfWeek || firstDayOfWeek > MaximumFirstDayOfWeek {
+		return nil, nil, nil, 0, ErrInvariantViolation
+	}
+	requiredStart := cashFlowRequiredStart(asOf, months, location)
+	if start.After(requiredStart) {
+		return nil, nil, nil, 0, ErrInvalidQuery
 	}
 	accountMap := make(map[int64]*LedgerAccount, len(data.Accounts))
 	balances := make(map[int64]int64, len(data.Accounts))
 	for _, account := range data.Accounts {
 		if !validLedgerAccount(account) || accountMap[account.AccountId] != nil {
-			return nil, nil, 0, ErrInvariantViolation
+			return nil, nil, nil, 0, ErrInvariantViolation
 		}
 		accountMap[account.AccountId] = account
 		balances[account.AccountId] = account.CurrentBalance
@@ -132,17 +151,17 @@ func deriveLedgerOverview(data *LedgerData, allocations []*loans.DashboardAlloca
 	allocationMap := make(map[int64]*loans.DashboardAllocation, len(allocations))
 	for _, allocation := range allocations {
 		if allocation == nil || allocation.TransactionId < 1 || allocation.AllocatedAmount < 1 || allocationMap[allocation.TransactionId] != nil {
-			return nil, nil, 0, ErrInvariantViolation
+			return nil, nil, nil, 0, ErrInvariantViolation
 		}
 		allocationMap[allocation.TransactionId] = allocation
 	}
 	asOfNext, err := addCivilDays(asOf, 1)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, nil, 0, err
 	}
 	asOfExclusive, err := unixMilliseconds(asOfNext)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, nil, 0, err
 	}
 	monthStarts := make([]time.Time, months)
 	asOfMonth := time.Date(asOf.Year(), asOf.Month(), 1, 0, 0, 0, 0, location)
@@ -151,33 +170,41 @@ func deriveLedgerOverview(data *LedgerData, allocations []*loans.DashboardAlloca
 		monthStarts[index] = asOfMonth.AddDate(0, index-(months-1), 0)
 		flows[monthStarts[index].Format("2006-01")] = make(map[string]*CashFlowCurrency)
 	}
-	flowFirstDate := monthStarts[0]
-	if start.After(flowFirstDate) {
-		flowFirstDate = start
-	}
-	flowMinimum, err := unixMilliseconds(flowFirstDate)
+	flowMinimum, err := unixMilliseconds(requiredStart)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, nil, 0, err
+	}
+	type periodAccumulator struct {
+		kind    CashFlowPeriodKind
+		start   time.Time
+		amounts map[string]*CashFlowCurrency
+	}
+	weekOffset := (int(asOf.Weekday()) - firstDayOfWeek + 7) % 7
+	periodAccumulators := []*periodAccumulator{
+		{kind: CashFlowPeriodToday, start: asOf, amounts: make(map[string]*CashFlowCurrency)},
+		{kind: CashFlowPeriodWeek, start: asOf.AddDate(0, 0, -weekOffset), amounts: make(map[string]*CashFlowCurrency)},
+		{kind: CashFlowPeriodMonth, start: asOfMonth, amounts: make(map[string]*CashFlowCurrency)},
+		{kind: CashFlowPeriodYear, start: time.Date(asOf.Year(), time.January, 1, 0, 0, 0, 0, location), amounts: make(map[string]*CashFlowCurrency)},
 	}
 	seenTransactions := make(map[int64]struct{}, len(data.Transactions))
 	var classificationIssues int64
 	for _, transaction := range data.Transactions {
 		if !validLedgerTransaction(transaction) {
-			return nil, nil, 0, ErrInvariantViolation
+			return nil, nil, nil, 0, ErrInvariantViolation
 		}
 		if _, exists := seenTransactions[transaction.TransactionId]; exists {
-			return nil, nil, 0, ErrInvariantViolation
+			return nil, nil, nil, 0, ErrInvariantViolation
 		}
 		seenTransactions[transaction.TransactionId] = struct{}{}
 		account := accountMap[transaction.AccountId]
 		if transaction.TransactionTime >= asOfExclusive && account != nil {
 			effect, effectErr := transactionBalanceEffect(transaction)
 			if effectErr != nil {
-				return nil, nil, 0, effectErr
+				return nil, nil, nil, 0, effectErr
 			}
 			balances[account.AccountId], effectErr = checkedSubtract(balances[account.AccountId], effect)
 			if effectErr != nil {
-				return nil, nil, 0, effectErr
+				return nil, nil, nil, 0, effectErr
 			}
 		}
 		if transaction.TransactionTime < flowMinimum || transaction.TransactionTime >= asOfExclusive || account == nil || account.Hidden || !account.Single {
@@ -186,60 +213,38 @@ func deriveLedgerOverview(data *LedgerData, allocations []*loans.DashboardAlloca
 		instant := time.Unix(transaction.TransactionTime/1000, (transaction.TransactionTime%1000)*int64(time.Millisecond)).In(location)
 		month := instant.Format("2006-01")
 		currencyFlows := flows[month]
-		if currencyFlows == nil {
-			continue
+		periodTargets := make([]*periodAccumulator, 0, len(periodAccumulators))
+		for _, period := range periodAccumulators {
+			if !instant.Before(period.start) {
+				periodTargets = append(periodTargets, period)
+			}
 		}
-		flow := currencyFlows[account.Currency]
-		if flow == nil {
-			flow = &CashFlowCurrency{Currency: account.Currency}
-			currencyFlows[account.Currency] = flow
+		if currencyFlows == nil && len(periodTargets) == 0 {
+			continue
 		}
 		effect, effectErr := transactionBalanceEffect(transaction)
 		if effectErr != nil {
-			return nil, nil, 0, effectErr
-		}
-		if account.Liquid {
-			flow.LiquidFundsNetChange, effectErr = checkedAdd(flow.LiquidFundsNetChange, effect)
-			if effectErr != nil {
-				return nil, nil, 0, effectErr
-			}
+			return nil, nil, nil, 0, effectErr
 		}
 		allocation := allocationMap[transaction.TransactionId]
 		component, classified := classifyLoanTransaction(transaction, allocation)
 		if allocation != nil && !classified {
 			classificationIssues, effectErr = checkedAdd(classificationIssues, 1)
 			if effectErr != nil {
-				return nil, nil, 0, effectErr
+				return nil, nil, nil, 0, effectErr
 			}
 		}
-		switch transaction.Type {
-		case LedgerTransactionModifyBalance:
-			flow.BalanceAdjustment, effectErr = checkedAdd(flow.BalanceAdjustment, transaction.Adjustment)
-		case LedgerTransactionIncome:
-			flow.Income, effectErr = checkedAdd(flow.Income, transaction.Amount)
-		case LedgerTransactionExpense:
-			switch component {
-			case loans.COMPONENT_TYPE_INTEREST:
-				flow.LoanInterest, effectErr = checkedAdd(flow.LoanInterest, transaction.Amount)
-			case loans.COMPONENT_TYPE_FEE:
-				flow.LoanFee, effectErr = checkedAdd(flow.LoanFee, transaction.Amount)
-			default:
-				flow.Consumption, effectErr = checkedAdd(flow.Consumption, transaction.Amount)
+		if currencyFlows != nil {
+			flow := cashFlowCurrency(currencyFlows, account.Currency)
+			if effectErr = applyCashFlowTransaction(flow, transaction, account, effect, component); effectErr != nil {
+				return nil, nil, nil, 0, effectErr
 			}
-		case LedgerTransactionTransferOut:
-			switch component {
-			case loans.COMPONENT_TYPE_PRINCIPAL:
-				flow.LoanPrincipal, effectErr = checkedAdd(flow.LoanPrincipal, transaction.Amount)
-			case loans.COMPONENT_TYPE_DISBURSEMENT:
-				flow.LoanDisbursement, effectErr = checkedAdd(flow.LoanDisbursement, transaction.Amount)
-			default:
-				flow.InternalTransfer, effectErr = checkedAdd(flow.InternalTransfer, transaction.Amount)
-			}
-		case LedgerTransactionTransferIn:
-			// 双侧正式行只参与账户余额与流动资金净变化，业务分类只计 transfer-out 主侧。
 		}
-		if effectErr != nil {
-			return nil, nil, 0, effectErr
+		for _, period := range periodTargets {
+			flow := cashFlowCurrency(period.amounts, account.Currency)
+			if effectErr = applyCashFlowTransaction(flow, transaction, account, effect, component); effectErr != nil {
+				return nil, nil, nil, 0, effectErr
+			}
 		}
 	}
 
@@ -264,7 +269,7 @@ func deriveLedgerOverview(data *LedgerData, allocations []*loans.DashboardAlloca
 		case LedgerAccountKindCreditCard:
 			liability, negateErr := checkedNegate(balance)
 			if negateErr != nil {
-				return nil, nil, 0, negateErr
+				return nil, nil, nil, 0, negateErr
 			}
 			item.Liabilities, aggregateErr = checkedAdd(item.Liabilities, liability)
 			if aggregateErr == nil {
@@ -273,17 +278,17 @@ func deriveLedgerOverview(data *LedgerData, allocations []*loans.DashboardAlloca
 		case LedgerAccountKindDebt:
 			liability, negateErr := checkedNegate(balance)
 			if negateErr != nil {
-				return nil, nil, 0, negateErr
+				return nil, nil, nil, 0, negateErr
 			}
 			item.Liabilities, aggregateErr = checkedAdd(item.Liabilities, liability)
 			if aggregateErr == nil {
 				item.DebtAccountLiability, aggregateErr = checkedAdd(item.DebtAccountLiability, liability)
 			}
 		default:
-			return nil, nil, 0, ErrInvariantViolation
+			return nil, nil, nil, 0, ErrInvariantViolation
 		}
 		if aggregateErr != nil {
-			return nil, nil, 0, aggregateErr
+			return nil, nil, nil, 0, aggregateErr
 		}
 	}
 	snapshot := make([]*AccountCurrencySnapshot, 0, len(snapshotMap))
@@ -291,7 +296,7 @@ func deriveLedgerOverview(data *LedgerData, allocations []*loans.DashboardAlloca
 		var netErr error
 		item.NetWorth, netErr = checkedSubtract(item.Assets, item.Liabilities)
 		if netErr != nil {
-			return nil, nil, 0, netErr
+			return nil, nil, nil, 0, netErr
 		}
 		snapshot = append(snapshot, item)
 	}
@@ -301,14 +306,76 @@ func deriveLedgerOverview(data *LedgerData, allocations []*loans.DashboardAlloca
 	for _, monthStart := range monthStarts {
 		month := monthStart.Format("2006-01")
 		currencyMap := flows[month]
-		amounts := make([]*CashFlowCurrency, 0, len(currencyMap))
-		for _, amount := range currencyMap {
-			amounts = append(amounts, amount)
-		}
-		sort.Slice(amounts, func(i, j int) bool { return amounts[i].Currency < amounts[j].Currency })
-		monthly = append(monthly, &MonthlyCashFlow{Month: month, Amounts: amounts})
+		monthly = append(monthly, &MonthlyCashFlow{Month: month, Amounts: sortedCashFlowCurrencies(currencyMap)})
 	}
-	return snapshot, monthly, classificationIssues, nil
+	periods := make([]*CashFlowPeriod, 0, len(periodAccumulators))
+	for _, period := range periodAccumulators {
+		periods = append(periods, &CashFlowPeriod{
+			Kind: period.kind, StartDate: period.start.Format(time.DateOnly), EndDate: asOf.Format(time.DateOnly),
+			Amounts: sortedCashFlowCurrencies(period.amounts),
+		})
+	}
+	return snapshot, monthly, periods, classificationIssues, nil
+}
+
+func cashFlowCurrency(values map[string]*CashFlowCurrency, currency string) *CashFlowCurrency {
+	flow := values[currency]
+	if flow == nil {
+		flow = &CashFlowCurrency{Currency: currency}
+		values[currency] = flow
+	}
+	return flow
+}
+
+func applyCashFlowTransaction(flow *CashFlowCurrency, transaction *LedgerTransaction, account *LedgerAccount, balanceEffect int64, component loans.ComponentType) error {
+	if flow == nil || transaction == nil || account == nil {
+		return ErrInvariantViolation
+	}
+	var err error
+	if account.Liquid {
+		flow.LiquidFundsNetChange, err = checkedAdd(flow.LiquidFundsNetChange, balanceEffect)
+		if err != nil {
+			return err
+		}
+	}
+	switch transaction.Type {
+	case LedgerTransactionModifyBalance:
+		flow.BalanceAdjustment, err = checkedAdd(flow.BalanceAdjustment, transaction.Adjustment)
+	case LedgerTransactionIncome:
+		flow.Income, err = checkedAdd(flow.Income, transaction.Amount)
+	case LedgerTransactionExpense:
+		switch component {
+		case loans.COMPONENT_TYPE_INTEREST:
+			flow.LoanInterest, err = checkedAdd(flow.LoanInterest, transaction.Amount)
+		case loans.COMPONENT_TYPE_FEE:
+			flow.LoanFee, err = checkedAdd(flow.LoanFee, transaction.Amount)
+		default:
+			flow.Consumption, err = checkedAdd(flow.Consumption, transaction.Amount)
+		}
+	case LedgerTransactionTransferOut:
+		switch component {
+		case loans.COMPONENT_TYPE_PRINCIPAL:
+			flow.LoanPrincipal, err = checkedAdd(flow.LoanPrincipal, transaction.Amount)
+		case loans.COMPONENT_TYPE_DISBURSEMENT:
+			flow.LoanDisbursement, err = checkedAdd(flow.LoanDisbursement, transaction.Amount)
+		default:
+			flow.InternalTransfer, err = checkedAdd(flow.InternalTransfer, transaction.Amount)
+		}
+	case LedgerTransactionTransferIn:
+		// 双侧正式行只参与账户余额与流动资金净变化，业务分类只计 transfer-out 主侧。
+	default:
+		return ErrInvariantViolation
+	}
+	return err
+}
+
+func sortedCashFlowCurrencies(values map[string]*CashFlowCurrency) []*CashFlowCurrency {
+	result := make([]*CashFlowCurrency, 0, len(values))
+	for _, value := range values {
+		result = append(result, value)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Currency < result[j].Currency })
+	return result
 }
 
 func classifyLoanTransaction(transaction *LedgerTransaction, allocation *loans.DashboardAllocation) (loans.ComponentType, bool) {

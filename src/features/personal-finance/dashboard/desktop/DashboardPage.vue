@@ -18,11 +18,11 @@
                     </v-btn>
                 </div>
             </div>
-            <div class="report-controls">
-                <v-text-field density="compact" hide-details type="date" :label="tt('personalFinance.dashboard.period.start')" v-model="startDate" />
-                <v-text-field density="compact" hide-details type="date" :label="tt('personalFinance.dashboard.period.asOf')" v-model="asOfDate" />
-                <v-select density="compact" hide-details :items="monthOptions" :label="tt('personalFinance.dashboard.period.months')" v-model="months" />
-                <v-btn color="primary" height="42" :loading="loading" :disabled="startDate > asOfDate" @click="refresh">
+            <div class="automatic-scope">
+                <span>{{ tt('personalFinance.dashboard.snapshot.title') }}</span>
+                <strong>{{ tt('personalFinance.dashboard.automaticScope', { date: asOfDate }) }}</strong>
+                <p>{{ tt('personalFinance.dashboard.automaticScopeHint') }}</p>
+                <v-btn color="primary" variant="flat" :prepend-icon="mdiRefresh" :loading="loading" @click="refresh">
                     {{ tt('personalFinance.dashboard.refresh') }}
                 </v-btn>
             </div>
@@ -64,31 +64,47 @@
                 </router-link>
             </section>
 
-            <section class="month-glance mt-5" v-if="latestMonth">
-                <div class="month-glance__intro">
-                    <span class="month-glance__eyebrow">{{ tt('personalFinance.dashboard.quick.eyebrow') }}</span>
-                    <strong>{{ tt('personalFinance.dashboard.quick.title', { month: latestMonth.month }) }}</strong>
-                    <p>{{ tt('personalFinance.dashboard.quick.subtitle') }}</p>
-                    <router-link :to="transactionLink(latestMonth.month)">
-                        {{ tt('personalFinance.dashboard.quick.viewTransactions') }} →
+            <section class="period-overview mt-5" v-if="selectedPeriod">
+                <div class="period-overview__head">
+                    <div>
+                        <span class="period-overview__eyebrow">{{ tt('personalFinance.dashboard.quick.eyebrow') }}</span>
+                        <h3>{{ tt('personalFinance.dashboard.quick.title', { period: selectedPeriodLabel }) }}</h3>
+                        <p>{{ tt('personalFinance.dashboard.quick.range', { start: selectedPeriod.startDate, end: selectedPeriod.endDate }) }}</p>
+                    </div>
+                    <div class="period-overview__actions">
+                        <v-btn-toggle color="primary" density="compact" divided mandatory variant="outlined" v-model="selectedPeriodKind">
+                            <v-btn :value="option" :key="option" v-for="option in periodOptions">
+                                {{ tt(`personalFinance.dashboard.quick.period.${option}`) }}
+                            </v-btn>
+                        </v-btn-toggle>
+                        <router-link :to="transactionRangeLink(selectedPeriod.startDate, selectedPeriod.endDate)">
+                            {{ tt('personalFinance.dashboard.quick.viewTransactions') }} →
+                        </router-link>
+                    </div>
+                </div>
+                <div class="period-metrics">
+                    <router-link :to="transactionRangeLink(selectedPeriod.startDate, selectedPeriod.endDate)">
+                        <span>{{ tt('personalFinance.dashboard.quick.income') }}</span>
+                        <strong>{{ cashFlowTotal(selectedPeriod.amounts, 'income') }}</strong>
+                    </router-link>
+                    <router-link class="period-metric--outflow" :to="transactionRangeLink(selectedPeriod.startDate, selectedPeriod.endDate)">
+                        <span>{{ tt('personalFinance.dashboard.quick.outflow') }}</span>
+                        <strong>{{ cashFlowOutflowTotal(selectedPeriod.amounts) }}</strong>
+                        <small>{{ tt('personalFinance.dashboard.quick.outflowHint') }}</small>
+                    </router-link>
+                    <router-link :to="transactionRangeLink(selectedPeriod.startDate, selectedPeriod.endDate)">
+                        <span>{{ tt('personalFinance.dashboard.quick.consumption') }}</span>
+                        <strong>{{ cashFlowTotal(selectedPeriod.amounts, 'consumption') }}</strong>
+                    </router-link>
+                    <router-link :to="transactionRangeLink(selectedPeriod.startDate, selectedPeriod.endDate)">
+                        <span>{{ tt('personalFinance.dashboard.quick.debtService') }}</span>
+                        <strong>{{ cashFlowDebtServiceTotal(selectedPeriod.amounts) }}</strong>
+                    </router-link>
+                    <router-link class="period-metric--change" :to="transactionRangeLink(selectedPeriod.startDate, selectedPeriod.endDate)">
+                        <span>{{ tt('personalFinance.dashboard.quick.liquidChange') }}</span>
+                        <strong :class="cashFlowSign(selectedPeriod.amounts)">{{ cashFlowTotal(selectedPeriod.amounts, 'liquidFundsNetChange') }}</strong>
                     </router-link>
                 </div>
-                <router-link class="month-glance__metric" :to="transactionLink(latestMonth.month)">
-                    <span>{{ tt('personalFinance.dashboard.quick.income') }}</span>
-                    <strong>{{ cashFlowTotal(latestMonth.amounts, 'income') }}</strong>
-                </router-link>
-                <router-link class="month-glance__metric" :to="transactionLink(latestMonth.month)">
-                    <span>{{ tt('personalFinance.dashboard.quick.consumption') }}</span>
-                    <strong>{{ cashFlowTotal(latestMonth.amounts, 'consumption') }}</strong>
-                </router-link>
-                <router-link class="month-glance__metric" :to="transactionLink(latestMonth.month)">
-                    <span>{{ tt('personalFinance.dashboard.quick.debtService') }}</span>
-                    <strong>{{ cashFlowDebtServiceTotal(latestMonth.amounts) }}</strong>
-                </router-link>
-                <router-link class="month-glance__metric month-glance__metric--change" :to="transactionLink(latestMonth.month)">
-                    <span>{{ tt('personalFinance.dashboard.quick.liquidChange') }}</span>
-                    <strong :class="cashFlowSign(latestMonth.amounts)">{{ cashFlowTotal(latestMonth.amounts, 'liquidFundsNetChange') }}</strong>
-                </router-link>
             </section>
 
             <v-alert class="mt-5 trust-ribbon" :type="overview.trust.hasWarnings ? 'warning' : 'success'" variant="tonal">
@@ -172,6 +188,20 @@
                         <router-link class="section-link" :to="transactionLink(latestMonth?.month)">{{ tt('personalFinance.dashboard.drilldown.transactions') }} →</router-link>
                     </div>
                 </div>
+
+                <div class="trend-heading">
+                    <div>
+                        <strong>{{ tt('personalFinance.dashboard.cashFlow.trendTitle') }}</strong>
+                        <p>{{ tt('personalFinance.dashboard.cashFlow.trendSubtitle') }}</p>
+                    </div>
+                    <v-btn-toggle color="primary" density="compact" divided mandatory variant="outlined"
+                                  :model-value="months" @update:model-value="changeTrendMonths">
+                        <v-btn :value="option" :key="option" v-for="option in trendMonthOptions">
+                            {{ tt('personalFinance.dashboard.cashFlow.trendMonths', { count: option }) }}
+                        </v-btn>
+                    </v-btn-toggle>
+                </div>
+                <cash-flow-trend-chart :points="trendPoints" :hidden="!showAmounts" />
 
                 <div class="cashflow-table-wrap">
                     <table class="cashflow-table">
@@ -259,12 +289,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import {
     mdiAlertCircleOutline,
     mdiArrowTopRight,
     mdiEyeOffOutline,
     mdiEyeOutline,
+    mdiRefresh,
     mdiShieldCheckOutline,
     mdiTimelineClockOutline
 } from '@mdi/js';
@@ -274,17 +305,17 @@ import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
 import { DISPLAY_HIDDEN_AMOUNT } from '@/consts/numeral.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 
-import type { DashboardCashFlowAmount, DashboardDebtCurveAmount } from '../models.ts';
+import type { DashboardCashFlowAmount, DashboardCashFlowPeriodKind, DashboardDebtCurveAmount } from '../models.ts';
 import { formatLoanPptrAsPercentage } from '../../loans/state.ts';
 import { coverageTone, formatCoverageRange, sourceCoverageTone } from '../presentation.ts';
 import { useDashboard } from '../useDashboard.ts';
+import CashFlowTrendChart from './CashFlowTrendChart.vue';
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
 const exchangeRatesStore = useExchangeRatesStore();
 const dashboard = useDashboard();
 const {
     asOfDate,
-    startDate,
     months,
     overview,
     loading,
@@ -293,14 +324,32 @@ const {
     accountTotal,
     debtTotal,
     cashFlowTotal,
+    cashFlowValue,
     cashFlowDebtServiceTotal,
+    cashFlowOutflowTotal,
     cashFlowDebtRatio,
     formatRawAmount
 } = dashboard;
 
-const monthOptions = [3, 6, 12, 24];
+const periodOptions: DashboardCashFlowPeriodKind[] = ['today', 'week', 'month', 'year'];
+const trendMonthOptions = [6, 12, 24];
+const selectedPeriodKind = ref<DashboardCashFlowPeriodKind>('month');
+const selectedPeriod = computed(() => overview.value?.cashFlowPeriods.find(period => period.kind === selectedPeriodKind.value));
+const selectedPeriodLabel = computed(() => tt(`personalFinance.dashboard.quick.period.${selectedPeriodKind.value}`));
 const latestMonth = computed(() => overview.value?.monthlyCashFlow.at(-1));
-const debtBurdenRatio = computed(() => cashFlowDebtRatio(latestMonth.value?.amounts));
+const debtBurdenRatio = computed(() => showAmounts.value ? cashFlowDebtRatio(latestMonth.value?.amounts) : undefined);
+const trendPoints = computed(() => {
+    if (!showAmounts.value) return [];
+    return (overview.value?.monthlyCashFlow ?? []).map(row => ({
+        month: row.month,
+        income: cashFlowValue(row.amounts, ['income']).value.toDoubleNumber(),
+        consumption: cashFlowValue(row.amounts, ['consumption']).value.toDoubleNumber(),
+        debtService: cashFlowValue(row.amounts, ['loanPrincipal', 'loanInterest', 'loanFee']).value.toDoubleNumber(),
+        incomeLabel: cashFlowTotal(row.amounts, 'income'),
+        consumptionLabel: cashFlowTotal(row.amounts, 'consumption'),
+        debtServiceLabel: cashFlowDebtServiceTotal(row.amounts)
+    }));
+});
 const coverageHeadline = computed(() => {
     if (!overview.value) return tt('personalFinance.dashboard.trust.loading');
     const tone = coverageTone(overview.value.coverage);
@@ -309,6 +358,12 @@ const coverageHeadline = computed(() => {
 
 function refresh(): void {
     dashboard.load().catch(() => undefined);
+}
+
+function changeTrendMonths(value: unknown): void {
+    if (typeof value !== 'number' || !trendMonthOptions.includes(value) || value === months.value) return;
+    months.value = value;
+    refresh();
 }
 
 function formatApr(value: string): string {
@@ -339,23 +394,36 @@ function curveTotal(values: DashboardDebtCurveAmount[]): string {
 
 function cashFlowSign(values: DashboardCashFlowAmount[]): string {
     if (!showAmounts.value) return '';
-    let total = 0n;
-    for (const value of values) {
-        if (value.currency === dashboard.defaultCurrency.value) total += BigInt(value.liquidFundsNetChange);
-    }
-    return total < 0n ? 'amount-negative' : total > 0n ? 'amount-positive' : '';
+    const total = cashFlowValue(values, ['liquidFundsNetChange']).value;
+    return total.isNegative() ? 'amount-negative' : total.isPositive() ? 'amount-positive' : '';
 }
 
 function formatDebtBurden(values: DashboardCashFlowAmount[]): string {
+    if (!showAmounts.value) return '—';
     const ratio = cashFlowDebtRatio(values);
     return ratio ? `${ratio}%` : '—';
 }
 
 function transactionLink(month?: string): string {
     if (!month || !overview.value) return overview.value?.drilldown.transactions ?? '/transaction/list';
-    const start = new Date(`${month}-01T00:00:00`);
-    const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
-    return `${overview.value.drilldown.transactions}?pageType=0&dateType=255&minTime=${Math.floor(start.getTime() / 1000)}&maxTime=${Math.floor(end.getTime() / 1000) - 1}`;
+    const parts = /^(\d{4})-(\d{2})$/.exec(month);
+    if (!parts) return overview.value.drilldown.transactions;
+    const end = new Date(Number(parts[1]), Number(parts[2]), 0);
+    const monthEnd = month === overview.value.asOfDate.slice(0, 7) ? overview.value.asOfDate : formatLocalCivilDate(end);
+    return transactionRangeLink(`${month}-01`, monthEnd);
+}
+
+function transactionRangeLink(startDate: string, endDate: string): string {
+    const base = overview.value?.drilldown.transactions ?? '/transaction/list';
+    const start = new Date(`${startDate}T00:00:00`);
+    const endExclusive = new Date(`${endDate}T00:00:00`);
+    endExclusive.setDate(endExclusive.getDate() + 1);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(endExclusive.getTime())) return base;
+    return `${base}?pageType=0&dateType=255&minTime=${Math.floor(start.getTime() / 1000)}&maxTime=${Math.floor(endExclusive.getTime() / 1000) - 1}`;
+}
+
+function formatLocalCivilDate(value: Date): string {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 }
 
 onMounted(async () => {
@@ -402,7 +470,10 @@ onMounted(async () => {
 .dashboard-kicker { color: rgb(var(--v-theme-primary)); letter-spacing: 0.16em; }
 .dashboard-title { font-size: clamp(2rem, 4vw, 3.6rem); line-height: 1; letter-spacing: -0.045em; color: rgb(var(--v-theme-on-surface)); }
 .dashboard-subtitle { max-width: 720px; margin: 16px 0 0; color: rgba(var(--v-theme-on-surface), 0.68); font-size: 1rem; line-height: 1.7; }
-.report-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; z-index: 1; }
+.automatic-scope { z-index: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px; border-inline-start: 3px solid rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-surface), .78); backdrop-filter: blur(8px); }
+.automatic-scope span { color: rgb(var(--v-theme-primary)); font-size: .7rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+.automatic-scope strong { font-size: 1.15rem; }
+.automatic-scope p { margin: 0 0 5px; color: rgba(var(--v-theme-on-surface), .63); font-size: .8rem; line-height: 1.5; }
 .amount-visibility { align-self: center; }
 
 .snapshot-grid { display: grid; grid-template-columns: 1.25fr repeat(3, 1fr); gap: 14px; }
@@ -414,17 +485,22 @@ onMounted(async () => {
 .metric-card strong { font-size: clamp(1.55rem, 2.4vw, 2.35rem); letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
 .metric-card small { opacity: .64; line-height: 1.35; }
 .metric-foot { display: grid; gap: 2px; }
-.month-glance { display: grid; grid-template-columns: minmax(220px, 1.25fr) repeat(4, minmax(0, 1fr)); border: 1px solid var(--dash-rule); border-radius: 18px 5px 18px 5px; overflow: hidden; background: var(--dash-paper); }
-.month-glance__intro { padding: 20px 22px; background: rgba(var(--v-theme-primary), .075); display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
-.month-glance__eyebrow { color: rgb(var(--v-theme-primary)); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
-.month-glance__intro strong { margin-top: 5px; font-size: 1.08rem; }
-.month-glance__intro p { margin: 7px 0 9px; color: rgba(var(--v-theme-on-surface), .62); font-size: .78rem; line-height: 1.45; }
-.month-glance__intro a { color: rgb(var(--v-theme-primary)); font-size: .78rem; font-weight: 700; text-decoration: none; }
-.month-glance__metric { min-width: 0; padding: 20px 16px; color: inherit; text-decoration: none; border-inline-start: 1px solid var(--dash-rule); display: flex; flex-direction: column; justify-content: center; gap: 10px; transition: background-color .18s ease; }
-.month-glance__metric:hover { background: rgba(var(--v-theme-primary), .045); }
-.month-glance__metric span { color: rgba(var(--v-theme-on-surface), .6); font-size: .74rem; }
-.month-glance__metric strong { font-size: clamp(1rem, 1.4vw, 1.28rem); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.month-glance__metric--change { box-shadow: inset 0 3px rgba(var(--v-theme-primary), .65); }
+.period-overview { overflow: hidden; border: 1px solid var(--dash-rule); border-radius: 18px 5px 18px 5px; background: var(--dash-paper); }
+.period-overview__head { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 20px 22px; background: rgba(var(--v-theme-primary), .07); }
+.period-overview__eyebrow { color: rgb(var(--v-theme-primary)); font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+.period-overview__head h3 { margin: 4px 0 0; font-size: 1.2rem; }
+.period-overview__head p { margin: 4px 0 0; color: rgba(var(--v-theme-on-surface), .6); font-size: .78rem; }
+.period-overview__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 14px; }
+.period-overview__actions a { color: rgb(var(--v-theme-primary)); font-size: .78rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.period-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.period-metrics > a { min-width: 0; min-height: 122px; padding: 18px; color: inherit; text-decoration: none; border-inline-start: 1px solid var(--dash-rule); display: flex; flex-direction: column; justify-content: center; gap: 9px; transition: background-color .18s ease; }
+.period-metrics > a:first-child { border-inline-start: 0; }
+.period-metrics > a:hover { background: rgba(var(--v-theme-primary), .04); }
+.period-metrics span { color: rgba(var(--v-theme-on-surface), .6); font-size: .74rem; }
+.period-metrics strong { font-size: clamp(1rem, 1.5vw, 1.3rem); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.period-metrics small { color: rgba(var(--v-theme-on-surface), .5); font-size: .65rem; line-height: 1.35; }
+.period-metric--outflow { box-shadow: inset 0 3px #d17a42; }
+.period-metric--change { background: rgba(var(--v-theme-primary), .035); }
 .trust-ribbon { border-radius: 6px 18px 6px 18px; }
 
 .dashboard-section { border: 1px solid var(--dash-rule); border-radius: 6px 24px 6px 24px; background: var(--dash-paper); padding: clamp(22px, 3vw, 38px); }
@@ -455,6 +531,9 @@ onMounted(async () => {
 
 .cashflow-table-wrap { overflow-x: auto; margin-top: 22px; }
 .cashflow-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; }
+.trend-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-top: 24px; }
+.trend-heading strong { font-size: 1rem; }
+.trend-heading p { margin: 4px 0 0; color: rgba(var(--v-theme-on-surface), .58); font-size: .78rem; }
 .cashflow-table { width: 100%; border-collapse: collapse; min-width: 1180px; }
 .cashflow-table th { text-align: start; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: rgba(var(--v-theme-on-surface), .55); }
 .cashflow-table th, .cashflow-table td { padding: 14px 12px; border-bottom: 1px solid var(--dash-rule); font-variant-numeric: tabular-nums; }
@@ -480,10 +559,9 @@ onMounted(async () => {
 @media (max-width: 1100px) {
     .dashboard-masthead { grid-template-columns: 1fr; }
     .snapshot-grid { grid-template-columns: repeat(2, 1fr); }
-    .month-glance { grid-template-columns: repeat(2, 1fr); }
-    .month-glance__intro { grid-column: 1 / -1; }
-    .month-glance__metric:nth-child(2n) { border-inline-start: 0; }
-    .month-glance__metric { border-top: 1px solid var(--dash-rule); }
+    .period-metrics { grid-template-columns: repeat(3, 1fr); }
+    .period-metrics > a { border-top: 1px solid var(--dash-rule); }
+    .period-metrics > a:nth-child(3n + 1) { border-inline-start: 0; }
     .due-grid { grid-template-columns: repeat(3, 1fr); }
     .due-cell { border-bottom: 1px solid var(--dash-rule); }
     .curve-grid { grid-template-columns: repeat(3, 1fr); }
@@ -491,9 +569,11 @@ onMounted(async () => {
 }
 
 @media (max-width: 640px) {
-    .report-controls, .snapshot-grid { grid-template-columns: 1fr; }
-    .month-glance { grid-template-columns: 1fr; }
-    .month-glance__metric { border-inline-start: 0; }
+    .snapshot-grid { grid-template-columns: 1fr; }
+    .period-overview__head, .trend-heading { align-items: flex-start; flex-direction: column; }
+    .period-overview__actions { justify-content: flex-start; }
+    .period-metrics { grid-template-columns: 1fr; }
+    .period-metrics > a { border-inline-start: 0; }
     .due-grid, .coverage-summary { grid-template-columns: repeat(2, 1fr); }
     .curve-grid { grid-template-columns: repeat(2, 1fr); }
     .section-heading { align-items: start; flex-direction: column; }

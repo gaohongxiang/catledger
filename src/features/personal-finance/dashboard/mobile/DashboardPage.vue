@@ -6,17 +6,8 @@
             <div class="mobile-kicker">{{ tt('personalFinance.dashboard.eyebrow') }}</div>
             <h2>{{ tt('personalFinance.dashboard.mobile.heading') }}</h2>
             <p>{{ tt('personalFinance.dashboard.mobile.subtitle') }}</p>
-            <div class="mobile-date-grid">
-                <label>
-                    <span>{{ tt('personalFinance.dashboard.period.start') }}</span>
-                    <input type="date" v-model="startDate" />
-                </label>
-                <label>
-                    <span>{{ tt('personalFinance.dashboard.period.asOf') }}</span>
-                    <input type="date" v-model="asOfDate" />
-                </label>
-            </div>
-            <f7-button fill :disabled="loading || startDate > asOfDate" @click="refresh">{{ tt('personalFinance.dashboard.refresh') }}</f7-button>
+            <div class="mobile-auto-scope">{{ tt('personalFinance.dashboard.mobile.automatic') }} · {{ asOfDate }}</div>
+            <f7-button fill :disabled="loading" @click="refresh">{{ tt('personalFinance.dashboard.refresh') }}</f7-button>
         </f7-block>
 
         <f7-block class="text-align-center" v-if="loading && !overview"><f7-preloader /></f7-block>
@@ -58,19 +49,23 @@
                 <f7-list-item :title="tt('personalFinance.dashboard.drilldown.loans')" link="/personal-finance/loans" />
             </f7-list>
 
-            <f7-block-title>{{ tt('personalFinance.dashboard.cashFlow.latestMonth') }}</f7-block-title>
-            <f7-list strong inset dividers v-if="latestMonth">
-                <f7-list-item :title="tt('personalFinance.dashboard.cashFlow.month')" :after="latestMonth.month" />
-                <f7-list-item :title="tt('personalFinance.dashboard.cashFlow.income')" :after="cashFlowTotal(latestMonth.amounts, 'income')" />
-                <f7-list-item :title="tt('personalFinance.dashboard.cashFlow.consumption')" :after="cashFlowTotal(latestMonth.amounts, 'consumption')" />
-                <f7-list-item :title="tt('personalFinance.dashboard.cashFlow.principal')" :after="cashFlowTotal(latestMonth.amounts, 'loanPrincipal')" />
-                <f7-list-item :title="tt('personalFinance.dashboard.cashFlow.interest')" :after="cashFlowTotal(latestMonth.amounts, 'loanInterest')" />
-                <f7-list-item :title="tt('personalFinance.dashboard.cashFlow.fee')" :after="cashFlowTotal(latestMonth.amounts, 'loanFee')" />
-                <f7-list-item :title="tt('personalFinance.dashboard.cashFlow.internalTransfer')" :after="cashFlowTotal(latestMonth.amounts, 'internalTransfer')" />
-                <f7-list-item :title="tt('personalFinance.dashboard.cashFlow.disbursement')" :after="cashFlowTotal(latestMonth.amounts, 'loanDisbursement')" />
-                <f7-list-item :title="tt('personalFinance.dashboard.cashFlow.liquidChange')" :after="cashFlowTotal(latestMonth.amounts, 'liquidFundsNetChange')" />
+            <f7-block-title>{{ tt('personalFinance.dashboard.quick.eyebrow') }}</f7-block-title>
+            <f7-block class="mobile-period-switch margin-vertical-half">
+                <f7-segmented strong round>
+                    <f7-button round :text="tt(`personalFinance.dashboard.quick.period.${option}`)" :active="selectedPeriodKind === option"
+                               :key="option" v-for="option in periodOptions" @click="selectedPeriodKind = option" />
+                </f7-segmented>
+            </f7-block>
+            <f7-list strong inset dividers v-if="selectedPeriod">
+                <f7-list-item :title="tt('personalFinance.dashboard.quick.range', { start: selectedPeriod.startDate, end: selectedPeriod.endDate })" />
+                <f7-list-item :title="tt('personalFinance.dashboard.quick.income')" :after="cashFlowTotal(selectedPeriod.amounts, 'income')" />
+                <f7-list-item :title="tt('personalFinance.dashboard.quick.outflow')" :after="cashFlowOutflowTotal(selectedPeriod.amounts)"
+                              :footer="tt('personalFinance.dashboard.quick.outflowHint')" />
+                <f7-list-item :title="tt('personalFinance.dashboard.quick.consumption')" :after="cashFlowTotal(selectedPeriod.amounts, 'consumption')" />
+                <f7-list-item :title="tt('personalFinance.dashboard.quick.debtService')" :after="cashFlowDebtServiceTotal(selectedPeriod.amounts)" />
+                <f7-list-item :title="tt('personalFinance.dashboard.quick.liquidChange')" :after="cashFlowTotal(selectedPeriod.amounts, 'liquidFundsNetChange')" />
                 <f7-list-item :title="debtBurdenRatio ? tt('personalFinance.dashboard.cashFlow.debtBurdenRatio', { value: debtBurdenRatio }) : tt('personalFinance.dashboard.cashFlow.debtBurdenUnavailable')" />
-                <f7-list-item :title="tt('personalFinance.dashboard.drilldown.transactions')" link="/transaction/list" />
+                <f7-list-item :title="tt('personalFinance.dashboard.drilldown.transactions')" :link="transactionRangeLink(selectedPeriod.startDate, selectedPeriod.endDate)" />
             </f7-list>
 
             <f7-block-title>{{ tt('personalFinance.dashboard.coverage.title') }}</f7-block-title>
@@ -95,20 +90,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { f7 } from 'framework7-vue';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
 
+import type { DashboardCashFlowPeriodKind } from '../models.ts';
 import { useDashboard } from '../useDashboard.ts';
 
 const { tt } = useI18n();
 const exchangeRatesStore = useExchangeRatesStore();
 const dashboard = useDashboard();
-const { asOfDate, startDate, overview, loading, error, accountTotal, debtTotal, cashFlowTotal, cashFlowDebtRatio } = dashboard;
-const latestMonth = computed(() => overview.value?.monthlyCashFlow.at(-1));
-const debtBurdenRatio = computed(() => cashFlowDebtRatio(latestMonth.value?.amounts));
+const { asOfDate, overview, loading, error, accountTotal, debtTotal, cashFlowTotal, cashFlowOutflowTotal, cashFlowDebtServiceTotal, cashFlowDebtRatio } = dashboard;
+const periodOptions: DashboardCashFlowPeriodKind[] = ['today', 'week', 'month', 'year'];
+const selectedPeriodKind = ref<DashboardCashFlowPeriodKind>('month');
+const selectedPeriod = computed(() => overview.value?.cashFlowPeriods.find(period => period.kind === selectedPeriodKind.value));
+const debtBurdenRatio = computed(() => dashboard.showAmounts.value ? cashFlowDebtRatio(selectedPeriod.value?.amounts) : undefined);
+
+function transactionRangeLink(startDate: string, endDate: string): string {
+    const base = overview.value?.drilldown.transactions ?? '/transaction/list';
+    const start = new Date(`${startDate}T00:00:00`);
+    const endExclusive = new Date(`${endDate}T00:00:00`);
+    endExclusive.setDate(endExclusive.getDate() + 1);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(endExclusive.getTime())) return base;
+    return `${base}?pageType=0&dateType=255&minTime=${Math.floor(start.getTime() / 1000)}&maxTime=${Math.floor(endExclusive.getTime() / 1000) - 1}`;
+}
 
 async function refresh(): Promise<void> {
     try {
@@ -137,9 +144,8 @@ onMounted(async () => {
 .mobile-ledger-head h2 { margin: 4px 0 8px; font-size: 1.55rem; letter-spacing: -.035em; }
 .mobile-ledger-head p { color: var(--f7-text-color-secondary); line-height: 1.45; }
 .mobile-kicker { color: var(--f7-theme-color); font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
-.mobile-date-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
-.mobile-date-grid label { display: grid; gap: 5px; color: var(--f7-text-color-secondary); font-size: .7rem; }
-.mobile-date-grid input { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid var(--f7-list-item-border-color); border-radius: 8px; color: var(--f7-text-color); background: var(--f7-page-bg-color); }
+.mobile-auto-scope { margin: 14px 0; padding: 10px 12px; border-inline-start: 3px solid var(--f7-theme-color); background: var(--f7-page-bg-color); color: var(--f7-text-color-secondary); font-size: .72rem; }
+.mobile-period-switch { margin-inline: 16px; padding: 0; }
 .trust-block { border-inline-start: 3px solid var(--f7-color-green); }
 .trust-block.warning { border-inline-start-color: var(--f7-color-orange); }
 .trust-block p { color: var(--f7-text-color-secondary); margin-bottom: 0; }

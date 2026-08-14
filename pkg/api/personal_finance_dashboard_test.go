@@ -20,11 +20,12 @@ func TestPersonalFinanceDashboardOverviewHandlerUsesStrictQueryAndStringAmounts(
 	if err != nil {
 		t.Fatalf("create dashboard api: %v", err)
 	}
-	response, apiErr := api.OverviewHandler(newDashboardTestContext(t, "/?start_date=2024-01-01&as_of_date=2024-06-30&months=6"))
+	response, apiErr := api.OverviewHandler(newDashboardTestContext(t, "/?start_date=2024-01-01&as_of_date=2024-06-30&months=6&week_start=1"))
 	if apiErr != nil {
 		t.Fatalf("overview handler: %v", apiErr)
 	}
-	if application.query.Uid != 1001 || application.query.StartDate != "2024-01-01" || application.query.AsOfDate != "2024-06-30" || application.query.Months != 6 {
+	if application.query.Uid != 1001 || application.query.StartDate != "2024-01-01" || application.query.AsOfDate != "2024-06-30" ||
+		application.query.Months != 6 || application.query.FirstDayOfWeek != 1 {
 		t.Fatalf("unexpected service query: %#v", application.query)
 	}
 	encoded, err := json.Marshal(response)
@@ -32,8 +33,20 @@ func TestPersonalFinanceDashboardOverviewHandlerUsesStrictQueryAndStringAmounts(
 		t.Fatalf("marshal dashboard response: %v", err)
 	}
 	text := string(encoded)
-	if !strings.Contains(text, `"assets":"9007199254740992"`) || strings.Contains(text, `"uid"`) || strings.Contains(text, "idempotency") {
+	if !strings.Contains(text, `"assets":"9007199254740992"`) || !strings.Contains(text, `"cashFlowPeriods"`) ||
+		strings.Contains(text, `"uid"`) || strings.Contains(text, "idempotency") {
 		t.Fatalf("dashboard response lost integer precision or leaked internal fields: %s", text)
+	}
+}
+
+func TestPersonalFinanceDashboardOverviewHandlerDefaultsWeekStartForOlderClients(t *testing.T) {
+	application := &dashboardAPITestApplication{result: validDashboardAPIResult()}
+	api, _ := NewPersonalFinanceDashboardApi(application)
+	if _, apiErr := api.OverviewHandler(newDashboardTestContext(t, "/?start_date=2024-01-01&as_of_date=2024-06-30&months=6")); apiErr != nil {
+		t.Fatalf("overview handler rejected compatible query: %v", apiErr)
+	}
+	if application.query.FirstDayOfWeek != 0 {
+		t.Fatalf("unexpected compatible week start: %d", application.query.FirstDayOfWeek)
 	}
 }
 
@@ -44,6 +57,8 @@ func TestPersonalFinanceDashboardOverviewHandlerRejectsUnknownRepeatedAndMissing
 		"/?start_date=2024-01-01&start_date=2024-02-01&as_of_date=2024-06-30&months=6",
 		"/?start_date=2024-01-01&as_of_date=2024-06-30",
 		"/?start_date=2024-01-01&as_of_date=2024-06-30&months=25",
+		"/?start_date=2024-01-01&as_of_date=2024-06-30&months=6&week_start=7",
+		"/?start_date=2024-01-01&as_of_date=2024-06-30&months=6&week_start=1&week_start=2",
 	} {
 		if response, apiErr := api.OverviewHandler(newDashboardTestContext(t, target)); response != nil || apiErr != errs.ErrParameterInvalid {
 			t.Fatalf("target %s was not rejected: response=%#v err=%#v", target, response, apiErr)
@@ -66,9 +81,15 @@ func validDashboardAPIResult() *dashboard.Overview {
 		StartDate: "2024-01-01", AsOfDate: "2024-06-30", GeneratedUnixTime: 1719748800,
 		AccountSnapshot: []*dashboard.AccountCurrencySnapshot{{Currency: "CNY", Assets: 9007199254740992}},
 		MonthlyCashFlow: []*dashboard.MonthlyCashFlow{},
-		Debt:            &dashboard.DebtSummary{Amounts: []*dashboard.DebtCurrencySummary{}, Contracts: []*dashboard.DebtContractSummary{}, FutureCurve: []*dashboard.DebtCurveMonth{}},
-		Coverage:        &dashboard.CoverageSummary{UnconfirmedExcluded: true, Accounts: []*dashboard.SourceCoverage{}},
-		Trust:           &dashboard.TrustSummary{AmountsGroupedByCurrency: true, HistoricalBalanceDerived: true},
+		CashFlowPeriods: []*dashboard.CashFlowPeriod{
+			{Kind: dashboard.CashFlowPeriodToday, StartDate: "2024-06-30", EndDate: "2024-06-30", Amounts: []*dashboard.CashFlowCurrency{}},
+			{Kind: dashboard.CashFlowPeriodWeek, StartDate: "2024-06-24", EndDate: "2024-06-30", Amounts: []*dashboard.CashFlowCurrency{}},
+			{Kind: dashboard.CashFlowPeriodMonth, StartDate: "2024-06-01", EndDate: "2024-06-30", Amounts: []*dashboard.CashFlowCurrency{}},
+			{Kind: dashboard.CashFlowPeriodYear, StartDate: "2024-01-01", EndDate: "2024-06-30", Amounts: []*dashboard.CashFlowCurrency{}},
+		},
+		Debt:     &dashboard.DebtSummary{Amounts: []*dashboard.DebtCurrencySummary{}, Contracts: []*dashboard.DebtContractSummary{}, FutureCurve: []*dashboard.DebtCurveMonth{}},
+		Coverage: &dashboard.CoverageSummary{UnconfirmedExcluded: true, Accounts: []*dashboard.SourceCoverage{}},
+		Trust:    &dashboard.TrustSummary{AmountsGroupedByCurrency: true, HistoricalBalanceDerived: true},
 	}
 }
 
