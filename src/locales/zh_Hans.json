@@ -2791,6 +2791,16 @@
                 "transactions": "纳入 {count} 笔正式交易",
                 "unconfirmedExcluded": "待确认导入行未计入余额与现金流"
             },
+            "quick": {
+                "eyebrow": "最近月速览",
+                "title": "{month} 的真实收支",
+                "subtitle": "保留原总览的一眼可读，并统一采用正式账本口径。",
+                "income": "收入",
+                "consumption": "生活消费",
+                "debtService": "实际偿债",
+                "liquidChange": "流动资金净变化",
+                "viewTransactions": "查看本月交易"
+            },
             "debt": {
                 "title": "负债日历",
                 "subtitle": "计划应还与账本实际负债分开呈现，避免把预测当成事实。",

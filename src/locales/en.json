@@ -2791,6 +2791,16 @@
                 "transactions": "{count} formal transactions included",
                 "unconfirmedExcluded": "Unconfirmed import rows are excluded from balances and cash flow"
             },
+            "quick": {
+                "eyebrow": "Latest month at a glance",
+                "title": "Actual cash flow for {month}",
+                "subtitle": "Keeps the original overview's quick scan while using one formal-ledger definition.",
+                "income": "Income",
+                "consumption": "Living consumption",
+                "debtService": "Actual debt service",
+                "liquidChange": "Liquid-funds change",
+                "viewTransactions": "View monthly transactions"
+            },
             "debt": {
                 "title": "Debt calendar",
                 "subtitle": "Planned payments and actual ledger liabilities stay separate, so forecasts never masquerade as facts.",

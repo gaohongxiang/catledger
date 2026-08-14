@@ -1,9 +1,10 @@
 import { computed, ref } from 'vue';
 
 import type { BigDecimalWithSuffix } from '@/core/numeral.ts';
-import { INCOMPLETE_AMOUNT_SUFFIX } from '@/consts/numeral.ts';
+import { DISPLAY_HIDDEN_AMOUNT, INCOMPLETE_AMOUNT_SUFFIX } from '@/consts/numeral.ts';
 import { useI18n } from '@/locales/helpers.ts';
 import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
+import { useSettingsStore } from '@/stores/setting.ts';
 import { useUserStore } from '@/stores/user.ts';
 import { BIG_DECIMAL_ZERO, parseBigDecimal } from '@/lib/numeral.ts';
 
@@ -27,6 +28,7 @@ type CurrencyBucket = { currency: string };
 export function useDashboard() {
     const { formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
     const userStore = useUserStore();
+    const settingsStore = useSettingsStore();
     const exchangeRatesStore = useExchangeRatesStore();
     const asOfDate = ref(todayCivilDate());
     const storedStart = localStorage.getItem(DASHBOARD_REPORT_START_STORAGE_KEY);
@@ -36,6 +38,10 @@ export function useDashboard() {
     const loading = ref(false);
     const error = ref(false);
     const defaultCurrency = computed(() => userStore.currentUserDefaultCurrency || 'CNY');
+    const showAmounts = computed<boolean>({
+        get: () => settingsStore.appSettings.showAmountInHomePage,
+        set: (value) => settingsStore.setShowAmountInHomePage(value)
+    });
 
     async function load(): Promise<void> {
         loading.value = true;
@@ -76,6 +82,9 @@ export function useDashboard() {
     }
 
     function format(value: BigDecimalWithSuffix): string {
+        if (!showAmounts.value) {
+            return formatAmountToLocalizedNumeralsWithCurrency(DISPLAY_HIDDEN_AMOUNT, defaultCurrency.value);
+        }
         return formatAmountToLocalizedNumeralsWithCurrency(value, defaultCurrency.value);
     }
 
@@ -89,6 +98,17 @@ export function useDashboard() {
 
     function cashFlowTotal(value: DashboardCashFlowAmount[] | undefined, field: keyof DashboardCashFlowAmount): string {
         return format(total(value ?? [], field));
+    }
+
+    function cashFlowDebtServiceTotal(value: DashboardCashFlowAmount[] | undefined): string {
+        const values = value ?? [];
+        const principal = total(values, 'loanPrincipal');
+        const interest = total(values, 'loanInterest');
+        const fee = total(values, 'loanFee');
+        return format({
+            value: principal.value.add(interest.value).add(fee.value),
+            suffix: principal.suffix || interest.suffix || fee.suffix ? INCOMPLETE_AMOUNT_SUFFIX : ''
+        });
     }
 
     function cashFlowDebtRatio(value: DashboardCashFlowAmount[] | undefined): string | undefined {
@@ -106,6 +126,9 @@ export function useDashboard() {
     }
 
     function formatRawAmount(value: string, currency: string): string {
+        if (!showAmounts.value) {
+            return formatAmountToLocalizedNumeralsWithCurrency(DISPLAY_HIDDEN_AMOUNT, currency);
+        }
         return formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(value), currency);
     }
 
@@ -117,10 +140,12 @@ export function useDashboard() {
         loading,
         error,
         defaultCurrency,
+        showAmounts,
         load,
         accountTotal,
         debtTotal,
         cashFlowTotal,
+        cashFlowDebtServiceTotal,
         cashFlowDebtRatio,
         formatRawAmount
     };
