@@ -2934,7 +2934,8 @@
                 "label": "整理进度",
                 "files": "选账单",
                 "accounts": "核对账户",
-                "review": "分类和待办",
+                "review": "交易分类",
+                "others": "其他事项",
                 "confirm": "确认入账",
                 "back": "上一步",
                 "next": "下一步"
@@ -2943,9 +2944,10 @@
             "failed": "这次整理因为已确认事实冲突而停止，差异已保留，不会覆盖历史。",
             "run": "开始自动整理",
             "confirmPost": "确认入账",
-            "confirmHint": "分类和待办处理完后，再点确认入账。",
+            "confirmHint": "分类和其他事项都看过以后，再点确认入账。",
             "confirmDoneHint": "已经入账。",
-            "reviewHint": "说不清的分类和待办先处理完，再确认入账。",
+            "reviewHint": "先把说不清的交易分好类。没有要处理的也可以下一步。",
+            "othersHint": "分类之后还要你看一眼的事项，没有也可以下一步。",
             "files": {
                 "title": "选择要一起整理的账单",
                 "create": "开始整理",
@@ -2959,8 +2961,10 @@
                 "accounts": "还要确认 {count} 个账户",
                 "accountsReady": "账户已齐，开始自动整理",
                 "accountsBalance": "新建账户可先记下现在多少钱，也可以跳过",
-                "review": "处理完后再去确认入账",
+                "review": "处理完后再去其他事项",
                 "reviewBlocked": "还有 {count} 项没处理完",
+                "others": "没有其他事项也可以下一步去确认入账",
+                "othersBlocked": "还有 {count} 项没处理完",
                 "confirm": "确认后才会写入正式账本"
             },
             "summary": {
@@ -3006,8 +3010,10 @@
                 }
             },
             "todos": {
-                "title": "分类和待办",
-                "empty": "没有要处理的分类或待办。",
+                "title": "交易分类",
+                "empty": "没有要处理的分类。",
+                "othersTitle": "其他事项",
+                "othersEmpty": "没有要处理的其他事项。",
                 "resolve": "已处理",
                 "dismiss": "先跳过",
                 "installment": "按分期处理"

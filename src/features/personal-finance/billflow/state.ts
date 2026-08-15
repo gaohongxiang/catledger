@@ -5,6 +5,7 @@ import type {
     BillflowTask,
     BillflowTaskStatus,
     BillflowTaskSummary,
+    BillflowTodoKind,
     DashboardHeadlineCode,
     DashboardHeadlineItem
 } from './models.ts';
@@ -213,9 +214,21 @@ export function accountBucketHintKey(bucket: BillflowAccountBucket): string {
     return 'personalFinance.billflow.accounts.pendingHint';
 }
 
-export type BillflowWorkbenchStep = 'files' | 'accounts' | 'review' | 'confirm';
+export type BillflowWorkbenchStep = 'files' | 'accounts' | 'review' | 'others' | 'confirm';
 
-export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'review', 'confirm'];
+export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'review', 'others', 'confirm'];
+
+export function isInstallmentTodo(kind: BillflowTodoKind): boolean {
+    return kind === 'installment_candidate';
+}
+
+export function categoryTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
+    return todos.filter(todo => !isInstallmentTodo(todo.todoKind));
+}
+
+export function installmentTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
+    return todos.filter(todo => isInstallmentTodo(todo.todoKind));
+}
 
 export function billflowWorkbenchStepIndex(step: BillflowWorkbenchStep): number {
     return BILLFLOW_WORKBENCH_STEPS.indexOf(step);
@@ -242,7 +255,7 @@ export function canOpenBillflowWorkbenchStep(
     step: BillflowWorkbenchStep,
     input: { hasTask: boolean; status?: BillflowTaskStatus; needsCreateCount: number }
 ): boolean {
-    if (step === 'confirm') {
+    if (step === 'review' || step === 'others' || step === 'confirm') {
         return input.status === 'awaiting_confirm' || input.status === 'ready' || input.status === 'failed';
     }
     return billflowWorkbenchStepIndex(step) <= billflowWorkbenchStepIndex(suggestedBillflowWorkbenchStep(input));
@@ -251,6 +264,11 @@ export function canOpenBillflowWorkbenchStep(
 export function previousBillflowWorkbenchStep(step: BillflowWorkbenchStep): BillflowWorkbenchStep | undefined {
     const index = billflowWorkbenchStepIndex(step);
     return index > 0 ? BILLFLOW_WORKBENCH_STEPS[index - 1] : undefined;
+}
+
+export function nextBillflowWorkbenchStep(step: BillflowWorkbenchStep): BillflowWorkbenchStep | undefined {
+    const index = billflowWorkbenchStepIndex(step);
+    return index >= 0 && index < BILLFLOW_WORKBENCH_STEPS.length - 1 ? BILLFLOW_WORKBENCH_STEPS[index + 1] : undefined;
 }
 
 export function resolveBillflowWorkbenchStep(

@@ -2934,7 +2934,8 @@
                 "label": "Organize progress",
                 "files": "Choose statements",
                 "accounts": "Check accounts",
-                "review": "Categories & todos",
+                "review": "Categorize",
+                "others": "Other items",
                 "confirm": "Confirm posting",
                 "back": "Back",
                 "next": "Next"
@@ -2943,9 +2944,10 @@
             "failed": "This task stopped because confirmed history conflicts. The difference is kept and nothing is overwritten.",
             "run": "Organize now",
             "confirmPost": "Confirm posting",
-            "confirmHint": "Finish categories and todos, then confirm posting.",
+            "confirmHint": "Finish categories and other items, then confirm posting.",
             "confirmDoneHint": "Posted.",
-            "reviewHint": "Finish unclear categories and todos before posting.",
+            "reviewHint": "Categorize unclear transactions first. You can continue if there is nothing to decide.",
+            "othersHint": "Anything left after categorizing. You can continue if there is nothing to decide.",
             "files": {
                 "title": "Choose statements to organize together",
                 "create": "Start organizing",
@@ -2959,8 +2961,10 @@
                 "accounts": "{count} accounts still need a decision",
                 "accountsReady": "Accounts are ready. Organize now",
                 "accountsBalance": "You can note the current balance of new accounts, or skip",
-                "review": "Finish these, then confirm posting",
+                "review": "Finish these, then review other items",
                 "reviewBlocked": "{count} items still need a decision",
+                "others": "Continue to confirm posting even if there are no other items",
+                "othersBlocked": "{count} items still need a decision",
                 "confirm": "Nothing enters the ledger until you confirm"
             },
             "summary": {
@@ -3006,8 +3010,10 @@
                 }
             },
             "todos": {
-                "title": "Categories and todos",
-                "empty": "No categories or todos need a decision.",
+                "title": "Transaction categories",
+                "empty": "No categories need a decision.",
+                "othersTitle": "Other items",
+                "othersEmpty": "No other items need a decision.",
                 "resolve": "Done",
                 "dismiss": "Skip for now",
                 "installment": "Treat as installment"

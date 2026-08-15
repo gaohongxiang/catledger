@@ -14,7 +14,10 @@ import {
     canOpenBillflowWorkbenchStep,
     composeDashboardHeadline,
     createdAccountsNeedingBalance,
+    categoryTodos,
+    installmentTodos,
     mergeSelectedOrganizeFileIds,
+    nextBillflowWorkbenchStep,
     previousBillflowWorkbenchStep,
     rememberCreatedLedgerIds,
     resolveAccountBucket,
@@ -188,18 +191,22 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('formatAmountToLocalizedNumeralsWithCurrency');
         expect(workbench).toContain('billflowDirectionKey');
         expect(workbench).toContain("listTasks('receiving')");
-        expect(workbench).toContain('refreshTaskAndMaybeRun');
+        expect(workbench).not.toContain('refreshTaskAndMaybeRun');
         expect(workbench).toContain('mergeSelectedOrganizeFileIds');
         expect(workbench).toContain('personalFinance.billflow.confirmHint');
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
-        expect(workbench).toContain('v-for="todo in openTodos"');
+        expect(workbench).toContain('v-for="todo in reviewTodos"');
+        expect(workbench).toContain('v-for="todo in otherTodos"');
         expect(workbench).toContain('newBalanceAccounts');
         expect(workbench).toContain('personalFinance.billflow.balance.amount');
         expect(workbench).toContain('personalFinance.billflow.balance.save');
         expect(workbench).toContain('currentStep === \'review\'');
-        expect(workbench).toContain('userStep.value = \'confirm\'');
+        expect(workbench).toContain('currentStep === \'others\'');
+        expect(workbench).toContain('nextBillflowWorkbenchStep');
+        expect(workbench).toContain('userStep.value = stayOn');
         expect(workbench).not.toContain('unverifiedCards');
         expect(workbench).not.toContain('currentStep === \'todos\'');
+        expect(workbench).not.toContain('currentStep === \'loans\'');
         expect(workbench).not.toContain('来源账户');
         expect(workbench).not.toContain('todo.reasonCodes.join');
     });
@@ -224,8 +231,8 @@ describe('billflow task page wiring', () => {
         expect(billflowDirectionKey('')).toBe('personalFinance.billflow.accounts.direction.unknown');
     });
 
-    it('walks files, accounts, review and confirm as a progress path', () => {
-        expect(BILLFLOW_WORKBENCH_STEPS).toEqual(['files', 'accounts', 'review', 'confirm']);
+    it('walks files, accounts, review, other items and confirm as a progress path', () => {
+        expect(BILLFLOW_WORKBENCH_STEPS).toEqual(['files', 'accounts', 'review', 'others', 'confirm']);
         expect(suggestedBillflowWorkbenchStep({ hasTask: false, needsCreateCount: 0 })).toBe('files');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'accounts_pending', needsCreateCount: 2 })).toBe('accounts');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'processing', needsCreateCount: 0 })).toBe('accounts');
@@ -238,12 +245,27 @@ describe('billflow task page wiring', () => {
         expect(canOpenBillflowWorkbenchStep('confirm', { hasTask: true, status: 'accounts_pending', needsCreateCount: 1 })).toBe(false);
         expect(canOpenBillflowWorkbenchStep('confirm', { hasTask: true, status: 'awaiting_confirm', needsCreateCount: 0 })).toBe(true);
         expect(canOpenBillflowWorkbenchStep('review', { hasTask: true, status: 'awaiting_confirm', needsCreateCount: 0 })).toBe(true);
+        expect(canOpenBillflowWorkbenchStep('others', { hasTask: true, status: 'awaiting_confirm', needsCreateCount: 0 })).toBe(true);
         expect(previousBillflowWorkbenchStep('accounts')).toBe('files');
-        expect(previousBillflowWorkbenchStep('confirm')).toBe('review');
+        expect(previousBillflowWorkbenchStep('confirm')).toBe('others');
         expect(previousBillflowWorkbenchStep('files')).toBeUndefined();
-        expect(billflowWorkbenchStepIndex('confirm')).toBe(3);
+        expect(nextBillflowWorkbenchStep('files')).toBe('accounts');
+        expect(nextBillflowWorkbenchStep('accounts')).toBe('review');
+        expect(nextBillflowWorkbenchStep('review')).toBe('others');
+        expect(nextBillflowWorkbenchStep('others')).toBe('confirm');
+        expect(nextBillflowWorkbenchStep('confirm')).toBeUndefined();
+        expect(billflowWorkbenchStepIndex('confirm')).toBe(4);
         expect(resolveBillflowWorkbenchStep('files', { hasTask: true, status: 'awaiting_confirm', needsCreateCount: 0 })).toBe('files');
         expect(resolveBillflowWorkbenchStep('confirm', { hasTask: true, status: 'accounts_pending', needsCreateCount: 1 })).toBe('accounts');
+        expect(categoryTodos([
+            { todoKind: 'uncategorized' },
+            { todoKind: 'installment_candidate' },
+            { todoKind: 'transfer_unclear' }
+        ]).map(todo => todo.todoKind)).toEqual(['uncategorized', 'transfer_unclear']);
+        expect(installmentTodos([
+            { todoKind: 'uncategorized' },
+            { todoKind: 'installment_candidate' }
+        ]).map(todo => todo.todoKind)).toEqual(['installment_candidate']);
     });
 
     it('keeps account checks in pending, reused and excluded buckets', () => {

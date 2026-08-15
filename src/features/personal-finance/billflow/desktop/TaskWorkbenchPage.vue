@@ -224,15 +224,37 @@
             <p class="confirm-hint">{{ tt('personalFinance.billflow.reviewHint') }}</p>
             <div class="section-copy mt-4">
                 <strong>{{ tt('personalFinance.billflow.todos.title') }}</strong>
-                <span v-if="!openTodos.length">{{ tt('personalFinance.billflow.todos.empty') }}</span>
+                <span v-if="!reviewTodos.length">{{ tt('personalFinance.billflow.todos.empty') }}</span>
             </div>
-            <article class="todo-card" :key="todo.id" v-for="todo in openTodos">
+            <article class="todo-card" :key="todo.id" v-for="todo in reviewTodos">
                 <div>
                     <strong>{{ tt(todoKindKey(todo.todoKind)) }}</strong>
                     <p v-if="todoReasonLabels(todo).length">{{ todoReasonLabels(todo).join(' · ') }}</p>
                 </div>
                 <div class="todo-card__actions">
-                    <v-btn size="small" variant="text" :loading="busy" v-if="todo.todoKind === 'installment_candidate'" @click="confirmInstallment(todo)">
+                    <v-btn size="small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                        {{ tt('personalFinance.billflow.todos.resolve') }}
+                    </v-btn>
+                    <v-btn size="small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                        {{ tt('personalFinance.billflow.todos.dismiss') }}
+                    </v-btn>
+                </div>
+            </article>
+        </section>
+
+        <section class="work-section" v-if="currentStep === 'others' && task">
+            <p class="confirm-hint">{{ tt('personalFinance.billflow.othersHint') }}</p>
+            <div class="section-copy mt-4">
+                <strong>{{ tt('personalFinance.billflow.todos.othersTitle') }}</strong>
+                <span v-if="!otherTodos.length">{{ tt('personalFinance.billflow.todos.othersEmpty') }}</span>
+            </div>
+            <article class="todo-card" :key="todo.id" v-for="todo in otherTodos">
+                <div>
+                    <strong>{{ tt(todoKindKey(todo.todoKind)) }}</strong>
+                    <p v-if="todoReasonLabels(todo).length">{{ todoReasonLabels(todo).join(' · ') }}</p>
+                </div>
+                <div class="todo-card__actions">
+                    <v-btn size="small" variant="text" :loading="busy" @click="confirmInstallment(todo)">
                         {{ tt('personalFinance.billflow.todos.installment') }}
                     </v-btn>
                     <v-btn size="small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
@@ -300,14 +322,16 @@ import {
     canOpenBillflowWorkbenchStep,
     createdAccountsNeedingBalance,
     eligibleOrganizeFileIds,
+    categoryTodos,
+    installmentTodos,
     matchedLedgerAccount,
     mergeSelectedOrganizeFileIds,
+    nextBillflowWorkbenchStep,
     previousBillflowWorkbenchStep,
     rememberCreatedLedgerIds,
     resolveAccountBucket,
     resolveBillflowWorkbenchStep,
     suggestedAccountCategory,
-    suggestedBillflowWorkbenchStep,
     taskAwaitsConfirm,
     taskNeedsAccounts,
     taskShowsTodos,
@@ -372,9 +396,10 @@ const stepInput = computed(() => ({
     status: task.value?.status,
     needsCreateCount: accounts.value?.needsCreate.length ?? 0
 }));
-const suggestedStep = computed(() => suggestedBillflowWorkbenchStep(stepInput.value));
 const currentStep = computed(() => resolveBillflowWorkbenchStep(userStep.value, stepInput.value));
 const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.value));
+const reviewTodos = computed(() => categoryTodos(openTodos.value));
+const otherTodos = computed(() => installmentTodos(openTodos.value));
 const canGoBack = computed(() => !!previousBillflowWorkbenchStep(currentStep.value));
 const bucketCounts = computed(() => ({
     pending: accounts.value?.needsCreate.length ?? 0,
@@ -408,9 +433,17 @@ const stepAction = computed(() => {
             };
         }
     }
-    if (currentStep.value === 'review' && task.value && openTodos.value.length > 0) {
+    if (currentStep.value === 'review' && task.value && reviewTodos.value.length > 0) {
         return {
-            hint: tt('personalFinance.billflow.next.reviewBlocked', { count: openTodos.value.length }),
+            hint: tt('personalFinance.billflow.next.reviewBlocked', { count: reviewTodos.value.length }),
+            label: tt('personalFinance.billflow.step.next'),
+            run: async (): Promise<void> => {},
+            disabled: true
+        };
+    }
+    if (currentStep.value === 'others' && task.value && otherTodos.value.length > 0) {
+        return {
+            hint: tt('personalFinance.billflow.next.othersBlocked', { count: otherTodos.value.length }),
             label: tt('personalFinance.billflow.step.next'),
             run: async (): Promise<void> => {},
             disabled: true
@@ -429,14 +462,21 @@ const stepAction = computed(() => {
     return undefined;
 });
 const canAdvanceWithoutAction = computed(() => {
-    if (currentStep.value === 'files' && !!task.value) {
-        return true;
+    const next = nextBillflowWorkbenchStep(currentStep.value);
+    if (!next || !canOpenStep(next)) {
+        return false;
     }
-    if (currentStep.value === 'accounts' && !!task.value && billflowWorkbenchStepIndex(suggestedStep.value) > billflowWorkbenchStepIndex('accounts')) {
-        return true;
+    if (currentStep.value === 'files') {
+        return !!task.value;
     }
-    if (currentStep.value === 'review' && !!task.value && openTodos.value.length < 1 && (taskAwaitsConfirm(task.value.status) || task.value.status === 'ready' || task.value.status === 'failed')) {
-        return true;
+    if (currentStep.value === 'accounts') {
+        return !!task.value && !canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0);
+    }
+    if (currentStep.value === 'review') {
+        return reviewTodos.value.length < 1;
+    }
+    if (currentStep.value === 'others') {
+        return otherTodos.value.length < 1;
     }
     return false;
 });
@@ -446,19 +486,19 @@ const forwardHint = computed(() => {
     if (stepAction.value?.hint) {
         return stepAction.value.hint;
     }
-    if (currentStep.value === 'review' && openTodos.value.length > 0) {
-        return tt('personalFinance.billflow.next.reviewBlocked', { count: openTodos.value.length });
+    if (currentStep.value === 'review' && reviewTodos.value.length > 0) {
+        return tt('personalFinance.billflow.next.reviewBlocked', { count: reviewTodos.value.length });
     }
     if (currentStep.value === 'review') {
         return tt('personalFinance.billflow.next.review');
     }
-    return '';
-});
-
-watch(suggestedStep, (next, previous) => {
-    if (userStep.value && previous && userStep.value === previous && billflowWorkbenchStepIndex(next) > billflowWorkbenchStepIndex(previous)) {
-        userStep.value = undefined;
+    if (currentStep.value === 'others' && otherTodos.value.length > 0) {
+        return tt('personalFinance.billflow.next.othersBlocked', { count: otherTodos.value.length });
     }
+    if (currentStep.value === 'others') {
+        return tt('personalFinance.billflow.next.others');
+    }
+    return '';
 });
 
 watch([currentStep, bucketCounts], () => {
@@ -470,10 +510,19 @@ watch([currentStep, bucketCounts], () => {
 }, { immediate: true });
 
 function canOpenStep(step: BillflowWorkbenchStep): boolean {
-    if (step === 'confirm' && task.value && taskAwaitsConfirm(task.value.status) && openTodos.value.length > 0) {
+    if (!canOpenBillflowWorkbenchStep(step, stepInput.value)) {
         return false;
     }
-    return canOpenBillflowWorkbenchStep(step, stepInput.value);
+    if (!task.value || !taskAwaitsConfirm(task.value.status)) {
+        return true;
+    }
+    if (step === 'others' && reviewTodos.value.length > 0) {
+        return false;
+    }
+    if (step === 'confirm' && openTodos.value.length > 0) {
+        return false;
+    }
+    return true;
 }
 
 function setAccountBucket(value: unknown): void {
@@ -499,24 +548,18 @@ function goBack(): void {
 }
 
 async function goForward(): Promise<void> {
+    const stayOn = currentStep.value;
     if (stepAction.value) {
         if (stepAction.value.disabled) {
             return;
         }
         await stepAction.value.run();
-        userStep.value = undefined;
+        userStep.value = stayOn;
         return;
     }
-    if (currentStep.value === 'files' && task.value) {
-        userStep.value = 'accounts';
-        return;
-    }
-    if (currentStep.value === 'accounts' && canAdvanceWithoutAction.value) {
-        userStep.value = suggestedStep.value;
-        return;
-    }
-    if (currentStep.value === 'review' && canAdvanceWithoutAction.value) {
-        userStep.value = 'confirm';
+    const next = nextBillflowWorkbenchStep(stayOn);
+    if (next && canAdvanceWithoutAction.value && canOpenStep(next)) {
+        userStep.value = next;
     }
 }
 
@@ -591,7 +634,7 @@ async function reload(): Promise<void> {
         if (current) {
             task.value = current;
             restoreBalanceMemory(current.id);
-            await refreshTaskAndMaybeRun();
+            await openTask(current.id);
         }
         cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
     } catch {
@@ -613,21 +656,6 @@ async function openTask(taskId: string): Promise<void> {
     } else {
         openTodos.value = [];
     }
-}
-
-async function refreshTaskAndMaybeRun(): Promise<void> {
-    if (!task.value) {
-        return;
-    }
-    await openTask(task.value.id);
-    if (!canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0)) {
-        return;
-    }
-    if (newBalanceAccounts.value.length > 0) {
-        return;
-    }
-    await billflowApi.runTask(task.value.id, task.value.version, generateRandomUUID());
-    await openTask(task.value.id);
 }
 
 async function upload(event: Event): Promise<void> {
@@ -655,7 +683,8 @@ async function createTask(): Promise<void> {
         const created = await billflowApi.createTask(selectedFileIds.value, generateRandomUUID());
         task.value = created;
         restoreBalanceMemory(created.id);
-        await refreshTaskAndMaybeRun();
+        await openTask(created.id);
+        userStep.value = 'files';
     } catch {
         error.value = true;
     } finally {
@@ -682,6 +711,7 @@ async function createAccount(group: BillflowAccountGroup): Promise<void> {
         await accountsStore.loadAllAccounts({ force: true });
         await openTask(task.value.id);
         cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
+        userStep.value = 'accounts';
     } catch {
         error.value = true;
     } finally {
@@ -704,6 +734,7 @@ async function reuseAccount(group: BillflowAccountGroup, ledgerAccountId?: strin
         });
         delete pickedAccountIds[group.sampleRowId];
         await openTask(task.value.id);
+        userStep.value = 'accounts';
     } catch {
         error.value = true;
     } finally {
@@ -946,6 +977,7 @@ async function persistBalanceReview(account: { ledgerAccountId: string }, status
     }
     if (task.value) {
         persistBalanceMemory(task.value.id);
+        userStep.value = 'accounts';
     }
     cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
 }
@@ -1031,7 +1063,7 @@ onMounted(reload);
 
 .step-rail {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 1px;
     border-top: 1px solid var(--task-rule);
     background: var(--task-rule);
@@ -1041,13 +1073,13 @@ onMounted(reload);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     min-height: 52px;
-    padding: 10px 8px;
+    padding: 10px 6px;
     border: 0;
     background: var(--task-paper);
     color: rgba(var(--v-theme-on-surface), 0.55);
-    font-size: 0.82rem;
+    font-size: 0.76rem;
     cursor: pointer;
 }
 
