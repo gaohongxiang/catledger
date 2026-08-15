@@ -299,8 +299,9 @@ func TestMigrationProtocol(t *testing.T) {
 		requireUpgrade(t, store)
 		now := requireDatabaseUnixTime(t, integrationDatabase)
 		applied := now
+		registered := registeredMigrations()
 		insertMigrationRecord(t, integrationDatabase, &SchemaMigration{
-			Version:              6,
+			Version:              registered[len(registered)-1].version + 1,
 			Name:                 "future_migration",
 			Checksum:             strings.Repeat("f", 64),
 			ApplicationVersion:   "future",
