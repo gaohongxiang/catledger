@@ -55,6 +55,18 @@ var frozenPersonalFinanceRoutes = []personalFinanceRouteSpec{
 	{method: "GET", path: "/personal_finance/installments/candidates/list.json", handler: "PersonalFinanceInstallments.InstallmentCandidateListHandler"},
 	{method: "GET", path: "/personal_finance/installments/candidates/get.json", handler: "PersonalFinanceInstallments.InstallmentCandidateGetHandler"},
 	{method: "POST", path: "/personal_finance/installments/candidates/confirm.json", handler: "PersonalFinanceInstallments.InstallmentCandidateConfirmHandler"},
+	{method: "POST", path: "/personal_finance/billflow/tasks/create.json", handler: "PersonalFinanceBillflow.BillflowTaskCreateHandler"},
+	{method: "GET", path: "/personal_finance/billflow/tasks/list.json", handler: "PersonalFinanceBillflow.BillflowTaskListHandler"},
+	{method: "GET", path: "/personal_finance/billflow/tasks/get.json", handler: "PersonalFinanceBillflow.BillflowTaskGetHandler"},
+	{method: "GET", path: "/personal_finance/billflow/tasks/accounts.json", handler: "PersonalFinanceBillflow.BillflowTaskAccountsHandler"},
+	{method: "POST", path: "/personal_finance/billflow/tasks/accounts/create.json", handler: "PersonalFinanceBillflow.BillflowTaskAccountsCreateHandler"},
+	{method: "POST", path: "/personal_finance/billflow/tasks/accounts/override.json", handler: "PersonalFinanceBillflow.BillflowTaskAccountsOverrideHandler"},
+	{method: "POST", path: "/personal_finance/billflow/tasks/run.json", handler: "PersonalFinanceBillflow.BillflowTaskRunHandler"},
+	{method: "POST", path: "/personal_finance/billflow/tasks/confirm_post.json", handler: "PersonalFinanceBillflow.BillflowTaskConfirmPostHandler"},
+	{method: "GET", path: "/personal_finance/billflow/tasks/todos.json", handler: "PersonalFinanceBillflow.BillflowTaskTodosHandler"},
+	{method: "POST", path: "/personal_finance/billflow/todos/resolve.json", handler: "PersonalFinanceBillflow.BillflowTodoResolveHandler"},
+	{method: "GET", path: "/personal_finance/billflow/tasks/undo_impact.json", handler: "PersonalFinanceBillflow.BillflowTaskUndoImpactHandler"},
+	{method: "POST", path: "/personal_finance/billflow/tasks/undo.json", handler: "PersonalFinanceBillflow.BillflowTaskUndoHandler"},
 }
 
 func TestRegisterPersonalFinanceRoutesMatchesFrozenInventory(t *testing.T) {

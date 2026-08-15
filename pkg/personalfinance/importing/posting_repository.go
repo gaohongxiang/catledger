@@ -426,6 +426,9 @@ func (tx *RepositoryTransaction) executeImportPosting(c core.Context, execution 
 
 			event = &postingExistingEvent{primary: primary, counterpart: counterpart}
 			creationMethod = RAW_ROW_TRANSACTION_CREATION_POSTING_CREATED
+			if command.AutoPosted {
+				creationMethod = RAW_ROW_TRANSACTION_CREATION_AUTO_POSTED
+			}
 			createdCount++
 		} else {
 			reusedCount++
@@ -708,7 +711,7 @@ func (tx *RepositoryTransaction) loadLinkedTransactions(uid int64, linksByIdenti
 				link.TransactionUpdatedUnixTime < 1 || link.CreatedUnixTime < 1 ||
 				link.RuleVersion != POSTING_LINK_VERSION_V1 ||
 				(link.RelationRole != RAW_ROW_TRANSACTION_RELATION_PRIMARY && link.RelationRole != RAW_ROW_TRANSACTION_RELATION_TRANSFER_COUNTERPART) ||
-				(link.CreationMethod != RAW_ROW_TRANSACTION_CREATION_POSTING_CREATED && link.CreationMethod != RAW_ROW_TRANSACTION_CREATION_EXACT_IDENTITY_REUSED) {
+				(link.CreationMethod != RAW_ROW_TRANSACTION_CREATION_POSTING_CREATED && link.CreationMethod != RAW_ROW_TRANSACTION_CREATION_EXACT_IDENTITY_REUSED && link.CreationMethod != RAW_ROW_TRANSACTION_CREATION_AUTO_POSTED) {
 				return nil, errPostingEvidenceInvalid
 			}
 

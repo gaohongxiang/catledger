@@ -250,6 +250,7 @@ type RawRowTransactionCreationMethod string
 const (
 	RAW_ROW_TRANSACTION_CREATION_POSTING_CREATED       RawRowTransactionCreationMethod = "posting_created"
 	RAW_ROW_TRANSACTION_CREATION_EXACT_IDENTITY_REUSED RawRowTransactionCreationMethod = "exact_identity_reused"
+	RAW_ROW_TRANSACTION_CREATION_AUTO_POSTED           RawRowTransactionCreationMethod = "auto_posted"
 )
 
 // EconomicEffect 是来源状态映射后的稳定经济语义。

@@ -61,4 +61,18 @@ func RegisterPersonalFinanceRoutes(apiV1Route gin.IRoutes, config *settings.Conf
 	apiV1Route.GET("/personal_finance/installments/candidates/list.json", bindApi(PersonalFinanceInstallments.InstallmentCandidateListHandler, config))
 	apiV1Route.GET("/personal_finance/installments/candidates/get.json", bindApi(PersonalFinanceInstallments.InstallmentCandidateGetHandler, config))
 	apiV1Route.POST("/personal_finance/installments/candidates/confirm.json", bindApi(PersonalFinanceInstallments.InstallmentCandidateConfirmHandler, config))
+
+	// Personal Finance Billflow
+	apiV1Route.POST("/personal_finance/billflow/tasks/create.json", bindApi(PersonalFinanceBillflow.BillflowTaskCreateHandler, config))
+	apiV1Route.GET("/personal_finance/billflow/tasks/list.json", bindApi(PersonalFinanceBillflow.BillflowTaskListHandler, config))
+	apiV1Route.GET("/personal_finance/billflow/tasks/get.json", bindApi(PersonalFinanceBillflow.BillflowTaskGetHandler, config))
+	apiV1Route.GET("/personal_finance/billflow/tasks/accounts.json", bindApi(PersonalFinanceBillflow.BillflowTaskAccountsHandler, config))
+	apiV1Route.POST("/personal_finance/billflow/tasks/accounts/create.json", bindApi(PersonalFinanceBillflow.BillflowTaskAccountsCreateHandler, config))
+	apiV1Route.POST("/personal_finance/billflow/tasks/accounts/override.json", bindApi(PersonalFinanceBillflow.BillflowTaskAccountsOverrideHandler, config))
+	apiV1Route.POST("/personal_finance/billflow/tasks/run.json", bindApi(PersonalFinanceBillflow.BillflowTaskRunHandler, config))
+	apiV1Route.POST("/personal_finance/billflow/tasks/confirm_post.json", bindApi(PersonalFinanceBillflow.BillflowTaskConfirmPostHandler, config))
+	apiV1Route.GET("/personal_finance/billflow/tasks/todos.json", bindApi(PersonalFinanceBillflow.BillflowTaskTodosHandler, config))
+	apiV1Route.POST("/personal_finance/billflow/todos/resolve.json", bindApi(PersonalFinanceBillflow.BillflowTodoResolveHandler, config))
+	apiV1Route.GET("/personal_finance/billflow/tasks/undo_impact.json", bindApi(PersonalFinanceBillflow.BillflowTaskUndoImpactHandler, config))
+	apiV1Route.POST("/personal_finance/billflow/tasks/undo.json", bindApi(PersonalFinanceBillflow.BillflowTaskUndoHandler, config))
 }

@@ -56,13 +56,15 @@ type LedgerTransactionDraft struct {
 	HideAmount           bool
 	TagIds               []int64
 	Comment              string
+	AllowUncategorized   bool
 }
 
 // PostingIdentityCommand 把同一来源身份的一组原始行绑定为一个逻辑账本事件。
 // Draft=nil 表示只允许复用已经存在的正式交易关系。
 type PostingIdentityCommand struct {
-	RowIds []int64
-	Draft  *LedgerTransactionDraft
+	RowIds     []int64
+	Draft      *LedgerTransactionDraft
+	AutoPosted bool
 }
 
 // PostImportBatchRequest 表示一次持久幂等确认请求。
@@ -123,6 +125,7 @@ type postingExecutionCommand struct {
 	RowIds      []int64
 	Transaction *models.Transaction
 	TagIds      []int64
+	AutoPosted  bool
 }
 
 // PostingService 编排持久幂等、跨库权限预检与单库原子入账。
@@ -283,6 +286,7 @@ func normalizePostingRequest(request PostImportBatchRequest) (*postingExecution,
 		}
 
 		commands[index].RowIds = rowIds
+		commands[index].AutoPosted = command.AutoPosted
 		selectedRows += len(rowIds)
 
 		if selectedRows > maximumPostingSelectedRows {
@@ -311,7 +315,7 @@ func normalizePostingRequest(request PostImportBatchRequest) (*postingExecution,
 func buildPostingTransaction(uid int64, createdIp string, draft *LedgerTransactionDraft) (*models.Transaction, []int64, error) {
 	if draft.UnixTime < 1 || draft.UnixTime > math.MaxInt64/1000 ||
 		draft.TimezoneUtcOffset < minimumTimezoneUtcOffset || draft.TimezoneUtcOffset > maximumTimezoneUtcOffset ||
-		draft.SourceAccountId < 1 || draft.CategoryId < 1 || draft.SourceAmount < 0 ||
+		draft.SourceAccountId < 1 || !isPostingDraftCategoryAllowed(draft) || draft.SourceAmount < 0 ||
 		draft.SourceAmount > models.MaximumTransactionAmount || !utf8.ValidString(draft.Comment) ||
 		utf8.RuneCountInString(draft.Comment) > 255 || len(draft.TagIds) > models.MaximumTagsCountOfTransaction {
 		return nil, nil, ErrImportPostingRequestInvalid
@@ -362,6 +366,9 @@ func canonicalPostingRequest(execution *postingExecution) []byte {
 
 	for _, command := range execution.Commands {
 		values = append(values, "command")
+		if command.AutoPosted {
+			values = append(values, "auto-posted")
+		}
 
 		for _, rowId := range command.RowIds {
 			values = append(values, "row", strconv.FormatInt(rowId, 10))
@@ -428,6 +435,17 @@ func validatePersistedPosting(persisted *ImportPosting, candidate *ImportPosting
 	}
 
 	return nil
+}
+
+func isPostingDraftCategoryAllowed(draft *LedgerTransactionDraft) bool {
+	if draft == nil {
+		return false
+	}
+	if draft.CategoryId >= 1 {
+		return true
+	}
+	return draft.AllowUncategorized && draft.CategoryId == 0 &&
+		(draft.Type == models.TRANSACTION_TYPE_EXPENSE || draft.Type == models.TRANSACTION_TYPE_INCOME)
 }
 
 func classifyPostingExecutionError(err error) (error, string) {

@@ -1,0 +1,436 @@
+package billflow_test
+
+import (
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/billflow"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
+)
+
+func TestServiceConfirmThenPostCategoryAndUndo(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	accountId := int64(61)
+	identity := int64(201)
+	leafId := int64(51)
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
+		postableRow(uid, 401, 801, identity, accountId, "商户消费"),
+		postableRow(uid, 401, 802, 202, accountId, "餐饮美食"),
+	})
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+	}}
+	poster := &fakePoster{}
+	undo := &fakeUndo{can: true}
+	var nextId int64 = 9000
+	service, err := billflow.NewService(repository, evidence, payments, poster, nil, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{
+		{CategoryId: leafId, Name: "餐饮美食"},
+	}}, undo, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-task-1"})
+	if err != nil || created.ConfirmPolicy != billflow.CONFIRM_POLICY_CONFIRM_THEN_POST || created.Status != billflow.TASK_STATUS_RECEIVING {
+		t.Fatalf("first task should confirm then post: %+v err=%v", created, err)
+	}
+	if created.ReusedMappingCount < 1 {
+		t.Fatalf("confirmed mapping was not reused: %+v", created)
+	}
+
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-1", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || ran.Status != billflow.TASK_STATUS_AWAITING_CONFIRM || poster.calls != 0 {
+		t.Fatalf("confirm_then_post run posted early: %+v calls=%d err=%v", ran, poster.calls, err)
+	}
+	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || !hasTodoKind(todos, billflow.TODO_KIND_UNCATEGORIZED) {
+		t.Fatalf("forbidden category did not open uncategorized todo: %+v err=%v", todos, err)
+	}
+
+	posted, err := service.ConfirmPost(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: ran.Version, IdempotencyKey: "confirm-post-1", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || posted.Status != billflow.TASK_STATUS_READY || poster.calls != 1 {
+		t.Fatalf("confirm_post did not write ledger: %+v calls=%d err=%v", posted, poster.calls, err)
+	}
+	if len(poster.last.Commands) != 2 {
+		t.Fatalf("expected two auto-post commands, got %d", len(poster.last.Commands))
+	}
+	assertAutoPostedUncategorized(t, poster.last.Commands, 801)
+	assertAutoPostedCategory(t, poster.last.Commands, 802, leafId)
+
+	impact, err := service.GetUndoImpact(nil, uid, created.TaskId)
+	if err != nil || impact == nil || !impact.CanReverse {
+		t.Fatalf("undo impact should allow reverse: %+v err=%v", impact, err)
+	}
+	undone, err := service.UndoTask(nil, billflow.UndoTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: posted.Version, IdempotencyKey: "undo-task-1"})
+	if err != nil || undone.Status != billflow.TASK_STATUS_RECEIVING || undo.reverse != 1 {
+		t.Fatalf("undo did not restore receiving: %+v reverse=%d err=%v", undone, undo.reverse, err)
+	}
+}
+
+func TestServiceAutoPostCrossSourceAndUndoGuard(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
+		ready := testTask(uid, 1, 10)
+		ready.Status = billflow.TASK_STATUS_READY
+		return tx.InsertTask(ready)
+	}); err != nil {
+		t.Fatalf("insert prior ready task: %v", err)
+	}
+
+	accountId := int64(61)
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
+		postableRow(uid, 401, 801, 201, accountId, "餐饮美食"),
+	})
+	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{
+		postableRow(uid, 402, 802, 202, accountId, "餐饮美食"),
+	})
+	amount := *evidence.rows[401][0].NormalizedAmount
+	*evidence.rows[402][0].NormalizedAmount = amount
+	*evidence.rows[402][0].NormalizedUnixTime = *evidence.rows[401][0].NormalizedUnixTime
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+		402: {mappedGroup(accountId, 802)},
+	}}
+	poster := &fakePoster{}
+	undo := &fakeUndo{can: false, reasons: []string{"transaction_modified"}}
+	reconciler := &fakeReconciler{detail: &reconciliation.CaseDetail{
+		CaseSummary: &reconciliation.CaseSummary{
+			CaseId: 77, Status: reconciliation.CASE_STATUS_OPEN, Version: 3,
+			SuggestedRelationType: reconciliation.DECISION_TYPE_SAME_EVENT,
+		},
+		Members: []*reconciliation.CaseMemberDetail{
+			{Evidence: []*reconciliation.CaseEvidenceSummary{{RowId: 801}}},
+			{Evidence: []*reconciliation.CaseEvidenceSummary{{RowId: 802}}},
+		},
+	}}
+	var nextId int64 = 7000
+	service, err := billflow.NewService(repository, evidence, payments, poster, reconciler, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{
+		{CategoryId: 51, Name: "餐饮美食"},
+	}}, undo, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301, 302}, IdempotencyKey: "create-task-2"})
+	if err != nil || created.ConfirmPolicy != billflow.CONFIRM_POLICY_AUTO_POST {
+		t.Fatalf("daily task should auto post: %+v err=%v", created, err)
+	}
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-2", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || ran.Status != billflow.TASK_STATUS_READY || poster.calls != 2 {
+		t.Fatalf("auto_post run did not post: %+v calls=%d err=%v", ran, poster.calls, err)
+	}
+	if len(reconciler.decided) != 1 || reconciler.decided[0].DecisionType != reconciliation.DECISION_TYPE_SAME_EVENT {
+		t.Fatalf("unique high-confidence case was not auto decided: %+v", reconciler.decided)
+	}
+
+	_, err = service.UndoTask(nil, billflow.UndoTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: ran.Version, IdempotencyKey: "undo-task-2"})
+	if !errors.Is(err, billflow.ErrServiceActionRequired) {
+		t.Fatalf("blocked undo did not require action: %v", err)
+	}
+	failed, err := service.GetTask(nil, uid, created.TaskId)
+	if err != nil || failed.Status != billflow.TASK_STATUS_FAILED {
+		t.Fatalf("blocked undo did not mark task failed: %+v err=%v", failed, err)
+	}
+}
+
+func TestServiceCreateAccountAndAmbiguousCrossSource(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
+		postableRow(uid, 401, 801, 201, 0, "餐饮美食"),
+	})
+	evidence.rows[401][0].LedgerAccountId = nil
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {{SourceType: importing.SOURCE_TYPE_ALIPAY, Currency: "CNY", DisplayName: "花呗", RowCount: 1, PendingRowCount: 1, SampleRowId: 801}},
+	}}
+	accounts := &fakeAccounts{nextID: 88}
+	undo := &fakeUndo{can: true}
+	reconciler := &fakeReconciler{detail: &reconciliation.CaseDetail{
+		CaseSummary: &reconciliation.CaseSummary{
+			CaseId: 91, Status: reconciliation.CASE_STATUS_OPEN, Version: 1,
+			SuggestedRelationType: reconciliation.DECISION_TYPE_INTERNAL_TRANSFER,
+		},
+		Members: []*reconciliation.CaseMemberDetail{{Evidence: []*reconciliation.CaseEvidenceSummary{{RowId: 801}}}},
+	}}
+	var nextId int64 = 6000
+	service, err := billflow.NewService(repository, evidence, payments, &fakePoster{}, reconciler, nil, accounts, &fakeCategories{}, undo, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-task-3"})
+	if err != nil || created.Status != billflow.TASK_STATUS_ACCOUNTS_PENDING {
+		t.Fatalf("unmapped payment should wait for account: %+v err=%v", created, err)
+	}
+	view, err := service.CreateTaskAccount(nil, billflow.CreateAccountRequest{
+		Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, SampleRowId: 801,
+		Name: "花呗", Category: models.ACCOUNT_CATEGORY_CREDIT_CARD, Currency: "CNY", IdempotencyKey: "create-account-1",
+	})
+	if err != nil || len(view.NeedsCreate) != 0 || len(view.Reused) != 1 {
+		t.Fatalf("create account did not map group: %+v err=%v", view, err)
+	}
+	task, err := service.GetTask(nil, uid, created.TaskId)
+	if err != nil || task.ConfirmPolicy != billflow.CONFIRM_POLICY_CONFIRM_THEN_POST {
+		t.Fatalf("new account should force confirm_then_post: %+v err=%v", task, err)
+	}
+	evidence.rows[401][0].LedgerAccountId = int64Ptr(88)
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: task.Version, IdempotencyKey: "run-task-3"}, time.UTC)
+	if err != nil {
+		t.Fatalf("run after account create: %v", err)
+	}
+	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || !hasTodoKind(todos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("non-unique cross-source did not open todo: %+v err=%v", todos, err)
+	}
+	if len(reconciler.decided) != 0 {
+		t.Fatalf("ambiguous case was auto decided: %+v", reconciler.decided)
+	}
+	_ = ran
+}
+
+type fakeEvidence struct {
+	files     map[int64]*importing.ImportFile
+	batches   map[int64][]*importing.ImportBatch
+	batchById map[int64]*importing.ImportBatch
+	rows      map[int64][]*importing.RawImportRow
+}
+
+func newFakeEvidence(uid, fileId, batchId int64, rows []*importing.RawImportRow) *fakeEvidence {
+	evidence := &fakeEvidence{
+		files:     map[int64]*importing.ImportFile{},
+		batches:   map[int64][]*importing.ImportBatch{},
+		batchById: map[int64]*importing.ImportBatch{},
+		rows:      map[int64][]*importing.RawImportRow{},
+	}
+	evidence.addFile(uid, fileId, batchId, rows)
+	return evidence
+}
+
+func (f *fakeEvidence) addFile(uid, fileId, batchId int64, rows []*importing.RawImportRow) {
+	f.files[fileId] = &importing.ImportFile{Uid: uid, FileId: fileId}
+	batch := &importing.ImportBatch{Uid: uid, FileId: fileId, BatchId: batchId, Status: importing.IMPORT_BATCH_STATUS_READY, SourceTypeSnapshot: importing.SOURCE_TYPE_ALIPAY}
+	f.batches[fileId] = []*importing.ImportBatch{batch}
+	f.batchById[batchId] = batch
+	f.rows[batchId] = rows
+}
+
+func (f *fakeEvidence) FindImportFileById(_ core.Context, uid int64, fileId int64) (*importing.ImportFile, error) {
+	file := f.files[fileId]
+	if file == nil || file.Uid != uid {
+		return nil, nil
+	}
+	return file, nil
+}
+func (f *fakeEvidence) FindLatestImportBatchByFileId(_ core.Context, uid int64, fileId int64) (*importing.ImportBatch, error) {
+	batches := f.batches[fileId]
+	if len(batches) == 0 || batches[0].Uid != uid {
+		return nil, nil
+	}
+	return batches[0], nil
+}
+func (f *fakeEvidence) ListImportBatches(_ core.Context, uid int64, fileId int64, _ int, _ int) ([]*importing.ImportBatch, int64, error) {
+	items := make([]*importing.ImportBatch, 0)
+	for _, batch := range f.batches[fileId] {
+		if batch != nil && batch.Uid == uid {
+			items = append(items, batch)
+		}
+	}
+	return items, int64(len(items)), nil
+}
+func (f *fakeEvidence) FindImportBatchById(_ core.Context, uid int64, batchId int64) (*importing.ImportBatch, error) {
+	batch := f.batchById[batchId]
+	if batch == nil || batch.Uid != uid {
+		return nil, nil
+	}
+	return batch, nil
+}
+func (f *fakeEvidence) ListRawImportRows(_ core.Context, uid int64, batchId int64) ([]*importing.RawImportRow, error) {
+	rows := make([]*importing.RawImportRow, 0)
+	for _, row := range f.rows[batchId] {
+		if row != nil && row.Uid == uid {
+			rows = append(rows, row)
+		}
+	}
+	return rows, nil
+}
+
+type fakePayments struct {
+	groups map[int64][]*importing.PaymentAccountGroup
+}
+
+func (f *fakePayments) ListBatchPaymentAccounts(_ core.Context, _ int64, batchId int64) ([]*importing.PaymentAccountGroup, error) {
+	return f.groups[batchId], nil
+}
+func (f *fakePayments) ConfirmBatchPaymentAccount(_ core.Context, request importing.PaymentAccountConfirmRequest) (*importing.PaymentAccountGroup, error) {
+	for _, groups := range f.groups {
+		for _, group := range groups {
+			if group != nil && group.SampleRowId == request.RowId {
+				id := request.LedgerAccountId
+				group.LedgerAccountId = &id
+				group.Mapped = true
+				return group, nil
+			}
+		}
+	}
+	return nil, errors.New("payment group not found")
+}
+
+type fakePoster struct {
+	calls int
+	last  importing.PostImportBatchRequest
+}
+
+func (f *fakePoster) PostImportBatch(_ core.Context, request importing.PostImportBatchRequest, _ *time.Location) (*importing.ImportPostingResult, error) {
+	f.calls++
+	f.last = request
+	return &importing.ImportPostingResult{Posting: &importing.ImportPosting{CreatedTransactionCount: int64(len(request.Commands))}}, nil
+}
+
+type fakeReconciler struct {
+	detail  *reconciliation.CaseDetail
+	decided []reconciliation.DecideCaseRequest
+}
+
+func (f *fakeReconciler) GenerateCandidates(_ core.Context, _ reconciliation.GenerateCandidatesRequest) (*reconciliation.GenerateCandidatesResult, error) {
+	if f.detail == nil {
+		return &reconciliation.GenerateCandidatesResult{}, nil
+	}
+	return &reconciliation.GenerateCandidatesResult{Cases: []*reconciliation.Case{{CaseId: f.detail.CaseId}}}, nil
+}
+func (f *fakeReconciler) GetCase(_ core.Context, _ int64, caseId int64) (*reconciliation.CaseDetail, error) {
+	if f.detail == nil || f.detail.CaseId != caseId {
+		return nil, nil
+	}
+	return f.detail, nil
+}
+func (f *fakeReconciler) DecideCase(_ core.Context, request reconciliation.DecideCaseRequest, _ *time.Location) (*reconciliation.DecisionResult, error) {
+	f.decided = append(f.decided, request)
+	return &reconciliation.DecisionResult{CaseId: request.CaseId, DecisionType: request.DecisionType}, nil
+}
+
+type fakeCategories struct {
+	leaves []billflow.CategoryLeaf
+}
+
+func (f *fakeCategories) ListVisibleLeafCategories(_ core.Context, _ int64) ([]billflow.CategoryLeaf, error) {
+	return f.leaves, nil
+}
+
+type fakeAccounts struct {
+	nextID int64
+}
+
+func (f *fakeAccounts) CreateAccount(_ core.Context, _ int64, _ string, _ models.AccountCategory, _ string) (int64, error) {
+	return f.nextID, nil
+}
+func (f *fakeAccounts) LoadAccount(_ core.Context, _ int64, accountId int64) (*billflow.AccountSnapshot, error) {
+	return &billflow.AccountSnapshot{AccountId: accountId, Currency: "CNY"}, nil
+}
+
+type fakeUndo struct {
+	can     bool
+	reasons []string
+	reverse int
+}
+
+func (f *fakeUndo) Inspect(_ core.Context, _ int64, _ []int64) (*billflow.UndoInspection, error) {
+	return &billflow.UndoInspection{CanReverse: f.can, AutoPostedCount: 1, ReasonCodes: f.reasons}, nil
+}
+func (f *fakeUndo) Reverse(_ core.Context, _ int64, _ *billflow.UndoInspection) error {
+	f.reverse++
+	if !f.can {
+		return errors.New("cannot reverse")
+	}
+	return nil
+}
+
+func postableRow(uid, batchId, rowId, identityId, accountId int64, category string) *importing.RawImportRow {
+	now := int64(1_700_000_000)
+	amount := int64(123)
+	row := &importing.RawImportRow{
+		Uid: uid, BatchId: batchId, RowId: rowId, IdentityId: int64Ptr(identityId),
+		ParseState: importing.PARSE_STATE_VALID, IdentityState: importing.IDENTITY_STATE_NEW,
+		ProcessingState: importing.PROCESSING_STATE_PENDING, SemanticEligibility: importing.SEMANTIC_ELIGIBILITY_POSTABLE,
+		Disposition: importing.IMPORT_DISPOSITION_POSTABLE, EconomicEffect: importing.ECONOMIC_EFFECT_NORMAL,
+		NormalizedUnixTime: &now, NormalizedAmount: &amount, Currency: "CNY",
+		NormalizedDirection: importing.NORMALIZED_DIRECTION_EXPENSE, NormalizedTransactionType: importing.SOURCE_TRANSACTION_TYPE_PAYMENT,
+		RawTransactionType: category,
+	}
+	if accountId > 0 {
+		row.LedgerAccountId = int64Ptr(accountId)
+	}
+	return row
+}
+
+func mappedGroup(accountId, sampleRowId int64) *importing.PaymentAccountGroup {
+	id := accountId
+	return &importing.PaymentAccountGroup{
+		SourceType: importing.SOURCE_TYPE_ALIPAY, Currency: "CNY", DisplayName: "余额宝",
+		RowCount: 1, PendingRowCount: 1, SampleRowId: sampleRowId, LedgerAccountId: &id, Mapped: true,
+	}
+}
+
+func hasTodoKind(page *billflow.TodoListResult, kind billflow.TodoKind) bool {
+	if page == nil {
+		return false
+	}
+	for _, todo := range page.Items {
+		if todo != nil && todo.TodoKind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func assertAutoPostedUncategorized(t *testing.T, commands []importing.PostingIdentityCommand, rowId int64) {
+	t.Helper()
+	for _, command := range commands {
+		if !containsRow(command.RowIds, rowId) {
+			continue
+		}
+		if !command.AutoPosted || command.Draft == nil || command.Draft.CategoryId != 0 || !command.Draft.AllowUncategorized {
+			t.Fatalf("row %d was not auto-posted uncategorized: %+v", rowId, command)
+		}
+		return
+	}
+	t.Fatalf("missing command for row %d", rowId)
+}
+
+func assertAutoPostedCategory(t *testing.T, commands []importing.PostingIdentityCommand, rowId int64, categoryId int64) {
+	t.Helper()
+	for _, command := range commands {
+		if !containsRow(command.RowIds, rowId) {
+			continue
+		}
+		if !command.AutoPosted || command.Draft == nil || command.Draft.CategoryId != categoryId {
+			t.Fatalf("row %d category = %+v, want %d", rowId, command.Draft, categoryId)
+		}
+		return
+	}
+	t.Fatalf("missing command for row %d", rowId)
+}
+
+func containsRow(ids []int64, rowId int64) bool {
+	for _, id := range ids {
+		if id == rowId {
+			return true
+		}
+	}
+	return false
+}
+
+func int64Ptr(value int64) *int64 { return &value }

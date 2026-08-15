@@ -13,6 +13,7 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
 )
 
@@ -397,6 +398,28 @@ func findActionByKey(sess *xorm.Session, uid int64, digest string) (*Action, err
 	return action, nil
 }
 
+// UpdateAction 更新当前 uid 下一笔已持久化整理命令的执行结果。
+func (tx *RepositoryTransaction) UpdateAction(next *Action) (bool, error) {
+	if err := tx.validate(); err != nil || next == nil || next.Uid != tx.uid || next.ActionId < 1 ||
+		next.TaskId < 1 || !isActionType(next.ActionType) || !isActionStatus(next.Status) ||
+		next.UpdatedUnixTime < 1 || next.ReasonCodesJson == "" {
+		return false, fmt.Errorf("invalid billflow action update")
+	}
+
+	updated, err := tx.session.Where("uid=? AND action_id=?", tx.uid, next.ActionId).
+		Cols(
+			"status", "applied_task_version", "reason_codes_json", "error_code",
+			"updated_unix_time", "started_unix_time", "completed_unix_time", "failed_unix_time",
+		).
+		MustCols("started_unix_time", "completed_unix_time", "failed_unix_time").
+		Update(next)
+	if err != nil {
+		return false, fmt.Errorf("update billflow action: %w", err)
+	}
+
+	return updated == 1, nil
+}
+
 // InsertTodo 写入一条例外待办。
 func (tx *RepositoryTransaction) InsertTodo(todo *Todo) error {
 	if err := tx.validate(); err != nil || !isValidNewTodo(todo, tx.uid) {
@@ -470,6 +493,74 @@ func (r *Repository) ListTodos(c core.Context, uid int64, taskId int64, status T
 	}
 
 	return page, nil
+}
+
+// FindTodoById 按 uid 和待办 ID 查询，不存在时返回 (nil, nil)。
+func (r *Repository) FindTodoById(c core.Context, uid int64, todoId int64) (*Todo, error) {
+	if uid < 1 || todoId < 1 {
+		return nil, fmt.Errorf("invalid billflow todo owner or id")
+	}
+
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	todo := new(Todo)
+	found, err := sess.Where("uid=? AND todo_id=?", uid, todoId).Get(todo)
+	if err != nil {
+		return nil, fmt.Errorf("find billflow todo: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+
+	return todo, nil
+}
+
+// FindCategoryAlias 按 uid、来源类型和 alias key 读取已确认分类映射，不存在时返回 (nil, nil)。
+func (r *Repository) FindCategoryAlias(c core.Context, uid int64, sourceType importing.SourceType, aliasKey string) (*CategoryAliasMapping, error) {
+	if uid < 1 || !isSourceType(sourceType) || !isLowerHexSHA256(aliasKey) {
+		return nil, fmt.Errorf("invalid billflow category alias lookup")
+	}
+
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	mapping := new(CategoryAliasMapping)
+	found, err := sess.Where("uid=? AND source_type=? AND alias_key=?", uid, sourceType, aliasKey).Get(mapping)
+	if err != nil {
+		return nil, fmt.Errorf("find billflow category alias: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+
+	return mapping, nil
+}
+
+func (tx *RepositoryTransaction) FindTodoBySubject(taskId int64, kind TodoKind, subjectKind SubjectKind, subjectId int64) (*Todo, error) {
+	if err := tx.validate(); err != nil || taskId < 1 || !isTodoKind(kind) || !isSubjectKind(subjectKind) || subjectId < 1 {
+		return nil, fmt.Errorf("invalid billflow todo subject lookup")
+	}
+
+	todo := new(Todo)
+	found, err := tx.session.Where("uid=? AND task_id=? AND todo_kind=? AND subject_kind=? AND subject_id=?",
+		tx.uid, taskId, kind, subjectKind, subjectId).Get(todo)
+	if err != nil {
+		return nil, fmt.Errorf("find billflow todo by subject: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+
+	return todo, nil
 }
 
 // CreateOrFindCategoryAlias 由 uid+source_type+alias_key 唯一约束裁决分类别名。

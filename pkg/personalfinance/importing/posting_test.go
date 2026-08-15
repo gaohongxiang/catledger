@@ -61,3 +61,28 @@ func TestNormalizePostingRequestDigestIgnoresCommandRowAndTagOrder(t *testing.T)
 		t.Fatal("canonical posting digest changed after order-only differences")
 	}
 }
+
+func TestNormalizePostingRequestAllowsUncategorizedExpenseAndRejectsZeroOtherwise(t *testing.T) {
+	uncategorized := PostImportBatchRequest{
+		Uid: 1001, BatchId: 2001, IdempotencyKey: "posting-request-2", CreatedIp: "192.0.2.1",
+		Commands: []PostingIdentityCommand{{
+			RowIds: []int64{1}, AutoPosted: true,
+			Draft: &LedgerTransactionDraft{
+				Type: models.TRANSACTION_TYPE_EXPENSE, CategoryId: 0, AllowUncategorized: true,
+				UnixTime: 1_700_000_000, SourceAccountId: 61, SourceAmount: 123,
+			},
+		}},
+	}
+	execution, _, _, _, err := normalizePostingRequest(uncategorized)
+	if err != nil || execution == nil || !execution.Commands[0].AutoPosted || execution.Commands[0].Transaction == nil || execution.Commands[0].Transaction.CategoryId != 0 {
+		t.Fatalf("uncategorized auto-post draft was rejected: execution=%+v err=%v", execution, err)
+	}
+
+	invalid := uncategorized
+	invalid.Commands[0].Draft = &LedgerTransactionDraft{
+		Type: models.TRANSACTION_TYPE_EXPENSE, CategoryId: 0, UnixTime: 1_700_000_000, SourceAccountId: 61, SourceAmount: 123,
+	}
+	if _, _, _, _, err := normalizePostingRequest(invalid); err == nil {
+		t.Fatal("zero category without AllowUncategorized was accepted")
+	}
+}
