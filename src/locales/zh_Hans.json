@@ -2934,7 +2934,7 @@
                 "label": "整理进度",
                 "files": "选账单",
                 "accounts": "核对账户",
-                "review": "分类和余额",
+                "review": "分类和待办",
                 "confirm": "确认入账",
                 "back": "上一步",
                 "next": "下一步"
@@ -2943,9 +2943,9 @@
             "failed": "这次整理因为已确认事实冲突而停止，差异已保留，不会覆盖历史。",
             "run": "开始自动整理",
             "confirmPost": "确认入账",
-            "confirmHint": "分类和余额处理完后，再点确认入账。",
+            "confirmHint": "分类和待办处理完后，再点确认入账。",
             "confirmDoneHint": "已经入账。",
-            "reviewHint": "分类、余额和说不清的项目先处理完，再确认入账。",
+            "reviewHint": "说不清的分类和待办先处理完，再确认入账。",
             "files": {
                 "title": "选择要一起整理的账单",
                 "create": "开始整理",
@@ -2958,6 +2958,7 @@
                 "files": "整理已选的 {count} 份账单",
                 "accounts": "还要确认 {count} 个账户",
                 "accountsReady": "账户已齐，开始自动整理",
+                "accountsBalance": "新建账户可先记下现在多少钱，也可以跳过",
                 "review": "处理完后再去确认入账",
                 "reviewBlocked": "还有 {count} 项没处理完",
                 "confirm": "确认后才会写入正式账本"
@@ -3024,8 +3025,8 @@
                 "uncategorized": "还没分类"
             },
             "balance": {
-                "title": "余额核对（可跳过）",
-                "hint": "新建账户后可以先不核对本期余额，但会标明未核对。",
+                "title": "新建账户现在多少钱（可跳过）",
+                "hint": "账单是流水，不是账户里现有的钱。可以先不核对，总览会标明尚未核对。",
                 "skip": "先不核对",
                 "verify": "已核对"
             },

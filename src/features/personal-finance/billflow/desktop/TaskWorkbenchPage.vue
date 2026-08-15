@@ -191,6 +191,22 @@
                     </div>
                 </article>
             </template>
+
+            <template v-if="newBalanceAccounts.length">
+                <div class="section-copy mt-5">
+                    <strong>{{ tt('personalFinance.billflow.balance.title') }}</strong>
+                    <span>{{ tt('personalFinance.billflow.balance.hint') }}</span>
+                </div>
+                <article class="account-card" :key="account.ledgerAccountId" v-for="account in newBalanceAccounts">
+                    <div class="account-card__head">
+                        <strong>{{ account.displayName }}</strong>
+                        <div class="account-card__actions">
+                            <v-btn size="small" variant="text" :loading="busy" @click="skipBalance(account)">{{ tt('personalFinance.billflow.balance.skip') }}</v-btn>
+                            <v-btn size="small" color="primary" variant="tonal" :loading="busy" @click="verifyBalance(account)">{{ tt('personalFinance.billflow.balance.verify') }}</v-btn>
+                        </div>
+                    </div>
+                </article>
+            </template>
         </section>
 
         <section class="work-section" v-if="currentStep === 'review' && task">
@@ -216,22 +232,6 @@
                     </v-btn>
                 </div>
             </article>
-
-            <template v-if="unverifiedCards.length">
-                <div class="section-copy mt-5">
-                    <strong>{{ tt('personalFinance.billflow.balance.title') }}</strong>
-                    <span>{{ tt('personalFinance.billflow.balance.hint') }}</span>
-                </div>
-                <article class="account-card" :key="card.ledgerAccountId" v-for="card in unverifiedCards">
-                    <div class="account-card__head">
-                        <strong>{{ card.displayName }}</strong>
-                        <div class="account-card__actions">
-                            <v-btn size="small" variant="text" :loading="busy" @click="skipBalance(card)">{{ tt('personalFinance.billflow.balance.skip') }}</v-btn>
-                            <v-btn size="small" color="primary" variant="tonal" :loading="busy" @click="verifyBalance(card)">{{ tt('personalFinance.billflow.balance.verify') }}</v-btn>
-                        </div>
-                    </div>
-                </article>
-            </template>
         </section>
 
         <section class="work-section" v-if="currentStep === 'confirm' && task">
@@ -285,10 +285,12 @@ import {
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
     canOpenBillflowWorkbenchStep,
+    createdAccountsNeedingBalance,
     eligibleOrganizeFileIds,
     matchedLedgerAccount,
     mergeSelectedOrganizeFileIds,
     previousBillflowWorkbenchStep,
+    rememberCreatedLedgerIds,
     resolveAccountBucket,
     resolveBillflowWorkbenchStep,
     suggestedAccountCategory,
@@ -319,6 +321,8 @@ const selectedRowIds = ref<string[]>([]);
 const pickedAccountIds = reactive<Record<string, string>>({});
 const openTodos = ref<readonly BillflowTodo[]>([]);
 const cardAccounts = ref<CardCycleAccount[]>([]);
+const createdLedgerIds = ref<string[]>([]);
+const answeredLedgerIds = ref<string[]>([]);
 const userStep = ref<BillflowWorkbenchStep>();
 const accountBucket = ref<BillflowAccountBucket>('pending');
 const userPickedBucket = ref(false);
@@ -331,7 +335,14 @@ const eligibleFiles = computed(() => {
         .map(batch => ({ fileId: batch.fileId, name: batch.file?.originalFileName || batch.fileId }));
 });
 
-const unverifiedCards = computed(() => cardAccounts.value.filter(card => !card.balanceReview || card.balanceReview.status === 'unverified'));
+const newBalanceAccounts = computed(() => createdAccountsNeedingBalance({
+    createdLedgerIds: createdLedgerIds.value,
+    reused: accounts.value?.reused ?? [],
+    answeredLedgerIds: answeredLedgerIds.value,
+    reviewedLedgerIds: cardAccounts.value
+        .filter(card => !!card.balanceReview)
+        .map(card => card.ledgerAccountId)
+}));
 const matchedNeedsCreate = computed(() => (accounts.value?.needsCreate ?? []).filter(group => !!selectedLedgerId(group)));
 const taskFiles = computed(() => {
     if (!task.value) {
@@ -375,7 +386,9 @@ const stepAction = computed(() => {
         }
         if (canAutoRunAfterAccounts(task.value.status, pendingCount)) {
             return {
-                hint: tt('personalFinance.billflow.next.accountsReady'),
+                hint: newBalanceAccounts.value.length
+                    ? tt('personalFinance.billflow.next.accountsBalance')
+                    : tt('personalFinance.billflow.next.accountsReady'),
                 label: tt('personalFinance.billflow.run'),
                 run: runTask
             };
@@ -563,6 +576,7 @@ async function reload(): Promise<void> {
         const current = pending.items[0] ?? receiving.items[0] ?? awaiting.items[0] ?? ready.items[0] ?? task.value;
         if (current) {
             task.value = current;
+            restoreBalanceMemory(current.id);
             await refreshTaskAndMaybeRun();
         }
         cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
@@ -595,6 +609,9 @@ async function refreshTaskAndMaybeRun(): Promise<void> {
     if (!canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0)) {
         return;
     }
+    if (newBalanceAccounts.value.length > 0) {
+        return;
+    }
     await billflowApi.runTask(task.value.id, task.value.version, generateRandomUUID());
     await openTask(task.value.id);
 }
@@ -623,6 +640,7 @@ async function createTask(): Promise<void> {
     try {
         const created = await billflowApi.createTask(selectedFileIds.value, generateRandomUUID());
         task.value = created;
+        restoreBalanceMemory(created.id);
         await refreshTaskAndMaybeRun();
     } catch {
         error.value = true;
@@ -635,6 +653,7 @@ async function createAccount(group: BillflowAccountGroup): Promise<void> {
     if (!task.value) return;
     busy.value = true;
     try {
+        const previousIds = (accounts.value?.reused ?? []).map(item => item.ledgerAccountId).filter((id): id is string => !!id);
         accounts.value = await billflowApi.createAccount({
             taskId: task.value.id,
             expectedVersion: task.value.version,
@@ -644,7 +663,11 @@ async function createAccount(group: BillflowAccountGroup): Promise<void> {
             currency: group.currency,
             idempotencyKey: generateRandomUUID()
         });
-        await refreshTaskAndMaybeRun();
+        createdLedgerIds.value = rememberCreatedLedgerIds(previousIds, accounts.value.reused, createdLedgerIds.value);
+        persistBalanceMemory(task.value.id);
+        await accountsStore.loadAllAccounts({ force: true });
+        await openTask(task.value.id);
+        cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
     } catch {
         error.value = true;
     } finally {
@@ -666,7 +689,7 @@ async function reuseAccount(group: BillflowAccountGroup, ledgerAccountId?: strin
             idempotencyKey: generateRandomUUID()
         });
         delete pickedAccountIds[group.sampleRowId];
-        await refreshTaskAndMaybeRun();
+        await openTask(task.value.id);
     } catch {
         error.value = true;
     } finally {
@@ -693,7 +716,7 @@ async function reuseMatchedAccounts(): Promise<void> {
             });
             delete pickedAccountIds[group.sampleRowId];
         }
-        await refreshTaskAndMaybeRun();
+        await openTask(task.value.id);
     } catch {
         error.value = true;
     } finally {
@@ -714,7 +737,7 @@ async function excludeAccount(group: BillflowAccountGroup): Promise<void> {
         expandedSampleRowId.value = undefined;
         accountRows.value = [];
         selectedRowIds.value = [];
-        await refreshTaskAndMaybeRun();
+        await openTask(task.value.id);
     } catch {
         error.value = true;
     } finally {
@@ -850,29 +873,72 @@ async function confirmInstallment(todo: BillflowTodo): Promise<void> {
     }
 }
 
-async function skipBalance(card: CardCycleAccount): Promise<void> {
-    await saveBalance(card, 'unverified', '');
+async function skipBalance(account: { ledgerAccountId: string }): Promise<void> {
+    await saveBalance(account, 'unverified', '');
 }
 
-async function verifyBalance(card: CardCycleAccount): Promise<void> {
-    await saveBalance(card, 'verified', todayCivilDate());
+async function verifyBalance(account: { ledgerAccountId: string }): Promise<void> {
+    await saveBalance(account, 'verified', todayCivilDate());
 }
 
-async function saveBalance(card: CardCycleAccount, status: 'unverified' | 'verified', asOfDate: string): Promise<void> {
+async function saveBalance(account: { ledgerAccountId: string }, status: 'unverified' | 'verified', asOfDate: string): Promise<void> {
     busy.value = true;
     try {
+        const review = cardAccounts.value.find(card => card.ledgerAccountId === account.ledgerAccountId)?.balanceReview;
         await billflowApi.saveBalanceReview({
-            ledgerAccountId: card.ledgerAccountId,
+            ledgerAccountId: account.ledgerAccountId,
             status,
             asOfDate,
-            expectedVersion: card.balanceReview?.version ?? 0,
+            expectedVersion: review?.version ?? 0,
             idempotencyKey: generateRandomUUID()
         });
+        if (!answeredLedgerIds.value.includes(account.ledgerAccountId)) {
+            answeredLedgerIds.value = [...answeredLedgerIds.value, account.ledgerAccountId];
+        }
+        if (task.value) {
+            persistBalanceMemory(task.value.id);
+        }
         cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
     } catch {
         error.value = true;
     } finally {
         busy.value = false;
+    }
+}
+
+function balanceMemoryKey(taskId: string): string {
+    return `ezbk.billflow.balance.${taskId}`;
+}
+
+function restoreBalanceMemory(taskId: string): void {
+    createdLedgerIds.value = [];
+    answeredLedgerIds.value = [];
+    try {
+        const raw = sessionStorage.getItem(balanceMemoryKey(taskId));
+        if (!raw) {
+            return;
+        }
+        const parsed = JSON.parse(raw) as { created?: unknown; answered?: unknown };
+        if (Array.isArray(parsed.created)) {
+            createdLedgerIds.value = parsed.created.filter((id): id is string => typeof id === 'string' && id.length > 0);
+        }
+        if (Array.isArray(parsed.answered)) {
+            answeredLedgerIds.value = parsed.answered.filter((id): id is string => typeof id === 'string' && id.length > 0);
+        }
+    } catch {
+        createdLedgerIds.value = [];
+        answeredLedgerIds.value = [];
+    }
+}
+
+function persistBalanceMemory(taskId: string): void {
+    try {
+        sessionStorage.setItem(balanceMemoryKey(taskId), JSON.stringify({
+            created: createdLedgerIds.value,
+            answered: answeredLedgerIds.value
+        }));
+    } catch {
+        return;
     }
 }
 

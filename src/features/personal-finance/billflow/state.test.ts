@@ -12,8 +12,10 @@ import {
     canAutoRunAfterAccounts,
     canOpenBillflowWorkbenchStep,
     composeDashboardHeadline,
+    createdAccountsNeedingBalance,
     mergeSelectedOrganizeFileIds,
     previousBillflowWorkbenchStep,
+    rememberCreatedLedgerIds,
     resolveAccountBucket,
     resolveBillflowWorkbenchStep,
     suggestedAccountBucket,
@@ -190,9 +192,11 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.confirmHint');
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
         expect(workbench).toContain('v-for="todo in openTodos"');
-        expect(workbench).toContain('unverifiedCards');
+        expect(workbench).toContain('newBalanceAccounts');
+        expect(workbench).toContain('personalFinance.billflow.balance.title');
         expect(workbench).toContain('currentStep === \'review\'');
         expect(workbench).toContain('userStep.value = \'confirm\'');
+        expect(workbench).not.toContain('unverifiedCards');
         expect(workbench).not.toContain('currentStep === \'todos\'');
         expect(workbench).not.toContain('来源账户');
         expect(workbench).not.toContain('todo.reasonCodes.join');
@@ -250,5 +254,31 @@ describe('billflow task page wiring', () => {
         expect(accountBucketHintKey('pending')).toBe('personalFinance.billflow.accounts.pendingHint');
         expect(accountBucketHintKey('reused')).toBe('personalFinance.billflow.accounts.reusedHint');
         expect(accountBucketHintKey('excluded')).toBe('personalFinance.billflow.accounts.excludedHint');
+    });
+
+    it('asks for balances only on newly created accounts that are still unanswered', () => {
+        const created = rememberCreatedLedgerIds(['1'], [{ ledgerAccountId: '1' }, { ledgerAccountId: '9' }], []);
+        expect(created).toEqual(['9']);
+        expect(createdAccountsNeedingBalance({
+            createdLedgerIds: ['9', '8'],
+            reused: [
+                { ledgerAccountId: '1', displayName: 'old' },
+                { ledgerAccountId: '9', displayName: 'new card' }
+            ],
+            answeredLedgerIds: [],
+            reviewedLedgerIds: []
+        })).toEqual([{ ledgerAccountId: '9', displayName: 'new card' }]);
+        expect(createdAccountsNeedingBalance({
+            createdLedgerIds: ['9'],
+            reused: [{ ledgerAccountId: '9', displayName: 'new card' }],
+            answeredLedgerIds: ['9'],
+            reviewedLedgerIds: []
+        })).toEqual([]);
+        expect(createdAccountsNeedingBalance({
+            createdLedgerIds: ['9'],
+            reused: [{ ledgerAccountId: '9', displayName: 'new card' }],
+            answeredLedgerIds: [],
+            reviewedLedgerIds: ['9']
+        })).toEqual([]);
     });
 });

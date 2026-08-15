@@ -136,6 +136,46 @@ export function canAutoRunAfterAccounts(status: BillflowTaskStatus, needsCreateC
     return needsCreateCount < 1 && (status === 'accounts_pending' || status === 'receiving');
 }
 
+export function rememberCreatedLedgerIds(
+    previousReusedIds: readonly string[],
+    nextReused: readonly Pick<BillflowAccountGroup, 'ledgerAccountId'>[],
+    already: readonly string[]
+): string[] {
+    const previous = new Set(previousReusedIds);
+    const next = new Set(already);
+    for (const group of nextReused) {
+        if (group.ledgerAccountId && !previous.has(group.ledgerAccountId)) {
+            next.add(group.ledgerAccountId);
+        }
+    }
+    return [...next];
+}
+
+export function createdAccountsNeedingBalance(input: {
+    createdLedgerIds: readonly string[];
+    reused: readonly Pick<BillflowAccountGroup, 'ledgerAccountId' | 'displayName'>[];
+    answeredLedgerIds: readonly string[];
+    reviewedLedgerIds: readonly string[];
+}): { ledgerAccountId: string; displayName: string }[] {
+    const answered = new Set(input.answeredLedgerIds);
+    const reviewed = new Set(input.reviewedLedgerIds);
+    const names = new Map<string, string>();
+    for (const group of input.reused) {
+        if (group.ledgerAccountId) {
+            names.set(group.ledgerAccountId, group.displayName);
+        }
+    }
+    const items: { ledgerAccountId: string; displayName: string }[] = [];
+    for (const id of input.createdLedgerIds) {
+        const displayName = names.get(id);
+        if (!displayName || answered.has(id) || reviewed.has(id)) {
+            continue;
+        }
+        items.push({ ledgerAccountId: id, displayName });
+    }
+    return items;
+}
+
 export type BillflowAccountBucket = 'pending' | 'reused' | 'excluded';
 
 export const BILLFLOW_ACCOUNT_BUCKETS: readonly BillflowAccountBucket[] = ['pending', 'reused', 'excluded'];

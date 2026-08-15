@@ -2934,7 +2934,7 @@
                 "label": "Organize progress",
                 "files": "Choose statements",
                 "accounts": "Check accounts",
-                "review": "Categories & balances",
+                "review": "Categories & todos",
                 "confirm": "Confirm posting",
                 "back": "Back",
                 "next": "Next"
@@ -2943,9 +2943,9 @@
             "failed": "This task stopped because confirmed history conflicts. The difference is kept and nothing is overwritten.",
             "run": "Organize now",
             "confirmPost": "Confirm posting",
-            "confirmHint": "Finish categories and balances, then confirm posting.",
+            "confirmHint": "Finish categories and todos, then confirm posting.",
             "confirmDoneHint": "Posted.",
-            "reviewHint": "Finish categories, balances, and unclear items before posting.",
+            "reviewHint": "Finish unclear categories and todos before posting.",
             "files": {
                 "title": "Choose statements to organize together",
                 "create": "Start organizing",
@@ -2958,6 +2958,7 @@
                 "files": "Organize {count} selected statements",
                 "accounts": "{count} accounts still need a decision",
                 "accountsReady": "Accounts are ready. Organize now",
+                "accountsBalance": "You can note the current balance of new accounts, or skip",
                 "review": "Finish these, then confirm posting",
                 "reviewBlocked": "{count} items still need a decision",
                 "confirm": "Nothing enters the ledger until you confirm"
@@ -3024,8 +3025,8 @@
                 "uncategorized": "Not categorized yet"
             },
             "balance": {
-                "title": "Balance check (optional)",
-                "hint": "You can skip checking the opening balance, but it stays marked unverified.",
+                "title": "How much is in the new accounts? (optional)",
+                "hint": "Statements are activity, not the money already in the account. You can skip; the overview will mark balances unverified.",
                 "skip": "Skip for now",
                 "verify": "Verified"
             },
