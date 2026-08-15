@@ -2935,7 +2935,6 @@
                 "files": "Choose statements",
                 "accounts": "Check accounts",
                 "confirm": "Confirm posting",
-                "todos": "Handle todos",
                 "back": "Back",
                 "next": "Next"
             },
@@ -2943,6 +2942,8 @@
             "failed": "This task stopped because confirmed history conflicts. The difference is kept and nothing is overwritten.",
             "run": "Organize now",
             "confirmPost": "Confirm posting",
+            "confirmHint": "Look at todos first. Clear transactions enter the ledger after you confirm.",
+            "confirmDoneHint": "Posting is done. Remaining todos and balances can still be handled.",
             "files": {
                 "title": "Choose statements to organize together",
                 "create": "Start organizing",
@@ -2955,12 +2956,13 @@
                 "files": "Organize {count} selected statements",
                 "accounts": "{count} accounts still need a decision",
                 "accountsReady": "Accounts are ready. Organize now",
-                "confirm": "Review the summary, then confirm posting"
+                "confirm": "Look at todos first, then confirm posting"
             },
             "summary": {
                 "created": "Accounts created",
                 "reused": "Accounts reused",
-                "posted": "Posted automatically",
+                "posted": "Posted",
+                "willPost": "Will post",
                 "todos": "Need a look"
             },
             "accounts": {
@@ -3000,7 +3002,7 @@
             },
             "todos": {
                 "title": "Todos",
-                "empty": "Nothing needs a decision.",
+                "empty": "Nothing needs a decision before posting.",
                 "resolve": "Done",
                 "dismiss": "Skip for now",
                 "installment": "Treat as installment"

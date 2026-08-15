@@ -200,7 +200,7 @@
                     <strong>{{ task.createdAccountCount }}</strong>
                 </div>
                 <div class="summary-card">
-                    <span>{{ tt('personalFinance.billflow.summary.posted') }}</span>
+                    <span>{{ tt(taskAwaitsConfirm(task.status) ? 'personalFinance.billflow.summary.willPost' : 'personalFinance.billflow.summary.posted') }}</span>
                     <strong>{{ task.autoPostedCount }}</strong>
                 </div>
                 <div class="summary-card" :class="{ 'summary-card--todo': task.todoOpenCount > 0 }">
@@ -208,12 +208,10 @@
                     <strong>{{ task.todoOpenCount }}</strong>
                 </div>
             </div>
-        </section>
+            <p class="confirm-hint">{{ tt(taskAwaitsConfirm(task.status) ? 'personalFinance.billflow.confirmHint' : 'personalFinance.billflow.confirmDoneHint') }}</p>
 
-        <section class="work-section" v-if="currentStep === 'todos' && task">
-            <div class="section-copy">
-                <strong>{{ tt('personalFinance.billflow.todos.title') }}</strong>
-                <span v-if="!openTodos.length">{{ tt('personalFinance.billflow.todos.empty') }}</span>
+            <div class="section-copy mt-5" v-if="openTodos.length">
+                <strong>{{ tt('personalFinance.billflow.todos.title') }} · {{ openTodos.length }}</strong>
             </div>
             <article class="todo-card" :key="todo.id" v-for="todo in openTodos">
                 <div>
@@ -395,9 +393,6 @@ const canAdvanceWithoutAction = computed(() => {
     if (currentStep.value === 'accounts' && !!task.value && billflowWorkbenchStepIndex(suggestedStep.value) > billflowWorkbenchStepIndex('accounts')) {
         return true;
     }
-    if (currentStep.value === 'confirm' && !!task.value && suggestedStep.value === 'todos') {
-        return true;
-    }
     return false;
 });
 const canGoForward = computed(() => !!stepAction.value || canAdvanceWithoutAction.value);
@@ -455,11 +450,7 @@ async function goForward(): Promise<void> {
         return;
     }
     if (currentStep.value === 'accounts' && canAdvanceWithoutAction.value) {
-        userStep.value = suggestedStep.value === 'todos' ? 'confirm' : suggestedStep.value;
-        return;
-    }
-    if (currentStep.value === 'confirm' && canAdvanceWithoutAction.value) {
-        userStep.value = 'todos';
+        userStep.value = 'confirm';
     }
 }
 
@@ -888,7 +879,7 @@ onMounted(reload);
 
 .step-rail {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1px;
     border-top: 1px solid var(--task-rule);
     background: var(--task-rule);
@@ -978,6 +969,13 @@ onMounted(reload);
     grid-template-columns: 1.15fr 1fr 1fr;
     gap: 12px;
     padding: 0;
+}
+
+.confirm-hint {
+    margin: 14px 0 0;
+    color: rgba(var(--v-theme-on-surface), 0.62);
+    font-size: 0.86rem;
+    line-height: 1.5;
 }
 
 .summary-card {
@@ -1227,7 +1225,7 @@ onMounted(reload);
     }
 
     .step-rail {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .account-row-card__main {

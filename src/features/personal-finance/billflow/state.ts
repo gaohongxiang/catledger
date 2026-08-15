@@ -171,9 +171,9 @@ export function accountBucketHintKey(bucket: BillflowAccountBucket): string {
     return 'personalFinance.billflow.accounts.pendingHint';
 }
 
-export type BillflowWorkbenchStep = 'files' | 'accounts' | 'confirm' | 'todos';
+export type BillflowWorkbenchStep = 'files' | 'accounts' | 'confirm';
 
-export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'confirm', 'todos'];
+export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'confirm'];
 
 export function billflowWorkbenchStepIndex(step: BillflowWorkbenchStep): number {
     return BILLFLOW_WORKBENCH_STEPS.indexOf(step);
@@ -187,16 +187,10 @@ export function suggestedBillflowWorkbenchStep(input: {
     if (!input.hasTask) {
         return 'files';
     }
-    if (input.status === 'failed') {
-        return 'confirm';
-    }
     if (input.status === 'processing' || taskNeedsAccounts(input.status ?? 'receiving', input.needsCreateCount)) {
         return 'accounts';
     }
-    if (taskAwaitsConfirm(input.status ?? 'receiving')) {
-        return 'confirm';
-    }
-    return 'todos';
+    return 'confirm';
 }
 
 export function canOpenBillflowWorkbenchStep(
