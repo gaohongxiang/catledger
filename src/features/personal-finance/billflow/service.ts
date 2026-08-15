@@ -1,5 +1,7 @@
 import services from '@/lib/services.ts';
 
+import { TransactionType } from '@/core/transaction.ts';
+
 import type {
     BillflowAccountGroup,
     BillflowAccountRow,
@@ -377,5 +379,28 @@ export const billflowApi = {
         idempotencyKey: string;
     }): Promise<void> {
         unwrap(await services.savePersonalFinanceBalanceReview(request));
+    },
+    async addOpeningBalance(request: {
+        accountId: string;
+        amount: number;
+        time: number;
+        utcOffset: number;
+        clientSessionId: string;
+    }): Promise<void> {
+        unwrap(await services.addTransaction({
+            type: TransactionType.ModifyBalance,
+            categoryId: '0',
+            time: request.time,
+            utcOffset: request.utcOffset,
+            sourceAccountId: request.accountId,
+            destinationAccountId: '0',
+            sourceAmount: request.amount,
+            destinationAmount: 0,
+            hideAmount: false,
+            tagIds: [],
+            pictureIds: [],
+            comment: '',
+            clientSessionId: request.clientSessionId
+        }));
     }
 };

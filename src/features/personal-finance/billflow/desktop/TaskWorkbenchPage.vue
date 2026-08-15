@@ -200,10 +200,21 @@
                 <article class="account-card" :key="account.ledgerAccountId" v-for="account in newBalanceAccounts">
                     <div class="account-card__head">
                         <strong>{{ account.displayName }}</strong>
-                        <div class="account-card__actions">
-                            <v-btn size="small" variant="text" :loading="busy" @click="skipBalance(account)">{{ tt('personalFinance.billflow.balance.skip') }}</v-btn>
-                            <v-btn size="small" color="primary" variant="tonal" :loading="busy" @click="verifyBalance(account)">{{ tt('personalFinance.billflow.balance.verify') }}</v-btn>
-                        </div>
+                    </div>
+                    <amount-input
+                        density="compact"
+                        show-currency
+                        :currency="account.currency"
+                        :disabled="busy"
+                        :label="tt('personalFinance.billflow.balance.amount')"
+                        :model-value="balanceDrafts[account.ledgerAccountId] ?? 0"
+                        @update:model-value="value => setBalanceDraft(account.ledgerAccountId, value)"
+                    />
+                    <div class="account-card__actions">
+                        <v-btn size="small" variant="text" :loading="busy" @click="skipBalance(account)">{{ tt('personalFinance.billflow.balance.skip') }}</v-btn>
+                        <v-btn size="small" color="primary" variant="tonal" :loading="busy" :disabled="!canSaveBalance(account.ledgerAccountId)" @click="verifyBalance(account)">
+                            {{ tt('personalFinance.billflow.balance.save') }}
+                        </v-btn>
                     </div>
                 </article>
             </template>
@@ -268,8 +279,9 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { mdiRefresh, mdiTrayArrowUp } from '@mdi/js';
 
+import AmountInput from '@/components/desktop/AmountInput.vue';
 import { useI18n } from '@/locales/helpers.ts';
-import { parseDateTimeFromUnixTimeWithBrowserTimezone } from '@/lib/datetime.ts';
+import { getBrowserTimezoneOffsetMinutes, parseDateTimeFromUnixTimeWithBrowserTimezone } from '@/lib/datetime.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { useAccountsStore } from '@/stores/account.ts';
@@ -279,6 +291,7 @@ import { todoKindKey, todoReasonKey } from '../presentation.ts';
 import { billflowApi } from '../service.ts';
 import {
     BILLFLOW_ACCOUNT_BUCKETS,
+    BILLFLOW_OPENING_BALANCE_UNIX_TIME,
     BILLFLOW_WORKBENCH_STEPS,
     accountBucketHintKey,
     billflowDirectionKey,
@@ -323,6 +336,7 @@ const openTodos = ref<readonly BillflowTodo[]>([]);
 const cardAccounts = ref<CardCycleAccount[]>([]);
 const createdLedgerIds = ref<string[]>([]);
 const answeredLedgerIds = ref<string[]>([]);
+const balanceDrafts = reactive<Record<string, number>>({});
 const userStep = ref<BillflowWorkbenchStep>();
 const accountBucket = ref<BillflowAccountBucket>('pending');
 const userPickedBucket = ref(false);
@@ -874,36 +888,66 @@ async function confirmInstallment(todo: BillflowTodo): Promise<void> {
 }
 
 async function skipBalance(account: { ledgerAccountId: string }): Promise<void> {
-    await saveBalance(account, 'unverified', '');
-}
-
-async function verifyBalance(account: { ledgerAccountId: string }): Promise<void> {
-    await saveBalance(account, 'verified', todayCivilDate());
-}
-
-async function saveBalance(account: { ledgerAccountId: string }, status: 'unverified' | 'verified', asOfDate: string): Promise<void> {
     busy.value = true;
     try {
-        const review = cardAccounts.value.find(card => card.ledgerAccountId === account.ledgerAccountId)?.balanceReview;
-        await billflowApi.saveBalanceReview({
-            ledgerAccountId: account.ledgerAccountId,
-            status,
-            asOfDate,
-            expectedVersion: review?.version ?? 0,
-            idempotencyKey: generateRandomUUID()
-        });
-        if (!answeredLedgerIds.value.includes(account.ledgerAccountId)) {
-            answeredLedgerIds.value = [...answeredLedgerIds.value, account.ledgerAccountId];
-        }
-        if (task.value) {
-            persistBalanceMemory(task.value.id);
-        }
-        cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
+        await persistBalanceReview(account, 'unverified', '');
     } catch {
         error.value = true;
     } finally {
         busy.value = false;
     }
+}
+
+function setBalanceDraft(ledgerAccountId: string, value: unknown): void {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+        return;
+    }
+    balanceDrafts[ledgerAccountId] = value;
+}
+
+function canSaveBalance(ledgerAccountId: string): boolean {
+    return Number.isSafeInteger(balanceDrafts[ledgerAccountId] ?? 0);
+}
+
+async function verifyBalance(account: { ledgerAccountId: string }): Promise<void> {
+    const amount = balanceDrafts[account.ledgerAccountId] ?? 0;
+    if (!Number.isSafeInteger(amount)) {
+        return;
+    }
+    busy.value = true;
+    try {
+        await billflowApi.addOpeningBalance({
+            accountId: account.ledgerAccountId,
+            amount,
+            time: BILLFLOW_OPENING_BALANCE_UNIX_TIME,
+            utcOffset: getBrowserTimezoneOffsetMinutes(BILLFLOW_OPENING_BALANCE_UNIX_TIME),
+            clientSessionId: generateRandomUUID()
+        });
+        await persistBalanceReview(account, 'verified', todayCivilDate());
+        await accountsStore.loadAllAccounts({ force: true });
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function persistBalanceReview(account: { ledgerAccountId: string }, status: 'unverified' | 'verified', asOfDate: string): Promise<void> {
+    const review = cardAccounts.value.find(card => card.ledgerAccountId === account.ledgerAccountId)?.balanceReview;
+    await billflowApi.saveBalanceReview({
+        ledgerAccountId: account.ledgerAccountId,
+        status,
+        asOfDate,
+        expectedVersion: review?.version ?? 0,
+        idempotencyKey: generateRandomUUID()
+    });
+    if (!answeredLedgerIds.value.includes(account.ledgerAccountId)) {
+        answeredLedgerIds.value = [...answeredLedgerIds.value, account.ledgerAccountId];
+    }
+    if (task.value) {
+        persistBalanceMemory(task.value.id);
+    }
+    cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
 }
 
 function balanceMemoryKey(taskId: string): string {

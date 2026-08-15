@@ -3026,8 +3026,10 @@
             },
             "balance": {
                 "title": "How much is in the new accounts? (optional)",
-                "hint": "Statements are activity, not the money already in the account. You can skip; the overview will mark balances unverified.",
+                "hint": "Enter about how much is in the account now. Statements are activity; you can skip.",
+                "amount": "About how much now",
                 "skip": "Skip for now",
+                "save": "Save",
                 "verify": "Verified"
             },
             "mobile": {

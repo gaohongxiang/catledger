@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import type { PersonalFinanceImportBatch } from '../models.ts';
 import {
     BILLFLOW_ACCOUNT_BUCKETS,
+    BILLFLOW_OPENING_BALANCE_UNIX_TIME,
     BILLFLOW_WORKBENCH_STEPS,
     accountBucketHintKey,
     billflowDirectionKey,
@@ -193,7 +194,8 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
         expect(workbench).toContain('v-for="todo in openTodos"');
         expect(workbench).toContain('newBalanceAccounts');
-        expect(workbench).toContain('personalFinance.billflow.balance.title');
+        expect(workbench).toContain('personalFinance.billflow.balance.amount');
+        expect(workbench).toContain('personalFinance.billflow.balance.save');
         expect(workbench).toContain('currentStep === \'review\'');
         expect(workbench).toContain('userStep.value = \'confirm\'');
         expect(workbench).not.toContain('unverifiedCards');
@@ -262,23 +264,25 @@ describe('billflow task page wiring', () => {
         expect(createdAccountsNeedingBalance({
             createdLedgerIds: ['9', '8'],
             reused: [
-                { ledgerAccountId: '1', displayName: 'old' },
-                { ledgerAccountId: '9', displayName: 'new card' }
+                { ledgerAccountId: '1', displayName: 'old', currency: 'CNY' },
+                { ledgerAccountId: '9', displayName: 'new card', currency: 'CNY' }
             ],
             answeredLedgerIds: [],
             reviewedLedgerIds: []
-        })).toEqual([{ ledgerAccountId: '9', displayName: 'new card' }]);
+        })).toEqual([{ ledgerAccountId: '9', displayName: 'new card', currency: 'CNY' }]);
         expect(createdAccountsNeedingBalance({
             createdLedgerIds: ['9'],
-            reused: [{ ledgerAccountId: '9', displayName: 'new card' }],
+            reused: [{ ledgerAccountId: '9', displayName: 'new card', currency: 'CNY' }],
             answeredLedgerIds: ['9'],
             reviewedLedgerIds: []
         })).toEqual([]);
         expect(createdAccountsNeedingBalance({
             createdLedgerIds: ['9'],
-            reused: [{ ledgerAccountId: '9', displayName: 'new card' }],
+            reused: [{ ledgerAccountId: '9', displayName: 'new card', currency: 'CNY' }],
             answeredLedgerIds: [],
             reviewedLedgerIds: ['9']
         })).toEqual([]);
+        expect(BILLFLOW_OPENING_BALANCE_UNIX_TIME).toBe(946684800);
+        expect(BILLFLOW_OPENING_BALANCE_UNIX_TIME).toBeLessThan(1_700_000_000);
     });
 });

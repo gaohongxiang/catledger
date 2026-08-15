@@ -153,28 +153,30 @@ export function rememberCreatedLedgerIds(
 
 export function createdAccountsNeedingBalance(input: {
     createdLedgerIds: readonly string[];
-    reused: readonly Pick<BillflowAccountGroup, 'ledgerAccountId' | 'displayName'>[];
+    reused: readonly Pick<BillflowAccountGroup, 'ledgerAccountId' | 'displayName' | 'currency'>[];
     answeredLedgerIds: readonly string[];
     reviewedLedgerIds: readonly string[];
-}): { ledgerAccountId: string; displayName: string }[] {
+}): { ledgerAccountId: string; displayName: string; currency: string }[] {
     const answered = new Set(input.answeredLedgerIds);
     const reviewed = new Set(input.reviewedLedgerIds);
-    const names = new Map<string, string>();
+    const names = new Map<string, { displayName: string; currency: string }>();
     for (const group of input.reused) {
         if (group.ledgerAccountId) {
-            names.set(group.ledgerAccountId, group.displayName);
+            names.set(group.ledgerAccountId, { displayName: group.displayName, currency: group.currency });
         }
     }
-    const items: { ledgerAccountId: string; displayName: string }[] = [];
+    const items: { ledgerAccountId: string; displayName: string; currency: string }[] = [];
     for (const id of input.createdLedgerIds) {
-        const displayName = names.get(id);
-        if (!displayName || answered.has(id) || reviewed.has(id)) {
+        const item = names.get(id);
+        if (!item || answered.has(id) || reviewed.has(id)) {
             continue;
         }
-        items.push({ ledgerAccountId: id, displayName });
+        items.push({ ledgerAccountId: id, displayName: item.displayName, currency: item.currency });
     }
     return items;
 }
+
+export const BILLFLOW_OPENING_BALANCE_UNIX_TIME = 946684800;
 
 export type BillflowAccountBucket = 'pending' | 'reused' | 'excluded';
 
