@@ -21,9 +21,11 @@ describe('personal-finance simple web workflow', () => {
         const organizer = source('./BillOrganizerPage.vue');
         const router = source('../../../router/desktop.ts');
 
+        expect(organizer).toContain('TaskWorkbenchPage.vue');
         expect(organizer).toContain('ImportWorkbenchPage.vue');
         expect(organizer).toContain('ReconciliationWorkbenchPage.vue');
-        expect(organizer.match(/:embedded="true"/g)).toHaveLength(2);
+        expect(organizer).toContain("view === 'task'");
+        expect(organizer).toContain("value=\"task\"");
         expect(organizer).toContain('value="imports"');
         expect(organizer).toContain('value="reconciliation"');
         expect(router).toContain("path: '/personal-finance/bills'");
@@ -38,8 +40,9 @@ describe('personal-finance simple web workflow', () => {
         const loans = source('../loans/desktop/LoanWorkbenchPage.vue');
 
         expect(dashboard).toContain('personalFinance.dashboard.gettingStarted.boundary');
-        expect(dashboard).toContain('/personal-finance/bills?view=imports');
-        expect(dashboard).toContain('/personal-finance/bills?view=reconciliation');
+        expect(dashboard).toContain('to="/personal-finance/bills"');
+        expect(dashboard).not.toContain('/personal-finance/bills?view=imports');
+        expect(dashboard).not.toContain('/personal-finance/bills?view=reconciliation');
         expect(loans).toContain('<v-expansion-panels class="calculation-disclosure');
         expect(loans).toContain('personalFinance.loans.advanced.hint');
     });

@@ -2872,19 +2872,35 @@
             "gettingStarted": {
                 "open": "How to start",
                 "eyebrow": "First time here",
-                "title": "Start in three steps, without entering every purchase",
-                "subtitle": "Check your real accounts, upload statements in batches, then review only the few items that need a decision.",
+                "title": "Upload statements first, then handle a few todos",
+                "subtitle": "You do not need to create accounts by hand first. After upload, the system lists accounts to create or reuse. You can skip the first balance check, but it stays marked unverified.",
                 "dismiss": "Got it",
-                "account": "Check real accounts",
-                "accountHint": "Create only the money and debts you actually hold, with their current balances.",
-                "imports": "Upload statements in batches",
+                "account": "Create or reuse accounts",
+                "accountHint": "Create only the new ones; already confirmed accounts are reused by default and can still be changed.",
+                "imports": "Upload statements",
                 "importsHint": "Import Alipay, WeChat Pay, bank, and credit-card statements weekly or monthly.",
-                "review": "Review a few exceptions",
-                "reviewHint": "Confirm duplicate purchases, internal transfers, and refunds.",
-                "boundary": "Electronic payments do not need day-to-day manual entry. Use “new transaction” for cash, events without electronic evidence, or anything you want to see immediately."
+                "review": "Review only todos",
+                "reviewHint": "Clear transactions post automatically; only exceptions need a decision.",
+                "boundary": "Electronic payments do not need day-to-day manual entry. Use “new transaction” for cash, events without electronic evidence, or anything you want to see immediately. After creating an account you may skip the balance check, but it must stay marked unverified."
             },
             "drilldown": { "accounts": "View accounts", "transactions": "View transactions", "loans": "View loans", "imports": "Organize statements" },
-            "mobile": { "title": "Financial Overview", "heading": "Your position today", "subtitle": "Net worth, upcoming debt, actual cash flow, and statement coverage at a glance.", "automatic": "Formal ledger included automatically through today" }
+            "mobile": { "title": "Financial Overview", "heading": "Your position today", "subtitle": "Net worth, this month's spending, the next payment due, and a trust line.", "automatic": "Formal ledger included automatically through today" },
+            "headline": {
+                "nextPayment": "Next payment due",
+                "nextPaymentDate": "Due {date}",
+                "nextPaymentHint": "The nearest of the next loan installment and a card due date",
+                "noNextPayment": "Nothing due",
+                "monthConsumption": "This month's living spend, by actual date",
+                "trust": "Trust",
+                "trustHint": "Unverified balances are never shown as reconciled.",
+                "ready": "Figures are ready",
+                "provisional_month": "This month is provisional",
+                "uncategorized_count": "Uncategorized transactions",
+                "todo_open_count": "Open todos",
+                "balance_unverified_count": "Unverified balances",
+                "addTransaction": "Add a transaction",
+                "addTransactionHint": "Cash or anything you want to see now"
+            }
         },
         "simpleNav": {
             "daily": "Everyday bookkeeping",
@@ -2898,6 +2914,7 @@
             "subtitle": "You do not need to enter every electronic payment by hand. Upload Alipay, WeChat Pay, bank, and credit-card statements; the system organizes them first and asks only about ambiguous items.",
             "flowLabel": "Statement organization flow",
             "tab": {
+                "task": "Organize task",
                 "imports": "Upload & post",
                 "reconciliation": "Review overlaps"
             },
@@ -2908,6 +2925,63 @@
                 "organizeHint": "Find duplicates and overlaps",
                 "review": "Review exceptions",
                 "reviewHint": "Count each event only once"
+            }
+        },
+        "billflow": {
+            "title": "This organize task",
+            "subtitle": "Three headline counts on top; only todos unfold below.",
+            "error": "The organize task could not finish. Refresh and try again.",
+            "failed": "This task stopped because confirmed history conflicts. The difference is kept and nothing is overwritten.",
+            "run": "Organize now",
+            "confirmPost": "Confirm posting",
+            "files": {
+                "title": "Choose parsed statements",
+                "create": "Start organizing",
+                "empty": "No statements are ready yet",
+                "emptyHint": "Upload an Alipay, WeChat Pay, or bank statement first."
+            },
+            "summary": {
+                "created": "Accounts created",
+                "reused": "Accounts reused",
+                "posted": "Posted automatically",
+                "todos": "Need a look"
+            },
+            "accounts": {
+                "title": "Accounts to create",
+                "reusedHint": "{count} already confirmed accounts will be reused by default.",
+                "rows": "{count} rows",
+                "create": "Create"
+            },
+            "todos": {
+                "title": "Todos",
+                "empty": "Nothing needs a decision.",
+                "resolve": "Done",
+                "dismiss": "Skip for now",
+                "installment": "Treat as installment"
+            },
+            "todo": {
+                "unresolved_payment_account": "Not mapped to a ledger account yet",
+                "identity_conflict": "The same statement line conflicts",
+                "core_field_conflict": "Amount or direction does not match",
+                "ledger_mismatch": "Does not match posted history",
+                "cross_source_ambiguous": "The cross-statement link is unclear",
+                "transfer_unclear": "This may be a transfer",
+                "refund_unclear": "This may be a refund",
+                "repayment_unclear": "This may be a repayment",
+                "installment_candidate": "This may be an installment; only a few questions first",
+                "uncategorized": "Posted without a category"
+            },
+            "balance": {
+                "title": "Balance check (optional)",
+                "hint": "You can skip checking the opening balance, but it stays marked unverified.",
+                "skip": "Skip for now",
+                "verify": "Verified"
+            },
+            "mobile": {
+                "title": "Statement organizer",
+                "readOnly": "Mobile shows a summary only. Finish organizing on desktop.",
+                "empty": "No organize task yet.",
+                "legacy": "View upload history"
             }
         },
         "nav": "Statement Organizer",

@@ -43,19 +43,19 @@
                 </v-btn>
             </div>
             <div class="getting-started__steps">
-                <router-link to="/account/list">
-                    <v-icon :icon="mdiCreditCardOutline" />
-                    <span>01</span>
-                    <strong>{{ tt('personalFinance.dashboard.gettingStarted.account') }}</strong>
-                    <small>{{ tt('personalFinance.dashboard.gettingStarted.accountHint') }}</small>
-                </router-link>
-                <router-link to="/personal-finance/bills?view=imports">
+                <router-link to="/personal-finance/bills">
                     <v-icon :icon="mdiTrayArrowDown" />
-                    <span>02</span>
+                    <span>01</span>
                     <strong>{{ tt('personalFinance.dashboard.gettingStarted.imports') }}</strong>
                     <small>{{ tt('personalFinance.dashboard.gettingStarted.importsHint') }}</small>
                 </router-link>
-                <router-link to="/personal-finance/bills?view=reconciliation">
+                <router-link to="/personal-finance/bills">
+                    <v-icon :icon="mdiCreditCardOutline" />
+                    <span>02</span>
+                    <strong>{{ tt('personalFinance.dashboard.gettingStarted.account') }}</strong>
+                    <small>{{ tt('personalFinance.dashboard.gettingStarted.accountHint') }}</small>
+                </router-link>
+                <router-link to="/personal-finance/bills">
                     <v-icon :icon="mdiCheckCircleOutline" />
                     <span>03</span>
                     <strong>{{ tt('personalFinance.dashboard.gettingStarted.review') }}</strong>
@@ -80,24 +80,20 @@
                     <strong>{{ accountTotal('netWorth') }}</strong>
                     <small>{{ tt('personalFinance.dashboard.snapshot.authority') }}</small>
                 </router-link>
-                <router-link class="metric-card" :to="overview.drilldown.accounts">
-                    <span class="metric-label">{{ tt('personalFinance.dashboard.snapshot.assets') }}</span>
-                    <strong>{{ accountTotal('assets') }}</strong>
-                    <small>{{ tt('personalFinance.dashboard.snapshot.asOf', { date: overview.asOfDate }) }}</small>
+                <router-link class="metric-card" :to="transactionRangeLink(monthPeriod?.startDate ?? overview.startDate, monthPeriod?.endDate ?? overview.asOfDate)">
+                    <span class="metric-label">{{ tt('personalFinance.dashboard.quick.consumption') }}</span>
+                    <strong>{{ cashFlowTotal(monthPeriod?.amounts, 'consumption') }}</strong>
+                    <small>{{ tt('personalFinance.dashboard.headline.monthConsumption') }}</small>
                 </router-link>
-                <router-link class="metric-card" :to="overview.drilldown.accounts">
-                    <span class="metric-label">{{ tt('personalFinance.dashboard.snapshot.liabilities') }}</span>
-                    <strong>{{ accountTotal('liabilities') }}</strong>
-                    <div class="metric-foot">
-                        <small>{{ tt('personalFinance.dashboard.snapshot.creditCard', { amount: accountTotal('creditCardLiability') }) }}</small>
-                        <small>{{ tt('personalFinance.dashboard.snapshot.debtAccounts', { amount: accountTotal('debtAccountLiability') }) }}</small>
-                        <small>{{ tt('personalFinance.dashboard.snapshot.ledgerNotPlan') }}</small>
-                    </div>
+                <router-link class="metric-card" :to="overview.drilldown.loans">
+                    <span class="metric-label">{{ tt('personalFinance.dashboard.headline.nextPayment') }}</span>
+                    <strong>{{ nextPaymentLabel }}</strong>
+                    <small>{{ nextPaymentHint }}</small>
                 </router-link>
-                <router-link class="metric-card metric-card--liquid" :to="overview.drilldown.accounts">
-                    <span class="metric-label">{{ tt('personalFinance.dashboard.snapshot.liquidFunds') }}</span>
-                    <strong>{{ accountTotal('liquidFunds') }}</strong>
-                    <small>{{ tt('personalFinance.dashboard.snapshot.liquidScope') }}</small>
+                <router-link class="metric-card metric-card--liquid" to="/personal-finance/bills">
+                    <span class="metric-label">{{ tt('personalFinance.dashboard.headline.trust') }}</span>
+                    <strong>{{ trustHeadline }}</strong>
+                    <small>{{ tt('personalFinance.dashboard.headline.trustHint') }}</small>
                 </router-link>
             </section>
 
@@ -282,7 +278,7 @@
                         <h3>{{ tt('personalFinance.dashboard.coverage.title') }}</h3>
                         <p>{{ tt('personalFinance.dashboard.coverage.subtitle') }}</p>
                     </div>
-                    <router-link class="section-link" to="/personal-finance/bills?view=imports">{{ tt('personalFinance.dashboard.drilldown.imports') }} →</router-link>
+                    <router-link class="section-link" to="/personal-finance/bills">{{ tt('personalFinance.dashboard.drilldown.imports') }} →</router-link>
                 </div>
 
                 <div class="coverage-summary">
@@ -349,6 +345,8 @@ import { parseBigDecimal } from '@/lib/numeral.ts';
 
 import type { DashboardCashFlowAmount, DashboardCashFlowPeriodKind, DashboardDebtCurveAmount } from '../models.ts';
 import { formatLoanPptrAsPercentage } from '../../loans/state.ts';
+import { composeDashboardHeadline, nearestNextPayment, primaryDashboardHeadline } from '../../billflow/state.ts';
+import { billflowApi } from '../../billflow/service.ts';
 import { coverageTone, formatCoverageRange, sourceCoverageTone } from '../presentation.ts';
 import { useDashboard } from '../useDashboard.ts';
 import CashFlowTrendChart from './CashFlowTrendChart.vue';
@@ -399,9 +397,48 @@ const coverageHeadline = computed(() => {
     const tone = coverageTone(overview.value.coverage);
     return tone === 'success' ? tt('personalFinance.dashboard.trust.coverageComplete') : tt('personalFinance.dashboard.trust.coverageGaps');
 });
+const monthPeriod = computed(() => overview.value?.cashFlowPeriods.find(period => period.kind === 'month'));
+const nextPayment = computed(() => nearestNextPayment(overview.value?.debt.contracts ?? []));
+const nextPaymentLabel = computed(() => {
+    if (!nextPayment.value) return tt('personalFinance.dashboard.headline.noNextPayment');
+    return formatRawAmount(nextPayment.value.nextDueAmount, nextPayment.value.currency);
+});
+const nextPaymentHint = computed(() => nextPayment.value?.nextDueDate
+    ? tt('personalFinance.dashboard.headline.nextPaymentDate', { date: nextPayment.value.nextDueDate })
+    : tt('personalFinance.dashboard.headline.nextPaymentHint'));
+const headlineExtras = ref({ uncategorizedCount: 0, todoOpenCount: 0, balanceUnverifiedCount: 0 });
+const trustHeadline = computed(() => {
+    if (!overview.value) return tt('personalFinance.dashboard.trust.loading');
+    const code = primaryDashboardHeadline(composeDashboardHeadline({
+        coverageComplete: overview.value.coverage.complete,
+        accountsWithGaps: overview.value.coverage.accountsWithGaps,
+        uncategorizedCount: headlineExtras.value.uncategorizedCount,
+        todoOpenCount: headlineExtras.value.todoOpenCount,
+        balanceUnverifiedCount: headlineExtras.value.balanceUnverifiedCount
+    }));
+    return tt(`personalFinance.dashboard.headline.${code}`);
+});
 
 function refresh(): void {
-    dashboard.load().catch(() => undefined);
+    dashboard.load().then(loadHeadlineExtras).catch(() => undefined);
+}
+
+async function loadHeadlineExtras(): Promise<void> {
+    try {
+        const [ready, cards] = await Promise.all([
+            billflowApi.listTasks('ready'),
+            billflowApi.listCardAccounts(asOfDate.value)
+        ]);
+        const task = ready.items[0];
+        const todos = task ? await billflowApi.listTodos(task.id, 'open') : { items: [] };
+        headlineExtras.value = {
+            uncategorizedCount: todos.items.filter(item => item.todoKind === 'uncategorized').length,
+            todoOpenCount: task?.todoOpenCount ?? todos.items.length,
+            balanceUnverifiedCount: cards.filter(card => !card.balanceReview || card.balanceReview.status === 'unverified').length
+        };
+    } catch {
+        headlineExtras.value = { uncategorizedCount: 0, todoOpenCount: 0, balanceUnverifiedCount: 0 };
+    }
 }
 
 function dismissGettingStarted(): void {

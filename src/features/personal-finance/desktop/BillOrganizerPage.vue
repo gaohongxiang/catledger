@@ -38,6 +38,9 @@
             <v-divider />
 
             <v-tabs class="organizer-tabs px-3 px-lg-5" color="primary" v-model="activeView">
+                <v-tab value="task" :prepend-icon="mdiClipboardCheckOutline">
+                    {{ tt('personalFinance.organizer.tab.task') }}
+                </v-tab>
                 <v-tab value="imports" :prepend-icon="mdiTrayArrowDown">
                     {{ tt('personalFinance.organizer.tab.imports') }}
                 </v-tab>
@@ -47,7 +50,8 @@
             </v-tabs>
         </v-card>
 
-        <personal-finance-import-workbench-page class="mt-4" :embedded="true" v-if="activeView === 'imports'" />
+        <personal-finance-task-workbench-page class="mt-4" v-if="activeView === 'task'" />
+        <personal-finance-import-workbench-page class="mt-4" :embedded="true" v-else-if="activeView === 'imports'" />
         <personal-finance-reconciliation-workbench-page class="mt-4" :embedded="true" v-else />
     </div>
 </template>
@@ -55,21 +59,27 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { mdiLinkVariant, mdiTrayArrowDown } from '@mdi/js';
+import { mdiClipboardCheckOutline, mdiLinkVariant, mdiTrayArrowDown } from '@mdi/js';
 
 import { useI18n } from '@/locales/helpers.ts';
 
+import PersonalFinanceTaskWorkbenchPage from '../billflow/desktop/TaskWorkbenchPage.vue';
 import PersonalFinanceImportWorkbenchPage from './ImportWorkbenchPage.vue';
 import PersonalFinanceReconciliationWorkbenchPage from '../reconciliation/desktop/ReconciliationWorkbenchPage.vue';
 
-type BillOrganizerView = 'imports' | 'reconciliation';
+type BillOrganizerView = 'task' | 'imports' | 'reconciliation';
 
 const { tt } = useI18n();
 const route = useRoute();
 const router = useRouter();
 
 const activeView = computed<BillOrganizerView>({
-    get: () => route.query['view'] === 'reconciliation' ? 'reconciliation' : 'imports',
+    get: () => {
+        if (route.query['view'] === 'imports' || route.query['view'] === 'reconciliation') {
+            return route.query['view'];
+        }
+        return 'task';
+    },
     set: view => {
         if (view === activeView.value) {
             return;
@@ -77,7 +87,7 @@ const activeView = computed<BillOrganizerView>({
 
         router.replace({
             path: '/personal-finance/bills',
-            query: { view }
+            query: view === 'task' ? {} : { view }
         });
     }
 });
@@ -127,53 +137,36 @@ const activeView = computed<BillOrganizerView>({
     min-height: 104px;
     gap: 12px;
     padding: 16px;
-    background: rgba(var(--v-theme-surface), 0.96);
+    background: rgb(var(--v-theme-surface));
 }
 
-.organizer-steps li > span {
-    display: grid;
+.organizer-steps span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 28px;
     height: 28px;
-    flex: 0 0 28px;
-    place-items: center;
-    border-radius: 50%;
+    border-radius: 999px;
     background: rgba(var(--v-theme-primary), 0.12);
     color: rgb(var(--v-theme-primary));
-    font-size: 0.75rem;
-    font-weight: 800;
+    font-weight: 700;
 }
 
-.organizer-steps strong,
 .organizer-steps small {
     display: block;
-}
-
-.organizer-steps strong {
-    font-size: 0.86rem;
-}
-
-.organizer-steps small {
-    margin-top: 5px;
+    margin-top: 4px;
     color: rgba(var(--v-theme-on-surface), 0.6);
-    font-size: 0.72rem;
-    line-height: 1.45;
 }
 
-.organizer-tabs :deep(.v-tab) {
-    min-height: 58px;
-    font-weight: 700;
-    letter-spacing: 0;
-    text-transform: none;
+.organizer-tabs {
+    min-height: 64px;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1100px) {
     .organizer-heading {
         grid-template-columns: 1fr;
-        gap: 28px;
     }
-}
 
-@media (max-width: 720px) {
     .organizer-steps {
         grid-template-columns: 1fr;
     }

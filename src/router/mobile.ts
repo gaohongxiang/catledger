@@ -11,6 +11,7 @@ import TransactionListPage from '@/views/mobile/transactions/ListPage.vue';
 import TransactionEditPage from '@/views/mobile/transactions/EditPage.vue';
 import TransactionAmountFilterPage from '@/views/mobile/transactions/AmountFilterPage.vue';
 import PersonalFinanceImportHistoryPage from '@/features/personal-finance/mobile/ImportHistoryPage.vue';
+import PersonalFinanceTaskSummaryPage from '@/features/personal-finance/billflow/mobile/TaskSummaryPage.vue';
 import PersonalFinanceReconciliationSummaryPage from '@/features/personal-finance/reconciliation/mobile/ReconciliationSummaryPage.vue';
 import PersonalFinanceLoanSummaryPage from '@/features/personal-finance/loans/mobile/LoanSummaryPage.vue';
 import PersonalFinanceDashboardPage from '@/features/personal-finance/dashboard/mobile/DashboardPage.vue';
@@ -184,6 +185,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/transaction/detail',
         async: asyncResolve(TransactionEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/personal-finance/bills',
+        async: asyncResolve(PersonalFinanceTaskSummaryPage),
         beforeEnter: [checkLogin]
     },
     {

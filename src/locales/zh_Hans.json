@@ -2872,19 +2872,35 @@
             "gettingStarted": {
                 "open": "使用指南",
                 "eyebrow": "第一次使用",
-                "title": "三步开始，不用逐笔手记",
-                "subtitle": "先核对真实账户，再批量上传账单，最后只处理少量待确认项。",
+                "title": "先上传账单，再处理少数待办",
+                "subtitle": "不必先手工建账户。上传后系统会列出需要新建和可以沿用的账户；余额核对可以先跳过，但会标明未核对。",
                 "dismiss": "知道了",
-                "account": "核对真实账户",
-                "accountHint": "只建立实际持有的钱和负债，并填写当前余额。",
-                "imports": "批量上传账单",
+                "account": "新建或沿用账户",
+                "accountHint": "需要新建的点「新建」；已经确认过的账户默认沿用，可改。",
+                "imports": "上传账单",
                 "importsHint": "支付宝、微信、银行卡和信用卡可以按周或月导入。",
-                "review": "处理少数待确认项",
-                "reviewHint": "把重复消费、内部转账和退款确认清楚。",
-                "boundary": "电子支付不必平时逐笔录入；现金、无电子证据或希望即时查看的交易再使用“记一笔”。"
+                "review": "只处理待办",
+                "reviewHint": "清楚的交易会自动入账，只有例外才需要你确认。",
+                "boundary": "电子支付不必平时逐笔录入；现金、无电子证据或希望即时查看的交易再使用“记一笔”。首次新建账户后可跳过余额核对，但必须标明未核对。"
             },
             "drilldown": { "accounts": "查看账户", "transactions": "查看交易", "loans": "查看贷款", "imports": "整理账单" },
-            "mobile": { "title": "财务总览", "heading": "今天的财务位置", "subtitle": "一屏查看净资产、近期还款、真实现金流和账单覆盖。", "automatic": "自动纳入截至今天的正式账本" }
+            "mobile": { "title": "财务总览", "heading": "今天的财务位置", "subtitle": "一屏查看净资产、本月消费、下一笔待还和可信度。", "automatic": "自动纳入截至今天的正式账本" },
+            "headline": {
+                "nextPayment": "下一笔待还",
+                "nextPaymentDate": "{date} 到期",
+                "nextPaymentHint": "来自贷款下一期与信用卡到期中最近的一笔",
+                "noNextPayment": "暂无待还",
+                "monthConsumption": "本月生活消费，按实际发生日",
+                "trust": "可信度",
+                "trustHint": "未核对余额不会被说成已经对账。",
+                "ready": "口径可用",
+                "provisional_month": "本月暂结",
+                "uncategorized_count": "有未分类交易",
+                "todo_open_count": "有待办未处理",
+                "balance_unverified_count": "有余额未核对",
+                "addTransaction": "记一笔",
+                "addTransactionHint": "现金或即时要看的交易"
+            }
         },
         "simpleNav": {
             "daily": "日常记账",
@@ -2898,6 +2914,7 @@
             "subtitle": "电子支付不用逐笔手记。上传支付宝、微信、银行和信用卡账单，系统先整理，只把有歧义的项目交给你。",
             "flowLabel": "账单整理流程",
             "tab": {
+                "task": "整理任务",
                 "imports": "上传与入账",
                 "reconciliation": "处理重复与转账"
             },
@@ -2908,6 +2925,63 @@
                 "organizeHint": "识别重复与重叠来源",
                 "review": "只确认异常",
                 "reviewHint": "正式账本只统计一次"
+            }
+        },
+        "billflow": {
+            "title": "这一次整理",
+            "subtitle": "上面三行结论，下面只展开需要你看的待办。",
+            "error": "整理任务未能完成，请刷新后重试。",
+            "failed": "这次整理因为已确认事实冲突而停止，差异已保留，不会覆盖历史。",
+            "run": "开始自动整理",
+            "confirmPost": "确认入账",
+            "files": {
+                "title": "选择已解析的账单",
+                "create": "开始整理",
+                "empty": "还没有可整理的账单",
+                "emptyHint": "先上传支付宝、微信或银行账单。"
+            },
+            "summary": {
+                "created": "新建账户",
+                "reused": "沿用账户",
+                "posted": "自动入账",
+                "todos": "需要你看"
+            },
+            "accounts": {
+                "title": "需要新建的账户",
+                "reusedHint": "已确认的 {count} 个账户会默认沿用，不必每次再点确认。",
+                "rows": "{count} 笔",
+                "create": "新建"
+            },
+            "todos": {
+                "title": "待办",
+                "empty": "没有需要处理的待办。",
+                "resolve": "已处理",
+                "dismiss": "先跳过",
+                "installment": "按分期处理"
+            },
+            "todo": {
+                "unresolved_payment_account": "还没对应到账本账户",
+                "identity_conflict": "同一笔账单内容有冲突",
+                "core_field_conflict": "金额或方向对不上",
+                "ledger_mismatch": "和已入账记录不一致",
+                "cross_source_ambiguous": "跨账单关系不清楚",
+                "transfer_unclear": "可能是转账，需要确认",
+                "refund_unclear": "可能是退款，需要确认",
+                "repayment_unclear": "可能是还款，需要确认",
+                "installment_candidate": "可能是分期，先少问几项",
+                "uncategorized": "已入账但还没分类"
+            },
+            "balance": {
+                "title": "余额核对（可跳过）",
+                "hint": "新建账户后可以先不核对本期余额，但会标明未核对。",
+                "skip": "先不核对",
+                "verify": "已核对"
+            },
+            "mobile": {
+                "title": "账单整理",
+                "readOnly": "手机上只看摘要。完整整理请用桌面。",
+                "empty": "还没有整理任务。",
+                "legacy": "查看历史上传"
             }
         },
         "nav": "账单整理",

@@ -1029,6 +1029,51 @@ export default {
     getPersonalFinanceDashboardOverview: (params: { startDate: string, asOfDate: string, months: number, firstDayOfWeek: number }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/dashboard/overview.json?start_date=${encodeURIComponent(params.startDate)}&as_of_date=${encodeURIComponent(params.asOfDate)}&months=${params.months}&week_start=${params.firstDayOfWeek}`);
     },
+    createPersonalFinanceBillflowTask: (request: { fileIds: string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/create.json', request);
+    },
+    listPersonalFinanceBillflowTasks: (params: { status: string, limit: number }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/list.json?status=${encodeURIComponent(params.status)}&limit=${params.limit}`);
+    },
+    getPersonalFinanceBillflowTask: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/get.json?id=${encodeURIComponent(taskId)}`);
+    },
+    getPersonalFinanceBillflowAccounts: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/accounts.json?id=${encodeURIComponent(taskId)}`);
+    },
+    createPersonalFinanceBillflowAccount: (request: { taskId: string, expectedVersion: number, sampleRowId: string, name: string, category: number, currency: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/create.json', request);
+    },
+    runPersonalFinanceBillflowTask: (request: { taskId: string, expectedVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/run.json', request);
+    },
+    confirmPersonalFinanceBillflowPost: (request: { taskId: string, expectedVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/confirm_post.json', request);
+    },
+    listPersonalFinanceBillflowTodos: (params: { taskId: string, status: string, limit: number }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/todos.json?id=${encodeURIComponent(params.taskId)}&status=${encodeURIComponent(params.status)}&limit=${params.limit}`);
+    },
+    resolvePersonalFinanceBillflowTodo: (request: { todoId: string, expectedVersion: number, status: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/todos/resolve.json', request);
+    },
+    getPersonalFinanceBillflowUndoImpact: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/undo_impact.json?id=${encodeURIComponent(taskId)}`);
+    },
+    undoPersonalFinanceBillflowTask: (request: { taskId: string, expectedVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/undo.json', request);
+    },
+    getPersonalFinanceInstallmentCandidate: ({ candidateId }: { candidateId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/installments/candidates/get.json?id=${encodeURIComponent(candidateId)}`);
+    },
+    confirmPersonalFinanceInstallmentCandidate: (request: Record<string, unknown>): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/installments/candidates/confirm.json', request);
+    },
+    listPersonalFinanceCardCycleAccounts: ({ asOfDate }: { asOfDate: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/card_cycle/accounts.json?as_of_date=${encodeURIComponent(asOfDate)}`);
+    },
+    savePersonalFinanceBalanceReview: (request: { ledgerAccountId: string, status: string, asOfDate: string, expectedVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/accounts/balance_review.json', request);
+    },
     getLatestExchangeRates: (param: { ignoreError?: boolean }): ApiResponsePromise<LatestExchangeRateResponse> => {
         return axios.get<ApiResponse<LatestExchangeRateResponse>>('v1/exchange_rates/latest.json', {
             ignoreError: !!param.ignoreError,

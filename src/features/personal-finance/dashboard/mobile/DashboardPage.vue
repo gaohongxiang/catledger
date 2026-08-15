@@ -14,27 +14,28 @@
         <f7-block strong inset class="mobile-error" v-else-if="error">{{ tt('personalFinance.dashboard.error.load') }}</f7-block>
 
         <template v-if="overview">
-            <f7-block strong inset class="trust-block" :class="{ warning: overview.trust.hasWarnings }">
+            <f7-block strong inset class="trust-block" :class="{ warning: trustCode !== 'ready' }">
                 <div class="display-flex align-items-center">
-                    <f7-icon :f7="overview.trust.hasWarnings ? 'exclamationmark_shield' : 'checkmark_shield'" size="22" />
-                    <strong class="margin-left-half">{{ overview.trust.hasWarnings ? tt('personalFinance.dashboard.trust.review') : tt('personalFinance.dashboard.trust.ready') }}</strong>
+                    <f7-icon :f7="trustCode !== 'ready' ? 'exclamationmark_shield' : 'checkmark_shield'" size="22" />
+                    <strong class="margin-left-half">{{ tt(`personalFinance.dashboard.headline.${trustCode}`) }}</strong>
                 </div>
-                <p>{{ tt('personalFinance.dashboard.trust.unconfirmedExcluded') }}</p>
+                <p>{{ tt('personalFinance.dashboard.headline.trustHint') }}</p>
             </f7-block>
 
-            <f7-block-title>{{ tt('personalFinance.dashboard.snapshot.title') }}</f7-block-title>
             <div class="mobile-metric-grid">
                 <f7-link class="mobile-metric primary" :href="overview.drilldown.accounts">
                     <span>{{ tt('personalFinance.dashboard.snapshot.netWorth') }}</span><strong>{{ accountTotal('netWorth') }}</strong>
                 </f7-link>
-                <f7-link class="mobile-metric" :href="overview.drilldown.accounts">
-                    <span>{{ tt('personalFinance.dashboard.snapshot.liquidFunds') }}</span><strong>{{ accountTotal('liquidFunds') }}</strong>
+                <f7-link class="mobile-metric" :href="transactionRangeLink(monthPeriod?.startDate ?? overview.startDate, monthPeriod?.endDate ?? overview.asOfDate)">
+                    <span>{{ tt('personalFinance.dashboard.quick.consumption') }}</span><strong>{{ cashFlowTotal(monthPeriod?.amounts, 'consumption') }}</strong>
                 </f7-link>
-                <f7-link class="mobile-metric" :href="overview.drilldown.accounts">
-                    <span>{{ tt('personalFinance.dashboard.snapshot.assets') }}</span><strong>{{ accountTotal('assets') }}</strong>
+                <f7-link class="mobile-metric" href="/personal-finance/loans">
+                    <span>{{ tt('personalFinance.dashboard.headline.nextPayment') }}</span>
+                    <strong>{{ nextPayment ? formatRawAmount(nextPayment.nextDueAmount, nextPayment.currency) : tt('personalFinance.dashboard.headline.noNextPayment') }}</strong>
                 </f7-link>
-                <f7-link class="mobile-metric" :href="overview.drilldown.accounts">
-                    <span>{{ tt('personalFinance.dashboard.snapshot.liabilities') }}</span><strong>{{ accountTotal('liabilities') }}</strong>
+                <f7-link class="mobile-metric" href="/transaction/add">
+                    <span>{{ tt('personalFinance.dashboard.headline.addTransaction') }}</span>
+                    <strong>{{ tt('personalFinance.dashboard.headline.addTransactionHint') }}</strong>
                 </f7-link>
             </div>
 
@@ -83,7 +84,7 @@
                     <span>{{ tt('personalFinance.dashboard.coverage.duplicates') }} <strong>{{ overview.coverage.exactDuplicateRowCount + overview.coverage.identityConflictRowCount }}</strong></span>
                     <span>{{ tt('personalFinance.dashboard.coverage.failed') }} <strong>{{ overview.coverage.failedBatchCount }}</strong></span>
                 </div>
-                <f7-button outline href="/personal-finance/imports">{{ tt('personalFinance.dashboard.drilldown.imports') }}</f7-button>
+                <f7-button outline href="/personal-finance/bills">{{ tt('personalFinance.dashboard.drilldown.imports') }}</f7-button>
             </f7-block>
         </template>
     </f7-page>
@@ -98,14 +99,27 @@ import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
 
 import type { DashboardCashFlowPeriodKind } from '../models.ts';
 import { useDashboard } from '../useDashboard.ts';
+import { composeDashboardHeadline, nearestNextPayment, primaryDashboardHeadline } from '../../billflow/state.ts';
 
 const { tt } = useI18n();
 const exchangeRatesStore = useExchangeRatesStore();
 const dashboard = useDashboard();
-const { asOfDate, overview, loading, error, accountTotal, debtTotal, cashFlowTotal, cashFlowOutflowTotal, cashFlowDebtServiceTotal, cashFlowDebtRatio } = dashboard;
+const { asOfDate, overview, loading, error, accountTotal, debtTotal, cashFlowTotal, cashFlowOutflowTotal, cashFlowDebtServiceTotal, cashFlowDebtRatio, formatRawAmount } = dashboard;
 const periodOptions: DashboardCashFlowPeriodKind[] = ['today', 'week', 'month', 'year'];
 const selectedPeriodKind = ref<DashboardCashFlowPeriodKind>('month');
 const selectedPeriod = computed(() => overview.value?.cashFlowPeriods.find(period => period.kind === selectedPeriodKind.value));
+const monthPeriod = computed(() => overview.value?.cashFlowPeriods.find(period => period.kind === 'month'));
+const nextPayment = computed(() => nearestNextPayment(overview.value?.debt.contracts ?? []));
+const trustCode = computed(() => {
+    if (!overview.value) return 'ready';
+    return primaryDashboardHeadline(composeDashboardHeadline({
+        coverageComplete: overview.value.coverage.complete,
+        accountsWithGaps: overview.value.coverage.accountsWithGaps,
+        uncategorizedCount: 0,
+        todoOpenCount: 0,
+        balanceUnverifiedCount: 0
+    }));
+});
 const debtBurdenRatio = computed(() => dashboard.showAmounts.value ? cashFlowDebtRatio(selectedPeriod.value?.amounts) : undefined);
 
 function transactionRangeLink(startDate: string, endDate: string): string {

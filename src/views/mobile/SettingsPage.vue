@@ -10,7 +10,7 @@
             <f7-list-item :title="tt('Transaction Templates')" link="/template/list"></f7-list-item>
             <f7-list-item :title="tt('Scheduled Transactions')" link="/schedule/list" v-if="isUserScheduledTransactionEnabled()"></f7-list-item>
             <f7-list-item :title="tt('Data Management')" link="/user/data/management"></f7-list-item>
-            <f7-list-item :title="tt('personalFinance.nav')" link="/personal-finance/imports"></f7-list-item>
+            <f7-list-item :title="tt('personalFinance.nav')" link="/personal-finance/bills"></f7-list-item>
             <f7-list-item :title="tt('personalFinance.reconciliation.nav')" link="/personal-finance/reconciliation"></f7-list-item>
             <f7-list-item :title="tt('personalFinance.loans.nav')" link="/personal-finance/loans"></f7-list-item>
             <f7-list-item :title="tt('personalFinance.dashboard.nav')" link="/personal-finance/dashboard"></f7-list-item>
