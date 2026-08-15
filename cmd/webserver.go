@@ -95,6 +95,12 @@ func startWebServer(c *core.CliContext) error {
 		return err
 	}
 
+	err = api.RegisterPersonalFinanceUserDataHooks()
+	if err != nil {
+		log.BootErrorf(c, "[webserver.startWebServer] registers personal finance user data hooks failed, because %s", err.Error())
+		return err
+	}
+
 	err = requestid.InitializeRequestIdGenerator(c, config)
 
 	if err != nil {

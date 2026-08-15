@@ -234,8 +234,8 @@ func (r *Repository) ListAllImportFiles(c core.Context, uid int64) ([]*ImportFil
 	return files, nil
 }
 
-// ClearPersonalFinanceUserData 在一个隐私事务中按依赖逆序删除全部 PF 用户数据。
-func (r *Repository) ClearPersonalFinanceUserData(c core.Context, uid int64) error {
+// ClearImportingUserData 在一个隐私事务中按依赖逆序删除 importing 用户表，不含对账/贷款/v006。
+func (r *Repository) ClearImportingUserData(c core.Context, uid int64) error {
 	if uid < 1 {
 		return ErrImportRequestInvalid
 	}

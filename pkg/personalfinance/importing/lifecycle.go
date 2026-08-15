@@ -92,7 +92,7 @@ type LifecycleRepository interface {
 	GetUndoImpact(c core.Context, uid int64, batchId int64) (*UndoImpact, error)
 	GetImportDataStatistics(c core.Context, uid int64) (*ImportDataStatistics, error)
 	ListAllImportFiles(c core.Context, uid int64) ([]*ImportFile, error)
-	ClearPersonalFinanceUserData(c core.Context, uid int64) error
+	ClearImportingUserData(c core.Context, uid int64) error
 	CheckUserConsistency(c core.Context, uid int64) (*UserConsistencyReport, []*ImportFile, error)
 	ListAllRegisteredFinalObjectKeys(c core.Context) (map[string]struct{}, error)
 }
@@ -211,8 +211,8 @@ func (s *LifecycleService) GetImportDataStatistics(c core.Context, uid int64) (*
 	return statistics, nil
 }
 
-// ClearUserData 先删已登记最终对象，再以一个隐私事务逆序清理 PF 用户数据。
-func (s *LifecycleService) ClearUserData(c core.Context, uid int64) error {
+// DeleteRegisteredObjects 幂等删除当前 uid 已登记的最终对象，不改数据库行。
+func (s *LifecycleService) DeleteRegisteredObjects(c core.Context, uid int64) error {
 	if uid < 1 {
 		return ErrImportRequestInvalid
 	}
@@ -228,7 +228,15 @@ func (s *LifecycleService) ClearUserData(c core.Context, uid int64) error {
 			return ErrImportStorageUnavailable
 		}
 	}
-	if err = s.repository.ClearPersonalFinanceUserData(c, uid); err != nil {
+	return nil
+}
+
+// ClearUserData 先删已登记最终对象，再清理 importing 用户表。全部 pf_ 用户表由 core 钩子清空。
+func (s *LifecycleService) ClearUserData(c core.Context, uid int64) error {
+	if err := s.DeleteRegisteredObjects(c, uid); err != nil {
+		return err
+	}
+	if err := s.repository.ClearImportingUserData(c, uid); err != nil {
 		return ErrImportPersistenceUnavailable
 	}
 	return nil
