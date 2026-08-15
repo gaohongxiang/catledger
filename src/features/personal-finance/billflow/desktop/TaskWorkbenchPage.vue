@@ -776,10 +776,6 @@ function classifiedCategoryLabel(row: BillflowClassifiedRow): string {
     return categoryName(row.categoryId);
 }
 
-function categoryLabel(todo: BillflowTodo): string {
-    return categoryName(todo.categoryId);
-}
-
 function categoryName(categoryId?: string): string {
     if (!categoryId) {
         return '';
