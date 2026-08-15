@@ -91,16 +91,16 @@ func (s *Service) ListClassifiedRows(c core.Context, uid int64, taskId int64) ([
 	if err != nil {
 		return nil, err
 	}
-	openPage, err := s.repository.ListTodos(c, uid, taskId, TODO_STATUS_OPEN, nil, maximumRepositoryPageSize)
+	openPage, err := s.listAllTodos(c, uid, taskId, TODO_STATUS_OPEN)
 	if err != nil {
-		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		return nil, err
 	}
-	resolvedPage, err := s.repository.ListTodos(c, uid, taskId, TODO_STATUS_RESOLVED, nil, maximumRepositoryPageSize)
+	resolvedPage, err := s.listAllTodos(c, uid, taskId, TODO_STATUS_RESOLVED)
 	if err != nil {
-		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		return nil, err
 	}
-	openByRow := assignableTodosByRow(todoPageItems(openPage))
-	resolvedByRow := assignableTodosByRow(todoPageItems(resolvedPage))
+	openByRow := assignableTodosByRow(openPage)
+	resolvedByRow := assignableTodosByRow(resolvedPage)
 	items := make([]*ClassifiedRowView, 0)
 	for batchId, rows := range rowsByBatch {
 		sourceType := sourceByBatch[batchId]
@@ -130,8 +130,25 @@ func (s *Service) ListClassifiedRows(c core.Context, uid int64, taskId int64) ([
 		}
 		return items[i].RowId > items[j].RowId
 	})
-	if len(items) > maximumRepositoryPageSize {
-		items = items[:maximumRepositoryPageSize]
+	if len(items) > 2000 {
+		items = items[:2000]
+	}
+	return items, nil
+}
+
+func (s *Service) listAllTodos(c core.Context, uid int64, taskId int64, status TodoStatus) ([]*Todo, error) {
+	items := make([]*Todo, 0)
+	var cursor *TodoCursor
+	for page := 0; page < 50; page++ {
+		result, err := s.repository.ListTodos(c, uid, taskId, status, cursor, maximumRepositoryPageSize)
+		if err != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		items = append(items, todoPageItems(result)...)
+		if result == nil || result.NextCursor == nil {
+			return items, nil
+		}
+		cursor = result.NextCursor
 	}
 	return items, nil
 }

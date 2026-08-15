@@ -2,6 +2,8 @@ import services from '@/lib/services.ts';
 
 import { TransactionType } from '@/core/transaction.ts';
 
+import { BILLFLOW_TODO_MAX_PAGES, BILLFLOW_TODO_PAGE_LIMIT } from './state.ts';
+
 import type {
     BillflowAccountGroup,
     BillflowAccountRow,
@@ -376,8 +378,34 @@ export const billflowApi = {
     async confirmPost(taskId: string, expectedVersion: number, idempotencyKey: string): Promise<BillflowTask> {
         return normalizeBillflowTask(unwrap(await services.confirmPersonalFinanceBillflowPost({ taskId, expectedVersion, idempotencyKey })));
     },
-    async listTodos(taskId: string, status: BillflowTodoStatus, limit = 50): Promise<BillflowTodoPage> {
-        return normalizeTodoPage(unwrap(await services.listPersonalFinanceBillflowTodos({ taskId, status, limit })));
+    async listTodos(
+        taskId: string,
+        status: BillflowTodoStatus,
+        limit = BILLFLOW_TODO_PAGE_LIMIT,
+        cursor?: { updatedUnixTime: number, todoId: string }
+    ): Promise<BillflowTodoPage> {
+        return normalizeTodoPage(unwrap(await services.listPersonalFinanceBillflowTodos({
+            taskId,
+            status,
+            limit,
+            ...(cursor === undefined ? {} : {
+                cursorUpdatedUnixTime: cursor.updatedUnixTime,
+                cursorTodoId: cursor.todoId
+            })
+        })));
+    },
+    async listAllTodos(taskId: string, status: BillflowTodoStatus): Promise<readonly BillflowTodo[]> {
+        const items: BillflowTodo[] = [];
+        let cursor: { updatedUnixTime: number, todoId: string } | undefined;
+        for (let page = 0; page < BILLFLOW_TODO_MAX_PAGES; page++) {
+            const result = await billflowApi.listTodos(taskId, status, BILLFLOW_TODO_PAGE_LIMIT, cursor);
+            items.push(...result.items);
+            if (!result.nextCursor) {
+                return items;
+            }
+            cursor = result.nextCursor;
+        }
+        return items;
     },
     async listClassifiedRows(taskId: string): Promise<readonly BillflowClassifiedRow[]> {
         return normalizeClassifiedRows(unwrap(await services.listPersonalFinanceBillflowClassifiedRows({ taskId })));

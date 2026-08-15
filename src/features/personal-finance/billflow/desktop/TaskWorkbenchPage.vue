@@ -421,6 +421,7 @@ import {
     canAutoRunAfterAccounts,
     canAssignBillflowCategory,
     canOpenBillflowWorkbenchStep,
+    chunkBillflowItems,
     createdAccountsNeedingBalance,
     eligibleOrganizeFileIds,
     categoryBucketHintKey,
@@ -876,10 +877,10 @@ async function openTask(taskId: string): Promise<void> {
     }
     if (taskShowsTodos(task.value.status)) {
         const [open, classified] = await Promise.all([
-            billflowApi.listTodos(taskId, 'open', 100),
+            billflowApi.listAllTodos(taskId, 'open'),
             billflowApi.listClassifiedRows(taskId)
         ]);
-        openTodos.value = open.items;
+        openTodos.value = open;
         classifiedRows.value = classified;
         selectedTodoIds.value = selectedTodoIds.value.filter(id => openTodos.value.some(todo => todo.id === id));
     } else {
@@ -1149,11 +1150,9 @@ async function assignTodos(todos: readonly BillflowTodo[], categoryId: string): 
     }
     busy.value = true;
     try {
-        await billflowApi.assignTodoCategories(
-            todos.map(todo => ({ todoId: todo.id, expectedVersion: todo.version })),
-            categoryId,
-            generateRandomUUID()
-        );
+        for (const chunk of chunkBillflowItems(todos.map(todo => ({ todoId: todo.id, expectedVersion: todo.version })))) {
+            await billflowApi.assignTodoCategories(chunk, categoryId, generateRandomUUID());
+        }
         batchCategoryId.value = '';
         for (const todo of todos) {
             delete categoryDrafts[todo.id];

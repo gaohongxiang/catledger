@@ -14,6 +14,7 @@ import {
     canAutoRunAfterAccounts,
     canAssignBillflowCategory,
     canOpenBillflowWorkbenchStep,
+    chunkBillflowItems,
     composeDashboardHeadline,
     createdAccountsNeedingBalance,
     categoryBucketHintKey,
@@ -211,7 +212,9 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('classifiedReviewRows');
         expect(workbench).toContain('todo-row');
         expect(workbench).not.toContain('todo-card');
+        expect(workbench).toContain('listAllTodos(taskId, \'open\')');
         expect(workbench).toContain('listClassifiedRows(taskId)');
+        expect(workbench).toContain('chunkBillflowItems');
         expect(workbench).toContain('todoTitle(todo)');
         expect(workbench).toContain('todoSubtitle(todo)');
         expect(workbench).toContain('formatTodoAmount(todo)');
@@ -311,6 +314,8 @@ describe('billflow task page wiring', () => {
         expect(resolveCategoryBucket('classified', { pending: 3, classified: 2 }, false)).toBe('pending');
         expect(categoryBucketHintKey('pending')).toBe('personalFinance.billflow.todos.pendingHint');
         expect(categoryBucketHintKey('classified')).toBe('personalFinance.billflow.todos.classifiedHint');
+        expect(chunkBillflowItems([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+        expect(chunkBillflowItems([], 100)).toEqual([]);
     });
 
     it('asks for balances only on newly created accounts that are still unanswered', () => {

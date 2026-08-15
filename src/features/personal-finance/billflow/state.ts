@@ -217,6 +217,19 @@ export function accountBucketHintKey(bucket: BillflowAccountBucket): string {
 export type BillflowCategoryBucket = 'pending' | 'classified';
 
 export const BILLFLOW_CATEGORY_BUCKETS: readonly BillflowCategoryBucket[] = ['pending', 'classified'];
+export const BILLFLOW_TODO_PAGE_LIMIT = 100;
+export const BILLFLOW_TODO_MAX_PAGES = 50;
+
+export function chunkBillflowItems<T>(items: readonly T[], size = BILLFLOW_TODO_PAGE_LIMIT): T[][] {
+    if (size < 1) {
+        return items.length ? [ [...items] ] : [];
+    }
+    const pages: T[][] = [];
+    for (let index = 0; index < items.length; index += size) {
+        pages.push([...items.slice(index, index + size)]);
+    }
+    return pages;
+}
 
 export function suggestedCategoryBucket(counts: { pending: number; classified: number }): BillflowCategoryBucket {
     return counts.pending > 0 ? 'pending' : 'classified';

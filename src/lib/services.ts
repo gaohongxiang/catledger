@@ -1068,8 +1068,11 @@ export default {
     confirmPersonalFinanceBillflowPost: (request: { taskId: string, expectedVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/confirm_post.json', request);
     },
-    listPersonalFinanceBillflowTodos: (params: { taskId: string, status: string, limit: number }): ApiResponsePromise<unknown> => {
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/todos.json?id=${encodeURIComponent(params.taskId)}&status=${encodeURIComponent(params.status)}&limit=${params.limit}`);
+    listPersonalFinanceBillflowTodos: (params: { taskId: string, status: string, limit: number, cursorUpdatedUnixTime?: number, cursorTodoId?: string }): ApiResponsePromise<unknown> => {
+        const cursor = params.cursorUpdatedUnixTime && params.cursorTodoId
+            ? `&cursor_updated_unix_time=${params.cursorUpdatedUnixTime}&cursor_todo_id=${encodeURIComponent(params.cursorTodoId)}`
+            : '';
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/todos.json?id=${encodeURIComponent(params.taskId)}&status=${encodeURIComponent(params.status)}&limit=${params.limit}${cursor}`);
     },
     listPersonalFinanceBillflowClassifiedRows: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/categories.json?id=${encodeURIComponent(taskId)}`);

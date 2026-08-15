@@ -3014,7 +3014,7 @@
                 "empty": "No categories need a decision.",
                 "pendingEmpty": "Nothing needs a category.",
                 "classifiedEmpty": "No categorized transactions yet.",
-                "pendingHint": "WeChat “merchant payment” is not a category. Choose once; the same merchant is remembered next time.",
+                "pendingHint": "This list is only what still needs a look, not every imported row. WeChat “merchant payment” is not a category. Choose once; the same merchant is remembered next time.",
                 "classifiedHint": "Rows the statement already mapped, and categories you just saved, both appear here. WeChat “merchant payment” still needs a choice first.",
                 "bucket": {
                     "pending": "Uncategorized",
