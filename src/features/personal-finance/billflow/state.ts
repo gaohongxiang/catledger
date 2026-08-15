@@ -1,4 +1,5 @@
 import type { PersonalFinanceBatchStatus, PersonalFinanceImportBatch } from '../models.ts';
+import { suggestPaymentAccount, type PersonalFinanceLedgerAccountCandidate } from '../state.ts';
 import type {
     BillflowAccountGroup,
     BillflowTask,
@@ -57,6 +58,25 @@ export function taskShowsTodos(status: BillflowTaskStatus): boolean {
 
 export function suggestedAccountCategory(suggestedType: BillflowAccountGroup['suggestedType']): number {
     return suggestedType === 'credit_card' ? CREDIT_CARD_CATEGORY : VIRTUAL_ACCOUNT_CATEGORY;
+}
+
+export function matchedLedgerAccount(
+    group: Pick<BillflowAccountGroup, 'sourceType' | 'currency' | 'displayName'>,
+    accounts: readonly PersonalFinanceLedgerAccountCandidate[]
+): PersonalFinanceLedgerAccountCandidate | undefined {
+    const suggestion = suggestPaymentAccount({
+        sourceType: group.sourceType,
+        currency: group.currency,
+        displayName: group.displayName,
+        rowCount: 0,
+        pendingRowCount: 0,
+        sampleRowId: '1',
+        mapped: false
+    }, [...accounts]);
+    if (!suggestion.ledgerAccountId) {
+        return undefined;
+    }
+    return accounts.find(account => account.id === suggestion.ledgerAccountId && account.currency === group.currency && !account.hidden);
 }
 
 export function composeDashboardHeadline(input: {

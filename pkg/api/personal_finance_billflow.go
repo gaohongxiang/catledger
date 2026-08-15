@@ -26,6 +26,11 @@ type PersonalFinanceBillflowApplication interface {
 	GetTaskAccounts(c core.Context, uid int64, taskId int64) (*billflow.TaskAccountsView, error)
 	CreateTaskAccount(c core.Context, request billflow.CreateAccountRequest) (*billflow.TaskAccountsView, error)
 	OverrideTaskAccount(c core.Context, request billflow.OverrideAccountRequest) (*billflow.TaskAccountsView, error)
+	ExcludeTaskAccount(c core.Context, request billflow.ExcludeAccountRequest) (*billflow.TaskAccountsView, error)
+	RestoreTaskAccount(c core.Context, request billflow.ExcludeAccountRequest) (*billflow.TaskAccountsView, error)
+	SkipTaskAccountRows(c core.Context, request billflow.SkipAccountRowsRequest) (*billflow.TaskAccountsView, error)
+	RestoreTaskAccountRows(c core.Context, request billflow.SkipAccountRowsRequest) (*billflow.TaskAccountsView, error)
+	ListTaskAccountRows(c core.Context, uid int64, taskId int64, sampleRowId int64) ([]*billflow.AccountRowView, error)
 	RunTask(c core.Context, request billflow.RunTaskRequest, clientTimezone *time.Location) (*billflow.TaskView, error)
 	ConfirmPost(c core.Context, request billflow.RunTaskRequest, clientTimezone *time.Location) (*billflow.TaskView, error)
 	ListTodos(c core.Context, uid int64, taskId int64, status billflow.TodoStatus, cursor *billflow.TodoCursor, limit int) (*billflow.TodoListResult, error)
@@ -74,6 +79,21 @@ type personalFinanceBillflowOverrideAccountRequest struct {
 	SampleRowId     int64  `json:"sampleRowId,string"`
 	LedgerAccountId int64  `json:"ledgerAccountId,string"`
 	IdempotencyKey  string `json:"idempotencyKey"`
+}
+
+type personalFinanceBillflowExcludeAccountRequest struct {
+	TaskId          int64  `json:"taskId,string"`
+	ExpectedVersion int64  `json:"expectedVersion"`
+	SampleRowId     int64  `json:"sampleRowId,string"`
+	IdempotencyKey  string `json:"idempotencyKey"`
+}
+
+type personalFinanceBillflowSkipRowsRequest struct {
+	TaskId          int64    `json:"taskId,string"`
+	ExpectedVersion int64    `json:"expectedVersion"`
+	SampleRowId     int64    `json:"sampleRowId,string"`
+	RowIds          []string `json:"rowIds"`
+	IdempotencyKey  string   `json:"idempotencyKey"`
 }
 
 type personalFinanceBillflowResolveTodoRequest struct {
@@ -125,11 +145,24 @@ type personalFinanceBillflowAccountGroupResponse struct {
 	LedgerAccountId *string              `json:"ledgerAccountId"`
 	SuggestedType   string               `json:"suggestedType"`
 	Mapped          bool                 `json:"mapped"`
+	Excluded        bool                 `json:"excluded"`
 }
 
 type personalFinanceBillflowAccountsResponse struct {
 	NeedsCreate []*personalFinanceBillflowAccountGroupResponse `json:"needsCreate"`
 	Reused      []*personalFinanceBillflowAccountGroupResponse `json:"reused"`
+	Excluded    []*personalFinanceBillflowAccountGroupResponse `json:"excluded"`
+}
+
+type personalFinanceBillflowAccountRowResponse struct {
+	Id        string `json:"id"`
+	BatchId   string `json:"batchId"`
+	UnixTime  *int64 `json:"unixTime"`
+	Amount    string `json:"amount"`
+	Currency  string `json:"currency"`
+	Direction string `json:"direction"`
+	Label     string `json:"label"`
+	Skipped   bool   `json:"skipped"`
 }
 
 type personalFinanceBillflowTodoResponse struct {
@@ -251,6 +284,90 @@ func (a *PersonalFinanceBillflowApi) BillflowTaskAccountsOverrideHandler(c *core
 	})
 	if err != nil {
 		return nil, personalFinanceBillflowServiceError(err)
+	}
+	return newPersonalFinanceBillflowAccountsResponse(result), nil
+}
+
+func (a *PersonalFinanceBillflowApi) BillflowTaskAccountsExcludeHandler(c *core.WebContext) (any, *errs.Error) {
+	return a.mutateTaskAccountExclusion(c, true)
+}
+
+func (a *PersonalFinanceBillflowApi) BillflowTaskAccountsRestoreHandler(c *core.WebContext) (any, *errs.Error) {
+	return a.mutateTaskAccountExclusion(c, false)
+}
+
+func (a *PersonalFinanceBillflowApi) mutateTaskAccountExclusion(c *core.WebContext, exclude bool) (any, *errs.Error) {
+	request := new(personalFinanceBillflowExcludeAccountRequest)
+	if err := decodePersonalFinanceLoanJSON(c, request); err != nil {
+		return nil, errs.ErrParameterInvalid
+	}
+	domain := billflow.ExcludeAccountRequest{
+		Uid: c.GetCurrentUid(), TaskId: request.TaskId, ExpectedVersion: request.ExpectedVersion,
+		SampleRowId: request.SampleRowId, IdempotencyKey: request.IdempotencyKey,
+	}
+	var result *billflow.TaskAccountsView
+	var mutateErr error
+	if exclude {
+		result, mutateErr = a.application.ExcludeTaskAccount(c, domain)
+	} else {
+		result, mutateErr = a.application.RestoreTaskAccount(c, domain)
+	}
+	if mutateErr != nil {
+		return nil, personalFinanceBillflowServiceError(mutateErr)
+	}
+	return newPersonalFinanceBillflowAccountsResponse(result), nil
+}
+
+func (a *PersonalFinanceBillflowApi) BillflowTaskAccountsRowsHandler(c *core.WebContext) (any, *errs.Error) {
+	if !personalFinanceInstallmentQueryAllowed(c, "id", "sample_row_id") {
+		return nil, errs.ErrParameterInvalid
+	}
+	taskId, err := strconv.ParseInt(strings.TrimSpace(c.Query("id")), 10, 64)
+	sampleRowId, sampleErr := strconv.ParseInt(strings.TrimSpace(c.Query("sample_row_id")), 10, 64)
+	if err != nil || sampleErr != nil || taskId < 1 || sampleRowId < 1 {
+		return nil, errs.ErrParameterInvalid
+	}
+	result, listErr := a.application.ListTaskAccountRows(c, c.GetCurrentUid(), taskId, sampleRowId)
+	if listErr != nil {
+		return nil, personalFinanceBillflowServiceError(listErr)
+	}
+	return newPersonalFinanceBillflowAccountRowsResponse(result), nil
+}
+
+func (a *PersonalFinanceBillflowApi) BillflowTaskAccountsSkipRowsHandler(c *core.WebContext) (any, *errs.Error) {
+	return a.mutateTaskAccountRows(c, true)
+}
+
+func (a *PersonalFinanceBillflowApi) BillflowTaskAccountsRestoreRowsHandler(c *core.WebContext) (any, *errs.Error) {
+	return a.mutateTaskAccountRows(c, false)
+}
+
+func (a *PersonalFinanceBillflowApi) mutateTaskAccountRows(c *core.WebContext, skip bool) (any, *errs.Error) {
+	request := new(personalFinanceBillflowSkipRowsRequest)
+	if err := decodePersonalFinanceLoanJSON(c, request); err != nil {
+		return nil, errs.ErrParameterInvalid
+	}
+	rowIds := make([]int64, 0, len(request.RowIds))
+	for _, raw := range request.RowIds {
+		id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil || id < 1 {
+			return nil, errs.ErrParameterInvalid
+		}
+		rowIds = append(rowIds, id)
+	}
+	domain := billflow.SkipAccountRowsRequest{
+		Uid: c.GetCurrentUid(), TaskId: request.TaskId, ExpectedVersion: request.ExpectedVersion,
+		SampleRowId: request.SampleRowId, RowIds: rowIds, IdempotencyKey: request.IdempotencyKey,
+	}
+	var result *billflow.TaskAccountsView
+	var mutateErr error
+	if skip {
+		result, mutateErr = a.application.SkipTaskAccountRows(c, domain)
+	} else {
+		result, mutateErr = a.application.RestoreTaskAccountRows(c, domain)
+	}
+	if mutateErr != nil {
+		return nil, personalFinanceBillflowServiceError(mutateErr)
 	}
 	return newPersonalFinanceBillflowAccountsResponse(result), nil
 }
@@ -438,6 +555,7 @@ func newPersonalFinanceBillflowAccountsResponse(value *billflow.TaskAccountsView
 	response := &personalFinanceBillflowAccountsResponse{
 		NeedsCreate: []*personalFinanceBillflowAccountGroupResponse{},
 		Reused:      []*personalFinanceBillflowAccountGroupResponse{},
+		Excluded:    []*personalFinanceBillflowAccountGroupResponse{},
 	}
 	if value == nil {
 		return response
@@ -447,6 +565,9 @@ func newPersonalFinanceBillflowAccountsResponse(value *billflow.TaskAccountsView
 	}
 	for _, item := range value.Reused {
 		response.Reused = append(response.Reused, newPersonalFinanceBillflowAccountGroupResponse(item))
+	}
+	for _, item := range value.Excluded {
+		response.Excluded = append(response.Excluded, newPersonalFinanceBillflowAccountGroupResponse(item))
 	}
 	return response
 }
@@ -458,9 +579,29 @@ func newPersonalFinanceBillflowAccountGroupResponse(value *billflow.AccountGroup
 	response := &personalFinanceBillflowAccountGroupResponse{
 		SourceType: value.SourceType, Currency: value.Currency, DisplayName: value.DisplayName,
 		RowCount: value.RowCount, PendingRowCount: value.PendingRowCount, SampleRowId: strconv.FormatInt(value.SampleRowId, 10),
-		SuggestedType: value.SuggestedType, Mapped: value.Mapped,
+		SuggestedType: value.SuggestedType, Mapped: value.Mapped, Excluded: value.Excluded,
 	}
 	response.LedgerAccountId = formatOptionalId(value.LedgerAccountId)
+	return response
+}
+
+func newPersonalFinanceBillflowAccountRowsResponse(values []*billflow.AccountRowView) []*personalFinanceBillflowAccountRowResponse {
+	response := make([]*personalFinanceBillflowAccountRowResponse, 0, len(values))
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		item := &personalFinanceBillflowAccountRowResponse{
+			Id: strconv.FormatInt(value.RowId, 10), BatchId: strconv.FormatInt(value.BatchId, 10),
+			UnixTime: value.UnixTime, Currency: value.Currency, Direction: string(value.Direction),
+			Label: value.Label, Skipped: value.Skipped,
+		}
+		if value.Amount != nil {
+			amount := strconv.FormatInt(*value.Amount, 10)
+			item.Amount = amount
+		}
+		response = append(response, item)
+	}
 	return response
 }
 

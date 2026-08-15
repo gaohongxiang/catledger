@@ -60,10 +60,11 @@ func TestBillflowHandlersUseStringIdsAndOmitSecrets(t *testing.T) {
 		t.Fatalf("list billflow accounts: %v", apiErr)
 	}
 	accountText := marshalBillflowResponse(t, accounts)
-	if !strings.Contains(accountText, `"ledgerAccountId":"61"`) || !strings.Contains(accountText, `"sampleRowId":"801"`) {
+	if !strings.Contains(accountText, `"ledgerAccountId":"61"`) || !strings.Contains(accountText, `"sampleRowId":"801"`) ||
+		!strings.Contains(accountText, `"excluded":`) {
 		t.Fatalf("accounts response omitted string ids: %s", accountText)
 	}
-	assertBillflowResponseOmits(t, accountText, "aliasKey")
+	assertBillflowResponseOmits(t, accountText, "aliasKey", "rawPaymentMethod", "RawPaymentMethod")
 }
 
 func TestBillflowHandlersMapErrorsAndRejectInvalidInput(t *testing.T) {
@@ -97,6 +98,7 @@ type billflowAPITestApplication struct {
 	task     *billflow.TaskView
 	list     *billflow.TaskListResult
 	accounts *billflow.TaskAccountsView
+	rows     []*billflow.AccountRowView
 	todos    *billflow.TodoListResult
 	impact   *billflow.UndoImpactView
 	err      error
@@ -119,6 +121,21 @@ func (a *billflowAPITestApplication) CreateTaskAccount(_ core.Context, _ billflo
 }
 func (a *billflowAPITestApplication) OverrideTaskAccount(_ core.Context, _ billflow.OverrideAccountRequest) (*billflow.TaskAccountsView, error) {
 	return a.accounts, a.err
+}
+func (a *billflowAPITestApplication) ExcludeTaskAccount(_ core.Context, _ billflow.ExcludeAccountRequest) (*billflow.TaskAccountsView, error) {
+	return a.accounts, a.err
+}
+func (a *billflowAPITestApplication) RestoreTaskAccount(_ core.Context, _ billflow.ExcludeAccountRequest) (*billflow.TaskAccountsView, error) {
+	return a.accounts, a.err
+}
+func (a *billflowAPITestApplication) SkipTaskAccountRows(_ core.Context, _ billflow.SkipAccountRowsRequest) (*billflow.TaskAccountsView, error) {
+	return a.accounts, a.err
+}
+func (a *billflowAPITestApplication) RestoreTaskAccountRows(_ core.Context, _ billflow.SkipAccountRowsRequest) (*billflow.TaskAccountsView, error) {
+	return a.accounts, a.err
+}
+func (a *billflowAPITestApplication) ListTaskAccountRows(_ core.Context, _ int64, _ int64, _ int64) ([]*billflow.AccountRowView, error) {
+	return a.rows, a.err
 }
 func (a *billflowAPITestApplication) RunTask(_ core.Context, _ billflow.RunTaskRequest, _ *time.Location) (*billflow.TaskView, error) {
 	return a.task, a.err

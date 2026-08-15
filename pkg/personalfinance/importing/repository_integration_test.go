@@ -134,6 +134,7 @@ func cleanupImportingIntegrationTables(database *datastore.Database) error {
 		"pf_billflow_action",
 		"pf_billflow_task_member",
 		"pf_billflow_task",
+		"pf_payment_account_exclusion",
 		"pf_payment_account_mapping",
 		"pf_loan_transaction_allocation",
 		"pf_loan_transaction_binding",

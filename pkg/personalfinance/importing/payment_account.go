@@ -28,6 +28,7 @@ var (
 	ErrPaymentAccountAliasUnavailable       = errors.New("personal finance payment account alias is unavailable")
 	ErrPaymentAccountLedgerUnavailable      = errors.New("personal finance payment account ledger account is unavailable")
 	ErrPaymentAccountPersistenceUnavailable = errors.New("personal finance payment account persistence is unavailable")
+	ErrPaymentAccountExclusionUnavailable   = errors.New("personal finance payment account exclusion is unavailable")
 )
 
 // PaymentAccountMapping 把聚合支付账单中的付款方式映射到正式账本账户。
@@ -66,6 +67,8 @@ type PaymentAccountGroup struct {
 	SampleRowId     int64
 	LedgerAccountId *int64
 	Mapped          bool
+	Excluded        bool
+	SkippedRowCount int64
 }
 
 type PaymentAccountConfirmRequest struct {
@@ -76,11 +79,33 @@ type PaymentAccountConfirmRequest struct {
 	LedgerAccountCurrency string
 }
 
+type PaymentAccountRowView struct {
+	RowId     int64
+	BatchId   int64
+	UnixTime  *int64
+	Amount    *int64
+	Currency  string
+	Direction NormalizedDirection
+	Label     string
+	Skipped   bool
+}
+
+type PaymentAccountSkipRequest struct {
+	Uid     int64
+	BatchId int64
+	RowId   int64
+	RowIds  []int64
+}
+
 type PaymentAccountRepository interface {
 	FindImportBatchById(c core.Context, uid int64, batchId int64) (*ImportBatch, error)
 	ListPaymentAccountRows(c core.Context, uid int64, batchId int64) ([]*RawImportRow, error)
 	ListPaymentAccountMappings(c core.Context, uid int64, sourceType SourceType) ([]*PaymentAccountMapping, error)
 	SavePaymentAccountMappingAndApply(c core.Context, mapping *PaymentAccountMapping, batchId int64, rowIds []int64) (*PaymentAccountMapping, error)
+	ListPaymentAccountExclusions(c core.Context, uid int64, sourceType SourceType) ([]*PaymentAccountExclusion, error)
+	SavePaymentAccountExclusion(c core.Context, exclusion *PaymentAccountExclusion) (*PaymentAccountExclusion, error)
+	DeletePaymentAccountExclusion(c core.Context, uid int64, sourceType SourceType, currency string, aliasKey string) error
+	UpdatePaymentAccountRowProcessing(c core.Context, uid int64, batchId int64, rowIds []int64, from ProcessingState, to ProcessingState) error
 }
 
 type PaymentAccountService struct {
@@ -99,14 +124,15 @@ func NewPaymentAccountService(repository PaymentAccountRepository, generateId fu
 
 // BuildPaymentAccountAlias 只为有辨识度的付款方式生成版本化摘要。
 func BuildPaymentAccountAlias(raw string) (PaymentAccountAlias, bool) {
-	canonical := canonicalPaymentAccountAlias(raw)
+	instrument := paymentAccountInstrumentName(raw)
+	canonical := canonicalPaymentAccountAlias(instrument)
 
 	if !isReusablePaymentAccountAlias(canonical) {
 		return PaymentAccountAlias{}, false
 	}
 
 	digest := sha256.Sum256([]byte(string(PAYMENT_ACCOUNT_ALIAS_VERSION_V1) + "\x00" + canonical))
-	displayName := safePaymentAccountDisplayName(raw)
+	displayName := safePaymentAccountDisplayName(instrument)
 
 	if displayName == "" {
 		return PaymentAccountAlias{}, false
@@ -117,6 +143,46 @@ func BuildPaymentAccountAlias(raw string) (PaymentAccountAlias, bool) {
 		Version:     PAYMENT_ACCOUNT_ALIAS_VERSION_V1,
 		DisplayName: displayName,
 	}, true
+}
+
+func paymentAccountInstrumentName(raw string) string {
+	value := strings.TrimSpace(norm.NFKC.String(raw))
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, "&")
+	if len(parts) < 2 {
+		return value
+	}
+	instruments := make([]string, 0, len(parts))
+	droppedCoupon := false
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if isPaymentAccountCouponSegment(part) {
+			droppedCoupon = true
+			continue
+		}
+		instruments = append(instruments, part)
+	}
+	if droppedCoupon && len(instruments) == 1 {
+		return instruments[0]
+	}
+	return value
+}
+
+func isPaymentAccountCouponSegment(part string) bool {
+	if strings.HasSuffix(part, "券") || strings.HasSuffix(part, "红包") {
+		return true
+	}
+	switch part {
+	case "优惠", "立减", "满减", "折扣", "商家优惠", "补贴":
+		return true
+	default:
+		return false
+	}
 }
 
 func canonicalPaymentAccountAlias(raw string) string {
@@ -206,12 +272,12 @@ func (s *PaymentAccountService) ListBatchPaymentAccounts(c core.Context, uid int
 		return nil, ErrPaymentAccountRequestInvalid
 	}
 
-	batch, rows, mappings, err := s.loadBatchPaymentAccounts(c, uid, batchId)
+	batch, rows, mappings, exclusions, err := s.loadBatchPaymentAccounts(c, uid, batchId)
 	if err != nil {
 		return nil, err
 	}
 
-	return buildPaymentAccountGroups(batch, rows, mappings), nil
+	return buildPaymentAccountGroups(batch, rows, mappings, exclusions), nil
 }
 
 func (s *PaymentAccountService) ConfirmBatchPaymentAccount(c core.Context, request PaymentAccountConfirmRequest) (*PaymentAccountGroup, error) {
@@ -223,7 +289,7 @@ func (s *PaymentAccountService) ConfirmBatchPaymentAccount(c core.Context, reque
 	unlock := lockBatchMutation(request.Uid, request.BatchId)
 	defer unlock()
 
-	batch, rows, _, err := s.loadBatchPaymentAccounts(c, request.Uid, request.BatchId)
+	batch, rows, _, _, err := s.loadBatchPaymentAccounts(c, request.Uid, request.BatchId)
 	if err != nil {
 		return nil, err
 	}
@@ -295,30 +361,34 @@ func (s *PaymentAccountService) ConfirmBatchPaymentAccount(c core.Context, reque
 	}, nil
 }
 
-func (s *PaymentAccountService) loadBatchPaymentAccounts(c core.Context, uid int64, batchId int64) (*ImportBatch, []*RawImportRow, []*PaymentAccountMapping, error) {
+func (s *PaymentAccountService) loadBatchPaymentAccounts(c core.Context, uid int64, batchId int64) (*ImportBatch, []*RawImportRow, []*PaymentAccountMapping, []*PaymentAccountExclusion, error) {
 	batch, err := s.repository.FindImportBatchById(c, uid, batchId)
 	if err != nil {
-		return nil, nil, nil, ErrPaymentAccountPersistenceUnavailable
+		return nil, nil, nil, nil, err
 	}
 	if batch == nil || batch.Uid != uid || batch.BatchId != batchId {
-		return nil, nil, nil, ErrPaymentAccountBatchNotFound
+		return nil, nil, nil, nil, ErrPaymentAccountBatchNotFound
 	}
 	if batch.SourceTypeSnapshot != SOURCE_TYPE_ALIPAY && batch.SourceTypeSnapshot != SOURCE_TYPE_WECHAT {
-		return batch, []*RawImportRow{}, []*PaymentAccountMapping{}, nil
+		return batch, []*RawImportRow{}, []*PaymentAccountMapping{}, []*PaymentAccountExclusion{}, nil
 	}
 
 	rows, err := s.repository.ListPaymentAccountRows(c, uid, batchId)
 	if err != nil {
-		return nil, nil, nil, ErrPaymentAccountPersistenceUnavailable
+		return nil, nil, nil, nil, err
 	}
 	mappings, err := s.repository.ListPaymentAccountMappings(c, uid, batch.SourceTypeSnapshot)
 	if err != nil {
-		return nil, nil, nil, ErrPaymentAccountPersistenceUnavailable
+		return nil, nil, nil, nil, err
 	}
-	return batch, rows, mappings, nil
+	exclusions, err := s.repository.ListPaymentAccountExclusions(c, uid, batch.SourceTypeSnapshot)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return batch, rows, mappings, exclusions, nil
 }
 
-func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mappings []*PaymentAccountMapping) []*PaymentAccountGroup {
+func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mappings []*PaymentAccountMapping, exclusions []*PaymentAccountExclusion) []*PaymentAccountGroup {
 	if batch == nil || (batch.SourceTypeSnapshot != SOURCE_TYPE_ALIPAY && batch.SourceTypeSnapshot != SOURCE_TYPE_WECHAT) {
 		return []*PaymentAccountGroup{}
 	}
@@ -329,6 +399,14 @@ func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mapping
 			mapping.AliasKeyVersion == PAYMENT_ACCOUNT_ALIAS_VERSION_V1 && isLowerHexSHA256(mapping.AliasKey) &&
 			isValidPaymentAccountCurrency(mapping.Currency) && mapping.LedgerAccountId > 0 {
 			mappingByKey[mapping.Currency+"\x00"+mapping.AliasKey] = mapping
+		}
+	}
+	exclusionByKey := make(map[string]*PaymentAccountExclusion, len(exclusions))
+	for _, exclusion := range exclusions {
+		if exclusion != nil && exclusion.Uid == batch.Uid && exclusion.SourceType == batch.SourceTypeSnapshot &&
+			exclusion.AliasKeyVersion == PAYMENT_ACCOUNT_ALIAS_VERSION_V1 && isLowerHexSHA256(exclusion.AliasKey) &&
+			isValidPaymentAccountCurrency(exclusion.Currency) {
+			exclusionByKey[exclusion.Currency+"\x00"+exclusion.AliasKey] = exclusion
 		}
 	}
 
@@ -358,11 +436,18 @@ func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mapping
 				entry.group.Mapped = true
 				entry.group.DisplayName = mapping.MaskedDisplayName
 			}
+			if exclusion := exclusionByKey[key]; exclusion != nil {
+				entry.group.Excluded = true
+				entry.group.DisplayName = exclusion.MaskedDisplayName
+			}
 			groups[key] = entry
 		}
 		entry.group.RowCount++
 		if row.ProcessingState == PROCESSING_STATE_PENDING {
 			entry.group.PendingRowCount++
+		}
+		if isUserSkippedPaymentAccountRow(row) {
+			entry.group.SkippedRowCount++
 		}
 	}
 

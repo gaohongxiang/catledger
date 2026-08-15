@@ -59,20 +59,89 @@
                 {{ tt('personalFinance.billflow.failed') }}
             </v-alert>
 
-            <section class="px-5 pb-4" v-if="taskNeedsAccounts(task.status, accounts?.needsCreate.length ?? 0)">
+            <section class="px-5 pb-4" v-if="taskNeedsAccounts(task.status, accounts?.needsCreate.length ?? 0) || (accounts?.excluded.length ?? 0) > 0">
                 <div class="text-subtitle-2 mb-2">{{ tt('personalFinance.billflow.accounts.title') }}</div>
                 <p class="text-body-small text-medium-emphasis">{{ tt('personalFinance.billflow.accounts.reusedHint', { count: accounts?.reused.length ?? 0 }) }}</p>
+                <v-btn
+                    class="mb-3"
+                    color="primary"
+                    variant="flat"
+                    :loading="busy"
+                    v-if="matchedNeedsCreate.length > 0"
+                    @click="reuseMatchedAccounts"
+                >
+                    {{ tt('personalFinance.billflow.accounts.reuseAll', { count: matchedNeedsCreate.length }) }}
+                </v-btn>
                 <v-list v-if="accounts?.needsCreate.length">
                     <v-list-item :key="group.sampleRowId" v-for="group in accounts.needsCreate">
                         <v-list-item-title>{{ group.displayName }} · {{ group.currency }}</v-list-item-title>
                         <v-list-item-subtitle>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</v-list-item-subtitle>
+                        <v-list-item-subtitle v-if="matchedAccount(group)">
+                            {{ tt('personalFinance.billflow.accounts.matchedHint', { name: matchedAccount(group)?.name ?? '' }) }}
+                        </v-list-item-subtitle>
+                        <v-select
+                            class="mt-2"
+                            density="compact"
+                            hide-details
+                            item-title="title"
+                            item-value="value"
+                            :items="ledgerOptions(group)"
+                            :label="tt('personalFinance.billflow.accounts.pickExisting')"
+                            :model-value="selectedLedgerId(group)"
+                            :disabled="busy"
+                            v-if="ledgerOptions(group).length"
+                            @update:model-value="value => setPickedLedgerId(group, value)"
+                        />
                         <template #append>
-                            <v-btn size="small" color="primary" :loading="busy" @click="createAccount(group)">
+                            <v-btn size="small" variant="text" :loading="busy" @click="toggleRows(group)">
+                                {{ expandedSampleRowId === group.sampleRowId ? tt('personalFinance.billflow.accounts.hideRows') : tt('personalFinance.billflow.accounts.showRows') }}
+                            </v-btn>
+                            <v-btn size="small" variant="text" :loading="busy" @click="excludeAccount(group)">
+                                {{ tt('personalFinance.billflow.accounts.exclude') }}
+                            </v-btn>
+                            <v-btn size="small" variant="text" :loading="busy" v-if="selectedLedgerId(group)" @click="createAccount(group)">
+                                {{ tt('personalFinance.billflow.accounts.create') }}
+                            </v-btn>
+                            <v-btn size="small" color="primary" :loading="busy" v-if="selectedLedgerId(group)" @click="reuseAccount(group)">
+                                {{ tt('personalFinance.billflow.accounts.useExisting') }}
+                            </v-btn>
+                            <v-btn size="small" color="primary" :loading="busy" v-else @click="createAccount(group)">
                                 {{ tt('personalFinance.billflow.accounts.create') }}
                             </v-btn>
                         </template>
                     </v-list-item>
                 </v-list>
+                <v-list v-if="expandedSampleRowId && accountRows.length" class="bg-transparent">
+                    <v-list-item :key="row.id" v-for="row in accountRows">
+                        <template #prepend>
+                            <v-checkbox-btn v-model="selectedRowIds" :value="row.id" />
+                        </template>
+                        <v-list-item-title>{{ row.label }}</v-list-item-title>
+                        <v-list-item-subtitle>
+                            {{ formatAccountRow(row) }}
+                            <span v-if="row.skipped"> · {{ tt('personalFinance.billflow.accounts.skipped') }}</span>
+                        </v-list-item-subtitle>
+                    </v-list-item>
+                </v-list>
+                <div class="d-flex ga-2 mt-2" v-if="expandedSampleRowId && selectedRowIds.length">
+                    <v-btn size="small" variant="tonal" :loading="busy" @click="skipSelectedRows">{{ tt('personalFinance.billflow.accounts.skipSelected') }}</v-btn>
+                    <v-btn size="small" variant="text" :loading="busy" @click="restoreSelectedRows">{{ tt('personalFinance.billflow.accounts.restoreSelected') }}</v-btn>
+                </div>
+                <template v-if="accounts?.excluded.length">
+                    <div class="text-subtitle-2 mt-4 mb-2">{{ tt('personalFinance.billflow.accounts.excludedTitle') }}</div>
+                    <p class="text-body-small text-medium-emphasis">{{ tt('personalFinance.billflow.accounts.excludedHint') }}</p>
+                    <v-list>
+                        <v-list-item :key="group.sampleRowId" v-for="group in accounts.excluded">
+                            <v-list-item-title>{{ group.displayName }} · {{ group.currency }}</v-list-item-title>
+                            <v-list-item-subtitle>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</v-list-item-subtitle>
+                            <template #append>
+                                <v-btn size="small" variant="text" :loading="busy" @click="restoreAccount(group)">
+                                    {{ tt('personalFinance.billflow.accounts.restore') }}
+                                </v-btn>
+                            </template>
+                        </v-list-item>
+                    </v-list>
+                </template>
             </section>
 
             <div class="px-5 pb-4" v-if="task.status === 'accounts_pending' && (accounts?.needsCreate.length ?? 0) < 1">
@@ -122,21 +191,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { mdiRefresh, mdiTrayArrowUp } from '@mdi/js';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
+import { useAccountsStore } from '@/stores/account.ts';
 
-import type { BillflowAccountGroup, BillflowAccounts, BillflowTask, BillflowTodo, CardCycleAccount } from '../models.ts';
+import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowTask, BillflowTodo, CardCycleAccount } from '../models.ts';
 import { todoKindKey } from '../presentation.ts';
 import { billflowApi } from '../service.ts';
-import { eligibleOrganizeFileIds, suggestedAccountCategory, taskAwaitsConfirm, taskNeedsAccounts, taskShowsTodos } from '../state.ts';
+import { eligibleOrganizeFileIds, matchedLedgerAccount, suggestedAccountCategory, taskAwaitsConfirm, taskNeedsAccounts, taskShowsTodos } from '../state.ts';
 import { usePersonalFinanceStore } from '../../store.ts';
 import { todayCivilDate } from '../../dashboard/state.ts';
 
 const { tt } = useI18n();
 const personalFinanceStore = usePersonalFinanceStore();
+const accountsStore = useAccountsStore();
 const fileInput = ref<HTMLInputElement>();
 const loading = ref(false);
 const busy = ref(false);
@@ -144,6 +215,10 @@ const error = ref(false);
 const selectedFileIds = ref<string[]>([]);
 const task = ref<BillflowTask>();
 const accounts = ref<BillflowAccounts>();
+const expandedSampleRowId = ref<string>();
+const accountRows = ref<readonly BillflowAccountRow[]>([]);
+const selectedRowIds = ref<string[]>([]);
+const pickedAccountIds = reactive<Record<string, string>>({});
 const openTodos = ref<readonly BillflowTodo[]>([]);
 const cardAccounts = ref<CardCycleAccount[]>([]);
 
@@ -156,12 +231,38 @@ const eligibleFiles = computed(() => {
 });
 
 const unverifiedCards = computed(() => cardAccounts.value.filter(card => !card.balanceReview || card.balanceReview.status === 'unverified'));
+const matchedNeedsCreate = computed(() => (accounts.value?.needsCreate ?? []).filter(group => !!selectedLedgerId(group)));
+
+function matchedAccount(group: BillflowAccountGroup) {
+    return matchedLedgerAccount(group, accountsStore.allVisiblePlainAccounts);
+}
+
+function ledgerOptions(group: BillflowAccountGroup) {
+    return accountsStore.allVisiblePlainAccounts
+        .filter(account => account.currency === group.currency)
+        .map(account => ({ title: account.name, value: account.id }));
+}
+
+function selectedLedgerId(group: BillflowAccountGroup): string | undefined {
+    return pickedAccountIds[group.sampleRowId] || matchedAccount(group)?.id;
+}
+
+function setPickedLedgerId(group: BillflowAccountGroup, value: unknown): void {
+    if (typeof value !== 'string' || value === '') {
+        delete pickedAccountIds[group.sampleRowId];
+        return;
+    }
+    pickedAccountIds[group.sampleRowId] = value;
+}
 
 async function reload(): Promise<void> {
     loading.value = true;
     error.value = false;
     try {
-        await personalFinanceStore.loadBatches(0, 50);
+        await Promise.all([
+            personalFinanceStore.loadBatches(0, 50),
+            accountsStore.loadAllAccounts({ force: false })
+        ]);
         const [pending, awaiting, ready] = await Promise.all([
             billflowApi.listTasks('accounts_pending'),
             billflowApi.listTasks('awaiting_confirm'),
@@ -182,6 +283,10 @@ async function reload(): Promise<void> {
 async function openTask(taskId: string): Promise<void> {
     task.value = await billflowApi.getTask(taskId);
     accounts.value = await billflowApi.getAccounts(taskId);
+    if (expandedSampleRowId.value) {
+        accountRows.value = await billflowApi.listAccountRows(taskId, expandedSampleRowId.value);
+        selectedRowIds.value = selectedRowIds.value.filter(id => accountRows.value.some(row => row.id === id));
+    }
     if (taskShowsTodos(task.value.status)) {
         openTodos.value = (await billflowApi.listTodos(taskId, 'open')).items;
     } else {
@@ -236,6 +341,160 @@ async function createAccount(group: BillflowAccountGroup): Promise<void> {
     } finally {
         busy.value = false;
     }
+}
+
+async function reuseAccount(group: BillflowAccountGroup, ledgerAccountId?: string): Promise<void> {
+    if (!task.value) return;
+    const accountId = ledgerAccountId || selectedLedgerId(group);
+    if (!accountId) return;
+    busy.value = true;
+    try {
+        accounts.value = await billflowApi.overrideAccount({
+            taskId: task.value.id,
+            expectedVersion: task.value.version,
+            sampleRowId: group.sampleRowId,
+            ledgerAccountId: accountId,
+            idempotencyKey: generateRandomUUID()
+        });
+        delete pickedAccountIds[group.sampleRowId];
+        await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function reuseMatchedAccounts(): Promise<void> {
+    if (!task.value) return;
+    const groups = [...matchedNeedsCreate.value];
+    if (groups.length < 1) return;
+    busy.value = true;
+    try {
+        for (const group of groups) {
+            const accountId = selectedLedgerId(group);
+            if (!accountId) continue;
+            const current = await billflowApi.getTask(task.value.id);
+            accounts.value = await billflowApi.overrideAccount({
+                taskId: current.id,
+                expectedVersion: current.version,
+                sampleRowId: group.sampleRowId,
+                ledgerAccountId: accountId,
+                idempotencyKey: generateRandomUUID()
+            });
+            delete pickedAccountIds[group.sampleRowId];
+        }
+        await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function excludeAccount(group: BillflowAccountGroup): Promise<void> {
+    if (!task.value) return;
+    busy.value = true;
+    try {
+        accounts.value = await billflowApi.excludeAccount({
+            taskId: task.value.id,
+            expectedVersion: task.value.version,
+            sampleRowId: group.sampleRowId,
+            idempotencyKey: generateRandomUUID()
+        });
+        expandedSampleRowId.value = undefined;
+        accountRows.value = [];
+        selectedRowIds.value = [];
+        await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function restoreAccount(group: BillflowAccountGroup): Promise<void> {
+    if (!task.value) return;
+    busy.value = true;
+    try {
+        accounts.value = await billflowApi.restoreAccount({
+            taskId: task.value.id,
+            expectedVersion: task.value.version,
+            sampleRowId: group.sampleRowId,
+            idempotencyKey: generateRandomUUID()
+        });
+        await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function toggleRows(group: BillflowAccountGroup): Promise<void> {
+    if (!task.value) return;
+    if (expandedSampleRowId.value === group.sampleRowId) {
+        expandedSampleRowId.value = undefined;
+        accountRows.value = [];
+        selectedRowIds.value = [];
+        return;
+    }
+    busy.value = true;
+    try {
+        expandedSampleRowId.value = group.sampleRowId;
+        selectedRowIds.value = [];
+        accountRows.value = await billflowApi.listAccountRows(task.value.id, group.sampleRowId);
+    } catch {
+        error.value = true;
+        expandedSampleRowId.value = undefined;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function skipSelectedRows(): Promise<void> {
+    await mutateSelectedRows(true);
+}
+
+async function restoreSelectedRows(): Promise<void> {
+    await mutateSelectedRows(false);
+}
+
+async function mutateSelectedRows(skip: boolean): Promise<void> {
+    if (!task.value || !expandedSampleRowId.value || selectedRowIds.value.length < 1) return;
+    busy.value = true;
+    try {
+        const request = {
+            taskId: task.value.id,
+            expectedVersion: task.value.version,
+            sampleRowId: expandedSampleRowId.value,
+            rowIds: selectedRowIds.value,
+            idempotencyKey: generateRandomUUID()
+        };
+        accounts.value = skip
+            ? await billflowApi.skipAccountRows(request)
+            : await billflowApi.restoreAccountRows(request);
+        selectedRowIds.value = [];
+        await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
+}
+
+function formatAccountRow(row: BillflowAccountRow): string {
+    const parts: string[] = [row.currency];
+    if (row.amount) {
+        parts.unshift(row.amount);
+    }
+    if (row.unixTime) {
+        parts.push(new Date(row.unixTime * 1000).toLocaleString());
+    }
+    if (row.direction) {
+        parts.push(row.direction);
+    }
+    return parts.join(' · ');
 }
 
 async function runTask(): Promise<void> {

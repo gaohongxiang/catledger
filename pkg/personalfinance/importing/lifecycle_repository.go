@@ -243,7 +243,7 @@ func (r *Repository) ClearImportingUserData(c core.Context, uid int64) error {
 		beans := []any{
 			new(RawRowTransactionLink), new(ImportPosting), new(ImportBatchIssue),
 			new(RawImportRow), new(SourceIdentity), new(ImportBatch),
-			new(PaymentAccountMapping),
+			new(PaymentAccountExclusion), new(PaymentAccountMapping),
 			new(SourceAccount), new(ImportFile),
 		}
 		for _, bean := range beans {

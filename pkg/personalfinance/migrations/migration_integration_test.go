@@ -107,11 +107,11 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("migration table is not exact: %v", err)
 		}
 
-		if err := verifySchemaV006(integrationDatabase); err != nil {
+		if err := verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 6)
+		record := requireMigrationRecord(t, integrationDatabase, 7)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected successful migration record: %+v", record)
@@ -137,11 +137,11 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("advance to v006: %v", err)
 		}
 
-		if err := verifySchemaV006(integrationDatabase); err != nil {
+		if err := verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("advanced v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 6)
+		record := requireMigrationRecord(t, integrationDatabase, 7)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected v006 migration record: %+v", record)
@@ -167,11 +167,11 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("advance v003 to v006: %v", err)
 		}
 
-		if err := verifySchemaV006(integrationDatabase); err != nil {
+		if err := verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("v003 to v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 6)
+		record := requireMigrationRecord(t, integrationDatabase, 7)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected v006 migration record: %+v", record)
@@ -194,11 +194,11 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v004-to-v006"}); err != nil {
 			t.Fatalf("advance v004 to v006: %v", err)
 		}
-		if err := verifySchemaV006(integrationDatabase); err != nil {
+		if err := verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("v004 to v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 6)
+		record := requireMigrationRecord(t, integrationDatabase, 7)
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected v006 migration record: %+v", record)
 		}
@@ -379,7 +379,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV006(integrationDatabase); err != nil {
+		if err = verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("recovered schema is not exact: %v", err)
 		}
 
@@ -471,7 +471,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV006(integrationDatabase); err != nil {
+		if err = verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("resumed through v006 schema is not exact: %v", err)
 		}
 
@@ -563,7 +563,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV006(integrationDatabase); err != nil {
+		if err = verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("resumed through v006 schema is not exact: %v", err)
 		}
 
@@ -646,7 +646,7 @@ func TestMigrationProtocol(t *testing.T) {
 
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
-		if err = verifySchemaV006(integrationDatabase); err != nil {
+		if err = verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("resumed v005 through v006 schema is not exact: %v", err)
 		}
 
@@ -672,11 +672,11 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v005-to-v006"}); err != nil {
 			t.Fatalf("advance v005 to v006: %v", err)
 		}
-		if err := verifySchemaV006(integrationDatabase); err != nil {
+		if err := verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("v005 to v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 6)
+		record := requireMigrationRecord(t, integrationDatabase, 7)
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected v006 migration record: %+v", record)
 		}
@@ -754,13 +754,75 @@ func TestMigrationProtocol(t *testing.T) {
 
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
-		if err = verifySchemaV006(integrationDatabase); err != nil {
+		if err = verifySchemaV007(integrationDatabase); err != nil {
 			t.Fatalf("resumed v006 schema is not exact: %v", err)
 		}
 
 		recovered := requireMigrationRecord(t, integrationDatabase, 6)
 		if !recovered.Success || recovered.FirstStartedUnixTime != failed.FirstStartedUnixTime || recovered.ClaimToken == failed.ClaimToken {
 			t.Fatalf("unexpected recovered v006 migration record: %+v", recovered)
+		}
+	})
+
+	t.Run("v006 advances continuously to v007", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		runner := newIntegrationRunner(t, "through-v006")
+		runner.migrations = runner.migrations[:6]
+
+		if err := runner.upgradeDatabase(integrationDatabase); err != nil {
+			t.Fatalf("upgrade through v006: %v", err)
+		}
+		if err := verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("v006 baseline is not exact: %v", err)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v006-to-v007"}); err != nil {
+			t.Fatalf("advance v006 to v007: %v", err)
+		}
+		if err := verifySchemaV007(integrationDatabase); err != nil {
+			t.Fatalf("v006 to v007 schema is not exact: %v", err)
+		}
+
+		record := requireMigrationRecord(t, integrationDatabase, 7)
+		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
+			t.Fatalf("unexpected v007 migration record: %+v", record)
+		}
+	})
+
+	t.Run("partial v007 table is refused before Sync2 mutates it", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		runner := newIntegrationRunner(t, "v007-partial-baseline")
+		runner.migrations = runner.migrations[:6]
+		if err := runner.upgradeDatabase(integrationDatabase); err != nil {
+			t.Fatalf("prepare v006 baseline: %v", err)
+		}
+
+		sess := integrationDatabase.NewSession(nil)
+		_, err := sess.Exec("CREATE TABLE pf_payment_account_exclusion (uid BIGINT NOT NULL)")
+		sess.Close()
+		if err != nil {
+			t.Fatalf("create partial v007 table: %v", err)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		err = Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v007-partial"})
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected partial v007 schema error, got %v", err)
+		}
+
+		record := requireMigrationRecord(t, integrationDatabase, 7)
+		if record.Success || record.FailureCode != "schema_preflight_failed" {
+			t.Fatalf("unexpected v007 preflight record: %+v", record)
+		}
+
+		tables, readErr := readSchemaTables(integrationDatabase)
+		if readErr != nil {
+			t.Fatalf("read partial v007 schema after refusal: %v", readErr)
+		}
+		partialTable := findTable(tables, "pf_payment_account_exclusion")
+		if partialTable == nil || len(partialTable.Columns()) != 1 || normalizeIdentifier(partialTable.Columns()[0].Name) != "uid" {
+			t.Fatalf("v007 preflight refusal mutated partial table: %+v", partialTable)
 		}
 	})
 
@@ -1476,6 +1538,7 @@ func cleanupPersonalFinanceTables(db *datastore.Database) error {
 		"pf_billflow_action",
 		"pf_billflow_task_member",
 		"pf_billflow_task",
+		"pf_payment_account_exclusion",
 		"pf_payment_account_mapping",
 		"pf_loan_transaction_allocation",
 		"pf_loan_transaction_binding",

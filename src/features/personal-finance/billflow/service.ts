@@ -2,6 +2,7 @@ import services from '@/lib/services.ts';
 
 import type {
     BillflowAccountGroup,
+    BillflowAccountRow,
     BillflowAccounts,
     BillflowSourceType,
     BillflowTask,
@@ -157,7 +158,22 @@ function accountGroup(value: unknown): BillflowAccountGroup {
         sampleRowId: identifier(item['sampleRowId']),
         ledgerAccountId: optionalIdentifier(item['ledgerAccountId']),
         suggestedType: asEnum(item['suggestedType'], suggestedTypes),
-        mapped: boolean(item['mapped'])
+        mapped: boolean(item['mapped']),
+        excluded: boolean(item['excluded'])
+    };
+}
+
+function accountRow(value: unknown): BillflowAccountRow {
+    const item = record(value);
+    return {
+        id: identifier(item['id']),
+        batchId: identifier(item['batchId']),
+        unixTime: optionalInteger(item['unixTime']),
+        amount: string(item['amount']),
+        currency: string(item['currency']),
+        direction: string(item['direction']),
+        label: string(item['label']),
+        skipped: boolean(item['skipped'])
     };
 }
 
@@ -165,8 +181,13 @@ function normalizeAccounts(value: unknown): BillflowAccounts {
     const item = record(value);
     return {
         needsCreate: array(item['needsCreate']).map(accountGroup),
-        reused: array(item['reused']).map(accountGroup)
+        reused: array(item['reused']).map(accountGroup),
+        excluded: array(item['excluded']).map(accountGroup)
     };
+}
+
+function normalizeAccountRows(value: unknown): readonly BillflowAccountRow[] {
+    return array(value).map(accountRow);
 }
 
 function normalizeTodo(value: unknown): BillflowTodo {
@@ -266,6 +287,52 @@ export const billflowApi = {
         idempotencyKey: string;
     }): Promise<BillflowAccounts> {
         return normalizeAccounts(unwrap(await services.createPersonalFinanceBillflowAccount(request)));
+    },
+    async overrideAccount(request: {
+        taskId: string;
+        expectedVersion: number;
+        sampleRowId: string;
+        ledgerAccountId: string;
+        idempotencyKey: string;
+    }): Promise<BillflowAccounts> {
+        return normalizeAccounts(unwrap(await services.overridePersonalFinanceBillflowAccount(request)));
+    },
+    async excludeAccount(request: {
+        taskId: string;
+        expectedVersion: number;
+        sampleRowId: string;
+        idempotencyKey: string;
+    }): Promise<BillflowAccounts> {
+        return normalizeAccounts(unwrap(await services.excludePersonalFinanceBillflowAccount(request)));
+    },
+    async restoreAccount(request: {
+        taskId: string;
+        expectedVersion: number;
+        sampleRowId: string;
+        idempotencyKey: string;
+    }): Promise<BillflowAccounts> {
+        return normalizeAccounts(unwrap(await services.restorePersonalFinanceBillflowAccount(request)));
+    },
+    async listAccountRows(taskId: string, sampleRowId: string): Promise<readonly BillflowAccountRow[]> {
+        return normalizeAccountRows(unwrap(await services.listPersonalFinanceBillflowAccountRows({ taskId, sampleRowId })));
+    },
+    async skipAccountRows(request: {
+        taskId: string;
+        expectedVersion: number;
+        sampleRowId: string;
+        rowIds: readonly string[];
+        idempotencyKey: string;
+    }): Promise<BillflowAccounts> {
+        return normalizeAccounts(unwrap(await services.skipPersonalFinanceBillflowAccountRows(request)));
+    },
+    async restoreAccountRows(request: {
+        taskId: string;
+        expectedVersion: number;
+        sampleRowId: string;
+        rowIds: readonly string[];
+        idempotencyKey: string;
+    }): Promise<BillflowAccounts> {
+        return normalizeAccounts(unwrap(await services.restorePersonalFinanceBillflowAccountRows(request)));
     },
     async runTask(taskId: string, expectedVersion: number, idempotencyKey: string): Promise<BillflowTask> {
         return normalizeBillflowTask(unwrap(await services.runPersonalFinanceBillflowTask({ taskId, expectedVersion, idempotencyKey })));

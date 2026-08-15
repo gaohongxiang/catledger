@@ -22,8 +22,9 @@ func (r *Repository) ListPaymentAccountRows(c core.Context, uid int64, batchId i
 	defer sess.Close()
 	rows := make([]*RawImportRow, 0)
 	err := sess.Cols(
-		"uid", "batch_id", "row_id", "row_number", "raw_payment_method", "currency",
-		"parse_state", "processing_state", "ledger_account_id",
+		"uid", "batch_id", "row_id", "row_number", "raw_payment_method", "raw_counterparty", "raw_item", "currency",
+		"parse_state", "processing_state", "disposition", "ledger_account_id",
+		"normalized_unix_time", "normalized_amount", "normalized_direction",
 	).Where("uid=? AND batch_id=?", uid, batchId).Asc("row_number").Find(&rows)
 
 	if err != nil {

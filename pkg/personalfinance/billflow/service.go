@@ -71,6 +71,12 @@ type EvidenceReader interface {
 type PaymentAccounts interface {
 	ListBatchPaymentAccounts(c core.Context, uid int64, batchId int64) ([]*importing.PaymentAccountGroup, error)
 	ConfirmBatchPaymentAccount(c core.Context, request importing.PaymentAccountConfirmRequest) (*importing.PaymentAccountGroup, error)
+	ApplyPersistedExclusions(c core.Context, uid int64, batchId int64) error
+	ExcludePaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error)
+	RestorePaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error)
+	SkipPaymentAccountRows(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error)
+	RestorePaymentAccountRows(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error)
+	ListPaymentAccountGroupRows(c core.Context, uid int64, batchId int64, sampleRowId int64) ([]*importing.PaymentAccountRowView, error)
 }
 
 // Poster 复用既有 ImportPosting。
@@ -194,11 +200,25 @@ type AccountGroupView struct {
 	LedgerAccountId *int64
 	SuggestedType   string
 	Mapped          bool
+	Excluded        bool
+	SkippedRowCount int64
 }
 
 type TaskAccountsView struct {
 	NeedsCreate []*AccountGroupView
 	Reused      []*AccountGroupView
+	Excluded    []*AccountGroupView
+}
+
+type AccountRowView struct {
+	RowId     int64
+	BatchId   int64
+	UnixTime  *int64
+	Amount    *int64
+	Currency  string
+	Direction importing.NormalizedDirection
+	Label     string
+	Skipped   bool
 }
 
 type TodoView struct {

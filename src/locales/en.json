@@ -2950,7 +2950,20 @@
                 "title": "Accounts to create",
                 "reusedHint": "{count} already confirmed accounts will be reused by default.",
                 "rows": "{count} rows",
-                "create": "Create"
+                "create": "Create",
+                "useExisting": "Use existing account",
+                "reuseAll": "Reuse {count} recognized accounts",
+                "matchedHint": "Found “{name}”. Reuse it instead of creating another.",
+                "pickExisting": "Choose an existing account",
+                "exclude": "Skip",
+                "restore": "Use again",
+                "excludedTitle": "Skipped from posting",
+                "excludedHint": "These stay as evidence and do not enter the ledger. Whole-group skips are remembered next time and can be undone.",
+                "showRows": "Show rows",
+                "hideRows": "Hide",
+                "skipSelected": "Skip selected",
+                "restoreSelected": "Use selected again",
+                "skipped": "Skipped"
             },
             "todos": {
                 "title": "Todos",

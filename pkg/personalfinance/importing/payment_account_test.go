@@ -50,6 +50,67 @@ func TestPaymentAccountAliasNormalizesFormattingAndMasksLongDigits(t *testing.T)
 	}
 }
 
+func TestPaymentAccountAliasDropsCouponSuffixAndKeepsSplitTenders(t *testing.T) {
+	card, ok := importing.BuildPaymentAccountAlias("光大银行信用卡(2690)")
+	if !ok {
+		t.Fatal("expected reusable alias for the card")
+	}
+	withCoupon, ok := importing.BuildPaymentAccountAlias("光大银行信用卡(2690)&两轮充电券")
+	if !ok || withCoupon.Key != card.Key {
+		t.Fatalf("coupon suffix must not create another account: %+v", withCoupon)
+	}
+	if withCoupon.DisplayName != "光大银行信用卡(2690)" || strings.Contains(withCoupon.DisplayName, "券") {
+		t.Fatalf("coupon must not appear in the account display name: %q", withCoupon.DisplayName)
+	}
+
+	wallet, ok := importing.BuildPaymentAccountAlias("余额宝")
+	hongbao, okHongbao := importing.BuildPaymentAccountAlias("余额宝&红包")
+	if !ok || !okHongbao || hongbao.Key != wallet.Key || hongbao.DisplayName != "余额宝" {
+		t.Fatalf("red-packet suffix must stay on the wallet: %+v", hongbao)
+	}
+
+	combined, ok := importing.BuildPaymentAccountAlias("花呗&余额宝")
+	huabei, _ := importing.BuildPaymentAccountAlias("花呗")
+	if !ok || combined.Key == card.Key || combined.Key == wallet.Key || combined.Key == huabei.Key {
+		t.Fatalf("two real funding sources must not collapse: %+v", combined)
+	}
+}
+
+func TestPaymentAccountServiceGroupsCouponSuffixWithTheSameCard(t *testing.T) {
+	repository, database := newSQLiteDedupRepository(t, 1)
+	_, accountKey := dedupSourceAccountEvidence(t)
+	const uid = int64(7111)
+	const fileId = int64(7211)
+	const sourceAccountId = int64(7311)
+	const batchId = int64(7411)
+	defaultLedgerAccountId := int64(7511)
+	insertDedupFixtures(t, database, uid, fileId, sourceAccountId, accountKey, &defaultLedgerAccountId, "7")
+
+	batch := testImportBatch(uid, batchId, fileId, 100)
+	batch.Status = importing.IMPORT_BATCH_STATUS_READY
+	batch.SourceAccountId = int64Pointer(sourceAccountId)
+	batch.LedgerAccountId = int64Pointer(defaultLedgerAccountId)
+	batch.TotalRowCount = 2
+	batch.ValidRowCount = 2
+	batch.PendingRowCount = 2
+	insertRepositoryBeans(t, database, batch,
+		paymentAccountRow(uid, batchId, 7611, 1, "光大银行信用卡(2690)", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, batchId, 7612, 2, "光大银行信用卡(2690)&两轮充电券", importing.PROCESSING_STATE_PENDING, nil),
+	)
+
+	service, err := importing.NewPaymentAccountService(repository, func() int64 { return 8001 })
+	if err != nil {
+		t.Fatalf("create payment account service: %v", err)
+	}
+	groups, err := service.ListBatchPaymentAccounts(nil, uid, batchId)
+	if err != nil || len(groups) != 1 {
+		t.Fatalf("coupon suffix must stay in the same group: %d %v", len(groups), err)
+	}
+	if groups[0].DisplayName != "光大银行信用卡(2690)" || groups[0].RowCount != 2 || strings.Contains(groups[0].DisplayName, "券") {
+		t.Fatalf("unexpected grouped payment account: %+v", groups[0])
+	}
+}
+
 func TestPaymentAccountServiceConfirmsOnceAndReusesMappingDuringFutureParse(t *testing.T) {
 	repository, database := newSQLiteDedupRepository(t, 1)
 	candidate, accountKey := dedupSourceAccountEvidence(t)
@@ -241,12 +302,133 @@ func assertPaymentAccountRepositoryContract(t *testing.T, repository *importing.
 	}
 }
 
+func TestPaymentAccountServiceExcludesGroupAppliesLaterAndRestores(t *testing.T) {
+	repository, database := newSQLiteDedupRepository(t, 1)
+	const uid = int64(8101)
+	const fileId = int64(8201)
+	const batchId = int64(8401)
+	batch := testImportBatch(uid, batchId, fileId, 100)
+	batch.Status = importing.IMPORT_BATCH_STATUS_READY
+	rows := []*importing.RawImportRow{
+		paymentAccountRow(uid, batchId, 8501, 1, "兴业银行信用卡(6106)", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, batchId, 8502, 2, "兴业银行信用卡 尾号6106", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, batchId, 8503, 3, "江苏银行信用购", importing.PROCESSING_STATE_PENDING, nil),
+	}
+	insertRepositoryBeans(t, database, batch, rows[0], rows[1], rows[2])
+
+	nextId := int64(8600)
+	service, err := importing.NewPaymentAccountService(repository, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create payment account service: %v", err)
+	}
+	groups, err := service.ListBatchPaymentAccounts(nil, uid, batchId)
+	if err != nil {
+		t.Fatalf("list grouped payment accounts: %v", err)
+	}
+	xingye := findPaymentAccountGroup(t, groups, "兴业银行信用卡")
+	excluded, err := service.ExcludePaymentAccount(nil, importing.PaymentAccountSkipRequest{Uid: uid, BatchId: batchId, RowId: xingye.SampleRowId})
+	if err != nil || excluded == nil || !excluded.Excluded || excluded.PendingRowCount != 0 {
+		t.Fatalf("exclude grouped payment account: %+v %v", excluded, err)
+	}
+	exclusions, err := repository.ListPaymentAccountExclusions(nil, uid, importing.SOURCE_TYPE_ALIPAY)
+	if err != nil || len(exclusions) != 1 {
+		t.Fatalf("expected one persisted exclusion: %+v %v", exclusions, err)
+	}
+	assertPaymentRowProcessing(t, repository, uid, batchId, map[int64]importing.ProcessingState{
+		8501: importing.PROCESSING_STATE_IGNORED, 8502: importing.PROCESSING_STATE_IGNORED, 8503: importing.PROCESSING_STATE_PENDING,
+	})
+
+	later := testImportBatch(uid, 8402, fileId, 200)
+	later.Status = importing.IMPORT_BATCH_STATUS_READY
+	laterRow := paymentAccountRow(uid, 8402, 8504, 1, "兴业银行信用卡（6106）", importing.PROCESSING_STATE_PENDING, nil)
+	insertRepositoryBeans(t, database, later, laterRow)
+	if err := service.ApplyPersistedExclusions(nil, uid, 8402); err != nil {
+		t.Fatalf("apply persisted exclusions: %v", err)
+	}
+	assertPaymentRowProcessing(t, repository, uid, 8402, map[int64]importing.ProcessingState{8504: importing.PROCESSING_STATE_IGNORED})
+	laterGroups, err := service.ListBatchPaymentAccounts(nil, uid, 8402)
+	if err != nil {
+		t.Fatalf("list later payment accounts: %v", err)
+	}
+	laterXingye := findPaymentAccountGroup(t, laterGroups, "兴业银行信用卡")
+	if laterXingye == nil || !laterXingye.Excluded {
+		t.Fatalf("later batch did not reuse exclusion: %+v", laterXingye)
+	}
+
+	restored, err := service.RestorePaymentAccount(nil, importing.PaymentAccountSkipRequest{Uid: uid, BatchId: batchId, RowId: xingye.SampleRowId})
+	if err != nil || restored == nil || restored.Excluded || restored.PendingRowCount != 2 {
+		t.Fatalf("restore grouped payment account: %+v %v", restored, err)
+	}
+	if _, err := service.RestorePaymentAccount(nil, importing.PaymentAccountSkipRequest{Uid: uid, BatchId: 8402, RowId: laterXingye.SampleRowId}); err != nil {
+		t.Fatalf("restore later batch: %v", err)
+	}
+	remaining, err := repository.ListPaymentAccountExclusions(nil, uid, importing.SOURCE_TYPE_ALIPAY)
+	if err != nil || len(remaining) != 0 {
+		t.Fatalf("exclusion survived restore: %+v %v", remaining, err)
+	}
+	assertPaymentRowProcessing(t, repository, uid, batchId, map[int64]importing.ProcessingState{
+		8501: importing.PROCESSING_STATE_PENDING, 8502: importing.PROCESSING_STATE_PENDING, 8503: importing.PROCESSING_STATE_PENDING,
+	})
+	assertPaymentRowProcessing(t, repository, uid, 8402, map[int64]importing.ProcessingState{8504: importing.PROCESSING_STATE_PENDING})
+}
+
+func TestPaymentAccountServiceSkipRowsDoesNotPersistExclusion(t *testing.T) {
+	repository, database := newSQLiteDedupRepository(t, 1)
+	const uid = int64(9101)
+	const batchId = int64(9401)
+	batch := testImportBatch(uid, batchId, 9201, 100)
+	batch.Status = importing.IMPORT_BATCH_STATUS_READY
+	rows := []*importing.RawImportRow{
+		paymentAccountRow(uid, batchId, 9501, 1, "兴业银行信用卡(6106)", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, batchId, 9502, 2, "兴业银行信用卡 尾号6106", importing.PROCESSING_STATE_PENDING, nil),
+	}
+	insertRepositoryBeans(t, database, batch, rows[0], rows[1])
+	nextId := int64(9600)
+	service, err := importing.NewPaymentAccountService(repository, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create payment account service: %v", err)
+	}
+	groups, err := service.ListBatchPaymentAccounts(nil, uid, batchId)
+	if err != nil {
+		t.Fatalf("list grouped payment accounts: %v", err)
+	}
+	xingye := findPaymentAccountGroup(t, groups, "兴业银行信用卡")
+	skipped, err := service.SkipPaymentAccountRows(nil, importing.PaymentAccountSkipRequest{
+		Uid: uid, BatchId: batchId, RowId: xingye.SampleRowId, RowIds: []int64{9501},
+	})
+	if err != nil || skipped == nil || skipped.Excluded || skipped.PendingRowCount != 1 {
+		t.Fatalf("skip one payment account row: %+v %v", skipped, err)
+	}
+	exclusions, err := repository.ListPaymentAccountExclusions(nil, uid, importing.SOURCE_TYPE_ALIPAY)
+	if err != nil || len(exclusions) != 0 {
+		t.Fatalf("partial skip persisted a whole-group exclusion: %+v %v", exclusions, err)
+	}
+	assertPaymentRowProcessing(t, repository, uid, batchId, map[int64]importing.ProcessingState{
+		9501: importing.PROCESSING_STATE_IGNORED, 9502: importing.PROCESSING_STATE_PENDING,
+	})
+	restored, err := service.RestorePaymentAccountRows(nil, importing.PaymentAccountSkipRequest{
+		Uid: uid, BatchId: batchId, RowId: xingye.SampleRowId, RowIds: []int64{9501},
+	})
+	if err != nil || restored == nil || restored.PendingRowCount != 2 {
+		t.Fatalf("restore skipped payment account row: %+v %v", restored, err)
+	}
+}
+
 func paymentAccountRow(uid int64, batchId int64, rowId int64, rowNumber int64, paymentMethod string, state importing.ProcessingState, ledgerAccountId *int64) *importing.RawImportRow {
 	row := testRawImportRow(uid, rowId, batchId, rowNumber)
 	row.ParseState = importing.PARSE_STATE_VALID
 	row.IdentityState = importing.IDENTITY_STATE_NEW
 	row.ProcessingState = state
+	row.Disposition = importing.IMPORT_DISPOSITION_POSTABLE
+	row.SemanticEligibility = importing.SEMANTIC_ELIGIBILITY_POSTABLE
 	row.RawPaymentMethod = paymentMethod
+	row.RawCounterparty = "测试商户"
 	row.Currency = "CNY"
 	row.LedgerAccountId = ledgerAccountId
 	return row
@@ -273,6 +455,20 @@ func assertPaymentRowLedgerAccounts(t *testing.T, repository *importing.Reposito
 		want, exists := expected[row.RowId]
 		if !exists || (want == nil) != (row.LedgerAccountId == nil) || (want != nil && *want != *row.LedgerAccountId) {
 			t.Fatalf("unexpected ledger account for row %d: got %v want %v", row.RowId, row.LedgerAccountId, want)
+		}
+	}
+}
+
+func assertPaymentRowProcessing(t *testing.T, repository *importing.Repository, uid int64, batchId int64, expected map[int64]importing.ProcessingState) {
+	t.Helper()
+	rows, err := repository.ListPaymentAccountRows(nil, uid, batchId)
+	if err != nil {
+		t.Fatalf("list payment account rows: %v", err)
+	}
+	for _, row := range rows {
+		want, exists := expected[row.RowId]
+		if !exists || row.ProcessingState != want {
+			t.Fatalf("unexpected processing state for row %d: got %s want %s", row.RowId, row.ProcessingState, want)
 		}
 	}
 }

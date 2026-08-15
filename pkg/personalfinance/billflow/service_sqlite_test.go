@@ -202,6 +202,87 @@ func TestServiceCreateAccountAndAmbiguousCrossSource(t *testing.T) {
 	_ = ran
 }
 
+func TestServiceExcludeAccountSkipsPostingAndCanRestore(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
+		postableRow(uid, 401, 801, 201, 0, "餐饮美食"),
+	})
+	evidence.rows[401][0].LedgerAccountId = nil
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {{SourceType: importing.SOURCE_TYPE_ALIPAY, Currency: "CNY", DisplayName: "花呗", RowCount: 1, PendingRowCount: 1, SampleRowId: 801}},
+	}}
+	poster := &fakePoster{}
+	var nextId int64 = 7000
+	service, err := billflow.NewService(repository, evidence, payments, poster, &fakeReconciler{}, nil, &fakeAccounts{nextID: 88}, &fakeCategories{}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-task-exclude"})
+	if err != nil || created.Status != billflow.TASK_STATUS_ACCOUNTS_PENDING {
+		t.Fatalf("unmapped payment should wait for account: %+v err=%v", created, err)
+	}
+	excluded, err := service.ExcludeTaskAccount(nil, billflow.ExcludeAccountRequest{
+		Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, SampleRowId: 801, IdempotencyKey: "exclude-account-1",
+	})
+	if err != nil || len(excluded.NeedsCreate) != 0 || len(excluded.Excluded) != 1 || !excluded.Excluded[0].Excluded {
+		t.Fatalf("exclude did not move group out of needs-create: %+v err=%v", excluded, err)
+	}
+	task, err := service.GetTask(nil, uid, created.TaskId)
+	if err != nil || task.Status != billflow.TASK_STATUS_RECEIVING {
+		t.Fatalf("excluded group should not keep accounts_pending: %+v err=%v", task, err)
+	}
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: task.Version, IdempotencyKey: "run-after-exclude"}, time.UTC)
+	if err != nil {
+		t.Fatalf("run after exclude: %v", err)
+	}
+	if poster.calls != 0 {
+		t.Fatalf("excluded group was posted: %+v", poster.last)
+	}
+	_ = ran
+	restored, err := service.RestoreTaskAccount(nil, billflow.ExcludeAccountRequest{
+		Uid: uid, TaskId: created.TaskId, ExpectedVersion: ran.Version, SampleRowId: 801, IdempotencyKey: "restore-account-1",
+	})
+	if err != nil || len(restored.NeedsCreate) != 1 || len(restored.Excluded) != 0 {
+		t.Fatalf("restore did not return group to needs-create: %+v err=%v", restored, err)
+	}
+}
+
+func TestServiceSkipRowsDoesNotPersistWholeGroup(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
+		postableRow(uid, 401, 801, 201, 0, "餐饮美食"),
+		postableRow(uid, 401, 802, 202, 0, "餐饮美食"),
+	})
+	evidence.rows[401][0].LedgerAccountId = nil
+	evidence.rows[401][1].LedgerAccountId = nil
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {{SourceType: importing.SOURCE_TYPE_ALIPAY, Currency: "CNY", DisplayName: "花呗", RowCount: 2, PendingRowCount: 2, SampleRowId: 801}},
+	}}
+	var nextId int64 = 8000
+	service, err := billflow.NewService(repository, evidence, payments, &fakePoster{}, &fakeReconciler{}, nil, &fakeAccounts{nextID: 88}, &fakeCategories{}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-task-skip-rows"})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	skipped, err := service.SkipTaskAccountRows(nil, billflow.SkipAccountRowsRequest{
+		Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, SampleRowId: 801, RowIds: []int64{801}, IdempotencyKey: "skip-rows-1",
+	})
+	if err != nil || len(skipped.NeedsCreate) != 1 || skipped.NeedsCreate[0].PendingRowCount != 1 || len(skipped.Excluded) != 0 {
+		t.Fatalf("skipping one row persisted or hid the group: %+v err=%v", skipped, err)
+	}
+}
+
 type fakeEvidence struct {
 	files     map[int64]*importing.ImportFile
 	batches   map[int64][]*importing.ImportBatch
@@ -282,6 +363,81 @@ func (f *fakePayments) ConfirmBatchPaymentAccount(_ core.Context, request import
 				id := request.LedgerAccountId
 				group.LedgerAccountId = &id
 				group.Mapped = true
+				return group, nil
+			}
+		}
+	}
+	return nil, errors.New("payment group not found")
+}
+func (f *fakePayments) ApplyPersistedExclusions(_ core.Context, _ int64, _ int64) error {
+	return nil
+}
+func (f *fakePayments) ExcludePaymentAccount(_ core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error) {
+	return f.setGroupExcluded(request.RowId, true)
+}
+func (f *fakePayments) RestorePaymentAccount(_ core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error) {
+	return f.setGroupExcluded(request.RowId, false)
+}
+func (f *fakePayments) SkipPaymentAccountRows(_ core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error) {
+	group, err := f.findGroup(request.RowId)
+	if err != nil {
+		return nil, err
+	}
+	skipped := int64(len(request.RowIds))
+	if skipped < 1 {
+		return nil, errors.New("payment rows not found")
+	}
+	if group.PendingRowCount < skipped {
+		group.PendingRowCount = 0
+	} else {
+		group.PendingRowCount -= skipped
+	}
+	group.SkippedRowCount += skipped
+	return group, nil
+}
+func (f *fakePayments) RestorePaymentAccountRows(_ core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error) {
+	group, err := f.findGroup(request.RowId)
+	if err != nil {
+		return nil, err
+	}
+	restored := int64(len(request.RowIds))
+	group.PendingRowCount += restored
+	if group.SkippedRowCount < restored {
+		group.SkippedRowCount = 0
+	} else {
+		group.SkippedRowCount -= restored
+	}
+	return group, nil
+}
+func (f *fakePayments) ListPaymentAccountGroupRows(_ core.Context, _ int64, batchId int64, sampleRowId int64) ([]*importing.PaymentAccountRowView, error) {
+	group, err := f.findGroup(sampleRowId)
+	if err != nil {
+		return nil, err
+	}
+	return []*importing.PaymentAccountRowView{{
+		RowId: sampleRowId, BatchId: batchId, Currency: group.Currency, Direction: importing.NORMALIZED_DIRECTION_EXPENSE,
+		Label: group.DisplayName, Skipped: group.Excluded || group.PendingRowCount == 0,
+	}}, nil
+}
+func (f *fakePayments) setGroupExcluded(sampleRowId int64, excluded bool) (*importing.PaymentAccountGroup, error) {
+	group, err := f.findGroup(sampleRowId)
+	if err != nil {
+		return nil, err
+	}
+	group.Excluded = excluded
+	if excluded {
+		group.SkippedRowCount += group.PendingRowCount
+		group.PendingRowCount = 0
+	} else {
+		group.PendingRowCount += group.SkippedRowCount
+		group.SkippedRowCount = 0
+	}
+	return group, nil
+}
+func (f *fakePayments) findGroup(sampleRowId int64) (*importing.PaymentAccountGroup, error) {
+	for _, groups := range f.groups {
+		for _, group := range groups {
+			if group != nil && group.SampleRowId == sampleRowId {
 				return group, nil
 			}
 		}

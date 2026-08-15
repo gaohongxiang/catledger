@@ -6,6 +6,7 @@ import type { PersonalFinanceImportBatch } from '../models.ts';
 import {
     composeDashboardHeadline,
     eligibleOrganizeFileIds,
+    matchedLedgerAccount,
     nearestNextPayment,
     primaryDashboardHeadline,
     suggestedAccountCategory,
@@ -75,6 +76,45 @@ describe('billflow task page state', () => {
         expect(suggestedAccountCategory('virtual')).toBe(4);
     });
 
+    it('reuses a uniquely named existing ledger account instead of creating another', () => {
+        const existing = [
+            { id: 'guangda', name: '光大银行信用卡(2690)', currency: 'CNY' },
+            { id: 'xingye', name: '兴业银行信用卡(6106)', currency: 'CNY' },
+            { id: 'huabei', name: '花呗', currency: 'CNY' }
+        ];
+        expect(matchedLedgerAccount({
+            sourceType: 'alipay',
+            currency: 'CNY',
+            displayName: '光大银行信用卡(2690)'
+        }, existing)?.id).toBe('guangda');
+        expect(matchedLedgerAccount({
+            sourceType: 'wechat',
+            currency: 'CNY',
+            displayName: '光大银行信用卡（2690）'
+        }, existing)?.id).toBe('guangda');
+        expect(matchedLedgerAccount({
+            sourceType: 'wechat',
+            currency: 'CNY',
+            displayName: '兴业银行信用卡 尾号6106'
+        }, existing)?.id).toBe('xingye');
+        expect(matchedLedgerAccount({
+            sourceType: 'alipay',
+            currency: 'CNY',
+            displayName: '支付宝小荷包(树与草的小荷包)'
+        }, existing)?.id).toBeUndefined();
+    });
+
+    it('does not auto-select when two existing cards share the same unique score', () => {
+        expect(matchedLedgerAccount({
+            sourceType: 'alipay',
+            currency: 'CNY',
+            displayName: '光大银行信用卡(2690)'
+        }, [
+            { id: 'guangda', name: '光大银行信用卡(2690)', currency: 'CNY' },
+            { id: 'other', name: '光大银行信用卡 2690', currency: 'CNY' }
+        ])?.id).toBeUndefined();
+    });
+
     it('composes a first-screen trust headline from stable codes only', () => {
         const items = composeDashboardHeadline({
             coverageComplete: false,
@@ -118,6 +158,9 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.summary.created');
         expect(workbench).toContain('personalFinance.billflow.summary.posted');
         expect(workbench).toContain('personalFinance.billflow.summary.todos');
+        expect(workbench).toContain('personalFinance.billflow.accounts.exclude');
+        expect(workbench).toContain('personalFinance.billflow.accounts.useExisting');
+        expect(workbench).toContain('personalFinance.billflow.accounts.excludedTitle');
         expect(workbench).toContain('v-for="todo in openTodos"');
         expect(workbench).not.toContain('来源账户');
     });

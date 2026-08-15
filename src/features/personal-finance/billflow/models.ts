@@ -69,11 +69,24 @@ export interface BillflowAccountGroup {
     readonly ledgerAccountId?: string;
     readonly suggestedType: 'credit_card' | 'virtual';
     readonly mapped: boolean;
+    readonly excluded: boolean;
+}
+
+export interface BillflowAccountRow {
+    readonly id: string;
+    readonly batchId: string;
+    readonly unixTime?: number;
+    readonly amount: string;
+    readonly currency: string;
+    readonly direction: string;
+    readonly label: string;
+    readonly skipped: boolean;
 }
 
 export interface BillflowAccounts {
     readonly needsCreate: readonly BillflowAccountGroup[];
     readonly reused: readonly BillflowAccountGroup[];
+    readonly excluded: readonly BillflowAccountGroup[];
 }
 
 export interface BillflowTodo {

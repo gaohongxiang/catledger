@@ -1044,6 +1044,24 @@ export default {
     createPersonalFinanceBillflowAccount: (request: { taskId: string, expectedVersion: number, sampleRowId: string, name: string, category: number, currency: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/create.json', request);
     },
+    overridePersonalFinanceBillflowAccount: (request: { taskId: string, expectedVersion: number, sampleRowId: string, ledgerAccountId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/override.json', request);
+    },
+    excludePersonalFinanceBillflowAccount: (request: { taskId: string, expectedVersion: number, sampleRowId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/exclude.json', request);
+    },
+    restorePersonalFinanceBillflowAccount: (request: { taskId: string, expectedVersion: number, sampleRowId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/restore.json', request);
+    },
+    listPersonalFinanceBillflowAccountRows: ({ taskId, sampleRowId }: { taskId: string, sampleRowId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/accounts/rows.json?id=${encodeURIComponent(taskId)}&sample_row_id=${encodeURIComponent(sampleRowId)}`);
+    },
+    skipPersonalFinanceBillflowAccountRows: (request: { taskId: string, expectedVersion: number, sampleRowId: string, rowIds: readonly string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/skip_rows.json', request);
+    },
+    restorePersonalFinanceBillflowAccountRows: (request: { taskId: string, expectedVersion: number, sampleRowId: string, rowIds: readonly string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/restore_rows.json', request);
+    },
     runPersonalFinanceBillflowTask: (request: { taskId: string, expectedVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/run.json', request);
     },
