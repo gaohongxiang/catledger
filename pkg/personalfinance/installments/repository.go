@@ -315,6 +315,19 @@ func (r *Repository) ListMembers(c core.Context, uid int64, candidateId int64) (
 	return members, nil
 }
 
+func (tx *RepositoryTransaction) ListMembers(candidateId int64) ([]*CandidateMember, error) {
+	if err := tx.validate(); err != nil || candidateId < 1 {
+		return nil, fmt.Errorf("invalid installment candidate member transaction list")
+	}
+
+	members := make([]*CandidateMember, 0)
+	if err := tx.session.Where("uid=? AND candidate_id=?", tx.uid, candidateId).Asc("created_unix_time", "member_id").Find(&members); err != nil {
+		return nil, fmt.Errorf("list installment candidate members: %w", err)
+	}
+
+	return members, nil
+}
+
 func validateNewCandidate(value *Candidate) error {
 	if value == nil || value.Uid < 1 || value.CandidateId < 1 || !isLowerHexSHA256(value.CandidateKey) ||
 		value.CandidateKeyVersion != CANDIDATE_KEY_VERSION_V1 || value.Status != CANDIDATE_STATUS_PENDING ||

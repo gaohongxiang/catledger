@@ -56,4 +56,9 @@ func RegisterPersonalFinanceRoutes(apiV1Route gin.IRoutes, config *settings.Conf
 
 	// Personal Finance Dashboard
 	apiV1Route.GET("/personal_finance/dashboard/overview.json", bindApi(PersonalFinanceDashboard.OverviewHandler, config))
+
+	// Personal Finance Installments
+	apiV1Route.GET("/personal_finance/installments/candidates/list.json", bindApi(PersonalFinanceInstallments.InstallmentCandidateListHandler, config))
+	apiV1Route.GET("/personal_finance/installments/candidates/get.json", bindApi(PersonalFinanceInstallments.InstallmentCandidateGetHandler, config))
+	apiV1Route.POST("/personal_finance/installments/candidates/confirm.json", bindApi(PersonalFinanceInstallments.InstallmentCandidateConfirmHandler, config))
 }

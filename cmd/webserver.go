@@ -77,6 +77,12 @@ func startWebServer(c *core.CliContext) error {
 		return err
 	}
 
+	err = api.InitializePersonalFinanceInstallmentsApi()
+	if err != nil {
+		log.BootErrorf(c, "[webserver.startWebServer] initializes personal finance installments API failed, because %s", err.Error())
+		return err
+	}
+
 	err = requestid.InitializeRequestIdGenerator(c, config)
 
 	if err != nil {
