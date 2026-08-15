@@ -2947,7 +2947,7 @@
             "confirmHint": "Finish categories and other items, then confirm posting.",
             "confirmDoneHint": "Posted.",
             "reviewHint": "Choose a category for unclear transactions. You can select several and save them together.",
-            "othersHint": "Refunds and conflicts are not category choices. Mark them done, or skip for now.",
+            "othersHint": "Anything left after categorizing. You can continue if there is nothing to decide.",
             "files": {
                 "title": "Choose statements to organize together",
                 "create": "Start organizing",
