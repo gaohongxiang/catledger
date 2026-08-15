@@ -113,6 +113,29 @@ export function billflowDirectionKey(direction: string): string {
     return 'personalFinance.billflow.accounts.direction.unknown';
 }
 
+export function mergeSelectedOrganizeFileIds(
+    selected: readonly string[],
+    previousEligible: readonly string[],
+    nextEligible: readonly string[]
+): string[] {
+    const eligible = new Set(nextEligible);
+    const previous = new Set(previousEligible);
+    const nextSelected = selected.filter(id => eligible.has(id));
+    for (const id of nextEligible) {
+        if (!previous.has(id) && !nextSelected.includes(id)) {
+            nextSelected.push(id);
+        }
+    }
+    if (nextSelected.length === 0 && previousEligible.length === 0) {
+        return [...nextEligible];
+    }
+    return nextSelected;
+}
+
+export function canAutoRunAfterAccounts(status: BillflowTaskStatus, needsCreateCount: number): boolean {
+    return status === 'accounts_pending' && needsCreateCount < 1;
+}
+
 function pushHeadline(items: DashboardHeadlineItem[], code: DashboardHeadlineCode, count: number): void {
     if (!Number.isSafeInteger(count) || count < 1) {
         return;

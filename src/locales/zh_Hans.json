@@ -2935,10 +2935,17 @@
             "run": "开始自动整理",
             "confirmPost": "确认入账",
             "files": {
-                "title": "选择已解析的账单",
+                "title": "选择要一起整理的账单",
                 "create": "开始整理",
                 "empty": "还没有可整理的账单",
-                "emptyHint": "先上传支付宝、微信或银行账单。"
+                "emptyHint": "先上传支付宝、微信或银行账单，可一次选多份。",
+                "selected": "已选 {count} 份"
+            },
+            "next": {
+                "files": "整理已选的 {count} 份账单",
+                "accounts": "还要确认 {count} 个账户",
+                "accountsReady": "账户已齐，开始自动整理",
+                "confirm": "看过摘要后确认入账"
             },
             "summary": {
                 "created": "新建账户",
@@ -2947,7 +2954,7 @@
                 "todos": "需要你看"
             },
             "accounts": {
-                "title": "需要新建的账户",
+                "title": "先把账户认对",
                 "reusedHint": "已确认的 {count} 个账户会默认沿用，不必每次再点确认。",
                 "rows": "{count} 笔",
                 "create": "新建",

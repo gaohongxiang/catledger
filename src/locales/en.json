@@ -2935,10 +2935,17 @@
             "run": "Organize now",
             "confirmPost": "Confirm posting",
             "files": {
-                "title": "Choose parsed statements",
+                "title": "Choose statements to organize together",
                 "create": "Start organizing",
                 "empty": "No statements are ready yet",
-                "emptyHint": "Upload an Alipay, WeChat Pay, or bank statement first."
+                "emptyHint": "Upload Alipay, WeChat Pay, or bank statements first. You can pick more than one.",
+                "selected": "{count} selected"
+            },
+            "next": {
+                "files": "Organize {count} selected statements",
+                "accounts": "{count} accounts still need a decision",
+                "accountsReady": "Accounts are ready. Organize now",
+                "confirm": "Review the summary, then confirm posting"
             },
             "summary": {
                 "created": "Accounts created",
@@ -2947,7 +2954,7 @@
                 "todos": "Need a look"
             },
             "accounts": {
-                "title": "Accounts to create",
+                "title": "Match accounts first",
                 "reusedHint": "{count} already confirmed accounts will be reused by default.",
                 "rows": "{count} rows",
                 "create": "Create",

@@ -1,197 +1,227 @@
 <template>
     <v-card class="task-workbench overflow-hidden">
-        <div class="task-toolbar px-5 py-4">
+        <div class="task-toolbar">
             <div>
-                <div class="text-subtitle-1 font-weight-bold">{{ tt('personalFinance.billflow.title') }}</div>
-                <div class="text-body-small text-medium-emphasis">{{ tt('personalFinance.billflow.subtitle') }}</div>
+                <div class="task-kicker">{{ tt('personalFinance.billflow.title') }}</div>
+                <div class="task-lead">{{ tt('personalFinance.billflow.subtitle') }}</div>
             </div>
             <v-spacer />
-            <v-btn color="primary" :prepend-icon="mdiTrayArrowUp" :loading="busy" @click="fileInput?.click()">
+            <v-btn color="primary" variant="flat" :prepend-icon="mdiTrayArrowUp" :loading="busy" @click="fileInput?.click()">
                 {{ tt('personalFinance.upload') }}
             </v-btn>
-            <v-btn variant="tonal" :icon="mdiRefresh" :loading="loading" @click="reload" />
-            <input ref="fileInput" type="file" class="d-none" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="upload" />
+            <v-btn variant="text" :icon="mdiRefresh" :loading="loading" @click="reload" />
+            <input
+                ref="fileInput"
+                type="file"
+                class="d-none"
+                multiple
+                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                @change="upload"
+            />
         </div>
-
-        <v-divider />
 
         <v-alert class="ma-4" type="error" variant="tonal" v-if="error">{{ tt('personalFinance.billflow.error') }}</v-alert>
 
-        <section class="px-5 py-4" v-if="eligibleFiles.length">
-            <div class="text-subtitle-2 mb-2">{{ tt('personalFinance.billflow.files.title') }}</div>
+        <section class="files-panel" v-if="!task && eligibleFiles.length">
+            <div class="section-copy">
+                <strong>{{ tt('personalFinance.billflow.files.title') }}</strong>
+                <span>{{ tt('personalFinance.billflow.files.selected', { count: selectedFileIds.length }) }}</span>
+            </div>
             <v-chip-group column multiple v-model="selectedFileIds">
                 <v-chip :value="file.fileId" filter :key="file.fileId" v-for="file in eligibleFiles">
                     {{ file.name }}
                 </v-chip>
             </v-chip-group>
-            <v-btn class="mt-3" color="primary" variant="flat" :disabled="selectedFileIds.length < 1" :loading="busy" @click="createTask">
-                {{ tt('personalFinance.billflow.files.create') }}
-            </v-btn>
         </section>
 
-        <div class="empty-state pa-8 text-center" v-else-if="!loading">
-            <div class="font-weight-medium">{{ tt('personalFinance.billflow.files.empty') }}</div>
-            <div class="text-body-small text-medium-emphasis mt-1">{{ tt('personalFinance.billflow.files.emptyHint') }}</div>
+        <div class="empty-state" v-else-if="!task && !loading">
+            <strong>{{ tt('personalFinance.billflow.files.empty') }}</strong>
+            <p>{{ tt('personalFinance.billflow.files.emptyHint') }}</p>
+            <v-btn color="primary" variant="flat" :prepend-icon="mdiTrayArrowUp" :loading="busy" @click="fileInput?.click()">
+                {{ tt('personalFinance.upload') }}
+            </v-btn>
         </div>
 
         <template v-if="task">
-            <v-divider />
-            <section class="summary-grid pa-5">
-                <div>
+            <section class="summary-grid">
+                <div class="summary-card summary-card--ink">
                     <span>{{ tt('personalFinance.billflow.summary.created') }}</span>
                     <strong>{{ task.createdAccountCount }}</strong>
                 </div>
-                <div>
-                    <span>{{ tt('personalFinance.billflow.summary.reused') }}</span>
-                    <strong>{{ task.reusedMappingCount }}</strong>
-                </div>
-                <div>
+                <div class="summary-card">
                     <span>{{ tt('personalFinance.billflow.summary.posted') }}</span>
                     <strong>{{ task.autoPostedCount }}</strong>
                 </div>
-                <div>
+                <div class="summary-card" :class="{ 'summary-card--todo': task.todoOpenCount > 0 }">
                     <span>{{ tt('personalFinance.billflow.summary.todos') }}</span>
                     <strong>{{ task.todoOpenCount }}</strong>
                 </div>
             </section>
+            <p class="reused-caption" v-if="task.reusedMappingCount > 0">
+                {{ tt('personalFinance.billflow.accounts.reusedHint', { count: task.reusedMappingCount }) }}
+            </p>
 
             <v-alert class="mx-5 mb-4" type="warning" variant="tonal" v-if="task.status === 'failed'">
                 {{ tt('personalFinance.billflow.failed') }}
             </v-alert>
 
-            <section class="px-5 pb-4" v-if="taskNeedsAccounts(task.status, accounts?.needsCreate.length ?? 0) || (accounts?.excluded.length ?? 0) > 0">
-                <div class="text-subtitle-2 mb-2">{{ tt('personalFinance.billflow.accounts.title') }}</div>
-                <p class="text-body-small text-medium-emphasis">{{ tt('personalFinance.billflow.accounts.reusedHint', { count: accounts?.reused.length ?? 0 }) }}</p>
-                <v-btn
-                    class="mb-3"
-                    color="primary"
-                    variant="flat"
-                    :loading="busy"
-                    v-if="matchedNeedsCreate.length > 0"
-                    @click="reuseMatchedAccounts"
+            <section class="work-section" v-if="taskNeedsAccounts(task.status, accounts?.needsCreate.length ?? 0) || (accounts?.excluded.length ?? 0) > 0">
+                <div class="section-copy">
+                    <strong>{{ tt('personalFinance.billflow.accounts.title') }}</strong>
+                    <span>{{ tt('personalFinance.billflow.accounts.reusedHint', { count: accounts?.reused.length ?? 0 }) }}</span>
+                </div>
+
+                <article
+                    class="account-card"
+                    :class="{ 'account-card--matched': !!matchedAccount(group) }"
+                    :key="group.sampleRowId"
+                    v-for="group in accounts?.needsCreate"
                 >
-                    {{ tt('personalFinance.billflow.accounts.reuseAll', { count: matchedNeedsCreate.length }) }}
-                </v-btn>
-                <v-list v-if="accounts?.needsCreate.length">
-                    <v-list-item :key="group.sampleRowId" v-for="group in accounts.needsCreate">
-                        <v-list-item-title>{{ group.displayName }} · {{ group.currency }}</v-list-item-title>
-                        <v-list-item-subtitle>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</v-list-item-subtitle>
-                        <v-list-item-subtitle v-if="matchedAccount(group)">
-                            {{ tt('personalFinance.billflow.accounts.matchedHint', { name: matchedAccount(group)?.name ?? '' }) }}
-                        </v-list-item-subtitle>
-                        <v-select
-                            class="mt-2"
-                            density="compact"
-                            hide-details
-                            item-title="title"
-                            item-value="value"
-                            :items="ledgerOptions(group)"
-                            :label="tt('personalFinance.billflow.accounts.pickExisting')"
-                            :model-value="selectedLedgerId(group)"
-                            :disabled="busy"
-                            v-if="ledgerOptions(group).length"
-                            @update:model-value="value => setPickedLedgerId(group, value)"
-                        />
-                        <template #append>
+                    <div class="account-card__head">
+                        <div>
+                            <strong>{{ group.displayName }}</strong>
+                            <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
+                        </div>
+                        <div class="account-card__quiet">
                             <v-btn size="small" variant="text" :loading="busy" @click="toggleRows(group)">
                                 {{ expandedSampleRowId === group.sampleRowId ? tt('personalFinance.billflow.accounts.hideRows') : tt('personalFinance.billflow.accounts.showRows') }}
                             </v-btn>
                             <v-btn size="small" variant="text" :loading="busy" @click="excludeAccount(group)">
                                 {{ tt('personalFinance.billflow.accounts.exclude') }}
                             </v-btn>
-                            <v-btn size="small" variant="text" :loading="busy" v-if="selectedLedgerId(group)" @click="createAccount(group)">
-                                {{ tt('personalFinance.billflow.accounts.create') }}
-                            </v-btn>
-                            <v-btn size="small" color="primary" :loading="busy" v-if="selectedLedgerId(group)" @click="reuseAccount(group)">
-                                {{ tt('personalFinance.billflow.accounts.useExisting') }}
-                            </v-btn>
-                            <v-btn size="small" color="primary" :loading="busy" v-else @click="createAccount(group)">
-                                {{ tt('personalFinance.billflow.accounts.create') }}
-                            </v-btn>
-                        </template>
-                    </v-list-item>
-                </v-list>
-                <v-list v-if="expandedSampleRowId && accountRows.length" class="bg-transparent">
-                    <v-list-item :key="row.id" v-for="row in accountRows">
-                        <template #prepend>
-                            <v-checkbox-btn v-model="selectedRowIds" :value="row.id" />
-                        </template>
-                        <v-list-item-title>{{ row.label }}</v-list-item-title>
-                        <v-list-item-subtitle>
-                            {{ formatAccountRow(row) }}
-                            <span v-if="row.skipped"> · {{ tt('personalFinance.billflow.accounts.skipped') }}</span>
-                        </v-list-item-subtitle>
-                    </v-list-item>
-                </v-list>
-                <div class="d-flex ga-2 mt-2" v-if="expandedSampleRowId && selectedRowIds.length">
-                    <v-btn size="small" variant="tonal" :loading="busy" @click="skipSelectedRows">{{ tt('personalFinance.billflow.accounts.skipSelected') }}</v-btn>
-                    <v-btn size="small" variant="text" :loading="busy" @click="restoreSelectedRows">{{ tt('personalFinance.billflow.accounts.restoreSelected') }}</v-btn>
-                </div>
+                        </div>
+                    </div>
+                    <p class="account-card__hint" v-if="matchedAccount(group)">
+                        {{ tt('personalFinance.billflow.accounts.matchedHint', { name: matchedAccount(group)?.name ?? '' }) }}
+                    </p>
+                    <v-select
+                        class="mt-3"
+                        density="compact"
+                        hide-details
+                        item-title="title"
+                        item-value="value"
+                        variant="outlined"
+                        :items="ledgerOptions(group)"
+                        :label="tt('personalFinance.billflow.accounts.pickExisting')"
+                        :model-value="selectedLedgerId(group)"
+                        :disabled="busy"
+                        v-if="ledgerOptions(group).length"
+                        @update:model-value="value => setPickedLedgerId(group, value)"
+                    />
+                    <div class="account-card__actions">
+                        <v-btn
+                            color="primary"
+                            variant="flat"
+                            :loading="busy"
+                            v-if="selectedLedgerId(group)"
+                            @click="reuseAccount(group)"
+                        >
+                            {{ tt('personalFinance.billflow.accounts.useExisting') }}
+                        </v-btn>
+                        <v-btn
+                            :color="selectedLedgerId(group) ? undefined : 'primary'"
+                            :variant="selectedLedgerId(group) ? 'tonal' : 'flat'"
+                            :loading="busy"
+                            @click="createAccount(group)"
+                        >
+                            {{ tt('personalFinance.billflow.accounts.create') }}
+                        </v-btn>
+                    </div>
+                    <div class="account-rows" v-if="expandedSampleRowId === group.sampleRowId && accountRows.length">
+                        <label class="account-row" :class="{ 'account-row--skipped': row.skipped }" :key="row.id" v-for="row in accountRows">
+                            <v-checkbox-btn v-model="selectedRowIds" :value="row.id" hide-details />
+                            <div class="account-row__copy">
+                                <strong>{{ row.label }}</strong>
+                                <small>{{ formatAccountTime(row) }}</small>
+                            </div>
+                            <div class="account-row__facts">
+                                <b>{{ formatAccountAmount(row) }}</b>
+                                <v-chip size="x-small" variant="tonal" :color="directionColor(row.direction)" v-if="row.direction">
+                                    {{ tt(billflowDirectionKey(row.direction)) }}
+                                </v-chip>
+                                <v-chip size="x-small" variant="text" v-if="row.skipped">
+                                    {{ tt('personalFinance.billflow.accounts.skipped') }}
+                                </v-chip>
+                            </div>
+                        </label>
+                        <div class="account-row__batch" v-if="selectedRowIds.length">
+                            <v-btn size="small" variant="tonal" :loading="busy" @click="skipSelectedRows">{{ tt('personalFinance.billflow.accounts.skipSelected') }}</v-btn>
+                            <v-btn size="small" variant="text" :loading="busy" @click="restoreSelectedRows">{{ tt('personalFinance.billflow.accounts.restoreSelected') }}</v-btn>
+                        </div>
+                    </div>
+                </article>
+
                 <template v-if="accounts?.excluded.length">
-                    <div class="text-subtitle-2 mt-4 mb-2">{{ tt('personalFinance.billflow.accounts.excludedTitle') }}</div>
-                    <p class="text-body-small text-medium-emphasis">{{ tt('personalFinance.billflow.accounts.excludedHint') }}</p>
-                    <v-list>
-                        <v-list-item :key="group.sampleRowId" v-for="group in accounts.excluded">
-                            <v-list-item-title>{{ group.displayName }} · {{ group.currency }}</v-list-item-title>
-                            <v-list-item-subtitle>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</v-list-item-subtitle>
-                            <template #append>
-                                <v-btn size="small" variant="text" :loading="busy" @click="restoreAccount(group)">
-                                    {{ tt('personalFinance.billflow.accounts.restore') }}
-                                </v-btn>
-                            </template>
-                        </v-list-item>
-                    </v-list>
+                    <div class="section-copy mt-6">
+                        <strong>{{ tt('personalFinance.billflow.accounts.excludedTitle') }}</strong>
+                        <span>{{ tt('personalFinance.billflow.accounts.excludedHint') }}</span>
+                    </div>
+                    <article class="account-card account-card--excluded" :key="group.sampleRowId" v-for="group in accounts.excluded">
+                        <div class="account-card__head">
+                            <div>
+                                <strong>{{ group.displayName }}</strong>
+                                <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
+                            </div>
+                            <v-btn size="small" variant="tonal" :loading="busy" @click="restoreAccount(group)">
+                                {{ tt('personalFinance.billflow.accounts.restore') }}
+                            </v-btn>
+                        </div>
+                    </article>
                 </template>
             </section>
 
-            <div class="px-5 pb-4" v-if="task.status === 'accounts_pending' && (accounts?.needsCreate.length ?? 0) < 1">
-                <v-btn color="primary" :loading="busy" @click="runTask">{{ tt('personalFinance.billflow.run') }}</v-btn>
-            </div>
-            <div class="px-5 pb-4" v-else-if="taskAwaitsConfirm(task.status)">
-                <v-btn color="primary" :loading="busy" @click="confirmPost">{{ tt('personalFinance.billflow.confirmPost') }}</v-btn>
-            </div>
-
-            <section class="px-5 pb-5" v-if="taskShowsTodos(task.status)">
-                <div class="text-subtitle-2 mb-2">{{ tt('personalFinance.billflow.todos.title') }}</div>
-                <v-list v-if="openTodos.length">
-                    <v-list-item :key="todo.id" v-for="todo in openTodos">
-                        <v-list-item-title>{{ tt(todoKindKey(todo.todoKind)) }}</v-list-item-title>
-                        <v-list-item-subtitle>{{ todo.reasonCodes.join(' · ') }}</v-list-item-subtitle>
-                        <template #append>
-                            <v-btn size="small" variant="text" :loading="busy" v-if="todo.todoKind === 'installment_candidate'" @click="confirmInstallment(todo)">
-                                {{ tt('personalFinance.billflow.todos.installment') }}
-                            </v-btn>
-                            <v-btn size="small" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
-                                {{ tt('personalFinance.billflow.todos.resolve') }}
-                            </v-btn>
-                            <v-btn size="small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
-                                {{ tt('personalFinance.billflow.todos.dismiss') }}
-                            </v-btn>
-                        </template>
-                    </v-list-item>
-                </v-list>
-                <p class="text-body-small text-medium-emphasis" v-else>{{ tt('personalFinance.billflow.todos.empty') }}</p>
+            <section class="work-section" v-if="taskShowsTodos(task.status)">
+                <div class="section-copy">
+                    <strong>{{ tt('personalFinance.billflow.todos.title') }}</strong>
+                    <span v-if="!openTodos.length">{{ tt('personalFinance.billflow.todos.empty') }}</span>
+                </div>
+                <article class="todo-card" :key="todo.id" v-for="todo in openTodos">
+                    <div>
+                        <strong>{{ tt(todoKindKey(todo.todoKind)) }}</strong>
+                        <p v-if="todoReasonLabels(todo).length">{{ todoReasonLabels(todo).join(' · ') }}</p>
+                    </div>
+                    <div class="todo-card__actions">
+                        <v-btn size="small" variant="text" :loading="busy" v-if="todo.todoKind === 'installment_candidate'" @click="confirmInstallment(todo)">
+                            {{ tt('personalFinance.billflow.todos.installment') }}
+                        </v-btn>
+                        <v-btn size="small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                            {{ tt('personalFinance.billflow.todos.resolve') }}
+                        </v-btn>
+                        <v-btn size="small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                            {{ tt('personalFinance.billflow.todos.dismiss') }}
+                        </v-btn>
+                    </div>
+                </article>
             </section>
 
-            <section class="px-5 pb-5" v-if="unverifiedCards.length">
-                <div class="text-subtitle-2 mb-2">{{ tt('personalFinance.billflow.balance.title') }}</div>
-                <p class="text-body-small text-medium-emphasis">{{ tt('personalFinance.billflow.balance.hint') }}</p>
-                <v-list>
-                    <v-list-item :key="card.ledgerAccountId" v-for="card in unverifiedCards">
-                        <v-list-item-title>{{ card.displayName }}</v-list-item-title>
-                        <template #append>
+            <section class="work-section" v-if="unverifiedCards.length">
+                <div class="section-copy">
+                    <strong>{{ tt('personalFinance.billflow.balance.title') }}</strong>
+                    <span>{{ tt('personalFinance.billflow.balance.hint') }}</span>
+                </div>
+                <article class="account-card" :key="card.ledgerAccountId" v-for="card in unverifiedCards">
+                    <div class="account-card__head">
+                        <strong>{{ card.displayName }}</strong>
+                        <div class="account-card__actions">
                             <v-btn size="small" variant="text" :loading="busy" @click="skipBalance(card)">{{ tt('personalFinance.billflow.balance.skip') }}</v-btn>
-                            <v-btn size="small" color="primary" :loading="busy" @click="verifyBalance(card)">{{ tt('personalFinance.billflow.balance.verify') }}</v-btn>
-                        </template>
-                    </v-list-item>
-                </v-list>
+                            <v-btn size="small" color="primary" variant="tonal" :loading="busy" @click="verifyBalance(card)">{{ tt('personalFinance.billflow.balance.verify') }}</v-btn>
+                        </div>
+                    </div>
+                </article>
             </section>
         </template>
+
+        <div class="next-bar" v-if="nextAction">
+            <span>{{ nextAction.label }}</span>
+            <v-btn color="primary" variant="flat" :loading="busy" @click="nextAction.run">
+                {{ nextAction.button }}
+            </v-btn>
+        </div>
     </v-card>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { mdiRefresh, mdiTrayArrowUp } from '@mdi/js';
 
 import { useI18n } from '@/locales/helpers.ts';
@@ -201,9 +231,19 @@ import { parseBigDecimal } from '@/lib/numeral.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 
 import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowTask, BillflowTodo, CardCycleAccount } from '../models.ts';
-import { todoKindKey } from '../presentation.ts';
+import { todoKindKey, todoReasonKey } from '../presentation.ts';
 import { billflowApi } from '../service.ts';
-import { billflowDirectionKey, eligibleOrganizeFileIds, matchedLedgerAccount, suggestedAccountCategory, taskAwaitsConfirm, taskNeedsAccounts, taskShowsTodos } from '../state.ts';
+import {
+    billflowDirectionKey,
+    canAutoRunAfterAccounts,
+    eligibleOrganizeFileIds,
+    matchedLedgerAccount,
+    mergeSelectedOrganizeFileIds,
+    suggestedAccountCategory,
+    taskAwaitsConfirm,
+    taskNeedsAccounts,
+    taskShowsTodos
+} from '../state.ts';
 import { usePersonalFinanceStore } from '../../store.ts';
 import { todayCivilDate } from '../../dashboard/state.ts';
 
@@ -215,6 +255,7 @@ const loading = ref(false);
 const busy = ref(false);
 const error = ref(false);
 const selectedFileIds = ref<string[]>([]);
+const previousEligibleIds = ref<string[]>([]);
 const task = ref<BillflowTask>();
 const accounts = ref<BillflowAccounts>();
 const expandedSampleRowId = ref<string>();
@@ -234,6 +275,47 @@ const eligibleFiles = computed(() => {
 
 const unverifiedCards = computed(() => cardAccounts.value.filter(card => !card.balanceReview || card.balanceReview.status === 'unverified'));
 const matchedNeedsCreate = computed(() => (accounts.value?.needsCreate ?? []).filter(group => !!selectedLedgerId(group)));
+const nextAction = computed(() => {
+    if (!task.value) {
+        if (selectedFileIds.value.length < 1) {
+            return undefined;
+        }
+        return {
+            label: tt('personalFinance.billflow.next.files', { count: selectedFileIds.value.length }),
+            button: tt('personalFinance.billflow.files.create'),
+            run: createTask
+        };
+    }
+    const pendingCount = accounts.value?.needsCreate.length ?? 0;
+    if (taskNeedsAccounts(task.value.status, pendingCount) && pendingCount > 0 && matchedNeedsCreate.value.length > 0) {
+        return {
+            label: tt('personalFinance.billflow.next.accounts', { count: pendingCount }),
+            button: tt('personalFinance.billflow.accounts.reuseAll', { count: matchedNeedsCreate.value.length }),
+            run: reuseMatchedAccounts
+        };
+    }
+    if (canAutoRunAfterAccounts(task.value.status, pendingCount)) {
+        return {
+            label: tt('personalFinance.billflow.next.accountsReady'),
+            button: tt('personalFinance.billflow.run'),
+            run: runTask
+        };
+    }
+    if (taskAwaitsConfirm(task.value.status)) {
+        return {
+            label: tt('personalFinance.billflow.next.confirm'),
+            button: tt('personalFinance.billflow.confirmPost'),
+            run: confirmPost
+        };
+    }
+    return undefined;
+});
+
+watch(eligibleFiles, files => {
+    const nextIds = files.map(file => file.fileId);
+    selectedFileIds.value = mergeSelectedOrganizeFileIds(selectedFileIds.value, previousEligibleIds.value, nextIds);
+    previousEligibleIds.value = nextIds;
+}, { immediate: true });
 
 function matchedAccount(group: BillflowAccountGroup) {
     return matchedLedgerAccount(group, accountsStore.allVisiblePlainAccounts);
@@ -255,6 +337,31 @@ function setPickedLedgerId(group: BillflowAccountGroup, value: unknown): void {
         return;
     }
     pickedAccountIds[group.sampleRowId] = value;
+}
+
+function todoReasonLabels(todo: BillflowTodo): string[] {
+    return todo.reasonCodes
+        .map(code => todoReasonKey(code))
+        .filter((key): key is string => !!key && key !== todoKindKey(todo.todoKind))
+        .map(key => tt(key));
+}
+
+function formatAccountAmount(row: BillflowAccountRow): string {
+    return row.amount ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(row.amount), row.currency) : '';
+}
+
+function formatAccountTime(row: BillflowAccountRow): string {
+    return row.unixTime ? formatDateTimeToShortDateTime(parseDateTimeFromUnixTimeWithBrowserTimezone(row.unixTime)) : '';
+}
+
+function directionColor(direction: string): string | undefined {
+    if (direction === 'income') {
+        return 'success';
+    }
+    if (direction === 'expense') {
+        return 'error';
+    }
+    return undefined;
 }
 
 async function reload(): Promise<void> {
@@ -296,17 +403,32 @@ async function openTask(taskId: string): Promise<void> {
     }
 }
 
+async function refreshTaskAndMaybeRun(): Promise<void> {
+    if (!task.value) {
+        return;
+    }
+    await openTask(task.value.id);
+    if (!canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0)) {
+        return;
+    }
+    await billflowApi.runTask(task.value.id, task.value.version, generateRandomUUID());
+    await openTask(task.value.id);
+}
+
 async function upload(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
+    const files = [...(input.files ?? [])];
     input.value = '';
-    if (!file) return;
+    if (files.length < 1) return;
     busy.value = true;
     try {
-        await personalFinanceStore.uploadFile(file);
+        for (const file of files) {
+            await personalFinanceStore.uploadFile(file);
+        }
         await personalFinanceStore.loadBatches(0, 50);
     } catch {
         error.value = true;
+        await personalFinanceStore.loadBatches(0, 50).catch(() => undefined);
     } finally {
         busy.value = false;
     }
@@ -337,7 +459,7 @@ async function createAccount(group: BillflowAccountGroup): Promise<void> {
             currency: group.currency,
             idempotencyKey: generateRandomUUID()
         });
-        await openTask(task.value.id);
+        await refreshTaskAndMaybeRun();
     } catch {
         error.value = true;
     } finally {
@@ -359,7 +481,7 @@ async function reuseAccount(group: BillflowAccountGroup, ledgerAccountId?: strin
             idempotencyKey: generateRandomUUID()
         });
         delete pickedAccountIds[group.sampleRowId];
-        await openTask(task.value.id);
+        await refreshTaskAndMaybeRun();
     } catch {
         error.value = true;
     } finally {
@@ -386,7 +508,7 @@ async function reuseMatchedAccounts(): Promise<void> {
             });
             delete pickedAccountIds[group.sampleRowId];
         }
-        await openTask(task.value.id);
+        await refreshTaskAndMaybeRun();
     } catch {
         error.value = true;
     } finally {
@@ -407,7 +529,7 @@ async function excludeAccount(group: BillflowAccountGroup): Promise<void> {
         expandedSampleRowId.value = undefined;
         accountRows.value = [];
         selectedRowIds.value = [];
-        await openTask(task.value.id);
+        await refreshTaskAndMaybeRun();
     } catch {
         error.value = true;
     } finally {
@@ -483,20 +605,6 @@ async function mutateSelectedRows(skip: boolean): Promise<void> {
     } finally {
         busy.value = false;
     }
-}
-
-function formatAccountRow(row: BillflowAccountRow): string {
-    const parts: string[] = [];
-    if (row.amount) {
-        parts.push(formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(row.amount), row.currency));
-    }
-    if (row.unixTime) {
-        parts.push(formatDateTimeToShortDateTime(parseDateTimeFromUnixTimeWithBrowserTimezone(row.unixTime)));
-    }
-    if (row.direction) {
-        parts.push(tt(billflowDirectionKey(row.direction)));
-    }
-    return parts.join(' · ');
 }
 
 async function runTask(): Promise<void> {
@@ -588,9 +696,20 @@ onMounted(reload);
 
 <style scoped>
 .task-workbench {
-    border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
-    border-radius: 18px;
+    --task-ink: #17352f;
+    --task-mint: #dff3e9;
+    --task-paper: rgb(var(--v-theme-surface));
+    --task-rule: rgba(var(--v-theme-on-surface), 0.11);
+    border: 1px solid var(--task-rule);
+    border-radius: 18px 6px 18px 6px;
     box-shadow: none;
+}
+
+.task-toolbar,
+.files-panel,
+.work-section,
+.next-bar {
+    padding: 20px 22px;
 }
 
 .task-toolbar {
@@ -598,35 +717,226 @@ onMounted(reload);
     flex-wrap: wrap;
     align-items: center;
     gap: 12px;
+    background: linear-gradient(115deg, rgba(var(--v-theme-primary), 0.08), transparent 58%);
+}
+
+.task-kicker {
+    color: rgb(var(--v-theme-primary));
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.task-lead {
+    margin-top: 4px;
+    color: rgba(var(--v-theme-on-surface), 0.64);
+    font-size: 0.92rem;
+}
+
+.files-panel,
+.work-section {
+    border-top: 1px solid var(--task-rule);
+}
+
+.section-copy {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 14px;
+}
+
+.section-copy span {
+    color: rgba(var(--v-theme-on-surface), 0.6);
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.empty-state {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    padding: 56px 24px;
+    text-align: center;
+}
+
+.empty-state p {
+    max-width: 420px;
+    margin: 0 0 8px;
+    color: rgba(var(--v-theme-on-surface), 0.62);
 }
 
 .summary-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: 1.15fr 1fr 1fr;
     gap: 12px;
+    padding: 18px 22px 8px;
 }
 
-.summary-grid div {
-    padding: 16px;
-    border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
-    border-radius: 12px;
+.summary-card {
+    min-height: 112px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border: 1px solid var(--task-rule);
+    border-radius: 5px 16px 5px 16px;
+    background: var(--task-paper);
 }
 
-.summary-grid span {
-    display: block;
-    color: rgba(var(--v-theme-on-surface), 0.6);
+.summary-card span {
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(var(--v-theme-on-surface), 0.58);
+}
+
+.summary-card strong {
+    font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+}
+
+.summary-card--ink {
+    background: var(--task-ink);
+    color: #f5f1df;
+    border-color: transparent;
+}
+
+.summary-card--ink span {
+    color: rgba(245, 241, 223, 0.7);
+}
+
+.summary-card--todo {
+    background: var(--task-mint);
+    color: var(--task-ink);
+}
+
+.reused-caption {
+    margin: 0 22px 8px;
+    color: rgba(var(--v-theme-on-surface), 0.58);
     font-size: 0.8rem;
 }
 
-.summary-grid strong {
+.account-card,
+.todo-card {
+    display: grid;
+    gap: 8px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    border: 1px solid var(--task-rule);
+    border-radius: 14px 4px 14px 4px;
+    background: var(--task-paper);
+}
+
+.account-card--matched {
+    border-color: rgba(var(--v-theme-primary), 0.35);
+    background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.account-card--excluded {
+    opacity: 0.78;
+}
+
+.account-card__head,
+.todo-card,
+.account-card__actions,
+.account-card__quiet,
+.account-row,
+.account-row__batch,
+.next-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.account-card__head,
+.todo-card,
+.next-bar {
+    justify-content: space-between;
+}
+
+.account-card__head strong,
+.todo-card strong {
     display: block;
-    margin-top: 6px;
-    font-size: 1.6rem;
+}
+
+.account-card__head span,
+.todo-card p,
+.account-card__hint {
+    margin: 4px 0 0;
+    color: rgba(var(--v-theme-on-surface), 0.6);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.account-card__actions {
+    justify-content: flex-end;
+}
+
+.account-rows {
+    display: grid;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--task-rule);
+}
+
+.account-row {
+    align-items: flex-start;
+    padding: 8px 4px;
+    border-radius: 8px;
+}
+
+.account-row--skipped {
+    opacity: 0.55;
+}
+
+.account-row__copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.account-row__copy strong,
+.account-row__facts b {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.account-row__copy small {
+    color: rgba(var(--v-theme-on-surface), 0.55);
+}
+
+.account-row__facts {
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+    font-variant-numeric: tabular-nums;
+}
+
+.next-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    border-top: 1px solid var(--task-rule);
+    background: color-mix(in srgb, var(--task-paper) 92%, transparent);
+    backdrop-filter: blur(10px);
+}
+
+.next-bar span {
+    color: rgba(var(--v-theme-on-surface), 0.68);
+    font-size: 0.9rem;
 }
 
 @media (max-width: 900px) {
     .summary-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: 1fr;
+    }
+
+    .account-card__head,
+    .todo-card,
+    .next-bar {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }
 </style>

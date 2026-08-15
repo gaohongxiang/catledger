@@ -1,7 +1,7 @@
 <template>
     <div class="bill-organizer">
         <v-card class="organizer-intro overflow-hidden">
-            <div class="organizer-heading pa-6 pa-lg-8">
+            <div class="organizer-heading px-6 py-5 px-lg-8">
                 <div class="organizer-copy">
                     <div class="text-overline text-primary">{{ tt('personalFinance.organizer.eyebrow') }}</div>
                     <h2 class="text-h4 font-weight-bold mt-1">{{ tt('personalFinance.organizer.title') }}</h2>
@@ -108,9 +108,10 @@ const activeView = computed<BillOrganizerView>({
 
 .organizer-heading {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(520px, 0.9fr);
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
     align-items: center;
-    gap: 44px;
+    gap: 28px;
+    padding-block: 22px;
     background:
         linear-gradient(120deg, rgba(var(--v-theme-primary), 0.1), transparent 48%),
         rgb(var(--v-theme-surface));
@@ -134,9 +135,9 @@ const activeView = computed<BillOrganizerView>({
 
 .organizer-steps li {
     display: flex;
-    min-height: 104px;
-    gap: 12px;
-    padding: 16px;
+    min-height: 0;
+    gap: 10px;
+    padding: 12px 14px;
     background: rgb(var(--v-theme-surface));
 }
 

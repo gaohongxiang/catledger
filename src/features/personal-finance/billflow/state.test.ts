@@ -5,7 +5,9 @@ import { readFileSync } from 'node:fs';
 import type { PersonalFinanceImportBatch } from '../models.ts';
 import {
     billflowDirectionKey,
+    canAutoRunAfterAccounts,
     composeDashboardHeadline,
+    mergeSelectedOrganizeFileIds,
     eligibleOrganizeFileIds,
     matchedLedgerAccount,
     nearestNextPayment,
@@ -164,8 +166,21 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.accounts.excludedTitle');
         expect(workbench).toContain('formatAmountToLocalizedNumeralsWithCurrency');
         expect(workbench).toContain('billflowDirectionKey');
+        expect(workbench).toContain('refreshTaskAndMaybeRun');
+        expect(workbench).toContain('mergeSelectedOrganizeFileIds');
         expect(workbench).toContain('v-for="todo in openTodos"');
         expect(workbench).not.toContain('来源账户');
+        expect(workbench).not.toContain('todo.reasonCodes.join');
+    });
+
+    it('keeps newly uploaded files selected without restoring a cleared choice', () => {
+        expect(mergeSelectedOrganizeFileIds([], [], ['a', 'b'])).toEqual(['a', 'b']);
+        expect(mergeSelectedOrganizeFileIds(['a'], ['a'], ['a', 'b'])).toEqual(['a', 'b']);
+        expect(mergeSelectedOrganizeFileIds([], ['a', 'b'], ['a', 'b'])).toEqual([]);
+        expect(mergeSelectedOrganizeFileIds(['b'], ['a', 'b'], ['a', 'b'])).toEqual(['b']);
+        expect(canAutoRunAfterAccounts('accounts_pending', 0)).toBe(true);
+        expect(canAutoRunAfterAccounts('accounts_pending', 1)).toBe(false);
+        expect(canAutoRunAfterAccounts('awaiting_confirm', 0)).toBe(false);
     });
 
     it('maps income, expense and neither-income-nor-expense to display keys', () => {
