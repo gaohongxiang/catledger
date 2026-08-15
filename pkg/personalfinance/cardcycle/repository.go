@@ -99,12 +99,38 @@ func (r *Repository) ListRules(c core.Context, uid int64, ledgerAccountId int64)
 
 	sess := database.NewPrivacySession(c)
 	defer sess.Close()
+	return listRules(sess, uid, ledgerAccountId)
+}
+
+func (tx *RepositoryTransaction) ListRules(ledgerAccountId int64) ([]*CycleRule, error) {
+	if err := tx.validate(); err != nil || ledgerAccountId < 1 {
+		return nil, fmt.Errorf("invalid card cycle rule transaction list")
+	}
+
+	return listRules(tx.session, tx.uid, ledgerAccountId)
+}
+
+func listRules(sess *xorm.Session, uid int64, ledgerAccountId int64) ([]*CycleRule, error) {
 	rules := make([]*CycleRule, 0)
 	if err := sess.Where("uid=? AND ledger_account_id=?", uid, ledgerAccountId).Asc("rule_number", "rule_id").Find(&rules); err != nil {
 		return nil, fmt.Errorf("list card cycle rules: %w", err)
 	}
 
 	return rules, nil
+}
+
+// UpdateRuleStatus 只更新规则 revision 的状态，不改写账单日、到期日或生效日。
+func (tx *RepositoryTransaction) UpdateRuleStatus(ruleId int64, status RuleStatus) (bool, error) {
+	if err := tx.validate(); err != nil || ruleId < 1 || !isRuleStatus(status) {
+		return false, fmt.Errorf("invalid card cycle rule status update")
+	}
+
+	updated, err := tx.session.Where("uid=? AND rule_id=?", tx.uid, ruleId).Cols("status").Update(&CycleRule{Status: status})
+	if err != nil {
+		return false, fmt.Errorf("update card cycle rule status: %w", err)
+	}
+
+	return updated == 1, nil
 }
 
 // InsertCoverage 保存一份账单的实际覆盖区间。
@@ -137,6 +163,18 @@ func (r *Repository) FindCoverageByBatch(c core.Context, uid int64, batchId int6
 
 	sess := database.NewPrivacySession(c)
 	defer sess.Close()
+	return findCoverageByBatch(sess, uid, batchId)
+}
+
+func (tx *RepositoryTransaction) FindCoverageByBatch(batchId int64) (*StatementCoverage, error) {
+	if err := tx.validate(); err != nil || batchId < 1 {
+		return nil, fmt.Errorf("invalid card statement coverage transaction lookup")
+	}
+
+	return findCoverageByBatch(tx.session, tx.uid, batchId)
+}
+
+func findCoverageByBatch(sess *xorm.Session, uid int64, batchId int64) (*StatementCoverage, error) {
 	coverage := new(StatementCoverage)
 	found, err := sess.Where("uid=? AND batch_id=?", uid, batchId).Get(coverage)
 	if err != nil {
@@ -147,6 +185,39 @@ func (r *Repository) FindCoverageByBatch(c core.Context, uid int64, batchId int6
 	}
 
 	return coverage, nil
+}
+
+// ListCoverages 按账期结束日返回某正式账户的全部实际覆盖区间。
+func (r *Repository) ListCoverages(c core.Context, uid int64, ledgerAccountId int64) ([]*StatementCoverage, error) {
+	if uid < 1 || ledgerAccountId < 1 {
+		return nil, fmt.Errorf("invalid card statement coverage list")
+	}
+
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	return listCoverages(sess, uid, ledgerAccountId)
+}
+
+func (tx *RepositoryTransaction) ListCoverages(ledgerAccountId int64) ([]*StatementCoverage, error) {
+	if err := tx.validate(); err != nil || ledgerAccountId < 1 {
+		return nil, fmt.Errorf("invalid card statement coverage transaction list")
+	}
+
+	return listCoverages(tx.session, tx.uid, ledgerAccountId)
+}
+
+func listCoverages(sess *xorm.Session, uid int64, ledgerAccountId int64) ([]*StatementCoverage, error) {
+	coverages := make([]*StatementCoverage, 0)
+	if err := sess.Where("uid=? AND ledger_account_id=?", uid, ledgerAccountId).Asc("period_end", "coverage_id").Find(&coverages); err != nil {
+		return nil, fmt.Errorf("list card statement coverages: %w", err)
+	}
+
+	return coverages, nil
 }
 
 // InsertMonthRevision 追加一条历史自然月修订审计。

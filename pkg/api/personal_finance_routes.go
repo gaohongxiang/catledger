@@ -75,4 +75,10 @@ func RegisterPersonalFinanceRoutes(apiV1Route gin.IRoutes, config *settings.Conf
 	apiV1Route.POST("/personal_finance/billflow/todos/resolve.json", bindApi(PersonalFinanceBillflow.BillflowTodoResolveHandler, config))
 	apiV1Route.GET("/personal_finance/billflow/tasks/undo_impact.json", bindApi(PersonalFinanceBillflow.BillflowTaskUndoImpactHandler, config))
 	apiV1Route.POST("/personal_finance/billflow/tasks/undo.json", bindApi(PersonalFinanceBillflow.BillflowTaskUndoHandler, config))
+
+	// Personal Finance Card Cycle
+	apiV1Route.GET("/personal_finance/card_cycle/accounts.json", bindApi(PersonalFinanceCardCycle.CardCycleAccountListHandler, config))
+	apiV1Route.POST("/personal_finance/card_cycle/rules/save.json", bindApi(PersonalFinanceCardCycle.CardCycleRuleSaveHandler, config))
+	apiV1Route.GET("/personal_finance/card_cycle/coverage.json", bindApi(PersonalFinanceCardCycle.CardCycleCoverageHandler, config))
+	apiV1Route.POST("/personal_finance/accounts/balance_review.json", bindApi(PersonalFinanceCardCycle.CardCycleBalanceReviewHandler, config))
 }

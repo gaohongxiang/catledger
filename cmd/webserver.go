@@ -89,6 +89,12 @@ func startWebServer(c *core.CliContext) error {
 		return err
 	}
 
+	err = api.InitializePersonalFinanceCardCycleApi()
+	if err != nil {
+		log.BootErrorf(c, "[webserver.startWebServer] initializes personal finance card cycle API failed, because %s", err.Error())
+		return err
+	}
+
 	err = requestid.InitializeRequestIdGenerator(c, config)
 
 	if err != nil {

@@ -67,6 +67,10 @@ var frozenPersonalFinanceRoutes = []personalFinanceRouteSpec{
 	{method: "POST", path: "/personal_finance/billflow/todos/resolve.json", handler: "PersonalFinanceBillflow.BillflowTodoResolveHandler"},
 	{method: "GET", path: "/personal_finance/billflow/tasks/undo_impact.json", handler: "PersonalFinanceBillflow.BillflowTaskUndoImpactHandler"},
 	{method: "POST", path: "/personal_finance/billflow/tasks/undo.json", handler: "PersonalFinanceBillflow.BillflowTaskUndoHandler"},
+	{method: "GET", path: "/personal_finance/card_cycle/accounts.json", handler: "PersonalFinanceCardCycle.CardCycleAccountListHandler"},
+	{method: "POST", path: "/personal_finance/card_cycle/rules/save.json", handler: "PersonalFinanceCardCycle.CardCycleRuleSaveHandler"},
+	{method: "GET", path: "/personal_finance/card_cycle/coverage.json", handler: "PersonalFinanceCardCycle.CardCycleCoverageHandler"},
+	{method: "POST", path: "/personal_finance/accounts/balance_review.json", handler: "PersonalFinanceCardCycle.CardCycleBalanceReviewHandler"},
 }
 
 func TestRegisterPersonalFinanceRoutesMatchesFrozenInventory(t *testing.T) {
