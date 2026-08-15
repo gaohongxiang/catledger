@@ -44,6 +44,16 @@ func (s *Service) CreateTask(c core.Context, request CreateTaskRequest) (*TaskVi
 		}{fileId: fileId, batchId: batch.BatchId})
 	}
 
+	batchIds := make([]int64, 0, len(bindings))
+	for _, binding := range bindings {
+		batchIds = append(batchIds, binding.batchId)
+	}
+	if existingId, existingErr := s.existingTaskIDForBatches(c, request.Uid, batchIds); existingErr != nil {
+		return nil, existingErr
+	} else if existingId > 0 {
+		return s.GetTask(c, request.Uid, existingId)
+	}
+
 	parts := []string{"create_task"}
 	for _, binding := range bindings {
 		parts = append(parts, strconv.FormatInt(binding.fileId, 10), strconv.FormatInt(binding.batchId, 10))
@@ -121,6 +131,27 @@ func (s *Service) isFirstOrganize(c core.Context, uid int64) (bool, error) {
 		return false, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 	}
 	return page == nil || len(page.Items) == 0, nil
+}
+
+func (s *Service) existingTaskIDForBatches(c core.Context, uid int64, batchIds []int64) (int64, error) {
+	var existingId int64
+	for _, batchId := range batchIds {
+		member, err := s.repository.FindMemberByBatch(c, uid, batchId)
+		if err != nil {
+			return 0, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		if member == nil {
+			continue
+		}
+		if existingId == 0 {
+			existingId = member.TaskId
+			continue
+		}
+		if member.TaskId != existingId {
+			return 0, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+	}
+	return existingId, nil
 }
 
 func uniquePositiveIDs(values []int64) []int64 {

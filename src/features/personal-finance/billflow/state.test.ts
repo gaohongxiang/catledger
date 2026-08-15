@@ -184,6 +184,7 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('account-row-card__name');
         expect(workbench).toContain('formatAmountToLocalizedNumeralsWithCurrency');
         expect(workbench).toContain('billflowDirectionKey');
+        expect(workbench).toContain("listTasks('receiving')");
         expect(workbench).toContain('refreshTaskAndMaybeRun');
         expect(workbench).toContain('mergeSelectedOrganizeFileIds');
         expect(workbench).toContain('personalFinance.billflow.confirmHint');
@@ -202,6 +203,8 @@ describe('billflow task page wiring', () => {
         expect(mergeSelectedOrganizeFileIds(['b'], ['a', 'b'], ['a', 'b'])).toEqual(['b']);
         expect(canAutoRunAfterAccounts('accounts_pending', 0)).toBe(true);
         expect(canAutoRunAfterAccounts('accounts_pending', 1)).toBe(false);
+        expect(canAutoRunAfterAccounts('receiving', 0)).toBe(true);
+        expect(canAutoRunAfterAccounts('receiving', 1)).toBe(false);
         expect(canAutoRunAfterAccounts('awaiting_confirm', 0)).toBe(false);
     });
 
@@ -218,6 +221,7 @@ describe('billflow task page wiring', () => {
         expect(suggestedBillflowWorkbenchStep({ hasTask: false, needsCreateCount: 0 })).toBe('files');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'accounts_pending', needsCreateCount: 2 })).toBe('accounts');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'processing', needsCreateCount: 0 })).toBe('accounts');
+        expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'receiving', needsCreateCount: 0 })).toBe('accounts');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'awaiting_confirm', needsCreateCount: 0 })).toBe('confirm');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'ready', needsCreateCount: 0 })).toBe('confirm');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'failed', needsCreateCount: 0 })).toBe('confirm');

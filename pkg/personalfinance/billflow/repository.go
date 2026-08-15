@@ -236,6 +236,31 @@ func (tx *RepositoryTransaction) InsertMember(member *TaskMember) error {
 	return nil
 }
 
+// FindMemberByBatch 按 uid 和批次查询任务成员，不存在时返回 (nil, nil)。
+func (r *Repository) FindMemberByBatch(c core.Context, uid int64, batchId int64) (*TaskMember, error) {
+	if uid < 1 || batchId < 1 {
+		return nil, fmt.Errorf("invalid billflow task member batch lookup")
+	}
+
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	member := new(TaskMember)
+	found, err := sess.Where("uid=? AND batch_id=?", uid, batchId).Get(member)
+	if err != nil {
+		return nil, fmt.Errorf("find billflow task member by batch: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+
+	return member, nil
+}
+
 // ListMembers 按任务内顺序返回当前 uid 的任务成员。
 func (r *Repository) ListMembers(c core.Context, uid int64, taskId int64) ([]*TaskMember, error) {
 	if uid < 1 || taskId < 1 {

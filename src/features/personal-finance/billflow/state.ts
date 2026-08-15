@@ -133,7 +133,7 @@ export function mergeSelectedOrganizeFileIds(
 }
 
 export function canAutoRunAfterAccounts(status: BillflowTaskStatus, needsCreateCount: number): boolean {
-    return status === 'accounts_pending' && needsCreateCount < 1;
+    return needsCreateCount < 1 && (status === 'accounts_pending' || status === 'receiving');
 }
 
 export type BillflowAccountBucket = 'pending' | 'reused' | 'excluded';
@@ -187,7 +187,7 @@ export function suggestedBillflowWorkbenchStep(input: {
     if (!input.hasTask) {
         return 'files';
     }
-    if (input.status === 'processing' || taskNeedsAccounts(input.status ?? 'receiving', input.needsCreateCount)) {
+    if (input.status === 'processing' || input.status === 'receiving' || taskNeedsAccounts(input.status ?? 'receiving', input.needsCreateCount)) {
         return 'accounts';
     }
     return 'confirm';

@@ -515,14 +515,16 @@ async function reload(): Promise<void> {
             personalFinanceStore.loadBatches(0, 50),
             accountsStore.loadAllAccounts({ force: false })
         ]);
-        const [pending, awaiting, ready] = await Promise.all([
+        const [pending, receiving, awaiting, ready] = await Promise.all([
             billflowApi.listTasks('accounts_pending'),
+            billflowApi.listTasks('receiving'),
             billflowApi.listTasks('awaiting_confirm'),
             billflowApi.listTasks('ready')
         ]);
-        const current = pending.items[0] ?? awaiting.items[0] ?? ready.items[0] ?? task.value;
+        const current = pending.items[0] ?? receiving.items[0] ?? awaiting.items[0] ?? ready.items[0] ?? task.value;
         if (current) {
-            await openTask(current.id);
+            task.value = current;
+            await refreshTaskAndMaybeRun();
         }
         cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
     } catch {
@@ -581,7 +583,8 @@ async function createTask(): Promise<void> {
     busy.value = true;
     try {
         const created = await billflowApi.createTask(selectedFileIds.value, generateRandomUUID());
-        await openTask(created.id);
+        task.value = created;
+        await refreshTaskAndMaybeRun();
     } catch {
         error.value = true;
     } finally {

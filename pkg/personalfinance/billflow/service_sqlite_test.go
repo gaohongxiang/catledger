@@ -45,6 +45,10 @@ func TestServiceConfirmThenPostCategoryAndUndo(t *testing.T) {
 	if created.ReusedMappingCount < 1 {
 		t.Fatalf("confirmed mapping was not reused: %+v", created)
 	}
+	again, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-task-again"})
+	if err != nil || again == nil || again.TaskId != created.TaskId {
+		t.Fatalf("same batches should reopen existing task: %+v err=%v", again, err)
+	}
 
 	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-1", CreatedIp: "192.0.2.10"}, time.UTC)
 	if err != nil || ran.Status != billflow.TASK_STATUS_AWAITING_CONFIRM || poster.calls != 0 {
