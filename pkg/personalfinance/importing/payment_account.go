@@ -145,6 +145,40 @@ func BuildPaymentAccountAlias(raw string) (PaymentAccountAlias, bool) {
 	}, true
 }
 
+func qualifyPaymentAccountDisplayName(sourceType SourceType, displayName string) string {
+	name := strings.TrimSpace(displayName)
+	if name == "" {
+		return name
+	}
+	prefix := ""
+	switch sourceType {
+	case SOURCE_TYPE_WECHAT:
+		prefix = "微信"
+	case SOURCE_TYPE_ALIPAY:
+		prefix = "支付宝"
+	default:
+		return name
+	}
+	if strings.HasPrefix(name, prefix) {
+		return name
+	}
+	if !needsPaymentAccountSourcePrefix(sourceType, name) {
+		return name
+	}
+	return prefix + name
+}
+
+func needsPaymentAccountSourcePrefix(sourceType SourceType, name string) bool {
+	switch canonicalPaymentAccountAlias(name) {
+	case "零钱", "零钱通":
+		return sourceType == SOURCE_TYPE_WECHAT
+	case "余额", "账户余额", "余额宝":
+		return sourceType == SOURCE_TYPE_ALIPAY
+	default:
+		return false
+	}
+}
+
 func paymentAccountInstrumentName(raw string) string {
 	value := strings.TrimSpace(norm.NFKC.String(raw))
 	if value == "" {
@@ -202,6 +236,9 @@ func canonicalPaymentAccountAlias(raw string) string {
 	canonical := builder.String()
 	for _, token := range []string{"末四位", "后四位", "尾号", "卡号"} {
 		canonical = strings.ReplaceAll(canonical, token, "")
+	}
+	for _, token := range []string{"微信支付", "微信", "支付宝"} {
+		canonical = strings.TrimPrefix(canonical, token)
 	}
 	return canonical
 }
@@ -344,7 +381,7 @@ func (s *PaymentAccountService) ConfirmBatchPaymentAccount(c core.Context, reque
 		AliasKey:          alias.Key,
 		AliasKeyVersion:   alias.Version,
 		LedgerAccountId:   request.LedgerAccountId,
-		MaskedDisplayName: alias.DisplayName,
+		MaskedDisplayName: qualifyPaymentAccountDisplayName(batch.SourceTypeSnapshot, alias.DisplayName),
 		CreatedUnixTime:   now,
 		UpdatedUnixTime:   now,
 		MappingId:         mappingId,
@@ -427,18 +464,19 @@ func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mapping
 		entry := groups[key]
 		if entry == nil {
 			entry = &groupEntry{group: &PaymentAccountGroup{
-				SourceType: batch.SourceTypeSnapshot, Currency: row.Currency, DisplayName: alias.DisplayName,
+				SourceType: batch.SourceTypeSnapshot, Currency: row.Currency,
+				DisplayName: qualifyPaymentAccountDisplayName(batch.SourceTypeSnapshot, alias.DisplayName),
 				SampleRowId: row.RowId,
 			}, firstRow: row.RowNumber}
 			if mapping := mappingByKey[key]; mapping != nil {
 				ledgerAccountId := mapping.LedgerAccountId
 				entry.group.LedgerAccountId = &ledgerAccountId
 				entry.group.Mapped = true
-				entry.group.DisplayName = mapping.MaskedDisplayName
+				entry.group.DisplayName = qualifyPaymentAccountDisplayName(batch.SourceTypeSnapshot, mapping.MaskedDisplayName)
 			}
 			if exclusion := exclusionByKey[key]; exclusion != nil {
 				entry.group.Excluded = true
-				entry.group.DisplayName = exclusion.MaskedDisplayName
+				entry.group.DisplayName = qualifyPaymentAccountDisplayName(batch.SourceTypeSnapshot, exclusion.MaskedDisplayName)
 			}
 			groups[key] = entry
 		}

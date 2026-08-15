@@ -43,6 +43,12 @@ func TestPaymentAccountAliasNormalizesFormattingAndMasksLongDigits(t *testing.T)
 		t.Fatalf("full and masked card representations did not converge: %q != %q", masked.Key, expectedKey)
 	}
 
+	change, ok := importing.BuildPaymentAccountAlias("零钱")
+	wechatChange, wechatOK := importing.BuildPaymentAccountAlias("微信零钱")
+	if !ok || !wechatOK || change.Key != wechatChange.Key {
+		t.Fatalf("wechat change variants must share an alias key: %+v %+v", change, wechatChange)
+	}
+
 	for _, generic := range []string{"", "银行卡", "信用卡", "储蓄卡", "未知", "付款方式"} {
 		if _, ok := importing.BuildPaymentAccountAlias(generic); ok {
 			t.Fatalf("generic payment method must not become a reusable mapping: %q", generic)
@@ -109,6 +115,78 @@ func TestPaymentAccountServiceGroupsCouponSuffixWithTheSameCard(t *testing.T) {
 	if groups[0].DisplayName != "光大银行信用卡(2690)" || groups[0].RowCount != 2 || strings.Contains(groups[0].DisplayName, "券") {
 		t.Fatalf("unexpected grouped payment account: %+v", groups[0])
 	}
+}
+
+func TestPaymentAccountServicePrefixesPlatformWallets(t *testing.T) {
+	repository, database := newSQLiteDedupRepository(t, 1)
+	_, accountKey := dedupSourceAccountEvidence(t)
+	const uid = int64(7121)
+	const fileId = int64(7221)
+	const sourceAccountId = int64(7321)
+	alipayBatchId := int64(7421)
+	wechatBatchId := int64(7422)
+	defaultLedgerAccountId := int64(7521)
+	insertDedupFixtures(t, database, uid, fileId, sourceAccountId, accountKey, &defaultLedgerAccountId, "7")
+
+	alipayBatch := testImportBatch(uid, alipayBatchId, fileId, 100)
+	alipayBatch.Status = importing.IMPORT_BATCH_STATUS_READY
+	alipayBatch.SourceAccountId = int64Pointer(sourceAccountId)
+	alipayBatch.LedgerAccountId = int64Pointer(defaultLedgerAccountId)
+	alipayBatch.TotalRowCount = 4
+	alipayBatch.ValidRowCount = 4
+	alipayBatch.PendingRowCount = 4
+
+	wechatFileId := int64(7222)
+	wechatFile := testImportFile(uid, wechatFileId, "8", 101)
+	wechatFile.ContentState = importing.IMPORT_FILE_CONTENT_STATE_AVAILABLE
+	wechatBatch := testImportBatch(uid, wechatBatchId, wechatFileId, 101)
+	wechatBatch.Status = importing.IMPORT_BATCH_STATUS_READY
+	wechatBatch.SourceTypeSnapshot = importing.SOURCE_TYPE_WECHAT
+	wechatBatch.SourceAccountId = int64Pointer(sourceAccountId)
+	wechatBatch.LedgerAccountId = int64Pointer(defaultLedgerAccountId)
+	wechatBatch.TotalRowCount = 2
+	wechatBatch.ValidRowCount = 2
+	wechatBatch.PendingRowCount = 2
+
+	insertRepositoryBeans(t, database, alipayBatch, wechatFile, wechatBatch,
+		paymentAccountRow(uid, alipayBatchId, 7621, 1, "余额", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, alipayBatchId, 7622, 2, "余额宝", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, alipayBatchId, 7623, 3, "账户余额", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, alipayBatchId, 7624, 4, "光大银行信用卡(2690)", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, wechatBatchId, 7625, 1, "零钱", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, wechatBatchId, 7626, 2, "微信零钱", importing.PROCESSING_STATE_PENDING, nil),
+	)
+
+	service, err := importing.NewPaymentAccountService(repository, func() int64 { return 8001 })
+	if err != nil {
+		t.Fatalf("create payment account service: %v", err)
+	}
+	alipayGroups, err := service.ListBatchPaymentAccounts(nil, uid, alipayBatchId)
+	if err != nil {
+		t.Fatalf("list alipay payment accounts: %v", err)
+	}
+	alipayNames := paymentAccountDisplayNames(alipayGroups)
+	if alipayNames["支付宝余额"] != 1 || alipayNames["支付宝余额宝"] != 1 || alipayNames["支付宝账户余额"] != 1 {
+		t.Fatalf("alipay wallets were not prefixed: %v", alipayNames)
+	}
+	if alipayNames["光大银行信用卡(2690)"] != 1 || alipayNames["余额"] != 0 || alipayNames["余额宝"] != 0 {
+		t.Fatalf("bank card must stay unprefixed: %v", alipayNames)
+	}
+
+	wechatGroups, err := service.ListBatchPaymentAccounts(nil, uid, wechatBatchId)
+	if err != nil || len(wechatGroups) != 1 || wechatGroups[0].DisplayName != "微信零钱" || wechatGroups[0].RowCount != 2 {
+		t.Fatalf("wechat change must be prefixed once and grouped: %+v %v", wechatGroups, err)
+	}
+}
+
+func paymentAccountDisplayNames(groups []*importing.PaymentAccountGroup) map[string]int {
+	names := map[string]int{}
+	for _, group := range groups {
+		if group != nil {
+			names[group.DisplayName]++
+		}
+	}
+	return names
 }
 
 func TestPaymentAccountServiceConfirmsOnceAndReusesMappingDuringFutureParse(t *testing.T) {

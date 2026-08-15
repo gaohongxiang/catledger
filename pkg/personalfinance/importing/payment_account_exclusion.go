@@ -114,7 +114,7 @@ func (s *PaymentAccountService) mutatePaymentAccountGroup(c core.Context, reques
 		}
 		if _, err := s.repository.SavePaymentAccountExclusion(c, &PaymentAccountExclusion{
 			Uid: request.Uid, SourceType: batch.SourceTypeSnapshot, Currency: sample.Currency,
-			AliasKey: alias.Key, AliasKeyVersion: alias.Version, MaskedDisplayName: alias.DisplayName,
+			AliasKey: alias.Key, AliasKeyVersion: alias.Version, MaskedDisplayName: qualifyPaymentAccountDisplayName(batch.SourceTypeSnapshot, alias.DisplayName),
 			CreatedUnixTime: now, UpdatedUnixTime: now, ExclusionId: exclusionId,
 		}); err != nil {
 			return nil, ErrPaymentAccountExclusionUnavailable
