@@ -1071,6 +1071,9 @@ export default {
     listPersonalFinanceBillflowTodos: (params: { taskId: string, status: string, limit: number }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/todos.json?id=${encodeURIComponent(params.taskId)}&status=${encodeURIComponent(params.status)}&limit=${params.limit}`);
     },
+    listPersonalFinanceBillflowClassifiedRows: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/categories.json?id=${encodeURIComponent(taskId)}`);
+    },
     resolvePersonalFinanceBillflowTodo: (request: { todoId: string, expectedVersion: number, status: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/todos/resolve.json', request);
     },

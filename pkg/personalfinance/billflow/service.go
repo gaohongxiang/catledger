@@ -191,6 +191,11 @@ type TaskListResult struct {
 	NextCursor *TaskCursor
 }
 
+type TodoListResult struct {
+	Items      []*TodoView
+	NextCursor *TodoCursor
+}
+
 type AccountGroupView struct {
 	SourceType      importing.SourceType
 	Currency        string
@@ -242,9 +247,18 @@ type TodoView struct {
 	UpdatedUnixTime int64
 }
 
-type TodoListResult struct {
-	Items      []*TodoView
-	NextCursor *TodoCursor
+type ClassifiedRowView struct {
+	RowId      int64
+	TodoId     int64
+	Version    int64
+	Label      string
+	Item       string
+	BillType   string
+	Amount     string
+	Currency   string
+	UnixTime   *int64
+	Direction  string
+	CategoryId int64
 }
 
 type UndoImpactView struct {

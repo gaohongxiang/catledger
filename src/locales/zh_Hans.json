@@ -3013,9 +3013,9 @@
                 "title": "交易分类",
                 "empty": "没有要处理的分类。",
                 "pendingEmpty": "没有要分类的交易。",
-                "classifiedEmpty": "还没有你保存过的分类。",
+                "classifiedEmpty": "还没有已经对上分类的交易。",
                 "pendingHint": "微信「商户消费」不是分类，要你选一次；选过的商户下次会记住。",
-                "classifiedHint": "这里只有你刚保存过的。账单自己带来的含糊名称不会自动出现在这里。",
+                "classifiedHint": "账单已经对上的，和你刚保存的，都会出现在这里。微信「商户消费」要你选一次才会进来。",
                 "bucket": {
                     "pending": "未分类",
                     "classified": "已分类"

@@ -6,6 +6,7 @@ import type {
     BillflowAccountGroup,
     BillflowAccountRow,
     BillflowAccounts,
+    BillflowClassifiedRow,
     BillflowSourceType,
     BillflowTask,
     BillflowTaskMember,
@@ -230,6 +231,30 @@ function normalizeTodoPage(value: unknown): BillflowTodoPage {
     };
 }
 
+function normalizeClassifiedRow(value: unknown): BillflowClassifiedRow {
+    const item = record(value);
+    const unixTime = optionalInteger(item['unixTime']);
+    const todoId = optionalIdentifier(item['todoId']);
+    const version = optionalInteger(item['version']);
+    return {
+        id: identifier(item['id']),
+        label: string(item['label'] ?? ''),
+        item: string(item['item'] ?? ''),
+        billType: string(item['billType'] ?? ''),
+        amount: string(item['amount'] ?? ''),
+        currency: string(item['currency'] ?? ''),
+        direction: string(item['direction'] ?? ''),
+        categoryId: identifier(item['categoryId']),
+        ...(todoId === undefined ? {} : { todoId }),
+        ...(version === undefined ? {} : { version }),
+        ...(unixTime === undefined ? {} : { unixTime })
+    };
+}
+
+function normalizeClassifiedRows(value: unknown): readonly BillflowClassifiedRow[] {
+    return array(record(value)['items']).map(normalizeClassifiedRow);
+}
+
 function normalizeUndoImpact(value: unknown): BillflowUndoImpact {
     const item = record(value);
     return {
@@ -353,6 +378,9 @@ export const billflowApi = {
     },
     async listTodos(taskId: string, status: BillflowTodoStatus, limit = 50): Promise<BillflowTodoPage> {
         return normalizeTodoPage(unwrap(await services.listPersonalFinanceBillflowTodos({ taskId, status, limit })));
+    },
+    async listClassifiedRows(taskId: string): Promise<readonly BillflowClassifiedRow[]> {
+        return normalizeClassifiedRows(unwrap(await services.listPersonalFinanceBillflowClassifiedRows({ taskId })));
     },
     async resolveTodo(todoId: string, expectedVersion: number, status: BillflowTodoStatus, idempotencyKey: string): Promise<BillflowTodo> {
         return normalizeTodo(unwrap(await services.resolvePersonalFinanceBillflowTodo({ todoId, expectedVersion, status, idempotencyKey })));

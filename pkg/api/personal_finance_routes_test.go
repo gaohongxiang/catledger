@@ -69,6 +69,7 @@ var frozenPersonalFinanceRoutes = []personalFinanceRouteSpec{
 	{method: "POST", path: "/personal_finance/billflow/tasks/run.json", handler: "PersonalFinanceBillflow.BillflowTaskRunHandler"},
 	{method: "POST", path: "/personal_finance/billflow/tasks/confirm_post.json", handler: "PersonalFinanceBillflow.BillflowTaskConfirmPostHandler"},
 	{method: "GET", path: "/personal_finance/billflow/tasks/todos.json", handler: "PersonalFinanceBillflow.BillflowTaskTodosHandler"},
+	{method: "GET", path: "/personal_finance/billflow/tasks/categories.json", handler: "PersonalFinanceBillflow.BillflowTaskClassifiedHandler"},
 	{method: "POST", path: "/personal_finance/billflow/todos/resolve.json", handler: "PersonalFinanceBillflow.BillflowTodoResolveHandler"},
 	{method: "POST", path: "/personal_finance/billflow/todos/assign_category.json", handler: "PersonalFinanceBillflow.BillflowTodoAssignCategoryHandler"},
 	{method: "GET", path: "/personal_finance/billflow/tasks/undo_impact.json", handler: "PersonalFinanceBillflow.BillflowTaskUndoImpactHandler"},

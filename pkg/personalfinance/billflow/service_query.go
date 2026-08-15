@@ -1,6 +1,11 @@
 package billflow
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import (
+	"sort"
+
+	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+)
 
 func (s *Service) GetTask(c core.Context, uid int64, taskId int64) (*TaskView, error) {
 	task, err := s.requireTask(c, uid, taskId)
@@ -52,4 +57,116 @@ func (s *Service) ListTodos(c core.Context, uid int64, taskId int64, status Todo
 		result.Items = append(result.Items, s.todoView(c, uid, todo))
 	}
 	return result, nil
+}
+
+func (s *Service) ListClassifiedRows(c core.Context, uid int64, taskId int64) ([]*ClassifiedRowView, error) {
+	if s == nil || s.repository == nil || s.evidence == nil || uid < 1 || taskId < 1 {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	if _, err := s.requireTask(c, uid, taskId); err != nil {
+		return nil, err
+	}
+	members, err := s.repository.ListMembers(c, uid, taskId)
+	if err != nil {
+		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	rowsByBatch := map[int64][]*importing.RawImportRow{}
+	sourceByBatch := map[int64]importing.SourceType{}
+	for _, member := range members {
+		if member == nil {
+			continue
+		}
+		batch, batchErr := s.evidence.FindImportBatchById(c, uid, member.BatchId)
+		if batchErr != nil || batch == nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		sourceByBatch[member.BatchId] = batch.SourceTypeSnapshot
+		rows, listErr := s.evidence.ListRawImportRows(c, uid, member.BatchId)
+		if listErr != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		rowsByBatch[member.BatchId] = rows
+	}
+	categories, err := s.loadCategoryIndex(c, uid, sourceByBatch, rowsByBatch)
+	if err != nil {
+		return nil, err
+	}
+	openPage, err := s.repository.ListTodos(c, uid, taskId, TODO_STATUS_OPEN, nil, maximumRepositoryPageSize)
+	if err != nil {
+		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	resolvedPage, err := s.repository.ListTodos(c, uid, taskId, TODO_STATUS_RESOLVED, nil, maximumRepositoryPageSize)
+	if err != nil {
+		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	openByRow := assignableTodosByRow(todoPageItems(openPage))
+	resolvedByRow := assignableTodosByRow(todoPageItems(resolvedPage))
+	items := make([]*ClassifiedRowView, 0)
+	for batchId, rows := range rowsByBatch {
+		sourceType := sourceByBatch[batchId]
+		for _, row := range rows {
+			if row == nil || row.ProcessingState != importing.PROCESSING_STATE_PENDING {
+				continue
+			}
+			if _, open := openByRow[row.RowId]; open {
+				continue
+			}
+			categoryId, mapped := categories.mapped(sourceType, row)
+			if !mapped {
+				continue
+			}
+			view := classifiedRowFromImport(row, categoryId)
+			if todo := resolvedByRow[row.RowId]; todo != nil {
+				view.TodoId = todo.TodoId
+				view.Version = todo.Version
+			}
+			items = append(items, view)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left, right := classifiedUnixTime(items[i]), classifiedUnixTime(items[j])
+		if left != right {
+			return left > right
+		}
+		return items[i].RowId > items[j].RowId
+	})
+	if len(items) > maximumRepositoryPageSize {
+		items = items[:maximumRepositoryPageSize]
+	}
+	return items, nil
+}
+
+func todoPageItems(page *TodoPage) []*Todo {
+	if page == nil {
+		return nil
+	}
+	return page.Items
+}
+
+func assignableTodosByRow(todos []*Todo) map[int64]*Todo {
+	byRow := map[int64]*Todo{}
+	for _, todo := range todos {
+		if todo == nil || todo.SubjectKind != SUBJECT_KIND_RAW_ROW || !canAssignTodoCategory(todo.TodoKind) {
+			continue
+		}
+		byRow[todo.SubjectId] = todo
+	}
+	return byRow
+}
+
+func classifiedRowFromImport(row *importing.RawImportRow, categoryId int64) *ClassifiedRowView {
+	preview := &TodoView{}
+	attachTodoPreview(preview, row)
+	return &ClassifiedRowView{
+		RowId: row.RowId, CategoryId: categoryId,
+		Label: preview.Label, Item: preview.Item, BillType: preview.BillType,
+		Amount: preview.Amount, Currency: preview.Currency, UnixTime: preview.UnixTime, Direction: preview.Direction,
+	}
+}
+
+func classifiedUnixTime(view *ClassifiedRowView) int64 {
+	if view == nil || view.UnixTime == nil {
+		return 0
+	}
+	return *view.UnixTime
 }

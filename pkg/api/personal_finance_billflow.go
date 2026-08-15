@@ -34,6 +34,7 @@ type PersonalFinanceBillflowApplication interface {
 	RunTask(c core.Context, request billflow.RunTaskRequest, clientTimezone *time.Location) (*billflow.TaskView, error)
 	ConfirmPost(c core.Context, request billflow.RunTaskRequest, clientTimezone *time.Location) (*billflow.TaskView, error)
 	ListTodos(c core.Context, uid int64, taskId int64, status billflow.TodoStatus, cursor *billflow.TodoCursor, limit int) (*billflow.TodoListResult, error)
+	ListClassifiedRows(c core.Context, uid int64, taskId int64) ([]*billflow.ClassifiedRowView, error)
 	ResolveTodo(c core.Context, request billflow.ResolveTodoRequest) (*billflow.TodoView, error)
 	AssignTodoCategories(c core.Context, request billflow.AssignTodoCategoryRequest) (*billflow.TaskView, error)
 	GetUndoImpact(c core.Context, uid int64, taskId int64) (*billflow.UndoImpactView, error)
@@ -110,8 +111,8 @@ type personalFinanceBillflowAssignCategoryItem struct {
 }
 
 type personalFinanceBillflowAssignCategoryRequest struct {
-	CategoryId     int64                                      `json:"categoryId,string"`
-	IdempotencyKey string                                     `json:"idempotencyKey"`
+	CategoryId     int64                                       `json:"categoryId,string"`
+	IdempotencyKey string                                      `json:"idempotencyKey"`
 	Items          []personalFinanceBillflowAssignCategoryItem `json:"items"`
 }
 
@@ -205,6 +206,24 @@ type personalFinanceBillflowTodoListResponse struct {
 type personalFinanceBillflowTodoCursorResponse struct {
 	UpdatedUnixTime int64  `json:"updatedUnixTime"`
 	TodoId          string `json:"todoId"`
+}
+
+type personalFinanceBillflowClassifiedRowResponse struct {
+	Id         string `json:"id"`
+	TodoId     string `json:"todoId,omitempty"`
+	Version    int64  `json:"version,omitempty"`
+	Label      string `json:"label"`
+	Item       string `json:"item"`
+	BillType   string `json:"billType"`
+	Amount     string `json:"amount"`
+	Currency   string `json:"currency"`
+	UnixTime   *int64 `json:"unixTime,omitempty"`
+	Direction  string `json:"direction"`
+	CategoryId string `json:"categoryId"`
+}
+
+type personalFinanceBillflowClassifiedListResponse struct {
+	Items []*personalFinanceBillflowClassifiedRowResponse `json:"items"`
 }
 
 type personalFinanceBillflowUndoImpactResponse struct {
@@ -459,6 +478,18 @@ func (a *PersonalFinanceBillflowApi) BillflowTaskTodosHandler(c *core.WebContext
 	return newPersonalFinanceBillflowTodoListResponse(result), nil
 }
 
+func (a *PersonalFinanceBillflowApi) BillflowTaskClassifiedHandler(c *core.WebContext) (any, *errs.Error) {
+	taskId, ok := parsePersonalFinanceBillflowIDQuery(c, "id")
+	if !ok {
+		return nil, errs.ErrParameterInvalid
+	}
+	result, listErr := a.application.ListClassifiedRows(c, c.GetCurrentUid(), taskId)
+	if listErr != nil {
+		return nil, personalFinanceBillflowServiceError(listErr)
+	}
+	return newPersonalFinanceBillflowClassifiedListResponse(result), nil
+}
+
 func (a *PersonalFinanceBillflowApi) BillflowTodoResolveHandler(c *core.WebContext) (any, *errs.Error) {
 	request := new(personalFinanceBillflowResolveTodoRequest)
 	if err := decodePersonalFinanceLoanJSON(c, request); err != nil {
@@ -674,6 +705,26 @@ func newPersonalFinanceBillflowTodoListResponse(result *billflow.TodoListResult)
 		response.NextCursor = &personalFinanceBillflowTodoCursorResponse{
 			UpdatedUnixTime: result.NextCursor.UpdatedUnixTime, TodoId: strconv.FormatInt(result.NextCursor.TodoId, 10),
 		}
+	}
+	return response
+}
+
+func newPersonalFinanceBillflowClassifiedListResponse(values []*billflow.ClassifiedRowView) *personalFinanceBillflowClassifiedListResponse {
+	response := &personalFinanceBillflowClassifiedListResponse{Items: []*personalFinanceBillflowClassifiedRowResponse{}}
+	for _, value := range values {
+		if value == nil || value.RowId < 1 || value.CategoryId < 1 {
+			continue
+		}
+		item := &personalFinanceBillflowClassifiedRowResponse{
+			Id: strconv.FormatInt(value.RowId, 10), Label: value.Label, Item: value.Item, BillType: value.BillType,
+			Amount: value.Amount, Currency: value.Currency, UnixTime: value.UnixTime, Direction: value.Direction,
+			CategoryId: strconv.FormatInt(value.CategoryId, 10),
+		}
+		if value.TodoId > 0 {
+			item.TodoId = strconv.FormatInt(value.TodoId, 10)
+			item.Version = value.Version
+		}
+		response.Items = append(response.Items, item)
 	}
 	return response
 }

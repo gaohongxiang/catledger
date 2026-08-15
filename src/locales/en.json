@@ -3013,9 +3013,9 @@
                 "title": "Transaction categories",
                 "empty": "No categories need a decision.",
                 "pendingEmpty": "Nothing needs a category.",
-                "classifiedEmpty": "You have not saved a category yet.",
+                "classifiedEmpty": "No categorized transactions yet.",
                 "pendingHint": "WeChat “merchant payment” is not a category. Choose once; the same merchant is remembered next time.",
-                "classifiedHint": "Only categories you just saved appear here. Vague names from the statement are not auto-listed.",
+                "classifiedHint": "Rows the statement already mapped, and categories you just saved, both appear here. WeChat “merchant payment” still needs a choice first.",
                 "bucket": {
                     "pending": "Uncategorized",
                     "classified": "Categorized"

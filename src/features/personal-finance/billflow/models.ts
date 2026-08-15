@@ -109,6 +109,20 @@ export interface BillflowTodo {
     readonly updatedUnixTime: number;
 }
 
+export interface BillflowClassifiedRow {
+    readonly id: string;
+    readonly todoId?: string;
+    readonly version?: number;
+    readonly label: string;
+    readonly item: string;
+    readonly billType: string;
+    readonly amount: string;
+    readonly currency: string;
+    readonly unixTime?: number;
+    readonly direction: string;
+    readonly categoryId: string;
+}
+
 export interface BillflowTodoPage {
     readonly items: readonly BillflowTodo[];
     readonly nextCursor?: { readonly updatedUnixTime: number; readonly todoId: string };

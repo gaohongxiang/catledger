@@ -65,6 +65,19 @@ func TestBillflowHandlersUseStringIdsAndOmitSecrets(t *testing.T) {
 		t.Fatalf("accounts response omitted string ids: %s", accountText)
 	}
 	assertBillflowResponseOmits(t, accountText, "aliasKey", "rawPaymentMethod", "RawPaymentMethod")
+
+	stub.classified = []*billflow.ClassifiedRowView{{
+		RowId: 802, CategoryId: 51, Label: "mapped-merchant", Amount: "123", Currency: "CNY", Direction: string(importing.NORMALIZED_DIRECTION_EXPENSE),
+	}}
+	classified, apiErr := api.BillflowTaskClassifiedHandler(newBillflowTestContext(t, http.MethodGet, "/categories?id=9001", ""))
+	if apiErr != nil {
+		t.Fatalf("list classified rows: %v", apiErr)
+	}
+	classifiedText := marshalBillflowResponse(t, classified)
+	if !strings.Contains(classifiedText, `"id":"802"`) || !strings.Contains(classifiedText, `"categoryId":"51"`) {
+		t.Fatalf("classified response omitted string ids: %s", classifiedText)
+	}
+	assertBillflowResponseOmits(t, classifiedText, "aliasKey", "RawItem", "rawNote")
 }
 
 func TestBillflowHandlersMapErrorsAndRejectInvalidInput(t *testing.T) {
@@ -76,6 +89,9 @@ func TestBillflowHandlersMapErrorsAndRejectInvalidInput(t *testing.T) {
 	}
 	if response, apiErr := api.BillflowTaskGetHandler(newBillflowTestContext(t, http.MethodGet, "/get?id=abc", "")); response != nil || apiErr != errs.ErrParameterInvalid {
 		t.Fatalf("invalid get id was accepted: response=%v err=%v", response, apiErr)
+	}
+	if response, apiErr := api.BillflowTaskClassifiedHandler(newBillflowTestContext(t, http.MethodGet, "/categories?id=9001&extra=1", "")); response != nil || apiErr != errs.ErrParameterInvalid {
+		t.Fatalf("unknown classified query was accepted: response=%v err=%v", response, apiErr)
 	}
 	if response, apiErr := api.BillflowTaskCreateHandler(newBillflowTestContext(t, http.MethodPost, "/create",
 		`{"fileIds":["301"],"idempotencyKey":"create-key-1","uid":"999"}`)); response != nil || apiErr != errs.ErrParameterInvalid {
@@ -95,13 +111,14 @@ func TestBillflowHandlersMapErrorsAndRejectInvalidInput(t *testing.T) {
 }
 
 type billflowAPITestApplication struct {
-	task     *billflow.TaskView
-	list     *billflow.TaskListResult
-	accounts *billflow.TaskAccountsView
-	rows     []*billflow.AccountRowView
-	todos    *billflow.TodoListResult
-	impact   *billflow.UndoImpactView
-	err      error
+	task       *billflow.TaskView
+	list       *billflow.TaskListResult
+	accounts   *billflow.TaskAccountsView
+	rows       []*billflow.AccountRowView
+	todos      *billflow.TodoListResult
+	classified []*billflow.ClassifiedRowView
+	impact     *billflow.UndoImpactView
+	err        error
 }
 
 func (a *billflowAPITestApplication) CreateTask(_ core.Context, _ billflow.CreateTaskRequest) (*billflow.TaskView, error) {
@@ -145,6 +162,9 @@ func (a *billflowAPITestApplication) ConfirmPost(_ core.Context, _ billflow.RunT
 }
 func (a *billflowAPITestApplication) ListTodos(_ core.Context, _ int64, _ int64, _ billflow.TodoStatus, _ *billflow.TodoCursor, _ int) (*billflow.TodoListResult, error) {
 	return a.todos, a.err
+}
+func (a *billflowAPITestApplication) ListClassifiedRows(_ core.Context, _ int64, _ int64) ([]*billflow.ClassifiedRowView, error) {
+	return a.classified, a.err
 }
 func (a *billflowAPITestApplication) ResolveTodo(_ core.Context, _ billflow.ResolveTodoRequest) (*billflow.TodoView, error) {
 	if a.todos != nil && len(a.todos.Items) > 0 {

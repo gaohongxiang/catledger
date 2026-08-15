@@ -240,17 +240,17 @@
             </div>
 
             <template v-if="categoryBucket === 'classified'">
-                <p class="bucket-empty" v-if="!classifiedReviewTodos.length">{{ tt('personalFinance.billflow.todos.classifiedEmpty') }}</p>
-                <article class="todo-row todo-row--done" :key="todo.id" v-for="todo in classifiedReviewTodos">
+                <p class="bucket-empty" v-if="!classifiedReviewRows.length">{{ tt('personalFinance.billflow.todos.classifiedEmpty') }}</p>
+                <article class="todo-row todo-row--done" :key="row.id" v-for="row in classifiedReviewRows">
                     <div class="todo-row__copy">
-                        <strong>{{ todoTitle(todo) }}</strong>
-                        <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
+                        <strong>{{ classifiedTitle(row) }}</strong>
+                        <small v-if="classifiedSubtitle(row)">{{ classifiedSubtitle(row) }}</small>
                     </div>
                     <div class="todo-row__facts">
-                        <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
-                        <span>{{ categoryLabel(todo) }}</span>
+                        <b v-if="formatClassifiedAmount(row)">{{ formatClassifiedAmount(row) }}</b>
+                        <span>{{ classifiedCategoryLabel(row) }}</span>
                     </div>
-                    <v-btn size="x-small" variant="text" :loading="busy" @click="restoreTodo(todo)">
+                    <v-btn v-if="row.todoId && row.version" size="x-small" variant="text" :loading="busy" @click="restoreClassifiedRow(row)">
                         {{ tt('personalFinance.billflow.todos.restore') }}
                     </v-btn>
                 </article>
@@ -407,7 +407,7 @@ import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { CategoryType } from '@/core/category.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
 
-import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowTask, BillflowTodo, BillflowTodoStatus, CardCycleAccount } from '../models.ts';
+import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowClassifiedRow, BillflowTask, BillflowTodo, BillflowTodoStatus, CardCycleAccount } from '../models.ts';
 import { todoKindKey } from '../presentation.ts';
 import { billflowApi } from '../service.ts';
 import {
@@ -462,7 +462,7 @@ const accountRows = ref<readonly BillflowAccountRow[]>([]);
 const selectedRowIds = ref<string[]>([]);
 const pickedAccountIds = reactive<Record<string, string>>({});
 const openTodos = ref<readonly BillflowTodo[]>([]);
-const resolvedTodos = ref<readonly BillflowTodo[]>([]);
+const classifiedRows = ref<readonly BillflowClassifiedRow[]>([]);
 const selectedTodoIds = ref<string[]>([]);
 const categoryDrafts = reactive<Record<string, string>>({});
 const batchCategoryId = ref('');
@@ -510,7 +510,7 @@ const stepInput = computed(() => ({
 const currentStep = computed(() => resolveBillflowWorkbenchStep(userStep.value, stepInput.value));
 const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.value));
 const reviewTodos = computed(() => categoryTodos(openTodos.value));
-const classifiedReviewTodos = computed(() => resolvedTodos.value.filter(todo => canAssignBillflowCategory(todo.todoKind)));
+const classifiedReviewRows = computed(() => classifiedRows.value);
 const otherTodos = computed(() => installmentTodos(openTodos.value));
 const assignableReviewTodos = computed(() => reviewTodos.value.filter(todo => canAssignBillflowCategory(todo.todoKind)));
 const selectedAssignableTodos = computed(() => assignableReviewTodos.value.filter(todo => selectedTodoIds.value.includes(todo.id)));
@@ -525,7 +525,7 @@ const bucketCounts = computed(() => ({
 }));
 const categoryBucketCounts = computed(() => ({
     pending: reviewTodos.value.length,
-    classified: classifiedReviewTodos.value.length
+    classified: classifiedReviewRows.value.length
 }));
 const stepAction = computed(() => {
     if (currentStep.value === 'files' && !task.value && selectedFileIds.value.length > 0) {
@@ -756,12 +756,36 @@ function todoSubtitle(todo: BillflowTodo): string {
         .join(' · ');
 }
 
+function classifiedTitle(row: BillflowClassifiedRow): string {
+    return row.label || row.item || row.billType;
+}
+
+function classifiedSubtitle(row: BillflowClassifiedRow): string {
+    const title = classifiedTitle(row);
+    return [row.item, row.billType, row.unixTime ? formatDateTimeToShortDateTime(parseDateTimeFromUnixTimeWithBrowserTimezone(row.unixTime)) : '']
+        .filter((part): part is string => !!part && part !== title)
+        .filter((part, index, parts) => parts.indexOf(part) === index)
+        .join(' · ');
+}
+
+function formatClassifiedAmount(row: BillflowClassifiedRow): string {
+    return row.amount ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(row.amount), row.currency || 'CNY') : '';
+}
+
+function classifiedCategoryLabel(row: BillflowClassifiedRow): string {
+    return categoryName(row.categoryId);
+}
+
 function categoryLabel(todo: BillflowTodo): string {
-    if (!todo.categoryId) {
+    return categoryName(todo.categoryId);
+}
+
+function categoryName(categoryId?: string): string {
+    if (!categoryId) {
         return '';
     }
     for (const type of [CategoryType.Expense, CategoryType.Income, CategoryType.Transfer]) {
-        const match = flattenCategoryOptions(type).find(option => option.value === todo.categoryId);
+        const match = flattenCategoryOptions(type).find(option => option.value === categoryId);
         if (match) {
             return match.title;
         }
@@ -855,16 +879,16 @@ async function openTask(taskId: string): Promise<void> {
         selectedRowIds.value = selectedRowIds.value.filter(id => accountRows.value.some(row => row.id === id));
     }
     if (taskShowsTodos(task.value.status)) {
-        const [open, resolved] = await Promise.all([
+        const [open, classified] = await Promise.all([
             billflowApi.listTodos(taskId, 'open', 100),
-            billflowApi.listTodos(taskId, 'resolved', 100)
+            billflowApi.listClassifiedRows(taskId)
         ]);
         openTodos.value = open.items;
-        resolvedTodos.value = resolved.items;
+        classifiedRows.value = classified;
         selectedTodoIds.value = selectedTodoIds.value.filter(id => openTodos.value.some(todo => todo.id === id));
     } else {
         openTodos.value = [];
-        resolvedTodos.value = [];
+        classifiedRows.value = [];
     }
 }
 
@@ -1108,8 +1132,19 @@ async function resolveTodo(todo: BillflowTodo, status: BillflowTodoStatus): Prom
     }
 }
 
-async function restoreTodo(todo: BillflowTodo): Promise<void> {
-    await resolveTodo(todo, 'open');
+async function restoreClassifiedRow(row: BillflowClassifiedRow): Promise<void> {
+    if (!row.todoId || row.version === undefined) {
+        return;
+    }
+    busy.value = true;
+    try {
+        await billflowApi.resolveTodo(row.todoId, row.version, 'open', generateRandomUUID());
+        if (task.value) await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
 }
 
 async function assignTodos(todos: readonly BillflowTodo[], categoryId: string): Promise<void> {

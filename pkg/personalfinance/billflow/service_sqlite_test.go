@@ -54,6 +54,10 @@ func TestServiceConfirmThenPostCategoryAndUndo(t *testing.T) {
 	if err != nil || ran.Status != billflow.TASK_STATUS_AWAITING_CONFIRM || poster.calls != 0 {
 		t.Fatalf("confirm_then_post run posted early: %+v calls=%d err=%v", ran, poster.calls, err)
 	}
+	classified, err := service.ListClassifiedRows(nil, uid, created.TaskId)
+	if err != nil || len(classified) != 1 || classified[0] == nil || classified[0].RowId != 802 || classified[0].CategoryId != leafId || classified[0].TodoId != 0 {
+		t.Fatalf("auto-mapped category should appear as classified: %+v err=%v", classified, err)
+	}
 	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
 	if err != nil || !hasTodoKind(todos, billflow.TODO_KIND_UNCATEGORIZED) {
 		t.Fatalf("forbidden category did not open uncategorized todo: %+v err=%v", todos, err)
@@ -117,6 +121,10 @@ func TestServiceAssignMerchantCategoryBeforeConfirm(t *testing.T) {
 		todos.Items[0].Amount != "123" || todos.Items[0].Currency != "CNY" || todos.Items[0].Direction != string(importing.NORMALIZED_DIRECTION_EXPENSE) {
 		t.Fatalf("uncategorized todo preview: %+v err=%v", todos, err)
 	}
+	beforeAssign, err := service.ListClassifiedRows(nil, uid, created.TaskId)
+	if err != nil || len(beforeAssign) != 0 {
+		t.Fatalf("forbidden bill type should not auto-list as classified: %+v err=%v", beforeAssign, err)
+	}
 
 	assigned, err := service.AssignTodoCategories(nil, billflow.AssignTodoCategoryRequest{
 		Uid: uid, CategoryId: leafId, IdempotencyKey: "assign-category-1",
@@ -133,6 +141,10 @@ func TestServiceAssignMerchantCategoryBeforeConfirm(t *testing.T) {
 	if err != nil || resolved == nil || len(resolved.Items) != 1 || resolved.Items[0].CategoryId != leafId {
 		t.Fatalf("classified todo preview: %+v err=%v", resolved, err)
 	}
+	afterAssign, err := service.ListClassifiedRows(nil, uid, created.TaskId)
+	if err != nil || len(afterAssign) != 1 || afterAssign[0] == nil || afterAssign[0].RowId != 801 || afterAssign[0].CategoryId != leafId || afterAssign[0].TodoId != resolved.Items[0].TodoId {
+		t.Fatalf("saved merchant category should appear as classified: %+v err=%v", afterAssign, err)
+	}
 	restored, err := service.ResolveTodo(nil, billflow.ResolveTodoRequest{
 		Uid: uid, TodoId: resolved.Items[0].TodoId, ExpectedVersion: resolved.Items[0].Version,
 		Status: billflow.TODO_STATUS_OPEN, IdempotencyKey: "restore-todo-1",
@@ -143,6 +155,10 @@ func TestServiceAssignMerchantCategoryBeforeConfirm(t *testing.T) {
 	reopened, err := service.GetTask(nil, uid, created.TaskId)
 	if err != nil || reopened == nil || reopened.TodoOpenCount != 1 {
 		t.Fatalf("restore did not reopen count: %+v err=%v", reopened, err)
+	}
+	afterRestore, err := service.ListClassifiedRows(nil, uid, created.TaskId)
+	if err != nil || len(afterRestore) != 0 {
+		t.Fatalf("restored row should leave classified list: %+v err=%v", afterRestore, err)
 	}
 	assigned, err = service.AssignTodoCategories(nil, billflow.AssignTodoCategoryRequest{
 		Uid: uid, CategoryId: leafId, IdempotencyKey: "assign-category-2",

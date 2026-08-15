@@ -208,10 +208,10 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.todos.pickCategory');
         expect(workbench).toContain('personalFinance.billflow.todos.selectAll');
         expect(workbench).toContain('BILLFLOW_CATEGORY_BUCKETS');
-        expect(workbench).toContain('classifiedReviewTodos');
+        expect(workbench).toContain('classifiedReviewRows');
         expect(workbench).toContain('todo-row');
         expect(workbench).not.toContain('todo-card');
-        expect(workbench).toContain('listTodos(taskId, \'resolved\'');
+        expect(workbench).toContain('listClassifiedRows(taskId)');
         expect(workbench).toContain('todoTitle(todo)');
         expect(workbench).toContain('todoSubtitle(todo)');
         expect(workbench).toContain('formatTodoAmount(todo)');
