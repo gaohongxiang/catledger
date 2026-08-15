@@ -2967,6 +2967,15 @@
                 "title": "Check accounts",
                 "reusedTitle": "Already confirmed, will reuse",
                 "reusedHint": "These will be reused for this task. No extra confirmation.",
+                "pendingHint": "Reuse or create after the name matches. Don't post keeps evidence only.",
+                "pendingEmpty": "No accounts need a decision.",
+                "reusedEmpty": "No confirmed accounts are being reused.",
+                "excludedEmpty": "No account groups are kept out of the ledger.",
+                "bucket": {
+                    "pending": "To check",
+                    "reused": "Reused",
+                    "excluded": "Not posted"
+                },
                 "rows": "{count} rows",
                 "create": "Create",
                 "useExisting": "Reuse",

@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 
 import type { PersonalFinanceImportBatch } from '../models.ts';
 import {
+    BILLFLOW_ACCOUNT_BUCKETS,
     BILLFLOW_WORKBENCH_STEPS,
+    accountBucketHintKey,
     billflowDirectionKey,
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
@@ -12,7 +14,9 @@ import {
     composeDashboardHeadline,
     mergeSelectedOrganizeFileIds,
     previousBillflowWorkbenchStep,
+    resolveAccountBucket,
     resolveBillflowWorkbenchStep,
+    suggestedAccountBucket,
     suggestedBillflowWorkbenchStep,
     eligibleOrganizeFileIds,
     matchedLedgerAccount,
@@ -169,8 +173,10 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.summary.todos');
         expect(workbench).toContain('personalFinance.billflow.accounts.exclude');
         expect(workbench).toContain('personalFinance.billflow.accounts.useExisting');
-        expect(workbench).toContain('personalFinance.billflow.accounts.excludedTitle');
-        expect(workbench).toContain('personalFinance.billflow.accounts.reusedTitle');
+        expect(workbench).toContain('personalFinance.billflow.accounts.bucket.');
+        expect(workbench).toContain('BILLFLOW_ACCOUNT_BUCKETS');
+        expect(workbench).toContain('accountBucket === \'reused\'');
+        expect(workbench).toContain('accountBucket === \'excluded\'');
         expect(workbench).toContain('personalFinance.billflow.step.back');
         expect(workbench).toContain('personalFinance.billflow.step.next');
         expect(workbench).toContain('BILLFLOW_WORKBENCH_STEPS');
@@ -219,5 +225,17 @@ describe('billflow task page wiring', () => {
         expect(billflowWorkbenchStepIndex('todos')).toBe(3);
         expect(resolveBillflowWorkbenchStep('files', { hasTask: true, status: 'awaiting_confirm', needsCreateCount: 0 })).toBe('files');
         expect(resolveBillflowWorkbenchStep('todos', { hasTask: true, status: 'accounts_pending', needsCreateCount: 1 })).toBe('accounts');
+    });
+
+    it('keeps account checks in pending, reused and excluded buckets', () => {
+        expect(BILLFLOW_ACCOUNT_BUCKETS).toEqual(['pending', 'reused', 'excluded']);
+        expect(suggestedAccountBucket({ pending: 3, reused: 8, excluded: 1 })).toBe('pending');
+        expect(suggestedAccountBucket({ pending: 0, reused: 8, excluded: 1 })).toBe('excluded');
+        expect(suggestedAccountBucket({ pending: 0, reused: 8, excluded: 0 })).toBe('reused');
+        expect(resolveAccountBucket('reused', { pending: 2, reused: 8, excluded: 0 }, true)).toBe('reused');
+        expect(resolveAccountBucket('reused', { pending: 2, reused: 8, excluded: 0 }, false)).toBe('pending');
+        expect(accountBucketHintKey('pending')).toBe('personalFinance.billflow.accounts.pendingHint');
+        expect(accountBucketHintKey('reused')).toBe('personalFinance.billflow.accounts.reusedHint');
+        expect(accountBucketHintKey('excluded')).toBe('personalFinance.billflow.accounts.excludedHint');
     });
 });

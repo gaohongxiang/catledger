@@ -2966,7 +2966,16 @@
             "accounts": {
                 "title": "核对账户",
                 "reusedTitle": "已确认会沿用",
-                "reusedHint": "下面这些这次会直接沿用，不必再点确认。",
+                "reusedHint": "这些这次会直接沿用，不必再点确认。",
+                "pendingHint": "名称对上后点沿用或新建。不入账的只留证据。",
+                "pendingEmpty": "没有需要核对的账户。",
+                "reusedEmpty": "这次没有沿用已有账户。",
+                "excludedEmpty": "没有整组不入账的账户。",
+                "bucket": {
+                    "pending": "待核对",
+                    "reused": "已沿用",
+                    "excluded": "不入账"
+                },
                 "rows": "{count} 笔",
                 "create": "新建",
                 "useExisting": "沿用",

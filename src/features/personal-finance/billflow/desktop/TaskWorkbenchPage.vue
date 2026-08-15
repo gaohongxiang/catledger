@@ -70,26 +70,49 @@
         </div>
 
         <section class="work-section" v-if="currentStep === 'accounts'">
-            <p class="reused-caption" v-if="(accounts?.reused.length ?? 0) < 1 && (task?.reusedMappingCount ?? 0) > 0">
-                {{ tt('personalFinance.billflow.accounts.reusedHint') }}
-            </p>
-            <template v-if="accounts?.reused.length">
-                <div class="section-copy">
-                    <strong>{{ tt('personalFinance.billflow.accounts.reusedTitle') }} · {{ accounts.reused.length }}</strong>
-                    <span>{{ tt('personalFinance.billflow.accounts.reusedHint') }}</span>
-                </div>
-                <div class="reused-list">
+            <div class="bucket-bar">
+                <v-btn-toggle
+                    color="primary"
+                    density="compact"
+                    divided
+                    mandatory
+                    variant="outlined"
+                    :model-value="accountBucket"
+                    @update:model-value="value => setAccountBucket(value)"
+                >
+                    <v-btn :value="bucket" :key="bucket" v-for="bucket in BILLFLOW_ACCOUNT_BUCKETS">
+                        {{ tt(`personalFinance.billflow.accounts.bucket.${bucket}`) }}
+                        <span class="bucket-count">{{ bucketCounts[bucket] }}</span>
+                    </v-btn>
+                </v-btn-toggle>
+                <p>{{ tt(accountBucketHintKey(accountBucket)) }}</p>
+            </div>
+
+            <template v-if="accountBucket === 'reused'">
+                <div class="reused-list" v-if="accounts?.reused.length">
                     <div class="reused-item" :key="group.sampleRowId" v-for="group in accounts.reused">
                         <strong>{{ group.displayName }}</strong>
                         <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
                     </div>
                 </div>
+                <p class="bucket-empty" v-else>{{ tt('personalFinance.billflow.accounts.reusedEmpty') }}</p>
             </template>
 
-            <div class="section-copy" :class="{ 'mt-5': !!(accounts?.reused.length) }" v-if="accounts?.needsCreate.length">
-                <strong>{{ tt('personalFinance.billflow.accounts.title') }} · {{ accounts.needsCreate.length }}</strong>
-            </div>
+            <template v-else-if="accountBucket === 'excluded'">
+                <div class="reused-list" v-if="accounts?.excluded.length">
+                    <div class="reused-item" :key="group.sampleRowId" v-for="group in accounts.excluded">
+                        <strong>{{ group.displayName }}</strong>
+                        <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
+                        <v-btn size="x-small" variant="text" :loading="busy" @click="restoreAccount(group)">
+                            {{ tt('personalFinance.billflow.accounts.restore') }}
+                        </v-btn>
+                    </div>
+                </div>
+                <p class="bucket-empty" v-else>{{ tt('personalFinance.billflow.accounts.excludedEmpty') }}</p>
+            </template>
 
+            <template v-else>
+                <p class="bucket-empty" v-if="!accounts?.needsCreate.length">{{ tt('personalFinance.billflow.accounts.pendingEmpty') }}</p>
                 <article
                     class="account-row-card"
                     :class="{ 'account-row-card--matched': !!matchedAccount(group), 'account-row-card--open': expandedSampleRowId === group.sampleRowId }"
@@ -167,22 +190,7 @@
                         </div>
                     </div>
                 </article>
-
-                <template v-if="accounts?.excluded.length">
-                    <div class="section-copy mt-5">
-                        <strong>{{ tt('personalFinance.billflow.accounts.excludedTitle') }} · {{ accounts.excluded.length }}</strong>
-                        <span>{{ tt('personalFinance.billflow.accounts.excludedHint') }}</span>
-                    </div>
-                    <div class="reused-list">
-                        <div class="reused-item" :key="group.sampleRowId" v-for="group in accounts.excluded">
-                            <strong>{{ group.displayName }}</strong>
-                            <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
-                            <v-btn size="x-small" variant="text" :loading="busy" @click="restoreAccount(group)">
-                                {{ tt('personalFinance.billflow.accounts.restore') }}
-                            </v-btn>
-                        </div>
-                    </div>
-                </template>
+            </template>
         </section>
 
         <section class="work-section" v-if="currentStep === 'confirm' && task">
@@ -268,7 +276,9 @@ import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, Billfl
 import { todoKindKey, todoReasonKey } from '../presentation.ts';
 import { billflowApi } from '../service.ts';
 import {
+    BILLFLOW_ACCOUNT_BUCKETS,
     BILLFLOW_WORKBENCH_STEPS,
+    accountBucketHintKey,
     billflowDirectionKey,
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
@@ -277,12 +287,14 @@ import {
     matchedLedgerAccount,
     mergeSelectedOrganizeFileIds,
     previousBillflowWorkbenchStep,
+    resolveAccountBucket,
     resolveBillflowWorkbenchStep,
     suggestedAccountCategory,
     suggestedBillflowWorkbenchStep,
     taskAwaitsConfirm,
     taskNeedsAccounts,
     taskShowsTodos,
+    type BillflowAccountBucket,
     type BillflowWorkbenchStep
 } from '../state.ts';
 import { usePersonalFinanceStore } from '../../store.ts';
@@ -306,6 +318,8 @@ const pickedAccountIds = reactive<Record<string, string>>({});
 const openTodos = ref<readonly BillflowTodo[]>([]);
 const cardAccounts = ref<CardCycleAccount[]>([]);
 const userStep = ref<BillflowWorkbenchStep>();
+const accountBucket = ref<BillflowAccountBucket>('pending');
+const userPickedBucket = ref(false);
 
 const eligibleFiles = computed(() => {
     const ids = new Set(eligibleOrganizeFileIds(personalFinanceStore.batches));
@@ -335,6 +349,11 @@ const suggestedStep = computed(() => suggestedBillflowWorkbenchStep(stepInput.va
 const currentStep = computed(() => resolveBillflowWorkbenchStep(userStep.value, stepInput.value));
 const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.value));
 const canGoBack = computed(() => !!previousBillflowWorkbenchStep(currentStep.value));
+const bucketCounts = computed(() => ({
+    pending: accounts.value?.needsCreate.length ?? 0,
+    reused: accounts.value?.reused.length ?? 0,
+    excluded: accounts.value?.excluded.length ?? 0
+}));
 const stepAction = computed(() => {
     if (currentStep.value === 'files' && !task.value && selectedFileIds.value.length > 0) {
         return {
@@ -391,8 +410,24 @@ watch(suggestedStep, (next, previous) => {
     }
 });
 
+watch([currentStep, bucketCounts], () => {
+    if (currentStep.value !== 'accounts') {
+        userPickedBucket.value = false;
+        return;
+    }
+    accountBucket.value = resolveAccountBucket(accountBucket.value, bucketCounts.value, userPickedBucket.value);
+}, { immediate: true });
+
 function canOpenStep(step: BillflowWorkbenchStep): boolean {
     return canOpenBillflowWorkbenchStep(step, stepInput.value);
+}
+
+function setAccountBucket(value: unknown): void {
+    if (value !== 'pending' && value !== 'reused' && value !== 'excluded') {
+        return;
+    }
+    userPickedBucket.value = true;
+    accountBucket.value = value;
 }
 
 function openStep(step: BillflowWorkbenchStep): void {
@@ -984,10 +1019,28 @@ onMounted(reload);
     color: var(--task-ink);
 }
 
-.reused-caption {
-    margin: 0 22px 8px;
-    color: rgba(var(--v-theme-on-surface), 0.58);
-    font-size: 0.8rem;
+.bucket-bar {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.bucket-bar p,
+.bucket-empty {
+    margin: 0;
+    color: rgba(var(--v-theme-on-surface), 0.6);
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.bucket-empty {
+    padding: 8px 0 4px;
+}
+
+.bucket-count {
+    margin-left: 6px;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.72;
 }
 
 .reused-list {

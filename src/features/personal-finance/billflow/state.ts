@@ -136,6 +136,41 @@ export function canAutoRunAfterAccounts(status: BillflowTaskStatus, needsCreateC
     return status === 'accounts_pending' && needsCreateCount < 1;
 }
 
+export type BillflowAccountBucket = 'pending' | 'reused' | 'excluded';
+
+export const BILLFLOW_ACCOUNT_BUCKETS: readonly BillflowAccountBucket[] = ['pending', 'reused', 'excluded'];
+
+export function suggestedAccountBucket(counts: { pending: number; reused: number; excluded: number }): BillflowAccountBucket {
+    if (counts.pending > 0) {
+        return 'pending';
+    }
+    if (counts.excluded > 0) {
+        return 'excluded';
+    }
+    return 'reused';
+}
+
+export function resolveAccountBucket(
+    current: BillflowAccountBucket | undefined,
+    counts: { pending: number; reused: number; excluded: number },
+    userPicked = false
+): BillflowAccountBucket {
+    if (userPicked && current && BILLFLOW_ACCOUNT_BUCKETS.includes(current)) {
+        return current;
+    }
+    return suggestedAccountBucket(counts);
+}
+
+export function accountBucketHintKey(bucket: BillflowAccountBucket): string {
+    if (bucket === 'reused') {
+        return 'personalFinance.billflow.accounts.reusedHint';
+    }
+    if (bucket === 'excluded') {
+        return 'personalFinance.billflow.accounts.excludedHint';
+    }
+    return 'personalFinance.billflow.accounts.pendingHint';
+}
+
 export type BillflowWorkbenchStep = 'files' | 'accounts' | 'confirm' | 'todos';
 
 export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'confirm', 'todos'];
