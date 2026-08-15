@@ -136,6 +136,57 @@ export function canAutoRunAfterAccounts(status: BillflowTaskStatus, needsCreateC
     return status === 'accounts_pending' && needsCreateCount < 1;
 }
 
+export type BillflowWorkbenchStep = 'files' | 'accounts' | 'confirm' | 'todos';
+
+export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'confirm', 'todos'];
+
+export function billflowWorkbenchStepIndex(step: BillflowWorkbenchStep): number {
+    return BILLFLOW_WORKBENCH_STEPS.indexOf(step);
+}
+
+export function suggestedBillflowWorkbenchStep(input: {
+    hasTask: boolean;
+    status?: BillflowTaskStatus;
+    needsCreateCount: number;
+}): BillflowWorkbenchStep {
+    if (!input.hasTask) {
+        return 'files';
+    }
+    if (input.status === 'failed') {
+        return 'confirm';
+    }
+    if (input.status === 'processing' || taskNeedsAccounts(input.status ?? 'receiving', input.needsCreateCount)) {
+        return 'accounts';
+    }
+    if (taskAwaitsConfirm(input.status ?? 'receiving')) {
+        return 'confirm';
+    }
+    return 'todos';
+}
+
+export function canOpenBillflowWorkbenchStep(
+    step: BillflowWorkbenchStep,
+    input: { hasTask: boolean; status?: BillflowTaskStatus; needsCreateCount: number }
+): boolean {
+    return billflowWorkbenchStepIndex(step) <= billflowWorkbenchStepIndex(suggestedBillflowWorkbenchStep(input));
+}
+
+export function previousBillflowWorkbenchStep(step: BillflowWorkbenchStep): BillflowWorkbenchStep | undefined {
+    const index = billflowWorkbenchStepIndex(step);
+    return index > 0 ? BILLFLOW_WORKBENCH_STEPS[index - 1] : undefined;
+}
+
+export function resolveBillflowWorkbenchStep(
+    userStep: BillflowWorkbenchStep | undefined,
+    input: { hasTask: boolean; status?: BillflowTaskStatus; needsCreateCount: number }
+): BillflowWorkbenchStep {
+    const suggested = suggestedBillflowWorkbenchStep(input);
+    if (!userStep || !canOpenBillflowWorkbenchStep(userStep, input)) {
+        return suggested;
+    }
+    return userStep;
+}
+
 function pushHeadline(items: DashboardHeadlineItem[], code: DashboardHeadlineCode, count: number): void {
     if (!Number.isSafeInteger(count) || count < 1) {
         return;

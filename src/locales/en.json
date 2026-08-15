@@ -2929,7 +2929,16 @@
         },
         "billflow": {
             "title": "This organize task",
-            "subtitle": "Three headline counts on top; only todos unfold below.",
+            "subtitle": "Move through the steps. You can always go back and change a decision.",
+            "step": {
+                "label": "Organize progress",
+                "files": "Choose statements",
+                "accounts": "Check accounts",
+                "confirm": "Confirm posting",
+                "todos": "Handle todos",
+                "back": "Back",
+                "next": "Next"
+            },
             "error": "The organize task could not finish. Refresh and try again.",
             "failed": "This task stopped because confirmed history conflicts. The difference is kept and nothing is overwritten.",
             "run": "Organize now",
@@ -2939,7 +2948,8 @@
                 "create": "Start organizing",
                 "empty": "No statements are ready yet",
                 "emptyHint": "Upload Alipay, WeChat Pay, or bank statements first. You can pick more than one.",
-                "selected": "{count} selected"
+                "selected": "{count} selected",
+                "inTask": "This task uses these statements. Upload more files before starting the next task."
             },
             "next": {
                 "files": "Organize {count} selected statements",

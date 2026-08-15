@@ -20,21 +20,48 @@
             />
         </div>
 
-        <v-alert class="ma-4" type="error" variant="tonal" v-if="error">{{ tt('personalFinance.billflow.error') }}</v-alert>
+        <nav class="step-rail" :aria-label="tt('personalFinance.billflow.step.label')">
+            <button
+                type="button"
+                :class="{
+                    'is-current': currentStep === step,
+                    'is-done': billflowWorkbenchStepIndex(step) < currentStepIndex,
+                    'is-locked': !canOpenStep(step)
+                }"
+                :disabled="!canOpenStep(step)"
+                :key="step"
+                v-for="step in BILLFLOW_WORKBENCH_STEPS"
+                @click="openStep(step)"
+            >
+                <span>{{ billflowWorkbenchStepIndex(step) + 1 }}</span>
+                {{ tt(`personalFinance.billflow.step.${step}`) }}
+            </button>
+        </nav>
 
-        <section class="files-panel" v-if="!task && eligibleFiles.length">
+        <v-alert class="ma-4" type="error" variant="tonal" v-if="error">{{ tt('personalFinance.billflow.error') }}</v-alert>
+        <v-alert class="mx-5 mt-4" type="warning" variant="tonal" v-if="task?.status === 'failed'">
+            {{ tt('personalFinance.billflow.failed') }}
+        </v-alert>
+
+        <section class="files-panel" v-if="currentStep === 'files' && (task || eligibleFiles.length)">
             <div class="section-copy">
                 <strong>{{ tt('personalFinance.billflow.files.title') }}</strong>
-                <span>{{ tt('personalFinance.billflow.files.selected', { count: selectedFileIds.length }) }}</span>
+                <span v-if="task">{{ tt('personalFinance.billflow.files.inTask') }}</span>
+                <span v-else>{{ tt('personalFinance.billflow.files.selected', { count: selectedFileIds.length }) }}</span>
             </div>
-            <v-chip-group column multiple v-model="selectedFileIds">
+            <v-chip-group column multiple v-model="selectedFileIds" v-if="!task">
                 <v-chip :value="file.fileId" filter :key="file.fileId" v-for="file in eligibleFiles">
                     {{ file.name }}
                 </v-chip>
             </v-chip-group>
+            <div class="reused-list" v-else>
+                <div class="reused-item" :key="file.fileId" v-for="file in taskFiles">
+                    <strong>{{ file.name }}</strong>
+                </div>
+            </div>
         </section>
 
-        <div class="empty-state" v-else-if="!task && !loading">
+        <div class="empty-state" v-else-if="currentStep === 'files' && !loading">
             <strong>{{ tt('personalFinance.billflow.files.empty') }}</strong>
             <p>{{ tt('personalFinance.billflow.files.emptyHint') }}</p>
             <v-btn color="primary" variant="flat" :prepend-icon="mdiTrayArrowUp" :loading="busy" @click="fileInput?.click()">
@@ -42,46 +69,26 @@
             </v-btn>
         </div>
 
-        <template v-if="task">
-            <section class="summary-grid">
-                <div class="summary-card summary-card--ink">
-                    <span>{{ tt('personalFinance.billflow.summary.created') }}</span>
-                    <strong>{{ task.createdAccountCount }}</strong>
-                </div>
-                <div class="summary-card">
-                    <span>{{ tt('personalFinance.billflow.summary.posted') }}</span>
-                    <strong>{{ task.autoPostedCount }}</strong>
-                </div>
-                <div class="summary-card" :class="{ 'summary-card--todo': task.todoOpenCount > 0 }">
-                    <span>{{ tt('personalFinance.billflow.summary.todos') }}</span>
-                    <strong>{{ task.todoOpenCount }}</strong>
-                </div>
-            </section>
-            <p class="reused-caption" v-if="(accounts?.reused.length ?? 0) < 1 && task.reusedMappingCount > 0">
+        <section class="work-section" v-if="currentStep === 'accounts'">
+            <p class="reused-caption" v-if="(accounts?.reused.length ?? 0) < 1 && (task?.reusedMappingCount ?? 0) > 0">
                 {{ tt('personalFinance.billflow.accounts.reusedHint') }}
             </p>
-
-            <v-alert class="mx-5 mb-4" type="warning" variant="tonal" v-if="task.status === 'failed'">
-                {{ tt('personalFinance.billflow.failed') }}
-            </v-alert>
-
-            <section class="work-section" v-if="showAccountSection">
-                <template v-if="accounts?.reused.length">
-                    <div class="section-copy">
-                        <strong>{{ tt('personalFinance.billflow.accounts.reusedTitle') }} · {{ accounts.reused.length }}</strong>
-                        <span>{{ tt('personalFinance.billflow.accounts.reusedHint') }}</span>
-                    </div>
-                    <div class="reused-list">
-                        <div class="reused-item" :key="group.sampleRowId" v-for="group in accounts.reused">
-                            <strong>{{ group.displayName }}</strong>
-                            <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
-                        </div>
-                    </div>
-                </template>
-
-                <div class="section-copy" :class="{ 'mt-5': !!(accounts?.reused.length) }" v-if="accounts?.needsCreate.length">
-                    <strong>{{ tt('personalFinance.billflow.accounts.title') }} · {{ accounts.needsCreate.length }}</strong>
+            <template v-if="accounts?.reused.length">
+                <div class="section-copy">
+                    <strong>{{ tt('personalFinance.billflow.accounts.reusedTitle') }} · {{ accounts.reused.length }}</strong>
+                    <span>{{ tt('personalFinance.billflow.accounts.reusedHint') }}</span>
                 </div>
+                <div class="reused-list">
+                    <div class="reused-item" :key="group.sampleRowId" v-for="group in accounts.reused">
+                        <strong>{{ group.displayName }}</strong>
+                        <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
+                    </div>
+                </div>
+            </template>
+
+            <div class="section-copy" :class="{ 'mt-5': !!(accounts?.reused.length) }" v-if="accounts?.needsCreate.length">
+                <strong>{{ tt('personalFinance.billflow.accounts.title') }} · {{ accounts.needsCreate.length }}</strong>
+            </div>
 
                 <article
                     class="account-row-card"
@@ -176,34 +183,50 @@
                         </div>
                     </div>
                 </template>
-            </section>
+        </section>
 
-            <section class="work-section" v-if="taskShowsTodos(task.status)">
-                <div class="section-copy">
-                    <strong>{{ tt('personalFinance.billflow.todos.title') }}</strong>
-                    <span v-if="!openTodos.length">{{ tt('personalFinance.billflow.todos.empty') }}</span>
+        <section class="work-section" v-if="currentStep === 'confirm' && task">
+            <div class="summary-grid">
+                <div class="summary-card summary-card--ink">
+                    <span>{{ tt('personalFinance.billflow.summary.created') }}</span>
+                    <strong>{{ task.createdAccountCount }}</strong>
                 </div>
-                <article class="todo-card" :key="todo.id" v-for="todo in openTodos">
-                    <div>
-                        <strong>{{ tt(todoKindKey(todo.todoKind)) }}</strong>
-                        <p v-if="todoReasonLabels(todo).length">{{ todoReasonLabels(todo).join(' · ') }}</p>
-                    </div>
-                    <div class="todo-card__actions">
-                        <v-btn size="small" variant="text" :loading="busy" v-if="todo.todoKind === 'installment_candidate'" @click="confirmInstallment(todo)">
-                            {{ tt('personalFinance.billflow.todos.installment') }}
-                        </v-btn>
-                        <v-btn size="small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
-                            {{ tt('personalFinance.billflow.todos.resolve') }}
-                        </v-btn>
-                        <v-btn size="small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
-                            {{ tt('personalFinance.billflow.todos.dismiss') }}
-                        </v-btn>
-                    </div>
-                </article>
-            </section>
+                <div class="summary-card">
+                    <span>{{ tt('personalFinance.billflow.summary.posted') }}</span>
+                    <strong>{{ task.autoPostedCount }}</strong>
+                </div>
+                <div class="summary-card" :class="{ 'summary-card--todo': task.todoOpenCount > 0 }">
+                    <span>{{ tt('personalFinance.billflow.summary.todos') }}</span>
+                    <strong>{{ task.todoOpenCount }}</strong>
+                </div>
+            </div>
+        </section>
 
-            <section class="work-section" v-if="unverifiedCards.length">
-                <div class="section-copy">
+        <section class="work-section" v-if="currentStep === 'todos' && task">
+            <div class="section-copy">
+                <strong>{{ tt('personalFinance.billflow.todos.title') }}</strong>
+                <span v-if="!openTodos.length">{{ tt('personalFinance.billflow.todos.empty') }}</span>
+            </div>
+            <article class="todo-card" :key="todo.id" v-for="todo in openTodos">
+                <div>
+                    <strong>{{ tt(todoKindKey(todo.todoKind)) }}</strong>
+                    <p v-if="todoReasonLabels(todo).length">{{ todoReasonLabels(todo).join(' · ') }}</p>
+                </div>
+                <div class="todo-card__actions">
+                    <v-btn size="small" variant="text" :loading="busy" v-if="todo.todoKind === 'installment_candidate'" @click="confirmInstallment(todo)">
+                        {{ tt('personalFinance.billflow.todos.installment') }}
+                    </v-btn>
+                    <v-btn size="small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                        {{ tt('personalFinance.billflow.todos.resolve') }}
+                    </v-btn>
+                    <v-btn size="small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                        {{ tt('personalFinance.billflow.todos.dismiss') }}
+                    </v-btn>
+                </div>
+            </article>
+
+            <template v-if="unverifiedCards.length">
+                <div class="section-copy mt-5">
                     <strong>{{ tt('personalFinance.billflow.balance.title') }}</strong>
                     <span>{{ tt('personalFinance.billflow.balance.hint') }}</span>
                 </div>
@@ -216,13 +239,16 @@
                         </div>
                     </div>
                 </article>
-            </section>
-        </template>
+            </template>
+        </section>
 
-        <div class="next-bar" v-if="nextAction">
-            <span>{{ nextAction.label }}</span>
-            <v-btn color="primary" variant="flat" :loading="busy" @click="nextAction.run">
-                {{ nextAction.button }}
+        <div class="next-bar" v-if="canGoBack || canGoForward">
+            <v-btn variant="text" :disabled="!canGoBack || busy" @click="goBack">
+                {{ tt('personalFinance.billflow.step.back') }}
+            </v-btn>
+            <span>{{ forwardHint }}</span>
+            <v-btn color="primary" variant="flat" :disabled="!canGoForward" :loading="busy" v-if="canGoForward" @click="goForward">
+                {{ forwardLabel }}
             </v-btn>
         </div>
     </v-card>
@@ -242,15 +268,22 @@ import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, Billfl
 import { todoKindKey, todoReasonKey } from '../presentation.ts';
 import { billflowApi } from '../service.ts';
 import {
+    BILLFLOW_WORKBENCH_STEPS,
     billflowDirectionKey,
+    billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
+    canOpenBillflowWorkbenchStep,
     eligibleOrganizeFileIds,
     matchedLedgerAccount,
     mergeSelectedOrganizeFileIds,
+    previousBillflowWorkbenchStep,
+    resolveBillflowWorkbenchStep,
     suggestedAccountCategory,
+    suggestedBillflowWorkbenchStep,
     taskAwaitsConfirm,
     taskNeedsAccounts,
-    taskShowsTodos
+    taskShowsTodos,
+    type BillflowWorkbenchStep
 } from '../state.ts';
 import { usePersonalFinanceStore } from '../../store.ts';
 import { todayCivilDate } from '../../dashboard/state.ts';
@@ -272,6 +305,7 @@ const selectedRowIds = ref<string[]>([]);
 const pickedAccountIds = reactive<Record<string, string>>({});
 const openTodos = ref<readonly BillflowTodo[]>([]);
 const cardAccounts = ref<CardCycleAccount[]>([]);
+const userStep = ref<BillflowWorkbenchStep>();
 
 const eligibleFiles = computed(() => {
     const ids = new Set(eligibleOrganizeFileIds(personalFinanceStore.batches));
@@ -283,47 +317,116 @@ const eligibleFiles = computed(() => {
 
 const unverifiedCards = computed(() => cardAccounts.value.filter(card => !card.balanceReview || card.balanceReview.status === 'unverified'));
 const matchedNeedsCreate = computed(() => (accounts.value?.needsCreate ?? []).filter(group => !!selectedLedgerId(group)));
-const showAccountSection = computed(() => {
-    const pending = accounts.value?.needsCreate.length ?? 0;
-    const reused = accounts.value?.reused.length ?? 0;
-    const excluded = accounts.value?.excluded.length ?? 0;
-    return taskNeedsAccounts(task.value?.status ?? 'receiving', pending) || reused > 0 || excluded > 0;
-});
-const nextAction = computed(() => {
+const taskFiles = computed(() => {
     if (!task.value) {
-        if (selectedFileIds.value.length < 1) {
-            return undefined;
-        }
+        return [];
+    }
+    const names = new Map(eligibleFiles.value.map(file => [file.fileId, file.name]));
+    return task.value.members
+        .filter((member, index, list) => list.findIndex(item => item.fileId === member.fileId) === index)
+        .map(member => ({ fileId: member.fileId, name: names.get(member.fileId) || member.fileId }));
+});
+const stepInput = computed(() => ({
+    hasTask: !!task.value,
+    status: task.value?.status,
+    needsCreateCount: accounts.value?.needsCreate.length ?? 0
+}));
+const suggestedStep = computed(() => suggestedBillflowWorkbenchStep(stepInput.value));
+const currentStep = computed(() => resolveBillflowWorkbenchStep(userStep.value, stepInput.value));
+const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.value));
+const canGoBack = computed(() => !!previousBillflowWorkbenchStep(currentStep.value));
+const stepAction = computed(() => {
+    if (currentStep.value === 'files' && !task.value && selectedFileIds.value.length > 0) {
         return {
-            label: tt('personalFinance.billflow.next.files', { count: selectedFileIds.value.length }),
-            button: tt('personalFinance.billflow.files.create'),
+            hint: tt('personalFinance.billflow.next.files', { count: selectedFileIds.value.length }),
+            label: tt('personalFinance.billflow.files.create'),
             run: createTask
         };
     }
     const pendingCount = accounts.value?.needsCreate.length ?? 0;
-    if (taskNeedsAccounts(task.value.status, pendingCount) && pendingCount > 0 && matchedNeedsCreate.value.length > 0) {
-        return {
-            label: tt('personalFinance.billflow.next.accounts', { count: pendingCount }),
-            button: tt('personalFinance.billflow.accounts.reuseAll', { count: matchedNeedsCreate.value.length }),
-            run: reuseMatchedAccounts
-        };
+    if (currentStep.value === 'accounts' && task.value) {
+        if (taskNeedsAccounts(task.value.status, pendingCount) && pendingCount > 0 && matchedNeedsCreate.value.length > 0) {
+            return {
+                hint: tt('personalFinance.billflow.next.accounts', { count: pendingCount }),
+                label: tt('personalFinance.billflow.accounts.reuseAll', { count: matchedNeedsCreate.value.length }),
+                run: reuseMatchedAccounts
+            };
+        }
+        if (canAutoRunAfterAccounts(task.value.status, pendingCount)) {
+            return {
+                hint: tt('personalFinance.billflow.next.accountsReady'),
+                label: tt('personalFinance.billflow.run'),
+                run: runTask
+            };
+        }
     }
-    if (canAutoRunAfterAccounts(task.value.status, pendingCount)) {
+    if (currentStep.value === 'confirm' && task.value && taskAwaitsConfirm(task.value.status)) {
         return {
-            label: tt('personalFinance.billflow.next.accountsReady'),
-            button: tt('personalFinance.billflow.run'),
-            run: runTask
-        };
-    }
-    if (taskAwaitsConfirm(task.value.status)) {
-        return {
-            label: tt('personalFinance.billflow.next.confirm'),
-            button: tt('personalFinance.billflow.confirmPost'),
+            hint: tt('personalFinance.billflow.next.confirm'),
+            label: tt('personalFinance.billflow.confirmPost'),
             run: confirmPost
         };
     }
     return undefined;
 });
+const canAdvanceWithoutAction = computed(() => {
+    if (currentStep.value === 'files' && !!task.value) {
+        return true;
+    }
+    if (currentStep.value === 'accounts' && !!task.value && billflowWorkbenchStepIndex(suggestedStep.value) > billflowWorkbenchStepIndex('accounts')) {
+        return true;
+    }
+    if (currentStep.value === 'confirm' && !!task.value && suggestedStep.value === 'todos') {
+        return true;
+    }
+    return false;
+});
+const canGoForward = computed(() => !!stepAction.value || canAdvanceWithoutAction.value);
+const forwardLabel = computed(() => stepAction.value?.label ?? tt('personalFinance.billflow.step.next'));
+const forwardHint = computed(() => stepAction.value?.hint ?? '');
+
+watch(suggestedStep, (next, previous) => {
+    if (userStep.value && previous && userStep.value === previous && billflowWorkbenchStepIndex(next) > billflowWorkbenchStepIndex(previous)) {
+        userStep.value = undefined;
+    }
+});
+
+function canOpenStep(step: BillflowWorkbenchStep): boolean {
+    return canOpenBillflowWorkbenchStep(step, stepInput.value);
+}
+
+function openStep(step: BillflowWorkbenchStep): void {
+    if (!canOpenStep(step)) {
+        return;
+    }
+    userStep.value = step;
+}
+
+function goBack(): void {
+    const previous = previousBillflowWorkbenchStep(currentStep.value);
+    if (previous) {
+        userStep.value = previous;
+    }
+}
+
+async function goForward(): Promise<void> {
+    if (stepAction.value) {
+        await stepAction.value.run();
+        userStep.value = undefined;
+        return;
+    }
+    if (currentStep.value === 'files' && task.value) {
+        userStep.value = 'accounts';
+        return;
+    }
+    if (currentStep.value === 'accounts' && canAdvanceWithoutAction.value) {
+        userStep.value = suggestedStep.value === 'todos' ? 'confirm' : suggestedStep.value;
+        return;
+    }
+    if (currentStep.value === 'confirm' && canAdvanceWithoutAction.value) {
+        userStep.value = 'todos';
+    }
+}
 
 watch(eligibleFiles, files => {
     const nextIds = files.map(file => file.fileId);
@@ -748,6 +851,62 @@ onMounted(reload);
     font-size: 0.92rem;
 }
 
+.step-rail {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    border-top: 1px solid var(--task-rule);
+    background: var(--task-rule);
+}
+
+.step-rail button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 52px;
+    padding: 10px 8px;
+    border: 0;
+    background: var(--task-paper);
+    color: rgba(var(--v-theme-on-surface), 0.55);
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.step-rail button span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgba(var(--v-theme-on-surface), 0.08);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.step-rail button.is-current {
+    color: rgb(var(--v-theme-on-surface));
+    font-weight: 700;
+    box-shadow: inset 0 -3px rgb(var(--v-theme-primary));
+}
+
+.step-rail button.is-current span,
+.step-rail button.is-done span {
+    background: rgb(var(--v-theme-primary));
+    color: rgb(var(--v-theme-on-primary));
+}
+
+.step-rail button.is-done {
+    color: rgb(var(--v-theme-on-surface));
+}
+
+.step-rail button.is-locked,
+.step-rail button:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
 .files-panel,
 .work-section {
     border-top: 1px solid var(--task-rule);
@@ -783,7 +942,7 @@ onMounted(reload);
     display: grid;
     grid-template-columns: 1.15fr 1fr 1fr;
     gap: 12px;
-    padding: 18px 22px 8px;
+    padding: 0;
 }
 
 .summary-card {
@@ -1012,6 +1171,10 @@ onMounted(reload);
 @media (max-width: 900px) {
     .summary-grid {
         grid-template-columns: 1fr;
+    }
+
+    .step-rail {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .account-row-card__main {
