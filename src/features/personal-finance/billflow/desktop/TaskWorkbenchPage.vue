@@ -92,7 +92,8 @@
                     <div class="account-row-card__main">
                         <div class="account-row-card__name">
                             <strong>{{ group.displayName }}</strong>
-                            <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}<template v-if="matchedAccount(group)"> · {{ tt('personalFinance.billflow.accounts.matchedHint', { name: matchedAccount(group)?.name ?? '' }) }}</template></span>
+                            <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
+                            <em v-if="matchedAccount(group)">{{ tt('personalFinance.billflow.accounts.matchedHint', { name: matchedAccount(group)?.name ?? '' }) }}</em>
                         </div>
                         <v-select
                             class="account-row-card__select"
@@ -875,15 +876,25 @@ onMounted(reload);
     padding: 8px 12px;
 }
 
+.account-row-card__name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 8px;
+    min-width: 0;
+}
+
 .account-row-card__name strong {
-    display: block;
     font-size: 0.92rem;
     line-height: 1.3;
 }
 
-.account-row-card__name span {
+.account-row-card__name span,
+.account-row-card__name em {
     color: rgba(var(--v-theme-on-surface), 0.55);
     font-size: 0.75rem;
+    font-style: normal;
+    white-space: nowrap;
 }
 
 .account-row-card__select {
