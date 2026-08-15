@@ -65,6 +65,7 @@ type EvidenceReader interface {
 	ListImportBatches(c core.Context, uid int64, fileId int64, offset int, limit int) ([]*importing.ImportBatch, int64, error)
 	FindImportBatchById(c core.Context, uid int64, batchId int64) (*importing.ImportBatch, error)
 	ListRawImportRows(c core.Context, uid int64, batchId int64) ([]*importing.RawImportRow, error)
+	FindRawImportRowById(c core.Context, uid int64, rowId int64) (*importing.RawImportRow, error)
 }
 
 // PaymentAccounts 复用既有付款方式映射，不新写合并器。
@@ -228,6 +229,13 @@ type TodoView struct {
 	SubjectKind     SubjectKind
 	SubjectId       int64
 	ReasonCodes     []string
+	Label           string
+	Item            string
+	BillType        string
+	Amount          string
+	Currency        string
+	UnixTime        *int64
+	Direction       string
 	Version         int64
 	CreatedUnixTime int64
 	UpdatedUnixTime int64

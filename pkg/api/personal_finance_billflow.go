@@ -35,6 +35,7 @@ type PersonalFinanceBillflowApplication interface {
 	ConfirmPost(c core.Context, request billflow.RunTaskRequest, clientTimezone *time.Location) (*billflow.TaskView, error)
 	ListTodos(c core.Context, uid int64, taskId int64, status billflow.TodoStatus, cursor *billflow.TodoCursor, limit int) (*billflow.TodoListResult, error)
 	ResolveTodo(c core.Context, request billflow.ResolveTodoRequest) (*billflow.TodoView, error)
+	AssignTodoCategories(c core.Context, request billflow.AssignTodoCategoryRequest) (*billflow.TaskView, error)
 	GetUndoImpact(c core.Context, uid int64, taskId int64) (*billflow.UndoImpactView, error)
 	UndoTask(c core.Context, request billflow.UndoTaskRequest) (*billflow.TaskView, error)
 }
@@ -101,6 +102,17 @@ type personalFinanceBillflowResolveTodoRequest struct {
 	ExpectedVersion int64               `json:"expectedVersion"`
 	Status          billflow.TodoStatus `json:"status"`
 	IdempotencyKey  string              `json:"idempotencyKey"`
+}
+
+type personalFinanceBillflowAssignCategoryItem struct {
+	TodoId          int64 `json:"todoId,string"`
+	ExpectedVersion int64 `json:"expectedVersion"`
+}
+
+type personalFinanceBillflowAssignCategoryRequest struct {
+	CategoryId     int64                                      `json:"categoryId,string"`
+	IdempotencyKey string                                     `json:"idempotencyKey"`
+	Items          []personalFinanceBillflowAssignCategoryItem `json:"items"`
 }
 
 type personalFinanceBillflowMemberResponse struct {
@@ -172,6 +184,13 @@ type personalFinanceBillflowTodoResponse struct {
 	SubjectKind     billflow.SubjectKind `json:"subjectKind"`
 	SubjectId       string               `json:"subjectId"`
 	ReasonCodes     []string             `json:"reasonCodes"`
+	Label           string               `json:"label"`
+	Item            string               `json:"item"`
+	BillType        string               `json:"billType"`
+	Amount          string               `json:"amount"`
+	Currency        string               `json:"currency"`
+	UnixTime        *int64               `json:"unixTime,omitempty"`
+	Direction       string               `json:"direction"`
 	Version         int64                `json:"version"`
 	CreatedUnixTime int64                `json:"createdUnixTime"`
 	UpdatedUnixTime int64                `json:"updatedUnixTime"`
@@ -454,6 +473,27 @@ func (a *PersonalFinanceBillflowApi) BillflowTodoResolveHandler(c *core.WebConte
 	return newPersonalFinanceBillflowTodoResponse(result), nil
 }
 
+func (a *PersonalFinanceBillflowApi) BillflowTodoAssignCategoryHandler(c *core.WebContext) (any, *errs.Error) {
+	request := new(personalFinanceBillflowAssignCategoryRequest)
+	if err := decodePersonalFinanceLoanJSON(c, request); err != nil {
+		return nil, errs.ErrParameterInvalid
+	}
+	items := make([]billflow.AssignTodoCategoryItem, 0, len(request.Items))
+	for _, item := range request.Items {
+		if item.TodoId < 1 || item.ExpectedVersion < 1 {
+			return nil, errs.ErrParameterInvalid
+		}
+		items = append(items, billflow.AssignTodoCategoryItem{TodoId: item.TodoId, ExpectedVersion: item.ExpectedVersion})
+	}
+	result, err := a.application.AssignTodoCategories(c, billflow.AssignTodoCategoryRequest{
+		Uid: c.GetCurrentUid(), CategoryId: request.CategoryId, IdempotencyKey: request.IdempotencyKey, Items: items,
+	})
+	if err != nil {
+		return nil, personalFinanceBillflowServiceError(err)
+	}
+	return newPersonalFinanceBillflowTaskResponse(result), nil
+}
+
 func (a *PersonalFinanceBillflowApi) BillflowTaskUndoImpactHandler(c *core.WebContext) (any, *errs.Error) {
 	taskId, ok := parsePersonalFinanceBillflowIDQuery(c, "id")
 	if !ok {
@@ -611,7 +651,8 @@ func newPersonalFinanceBillflowTodoResponse(value *billflow.TodoView) *personalF
 	}
 	return &personalFinanceBillflowTodoResponse{
 		Id: strconv.FormatInt(value.TodoId, 10), TodoKind: value.TodoKind, Status: value.Status, SubjectKind: value.SubjectKind,
-		SubjectId: strconv.FormatInt(value.SubjectId, 10), ReasonCodes: value.ReasonCodes, Version: value.Version,
+		SubjectId: strconv.FormatInt(value.SubjectId, 10), ReasonCodes: value.ReasonCodes, Label: value.Label, Item: value.Item,
+		BillType: value.BillType, Amount: value.Amount, Currency: value.Currency, UnixTime: value.UnixTime, Direction: value.Direction, Version: value.Version,
 		CreatedUnixTime: value.CreatedUnixTime, UpdatedUnixTime: value.UpdatedUnixTime,
 	}
 }

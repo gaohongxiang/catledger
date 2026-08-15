@@ -2946,7 +2946,7 @@
             "confirmPost": "Confirm posting",
             "confirmHint": "Finish categories and other items, then confirm posting.",
             "confirmDoneHint": "Posted.",
-            "reviewHint": "Categorize unclear transactions first. You can continue if there is nothing to decide.",
+            "reviewHint": "Choose a category for unclear transactions. You can select several and save them together.",
             "othersHint": "Anything left after categorizing. You can continue if there is nothing to decide.",
             "files": {
                 "title": "Choose statements to organize together",
@@ -3014,6 +3014,11 @@
                 "empty": "No categories need a decision.",
                 "othersTitle": "Other items",
                 "othersEmpty": "No other items need a decision.",
+                "selectAll": "Select all ({count} selected)",
+                "pickCategory": "Choose a category",
+                "saveCategory": "Save category",
+                "assignSelected": "Save category for selected",
+                "skipSelected": "Skip selected",
                 "resolve": "Done",
                 "dismiss": "Skip for now",
                 "installment": "Treat as installment"

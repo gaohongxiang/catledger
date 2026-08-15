@@ -96,6 +96,13 @@ export interface BillflowTodo {
     readonly subjectKind: BillflowSubjectKind;
     readonly subjectId: string;
     readonly reasonCodes: readonly string[];
+    readonly label: string;
+    readonly item: string;
+    readonly billType: string;
+    readonly amount: string;
+    readonly currency: string;
+    readonly unixTime?: number;
+    readonly direction: string;
     readonly version: number;
     readonly createdUnixTime: number;
     readonly updatedUnixTime: number;

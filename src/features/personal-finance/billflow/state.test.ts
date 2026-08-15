@@ -11,6 +11,7 @@ import {
     billflowDirectionKey,
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
+    canAssignBillflowCategory,
     canOpenBillflowWorkbenchStep,
     composeDashboardHeadline,
     createdAccountsNeedingBalance,
@@ -197,6 +198,13 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
         expect(workbench).toContain('v-for="todo in reviewTodos"');
         expect(workbench).toContain('v-for="todo in otherTodos"');
+        expect(workbench).toContain('assignTodoCategories');
+        expect(workbench).toContain('canAssignBillflowCategory');
+        expect(workbench).toContain('personalFinance.billflow.todos.pickCategory');
+        expect(workbench).toContain('personalFinance.billflow.todos.selectAll');
+        expect(workbench).toContain('todoTitle(todo)');
+        expect(workbench).toContain('todoSubtitle(todo)');
+        expect(workbench).toContain('formatTodoAmount(todo)');
         expect(workbench).toContain('newBalanceAccounts');
         expect(workbench).toContain('personalFinance.billflow.balance.amount');
         expect(workbench).toContain('personalFinance.billflow.balance.save');
@@ -266,6 +274,10 @@ describe('billflow task page wiring', () => {
             { todoKind: 'uncategorized' },
             { todoKind: 'installment_candidate' }
         ]).map(todo => todo.todoKind)).toEqual(['installment_candidate']);
+        expect(canAssignBillflowCategory('uncategorized')).toBe(true);
+        expect(canAssignBillflowCategory('transfer_unclear')).toBe(true);
+        expect(canAssignBillflowCategory('refund_unclear')).toBe(false);
+        expect(canAssignBillflowCategory('identity_conflict')).toBe(false);
     });
 
     it('keeps account checks in pending, reused and excluded buckets', () => {

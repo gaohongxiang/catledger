@@ -222,6 +222,10 @@ export function isInstallmentTodo(kind: BillflowTodoKind): boolean {
     return kind === 'installment_candidate';
 }
 
+export function canAssignBillflowCategory(kind: BillflowTodoKind): boolean {
+    return kind === 'uncategorized' || kind === 'transfer_unclear';
+}
+
 export function categoryTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
     return todos.filter(todo => !isInstallmentTodo(todo.todoKind));
 }

@@ -49,7 +49,7 @@ func (s *Service) ListTodos(c core.Context, uid int64, taskId int64, status Todo
 		if todo == nil {
 			continue
 		}
-		result.Items = append(result.Items, todoView(todo))
+		result.Items = append(result.Items, s.todoView(c, uid, todo))
 	}
 	return result, nil
 }

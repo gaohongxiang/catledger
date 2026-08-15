@@ -79,6 +79,64 @@ func TestServiceConfirmThenPostCategoryAndUndo(t *testing.T) {
 	}
 }
 
+func TestServiceAssignMerchantCategoryBeforeConfirm(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	accountId := int64(61)
+	leafId := int64(51)
+	row := postableRow(uid, 401, 801, 201, accountId, "商户消费")
+	row.RawCounterparty = "星巴克"
+	row.RawItem = "拿铁"
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{row})
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+	}}
+	poster := &fakePoster{}
+	var nextId int64 = 9000
+	service, err := billflow.NewService(repository, evidence, payments, poster, nil, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{
+		{CategoryId: leafId, Name: "餐饮美食"},
+	}}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-task-1"})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-1", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || ran.Status != billflow.TASK_STATUS_AWAITING_CONFIRM {
+		t.Fatalf("run task: %+v err=%v", ran, err)
+	}
+	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || todos == nil || len(todos.Items) != 1 || todos.Items[0].TodoKind != billflow.TODO_KIND_UNCATEGORIZED ||
+		todos.Items[0].Label != "星巴克" || todos.Items[0].Item != "拿铁" || todos.Items[0].BillType != "商户消费" ||
+		todos.Items[0].Amount != "123" || todos.Items[0].Currency != "CNY" || todos.Items[0].Direction != string(importing.NORMALIZED_DIRECTION_EXPENSE) {
+		t.Fatalf("uncategorized todo preview: %+v err=%v", todos, err)
+	}
+
+	assigned, err := service.AssignTodoCategories(nil, billflow.AssignTodoCategoryRequest{
+		Uid: uid, CategoryId: leafId, IdempotencyKey: "assign-category-1",
+		Items: []billflow.AssignTodoCategoryItem{{TodoId: todos.Items[0].TodoId, ExpectedVersion: todos.Items[0].Version}},
+	})
+	if err != nil || assigned == nil || assigned.TodoOpenCount != 0 {
+		t.Fatalf("assign category: %+v err=%v", assigned, err)
+	}
+	open, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || open == nil || len(open.Items) != 0 {
+		t.Fatalf("assigned todo stayed open: %+v err=%v", open, err)
+	}
+
+	posted, err := service.ConfirmPost(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: assigned.Version, IdempotencyKey: "confirm-post-1", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || posted.Status != billflow.TASK_STATUS_READY || poster.calls != 1 {
+		t.Fatalf("confirm_post: %+v calls=%d err=%v", posted, poster.calls, err)
+	}
+	assertAutoPostedCategory(t, poster.last.Commands, 801, leafId)
+}
+
 func TestServiceAutoPostCrossSourceAndUndoGuard(t *testing.T) {
 	repository, _ := newSQLiteBillflowRepository(t)
 	uid := int64(1001)
@@ -351,6 +409,16 @@ func (f *fakeEvidence) ListRawImportRows(_ core.Context, uid int64, batchId int6
 		}
 	}
 	return rows, nil
+}
+func (f *fakeEvidence) FindRawImportRowById(_ core.Context, uid int64, rowId int64) (*importing.RawImportRow, error) {
+	for _, rows := range f.rows {
+		for _, row := range rows {
+			if row != nil && row.Uid == uid && row.RowId == rowId {
+				return row, nil
+			}
+		}
+	}
+	return nil, nil
 }
 
 type fakePayments struct {

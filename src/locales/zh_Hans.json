@@ -2946,7 +2946,7 @@
             "confirmPost": "确认入账",
             "confirmHint": "分类和其他事项都看过以后，再点确认入账。",
             "confirmDoneHint": "已经入账。",
-            "reviewHint": "先把说不清的交易分好类。没有要处理的也可以下一步。",
+            "reviewHint": "先给说不清的交易选分类。可全选后一起保存。",
             "othersHint": "分类之后还要你看一眼的事项，没有也可以下一步。",
             "files": {
                 "title": "选择要一起整理的账单",
@@ -3014,6 +3014,11 @@
                 "empty": "没有要处理的分类。",
                 "othersTitle": "其他事项",
                 "othersEmpty": "没有要处理的其他事项。",
+                "selectAll": "全选（已选 {count}）",
+                "pickCategory": "选择分类",
+                "saveCategory": "保存分类",
+                "assignSelected": "给选中的保存分类",
+                "skipSelected": "选中的先跳过",
                 "resolve": "已处理",
                 "dismiss": "先跳过",
                 "installment": "按分期处理"

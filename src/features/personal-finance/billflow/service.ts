@@ -194,6 +194,7 @@ function normalizeAccountRows(value: unknown): readonly BillflowAccountRow[] {
 
 function normalizeTodo(value: unknown): BillflowTodo {
     const item = record(value);
+    const unixTime = optionalInteger(item['unixTime']);
     return {
         id: identifier(item['id']),
         todoKind: asEnum<BillflowTodoKind>(item['todoKind'], todoKinds),
@@ -201,9 +202,16 @@ function normalizeTodo(value: unknown): BillflowTodo {
         subjectKind: asEnum(item['subjectKind'], subjectKinds),
         subjectId: identifier(item['subjectId']),
         reasonCodes: array(item['reasonCodes']).map(string),
+        label: string(item['label'] ?? ''),
+        item: string(item['item'] ?? ''),
+        billType: string(item['billType'] ?? ''),
+        amount: string(item['amount'] ?? ''),
+        currency: string(item['currency'] ?? ''),
+        direction: string(item['direction'] ?? ''),
         version: integer(item['version']),
         createdUnixTime: integer(item['createdUnixTime']),
-        updatedUnixTime: integer(item['updatedUnixTime'])
+        updatedUnixTime: integer(item['updatedUnixTime']),
+        ...(unixTime === undefined ? {} : { unixTime })
     };
 }
 
@@ -347,6 +355,9 @@ export const billflowApi = {
     },
     async resolveTodo(todoId: string, expectedVersion: number, status: Exclude<BillflowTodoStatus, 'open'>, idempotencyKey: string): Promise<BillflowTodo> {
         return normalizeTodo(unwrap(await services.resolvePersonalFinanceBillflowTodo({ todoId, expectedVersion, status, idempotencyKey })));
+    },
+    async assignTodoCategories(items: readonly { todoId: string, expectedVersion: number }[], categoryId: string, idempotencyKey: string): Promise<BillflowTask> {
+        return normalizeBillflowTask(unwrap(await services.assignPersonalFinanceBillflowTodoCategories({ items, categoryId, idempotencyKey })));
     },
     async getUndoImpact(taskId: string): Promise<BillflowUndoImpact> {
         return normalizeUndoImpact(unwrap(await services.getPersonalFinanceBillflowUndoImpact({ taskId })));

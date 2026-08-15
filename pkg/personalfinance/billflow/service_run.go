@@ -232,6 +232,9 @@ func (s *Service) classifyRow(row *importing.RawImportRow, sourceType importing.
 	}
 	switch row.NormalizedTransactionType {
 	case importing.SOURCE_TRANSACTION_TYPE_TOP_UP, importing.SOURCE_TRANSACTION_TYPE_WITHDRAWAL, importing.SOURCE_TRANSACTION_TYPE_TRANSFER:
+		if _, mapped := categories.mapped(sourceType, row); mapped {
+			return "", true
+		}
 		return TODO_KIND_TRANSFER_UNCLEAR, false
 	}
 	if row.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND {
@@ -242,9 +245,12 @@ func (s *Service) classifyRow(row *importing.RawImportRow, sourceType importing.
 	}
 	name := sourceCategoryName(row, sourceType)
 	if todoKind := transferLikeTodo(name); todoKind != "" {
+		if _, mapped := categories.mapped(sourceType, row); mapped {
+			return "", true
+		}
 		return todoKind, false
 	}
-	if _, mapped := categories.lookup(sourceType, name); !mapped {
+	if _, mapped := categories.mapped(sourceType, row); !mapped {
 		if row.NormalizedDirection == importing.NORMALIZED_DIRECTION_INCOME || row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE {
 			return TODO_KIND_UNCATEGORIZED, true
 		}
@@ -272,7 +278,7 @@ func (s *Service) postingCommand(rows []*importing.RawImportRow, sourceType impo
 	}
 	categoryId := int64(0)
 	allowUncategorized := true
-	if id, mapped := categories.lookup(sourceType, sourceCategoryName(row, sourceType)); mapped {
+	if id, mapped := categories.mapped(sourceType, row); mapped {
 		categoryId = id
 		allowUncategorized = false
 	}
@@ -508,6 +514,15 @@ func (index *categoryIndex) lookup(sourceType importing.SourceType, name string)
 	return 0, false
 }
 
+func (index *categoryIndex) mapped(sourceType importing.SourceType, row *importing.RawImportRow) (int64, bool) {
+	for _, name := range categoryAliasCandidates(row, sourceType) {
+		if id, ok := index.lookup(sourceType, name); ok {
+			return id, true
+		}
+	}
+	return 0, false
+}
+
 func (s *Service) loadCategoryIndex(c core.Context, uid int64, sourceByBatch map[int64]importing.SourceType, rowsByBatch map[int64][]*importing.RawImportRow) (*categoryIndex, error) {
 	index := &categoryIndex{leaves: map[string]int64{}, aliases: map[string]int64{}}
 	if s.categories != nil {
@@ -523,21 +538,19 @@ func (s *Service) loadCategoryIndex(c core.Context, uid int64, sourceByBatch map
 	for batchId, rows := range rowsByBatch {
 		sourceType := sourceByBatch[batchId]
 		for _, row := range rows {
-			name := sourceCategoryName(row, sourceType)
-			if name == "" || isForbiddenCategoryName(name) {
-				continue
-			}
-			key := string(sourceType) + "\x00" + categoryAliasKey(name)
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
-			mapping, err := s.repository.FindCategoryAlias(c, uid, sourceType, categoryAliasKey(name))
-			if err != nil {
-				return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
-			}
-			if mapping != nil && mapping.LedgerCategoryId > 0 {
-				index.aliases[key] = mapping.LedgerCategoryId
+			for _, name := range categoryAliasCandidates(row, sourceType) {
+				key := string(sourceType) + "\x00" + categoryAliasKey(name)
+				if _, exists := seen[key]; exists {
+					continue
+				}
+				seen[key] = struct{}{}
+				mapping, err := s.repository.FindCategoryAlias(c, uid, sourceType, categoryAliasKey(name))
+				if err != nil {
+					return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+				}
+				if mapping != nil && mapping.LedgerCategoryId > 0 {
+					index.aliases[key] = mapping.LedgerCategoryId
+				}
 			}
 		}
 	}

@@ -226,18 +226,81 @@
                 <strong>{{ tt('personalFinance.billflow.todos.title') }}</strong>
                 <span v-if="!reviewTodos.length">{{ tt('personalFinance.billflow.todos.empty') }}</span>
             </div>
+            <div class="todo-toolbar" v-if="assignableReviewTodos.length">
+                <label class="todo-toolbar__check">
+                    <v-checkbox-btn :model-value="allAssignableSelected" hide-details @click.stop="toggleAssignableSelection" />
+                    {{ tt('personalFinance.billflow.todos.selectAll', { count: selectedAssignableTodos.length }) }}
+                </label>
+                <v-select
+                    class="todo-toolbar__select"
+                    density="compact"
+                    hide-details
+                    item-title="title"
+                    item-value="value"
+                    variant="outlined"
+                    :items="batchCategoryOptions"
+                    :placeholder="tt('personalFinance.billflow.todos.pickCategory')"
+                    :disabled="busy"
+                    :model-value="batchCategoryId"
+                    @update:model-value="value => setBatchCategoryId(value)"
+                />
+                <v-btn size="small" color="primary" variant="flat" :loading="busy" :disabled="!canAssignSelected" @click="assignSelectedTodos">
+                    {{ tt('personalFinance.billflow.todos.assignSelected') }}
+                </v-btn>
+                <v-btn size="small" variant="text" :loading="busy" :disabled="!selectedTodoIds.length" @click="skipSelectedTodos">
+                    {{ tt('personalFinance.billflow.todos.skipSelected') }}
+                </v-btn>
+            </div>
             <article class="todo-card" :key="todo.id" v-for="todo in reviewTodos">
-                <div>
-                    <strong>{{ tt(todoKindKey(todo.todoKind)) }}</strong>
+                <label class="todo-card__check">
+                    <v-checkbox-btn v-model="selectedTodoIds" :value="todo.id" hide-details />
+                </label>
+                <div class="todo-card__copy">
+                    <strong>{{ todoTitle(todo) }}</strong>
+                    <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
                     <p v-if="todoReasonLabels(todo).length">{{ todoReasonLabels(todo).join(' · ') }}</p>
                 </div>
-                <div class="todo-card__actions">
-                    <v-btn size="small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
-                        {{ tt('personalFinance.billflow.todos.resolve') }}
-                    </v-btn>
-                    <v-btn size="small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
-                        {{ tt('personalFinance.billflow.todos.dismiss') }}
-                    </v-btn>
+                <div class="todo-card__facts">
+                    <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
+                    <v-chip size="x-small" variant="tonal" :color="directionColor(todo.direction)" v-if="todo.direction">
+                        {{ tt(billflowDirectionKey(todo.direction)) }}
+                    </v-chip>
+                    <v-chip size="x-small" variant="text">{{ tt(todoKindKey(todo.todoKind)) }}</v-chip>
+                </div>
+                <div class="todo-card__side">
+                    <v-select
+                        class="todo-card__select"
+                        density="compact"
+                        hide-details
+                        item-title="title"
+                        item-value="value"
+                        variant="outlined"
+                        :items="categoryOptionsFor(todo)"
+                        :placeholder="tt('personalFinance.billflow.todos.pickCategory')"
+                        :disabled="busy"
+                        :model-value="categoryDrafts[todo.id]"
+                        v-if="canAssignBillflowCategory(todo.todoKind)"
+                        @update:model-value="value => setTodoCategory(todo.id, value)"
+                    />
+                    <div class="todo-card__actions">
+                        <v-btn
+                            size="small"
+                            color="primary"
+                            variant="flat"
+                            :loading="busy"
+                            :disabled="!categoryDrafts[todo.id]"
+                            v-if="canAssignBillflowCategory(todo.todoKind)"
+                            @click="assignOneTodo(todo)"
+                        >
+                            {{ tt('personalFinance.billflow.todos.saveCategory') }}
+                        </v-btn>
+                        <v-btn size="small" color="primary" variant="flat" :loading="busy" v-else @click="resolveTodo(todo, 'resolved')">
+                            {{ tt('personalFinance.billflow.todos.resolve') }}
+                        </v-btn>
+                        <v-btn size="small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                            {{ tt('personalFinance.billflow.todos.dismiss') }}
+                        </v-btn>
+                    </div>
                 </div>
             </article>
         </section>
@@ -248,10 +311,18 @@
                 <strong>{{ tt('personalFinance.billflow.todos.othersTitle') }}</strong>
                 <span v-if="!otherTodos.length">{{ tt('personalFinance.billflow.todos.othersEmpty') }}</span>
             </div>
-            <article class="todo-card" :key="todo.id" v-for="todo in otherTodos">
-                <div>
-                    <strong>{{ tt(todoKindKey(todo.todoKind)) }}</strong>
+            <article class="todo-card todo-card--plain" :key="todo.id" v-for="todo in otherTodos">
+                <div class="todo-card__copy">
+                    <strong>{{ todoTitle(todo) }}</strong>
+                    <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
                     <p v-if="todoReasonLabels(todo).length">{{ todoReasonLabels(todo).join(' · ') }}</p>
+                </div>
+                <div class="todo-card__facts">
+                    <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
+                    <v-chip size="x-small" variant="tonal" :color="directionColor(todo.direction)" v-if="todo.direction">
+                        {{ tt(billflowDirectionKey(todo.direction)) }}
+                    </v-chip>
+                    <v-chip size="x-small" variant="text">{{ tt(todoKindKey(todo.todoKind)) }}</v-chip>
                 </div>
                 <div class="todo-card__actions">
                     <v-btn size="small" variant="text" :loading="busy" @click="confirmInstallment(todo)">
@@ -307,6 +378,10 @@ import { getBrowserTimezoneOffsetMinutes, parseDateTimeFromUnixTimeWithBrowserTi
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { useAccountsStore } from '@/stores/account.ts';
+import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
+
+import { CategoryType } from '@/core/category.ts';
+import type { TransactionCategory } from '@/models/transaction_category.ts';
 
 import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowTask, BillflowTodo, CardCycleAccount } from '../models.ts';
 import { todoKindKey, todoReasonKey } from '../presentation.ts';
@@ -319,6 +394,7 @@ import {
     billflowDirectionKey,
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
+    canAssignBillflowCategory,
     canOpenBillflowWorkbenchStep,
     createdAccountsNeedingBalance,
     eligibleOrganizeFileIds,
@@ -344,6 +420,7 @@ import { todayCivilDate } from '../../dashboard/state.ts';
 const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatDateTimeToShortDateTime } = useI18n();
 const personalFinanceStore = usePersonalFinanceStore();
 const accountsStore = useAccountsStore();
+const categoriesStore = useTransactionCategoriesStore();
 const fileInput = ref<HTMLInputElement>();
 const loading = ref(false);
 const busy = ref(false);
@@ -357,6 +434,9 @@ const accountRows = ref<readonly BillflowAccountRow[]>([]);
 const selectedRowIds = ref<string[]>([]);
 const pickedAccountIds = reactive<Record<string, string>>({});
 const openTodos = ref<readonly BillflowTodo[]>([]);
+const selectedTodoIds = ref<string[]>([]);
+const categoryDrafts = reactive<Record<string, string>>({});
+const batchCategoryId = ref('');
 const cardAccounts = ref<CardCycleAccount[]>([]);
 const createdLedgerIds = ref<string[]>([]);
 const answeredLedgerIds = ref<string[]>([]);
@@ -400,6 +480,11 @@ const currentStep = computed(() => resolveBillflowWorkbenchStep(userStep.value, 
 const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.value));
 const reviewTodos = computed(() => categoryTodos(openTodos.value));
 const otherTodos = computed(() => installmentTodos(openTodos.value));
+const assignableReviewTodos = computed(() => reviewTodos.value.filter(todo => canAssignBillflowCategory(todo.todoKind)));
+const selectedAssignableTodos = computed(() => assignableReviewTodos.value.filter(todo => selectedTodoIds.value.includes(todo.id)));
+const allAssignableSelected = computed(() => assignableReviewTodos.value.length > 0 && selectedAssignableTodos.value.length === assignableReviewTodos.value.length);
+const batchCategoryOptions = computed(() => flattenCategoryOptions(CategoryType.Expense));
+const canAssignSelected = computed(() => selectedAssignableTodos.value.length > 0 && !!batchCategoryId.value);
 const canGoBack = computed(() => !!previousBillflowWorkbenchStep(currentStep.value));
 const bucketCounts = computed(() => ({
     pending: accounts.value?.needsCreate.length ?? 0,
@@ -606,6 +691,65 @@ function formatAccountTime(row: BillflowAccountRow): string {
     return row.unixTime ? formatDateTimeToShortDateTime(parseDateTimeFromUnixTimeWithBrowserTimezone(row.unixTime)) : '';
 }
 
+function formatTodoAmount(todo: BillflowTodo): string {
+    return todo.amount ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(todo.amount), todo.currency || 'CNY') : '';
+}
+
+function formatTodoTime(todo: BillflowTodo): string {
+    return todo.unixTime ? formatDateTimeToShortDateTime(parseDateTimeFromUnixTimeWithBrowserTimezone(todo.unixTime)) : '';
+}
+
+function todoTitle(todo: BillflowTodo): string {
+    return todo.label || todo.item || tt(todoKindKey(todo.todoKind));
+}
+
+function todoSubtitle(todo: BillflowTodo): string {
+    const title = todoTitle(todo);
+    return [todo.item, todo.billType, formatTodoTime(todo)]
+        .filter((part): part is string => !!part && part !== title)
+        .filter((part, index, parts) => parts.indexOf(part) === index)
+        .join(' · ');
+}
+
+function flattenCategoryOptions(type: CategoryType): { title: string, value: string }[] {
+    const options: { title: string, value: string }[] = [];
+    for (const category of (categoriesStore.allTransactionCategories[type] ?? []) as TransactionCategory[]) {
+        for (const subCategory of category.subCategories ?? []) {
+            if (!category.hidden && !subCategory.hidden) {
+                options.push({ title: `${category.name} / ${subCategory.name}`, value: subCategory.id });
+            }
+        }
+    }
+    return options;
+}
+
+function categoryOptionsFor(todo: BillflowTodo): { title: string, value: string }[] {
+    return flattenCategoryOptions(todo.direction === 'income' ? CategoryType.Income : CategoryType.Expense);
+}
+
+function setTodoCategory(todoId: string, value: unknown): void {
+    if (typeof value !== 'string') {
+        return;
+    }
+    categoryDrafts[todoId] = value;
+}
+
+function setBatchCategoryId(value: unknown): void {
+    if (typeof value !== 'string') {
+        return;
+    }
+    batchCategoryId.value = value;
+}
+
+function toggleAssignableSelection(): void {
+    if (allAssignableSelected.value) {
+        const assignable = new Set(assignableReviewTodos.value.map(todo => todo.id));
+        selectedTodoIds.value = selectedTodoIds.value.filter(id => !assignable.has(id));
+        return;
+    }
+    selectedTodoIds.value = [...new Set([...selectedTodoIds.value, ...assignableReviewTodos.value.map(todo => todo.id)])];
+}
+
 function directionColor(direction: string): string | undefined {
     if (direction === 'income') {
         return 'success';
@@ -622,7 +766,8 @@ async function reload(): Promise<void> {
     try {
         await Promise.all([
             personalFinanceStore.loadBatches(0, 50),
-            accountsStore.loadAllAccounts({ force: false })
+            accountsStore.loadAllAccounts({ force: false }),
+            categoriesStore.loadAllCategories({ force: false })
         ]);
         const [pending, receiving, awaiting, ready] = await Promise.all([
             billflowApi.listTasks('accounts_pending'),
@@ -652,7 +797,8 @@ async function openTask(taskId: string): Promise<void> {
         selectedRowIds.value = selectedRowIds.value.filter(id => accountRows.value.some(row => row.id === id));
     }
     if (taskShowsTodos(task.value.status)) {
-        openTodos.value = (await billflowApi.listTodos(taskId, 'open')).items;
+        openTodos.value = (await billflowApi.listTodos(taskId, 'open', 100)).items;
+        selectedTodoIds.value = selectedTodoIds.value.filter(id => openTodos.value.some(todo => todo.id === id));
     } else {
         openTodos.value = [];
     }
@@ -890,6 +1036,55 @@ async function resolveTodo(todo: BillflowTodo, status: 'resolved' | 'dismissed')
     busy.value = true;
     try {
         await billflowApi.resolveTodo(todo.id, todo.version, status, generateRandomUUID());
+        if (task.value) await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function assignTodos(todos: readonly BillflowTodo[], categoryId: string): Promise<void> {
+    if (!categoryId || todos.length < 1) {
+        return;
+    }
+    busy.value = true;
+    try {
+        await billflowApi.assignTodoCategories(
+            todos.map(todo => ({ todoId: todo.id, expectedVersion: todo.version })),
+            categoryId,
+            generateRandomUUID()
+        );
+        batchCategoryId.value = '';
+        for (const todo of todos) {
+            delete categoryDrafts[todo.id];
+        }
+        if (task.value) await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function assignOneTodo(todo: BillflowTodo): Promise<void> {
+    await assignTodos([todo], categoryDrafts[todo.id] ?? '');
+}
+
+async function assignSelectedTodos(): Promise<void> {
+    await assignTodos(selectedAssignableTodos.value, batchCategoryId.value);
+}
+
+async function skipSelectedTodos(): Promise<void> {
+    const selected = reviewTodos.value.filter(todo => selectedTodoIds.value.includes(todo.id));
+    if (selected.length < 1) {
+        return;
+    }
+    busy.value = true;
+    try {
+        for (const todo of selected) {
+            await billflowApi.resolveTodo(todo.id, todo.version, 'dismissed', generateRandomUUID());
+        }
         if (task.value) await openTask(task.value.id);
     } catch {
         error.value = true;
@@ -1302,8 +1497,7 @@ onMounted(reload);
     gap: 4px;
 }
 
-.account-card,
-.todo-card {
+.account-card {
     display: grid;
     gap: 8px;
     padding: 12px 14px;
@@ -1313,8 +1507,81 @@ onMounted(reload);
     background: var(--task-paper);
 }
 
+.todo-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin: 0 0 12px;
+}
+
+.todo-toolbar__check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.86rem;
+}
+
+.todo-toolbar__select,
+.todo-card__select {
+    min-width: 160px;
+    max-width: 240px;
+}
+
+.todo-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1.3fr) auto minmax(220px, auto);
+    align-items: center;
+    gap: 10px 12px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border: 1px solid var(--task-rule);
+    border-radius: 8px 2px 8px 2px;
+    background: var(--task-paper);
+}
+
+.todo-card--plain {
+    grid-template-columns: minmax(0, 1.3fr) auto auto;
+}
+
+.todo-card__check {
+    display: flex;
+}
+
+.todo-card__copy {
+    min-width: 0;
+}
+
+.todo-card__copy strong,
+.todo-card__facts b {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.todo-card__copy small,
+.todo-card__copy p {
+    display: block;
+    color: rgba(var(--v-theme-on-surface), 0.55);
+    font-size: 0.75rem;
+}
+
+.todo-card__facts {
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+    font-variant-numeric: tabular-nums;
+}
+
+.todo-card__side,
+.todo-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
 .account-card__head,
-.todo-card,
 .account-card__actions,
 .account-card__quiet,
 .account-row,
@@ -1327,18 +1594,15 @@ onMounted(reload);
 }
 
 .account-card__head,
-.todo-card,
 .next-bar {
     justify-content: space-between;
 }
 
-.account-card__head strong,
-.todo-card strong {
+.account-card__head strong {
     display: block;
 }
 
 .account-card__head span,
-.todo-card p,
 .account-card__hint {
     margin: 4px 0 0;
     color: rgba(var(--v-theme-on-surface), 0.6);
@@ -1412,12 +1676,12 @@ onMounted(reload);
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .account-row-card__main {
+    .account-row-card__main,
+    .todo-card {
         grid-template-columns: 1fr;
     }
 
     .account-card__head,
-    .todo-card,
     .next-bar {
         align-items: flex-start;
         flex-direction: column;

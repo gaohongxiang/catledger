@@ -1,9 +1,11 @@
 package billflow
 
 import (
+	"sort"
 	"strconv"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 )
 
 type ResolveTodoRequest struct {
@@ -12,6 +14,18 @@ type ResolveTodoRequest struct {
 	ExpectedVersion int64
 	Status          TodoStatus
 	IdempotencyKey  string
+}
+
+type AssignTodoCategoryItem struct {
+	TodoId          int64
+	ExpectedVersion int64
+}
+
+type AssignTodoCategoryRequest struct {
+	Uid             int64
+	CategoryId      int64
+	IdempotencyKey  string
+	Items           []AssignTodoCategoryItem
 }
 
 func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*TodoView, error) {
@@ -50,7 +64,7 @@ func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*Todo
 		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 	}
 	if current != nil && current.Status == request.Status {
-		return todoView(current), nil
+		return s.todoView(c, request.Uid, current), nil
 	}
 	now := s.now().Unix()
 	next := *todo
@@ -68,7 +82,165 @@ func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*Todo
 	if err != nil {
 		return nil, err
 	}
-	return todoView(&next), nil
+	return s.todoView(c, request.Uid, &next), nil
+}
+
+func (s *Service) AssignTodoCategories(c core.Context, request AssignTodoCategoryRequest) (*TaskView, error) {
+	if s == nil || s.repository == nil || s.categories == nil || request.Uid < 1 || request.CategoryId < 1 ||
+		len(request.Items) < 1 || len(request.Items) > maximumRepositoryPageSize || !isValidIdempotencyKey(request.IdempotencyKey) {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	if !s.visibleCategory(c, request.Uid, request.CategoryId) {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	todos := make([]*Todo, 0, len(request.Items))
+	seen := map[int64]struct{}{}
+	var taskId int64
+	for _, item := range request.Items {
+		if item.TodoId < 1 || item.ExpectedVersion < 1 {
+			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+		if _, exists := seen[item.TodoId]; exists {
+			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+		seen[item.TodoId] = struct{}{}
+		todo, err := s.repository.FindTodoById(c, request.Uid, item.TodoId)
+		if err != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		if todo == nil || todo.Status != TODO_STATUS_OPEN || todo.Version != item.ExpectedVersion || !canAssignTodoCategory(todo.TodoKind) {
+			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+		if taskId == 0 {
+			taskId = todo.TaskId
+		} else if todo.TaskId != taskId {
+			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+		todos = append(todos, todo)
+	}
+	task, err := s.requireTask(c, request.Uid, taskId)
+	if err != nil {
+		return nil, err
+	}
+	parts := []string{"assign_todo_category", strconv.FormatInt(request.CategoryId, 10)}
+	ids := make([]int64, 0, len(todos))
+	for _, todo := range todos {
+		ids = append(ids, todo.TodoId)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	for _, id := range ids {
+		parts = append(parts, strconv.FormatInt(id, 10))
+	}
+	if err := s.bumpTask(c, request.Uid, taskId, task.Version, request.IdempotencyKey, ACTION_TYPE_RESOLVE_TODO, parts, func(updated *Task) {
+		if updated.TodoOpenCount >= int64(len(todos)) {
+			updated.TodoOpenCount -= int64(len(todos))
+		} else {
+			updated.TodoOpenCount = 0
+		}
+	}); err != nil {
+		return nil, err
+	}
+	now := s.now().Unix()
+	err = s.repository.DoTransaction(c, request.Uid, func(tx *RepositoryTransaction) error {
+		for i, todo := range todos {
+			if err := s.saveTodoCategoryAliases(c, tx, request.Uid, todo, request.CategoryId, now); err != nil {
+				return err
+			}
+			next := *todo
+			next.Status = TODO_STATUS_RESOLVED
+			next.Version = todo.Version + 1
+			next.UpdatedUnixTime = now
+			next.ResolvedUnixTime = &now
+			updated, updateErr := tx.UpdateTodoCAS(request.Items[i].ExpectedVersion, &next)
+			if updateErr != nil || !updated {
+				return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.GetTask(c, request.Uid, taskId)
+}
+
+func (s *Service) saveTodoCategoryAliases(c core.Context, tx *RepositoryTransaction, uid int64, todo *Todo, categoryId int64, now int64) error {
+	if todo == nil || todo.SubjectKind != SUBJECT_KIND_RAW_ROW || s.evidence == nil {
+		return nil
+	}
+	row, err := s.evidence.FindRawImportRowById(c, uid, todo.SubjectId)
+	if err != nil {
+		return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	if row == nil {
+		return nil
+	}
+	batch, err := s.evidence.FindImportBatchById(c, uid, row.BatchId)
+	if err != nil || batch == nil {
+		return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	for _, name := range categoryAliasCandidates(row, batch.SourceTypeSnapshot) {
+		display := maskedCategoryAliasDisplay(name)
+		if display == "" {
+			continue
+		}
+		if _, _, err := tx.CreateOrFindCategoryAlias(&CategoryAliasMapping{
+			Uid: uid, SourceType: batch.SourceTypeSnapshot, AliasKey: categoryAliasKey(name),
+			AliasKeyVersion: CATEGORY_ALIAS_VERSION_V1, LedgerCategoryId: categoryId, MaskedDisplayName: display,
+			CreatedUnixTime: now, UpdatedUnixTime: now, MappingId: s.generateId(),
+		}); err != nil {
+			return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+	}
+	return nil
+}
+
+func (s *Service) visibleCategory(c core.Context, uid int64, categoryId int64) bool {
+	if s.categories == nil || categoryId < 1 {
+		return false
+	}
+	leaves, err := s.categories.ListVisibleLeafCategories(c, uid)
+	if err != nil {
+		return false
+	}
+	for _, leaf := range leaves {
+		if leaf.CategoryId == categoryId {
+			return true
+		}
+	}
+	return false
+}
+
+func canAssignTodoCategory(kind TodoKind) bool {
+	return kind == TODO_KIND_UNCATEGORIZED || kind == TODO_KIND_TRANSFER_UNCLEAR
+}
+
+func (s *Service) todoView(c core.Context, uid int64, todo *Todo) *TodoView {
+	view := todoView(todo)
+	if view == nil || s.evidence == nil || todo.SubjectKind != SUBJECT_KIND_RAW_ROW {
+		return view
+	}
+	row, err := s.evidence.FindRawImportRowById(c, uid, todo.SubjectId)
+	if err != nil || row == nil {
+		return view
+	}
+	attachTodoPreview(view, row)
+	return view
+}
+
+func attachTodoPreview(view *TodoView, row *importing.RawImportRow) {
+	if view == nil || row == nil {
+		return
+	}
+	view.Label = todoPreviewLabel(row)
+	view.Item = maskedCategoryAliasDisplay(row.RawItem)
+	view.BillType = maskedCategoryAliasDisplay(row.RawTransactionType)
+	view.Currency = row.Currency
+	view.UnixTime = row.NormalizedUnixTime
+	view.Direction = string(row.NormalizedDirection)
+	if row.NormalizedAmount != nil {
+		view.Amount = strconv.FormatInt(*row.NormalizedAmount, 10)
+	}
 }
 
 func todoView(todo *Todo) *TodoView {

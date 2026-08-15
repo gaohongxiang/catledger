@@ -44,6 +44,44 @@ func categoryAliasKey(value string) string {
 	return hex.EncodeToString(digest[:])
 }
 
+func categoryAliasCandidates(row *importing.RawImportRow, sourceType importing.SourceType) []string {
+	if row == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	names := make([]string, 0, 3)
+	for _, name := range []string{sourceCategoryName(row, sourceType), strings.TrimSpace(row.RawCounterparty), strings.TrimSpace(row.RawItem)} {
+		if name == "" || isForbiddenCategoryName(name) {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	return names
+}
+
+func maskedCategoryAliasDisplay(value string) string {
+	trimmed := strings.TrimSpace(value)
+	runes := []rune(trimmed)
+	if len(runes) > 128 {
+		return string(runes[:128])
+	}
+	return trimmed
+}
+
+func todoPreviewLabel(row *importing.RawImportRow) string {
+	if row == nil {
+		return ""
+	}
+	if label := maskedCategoryAliasDisplay(row.RawCounterparty); label != "" {
+		return label
+	}
+	return maskedCategoryAliasDisplay(row.RawItem)
+}
+
 func sourceCategoryName(row *importing.RawImportRow, sourceType importing.SourceType) string {
 	if row == nil {
 		return ""
