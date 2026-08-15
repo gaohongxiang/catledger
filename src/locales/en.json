@@ -3012,13 +3012,23 @@
             "todos": {
                 "title": "Transaction categories",
                 "empty": "No categories need a decision.",
+                "pendingEmpty": "Nothing needs a category.",
+                "classifiedEmpty": "No categorized transactions yet.",
+                "pendingHint": "Choose a category for unclear transactions. You can select several and save them together.",
+                "classifiedHint": "Already categorized. Restore to move them back to uncategorized.",
+                "bucket": {
+                    "pending": "Uncategorized",
+                    "classified": "Categorized"
+                },
                 "othersTitle": "Other items",
                 "othersEmpty": "No other items need a decision.",
                 "selectAll": "Select all ({count} selected)",
                 "pickCategory": "Choose a category",
-                "saveCategory": "Save category",
+                "saveCategory": "Save",
                 "assignSelected": "Save category for selected",
                 "skipSelected": "Skip selected",
+                "classified": "Categorized",
+                "restore": "Restore",
                 "resolve": "Done",
                 "dismiss": "Skip for now",
                 "installment": "Treat as installment"

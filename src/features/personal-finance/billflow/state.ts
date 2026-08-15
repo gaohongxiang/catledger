@@ -214,6 +214,31 @@ export function accountBucketHintKey(bucket: BillflowAccountBucket): string {
     return 'personalFinance.billflow.accounts.pendingHint';
 }
 
+export type BillflowCategoryBucket = 'pending' | 'classified';
+
+export const BILLFLOW_CATEGORY_BUCKETS: readonly BillflowCategoryBucket[] = ['pending', 'classified'];
+
+export function suggestedCategoryBucket(counts: { pending: number; classified: number }): BillflowCategoryBucket {
+    return counts.pending > 0 ? 'pending' : 'classified';
+}
+
+export function resolveCategoryBucket(
+    current: BillflowCategoryBucket | undefined,
+    counts: { pending: number; classified: number },
+    userPicked = false
+): BillflowCategoryBucket {
+    if (userPicked && current && BILLFLOW_CATEGORY_BUCKETS.includes(current)) {
+        return current;
+    }
+    return suggestedCategoryBucket(counts);
+}
+
+export function categoryBucketHintKey(bucket: BillflowCategoryBucket): string {
+    return bucket === 'classified'
+        ? 'personalFinance.billflow.todos.classifiedHint'
+        : 'personalFinance.billflow.todos.pendingHint';
+}
+
 export type BillflowWorkbenchStep = 'files' | 'accounts' | 'review' | 'others' | 'confirm';
 
 export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'review', 'others', 'confirm'];

@@ -236,6 +236,7 @@ type TodoView struct {
 	Currency        string
 	UnixTime        *int64
 	Direction       string
+	CategoryId      int64
 	Version         int64
 	CreatedUnixTime int64
 	UpdatedUnixTime int64

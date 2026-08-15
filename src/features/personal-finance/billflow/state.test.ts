@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import type { PersonalFinanceImportBatch } from '../models.ts';
 import {
     BILLFLOW_ACCOUNT_BUCKETS,
+    BILLFLOW_CATEGORY_BUCKETS,
     BILLFLOW_OPENING_BALANCE_UNIX_TIME,
     BILLFLOW_WORKBENCH_STEPS,
     accountBucketHintKey,
@@ -15,6 +16,7 @@ import {
     canOpenBillflowWorkbenchStep,
     composeDashboardHeadline,
     createdAccountsNeedingBalance,
+    categoryBucketHintKey,
     categoryTodos,
     installmentTodos,
     mergeSelectedOrganizeFileIds,
@@ -23,8 +25,10 @@ import {
     rememberCreatedLedgerIds,
     resolveAccountBucket,
     resolveBillflowWorkbenchStep,
+    resolveCategoryBucket,
     suggestedAccountBucket,
     suggestedBillflowWorkbenchStep,
+    suggestedCategoryBucket,
     eligibleOrganizeFileIds,
     matchedLedgerAccount,
     nearestNextPayment,
@@ -202,6 +206,11 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('canAssignBillflowCategory');
         expect(workbench).toContain('personalFinance.billflow.todos.pickCategory');
         expect(workbench).toContain('personalFinance.billflow.todos.selectAll');
+        expect(workbench).toContain('BILLFLOW_CATEGORY_BUCKETS');
+        expect(workbench).toContain('classifiedReviewTodos');
+        expect(workbench).toContain('todo-row');
+        expect(workbench).not.toContain('todo-card');
+        expect(workbench).toContain('listTodos(taskId, \'resolved\'');
         expect(workbench).toContain('todoTitle(todo)');
         expect(workbench).toContain('todoSubtitle(todo)');
         expect(workbench).toContain('formatTodoAmount(todo)');
@@ -290,6 +299,16 @@ describe('billflow task page wiring', () => {
         expect(accountBucketHintKey('pending')).toBe('personalFinance.billflow.accounts.pendingHint');
         expect(accountBucketHintKey('reused')).toBe('personalFinance.billflow.accounts.reusedHint');
         expect(accountBucketHintKey('excluded')).toBe('personalFinance.billflow.accounts.excludedHint');
+    });
+
+    it('keeps category work in uncategorized and categorized buckets', () => {
+        expect(BILLFLOW_CATEGORY_BUCKETS).toEqual(['pending', 'classified']);
+        expect(suggestedCategoryBucket({ pending: 4, classified: 2 })).toBe('pending');
+        expect(suggestedCategoryBucket({ pending: 0, classified: 2 })).toBe('classified');
+        expect(resolveCategoryBucket('classified', { pending: 3, classified: 2 }, true)).toBe('classified');
+        expect(resolveCategoryBucket('classified', { pending: 3, classified: 2 }, false)).toBe('pending');
+        expect(categoryBucketHintKey('pending')).toBe('personalFinance.billflow.todos.pendingHint');
+        expect(categoryBucketHintKey('classified')).toBe('personalFinance.billflow.todos.classifiedHint');
     });
 
     it('asks for balances only on newly created accounts that are still unanswered', () => {

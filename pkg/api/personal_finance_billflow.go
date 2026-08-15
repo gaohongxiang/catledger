@@ -191,6 +191,7 @@ type personalFinanceBillflowTodoResponse struct {
 	Currency        string               `json:"currency"`
 	UnixTime        *int64               `json:"unixTime,omitempty"`
 	Direction       string               `json:"direction"`
+	CategoryId      string               `json:"categoryId,omitempty"`
 	Version         int64                `json:"version"`
 	CreatedUnixTime int64                `json:"createdUnixTime"`
 	UpdatedUnixTime int64                `json:"updatedUnixTime"`
@@ -649,12 +650,16 @@ func newPersonalFinanceBillflowTodoResponse(value *billflow.TodoView) *personalF
 	if value == nil {
 		return nil
 	}
-	return &personalFinanceBillflowTodoResponse{
+	item := &personalFinanceBillflowTodoResponse{
 		Id: strconv.FormatInt(value.TodoId, 10), TodoKind: value.TodoKind, Status: value.Status, SubjectKind: value.SubjectKind,
 		SubjectId: strconv.FormatInt(value.SubjectId, 10), ReasonCodes: value.ReasonCodes, Label: value.Label, Item: value.Item,
 		BillType: value.BillType, Amount: value.Amount, Currency: value.Currency, UnixTime: value.UnixTime, Direction: value.Direction, Version: value.Version,
 		CreatedUnixTime: value.CreatedUnixTime, UpdatedUnixTime: value.UpdatedUnixTime,
 	}
+	if value.CategoryId > 0 {
+		item.CategoryId = strconv.FormatInt(value.CategoryId, 10)
+	}
+	return item
 }
 
 func newPersonalFinanceBillflowTodoListResponse(result *billflow.TodoListResult) *personalFinanceBillflowTodoListResponse {

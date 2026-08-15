@@ -211,7 +211,8 @@ function normalizeTodo(value: unknown): BillflowTodo {
         version: integer(item['version']),
         createdUnixTime: integer(item['createdUnixTime']),
         updatedUnixTime: integer(item['updatedUnixTime']),
-        ...(unixTime === undefined ? {} : { unixTime })
+        ...(unixTime === undefined ? {} : { unixTime }),
+        ...(optionalIdentifier(item['categoryId']) === undefined ? {} : { categoryId: optionalIdentifier(item['categoryId']) })
     };
 }
 
@@ -353,7 +354,7 @@ export const billflowApi = {
     async listTodos(taskId: string, status: BillflowTodoStatus, limit = 50): Promise<BillflowTodoPage> {
         return normalizeTodoPage(unwrap(await services.listPersonalFinanceBillflowTodos({ taskId, status, limit })));
     },
-    async resolveTodo(todoId: string, expectedVersion: number, status: Exclude<BillflowTodoStatus, 'open'>, idempotencyKey: string): Promise<BillflowTodo> {
+    async resolveTodo(todoId: string, expectedVersion: number, status: BillflowTodoStatus, idempotencyKey: string): Promise<BillflowTodo> {
         return normalizeTodo(unwrap(await services.resolvePersonalFinanceBillflowTodo({ todoId, expectedVersion, status, idempotencyKey })));
     },
     async assignTodoCategories(items: readonly { todoId: string, expectedVersion: number }[], categoryId: string, idempotencyKey: string): Promise<BillflowTask> {

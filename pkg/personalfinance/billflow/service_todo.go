@@ -29,8 +29,9 @@ type AssignTodoCategoryRequest struct {
 }
 
 func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*TodoView, error) {
+	restore := request.Status == TODO_STATUS_OPEN
 	if s == nil || s.repository == nil || request.Uid < 1 || request.TodoId < 1 || request.ExpectedVersion < 1 ||
-		(request.Status != TODO_STATUS_RESOLVED && request.Status != TODO_STATUS_DISMISSED) || !isValidIdempotencyKey(request.IdempotencyKey) {
+		(!restore && request.Status != TODO_STATUS_RESOLVED && request.Status != TODO_STATUS_DISMISSED) || !isValidIdempotencyKey(request.IdempotencyKey) {
 		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
 	}
 	todo, err := s.repository.FindTodoById(c, request.Uid, request.TodoId)
@@ -43,7 +44,11 @@ func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*Todo
 	if todo.Version != request.ExpectedVersion {
 		return nil, serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
 	}
-	if todo.Status != TODO_STATUS_OPEN {
+	if restore {
+		if todo.Status != TODO_STATUS_RESOLVED && todo.Status != TODO_STATUS_DISMISSED {
+			return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
+		}
+	} else if todo.Status != TODO_STATUS_OPEN {
 		return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
 	}
 	task, err := s.requireTask(c, request.Uid, todo.TaskId)
@@ -53,6 +58,10 @@ func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*Todo
 	if err := s.bumpTask(c, request.Uid, todo.TaskId, task.Version, request.IdempotencyKey, ACTION_TYPE_RESOLVE_TODO, []string{
 		"resolve_todo", strconv.FormatInt(request.TodoId, 10), string(request.Status),
 	}, func(updated *Task) {
+		if restore {
+			updated.TodoOpenCount++
+			return
+		}
 		if updated.TodoOpenCount > 0 {
 			updated.TodoOpenCount--
 		}
@@ -71,7 +80,11 @@ func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*Todo
 	next.Status = request.Status
 	next.Version = todo.Version + 1
 	next.UpdatedUnixTime = now
-	next.ResolvedUnixTime = &now
+	if restore {
+		next.ResolvedUnixTime = nil
+	} else {
+		next.ResolvedUnixTime = &now
+	}
 	err = s.repository.DoTransaction(c, request.Uid, func(tx *RepositoryTransaction) error {
 		updated, updateErr := tx.UpdateTodoCAS(request.ExpectedVersion, &next)
 		if updateErr != nil || !updated {
@@ -108,7 +121,8 @@ func (s *Service) AssignTodoCategories(c core.Context, request AssignTodoCategor
 		if err != nil {
 			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 		}
-		if todo == nil || todo.Status != TODO_STATUS_OPEN || todo.Version != item.ExpectedVersion || !canAssignTodoCategory(todo.TodoKind) {
+		if todo == nil || todo.Version != item.ExpectedVersion || !canAssignTodoCategory(todo.TodoKind) ||
+			(todo.Status != TODO_STATUS_OPEN && todo.Status != TODO_STATUS_RESOLVED) {
 			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
 		}
 		if taskId == 0 {
@@ -131,9 +145,18 @@ func (s *Service) AssignTodoCategories(c core.Context, request AssignTodoCategor
 	for _, id := range ids {
 		parts = append(parts, strconv.FormatInt(id, 10))
 	}
+	openCount := int64(0)
+	for _, todo := range todos {
+		if todo.Status == TODO_STATUS_OPEN {
+			openCount++
+		}
+	}
 	if err := s.bumpTask(c, request.Uid, taskId, task.Version, request.IdempotencyKey, ACTION_TYPE_RESOLVE_TODO, parts, func(updated *Task) {
-		if updated.TodoOpenCount >= int64(len(todos)) {
-			updated.TodoOpenCount -= int64(len(todos))
+		if openCount < 1 {
+			return
+		}
+		if updated.TodoOpenCount >= openCount {
+			updated.TodoOpenCount -= openCount
 		} else {
 			updated.TodoOpenCount = 0
 		}
@@ -145,6 +168,9 @@ func (s *Service) AssignTodoCategories(c core.Context, request AssignTodoCategor
 		for i, todo := range todos {
 			if err := s.saveTodoCategoryAliases(c, tx, request.Uid, todo, request.CategoryId, now); err != nil {
 				return err
+			}
+			if todo.Status != TODO_STATUS_OPEN {
+				continue
 			}
 			next := *todo
 			next.Status = TODO_STATUS_RESOLVED
@@ -184,7 +210,7 @@ func (s *Service) saveTodoCategoryAliases(c core.Context, tx *RepositoryTransact
 		if display == "" {
 			continue
 		}
-		if _, _, err := tx.CreateOrFindCategoryAlias(&CategoryAliasMapping{
+		if err := tx.SaveUserCategoryAlias(&CategoryAliasMapping{
 			Uid: uid, SourceType: batch.SourceTypeSnapshot, AliasKey: categoryAliasKey(name),
 			AliasKeyVersion: CATEGORY_ALIAS_VERSION_V1, LedgerCategoryId: categoryId, MaskedDisplayName: display,
 			CreatedUnixTime: now, UpdatedUnixTime: now, MappingId: s.generateId(),
@@ -225,7 +251,26 @@ func (s *Service) todoView(c core.Context, uid int64, todo *Todo) *TodoView {
 		return view
 	}
 	attachTodoPreview(view, row)
+	s.attachTodoCategory(c, uid, view, row)
 	return view
+}
+
+func (s *Service) attachTodoCategory(c core.Context, uid int64, view *TodoView, row *importing.RawImportRow) {
+	if s == nil || s.repository == nil || s.evidence == nil || view == nil || row == nil {
+		return
+	}
+	batch, err := s.evidence.FindImportBatchById(c, uid, row.BatchId)
+	if err != nil || batch == nil {
+		return
+	}
+	for _, name := range categoryAliasCandidates(row, batch.SourceTypeSnapshot) {
+		mapping, lookupErr := s.repository.FindCategoryAlias(c, uid, batch.SourceTypeSnapshot, categoryAliasKey(name))
+		if lookupErr != nil || mapping == nil || mapping.LedgerCategoryId < 1 {
+			continue
+		}
+		view.CategoryId = mapping.LedgerCategoryId
+		return
+	}
 }
 
 func attachTodoPreview(view *TodoView, row *importing.RawImportRow) {

@@ -103,6 +103,7 @@ export interface BillflowTodo {
     readonly currency: string;
     readonly unixTime?: number;
     readonly direction: string;
+    readonly categoryId?: string;
     readonly version: number;
     readonly createdUnixTime: number;
     readonly updatedUnixTime: number;

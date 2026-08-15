@@ -3012,13 +3012,23 @@
             "todos": {
                 "title": "交易分类",
                 "empty": "没有要处理的分类。",
+                "pendingEmpty": "没有要分类的交易。",
+                "classifiedEmpty": "还没有已分类的交易。",
+                "pendingHint": "先给说不清的选分类，可全选后一起保存。",
+                "classifiedHint": "已经选过分类的。改回后会再出现在未分类。",
+                "bucket": {
+                    "pending": "未分类",
+                    "classified": "已分类"
+                },
                 "othersTitle": "其他事项",
                 "othersEmpty": "没有要处理的其他事项。",
                 "selectAll": "全选（已选 {count}）",
                 "pickCategory": "选择分类",
-                "saveCategory": "保存分类",
+                "saveCategory": "保存",
                 "assignSelected": "给选中的保存分类",
                 "skipSelected": "选中的先跳过",
+                "classified": "已分类",
+                "restore": "改回",
                 "resolve": "已处理",
                 "dismiss": "先跳过",
                 "installment": "按分期处理"

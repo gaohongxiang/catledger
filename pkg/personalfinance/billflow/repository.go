@@ -629,6 +629,41 @@ func (tx *RepositoryTransaction) CreateOrFindCategoryAlias(candidate *CategoryAl
 	return createOrFindCategoryAlias(tx.session, tx.database.DatabaseType(), candidate)
 }
 
+func (tx *RepositoryTransaction) SaveUserCategoryAlias(candidate *CategoryAliasMapping) error {
+	if err := tx.validate(); err != nil || candidate == nil || candidate.Uid != tx.uid {
+		return fmt.Errorf("invalid billflow category alias update")
+	}
+	if !isValidNewCategoryAlias(candidate) {
+		return fmt.Errorf("invalid billflow category alias")
+	}
+
+	existing := new(CategoryAliasMapping)
+	found, err := tx.session.Where("uid=? AND source_type=? AND alias_key=?", tx.uid, candidate.SourceType, candidate.AliasKey).Get(existing)
+	if err != nil {
+		return fmt.Errorf("find billflow category alias: %w", err)
+	}
+	if !found {
+		_, _, err := createOrFindCategoryAlias(tx.session, tx.database.DatabaseType(), candidate)
+		return err
+	}
+	if existing.LedgerCategoryId == candidate.LedgerCategoryId && existing.MaskedDisplayName == candidate.MaskedDisplayName {
+		return nil
+	}
+
+	existing.LedgerCategoryId = candidate.LedgerCategoryId
+	existing.MaskedDisplayName = candidate.MaskedDisplayName
+	existing.UpdatedUnixTime = candidate.UpdatedUnixTime
+	updated, updateErr := tx.session.Where("uid=? AND mapping_id=?", tx.uid, existing.MappingId).
+		Cols("ledger_category_id", "masked_display_name", "updated_unix_time").Update(existing)
+	if updateErr != nil {
+		return fmt.Errorf("update billflow category alias: %w", updateErr)
+	}
+	if updated != 1 {
+		return fmt.Errorf("billflow category alias was not updated")
+	}
+	return nil
+}
+
 func createOrFindCategoryAlias(sess *xorm.Session, databaseType string, candidate *CategoryAliasMapping) (*CategoryAliasMapping, bool, error) {
 	statement := `INSERT INTO pf_category_alias_mapping (
 		uid, source_type, alias_key, alias_key_version, ledger_category_id,

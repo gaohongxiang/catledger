@@ -129,6 +129,28 @@ func TestServiceAssignMerchantCategoryBeforeConfirm(t *testing.T) {
 	if err != nil || open == nil || len(open.Items) != 0 {
 		t.Fatalf("assigned todo stayed open: %+v err=%v", open, err)
 	}
+	resolved, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_RESOLVED, nil, 20)
+	if err != nil || resolved == nil || len(resolved.Items) != 1 || resolved.Items[0].CategoryId != leafId {
+		t.Fatalf("classified todo preview: %+v err=%v", resolved, err)
+	}
+	restored, err := service.ResolveTodo(nil, billflow.ResolveTodoRequest{
+		Uid: uid, TodoId: resolved.Items[0].TodoId, ExpectedVersion: resolved.Items[0].Version,
+		Status: billflow.TODO_STATUS_OPEN, IdempotencyKey: "restore-todo-1",
+	})
+	if err != nil || restored == nil || restored.Status != billflow.TODO_STATUS_OPEN {
+		t.Fatalf("restore classified todo: %+v err=%v", restored, err)
+	}
+	reopened, err := service.GetTask(nil, uid, created.TaskId)
+	if err != nil || reopened == nil || reopened.TodoOpenCount != 1 {
+		t.Fatalf("restore did not reopen count: %+v err=%v", reopened, err)
+	}
+	assigned, err = service.AssignTodoCategories(nil, billflow.AssignTodoCategoryRequest{
+		Uid: uid, CategoryId: leafId, IdempotencyKey: "assign-category-2",
+		Items: []billflow.AssignTodoCategoryItem{{TodoId: restored.TodoId, ExpectedVersion: restored.Version}},
+	})
+	if err != nil || assigned == nil || assigned.TodoOpenCount != 0 {
+		t.Fatalf("reassign after restore: %+v err=%v", assigned, err)
+	}
 
 	posted, err := service.ConfirmPost(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: assigned.Version, IdempotencyKey: "confirm-post-1", CreatedIp: "192.0.2.10"}, time.UTC)
 	if err != nil || posted.Status != billflow.TASK_STATUS_READY || poster.calls != 1 {
