@@ -16,7 +16,7 @@ import (
 func TestSchemaV001ChecksumGolden(t *testing.T) {
 	migrations := registeredMigrations()
 
-	if len(migrations) != 5 {
+	if len(migrations) != 6 {
 		t.Fatalf("unexpected registered migration count %d", len(migrations))
 	}
 

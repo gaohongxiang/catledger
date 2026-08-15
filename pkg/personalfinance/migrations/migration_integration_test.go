@@ -13,7 +13,10 @@ import (
 	"time"
 
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/billflow"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
 )
@@ -104,18 +107,18 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("migration table is not exact: %v", err)
 		}
 
-		if err := verifySchemaV005(integrationDatabase); err != nil {
-			t.Fatalf("v005 schema is not exact: %v", err)
+		if err := verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 5)
+		record := requireMigrationRecord(t, integrationDatabase, 6)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected successful migration record: %+v", record)
 		}
 	})
 
-	t.Run("v002 advances continuously to v005", func(t *testing.T) {
+	t.Run("v002 advances continuously to v006", func(t *testing.T) {
 		resetPersonalFinanceTables(t)
 		runner := newIntegrationRunner(t, "through-v002")
 		runner.migrations = runner.migrations[:2]
@@ -130,22 +133,22 @@ func TestMigrationProtocol(t *testing.T) {
 
 		store := integrationDataStore(t, integrationDatabase)
 
-		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "to-v005"}); err != nil {
-			t.Fatalf("advance to v005: %v", err)
+		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "to-v006"}); err != nil {
+			t.Fatalf("advance to v006: %v", err)
 		}
 
-		if err := verifySchemaV005(integrationDatabase); err != nil {
-			t.Fatalf("advanced v005 schema is not exact: %v", err)
+		if err := verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("advanced v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 5)
+		record := requireMigrationRecord(t, integrationDatabase, 6)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
-			t.Fatalf("unexpected v005 migration record: %+v", record)
+			t.Fatalf("unexpected v006 migration record: %+v", record)
 		}
 	})
 
-	t.Run("v003 advances continuously to v005", func(t *testing.T) {
+	t.Run("v003 advances continuously to v006", func(t *testing.T) {
 		resetPersonalFinanceTables(t)
 		runner := newIntegrationRunner(t, "through-v003")
 		runner.migrations = runner.migrations[:3]
@@ -160,22 +163,22 @@ func TestMigrationProtocol(t *testing.T) {
 
 		store := integrationDataStore(t, integrationDatabase)
 
-		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v003-to-v005"}); err != nil {
-			t.Fatalf("advance v003 to v005: %v", err)
+		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v003-to-v006"}); err != nil {
+			t.Fatalf("advance v003 to v006: %v", err)
 		}
 
-		if err := verifySchemaV005(integrationDatabase); err != nil {
-			t.Fatalf("v003 to v005 schema is not exact: %v", err)
+		if err := verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("v003 to v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 5)
+		record := requireMigrationRecord(t, integrationDatabase, 6)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
-			t.Fatalf("unexpected v005 migration record: %+v", record)
+			t.Fatalf("unexpected v006 migration record: %+v", record)
 		}
 	})
 
-	t.Run("v004 advances continuously to v005", func(t *testing.T) {
+	t.Run("v004 advances continuously to v006", func(t *testing.T) {
 		resetPersonalFinanceTables(t)
 		runner := newIntegrationRunner(t, "through-v004")
 		runner.migrations = runner.migrations[:4]
@@ -188,16 +191,16 @@ func TestMigrationProtocol(t *testing.T) {
 		}
 
 		store := integrationDataStore(t, integrationDatabase)
-		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v004-to-v005"}); err != nil {
-			t.Fatalf("advance v004 to v005: %v", err)
+		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v004-to-v006"}); err != nil {
+			t.Fatalf("advance v004 to v006: %v", err)
 		}
-		if err := verifySchemaV005(integrationDatabase); err != nil {
-			t.Fatalf("v004 to v005 schema is not exact: %v", err)
+		if err := verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("v004 to v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 5)
+		record := requireMigrationRecord(t, integrationDatabase, 6)
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
-			t.Fatalf("unexpected v005 migration record: %+v", record)
+			t.Fatalf("unexpected v006 migration record: %+v", record)
 		}
 	})
 
@@ -375,7 +378,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV005(integrationDatabase); err != nil {
+		if err = verifySchemaV006(integrationDatabase); err != nil {
 			t.Fatalf("recovered schema is not exact: %v", err)
 		}
 
@@ -467,8 +470,8 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV005(integrationDatabase); err != nil {
-			t.Fatalf("resumed through v005 schema is not exact: %v", err)
+		if err = verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("resumed through v006 schema is not exact: %v", err)
 		}
 
 		recovered := requireMigrationRecord(t, integrationDatabase, 3)
@@ -559,8 +562,8 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV005(integrationDatabase); err != nil {
-			t.Fatalf("resumed through v005 schema is not exact: %v", err)
+		if err = verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("resumed through v006 schema is not exact: %v", err)
 		}
 
 		recovered := requireMigrationRecord(t, integrationDatabase, 4)
@@ -642,13 +645,121 @@ func TestMigrationProtocol(t *testing.T) {
 
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
-		if err = verifySchemaV005(integrationDatabase); err != nil {
-			t.Fatalf("resumed v005 schema is not exact: %v", err)
+		if err = verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("resumed v005 through v006 schema is not exact: %v", err)
 		}
 
 		recovered := requireMigrationRecord(t, integrationDatabase, 5)
 		if !recovered.Success || recovered.FirstStartedUnixTime != failed.FirstStartedUnixTime || recovered.ClaimToken == failed.ClaimToken {
 			t.Fatalf("unexpected recovered v005 migration record: %+v", recovered)
+		}
+	})
+
+	t.Run("v005 advances continuously to v006", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		runner := newIntegrationRunner(t, "through-v005")
+		runner.migrations = runner.migrations[:5]
+
+		if err := runner.upgradeDatabase(integrationDatabase); err != nil {
+			t.Fatalf("upgrade through v005: %v", err)
+		}
+		if err := verifySchemaV005(integrationDatabase); err != nil {
+			t.Fatalf("v005 baseline is not exact: %v", err)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v005-to-v006"}); err != nil {
+			t.Fatalf("advance v005 to v006: %v", err)
+		}
+		if err := verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("v005 to v006 schema is not exact: %v", err)
+		}
+
+		record := requireMigrationRecord(t, integrationDatabase, 6)
+		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
+			t.Fatalf("unexpected v006 migration record: %+v", record)
+		}
+	})
+
+	t.Run("partial v006 table is refused before Sync2 mutates it", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		runner := newIntegrationRunner(t, "v006-partial-baseline")
+		runner.migrations = runner.migrations[:5]
+
+		if err := runner.upgradeDatabase(integrationDatabase); err != nil {
+			t.Fatalf("prepare v005 baseline: %v", err)
+		}
+
+		sess := integrationDatabase.NewSession(nil)
+		_, err := sess.Exec("CREATE TABLE pf_billflow_task (uid BIGINT NOT NULL)")
+		sess.Close()
+		if err != nil {
+			t.Fatalf("create partial v006 table: %v", err)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		err = Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v006-partial"})
+		if !errors.Is(err, ErrMigrationSchemaInvalid) {
+			t.Fatalf("expected partial v006 schema error, got %v", err)
+		}
+
+		record := requireMigrationRecord(t, integrationDatabase, 6)
+		if record.Success || record.FailureCode != "schema_preflight_failed" {
+			t.Fatalf("unexpected v006 preflight record: %+v", record)
+		}
+
+		tables, readErr := readSchemaTables(integrationDatabase)
+		if readErr != nil {
+			t.Fatalf("read partial v006 schema after refusal: %v", readErr)
+		}
+		partialTable := findTable(tables, "pf_billflow_task")
+		if partialTable == nil || len(partialTable.Columns()) != 1 || normalizeIdentifier(partialTable.Columns()[0].Name) != "uid" {
+			t.Fatalf("v006 preflight refusal mutated partial table: %+v", partialTable)
+		}
+	})
+
+	t.Run("partial v006 DDL failure resumes safely", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		baselineRunner := newIntegrationRunner(t, "v006-resume-baseline")
+		baselineRunner.migrations = baselineRunner.migrations[:5]
+
+		if err := baselineRunner.upgradeDatabase(integrationDatabase); err != nil {
+			t.Fatalf("prepare v005 baseline: %v", err)
+		}
+
+		injectedFailure := errors.New("injected v006 migration failure")
+		failingRunner := newIntegrationRunner(t, "v006-resume-failure")
+		v006 := failingRunner.migrations[5]
+		v006.steps = []migrationStep{
+			v006.steps[0],
+			{
+				name: "inject_v006_failure",
+				run: func(context.Context, *datastore.Database) error {
+					return injectedFailure
+				},
+			},
+		}
+		failingRunner.migrations[5] = v006
+
+		err := failingRunner.upgradeDatabase(integrationDatabase)
+		if !errors.Is(err, injectedFailure) {
+			t.Fatalf("expected injected v006 failure, got %v", err)
+		}
+
+		failed := requireMigrationRecord(t, integrationDatabase, 6)
+		if failed.Success || failed.FailureCode != "migration_up_failed" {
+			t.Fatalf("unexpected failed v006 record: %+v", failed)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+		if err = verifySchemaV006(integrationDatabase); err != nil {
+			t.Fatalf("resumed v006 schema is not exact: %v", err)
+		}
+
+		recovered := requireMigrationRecord(t, integrationDatabase, 6)
+		if !recovered.Success || recovered.FirstStartedUnixTime != failed.FirstStartedUnixTime || recovered.ClaimToken == failed.ClaimToken {
+			t.Fatalf("unexpected recovered v006 migration record: %+v", recovered)
 		}
 	})
 
@@ -777,6 +888,126 @@ func TestMigrationProtocol(t *testing.T) {
 		differentUser.MappingId = 205
 		differentUser.Uid = 2002
 		requireInsertBean(t, &differentUser)
+	})
+
+	t.Run("v006 unique scopes match the frozen contract", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		store := integrationDataStore(t, integrationDatabase)
+		requireUpgrade(t, store)
+		now := requireDatabaseUnixTime(t, integrationDatabase)
+
+		firstTask := &billflow.Task{
+			Uid: 1001, Status: billflow.TASK_STATUS_RECEIVING, ConfirmPolicy: billflow.CONFIRM_POLICY_AUTO_POST,
+			Version: 1, CreatedUnixTime: now, UpdatedUnixTime: now, TaskId: 101,
+		}
+		requireInsertBean(t, firstTask)
+		secondTask := *firstTask
+		secondTask.TaskId = 102
+		requireInsertBean(t, &secondTask)
+
+		firstMember := &billflow.TaskMember{
+			Uid: 1001, TaskId: 101, MemberOrder: 0, FileId: 201, BatchId: 301, CreatedUnixTime: now, MemberId: 401,
+		}
+		requireInsertBean(t, firstMember)
+		duplicateFile := *firstMember
+		duplicateFile.MemberId = 402
+		duplicateFile.BatchId = 302
+		requireInsertBeanFailure(t, &duplicateFile)
+		duplicateBatch := *firstMember
+		duplicateBatch.MemberId = 403
+		duplicateBatch.TaskId = 102
+		duplicateBatch.FileId = 202
+		requireInsertBeanFailure(t, &duplicateBatch)
+		secondUserMember := *firstMember
+		secondUserMember.Uid = 2002
+		secondUserMember.MemberId = 404
+		requireInsertBean(t, &secondUserMember)
+
+		firstAction := &billflow.Action{
+			Uid: 1001, TaskId: 101, ExpectedTaskVersion: 1, ActionType: billflow.ACTION_TYPE_CREATE_TASK,
+			IdempotencyKeyDigest: strings.Repeat("a", 64), IdempotencyKeyVersion: billflow.IDEMPOTENCY_KEY_VERSION_V1,
+			RequestDigest: strings.Repeat("b", 64), RequestDigestVersion: billflow.ACTION_REQUEST_DIGEST_VERSION_V1,
+			Status: billflow.ACTION_STATUS_READY, ReasonCodesJson: "[]", CreatedUnixTime: now, UpdatedUnixTime: now, ActionId: 501,
+		}
+		requireInsertBean(t, firstAction)
+		duplicateAction := *firstAction
+		duplicateAction.ActionId = 502
+		duplicateAction.RequestDigest = strings.Repeat("c", 64)
+		requireInsertBeanFailure(t, &duplicateAction)
+
+		firstTodo := &billflow.Todo{
+			Uid: 1001, TaskId: 101, TodoKind: billflow.TODO_KIND_UNCATEGORIZED, Status: billflow.TODO_STATUS_OPEN,
+			SubjectKind: billflow.SUBJECT_KIND_TRANSACTION, SubjectId: 701, ReasonCodesJson: "[]",
+			Version: 1, CreatedUnixTime: now, UpdatedUnixTime: now, TodoId: 601,
+		}
+		requireInsertBean(t, firstTodo)
+		duplicateTodo := *firstTodo
+		duplicateTodo.TodoId = 602
+		requireInsertBeanFailure(t, &duplicateTodo)
+
+		firstAlias := &billflow.CategoryAliasMapping{
+			Uid: 1001, SourceType: importing.SOURCE_TYPE_ALIPAY, AliasKey: strings.Repeat("d", 64),
+			AliasKeyVersion: billflow.CATEGORY_ALIAS_VERSION_V1, LedgerCategoryId: 11, MaskedDisplayName: "餐饮",
+			CreatedUnixTime: now, UpdatedUnixTime: now, MappingId: 801,
+		}
+		requireInsertBean(t, firstAlias)
+		duplicateAlias := *firstAlias
+		duplicateAlias.MappingId = 802
+		requireInsertBeanFailure(t, &duplicateAlias)
+
+		firstCandidate := &installments.Candidate{
+			Uid: 1001, CandidateKey: strings.Repeat("e", 64), CandidateKeyVersion: installments.CANDIDATE_KEY_VERSION_V1,
+			Status: installments.CANDIDATE_STATUS_PENDING, Version: 1, PurchaseRelation: installments.PURCHASE_RELATION_UNRESOLVED,
+			CreatedUnixTime: now, UpdatedUnixTime: now, CandidateId: 901,
+		}
+		requireInsertBean(t, firstCandidate)
+		duplicateCandidate := *firstCandidate
+		duplicateCandidate.CandidateId = 902
+		requireInsertBeanFailure(t, &duplicateCandidate)
+
+		firstCandidateMember := &installments.CandidateMember{
+			Uid: 1001, CandidateId: 901, MemberKind: installments.MEMBER_KIND_RAW_ROW, MemberRefId: 1001,
+			MemberRole: installments.MEMBER_ROLE_INSTALLMENT_CHARGE, CreatedUnixTime: now, MemberId: 1001,
+		}
+		requireInsertBean(t, firstCandidateMember)
+		duplicateCandidateMember := *firstCandidateMember
+		duplicateCandidateMember.MemberId = 1002
+		requireInsertBeanFailure(t, &duplicateCandidateMember)
+
+		firstReview := &cardcycle.BalanceReview{
+			Uid: 1001, LedgerAccountId: 11, Status: cardcycle.BALANCE_REVIEW_UNVERIFIED,
+			Version: 1, UpdatedUnixTime: now, ReviewId: 1101,
+		}
+		requireInsertBean(t, firstReview)
+		duplicateReview := *firstReview
+		duplicateReview.ReviewId = 1102
+		requireInsertBeanFailure(t, &duplicateReview)
+
+		firstRule := &cardcycle.CycleRule{
+			Uid: 1001, LedgerAccountId: 11, RuleNumber: 1, StatementDay: 15, DueDay: 3,
+			EffectiveFrom: "2026-08-01", Status: cardcycle.RULE_STATUS_ACTIVE, CreatedUnixTime: now, RuleId: 1201,
+		}
+		requireInsertBean(t, firstRule)
+		duplicateRule := *firstRule
+		duplicateRule.RuleId = 1202
+		requireInsertBeanFailure(t, &duplicateRule)
+
+		firstCoverage := &cardcycle.StatementCoverage{
+			Uid: 1001, LedgerAccountId: 11, BatchId: 301, PeriodStart: "2026-07-16", PeriodEnd: "2026-08-15",
+			CreatedUnixTime: now, CoverageId: 1301,
+		}
+		requireInsertBean(t, firstCoverage)
+		duplicateCoverage := *firstCoverage
+		duplicateCoverage.CoverageId = 1302
+		requireInsertBeanFailure(t, &duplicateCoverage)
+
+		firstRevision := &cardcycle.MonthReportRevision{
+			Uid: 1001, YearMonth: "2026-07", TaskId: 101, ReasonCode: "late_statement", CreatedUnixTime: now, RevisionId: 1401,
+		}
+		requireInsertBean(t, firstRevision)
+		secondRevision := *firstRevision
+		secondRevision.RevisionId = 1402
+		requireInsertBean(t, &secondRevision)
 	})
 
 	t.Run("incompatible existing schema is preserved and refused", func(t *testing.T) {
@@ -1233,6 +1464,17 @@ func resetPersonalFinanceTables(t *testing.T) {
 
 func cleanupPersonalFinanceTables(db *datastore.Database) error {
 	tables := []string{
+		"pf_month_report_revision",
+		"pf_card_statement_coverage",
+		"pf_card_cycle_rule",
+		"pf_account_balance_review",
+		"pf_installment_candidate_member",
+		"pf_installment_candidate",
+		"pf_category_alias_mapping",
+		"pf_billflow_todo",
+		"pf_billflow_action",
+		"pf_billflow_task_member",
+		"pf_billflow_task",
 		"pf_payment_account_mapping",
 		"pf_loan_transaction_allocation",
 		"pf_loan_transaction_binding",
