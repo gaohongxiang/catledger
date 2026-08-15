@@ -2934,6 +2934,7 @@
                 "label": "Organize progress",
                 "files": "Choose statements",
                 "accounts": "Check accounts",
+                "review": "Categories & balances",
                 "confirm": "Confirm posting",
                 "back": "Back",
                 "next": "Next"
@@ -2942,8 +2943,9 @@
             "failed": "This task stopped because confirmed history conflicts. The difference is kept and nothing is overwritten.",
             "run": "Organize now",
             "confirmPost": "Confirm posting",
-            "confirmHint": "Look at todos first. Clear transactions enter the ledger after you confirm.",
-            "confirmDoneHint": "Posting is done. Remaining todos and balances can still be handled.",
+            "confirmHint": "Finish categories and balances, then confirm posting.",
+            "confirmDoneHint": "Posted.",
+            "reviewHint": "Finish categories, balances, and unclear items before posting.",
             "files": {
                 "title": "Choose statements to organize together",
                 "create": "Start organizing",
@@ -2956,7 +2958,9 @@
                 "files": "Organize {count} selected statements",
                 "accounts": "{count} accounts still need a decision",
                 "accountsReady": "Accounts are ready. Organize now",
-                "confirm": "Look at todos first, then confirm posting"
+                "review": "Finish these, then confirm posting",
+                "reviewBlocked": "{count} items still need a decision",
+                "confirm": "Nothing enters the ledger until you confirm"
             },
             "summary": {
                 "created": "Accounts created",
@@ -3001,8 +3005,8 @@
                 }
             },
             "todos": {
-                "title": "Todos",
-                "empty": "Nothing needs a decision before posting.",
+                "title": "Categories and todos",
+                "empty": "No categories or todos need a decision.",
                 "resolve": "Done",
                 "dismiss": "Skip for now",
                 "installment": "Treat as installment"
@@ -3017,7 +3021,7 @@
                 "refund_unclear": "This may be a refund",
                 "repayment_unclear": "This may be a repayment",
                 "installment_candidate": "This may be an installment; only a few questions first",
-                "uncategorized": "Posted without a category"
+                "uncategorized": "Not categorized yet"
             },
             "balance": {
                 "title": "Balance check (optional)",

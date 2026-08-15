@@ -193,25 +193,11 @@
             </template>
         </section>
 
-        <section class="work-section" v-if="currentStep === 'confirm' && task">
-            <div class="summary-grid">
-                <div class="summary-card summary-card--ink">
-                    <span>{{ tt('personalFinance.billflow.summary.created') }}</span>
-                    <strong>{{ task.createdAccountCount }}</strong>
-                </div>
-                <div class="summary-card">
-                    <span>{{ tt(taskAwaitsConfirm(task.status) ? 'personalFinance.billflow.summary.willPost' : 'personalFinance.billflow.summary.posted') }}</span>
-                    <strong>{{ task.autoPostedCount }}</strong>
-                </div>
-                <div class="summary-card" :class="{ 'summary-card--todo': task.todoOpenCount > 0 }">
-                    <span>{{ tt('personalFinance.billflow.summary.todos') }}</span>
-                    <strong>{{ task.todoOpenCount }}</strong>
-                </div>
-            </div>
-            <p class="confirm-hint">{{ tt(taskAwaitsConfirm(task.status) ? 'personalFinance.billflow.confirmHint' : 'personalFinance.billflow.confirmDoneHint') }}</p>
-
-            <div class="section-copy mt-5" v-if="openTodos.length">
-                <strong>{{ tt('personalFinance.billflow.todos.title') }} · {{ openTodos.length }}</strong>
+        <section class="work-section" v-if="currentStep === 'review' && task">
+            <p class="confirm-hint">{{ tt('personalFinance.billflow.reviewHint') }}</p>
+            <div class="section-copy mt-4">
+                <strong>{{ tt('personalFinance.billflow.todos.title') }}</strong>
+                <span v-if="!openTodos.length">{{ tt('personalFinance.billflow.todos.empty') }}</span>
             </div>
             <article class="todo-card" :key="todo.id" v-for="todo in openTodos">
                 <div>
@@ -248,12 +234,30 @@
             </template>
         </section>
 
+        <section class="work-section" v-if="currentStep === 'confirm' && task">
+            <div class="summary-grid">
+                <div class="summary-card summary-card--ink">
+                    <span>{{ tt('personalFinance.billflow.summary.created') }}</span>
+                    <strong>{{ task.createdAccountCount }}</strong>
+                </div>
+                <div class="summary-card">
+                    <span>{{ tt(taskAwaitsConfirm(task.status) ? 'personalFinance.billflow.summary.willPost' : 'personalFinance.billflow.summary.posted') }}</span>
+                    <strong>{{ task.autoPostedCount }}</strong>
+                </div>
+                <div class="summary-card" :class="{ 'summary-card--todo': task.todoOpenCount > 0 }">
+                    <span>{{ tt('personalFinance.billflow.summary.todos') }}</span>
+                    <strong>{{ task.todoOpenCount }}</strong>
+                </div>
+            </div>
+            <p class="confirm-hint">{{ tt(taskAwaitsConfirm(task.status) ? 'personalFinance.billflow.confirmHint' : 'personalFinance.billflow.confirmDoneHint') }}</p>
+        </section>
+
         <div class="next-bar" v-if="canGoBack || canGoForward">
             <v-btn variant="text" :disabled="!canGoBack || busy" @click="goBack">
                 {{ tt('personalFinance.billflow.step.back') }}
             </v-btn>
             <span>{{ forwardHint }}</span>
-            <v-btn color="primary" variant="flat" :disabled="!canGoForward" :loading="busy" v-if="canGoForward" @click="goForward">
+            <v-btn color="primary" variant="flat" :disabled="!canGoForward || !!stepAction?.disabled" :loading="busy" v-if="canGoForward || stepAction?.disabled" @click="goForward">
                 {{ forwardLabel }}
             </v-btn>
         </div>
@@ -377,11 +381,22 @@ const stepAction = computed(() => {
             };
         }
     }
+    if (currentStep.value === 'review' && task.value && openTodos.value.length > 0) {
+        return {
+            hint: tt('personalFinance.billflow.next.reviewBlocked', { count: openTodos.value.length }),
+            label: tt('personalFinance.billflow.step.next'),
+            run: async (): Promise<void> => {},
+            disabled: true
+        };
+    }
     if (currentStep.value === 'confirm' && task.value && taskAwaitsConfirm(task.value.status)) {
         return {
-            hint: tt('personalFinance.billflow.next.confirm'),
+            hint: openTodos.value.length
+                ? tt('personalFinance.billflow.next.reviewBlocked', { count: openTodos.value.length })
+                : tt('personalFinance.billflow.next.confirm'),
             label: tt('personalFinance.billflow.confirmPost'),
-            run: confirmPost
+            run: confirmPost,
+            disabled: openTodos.value.length > 0
         };
     }
     return undefined;
@@ -393,11 +408,25 @@ const canAdvanceWithoutAction = computed(() => {
     if (currentStep.value === 'accounts' && !!task.value && billflowWorkbenchStepIndex(suggestedStep.value) > billflowWorkbenchStepIndex('accounts')) {
         return true;
     }
+    if (currentStep.value === 'review' && !!task.value && openTodos.value.length < 1 && (taskAwaitsConfirm(task.value.status) || task.value.status === 'ready' || task.value.status === 'failed')) {
+        return true;
+    }
     return false;
 });
-const canGoForward = computed(() => !!stepAction.value || canAdvanceWithoutAction.value);
+const canGoForward = computed(() => (!!stepAction.value && !stepAction.value.disabled) || canAdvanceWithoutAction.value);
 const forwardLabel = computed(() => stepAction.value?.label ?? tt('personalFinance.billflow.step.next'));
-const forwardHint = computed(() => stepAction.value?.hint ?? '');
+const forwardHint = computed(() => {
+    if (stepAction.value?.hint) {
+        return stepAction.value.hint;
+    }
+    if (currentStep.value === 'review' && openTodos.value.length > 0) {
+        return tt('personalFinance.billflow.next.reviewBlocked', { count: openTodos.value.length });
+    }
+    if (currentStep.value === 'review') {
+        return tt('personalFinance.billflow.next.review');
+    }
+    return '';
+});
 
 watch(suggestedStep, (next, previous) => {
     if (userStep.value && previous && userStep.value === previous && billflowWorkbenchStepIndex(next) > billflowWorkbenchStepIndex(previous)) {
@@ -414,6 +443,9 @@ watch([currentStep, bucketCounts], () => {
 }, { immediate: true });
 
 function canOpenStep(step: BillflowWorkbenchStep): boolean {
+    if (step === 'confirm' && task.value && taskAwaitsConfirm(task.value.status) && openTodos.value.length > 0) {
+        return false;
+    }
     return canOpenBillflowWorkbenchStep(step, stepInput.value);
 }
 
@@ -441,6 +473,9 @@ function goBack(): void {
 
 async function goForward(): Promise<void> {
     if (stepAction.value) {
+        if (stepAction.value.disabled) {
+            return;
+        }
         await stepAction.value.run();
         userStep.value = undefined;
         return;
@@ -450,6 +485,10 @@ async function goForward(): Promise<void> {
         return;
     }
     if (currentStep.value === 'accounts' && canAdvanceWithoutAction.value) {
+        userStep.value = suggestedStep.value;
+        return;
+    }
+    if (currentStep.value === 'review' && canAdvanceWithoutAction.value) {
         userStep.value = 'confirm';
     }
 }
@@ -767,7 +806,7 @@ async function runTask(): Promise<void> {
 }
 
 async function confirmPost(): Promise<void> {
-    if (!task.value) return;
+    if (!task.value || openTodos.value.length > 0) return;
     busy.value = true;
     try {
         await billflowApi.confirmPost(task.value.id, task.value.version, generateRandomUUID());
@@ -882,7 +921,7 @@ onMounted(reload);
 
 .step-rail {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1px;
     border-top: 1px solid var(--task-rule);
     background: var(--task-rule);
@@ -1228,7 +1267,7 @@ onMounted(reload);
     }
 
     .step-rail {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .account-row-card__main {
