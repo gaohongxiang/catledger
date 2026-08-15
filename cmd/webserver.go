@@ -437,49 +437,9 @@ func startWebServer(c *core.CliContext) error {
 				apiV1Route.POST("/transactions/parse_import.json", bindApi(api.Transactions.TransactionParseImportFileHandler, config))
 				apiV1Route.POST("/transactions/import.json", bindApi(api.Transactions.TransactionImportHandler, config))
 				apiV1Route.GET("/transactions/import/process.json", bindApi(api.Transactions.TransactionImportProcessHandler, config))
-
-				apiV1Route.POST("/personal_finance/import_files/upload.json", bindApi(api.PersonalFinanceImports.ImportFileUploadHandler, config))
-				apiV1Route.POST("/personal_finance/import_batches/reparse.json", bindApi(api.PersonalFinanceImports.ImportBatchReparseHandler, config))
-				apiV1Route.POST("/personal_finance/import_batches/post.json", bindApi(api.PersonalFinanceImports.ImportBatchPostHandler, config))
-				apiV1Route.POST("/personal_finance/source_accounts/save.json", bindApi(api.PersonalFinanceImports.SourceAccountSaveHandler, config))
-				apiV1Route.POST("/personal_finance/import_batches/payment_accounts/confirm.json", bindApi(api.PersonalFinanceImports.PaymentAccountConfirmHandler, config))
-				apiV1Route.POST("/personal_finance/reconciliation/candidates/generate.json", bindApi(api.PersonalFinanceImports.ReconciliationCandidateGenerateHandler, config))
 			}
 
-			apiV1Route.GET("/personal_finance/import_files/list.json", bindApi(api.PersonalFinanceImports.ImportFileListHandler, config))
-			apiV1Route.GET("/personal_finance/import_files/get.json", bindApi(api.PersonalFinanceImports.ImportFileGetHandler, config))
-			apiV1Route.GET("/personal_finance/import_batches/list.json", bindApi(api.PersonalFinanceImports.ImportBatchListHandler, config))
-			apiV1Route.GET("/personal_finance/import_batches/get.json", bindApi(api.PersonalFinanceImports.ImportBatchGetHandler, config))
-			apiV1Route.GET("/personal_finance/import_batches/rows.json", bindApi(api.PersonalFinanceImports.RawImportRowListHandler, config))
-			apiV1Route.POST("/personal_finance/import_batches/discard.json", bindApi(api.PersonalFinanceImports.ImportBatchDiscardHandler, config))
-			apiV1Route.POST("/personal_finance/import_files/delete_content.json", bindApi(api.PersonalFinanceImports.ImportFileDeleteContentHandler, config))
-			apiV1Route.GET("/personal_finance/import_batches/undo_impact.json", bindApi(api.PersonalFinanceImports.ImportBatchUndoImpactHandler, config))
-			apiV1Route.GET("/personal_finance/consistency.json", bindApi(api.PersonalFinanceImports.PersonalFinanceConsistencyHandler, config))
-			apiV1Route.GET("/personal_finance/source_accounts/list.json", bindApi(api.PersonalFinanceImports.SourceAccountListHandler, config))
-			apiV1Route.GET("/personal_finance/import_batches/payment_accounts.json", bindApi(api.PersonalFinanceImports.PaymentAccountListHandler, config))
-			apiV1Route.GET("/personal_finance/transactions/evidence.json", bindApi(api.PersonalFinanceImports.TransactionEvidenceHandler, config))
-			apiV1Route.GET("/personal_finance/reconciliation/cases/list.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseListHandler, config))
-			apiV1Route.GET("/personal_finance/reconciliation/cases/get.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseGetHandler, config))
-			apiV1Route.POST("/personal_finance/reconciliation/cases/decide.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseDecideHandler, config))
-			apiV1Route.GET("/personal_finance/reconciliation/cases/undo_impact.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseUndoImpactHandler, config))
-			apiV1Route.POST("/personal_finance/reconciliation/cases/undo.json", bindApi(api.PersonalFinanceReconciliation.ReconciliationCaseUndoHandler, config))
-
-			// Personal Finance Loans
-			apiV1Route.POST("/personal_finance/loans/calculate.json", bindApi(api.PersonalFinanceLoans.LoanCalculateHandler, config))
-			apiV1Route.GET("/personal_finance/loans/contracts/list.json", bindApi(api.PersonalFinanceLoans.LoanContractListHandler, config))
-			apiV1Route.GET("/personal_finance/loans/contracts/get.json", bindApi(api.PersonalFinanceLoans.LoanContractGetHandler, config))
-			apiV1Route.POST("/personal_finance/loans/contracts/create.json", bindApi(api.PersonalFinanceLoans.LoanContractCreateHandler, config))
-			apiV1Route.POST("/personal_finance/loans/contracts/revise.json", bindApi(api.PersonalFinanceLoans.LoanContractReviseHandler, config))
-			apiV1Route.POST("/personal_finance/loans/contracts/close.json", bindApi(api.PersonalFinanceLoans.LoanContractCloseHandler, config))
-			apiV1Route.POST("/personal_finance/loans/contracts/reopen.json", bindApi(api.PersonalFinanceLoans.LoanContractReopenHandler, config))
-			apiV1Route.POST("/personal_finance/loans/contracts/cancel.json", bindApi(api.PersonalFinanceLoans.LoanContractCancelHandler, config))
-			apiV1Route.GET("/personal_finance/loans/settlements/candidates.json", bindApi(api.PersonalFinanceLoans.LoanSettlementCandidatesHandler, config))
-			apiV1Route.POST("/personal_finance/loans/settlements/apply.json", bindApi(api.PersonalFinanceLoans.LoanSettlementApplyHandler, config))
-			apiV1Route.GET("/personal_finance/loans/settlements/undo_impact.json", bindApi(api.PersonalFinanceLoans.LoanSettlementUndoImpactHandler, config))
-			apiV1Route.POST("/personal_finance/loans/settlements/undo.json", bindApi(api.PersonalFinanceLoans.LoanSettlementUndoHandler, config))
-
-			// Personal Finance Dashboard
-			apiV1Route.GET("/personal_finance/dashboard/overview.json", bindApi(api.PersonalFinanceDashboard.OverviewHandler, config))
+			api.RegisterPersonalFinanceRoutes(apiV1Route, config, bindApi)
 
 			// Transaction Pictures
 			if config.EnableTransactionPictures {

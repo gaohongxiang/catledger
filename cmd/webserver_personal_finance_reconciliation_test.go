@@ -7,9 +7,9 @@ import (
 )
 
 func TestCandidateGenerateRouteIsRegisteredOnceInDataImportWriteGroup(t *testing.T) {
-	sourceBytes, err := os.ReadFile("webserver.go")
+	sourceBytes, err := os.ReadFile("../pkg/api/personal_finance_routes.go")
 	if err != nil {
-		t.Fatalf("read webserver routes: %v", err)
+		t.Fatalf("read personal finance routes: %v", err)
 	}
 	source := string(sourceBytes)
 	route := `apiV1Route.POST("/personal_finance/reconciliation/candidates/generate.json"`
