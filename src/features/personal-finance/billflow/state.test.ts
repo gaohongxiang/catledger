@@ -164,6 +164,8 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.accounts.exclude');
         expect(workbench).toContain('personalFinance.billflow.accounts.useExisting');
         expect(workbench).toContain('personalFinance.billflow.accounts.excludedTitle');
+        expect(workbench).toContain('personalFinance.billflow.accounts.reusedTitle');
+        expect(workbench).toContain('accounts.reused');
         expect(workbench).toContain('formatAmountToLocalizedNumeralsWithCurrency');
         expect(workbench).toContain('billflowDirectionKey');
         expect(workbench).toContain('refreshTaskAndMaybeRun');

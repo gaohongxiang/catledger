@@ -57,32 +57,77 @@
                     <strong>{{ task.todoOpenCount }}</strong>
                 </div>
             </section>
-            <p class="reused-caption" v-if="task.reusedMappingCount > 0">
-                {{ tt('personalFinance.billflow.accounts.reusedHint', { count: task.reusedMappingCount }) }}
+            <p class="reused-caption" v-if="(accounts?.reused.length ?? 0) < 1 && task.reusedMappingCount > 0">
+                {{ tt('personalFinance.billflow.accounts.reusedHint') }}
             </p>
 
             <v-alert class="mx-5 mb-4" type="warning" variant="tonal" v-if="task.status === 'failed'">
                 {{ tt('personalFinance.billflow.failed') }}
             </v-alert>
 
-            <section class="work-section" v-if="taskNeedsAccounts(task.status, accounts?.needsCreate.length ?? 0) || (accounts?.excluded.length ?? 0) > 0">
-                <div class="section-copy">
-                    <strong>{{ tt('personalFinance.billflow.accounts.title') }}</strong>
-                    <span>{{ tt('personalFinance.billflow.accounts.reusedHint', { count: accounts?.reused.length ?? 0 }) }}</span>
-                </div>
-
-                <article
-                    class="account-card"
-                    :class="{ 'account-card--matched': !!matchedAccount(group) }"
-                    :key="group.sampleRowId"
-                    v-for="group in accounts?.needsCreate"
-                >
-                    <div class="account-card__head">
-                        <div>
+            <section class="work-section" v-if="showAccountSection">
+                <template v-if="accounts?.reused.length">
+                    <div class="section-copy">
+                        <strong>{{ tt('personalFinance.billflow.accounts.reusedTitle') }} · {{ accounts.reused.length }}</strong>
+                        <span>{{ tt('personalFinance.billflow.accounts.reusedHint') }}</span>
+                    </div>
+                    <div class="reused-list">
+                        <div class="reused-item" :key="group.sampleRowId" v-for="group in accounts.reused">
                             <strong>{{ group.displayName }}</strong>
                             <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
                         </div>
-                        <div class="account-card__quiet">
+                    </div>
+                </template>
+
+                <div class="section-copy" :class="{ 'mt-5': !!(accounts?.reused.length) }" v-if="accounts?.needsCreate.length">
+                    <strong>{{ tt('personalFinance.billflow.accounts.title') }} · {{ accounts.needsCreate.length }}</strong>
+                </div>
+
+                <article
+                    class="account-row-card"
+                    :class="{ 'account-row-card--matched': !!matchedAccount(group), 'account-row-card--open': expandedSampleRowId === group.sampleRowId }"
+                    :key="group.sampleRowId"
+                    v-for="group in accounts?.needsCreate"
+                >
+                    <div class="account-row-card__main">
+                        <div class="account-row-card__name">
+                            <strong>{{ group.displayName }}</strong>
+                            <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}<template v-if="matchedAccount(group)"> · {{ tt('personalFinance.billflow.accounts.matchedHint', { name: matchedAccount(group)?.name ?? '' }) }}</template></span>
+                        </div>
+                        <v-select
+                            class="account-row-card__select"
+                            density="compact"
+                            hide-details
+                            item-title="title"
+                            item-value="value"
+                            variant="outlined"
+                            :items="ledgerOptions(group)"
+                            :placeholder="tt('personalFinance.billflow.accounts.pickExisting')"
+                            :model-value="selectedLedgerId(group)"
+                            :disabled="busy"
+                            v-if="ledgerOptions(group).length"
+                            @update:model-value="value => setPickedLedgerId(group, value)"
+                        />
+                        <div class="account-row-card__actions">
+                            <v-btn
+                                size="small"
+                                color="primary"
+                                variant="flat"
+                                :loading="busy"
+                                v-if="selectedLedgerId(group)"
+                                @click="reuseAccount(group)"
+                            >
+                                {{ tt('personalFinance.billflow.accounts.useExisting') }}
+                            </v-btn>
+                            <v-btn
+                                size="small"
+                                :color="selectedLedgerId(group) ? undefined : 'primary'"
+                                :variant="selectedLedgerId(group) ? 'tonal' : 'flat'"
+                                :loading="busy"
+                                @click="createAccount(group)"
+                            >
+                                {{ tt('personalFinance.billflow.accounts.create') }}
+                            </v-btn>
                             <v-btn size="small" variant="text" :loading="busy" @click="toggleRows(group)">
                                 {{ expandedSampleRowId === group.sampleRowId ? tt('personalFinance.billflow.accounts.hideRows') : tt('personalFinance.billflow.accounts.showRows') }}
                             </v-btn>
@@ -90,42 +135,6 @@
                                 {{ tt('personalFinance.billflow.accounts.exclude') }}
                             </v-btn>
                         </div>
-                    </div>
-                    <p class="account-card__hint" v-if="matchedAccount(group)">
-                        {{ tt('personalFinance.billflow.accounts.matchedHint', { name: matchedAccount(group)?.name ?? '' }) }}
-                    </p>
-                    <v-select
-                        class="mt-3"
-                        density="compact"
-                        hide-details
-                        item-title="title"
-                        item-value="value"
-                        variant="outlined"
-                        :items="ledgerOptions(group)"
-                        :label="tt('personalFinance.billflow.accounts.pickExisting')"
-                        :model-value="selectedLedgerId(group)"
-                        :disabled="busy"
-                        v-if="ledgerOptions(group).length"
-                        @update:model-value="value => setPickedLedgerId(group, value)"
-                    />
-                    <div class="account-card__actions">
-                        <v-btn
-                            color="primary"
-                            variant="flat"
-                            :loading="busy"
-                            v-if="selectedLedgerId(group)"
-                            @click="reuseAccount(group)"
-                        >
-                            {{ tt('personalFinance.billflow.accounts.useExisting') }}
-                        </v-btn>
-                        <v-btn
-                            :color="selectedLedgerId(group) ? undefined : 'primary'"
-                            :variant="selectedLedgerId(group) ? 'tonal' : 'flat'"
-                            :loading="busy"
-                            @click="createAccount(group)"
-                        >
-                            {{ tt('personalFinance.billflow.accounts.create') }}
-                        </v-btn>
                     </div>
                     <div class="account-rows" v-if="expandedSampleRowId === group.sampleRowId && accountRows.length">
                         <label class="account-row" :class="{ 'account-row--skipped': row.skipped }" :key="row.id" v-for="row in accountRows">
@@ -152,21 +161,19 @@
                 </article>
 
                 <template v-if="accounts?.excluded.length">
-                    <div class="section-copy mt-6">
-                        <strong>{{ tt('personalFinance.billflow.accounts.excludedTitle') }}</strong>
+                    <div class="section-copy mt-5">
+                        <strong>{{ tt('personalFinance.billflow.accounts.excludedTitle') }} · {{ accounts.excluded.length }}</strong>
                         <span>{{ tt('personalFinance.billflow.accounts.excludedHint') }}</span>
                     </div>
-                    <article class="account-card account-card--excluded" :key="group.sampleRowId" v-for="group in accounts.excluded">
-                        <div class="account-card__head">
-                            <div>
-                                <strong>{{ group.displayName }}</strong>
-                                <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
-                            </div>
-                            <v-btn size="small" variant="tonal" :loading="busy" @click="restoreAccount(group)">
+                    <div class="reused-list">
+                        <div class="reused-item" :key="group.sampleRowId" v-for="group in accounts.excluded">
+                            <strong>{{ group.displayName }}</strong>
+                            <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
+                            <v-btn size="x-small" variant="text" :loading="busy" @click="restoreAccount(group)">
                                 {{ tt('personalFinance.billflow.accounts.restore') }}
                             </v-btn>
                         </div>
-                    </article>
+                    </div>
                 </template>
             </section>
 
@@ -275,6 +282,12 @@ const eligibleFiles = computed(() => {
 
 const unverifiedCards = computed(() => cardAccounts.value.filter(card => !card.balanceReview || card.balanceReview.status === 'unverified'));
 const matchedNeedsCreate = computed(() => (accounts.value?.needsCreate ?? []).filter(group => !!selectedLedgerId(group)));
+const showAccountSection = computed(() => {
+    const pending = accounts.value?.needsCreate.length ?? 0;
+    const reused = accounts.value?.reused.length ?? 0;
+    const excluded = accounts.value?.excluded.length ?? 0;
+    return taskNeedsAccounts(task.value?.status ?? 'receiving', pending) || reused > 0 || excluded > 0;
+});
 const nextAction = computed(() => {
     if (!task.value) {
         if (selectedFileIds.value.length < 1) {
@@ -817,24 +830,82 @@ onMounted(reload);
     font-size: 0.8rem;
 }
 
+.reused-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 8px;
+}
+
+.reused-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--task-rule);
+    border-radius: 8px 2px 8px 2px;
+    background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.reused-item strong {
+    font-size: 0.86rem;
+}
+
+.reused-item span {
+    color: rgba(var(--v-theme-on-surface), 0.55);
+    font-size: 0.75rem;
+}
+
+.account-row-card {
+    margin-bottom: 8px;
+    border: 1px solid var(--task-rule);
+    border-radius: 8px 2px 8px 2px;
+    background: var(--task-paper);
+}
+
+.account-row-card--matched {
+    border-color: rgba(var(--v-theme-primary), 0.35);
+}
+
+.account-row-card__main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(180px, 0.8fr) auto;
+    align-items: center;
+    gap: 10px 12px;
+    padding: 8px 12px;
+}
+
+.account-row-card__name strong {
+    display: block;
+    font-size: 0.92rem;
+    line-height: 1.3;
+}
+
+.account-row-card__name span {
+    color: rgba(var(--v-theme-on-surface), 0.55);
+    font-size: 0.75rem;
+}
+
+.account-row-card__select {
+    min-width: 0;
+}
+
+.account-row-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
 .account-card,
 .todo-card {
     display: grid;
     gap: 8px;
-    padding: 16px 18px;
-    margin-bottom: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
     border: 1px solid var(--task-rule);
-    border-radius: 14px 4px 14px 4px;
+    border-radius: 8px 2px 8px 2px;
     background: var(--task-paper);
-}
-
-.account-card--matched {
-    border-color: rgba(var(--v-theme-primary), 0.35);
-    background: rgba(var(--v-theme-primary), 0.04);
-}
-
-.account-card--excluded {
-    opacity: 0.78;
 }
 
 .account-card__head,
@@ -929,6 +1000,10 @@ onMounted(reload);
 
 @media (max-width: 900px) {
     .summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .account-row-card__main {
         grid-template-columns: 1fr;
     }
 
