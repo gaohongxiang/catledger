@@ -2947,7 +2947,7 @@
             "confirmHint": "分类和其他事项都看过以后，再点确认入账。",
             "confirmDoneHint": "已经入账。",
             "reviewHint": "先给说不清的交易选分类。可全选后一起保存。",
-            "othersHint": "分类之后还要你看一眼的事项，没有也可以下一步。",
+            "othersHint": "退款、冲突这些不是选分类。看过点已处理，也可以先跳过。",
             "files": {
                 "title": "选择要一起整理的账单",
                 "create": "开始整理",
@@ -3013,9 +3013,9 @@
                 "title": "交易分类",
                 "empty": "没有要处理的分类。",
                 "pendingEmpty": "没有要分类的交易。",
-                "classifiedEmpty": "还没有已分类的交易。",
-                "pendingHint": "先给说不清的选分类，可全选后一起保存。",
-                "classifiedHint": "已经选过分类的。改回后会再出现在未分类。",
+                "classifiedEmpty": "还没有你保存过的分类。",
+                "pendingHint": "微信「商户消费」不是分类，要你选一次；选过的商户下次会记住。",
+                "classifiedHint": "这里只有你刚保存过的。账单自己带来的含糊名称不会自动出现在这里。",
                 "bucket": {
                     "pending": "未分类",
                     "classified": "已分类"

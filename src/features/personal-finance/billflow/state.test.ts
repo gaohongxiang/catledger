@@ -19,6 +19,7 @@ import {
     categoryBucketHintKey,
     categoryTodos,
     installmentTodos,
+    otherWorkbenchTodos,
     mergeSelectedOrganizeFileIds,
     nextBillflowWorkbenchStep,
     previousBillflowWorkbenchStep,
@@ -202,6 +203,7 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
         expect(workbench).toContain('v-for="todo in reviewTodos"');
         expect(workbench).toContain('v-for="todo in otherTodos"');
+        expect(workbench).toContain('otherWorkbenchTodos');
         expect(workbench).toContain('assignTodoCategories');
         expect(workbench).toContain('canAssignBillflowCategory');
         expect(workbench).toContain('personalFinance.billflow.todos.pickCategory');
@@ -277,8 +279,15 @@ describe('billflow task page wiring', () => {
         expect(categoryTodos([
             { todoKind: 'uncategorized' },
             { todoKind: 'installment_candidate' },
-            { todoKind: 'transfer_unclear' }
+            { todoKind: 'transfer_unclear' },
+            { todoKind: 'refund_unclear' }
         ]).map(todo => todo.todoKind)).toEqual(['uncategorized', 'transfer_unclear']);
+        expect(otherWorkbenchTodos([
+            { todoKind: 'uncategorized' },
+            { todoKind: 'installment_candidate' },
+            { todoKind: 'refund_unclear' },
+            { todoKind: 'identity_conflict' }
+        ]).map(todo => todo.todoKind)).toEqual(['installment_candidate', 'refund_unclear', 'identity_conflict']);
         expect(installmentTodos([
             { todoKind: 'uncategorized' },
             { todoKind: 'installment_candidate' }

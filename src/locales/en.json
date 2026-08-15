@@ -2947,7 +2947,7 @@
             "confirmHint": "Finish categories and other items, then confirm posting.",
             "confirmDoneHint": "Posted.",
             "reviewHint": "Choose a category for unclear transactions. You can select several and save them together.",
-            "othersHint": "Anything left after categorizing. You can continue if there is nothing to decide.",
+            "othersHint": "Refunds and conflicts are not category choices. Mark them done, or skip for now.",
             "files": {
                 "title": "Choose statements to organize together",
                 "create": "Start organizing",
@@ -3013,9 +3013,9 @@
                 "title": "Transaction categories",
                 "empty": "No categories need a decision.",
                 "pendingEmpty": "Nothing needs a category.",
-                "classifiedEmpty": "No categorized transactions yet.",
-                "pendingHint": "Choose a category for unclear transactions. You can select several and save them together.",
-                "classifiedHint": "Already categorized. Restore to move them back to uncategorized.",
+                "classifiedEmpty": "You have not saved a category yet.",
+                "pendingHint": "WeChat “merchant payment” is not a category. Choose once; the same merchant is remembered next time.",
+                "classifiedHint": "Only categories you just saved appear here. Vague names from the statement are not auto-listed.",
                 "bucket": {
                     "pending": "Uncategorized",
                     "classified": "Categorized"

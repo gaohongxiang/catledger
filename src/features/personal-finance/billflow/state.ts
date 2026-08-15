@@ -252,7 +252,11 @@ export function canAssignBillflowCategory(kind: BillflowTodoKind): boolean {
 }
 
 export function categoryTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
-    return todos.filter(todo => !isInstallmentTodo(todo.todoKind));
+    return todos.filter(todo => canAssignBillflowCategory(todo.todoKind));
+}
+
+export function otherWorkbenchTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
+    return todos.filter(todo => !canAssignBillflowCategory(todo.todoKind));
 }
 
 export function installmentTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {

@@ -340,8 +340,8 @@
             </div>
             <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in otherTodos">
                 <div class="todo-row__copy">
-                    <strong>{{ todoTitle(todo) }}</strong>
-                    <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
+                    <strong>{{ tt(todoKindKey(todo.todoKind)) }}</strong>
+                    <small v-if="otherTodoDetail(todo)">{{ otherTodoDetail(todo) }}</small>
                 </div>
                 <div class="todo-row__facts">
                     <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
@@ -424,7 +424,7 @@ import {
     eligibleOrganizeFileIds,
     categoryBucketHintKey,
     categoryTodos,
-    installmentTodos,
+    otherWorkbenchTodos,
     matchedLedgerAccount,
     mergeSelectedOrganizeFileIds,
     nextBillflowWorkbenchStep,
@@ -510,7 +510,7 @@ const currentStep = computed(() => resolveBillflowWorkbenchStep(userStep.value, 
 const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.value));
 const reviewTodos = computed(() => categoryTodos(openTodos.value));
 const classifiedReviewTodos = computed(() => resolvedTodos.value.filter(todo => canAssignBillflowCategory(todo.todoKind)));
-const otherTodos = computed(() => installmentTodos(openTodos.value));
+const otherTodos = computed(() => otherWorkbenchTodos(openTodos.value));
 const assignableReviewTodos = computed(() => reviewTodos.value.filter(todo => canAssignBillflowCategory(todo.todoKind)));
 const selectedAssignableTodos = computed(() => assignableReviewTodos.value.filter(todo => selectedTodoIds.value.includes(todo.id)));
 const allAssignableSelected = computed(() => assignableReviewTodos.value.length > 0 && selectedAssignableTodos.value.length === assignableReviewTodos.value.length);
@@ -753,6 +753,12 @@ function todoSubtitle(todo: BillflowTodo): string {
         .filter((part): part is string => !!part && part !== title)
         .filter((part, index, parts) => parts.indexOf(part) === index)
         .join(' · ');
+}
+
+function otherTodoDetail(todo: BillflowTodo): string {
+    const kind = tt(todoKindKey(todo.todoKind));
+    const title = todoTitle(todo);
+    return [title === kind ? '' : title, todoSubtitle(todo)].filter(Boolean).join(' · ');
 }
 
 function categoryLabel(todo: BillflowTodo): string {
