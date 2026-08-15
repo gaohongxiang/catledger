@@ -2963,7 +2963,13 @@
                 "hideRows": "Hide",
                 "skipSelected": "Skip selected",
                 "restoreSelected": "Use selected again",
-                "skipped": "Skipped"
+                "skipped": "Skipped",
+                "direction": {
+                    "income": "Income",
+                    "expense": "Expense",
+                    "neutral": "Neither income nor expense",
+                    "unknown": "Unknown direction"
+                }
             },
             "todos": {
                 "title": "Todos",

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import type { PersonalFinanceImportBatch } from '../models.ts';
 import {
+    billflowDirectionKey,
     composeDashboardHeadline,
     eligibleOrganizeFileIds,
     matchedLedgerAccount,
@@ -161,7 +162,17 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.accounts.exclude');
         expect(workbench).toContain('personalFinance.billflow.accounts.useExisting');
         expect(workbench).toContain('personalFinance.billflow.accounts.excludedTitle');
+        expect(workbench).toContain('formatAmountToLocalizedNumeralsWithCurrency');
+        expect(workbench).toContain('billflowDirectionKey');
         expect(workbench).toContain('v-for="todo in openTodos"');
         expect(workbench).not.toContain('来源账户');
+    });
+
+    it('maps income, expense and neither-income-nor-expense to display keys', () => {
+        expect(billflowDirectionKey('income')).toBe('personalFinance.billflow.accounts.direction.income');
+        expect(billflowDirectionKey('expense')).toBe('personalFinance.billflow.accounts.direction.expense');
+        expect(billflowDirectionKey('neutral')).toBe('personalFinance.billflow.accounts.direction.neutral');
+        expect(billflowDirectionKey('unknown')).toBe('personalFinance.billflow.accounts.direction.unknown');
+        expect(billflowDirectionKey('')).toBe('personalFinance.billflow.accounts.direction.unknown');
     });
 });

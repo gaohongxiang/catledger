@@ -195,17 +195,19 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { mdiRefresh, mdiTrayArrowUp } from '@mdi/js';
 
 import { useI18n } from '@/locales/helpers.ts';
+import { parseDateTimeFromUnixTimeWithBrowserTimezone } from '@/lib/datetime.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
+import { parseBigDecimal } from '@/lib/numeral.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 
 import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowTask, BillflowTodo, CardCycleAccount } from '../models.ts';
 import { todoKindKey } from '../presentation.ts';
 import { billflowApi } from '../service.ts';
-import { eligibleOrganizeFileIds, matchedLedgerAccount, suggestedAccountCategory, taskAwaitsConfirm, taskNeedsAccounts, taskShowsTodos } from '../state.ts';
+import { billflowDirectionKey, eligibleOrganizeFileIds, matchedLedgerAccount, suggestedAccountCategory, taskAwaitsConfirm, taskNeedsAccounts, taskShowsTodos } from '../state.ts';
 import { usePersonalFinanceStore } from '../../store.ts';
 import { todayCivilDate } from '../../dashboard/state.ts';
 
-const { tt } = useI18n();
+const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatDateTimeToShortDateTime } = useI18n();
 const personalFinanceStore = usePersonalFinanceStore();
 const accountsStore = useAccountsStore();
 const fileInput = ref<HTMLInputElement>();
@@ -484,15 +486,15 @@ async function mutateSelectedRows(skip: boolean): Promise<void> {
 }
 
 function formatAccountRow(row: BillflowAccountRow): string {
-    const parts: string[] = [row.currency];
+    const parts: string[] = [];
     if (row.amount) {
-        parts.unshift(row.amount);
+        parts.push(formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(row.amount), row.currency));
     }
     if (row.unixTime) {
-        parts.push(new Date(row.unixTime * 1000).toLocaleString());
+        parts.push(formatDateTimeToShortDateTime(parseDateTimeFromUnixTimeWithBrowserTimezone(row.unixTime)));
     }
     if (row.direction) {
-        parts.push(row.direction);
+        parts.push(tt(billflowDirectionKey(row.direction)));
     }
     return parts.join(' · ');
 }

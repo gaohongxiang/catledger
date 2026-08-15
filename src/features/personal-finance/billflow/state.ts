@@ -106,6 +106,13 @@ export function nearestNextPayment<T extends { nextDueDate?: string; nextDueAmou
     return dated[0];
 }
 
+export function billflowDirectionKey(direction: string): string {
+    if (direction === 'income' || direction === 'expense' || direction === 'neutral') {
+        return `personalFinance.billflow.accounts.direction.${direction}`;
+    }
+    return 'personalFinance.billflow.accounts.direction.unknown';
+}
+
 function pushHeadline(items: DashboardHeadlineItem[], code: DashboardHeadlineCode, count: number): void {
     if (!Number.isSafeInteger(count) || count < 1) {
         return;

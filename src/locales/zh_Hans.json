@@ -2963,7 +2963,13 @@
                 "hideRows": "收起",
                 "skipSelected": "不要选中的",
                 "restoreSelected": "改回选中的",
-                "skipped": "已不要"
+                "skipped": "已不要",
+                "direction": {
+                    "income": "收入",
+                    "expense": "支出",
+                    "neutral": "不计收支",
+                    "unknown": "方向未知"
+                }
             },
             "todos": {
                 "title": "待办",
