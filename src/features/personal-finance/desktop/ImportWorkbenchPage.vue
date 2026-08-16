@@ -701,6 +701,9 @@ function openCebCreditImport(fileId: string, reasonCode: string): void {
 }
 
 function openExplicitParserFallback(file: PersonalFinanceImportUploadResult['file'] | undefined, genericReason: string, cebReason: string): boolean {
+    if (!file) {
+        return false;
+    }
     if (canConfigureCebCreditPdf(file)) {
         openCebCreditImport(file.id, cebReason);
         snackbar.value?.showMessage('personalFinance.cebCredit.autoDetectionFailed');
