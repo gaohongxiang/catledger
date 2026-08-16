@@ -191,23 +191,34 @@ type personalFinanceBillflowAccountRowResponse struct {
 }
 
 type personalFinanceBillflowTodoResponse struct {
-	Id              string               `json:"id"`
-	TodoKind        billflow.TodoKind    `json:"todoKind"`
-	Status          billflow.TodoStatus  `json:"status"`
-	SubjectKind     billflow.SubjectKind `json:"subjectKind"`
-	SubjectId       string               `json:"subjectId"`
-	ReasonCodes     []string             `json:"reasonCodes"`
-	Label           string               `json:"label"`
-	Item            string               `json:"item"`
-	BillType        string               `json:"billType"`
-	Amount          string               `json:"amount"`
-	Currency        string               `json:"currency"`
-	UnixTime        *int64               `json:"unixTime,omitempty"`
-	Direction       string               `json:"direction"`
-	CategoryId      string               `json:"categoryId,omitempty"`
-	Version         int64                `json:"version"`
-	CreatedUnixTime int64                `json:"createdUnixTime"`
-	UpdatedUnixTime int64                `json:"updatedUnixTime"`
+	Id              string                                      `json:"id"`
+	TodoKind        billflow.TodoKind                           `json:"todoKind"`
+	Status          billflow.TodoStatus                         `json:"status"`
+	SubjectKind     billflow.SubjectKind                        `json:"subjectKind"`
+	SubjectId       string                                      `json:"subjectId"`
+	ReasonCodes     []string                                    `json:"reasonCodes"`
+	Label           string                                      `json:"label"`
+	Item            string                                      `json:"item"`
+	BillType        string                                      `json:"billType"`
+	Amount          string                                      `json:"amount"`
+	Currency        string                                      `json:"currency"`
+	UnixTime        *int64                                      `json:"unixTime,omitempty"`
+	Direction       string                                      `json:"direction"`
+	CategoryId      string                                      `json:"categoryId,omitempty"`
+	Version         int64                                       `json:"version"`
+	CreatedUnixTime int64                                       `json:"createdUnixTime"`
+	UpdatedUnixTime int64                                       `json:"updatedUnixTime"`
+	Matches         []*personalFinanceBillflowTodoMatchResponse `json:"matches,omitempty"`
+}
+
+type personalFinanceBillflowTodoMatchResponse struct {
+	SourceType string `json:"sourceType"`
+	Account    string `json:"account"`
+	Label      string `json:"label"`
+	Amount     string `json:"amount"`
+	Currency   string `json:"currency"`
+	UnixTime   *int64 `json:"unixTime,omitempty"`
+	Direction  string `json:"direction"`
 }
 
 type personalFinanceBillflowTodoListResponse struct {
@@ -727,6 +738,15 @@ func newPersonalFinanceBillflowTodoResponse(value *billflow.TodoView) *personalF
 	}
 	if value.CategoryId > 0 {
 		item.CategoryId = strconv.FormatInt(value.CategoryId, 10)
+	}
+	for _, match := range value.Matches {
+		if match == nil {
+			continue
+		}
+		item.Matches = append(item.Matches, &personalFinanceBillflowTodoMatchResponse{
+			SourceType: match.SourceType, Account: match.Account, Label: match.Label,
+			Amount: match.Amount, Currency: match.Currency, UnixTime: match.UnixTime, Direction: match.Direction,
+		})
 	}
 	return item
 }

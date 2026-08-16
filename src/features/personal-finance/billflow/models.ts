@@ -111,6 +111,17 @@ export interface BillflowTodo {
     readonly version: number;
     readonly createdUnixTime: number;
     readonly updatedUnixTime: number;
+    readonly matches: readonly BillflowTodoMatch[];
+}
+
+export interface BillflowTodoMatch {
+    readonly sourceType: BillflowSourceType;
+    readonly account: string;
+    readonly label: string;
+    readonly amount: string;
+    readonly currency: string;
+    readonly unixTime?: number;
+    readonly direction: string;
 }
 
 export interface BillflowClassifiedRow {

@@ -16,6 +16,7 @@ import type {
     BillflowTaskStatus,
     BillflowTodo,
     BillflowTodoKind,
+    BillflowTodoMatch,
     BillflowTodoPage,
     BillflowTodoStatus,
     BillflowUndoImpact,
@@ -225,7 +226,23 @@ function normalizeTodo(value: unknown): BillflowTodo {
         createdUnixTime: integer(item['createdUnixTime']),
         updatedUnixTime: integer(item['updatedUnixTime']),
         ...(unixTime === undefined ? {} : { unixTime }),
-        ...(optionalIdentifier(item['categoryId']) === undefined ? {} : { categoryId: optionalIdentifier(item['categoryId']) })
+        ...(optionalIdentifier(item['categoryId']) === undefined ? {} : { categoryId: optionalIdentifier(item['categoryId']) }),
+        matches: item['matches'] == null ? [] : array(item['matches']).map(normalizeTodoMatch)
+    };
+}
+
+function normalizeTodoMatch(value: unknown): BillflowTodoMatch {
+    const item = record(value);
+    const unixTime = optionalInteger(item['unixTime']);
+    const sourceTypeValue = string(item['sourceType'] ?? '');
+    return {
+        sourceType: sourceTypes.includes(sourceTypeValue as BillflowSourceType) ? sourceTypeValue as BillflowSourceType : 'bank',
+        account: string(item['account'] ?? ''),
+        label: string(item['label'] ?? ''),
+        amount: string(item['amount'] ?? ''),
+        currency: string(item['currency'] ?? ''),
+        direction: string(item['direction'] ?? ''),
+        ...(unixTime === undefined ? {} : { unixTime })
     };
 }
 

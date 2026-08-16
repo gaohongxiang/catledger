@@ -59,6 +59,7 @@ func (s *Service) ListTodos(c core.Context, uid int64, taskId int64, status Todo
 		}
 		result.Items = append(result.Items, s.todoView(c, uid, todo))
 	}
+	s.attachTodoMatches(c, uid, result.Items)
 	return result, nil
 }
 

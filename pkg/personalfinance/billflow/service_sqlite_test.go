@@ -315,7 +315,13 @@ func TestServiceCreateAccountAndAmbiguousCrossSource(t *testing.T) {
 	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
 		postableRow(uid, 401, 801, 201, 0, "餐饮美食"),
 	})
+	counterpart := postableRow(uid, 402, 802, 202, 0, "网上支付")
+	counterpart.RawCounterparty = "星巴克"
+	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{counterpart})
+	evidence.batchById[402].SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
 	evidence.rows[401][0].LedgerAccountId = nil
+	amount := int64(123)
+	at := int64(1_700_000_000)
 	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
 		401: {{SourceType: importing.SOURCE_TYPE_ALIPAY, Currency: "CNY", DisplayName: "花呗", RowCount: 1, PendingRowCount: 1, SampleRowId: 801}},
 	}}
@@ -326,7 +332,16 @@ func TestServiceCreateAccountAndAmbiguousCrossSource(t *testing.T) {
 			CaseId: 91, Status: reconciliation.CASE_STATUS_OPEN, Version: 1,
 			SuggestedRelationType: reconciliation.DECISION_TYPE_INTERNAL_TRANSFER,
 		},
-		Members: []*reconciliation.CaseMemberDetail{{Evidence: []*reconciliation.CaseEvidenceSummary{{RowId: 801}}}},
+		Members: []*reconciliation.CaseMemberDetail{
+			{SourceType: importing.SOURCE_TYPE_ALIPAY, MaskedSourceAccount: "花呗", Evidence: []*reconciliation.CaseEvidenceSummary{{
+				RowId: 801, SourceType: importing.SOURCE_TYPE_ALIPAY, Currency: "CNY",
+				NormalizedAmount: &amount, NormalizedUnixTime: &at, NormalizedDirection: importing.NORMALIZED_DIRECTION_EXPENSE,
+			}}},
+			{SourceType: importing.SOURCE_TYPE_BANK, MaskedSourceAccount: "光大银行信用卡(2690)", Evidence: []*reconciliation.CaseEvidenceSummary{{
+				RowId: 802, SourceType: importing.SOURCE_TYPE_BANK, Currency: "CNY",
+				NormalizedAmount: &amount, NormalizedUnixTime: &at, NormalizedDirection: importing.NORMALIZED_DIRECTION_EXPENSE,
+			}}},
+		},
 	}}
 	var nextId int64 = 6000
 	service, err := billflow.NewService(repository, evidence, payments, &fakePoster{}, reconciler, nil, accounts, &fakeCategories{}, undo, func() int64 {
@@ -359,6 +374,9 @@ func TestServiceCreateAccountAndAmbiguousCrossSource(t *testing.T) {
 	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
 	if err != nil || !hasTodoKind(todos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
 		t.Fatalf("non-unique cross-source did not open todo: %+v err=%v", todos, err)
+	}
+	if !hasTodoMatch(todos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, string(importing.SOURCE_TYPE_BANK), "星巴克") {
+		t.Fatalf("ambiguous todo did not include the other statement row")
 	}
 	if len(reconciler.decided) != 0 {
 		t.Fatalf("ambiguous case was auto decided: %+v", reconciler.decided)
@@ -794,6 +812,15 @@ func (f *fakeReconciler) GetCase(_ core.Context, _ int64, caseId int64) (*reconc
 	}
 	return f.detail, nil
 }
+func (f *fakeReconciler) ListCases(_ core.Context, request reconciliation.ListCasesRequest) (*reconciliation.CasePage, error) {
+	if f.detail == nil || f.detail.CaseSummary == nil {
+		return &reconciliation.CasePage{}, nil
+	}
+	if request.Status != "" && f.detail.Status != request.Status {
+		return &reconciliation.CasePage{}, nil
+	}
+	return &reconciliation.CasePage{Items: []*reconciliation.CaseSummary{f.detail.CaseSummary}}, nil
+}
 func (f *fakeReconciler) DecideCase(_ core.Context, request reconciliation.DecideCaseRequest, _ *time.Location) (*reconciliation.DecisionResult, error) {
 	f.decided = append(f.decided, request)
 	return &reconciliation.DecisionResult{CaseId: request.CaseId, DecisionType: request.DecisionType}, nil
@@ -879,6 +906,23 @@ func hasTodoKind(page *billflow.TodoListResult, kind billflow.TodoKind) bool {
 	for _, todo := range page.Items {
 		if todo != nil && todo.TodoKind == kind {
 			return true
+		}
+	}
+	return false
+}
+
+func hasTodoMatch(page *billflow.TodoListResult, kind billflow.TodoKind, sourceType string, label string) bool {
+	if page == nil {
+		return false
+	}
+	for _, todo := range page.Items {
+		if todo == nil || todo.TodoKind != kind {
+			continue
+		}
+		for _, match := range todo.Matches {
+			if match != nil && match.SourceType == sourceType && match.Label == label {
+				return true
+			}
 		}
 	}
 	return false

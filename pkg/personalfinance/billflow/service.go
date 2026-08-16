@@ -89,6 +89,7 @@ type Poster interface {
 // Reconciler 在任务范围内调用既有候选生成与决定。
 type Reconciler interface {
 	GenerateCandidates(c core.Context, request reconciliation.GenerateCandidatesRequest) (*reconciliation.GenerateCandidatesResult, error)
+	ListCases(c core.Context, request reconciliation.ListCasesRequest) (*reconciliation.CasePage, error)
 	GetCase(c core.Context, uid int64, caseId int64) (*reconciliation.CaseDetail, error)
 	DecideCase(c core.Context, request reconciliation.DecideCaseRequest, clientTimezone *time.Location) (*reconciliation.DecisionResult, error)
 }
@@ -258,6 +259,17 @@ type TodoView struct {
 	Version         int64
 	CreatedUnixTime int64
 	UpdatedUnixTime int64
+	Matches         []*TodoMatchView
+}
+
+type TodoMatchView struct {
+	SourceType string
+	Account    string
+	Label      string
+	Amount     string
+	Currency   string
+	UnixTime   *int64
+	Direction  string
 }
 
 type ClassifiedRowView struct {

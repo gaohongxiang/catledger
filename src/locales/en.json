@@ -2957,8 +2957,11 @@
                 "pending": "After accounts are ready, start merging. Clear matches are merged automatically.",
                 "empty": "Nothing needs a merge decision. Clear matches are already merged, or merging has not started.",
                 "mergedEmpty": "No merge items have been marked handled yet. Automatic merges are not listed here.",
-                "pendingHint": "Only unique matches that cannot be paired are listed. “Processed” means you reviewed it; “Skip for now” leaves it aside.",
+                "pendingHint": "Only unique matches that cannot be paired are listed. The other statement’s nearby rows are shown below so you can compare. “Processed” means you reviewed it; “Skip for now” leaves it aside.",
                 "mergedHint": "Items you marked processed or skipped appear here and can be restored. Automatic merges are not asked again.",
+                "matchesHint": "Nearby rows on another statement:",
+                "matchesEmpty": "No comparable row from another statement is listed. Automatic merge needs the same card, same amount and currency, within two days, compatible direction, and a unique pair.",
+                "matchesMany": "Several nearby rows exist, so it was not merged automatically.",
                 "bucket": {
                     "pending": "Unmerged",
                     "merged": "Merged"

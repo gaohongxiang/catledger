@@ -235,6 +235,8 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('v-for="todo in otherReviewTodos"');
         expect(workbench).toContain('v-for="todo in mergeReviewTodos"');
         expect(workbench).toContain('v-for="todo in mergedReviewTodos"');
+        expect(workbench).toContain('formatTodoMatch');
+        expect(workbench).toContain('todo.matches');
         expect(workbench).toContain('toggleSkipTodo');
         expect(workbench).toContain('personalFinance.billflow.accounts.skipped');
         expect(workbench).not.toContain('skippableAccountGroups');

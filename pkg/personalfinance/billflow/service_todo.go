@@ -6,6 +6,7 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 )
 
 type ResolveTodoRequest struct {
@@ -22,10 +23,10 @@ type AssignTodoCategoryItem struct {
 }
 
 type AssignTodoCategoryRequest struct {
-	Uid             int64
-	CategoryId      int64
-	IdempotencyKey  string
-	Items           []AssignTodoCategoryItem
+	Uid            int64
+	CategoryId     int64
+	IdempotencyKey string
+	Items          []AssignTodoCategoryItem
 }
 
 func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*TodoView, error) {
@@ -297,4 +298,141 @@ func todoView(todo *Todo) *TodoView {
 		SubjectId: todo.SubjectId, ReasonCodes: decodeReasonCodes(todo.ReasonCodesJson), Version: todo.Version,
 		CreatedUnixTime: todo.CreatedUnixTime, UpdatedUnixTime: todo.UpdatedUnixTime,
 	}
+}
+
+const (
+	todoMatchLimit        = 5
+	todoMatchCasePages    = 2
+	todoMatchCasePageSize = 100
+)
+
+func (s *Service) attachTodoMatches(c core.Context, uid int64, items []*TodoView) {
+	if s == nil || s.reconciler == nil || uid < 1 || len(items) == 0 {
+		return
+	}
+	needed := map[int64]struct{}{}
+	for _, item := range items {
+		if item != nil && item.TodoKind == TODO_KIND_CROSS_SOURCE_AMBIGUOUS && item.SubjectKind == SUBJECT_KIND_RAW_ROW && item.SubjectId > 0 {
+			needed[item.SubjectId] = struct{}{}
+		}
+	}
+	if len(needed) == 0 {
+		return
+	}
+	index := s.todoMatchIndex(c, uid, needed)
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		item.Matches = index[item.SubjectId]
+	}
+}
+
+func (s *Service) todoMatchIndex(c core.Context, uid int64, needed map[int64]struct{}) map[int64][]*TodoMatchView {
+	index := map[int64][]*TodoMatchView{}
+	seen := map[int64]map[int64]struct{}{}
+	var cursor *reconciliation.CaseCursor
+	for page := 0; page < todoMatchCasePages; page++ {
+		result, err := s.reconciler.ListCases(c, reconciliation.ListCasesRequest{
+			Uid: uid, Status: reconciliation.CASE_STATUS_OPEN, Cursor: cursor, Limit: todoMatchCasePageSize,
+		})
+		if err != nil || result == nil {
+			return index
+		}
+		for _, summary := range result.Items {
+			if summary == nil {
+				continue
+			}
+			detail, getErr := s.reconciler.GetCase(c, uid, summary.CaseId)
+			if getErr != nil || detail == nil {
+				continue
+			}
+			s.collectTodoMatches(c, uid, detail, needed, index, seen)
+		}
+		if result.NextCursor == nil {
+			return index
+		}
+		cursor = result.NextCursor
+	}
+	return index
+}
+
+func (s *Service) collectTodoMatches(
+	c core.Context,
+	uid int64,
+	detail *reconciliation.CaseDetail,
+	needed map[int64]struct{},
+	index map[int64][]*TodoMatchView,
+	seen map[int64]map[int64]struct{},
+) {
+	if detail == nil {
+		return
+	}
+	type matchRow struct {
+		rowId   int64
+		account string
+		summary *reconciliation.CaseEvidenceSummary
+	}
+	rows := make([]matchRow, 0)
+	for _, member := range detail.Members {
+		if member == nil {
+			continue
+		}
+		for _, evidence := range member.Evidence {
+			if evidence == nil || evidence.RowId < 1 {
+				continue
+			}
+			rows = append(rows, matchRow{rowId: evidence.RowId, account: member.MaskedSourceAccount, summary: evidence})
+		}
+	}
+	for _, subject := range rows {
+		if _, want := needed[subject.rowId]; !want {
+			continue
+		}
+		if seen[subject.rowId] == nil {
+			seen[subject.rowId] = map[int64]struct{}{}
+		}
+		for _, other := range rows {
+			if other.rowId == subject.rowId {
+				continue
+			}
+			if _, exists := seen[subject.rowId][other.rowId]; exists {
+				continue
+			}
+			if len(index[subject.rowId]) >= todoMatchLimit {
+				continue
+			}
+			seen[subject.rowId][other.rowId] = struct{}{}
+			index[subject.rowId] = append(index[subject.rowId], s.todoMatchView(c, uid, other.account, other.summary))
+		}
+	}
+}
+
+func (s *Service) todoMatchView(c core.Context, uid int64, account string, evidence *reconciliation.CaseEvidenceSummary) *TodoMatchView {
+	view := &TodoMatchView{Account: account}
+	if evidence == nil {
+		return view
+	}
+	view.SourceType = string(evidence.SourceType)
+	view.Currency = evidence.Currency
+	view.Direction = string(evidence.NormalizedDirection)
+	view.UnixTime = cloneUnixTime(evidence.NormalizedUnixTime)
+	if evidence.NormalizedAmount != nil {
+		view.Amount = strconv.FormatInt(*evidence.NormalizedAmount, 10)
+	}
+	if s != nil && s.evidence != nil && evidence.RowId > 0 {
+		row, err := s.evidence.FindRawImportRowById(c, uid, evidence.RowId)
+		if err == nil && row != nil {
+			view.Label = todoPreviewLabel(row)
+		}
+	}
+	return view
+}
+
+func cloneUnixTime(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
 }

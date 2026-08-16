@@ -291,7 +291,7 @@
                 </template>
                 <template v-else>
                     <p class="bucket-empty" v-if="!mergeReviewTodos.length">{{ tt('personalFinance.billflow.merge.empty') }}</p>
-                    <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in mergeReviewTodos">
+                    <article class="todo-row todo-row--plain todo-row--with-matches" :key="todo.id" v-for="todo in mergeReviewTodos">
                         <div class="todo-row__copy">
                             <strong>{{ todoTitle(todo) }}</strong>
                             <small v-if="todoMeta(todo)">{{ todoMeta(todo) }}</small>
@@ -311,6 +311,14 @@
                             <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
                                 {{ tt('personalFinance.billflow.todos.dismiss') }}
                             </v-btn>
+                        </div>
+                        <div class="todo-matches">
+                            <p v-if="todo.matches.length">{{ tt('personalFinance.billflow.merge.matchesHint') }}</p>
+                            <p v-else>{{ tt('personalFinance.billflow.merge.matchesEmpty') }}</p>
+                            <ul v-if="todo.matches.length">
+                                <li :key="todo.id + '-' + index" v-for="(match, index) in todo.matches">{{ formatTodoMatch(match) }}</li>
+                            </ul>
+                            <p v-if="todo.matches.length > 1">{{ tt('personalFinance.billflow.merge.matchesMany') }}</p>
                         </div>
                     </article>
                 </template>
@@ -533,8 +541,9 @@ import { useUserStore } from '@/stores/user.ts';
 import { CategoryType } from '@/core/category.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
 
-import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowClassifiedRow, BillflowTask, BillflowTodo, BillflowTodoStatus, CardCycleAccount } from '../models.ts';
+import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowClassifiedRow, BillflowTask, BillflowTodo, BillflowTodoMatch, BillflowTodoStatus, CardCycleAccount } from '../models.ts';
 import { todoKindKey } from '../presentation.ts';
+import { getSourceTypeKey } from '../../presentation.ts';
 import { billflowApi } from '../service.ts';
 import {
     BILLFLOW_ACCOUNT_BUCKETS,
@@ -1111,6 +1120,17 @@ function formatTodoAmount(todo: BillflowTodo): string {
 
 function formatTodoTime(todo: BillflowTodo): string {
     return todo.unixTime ? formatDateTimeToShortDateTime(parseDateTimeFromUnixTimeWithBrowserTimezone(todo.unixTime)) : '';
+}
+
+function formatTodoMatch(match: BillflowTodoMatch): string {
+    const amount = match.amount
+        ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(match.amount), match.currency || 'CNY')
+        : '';
+    const time = match.unixTime ? formatDateTimeToShortDateTime(parseDateTimeFromUnixTimeWithBrowserTimezone(match.unixTime)) : '';
+    const direction = match.direction ? tt(billflowDirectionKey(match.direction)) : '';
+    return [tt(getSourceTypeKey(match.sourceType)), match.account, match.label, time, amount, direction]
+        .filter(part => !!part)
+        .join(' · ');
 }
 
 function todoTitle(todo: BillflowTodo): string {
@@ -2075,6 +2095,27 @@ onMounted(reload);
 .todo-row--done,
 .todo-row--plain {
     grid-template-columns: minmax(0, 1fr) auto auto auto;
+}
+
+.todo-row--with-matches {
+    align-items: start;
+}
+
+.todo-matches {
+    grid-column: 1 / -1;
+    margin: 0 0 4px;
+    color: rgba(var(--v-theme-on-surface), 0.62);
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.todo-matches p,
+.todo-matches ul {
+    margin: 0;
+}
+
+.todo-matches ul {
+    padding-left: 1.15em;
 }
 
 .todo-skip {

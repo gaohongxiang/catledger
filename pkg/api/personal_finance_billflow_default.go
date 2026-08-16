@@ -106,6 +106,9 @@ func (r *billflowReconciler) GenerateCandidates(c core.Context, request reconcil
 func (r *billflowReconciler) GetCase(c core.Context, uid int64, caseId int64) (*reconciliation.CaseDetail, error) {
 	return r.cases.GetCase(c, uid, caseId)
 }
+func (r *billflowReconciler) ListCases(c core.Context, request reconciliation.ListCasesRequest) (*reconciliation.CasePage, error) {
+	return r.cases.ListCases(c, request)
+}
 func (r *billflowReconciler) DecideCase(c core.Context, request reconciliation.DecideCaseRequest, clientTimezone *time.Location) (*reconciliation.DecisionResult, error) {
 	return r.decisions.DecideCase(c, request, clientTimezone)
 }
