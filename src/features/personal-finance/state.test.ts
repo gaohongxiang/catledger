@@ -140,13 +140,6 @@ describe('personal finance import workflow state', () => {
 });
 
 describe('generic bank CSV mapping state', () => {
-    const mappedBankAccount = {
-        id: 'bank-source-1',
-        sourceType: 'bank',
-        ledgerAccountId: 'ledger-1',
-        status: 'active',
-        displayName: '银行卡账户'
-    } as PersonalFinanceSourceAccount;
 
     it('converts visible one-based columns and unused columns to the API contract', () => {
         const form = createDefaultGenericBankMappingForm();
@@ -228,7 +221,7 @@ describe('generic bank CSV mapping state', () => {
         expect(validateGenericBankMappingForm(overlappingValues).errors).toContain('direction_values_overlap');
     });
 
-    it('requires a mapped active bank source account before building a generic request', () => {
+    it('builds a generic bank request from column mapping without a source profile', () => {
         const form = createDefaultGenericBankMappingForm();
         const base = {
             fileId: 'file-1',
@@ -238,18 +231,12 @@ describe('generic bank CSV mapping state', () => {
             form
         };
 
-        expect(() => buildGenericBankReparseRequest(base)).toThrow('source_account_required');
-        expect(() => buildGenericBankReparseRequest({
-            ...base,
-            sourceAccount: { ...mappedBankAccount, ledgerAccountId: undefined }
-        })).toThrow('ledger_account_required');
-
-        expect(buildGenericBankReparseRequest({ ...base, sourceAccount: mappedBankAccount })).toMatchObject({
+        expect(buildGenericBankReparseRequest(base)).toMatchObject({
             fileId: 'file-1',
-            sourceAccountId: 'bank-source-1',
             parserName: 'generic_bank_csv',
             genericCsvMapping: { amountMode: 'signed' }
         });
+        expect(buildGenericBankReparseRequest(base).sourceAccountId).toBeUndefined();
     });
 
     it('builds a CEB request without asking for a ledger account first', () => {

@@ -87,6 +87,7 @@ const (
 	SOURCE_ACCOUNT_DISCOVERY_ALIPAY_PREAMBLE_ACCOUNT  SourceAccountDiscoveryMethod = "alipay_preamble_account"
 	SOURCE_ACCOUNT_DISCOVERY_WECHAT_PREAMBLE_NICKNAME SourceAccountDiscoveryMethod = "wechat_preamble_nickname"
 	SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED            SourceAccountDiscoveryMethod = "user_selected"
+	SOURCE_ACCOUNT_DISCOVERY_FILE_SCOPE               SourceAccountDiscoveryMethod = "file_scope"
 	SOURCE_ACCOUNT_DISCOVERY_MISSING                  SourceAccountDiscoveryMethod = "missing"
 )
 

@@ -401,19 +401,11 @@ export function buildPersonalFinanceReparseRequest(params: {
 
 export function buildGenericBankReparseRequest(params: {
     fileId: string;
-    sourceAccount?: PersonalFinanceSourceAccount;
     currency: string;
     timezoneUtcOffset: number;
     reasonCode: string;
     form: PersonalFinanceGenericBankMappingForm;
 }): PersonalFinanceReparseRequest {
-    if (!params.sourceAccount || params.sourceAccount.sourceType !== 'bank' || params.sourceAccount.status !== 'active') {
-        throw new Error('source_account_required');
-    }
-    if (!params.sourceAccount.ledgerAccountId) {
-        throw new Error('ledger_account_required');
-    }
-
     const validation = validateGenericBankMappingForm(params.form);
 
     if (!validation.mapping) {
@@ -422,7 +414,6 @@ export function buildGenericBankReparseRequest(params: {
 
     return buildPersonalFinanceReparseRequest({
         fileId: params.fileId,
-        sourceAccountId: params.sourceAccount.id,
         parserName: 'generic_bank_csv',
         currency: params.currency,
         timezoneUtcOffset: params.timezoneUtcOffset,

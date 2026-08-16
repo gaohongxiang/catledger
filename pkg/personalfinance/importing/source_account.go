@@ -258,6 +258,144 @@ func (s *SourceAccountService) ResolveStableSourceAccount(c core.Context, uid in
 	return existing, nil
 }
 
+func persistableDiscoveryMethod(method SourceAccountDiscoveryMethod) SourceAccountDiscoveryMethod {
+	switch method {
+	case SOURCE_ACCOUNT_DISCOVERY_ALIPAY_PREAMBLE_ACCOUNT, SOURCE_ACCOUNT_DISCOVERY_WECHAT_PREAMBLE_NICKNAME, SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED, SOURCE_ACCOUNT_DISCOVERY_FILE_SCOPE:
+		return method
+	default:
+		return SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED
+	}
+}
+
+// ResolveDisplaySourceAccount 按脱敏展示名沿用同一份原始底；没有则新建。同名多份时沿用最早的一份。
+func (s *SourceAccountService) ResolveDisplaySourceAccount(c core.Context, uid int64, sourceType SourceType, candidate SourceAccountCandidate) (*SourceAccount, error) {
+	if uid < 1 || !isValidSourceType(sourceType) ||
+		(candidate.Kind != SOURCE_ACCOUNT_EVIDENCE_DISPLAY_ONLY && candidate.Kind != SOURCE_ACCOUNT_EVIDENCE_MASKED_DISPLAY_ONLY) {
+		return nil, ErrImportRequestInvalid
+	}
+
+	displayName, err := SafeSourceAccountDisplayName(sourceType, candidate)
+	if err != nil || displayName == "" {
+		return nil, nil
+	}
+
+	key, err := ComputeDisplaySourceAccountKey(sourceType, displayName)
+	if err != nil {
+		return nil, ErrImportRequestInvalid
+	}
+
+	existing, err := s.repository.FindSourceAccountByKey(c, uid, sourceType, key)
+	if err != nil {
+		return nil, ErrImportPersistenceUnavailable
+	}
+	if existing != nil {
+		if existing.Status != SOURCE_ACCOUNT_STATUS_ACTIVE || existing.SourceAccountKeyVersion != SOURCE_ACCOUNT_KEY_VERSION_V1 {
+			return nil, ErrImportSourceAccountUnavailable
+		}
+		return existing, nil
+	}
+
+	accounts, err := s.repository.ListSourceAccounts(c, uid)
+	if err != nil {
+		return nil, ErrImportPersistenceUnavailable
+	}
+	var match *SourceAccount
+	for _, account := range accounts {
+		if account == nil || account.SourceType != sourceType || account.Status != SOURCE_ACCOUNT_STATUS_ACTIVE ||
+			account.MaskedDisplayName != displayName {
+			continue
+		}
+		if match == nil || account.SourceAccountId < match.SourceAccountId {
+			match = account
+		}
+	}
+	if match != nil {
+		return match, nil
+	}
+
+	return s.insertSourceAccount(c, uid, sourceType, key, displayName, persistableDiscoveryMethod(candidate.DiscoveryMethod))
+}
+
+// EnsureFileSourceAccount 为看不出平台账号的原始文件准备身份作用域；同一文件重复解析复用。
+func (s *SourceAccountService) EnsureFileSourceAccount(c core.Context, uid int64, sourceType SourceType, format EvidenceFormat, fileSHA256 string) (*SourceAccount, error) {
+	if uid < 1 || !isValidSourceType(sourceType) || !isLowerHexSHA256(fileSHA256) {
+		return nil, ErrImportRequestInvalid
+	}
+	switch format {
+	case EVIDENCE_FORMAT_ALIPAY_APP_CSV, EVIDENCE_FORMAT_ALIPAY_WEB_CSV, EVIDENCE_FORMAT_WECHAT_CSV,
+		EVIDENCE_FORMAT_WECHAT_XLSX, EVIDENCE_FORMAT_BANK_GENERIC_CSV, EVIDENCE_FORMAT_CEB_CREDIT_PDF:
+	default:
+		return nil, ErrImportRequestInvalid
+	}
+
+	keyDigest := sha256.Sum256(encodeLengthPrefixed(
+		string(SOURCE_ACCOUNT_KEY_VERSION_V1),
+		string(sourceType),
+		fileSourceAccountScopeMaterial,
+		string(format),
+		fileSHA256,
+	))
+	key := hex.EncodeToString(keyDigest[:])
+	existing, err := s.repository.FindSourceAccountByKey(c, uid, sourceType, key)
+	if err != nil {
+		return nil, ErrImportPersistenceUnavailable
+	}
+	if existing != nil {
+		if existing.Status != SOURCE_ACCOUNT_STATUS_ACTIVE || existing.SourceAccountKeyVersion != SOURCE_ACCOUNT_KEY_VERSION_V1 {
+			return nil, ErrImportSourceAccountUnavailable
+		}
+		return existing, nil
+	}
+
+	displayName, err := safeManualSourceAccountDisplayName(fileSourceAccountDisplayName(sourceType))
+	if err != nil {
+		return nil, ErrImportRequestInvalid
+	}
+	return s.insertSourceAccount(c, uid, sourceType, key, displayName, SOURCE_ACCOUNT_DISCOVERY_FILE_SCOPE)
+}
+
+func fileSourceAccountDisplayName(sourceType SourceType) string {
+	switch sourceType {
+	case SOURCE_TYPE_ALIPAY:
+		return "支付宝账单"
+	case SOURCE_TYPE_WECHAT:
+		return "微信账单"
+	default:
+		return "银行账单"
+	}
+}
+
+func (s *SourceAccountService) insertSourceAccount(c core.Context, uid int64, sourceType SourceType, key string, displayName string, discoveryMethod SourceAccountDiscoveryMethod) (*SourceAccount, error) {
+	accountId := s.generateId()
+	now := s.now().Unix()
+	if accountId < 1 || now < 1 {
+		return nil, ErrImportIdentifierUnavailable
+	}
+
+	account := &SourceAccount{
+		Uid:                     uid,
+		SourceType:              sourceType,
+		SourceAccountKey:        key,
+		SourceAccountKeyVersion: SOURCE_ACCOUNT_KEY_VERSION_V1,
+		Status:                  SOURCE_ACCOUNT_STATUS_ACTIVE,
+		MaskedDisplayName:       displayName,
+		DiscoveryMethod:         discoveryMethod,
+		CreatedUnixTime:         now,
+		UpdatedUnixTime:         now,
+		SourceAccountId:         accountId,
+	}
+	if err := s.repository.InsertSourceAccount(c, account); err == nil {
+		return account, nil
+	}
+
+	existing, findErr := s.repository.FindSourceAccountByKey(c, uid, sourceType, key)
+	if findErr != nil || existing == nil || existing.Status != SOURCE_ACCOUNT_STATUS_ACTIVE ||
+		existing.SourceAccountKeyVersion != SOURCE_ACCOUNT_KEY_VERSION_V1 {
+		return nil, ErrImportPersistenceUnavailable
+	}
+	return existing, nil
+}
+
 const (
 	cebCreditSourceScopeMaterial = "ceb-credit-pdf-scope-v1"
 	cebCreditSourceDisplayName   = "光大信用卡"

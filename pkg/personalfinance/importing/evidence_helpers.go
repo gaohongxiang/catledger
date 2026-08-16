@@ -231,6 +231,20 @@ func ComputeSourceAccountKey(sourceType SourceType, candidate SourceAccountCandi
 	return hex.EncodeToString(digest[:]), nil
 }
 
+const displaySourceAccountScopeMaterial = "display-scope-v1"
+const fileSourceAccountScopeMaterial = "file-scope-v1"
+
+// ComputeDisplaySourceAccountKey 为账单展示名生成不含明文的身份作用域，不把昵称当成稳定账号标识。
+func ComputeDisplaySourceAccountKey(sourceType SourceType, displayName string) (string, error) {
+	if !isValidSourceType(sourceType) || displayName == "" || !utf8.ValidString(displayName) {
+		return "", fmt.Errorf("source account display evidence is invalid")
+	}
+
+	encoded := encodeLengthPrefixed(string(SOURCE_ACCOUNT_KEY_VERSION_V1), string(sourceType), displaySourceAccountScopeMaterial, displayName)
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:]), nil
+}
+
 // SafeSourceAccountDisplayName 只返回可持久化的脱敏展示名。
 // 稳定标识的 DisplayName 必须为空，由中心根据 Identifier 生成；展示型证据也统一二次脱敏。
 func SafeSourceAccountDisplayName(sourceType SourceType, candidate SourceAccountCandidate) (string, error) {

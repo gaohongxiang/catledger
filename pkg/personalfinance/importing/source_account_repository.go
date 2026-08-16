@@ -102,6 +102,7 @@ func isValidNewSourceAccount(account *SourceAccount) bool {
 		(account.LedgerAccountId == nil || *account.LedgerAccountId > 0) &&
 		(account.DiscoveryMethod == SOURCE_ACCOUNT_DISCOVERY_ALIPAY_PREAMBLE_ACCOUNT ||
 			account.DiscoveryMethod == SOURCE_ACCOUNT_DISCOVERY_WECHAT_PREAMBLE_NICKNAME ||
-			account.DiscoveryMethod == SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED) &&
+			account.DiscoveryMethod == SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED ||
+			account.DiscoveryMethod == SOURCE_ACCOUNT_DISCOVERY_FILE_SCOPE) &&
 		account.CreatedUnixTime > 0 && account.UpdatedUnixTime >= account.CreatedUnixTime
 }

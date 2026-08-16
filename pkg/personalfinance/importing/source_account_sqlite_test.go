@@ -89,4 +89,28 @@ func TestSourceAccountServicePreservesIdentityAndClearsLedgerMapping(t *testing.
 	if err != nil || secondCeb == nil || secondCeb.SourceAccountId != firstCeb.SourceAccountId || secondCeb.SourceAccountKey != firstCeb.SourceAccountKey {
 		t.Fatalf("CEB identity scope was not reused: first=%+v second=%+v err=%v", firstCeb, secondCeb, err)
 	}
+
+	wechatCandidate := importing.SourceAccountCandidate{
+		Kind:            importing.SOURCE_ACCOUNT_EVIDENCE_DISPLAY_ONLY,
+		DisplayName:     "微信昵称",
+		DiscoveryMethod: importing.SOURCE_ACCOUNT_DISCOVERY_WECHAT_PREAMBLE_NICKNAME,
+	}
+	firstWechat, err := service.ResolveDisplaySourceAccount(nil, account.Uid, importing.SOURCE_TYPE_WECHAT, wechatCandidate)
+	if err != nil || firstWechat == nil || firstWechat.MaskedDisplayName != "微**称" {
+		t.Fatalf("wechat original identity was not created: %+v %v", firstWechat, err)
+	}
+	secondWechat, err := service.ResolveDisplaySourceAccount(nil, account.Uid, importing.SOURCE_TYPE_WECHAT, wechatCandidate)
+	if err != nil || secondWechat == nil || secondWechat.SourceAccountId != firstWechat.SourceAccountId {
+		t.Fatalf("wechat original identity was not reused: first=%+v second=%+v err=%v", firstWechat, secondWechat, err)
+	}
+
+	fileSHA := strings.Repeat("a", 64)
+	firstFile, err := service.EnsureFileSourceAccount(nil, account.Uid, importing.SOURCE_TYPE_BANK, importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV, fileSHA)
+	if err != nil || firstFile == nil || firstFile.DiscoveryMethod != importing.SOURCE_ACCOUNT_DISCOVERY_FILE_SCOPE {
+		t.Fatalf("file original identity was not created: %+v %v", firstFile, err)
+	}
+	secondFile, err := service.EnsureFileSourceAccount(nil, account.Uid, importing.SOURCE_TYPE_BANK, importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV, fileSHA)
+	if err != nil || secondFile == nil || secondFile.SourceAccountId != firstFile.SourceAccountId {
+		t.Fatalf("file original identity was not reused: first=%+v second=%+v err=%v", firstFile, secondFile, err)
+	}
 }

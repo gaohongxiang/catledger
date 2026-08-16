@@ -115,8 +115,26 @@ func TestReparseServicePersistsUniqueParserWithStableAccount(t *testing.T) {
 	}
 }
 
-func TestReparseServiceRequiresSelectionForWeakSourceEvidence(t *testing.T) {
+func TestReparseServiceAutoCreatesUniqueWeChatDisplayAccount(t *testing.T) {
 	content := []byte("safe-fixture")
+	digest := sha256.Sum256(content)
+	digestText := hex.EncodeToString(digest[:])
+	repository, database := newSQLiteDedupRepository(t, 1)
+	file := &importing.ImportFile{
+		Uid:              101,
+		FileId:           201,
+		OriginalFileName: "fixture.csv",
+		FileSize:         int64(len(content)),
+		FileSha256:       digestText,
+		StorageObjectKey: "objects/opaque",
+		ContentState:     importing.IMPORT_FILE_CONTENT_STATE_AVAILABLE,
+		CreatedIp:        "192.0.2.10",
+		MimeType:         "text/csv",
+		FileExtension:    "csv",
+		CreatedUnixTime:  100,
+		UpdatedUnixTime:  100,
+	}
+	insertRepositoryBeans(t, database, file)
 	candidate := importing.SourceAccountCandidate{
 		Kind:            importing.SOURCE_ACCOUNT_EVIDENCE_DISPLAY_ONLY,
 		DisplayName:     "微信昵称",
@@ -142,23 +160,48 @@ func TestReparseServiceRequiresSelectionForWeakSourceEvidence(t *testing.T) {
 		},
 		document: document,
 	}
-	accounts := new(flowTestSourceAccounts)
-	persister := new(flowTestPersister)
-	service := newFlowTestService(t, content, []importing.ImportEvidenceParser{parser}, accounts, persister)
+	nextId := int64(1000)
+	generateId := func() int64 {
+		nextId++
+		return nextId
+	}
+	accounts, err := importing.NewSourceAccountService(repository, generateId)
+	if err != nil {
+		t.Fatalf("create source account service: %v", err)
+	}
+	persister, err := importing.NewDedupService(repository, generateId)
+	if err != nil {
+		t.Fatalf("create dedup service: %v", err)
+	}
+	service, err := importing.NewReparseService(
+		repository,
+		&flowTestStorage{content: content, expectedSHA256: digestText},
+		[]importing.ImportEvidenceParser{parser},
+		accounts,
+		persister,
+	)
+	if err != nil {
+		t.Fatalf("create FLOW-101 SQLite service: %v", err)
+	}
 
-	result, err := service.ReparseImportFile(nil, importing.ReparseImportFileRequest{
+	first, err := service.ReparseImportFile(nil, importing.ReparseImportFileRequest{
 		Uid:               101,
 		FileId:            201,
 		ParseOptions:      importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480},
 		ReparseReasonCode: "initial_parse",
 	})
-	if err != nil {
-		t.Fatalf("inspect weak source evidence: %v", err)
+	if err != nil || first == nil || first.Batch == nil || first.SourceAccount == nil {
+		t.Fatalf("wechat display evidence was not auto-created: %+v %v", first, err)
 	}
-
-	if result.Batch != nil || result.SourceAccount != nil || result.Discovery == nil ||
-		result.Discovery.DisplayName == "" || persister.calls != 0 || accounts.resolveCalls != 0 {
-		t.Fatalf("weak evidence must wait for an explicit source account: %+v", result)
+	second, err := service.ReparseImportFile(nil, importing.ReparseImportFileRequest{
+		Uid:               101,
+		FileId:            201,
+		ParseOptions:      importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480},
+		ReparseReasonCode: "repeat_parse",
+	})
+	if err != nil || second == nil || second.SourceAccount == nil ||
+		second.SourceAccount.SourceAccountId != first.SourceAccount.SourceAccountId {
+		t.Fatalf("same wechat original was not reused: first=%+v second=%+v err=%v", first.SourceAccount, second.SourceAccount, err)
 	}
 }
 
@@ -225,18 +268,18 @@ func TestReparseServiceSkipsGenericBankUnlessExplicitlySelected(t *testing.T) {
 	}
 	base.ParserName = descriptor.Name
 	base.SourceAccountId = 0
-	discovery, err := service.ReparseImportFile(nil, base)
-	if err != nil || discovery == nil || discovery.Batch != nil || discovery.Discovery == nil || discovery.Discovery.SourceType != importing.SOURCE_TYPE_BANK || persister.calls != 0 {
-		t.Fatalf("generic bank parser did not require explicit source account selection: result=%+v calls=%d err=%v", discovery, persister.calls, err)
+	accounts.fileEnsured = &importing.SourceAccount{
+		Uid: 101, SourceAccountId: 501, SourceType: importing.SOURCE_TYPE_BANK,
+		Status: importing.SOURCE_ACCOUNT_STATUS_ACTIVE, SourceAccountKey: strings.Repeat("d", 64), SourceAccountKeyVersion: importing.SOURCE_ACCOUNT_KEY_VERSION_V1,
+	}
+	auto, err := service.ReparseImportFile(nil, base)
+	if err != nil || auto == nil || auto.Batch == nil || persister.calls != 1 || accounts.fileCalls != 1 {
+		t.Fatalf("generic bank parser did not auto-create original identity: result=%+v calls=%d file=%d err=%v", auto, persister.calls, accounts.fileCalls, err)
 	}
 	base.SourceAccountId = 301
 	accounts.selected.LedgerAccountId = nil
-	if _, err := service.ReparseImportFile(nil, base); !errors.Is(err, importing.ErrImportSourceAccountUnavailable) || persister.calls != 0 {
-		t.Fatalf("unmapped bank source account was accepted: calls=%d err=%v", persister.calls, err)
-	}
-	accounts.selected.LedgerAccountId = &ledgerAccountId
 	result, err := service.ReparseImportFile(nil, base)
-	if err != nil || result == nil || result.Batch == nil || persister.calls != 1 || parser.parseCalls != 3 {
+	if err != nil || result == nil || result.Batch == nil || persister.calls != 2 || parser.parseCalls != 2 {
 		t.Fatalf("explicit generic bank reparse failed: result=%+v calls=%d parse=%d err=%v", result, persister.calls, parser.parseCalls, err)
 	}
 	if persister.request.ParseOptions.GenericCSVMapping == nil || persister.request.Descriptor.Name != descriptor.Name {
@@ -342,8 +385,10 @@ type flowTestSourceAccounts struct {
 	selected     *importing.SourceAccount
 	resolved     *importing.SourceAccount
 	ensured      *importing.SourceAccount
+	fileEnsured  *importing.SourceAccount
 	resolveCalls int
 	ensureCalls  int
+	fileCalls    int
 }
 
 func (s *flowTestSourceAccounts) FindSourceAccount(_ core.Context, _ int64, _ int64) (*importing.SourceAccount, error) {
@@ -353,6 +398,15 @@ func (s *flowTestSourceAccounts) FindSourceAccount(_ core.Context, _ int64, _ in
 func (s *flowTestSourceAccounts) ResolveStableSourceAccount(_ core.Context, _ int64, _ importing.SourceType, _ importing.SourceAccountCandidate) (*importing.SourceAccount, error) {
 	s.resolveCalls++
 	return s.resolved, nil
+}
+
+func (s *flowTestSourceAccounts) ResolveDisplaySourceAccount(_ core.Context, _ int64, _ importing.SourceType, _ importing.SourceAccountCandidate) (*importing.SourceAccount, error) {
+	return nil, nil
+}
+
+func (s *flowTestSourceAccounts) EnsureFileSourceAccount(_ core.Context, _ int64, _ importing.SourceType, _ importing.EvidenceFormat, _ string) (*importing.SourceAccount, error) {
+	s.fileCalls++
+	return s.fileEnsured, nil
 }
 
 func (s *flowTestSourceAccounts) EnsureCebCreditSourceAccount(_ core.Context, _ int64) (*importing.SourceAccount, error) {

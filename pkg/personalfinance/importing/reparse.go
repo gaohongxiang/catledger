@@ -31,6 +31,8 @@ type EvidenceDocumentPersister interface {
 type ReparseSourceAccounts interface {
 	FindSourceAccount(c core.Context, uid int64, sourceAccountId int64) (*SourceAccount, error)
 	ResolveStableSourceAccount(c core.Context, uid int64, sourceType SourceType, candidate SourceAccountCandidate) (*SourceAccount, error)
+	ResolveDisplaySourceAccount(c core.Context, uid int64, sourceType SourceType, candidate SourceAccountCandidate) (*SourceAccount, error)
+	EnsureFileSourceAccount(c core.Context, uid int64, sourceType SourceType, format EvidenceFormat, fileSHA256 string) (*SourceAccount, error)
 	EnsureCebCreditSourceAccount(c core.Context, uid int64) (*SourceAccount, error)
 }
 
@@ -124,7 +126,7 @@ func NewReparseService(repository ReparseImportRepository, storage ImportAvailab
 	}, nil
 }
 
-// ReparseImportFile 只在来源账户归属明确时写批次；弱证据不会自动创建来源身份。
+// ReparseImportFile 只在来源账户归属明确时写批次。支付宝/微信有展示名时同一份沿用、没有则新建；看不出或同名冲突才询问。
 func (s *ReparseService) ReparseImportFile(c core.Context, request ReparseImportFileRequest) (*ReparseImportFileResult, error) {
 	if request.Uid < 1 || request.FileId < 1 || request.SourceAccountId < 0 ||
 		(request.ParserName != "" && !isTechnicalIdentifier(request.ParserName, 64)) ||
@@ -177,7 +179,7 @@ func (s *ReparseService) ReparseImportFile(c core.Context, request ReparseImport
 		return nil, &ImportFormatError{Code: ISSUE_CODE_FILE_STRUCTURE_INVALID}
 	}
 
-	account, discovery, err := s.resolveSourceAccount(c, request, descriptor, document.Metadata.SourceAccount)
+	account, discovery, err := s.resolveSourceAccount(c, request, descriptor, document.Metadata.SourceAccount, file.FileSha256)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +263,7 @@ func (s *ReparseService) selectParser(c core.Context, file EvidenceFile, parserN
 	return selected, selectedDescriptor, nil
 }
 
-func (s *ReparseService) resolveSourceAccount(c core.Context, request ReparseImportFileRequest, descriptor ParserDescriptor, candidate SourceAccountCandidate) (*SourceAccount, *SourceAccountDiscovery, error) {
+func (s *ReparseService) resolveSourceAccount(c core.Context, request ReparseImportFileRequest, descriptor ParserDescriptor, candidate SourceAccountCandidate, fileSHA256 string) (*SourceAccount, *SourceAccountDiscovery, error) {
 	displayName, err := SafeSourceAccountDisplayName(descriptor.SourceType, candidate)
 	if err != nil {
 		return nil, nil, &ImportFormatError{Code: ISSUE_CODE_FILE_STRUCTURE_INVALID}
@@ -287,11 +289,29 @@ func (s *ReparseService) resolveSourceAccount(c core.Context, request ReparseImp
 		if account.SourceType != descriptor.SourceType || account.Status != SOURCE_ACCOUNT_STATUS_ACTIVE {
 			return nil, nil, ErrImportSourceAccountUnavailable
 		}
-		if requiresMappedBankSourceAccount(descriptor) && account.LedgerAccountId == nil {
-			return nil, nil, ErrImportSourceAccountUnavailable
-		}
 
 		return account, discovery, nil
+	}
+
+	if candidate.Kind == SOURCE_ACCOUNT_EVIDENCE_STABLE_IDENTIFIER {
+		account, resolveErr := s.sourceAccounts.ResolveStableSourceAccount(c, request.Uid, descriptor.SourceType, candidate)
+		if resolveErr != nil {
+			return nil, nil, resolveErr
+		}
+		if account == nil {
+			return nil, nil, ErrImportPersistenceUnavailable
+		}
+		return account, discovery, nil
+	}
+
+	if candidate.Kind == SOURCE_ACCOUNT_EVIDENCE_DISPLAY_ONLY || candidate.Kind == SOURCE_ACCOUNT_EVIDENCE_MASKED_DISPLAY_ONLY {
+		account, resolveErr := s.sourceAccounts.ResolveDisplaySourceAccount(c, request.Uid, descriptor.SourceType, candidate)
+		if resolveErr != nil {
+			return nil, nil, resolveErr
+		}
+		if account != nil {
+			return account, discovery, nil
+		}
 	}
 
 	if descriptor.Format == EVIDENCE_FORMAT_CEB_CREDIT_PDF {
@@ -305,25 +325,12 @@ func (s *ReparseService) resolveSourceAccount(c core.Context, request ReparseImp
 		return account, discovery, nil
 	}
 
-	if descriptor.SourceType == SOURCE_TYPE_BANK {
-		return nil, discovery, nil
-	}
-
-	if candidate.Kind != SOURCE_ACCOUNT_EVIDENCE_STABLE_IDENTIFIER {
-		return nil, discovery, nil
-	}
-
-	account, err := s.sourceAccounts.ResolveStableSourceAccount(c, request.Uid, descriptor.SourceType, candidate)
-	if err != nil {
-		return nil, nil, err
+	account, ensureErr := s.sourceAccounts.EnsureFileSourceAccount(c, request.Uid, descriptor.SourceType, descriptor.Format, fileSHA256)
+	if ensureErr != nil {
+		return nil, nil, ensureErr
 	}
 	if account == nil {
 		return nil, nil, ErrImportPersistenceUnavailable
 	}
-
 	return account, discovery, nil
-}
-
-func requiresMappedBankSourceAccount(descriptor ParserDescriptor) bool {
-	return descriptor.SourceType == SOURCE_TYPE_BANK && descriptor.Format == EVIDENCE_FORMAT_BANK_GENERIC_CSV
 }

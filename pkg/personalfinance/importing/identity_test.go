@@ -96,6 +96,15 @@ func TestSourceAccountKeyGolden(t *testing.T) {
 	if err != nil || displayName != "微**称" {
 		t.Fatalf("unexpected safe WeChat display name %q: %v", displayName, err)
 	}
+
+	displayKey, err := ComputeDisplaySourceAccountKey(SOURCE_TYPE_WECHAT, displayName)
+	if err != nil || len(displayKey) != 64 {
+		t.Fatalf("wechat display scope key was not created: %q %v", displayKey, err)
+	}
+	repeatKey, err := ComputeDisplaySourceAccountKey(SOURCE_TYPE_WECHAT, displayName)
+	if err != nil || repeatKey != displayKey {
+		t.Fatalf("wechat display scope key was not stable: %q %q %v", displayKey, repeatKey, err)
+	}
 }
 
 func TestIdentityAndCoreDigestGolden(t *testing.T) {
