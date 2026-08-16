@@ -922,8 +922,28 @@ async function upload(event: Event): Promise<void> {
     }
 }
 
-async function onCebCreditParsed(): Promise<void> {
-    await personalFinanceStore.loadBatches(0, 50);
+async function onCebCreditParsed(batchId: string): Promise<void> {
+    busy.value = true;
+    error.value = false;
+    try {
+        await personalFinanceStore.loadBatches(0, 50);
+        const fileId = personalFinanceStore.batches.find(batch => batch.id === batchId)?.fileId;
+        if (!fileId) {
+            throw new Error('parsed ceb batch is missing');
+        }
+        selectedFileIds.value = [fileId];
+        const created = await billflowApi.createTask([fileId], generateRandomUUID());
+        task.value = created;
+        restoreBalanceMemory(created.id);
+        await openTask(created.id);
+        accountBucket.value = 'pending';
+        userPickedBucket.value = false;
+        userStep.value = 'accounts';
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
 }
 
 async function createTask(): Promise<void> {
