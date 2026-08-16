@@ -136,7 +136,8 @@ func (s *Service) collectAccounts(c core.Context, uid int64, taskId int64) (*Tas
 		return nil, err
 	}
 	view := &TaskAccountsView{NeedsCreate: []*AccountGroupView{}, Reused: []*AccountGroupView{}, Excluded: []*AccountGroupView{}}
-	seen := make(map[string]struct{})
+	merged := make(map[string]*AccountGroupView)
+	order := make([]string, 0)
 	for _, member := range members {
 		if member == nil {
 			continue
@@ -149,24 +150,31 @@ func (s *Service) collectAccounts(c core.Context, uid int64, taskId int64) (*Tas
 			if group == nil {
 				continue
 			}
-			key := string(group.SourceType) + "\x00" + group.Currency + "\x00" + group.DisplayName
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
 			item := &AccountGroupView{
 				SourceType: group.SourceType, Currency: group.Currency, DisplayName: group.DisplayName,
 				RowCount: group.RowCount, PendingRowCount: group.PendingRowCount, SampleRowId: group.SampleRowId,
 				LedgerAccountId: group.LedgerAccountId, Mapped: group.Mapped, Excluded: group.Excluded,
 				SkippedRowCount: group.SkippedRowCount, SuggestedType: suggestedAccountType(group.DisplayName),
 			}
-			if group.Excluded || (!group.Mapped && group.PendingRowCount == 0 && group.SkippedRowCount > 0) {
-				view.Excluded = append(view.Excluded, item)
-			} else if group.Mapped && group.LedgerAccountId != nil {
-				view.Reused = append(view.Reused, item)
-			} else if group.PendingRowCount > 0 {
-				view.NeedsCreate = append(view.NeedsCreate, item)
+			key := accountGroupMergeKey(item)
+			if existing := merged[key]; existing != nil {
+				existing.RowCount += item.RowCount
+				existing.PendingRowCount += item.PendingRowCount
+				existing.SkippedRowCount += item.SkippedRowCount
+				continue
 			}
+			merged[key] = item
+			order = append(order, key)
+		}
+	}
+	for _, key := range order {
+		item := merged[key]
+		if item.Excluded || (!item.Mapped && item.PendingRowCount == 0 && item.SkippedRowCount > 0) {
+			view.Excluded = append(view.Excluded, item)
+		} else if item.Mapped && item.LedgerAccountId != nil {
+			view.Reused = append(view.Reused, item)
+		} else if item.PendingRowCount > 0 {
+			view.NeedsCreate = append(view.NeedsCreate, item)
 		}
 	}
 	return view, nil
@@ -460,9 +468,22 @@ func (s *Service) matchingAccountGroup(c core.Context, uid int64, batchId int64,
 		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 	}
 	for _, group := range groups {
-		if group != nil && group.SourceType == wanted.SourceType && group.Currency == wanted.Currency && group.DisplayName == wanted.DisplayName {
+		if group != nil && group.Currency == wanted.Currency && group.DisplayName == wanted.DisplayName {
 			return group, nil
 		}
 	}
 	return nil, nil
+}
+
+func accountGroupMergeKey(group *AccountGroupView) string {
+	if group == nil {
+		return ""
+	}
+	bucket := "pending"
+	if group.Excluded || (!group.Mapped && group.PendingRowCount == 0 && group.SkippedRowCount > 0) {
+		bucket = "excluded"
+	} else if group.Mapped && group.LedgerAccountId != nil {
+		bucket = "reused:" + strconv.FormatInt(*group.LedgerAccountId, 10)
+	}
+	return bucket + "\x00" + group.Currency + "\x00" + group.DisplayName
 }

@@ -366,6 +366,46 @@ func TestServiceCreateAccountAndAmbiguousCrossSource(t *testing.T) {
 	_ = ran
 }
 
+func TestServiceMergesSameCardAcrossSources(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	accountId := int64(61)
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
+		postableRow(uid, 401, 801, 201, accountId, "餐饮美食"),
+	})
+	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{
+		postableRow(uid, 402, 802, 202, accountId, "餐饮美食"),
+	})
+	evidence.addFile(uid, 303, 403, []*importing.RawImportRow{
+		postableRow(uid, 403, 803, 203, accountId, "餐饮美食"),
+	})
+	ledger := accountId
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {{SourceType: importing.SOURCE_TYPE_ALIPAY, Currency: "CNY", DisplayName: "光大银行信用卡(2690)", RowCount: 141, PendingRowCount: 141, SampleRowId: 801, LedgerAccountId: &ledger, Mapped: true}},
+		402: {{SourceType: importing.SOURCE_TYPE_WECHAT, Currency: "CNY", DisplayName: "光大银行信用卡(2690)", RowCount: 37, PendingRowCount: 37, SampleRowId: 802, LedgerAccountId: &ledger, Mapped: true}},
+		403: {{SourceType: importing.SOURCE_TYPE_BANK, Currency: "CNY", DisplayName: "光大银行信用卡(2690)", RowCount: 60, PendingRowCount: 60, SampleRowId: 803, LedgerAccountId: &ledger, Mapped: true}},
+	}}
+	var nextId int64 = 8000
+	service, err := billflow.NewService(repository, evidence, payments, &fakePoster{}, nil, nil, nil, nil, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301, 302, 303}, IdempotencyKey: "create-task-merge-card"})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	view, err := service.GetTaskAccounts(nil, uid, created.TaskId)
+	if err != nil || view == nil || len(view.Reused) != 1 || len(view.NeedsCreate) != 0 {
+		t.Fatalf("same card across sources was not merged: %+v err=%v", view, err)
+	}
+	if view.Reused[0].DisplayName != "光大银行信用卡(2690)" || view.Reused[0].RowCount != 238 {
+		t.Fatalf("merged card did not sum rows: %+v", view.Reused[0])
+	}
+}
+
 func TestServiceExcludeAccountSkipsPostingAndCanRestore(t *testing.T) {
 	repository, _ := newSQLiteBillflowRepository(t)
 	uid := int64(1001)
