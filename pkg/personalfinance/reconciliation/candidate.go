@@ -222,6 +222,9 @@ func (s *CandidateService) candidatesForAnchor(c core.Context, uid int64, anchor
 	unique := make(map[string]*candidateEvaluation)
 
 	for _, row := range rows {
+		if !CrossSourceComparisonMatch(anchor, row, candidateTimeWindowSeconds) {
+			continue
+		}
 		evaluation, evaluationErr := evaluateCandidatePair(anchor, row)
 
 		if evaluationErr != nil {
@@ -388,7 +391,7 @@ func evaluateCandidatePair(first *importing.RawImportRow, second *importing.RawI
 		reasons = append(reasons, candidateReason{Code: candidateReasonLedgerAccountMatch, Value: 15})
 	}
 
-	if normalizedEvidenceText(first.RawPaymentMethod) != "" && normalizedEvidenceText(first.RawPaymentMethod) == normalizedEvidenceText(second.RawPaymentMethod) {
+	if paymentMethodsComparable(first, second) {
 		score += 8
 		reasons = append(reasons, candidateReason{Code: candidateReasonPaymentMethodMatch, Value: 8})
 	}
@@ -578,6 +581,55 @@ func normalizedEvidenceIdentifiers(row *importing.RawImportRow) map[string]struc
 	}
 
 	return result
+}
+
+func paymentMethodsComparable(first *importing.RawImportRow, second *importing.RawImportRow) bool {
+	if first == nil || second == nil {
+		return false
+	}
+	left := importing.ComparablePaymentAccountText(first.RawPaymentMethod)
+	right := importing.ComparablePaymentAccountText(second.RawPaymentMethod)
+	return left != "" && left == right
+}
+
+// CrossSourceTimeMatch 两边都有时分时看时间窗；任一侧只有日期（当地 00:00）则只对同一天。
+func CrossSourceTimeMatch(first *importing.RawImportRow, second *importing.RawImportRow, maxDelta int64) bool {
+	if first == nil || second == nil || first.NormalizedUnixTime == nil || second.NormalizedUnixTime == nil || maxDelta < 0 {
+		return false
+	}
+	if rowHasDateOnlyTime(first) || rowHasDateOnlyTime(second) {
+		left := rowCivilDate(first)
+		right := rowCivilDate(second)
+		return left != "" && left == right
+	}
+	return absoluteInt64(*first.NormalizedUnixTime-*second.NormalizedUnixTime) <= maxDelta
+}
+
+// CrossSourceComparisonMatch 金额币种已在硬过滤里；这里再要求对方/说明相似、卡号组成后相同、时间按上条规则。
+func CrossSourceComparisonMatch(first *importing.RawImportRow, second *importing.RawImportRow, maxDelta int64) bool {
+	return evidenceTextSimilar(first, second) && paymentMethodsComparable(first, second) && CrossSourceTimeMatch(first, second, maxDelta)
+}
+
+func rowTimezoneSeconds(row *importing.RawImportRow) int {
+	if row != nil && row.NormalizedTimezoneUtcOffset != nil {
+		return int(*row.NormalizedTimezoneUtcOffset) * 60
+	}
+	return 0
+}
+
+func rowCivilDate(row *importing.RawImportRow) string {
+	if row == nil || row.NormalizedUnixTime == nil {
+		return ""
+	}
+	return time.Unix(*row.NormalizedUnixTime, 0).In(time.FixedZone("pf-row", rowTimezoneSeconds(row))).Format(time.DateOnly)
+}
+
+func rowHasDateOnlyTime(row *importing.RawImportRow) bool {
+	if row == nil || row.NormalizedUnixTime == nil {
+		return false
+	}
+	local := time.Unix(*row.NormalizedUnixTime, 0).In(time.FixedZone("pf-row", rowTimezoneSeconds(row)))
+	return local.Hour() == 0 && local.Minute() == 0 && local.Second() == 0
 }
 
 func evidenceTextSimilar(first *importing.RawImportRow, second *importing.RawImportRow) bool {

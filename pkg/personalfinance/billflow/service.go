@@ -255,6 +255,8 @@ type TodoView struct {
 	Currency        string
 	UnixTime        *int64
 	Direction       string
+	SourceType      string
+	Account         string
 	CategoryId      int64
 	Version         int64
 	CreatedUnixTime int64
@@ -266,6 +268,8 @@ type TodoMatchView struct {
 	SourceType string
 	Account    string
 	Label      string
+	Item       string
+	BillType   string
 	Amount     string
 	Currency   string
 	UnixTime   *int64

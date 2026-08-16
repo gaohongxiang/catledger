@@ -227,6 +227,8 @@ function normalizeTodo(value: unknown): BillflowTodo {
         updatedUnixTime: integer(item['updatedUnixTime']),
         ...(unixTime === undefined ? {} : { unixTime }),
         ...(optionalIdentifier(item['categoryId']) === undefined ? {} : { categoryId: optionalIdentifier(item['categoryId']) }),
+        ...(sourceTypes.includes(string(item['sourceType'] ?? '') as BillflowSourceType) ? { sourceType: string(item['sourceType']) as BillflowSourceType } : {}),
+        ...(string(item['account'] ?? '') ? { account: string(item['account']) } : {}),
         matches: item['matches'] == null ? [] : array(item['matches']).map(normalizeTodoMatch)
     };
 }
@@ -239,6 +241,8 @@ function normalizeTodoMatch(value: unknown): BillflowTodoMatch {
         sourceType: sourceTypes.includes(sourceTypeValue as BillflowSourceType) ? sourceTypeValue as BillflowSourceType : 'bank',
         account: string(item['account'] ?? ''),
         label: string(item['label'] ?? ''),
+        item: string(item['item'] ?? ''),
+        billType: string(item['billType'] ?? ''),
         amount: string(item['amount'] ?? ''),
         currency: string(item['currency'] ?? ''),
         direction: string(item['direction'] ?? ''),

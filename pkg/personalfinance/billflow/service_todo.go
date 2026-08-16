@@ -264,6 +264,8 @@ func (s *Service) attachTodoCategory(c core.Context, uid int64, view *TodoView, 
 	if err != nil || batch == nil {
 		return
 	}
+	view.SourceType = string(batch.SourceTypeSnapshot)
+	view.Account = importing.QualifiedPaymentAccountDisplayName(batch.SourceTypeSnapshot, row.RawPaymentMethod)
 	for _, name := range categoryAliasCandidates(row, batch.SourceTypeSnapshot) {
 		mapping, lookupErr := s.repository.FindCategoryAlias(c, uid, batch.SourceTypeSnapshot, categoryAliasKey(name))
 		if lookupErr != nil || mapping == nil || mapping.LedgerCategoryId < 1 {
@@ -403,13 +405,13 @@ func (s *Service) collectTodoMatches(
 				continue
 			}
 			seen[subject.rowId][other.rowId] = struct{}{}
-			index[subject.rowId] = append(index[subject.rowId], s.todoMatchView(c, uid, other.account, other.summary))
+			index[subject.rowId] = append(index[subject.rowId], s.todoMatchView(c, uid, other.summary))
 		}
 	}
 }
 
-func (s *Service) todoMatchView(c core.Context, uid int64, account string, evidence *reconciliation.CaseEvidenceSummary) *TodoMatchView {
-	view := &TodoMatchView{Account: account}
+func (s *Service) todoMatchView(c core.Context, uid int64, evidence *reconciliation.CaseEvidenceSummary) *TodoMatchView {
+	view := &TodoMatchView{}
 	if evidence == nil {
 		return view
 	}
@@ -424,6 +426,9 @@ func (s *Service) todoMatchView(c core.Context, uid int64, account string, evide
 		row, err := s.evidence.FindRawImportRowById(c, uid, evidence.RowId)
 		if err == nil && row != nil {
 			view.Label = todoPreviewLabel(row)
+			view.Item = maskedCategoryAliasDisplay(row.RawItem)
+			view.BillType = maskedCategoryAliasDisplay(row.RawTransactionType)
+			view.Account = importing.QualifiedPaymentAccountDisplayName(evidence.SourceType, row.RawPaymentMethod)
 		}
 	}
 	return view

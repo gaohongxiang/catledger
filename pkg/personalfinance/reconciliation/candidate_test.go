@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 )
@@ -100,6 +101,81 @@ func TestCandidateRelationshipSuggestionsAndSafeReasons(t *testing.T) {
 	}
 }
 
+func TestCandidatePaymentMethodComposesEverbrightLastFour(t *testing.T) {
+	baseTime := int64(1_720_000_000)
+	baseAmount := int64(10_463)
+	firstIdentity := int64(301)
+	secondIdentity := int64(302)
+	bank := candidateTestRow(1, 31, 311, &firstIdentity, importing.IDENTITY_STATE_NEW, baseAmount, "CNY", baseTime)
+	bank.RawPaymentMethod = "末四位2690"
+	detail := candidateTestRow(1, 32, 322, &secondIdentity, importing.IDENTITY_STATE_NEW, baseAmount, "CNY", baseTime+13*3600)
+	detail.RawPaymentMethod = "光大银行信用卡(2690)"
+
+	matched, err := evaluateCandidatePair(bank, detail)
+	if err != nil || !hasCandidateReason(matched.reasonCodesJSON, candidateReasonPaymentMethodMatch) {
+		t.Fatalf("composed everbright last-four did not match payment method: %+v %v", matched, err)
+	}
+
+	otherBank := *detail
+	otherBank.RawPaymentMethod = "兴业银行信用卡(2690)"
+	mismatched, err := evaluateCandidatePair(bank, &otherBank)
+	if err != nil || hasCandidateReason(mismatched.reasonCodesJSON, candidateReasonPaymentMethodMatch) {
+		t.Fatalf("same last four on another bank still matched payment method: %+v %v", mismatched, err)
+	}
+}
+
+func TestCrossSourceTimeMatchAcceptsDateOnlySameDay(t *testing.T) {
+	location := time.FixedZone("cst", 8*3600)
+	midnight := time.Date(2026, 6, 26, 0, 0, 0, 0, location).Unix()
+	afternoon := time.Date(2026, 6, 26, 13, 9, 23, 0, location).Unix()
+	nextMorning := time.Date(2026, 6, 27, 1, 0, 0, 0, location).Unix()
+	offset := int16(480)
+	firstIdentity := int64(401)
+	secondIdentity := int64(402)
+	bank := candidateTestRow(1, 41, 411, &firstIdentity, importing.IDENTITY_STATE_NEW, 10463, "CNY", midnight)
+	bank.NormalizedTimezoneUtcOffset = &offset
+	bank.RawPaymentMethod = "末四位2690"
+	bank.RawCounterparty = "财付通 美团平台商户"
+	detail := candidateTestRow(1, 42, 422, &secondIdentity, importing.IDENTITY_STATE_NEW, 10463, "CNY", afternoon)
+	detail.NormalizedTimezoneUtcOffset = &offset
+	detail.RawPaymentMethod = "光大银行信用卡(2690)"
+	detail.RawCounterparty = "美团平台商户"
+
+	if !CrossSourceTimeMatch(bank, detail, 48*3600) {
+		t.Fatal("date-only credit-card row should match the same civil day")
+	}
+	if !CrossSourceComparisonMatch(bank, detail, 48*3600) {
+		t.Fatal("same merchant, card, amount and civil day should compare")
+	}
+
+	detail.NormalizedUnixTime = &nextMorning
+	if CrossSourceTimeMatch(bank, detail, 48*3600) {
+		t.Fatal("the next calendar day should not match a date-only credit-card row")
+	}
+}
+
+func TestCrossSourceComparisonMatchRequiresTextAndCard(t *testing.T) {
+	baseTime := int64(1_720_000_000)
+	firstIdentity := int64(501)
+	secondIdentity := int64(502)
+	bank := candidateTestRow(1, 51, 511, &firstIdentity, importing.IDENTITY_STATE_NEW, 10463, "CNY", baseTime)
+	bank.RawPaymentMethod = "末四位2690"
+	bank.RawCounterparty = "网上支付"
+	detail := candidateTestRow(1, 52, 522, &secondIdentity, importing.IDENTITY_STATE_NEW, 10463, "CNY", baseTime)
+	detail.RawPaymentMethod = "光大银行信用卡(2690)"
+	detail.RawCounterparty = "拼多多平台商户"
+
+	if CrossSourceComparisonMatch(bank, detail, candidateTimeWindowSeconds) {
+		t.Fatal("different merchant text should not compare as the same purchase")
+	}
+
+	detail.RawCounterparty = "网上支付"
+	detail.RawPaymentMethod = "兴业银行信用卡(2690)"
+	if CrossSourceComparisonMatch(bank, detail, candidateTimeWindowSeconds) {
+		t.Fatal("another bank with the same last four should not compare as the same card")
+	}
+}
+
 func sortCandidateMemberTokens(tokens []candidateMemberToken) {
 	sort.Slice(tokens, func(i, j int) bool {
 		return candidateMemberTokenLess(tokens[i], tokens[j])
@@ -125,4 +201,17 @@ func assertCandidateReasonJSONSafe(t *testing.T, encoded string, forbidden ...st
 			t.Fatalf("candidate reason had an empty stable code: %s", encoded)
 		}
 	}
+}
+
+func hasCandidateReason(encoded string, code string) bool {
+	reasons := make([]candidateReason, 0)
+	if err := json.Unmarshal([]byte(encoded), &reasons); err != nil {
+		return false
+	}
+	for _, reason := range reasons {
+		if reason.Code == code {
+			return true
+		}
+	}
+	return false
 }

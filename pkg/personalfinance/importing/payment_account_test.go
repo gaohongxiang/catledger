@@ -56,6 +56,24 @@ func TestPaymentAccountAliasNormalizesFormattingAndMasksLongDigits(t *testing.T)
 	}
 }
 
+func TestComparablePaymentAccountTextComposesEverbrightLastFour(t *testing.T) {
+	composed := importing.ComparablePaymentAccountText("末四位2690")
+	alipay := importing.ComparablePaymentAccountText("光大银行信用卡(2690)")
+	alipayCoupon := importing.ComparablePaymentAccountText("光大银行信用卡(2690)&两轮充电券")
+	otherBank := importing.ComparablePaymentAccountText("兴业银行信用卡(2690)")
+	otherLastFour := importing.ComparablePaymentAccountText("末四位1234")
+
+	if composed == "" || composed != alipay || composed != alipayCoupon {
+		t.Fatalf("everbright last-four did not match the composed card name: %q %q %q", composed, alipay, alipayCoupon)
+	}
+	if composed == otherBank {
+		t.Fatalf("everbright last-four matched another bank with the same last four: %q", composed)
+	}
+	if composed == otherLastFour {
+		t.Fatalf("different last-four values compared equal: %q", composed)
+	}
+}
+
 func TestPaymentAccountAliasDropsCouponSuffixAndKeepsSplitTenders(t *testing.T) {
 	card, ok := importing.BuildPaymentAccountAlias("光大银行信用卡(2690)")
 	if !ok {

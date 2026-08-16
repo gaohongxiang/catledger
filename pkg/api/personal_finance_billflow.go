@@ -204,6 +204,8 @@ type personalFinanceBillflowTodoResponse struct {
 	Currency        string                                      `json:"currency"`
 	UnixTime        *int64                                      `json:"unixTime,omitempty"`
 	Direction       string                                      `json:"direction"`
+	SourceType      string                                      `json:"sourceType,omitempty"`
+	Account         string                                      `json:"account,omitempty"`
 	CategoryId      string                                      `json:"categoryId,omitempty"`
 	Version         int64                                       `json:"version"`
 	CreatedUnixTime int64                                       `json:"createdUnixTime"`
@@ -215,6 +217,8 @@ type personalFinanceBillflowTodoMatchResponse struct {
 	SourceType string `json:"sourceType"`
 	Account    string `json:"account"`
 	Label      string `json:"label"`
+	Item       string `json:"item,omitempty"`
+	BillType   string `json:"billType,omitempty"`
 	Amount     string `json:"amount"`
 	Currency   string `json:"currency"`
 	UnixTime   *int64 `json:"unixTime,omitempty"`
@@ -733,7 +737,7 @@ func newPersonalFinanceBillflowTodoResponse(value *billflow.TodoView) *personalF
 	item := &personalFinanceBillflowTodoResponse{
 		Id: strconv.FormatInt(value.TodoId, 10), TodoKind: value.TodoKind, Status: value.Status, SubjectKind: value.SubjectKind,
 		SubjectId: strconv.FormatInt(value.SubjectId, 10), ReasonCodes: value.ReasonCodes, Label: value.Label, Item: value.Item,
-		BillType: value.BillType, Amount: value.Amount, Currency: value.Currency, UnixTime: value.UnixTime, Direction: value.Direction, Version: value.Version,
+		BillType: value.BillType, Amount: value.Amount, Currency: value.Currency, UnixTime: value.UnixTime, Direction: value.Direction, SourceType: value.SourceType, Account: value.Account, Version: value.Version,
 		CreatedUnixTime: value.CreatedUnixTime, UpdatedUnixTime: value.UpdatedUnixTime,
 	}
 	if value.CategoryId > 0 {
@@ -744,7 +748,7 @@ func newPersonalFinanceBillflowTodoResponse(value *billflow.TodoView) *personalF
 			continue
 		}
 		item.Matches = append(item.Matches, &personalFinanceBillflowTodoMatchResponse{
-			SourceType: match.SourceType, Account: match.Account, Label: match.Label,
+			SourceType: match.SourceType, Account: match.Account, Label: match.Label, Item: match.Item, BillType: match.BillType,
 			Amount: match.Amount, Currency: match.Currency, UnixTime: match.UnixTime, Direction: match.Direction,
 		})
 	}

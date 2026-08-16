@@ -107,6 +107,8 @@ export interface BillflowTodo {
     readonly currency: string;
     readonly unixTime?: number;
     readonly direction: string;
+    readonly sourceType?: BillflowSourceType;
+    readonly account?: string;
     readonly categoryId?: string;
     readonly version: number;
     readonly createdUnixTime: number;
@@ -118,6 +120,8 @@ export interface BillflowTodoMatch {
     readonly sourceType: BillflowSourceType;
     readonly account: string;
     readonly label: string;
+    readonly item: string;
+    readonly billType: string;
     readonly amount: string;
     readonly currency: string;
     readonly unixTime?: number;

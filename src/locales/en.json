@@ -2947,7 +2947,7 @@
             "confirmHint": "Finish reviewing transactions and other items, then confirm posting.",
             "confirmDoneHint": "Posted.",
             "reviewHint": "Choose a category for unclear transactions. You can select several and save them together.",
-            "mergeHint": "The same purchase is merged only when it is the same card, same amount and currency, within two days, compatible direction, and the only match. Clear matches merge automatically. Unique matches that cannot be paired need a look.",
+            "mergeHint": "The same purchase matches on merchant/description, amount, currency, and the same card. Credit-card statements only have a date, so the same calendar day is enough. Clear matches merge automatically; otherwise each Alipay row and the matching card-statement row are shown in full on separate lines.",
             "othersHint": "Anything left after categorizing. You can continue if there is nothing to decide.",
             "pane": {
                 "merge": "Merge",
@@ -2957,10 +2957,10 @@
                 "pending": "After accounts are ready, start merging. Clear matches are merged automatically.",
                 "empty": "Nothing needs a merge decision. Clear matches are already merged, or merging has not started.",
                 "mergedEmpty": "No merge items have been marked handled yet. Automatic merges are not listed here.",
-                "pendingHint": "Only unique matches that cannot be paired are listed. The other statement’s nearby rows are shown below so you can compare. “Processed” means you reviewed it; “Skip for now” leaves it aside.",
+                "pendingHint": "Only rows that did not auto-merge are listed. Each row shows the full channel, merchant, description, time, and amount; a matching row from the other statement is on the next line. “Processed” means you reviewed it; “Skip for now” leaves it aside.",
                 "mergedHint": "Items you marked processed or skipped appear here and can be restored. Automatic merges are not asked again.",
-                "matchesHint": "Nearby rows on another statement:",
-                "matchesEmpty": "No comparable row from another statement is listed. Automatic merge needs the same card, same amount and currency, within two days, compatible direction, and a unique pair.",
+                "matchesHint": "Match",
+                "matchesEmpty": "No comparable row from another statement is listed. Automatic merge needs merchant/description, amount, currency, and the same card; credit-card dates match on the same calendar day.",
                 "matchesMany": "Several nearby rows exist, so it was not merged automatically.",
                 "bucket": {
                     "pending": "Unmerged",

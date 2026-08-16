@@ -259,7 +259,20 @@ func TestServiceAutoPostCrossSourceAndUndoGuard(t *testing.T) {
 	})
 	amount := *evidence.rows[401][0].NormalizedAmount
 	*evidence.rows[402][0].NormalizedAmount = amount
-	*evidence.rows[402][0].NormalizedUnixTime = *evidence.rows[401][0].NormalizedUnixTime
+	location := time.FixedZone("cst", 8*3600)
+	midnight := time.Date(2026, 6, 26, 0, 0, 0, 0, location).Unix()
+	afternoon := time.Date(2026, 6, 26, 13, 9, 23, 0, location).Unix()
+	offset := int16(480)
+	alipay := evidence.rows[401][0]
+	bank := evidence.rows[402][0]
+	alipay.RawCounterparty = "美团平台商户"
+	alipay.RawPaymentMethod = "光大银行信用卡(2690)"
+	alipay.NormalizedUnixTime = &afternoon
+	alipay.NormalizedTimezoneUtcOffset = &offset
+	bank.RawCounterparty = "财付通 美团平台商户"
+	bank.RawPaymentMethod = "末四位2690"
+	bank.NormalizedUnixTime = &midnight
+	bank.NormalizedTimezoneUtcOffset = &offset
 	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
 		401: {mappedGroup(accountId, 801)},
 		402: {mappedGroup(accountId, 802)},

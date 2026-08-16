@@ -146,6 +146,25 @@ func BuildPaymentAccountAlias(raw string) (PaymentAccountAlias, bool) {
 	}, true
 }
 
+// ComparablePaymentAccountText 把付款方式收到与核对账户相同的组成规则后再比。
+// 光大月结单原始值仍是「末四位xxxx」，比对时组成「光大银行信用卡(xxxx)」；不改身份键。
+func ComparablePaymentAccountText(raw string) string {
+	instrument := paymentAccountInstrumentName(raw)
+	if instrument == "" {
+		return ""
+	}
+	return canonicalPaymentAccountAlias(qualifyPaymentAccountDisplayName(SOURCE_TYPE_BANK, instrument))
+}
+
+// QualifiedPaymentAccountDisplayName 与核对账户同一套组成规则：光大月结单「末四位xxxx」显示为「光大银行信用卡(xxxx)」。
+func QualifiedPaymentAccountDisplayName(sourceType SourceType, raw string) string {
+	instrument := paymentAccountInstrumentName(raw)
+	if instrument == "" {
+		return ""
+	}
+	return qualifyPaymentAccountDisplayName(sourceType, safePaymentAccountDisplayName(instrument))
+}
+
 func qualifyPaymentAccountDisplayName(sourceType SourceType, displayName string) string {
 	name := strings.TrimSpace(displayName)
 	if name == "" {

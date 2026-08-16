@@ -432,11 +432,7 @@ func (s *Service) highConfidenceSameEvent(detail *reconciliation.CaseDetail, row
 			if first.Currency != row.Currency || *first.NormalizedAmount != *row.NormalizedAmount {
 				return false
 			}
-			delta := *first.NormalizedUnixTime - *row.NormalizedUnixTime
-			if delta < 0 {
-				delta = -delta
-			}
-			if delta > HIGH_CONFIDENCE_WINDOW_SECONDS {
+			if !reconciliation.CrossSourceComparisonMatch(first, row, HIGH_CONFIDENCE_WINDOW_SECONDS) {
 				return false
 			}
 			if first.LedgerAccountId != nil && row.LedgerAccountId != nil && *first.LedgerAccountId != *row.LedgerAccountId {
