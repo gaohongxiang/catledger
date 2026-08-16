@@ -349,7 +349,10 @@ export function canOpenBillflowWorkbenchStep(step: BillflowWorkbenchStep, input:
     if (step === 'review' || step === 'others' || step === 'confirm') {
         return input.status === 'awaiting_confirm' || input.status === 'ready' || input.status === 'failed';
     }
-    if (step === 'balance' || step === 'merge') {
+    if (step === 'balance') {
+        return accountsReadyForNextStep(input) && input.needsBalanceCount > 0;
+    }
+    if (step === 'merge') {
         return accountsReadyForNextStep(input);
     }
     return billflowWorkbenchStepIndex(step) <= billflowWorkbenchStepIndex(suggestedBillflowWorkbenchStep(input));

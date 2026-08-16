@@ -302,7 +302,8 @@ describe('billflow task page wiring', () => {
         expect(canOpenBillflowWorkbenchStep('review', awaiting)).toBe(true);
         expect(canOpenBillflowWorkbenchStep('others', awaiting)).toBe(true);
         expect(canOpenBillflowWorkbenchStep('merge', accountsReady)).toBe(true);
-        expect(canOpenBillflowWorkbenchStep('balance', accountsReady)).toBe(true);
+        expect(canOpenBillflowWorkbenchStep('balance', accountsReady)).toBe(false);
+        expect(canOpenBillflowWorkbenchStep('balance', needsBalance)).toBe(true);
         expect(canOpenBillflowWorkbenchStep('merge', pendingAccounts)).toBe(false);
         expect(previousBillflowWorkbenchStep('accounts')).toBe('files');
         expect(previousBillflowWorkbenchStep('confirm')).toBe('others');
