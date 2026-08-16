@@ -299,6 +299,34 @@ export function mergeBucketHintKey(bucket: BillflowMergeBucket): string {
         : 'personalFinance.billflow.merge.pendingHint';
 }
 
+export type BillflowReviewPane = 'merge' | 'category';
+
+export const BILLFLOW_REVIEW_PANES: readonly BillflowReviewPane[] = ['merge', 'category'];
+
+export function suggestedReviewPane(input: { awaitingRun: boolean; mergePending: number; categoryPending: number }): BillflowReviewPane {
+    if (input.awaitingRun || input.mergePending > 0) {
+        return 'merge';
+    }
+    return 'category';
+}
+
+export function resolveReviewPane(
+    current: BillflowReviewPane | undefined,
+    input: { awaitingRun: boolean; mergePending: number; categoryPending: number },
+    userPicked = false
+): BillflowReviewPane {
+    if (userPicked && current && BILLFLOW_REVIEW_PANES.includes(current)) {
+        return current;
+    }
+    return suggestedReviewPane(input);
+}
+
+export function reviewPaneHintKey(pane: BillflowReviewPane): string {
+    return pane === 'category'
+        ? 'personalFinance.billflow.reviewHint'
+        : 'personalFinance.billflow.mergeHint';
+}
+
 export type BillflowWorkbenchStep = 'files' | 'accounts' | 'review' | 'others' | 'confirm';
 
 export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'review', 'others', 'confirm'];

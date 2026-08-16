@@ -161,7 +161,7 @@
                 <p class="bucket-empty" v-if="!accounts?.needsCreate.length">{{ tt('personalFinance.billflow.accounts.pendingEmpty') }}</p>
                 <article
                     class="account-row-card"
-                    :class="{ 'account-row-card--matched': !!matchedAccount(group), 'account-row-card--open': expandedSampleRowId === group.sampleRowId }"
+                    :class="{ 'account-row-card--matched': !!matchedAccount(group) }"
                     :key="group.sampleRowId"
                     v-for="group in accounts?.needsCreate"
                 >
@@ -230,54 +230,24 @@
         </section>
 
         <section class="work-section" v-if="currentStep === 'review' && task">
-            <div class="section-copy">
-                <strong>{{ tt('personalFinance.billflow.skip.title') }}</strong>
-                <span>{{ tt('personalFinance.billflow.skip.hint') }}</span>
-            </div>
-            <p class="bucket-empty" v-if="!skippableAccountGroups.length">{{ tt('personalFinance.billflow.skip.empty') }}</p>
-            <article
-                class="account-row-card"
-                :class="{ 'account-row-card--open': expandedSampleRowId === group.sampleRowId }"
-                :key="'skip-' + group.sampleRowId"
-                v-for="group in skippableAccountGroups"
-            >
-                <div class="account-row-card__main account-row-card__main--skip">
-                    <label class="todo-toolbar__check">
-                        <v-checkbox-btn hide-details :model-value="group.excluded" @click.prevent="toggleSkipAccount(group)" />
-                        <span>
-                            <strong>{{ group.displayName }}</strong>
-                            <small>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</small>
-                        </span>
-                    </label>
-                    <v-btn size="small" variant="text" :loading="busy" @click="toggleRows(group)">
-                        {{ expandedSampleRowId === group.sampleRowId ? tt('personalFinance.billflow.accounts.hideRows') : tt('personalFinance.billflow.accounts.showRows') }}
+            <div class="bucket-bar pane-bar">
+                <v-btn-toggle
+                    color="primary"
+                    density="compact"
+                    divided
+                    mandatory
+                    variant="tonal"
+                    :model-value="reviewPane"
+                    @update:model-value="value => setReviewPane(value)"
+                >
+                    <v-btn :value="pane" :key="pane" v-for="pane in BILLFLOW_REVIEW_PANES">
+                        {{ tt(`personalFinance.billflow.pane.${pane}`) }}
+                        <span class="bucket-count">{{ reviewPaneCounts[pane] }}</span>
                     </v-btn>
-                </div>
-                <div class="account-rows" v-if="expandedSampleRowId === group.sampleRowId && accountRows.length">
-                    <label class="account-row" :class="{ 'account-row--skipped': row.skipped }" :key="row.id" v-for="row in accountRows">
-                        <v-checkbox-btn v-model="selectedRowIds" :value="row.id" hide-details />
-                        <div class="account-row__copy">
-                            <strong>{{ row.label }}</strong>
-                            <small>{{ formatAccountTime(row) }}</small>
-                        </div>
-                        <div class="account-row__facts">
-                            <b>{{ formatAccountAmount(row) }}</b>
-                            <v-chip size="x-small" variant="tonal" :color="directionColor(row.direction)" v-if="row.direction">
-                                {{ tt(billflowDirectionKey(row.direction)) }}
-                            </v-chip>
-                            <v-chip size="x-small" variant="text" v-if="row.skipped">
-                                {{ tt('personalFinance.billflow.accounts.skipped') }}
-                            </v-chip>
-                        </div>
-                    </label>
-                    <div class="account-row__batch" v-if="selectedRowIds.length">
-                        <v-btn size="small" variant="tonal" :loading="busy" @click="skipSelectedRows">{{ tt('personalFinance.billflow.accounts.skipSelected') }}</v-btn>
-                        <v-btn size="small" variant="text" :loading="busy" @click="restoreSelectedRows">{{ tt('personalFinance.billflow.accounts.restoreSelected') }}</v-btn>
-                    </div>
-                </div>
-            </article>
-
-            <p class="confirm-hint">{{ tt('personalFinance.billflow.mergeHint') }}</p>
+                </v-btn-toggle>
+                <p>{{ tt(reviewPaneHintKey(reviewPane)) }}</p>
+            </div>
+            <template v-if="reviewPane === 'merge'">
             <p class="bucket-empty" v-if="canAutoRunAfterAccounts(task.status, accounts?.needsCreate.length ?? 0)">
                 {{ tt('personalFinance.billflow.merge.pending') }}
             </p>
@@ -310,6 +280,10 @@
                             <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
                             <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
                         </div>
+                        <label class="todo-skip" v-if="canSkipTodo(todo)">
+                            <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
+                            {{ tt('personalFinance.billflow.accounts.skipped') }}
+                        </label>
                         <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'open')">
                             {{ tt('personalFinance.billflow.todos.restore') }}
                         </v-btn>
@@ -326,7 +300,11 @@
                             <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
                             <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
                         </div>
-                        <div class="todo-row__actions">
+                        <label class="todo-skip" v-if="canSkipTodo(todo)">
+                            <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
+                            {{ tt('personalFinance.billflow.accounts.skipped') }}
+                        </label>
+                        <div class="todo-row__actions" v-if="!isRowSkipped(todo.subjectId)">
                             <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
                                 {{ tt('personalFinance.billflow.todos.resolve') }}
                             </v-btn>
@@ -337,7 +315,9 @@
                     </article>
                 </template>
             </template>
+            </template>
 
+            <template v-else>
             <div class="bucket-bar">
                 <v-btn-toggle
                     color="primary"
@@ -367,6 +347,10 @@
                         <b v-if="formatClassifiedAmount(row)">{{ formatClassifiedAmount(row) }}</b>
                         <span>{{ classifiedCategoryLabel(row) }}</span>
                     </div>
+                    <label class="todo-skip" v-if="canSkipRow(row.id)">
+                        <v-checkbox-btn hide-details :model-value="isRowSkipped(row.id)" @click.prevent="toggleSkipRow(row.id)" />
+                        {{ tt('personalFinance.billflow.accounts.skipped') }}
+                    </label>
                     <v-btn v-if="row.todoId && row.version" density="compact" size="x-small" variant="text" :loading="busy" @click="restoreClassifiedRow(row)">
                         {{ tt('personalFinance.billflow.todos.restore') }}
                     </v-btn>
@@ -399,11 +383,12 @@
                         {{ tt('personalFinance.billflow.todos.skipSelected') }}
                     </v-btn>
                 </div>
-                <p class="bucket-empty" v-if="!reviewTodos.length">{{ tt('personalFinance.billflow.todos.pendingEmpty') }}</p>
+                <p class="bucket-empty" v-if="!reviewTodos.length && !skippedOrphanRows.length">{{ tt('personalFinance.billflow.todos.pendingEmpty') }}</p>
                 <article class="todo-row" :key="todo.id" v-for="todo in reviewTodos">
-                    <label class="todo-row__check">
+                    <label class="todo-row__check" v-if="todo.status === 'open' && !isRowSkipped(todo.subjectId)">
                         <v-checkbox-btn v-model="selectedTodoIds" :value="todo.id" hide-details />
                     </label>
+                    <span v-else />
                     <div class="todo-row__copy">
                         <strong>{{ todoTitle(todo) }}</strong>
                         <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
@@ -423,30 +408,51 @@
                         :placeholder="tt('personalFinance.billflow.todos.pickCategory')"
                         :disabled="busy"
                         :model-value="categoryDrafts[todo.id]"
-                        v-if="canAssignBillflowCategory(todo.todoKind)"
+                        v-if="canAssignBillflowCategory(todo.todoKind) && !isRowSkipped(todo.subjectId)"
                         @update:model-value="value => setTodoCategory(todo.id, value)"
                     />
                     <div class="todo-row__actions">
-                        <v-btn
-                            density="compact"
-                            size="x-small"
-                            color="primary"
-                            variant="text"
-                            :loading="busy"
-                            :disabled="!categoryDrafts[todo.id]"
-                            v-if="canAssignBillflowCategory(todo.todoKind)"
-                            @click="assignOneTodo(todo)"
-                        >
-                            {{ tt('personalFinance.billflow.todos.saveCategory') }}
-                        </v-btn>
-                        <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" v-else @click="resolveTodo(todo, 'resolved')">
-                            {{ tt('personalFinance.billflow.todos.resolve') }}
-                        </v-btn>
-                        <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
-                            {{ tt('personalFinance.billflow.todos.dismiss') }}
-                        </v-btn>
+                        <label class="todo-skip" v-if="canSkipTodo(todo)">
+                            <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
+                            {{ tt('personalFinance.billflow.accounts.skipped') }}
+                        </label>
+                        <template v-if="!isRowSkipped(todo.subjectId)">
+                            <v-btn
+                                density="compact"
+                                size="x-small"
+                                color="primary"
+                                variant="text"
+                                :loading="busy"
+                                :disabled="!categoryDrafts[todo.id]"
+                                v-if="canAssignBillflowCategory(todo.todoKind)"
+                                @click="assignOneTodo(todo)"
+                            >
+                                {{ tt('personalFinance.billflow.todos.saveCategory') }}
+                            </v-btn>
+                            <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" v-else @click="resolveTodo(todo, 'resolved')">
+                                {{ tt('personalFinance.billflow.todos.resolve') }}
+                            </v-btn>
+                            <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                                {{ tt('personalFinance.billflow.todos.dismiss') }}
+                            </v-btn>
+                        </template>
                     </div>
                 </article>
+                <article class="todo-row todo-row--done" :key="'skipped-' + row.id" v-for="row in skippedOrphanRows">
+                    <div class="todo-row__copy">
+                        <strong>{{ row.label }}</strong>
+                        <small v-if="formatAccountTime(row)">{{ formatAccountTime(row) }}</small>
+                    </div>
+                    <div class="todo-row__facts">
+                        <b v-if="formatAccountAmount(row)">{{ formatAccountAmount(row) }}</b>
+                        <em v-if="row.direction">{{ tt(billflowDirectionKey(row.direction)) }}</em>
+                    </div>
+                    <label class="todo-skip">
+                        <v-checkbox-btn hide-details :model-value="true" @click.prevent="toggleSkipRow(row.id)" />
+                        {{ tt('personalFinance.billflow.accounts.skipped') }}
+                    </label>
+                </article>
+            </template>
             </template>
         </section>
 
@@ -535,6 +541,7 @@ import {
     BILLFLOW_CATEGORY_BUCKETS,
     BILLFLOW_MERGE_BUCKETS,
     BILLFLOW_OPENING_BALANCE_UNIX_TIME,
+    BILLFLOW_REVIEW_PANES,
     BILLFLOW_WORKBENCH_STEPS,
     accountBucketHintKey,
     accountGroupHasCardHeader,
@@ -562,6 +569,8 @@ import {
     resolveBillflowWorkbenchStep,
     resolveCategoryBucket,
     resolveMergeBucket,
+    resolveReviewPane,
+    reviewPaneHintKey,
     sameOrganizeFileIds,
     suggestedAccountCategory,
     taskAwaitsConfirm,
@@ -570,6 +579,7 @@ import {
     type BillflowAccountBucket,
     type BillflowCategoryBucket,
     type BillflowMergeBucket,
+    type BillflowReviewPane,
     type BillflowWorkbenchStep
 } from '../state.ts';
 import { canConfigureCebCreditPdf } from '../../state.ts';
@@ -593,14 +603,12 @@ const selectedFileIds = ref<string[]>([]);
 const previousEligibleIds = ref<string[]>([]);
 const task = ref<BillflowTask>();
 const accounts = ref<BillflowAccounts>();
-const expandedSampleRowId = ref<string>();
-const accountRows = ref<readonly BillflowAccountRow[]>([]);
-const selectedRowIds = ref<string[]>([]);
 const pickedAccountIds = reactive<Record<string, string>>({});
 const openTodos = ref<readonly BillflowTodo[]>([]);
 const resolvedTodos = ref<readonly BillflowTodo[]>([]);
 const dismissedTodos = ref<readonly BillflowTodo[]>([]);
 const classifiedRows = ref<readonly BillflowClassifiedRow[]>([]);
+const accountRowIndex = ref<Record<string, { sampleRowId: string, skipped: boolean, row: BillflowAccountRow }>>({});
 const selectedTodoIds = ref<string[]>([]);
 const categoryDrafts = reactive<Record<string, string>>({});
 const batchCategoryId = ref('');
@@ -615,6 +623,8 @@ const categoryBucket = ref<BillflowCategoryBucket>('pending');
 const userPickedCategoryBucket = ref(false);
 const mergeBucket = ref<BillflowMergeBucket>('pending');
 const userPickedMergeBucket = ref(false);
+const reviewPane = ref<BillflowReviewPane>('merge');
+const userPickedReviewPane = ref(false);
 
 const eligibleFiles = computed(() => {
     const ids = new Set(eligibleOrganizeFileIds(personalFinanceStore.batches));
@@ -632,10 +642,6 @@ const newBalanceAccounts = computed(() => createdAccountsNeedingBalance({
         .filter(card => !!card.balanceReview)
         .map(card => card.ledgerAccountId)
 }));
-const skippableAccountGroups = computed(() => [
-    ...(accounts.value?.reused ?? []),
-    ...(accounts.value?.excluded ?? [])
-]);
 const matchedNeedsCreate = computed(() => (accounts.value?.needsCreate ?? []).filter(group => !!selectedLedgerId(group)));
 const taskFiles = computed(() => {
     if (!task.value) {
@@ -656,12 +662,28 @@ const stepInput = computed(() => ({
 }));
 const currentStep = computed(() => resolveBillflowWorkbenchStep(userStep.value, stepInput.value));
 const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.value));
-const reviewTodos = computed(() => categoryTodos(openTodos.value));
-const classifiedReviewRows = computed(() => classifiedRows.value);
-const mergeReviewTodos = computed(() => mergeTodos(openTodos.value));
-const mergedReviewTodos = computed(() => mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]));
+const reviewTodos = computed(() => [
+    ...categoryTodos(openTodos.value),
+    ...categoryTodos(dismissedTodos.value).filter(todo => isRowSkipped(todo.subjectId))
+]);
+const classifiedReviewRows = computed(() => classifiedRows.value.filter(row => !isRowSkipped(row.id)));
+const mergeReviewTodos = computed(() => [
+    ...mergeTodos(openTodos.value),
+    ...mergeTodos(dismissedTodos.value).filter(todo => isRowSkipped(todo.subjectId))
+]);
+const mergedReviewTodos = computed(() => mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]).filter(todo => !isRowSkipped(todo.subjectId)));
 const otherReviewTodos = computed(() => otherTodos(openTodos.value));
-const assignableReviewTodos = computed(() => reviewTodos.value.filter(todo => canAssignBillflowCategory(todo.todoKind)));
+const skippedOrphanRows = computed(() => {
+    const known = new Set([
+        ...openTodos.value,
+        ...resolvedTodos.value,
+        ...dismissedTodos.value
+    ].filter(todo => todo.subjectKind === 'raw_row').map(todo => todo.subjectId));
+    return Object.values(accountRowIndex.value)
+        .filter(item => item.skipped && !known.has(item.row.id))
+        .map(item => item.row);
+});
+const assignableReviewTodos = computed(() => reviewTodos.value.filter(todo => todo.status === 'open' && canAssignBillflowCategory(todo.todoKind) && !isRowSkipped(todo.subjectId)));
 const selectedAssignableTodos = computed(() => assignableReviewTodos.value.filter(todo => selectedTodoIds.value.includes(todo.id)));
 const allAssignableSelected = computed(() => assignableReviewTodos.value.length > 0 && selectedAssignableTodos.value.length === assignableReviewTodos.value.length);
 const batchCategoryOptions = computed(() => flattenCategoryOptions(CategoryType.Expense));
@@ -673,12 +695,21 @@ const bucketCounts = computed(() => ({
     excluded: accounts.value?.excluded.length ?? 0
 }));
 const categoryBucketCounts = computed(() => ({
-    pending: reviewTodos.value.length,
+    pending: reviewTodos.value.length + skippedOrphanRows.value.length,
     classified: classifiedReviewRows.value.length
 }));
 const mergeBucketCounts = computed(() => ({
     pending: mergeReviewTodos.value.length,
     merged: mergedReviewTodos.value.length
+}));
+const reviewPaneInput = computed(() => ({
+    awaitingRun: !!task.value && canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0),
+    mergePending: mergeReviewTodos.value.length,
+    categoryPending: reviewTodos.value.length + skippedOrphanRows.value.length
+}));
+const reviewPaneCounts = computed(() => ({
+    merge: reviewPaneInput.value.mergePending,
+    category: reviewPaneInput.value.categoryPending
 }));
 const stepAction = computed(() => {
     if (currentStep.value === 'files' && !task.value && selectedFileIds.value.length > 0) {
@@ -819,6 +850,14 @@ watch([currentStep, mergeBucketCounts], () => {
     mergeBucket.value = resolveMergeBucket(mergeBucket.value, mergeBucketCounts.value, userPickedMergeBucket.value);
 }, { immediate: true });
 
+watch([currentStep, reviewPaneInput], () => {
+    if (currentStep.value !== 'review') {
+        userPickedReviewPane.value = false;
+        return;
+    }
+    reviewPane.value = resolveReviewPane(reviewPane.value, reviewPaneInput.value, userPickedReviewPane.value);
+}, { immediate: true });
+
 function canOpenStep(step: BillflowWorkbenchStep): boolean {
     if (!canOpenBillflowWorkbenchStep(step, stepInput.value)) {
         return false;
@@ -857,6 +896,14 @@ function setMergeBucket(value: unknown): void {
     }
     userPickedMergeBucket.value = true;
     mergeBucket.value = value;
+}
+
+function setReviewPane(value: unknown): void {
+    if (value !== 'merge' && value !== 'category') {
+        return;
+    }
+    userPickedReviewPane.value = true;
+    reviewPane.value = value;
 }
 
 function openStep(step: BillflowWorkbenchStep): void {
@@ -977,12 +1024,85 @@ function balanceAccountFor(group: BillflowAccountGroup) {
     return newBalanceAccounts.value.find(account => account.ledgerAccountId === group.ledgerAccountId);
 }
 
-async function toggleSkipAccount(group: BillflowAccountGroup): Promise<void> {
-    if (group.excluded) {
-        await restoreAccount(group);
+function isRowSkipped(rowId?: string): boolean {
+    return !!rowId && !!accountRowIndex.value[rowId]?.skipped;
+}
+
+function canSkipRow(rowId?: string): boolean {
+    return !!rowId && !!accountRowIndex.value[rowId];
+}
+
+function canSkipTodo(todo: BillflowTodo): boolean {
+    return todo.subjectKind === 'raw_row' && canSkipRow(todo.subjectId);
+}
+
+async function loadAccountRowIndex(taskId: string): Promise<void> {
+    const groups = accounts.value?.reused ?? [];
+    const entries = await Promise.all(groups.map(async group => {
+        const rows = await billflowApi.listAccountRows(taskId, group.sampleRowId);
+        return rows.map(row => [row.id, { sampleRowId: group.sampleRowId, skipped: row.skipped, row }] as const);
+    }));
+    const index: Record<string, { sampleRowId: string, skipped: boolean, row: BillflowAccountRow }> = {};
+    for (const pair of entries.flat()) {
+        index[pair[0]] = pair[1];
+    }
+    accountRowIndex.value = index;
+}
+
+async function mutateAccountRow(rowId: string, skip: boolean): Promise<void> {
+    if (!task.value) {
         return;
     }
-    await excludeAccount(group);
+    const sampleRowId = accountRowIndex.value[rowId]?.sampleRowId;
+    if (!sampleRowId) {
+        return;
+    }
+    const request = {
+        taskId: task.value.id,
+        expectedVersion: task.value.version,
+        sampleRowId,
+        rowIds: [rowId],
+        idempotencyKey: generateRandomUUID()
+    };
+    accounts.value = skip
+        ? await billflowApi.skipAccountRows(request)
+        : await billflowApi.restoreAccountRows(request);
+}
+
+async function toggleSkipRow(rowId: string): Promise<void> {
+    if (!task.value || !canSkipRow(rowId)) {
+        return;
+    }
+    busy.value = true;
+    try {
+        await mutateAccountRow(rowId, !isRowSkipped(rowId));
+        await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function toggleSkipTodo(todo: BillflowTodo): Promise<void> {
+    if (!task.value || !canSkipTodo(todo)) {
+        return;
+    }
+    const skip = !isRowSkipped(todo.subjectId);
+    busy.value = true;
+    try {
+        await mutateAccountRow(todo.subjectId, skip);
+        if (skip && todo.status === 'open') {
+            await billflowApi.resolveTodo(todo.id, todo.version, 'dismissed', generateRandomUUID());
+        } else if (!skip && todo.status !== 'open') {
+            await billflowApi.resolveTodo(todo.id, todo.version, 'open', generateRandomUUID());
+        }
+        await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
 }
 
 function formatTodoAmount(todo: BillflowTodo): string {
@@ -1084,16 +1204,6 @@ function toggleAssignableSelection(): void {
     selectedTodoIds.value = [...new Set([...selectedTodoIds.value, ...assignableReviewTodos.value.map(todo => todo.id)])];
 }
 
-function directionColor(direction: string): string | undefined {
-    if (direction === 'income') {
-        return 'success';
-    }
-    if (direction === 'expense') {
-        return 'error';
-    }
-    return undefined;
-}
-
 async function reload(): Promise<void> {
     loading.value = true;
     error.value = false;
@@ -1127,10 +1237,6 @@ async function openTask(taskId: string): Promise<void> {
     task.value = await billflowApi.getTask(taskId);
     accounts.value = await billflowApi.getAccounts(taskId);
     await applyUniqueMatchedAccounts(taskId);
-    if (expandedSampleRowId.value) {
-        accountRows.value = await billflowApi.listAccountRows(taskId, expandedSampleRowId.value);
-        selectedRowIds.value = selectedRowIds.value.filter(id => accountRows.value.some(row => row.id === id));
-    }
     if (taskShowsTodos(task.value.status)) {
         const [open, resolved, dismissed, classified] = await Promise.all([
             billflowApi.listAllTodos(taskId, 'open'),
@@ -1143,11 +1249,13 @@ async function openTask(taskId: string): Promise<void> {
         dismissedTodos.value = dismissed;
         classifiedRows.value = classified;
         selectedTodoIds.value = selectedTodoIds.value.filter(id => openTodos.value.some(todo => todo.id === id));
+        await loadAccountRowIndex(taskId);
     } else {
         openTodos.value = [];
         resolvedTodos.value = [];
         dismissedTodos.value = [];
         classifiedRows.value = [];
+        accountRowIndex.value = {};
     }
     syncTaskFileSelection();
 }
@@ -1383,9 +1491,6 @@ async function excludeAccount(group: BillflowAccountGroup): Promise<void> {
             sampleRowId: group.sampleRowId,
             idempotencyKey: generateRandomUUID()
         });
-        expandedSampleRowId.value = undefined;
-        accountRows.value = [];
-        selectedRowIds.value = [];
         await openTask(task.value.id);
     } catch {
         error.value = true;
@@ -1404,58 +1509,6 @@ async function restoreAccount(group: BillflowAccountGroup): Promise<void> {
             sampleRowId: group.sampleRowId,
             idempotencyKey: generateRandomUUID()
         });
-        await openTask(task.value.id);
-    } catch {
-        error.value = true;
-    } finally {
-        busy.value = false;
-    }
-}
-
-async function toggleRows(group: BillflowAccountGroup): Promise<void> {
-    if (!task.value) return;
-    if (expandedSampleRowId.value === group.sampleRowId) {
-        expandedSampleRowId.value = undefined;
-        accountRows.value = [];
-        selectedRowIds.value = [];
-        return;
-    }
-    busy.value = true;
-    try {
-        expandedSampleRowId.value = group.sampleRowId;
-        selectedRowIds.value = [];
-        accountRows.value = await billflowApi.listAccountRows(task.value.id, group.sampleRowId);
-    } catch {
-        error.value = true;
-        expandedSampleRowId.value = undefined;
-    } finally {
-        busy.value = false;
-    }
-}
-
-async function skipSelectedRows(): Promise<void> {
-    await mutateSelectedRows(true);
-}
-
-async function restoreSelectedRows(): Promise<void> {
-    await mutateSelectedRows(false);
-}
-
-async function mutateSelectedRows(skip: boolean): Promise<void> {
-    if (!task.value || !expandedSampleRowId.value || selectedRowIds.value.length < 1) return;
-    busy.value = true;
-    try {
-        const request = {
-            taskId: task.value.id,
-            expectedVersion: task.value.version,
-            sampleRowId: expandedSampleRowId.value,
-            rowIds: selectedRowIds.value,
-            idempotencyKey: generateRandomUUID()
-        };
-        accounts.value = skip
-            ? await billflowApi.skipAccountRows(request)
-            : await billflowApi.restoreAccountRows(request);
-        selectedRowIds.value = [];
         await openTask(task.value.id);
     } catch {
         error.value = true;
@@ -1873,6 +1926,10 @@ onMounted(reload);
     margin-bottom: 8px;
 }
 
+.pane-bar {
+    margin-bottom: 14px;
+}
+
 .bucket-bar p,
 .bucket-empty {
     margin: 0;
@@ -2017,7 +2074,16 @@ onMounted(reload);
 
 .todo-row--done,
 .todo-row--plain {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+}
+
+.todo-skip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    color: rgba(var(--v-theme-on-surface), 0.58);
+    font-size: 0.72rem;
+    white-space: nowrap;
 }
 
 .todo-row__check {

@@ -2947,8 +2947,12 @@
             "confirmHint": "Finish reviewing transactions and other items, then confirm posting.",
             "confirmDoneHint": "Posted.",
             "reviewHint": "Choose a category for unclear transactions. You can select several and save them together.",
-            "othersHint": "Anything left after categorizing. You can continue if there is nothing to decide.",
             "mergeHint": "The same purchase is merged only when it is the same card, same amount and currency, within two days, compatible direction, and the only match. Clear matches merge automatically. Unique matches that cannot be paired need a look.",
+            "othersHint": "Anything left after categorizing. You can continue if there is nothing to decide.",
+            "pane": {
+                "merge": "Merge",
+                "category": "Categories"
+            },
             "merge": {
                 "pending": "After accounts are ready, start merging. Clear matches are merged automatically.",
                 "empty": "Nothing needs a merge decision. Clear matches are already merged, or merging has not started.",
@@ -2962,8 +2966,8 @@
             },
             "skip": {
                 "title": "Don't post",
-                "hint": "Check an account to skip the whole group. Expand and check rows to skip only those.",
-                "empty": "No accounts to skip yet."
+                "hint": "Check a transaction to keep it out of the ledger. Whole-account ignores are already done when checking accounts.",
+                "empty": "No transactions to skip yet."
             },
             "files": {
                 "title": "Choose statements to organize together",
