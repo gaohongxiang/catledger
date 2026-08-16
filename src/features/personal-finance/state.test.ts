@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { PersonalFinanceImportBatch, PersonalFinanceImportFile, PersonalFinanceImportRow, PersonalFinanceImportUploadResult, PersonalFinancePaymentAccountGroup, PersonalFinancePostingDraft, PersonalFinanceSourceAccount } from './models.ts';
 import {
+    buildCebCreditReparseRequest,
     buildGenericBankReparseRequest,
     buildPersonalFinanceReparseRequest,
     buildSingleRowPostingRequest,
+    canConfigureCebCreditPdf,
     canConfigureGenericBankCsv,
     canDeleteImportFileContent,
     canDiscardImportBatch,
@@ -129,6 +131,11 @@ describe('personal finance import workflow state', () => {
         expect(canConfigureGenericBankCsv(csvFile)).toBe(true);
         expect(canConfigureGenericBankCsv({ ...csvFile, contentState: 'missing' })).toBe(false);
         expect(canConfigureGenericBankCsv({ ...csvFile, fileExtension: 'xlsx' })).toBe(false);
+
+        const pdfFile = { contentState: 'available', fileExtension: 'pdf' } as PersonalFinanceImportFile;
+        expect(canConfigureCebCreditPdf(pdfFile)).toBe(true);
+        expect(canConfigureCebCreditPdf({ ...pdfFile, contentState: 'missing' })).toBe(false);
+        expect(canConfigureCebCreditPdf(csvFile)).toBe(false);
 	});
 });
 
@@ -242,6 +249,30 @@ describe('generic bank CSV mapping state', () => {
             sourceAccountId: 'bank-source-1',
             parserName: 'generic_bank_csv',
             genericCsvMapping: { amountMode: 'signed' }
+        });
+    });
+
+    it('requires a mapped active bank source account before building a CEB request', () => {
+        const base = {
+            fileId: 'file-2',
+            currency: 'CNY',
+            timezoneUtcOffset: 480,
+            reasonCode: 'user_selected_ceb_credit_pdf'
+        };
+
+        expect(() => buildCebCreditReparseRequest(base)).toThrow('source_account_required');
+        expect(() => buildCebCreditReparseRequest({
+            ...base,
+            sourceAccount: { ...mappedBankAccount, ledgerAccountId: undefined }
+        })).toThrow('ledger_account_required');
+
+        expect(buildCebCreditReparseRequest({ ...base, sourceAccount: mappedBankAccount })).toEqual({
+            fileId: 'file-2',
+            sourceAccountId: 'bank-source-1',
+            parserName: 'ceb_credit_pdf',
+            currency: 'CNY',
+            timezoneUtcOffset: 480,
+            reasonCode: 'user_selected_ceb_credit_pdf'
         });
     });
 

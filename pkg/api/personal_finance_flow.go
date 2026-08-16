@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/mayswind/ezbookkeeping/pkg/converters/alipay"
+	"github.com/mayswind/ezbookkeeping/pkg/converters/ceb"
 	"github.com/mayswind/ezbookkeeping/pkg/converters/genericbank"
 	"github.com/mayswind/ezbookkeeping/pkg/converters/wechat"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
@@ -82,6 +83,7 @@ func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error)
 			wechat.WeChatPayImportEvidenceCsvParser,
 			wechat.WeChatPayImportEvidenceXlsxParser,
 			genericbank.ImportEvidenceParser,
+			ceb.ImportEvidenceParser,
 		},
 		sourceAccounts,
 		dedup,

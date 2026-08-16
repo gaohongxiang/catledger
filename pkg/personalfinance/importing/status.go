@@ -18,6 +18,7 @@ const (
 	EVIDENCE_FORMAT_WECHAT_CSV       EvidenceFormat = "wechat_csv"
 	EVIDENCE_FORMAT_WECHAT_XLSX      EvidenceFormat = "wechat_xlsx"
 	EVIDENCE_FORMAT_BANK_GENERIC_CSV EvidenceFormat = "bank_generic_csv"
+	EVIDENCE_FORMAT_CEB_CREDIT_PDF   EvidenceFormat = "ceb_credit_pdf"
 )
 
 // RuleVersion 是会影响持久证据或身份结果的显式规则版本。
@@ -133,6 +134,7 @@ type LocatorKind string
 const (
 	LOCATOR_KIND_CSV  LocatorKind = "csv"
 	LOCATOR_KIND_XLSX LocatorKind = "xlsx"
+	LOCATOR_KIND_PDF  LocatorKind = "pdf"
 )
 
 // ImportFileContentState 表示原文件内容在对象存储中的状态。

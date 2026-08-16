@@ -57,6 +57,10 @@ func (d ParserDescriptor) Validate() error {
 		if d.SourceType != SOURCE_TYPE_BANK || !d.ExplicitSelectionOnly {
 			return fmt.Errorf("generic bank CSV evidence format requires explicit bank selection")
 		}
+	case EVIDENCE_FORMAT_CEB_CREDIT_PDF:
+		if d.SourceType != SOURCE_TYPE_BANK || !d.ExplicitSelectionOnly {
+			return fmt.Errorf("Everbright credit PDF evidence format requires explicit bank selection")
+		}
 	default:
 		return fmt.Errorf("invalid evidence format")
 	}
@@ -271,7 +275,7 @@ func isTechnicalIdentifier(value string, maxLength int) bool {
 	return true
 }
 
-// SourceLocator 描述原始证据的物理位置。行号从 1 开始，SheetIndex 从 0 开始。
+// SourceLocator 描述原始证据的物理位置。CSV/XLSX/PDF 行号从 1 开始，SheetIndex 从 0 开始，PDF 页码从 1 开始。
 type SourceLocator struct {
 	Kind        LocatorKind
 	CSVStartRow int64
@@ -279,6 +283,8 @@ type SourceLocator struct {
 	SheetIndex  int
 	SheetName   string
 	XLSXRow     int64
+	PDFPage     int
+	PDFLine     int64
 }
 
 // EvidenceRow 是一条可追溯到物理位置的原始证据。

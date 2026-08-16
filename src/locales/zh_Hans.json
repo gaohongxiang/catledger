@@ -3455,6 +3455,15 @@
                 "ledger_account_required": "银行来源账户必须映射账本账户。"
             }
         },
+        "cebCredit": {
+            "title": "按光大信用卡月结单解析",
+            "configure": "按光大信用卡月结单解析",
+            "templateNotice": "这是光大信用卡对账单专用模板，不是通用银行 PDF。",
+            "privacyNotice": "解析只在本机进行；界面不会记录完整账号或原始字段。",
+            "twoCardHint": "一份账单里多张卡会按卡号末四位分成不同付款方式，来源档案仍选一个银行账户。",
+            "autoDetectionFailed": "未自动识别账单，已打开光大信用卡月结单解析。",
+            "parse": "按光大月结单解析"
+        },
         "posting": {
             "title": "确认正式交易",
             "reuseTitle": "确认精确重复项",

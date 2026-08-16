@@ -33,7 +33,7 @@
                     </div>
                 </div>
 
-                <input ref="fileInput" type="file" class="d-none" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="upload" />
+                <input ref="fileInput" type="file" class="d-none" accept=".csv,.xlsx,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="upload" />
 
                 <v-divider />
 
@@ -141,6 +141,15 @@
                                         @click="configureSelectedAsGenericBank"
                                     >
                                         {{ tt('personalFinance.genericBank.configure') }}
+                                    </v-btn>
+                                    <v-btn
+                                        variant="tonal"
+                                        color="primary"
+                                        :prepend-icon="mdiCreditCardOutline"
+                                        :disabled="!canConfigureSelectedFileAsCebCredit || personalFinanceStore.submitting"
+                                        @click="configureSelectedAsCebCredit"
+                                    >
+                                        {{ tt('personalFinance.cebCredit.configure') }}
                                     </v-btn>
 									<v-btn
 										variant="tonal"
@@ -353,6 +362,7 @@
 
     <source-account-dialog ref="sourceAccountDialog" @parsed="onParsed" />
     <generic-bank-import-dialog ref="genericBankImportDialog" @parsed="onParsed" />
+    <ceb-credit-import-dialog ref="cebCreditImportDialog" @parsed="onParsed" />
     <payment-account-setup-dialog ref="paymentAccountSetupDialog" @saved="onPaymentAccountsSaved" />
     <posting-dialog ref="postingDialog" @posted="onPosted" />
 	<confirm-dialog ref="confirmDialog" />
@@ -365,6 +375,7 @@ import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import PostingDialog from '../components/PostingDialog.vue';
 import SourceAccountDialog from '../components/SourceAccountDialog.vue';
 import GenericBankImportDialog from '../components/GenericBankImportDialog.vue';
+import CebCreditImportDialog from '../components/CebCreditImportDialog.vue';
 import PaymentAccountSetupDialog from '../components/PaymentAccountSetupDialog.vue';
 
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue';
@@ -384,6 +395,7 @@ import {
     getSourceTypeKey
 } from '../presentation.ts';
 import {
+    canConfigureCebCreditPdf,
     canConfigureGenericBankCsv,
     canDeleteImportFileContent,
     canDiscardImportBatch,
@@ -405,6 +417,7 @@ import {
 	mdiBankOutline,
 	mdiCancel,
     mdiCreditCardSearchOutline,
+    mdiCreditCardOutline,
 	mdiDeleteOutline,
     mdiFileDocumentOutline,
     mdiFileSearchOutline,
@@ -420,6 +433,7 @@ type SnackBarType = InstanceType<typeof SnackBar>;
 type PostingDialogType = InstanceType<typeof PostingDialog>;
 type SourceAccountDialogType = InstanceType<typeof SourceAccountDialog>;
 type GenericBankImportDialogType = InstanceType<typeof GenericBankImportDialog>;
+type CebCreditImportDialogType = InstanceType<typeof CebCreditImportDialog>;
 type PaymentAccountSetupDialogType = InstanceType<typeof PaymentAccountSetupDialog>;
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 
@@ -434,6 +448,7 @@ const fileInput = useTemplateRef<HTMLInputElement>('fileInput');
 const postingDialog = useTemplateRef<PostingDialogType>('postingDialog');
 const sourceAccountDialog = useTemplateRef<SourceAccountDialogType>('sourceAccountDialog');
 const genericBankImportDialog = useTemplateRef<GenericBankImportDialogType>('genericBankImportDialog');
+const cebCreditImportDialog = useTemplateRef<CebCreditImportDialogType>('cebCreditImportDialog');
 const paymentAccountSetupDialog = useTemplateRef<PaymentAccountSetupDialogType>('paymentAccountSetupDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
@@ -455,6 +470,9 @@ const canDeleteSelectedFile = computed<boolean>(() => {
 });
 const canConfigureSelectedFileAsGenericBank = computed<boolean>(() => {
     return canConfigureGenericBankCsv(personalFinanceStore.selectedBatch?.file);
+});
+const canConfigureSelectedFileAsCebCredit = computed<boolean>(() => {
+    return canConfigureCebCreditPdf(personalFinanceStore.selectedBatch?.file);
 });
 
 const batchPageCount = computed<number>(() => Math.max(1, Math.ceil(personalFinanceStore.totalBatchCount / HISTORY_PAGE_SIZE)));
@@ -578,10 +596,7 @@ async function upload(event: Event): Promise<void> {
     try {
         await reparseFile(result.file.id, 'initial_upload');
     } catch {
-        if (canConfigureGenericBankCsv(result.file)) {
-            openGenericBankImport(result.file.id, 'initial_upload_generic_fallback');
-            snackbar.value?.showMessage('personalFinance.genericBank.autoDetectionFailed');
-        } else {
+        if (!openExplicitParserFallback(result.file, 'initial_upload_generic_fallback', 'initial_upload_ceb_fallback')) {
             snackbar.value?.showMessage('personalFinance.error.operationFailed');
         }
     }
@@ -634,10 +649,7 @@ async function reparseDuplicate(): Promise<void> {
     try {
         await reparseFile(fileId, 'duplicate_upload_reparse');
     } catch {
-        if (canConfigureGenericBankCsv(file)) {
-            openGenericBankImport(fileId, 'duplicate_upload_generic_fallback');
-            snackbar.value?.showMessage('personalFinance.genericBank.autoDetectionFailed');
-        } else {
+        if (!openExplicitParserFallback(file, 'duplicate_upload_generic_fallback', 'duplicate_upload_ceb_fallback')) {
             snackbar.value?.showMessage('personalFinance.error.operationFailed');
         }
     }
@@ -656,13 +668,15 @@ async function reparseSelectedBatch(): Promise<void> {
         return;
     }
 
+    if (batch?.parserName === 'ceb_credit_pdf') {
+        openCebCreditImport(file.id, 'user_requested_ceb_reparse');
+        return;
+    }
+
     try {
         await reparseFile(file.id, 'user_requested');
     } catch {
-        if (canConfigureGenericBankCsv(file)) {
-            openGenericBankImport(file.id, 'user_requested_generic_fallback');
-            snackbar.value?.showMessage('personalFinance.genericBank.autoDetectionFailed');
-        } else {
+        if (!openExplicitParserFallback(file, 'user_requested_generic_fallback', 'user_requested_ceb_fallback')) {
             snackbar.value?.showMessage('personalFinance.error.operationFailed');
         }
     }
@@ -677,6 +691,29 @@ function openGenericBankImport(fileId: string, reasonCode: string): void {
     });
 }
 
+function openCebCreditImport(fileId: string, reasonCode: string): void {
+    cebCreditImportDialog.value?.open({
+        fileId,
+        currency: userStore.currentUserDefaultCurrency,
+        timezoneUtcOffset: getTimezoneOffsetMinutes(getCurrentUnixTime()),
+        reasonCode
+    });
+}
+
+function openExplicitParserFallback(file: PersonalFinanceImportUploadResult['file'] | undefined, genericReason: string, cebReason: string): boolean {
+    if (canConfigureCebCreditPdf(file)) {
+        openCebCreditImport(file.id, cebReason);
+        snackbar.value?.showMessage('personalFinance.cebCredit.autoDetectionFailed');
+        return true;
+    }
+    if (canConfigureGenericBankCsv(file)) {
+        openGenericBankImport(file.id, genericReason);
+        snackbar.value?.showMessage('personalFinance.genericBank.autoDetectionFailed');
+        return true;
+    }
+    return false;
+}
+
 function configureSelectedAsGenericBank(): void {
     const file = personalFinanceStore.selectedBatch?.file;
 
@@ -685,6 +722,16 @@ function configureSelectedAsGenericBank(): void {
     }
 
     openGenericBankImport(file.id, 'user_selected_generic_bank');
+}
+
+function configureSelectedAsCebCredit(): void {
+    const file = personalFinanceStore.selectedBatch?.file;
+
+    if (!file || !canConfigureCebCreditPdf(file)) {
+        return;
+    }
+
+    openCebCreditImport(file.id, 'user_selected_ceb_credit_pdf');
 }
 
 function openPosting(row: PersonalFinanceImportRow): void {

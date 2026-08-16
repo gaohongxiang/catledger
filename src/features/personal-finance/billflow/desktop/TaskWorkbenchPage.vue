@@ -15,7 +15,7 @@
                 type="file"
                 class="d-none"
                 multiple
-                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                accept=".csv,.xlsx,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 @change="upload"
             />
         </div>
@@ -390,19 +390,21 @@
             </v-btn>
         </div>
     </v-card>
+    <ceb-credit-import-dialog ref="cebCreditImportDialog" @parsed="onCebCreditParsed" />
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, useTemplateRef, watch } from 'vue';
 import { mdiRefresh, mdiTrayArrowUp } from '@mdi/js';
 
 import AmountInput from '@/components/desktop/AmountInput.vue';
 import { useI18n } from '@/locales/helpers.ts';
-import { getBrowserTimezoneOffsetMinutes, parseDateTimeFromUnixTimeWithBrowserTimezone } from '@/lib/datetime.ts';
+import { getBrowserTimezoneOffsetMinutes, getCurrentUnixTime, getTimezoneOffsetMinutes, parseDateTimeFromUnixTimeWithBrowserTimezone } from '@/lib/datetime.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
+import { useUserStore } from '@/stores/user.ts';
 
 import { CategoryType } from '@/core/category.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
@@ -443,14 +445,18 @@ import {
     type BillflowCategoryBucket,
     type BillflowWorkbenchStep
 } from '../state.ts';
+import { canConfigureCebCreditPdf } from '../../state.ts';
 import { usePersonalFinanceStore } from '../../store.ts';
 import { todayCivilDate } from '../../dashboard/state.ts';
+import CebCreditImportDialog from '../../components/CebCreditImportDialog.vue';
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatDateTimeToShortDateTime } = useI18n();
+const userStore = useUserStore();
 const personalFinanceStore = usePersonalFinanceStore();
 const accountsStore = useAccountsStore();
 const categoriesStore = useTransactionCategoriesStore();
 const fileInput = ref<HTMLInputElement>();
+const cebCreditImportDialog = useTemplateRef<InstanceType<typeof CebCreditImportDialog>>('cebCreditImportDialog');
 const loading = ref(false);
 const busy = ref(false);
 const error = ref(false);
@@ -897,7 +903,15 @@ async function upload(event: Event): Promise<void> {
     busy.value = true;
     try {
         for (const file of files) {
-            await personalFinanceStore.uploadFile(file);
+            const result = await personalFinanceStore.uploadFile(file);
+            if (canConfigureCebCreditPdf(result.file)) {
+                cebCreditImportDialog.value?.open({
+                    fileId: result.file.id,
+                    currency: userStore.currentUserDefaultCurrency,
+                    timezoneUtcOffset: getTimezoneOffsetMinutes(getCurrentUnixTime()),
+                    reasonCode: 'initial_upload_ceb_fallback'
+                });
+            }
         }
         await personalFinanceStore.loadBatches(0, 50);
     } catch {
@@ -906,6 +920,10 @@ async function upload(event: Event): Promise<void> {
     } finally {
         busy.value = false;
     }
+}
+
+async function onCebCreditParsed(): Promise<void> {
+    await personalFinanceStore.loadBatches(0, 50);
 }
 
 async function createTask(): Promise<void> {

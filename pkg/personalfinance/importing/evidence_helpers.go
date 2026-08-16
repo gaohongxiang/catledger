@@ -53,6 +53,12 @@ func EncodeSourceLocator(locator SourceLocator) (string, error) {
 
 		sheetName := base64.RawURLEncoding.EncodeToString([]byte(locator.SheetName))
 		return fmt.Sprintf("v1:xlsx:%d:%s:%d", locator.SheetIndex, sheetName, locator.XLSXRow), nil
+	case LOCATOR_KIND_PDF:
+		if locator.PDFPage < 1 || locator.PDFLine < 1 {
+			return "", fmt.Errorf("invalid PDF source locator")
+		}
+
+		return fmt.Sprintf("v1:pdf:%d:%d", locator.PDFPage, locator.PDFLine), nil
 	default:
 		return "", fmt.Errorf("invalid source locator kind")
 	}

@@ -74,6 +74,10 @@ export function canConfigureGenericBankCsv(file: PersonalFinanceImportFile | und
     return !!file && file.contentState === 'available' && file.fileExtension.replace(/^\./, '').toLowerCase() === 'csv';
 }
 
+export function canConfigureCebCreditPdf(file: PersonalFinanceImportFile | undefined): boolean {
+    return !!file && file.contentState === 'available' && file.fileExtension.replace(/^\./, '').toLowerCase() === 'pdf';
+}
+
 export function getUploadAction(result: PersonalFinanceImportUploadResult): PersonalFinanceUploadAction {
     if (result.duplicate && result.latestBatch) {
         return 'choose_duplicate_action';
@@ -412,6 +416,30 @@ export function buildGenericBankReparseRequest(params: {
         timezoneUtcOffset: params.timezoneUtcOffset,
         reasonCode: params.reasonCode,
         genericCsvMapping: validation.mapping
+    });
+}
+
+export function buildCebCreditReparseRequest(params: {
+    fileId: string;
+    sourceAccount?: PersonalFinanceSourceAccount;
+    currency: string;
+    timezoneUtcOffset: number;
+    reasonCode: string;
+}): PersonalFinanceReparseRequest {
+    if (!params.sourceAccount || params.sourceAccount.sourceType !== 'bank' || params.sourceAccount.status !== 'active') {
+        throw new Error('source_account_required');
+    }
+    if (!params.sourceAccount.ledgerAccountId) {
+        throw new Error('ledger_account_required');
+    }
+
+    return buildPersonalFinanceReparseRequest({
+        fileId: params.fileId,
+        sourceAccountId: params.sourceAccount.id,
+        parserName: 'ceb_credit_pdf',
+        currency: params.currency,
+        timezoneUtcOffset: params.timezoneUtcOffset,
+        reasonCode: params.reasonCode
     });
 }
 

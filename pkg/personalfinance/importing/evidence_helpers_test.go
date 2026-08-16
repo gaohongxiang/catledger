@@ -28,6 +28,16 @@ func TestEvidenceSerializationAndLocator(t *testing.T) {
 		t.Fatalf("unexpected XLSX locator %q: %v", locator, err)
 	}
 
+	locator, err = EncodeSourceLocator(SourceLocator{
+		Kind:    LOCATOR_KIND_PDF,
+		PDFPage: 2,
+		PDFLine: 17,
+	})
+
+	if err != nil || locator != "v1:pdf:2:17" {
+		t.Fatalf("unexpected PDF locator %q: %v", locator, err)
+	}
+
 	rawJSON, err := MarshalRawFields([]RawField{
 		{Name: "", Value: "  untrimmed  "},
 		{Name: "duplicate", Value: "first"},
