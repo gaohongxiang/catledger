@@ -274,53 +274,83 @@ export function categoryBucketHintKey(bucket: BillflowCategoryBucket): string {
         : 'personalFinance.billflow.todos.pendingHint';
 }
 
-export type BillflowWorkbenchStep = 'files' | 'accounts' | 'review' | 'others' | 'confirm';
+export type BillflowWorkbenchStep = 'files' | 'accounts' | 'balance' | 'merge' | 'review' | 'others' | 'confirm';
 
-export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'review', 'others', 'confirm'];
+export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'balance', 'merge', 'review', 'others', 'confirm'];
+
+export type BillflowWorkbenchInput = {
+    hasTask: boolean;
+    status?: BillflowTaskStatus;
+    needsCreateCount: number;
+    needsBalanceCount: number;
+};
+
+export function isMergeTodo(kind: BillflowTodoKind): boolean {
+    return kind === 'cross_source_ambiguous';
+}
 
 export function isInstallmentTodo(kind: BillflowTodoKind): boolean {
     return kind === 'installment_candidate';
 }
 
-export function canAssignBillflowCategory(kind: BillflowTodoKind): boolean {
+export function isCategoryTodo(kind: BillflowTodoKind): boolean {
     return kind === 'uncategorized' || kind === 'transfer_unclear';
 }
 
+export function canAssignBillflowCategory(kind: BillflowTodoKind): boolean {
+    return isCategoryTodo(kind);
+}
+
+export function mergeTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
+    return todos.filter(todo => isMergeTodo(todo.todoKind));
+}
+
 export function categoryTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
-    return todos.filter(todo => !isInstallmentTodo(todo.todoKind));
+    return todos.filter(todo => isCategoryTodo(todo.todoKind));
 }
 
 export function installmentTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
     return todos.filter(todo => isInstallmentTodo(todo.todoKind));
 }
 
+export function otherTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
+    return todos.filter(todo => !isMergeTodo(todo.todoKind) && !isCategoryTodo(todo.todoKind));
+}
+
 export function billflowWorkbenchStepIndex(step: BillflowWorkbenchStep): number {
     return BILLFLOW_WORKBENCH_STEPS.indexOf(step);
 }
 
-export function suggestedBillflowWorkbenchStep(input: {
-    hasTask: boolean;
-    status?: BillflowTaskStatus;
-    needsCreateCount: number;
-}): BillflowWorkbenchStep {
+export function accountsReadyForNextStep(input: Pick<BillflowWorkbenchInput, 'hasTask' | 'status' | 'needsCreateCount'>): boolean {
+    return input.hasTask && !taskNeedsAccounts(input.status ?? 'receiving', input.needsCreateCount);
+}
+
+export function suggestedBillflowWorkbenchStep(input: BillflowWorkbenchInput): BillflowWorkbenchStep {
     if (!input.hasTask) {
         return 'files';
     }
-    if (input.status === 'processing' || input.status === 'receiving' || taskNeedsAccounts(input.status ?? 'receiving', input.needsCreateCount)) {
+    const status = input.status ?? 'receiving';
+    if (status === 'processing' || taskNeedsAccounts(status, input.needsCreateCount)) {
         return 'accounts';
     }
-    if (taskAwaitsConfirm(input.status ?? 'receiving')) {
-        return 'review';
+    if (canAutoRunAfterAccounts(status, input.needsCreateCount)) {
+        return input.needsBalanceCount > 0 ? 'balance' : 'accounts';
+    }
+    if (taskAwaitsConfirm(status)) {
+        return 'merge';
     }
     return 'confirm';
 }
 
-export function canOpenBillflowWorkbenchStep(
-    step: BillflowWorkbenchStep,
-    input: { hasTask: boolean; status?: BillflowTaskStatus; needsCreateCount: number }
-): boolean {
+export function canOpenBillflowWorkbenchStep(step: BillflowWorkbenchStep, input: BillflowWorkbenchInput): boolean {
+    if (!input.hasTask) {
+        return step === 'files';
+    }
     if (step === 'review' || step === 'others' || step === 'confirm') {
         return input.status === 'awaiting_confirm' || input.status === 'ready' || input.status === 'failed';
+    }
+    if (step === 'balance' || step === 'merge') {
+        return accountsReadyForNextStep(input);
     }
     return billflowWorkbenchStepIndex(step) <= billflowWorkbenchStepIndex(suggestedBillflowWorkbenchStep(input));
 }
@@ -337,7 +367,7 @@ export function nextBillflowWorkbenchStep(step: BillflowWorkbenchStep): Billflow
 
 export function resolveBillflowWorkbenchStep(
     userStep: BillflowWorkbenchStep | undefined,
-    input: { hasTask: boolean; status?: BillflowTaskStatus; needsCreateCount: number }
+    input: BillflowWorkbenchInput
 ): BillflowWorkbenchStep {
     const suggested = suggestedBillflowWorkbenchStep(input);
     if (!userStep || !canOpenBillflowWorkbenchStep(userStep, input)) {

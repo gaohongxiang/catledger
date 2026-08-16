@@ -191,29 +191,59 @@
                     </div>
                 </article>
             </template>
+        </section>
 
-            <template v-if="newBalanceAccounts.length">
-                <div class="section-copy mt-5">
-                    <strong>{{ tt('personalFinance.billflow.balance.title') }}</strong>
-                    <span>{{ tt('personalFinance.billflow.balance.hint') }}</span>
+        <section class="work-section" v-if="currentStep === 'balance'">
+            <div class="section-copy">
+                <strong>{{ tt('personalFinance.billflow.balance.title') }}</strong>
+                <span>{{ tt('personalFinance.billflow.balance.hint') }}</span>
+            </div>
+            <p class="bucket-empty" v-if="!newBalanceAccounts.length">{{ tt('personalFinance.billflow.balance.empty') }}</p>
+            <article class="account-card" :key="account.ledgerAccountId" v-for="account in newBalanceAccounts">
+                <div class="account-card__head">
+                    <strong>{{ account.displayName }}</strong>
                 </div>
-                <article class="account-card" :key="account.ledgerAccountId" v-for="account in newBalanceAccounts">
-                    <div class="account-card__head">
-                        <strong>{{ account.displayName }}</strong>
+                <amount-input
+                    density="compact"
+                    show-currency
+                    :currency="account.currency"
+                    :disabled="busy"
+                    :label="tt('personalFinance.billflow.balance.amount')"
+                    :model-value="balanceDrafts[account.ledgerAccountId] ?? 0"
+                    @update:model-value="value => setBalanceDraft(account.ledgerAccountId, value)"
+                />
+                <div class="account-card__actions">
+                    <v-btn size="small" variant="text" :loading="busy" @click="skipBalance(account)">{{ tt('personalFinance.billflow.balance.skip') }}</v-btn>
+                    <v-btn size="small" color="primary" variant="tonal" :loading="busy" :disabled="!canSaveBalance(account.ledgerAccountId)" @click="verifyBalance(account)">
+                        {{ tt('personalFinance.billflow.balance.save') }}
+                    </v-btn>
+                </div>
+            </article>
+        </section>
+
+        <section class="work-section" v-if="currentStep === 'merge' && task">
+            <p class="confirm-hint">{{ tt('personalFinance.billflow.mergeHint') }}</p>
+            <p class="bucket-empty" v-if="canAutoRunAfterAccounts(task.status, accounts?.needsCreate.length ?? 0)">
+                {{ tt('personalFinance.billflow.merge.pending') }}
+            </p>
+            <template v-else>
+                <p class="bucket-empty" v-if="!mergeReviewTodos.length">{{ tt('personalFinance.billflow.merge.empty') }}</p>
+                <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in mergeReviewTodos">
+                    <div class="todo-row__copy">
+                        <strong>{{ todoTitle(todo) }}</strong>
+                        <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
+                        <small>{{ tt(todoKindKey(todo.todoKind)) }}</small>
                     </div>
-                    <amount-input
-                        density="compact"
-                        show-currency
-                        :currency="account.currency"
-                        :disabled="busy"
-                        :label="tt('personalFinance.billflow.balance.amount')"
-                        :model-value="balanceDrafts[account.ledgerAccountId] ?? 0"
-                        @update:model-value="value => setBalanceDraft(account.ledgerAccountId, value)"
-                    />
-                    <div class="account-card__actions">
-                        <v-btn size="small" variant="text" :loading="busy" @click="skipBalance(account)">{{ tt('personalFinance.billflow.balance.skip') }}</v-btn>
-                        <v-btn size="small" color="primary" variant="tonal" :loading="busy" :disabled="!canSaveBalance(account.ledgerAccountId)" @click="verifyBalance(account)">
-                            {{ tt('personalFinance.billflow.balance.save') }}
+                    <div class="todo-row__facts">
+                        <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
+                        <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
+                    </div>
+                    <div class="todo-row__actions">
+                        <v-btn size="x-small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                            {{ tt('personalFinance.billflow.todos.resolve') }}
+                        </v-btn>
+                        <v-btn size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                            {{ tt('personalFinance.billflow.todos.dismiss') }}
                         </v-btn>
                     </div>
                 </article>
@@ -337,19 +367,20 @@
             <p class="confirm-hint">{{ tt('personalFinance.billflow.othersHint') }}</p>
             <div class="section-copy mt-4">
                 <strong>{{ tt('personalFinance.billflow.todos.othersTitle') }}</strong>
-                <span v-if="!otherTodos.length">{{ tt('personalFinance.billflow.todos.othersEmpty') }}</span>
+                <span v-if="!otherReviewTodos.length">{{ tt('personalFinance.billflow.todos.othersEmpty') }}</span>
             </div>
-            <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in otherTodos">
+            <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in otherReviewTodos">
                 <div class="todo-row__copy">
                     <strong>{{ todoTitle(todo) }}</strong>
                     <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
+                    <small v-if="!isInstallmentTodo(todo.todoKind)">{{ tt(todoKindKey(todo.todoKind)) }}</small>
                 </div>
                 <div class="todo-row__facts">
                     <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
                     <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
                 </div>
                 <div class="todo-row__actions">
-                    <v-btn size="x-small" variant="text" :loading="busy" @click="confirmInstallment(todo)">
+                    <v-btn size="x-small" variant="text" :loading="busy" v-if="isInstallmentTodo(todo.todoKind)" @click="confirmInstallment(todo)">
                         {{ tt('personalFinance.billflow.todos.installment') }}
                     </v-btn>
                     <v-btn size="x-small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
@@ -430,10 +461,12 @@ import {
     canEditOrganizeFiles,
     categoryBucketHintKey,
     categoryTodos,
-    installmentTodos,
+    isInstallmentTodo,
     matchedLedgerAccount,
     mergeSelectedOrganizeFileIds,
+    mergeTodos,
     nextBillflowWorkbenchStep,
+    otherTodos,
     previousBillflowWorkbenchStep,
     rememberCreatedLedgerIds,
     resolveAccountBucket,
@@ -519,13 +552,15 @@ const taskMemberFileIds = computed(() => taskFiles.value.map(file => file.fileId
 const stepInput = computed(() => ({
     hasTask: !!task.value,
     status: task.value?.status,
-    needsCreateCount: accounts.value?.needsCreate.length ?? 0
+    needsCreateCount: accounts.value?.needsCreate.length ?? 0,
+    needsBalanceCount: newBalanceAccounts.value.length
 }));
 const currentStep = computed(() => resolveBillflowWorkbenchStep(userStep.value, stepInput.value));
 const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.value));
 const reviewTodos = computed(() => categoryTodos(openTodos.value));
 const classifiedReviewRows = computed(() => classifiedRows.value);
-const otherTodos = computed(() => installmentTodos(openTodos.value));
+const mergeReviewTodos = computed(() => mergeTodos(openTodos.value));
+const otherReviewTodos = computed(() => otherTodos(openTodos.value));
 const assignableReviewTodos = computed(() => reviewTodos.value.filter(todo => canAssignBillflowCategory(todo.todoKind)));
 const selectedAssignableTodos = computed(() => assignableReviewTodos.value.filter(todo => selectedTodoIds.value.includes(todo.id)));
 const allAssignableSelected = computed(() => assignableReviewTodos.value.length > 0 && selectedAssignableTodos.value.length === assignableReviewTodos.value.length);
@@ -558,15 +593,29 @@ const stepAction = computed(() => {
                 run: reuseMatchedAccounts
             };
         }
-        if (canAutoRunAfterAccounts(task.value.status, pendingCount)) {
+        if (taskNeedsAccounts(task.value.status, pendingCount) && pendingCount > 0) {
             return {
-                hint: newBalanceAccounts.value.length
-                    ? tt('personalFinance.billflow.next.accountsBalance')
-                    : tt('personalFinance.billflow.next.accountsReady'),
-                label: tt('personalFinance.billflow.run'),
-                run: runTask
+                hint: tt('personalFinance.billflow.next.accounts', { count: pendingCount }),
+                label: tt('personalFinance.billflow.step.next'),
+                run: async (): Promise<void> => {},
+                disabled: true
             };
         }
+    }
+    if (currentStep.value === 'merge' && task.value && canAutoRunAfterAccounts(task.value.status, pendingCount)) {
+        return {
+            hint: tt('personalFinance.billflow.next.merge'),
+            label: tt('personalFinance.billflow.run'),
+            run: runTask
+        };
+    }
+    if (currentStep.value === 'merge' && task.value && mergeReviewTodos.value.length > 0) {
+        return {
+            hint: tt('personalFinance.billflow.next.mergeBlocked', { count: mergeReviewTodos.value.length }),
+            label: tt('personalFinance.billflow.step.next'),
+            run: async (): Promise<void> => {},
+            disabled: true
+        };
     }
     if (currentStep.value === 'review' && task.value && reviewTodos.value.length > 0) {
         return {
@@ -576,9 +625,9 @@ const stepAction = computed(() => {
             disabled: true
         };
     }
-    if (currentStep.value === 'others' && task.value && otherTodos.value.length > 0) {
+    if (currentStep.value === 'others' && task.value && otherReviewTodos.value.length > 0) {
         return {
-            hint: tt('personalFinance.billflow.next.othersBlocked', { count: otherTodos.value.length }),
+            hint: tt('personalFinance.billflow.next.othersBlocked', { count: otherReviewTodos.value.length }),
             label: tt('personalFinance.billflow.step.next'),
             run: async (): Promise<void> => {},
             disabled: true
@@ -597,21 +646,26 @@ const stepAction = computed(() => {
     return undefined;
 });
 const canAdvanceWithoutAction = computed(() => {
-    const next = nextBillflowWorkbenchStep(currentStep.value);
-    if (!next || !canOpenStep(next)) {
-        return false;
-    }
     if (currentStep.value === 'files') {
         return !!task.value && (!canEditFiles.value || selectedFileIds.value.length > 0);
     }
     if (currentStep.value === 'accounts') {
-        return !!task.value && !canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0);
+        return !!task.value && (accounts.value?.needsCreate.length ?? 0) < 1;
+    }
+    if (currentStep.value === 'balance') {
+        return !!task.value && canOpenStep('merge');
+    }
+    if (currentStep.value === 'merge') {
+        return !!task.value
+            && !canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0)
+            && mergeReviewTodos.value.length < 1
+            && canOpenStep('review');
     }
     if (currentStep.value === 'review') {
-        return reviewTodos.value.length < 1;
+        return reviewTodos.value.length < 1 && canOpenStep('others');
     }
     if (currentStep.value === 'others') {
-        return otherTodos.value.length < 1;
+        return otherReviewTodos.value.length < 1 && canOpenStep('confirm');
     }
     return false;
 });
@@ -621,14 +675,26 @@ const forwardHint = computed(() => {
     if (stepAction.value?.hint) {
         return stepAction.value.hint;
     }
+    if (currentStep.value === 'accounts' && newBalanceAccounts.value.length) {
+        return tt('personalFinance.billflow.next.accountsBalance');
+    }
+    if (currentStep.value === 'accounts') {
+        return tt('personalFinance.billflow.next.accountsReady');
+    }
+    if (currentStep.value === 'balance') {
+        return tt('personalFinance.billflow.next.balance');
+    }
+    if (currentStep.value === 'merge') {
+        return tt('personalFinance.billflow.next.mergeReady');
+    }
     if (currentStep.value === 'review' && reviewTodos.value.length > 0) {
         return tt('personalFinance.billflow.next.reviewBlocked', { count: reviewTodos.value.length });
     }
     if (currentStep.value === 'review') {
         return tt('personalFinance.billflow.next.review');
     }
-    if (currentStep.value === 'others' && otherTodos.value.length > 0) {
-        return tt('personalFinance.billflow.next.othersBlocked', { count: otherTodos.value.length });
+    if (currentStep.value === 'others' && otherReviewTodos.value.length > 0) {
+        return tt('personalFinance.billflow.next.othersBlocked', { count: otherReviewTodos.value.length });
     }
     if (currentStep.value === 'others') {
         return tt('personalFinance.billflow.next.others');
@@ -656,10 +722,13 @@ function canOpenStep(step: BillflowWorkbenchStep): boolean {
     if (!canOpenBillflowWorkbenchStep(step, stepInput.value)) {
         return false;
     }
-    if (!task.value || !taskAwaitsConfirm(task.value.status)) {
+    if (!task.value || !(taskAwaitsConfirm(task.value.status) || task.value.status === 'ready' || task.value.status === 'failed')) {
         return true;
     }
-    if (step === 'others' && reviewTodos.value.length > 0) {
+    if (step === 'review' && mergeReviewTodos.value.length > 0) {
+        return false;
+    }
+    if (step === 'others' && (mergeReviewTodos.value.length > 0 || reviewTodos.value.length > 0)) {
         return false;
     }
     if (step === 'confirm' && openTodos.value.length > 0) {
@@ -692,6 +761,10 @@ function openStep(step: BillflowWorkbenchStep): void {
 }
 
 function goBack(): void {
+    if (currentStep.value === 'merge' && !newBalanceAccounts.value.length) {
+        userStep.value = 'accounts';
+        return;
+    }
     const previous = previousBillflowWorkbenchStep(currentStep.value);
     if (previous) {
         userStep.value = previous;
@@ -699,7 +772,17 @@ function goBack(): void {
 }
 
 async function goForward(): Promise<void> {
-    if (currentStep.value === 'files' && task.value) {
+    if (currentStep.value === 'files') {
+        if (!task.value) {
+            if (!stepAction.value || stepAction.value.disabled) {
+                return;
+            }
+            if (!await createTask()) {
+                return;
+            }
+            userStep.value = 'accounts';
+            return;
+        }
         if (canEditFiles.value) {
             if (selectedFileIds.value.length < 1) {
                 return;
@@ -710,10 +793,26 @@ async function goForward(): Promise<void> {
                 }
             }
         }
-        const next = nextBillflowWorkbenchStep('files');
-        if (next && canOpenStep(next)) {
-            userStep.value = next;
+        userStep.value = 'accounts';
+        return;
+    }
+    if (currentStep.value === 'accounts') {
+        if (stepAction.value) {
+            if (stepAction.value.disabled) {
+                return;
+            }
+            await stepAction.value.run();
+            userStep.value = 'accounts';
+            return;
         }
+        if ((accounts.value?.needsCreate.length ?? 0) > 0) {
+            return;
+        }
+        userStep.value = newBalanceAccounts.value.length ? 'balance' : 'merge';
+        return;
+    }
+    if (currentStep.value === 'balance') {
+        userStep.value = 'merge';
         return;
     }
     const stayOn = currentStep.value;
@@ -1412,7 +1511,7 @@ async function persistBalanceReview(account: { ledgerAccountId: string }, status
     }
     if (task.value) {
         persistBalanceMemory(task.value.id);
-        userStep.value = 'accounts';
+        userStep.value = 'balance';
     }
     cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
 }
