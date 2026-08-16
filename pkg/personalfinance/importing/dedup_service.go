@@ -41,6 +41,7 @@ type EvidenceDedupRepository interface {
 // Rows 中的持久状态由 repository 根据数据库唯一约束的裁决结果回填。
 type EvidenceBatchPersistence struct {
 	Batch                    *ImportBatch
+	CardHeader               *CardHeader
 	ExpectedSourceAccountKey string
 	DocumentIssues           []*ImportBatchIssue
 	Rows                     []EvidenceBatchPersistenceRow
@@ -254,6 +255,17 @@ func (s *DedupService) buildEvidenceBatchPersistence(request PersistEvidenceDocu
 	rows := make([]EvidenceBatchPersistenceRow, len(request.Document.Rows))
 	documentIssues := make([]*ImportBatchIssue, len(request.Document.Issues))
 	totalSnapshotBytes := 0
+	var cardHeader *CardHeader
+	if hasCardHeaderMetadata(request.Document.Metadata) {
+		headerId := s.generateId()
+		if headerId < 1 {
+			return nil, ErrImportIdentifierUnavailable
+		}
+		cardHeader = cardHeaderFromMetadata(request.Uid, batchId, headerId, now, request.Document.Metadata, request.ParseOptions.Currency)
+		if cardHeader == nil || !isValidCardHeader(cardHeader, batch) {
+			return nil, ErrImportRequestInvalid
+		}
+	}
 
 	for index, issue := range request.Document.Issues {
 		issueId := s.generateId()
@@ -327,6 +339,7 @@ func (s *DedupService) buildEvidenceBatchPersistence(request PersistEvidenceDocu
 
 	return &EvidenceBatchPersistence{
 		Batch:                    batch,
+		CardHeader:               cardHeader,
 		ExpectedSourceAccountKey: account.SourceAccountKey,
 		DocumentIssues:           documentIssues,
 		Rows:                     rows,

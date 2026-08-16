@@ -6,6 +6,7 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/billflow"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
@@ -113,10 +114,14 @@ type billflowAccountFactory struct {
 	accounts *services.AccountService
 }
 
-func (f *billflowAccountFactory) CreateAccount(c core.Context, uid int64, name string, category models.AccountCategory, currency string) (int64, error) {
+func (f *billflowAccountFactory) CreateAccount(c core.Context, uid int64, spec billflow.CreateAccountSpec) (int64, error) {
 	account := &models.Account{
-		Uid: uid, Name: name, Category: category, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT,
-		Icon: 1, Color: "1976D2", Currency: currency,
+		Uid: uid, Name: spec.Name, Category: spec.Category, Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT,
+		Icon: 1, Color: "1976D2", Currency: spec.Currency,
+	}
+	if spec.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD && spec.CreditCardStatementDate >= 1 && spec.CreditCardStatementDate <= 28 {
+		statementDate := spec.CreditCardStatementDate
+		account.Extend = &models.AccountExtend{CreditCardStatementDate: &statementDate}
 	}
 	if err := f.accounts.CreateAccounts(c, account, 0, nil, nil, time.UTC); err != nil {
 		return 0, err
@@ -126,8 +131,14 @@ func (f *billflowAccountFactory) CreateAccount(c core.Context, uid int64, name s
 
 func (f *billflowAccountFactory) LoadAccount(c core.Context, uid int64, accountId int64) (*billflow.AccountSnapshot, error) {
 	account, err := f.accounts.GetAccountByAccountId(c, uid, accountId)
-	if err != nil || account == nil {
+	if err != nil {
+		if errors.Is(err, errs.ErrAccountNotFound) {
+			return nil, nil
+		}
 		return nil, err
+	}
+	if account == nil {
+		return nil, nil
 	}
 	return &billflow.AccountSnapshot{
 		AccountId: account.AccountId, Currency: account.Currency, Hidden: account.Hidden,

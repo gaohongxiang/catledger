@@ -64,6 +64,7 @@ type EvidenceReader interface {
 	FindLatestImportBatchByFileId(c core.Context, uid int64, fileId int64) (*importing.ImportBatch, error)
 	ListImportBatches(c core.Context, uid int64, fileId int64, offset int, limit int) ([]*importing.ImportBatch, int64, error)
 	FindImportBatchById(c core.Context, uid int64, batchId int64) (*importing.ImportBatch, error)
+	FindCardHeaderByBatch(c core.Context, uid int64, batchId int64) (*importing.CardHeader, error)
 	ListRawImportRows(c core.Context, uid int64, batchId int64) ([]*importing.RawImportRow, error)
 	FindRawImportRowById(c core.Context, uid int64, rowId int64) (*importing.RawImportRow, error)
 }
@@ -98,9 +99,17 @@ type InstallmentIngester interface {
 	ListCandidates(c core.Context, uid int64, status installments.CandidateStatus, cursor *installments.CandidateCursor, limit int) (*installments.CandidateListResult, error)
 }
 
+// CreateAccountSpec 是整理时新建正式账户的最小字段；信用卡账单日 0 表示未知。
+type CreateAccountSpec struct {
+	Name                    string
+	Category                models.AccountCategory
+	Currency                string
+	CreditCardStatementDate int
+}
+
 // AccountFactory 通过既有正式账户创建入口新建付款账户。
 type AccountFactory interface {
-	CreateAccount(c core.Context, uid int64, name string, category models.AccountCategory, currency string) (int64, error)
+	CreateAccount(c core.Context, uid int64, spec CreateAccountSpec) (int64, error)
 	LoadAccount(c core.Context, uid int64, accountId int64) (*AccountSnapshot, error)
 }
 
@@ -197,17 +206,21 @@ type TodoListResult struct {
 }
 
 type AccountGroupView struct {
-	SourceType      importing.SourceType
-	Currency        string
-	DisplayName     string
-	RowCount        int64
-	PendingRowCount int64
-	SampleRowId     int64
-	LedgerAccountId *int64
-	SuggestedType   string
-	Mapped          bool
-	Excluded        bool
-	SkippedRowCount int64
+	SourceType          importing.SourceType
+	Currency            string
+	DisplayName         string
+	RowCount            int64
+	PendingRowCount     int64
+	SampleRowId         int64
+	LedgerAccountId     *int64
+	SuggestedType       string
+	Mapped              bool
+	Excluded            bool
+	SkippedRowCount     int64
+	StatementDate       string
+	DueDate             string
+	CreditLimitAmount   *int64
+	CreditLimitCurrency string
 }
 
 type TaskAccountsView struct {

@@ -70,6 +70,10 @@ export interface BillflowAccountGroup {
     readonly suggestedType: 'credit_card' | 'virtual';
     readonly mapped: boolean;
     readonly excluded: boolean;
+    readonly statementDate?: string;
+    readonly dueDate?: string;
+    readonly creditLimitAmount?: string;
+    readonly creditLimitCurrency?: string;
 }
 
 export interface BillflowAccountRow {

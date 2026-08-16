@@ -45,6 +45,10 @@ export interface PersonalFinanceImportBatch {
     readonly statementStartUnixTime?: number;
     readonly statementEndUnixTime?: number;
     readonly statementTimezoneUtcOffset?: number;
+    readonly statementDate?: string;
+    readonly dueDate?: string;
+    readonly creditLimitAmount?: string;
+    readonly creditLimitCurrency?: string;
     readonly totalRowCount: number;
     readonly validRowCount: number;
     readonly invalidRowCount: number;

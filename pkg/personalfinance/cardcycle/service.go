@@ -77,6 +77,7 @@ func ServiceErrorCodeOf(err error) ServiceErrorCode {
 // EvidenceReader 只读取当前 uid 的导入批次账期，不写导入表。
 type EvidenceReader interface {
 	FindImportBatchById(c core.Context, uid int64, batchId int64) (*importing.ImportBatch, error)
+	FindCardHeaderByBatch(c core.Context, uid int64, batchId int64) (*importing.CardHeader, error)
 }
 
 // AccountReader 只读取账本账户的类别与安全显示名。

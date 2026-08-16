@@ -192,6 +192,10 @@ type personalFinanceImportBatchResponse struct {
 	StatementStartUnixTime     *int64                               `json:"statementStartUnixTime,omitempty"`
 	StatementEndUnixTime       *int64                               `json:"statementEndUnixTime,omitempty"`
 	StatementTimezoneUtcOffset *int16                               `json:"statementTimezoneUtcOffset,omitempty"`
+	StatementDate              string                               `json:"statementDate,omitempty"`
+	DueDate                    string                               `json:"dueDate,omitempty"`
+	CreditLimitAmount          *int64                               `json:"creditLimitAmount,string,omitempty"`
+	CreditLimitCurrency        string                               `json:"creditLimitCurrency,omitempty"`
 	TotalRowCount              int64                                `json:"totalRowCount"`
 	ValidRowCount              int64                                `json:"validRowCount"`
 	InvalidRowCount            int64                                `json:"invalidRowCount"`
@@ -664,6 +668,13 @@ func newPersonalFinanceImportBatchResponse(details *importing.ImportBatchDetails
 		CompletedUnixTime:          batch.CompletedUnixTime,
 		UpdatedUnixTime:            batch.UpdatedUnixTime,
 		File:                       newPersonalFinanceImportFileResponse(details.File),
+	}
+
+	if header := details.CardHeader; header != nil {
+		response.StatementDate = header.StatementDate
+		response.DueDate = header.DueDate
+		response.CreditLimitAmount = header.CreditLimitAmount
+		response.CreditLimitCurrency = header.Currency
 	}
 
 	if len(details.Issues) > 0 {

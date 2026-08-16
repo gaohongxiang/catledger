@@ -157,16 +157,20 @@ type personalFinanceBillflowTaskCursorResponse struct {
 }
 
 type personalFinanceBillflowAccountGroupResponse struct {
-	SourceType      importing.SourceType `json:"sourceType"`
-	Currency        string               `json:"currency"`
-	DisplayName     string               `json:"displayName"`
-	RowCount        int64                `json:"rowCount"`
-	PendingRowCount int64                `json:"pendingRowCount"`
-	SampleRowId     string               `json:"sampleRowId"`
-	LedgerAccountId *string              `json:"ledgerAccountId"`
-	SuggestedType   string               `json:"suggestedType"`
-	Mapped          bool                 `json:"mapped"`
-	Excluded        bool                 `json:"excluded"`
+	SourceType          importing.SourceType `json:"sourceType"`
+	Currency            string               `json:"currency"`
+	DisplayName         string               `json:"displayName"`
+	RowCount            int64                `json:"rowCount"`
+	PendingRowCount     int64                `json:"pendingRowCount"`
+	SampleRowId         string               `json:"sampleRowId"`
+	LedgerAccountId     *string              `json:"ledgerAccountId"`
+	SuggestedType       string               `json:"suggestedType"`
+	Mapped              bool                 `json:"mapped"`
+	Excluded            bool                 `json:"excluded"`
+	StatementDate       string               `json:"statementDate,omitempty"`
+	DueDate             string               `json:"dueDate,omitempty"`
+	CreditLimitAmount   *int64               `json:"creditLimitAmount,string,omitempty"`
+	CreditLimitCurrency string               `json:"creditLimitCurrency,omitempty"`
 }
 
 type personalFinanceBillflowAccountsResponse struct {
@@ -684,6 +688,8 @@ func newPersonalFinanceBillflowAccountGroupResponse(value *billflow.AccountGroup
 		SourceType: value.SourceType, Currency: value.Currency, DisplayName: value.DisplayName,
 		RowCount: value.RowCount, PendingRowCount: value.PendingRowCount, SampleRowId: strconv.FormatInt(value.SampleRowId, 10),
 		SuggestedType: value.SuggestedType, Mapped: value.Mapped, Excluded: value.Excluded,
+		StatementDate: value.StatementDate, DueDate: value.DueDate, CreditLimitAmount: value.CreditLimitAmount,
+		CreditLimitCurrency: value.CreditLimitCurrency,
 	}
 	response.LedgerAccountId = formatOptionalId(value.LedgerAccountId)
 	return response

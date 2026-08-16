@@ -65,7 +65,10 @@ func (s *Service) organize(c core.Context, request RunTaskRequest, clientTimezon
 	if err != nil {
 		return nil, err
 	}
-	if !confirmPost && len(accounts.NeedsCreate) > 0 {
+	if len(accounts.NeedsCreate) > 0 {
+		if err := s.refreshAccountStatus(c, request.Uid, request.TaskId); err != nil {
+			return nil, err
+		}
 		return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
 	}
 

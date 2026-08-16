@@ -216,6 +216,7 @@ func (f *fakeCardAccounts) GetAccount(_ core.Context, uid int64, accountId int64
 
 type fakeCardEvidence struct {
 	batches map[int64]*importing.ImportBatch
+	headers map[int64]*importing.CardHeader
 }
 
 func (f *fakeCardEvidence) FindImportBatchById(_ core.Context, uid int64, batchId int64) (*importing.ImportBatch, error) {
@@ -224,6 +225,17 @@ func (f *fakeCardEvidence) FindImportBatchById(_ core.Context, uid int64, batchI
 		return nil, nil
 	}
 	return batch, nil
+}
+
+func (f *fakeCardEvidence) FindCardHeaderByBatch(_ core.Context, uid int64, batchId int64) (*importing.CardHeader, error) {
+	if f.headers == nil {
+		return nil, nil
+	}
+	header := f.headers[batchId]
+	if header == nil || header.Uid != uid {
+		return nil, nil
+	}
+	return header, nil
 }
 
 func testStatementBatch(uid int64, batchId int64, ledgerAccountId int64, start time.Time, end time.Time, status importing.ImportBatchStatus) *importing.ImportBatch {

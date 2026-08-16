@@ -353,6 +353,12 @@ func ValidateEvidenceDocument(descriptor ParserDescriptor, document *EvidenceDoc
 		return nil, fmt.Errorf("evidence statement period is invalid")
 	}
 
+	if (document.Metadata.StatementDateUnixTime != nil && *document.Metadata.StatementDateUnixTime < 1) ||
+		(document.Metadata.DueUnixTime != nil && *document.Metadata.DueUnixTime < 1) ||
+		(document.Metadata.CreditLimitAmount != nil && *document.Metadata.CreditLimitAmount < 0) {
+		return nil, fmt.Errorf("evidence statement header is invalid")
+	}
+
 	if offset := document.Metadata.StatementTimezoneUtcOffset; offset != nil &&
 		(*offset < minimumTimezoneUtcOffset || *offset > maximumTimezoneUtcOffset) {
 		return nil, fmt.Errorf("evidence statement timezone is invalid")

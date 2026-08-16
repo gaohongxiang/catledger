@@ -57,6 +57,7 @@ type ImportRepository interface {
 	UpdateImportFileContentState(c core.Context, uid int64, fileId int64, expectedStates []ImportFileContentState, nextState ImportFileContentState, updatedUnixTime int64) (bool, error)
 	ListImportFiles(c core.Context, uid int64, offset int, limit int) ([]*ImportFile, int64, error)
 	FindImportBatchById(c core.Context, uid int64, batchId int64) (*ImportBatch, error)
+	FindCardHeaderByBatch(c core.Context, uid int64, batchId int64) (*CardHeader, error)
 	FindLatestImportBatchByFileId(c core.Context, uid int64, fileId int64) (*ImportBatch, error)
 	ListImportBatches(c core.Context, uid int64, fileId int64, offset int, limit int) ([]*ImportBatch, int64, error)
 	ListImportBatchIssues(c core.Context, uid int64, batchId int64) ([]*ImportBatchIssue, error)
@@ -106,9 +107,10 @@ type ImportFilePage struct {
 
 // ImportBatchDetails 把批次与其同 uid 原文件元数据组合起来。
 type ImportBatchDetails struct {
-	Batch  *ImportBatch
-	File   *ImportFile
-	Issues []*ImportBatchIssue
+	Batch      *ImportBatch
+	CardHeader *CardHeader
+	File       *ImportFile
+	Issues     []*ImportBatchIssue
 }
 
 // ImportBatchPage 是稳定排序的批次分页结果。
@@ -382,7 +384,12 @@ func (s *ImportService) GetImportBatch(c core.Context, uid int64, batchId int64)
 		return nil, ErrImportPersistenceUnavailable
 	}
 
-	return &ImportBatchDetails{Batch: batch, File: file, Issues: issues}, nil
+	header, err := s.repository.FindCardHeaderByBatch(c, uid, batchId)
+	if err != nil {
+		return nil, ErrImportPersistenceUnavailable
+	}
+
+	return &ImportBatchDetails{Batch: batch, CardHeader: header, File: file, Issues: issues}, nil
 }
 
 // ListImportBatches 返回当前 uid 的批次历史；fileId=0 表示不限定文件。
@@ -426,6 +433,14 @@ func (s *ImportService) ListImportBatches(c core.Context, uid int64, fileId int6
 		}
 
 		items = append(items, &ImportBatchDetails{Batch: batch, File: file})
+	}
+
+	for _, item := range items {
+		header, err := s.repository.FindCardHeaderByBatch(c, uid, item.Batch.BatchId)
+		if err != nil {
+			return nil, ErrImportPersistenceUnavailable
+		}
+		item.CardHeader = header
 	}
 
 	return &ImportBatchPage{Items: items, TotalCount: totalCount}, nil

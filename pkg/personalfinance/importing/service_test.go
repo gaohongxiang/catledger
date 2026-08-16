@@ -600,6 +600,10 @@ func (r *memoryImportRepository) FindImportBatchById(_ core.Context, uid int64, 
 	return &copy, nil
 }
 
+func (r *memoryImportRepository) FindCardHeaderByBatch(_ core.Context, _ int64, _ int64) (*CardHeader, error) {
+	return nil, nil
+}
+
 func (r *memoryImportRepository) FindLatestImportBatchByFileId(_ core.Context, uid int64, fileId int64) (*ImportBatch, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

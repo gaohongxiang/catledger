@@ -208,6 +208,19 @@ func (tx *RepositoryTransaction) persistEvidenceBatch(persistence *EvidenceBatch
 		return fmt.Errorf("personal finance import batch was not inserted")
 	}
 
+	if persistence.CardHeader != nil {
+		if persistence.CardHeader.HeaderId < 1 {
+			return fmt.Errorf("personal finance import batch card header identifier is invalid")
+		}
+		inserted, err = tx.session.Insert(persistence.CardHeader)
+		if err != nil {
+			return fmt.Errorf("insert personal finance import batch card header: %w", err)
+		}
+		if inserted != 1 {
+			return fmt.Errorf("personal finance import batch card header was not inserted")
+		}
+	}
+
 	for _, issue := range persistence.DocumentIssues {
 		inserted, err = tx.session.Insert(issue)
 
@@ -450,6 +463,10 @@ func validateEvidenceBatchPersistence(persistence *EvidenceBatchPersistence) err
 		return fmt.Errorf("invalid personal finance evidence statement timezone")
 	}
 
+	if persistence.CardHeader != nil && !isValidCardHeader(persistence.CardHeader, batch) {
+		return fmt.Errorf("invalid personal finance import batch card header")
+	}
+
 	for index, issue := range persistence.DocumentIssues {
 		if issue == nil || issue.Uid != batch.Uid || issue.BatchId != batch.BatchId ||
 			issue.IssueOrder != int64(index+1) || issue.IssueId < 1 ||
@@ -665,6 +682,7 @@ func cloneEvidenceBatchPersistence(source *EvidenceBatchPersistence) *EvidenceBa
 
 	return &EvidenceBatchPersistence{
 		Batch:                    &batch,
+		CardHeader:               cloneCardHeader(source.CardHeader),
 		ExpectedSourceAccountKey: source.ExpectedSourceAccountKey,
 		DocumentIssues:           documentIssues,
 		Rows:                     rows,

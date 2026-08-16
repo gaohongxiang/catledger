@@ -152,6 +152,12 @@ function normalizeTaskPage(value: unknown): BillflowTaskPage {
     };
 }
 
+function optionalString(value: unknown): string | undefined {
+    if (value === null || typeof value === 'undefined') return undefined;
+    const result = string(value);
+    return result || undefined;
+}
+
 function accountGroup(value: unknown): BillflowAccountGroup {
     const item = record(value);
     return {
@@ -164,7 +170,11 @@ function accountGroup(value: unknown): BillflowAccountGroup {
         ledgerAccountId: optionalIdentifier(item['ledgerAccountId']),
         suggestedType: asEnum(item['suggestedType'], suggestedTypes),
         mapped: boolean(item['mapped']),
-        excluded: boolean(item['excluded'])
+        excluded: boolean(item['excluded']),
+        statementDate: optionalString(item['statementDate']),
+        dueDate: optionalString(item['dueDate']),
+        creditLimitAmount: optionalString(item['creditLimitAmount']),
+        creditLimitCurrency: optionalString(item['creditLimitCurrency'])
     };
 }
 

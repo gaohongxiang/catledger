@@ -93,6 +93,20 @@
                     <div class="reused-item" :key="group.sampleRowId" v-for="group in accounts.reused">
                         <strong>{{ group.displayName }}</strong>
                         <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
+                        <dl class="card-header-facts" v-if="accountGroupHasCardHeader(group)">
+                            <div v-if="group.statementDate">
+                                <dt>{{ tt('personalFinance.billflow.accounts.statementDate') }}</dt>
+                                <dd>{{ group.statementDate }}</dd>
+                            </div>
+                            <div v-if="group.dueDate">
+                                <dt>{{ tt('personalFinance.billflow.accounts.dueDate') }}</dt>
+                                <dd>{{ group.dueDate }}</dd>
+                            </div>
+                            <div v-if="formatAccountCardLimit(group)">
+                                <dt>{{ tt('personalFinance.billflow.accounts.creditLimit') }}</dt>
+                                <dd>{{ formatAccountCardLimit(group) }}</dd>
+                            </div>
+                        </dl>
                     </div>
                 </div>
                 <p class="bucket-empty" v-else>{{ tt('personalFinance.billflow.accounts.reusedEmpty') }}</p>
@@ -103,6 +117,20 @@
                     <div class="reused-item" :key="group.sampleRowId" v-for="group in accounts.excluded">
                         <strong>{{ group.displayName }}</strong>
                         <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
+                        <dl class="card-header-facts" v-if="accountGroupHasCardHeader(group)">
+                            <div v-if="group.statementDate">
+                                <dt>{{ tt('personalFinance.billflow.accounts.statementDate') }}</dt>
+                                <dd>{{ group.statementDate }}</dd>
+                            </div>
+                            <div v-if="group.dueDate">
+                                <dt>{{ tt('personalFinance.billflow.accounts.dueDate') }}</dt>
+                                <dd>{{ group.dueDate }}</dd>
+                            </div>
+                            <div v-if="formatAccountCardLimit(group)">
+                                <dt>{{ tt('personalFinance.billflow.accounts.creditLimit') }}</dt>
+                                <dd>{{ formatAccountCardLimit(group) }}</dd>
+                            </div>
+                        </dl>
                         <v-btn size="x-small" variant="text" :loading="busy" @click="restoreAccount(group)">
                             {{ tt('personalFinance.billflow.accounts.restore') }}
                         </v-btn>
@@ -124,6 +152,20 @@
                             <strong>{{ group.displayName }}</strong>
                             <span>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</span>
                             <em v-if="matchedAccount(group)">{{ tt('personalFinance.billflow.accounts.matchedHint', { name: matchedAccount(group)?.name ?? '' }) }}</em>
+                            <dl class="card-header-facts" v-if="accountGroupHasCardHeader(group)">
+                                <div v-if="group.statementDate">
+                                    <dt>{{ tt('personalFinance.billflow.accounts.statementDate') }}</dt>
+                                    <dd>{{ group.statementDate }}</dd>
+                                </div>
+                                <div v-if="group.dueDate">
+                                    <dt>{{ tt('personalFinance.billflow.accounts.dueDate') }}</dt>
+                                    <dd>{{ group.dueDate }}</dd>
+                                </div>
+                                <div v-if="formatAccountCardLimit(group)">
+                                    <dt>{{ tt('personalFinance.billflow.accounts.creditLimit') }}</dt>
+                                    <dd>{{ formatAccountCardLimit(group) }}</dd>
+                                </div>
+                            </dl>
                         </div>
                         <v-select
                             class="account-row-card__select"
@@ -448,6 +490,7 @@ import {
     BILLFLOW_OPENING_BALANCE_UNIX_TIME,
     BILLFLOW_WORKBENCH_STEPS,
     accountBucketHintKey,
+    accountGroupHasCardHeader,
     billflowDirectionKey,
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
@@ -471,6 +514,7 @@ import {
     resolveBillflowWorkbenchStep,
     resolveCategoryBucket,
     sameOrganizeFileIds,
+    shouldOpenBalanceStep,
     suggestedAccountCategory,
     taskAwaitsConfirm,
     taskNeedsAccounts,
@@ -673,7 +717,7 @@ const forwardHint = computed(() => {
     if (stepAction.value?.hint) {
         return stepAction.value.hint;
     }
-    if (currentStep.value === 'accounts' && newBalanceAccounts.value.length) {
+    if (currentStep.value === 'accounts' && shouldOpenBalanceStep({ needsBalanceCount: newBalanceAccounts.value.length })) {
         return tt('personalFinance.billflow.next.accountsBalance');
     }
     if (currentStep.value === 'accounts') {
@@ -759,7 +803,7 @@ function openStep(step: BillflowWorkbenchStep): void {
 }
 
 function goBack(): void {
-    if (currentStep.value === 'merge' && !newBalanceAccounts.value.length) {
+    if (currentStep.value === 'merge' && !shouldOpenBalanceStep({ needsBalanceCount: newBalanceAccounts.value.length })) {
         userStep.value = 'accounts';
         return;
     }
@@ -806,7 +850,7 @@ async function goForward(): Promise<void> {
         if ((accounts.value?.needsCreate.length ?? 0) > 0) {
             return;
         }
-        userStep.value = newBalanceAccounts.value.length ? 'balance' : 'merge';
+        userStep.value = shouldOpenBalanceStep({ needsBalanceCount: newBalanceAccounts.value.length }) ? 'balance' : 'merge';
         return;
     }
     if (currentStep.value === 'balance') {
@@ -862,6 +906,12 @@ function formatAccountAmount(row: BillflowAccountRow): string {
 
 function formatAccountTime(row: BillflowAccountRow): string {
     return row.unixTime ? formatDateTimeToShortDateTime(parseDateTimeFromUnixTimeWithBrowserTimezone(row.unixTime)) : '';
+}
+
+function formatAccountCardLimit(group: BillflowAccountGroup): string {
+    return group.creditLimitAmount
+        ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(group.creditLimitAmount), group.creditLimitCurrency || group.currency || 'CNY')
+        : '';
 }
 
 function formatTodoAmount(todo: BillflowTodo): string {
@@ -979,7 +1029,7 @@ async function reload(): Promise<void> {
     try {
         await Promise.all([
             personalFinanceStore.loadBatches(0, 50),
-            accountsStore.loadAllAccounts({ force: false }),
+            accountsStore.loadAllAccounts({ force: true }),
             categoriesStore.loadAllCategories({ force: false })
         ]);
         const [pending, receiving, awaiting, ready] = await Promise.all([
@@ -1790,6 +1840,12 @@ onMounted(reload);
     font-size: 0.75rem;
 }
 
+.reused-item .card-header-facts,
+.account-row-card__name .card-header-facts {
+    flex-basis: 100%;
+    margin-top: 4px;
+}
+
 .account-row-card {
     margin-bottom: 8px;
     border: 1px solid var(--task-rule);
@@ -1804,7 +1860,7 @@ onMounted(reload);
 .account-row-card__main {
     display: grid;
     grid-template-columns: minmax(0, 1.3fr) minmax(180px, 0.8fr) auto;
-    align-items: center;
+    align-items: start;
     gap: 10px 12px;
     padding: 8px 12px;
 }
@@ -1965,6 +2021,29 @@ onMounted(reload);
 }
 
 .account-card__head span,
+.account-card__hint {
+    color: rgba(var(--v-theme-on-surface), 0.55);
+    font-size: 0.78rem;
+}
+
+.card-header-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px 16px;
+    margin: 8px 0 0;
+}
+
+.card-header-facts dt {
+    color: rgba(var(--v-theme-on-surface), 0.55);
+    font-size: 0.72rem;
+}
+
+.card-header-facts dd {
+    margin: 0;
+    font-size: 0.92rem;
+    font-variant-numeric: tabular-nums;
+}
+
 .account-card__hint {
     margin: 4px 0 0;
     color: rgba(var(--v-theme-on-surface), 0.6);

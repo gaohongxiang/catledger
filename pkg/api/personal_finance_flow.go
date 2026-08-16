@@ -269,8 +269,22 @@ func (a *PersonalFinanceImportsApi) ImportBatchReparseHandler(c *core.WebContext
 		return nil, errs.ErrOperationFailed
 	}
 
+	details := &importing.ImportBatchDetails{Batch: result.Batch}
+	if result.Batch != nil {
+		importService, importErr := a.serviceFactory()
+		if importErr != nil {
+			return nil, errs.ErrOperationFailed
+		}
+		loaded, loadErr := importService.GetImportBatch(c, uid, result.Batch.BatchId)
+		if loadErr != nil {
+			log.Errorf(c, "[personal_finance_flow.ImportBatchReparseHandler] reload batch failed for user \"uid:%d\"", uid)
+			return nil, personalFinanceFlowError(loadErr)
+		}
+		details = loaded
+	}
+
 	return &personalFinanceReparseResponse{
-		Batch:                 newPersonalFinanceImportBatchResponse(&importing.ImportBatchDetails{Batch: result.Batch}),
+		Batch:                 newPersonalFinanceImportBatchResponse(details),
 		SourceAccount:         newPersonalFinanceSourceAccountResponse(result.SourceAccount),
 		Discovery:             newPersonalFinanceSourceAccountDiscoveryResponse(result.Discovery),
 		RequiresSourceAccount: result.Batch == nil,

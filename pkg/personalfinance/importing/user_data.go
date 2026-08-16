@@ -10,6 +10,7 @@ func UserDataModule(deleteObjects func(c core.Context, uid int64) error) core.Us
 			"pf_raw_row_transaction_link",
 			"pf_import_posting",
 			"pf_import_batch_issue",
+			"pf_import_batch_card_header",
 			"pf_raw_import_row",
 			"pf_source_identity",
 			"pf_import_batch",

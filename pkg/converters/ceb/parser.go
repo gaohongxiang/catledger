@@ -16,7 +16,7 @@ import (
 
 const (
 	parserName           = "ceb_credit_pdf"
-	parserVersion        = importing.RuleVersion("ceb-credit-pdf-parser-v1")
+	parserVersion        = importing.RuleVersion("ceb-credit-pdf-parser-v2")
 	normalizationVersion = importing.RuleVersion("ceb-credit-pdf-normalization-v1")
 
 	statementTitle      = "中国光大银行信用卡对账单"
@@ -31,10 +31,13 @@ const (
 )
 
 var (
-	dateLinePattern   = regexp.MustCompile(`^\d{4}/\d{2}/\d{2}$`)
-	cardLast4Pattern  = regexp.MustCompile(`^\d{4}$`)
-	amountLinePattern = regexp.MustCompile(`^(\(存入\))?(\d{1,3}(?:,\d{3})*|\d+)\.\d{2}$`)
-	periodPattern     = regexp.MustCompile(`(\d{4})年(\d{1,2})月(\d{1,2})日\s*[-–—]\s*(\d{4})年(\d{1,2})月(\d{1,2})日`)
+	dateLinePattern      = regexp.MustCompile(`^\d{4}/\d{2}/\d{2}$`)
+	cardLast4Pattern     = regexp.MustCompile(`^\d{4}$`)
+	amountLinePattern    = regexp.MustCompile(`^(\(存入\))?(\d{1,3}(?:,\d{3})*|\d+)\.\d{2}$`)
+	periodPattern        = regexp.MustCompile(`(\d{4})年(\d{1,2})月(\d{1,2})日\s*[-–—]\s*(\d{4})年(\d{1,2})月(\d{1,2})日`)
+	statementDatePattern = regexp.MustCompile(`账单日(?:Statement Date)?\s*(\d{4})年(\d{1,2})月(\d{1,2})日`)
+	dueDatePattern       = regexp.MustCompile(`到期还款日(?:Payment Due Date)?\s*(\d{4})年(\d{1,2})月(\d{1,2})日`)
+	creditLimitPattern   = regexp.MustCompile(`信用卡额度(?:Credit Limit)?\s*[¥￥]?\s*((?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2})`)
 )
 
 // ImportEvidenceParser 只解析中国光大银行信用卡月结单 PDF，必须由调用方显式选择。
@@ -101,6 +104,7 @@ func (p *cebCreditPDFParser) Parse(ctx context.Context, file importing.EvidenceF
 		Rows: make([]importing.EvidenceRow, 0),
 	}
 	fillStatementPeriod(pages, opts.TimezoneUtcOffset, &document.Metadata)
+	fillStatementHeader(pages, opts.TimezoneUtcOffset, &document.Metadata)
 
 	for pageIndex, pageText := range pages {
 		if err := ctx.Err(); err != nil {
@@ -157,6 +161,27 @@ func fillStatementPeriod(pages []string, offset int16, metadata *importing.Docum
 	metadata.StatementStartUnixTime = &start
 	metadata.StatementEndUnixTime = &end
 	metadata.StatementTimezoneUtcOffset = &offset
+}
+
+func fillStatementHeader(pages []string, offset int16, metadata *importing.DocumentMetadata) {
+	joined := strings.Join(pages, "\n")
+	if match := statementDatePattern.FindStringSubmatch(joined); match != nil {
+		if unixTime, ok := civilDateUnix(match[1], match[2], match[3], offset); ok {
+			metadata.StatementDateUnixTime = &unixTime
+			metadata.StatementTimezoneUtcOffset = &offset
+		}
+	}
+	if match := dueDatePattern.FindStringSubmatch(joined); match != nil {
+		if unixTime, ok := civilDateUnix(match[1], match[2], match[3], offset); ok {
+			metadata.DueUnixTime = &unixTime
+			metadata.StatementTimezoneUtcOffset = &offset
+		}
+	}
+	if match := creditLimitPattern.FindStringSubmatch(joined); match != nil {
+		if amount, ok := parseUnsignedAmount(match[1]); ok {
+			metadata.CreditLimitAmount = &amount
+		}
+	}
 }
 
 func parseTransactionGroup(rowNumber int64, pageNumber int, lines []extractedLine, index int, opts importing.ResolvedParseOptions) (importing.EvidenceRow, int) {

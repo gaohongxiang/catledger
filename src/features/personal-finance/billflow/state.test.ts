@@ -9,6 +9,7 @@ import {
     BILLFLOW_OPENING_BALANCE_UNIX_TIME,
     BILLFLOW_WORKBENCH_STEPS,
     accountBucketHintKey,
+    accountGroupHasCardHeader,
     billflowDirectionKey,
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
@@ -242,7 +243,9 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('todoMeta(todo)');
         expect(workbench).toContain('formatTodoAmount(todo)');
         expect(workbench).toContain('newBalanceAccounts');
+        expect(workbench).toContain('accountGroupHasCardHeader');
         expect(workbench).toContain('personalFinance.billflow.balance.amount');
+        expect(workbench).toContain('personalFinance.billflow.accounts.statementDate');
         expect(workbench).toContain('personalFinance.billflow.balance.save');
         expect(workbench).toContain('currentStep === \'review\'');
         expect(workbench).toContain('currentStep === \'others\'');
@@ -293,14 +296,17 @@ describe('billflow task page wiring', () => {
         expect(suggestedBillflowWorkbenchStep(accountsReady)).toBe('accounts');
         expect(suggestedBillflowWorkbenchStep(needsBalance)).toBe('balance');
         expect(suggestedBillflowWorkbenchStep(awaiting)).toBe('merge');
+        expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'awaiting_confirm', needsCreateCount: 1, needsBalanceCount: 0 })).toBe('accounts');
         expect(suggestedBillflowWorkbenchStep(ready)).toBe('confirm');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'failed', needsCreateCount: 0, needsBalanceCount: 0 })).toBe('confirm');
         expect(canOpenBillflowWorkbenchStep('accounts', noTask)).toBe(false);
         expect(canOpenBillflowWorkbenchStep('files', ready)).toBe(true);
         expect(canOpenBillflowWorkbenchStep('confirm', pendingAccounts)).toBe(false);
         expect(canOpenBillflowWorkbenchStep('confirm', awaiting)).toBe(true);
+        expect(canOpenBillflowWorkbenchStep('confirm', { hasTask: true, status: 'awaiting_confirm', needsCreateCount: 1, needsBalanceCount: 0 })).toBe(false);
         expect(canOpenBillflowWorkbenchStep('review', awaiting)).toBe(true);
         expect(canOpenBillflowWorkbenchStep('others', awaiting)).toBe(true);
+        expect(canOpenBillflowWorkbenchStep('merge', { hasTask: true, status: 'awaiting_confirm', needsCreateCount: 1, needsBalanceCount: 0 })).toBe(false);
         expect(canOpenBillflowWorkbenchStep('merge', accountsReady)).toBe(true);
         expect(canOpenBillflowWorkbenchStep('balance', accountsReady)).toBe(false);
         expect(canOpenBillflowWorkbenchStep('balance', needsBalance)).toBe(true);
@@ -344,6 +350,8 @@ describe('billflow task page wiring', () => {
         expect(canAssignBillflowCategory('refund_unclear')).toBe(false);
         expect(canAssignBillflowCategory('identity_conflict')).toBe(false);
         expect(canAssignBillflowCategory('cross_source_ambiguous')).toBe(false);
+        expect(accountGroupHasCardHeader({ statementDate: '2026-08-01' })).toBe(true);
+        expect(accountGroupHasCardHeader({})).toBe(false);
     });
 
     it('keeps account checks in pending, reused and excluded buckets', () => {

@@ -38,6 +38,19 @@ func (s *Service) RecordCoverage(c core.Context, request RecordCoverageRequest) 
 	if err != nil {
 		return nil, err
 	}
+	statementDate, dueDate := emptyCivilDate, emptyCivilDate
+	header, err := s.evidence.FindCardHeaderByBatch(c, request.Uid, request.BatchId)
+	if err != nil {
+		return nil, persistError(err)
+	}
+	if header != nil {
+		if header.StatementDate != "" {
+			statementDate = header.StatementDate
+		}
+		if header.DueDate != "" {
+			dueDate = header.DueDate
+		}
+	}
 
 	var saved *StatementCoverage
 	now := s.now()
@@ -61,7 +74,7 @@ func (s *Service) RecordCoverage(c core.Context, request RecordCoverageRequest) 
 		}
 		coverage := &StatementCoverage{
 			Uid: request.Uid, LedgerAccountId: ledgerAccountId, BatchId: request.BatchId,
-			PeriodStart: periodStart, PeriodEnd: periodEnd, StatementDate: emptyCivilDate, DueDate: emptyCivilDate,
+			PeriodStart: periodStart, PeriodEnd: periodEnd, StatementDate: statementDate, DueDate: dueDate,
 			CreatedUnixTime: nowUnix, CoverageId: s.generateId(),
 		}
 		if coverage.CoverageId < 1 {

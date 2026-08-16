@@ -888,6 +888,44 @@ func countDedupBeans(t *testing.T, database *datastore.Database, uid int64, bean
 	return count
 }
 
+func TestDedupServicePersistsCardStatementHeader(t *testing.T) {
+	repository, database := newSQLiteDedupRepository(t, 1)
+	candidate, accountKey := dedupSourceAccountEvidence(t)
+	const uid = int64(5101)
+	const fileId = int64(5201)
+	const sourceAccountId = int64(5301)
+	ledgerAccountId := int64(5401)
+	insertDedupFixtures(t, database, uid, fileId, sourceAccountId, accountKey, &ledgerAccountId, "c")
+	service := newDedupTestService(t, repository, 20000)
+
+	statementDate := int64(1785513600)
+	dueDate := int64(1787155200)
+	creditLimit := int64(5000000)
+	offset := int16(480)
+	document := dedupEvidenceDocument(candidate, []importing.EvidenceRow{dedupValidRow(1, "tx-header", 100, false)})
+	document.Metadata.StatementDateUnixTime = &statementDate
+	document.Metadata.DueUnixTime = &dueDate
+	document.Metadata.CreditLimitAmount = &creditLimit
+	document.Metadata.StatementTimezoneUtcOffset = &offset
+
+	batch, err := service.PersistEvidenceDocument(nil, dedupPersistRequest(uid, fileId, sourceAccountId, "initial_parse", document))
+	if err != nil {
+		t.Fatalf("persist card header evidence: %v", err)
+	}
+	header, err := repository.FindCardHeaderByBatch(nil, uid, batch.BatchId)
+	if err != nil {
+		t.Fatalf("find card header: %v", err)
+	}
+	if header == nil || header.StatementDate == "" || header.DueDate == "" ||
+		header.CreditLimitAmount == nil || *header.CreditLimitAmount != creditLimit || header.Currency != "CNY" {
+		t.Fatalf("card header was not persisted: %+v", header)
+	}
+	foreign, err := repository.FindCardHeaderByBatch(nil, uid+1, batch.BatchId)
+	if err != nil || foreign != nil {
+		t.Fatalf("card header leaked across uid: found=%+v err=%v", foreign, err)
+	}
+}
+
 func TestDedupServiceErrorsNeverEchoRawEvidence(t *testing.T) {
 	sensitive := "raw-redaction-canary"
 	repository := &failingDedupRepository{err: errors.New(sensitive)}

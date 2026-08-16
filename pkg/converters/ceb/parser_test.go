@@ -93,6 +93,11 @@ func TestParseTwoCardsDepositAndStatementPeriod(t *testing.T) {
 		*document.Metadata.StatementEndUnixTime != cebUnix(2026, 7, 31) {
 		t.Fatalf("statement period was not captured: %+v", document.Metadata)
 	}
+	if document.Metadata.StatementDateUnixTime == nil || *document.Metadata.StatementDateUnixTime != cebUnix(2026, 8, 1) ||
+		document.Metadata.DueUnixTime == nil || *document.Metadata.DueUnixTime != cebUnix(2026, 8, 20) ||
+		document.Metadata.CreditLimitAmount == nil || *document.Metadata.CreditLimitAmount != 5000000 {
+		t.Fatalf("statement header was not captured: %+v", document.Metadata)
+	}
 
 	expense, thousand, deposit := document.Rows[0], document.Rows[1], document.Rows[2]
 	if expense.Normalized.Amount == nil || *expense.Normalized.Amount != 1234 ||
@@ -182,6 +187,11 @@ func TestOptionalLocalEverbrightStatement(t *testing.T) {
 	if len(document.Rows) < 1 {
 		t.Fatal("optional local PDF produced no transaction rows")
 	}
+	if document.Metadata.StatementDateUnixTime == nil || *document.Metadata.StatementDateUnixTime < 1 ||
+		document.Metadata.DueUnixTime == nil || *document.Metadata.DueUnixTime < 1 ||
+		document.Metadata.CreditLimitAmount == nil || *document.Metadata.CreditLimitAmount < 1 {
+		t.Fatal("optional local PDF did not yield statement date, due date and credit limit")
+	}
 	paymentMethods := map[string]struct{}{}
 	for _, row := range document.Rows {
 		if row.Locator.Kind != importing.LOCATOR_KIND_PDF || row.Locator.PDFPage < 1 || row.Locator.PDFLine < 1 {
@@ -207,6 +217,12 @@ func cebStatementLines(transactions ...[]string) []string {
 		"中国光大银行信用卡对账单（2026年07月）",
 		"账单周期",
 		"2026年07月01日-2026年07月31日",
+		"账单日Statement Date",
+		"2026年08月01日",
+		"到期还款日Payment Due Date",
+		"2026年08月20日",
+		"信用卡额度Credit Limit",
+		"￥50,000.00",
 		"人民币账户交易明细",
 		"账号 : 00000000****1234",
 		"测试白金卡",

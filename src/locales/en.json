@@ -3014,6 +3014,9 @@
                 "skipSelected": "Don't post selected",
                 "restoreSelected": "Use selected again",
                 "skipped": "Not posted",
+                "statementDate": "Statement date",
+                "dueDate": "Due date",
+                "creditLimit": "Credit limit",
                 "direction": {
                     "income": "Income",
                     "expense": "Expense",
@@ -3058,8 +3061,8 @@
                 "uncategorized": "Not categorized yet"
             },
             "balance": {
-                "title": "How much is in the new accounts? (optional)",
-                "hint": "Enter about how much is in the account now. Statements are activity; you can skip.",
+                "title": "How much is in the new accounts now (optional)",
+                "hint": "Note about how much is in this new account. The statement is a history; you can skip this.",
                 "empty": "No new accounts need a balance check. Continue.",
                 "amount": "About how much now",
                 "skip": "Skip for now",

@@ -17,7 +17,7 @@ func TestSchemaV006ChecksumGolden(t *testing.T) {
 	migrations := registeredMigrations()
 	const expectedChecksum = "945c39a4b80c6c798fbdd3ed6ebf4f758189b346558ea2b62a0bbecf5dd829fe"
 
-	if len(migrations) != 7 {
+	if len(migrations) != 8 {
 		t.Fatalf("unexpected registered migration count %d", len(migrations))
 	}
 
@@ -269,7 +269,7 @@ func TestSchemaV006UpgradeIsExactOnSQLite(t *testing.T) {
 	if err := verifyMigrationTable(database); err != nil {
 		t.Fatalf("migration table is not exact: %v", err)
 	}
-	if err := verifySchemaV007(database); err != nil {
+	if err := verifySchemaV008(database); err != nil {
 		t.Fatalf("latest schema is not exact: %v", err)
 	}
 
@@ -282,9 +282,9 @@ func TestSchemaV006UpgradeIsExactOnSQLite(t *testing.T) {
 	}
 	latest := new(SchemaMigration)
 	sess = database.NewSession(nil)
-	found, getErr = sess.ID(int64(7)).Get(latest)
+	found, getErr = sess.ID(int64(8)).Get(latest)
 	sess.Close()
 	if getErr != nil || !found || !latest.Success || latest.FailureCode != "" {
-		t.Fatalf("unexpected v007 migration record: found=%t record=%+v err=%v", found, latest, getErr)
+		t.Fatalf("unexpected v008 migration record: found=%t record=%+v err=%v", found, latest, getErr)
 	}
 }

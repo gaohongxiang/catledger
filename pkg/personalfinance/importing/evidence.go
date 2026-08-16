@@ -196,6 +196,9 @@ type DocumentMetadata struct {
 	SourceAccount              SourceAccountCandidate
 	StatementStartUnixTime     *int64
 	StatementEndUnixTime       *int64
+	StatementDateUnixTime      *int64
+	DueUnixTime                *int64
+	CreditLimitAmount          *int64
 	StatementTimezoneUtcOffset *int16
 }
 

@@ -8,6 +8,9 @@ import (
 )
 
 func (s *Service) GetTask(c core.Context, uid int64, taskId int64) (*TaskView, error) {
+	if err := s.refreshAccountStatus(c, uid, taskId); err != nil {
+		return nil, err
+	}
 	task, err := s.requireTask(c, uid, taskId)
 	if err != nil {
 		return nil, err

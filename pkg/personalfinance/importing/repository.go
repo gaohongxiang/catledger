@@ -310,6 +310,27 @@ func (r *Repository) FindImportBatchById(c core.Context, uid int64, batchId int6
 	return batch, nil
 }
 
+// FindCardHeaderByBatch 按用户和批次查询月结单页眉，不存在时返回 (nil, nil)。
+func (r *Repository) FindCardHeaderByBatch(c core.Context, uid int64, batchId int64) (*CardHeader, error) {
+	if uid < 1 || batchId < 1 {
+		return nil, fmt.Errorf("invalid import batch card header owner or id")
+	}
+
+	db, _ := r.database(uid)
+	header := new(CardHeader)
+	sess := db.NewPrivacySession(c)
+	defer sess.Close()
+
+	found, err := sess.Where("uid=? AND batch_id=?", uid, batchId).Get(header)
+	if err != nil {
+		return nil, fmt.Errorf("find personal finance import batch card header: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+	return header, nil
+}
+
 // FindLatestImportBatchByFileId 返回同一用户文件最近创建的解析批次。
 func (r *Repository) FindLatestImportBatchByFileId(c core.Context, uid int64, fileId int64) (*ImportBatch, error) {
 	if uid < 1 || fileId < 1 {

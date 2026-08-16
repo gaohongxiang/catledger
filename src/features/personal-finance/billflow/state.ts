@@ -285,6 +285,14 @@ export type BillflowWorkbenchInput = {
     needsBalanceCount: number;
 };
 
+export function accountGroupHasCardHeader(group: Pick<BillflowAccountGroup, 'statementDate' | 'dueDate' | 'creditLimitAmount'>): boolean {
+    return !!group.statementDate || !!group.dueDate || !!group.creditLimitAmount;
+}
+
+export function shouldOpenBalanceStep(input: Pick<BillflowWorkbenchInput, 'needsBalanceCount'>): boolean {
+    return input.needsBalanceCount > 0;
+}
+
 export function isMergeTodo(kind: BillflowTodoKind): boolean {
     return kind === 'cross_source_ambiguous';
 }
@@ -347,10 +355,13 @@ export function canOpenBillflowWorkbenchStep(step: BillflowWorkbenchStep, input:
         return step === 'files';
     }
     if (step === 'review' || step === 'others' || step === 'confirm') {
-        return input.status === 'awaiting_confirm' || input.status === 'ready' || input.status === 'failed';
+        if (input.status === 'ready' || input.status === 'failed') {
+            return true;
+        }
+        return input.status === 'awaiting_confirm' && accountsReadyForNextStep(input);
     }
     if (step === 'balance') {
-        return accountsReadyForNextStep(input) && input.needsBalanceCount > 0;
+        return accountsReadyForNextStep(input) && shouldOpenBalanceStep(input);
     }
     if (step === 'merge') {
         return accountsReadyForNextStep(input);

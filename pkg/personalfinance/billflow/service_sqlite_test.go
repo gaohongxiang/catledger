@@ -406,6 +406,101 @@ func TestServiceMergesSameCardAcrossSources(t *testing.T) {
 	}
 }
 
+func TestServiceMissingLedgerAccountReturnsToNeedsCreateAndBlocksOrganize(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	accountId := int64(61)
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
+		postableRow(uid, 401, 801, 201, accountId, "餐饮美食"),
+	})
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+	}}
+	accounts := &fakeAccounts{nextID: 88}
+	var nextId int64 = 8500
+	service, err := billflow.NewService(repository, evidence, payments, &fakePoster{}, nil, nil, accounts, &fakeCategories{}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-task-missing-account"})
+	if err != nil || created.Status != billflow.TASK_STATUS_RECEIVING {
+		t.Fatalf("mapped account should start receiving: %+v err=%v", created, err)
+	}
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-missing-account"}, time.UTC)
+	if err != nil || ran == nil || ran.Status != billflow.TASK_STATUS_AWAITING_CONFIRM {
+		t.Fatalf("run before account delete: %+v err=%v", ran, err)
+	}
+	accounts.missing = map[int64]bool{accountId: true}
+	_, err = service.ConfirmPost(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: ran.Version, IdempotencyKey: "confirm-post-missing-account"}, time.UTC)
+	if !errors.Is(err, billflow.ErrServiceStateConflict) {
+		t.Fatalf("confirm post after account delete should be blocked: %v", err)
+	}
+	view, err := service.GetTaskAccounts(nil, uid, created.TaskId)
+	if err != nil || view == nil || len(view.NeedsCreate) != 1 || len(view.Reused) != 0 {
+		t.Fatalf("deleted ledger account was not returned to needs create: %+v err=%v", view, err)
+	}
+	task, err := service.GetTask(nil, uid, created.TaskId)
+	if err != nil || task == nil || task.Status != billflow.TASK_STATUS_ACCOUNTS_PENDING {
+		t.Fatalf("task did not rewind to accounts_pending: %+v err=%v", task, err)
+	}
+	_, err = service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: task.Version, IdempotencyKey: "run-task-missing-account-again"}, time.UTC)
+	if !errors.Is(err, billflow.ErrServiceStateConflict) {
+		t.Fatalf("run after account delete should be blocked: %v", err)
+	}
+}
+
+func TestServiceAccountGroupsIncludeCardHeaderAndCreateCopiesStatementDay(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	limit := int64(5000000)
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
+		postableRow(uid, 401, 801, 201, 0, "餐饮美食"),
+	})
+	evidence.rows[401][0].LedgerAccountId = nil
+	evidence.headers[401] = &importing.CardHeader{
+		Uid: uid, BatchId: 401, StatementDate: "2026-08-01", DueDate: "2026-08-20",
+		CreditLimitAmount: &limit, Currency: "CNY",
+	}
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {{SourceType: importing.SOURCE_TYPE_BANK, Currency: "CNY", DisplayName: "光大银行信用卡(1234)", RowCount: 2, PendingRowCount: 2, SampleRowId: 801}},
+	}}
+	accounts := &fakeAccounts{nextID: 88}
+	var nextId int64 = 9000
+	service, err := billflow.NewService(repository, evidence, payments, &fakePoster{}, nil, nil, accounts, &fakeCategories{}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-task-card-header"})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	view, err := service.GetTaskAccounts(nil, uid, created.TaskId)
+	if err != nil || view == nil || len(view.NeedsCreate) != 1 {
+		t.Fatalf("pending card group missing: %+v err=%v", view, err)
+	}
+	group := view.NeedsCreate[0]
+	if group.StatementDate != "2026-08-01" || group.DueDate != "2026-08-20" ||
+		group.CreditLimitAmount == nil || *group.CreditLimitAmount != limit || group.CreditLimitCurrency != "CNY" {
+		t.Fatalf("card header was not attached to account group: %+v", group)
+	}
+	createdView, err := service.CreateTaskAccount(nil, billflow.CreateAccountRequest{
+		Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, SampleRowId: 801,
+		Name: "光大银行信用卡(1234)", Category: models.ACCOUNT_CATEGORY_CREDIT_CARD, Currency: "CNY", IdempotencyKey: "create-card-1",
+	})
+	if err != nil || createdView == nil || len(createdView.Reused) != 1 {
+		t.Fatalf("create card account: %+v err=%v", createdView, err)
+	}
+	if accounts.lastCreatedSpec.CreditCardStatementDate != 1 || accounts.lastCreatedSpec.Name != "光大银行信用卡(1234)" {
+		t.Fatalf("new credit card did not copy statement day: %+v", accounts.lastCreatedSpec)
+	}
+}
+
 func TestServiceExcludeAccountSkipsPostingAndCanRestore(t *testing.T) {
 	repository, _ := newSQLiteBillflowRepository(t)
 	uid := int64(1001)
@@ -492,6 +587,7 @@ type fakeEvidence struct {
 	batches   map[int64][]*importing.ImportBatch
 	batchById map[int64]*importing.ImportBatch
 	rows      map[int64][]*importing.RawImportRow
+	headers   map[int64]*importing.CardHeader
 }
 
 func newFakeEvidence(uid, fileId, batchId int64, rows []*importing.RawImportRow) *fakeEvidence {
@@ -500,6 +596,7 @@ func newFakeEvidence(uid, fileId, batchId int64, rows []*importing.RawImportRow)
 		batches:   map[int64][]*importing.ImportBatch{},
 		batchById: map[int64]*importing.ImportBatch{},
 		rows:      map[int64][]*importing.RawImportRow{},
+		headers:   map[int64]*importing.CardHeader{},
 	}
 	evidence.addFile(uid, fileId, batchId, rows)
 	return evidence
@@ -542,6 +639,16 @@ func (f *fakeEvidence) FindImportBatchById(_ core.Context, uid int64, batchId in
 		return nil, nil
 	}
 	return batch, nil
+}
+func (f *fakeEvidence) FindCardHeaderByBatch(_ core.Context, uid int64, batchId int64) (*importing.CardHeader, error) {
+	if f.headers == nil {
+		return nil, nil
+	}
+	header := f.headers[batchId]
+	if header == nil || header.Uid != uid {
+		return nil, nil
+	}
+	return header, nil
 }
 func (f *fakeEvidence) ListRawImportRows(_ core.Context, uid int64, batchId int64) ([]*importing.RawImportRow, error) {
 	rows := make([]*importing.RawImportRow, 0)
@@ -701,14 +808,25 @@ func (f *fakeCategories) ListVisibleLeafCategories(_ core.Context, _ int64) ([]b
 }
 
 type fakeAccounts struct {
-	nextID int64
+	nextID          int64
+	lastCreatedSpec billflow.CreateAccountSpec
+	missing         map[int64]bool
+	hidden          map[int64]bool
 }
 
-func (f *fakeAccounts) CreateAccount(_ core.Context, _ int64, _ string, _ models.AccountCategory, _ string) (int64, error) {
+func (f *fakeAccounts) CreateAccount(_ core.Context, _ int64, spec billflow.CreateAccountSpec) (int64, error) {
+	f.lastCreatedSpec = spec
 	return f.nextID, nil
 }
 func (f *fakeAccounts) LoadAccount(_ core.Context, _ int64, accountId int64) (*billflow.AccountSnapshot, error) {
-	return &billflow.AccountSnapshot{AccountId: accountId, Currency: "CNY"}, nil
+	if f != nil && f.missing[accountId] {
+		return nil, nil
+	}
+	snapshot := &billflow.AccountSnapshot{AccountId: accountId, Currency: "CNY"}
+	if f != nil && f.hidden[accountId] {
+		snapshot.Hidden = true
+	}
+	return snapshot, nil
 }
 
 type fakeUndo struct {

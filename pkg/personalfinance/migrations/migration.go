@@ -266,6 +266,20 @@ func registeredMigrations() []migration {
 		})
 	}
 
+	v008Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV008()))
+	v008Steps := make([]migrationStep, 0, len(schemaBeansV008()))
+
+	for _, bean := range schemaBeansV008() {
+		bean := bean
+		tableName := bean.(interface{ TableName() string }).TableName()
+		v008Steps = append(v008Steps, migrationStep{
+			name: "create_" + tableName,
+			run: func(c context.Context, db *datastore.Database) error {
+				return syncFrozenSchemaBeanWithIndexes(c, db, bean)
+			},
+		})
+	}
+
 	return []migration{
 		{
 			version:   1,
@@ -322,6 +336,14 @@ func registeredMigrations() []migration {
 			preflight: validateSchemaV007PreflightWithContext,
 			steps:     v007Steps,
 			verify:    verifySchemaV007WithContext,
+		},
+		{
+			version:   8,
+			name:      "import_batch_card_headers",
+			checksum:  hex.EncodeToString(v008Checksum[:]),
+			preflight: validateSchemaV008PreflightWithContext,
+			steps:     v008Steps,
+			verify:    verifySchemaV008WithContext,
 		},
 	}
 }
@@ -1067,6 +1089,18 @@ func canonicalSchemaManifestV007() string {
 	}
 
 	builder.WriteString("payment-account-exclusion=payment-account-exclusion-v1\n")
+	return builder.String()
+}
+
+func canonicalSchemaManifestV008() string {
+	var builder strings.Builder
+	builder.WriteString("pf-schema-v008\n")
+
+	for _, bean := range schemaBeansV008() {
+		appendBeanManifest(&builder, bean)
+	}
+
+	builder.WriteString("card-statement-header=card-statement-header-v1\n")
 	return builder.String()
 }
 

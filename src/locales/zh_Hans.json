@@ -3014,6 +3014,9 @@
                 "skipSelected": "选中的不入账",
                 "restoreSelected": "改回选中的",
                 "skipped": "不入账",
+                "statementDate": "账单日",
+                "dueDate": "还款日",
+                "creditLimit": "额度",
                 "direction": {
                     "income": "收入",
                     "expense": "支出",

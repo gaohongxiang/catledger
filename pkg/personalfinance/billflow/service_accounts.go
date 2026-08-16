@@ -3,6 +3,7 @@ package billflow
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
@@ -36,6 +37,9 @@ func (s *Service) GetTaskAccounts(c core.Context, uid int64, taskId int64) (*Tas
 	if _, err := s.requireTask(c, uid, taskId); err != nil {
 		return nil, err
 	}
+	if err := s.refreshAccountStatus(c, uid, taskId); err != nil {
+		return nil, err
+	}
 	return s.collectAccounts(c, uid, taskId)
 }
 
@@ -62,7 +66,15 @@ func (s *Service) CreateTaskAccount(c core.Context, request CreateAccountRequest
 	if group.Excluded {
 		return nil, serviceError(ErrServiceAccountRejected, SERVICE_ERROR_ACCOUNT_REJECTED)
 	}
-	accountId, err := s.accounts.CreateAccount(c, request.Uid, request.Name, request.Category, request.Currency)
+	spec := CreateAccountSpec{Name: request.Name, Category: request.Category, Currency: request.Currency}
+	if request.Category == models.ACCOUNT_CATEGORY_CREDIT_CARD {
+		header, headerErr := s.evidence.FindCardHeaderByBatch(c, request.Uid, batchId)
+		if headerErr != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		spec.CreditCardStatementDate = creditCardStatementDay(header)
+	}
+	accountId, err := s.accounts.CreateAccount(c, request.Uid, spec)
 	if err != nil || accountId < 1 {
 		return nil, serviceError(ErrServiceAccountRejected, SERVICE_ERROR_ACCOUNT_REJECTED)
 	}
@@ -146,6 +158,10 @@ func (s *Service) collectAccounts(c core.Context, uid int64, taskId int64) (*Tas
 		if err != nil {
 			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 		}
+		header, headerErr := s.evidence.FindCardHeaderByBatch(c, uid, member.BatchId)
+		if headerErr != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
 		for _, group := range groups {
 			if group == nil {
 				continue
@@ -156,11 +172,16 @@ func (s *Service) collectAccounts(c core.Context, uid int64, taskId int64) (*Tas
 				LedgerAccountId: group.LedgerAccountId, Mapped: group.Mapped, Excluded: group.Excluded,
 				SkippedRowCount: group.SkippedRowCount, SuggestedType: suggestedAccountType(group.DisplayName),
 			}
+			applyCardHeader(item, header)
+			if err := s.forgetUnusableLedgerAccount(c, uid, item); err != nil {
+				return nil, err
+			}
 			key := accountGroupMergeKey(item)
 			if existing := merged[key]; existing != nil {
 				existing.RowCount += item.RowCount
 				existing.PendingRowCount += item.PendingRowCount
 				existing.SkippedRowCount += item.SkippedRowCount
+				preferNewerCardHeader(existing, item)
 				continue
 			}
 			merged[key] = item
@@ -208,9 +229,9 @@ func (s *Service) refreshAccountStatus(c core.Context, uid int64, taskId int64) 
 	needs := len(accounts.NeedsCreate)
 	next := cloneTask(task)
 	next.ReusedMappingCount = reused
-	if needs > 0 {
+	if needs > 0 && canRewindTaskForMissingAccounts(task.Status) {
 		next.Status = TASK_STATUS_ACCOUNTS_PENDING
-	} else if task.Status == TASK_STATUS_ACCOUNTS_PENDING || task.Status == TASK_STATUS_RECEIVING {
+	} else if needs < 1 && (task.Status == TASK_STATUS_ACCOUNTS_PENDING || task.Status == TASK_STATUS_RECEIVING) {
 		next.Status = TASK_STATUS_RECEIVING
 	}
 	if next.Status == task.Status && next.ReusedMappingCount == task.ReusedMappingCount {
@@ -486,4 +507,66 @@ func accountGroupMergeKey(group *AccountGroupView) string {
 		bucket = "reused:" + strconv.FormatInt(*group.LedgerAccountId, 10)
 	}
 	return bucket + "\x00" + group.Currency + "\x00" + group.DisplayName
+}
+
+func (s *Service) forgetUnusableLedgerAccount(c core.Context, uid int64, item *AccountGroupView) error {
+	if item == nil || !item.Mapped || item.LedgerAccountId == nil || s.accounts == nil {
+		return nil
+	}
+	snapshot, err := s.accounts.LoadAccount(c, uid, *item.LedgerAccountId)
+	if err != nil {
+		return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	if snapshot != nil && snapshot.AccountId == *item.LedgerAccountId && !snapshot.Deleted && !snapshot.Hidden {
+		return nil
+	}
+	item.Mapped = false
+	item.LedgerAccountId = nil
+	return nil
+}
+
+func canRewindTaskForMissingAccounts(status TaskStatus) bool {
+	return status == TASK_STATUS_ACCOUNTS_PENDING || status == TASK_STATUS_RECEIVING ||
+		status == TASK_STATUS_PROCESSING || status == TASK_STATUS_AWAITING_CONFIRM
+}
+
+func applyCardHeader(item *AccountGroupView, header *importing.CardHeader) {
+	if item == nil || header == nil {
+		return
+	}
+	item.StatementDate = header.StatementDate
+	item.DueDate = header.DueDate
+	item.CreditLimitAmount = cloneInt64(header.CreditLimitAmount)
+	item.CreditLimitCurrency = header.Currency
+}
+
+func preferNewerCardHeader(dst, src *AccountGroupView) {
+	if dst == nil || src == nil || !accountGroupHasCardHeader(src) {
+		return
+	}
+	if !accountGroupHasCardHeader(dst) || (src.StatementDate != "" && src.StatementDate > dst.StatementDate) {
+		dst.StatementDate = src.StatementDate
+		dst.DueDate = src.DueDate
+		dst.CreditLimitAmount = cloneInt64(src.CreditLimitAmount)
+		dst.CreditLimitCurrency = src.CreditLimitCurrency
+	}
+}
+
+func accountGroupHasCardHeader(group *AccountGroupView) bool {
+	return group != nil && (group.StatementDate != "" || group.DueDate != "" || group.CreditLimitAmount != nil)
+}
+
+func creditCardStatementDay(header *importing.CardHeader) int {
+	if header == nil || header.StatementDate == "" {
+		return 0
+	}
+	parsed, err := time.Parse(time.DateOnly, header.StatementDate)
+	if err != nil {
+		return 0
+	}
+	day := parsed.Day()
+	if day < 1 || day > 28 {
+		return 0
+	}
+	return day
 }
