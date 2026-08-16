@@ -390,7 +390,8 @@
             </v-btn>
         </div>
     </v-card>
-    <ceb-credit-import-dialog ref="cebCreditImportDialog" @parsed="onCebCreditParsed" />
+    <ceb-credit-import-dialog ref="cebCreditImportDialog" @parsed="onParsedBatch" />
+    <source-account-dialog ref="sourceAccountDialog" @parsed="onParsedBatch" />
 </template>
 
 <script setup lang="ts">
@@ -451,6 +452,7 @@ import { canConfigureCebCreditPdf } from '../../state.ts';
 import { usePersonalFinanceStore } from '../../store.ts';
 import { todayCivilDate } from '../../dashboard/state.ts';
 import CebCreditImportDialog from '../../components/CebCreditImportDialog.vue';
+import SourceAccountDialog from '../../components/SourceAccountDialog.vue';
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatDateTimeToShortDateTime } = useI18n();
 const userStore = useUserStore();
@@ -459,6 +461,7 @@ const accountsStore = useAccountsStore();
 const categoriesStore = useTransactionCategoriesStore();
 const fileInput = ref<HTMLInputElement>();
 const cebCreditImportDialog = useTemplateRef<InstanceType<typeof CebCreditImportDialog>>('cebCreditImportDialog');
+const sourceAccountDialog = useTemplateRef<InstanceType<typeof SourceAccountDialog>>('sourceAccountDialog');
 const loading = ref(false);
 const busy = ref(false);
 const error = ref(false);
@@ -932,6 +935,7 @@ async function upload(event: Event): Promise<void> {
     input.value = '';
     if (files.length < 1) return;
     busy.value = true;
+    error.value = false;
     try {
         for (const file of files) {
             const result = await personalFinanceStore.uploadFile(file);
@@ -942,7 +946,9 @@ async function upload(event: Event): Promise<void> {
                     timezoneUtcOffset: getTimezoneOffsetMinutes(getCurrentUnixTime()),
                     reasonCode: 'initial_upload_ceb_fallback'
                 });
+                continue;
             }
+            await parseUploadedFile(result.file.id);
         }
         await personalFinanceStore.loadBatches(0, 50);
     } catch {
@@ -953,21 +959,47 @@ async function upload(event: Event): Promise<void> {
     }
 }
 
-async function onCebCreditParsed(batchId: string): Promise<void> {
+async function parseUploadedFile(fileId: string): Promise<void> {
+    const timezoneUtcOffset = getTimezoneOffsetMinutes(getCurrentUnixTime());
+    const result = await personalFinanceStore.reparseFile({
+        fileId,
+        currency: userStore.currentUserDefaultCurrency,
+        timezoneUtcOffset,
+        reasonCode: 'initial_upload'
+    });
+    if (result.requiresSourceAccount && result.discovery) {
+        sourceAccountDialog.value?.open({
+            fileId,
+            discovery: result.discovery,
+            currency: userStore.currentUserDefaultCurrency,
+            timezoneUtcOffset
+        });
+        return;
+    }
+    if (result.batch?.id) {
+        await selectParsedFile(result.batch.id);
+    }
+}
+
+async function onParsedBatch(batchId: string): Promise<void> {
     busy.value = true;
     error.value = false;
     try {
-        await personalFinanceStore.loadBatches(0, 50);
-        const fileId = personalFinanceStore.batches.find(batch => batch.id === batchId)?.fileId;
-        if (fileId && !selectedFileIds.value.includes(fileId)) {
-            selectedFileIds.value = [...selectedFileIds.value, fileId];
-        }
-        userStep.value = 'files';
+        await selectParsedFile(batchId);
     } catch {
         error.value = true;
     } finally {
         busy.value = false;
     }
+}
+
+async function selectParsedFile(batchId: string): Promise<void> {
+    await personalFinanceStore.loadBatches(0, 50);
+    const fileId = personalFinanceStore.batches.find(batch => batch.id === batchId)?.fileId;
+    if (fileId && !selectedFileIds.value.includes(fileId)) {
+        selectedFileIds.value = [...selectedFileIds.value, fileId];
+    }
+    userStep.value = 'files';
 }
 
 async function replaceTaskFiles(): Promise<boolean> {

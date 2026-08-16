@@ -207,6 +207,10 @@ describe('billflow task page wiring', () => {
         expect(workbench).not.toContain('refreshTaskAndMaybeRun');
         expect(workbench).toContain('mergeSelectedOrganizeFileIds');
         expect(workbench).toContain('replaceTaskFiles');
+        expect(workbench).toContain('parseUploadedFile');
+        expect(workbench).toContain("reasonCode: 'initial_upload'");
+        expect(workbench).toContain('canConfigureCebCreditPdf');
+        expect(workbench).toContain('SourceAccountDialog');
         expect(workbench).toContain('applyUniqueMatchedAccounts');
         expect(workbench).toContain('canEditOrganizeFiles');
         expect(workbench).toContain("userStep.value = 'files'");
