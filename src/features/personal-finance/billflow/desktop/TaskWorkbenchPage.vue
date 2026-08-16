@@ -46,10 +46,10 @@
         <section class="files-panel" v-if="currentStep === 'files' && (task || eligibleFiles.length)">
             <div class="section-copy">
                 <strong>{{ tt('personalFinance.billflow.files.title') }}</strong>
-                <span v-if="task">{{ tt('personalFinance.billflow.files.inTask') }}</span>
-                <span v-else>{{ tt('personalFinance.billflow.files.selected', { count: selectedFileIds.length }) }}</span>
+                <span v-if="canEditFiles">{{ task ? tt('personalFinance.billflow.files.inTask') : tt('personalFinance.billflow.files.selected', { count: selectedFileIds.length }) }}</span>
+                <span v-else>{{ tt('personalFinance.billflow.files.inTaskLocked') }}</span>
             </div>
-            <v-chip-group column multiple v-model="selectedFileIds" v-if="!task">
+            <v-chip-group column multiple v-model="selectedFileIds" v-if="canEditFiles">
                 <v-chip :value="file.fileId" filter :key="file.fileId" v-for="file in eligibleFiles">
                     {{ file.name }}
                 </v-chip>
@@ -426,6 +426,7 @@ import {
     chunkBillflowItems,
     createdAccountsNeedingBalance,
     eligibleOrganizeFileIds,
+    canEditOrganizeFiles,
     categoryBucketHintKey,
     categoryTodos,
     installmentTodos,
@@ -437,6 +438,7 @@ import {
     resolveAccountBucket,
     resolveBillflowWorkbenchStep,
     resolveCategoryBucket,
+    sameOrganizeFileIds,
     suggestedAccountCategory,
     taskAwaitsConfirm,
     taskNeedsAccounts,
@@ -509,6 +511,8 @@ const taskFiles = computed(() => {
         .filter((member, index, list) => list.findIndex(item => item.fileId === member.fileId) === index)
         .map(member => ({ fileId: member.fileId, name: names.get(member.fileId) || member.fileId }));
 });
+const canEditFiles = computed(() => !task.value || canEditOrganizeFiles(task.value.status));
+const taskMemberFileIds = computed(() => taskFiles.value.map(file => file.fileId));
 const stepInput = computed(() => ({
     hasTask: !!task.value,
     status: task.value?.status,
@@ -595,7 +599,7 @@ const canAdvanceWithoutAction = computed(() => {
         return false;
     }
     if (currentStep.value === 'files') {
-        return !!task.value;
+        return !!task.value && (!canEditFiles.value || selectedFileIds.value.length > 0);
     }
     if (currentStep.value === 'accounts') {
         return !!task.value && !canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0);
@@ -692,6 +696,23 @@ function goBack(): void {
 }
 
 async function goForward(): Promise<void> {
+    if (currentStep.value === 'files' && task.value) {
+        if (canEditFiles.value) {
+            if (selectedFileIds.value.length < 1) {
+                return;
+            }
+            if (!sameOrganizeFileIds(selectedFileIds.value, taskMemberFileIds.value)) {
+                if (!await replaceTaskFiles()) {
+                    return;
+                }
+            }
+        }
+        const next = nextBillflowWorkbenchStep('files');
+        if (next && canOpenStep(next)) {
+            userStep.value = next;
+        }
+        return;
+    }
     const stayOn = currentStep.value;
     if (stepAction.value) {
         if (stepAction.value.disabled) {
@@ -893,6 +914,15 @@ async function openTask(taskId: string): Promise<void> {
         openTodos.value = [];
         classifiedRows.value = [];
     }
+    syncTaskFileSelection();
+}
+
+function syncTaskFileSelection(): void {
+    if (!task.value || !canEditOrganizeFiles(task.value.status)) {
+        return;
+    }
+    selectedFileIds.value = [...new Set(task.value.members.map(member => member.fileId))];
+    previousEligibleIds.value = eligibleFiles.value.map(file => file.fileId);
 }
 
 async function upload(event: Event): Promise<void> {
@@ -928,17 +958,10 @@ async function onCebCreditParsed(batchId: string): Promise<void> {
     try {
         await personalFinanceStore.loadBatches(0, 50);
         const fileId = personalFinanceStore.batches.find(batch => batch.id === batchId)?.fileId;
-        if (!fileId) {
-            throw new Error('parsed ceb batch is missing');
+        if (fileId && !selectedFileIds.value.includes(fileId)) {
+            selectedFileIds.value = [...selectedFileIds.value, fileId];
         }
-        selectedFileIds.value = [fileId];
-        const created = await billflowApi.createTask([fileId], generateRandomUUID());
-        task.value = created;
-        restoreBalanceMemory(created.id);
-        await openTask(created.id);
-        accountBucket.value = 'pending';
-        userPickedBucket.value = false;
-        userStep.value = 'accounts';
+        userStep.value = 'files';
     } catch {
         error.value = true;
     } finally {
@@ -946,7 +969,29 @@ async function onCebCreditParsed(batchId: string): Promise<void> {
     }
 }
 
-async function createTask(): Promise<void> {
+async function replaceTaskFiles(): Promise<boolean> {
+    if (!task.value || selectedFileIds.value.length < 1) {
+        return false;
+    }
+    busy.value = true;
+    error.value = false;
+    try {
+        const updated = await billflowApi.replaceTaskFiles(task.value.id, task.value.version, selectedFileIds.value, generateRandomUUID());
+        task.value = updated;
+        restoreBalanceMemory(updated.id);
+        await openTask(updated.id);
+        accountBucket.value = 'pending';
+        userPickedBucket.value = false;
+        return true;
+    } catch {
+        error.value = true;
+        return false;
+    } finally {
+        busy.value = false;
+    }
+}
+
+async function createTask(): Promise<boolean> {
     busy.value = true;
     try {
         const created = await billflowApi.createTask(selectedFileIds.value, generateRandomUUID());
@@ -954,8 +999,10 @@ async function createTask(): Promise<void> {
         restoreBalanceMemory(created.id);
         await openTask(created.id);
         userStep.value = 'files';
+        return true;
     } catch {
         error.value = true;
+        return false;
     } finally {
         busy.value = false;
     }

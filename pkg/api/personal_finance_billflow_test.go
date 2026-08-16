@@ -39,11 +39,20 @@ func TestBillflowHandlersUseStringIdsAndOmitSecrets(t *testing.T) {
 	if apiErr != nil {
 		t.Fatalf("create billflow task: %v", apiErr)
 	}
+	replaced, apiErr := api.BillflowTaskReplaceFilesHandler(newBillflowTestContext(t, http.MethodPost, "/replace_files", `{"taskId":"9001","expectedVersion":4,"fileIds":["301","302"],"idempotencyKey":"replace-key-1"}`))
+	if apiErr != nil {
+		t.Fatalf("replace billflow task files: %v", apiErr)
+	}
 	createdText := marshalBillflowResponse(t, created)
 	if !strings.Contains(createdText, `"id":"9001"`) || !strings.Contains(createdText, `"fileId":"301"`) {
 		t.Fatalf("create response omitted string ids: %s", createdText)
 	}
 	assertBillflowResponseOmits(t, createdText, "aliasKey", "alias_key", "candidateKey", "RawItem", "rawNote")
+	replacedText := marshalBillflowResponse(t, replaced)
+	if !strings.Contains(replacedText, `"id":"9001"`) {
+		t.Fatalf("replace response omitted string ids: %s", replacedText)
+	}
+	assertBillflowResponseOmits(t, replacedText, "aliasKey", "alias_key", "candidateKey", "RawItem", "rawNote")
 
 	listResponse, apiErr := api.BillflowTaskListHandler(newBillflowTestContext(t, http.MethodGet,
 		"/list?status=ready&limit=20&cursor_updated_unix_time=1700000000&cursor_task_id=9000", ""))
@@ -122,6 +131,9 @@ type billflowAPITestApplication struct {
 }
 
 func (a *billflowAPITestApplication) CreateTask(_ core.Context, _ billflow.CreateTaskRequest) (*billflow.TaskView, error) {
+	return a.task, a.err
+}
+func (a *billflowAPITestApplication) ReplaceTaskFiles(_ core.Context, _ billflow.ReplaceTaskFilesRequest) (*billflow.TaskView, error) {
 	return a.task, a.err
 }
 func (a *billflowAPITestApplication) ListTasks(_ core.Context, _ int64, _ billflow.TaskStatus, _ *billflow.TaskCursor, _ int) (*billflow.TaskListResult, error) {

@@ -135,6 +135,22 @@ func TestRepositorySQLiteUIDIsolationPaginationCASAndRollback(t *testing.T) {
 		t.Fatalf("unique member constraints were not enforced: %v", err)
 	}
 
+	if err := repository.DoTransaction(nil, firstUid, func(tx *billflow.RepositoryTransaction) error {
+		if err := tx.DeleteMembersByTask(101); err != nil {
+			return err
+		}
+		if err := tx.InsertMember(testTaskMember(firstUid, 101, 204, 0, 304, 404, 13)); err != nil {
+			return err
+		}
+		return tx.DeleteTodosByTask(101)
+	}); err != nil {
+		t.Fatalf("replace task members: %v", err)
+	}
+	replaced, err := repository.ListMembers(nil, firstUid, 101)
+	if err != nil || len(replaced) != 1 || replaced[0].FileId != 304 || replaced[0].BatchId != 404 {
+		t.Fatalf("replaced members: %+v err=%v", replaced, err)
+	}
+
 	rollbackErr := errors.New("rollback billflow repository transaction")
 	err = repository.DoTransaction(nil, firstUid, func(tx *billflow.RepositoryTransaction) error {
 		if err := tx.InsertTask(testTask(firstUid, 999, 200)); err != nil {

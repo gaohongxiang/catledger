@@ -295,6 +295,26 @@ func (tx *RepositoryTransaction) ListMembers(taskId int64) ([]*TaskMember, error
 	return members, nil
 }
 
+func (tx *RepositoryTransaction) DeleteMembersByTask(taskId int64) error {
+	if err := tx.validate(); err != nil || taskId < 1 {
+		return fmt.Errorf("invalid billflow task member delete")
+	}
+	if _, err := tx.session.Where("uid=? AND task_id=?", tx.uid, taskId).Delete(new(TaskMember)); err != nil {
+		return fmt.Errorf("delete billflow task members: %w", err)
+	}
+	return nil
+}
+
+func (tx *RepositoryTransaction) DeleteTodosByTask(taskId int64) error {
+	if err := tx.validate(); err != nil || taskId < 1 {
+		return fmt.Errorf("invalid billflow todo delete")
+	}
+	if _, err := tx.session.Where("uid=? AND task_id=?", tx.uid, taskId).Delete(new(Todo)); err != nil {
+		return fmt.Errorf("delete billflow todos: %w", err)
+	}
+	return nil
+}
+
 // FindActionByIdempotency 按 uid 和幂等键摘要查询，不存在时返回 (nil, nil)。
 func (r *Repository) FindActionByIdempotency(c core.Context, uid int64, digest string) (*Action, error) {
 	if uid < 1 || !isLowerHexSHA256(digest) {

@@ -2954,7 +2954,8 @@
                 "empty": "No statements are ready yet",
                 "emptyHint": "Upload Alipay, WeChat Pay, or bank statements first. You can pick more than one.",
                 "selected": "{count} selected",
-                "inTask": "This task uses these statements. Upload more files before starting the next task."
+                "inTask": "Choose the statements for this round. You can add or remove them until you confirm posting.",
+                "inTaskLocked": "This round is posted. The statements cannot be changed."
             },
             "next": {
                 "files": "Organize {count} selected statements",

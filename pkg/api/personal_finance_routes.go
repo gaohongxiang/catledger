@@ -64,6 +64,7 @@ func RegisterPersonalFinanceRoutes(apiV1Route gin.IRoutes, config *settings.Conf
 
 	// Personal Finance Billflow
 	apiV1Route.POST("/personal_finance/billflow/tasks/create.json", bindApi(PersonalFinanceBillflow.BillflowTaskCreateHandler, config))
+	apiV1Route.POST("/personal_finance/billflow/tasks/replace_files.json", bindApi(PersonalFinanceBillflow.BillflowTaskReplaceFilesHandler, config))
 	apiV1Route.GET("/personal_finance/billflow/tasks/list.json", bindApi(PersonalFinanceBillflow.BillflowTaskListHandler, config))
 	apiV1Route.GET("/personal_finance/billflow/tasks/get.json", bindApi(PersonalFinanceBillflow.BillflowTaskGetHandler, config))
 	apiV1Route.GET("/personal_finance/billflow/tasks/accounts.json", bindApi(PersonalFinanceBillflow.BillflowTaskAccountsHandler, config))

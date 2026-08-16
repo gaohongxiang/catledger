@@ -133,6 +133,28 @@ export function mergeSelectedOrganizeFileIds(
     return nextSelected;
 }
 
+export function sameOrganizeFileIds(left: readonly string[], right: readonly string[]): boolean {
+    if (left.length !== right.length) {
+        return false;
+    }
+    const counts = new Map<string, number>();
+    for (const id of left) {
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    for (const id of right) {
+        const next = (counts.get(id) ?? 0) - 1;
+        if (next < 0) {
+            return false;
+        }
+        counts.set(id, next);
+    }
+    return true;
+}
+
+export function canEditOrganizeFiles(status?: BillflowTaskStatus): boolean {
+    return status !== 'ready' && status !== 'processing';
+}
+
 export function canAutoRunAfterAccounts(status: BillflowTaskStatus, needsCreateCount: number): boolean {
     return needsCreateCount < 1 && (status === 'accounts_pending' || status === 'receiving');
 }

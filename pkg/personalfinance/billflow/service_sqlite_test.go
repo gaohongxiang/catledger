@@ -83,6 +83,70 @@ func TestServiceConfirmThenPostCategoryAndUndo(t *testing.T) {
 	}
 }
 
+func TestServiceReplaceTaskFilesBeforeConfirm(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	accountId := int64(61)
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{
+		postableRow(uid, 401, 801, 201, accountId, "餐饮美食"),
+	})
+	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{
+		postableRow(uid, 402, 803, 203, accountId, "餐饮美食"),
+	})
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+		402: {mappedGroup(accountId, 803)},
+	}}
+	poster := &fakePoster{}
+	undo := &fakeUndo{can: true}
+	var nextId int64 = 9100
+	service, err := billflow.NewService(repository, evidence, payments, poster, nil, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{
+		{CategoryId: 51, Name: "餐饮美食"},
+	}}, undo, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-task-replace"})
+	if err != nil || created == nil || len(created.Members) != 1 {
+		t.Fatalf("create task: %+v err=%v", created, err)
+	}
+	same, err := service.ReplaceTaskFiles(nil, billflow.ReplaceTaskFilesRequest{
+		Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, FileIds: []int64{301}, IdempotencyKey: "replace-same",
+	})
+	if err != nil || same == nil || same.Version != created.Version || len(same.Members) != 1 {
+		t.Fatalf("same files should not bump version: %+v err=%v", same, err)
+	}
+
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-before-replace", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || ran.Status != billflow.TASK_STATUS_AWAITING_CONFIRM {
+		t.Fatalf("run before replace: %+v err=%v", ran, err)
+	}
+	replaced, err := service.ReplaceTaskFiles(nil, billflow.ReplaceTaskFilesRequest{
+		Uid: uid, TaskId: created.TaskId, ExpectedVersion: ran.Version, FileIds: []int64{301, 302}, IdempotencyKey: "replace-add-file",
+	})
+	if err != nil || replaced == nil || len(replaced.Members) != 2 || replaced.TodoOpenCount != 0 {
+		t.Fatalf("replace files: %+v err=%v", replaced, err)
+	}
+	if replaced.Status != billflow.TASK_STATUS_RECEIVING && replaced.Status != billflow.TASK_STATUS_ACCOUNTS_PENDING {
+		t.Fatalf("replace should reopen accounts: %+v", replaced)
+	}
+	if undo.reverse != 1 {
+		t.Fatalf("awaiting_confirm replace should reverse preview, got %d", undo.reverse)
+	}
+	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || todos == nil || len(todos.Items) != 0 {
+		t.Fatalf("replace should clear todos: %+v err=%v", todos, err)
+	}
+	rerun, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: replaced.Version, IdempotencyKey: "run-after-replace", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || rerun == nil || rerun.Status != billflow.TASK_STATUS_AWAITING_CONFIRM {
+		t.Fatalf("run after replace: %+v err=%v", rerun, err)
+	}
+}
+
 func TestServiceAssignMerchantCategoryBeforeConfirm(t *testing.T) {
 	repository, _ := newSQLiteBillflowRepository(t)
 	uid := int64(1001)

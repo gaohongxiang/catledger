@@ -1032,6 +1032,9 @@ export default {
     createPersonalFinanceBillflowTask: (request: { fileIds: string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/create.json', request);
     },
+    replacePersonalFinanceBillflowTaskFiles: (request: { taskId: string, expectedVersion: number, fileIds: string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/replace_files.json', request);
+    },
     listPersonalFinanceBillflowTasks: (params: { status: string, limit: number }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/list.json?status=${encodeURIComponent(params.status)}&limit=${params.limit}`);
     },

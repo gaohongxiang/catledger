@@ -13,6 +13,7 @@ import {
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
     canAssignBillflowCategory,
+    canEditOrganizeFiles,
     canOpenBillflowWorkbenchStep,
     chunkBillflowItems,
     composeDashboardHeadline,
@@ -27,6 +28,7 @@ import {
     resolveAccountBucket,
     resolveBillflowWorkbenchStep,
     resolveCategoryBucket,
+    sameOrganizeFileIds,
     suggestedAccountBucket,
     suggestedBillflowWorkbenchStep,
     suggestedCategoryBucket,
@@ -199,6 +201,9 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain("listTasks('receiving')");
         expect(workbench).not.toContain('refreshTaskAndMaybeRun');
         expect(workbench).toContain('mergeSelectedOrganizeFileIds');
+        expect(workbench).toContain('replaceTaskFiles');
+        expect(workbench).toContain('canEditOrganizeFiles');
+        expect(workbench).toContain("userStep.value = 'files'");
         expect(workbench).toContain('personalFinance.billflow.confirmHint');
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
         expect(workbench).toContain('v-for="todo in reviewTodos"');
@@ -237,6 +242,10 @@ describe('billflow task page wiring', () => {
         expect(mergeSelectedOrganizeFileIds(['a'], ['a'], ['a', 'b'])).toEqual(['a', 'b']);
         expect(mergeSelectedOrganizeFileIds([], ['a', 'b'], ['a', 'b'])).toEqual([]);
         expect(mergeSelectedOrganizeFileIds(['b'], ['a', 'b'], ['a', 'b'])).toEqual(['b']);
+        expect(sameOrganizeFileIds(['a', 'b'], ['b', 'a'])).toBe(true);
+        expect(sameOrganizeFileIds(['a', 'b'], ['a'])).toBe(false);
+        expect(canEditOrganizeFiles('awaiting_confirm')).toBe(true);
+        expect(canEditOrganizeFiles('ready')).toBe(false);
         expect(canAutoRunAfterAccounts('accounts_pending', 0)).toBe(true);
         expect(canAutoRunAfterAccounts('accounts_pending', 1)).toBe(false);
         expect(canAutoRunAfterAccounts('receiving', 0)).toBe(true);

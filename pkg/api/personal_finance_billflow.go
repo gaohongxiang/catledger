@@ -21,6 +21,7 @@ const (
 
 type PersonalFinanceBillflowApplication interface {
 	CreateTask(c core.Context, request billflow.CreateTaskRequest) (*billflow.TaskView, error)
+	ReplaceTaskFiles(c core.Context, request billflow.ReplaceTaskFilesRequest) (*billflow.TaskView, error)
 	ListTasks(c core.Context, uid int64, status billflow.TaskStatus, cursor *billflow.TaskCursor, limit int) (*billflow.TaskListResult, error)
 	GetTask(c core.Context, uid int64, taskId int64) (*billflow.TaskView, error)
 	GetTaskAccounts(c core.Context, uid int64, taskId int64) (*billflow.TaskAccountsView, error)
@@ -57,6 +58,13 @@ func NewPersonalFinanceBillflowApi(application PersonalFinanceBillflowApplicatio
 type personalFinanceBillflowCreateRequest struct {
 	FileIds        []string `json:"fileIds"`
 	IdempotencyKey string   `json:"idempotencyKey"`
+}
+
+type personalFinanceBillflowReplaceFilesRequest struct {
+	TaskId          int64    `json:"taskId,string"`
+	ExpectedVersion int64    `json:"expectedVersion"`
+	FileIds         []string `json:"fileIds"`
+	IdempotencyKey  string   `json:"idempotencyKey"`
 }
 
 type personalFinanceBillflowTaskActionRequest struct {
@@ -249,6 +257,30 @@ func (a *PersonalFinanceBillflowApi) BillflowTaskCreateHandler(c *core.WebContex
 	result, err := a.application.CreateTask(c, billflow.CreateTaskRequest{Uid: c.GetCurrentUid(), FileIds: fileIds, IdempotencyKey: request.IdempotencyKey})
 	if err != nil {
 		log.Warnf(c, "[personal_finance_billflow.create] failed for user \"uid:%d\" and code \"%s\"", c.GetCurrentUid(), billflow.ServiceErrorCodeOf(err))
+		return nil, personalFinanceBillflowServiceError(err)
+	}
+	return newPersonalFinanceBillflowTaskResponse(result), nil
+}
+
+func (a *PersonalFinanceBillflowApi) BillflowTaskReplaceFilesHandler(c *core.WebContext) (any, *errs.Error) {
+	request := new(personalFinanceBillflowReplaceFilesRequest)
+	if err := decodePersonalFinanceLoanJSON(c, request); err != nil {
+		return nil, errs.ErrParameterInvalid
+	}
+	fileIds := make([]int64, 0, len(request.FileIds))
+	for _, raw := range request.FileIds {
+		id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil || id < 1 {
+			return nil, errs.ErrParameterInvalid
+		}
+		fileIds = append(fileIds, id)
+	}
+	result, err := a.application.ReplaceTaskFiles(c, billflow.ReplaceTaskFilesRequest{
+		Uid: c.GetCurrentUid(), TaskId: request.TaskId, ExpectedVersion: request.ExpectedVersion,
+		FileIds: fileIds, IdempotencyKey: request.IdempotencyKey,
+	})
+	if err != nil {
+		log.Warnf(c, "[personal_finance_billflow.replace_files] failed for user \"uid:%d\" and code \"%s\"", c.GetCurrentUid(), billflow.ServiceErrorCodeOf(err))
 		return nil, personalFinanceBillflowServiceError(err)
 	}
 	return newPersonalFinanceBillflowTaskResponse(result), nil

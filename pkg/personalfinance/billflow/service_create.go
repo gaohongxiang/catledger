@@ -13,6 +13,19 @@ type CreateTaskRequest struct {
 	IdempotencyKey string
 }
 
+type ReplaceTaskFilesRequest struct {
+	Uid             int64
+	TaskId          int64
+	ExpectedVersion int64
+	FileIds         []int64
+	IdempotencyKey  string
+}
+
+type fileBatchBinding struct {
+	fileId  int64
+	batchId int64
+}
+
 func (s *Service) CreateTask(c core.Context, request CreateTaskRequest) (*TaskView, error) {
 	if s == nil || s.repository == nil || s.evidence == nil || request.Uid < 1 || len(request.FileIds) < 1 || !isValidIdempotencyKey(request.IdempotencyKey) {
 		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
@@ -22,26 +35,9 @@ func (s *Service) CreateTask(c core.Context, request CreateTaskRequest) (*TaskVi
 		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
 	}
 
-	bindings := make([]struct {
-		fileId  int64
-		batchId int64
-	}, 0, len(fileIds))
-	for _, fileId := range fileIds {
-		file, err := s.evidence.FindImportFileById(c, request.Uid, fileId)
-		if err != nil {
-			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
-		}
-		if file == nil || file.Uid != request.Uid {
-			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
-		}
-		batch, err := s.latestSuccessfulBatch(c, request.Uid, fileId)
-		if err != nil {
-			return nil, err
-		}
-		bindings = append(bindings, struct {
-			fileId  int64
-			batchId int64
-		}{fileId: fileId, batchId: batch.BatchId})
+	bindings, err := s.bindSuccessfulFileBatches(c, request.Uid, fileIds)
+	if err != nil {
+		return nil, err
 	}
 
 	batchIds := make([]int64, 0, len(bindings))
@@ -110,6 +106,172 @@ func (s *Service) CreateTask(c core.Context, request CreateTaskRequest) (*TaskVi
 		return nil, err
 	}
 	return s.GetTask(c, request.Uid, taskId)
+}
+
+func (s *Service) ReplaceTaskFiles(c core.Context, request ReplaceTaskFilesRequest) (*TaskView, error) {
+	if s == nil || s.repository == nil || s.evidence == nil || request.Uid < 1 || request.TaskId < 1 || request.ExpectedVersion < 1 || len(request.FileIds) < 1 || !isValidIdempotencyKey(request.IdempotencyKey) {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	fileIds := uniquePositiveIDs(request.FileIds)
+	if len(fileIds) != len(request.FileIds) {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	task, err := s.requireTask(c, request.Uid, request.TaskId)
+	if err != nil {
+		return nil, err
+	}
+	if task.Version != request.ExpectedVersion {
+		return nil, serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+	}
+	if task.Status == TASK_STATUS_READY || task.Status == TASK_STATUS_PROCESSING {
+		return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
+	}
+
+	current, err := s.repository.ListMembers(c, request.Uid, request.TaskId)
+	if err != nil {
+		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	if sameTaskFileIDs(current, fileIds) {
+		return s.GetTask(c, request.Uid, request.TaskId)
+	}
+
+	bindings, err := s.bindSuccessfulFileBatches(c, request.Uid, fileIds)
+	if err != nil {
+		return nil, err
+	}
+	for _, binding := range bindings {
+		member, findErr := s.repository.FindMemberByBatch(c, request.Uid, binding.batchId)
+		if findErr != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		if member != nil && member.TaskId != request.TaskId {
+			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+	}
+
+	if task.Status == TASK_STATUS_AWAITING_CONFIRM {
+		if s.undo == nil {
+			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+		batchIds := make([]int64, 0, len(current))
+		for _, member := range current {
+			if member != nil {
+				batchIds = append(batchIds, member.BatchId)
+			}
+		}
+		inspection, inspectErr := s.undo.Inspect(c, request.Uid, batchIds)
+		if inspectErr != nil || inspection == nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		if !inspection.CanReverse {
+			return nil, serviceError(ErrServiceActionRequired, SERVICE_ERROR_ACTION_REQUIRED)
+		}
+		if reverseErr := s.undo.Reverse(c, request.Uid, inspection); reverseErr != nil {
+			return nil, serviceError(ErrServiceActionRequired, SERVICE_ERROR_ACTION_REQUIRED)
+		}
+	}
+
+	parts := []string{"replace_files", strconv.FormatInt(request.TaskId, 10)}
+	for _, binding := range bindings {
+		parts = append(parts, strconv.FormatInt(binding.fileId, 10), strconv.FormatInt(binding.batchId, 10))
+	}
+	action, created, err := s.beginAction(c, request.Uid, request.TaskId, request.ExpectedVersion, ACTION_TYPE_REPLACE_FILES, request.IdempotencyKey, parts)
+	if err != nil {
+		return nil, err
+	}
+	if !created {
+		if action.Status == ACTION_STATUS_APPLIED {
+			return s.GetTask(c, request.Uid, request.TaskId)
+		}
+		return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
+	}
+
+	now := s.now().Unix()
+	err = s.repository.DoTransaction(c, request.Uid, func(tx *RepositoryTransaction) error {
+		if err := tx.DeleteMembersByTask(request.TaskId); err != nil {
+			return err
+		}
+		if err := tx.DeleteTodosByTask(request.TaskId); err != nil {
+			return err
+		}
+		for index, binding := range bindings {
+			if err := tx.InsertMember(&TaskMember{
+				Uid: request.Uid, TaskId: request.TaskId, MemberOrder: int64(index), FileId: binding.fileId,
+				BatchId: binding.batchId, CreatedUnixTime: now, MemberId: s.generateId(),
+			}); err != nil {
+				return err
+			}
+		}
+		next := cloneTask(task)
+		next.Status = TASK_STATUS_RECEIVING
+		next.AutoPostedCount = 0
+		next.TodoOpenCount = 0
+		next.ErrorCode = ""
+		next.Version = task.Version + 1
+		next.UpdatedUnixTime = now
+		next.CurrentActionId = &action.ActionId
+		updated, err := tx.UpdateTaskCAS(request.ExpectedVersion, next)
+		if err != nil || !updated {
+			return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+		}
+		applied := cloneAction(action)
+		applied.Status = ACTION_STATUS_APPLIED
+		applied.AppliedTaskVersion = next.Version
+		applied.UpdatedUnixTime = now
+		completed := now
+		applied.CompletedUnixTime = &completed
+		ok, err := tx.UpdateAction(applied)
+		if err != nil || !ok {
+			return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, serviceError(err, SERVICE_ERROR_PERSISTENCE)
+	}
+	if err := s.refreshAccountStatus(c, request.Uid, request.TaskId); err != nil {
+		return nil, err
+	}
+	return s.GetTask(c, request.Uid, request.TaskId)
+}
+
+func (s *Service) bindSuccessfulFileBatches(c core.Context, uid int64, fileIds []int64) ([]fileBatchBinding, error) {
+	bindings := make([]fileBatchBinding, 0, len(fileIds))
+	for _, fileId := range fileIds {
+		file, err := s.evidence.FindImportFileById(c, uid, fileId)
+		if err != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		if file == nil || file.Uid != uid {
+			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+		batch, err := s.latestSuccessfulBatch(c, uid, fileId)
+		if err != nil {
+			return nil, err
+		}
+		bindings = append(bindings, fileBatchBinding{fileId: fileId, batchId: batch.BatchId})
+	}
+	return bindings, nil
+}
+
+func sameTaskFileIDs(members []*TaskMember, fileIds []int64) bool {
+	if len(members) != len(fileIds) {
+		return false
+	}
+	counts := make(map[int64]int, len(fileIds))
+	for _, fileId := range fileIds {
+		counts[fileId]++
+	}
+	for _, member := range members {
+		if member == nil {
+			return false
+		}
+		counts[member.FileId]--
+		if counts[member.FileId] < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) latestSuccessfulBatch(c core.Context, uid int64, fileId int64) (*importing.ImportBatch, error) {

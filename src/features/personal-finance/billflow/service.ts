@@ -306,6 +306,9 @@ export const billflowApi = {
     async createTask(fileIds: string[], idempotencyKey: string): Promise<BillflowTask> {
         return normalizeBillflowTask(unwrap(await services.createPersonalFinanceBillflowTask({ fileIds, idempotencyKey })));
     },
+    async replaceTaskFiles(taskId: string, expectedVersion: number, fileIds: string[], idempotencyKey: string): Promise<BillflowTask> {
+        return normalizeBillflowTask(unwrap(await services.replacePersonalFinanceBillflowTaskFiles({ taskId, expectedVersion, fileIds, idempotencyKey })));
+    },
     async listTasks(status: BillflowTaskStatus, limit = 20): Promise<BillflowTaskPage> {
         return normalizeTaskPage(unwrap(await services.listPersonalFinanceBillflowTasks({ status, limit })));
     },

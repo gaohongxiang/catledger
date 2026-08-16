@@ -18,6 +18,7 @@ func TestPersonalFinanceBillflowRoutesAreUniqueAuthenticatedAndImportIndependent
 		handler string
 	}{
 		{method: "POST", path: "/personal_finance/billflow/tasks/create.json", handler: "BillflowTaskCreateHandler"},
+		{method: "POST", path: "/personal_finance/billflow/tasks/replace_files.json", handler: "BillflowTaskReplaceFilesHandler"},
 		{method: "GET", path: "/personal_finance/billflow/tasks/list.json", handler: "BillflowTaskListHandler"},
 		{method: "GET", path: "/personal_finance/billflow/tasks/get.json", handler: "BillflowTaskGetHandler"},
 		{method: "GET", path: "/personal_finance/billflow/tasks/accounts.json", handler: "BillflowTaskAccountsHandler"},

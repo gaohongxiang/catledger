@@ -39,6 +39,7 @@ type ActionType string
 
 const (
 	ACTION_TYPE_CREATE_TASK              ActionType = "create_task"
+	ACTION_TYPE_REPLACE_FILES            ActionType = "replace_files"
 	ACTION_TYPE_APPLY_ACCOUNTS           ActionType = "apply_accounts"
 	ACTION_TYPE_RUN_ORGANIZE             ActionType = "run_organize"
 	ACTION_TYPE_CONFIRM_POST             ActionType = "confirm_post"
@@ -114,7 +115,7 @@ func isConfirmPolicy(value ConfirmPolicy) bool {
 
 func isActionType(value ActionType) bool {
 	switch value {
-	case ACTION_TYPE_CREATE_TASK, ACTION_TYPE_APPLY_ACCOUNTS, ACTION_TYPE_RUN_ORGANIZE,
+	case ACTION_TYPE_CREATE_TASK, ACTION_TYPE_REPLACE_FILES, ACTION_TYPE_APPLY_ACCOUNTS, ACTION_TYPE_RUN_ORGANIZE,
 		ACTION_TYPE_CONFIRM_POST, ACTION_TYPE_RESOLVE_TODO, ACTION_TYPE_UNDO_POST,
 		ACTION_TYPE_CONFIRM_INSTALLMENT, ACTION_TYPE_SAVE_INSTALLMENT_DETAILS,
 		ACTION_TYPE_SAVE_BALANCE_REVIEW, ACTION_TYPE_SAVE_CARD_RULE:
