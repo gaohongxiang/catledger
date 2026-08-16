@@ -274,9 +274,34 @@ export function categoryBucketHintKey(bucket: BillflowCategoryBucket): string {
         : 'personalFinance.billflow.todos.pendingHint';
 }
 
-export type BillflowWorkbenchStep = 'files' | 'accounts' | 'balance' | 'merge' | 'review' | 'others' | 'confirm';
+export type BillflowMergeBucket = 'pending' | 'merged';
 
-export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'balance', 'merge', 'review', 'others', 'confirm'];
+export const BILLFLOW_MERGE_BUCKETS: readonly BillflowMergeBucket[] = ['pending', 'merged'];
+
+export function suggestedMergeBucket(counts: { pending: number; merged: number }): BillflowMergeBucket {
+    return counts.pending > 0 ? 'pending' : 'merged';
+}
+
+export function resolveMergeBucket(
+    current: BillflowMergeBucket | undefined,
+    counts: { pending: number; merged: number },
+    userPicked = false
+): BillflowMergeBucket {
+    if (userPicked && current && BILLFLOW_MERGE_BUCKETS.includes(current)) {
+        return current;
+    }
+    return suggestedMergeBucket(counts);
+}
+
+export function mergeBucketHintKey(bucket: BillflowMergeBucket): string {
+    return bucket === 'merged'
+        ? 'personalFinance.billflow.merge.mergedHint'
+        : 'personalFinance.billflow.merge.pendingHint';
+}
+
+export type BillflowWorkbenchStep = 'files' | 'accounts' | 'review' | 'others' | 'confirm';
+
+export const BILLFLOW_WORKBENCH_STEPS: readonly BillflowWorkbenchStep[] = ['files', 'accounts', 'review', 'others', 'confirm'];
 
 export type BillflowWorkbenchInput = {
     hasTask: boolean;
@@ -342,10 +367,10 @@ export function suggestedBillflowWorkbenchStep(input: BillflowWorkbenchInput): B
         return 'accounts';
     }
     if (canAutoRunAfterAccounts(status, input.needsCreateCount)) {
-        return input.needsBalanceCount > 0 ? 'balance' : 'accounts';
+        return 'accounts';
     }
     if (taskAwaitsConfirm(status)) {
-        return 'merge';
+        return 'review';
     }
     return 'confirm';
 }
@@ -354,17 +379,14 @@ export function canOpenBillflowWorkbenchStep(step: BillflowWorkbenchStep, input:
     if (!input.hasTask) {
         return step === 'files';
     }
-    if (step === 'review' || step === 'others' || step === 'confirm') {
+    if (step === 'review') {
+        return accountsReadyForNextStep(input);
+    }
+    if (step === 'others' || step === 'confirm') {
         if (input.status === 'ready' || input.status === 'failed') {
             return true;
         }
         return input.status === 'awaiting_confirm' && accountsReadyForNextStep(input);
-    }
-    if (step === 'balance') {
-        return accountsReadyForNextStep(input) && shouldOpenBalanceStep(input);
-    }
-    if (step === 'merge') {
-        return accountsReadyForNextStep(input);
     }
     return billflowWorkbenchStepIndex(step) <= billflowWorkbenchStepIndex(suggestedBillflowWorkbenchStep(input));
 }

@@ -6,6 +6,7 @@ import type { PersonalFinanceImportBatch } from '../models.ts';
 import {
     BILLFLOW_ACCOUNT_BUCKETS,
     BILLFLOW_CATEGORY_BUCKETS,
+    BILLFLOW_MERGE_BUCKETS,
     BILLFLOW_OPENING_BALANCE_UNIX_TIME,
     BILLFLOW_WORKBENCH_STEPS,
     accountBucketHintKey,
@@ -22,6 +23,7 @@ import {
     categoryBucketHintKey,
     categoryTodos,
     installmentTodos,
+    mergeBucketHintKey,
     mergeSelectedOrganizeFileIds,
     mergeTodos,
     nextBillflowWorkbenchStep,
@@ -31,10 +33,12 @@ import {
     resolveAccountBucket,
     resolveBillflowWorkbenchStep,
     resolveCategoryBucket,
+    resolveMergeBucket,
     sameOrganizeFileIds,
     suggestedAccountBucket,
     suggestedBillflowWorkbenchStep,
     suggestedCategoryBucket,
+    suggestedMergeBucket,
     eligibleOrganizeFileIds,
     matchedLedgerAccount,
     nearestNextPayment,
@@ -203,8 +207,8 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.step.next');
         expect(workbench).toContain('BILLFLOW_WORKBENCH_STEPS');
         expect(workbench).toContain('currentStep === \'accounts\'');
-        expect(workbench).toContain('currentStep === \'balance\'');
-        expect(workbench).toContain('currentStep === \'merge\'');
+        expect(workbench).not.toContain('currentStep === \'balance\'');
+        expect(workbench).not.toContain('currentStep === \'merge\'');
         expect(workbench).toContain('account-row-card__name');
         expect(workbench).toContain('formatAmountToLocalizedNumeralsWithCurrency');
         expect(workbench).toContain('billflowDirectionKey');
@@ -219,13 +223,17 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('applyUniqueMatchedAccounts');
         expect(workbench).toContain('canEditOrganizeFiles');
         expect(workbench).toContain("userStep.value = 'accounts'");
-        expect(workbench).toContain("userStep.value = 'balance'");
-        expect(workbench).toContain("userStep.value = 'merge'");
+        expect(workbench).not.toContain("userStep.value = 'balance'");
+        expect(workbench).not.toContain("userStep.value = 'merge'");
         expect(workbench).toContain('personalFinance.billflow.confirmHint');
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
         expect(workbench).toContain('v-for="todo in reviewTodos"');
         expect(workbench).toContain('v-for="todo in otherReviewTodos"');
         expect(workbench).toContain('v-for="todo in mergeReviewTodos"');
+        expect(workbench).toContain('v-for="todo in mergedReviewTodos"');
+        expect(workbench).toContain('skippableAccountGroups');
+        expect(workbench).toContain('personalFinance.billflow.skip.title');
+        expect(workbench).toContain('BILLFLOW_MERGE_BUCKETS');
         expect(workbench).toContain('isInstallmentTodo');
         expect(workbench).toContain('assignTodoCategories');
         expect(workbench).toContain('canAssignBillflowCategory');
@@ -246,6 +254,7 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('accountGroupHasCardHeader');
         expect(workbench).toContain('personalFinance.billflow.balance.amount');
         expect(workbench).toContain('personalFinance.billflow.accounts.statementDate');
+        expect(workbench).toContain('personalFinance.billflow.accounts.cardHeaderCreateHint');
         expect(workbench).toContain('personalFinance.billflow.balance.save');
         expect(workbench).toContain('currentStep === \'review\'');
         expect(workbench).toContain('currentStep === \'others\'');
@@ -282,20 +291,20 @@ describe('billflow task page wiring', () => {
         expect(billflowDirectionKey('')).toBe('personalFinance.billflow.accounts.direction.unknown');
     });
 
-    it('walks files, accounts, balance, merge, review, other items and confirm as a progress path', () => {
+    it('walks files, accounts, review, other items and confirm as a progress path', () => {
         const noTask = { hasTask: false, needsCreateCount: 0, needsBalanceCount: 0 };
         const pendingAccounts = { hasTask: true, status: 'accounts_pending' as const, needsCreateCount: 2, needsBalanceCount: 0 };
         const accountsReady = { hasTask: true, status: 'receiving' as const, needsCreateCount: 0, needsBalanceCount: 0 };
         const needsBalance = { hasTask: true, status: 'receiving' as const, needsCreateCount: 0, needsBalanceCount: 1 };
         const awaiting = { hasTask: true, status: 'awaiting_confirm' as const, needsCreateCount: 0, needsBalanceCount: 0 };
         const ready = { hasTask: true, status: 'ready' as const, needsCreateCount: 0, needsBalanceCount: 0 };
-        expect(BILLFLOW_WORKBENCH_STEPS).toEqual(['files', 'accounts', 'balance', 'merge', 'review', 'others', 'confirm']);
+        expect(BILLFLOW_WORKBENCH_STEPS).toEqual(['files', 'accounts', 'review', 'others', 'confirm']);
         expect(suggestedBillflowWorkbenchStep(noTask)).toBe('files');
         expect(suggestedBillflowWorkbenchStep(pendingAccounts)).toBe('accounts');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'processing', needsCreateCount: 0, needsBalanceCount: 0 })).toBe('accounts');
         expect(suggestedBillflowWorkbenchStep(accountsReady)).toBe('accounts');
-        expect(suggestedBillflowWorkbenchStep(needsBalance)).toBe('balance');
-        expect(suggestedBillflowWorkbenchStep(awaiting)).toBe('merge');
+        expect(suggestedBillflowWorkbenchStep(needsBalance)).toBe('accounts');
+        expect(suggestedBillflowWorkbenchStep(awaiting)).toBe('review');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'awaiting_confirm', needsCreateCount: 1, needsBalanceCount: 0 })).toBe('accounts');
         expect(suggestedBillflowWorkbenchStep(ready)).toBe('confirm');
         expect(suggestedBillflowWorkbenchStep({ hasTask: true, status: 'failed', needsCreateCount: 0, needsBalanceCount: 0 })).toBe('confirm');
@@ -305,23 +314,19 @@ describe('billflow task page wiring', () => {
         expect(canOpenBillflowWorkbenchStep('confirm', awaiting)).toBe(true);
         expect(canOpenBillflowWorkbenchStep('confirm', { hasTask: true, status: 'awaiting_confirm', needsCreateCount: 1, needsBalanceCount: 0 })).toBe(false);
         expect(canOpenBillflowWorkbenchStep('review', awaiting)).toBe(true);
+        expect(canOpenBillflowWorkbenchStep('review', accountsReady)).toBe(true);
+        expect(canOpenBillflowWorkbenchStep('review', pendingAccounts)).toBe(false);
         expect(canOpenBillflowWorkbenchStep('others', awaiting)).toBe(true);
-        expect(canOpenBillflowWorkbenchStep('merge', { hasTask: true, status: 'awaiting_confirm', needsCreateCount: 1, needsBalanceCount: 0 })).toBe(false);
-        expect(canOpenBillflowWorkbenchStep('merge', accountsReady)).toBe(true);
-        expect(canOpenBillflowWorkbenchStep('balance', accountsReady)).toBe(false);
-        expect(canOpenBillflowWorkbenchStep('balance', needsBalance)).toBe(true);
-        expect(canOpenBillflowWorkbenchStep('merge', pendingAccounts)).toBe(false);
+        expect(canOpenBillflowWorkbenchStep('others', accountsReady)).toBe(false);
         expect(previousBillflowWorkbenchStep('accounts')).toBe('files');
         expect(previousBillflowWorkbenchStep('confirm')).toBe('others');
         expect(previousBillflowWorkbenchStep('files')).toBeUndefined();
         expect(nextBillflowWorkbenchStep('files')).toBe('accounts');
-        expect(nextBillflowWorkbenchStep('accounts')).toBe('balance');
-        expect(nextBillflowWorkbenchStep('balance')).toBe('merge');
-        expect(nextBillflowWorkbenchStep('merge')).toBe('review');
+        expect(nextBillflowWorkbenchStep('accounts')).toBe('review');
         expect(nextBillflowWorkbenchStep('review')).toBe('others');
         expect(nextBillflowWorkbenchStep('others')).toBe('confirm');
         expect(nextBillflowWorkbenchStep('confirm')).toBeUndefined();
-        expect(billflowWorkbenchStepIndex('confirm')).toBe(6);
+        expect(billflowWorkbenchStepIndex('confirm')).toBe(4);
         expect(resolveBillflowWorkbenchStep('files', awaiting)).toBe('files');
         expect(resolveBillflowWorkbenchStep('confirm', pendingAccounts)).toBe('accounts');
         expect(categoryTodos([
@@ -352,6 +357,13 @@ describe('billflow task page wiring', () => {
         expect(canAssignBillflowCategory('cross_source_ambiguous')).toBe(false);
         expect(accountGroupHasCardHeader({ statementDate: '2026-08-01' })).toBe(true);
         expect(accountGroupHasCardHeader({})).toBe(false);
+        expect(BILLFLOW_MERGE_BUCKETS).toEqual(['pending', 'merged']);
+        expect(suggestedMergeBucket({ pending: 4, merged: 2 })).toBe('pending');
+        expect(suggestedMergeBucket({ pending: 0, merged: 2 })).toBe('merged');
+        expect(resolveMergeBucket('merged', { pending: 3, merged: 2 }, true)).toBe('merged');
+        expect(resolveMergeBucket('merged', { pending: 3, merged: 2 }, false)).toBe('pending');
+        expect(mergeBucketHintKey('pending')).toBe('personalFinance.billflow.merge.pendingHint');
+        expect(mergeBucketHintKey('merged')).toBe('personalFinance.billflow.merge.mergedHint');
     });
 
     it('keeps account checks in pending, reused and excluded buckets', () => {

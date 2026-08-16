@@ -107,6 +107,24 @@
                                 <dd>{{ formatAccountCardLimit(group) }}</dd>
                             </div>
                         </dl>
+                        <p class="card-header-copy" v-if="accountGroupHasCardHeader(group)">{{ tt('personalFinance.billflow.accounts.cardHeaderReusedHint') }}</p>
+                        <div class="account-balance" v-if="balanceAccountFor(group)">
+                            <amount-input
+                                density="compact"
+                                show-currency
+                                :currency="balanceAccountFor(group)?.currency ?? group.currency"
+                                :disabled="busy"
+                                :label="tt('personalFinance.billflow.balance.amount')"
+                                :model-value="balanceDrafts[group.ledgerAccountId ?? ''] ?? 0"
+                                @update:model-value="value => setBalanceDraft(group.ledgerAccountId ?? '', value)"
+                            />
+                            <div class="account-card__actions">
+                                <v-btn size="small" variant="text" :loading="busy" @click="skipBalance({ ledgerAccountId: group.ledgerAccountId ?? '' })">{{ tt('personalFinance.billflow.balance.skip') }}</v-btn>
+                                <v-btn size="small" color="primary" variant="tonal" :loading="busy" :disabled="!group.ledgerAccountId || !canSaveBalance(group.ledgerAccountId)" @click="verifyBalance({ ledgerAccountId: group.ledgerAccountId ?? '' })">
+                                    {{ tt('personalFinance.billflow.balance.save') }}
+                                </v-btn>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <p class="bucket-empty" v-else>{{ tt('personalFinance.billflow.accounts.reusedEmpty') }}</p>
@@ -166,6 +184,7 @@
                                     <dd>{{ formatAccountCardLimit(group) }}</dd>
                                 </div>
                             </dl>
+                            <p class="card-header-copy" v-if="accountGroupHasCardHeader(group) && group.suggestedType === 'credit_card'">{{ tt('personalFinance.billflow.accounts.cardHeaderCreateHint') }}</p>
                         </div>
                         <v-select
                             class="account-row-card__select"
@@ -201,97 +220,124 @@
                             >
                                 {{ tt('personalFinance.billflow.accounts.create') }}
                             </v-btn>
-                            <v-btn size="small" variant="text" :loading="busy" @click="toggleRows(group)">
-                                {{ expandedSampleRowId === group.sampleRowId ? tt('personalFinance.billflow.accounts.hideRows') : tt('personalFinance.billflow.accounts.showRows') }}
-                            </v-btn>
                             <v-btn size="small" variant="text" :loading="busy" @click="excludeAccount(group)">
                                 {{ tt('personalFinance.billflow.accounts.exclude') }}
                             </v-btn>
                         </div>
-                    </div>
-                    <div class="account-rows" v-if="expandedSampleRowId === group.sampleRowId && accountRows.length">
-                        <label class="account-row" :class="{ 'account-row--skipped': row.skipped }" :key="row.id" v-for="row in accountRows">
-                            <v-checkbox-btn v-model="selectedRowIds" :value="row.id" hide-details />
-                            <div class="account-row__copy">
-                                <strong>{{ row.label }}</strong>
-                                <small>{{ formatAccountTime(row) }}</small>
-                            </div>
-                            <div class="account-row__facts">
-                                <b>{{ formatAccountAmount(row) }}</b>
-                                <v-chip size="x-small" variant="tonal" :color="directionColor(row.direction)" v-if="row.direction">
-                                    {{ tt(billflowDirectionKey(row.direction)) }}
-                                </v-chip>
-                                <v-chip size="x-small" variant="text" v-if="row.skipped">
-                                    {{ tt('personalFinance.billflow.accounts.skipped') }}
-                                </v-chip>
-                            </div>
-                        </label>
-                        <div class="account-row__batch" v-if="selectedRowIds.length">
-                            <v-btn size="small" variant="tonal" :loading="busy" @click="skipSelectedRows">{{ tt('personalFinance.billflow.accounts.skipSelected') }}</v-btn>
-                            <v-btn size="small" variant="text" :loading="busy" @click="restoreSelectedRows">{{ tt('personalFinance.billflow.accounts.restoreSelected') }}</v-btn>
-                        </div>
-                    </div>
-                </article>
-            </template>
-        </section>
-
-        <section class="work-section" v-if="currentStep === 'balance'">
-            <div class="section-copy">
-                <strong>{{ tt('personalFinance.billflow.balance.title') }}</strong>
-                <span>{{ tt('personalFinance.billflow.balance.hint') }}</span>
-            </div>
-            <p class="bucket-empty" v-if="!newBalanceAccounts.length">{{ tt('personalFinance.billflow.balance.empty') }}</p>
-            <article class="account-card" :key="account.ledgerAccountId" v-for="account in newBalanceAccounts">
-                <div class="account-card__head">
-                    <strong>{{ account.displayName }}</strong>
-                </div>
-                <amount-input
-                    density="compact"
-                    show-currency
-                    :currency="account.currency"
-                    :disabled="busy"
-                    :label="tt('personalFinance.billflow.balance.amount')"
-                    :model-value="balanceDrafts[account.ledgerAccountId] ?? 0"
-                    @update:model-value="value => setBalanceDraft(account.ledgerAccountId, value)"
-                />
-                <div class="account-card__actions">
-                    <v-btn size="small" variant="text" :loading="busy" @click="skipBalance(account)">{{ tt('personalFinance.billflow.balance.skip') }}</v-btn>
-                    <v-btn size="small" color="primary" variant="tonal" :loading="busy" :disabled="!canSaveBalance(account.ledgerAccountId)" @click="verifyBalance(account)">
-                        {{ tt('personalFinance.billflow.balance.save') }}
-                    </v-btn>
-                </div>
-            </article>
-        </section>
-
-        <section class="work-section" v-if="currentStep === 'merge' && task">
-            <p class="confirm-hint">{{ tt('personalFinance.billflow.mergeHint') }}</p>
-            <p class="bucket-empty" v-if="canAutoRunAfterAccounts(task.status, accounts?.needsCreate.length ?? 0)">
-                {{ tt('personalFinance.billflow.merge.pending') }}
-            </p>
-            <template v-else>
-                <p class="bucket-empty" v-if="!mergeReviewTodos.length">{{ tt('personalFinance.billflow.merge.empty') }}</p>
-                <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in mergeReviewTodos">
-                    <div class="todo-row__copy">
-                        <strong>{{ todoTitle(todo) }}</strong>
-                        <small v-if="todoMeta(todo)">{{ todoMeta(todo) }}</small>
-                    </div>
-                    <div class="todo-row__facts">
-                        <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
-                        <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
-                    </div>
-                    <div class="todo-row__actions">
-                        <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
-                            {{ tt('personalFinance.billflow.todos.resolve') }}
-                        </v-btn>
-                        <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
-                            {{ tt('personalFinance.billflow.todos.dismiss') }}
-                        </v-btn>
                     </div>
                 </article>
             </template>
         </section>
 
         <section class="work-section" v-if="currentStep === 'review' && task">
+            <div class="section-copy">
+                <strong>{{ tt('personalFinance.billflow.skip.title') }}</strong>
+                <span>{{ tt('personalFinance.billflow.skip.hint') }}</span>
+            </div>
+            <p class="bucket-empty" v-if="!skippableAccountGroups.length">{{ tt('personalFinance.billflow.skip.empty') }}</p>
+            <article
+                class="account-row-card"
+                :class="{ 'account-row-card--open': expandedSampleRowId === group.sampleRowId }"
+                :key="'skip-' + group.sampleRowId"
+                v-for="group in skippableAccountGroups"
+            >
+                <div class="account-row-card__main account-row-card__main--skip">
+                    <label class="todo-toolbar__check">
+                        <v-checkbox-btn hide-details :model-value="group.excluded" @click.prevent="toggleSkipAccount(group)" />
+                        <span>
+                            <strong>{{ group.displayName }}</strong>
+                            <small>{{ tt('personalFinance.billflow.accounts.rows', { count: group.rowCount }) }}</small>
+                        </span>
+                    </label>
+                    <v-btn size="small" variant="text" :loading="busy" @click="toggleRows(group)">
+                        {{ expandedSampleRowId === group.sampleRowId ? tt('personalFinance.billflow.accounts.hideRows') : tt('personalFinance.billflow.accounts.showRows') }}
+                    </v-btn>
+                </div>
+                <div class="account-rows" v-if="expandedSampleRowId === group.sampleRowId && accountRows.length">
+                    <label class="account-row" :class="{ 'account-row--skipped': row.skipped }" :key="row.id" v-for="row in accountRows">
+                        <v-checkbox-btn v-model="selectedRowIds" :value="row.id" hide-details />
+                        <div class="account-row__copy">
+                            <strong>{{ row.label }}</strong>
+                            <small>{{ formatAccountTime(row) }}</small>
+                        </div>
+                        <div class="account-row__facts">
+                            <b>{{ formatAccountAmount(row) }}</b>
+                            <v-chip size="x-small" variant="tonal" :color="directionColor(row.direction)" v-if="row.direction">
+                                {{ tt(billflowDirectionKey(row.direction)) }}
+                            </v-chip>
+                            <v-chip size="x-small" variant="text" v-if="row.skipped">
+                                {{ tt('personalFinance.billflow.accounts.skipped') }}
+                            </v-chip>
+                        </div>
+                    </label>
+                    <div class="account-row__batch" v-if="selectedRowIds.length">
+                        <v-btn size="small" variant="tonal" :loading="busy" @click="skipSelectedRows">{{ tt('personalFinance.billflow.accounts.skipSelected') }}</v-btn>
+                        <v-btn size="small" variant="text" :loading="busy" @click="restoreSelectedRows">{{ tt('personalFinance.billflow.accounts.restoreSelected') }}</v-btn>
+                    </div>
+                </div>
+            </article>
+
+            <p class="confirm-hint">{{ tt('personalFinance.billflow.mergeHint') }}</p>
+            <p class="bucket-empty" v-if="canAutoRunAfterAccounts(task.status, accounts?.needsCreate.length ?? 0)">
+                {{ tt('personalFinance.billflow.merge.pending') }}
+            </p>
+            <template v-else>
+                <div class="bucket-bar">
+                    <v-btn-toggle
+                        color="primary"
+                        density="compact"
+                        divided
+                        mandatory
+                        variant="outlined"
+                        :model-value="mergeBucket"
+                        @update:model-value="value => setMergeBucket(value)"
+                    >
+                        <v-btn :value="bucket" :key="bucket" v-for="bucket in BILLFLOW_MERGE_BUCKETS">
+                            {{ tt(`personalFinance.billflow.merge.bucket.${bucket}`) }}
+                            <span class="bucket-count">{{ mergeBucketCounts[bucket] }}</span>
+                        </v-btn>
+                    </v-btn-toggle>
+                    <p>{{ tt(mergeBucketHintKey(mergeBucket)) }}</p>
+                </div>
+                <template v-if="mergeBucket === 'merged'">
+                    <p class="bucket-empty" v-if="!mergedReviewTodos.length">{{ tt('personalFinance.billflow.merge.mergedEmpty') }}</p>
+                    <article class="todo-row todo-row--done" :key="todo.id" v-for="todo in mergedReviewTodos">
+                        <div class="todo-row__copy">
+                            <strong>{{ todoTitle(todo) }}</strong>
+                            <small v-if="todoMeta(todo)">{{ todoMeta(todo) }}</small>
+                        </div>
+                        <div class="todo-row__facts">
+                            <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
+                            <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
+                        </div>
+                        <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'open')">
+                            {{ tt('personalFinance.billflow.todos.restore') }}
+                        </v-btn>
+                    </article>
+                </template>
+                <template v-else>
+                    <p class="bucket-empty" v-if="!mergeReviewTodos.length">{{ tt('personalFinance.billflow.merge.empty') }}</p>
+                    <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in mergeReviewTodos">
+                        <div class="todo-row__copy">
+                            <strong>{{ todoTitle(todo) }}</strong>
+                            <small v-if="todoMeta(todo)">{{ todoMeta(todo) }}</small>
+                        </div>
+                        <div class="todo-row__facts">
+                            <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
+                            <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
+                        </div>
+                        <div class="todo-row__actions">
+                            <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                                {{ tt('personalFinance.billflow.todos.resolve') }}
+                            </v-btn>
+                            <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                                {{ tt('personalFinance.billflow.todos.dismiss') }}
+                            </v-btn>
+                        </div>
+                    </article>
+                </template>
+            </template>
+
             <div class="bucket-bar">
                 <v-btn-toggle
                     color="primary"
@@ -487,6 +533,7 @@ import { billflowApi } from '../service.ts';
 import {
     BILLFLOW_ACCOUNT_BUCKETS,
     BILLFLOW_CATEGORY_BUCKETS,
+    BILLFLOW_MERGE_BUCKETS,
     BILLFLOW_OPENING_BALANCE_UNIX_TIME,
     BILLFLOW_WORKBENCH_STEPS,
     accountBucketHintKey,
@@ -504,6 +551,7 @@ import {
     categoryTodos,
     isInstallmentTodo,
     matchedLedgerAccount,
+    mergeBucketHintKey,
     mergeSelectedOrganizeFileIds,
     mergeTodos,
     nextBillflowWorkbenchStep,
@@ -513,14 +561,15 @@ import {
     resolveAccountBucket,
     resolveBillflowWorkbenchStep,
     resolveCategoryBucket,
+    resolveMergeBucket,
     sameOrganizeFileIds,
-    shouldOpenBalanceStep,
     suggestedAccountCategory,
     taskAwaitsConfirm,
     taskNeedsAccounts,
     taskShowsTodos,
     type BillflowAccountBucket,
     type BillflowCategoryBucket,
+    type BillflowMergeBucket,
     type BillflowWorkbenchStep
 } from '../state.ts';
 import { canConfigureCebCreditPdf } from '../../state.ts';
@@ -549,6 +598,8 @@ const accountRows = ref<readonly BillflowAccountRow[]>([]);
 const selectedRowIds = ref<string[]>([]);
 const pickedAccountIds = reactive<Record<string, string>>({});
 const openTodos = ref<readonly BillflowTodo[]>([]);
+const resolvedTodos = ref<readonly BillflowTodo[]>([]);
+const dismissedTodos = ref<readonly BillflowTodo[]>([]);
 const classifiedRows = ref<readonly BillflowClassifiedRow[]>([]);
 const selectedTodoIds = ref<string[]>([]);
 const categoryDrafts = reactive<Record<string, string>>({});
@@ -562,6 +613,8 @@ const accountBucket = ref<BillflowAccountBucket>('pending');
 const userPickedBucket = ref(false);
 const categoryBucket = ref<BillflowCategoryBucket>('pending');
 const userPickedCategoryBucket = ref(false);
+const mergeBucket = ref<BillflowMergeBucket>('pending');
+const userPickedMergeBucket = ref(false);
 
 const eligibleFiles = computed(() => {
     const ids = new Set(eligibleOrganizeFileIds(personalFinanceStore.batches));
@@ -579,6 +632,10 @@ const newBalanceAccounts = computed(() => createdAccountsNeedingBalance({
         .filter(card => !!card.balanceReview)
         .map(card => card.ledgerAccountId)
 }));
+const skippableAccountGroups = computed(() => [
+    ...(accounts.value?.reused ?? []),
+    ...(accounts.value?.excluded ?? [])
+]);
 const matchedNeedsCreate = computed(() => (accounts.value?.needsCreate ?? []).filter(group => !!selectedLedgerId(group)));
 const taskFiles = computed(() => {
     if (!task.value) {
@@ -602,6 +659,7 @@ const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.v
 const reviewTodos = computed(() => categoryTodos(openTodos.value));
 const classifiedReviewRows = computed(() => classifiedRows.value);
 const mergeReviewTodos = computed(() => mergeTodos(openTodos.value));
+const mergedReviewTodos = computed(() => mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]));
 const otherReviewTodos = computed(() => otherTodos(openTodos.value));
 const assignableReviewTodos = computed(() => reviewTodos.value.filter(todo => canAssignBillflowCategory(todo.todoKind)));
 const selectedAssignableTodos = computed(() => assignableReviewTodos.value.filter(todo => selectedTodoIds.value.includes(todo.id)));
@@ -617,6 +675,10 @@ const bucketCounts = computed(() => ({
 const categoryBucketCounts = computed(() => ({
     pending: reviewTodos.value.length,
     classified: classifiedReviewRows.value.length
+}));
+const mergeBucketCounts = computed(() => ({
+    pending: mergeReviewTodos.value.length,
+    merged: mergedReviewTodos.value.length
 }));
 const stepAction = computed(() => {
     if (currentStep.value === 'files' && !task.value && selectedFileIds.value.length > 0) {
@@ -644,14 +706,14 @@ const stepAction = computed(() => {
             };
         }
     }
-    if (currentStep.value === 'merge' && task.value && canAutoRunAfterAccounts(task.value.status, pendingCount)) {
+    if (currentStep.value === 'review' && task.value && canAutoRunAfterAccounts(task.value.status, pendingCount)) {
         return {
             hint: tt('personalFinance.billflow.next.merge'),
             label: tt('personalFinance.billflow.run'),
             run: runTask
         };
     }
-    if (currentStep.value === 'merge' && task.value && mergeReviewTodos.value.length > 0) {
+    if (currentStep.value === 'review' && task.value && mergeReviewTodos.value.length > 0) {
         return {
             hint: tt('personalFinance.billflow.next.mergeBlocked', { count: mergeReviewTodos.value.length }),
             label: tt('personalFinance.billflow.step.next'),
@@ -694,17 +756,12 @@ const canAdvanceWithoutAction = computed(() => {
     if (currentStep.value === 'accounts') {
         return !!task.value && (accounts.value?.needsCreate.length ?? 0) < 1;
     }
-    if (currentStep.value === 'balance') {
-        return !!task.value && canOpenStep('merge');
-    }
-    if (currentStep.value === 'merge') {
+    if (currentStep.value === 'review') {
         return !!task.value
             && !canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0)
             && mergeReviewTodos.value.length < 1
-            && canOpenStep('review');
-    }
-    if (currentStep.value === 'review') {
-        return reviewTodos.value.length < 1 && canOpenStep('others');
+            && reviewTodos.value.length < 1
+            && canOpenStep('others');
     }
     if (currentStep.value === 'others') {
         return otherReviewTodos.value.length < 1 && canOpenStep('confirm');
@@ -717,17 +774,11 @@ const forwardHint = computed(() => {
     if (stepAction.value?.hint) {
         return stepAction.value.hint;
     }
-    if (currentStep.value === 'accounts' && shouldOpenBalanceStep({ needsBalanceCount: newBalanceAccounts.value.length })) {
-        return tt('personalFinance.billflow.next.accountsBalance');
-    }
     if (currentStep.value === 'accounts') {
         return tt('personalFinance.billflow.next.accountsReady');
     }
-    if (currentStep.value === 'balance') {
-        return tt('personalFinance.billflow.next.balance');
-    }
-    if (currentStep.value === 'merge') {
-        return tt('personalFinance.billflow.next.mergeReady');
+    if (currentStep.value === 'review' && mergeReviewTodos.value.length > 0) {
+        return tt('personalFinance.billflow.next.mergeBlocked', { count: mergeReviewTodos.value.length });
     }
     if (currentStep.value === 'review' && reviewTodos.value.length > 0) {
         return tt('personalFinance.billflow.next.reviewBlocked', { count: reviewTodos.value.length });
@@ -760,15 +811,20 @@ watch([currentStep, categoryBucketCounts], () => {
     categoryBucket.value = resolveCategoryBucket(categoryBucket.value, categoryBucketCounts.value, userPickedCategoryBucket.value);
 }, { immediate: true });
 
+watch([currentStep, mergeBucketCounts], () => {
+    if (currentStep.value !== 'review') {
+        userPickedMergeBucket.value = false;
+        return;
+    }
+    mergeBucket.value = resolveMergeBucket(mergeBucket.value, mergeBucketCounts.value, userPickedMergeBucket.value);
+}, { immediate: true });
+
 function canOpenStep(step: BillflowWorkbenchStep): boolean {
     if (!canOpenBillflowWorkbenchStep(step, stepInput.value)) {
         return false;
     }
     if (!task.value || !(taskAwaitsConfirm(task.value.status) || task.value.status === 'ready' || task.value.status === 'failed')) {
         return true;
-    }
-    if (step === 'review' && mergeReviewTodos.value.length > 0) {
-        return false;
     }
     if (step === 'others' && (mergeReviewTodos.value.length > 0 || reviewTodos.value.length > 0)) {
         return false;
@@ -795,6 +851,14 @@ function setCategoryBucket(value: unknown): void {
     categoryBucket.value = value;
 }
 
+function setMergeBucket(value: unknown): void {
+    if (value !== 'pending' && value !== 'merged') {
+        return;
+    }
+    userPickedMergeBucket.value = true;
+    mergeBucket.value = value;
+}
+
 function openStep(step: BillflowWorkbenchStep): void {
     if (!canOpenStep(step)) {
         return;
@@ -803,10 +867,6 @@ function openStep(step: BillflowWorkbenchStep): void {
 }
 
 function goBack(): void {
-    if (currentStep.value === 'merge' && !shouldOpenBalanceStep({ needsBalanceCount: newBalanceAccounts.value.length })) {
-        userStep.value = 'accounts';
-        return;
-    }
     const previous = previousBillflowWorkbenchStep(currentStep.value);
     if (previous) {
         userStep.value = previous;
@@ -850,11 +910,7 @@ async function goForward(): Promise<void> {
         if ((accounts.value?.needsCreate.length ?? 0) > 0) {
             return;
         }
-        userStep.value = shouldOpenBalanceStep({ needsBalanceCount: newBalanceAccounts.value.length }) ? 'balance' : 'merge';
-        return;
-    }
-    if (currentStep.value === 'balance') {
-        userStep.value = 'merge';
+        userStep.value = 'review';
         return;
     }
     const stayOn = currentStep.value;
@@ -912,6 +968,21 @@ function formatAccountCardLimit(group: BillflowAccountGroup): string {
     return group.creditLimitAmount
         ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(group.creditLimitAmount), group.creditLimitCurrency || group.currency || 'CNY')
         : '';
+}
+
+function balanceAccountFor(group: BillflowAccountGroup) {
+    if (!group.ledgerAccountId) {
+        return undefined;
+    }
+    return newBalanceAccounts.value.find(account => account.ledgerAccountId === group.ledgerAccountId);
+}
+
+async function toggleSkipAccount(group: BillflowAccountGroup): Promise<void> {
+    if (group.excluded) {
+        await restoreAccount(group);
+        return;
+    }
+    await excludeAccount(group);
 }
 
 function formatTodoAmount(todo: BillflowTodo): string {
@@ -1061,15 +1132,21 @@ async function openTask(taskId: string): Promise<void> {
         selectedRowIds.value = selectedRowIds.value.filter(id => accountRows.value.some(row => row.id === id));
     }
     if (taskShowsTodos(task.value.status)) {
-        const [open, classified] = await Promise.all([
+        const [open, resolved, dismissed, classified] = await Promise.all([
             billflowApi.listAllTodos(taskId, 'open'),
+            billflowApi.listAllTodos(taskId, 'resolved'),
+            billflowApi.listAllTodos(taskId, 'dismissed'),
             billflowApi.listClassifiedRows(taskId)
         ]);
         openTodos.value = open;
+        resolvedTodos.value = resolved;
+        dismissedTodos.value = dismissed;
         classifiedRows.value = classified;
         selectedTodoIds.value = selectedTodoIds.value.filter(id => openTodos.value.some(todo => todo.id === id));
     } else {
         openTodos.value = [];
+        resolvedTodos.value = [];
+        dismissedTodos.value = [];
         classifiedRows.value = [];
     }
     syncTaskFileSelection();
@@ -1566,7 +1643,7 @@ async function persistBalanceReview(account: { ledgerAccountId: string }, status
     }
     if (task.value) {
         persistBalanceMemory(task.value.id);
-        userStep.value = 'balance';
+        userStep.value = 'accounts';
     }
     cardAccounts.value = await billflowApi.listCardAccounts(todayCivilDate());
 }
@@ -1652,7 +1729,7 @@ onMounted(reload);
 
 .step-rail {
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 1px;
     border-top: 1px solid var(--task-rule);
     background: var(--task-rule);
@@ -2042,6 +2119,25 @@ onMounted(reload);
     margin: 0;
     font-size: 0.92rem;
     font-variant-numeric: tabular-nums;
+}
+
+.card-header-copy {
+    margin: 6px 0 0;
+    color: rgba(var(--v-theme-on-surface), 0.58);
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.account-balance {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+    max-width: 280px;
+}
+
+.account-row-card__main--skip {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
 }
 
 .account-card__hint {

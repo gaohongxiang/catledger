@@ -2934,9 +2934,7 @@
                 "label": "整理进度",
                 "files": "选账单",
                 "accounts": "核对账户",
-                "balance": "账户余额",
-                "merge": "合并交易",
-                "review": "交易分类",
+                "review": "整理交易",
                 "others": "其他事项",
                 "confirm": "确认入账",
                 "back": "上一步",
@@ -2946,14 +2944,26 @@
             "failed": "这次整理因为已确认事实冲突而停止，差异已保留，不会覆盖历史。",
             "run": "开始合并",
             "confirmPost": "确认入账",
-            "confirmHint": "分类和其他事项都看过以后，再点确认入账。",
+            "confirmHint": "整理交易和其他事项都看过以后，再点确认入账。",
             "confirmDoneHint": "已经入账。",
             "reviewHint": "先给说不清的交易选分类。可全选后一起保存。",
             "othersHint": "分类之后还要你看一眼的事项，没有也可以下一步。",
-            "mergeHint": "同一笔出现在支付宝、微信或银行账单里，会合成一笔。说不清的才要你看。",
+            "mergeHint": "同一笔要同时满足：同一张卡、金额币种相同、时间相差不超过两天、方向对得上，而且只有这一对。清楚的会自动合成一笔；对不上唯一另一份账单的，要你看是不是同一笔。",
             "merge": {
                 "pending": "账户齐了以后，点开始合并。清楚的会自动合成一笔。",
-                "empty": "清楚的已经自动合成，没有要你看的。"
+                "empty": "没有要对的。清楚的已经自动合成，或还没开始合并。",
+                "mergedEmpty": "还没有你点过已处理的合并项。清楚的自动合成不会出现在这里。",
+                "pendingHint": "这里只列对不上唯一另一份账单的。点「已处理」表示你看过了，可以当同一笔；「先跳过」先放着。",
+                "mergedHint": "你点过已处理或先跳过的会出现在这里，可改回。自动合成的不再逐笔问。",
+                "bucket": {
+                    "pending": "未合并",
+                    "merged": "已合并"
+                }
+            },
+            "skip": {
+                "title": "不入账",
+                "hint": "勾选账户就是整组不入账；展开后勾选某些笔，只这些不入账。",
+                "empty": "还没有可勾选的账户。"
             },
             "files": {
                 "title": "选择要一起整理的账单",
@@ -2967,11 +2977,10 @@
             "next": {
                 "files": "整理已选的 {count} 份账单",
                 "accounts": "还要确认 {count} 个账户",
-                "accountsReady": "账户已齐，下一步",
+                "accountsReady": "账户已齐，下一步去整理交易",
                 "accountsBalance": "下一步可先记下现在多少钱，也可以跳过",
                 "balance": "可以先不核对现在有多少钱",
                 "merge": "开始把同一笔合成一笔",
-                "mergeReady": "没有要对的，下一步去分类",
                 "mergeBlocked": "还有 {count} 笔跨账单关系要看",
                 "review": "处理完后再去其他事项",
                 "reviewBlocked": "还有 {count} 项没处理完",
@@ -2989,15 +2998,15 @@
             "accounts": {
                 "title": "核对账户",
                 "reusedTitle": "已确认会沿用",
-                "reusedHint": "这些这次会直接沿用，不必再点确认。",
-                "pendingHint": "名称对上后点沿用或新建。不入账的只留证据。",
+                "reusedHint": "这些这次会直接沿用。刚新建的可以在这里记下现在多少钱，也可以跳过。",
+                "pendingHint": "名称对上后点沿用或新建。不是自己的账点忽略账户。",
                 "pendingEmpty": "没有需要核对的账户。",
                 "reusedEmpty": "这次没有沿用已有账户。",
-                "excludedEmpty": "没有整组不入账的账户。",
+                "excludedEmpty": "没有忽略的账户。",
                 "bucket": {
                     "pending": "待核对",
                     "reused": "已沿用",
-                    "excluded": "不入账"
+                    "excluded": "忽略账户"
                 },
                 "rows": "{count} 笔",
                 "create": "新建",
@@ -3005,10 +3014,10 @@
                 "reuseAll": "沿用已识别的 {count} 个",
                 "matchedHint": "对应「{name}」",
                 "pickExisting": "选已有账户",
-                "exclude": "不入账",
+                "exclude": "忽略账户",
                 "restore": "改回",
-                "excludedTitle": "已选择不入账",
-                "excludedHint": "这些只留作证据，不进正式账本。整组不入账下次会默认沿用，可随时改回。",
+                "excludedTitle": "已忽略的账户",
+                "excludedHint": "这些不建正式账户，只留作证据。下次默认继续忽略，可随时改回。",
                 "showRows": "明细",
                 "hideRows": "收起",
                 "skipSelected": "选中的不入账",
@@ -3017,6 +3026,8 @@
                 "statementDate": "账单日",
                 "dueDate": "还款日",
                 "creditLimit": "额度",
+                "cardHeaderCreateHint": "新建会把账单日写入这个信用卡账户。还款日和额度只在这里展示，不写进账户本身。",
+                "cardHeaderReusedHint": "账单日已写入账户；还款日和额度只在这里展示。",
                 "direction": {
                     "income": "收入",
                     "expense": "支出",
@@ -3053,7 +3064,7 @@
                 "identity_conflict": "同一笔账单内容有冲突",
                 "core_field_conflict": "金额或方向对不上",
                 "ledger_mismatch": "和已入账记录不一致",
-                "cross_source_ambiguous": "跨账单关系不清楚",
+                "cross_source_ambiguous": "对不上唯一的另一份账单",
                 "transfer_unclear": "可能是转账，需要确认",
                 "refund_unclear": "可能是退款，需要确认",
                 "repayment_unclear": "可能是还款，需要确认",
