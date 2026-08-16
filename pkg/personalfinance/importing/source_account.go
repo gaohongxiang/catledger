@@ -104,9 +104,6 @@ func (s *SourceAccountService) SaveSourceAccount(c core.Context, request SourceA
 	if err != nil {
 		return nil, err
 	}
-	if request.SourceType == SOURCE_TYPE_BANK && ledgerAccountId == nil {
-		return nil, ErrImportRequestInvalid
-	}
 
 	now := s.now().Unix()
 
@@ -258,6 +255,69 @@ func (s *SourceAccountService) ResolveStableSourceAccount(c core.Context, uid in
 		return nil, ErrImportPersistenceUnavailable
 	}
 
+	return existing, nil
+}
+
+const (
+	cebCreditSourceScopeMaterial = "ceb-credit-pdf-scope-v1"
+	cebCreditSourceDisplayName   = "光大信用卡"
+)
+
+// EnsureCebCreditSourceAccount 为光大月结单准备一个无账本映射的银行身份作用域，供去重使用。
+// 解析阶段不要求用户选择正式账户；同一用户重复解析复用同一档案。
+func (s *SourceAccountService) EnsureCebCreditSourceAccount(c core.Context, uid int64) (*SourceAccount, error) {
+	if uid < 1 {
+		return nil, ErrImportRequestInvalid
+	}
+
+	keyDigest := sha256.Sum256(encodeLengthPrefixed(
+		string(SOURCE_ACCOUNT_KEY_VERSION_V1),
+		string(SOURCE_TYPE_BANK),
+		cebCreditSourceScopeMaterial,
+	))
+	key := hex.EncodeToString(keyDigest[:])
+	existing, err := s.repository.FindSourceAccountByKey(c, uid, SOURCE_TYPE_BANK, key)
+	if err != nil {
+		return nil, ErrImportPersistenceUnavailable
+	}
+	if existing != nil {
+		if existing.Status != SOURCE_ACCOUNT_STATUS_ACTIVE || existing.SourceAccountKeyVersion != SOURCE_ACCOUNT_KEY_VERSION_V1 {
+			return nil, ErrImportSourceAccountUnavailable
+		}
+		return existing, nil
+	}
+
+	displayName, err := safeManualSourceAccountDisplayName(cebCreditSourceDisplayName)
+	accountId := s.generateId()
+	now := s.now().Unix()
+	if err != nil {
+		return nil, ErrImportRequestInvalid
+	}
+	if accountId < 1 || now < 1 {
+		return nil, ErrImportIdentifierUnavailable
+	}
+
+	account := &SourceAccount{
+		Uid:                     uid,
+		SourceType:              SOURCE_TYPE_BANK,
+		SourceAccountKey:        key,
+		SourceAccountKeyVersion: SOURCE_ACCOUNT_KEY_VERSION_V1,
+		Status:                  SOURCE_ACCOUNT_STATUS_ACTIVE,
+		MaskedDisplayName:       displayName,
+		DiscoveryMethod:         SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED,
+		CreatedUnixTime:         now,
+		UpdatedUnixTime:         now,
+		SourceAccountId:         accountId,
+	}
+	if err = s.repository.InsertSourceAccount(c, account); err == nil {
+		return account, nil
+	}
+
+	existing, findErr := s.repository.FindSourceAccountByKey(c, uid, SOURCE_TYPE_BANK, key)
+	if findErr != nil || existing == nil || existing.Status != SOURCE_ACCOUNT_STATUS_ACTIVE ||
+		existing.SourceAccountKeyVersion != SOURCE_ACCOUNT_KEY_VERSION_V1 {
+		return nil, ErrImportPersistenceUnavailable
+	}
 	return existing, nil
 }
 

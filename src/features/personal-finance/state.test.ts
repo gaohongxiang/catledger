@@ -252,23 +252,14 @@ describe('generic bank CSV mapping state', () => {
         });
     });
 
-    it('requires a mapped active bank source account before building a CEB request', () => {
-        const base = {
+    it('builds a CEB request without asking for a ledger account first', () => {
+        expect(buildCebCreditReparseRequest({
             fileId: 'file-2',
             currency: 'CNY',
             timezoneUtcOffset: 480,
             reasonCode: 'user_selected_ceb_credit_pdf'
-        };
-
-        expect(() => buildCebCreditReparseRequest(base)).toThrow('source_account_required');
-        expect(() => buildCebCreditReparseRequest({
-            ...base,
-            sourceAccount: { ...mappedBankAccount, ledgerAccountId: undefined }
-        })).toThrow('ledger_account_required');
-
-        expect(buildCebCreditReparseRequest({ ...base, sourceAccount: mappedBankAccount })).toEqual({
+        })).toEqual({
             fileId: 'file-2',
-            sourceAccountId: 'bank-source-1',
             parserName: 'ceb_credit_pdf',
             currency: 'CNY',
             timezoneUtcOffset: 480,

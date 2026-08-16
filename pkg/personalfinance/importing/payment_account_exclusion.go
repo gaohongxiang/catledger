@@ -187,7 +187,7 @@ func (s *PaymentAccountService) setPaymentAccountRowsState(c core.Context, reque
 }
 
 func (r *Repository) ListPaymentAccountExclusions(c core.Context, uid int64, sourceType SourceType) ([]*PaymentAccountExclusion, error) {
-	if uid < 1 || (sourceType != SOURCE_TYPE_ALIPAY && sourceType != SOURCE_TYPE_WECHAT) {
+	if uid < 1 || !isPaymentAccountSourceType(sourceType) {
 		return nil, fmt.Errorf("invalid payment account exclusion owner or source")
 	}
 	db, _ := r.database(uid)
@@ -264,7 +264,7 @@ func (r *Repository) SavePaymentAccountExclusion(c core.Context, candidate *Paym
 }
 
 func (r *Repository) DeletePaymentAccountExclusion(c core.Context, uid int64, sourceType SourceType, currency string, aliasKey string) error {
-	if uid < 1 || (sourceType != SOURCE_TYPE_ALIPAY && sourceType != SOURCE_TYPE_WECHAT) || !isValidPaymentAccountCurrency(currency) || !isLowerHexSHA256(aliasKey) {
+	if uid < 1 || !isPaymentAccountSourceType(sourceType) || !isValidPaymentAccountCurrency(currency) || !isLowerHexSHA256(aliasKey) {
 		return fmt.Errorf("invalid payment account exclusion delete")
 	}
 	return r.DoTransaction(c, uid, func(tx *RepositoryTransaction) error {
@@ -400,7 +400,7 @@ func findPaymentAccountGroup(groups []*PaymentAccountGroup, sampleRowId int64, d
 
 func isValidPaymentAccountExclusion(exclusion *PaymentAccountExclusion) bool {
 	return exclusion != nil && exclusion.Uid > 0 &&
-		(exclusion.SourceType == SOURCE_TYPE_ALIPAY || exclusion.SourceType == SOURCE_TYPE_WECHAT) &&
+		isPaymentAccountSourceType(exclusion.SourceType) &&
 		isValidPaymentAccountCurrency(exclusion.Currency) && isLowerHexSHA256(exclusion.AliasKey) &&
 		exclusion.AliasKeyVersion == PAYMENT_ACCOUNT_ALIAS_VERSION_V1 &&
 		exclusion.MaskedDisplayName != "" && utf8.RuneCountInString(exclusion.MaskedDisplayName) <= maximumPaymentAccountDisplayRunes &&

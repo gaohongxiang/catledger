@@ -421,21 +421,12 @@ export function buildGenericBankReparseRequest(params: {
 
 export function buildCebCreditReparseRequest(params: {
     fileId: string;
-    sourceAccount?: PersonalFinanceSourceAccount;
     currency: string;
     timezoneUtcOffset: number;
     reasonCode: string;
 }): PersonalFinanceReparseRequest {
-    if (!params.sourceAccount || params.sourceAccount.sourceType !== 'bank' || params.sourceAccount.status !== 'active') {
-        throw new Error('source_account_required');
-    }
-    if (!params.sourceAccount.ledgerAccountId) {
-        throw new Error('ledger_account_required');
-    }
-
     return buildPersonalFinanceReparseRequest({
         fileId: params.fileId,
-        sourceAccountId: params.sourceAccount.id,
         parserName: 'ceb_credit_pdf',
         currency: params.currency,
         timezoneUtcOffset: params.timezoneUtcOffset,

@@ -31,6 +31,7 @@ type EvidenceDocumentPersister interface {
 type ReparseSourceAccounts interface {
 	FindSourceAccount(c core.Context, uid int64, sourceAccountId int64) (*SourceAccount, error)
 	ResolveStableSourceAccount(c core.Context, uid int64, sourceType SourceType, candidate SourceAccountCandidate) (*SourceAccount, error)
+	EnsureCebCreditSourceAccount(c core.Context, uid int64) (*SourceAccount, error)
 }
 
 // ReparseImportFileRequest 描述一次显式、可追踪的重新解析。
@@ -286,10 +287,21 @@ func (s *ReparseService) resolveSourceAccount(c core.Context, request ReparseImp
 		if account.SourceType != descriptor.SourceType || account.Status != SOURCE_ACCOUNT_STATUS_ACTIVE {
 			return nil, nil, ErrImportSourceAccountUnavailable
 		}
-		if descriptor.SourceType == SOURCE_TYPE_BANK && account.LedgerAccountId == nil {
+		if requiresMappedBankSourceAccount(descriptor) && account.LedgerAccountId == nil {
 			return nil, nil, ErrImportSourceAccountUnavailable
 		}
 
+		return account, discovery, nil
+	}
+
+	if descriptor.Format == EVIDENCE_FORMAT_CEB_CREDIT_PDF {
+		account, ensureErr := s.sourceAccounts.EnsureCebCreditSourceAccount(c, request.Uid)
+		if ensureErr != nil {
+			return nil, nil, ensureErr
+		}
+		if account == nil {
+			return nil, nil, ErrImportPersistenceUnavailable
+		}
 		return account, discovery, nil
 	}
 
@@ -310,4 +322,8 @@ func (s *ReparseService) resolveSourceAccount(c core.Context, request ReparseImp
 	}
 
 	return account, discovery, nil
+}
+
+func requiresMappedBankSourceAccount(descriptor ParserDescriptor) bool {
+	return descriptor.SourceType == SOURCE_TYPE_BANK && descriptor.Format == EVIDENCE_FORMAT_BANK_GENERIC_CSV
 }

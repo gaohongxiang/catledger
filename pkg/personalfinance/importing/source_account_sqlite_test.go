@@ -1,7 +1,6 @@
 package importing_test
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -75,9 +74,19 @@ func TestSourceAccountServicePreservesIdentityAndClearsLedgerMapping(t *testing.
 		t.Fatalf("manual source account identity is unsafe: %+v", created)
 	}
 
-	if _, err := service.SaveSourceAccount(nil, importing.SourceAccountSaveRequest{
+	unmappedBank, err := service.SaveSourceAccount(nil, importing.SourceAccountSaveRequest{
 		Uid: account.Uid, SourceType: importing.SOURCE_TYPE_BANK, DisplayName: "bank profile", Status: importing.SOURCE_ACCOUNT_STATUS_ACTIVE,
-	}); !errors.Is(err, importing.ErrImportRequestInvalid) {
-		t.Fatalf("unmapped manual bank source account was accepted: %v", err)
+	})
+	if err != nil || unmappedBank == nil || unmappedBank.LedgerAccountId != nil || unmappedBank.SourceType != importing.SOURCE_TYPE_BANK {
+		t.Fatalf("unmapped manual bank source account was rejected: %+v %v", unmappedBank, err)
+	}
+
+	firstCeb, err := service.EnsureCebCreditSourceAccount(nil, account.Uid)
+	if err != nil || firstCeb == nil || firstCeb.LedgerAccountId != nil || firstCeb.MaskedDisplayName != "光大信用卡" {
+		t.Fatalf("CEB identity scope was not created: %+v %v", firstCeb, err)
+	}
+	secondCeb, err := service.EnsureCebCreditSourceAccount(nil, account.Uid)
+	if err != nil || secondCeb == nil || secondCeb.SourceAccountId != firstCeb.SourceAccountId || secondCeb.SourceAccountKey != firstCeb.SourceAccountKey {
+		t.Fatalf("CEB identity scope was not reused: first=%+v second=%+v err=%v", firstCeb, secondCeb, err)
 	}
 }

@@ -3460,7 +3460,7 @@
             "configure": "Parse as Everbright Credit Statement",
             "templateNotice": "This template is only for China Everbright credit-card PDFs, not a generic bank PDF parser.",
             "privacyNotice": "Parsing stays on this machine. This view does not log full account numbers or raw fields.",
-            "twoCardHint": "Multiple cards in one statement are grouped by last four digits as payment methods. You still choose one bank source profile.",
+            "twoCardHint": "Multiple cards in one statement are grouped by last four digits as payment methods. Choose the ledger accounts later while organizing.",
             "autoDetectionFailed": "The statement was not detected automatically. Everbright credit-statement setup is now open.",
             "parse": "Parse Everbright Statement"
         },

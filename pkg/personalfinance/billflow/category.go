@@ -111,7 +111,7 @@ func transferLikeTodo(name string) TodoKind {
 
 func suggestedAccountType(displayName string) string {
 	name := canonicalCategoryName(displayName)
-	if strings.Contains(name, "信用") || strings.Contains(name, "花呗") || strings.Contains(name, "白条") {
+	if strings.Contains(name, "信用") || strings.Contains(name, "花呗") || strings.Contains(name, "白条") || strings.Contains(name, "末四位") {
 		return "credit_card"
 	}
 	return "virtual"

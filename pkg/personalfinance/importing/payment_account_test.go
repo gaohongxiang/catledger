@@ -117,6 +117,73 @@ func TestPaymentAccountServiceGroupsCouponSuffixWithTheSameCard(t *testing.T) {
 	}
 }
 
+func TestPaymentAccountServiceGroupsBankCardLastFourDigits(t *testing.T) {
+	repository, database := newSQLiteDedupRepository(t, 1)
+	_, accountKey := dedupSourceAccountEvidence(t)
+	const uid = int64(7131)
+	const fileId = int64(7231)
+	const sourceAccountId = int64(7331)
+	const batchId = int64(7431)
+	insertDedupFixtures(t, database, uid, fileId, sourceAccountId, accountKey, nil, "7")
+
+	batch := testImportBatch(uid, batchId, fileId, 100)
+	batch.Status = importing.IMPORT_BATCH_STATUS_READY
+	batch.SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	batch.ParserName = "ceb_credit_pdf"
+	batch.SourceAccountId = int64Pointer(sourceAccountId)
+	batch.TotalRowCount = 3
+	batch.ValidRowCount = 3
+	batch.PendingRowCount = 3
+	insertRepositoryBeans(t, database, batch,
+		paymentAccountRow(uid, batchId, 7631, 1, "末四位1234", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, batchId, 7632, 2, "末四位1234", importing.PROCESSING_STATE_PENDING, nil),
+		paymentAccountRow(uid, batchId, 7633, 3, "末四位5678", importing.PROCESSING_STATE_PENDING, nil),
+	)
+
+	nextId := int64(8100)
+	service, err := importing.NewPaymentAccountService(repository, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create payment account service: %v", err)
+	}
+	groups, err := service.ListBatchPaymentAccounts(nil, uid, batchId)
+	if err != nil || len(groups) != 2 {
+		t.Fatalf("bank last-four payment methods were not grouped: %d %v", len(groups), err)
+	}
+	first := findPaymentAccountGroup(t, groups, "末四位1234")
+	if first.RowCount != 2 || first.PendingRowCount != 2 || first.Mapped || first.SourceType != importing.SOURCE_TYPE_BANK {
+		t.Fatalf("unexpected first CEB payment group: %+v", first)
+	}
+
+	confirmed, err := service.ConfirmBatchPaymentAccount(nil, importing.PaymentAccountConfirmRequest{
+		Uid: uid, BatchId: batchId, RowId: first.SampleRowId,
+		LedgerAccountId: 8201, LedgerAccountCurrency: "CNY",
+	})
+	if err != nil || confirmed == nil || !confirmed.Mapped || confirmed.LedgerAccountId == nil || *confirmed.LedgerAccountId != 8201 {
+		t.Fatalf("confirm bank payment account: %+v %v", confirmed, err)
+	}
+	assertPaymentRowLedgerAccounts(t, repository, uid, batchId, map[int64]*int64{
+		7631: int64Pointer(8201), 7632: int64Pointer(8201), 7633: nil,
+	})
+	mappings, err := repository.ListPaymentAccountMappings(nil, uid, importing.SOURCE_TYPE_BANK)
+	if err != nil || len(mappings) != 1 || mappings[0].LedgerAccountId != 8201 {
+		t.Fatalf("bank payment mapping was not persisted: %+v %v", mappings, err)
+	}
+
+	excluded, err := service.ExcludePaymentAccount(nil, importing.PaymentAccountSkipRequest{
+		Uid: uid, BatchId: batchId, RowId: findPaymentAccountGroup(t, groups, "末四位5678").SampleRowId,
+	})
+	if err != nil || excluded == nil || !excluded.Excluded {
+		t.Fatalf("exclude bank payment account: %+v %v", excluded, err)
+	}
+	exclusions, err := repository.ListPaymentAccountExclusions(nil, uid, importing.SOURCE_TYPE_BANK)
+	if err != nil || len(exclusions) != 1 {
+		t.Fatalf("bank payment exclusion was not persisted: %+v %v", exclusions, err)
+	}
+}
+
 func TestPaymentAccountServicePrefixesPlatformWallets(t *testing.T) {
 	repository, database := newSQLiteDedupRepository(t, 1)
 	_, accountKey := dedupSourceAccountEvidence(t)

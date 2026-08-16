@@ -244,6 +244,37 @@ func TestReparseServiceSkipsGenericBankUnlessExplicitlySelected(t *testing.T) {
 	}
 }
 
+func TestReparseServicePersistsCebCreditWithoutSourceAccount(t *testing.T) {
+	descriptor := importing.ParserDescriptor{
+		Name: "ceb_credit_pdf", SourceType: importing.SOURCE_TYPE_BANK, Format: importing.EVIDENCE_FORMAT_CEB_CREDIT_PDF,
+		ParserVersion: "ceb-credit-pdf-parser-v1", NormalizationVersion: "ceb-credit-pdf-normalization-v1", ExplicitSelectionOnly: true,
+	}
+	parser := &flowTestParser{
+		descriptor: descriptor,
+		probe:      importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_EXACT, SourceType: importing.SOURCE_TYPE_BANK, Format: importing.EVIDENCE_FORMAT_CEB_CREDIT_PDF},
+		document: &importing.EvidenceDocument{Metadata: importing.DocumentMetadata{SourceType: importing.SOURCE_TYPE_BANK, SourceAccount: importing.SourceAccountCandidate{
+			Kind: importing.SOURCE_ACCOUNT_EVIDENCE_MISSING, DiscoveryMethod: importing.SOURCE_ACCOUNT_DISCOVERY_MISSING,
+		}}},
+	}
+	accounts := &flowTestSourceAccounts{ensured: &importing.SourceAccount{
+		Uid: 101, SourceAccountId: 401, SourceType: importing.SOURCE_TYPE_BANK,
+		Status: importing.SOURCE_ACCOUNT_STATUS_ACTIVE, SourceAccountKey: strings.Repeat("c", 64), SourceAccountKeyVersion: importing.SOURCE_ACCOUNT_KEY_VERSION_V1,
+	}}
+	persister := new(flowTestPersister)
+	service := newFlowTestService(t, []byte("%PDF-1.4"), []importing.ImportEvidenceParser{parser}, accounts, persister)
+	result, err := service.ReparseImportFile(nil, importing.ReparseImportFileRequest{
+		Uid: 101, FileId: 201, ParserName: descriptor.Name,
+		ParseOptions:      importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480},
+		ReparseReasonCode: "user_selected_ceb_credit_pdf",
+	})
+	if err != nil || result == nil || result.Batch == nil || persister.calls != 1 || accounts.ensureCalls != 1 || parser.parseCalls != 1 {
+		t.Fatalf("CEB parser did not persist without a ledger mapping: result=%+v ensure=%d persist=%d parse=%d err=%v", result, accounts.ensureCalls, persister.calls, parser.parseCalls, err)
+	}
+	if persister.request.SourceAccountId != 401 || persister.request.Descriptor.Name != descriptor.Name {
+		t.Fatalf("CEB persistence used the wrong identity scope: %+v", persister.request)
+	}
+}
+
 func newFlowTestService(t *testing.T, content []byte, parsers []importing.ImportEvidenceParser, accounts *flowTestSourceAccounts, persister *flowTestPersister) *importing.ReparseService {
 	t.Helper()
 	repository := &flowTestFileRepository{file: &importing.ImportFile{
@@ -310,7 +341,9 @@ func (p *flowTestParser) Parse(_ context.Context, _ importing.EvidenceFile, _ im
 type flowTestSourceAccounts struct {
 	selected     *importing.SourceAccount
 	resolved     *importing.SourceAccount
+	ensured      *importing.SourceAccount
 	resolveCalls int
+	ensureCalls  int
 }
 
 func (s *flowTestSourceAccounts) FindSourceAccount(_ core.Context, _ int64, _ int64) (*importing.SourceAccount, error) {
@@ -320,6 +353,11 @@ func (s *flowTestSourceAccounts) FindSourceAccount(_ core.Context, _ int64, _ in
 func (s *flowTestSourceAccounts) ResolveStableSourceAccount(_ core.Context, _ int64, _ importing.SourceType, _ importing.SourceAccountCandidate) (*importing.SourceAccount, error) {
 	s.resolveCalls++
 	return s.resolved, nil
+}
+
+func (s *flowTestSourceAccounts) EnsureCebCreditSourceAccount(_ core.Context, _ int64) (*importing.SourceAccount, error) {
+	s.ensureCalls++
+	return s.ensured, nil
 }
 
 type flowTestPersister struct {

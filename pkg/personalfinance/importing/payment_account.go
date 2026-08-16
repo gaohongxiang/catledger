@@ -398,6 +398,24 @@ func (s *PaymentAccountService) ConfirmBatchPaymentAccount(c core.Context, reque
 	}, nil
 }
 
+func isPaymentAccountSourceType(sourceType SourceType) bool {
+	return sourceType == SOURCE_TYPE_ALIPAY || sourceType == SOURCE_TYPE_WECHAT || sourceType == SOURCE_TYPE_BANK
+}
+
+func usesPaymentAccountGroups(batch *ImportBatch) bool {
+	if batch == nil {
+		return false
+	}
+	switch batch.SourceTypeSnapshot {
+	case SOURCE_TYPE_ALIPAY, SOURCE_TYPE_WECHAT:
+		return true
+	case SOURCE_TYPE_BANK:
+		return batch.ParserName == "ceb_credit_pdf"
+	default:
+		return false
+	}
+}
+
 func (s *PaymentAccountService) loadBatchPaymentAccounts(c core.Context, uid int64, batchId int64) (*ImportBatch, []*RawImportRow, []*PaymentAccountMapping, []*PaymentAccountExclusion, error) {
 	batch, err := s.repository.FindImportBatchById(c, uid, batchId)
 	if err != nil {
@@ -406,7 +424,7 @@ func (s *PaymentAccountService) loadBatchPaymentAccounts(c core.Context, uid int
 	if batch == nil || batch.Uid != uid || batch.BatchId != batchId {
 		return nil, nil, nil, nil, ErrPaymentAccountBatchNotFound
 	}
-	if batch.SourceTypeSnapshot != SOURCE_TYPE_ALIPAY && batch.SourceTypeSnapshot != SOURCE_TYPE_WECHAT {
+	if !usesPaymentAccountGroups(batch) {
 		return batch, []*RawImportRow{}, []*PaymentAccountMapping{}, []*PaymentAccountExclusion{}, nil
 	}
 
@@ -426,7 +444,7 @@ func (s *PaymentAccountService) loadBatchPaymentAccounts(c core.Context, uid int
 }
 
 func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mappings []*PaymentAccountMapping, exclusions []*PaymentAccountExclusion) []*PaymentAccountGroup {
-	if batch == nil || (batch.SourceTypeSnapshot != SOURCE_TYPE_ALIPAY && batch.SourceTypeSnapshot != SOURCE_TYPE_WECHAT) {
+	if !usesPaymentAccountGroups(batch) {
 		return []*PaymentAccountGroup{}
 	}
 

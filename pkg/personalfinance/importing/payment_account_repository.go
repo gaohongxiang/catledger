@@ -34,7 +34,7 @@ func (r *Repository) ListPaymentAccountRows(c core.Context, uid int64, batchId i
 }
 
 func (r *Repository) ListPaymentAccountMappings(c core.Context, uid int64, sourceType SourceType) ([]*PaymentAccountMapping, error) {
-	if uid < 1 || (sourceType != SOURCE_TYPE_ALIPAY && sourceType != SOURCE_TYPE_WECHAT) {
+	if uid < 1 || !isPaymentAccountSourceType(sourceType) {
 		return nil, fmt.Errorf("invalid payment account mapping owner or source")
 	}
 
@@ -167,7 +167,7 @@ func (tx *RepositoryTransaction) resolvePaymentAccountMapping(candidate *Payment
 
 func (tx *RepositoryTransaction) paymentAccountMappingLookup(uid int64, sourceType SourceType) (map[string]*PaymentAccountMapping, error) {
 	lookup := make(map[string]*PaymentAccountMapping)
-	if sourceType != SOURCE_TYPE_ALIPAY && sourceType != SOURCE_TYPE_WECHAT {
+	if !isPaymentAccountSourceType(sourceType) {
 		return lookup, nil
 	}
 
@@ -188,6 +188,14 @@ func resolveEvidenceLedgerAccount(account *SourceAccount, sourceType SourceType,
 	if row == nil || row.ParseState != PARSE_STATE_VALID {
 		return nil
 	}
+	if strings.TrimSpace(row.RawPaymentMethod) != "" {
+		if alias, ok := BuildPaymentAccountAlias(row.RawPaymentMethod); ok {
+			if mapping := mappings[row.Currency+"\x00"+alias.Key]; mapping != nil && mapping.LedgerAccountId > 0 {
+				ledgerAccountId := mapping.LedgerAccountId
+				return &ledgerAccountId
+			}
+		}
+	}
 	if sourceType == SOURCE_TYPE_BANK {
 		return cloneInt64Pointer(account.LedgerAccountId)
 	}
@@ -197,22 +205,12 @@ func resolveEvidenceLedgerAccount(account *SourceAccount, sourceType SourceType,
 	if strings.TrimSpace(row.RawPaymentMethod) == "" {
 		return cloneInt64Pointer(account.LedgerAccountId)
 	}
-
-	alias, ok := BuildPaymentAccountAlias(row.RawPaymentMethod)
-	if !ok {
-		return nil
-	}
-	mapping := mappings[row.Currency+"\x00"+alias.Key]
-	if mapping == nil || mapping.LedgerAccountId < 1 {
-		return nil
-	}
-	ledgerAccountId := mapping.LedgerAccountId
-	return &ledgerAccountId
+	return nil
 }
 
 func isValidNewPaymentAccountMapping(mapping *PaymentAccountMapping) bool {
 	return mapping != nil && mapping.Uid > 0 &&
-		(mapping.SourceType == SOURCE_TYPE_ALIPAY || mapping.SourceType == SOURCE_TYPE_WECHAT) &&
+		isPaymentAccountSourceType(mapping.SourceType) &&
 		isValidPaymentAccountCurrency(mapping.Currency) && isLowerHexSHA256(mapping.AliasKey) &&
 		mapping.AliasKeyVersion == PAYMENT_ACCOUNT_ALIAS_VERSION_V1 && mapping.LedgerAccountId > 0 &&
 		mapping.MaskedDisplayName != "" && utf8.RuneCountInString(mapping.MaskedDisplayName) <= maximumPaymentAccountDisplayRunes &&

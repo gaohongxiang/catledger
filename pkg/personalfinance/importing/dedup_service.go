@@ -207,9 +207,6 @@ func validateSelectedSourceAccount(request PersistEvidenceDocumentRequest, accou
 		(account.LedgerAccountId != nil && *account.LedgerAccountId < 1) {
 		return ErrImportSourceAccountUnavailable
 	}
-	if account.SourceType == SOURCE_TYPE_BANK && account.LedgerAccountId == nil {
-		return ErrImportSourceAccountUnavailable
-	}
 
 	candidate := request.Document.Metadata.SourceAccount
 
