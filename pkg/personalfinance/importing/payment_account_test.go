@@ -152,7 +152,7 @@ func TestPaymentAccountServiceGroupsBankCardLastFourDigits(t *testing.T) {
 	if err != nil || len(groups) != 2 {
 		t.Fatalf("bank last-four payment methods were not grouped: %d %v", len(groups), err)
 	}
-	first := findPaymentAccountGroup(t, groups, "末四位1234")
+	first := findPaymentAccountGroup(t, groups, "光大银行信用卡(1234)")
 	if first.RowCount != 2 || first.PendingRowCount != 2 || first.Mapped || first.SourceType != importing.SOURCE_TYPE_BANK {
 		t.Fatalf("unexpected first CEB payment group: %+v", first)
 	}
@@ -173,7 +173,7 @@ func TestPaymentAccountServiceGroupsBankCardLastFourDigits(t *testing.T) {
 	}
 
 	excluded, err := service.ExcludePaymentAccount(nil, importing.PaymentAccountSkipRequest{
-		Uid: uid, BatchId: batchId, RowId: findPaymentAccountGroup(t, groups, "末四位5678").SampleRowId,
+		Uid: uid, BatchId: batchId, RowId: findPaymentAccountGroup(t, groups, "光大银行信用卡(5678)").SampleRowId,
 	})
 	if err != nil || excluded == nil || !excluded.Excluded {
 		t.Fatalf("exclude bank payment account: %+v %v", excluded, err)

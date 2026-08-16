@@ -105,6 +105,14 @@ export function normalizePaymentAccountName(value: string): string {
     return normalized.replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
+export function composeEverbrightPaymentDisplayName(sourceType: PersonalFinanceSourceType, displayName: string): string {
+    const match = displayName.trim().match(/^末四位(\d{4})$/u);
+    if (sourceType === 'bank' && match) {
+        return `光大银行信用卡(${match[1]})`;
+    }
+    return displayName;
+}
+
 export function getSafePaymentAccountDisplayName(value: string): string {
     const cleaned = value.normalize('NFKC')
         .replace(/[\p{Cc}\p{Cf}]/gu, '')
@@ -159,9 +167,6 @@ function getPaymentAccountMatchScore(group: PersonalFinancePaymentAccountGroup, 
         (sourceBase === candidateBase || sourceBase.includes(candidateBase) || candidateBase.includes(sourceBase))) {
         return 90;
     }
-    if (sourceTail && sourceTail === candidateTail && /^\d{4}$/u.test(sourceName)) {
-        return 70;
-    }
 
     const sourceWithoutPlatform = stripPaymentPlatform(group.displayName, group.sourceType);
     const candidateWithoutPlatform = stripPaymentPlatform(accountName, group.sourceType);
@@ -195,9 +200,13 @@ export function suggestPaymentAccount(
     group: PersonalFinancePaymentAccountGroup,
     accounts: PersonalFinanceLedgerAccountCandidate[]
 ): PersonalFinancePaymentAccountSuggestion {
+    const matchGroup = {
+        ...group,
+        displayName: composeEverbrightPaymentDisplayName(group.sourceType, group.displayName)
+    };
     const candidates = accounts
-        .filter(account => !account.hidden && account.currency === group.currency)
-        .map(account => ({ account, score: getPaymentAccountMatchScore(group, account.name) }))
+        .filter(account => !account.hidden && account.currency === matchGroup.currency)
+        .map(account => ({ account, score: getPaymentAccountMatchScore(matchGroup, account.name) }))
         .filter(candidate => candidate.score > 0)
         .sort((left, right) => right.score - left.score || left.account.name.localeCompare(right.account.name));
     const best = candidates[0];
@@ -205,7 +214,7 @@ export function suggestPaymentAccount(
 
     return {
         ...(isUniqueBest ? { ledgerAccountId: best.account.id } : {}),
-        accountCategory: inferPaymentAccountCategory(group.displayName, group.sourceType)
+        accountCategory: inferPaymentAccountCategory(matchGroup.displayName, matchGroup.sourceType)
     };
 }
 

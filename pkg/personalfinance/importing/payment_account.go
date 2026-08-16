@@ -20,6 +20,7 @@ const maximumPaymentAccountDisplayRunes = 128
 
 var paymentAccountMaskRunPattern = regexp.MustCompile(`[xX]{2,}`)
 var paymentAccountLongDigitRunPattern = regexp.MustCompile(`[0-9]{8,}`)
+var cebLastFourOnlyDisplayPattern = regexp.MustCompile(`^末四位(\d{4})$`)
 
 var (
 	ErrPaymentAccountRequestInvalid         = errors.New("personal finance payment account request is invalid")
@@ -156,6 +157,11 @@ func qualifyPaymentAccountDisplayName(sourceType SourceType, displayName string)
 		prefix = "微信"
 	case SOURCE_TYPE_ALIPAY:
 		prefix = "支付宝"
+	case SOURCE_TYPE_BANK:
+		if matches := cebLastFourOnlyDisplayPattern.FindStringSubmatch(name); len(matches) == 2 {
+			return "光大银行信用卡(" + matches[1] + ")"
+		}
+		return name
 	default:
 		return name
 	}
