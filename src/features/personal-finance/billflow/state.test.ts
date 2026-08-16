@@ -233,11 +233,12 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
         expect(workbench).toContain('v-for="todo in reviewTodos"');
         expect(workbench).toContain('v-for="todo in otherReviewTodos"');
-        expect(workbench).toContain('v-for="todo in mergeReviewTodos"');
+        expect(workbench).toContain('v-for="(todo, groupIndex) in mergeReviewTodos"');
         expect(workbench).toContain('v-for="todo in mergedReviewTodos"');
         expect(workbench).toContain('formatMergeSource');
         expect(workbench).toContain('formatMergeTime');
-        expect(workbench).toContain('mergeOrderId');
+        expect(workbench).toContain('mergeGroupRows');
+        expect(workbench).toContain('merge-group');
         expect(workbench).toContain('merge-table');
         expect(workbench).not.toContain('todo-compare__line');
         expect(workbench).not.toContain('todo-compare__badge');

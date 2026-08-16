@@ -2957,11 +2957,12 @@
                 "pending": "After accounts are ready, start merging. Clear matches are merged automatically.",
                 "empty": "Nothing needs a merge decision. Clear matches are already merged, or merging has not started.",
                 "mergedEmpty": "No merge items have been marked handled yet. Automatic merges are not listed here.",
-                "pendingHint": "Only rows that did not auto-merge are listed. All statements share one header; each pair is two rows of source, account, merchant, item, category, amount, time, and order id. Credit-card rows show the date only. “Processed” means you reviewed it; “Skip for now” leaves it aside.",
+                "pendingHint": "Only rows that did not auto-merge are listed. All statements share one header; each pair is one block of matching rows. Credit-card rows show the date only. “Processed” means you reviewed it; “Skip for now” leaves it aside.",
                 "mergedHint": "Items you marked processed or skipped appear here and can be restored. Automatic merges are not asked again.",
                 "matchesHint": "Match",
                 "matchesEmpty": "No comparable row from another statement is listed. Automatic merge needs merchant/description, amount, currency, and the same card; credit-card dates match on the same calendar day.",
                 "matchesMany": "Several nearby rows exist, so it was not merged automatically.",
+                "groupRows": "{count} matching rows",
                 "column": {
                     "source": "Source",
                     "counterparty": "Counterparty",

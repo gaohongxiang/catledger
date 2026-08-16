@@ -304,50 +304,48 @@
                                     <th>{{ tt('Time') }}</th>
                                     <th>{{ tt('Type') }}</th>
                                     <th>{{ tt('personalFinance.billflow.merge.column.orderId') }}</th>
-                                    <th></th>
                                 </tr>
                             </thead>
-                            <tbody :key="todo.id" v-for="todo in mergeReviewTodos">
-                                <tr>
-                                    <td>{{ formatMergeSource(todo) }}</td>
-                                    <td>{{ todo.account }}</td>
-                                    <td>{{ todo.label }}</td>
-                                    <td>{{ todo.item }}</td>
-                                    <td>{{ todo.billType }}</td>
-                                    <td class="is-num">{{ formatMergeAmount(todo) }}</td>
-                                    <td>{{ formatMergeTime(todo) }}</td>
-                                    <td>{{ todo.direction ? tt(billflowDirectionKey(todo.direction)) : '' }}</td>
-                                    <td class="is-id">{{ mergeOrderId(todo) }}</td>
-                                    <td class="is-actions" :rowspan="mergeGroupRowSpan(todo)">
-                                        <label class="todo-skip" v-if="canSkipTodo(todo)">
-                                            <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
-                                            {{ tt('personalFinance.billflow.accounts.skipped') }}
-                                        </label>
-                                        <div class="todo-row__actions" v-if="!isRowSkipped(todo.subjectId)">
-                                            <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
-                                                {{ tt('personalFinance.billflow.todos.resolve') }}
-                                            </v-btn>
-                                            <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
-                                                {{ tt('personalFinance.billflow.todos.dismiss') }}
-                                            </v-btn>
+                            <tbody class="merge-group" :key="todo.id" v-for="(todo, groupIndex) in mergeReviewTodos">
+                                <tr class="merge-group__gap" v-if="groupIndex > 0">
+                                    <td colspan="9"></td>
+                                </tr>
+                                <tr class="merge-group__bar">
+                                    <td colspan="9">
+                                        <div class="merge-group__bar-inner">
+                                            <span>{{ tt('personalFinance.billflow.merge.groupRows', { count: mergeGroupRows(todo).length }) }}</span>
+                                            <div class="merge-group__actions">
+                                                <label class="todo-skip" v-if="canSkipTodo(todo)">
+                                                    <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
+                                                    {{ tt('personalFinance.billflow.accounts.skipped') }}
+                                                </label>
+                                                <div class="todo-row__actions" v-if="!isRowSkipped(todo.subjectId)">
+                                                    <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                                                        {{ tt('personalFinance.billflow.todos.resolve') }}
+                                                    </v-btn>
+                                                    <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                                                        {{ tt('personalFinance.billflow.todos.dismiss') }}
+                                                    </v-btn>
+                                                </div>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr class="is-peer" :key="todo.id + '-' + index" v-for="(match, index) in todo.matches">
-                                    <td>{{ formatMergeSource(match) }}</td>
-                                    <td>{{ match.account }}</td>
-                                    <td>{{ match.label }}</td>
-                                    <td>{{ match.item }}</td>
-                                    <td>{{ match.billType }}</td>
-                                    <td class="is-num">{{ formatMergeAmount(match) }}</td>
-                                    <td>{{ formatMergeTime(match) }}</td>
-                                    <td>{{ match.direction ? tt(billflowDirectionKey(match.direction)) : '' }}</td>
-                                    <td class="is-id">{{ mergeOrderId(match) }}</td>
+                                <tr class="merge-group__row" :key="todo.id + '-' + index" v-for="(row, index) in mergeGroupRows(todo)">
+                                    <td>{{ formatMergeSource(row) }}</td>
+                                    <td>{{ row.account }}</td>
+                                    <td>{{ row.label }}</td>
+                                    <td>{{ row.item }}</td>
+                                    <td>{{ row.billType }}</td>
+                                    <td class="is-num">{{ formatMergeAmount(row) }}</td>
+                                    <td>{{ formatMergeTime(row) }}</td>
+                                    <td>{{ row.direction ? tt(billflowDirectionKey(row.direction)) : '' }}</td>
+                                    <td class="is-id">{{ mergeOrderId(row) }}</td>
                                 </tr>
-                                <tr class="is-note" v-if="!todo.matches.length">
+                                <tr class="merge-group__note" v-if="!todo.matches.length">
                                     <td colspan="9">{{ tt('personalFinance.billflow.merge.matchesEmpty') }}</td>
                                 </tr>
-                                <tr class="is-note" v-else-if="todo.matches.length > 1">
+                                <tr class="merge-group__note" v-else-if="todo.matches.length > 1">
                                     <td colspan="9">{{ tt('personalFinance.billflow.merge.matchesMany') }}</td>
                                 </tr>
                             </tbody>
@@ -1194,8 +1192,8 @@ function mergeOrderId(row: MergeLineSource): string {
     return row.merchantOrderId || row.orderId || '';
 }
 
-function mergeGroupRowSpan(todo: BillflowTodo): number {
-    return 1 + todo.matches.length;
+function mergeGroupRows(todo: BillflowTodo): MergeLineSource[] {
+    return [todo, ...todo.matches];
 }
 
 function formatBillChannel(sourceType: string | undefined, account: string | undefined): string {
@@ -2210,10 +2208,6 @@ onMounted(reload);
     border-bottom: 1px solid var(--task-rule);
 }
 
-.merge-table tbody {
-    border-bottom: 1px solid var(--task-rule);
-}
-
 .merge-table td.is-num {
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
@@ -2227,24 +2221,73 @@ onMounted(reload);
     font-size: 0.68rem;
 }
 
-.merge-table td.is-actions {
-    white-space: nowrap;
-    text-align: right;
-    vertical-align: middle;
+.merge-group__gap td {
+    height: 10px;
+    padding: 0;
+    border: 0;
+    background: transparent;
 }
 
-.merge-table td.is-actions .todo-row__actions,
-.merge-table td.is-actions .todo-skip {
+.merge-group__bar td {
+    padding: 4px 8px;
+    background: var(--task-mint);
+    border: 1px solid color-mix(in srgb, var(--task-ink) 16%, var(--task-rule));
+    border-bottom: 0;
+    border-radius: 8px 8px 0 0;
+}
+
+.merge-group__bar-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--task-ink);
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
+.merge-group__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     justify-content: flex-end;
+    gap: 4px;
 }
 
-.merge-table tr.is-peer td {
-    color: rgba(var(--v-theme-on-surface), 0.92);
-    background: color-mix(in srgb, rgb(var(--v-theme-primary)) 6%, transparent);
+.merge-group__row td,
+.merge-group__note td {
+    background: color-mix(in srgb, var(--task-mint) 28%, var(--task-paper));
+    border-top: 1px dashed var(--task-rule);
+    border-bottom: 0;
+    border-left: 1px solid color-mix(in srgb, var(--task-ink) 16%, var(--task-rule));
+    border-right: 1px solid color-mix(in srgb, var(--task-ink) 16%, var(--task-rule));
 }
 
-.merge-table tr.is-note td {
-    color: rgba(var(--v-theme-on-surface), 0.55);
+.merge-group__row td:first-child,
+.merge-group__note td:first-child,
+.merge-group__bar td {
+    border-left-width: 3px;
+    border-left-color: var(--task-ink);
+}
+
+.merge-group__bar + .merge-group__row td {
+    border-top: 0;
+}
+
+.merge-group tr:last-child td {
+    border-bottom: 1px solid color-mix(in srgb, var(--task-ink) 16%, var(--task-rule));
+}
+
+.merge-group tr:last-child td:first-child {
+    border-bottom-left-radius: 8px;
+}
+
+.merge-group tr:last-child td:last-child {
+    border-bottom-right-radius: 8px;
+}
+
+.merge-group__note td {
+    color: rgba(var(--v-theme-on-surface), 0.58);
     font-size: 0.72rem;
 }
 
