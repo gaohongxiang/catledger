@@ -898,6 +898,7 @@ async function reload(): Promise<void> {
 async function openTask(taskId: string): Promise<void> {
     task.value = await billflowApi.getTask(taskId);
     accounts.value = await billflowApi.getAccounts(taskId);
+    await applyUniqueMatchedAccounts(taskId);
     if (expandedSampleRowId.value) {
         accountRows.value = await billflowApi.listAccountRows(taskId, expandedSampleRowId.value);
         selectedRowIds.value = selectedRowIds.value.filter(id => accountRows.value.some(row => row.id === id));
@@ -1056,6 +1057,30 @@ async function reuseAccount(group: BillflowAccountGroup, ledgerAccountId?: strin
     } finally {
         busy.value = false;
     }
+}
+
+async function applyUniqueMatchedAccounts(taskId: string): Promise<void> {
+    const groups = (accounts.value?.needsCreate ?? []).filter(group => !!matchedAccount(group));
+    if (groups.length < 1) {
+        return;
+    }
+    for (const group of groups) {
+        const accountId = matchedAccount(group)?.id;
+        if (!accountId) {
+            continue;
+        }
+        const current = await billflowApi.getTask(taskId);
+        accounts.value = await billflowApi.overrideAccount({
+            taskId: current.id,
+            expectedVersion: current.version,
+            sampleRowId: group.sampleRowId,
+            ledgerAccountId: accountId,
+            idempotencyKey: generateRandomUUID()
+        });
+        delete pickedAccountIds[group.sampleRowId];
+    }
+    task.value = await billflowApi.getTask(taskId);
+    accounts.value = await billflowApi.getAccounts(taskId);
 }
 
 async function reuseMatchedAccounts(): Promise<void> {

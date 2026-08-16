@@ -318,6 +318,19 @@ describe('payment account suggestions', () => {
             ...accounts,
             { id: 'xingye-duplicate', name: '兴业信用卡(6106)', currency: 'CNY' }
         ]).ledgerAccountId).toBeUndefined();
+        expect(suggestPaymentAccount({
+            ...group,
+            sourceType: 'bank',
+            displayName: '末四位2690'
+        }, accounts).ledgerAccountId).toBe('guangda');
+        expect(suggestPaymentAccount({
+            ...group,
+            sourceType: 'bank',
+            displayName: '末四位2690'
+        }, [
+            ...accounts,
+            { id: 'other-2690', name: '别的卡2690', currency: 'CNY' }
+        ]).ledgerAccountId).toBeUndefined();
     });
 
     it('infers a sensible editable category for cards and wallets', () => {

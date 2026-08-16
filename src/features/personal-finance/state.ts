@@ -159,6 +159,9 @@ function getPaymentAccountMatchScore(group: PersonalFinancePaymentAccountGroup, 
         (sourceBase === candidateBase || sourceBase.includes(candidateBase) || candidateBase.includes(sourceBase))) {
         return 90;
     }
+    if (sourceTail && sourceTail === candidateTail && /^\d{4}$/u.test(sourceName)) {
+        return 70;
+    }
 
     const sourceWithoutPlatform = stripPaymentPlatform(group.displayName, group.sourceType);
     const candidateWithoutPlatform = stripPaymentPlatform(accountName, group.sourceType);

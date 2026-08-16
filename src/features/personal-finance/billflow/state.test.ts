@@ -129,6 +129,11 @@ describe('billflow task page state', () => {
             currency: 'CNY',
             displayName: '支付宝小荷包(树与草的小荷包)'
         }, existing)?.id).toBeUndefined();
+        expect(matchedLedgerAccount({
+            sourceType: 'bank',
+            currency: 'CNY',
+            displayName: '末四位2690'
+        }, existing)?.id).toBe('guangda');
     });
 
     it('does not auto-select when two existing cards share the same unique score', () => {
@@ -202,6 +207,7 @@ describe('billflow task page wiring', () => {
         expect(workbench).not.toContain('refreshTaskAndMaybeRun');
         expect(workbench).toContain('mergeSelectedOrganizeFileIds');
         expect(workbench).toContain('replaceTaskFiles');
+        expect(workbench).toContain('applyUniqueMatchedAccounts');
         expect(workbench).toContain('canEditOrganizeFiles');
         expect(workbench).toContain("userStep.value = 'files'");
         expect(workbench).toContain('personalFinance.billflow.confirmHint');
