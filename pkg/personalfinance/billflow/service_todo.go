@@ -3,6 +3,7 @@ package billflow
 import (
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
@@ -283,6 +284,8 @@ func attachTodoPreview(view *TodoView, row *importing.RawImportRow) {
 	view.Label = todoPreviewLabel(row)
 	view.Item = maskedCategoryAliasDisplay(row.RawItem)
 	view.BillType = maskedCategoryAliasDisplay(row.RawTransactionType)
+	view.OrderId = strings.TrimSpace(row.SourceOrderId)
+	view.MerchantOrderId = strings.TrimSpace(row.SourceMerchantOrderId)
 	view.Currency = row.Currency
 	view.UnixTime = row.NormalizedUnixTime
 	view.Direction = string(row.NormalizedDirection)
@@ -429,6 +432,8 @@ func (s *Service) todoMatchView(c core.Context, uid int64, evidence *reconciliat
 			view.Item = maskedCategoryAliasDisplay(row.RawItem)
 			view.BillType = maskedCategoryAliasDisplay(row.RawTransactionType)
 			view.Account = importing.QualifiedPaymentAccountDisplayName(evidence.SourceType, row.RawPaymentMethod)
+			view.OrderId = strings.TrimSpace(row.SourceOrderId)
+			view.MerchantOrderId = strings.TrimSpace(row.SourceMerchantOrderId)
 		}
 	}
 	return view

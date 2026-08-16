@@ -229,6 +229,8 @@ function normalizeTodo(value: unknown): BillflowTodo {
         ...(optionalIdentifier(item['categoryId']) === undefined ? {} : { categoryId: optionalIdentifier(item['categoryId']) }),
         ...(sourceTypes.includes(string(item['sourceType'] ?? '') as BillflowSourceType) ? { sourceType: string(item['sourceType']) as BillflowSourceType } : {}),
         ...(string(item['account'] ?? '') ? { account: string(item['account']) } : {}),
+        ...(string(item['orderId'] ?? '') ? { orderId: string(item['orderId']) } : {}),
+        ...(string(item['merchantOrderId'] ?? '') ? { merchantOrderId: string(item['merchantOrderId']) } : {}),
         matches: item['matches'] == null ? [] : array(item['matches']).map(normalizeTodoMatch)
     };
 }
@@ -246,7 +248,9 @@ function normalizeTodoMatch(value: unknown): BillflowTodoMatch {
         amount: string(item['amount'] ?? ''),
         currency: string(item['currency'] ?? ''),
         direction: string(item['direction'] ?? ''),
-        ...(unixTime === undefined ? {} : { unixTime })
+        ...(unixTime === undefined ? {} : { unixTime }),
+        ...(string(item['orderId'] ?? '') ? { orderId: string(item['orderId']) } : {}),
+        ...(string(item['merchantOrderId'] ?? '') ? { merchantOrderId: string(item['merchantOrderId']) } : {})
     };
 }
 

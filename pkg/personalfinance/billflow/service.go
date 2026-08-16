@@ -258,6 +258,8 @@ type TodoView struct {
 	SourceType      string
 	Account         string
 	CategoryId      int64
+	OrderId         string
+	MerchantOrderId string
 	Version         int64
 	CreatedUnixTime int64
 	UpdatedUnixTime int64
@@ -265,15 +267,17 @@ type TodoView struct {
 }
 
 type TodoMatchView struct {
-	SourceType string
-	Account    string
-	Label      string
-	Item       string
-	BillType   string
-	Amount     string
-	Currency   string
-	UnixTime   *int64
-	Direction  string
+	SourceType      string
+	Account         string
+	Label           string
+	Item            string
+	BillType        string
+	Amount          string
+	Currency        string
+	UnixTime        *int64
+	Direction       string
+	OrderId         string
+	MerchantOrderId string
 }
 
 type ClassifiedRowView struct {

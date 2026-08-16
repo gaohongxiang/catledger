@@ -207,6 +207,8 @@ type personalFinanceBillflowTodoResponse struct {
 	SourceType      string                                      `json:"sourceType,omitempty"`
 	Account         string                                      `json:"account,omitempty"`
 	CategoryId      string                                      `json:"categoryId,omitempty"`
+	OrderId         string                                      `json:"orderId,omitempty"`
+	MerchantOrderId string                                      `json:"merchantOrderId,omitempty"`
 	Version         int64                                       `json:"version"`
 	CreatedUnixTime int64                                       `json:"createdUnixTime"`
 	UpdatedUnixTime int64                                       `json:"updatedUnixTime"`
@@ -214,15 +216,17 @@ type personalFinanceBillflowTodoResponse struct {
 }
 
 type personalFinanceBillflowTodoMatchResponse struct {
-	SourceType string `json:"sourceType"`
-	Account    string `json:"account"`
-	Label      string `json:"label"`
-	Item       string `json:"item,omitempty"`
-	BillType   string `json:"billType,omitempty"`
-	Amount     string `json:"amount"`
-	Currency   string `json:"currency"`
-	UnixTime   *int64 `json:"unixTime,omitempty"`
-	Direction  string `json:"direction"`
+	SourceType      string `json:"sourceType"`
+	Account         string `json:"account"`
+	Label           string `json:"label"`
+	Item            string `json:"item,omitempty"`
+	BillType        string `json:"billType,omitempty"`
+	Amount          string `json:"amount"`
+	Currency        string `json:"currency"`
+	UnixTime        *int64 `json:"unixTime,omitempty"`
+	Direction       string `json:"direction"`
+	OrderId         string `json:"orderId,omitempty"`
+	MerchantOrderId string `json:"merchantOrderId,omitempty"`
 }
 
 type personalFinanceBillflowTodoListResponse struct {
@@ -737,7 +741,7 @@ func newPersonalFinanceBillflowTodoResponse(value *billflow.TodoView) *personalF
 	item := &personalFinanceBillflowTodoResponse{
 		Id: strconv.FormatInt(value.TodoId, 10), TodoKind: value.TodoKind, Status: value.Status, SubjectKind: value.SubjectKind,
 		SubjectId: strconv.FormatInt(value.SubjectId, 10), ReasonCodes: value.ReasonCodes, Label: value.Label, Item: value.Item,
-		BillType: value.BillType, Amount: value.Amount, Currency: value.Currency, UnixTime: value.UnixTime, Direction: value.Direction, SourceType: value.SourceType, Account: value.Account, Version: value.Version,
+		BillType: value.BillType, Amount: value.Amount, Currency: value.Currency, UnixTime: value.UnixTime, Direction: value.Direction, SourceType: value.SourceType, Account: value.Account, OrderId: value.OrderId, MerchantOrderId: value.MerchantOrderId, Version: value.Version,
 		CreatedUnixTime: value.CreatedUnixTime, UpdatedUnixTime: value.UpdatedUnixTime,
 	}
 	if value.CategoryId > 0 {
@@ -750,6 +754,7 @@ func newPersonalFinanceBillflowTodoResponse(value *billflow.TodoView) *personalF
 		item.Matches = append(item.Matches, &personalFinanceBillflowTodoMatchResponse{
 			SourceType: match.SourceType, Account: match.Account, Label: match.Label, Item: match.Item, BillType: match.BillType,
 			Amount: match.Amount, Currency: match.Currency, UnixTime: match.UnixTime, Direction: match.Direction,
+			OrderId: match.OrderId, MerchantOrderId: match.MerchantOrderId,
 		})
 	}
 	return item

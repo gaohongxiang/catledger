@@ -291,48 +291,68 @@
                 </template>
                 <template v-else>
                     <p class="bucket-empty" v-if="!mergeReviewTodos.length">{{ tt('personalFinance.billflow.merge.empty') }}</p>
-                    <article class="todo-compare" :key="todo.id" v-for="todo in mergeReviewTodos">
-                        <div class="todo-compare__body">
-                            <div class="todo-compare__line">
-                                <div class="todo-compare__copy">
-                                    <span class="todo-compare__channel">{{ formatBillChannel(todo.sourceType, todo.account) }}</span>
-                                    <strong>{{ mergeLineTitle(todo) }}</strong>
-                                    <small v-if="mergeLineFacts(todo)">{{ mergeLineFacts(todo) }}</small>
-                                </div>
-                                <div class="todo-compare__money">
-                                    <b v-if="formatMergeAmount(todo)">{{ formatMergeAmount(todo) }}</b>
-                                    <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
-                                </div>
-                            </div>
-                            <div class="todo-compare__line todo-compare__line--peer" :key="todo.id + '-' + index" v-for="(match, index) in todo.matches">
-                                <div class="todo-compare__copy">
-                                    <span class="todo-compare__channel">{{ formatBillChannel(match.sourceType, match.account) }}</span>
-                                    <strong>{{ mergeLineTitle(match) }}</strong>
-                                    <small v-if="mergeLineFacts(match)">{{ mergeLineFacts(match) }}</small>
-                                </div>
-                                <div class="todo-compare__money">
-                                    <b v-if="formatMergeAmount(match)">{{ formatMergeAmount(match) }}</b>
-                                    <em v-if="match.direction">{{ tt(billflowDirectionKey(match.direction)) }}</em>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="todo-compare__toolbar">
-                            <label class="todo-skip" v-if="canSkipTodo(todo)">
-                                <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
-                                {{ tt('personalFinance.billflow.accounts.skipped') }}
-                            </label>
-                            <div class="todo-row__actions" v-if="!isRowSkipped(todo.subjectId)">
-                                <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
-                                    {{ tt('personalFinance.billflow.todos.resolve') }}
-                                </v-btn>
-                                <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
-                                    {{ tt('personalFinance.billflow.todos.dismiss') }}
-                                </v-btn>
-                            </div>
-                        </div>
-                        <p class="todo-compare__note" v-if="!todo.matches.length">{{ tt('personalFinance.billflow.merge.matchesEmpty') }}</p>
-                        <p class="todo-compare__note" v-else-if="todo.matches.length > 1">{{ tt('personalFinance.billflow.merge.matchesMany') }}</p>
-                    </article>
+                    <div class="merge-table-wrap" v-else>
+                        <table class="merge-table">
+                            <thead>
+                                <tr>
+                                    <th>{{ tt('personalFinance.billflow.merge.column.source') }}</th>
+                                    <th>{{ tt('Account') }}</th>
+                                    <th>{{ tt('personalFinance.billflow.merge.column.counterparty') }}</th>
+                                    <th>{{ tt('personalFinance.billflow.merge.column.item') }}</th>
+                                    <th>{{ tt('Category') }}</th>
+                                    <th>{{ tt('Amount') }}</th>
+                                    <th>{{ tt('Time') }}</th>
+                                    <th>{{ tt('Type') }}</th>
+                                    <th>{{ tt('personalFinance.billflow.merge.column.orderId') }}</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody :key="todo.id" v-for="todo in mergeReviewTodos">
+                                <tr>
+                                    <td>{{ formatMergeSource(todo) }}</td>
+                                    <td>{{ todo.account }}</td>
+                                    <td>{{ todo.label }}</td>
+                                    <td>{{ todo.item }}</td>
+                                    <td>{{ todo.billType }}</td>
+                                    <td class="is-num">{{ formatMergeAmount(todo) }}</td>
+                                    <td>{{ formatMergeTime(todo) }}</td>
+                                    <td>{{ todo.direction ? tt(billflowDirectionKey(todo.direction)) : '' }}</td>
+                                    <td class="is-id">{{ mergeOrderId(todo) }}</td>
+                                    <td class="is-actions" :rowspan="mergeGroupRowSpan(todo)">
+                                        <label class="todo-skip" v-if="canSkipTodo(todo)">
+                                            <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
+                                            {{ tt('personalFinance.billflow.accounts.skipped') }}
+                                        </label>
+                                        <div class="todo-row__actions" v-if="!isRowSkipped(todo.subjectId)">
+                                            <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                                                {{ tt('personalFinance.billflow.todos.resolve') }}
+                                            </v-btn>
+                                            <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                                                {{ tt('personalFinance.billflow.todos.dismiss') }}
+                                            </v-btn>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr class="is-peer" :key="todo.id + '-' + index" v-for="(match, index) in todo.matches">
+                                    <td>{{ formatMergeSource(match) }}</td>
+                                    <td>{{ match.account }}</td>
+                                    <td>{{ match.label }}</td>
+                                    <td>{{ match.item }}</td>
+                                    <td>{{ match.billType }}</td>
+                                    <td class="is-num">{{ formatMergeAmount(match) }}</td>
+                                    <td>{{ formatMergeTime(match) }}</td>
+                                    <td>{{ match.direction ? tt(billflowDirectionKey(match.direction)) : '' }}</td>
+                                    <td class="is-id">{{ mergeOrderId(match) }}</td>
+                                </tr>
+                                <tr class="is-note" v-if="!todo.matches.length">
+                                    <td colspan="9">{{ tt('personalFinance.billflow.merge.matchesEmpty') }}</td>
+                                </tr>
+                                <tr class="is-note" v-else-if="todo.matches.length > 1">
+                                    <td colspan="9">{{ tt('personalFinance.billflow.merge.matchesMany') }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </template>
             </template>
             </template>
@@ -1143,6 +1163,8 @@ type MergeLineSource = {
     amount?: string;
     currency?: string;
     unixTime?: number;
+    orderId?: string;
+    merchantOrderId?: string;
     direction?: string;
 };
 
@@ -1150,8 +1172,11 @@ function formatMergeAmount(row: MergeLineSource): string {
     return row.amount ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(row.amount), row.currency || 'CNY') : '';
 }
 
-function mergeLineTitle(row: MergeLineSource): string {
-    return row.label || row.item || '';
+function formatMergeSource(row: MergeLineSource): string {
+    if (row.sourceType === 'alipay' || row.sourceType === 'wechat' || row.sourceType === 'bank') {
+        return tt(getSourceTypeKey(row.sourceType));
+    }
+    return '';
 }
 
 function formatMergeTime(row: MergeLineSource): string {
@@ -1165,14 +1190,12 @@ function formatMergeTime(row: MergeLineSource): string {
     return formatDateTimeToShortDateTime(dateTime);
 }
 
-function mergeLineFacts(row: MergeLineSource): string {
-    const title = mergeLineTitle(row);
-    const channel = formatBillChannel(row.sourceType, row.account);
-    const payment = row.account && row.account !== channel ? row.account : '';
-    return [row.item, row.billType, payment, formatMergeTime(row)]
-        .filter((part): part is string => !!part && part !== title)
-        .filter((part, index, parts) => parts.indexOf(part) === index)
-        .join(' · ');
+function mergeOrderId(row: MergeLineSource): string {
+    return row.merchantOrderId || row.orderId || '';
+}
+
+function mergeGroupRowSpan(todo: BillflowTodo): number {
+    return 1 + todo.matches.length;
 }
 
 function formatBillChannel(sourceType: string | undefined, account: string | undefined): string {
@@ -2154,98 +2177,75 @@ onMounted(reload);
     grid-template-columns: minmax(0, 1fr) auto auto auto;
 }
 
-.todo-compare {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 2px 8px;
-    padding: 8px 0;
+.merge-table-wrap {
+    overflow-x: auto;
+    margin: 0 -4px;
+}
+
+.merge-table {
+    width: 100%;
+    min-width: 920px;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+.merge-table th,
+.merge-table td {
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.merge-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    color: rgba(var(--v-theme-on-surface), 0.55);
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--task-paper);
     border-bottom: 1px solid var(--task-rule);
 }
 
-.todo-compare__body {
-    display: grid;
-    gap: 6px;
-    min-width: 0;
+.merge-table tbody {
+    border-bottom: 1px solid var(--task-rule);
 }
 
-.todo-compare__toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 4px;
-}
-
-.todo-compare__line {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 0 10px;
-}
-
-.todo-compare__line--peer {
-    padding-top: 6px;
-    border-top: 1px dashed var(--task-rule);
-}
-
-.todo-compare__copy {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0 8px;
-    min-width: 0;
-}
-
-.todo-compare__channel {
-    color: rgba(var(--v-theme-on-surface), 0.62);
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.todo-compare__line strong {
-    overflow-wrap: anywhere;
-    white-space: normal;
-    font-size: 0.82rem;
-    line-height: 1.3;
-    font-weight: 600;
-}
-
-.todo-compare__line small {
-    flex: 1 1 100%;
-    overflow-wrap: anywhere;
-    white-space: normal;
-    color: rgba(var(--v-theme-on-surface), 0.55);
-    font-size: 0.72rem;
-    line-height: 1.35;
-}
-
-.todo-compare__money {
-    display: grid;
-    justify-items: end;
-    align-content: start;
-    gap: 0;
-    font-variant-numeric: tabular-nums;
-}
-
-.todo-compare__money b {
-    font-size: 0.92rem;
-    font-weight: 650;
+.merge-table td.is-num {
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
 }
 
-.todo-compare__money em {
+.merge-table td.is-id {
+    max-width: 168px;
+    color: rgba(var(--v-theme-on-surface), 0.62);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.68rem;
+}
+
+.merge-table td.is-actions {
+    white-space: nowrap;
+    text-align: right;
+    vertical-align: middle;
+}
+
+.merge-table td.is-actions .todo-row__actions,
+.merge-table td.is-actions .todo-skip {
+    justify-content: flex-end;
+}
+
+.merge-table tr.is-peer td {
+    color: rgba(var(--v-theme-on-surface), 0.92);
+    background: color-mix(in srgb, rgb(var(--v-theme-primary)) 6%, transparent);
+}
+
+.merge-table tr.is-note td {
     color: rgba(var(--v-theme-on-surface), 0.55);
-    font-size: 0.75rem;
-    font-style: normal;
-}
-
-.todo-compare__note {
-    grid-column: 1 / -1;
-    margin: 0;
-    color: rgba(var(--v-theme-on-surface), 0.58);
     font-size: 0.72rem;
-    line-height: 1.35;
 }
 
 .todo-skip {
@@ -2464,14 +2464,12 @@ onMounted(reload);
 @media (max-width: 640px) {
     .todo-row,
     .todo-row--done,
-    .todo-row--plain,
-    .todo-compare {
+    .todo-row--plain {
         grid-template-columns: minmax(0, 1fr) auto;
     }
 
     .todo-row__actions,
-    .todo-row__select,
-    .todo-compare__toolbar {
+    .todo-row__select {
         grid-column: 1 / -1;
         justify-content: flex-end;
     }

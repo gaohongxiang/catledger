@@ -110,6 +110,8 @@ export interface BillflowTodo {
     readonly sourceType?: BillflowSourceType;
     readonly account?: string;
     readonly categoryId?: string;
+    readonly orderId?: string;
+    readonly merchantOrderId?: string;
     readonly version: number;
     readonly createdUnixTime: number;
     readonly updatedUnixTime: number;
@@ -126,6 +128,8 @@ export interface BillflowTodoMatch {
     readonly currency: string;
     readonly unixTime?: number;
     readonly direction: string;
+    readonly orderId?: string;
+    readonly merchantOrderId?: string;
 }
 
 export interface BillflowClassifiedRow {
