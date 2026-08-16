@@ -82,6 +82,51 @@ func todoPreviewLabel(row *importing.RawImportRow) string {
 	return maskedCategoryAliasDisplay(row.RawItem)
 }
 
+func todoPreviewItem(row *importing.RawImportRow) string {
+	if row == nil {
+		return ""
+	}
+	item := maskedCategoryAliasDisplay(row.RawItem)
+	if item == "" || item == todoPreviewLabel(row) {
+		return ""
+	}
+	orderId := strings.TrimSpace(row.SourceMerchantOrderId)
+	if orderId == "" {
+		orderId = strings.TrimSpace(row.SourceOrderId)
+	}
+	if orderId != "" && itemLooksLikeOrderId(item, orderId) {
+		return ""
+	}
+	return item
+}
+
+func itemLooksLikeOrderId(item, orderId string) bool {
+	compactItem := compactPreviewText(item)
+	compactOrder := compactPreviewText(orderId)
+	if compactItem == "" || compactOrder == "" {
+		return false
+	}
+	if compactItem == compactOrder {
+		return true
+	}
+	for _, prefix := range []string{"商户单号", "商家订单号", "订单号"} {
+		if strings.HasPrefix(item, prefix) && compactPreviewText(strings.TrimPrefix(item, prefix)) == compactOrder {
+			return true
+		}
+	}
+	return false
+}
+
+func compactPreviewText(value string) string {
+	var builder strings.Builder
+	for _, character := range strings.ToLower(strings.TrimSpace(value)) {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			builder.WriteRune(character)
+		}
+	}
+	return builder.String()
+}
+
 func sourceCategoryName(row *importing.RawImportRow, sourceType importing.SourceType) string {
 	if row == nil {
 		return ""

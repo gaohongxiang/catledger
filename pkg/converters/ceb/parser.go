@@ -16,7 +16,7 @@ import (
 
 const (
 	parserName           = "ceb_credit_pdf"
-	parserVersion        = importing.RuleVersion("ceb-credit-pdf-parser-v2")
+	parserVersion        = importing.RuleVersion("ceb-credit-pdf-parser-v3")
 	normalizationVersion = importing.RuleVersion("ceb-credit-pdf-normalization-v1")
 
 	statementTitle      = "中国光大银行信用卡对账单"
@@ -204,10 +204,11 @@ func parseTransactionGroup(rowNumber int64, pageNumber int, lines []extractedLin
 		rawAmount = strings.TrimPrefix(amountLine, depositMarker)
 	}
 	paymentMethod := paymentMethodPrefix + cardLast4
+	descriptionNormalized := normalizeText(description)
 	raw := importing.CanonicalRawEvidence{
 		TransactionTime: tradeDate,
 		Amount:          rawAmount,
-		Item:            description,
+		Counterparty:    description,
 		PaymentMethod:   paymentMethod,
 		Note:            postDate,
 	}
@@ -222,7 +223,7 @@ func parseTransactionGroup(rowNumber int64, pageNumber int, lines []extractedLin
 		Direction:         importing.NORMALIZED_DIRECTION_EXPENSE,
 		TransactionType:   importing.SOURCE_TRANSACTION_TYPE_OTHER,
 		EconomicEffect:    importing.ECONOMIC_EFFECT_NORMAL,
-		Item:              normalizeText(description),
+		Counterparty:      descriptionNormalized,
 		PaymentMethod:     paymentMethod,
 		Note:              postDate,
 	}
@@ -266,8 +267,8 @@ func parseTransactionGroup(rowNumber int64, pageNumber int, lines []extractedLin
 		Identifiers: importing.SourceIdentifiers{},
 		Normalized:  normalized,
 		FingerprintMaterials: importing.StrongFingerprintMaterials{
-			Counterparty:  normalized.Item,
-			Item:          normalized.Item,
+			Counterparty:  descriptionNormalized,
+			Item:          descriptionNormalized,
 			PaymentMethod: normalized.PaymentMethod,
 		},
 		ParseStatus: parseState,

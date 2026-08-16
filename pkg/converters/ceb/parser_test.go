@@ -104,8 +104,11 @@ func TestParseTwoCardsDepositAndStatementPeriod(t *testing.T) {
 		expense.Normalized.Direction != importing.NORMALIZED_DIRECTION_EXPENSE ||
 		expense.Normalized.TransactionType != importing.SOURCE_TRANSACTION_TYPE_OTHER ||
 		expense.Normalized.EconomicEffect != importing.ECONOMIC_EFFECT_NORMAL ||
-		expense.Raw.PaymentMethod != "末四位1234" || expense.Normalized.Item != "测试商户甲" {
-		t.Fatalf("expense row semantics changed: %+v raw=%+v", expense.Normalized, expense.Raw)
+		expense.Raw.PaymentMethod != "末四位1234" || expense.Raw.Item != "" ||
+		expense.Raw.Counterparty != "测试商户甲" || expense.Normalized.Counterparty != "测试商户甲" ||
+		expense.Normalized.Item != "" || expense.FingerprintMaterials.Counterparty != "测试商户甲" ||
+		expense.FingerprintMaterials.Item != "测试商户甲" {
+		t.Fatalf("expense row semantics changed: %+v raw=%+v fingerprint=%+v", expense.Normalized, expense.Raw, expense.FingerprintMaterials)
 	}
 	if thousand.Normalized.Amount == nil || *thousand.Normalized.Amount != 123456 {
 		t.Fatalf("thousands amount was not parsed: %+v", thousand.Normalized)
@@ -160,7 +163,8 @@ func TestParseHonorsCancellationAndKeepsInvalidDateRow(t *testing.T) {
 		t.Fatalf("parse mixed rows: %v", err)
 	}
 	if len(document.Rows) != 2 || document.Rows[0].ParseStatus != importing.PARSE_STATE_INVALID ||
-		document.Rows[1].ParseStatus != importing.PARSE_STATE_VALID || document.Rows[0].Raw.Item != "测试商户甲" {
+		document.Rows[1].ParseStatus != importing.PARSE_STATE_VALID || document.Rows[0].Raw.Counterparty != "测试商户甲" ||
+		document.Rows[0].Raw.Item != "" {
 		t.Fatalf("invalid physical row evidence was lost: %+v", document.Rows)
 	}
 

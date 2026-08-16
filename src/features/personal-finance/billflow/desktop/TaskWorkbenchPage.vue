@@ -298,7 +298,7 @@
                                     <th>{{ tt('personalFinance.billflow.merge.column.source') }}</th>
                                     <th>{{ tt('Account') }}</th>
                                     <th>{{ tt('personalFinance.billflow.merge.column.counterparty') }}</th>
-                                    <th>{{ tt('personalFinance.billflow.merge.column.item') }}</th>
+                                    <th v-if="mergeHasItemColumn">{{ tt('personalFinance.billflow.merge.column.item') }}</th>
                                     <th>{{ tt('Category') }}</th>
                                     <th>{{ tt('Amount') }}</th>
                                     <th>{{ tt('Time') }}</th>
@@ -308,10 +308,10 @@
                             </thead>
                             <tbody class="merge-group" :key="todo.id" v-for="(todo, groupIndex) in mergeReviewTodos">
                                 <tr class="merge-group__gap" v-if="groupIndex > 0">
-                                    <td colspan="9"></td>
+                                    <td :colspan="mergeColumnCount"></td>
                                 </tr>
                                 <tr class="merge-group__bar">
-                                    <td colspan="9">
+                                    <td :colspan="mergeColumnCount">
                                         <div class="merge-group__bar-inner">
                                             <span>{{ tt('personalFinance.billflow.merge.groupRows', { count: mergeGroupRows(todo).length }) }}</span>
                                             <div class="merge-group__actions">
@@ -335,7 +335,7 @@
                                     <td>{{ formatMergeSource(row) }}</td>
                                     <td>{{ row.account }}</td>
                                     <td>{{ row.label }}</td>
-                                    <td>{{ row.item }}</td>
+                                    <td v-if="mergeHasItemColumn">{{ row.item }}</td>
                                     <td>{{ row.billType }}</td>
                                     <td class="is-num">{{ formatMergeAmount(row) }}</td>
                                     <td>{{ formatMergeTime(row) }}</td>
@@ -343,10 +343,10 @@
                                     <td class="is-id">{{ mergeOrderId(row) }}</td>
                                 </tr>
                                 <tr class="merge-group__note" v-if="!todo.matches.length">
-                                    <td colspan="9">{{ tt('personalFinance.billflow.merge.matchesEmpty') }}</td>
+                                    <td :colspan="mergeColumnCount">{{ tt('personalFinance.billflow.merge.matchesEmpty') }}</td>
                                 </tr>
                                 <tr class="merge-group__note" v-else-if="todo.matches.length > 1">
-                                    <td colspan="9">{{ tt('personalFinance.billflow.merge.matchesMany') }}</td>
+                                    <td :colspan="mergeColumnCount">{{ tt('personalFinance.billflow.merge.matchesMany') }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -710,6 +710,8 @@ const mergeReviewTodos = computed(() => [
     ...mergeTodos(openTodos.value),
     ...mergeTodos(dismissedTodos.value).filter(todo => isRowSkipped(todo.subjectId))
 ]);
+const mergeHasItemColumn = computed(() => mergeReviewTodos.value.some(todo => mergeGroupRows(todo).some(row => !!row.item)));
+const mergeColumnCount = computed(() => mergeHasItemColumn.value ? 9 : 8);
 const mergedReviewTodos = computed(() => mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]).filter(todo => !isRowSkipped(todo.subjectId)));
 const otherReviewTodos = computed(() => otherTodos(openTodos.value));
 const skippedOrphanRows = computed(() => {

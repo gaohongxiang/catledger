@@ -238,6 +238,8 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('formatMergeSource');
         expect(workbench).toContain('formatMergeTime');
         expect(workbench).toContain('mergeGroupRows');
+        expect(workbench).toContain('mergeHasItemColumn');
+        expect(workbench).toContain('mergeColumnCount');
         expect(workbench).toContain('merge-group');
         expect(workbench).toContain('merge-table');
         expect(workbench).not.toContain('todo-compare__line');

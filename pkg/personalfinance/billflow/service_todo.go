@@ -282,7 +282,7 @@ func attachTodoPreview(view *TodoView, row *importing.RawImportRow) {
 		return
 	}
 	view.Label = todoPreviewLabel(row)
-	view.Item = maskedCategoryAliasDisplay(row.RawItem)
+	view.Item = todoPreviewItem(row)
 	view.BillType = maskedCategoryAliasDisplay(row.RawTransactionType)
 	view.OrderId = strings.TrimSpace(row.SourceOrderId)
 	view.MerchantOrderId = strings.TrimSpace(row.SourceMerchantOrderId)
@@ -429,7 +429,7 @@ func (s *Service) todoMatchView(c core.Context, uid int64, evidence *reconciliat
 		row, err := s.evidence.FindRawImportRowById(c, uid, evidence.RowId)
 		if err == nil && row != nil {
 			view.Label = todoPreviewLabel(row)
-			view.Item = maskedCategoryAliasDisplay(row.RawItem)
+			view.Item = todoPreviewItem(row)
 			view.BillType = maskedCategoryAliasDisplay(row.RawTransactionType)
 			view.Account = importing.QualifiedPaymentAccountDisplayName(evidence.SourceType, row.RawPaymentMethod)
 			view.OrderId = strings.TrimSpace(row.SourceOrderId)
