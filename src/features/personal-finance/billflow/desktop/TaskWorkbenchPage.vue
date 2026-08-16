@@ -231,18 +231,17 @@
                 <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in mergeReviewTodos">
                     <div class="todo-row__copy">
                         <strong>{{ todoTitle(todo) }}</strong>
-                        <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
-                        <small>{{ tt(todoKindKey(todo.todoKind)) }}</small>
+                        <small v-if="todoMeta(todo)">{{ todoMeta(todo) }}</small>
                     </div>
                     <div class="todo-row__facts">
                         <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
                         <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
                     </div>
                     <div class="todo-row__actions">
-                        <v-btn size="x-small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                        <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
                             {{ tt('personalFinance.billflow.todos.resolve') }}
                         </v-btn>
-                        <v-btn size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                        <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
                             {{ tt('personalFinance.billflow.todos.dismiss') }}
                         </v-btn>
                     </div>
@@ -280,7 +279,7 @@
                         <b v-if="formatClassifiedAmount(row)">{{ formatClassifiedAmount(row) }}</b>
                         <span>{{ classifiedCategoryLabel(row) }}</span>
                     </div>
-                    <v-btn v-if="row.todoId && row.version" size="x-small" variant="text" :loading="busy" @click="restoreClassifiedRow(row)">
+                    <v-btn v-if="row.todoId && row.version" density="compact" size="x-small" variant="text" :loading="busy" @click="restoreClassifiedRow(row)">
                         {{ tt('personalFinance.billflow.todos.restore') }}
                     </v-btn>
                 </article>
@@ -320,7 +319,6 @@
                     <div class="todo-row__copy">
                         <strong>{{ todoTitle(todo) }}</strong>
                         <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
-                        <small v-if="!canAssignBillflowCategory(todo.todoKind)">{{ tt(todoKindKey(todo.todoKind)) }}</small>
                     </div>
                     <div class="todo-row__facts">
                         <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
@@ -342,9 +340,10 @@
                     />
                     <div class="todo-row__actions">
                         <v-btn
+                            density="compact"
                             size="x-small"
                             color="primary"
-                            variant="flat"
+                            variant="text"
                             :loading="busy"
                             :disabled="!categoryDrafts[todo.id]"
                             v-if="canAssignBillflowCategory(todo.todoKind)"
@@ -352,10 +351,10 @@
                         >
                             {{ tt('personalFinance.billflow.todos.saveCategory') }}
                         </v-btn>
-                        <v-btn size="x-small" color="primary" variant="flat" :loading="busy" v-else @click="resolveTodo(todo, 'resolved')">
+                        <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" v-else @click="resolveTodo(todo, 'resolved')">
                             {{ tt('personalFinance.billflow.todos.resolve') }}
                         </v-btn>
-                        <v-btn size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                        <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
                             {{ tt('personalFinance.billflow.todos.dismiss') }}
                         </v-btn>
                     </div>
@@ -365,28 +364,27 @@
 
         <section class="work-section" v-if="currentStep === 'others' && task">
             <p class="confirm-hint">{{ tt('personalFinance.billflow.othersHint') }}</p>
-            <div class="section-copy mt-4">
+            <div class="section-copy">
                 <strong>{{ tt('personalFinance.billflow.todos.othersTitle') }}</strong>
                 <span v-if="!otherReviewTodos.length">{{ tt('personalFinance.billflow.todos.othersEmpty') }}</span>
             </div>
             <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in otherReviewTodos">
                 <div class="todo-row__copy">
                     <strong>{{ todoTitle(todo) }}</strong>
-                    <small v-if="todoSubtitle(todo)">{{ todoSubtitle(todo) }}</small>
-                    <small v-if="!isInstallmentTodo(todo.todoKind)">{{ tt(todoKindKey(todo.todoKind)) }}</small>
+                    <small v-if="todoMeta(todo)">{{ todoMeta(todo) }}</small>
                 </div>
                 <div class="todo-row__facts">
                     <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
                     <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
                 </div>
                 <div class="todo-row__actions">
-                    <v-btn size="x-small" variant="text" :loading="busy" v-if="isInstallmentTodo(todo.todoKind)" @click="confirmInstallment(todo)">
+                    <v-btn density="compact" size="x-small" variant="text" :loading="busy" v-if="isInstallmentTodo(todo.todoKind)" @click="confirmInstallment(todo)">
                         {{ tt('personalFinance.billflow.todos.installment') }}
                     </v-btn>
-                    <v-btn size="x-small" color="primary" variant="flat" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                    <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
                         {{ tt('personalFinance.billflow.todos.resolve') }}
                     </v-btn>
-                    <v-btn size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                    <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
                         {{ tt('personalFinance.billflow.todos.dismiss') }}
                     </v-btn>
                 </div>
@@ -882,6 +880,13 @@ function todoSubtitle(todo: BillflowTodo): string {
     const title = todoTitle(todo);
     return [todo.item, todo.billType, formatTodoTime(todo)]
         .filter((part): part is string => !!part && part !== title)
+        .filter((part, index, parts) => parts.indexOf(part) === index)
+        .join(' · ');
+}
+
+function todoMeta(todo: BillflowTodo): string {
+    return [todoSubtitle(todo), tt(todoKindKey(todo.todoKind))]
+        .filter((part): part is string => !!part)
         .filter((part, index, parts) => parts.indexOf(part) === index)
         .join(' · ');
 }
@@ -1570,7 +1575,7 @@ onMounted(reload);
 .files-panel,
 .work-section,
 .next-bar {
-    padding: 20px 22px;
+    padding: 10px 16px;
 }
 
 .task-toolbar {
@@ -1597,7 +1602,7 @@ onMounted(reload);
 
 .step-rail {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 1px;
     border-top: 1px solid var(--task-rule);
     background: var(--task-rule);
@@ -1607,13 +1612,13 @@ onMounted(reload);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    min-height: 52px;
-    padding: 10px 6px;
+    gap: 5px;
+    min-height: 34px;
+    padding: 4px 4px;
     border: 0;
     background: var(--task-paper);
     color: rgba(var(--v-theme-on-surface), 0.55);
-    font-size: 0.76rem;
+    font-size: 0.72rem;
     cursor: pointer;
 }
 
@@ -1621,11 +1626,11 @@ onMounted(reload);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     border-radius: 999px;
     background: rgba(var(--v-theme-on-surface), 0.08);
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 700;
 }
 
@@ -1690,10 +1695,10 @@ onMounted(reload);
 }
 
 .confirm-hint {
-    margin: 14px 0 0;
+    margin: 0 0 8px;
     color: rgba(var(--v-theme-on-surface), 0.62);
-    font-size: 0.86rem;
-    line-height: 1.5;
+    font-size: 0.78rem;
+    line-height: 1.4;
 }
 
 .summary-card {
@@ -1737,8 +1742,8 @@ onMounted(reload);
 
 .bucket-bar {
     display: grid;
-    gap: 10px;
-    margin-bottom: 16px;
+    gap: 6px;
+    margin-bottom: 8px;
 }
 
 .bucket-bar p,
@@ -1863,22 +1868,23 @@ onMounted(reload);
 
 .todo-toolbar__select,
 .todo-row__select {
-    min-width: 132px;
-    max-width: 180px;
+    min-width: 120px;
+    max-width: 168px;
 }
 
 .todo-row {
     display: grid;
-    grid-template-columns: 28px minmax(0, 1.4fr) auto minmax(132px, 180px) auto;
+    grid-template-columns: 22px minmax(0, 1fr) auto minmax(120px, 168px) auto;
     align-items: center;
-    gap: 6px 8px;
-    padding: 6px 4px;
+    gap: 4px 8px;
+    min-height: 32px;
+    padding: 3px 0;
     border-bottom: 1px solid var(--task-rule);
 }
 
 .todo-row--done,
 .todo-row--plain {
-    grid-template-columns: minmax(0, 1.4fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .todo-row__check {
@@ -1886,39 +1892,55 @@ onMounted(reload);
 }
 
 .todo-row__copy {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 8px;
     min-width: 0;
 }
 
 .todo-row__copy strong,
 .todo-row__facts b {
-    overflow-wrap: anywhere;
-    font-size: 0.88rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
     line-height: 1.25;
+    font-weight: 600;
 }
 
 .todo-row__copy small,
 .todo-row__facts em,
 .todo-row__facts span {
-    display: block;
-    color: rgba(var(--v-theme-on-surface), 0.55);
-    font-size: 0.72rem;
+    color: rgba(var(--v-theme-on-surface), 0.52);
+    font-size: 0.7rem;
     font-style: normal;
+    white-space: nowrap;
 }
 
 .todo-row__facts {
-    display: grid;
-    justify-items: end;
-    gap: 1px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 
 .todo-row__actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-end;
-    gap: 2px;
+    gap: 0;
+}
+
+.todo-row__actions :deep(.v-btn) {
+    min-width: 0;
+    min-height: 22px;
+    height: 22px;
+    padding: 0 6px;
+    margin: 0;
+    font-size: 0.72rem;
 }
 
 .account-card__head,
@@ -2013,13 +2035,10 @@ onMounted(reload);
     }
 
     .step-rail {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
-    .account-row-card__main,
-    .todo-row,
-    .todo-row--done,
-    .todo-row--plain {
+    .account-row-card__main {
         grid-template-columns: 1fr;
     }
 
@@ -2027,6 +2046,20 @@ onMounted(reload);
     .next-bar {
         align-items: flex-start;
         flex-direction: column;
+    }
+}
+
+@media (max-width: 640px) {
+    .todo-row,
+    .todo-row--done,
+    .todo-row--plain {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .todo-row__actions,
+    .todo-row__select {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
     }
 }
 </style>

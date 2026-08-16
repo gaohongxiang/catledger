@@ -239,6 +239,7 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('chunkBillflowItems');
         expect(workbench).toContain('todoTitle(todo)');
         expect(workbench).toContain('todoSubtitle(todo)');
+        expect(workbench).toContain('todoMeta(todo)');
         expect(workbench).toContain('formatTodoAmount(todo)');
         expect(workbench).toContain('newBalanceAccounts');
         expect(workbench).toContain('personalFinance.billflow.balance.amount');
