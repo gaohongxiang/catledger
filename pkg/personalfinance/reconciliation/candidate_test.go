@@ -176,6 +176,33 @@ func TestCrossSourceComparisonMatchRequiresTextAndCard(t *testing.T) {
 	}
 }
 
+func TestEvidenceTextSimilarStripsPaymentChannelAndIgnoresOrderItem(t *testing.T) {
+	baseTime := int64(1_720_000_000)
+	firstIdentity := int64(601)
+	secondIdentity := int64(602)
+	bank := candidateTestRow(1, 61, 611, &firstIdentity, importing.IDENTITY_STATE_NEW, 11970, "CNY", baseTime)
+	bank.RawPaymentMethod = "末四位2690"
+	bank.RawCounterparty = "支付宝 拼多多平台商户"
+	bank.RawItem = ""
+	detail := candidateTestRow(1, 62, 622, &secondIdentity, importing.IDENTITY_STATE_NEW, 11970, "CNY", baseTime)
+	detail.RawPaymentMethod = "光大银行信用卡(2690)"
+	detail.RawCounterparty = "拼多多平台商户"
+	detail.RawItem = "商户单号XP2426071515101977652240001287"
+	detail.SourceMerchantOrderId = "XP2426071515101977652240001287"
+
+	if !evidenceTextSimilar(bank, detail) {
+		t.Fatal("bank channel prefix and merchant should still match alipay counterparty")
+	}
+	if !CrossSourceComparisonMatch(bank, detail, candidateTimeWindowSeconds) {
+		t.Fatal("pinduoduo bank/alipay pair should auto-compare")
+	}
+
+	detail.RawItem = "收纳盒套装"
+	if !evidenceTextSimilar(bank, detail) {
+		t.Fatalf("distinct item should not block counterparty containment: bank=%q alipay=%q", comparableEvidenceText(bank), comparableEvidenceText(detail))
+	}
+}
+
 func sortCandidateMemberTokens(tokens []candidateMemberToken) {
 	sort.Slice(tokens, func(i, j int) bool {
 		return candidateMemberTokenLess(tokens[i], tokens[j])

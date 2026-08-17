@@ -322,6 +322,145 @@ func TestServiceAutoPostCrossSourceAndUndoGuard(t *testing.T) {
 	}
 }
 
+func TestServicePairsEvenCrossSourceAndLeavesOddOne(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
+		ready := testTask(uid, 1, 10)
+		ready.Status = billflow.TASK_STATUS_READY
+		return tx.InsertTask(ready)
+	}); err != nil {
+		t.Fatalf("insert prior ready task: %v", err)
+	}
+
+	accountId := int64(61)
+	location := time.FixedZone("cst", 8*3600)
+	offset := int16(480)
+	afternoon := time.Date(2026, 7, 15, 15, 53, 0, 0, location).Unix()
+	midnight := time.Date(2026, 7, 15, 0, 0, 0, 0, location).Unix()
+	amount := int64(11970)
+
+	alipayA := postableRow(uid, 401, 801, 201, accountId, "日用百货")
+	alipayB := postableRow(uid, 401, 803, 203, accountId, "日用百货")
+	bankA := postableRow(uid, 402, 802, 202, accountId, "网上支付")
+	bankB := postableRow(uid, 402, 804, 204, accountId, "网上支付")
+	for _, row := range []*importing.RawImportRow{alipayA, alipayB, bankA, bankB} {
+		row.NormalizedAmount = &amount
+		row.NormalizedTimezoneUtcOffset = &offset
+		row.Currency = "CNY"
+	}
+	alipayA.RawCounterparty, alipayA.RawPaymentMethod, alipayA.NormalizedUnixTime = "拼多多平台商户", "光大银行信用卡(2690)", &afternoon
+	alipayB.RawCounterparty, alipayB.RawPaymentMethod, alipayB.NormalizedUnixTime = "拼多多平台商户", "光大银行信用卡(2690)", &afternoon
+	bankA.RawCounterparty, bankA.RawPaymentMethod, bankA.NormalizedUnixTime = "支付宝 拼多多平台商户", "末四位2690", &midnight
+	bankB.RawCounterparty, bankB.RawPaymentMethod, bankB.NormalizedUnixTime = "支付宝 拼多多平台商户", "末四位2690", &midnight
+
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{alipayA, alipayB})
+	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{bankA, bankB})
+	evidence.batchById[402].SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+		402: {mappedGroup(accountId, 802)},
+	}}
+	reconciler := &fakeReconciler{details: []*reconciliation.CaseDetail{
+		sameEventCase(11, 801, 802),
+		sameEventCase(12, 801, 804),
+		sameEventCase(13, 803, 802),
+		sameEventCase(14, 803, 804),
+	}}
+	var nextId int64 = 7100
+	service, err := billflow.NewService(repository, evidence, payments, &fakePoster{}, reconciler, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{
+		{CategoryId: 51, Name: "日用百货"},
+	}}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301, 302}, IdempotencyKey: "create-task-pair-even"})
+	if err != nil {
+		t.Fatalf("create even-pair task: %v", err)
+	}
+	if _, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-pair-even"}, time.UTC); err != nil {
+		t.Fatalf("run even-pair task: %v", err)
+	}
+	if len(reconciler.decided) != 2 {
+		t.Fatalf("even same-amount pairs were not 1:1 auto decided: %+v", reconciler.decided)
+	}
+	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || hasTodoKind(todos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("even pairs should not stay as merge todos: %+v err=%v", todos, err)
+	}
+
+	oddRepo, _ := newSQLiteBillflowRepository(t)
+	if err := oddRepo.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
+		ready := testTask(uid, 1, 10)
+		ready.Status = billflow.TASK_STATUS_READY
+		return tx.InsertTask(ready)
+	}); err != nil {
+		t.Fatalf("insert odd prior ready task: %v", err)
+	}
+	oddAlipay := postableRow(uid, 401, 801, 201, accountId, "日用百货")
+	oddBankA := postableRow(uid, 402, 802, 202, accountId, "网上支付")
+	oddBankB := postableRow(uid, 402, 804, 204, accountId, "网上支付")
+	for _, row := range []*importing.RawImportRow{oddAlipay, oddBankA, oddBankB} {
+		row.NormalizedAmount = &amount
+		row.NormalizedTimezoneUtcOffset = &offset
+		row.Currency = "CNY"
+		row.RawPaymentMethod = "光大银行信用卡(2690)"
+		row.NormalizedUnixTime = &afternoon
+	}
+	oddAlipay.RawCounterparty = "拼多多平台商户"
+	oddBankA.RawCounterparty, oddBankA.RawPaymentMethod, oddBankA.NormalizedUnixTime = "支付宝 拼多多平台商户", "末四位2690", &midnight
+	oddBankB.RawCounterparty, oddBankB.RawPaymentMethod, oddBankB.NormalizedUnixTime = "支付宝 拼多多平台商户", "末四位2690", &midnight
+	oddEvidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{oddAlipay})
+	oddEvidence.addFile(uid, 302, 402, []*importing.RawImportRow{oddBankA, oddBankB})
+	oddEvidence.batchById[402].SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	oddReconciler := &fakeReconciler{details: []*reconciliation.CaseDetail{
+		sameEventCase(21, 801, 802),
+		sameEventCase(22, 801, 804),
+	}}
+	oddService, err := billflow.NewService(oddRepo, oddEvidence, &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+		402: {mappedGroup(accountId, 802)},
+	}}, &fakePoster{}, oddReconciler, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{
+		{CategoryId: 51, Name: "日用百货"},
+	}}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create odd-pair service: %v", err)
+	}
+	oddCreated, err := oddService.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301, 302}, IdempotencyKey: "create-task-pair-odd"})
+	if err != nil {
+		t.Fatalf("create odd-pair task: %v", err)
+	}
+	if _, err := oddService.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: oddCreated.TaskId, ExpectedVersion: oddCreated.Version, IdempotencyKey: "run-task-pair-odd"}, time.UTC); err != nil {
+		t.Fatalf("run odd-pair task: %v", err)
+	}
+	if len(oddReconciler.decided) != 1 {
+		t.Fatalf("odd leftover should keep one auto pair: %+v", oddReconciler.decided)
+	}
+	oddTodos, err := oddService.ListTodos(nil, uid, oddCreated.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || !hasTodoKind(oddTodos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("unpaired odd row should ask the user: %+v err=%v", oddTodos, err)
+	}
+}
+
+func sameEventCase(caseId, left, right int64) *reconciliation.CaseDetail {
+	return &reconciliation.CaseDetail{
+		CaseSummary: &reconciliation.CaseSummary{
+			CaseId: caseId, Status: reconciliation.CASE_STATUS_OPEN, Version: 1,
+			SuggestedRelationType: reconciliation.DECISION_TYPE_SAME_EVENT,
+		},
+		Members: []*reconciliation.CaseMemberDetail{
+			{Evidence: []*reconciliation.CaseEvidenceSummary{{RowId: left}}},
+			{Evidence: []*reconciliation.CaseEvidenceSummary{{RowId: right}}},
+		},
+	}
+}
+
 func TestServiceCreateAccountAndAmbiguousCrossSource(t *testing.T) {
 	repository, _ := newSQLiteBillflowRepository(t)
 	uid := int64(1001)
@@ -810,29 +949,56 @@ func (f *fakePoster) PostImportBatch(_ core.Context, request importing.PostImpor
 
 type fakeReconciler struct {
 	detail  *reconciliation.CaseDetail
+	details []*reconciliation.CaseDetail
 	decided []reconciliation.DecideCaseRequest
 }
 
+func (f *fakeReconciler) allDetails() []*reconciliation.CaseDetail {
+	if f == nil {
+		return nil
+	}
+	if len(f.details) > 0 {
+		return f.details
+	}
+	if f.detail != nil {
+		return []*reconciliation.CaseDetail{f.detail}
+	}
+	return nil
+}
+
 func (f *fakeReconciler) GenerateCandidates(_ core.Context, _ reconciliation.GenerateCandidatesRequest) (*reconciliation.GenerateCandidatesResult, error) {
-	if f.detail == nil {
+	details := f.allDetails()
+	if len(details) == 0 {
 		return &reconciliation.GenerateCandidatesResult{}, nil
 	}
-	return &reconciliation.GenerateCandidatesResult{Cases: []*reconciliation.Case{{CaseId: f.detail.CaseId}}}, nil
+	cases := make([]*reconciliation.Case, 0, len(details))
+	for _, detail := range details {
+		if detail != nil {
+			cases = append(cases, &reconciliation.Case{CaseId: detail.CaseId})
+		}
+	}
+	return &reconciliation.GenerateCandidatesResult{Cases: cases}, nil
 }
 func (f *fakeReconciler) GetCase(_ core.Context, _ int64, caseId int64) (*reconciliation.CaseDetail, error) {
-	if f.detail == nil || f.detail.CaseId != caseId {
-		return nil, nil
+	for _, detail := range f.allDetails() {
+		if detail != nil && detail.CaseId == caseId {
+			return detail, nil
+		}
 	}
-	return f.detail, nil
+	return nil, nil
 }
 func (f *fakeReconciler) ListCases(_ core.Context, request reconciliation.ListCasesRequest) (*reconciliation.CasePage, error) {
-	if f.detail == nil || f.detail.CaseSummary == nil {
-		return &reconciliation.CasePage{}, nil
+	items := []*reconciliation.CaseSummary{}
+	for _, detail := range f.allDetails() {
+		if detail == nil || detail.CaseSummary == nil {
+			continue
+		}
+		if request.Status != "" && detail.Status != request.Status {
+			continue
+		}
+		items = append(items, detail.CaseSummary)
 	}
-	if request.Status != "" && f.detail.Status != request.Status {
-		return &reconciliation.CasePage{}, nil
-	}
-	return &reconciliation.CasePage{Items: []*reconciliation.CaseSummary{f.detail.CaseSummary}}, nil
+	return &reconciliation.CasePage{Items: items}, nil
 }
 func (f *fakeReconciler) DecideCase(_ core.Context, request reconciliation.DecideCaseRequest, _ *time.Location) (*reconciliation.DecisionResult, error) {
 	f.decided = append(f.decided, request)

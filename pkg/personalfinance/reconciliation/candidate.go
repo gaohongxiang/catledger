@@ -633,14 +633,71 @@ func rowHasDateOnlyTime(row *importing.RawImportRow) bool {
 }
 
 func evidenceTextSimilar(first *importing.RawImportRow, second *importing.RawImportRow) bool {
-	firstText := normalizedEvidenceText(first.RawCounterparty + " " + first.RawItem)
-	secondText := normalizedEvidenceText(second.RawCounterparty + " " + second.RawItem)
+	firstText := comparableEvidenceText(first)
+	secondText := comparableEvidenceText(second)
 
 	if len([]rune(firstText)) < 3 || len([]rune(secondText)) < 3 {
 		return false
 	}
 
 	return firstText == secondText || strings.Contains(firstText, secondText) || strings.Contains(secondText, firstText)
+}
+
+func comparableEvidenceText(row *importing.RawImportRow) string {
+	if row == nil {
+		return ""
+	}
+	counterparty := strings.TrimSpace(row.RawCounterparty)
+	item := strings.TrimSpace(row.RawItem)
+	text := counterparty
+	if item != "" && item != counterparty && !evidenceItemLooksLikeOrderId(row, item) {
+		if text == "" {
+			text = item
+		} else {
+			text += " " + item
+		}
+	}
+	normalized := normalizedEvidenceText(text)
+	if stripped := stripPaymentChannelPrefix(normalized); stripped != "" {
+		return stripped
+	}
+	return normalized
+}
+
+func evidenceItemLooksLikeOrderId(row *importing.RawImportRow, item string) bool {
+	compactItem := normalizedEvidenceText(item)
+	if compactItem == "" {
+		return false
+	}
+	for _, identifier := range []string{row.SourceMerchantOrderId, row.SourceOrderId, row.SourceTransactionId} {
+		compactId := normalizedEvidenceText(identifier)
+		if compactId == "" {
+			continue
+		}
+		if compactItem == compactId {
+			return true
+		}
+		for _, prefix := range []string{"商户单号", "商家订单号", "订单号"} {
+			if strings.HasPrefix(item, prefix) && normalizedEvidenceText(strings.TrimPrefix(item, prefix)) == compactId {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func stripPaymentChannelPrefix(normalized string) string {
+	for _, prefix := range []string{"微信支付", "支付宝", "财付通", "微信"} {
+		prefixText := normalizedEvidenceText(prefix)
+		if prefixText == "" || !strings.HasPrefix(normalized, prefixText) {
+			continue
+		}
+		remainder := strings.TrimPrefix(normalized, prefixText)
+		if len([]rune(remainder)) >= 3 {
+			return remainder
+		}
+	}
+	return normalized
 }
 
 func normalizedEvidenceText(value string) string {

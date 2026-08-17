@@ -1,6 +1,7 @@
 package billflow
 
 import (
+	"sort"
 	"strconv"
 	"time"
 
@@ -341,74 +342,108 @@ func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchId
 			cases = append(cases, detail)
 		}
 	}
-	rowCases := map[int64][]*reconciliation.CaseDetail{}
+	paired := map[int64]bool{}
+	pairs := make([]sameEventPair, 0, len(cases))
 	for _, detail := range cases {
-		for _, member := range detail.Members {
-			if member == nil {
-				continue
-			}
-			for _, evidence := range member.Evidence {
-				if evidence != nil {
-					rowCases[evidence.RowId] = append(rowCases[evidence.RowId], detail)
-				}
-			}
-		}
-	}
-	for _, detail := range cases {
+		markCaseRows(ambiguous, detail)
 		if detail.SuggestedRelationType != reconciliation.DECISION_TYPE_SAME_EVENT || detail.Status != reconciliation.CASE_STATUS_OPEN {
-			for _, member := range detail.Members {
-				for _, evidence := range member.Evidence {
-					if evidence != nil {
-						ambiguous[evidence.RowId] = true
-					}
-				}
-			}
 			continue
 		}
 		if !s.highConfidenceSameEvent(detail, rowIndex) {
-			for _, member := range detail.Members {
-				for _, evidence := range member.Evidence {
-					if evidence != nil {
-						ambiguous[evidence.RowId] = true
-					}
-				}
-			}
 			continue
 		}
-		unique := true
-		for _, member := range detail.Members {
-			for _, evidence := range member.Evidence {
-				if evidence != nil && len(rowCases[evidence.RowId]) != 1 {
-					unique = false
-				}
-			}
+		ids := caseEvidenceRowIDs(detail)
+		if len(ids) != 2 {
+			continue
 		}
-		if !unique {
-			for _, member := range detail.Members {
-				for _, evidence := range member.Evidence {
-					if evidence != nil {
-						ambiguous[evidence.RowId] = true
-					}
-				}
-			}
+		pairs = append(pairs, sameEventPair{
+			detail: detail,
+			left:   ids[0],
+			right:  ids[1],
+			delta:  pairTimeDistance(rowIndex[ids[0]], rowIndex[ids[1]]),
+		})
+	}
+	sort.SliceStable(pairs, func(i, j int) bool {
+		if pairs[i].delta != pairs[j].delta {
+			return pairs[i].delta < pairs[j].delta
+		}
+		return pairs[i].detail.CaseId < pairs[j].detail.CaseId
+	})
+	for _, pair := range pairs {
+		if paired[pair.left] || paired[pair.right] {
 			continue
 		}
 		if _, err := s.reconciler.DecideCase(c, reconciliation.DecideCaseRequest{
-			Uid: uid, CaseId: detail.CaseId, ExpectedCaseVersion: detail.Version,
+			Uid: uid, CaseId: pair.detail.CaseId, ExpectedCaseVersion: pair.detail.Version,
 			DecisionType:   reconciliation.DECISION_TYPE_SAME_EVENT,
-			IdempotencyKey: "billflow-recon-" + strconv.FormatInt(taskId, 10) + "-" + strconv.FormatInt(detail.CaseId, 10),
+			IdempotencyKey: "billflow-recon-" + strconv.FormatInt(taskId, 10) + "-" + strconv.FormatInt(pair.detail.CaseId, 10),
 			CreatedIp:      createdIp,
 		}, time.UTC); err != nil {
-			for _, member := range detail.Members {
-				for _, evidence := range member.Evidence {
-					if evidence != nil {
-						ambiguous[evidence.RowId] = true
-					}
-				}
+			continue
+		}
+		paired[pair.left] = true
+		paired[pair.right] = true
+		delete(ambiguous, pair.left)
+		delete(ambiguous, pair.right)
+	}
+	return ambiguous, nil
+}
+
+type sameEventPair struct {
+	detail      *reconciliation.CaseDetail
+	left, right int64
+	delta       int64
+}
+
+func markCaseRows(ambiguous map[int64]bool, detail *reconciliation.CaseDetail) {
+	if detail == nil {
+		return
+	}
+	for _, member := range detail.Members {
+		if member == nil {
+			continue
+		}
+		for _, evidence := range member.Evidence {
+			if evidence != nil && evidence.RowId > 0 {
+				ambiguous[evidence.RowId] = true
 			}
 		}
 	}
-	return ambiguous, nil
+}
+
+func caseEvidenceRowIDs(detail *reconciliation.CaseDetail) []int64 {
+	if detail == nil {
+		return nil
+	}
+	seen := map[int64]struct{}{}
+	ids := make([]int64, 0, 2)
+	for _, member := range detail.Members {
+		if member == nil {
+			continue
+		}
+		for _, evidence := range member.Evidence {
+			if evidence == nil || evidence.RowId < 1 {
+				continue
+			}
+			if _, exists := seen[evidence.RowId]; exists {
+				continue
+			}
+			seen[evidence.RowId] = struct{}{}
+			ids = append(ids, evidence.RowId)
+		}
+	}
+	return ids
+}
+
+func pairTimeDistance(left *importing.RawImportRow, right *importing.RawImportRow) int64 {
+	if left == nil || right == nil || left.NormalizedUnixTime == nil || right.NormalizedUnixTime == nil {
+		return 1 << 62
+	}
+	delta := *left.NormalizedUnixTime - *right.NormalizedUnixTime
+	if delta < 0 {
+		return -delta
+	}
+	return delta
 }
 
 func (s *Service) highConfidenceSameEvent(detail *reconciliation.CaseDetail, rows map[int64]*importing.RawImportRow) bool {
