@@ -159,6 +159,10 @@ export function canAutoRunAfterAccounts(status: BillflowTaskStatus, needsCreateC
     return needsCreateCount < 1 && (status === 'accounts_pending' || status === 'receiving');
 }
 
+export function canReapplyOrganize(status: BillflowTaskStatus, needsCreateCount: number): boolean {
+    return needsCreateCount < 1 && (status === 'receiving' || status === 'awaiting_confirm' || status === 'ready');
+}
+
 export function rememberCreatedLedgerIds(
     previousReusedIds: readonly string[],
     nextReused: readonly Pick<BillflowAccountGroup, 'ledgerAccountId'>[],

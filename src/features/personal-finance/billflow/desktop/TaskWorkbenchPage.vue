@@ -587,6 +587,7 @@ import {
     billflowDirectionKey,
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
+    canReapplyOrganize,
     canAssignBillflowCategory,
     canOpenBillflowWorkbenchStep,
     chunkBillflowItems,
@@ -656,6 +657,7 @@ const createdLedgerIds = ref<string[]>([]);
 const answeredLedgerIds = ref<string[]>([]);
 const balanceDrafts = reactive<Record<string, number>>({});
 const userStep = ref<BillflowWorkbenchStep>();
+const matchingReappliedFor = ref('');
 const accountBucket = ref<BillflowAccountBucket>('pending');
 const userPickedBucket = ref(false);
 const categoryBucket = ref<BillflowCategoryBucket>('pending');
@@ -1629,6 +1631,20 @@ async function runTask(): Promise<void> {
         busy.value = false;
     }
 }
+
+watch([currentStep, loading, () => task.value?.id, () => task.value?.status, () => accounts.value?.needsCreate.length ?? 0], async () => {
+    if (loading.value || busy.value || currentStep.value !== 'review' || !task.value) {
+        return;
+    }
+    if (!canReapplyOrganize(task.value.status, accounts.value?.needsCreate.length ?? 0)) {
+        return;
+    }
+    if (matchingReappliedFor.value === task.value.id) {
+        return;
+    }
+    matchingReappliedFor.value = task.value.id;
+    await runTask();
+});
 
 async function confirmPost(): Promise<void> {
     if (!task.value || openTodos.value.length > 0) return;

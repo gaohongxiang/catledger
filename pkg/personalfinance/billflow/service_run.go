@@ -45,11 +45,11 @@ func (s *Service) organize(c core.Context, request RunTaskRequest, clientTimezon
 		if task.Status != TASK_STATUS_AWAITING_CONFIRM {
 			return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
 		}
-	} else if task.Status != TASK_STATUS_RECEIVING {
+	} else if !canRerunOrganize(task.Status) {
 		return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
 	}
 	action, created, err := s.beginAction(c, request.Uid, request.TaskId, request.ExpectedVersion, actionType, request.IdempotencyKey, []string{
-		string(actionType), strconv.FormatInt(request.TaskId, 10),
+		string(actionType), strconv.FormatInt(request.TaskId, 10), strconv.FormatInt(request.ExpectedVersion, 10),
 	})
 	if err != nil {
 		return nil, err
@@ -97,7 +97,7 @@ func (s *Service) organize(c core.Context, request RunTaskRequest, clientTimezon
 			}
 			result, postErr := s.poster.PostImportBatch(c, importing.PostImportBatchRequest{
 				Uid: request.Uid, BatchId: batchId,
-				IdempotencyKey: "billflow-" + strconv.FormatInt(request.TaskId, 10) + "-" + strconv.FormatInt(batchId, 10),
+				IdempotencyKey: "billflow-" + strconv.FormatInt(request.TaskId, 10) + "-" + strconv.FormatInt(batchId, 10) + "-" + strconv.FormatInt(request.ExpectedVersion, 10),
 				CreatedIp:      createdIP(request.CreatedIp), Commands: commands,
 			}, clientTimezone)
 			if postErr != nil {
@@ -489,6 +489,14 @@ func compatibleBillflowDirections(left importing.NormalizedDirection, right impo
 		(left == importing.NORMALIZED_DIRECTION_INCOME && right == importing.NORMALIZED_DIRECTION_INCOME)
 }
 
+func canRerunOrganize(status TaskStatus) bool {
+	return status == TASK_STATUS_RECEIVING || status == TASK_STATUS_AWAITING_CONFIRM || status == TASK_STATUS_READY
+}
+
+func todoIdentityKey(kind TodoKind, subjectKind SubjectKind, subjectId int64) string {
+	return string(kind) + "\x00" + string(subjectKind) + "\x00" + strconv.FormatInt(subjectId, 10)
+}
+
 func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, action *Action, _ *Task, plan *organizePlan, posted int64, status TaskStatus) error {
 	if err := s.applyReadyAction(c, request.Uid, request.TaskId, request.ExpectedVersion, action, func(next *Task) {
 		next.Status = status
@@ -502,7 +510,32 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 		return err
 	}
 	now := s.now().Unix()
+	keep := map[string]struct{}{}
+	for _, todo := range plan.todos {
+		keep[todoIdentityKey(todo.TodoKind, todo.SubjectKind, todo.SubjectId)] = struct{}{}
+	}
 	return s.repository.DoTransaction(c, request.Uid, func(tx *RepositoryTransaction) error {
+		openTodos, err := tx.ListOpenTodos(request.TaskId)
+		if err != nil {
+			return err
+		}
+		for _, existing := range openTodos {
+			if existing == nil || existing.TodoKind != TODO_KIND_CROSS_SOURCE_AMBIGUOUS {
+				continue
+			}
+			if _, stillNeeded := keep[todoIdentityKey(existing.TodoKind, existing.SubjectKind, existing.SubjectId)]; stillNeeded {
+				continue
+			}
+			next := *existing
+			next.Status = TODO_STATUS_RESOLVED
+			next.Version = existing.Version + 1
+			next.UpdatedUnixTime = now
+			next.ResolvedUnixTime = &now
+			updated, updateErr := tx.UpdateTodoCAS(existing.Version, &next)
+			if updateErr != nil || !updated {
+				return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+			}
+		}
 		for _, todo := range plan.todos {
 			existing, err := tx.FindTodoBySubject(request.TaskId, todo.TodoKind, todo.SubjectKind, todo.SubjectId)
 			if err != nil {

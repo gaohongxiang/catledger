@@ -15,6 +15,7 @@ import {
     billflowDirectionKey,
     billflowWorkbenchStepIndex,
     canAutoRunAfterAccounts,
+    canReapplyOrganize,
     canAssignBillflowCategory,
     canEditOrganizeFiles,
     canOpenBillflowWorkbenchStep,
@@ -300,6 +301,11 @@ describe('billflow task page wiring', () => {
         expect(canAutoRunAfterAccounts('receiving', 0)).toBe(true);
         expect(canAutoRunAfterAccounts('receiving', 1)).toBe(false);
         expect(canAutoRunAfterAccounts('awaiting_confirm', 0)).toBe(false);
+        expect(canReapplyOrganize('receiving', 0)).toBe(true);
+        expect(canReapplyOrganize('awaiting_confirm', 0)).toBe(true);
+        expect(canReapplyOrganize('ready', 0)).toBe(true);
+        expect(canReapplyOrganize('awaiting_confirm', 1)).toBe(false);
+        expect(canReapplyOrganize('accounts_pending', 0)).toBe(false);
     });
 
     it('maps income, expense and neither-income-nor-expense to display keys', () => {

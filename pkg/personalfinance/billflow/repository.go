@@ -540,6 +540,21 @@ func (r *Repository) ListTodos(c core.Context, uid int64, taskId int64, status T
 	return page, nil
 }
 
+// ListOpenTodos 返回任务内全部未关闭待办，供整理重跑关闭已自动合成的合并项。
+func (tx *RepositoryTransaction) ListOpenTodos(taskId int64) ([]*Todo, error) {
+	if err := tx.validate(); err != nil || taskId < 1 {
+		return nil, fmt.Errorf("invalid billflow open todo list")
+	}
+
+	todos := make([]*Todo, 0)
+	if err := tx.session.Where("uid=? AND task_id=? AND status=?", tx.uid, taskId, TODO_STATUS_OPEN).
+		Desc("updated_unix_time", "todo_id").Find(&todos); err != nil {
+		return nil, fmt.Errorf("list open billflow todos: %w", err)
+	}
+
+	return todos, nil
+}
+
 // FindTodoById 按 uid 和待办 ID 查询，不存在时返回 (nil, nil)。
 func (r *Repository) FindTodoById(c core.Context, uid int64, todoId int64) (*Todo, error) {
 	if uid < 1 || todoId < 1 {

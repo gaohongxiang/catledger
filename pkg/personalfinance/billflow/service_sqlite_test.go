@@ -448,6 +448,71 @@ func TestServicePairsEvenCrossSourceAndLeavesOddOne(t *testing.T) {
 	}
 }
 
+func TestServiceRerunClosesStaleMergeTodos(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	accountId := int64(61)
+	location := time.FixedZone("cst", 8*3600)
+	offset := int16(480)
+	afternoon := time.Date(2026, 7, 15, 15, 53, 0, 0, location).Unix()
+	midnight := time.Date(2026, 7, 15, 0, 0, 0, 0, location).Unix()
+	amount := int64(11970)
+
+	alipay := postableRow(uid, 401, 801, 201, accountId, "日用百货")
+	bank := postableRow(uid, 402, 802, 202, accountId, "网上支付")
+	alipay.NormalizedAmount, bank.NormalizedAmount = &amount, &amount
+	alipay.NormalizedTimezoneUtcOffset, bank.NormalizedTimezoneUtcOffset = &offset, &offset
+	alipay.Currency, bank.Currency = "CNY", "CNY"
+	alipay.RawCounterparty, alipay.RawPaymentMethod, alipay.NormalizedUnixTime = "拼多多平台商户", "中国光大银行信用卡(2690)", &afternoon
+	bank.RawCounterparty, bank.RawPaymentMethod, bank.NormalizedUnixTime = "支付宝 拼多多平台商户", "末四位2690", &midnight
+
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{alipay})
+	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{bank})
+	evidence.batchById[402].SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	reconciler := &fakeReconciler{details: []*reconciliation.CaseDetail{sameEventCase(31, 801, 802)}}
+	var nextId int64 = 7300
+	service, err := billflow.NewService(repository, evidence, &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+		402: {mappedGroup(accountId, 802)},
+	}}, &fakePoster{}, reconciler, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{
+		{CategoryId: 51, Name: "日用百货"},
+	}}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create rerun service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301, 302}, IdempotencyKey: "create-task-pair-rerun"})
+	if err != nil {
+		t.Fatalf("create rerun task: %v", err)
+	}
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-pair-first"}, time.UTC)
+	if err != nil || ran.Status != billflow.TASK_STATUS_AWAITING_CONFIRM {
+		t.Fatalf("first organize: %+v err=%v", ran, err)
+	}
+	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
+		if err := tx.InsertTodo(testTodo(uid, created.TaskId, 8801, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, billflow.SUBJECT_KIND_RAW_ROW, 801, 20)); err != nil {
+			return err
+		}
+		return tx.InsertTodo(testTodo(uid, created.TaskId, 8802, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, billflow.SUBJECT_KIND_RAW_ROW, 802, 21))
+	}); err != nil {
+		t.Fatalf("insert stale merge todos: %v", err)
+	}
+	stale, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || !hasTodoKind(stale, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("stale merge todos were not inserted: %+v err=%v", stale, err)
+	}
+	rerun, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: ran.Version, IdempotencyKey: "run-task-pair-rerun"}, time.UTC)
+	if err != nil {
+		t.Fatalf("rerun organize: %+v err=%v", rerun, err)
+	}
+	open, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || hasTodoKind(open, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("rerun should close stale merge todos: %+v err=%v", open, err)
+	}
+}
+
 func sameEventCase(caseId, left, right int64) *reconciliation.CaseDetail {
 	return &reconciliation.CaseDetail{
 		CaseSummary: &reconciliation.CaseSummary{

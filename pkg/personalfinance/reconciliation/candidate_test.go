@@ -176,6 +176,38 @@ func TestCrossSourceComparisonMatchRequiresTextAndCard(t *testing.T) {
 	}
 }
 
+func TestCrossSourceComparisonMatchAcceptsMappedLedgerAccount(t *testing.T) {
+	baseTime := int64(1_720_000_000)
+	firstIdentity := int64(701)
+	secondIdentity := int64(702)
+	accountId := int64(61)
+	bank := candidateTestRow(1, 71, 711, &firstIdentity, importing.IDENTITY_STATE_NEW, 11970, "CNY", baseTime)
+	bank.RawPaymentMethod = "末四位2690"
+	bank.RawCounterparty = "支付宝 拼多多平台商户"
+	detail := candidateTestRow(1, 72, 722, &secondIdentity, importing.IDENTITY_STATE_NEW, 11970, "CNY", baseTime)
+	detail.RawPaymentMethod = "中国光大银行信用卡(2690)"
+	detail.RawCounterparty = "拼多多平台商户"
+
+	if CrossSourceSameCard(bank, detail) {
+		t.Fatal("unmapped 中国光大 vs 末四位 should not compare as the same card by name alone")
+	}
+	if CrossSourceComparisonMatch(bank, detail, candidateTimeWindowSeconds) {
+		t.Fatal("unmapped different payment strings should not auto-compare")
+	}
+
+	bank.LedgerAccountId = &accountId
+	detail.LedgerAccountId = &accountId
+	if !CrossSourceSameCard(bank, detail) || !CrossSourceComparisonMatch(bank, detail, candidateTimeWindowSeconds) {
+		t.Fatal("rows already mapped to the same ledger account should count as the same card")
+	}
+
+	otherAccount := int64(62)
+	detail.LedgerAccountId = &otherAccount
+	if CrossSourceSameCard(bank, detail) {
+		t.Fatal("mapped to different ledger accounts should not count as the same card")
+	}
+}
+
 func TestEvidenceTextSimilarStripsPaymentChannelAndIgnoresOrderItem(t *testing.T) {
 	baseTime := int64(1_720_000_000)
 	firstIdentity := int64(601)

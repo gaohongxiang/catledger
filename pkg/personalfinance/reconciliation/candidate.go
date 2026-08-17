@@ -592,6 +592,16 @@ func paymentMethodsComparable(first *importing.RawImportRow, second *importing.R
 	return left != "" && left == right
 }
 
+// CrossSourceSameCard 组成后的付款方式相同，或两边已经沿用到同一个正式账户，都算同一张卡。
+func CrossSourceSameCard(first *importing.RawImportRow, second *importing.RawImportRow) bool {
+	if paymentMethodsComparable(first, second) {
+		return true
+	}
+	return first != nil && second != nil &&
+		first.LedgerAccountId != nil && second.LedgerAccountId != nil &&
+		*first.LedgerAccountId > 0 && *first.LedgerAccountId == *second.LedgerAccountId
+}
+
 // CrossSourceTimeMatch 两边都有时分时看时间窗；任一侧只有日期（当地 00:00）则只对同一天。
 func CrossSourceTimeMatch(first *importing.RawImportRow, second *importing.RawImportRow, maxDelta int64) bool {
 	if first == nil || second == nil || first.NormalizedUnixTime == nil || second.NormalizedUnixTime == nil || maxDelta < 0 {
@@ -605,9 +615,9 @@ func CrossSourceTimeMatch(first *importing.RawImportRow, second *importing.RawIm
 	return absoluteInt64(*first.NormalizedUnixTime-*second.NormalizedUnixTime) <= maxDelta
 }
 
-// CrossSourceComparisonMatch 金额币种已在硬过滤里；这里再要求对方/说明相似、卡号组成后相同、时间按上条规则。
+// CrossSourceComparisonMatch 金额币种已在硬过滤里；这里再要求对方/说明相似、同一张卡、时间按上条规则。
 func CrossSourceComparisonMatch(first *importing.RawImportRow, second *importing.RawImportRow, maxDelta int64) bool {
-	return evidenceTextSimilar(first, second) && paymentMethodsComparable(first, second) && CrossSourceTimeMatch(first, second, maxDelta)
+	return evidenceTextSimilar(first, second) && CrossSourceSameCard(first, second) && CrossSourceTimeMatch(first, second, maxDelta)
 }
 
 func rowTimezoneSeconds(row *importing.RawImportRow) int {
