@@ -521,6 +521,11 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 	for _, todo := range plan.todos {
 		keep[todoIdentityKey(todo.TodoKind, todo.SubjectKind, todo.SubjectId)] = struct{}{}
 	}
+	mergedSubjects := map[int64]struct{}{}
+	for _, pair := range plan.mergedPairs {
+		mergedSubjects[pair[0]] = struct{}{}
+		mergedSubjects[pair[1]] = struct{}{}
+	}
 	return s.repository.DoTransaction(c, request.Uid, func(tx *RepositoryTransaction) error {
 		openTodos, err := tx.ListOpenTodos(request.TaskId)
 		if err != nil {
@@ -549,6 +554,19 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 				return err
 			}
 			if existing != nil {
+				if todo.TodoKind == TODO_KIND_CROSS_SOURCE_AMBIGUOUS && existing.Status != TODO_STATUS_OPEN {
+					if _, merged := mergedSubjects[todo.SubjectId]; !merged {
+						next := *existing
+						next.Status = TODO_STATUS_OPEN
+						next.Version = existing.Version + 1
+						next.UpdatedUnixTime = now
+						next.ResolvedUnixTime = nil
+						updated, updateErr := tx.UpdateTodoCAS(existing.Version, &next)
+						if updateErr != nil || !updated {
+							return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+						}
+					}
+				}
 				continue
 			}
 			item := todo

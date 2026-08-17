@@ -303,7 +303,7 @@
                                                     <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
                                                     {{ tt('personalFinance.billflow.accounts.skipped') }}
                                                 </label>
-                                                <div class="todo-row__actions" v-if="mergeBucket === 'merged'">
+                                                <div class="todo-row__actions" v-if="mergeBucket === 'merged' || todo.status !== 'open'">
                                                     <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'open')">
                                                         {{ tt('personalFinance.billflow.todos.restore') }}
                                                     </v-btn>
@@ -590,6 +590,7 @@ import {
     mergeSelectedOrganizeFileIds,
     mergeTodos,
     uniqueMergeGroups,
+    isUniqueMergePair,
     nextBillflowWorkbenchStep,
     otherTodos,
     previousBillflowWorkbenchStep,
@@ -699,11 +700,12 @@ const reviewTodos = computed(() => [
 const classifiedReviewRows = computed(() => classifiedRows.value.filter(row => !isRowSkipped(row.id)));
 const mergeReviewTodos = computed(() => uniqueMergeGroups([
     ...mergeTodos(openTodos.value),
+    ...mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]).filter(todo => !isRowSkipped(todo.subjectId) && todo.matches.length > 1),
     ...mergeTodos(dismissedTodos.value).filter(todo => isRowSkipped(todo.subjectId))
 ]));
 const mergeHasItemColumn = computed(() => activeMergeTodos.value.some(todo => mergeGroupRows(todo).some(row => !!row.item)));
 const mergeColumnCount = computed(() => mergeHasItemColumn.value ? 9 : 8);
-const mergedReviewTodos = computed(() => uniqueMergeGroups(mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]).filter(todo => !isRowSkipped(todo.subjectId))));
+const mergedReviewTodos = computed(() => uniqueMergeGroups(mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]).filter(todo => !isRowSkipped(todo.subjectId) && isUniqueMergePair(todo))));
 const activeMergeTodos = computed(() => mergeBucket.value === 'merged' ? mergedReviewTodos.value : mergeReviewTodos.value);
 const otherReviewTodos = computed(() => otherTodos(openTodos.value));
 const skippedOrphanRows = computed(() => {

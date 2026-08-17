@@ -29,6 +29,7 @@ import {
     mergeSelectedOrganizeFileIds,
     mergeTodos,
     uniqueMergeGroups,
+    isUniqueMergePair,
     nextBillflowWorkbenchStep,
     otherTodos,
     previousBillflowWorkbenchStep,
@@ -238,6 +239,7 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('v-for="(todo, groupIndex) in activeMergeTodos"');
         expect(workbench).not.toContain('v-for="todo in mergedReviewTodos"');
         expect(workbench).toContain('uniqueMergeGroups');
+        expect(workbench).toContain('isUniqueMergePair');
         expect(workbench).toContain('formatMergeSource');
         expect(workbench).toContain('formatMergeTime');
         expect(workbench).toContain('mergeGroupRows');
@@ -371,6 +373,8 @@ describe('billflow task page wiring', () => {
             { subjectId: '801', matches: [{ rowId: '802', sourceType: 'bank', account: 'a', label: 'x', amount: '1' }] },
             { subjectId: '802', matches: [{ rowId: '801', sourceType: 'alipay', account: 'b', label: 'y', amount: '1' }] }
         ]).map(todo => todo.subjectId)).toEqual(['801']);
+        expect(isUniqueMergePair({ matches: [{ rowId: '802' }] })).toBe(true);
+        expect(isUniqueMergePair({ matches: [{ rowId: '802' }, { rowId: '803' }] })).toBe(false);
         expect(otherTodos([
             { todoKind: 'uncategorized' },
             { todoKind: 'installment_candidate' },

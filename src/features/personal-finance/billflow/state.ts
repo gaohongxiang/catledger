@@ -384,6 +384,10 @@ export function uniqueMergeGroups<T extends { subjectId: string; matches: readon
     return result;
 }
 
+export function isUniqueMergePair<T extends { matches: readonly unknown[] }>(todo: T): boolean {
+    return todo.matches.length === 1;
+}
+
 function mergeGroupIdentity(todo: { subjectId: string; matches: readonly { rowId?: string; sourceType: string; account: string; label: string; amount: string; unixTime?: number }[] }): string {
     const ids = [todo.subjectId, ...todo.matches.map(match => match.rowId || [match.sourceType, match.account, match.label, match.amount, String(match.unixTime ?? '')].join('\x1f'))];
     return [...ids].sort().join('\x1e');

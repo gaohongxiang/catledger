@@ -316,15 +316,23 @@ func (s *Service) attachTodoMatches(c core.Context, uid int64, items []*TodoView
 		return
 	}
 	needed := map[int64]struct{}{}
+	uniquePair := false
 	for _, item := range items {
 		if item != nil && item.TodoKind == TODO_KIND_CROSS_SOURCE_AMBIGUOUS && item.SubjectKind == SUBJECT_KIND_RAW_ROW && item.SubjectId > 0 {
 			needed[item.SubjectId] = struct{}{}
+			if item.Status != TODO_STATUS_OPEN {
+				uniquePair = true
+			}
 		}
 	}
 	if len(needed) == 0 {
 		return
 	}
-	index := s.todoMatchIndex(c, uid, needed)
+	statuses := []reconciliation.CaseStatus{reconciliation.CASE_STATUS_OPEN}
+	if uniquePair {
+		statuses = []reconciliation.CaseStatus{reconciliation.CASE_STATUS_RESOLVED}
+	}
+	index := s.todoMatchIndex(c, uid, needed, statuses, uniquePair)
 	for _, item := range items {
 		if item == nil {
 			continue
@@ -333,10 +341,10 @@ func (s *Service) attachTodoMatches(c core.Context, uid int64, items []*TodoView
 	}
 }
 
-func (s *Service) todoMatchIndex(c core.Context, uid int64, needed map[int64]struct{}) map[int64][]*TodoMatchView {
+func (s *Service) todoMatchIndex(c core.Context, uid int64, needed map[int64]struct{}, statuses []reconciliation.CaseStatus, uniquePair bool) map[int64][]*TodoMatchView {
 	index := map[int64][]*TodoMatchView{}
 	seen := map[int64]map[int64]struct{}{}
-	for _, status := range []reconciliation.CaseStatus{reconciliation.CASE_STATUS_OPEN, reconciliation.CASE_STATUS_RESOLVED} {
+	for _, status := range statuses {
 		var cursor *reconciliation.CaseCursor
 		for page := 0; page < todoMatchCasePages; page++ {
 			result, err := s.reconciler.ListCases(c, reconciliation.ListCasesRequest{
@@ -353,12 +361,19 @@ func (s *Service) todoMatchIndex(c core.Context, uid int64, needed map[int64]str
 				if getErr != nil || detail == nil {
 					continue
 				}
-				s.collectTodoMatches(c, uid, detail, needed, index, seen)
+				s.collectTodoMatches(c, uid, detail, needed, index, seen, uniquePair)
 			}
 			if result.NextCursor == nil {
 				break
 			}
 			cursor = result.NextCursor
+		}
+	}
+	if uniquePair {
+		for rowId, matches := range index {
+			if len(matches) != 1 {
+				delete(index, rowId)
+			}
 		}
 	}
 	return index
@@ -371,6 +386,7 @@ func (s *Service) collectTodoMatches(
 	needed map[int64]struct{},
 	index map[int64][]*TodoMatchView,
 	seen map[int64]map[int64]struct{},
+	uniquePair bool,
 ) {
 	if detail == nil {
 		return
@@ -396,13 +412,20 @@ func (s *Service) collectTodoMatches(
 		if _, want := needed[subject.rowId]; !want {
 			continue
 		}
+		others := make([]matchRow, 0, 1)
+		for _, other := range rows {
+			if other.rowId == subject.rowId || !sameMatchAmount(subject.summary, other.summary) {
+				continue
+			}
+			others = append(others, other)
+		}
+		if uniquePair && len(others) != 1 {
+			continue
+		}
 		if seen[subject.rowId] == nil {
 			seen[subject.rowId] = map[int64]struct{}{}
 		}
-		for _, other := range rows {
-			if other.rowId == subject.rowId {
-				continue
-			}
+		for _, other := range others {
 			if _, exists := seen[subject.rowId][other.rowId]; exists {
 				continue
 			}
@@ -413,6 +436,19 @@ func (s *Service) collectTodoMatches(
 			index[subject.rowId] = append(index[subject.rowId], s.todoMatchView(c, uid, other.summary))
 		}
 	}
+}
+
+func sameMatchAmount(left *reconciliation.CaseEvidenceSummary, right *reconciliation.CaseEvidenceSummary) bool {
+	if left == nil || right == nil {
+		return false
+	}
+	if left.NormalizedAmount != nil && right.NormalizedAmount != nil && *left.NormalizedAmount != *right.NormalizedAmount {
+		return false
+	}
+	if left.Currency != "" && right.Currency != "" && left.Currency != right.Currency {
+		return false
+	}
+	return true
 }
 
 func (s *Service) todoMatchView(c core.Context, uid int64, evidence *reconciliation.CaseEvidenceSummary) *TodoMatchView {

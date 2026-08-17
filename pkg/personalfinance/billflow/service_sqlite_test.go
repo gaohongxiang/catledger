@@ -399,6 +399,9 @@ func TestServicePairsEvenCrossSourceAndLeavesOddOne(t *testing.T) {
 		!hasTodoMatch(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, string(importing.SOURCE_TYPE_ALIPAY), "拼多多平台商户") {
 		t.Fatalf("resolved merge todos should keep the original statement rows: %+v", merged)
 	}
+	if !mergeTodosHaveUniquePair(merged) {
+		t.Fatalf("resolved merge todos should keep exactly one counterpart row: %+v", merged)
+	}
 
 	oddRepo, _ := newSQLiteBillflowRepository(t)
 	if err := oddRepo.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
@@ -1184,6 +1187,23 @@ func hasTodoMatch(page *billflow.TodoListResult, kind billflow.TodoKind, sourceT
 		}
 	}
 	return false
+}
+
+func mergeTodosHaveUniquePair(page *billflow.TodoListResult) bool {
+	if page == nil {
+		return false
+	}
+	found := false
+	for _, todo := range page.Items {
+		if todo == nil || todo.TodoKind != billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS {
+			continue
+		}
+		found = true
+		if len(todo.Matches) != 1 {
+			return false
+		}
+	}
+	return found
 }
 
 func assertAutoPostedUncategorized(t *testing.T, commands []importing.PostingIdentityCommand, rowId int64) {
