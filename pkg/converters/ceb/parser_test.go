@@ -127,6 +127,50 @@ func TestParseTwoCardsDepositAndStatementPeriod(t *testing.T) {
 	}
 }
 
+func TestParseLocksSourceColumnMapping(t *testing.T) {
+	content := syntheticCEBStatementPDF([][]string{cebStatementLines(
+		[]string{"2026/08/17", "2026/08/18", "4321", "MAP-COUNTERPARTY", "12.34"},
+		[]string{"2026/08/19", "2026/08/20", "4321", "MAP-DEPOSIT", "(存入)3.00"},
+	)})
+	document, err := ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, cebOptions())
+	if err != nil {
+		t.Fatalf("parse mapping fixture: %v", err)
+	}
+	if len(document.Rows) != 2 {
+		t.Fatalf("mapping fixture row count: %d", len(document.Rows))
+	}
+
+	expense := document.Rows[0]
+	if expense.Raw != (importing.CanonicalRawEvidence{
+		TransactionTime: "2026/08/17",
+		Amount:          "12.34",
+		Counterparty:    "MAP-COUNTERPARTY",
+		PaymentMethod:   "末四位4321",
+		Note:            "2026/08/18",
+	}) {
+		t.Fatalf("光大支出行未按对照表投影: %+v", expense.Raw)
+	}
+	if expense.Identifiers != (importing.SourceIdentifiers{}) {
+		t.Fatalf("光大没有单号却写出了标识: %+v", expense.Identifiers)
+	}
+	if expense.Normalized.Item != "" || expense.FingerprintMaterials.Item != "MAP-COUNTERPARTY" {
+		t.Fatalf("光大说明应只进对方，指纹仍保留商品材料: raw=%+v normalized=%+v fingerprint=%+v", expense.Raw, expense.Normalized, expense.FingerprintMaterials)
+	}
+	if len(expense.RawFields) != 5 ||
+		expense.RawFields[0] != (importing.RawField{Name: "交易日", Value: "2026/08/17"}) ||
+		expense.RawFields[1] != (importing.RawField{Name: "记账日", Value: "2026/08/18"}) ||
+		expense.RawFields[2] != (importing.RawField{Name: "卡号末四位", Value: "4321"}) ||
+		expense.RawFields[3] != (importing.RawField{Name: "交易说明", Value: "MAP-COUNTERPARTY"}) ||
+		expense.RawFields[4] != (importing.RawField{Name: "金额", Value: "12.34"}) {
+		t.Fatalf("光大原文列名对照变了: %+v", expense.RawFields)
+	}
+
+	deposit := document.Rows[1]
+	if deposit.Raw.Direction != "(存入)" || deposit.Raw.Amount != "3.00" || deposit.Raw.Counterparty != "MAP-DEPOSIT" || deposit.Raw.Item != "" {
+		t.Fatalf("光大存入行把说明或金额写错槽位: %+v", deposit.Raw)
+	}
+}
+
 func TestParseRejectsMappingAndHeaderOnlyStatement(t *testing.T) {
 	content := syntheticCEBStatementPDF([][]string{cebStatementLines()})
 	_, err := ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, cebOptions())

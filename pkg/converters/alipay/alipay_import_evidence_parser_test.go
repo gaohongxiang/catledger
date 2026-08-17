@@ -482,6 +482,76 @@ func TestAlipayEvidenceParserSafeFileErrors(t *testing.T) {
 	}
 }
 
+func TestAlipayAppEvidenceParserLocksSourceColumnMapping(t *testing.T) {
+	content := []byte("" +
+		"------------------------------------------------------------------------------------\n" +
+		"导出信息：\n" +
+		"支付宝账户：mapping.user@example.test\n" +
+		"------------------------支付宝支付科技有限公司  电子客户回单------------------------\n" +
+		"交易时间,交易分类,交易对方,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注,无关列\n" +
+		"2026-08-17 10:11:12,MAP-TYPE,MAP-COUNTERPARTY,MAP-ITEM,支出,12.34,MAP-PAYMENT,MAP-STATUS,MAP-TX-ID,MAP-MERCHANT-ID,MAP-NOTE,MAP-EXTRA\n")
+	assertAlipayUnifiedProjection(t, AlipayAppImportEvidenceParser, content, importing.CanonicalRawEvidence{
+		TransactionTime: "2026-08-17 10:11:12",
+		Amount:          "12.34",
+		Direction:       "支出",
+		Status:          "MAP-STATUS",
+		TransactionType: "MAP-TYPE",
+		Counterparty:    "MAP-COUNTERPARTY",
+		Item:            "MAP-ITEM",
+		PaymentMethod:   "MAP-PAYMENT",
+		Note:            "MAP-NOTE",
+	}, importing.SourceIdentifiers{
+		TransactionId:   "MAP-TX-ID",
+		MerchantOrderId: "MAP-MERCHANT-ID",
+	})
+}
+
+func TestAlipayAppEvidenceParserLocksColumnAliases(t *testing.T) {
+	content := []byte("" +
+		"------------------------------------------------------------------------------------\n" +
+		"导出信息：\n" +
+		"支付宝账户：mapping.user@example.test\n" +
+		"------------------------支付宝支付科技有限公司  电子客户回单------------------------\n" +
+		"交易时间,类型,交易对方,商品名称,收/支,金额,资金渠道,交易状态,支付宝交易号,商户订单号,备注\n" +
+		"2026-08-17 10:11:12,MAP-TYPE,MAP-COUNTERPARTY,MAP-ITEM,支出,12.34,MAP-PAYMENT,MAP-STATUS,MAP-TX-ID,MAP-MERCHANT-ID,MAP-NOTE\n")
+	assertAlipayUnifiedProjection(t, AlipayAppImportEvidenceParser, content, importing.CanonicalRawEvidence{
+		TransactionTime: "2026-08-17 10:11:12",
+		Amount:          "12.34",
+		Direction:       "支出",
+		Status:          "MAP-STATUS",
+		TransactionType: "MAP-TYPE",
+		Counterparty:    "MAP-COUNTERPARTY",
+		Item:            "MAP-ITEM",
+		PaymentMethod:   "MAP-PAYMENT",
+		Note:            "MAP-NOTE",
+	}, importing.SourceIdentifiers{
+		TransactionId:   "MAP-TX-ID",
+		MerchantOrderId: "MAP-MERCHANT-ID",
+	})
+}
+
+func TestAlipayWebEvidenceParserLocksSourceColumnMapping(t *testing.T) {
+	content := []byte("" +
+		"支付宝交易记录明细查询\n" +
+		"账号:[***0000]\n" +
+		"---------------------------------交易记录明细列表------------------------------------\n" +
+		"交易号,商户订单号,交易创建时间,付款时间,最近修改时间,交易来源地,类型,交易对方,商品名称,金额（元）,收/支,交易状态,服务费（元）,成功退款（元）,备注,无关列\n" +
+		"MAP-TX-ID,MAP-MERCHANT-ID,2026-08-17 10:11:12,MAP-PAY-TIME,MAP-MODIFY-TIME,MAP-SOURCE,MAP-TYPE,MAP-COUNTERPARTY,MAP-ITEM,12.34,支出,MAP-STATUS,MAP-FEE,MAP-REFUND,MAP-NOTE,MAP-EXTRA\n")
+	assertAlipayUnifiedProjection(t, AlipayWebImportEvidenceParser, content, importing.CanonicalRawEvidence{
+		TransactionTime: "2026-08-17 10:11:12",
+		Amount:          "12.34",
+		Direction:       "支出",
+		Status:          "MAP-STATUS",
+		TransactionType: "MAP-TYPE",
+		Counterparty:    "MAP-COUNTERPARTY",
+		Item:            "MAP-ITEM",
+		Note:            "MAP-NOTE",
+	}, importing.SourceIdentifiers{
+		TransactionId:   "MAP-TX-ID",
+		MerchantOrderId: "MAP-MERCHANT-ID",
+	})
+}
+
 func TestAlipayEvidenceParserCancellationAndOptions(t *testing.T) {
 	content := readAlipayEvidenceFixture(t, "testdata/alipay_app_utf8_bom.csv")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -496,6 +566,32 @@ func TestAlipayEvidenceParserCancellationAndOptions(t *testing.T) {
 
 	if code := importing.NormalizeEvidenceParseError(AlipayAppImportEvidenceParser.Descriptor(), err); code != importing.ISSUE_CODE_FILE_FORMAT_INVALID {
 		t.Fatalf("无效解析选项未收敛为安全错误码: %s (%v)", code, err)
+	}
+}
+
+func assertAlipayUnifiedProjection(t *testing.T, parser importing.ImportEvidenceParser, content []byte, wantRaw importing.CanonicalRawEvidence, wantIDs importing.SourceIdentifiers) {
+	t.Helper()
+
+	document, err := parser.Parse(context.Background(), importing.EvidenceFile{
+		OriginalFileName: "mapping.csv",
+		Content:          content,
+	}, alipayEvidenceTestOptions)
+	if err != nil {
+		t.Fatalf("解析映射夹具失败: %v", err)
+	}
+	if len(document.Rows) != 1 {
+		t.Fatalf("映射夹具行数错误: %d", len(document.Rows))
+	}
+
+	row := document.Rows[0]
+	if row.Raw != wantRaw {
+		t.Fatalf("来源列未对到统一字段: raw=%+v want=%+v", row.Raw, wantRaw)
+	}
+	if row.Identifiers != wantIDs {
+		t.Fatalf("来源单号未对到统一字段: ids=%+v want=%+v", row.Identifiers, wantIDs)
+	}
+	if strings.Contains(row.Raw.TransactionTime+row.Raw.Amount+row.Raw.Direction+row.Raw.Status+row.Raw.TransactionType+row.Raw.Counterparty+row.Raw.Item+row.Raw.PaymentMethod+row.Raw.Note+row.Identifiers.TransactionId+row.Identifiers.OrderId+row.Identifiers.MerchantOrderId, "MAP-EXTRA") {
+		t.Fatalf("无关列泄漏进统一字段: raw=%+v ids=%+v", row.Raw, row.Identifiers)
 	}
 }
 

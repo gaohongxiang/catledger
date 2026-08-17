@@ -2,6 +2,7 @@ package genericbank
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"golang.org/x/text/encoding"
@@ -106,6 +107,81 @@ func TestParseAmountDirectionGBKTabAndIncomeExpense(t *testing.T) {
 	}
 	if document.Rows[0].Normalized.Direction != importing.NORMALIZED_DIRECTION_INCOME || document.Rows[1].Normalized.Direction != importing.NORMALIZED_DIRECTION_EXPENSE {
 		t.Fatalf("income-expense direction failed: %+v", document.Rows)
+	}
+}
+
+func TestParseLocksMappedColumnSlots(t *testing.T) {
+	content := []byte("time,amount,direction,status,type,counterparty,item,payment,note,txid,orderid,merchant,extra\n" +
+		"2026-08-17 10:11:12,12.34,MAP-DIRECTION,MAP-STATUS,MAP-TYPE,MAP-COUNTERPARTY,MAP-ITEM,MAP-PAYMENT,MAP-NOTE,MAP-TX-ID,MAP-ORDER-ID,MAP-MERCHANT-ID,MAP-EXTRA\n")
+	mapping := baseMapping()
+	mapping.AmountMode = importing.GENERIC_CSV_AMOUNT_MODE_AMOUNT_DIRECTION
+	mapping.AmountColumn = 1
+	mapping.DirectionColumn = 2
+	mapping.IncomeValues = []string{"MAP-INCOME"}
+	mapping.ExpenseValues = []string{"MAP-DIRECTION"}
+	mapping.StatusColumn = 3
+	mapping.TransactionTypeColumn = 4
+	mapping.CounterpartyColumn = 5
+	mapping.ItemColumn = 6
+	mapping.PaymentMethodColumn = 7
+	mapping.NoteColumn = 8
+	mapping.TransactionIdColumn = 9
+	mapping.OrderIdColumn = 10
+	mapping.MerchantOrderIdColumn = 11
+
+	document, err := ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(mapping))
+	if err != nil {
+		t.Fatalf("parse mapped CSV: %v", err)
+	}
+	if len(document.Rows) != 1 {
+		t.Fatalf("mapped CSV row count: %d", len(document.Rows))
+	}
+	row := document.Rows[0]
+	if row.Raw != (importing.CanonicalRawEvidence{
+		TransactionTime: "2026-08-17 10:11:12",
+		Amount:          "12.34",
+		Direction:       "MAP-DIRECTION",
+		Status:          "MAP-STATUS",
+		TransactionType: "MAP-TYPE",
+		Counterparty:    "MAP-COUNTERPARTY",
+		Item:            "MAP-ITEM",
+		PaymentMethod:   "MAP-PAYMENT",
+		Note:            "MAP-NOTE",
+	}) {
+		t.Fatalf("通用银行列映射未对到统一字段: %+v", row.Raw)
+	}
+	if row.Identifiers != (importing.SourceIdentifiers{
+		TransactionId:   "MAP-TX-ID",
+		OrderId:         "MAP-ORDER-ID",
+		MerchantOrderId: "MAP-MERCHANT-ID",
+	}) {
+		t.Fatalf("通用银行单号映射未对到统一字段: %+v", row.Identifiers)
+	}
+	if strings.Contains(row.Raw.TransactionTime+row.Raw.Amount+row.Raw.Direction+row.Raw.Status+row.Raw.TransactionType+row.Raw.Counterparty+row.Raw.Item+row.Raw.PaymentMethod+row.Raw.Note+row.Identifiers.TransactionId+row.Identifiers.OrderId+row.Identifiers.MerchantOrderId, "MAP-EXTRA") {
+		t.Fatalf("未映射列泄漏进统一字段: raw=%+v ids=%+v", row.Raw, row.Identifiers)
+	}
+
+	unmapped := baseMapping()
+	unmapped.AmountMode = importing.GENERIC_CSV_AMOUNT_MODE_SIGNED
+	unmapped.AmountColumn = 1
+	unmapped.SignedPositiveDirection = importing.NORMALIZED_DIRECTION_EXPENSE
+	document, err = ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: []byte("time,amount,counterparty\n2026-08-17 10:11:12,1.00,MAP-COUNTERPARTY\n")}, options(unmapped))
+	if err != nil {
+		t.Fatalf("parse unmapped CSV: %v", err)
+	}
+	if document.Rows[0].Raw.Counterparty != "" || document.Rows[0].Raw.Item != "" || document.Rows[0].Identifiers != (importing.SourceIdentifiers{}) {
+		t.Fatalf("未映射列不应写入统一字段: %+v ids=%+v", document.Rows[0].Raw, document.Rows[0].Identifiers)
+	}
+
+	incomeExpense := baseMapping()
+	incomeExpense.AmountMode = importing.GENERIC_CSV_AMOUNT_MODE_INCOME_EXPENSE
+	incomeExpense.IncomeColumn, incomeExpense.ExpenseColumn = 1, 2
+	document, err = ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: []byte("time,income,expense\n2026-08-17 10:11:12,,3.00\n")}, options(incomeExpense))
+	if err != nil {
+		t.Fatalf("parse income-expense mapping: %v", err)
+	}
+	if document.Rows[0].Raw.Amount != "3.00" || document.Rows[0].Raw.Direction != "" {
+		t.Fatalf("收入/支出两列未投影到金额槽: %+v", document.Rows[0].Raw)
 	}
 }
 

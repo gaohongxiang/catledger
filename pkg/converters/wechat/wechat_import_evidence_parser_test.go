@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -479,6 +480,49 @@ func TestWeChatPayImportEvidenceXlsxParserReturnsSafeFileError(t *testing.T) {
 	assert.Equal(t, string(importing.ISSUE_CODE_FILE_FORMAT_INVALID), err.Error())
 }
 
+func TestWeChatPayImportEvidenceCsvParserLocksSourceColumnMapping(t *testing.T) {
+	content := []byte("微信支付账单明细,,,,,,,,,,,\n" +
+		wechatPayTransactionDataHeaderStartContentBeginning + ",,,,,,,,,,,\n" +
+		"交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,商户单号,备注,无关列\n" +
+		"2026-08-17 10:11:12,MAP-TYPE,MAP-COUNTERPARTY,MAP-ITEM,支出,￥12.34,MAP-PAYMENT,MAP-STATUS,MAP-TX-ID,MAP-MERCHANT-ID,MAP-NOTE,MAP-EXTRA\n")
+	assertWechatUnifiedProjection(t, content, importing.CanonicalRawEvidence{
+		TransactionTime: "2026-08-17 10:11:12",
+		Amount:          "￥12.34",
+		Direction:       "支出",
+		Status:          "MAP-STATUS",
+		TransactionType: "MAP-TYPE",
+		Counterparty:    "MAP-COUNTERPARTY",
+		Item:            "MAP-ITEM",
+		PaymentMethod:   "MAP-PAYMENT",
+		Note:            "MAP-NOTE",
+	}, importing.SourceIdentifiers{
+		TransactionId:   "MAP-TX-ID",
+		MerchantOrderId: "MAP-MERCHANT-ID",
+	})
+}
+
+func TestWeChatPayImportEvidenceCsvParserLocksAliasColumnMapping(t *testing.T) {
+	content := []byte("微信支付账单明细,,,,,,,,,,,\n" +
+		wechatPayTransactionDataHeaderStartContentBeginning + ",,,,,,,,,,,\n" +
+		"交易日期,业务类型,交易对象,商品说明,收支,金额（元）,付款方式,交易状态,微信交易单号,订单号,商家单号,交易备注,无关列\n" +
+		"2026-08-17 10:11:12,MAP-TYPE,MAP-COUNTERPARTY,MAP-ITEM,支出,￥12.34,MAP-PAYMENT,MAP-STATUS,MAP-TX-ID,MAP-ORDER-ID,MAP-MERCHANT-ID,MAP-NOTE,MAP-EXTRA\n")
+	assertWechatUnifiedProjection(t, content, importing.CanonicalRawEvidence{
+		TransactionTime: "2026-08-17 10:11:12",
+		Amount:          "￥12.34",
+		Direction:       "支出",
+		Status:          "MAP-STATUS",
+		TransactionType: "MAP-TYPE",
+		Counterparty:    "MAP-COUNTERPARTY",
+		Item:            "MAP-ITEM",
+		PaymentMethod:   "MAP-PAYMENT",
+		Note:            "MAP-NOTE",
+	}, importing.SourceIdentifiers{
+		TransactionId:   "MAP-TX-ID",
+		OrderId:         "MAP-ORDER-ID",
+		MerchantOrderId: "MAP-MERCHANT-ID",
+	})
+}
+
 func readWechatEvidenceGoldenCsv(t *testing.T) []byte {
 	t.Helper()
 	content, err := os.ReadFile("testdata/wechat_pay_evidence_golden.csv")
@@ -533,6 +577,23 @@ func setWechatEvidenceSheetRow(t *testing.T, workbook *excelize.File, sheet stri
 	cell, err := excelize.CoordinatesToCellName(1, row)
 	require.NoError(t, err)
 	require.NoError(t, workbook.SetSheetRow(sheet, cell, &values))
+}
+
+func assertWechatUnifiedProjection(t *testing.T, content []byte, wantRaw importing.CanonicalRawEvidence, wantIDs importing.SourceIdentifiers) {
+	t.Helper()
+
+	document, err := WeChatPayImportEvidenceCsvParser.Parse(
+		context.Background(),
+		importing.EvidenceFile{OriginalFileName: "mapping.csv", Content: content},
+		wechatEvidenceTestOptions,
+	)
+	require.NoError(t, err)
+	require.Len(t, document.Rows, 1)
+
+	row := document.Rows[0]
+	assert.Equal(t, wantRaw, row.Raw)
+	assert.Equal(t, wantIDs, row.Identifiers)
+	assert.NotContains(t, fmt.Sprintf("%+v%+v", row.Raw, row.Identifiers), "MAP-EXTRA")
 }
 
 func assertWechatEvidenceIssue(t *testing.T, issues []importing.EvidenceIssue, code importing.IssueCode, severity importing.IssueSeverity) {
