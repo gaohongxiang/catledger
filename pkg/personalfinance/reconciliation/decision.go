@@ -302,7 +302,7 @@ func normalizeUndoCaseRequest(request UndoCaseRequest) (*decisionExecution, stri
 
 func buildDecisionDraft(uid int64, createdIp string, draft *importing.LedgerTransactionDraft) (*decisionDraft, error) {
 	if draft == nil || draft.UnixTime < 1 || draft.UnixTime > math.MaxInt64/1000 || draft.TimezoneUtcOffset < -720 || draft.TimezoneUtcOffset > 840 ||
-		draft.SourceAccountId < 1 || draft.CategoryId < 1 || draft.SourceAmount < 0 || draft.SourceAmount > models.MaximumTransactionAmount ||
+		draft.SourceAccountId < 1 || !isDecisionDraftCategoryAllowed(draft) || draft.SourceAmount < 0 || draft.SourceAmount > models.MaximumTransactionAmount ||
 		!utf8.ValidString(draft.Comment) || utf8.RuneCountInString(draft.Comment) > 255 || len(draft.TagIds) > models.MaximumTagsCountOfTransaction {
 		return nil, ErrDecisionRequestInvalid
 	}
@@ -330,6 +330,17 @@ func buildDecisionDraft(uid int64, createdIp string, draft *importing.LedgerTran
 		Amount: draft.SourceAmount, RelatedAccountId: draft.DestinationAccountId, RelatedAccountAmount: draft.DestinationAmount,
 		HideAmount: draft.HideAmount, Comment: draft.Comment, CreatedIp: createdIp,
 	}, tagIds: tagIds}, nil
+}
+
+func isDecisionDraftCategoryAllowed(draft *importing.LedgerTransactionDraft) bool {
+	if draft == nil {
+		return false
+	}
+	if draft.CategoryId >= 1 {
+		return true
+	}
+	return draft.AllowUncategorized && draft.CategoryId == 0 &&
+		(draft.Type == models.TRANSACTION_TYPE_EXPENSE || draft.Type == models.TRANSACTION_TYPE_INCOME)
 }
 
 func validDraftCombination(execution *decisionExecution) bool {

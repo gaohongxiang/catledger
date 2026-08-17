@@ -112,6 +112,9 @@ func (r *billflowReconciler) ListCases(c core.Context, request reconciliation.Li
 func (r *billflowReconciler) DecideCase(c core.Context, request reconciliation.DecideCaseRequest, clientTimezone *time.Location) (*reconciliation.DecisionResult, error) {
 	return r.decisions.DecideCase(c, request, clientTimezone)
 }
+func (r *billflowReconciler) UndoCase(c core.Context, request reconciliation.UndoCaseRequest, clientTimezone *time.Location) (*reconciliation.DecisionResult, error) {
+	return r.decisions.UndoCase(c, request, clientTimezone)
+}
 
 type billflowAccountFactory struct {
 	accounts *services.AccountService

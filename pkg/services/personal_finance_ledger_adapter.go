@@ -31,7 +31,9 @@ func (s *TransactionService) CreateTransactionInSession(c core.Context, database
 		return nil, nil, err
 	}
 
-	if err = s.doCreateTransaction(c, database, sess, &transaction, indexes, uniqueTagIds, nil, nil); err != nil {
+	allowUncategorized := transaction.CategoryId == 0 &&
+		(transaction.Type == models.TRANSACTION_DB_TYPE_INCOME || transaction.Type == models.TRANSACTION_DB_TYPE_EXPENSE)
+	if err = s.doCreateTransactionWithOptions(c, database, sess, &transaction, indexes, uniqueTagIds, nil, nil, allowUncategorized); err != nil {
 		return nil, nil, err
 	}
 

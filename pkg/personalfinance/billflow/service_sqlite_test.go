@@ -305,7 +305,7 @@ func TestServiceAutoPostCrossSourceAndUndoGuard(t *testing.T) {
 		t.Fatalf("daily task should auto post: %+v err=%v", created, err)
 	}
 	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-2", CreatedIp: "192.0.2.10"}, time.UTC)
-	if err != nil || ran.Status != billflow.TASK_STATUS_READY || poster.calls != 2 {
+	if err != nil || ran.Status != billflow.TASK_STATUS_READY || poster.calls != 0 {
 		t.Fatalf("auto_post run did not post: %+v calls=%d err=%v", ran, poster.calls, err)
 	}
 	if len(reconciler.decided) != 1 || reconciler.decided[0].DecisionType != reconciliation.DECISION_TYPE_SAME_EVENT {
@@ -319,6 +319,160 @@ func TestServiceAutoPostCrossSourceAndUndoGuard(t *testing.T) {
 	failed, err := service.GetTask(nil, uid, created.TaskId)
 	if err != nil || failed.Status != billflow.TASK_STATUS_FAILED {
 		t.Fatalf("blocked undo did not mark task failed: %+v err=%v", failed, err)
+	}
+}
+
+func TestServiceDoesNotPostWhenAutoReconcileRequiresAction(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
+		ready := testTask(uid, 1, 10)
+		ready.Status = billflow.TASK_STATUS_READY
+		return tx.InsertTask(ready)
+	}); err != nil {
+		t.Fatalf("insert prior ready task: %v", err)
+	}
+
+	accountId := int64(61)
+	amount := int64(11970)
+	when := time.Date(2026, 7, 15, 15, 53, 0, 0, time.UTC).Unix()
+	alipay := postableRow(uid, 401, 801, 201, accountId, "日用百货")
+	bank := postableRow(uid, 402, 802, 202, accountId, "网上支付")
+	for _, row := range []*importing.RawImportRow{alipay, bank} {
+		row.NormalizedAmount = &amount
+		row.NormalizedUnixTime = &when
+		row.Currency = "CNY"
+	}
+	alipay.RawCounterparty, alipay.RawPaymentMethod = "拼多多平台商户", "光大银行信用卡(2690)"
+	bank.RawCounterparty, bank.RawPaymentMethod = "支付宝 拼多多平台商户", "末四位2690"
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{alipay})
+	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{bank})
+	evidence.batchById[402].SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	reconciler := &fakeReconciler{
+		detail:         sameEventCase(77, 801, 802),
+		decisionStatus: reconciliation.DECISION_STATUS_ACTION_REQUIRED,
+	}
+	poster := &fakePoster{}
+	var nextId int64 = 7200
+	service, err := billflow.NewService(repository, evidence, &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+		402: {mappedGroup(accountId, 802)},
+	}}, poster, reconciler, nil, nil, &fakeCategories{}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301, 302}, IdempotencyKey: "create-task-action-required"})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-action-required", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || ran == nil || poster.calls != 0 {
+		t.Fatalf("action-required reconciliation posted rows: task=%+v calls=%d err=%v", ran, poster.calls, err)
+	}
+	open, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || !hasTodoKind(open, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("action-required reconciliation did not keep merge todo open: %+v err=%v", open, err)
+	}
+	if len(reconciler.decided) != 1 || reconciler.decided[0].PrimaryDraft == nil {
+		t.Fatalf("auto reconcile did not send one canonical ledger draft: %+v", reconciler.decided)
+	}
+}
+
+func TestServiceAutoReconcilesCurrentRowWithHistoricalEvidence(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
+		ready := testTask(uid, 1, 10)
+		ready.Status = billflow.TASK_STATUS_READY
+		return tx.InsertTask(ready)
+	}); err != nil {
+		t.Fatalf("insert prior ready task: %v", err)
+	}
+	accountId := int64(61)
+	amount := int64(8800)
+	when := time.Date(2026, 6, 20, 12, 30, 0, 0, time.UTC).Unix()
+	historical := postableRow(uid, 401, 801, 201, accountId, "餐饮美食")
+	current := postableRow(uid, 402, 802, 202, accountId, "网上支付")
+	for _, row := range []*importing.RawImportRow{historical, current} {
+		row.NormalizedAmount = &amount
+		row.NormalizedUnixTime = &when
+		row.Currency = "CNY"
+	}
+	historical.RawCounterparty, historical.RawPaymentMethod = "美团平台商户", "光大银行信用卡(2690)"
+	current.RawCounterparty, current.RawPaymentMethod = "支付宝 美团平台商户", "末四位2690"
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{historical})
+	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{current})
+	evidence.batchById[402].SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	reconciler := &fakeReconciler{detail: sameEventCase(88, 801, 802)}
+	poster := &fakePoster{}
+	var nextId int64 = 7300
+	service, err := billflow.NewService(repository, evidence, &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		402: {mappedGroup(accountId, 802)},
+	}}, poster, reconciler, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{{CategoryId: 51, Name: "餐饮美食"}}}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{302}, IdempotencyKey: "create-task-historical-pair"})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-historical-pair", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || ran == nil || poster.calls != 0 || len(reconciler.decided) != 1 {
+		t.Fatalf("historical pair was not reconciled as one event: task=%+v calls=%d decisions=%+v err=%v", ran, poster.calls, reconciler.decided, err)
+	}
+	if reconciler.decided[0].PrimaryDraft == nil || reconciler.decided[0].PrimaryDraft.CategoryId != 51 {
+		t.Fatalf("historical clearer evidence did not supply canonical draft: %+v", reconciler.decided[0].PrimaryDraft)
+	}
+}
+
+func TestServiceDefersAutoReconcileLedgerEffectUntilFirstTaskConfirmation(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	accountId := int64(61)
+	amount := int64(6600)
+	when := time.Date(2026, 7, 1, 8, 30, 0, 0, time.UTC).Unix()
+	alipay := postableRow(uid, 401, 801, 201, accountId, "餐饮美食")
+	bank := postableRow(uid, 402, 802, 202, accountId, "网上支付")
+	for _, row := range []*importing.RawImportRow{alipay, bank} {
+		row.NormalizedAmount = &amount
+		row.NormalizedUnixTime = &when
+		row.Currency = "CNY"
+	}
+	alipay.RawCounterparty, alipay.RawPaymentMethod = "美团平台商户", "光大银行信用卡(2690)"
+	bank.RawCounterparty, bank.RawPaymentMethod = "支付宝 美团平台商户", "末四位2690"
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{alipay})
+	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{bank})
+	evidence.batchById[402].SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	reconciler := &fakeReconciler{detail: sameEventCase(99, 801, 802)}
+	poster := &fakePoster{}
+	var nextId int64 = 7400
+	service, err := billflow.NewService(repository, evidence, &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		401: {mappedGroup(accountId, 801)},
+		402: {mappedGroup(accountId, 802)},
+	}}, poster, reconciler, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{{CategoryId: 51, Name: "餐饮美食"}}}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301, 302}, IdempotencyKey: "create-first-pair"})
+	if err != nil || created.ConfirmPolicy != billflow.CONFIRM_POLICY_CONFIRM_THEN_POST {
+		t.Fatalf("create first task: %+v %v", created, err)
+	}
+	preview, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "preview-first-pair", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || preview == nil || preview.Status != billflow.TASK_STATUS_AWAITING_CONFIRM || preview.AutoPostedCount != 1 || len(reconciler.decided) != 0 || poster.calls != 0 {
+		t.Fatalf("preview wrote ledger effects: task=%+v decisions=%+v calls=%d err=%v", preview, reconciler.decided, poster.calls, err)
+	}
+	confirmed, err := service.ConfirmPost(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: preview.Version, IdempotencyKey: "confirm-first-pair", CreatedIp: "192.0.2.10"}, time.UTC)
+	if err != nil || confirmed == nil || confirmed.Status != billflow.TASK_STATUS_READY || confirmed.AutoPostedCount != 1 || len(reconciler.decided) != 1 || poster.calls != 0 {
+		t.Fatalf("confirmation did not create one reconciled event: task=%+v decisions=%+v calls=%d err=%v", confirmed, reconciler.decided, poster.calls, err)
 	}
 }
 
@@ -381,8 +535,9 @@ func TestServicePairsEvenCrossSourceAndLeavesOddOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create even-pair task: %v", err)
 	}
-	if _, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-pair-even"}, time.UTC); err != nil {
-		t.Fatalf("run even-pair task: %v", err)
+	ran, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-task-pair-even"}, time.UTC)
+	if err != nil || ran == nil {
+		t.Fatalf("run even-pair task: %+v %v", ran, err)
 	}
 	if len(reconciler.decided) != 2 {
 		t.Fatalf("even same-amount pairs were not 1:1 auto decided: %+v", reconciler.decided)
@@ -401,6 +556,23 @@ func TestServicePairsEvenCrossSourceAndLeavesOddOne(t *testing.T) {
 	}
 	if !mergeTodosHaveUniquePair(merged) {
 		t.Fatalf("resolved merge todos should keep exactly one counterpart row: %+v", merged)
+	}
+	var mergedTodo *billflow.TodoView
+	for _, item := range merged.Items {
+		if item != nil && item.TodoKind == billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS {
+			mergedTodo = item
+			break
+		}
+	}
+	if mergedTodo == nil {
+		t.Fatal("missing merged todo to restore")
+	}
+	restored, err := service.ResolveTodo(nil, billflow.ResolveTodoRequest{
+		Uid: uid, TodoId: mergedTodo.TodoId, ExpectedVersion: mergedTodo.Version,
+		Status: billflow.TODO_STATUS_OPEN, IdempotencyKey: "restore-auto-merged-pair",
+	})
+	if err != nil || restored == nil || restored.Status != billflow.TODO_STATUS_OPEN || len(reconciler.undone) != 1 {
+		t.Fatalf("restoring an auto merge did not undo reconciliation: todo=%+v undo=%+v err=%v", restored, reconciler.undone, err)
 	}
 
 	oddRepo, _ := newSQLiteBillflowRepository(t)
@@ -1025,9 +1197,11 @@ func (f *fakePoster) PostImportBatch(_ core.Context, request importing.PostImpor
 }
 
 type fakeReconciler struct {
-	detail  *reconciliation.CaseDetail
-	details []*reconciliation.CaseDetail
-	decided []reconciliation.DecideCaseRequest
+	detail         *reconciliation.CaseDetail
+	details        []*reconciliation.CaseDetail
+	decided        []reconciliation.DecideCaseRequest
+	decisionStatus reconciliation.DecisionStatus
+	undone         []reconciliation.UndoCaseRequest
 }
 
 func (f *fakeReconciler) allDetails() []*reconciliation.CaseDetail {
@@ -1079,12 +1253,32 @@ func (f *fakeReconciler) ListCases(_ core.Context, request reconciliation.ListCa
 }
 func (f *fakeReconciler) DecideCase(_ core.Context, request reconciliation.DecideCaseRequest, _ *time.Location) (*reconciliation.DecisionResult, error) {
 	f.decided = append(f.decided, request)
-	for _, detail := range f.allDetails() {
-		if detail != nil && detail.CaseSummary != nil && detail.CaseId == request.CaseId {
-			detail.Status = reconciliation.CASE_STATUS_RESOLVED
+	status := f.decisionStatus
+	if status == "" {
+		status = reconciliation.DECISION_STATUS_APPLIED
+	}
+	if status == reconciliation.DECISION_STATUS_APPLIED {
+		for _, detail := range f.allDetails() {
+			if detail != nil && detail.CaseSummary != nil && detail.CaseId == request.CaseId {
+				detail.Status = reconciliation.CASE_STATUS_RESOLVED
+				decisionId := detail.CaseId + 9000
+				detail.CurrentDecisionId = &decisionId
+			}
 		}
 	}
-	return &reconciliation.DecisionResult{CaseId: request.CaseId, DecisionType: request.DecisionType}, nil
+	return &reconciliation.DecisionResult{CaseId: request.CaseId, DecisionType: request.DecisionType, Status: status}, nil
+}
+func (f *fakeReconciler) UndoCase(_ core.Context, request reconciliation.UndoCaseRequest, _ *time.Location) (*reconciliation.DecisionResult, error) {
+	f.undone = append(f.undone, request)
+	for _, detail := range f.allDetails() {
+		if detail != nil && detail.CaseSummary != nil && detail.CaseId == request.CaseId {
+			detail.Status = reconciliation.CASE_STATUS_OPEN
+			detail.Version++
+			decisionId := detail.CaseId + 10_000
+			detail.CurrentDecisionId = &decisionId
+		}
+	}
+	return &reconciliation.DecisionResult{CaseId: request.CaseId, DecisionType: reconciliation.DECISION_TYPE_REOPEN, Status: reconciliation.DECISION_STATUS_APPLIED}, nil
 }
 
 type fakeCategories struct {

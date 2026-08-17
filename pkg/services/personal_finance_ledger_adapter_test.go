@@ -62,6 +62,16 @@ func TestCreateTransactionInSessionUsesCallerTransaction(t *testing.T) {
 	}
 
 	assertLedgerAdapterState(t, database, uid, 1, 800)
+	uncategorized := ledgerAdapterDraft(uid, 50)
+	uncategorized.CategoryId = 0
+	err = database.DoPrivacyTransaction(nil, func(sess *xorm.Session) error {
+		created, _, err = service.CreateTransactionInSession(nil, database, sess, uncategorized, nil)
+		return err
+	})
+	if err != nil || created == nil || created.CategoryId != 0 {
+		t.Fatalf("create uncategorized transaction in caller session: %+v %v", created, err)
+	}
+	assertLedgerAdapterState(t, database, uid, 2, 750)
 	rollback := errors.New("rollback fixture")
 	err = database.DoPrivacyTransaction(nil, func(sess *xorm.Session) error {
 		if _, _, createErr := service.CreateTransactionInSession(nil, database, sess, ledgerAdapterDraft(uid, 100), nil); createErr != nil {
@@ -75,7 +85,7 @@ func TestCreateTransactionInSessionUsesCallerTransaction(t *testing.T) {
 		t.Fatalf("caller rollback was not preserved: %v", err)
 	}
 
-	assertLedgerAdapterState(t, database, uid, 1, 800)
+	assertLedgerAdapterState(t, database, uid, 2, 750)
 	nonTransactionSession := database.NewPrivacySession(nil)
 	_, _, err = service.CreateTransactionInSession(nil, database, nonTransactionSession, ledgerAdapterDraft(uid, 1), nil)
 	nonTransactionSession.Close()

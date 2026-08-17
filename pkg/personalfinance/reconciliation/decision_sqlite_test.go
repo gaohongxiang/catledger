@@ -189,6 +189,15 @@ func TestDecisionServiceSQLiteZeroOneMultipleTransferRefundAndRollback(t *testin
 		t.Fatalf("zero-event same_event failed: %+v %v", zeroResult, err)
 	}
 	assertDecisionRows(t, environment.database, zero, importing.PROCESSING_STATE_LINKED)
+	uncategorized := insertDecisionCaseFixture(t, environment.database, uid, 45_000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.ECONOMIC_EFFECT_NORMAL)
+	uncategorizedDraft := expenseDraft(uncategorized, 500)
+	uncategorizedDraft.CategoryId = 0
+	uncategorizedDraft.AllowUncategorized = true
+	uncategorizedResult, err := environment.service.DecideCase(nil, sameEventRequest(uncategorized, "same-zero-uncategorized", uncategorizedDraft), time.UTC)
+	if err != nil || uncategorizedResult.Status != DECISION_STATUS_APPLIED {
+		t.Fatalf("uncategorized zero-event same_event failed: %+v %v", uncategorizedResult, err)
+	}
+	assertDecisionRows(t, environment.database, uncategorized, importing.PROCESSING_STATE_LINKED)
 
 	one := insertDecisionCaseFixture(t, environment.database, uid, 50_000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.ECONOMIC_EFFECT_NORMAL)
 	existing := insertDecisionExistingEvent(t, environment.database, one, 1, 500, models.TRANSACTION_DB_TYPE_EXPENSE, 70_001)

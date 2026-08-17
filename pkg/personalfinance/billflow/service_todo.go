@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
@@ -57,47 +58,140 @@ func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*Todo
 	if err != nil {
 		return nil, err
 	}
-	if err := s.bumpTask(c, request.Uid, todo.TaskId, task.Version, request.IdempotencyKey, ACTION_TYPE_RESOLVE_TODO, []string{
+	action, created, err := s.beginAction(c, request.Uid, todo.TaskId, task.Version, ACTION_TYPE_RESOLVE_TODO, request.IdempotencyKey, []string{
 		"resolve_todo", strconv.FormatInt(request.TodoId, 10), string(request.Status),
-	}, func(updated *Task) {
-		if restore {
-			updated.TodoOpenCount++
-			return
-		}
-		if updated.TodoOpenCount > 0 {
-			updated.TodoOpenCount--
-		}
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
-	current, err := s.repository.FindTodoById(c, request.Uid, request.TodoId)
-	if err != nil {
-		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	if !created {
+		current, findErr := s.repository.FindTodoById(c, request.Uid, request.TodoId)
+		if findErr != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		if action.Status == ACTION_STATUS_APPLIED && current != nil && current.Status == request.Status {
+			return s.todoView(c, request.Uid, current), nil
+		}
+		if action.Status != ACTION_STATUS_READY {
+			return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
+		}
 	}
-	if current != nil && current.Status == request.Status {
-		return s.todoView(c, request.Uid, current), nil
+	if restore && todo.TodoKind == TODO_KIND_CROSS_SOURCE_AMBIGUOUS && hasReasonCode(todo.ReasonCodesJson, "auto_merged") {
+		if err := s.undoAutoMergedTodo(c, request.Uid, todo, request.IdempotencyKey); err != nil {
+			return nil, err
+		}
 	}
 	now := s.now().Unix()
-	next := *todo
-	next.Status = request.Status
-	next.Version = todo.Version + 1
-	next.UpdatedUnixTime = now
+	nextTodo := *todo
+	nextTodo.Status = request.Status
+	nextTodo.Version = todo.Version + 1
+	nextTodo.UpdatedUnixTime = now
 	if restore {
-		next.ResolvedUnixTime = nil
+		nextTodo.ResolvedUnixTime = nil
 	} else {
-		next.ResolvedUnixTime = &now
+		nextTodo.ResolvedUnixTime = &now
 	}
+	nextTask := cloneTask(task)
+	if restore {
+		nextTask.TodoOpenCount++
+	} else if nextTask.TodoOpenCount > 0 {
+		nextTask.TodoOpenCount--
+	}
+	nextTask.Version = task.Version + 1
+	nextTask.UpdatedUnixTime = now
+	nextTask.CurrentActionId = &action.ActionId
+	applied := cloneAction(action)
+	applied.Status = ACTION_STATUS_APPLIED
+	applied.AppliedTaskVersion = nextTask.Version
+	applied.UpdatedUnixTime = now
+	applied.CompletedUnixTime = &now
 	err = s.repository.DoTransaction(c, request.Uid, func(tx *RepositoryTransaction) error {
-		updated, updateErr := tx.UpdateTodoCAS(request.ExpectedVersion, &next)
+		updated, updateErr := tx.UpdateTaskCAS(task.Version, nextTask)
 		if updateErr != nil || !updated {
 			return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+		}
+		updated, updateErr = tx.UpdateTodoCAS(request.ExpectedVersion, &nextTodo)
+		if updateErr != nil || !updated {
+			return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+		}
+		updated, updateErr = tx.UpdateAction(applied)
+		if updateErr != nil || !updated {
+			return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return s.todoView(c, request.Uid, &next), nil
+	return s.todoView(c, request.Uid, &nextTodo), nil
+}
+
+func (s *Service) undoAutoMergedTodo(c core.Context, uid int64, todo *Todo, idempotencyKey string) error {
+	if s == nil || s.reconciler == nil || todo == nil || todo.SubjectKind != SUBJECT_KIND_RAW_ROW || todo.SubjectId < 1 {
+		return serviceError(ErrServiceActionRequired, SERVICE_ERROR_ACTION_REQUIRED)
+	}
+	detail, err := s.findCaseForRowStatus(c, uid, todo.SubjectId, reconciliation.CASE_STATUS_RESOLVED)
+	if err != nil {
+		return serviceError(ErrServiceActionRequired, SERVICE_ERROR_ACTION_REQUIRED)
+	}
+	if detail == nil {
+		reopened, reopenErr := s.findCaseForRowStatus(c, uid, todo.SubjectId, reconciliation.CASE_STATUS_OPEN)
+		if reopenErr == nil && reopened != nil && reopened.CurrentDecisionId != nil {
+			return nil
+		}
+		return serviceError(ErrServiceActionRequired, SERVICE_ERROR_ACTION_REQUIRED)
+	}
+	if detail.CurrentDecisionId == nil {
+		return serviceError(ErrServiceActionRequired, SERVICE_ERROR_ACTION_REQUIRED)
+	}
+	result, err := s.reconciler.UndoCase(c, reconciliation.UndoCaseRequest{
+		Uid: uid, CaseId: detail.CaseId, ExpectedCaseVersion: detail.Version,
+		IdempotencyKey: idempotencyKey + "-recon-" + strconv.FormatInt(detail.CaseId, 10),
+	}, time.UTC)
+	if err != nil || result == nil || result.Status != reconciliation.DECISION_STATUS_APPLIED {
+		return serviceError(ErrServiceActionRequired, SERVICE_ERROR_ACTION_REQUIRED)
+	}
+	return nil
+}
+
+func (s *Service) findCaseForRowStatus(c core.Context, uid int64, rowId int64, status reconciliation.CaseStatus) (*reconciliation.CaseDetail, error) {
+	var cursor *reconciliation.CaseCursor
+	for page := 0; page < todoMatchCasePages; page++ {
+		result, err := s.reconciler.ListCases(c, reconciliation.ListCasesRequest{
+			Uid: uid, Status: status, Cursor: cursor, Limit: todoMatchCasePageSize,
+		})
+		if err != nil || result == nil {
+			return nil, err
+		}
+		for _, summary := range result.Items {
+			if summary == nil || summary.CurrentDecisionId == nil {
+				continue
+			}
+			detail, getErr := s.reconciler.GetCase(c, uid, summary.CaseId)
+			if getErr != nil || detail == nil {
+				continue
+			}
+			for _, candidateRowId := range caseEvidenceRowIDs(detail) {
+				if candidateRowId == rowId {
+					return detail, nil
+				}
+			}
+		}
+		if result.NextCursor == nil {
+			break
+		}
+		cursor = result.NextCursor
+	}
+	return nil, nil
+}
+
+func hasReasonCode(raw string, wanted string) bool {
+	for _, code := range decodeReasonCodes(raw) {
+		if code == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) AssignTodoCategories(c core.Context, request AssignTodoCategoryRequest) (*TaskView, error) {

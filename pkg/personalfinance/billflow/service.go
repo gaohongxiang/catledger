@@ -92,6 +92,7 @@ type Reconciler interface {
 	ListCases(c core.Context, request reconciliation.ListCasesRequest) (*reconciliation.CasePage, error)
 	GetCase(c core.Context, uid int64, caseId int64) (*reconciliation.CaseDetail, error)
 	DecideCase(c core.Context, request reconciliation.DecideCaseRequest, clientTimezone *time.Location) (*reconciliation.DecisionResult, error)
+	UndoCase(c core.Context, request reconciliation.UndoCaseRequest, clientTimezone *time.Location) (*reconciliation.DecisionResult, error)
 }
 
 // InstallmentIngester 只在整理编排中调用分期识别。

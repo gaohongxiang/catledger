@@ -77,12 +77,12 @@ func (s *Service) organize(c core.Context, request RunTaskRequest, clientTimezon
 	if err != nil {
 		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 	}
-	plan, err := s.buildOrganizePlan(c, request.Uid, request.TaskId, members, createdIP(request.CreatedIp))
+	shouldPost := confirmPost || task.ConfirmPolicy == CONFIRM_POLICY_AUTO_POST
+	plan, err := s.buildOrganizePlan(c, request.Uid, request.TaskId, members, createdIP(request.CreatedIp), shouldPost)
 	if err != nil {
 		return nil, err
 	}
 
-	shouldPost := confirmPost || task.ConfirmPolicy == CONFIRM_POLICY_AUTO_POST
 	posted := int64(0)
 	if shouldPost {
 		if s.poster == nil {
@@ -126,7 +126,7 @@ type organizePlan struct {
 	posted      int64
 }
 
-func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, members []*TaskMember, createdIp string) (*organizePlan, error) {
+func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, members []*TaskMember, createdIp string, applyReconciliation bool) (*organizePlan, error) {
 	plan := &organizePlan{commands: map[int64][]importing.PostingIdentityCommand{}}
 	batchIds := make([]int64, 0, len(members))
 	rowsByBatch := make(map[int64][]*importing.RawImportRow)
@@ -148,11 +148,17 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 		rowsByBatch[member.BatchId] = rows
 	}
 
-	ambiguousRows, pairs, err := s.autoReconcile(c, uid, taskId, batchIds, rowsByBatch, createdIp)
+	categories, err := s.loadCategoryIndex(c, uid, sourceByBatch, rowsByBatch)
+	if err != nil {
+		return nil, err
+	}
+
+	ambiguousRows, mergedRows, pairs, reconciledPostCount, err := s.autoReconcile(c, uid, taskId, batchIds, rowsByBatch, sourceByBatch, categories, createdIp, applyReconciliation)
 	if err != nil {
 		return nil, err
 	}
 	plan.mergedPairs = pairs
+	plan.posted += reconciledPostCount
 	if s.installments != nil {
 		if _, err := s.installments.IngestBatches(c, installments.IngestRequest{Uid: uid, BatchIds: batchIds}); err != nil {
 			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
@@ -170,16 +176,11 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 		}
 	}
 
-	categories, err := s.loadCategoryIndex(c, uid, sourceByBatch, rowsByBatch)
-	if err != nil {
-		return nil, err
-	}
-
 	for batchId, rows := range rowsByBatch {
 		sourceType := sourceByBatch[batchId]
 		grouped := map[int64][]*importing.RawImportRow{}
 		for _, row := range rows {
-			if row == nil || row.ProcessingState != importing.PROCESSING_STATE_PENDING {
+			if row == nil || row.ProcessingState != importing.PROCESSING_STATE_PENDING || mergedRows[row.RowId] {
 				continue
 			}
 			todoKind, postable := s.classifyRow(row, sourceType, ambiguousRows[row.RowId], categories)
@@ -306,16 +307,29 @@ func (s *Service) postingCommand(rows []*importing.RawImportRow, sourceType impo
 	}
 }
 
-func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchIds []int64, rowsByBatch map[int64][]*importing.RawImportRow, createdIp string) (map[int64]bool, [][2]int64, error) {
+func (s *Service) autoReconcile(
+	c core.Context,
+	uid int64,
+	taskId int64,
+	batchIds []int64,
+	rowsByBatch map[int64][]*importing.RawImportRow,
+	sourceByBatch map[int64]importing.SourceType,
+	categories *categoryIndex,
+	createdIp string,
+	apply bool,
+) (map[int64]bool, map[int64]bool, [][2]int64, int64, error) {
 	ambiguous := map[int64]bool{}
+	merged := map[int64]bool{}
 	if s.reconciler == nil {
-		return ambiguous, nil, nil
+		return ambiguous, merged, nil, 0, nil
 	}
 	rowIndex := map[int64]*importing.RawImportRow{}
+	sourceIndex := map[int64]importing.SourceType{}
 	for _, rows := range rowsByBatch {
 		for _, row := range rows {
 			if row != nil {
 				rowIndex[row.RowId] = row
+				sourceIndex[row.RowId] = sourceByBatch[row.BatchId]
 			}
 		}
 	}
@@ -324,7 +338,7 @@ func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchId
 	for _, batchId := range batchIds {
 		result, err := s.reconciler.GenerateCandidates(c, reconciliation.GenerateCandidatesRequest{Uid: uid, BatchId: batchId})
 		if err != nil {
-			return nil, nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+			return nil, nil, nil, 0, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 		}
 		if result == nil {
 			continue
@@ -351,6 +365,9 @@ func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchId
 			continue
 		}
 		markCaseRows(ambiguous, detail)
+		if err := s.loadCaseEvidenceRows(c, uid, detail, rowIndex, sourceIndex); err != nil {
+			continue
+		}
 		if detail.SuggestedRelationType != reconciliation.DECISION_TYPE_SAME_EVENT {
 			continue
 		}
@@ -375,25 +392,136 @@ func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchId
 		return pairs[i].detail.CaseId < pairs[j].detail.CaseId
 	})
 	decidedPairs := make([][2]int64, 0, len(pairs))
+	var posted int64
 	for _, pair := range pairs {
 		if paired[pair.left] || paired[pair.right] {
 			continue
 		}
-		if _, err := s.reconciler.DecideCase(c, reconciliation.DecideCaseRequest{
+		if !apply {
+			paired[pair.left] = true
+			paired[pair.right] = true
+			merged[pair.left] = true
+			merged[pair.right] = true
+			delete(ambiguous, pair.left)
+			delete(ambiguous, pair.right)
+			decidedPairs = append(decidedPairs, [2]int64{pair.left, pair.right})
+			if pairNeedsLedgerEvent(pair, rowIndex) {
+				posted++
+			}
+			continue
+		}
+		result, err := s.reconciler.DecideCase(c, reconciliation.DecideCaseRequest{
 			Uid: uid, CaseId: pair.detail.CaseId, ExpectedCaseVersion: pair.detail.Version,
 			DecisionType:   reconciliation.DECISION_TYPE_SAME_EVENT,
 			IdempotencyKey: "billflow-recon-" + strconv.FormatInt(taskId, 10) + "-" + strconv.FormatInt(pair.detail.CaseId, 10),
 			CreatedIp:      createdIp,
-		}, time.UTC); err != nil {
+			PrimaryDraft:   s.sameEventDraft(pair, rowIndex, sourceIndex, categories),
+		}, time.UTC)
+		if err != nil || result == nil || result.Status != reconciliation.DECISION_STATUS_APPLIED {
 			continue
 		}
 		paired[pair.left] = true
 		paired[pair.right] = true
+		merged[pair.left] = true
+		merged[pair.right] = true
 		delete(ambiguous, pair.left)
 		delete(ambiguous, pair.right)
 		decidedPairs = append(decidedPairs, [2]int64{pair.left, pair.right})
+		if pairNeedsLedgerEvent(pair, rowIndex) {
+			posted++
+		}
 	}
-	return ambiguous, decidedPairs, nil
+	return ambiguous, merged, decidedPairs, posted, nil
+}
+
+func pairNeedsLedgerEvent(pair sameEventPair, rows map[int64]*importing.RawImportRow) bool {
+	left, right := rows[pair.left], rows[pair.right]
+	return left != nil && right != nil &&
+		left.ProcessingState == importing.PROCESSING_STATE_PENDING &&
+		right.ProcessingState == importing.PROCESSING_STATE_PENDING
+}
+
+func (s *Service) loadCaseEvidenceRows(c core.Context, uid int64, detail *reconciliation.CaseDetail, rows map[int64]*importing.RawImportRow, sources map[int64]importing.SourceType) error {
+	if s == nil || s.evidence == nil || detail == nil {
+		return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	for _, member := range detail.Members {
+		if member == nil {
+			continue
+		}
+		for _, evidence := range member.Evidence {
+			if evidence == nil || evidence.RowId < 1 {
+				continue
+			}
+			row := rows[evidence.RowId]
+			if row == nil {
+				var err error
+				row, err = s.evidence.FindRawImportRowById(c, uid, evidence.RowId)
+				if err != nil || row == nil {
+					return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+				}
+				rows[row.RowId] = row
+			}
+			if _, exists := sources[row.RowId]; !exists {
+				batch, err := s.evidence.FindImportBatchById(c, uid, row.BatchId)
+				if err != nil || batch == nil {
+					return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+				}
+				sources[row.RowId] = batch.SourceTypeSnapshot
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) sameEventDraft(pair sameEventPair, rows map[int64]*importing.RawImportRow, sources map[int64]importing.SourceType, categories *categoryIndex) *importing.LedgerTransactionDraft {
+	left, right := rows[pair.left], rows[pair.right]
+	selected := preferredSameEventRow(left, right, sources, categories)
+	if selected == nil || selected.LedgerAccountId == nil || selected.NormalizedAmount == nil || selected.NormalizedUnixTime == nil {
+		return nil
+	}
+	txType := models.TRANSACTION_TYPE_EXPENSE
+	if selected.NormalizedDirection == importing.NORMALIZED_DIRECTION_INCOME {
+		txType = models.TRANSACTION_TYPE_INCOME
+	} else if selected.NormalizedDirection != importing.NORMALIZED_DIRECTION_EXPENSE {
+		return nil
+	}
+	categoryId := int64(0)
+	allowUncategorized := true
+	if id, ok := categories.mapped(sources[selected.RowId], selected); ok {
+		categoryId = id
+		allowUncategorized = false
+	}
+	offset := int16(0)
+	if selected.NormalizedTimezoneUtcOffset != nil {
+		offset = *selected.NormalizedTimezoneUtcOffset
+	}
+	return &importing.LedgerTransactionDraft{
+		Type: txType, CategoryId: categoryId, AllowUncategorized: allowUncategorized,
+		UnixTime: *selected.NormalizedUnixTime, TimezoneUtcOffset: offset,
+		SourceAccountId: *selected.LedgerAccountId, SourceAmount: *selected.NormalizedAmount,
+	}
+}
+
+func preferredSameEventRow(left *importing.RawImportRow, right *importing.RawImportRow, sources map[int64]importing.SourceType, categories *categoryIndex) *importing.RawImportRow {
+	if left == nil {
+		return right
+	}
+	if right == nil {
+		return left
+	}
+	_, leftMapped := categories.mapped(sources[left.RowId], left)
+	_, rightMapped := categories.mapped(sources[right.RowId], right)
+	if leftMapped != rightMapped {
+		if leftMapped {
+			return left
+		}
+		return right
+	}
+	if sources[left.RowId] == importing.SOURCE_TYPE_BANK && sources[right.RowId] != importing.SOURCE_TYPE_BANK {
+		return right
+	}
+	return left
 }
 
 type sameEventPair struct {
@@ -464,7 +592,7 @@ func (s *Service) highConfidenceSameEvent(detail *reconciliation.CaseDetail, row
 				continue
 			}
 			row := rows[evidence.RowId]
-			if row == nil || row.NormalizedAmount == nil || row.NormalizedUnixTime == nil {
+			if row == nil || row.NormalizedAmount == nil || row.NormalizedUnixTime == nil || row.LedgerAccountId == nil || *row.LedgerAccountId < 1 {
 				return false
 			}
 			if first == nil {
@@ -477,7 +605,7 @@ func (s *Service) highConfidenceSameEvent(detail *reconciliation.CaseDetail, row
 			if !reconciliation.CrossSourceComparisonMatch(first, row, HIGH_CONFIDENCE_WINDOW_SECONDS) {
 				return false
 			}
-			if first.LedgerAccountId != nil && row.LedgerAccountId != nil && *first.LedgerAccountId != *row.LedgerAccountId {
+			if *first.LedgerAccountId != *row.LedgerAccountId {
 				return false
 			}
 			if first.NormalizedDirection != row.NormalizedDirection && !compatibleBillflowDirections(first.NormalizedDirection, row.NormalizedDirection) {
@@ -504,17 +632,9 @@ func todoIdentityKey(kind TodoKind, subjectKind SubjectKind, subjectId int64) st
 	return string(kind) + "\x00" + string(subjectKind) + "\x00" + strconv.FormatInt(subjectId, 10)
 }
 
-func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, action *Action, _ *Task, plan *organizePlan, posted int64, status TaskStatus) error {
-	if err := s.applyReadyAction(c, request.Uid, request.TaskId, request.ExpectedVersion, action, func(next *Task) {
-		next.Status = status
-		if posted > 0 {
-			next.AutoPostedCount = posted
-		} else {
-			next.AutoPostedCount = plan.posted
-		}
-		next.TodoOpenCount = int64(len(plan.todos))
-	}); err != nil {
-		return err
+func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, action *Action, task *Task, plan *organizePlan, posted int64, status TaskStatus) error {
+	if task == nil || action == nil || plan == nil || task.Version != request.ExpectedVersion {
+		return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
 	}
 	now := s.now().Unix()
 	keep := map[string]struct{}{}
@@ -593,6 +713,30 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 				return err
 			}
 		}
+		nextTask := cloneTask(task)
+		nextTask.Status = status
+		if posted > 0 {
+			nextTask.AutoPostedCount = posted
+		} else {
+			nextTask.AutoPostedCount = plan.posted
+		}
+		nextTask.TodoOpenCount = int64(len(plan.todos))
+		nextTask.Version = task.Version + 1
+		nextTask.UpdatedUnixTime = now
+		nextTask.CurrentActionId = &action.ActionId
+		updated, updateErr := tx.UpdateTaskCAS(request.ExpectedVersion, nextTask)
+		if updateErr != nil || !updated {
+			return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+		}
+		applied := cloneAction(action)
+		applied.Status = ACTION_STATUS_APPLIED
+		applied.AppliedTaskVersion = nextTask.Version
+		applied.UpdatedUnixTime = now
+		applied.CompletedUnixTime = &now
+		updated, updateErr = tx.UpdateAction(applied)
+		if updateErr != nil || !updated {
+			return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
 		return nil
 	})
 }
@@ -611,6 +755,7 @@ func (s *Service) ensureResolvedMergeTodo(tx *RepositoryTransaction, request Run
 		}
 		next := *existing
 		next.Status = TODO_STATUS_RESOLVED
+		next.ReasonCodesJson = encodeReasonCodes([]string{"auto_merged"})
 		next.Version = existing.Version + 1
 		next.UpdatedUnixTime = now
 		next.ResolvedUnixTime = &now

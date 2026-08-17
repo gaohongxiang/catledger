@@ -2765,6 +2765,10 @@ func (s *TransactionService) GetTransactionIds(transactions []*models.Transactio
 }
 
 func (s *TransactionService) doCreateTransaction(c core.Context, database *datastore.Database, sess *xorm.Session, transaction *models.Transaction, transactionTagIndexes []*models.TransactionTagIndex, tagIds []int64, pictureIds []int64, pictureUpdateModel *models.TransactionPictureInfo) error {
+	return s.doCreateTransactionWithOptions(c, database, sess, transaction, transactionTagIndexes, tagIds, pictureIds, pictureUpdateModel, false)
+}
+
+func (s *TransactionService) doCreateTransactionWithOptions(c core.Context, database *datastore.Database, sess *xorm.Session, transaction *models.Transaction, transactionTagIndexes []*models.TransactionTagIndex, tagIds []int64, pictureIds []int64, pictureUpdateModel *models.TransactionPictureInfo, allowUncategorized bool) error {
 	// Get and verify source and destination account
 	sourceAccount, destinationAccount, err := s.getAccountModels(sess, transaction)
 
@@ -2790,8 +2794,13 @@ func (s *TransactionService) doCreateTransaction(c core.Context, database *datas
 		return errs.ErrTransferTransactionAmountCannotBeLessThanZero
 	}
 
-	// Get and verify category
-	err = s.isCategoryValid(sess, transaction)
+	// PF 导入可以显式保留未分类收支并先写入权威余额；普通交易创建仍通过
+	// doCreateTransaction 强制校验叶子分类。
+	uncategorized := allowUncategorized && transaction.CategoryId == 0 &&
+		(transaction.Type == models.TRANSACTION_DB_TYPE_INCOME || transaction.Type == models.TRANSACTION_DB_TYPE_EXPENSE)
+	if !uncategorized {
+		err = s.isCategoryValid(sess, transaction)
+	}
 
 	if err != nil {
 		return err

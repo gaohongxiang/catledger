@@ -251,6 +251,8 @@ describe('billflow task page wiring', () => {
         expect(workbench).not.toContain('todo-compare__badge');
         expect(workbench).not.toContain('personalFinance.billflow.merge.matchesHint');
         expect(workbench).toContain('todo.matches');
+        expect(workbench).toContain('@click="openReconciliation"');
+        expect(workbench).toContain("query: { view: 'reconciliation' }");
         expect(workbench).toContain('toggleSkipTodo');
         expect(workbench).toContain('personalFinance.billflow.accounts.skipped');
         expect(workbench).not.toContain('skippableAccountGroups');

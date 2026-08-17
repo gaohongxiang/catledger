@@ -309,11 +309,8 @@
                                                     </v-btn>
                                                 </div>
                                                 <div class="todo-row__actions" v-else-if="!isRowSkipped(todo.subjectId)">
-                                                    <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
-                                                        {{ tt('personalFinance.billflow.todos.resolve') }}
-                                                    </v-btn>
-                                                    <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
-                                                        {{ tt('personalFinance.billflow.todos.dismiss') }}
+                                                    <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="openReconciliation">
+                                                        {{ tt('personalFinance.organizer.tab.reconciliation') }}
                                                     </v-btn>
                                                 </div>
                                             </div>
@@ -545,6 +542,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, useTemplateRef, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { mdiRefresh, mdiTrayArrowUp } from '@mdi/js';
 
 import AmountInput from '@/components/desktop/AmountInput.vue';
@@ -619,6 +617,7 @@ import CebCreditImportDialog from '../../components/CebCreditImportDialog.vue';
 import SourceAccountDialog from '../../components/SourceAccountDialog.vue';
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatDateTimeToShortDate, formatDateTimeToShortDateTime } = useI18n();
+const router = useRouter();
 const userStore = useUserStore();
 const personalFinanceStore = usePersonalFinanceStore();
 const accountsStore = useAccountsStore();
@@ -629,6 +628,10 @@ const sourceAccountDialog = useTemplateRef<InstanceType<typeof SourceAccountDial
 const loading = ref(false);
 const busy = ref(false);
 const error = ref(false);
+
+function openReconciliation(): void {
+    router.push({ path: '/personal-finance/bills', query: { view: 'reconciliation' } });
+}
 const selectedFileIds = ref<string[]>([]);
 const previousEligibleIds = ref<string[]>([]);
 const task = ref<BillflowTask>();
