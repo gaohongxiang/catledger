@@ -249,6 +249,7 @@ function normalizeTodoMatch(value: unknown): BillflowTodoMatch {
         currency: string(item['currency'] ?? ''),
         direction: string(item['direction'] ?? ''),
         ...(unixTime === undefined ? {} : { unixTime }),
+        ...(optionalIdentifier(item['rowId']) === undefined ? {} : { rowId: optionalIdentifier(item['rowId']) }),
         ...(string(item['orderId'] ?? '') ? { orderId: string(item['orderId']) } : {}),
         ...(string(item['merchantOrderId'] ?? '') ? { merchantOrderId: string(item['merchantOrderId']) } : {})
     };

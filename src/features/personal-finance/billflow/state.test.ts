@@ -28,6 +28,7 @@ import {
     mergeBucketHintKey,
     mergeSelectedOrganizeFileIds,
     mergeTodos,
+    uniqueMergeGroups,
     nextBillflowWorkbenchStep,
     otherTodos,
     previousBillflowWorkbenchStep,
@@ -234,8 +235,9 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
         expect(workbench).toContain('v-for="todo in reviewTodos"');
         expect(workbench).toContain('v-for="todo in otherReviewTodos"');
-        expect(workbench).toContain('v-for="(todo, groupIndex) in mergeReviewTodos"');
-        expect(workbench).toContain('v-for="todo in mergedReviewTodos"');
+        expect(workbench).toContain('v-for="(todo, groupIndex) in activeMergeTodos"');
+        expect(workbench).not.toContain('v-for="todo in mergedReviewTodos"');
+        expect(workbench).toContain('uniqueMergeGroups');
         expect(workbench).toContain('formatMergeSource');
         expect(workbench).toContain('formatMergeTime');
         expect(workbench).toContain('mergeGroupRows');
@@ -365,6 +367,10 @@ describe('billflow task page wiring', () => {
             { todoKind: 'uncategorized' },
             { todoKind: 'cross_source_ambiguous' }
         ]).map(todo => todo.todoKind)).toEqual(['cross_source_ambiguous']);
+        expect(uniqueMergeGroups([
+            { subjectId: '801', matches: [{ rowId: '802', sourceType: 'bank', account: 'a', label: 'x', amount: '1' }] },
+            { subjectId: '802', matches: [{ rowId: '801', sourceType: 'alipay', account: 'b', label: 'y', amount: '1' }] }
+        ]).map(todo => todo.subjectId)).toEqual(['801']);
         expect(otherTodos([
             { todoKind: 'uncategorized' },
             { todoKind: 'installment_candidate' },

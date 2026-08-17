@@ -267,6 +267,7 @@ type TodoView struct {
 }
 
 type TodoMatchView struct {
+	RowId           int64
 	SourceType      string
 	Account         string
 	Label           string

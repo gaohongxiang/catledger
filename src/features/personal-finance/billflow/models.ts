@@ -119,6 +119,7 @@ export interface BillflowTodo {
 }
 
 export interface BillflowTodoMatch {
+    readonly rowId?: string;
     readonly sourceType: BillflowSourceType;
     readonly account: string;
     readonly label: string;

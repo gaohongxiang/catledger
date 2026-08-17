@@ -370,6 +370,25 @@ export function mergeTodos<T extends { todoKind: BillflowTodoKind }>(todos: read
     return todos.filter(todo => isMergeTodo(todo.todoKind));
 }
 
+export function uniqueMergeGroups<T extends { subjectId: string; matches: readonly { rowId?: string; sourceType: string; account: string; label: string; amount: string; unixTime?: number }[] }>(todos: readonly T[]): T[] {
+    const seen = new Set<string>();
+    const result: T[] = [];
+    for (const todo of todos) {
+        const key = mergeGroupIdentity(todo);
+        if (seen.has(key)) {
+            continue;
+        }
+        seen.add(key);
+        result.push(todo);
+    }
+    return result;
+}
+
+function mergeGroupIdentity(todo: { subjectId: string; matches: readonly { rowId?: string; sourceType: string; account: string; label: string; amount: string; unixTime?: number }[] }): string {
+    const ids = [todo.subjectId, ...todo.matches.map(match => match.rowId || [match.sourceType, match.account, match.label, match.amount, String(match.unixTime ?? '')].join('\x1f'))];
+    return [...ids].sort().join('\x1e');
+}
+
 export function categoryTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
     return todos.filter(todo => isCategoryTodo(todo.todoKind));
 }

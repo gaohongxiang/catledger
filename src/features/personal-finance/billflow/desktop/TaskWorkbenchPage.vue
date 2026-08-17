@@ -271,27 +271,11 @@
                 </div>
                 <template v-if="mergeBucket === 'merged'">
                     <p class="bucket-empty" v-if="!mergedReviewTodos.length">{{ tt('personalFinance.billflow.merge.mergedEmpty') }}</p>
-                    <article class="todo-row todo-row--done" :key="todo.id" v-for="todo in mergedReviewTodos">
-                        <div class="todo-row__copy">
-                            <strong>{{ todoTitle(todo) }}</strong>
-                            <small v-if="todoMeta(todo)">{{ todoMeta(todo) }}</small>
-                        </div>
-                        <div class="todo-row__facts">
-                            <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
-                            <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
-                        </div>
-                        <label class="todo-skip" v-if="canSkipTodo(todo)">
-                            <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
-                            {{ tt('personalFinance.billflow.accounts.skipped') }}
-                        </label>
-                        <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'open')">
-                            {{ tt('personalFinance.billflow.todos.restore') }}
-                        </v-btn>
-                    </article>
                 </template>
                 <template v-else>
                     <p class="bucket-empty" v-if="!mergeReviewTodos.length">{{ tt('personalFinance.billflow.merge.empty') }}</p>
-                    <div class="merge-table-wrap" v-else>
+                </template>
+                <div class="merge-table-wrap" v-if="activeMergeTodos.length">
                         <table class="merge-table">
                             <thead>
                                 <tr>
@@ -306,7 +290,7 @@
                                     <th>{{ tt('personalFinance.billflow.merge.column.orderId') }}</th>
                                 </tr>
                             </thead>
-                            <tbody class="merge-group" :key="todo.id" v-for="(todo, groupIndex) in mergeReviewTodos">
+                            <tbody class="merge-group" :key="todo.id" v-for="(todo, groupIndex) in activeMergeTodos">
                                 <tr class="merge-group__gap" v-if="groupIndex > 0">
                                     <td :colspan="mergeColumnCount"></td>
                                 </tr>
@@ -319,7 +303,12 @@
                                                     <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
                                                     {{ tt('personalFinance.billflow.accounts.skipped') }}
                                                 </label>
-                                                <div class="todo-row__actions" v-if="!isRowSkipped(todo.subjectId)">
+                                                <div class="todo-row__actions" v-if="mergeBucket === 'merged'">
+                                                    <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'open')">
+                                                        {{ tt('personalFinance.billflow.todos.restore') }}
+                                                    </v-btn>
+                                                </div>
+                                                <div class="todo-row__actions" v-else-if="!isRowSkipped(todo.subjectId)">
                                                     <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
                                                         {{ tt('personalFinance.billflow.todos.resolve') }}
                                                     </v-btn>
@@ -342,16 +331,15 @@
                                     <td>{{ row.direction ? tt(billflowDirectionKey(row.direction)) : '' }}</td>
                                     <td class="is-id">{{ mergeOrderId(row) }}</td>
                                 </tr>
-                                <tr class="merge-group__note" v-if="!todo.matches.length">
+                                <tr class="merge-group__note" v-if="mergeBucket !== 'merged' && !todo.matches.length">
                                     <td :colspan="mergeColumnCount">{{ tt('personalFinance.billflow.merge.matchesEmpty') }}</td>
                                 </tr>
-                                <tr class="merge-group__note" v-else-if="todo.matches.length > 1">
+                                <tr class="merge-group__note" v-else-if="mergeBucket !== 'merged' && todo.matches.length > 1">
                                     <td :colspan="mergeColumnCount">{{ tt('personalFinance.billflow.merge.matchesMany') }}</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                </template>
             </template>
             </template>
 
@@ -601,6 +589,7 @@ import {
     mergeBucketHintKey,
     mergeSelectedOrganizeFileIds,
     mergeTodos,
+    uniqueMergeGroups,
     nextBillflowWorkbenchStep,
     otherTodos,
     previousBillflowWorkbenchStep,
@@ -708,13 +697,14 @@ const reviewTodos = computed(() => [
     ...categoryTodos(dismissedTodos.value).filter(todo => isRowSkipped(todo.subjectId))
 ]);
 const classifiedReviewRows = computed(() => classifiedRows.value.filter(row => !isRowSkipped(row.id)));
-const mergeReviewTodos = computed(() => [
+const mergeReviewTodos = computed(() => uniqueMergeGroups([
     ...mergeTodos(openTodos.value),
     ...mergeTodos(dismissedTodos.value).filter(todo => isRowSkipped(todo.subjectId))
-]);
-const mergeHasItemColumn = computed(() => mergeReviewTodos.value.some(todo => mergeGroupRows(todo).some(row => !!row.item)));
+]));
+const mergeHasItemColumn = computed(() => activeMergeTodos.value.some(todo => mergeGroupRows(todo).some(row => !!row.item)));
 const mergeColumnCount = computed(() => mergeHasItemColumn.value ? 9 : 8);
-const mergedReviewTodos = computed(() => mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]).filter(todo => !isRowSkipped(todo.subjectId)));
+const mergedReviewTodos = computed(() => uniqueMergeGroups(mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]).filter(todo => !isRowSkipped(todo.subjectId))));
+const activeMergeTodos = computed(() => mergeBucket.value === 'merged' ? mergedReviewTodos.value : mergeReviewTodos.value);
 const otherReviewTodos = computed(() => otherTodos(openTodos.value));
 const skippedOrphanRows = computed(() => {
     const known = new Set([

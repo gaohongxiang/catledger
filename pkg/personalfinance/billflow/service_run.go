@@ -120,9 +120,10 @@ func (s *Service) organize(c core.Context, request RunTaskRequest, clientTimezon
 }
 
 type organizePlan struct {
-	commands map[int64][]importing.PostingIdentityCommand
-	todos    []Todo
-	posted   int64
+	commands    map[int64][]importing.PostingIdentityCommand
+	todos       []Todo
+	mergedPairs [][2]int64
+	posted      int64
 }
 
 func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, members []*TaskMember, createdIp string) (*organizePlan, error) {
@@ -147,10 +148,11 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 		rowsByBatch[member.BatchId] = rows
 	}
 
-	ambiguousRows, err := s.autoReconcile(c, uid, taskId, batchIds, rowsByBatch, createdIp)
+	ambiguousRows, pairs, err := s.autoReconcile(c, uid, taskId, batchIds, rowsByBatch, createdIp)
 	if err != nil {
 		return nil, err
 	}
+	plan.mergedPairs = pairs
 	if s.installments != nil {
 		if _, err := s.installments.IngestBatches(c, installments.IngestRequest{Uid: uid, BatchIds: batchIds}); err != nil {
 			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
@@ -304,10 +306,10 @@ func (s *Service) postingCommand(rows []*importing.RawImportRow, sourceType impo
 	}
 }
 
-func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchIds []int64, rowsByBatch map[int64][]*importing.RawImportRow, createdIp string) (map[int64]bool, error) {
+func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchIds []int64, rowsByBatch map[int64][]*importing.RawImportRow, createdIp string) (map[int64]bool, [][2]int64, error) {
 	ambiguous := map[int64]bool{}
 	if s.reconciler == nil {
-		return ambiguous, nil
+		return ambiguous, nil, nil
 	}
 	rowIndex := map[int64]*importing.RawImportRow{}
 	for _, rows := range rowsByBatch {
@@ -322,7 +324,7 @@ func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchId
 	for _, batchId := range batchIds {
 		result, err := s.reconciler.GenerateCandidates(c, reconciliation.GenerateCandidatesRequest{Uid: uid, BatchId: batchId})
 		if err != nil {
-			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+			return nil, nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 		}
 		if result == nil {
 			continue
@@ -345,8 +347,11 @@ func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchId
 	paired := map[int64]bool{}
 	pairs := make([]sameEventPair, 0, len(cases))
 	for _, detail := range cases {
+		if detail == nil || detail.Status != reconciliation.CASE_STATUS_OPEN {
+			continue
+		}
 		markCaseRows(ambiguous, detail)
-		if detail.SuggestedRelationType != reconciliation.DECISION_TYPE_SAME_EVENT || detail.Status != reconciliation.CASE_STATUS_OPEN {
+		if detail.SuggestedRelationType != reconciliation.DECISION_TYPE_SAME_EVENT {
 			continue
 		}
 		if !s.highConfidenceSameEvent(detail, rowIndex) {
@@ -369,6 +374,7 @@ func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchId
 		}
 		return pairs[i].detail.CaseId < pairs[j].detail.CaseId
 	})
+	decidedPairs := make([][2]int64, 0, len(pairs))
 	for _, pair := range pairs {
 		if paired[pair.left] || paired[pair.right] {
 			continue
@@ -385,8 +391,9 @@ func (s *Service) autoReconcile(c core.Context, uid int64, taskId int64, batchId
 		paired[pair.right] = true
 		delete(ambiguous, pair.left)
 		delete(ambiguous, pair.right)
+		decidedPairs = append(decidedPairs, [2]int64{pair.left, pair.right})
 	}
-	return ambiguous, nil
+	return ambiguous, decidedPairs, nil
 }
 
 type sameEventPair struct {
@@ -559,8 +566,60 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 				return err
 			}
 		}
+		for _, pair := range plan.mergedPairs {
+			subjectId := pair[0]
+			if pair[1] < subjectId {
+				subjectId = pair[1]
+			}
+			if err := s.ensureResolvedMergeTodo(tx, request, subjectId, now); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
+}
+
+func (s *Service) ensureResolvedMergeTodo(tx *RepositoryTransaction, request RunTaskRequest, subjectId int64, now int64) error {
+	if subjectId < 1 {
+		return nil
+	}
+	existing, err := tx.FindTodoBySubject(request.TaskId, TODO_KIND_CROSS_SOURCE_AMBIGUOUS, SUBJECT_KIND_RAW_ROW, subjectId)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		if existing.Status != TODO_STATUS_OPEN {
+			return nil
+		}
+		next := *existing
+		next.Status = TODO_STATUS_RESOLVED
+		next.Version = existing.Version + 1
+		next.UpdatedUnixTime = now
+		next.ResolvedUnixTime = &now
+		updated, updateErr := tx.UpdateTodoCAS(existing.Version, &next)
+		if updateErr != nil || !updated {
+			return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+		}
+		return nil
+	}
+	item := Todo{
+		Uid: request.Uid, TaskId: request.TaskId, TodoKind: TODO_KIND_CROSS_SOURCE_AMBIGUOUS, Status: TODO_STATUS_OPEN,
+		SubjectKind: SUBJECT_KIND_RAW_ROW, SubjectId: subjectId, ReasonCodesJson: encodeReasonCodes([]string{"auto_merged"}),
+		Version: 1, CreatedUnixTime: now, UpdatedUnixTime: now, TodoId: s.generateId(),
+	}
+	if err := tx.InsertTodo(&item); err != nil {
+		return err
+	}
+	next := item
+	next.Status = TODO_STATUS_RESOLVED
+	next.Version = 2
+	next.UpdatedUnixTime = now
+	next.ResolvedUnixTime = &now
+	updated, updateErr := tx.UpdateTodoCAS(1, &next)
+	if updateErr != nil || !updated {
+		return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+	}
+	return nil
 }
 
 type categoryIndex struct {

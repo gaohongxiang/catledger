@@ -336,28 +336,30 @@ func (s *Service) attachTodoMatches(c core.Context, uid int64, items []*TodoView
 func (s *Service) todoMatchIndex(c core.Context, uid int64, needed map[int64]struct{}) map[int64][]*TodoMatchView {
 	index := map[int64][]*TodoMatchView{}
 	seen := map[int64]map[int64]struct{}{}
-	var cursor *reconciliation.CaseCursor
-	for page := 0; page < todoMatchCasePages; page++ {
-		result, err := s.reconciler.ListCases(c, reconciliation.ListCasesRequest{
-			Uid: uid, Status: reconciliation.CASE_STATUS_OPEN, Cursor: cursor, Limit: todoMatchCasePageSize,
-		})
-		if err != nil || result == nil {
-			return index
-		}
-		for _, summary := range result.Items {
-			if summary == nil {
-				continue
+	for _, status := range []reconciliation.CaseStatus{reconciliation.CASE_STATUS_OPEN, reconciliation.CASE_STATUS_RESOLVED} {
+		var cursor *reconciliation.CaseCursor
+		for page := 0; page < todoMatchCasePages; page++ {
+			result, err := s.reconciler.ListCases(c, reconciliation.ListCasesRequest{
+				Uid: uid, Status: status, Cursor: cursor, Limit: todoMatchCasePageSize,
+			})
+			if err != nil || result == nil {
+				return index
 			}
-			detail, getErr := s.reconciler.GetCase(c, uid, summary.CaseId)
-			if getErr != nil || detail == nil {
-				continue
+			for _, summary := range result.Items {
+				if summary == nil {
+					continue
+				}
+				detail, getErr := s.reconciler.GetCase(c, uid, summary.CaseId)
+				if getErr != nil || detail == nil {
+					continue
+				}
+				s.collectTodoMatches(c, uid, detail, needed, index, seen)
 			}
-			s.collectTodoMatches(c, uid, detail, needed, index, seen)
+			if result.NextCursor == nil {
+				break
+			}
+			cursor = result.NextCursor
 		}
-		if result.NextCursor == nil {
-			return index
-		}
-		cursor = result.NextCursor
 	}
 	return index
 }
@@ -418,6 +420,7 @@ func (s *Service) todoMatchView(c core.Context, uid int64, evidence *reconciliat
 	if evidence == nil {
 		return view
 	}
+	view.RowId = evidence.RowId
 	view.SourceType = string(evidence.SourceType)
 	view.Currency = evidence.Currency
 	view.Direction = string(evidence.NormalizedDirection)
@@ -428,12 +431,31 @@ func (s *Service) todoMatchView(c core.Context, uid int64, evidence *reconciliat
 	if s != nil && s.evidence != nil && evidence.RowId > 0 {
 		row, err := s.evidence.FindRawImportRowById(c, uid, evidence.RowId)
 		if err == nil && row != nil {
+			sourceType := evidence.SourceType
+			if sourceType == "" {
+				if batch, batchErr := s.evidence.FindImportBatchById(c, uid, row.BatchId); batchErr == nil && batch != nil {
+					sourceType = batch.SourceTypeSnapshot
+				}
+			}
+			view.SourceType = string(sourceType)
 			view.Label = todoPreviewLabel(row)
 			view.Item = todoPreviewItem(row)
 			view.BillType = maskedCategoryAliasDisplay(row.RawTransactionType)
-			view.Account = importing.QualifiedPaymentAccountDisplayName(evidence.SourceType, row.RawPaymentMethod)
+			view.Account = importing.QualifiedPaymentAccountDisplayName(sourceType, row.RawPaymentMethod)
 			view.OrderId = strings.TrimSpace(row.SourceOrderId)
 			view.MerchantOrderId = strings.TrimSpace(row.SourceMerchantOrderId)
+			if view.Currency == "" {
+				view.Currency = row.Currency
+			}
+			if view.Direction == "" {
+				view.Direction = string(row.NormalizedDirection)
+			}
+			if view.UnixTime == nil {
+				view.UnixTime = cloneUnixTime(row.NormalizedUnixTime)
+			}
+			if view.Amount == "" && row.NormalizedAmount != nil {
+				view.Amount = strconv.FormatInt(*row.NormalizedAmount, 10)
+			}
 		}
 	}
 	return view

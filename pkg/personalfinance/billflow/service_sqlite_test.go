@@ -391,6 +391,14 @@ func TestServicePairsEvenCrossSourceAndLeavesOddOne(t *testing.T) {
 	if err != nil || hasTodoKind(todos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
 		t.Fatalf("even pairs should not stay as merge todos: %+v err=%v", todos, err)
 	}
+	merged, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_RESOLVED, nil, 20)
+	if err != nil || !hasTodoKind(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("auto-merged pairs should appear as resolved merge todos: %+v err=%v", merged, err)
+	}
+	if !hasTodoMatch(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, string(importing.SOURCE_TYPE_BANK), "支付宝 拼多多平台商户") &&
+		!hasTodoMatch(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, string(importing.SOURCE_TYPE_ALIPAY), "拼多多平台商户") {
+		t.Fatalf("resolved merge todos should keep the original statement rows: %+v", merged)
+	}
 
 	oddRepo, _ := newSQLiteBillflowRepository(t)
 	if err := oddRepo.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
@@ -491,13 +499,14 @@ func TestServiceRerunClosesStaleMergeTodos(t *testing.T) {
 	if err != nil || ran.Status != billflow.TASK_STATUS_AWAITING_CONFIRM {
 		t.Fatalf("first organize: %+v err=%v", ran, err)
 	}
+	firstOpen, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || hasTodoKind(firstOpen, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("first organize should not leave open merge todos: %+v err=%v", firstOpen, err)
+	}
 	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
-		if err := tx.InsertTodo(testTodo(uid, created.TaskId, 8801, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, billflow.SUBJECT_KIND_RAW_ROW, 801, 20)); err != nil {
-			return err
-		}
 		return tx.InsertTodo(testTodo(uid, created.TaskId, 8802, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, billflow.SUBJECT_KIND_RAW_ROW, 802, 21))
 	}); err != nil {
-		t.Fatalf("insert stale merge todos: %v", err)
+		t.Fatalf("insert stale merge todo: %v", err)
 	}
 	stale, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
 	if err != nil || !hasTodoKind(stale, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
@@ -1067,6 +1076,11 @@ func (f *fakeReconciler) ListCases(_ core.Context, request reconciliation.ListCa
 }
 func (f *fakeReconciler) DecideCase(_ core.Context, request reconciliation.DecideCaseRequest, _ *time.Location) (*reconciliation.DecisionResult, error) {
 	f.decided = append(f.decided, request)
+	for _, detail := range f.allDetails() {
+		if detail != nil && detail.CaseSummary != nil && detail.CaseId == request.CaseId {
+			detail.Status = reconciliation.CASE_STATUS_RESOLVED
+		}
+	}
 	return &reconciliation.DecisionResult{CaseId: request.CaseId, DecisionType: request.DecisionType}, nil
 }
 

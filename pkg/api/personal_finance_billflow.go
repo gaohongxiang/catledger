@@ -216,6 +216,7 @@ type personalFinanceBillflowTodoResponse struct {
 }
 
 type personalFinanceBillflowTodoMatchResponse struct {
+	RowId           string `json:"rowId,omitempty"`
 	SourceType      string `json:"sourceType"`
 	Account         string `json:"account"`
 	Label           string `json:"label"`
@@ -751,11 +752,15 @@ func newPersonalFinanceBillflowTodoResponse(value *billflow.TodoView) *personalF
 		if match == nil {
 			continue
 		}
-		item.Matches = append(item.Matches, &personalFinanceBillflowTodoMatchResponse{
+		matchItem := &personalFinanceBillflowTodoMatchResponse{
 			SourceType: match.SourceType, Account: match.Account, Label: match.Label, Item: match.Item, BillType: match.BillType,
 			Amount: match.Amount, Currency: match.Currency, UnixTime: match.UnixTime, Direction: match.Direction,
 			OrderId: match.OrderId, MerchantOrderId: match.MerchantOrderId,
-		})
+		}
+		if match.RowId > 0 {
+			matchItem.RowId = strconv.FormatInt(match.RowId, 10)
+		}
+		item.Matches = append(item.Matches, matchItem)
 	}
 	return item
 }
