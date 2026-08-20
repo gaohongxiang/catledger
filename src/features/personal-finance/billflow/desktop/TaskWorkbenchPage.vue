@@ -1007,7 +1007,7 @@ function setAccountBucket(value: unknown): void {
 }
 
 function setReviewPane(value: unknown): void {
-    if (value !== 'merge' && value !== 'category') {
+    if (value !== 'evidence' && value !== 'transactions' && value !== 'merge' && value !== 'relations' && value !== 'category') {
         return;
     }
     userPickedReviewPane.value = true;
