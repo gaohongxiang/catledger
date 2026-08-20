@@ -374,13 +374,14 @@ describe('billflow task page wiring', () => {
             { todoKind: 'transfer_unclear' },
             { todoKind: 'refund_unclear' },
             { todoKind: 'cross_source_ambiguous' }
-        ]).map(todo => todo.todoKind)).toEqual(['uncategorized', 'transfer_unclear']);
+        ]).map(todo => todo.todoKind)).toEqual(['uncategorized']);
         expect(otherTodos([
             { todoKind: 'uncategorized' },
             { todoKind: 'installment_candidate' },
+            { todoKind: 'transfer_unclear' },
             { todoKind: 'refund_unclear' },
             { todoKind: 'cross_source_ambiguous' }
-        ]).map(todo => todo.todoKind)).toEqual(['installment_candidate', 'refund_unclear']);
+        ]).map(todo => todo.todoKind)).toEqual(['installment_candidate', 'transfer_unclear', 'refund_unclear']);
         expect(installmentTodos([
             { todoKind: 'uncategorized' },
             { todoKind: 'installment_candidate' }

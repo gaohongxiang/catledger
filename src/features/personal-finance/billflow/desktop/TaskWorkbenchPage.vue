@@ -536,11 +536,37 @@
                         <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
                         <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
                     </div>
+                    <v-select
+                        class="todo-row__select"
+                        density="compact"
+                        hide-details
+                        item-title="title"
+                        item-value="value"
+                        variant="outlined"
+                        :items="categoryOptionsFor(todo)"
+                        :placeholder="tt('personalFinance.billflow.todos.pickCategory')"
+                        :disabled="busy"
+                        :model-value="categoryDrafts[todo.id]"
+                        v-if="canAssignBillflowCategory(todo.todoKind) && !isRowSkipped(todo.subjectId)"
+                        @update:model-value="value => setTodoCategory(todo.id, value)"
+                    />
                     <div class="todo-row__actions">
                         <v-btn density="compact" size="x-small" variant="text" :loading="busy" v-if="isInstallmentTodo(todo.todoKind)" @click="confirmInstallment(todo)">
                             {{ tt('personalFinance.billflow.todos.installment') }}
                         </v-btn>
-                        <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                        <v-btn
+                            density="compact"
+                            size="x-small"
+                            color="primary"
+                            variant="text"
+                            :loading="busy"
+                            :disabled="!categoryDrafts[todo.id]"
+                            v-if="canAssignBillflowCategory(todo.todoKind)"
+                            @click="assignOneTodo(todo)"
+                        >
+                            {{ tt('personalFinance.billflow.todos.saveCategory') }}
+                        </v-btn>
+                        <v-btn v-else density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
                             {{ tt('personalFinance.billflow.todos.resolve') }}
                         </v-btn>
                         <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">

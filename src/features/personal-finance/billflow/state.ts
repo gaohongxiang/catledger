@@ -368,11 +368,11 @@ export function isInstallmentTodo(kind: BillflowTodoKind): boolean {
 }
 
 export function isCategoryTodo(kind: BillflowTodoKind): boolean {
-    return kind === 'uncategorized' || kind === 'transfer_unclear';
+    return kind === 'uncategorized';
 }
 
 export function canAssignBillflowCategory(kind: BillflowTodoKind): boolean {
-    return isCategoryTodo(kind);
+    return isCategoryTodo(kind) || kind === 'transfer_unclear';
 }
 
 export function categoryTodos<T extends { todoKind: BillflowTodoKind }>(todos: readonly T[]): T[] {
