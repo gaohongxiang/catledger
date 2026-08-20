@@ -254,6 +254,13 @@
                     <span>{{ tt('personalFinance.billflow.plan.uncategorized') }}</span>
                 </article>
             </div>
+            <p class="transaction-plan-summary__explanation" v-if="transactionPlan">
+                {{ tt('personalFinance.billflow.plan.explanation', {
+                    transactions: transactionPlan.plannedTransactionCount,
+                    duplicates: transactionPlan.consolidatedRowCount,
+                    categories: transactionPlan.categoryReviewCount
+                }) }}
+            </p>
             <div class="bucket-bar pane-bar">
                 <v-btn-toggle
                     color="primary"
@@ -699,7 +706,7 @@ const categoryBucket = ref<BillflowCategoryBucket>('pending');
 const userPickedCategoryBucket = ref(false);
 const mergeBucket = ref<BillflowMergeBucket>('pending');
 const userPickedMergeBucket = ref(false);
-const reviewPane = ref<BillflowReviewPane>('merge');
+const reviewPane = ref<BillflowReviewPane>('category');
 const userPickedReviewPane = ref(false);
 
 const eligibleFiles = computed(() => {
@@ -2082,6 +2089,16 @@ onMounted(reload);
 .transaction-plan-summary__operator {
     align-self: center;
     font-size: 1.4rem !important;
+}
+
+.transaction-plan-summary__explanation {
+    margin: -6px 0 16px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--v-theme-primary);
+    background: color-mix(in srgb, var(--task-mint) 58%, transparent);
+    color: rgba(var(--v-theme-on-surface), 0.72);
+    font-size: 0.84rem;
+    line-height: 1.55;
 }
 
 .bucket-bar {

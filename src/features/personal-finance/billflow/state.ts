@@ -305,7 +305,7 @@ export function mergeBucketHintKey(bucket: BillflowMergeBucket): string {
 
 export type BillflowReviewPane = 'merge' | 'category';
 
-export const BILLFLOW_REVIEW_PANES: readonly BillflowReviewPane[] = ['merge', 'category'];
+export const BILLFLOW_REVIEW_PANES: readonly BillflowReviewPane[] = ['category', 'merge'];
 
 export function suggestedReviewPane(input: { awaitingRun: boolean; mergePending: number; categoryPending: number }): BillflowReviewPane {
     if (input.awaitingRun || input.mergePending > 0) {

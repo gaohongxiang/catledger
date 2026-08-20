@@ -392,7 +392,7 @@ describe('billflow task page wiring', () => {
         expect(resolveMergeBucket('merged', { pending: 3, merged: 2 }, false)).toBe('pending');
         expect(mergeBucketHintKey('pending')).toBe('personalFinance.billflow.merge.pendingHint');
         expect(mergeBucketHintKey('merged')).toBe('personalFinance.billflow.merge.mergedHint');
-        expect(BILLFLOW_REVIEW_PANES).toEqual(['merge', 'category']);
+        expect(BILLFLOW_REVIEW_PANES).toEqual(['category', 'merge']);
         expect(suggestedReviewPane({ awaitingRun: true, mergePending: 0, categoryPending: 4 })).toBe('merge');
         expect(suggestedReviewPane({ awaitingRun: false, mergePending: 2, categoryPending: 4 })).toBe('merge');
         expect(suggestedReviewPane({ awaitingRun: false, mergePending: 0, categoryPending: 4 })).toBe('category');
