@@ -316,6 +316,7 @@ import SnackBar from '@/components/desktop/SnackBar.vue';
 import DecisionComposer from '../components/DecisionComposer.vue';
 
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { parseDateTimeFromUnixTimeWithBrowserTimezone } from '@/lib/datetime.ts';
@@ -367,6 +368,7 @@ type UndoOutcome = 'automaticDelete' | 'reopenOnly' | 'actionRequired';
 const CASE_PAGE_LIMIT = 100;
 
 const { tt, formatDateTimeToShortDateTime, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
+const route = useRoute();
 const personalFinanceStore = usePersonalFinanceStore();
 const reconciliationStore = useReconciliationStore();
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
@@ -578,6 +580,10 @@ onMounted(async () => {
         loadCases(true)
     ]);
     anchorBatchId.value = personalFinanceStore.batches[0]?.id ?? '';
+    const requestedCaseId = typeof route.query['caseId'] === 'string' ? route.query['caseId'] : '';
+    if (requestedCaseId) {
+        await openCase(requestedCaseId);
+    }
 });
 </script>
 

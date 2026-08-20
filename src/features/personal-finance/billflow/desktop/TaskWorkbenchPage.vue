@@ -246,6 +246,15 @@
                     </v-btn>
                 </v-btn-toggle>
                 <p>{{ tt(reviewPaneHintKey(reviewPane)) }}</p>
+                <v-btn
+                    size="small"
+                    variant="tonal"
+                    :loading="busy"
+                    v-if="task && canReapplyOrganize(task.status, accounts?.needsCreate.length ?? 0)"
+                    @click="runTask"
+                >
+                    {{ tt('personalFinance.billflow.merge.reanalyze') }}
+                </v-btn>
             </div>
             <template v-if="reviewPane === 'merge'">
             <p class="bucket-empty" v-if="canAutoRunAfterAccounts(task.status, accounts?.needsCreate.length ?? 0)">
@@ -270,12 +279,12 @@
                     <p>{{ tt(mergeBucketHintKey(mergeBucket)) }}</p>
                 </div>
                 <template v-if="mergeBucket === 'merged'">
-                    <p class="bucket-empty" v-if="!mergedReviewTodos.length">{{ tt('personalFinance.billflow.merge.mergedEmpty') }}</p>
+                    <p class="bucket-empty" v-if="!processedMergeGroups.length">{{ tt('personalFinance.billflow.merge.mergedEmpty') }}</p>
                 </template>
                 <template v-else>
-                    <p class="bucket-empty" v-if="!mergeReviewTodos.length">{{ tt('personalFinance.billflow.merge.empty') }}</p>
+                    <p class="bucket-empty" v-if="!pendingMergeGroups.length">{{ tt('personalFinance.billflow.merge.empty') }}</p>
                 </template>
-                <div class="merge-table-wrap" v-if="activeMergeTodos.length">
+                <div class="merge-table-wrap" v-if="activeMergeGroups.length">
                         <table class="merge-table">
                             <thead>
                                 <tr>
@@ -288,36 +297,40 @@
                                     <th>{{ tt('Time') }}</th>
                                     <th>{{ tt('Type') }}</th>
                                     <th>{{ tt('personalFinance.billflow.merge.column.orderId') }}</th>
+                                    <th>{{ tt('personalFinance.billflow.skip.title') }}</th>
                                 </tr>
                             </thead>
-                            <tbody class="merge-group" :key="todo.id" v-for="(todo, groupIndex) in activeMergeTodos">
+                            <tbody class="merge-group" :key="group.id" v-for="(group, groupIndex) in activeMergeGroups">
                                 <tr class="merge-group__gap" v-if="groupIndex > 0">
                                     <td :colspan="mergeColumnCount"></td>
                                 </tr>
                                 <tr class="merge-group__bar">
                                     <td :colspan="mergeColumnCount">
                                         <div class="merge-group__bar-inner">
-                                            <span>{{ tt('personalFinance.billflow.merge.groupRows', { count: mergeGroupRows(todo).length }) }}</span>
+                                            <span>
+                                                {{ tt('personalFinance.billflow.merge.groupRows', { count: mergeGroupRows(group).length }) }}
+                                                · {{ tt(`personalFinance.billflow.merge.status.${group.status}`) }}
+                                            </span>
                                             <div class="merge-group__actions">
-                                                <label class="todo-skip" v-if="canSkipTodo(todo)">
-                                                    <v-checkbox-btn hide-details :model-value="isRowSkipped(todo.subjectId)" @click.prevent="toggleSkipTodo(todo)" />
-                                                    {{ tt('personalFinance.billflow.accounts.skipped') }}
-                                                </label>
-                                                <div class="todo-row__actions" v-if="mergeBucket === 'merged' || todo.status !== 'open'">
-                                                    <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'open')">
-                                                        {{ tt('personalFinance.billflow.todos.restore') }}
-                                                    </v-btn>
-                                                </div>
-                                                <div class="todo-row__actions" v-else-if="!isRowSkipped(todo.subjectId)">
-                                                    <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="openReconciliation">
-                                                        {{ tt('personalFinance.organizer.tab.reconciliation') }}
+                                                <div class="todo-row__actions" v-if="group.caseIds.length">
+                                                    <v-btn
+                                                        density="compact"
+                                                        size="x-small"
+                                                        color="primary"
+                                                        variant="text"
+                                                        :key="caseId"
+                                                        :loading="busy"
+                                                        v-for="(caseId, caseIndex) in group.caseIds"
+                                                        @click="openReconciliation(caseId)"
+                                                    >
+                                                        {{ group.caseIds.length === 1 ? tt('personalFinance.organizer.tab.reconciliation') : tt('personalFinance.billflow.merge.openCase', { index: caseIndex + 1 }) }}
                                                     </v-btn>
                                                 </div>
                                             </div>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr class="merge-group__row" :key="todo.id + '-' + index" v-for="(row, index) in mergeGroupRows(todo)">
+                                <tr class="merge-group__row" :key="group.id + '-' + index" v-for="(row, index) in mergeGroupRows(group)">
                                     <td>{{ formatMergeSource(row) }}</td>
                                     <td>{{ row.account }}</td>
                                     <td>{{ row.label }}</td>
@@ -327,11 +340,18 @@
                                     <td>{{ formatMergeTime(row) }}</td>
                                     <td>{{ row.direction ? tt(billflowDirectionKey(row.direction)) : '' }}</td>
                                     <td class="is-id">{{ mergeOrderId(row) }}</td>
+                                    <td>
+                                        <v-checkbox-btn
+                                            hide-details
+                                            density="compact"
+                                            :disabled="busy"
+                                            :model-value="isRowSkipped(row.rowId)"
+                                            v-if="row.inTask && canSkipRow(row.rowId)"
+                                            @click.prevent="toggleSkipRow(row.rowId)"
+                                        />
+                                    </td>
                                 </tr>
-                                <tr class="merge-group__note" v-if="mergeBucket !== 'merged' && !todo.matches.length">
-                                    <td :colspan="mergeColumnCount">{{ tt('personalFinance.billflow.merge.matchesEmpty') }}</td>
-                                </tr>
-                                <tr class="merge-group__note" v-else-if="mergeBucket !== 'merged' && todo.matches.length > 1">
+                                <tr class="merge-group__note" v-if="mergeBucket !== 'merged' && group.rows.length > 2">
                                     <td :colspan="mergeColumnCount">{{ tt('personalFinance.billflow.merge.matchesMany') }}</td>
                                 </tr>
                             </tbody>
@@ -557,7 +577,7 @@ import { useUserStore } from '@/stores/user.ts';
 import { CategoryType } from '@/core/category.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
 
-import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowClassifiedRow, BillflowTask, BillflowTodo, BillflowTodoStatus, CardCycleAccount } from '../models.ts';
+import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowClassifiedRow, BillflowMergeGroup, BillflowMergeRow, BillflowTask, BillflowTodo, BillflowTodoStatus, CardCycleAccount } from '../models.ts';
 import { todoKindKey } from '../presentation.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
 import { billflowApi } from '../service.ts';
@@ -586,9 +606,6 @@ import {
     matchedLedgerAccount,
     mergeBucketHintKey,
     mergeSelectedOrganizeFileIds,
-    mergeTodos,
-    uniqueMergeGroups,
-    isUniqueMergePair,
     nextBillflowWorkbenchStep,
     otherTodos,
     previousBillflowWorkbenchStep,
@@ -629,8 +646,8 @@ const loading = ref(false);
 const busy = ref(false);
 const error = ref(false);
 
-function openReconciliation(): void {
-    router.push({ path: '/personal-finance/bills', query: { view: 'reconciliation' } });
+function openReconciliation(caseId?: string): void {
+    router.push({ path: '/personal-finance/bills', query: { view: 'reconciliation', ...(caseId ? { caseId } : {}) } });
 }
 const selectedFileIds = ref<string[]>([]);
 const previousEligibleIds = ref<string[]>([]);
@@ -641,6 +658,7 @@ const openTodos = ref<readonly BillflowTodo[]>([]);
 const resolvedTodos = ref<readonly BillflowTodo[]>([]);
 const dismissedTodos = ref<readonly BillflowTodo[]>([]);
 const classifiedRows = ref<readonly BillflowClassifiedRow[]>([]);
+const mergeGroups = ref<readonly BillflowMergeGroup[]>([]);
 const accountRowIndex = ref<Record<string, { sampleRowId: string, skipped: boolean, row: BillflowAccountRow }>>({});
 const selectedTodoIds = ref<string[]>([]);
 const categoryDrafts = reactive<Record<string, string>>({});
@@ -650,7 +668,6 @@ const createdLedgerIds = ref<string[]>([]);
 const answeredLedgerIds = ref<string[]>([]);
 const balanceDrafts = reactive<Record<string, number>>({});
 const userStep = ref<BillflowWorkbenchStep>();
-const matchingReappliedFor = ref('');
 const accountBucket = ref<BillflowAccountBucket>('pending');
 const userPickedBucket = ref(false);
 const categoryBucket = ref<BillflowCategoryBucket>('pending');
@@ -701,15 +718,11 @@ const reviewTodos = computed(() => [
     ...categoryTodos(dismissedTodos.value).filter(todo => isRowSkipped(todo.subjectId))
 ]);
 const classifiedReviewRows = computed(() => classifiedRows.value.filter(row => !isRowSkipped(row.id)));
-const mergeReviewTodos = computed(() => uniqueMergeGroups([
-    ...mergeTodos(openTodos.value),
-    ...mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]).filter(todo => !isRowSkipped(todo.subjectId) && todo.matches.length > 1),
-    ...mergeTodos(dismissedTodos.value).filter(todo => isRowSkipped(todo.subjectId))
-]));
-const mergeHasItemColumn = computed(() => activeMergeTodos.value.some(todo => mergeGroupRows(todo).some(row => !!row.item)));
-const mergeColumnCount = computed(() => mergeHasItemColumn.value ? 9 : 8);
-const mergedReviewTodos = computed(() => uniqueMergeGroups(mergeTodos([...resolvedTodos.value, ...dismissedTodos.value]).filter(todo => !isRowSkipped(todo.subjectId) && isUniqueMergePair(todo))));
-const activeMergeTodos = computed(() => mergeBucket.value === 'merged' ? mergedReviewTodos.value : mergeReviewTodos.value);
+const pendingMergeGroups = computed(() => mergeGroups.value.filter(group => group.status === 'pending' || group.status === 'action_required'));
+const processedMergeGroups = computed(() => mergeGroups.value.filter(group => group.status !== 'pending' && group.status !== 'action_required'));
+const activeMergeGroups = computed(() => mergeBucket.value === 'merged' ? processedMergeGroups.value : pendingMergeGroups.value);
+const mergeHasItemColumn = computed(() => activeMergeGroups.value.some(group => mergeGroupRows(group).some(row => !!row.item)));
+const mergeColumnCount = computed(() => mergeHasItemColumn.value ? 10 : 9);
 const otherReviewTodos = computed(() => otherTodos(openTodos.value));
 const skippedOrphanRows = computed(() => {
     const known = new Set([
@@ -737,16 +750,16 @@ const categoryBucketCounts = computed(() => ({
     classified: classifiedReviewRows.value.length
 }));
 const mergeBucketCounts = computed(() => ({
-    pending: mergeReviewTodos.value.length,
-    merged: mergedReviewTodos.value.length
+    pending: pendingMergeGroups.value.length,
+    merged: processedMergeGroups.value.length
 }));
 const reviewPaneInput = computed(() => ({
     awaitingRun: !!task.value && canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0),
-    mergePending: mergeReviewTodos.value.length,
+    mergePending: pendingMergeGroups.value.length,
     categoryPending: reviewTodos.value.length + skippedOrphanRows.value.length
 }));
 const reviewPaneCounts = computed(() => ({
-    merge: reviewPaneInput.value.mergePending,
+    merge: mergeGroups.value.length,
     category: reviewPaneInput.value.categoryPending
 }));
 const stepAction = computed(() => {
@@ -782,9 +795,9 @@ const stepAction = computed(() => {
             run: runTask
         };
     }
-    if (currentStep.value === 'review' && task.value && mergeReviewTodos.value.length > 0) {
+    if (currentStep.value === 'review' && task.value && pendingMergeGroups.value.length > 0) {
         return {
-            hint: tt('personalFinance.billflow.next.mergeBlocked', { count: mergeReviewTodos.value.length }),
+            hint: tt('personalFinance.billflow.next.mergeBlocked', { count: pendingMergeGroups.value.length }),
             label: tt('personalFinance.billflow.step.next'),
             run: async (): Promise<void> => {},
             disabled: true
@@ -828,7 +841,7 @@ const canAdvanceWithoutAction = computed(() => {
     if (currentStep.value === 'review') {
         return !!task.value
             && !canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0)
-            && mergeReviewTodos.value.length < 1
+            && pendingMergeGroups.value.length < 1
             && reviewTodos.value.length < 1
             && canOpenStep('others');
     }
@@ -846,8 +859,8 @@ const forwardHint = computed(() => {
     if (currentStep.value === 'accounts') {
         return tt('personalFinance.billflow.next.accountsReady');
     }
-    if (currentStep.value === 'review' && mergeReviewTodos.value.length > 0) {
-        return tt('personalFinance.billflow.next.mergeBlocked', { count: mergeReviewTodos.value.length });
+    if (currentStep.value === 'review' && pendingMergeGroups.value.length > 0) {
+        return tt('personalFinance.billflow.next.mergeBlocked', { count: pendingMergeGroups.value.length });
     }
     if (currentStep.value === 'review' && reviewTodos.value.length > 0) {
         return tt('personalFinance.billflow.next.reviewBlocked', { count: reviewTodos.value.length });
@@ -903,7 +916,7 @@ function canOpenStep(step: BillflowWorkbenchStep): boolean {
     if (!task.value || !(taskAwaitsConfirm(task.value.status) || task.value.status === 'ready' || task.value.status === 'failed')) {
         return true;
     }
-    if (step === 'others' && (mergeReviewTodos.value.length > 0 || reviewTodos.value.length > 0)) {
+    if (step === 'others' && (pendingMergeGroups.value.length > 0 || reviewTodos.value.length > 0)) {
         return false;
     }
     if (step === 'confirm' && openTodos.value.length > 0) {
@@ -1191,8 +1204,8 @@ function mergeOrderId(row: MergeLineSource): string {
     return row.merchantOrderId || row.orderId || '';
 }
 
-function mergeGroupRows(todo: BillflowTodo): MergeLineSource[] {
-    return [todo, ...todo.matches];
+function mergeGroupRows(group: BillflowMergeGroup): readonly BillflowMergeRow[] {
+    return group.rows;
 }
 
 function formatBillChannel(sourceType: string | undefined, account: string | undefined): string {
@@ -1310,13 +1323,14 @@ async function reload(): Promise<void> {
             accountsStore.loadAllAccounts({ force: true }),
             categoriesStore.loadAllCategories({ force: false })
         ]);
-        const [pending, receiving, awaiting, ready] = await Promise.all([
+        const [pending, receiving, awaiting, ready, failed] = await Promise.all([
             billflowApi.listTasks('accounts_pending'),
             billflowApi.listTasks('receiving'),
             billflowApi.listTasks('awaiting_confirm'),
-            billflowApi.listTasks('ready')
+            billflowApi.listTasks('ready'),
+            billflowApi.listTasks('failed')
         ]);
-        const current = pending.items[0] ?? receiving.items[0] ?? awaiting.items[0] ?? ready.items[0] ?? task.value;
+        const current = pending.items[0] ?? receiving.items[0] ?? awaiting.items[0] ?? ready.items[0] ?? failed.items[0] ?? task.value;
         if (current) {
             task.value = current;
             restoreBalanceMemory(current.id);
@@ -1335,16 +1349,18 @@ async function openTask(taskId: string): Promise<void> {
     accounts.value = await billflowApi.getAccounts(taskId);
     await applyUniqueMatchedAccounts(taskId);
     if (taskShowsTodos(task.value.status)) {
-        const [open, resolved, dismissed, classified] = await Promise.all([
+        const [open, resolved, dismissed, classified, groups] = await Promise.all([
             billflowApi.listAllTodos(taskId, 'open'),
             billflowApi.listAllTodos(taskId, 'resolved'),
             billflowApi.listAllTodos(taskId, 'dismissed'),
-            billflowApi.listClassifiedRows(taskId)
+            billflowApi.listClassifiedRows(taskId),
+            billflowApi.listMergeGroups(taskId)
         ]);
         openTodos.value = open;
         resolvedTodos.value = resolved;
         dismissedTodos.value = dismissed;
         classifiedRows.value = classified;
+        mergeGroups.value = groups;
         selectedTodoIds.value = selectedTodoIds.value.filter(id => openTodos.value.some(todo => todo.id === id));
         await loadAccountRowIndex(taskId);
     } else {
@@ -1352,6 +1368,7 @@ async function openTask(taskId: string): Promise<void> {
         resolvedTodos.value = [];
         dismissedTodos.value = [];
         classifiedRows.value = [];
+        mergeGroups.value = [];
         accountRowIndex.value = {};
     }
     syncTaskFileSelection();
@@ -1626,20 +1643,6 @@ async function runTask(): Promise<void> {
         busy.value = false;
     }
 }
-
-watch([currentStep, loading, () => task.value?.id, () => task.value?.status, () => accounts.value?.needsCreate.length ?? 0], async () => {
-    if (loading.value || busy.value || currentStep.value !== 'review' || !task.value) {
-        return;
-    }
-    if (!canReapplyOrganize(task.value.status, accounts.value?.needsCreate.length ?? 0)) {
-        return;
-    }
-    if (matchingReappliedFor.value === task.value.id) {
-        return;
-    }
-    matchingReappliedFor.value = task.value.id;
-    await runTask();
-});
 
 async function confirmPost(): Promise<void> {
     if (!task.value || openTodos.value.length > 0) return;

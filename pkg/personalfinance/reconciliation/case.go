@@ -12,6 +12,8 @@ import (
 const (
 	defaultCasePageSize          = 50
 	maximumCasePageSize          = 100
+	maximumTaskCaseRows          = 2000
+	maximumTaskCases             = 500
 	caseDetailRowsPerMemberLimit = 50
 	caseDetailRelationshipLimit  = 200
 )
@@ -50,8 +52,12 @@ type CaseSummary struct {
 	MemberCount           int64
 	SuggestedRelationType DecisionType
 	CandidateScore        int64
+	CandidateRuleVersion  RuleVersion
+	ExplanationVersion    RuleVersion
 	ReasonCodes           []CaseReason
 	CurrentDecisionId     *int64
+	CurrentDecisionType   *DecisionType
+	CurrentDecisionStatus *DecisionStatus
 	CreatedUnixTime       int64
 	LastEvaluatedUnixTime int64
 	UpdatedUnixTime       int64
@@ -162,6 +168,29 @@ func (s *CaseService) GetCase(c core.Context, uid int64, caseId int64) (*CaseDet
 		return nil, ErrCaseNotFound
 	}
 	return detail, nil
+}
+
+// ListCasesForRows 返回与任务证据行相关的有界 case；open case 只接受当前候选规则版本。
+func (s *CaseService) ListCasesForRows(c core.Context, uid int64, rowIds []int64) ([]*CaseDetail, error) {
+	if s == nil || s.repository == nil || uid < 1 || len(rowIds) < 1 || len(rowIds) > maximumTaskCaseRows {
+		return nil, ErrCaseRequestInvalid
+	}
+	caseIds, err := s.repository.findCaseIdsForRows(c, uid, rowIds, maximumTaskCases)
+	if err != nil {
+		return nil, ErrCasePersistenceUnavailable
+	}
+	items := make([]*CaseDetail, 0, len(caseIds))
+	for _, caseId := range caseIds {
+		detail, getErr := s.repository.getCase(c, uid, caseId)
+		if getErr != nil {
+			return nil, ErrCasePersistenceUnavailable
+		}
+		if detail == nil || (detail.Status == CASE_STATUS_OPEN && detail.CandidateRuleVersion != CANDIDATE_RULE_VERSION_V2) {
+			continue
+		}
+		items = append(items, detail)
+	}
+	return items, nil
 }
 
 func isCaseStatus(status CaseStatus) bool {

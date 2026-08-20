@@ -27,9 +27,6 @@ import {
     installmentTodos,
     mergeBucketHintKey,
     mergeSelectedOrganizeFileIds,
-    mergeTodos,
-    uniqueMergeGroups,
-    isUniqueMergePair,
     nextBillflowWorkbenchStep,
     otherTodos,
     previousBillflowWorkbenchStep,
@@ -236,10 +233,9 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('personalFinance.billflow.summary.willPost');
         expect(workbench).toContain('v-for="todo in reviewTodos"');
         expect(workbench).toContain('v-for="todo in otherReviewTodos"');
-        expect(workbench).toContain('v-for="(todo, groupIndex) in activeMergeTodos"');
-        expect(workbench).not.toContain('v-for="todo in mergedReviewTodos"');
-        expect(workbench).toContain('uniqueMergeGroups');
-        expect(workbench).toContain('isUniqueMergePair');
+        expect(workbench).toContain('v-for="(group, groupIndex) in activeMergeGroups"');
+        expect(workbench).toContain('listMergeGroups');
+        expect(workbench).not.toContain('matchingReappliedFor');
         expect(workbench).toContain('formatMergeSource');
         expect(workbench).toContain('formatMergeTime');
         expect(workbench).toContain('mergeGroupRows');
@@ -250,9 +246,9 @@ describe('billflow task page wiring', () => {
         expect(workbench).not.toContain('todo-compare__line');
         expect(workbench).not.toContain('todo-compare__badge');
         expect(workbench).not.toContain('personalFinance.billflow.merge.matchesHint');
-        expect(workbench).toContain('todo.matches');
-        expect(workbench).toContain('@click="openReconciliation"');
-        expect(workbench).toContain("query: { view: 'reconciliation' }");
+        expect(workbench).toContain('group.rows');
+        expect(workbench).toContain('openReconciliation(caseId)');
+        expect(workbench).toContain("...(caseId ? { caseId } : {})");
         expect(workbench).toContain('toggleSkipTodo');
         expect(workbench).toContain('personalFinance.billflow.accounts.skipped');
         expect(workbench).not.toContain('skippableAccountGroups');
@@ -367,16 +363,6 @@ describe('billflow task page wiring', () => {
             { todoKind: 'refund_unclear' },
             { todoKind: 'cross_source_ambiguous' }
         ]).map(todo => todo.todoKind)).toEqual(['uncategorized', 'transfer_unclear']);
-        expect(mergeTodos([
-            { todoKind: 'uncategorized' },
-            { todoKind: 'cross_source_ambiguous' }
-        ]).map(todo => todo.todoKind)).toEqual(['cross_source_ambiguous']);
-        expect(uniqueMergeGroups([
-            { subjectId: '801', matches: [{ rowId: '802', sourceType: 'bank', account: 'a', label: 'x', amount: '1' }] },
-            { subjectId: '802', matches: [{ rowId: '801', sourceType: 'alipay', account: 'b', label: 'y', amount: '1' }] }
-        ]).map(todo => todo.subjectId)).toEqual(['801']);
-        expect(isUniqueMergePair({ matches: [{ rowId: '802' }] })).toBe(true);
-        expect(isUniqueMergePair({ matches: [{ rowId: '802' }, { rowId: '803' }] })).toBe(false);
         expect(otherTodos([
             { todoKind: 'uncategorized' },
             { todoKind: 'installment_candidate' },

@@ -87,6 +87,24 @@ func TestBillflowHandlersUseStringIdsAndOmitSecrets(t *testing.T) {
 		t.Fatalf("classified response omitted string ids: %s", classifiedText)
 	}
 	assertBillflowResponseOmits(t, classifiedText, "aliasKey", "RawItem", "rawNote")
+
+	caseId := int64(7001)
+	stub.mergeGroups = &billflow.MergeGroupListResult{Items: []*billflow.MergeGroupView{{
+		GroupId: strings.Repeat("a", 64), Status: billflow.MERGE_GROUP_STATUS_PREVIEW_MERGED,
+		RelationType: "same_event", PrimaryCaseId: &caseId, CaseIds: []int64{caseId},
+		CandidateRuleVersion: "reconciliation-candidate-v2", ReasonCodes: []string{"amount_currency_exact"},
+		Rows: []*billflow.MergeGroupRowView{{TodoMatchView: &billflow.TodoMatchView{RowId: 801, SourceType: "alipay", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true},
+			{TodoMatchView: &billflow.TodoMatchView{RowId: 802, SourceType: "bank", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true}},
+	}}}
+	mergeGroups, apiErr := api.BillflowTaskMergeGroupsHandler(newBillflowTestContext(t, http.MethodGet, "/merge_groups?id=9001", ""))
+	if apiErr != nil {
+		t.Fatalf("list merge groups: %v", apiErr)
+	}
+	mergeText := marshalBillflowResponse(t, mergeGroups)
+	if !strings.Contains(mergeText, `"primaryCaseId":"7001"`) || !strings.Contains(mergeText, `"status":"preview_merged"`) || !strings.Contains(mergeText, `"rowId":"801"`) {
+		t.Fatalf("merge group response omitted safe task projection: %s", mergeText)
+	}
+	assertBillflowResponseOmits(t, mergeText, "caseKey", "aliasKey", "rawPaymentMethod", "RawItem", "rawNote")
 }
 
 func TestBillflowHandlersMapErrorsAndRejectInvalidInput(t *testing.T) {
@@ -101,6 +119,9 @@ func TestBillflowHandlersMapErrorsAndRejectInvalidInput(t *testing.T) {
 	}
 	if response, apiErr := api.BillflowTaskClassifiedHandler(newBillflowTestContext(t, http.MethodGet, "/categories?id=9001&extra=1", "")); response != nil || apiErr != errs.ErrParameterInvalid {
 		t.Fatalf("unknown classified query was accepted: response=%v err=%v", response, apiErr)
+	}
+	if response, apiErr := api.BillflowTaskMergeGroupsHandler(newBillflowTestContext(t, http.MethodGet, "/merge_groups?id=bad", "")); response != nil || apiErr != errs.ErrParameterInvalid {
+		t.Fatalf("invalid merge group task id was accepted: response=%v err=%v", response, apiErr)
 	}
 	if response, apiErr := api.BillflowTaskCreateHandler(newBillflowTestContext(t, http.MethodPost, "/create",
 		`{"fileIds":["301"],"idempotencyKey":"create-key-1","uid":"999"}`)); response != nil || apiErr != errs.ErrParameterInvalid {
@@ -120,14 +141,15 @@ func TestBillflowHandlersMapErrorsAndRejectInvalidInput(t *testing.T) {
 }
 
 type billflowAPITestApplication struct {
-	task       *billflow.TaskView
-	list       *billflow.TaskListResult
-	accounts   *billflow.TaskAccountsView
-	rows       []*billflow.AccountRowView
-	todos      *billflow.TodoListResult
-	classified []*billflow.ClassifiedRowView
-	impact     *billflow.UndoImpactView
-	err        error
+	task        *billflow.TaskView
+	list        *billflow.TaskListResult
+	accounts    *billflow.TaskAccountsView
+	rows        []*billflow.AccountRowView
+	todos       *billflow.TodoListResult
+	classified  []*billflow.ClassifiedRowView
+	mergeGroups *billflow.MergeGroupListResult
+	impact      *billflow.UndoImpactView
+	err         error
 }
 
 func (a *billflowAPITestApplication) CreateTask(_ core.Context, _ billflow.CreateTaskRequest) (*billflow.TaskView, error) {
@@ -177,6 +199,9 @@ func (a *billflowAPITestApplication) ListTodos(_ core.Context, _ int64, _ int64,
 }
 func (a *billflowAPITestApplication) ListClassifiedRows(_ core.Context, _ int64, _ int64) ([]*billflow.ClassifiedRowView, error) {
 	return a.classified, a.err
+}
+func (a *billflowAPITestApplication) ListMergeGroups(_ core.Context, _ int64, _ int64) (*billflow.MergeGroupListResult, error) {
+	return a.mergeGroups, a.err
 }
 func (a *billflowAPITestApplication) ResolveTodo(_ core.Context, _ billflow.ResolveTodoRequest) (*billflow.TodoView, error) {
 	if a.todos != nil && len(a.todos.Items) > 0 {

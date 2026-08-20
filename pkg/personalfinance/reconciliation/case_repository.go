@@ -56,6 +56,9 @@ func (r *caseRepository) listCases(c core.Context, uid int64, status CaseStatus,
 
 	cases := make([]*Case, 0, limit+1)
 	query := sess.Where("uid=? AND status=?", uid, status)
+	if status == CASE_STATUS_OPEN {
+		query = query.And("candidate_rule_version=?", CANDIDATE_RULE_VERSION_V2)
+	}
 	if cursor != nil {
 		query = query.And("(updated_unix_time<? OR (updated_unix_time=? AND case_id<?))", cursor.UpdatedUnixTime, cursor.UpdatedUnixTime, cursor.CaseId)
 	}
@@ -68,8 +71,12 @@ func (r *caseRepository) listCases(c core.Context, uid int64, status CaseStatus,
 		cases = cases[:limit]
 	}
 	items := make([]*CaseSummary, 0, len(cases))
+	decisions, err := loadCurrentCaseDecisions(sess, uid, cases)
+	if err != nil {
+		return nil, err
+	}
 	for _, value := range cases {
-		summary, err := newCaseSummary(value)
+		summary, err := newCaseSummary(value, decisions[value.CaseId])
 		if err != nil {
 			return nil, err
 		}
@@ -171,16 +178,84 @@ func (r *caseRepository) getCase(c core.Context, uid int64, caseId int64) (*Case
 		details = append(details, detail)
 	}
 
-	summary, err := newCaseSummary(caseRecord)
+	decisions, err := loadCurrentCaseDecisions(sess, uid, []*Case{caseRecord})
+	if err != nil {
+		return nil, err
+	}
+	summary, err := newCaseSummary(caseRecord, decisions[caseRecord.CaseId])
 	if err != nil {
 		return nil, err
 	}
 	return &CaseDetail{CaseSummary: summary, Members: details, RelationshipLimitReached: relationshipLimitReached}, nil
 }
 
-func newCaseSummary(value *Case) (*CaseSummary, error) {
+func (r *caseRepository) findCaseIdsForRows(c core.Context, uid int64, rowIds []int64, limit int) ([]int64, error) {
+	if uid < 1 || len(rowIds) < 1 || limit < 1 {
+		return nil, fmt.Errorf("invalid reconciliation task row query")
+	}
+	database, _ := r.database(uid)
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+
+	rows := make([]*importing.RawImportRow, 0, len(rowIds))
+	if err := sess.Where("uid=?", uid).In("row_id", rowIds).Find(&rows); err != nil {
+		return nil, fmt.Errorf("list reconciliation task rows: %w", err)
+	}
+	if len(rows) != len(rowIds) {
+		return nil, fmt.Errorf("reconciliation task row is missing")
+	}
+	stableIdentityIds := make([]int64, 0, len(rows))
+	batchLocalRowIds := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		if row.IdentityState == importing.IDENTITY_STATE_BATCH_LOCAL {
+			batchLocalRowIds = append(batchLocalRowIds, row.RowId)
+			continue
+		}
+		if row.IdentityId != nil && *row.IdentityId > 0 {
+			stableIdentityIds = append(stableIdentityIds, *row.IdentityId)
+		}
+	}
+
+	caseSet := make(map[int64]struct{})
+	load := func(kind MemberKind, ids []int64) error {
+		if len(ids) == 0 {
+			return nil
+		}
+		members := make([]*CaseMember, 0)
+		if err := sess.Where("uid=? AND member_kind=?", uid, kind).In("member_ref_id", ids).Limit(limit + 1).Find(&members); err != nil {
+			return err
+		}
+		for _, member := range members {
+			caseSet[member.CaseId] = struct{}{}
+			if len(caseSet) > limit {
+				return fmt.Errorf("reconciliation task case limit reached")
+			}
+		}
+		return nil
+	}
+	if err := load(MEMBER_KIND_SOURCE_IDENTITY, stableIdentityIds); err != nil {
+		return nil, fmt.Errorf("list reconciliation task identity cases: %w", err)
+	}
+	if err := load(MEMBER_KIND_RAW_ROW, batchLocalRowIds); err != nil {
+		return nil, fmt.Errorf("list reconciliation task row cases: %w", err)
+	}
+	caseIds := make([]int64, 0, len(caseSet))
+	for caseId := range caseSet {
+		caseIds = append(caseIds, caseId)
+	}
+	sort.Slice(caseIds, func(i, j int) bool { return caseIds[i] < caseIds[j] })
+	return caseIds, nil
+}
+
+func newCaseSummary(value *Case, decision *Decision) (*CaseSummary, error) {
 	if value == nil || value.CaseId < 1 || value.Uid < 1 || !isCaseStatus(value.Status) || value.Version < 1 || value.MemberCount != 2 {
 		return nil, fmt.Errorf("reconciliation case invariant mismatch")
+	}
+	if value.CurrentDecisionId == nil && decision != nil {
+		return nil, fmt.Errorf("reconciliation current decision invariant mismatch")
+	}
+	if value.CurrentDecisionId != nil && (decision == nil || decision.DecisionId != *value.CurrentDecisionId || decision.CaseId != value.CaseId || decision.Uid != value.Uid) {
+		return nil, fmt.Errorf("reconciliation current decision invariant mismatch")
 	}
 	reasons := make([]CaseReason, 0)
 	if len(value.ReasonCodesJson) > 4096 || json.Unmarshal([]byte(value.ReasonCodesJson), &reasons) != nil {
@@ -191,19 +266,59 @@ func newCaseSummary(value *Case) (*CaseSummary, error) {
 			return nil, err
 		}
 	}
-	return &CaseSummary{
+	summary := &CaseSummary{
 		CaseId:                value.CaseId,
 		Status:                value.Status,
 		Version:               value.Version,
 		MemberCount:           value.MemberCount,
 		SuggestedRelationType: value.SuggestedRelationType,
 		CandidateScore:        value.CandidateScore,
+		CandidateRuleVersion:  value.CandidateRuleVersion,
+		ExplanationVersion:    value.ExplanationVersion,
 		ReasonCodes:           reasons,
 		CurrentDecisionId:     cloneInt64(value.CurrentDecisionId),
 		CreatedUnixTime:       value.CreatedUnixTime,
 		LastEvaluatedUnixTime: value.LastEvaluatedUnixTime,
 		UpdatedUnixTime:       value.UpdatedUnixTime,
-	}, nil
+	}
+	if decision != nil {
+		decisionType := decision.DecisionType
+		decisionStatus := decision.Status
+		summary.CurrentDecisionType = &decisionType
+		summary.CurrentDecisionStatus = &decisionStatus
+	}
+	return summary, nil
+}
+
+func loadCurrentCaseDecisions(sess *xorm.Session, uid int64, cases []*Case) (map[int64]*Decision, error) {
+	result := make(map[int64]*Decision)
+	ids := make([]int64, 0, len(cases))
+	caseByDecision := make(map[int64]*Case)
+	for _, item := range cases {
+		if item == nil || item.CurrentDecisionId == nil {
+			continue
+		}
+		ids = append(ids, *item.CurrentDecisionId)
+		caseByDecision[*item.CurrentDecisionId] = item
+	}
+	if len(ids) == 0 {
+		return result, nil
+	}
+	decisions := make([]*Decision, 0, len(ids))
+	if err := sess.Where("uid=?", uid).In("decision_id", ids).Find(&decisions); err != nil {
+		return nil, fmt.Errorf("list reconciliation current decisions: %w", err)
+	}
+	if len(decisions) != len(ids) {
+		return nil, fmt.Errorf("reconciliation current decision is missing")
+	}
+	for _, decision := range decisions {
+		caseRecord := caseByDecision[decision.DecisionId]
+		if caseRecord == nil || decision.CaseId != caseRecord.CaseId {
+			return nil, fmt.Errorf("reconciliation current decision invariant mismatch")
+		}
+		result[caseRecord.CaseId] = decision
+	}
+	return result, nil
 }
 
 func loadCaseMemberRows(sess *xorm.Session, uid int64, caseRecord *Case, limit int) ([]*caseMemberRows, error) {

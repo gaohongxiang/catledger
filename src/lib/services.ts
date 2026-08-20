@@ -1080,6 +1080,9 @@ export default {
     listPersonalFinanceBillflowClassifiedRows: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/categories.json?id=${encodeURIComponent(taskId)}`);
     },
+    listPersonalFinanceBillflowMergeGroups: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/merge_groups.json?id=${encodeURIComponent(taskId)}`);
+    },
     resolvePersonalFinanceBillflowTodo: (request: { todoId: string, expectedVersion: number, status: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/todos/resolve.json', request);
     },

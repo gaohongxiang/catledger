@@ -32,6 +32,8 @@ function reconciliationCase(overrides: Partial<ReconciliationCaseDetail> = {}): 
         version: 7,
         suggestedRelationType: 'same_event',
         candidateScore: 92,
+        candidateRuleVersion: 'reconciliation-candidate-v2',
+        explanationVersion: 'reconciliation-explanation-v2',
         reasonCodes: [{ code: 'amount_currency_exact', value: 40 }],
         createdUnixTime: 100,
         lastEvaluatedUnixTime: 101,

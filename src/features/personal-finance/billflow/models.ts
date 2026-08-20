@@ -133,6 +133,26 @@ export interface BillflowTodoMatch {
     readonly merchantOrderId?: string;
 }
 
+export type BillflowMergeGroupStatus =
+    'pending' | 'preview_merged' | 'merged' | 'independent' |
+    'internal_transfer' | 'refund_reversal' | 'deferred' | 'action_required';
+
+export interface BillflowMergeRow extends BillflowTodoMatch {
+    readonly rowId: string;
+    readonly inTask: boolean;
+}
+
+export interface BillflowMergeGroup {
+    readonly id: string;
+    readonly status: BillflowMergeGroupStatus;
+    readonly relationType?: string;
+    readonly primaryCaseId?: string;
+    readonly caseIds: readonly string[];
+    readonly candidateRuleVersion: string;
+    readonly reasonCodes: readonly string[];
+    readonly rows: readonly BillflowMergeRow[];
+}
+
 export interface BillflowClassifiedRow {
     readonly id: string;
     readonly todoId?: string;

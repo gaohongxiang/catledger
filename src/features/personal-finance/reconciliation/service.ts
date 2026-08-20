@@ -112,6 +112,13 @@ function normalizeDecisionType(value: unknown): ReconciliationDecisionType {
     throw new Error('invalid_reconciliation_decision_type');
 }
 
+function normalizeCurrentDecisionType(value: unknown): ReconciliationDecisionType | 'reopen' {
+    if (value === 'reopen') {
+        return value;
+    }
+    return normalizeDecisionType(value);
+}
+
 function normalizeDecisionStatus(value: unknown): ReconciliationDecisionStatus {
     if (value === 'ready' || value === 'applying' || value === 'applied' || value === 'action_required' || value === 'deferred' || value === 'failed') {
         return value;
@@ -136,8 +143,12 @@ export function normalizeReconciliationCaseSummary(value: unknown): Reconciliati
         version,
         suggestedRelationType: normalizeDecisionType(field(value, 'suggestedRelationType', 'suggestedDecisionType')),
         candidateScore: asNumber(field(value, 'candidateScore', 'score')),
+        candidateRuleVersion: String(field(value, 'candidateRuleVersion') ?? ''),
+        explanationVersion: String(field(value, 'explanationVersion') ?? ''),
         reasonCodes: normalizeReasons(field(value, 'reasonCodes', 'reasons')),
         currentDecisionId: asIdentifier(field(value, 'currentDecisionId')) || undefined,
+        currentDecisionType: field(value, 'currentDecisionType') == null ? undefined : normalizeCurrentDecisionType(field(value, 'currentDecisionType')),
+        currentDecisionStatus: field(value, 'currentDecisionStatus') == null ? undefined : normalizeDecisionStatus(field(value, 'currentDecisionStatus')),
         createdUnixTime: asNumber(field(value, 'createdUnixTime')),
         lastEvaluatedUnixTime: asNumber(field(value, 'lastEvaluatedUnixTime')),
         updatedUnixTime: asNumber(field(value, 'updatedUnixTime'))

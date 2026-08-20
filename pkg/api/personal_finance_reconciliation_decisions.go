@@ -77,8 +77,12 @@ type personalFinanceReconciliationCaseResponse struct {
 	MemberCount           int64                                              `json:"memberCount"`
 	SuggestedRelationType reconciliation.DecisionType                        `json:"suggestedRelationType"`
 	CandidateScore        int64                                              `json:"candidateScore"`
+	CandidateRuleVersion  reconciliation.RuleVersion                         `json:"candidateRuleVersion"`
+	ExplanationVersion    reconciliation.RuleVersion                         `json:"explanationVersion"`
 	ReasonCodes           []*personalFinanceReconciliationCaseReasonResponse `json:"reasonCodes"`
 	CurrentDecisionId     *int64                                             `json:"currentDecisionId,string,omitempty"`
+	CurrentDecisionType   *reconciliation.DecisionType                       `json:"currentDecisionType,omitempty"`
+	CurrentDecisionStatus *reconciliation.DecisionStatus                     `json:"currentDecisionStatus,omitempty"`
 	CreatedUnixTime       int64                                              `json:"createdUnixTime"`
 	LastEvaluatedUnixTime int64                                              `json:"lastEvaluatedUnixTime"`
 	UpdatedUnixTime       int64                                              `json:"updatedUnixTime"`
@@ -576,7 +580,11 @@ func newPersonalFinanceReconciliationCasePageResponse(page *reconciliation.CaseP
 func newPersonalFinanceReconciliationCaseResponse(value *reconciliation.CaseSummary) (*personalFinanceReconciliationCaseResponse, error) {
 	if value == nil || value.CaseId < 1 || value.Version < 1 || value.MemberCount != 2 || value.CreatedUnixTime < 1 || value.LastEvaluatedUnixTime < 1 || value.UpdatedUnixTime < 1 ||
 		!isPersonalFinanceReconciliationCaseStatus(value.Status) || !isPersonalFinanceReconciliationDecisionType(value.SuggestedRelationType, false) ||
-		(value.CurrentDecisionId != nil && *value.CurrentDecisionId < 1) {
+		(value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V1 && value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V2) ||
+		(value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V1 && value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V2) ||
+		(value.CurrentDecisionId != nil && *value.CurrentDecisionId < 1) ||
+		(value.CurrentDecisionType != nil && !isPersonalFinanceReconciliationDecisionType(*value.CurrentDecisionType, true)) ||
+		(value.CurrentDecisionStatus != nil && !isPersonalFinanceDecisionStatus(*value.CurrentDecisionStatus)) {
 		return nil, errors.New("reconciliation case response is invalid")
 	}
 	reasons := make([]*personalFinanceReconciliationCaseReasonResponse, 0, len(value.ReasonCodes))
@@ -593,8 +601,10 @@ func newPersonalFinanceReconciliationCaseResponse(value *reconciliation.CaseSumm
 	}
 	return &personalFinanceReconciliationCaseResponse{
 		Id: value.CaseId, Status: value.Status, Version: value.Version, MemberCount: value.MemberCount,
-		SuggestedRelationType: value.SuggestedRelationType, CandidateScore: value.CandidateScore, ReasonCodes: reasons,
+		SuggestedRelationType: value.SuggestedRelationType, CandidateScore: value.CandidateScore,
+		CandidateRuleVersion: value.CandidateRuleVersion, ExplanationVersion: value.ExplanationVersion, ReasonCodes: reasons,
 		CurrentDecisionId: clonePersonalFinanceInt64(value.CurrentDecisionId), CreatedUnixTime: value.CreatedUnixTime,
+		CurrentDecisionType: value.CurrentDecisionType, CurrentDecisionStatus: value.CurrentDecisionStatus,
 		LastEvaluatedUnixTime: value.LastEvaluatedUnixTime, UpdatedUnixTime: value.UpdatedUnixTime,
 	}, nil
 }

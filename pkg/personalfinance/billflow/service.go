@@ -90,6 +90,7 @@ type Poster interface {
 type Reconciler interface {
 	GenerateCandidates(c core.Context, request reconciliation.GenerateCandidatesRequest) (*reconciliation.GenerateCandidatesResult, error)
 	ListCases(c core.Context, request reconciliation.ListCasesRequest) (*reconciliation.CasePage, error)
+	ListCasesForRows(c core.Context, uid int64, rowIds []int64) ([]*reconciliation.CaseDetail, error)
 	GetCase(c core.Context, uid int64, caseId int64) (*reconciliation.CaseDetail, error)
 	DecideCase(c core.Context, request reconciliation.DecideCaseRequest, clientTimezone *time.Location) (*reconciliation.DecisionResult, error)
 	UndoCase(c core.Context, request reconciliation.UndoCaseRequest, clientTimezone *time.Location) (*reconciliation.DecisionResult, error)
@@ -280,6 +281,39 @@ type TodoMatchView struct {
 	Direction       string
 	OrderId         string
 	MerchantOrderId string
+}
+
+type MergeGroupStatus string
+
+const (
+	MERGE_GROUP_STATUS_PENDING           MergeGroupStatus = "pending"
+	MERGE_GROUP_STATUS_PREVIEW_MERGED    MergeGroupStatus = "preview_merged"
+	MERGE_GROUP_STATUS_MERGED            MergeGroupStatus = "merged"
+	MERGE_GROUP_STATUS_INDEPENDENT       MergeGroupStatus = "independent"
+	MERGE_GROUP_STATUS_INTERNAL_TRANSFER MergeGroupStatus = "internal_transfer"
+	MERGE_GROUP_STATUS_REFUND_REVERSAL   MergeGroupStatus = "refund_reversal"
+	MERGE_GROUP_STATUS_DEFERRED          MergeGroupStatus = "deferred"
+	MERGE_GROUP_STATUS_ACTION_REQUIRED   MergeGroupStatus = "action_required"
+)
+
+type MergeGroupRowView struct {
+	*TodoMatchView
+	InTask bool
+}
+
+type MergeGroupView struct {
+	GroupId              string
+	Status               MergeGroupStatus
+	RelationType         reconciliation.DecisionType
+	PrimaryCaseId        *int64
+	CaseIds              []int64
+	CandidateRuleVersion reconciliation.RuleVersion
+	ReasonCodes          []string
+	Rows                 []*MergeGroupRowView
+}
+
+type MergeGroupListResult struct {
+	Items []*MergeGroupView
 }
 
 type ClassifiedRowView struct {

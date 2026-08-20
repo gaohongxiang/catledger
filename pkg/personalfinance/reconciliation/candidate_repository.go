@@ -86,7 +86,7 @@ func (r *candidateRepository) listEligibleAnchorRows(c core.Context, uid int64, 
 }
 
 func (r *candidateRepository) listHardFilteredCandidates(c core.Context, uid int64, anchorSourceAccountId int64, anchor *importing.RawImportRow, limit int) ([]*importing.RawImportRow, error) {
-	if uid < 1 || anchorSourceAccountId < 1 || !isCandidateEligibleRow(anchor) || anchor.Uid != uid || limit != candidateSearchLimitPerSide {
+	if uid < 1 || anchorSourceAccountId < 1 || !isCandidateAnchorRow(anchor) || anchor.Uid != uid || limit != candidateSearchLimitPerSide {
 		return nil, fmt.Errorf("invalid reconciliation hard candidate query")
 	}
 
@@ -103,12 +103,15 @@ func (r *candidateRepository) listHardFilteredCandidates(c core.Context, uid int
 			Where("r.uid=? AND pf_import_batch.uid=?", uid, uid).
 			And("pf_import_batch.source_account_id IS NOT NULL AND pf_import_batch.source_account_id<>?", anchorSourceAccountId).
 			And("r.row_id<>?", anchor.RowId).
-			And("r.parse_state=? AND r.processing_state=?", importing.PARSE_STATE_VALID, importing.PROCESSING_STATE_PENDING).
+			And("r.parse_state=?", importing.PARSE_STATE_VALID).
+			And("(r.processing_state=? OR (r.processing_state=? AND r.identity_id IS NOT NULL))", importing.PROCESSING_STATE_PENDING, importing.PROCESSING_STATE_LINKED).
 			And("r.normalized_amount IS NOT NULL AND r.normalized_amount=?", *anchor.NormalizedAmount).
 			And("r.currency=?", anchor.Currency).
 			And("r.normalized_unix_time IS NOT NULL AND r.normalized_unix_time>=? AND r.normalized_unix_time<=?", windowStart, windowEnd).
-			In("r.semantic_eligibility", importing.SEMANTIC_ELIGIBILITY_POSTABLE, importing.SEMANTIC_ELIGIBILITY_REVIEW_REQUIRED).
-			In("r.disposition", importing.IMPORT_DISPOSITION_POSTABLE, importing.IMPORT_DISPOSITION_REVIEW_REQUIRED).
+			And("(r.processing_state=? OR (r.semantic_eligibility IN (?, ?) AND r.disposition IN (?, ?)))",
+				importing.PROCESSING_STATE_LINKED,
+				importing.SEMANTIC_ELIGIBILITY_POSTABLE, importing.SEMANTIC_ELIGIBILITY_REVIEW_REQUIRED,
+				importing.IMPORT_DISPOSITION_POSTABLE, importing.IMPORT_DISPOSITION_REVIEW_REQUIRED).
 			In("r.identity_state", importing.IDENTITY_STATE_NEW, importing.IDENTITY_STATE_EXACT_DUPLICATE, importing.IDENTITY_STATE_BATCH_LOCAL).
 			Limit(limit)
 
@@ -367,8 +370,8 @@ func validateCandidatePersistence(uid int64, persistence *candidatePersistence) 
 	if caseRecord.Uid != uid || caseRecord.CaseId < 1 || len(caseRecord.CaseKey) != 64 ||
 		caseRecord.CaseKeyVersion != CASE_KEY_VERSION_V1 || caseRecord.Status != CASE_STATUS_OPEN ||
 		caseRecord.Version != 1 || caseRecord.MemberCount != 2 || caseRecord.CurrentDecisionId != nil ||
-		caseRecord.CandidateRuleVersion != CANDIDATE_RULE_VERSION_V1 ||
-		caseRecord.ExplanationVersion != EXPLANATION_VERSION_V1 ||
+		caseRecord.CandidateRuleVersion != CANDIDATE_RULE_VERSION_V2 ||
+		caseRecord.ExplanationVersion != EXPLANATION_VERSION_V2 ||
 		caseRecord.CreatedUnixTime < 1 || caseRecord.LastEvaluatedUnixTime != caseRecord.CreatedUnixTime ||
 		caseRecord.UpdatedUnixTime != caseRecord.CreatedUnixTime {
 		return fmt.Errorf("invalid reconciliation candidate case")

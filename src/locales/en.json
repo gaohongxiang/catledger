@@ -2956,12 +2956,14 @@
             "merge": {
                 "pending": "After accounts are ready, start merging. Clear matches are merged automatically.",
                 "empty": "Nothing needs a merge decision. Clear matches are already merged, or merging has not started.",
-                "mergedEmpty": "No merged statement pairs yet.",
-                "pendingHint": "Only rows that did not auto-merge are listed. All statements share one header; each pair is one block of matching rows. Everbright “transaction description” is the counterparty. Item is shown only when it differs from both the counterparty and the order ID. Credit-card rows show the date only. “Processed” means you reviewed it; “Skip for now” leaves it aside.",
-                "mergedHint": "Only one-to-one merged pairs are listed here, each showing both original statement rows. Same-amount rows that still have other candidates are not treated as merged and can be restored.",
+                "mergedEmpty": "No processed comparison groups yet.",
+                "pendingHint": "Only groups that still need a decision are listed. Each source row appears once, and the app does not guess when several valid pairings remain. Open reconciliation to inspect the exact group.",
+                "mergedHint": "Preview merges, applied merges, independent events, transfers, refunds, and deferred groups are labeled separately. Only an applied same-event decision counts as merged.",
                 "matchesHint": "Match",
                 "matchesEmpty": "No comparable row from another statement is listed. Automatic merge needs merchant/description, amount, currency, and the same card; credit-card dates match on the same calendar day.",
                 "matchesMany": "Several nearby rows exist, so it was not merged automatically.",
+                "reanalyze": "Reanalyze this task",
+                "openCase": "Review candidate {index}",
                 "groupRows": "{count} matching rows",
                 "column": {
                     "source": "Source",
@@ -2971,7 +2973,17 @@
                 },
                 "bucket": {
                     "pending": "Unmerged",
-                    "merged": "Merged"
+                    "merged": "Processed"
+                },
+                "status": {
+                    "pending": "Pending",
+                    "preview_merged": "Preview merge",
+                    "merged": "Merged",
+                    "independent": "Independent",
+                    "internal_transfer": "Internal transfer",
+                    "refund_reversal": "Refund or reversal",
+                    "deferred": "Deferred",
+                    "action_required": "Action required"
                 }
             },
             "skip": {

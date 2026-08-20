@@ -106,6 +106,79 @@ func TestCandidateServiceSQLiteStableCasesIsolationFiltersAndNoLedgerEffects(t *
 	}
 }
 
+func TestCandidateServiceSQLiteMatchesPendingAnchorToLinkedHistoricalEvidence(t *testing.T) {
+	service, database := newCandidateSQLiteService(t, &sequentialCandidateIds{})
+	uid := int64(2112)
+	baseTime := int64(1_720_500_000)
+	historical := candidateTestRow(uid, 9101, 701, int64Pointer(7101), importing.IDENTITY_STATE_NEW, 6688, "CNY", baseTime)
+	historical.ProcessingState = importing.PROCESSING_STATE_LINKED
+	historical.Disposition = importing.IMPORT_DISPOSITION_NON_POSTABLE
+	current := candidateTestRow(uid, 9202, 702, int64Pointer(7202), importing.IDENTITY_STATE_NEW, 6688, "CNY", baseTime+60)
+	insertCandidateFixtures(t, database,
+		candidateTestAccount(uid, 71, importing.SOURCE_TYPE_ALIPAY),
+		candidateTestAccount(uid, 72, importing.SOURCE_TYPE_BANK),
+		candidateTestBatch(uid, 701, 71),
+		candidateTestBatch(uid, 702, 72),
+		candidateTestIdentity(uid, 7101, 71),
+		candidateTestIdentity(uid, 7202, 72),
+		historical,
+		current,
+	)
+	result, err := service.GenerateCandidates(nil, GenerateCandidatesRequest{Uid: uid, BatchId: 702})
+	if err != nil || len(result.Cases) != 1 {
+		t.Fatalf("pending statement did not match linked historical evidence: result=%+v err=%v", result, err)
+	}
+	if loaded := loadCandidateRow(t, database, uid, historical.RowId); loaded.ProcessingState != importing.PROCESSING_STATE_LINKED {
+		t.Fatalf("candidate generation changed historical evidence state: %+v", loaded)
+	}
+}
+
+func TestCandidateServiceSQLiteHidesV1OpenCasesAndRefreshesThemToV2(t *testing.T) {
+	service, database := newCandidateSQLiteService(t, &sequentialCandidateIds{})
+	uid := int64(3113)
+	baseTime := int64(1_720_600_000)
+	insertCandidateFixtures(t, database,
+		candidateTestAccount(uid, 81, importing.SOURCE_TYPE_ALIPAY),
+		candidateTestAccount(uid, 82, importing.SOURCE_TYPE_BANK),
+		candidateTestBatch(uid, 801, 81),
+		candidateTestBatch(uid, 802, 82),
+		candidateTestIdentity(uid, 8101, 81),
+		candidateTestIdentity(uid, 8202, 82),
+		candidateTestRow(uid, 81001, 801, int64Pointer(8101), importing.IDENTITY_STATE_NEW, 5200, "CNY", baseTime),
+		candidateTestRow(uid, 82002, 802, int64Pointer(8202), importing.IDENTITY_STATE_NEW, 5200, "CNY", baseTime+30),
+	)
+	generated, err := service.GenerateCandidates(nil, GenerateCandidatesRequest{Uid: uid, BatchId: 801})
+	if err != nil || len(generated.Cases) != 1 {
+		t.Fatalf("generate v2 candidate: %+v %v", generated, err)
+	}
+	caseId := generated.Cases[0].CaseId
+	sess := database.NewSession(nil)
+	updated, err := sess.Where("uid=? AND case_id=?", uid, caseId).Cols("candidate_rule_version", "explanation_version").Update(&Case{
+		CandidateRuleVersion: CANDIDATE_RULE_VERSION_V1,
+		ExplanationVersion:   EXPLANATION_VERSION_V1,
+	})
+	sess.Close()
+	if err != nil || updated != 1 {
+		t.Fatalf("downgrade open fixture to v1: %v", err)
+	}
+	store, err := datastore.NewDataStore(database)
+	if err != nil {
+		t.Fatalf("create case store: %v", err)
+	}
+	cases, err := NewCaseService(store)
+	if err != nil {
+		t.Fatalf("create case service: %v", err)
+	}
+	page, err := cases.ListCases(nil, ListCasesRequest{Uid: uid, Status: CASE_STATUS_OPEN, Limit: 20})
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("stale v1 open case remained visible: %+v %v", page, err)
+	}
+	refreshed, err := service.GenerateCandidates(nil, GenerateCandidatesRequest{Uid: uid, BatchId: 801})
+	if err != nil || len(refreshed.Cases) != 1 || refreshed.Cases[0].CaseId != caseId || refreshed.Cases[0].CandidateRuleVersion != CANDIDATE_RULE_VERSION_V2 {
+		t.Fatalf("v1 open case was not refreshed in place to v2: %+v %v", refreshed, err)
+	}
+}
+
 func TestCandidateServiceSQLiteBatchLocalAndGenerationLimits(t *testing.T) {
 	service, database := newCandidateSQLiteService(t, &sequentialCandidateIds{})
 	uid := int64(3003)

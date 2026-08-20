@@ -470,13 +470,55 @@ func TestServiceDefersAutoReconcileLedgerEffectUntilFirstTaskConfirmation(t *tes
 	if err != nil || preview == nil || preview.Status != billflow.TASK_STATUS_AWAITING_CONFIRM || preview.AutoPostedCount != 1 || len(reconciler.decided) != 0 || poster.calls != 0 {
 		t.Fatalf("preview wrote ledger effects: task=%+v decisions=%+v calls=%d err=%v", preview, reconciler.decided, poster.calls, err)
 	}
+	previewGroups, err := service.ListMergeGroups(nil, uid, created.TaskId)
+	if err != nil || len(previewGroups.Items) != 1 || previewGroups.Items[0].Status != billflow.MERGE_GROUP_STATUS_PREVIEW_MERGED || previewGroups.Items[0].PrimaryCaseId == nil || *previewGroups.Items[0].PrimaryCaseId != 99 {
+		t.Fatalf("first confirmation preview did not expose the task merge: groups=%+v err=%v", previewGroups, err)
+	}
 	confirmed, err := service.ConfirmPost(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: preview.Version, IdempotencyKey: "confirm-first-pair", CreatedIp: "192.0.2.10"}, time.UTC)
 	if err != nil || confirmed == nil || confirmed.Status != billflow.TASK_STATUS_READY || confirmed.AutoPostedCount != 1 || len(reconciler.decided) != 1 || poster.calls != 0 {
 		t.Fatalf("confirmation did not create one reconciled event: task=%+v decisions=%+v calls=%d err=%v", confirmed, reconciler.decided, poster.calls, err)
 	}
+	confirmedGroups, err := service.ListMergeGroups(nil, uid, created.TaskId)
+	if err != nil || len(confirmedGroups.Items) != 1 || confirmedGroups.Items[0].Status != billflow.MERGE_GROUP_STATUS_MERGED || confirmedGroups.Items[0].RelationType != reconciliation.DECISION_TYPE_SAME_EVENT {
+		t.Fatalf("confirmed same event did not become an applied merge group: groups=%+v err=%v", confirmedGroups, err)
+	}
 }
 
-func TestServicePairsEvenCrossSourceAndLeavesOddOne(t *testing.T) {
+func TestServiceMergeGroupsDoNotCallIndependentDecisionMerged(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	accountId := int64(61)
+	left := postableRow(uid, 501, 901, 301, accountId, "餐饮美食")
+	right := postableRow(uid, 502, 902, 302, accountId, "网上支付")
+	evidence := newFakeEvidence(uid, 401, 501, []*importing.RawImportRow{left})
+	evidence.addFile(uid, 402, 502, []*importing.RawImportRow{right})
+	detail := sameEventCase(199, 901, 902)
+	detail.Status = reconciliation.CASE_STATUS_RESOLVED
+	decisionId := int64(9199)
+	decisionType := reconciliation.DECISION_TYPE_INDEPENDENT
+	decisionStatus := reconciliation.DECISION_STATUS_APPLIED
+	detail.CurrentDecisionId = &decisionId
+	detail.CurrentDecisionType = &decisionType
+	detail.CurrentDecisionStatus = &decisionStatus
+	var nextId int64 = 7600
+	service, err := billflow.NewService(repository, evidence, &fakePayments{}, &fakePoster{}, &fakeReconciler{detail: detail}, nil, nil, &fakeCategories{}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{401, 402}, IdempotencyKey: "create-independent-group"})
+	if err != nil {
+		t.Fatalf("create independent group task: %v", err)
+	}
+	groups, err := service.ListMergeGroups(nil, uid, created.TaskId)
+	if err != nil || len(groups.Items) != 1 || groups.Items[0].Status != billflow.MERGE_GROUP_STATUS_INDEPENDENT || groups.Items[0].RelationType != reconciliation.DECISION_TYPE_INDEPENDENT {
+		t.Fatalf("independent decision was shown as merged: groups=%+v err=%v", groups, err)
+	}
+}
+
+func TestServiceDoesNotGuessNonUniqueCrossSourcePairs(t *testing.T) {
 	repository, _ := newSQLiteBillflowRepository(t)
 	uid := int64(1001)
 	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
@@ -539,40 +581,20 @@ func TestServicePairsEvenCrossSourceAndLeavesOddOne(t *testing.T) {
 	if err != nil || ran == nil {
 		t.Fatalf("run even-pair task: %+v %v", ran, err)
 	}
-	if len(reconciler.decided) != 2 {
-		t.Fatalf("even same-amount pairs were not 1:1 auto decided: %+v", reconciler.decided)
+	if len(reconciler.decided) != 0 {
+		t.Fatalf("non-unique even pairs were guessed automatically: %+v", reconciler.decided)
 	}
 	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
-	if err != nil || hasTodoKind(todos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
-		t.Fatalf("even pairs should not stay as merge todos: %+v err=%v", todos, err)
+	if err != nil || !hasTodoKind(todos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("non-unique even pairs should stay as one merge decision: %+v err=%v", todos, err)
+	}
+	groups, err := service.ListMergeGroups(nil, uid, created.TaskId)
+	if err != nil || len(groups.Items) != 1 || len(groups.Items[0].Rows) != 4 || groups.Items[0].Status != billflow.MERGE_GROUP_STATUS_PENDING || groups.Items[0].PrimaryCaseId != nil {
+		t.Fatalf("overlapping candidate graph was not collapsed into one task group: groups=%+v err=%v", groups, err)
 	}
 	merged, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_RESOLVED, nil, 20)
-	if err != nil || !hasTodoKind(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
-		t.Fatalf("auto-merged pairs should appear as resolved merge todos: %+v err=%v", merged, err)
-	}
-	if !hasTodoMatch(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, string(importing.SOURCE_TYPE_BANK), "支付宝 拼多多平台商户") &&
-		!hasTodoMatch(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, string(importing.SOURCE_TYPE_ALIPAY), "拼多多平台商户") {
-		t.Fatalf("resolved merge todos should keep the original statement rows: %+v", merged)
-	}
-	if !mergeTodosHaveUniquePair(merged) {
-		t.Fatalf("resolved merge todos should keep exactly one counterpart row: %+v", merged)
-	}
-	var mergedTodo *billflow.TodoView
-	for _, item := range merged.Items {
-		if item != nil && item.TodoKind == billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS {
-			mergedTodo = item
-			break
-		}
-	}
-	if mergedTodo == nil {
-		t.Fatal("missing merged todo to restore")
-	}
-	restored, err := service.ResolveTodo(nil, billflow.ResolveTodoRequest{
-		Uid: uid, TodoId: mergedTodo.TodoId, ExpectedVersion: mergedTodo.Version,
-		Status: billflow.TODO_STATUS_OPEN, IdempotencyKey: "restore-auto-merged-pair",
-	})
-	if err != nil || restored == nil || restored.Status != billflow.TODO_STATUS_OPEN || len(reconciler.undone) != 1 {
-		t.Fatalf("restoring an auto merge did not undo reconciliation: todo=%+v undo=%+v err=%v", restored, reconciler.undone, err)
+	if err != nil || hasTodoKind(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("non-unique pairs must not appear as merged: %+v err=%v", merged, err)
 	}
 
 	oddRepo, _ := newSQLiteBillflowRepository(t)
@@ -622,8 +644,8 @@ func TestServicePairsEvenCrossSourceAndLeavesOddOne(t *testing.T) {
 	if _, err := oddService.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: oddCreated.TaskId, ExpectedVersion: oddCreated.Version, IdempotencyKey: "run-task-pair-odd"}, time.UTC); err != nil {
 		t.Fatalf("run odd-pair task: %v", err)
 	}
-	if len(oddReconciler.decided) != 1 {
-		t.Fatalf("odd leftover should keep one auto pair: %+v", oddReconciler.decided)
+	if len(oddReconciler.decided) != 0 {
+		t.Fatalf("non-unique odd candidates were guessed automatically: %+v", oddReconciler.decided)
 	}
 	oddTodos, err := oddService.ListTodos(nil, uid, oddCreated.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
 	if err != nil || !hasTodoKind(oddTodos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
@@ -1251,6 +1273,9 @@ func (f *fakeReconciler) ListCases(_ core.Context, request reconciliation.ListCa
 	}
 	return &reconciliation.CasePage{Items: items}, nil
 }
+func (f *fakeReconciler) ListCasesForRows(_ core.Context, _ int64, _ []int64) ([]*reconciliation.CaseDetail, error) {
+	return f.allDetails(), nil
+}
 func (f *fakeReconciler) DecideCase(_ core.Context, request reconciliation.DecideCaseRequest, _ *time.Location) (*reconciliation.DecisionResult, error) {
 	f.decided = append(f.decided, request)
 	status := f.decisionStatus
@@ -1263,6 +1288,10 @@ func (f *fakeReconciler) DecideCase(_ core.Context, request reconciliation.Decid
 				detail.Status = reconciliation.CASE_STATUS_RESOLVED
 				decisionId := detail.CaseId + 9000
 				detail.CurrentDecisionId = &decisionId
+				decisionType := request.DecisionType
+				decisionStatus := reconciliation.DECISION_STATUS_APPLIED
+				detail.CurrentDecisionType = &decisionType
+				detail.CurrentDecisionStatus = &decisionStatus
 			}
 		}
 	}
@@ -1276,6 +1305,10 @@ func (f *fakeReconciler) UndoCase(_ core.Context, request reconciliation.UndoCas
 			detail.Version++
 			decisionId := detail.CaseId + 10_000
 			detail.CurrentDecisionId = &decisionId
+			decisionType := reconciliation.DECISION_TYPE_REOPEN
+			decisionStatus := reconciliation.DECISION_STATUS_APPLIED
+			detail.CurrentDecisionType = &decisionType
+			detail.CurrentDecisionStatus = &decisionStatus
 		}
 	}
 	return &reconciliation.DecisionResult{CaseId: request.CaseId, DecisionType: reconciliation.DECISION_TYPE_REOPEN, Status: reconciliation.DECISION_STATUS_APPLIED}, nil

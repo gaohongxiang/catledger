@@ -25,8 +25,12 @@ export interface ReconciliationCaseSummary {
     readonly version: number;
     readonly suggestedRelationType: ReconciliationDecisionType;
     readonly candidateScore: number;
+    readonly candidateRuleVersion: string;
+    readonly explanationVersion: string;
     readonly reasonCodes: ReconciliationReason[];
     readonly currentDecisionId?: string;
+    readonly currentDecisionType?: ReconciliationDecisionType | 'reopen';
+    readonly currentDecisionStatus?: ReconciliationDecisionStatus;
     readonly createdUnixTime: number;
     readonly lastEvaluatedUnixTime: number;
     readonly updatedUnixTime: number;

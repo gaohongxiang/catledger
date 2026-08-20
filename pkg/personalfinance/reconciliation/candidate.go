@@ -209,7 +209,7 @@ func (s *CandidateService) GenerateCandidates(c core.Context, request GenerateCa
 }
 
 func (s *CandidateService) candidatesForAnchor(c core.Context, uid int64, anchorSourceAccountId int64, anchor *importing.RawImportRow) ([]*candidateEvaluation, error) {
-	if !isCandidateEligibleRow(anchor) {
+	if !isCandidateAnchorRow(anchor) {
 		return nil, fmt.Errorf("invalid reconciliation candidate anchor")
 	}
 
@@ -275,8 +275,8 @@ func (s *CandidateService) newCandidatePersistence(uid int64, evaluation *candid
 		MemberCount:           2,
 		SuggestedRelationType: evaluation.suggestedRelationType,
 		CandidateScore:        evaluation.score,
-		CandidateRuleVersion:  CANDIDATE_RULE_VERSION_V1,
-		ExplanationVersion:    EXPLANATION_VERSION_V1,
+		CandidateRuleVersion:  CANDIDATE_RULE_VERSION_V2,
+		ExplanationVersion:    EXPLANATION_VERSION_V2,
 		ReasonCodesJson:       evaluation.reasonCodesJSON,
 		CreatedUnixTime:       now,
 		LastEvaluatedUnixTime: now,
@@ -487,7 +487,7 @@ func candidateEvaluationLess(first *candidateEvaluation, second *candidateEvalua
 }
 
 func hardCandidateMatch(first *importing.RawImportRow, second *importing.RawImportRow) bool {
-	if !isCandidateEligibleRow(first) || !isCandidateEligibleRow(second) || first.RowId == second.RowId {
+	if !isCandidateAnchorRow(first) || !isCandidateCounterpartRow(second) || first.RowId == second.RowId {
 		return false
 	}
 
@@ -496,7 +496,15 @@ func hardCandidateMatch(first *importing.RawImportRow, second *importing.RawImpo
 		absoluteInt64(*first.NormalizedUnixTime-*second.NormalizedUnixTime) <= candidateTimeWindowSeconds
 }
 
-func isCandidateEligibleRow(row *importing.RawImportRow) bool {
+func isCandidateAnchorRow(row *importing.RawImportRow) bool {
+	return isCandidatePendingRow(row)
+}
+
+func isCandidateCounterpartRow(row *importing.RawImportRow) bool {
+	return isCandidatePendingRow(row) || isCandidateLinkedRow(row)
+}
+
+func isCandidatePendingRow(row *importing.RawImportRow) bool {
 	if row == nil || row.Uid < 1 || row.BatchId < 1 || row.RowId < 1 ||
 		row.ParseState != importing.PARSE_STATE_VALID ||
 		row.ProcessingState != importing.PROCESSING_STATE_PENDING ||
@@ -518,6 +526,16 @@ func isCandidateEligibleRow(row *importing.RawImportRow) bool {
 	return row.IdentityState == importing.IDENTITY_STATE_NEW ||
 		row.IdentityState == importing.IDENTITY_STATE_EXACT_DUPLICATE ||
 		row.IdentityState == importing.IDENTITY_STATE_BATCH_LOCAL
+}
+
+func isCandidateLinkedRow(row *importing.RawImportRow) bool {
+	return row != nil && row.Uid > 0 && row.BatchId > 0 && row.RowId > 0 &&
+		row.ParseState == importing.PARSE_STATE_VALID &&
+		row.ProcessingState == importing.PROCESSING_STATE_LINKED &&
+		row.NormalizedAmount != nil && *row.NormalizedAmount >= 0 &&
+		row.NormalizedUnixTime != nil && len(row.Currency) == 3 &&
+		row.IdentityId != nil && *row.IdentityId > 0 &&
+		(row.IdentityState == importing.IDENTITY_STATE_NEW || row.IdentityState == importing.IDENTITY_STATE_EXACT_DUPLICATE)
 }
 
 func candidateTimeScore(distance int64) int64 {

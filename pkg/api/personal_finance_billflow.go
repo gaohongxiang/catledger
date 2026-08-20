@@ -36,6 +36,7 @@ type PersonalFinanceBillflowApplication interface {
 	ConfirmPost(c core.Context, request billflow.RunTaskRequest, clientTimezone *time.Location) (*billflow.TaskView, error)
 	ListTodos(c core.Context, uid int64, taskId int64, status billflow.TodoStatus, cursor *billflow.TodoCursor, limit int) (*billflow.TodoListResult, error)
 	ListClassifiedRows(c core.Context, uid int64, taskId int64) ([]*billflow.ClassifiedRowView, error)
+	ListMergeGroups(c core.Context, uid int64, taskId int64) (*billflow.MergeGroupListResult, error)
 	ResolveTodo(c core.Context, request billflow.ResolveTodoRequest) (*billflow.TodoView, error)
 	AssignTodoCategories(c core.Context, request billflow.AssignTodoCategoryRequest) (*billflow.TaskView, error)
 	GetUndoImpact(c core.Context, uid int64, taskId int64) (*billflow.UndoImpactView, error)
@@ -233,6 +234,26 @@ type personalFinanceBillflowTodoMatchResponse struct {
 type personalFinanceBillflowTodoListResponse struct {
 	Items      []*personalFinanceBillflowTodoResponse     `json:"items"`
 	NextCursor *personalFinanceBillflowTodoCursorResponse `json:"nextCursor"`
+}
+
+type personalFinanceBillflowMergeRowResponse struct {
+	personalFinanceBillflowTodoMatchResponse
+	InTask bool `json:"inTask"`
+}
+
+type personalFinanceBillflowMergeGroupResponse struct {
+	Id                   string                                     `json:"id"`
+	Status               billflow.MergeGroupStatus                  `json:"status"`
+	RelationType         string                                     `json:"relationType,omitempty"`
+	PrimaryCaseId        *int64                                     `json:"primaryCaseId,string,omitempty"`
+	CaseIds              []string                                   `json:"caseIds"`
+	CandidateRuleVersion string                                     `json:"candidateRuleVersion"`
+	ReasonCodes          []string                                   `json:"reasonCodes"`
+	Rows                 []*personalFinanceBillflowMergeRowResponse `json:"rows"`
+}
+
+type personalFinanceBillflowMergeGroupListResponse struct {
+	Items []*personalFinanceBillflowMergeGroupResponse `json:"items"`
 }
 
 type personalFinanceBillflowTodoCursorResponse struct {
@@ -546,6 +567,18 @@ func (a *PersonalFinanceBillflowApi) BillflowTaskClassifiedHandler(c *core.WebCo
 	return newPersonalFinanceBillflowClassifiedListResponse(result), nil
 }
 
+func (a *PersonalFinanceBillflowApi) BillflowTaskMergeGroupsHandler(c *core.WebContext) (any, *errs.Error) {
+	taskId, ok := parsePersonalFinanceBillflowIDQuery(c, "id")
+	if !ok {
+		return nil, errs.ErrParameterInvalid
+	}
+	result, err := a.application.ListMergeGroups(c, c.GetCurrentUid(), taskId)
+	if err != nil {
+		return nil, personalFinanceBillflowServiceError(err)
+	}
+	return newPersonalFinanceBillflowMergeGroupListResponse(result)
+}
+
 func (a *PersonalFinanceBillflowApi) BillflowTodoResolveHandler(c *core.WebContext) (any, *errs.Error) {
 	request := new(personalFinanceBillflowResolveTodoRequest)
 	if err := decodePersonalFinanceLoanJSON(c, request); err != nil {
@@ -779,6 +812,42 @@ func newPersonalFinanceBillflowTodoListResponse(result *billflow.TodoListResult)
 		}
 	}
 	return response
+}
+
+func newPersonalFinanceBillflowMergeGroupListResponse(result *billflow.MergeGroupListResult) (*personalFinanceBillflowMergeGroupListResponse, *errs.Error) {
+	if result == nil {
+		return nil, errs.ErrOperationFailed
+	}
+	response := &personalFinanceBillflowMergeGroupListResponse{Items: make([]*personalFinanceBillflowMergeGroupResponse, 0, len(result.Items))}
+	for _, item := range result.Items {
+		if item == nil || len(item.GroupId) != 64 || len(item.CaseIds) < 1 || len(item.Rows) < 2 {
+			return nil, errs.ErrOperationFailed
+		}
+		converted := &personalFinanceBillflowMergeGroupResponse{
+			Id: item.GroupId, Status: item.Status, RelationType: string(item.RelationType), PrimaryCaseId: clonePersonalFinanceInt64(item.PrimaryCaseId),
+			CaseIds: make([]string, 0, len(item.CaseIds)), CandidateRuleVersion: string(item.CandidateRuleVersion),
+			ReasonCodes: append([]string(nil), item.ReasonCodes...), Rows: make([]*personalFinanceBillflowMergeRowResponse, 0, len(item.Rows)),
+		}
+		for _, caseId := range item.CaseIds {
+			if caseId < 1 {
+				return nil, errs.ErrOperationFailed
+			}
+			converted.CaseIds = append(converted.CaseIds, strconv.FormatInt(caseId, 10))
+		}
+		for _, row := range item.Rows {
+			if row == nil || row.TodoMatchView == nil || row.RowId < 1 {
+				return nil, errs.ErrOperationFailed
+			}
+			match := &personalFinanceBillflowTodoMatchResponse{
+				RowId: strconv.FormatInt(row.RowId, 10), SourceType: row.SourceType, Account: row.Account,
+				Label: row.Label, Item: row.Item, BillType: row.BillType, Amount: row.Amount, Currency: row.Currency,
+				UnixTime: row.UnixTime, Direction: row.Direction, OrderId: row.OrderId, MerchantOrderId: row.MerchantOrderId,
+			}
+			converted.Rows = append(converted.Rows, &personalFinanceBillflowMergeRowResponse{personalFinanceBillflowTodoMatchResponse: *match, InTask: row.InTask})
+		}
+		response.Items = append(response.Items, converted)
+	}
+	return response, nil
 }
 
 func newPersonalFinanceBillflowClassifiedListResponse(values []*billflow.ClassifiedRowView) *personalFinanceBillflowClassifiedListResponse {

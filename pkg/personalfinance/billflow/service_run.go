@@ -325,11 +325,13 @@ func (s *Service) autoReconcile(
 	}
 	rowIndex := map[int64]*importing.RawImportRow{}
 	sourceIndex := map[int64]importing.SourceType{}
+	taskRows := map[int64]struct{}{}
 	for _, rows := range rowsByBatch {
 		for _, row := range rows {
 			if row != nil {
 				rowIndex[row.RowId] = row
 				sourceIndex[row.RowId] = sourceByBatch[row.BatchId]
+				taskRows[row.RowId] = struct{}{}
 			}
 		}
 	}
@@ -361,21 +363,33 @@ func (s *Service) autoReconcile(
 	paired := map[int64]bool{}
 	pairs := make([]sameEventPair, 0, len(cases))
 	for _, detail := range cases {
-		if detail == nil || detail.Status != reconciliation.CASE_STATUS_OPEN {
+		if detail == nil {
 			continue
 		}
-		markCaseRows(ambiguous, detail)
 		if err := s.loadCaseEvidenceRows(c, uid, detail, rowIndex, sourceIndex); err != nil {
 			continue
 		}
+		if detail.Status == reconciliation.CASE_STATUS_DEFERRED || detail.Status == reconciliation.CASE_STATUS_ACTION_REQUIRED {
+			markTaskCaseRows(ambiguous, detail, taskRows)
+			continue
+		}
+		if detail.Status != reconciliation.CASE_STATUS_OPEN {
+			continue
+		}
+		markTaskCaseRows(ambiguous, detail, taskRows)
 		if detail.SuggestedRelationType != reconciliation.DECISION_TYPE_SAME_EVENT {
 			continue
 		}
-		if !s.highConfidenceSameEvent(detail, rowIndex) {
+		ids := caseRepresentativeRowIDs(detail, rowIndex, taskRows)
+		if len(ids) != 2 {
 			continue
 		}
-		ids := caseEvidenceRowIDs(detail)
-		if len(ids) != 2 {
+		_, leftInTask := taskRows[ids[0]]
+		_, rightInTask := taskRows[ids[1]]
+		if !leftInTask && rightInTask {
+			ids[0], ids[1] = ids[1], ids[0]
+		}
+		if !s.highConfidenceSameEventRows(rowIndex[ids[0]], rowIndex[ids[1]]) {
 			continue
 		}
 		pairs = append(pairs, sameEventPair{
@@ -391,9 +405,17 @@ func (s *Service) autoReconcile(
 		}
 		return pairs[i].detail.CaseId < pairs[j].detail.CaseId
 	})
+	degrees := map[int64]int{}
+	for _, pair := range pairs {
+		degrees[pair.left]++
+		degrees[pair.right]++
+	}
 	decidedPairs := make([][2]int64, 0, len(pairs))
 	var posted int64
 	for _, pair := range pairs {
+		if degrees[pair.left] != 1 || degrees[pair.right] != 1 {
+			continue
+		}
 		if paired[pair.left] || paired[pair.right] {
 			continue
 		}
@@ -530,20 +552,65 @@ type sameEventPair struct {
 	delta       int64
 }
 
-func markCaseRows(ambiguous map[int64]bool, detail *reconciliation.CaseDetail) {
+func markTaskCaseRows(ambiguous map[int64]bool, detail *reconciliation.CaseDetail, taskRows map[int64]struct{}) {
 	if detail == nil {
 		return
 	}
-	for _, member := range detail.Members {
-		if member == nil {
-			continue
-		}
-		for _, evidence := range member.Evidence {
-			if evidence != nil && evidence.RowId > 0 {
-				ambiguous[evidence.RowId] = true
-			}
+	for _, rowId := range caseEvidenceRowIDs(detail) {
+		if _, exists := taskRows[rowId]; exists {
+			ambiguous[rowId] = true
 		}
 	}
+}
+
+func caseRepresentativeRowIDs(detail *reconciliation.CaseDetail, rows map[int64]*importing.RawImportRow, taskRows map[int64]struct{}) []int64 {
+	if detail == nil || len(detail.Members) != 2 {
+		return nil
+	}
+	result := make([]int64, 0, 2)
+	for _, member := range detail.Members {
+		if member == nil {
+			return nil
+		}
+		var selected *importing.RawImportRow
+		selectedRank := -1
+		for _, evidence := range member.Evidence {
+			if evidence == nil {
+				continue
+			}
+			row := rows[evidence.RowId]
+			if row == nil {
+				continue
+			}
+			rank := mergeRepresentativeRank(row, taskRows)
+			if selected == nil || rank > selectedRank || (rank == selectedRank && row.RowId > selected.RowId) {
+				selected = row
+				selectedRank = rank
+			}
+		}
+		if selected == nil {
+			return nil
+		}
+		result = append(result, selected.RowId)
+	}
+	return result
+}
+
+func mergeRepresentativeRank(row *importing.RawImportRow, taskRows map[int64]struct{}) int {
+	if row == nil {
+		return -1
+	}
+	_, inTask := taskRows[row.RowId]
+	if inTask && row.ProcessingState == importing.PROCESSING_STATE_PENDING {
+		return 4
+	}
+	if inTask {
+		return 3
+	}
+	if row.ProcessingState == importing.PROCESSING_STATE_LINKED {
+		return 2
+	}
+	return 1
 }
 
 func caseEvidenceRowIDs(detail *reconciliation.CaseDetail) []int64 {
@@ -581,39 +648,16 @@ func pairTimeDistance(left *importing.RawImportRow, right *importing.RawImportRo
 	return delta
 }
 
-func (s *Service) highConfidenceSameEvent(detail *reconciliation.CaseDetail, rows map[int64]*importing.RawImportRow) bool {
-	var first *importing.RawImportRow
-	for _, member := range detail.Members {
-		if member == nil {
-			continue
-		}
-		for _, evidence := range member.Evidence {
-			if evidence == nil {
-				continue
-			}
-			row := rows[evidence.RowId]
-			if row == nil || row.NormalizedAmount == nil || row.NormalizedUnixTime == nil || row.LedgerAccountId == nil || *row.LedgerAccountId < 1 {
-				return false
-			}
-			if first == nil {
-				first = row
-				continue
-			}
-			if first.Currency != row.Currency || *first.NormalizedAmount != *row.NormalizedAmount {
-				return false
-			}
-			if !reconciliation.CrossSourceComparisonMatch(first, row, HIGH_CONFIDENCE_WINDOW_SECONDS) {
-				return false
-			}
-			if *first.LedgerAccountId != *row.LedgerAccountId {
-				return false
-			}
-			if first.NormalizedDirection != row.NormalizedDirection && !compatibleBillflowDirections(first.NormalizedDirection, row.NormalizedDirection) {
-				return false
-			}
-		}
+func (s *Service) highConfidenceSameEventRows(first *importing.RawImportRow, second *importing.RawImportRow) bool {
+	if first == nil || second == nil || first.NormalizedAmount == nil || second.NormalizedAmount == nil ||
+		first.NormalizedUnixTime == nil || second.NormalizedUnixTime == nil || first.LedgerAccountId == nil || second.LedgerAccountId == nil ||
+		*first.LedgerAccountId < 1 || *second.LedgerAccountId < 1 {
+		return false
 	}
-	return first != nil
+	return first.Currency == second.Currency && *first.NormalizedAmount == *second.NormalizedAmount &&
+		reconciliation.CrossSourceComparisonMatch(first, second, HIGH_CONFIDENCE_WINDOW_SECONDS) &&
+		*first.LedgerAccountId == *second.LedgerAccountId &&
+		(first.NormalizedDirection == second.NormalizedDirection || compatibleBillflowDirections(first.NormalizedDirection, second.NormalizedDirection))
 }
 
 func compatibleBillflowDirections(left importing.NormalizedDirection, right importing.NormalizedDirection) bool {
@@ -705,11 +749,7 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 			}
 		}
 		for _, pair := range plan.mergedPairs {
-			subjectId := pair[0]
-			if pair[1] < subjectId {
-				subjectId = pair[1]
-			}
-			if err := s.ensureResolvedMergeTodo(tx, request, subjectId, now); err != nil {
+			if err := s.ensureResolvedMergeTodo(tx, request, pair[0], now); err != nil {
 				return err
 			}
 		}

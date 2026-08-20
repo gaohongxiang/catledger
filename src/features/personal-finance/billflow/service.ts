@@ -17,6 +17,9 @@ import type {
     BillflowTodo,
     BillflowTodoKind,
     BillflowTodoMatch,
+    BillflowMergeGroup,
+    BillflowMergeGroupStatus,
+    BillflowMergeRow,
     BillflowTodoPage,
     BillflowTodoStatus,
     BillflowUndoImpact,
@@ -255,6 +258,35 @@ function normalizeTodoMatch(value: unknown): BillflowTodoMatch {
     };
 }
 
+const mergeGroupStatuses: readonly BillflowMergeGroupStatus[] = [
+    'pending', 'preview_merged', 'merged', 'independent', 'internal_transfer',
+    'refund_reversal', 'deferred', 'action_required'
+];
+
+function normalizeMergeRow(value: unknown): BillflowMergeRow {
+    const item = record(value);
+    const normalized = normalizeTodoMatch(item);
+    const rowId = identifier(item['rowId']);
+    if (!rowId) {
+        throw new Error('invalid_billflow_merge_row');
+    }
+    return { ...normalized, rowId, inTask: item['inTask'] === true };
+}
+
+function normalizeMergeGroup(value: unknown): BillflowMergeGroup {
+    const item = record(value);
+    return {
+        id: string(item['id']),
+        status: asEnum<BillflowMergeGroupStatus>(item['status'], mergeGroupStatuses),
+        relationType: string(item['relationType'] ?? '') || undefined,
+        primaryCaseId: optionalIdentifier(item['primaryCaseId']),
+        caseIds: array(item['caseIds']).map(identifier),
+        candidateRuleVersion: string(item['candidateRuleVersion']),
+        reasonCodes: array(item['reasonCodes']).map(string),
+        rows: array(item['rows']).map(normalizeMergeRow)
+    };
+}
+
 function normalizeTodoPage(value: unknown): BillflowTodoPage {
     const item = record(value);
     const cursor = item['nextCursor'];
@@ -448,6 +480,10 @@ export const billflowApi = {
     },
     async listClassifiedRows(taskId: string): Promise<readonly BillflowClassifiedRow[]> {
         return normalizeClassifiedRows(unwrap(await services.listPersonalFinanceBillflowClassifiedRows({ taskId })));
+    },
+    async listMergeGroups(taskId: string): Promise<readonly BillflowMergeGroup[]> {
+        const result = record(unwrap(await services.listPersonalFinanceBillflowMergeGroups({ taskId })));
+        return array(result['items']).map(normalizeMergeGroup);
     },
     async resolveTodo(todoId: string, expectedVersion: number, status: BillflowTodoStatus, idempotencyKey: string): Promise<BillflowTodo> {
         return normalizeTodo(unwrap(await services.resolvePersonalFinanceBillflowTodo({ todoId, expectedVersion, status, idempotencyKey })));
