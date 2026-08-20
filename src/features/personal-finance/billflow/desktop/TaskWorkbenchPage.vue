@@ -769,7 +769,7 @@ const bucketCounts = computed(() => ({
     excluded: accounts.value?.excluded.length ?? 0
 }));
 const categoryBucketCounts = computed(() => ({
-    pending: reviewTodos.value.length + skippedOrphanRows.value.length,
+    pending: transactionPlan.value?.categoryReviewCount ?? reviewTodos.value.length,
     classified: classifiedReviewRows.value.length
 }));
 const mergeBucketCounts = computed(() => ({
