@@ -239,6 +239,56 @@ func TestServiceAssignMerchantCategoryBeforeConfirm(t *testing.T) {
 	assertAutoPostedCategory(t, poster.last.Commands, 801, leafId)
 }
 
+func TestServiceAssignRepaymentAccountBeforeConfirm(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid, cardAccountId, paymentAccountId := int64(1001), int64(61), int64(62)
+	row := postableRow(uid, 401, 801, 201, cardAccountId, "款项转入")
+	row.RawCounterparty = "款项转入"
+	row.NormalizedDirection = importing.NORMALIZED_DIRECTION_INCOME
+	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{row})
+	evidence.batchById[401].SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	group := mappedGroup(cardAccountId, 801)
+	group.SourceType = importing.SOURCE_TYPE_BANK
+	payments := &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{401: {group}}}
+	poster := &fakePoster{}
+	accounts := &fakeAccounts{}
+	var nextId int64 = 9800
+	service, err := billflow.NewService(repository, evidence, payments, poster, nil, nil, accounts, nil, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create billflow service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301}, IdempotencyKey: "create-repayment-task"})
+	if err != nil {
+		t.Fatalf("create repayment task: %v", err)
+	}
+	_, err = service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "run-repayment-task"}, time.UTC)
+	if err != nil {
+		t.Fatalf("run repayment task: %v", err)
+	}
+	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || len(todos.Items) != 1 || todos.Items[0].TodoKind != billflow.TODO_KIND_REPAYMENT_UNCLEAR {
+		t.Fatalf("repayment should ask only for its payment account: %+v err=%v", todos, err)
+	}
+	assigned, err := service.AssignTodoCounterpartAccount(nil, billflow.AssignTodoCounterpartAccountRequest{
+		Uid: uid, TodoId: todos.Items[0].TodoId, ExpectedVersion: todos.Items[0].Version,
+		CounterpartAccountId: paymentAccountId, IdempotencyKey: "assign-repayment-account",
+	})
+	if err != nil || assigned.TodoOpenCount != 0 {
+		t.Fatalf("assign repayment account: %+v err=%v", assigned, err)
+	}
+	posted, err := service.ConfirmPost(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: assigned.Version, IdempotencyKey: "post-repayment-task"}, time.UTC)
+	if err != nil || posted.Status != billflow.TASK_STATUS_READY || len(poster.last.Commands) != 1 {
+		t.Fatalf("post repayment transfer: %+v commands=%+v err=%v", posted, poster.last.Commands, err)
+	}
+	draft := poster.last.Commands[0].Draft
+	if draft == nil || draft.Type != models.TRANSACTION_TYPE_TRANSFER || draft.SourceAccountId != paymentAccountId || draft.DestinationAccountId != cardAccountId {
+		t.Fatalf("repayment must be a transfer from selected account to card: %+v", draft)
+	}
+}
+
 func TestServiceAutoPostCrossSourceAndUndoGuard(t *testing.T) {
 	repository, _ := newSQLiteBillflowRepository(t)
 	uid := int64(1001)

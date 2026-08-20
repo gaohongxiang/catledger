@@ -234,6 +234,7 @@ function normalizeTodo(value: unknown): BillflowTodo {
         ...(optionalIdentifier(item['categoryId']) === undefined ? {} : { categoryId: optionalIdentifier(item['categoryId']) }),
         ...(sourceTypes.includes(string(item['sourceType'] ?? '') as BillflowSourceType) ? { sourceType: string(item['sourceType']) as BillflowSourceType } : {}),
         ...(string(item['account'] ?? '') ? { account: string(item['account']) } : {}),
+        ...(optionalIdentifier(item['ledgerAccountId']) === undefined ? {} : { ledgerAccountId: optionalIdentifier(item['ledgerAccountId']) }),
         ...(string(item['orderId'] ?? '') ? { orderId: string(item['orderId']) } : {}),
         ...(string(item['merchantOrderId'] ?? '') ? { merchantOrderId: string(item['merchantOrderId']) } : {}),
         matches: item['matches'] == null ? [] : array(item['matches']).map(normalizeTodoMatch)
@@ -519,6 +520,9 @@ export const billflowApi = {
     },
     async assignTodoCategories(items: readonly { todoId: string, expectedVersion: number }[], categoryId: string, idempotencyKey: string): Promise<BillflowTask> {
         return normalizeBillflowTask(unwrap(await services.assignPersonalFinanceBillflowTodoCategories({ items, categoryId, idempotencyKey })));
+    },
+    async assignTodoCounterpartAccount(todoId: string, expectedVersion: number, counterpartAccountId: string, idempotencyKey: string): Promise<BillflowTask> {
+        return normalizeBillflowTask(unwrap(await services.assignPersonalFinanceBillflowTodoCounterpartAccount({ todoId, expectedVersion, counterpartAccountId, idempotencyKey })));
     },
     async getUndoImpact(taskId: string): Promise<BillflowUndoImpact> {
         return normalizeUndoImpact(unwrap(await services.getPersonalFinanceBillflowUndoImpact({ taskId })));

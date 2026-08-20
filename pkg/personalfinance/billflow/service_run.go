@@ -153,6 +153,16 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 	if err != nil {
 		return nil, err
 	}
+	resolvedTodos, err := s.listAllTodos(c, uid, taskId, TODO_STATUS_RESOLVED)
+	if err != nil {
+		return nil, err
+	}
+	repaymentAccountsByRow := make(map[int64]int64)
+	for _, todo := range resolvedTodos {
+		if accountId, ok := counterpartAccountFromTodo(todo); ok && todo.SubjectKind == SUBJECT_KIND_RAW_ROW {
+			repaymentAccountsByRow[todo.SubjectId] = accountId
+		}
+	}
 
 	ambiguousRows, mergedRows, relatedRows, pairs, refundPairs, reconciledPostCount, err := s.autoReconcile(c, uid, taskId, batchIds, rowsByBatch, sourceByBatch, categories, createdIp, applyReconciliation)
 	if err != nil {
@@ -231,6 +241,15 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 				continue
 			}
 			todoKind, postable := s.classifyRow(row, sourceType, ambiguousRows[row.RowId], categories)
+			if todoKind == TODO_KIND_REPAYMENT_UNCLEAR {
+				if counterpartAccountId := repaymentAccountsByRow[row.RowId]; counterpartAccountId > 0 {
+					if command := repaymentPostingCommand(row, counterpartAccountId); command != nil {
+						plan.commands[batchId] = append(plan.commands[batchId], *command)
+						plan.posted++
+						continue
+					}
+				}
+			}
 			if todoKind != "" {
 				subjectKind, subjectId := SUBJECT_KIND_RAW_ROW, row.RowId
 				if row.IdentityId != nil && (todoKind == TODO_KIND_IDENTITY_CONFLICT || todoKind == TODO_KIND_CORE_FIELD_CONFLICT) {
@@ -288,7 +307,15 @@ func (s *Service) classifyRow(row *importing.RawImportRow, sourceType importing.
 		return todoKind, false
 	}
 	switch row.NormalizedTransactionType {
-	case importing.SOURCE_TRANSACTION_TYPE_TOP_UP, importing.SOURCE_TRANSACTION_TYPE_WITHDRAWAL, importing.SOURCE_TRANSACTION_TYPE_TRANSFER:
+	case importing.SOURCE_TRANSACTION_TYPE_TRANSFER:
+		if _, mapped := categories.mapped(sourceType, row); mapped {
+			return "", true
+		}
+		if row.NormalizedDirection == importing.NORMALIZED_DIRECTION_INCOME || row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE {
+			return TODO_KIND_UNCATEGORIZED, true
+		}
+		return TODO_KIND_TRANSFER_UNCLEAR, false
+	case importing.SOURCE_TRANSACTION_TYPE_TOP_UP, importing.SOURCE_TRANSACTION_TYPE_WITHDRAWAL:
 		if _, mapped := categories.mapped(sourceType, row); mapped {
 			return "", true
 		}
@@ -353,6 +380,25 @@ func (s *Service) postingCommand(rows []*importing.RawImportRow, sourceType impo
 			Type: txType, CategoryId: categoryId, AllowUncategorized: allowUncategorized,
 			UnixTime: *row.NormalizedUnixTime, TimezoneUtcOffset: offset,
 			SourceAccountId: *row.LedgerAccountId, SourceAmount: *row.NormalizedAmount,
+		},
+	}
+}
+
+func repaymentPostingCommand(row *importing.RawImportRow, counterpartAccountId int64) *importing.PostingIdentityCommand {
+	if row == nil || counterpartAccountId < 1 || row.LedgerAccountId == nil || *row.LedgerAccountId < 1 ||
+		*row.LedgerAccountId == counterpartAccountId || row.NormalizedAmount == nil || row.NormalizedUnixTime == nil {
+		return nil
+	}
+	offset := int16(0)
+	if row.NormalizedTimezoneUtcOffset != nil {
+		offset = *row.NormalizedTimezoneUtcOffset
+	}
+	return &importing.PostingIdentityCommand{
+		RowIds: []int64{row.RowId}, AutoPosted: true,
+		Draft: &importing.LedgerTransactionDraft{
+			Type: models.TRANSACTION_TYPE_TRANSFER, UnixTime: *row.NormalizedUnixTime, TimezoneUtcOffset: offset,
+			SourceAccountId: counterpartAccountId, DestinationAccountId: *row.LedgerAccountId,
+			SourceAmount: *row.NormalizedAmount, DestinationAmount: *row.NormalizedAmount,
 		},
 	}
 }

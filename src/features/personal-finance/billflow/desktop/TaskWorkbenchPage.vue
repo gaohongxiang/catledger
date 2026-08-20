@@ -471,6 +471,20 @@
                         item-title="title"
                         item-value="value"
                         variant="outlined"
+                        :items="counterpartAccountOptions(todo)"
+                        :placeholder="tt('personalFinance.billflow.todos.pickPaymentAccount')"
+                        :disabled="busy"
+                        :model-value="counterpartAccountDrafts[todo.id]"
+                        v-if="todo.todoKind === 'repayment_unclear'"
+                        @update:model-value="value => setCounterpartAccount(todo.id, value)"
+                    />
+                    <v-select
+                        class="todo-row__select"
+                        density="compact"
+                        hide-details
+                        item-title="title"
+                        item-value="value"
+                        variant="outlined"
                         :items="categoryOptionsFor(todo)"
                         :placeholder="tt('personalFinance.billflow.todos.pickCategory')"
                         :disabled="busy"
@@ -560,8 +574,20 @@
                             color="primary"
                             variant="text"
                             :loading="busy"
+                            :disabled="!counterpartAccountDrafts[todo.id]"
+                            v-if="todo.todoKind === 'repayment_unclear'"
+                            @click="assignCounterpartAccount(todo)"
+                        >
+                            {{ tt('personalFinance.billflow.todos.savePaymentAccount') }}
+                        </v-btn>
+                        <v-btn
+                            density="compact"
+                            size="x-small"
+                            color="primary"
+                            variant="text"
+                            :loading="busy"
                             :disabled="!categoryDrafts[todo.id]"
-                            v-if="canAssignBillflowCategory(todo.todoKind)"
+                            v-else-if="canAssignBillflowCategory(todo.todoKind)"
                             @click="assignOneTodo(todo)"
                         >
                             {{ tt('personalFinance.billflow.todos.saveCategory') }}
@@ -779,6 +805,7 @@ const mergeGroups = computed<readonly BillflowMergeGroup[]>(() => transactionPla
 const accountRowIndex = ref<Record<string, { sampleRowId: string, skipped: boolean, row: BillflowAccountRow }>>({});
 const selectedTodoIds = ref<string[]>([]);
 const categoryDrafts = reactive<Record<string, string>>({});
+const counterpartAccountDrafts = reactive<Record<string, string>>({});
 const batchCategoryId = ref('');
 const cardAccounts = ref<CardCycleAccount[]>([]);
 const createdLedgerIds = ref<string[]>([]);
@@ -1407,6 +1434,19 @@ function setTodoCategory(todoId: string, value: unknown): void {
     categoryDrafts[todoId] = value;
 }
 
+function counterpartAccountOptions(todo: BillflowTodo): { title: string, value: string }[] {
+    return accountsStore.allVisiblePlainAccounts
+        .filter(account => account.id !== todo.ledgerAccountId && (!todo.currency || account.currency === todo.currency))
+        .map(account => ({ title: account.name, value: account.id }));
+}
+
+function setCounterpartAccount(todoId: string, value: unknown): void {
+    if (typeof value !== 'string') {
+        return;
+    }
+    counterpartAccountDrafts[todoId] = value;
+}
+
 function setBatchCategoryId(value: unknown): void {
     if (typeof value !== 'string') {
         return;
@@ -1816,6 +1856,23 @@ async function assignTodos(todos: readonly BillflowTodo[], categoryId: string): 
 
 async function assignOneTodo(todo: BillflowTodo): Promise<void> {
     await assignTodos([todo], categoryDrafts[todo.id] ?? '');
+}
+
+async function assignCounterpartAccount(todo: BillflowTodo): Promise<void> {
+    const accountId = counterpartAccountDrafts[todo.id];
+    if (!accountId) {
+        return;
+    }
+    busy.value = true;
+    try {
+        await billflowApi.assignTodoCounterpartAccount(todo.id, todo.version, accountId, generateRandomUUID());
+        delete counterpartAccountDrafts[todo.id];
+        if (task.value) await openTask(task.value.id);
+    } catch {
+        error.value = true;
+    } finally {
+        busy.value = false;
+    }
 }
 
 async function assignSelectedTodos(): Promise<void> {

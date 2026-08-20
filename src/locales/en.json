@@ -3097,7 +3097,9 @@
                 "othersEmpty": "No other items need a decision.",
                 "selectAll": "Select all ({count} selected)",
                 "pickCategory": "Choose a category",
+                "pickPaymentAccount": "Choose the payment account",
                 "saveCategory": "Save",
+                "savePaymentAccount": "Save payment account",
                 "assignSelected": "Save category for selected",
                 "skipSelected": "Skip selected",
                 "classified": "Categorized",
@@ -3114,7 +3116,7 @@
                 "cross_source_ambiguous": "Could not uniquely match another statement",
                 "transfer_unclear": "This may be a transfer",
                 "refund_unclear": "This may be a refund",
-                "repayment_unclear": "This may be a repayment",
+                "repayment_unclear": "Repayment identified; payment account required",
                 "installment_candidate": "This may be an installment; only a few questions first",
                 "uncategorized": "Not categorized yet"
             },

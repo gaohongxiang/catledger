@@ -78,3 +78,24 @@ func TestClearEvidenceKeywordsUseConservativeCategoriesAndTransfersStaySeparate(
 		t.Fatalf("credit-card payment should remain a repayment relation, got %q", got)
 	}
 }
+
+func TestExplicitTransferDirectionIsPostableWithoutRelationshipGuess(t *testing.T) {
+	service := new(Service)
+	amount, unixTime, accountId := int64(1500), int64(1_700_000_000), int64(12)
+	row := &importing.RawImportRow{
+		LedgerAccountId: &accountId, ParseState: importing.PARSE_STATE_VALID,
+		IdentityState: importing.IDENTITY_STATE_NEW, SemanticEligibility: importing.SEMANTIC_ELIGIBILITY_POSTABLE,
+		Disposition: importing.IMPORT_DISPOSITION_POSTABLE, EconomicEffect: importing.ECONOMIC_EFFECT_NORMAL,
+		NormalizedUnixTime: &unixTime, NormalizedAmount: &amount, Currency: "CNY",
+		NormalizedDirection:       importing.NORMALIZED_DIRECTION_INCOME,
+		NormalizedTransactionType: importing.SOURCE_TRANSACTION_TYPE_TRANSFER,
+	}
+	kind, postable := service.classifyRow(row, importing.SOURCE_TYPE_ALIPAY, false, &categoryIndex{})
+	if kind != TODO_KIND_UNCATEGORIZED || !postable {
+		t.Fatalf("explicit incoming transfer should be a postable uncategorized income: kind=%q postable=%t", kind, postable)
+	}
+	row.NormalizedTransactionType = importing.SOURCE_TRANSACTION_TYPE_TOP_UP
+	if kind, postable = service.classifyRow(row, importing.SOURCE_TYPE_ALIPAY, false, &categoryIndex{}); kind != TODO_KIND_TRANSFER_UNCLEAR || postable {
+		t.Fatalf("top-up still needs an account relation: kind=%q postable=%t", kind, postable)
+	}
+}

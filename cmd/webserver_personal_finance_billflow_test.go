@@ -36,6 +36,7 @@ func TestPersonalFinanceBillflowRoutesAreUniqueAuthenticatedAndImportIndependent
 		{method: "GET", path: "/personal_finance/billflow/tasks/merge_groups.json", handler: "BillflowTaskMergeGroupsHandler"},
 		{method: "POST", path: "/personal_finance/billflow/todos/resolve.json", handler: "BillflowTodoResolveHandler"},
 		{method: "POST", path: "/personal_finance/billflow/todos/assign_category.json", handler: "BillflowTodoAssignCategoryHandler"},
+		{method: "POST", path: "/personal_finance/billflow/todos/assign_counterpart_account.json", handler: "BillflowTodoAssignCounterpartAccountHandler"},
 		{method: "GET", path: "/personal_finance/billflow/tasks/undo_impact.json", handler: "BillflowTaskUndoImpactHandler"},
 		{method: "POST", path: "/personal_finance/billflow/tasks/undo.json", handler: "BillflowTaskUndoHandler"},
 	}

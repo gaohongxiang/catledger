@@ -31,6 +31,116 @@ type AssignTodoCategoryRequest struct {
 	Items          []AssignTodoCategoryItem
 }
 
+type AssignTodoCounterpartAccountRequest struct {
+	Uid                  int64
+	TodoId               int64
+	ExpectedVersion      int64
+	CounterpartAccountId int64
+	IdempotencyKey       string
+}
+
+const counterpartAccountReasonPrefix = "counterpart_account:"
+
+func counterpartAccountReason(accountId int64) string {
+	return counterpartAccountReasonPrefix + strconv.FormatInt(accountId, 10)
+}
+
+func counterpartAccountFromTodo(todo *Todo) (int64, bool) {
+	if todo == nil || todo.TodoKind != TODO_KIND_REPAYMENT_UNCLEAR || todo.Status != TODO_STATUS_RESOLVED {
+		return 0, false
+	}
+	for _, code := range decodeReasonCodes(todo.ReasonCodesJson) {
+		if !strings.HasPrefix(code, counterpartAccountReasonPrefix) {
+			continue
+		}
+		accountId, err := strconv.ParseInt(strings.TrimPrefix(code, counterpartAccountReasonPrefix), 10, 64)
+		return accountId, err == nil && accountId > 0
+	}
+	return 0, false
+}
+
+func (s *Service) AssignTodoCounterpartAccount(c core.Context, request AssignTodoCounterpartAccountRequest) (*TaskView, error) {
+	if s == nil || s.repository == nil || s.evidence == nil || s.accounts == nil || request.Uid < 1 || request.TodoId < 1 ||
+		request.ExpectedVersion < 1 || request.CounterpartAccountId < 1 || !isValidIdempotencyKey(request.IdempotencyKey) {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	todo, err := s.repository.FindTodoById(c, request.Uid, request.TodoId)
+	if err != nil || todo == nil || todo.Version != request.ExpectedVersion || todo.Status != TODO_STATUS_OPEN ||
+		todo.TodoKind != TODO_KIND_REPAYMENT_UNCLEAR || todo.SubjectKind != SUBJECT_KIND_RAW_ROW {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	row, err := s.evidence.FindRawImportRowById(c, request.Uid, todo.SubjectId)
+	if err != nil || row == nil || row.LedgerAccountId == nil || *row.LedgerAccountId < 1 || *row.LedgerAccountId == request.CounterpartAccountId {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	destination, err := s.accounts.LoadAccount(c, request.Uid, *row.LedgerAccountId)
+	if err != nil || destination == nil || destination.Hidden || destination.Deleted {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	counterpart, err := s.accounts.LoadAccount(c, request.Uid, request.CounterpartAccountId)
+	if err != nil || counterpart == nil || counterpart.Hidden || counterpart.Deleted || counterpart.Currency != destination.Currency {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	task, err := s.requireTask(c, request.Uid, todo.TaskId)
+	if err != nil {
+		return nil, err
+	}
+	action, created, err := s.beginAction(c, request.Uid, todo.TaskId, task.Version, ACTION_TYPE_RESOLVE_TODO, request.IdempotencyKey, []string{
+		"assign_counterpart_account", strconv.FormatInt(todo.TodoId, 10), strconv.FormatInt(request.CounterpartAccountId, 10),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !created {
+		current, findErr := s.repository.FindTodoById(c, request.Uid, request.TodoId)
+		accountId, matches := counterpartAccountFromTodo(current)
+		if findErr == nil && action.Status == ACTION_STATUS_APPLIED && matches && accountId == request.CounterpartAccountId {
+			return s.GetTask(c, request.Uid, todo.TaskId)
+		}
+		if action.Status != ACTION_STATUS_READY {
+			return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
+		}
+	}
+	now := s.now().Unix()
+	nextTodo := *todo
+	nextTodo.Status = TODO_STATUS_RESOLVED
+	nextTodo.ReasonCodesJson = encodeReasonCodes([]string{counterpartAccountReason(request.CounterpartAccountId)})
+	nextTodo.Version = todo.Version + 1
+	nextTodo.UpdatedUnixTime = now
+	nextTodo.ResolvedUnixTime = &now
+	nextTask := cloneTask(task)
+	if nextTask.TodoOpenCount > 0 {
+		nextTask.TodoOpenCount--
+	}
+	nextTask.Version = task.Version + 1
+	nextTask.UpdatedUnixTime = now
+	nextTask.CurrentActionId = &action.ActionId
+	applied := cloneAction(action)
+	applied.Status = ACTION_STATUS_APPLIED
+	applied.AppliedTaskVersion = nextTask.Version
+	applied.UpdatedUnixTime = now
+	applied.CompletedUnixTime = &now
+	err = s.repository.DoTransaction(c, request.Uid, func(tx *RepositoryTransaction) error {
+		updated, updateErr := tx.UpdateTaskCAS(task.Version, nextTask)
+		if updateErr != nil || !updated {
+			return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+		}
+		updated, updateErr = tx.UpdateTodoCAS(request.ExpectedVersion, &nextTodo)
+		if updateErr != nil || !updated {
+			return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+		}
+		updated, updateErr = tx.UpdateAction(applied)
+		if updateErr != nil || !updated {
+			return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.GetTask(c, request.Uid, todo.TaskId)
+}
+
 func (s *Service) ResolveTodo(c core.Context, request ResolveTodoRequest) (*TodoView, error) {
 	restore := request.Status == TODO_STATUS_OPEN
 	if s == nil || s.repository == nil || request.Uid < 1 || request.TodoId < 1 || request.ExpectedVersion < 1 ||
@@ -383,6 +493,9 @@ func attachTodoPreview(view *TodoView, row *importing.RawImportRow) {
 	view.Currency = row.Currency
 	view.UnixTime = row.NormalizedUnixTime
 	view.Direction = string(row.NormalizedDirection)
+	if row.LedgerAccountId != nil {
+		view.LedgerAccountId = *row.LedgerAccountId
+	}
 	if row.NormalizedAmount != nil {
 		view.Amount = strconv.FormatInt(*row.NormalizedAmount, 10)
 	}

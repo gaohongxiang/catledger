@@ -3097,7 +3097,9 @@
                 "othersEmpty": "没有要处理的其他事项。",
                 "selectAll": "全选（已选 {count}）",
                 "pickCategory": "选择分类",
+                "pickPaymentAccount": "选择从哪个账户还款",
                 "saveCategory": "保存",
+                "savePaymentAccount": "保存付款账户",
                 "assignSelected": "给选中的保存分类",
                 "skipSelected": "选中的先跳过",
                 "classified": "已分类",
@@ -3114,7 +3116,7 @@
                 "cross_source_ambiguous": "对不上唯一的另一份账单",
                 "transfer_unclear": "可能是转账，需要确认",
                 "refund_unclear": "可能是退款，需要确认",
-                "repayment_unclear": "可能是还款，需要确认",
+                "repayment_unclear": "已识别为还款，还需补付款账户",
                 "installment_candidate": "可能是分期，先少问几项",
                 "uncategorized": "还没分类"
             },

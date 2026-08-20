@@ -259,6 +259,7 @@ type TodoView struct {
 	Direction       string
 	SourceType      string
 	Account         string
+	LedgerAccountId int64
 	CategoryId      int64
 	OrderId         string
 	MerchantOrderId string

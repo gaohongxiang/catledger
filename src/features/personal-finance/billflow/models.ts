@@ -109,6 +109,7 @@ export interface BillflowTodo {
     readonly direction: string;
     readonly sourceType?: BillflowSourceType;
     readonly account?: string;
+    readonly ledgerAccountId?: string;
     readonly categoryId?: string;
     readonly orderId?: string;
     readonly merchantOrderId?: string;

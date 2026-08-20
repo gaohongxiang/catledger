@@ -222,6 +222,9 @@ func (a *billflowAPITestApplication) ResolveTodo(_ core.Context, _ billflow.Reso
 func (a *billflowAPITestApplication) AssignTodoCategories(_ core.Context, _ billflow.AssignTodoCategoryRequest) (*billflow.TaskView, error) {
 	return a.task, a.err
 }
+func (a *billflowAPITestApplication) AssignTodoCounterpartAccount(_ core.Context, _ billflow.AssignTodoCounterpartAccountRequest) (*billflow.TaskView, error) {
+	return a.task, a.err
+}
 func (a *billflowAPITestApplication) GetUndoImpact(_ core.Context, _ int64, _ int64) (*billflow.UndoImpactView, error) {
 	return a.impact, a.err
 }

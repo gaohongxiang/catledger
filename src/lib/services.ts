@@ -1089,6 +1089,9 @@ export default {
     assignPersonalFinanceBillflowTodoCategories: (request: { items: readonly { todoId: string, expectedVersion: number }[], categoryId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/todos/assign_category.json', request);
     },
+    assignPersonalFinanceBillflowTodoCounterpartAccount: (request: { todoId: string, expectedVersion: number, counterpartAccountId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/todos/assign_counterpart_account.json', request);
+    },
     getPersonalFinanceBillflowUndoImpact: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/undo_impact.json?id=${encodeURIComponent(taskId)}`);
     },

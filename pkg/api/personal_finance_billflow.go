@@ -39,6 +39,7 @@ type PersonalFinanceBillflowApplication interface {
 	ListMergeGroups(c core.Context, uid int64, taskId int64) (*billflow.MergeGroupListResult, error)
 	ResolveTodo(c core.Context, request billflow.ResolveTodoRequest) (*billflow.TodoView, error)
 	AssignTodoCategories(c core.Context, request billflow.AssignTodoCategoryRequest) (*billflow.TaskView, error)
+	AssignTodoCounterpartAccount(c core.Context, request billflow.AssignTodoCounterpartAccountRequest) (*billflow.TaskView, error)
 	GetUndoImpact(c core.Context, uid int64, taskId int64) (*billflow.UndoImpactView, error)
 	UndoTask(c core.Context, request billflow.UndoTaskRequest) (*billflow.TaskView, error)
 }
@@ -125,6 +126,13 @@ type personalFinanceBillflowAssignCategoryRequest struct {
 	Items          []personalFinanceBillflowAssignCategoryItem `json:"items"`
 }
 
+type personalFinanceBillflowAssignCounterpartAccountRequest struct {
+	TodoId               int64  `json:"todoId,string"`
+	ExpectedVersion      int64  `json:"expectedVersion"`
+	CounterpartAccountId int64  `json:"counterpartAccountId,string"`
+	IdempotencyKey       string `json:"idempotencyKey"`
+}
+
 type personalFinanceBillflowMemberResponse struct {
 	Id          string `json:"id"`
 	FileId      string `json:"fileId"`
@@ -207,6 +215,7 @@ type personalFinanceBillflowTodoResponse struct {
 	Direction       string                                      `json:"direction"`
 	SourceType      string                                      `json:"sourceType,omitempty"`
 	Account         string                                      `json:"account,omitempty"`
+	LedgerAccountId string                                      `json:"ledgerAccountId,omitempty"`
 	CategoryId      string                                      `json:"categoryId,omitempty"`
 	OrderId         string                                      `json:"orderId,omitempty"`
 	MerchantOrderId string                                      `json:"merchantOrderId,omitempty"`
@@ -633,6 +642,21 @@ func (a *PersonalFinanceBillflowApi) BillflowTodoAssignCategoryHandler(c *core.W
 	return newPersonalFinanceBillflowTaskResponse(result), nil
 }
 
+func (a *PersonalFinanceBillflowApi) BillflowTodoAssignCounterpartAccountHandler(c *core.WebContext) (any, *errs.Error) {
+	request := new(personalFinanceBillflowAssignCounterpartAccountRequest)
+	if err := decodePersonalFinanceLoanJSON(c, request); err != nil {
+		return nil, errs.ErrParameterInvalid
+	}
+	result, err := a.application.AssignTodoCounterpartAccount(c, billflow.AssignTodoCounterpartAccountRequest{
+		Uid: c.GetCurrentUid(), TodoId: request.TodoId, ExpectedVersion: request.ExpectedVersion,
+		CounterpartAccountId: request.CounterpartAccountId, IdempotencyKey: request.IdempotencyKey,
+	})
+	if err != nil {
+		return nil, personalFinanceBillflowServiceError(err)
+	}
+	return newPersonalFinanceBillflowTaskResponse(result), nil
+}
+
 func (a *PersonalFinanceBillflowApi) BillflowTaskUndoImpactHandler(c *core.WebContext) (any, *errs.Error) {
 	taskId, ok := parsePersonalFinanceBillflowIDQuery(c, "id")
 	if !ok {
@@ -798,6 +822,9 @@ func newPersonalFinanceBillflowTodoResponse(value *billflow.TodoView) *personalF
 	}
 	if value.CategoryId > 0 {
 		item.CategoryId = strconv.FormatInt(value.CategoryId, 10)
+	}
+	if value.LedgerAccountId > 0 {
+		item.LedgerAccountId = strconv.FormatInt(value.LedgerAccountId, 10)
 	}
 	for _, match := range value.Matches {
 		if match == nil {

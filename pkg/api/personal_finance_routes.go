@@ -82,6 +82,7 @@ func RegisterPersonalFinanceRoutes(apiV1Route gin.IRoutes, config *settings.Conf
 	apiV1Route.GET("/personal_finance/billflow/tasks/merge_groups.json", bindApi(PersonalFinanceBillflow.BillflowTaskMergeGroupsHandler, config))
 	apiV1Route.POST("/personal_finance/billflow/todos/resolve.json", bindApi(PersonalFinanceBillflow.BillflowTodoResolveHandler, config))
 	apiV1Route.POST("/personal_finance/billflow/todos/assign_category.json", bindApi(PersonalFinanceBillflow.BillflowTodoAssignCategoryHandler, config))
+	apiV1Route.POST("/personal_finance/billflow/todos/assign_counterpart_account.json", bindApi(PersonalFinanceBillflow.BillflowTodoAssignCounterpartAccountHandler, config))
 	apiV1Route.GET("/personal_finance/billflow/tasks/undo_impact.json", bindApi(PersonalFinanceBillflow.BillflowTaskUndoImpactHandler, config))
 	apiV1Route.POST("/personal_finance/billflow/tasks/undo.json", bindApi(PersonalFinanceBillflow.BillflowTaskUndoHandler, config))
 
