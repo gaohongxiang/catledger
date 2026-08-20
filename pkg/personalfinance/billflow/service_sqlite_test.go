@@ -449,7 +449,12 @@ func TestServiceDefersAutoReconcileLedgerEffectUntilFirstTaskConfirmation(t *tes
 	evidence := newFakeEvidence(uid, 301, 401, []*importing.RawImportRow{alipay})
 	evidence.addFile(uid, 302, 402, []*importing.RawImportRow{bank})
 	evidence.batchById[402].SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
-	reconciler := &fakeReconciler{detail: sameEventCase(99, 801, 802)}
+	legacyFailedDecisionId := int64(9099)
+	legacyFailedDecisionStatus := reconciliation.DECISION_STATUS_FAILED
+	detail := sameEventCase(99, 801, 802)
+	detail.CurrentDecisionId = &legacyFailedDecisionId
+	detail.CurrentDecisionStatus = &legacyFailedDecisionStatus
+	reconciler := &fakeReconciler{detail: detail}
 	poster := &fakePoster{}
 	var nextId int64 = 7400
 	service, err := billflow.NewService(repository, evidence, &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
@@ -465,6 +470,33 @@ func TestServiceDefersAutoReconcileLedgerEffectUntilFirstTaskConfirmation(t *tes
 	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{301, 302}, IdempotencyKey: "create-first-pair"})
 	if err != nil || created.ConfirmPolicy != billflow.CONFIRM_POLICY_CONFIRM_THEN_POST {
 		t.Fatalf("create first task: %+v %v", created, err)
+	}
+	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
+		resolvedAt := time.Now().Unix()
+		legacy := &billflow.Todo{
+			TodoId: 7390, Uid: uid, TaskId: created.TaskId,
+			TodoKind: billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, Status: billflow.TODO_STATUS_OPEN,
+			SubjectKind: billflow.SUBJECT_KIND_RAW_ROW, SubjectId: alipay.RowId,
+			ReasonCodesJson: `["cross_source_ambiguous"]`, Version: 1,
+			CreatedUnixTime: resolvedAt, UpdatedUnixTime: resolvedAt,
+		}
+		if err := tx.InsertTodo(legacy); err != nil {
+			return err
+		}
+		resolved := *legacy
+		resolved.Status = billflow.TODO_STATUS_RESOLVED
+		resolved.Version = 2
+		resolved.ResolvedUnixTime = &resolvedAt
+		updated, err := tx.UpdateTodoCAS(1, &resolved)
+		if err != nil {
+			return err
+		}
+		if !updated {
+			return errors.New("legacy todo was not resolved")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("insert legacy resolved merge todo: %v", err)
 	}
 	preview, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "preview-first-pair", CreatedIp: "192.0.2.10"}, time.UTC)
 	if err != nil || preview == nil || preview.Status != billflow.TASK_STATUS_AWAITING_CONFIRM || preview.AutoPostedCount != 1 || len(reconciler.decided) != 0 || poster.calls != 0 {

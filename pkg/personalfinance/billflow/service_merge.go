@@ -129,7 +129,10 @@ func mergeStatusForCase(detail *reconciliation.CaseDetail, preview bool) MergeGr
 			return MERGE_GROUP_STATUS_DEFERRED
 		}
 	}
-	if preview && detail.Status == reconciliation.CASE_STATUS_OPEN && detail.CurrentDecisionId == nil {
+	// A current failed decision is historical execution evidence, not a user
+	// decision. A fresh task preview may safely supersede it after the current
+	// candidate rules have again selected this unique one-to-one pair.
+	if preview && detail.Status == reconciliation.CASE_STATUS_OPEN {
 		return MERGE_GROUP_STATUS_PREVIEW_MERGED
 	}
 	return MERGE_GROUP_STATUS_PENDING

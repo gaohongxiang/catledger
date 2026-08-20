@@ -790,7 +790,7 @@ func (s *Service) ensureResolvedMergeTodo(tx *RepositoryTransaction, request Run
 		return err
 	}
 	if existing != nil {
-		if existing.Status != TODO_STATUS_OPEN {
+		if existing.Status == TODO_STATUS_DISMISSED || (existing.Status == TODO_STATUS_RESOLVED && hasReasonCode(existing.ReasonCodesJson, "auto_merged")) {
 			return nil
 		}
 		next := *existing
