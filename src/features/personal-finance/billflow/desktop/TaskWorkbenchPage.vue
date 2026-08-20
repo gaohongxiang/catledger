@@ -236,23 +236,35 @@
                     <span>{{ tt('personalFinance.billflow.plan.evidence') }}</span>
                 </article>
                 <span class="transaction-plan-summary__operator">−</span>
-                <article>
+                <button
+                    type="button"
+                    class="transaction-plan-card"
+                    :class="{ 'transaction-plan-card--active': reviewPane === 'merge' }"
+                    :aria-pressed="reviewPane === 'merge'"
+                    @click="setReviewPane('merge')"
+                >
                     <strong>{{ transactionPlan.consolidatedRowCount }}</strong>
                     <span>{{ tt('personalFinance.billflow.plan.consolidated') }}</span>
-                </article>
+                </button>
                 <span class="transaction-plan-summary__operator">=</span>
                 <article class="transaction-plan-summary__primary">
                     <strong>{{ transactionPlan.plannedTransactionCount }}</strong>
                     <span>{{ tt('personalFinance.billflow.plan.transactions') }}</span>
                 </article>
-                <article>
+                <button type="button" class="transaction-plan-card" @click="openStep('others')">
                     <strong>{{ transactionPlan.mergeReviewCount + transactionPlan.otherReviewCount }}</strong>
                     <span>{{ tt('personalFinance.billflow.plan.blocking') }}</span>
-                </article>
-                <article>
+                </button>
+                <button
+                    type="button"
+                    class="transaction-plan-card"
+                    :class="{ 'transaction-plan-card--active': reviewPane === 'category' }"
+                    :aria-pressed="reviewPane === 'category'"
+                    @click="setReviewPane('category')"
+                >
                     <strong>{{ transactionPlan.categoryReviewCount }}</strong>
                     <span>{{ tt('personalFinance.billflow.plan.uncategorized') }}</span>
-                </article>
+                </button>
             </div>
             <p class="transaction-plan-summary__explanation" v-if="transactionPlan">
                 {{ tt('personalFinance.billflow.plan.explanation', {
@@ -262,21 +274,10 @@
                 }) }}
             </p>
             <div class="bucket-bar pane-bar">
-                <v-btn-toggle
-                    color="primary"
-                    density="compact"
-                    divided
-                    mandatory
-                    variant="tonal"
-                    :model-value="reviewPane"
-                    @update:model-value="value => setReviewPane(value)"
-                >
-                    <v-btn :value="pane" :key="pane" v-for="pane in BILLFLOW_REVIEW_PANES">
-                        {{ tt(`personalFinance.billflow.pane.${pane}`) }}
-                        <span class="bucket-count">{{ reviewPaneCounts[pane] }}</span>
-                    </v-btn>
-                </v-btn-toggle>
-                <p>{{ tt(reviewPaneHintKey(reviewPane)) }}</p>
+                <div>
+                    <strong>{{ tt(`personalFinance.billflow.pane.${reviewPane}`) }}</strong>
+                    <p>{{ tt(reviewPaneHintKey(reviewPane)) }}</p>
+                </div>
                 <v-btn
                     size="small"
                     variant="tonal"
@@ -293,20 +294,7 @@
             </p>
             <template v-else>
                 <div class="bucket-bar">
-                    <v-btn-toggle
-                        color="primary"
-                        density="compact"
-                        divided
-                        mandatory
-                        variant="outlined"
-                        :model-value="mergeBucket"
-                        @update:model-value="value => setMergeBucket(value)"
-                    >
-                        <v-btn :value="bucket" :key="bucket" v-for="bucket in BILLFLOW_MERGE_BUCKETS">
-                            {{ tt(`personalFinance.billflow.merge.bucket.${bucket}`) }}
-                            <span class="bucket-count">{{ mergeBucketCounts[bucket] }}</span>
-                        </v-btn>
-                    </v-btn-toggle>
+                    <strong>{{ tt(`personalFinance.billflow.merge.bucket.${mergeBucket}`) }} · {{ mergeBucketCounts[mergeBucket] }}</strong>
                     <p>{{ tt(mergeBucketHintKey(mergeBucket)) }}</p>
                 </div>
                 <template v-if="mergeBucket === 'merged'">
@@ -393,20 +381,7 @@
 
             <template v-else>
             <div class="bucket-bar">
-                <v-btn-toggle
-                    color="primary"
-                    density="compact"
-                    divided
-                    mandatory
-                    variant="outlined"
-                    :model-value="categoryBucket"
-                    @update:model-value="value => setCategoryBucket(value)"
-                >
-                    <v-btn :value="bucket" :key="bucket" v-for="bucket in BILLFLOW_CATEGORY_BUCKETS">
-                        {{ tt(`personalFinance.billflow.todos.bucket.${bucket}`) }}
-                        <span class="bucket-count">{{ categoryBucketCounts[bucket] }}</span>
-                    </v-btn>
-                </v-btn-toggle>
+                <strong>{{ tt(`personalFinance.billflow.todos.bucket.${categoryBucket}`) }} · {{ categoryBucketCounts[categoryBucket] }}</strong>
                 <p>{{ tt(categoryBucketHintKey(categoryBucket)) }}</p>
             </div>
 
@@ -614,10 +589,7 @@ import { getSourceTypeKey } from '../../presentation.ts';
 import { billflowApi } from '../service.ts';
 import {
     BILLFLOW_ACCOUNT_BUCKETS,
-    BILLFLOW_CATEGORY_BUCKETS,
-    BILLFLOW_MERGE_BUCKETS,
     BILLFLOW_OPENING_BALANCE_UNIX_TIME,
-    BILLFLOW_REVIEW_PANES,
     BILLFLOW_WORKBENCH_STEPS,
     accountBucketHintKey,
     accountGroupHasCardHeader,
@@ -788,10 +760,6 @@ const reviewPaneInput = computed(() => ({
     mergePending: pendingMergeGroups.value.length,
     categoryPending: reviewTodos.value.length + skippedOrphanRows.value.length
 }));
-const reviewPaneCounts = computed(() => ({
-    merge: (transactionPlan.value?.consolidatedRowCount ?? 0) + (transactionPlan.value?.mergeReviewCount ?? 0),
-    category: transactionPlan.value?.categoryReviewCount ?? reviewPaneInput.value.categoryPending
-}));
 const stepAction = computed(() => {
     if (currentStep.value === 'files' && !task.value && selectedFileIds.value.length > 0) {
         return {
@@ -949,22 +917,6 @@ function setAccountBucket(value: unknown): void {
     }
     userPickedBucket.value = true;
     accountBucket.value = value;
-}
-
-function setCategoryBucket(value: unknown): void {
-    if (value !== 'pending' && value !== 'classified') {
-        return;
-    }
-    userPickedCategoryBucket.value = true;
-    categoryBucket.value = value;
-}
-
-function setMergeBucket(value: unknown): void {
-    if (value !== 'pending' && value !== 'merged') {
-        return;
-    }
-    userPickedMergeBucket.value = true;
-    mergeBucket.value = value;
 }
 
 function setReviewPane(value: unknown): void {
@@ -2060,23 +2012,51 @@ onMounted(reload);
     margin-bottom: 16px;
 }
 
-.transaction-plan-summary article {
+.transaction-plan-summary article,
+.transaction-plan-card {
     display: grid;
     gap: 2px;
     padding: 12px 14px;
     border: 1px solid var(--task-rule);
     border-radius: 12px;
     background: color-mix(in srgb, var(--task-paper) 92%, var(--task-mint));
+    text-align: left;
 }
 
-.transaction-plan-summary strong {
+.transaction-plan-card {
+    width: 100%;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.transaction-plan-card:hover {
+    border-color: color-mix(in srgb, var(--v-theme-primary) 48%, var(--task-rule));
+    transform: translateY(-1px);
+}
+
+.transaction-plan-card:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--v-theme-primary) 30%, transparent);
+    outline-offset: 2px;
+}
+
+.transaction-plan-card--active {
+    border-color: var(--task-ink);
+    background: var(--task-mint);
+    box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--v-theme-primary) 72%, var(--task-ink));
+}
+
+.transaction-plan-summary strong,
+.transaction-plan-card strong {
     color: var(--task-ink);
     font-size: 1.55rem;
     line-height: 1;
     font-variant-numeric: tabular-nums;
 }
 
-.transaction-plan-summary span {
+.transaction-plan-summary span,
+.transaction-plan-card span {
     color: rgba(var(--v-theme-on-surface), 0.58);
     font-size: 0.74rem;
 }

@@ -257,8 +257,11 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('toggleSkipTodo');
         expect(workbench).toContain('personalFinance.billflow.accounts.skipped');
         expect(workbench).not.toContain('skippableAccountGroups');
-        expect(workbench).toContain('BILLFLOW_MERGE_BUCKETS');
-        expect(workbench).toContain('BILLFLOW_REVIEW_PANES');
+        expect(workbench).not.toContain('BILLFLOW_MERGE_BUCKETS');
+        expect(workbench).not.toContain('BILLFLOW_REVIEW_PANES');
+        expect(workbench).toContain("@click=\"setReviewPane('merge')\"");
+        expect(workbench).toContain("@click=\"setReviewPane('category')\"");
+        expect(workbench).toContain("@click=\"openStep('others')\"");
         expect(workbench).toContain("reviewPane === 'merge'");
         expect(workbench).toContain('personalFinance.billflow.pane.');
         expect(workbench).toContain('isInstallmentTodo');
@@ -266,7 +269,7 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('canAssignBillflowCategory');
         expect(workbench).toContain('personalFinance.billflow.todos.pickCategory');
         expect(workbench).toContain('personalFinance.billflow.todos.selectAll');
-        expect(workbench).toContain('BILLFLOW_CATEGORY_BUCKETS');
+        expect(workbench).not.toContain('BILLFLOW_CATEGORY_BUCKETS');
         expect(workbench).toContain('classifiedReviewRows');
         expect(workbench).toContain('todo-row');
         expect(workbench).not.toContain('todo-card');
