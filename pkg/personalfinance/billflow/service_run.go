@@ -531,16 +531,9 @@ func selectAutomaticSameEventPairs(pairs []sameEventPair, rows map[int64]*import
 		}
 	}
 
-	selectUniquePairs(sameDay)
-
 	buckets := make(map[sameDayMergeBucket][]sameEventPair)
+	statementCases := make(map[int64]struct{})
 	for _, pair := range sameDay {
-		if _, exists := paired[pair.left]; exists {
-			continue
-		}
-		if _, exists := paired[pair.right]; exists {
-			continue
-		}
 		left, right := rows[pair.left], rows[pair.right]
 		if left == nil || right == nil || left.NormalizedAmount == nil || left.LedgerAccountId == nil ||
 			sources[pair.left] == sources[pair.right] ||
@@ -555,6 +548,7 @@ func selectAutomaticSameEventPairs(pairs []sameEventPair, rows map[int64]*import
 			civilDate:       rowCivilDateForMerge(left),
 		}
 		buckets[bucket] = append(buckets[bucket], pair)
+		statementCases[pair.detail.CaseId] = struct{}{}
 	}
 
 	for _, bucketPairs := range buckets {
@@ -562,6 +556,13 @@ func selectAutomaticSameEventPairs(pairs []sameEventPair, rows map[int64]*import
 			selectPair(pair)
 		}
 	}
+	remainingSameDay := make([]sameEventPair, 0, len(sameDay))
+	for _, pair := range sameDay {
+		if _, statementPair := statementCases[pair.detail.CaseId]; !statementPair {
+			remainingSameDay = append(remainingSameDay, pair)
+		}
+	}
+	selectUniquePairs(remainingSameDay)
 
 	selectUniquePairs(crossDayRefund)
 	sort.SliceStable(selected, func(i, j int) bool {
@@ -589,7 +590,7 @@ func selectBalancedStatementBucket(pairs []sameEventPair, rows map[int64]*import
 		detailRows[detailId] = struct{}{}
 		edges[detailId] = append(edges[detailId], pair)
 	}
-	if len(bankRows) < 2 || len(bankRows) != len(detailRows) {
+	if len(bankRows) < 1 || len(bankRows) != len(detailRows) {
 		return nil
 	}
 	detailIds := make([]int64, 0, len(detailRows))
