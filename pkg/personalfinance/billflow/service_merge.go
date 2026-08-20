@@ -165,8 +165,11 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 		}
 	}
 	result.EvidenceRows, result.Transactions = buildTransactionPlanViews(rowIndex, sourceIndex, taskRows, details, selectedCaseIds, openTodos)
-	if int64(len(result.EvidenceRows)) != result.EvidenceRowCount || int64(len(result.Transactions)) != result.PlannedTransactionCount {
-		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	result.EvidenceRowCount = int64(len(result.EvidenceRows))
+	result.PlannedTransactionCount = int64(len(result.Transactions))
+	result.ConsolidatedRowCount = result.EvidenceRowCount - result.PlannedTransactionCount
+	if result.ConsolidatedRowCount < 0 {
+		result.ConsolidatedRowCount = 0
 	}
 	return result, nil
 }
