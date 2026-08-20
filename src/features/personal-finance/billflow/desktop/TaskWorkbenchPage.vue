@@ -738,10 +738,7 @@ const stepInput = computed(() => ({
 }));
 const currentStep = computed(() => resolveBillflowWorkbenchStep(userStep.value, stepInput.value));
 const currentStepIndex = computed(() => billflowWorkbenchStepIndex(currentStep.value));
-const reviewTodos = computed(() => [
-    ...categoryTodos(openTodos.value),
-    ...categoryTodos(dismissedTodos.value).filter(todo => isRowSkipped(todo.subjectId))
-]);
+const reviewTodos = computed(() => categoryTodos(openTodos.value));
 const classifiedReviewRows = computed(() => classifiedRows.value.filter(row => !isRowSkipped(row.id)));
 const pendingMergeGroups = computed(() => mergeGroups.value.filter(group => group.status === 'pending' || group.status === 'action_required'));
 const processedMergeGroups = computed(() => mergeGroups.value.filter(group => group.status !== 'pending' && group.status !== 'action_required'));
