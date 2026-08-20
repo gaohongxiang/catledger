@@ -384,7 +384,7 @@ func loadCaseMemberRows(sess *xorm.Session, uid int64, caseRecord *Case, limit i
 		}
 		result = append(result, entry)
 	}
-	if result[0].sourceAccount.SourceAccountId == result[1].sourceAccount.SourceAccountId {
+	if result[0].sourceAccount.SourceAccountId == result[1].sourceAccount.SourceAccountId && caseRecord.SuggestedRelationType != DECISION_TYPE_REFUND_REVERSAL {
 		return nil, fmt.Errorf("reconciliation members share a source account")
 	}
 	return result, nil
