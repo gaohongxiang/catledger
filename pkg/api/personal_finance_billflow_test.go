@@ -92,10 +92,15 @@ func TestBillflowHandlersUseStringIdsAndOmitSecrets(t *testing.T) {
 	stub.mergeGroups = &billflow.MergeGroupListResult{
 		EvidenceRowCount: 198, ConsolidatedRowCount: 49, PlannedTransactionCount: 149,
 		MergeReviewCount: 0, CategoryReviewCount: 12, OtherReviewCount: 3,
+		EvidenceRows: []*billflow.MergeGroupRowView{{TodoMatchView: &billflow.TodoMatchView{RowId: 801, SourceType: "alipay", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true}},
+		Transactions: []*billflow.PlannedTransactionView{{
+			TransactionKey: strings.Repeat("b", 64), TodoMatchView: &billflow.TodoMatchView{RowId: 801, SourceType: "alipay", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"},
+			EvidenceCount: 1, EvidenceRows: []*billflow.MergeGroupRowView{{TodoMatchView: &billflow.TodoMatchView{RowId: 801, SourceType: "alipay", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true}}, Ready: true,
+		}},
 		Items: []*billflow.MergeGroupView{{
 			GroupId: strings.Repeat("a", 64), Status: billflow.MERGE_GROUP_STATUS_PREVIEW_MERGED,
 			RelationType: "same_event", PrimaryCaseId: &caseId, CaseIds: []int64{caseId},
-			CandidateRuleVersion: "reconciliation-candidate-v4", ReasonCodes: []string{"amount_currency_exact"},
+			CandidateRuleVersion: "reconciliation-candidate-v5", ReasonCodes: []string{"amount_currency_exact"},
 			Rows: []*billflow.MergeGroupRowView{{TodoMatchView: &billflow.TodoMatchView{RowId: 801, SourceType: "alipay", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true},
 				{TodoMatchView: &billflow.TodoMatchView{RowId: 802, SourceType: "bank", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true}},
 		}}}
@@ -105,7 +110,8 @@ func TestBillflowHandlersUseStringIdsAndOmitSecrets(t *testing.T) {
 	}
 	mergeText := marshalBillflowResponse(t, mergeGroups)
 	if !strings.Contains(mergeText, `"primaryCaseId":"7001"`) || !strings.Contains(mergeText, `"status":"preview_merged"`) || !strings.Contains(mergeText, `"rowId":"801"`) ||
-		!strings.Contains(mergeText, `"evidenceRowCount":198`) || !strings.Contains(mergeText, `"consolidatedRowCount":49`) || !strings.Contains(mergeText, `"plannedTransactionCount":149`) {
+		!strings.Contains(mergeText, `"evidenceRowCount":198`) || !strings.Contains(mergeText, `"consolidatedRowCount":49`) || !strings.Contains(mergeText, `"plannedTransactionCount":149`) ||
+		!strings.Contains(mergeText, `"id":"`+strings.Repeat("b", 64)+`"`) || !strings.Contains(mergeText, `"evidenceCount":1`) {
 		t.Fatalf("merge group response omitted safe task projection: %s", mergeText)
 	}
 	assertBillflowResponseOmits(t, mergeText, "caseKey", "aliasKey", "rawPaymentMethod", "RawItem", "rawNote")

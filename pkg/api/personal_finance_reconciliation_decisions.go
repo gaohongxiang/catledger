@@ -580,8 +580,8 @@ func newPersonalFinanceReconciliationCasePageResponse(page *reconciliation.CaseP
 func newPersonalFinanceReconciliationCaseResponse(value *reconciliation.CaseSummary) (*personalFinanceReconciliationCaseResponse, error) {
 	if value == nil || value.CaseId < 1 || value.Version < 1 || value.MemberCount != 2 || value.CreatedUnixTime < 1 || value.LastEvaluatedUnixTime < 1 || value.UpdatedUnixTime < 1 ||
 		!isPersonalFinanceReconciliationCaseStatus(value.Status) || !isPersonalFinanceReconciliationDecisionType(value.SuggestedRelationType, false) ||
-		(value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V1 && value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V2 && value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V3 && value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V4) ||
-		(value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V1 && value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V2 && value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V3 && value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V4) ||
+		(value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V1 && value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V2 && value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V3 && value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V4 && value.CandidateRuleVersion != reconciliation.CANDIDATE_RULE_VERSION_V5) ||
+		(value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V1 && value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V2 && value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V3 && value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V4 && value.ExplanationVersion != reconciliation.EXPLANATION_VERSION_V5) ||
 		(value.CurrentDecisionId != nil && *value.CurrentDecisionId < 1) ||
 		(value.CurrentDecisionType != nil && !isPersonalFinanceReconciliationDecisionType(*value.CurrentDecisionType, true)) ||
 		(value.CurrentDecisionStatus != nil && !isPersonalFinanceDecisionStatus(*value.CurrentDecisionStatus)) {

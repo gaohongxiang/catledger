@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
@@ -103,6 +104,11 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 	}
 	projections := make([]mergeCaseProjection, 0, len(details))
 	for _, detail := range details {
+		appliedSameEvent := detail != nil && detail.CurrentDecisionType != nil && detail.CurrentDecisionStatus != nil &&
+			*detail.CurrentDecisionType == reconciliation.DECISION_TYPE_SAME_EVENT && *detail.CurrentDecisionStatus == reconciliation.DECISION_STATUS_APPLIED
+		if detail == nil || (detail.SuggestedRelationType != reconciliation.DECISION_TYPE_SAME_EVENT && !appliedSameEvent) {
+			continue
+		}
 		ids := caseRepresentativeRowIDs(detail, rowIndex, taskRows)
 		if len(ids) != 2 {
 			continue
@@ -158,7 +164,162 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 			result.OtherReviewCount++
 		}
 	}
+	result.EvidenceRows, result.Transactions = buildTransactionPlanViews(rowIndex, sourceIndex, taskRows, details, selectedCaseIds, openTodos)
+	if int64(len(result.EvidenceRows)) != result.EvidenceRowCount || int64(len(result.Transactions)) != result.PlannedTransactionCount {
+		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
 	return result, nil
+}
+
+func buildTransactionPlanViews(rows map[int64]*importing.RawImportRow, sources map[int64]importing.SourceType, taskRows map[int64]struct{}, details []*reconciliation.CaseDetail, selectedCaseIds map[int64]struct{}, openTodos []*Todo) ([]*MergeGroupRowView, []*PlannedTransactionView) {
+	evidence := make([]*MergeGroupRowView, 0, len(taskRows))
+	for rowId := range taskRows {
+		row := rows[rowId]
+		if isBillflowEconomicEvidenceRow(row) {
+			evidence = append(evidence, &MergeGroupRowView{TodoMatchView: planTodoMatchView(row, sources[rowId]), InTask: true})
+		}
+	}
+	sortPlanRows(evidence)
+	categoryRows := make(map[int64]struct{})
+	relationRows := make(map[int64]struct{})
+	for _, todo := range openTodos {
+		if todo == nil || todo.SubjectKind != SUBJECT_KIND_RAW_ROW {
+			continue
+		}
+		if todo.TodoKind == TODO_KIND_UNCATEGORIZED {
+			categoryRows[todo.SubjectId] = struct{}{}
+		} else if todo.TodoKind != TODO_KIND_CROSS_SOURCE_AMBIGUOUS {
+			relationRows[todo.SubjectId] = struct{}{}
+		}
+	}
+	detailById := make(map[int64]*reconciliation.CaseDetail)
+	for _, detail := range details {
+		if detail != nil {
+			detailById[detail.CaseId] = detail
+		}
+	}
+	consumed := make(map[int64]struct{})
+	transactions := make([]*PlannedTransactionView, 0, len(evidence))
+	for caseId := range selectedCaseIds {
+		detail := detailById[caseId]
+		ids := caseRepresentativeRowIDs(detail, rows, taskRows)
+		if len(ids) != 2 {
+			continue
+		}
+		inTaskIds := make([]int64, 0, 2)
+		views := make([]*MergeGroupRowView, 0, 2)
+		for _, rowId := range ids {
+			_, inTask := taskRows[rowId]
+			if inTask {
+				consumed[rowId] = struct{}{}
+				inTaskIds = append(inTaskIds, rowId)
+			}
+			if row := rows[rowId]; row != nil {
+				views = append(views, &MergeGroupRowView{TodoMatchView: planTodoMatchView(row, sources[rowId]), InTask: inTask})
+			}
+		}
+		if len(inTaskIds) != 2 {
+			continue
+		}
+		canonicalId := preferredPlanRowId(ids, sources)
+		transactions = append(transactions, plannedTransactionView(inTaskIds, canonicalId, views, categoryRows, relationRows))
+	}
+	for rowId := range taskRows {
+		if _, exists := consumed[rowId]; exists {
+			continue
+		}
+		row := rows[rowId]
+		if !isBillflowEconomicEvidenceRow(row) {
+			continue
+		}
+		view := &MergeGroupRowView{TodoMatchView: planTodoMatchView(row, sources[rowId]), InTask: true}
+		transactions = append(transactions, plannedTransactionView([]int64{rowId}, rowId, []*MergeGroupRowView{view}, categoryRows, relationRows))
+	}
+	sort.SliceStable(transactions, func(i, j int) bool {
+		left, right := int64(0), int64(0)
+		if transactions[i].UnixTime != nil {
+			left = *transactions[i].UnixTime
+		}
+		if transactions[j].UnixTime != nil {
+			right = *transactions[j].UnixTime
+		}
+		if left != right {
+			return left > right
+		}
+		return transactions[i].TransactionKey < transactions[j].TransactionKey
+	})
+	return evidence, transactions
+}
+
+func preferredPlanRowId(ids []int64, sources map[int64]importing.SourceType) int64 {
+	for _, source := range []importing.SourceType{importing.SOURCE_TYPE_ALIPAY, importing.SOURCE_TYPE_WECHAT, importing.SOURCE_TYPE_BANK} {
+		for _, rowId := range ids {
+			if sources[rowId] == source {
+				return rowId
+			}
+		}
+	}
+	if len(ids) > 0 {
+		return ids[0]
+	}
+	return 0
+}
+
+func plannedTransactionView(rowIds []int64, canonicalId int64, evidence []*MergeGroupRowView, categoryRows map[int64]struct{}, relationRows map[int64]struct{}) *PlannedTransactionView {
+	canonical := &TodoMatchView{}
+	needsCategory := false
+	needsRelation := false
+	for _, row := range evidence {
+		if row != nil && row.TodoMatchView != nil && row.RowId == canonicalId {
+			canonical = row.TodoMatchView
+		}
+	}
+	for _, rowId := range rowIds {
+		if _, exists := categoryRows[rowId]; exists {
+			needsCategory = true
+		}
+		if _, exists := relationRows[rowId]; exists {
+			needsRelation = true
+		}
+	}
+	sortedIds := append([]int64(nil), rowIds...)
+	sort.Slice(sortedIds, func(i, j int) bool { return sortedIds[i] < sortedIds[j] })
+	return &PlannedTransactionView{
+		TransactionKey: mergeGroupId(sortedIds), TodoMatchView: canonical,
+		EvidenceCount: int64(len(evidence)), EvidenceRows: evidence,
+		NeedsCategory: needsCategory, NeedsRelation: needsRelation, Ready: !needsRelation,
+	}
+}
+
+func planTodoMatchView(row *importing.RawImportRow, source importing.SourceType) *TodoMatchView {
+	view := &TodoMatchView{RowId: row.RowId, SourceType: string(source), Currency: row.Currency, Direction: string(row.NormalizedDirection)}
+	view.UnixTime = cloneUnixTime(row.NormalizedUnixTime)
+	if row.NormalizedAmount != nil {
+		view.Amount = strconv.FormatInt(*row.NormalizedAmount, 10)
+	}
+	view.Label = todoPreviewLabel(row)
+	view.Item = todoPreviewItem(row)
+	view.BillType = maskedCategoryAliasDisplay(row.RawTransactionType)
+	view.Account = importing.QualifiedPaymentAccountDisplayName(source, row.RawPaymentMethod)
+	view.OrderId = strings.TrimSpace(row.SourceOrderId)
+	view.MerchantOrderId = strings.TrimSpace(row.SourceMerchantOrderId)
+	return view
+}
+
+func sortPlanRows(rows []*MergeGroupRowView) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		left, right := int64(0), int64(0)
+		if rows[i] != nil && rows[i].UnixTime != nil {
+			left = *rows[i].UnixTime
+		}
+		if rows[j] != nil && rows[j].UnixTime != nil {
+			right = *rows[j].UnixTime
+		}
+		if left != right {
+			return left > right
+		}
+		return rows[i].RowId < rows[j].RowId
+	})
 }
 
 func isBillflowEconomicEvidenceRow(row *importing.RawImportRow) bool {
@@ -285,7 +446,7 @@ func buildMergeGroupViews(c core.Context, s *Service, uid int64, cases []mergeCa
 		status, relation := aggregateMergeStatus(groupCases)
 		view := &MergeGroupView{
 			GroupId: mergeGroupId(groupRowIds), Status: status, RelationType: relation,
-			CaseIds: caseIds, CandidateRuleVersion: reconciliation.CANDIDATE_RULE_VERSION_V4,
+			CaseIds: caseIds, CandidateRuleVersion: reconciliation.CANDIDATE_RULE_VERSION_V5,
 			ReasonCodes: reasonCodes, Rows: make([]*MergeGroupRowView, 0, len(groupRowIds)),
 		}
 		if len(caseIds) == 1 {

@@ -253,13 +253,25 @@ type personalFinanceBillflowMergeGroupResponse struct {
 }
 
 type personalFinanceBillflowMergeGroupListResponse struct {
-	EvidenceRowCount        int64                                        `json:"evidenceRowCount"`
-	ConsolidatedRowCount    int64                                        `json:"consolidatedRowCount"`
-	PlannedTransactionCount int64                                        `json:"plannedTransactionCount"`
-	MergeReviewCount        int64                                        `json:"mergeReviewCount"`
-	CategoryReviewCount     int64                                        `json:"categoryReviewCount"`
-	OtherReviewCount        int64                                        `json:"otherReviewCount"`
-	Items                   []*personalFinanceBillflowMergeGroupResponse `json:"items"`
+	EvidenceRowCount        int64                                         `json:"evidenceRowCount"`
+	ConsolidatedRowCount    int64                                         `json:"consolidatedRowCount"`
+	PlannedTransactionCount int64                                         `json:"plannedTransactionCount"`
+	MergeReviewCount        int64                                         `json:"mergeReviewCount"`
+	CategoryReviewCount     int64                                         `json:"categoryReviewCount"`
+	OtherReviewCount        int64                                         `json:"otherReviewCount"`
+	EvidenceRows            []*personalFinanceBillflowMergeRowResponse    `json:"evidenceRows"`
+	Transactions            []*personalFinanceBillflowTransactionResponse `json:"transactions"`
+	Items                   []*personalFinanceBillflowMergeGroupResponse  `json:"items"`
+}
+
+type personalFinanceBillflowTransactionResponse struct {
+	Id string `json:"id"`
+	personalFinanceBillflowTodoMatchResponse
+	EvidenceCount int64                                      `json:"evidenceCount"`
+	EvidenceRows  []*personalFinanceBillflowMergeRowResponse `json:"evidenceRows"`
+	NeedsCategory bool                                       `json:"needsCategory"`
+	NeedsRelation bool                                       `json:"needsRelation"`
+	Ready         bool                                       `json:"ready"`
 }
 
 type personalFinanceBillflowTodoCursorResponse struct {
@@ -828,7 +840,36 @@ func newPersonalFinanceBillflowMergeGroupListResponse(result *billflow.MergeGrou
 		EvidenceRowCount: result.EvidenceRowCount, ConsolidatedRowCount: result.ConsolidatedRowCount,
 		PlannedTransactionCount: result.PlannedTransactionCount, MergeReviewCount: result.MergeReviewCount,
 		CategoryReviewCount: result.CategoryReviewCount, OtherReviewCount: result.OtherReviewCount,
-		Items: make([]*personalFinanceBillflowMergeGroupResponse, 0, len(result.Items)),
+		EvidenceRows: make([]*personalFinanceBillflowMergeRowResponse, 0, len(result.EvidenceRows)),
+		Transactions: make([]*personalFinanceBillflowTransactionResponse, 0, len(result.Transactions)),
+		Items:        make([]*personalFinanceBillflowMergeGroupResponse, 0, len(result.Items)),
+	}
+	for _, row := range result.EvidenceRows {
+		converted, convertErr := newPersonalFinanceBillflowMergeRowResponse(row)
+		if convertErr != nil {
+			return nil, convertErr
+		}
+		response.EvidenceRows = append(response.EvidenceRows, converted)
+	}
+	for _, transaction := range result.Transactions {
+		if transaction == nil || transaction.TodoMatchView == nil || len(transaction.TransactionKey) != 64 || transaction.EvidenceCount < 1 {
+			return nil, errs.ErrOperationFailed
+		}
+		converted := &personalFinanceBillflowTransactionResponse{
+			Id:                                       transaction.TransactionKey,
+			personalFinanceBillflowTodoMatchResponse: newPersonalFinanceBillflowTodoMatchResponse(transaction.TodoMatchView),
+			EvidenceCount:                            transaction.EvidenceCount, NeedsCategory: transaction.NeedsCategory,
+			NeedsRelation: transaction.NeedsRelation, Ready: transaction.Ready,
+			EvidenceRows: make([]*personalFinanceBillflowMergeRowResponse, 0, len(transaction.EvidenceRows)),
+		}
+		for _, row := range transaction.EvidenceRows {
+			convertedRow, convertErr := newPersonalFinanceBillflowMergeRowResponse(row)
+			if convertErr != nil {
+				return nil, convertErr
+			}
+			converted.EvidenceRows = append(converted.EvidenceRows, convertedRow)
+		}
+		response.Transactions = append(response.Transactions, converted)
 	}
 	for _, item := range result.Items {
 		if item == nil || len(item.GroupId) != 64 || len(item.CaseIds) < 1 || len(item.Rows) < 2 {
@@ -846,19 +887,35 @@ func newPersonalFinanceBillflowMergeGroupListResponse(result *billflow.MergeGrou
 			converted.CaseIds = append(converted.CaseIds, strconv.FormatInt(caseId, 10))
 		}
 		for _, row := range item.Rows {
-			if row == nil || row.TodoMatchView == nil || row.RowId < 1 {
-				return nil, errs.ErrOperationFailed
+			convertedRow, convertErr := newPersonalFinanceBillflowMergeRowResponse(row)
+			if convertErr != nil {
+				return nil, convertErr
 			}
-			match := &personalFinanceBillflowTodoMatchResponse{
-				RowId: strconv.FormatInt(row.RowId, 10), SourceType: row.SourceType, Account: row.Account,
-				Label: row.Label, Item: row.Item, BillType: row.BillType, Amount: row.Amount, Currency: row.Currency,
-				UnixTime: row.UnixTime, Direction: row.Direction, OrderId: row.OrderId, MerchantOrderId: row.MerchantOrderId,
-			}
-			converted.Rows = append(converted.Rows, &personalFinanceBillflowMergeRowResponse{personalFinanceBillflowTodoMatchResponse: *match, InTask: row.InTask})
+			converted.Rows = append(converted.Rows, convertedRow)
 		}
 		response.Items = append(response.Items, converted)
 	}
 	return response, nil
+}
+
+func newPersonalFinanceBillflowTodoMatchResponse(match *billflow.TodoMatchView) personalFinanceBillflowTodoMatchResponse {
+	if match == nil {
+		return personalFinanceBillflowTodoMatchResponse{}
+	}
+	return personalFinanceBillflowTodoMatchResponse{
+		RowId: strconv.FormatInt(match.RowId, 10), SourceType: match.SourceType, Account: match.Account,
+		Label: match.Label, Item: match.Item, BillType: match.BillType, Amount: match.Amount, Currency: match.Currency,
+		UnixTime: match.UnixTime, Direction: match.Direction, OrderId: match.OrderId, MerchantOrderId: match.MerchantOrderId,
+	}
+}
+
+func newPersonalFinanceBillflowMergeRowResponse(row *billflow.MergeGroupRowView) (*personalFinanceBillflowMergeRowResponse, *errs.Error) {
+	if row == nil || row.TodoMatchView == nil || row.RowId < 1 {
+		return nil, errs.ErrOperationFailed
+	}
+	return &personalFinanceBillflowMergeRowResponse{
+		personalFinanceBillflowTodoMatchResponse: newPersonalFinanceBillflowTodoMatchResponse(row.TodoMatchView), InTask: row.InTask,
+	}, nil
 }
 
 func newPersonalFinanceBillflowClassifiedListResponse(values []*billflow.ClassifiedRowView) *personalFinanceBillflowClassifiedListResponse {

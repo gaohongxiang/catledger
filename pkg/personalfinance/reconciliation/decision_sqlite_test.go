@@ -267,6 +267,18 @@ func TestDecisionServiceSQLiteZeroOneMultipleTransferRefundAndRollback(t *testin
 	assertDecisionRows(t, environment.database, rollback, importing.PROCESSING_STATE_PENDING)
 }
 
+func TestPartialRefundAmountsAreCompatible(t *testing.T) {
+	original := &models.Transaction{Type: models.TRANSACTION_DB_TYPE_EXPENSE, Amount: 5927}
+	refund := &models.Transaction{Type: models.TRANSACTION_DB_TYPE_INCOME, Amount: 15}
+	if !refundAmountsCompatible(original, refund) {
+		t.Fatal("partial refund should be allowed when it does not exceed the original expense")
+	}
+	refund.Amount = 5928
+	if refundAmountsCompatible(original, refund) {
+		t.Fatal("refund larger than the original expense was accepted")
+	}
+}
+
 func TestDecisionServiceSQLiteUndoAttachedCreatedModifiedSharedAndIncompletePair(t *testing.T) {
 	environment := newDecisionSQLiteEnvironment(t)
 	uid := int64(3303)
@@ -467,8 +479,8 @@ func insertDecisionCaseFixture(t *testing.T, database *datastore.Database, uid i
 		beans = append(beans, file, account, batch, identity, row)
 	}
 	caseRecord := &Case{Uid: uid, CaseKey: candidateDigest(fixture.caseId), CaseKeyVersion: CASE_KEY_VERSION_V1, Status: CASE_STATUS_OPEN, Version: 1, MemberCount: 2,
-		SuggestedRelationType: DECISION_TYPE_SAME_EVENT, CandidateScore: 100, CandidateRuleVersion: CANDIDATE_RULE_VERSION_V4,
-		ExplanationVersion: EXPLANATION_VERSION_V4, ReasonCodesJson: "[]", CreatedUnixTime: base, LastEvaluatedUnixTime: base, UpdatedUnixTime: base, CaseId: fixture.caseId}
+		SuggestedRelationType: DECISION_TYPE_SAME_EVENT, CandidateScore: 100, CandidateRuleVersion: CANDIDATE_RULE_VERSION_V5,
+		ExplanationVersion: EXPLANATION_VERSION_V5, ReasonCodesJson: "[]", CreatedUnixTime: base, LastEvaluatedUnixTime: base, UpdatedUnixTime: base, CaseId: fixture.caseId}
 	beans = append(beans, caseRecord,
 		&CaseMember{Uid: uid, CaseId: fixture.caseId, MemberOrder: 1, MemberKind: MEMBER_KIND_SOURCE_IDENTITY, MemberRefId: identities[0], MemberRole: candidateMemberRoleEvidence, CreatedUnixTime: base, MemberId: base + 61},
 		&CaseMember{Uid: uid, CaseId: fixture.caseId, MemberOrder: 2, MemberKind: MEMBER_KIND_SOURCE_IDENTITY, MemberRefId: identities[1], MemberRole: candidateMemberRoleEvidence, CreatedUnixTime: base, MemberId: base + 62},

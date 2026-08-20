@@ -174,7 +174,7 @@ func TestCandidateServiceSQLiteHidesOldOpenCasesAndRefreshesThemToV4(t *testing.
 		t.Fatalf("stale v1 open case remained visible: %+v %v", page, err)
 	}
 	refreshed, err := service.GenerateCandidates(nil, GenerateCandidatesRequest{Uid: uid, BatchId: 801})
-	if err != nil || len(refreshed.Cases) != 1 || refreshed.Cases[0].CaseId != caseId || refreshed.Cases[0].CandidateRuleVersion != CANDIDATE_RULE_VERSION_V4 {
+	if err != nil || len(refreshed.Cases) != 1 || refreshed.Cases[0].CaseId != caseId || refreshed.Cases[0].CandidateRuleVersion != CANDIDATE_RULE_VERSION_V5 {
 		t.Fatalf("v1 open case was not refreshed in place to v4: %+v %v", refreshed, err)
 	}
 }
@@ -296,6 +296,30 @@ func TestCandidateServiceSQLiteUsesRawMemberForDateOnlyStatementOccurrence(t *te
 	caseIds, err := cases.repository.findCaseIdsForRows(nil, uid, []int64{statement.RowId}, 10)
 	if err != nil || len(caseIds) != 1 || caseIds[0] != generated.Cases[0].CaseId {
 		t.Fatalf("task row lookup omitted stable raw-row member: %+v %v", caseIds, err)
+	}
+}
+
+func TestCandidateServiceSQLitePersistsSameAccountPartialRefundCase(t *testing.T) {
+	service, database := newCandidateSQLiteService(t, &sequentialCandidateIds{})
+	uid := int64(3773)
+	account := candidateTestAccount(uid, 101, importing.SOURCE_TYPE_WECHAT)
+	batch := candidateTestBatch(uid, 1001, 101)
+	batch.SourceTypeSnapshot = importing.SOURCE_TYPE_WECHAT
+	original := candidateTestRow(uid, 10101, 1001, int64Pointer(1011), importing.IDENTITY_STATE_NEW, 5927, "CNY", 1_720_000_000)
+	refund := candidateTestRow(uid, 10102, 1001, int64Pointer(1012), importing.IDENTITY_STATE_NEW, 15, "CNY", 1_720_001_105)
+	original.NormalizedDirection, refund.NormalizedDirection = importing.NORMALIZED_DIRECTION_EXPENSE, importing.NORMALIZED_DIRECTION_INCOME
+	original.EconomicEffect, refund.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND, importing.ECONOMIC_EFFECT_REFUND
+	original.RawCounterparty, refund.RawCounterparty = "美团平台商户", "美团平台商户"
+	original.RawStatus, refund.RawStatus = "已退款(¥0.15)", "已退款¥0.15"
+	insertCandidateFixtures(t, database, account, batch,
+		candidateTestIdentity(uid, 1011, 101), candidateTestIdentity(uid, 1012, 101), original, refund)
+	generated, err := service.GenerateCandidates(nil, GenerateCandidatesRequest{Uid: uid, BatchId: batch.BatchId})
+	if err != nil || len(generated.Cases) != 1 || generated.Cases[0].SuggestedRelationType != DECISION_TYPE_REFUND_REVERSAL {
+		t.Fatalf("generate same-account partial refund case: %+v err=%v", generated, err)
+	}
+	members := listCandidateMembers(t, database, uid, generated.Cases[0].CaseId)
+	if len(members) != 2 || members[0].MemberRefId == members[1].MemberRefId {
+		t.Fatalf("partial refund case members: %+v", members)
 	}
 }
 

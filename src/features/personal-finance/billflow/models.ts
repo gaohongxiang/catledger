@@ -160,7 +160,18 @@ export interface BillflowTransactionPlan {
     readonly mergeReviewCount: number;
     readonly categoryReviewCount: number;
     readonly otherReviewCount: number;
+    readonly evidenceRows: readonly BillflowMergeRow[];
+    readonly transactions: readonly BillflowPlannedTransaction[];
     readonly items: readonly BillflowMergeGroup[];
+}
+
+export interface BillflowPlannedTransaction extends BillflowTodoMatch {
+    readonly id: string;
+    readonly evidenceCount: number;
+    readonly evidenceRows: readonly BillflowMergeRow[];
+    readonly needsCategory: boolean;
+    readonly needsRelation: boolean;
+    readonly ready: boolean;
 }
 
 export interface BillflowClassifiedRow {

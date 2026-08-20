@@ -231,10 +231,16 @@
 
         <section class="work-section" v-if="currentStep === 'review' && task">
             <div class="transaction-plan-summary" v-if="transactionPlan">
-                <article>
+                <button
+                    type="button"
+                    class="transaction-plan-card"
+                    :class="{ 'transaction-plan-card--active': reviewPane === 'evidence' }"
+                    :aria-pressed="reviewPane === 'evidence'"
+                    @click="setReviewPane('evidence')"
+                >
                     <strong>{{ transactionPlan.evidenceRowCount }}</strong>
                     <span>{{ tt('personalFinance.billflow.plan.evidence') }}</span>
-                </article>
+                </button>
                 <span class="transaction-plan-summary__operator">−</span>
                 <button
                     type="button"
@@ -247,11 +253,23 @@
                     <span>{{ tt('personalFinance.billflow.plan.consolidated') }}</span>
                 </button>
                 <span class="transaction-plan-summary__operator">=</span>
-                <article class="transaction-plan-summary__primary">
+                <button
+                    type="button"
+                    class="transaction-plan-card transaction-plan-summary__primary"
+                    :class="{ 'transaction-plan-card--active': reviewPane === 'transactions' }"
+                    :aria-pressed="reviewPane === 'transactions'"
+                    @click="setReviewPane('transactions')"
+                >
                     <strong>{{ transactionPlan.plannedTransactionCount }}</strong>
                     <span>{{ tt('personalFinance.billflow.plan.transactions') }}</span>
-                </article>
-                <button type="button" class="transaction-plan-card" @click="openStep('others')">
+                </button>
+                <button
+                    type="button"
+                    class="transaction-plan-card"
+                    :class="{ 'transaction-plan-card--active': reviewPane === 'relations' }"
+                    :aria-pressed="reviewPane === 'relations'"
+                    @click="setReviewPane('relations')"
+                >
                     <strong>{{ transactionPlan.mergeReviewCount + transactionPlan.otherReviewCount }}</strong>
                     <span>{{ tt('personalFinance.billflow.plan.blocking') }}</span>
                 </button>
@@ -379,7 +397,7 @@
             </template>
             </template>
 
-            <template v-else>
+            <template v-else-if="reviewPane === 'category'">
             <div class="bucket-bar">
                 <strong>{{ tt(`personalFinance.billflow.todos.bucket.${categoryBucket}`) }} · {{ categoryBucketCounts[categoryBucket] }}</strong>
                 <p>{{ tt(categoryBucketHintKey(categoryBucket)) }}</p>
@@ -503,6 +521,75 @@
                 </article>
             </template>
             </template>
+
+            <template v-else-if="reviewPane === 'relations'">
+                <div class="section-copy">
+                    <strong>{{ tt('personalFinance.billflow.todos.othersTitle') }}</strong>
+                    <span v-if="!otherReviewTodos.length">{{ tt('personalFinance.billflow.todos.othersEmpty') }}</span>
+                </div>
+                <article class="todo-row todo-row--plain" :key="todo.id" v-for="todo in otherReviewTodos">
+                    <div class="todo-row__copy">
+                        <strong>{{ todoTitle(todo) }}</strong>
+                        <small v-if="todoMeta(todo)">{{ todoMeta(todo) }}</small>
+                    </div>
+                    <div class="todo-row__facts">
+                        <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
+                        <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
+                    </div>
+                    <div class="todo-row__actions">
+                        <v-btn density="compact" size="x-small" variant="text" :loading="busy" v-if="isInstallmentTodo(todo.todoKind)" @click="confirmInstallment(todo)">
+                            {{ tt('personalFinance.billflow.todos.installment') }}
+                        </v-btn>
+                        <v-btn density="compact" size="x-small" color="primary" variant="text" :loading="busy" @click="resolveTodo(todo, 'resolved')">
+                            {{ tt('personalFinance.billflow.todos.resolve') }}
+                        </v-btn>
+                        <v-btn density="compact" size="x-small" variant="text" :loading="busy" @click="resolveTodo(todo, 'dismissed')">
+                            {{ tt('personalFinance.billflow.todos.dismiss') }}
+                        </v-btn>
+                    </div>
+                </article>
+            </template>
+
+            <template v-else-if="reviewPane === 'evidence'">
+                <div class="section-copy">
+                    <strong>{{ tt('personalFinance.billflow.plan.evidenceTitle') }}</strong>
+                    <span>{{ tt('personalFinance.billflow.plan.rowsShown', { count: transactionPlan?.evidenceRows.length ?? 0 }) }}</span>
+                </div>
+                <article class="todo-row todo-row--plain" :key="row.rowId" v-for="row in transactionPlan?.evidenceRows ?? []">
+                    <div class="todo-row__copy">
+                        <strong>{{ planRowTitle(row) }}</strong>
+                        <small>{{ planRowSubtitle(row) }}</small>
+                    </div>
+                    <div class="todo-row__facts">
+                        <b>{{ formatMergeAmount(row) }}</b>
+                        <em v-if="row.direction">{{ tt(billflowDirectionKey(row.direction)) }}</em>
+                    </div>
+                    <span class="plan-row-badge">{{ formatMergeSource(row) }}</span>
+                </article>
+            </template>
+
+            <template v-else>
+                <div class="section-copy">
+                    <strong>{{ tt('personalFinance.billflow.plan.transactionsTitle') }}</strong>
+                    <span>{{ tt('personalFinance.billflow.plan.rowsShown', { count: transactionPlan?.transactions.length ?? 0 }) }}</span>
+                </div>
+                <article class="todo-row todo-row--plain" :key="transaction.id" v-for="transaction in transactionPlan?.transactions ?? []">
+                    <div class="todo-row__copy">
+                        <strong>{{ planTransactionTitle(transaction) }}</strong>
+                        <small>{{ planTransactionSubtitle(transaction) }}</small>
+                    </div>
+                    <div class="todo-row__facts">
+                        <b>{{ formatPlanTransactionAmount(transaction) }}</b>
+                        <em v-if="transaction.direction">{{ tt(billflowDirectionKey(transaction.direction)) }}</em>
+                    </div>
+                    <div class="plan-transaction-status">
+                        <span>{{ tt('personalFinance.billflow.plan.evidenceCount', { count: transaction.evidenceCount }) }}</span>
+                        <span class="needs-relation" v-if="transaction.needsRelation">{{ tt('personalFinance.billflow.plan.needsRelation') }}</span>
+                        <span class="needs-category" v-else-if="transaction.needsCategory">{{ tt('personalFinance.billflow.plan.needsCategory') }}</span>
+                        <span class="is-ready" v-else>{{ tt('personalFinance.billflow.plan.ready') }}</span>
+                    </div>
+                </article>
+            </template>
         </section>
 
         <section class="work-section" v-if="currentStep === 'others' && task">
@@ -583,7 +670,7 @@ import { useUserStore } from '@/stores/user.ts';
 import { CategoryType } from '@/core/category.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
 
-import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowClassifiedRow, BillflowMergeGroup, BillflowMergeRow, BillflowTask, BillflowTodo, BillflowTodoStatus, BillflowTransactionPlan, CardCycleAccount } from '../models.ts';
+import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowClassifiedRow, BillflowMergeGroup, BillflowMergeRow, BillflowPlannedTransaction, BillflowTask, BillflowTodo, BillflowTodoStatus, BillflowTransactionPlan, CardCycleAccount } from '../models.ts';
 import { todoKindKey } from '../presentation.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
 import { billflowApi } from '../service.ts';
@@ -678,7 +765,7 @@ const categoryBucket = ref<BillflowCategoryBucket>('pending');
 const userPickedCategoryBucket = ref(false);
 const mergeBucket = ref<BillflowMergeBucket>('pending');
 const userPickedMergeBucket = ref(false);
-const reviewPane = ref<BillflowReviewPane>('category');
+const reviewPane = ref<BillflowReviewPane>('transactions');
 const userPickedReviewPane = ref(false);
 
 const eligibleFiles = computed(() => {
@@ -1176,6 +1263,32 @@ function mergeOrderId(row: MergeLineSource): string {
 
 function mergeGroupRows(group: BillflowMergeGroup): readonly BillflowMergeRow[] {
     return group.rows;
+}
+
+function planRowTitle(row: BillflowMergeRow): string {
+    return row.label || row.item || row.account || tt('personalFinance.billflow.plan.evidence');
+}
+
+function planRowSubtitle(row: BillflowMergeRow): string {
+    return [formatMergeSource(row), row.account, row.item, row.billType, formatMergeTime(row)]
+        .filter((part): part is string => !!part && part !== planRowTitle(row))
+        .filter((part, index, parts) => parts.indexOf(part) === index)
+        .join(' · ');
+}
+
+function planTransactionTitle(transaction: BillflowPlannedTransaction): string {
+    return transaction.label || transaction.item || transaction.account || tt('personalFinance.billflow.plan.transactions');
+}
+
+function planTransactionSubtitle(transaction: BillflowPlannedTransaction): string {
+    return [formatMergeSource(transaction), transaction.account, transaction.item, transaction.billType, formatMergeTime(transaction)]
+        .filter((part): part is string => !!part && part !== planTransactionTitle(transaction))
+        .filter((part, index, parts) => parts.indexOf(part) === index)
+        .join(' · ');
+}
+
+function formatPlanTransactionAmount(transaction: BillflowPlannedTransaction): string {
+    return formatMergeAmount(transaction);
 }
 
 function formatBillChannel(sourceType: string | undefined, account: string | undefined): string {
@@ -2417,6 +2530,37 @@ onMounted(reload);
     padding: 0 6px;
     margin: 0;
     font-size: 0.72rem;
+}
+
+.plan-row-badge,
+.plan-transaction-status {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    color: rgba(var(--v-theme-on-surface), 0.58);
+    font-size: 0.72rem;
+}
+
+.plan-transaction-status span {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--task-rule) 42%, transparent);
+}
+
+.plan-transaction-status .needs-relation {
+    color: rgb(var(--v-theme-error));
+    background: color-mix(in srgb, rgb(var(--v-theme-error)) 10%, transparent);
+}
+
+.plan-transaction-status .needs-category {
+    color: rgb(var(--v-theme-warning));
+    background: color-mix(in srgb, rgb(var(--v-theme-warning)) 12%, transparent);
+}
+
+.plan-transaction-status .is-ready {
+    color: var(--task-ink);
+    background: var(--task-mint);
 }
 
 .account-card__head,

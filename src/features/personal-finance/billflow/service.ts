@@ -19,6 +19,7 @@ import type {
     BillflowTodoMatch,
     BillflowMergeGroup,
     BillflowMergeGroupStatus,
+    BillflowPlannedTransaction,
     BillflowTransactionPlan,
     BillflowMergeRow,
     BillflowTodoPage,
@@ -297,7 +298,22 @@ function normalizeTransactionPlan(value: unknown): BillflowTransactionPlan {
         mergeReviewCount: integer(item['mergeReviewCount']),
         categoryReviewCount: integer(item['categoryReviewCount']),
         otherReviewCount: integer(item['otherReviewCount']),
+        evidenceRows: array(item['evidenceRows']).map(normalizeMergeRow),
+        transactions: array(item['transactions']).map(normalizePlannedTransaction),
         items: array(item['items']).map(normalizeMergeGroup)
+    };
+}
+
+function normalizePlannedTransaction(value: unknown): BillflowPlannedTransaction {
+    const item = record(value);
+    return {
+        ...normalizeTodoMatch(item),
+        id: string(item['id']),
+        evidenceCount: integer(item['evidenceCount']),
+        evidenceRows: array(item['evidenceRows']).map(normalizeMergeRow),
+        needsCategory: boolean(item['needsCategory']),
+        needsRelation: boolean(item['needsRelation']),
+        ready: boolean(item['ready'])
     };
 }
 

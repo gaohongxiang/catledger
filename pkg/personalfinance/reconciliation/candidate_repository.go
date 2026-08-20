@@ -136,6 +136,36 @@ func (r *candidateRepository) listHardFilteredCandidates(c core.Context, uid int
 	return rows, nil
 }
 
+func (r *candidateRepository) listExplicitRefundCandidates(c core.Context, uid int64, anchorSourceAccountId int64, anchor *importing.RawImportRow, limit int) ([]*importing.RawImportRow, error) {
+	if uid < 1 || anchorSourceAccountId < 1 || !isCandidateAnchorRow(anchor) || anchor.Uid != uid || limit != candidateSearchLimitPerSide {
+		return nil, fmt.Errorf("invalid reconciliation refund candidate query")
+	}
+	windowStart, windowEnd := candidateWindow(*anchor.NormalizedUnixTime)
+	database, _ := r.database(uid)
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	rows := make([]*importing.RawImportRow, 0, limit)
+	query := sess.Table(new(importing.RawImportRow)).Alias("r").
+		Join("INNER", "pf_import_batch", "pf_import_batch.uid=r.uid AND pf_import_batch.batch_id=r.batch_id").
+		Select("r.*").
+		Where("r.uid=? AND pf_import_batch.uid=?", uid, uid).
+		And("pf_import_batch.source_account_id=?", anchorSourceAccountId).
+		And("r.row_id<>?", anchor.RowId).
+		And("r.parse_state=? AND r.processing_state=?", importing.PARSE_STATE_VALID, importing.PROCESSING_STATE_PENDING).
+		And("r.economic_effect=?", importing.ECONOMIC_EFFECT_REFUND).
+		And("r.currency=?", anchor.Currency).
+		And("r.normalized_unix_time IS NOT NULL AND r.normalized_unix_time>=? AND r.normalized_unix_time<=?", windowStart, windowEnd).
+		And("((?=? AND r.normalized_direction=?) OR (?=? AND r.normalized_direction=?))",
+			anchor.NormalizedDirection, importing.NORMALIZED_DIRECTION_EXPENSE, importing.NORMALIZED_DIRECTION_INCOME,
+			anchor.NormalizedDirection, importing.NORMALIZED_DIRECTION_INCOME, importing.NORMALIZED_DIRECTION_EXPENSE).
+		In("r.identity_state", importing.IDENTITY_STATE_NEW, importing.IDENTITY_STATE_EXACT_DUPLICATE, importing.IDENTITY_STATE_BATCH_LOCAL).
+		Asc("r.normalized_unix_time", "r.row_id").Limit(limit)
+	if err := query.Find(&rows); err != nil {
+		return nil, fmt.Errorf("list reconciliation refund candidates: %w", err)
+	}
+	return rows, nil
+}
+
 func candidateEligibleRowsQuery(sess *xorm.Session, ownerCondition string, ownerArguments ...any) *xorm.Session {
 	return sess.Where(ownerCondition, ownerArguments...).
 		And("parse_state=? AND processing_state=?", importing.PARSE_STATE_VALID, importing.PROCESSING_STATE_PENDING).
@@ -213,7 +243,7 @@ func (r *candidateRepository) persistCandidate(sess *xorm.Session, databaseType 
 		return nil, err
 	}
 
-	if err := validateCandidateMemberSources(sess, uid, persistence.members); err != nil {
+	if err := validateCandidateMemberSources(sess, uid, persistence.caseRecord.SuggestedRelationType, persistence.members); err != nil {
 		return nil, err
 	}
 
@@ -302,7 +332,7 @@ func (r *candidateRepository) persistCandidate(sess *xorm.Session, databaseType 
 	return refreshOpenCandidateCase(sess, uid, persisted, candidate)
 }
 
-func validateCandidateMemberSources(sess *xorm.Session, uid int64, members []*CaseMember) error {
+func validateCandidateMemberSources(sess *xorm.Session, uid int64, relationType DecisionType, members []*CaseMember) error {
 	if sess == nil || uid < 1 || len(members) != 2 {
 		return fmt.Errorf("invalid reconciliation candidate member sources")
 	}
@@ -353,7 +383,7 @@ func validateCandidateMemberSources(sess *xorm.Session, uid int64, members []*Ca
 		}
 	}
 
-	if sourceAccountIds[0] == sourceAccountIds[1] {
+	if sourceAccountIds[0] == sourceAccountIds[1] && relationType != DECISION_TYPE_REFUND_REVERSAL {
 		return fmt.Errorf("reconciliation candidate members must use different source accounts")
 	}
 
@@ -370,8 +400,8 @@ func validateCandidatePersistence(uid int64, persistence *candidatePersistence) 
 	if caseRecord.Uid != uid || caseRecord.CaseId < 1 || len(caseRecord.CaseKey) != 64 ||
 		caseRecord.CaseKeyVersion != CASE_KEY_VERSION_V1 || caseRecord.Status != CASE_STATUS_OPEN ||
 		caseRecord.Version != 1 || caseRecord.MemberCount != 2 || caseRecord.CurrentDecisionId != nil ||
-		caseRecord.CandidateRuleVersion != CANDIDATE_RULE_VERSION_V4 ||
-		caseRecord.ExplanationVersion != EXPLANATION_VERSION_V4 ||
+		caseRecord.CandidateRuleVersion != CANDIDATE_RULE_VERSION_V5 ||
+		caseRecord.ExplanationVersion != EXPLANATION_VERSION_V5 ||
 		caseRecord.CreatedUnixTime < 1 || caseRecord.LastEvaluatedUnixTime != caseRecord.CreatedUnixTime ||
 		caseRecord.UpdatedUnixTime != caseRecord.CreatedUnixTime {
 		return fmt.Errorf("invalid reconciliation candidate case")

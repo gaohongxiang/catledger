@@ -303,15 +303,15 @@ export function mergeBucketHintKey(bucket: BillflowMergeBucket): string {
         : 'personalFinance.billflow.merge.pendingHint';
 }
 
-export type BillflowReviewPane = 'merge' | 'category';
+export type BillflowReviewPane = 'evidence' | 'transactions' | 'merge' | 'relations' | 'category';
 
-export const BILLFLOW_REVIEW_PANES: readonly BillflowReviewPane[] = ['category', 'merge'];
+export const BILLFLOW_REVIEW_PANES: readonly BillflowReviewPane[] = ['transactions', 'relations', 'category', 'merge', 'evidence'];
 
 export function suggestedReviewPane(input: { awaitingRun: boolean; mergePending: number; categoryPending: number }): BillflowReviewPane {
     if (input.awaitingRun || input.mergePending > 0) {
         return 'merge';
     }
-    return 'category';
+    return 'transactions';
 }
 
 export function resolveReviewPane(
@@ -326,9 +326,18 @@ export function resolveReviewPane(
 }
 
 export function reviewPaneHintKey(pane: BillflowReviewPane): string {
-    return pane === 'category'
-        ? 'personalFinance.billflow.reviewHint'
-        : 'personalFinance.billflow.mergeHint';
+    switch (pane) {
+    case 'category':
+        return 'personalFinance.billflow.reviewHint';
+    case 'merge':
+        return 'personalFinance.billflow.mergeHint';
+    case 'evidence':
+        return 'personalFinance.billflow.plan.evidenceHint';
+    case 'relations':
+        return 'personalFinance.billflow.plan.relationsHint';
+    default:
+        return 'personalFinance.billflow.plan.transactionsHint';
+    }
 }
 
 export type BillflowWorkbenchStep = 'files' | 'accounts' | 'review' | 'others' | 'confirm';

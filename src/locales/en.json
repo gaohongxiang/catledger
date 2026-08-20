@@ -2950,7 +2950,10 @@
             "mergeHint": "The app first consolidates multi-source evidence into unique transactions, then determines categories. Card-gateway rows use the same account, day, amount, direction, and equal counts; only unresolved relationships need review.",
             "othersHint": "Anything left after categorizing. You can continue if there is nothing to decide.",
             "pane": {
+                "evidence": "Eligible evidence",
+                "transactions": "Final transactions",
                 "merge": "Duplicate evidence",
+                "relations": "Relationships to review",
                 "category": "Categories to complete"
             },
             "plan": {
@@ -2959,7 +2962,17 @@
                 "transactions": "Final transactions to post",
                 "blocking": "Relationships to review",
                 "uncategorized": "Categories to complete",
-                "explanation": "There are {transactions} final transactions. Below, only {categories} uncategorized transactions and {duplicates} duplicate-evidence groups are shown. Duplicate evidence is not another transaction list; each group is counted once in the final total."
+                "explanation": "There are {transactions} final transactions. Each card opens its own content. Duplicate evidence is not another transaction list; each group is counted once in the final total.",
+                "evidenceHint": "These are the source evidence rows included in this task; one transaction may have several evidence rows.",
+                "transactionsHint": "This is the deduplicated transaction plan. Unresolved relationships block posting; missing categories do not block balances.",
+                "relationsHint": "Only relationships that still block posting appear here. Explicit refunds are linked automatically instead of requiring row-by-row confirmation.",
+                "evidenceTitle": "Eligible evidence in this task",
+                "transactionsTitle": "Final transactions to post",
+                "rowsShown": "{count} rows",
+                "evidenceCount": "{count} evidence rows",
+                "needsRelation": "Relationship needed",
+                "needsCategory": "Category needed",
+                "ready": "Ready"
             },
             "merge": {
                 "pending": "After accounts are ready, start merging. Clear matches are merged automatically.",

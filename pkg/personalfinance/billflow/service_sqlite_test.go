@@ -504,6 +504,7 @@ func TestServiceDefersAutoReconcileLedgerEffectUntilFirstTaskConfirmation(t *tes
 	}
 	previewGroups, err := service.ListMergeGroups(nil, uid, created.TaskId)
 	if err != nil || previewGroups.EvidenceRowCount != 2 || previewGroups.ConsolidatedRowCount != 1 || previewGroups.PlannedTransactionCount != 1 || previewGroups.CategoryReviewCount != 1 ||
+		len(previewGroups.EvidenceRows) != 2 || len(previewGroups.Transactions) != 1 || previewGroups.Transactions[0].EvidenceCount != 2 ||
 		len(previewGroups.Items) != 1 || previewGroups.Items[0].Status != billflow.MERGE_GROUP_STATUS_PREVIEW_MERGED || previewGroups.Items[0].PrimaryCaseId == nil || *previewGroups.Items[0].PrimaryCaseId != 99 {
 		t.Fatalf("first confirmation preview did not expose the task merge: groups=%+v err=%v", previewGroups, err)
 	}
@@ -522,6 +523,59 @@ func TestServiceDefersAutoReconcileLedgerEffectUntilFirstTaskConfirmation(t *tes
 	confirmedGroups, err := service.ListMergeGroups(nil, uid, created.TaskId)
 	if err != nil || len(confirmedGroups.Items) != 1 || confirmedGroups.Items[0].Status != billflow.MERGE_GROUP_STATUS_MERGED || confirmedGroups.Items[0].RelationType != reconciliation.DECISION_TYPE_SAME_EVENT {
 		t.Fatalf("confirmed same event did not become an applied merge group: groups=%+v err=%v", confirmedGroups, err)
+	}
+}
+
+func TestServiceAutoLinksExplicitPartialRefundBeforeConfirmation(t *testing.T) {
+	repository, _ := newSQLiteBillflowRepository(t)
+	uid := int64(1001)
+	accountId := int64(61)
+	originalAmount, refundAmount := int64(5927), int64(15)
+	originalTime, refundTime := int64(1_720_000_000), int64(1_720_001_105)
+	original := postableRow(uid, 601, 1001, 401, accountId, "商户消费")
+	refund := postableRow(uid, 601, 1002, 402, accountId, "商户消费")
+	original.NormalizedAmount, refund.NormalizedAmount = &originalAmount, &refundAmount
+	original.NormalizedUnixTime, refund.NormalizedUnixTime = &originalTime, &refundTime
+	original.NormalizedDirection, refund.NormalizedDirection = importing.NORMALIZED_DIRECTION_EXPENSE, importing.NORMALIZED_DIRECTION_INCOME
+	original.EconomicEffect, refund.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND, importing.ECONOMIC_EFFECT_REFUND
+	original.RawCounterparty, refund.RawCounterparty = "美团平台商户", "美团平台商户"
+	original.RawStatus, refund.RawStatus = "已退款(¥0.15)", "已退款¥0.15"
+	evidence := newFakeEvidence(uid, 501, 601, []*importing.RawImportRow{original, refund})
+	detail := sameEventCase(299, original.RowId, refund.RowId)
+	detail.SuggestedRelationType = reconciliation.DECISION_TYPE_REFUND_REVERSAL
+	reconciler := &fakeReconciler{detail: detail}
+	poster := &fakePoster{}
+	var nextId int64 = 7900
+	service, err := billflow.NewService(repository, evidence, &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
+		601: {mappedGroup(accountId, original.RowId)},
+	}}, poster, reconciler, nil, nil, &fakeCategories{}, &fakeUndo{can: true}, func() int64 {
+		nextId++
+		return nextId
+	})
+	if err != nil {
+		t.Fatalf("create refund service: %v", err)
+	}
+	created, err := service.CreateTask(nil, billflow.CreateTaskRequest{Uid: uid, FileIds: []int64{501}, IdempotencyKey: "create-refund-task"})
+	if err != nil {
+		t.Fatalf("create refund task: %v", err)
+	}
+	preview, err := service.RunTask(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: created.Version, IdempotencyKey: "preview-refund-task"}, time.UTC)
+	if err != nil || preview == nil || preview.AutoPostedCount != 2 || poster.calls != 0 || len(reconciler.decided) != 0 {
+		t.Fatalf("preview partial refund: task=%+v poster=%d decisions=%+v err=%v", preview, poster.calls, reconciler.decided, err)
+	}
+	open, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || hasTodoKind(open, billflow.TODO_KIND_REFUND_UNCLEAR) {
+		t.Fatalf("explicit refund remained open: %+v err=%v", open, err)
+	}
+	confirmed, err := service.ConfirmPost(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: preview.Version, IdempotencyKey: "confirm-refund-task"}, time.UTC)
+	if err != nil || confirmed == nil || len(reconciler.decided) != 1 || poster.calls != 0 {
+		t.Fatalf("confirm partial refund: task=%+v decisions=%+v poster=%d err=%v", confirmed, reconciler.decided, poster.calls, err)
+	}
+	decision := reconciler.decided[0]
+	if decision.DecisionType != reconciliation.DECISION_TYPE_REFUND_REVERSAL || decision.FieldSelection.RefundOriginalMemberOrder != 1 ||
+		decision.RefundOriginalDraft == nil || decision.RefundOriginalDraft.SourceAmount != originalAmount ||
+		decision.RefundTransactionDraft == nil || decision.RefundTransactionDraft.SourceAmount != refundAmount {
+		t.Fatalf("refund decision request: %+v", decision)
 	}
 }
 
@@ -630,7 +684,8 @@ func TestServiceConsolidatesBalancedStatementBucketAndLeavesUnbalancedBucketPend
 		t.Fatalf("balanced statement bucket should not stay ambiguous: %+v err=%v", todos, err)
 	}
 	groups, err := service.ListMergeGroups(nil, uid, created.TaskId)
-	if err != nil || groups.EvidenceRowCount != 4 || groups.ConsolidatedRowCount != 2 || groups.PlannedTransactionCount != 2 || len(groups.Items) != 2 {
+	if err != nil || groups.EvidenceRowCount != 4 || groups.ConsolidatedRowCount != 2 || groups.PlannedTransactionCount != 2 ||
+		len(groups.EvidenceRows) != 4 || len(groups.Transactions) != 2 || len(groups.Items) != 2 {
 		t.Fatalf("balanced statement bucket should expose two selected event pairs: groups=%+v err=%v", groups, err)
 	}
 	for _, group := range groups.Items {

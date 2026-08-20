@@ -57,7 +57,7 @@ func (r *caseRepository) listCases(c core.Context, uid int64, status CaseStatus,
 	cases := make([]*Case, 0, limit+1)
 	query := sess.Where("uid=? AND status=?", uid, status)
 	if status == CASE_STATUS_OPEN {
-		query = query.And("candidate_rule_version=?", CANDIDATE_RULE_VERSION_V4)
+		query = query.And("candidate_rule_version=?", CANDIDATE_RULE_VERSION_V5)
 	}
 	if cursor != nil {
 		query = query.And("(updated_unix_time<? OR (updated_unix_time=? AND case_id<?))", cursor.UpdatedUnixTime, cursor.UpdatedUnixTime, cursor.CaseId)

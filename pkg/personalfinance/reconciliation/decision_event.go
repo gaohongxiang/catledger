@@ -277,7 +277,7 @@ func applyRefundDecision(c core.Context, database *datastore.Database, sess *xor
 	}
 	if originalPrimary == nil || refundPrimary == nil || !isOrdinaryTransaction(originalPrimary.transaction) || !isOrdinaryTransaction(refundPrimary.transaction) ||
 		(original != nil && original.counterpart != nil) || (refund != nil && refund.counterpart != nil) ||
-		originalPrimary.transaction.Amount != refundPrimary.transaction.Amount || !ordinaryDirectionsOpposite(originalPrimary.transaction, refundPrimary.transaction) {
+		!refundAmountsCompatible(originalPrimary.transaction, refundPrimary.transaction) {
 		return []string{decisionReasonRefundSemanticsInvalid}, nil
 	}
 	originalCreated := false
@@ -299,7 +299,7 @@ func applyRefundDecision(c core.Context, database *datastore.Database, sess *xor
 		refundCreated = true
 	}
 	if original.counterpart != nil || refund.counterpart != nil || original.primary.TransactionId == refund.primary.TransactionId ||
-		original.primary.Amount != refund.primary.Amount || !ordinaryDirectionsOpposite(original.primary, refund.primary) {
+		!refundAmountsCompatible(original.primary, refund.primary) {
 		return nil, fmt.Errorf("created refund ledger event invariant mismatch")
 	}
 	if !originalCreated {
@@ -646,6 +646,18 @@ func isTransferTransaction(transaction *models.Transaction) bool {
 func ordinaryDirectionsOpposite(first *models.Transaction, second *models.Transaction) bool {
 	return first != nil && second != nil && ((first.Type == models.TRANSACTION_DB_TYPE_INCOME && second.Type == models.TRANSACTION_DB_TYPE_EXPENSE) ||
 		(first.Type == models.TRANSACTION_DB_TYPE_EXPENSE && second.Type == models.TRANSACTION_DB_TYPE_INCOME))
+}
+
+func refundAmountsCompatible(original *models.Transaction, refund *models.Transaction) bool {
+	if !ordinaryDirectionsOpposite(original, refund) {
+		return false
+	}
+	expense, income := original, refund
+	if expense.Type != models.TRANSACTION_DB_TYPE_EXPENSE {
+		expense, income = income, expense
+	}
+	return expense.Type == models.TRANSACTION_DB_TYPE_EXPENSE && income.Type == models.TRANSACTION_DB_TYPE_INCOME &&
+		expense.Amount > 0 && income.Amount > 0 && income.Amount <= expense.Amount
 }
 
 func uniquePositiveInt64(values []int64) []int64 {

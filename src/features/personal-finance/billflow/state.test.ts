@@ -261,7 +261,11 @@ describe('billflow task page wiring', () => {
         expect(workbench).not.toContain('BILLFLOW_REVIEW_PANES');
         expect(workbench).toContain("@click=\"setReviewPane('merge')\"");
         expect(workbench).toContain("@click=\"setReviewPane('category')\"");
-        expect(workbench).toContain("@click=\"openStep('others')\"");
+        expect(workbench).toContain("@click=\"setReviewPane('evidence')\"");
+        expect(workbench).toContain("@click=\"setReviewPane('transactions')\"");
+        expect(workbench).toContain("@click=\"setReviewPane('relations')\"");
+        expect(workbench).toContain('transactionPlan?.transactions');
+        expect(workbench).toContain('transactionPlan?.evidenceRows');
         expect(workbench).toContain("reviewPane === 'merge'");
         expect(workbench).toContain('personalFinance.billflow.pane.');
         expect(workbench).toContain('isInstallmentTodo');
@@ -395,15 +399,18 @@ describe('billflow task page wiring', () => {
         expect(resolveMergeBucket('merged', { pending: 3, merged: 2 }, false)).toBe('pending');
         expect(mergeBucketHintKey('pending')).toBe('personalFinance.billflow.merge.pendingHint');
         expect(mergeBucketHintKey('merged')).toBe('personalFinance.billflow.merge.mergedHint');
-        expect(BILLFLOW_REVIEW_PANES).toEqual(['category', 'merge']);
+        expect(BILLFLOW_REVIEW_PANES).toEqual(['transactions', 'relations', 'category', 'merge', 'evidence']);
         expect(suggestedReviewPane({ awaitingRun: true, mergePending: 0, categoryPending: 4 })).toBe('merge');
         expect(suggestedReviewPane({ awaitingRun: false, mergePending: 2, categoryPending: 4 })).toBe('merge');
-        expect(suggestedReviewPane({ awaitingRun: false, mergePending: 0, categoryPending: 4 })).toBe('category');
-        expect(suggestedReviewPane({ awaitingRun: false, mergePending: 0, categoryPending: 0 })).toBe('category');
+        expect(suggestedReviewPane({ awaitingRun: false, mergePending: 0, categoryPending: 4 })).toBe('transactions');
+        expect(suggestedReviewPane({ awaitingRun: false, mergePending: 0, categoryPending: 0 })).toBe('transactions');
         expect(resolveReviewPane('category', { awaitingRun: false, mergePending: 3, categoryPending: 1 }, true)).toBe('category');
         expect(resolveReviewPane('category', { awaitingRun: false, mergePending: 3, categoryPending: 1 }, false)).toBe('merge');
         expect(reviewPaneHintKey('merge')).toBe('personalFinance.billflow.mergeHint');
         expect(reviewPaneHintKey('category')).toBe('personalFinance.billflow.reviewHint');
+        expect(reviewPaneHintKey('evidence')).toBe('personalFinance.billflow.plan.evidenceHint');
+        expect(reviewPaneHintKey('transactions')).toBe('personalFinance.billflow.plan.transactionsHint');
+        expect(reviewPaneHintKey('relations')).toBe('personalFinance.billflow.plan.relationsHint');
     });
 
     it('keeps account checks in pending, reused and excluded buckets', () => {

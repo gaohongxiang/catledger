@@ -123,6 +123,7 @@ type organizePlan struct {
 	commands    map[int64][]importing.PostingIdentityCommand
 	todos       []Todo
 	mergedPairs []sameEventPair
+	refundPairs []sameEventPair
 	posted      int64
 }
 
@@ -153,11 +154,12 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 		return nil, err
 	}
 
-	ambiguousRows, mergedRows, pairs, reconciledPostCount, err := s.autoReconcile(c, uid, taskId, batchIds, rowsByBatch, sourceByBatch, categories, createdIp, applyReconciliation)
+	ambiguousRows, mergedRows, relatedRows, pairs, refundPairs, reconciledPostCount, err := s.autoReconcile(c, uid, taskId, batchIds, rowsByBatch, sourceByBatch, categories, createdIp, applyReconciliation)
 	if err != nil {
 		return nil, err
 	}
 	plan.mergedPairs = pairs
+	plan.refundPairs = refundPairs
 	plan.posted += reconciledPostCount
 	rowIndex := make(map[int64]*importing.RawImportRow)
 	sourceIndex := make(map[int64]importing.SourceType)
@@ -186,6 +188,21 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 			SubjectKind: SUBJECT_KIND_RAW_ROW, SubjectId: canonical.RowId, ReasonCodesJson: "[]",
 		})
 	}
+	for _, pair := range refundPairs {
+		original := rowIndex[pair.left]
+		if original == nil || original.NormalizedDirection != importing.NORMALIZED_DIRECTION_EXPENSE {
+			original = rowIndex[pair.right]
+		}
+		if original == nil || original.NormalizedDirection != importing.NORMALIZED_DIRECTION_EXPENSE {
+			continue
+		}
+		if _, mapped := categories.mapped(sourceIndex[original.RowId], original); !mapped {
+			plan.todos = append(plan.todos, Todo{
+				Uid: uid, TaskId: taskId, TodoKind: TODO_KIND_UNCATEGORIZED, Status: TODO_STATUS_OPEN,
+				SubjectKind: SUBJECT_KIND_RAW_ROW, SubjectId: original.RowId, ReasonCodesJson: "[]",
+			})
+		}
+	}
 	if s.installments != nil {
 		if _, err := s.installments.IngestBatches(c, installments.IngestRequest{Uid: uid, BatchIds: batchIds}); err != nil {
 			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
@@ -207,7 +224,7 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 		sourceType := sourceByBatch[batchId]
 		grouped := map[int64][]*importing.RawImportRow{}
 		for _, row := range rows {
-			if row == nil || row.ProcessingState != importing.PROCESSING_STATE_PENDING || mergedRows[row.RowId] || !isBillflowEconomicEvidenceRow(row) {
+			if row == nil || row.ProcessingState != importing.PROCESSING_STATE_PENDING || mergedRows[row.RowId] || relatedRows[row.RowId] || !isBillflowEconomicEvidenceRow(row) {
 				continue
 			}
 			todoKind, postable := s.classifyRow(row, sourceType, ambiguousRows[row.RowId], categories)
@@ -347,11 +364,12 @@ func (s *Service) autoReconcile(
 	categories *categoryIndex,
 	createdIp string,
 	apply bool,
-) (map[int64]bool, map[int64]bool, []sameEventPair, int64, error) {
+) (map[int64]bool, map[int64]bool, map[int64]bool, []sameEventPair, []sameEventPair, int64, error) {
 	ambiguous := map[int64]bool{}
 	merged := map[int64]bool{}
+	related := map[int64]bool{}
 	if s.reconciler == nil {
-		return ambiguous, merged, nil, 0, nil
+		return ambiguous, merged, related, nil, nil, 0, nil
 	}
 	rowIndex := map[int64]*importing.RawImportRow{}
 	sourceIndex := map[int64]importing.SourceType{}
@@ -369,7 +387,7 @@ func (s *Service) autoReconcile(
 	for _, batchId := range batchIds {
 		result, err := s.reconciler.GenerateCandidates(c, reconciliation.GenerateCandidatesRequest{Uid: uid, BatchId: batchId})
 		if err != nil {
-			return nil, nil, nil, 0, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+			return nil, nil, nil, nil, nil, 0, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 		}
 		if result == nil {
 			continue
@@ -395,6 +413,7 @@ func (s *Service) autoReconcile(
 		cases = append(cases, detail)
 	}
 	pairs := make([]sameEventPair, 0, len(cases))
+	refundCandidates := make([]sameEventPair, 0, len(cases))
 	for _, detail := range cases {
 		if detail == nil {
 			continue
@@ -410,27 +429,25 @@ func (s *Service) autoReconcile(
 			continue
 		}
 		markTaskCaseRows(ambiguous, detail, taskRows)
-		if detail.SuggestedRelationType != reconciliation.DECISION_TYPE_SAME_EVENT {
-			continue
-		}
 		ids := caseRepresentativeRowIDs(detail, rowIndex, taskRows)
 		if len(ids) != 2 {
 			continue
 		}
-		_, leftInTask := taskRows[ids[0]]
-		_, rightInTask := taskRows[ids[1]]
-		if !leftInTask && rightInTask {
-			ids[0], ids[1] = ids[1], ids[0]
+		switch detail.SuggestedRelationType {
+		case reconciliation.DECISION_TYPE_SAME_EVENT:
+			_, leftInTask := taskRows[ids[0]]
+			_, rightInTask := taskRows[ids[1]]
+			if !leftInTask && rightInTask {
+				ids[0], ids[1] = ids[1], ids[0]
+			}
+			if s.highConfidenceSameEventRows(rowIndex[ids[0]], rowIndex[ids[1]]) {
+				pairs = append(pairs, sameEventPair{detail: detail, left: ids[0], right: ids[1], delta: pairTimeDistance(rowIndex[ids[0]], rowIndex[ids[1]])})
+			}
+		case reconciliation.DECISION_TYPE_REFUND_REVERSAL:
+			if reconciliation.ExplicitSourceRefundMatch(rowIndex[ids[0]], rowIndex[ids[1]]) {
+				refundCandidates = append(refundCandidates, sameEventPair{detail: detail, left: ids[0], right: ids[1], delta: pairTimeDistance(rowIndex[ids[0]], rowIndex[ids[1]])})
+			}
 		}
-		if !s.highConfidenceSameEventRows(rowIndex[ids[0]], rowIndex[ids[1]]) {
-			continue
-		}
-		pairs = append(pairs, sameEventPair{
-			detail: detail,
-			left:   ids[0],
-			right:  ids[1],
-			delta:  pairTimeDistance(rowIndex[ids[0]], rowIndex[ids[1]]),
-		})
 	}
 	sort.SliceStable(pairs, func(i, j int) bool {
 		if pairs[i].delta != pairs[j].delta {
@@ -439,7 +456,9 @@ func (s *Service) autoReconcile(
 		return pairs[i].detail.CaseId < pairs[j].detail.CaseId
 	})
 	selectedPairs := selectAutomaticSameEventPairs(pairs, rowIndex, sourceIndex)
+	selectedRefundPairs := selectUniqueRelationshipPairs(refundCandidates)
 	decidedPairs := make([]sameEventPair, 0, len(selectedPairs))
+	decidedRefundPairs := make([]sameEventPair, 0, len(selectedRefundPairs))
 	var posted int64
 	for _, pair := range selectedPairs {
 		if !apply {
@@ -472,7 +491,54 @@ func (s *Service) autoReconcile(
 			posted++
 		}
 	}
-	return ambiguous, merged, decidedPairs, posted, nil
+	for _, pair := range selectedRefundPairs {
+		if !apply {
+			related[pair.left] = true
+			related[pair.right] = true
+			delete(ambiguous, pair.left)
+			delete(ambiguous, pair.right)
+			decidedRefundPairs = append(decidedRefundPairs, pair)
+			if pairNeedsLedgerEvent(pair, rowIndex) {
+				posted += 2
+			}
+			continue
+		}
+		request := s.refundDecisionRequest(uid, taskId, pair, rowIndex, sourceIndex, categories, createdIp)
+		result, err := s.reconciler.DecideCase(c, request, time.UTC)
+		if err != nil || result == nil || result.Status != reconciliation.DECISION_STATUS_APPLIED {
+			continue
+		}
+		related[pair.left] = true
+		related[pair.right] = true
+		delete(ambiguous, pair.left)
+		delete(ambiguous, pair.right)
+		decidedRefundPairs = append(decidedRefundPairs, pair)
+		if pairNeedsLedgerEvent(pair, rowIndex) {
+			posted += 2
+		}
+	}
+	return ambiguous, merged, related, decidedPairs, decidedRefundPairs, posted, nil
+}
+
+func selectUniqueRelationshipPairs(pairs []sameEventPair) []sameEventPair {
+	degrees := make(map[int64]int)
+	for _, pair := range pairs {
+		degrees[pair.left]++
+		degrees[pair.right]++
+	}
+	result := make([]sameEventPair, 0, len(pairs))
+	for _, pair := range pairs {
+		if degrees[pair.left] == 1 && degrees[pair.right] == 1 {
+			result = append(result, pair)
+		}
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].delta != result[j].delta {
+			return result[i].delta < result[j].delta
+		}
+		return result[i].detail.CaseId < result[j].detail.CaseId
+	})
+	return result
 }
 
 type sameDayMergeBucket struct {
@@ -734,6 +800,53 @@ func (s *Service) sameEventDraft(pair sameEventPair, rows map[int64]*importing.R
 	}
 }
 
+func (s *Service) refundDecisionRequest(uid int64, taskId int64, pair sameEventPair, rows map[int64]*importing.RawImportRow, sources map[int64]importing.SourceType, categories *categoryIndex, createdIp string) reconciliation.DecideCaseRequest {
+	originalOrder := int64(1)
+	original, refund := rows[pair.left], rows[pair.right]
+	if original == nil || original.NormalizedDirection != importing.NORMALIZED_DIRECTION_EXPENSE {
+		originalOrder = 2
+		original, refund = refund, original
+	}
+	return reconciliation.DecideCaseRequest{
+		Uid: uid, CaseId: pair.detail.CaseId, ExpectedCaseVersion: pair.detail.Version,
+		DecisionType:           reconciliation.DECISION_TYPE_REFUND_REVERSAL,
+		IdempotencyKey:         "billflow-refund-" + strconv.FormatInt(taskId, 10) + "-" + strconv.FormatInt(pair.detail.CaseId, 10),
+		CreatedIp:              createdIp,
+		FieldSelection:         reconciliation.DecisionFieldSelection{RefundOriginalMemberOrder: originalOrder},
+		RefundOriginalDraft:    s.evidenceLedgerDraft(original, sources[original.RowId], categories),
+		RefundTransactionDraft: s.evidenceLedgerDraft(refund, sources[refund.RowId], categories),
+	}
+}
+
+func (s *Service) evidenceLedgerDraft(row *importing.RawImportRow, source importing.SourceType, categories *categoryIndex) *importing.LedgerTransactionDraft {
+	if row == nil || row.LedgerAccountId == nil || row.NormalizedAmount == nil || row.NormalizedUnixTime == nil {
+		return nil
+	}
+	txType := models.TRANSACTION_TYPE_EXPENSE
+	if row.NormalizedDirection == importing.NORMALIZED_DIRECTION_INCOME {
+		txType = models.TRANSACTION_TYPE_INCOME
+	} else if row.NormalizedDirection != importing.NORMALIZED_DIRECTION_EXPENSE {
+		return nil
+	}
+	categoryId := int64(0)
+	allowUncategorized := true
+	if txType == models.TRANSACTION_TYPE_EXPENSE {
+		if id, ok := categories.mapped(source, row); ok {
+			categoryId = id
+			allowUncategorized = false
+		}
+	}
+	offset := int16(0)
+	if row.NormalizedTimezoneUtcOffset != nil {
+		offset = *row.NormalizedTimezoneUtcOffset
+	}
+	return &importing.LedgerTransactionDraft{
+		Type: txType, CategoryId: categoryId, AllowUncategorized: allowUncategorized,
+		UnixTime: *row.NormalizedUnixTime, TimezoneUtcOffset: offset,
+		SourceAccountId: *row.LedgerAccountId, SourceAmount: *row.NormalizedAmount,
+	}
+}
+
 func preferredSameEventRow(left *importing.RawImportRow, right *importing.RawImportRow, sources map[int64]importing.SourceType, categories *categoryIndex) *importing.RawImportRow {
 	if left == nil {
 		return right
@@ -971,6 +1084,11 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 				return err
 			}
 		}
+		for _, pair := range plan.refundPairs {
+			if err := s.ensureResolvedRefundTodo(tx, request, pair, now); err != nil {
+				return err
+			}
+		}
 		nextTask := cloneTask(task)
 		nextTask.Status = status
 		if posted > 0 {
@@ -1035,6 +1153,49 @@ func (s *Service) ensureResolvedMergeTodo(tx *RepositoryTransaction, request Run
 	next.Status = TODO_STATUS_RESOLVED
 	next.Version = 2
 	next.UpdatedUnixTime = now
+	next.ResolvedUnixTime = &now
+	updated, updateErr := tx.UpdateTodoCAS(1, &next)
+	if updateErr != nil || !updated {
+		return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+	}
+	return nil
+}
+
+func (s *Service) ensureResolvedRefundTodo(tx *RepositoryTransaction, request RunTaskRequest, pair sameEventPair, now int64) error {
+	if pair.detail == nil || pair.detail.CaseId < 1 {
+		return nil
+	}
+	existing, err := tx.FindTodoBySubject(request.TaskId, TODO_KIND_REFUND_UNCLEAR, SUBJECT_KIND_RECONCILIATION_CASE, pair.detail.CaseId)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		if existing.Status == TODO_STATUS_RESOLVED && hasReasonCode(existing.ReasonCodesJson, "auto_refund_linked") {
+			return nil
+		}
+		next := *existing
+		next.Status = TODO_STATUS_RESOLVED
+		next.ReasonCodesJson = encodeReasonCodes([]string{"auto_refund_linked"})
+		next.Version = existing.Version + 1
+		next.UpdatedUnixTime = now
+		next.ResolvedUnixTime = &now
+		updated, updateErr := tx.UpdateTodoCAS(existing.Version, &next)
+		if updateErr != nil || !updated {
+			return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+		}
+		return nil
+	}
+	item := Todo{
+		Uid: request.Uid, TaskId: request.TaskId, TodoKind: TODO_KIND_REFUND_UNCLEAR, Status: TODO_STATUS_OPEN,
+		SubjectKind: SUBJECT_KIND_RECONCILIATION_CASE, SubjectId: pair.detail.CaseId, ReasonCodesJson: encodeReasonCodes([]string{"auto_refund_linked"}),
+		Version: 1, CreatedUnixTime: now, UpdatedUnixTime: now, TodoId: s.generateId(),
+	}
+	if err := tx.InsertTodo(&item); err != nil {
+		return err
+	}
+	next := item
+	next.Status = TODO_STATUS_RESOLVED
+	next.Version = 2
 	next.ResolvedUnixTime = &now
 	updated, updateErr := tx.UpdateTodoCAS(1, &next)
 	if updateErr != nil || !updated {

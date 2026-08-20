@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -235,6 +236,24 @@ func (s *CandidateService) candidatesForAnchor(c core.Context, uid int64, anchor
 			unique[evaluation.caseKey] = evaluation
 		}
 	}
+	if anchor.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND {
+		refundRows, refundErr := s.repository.listExplicitRefundCandidates(c, uid, anchorSourceAccountId, anchor, candidateSearchLimitPerSide)
+		if refundErr != nil {
+			return nil, refundErr
+		}
+		for _, row := range refundRows {
+			if !explicitSourceRefundMatch(anchor, row) {
+				continue
+			}
+			evaluation, evaluationErr := evaluateSourceRefundPair(anchor, row)
+			if evaluationErr != nil {
+				return nil, evaluationErr
+			}
+			if current := unique[evaluation.caseKey]; current == nil || candidateEvaluationLess(evaluation, current) {
+				unique[evaluation.caseKey] = evaluation
+			}
+		}
+	}
 
 	result := make([]*candidateEvaluation, 0, len(unique))
 
@@ -251,6 +270,121 @@ func (s *CandidateService) candidatesForAnchor(c core.Context, uid int64, anchor
 	}
 
 	return result, nil
+}
+
+func evaluateSourceRefundPair(first *importing.RawImportRow, second *importing.RawImportRow) (*candidateEvaluation, error) {
+	if !explicitSourceRefundMatch(first, second) {
+		return nil, fmt.Errorf("reconciliation source refund pair did not pass explicit filters")
+	}
+	firstToken, err := candidateMemberTokenForRow(first)
+	if err != nil {
+		return nil, err
+	}
+	secondToken, err := candidateMemberTokenForRow(second)
+	if err != nil {
+		return nil, err
+	}
+	members := []candidateMemberToken{firstToken, secondToken}
+	sort.Slice(members, func(i, j int) bool { return candidateMemberTokenLess(members[i], members[j]) })
+	if members[0] == members[1] {
+		return nil, fmt.Errorf("reconciliation source refund members must be distinct")
+	}
+	distance := absoluteInt64(*first.NormalizedUnixTime - *second.NormalizedUnixTime)
+	reasons := []candidateReason{
+		{Code: candidateReasonRefundSignal, Value: 40},
+		{Code: candidateReasonTimeDistance, Value: distance},
+		{Code: candidateReasonTimeProximity, Value: candidateTimeScore(distance)},
+		{Code: candidateReasonTextSimilarity, Value: 10},
+	}
+	sort.Slice(reasons, func(i, j int) bool { return reasons[i].Code < reasons[j].Code })
+	reasonCodesJSON, err := json.Marshal(reasons)
+	if err != nil {
+		return nil, fmt.Errorf("encode reconciliation refund reasons: %w", err)
+	}
+	return &candidateEvaluation{
+		caseKey:               computeCandidateCaseKey(members),
+		members:               members,
+		suggestedRelationType: DECISION_TYPE_REFUND_REVERSAL,
+		score:                 100,
+		reasonCodesJSON:       string(reasonCodesJSON),
+		anchorRowId:           first.RowId,
+		candidateRowId:        second.RowId,
+	}, nil
+}
+
+func explicitSourceRefundMatch(first *importing.RawImportRow, second *importing.RawImportRow) bool {
+	if first == nil || second == nil || first.NormalizedAmount == nil || second.NormalizedAmount == nil ||
+		first.NormalizedUnixTime == nil || second.NormalizedUnixTime == nil || first.Currency == "" || first.Currency != second.Currency ||
+		first.EconomicEffect != importing.ECONOMIC_EFFECT_REFUND || second.EconomicEffect != importing.ECONOMIC_EFFECT_REFUND {
+		return false
+	}
+	original, refund := first, second
+	if original.NormalizedDirection != importing.NORMALIZED_DIRECTION_EXPENSE || refund.NormalizedDirection != importing.NORMALIZED_DIRECTION_INCOME {
+		original, refund = second, first
+	}
+	if original.NormalizedDirection != importing.NORMALIZED_DIRECTION_EXPENSE || refund.NormalizedDirection != importing.NORMALIZED_DIRECTION_INCOME ||
+		*refund.NormalizedUnixTime < *original.NormalizedUnixTime || *refund.NormalizedUnixTime-*original.NormalizedUnixTime > candidateTimeWindowSeconds ||
+		*refund.NormalizedAmount < 1 || *refund.NormalizedAmount > *original.NormalizedAmount {
+		return false
+	}
+	expectedRefund, ok := explicitRefundAmountFromStatus(original.RawStatus)
+	if !ok || expectedRefund != *refund.NormalizedAmount {
+		return false
+	}
+	left := normalizedEvidenceText(original.RawCounterparty)
+	right := normalizedEvidenceText(refund.RawCounterparty)
+	return left != "" && left == right
+}
+
+// ExplicitSourceRefundMatch 暴露给同一任务编排使用与候选生成完全一致的明确退款规则。
+func ExplicitSourceRefundMatch(first *importing.RawImportRow, second *importing.RawImportRow) bool {
+	return explicitSourceRefundMatch(first, second)
+}
+
+func explicitRefundAmountFromStatus(status string) (int64, bool) {
+	status = strings.TrimSpace(status)
+	index := strings.IndexAny(status, "¥￥")
+	if index < 0 || index+1 >= len(status) {
+		return 0, false
+	}
+	var number strings.Builder
+	dotSeen := false
+	for _, char := range status[index+1:] {
+		if char >= '0' && char <= '9' {
+			number.WriteRune(char)
+			continue
+		}
+		if char == '.' && !dotSeen {
+			dotSeen = true
+			number.WriteRune(char)
+			continue
+		}
+		if number.Len() > 0 {
+			break
+		}
+	}
+	parts := strings.Split(number.String(), ".")
+	if len(parts) < 1 || len(parts) > 2 || parts[0] == "" {
+		return 0, false
+	}
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || whole < 0 || whole > (1<<63-1)/100 {
+		return 0, false
+	}
+	fraction := int64(0)
+	if len(parts) == 2 {
+		if len(parts[1]) < 1 || len(parts[1]) > 2 {
+			return 0, false
+		}
+		if len(parts[1]) == 1 {
+			parts[1] += "0"
+		}
+		fraction, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return 0, false
+		}
+	}
+	return whole*100 + fraction, true
 }
 
 func (s *CandidateService) newCandidatePersistence(uid int64, evaluation *candidateEvaluation, now int64) (*candidatePersistence, error) {
@@ -275,8 +409,8 @@ func (s *CandidateService) newCandidatePersistence(uid int64, evaluation *candid
 		MemberCount:           2,
 		SuggestedRelationType: evaluation.suggestedRelationType,
 		CandidateScore:        evaluation.score,
-		CandidateRuleVersion:  CANDIDATE_RULE_VERSION_V4,
-		ExplanationVersion:    EXPLANATION_VERSION_V4,
+		CandidateRuleVersion:  CANDIDATE_RULE_VERSION_V5,
+		ExplanationVersion:    EXPLANATION_VERSION_V5,
 		ReasonCodesJson:       evaluation.reasonCodesJSON,
 		CreatedUnixTime:       now,
 		LastEvaluatedUnixTime: now,

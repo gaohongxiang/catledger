@@ -319,7 +319,19 @@ type MergeGroupListResult struct {
 	MergeReviewCount        int64
 	CategoryReviewCount     int64
 	OtherReviewCount        int64
+	EvidenceRows            []*MergeGroupRowView
+	Transactions            []*PlannedTransactionView
 	Items                   []*MergeGroupView
+}
+
+type PlannedTransactionView struct {
+	TransactionKey string
+	*TodoMatchView
+	EvidenceCount int64
+	EvidenceRows  []*MergeGroupRowView
+	NeedsCategory bool
+	NeedsRelation bool
+	Ready         bool
 }
 
 type ClassifiedRowView struct {

@@ -226,6 +226,41 @@ func TestDateOnlyStatementOccurrencesUseRawRowMembers(t *testing.T) {
 	}
 }
 
+func TestExplicitPartialRefundMatchesStatusAmountMerchantAndOrder(t *testing.T) {
+	baseTime := int64(1_720_000_000)
+	originalIdentity := int64(1001)
+	refundIdentity := int64(1002)
+	original := candidateTestRow(1, 101, 10001, &originalIdentity, importing.IDENTITY_STATE_NEW, 5927, "CNY", baseTime)
+	refund := candidateTestRow(1, 102, 10001, &refundIdentity, importing.IDENTITY_STATE_NEW, 15, "CNY", baseTime+1105)
+	original.NormalizedDirection = importing.NORMALIZED_DIRECTION_EXPENSE
+	refund.NormalizedDirection = importing.NORMALIZED_DIRECTION_INCOME
+	original.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND
+	refund.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND
+	original.RawCounterparty = "美团平台商户"
+	refund.RawCounterparty = "美团平台商户"
+	original.RawStatus = "已退款(¥0.15)"
+	refund.RawStatus = "已退款¥0.15"
+
+	if !ExplicitSourceRefundMatch(original, refund) {
+		t.Fatal("explicit partial refund did not match its original transaction")
+	}
+	evaluation, err := evaluateSourceRefundPair(original, refund)
+	if err != nil || evaluation.suggestedRelationType != DECISION_TYPE_REFUND_REVERSAL {
+		t.Fatalf("explicit refund candidate: %+v err=%v", evaluation, err)
+	}
+	wrongAmount := *refund
+	amount := int64(20)
+	wrongAmount.NormalizedAmount = &amount
+	if ExplicitSourceRefundMatch(original, &wrongAmount) {
+		t.Fatal("refund amount different from the explicit source status was accepted")
+	}
+	wrongMerchant := *refund
+	wrongMerchant.RawCounterparty = "另一商户"
+	if ExplicitSourceRefundMatch(original, &wrongMerchant) {
+		t.Fatal("refund from another merchant was accepted")
+	}
+}
+
 func TestCrossSourceComparisonMatchAcceptsMappedLedgerAccount(t *testing.T) {
 	baseTime := int64(1_720_000_000)
 	firstIdentity := int64(701)
