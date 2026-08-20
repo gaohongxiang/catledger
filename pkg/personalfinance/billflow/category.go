@@ -153,6 +153,40 @@ func sourceCategoryLeafFallback(sourceType importing.SourceType, name string) st
 	return alipayCategoryLeafFallbacks[canonicalCategoryName(name)]
 }
 
+func evidenceCategoryLeafFallback(sourceType importing.SourceType, row *importing.RawImportRow) string {
+	if row == nil {
+		return ""
+	}
+	text := canonicalCategoryName(strings.TrimSpace(row.RawCounterparty) + " " + strings.TrimSpace(row.RawItem))
+	switch sourceType {
+	case importing.SOURCE_TYPE_WECHAT:
+		switch {
+		case strings.Contains(text, "美团"):
+			return "食品"
+		case strings.Contains(text, "寄件") || strings.Contains(text, "快递"):
+			return "快递费"
+		case strings.Contains(text, "保险") || strings.Contains(text, "保费"):
+			return "保险支出"
+		}
+	case importing.SOURCE_TYPE_BANK:
+		if strings.Contains(text, "电话") {
+			return "电话费"
+		}
+	}
+	return ""
+}
+
+func evidenceSemanticTodo(sourceType importing.SourceType, row *importing.RawImportRow) TodoKind {
+	if sourceType != importing.SOURCE_TYPE_BANK || row == nil {
+		return ""
+	}
+	text := canonicalCategoryName(strings.TrimSpace(row.RawCounterparty) + " " + strings.TrimSpace(row.RawItem))
+	if strings.Contains(text, "款项转入") || strings.Contains(text, "还款") {
+		return TODO_KIND_REPAYMENT_UNCLEAR
+	}
+	return ""
+}
+
 func transferLikeTodo(name string) TodoKind {
 	if name == "" || !isForbiddenCategoryName(name) {
 		return ""

@@ -264,6 +264,9 @@ func (s *Service) classifyRow(row *importing.RawImportRow, sourceType importing.
 	if ambiguous {
 		return TODO_KIND_CROSS_SOURCE_AMBIGUOUS, false
 	}
+	if todoKind := evidenceSemanticTodo(sourceType, row); todoKind != "" {
+		return todoKind, false
+	}
 	switch row.NormalizedTransactionType {
 	case importing.SOURCE_TRANSACTION_TYPE_TOP_UP, importing.SOURCE_TRANSACTION_TYPE_WITHDRAWAL, importing.SOURCE_TRANSACTION_TYPE_TRANSFER:
 		if _, mapped := categories.mapped(sourceType, row); mapped {
@@ -1066,6 +1069,11 @@ func (index *categoryIndex) lookup(sourceType importing.SourceType, name string)
 func (index *categoryIndex) mapped(sourceType importing.SourceType, row *importing.RawImportRow) (int64, bool) {
 	for _, name := range categoryAliasCandidates(row, sourceType) {
 		if id, ok := index.lookup(sourceType, name); ok {
+			return id, true
+		}
+	}
+	if fallback := evidenceCategoryLeafFallback(sourceType, row); fallback != "" {
+		if id, ok := index.leaves[canonicalCategoryName(fallback)]; ok {
 			return id, true
 		}
 	}

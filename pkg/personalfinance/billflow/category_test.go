@@ -58,3 +58,23 @@ func TestAlipayBroadCategoriesUseConservativeLedgerLeaves(t *testing.T) {
 		t.Fatalf("Alipay category should resolve to the available conservative leaf: id=%d ok=%v", id, ok)
 	}
 }
+
+func TestClearEvidenceKeywordsUseConservativeCategoriesAndTransfersStaySeparate(t *testing.T) {
+	for _, test := range []struct {
+		source   importing.SourceType
+		row      *importing.RawImportRow
+		expected string
+	}{
+		{source: importing.SOURCE_TYPE_WECHAT, row: &importing.RawImportRow{RawCounterparty: "美团平台商户"}, expected: "食品"},
+		{source: importing.SOURCE_TYPE_WECHAT, row: &importing.RawImportRow{RawItem: "国内寄件"}, expected: "快递费"},
+		{source: importing.SOURCE_TYPE_WECHAT, row: &importing.RawImportRow{RawCounterparty: "代收保费"}, expected: "保险支出"},
+		{source: importing.SOURCE_TYPE_BANK, row: &importing.RawImportRow{RawCounterparty: "人民币购汇（电话）"}, expected: "电话费"},
+	} {
+		if got := evidenceCategoryLeafFallback(test.source, test.row); got != test.expected {
+			t.Fatalf("evidence category fallback: got %q want %q", got, test.expected)
+		}
+	}
+	if got := evidenceSemanticTodo(importing.SOURCE_TYPE_BANK, &importing.RawImportRow{RawCounterparty: "款项转入"}); got != TODO_KIND_REPAYMENT_UNCLEAR {
+		t.Fatalf("credit-card payment should remain a repayment relation, got %q", got)
+	}
+}
