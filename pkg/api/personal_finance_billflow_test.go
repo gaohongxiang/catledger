@@ -95,7 +95,7 @@ func TestBillflowHandlersUseStringIdsAndOmitSecrets(t *testing.T) {
 		Items: []*billflow.MergeGroupView{{
 			GroupId: strings.Repeat("a", 64), Status: billflow.MERGE_GROUP_STATUS_PREVIEW_MERGED,
 			RelationType: "same_event", PrimaryCaseId: &caseId, CaseIds: []int64{caseId},
-			CandidateRuleVersion: "reconciliation-candidate-v3", ReasonCodes: []string{"amount_currency_exact"},
+			CandidateRuleVersion: "reconciliation-candidate-v4", ReasonCodes: []string{"amount_currency_exact"},
 			Rows: []*billflow.MergeGroupRowView{{TodoMatchView: &billflow.TodoMatchView{RowId: 801, SourceType: "alipay", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true},
 				{TodoMatchView: &billflow.TodoMatchView{RowId: 802, SourceType: "bank", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true}},
 		}}}

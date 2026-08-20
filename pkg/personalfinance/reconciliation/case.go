@@ -185,7 +185,7 @@ func (s *CaseService) ListCasesForRows(c core.Context, uid int64, rowIds []int64
 		if getErr != nil {
 			return nil, ErrCasePersistenceUnavailable
 		}
-		if detail == nil || (detail.Status == CASE_STATUS_OPEN && detail.CandidateRuleVersion != CANDIDATE_RULE_VERSION_V3) {
+		if detail == nil || (detail.Status == CASE_STATUS_OPEN && detail.CandidateRuleVersion != CANDIDATE_RULE_VERSION_V4) {
 			continue
 		}
 		items = append(items, detail)

@@ -467,8 +467,8 @@ func insertDecisionCaseFixture(t *testing.T, database *datastore.Database, uid i
 		beans = append(beans, file, account, batch, identity, row)
 	}
 	caseRecord := &Case{Uid: uid, CaseKey: candidateDigest(fixture.caseId), CaseKeyVersion: CASE_KEY_VERSION_V1, Status: CASE_STATUS_OPEN, Version: 1, MemberCount: 2,
-		SuggestedRelationType: DECISION_TYPE_SAME_EVENT, CandidateScore: 100, CandidateRuleVersion: CANDIDATE_RULE_VERSION_V3,
-		ExplanationVersion: EXPLANATION_VERSION_V3, ReasonCodesJson: "[]", CreatedUnixTime: base, LastEvaluatedUnixTime: base, UpdatedUnixTime: base, CaseId: fixture.caseId}
+		SuggestedRelationType: DECISION_TYPE_SAME_EVENT, CandidateScore: 100, CandidateRuleVersion: CANDIDATE_RULE_VERSION_V4,
+		ExplanationVersion: EXPLANATION_VERSION_V4, ReasonCodesJson: "[]", CreatedUnixTime: base, LastEvaluatedUnixTime: base, UpdatedUnixTime: base, CaseId: fixture.caseId}
 	beans = append(beans, caseRecord,
 		&CaseMember{Uid: uid, CaseId: fixture.caseId, MemberOrder: 1, MemberKind: MEMBER_KIND_SOURCE_IDENTITY, MemberRefId: identities[0], MemberRole: candidateMemberRoleEvidence, CreatedUnixTime: base, MemberId: base + 61},
 		&CaseMember{Uid: uid, CaseId: fixture.caseId, MemberOrder: 2, MemberKind: MEMBER_KIND_SOURCE_IDENTITY, MemberRefId: identities[1], MemberRole: candidateMemberRoleEvidence, CreatedUnixTime: base, MemberId: base + 62},

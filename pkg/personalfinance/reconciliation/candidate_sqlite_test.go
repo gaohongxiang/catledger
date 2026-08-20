@@ -133,7 +133,7 @@ func TestCandidateServiceSQLiteMatchesPendingAnchorToLinkedHistoricalEvidence(t 
 	}
 }
 
-func TestCandidateServiceSQLiteHidesV1OpenCasesAndRefreshesThemToV2(t *testing.T) {
+func TestCandidateServiceSQLiteHidesOldOpenCasesAndRefreshesThemToV4(t *testing.T) {
 	service, database := newCandidateSQLiteService(t, &sequentialCandidateIds{})
 	uid := int64(3113)
 	baseTime := int64(1_720_600_000)
@@ -149,7 +149,7 @@ func TestCandidateServiceSQLiteHidesV1OpenCasesAndRefreshesThemToV2(t *testing.T
 	)
 	generated, err := service.GenerateCandidates(nil, GenerateCandidatesRequest{Uid: uid, BatchId: 801})
 	if err != nil || len(generated.Cases) != 1 {
-		t.Fatalf("generate v2 candidate: %+v %v", generated, err)
+		t.Fatalf("generate current candidate: %+v %v", generated, err)
 	}
 	caseId := generated.Cases[0].CaseId
 	sess := database.NewSession(nil)
@@ -174,8 +174,8 @@ func TestCandidateServiceSQLiteHidesV1OpenCasesAndRefreshesThemToV2(t *testing.T
 		t.Fatalf("stale v1 open case remained visible: %+v %v", page, err)
 	}
 	refreshed, err := service.GenerateCandidates(nil, GenerateCandidatesRequest{Uid: uid, BatchId: 801})
-	if err != nil || len(refreshed.Cases) != 1 || refreshed.Cases[0].CaseId != caseId || refreshed.Cases[0].CandidateRuleVersion != CANDIDATE_RULE_VERSION_V3 {
-		t.Fatalf("v1 open case was not refreshed in place to v2: %+v %v", refreshed, err)
+	if err != nil || len(refreshed.Cases) != 1 || refreshed.Cases[0].CaseId != caseId || refreshed.Cases[0].CandidateRuleVersion != CANDIDATE_RULE_VERSION_V4 {
+		t.Fatalf("v1 open case was not refreshed in place to v4: %+v %v", refreshed, err)
 	}
 }
 

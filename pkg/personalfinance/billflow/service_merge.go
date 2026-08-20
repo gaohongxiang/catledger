@@ -285,7 +285,7 @@ func buildMergeGroupViews(c core.Context, s *Service, uid int64, cases []mergeCa
 		status, relation := aggregateMergeStatus(groupCases)
 		view := &MergeGroupView{
 			GroupId: mergeGroupId(groupRowIds), Status: status, RelationType: relation,
-			CaseIds: caseIds, CandidateRuleVersion: reconciliation.CANDIDATE_RULE_VERSION_V3,
+			CaseIds: caseIds, CandidateRuleVersion: reconciliation.CANDIDATE_RULE_VERSION_V4,
 			ReasonCodes: reasonCodes, Rows: make([]*MergeGroupRowView, 0, len(groupRowIds)),
 		}
 		if len(caseIds) == 1 {

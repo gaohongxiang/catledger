@@ -185,6 +185,47 @@ func TestCrossSourceComparisonMatchRequiresTextAndCard(t *testing.T) {
 	}
 }
 
+func TestDateOnlyStatementOccurrencesUseRawRowMembers(t *testing.T) {
+	location := time.FixedZone("cst", 8*3600)
+	midnight := time.Date(2026, 7, 6, 0, 0, 0, 0, location).Unix()
+	afternoon := time.Date(2026, 7, 6, 10, 50, 0, 0, location).Unix()
+	sharedBankIdentity := int64(801)
+	detailIdentity := int64(901)
+	bankA := candidateTestRow(1, 81, 811, &sharedBankIdentity, importing.IDENTITY_STATE_NEW, 4350, "CNY", midnight)
+	bankB := candidateTestRow(1, 82, 811, &sharedBankIdentity, importing.IDENTITY_STATE_EXACT_DUPLICATE, 4350, "CNY", midnight)
+	detail := candidateTestRow(1, 91, 911, &detailIdentity, importing.IDENTITY_STATE_NEW, 4350, "CNY", afternoon)
+	for _, bank := range []*importing.RawImportRow{bankA, bankB} {
+		bank.NormalizedTransactionType = importing.SOURCE_TRANSACTION_TYPE_OTHER
+		bank.RawCounterparty = "支付宝 持卡人"
+		bank.RawPaymentMethod = "末四位2690"
+	}
+	detail.RawCounterparty = "详细商户"
+	detail.RawPaymentMethod = "光大银行信用卡(2690)"
+
+	first, err := evaluateCandidatePair(bankA, detail)
+	if err != nil {
+		t.Fatalf("evaluate first statement occurrence: %v", err)
+	}
+	second, err := evaluateCandidatePair(bankB, detail)
+	if err != nil {
+		t.Fatalf("evaluate second statement occurrence: %v", err)
+	}
+	if first.caseKey == second.caseKey || first.members[0] == second.members[0] && first.members[1] == second.members[1] {
+		t.Fatalf("two physical statement rows sharing a fingerprint collapsed into one candidate: first=%+v second=%+v", first.members, second.members)
+	}
+	for _, evaluation := range []*candidateEvaluation{first, second} {
+		foundRawStatement := false
+		for _, member := range evaluation.members {
+			if member.kind == MEMBER_KIND_RAW_ROW && (member.refId == bankA.RowId || member.refId == bankB.RowId) {
+				foundRawStatement = true
+			}
+		}
+		if !foundRawStatement {
+			t.Fatalf("date-only statement occurrence did not use a raw-row member: %+v", evaluation.members)
+		}
+	}
+}
+
 func TestCrossSourceComparisonMatchAcceptsMappedLedgerAccount(t *testing.T) {
 	baseTime := int64(1_720_000_000)
 	firstIdentity := int64(701)

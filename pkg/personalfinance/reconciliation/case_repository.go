@@ -57,7 +57,7 @@ func (r *caseRepository) listCases(c core.Context, uid int64, status CaseStatus,
 	cases := make([]*Case, 0, limit+1)
 	query := sess.Where("uid=? AND status=?", uid, status)
 	if status == CASE_STATUS_OPEN {
-		query = query.And("candidate_rule_version=?", CANDIDATE_RULE_VERSION_V3)
+		query = query.And("candidate_rule_version=?", CANDIDATE_RULE_VERSION_V4)
 	}
 	if cursor != nil {
 		query = query.And("(updated_unix_time<? OR (updated_unix_time=? AND case_id<?))", cursor.UpdatedUnixTime, cursor.UpdatedUnixTime, cursor.CaseId)
@@ -205,10 +205,10 @@ func (r *caseRepository) findCaseIdsForRows(c core.Context, uid int64, rowIds []
 		return nil, fmt.Errorf("reconciliation task row is missing")
 	}
 	stableIdentityIds := make([]int64, 0, len(rows))
-	batchLocalRowIds := make([]int64, 0, len(rows))
+	rawMemberRowIds := make([]int64, 0, len(rows))
 	for _, row := range rows {
+		rawMemberRowIds = append(rawMemberRowIds, row.RowId)
 		if row.IdentityState == importing.IDENTITY_STATE_BATCH_LOCAL {
-			batchLocalRowIds = append(batchLocalRowIds, row.RowId)
 			continue
 		}
 		if row.IdentityId != nil && *row.IdentityId > 0 {
@@ -236,7 +236,7 @@ func (r *caseRepository) findCaseIdsForRows(c core.Context, uid int64, rowIds []
 	if err := load(MEMBER_KIND_SOURCE_IDENTITY, stableIdentityIds); err != nil {
 		return nil, fmt.Errorf("list reconciliation task identity cases: %w", err)
 	}
-	if err := load(MEMBER_KIND_RAW_ROW, batchLocalRowIds); err != nil {
+	if err := load(MEMBER_KIND_RAW_ROW, rawMemberRowIds); err != nil {
 		return nil, fmt.Errorf("list reconciliation task row cases: %w", err)
 	}
 	caseIds := make([]int64, 0, len(caseSet))

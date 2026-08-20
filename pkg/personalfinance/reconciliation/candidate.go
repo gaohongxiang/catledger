@@ -275,8 +275,8 @@ func (s *CandidateService) newCandidatePersistence(uid int64, evaluation *candid
 		MemberCount:           2,
 		SuggestedRelationType: evaluation.suggestedRelationType,
 		CandidateScore:        evaluation.score,
-		CandidateRuleVersion:  CANDIDATE_RULE_VERSION_V3,
-		ExplanationVersion:    EXPLANATION_VERSION_V3,
+		CandidateRuleVersion:  CANDIDATE_RULE_VERSION_V4,
+		ExplanationVersion:    EXPLANATION_VERSION_V4,
 		ReasonCodesJson:       evaluation.reasonCodesJSON,
 		CreatedUnixTime:       now,
 		LastEvaluatedUnixTime: now,
@@ -429,12 +429,20 @@ func candidateMemberTokenForRow(row *importing.RawImportRow) (candidateMemberTok
 	if row.IdentityState == importing.IDENTITY_STATE_BATCH_LOCAL {
 		return candidateMemberToken{kind: MEMBER_KIND_RAW_ROW, refId: row.RowId}, nil
 	}
+	if statementRowNeedsOccurrenceMember(row) {
+		return candidateMemberToken{kind: MEMBER_KIND_RAW_ROW, refId: row.RowId}, nil
+	}
 
 	if row.IdentityId == nil || *row.IdentityId < 1 {
 		return candidateMemberToken{}, fmt.Errorf("reconciliation candidate row has no stable source identity")
 	}
 
 	return candidateMemberToken{kind: MEMBER_KIND_SOURCE_IDENTITY, refId: *row.IdentityId}, nil
+}
+
+func statementRowNeedsOccurrenceMember(row *importing.RawImportRow) bool {
+	return row != nil && rowHasDateOnlyTime(row) && row.NormalizedTransactionType == importing.SOURCE_TRANSACTION_TYPE_OTHER &&
+		strings.TrimSpace(row.SourceTransactionId) == "" && strings.TrimSpace(row.SourceOrderId) == "" && strings.TrimSpace(row.SourceMerchantOrderId) == ""
 }
 
 func computeCandidateCaseKey(members []candidateMemberToken) string {

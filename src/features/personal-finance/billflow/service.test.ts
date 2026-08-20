@@ -26,7 +26,7 @@ describe('billflow merge-group response protocol', () => {
                         relationType: 'independent',
                         primaryCaseId: '7001',
                         caseIds: ['7001'],
-                        candidateRuleVersion: 'reconciliation-candidate-v3',
+                        candidateRuleVersion: 'reconciliation-candidate-v4',
                         reasonCodes: ['amount_currency_exact'],
                         rows: [
                             { rowId: '801', sourceType: 'alipay', account: 'card', label: 'merchant', amount: '123', currency: 'CNY', direction: 'expense', inTask: true },
@@ -44,7 +44,7 @@ describe('billflow merge-group response protocol', () => {
             status: 'independent',
             relationType: 'independent',
             primaryCaseId: '7001',
-            candidateRuleVersion: 'reconciliation-candidate-v3'
+            candidateRuleVersion: 'reconciliation-candidate-v4'
         });
         expect(plan.items[0]?.rows.map(row => [row.rowId, row.inTask])).toEqual([['801', true], ['802', false]]);
     });

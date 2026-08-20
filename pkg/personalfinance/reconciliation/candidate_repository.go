@@ -370,8 +370,8 @@ func validateCandidatePersistence(uid int64, persistence *candidatePersistence) 
 	if caseRecord.Uid != uid || caseRecord.CaseId < 1 || len(caseRecord.CaseKey) != 64 ||
 		caseRecord.CaseKeyVersion != CASE_KEY_VERSION_V1 || caseRecord.Status != CASE_STATUS_OPEN ||
 		caseRecord.Version != 1 || caseRecord.MemberCount != 2 || caseRecord.CurrentDecisionId != nil ||
-		caseRecord.CandidateRuleVersion != CANDIDATE_RULE_VERSION_V3 ||
-		caseRecord.ExplanationVersion != EXPLANATION_VERSION_V3 ||
+		caseRecord.CandidateRuleVersion != CANDIDATE_RULE_VERSION_V4 ||
+		caseRecord.ExplanationVersion != EXPLANATION_VERSION_V4 ||
 		caseRecord.CreatedUnixTime < 1 || caseRecord.LastEvaluatedUnixTime != caseRecord.CreatedUnixTime ||
 		caseRecord.UpdatedUnixTime != caseRecord.CreatedUnixTime {
 		return fmt.Errorf("invalid reconciliation candidate case")
