@@ -207,7 +207,7 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 		sourceType := sourceByBatch[batchId]
 		grouped := map[int64][]*importing.RawImportRow{}
 		for _, row := range rows {
-			if row == nil || row.ProcessingState != importing.PROCESSING_STATE_PENDING || mergedRows[row.RowId] {
+			if row == nil || row.ProcessingState != importing.PROCESSING_STATE_PENDING || mergedRows[row.RowId] || !isBillflowEconomicEvidenceRow(row) {
 				continue
 			}
 			todoKind, postable := s.classifyRow(row, sourceType, ambiguousRows[row.RowId], categories)
