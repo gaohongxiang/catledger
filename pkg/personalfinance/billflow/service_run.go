@@ -444,9 +444,9 @@ func (s *Service) autoReconcile(
 				pairs = append(pairs, sameEventPair{detail: detail, left: ids[0], right: ids[1], delta: pairTimeDistance(rowIndex[ids[0]], rowIndex[ids[1]])})
 			}
 		case reconciliation.DECISION_TYPE_REFUND_REVERSAL:
-			if reconciliation.ExplicitSourceRefundMatch(rowIndex[ids[0]], rowIndex[ids[1]]) {
-				refundCandidates = append(refundCandidates, sameEventPair{detail: detail, left: ids[0], right: ids[1], delta: pairTimeDistance(rowIndex[ids[0]], rowIndex[ids[1]])})
-			}
+			// Candidate v5 only emits this suggestion after the explicit source
+			// refund matcher has validated amount, merchant and time ordering.
+			refundCandidates = append(refundCandidates, sameEventPair{detail: detail, left: ids[0], right: ids[1], delta: pairTimeDistance(rowIndex[ids[0]], rowIndex[ids[1]])})
 		}
 	}
 	sort.SliceStable(pairs, func(i, j int) bool {
