@@ -172,6 +172,9 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 		}
 	}
 	for _, pair := range pairs {
+		if relatedRows[pair.left] || relatedRows[pair.right] {
+			continue
+		}
 		if !pairNeedsLedgerEvent(pair, rowIndex) {
 			continue
 		}
