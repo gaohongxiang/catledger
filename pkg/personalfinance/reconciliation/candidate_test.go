@@ -147,10 +147,19 @@ func TestCrossSourceTimeMatchAcceptsDateOnlySameDay(t *testing.T) {
 	if !CrossSourceComparisonMatch(bank, detail, 48*3600) {
 		t.Fatal("same merchant, card, amount and civil day should compare")
 	}
+	bank.RawCounterparty = "支付宝 持卡人"
+	detail.RawCounterparty = "拼多多平台商户"
+	if !CrossSourceComparisonMatch(bank, detail, 48*3600) {
+		t.Fatal("date-only card gateway row should not require the generic holder text to equal the detailed merchant")
+	}
 
 	detail.NormalizedUnixTime = &nextMorning
 	if CrossSourceTimeMatch(bank, detail, 48*3600) {
 		t.Fatal("the next calendar day should not match a date-only credit-card row")
+	}
+	detail.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND
+	if !CrossSourceTimeMatch(bank, detail, 48*3600) {
+		t.Fatal("a refund may appear on the next credit-card posting day inside the explicit window")
 	}
 }
 

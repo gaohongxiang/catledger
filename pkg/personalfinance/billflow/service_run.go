@@ -122,7 +122,7 @@ func (s *Service) organize(c core.Context, request RunTaskRequest, clientTimezon
 type organizePlan struct {
 	commands    map[int64][]importing.PostingIdentityCommand
 	todos       []Todo
-	mergedPairs [][2]int64
+	mergedPairs []sameEventPair
 	posted      int64
 }
 
@@ -159,6 +159,33 @@ func (s *Service) buildOrganizePlan(c core.Context, uid int64, taskId int64, mem
 	}
 	plan.mergedPairs = pairs
 	plan.posted += reconciledPostCount
+	rowIndex := make(map[int64]*importing.RawImportRow)
+	sourceIndex := make(map[int64]importing.SourceType)
+	for batchId, rows := range rowsByBatch {
+		for _, row := range rows {
+			if row != nil {
+				rowIndex[row.RowId] = row
+				sourceIndex[row.RowId] = sourceByBatch[batchId]
+			}
+		}
+	}
+	for _, pair := range pairs {
+		if !pairNeedsLedgerEvent(pair, rowIndex) {
+			continue
+		}
+		canonical := preferredSameEventRow(rowIndex[pair.left], rowIndex[pair.right], sourceIndex, categories)
+		if canonical == nil {
+			continue
+		}
+		todoKind, _ := s.classifyRow(canonical, sourceIndex[canonical.RowId], false, categories)
+		if todoKind == "" {
+			continue
+		}
+		plan.todos = append(plan.todos, Todo{
+			Uid: uid, TaskId: taskId, TodoKind: todoKind, Status: TODO_STATUS_OPEN,
+			SubjectKind: SUBJECT_KIND_RAW_ROW, SubjectId: canonical.RowId, ReasonCodesJson: "[]",
+		})
+	}
 	if s.installments != nil {
 		if _, err := s.installments.IngestBatches(c, installments.IngestRequest{Uid: uid, BatchIds: batchIds}); err != nil {
 			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
@@ -317,7 +344,7 @@ func (s *Service) autoReconcile(
 	categories *categoryIndex,
 	createdIp string,
 	apply bool,
-) (map[int64]bool, map[int64]bool, [][2]int64, int64, error) {
+) (map[int64]bool, map[int64]bool, []sameEventPair, int64, error) {
 	ambiguous := map[int64]bool{}
 	merged := map[int64]bool{}
 	if s.reconciler == nil {
@@ -335,8 +362,7 @@ func (s *Service) autoReconcile(
 			}
 		}
 	}
-	cases := []*reconciliation.CaseDetail{}
-	seenCases := map[int64]struct{}{}
+	caseIds := map[int64]struct{}{}
 	for _, batchId := range batchIds {
 		result, err := s.reconciler.GenerateCandidates(c, reconciliation.GenerateCandidatesRequest{Uid: uid, BatchId: batchId})
 		if err != nil {
@@ -349,18 +375,22 @@ func (s *Service) autoReconcile(
 			if summary == nil {
 				continue
 			}
-			if _, exists := seenCases[summary.CaseId]; exists {
-				continue
-			}
-			seenCases[summary.CaseId] = struct{}{}
-			detail, getErr := s.reconciler.GetCase(c, uid, summary.CaseId)
-			if getErr != nil || detail == nil {
-				continue
-			}
-			cases = append(cases, detail)
+			caseIds[summary.CaseId] = struct{}{}
 		}
 	}
-	paired := map[int64]bool{}
+	orderedCaseIds := make([]int64, 0, len(caseIds))
+	for caseId := range caseIds {
+		orderedCaseIds = append(orderedCaseIds, caseId)
+	}
+	sort.Slice(orderedCaseIds, func(i, j int) bool { return orderedCaseIds[i] < orderedCaseIds[j] })
+	cases := make([]*reconciliation.CaseDetail, 0, len(orderedCaseIds))
+	for _, caseId := range orderedCaseIds {
+		detail, getErr := s.reconciler.GetCase(c, uid, caseId)
+		if getErr != nil || detail == nil {
+			continue
+		}
+		cases = append(cases, detail)
+	}
 	pairs := make([]sameEventPair, 0, len(cases))
 	for _, detail := range cases {
 		if detail == nil {
@@ -405,28 +435,16 @@ func (s *Service) autoReconcile(
 		}
 		return pairs[i].detail.CaseId < pairs[j].detail.CaseId
 	})
-	degrees := map[int64]int{}
-	for _, pair := range pairs {
-		degrees[pair.left]++
-		degrees[pair.right]++
-	}
-	decidedPairs := make([][2]int64, 0, len(pairs))
+	selectedPairs := selectAutomaticSameEventPairs(pairs, rowIndex, sourceIndex)
+	decidedPairs := make([]sameEventPair, 0, len(selectedPairs))
 	var posted int64
-	for _, pair := range pairs {
-		if degrees[pair.left] != 1 || degrees[pair.right] != 1 {
-			continue
-		}
-		if paired[pair.left] || paired[pair.right] {
-			continue
-		}
+	for _, pair := range selectedPairs {
 		if !apply {
-			paired[pair.left] = true
-			paired[pair.right] = true
 			merged[pair.left] = true
 			merged[pair.right] = true
 			delete(ambiguous, pair.left)
 			delete(ambiguous, pair.right)
-			decidedPairs = append(decidedPairs, [2]int64{pair.left, pair.right})
+			decidedPairs = append(decidedPairs, pair)
 			if pairNeedsLedgerEvent(pair, rowIndex) {
 				posted++
 			}
@@ -442,18 +460,205 @@ func (s *Service) autoReconcile(
 		if err != nil || result == nil || result.Status != reconciliation.DECISION_STATUS_APPLIED {
 			continue
 		}
-		paired[pair.left] = true
-		paired[pair.right] = true
 		merged[pair.left] = true
 		merged[pair.right] = true
 		delete(ambiguous, pair.left)
 		delete(ambiguous, pair.right)
-		decidedPairs = append(decidedPairs, [2]int64{pair.left, pair.right})
+		decidedPairs = append(decidedPairs, pair)
 		if pairNeedsLedgerEvent(pair, rowIndex) {
 			posted++
 		}
 	}
 	return ambiguous, merged, decidedPairs, posted, nil
+}
+
+type sameDayMergeBucket struct {
+	ledgerAccountId int64
+	amount          int64
+	currency        string
+	direction       importing.NormalizedDirection
+	civilDate       string
+}
+
+// selectAutomaticSameEventPairs 先选普通唯一边，再处理信用卡月结单的同日等量桶，
+// 最后才接受退款跨记账日后仍唯一的一对一。等量桶只决定“有 N 个重复事件”，
+// 每个详细渠道行仍对应一个独立正式交易，不会把 N 笔压成一笔。
+func selectAutomaticSameEventPairs(pairs []sameEventPair, rows map[int64]*importing.RawImportRow, sources map[int64]importing.SourceType) []sameEventPair {
+	selected := make([]sameEventPair, 0, len(pairs))
+	paired := make(map[int64]struct{})
+	selectPair := func(pair sameEventPair) {
+		if _, exists := paired[pair.left]; exists {
+			return
+		}
+		if _, exists := paired[pair.right]; exists {
+			return
+		}
+		paired[pair.left] = struct{}{}
+		paired[pair.right] = struct{}{}
+		selected = append(selected, pair)
+	}
+
+	sameDay := make([]sameEventPair, 0, len(pairs))
+	crossDayRefund := make([]sameEventPair, 0, len(pairs))
+	for _, pair := range pairs {
+		left, right := rows[pair.left], rows[pair.right]
+		if left == nil || right == nil {
+			continue
+		}
+		if rowCivilDateForMerge(left) == rowCivilDateForMerge(right) {
+			sameDay = append(sameDay, pair)
+		} else if left.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND || right.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND {
+			crossDayRefund = append(crossDayRefund, pair)
+		}
+	}
+
+	selectUniquePairs := func(candidates []sameEventPair) {
+		degrees := make(map[int64]int)
+		for _, pair := range candidates {
+			if _, exists := paired[pair.left]; exists {
+				continue
+			}
+			if _, exists := paired[pair.right]; exists {
+				continue
+			}
+			degrees[pair.left]++
+			degrees[pair.right]++
+		}
+		for _, pair := range candidates {
+			if degrees[pair.left] == 1 && degrees[pair.right] == 1 {
+				selectPair(pair)
+			}
+		}
+	}
+
+	selectUniquePairs(sameDay)
+
+	buckets := make(map[sameDayMergeBucket][]sameEventPair)
+	for _, pair := range sameDay {
+		if _, exists := paired[pair.left]; exists {
+			continue
+		}
+		if _, exists := paired[pair.right]; exists {
+			continue
+		}
+		left, right := rows[pair.left], rows[pair.right]
+		if left == nil || right == nil || left.NormalizedAmount == nil || left.LedgerAccountId == nil ||
+			sources[pair.left] == sources[pair.right] ||
+			(sources[pair.left] != importing.SOURCE_TYPE_BANK && sources[pair.right] != importing.SOURCE_TYPE_BANK) {
+			continue
+		}
+		bucket := sameDayMergeBucket{
+			ledgerAccountId: *left.LedgerAccountId,
+			amount:          *left.NormalizedAmount,
+			currency:        left.Currency,
+			direction:       left.NormalizedDirection,
+			civilDate:       rowCivilDateForMerge(left),
+		}
+		buckets[bucket] = append(buckets[bucket], pair)
+	}
+
+	for _, bucketPairs := range buckets {
+		for _, pair := range selectBalancedStatementBucket(bucketPairs, rows, sources) {
+			selectPair(pair)
+		}
+	}
+
+	selectUniquePairs(crossDayRefund)
+	sort.SliceStable(selected, func(i, j int) bool {
+		if selected[i].delta != selected[j].delta {
+			return selected[i].delta < selected[j].delta
+		}
+		return selected[i].detail.CaseId < selected[j].detail.CaseId
+	})
+	return selected
+}
+
+func selectBalancedStatementBucket(pairs []sameEventPair, rows map[int64]*importing.RawImportRow, sources map[int64]importing.SourceType) []sameEventPair {
+	bankRows := make(map[int64]struct{})
+	detailRows := make(map[int64]struct{})
+	edges := make(map[int64][]sameEventPair)
+	for _, pair := range pairs {
+		bankId, detailId := pair.left, pair.right
+		if sources[bankId] != importing.SOURCE_TYPE_BANK {
+			bankId, detailId = detailId, bankId
+		}
+		if sources[bankId] != importing.SOURCE_TYPE_BANK || sources[detailId] == importing.SOURCE_TYPE_BANK {
+			continue
+		}
+		bankRows[bankId] = struct{}{}
+		detailRows[detailId] = struct{}{}
+		edges[detailId] = append(edges[detailId], pair)
+	}
+	if len(bankRows) < 2 || len(bankRows) != len(detailRows) {
+		return nil
+	}
+	detailIds := make([]int64, 0, len(detailRows))
+	for rowId := range detailRows {
+		detailIds = append(detailIds, rowId)
+	}
+	sort.Slice(detailIds, func(i, j int) bool {
+		left, right := rows[detailIds[i]], rows[detailIds[j]]
+		if left != nil && right != nil && left.NormalizedUnixTime != nil && right.NormalizedUnixTime != nil && *left.NormalizedUnixTime != *right.NormalizedUnixTime {
+			return *left.NormalizedUnixTime < *right.NormalizedUnixTime
+		}
+		return detailIds[i] < detailIds[j]
+	})
+	for detailId := range edges {
+		sort.SliceStable(edges[detailId], func(i, j int) bool {
+			if edges[detailId][i].delta != edges[detailId][j].delta {
+				return edges[detailId][i].delta < edges[detailId][j].delta
+			}
+			return edges[detailId][i].detail.CaseId < edges[detailId][j].detail.CaseId
+		})
+	}
+	assigned := make(map[int64]sameEventPair)
+	var match func(int64, map[int64]struct{}) bool
+	match = func(detailId int64, seen map[int64]struct{}) bool {
+		for _, pair := range edges[detailId] {
+			bankId := pair.left
+			if sources[bankId] != importing.SOURCE_TYPE_BANK {
+				bankId = pair.right
+			}
+			if _, exists := seen[bankId]; exists {
+				continue
+			}
+			seen[bankId] = struct{}{}
+			previous, occupied := assigned[bankId]
+			previousDetailId := previous.left
+			if occupied && sources[previousDetailId] == importing.SOURCE_TYPE_BANK {
+				previousDetailId = previous.right
+			}
+			if !occupied || match(previousDetailId, seen) {
+				assigned[bankId] = pair
+				return true
+			}
+		}
+		return false
+	}
+	for _, detailId := range detailIds {
+		if !match(detailId, make(map[int64]struct{})) {
+			return nil
+		}
+	}
+	if len(assigned) != len(detailRows) {
+		return nil
+	}
+	result := make([]sameEventPair, 0, len(assigned))
+	for _, pair := range assigned {
+		result = append(result, pair)
+	}
+	return result
+}
+
+func rowCivilDateForMerge(row *importing.RawImportRow) string {
+	if row == nil || row.NormalizedUnixTime == nil {
+		return ""
+	}
+	offset := 0
+	if row.NormalizedTimezoneUtcOffset != nil {
+		offset = int(*row.NormalizedTimezoneUtcOffset) * 60
+	}
+	return time.Unix(*row.NormalizedUnixTime, 0).In(time.FixedZone("billflow-row", offset)).Format(time.DateOnly)
 }
 
 func pairNeedsLedgerEvent(pair sameEventPair, rows map[int64]*importing.RawImportRow) bool {
@@ -687,8 +892,8 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 	}
 	mergedSubjects := map[int64]struct{}{}
 	for _, pair := range plan.mergedPairs {
-		mergedSubjects[pair[0]] = struct{}{}
-		mergedSubjects[pair[1]] = struct{}{}
+		mergedSubjects[pair.left] = struct{}{}
+		mergedSubjects[pair.right] = struct{}{}
 	}
 	return s.repository.DoTransaction(c, request.Uid, func(tx *RepositoryTransaction) error {
 		openTodos, err := tx.ListOpenTodos(request.TaskId)
@@ -749,7 +954,7 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 			}
 		}
 		for _, pair := range plan.mergedPairs {
-			if err := s.ensureResolvedMergeTodo(tx, request, pair[0], now); err != nil {
+			if err := s.ensureResolvedMergeTodo(tx, request, pair, now); err != nil {
 				return err
 			}
 		}
@@ -781,11 +986,11 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 	})
 }
 
-func (s *Service) ensureResolvedMergeTodo(tx *RepositoryTransaction, request RunTaskRequest, subjectId int64, now int64) error {
-	if subjectId < 1 {
+func (s *Service) ensureResolvedMergeTodo(tx *RepositoryTransaction, request RunTaskRequest, pair sameEventPair, now int64) error {
+	if pair.detail == nil || pair.detail.CaseId < 1 {
 		return nil
 	}
-	existing, err := tx.FindTodoBySubject(request.TaskId, TODO_KIND_CROSS_SOURCE_AMBIGUOUS, SUBJECT_KIND_RAW_ROW, subjectId)
+	existing, err := tx.FindTodoBySubject(request.TaskId, TODO_KIND_CROSS_SOURCE_AMBIGUOUS, SUBJECT_KIND_RECONCILIATION_CASE, pair.detail.CaseId)
 	if err != nil {
 		return err
 	}
@@ -807,7 +1012,7 @@ func (s *Service) ensureResolvedMergeTodo(tx *RepositoryTransaction, request Run
 	}
 	item := Todo{
 		Uid: request.Uid, TaskId: request.TaskId, TodoKind: TODO_KIND_CROSS_SOURCE_AMBIGUOUS, Status: TODO_STATUS_OPEN,
-		SubjectKind: SUBJECT_KIND_RAW_ROW, SubjectId: subjectId, ReasonCodesJson: encodeReasonCodes([]string{"auto_merged"}),
+		SubjectKind: SUBJECT_KIND_RECONCILIATION_CASE, SubjectId: pair.detail.CaseId, ReasonCodesJson: encodeReasonCodes([]string{"auto_merged"}),
 		Version: 1, CreatedUnixTime: now, UpdatedUnixTime: now, TodoId: s.generateId(),
 	}
 	if err := tx.InsertTodo(&item); err != nil {
@@ -839,6 +1044,11 @@ func (index *categoryIndex) lookup(sourceType importing.SourceType, name string)
 	}
 	if id, ok := index.leaves[canonicalCategoryName(name)]; ok {
 		return id, true
+	}
+	if fallback := sourceCategoryLeafFallback(sourceType, name); fallback != "" {
+		if id, ok := index.leaves[canonicalCategoryName(fallback)]; ok {
+			return id, true
+		}
 	}
 	return 0, false
 }

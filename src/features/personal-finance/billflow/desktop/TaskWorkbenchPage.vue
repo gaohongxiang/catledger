@@ -230,6 +230,30 @@
         </section>
 
         <section class="work-section" v-if="currentStep === 'review' && task">
+            <div class="transaction-plan-summary" v-if="transactionPlan">
+                <article>
+                    <strong>{{ transactionPlan.evidenceRowCount }}</strong>
+                    <span>{{ tt('personalFinance.billflow.plan.evidence') }}</span>
+                </article>
+                <span class="transaction-plan-summary__operator">−</span>
+                <article>
+                    <strong>{{ transactionPlan.consolidatedRowCount }}</strong>
+                    <span>{{ tt('personalFinance.billflow.plan.consolidated') }}</span>
+                </article>
+                <span class="transaction-plan-summary__operator">=</span>
+                <article class="transaction-plan-summary__primary">
+                    <strong>{{ transactionPlan.plannedTransactionCount }}</strong>
+                    <span>{{ tt('personalFinance.billflow.plan.transactions') }}</span>
+                </article>
+                <article>
+                    <strong>{{ transactionPlan.mergeReviewCount + transactionPlan.otherReviewCount }}</strong>
+                    <span>{{ tt('personalFinance.billflow.plan.blocking') }}</span>
+                </article>
+                <article>
+                    <strong>{{ transactionPlan.categoryReviewCount }}</strong>
+                    <span>{{ tt('personalFinance.billflow.plan.uncategorized') }}</span>
+                </article>
+            </div>
             <div class="bucket-bar pane-bar">
                 <v-btn-toggle
                     color="primary"
@@ -577,7 +601,7 @@ import { useUserStore } from '@/stores/user.ts';
 import { CategoryType } from '@/core/category.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
 
-import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowClassifiedRow, BillflowMergeGroup, BillflowMergeRow, BillflowTask, BillflowTodo, BillflowTodoStatus, CardCycleAccount } from '../models.ts';
+import type { BillflowAccountGroup, BillflowAccountRow, BillflowAccounts, BillflowClassifiedRow, BillflowMergeGroup, BillflowMergeRow, BillflowTask, BillflowTodo, BillflowTodoStatus, BillflowTransactionPlan, CardCycleAccount } from '../models.ts';
 import { todoKindKey } from '../presentation.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
 import { billflowApi } from '../service.ts';
@@ -658,7 +682,8 @@ const openTodos = ref<readonly BillflowTodo[]>([]);
 const resolvedTodos = ref<readonly BillflowTodo[]>([]);
 const dismissedTodos = ref<readonly BillflowTodo[]>([]);
 const classifiedRows = ref<readonly BillflowClassifiedRow[]>([]);
-const mergeGroups = ref<readonly BillflowMergeGroup[]>([]);
+const transactionPlan = ref<BillflowTransactionPlan>();
+const mergeGroups = computed<readonly BillflowMergeGroup[]>(() => transactionPlan.value?.items ?? []);
 const accountRowIndex = ref<Record<string, { sampleRowId: string, skipped: boolean, row: BillflowAccountRow }>>({});
 const selectedTodoIds = ref<string[]>([]);
 const categoryDrafts = reactive<Record<string, string>>({});
@@ -724,6 +749,7 @@ const activeMergeGroups = computed(() => mergeBucket.value === 'merged' ? proces
 const mergeHasItemColumn = computed(() => activeMergeGroups.value.some(group => mergeGroupRows(group).some(row => !!row.item)));
 const mergeColumnCount = computed(() => mergeHasItemColumn.value ? 10 : 9);
 const otherReviewTodos = computed(() => otherTodos(openTodos.value));
+const blockingTodos = computed(() => openTodos.value.filter(todo => todo.todoKind !== 'uncategorized'));
 const skippedOrphanRows = computed(() => {
     const known = new Set([
         ...openTodos.value,
@@ -759,8 +785,8 @@ const reviewPaneInput = computed(() => ({
     categoryPending: reviewTodos.value.length + skippedOrphanRows.value.length
 }));
 const reviewPaneCounts = computed(() => ({
-    merge: mergeGroups.value.length,
-    category: reviewPaneInput.value.categoryPending
+    merge: (transactionPlan.value?.consolidatedRowCount ?? 0) + (transactionPlan.value?.mergeReviewCount ?? 0),
+    category: transactionPlan.value?.categoryReviewCount ?? reviewPaneInput.value.categoryPending
 }));
 const stepAction = computed(() => {
     if (currentStep.value === 'files' && !task.value && selectedFileIds.value.length > 0) {
@@ -803,14 +829,6 @@ const stepAction = computed(() => {
             disabled: true
         };
     }
-    if (currentStep.value === 'review' && task.value && reviewTodos.value.length > 0) {
-        return {
-            hint: tt('personalFinance.billflow.next.reviewBlocked', { count: reviewTodos.value.length }),
-            label: tt('personalFinance.billflow.step.next'),
-            run: async (): Promise<void> => {},
-            disabled: true
-        };
-    }
     if (currentStep.value === 'others' && task.value && otherReviewTodos.value.length > 0) {
         return {
             hint: tt('personalFinance.billflow.next.othersBlocked', { count: otherReviewTodos.value.length }),
@@ -821,12 +839,12 @@ const stepAction = computed(() => {
     }
     if (currentStep.value === 'confirm' && task.value && taskAwaitsConfirm(task.value.status)) {
         return {
-            hint: openTodos.value.length
-                ? tt('personalFinance.billflow.next.reviewBlocked', { count: openTodos.value.length })
+            hint: blockingTodos.value.length
+                ? tt('personalFinance.billflow.next.reviewBlocked', { count: blockingTodos.value.length })
                 : tt('personalFinance.billflow.next.confirm'),
             label: tt('personalFinance.billflow.confirmPost'),
             run: confirmPost,
-            disabled: openTodos.value.length > 0
+            disabled: blockingTodos.value.length > 0
         };
     }
     return undefined;
@@ -842,7 +860,6 @@ const canAdvanceWithoutAction = computed(() => {
         return !!task.value
             && !canAutoRunAfterAccounts(task.value.status, accounts.value?.needsCreate.length ?? 0)
             && pendingMergeGroups.value.length < 1
-            && reviewTodos.value.length < 1
             && canOpenStep('others');
     }
     if (currentStep.value === 'others') {
@@ -861,9 +878,6 @@ const forwardHint = computed(() => {
     }
     if (currentStep.value === 'review' && pendingMergeGroups.value.length > 0) {
         return tt('personalFinance.billflow.next.mergeBlocked', { count: pendingMergeGroups.value.length });
-    }
-    if (currentStep.value === 'review' && reviewTodos.value.length > 0) {
-        return tt('personalFinance.billflow.next.reviewBlocked', { count: reviewTodos.value.length });
     }
     if (currentStep.value === 'review') {
         return tt('personalFinance.billflow.next.review');
@@ -916,10 +930,10 @@ function canOpenStep(step: BillflowWorkbenchStep): boolean {
     if (!task.value || !(taskAwaitsConfirm(task.value.status) || task.value.status === 'ready' || task.value.status === 'failed')) {
         return true;
     }
-    if (step === 'others' && (pendingMergeGroups.value.length > 0 || reviewTodos.value.length > 0)) {
+    if (step === 'others' && pendingMergeGroups.value.length > 0) {
         return false;
     }
-    if (step === 'confirm' && openTodos.value.length > 0) {
+    if (step === 'confirm' && blockingTodos.value.length > 0) {
         return false;
     }
     return true;
@@ -1360,7 +1374,7 @@ async function openTask(taskId: string): Promise<void> {
         resolvedTodos.value = resolved;
         dismissedTodos.value = dismissed;
         classifiedRows.value = classified;
-        mergeGroups.value = groups;
+        transactionPlan.value = groups;
         selectedTodoIds.value = selectedTodoIds.value.filter(id => openTodos.value.some(todo => todo.id === id));
         await loadAccountRowIndex(taskId);
     } else {
@@ -1368,7 +1382,7 @@ async function openTask(taskId: string): Promise<void> {
         resolvedTodos.value = [];
         dismissedTodos.value = [];
         classifiedRows.value = [];
-        mergeGroups.value = [];
+        transactionPlan.value = undefined;
         accountRowIndex.value = {};
     }
     syncTaskFileSelection();
@@ -1645,7 +1659,7 @@ async function runTask(): Promise<void> {
 }
 
 async function confirmPost(): Promise<void> {
-    if (!task.value || openTodos.value.length > 0) return;
+    if (!task.value || blockingTodos.value.length > 0) return;
     busy.value = true;
     try {
         await billflowApi.confirmPost(task.value.id, task.value.version, generateRandomUUID());
@@ -2032,6 +2046,45 @@ onMounted(reload);
 .summary-card--todo {
     background: var(--task-mint);
     color: var(--task-ink);
+}
+
+.transaction-plan-summary {
+    display: grid;
+    grid-template-columns: minmax(112px, 1fr) auto minmax(112px, 1fr) auto minmax(140px, 1.2fr) minmax(112px, 1fr) minmax(112px, 1fr);
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.transaction-plan-summary article {
+    display: grid;
+    gap: 2px;
+    padding: 12px 14px;
+    border: 1px solid var(--task-rule);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--task-paper) 92%, var(--task-mint));
+}
+
+.transaction-plan-summary strong {
+    color: var(--task-ink);
+    font-size: 1.55rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.transaction-plan-summary span {
+    color: rgba(var(--v-theme-on-surface), 0.58);
+    font-size: 0.74rem;
+}
+
+.transaction-plan-summary__primary {
+    border-color: color-mix(in srgb, var(--v-theme-primary) 42%, var(--task-rule)) !important;
+    background: var(--task-mint) !important;
+}
+
+.transaction-plan-summary__operator {
+    align-self: center;
+    font-size: 1.4rem !important;
 }
 
 .bucket-bar {
@@ -2511,6 +2564,14 @@ onMounted(reload);
 
     .account-row-card__main {
         grid-template-columns: 1fr;
+    }
+
+    .transaction-plan-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .transaction-plan-summary__operator {
+        display: none;
     }
 
     .account-card__head,

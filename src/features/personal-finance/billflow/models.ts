@@ -153,6 +153,16 @@ export interface BillflowMergeGroup {
     readonly rows: readonly BillflowMergeRow[];
 }
 
+export interface BillflowTransactionPlan {
+    readonly evidenceRowCount: number;
+    readonly consolidatedRowCount: number;
+    readonly plannedTransactionCount: number;
+    readonly mergeReviewCount: number;
+    readonly categoryReviewCount: number;
+    readonly otherReviewCount: number;
+    readonly items: readonly BillflowMergeGroup[];
+}
+
 export interface BillflowClassifiedRow {
     readonly id: string;
     readonly todoId?: string;

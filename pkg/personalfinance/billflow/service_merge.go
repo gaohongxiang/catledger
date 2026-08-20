@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"sort"
+	"strings"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
@@ -32,6 +33,7 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 	sourceIndex := make(map[int64]importing.SourceType)
 	taskRows := make(map[int64]struct{})
 	rowIds := make([]int64, 0)
+	var evidenceRowCount int64
 	for _, member := range members {
 		if member == nil {
 			continue
@@ -52,6 +54,9 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 			sourceIndex[row.RowId] = batch.SourceTypeSnapshot
 			taskRows[row.RowId] = struct{}{}
 			rowIds = append(rowIds, row.RowId)
+			if isBillflowEconomicEvidenceRow(row) {
+				evidenceRowCount++
+			}
 		}
 	}
 	if len(rowIds) == 0 {
@@ -68,9 +73,24 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 			}
 		}
 	}
-	previewSubjects, err := s.previewMergeSubjects(c, uid, taskId)
+	previewRows, previewCases, err := s.previewMergeSelections(c, uid, taskId)
 	if err != nil {
 		return nil, err
+	}
+	selectedRows := make(map[int64]struct{})
+	for _, detail := range details {
+		if detail == nil {
+			continue
+		}
+		_, preview := previewCases[detail.CaseId]
+		appliedSameEvent := detail.CurrentDecisionType != nil && detail.CurrentDecisionStatus != nil &&
+			*detail.CurrentDecisionType == reconciliation.DECISION_TYPE_SAME_EVENT && *detail.CurrentDecisionStatus == reconciliation.DECISION_STATUS_APPLIED
+		if !preview && !appliedSameEvent {
+			continue
+		}
+		for _, rowId := range caseRepresentativeRowIDs(detail, rowIndex, taskRows) {
+			selectedRows[rowId] = struct{}{}
+		}
 	}
 	projections := make([]mergeCaseProjection, 0, len(details))
 	for _, detail := range details {
@@ -83,26 +103,86 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 				continue
 			}
 		}
-		_, previewLeft := previewSubjects[ids[0]]
-		_, previewRight := previewSubjects[ids[1]]
-		preview := previewLeft || previewRight
+		_, previewLeft := previewRows[ids[0]]
+		_, previewRight := previewRows[ids[1]]
+		_, previewCase := previewCases[detail.CaseId]
+		preview := previewCase || (len(previewCases) == 0 && (previewLeft || previewRight))
+		if !preview {
+			_, leftSelected := selectedRows[ids[0]]
+			_, rightSelected := selectedRows[ids[1]]
+			if leftSelected && rightSelected && detail.Status == reconciliation.CASE_STATUS_OPEN && detail.CurrentDecisionId == nil {
+				continue
+			}
+		}
 		projections = append(projections, mergeCaseProjection{detail: detail, rows: [2]int64{ids[0], ids[1]}, status: mergeStatusForCase(detail, preview)})
 	}
-	return buildMergeGroupViews(c, s, uid, projections, rowIndex, sourceIndex, taskRows), nil
-}
-
-func (s *Service) previewMergeSubjects(c core.Context, uid int64, taskId int64) (map[int64]struct{}, error) {
-	items, err := s.listAllTodos(c, uid, taskId, TODO_STATUS_RESOLVED)
+	result := buildMergeGroupViews(c, s, uid, projections, rowIndex, sourceIndex, taskRows)
+	result.EvidenceRowCount = evidenceRowCount
+	for _, group := range result.Items {
+		if group == nil {
+			continue
+		}
+		switch group.Status {
+		case MERGE_GROUP_STATUS_PREVIEW_MERGED, MERGE_GROUP_STATUS_MERGED:
+			if group.RelationType == reconciliation.DECISION_TYPE_SAME_EVENT {
+				result.ConsolidatedRowCount++
+			}
+		case MERGE_GROUP_STATUS_PENDING, MERGE_GROUP_STATUS_DEFERRED, MERGE_GROUP_STATUS_ACTION_REQUIRED:
+			result.MergeReviewCount++
+		}
+	}
+	result.PlannedTransactionCount = result.EvidenceRowCount - result.ConsolidatedRowCount
+	if result.PlannedTransactionCount < 0 {
+		result.PlannedTransactionCount = 0
+	}
+	openTodos, err := s.listAllTodos(c, uid, taskId, TODO_STATUS_OPEN)
 	if err != nil {
 		return nil, err
 	}
-	result := make(map[int64]struct{})
-	for _, item := range items {
-		if item != nil && item.TodoKind == TODO_KIND_CROSS_SOURCE_AMBIGUOUS && item.SubjectKind == SUBJECT_KIND_RAW_ROW && hasReasonCode(item.ReasonCodesJson, "auto_merged") {
-			result[item.SubjectId] = struct{}{}
+	for _, todo := range openTodos {
+		if todo == nil {
+			continue
+		}
+		switch todo.TodoKind {
+		case TODO_KIND_UNCATEGORIZED:
+			result.CategoryReviewCount++
+		case TODO_KIND_CROSS_SOURCE_AMBIGUOUS:
+			// MergeReviewCount uses connected task groups, not raw-row todo count.
+		default:
+			result.OtherReviewCount++
 		}
 	}
 	return result, nil
+}
+
+func isBillflowEconomicEvidenceRow(row *importing.RawImportRow) bool {
+	if row == nil || row.ProcessingState == importing.PROCESSING_STATE_IGNORED || row.ProcessingState == importing.PROCESSING_STATE_FAILED ||
+		row.ParseState != importing.PARSE_STATE_VALID || row.EconomicEffect == importing.ECONOMIC_EFFECT_CLOSED ||
+		row.Disposition == importing.IMPORT_DISPOSITION_NON_POSTABLE {
+		return false
+	}
+	return !strings.Contains(strings.TrimSpace(row.RawStatus), "失败")
+}
+
+func (s *Service) previewMergeSelections(c core.Context, uid int64, taskId int64) (map[int64]struct{}, map[int64]struct{}, error) {
+	items, err := s.listAllTodos(c, uid, taskId, TODO_STATUS_RESOLVED)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows := make(map[int64]struct{})
+	cases := make(map[int64]struct{})
+	for _, item := range items {
+		if item == nil || item.TodoKind != TODO_KIND_CROSS_SOURCE_AMBIGUOUS || !hasReasonCode(item.ReasonCodesJson, "auto_merged") {
+			continue
+		}
+		switch item.SubjectKind {
+		case SUBJECT_KIND_RAW_ROW:
+			rows[item.SubjectId] = struct{}{}
+		case SUBJECT_KIND_RECONCILIATION_CASE:
+			cases[item.SubjectId] = struct{}{}
+		}
+	}
+	return rows, cases, nil
 }
 
 func mergeStatusForCase(detail *reconciliation.CaseDetail, preview bool) MergeGroupStatus {
@@ -199,7 +279,7 @@ func buildMergeGroupViews(c core.Context, s *Service, uid int64, cases []mergeCa
 		status, relation := aggregateMergeStatus(groupCases)
 		view := &MergeGroupView{
 			GroupId: mergeGroupId(groupRowIds), Status: status, RelationType: relation,
-			CaseIds: caseIds, CandidateRuleVersion: reconciliation.CANDIDATE_RULE_VERSION_V2,
+			CaseIds: caseIds, CandidateRuleVersion: reconciliation.CANDIDATE_RULE_VERSION_V3,
 			ReasonCodes: reasonCodes, Rows: make([]*MergeGroupRowView, 0, len(groupRowIds)),
 		}
 		if len(caseIds) == 1 {

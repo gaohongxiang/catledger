@@ -19,6 +19,7 @@ import type {
     BillflowTodoMatch,
     BillflowMergeGroup,
     BillflowMergeGroupStatus,
+    BillflowTransactionPlan,
     BillflowMergeRow,
     BillflowTodoPage,
     BillflowTodoStatus,
@@ -287,6 +288,19 @@ function normalizeMergeGroup(value: unknown): BillflowMergeGroup {
     };
 }
 
+function normalizeTransactionPlan(value: unknown): BillflowTransactionPlan {
+    const item = record(value);
+    return {
+        evidenceRowCount: integer(item['evidenceRowCount']),
+        consolidatedRowCount: integer(item['consolidatedRowCount']),
+        plannedTransactionCount: integer(item['plannedTransactionCount']),
+        mergeReviewCount: integer(item['mergeReviewCount']),
+        categoryReviewCount: integer(item['categoryReviewCount']),
+        otherReviewCount: integer(item['otherReviewCount']),
+        items: array(item['items']).map(normalizeMergeGroup)
+    };
+}
+
 function normalizeTodoPage(value: unknown): BillflowTodoPage {
     const item = record(value);
     const cursor = item['nextCursor'];
@@ -481,9 +495,8 @@ export const billflowApi = {
     async listClassifiedRows(taskId: string): Promise<readonly BillflowClassifiedRow[]> {
         return normalizeClassifiedRows(unwrap(await services.listPersonalFinanceBillflowClassifiedRows({ taskId })));
     },
-    async listMergeGroups(taskId: string): Promise<readonly BillflowMergeGroup[]> {
-        const result = record(unwrap(await services.listPersonalFinanceBillflowMergeGroups({ taskId })));
-        return array(result['items']).map(normalizeMergeGroup);
+    async listMergeGroups(taskId: string): Promise<BillflowTransactionPlan> {
+        return normalizeTransactionPlan(unwrap(await services.listPersonalFinanceBillflowMergeGroups({ taskId })));
     },
     async resolveTodo(todoId: string, expectedVersion: number, status: BillflowTodoStatus, idempotencyKey: string): Promise<BillflowTodo> {
         return normalizeTodo(unwrap(await services.resolvePersonalFinanceBillflowTodo({ todoId, expectedVersion, status, idempotencyKey })));

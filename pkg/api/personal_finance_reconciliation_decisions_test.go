@@ -32,7 +32,7 @@ func TestReconciliationCaseListHandlerUsesCurrentUidAndSafeCursor(t *testing.T) 
 		t.Fatalf("unexpected case list request: %+v", stub.listRequest)
 	}
 	text := marshalReconciliationResponse(t, response)
-	for _, expected := range []string{`"id":"3001"`, `"status":"open"`, `"version":4`, `"candidateRuleVersion":"reconciliation-candidate-v2"`, `"explanationVersion":"reconciliation-explanation-v2"`, `"code":"amount_currency_exact"`, `"caseId":"3000"`} {
+	for _, expected := range []string{`"id":"3001"`, `"status":"open"`, `"version":4`, `"candidateRuleVersion":"reconciliation-candidate-v3"`, `"explanationVersion":"reconciliation-explanation-v3"`, `"code":"amount_currency_exact"`, `"caseId":"3000"`} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("case list omitted %s: %s", expected, text)
 		}
@@ -294,7 +294,7 @@ func newReconciliationTestContext(t *testing.T, method string, target string, bo
 func validReconciliationCaseSummary() *reconciliation.CaseSummary {
 	return &reconciliation.CaseSummary{CaseId: 3001, Status: reconciliation.CASE_STATUS_OPEN, Version: 4, MemberCount: 2,
 		SuggestedRelationType: reconciliation.DECISION_TYPE_SAME_EVENT, CandidateScore: 91,
-		CandidateRuleVersion: reconciliation.CANDIDATE_RULE_VERSION_V2, ExplanationVersion: reconciliation.EXPLANATION_VERSION_V2,
+		CandidateRuleVersion: reconciliation.CANDIDATE_RULE_VERSION_V3, ExplanationVersion: reconciliation.EXPLANATION_VERSION_V3,
 		ReasonCodes:     []reconciliation.CaseReason{{Code: "amount_currency_exact", Value: 40}},
 		CreatedUnixTime: 100, LastEvaluatedUnixTime: 200, UpdatedUnixTime: 300}
 }

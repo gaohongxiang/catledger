@@ -275,8 +275,8 @@ func (s *CandidateService) newCandidatePersistence(uid int64, evaluation *candid
 		MemberCount:           2,
 		SuggestedRelationType: evaluation.suggestedRelationType,
 		CandidateScore:        evaluation.score,
-		CandidateRuleVersion:  CANDIDATE_RULE_VERSION_V2,
-		ExplanationVersion:    EXPLANATION_VERSION_V2,
+		CandidateRuleVersion:  CANDIDATE_RULE_VERSION_V3,
+		ExplanationVersion:    EXPLANATION_VERSION_V3,
 		ReasonCodesJson:       evaluation.reasonCodesJSON,
 		CreatedUnixTime:       now,
 		LastEvaluatedUnixTime: now,
@@ -620,7 +620,8 @@ func CrossSourceSameCard(first *importing.RawImportRow, second *importing.RawImp
 		*first.LedgerAccountId > 0 && *first.LedgerAccountId == *second.LedgerAccountId
 }
 
-// CrossSourceTimeMatch 两边都有时分时看时间窗；任一侧只有日期（当地 00:00）则只对同一天。
+// CrossSourceTimeMatch 两边都有时分时看时间窗；普通消费遇到月结单日期行时只对同一天。
+// 退款可能在渠道完成后的下一记账日才出现在信用卡月结单，允许沿用明确的时间窗。
 func CrossSourceTimeMatch(first *importing.RawImportRow, second *importing.RawImportRow, maxDelta int64) bool {
 	if first == nil || second == nil || first.NormalizedUnixTime == nil || second.NormalizedUnixTime == nil || maxDelta < 0 {
 		return false
@@ -628,14 +629,25 @@ func CrossSourceTimeMatch(first *importing.RawImportRow, second *importing.RawIm
 	if rowHasDateOnlyTime(first) || rowHasDateOnlyTime(second) {
 		left := rowCivilDate(first)
 		right := rowCivilDate(second)
-		return left != "" && left == right
+		if left != "" && left == right {
+			return true
+		}
+		if first.EconomicEffect != importing.ECONOMIC_EFFECT_REFUND && second.EconomicEffect != importing.ECONOMIC_EFFECT_REFUND {
+			return false
+		}
+		return absoluteInt64(*first.NormalizedUnixTime-*second.NormalizedUnixTime) <= maxDelta
 	}
 	return absoluteInt64(*first.NormalizedUnixTime-*second.NormalizedUnixTime) <= maxDelta
 }
 
-// CrossSourceComparisonMatch 金额币种已在硬过滤里；这里再要求对方/说明相似、同一张卡、时间按上条规则。
+// CrossSourceComparisonMatch 金额币种已在硬过滤里。明细两边仍要求对方/说明相似；
+// 一边是只有日期的月结单、另一边有准确时间时，同一资金账户已经提供了更强的网关证据，
+// 商户全文不再是硬条件，避免“支付宝 持卡人”等通用说明漏掉真实重复。
 func CrossSourceComparisonMatch(first *importing.RawImportRow, second *importing.RawImportRow, maxDelta int64) bool {
-	return evidenceTextSimilar(first, second) && CrossSourceSameCard(first, second) && CrossSourceTimeMatch(first, second, maxDelta)
+	if !CrossSourceSameCard(first, second) || !CrossSourceTimeMatch(first, second, maxDelta) {
+		return false
+	}
+	return evidenceTextSimilar(first, second) || rowHasDateOnlyTime(first) != rowHasDateOnlyTime(second)
 }
 
 func rowTimezoneSeconds(row *importing.RawImportRow) int {

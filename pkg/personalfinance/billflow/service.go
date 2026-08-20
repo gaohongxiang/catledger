@@ -313,7 +313,13 @@ type MergeGroupView struct {
 }
 
 type MergeGroupListResult struct {
-	Items []*MergeGroupView
+	EvidenceRowCount        int64
+	ConsolidatedRowCount    int64
+	PlannedTransactionCount int64
+	MergeReviewCount        int64
+	CategoryReviewCount     int64
+	OtherReviewCount        int64
+	Items                   []*MergeGroupView
 }
 
 type ClassifiedRowView struct {

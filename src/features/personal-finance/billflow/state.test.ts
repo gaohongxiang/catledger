@@ -235,6 +235,11 @@ describe('billflow task page wiring', () => {
         expect(workbench).toContain('v-for="todo in otherReviewTodos"');
         expect(workbench).toContain('v-for="(group, groupIndex) in activeMergeGroups"');
         expect(workbench).toContain('listMergeGroups');
+        expect(workbench).toContain('transactionPlan.evidenceRowCount');
+        expect(workbench).toContain('transactionPlan.consolidatedRowCount');
+        expect(workbench).toContain('transactionPlan.plannedTransactionCount');
+        expect(workbench).toContain("todo.todoKind !== 'uncategorized'");
+        expect(workbench).toContain('blockingTodos.value.length > 0');
         expect(workbench).not.toContain('matchingReappliedFor');
         expect(workbench).toContain('formatMergeSource');
         expect(workbench).toContain('formatMergeTime');

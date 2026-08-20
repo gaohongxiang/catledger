@@ -357,7 +357,7 @@ func TestServiceDoesNotPostWhenAutoReconcileRequiresAction(t *testing.T) {
 	service, err := billflow.NewService(repository, evidence, &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
 		401: {mappedGroup(accountId, 801)},
 		402: {mappedGroup(accountId, 802)},
-	}}, poster, reconciler, nil, nil, &fakeCategories{}, &fakeUndo{can: true}, func() int64 {
+	}}, poster, reconciler, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{{CategoryId: 51, Name: "餐饮美食"}}}, &fakeUndo{can: true}, func() int64 {
 		nextId++
 		return nextId
 	})
@@ -460,7 +460,7 @@ func TestServiceDefersAutoReconcileLedgerEffectUntilFirstTaskConfirmation(t *tes
 	service, err := billflow.NewService(repository, evidence, &fakePayments{groups: map[int64][]*importing.PaymentAccountGroup{
 		401: {mappedGroup(accountId, 801)},
 		402: {mappedGroup(accountId, 802)},
-	}}, poster, reconciler, nil, nil, &fakeCategories{leaves: []billflow.CategoryLeaf{{CategoryId: 51, Name: "餐饮美食"}}}, &fakeUndo{can: true}, func() int64 {
+	}}, poster, reconciler, nil, nil, &fakeCategories{}, &fakeUndo{can: true}, func() int64 {
 		nextId++
 		return nextId
 	})
@@ -503,8 +503,17 @@ func TestServiceDefersAutoReconcileLedgerEffectUntilFirstTaskConfirmation(t *tes
 		t.Fatalf("preview wrote ledger effects: task=%+v decisions=%+v calls=%d err=%v", preview, reconciler.decided, poster.calls, err)
 	}
 	previewGroups, err := service.ListMergeGroups(nil, uid, created.TaskId)
-	if err != nil || len(previewGroups.Items) != 1 || previewGroups.Items[0].Status != billflow.MERGE_GROUP_STATUS_PREVIEW_MERGED || previewGroups.Items[0].PrimaryCaseId == nil || *previewGroups.Items[0].PrimaryCaseId != 99 {
+	if err != nil || previewGroups.EvidenceRowCount != 2 || previewGroups.ConsolidatedRowCount != 1 || previewGroups.PlannedTransactionCount != 1 || previewGroups.CategoryReviewCount != 1 ||
+		len(previewGroups.Items) != 1 || previewGroups.Items[0].Status != billflow.MERGE_GROUP_STATUS_PREVIEW_MERGED || previewGroups.Items[0].PrimaryCaseId == nil || *previewGroups.Items[0].PrimaryCaseId != 99 {
 		t.Fatalf("first confirmation preview did not expose the task merge: groups=%+v err=%v", previewGroups, err)
+	}
+	resolvedTodos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_RESOLVED, nil, 20)
+	if err != nil || len(resolvedTodos.Items) < 1 || resolvedTodos.Items[0].SubjectKind != billflow.SUBJECT_KIND_RECONCILIATION_CASE || resolvedTodos.Items[0].SubjectId != 99 {
+		t.Fatalf("preview did not persist the exact selected case: todos=%+v err=%v", resolvedTodos, err)
+	}
+	openTodos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
+	if err != nil || !hasTodoKind(openTodos, billflow.TODO_KIND_UNCATEGORIZED) || hasTodoKind(openTodos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("merged canonical event should have one classification todo, not two raw-row todos: todos=%+v err=%v", openTodos, err)
 	}
 	confirmed, err := service.ConfirmPost(nil, billflow.RunTaskRequest{Uid: uid, TaskId: created.TaskId, ExpectedVersion: preview.Version, IdempotencyKey: "confirm-first-pair", CreatedIp: "192.0.2.10"}, time.UTC)
 	if err != nil || confirmed == nil || confirmed.Status != billflow.TASK_STATUS_READY || confirmed.AutoPostedCount != 1 || len(reconciler.decided) != 1 || poster.calls != 0 {
@@ -550,7 +559,7 @@ func TestServiceMergeGroupsDoNotCallIndependentDecisionMerged(t *testing.T) {
 	}
 }
 
-func TestServiceDoesNotGuessNonUniqueCrossSourcePairs(t *testing.T) {
+func TestServiceConsolidatesBalancedStatementBucketAndLeavesUnbalancedBucketPending(t *testing.T) {
 	repository, _ := newSQLiteBillflowRepository(t)
 	uid := int64(1001)
 	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
@@ -613,20 +622,25 @@ func TestServiceDoesNotGuessNonUniqueCrossSourcePairs(t *testing.T) {
 	if err != nil || ran == nil {
 		t.Fatalf("run even-pair task: %+v %v", ran, err)
 	}
-	if len(reconciler.decided) != 0 {
-		t.Fatalf("non-unique even pairs were guessed automatically: %+v", reconciler.decided)
+	if len(reconciler.decided) != 2 {
+		t.Fatalf("balanced two-by-two statement bucket should produce two events: %+v", reconciler.decided)
 	}
 	todos, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
-	if err != nil || !hasTodoKind(todos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
-		t.Fatalf("non-unique even pairs should stay as one merge decision: %+v err=%v", todos, err)
+	if err != nil || hasTodoKind(todos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("balanced statement bucket should not stay ambiguous: %+v err=%v", todos, err)
 	}
 	groups, err := service.ListMergeGroups(nil, uid, created.TaskId)
-	if err != nil || len(groups.Items) != 1 || len(groups.Items[0].Rows) != 4 || groups.Items[0].Status != billflow.MERGE_GROUP_STATUS_PENDING || groups.Items[0].PrimaryCaseId != nil {
-		t.Fatalf("overlapping candidate graph was not collapsed into one task group: groups=%+v err=%v", groups, err)
+	if err != nil || groups.EvidenceRowCount != 4 || groups.ConsolidatedRowCount != 2 || groups.PlannedTransactionCount != 2 || len(groups.Items) != 2 {
+		t.Fatalf("balanced statement bucket should expose two selected event pairs: groups=%+v err=%v", groups, err)
+	}
+	for _, group := range groups.Items {
+		if group == nil || len(group.Rows) != 2 || group.Status != billflow.MERGE_GROUP_STATUS_MERGED || group.PrimaryCaseId == nil {
+			t.Fatalf("balanced selected pair is not an applied merge: %+v", group)
+		}
 	}
 	merged, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_RESOLVED, nil, 20)
-	if err != nil || hasTodoKind(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
-		t.Fatalf("non-unique pairs must not appear as merged: %+v err=%v", merged, err)
+	if err != nil || !hasTodoKind(merged, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
+		t.Fatalf("balanced selected pairs should retain exact merge evidence: %+v err=%v", merged, err)
 	}
 
 	oddRepo, _ := newSQLiteBillflowRepository(t)
@@ -682,6 +696,11 @@ func TestServiceDoesNotGuessNonUniqueCrossSourcePairs(t *testing.T) {
 	oddTodos, err := oddService.ListTodos(nil, uid, oddCreated.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
 	if err != nil || !hasTodoKind(oddTodos, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
 		t.Fatalf("unpaired odd row should ask the user: %+v err=%v", oddTodos, err)
+	}
+	oddGroups, err := oddService.ListMergeGroups(nil, uid, oddCreated.TaskId)
+	if err != nil || oddGroups.EvidenceRowCount != 3 || oddGroups.ConsolidatedRowCount != 0 || oddGroups.PlannedTransactionCount != 3 || oddGroups.MergeReviewCount != 1 ||
+		len(oddGroups.Items) != 1 || len(oddGroups.Items[0].Rows) != 3 || oddGroups.Items[0].Status != billflow.MERGE_GROUP_STATUS_PENDING {
+		t.Fatalf("unbalanced statement bucket summary is incorrect: groups=%+v err=%v", oddGroups, err)
 	}
 }
 

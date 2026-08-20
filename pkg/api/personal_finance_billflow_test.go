@@ -89,19 +89,23 @@ func TestBillflowHandlersUseStringIdsAndOmitSecrets(t *testing.T) {
 	assertBillflowResponseOmits(t, classifiedText, "aliasKey", "RawItem", "rawNote")
 
 	caseId := int64(7001)
-	stub.mergeGroups = &billflow.MergeGroupListResult{Items: []*billflow.MergeGroupView{{
-		GroupId: strings.Repeat("a", 64), Status: billflow.MERGE_GROUP_STATUS_PREVIEW_MERGED,
-		RelationType: "same_event", PrimaryCaseId: &caseId, CaseIds: []int64{caseId},
-		CandidateRuleVersion: "reconciliation-candidate-v2", ReasonCodes: []string{"amount_currency_exact"},
-		Rows: []*billflow.MergeGroupRowView{{TodoMatchView: &billflow.TodoMatchView{RowId: 801, SourceType: "alipay", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true},
-			{TodoMatchView: &billflow.TodoMatchView{RowId: 802, SourceType: "bank", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true}},
-	}}}
+	stub.mergeGroups = &billflow.MergeGroupListResult{
+		EvidenceRowCount: 198, ConsolidatedRowCount: 49, PlannedTransactionCount: 149,
+		MergeReviewCount: 0, CategoryReviewCount: 12, OtherReviewCount: 3,
+		Items: []*billflow.MergeGroupView{{
+			GroupId: strings.Repeat("a", 64), Status: billflow.MERGE_GROUP_STATUS_PREVIEW_MERGED,
+			RelationType: "same_event", PrimaryCaseId: &caseId, CaseIds: []int64{caseId},
+			CandidateRuleVersion: "reconciliation-candidate-v3", ReasonCodes: []string{"amount_currency_exact"},
+			Rows: []*billflow.MergeGroupRowView{{TodoMatchView: &billflow.TodoMatchView{RowId: 801, SourceType: "alipay", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true},
+				{TodoMatchView: &billflow.TodoMatchView{RowId: 802, SourceType: "bank", Label: "merchant", Amount: "123", Currency: "CNY", Direction: "expense"}, InTask: true}},
+		}}}
 	mergeGroups, apiErr := api.BillflowTaskMergeGroupsHandler(newBillflowTestContext(t, http.MethodGet, "/merge_groups?id=9001", ""))
 	if apiErr != nil {
 		t.Fatalf("list merge groups: %v", apiErr)
 	}
 	mergeText := marshalBillflowResponse(t, mergeGroups)
-	if !strings.Contains(mergeText, `"primaryCaseId":"7001"`) || !strings.Contains(mergeText, `"status":"preview_merged"`) || !strings.Contains(mergeText, `"rowId":"801"`) {
+	if !strings.Contains(mergeText, `"primaryCaseId":"7001"`) || !strings.Contains(mergeText, `"status":"preview_merged"`) || !strings.Contains(mergeText, `"rowId":"801"`) ||
+		!strings.Contains(mergeText, `"evidenceRowCount":198`) || !strings.Contains(mergeText, `"consolidatedRowCount":49`) || !strings.Contains(mergeText, `"plannedTransactionCount":149`) {
 		t.Fatalf("merge group response omitted safe task projection: %s", mergeText)
 	}
 	assertBillflowResponseOmits(t, mergeText, "caseKey", "aliasKey", "rawPaymentMethod", "RawItem", "rawNote")

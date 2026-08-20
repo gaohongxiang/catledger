@@ -17,6 +17,12 @@ var forbiddenCategoryNames = map[string]struct{}{
 	"不计收支": {}, "二维码收款": {},
 }
 
+var alipayCategoryLeafFallbacks = map[string]string{
+	"餐饮美食": "食品",
+	"交通出行": "公共交通",
+	"医疗健康": "检查治疗",
+}
+
 func canonicalCategoryName(value string) string {
 	normalized := strings.TrimSpace(norm.NFKC.String(value))
 	var builder strings.Builder
@@ -138,6 +144,13 @@ func sourceCategoryName(row *importing.RawImportRow, sourceType importing.Source
 		return strings.TrimSpace(row.RawTransactionType)
 	}
 	return ""
+}
+
+func sourceCategoryLeafFallback(sourceType importing.SourceType, name string) string {
+	if sourceType != importing.SOURCE_TYPE_ALIPAY {
+		return ""
+	}
+	return alipayCategoryLeafFallbacks[canonicalCategoryName(name)]
 }
 
 func transferLikeTodo(name string) TodoKind {

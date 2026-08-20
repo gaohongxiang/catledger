@@ -253,7 +253,13 @@ type personalFinanceBillflowMergeGroupResponse struct {
 }
 
 type personalFinanceBillflowMergeGroupListResponse struct {
-	Items []*personalFinanceBillflowMergeGroupResponse `json:"items"`
+	EvidenceRowCount        int64                                        `json:"evidenceRowCount"`
+	ConsolidatedRowCount    int64                                        `json:"consolidatedRowCount"`
+	PlannedTransactionCount int64                                        `json:"plannedTransactionCount"`
+	MergeReviewCount        int64                                        `json:"mergeReviewCount"`
+	CategoryReviewCount     int64                                        `json:"categoryReviewCount"`
+	OtherReviewCount        int64                                        `json:"otherReviewCount"`
+	Items                   []*personalFinanceBillflowMergeGroupResponse `json:"items"`
 }
 
 type personalFinanceBillflowTodoCursorResponse struct {
@@ -818,7 +824,12 @@ func newPersonalFinanceBillflowMergeGroupListResponse(result *billflow.MergeGrou
 	if result == nil {
 		return nil, errs.ErrOperationFailed
 	}
-	response := &personalFinanceBillflowMergeGroupListResponse{Items: make([]*personalFinanceBillflowMergeGroupResponse, 0, len(result.Items))}
+	response := &personalFinanceBillflowMergeGroupListResponse{
+		EvidenceRowCount: result.EvidenceRowCount, ConsolidatedRowCount: result.ConsolidatedRowCount,
+		PlannedTransactionCount: result.PlannedTransactionCount, MergeReviewCount: result.MergeReviewCount,
+		CategoryReviewCount: result.CategoryReviewCount, OtherReviewCount: result.OtherReviewCount,
+		Items: make([]*personalFinanceBillflowMergeGroupResponse, 0, len(result.Items)),
+	}
 	for _, item := range result.Items {
 		if item == nil || len(item.GroupId) != 64 || len(item.CaseIds) < 1 || len(item.Rows) < 2 {
 			return nil, errs.ErrOperationFailed
