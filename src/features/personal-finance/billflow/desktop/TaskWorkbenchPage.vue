@@ -471,20 +471,6 @@
                         item-title="title"
                         item-value="value"
                         variant="outlined"
-                        :items="counterpartAccountOptions(todo)"
-                        :placeholder="tt('personalFinance.billflow.todos.pickPaymentAccount')"
-                        :disabled="busy"
-                        :model-value="counterpartAccountDrafts[todo.id]"
-                        v-if="todo.todoKind === 'repayment_unclear'"
-                        @update:model-value="value => setCounterpartAccount(todo.id, value)"
-                    />
-                    <v-select
-                        class="todo-row__select"
-                        density="compact"
-                        hide-details
-                        item-title="title"
-                        item-value="value"
-                        variant="outlined"
                         :items="categoryOptionsFor(todo)"
                         :placeholder="tt('personalFinance.billflow.todos.pickCategory')"
                         :disabled="busy"
@@ -550,6 +536,20 @@
                         <b v-if="formatTodoAmount(todo)">{{ formatTodoAmount(todo) }}</b>
                         <em v-if="todo.direction">{{ tt(billflowDirectionKey(todo.direction)) }}</em>
                     </div>
+                    <v-select
+                        class="todo-row__select"
+                        density="compact"
+                        hide-details
+                        item-title="title"
+                        item-value="value"
+                        variant="outlined"
+                        :items="counterpartAccountOptions(todo)"
+                        :placeholder="tt('personalFinance.billflow.todos.pickPaymentAccount')"
+                        :disabled="busy"
+                        :model-value="counterpartAccountDrafts[todo.id]"
+                        v-if="todo.todoKind === 'repayment_unclear'"
+                        @update:model-value="value => setCounterpartAccount(todo.id, value)"
+                    />
                     <v-select
                         class="todo-row__select"
                         density="compact"
