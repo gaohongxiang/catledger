@@ -78,6 +78,7 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 		return nil, err
 	}
 	selectedRows := make(map[int64]struct{})
+	selectedCaseIds := make(map[int64]struct{})
 	for _, detail := range details {
 		if detail == nil {
 			continue
@@ -88,8 +89,16 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 		if !preview && !appliedSameEvent {
 			continue
 		}
-		for _, rowId := range caseRepresentativeRowIDs(detail, rowIndex, taskRows) {
+		ids := caseRepresentativeRowIDs(detail, rowIndex, taskRows)
+		inTask := false
+		for _, rowId := range ids {
 			selectedRows[rowId] = struct{}{}
+			if _, exists := taskRows[rowId]; exists {
+				inTask = true
+			}
+		}
+		if inTask {
+			selectedCaseIds[detail.CaseId] = struct{}{}
 		}
 	}
 	projections := make([]mergeCaseProjection, 0, len(details))
@@ -110,7 +119,7 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 		if !preview {
 			_, leftSelected := selectedRows[ids[0]]
 			_, rightSelected := selectedRows[ids[1]]
-			if leftSelected && rightSelected && detail.Status == reconciliation.CASE_STATUS_OPEN && detail.CurrentDecisionId == nil {
+			if (leftSelected || rightSelected) && detail.Status == reconciliation.CASE_STATUS_OPEN && detail.CurrentDecisionId == nil {
 				continue
 			}
 		}
@@ -118,15 +127,12 @@ func (s *Service) ListMergeGroups(c core.Context, uid int64, taskId int64) (*Mer
 	}
 	result := buildMergeGroupViews(c, s, uid, projections, rowIndex, sourceIndex, taskRows)
 	result.EvidenceRowCount = evidenceRowCount
+	result.ConsolidatedRowCount = int64(len(selectedCaseIds))
 	for _, group := range result.Items {
 		if group == nil {
 			continue
 		}
 		switch group.Status {
-		case MERGE_GROUP_STATUS_PREVIEW_MERGED, MERGE_GROUP_STATUS_MERGED:
-			if group.RelationType == reconciliation.DECISION_TYPE_SAME_EVENT {
-				result.ConsolidatedRowCount++
-			}
 		case MERGE_GROUP_STATUS_PENDING, MERGE_GROUP_STATUS_DEFERRED, MERGE_GROUP_STATUS_ACTION_REQUIRED:
 			result.MergeReviewCount++
 		}

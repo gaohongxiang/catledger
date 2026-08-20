@@ -551,7 +551,7 @@ func selectAutomaticSameEventPairs(pairs []sameEventPair, rows map[int64]*import
 			ledgerAccountId: *left.LedgerAccountId,
 			amount:          *left.NormalizedAmount,
 			currency:        left.Currency,
-			direction:       left.NormalizedDirection,
+			direction:       effectiveMergeDirection(left),
 			civilDate:       rowCivilDateForMerge(left),
 		}
 		buckets[bucket] = append(buckets[bucket], pair)
@@ -708,9 +708,9 @@ func (s *Service) sameEventDraft(pair sameEventPair, rows map[int64]*importing.R
 		return nil
 	}
 	txType := models.TRANSACTION_TYPE_EXPENSE
-	if selected.NormalizedDirection == importing.NORMALIZED_DIRECTION_INCOME {
+	if effectiveMergeDirection(selected) == importing.NORMALIZED_DIRECTION_INCOME {
 		txType = models.TRANSACTION_TYPE_INCOME
-	} else if selected.NormalizedDirection != importing.NORMALIZED_DIRECTION_EXPENSE {
+	} else if effectiveMergeDirection(selected) != importing.NORMALIZED_DIRECTION_EXPENSE {
 		return nil
 	}
 	categoryId := int64(0)
@@ -862,15 +862,24 @@ func (s *Service) highConfidenceSameEventRows(first *importing.RawImportRow, sec
 	return first.Currency == second.Currency && *first.NormalizedAmount == *second.NormalizedAmount &&
 		reconciliation.CrossSourceComparisonMatch(first, second, HIGH_CONFIDENCE_WINDOW_SECONDS) &&
 		*first.LedgerAccountId == *second.LedgerAccountId &&
-		(first.NormalizedDirection == second.NormalizedDirection || compatibleBillflowDirections(first.NormalizedDirection, second.NormalizedDirection))
+		compatibleBillflowRows(first, second)
 }
 
-func compatibleBillflowDirections(left importing.NormalizedDirection, right importing.NormalizedDirection) bool {
-	if left == right {
-		return true
+func compatibleBillflowRows(left *importing.RawImportRow, right *importing.RawImportRow) bool {
+	if left == nil || right == nil {
+		return false
 	}
-	return (left == importing.NORMALIZED_DIRECTION_EXPENSE && right == importing.NORMALIZED_DIRECTION_EXPENSE) ||
-		(left == importing.NORMALIZED_DIRECTION_INCOME && right == importing.NORMALIZED_DIRECTION_INCOME)
+	return effectiveMergeDirection(left) == effectiveMergeDirection(right)
+}
+
+func effectiveMergeDirection(row *importing.RawImportRow) importing.NormalizedDirection {
+	if row == nil {
+		return importing.NORMALIZED_DIRECTION_UNKNOWN
+	}
+	if row.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_NEUTRAL {
+		return importing.NORMALIZED_DIRECTION_INCOME
+	}
+	return row.NormalizedDirection
 }
 
 func canRerunOrganize(status TaskStatus) bool {
