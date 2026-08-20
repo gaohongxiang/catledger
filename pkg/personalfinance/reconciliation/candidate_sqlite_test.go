@@ -250,6 +250,55 @@ func TestCandidateServiceSQLiteBatchLocalAndGenerationLimits(t *testing.T) {
 	}
 }
 
+func TestCandidateServiceSQLiteUsesRawMemberForDateOnlyStatementOccurrence(t *testing.T) {
+	service, database := newCandidateSQLiteService(t, &sequentialCandidateIds{})
+	uid := int64(3663)
+	location := time.FixedZone("cst", 8*3600)
+	midnight := time.Date(2026, 7, 6, 0, 0, 0, 0, location).Unix()
+	afternoon := time.Date(2026, 7, 6, 10, 50, 0, 0, location).Unix()
+	detail := candidateTestRow(uid, 91001, 901, int64Pointer(9101), importing.IDENTITY_STATE_NEW, 4350, "CNY", afternoon)
+	statement := candidateTestRow(uid, 92002, 902, int64Pointer(9202), importing.IDENTITY_STATE_EXACT_DUPLICATE, 4350, "CNY", midnight)
+	detail.RawCounterparty, detail.RawPaymentMethod = "详细商户", "光大银行信用卡(2690)"
+	statement.RawCounterparty, statement.RawPaymentMethod = "支付宝 持卡人", "末四位2690"
+	statement.NormalizedTransactionType = importing.SOURCE_TRANSACTION_TYPE_OTHER
+	insertCandidateFixtures(t, database,
+		candidateTestAccount(uid, 91, importing.SOURCE_TYPE_ALIPAY),
+		candidateTestAccount(uid, 92, importing.SOURCE_TYPE_BANK),
+		candidateTestBatch(uid, 901, 91),
+		candidateTestBatch(uid, 902, 92),
+		candidateTestIdentity(uid, 9101, 91),
+		candidateTestIdentity(uid, 9202, 92),
+		detail,
+		statement,
+	)
+	generated, err := service.GenerateCandidates(nil, GenerateCandidatesRequest{Uid: uid, BatchId: 901})
+	if err != nil || len(generated.Cases) != 1 {
+		t.Fatalf("generate date-only statement candidate: %+v %v", generated, err)
+	}
+	members := listCandidateMembers(t, database, uid, generated.Cases[0].CaseId)
+	foundRawStatement := false
+	for _, member := range members {
+		if member.MemberKind == MEMBER_KIND_RAW_ROW && member.MemberRefId == statement.RowId {
+			foundRawStatement = true
+		}
+	}
+	if !foundRawStatement {
+		t.Fatalf("date-only statement occurrence was not persisted as a raw member: %+v", members)
+	}
+	store, err := datastore.NewDataStore(database)
+	if err != nil {
+		t.Fatalf("create case store: %v", err)
+	}
+	cases, err := NewCaseService(store)
+	if err != nil {
+		t.Fatalf("create case service: %v", err)
+	}
+	caseIds, err := cases.repository.findCaseIdsForRows(nil, uid, []int64{statement.RowId}, 10)
+	if err != nil || len(caseIds) != 1 || caseIds[0] != generated.Cases[0].CaseId {
+		t.Fatalf("task row lookup omitted stable raw-row member: %+v %v", caseIds, err)
+	}
+}
+
 func TestCandidateServiceSQLiteRefreshProtectionAndTransactionRollback(t *testing.T) {
 	service, database := newCandidateSQLiteService(t, &sequentialCandidateIds{})
 	uid := int64(5005)

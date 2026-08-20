@@ -358,14 +358,14 @@ func loadCaseMemberRows(sess *xorm.Session, uid int64, caseRecord *Case, limit i
 		case MEMBER_KIND_RAW_ROW:
 			row := new(importing.RawImportRow)
 			found, err := sess.Where("uid=? AND row_id=?", uid, member.MemberRefId).Get(row)
-			if err != nil || !found || row.IdentityState != importing.IDENTITY_STATE_BATCH_LOCAL {
-				return nil, fmt.Errorf("reconciliation batch-local member invariant mismatch")
+			if err != nil || !found || (row.IdentityState != importing.IDENTITY_STATE_BATCH_LOCAL && !statementRowNeedsOccurrenceMember(row)) {
+				return nil, fmt.Errorf("reconciliation raw-row member invariant mismatch")
 			}
 			entry.rows = []*importing.RawImportRow{row}
 			batch := new(importing.ImportBatch)
 			found, err = sess.Where("uid=? AND batch_id=?", uid, row.BatchId).Get(batch)
 			if err != nil || !found || batch.SourceAccountId == nil || *batch.SourceAccountId < 1 {
-				return nil, fmt.Errorf("reconciliation batch-local source invariant mismatch")
+				return nil, fmt.Errorf("reconciliation raw-row source invariant mismatch")
 			}
 			entry.sourceAccount = new(importing.SourceAccount)
 			found, err = sess.Where("uid=? AND source_account_id=?", uid, *batch.SourceAccountId).Get(entry.sourceAccount)

@@ -329,22 +329,22 @@ func validateCandidateMemberSources(sess *xorm.Session, uid int64, members []*Ca
 			found, err := sess.Where("uid=? AND row_id=?", uid, member.MemberRefId).Get(row)
 
 			if err != nil {
-				return fmt.Errorf("find reconciliation candidate batch-local row: %w", err)
+				return fmt.Errorf("find reconciliation candidate raw row: %w", err)
 			}
 
-			if !found || row.IdentityState != importing.IDENTITY_STATE_BATCH_LOCAL {
-				return fmt.Errorf("reconciliation candidate batch-local row invariant mismatch")
+			if !found || (row.IdentityState != importing.IDENTITY_STATE_BATCH_LOCAL && !statementRowNeedsOccurrenceMember(row)) {
+				return fmt.Errorf("reconciliation candidate raw row invariant mismatch")
 			}
 
 			batch := new(importing.ImportBatch)
 			found, err = sess.Where("uid=? AND batch_id=?", uid, row.BatchId).Get(batch)
 
 			if err != nil {
-				return fmt.Errorf("find reconciliation candidate batch-local source: %w", err)
+				return fmt.Errorf("find reconciliation candidate raw-row source: %w", err)
 			}
 
 			if !found || batch.SourceAccountId == nil || *batch.SourceAccountId < 1 {
-				return fmt.Errorf("reconciliation candidate batch-local source invariant mismatch")
+				return fmt.Errorf("reconciliation candidate raw-row source invariant mismatch")
 			}
 
 			sourceAccountIds[index] = *batch.SourceAccountId
