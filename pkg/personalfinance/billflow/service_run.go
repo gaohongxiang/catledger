@@ -911,7 +911,7 @@ func (s *Service) persistOrganizeResult(c core.Context, request RunTaskRequest, 
 			return err
 		}
 		for _, existing := range openTodos {
-			if existing == nil || existing.TodoKind != TODO_KIND_CROSS_SOURCE_AMBIGUOUS {
+			if existing == nil {
 				continue
 			}
 			if _, stillNeeded := keep[todoIdentityKey(existing.TodoKind, existing.SubjectKind, existing.SubjectId)]; stillNeeded {

@@ -752,7 +752,10 @@ func TestServiceRerunClosesStaleMergeTodos(t *testing.T) {
 		t.Fatalf("first organize should not leave open merge todos: %+v err=%v", firstOpen, err)
 	}
 	if err := repository.DoTransaction(nil, uid, func(tx *billflow.RepositoryTransaction) error {
-		return tx.InsertTodo(testTodo(uid, created.TaskId, 8802, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, billflow.SUBJECT_KIND_RAW_ROW, 802, 21))
+		if err := tx.InsertTodo(testTodo(uid, created.TaskId, 8802, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS, billflow.SUBJECT_KIND_RAW_ROW, 802, 21)); err != nil {
+			return err
+		}
+		return tx.InsertTodo(testTodo(uid, created.TaskId, 8803, billflow.TODO_KIND_UNCATEGORIZED, billflow.SUBJECT_KIND_RAW_ROW, 802, 21))
 	}); err != nil {
 		t.Fatalf("insert stale merge todo: %v", err)
 	}
@@ -765,8 +768,8 @@ func TestServiceRerunClosesStaleMergeTodos(t *testing.T) {
 		t.Fatalf("rerun organize: %+v err=%v", rerun, err)
 	}
 	open, err := service.ListTodos(nil, uid, created.TaskId, billflow.TODO_STATUS_OPEN, nil, 20)
-	if err != nil || hasTodoKind(open, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) {
-		t.Fatalf("rerun should close stale merge todos: %+v err=%v", open, err)
+	if err != nil || hasTodoKind(open, billflow.TODO_KIND_CROSS_SOURCE_AMBIGUOUS) || hasTodoKind(open, billflow.TODO_KIND_UNCATEGORIZED) {
+		t.Fatalf("rerun should close stale merge and category todos: %+v err=%v", open, err)
 	}
 }
 
