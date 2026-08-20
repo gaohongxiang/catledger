@@ -1,0 +1,30 @@
+# 本仓库的 Codex 默认配置。只放稳定、项目级设置；个人账号、认证和
+# 全局通知等仍由 ~/.codex/config.toml 管理。
+
+model = "gpt-5.6-sol"
+model_reasoning_effort = "high"
+plan_mode_reasoning_effort = "medium"
+
+[agents]
+default_subagent_model = "gpt-5.6-sol"
+default_subagent_reasoning_effort = "high"
+
+# 当前 Web 主线和未来微信小程序都可能使用 CloudBase 能力，因此保留
+# CloudBase / CloudBase Sites 及其 MCP。这里只关闭和本产品无关的创作、
+# 托管与可视化插件运行能力；Browser 保持启用供 localhost:8080 验收。
+[plugins."cowart@personal"]
+enabled = false
+
+[plugins."sites@openai-bundled"]
+enabled = false
+
+[plugins."template-creator@openai-primary-runtime"]
+enabled = false
+
+[plugins."visualize@openai-bundled"]
+enabled = false
+
+# ezBookkeeping MCP 面向个人记账数据操作，不参与本仓库源码开发；关闭它
+# 可降低误调用生产数据的风险，源码和 8080 验收继续走本地命令与 Browser。
+[mcp_servers.ezbookkeeping]
+enabled = false

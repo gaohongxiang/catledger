@@ -149,7 +149,8 @@ dist/
 .roo/
 
 # Codex
-.codex
+.codex/*
+!.codex/config.toml
 .planning
 
 # Binary and build files
