@@ -162,6 +162,18 @@ func verifySchemaV008(db *datastore.Database) error {
 	return verifySchemaV008WithContext(context.Background(), db)
 }
 
+func validateSchemaV009PreflightWithContext(c context.Context, db *datastore.Database) error {
+	return verifyPersonalFinanceMigrationPreflightWithContext(c, db, schemaBeansThroughV008(), schemaBeansV009())
+}
+
+func verifySchemaV009WithContext(c context.Context, db *datastore.Database) error {
+	return verifyPersonalFinanceTablesWithContext(c, db, schemaBeansThroughV009(), schemaExact)
+}
+
+func verifySchemaV009(db *datastore.Database) error {
+	return verifySchemaV009WithContext(context.Background(), db)
+}
+
 // syncFrozenSchemaBeanWithIndexes 补足 Sync2 在两个复合索引共享前缀时可能漏建的索引。
 // v003 起每张新增表仍作为一个可重入迁移步骤执行，重试只创建确实缺失的冻结索引。
 func syncFrozenSchemaBeanWithIndexes(c context.Context, db *datastore.Database, bean any) error {

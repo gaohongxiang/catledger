@@ -13,12 +13,15 @@ import (
 	"time"
 
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/billflow"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
 
 var (
@@ -107,11 +110,11 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("migration table is not exact: %v", err)
 		}
 
-		if err := verifySchemaV008(integrationDatabase); err != nil {
+		if err := verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("v006 schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 8)
+		record := requireMigrationRecord(t, integrationDatabase, 9)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected successful migration record: %+v", record)
@@ -137,7 +140,7 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("advance to v006: %v", err)
 		}
 
-		if err := verifySchemaV008(integrationDatabase); err != nil {
+		if err := verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("advanced v006 schema is not exact: %v", err)
 		}
 
@@ -167,7 +170,7 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("advance v003 to v006: %v", err)
 		}
 
-		if err := verifySchemaV008(integrationDatabase); err != nil {
+		if err := verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("v003 to v006 schema is not exact: %v", err)
 		}
 
@@ -194,7 +197,7 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v004-to-v006"}); err != nil {
 			t.Fatalf("advance v004 to v006: %v", err)
 		}
-		if err := verifySchemaV008(integrationDatabase); err != nil {
+		if err := verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("v004 to v006 schema is not exact: %v", err)
 		}
 
@@ -379,7 +382,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV008(integrationDatabase); err != nil {
+		if err = verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("recovered schema is not exact: %v", err)
 		}
 
@@ -471,7 +474,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV008(integrationDatabase); err != nil {
+		if err = verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("resumed through v006 schema is not exact: %v", err)
 		}
 
@@ -563,7 +566,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV008(integrationDatabase); err != nil {
+		if err = verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("resumed through v006 schema is not exact: %v", err)
 		}
 
@@ -646,7 +649,7 @@ func TestMigrationProtocol(t *testing.T) {
 
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
-		if err = verifySchemaV008(integrationDatabase); err != nil {
+		if err = verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("resumed v005 through v006 schema is not exact: %v", err)
 		}
 
@@ -672,7 +675,7 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v005-to-v006"}); err != nil {
 			t.Fatalf("advance v005 to v006: %v", err)
 		}
-		if err := verifySchemaV008(integrationDatabase); err != nil {
+		if err := verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("v005 to v006 schema is not exact: %v", err)
 		}
 
@@ -754,7 +757,7 @@ func TestMigrationProtocol(t *testing.T) {
 
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
-		if err = verifySchemaV008(integrationDatabase); err != nil {
+		if err = verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("resumed v006 schema is not exact: %v", err)
 		}
 
@@ -780,7 +783,7 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v006-to-v007"}); err != nil {
 			t.Fatalf("advance v006 to v007: %v", err)
 		}
-		if err := verifySchemaV008(integrationDatabase); err != nil {
+		if err := verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("v006 to v007 schema is not exact: %v", err)
 		}
 
@@ -842,13 +845,87 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v007-to-v008"}); err != nil {
 			t.Fatalf("advance v007 to v008: %v", err)
 		}
-		if err := verifySchemaV008(integrationDatabase); err != nil {
+		if err := verifySchemaV009(integrationDatabase); err != nil {
 			t.Fatalf("v007 to v008 schema is not exact: %v", err)
 		}
 
 		record := requireMigrationRecord(t, integrationDatabase, 8)
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected v008 migration record: %+v", record)
+		}
+	})
+
+	t.Run("v008 posted evidence backfills directly to v009", func(t *testing.T) {
+		resetPersonalFinanceTables(t)
+		if err := integrationDatabase.SyncStructs(new(models.Account), new(models.Transaction)); err != nil {
+			t.Fatalf("create core tables for v009 backfill: %v", err)
+		}
+		runner := newIntegrationRunner(t, "through-v008-for-v009-backfill")
+		runner.migrations = runner.migrations[:8]
+		if err := runner.upgradeDatabase(integrationDatabase); err != nil {
+			t.Fatalf("prepare v008 backfill baseline: %v", err)
+		}
+
+		const (
+			uid           = int64(99001)
+			accountId     = int64(99002)
+			fileId        = int64(99003)
+			sourceId      = int64(99004)
+			batchId       = int64(99005)
+			postingId     = int64(99006)
+			transactionId = int64(99007)
+			rowId         = int64(99008)
+		)
+		now := requireDatabaseUnixTime(t, integrationDatabase)
+		account := &models.Account{AccountId: accountId, Uid: uid, Category: models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT,
+			Type: models.ACCOUNT_TYPE_SINGLE_ACCOUNT, Name: "test", Currency: "CNY", CreatedUnixTime: now, UpdatedUnixTime: now}
+		transaction := &models.Transaction{TransactionId: transactionId, Uid: uid, Type: models.TRANSACTION_DB_TYPE_EXPENSE,
+			AccountId: accountId, TransactionTime: utils.GetMinTransactionTimeFromUnixTime(now), Amount: 9900,
+			CreatedUnixTime: now, UpdatedUnixTime: now}
+		file := &importing.ImportFile{Uid: uid, ContentState: importing.IMPORT_FILE_CONTENT_STATE_AVAILABLE,
+			OriginalFileName: "sanitized.csv", FileSize: 10, FileSha256: strings.Repeat("a", 64), MimeType: "text/csv",
+			FileExtension: "csv", StorageObjectKey: "test/object", CreatedIp: "127.0.0.1",
+			CreatedUnixTime: now, UpdatedUnixTime: now, FileId: fileId}
+		source := &importing.SourceAccount{Uid: uid, SourceType: importing.SOURCE_TYPE_ALIPAY,
+			SourceAccountKey: strings.Repeat("b", 64), SourceAccountKeyVersion: importing.SOURCE_ACCOUNT_KEY_VERSION_V1,
+			LedgerAccountId: pointerToInt64V009(accountId), Status: importing.SOURCE_ACCOUNT_STATUS_ACTIVE,
+			MaskedDisplayName: "test***", DiscoveryMethod: importing.SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED,
+			CreatedUnixTime: now, UpdatedUnixTime: now, SourceAccountId: sourceId}
+		batch := &importing.ImportBatch{Uid: uid, FileId: fileId, SourceAccountId: pointerToInt64V009(sourceId),
+			Status: importing.IMPORT_BATCH_STATUS_COMPLETED, SourceTypeSnapshot: importing.SOURCE_TYPE_ALIPAY,
+			LedgerAccountId: pointerToInt64V009(accountId), ParserName: "test", ParserVersion: "parser-v1",
+			NormalizationVersion: "normalization-v1", IdentityKeyVersion: importing.IDENTITY_KEY_VERSION_V1,
+			CoreDigestVersion: importing.CORE_DIGEST_VERSION_V1, FingerprintVersion: importing.FINGERPRINT_VERSION_V1,
+			RawSnapshotVersion: importing.RAW_SNAPSHOT_VERSION_V1, ParseOptionsDigest: strings.Repeat("c", 64),
+			TotalRowCount: 1, ValidRowCount: 1, PostedRowCount: 1, CreatedUnixTime: now,
+			CompletedUnixTime: pointerToInt64V009(now), UpdatedUnixTime: now, BatchId: batchId}
+		row := legacyBackfillRowV009(uid, batchId, rowId, 1, now)
+		posting := &importing.ImportPosting{Uid: uid, BatchId: batchId, IdempotencyKeyDigest: strings.Repeat("d", 64),
+			IdempotencyKeyVersion: importing.IDEMPOTENCY_KEY_VERSION_V1, RequestDigest: strings.Repeat("e", 64),
+			RequestDigestVersion: importing.POSTING_REQUEST_VERSION_V1, Status: importing.IMPORT_POSTING_STATUS_COMPLETED,
+			SelectedRowCount: 1, CreatedTransactionCount: 1, CreatedUnixTime: now,
+			CompletedUnixTime: pointerToInt64V009(now), UpdatedUnixTime: now, PostingId: postingId}
+		link := &importing.RawRowTransactionLink{Uid: uid, RowId: rowId, TransactionId: transactionId,
+			RelationRole:   importing.RAW_ROW_TRANSACTION_RELATION_PRIMARY,
+			CreationMethod: importing.RAW_ROW_TRANSACTION_CREATION_POSTING_CREATED, PostingId: postingId,
+			RuleVersion: importing.POSTING_LINK_VERSION_V1, TransactionUpdatedUnixTime: now,
+			CreatedUnixTime: now, LinkId: 99009}
+		for _, bean := range []any{account, transaction, file, source, batch, row, posting, link} {
+			requireInsertBean(t, bean)
+		}
+
+		store := integrationDataStore(t, integrationDatabase)
+		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v008-to-v009-backfill"}); err != nil {
+			t.Fatalf("upgrade populated v008 to v009: %v", err)
+		}
+		repository, err := organizer.NewRepository(store)
+		if err != nil {
+			t.Fatalf("create organizer repository after integration backfill: %v", err)
+		}
+		update, err := repository.FindUpdateById(nil, uid, transactionId)
+		if err != nil || update == nil || update.Status != organizer.UPDATE_STATUS_POSTED ||
+			update.ValidEvidenceCount != 1 || update.FinalEventCount != 1 || update.PostedEventCount != 1 {
+			t.Fatalf("cross-database v009 backfill mismatch: update=%+v err=%v", update, err)
 		}
 	})
 
@@ -1588,7 +1665,23 @@ func resetPersonalFinanceTables(t *testing.T) {
 }
 
 func cleanupPersonalFinanceTables(db *datastore.Database) error {
+	for _, bean := range []any{new(models.Transaction), new(models.Account)} {
+		sess := db.NewSession(nil)
+		err := sess.DropTable(bean)
+		sess.Close()
+		if err != nil {
+			return fmt.Errorf("drop v009 backfill core fixture table %T: %w", bean, err)
+		}
+	}
+
 	tables := []string{
+		"pf_finance_action",
+		"pf_economic_event_transaction",
+		"pf_economic_event_relation",
+		"pf_economic_event_evidence",
+		"pf_economic_event",
+		"pf_finance_update_source",
+		"pf_finance_update",
 		"pf_month_report_revision",
 		"pf_card_statement_coverage",
 		"pf_card_cycle_rule",

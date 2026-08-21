@@ -11,12 +11,14 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 )
 
 func TestUserDataModulesCoverEveryMigratedUserTable(t *testing.T) {
 	registered := make(map[string]struct{})
 	for _, module := range []core.UserDataModule{
+		organizer.UserDataModule(),
 		billflow.UserDataModule(),
 		installments.UserDataModule(),
 		cardcycle.UserDataModule(),

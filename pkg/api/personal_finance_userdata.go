@@ -10,6 +10,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 	"github.com/mayswind/ezbookkeeping/pkg/services"
 )
@@ -42,6 +43,7 @@ func registerPersonalFinanceUserDataHooks(store *datastore.DataStore, storage im
 	}
 
 	modules := []core.UserDataModule{
+		organizer.UserDataModule(),
 		billflow.UserDataModule(),
 		installments.UserDataModule(),
 		cardcycle.UserDataModule(),

@@ -123,6 +123,13 @@ func cleanupImportingIntegrationTables(database *datastore.Database) error {
 	}
 
 	tables := []string{
+		"pf_finance_action",
+		"pf_economic_event_transaction",
+		"pf_economic_event_relation",
+		"pf_economic_event_evidence",
+		"pf_economic_event",
+		"pf_finance_update_source",
+		"pf_finance_update",
 		"pf_month_report_revision",
 		"pf_card_statement_coverage",
 		"pf_card_cycle_rule",

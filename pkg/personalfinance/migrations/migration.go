@@ -280,6 +280,24 @@ func registeredMigrations() []migration {
 		})
 	}
 
+	v009Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV009()))
+	v009Steps := make([]migrationStep, 0, len(schemaBeansV009()))
+
+	for _, bean := range schemaBeansV009() {
+		bean := bean
+		tableName := bean.(interface{ TableName() string }).TableName()
+		v009Steps = append(v009Steps, migrationStep{
+			name: "create_" + tableName,
+			run: func(c context.Context, db *datastore.Database) error {
+				return syncFrozenSchemaBeanWithIndexes(c, db, bean)
+			},
+		})
+	}
+	v009Steps = append(v009Steps, migrationStep{
+		name: "backfill_posted_evidence",
+		run:  backfillOrganizerPostedEvidenceV009,
+	})
+
 	return []migration{
 		{
 			version:   1,
@@ -344,6 +362,14 @@ func registeredMigrations() []migration {
 			preflight: validateSchemaV008PreflightWithContext,
 			steps:     v008Steps,
 			verify:    verifySchemaV008WithContext,
+		},
+		{
+			version:   9,
+			name:      "organizer_events_and_updates",
+			checksum:  hex.EncodeToString(v009Checksum[:]),
+			preflight: validateSchemaV009PreflightWithContext,
+			steps:     v009Steps,
+			verify:    verifySchemaV009WithContext,
 		},
 	}
 }
@@ -1101,6 +1127,24 @@ func canonicalSchemaManifestV008() string {
 	}
 
 	builder.WriteString("card-statement-header=card-statement-header-v1\n")
+	return builder.String()
+}
+
+func canonicalSchemaManifestV009() string {
+	var builder strings.Builder
+	builder.WriteString("pf-schema-v009\n")
+
+	for _, bean := range schemaBeansV009() {
+		appendBeanManifest(&builder, bean)
+	}
+
+	builder.WriteString("plan=organizer-plan-v1\n")
+	builder.WriteString("event-key=economic-event-key-v1\n")
+	builder.WriteString("relation-key=economic-relation-key-v1\n")
+	builder.WriteString("action-idempotency=idempotency-key-v1\n")
+	builder.WriteString("action-request=finance-action-request-v1\n")
+	builder.WriteString("event-transaction=event-transaction-link-v1\n")
+	builder.WriteString("legacy-backfill=organizer-legacy-backfill-v1\n")
 	return builder.String()
 }
 
