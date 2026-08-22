@@ -17,11 +17,12 @@ describe('personal-finance simple web workflow', () => {
         expect(layout).toContain('personalFinance.simpleNav.more');
     });
 
-    it('combines statement upload and exception review without removing legacy links', () => {
+    it('combines result-first organization, statement upload, and evidence review', () => {
         const organizer = source('./BillOrganizerPage.vue');
         const router = source('../../../router/desktop.ts');
 
-        expect(organizer).toContain('TaskWorkbenchPage.vue');
+        expect(organizer).toContain('ResultsFlowPage.vue');
+        expect(organizer).not.toContain('TaskWorkbenchPage.vue');
         expect(organizer).toContain('ImportWorkbenchPage.vue');
         expect(organizer).toContain('ReconciliationWorkbenchPage.vue');
         expect(organizer).toContain("view === 'task'");
