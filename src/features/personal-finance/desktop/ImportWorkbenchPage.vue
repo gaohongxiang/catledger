@@ -101,8 +101,6 @@
                         />
                     </v-col>
 
-                    <v-divider vertical class="d-none d-lg-block" />
-
                     <v-col cols="12" lg="8" class="detail-column pa-0">
                         <v-skeleton-loader class="pa-5" type="heading, paragraph, table" v-if="personalFinanceStore.loadingRows && !personalFinanceStore.selectedBatch" />
 
@@ -874,7 +872,7 @@ onMounted(reload);
 
 @media (min-width: 1280px) {
     .history-column {
-        max-width: calc(33.333% - 1px);
+        border-inline-end: thin solid rgba(var(--v-border-color), var(--v-border-opacity));
     }
 }
 </style>
