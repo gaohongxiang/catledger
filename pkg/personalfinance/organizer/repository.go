@@ -598,7 +598,7 @@ func isValidEventSemantics(value *EconomicEvent) bool {
 		(len(value.Currency) != 0 && len(value.Currency) != 3) || (value.Amount != nil && *value.Amount < 0) {
 		return false
 	}
-	if value.EconomicNature == ECONOMIC_NATURE_UNKNOWN && value.Status != EVENT_STATUS_NEEDS_ACTION {
+	if value.EconomicNature == ECONOMIC_NATURE_UNKNOWN && value.Status != EVENT_STATUS_NEEDS_ACTION && value.Status != EVENT_STATUS_EXCLUDED {
 		return false
 	}
 	if value.Status == EVENT_STATUS_READY || value.Status == EVENT_STATUS_POSTED || value.Status == EVENT_STATUS_CORRECTED {

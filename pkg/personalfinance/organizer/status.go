@@ -13,6 +13,22 @@ const (
 	LEGACY_BACKFILL_PLAN_VERSION_V1 RuleVersion = "organizer-legacy-backfill-v1"
 )
 
+// ManualFieldMask 按字段保存用户事实，后续自动整理只能重算未锁定字段。
+const (
+	MANUAL_FIELD_LEDGER_ACCOUNT              int64 = 1 << 0
+	MANUAL_FIELD_COUNTERPARTY_LEDGER_ACCOUNT int64 = 1 << 1
+	MANUAL_FIELD_FLOW_DIRECTION              int64 = 1 << 2
+	MANUAL_FIELD_ECONOMIC_NATURE             int64 = 1 << 3
+	MANUAL_FIELD_EVENT_TIME                  int64 = 1 << 4
+	MANUAL_FIELD_AMOUNT                      int64 = 1 << 5
+	MANUAL_FIELD_CURRENCY                    int64 = 1 << 6
+	MANUAL_FIELD_CATEGORY                    int64 = 1 << 7
+	MANUAL_FIELD_STATUS                      int64 = 1 << 8
+	MANUAL_FIELD_ALL                               = MANUAL_FIELD_LEDGER_ACCOUNT | MANUAL_FIELD_COUNTERPARTY_LEDGER_ACCOUNT |
+		MANUAL_FIELD_FLOW_DIRECTION | MANUAL_FIELD_ECONOMIC_NATURE | MANUAL_FIELD_EVENT_TIME |
+		MANUAL_FIELD_AMOUNT | MANUAL_FIELD_CURRENCY | MANUAL_FIELD_CATEGORY | MANUAL_FIELD_STATUS
+)
+
 // UpdateStatus 表示用户一次财务更新的生命周期。
 type UpdateStatus string
 
