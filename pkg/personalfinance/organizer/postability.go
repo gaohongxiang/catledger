@@ -21,6 +21,7 @@ const (
 type PostabilityInput struct {
 	Event                   *EconomicEvent
 	Relations               []*EconomicEventRelation
+	Links                   []*EconomicEventTransaction
 	ExistingBlockingReasons []string
 	OpenBlockingIssueCount  int64
 }
@@ -68,7 +69,7 @@ func EvaluatePostability(input PostabilityInput) (*PostabilityResult, error) {
 		reasons = requirePostabilityDirection(reasons, event, FLOW_DIRECTION_OUTFLOW)
 	case ECONOMIC_NATURE_REFUND:
 		reasons = requirePostabilityDirection(reasons, event, FLOW_DIRECTION_INFLOW)
-		reasons = appendUniqueReasons(reasons, evaluateRefundPostability(event, input.Relations)...)
+		reasons = appendUniqueReasons(reasons, evaluateRefundPostability(event, input.Relations, input.Links)...)
 	case ECONOMIC_NATURE_INTERNAL_TRANSFER:
 		reasons = requirePostabilityDirection(reasons, event, FLOW_DIRECTION_NEUTRAL)
 		reasons = requireCounterpartyAccount(reasons, event, reasonTransferAccountRequired)
@@ -116,9 +117,10 @@ func requireCounterpartyAccount(reasons []string, event *EconomicEvent, reason s
 	return reasons
 }
 
-func evaluateRefundPostability(event *EconomicEvent, relations []*EconomicEventRelation) []string {
+func evaluateRefundPostability(event *EconomicEvent, relations []*EconomicEventRelation, links []*EconomicEventTransaction) []string {
 	confirmedCount := 0
 	proposedCount := 0
+	originalLinkCount := 0
 	invalid := false
 
 	for _, relation := range relations {
@@ -147,12 +149,27 @@ func evaluateRefundPostability(event *EconomicEvent, relations []*EconomicEventR
 			invalid = true
 		}
 	}
+	for _, link := range links {
+		if link == nil {
+			invalid = true
+			continue
+		}
+		if link.Role != EVENT_TRANSACTION_ROLE_REFUND_ORIGINAL {
+			continue
+		}
+		if link.Uid != event.Uid || link.EventId != event.EventId || link.TransactionId < 1 {
+			invalid = true
+			continue
+		}
+		originalLinkCount++
+	}
 
 	reasons := make([]string, 0, 3)
-	if confirmedCount == 0 {
+	resolvedTargets := confirmedCount + originalLinkCount
+	if resolvedTargets == 0 {
 		reasons = appendUniqueReasons(reasons, reasonRefundRelationRequired)
 	}
-	if confirmedCount > 1 || proposedCount > 0 {
+	if resolvedTargets > 1 || proposedCount > 0 {
 		reasons = appendUniqueReasons(reasons, reasonRelationAmbiguous)
 	}
 	if invalid {
