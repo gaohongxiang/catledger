@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
 
@@ -52,9 +52,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Verify formatting
-        id: format
-        continue-on-error: true
+      - name: Determine changed Go files
+        id: changed
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -65,7 +64,30 @@ jobs:
           if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             base="$(git merge-base HEAD origin/main)"
           fi
-          files=$(git diff --name-only --diff-filter=ACMRT "$base"...HEAD -- '*.go')
+          git diff --name-only --diff-filter=ACMRT "$base"...HEAD -- '*.go' > /tmp/changed-go.txt
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - name: Auto-format changed Go files
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          if [ -s /tmp/changed-go.txt ]; then
+            xargs gofmt -w < /tmp/changed-go.txt
+          fi
+          if ! git diff --quiet -- '*.go'; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add -- '*.go'
+            git commit -m 'style(pf): gofmt focused review changes'
+            git push
+          fi
+
+      - name: Verify formatting
+        id: format
+        continue-on-error: true
+        shell: bash
+        run: |
+          files=$(cat /tmp/changed-go.txt)
           if [ -n "$files" ]; then
             unformatted=$(gofmt -l $files)
             if [ -n "$unformatted" ]; then
