@@ -17,8 +17,7 @@ const (
 
 // PostabilityInput contains the complete semantic facts required to derive an
 // unposted event's status. The caller may supply persisted hard blockers that
-// cannot be resolved by ordinary field editing and, once ReviewIssue is live,
-// the number of still-open blocking issues.
+// cannot be resolved by ordinary field editing and the number of open issues.
 type PostabilityInput struct {
 	Event                   *EconomicEvent
 	Relations               []*EconomicEventRelation
@@ -174,7 +173,8 @@ func hardBlockingReasonCodes(encoded string) []string {
 			reasonIdentityReviewRequired,
 			reasonRelationAmbiguous,
 			reasonRefundAmountExceeded,
-			reasonRefundRelationAmbiguous:
+			reasonRefundRelationAmbiguous,
+			reasonBlockingIssueOpen:
 			result = appendUniqueReasons(result, reason)
 		}
 	}
