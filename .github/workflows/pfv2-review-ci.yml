@@ -11,7 +11,7 @@ on:
       - 'go.mod'
       - 'go.sum'
       - 'package.json'
-      - 'pnpm-lock.yaml'
+      - 'package-lock.json'
       - '.github/workflows/pfv2-review-ci.yml'
   pull_request:
     branches:
@@ -23,7 +23,7 @@ on:
       - 'go.mod'
       - 'go.sum'
       - 'package.json'
-      - 'pnpm-lock.yaml'
+      - 'package-lock.json'
       - '.github/workflows/pfv2-review-ci.yml'
   workflow_dispatch:
 
@@ -37,9 +37,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend:
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -52,22 +52,45 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Determine changed Go files
-        id: changed
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply deterministic source fixes
+        if: github.event_name == 'push'
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
-          else
-            base="${{ github.event.before }}"
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rebuild = Path('pkg/personalfinance/organizer/rebuild.go')
+          text = rebuild.read_text()
+          old = 'nextEvent, applyErr := applyEventCorrection(&working, request.Correction, action.ActionId, now)'
+          new = '''relations, relationErr := tx.ListRelations(event.EventId)
+          if relationErr != nil {
+              return relationErr
+          }
+          nextEvent, applyErr := applyEventCorrection(&working, request.Correction, relations, action.ActionId, now)'''
+          if old in text:
+              rebuild.write_text(text.replace(old, new, 1))
+
+          resolution = Path('pkg/personalfinance/organizer/review_issue_resolution.go')
+          text = resolution.read_text()
+          resolution.write_text(text.replace('\n\t"fmt"', '', 1))
+          PY
+
+      - name: Determine changed Go files
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
           if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             base="$(git merge-base HEAD origin/main)"
           fi
           git diff --name-only --diff-filter=ACMRT "$base"...HEAD -- '*.go' > /tmp/changed-go.txt
-          echo "base=$base" >> "$GITHUB_OUTPUT"
 
-      - name: Auto-format changed Go files
+      - name: Format and persist deterministic fixes
         if: github.event_name == 'push'
         shell: bash
         run: |
@@ -78,7 +101,7 @@ jobs:
             git config user.name github-actions[bot]
             git config user.email 41898282+github-actions[bot]@users.noreply.github.com
             git add -- '*.go'
-            git commit -m 'style(pf): gofmt focused review changes'
+            git commit -m 'fix(pf): apply focused compile and formatting fixes'
             git push
           fi
 
@@ -105,13 +128,19 @@ jobs:
           set -o pipefail
           go test ./pkg/personalfinance/... ./pkg/api/... 2>&1 | tee /tmp/backend.log
 
+      - name: Install frontend dependencies
+        id: frontend_install
+        continue-on-error: true
+        run: npm ci --ignore-scripts
+
       - name: Type-check frontend
         id: frontend_typecheck
+        if: steps.frontend_install.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          npx vue-tsc --noEmit 2>&1 | tee /tmp/frontend.log
+          ./node_modules/.bin/vue-tsc --noEmit 2>&1 | tee /tmp/frontend.log
 
       - name: Report result on draft PR
         if: always()
@@ -119,6 +148,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORMAT_OUTCOME: ${{ steps.format.outcome }}
           BACKEND_OUTCOME: ${{ steps.backend_tests.outcome }}
+          FRONTEND_INSTALL_OUTCOME: ${{ steps.frontend_install.outcome }}
           FRONTEND_OUTCOME: ${{ steps.frontend_typecheck.outcome }}
         shell: bash
         run: |
@@ -130,6 +160,7 @@ jobs:
             echo
             echo "- Go formatting: **${FORMAT_OUTCOME}**"
             echo "- Personal-finance backend tests: **${BACKEND_OUTCOME}**"
+            echo "- Frontend install: **${FRONTEND_INSTALL_OUTCOME}**"
             echo "- Vue/TypeScript type-check: **${FRONTEND_OUTCOME}**"
             for item in format backend frontend; do
               outcome_var="${item^^}_OUTCOME"
@@ -152,9 +183,11 @@ jobs:
         env:
           FORMAT_OUTCOME: ${{ steps.format.outcome }}
           BACKEND_OUTCOME: ${{ steps.backend_tests.outcome }}
+          FRONTEND_INSTALL_OUTCOME: ${{ steps.frontend_install.outcome }}
           FRONTEND_OUTCOME: ${{ steps.frontend_typecheck.outcome }}
         shell: bash
         run: |
           test "$FORMAT_OUTCOME" = success
           test "$BACKEND_OUTCOME" = success
+          test "$FRONTEND_INSTALL_OUTCOME" = success
           test "$FRONTEND_OUTCOME" = success
