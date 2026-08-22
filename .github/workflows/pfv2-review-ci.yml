@@ -1,0 +1,49 @@
+name: PF Review Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'pkg/personalfinance/**'
+      - 'pkg/api/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/pfv2-review-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pf-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          files=$(git diff --name-only --diff-filter=ACMRT "${{ github.event.pull_request.base.sha }}"...HEAD -- '*.go')
+          if [ -n "$files" ]; then
+            unformatted=$(gofmt -l $files)
+            if [ -n "$unformatted" ]; then
+              printf 'Unformatted Go files:\n%s\n' "$unformatted"
+              exit 1
+            fi
+          fi
+
+      - name: Test personal finance backend
+        run: go test ./pkg/personalfinance/... ./pkg/api/...
