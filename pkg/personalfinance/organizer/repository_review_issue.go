@@ -223,6 +223,14 @@ func (tx *RepositoryTransaction) ReplaceReviewIssues(updateId int64) error {
 	if update == nil || update.PostedEventCount != 0 || update.Status != UPDATE_STATUS_ORGANIZING {
 		return fmt.Errorf("review issue replacement is not allowed")
 	}
+	decidedCount, err := tx.session.Where("uid=? AND update_id=? AND (status<>? OR resolved_action_id IS NOT NULL)",
+		tx.uid, updateId, REVIEW_ISSUE_STATUS_OPEN).Count(new(ReviewIssue))
+	if err != nil {
+		return fmt.Errorf("count durable review issue decisions: %w", err)
+	}
+	if decidedCount != 0 {
+		return ErrOrganizePlanExists
+	}
 	if _, err = tx.session.Where("uid=? AND update_id=?", tx.uid, updateId).Delete(new(ReviewIssueMember)); err != nil {
 		return fmt.Errorf("delete review issue members: %w", err)
 	}
