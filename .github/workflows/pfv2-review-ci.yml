@@ -29,6 +29,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: pf-review-${{ github.event.pull_request.number || github.ref }}
@@ -51,6 +53,8 @@ jobs:
           cache: true
 
       - name: Verify formatting
+        id: format
+        continue-on-error: true
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -71,4 +75,44 @@ jobs:
           fi
 
       - name: Test personal finance backend
+        id: backend_tests
+        continue-on-error: true
         run: go test ./pkg/personalfinance/... ./pkg/api/...
+
+      - name: Type-check frontend
+        id: frontend_typecheck
+        continue-on-error: true
+        run: npx vue-tsc --noEmit
+
+      - name: Report result on draft PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          BACKEND_OUTCOME: ${{ steps.backend_tests.outcome }}
+          FRONTEND_OUTCOME: ${{ steps.frontend_typecheck.outcome }}
+        shell: bash
+        run: |
+          cat > /tmp/pf-review-result.md <<EOF
+          <!-- pf-review-check-result -->
+          ### PF Review Checks
+
+          Commit: \`${GITHUB_SHA}\`
+
+          - Go formatting: **${FORMAT_OUTCOME}**
+          - Personal-finance backend tests: **${BACKEND_OUTCOME}**
+          - Vue/TypeScript type-check: **${FRONTEND_OUTCOME}**
+          EOF
+          gh pr comment 1 --repo "${GITHUB_REPOSITORY}" --body-file /tmp/pf-review-result.md
+
+      - name: Enforce checks
+        if: always()
+        env:
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          BACKEND_OUTCOME: ${{ steps.backend_tests.outcome }}
+          FRONTEND_OUTCOME: ${{ steps.frontend_typecheck.outcome }}
+        shell: bash
+        run: |
+          test "$FORMAT_OUTCOME" = success
+          test "$BACKEND_OUTCOME" = success
+          test "$FRONTEND_OUTCOME" = success
