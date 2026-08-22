@@ -1,14 +1,29 @@
 name: PF Review Checks
 
 on:
+  push:
+    branches:
+      - codex/pfv2-1702-review-issues
+    paths:
+      - 'pkg/personalfinance/**'
+      - 'pkg/api/**'
+      - 'src/features/personal-finance/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/pfv2-review-ci.yml'
   pull_request:
     branches:
       - main
     paths:
       - 'pkg/personalfinance/**'
       - 'pkg/api/**'
+      - 'src/features/personal-finance/**'
       - 'go.mod'
       - 'go.sum'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
       - '.github/workflows/pfv2-review-ci.yml'
   workflow_dispatch:
 
@@ -26,6 +41,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -36,7 +53,15 @@ jobs:
       - name: Verify formatting
         shell: bash
         run: |
-          files=$(git diff --name-only --diff-filter=ACMRT "${{ github.event.pull_request.base.sha }}"...HEAD -- '*.go')
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git merge-base HEAD origin/main)"
+          fi
+          files=$(git diff --name-only --diff-filter=ACMRT "$base"...HEAD -- '*.go')
           if [ -n "$files" ]; then
             unformatted=$(gofmt -l $files)
             if [ -n "$unformatted" ]; then
