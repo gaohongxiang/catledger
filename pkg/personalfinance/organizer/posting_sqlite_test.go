@@ -206,3 +206,33 @@ func (s *postingLedgerStub) CreateTransactionInSession(_ core.Context, _ *datast
 	}
 	return &primary, nil, nil
 }
+
+func (s *postingLedgerStub) DeleteTransactionInSession(_ core.Context, _ *datastore.Database, sess *xorm.Session, uid int64, transactionId int64, expectedUpdatedUnixTime int64, relatedTransactionId int64, expectedRelatedUpdatedUnixTime int64, deletedUnixTime int64) (*models.Transaction, *models.Transaction, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	primary := new(models.Transaction)
+	found, err := sess.Where("uid=? AND transaction_id=? AND deleted=?", uid, transactionId, false).Get(primary)
+	if err != nil || !found || primary.UpdatedUnixTime != expectedUpdatedUnixTime {
+		return nil, nil, errors.New("ledger deletion snapshot mismatch")
+	}
+	var counterpart *models.Transaction
+	if relatedTransactionId > 0 {
+		counterpart = new(models.Transaction)
+		found, err = sess.Where("uid=? AND transaction_id=? AND deleted=?", uid, relatedTransactionId, false).Get(counterpart)
+		if err != nil || !found || counterpart.UpdatedUnixTime != expectedRelatedUpdatedUnixTime || primary.RelatedId != counterpart.TransactionId || counterpart.RelatedId != primary.TransactionId {
+			return nil, nil, errors.New("ledger transfer deletion snapshot mismatch")
+		}
+	} else if primary.RelatedId != 0 {
+		return nil, nil, errors.New("ledger deletion omitted transfer counterpart")
+	}
+	ids := []int64{primary.TransactionId}
+	if counterpart != nil {
+		ids = append(ids, counterpart.TransactionId)
+	}
+	updated, err := sess.Where("uid=? AND deleted=?", uid, false).In("transaction_id", ids).
+		Cols("deleted", "deleted_unix_time").Update(&models.Transaction{Deleted: true, DeletedUnixTime: deletedUnixTime})
+	if err != nil || updated != int64(len(ids)) {
+		return nil, nil, fmt.Errorf("soft delete ledger stub: updated=%d err=%w", updated, err)
+	}
+	return primary, counterpart, nil
+}
