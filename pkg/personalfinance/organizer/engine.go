@@ -167,7 +167,8 @@ func (e *Engine) claimOrganize(c core.Context, request OrganizeRequest, candidat
 			if update.Version != request.ExpectedUpdateVersion {
 				return ErrOrganizeVersionConflict
 			}
-			if update.Status != UPDATE_STATUS_DRAFT {
+			if (update.Status != UPDATE_STATUS_DRAFT && update.Status != UPDATE_STATUS_REVIEW && update.Status != UPDATE_STATUS_FAILED) ||
+				update.PostedEventCount != 0 {
 				return ErrOrganizeStateConflict
 			}
 			nextUpdate := *update
@@ -289,7 +290,9 @@ func (e *Engine) persistPlan(c core.Context, request OrganizeRequest, action *Fi
 				return err
 			}
 			if count != 0 {
-				return ErrOrganizePlanExists
+				if err = tx.ReplaceUnpostedPlan(request.UpdateId); err != nil {
+					return err
+				}
 			}
 			for _, event := range plan.Events {
 				if err = tx.InsertEvent(event); err != nil {

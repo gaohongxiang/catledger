@@ -610,6 +610,38 @@ func (tx *RepositoryTransaction) CountEvents(updateId int64) (int64, error) {
 	return count, nil
 }
 
+// ReplaceUnpostedPlan 删除可重建、尚未承载人工事实或正式交易链接的事件投影。
+// 来源快照和动作审计保留，调用方随后必须在同一事务写入完整新计划。
+func (tx *RepositoryTransaction) ReplaceUnpostedPlan(updateId int64) error {
+	if err := tx.validate(); err != nil || updateId < 1 {
+		return fmt.Errorf("invalid economic event plan replacement")
+	}
+	manualCount, err := tx.session.Where("uid=? AND update_id=? AND manual_field_mask<>0", tx.uid, updateId).Count(new(EconomicEvent))
+	if err != nil {
+		return fmt.Errorf("count manual economic event facts: %w", err)
+	}
+	linkCount, err := tx.session.Where("uid=? AND update_id=?", tx.uid, updateId).Count(new(EconomicEventTransaction))
+	if err != nil {
+		return fmt.Errorf("count economic event transaction links: %w", err)
+	}
+	if manualCount != 0 || linkCount != 0 {
+		return ErrOrganizePlanExists
+	}
+	for _, item := range []struct {
+		bean any
+		name string
+	}{
+		{bean: new(EconomicEventRelation), name: "economic event relations"},
+		{bean: new(EconomicEventEvidence), name: "economic event evidence"},
+		{bean: new(EconomicEvent), name: "economic events"},
+	} {
+		if _, err = tx.session.Where("uid=? AND update_id=?", tx.uid, updateId).Delete(item.bean); err != nil {
+			return fmt.Errorf("replace %s: %w", item.name, err)
+		}
+	}
+	return nil
+}
+
 func insertOne(sess *xorm.Session, value any, name string) error {
 	inserted, err := sess.Insert(value)
 	if err != nil {

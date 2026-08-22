@@ -69,6 +69,57 @@ func TestEngineSQLitePersistsPlanAndReplaysIdempotently(t *testing.T) {
 	}
 }
 
+func TestEngineSQLiteReplacesOnlyUnpostedAutomaticPlan(t *testing.T) {
+	repository, database := newSQLiteOrganizerRepository(t)
+	const uid = int64(4151)
+	const updateId = int64(5151)
+	const batchId = int64(7151)
+	if err := repository.DoTransaction(nil, uid, func(tx *organizer.RepositoryTransaction) error {
+		if err := tx.InsertUpdate(testUpdate(uid, updateId, 10)); err != nil {
+			return err
+		}
+		return tx.InsertSource(testSource(uid, updateId, 6151, 7150, batchId, 10))
+	}); err != nil {
+		t.Fatalf("seed replaceable organizer update: %v", err)
+	}
+	row := plannerRow(uid, batchId, 8151, 9151, 11, 1234, 1701500000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	evidence := &engineEvidenceStub{
+		batches: map[int64]*importing.ImportBatch{batchId: engineBatch(uid, 7150, batchId)},
+		rows:    map[int64][]*importing.RawImportRow{batchId: {row}},
+	}
+	engine, err := organizer.NewEngine(repository, evidence,
+		&engineAccountStub{items: map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}},
+		&engineIdGenerator{next: 15000})
+	if err != nil {
+		t.Fatalf("create replaceable organizer engine: %v", err)
+	}
+	first, err := engine.Organize(nil, organizer.OrganizeRequest{Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 1, IdempotencyKey: "organize-5151-v1"})
+	if err != nil || first == nil || len(first.Events) != 1 {
+		t.Fatalf("create first organizer plan: result=%+v err=%v", first, err)
+	}
+	firstEventId := first.Events[0].EventId
+	newAmount := int64(2345)
+	row.NormalizedAmount = &newAmount
+	row.NormalizedTransactionType = importing.SOURCE_TRANSACTION_TYPE_UNKNOWN
+	row.SemanticEligibility = importing.SEMANTIC_ELIGIBILITY_REVIEW_REQUIRED
+	row.Disposition = importing.IMPORT_DISPOSITION_REVIEW_REQUIRED
+	rebuilt, err := engine.Organize(nil, organizer.OrganizeRequest{Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 3, IdempotencyKey: "organize-5151-v3"})
+	if err != nil || rebuilt == nil || rebuilt.Update.Version != 5 || rebuilt.Update.ReadyEventCount != 1 || len(rebuilt.Events) != 1 ||
+		rebuilt.Events[0].Amount == nil || *rebuilt.Events[0].Amount != newAmount || rebuilt.Events[0].EconomicNature != organizer.ECONOMIC_NATURE_EXPENSE {
+		t.Fatalf("replace organizer plan mismatch: result=%+v err=%v", rebuilt, err)
+	}
+	if old, findErr := repository.FindEventById(nil, uid, firstEventId); findErr != nil || old != nil {
+		t.Fatalf("old automatic event survived replacement: event=%+v err=%v", old, findErr)
+	}
+	sess := database.NewSession(nil)
+	actionCount, actionErr := sess.Where("uid=? AND update_id=?", uid, updateId).Count(new(organizer.FinanceAction))
+	eventCount, eventErr := sess.Where("uid=? AND update_id=?", uid, updateId).Count(new(organizer.EconomicEvent))
+	sess.Close()
+	if actionErr != nil || eventErr != nil || actionCount != 2 || eventCount != 1 {
+		t.Fatalf("replaced plan audit mismatch: actions=%d events=%d errors=%v/%v", actionCount, eventCount, actionErr, eventErr)
+	}
+}
+
 func TestEngineSQLiteMarksSnapshotFailureWithoutPartialPlan(t *testing.T) {
 	repository, _ := newSQLiteOrganizerRepository(t)
 	const uid = int64(4202)

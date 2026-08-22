@@ -20,25 +20,31 @@ func TestBuildOrganizePlanConservesEvidenceAndRequiresStrongMergeEvidence(t *tes
 		plannerRow(uid, 701, 103, 1003, 11, 3000, 1700000200, importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_PAYMENT),
 		plannerRow(uid, 701, 104, 1004, 11, 4000, 1700000300, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT),
 		plannerRow(uid, 701, 105, 1005, 11, 5000, 1700000400, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT),
+		plannerRow(uid, 701, 106, 1006, 11, 6000, 1700000500, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_UNKNOWN),
 	}
 	first.Rows[0].SourceOrderId = "ORDER-STRONG-0001"
 	first.Rows[1].RawCounterparty = "同一商户"
 	first.Rows[3].ParseState = importing.PARSE_STATE_INVALID
 	first.Rows[4].ProcessingState = importing.PROCESSING_STATE_IGNORED
 	first.Rows[4].Disposition = importing.IMPORT_DISPOSITION_NON_POSTABLE
+	first.Rows[5].RawCounterparty = "商户甲"
+	first.Rows[5].SemanticEligibility = importing.SEMANTIC_ELIGIBILITY_REVIEW_REQUIRED
+	first.Rows[5].Disposition = importing.IMPORT_DISPOSITION_REVIEW_REQUIRED
 	second.Rows = []*importing.RawImportRow{
 		plannerRow(uid, 702, 201, 2001, 11, 1000, 1700000005, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT),
 		plannerRow(uid, 702, 202, 2002, 11, 2500, 1700000100, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT),
+		plannerRow(uid, 702, 203, 2003, 11, 6000, 1700000500, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_UNKNOWN),
 	}
 	second.Rows[0].SourceMerchantOrderId = "ORDER-STRONG-0001"
 	second.Rows[1].RawCounterparty = "同一商户"
+	second.Rows[2].RawCounterparty = "商户乙"
 
 	plan, err := organizer.BuildOrganizePlan(uid, 501, []*organizer.PlanningSource{first, second}, map[int64]*models.Account{11: account}, 1700001000, sequentialPlannerIds(9000))
 	if err != nil {
 		t.Fatalf("build organizer plan: %v", err)
 	}
-	if plan.ValidEvidenceCount != 6 || plan.DuplicateEvidenceCount != 1 || plan.FinalEventCount != 5 ||
-		plan.ReadyEventCount != 3 || plan.NeedsActionEventCount != 1 || plan.ExcludedEventCount != 1 {
+	if plan.ValidEvidenceCount != 8 || plan.DuplicateEvidenceCount != 2 || plan.FinalEventCount != 6 ||
+		plan.ReadyEventCount != 4 || plan.NeedsActionEventCount != 1 || plan.ExcludedEventCount != 1 {
 		t.Fatalf("unexpected conservation counts: %+v", plan)
 	}
 	merged := findEventByAmount(plan.Events, 1000)
@@ -46,8 +52,11 @@ func TestBuildOrganizePlanConservesEvidenceAndRequiresStrongMergeEvidence(t *tes
 		!strings.Contains(merged.ReasonCodesJson, "auto_same_event") {
 		t.Fatalf("strong cross-source event was not merged: %+v", merged)
 	}
-	if countEventsByAmount(plan.Events, 2500) != 2 {
-		t.Fatalf("same amount/time without a stable reference was merged: %+v", plan.Events)
+	if countEventsByAmount(plan.Events, 2500) != 1 {
+		t.Fatalf("matching cross-source text was not treated as strong evidence: %+v", plan.Events)
+	}
+	if countEventsByAmount(plan.Events, 6000) != 2 {
+		t.Fatalf("same amount/time with conflicting text was merged: %+v", plan.Events)
 	}
 	inflow := findEventByAmount(plan.Events, 3000)
 	if inflow == nil || inflow.Status != organizer.EVENT_STATUS_NEEDS_ACTION || inflow.EconomicNature != organizer.ECONOMIC_NATURE_UNKNOWN {
@@ -99,6 +108,30 @@ func TestBuildOrganizePlanPairsRepaymentsTransfersAndIsolatesAmbiguity(t *testin
 	}
 }
 
+func TestBuildOrganizePlanMergesBalancedDateOnlyBankEvidence(t *testing.T) {
+	const uid = int64(252)
+	bank := plannerSource(uid, 552, 0, 653, 753, importing.SOURCE_TYPE_BANK)
+	detail := plannerSource(uid, 552, 1, 654, 754, importing.SOURCE_TYPE_ALIPAY)
+	bankRow := plannerRow(uid, 753, 1, 3501, 11, 8800, 1704067200, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	detailRow := plannerRow(uid, 754, 2, 3502, 11, 8800, 1704110400, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	zeroOffset := int16(0)
+	bankRow.NormalizedTimezoneUtcOffset = &zeroOffset
+	detailRow.NormalizedTimezoneUtcOffset = &zeroOffset
+	bankRow.RawCounterparty = "月结摘要"
+	detailRow.RawCounterparty = "渠道商户"
+	bank.Rows = []*importing.RawImportRow{bankRow}
+	detail.Rows = []*importing.RawImportRow{detailRow}
+	plan, err := organizer.BuildOrganizePlan(uid, 552, []*organizer.PlanningSource{bank, detail},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)}, 1704200000, sequentialPlannerIds(10500))
+	if err != nil {
+		t.Fatalf("build balanced statement plan: %v", err)
+	}
+	if plan.ValidEvidenceCount != 2 || plan.DuplicateEvidenceCount != 1 || plan.FinalEventCount != 1 || plan.ReadyEventCount != 1 ||
+		!strings.Contains(plan.Events[0].ReasonCodesJson, "auto_same_event") {
+		t.Fatalf("balanced statement evidence was not merged: %+v", plan)
+	}
+}
+
 func TestBuildOrganizePlanLinksUniqueRefundsAndRejectsExcess(t *testing.T) {
 	for _, test := range []struct {
 		name              string
@@ -137,6 +170,30 @@ func TestBuildOrganizePlanLinksUniqueRefundsAndRejectsExcess(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBuildOrganizePlanUsesExplicitPartialRefundEvidence(t *testing.T) {
+	const uid = int64(353)
+	source := plannerSource(uid, 553, 0, 655, 755, importing.SOURCE_TYPE_WECHAT)
+	original := plannerRow(uid, 755, 1, 4501, 11, 1000, 1700100000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	refund := plannerRow(uid, 755, 2, 4502, 11, 400, 1700200000, importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	original.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND
+	refund.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND
+	original.RawStatus = "退款 ￥4.00"
+	original.RawCounterparty = "示例商户"
+	refund.RawCounterparty = "示例商户"
+	original.RawItem = "原商品"
+	refund.RawItem = "退款记录"
+	source.Rows = []*importing.RawImportRow{original, refund}
+	plan, err := organizer.BuildOrganizePlan(uid, 553, []*organizer.PlanningSource{source},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}, 1700300000, sequentialPlannerIds(11500))
+	if err != nil {
+		t.Fatalf("build explicit refund plan: %v", err)
+	}
+	if plan.FinalEventCount != 2 || plan.ReadyEventCount != 2 || plan.NeedsActionEventCount != 0 || len(plan.Relations) != 1 ||
+		plan.Relations[0].RelationType != organizer.RELATION_TYPE_REFUND_OF || plan.Relations[0].Status != organizer.RELATION_STATUS_CONFIRMED {
+		t.Fatalf("explicit partial refund was not linked: %+v", plan)
 	}
 }
 

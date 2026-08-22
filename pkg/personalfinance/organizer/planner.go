@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
@@ -17,8 +18,9 @@ import (
 )
 
 const (
-	planCrossSourceWindowSeconds = int64(72 * 60 * 60)
-	minimumStableReferenceRunes  = 6
+	planCrossSourceWindowSeconds    = int64(72 * 60 * 60)
+	planHighConfidenceWindowSeconds = int64(48 * 60 * 60)
+	minimumStableReferenceRunes     = 6
 )
 
 const (
@@ -95,6 +97,11 @@ type plannedEvent struct {
 	group *planningGroup
 }
 
+type planningPair struct {
+	left  int
+	right int
+}
+
 type checkedIdentifierGenerator struct {
 	next planIdentifierGenerator
 	seen map[int64]struct{}
@@ -111,6 +118,7 @@ func BuildOrganizePlan(uid int64, updateId int64, sources []*PlanningSource, acc
 	}
 	groups := buildIdentityGroups(rows)
 	groups = mergeStrongSameEvents(groups)
+	groups = mergeHighConfidenceSameEvents(groups)
 	groups = pairTransfersAndRepayments(groups)
 
 	ids := &checkedIdentifierGenerator{next: generateId, seen: make(map[int64]struct{})}
@@ -269,6 +277,164 @@ func mergeStrongSameEvents(groups []*planningGroup) []*planningGroup {
 		}
 	}
 	return compactPlanningGroups(groups, parent, nil, nil)
+}
+
+// mergeHighConfidenceSameEvents 处理没有共享订单号、但具备跨来源强结构证据的同一事件。
+// 普通明细必须同时满足账户、金额、方向、时间和文本；只有日期的银行月结行还要求
+// 同日等额桶两侧数量相等且存在完整一一匹配，不能仅凭金额和时间合并。
+func mergeHighConfidenceSameEvents(groups []*planningGroup) []*planningGroup {
+	if len(groups) < 2 {
+		return groups
+	}
+	candidates := make([]planningPair, 0)
+	dateOnlyCandidates := make([]planningPair, 0)
+	for left := 0; left < len(groups); left++ {
+		for right := left + 1; right < len(groups); right++ {
+			dateOnly, matched := highConfidenceSameEvent(groups[left], groups[right])
+			if !matched {
+				continue
+			}
+			item := planningPair{left: left, right: right}
+			if dateOnly {
+				dateOnlyCandidates = append(dateOnlyCandidates, item)
+			} else {
+				candidates = append(candidates, item)
+			}
+		}
+	}
+
+	parent := newGroupUnion(len(groups))
+	selected := make(map[int]struct{})
+	selectPair := func(item planningPair) {
+		if _, exists := selected[item.left]; exists {
+			return
+		}
+		if _, exists := selected[item.right]; exists {
+			return
+		}
+		selected[item.left] = struct{}{}
+		selected[item.right] = struct{}{}
+		parent.union(item.left, item.right)
+	}
+
+	degrees := make(map[int]int)
+	for _, item := range candidates {
+		degrees[item.left]++
+		degrees[item.right]++
+	}
+	for _, item := range candidates {
+		if degrees[item.left] == 1 && degrees[item.right] == 1 {
+			selectPair(item)
+		}
+	}
+	selectBalancedDateOnlyPairs(dateOnlyCandidates, groups, selected, selectPair)
+
+	ambiguous := make(map[int]bool)
+	for _, item := range append(candidates, dateOnlyCandidates...) {
+		if _, ok := selected[item.left]; !ok {
+			ambiguous[item.left] = true
+		}
+		if _, ok := selected[item.right]; !ok {
+			ambiguous[item.right] = true
+		}
+	}
+	return compactPlanningGroups(groups, parent, nil, ambiguous)
+}
+
+func highConfidenceSameEvent(left *planningGroup, right *planningGroup) (bool, bool) {
+	leftSummary, rightSummary := summarizeGroup(left), summarizeGroup(right)
+	if !leftSummary.complete || !rightSummary.complete || leftSummary.conflict || rightSummary.conflict ||
+		leftSummary.accountId != rightSummary.accountId || leftSummary.amount != rightSummary.amount ||
+		leftSummary.currency != rightSummary.currency || leftSummary.direction != rightSummary.direction ||
+		leftSummary.direction == importing.NORMALIZED_DIRECTION_UNKNOWN || leftSummary.direction == importing.NORMALIZED_DIRECTION_NEUTRAL ||
+		groupsShareSourceAccount(left, right) || groupsShareSourceType(left, right) ||
+		!groupsHaveOrdinaryPaymentSemantics(left, right) {
+		return false, false
+	}
+	leftRow, rightRow := leftSummary.representative.row, rightSummary.representative.row
+	leftDateOnly, rightDateOnly := rowHasDateOnlyTime(leftRow), rowHasDateOnlyTime(rightRow)
+	if leftDateOnly != rightDateOnly {
+		return true, rowCivilDate(leftRow) != "" && rowCivilDate(leftRow) == rowCivilDate(rightRow) &&
+			(groupHasSourceType(left, importing.SOURCE_TYPE_BANK) || groupHasSourceType(right, importing.SOURCE_TYPE_BANK))
+	}
+	return false, absoluteDifference(leftSummary.unixTime, rightSummary.unixTime) <= planHighConfidenceWindowSeconds &&
+		groupsHaveSimilarEvidenceText(left, right)
+}
+
+func selectBalancedDateOnlyPairs(candidates []planningPair, groups []*planningGroup, selected map[int]struct{}, selectPair func(planningPair)) {
+	type bucketKey struct {
+		accountId int64
+		amount    int64
+		currency  string
+		direction importing.NormalizedDirection
+		date      string
+	}
+	buckets := make(map[bucketKey][]planningPair)
+	for _, item := range candidates {
+		left := summarizeGroup(groups[item.left])
+		buckets[bucketKey{accountId: left.accountId, amount: left.amount, currency: left.currency, direction: left.direction, date: rowCivilDate(left.representative.row)}] =
+			append(buckets[bucketKey{accountId: left.accountId, amount: left.amount, currency: left.currency, direction: left.direction, date: rowCivilDate(left.representative.row)}], item)
+	}
+	for _, items := range buckets {
+		leftNodes, rightNodes := make(map[int]struct{}), make(map[int]struct{})
+		edges := make(map[int][]int)
+		for _, item := range items {
+			left, right := item.left, item.right
+			if groupHasSourceType(groups[left], importing.SOURCE_TYPE_BANK) {
+				left, right = right, left
+			}
+			if groupHasSourceType(groups[left], importing.SOURCE_TYPE_BANK) || !groupHasSourceType(groups[right], importing.SOURCE_TYPE_BANK) {
+				continue
+			}
+			leftNodes[left] = struct{}{}
+			rightNodes[right] = struct{}{}
+			edges[left] = append(edges[left], right)
+		}
+		if len(leftNodes) < 1 || len(leftNodes) != len(rightNodes) {
+			continue
+		}
+		leftOrder := make([]int, 0, len(leftNodes))
+		for node := range leftNodes {
+			leftOrder = append(leftOrder, node)
+			sort.Ints(edges[node])
+		}
+		sort.Ints(leftOrder)
+		assigned := make(map[int]int)
+		var match func(int, map[int]struct{}) bool
+		match = func(left int, seen map[int]struct{}) bool {
+			for _, right := range edges[left] {
+				if _, used := selected[left]; used {
+					continue
+				}
+				if _, used := selected[right]; used {
+					continue
+				}
+				if _, visited := seen[right]; visited {
+					continue
+				}
+				seen[right] = struct{}{}
+				previous, occupied := assigned[right]
+				if !occupied || match(previous, seen) {
+					assigned[right] = left
+					return true
+				}
+			}
+			return false
+		}
+		complete := true
+		for _, left := range leftOrder {
+			if !match(left, make(map[int]struct{})) {
+				complete = false
+				break
+			}
+		}
+		if !complete || len(assigned) != len(leftNodes) {
+			continue
+		}
+		for right, left := range assigned {
+			selectPair(planningPair{left: left, right: right})
+		}
+	}
 }
 
 func pairTransfersAndRepayments(groups []*planningGroup) []*planningGroup {
@@ -505,6 +671,9 @@ func buildPlannedEvent(uid int64, updateId int64, group *planningGroup, now int6
 func classifySingleGroup(event *EconomicEvent, group *planningGroup, reasons *[]string) {
 	row := summarizeGroup(group).representative.row
 	switch {
+	case row.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE:
+		event.EconomicNature = ECONOMIC_NATURE_EXPENSE
+		event.Status = EVENT_STATUS_READY
 	case row.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND:
 		event.EconomicNature = ECONOMIC_NATURE_REFUND
 		event.Status = EVENT_STATUS_NEEDS_ACTION
@@ -517,8 +686,12 @@ func classifySingleGroup(event *EconomicEvent, group *planningGroup, reasons *[]
 	case row.NormalizedTransactionType == importing.SOURCE_TRANSACTION_TYPE_FEE && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE:
 		event.EconomicNature = ECONOMIC_NATURE_FEE
 		event.Status = EVENT_STATUS_READY
-	case row.NormalizedTransactionType == importing.SOURCE_TRANSACTION_TYPE_PAYMENT && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE:
+	case row.EconomicEffect == importing.ECONOMIC_EFFECT_NORMAL && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE && !groupTransferLike(group):
 		event.EconomicNature = ECONOMIC_NATURE_EXPENSE
+		event.Status = EVENT_STATUS_READY
+	case row.EconomicEffect == importing.ECONOMIC_EFFECT_NORMAL && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_INCOME &&
+		row.NormalizedTransactionType == importing.SOURCE_TRANSACTION_TYPE_OTHER && !groupTransferLike(group):
+		event.EconomicNature = ECONOMIC_NATURE_INCOME
 		event.Status = EVENT_STATUS_READY
 	case groupTransferLike(group):
 		event.EconomicNature = ECONOMIC_NATURE_UNKNOWN
@@ -650,7 +823,7 @@ func summarizeGroup(group *planningGroup) groupSummary {
 		result.unixTime = *row.NormalizedUnixTime
 	}
 	result.currency = row.Currency
-	result.direction = row.NormalizedDirection
+	result.direction = effectivePlanningDirection(row)
 	result.complete = result.accountId > 0 && result.amount >= 0 && result.unixTime > 0 && len(result.currency) == 3 &&
 		result.direction != importing.NORMALIZED_DIRECTION_UNKNOWN
 	if result.representative.account != nil && result.currency != "" && result.representative.account.Currency != result.currency {
@@ -673,12 +846,23 @@ func summarizeGroup(group *planningGroup) groupSummary {
 		if item.account != nil && candidate.Currency != "" && item.account.Currency != candidate.Currency {
 			result.conflict = true
 		}
-		if candidate.NormalizedDirection != importing.NORMALIZED_DIRECTION_UNKNOWN && result.direction != importing.NORMALIZED_DIRECTION_UNKNOWN &&
-			candidate.NormalizedDirection != result.direction && group.pairedNature == "" {
+		candidateDirection := effectivePlanningDirection(candidate)
+		if candidateDirection != importing.NORMALIZED_DIRECTION_UNKNOWN && result.direction != importing.NORMALIZED_DIRECTION_UNKNOWN &&
+			candidateDirection != result.direction && group.pairedNature == "" {
 			result.conflict = true
 		}
 	}
 	return result
+}
+
+func effectivePlanningDirection(row *importing.RawImportRow) importing.NormalizedDirection {
+	if row == nil {
+		return importing.NORMALIZED_DIRECTION_UNKNOWN
+	}
+	if row.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_NEUTRAL {
+		return importing.NORMALIZED_DIRECTION_INCOME
+	}
+	return row.NormalizedDirection
 }
 
 func preferredPlanningRow(rows []*planningRow) *planningRow {
@@ -745,6 +929,85 @@ func groupsShareSourceAccount(left *planningGroup, right *planningGroup) bool {
 		}
 	}
 	return false
+}
+
+func groupsShareSourceType(left *planningGroup, right *planningGroup) bool {
+	types := make(map[string]struct{})
+	for _, item := range left.rows {
+		types[item.source.Source.SourceTypeSnapshot] = struct{}{}
+	}
+	for _, item := range right.rows {
+		if _, exists := types[item.source.Source.SourceTypeSnapshot]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+func groupHasSourceType(group *planningGroup, sourceType importing.SourceType) bool {
+	for _, item := range group.rows {
+		if item.source.Source.SourceTypeSnapshot == string(sourceType) {
+			return true
+		}
+	}
+	return false
+}
+
+func groupsHaveOrdinaryPaymentSemantics(left *planningGroup, right *planningGroup) bool {
+	allowed := func(group *planningGroup) importing.EconomicEffect {
+		var effect importing.EconomicEffect
+		for _, item := range group.rows {
+			if item.row.EconomicEffect != importing.ECONOMIC_EFFECT_NORMAL && item.row.EconomicEffect != importing.ECONOMIC_EFFECT_REFUND {
+				return ""
+			}
+			if effect == "" {
+				effect = item.row.EconomicEffect
+			} else if effect != item.row.EconomicEffect {
+				return ""
+			}
+			switch item.row.NormalizedTransactionType {
+			case importing.SOURCE_TRANSACTION_TYPE_TRANSFER, importing.SOURCE_TRANSACTION_TYPE_TOP_UP, importing.SOURCE_TRANSACTION_TYPE_WITHDRAWAL:
+				return ""
+			}
+		}
+		return effect
+	}
+	leftEffect, rightEffect := allowed(left), allowed(right)
+	return leftEffect != "" && leftEffect == rightEffect
+}
+
+func groupsHaveSimilarEvidenceText(left *planningGroup, right *planningGroup) bool {
+	leftText := groupComparableEvidenceText(left)
+	rightText := groupComparableEvidenceText(right)
+	return len([]rune(leftText)) >= 3 && len([]rune(rightText)) >= 3 &&
+		(leftText == rightText || strings.Contains(leftText, rightText) || strings.Contains(rightText, leftText))
+}
+
+func groupComparableEvidenceText(group *planningGroup) string {
+	row := summarizeGroup(group).representative.row
+	return canonicalEvidenceText(strings.Join([]string{row.RawCounterparty, row.RawItem}, " "))
+}
+
+func rowHasDateOnlyTime(row *importing.RawImportRow) bool {
+	if row == nil || row.NormalizedUnixTime == nil {
+		return false
+	}
+	local := time.Unix(*row.NormalizedUnixTime, 0).In(time.FixedZone("organizer-row", rowTimezoneSeconds(row)))
+	return local.Hour() == 0 && local.Minute() == 0 && local.Second() == 0
+}
+
+func rowCivilDate(row *importing.RawImportRow) string {
+	if row == nil || row.NormalizedUnixTime == nil {
+		return ""
+	}
+	return time.Unix(*row.NormalizedUnixTime, 0).In(time.FixedZone("organizer-row", rowTimezoneSeconds(row))).Format(time.DateOnly)
+}
+
+func rowTimezoneSeconds(row *importing.RawImportRow) int {
+	if row != nil && row.NormalizedTimezoneUtcOffset != nil {
+		return int(*row.NormalizedTimezoneUtcOffset) * 60
+	}
+	return 0
 }
 
 func groupsHaveCompatiblePaymentSemantics(left *planningGroup, right *planningGroup) bool {
@@ -822,8 +1085,7 @@ func groupHasIdentityConflict(group *planningGroup) bool {
 
 func groupNeedsIdentityReview(group *planningGroup) bool {
 	for _, item := range group.rows {
-		if item.row.IdentityState == importing.IDENTITY_STATE_BATCH_LOCAL || item.row.IdentityState == importing.IDENTITY_STATE_IDENTITY_CONFLICT ||
-			item.row.SemanticEligibility == importing.SEMANTIC_ELIGIBILITY_REVIEW_REQUIRED || item.row.Disposition == importing.IMPORT_DISPOSITION_REVIEW_REQUIRED {
+		if item.row.IdentityState == importing.IDENTITY_STATE_BATCH_LOCAL || item.row.IdentityState == importing.IDENTITY_STATE_IDENTITY_CONFLICT {
 			return true
 		}
 	}
@@ -845,6 +1107,9 @@ func excludedNature(group *planningGroup) EconomicNature {
 }
 
 func refundCandidateEvidenceMatch(refund *planningGroup, original *planningGroup) bool {
+	if groupsHaveExplicitSourceRefund(original, refund) {
+		return true
+	}
 	refundRefs, originalRefs := groupStableReferences(refund), groupStableReferences(original)
 	for reference := range refundRefs {
 		if _, exists := originalRefs[reference]; exists {
@@ -853,6 +1118,75 @@ func refundCandidateEvidenceMatch(refund *planningGroup, original *planningGroup
 	}
 	refundMerchant := groupMerchantSignature(refund)
 	return refundMerchant != "" && refundMerchant == groupMerchantSignature(original)
+}
+
+func groupsHaveExplicitSourceRefund(original *planningGroup, refund *planningGroup) bool {
+	for _, left := range original.rows {
+		for _, right := range refund.rows {
+			if explicitSourceRefundRows(left.row, right.row) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func explicitSourceRefundRows(original *importing.RawImportRow, refund *importing.RawImportRow) bool {
+	if original == nil || refund == nil || original.NormalizedAmount == nil || refund.NormalizedAmount == nil ||
+		original.NormalizedUnixTime == nil || refund.NormalizedUnixTime == nil || original.Currency == "" || original.Currency != refund.Currency ||
+		original.EconomicEffect != importing.ECONOMIC_EFFECT_REFUND || refund.EconomicEffect != importing.ECONOMIC_EFFECT_REFUND ||
+		original.NormalizedDirection != importing.NORMALIZED_DIRECTION_EXPENSE || refund.NormalizedDirection != importing.NORMALIZED_DIRECTION_INCOME ||
+		*refund.NormalizedUnixTime < *original.NormalizedUnixTime || *refund.NormalizedUnixTime-*original.NormalizedUnixTime > planCrossSourceWindowSeconds ||
+		*refund.NormalizedAmount < 1 || *refund.NormalizedAmount > *original.NormalizedAmount {
+		return false
+	}
+	expected, ok := explicitRefundAmountFromStatus(original.RawStatus)
+	return ok && expected == *refund.NormalizedAmount && canonicalEvidenceText(original.RawCounterparty) != "" &&
+		canonicalEvidenceText(original.RawCounterparty) == canonicalEvidenceText(refund.RawCounterparty)
+}
+
+func explicitRefundAmountFromStatus(status string) (int64, bool) {
+	status = strings.TrimSpace(status)
+	index := strings.IndexAny(status, "¥￥")
+	if index < 0 || index+1 >= len(status) {
+		return 0, false
+	}
+	var number strings.Builder
+	dotSeen := false
+	for _, char := range status[index+1:] {
+		switch {
+		case char >= '0' && char <= '9':
+			number.WriteRune(char)
+		case char == '.' && !dotSeen:
+			dotSeen = true
+			number.WriteRune(char)
+		case number.Len() > 0:
+			goto parsed
+		}
+	}
+parsed:
+	parts := strings.Split(number.String(), ".")
+	if len(parts) < 1 || len(parts) > 2 || parts[0] == "" {
+		return 0, false
+	}
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || whole < 0 || whole > (1<<63-1)/100 {
+		return 0, false
+	}
+	fraction := int64(0)
+	if len(parts) == 2 {
+		if len(parts[1]) < 1 || len(parts[1]) > 2 {
+			return 0, false
+		}
+		if len(parts[1]) == 1 {
+			parts[1] += "0"
+		}
+		fraction, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return 0, false
+		}
+	}
+	return whole*100 + fraction, true
 }
 
 func groupMerchantSignature(group *planningGroup) string {
