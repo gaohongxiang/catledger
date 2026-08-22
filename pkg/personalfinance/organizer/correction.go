@@ -121,7 +121,15 @@ func (e *CorrectionEngine) Correct(c core.Context, request CorrectEventRequest) 
 		if update.Status != UPDATE_STATUS_REVIEW && update.Status != UPDATE_STATUS_PARTIALLY_POSTED {
 			return ErrCorrectionUpdateConflict
 		}
-		nextEvent, applyErr := applyEventCorrection(event, request.Correction, action.ActionId, now)
+		relations, findErr := tx.ListRelations(request.EventId)
+		if findErr != nil {
+			return findErr
+		}
+		manualMask, validMask := correctionEffectiveMask(request.Correction)
+		if !validMask {
+			return ErrCorrectionRequestInvalid
+		}
+		nextEvent, applyErr := applyEventCorrection(event, request.Correction, relations, action.ActionId, now)
 		if applyErr != nil {
 			return applyErr
 		}
@@ -151,7 +159,7 @@ func (e *CorrectionEngine) Correct(c core.Context, request CorrectEventRequest) 
 		applied := applying
 		applied.Status = ACTION_STATUS_APPLIED
 		applied.AppliedUpdateVersion = nextUpdate.Version
-		applied.ReasonCodesJson = correctionReasonCodes(request.Correction.FieldMask)
+		applied.ReasonCodesJson = correctionReasonCodes(manualMask)
 		applied.CompletedUnixTime = &now
 		applied.UpdatedUnixTime = now
 		updated, updateErr = tx.UpdateActionCAS(ACTION_STATUS_APPLYING, &applied)
@@ -179,17 +187,43 @@ func (e *CorrectionEngine) Correct(c core.Context, request CorrectEventRequest) 
 }
 
 func validCorrectionRequest(engine *CorrectionEngine, request CorrectEventRequest) bool {
+	_, validMask := correctionEffectiveMask(request.Correction)
 	return engine != nil && engine.repository != nil && engine.ids != nil && engine.now != nil && engine.locks != nil &&
 		request.Uid > 0 && request.UpdateId > 0 && request.EventId > 0 && request.ExpectedUpdateVersion > 0 && request.ExpectedEventVersion > 0 &&
-		strings.TrimSpace(request.IdempotencyKey) != "" && len(request.IdempotencyKey) <= maximumOrganizeIdempotencyKeyLength &&
-		request.Correction.FieldMask > 0 && request.Correction.FieldMask&^MANUAL_FIELD_ALL == 0
+		strings.TrimSpace(request.IdempotencyKey) != "" && len(request.IdempotencyKey) <= maximumOrganizeIdempotencyKeyLength && validMask
 }
 
-func applyEventCorrection(current *EconomicEvent, correction EventCorrection, actionId int64, now int64) (*EconomicEvent, error) {
-	next := *current
-	if correction.FieldMask&MANUAL_FIELD_STATUS != 0 {
-		next.Status = correction.Status
+// correctionEffectiveMask keeps the legacy status field as a compatibility
+// hint, but only an explicit exclusion is persisted as a manual status fact.
+// ready and needs_action are always derived by EvaluatePostability.
+func correctionEffectiveMask(correction EventCorrection) (int64, bool) {
+	if correction.FieldMask <= 0 || correction.FieldMask&^MANUAL_FIELD_ALL != 0 {
+		return 0, false
 	}
+	statusSelected := correction.FieldMask&MANUAL_FIELD_STATUS != 0
+	if correction.Status != "" && !statusSelected {
+		return 0, false
+	}
+	mask := correction.FieldMask &^ MANUAL_FIELD_STATUS
+	if statusSelected {
+		switch correction.Status {
+		case EVENT_STATUS_EXCLUDED:
+			mask |= MANUAL_FIELD_STATUS
+		case EVENT_STATUS_READY, EVENT_STATUS_NEEDS_ACTION:
+			// Compatibility only. The server derives the actual status below.
+		default:
+			return 0, false
+		}
+	}
+	return mask, mask != 0
+}
+
+func applyEventCorrection(current *EconomicEvent, correction EventCorrection, relations []*EconomicEventRelation, actionId int64, now int64) (*EconomicEvent, error) {
+	manualMask, validMask := correctionEffectiveMask(correction)
+	if current == nil || !validMask {
+		return nil, ErrCorrectionRequestInvalid
+	}
+	next := *current
 	if correction.FieldMask&MANUAL_FIELD_FLOW_DIRECTION != 0 {
 		next.FlowDirection = correction.FlowDirection
 	}
@@ -215,13 +249,36 @@ func applyEventCorrection(current *EconomicEvent, correction EventCorrection, ac
 	if correction.FieldMask&MANUAL_FIELD_CATEGORY != 0 {
 		next.CategoryId = cloneInt64Pointer(correction.CategoryId)
 	}
-	if next.Status != EVENT_STATUS_READY && next.Status != EVENT_STATUS_NEEDS_ACTION && next.Status != EVENT_STATUS_EXCLUDED {
-		return nil, ErrCorrectionRequestInvalid
+
+	clearMask := int64(0)
+	var postability *PostabilityResult
+	if manualMask&MANUAL_FIELD_STATUS != 0 && correction.Status == EVENT_STATUS_EXCLUDED {
+		next.Status = EVENT_STATUS_EXCLUDED
+		postability = &PostabilityResult{Status: EVENT_STATUS_EXCLUDED}
+	} else {
+		if correction.FieldMask&MANUAL_FIELD_STATUS != 0 {
+			clearMask = MANUAL_FIELD_STATUS
+		}
+		// Reset the old display status before deriving a fresh result, which also
+		// allows an explicitly restored exclusion to become actionable again.
+		next.Status = EVENT_STATUS_NEEDS_ACTION
+		derived, err := EvaluatePostability(PostabilityInput{
+			Event:                   &next,
+			Relations:               relations,
+			ExistingBlockingReasons: hardBlockingReasonCodes(current.ReasonCodesJson),
+		})
+		if err != nil {
+			return nil, err
+		}
+		postability = derived
+		next.Status = derived.Status
 	}
+
 	next.Version = current.Version + 1
-	next.ManualFieldMask |= correction.FieldMask
-	next.FieldSourcesJson = correctedFieldSources(current.FieldSourcesJson, correction.FieldMask, actionId)
-	next.ReasonCodesJson = correctedEventReasons(&next)
+	next.ManualFieldMask &^= clearMask
+	next.ManualFieldMask |= manualMask
+	next.FieldSourcesJson = correctedFieldSources(current.FieldSourcesJson, manualMask, clearMask, actionId)
+	next.ReasonCodesJson = mergePostabilityReasonCodes(current.ReasonCodesJson, postability, &next, reasonManualCorrection)
 	next.UpdatedUnixTime = now
 	if !isValidEventCAS(&next, current.Uid, current.Version) {
 		return nil, ErrCorrectionRequestInvalid
@@ -229,33 +286,26 @@ func applyEventCorrection(current *EconomicEvent, correction EventCorrection, ac
 	return &next, nil
 }
 
-func correctedFieldSources(encoded string, mask int64, actionId int64) string {
+func correctedFieldSources(encoded string, setMask int64, clearMask int64, actionId int64) string {
 	fields := make(map[string]string)
 	_ = json.Unmarshal([]byte(encoded), &fields)
 	ref := "action:" + strconv.FormatInt(actionId, 10)
-	for field, bit := range map[string]int64{
+	fieldBits := map[string]int64{
 		"ledger_account": MANUAL_FIELD_LEDGER_ACCOUNT, "counterparty_ledger_account": MANUAL_FIELD_COUNTERPARTY_LEDGER_ACCOUNT,
 		"direction": MANUAL_FIELD_FLOW_DIRECTION, "economic_nature": MANUAL_FIELD_ECONOMIC_NATURE,
 		"event_time": MANUAL_FIELD_EVENT_TIME, "amount": MANUAL_FIELD_AMOUNT, "currency": MANUAL_FIELD_CURRENCY,
 		"category": MANUAL_FIELD_CATEGORY, "status": MANUAL_FIELD_STATUS,
-	} {
-		if mask&bit != 0 {
+	}
+	for field, bit := range fieldBits {
+		if clearMask&bit != 0 {
+			delete(fields, field)
+		}
+		if setMask&bit != 0 {
 			fields[field] = ref
 		}
 	}
 	value, _ := json.Marshal(fields)
 	return string(value)
-}
-
-func correctedEventReasons(event *EconomicEvent) string {
-	reasons := []string{reasonManualCorrection}
-	if event.Status == EVENT_STATUS_READY && event.EconomicNature == ECONOMIC_NATURE_EXPENSE && event.CategoryId == nil {
-		reasons = append(reasons, reasonCategoryUnclassified)
-	}
-	if event.EconomicNature == ECONOMIC_NATURE_UNKNOWN && event.Status != EVENT_STATUS_EXCLUDED {
-		reasons = append(reasons, reasonEconomicNatureRequired)
-	}
-	return reasonCodesJSON(reasons)
 }
 
 func moveEventCount(update *FinanceUpdate, from EventStatus, to EventStatus) bool {

@@ -21,10 +21,10 @@ func TestPostingEngineSQLitePostsAtomicallyAndReplays(t *testing.T) {
 	}
 	const uid = int64(9101)
 	const updateId = int64(9201)
-	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{
-		postingEvent(uid, updateId, 9301, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_EXPENSE),
-		postingEvent(uid, updateId, 9302, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_REFUND),
-	})
+	expense := postingEvent(uid, updateId, 9301, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_EXPENSE)
+	refund := postingEvent(uid, updateId, 9302, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_REFUND)
+	seedPostingUpdateWithRelations(t, repository, uid, updateId, []*organizer.EconomicEvent{expense, refund},
+		[]*organizer.EconomicEventRelation{postingRefundRelation(uid, updateId, refund, expense, 9350)})
 	ledger := &postingLedgerStub{next: 9400}
 	engine, err := organizer.NewPostingEngine(repository, ledger, &engineIdGenerator{next: 9500})
 	if err != nil {
@@ -41,6 +41,29 @@ func TestPostingEngineSQLitePostsAtomicallyAndReplays(t *testing.T) {
 		t.Fatalf("post all replay mismatch: result=%+v err=%v", replayed, err)
 	}
 	assertPostingCounts(t, database, uid, 2, 2, 1)
+}
+
+func TestPostingEngineSQLiteRejectsForgedReadyRefundWithoutRelation(t *testing.T) {
+	repository, database := newSQLiteOrganizerRepository(t)
+	if err := database.SyncStructs(new(models.Transaction)); err != nil {
+		t.Fatalf("create refund guard ledger table: %v", err)
+	}
+	const uid = int64(9104)
+	const updateId = int64(9204)
+	refund := postingEvent(uid, updateId, 9331, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_REFUND)
+	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{refund})
+	engine, _ := organizer.NewPostingEngine(repository, &postingLedgerStub{next: 9430}, &engineIdGenerator{next: 9530})
+	_, err := engine.Post(nil, organizer.PostRequest{
+		Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 2, IdempotencyKey: "forged-refund-ready", Mode: organizer.POST_MODE_ALL_READY,
+	})
+	if !errors.Is(err, organizer.ErrPostEventNotPostable) {
+		t.Fatalf("refund without relation crossed ledger boundary: %v", err)
+	}
+	update, findErr := repository.FindUpdateById(nil, uid, updateId)
+	if findErr != nil || update == nil || update.Status != organizer.UPDATE_STATUS_REVIEW || update.Version != 2 || update.PostedEventCount != 0 {
+		t.Fatalf("rejected refund changed update: update=%+v err=%v", update, findErr)
+	}
+	assertPostingCounts(t, database, uid, 0, 0, 0)
 }
 
 func TestPostingEngineSQLiteRequiresExplicitPartialPosting(t *testing.T) {
@@ -100,6 +123,11 @@ func TestPostingEngineSQLiteRollsBackLedgerAndProjectionTogether(t *testing.T) {
 
 func seedPostingUpdate(t *testing.T, repository *organizer.Repository, uid int64, updateId int64, events []*organizer.EconomicEvent) {
 	t.Helper()
+	seedPostingUpdateWithRelations(t, repository, uid, updateId, events, nil)
+}
+
+func seedPostingUpdateWithRelations(t *testing.T, repository *organizer.Repository, uid int64, updateId int64, events []*organizer.EconomicEvent, relations []*organizer.EconomicEventRelation) {
+	t.Helper()
 	err := repository.DoTransaction(nil, uid, func(tx *organizer.RepositoryTransaction) error {
 		if err := tx.InsertUpdate(testUpdate(uid, updateId, 100)); err != nil {
 			return err
@@ -109,6 +137,11 @@ func seedPostingUpdate(t *testing.T, repository *organizer.Repository, uid int64
 		}
 		for _, event := range events {
 			if err := tx.InsertEvent(event); err != nil {
+				return err
+			}
+		}
+		for _, relation := range relations {
+			if err := tx.InsertRelation(relation); err != nil {
 				return err
 			}
 		}
@@ -149,10 +182,32 @@ func postingEvent(uid int64, updateId int64, eventId int64, status organizer.Eve
 	event.EventKey = fmt.Sprintf("%064x", eventId)
 	*event.EventUnixTime += eventId % 100
 	event.EconomicNature = nature
-	if nature == organizer.ECONOMIC_NATURE_UNKNOWN {
+	switch nature {
+	case organizer.ECONOMIC_NATURE_INCOME, organizer.ECONOMIC_NATURE_REFUND:
 		event.FlowDirection = organizer.FLOW_DIRECTION_INFLOW
+	case organizer.ECONOMIC_NATURE_EXPENSE, organizer.ECONOMIC_NATURE_FEE:
+		event.FlowDirection = organizer.FLOW_DIRECTION_OUTFLOW
+	case organizer.ECONOMIC_NATURE_INTERNAL_TRANSFER, organizer.ECONOMIC_NATURE_REPAYMENT, organizer.ECONOMIC_NATURE_BORROW:
+		event.FlowDirection = organizer.FLOW_DIRECTION_NEUTRAL
+		counterparty := eventId + 100000
+		event.CounterpartyLedgerAccountId = &counterparty
+	case organizer.ECONOMIC_NATURE_UNKNOWN:
+		event.FlowDirection = organizer.FLOW_DIRECTION_INFLOW
+	default:
+		event.FlowDirection = organizer.FLOW_DIRECTION_NEUTRAL
 	}
 	return event
+}
+
+func postingRefundRelation(uid int64, updateId int64, refund *organizer.EconomicEvent, original *organizer.EconomicEvent, relationId int64) *organizer.EconomicEventRelation {
+	amount := *refund.Amount
+	return &organizer.EconomicEventRelation{
+		Uid: uid, UpdateId: updateId, RelationKey: fmt.Sprintf("%064x", relationId),
+		RelationKeyVersion: organizer.RELATION_KEY_VERSION_V1, RelationType: organizer.RELATION_TYPE_REFUND_OF,
+		Status: organizer.RELATION_STATUS_CONFIRMED, Version: 1, SourceEventId: refund.EventId, TargetEventId: original.EventId,
+		Amount: &amount, Currency: refund.Currency, RuleVersion: organizer.PLAN_VERSION_V1, ReasonCodesJson: "[]",
+		CreatedUnixTime: 100, UpdatedUnixTime: 100, RelationId: relationId,
+	}
 }
 
 func assertPostingCounts(t *testing.T, database *datastore.Database, uid int64, transactionCount int64, linkCount int64, actionCount int64) {

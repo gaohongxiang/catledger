@@ -28,10 +28,12 @@ func TestCorrectionEngineSQLiteResolvesOneEventAndReplays(t *testing.T) {
 		},
 	}
 	result, err := engine.Correct(nil, request)
+	expectedManualMask := organizer.MANUAL_FIELD_FLOW_DIRECTION | organizer.MANUAL_FIELD_ECONOMIC_NATURE
 	if err != nil || result == nil || result.Replayed || result.Update.Version != 3 || result.Update.ReadyEventCount != 1 ||
 		result.Update.NeedsActionEventCount != 0 || result.Event.Version != 2 || result.Event.Status != organizer.EVENT_STATUS_READY ||
-		result.Event.EconomicNature != organizer.ECONOMIC_NATURE_INCOME || result.Event.ManualFieldMask != request.Correction.FieldMask ||
-		!strings.Contains(result.Event.FieldSourcesJson, "action:") || result.Action.Status != organizer.ACTION_STATUS_APPLIED {
+		result.Event.EconomicNature != organizer.ECONOMIC_NATURE_INCOME || result.Event.ManualFieldMask != expectedManualMask ||
+		!strings.Contains(result.Event.FieldSourcesJson, "action:") || strings.Contains(result.Event.FieldSourcesJson, "\"status\"") ||
+		result.Action.Status != organizer.ACTION_STATUS_APPLIED {
 		t.Fatalf("resolved correction mismatch: result=%+v err=%v", result, err)
 	}
 	replayed, err := engine.Correct(nil, request)
@@ -44,6 +46,28 @@ func TestCorrectionEngineSQLiteResolvesOneEventAndReplays(t *testing.T) {
 	})
 	if !errors.Is(err, organizer.ErrCorrectionUpdateConflict) {
 		t.Fatalf("stale correction was accepted: %v", err)
+	}
+}
+
+func TestCorrectionEngineSQLiteCannotForgeReadyRefundWithoutRelation(t *testing.T) {
+	repository, _ := newSQLiteOrganizerRepository(t)
+	const uid = int64(10104)
+	const updateId = int64(10204)
+	event := postingEvent(uid, updateId, 10331, organizer.EVENT_STATUS_NEEDS_ACTION, organizer.ECONOMIC_NATURE_UNKNOWN)
+	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{event})
+	engine, _ := organizer.NewCorrectionEngine(repository, &engineIdGenerator{next: 10430})
+	result, err := engine.Correct(nil, organizer.CorrectEventRequest{
+		Uid: uid, UpdateId: updateId, EventId: event.EventId, ExpectedUpdateVersion: 2, ExpectedEventVersion: 1,
+		IdempotencyKey: "refund-without-relation",
+		Correction: organizer.EventCorrection{
+			FieldMask: organizer.MANUAL_FIELD_STATUS | organizer.MANUAL_FIELD_FLOW_DIRECTION | organizer.MANUAL_FIELD_ECONOMIC_NATURE,
+			Status: organizer.EVENT_STATUS_READY, FlowDirection: organizer.FLOW_DIRECTION_INFLOW, EconomicNature: organizer.ECONOMIC_NATURE_REFUND,
+		},
+	})
+	if err != nil || result == nil || result.Event.Status != organizer.EVENT_STATUS_NEEDS_ACTION ||
+		result.Update.ReadyEventCount != 0 || result.Update.NeedsActionEventCount != 1 ||
+		!strings.Contains(result.Event.ReasonCodesJson, "refund_relation_required") {
+		t.Fatalf("refund readiness was forged: result=%+v err=%v", result, err)
 	}
 }
 
