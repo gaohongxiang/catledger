@@ -363,6 +363,18 @@ func (tx *RepositoryTransaction) InsertEventTransaction(value *EconomicEventTran
 	return insertOne(tx.session, value, "economic event transaction")
 }
 
+func (tx *RepositoryTransaction) UpdateEventTransactionRole(linkId int64, expectedRole EventTransactionRole, nextRole EventTransactionRole) (bool, error) {
+	if err := tx.validate(); err != nil || linkId < 1 || !isEventTransactionRole(expectedRole) || !isEventTransactionRole(nextRole) || expectedRole == nextRole {
+		return false, fmt.Errorf("invalid economic event transaction role update")
+	}
+	updated, err := tx.session.Where("uid=? AND link_id=? AND role=?", tx.uid, linkId, expectedRole).
+		Cols("role").Update(&EconomicEventTransaction{Role: nextRole})
+	if err != nil {
+		return false, fmt.Errorf("update economic event transaction role: %w", err)
+	}
+	return updated == 1, nil
+}
+
 func (r *Repository) ListEventTransactions(c core.Context, uid int64, eventId int64) ([]*EconomicEventTransaction, error) {
 	if uid < 1 || eventId < 1 {
 		return nil, fmt.Errorf("invalid economic event transaction lookup")

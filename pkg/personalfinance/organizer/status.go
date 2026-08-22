@@ -111,10 +111,13 @@ const (
 type EventTransactionRole string
 
 const (
-	EVENT_TRANSACTION_ROLE_PRIMARY              EventTransactionRole = "primary"
-	EVENT_TRANSACTION_ROLE_TRANSFER_COUNTERPART EventTransactionRole = "transfer_counterpart"
-	EVENT_TRANSACTION_ROLE_REFUND_ORIGINAL      EventTransactionRole = "refund_original"
-	EVENT_TRANSACTION_ROLE_REFUND_TRANSACTION   EventTransactionRole = "refund_transaction"
+	EVENT_TRANSACTION_ROLE_PRIMARY                EventTransactionRole = "primary"
+	EVENT_TRANSACTION_ROLE_TRANSFER_COUNTERPART   EventTransactionRole = "transfer_counterpart"
+	EVENT_TRANSACTION_ROLE_REFUND_ORIGINAL        EventTransactionRole = "refund_original"
+	EVENT_TRANSACTION_ROLE_REFUND_TRANSACTION     EventTransactionRole = "refund_transaction"
+	EVENT_TRANSACTION_ROLE_HISTORICAL_PRIMARY     EventTransactionRole = "historical_primary"
+	EVENT_TRANSACTION_ROLE_HISTORICAL_COUNTERPART EventTransactionRole = "historical_counterpart"
+	EVENT_TRANSACTION_ROLE_HISTORICAL_REFUND      EventTransactionRole = "historical_refund"
 )
 
 // ActionType 表示资源化新工作流的命令类型。
@@ -197,7 +200,9 @@ func isRelationStatus(value RelationStatus) bool {
 func isEventTransactionRole(value EventTransactionRole) bool {
 	switch value {
 	case EVENT_TRANSACTION_ROLE_PRIMARY, EVENT_TRANSACTION_ROLE_TRANSFER_COUNTERPART,
-		EVENT_TRANSACTION_ROLE_REFUND_ORIGINAL, EVENT_TRANSACTION_ROLE_REFUND_TRANSACTION:
+		EVENT_TRANSACTION_ROLE_REFUND_ORIGINAL, EVENT_TRANSACTION_ROLE_REFUND_TRANSACTION,
+		EVENT_TRANSACTION_ROLE_HISTORICAL_PRIMARY, EVENT_TRANSACTION_ROLE_HISTORICAL_COUNTERPART,
+		EVENT_TRANSACTION_ROLE_HISTORICAL_REFUND:
 		return true
 	default:
 		return false

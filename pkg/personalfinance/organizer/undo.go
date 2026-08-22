@@ -284,6 +284,7 @@ func inspectUndoInSession(tx *RepositoryTransaction, updateId int64) (*undoInspe
 		if listErr != nil {
 			return nil, listErr
 		}
+		links = currentEventTransactionLinks(links)
 		inspection.linksByEvent[event.EventId] = links
 		for _, link := range links {
 			transactionIds = append(transactionIds, link.TransactionId)
@@ -360,6 +361,20 @@ func inspectUndoInSession(tx *RepositoryTransaction, updateId int64) (*undoInspe
 	inspection.impact.ReasonCodes = sortedReasonSet(reasons)
 	inspection.impact.CanUndo = inspection.impact.PostedEventCount > 0 && len(inspection.impact.ReasonCodes) == 0
 	return inspection, nil
+}
+
+func currentEventTransactionLinks(links []*EconomicEventTransaction) []*EconomicEventTransaction {
+	result := make([]*EconomicEventTransaction, 0, len(links))
+	for _, link := range links {
+		if link == nil {
+			continue
+		}
+		switch link.Role {
+		case EVENT_TRANSACTION_ROLE_PRIMARY, EVENT_TRANSACTION_ROLE_TRANSFER_COUNTERPART, EVENT_TRANSACTION_ROLE_REFUND_TRANSACTION:
+			result = append(result, link)
+		}
+	}
+	return result
 }
 
 func completeUndoPair(links []*EconomicEventTransaction, transactions map[int64]*models.Transaction) bool {

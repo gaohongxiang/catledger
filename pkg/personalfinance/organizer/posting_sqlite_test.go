@@ -184,6 +184,14 @@ func (s *postingLedgerStub) CreateTransactionInSession(_ core.Context, _ *datast
 	}
 	s.next++
 	primary := *draft
+	latest := new(models.Transaction)
+	found, findErr := sess.Where("uid=? AND transaction_time>=?", primary.Uid, primary.TransactionTime).OrderBy("transaction_time desc").Limit(1).Get(latest)
+	if findErr != nil {
+		return nil, nil, findErr
+	}
+	if found && latest.TransactionTime >= primary.TransactionTime {
+		primary.TransactionTime = latest.TransactionTime + 1
+	}
 	primary.TransactionId = s.next
 	primary.CreatedUnixTime = 200
 	primary.UpdatedUnixTime = 200
@@ -194,6 +202,7 @@ func (s *postingLedgerStub) CreateTransactionInSession(_ core.Context, _ *datast
 		counterpart.TransactionId = primary.RelatedId
 		counterpart.RelatedId = primary.TransactionId
 		counterpart.Type = models.TRANSACTION_DB_TYPE_TRANSFER_IN
+		counterpart.TransactionTime = primary.TransactionTime + 1
 		counterpart.AccountId = primary.RelatedAccountId
 		counterpart.RelatedAccountId = primary.AccountId
 		if inserted, err := sess.Insert(&primary, &counterpart); err != nil || inserted != 2 {
