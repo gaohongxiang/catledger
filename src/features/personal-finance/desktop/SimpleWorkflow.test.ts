@@ -35,6 +35,7 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('activeWorkflowStep === 1');
         expect(results).toContain('<import-upload-button');
         expect(results).toContain('selectedBatchIds.includes(batch.id)');
+        expect(results).toContain('organizerApi.getUpdate(selectedUpdate.id)');
         expect(results).not.toContain("emit('open-records')");
         expect(router).toContain("path: '/personal-finance/bills'");
         expect(router).toContain("path: '/personal-finance/imports'");

@@ -462,7 +462,8 @@ async function load(): Promise<void> {
     showError.value = false;
     try {
         const pages = await Promise.all(RESULT_UPDATE_STATUSES.map(status => organizerApi.listUpdates(status)));
-        update.value = selectCurrentUpdate(pages.map(page => [...page.items]));
+        const selectedUpdate = selectCurrentUpdate(pages.map(page => [...page.items]));
+        update.value = selectedUpdate ? await organizerApi.getUpdate(selectedUpdate.id) : undefined;
         await Promise.all([
             personalFinanceStore.loadBatches(0, 100),
             Promise.allSettled([accountsStore.loadAllAccounts({ force: false }), categoriesStore.loadAllCategories({ force: false })])
