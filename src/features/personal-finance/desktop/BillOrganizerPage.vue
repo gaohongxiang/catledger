@@ -21,15 +21,15 @@
                     <li>
                         <span>2</span>
                         <div>
-                            <strong>{{ tt('personalFinance.organizer.step.organize') }}</strong>
-                            <small>{{ tt('personalFinance.organizer.step.organizeHint') }}</small>
+                            <strong>{{ tt('personalFinance.organizer.step.resolve') }}</strong>
+                            <small>{{ tt('personalFinance.organizer.step.resolveHint') }}</small>
                         </div>
                     </li>
                     <li>
                         <span>3</span>
                         <div>
-                            <strong>{{ tt('personalFinance.organizer.step.review') }}</strong>
-                            <small>{{ tt('personalFinance.organizer.step.reviewHint') }}</small>
+                            <strong>{{ tt('personalFinance.organizer.step.result') }}</strong>
+                            <small>{{ tt('personalFinance.organizer.step.resultHint') }}</small>
                         </div>
                     </li>
                 </ol>
@@ -50,7 +50,7 @@
             </v-tabs>
         </v-card>
 
-        <personal-finance-task-workbench-page class="mt-4" v-if="activeView === 'task'" />
+        <personal-finance-results-flow-page class="mt-4" v-if="activeView === 'task'" @open-imports="activeView = 'imports'" />
         <personal-finance-import-workbench-page class="mt-4" :embedded="true" v-else-if="activeView === 'imports'" />
         <personal-finance-reconciliation-workbench-page class="mt-4" :embedded="true" v-else />
     </div>
@@ -63,7 +63,7 @@ import { mdiClipboardCheckOutline, mdiLinkVariant, mdiTrayArrowDown } from '@mdi
 
 import { useI18n } from '@/locales/helpers.ts';
 
-import PersonalFinanceTaskWorkbenchPage from '../billflow/desktop/TaskWorkbenchPage.vue';
+import PersonalFinanceResultsFlowPage from '../organizer/desktop/ResultsFlowPage.vue';
 import PersonalFinanceImportWorkbenchPage from './ImportWorkbenchPage.vue';
 import PersonalFinanceReconciliationWorkbenchPage from '../reconciliation/desktop/ReconciliationWorkbenchPage.vue';
 

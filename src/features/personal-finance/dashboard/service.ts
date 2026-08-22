@@ -17,7 +17,8 @@ import type {
     DashboardQuery,
     DashboardSourceCoverage,
     DashboardTrustSummary,
-    PersonalFinanceDashboardOverview
+    PersonalFinanceDashboardOverview,
+    CardCycleAccount
 } from './models.ts';
 
 type UnknownRecord = Record<string, unknown>;
@@ -286,4 +287,33 @@ export async function getDashboardOverview(query: DashboardQuery): Promise<Perso
     if (query.months < 1 || query.months > 24 || !Number.isSafeInteger(query.months) ||
         query.firstDayOfWeek < 0 || query.firstDayOfWeek > 6 || !Number.isSafeInteger(query.firstDayOfWeek)) fail();
     return normalizeDashboardOverview(unwrap(await services.getPersonalFinanceDashboardOverview(query)));
+}
+
+export function normalizeCardCycleAccounts(value: unknown): CardCycleAccount[] {
+    const item = record(value);
+    return array(item['items']).map(entry => {
+        const account = record(entry);
+        const monthStatus = string(account['monthStatus']);
+        if (monthStatus !== 'provisional' && monthStatus !== 'confirmed') fail();
+        const reviewValue = account['balanceReview'] === null || typeof account['balanceReview'] === 'undefined'
+            ? undefined : record(account['balanceReview']);
+        let balanceReview: CardCycleAccount['balanceReview'];
+        if (reviewValue) {
+            const status = string(reviewValue['status']);
+            if (status !== 'unverified' && status !== 'verified') fail();
+            balanceReview = {
+                id: identifier(reviewValue['id']), status, asOfDate: date(reviewValue['asOfDate']),
+                version: integer(reviewValue['version'])
+            };
+        }
+        return {
+            ledgerAccountId: identifier(account['ledgerAccountId']), displayName: string(account['displayName']),
+            currency: currency(account['currency']), monthStatus,
+            ...(balanceReview ? { balanceReview } : {})
+        };
+    });
+}
+
+export async function listCardCycleAccounts(asOfDate: string): Promise<CardCycleAccount[]> {
+    return normalizeCardCycleAccounts(unwrap(await services.listPersonalFinanceCardCycleAccounts({ asOfDate })));
 }

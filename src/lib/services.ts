@@ -1029,74 +1029,49 @@ export default {
     getPersonalFinanceDashboardOverview: (params: { startDate: string, asOfDate: string, months: number, firstDayOfWeek: number }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/dashboard/overview.json?start_date=${encodeURIComponent(params.startDate)}&as_of_date=${encodeURIComponent(params.asOfDate)}&months=${params.months}&week_start=${params.firstDayOfWeek}`);
     },
-    createPersonalFinanceBillflowTask: (request: { fileIds: string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/create.json', request);
+    createPersonalFinanceOrganizerUpdate: (request: { batchIds: string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/updates/create.json', request);
     },
-    replacePersonalFinanceBillflowTaskFiles: (request: { taskId: string, expectedVersion: number, fileIds: string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/replace_files.json', request);
+    listPersonalFinanceOrganizerUpdates: (params: { status: string, limit: number, cursorUpdatedUnixTime?: number, cursorUpdateId?: string }): ApiResponsePromise<unknown> => {
+        const cursor = params.cursorUpdatedUnixTime && params.cursorUpdateId
+            ? `&cursor_updated_unix_time=${params.cursorUpdatedUnixTime}&cursor_update_id=${encodeURIComponent(params.cursorUpdateId)}` : '';
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/updates/list.json?status=${encodeURIComponent(params.status)}&limit=${params.limit}${cursor}`);
     },
-    listPersonalFinanceBillflowTasks: (params: { status: string, limit: number }): ApiResponsePromise<unknown> => {
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/list.json?status=${encodeURIComponent(params.status)}&limit=${params.limit}`);
+    getPersonalFinanceOrganizerUpdate: ({ updateId }: { updateId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/updates/get.json?id=${encodeURIComponent(updateId)}`);
     },
-    getPersonalFinanceBillflowTask: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/get.json?id=${encodeURIComponent(taskId)}`);
+    organizePersonalFinanceUpdate: (request: { updateId: string, expectedUpdateVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/updates/organize.json', request);
     },
-    getPersonalFinanceBillflowAccounts: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/accounts.json?id=${encodeURIComponent(taskId)}`);
+    listPersonalFinanceOrganizerEvents: (params: { updateId: string, status?: string, limit: number, cursorUpdatedUnixTime?: number, cursorEventId?: string }): ApiResponsePromise<unknown> => {
+        const status = params.status ? `&status=${encodeURIComponent(params.status)}` : '';
+        const cursor = params.cursorUpdatedUnixTime && params.cursorEventId
+            ? `&cursor_updated_unix_time=${params.cursorUpdatedUnixTime}&cursor_event_id=${encodeURIComponent(params.cursorEventId)}` : '';
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/events/list.json?update_id=${encodeURIComponent(params.updateId)}&limit=${params.limit}${status}${cursor}`);
     },
-    createPersonalFinanceBillflowAccount: (request: { taskId: string, expectedVersion: number, sampleRowId: string, name: string, category: number, currency: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/create.json', request);
+    getPersonalFinanceOrganizerEventEvidence: ({ eventId }: { eventId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/events/evidence.json?id=${encodeURIComponent(eventId)}`);
     },
-    overridePersonalFinanceBillflowAccount: (request: { taskId: string, expectedVersion: number, sampleRowId: string, ledgerAccountId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/override.json', request);
+    getPersonalFinanceOrganizerCorrectionImpact: ({ updateId, eventId }: { updateId: string, eventId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/events/correction_impact.json?update_id=${encodeURIComponent(updateId)}&event_id=${encodeURIComponent(eventId)}`);
     },
-    excludePersonalFinanceBillflowAccount: (request: { taskId: string, expectedVersion: number, sampleRowId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/exclude.json', request);
+    correctPersonalFinanceOrganizerEvent: (request: object): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/events/correct.json', request);
     },
-    restorePersonalFinanceBillflowAccount: (request: { taskId: string, expectedVersion: number, sampleRowId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/restore.json', request);
+    excludePersonalFinanceOrganizerEvent: (request: { updateId: string, eventId: string, expectedUpdateVersion: number, expectedEventVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/events/exclude.json', request);
     },
-    listPersonalFinanceBillflowAccountRows: ({ taskId, sampleRowId }: { taskId: string, sampleRowId: string }): ApiResponsePromise<unknown> => {
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/accounts/rows.json?id=${encodeURIComponent(taskId)}&sample_row_id=${encodeURIComponent(sampleRowId)}`);
+    postAllReadyPersonalFinanceOrganizerEvents: (request: { updateId: string, expectedUpdateVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/actions/post-all-ready.json', request);
     },
-    skipPersonalFinanceBillflowAccountRows: (request: { taskId: string, expectedVersion: number, sampleRowId: string, rowIds: readonly string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/skip_rows.json', request);
+    postReadyPersonalFinanceOrganizerEvents: (request: { updateId: string, expectedUpdateVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/actions/post-ready.json', request);
     },
-    restorePersonalFinanceBillflowAccountRows: (request: { taskId: string, expectedVersion: number, sampleRowId: string, rowIds: readonly string[], idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/accounts/restore_rows.json', request);
+    getPersonalFinanceOrganizerUndoImpact: ({ updateId }: { updateId: string }): ApiResponsePromise<unknown> => {
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/actions/undo_impact.json?update_id=${encodeURIComponent(updateId)}`);
     },
-    runPersonalFinanceBillflowTask: (request: { taskId: string, expectedVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/run.json', request);
-    },
-    confirmPersonalFinanceBillflowPost: (request: { taskId: string, expectedVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/confirm_post.json', request);
-    },
-    listPersonalFinanceBillflowTodos: (params: { taskId: string, status: string, limit: number, cursorUpdatedUnixTime?: number, cursorTodoId?: string }): ApiResponsePromise<unknown> => {
-        const cursor = params.cursorUpdatedUnixTime && params.cursorTodoId
-            ? `&cursor_updated_unix_time=${params.cursorUpdatedUnixTime}&cursor_todo_id=${encodeURIComponent(params.cursorTodoId)}`
-            : '';
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/todos.json?id=${encodeURIComponent(params.taskId)}&status=${encodeURIComponent(params.status)}&limit=${params.limit}${cursor}`);
-    },
-    listPersonalFinanceBillflowClassifiedRows: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/categories.json?id=${encodeURIComponent(taskId)}`);
-    },
-    listPersonalFinanceBillflowMergeGroups: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/merge_groups.json?id=${encodeURIComponent(taskId)}`);
-    },
-    resolvePersonalFinanceBillflowTodo: (request: { todoId: string, expectedVersion: number, status: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/todos/resolve.json', request);
-    },
-    assignPersonalFinanceBillflowTodoCategories: (request: { items: readonly { todoId: string, expectedVersion: number }[], categoryId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/todos/assign_category.json', request);
-    },
-    assignPersonalFinanceBillflowTodoCounterpartAccount: (request: { todoId: string, expectedVersion: number, counterpartAccountId: string, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/todos/assign_counterpart_account.json', request);
-    },
-    getPersonalFinanceBillflowUndoImpact: ({ taskId }: { taskId: string }): ApiResponsePromise<unknown> => {
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/billflow/tasks/undo_impact.json?id=${encodeURIComponent(taskId)}`);
-    },
-    undoPersonalFinanceBillflowTask: (request: { taskId: string, expectedVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/billflow/tasks/undo.json', request);
+    undoPersonalFinanceOrganizerUpdate: (request: { updateId: string, expectedUpdateVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/actions/undo.json', request);
     },
     getPersonalFinanceInstallmentCandidate: ({ candidateId }: { candidateId: string }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/installments/candidates/get.json?id=${encodeURIComponent(candidateId)}`);

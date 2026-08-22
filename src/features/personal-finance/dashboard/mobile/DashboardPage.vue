@@ -99,7 +99,7 @@ import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
 
 import type { DashboardCashFlowPeriodKind } from '../models.ts';
 import { useDashboard } from '../useDashboard.ts';
-import { composeDashboardHeadline, nearestNextPayment, primaryDashboardHeadline } from '../../billflow/state.ts';
+import { composeDashboardHeadline, nearestNextPayment, primaryDashboardHeadline } from '../state.ts';
 
 const { tt } = useI18n();
 const exchangeRatesStore = useExchangeRatesStore();

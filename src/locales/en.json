@@ -2924,219 +2924,47 @@
                 "organize": "System organizes",
                 "organizeHint": "Find duplicates and overlaps",
                 "review": "Review exceptions",
-                "reviewHint": "Count each event only once"
+                "reviewHint": "Count each event only once",
+                "resolve": "Resolve required issues",
+                "resolveHint": "Decide only what is ambiguous",
+                "result": "Verify the result",
+                "resultHint": "Count every event once"
             }
         },
-        "billflow": {
-            "title": "This organize task",
-            "subtitle": "Move through the steps. You can always go back and change a decision.",
-            "step": {
-                "label": "Organize progress",
-                "files": "Choose statements",
-                "accounts": "Check accounts",
-                "review": "Review transactions",
-                "others": "Other items",
-                "confirm": "Confirm posting",
-                "back": "Back",
-                "next": "Next"
+        "organizerV2": {
+            "error": "This financial update could not finish. Refresh and try again.",
+            "rows": "rows",
+            "start": {
+                "eyebrow": "New financial update",
+                "title": "Choose statements and go straight to the result",
+                "hint": "The system reduces multi-source evidence to unique economic events. Clear items become ready; only required decisions come back to you.",
+                "batch": "Import batch",
+                "action": "Organize {count} statements",
+                "import": "Upload or inspect statements"
             },
-            "error": "The organize task could not finish. Refresh and try again.",
-            "failed": "This task stopped because confirmed history conflicts. The difference is kept and nothing is overwritten.",
-            "run": "Build transaction plan",
-            "confirmPost": "Confirm posting",
-            "confirmHint": "Finish reviewing transactions and other items, then confirm posting.",
-            "confirmDoneHint": "Posted.",
-            "reviewHint": "Choose a category for unclear transactions. You can select several and save them together.",
-            "mergeHint": "The app first consolidates multi-source evidence into unique transactions, then determines categories. Card-gateway rows use the same account, day, amount, direction, and equal counts; only unresolved relationships need review.",
-            "othersHint": "Anything left after categorizing. You can continue if there is nothing to decide.",
-            "pane": {
-                "evidence": "Eligible evidence",
-                "transactions": "Final transactions",
-                "merge": "Duplicate evidence",
-                "relations": "Relationships to review",
-                "category": "Categories to complete"
+            "result": {
+                "eyebrow": "Organization result",
+                "finalEvents": "Final events",
+                "needsAction": "{count} required issues remain",
+                "needsActionHint": "Resolve or exclude these items, then post every ready event in one action.",
+                "ready": "The result is ready to post",
+                "readyHint": "Duplicate evidence is folded away while every final event remains auditable."
             },
-            "plan": {
-                "evidence": "Eligible evidence",
-                "consolidated": "Duplicates merged",
-                "transactions": "Final transactions to post",
-                "blocking": "Relationships to review",
-                "uncategorized": "Categories to complete",
-                "explanation": "There are {transactions} final transactions. Each card opens its own content. Duplicate evidence is not another transaction list; each group is counted once in the final total.",
-                "evidenceHint": "These are the source evidence rows included in this task; one transaction may have several evidence rows.",
-                "transactionsHint": "This is the deduplicated transaction plan. Unresolved relationships block posting; missing categories do not block balances.",
-                "relationsHint": "Only relationships that still block posting appear here. Explicit refunds are linked automatically instead of requiring row-by-row confirmation.",
-                "evidenceTitle": "Eligible evidence in this task",
-                "transactionsTitle": "Final transactions to post",
-                "rowsShown": "{count} rows",
-                "evidenceCount": "{count} evidence rows",
-                "needsRelation": "Relationship needed",
-                "needsCategory": "Category needed",
-                "ready": "Ready"
+            "metric": { "posted": "Posted", "ready": "Ready to post", "needsAction": "Required", "excluded": "Excluded" },
+            "conservation": { "evidence": "Valid evidence", "duplicates": "Duplicate evidence", "events": "Final events", "ok": "Evidence conservation verified", "invalid": "Counts do not reconcile; do not post" },
+            "events": { "eyebrow": "Result details", "hint": "Start with results; open raw rows, versions, and relations only when needed.", "evidence": "View evidence", "resolve": "Resolve", "empty": "There are no events in this group." },
+            "filter": { "needs_action": "Required", "ready": "Ready", "posted": "Posted", "excluded": "Excluded", "corrected": "Corrected" },
+            "status": {
+                "draft": "Draft", "organizing": "Organizing", "review": "Review", "posting": "Posting", "partially_posted": "Partially posted", "posted": "Fully posted", "failed": "Failed", "undone": "Undone",
+                "ready": "Ready", "needs_action": "Required", "excluded": "Excluded", "corrected": "Corrected"
             },
-            "merge": {
-                "pending": "After accounts are ready, start merging. Clear matches are merged automatically.",
-                "empty": "Nothing needs a merge decision. Clear matches are already merged, or merging has not started.",
-                "mergedEmpty": "No processed comparison groups yet.",
-                "pendingHint": "Only evidence groups that still cannot be reduced to unique transactions are listed. Repeated same-day amounts consolidate only when both sides have equal counts.",
-                "mergedHint": "This is an audit of duplicate evidence, not the final transaction list. Two source rows in each group have already been folded into one final transaction above.",
-                "matchesHint": "Match",
-                "matchesEmpty": "No comparable row from another statement is listed. Automatic merge needs merchant/description, amount, currency, and the same card; credit-card dates match on the same calendar day.",
-                "matchesMany": "Several nearby rows exist, so it was not merged automatically.",
-                "reanalyze": "Reanalyze this task",
-                "openCase": "Review candidate {index}",
-                "groupRows": "{count} matching rows",
-                "column": {
-                    "source": "Source",
-                    "counterparty": "Counterparty",
-                    "item": "Item",
-                    "orderId": "Order ID"
-                },
-                "bucket": {
-                    "pending": "Duplicates to review",
-                    "merged": "Confirmed duplicates"
-                },
-                "status": {
-                    "pending": "Pending",
-                    "preview_merged": "Preview merge",
-                    "merged": "Merged",
-                    "independent": "Independent",
-                    "internal_transfer": "Internal transfer",
-                    "refund_reversal": "Refund or reversal",
-                    "deferred": "Deferred",
-                    "action_required": "Action required"
-                }
-            },
-            "skip": {
-                "title": "Don't post",
-                "hint": "Check a transaction to keep it out of the ledger. Whole-account ignores are already done when checking accounts.",
-                "empty": "No transactions to skip yet."
-            },
-            "files": {
-                "title": "Choose statements to organize together",
-                "create": "Start organizing",
-                "empty": "No statements are ready yet",
-                "emptyHint": "Upload Alipay, WeChat Pay, or bank statements first. You can pick more than one.",
-                "selected": "{count} selected",
-                "inTask": "Choose the statements for this round. You can add or remove them until you confirm posting.",
-                "inTaskLocked": "This round is posted. The statements cannot be changed."
-            },
-            "next": {
-                "files": "Organize {count} selected statements",
-                "accounts": "{count} accounts still need a decision",
-                "accountsReady": "Accounts are ready. Continue to review transactions",
-                "accountsBalance": "Next you can note current balances, or skip",
-                "balance": "You can skip current balances",
-                "merge": "Merge the same purchase across statements",
-                "mergeBlocked": "{count} cross-statement links still need a decision",
-                "review": "Finish these, then review other items",
-                "reviewBlocked": "{count} items still need a decision",
-                "others": "Continue to confirm posting even if there are no other items",
-                "othersBlocked": "{count} items still need a decision",
-                "confirm": "Nothing enters the ledger until you confirm"
-            },
-            "summary": {
-                "created": "Accounts created",
-                "reused": "Accounts reused",
-                "posted": "Posted",
-                "willPost": "Will post",
-                "todos": "Need a look"
-            },
-            "accounts": {
-                "title": "Check accounts",
-                "reusedTitle": "Already confirmed, will reuse",
-                "reusedHint": "These will be reused for this task. Newly created accounts can note a current balance here, or skip.",
-                "pendingHint": "Reuse or create after the name matches. Ignore an account if it is not yours.",
-                "pendingEmpty": "No accounts need a decision.",
-                "reusedEmpty": "No confirmed accounts are being reused.",
-                "excludedEmpty": "No accounts are ignored.",
-                "bucket": {
-                    "pending": "To check",
-                    "reused": "Reused",
-                    "excluded": "Ignored"
-                },
-                "rows": "{count} rows",
-                "create": "Create",
-                "useExisting": "Reuse",
-                "reuseAll": "Reuse {count} recognized",
-                "matchedHint": "Maps to “{name}”",
-                "pickExisting": "Existing account",
-                "exclude": "Ignore account",
-                "restore": "Use again",
-                "excludedTitle": "Ignored accounts",
-                "excludedHint": "These stay as evidence and no ledger account is created. Whole-group ignores are remembered next time and can be undone.",
-                "showRows": "Rows",
-                "hideRows": "Hide",
-                "skipSelected": "Don't post selected",
-                "restoreSelected": "Use selected again",
-                "skipped": "Not posted",
-                "statementDate": "Statement date",
-                "dueDate": "Due date",
-                "creditLimit": "Credit limit",
-                "cardHeaderCreateHint": "Creating this card copies the statement day onto the account. Due date and credit limit stay here and are not stored on the account.",
-                "cardHeaderReusedHint": "The statement day is stored on the account. Due date and credit limit stay here only.",
-                "direction": {
-                    "income": "Income",
-                    "expense": "Expense",
-                    "neutral": "Neither income nor expense",
-                    "unknown": "Unknown direction"
-                }
-            },
-            "todos": {
-                "title": "Transaction categories",
-                "empty": "No categories need a decision.",
-                "pendingEmpty": "Nothing needs a category.",
-                "classifiedEmpty": "No categorized transactions yet.",
-                "pendingHint": "This list is only what still needs a look, not every imported row. WeChat “merchant payment” is not a category. Choose once; the same merchant is remembered next time.",
-                "classifiedHint": "Rows the statement already mapped, and categories you just saved, both appear here. WeChat “merchant payment” still needs a choice first.",
-                "bucket": {
-                    "pending": "Uncategorized",
-                    "classified": "Categorized"
-                },
-                "othersTitle": "Other items",
-                "othersEmpty": "No other items need a decision.",
-                "selectAll": "Select all ({count} selected)",
-                "pickCategory": "Choose a category",
-                "pickPaymentAccount": "Choose the payment account",
-                "saveCategory": "Save",
-                "savePaymentAccount": "Save payment account",
-                "assignSelected": "Save category for selected",
-                "skipSelected": "Skip selected",
-                "classified": "Categorized",
-                "restore": "Restore",
-                "resolve": "Done",
-                "dismiss": "Skip for now",
-                "installment": "Treat as installment"
-            },
-            "todo": {
-                "unresolved_payment_account": "Not mapped to a ledger account yet",
-                "identity_conflict": "The same statement line conflicts",
-                "core_field_conflict": "Amount or direction does not match",
-                "ledger_mismatch": "Does not match posted history",
-                "cross_source_ambiguous": "Could not uniquely match another statement",
-                "transfer_unclear": "This may be a transfer",
-                "refund_unclear": "This may be a refund",
-                "repayment_unclear": "Repayment identified; payment account required",
-                "installment_candidate": "This may be an installment; only a few questions first",
-                "uncategorized": "Not categorized yet"
-            },
-            "balance": {
-                "title": "How much is in the new accounts now (optional)",
-                "hint": "Note about how much is in this new account. The statement is a history; you can skip this.",
-                "empty": "No new accounts need a balance check. Continue.",
-                "amount": "About how much now",
-                "skip": "Skip for now",
-                "save": "Save",
-                "verify": "Verified"
-            },
-            "mobile": {
-                "title": "Statement organizer",
-                "readOnly": "Mobile shows a summary only. Finish organizing on desktop.",
-                "empty": "No organize task yet.",
-                "legacy": "View upload history"
-            }
+            "nature": { "income": "Income", "expense": "Expense", "internal_transfer": "Internal transfer", "borrow": "Borrowing", "repayment": "Repayment", "refund": "Refund", "fee": "Fee", "balance_adjustment": "Balance adjustment", "unknown": "Nature required" },
+            "action": { "postAll": "Post all ({count})", "organize": "Organize again", "undo": "Undo this posting", "new": "Start a new update" },
+            "evidence": { "title": "Raw evidence and sources", "empty": "No evidence rows are available." },
+            "resolve": { "title": "Confirm economic nature", "hint": "Choose what this event represents; its cash-flow direction is locked with that decision.", "exclude": "Do not post", "save": "Confirm and mark ready" },
+            "undo": { "title": "Undo impact", "impact": "This will inspect and undo {transactions} ledger transactions.", "unsafe": "Ledger transactions were changed or shared, so this update cannot be safely undone." },
+            "mobile": { "title": "Statement results", "desktopAction": "Open statement imports" }
         },
-        "nav": "Statement Organizer",
         "loans": {
             "nav": "Loans & Installments",
             "eyebrow": "Debt agreements and actual ledger effects",

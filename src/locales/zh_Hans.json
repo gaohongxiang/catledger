@@ -2924,219 +2924,47 @@
                 "organize": "系统先整理",
                 "organizeHint": "识别重复与重叠来源",
                 "review": "只确认异常",
-                "reviewHint": "正式账本只统计一次"
+                "reviewHint": "正式账本只统计一次",
+                "resolve": "处理必要问题",
+                "resolveHint": "只决定系统说不清的",
+                "result": "核验整理结果",
+                "resultHint": "最终事件只计算一次"
             }
         },
-        "billflow": {
-            "title": "这一次整理",
-            "subtitle": "按进度一步一步来，随时可以回去改。",
-            "step": {
-                "label": "整理进度",
-                "files": "选账单",
-                "accounts": "核对账户",
-                "review": "整理交易",
-                "others": "其他事项",
-                "confirm": "确认入账",
-                "back": "上一步",
-                "next": "下一步"
+        "organizerV2": {
+            "error": "财务更新暂时无法完成，请刷新后重试。",
+            "rows": "行",
+            "start": {
+                "eyebrow": "新一轮财务更新",
+                "title": "选择账单，直接查看整理结果",
+                "hint": "系统会把多来源证据收成唯一经济事件。清楚的项目直接就绪，只把必须决定的问题交给你。",
+                "batch": "导入批次",
+                "action": "整理所选 {count} 份账单",
+                "import": "上传或检查账单"
             },
-            "error": "整理任务未能完成，请刷新后重试。",
-            "failed": "这次整理因为已确认事实冲突而停止，差异已保留，不会覆盖历史。",
-            "run": "开始整理交易",
-            "confirmPost": "确认入账",
-            "confirmHint": "整理交易和其他事项都看过以后，再点确认入账。",
-            "confirmDoneHint": "已经入账。",
-            "reviewHint": "先给说不清的交易选分类。可全选后一起保存。",
-            "mergeHint": "系统先把多渠道证据收成唯一交易，再判断分类。信用卡网关记录按同一张卡、同日、同额同向和两边数量核对；只有无法解释的少量关系需要你确认。",
-            "othersHint": "分类之后还要你看一眼的事项，没有也可以下一步。",
-            "pane": {
-                "evidence": "有效证据",
-                "transactions": "最终待入账",
-                "merge": "重复证据",
-                "relations": "待确认关系",
-                "category": "待补分类"
+            "result": {
+                "eyebrow": "本次整理结果",
+                "finalEvents": "最终事件",
+                "needsAction": "还有 {count} 个必要问题",
+                "needsActionHint": "处理或排除这些项目后，就能一次入账所有已就绪事件。",
+                "ready": "结果已经可以入账",
+                "readyHint": "重复证据已折叠，最终事件和原始证据仍可逐笔核验。"
             },
-            "plan": {
-                "evidence": "有效证据",
-                "consolidated": "合并重复",
-                "transactions": "最终待入账",
-                "blocking": "待确认关系",
-                "uncategorized": "待补分类",
-                "explanation": "本次一共 {transactions} 笔最终交易。每张卡都可点击查看对应内容；重复证据不是另一批交易，每组已经折叠进最终交易一次。",
-                "evidenceHint": "这里是进入本次整理的原始证据摘要；同一交易可能有多条证据。",
-                "transactionsHint": "这里是去重后的最终交易计划。关系待确认会阻止入账，待补分类不会阻止余额入账。",
-                "relationsHint": "这里只列仍会阻止确认入账的关系；来源已明确的退款会自动关联，不再要求逐笔确认。",
-                "evidenceTitle": "本次有效证据",
-                "transactionsTitle": "最终待入账交易",
-                "rowsShown": "共 {count} 条",
-                "evidenceCount": "{count} 条证据",
-                "needsRelation": "待确认关系",
-                "needsCategory": "待补分类",
-                "ready": "已就绪"
+            "metric": { "posted": "已入账", "ready": "待入账", "needsAction": "必须处理", "excluded": "已排除" },
+            "conservation": { "evidence": "有效证据", "duplicates": "重复证据", "events": "最终事件", "ok": "证据守恒已核对", "invalid": "计数不守恒，请勿入账" },
+            "events": { "eyebrow": "结果明细", "hint": "默认只看结果；原始行、版本和关系按需展开。", "evidence": "查看证据", "resolve": "处理", "empty": "这个分组暂时没有事件。" },
+            "filter": { "needs_action": "必须处理", "ready": "待入账", "posted": "已入账", "excluded": "已排除", "corrected": "已修正" },
+            "status": {
+                "draft": "待整理", "organizing": "整理中", "review": "待核验", "posting": "入账中", "partially_posted": "部分入账", "posted": "已全部入账", "failed": "整理失败", "undone": "已撤销",
+                "ready": "待入账", "needs_action": "必须处理", "excluded": "已排除", "corrected": "已修正"
             },
-            "merge": {
-                "pending": "账户齐了以后，点开始合并。清楚的会自动合成一笔。",
-                "empty": "没有要对的。清楚的已经自动合成，或还没开始合并。",
-                "mergedEmpty": "还没有已处理的对照组。",
-                "pendingHint": "这里只列仍无法收成唯一交易的证据组。同日同额多笔只有两边数量相等时才等量合并；数量不等不会硬配。",
-                "mergedHint": "这里是重复证据审计，不是最终交易列表。每组两行来自不同渠道，已经折叠为上方最终交易中的一笔。",
-                "matchesHint": "对照",
-                "matchesEmpty": "没有列出可对比的另一份账单行。自动合成要对方/说明、金额、币种、同一张卡对上；信用卡只有日期时对到同一天即可。",
-                "matchesMany": "有好几笔都接近，所以没有自动合成。",
-                "reanalyze": "重新分析本次账单",
-                "openCase": "处理候选 {index}",
-                "groupRows": "{count} 笔对照",
-                "column": {
-                    "source": "来源",
-                    "counterparty": "交易对方",
-                    "item": "商品说明",
-                    "orderId": "订单号"
-                },
-                "bucket": {
-                    "pending": "待核对重复",
-                    "merged": "已确认重复"
-                },
-                "status": {
-                    "pending": "待决定",
-                    "preview_merged": "预览合并",
-                    "merged": "已合并",
-                    "independent": "相互独立",
-                    "internal_transfer": "内部转账",
-                    "refund_reversal": "退款或撤销",
-                    "deferred": "暂缓",
-                    "action_required": "需操作"
-                }
-            },
-            "skip": {
-                "title": "不入账",
-                "hint": "在每笔交易上勾选不入账。整组忽略已经在核对账户做完。",
-                "empty": "还没有可勾选的交易。"
-            },
-            "files": {
-                "title": "选择要一起整理的账单",
-                "create": "开始整理",
-                "empty": "还没有可整理的账单",
-                "emptyHint": "先上传支付宝、微信或银行账单，可一次选多份。",
-                "selected": "已选 {count} 份",
-                "inTask": "勾选这一次要一起整理的账单。确认入账前都可以改。",
-                "inTaskLocked": "这次已经入账，不能再改账单。"
-            },
-            "next": {
-                "files": "整理已选的 {count} 份账单",
-                "accounts": "还要确认 {count} 个账户",
-                "accountsReady": "账户已齐，下一步去整理交易",
-                "accountsBalance": "下一步可先记下现在多少钱，也可以跳过",
-                "balance": "可以先不核对现在有多少钱",
-                "merge": "开始把同一笔合成一笔",
-                "mergeBlocked": "还有 {count} 笔跨账单关系要看",
-                "review": "处理完后再去其他事项",
-                "reviewBlocked": "还有 {count} 项没处理完",
-                "others": "没有其他事项也可以下一步去确认入账",
-                "othersBlocked": "还有 {count} 项没处理完",
-                "confirm": "确认后才会写入正式账本"
-            },
-            "summary": {
-                "created": "新建账户",
-                "reused": "沿用账户",
-                "posted": "已入账",
-                "willPost": "将入账",
-                "todos": "需要你看"
-            },
-            "accounts": {
-                "title": "核对账户",
-                "reusedTitle": "已确认会沿用",
-                "reusedHint": "这些这次会直接沿用。刚新建的可以在这里记下现在多少钱，也可以跳过。",
-                "pendingHint": "名称对上后点沿用或新建。不是自己的账点忽略账户。",
-                "pendingEmpty": "没有需要核对的账户。",
-                "reusedEmpty": "这次没有沿用已有账户。",
-                "excludedEmpty": "没有忽略的账户。",
-                "bucket": {
-                    "pending": "待核对",
-                    "reused": "已沿用",
-                    "excluded": "忽略账户"
-                },
-                "rows": "{count} 笔",
-                "create": "新建",
-                "useExisting": "沿用",
-                "reuseAll": "沿用已识别的 {count} 个",
-                "matchedHint": "对应「{name}」",
-                "pickExisting": "选已有账户",
-                "exclude": "忽略账户",
-                "restore": "改回",
-                "excludedTitle": "已忽略的账户",
-                "excludedHint": "这些不建正式账户，只留作证据。下次默认继续忽略，可随时改回。",
-                "showRows": "明细",
-                "hideRows": "收起",
-                "skipSelected": "选中的不入账",
-                "restoreSelected": "改回选中的",
-                "skipped": "不入账",
-                "statementDate": "账单日",
-                "dueDate": "还款日",
-                "creditLimit": "额度",
-                "cardHeaderCreateHint": "新建会把账单日写入这个信用卡账户。还款日和额度只在这里展示，不写进账户本身。",
-                "cardHeaderReusedHint": "账单日已写入账户；还款日和额度只在这里展示。",
-                "direction": {
-                    "income": "收入",
-                    "expense": "支出",
-                    "neutral": "不计收支",
-                    "unknown": "方向未知"
-                }
-            },
-            "todos": {
-                "title": "交易分类",
-                "empty": "没有要处理的分类。",
-                "pendingEmpty": "没有要分类的交易。",
-                "classifiedEmpty": "还没有已经对上分类的交易。",
-                "pendingHint": "这里只列还要你看的，不是账单每一笔。微信「商户消费」不是分类，要你选一次；选过的商户下次会记住。",
-                "classifiedHint": "账单已经对上的，和你刚保存的，都会出现在这里。微信「商户消费」要你选一次才会进来。",
-                "bucket": {
-                    "pending": "未分类",
-                    "classified": "已分类"
-                },
-                "othersTitle": "其他事项",
-                "othersEmpty": "没有要处理的其他事项。",
-                "selectAll": "全选（已选 {count}）",
-                "pickCategory": "选择分类",
-                "pickPaymentAccount": "选择从哪个账户还款",
-                "saveCategory": "保存",
-                "savePaymentAccount": "保存付款账户",
-                "assignSelected": "给选中的保存分类",
-                "skipSelected": "选中的先跳过",
-                "classified": "已分类",
-                "restore": "改回",
-                "resolve": "已处理",
-                "dismiss": "先跳过",
-                "installment": "按分期处理"
-            },
-            "todo": {
-                "unresolved_payment_account": "还没对应到账本账户",
-                "identity_conflict": "同一笔账单内容有冲突",
-                "core_field_conflict": "金额或方向对不上",
-                "ledger_mismatch": "和已入账记录不一致",
-                "cross_source_ambiguous": "对不上唯一的另一份账单",
-                "transfer_unclear": "可能是转账，需要确认",
-                "refund_unclear": "可能是退款，需要确认",
-                "repayment_unclear": "已识别为还款，还需补付款账户",
-                "installment_candidate": "可能是分期，先少问几项",
-                "uncategorized": "还没分类"
-            },
-            "balance": {
-                "title": "新建账户现在多少钱（可跳过）",
-                "hint": "填这个账户现在大概有多少钱。账单是流水，可以先不核对。",
-                "empty": "没有新建账户要核对余额，可以直接下一步。",
-                "amount": "现在大概多少钱",
-                "skip": "先不核对",
-                "save": "记下",
-                "verify": "已核对"
-            },
-            "mobile": {
-                "title": "账单整理",
-                "readOnly": "手机上只看摘要。完整整理请用桌面。",
-                "empty": "还没有整理任务。",
-                "legacy": "查看历史上传"
-            }
+            "nature": { "income": "收入", "expense": "支出", "internal_transfer": "内部转账", "borrow": "借入", "repayment": "还款", "refund": "退款", "fee": "费用", "balance_adjustment": "余额调整", "unknown": "性质待确认" },
+            "action": { "postAll": "全部入账（{count}）", "organize": "重新整理", "undo": "撤销本次入账", "new": "开始新一轮" },
+            "evidence": { "title": "原始证据与来源", "empty": "没有可展示的证据行。" },
+            "resolve": { "title": "确认经济性质", "hint": "选择这笔事件实际代表什么；资金方向会随性质一起锁定。", "exclude": "不入账", "save": "确认并标记就绪" },
+            "undo": { "title": "撤销影响", "impact": "将检查并撤销 {transactions} 笔正式交易。", "unsafe": "正式交易已被修改或共享，当前不能安全撤销。" },
+            "mobile": { "title": "账单整理结果", "desktopAction": "前往账单导入" }
         },
-        "nav": "账单整理",
         "loans": {
             "nav": "贷款与分期",
             "eyebrow": "合同计划与真实账本效果",

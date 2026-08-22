@@ -345,8 +345,9 @@ import { parseBigDecimal } from '@/lib/numeral.ts';
 
 import type { DashboardCashFlowAmount, DashboardCashFlowPeriodKind, DashboardDebtCurveAmount } from '../models.ts';
 import { formatLoanPptrAsPercentage } from '../../loans/state.ts';
-import { composeDashboardHeadline, nearestNextPayment, primaryDashboardHeadline } from '../../billflow/state.ts';
-import { billflowApi } from '../../billflow/service.ts';
+import { composeDashboardHeadline, nearestNextPayment, primaryDashboardHeadline } from '../state.ts';
+import { listCardCycleAccounts } from '../service.ts';
+import { organizerApi } from '../../organizer/service.ts';
 import { coverageTone, formatCoverageRange, sourceCoverageTone } from '../presentation.ts';
 import { useDashboard } from '../useDashboard.ts';
 import CashFlowTrendChart from './CashFlowTrendChart.vue';
@@ -425,15 +426,16 @@ function refresh(): void {
 
 async function loadHeadlineExtras(): Promise<void> {
     try {
-        const [ready, cards] = await Promise.all([
-            billflowApi.listTasks('ready'),
-            billflowApi.listCardAccounts(asOfDate.value)
+        const [reviews, partial, cards] = await Promise.all([
+            organizerApi.listUpdates('review'),
+            organizerApi.listUpdates('partially_posted'),
+            listCardCycleAccounts(asOfDate.value)
         ]);
-        const task = ready.items[0];
-        const todos = task ? await billflowApi.listTodos(task.id, 'open') : { items: [] };
+        const update = [...reviews.items, ...partial.items].sort((left, right) => right.updatedUnixTime - left.updatedUnixTime)[0];
+        const needsAction = update ? await organizerApi.listEvents(update.id, 'needs_action') : { items: [] };
         headlineExtras.value = {
-            uncategorizedCount: todos.items.filter(item => item.todoKind === 'uncategorized').length,
-            todoOpenCount: task?.todoOpenCount ?? todos.items.length,
+            uncategorizedCount: needsAction.items.filter(item => !item.categoryId).length,
+            todoOpenCount: update?.needsActionEventCount ?? needsAction.items.length,
             balanceUnverifiedCount: cards.filter(card => !card.balanceReview || card.balanceReview.status === 'unverified').length
         };
     } catch {

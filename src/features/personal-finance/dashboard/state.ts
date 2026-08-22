@@ -1,4 +1,11 @@
-import type { DashboardAccountAmount, DashboardCashFlowMonth, DashboardDebtAmount, DashboardQuery } from './models.ts';
+import type {
+    DashboardAccountAmount,
+    DashboardCashFlowMonth,
+    DashboardDebtAmount,
+    DashboardHeadlineCode,
+    DashboardHeadlineItem,
+    DashboardQuery
+} from './models.ts';
 
 export const DASHBOARD_DEFAULT_MONTHS = 12;
 
@@ -48,4 +55,33 @@ export function findDebtAmount(values: DashboardDebtAmount[], currency: string):
 
 export function findCashFlowAmount(month: DashboardCashFlowMonth | undefined, currency: string) {
     return month?.amounts.find(value => value.currency === currency);
+}
+
+export function composeDashboardHeadline(input: {
+    coverageComplete: boolean;
+    accountsWithGaps: number;
+    uncategorizedCount: number;
+    todoOpenCount: number;
+    balanceUnverifiedCount: number;
+}): DashboardHeadlineItem[] {
+    const items: DashboardHeadlineItem[] = [];
+    pushHeadline(items, 'provisional_month', input.coverageComplete ? 0 : Math.max(input.accountsWithGaps, 1));
+    pushHeadline(items, 'uncategorized_count', input.uncategorizedCount);
+    pushHeadline(items, 'todo_open_count', input.todoOpenCount);
+    pushHeadline(items, 'balance_unverified_count', input.balanceUnverifiedCount);
+    return items;
+}
+
+export function primaryDashboardHeadline(items: readonly DashboardHeadlineItem[]): DashboardHeadlineCode | 'ready' {
+    return items[0]?.code ?? 'ready';
+}
+
+export function nearestNextPayment<T extends { nextDueDate?: string; nextDueAmount: string; name: string; currency: string }>(contracts: readonly T[]): T | undefined {
+    return [...contracts]
+        .filter(contract => typeof contract.nextDueDate === 'string' && contract.nextDueDate.length === 10)
+        .sort((left, right) => (left.nextDueDate ?? '').localeCompare(right.nextDueDate ?? ''))[0];
+}
+
+function pushHeadline(items: DashboardHeadlineItem[], code: DashboardHeadlineCode, count: number): void {
+    if (count > 0) items.push({ code, count });
 }

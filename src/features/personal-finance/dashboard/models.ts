@@ -141,3 +141,24 @@ export interface DashboardQuery {
     months: number;
     firstDayOfWeek: number;
 }
+
+export type DashboardHeadlineCode =
+    'provisional_month' | 'uncategorized_count' | 'todo_open_count' | 'balance_unverified_count';
+
+export interface DashboardHeadlineItem {
+    readonly code: DashboardHeadlineCode;
+    readonly count: number;
+}
+
+export interface CardCycleAccount {
+    readonly ledgerAccountId: string;
+    readonly displayName: string;
+    readonly currency: string;
+    readonly monthStatus: 'provisional' | 'confirmed';
+    readonly balanceReview?: {
+        readonly id: string;
+        readonly status: 'unverified' | 'verified';
+        readonly asOfDate: string;
+        readonly version: number;
+    };
+}
