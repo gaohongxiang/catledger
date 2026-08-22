@@ -30,7 +30,12 @@ describe('personal-finance simple web workflow', () => {
         expect(organizer).toContain("ref<BillOrganizerView>('review')");
         expect(organizer).toContain('value="review"');
         expect(organizer).toContain('value="records"');
-        expect(organizer).toContain('@open-records');
+        expect(organizer).not.toContain('@open-records');
+        const results = source('../organizer/desktop/ResultsFlowPage.vue');
+        expect(results).toContain('activeWorkflowStep === 1');
+        expect(results).toContain('<import-upload-button');
+        expect(results).toContain('selectedBatchIds.includes(batch.id)');
+        expect(results).not.toContain("emit('open-records')");
         expect(router).toContain("path: '/personal-finance/bills'");
         expect(router).toContain("path: '/personal-finance/imports'");
         expect(router).toContain("path: '/personal-finance/reconciliation'");

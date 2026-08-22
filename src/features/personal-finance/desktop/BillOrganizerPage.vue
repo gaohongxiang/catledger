@@ -25,7 +25,6 @@
             <personal-finance-results-flow-page
                 class="organizer-content"
                 v-if="activeView === 'review'"
-                @open-records="activeView = 'records'"
             />
             <personal-finance-import-workbench-page class="organizer-content" :embedded="true" v-else />
         </keep-alive>

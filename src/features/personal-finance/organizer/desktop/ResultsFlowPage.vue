@@ -20,10 +20,10 @@
                 </label>
             </div>
             <div class="empty-actions">
+                <import-upload-button size="large" @changed="onImportChanged" />
                 <v-btn color="primary" size="large" :loading="busy" :disabled="selectedBatchIds.length < 1" @click="createAndOrganize">
                     {{ tt('personalFinance.organizerV2.start.action', { count: selectedBatchIds.length }) }}
                 </v-btn>
-                <v-btn variant="text" @click="$emit('open-records')">{{ tt('personalFinance.organizerV2.start.import') }}</v-btn>
             </div>
         </section>
 
@@ -39,7 +39,7 @@
                 </header>
 
                 <div class="workflow-stages">
-                    <button class="workflow-stage" @click="emit('open-records')">
+                    <button class="workflow-stage" :class="{ active: activeWorkflowStep === 1 }" @click="activeWorkflowStep = 1">
                         <span class="stage-number">1</span>
                         <span class="stage-copy">
                             <small>{{ tt('personalFinance.organizerV2.workflow.upload') }}</small>
@@ -47,7 +47,7 @@
                             <em>{{ tt('personalFinance.organizerV2.workflow.uploadAction') }}</em>
                         </span>
                     </button>
-                    <button class="workflow-stage attention" :class="{ active: eventFilter === 'needs_action' }" @click="eventFilter = 'needs_action'">
+                    <button class="workflow-stage attention" :class="{ active: activeWorkflowStep === 2 }" @click="showEventStep('needs_action')">
                         <span class="stage-number">2</span>
                         <span class="stage-copy">
                             <small>{{ tt('personalFinance.organizerV2.workflow.review') }}</small>
@@ -55,7 +55,7 @@
                             <em>{{ tt('personalFinance.organizerV2.workflow.eventCount', { count: update.needsActionEventCount }) }}</em>
                         </span>
                     </button>
-                    <button class="workflow-stage" :class="{ active: eventFilter === 'ready' }" @click="eventFilter = 'ready'">
+                    <button class="workflow-stage" :class="{ active: activeWorkflowStep === 3 }" @click="showEventStep('ready')">
                         <span class="stage-number">3</span>
                         <span class="stage-copy">
                             <small>{{ tt('personalFinance.organizerV2.workflow.ready') }}</small>
@@ -65,11 +65,11 @@
                     </button>
                 </div>
 
-                <div class="workflow-sources" v-if="updateSourceNames.length">
+                <div class="workflow-sources" v-if="activeWorkflowStep !== 1 && updateSourceNames.length">
                     <span :key="`${source}-${index}`" v-for="(source, index) in updateSourceNames">{{ source }}</span>
                 </div>
 
-                <footer>
+                <footer v-if="activeWorkflowStep !== 1">
                     <div class="result-actions">
                         <v-btn color="primary" :loading="busy" :disabled="!canPostUpdate(update)" @click="postAllReady">
                             {{ tt('personalFinance.organizerV2.action.postAll', { count: update.readyEventCount }) }}
@@ -89,7 +89,37 @@
                 </footer>
             </section>
 
-            <details class="verification" :class="{ invalid: !conservationHolds }">
+            <section class="round-sources" v-if="activeWorkflowStep === 1">
+                <header>
+                    <div>
+                        <span>{{ tt('personalFinance.organizerV2.sources.eyebrow') }}</span>
+                        <h3>{{ tt('personalFinance.organizerV2.sources.title') }}</h3>
+                        <p>{{ tt('personalFinance.organizerV2.sources.lockedHint') }}</p>
+                    </div>
+                    <import-upload-button @changed="onImportChanged" />
+                </header>
+                <div class="round-source-list">
+                    <article :key="item.source.id" v-for="item in currentSources">
+                        <v-checkbox-btn :model-value="true" disabled />
+                        <div>
+                            <strong>{{ item.batch?.file?.originalFileName || tt(getSourceTypeKey(item.source.sourceType)) }}</strong>
+                            <small>
+                                {{ tt(getSourceTypeKey(item.source.sourceType)) }} ·
+                                {{ item.batch ? tt('personalFinance.organizerV2.sources.rowCount', { count: item.batch.validRowCount }) : item.source.parserVersion }}
+                            </small>
+                        </div>
+                        <span>{{ tt('personalFinance.organizerV2.sources.selected') }}</span>
+                    </article>
+                </div>
+                <footer>
+                    <p>{{ tt('personalFinance.organizerV2.sources.nextRoundHint') }}</p>
+                    <v-btn color="primary" @click="showEventStep('needs_action')">
+                        {{ tt('personalFinance.organizerV2.sources.continue') }}
+                    </v-btn>
+                </footer>
+            </section>
+
+            <details class="verification" :class="{ invalid: !conservationHolds }" v-if="activeWorkflowStep !== 1">
                 <summary>{{ tt('personalFinance.organizerV2.workflow.verify') }}</summary>
                 <div>
                     <span>{{ update.validEvidenceCount }} {{ tt('personalFinance.organizerV2.conservation.evidence') }}</span>
@@ -101,7 +131,7 @@
                 </div>
             </details>
 
-            <section class="event-workbench">
+            <section class="event-workbench" v-if="activeWorkflowStep !== 1">
                 <header>
                     <div>
                         <span>{{ tt('personalFinance.organizerV2.events.eyebrow') }}</span>
@@ -288,13 +318,12 @@ import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { CategoryType } from '@/core/category.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
 
+import ImportUploadButton from '../../components/ImportUploadButton.vue';
 import { usePersonalFinanceStore } from '../../store.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
 import type { EconomicEvent, EconomicEventStatus, EconomicNature, FinanceUpdate, OrganizerEventEvidence, OrganizerImpact } from '../models.ts';
 import { organizerApi } from '../service.ts';
 import { RESULT_UPDATE_STATUSES, canOrganizeUpdate, canPostUpdate, canUndoUpdate, eventDisplayLabel, eventReasonTranslationKeys, groupVisuallyIdenticalEvents, selectCurrentUpdate, updateConservationHolds } from '../state.ts';
-
-const emit = defineEmits<{ (e: 'open-records'): void }>();
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
 const accountsStore = useAccountsStore();
@@ -309,6 +338,7 @@ const update = ref<FinanceUpdate>();
 const events = ref<readonly EconomicEvent[]>([]);
 const eventFilter = ref<EconomicEventStatus>('needs_action');
 const selectedBatchIds = ref<string[]>([]);
+const activeWorkflowStep = ref<1 | 2 | 3>(2);
 const showEvidence = ref(false);
 const evidence = ref<OrganizerEventEvidence>();
 const showResolve = ref(false);
@@ -355,8 +385,15 @@ const updateSourceNames = computed(() => {
         return batch?.file?.originalFileName || tt(getSourceTypeKey(source.sourceType));
     });
 });
+const currentSources = computed(() => {
+    const batches = new Map(personalFinanceStore.batches.map(batch => [batch.id, batch]));
+    return (update.value?.sources ?? []).map(source => ({ source, batch: batches.get(source.batchId) }));
+});
 
 watch(eventFilter, () => {
+    if (activeWorkflowStep.value !== 1) {
+        activeWorkflowStep.value = eventFilter.value === 'ready' ? 3 : 2;
+    }
     expandedGroupIds.value = new Set();
     void loadEvents();
 });
@@ -374,6 +411,10 @@ function idempotencyKey(action: string): string { return `pf-organizer-ui-v2:${a
 function toggleBatch(id: string): void {
     selectedBatchIds.value = selectedBatchIds.value.includes(id)
         ? selectedBatchIds.value.filter(value => value !== id) : [...selectedBatchIds.value, id];
+}
+function showEventStep(filter: EconomicEventStatus): void {
+    activeWorkflowStep.value = filter === 'ready' ? 3 : 2;
+    eventFilter.value = filter;
 }
 function eventDay(unixTime?: number): string { return unixTime ? String(new Date(unixTime * 1000).getDate()).padStart(2, '0') : '—'; }
 function eventMonth(unixTime?: number): string { return unixTime ? new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(unixTime * 1000)) : ''; }
@@ -452,6 +493,14 @@ function startNewUpdate(): void {
     selectedBatchIds.value = [];
     needsActionGroupCount.value = undefined;
     expandedGroupIds.value = new Set();
+    activeWorkflowStep.value = 1;
+}
+
+async function onImportChanged(batchId: string): Promise<void> {
+    await personalFinanceStore.loadBatches(0, 100);
+    if (!update.value && readyBatches.value.some(batch => batch.id === batchId) && !selectedBatchIds.value.includes(batchId)) {
+        selectedBatchIds.value = [...selectedBatchIds.value, batchId];
+    }
 }
 
 async function runMutation(operation: () => Promise<{ update: FinanceUpdate }>): Promise<void> {
@@ -468,6 +517,7 @@ async function createAndOrganize(): Promise<void> {
     try {
         const created = await organizerApi.createUpdate(selectedBatchIds.value, idempotencyKey('create'));
         update.value = (await organizerApi.organize(created, idempotencyKey('organize'))).update;
+        activeWorkflowStep.value = 2;
         await loadEvents();
     } catch { showError.value = true; }
     finally { busy.value = false; }
@@ -560,6 +610,19 @@ onMounted(load);
 .workflow-overview > footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 16px 12px; }
 .workflow-overview footer p { margin: 0; color: rgba(var(--v-theme-on-surface), .52); font-size: .75rem; text-align: end; }
 .result-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.round-sources { border: 1px solid var(--rule); border-radius: 10px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
+.round-sources > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; border-bottom: 1px solid var(--rule); background: rgba(var(--v-theme-primary), .035); }
+.round-sources header span { color: rgb(var(--v-theme-primary)); font-size: .68rem; font-weight: 800; letter-spacing: .12em; }
+.round-sources h3 { display: inline; margin: 0 0 0 8px; font-size: 1.05rem; }
+.round-sources header p { margin: 3px 0 0; color: rgba(var(--v-theme-on-surface), .58); font-size: .76rem; }
+.round-source-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1px; background: var(--rule); }
+.round-source-list article { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 66px; padding: 9px 14px; background: rgb(var(--v-theme-surface)); }
+.round-source-list article > div { display: grid; min-width: 0; }
+.round-source-list strong { overflow: hidden; font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }
+.round-source-list small { margin-top: 2px; color: rgba(var(--v-theme-on-surface), .55); font-size: .68rem; }
+.round-source-list article > span { padding: 3px 7px; border-radius: 999px; background: rgba(var(--v-theme-success), .1); color: rgb(var(--v-theme-success)); font-size: .65rem; font-weight: 700; }
+.round-sources > footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--rule); }
+.round-sources footer p { margin: 0; color: rgba(var(--v-theme-on-surface), .55); font-size: .72rem; }
 .verification { padding: 0 14px; border-inline-start: 3px solid rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .05); }
 .verification.invalid { border-color: rgb(var(--v-theme-error)); background: rgba(var(--v-theme-error), .06); }
 .verification summary { padding: 8px 2px; color: rgba(var(--v-theme-on-surface), .68); cursor: pointer; font-size: .72rem; font-weight: 700; }
@@ -612,6 +675,7 @@ onMounted(load);
     .workflow-stages { grid-template-columns: 1fr; }
     .workflow-overview > header, .workflow-overview > footer { align-items: start; flex-direction: column; }
     .workflow-overview footer p { text-align: start; }
+    .round-sources > header, .round-sources > footer { align-items: start; flex-direction: column; }
     .verification > div { align-items: start; flex-wrap: wrap; }
     .verification small { width: 100%; margin-inline-start: 0; }
     .event-workbench > header { align-items: start; flex-direction: column; }

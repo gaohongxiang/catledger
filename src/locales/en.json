@@ -2936,10 +2936,10 @@
             "rows": "rows",
             "start": {
                 "eyebrow": "New financial update",
-                "title": "Choose statements and go straight to the result",
-                "hint": "The system reduces multi-source evidence to unique economic events. Clear items become ready; only required decisions come back to you.",
+                "title": "Upload and choose statements for this round",
+                "hint": "Choose which statements enter this round first. The system then reduces multi-source evidence to unique economic events and returns only required decisions.",
                 "batch": "Import batch",
-                "action": "Organize {count} statements",
+                "action": "Start with {count} selected statement(s)",
                 "import": "Upload or inspect statements"
             },
             "result": {
@@ -2954,9 +2954,9 @@
                 "eyebrow": "Current statements",
                 "title": "Current review",
                 "hint": "Confirm accounts and transaction nature, then post once.",
-                "upload": "Uploaded",
+                "upload": "Round statements",
                 "sourceCount": "{count} statement(s)",
-                "uploadAction": "View statement records",
+                "uploadAction": "Upload and select",
                 "review": "To review",
                 "groupCount": "{count} issue group(s)",
                 "eventCount": "{count} record(s) in total",
@@ -2969,6 +2969,15 @@
                 "expand": "Review {count} records",
                 "collapse": "Collapse",
                 "item": "Record {index}"
+            },
+            "sources": {
+                "eyebrow": "Step 1",
+                "title": "Statements in this round",
+                "lockedHint": "Once review begins, the round's sources are locked so every result remains traceable.",
+                "rowCount": "{count} valid record(s)",
+                "selected": "Selected",
+                "nextRoundHint": "New uploads stay in statement records and can be selected before the next round; they never alter the current result silently.",
+                "continue": "Back to transaction review"
             },
             "metric": { "posted": "Posted", "ready": "Ready to post", "needsAction": "Required", "excluded": "Excluded" },
             "conservation": { "evidence": "Valid evidence", "duplicates": "Duplicate evidence", "events": "Final events", "ok": "Evidence conservation verified", "invalid": "Counts do not reconcile; do not post" },

@@ -16,15 +16,7 @@
                             <small>{{ tt('personalFinance.organizer.recordsHint') }}</small>
                         </div>
                         <v-spacer />
-                        <v-btn
-                            color="primary"
-                            :size="embedded ? 'default' : 'large'"
-                            :prepend-icon="mdiTrayArrowUp"
-                            :loading="personalFinanceStore.submitting"
-                            @click="fileInput?.click()"
-                        >
-                            {{ tt('personalFinance.upload') }}
-                        </v-btn>
+                        <import-upload-button :size="embedded ? 'default' : 'large'" @changed="onUploadChanged" />
                         <v-btn
                             variant="tonal"
                             :size="embedded ? 'default' : 'large'"
@@ -36,8 +28,6 @@
                         </v-btn>
                     </div>
                 </div>
-
-                <input ref="fileInput" type="file" class="d-none" accept=".csv,.xlsx,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="upload" />
 
                 <v-divider />
 
@@ -331,19 +321,6 @@
         </v-col>
     </v-row>
 
-    <v-dialog width="560" v-model="showDuplicateDialog">
-        <v-card>
-            <v-card-title class="pa-5">{{ tt('personalFinance.duplicateDialog.title') }}</v-card-title>
-            <v-card-text class="px-5 pb-5">{{ tt('personalFinance.duplicateDialog.message') }}</v-card-text>
-            <v-card-actions class="px-5 pb-5">
-                <v-spacer />
-                <v-btn variant="text" @click="showDuplicateDialog = false">{{ tt('Cancel') }}</v-btn>
-                <v-btn variant="tonal" @click="openLatestDuplicate">{{ tt('personalFinance.duplicateDialog.openLatest') }}</v-btn>
-                <v-btn color="primary" @click="reparseDuplicate">{{ tt('personalFinance.duplicateDialog.reparse') }}</v-btn>
-            </v-card-actions>
-        </v-card>
-    </v-dialog>
-
 	<v-dialog width="620" v-model="showUndoImpactDialog">
 		<v-card>
 			<v-card-title class="pa-5">{{ tt('personalFinance.operations.undoImpactTitle') }}</v-card-title>
@@ -373,6 +350,7 @@
 <script setup lang="ts">
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
+import ImportUploadButton from '../components/ImportUploadButton.vue';
 import SourceAccountDialog from '../components/SourceAccountDialog.vue';
 import GenericBankImportDialog from '../components/GenericBankImportDialog.vue';
 import CebCreditImportDialog from '../components/CebCreditImportDialog.vue';
@@ -400,8 +378,7 @@ import {
     canDeleteImportFileContent,
     canDiscardImportBatch,
     findPaymentAccountGroupForRow,
-    getSafePaymentAccountDisplayName,
-    getUploadAction
+    getSafePaymentAccountDisplayName
 } from '../state.ts';
 import { usePersonalFinanceStore } from '../store.ts';
 
@@ -423,7 +400,6 @@ import {
     mdiRefresh,
 	mdiInformationOutline,
     mdiReload,
-    mdiTrayArrowUp,
 	mdiTableCog,
     mdiWalletOutline
 } from '@mdi/js';
@@ -442,7 +418,6 @@ const { tt, formatDateTimeToShortDateTime, formatAmountToLocalizedNumeralsWithCu
 const userStore = useUserStore();
 const personalFinanceStore = usePersonalFinanceStore();
 
-const fileInput = useTemplateRef<HTMLInputElement>('fileInput');
 const sourceAccountDialog = useTemplateRef<SourceAccountDialogType>('sourceAccountDialog');
 const genericBankImportDialog = useTemplateRef<GenericBankImportDialogType>('genericBankImportDialog');
 const cebCreditImportDialog = useTemplateRef<CebCreditImportDialogType>('cebCreditImportDialog');
@@ -452,8 +427,6 @@ const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 
 const batchPage = ref<number>(1);
 const rowPage = ref<number>(1);
-const showDuplicateDialog = ref<boolean>(false);
-const duplicateUpload = ref<PersonalFinanceImportUploadResult | null>(null);
 const showUndoImpactDialog = ref<boolean>(false);
 const undoImpact = ref<PersonalFinanceUndoImpact | null>(null);
 
@@ -566,37 +539,10 @@ async function showUndoImpact(): Promise<void> {
 	}
 }
 
-async function upload(event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-
-    if (!file) {
-        return;
-    }
-
-    let result: PersonalFinanceImportUploadResult;
-
-    try {
-        result = await personalFinanceStore.uploadFile(file);
-    } catch {
-        snackbar.value?.showMessage('personalFinance.error.operationFailed');
-        return;
-    }
-
-    if (getUploadAction(result) === 'choose_duplicate_action') {
-        duplicateUpload.value = result;
-        showDuplicateDialog.value = true;
-        return;
-    }
-
-    try {
-        await reparseFile(result.file.id, 'initial_upload');
-    } catch {
-        if (!openExplicitParserFallback(result.file, 'initial_upload_generic_fallback', 'initial_upload_ceb_fallback')) {
-            snackbar.value?.showMessage('personalFinance.error.operationFailed');
-        }
-    }
+async function onUploadChanged(batchId: string): Promise<void> {
+    batchPage.value = 1;
+    await personalFinanceStore.loadBatches(0, HISTORY_PAGE_SIZE);
+    await selectBatch(batchId);
 }
 
 async function reparseFile(fileId: string, reasonCode: string): Promise<void> {
@@ -620,36 +566,6 @@ async function reparseFile(fileId: string, reasonCode: string): Promise<void> {
 
     snackbar.value?.showMessage('personalFinance.parseCompleted');
     maybeOpenPaymentAccountSetup();
-}
-
-async function openLatestDuplicate(): Promise<void> {
-    const latestBatch = duplicateUpload.value?.latestBatch;
-    showDuplicateDialog.value = false;
-
-    if (!latestBatch) {
-        return;
-    }
-
-    await personalFinanceStore.loadBatches(0, HISTORY_PAGE_SIZE);
-    await selectBatch(latestBatch.id);
-}
-
-async function reparseDuplicate(): Promise<void> {
-    const file = duplicateUpload.value?.file;
-    const fileId = file?.id;
-    showDuplicateDialog.value = false;
-
-    if (!fileId) {
-        return;
-    }
-
-    try {
-        await reparseFile(fileId, 'duplicate_upload_reparse');
-    } catch {
-        if (!openExplicitParserFallback(file, 'duplicate_upload_generic_fallback', 'duplicate_upload_ceb_fallback')) {
-            snackbar.value?.showMessage('personalFinance.error.operationFailed');
-        }
-    }
 }
 
 async function reparseSelectedBatch(): Promise<void> {

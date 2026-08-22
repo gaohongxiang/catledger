@@ -2936,10 +2936,10 @@
             "rows": "行",
             "start": {
                 "eyebrow": "新一轮财务更新",
-                "title": "选择账单，直接查看整理结果",
-                "hint": "系统会把多来源证据收成唯一经济事件。清楚的项目直接就绪，只把必须决定的问题交给你。",
+                "title": "上传并选择本轮账单",
+                "hint": "先决定哪些账单进入本轮整理；系统再把多来源证据收成唯一经济事件，只把必须决定的问题交给你。",
                 "batch": "导入批次",
-                "action": "整理所选 {count} 份账单",
+                "action": "用所选 {count} 份账单开始整理",
                 "import": "上传或检查账单"
             },
             "result": {
@@ -2954,9 +2954,9 @@
                 "eyebrow": "本轮账单",
                 "title": "本轮整理",
                 "hint": "核对账户与性质后统一入账。",
-                "upload": "已上传",
+                "upload": "本轮账单",
                 "sourceCount": "{count} 份账单",
-                "uploadAction": "查看账单记录",
+                "uploadAction": "上传与选择",
                 "review": "待处理",
                 "groupCount": "{count} 组问题",
                 "eventCount": "共 {count} 笔记录",
@@ -2969,6 +2969,15 @@
                 "expand": "展开核对 {count} 笔",
                 "collapse": "收起",
                 "item": "第 {index} 笔"
+            },
+            "sources": {
+                "eyebrow": "第 1 步",
+                "title": "本轮账单范围",
+                "lockedHint": "进入交易核对后，本轮来源会锁定，确保整理结果始终可以追溯。",
+                "rowCount": "{count} 条有效记录",
+                "selected": "本轮已选",
+                "nextRoundHint": "新上传账单会保留在账单记录中，可在下一轮开始前勾选；不会悄悄改变当前整理结果。",
+                "continue": "返回交易核对"
             },
             "metric": { "posted": "已入账", "ready": "待入账", "needsAction": "必须处理", "excluded": "已排除" },
             "conservation": { "evidence": "有效证据", "duplicates": "重复证据", "events": "最终事件", "ok": "证据守恒已核对", "invalid": "计数不守恒，请勿入账" },
