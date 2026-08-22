@@ -3,7 +3,6 @@ package organizer
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
