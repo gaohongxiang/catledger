@@ -23,7 +23,7 @@
                 <v-btn color="primary" size="large" :loading="busy" :disabled="selectedBatchIds.length < 1" @click="createAndOrganize">
                     {{ tt('personalFinance.organizerV2.start.action', { count: selectedBatchIds.length }) }}
                 </v-btn>
-                <v-btn variant="text" @click="$emit('open-imports')">{{ tt('personalFinance.organizerV2.start.import') }}</v-btn>
+                <v-btn variant="text" @click="$emit('open-records')">{{ tt('personalFinance.organizerV2.start.import') }}</v-btn>
             </div>
         </section>
 
@@ -39,7 +39,7 @@
                 </header>
 
                 <div class="workflow-stages">
-                    <button class="workflow-stage" @click="emit('open-imports')">
+                    <button class="workflow-stage" @click="emit('open-records')">
                         <span class="stage-number">1</span>
                         <span class="stage-copy">
                             <small>{{ tt('personalFinance.organizerV2.workflow.upload') }}</small>
@@ -194,18 +194,69 @@
             </v-card>
         </v-dialog>
 
-        <v-dialog max-width="520" v-model="showResolve">
+        <v-dialog max-width="760" v-model="showResolve">
             <v-card>
                 <v-card-title>{{ tt('personalFinance.organizerV2.resolve.title') }}</v-card-title>
                 <v-card-text>
-                    <p>{{ tt('personalFinance.organizerV2.resolve.hint') }}</p>
-                    <v-select :items="natureOptions" item-title="title" item-value="value" variant="outlined" v-model="selectedNature" />
+                    <div class="resolve-preview" v-if="selectedEvent">
+                        <div>
+                            <strong>{{ eventDisplayLabel(selectedEvent) || tt('personalFinance.organizerV2.events.unnamed') }}</strong>
+                            <small>{{ eventReasonTranslationKeys(selectedEvent).map(key => tt(key)).join(' · ') }}</small>
+                        </div>
+                        <b :class="selectedEvent.flowDirection">{{ formatEventAmount(selectedEvent) }}</b>
+                    </div>
+                    <p class="resolve-hint">{{ tt('personalFinance.organizerV2.resolve.hint') }}</p>
+                    <v-row dense>
+                        <v-col cols="12" md="6">
+                            <v-select
+                                :items="natureOptions"
+                                item-title="title"
+                                item-value="value"
+                                variant="outlined"
+                                :label="tt('personalFinance.organizerV2.resolve.nature')"
+                                v-model="selectedNature"
+                            />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-select
+                                :items="availableLedgerAccounts"
+                                item-title="name"
+                                item-value="id"
+                                variant="outlined"
+                                :label="tt('personalFinance.organizerV2.resolve.ledgerAccount')"
+                                v-model="selectedLedgerAccountId"
+                            />
+                        </v-col>
+                        <v-col cols="12" md="6" v-if="needsCounterpartyAccount">
+                            <v-select
+                                :items="availableCounterpartyAccounts"
+                                item-title="name"
+                                item-value="id"
+                                variant="outlined"
+                                :label="tt('personalFinance.organizerV2.resolve.counterpartyAccount')"
+                                v-model="selectedCounterpartyLedgerAccountId"
+                            />
+                        </v-col>
+                        <v-col cols="12" :md="needsCounterpartyAccount ? 6 : 12">
+                            <v-select
+                                clearable
+                                :items="categoryOptions"
+                                item-title="title"
+                                item-value="value"
+                                variant="outlined"
+                                :label="tt('personalFinance.organizerV2.resolve.category')"
+                                :hint="tt('personalFinance.organizerV2.resolve.categoryHint')"
+                                persistent-hint
+                                v-model="selectedCategoryId"
+                            />
+                        </v-col>
+                    </v-row>
                 </v-card-text>
                 <v-card-actions>
                     <v-btn color="warning" variant="text" :loading="busy" @click="excludeSelected">{{ tt('personalFinance.organizerV2.resolve.exclude') }}</v-btn>
                     <v-spacer />
                     <v-btn variant="text" @click="showResolve = false">{{ tt('Cancel') }}</v-btn>
-                    <v-btn color="primary" :loading="busy" @click="resolveSelected">{{ tt('personalFinance.organizerV2.resolve.save') }}</v-btn>
+                    <v-btn color="primary" :disabled="!canResolveSelected" :loading="busy" @click="resolveSelected">{{ tt('personalFinance.organizerV2.resolve.save') }}</v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>
@@ -234,6 +285,8 @@ import { generateRandomUUID } from '@/lib/misc.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
+import { CategoryType } from '@/core/category.ts';
+import type { TransactionCategory } from '@/models/transaction_category.ts';
 
 import { usePersonalFinanceStore } from '../../store.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
@@ -241,7 +294,7 @@ import type { EconomicEvent, EconomicEventStatus, EconomicNature, FinanceUpdate,
 import { organizerApi } from '../service.ts';
 import { RESULT_UPDATE_STATUSES, canOrganizeUpdate, canPostUpdate, canUndoUpdate, eventDisplayLabel, eventReasonTranslationKeys, groupVisuallyIdenticalEvents, selectCurrentUpdate, updateConservationHolds } from '../state.ts';
 
-const emit = defineEmits<{ (e: 'open-imports'): void }>();
+const emit = defineEmits<{ (e: 'open-records'): void }>();
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
 const accountsStore = useAccountsStore();
@@ -261,6 +314,9 @@ const evidence = ref<OrganizerEventEvidence>();
 const showResolve = ref(false);
 const selectedEvent = ref<EconomicEvent>();
 const selectedNature = ref<EconomicNature>('expense');
+const selectedLedgerAccountId = ref('');
+const selectedCounterpartyLedgerAccountId = ref('');
+const selectedCategoryId = ref('');
 const showUndo = ref(false);
 const undoImpact = ref<OrganizerImpact>();
 const needsActionGroupCount = ref<number>();
@@ -270,6 +326,23 @@ const natures: readonly EconomicNature[] = ['expense', 'income', 'refund', 'fee'
 const readyBatches = computed(() => personalFinanceStore.batches.filter(batch => batch.status === 'ready'));
 const conservationHolds = computed(() => !!update.value && updateConservationHolds(update.value));
 const natureOptions = computed(() => natures.map(value => ({ value, title: tt(`personalFinance.organizerV2.nature.${value}`) })));
+const availableLedgerAccounts = computed(() => accountsStore.allVisiblePlainAccounts.filter(account =>
+    !selectedEvent.value?.currency || account.currency === selectedEvent.value.currency));
+const needsCounterpartyAccount = computed(() => selectedNature.value === 'internal_transfer' || selectedNature.value === 'repayment');
+const availableCounterpartyAccounts = computed(() => accountsStore.allVisiblePlainAccounts.filter(account =>
+    account.id !== selectedLedgerAccountId.value && (!selectedEvent.value?.currency || account.currency === selectedEvent.value.currency)));
+const categoryType = computed(() => {
+    if (selectedNature.value === 'income' || selectedNature.value === 'refund' || selectedNature.value === 'borrow') {
+        return CategoryType.Income;
+    }
+    if (needsCounterpartyAccount.value) {
+        return CategoryType.Transfer;
+    }
+    return CategoryType.Expense;
+});
+const categoryOptions = computed(() => flattenCategories(categoriesStore.allTransactionCategories[categoryType.value] ?? []));
+const canResolveSelected = computed(() => !!selectedEvent.value && !!selectedLedgerAccountId.value && selectedNature.value !== 'unknown' &&
+    (!needsCounterpartyAccount.value || (!!selectedCounterpartyLedgerAccountId.value && selectedCounterpartyLedgerAccountId.value !== selectedLedgerAccountId.value)));
 const displayedEventGroups = computed(() => eventFilter.value === 'needs_action'
     ? groupVisuallyIdenticalEvents(events.value) : events.value.map(event => [event] as const));
 const issueGroupCount = computed(() => needsActionGroupCount.value ?? update.value?.needsActionEventCount ?? 0);
@@ -286,6 +359,15 @@ const updateSourceNames = computed(() => {
 watch(eventFilter, () => {
     expandedGroupIds.value = new Set();
     void loadEvents();
+});
+
+watch(selectedNature, () => {
+    if (!needsCounterpartyAccount.value) {
+        selectedCounterpartyLedgerAccountId.value = '';
+    }
+    if (selectedCategoryId.value && !categoryOptions.value.some(option => option.value === selectedCategoryId.value)) {
+        selectedCategoryId.value = '';
+    }
 });
 
 function idempotencyKey(action: string): string { return `pf-organizer-ui-v2:${action}:${generateRandomUUID()}`; }
@@ -320,6 +402,18 @@ function directionForNature(nature: EconomicNature): EconomicEvent['flowDirectio
     if (nature === 'income' || nature === 'borrow' || nature === 'refund') return 'inflow';
     if (nature === 'internal_transfer' || nature === 'balance_adjustment') return 'neutral';
     return 'outflow';
+}
+
+function flattenCategories(categories: TransactionCategory[]): { title: string; value: string }[] {
+    const options: { title: string; value: string }[] = [];
+    for (const category of categories) {
+        for (const subCategory of category.subCategories ?? []) {
+            if (!category.hidden && !subCategory.hidden) {
+                options.push({ title: `${category.name} / ${subCategory.name}`, value: subCategory.id });
+            }
+        }
+    }
+    return options;
 }
 
 async function load(): Promise<void> {
@@ -386,15 +480,27 @@ async function openEvidence(event: EconomicEvent): Promise<void> {
     catch { showError.value = true; showEvidence.value = false; }
     finally { loadingEvidence.value = false; }
 }
-function openResolve(event: EconomicEvent): void { selectedEvent.value = event; selectedNature.value = event.economicNature === 'unknown' ? 'expense' : event.economicNature; showResolve.value = true; }
+function openResolve(event: EconomicEvent): void {
+    selectedEvent.value = event;
+    selectedNature.value = event.economicNature === 'unknown' ? 'expense' : event.economicNature;
+    selectedLedgerAccountId.value = event.ledgerAccountId ?? '';
+    selectedCounterpartyLedgerAccountId.value = event.counterpartyLedgerAccountId ?? '';
+    selectedCategoryId.value = event.categoryId ?? '';
+    showResolve.value = true;
+}
 async function resolveSelected(): Promise<void> {
-    if (!update.value || !selectedEvent.value) return;
+    if (!update.value || !selectedEvent.value || !canResolveSelected.value) return;
     const currentUpdate = update.value; const currentEvent = selectedEvent.value;
+    let fieldMask = 1 | 4 | 8 | 256;
+    if (needsCounterpartyAccount.value) fieldMask |= 2;
+    if (selectedCategoryId.value) fieldMask |= 128;
     await runMutation(() => organizerApi.correctEvent({
         updateId: currentUpdate.id, eventId: currentEvent.id, expectedUpdateVersion: currentUpdate.version,
         expectedEventVersion: currentEvent.version, idempotencyKey: idempotencyKey('resolve'),
-        fieldMask: 4 | 8 | 256, status: 'ready', economicNature: selectedNature.value,
-        flowDirection: directionForNature(selectedNature.value)
+        fieldMask, status: 'ready', economicNature: selectedNature.value,
+        flowDirection: directionForNature(selectedNature.value), ledgerAccountId: selectedLedgerAccountId.value,
+        counterpartyLedgerAccountId: needsCounterpartyAccount.value ? selectedCounterpartyLedgerAccountId.value : undefined,
+        categoryId: selectedCategoryId.value || undefined
     }));
     showResolve.value = false;
 }
@@ -421,7 +527,7 @@ onMounted(load);
 </script>
 
 <style scoped>
-.results-flow { --rule: rgba(var(--v-theme-on-surface), .12); display: grid; gap: 16px; }
+.results-flow { --rule: rgba(var(--v-theme-on-surface), .12); display: grid; gap: 10px; }
 .empty-stage { min-height: 430px; padding: clamp(28px, 5vw, 64px); border: 1px solid var(--rule); border-radius: 6px 28px 6px 28px; background: linear-gradient(125deg, rgba(var(--v-theme-primary), .09), transparent 48%), rgb(var(--v-theme-surface)); }
 .empty-copy { max-width: 720px; }
 .empty-copy span, .workflow-kicker, .event-workbench header span { color: rgb(var(--v-theme-primary)); font-size: .7rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
@@ -434,47 +540,47 @@ onMounted(load);
 .source-picker strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-picker small { color: rgba(var(--v-theme-on-surface), .58); }
 .empty-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
-.workflow-overview { border: 1px solid var(--rule); border-radius: 6px 24px 6px 24px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
-.workflow-overview > header { display: flex; align-items: start; justify-content: space-between; gap: 28px; padding: 24px 28px 20px; background: linear-gradient(120deg, rgba(var(--v-theme-primary), .08), transparent 48%); }
-.workflow-overview h3 { margin: 5px 0 0; font-size: clamp(1.5rem, 2.4vw, 2.15rem); letter-spacing: -.035em; }
-.workflow-overview header p { max-width: 720px; margin: 7px 0 0; color: rgba(var(--v-theme-on-surface), .62); line-height: 1.6; }
+.workflow-overview { border: 1px solid var(--rule); border-radius: 10px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
+.workflow-overview > header { display: flex; align-items: start; justify-content: space-between; gap: 20px; padding: 12px 16px 10px; background: linear-gradient(105deg, rgba(var(--v-theme-primary), .06), transparent 42%); }
+.workflow-overview h3 { display: inline; margin: 0 0 0 9px; font-size: 1.05rem; letter-spacing: -.02em; }
+.workflow-overview header p { display: inline; max-width: 720px; margin: 0 0 0 12px; color: rgba(var(--v-theme-on-surface), .58); font-size: .74rem; line-height: 1.4; }
 .workflow-overview header > small { color: rgba(var(--v-theme-on-surface), .46); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .workflow-stages { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--rule); background: var(--rule); gap: 1px; }
-.workflow-stage { display: flex; align-items: center; min-height: 112px; gap: 14px; padding: 18px 22px; border: 0; background: rgb(var(--v-theme-surface)); color: inherit; cursor: pointer; text-align: start; }
+.workflow-stage { display: flex; align-items: center; min-height: 70px; gap: 10px; padding: 9px 14px; border: 0; background: rgb(var(--v-theme-surface)); color: inherit; cursor: pointer; text-align: start; }
 .workflow-stage:hover, .workflow-stage.active { background: rgba(var(--v-theme-primary), .055); }
-.workflow-stage.active { box-shadow: inset 0 3px rgb(var(--v-theme-primary)); }
-.workflow-stage.attention.active { box-shadow: inset 0 3px rgb(var(--v-theme-warning)); }
-.stage-number { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; background: rgba(var(--v-theme-primary), .1); color: rgb(var(--v-theme-primary)); font-weight: 800; }
+.workflow-stage.active { box-shadow: inset 0 2px rgb(var(--v-theme-primary)); }
+.workflow-stage.attention.active { box-shadow: inset 0 2px rgb(var(--v-theme-warning)); }
+.stage-number { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 999px; background: rgba(var(--v-theme-primary), .1); color: rgb(var(--v-theme-primary)); font-size: .78rem; font-weight: 800; }
 .stage-copy { display: grid; min-width: 0; }
-.stage-copy small { color: rgba(var(--v-theme-on-surface), .58); }
-.stage-copy strong { margin-top: 2px; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
-.stage-copy em { margin-top: 5px; color: rgb(var(--v-theme-primary)); font-size: .72rem; font-style: normal; }
-.workflow-sources { display: flex; flex-wrap: wrap; gap: 7px; padding: 13px 28px 0; }
+.stage-copy small { color: rgba(var(--v-theme-on-surface), .56); font-size: .68rem; }
+.stage-copy strong { margin-top: 1px; font-size: 1.02rem; font-variant-numeric: tabular-nums; }
+.stage-copy em { margin-top: 2px; color: rgb(var(--v-theme-primary)); font-size: .66rem; font-style: normal; }
+.workflow-sources { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 16px 0; }
 .workflow-sources span { max-width: 320px; padding: 5px 9px; border: 1px solid var(--rule); border-radius: 999px; color: rgba(var(--v-theme-on-surface), .62); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workflow-overview > footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 28px 20px; }
+.workflow-overview > footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 16px 12px; }
 .workflow-overview footer p { margin: 0; color: rgba(var(--v-theme-on-surface), .52); font-size: .75rem; text-align: end; }
 .result-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.verification { padding: 0 18px; border-inline-start: 3px solid rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .05); }
+.verification { padding: 0 14px; border-inline-start: 3px solid rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .05); }
 .verification.invalid { border-color: rgb(var(--v-theme-error)); background: rgba(var(--v-theme-error), .06); }
-.verification summary { padding: 12px 2px; color: rgba(var(--v-theme-on-surface), .68); cursor: pointer; font-size: .76rem; font-weight: 700; }
+.verification summary { padding: 8px 2px; color: rgba(var(--v-theme-on-surface), .68); cursor: pointer; font-size: .72rem; font-weight: 700; }
 .verification > div { display: flex; align-items: center; gap: 12px; padding: 0 2px 14px; color: rgba(var(--v-theme-on-surface), .62); font-size: .76rem; }
 .verification small { margin-inline-start: auto; }
-.event-workbench { border: 1px solid var(--rule); border-radius: 18px 4px 18px 4px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
-.event-workbench > header { display: flex; align-items: end; justify-content: space-between; gap: 20px; padding: 22px; border-bottom: 1px solid var(--rule); background: rgba(var(--v-theme-primary), .045); }
-.event-workbench h3 { margin: 4px 0 0; font-size: 1.35rem; }
+.event-workbench { border: 1px solid var(--rule); border-radius: 10px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
+.event-workbench > header { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid var(--rule); background: rgba(var(--v-theme-primary), .035); }
+.event-workbench h3 { display: inline; margin: 0 0 0 8px; font-size: 1.05rem; }
 .event-workbench header p { margin: 4px 0 0; color: rgba(var(--v-theme-on-surface), .6); font-size: .82rem; }
 .event-group { border-bottom: 1px solid var(--rule); }
 .event-group:last-child { border-bottom: 0; }
-.event-row { display: grid; grid-template-columns: 58px minmax(220px, .72fr) minmax(320px, 1.28fr) minmax(140px, auto) auto; gap: 20px; align-items: center; padding: 17px 20px; }
+.event-row { display: grid; grid-template-columns: 48px minmax(200px, .7fr) minmax(300px, 1.3fr) minmax(130px, auto) auto; gap: 12px; align-items: center; padding: 10px 14px; }
 .event-date { display: grid; text-align: center; border-inline-end: 1px solid var(--rule); }
-.event-date strong { font-size: 1.45rem; line-height: 1; }
+.event-date strong { font-size: 1.1rem; line-height: 1; }
 .event-date span { margin-top: 4px; color: rgba(var(--v-theme-on-surface), .52); font-size: .64rem; text-transform: uppercase; }
-.event-main { display: grid; gap: 3px; min-width: 0; }
-.event-main > strong { overflow: hidden; font-size: .98rem; text-overflow: ellipsis; white-space: nowrap; }
+.event-main { display: grid; gap: 2px; min-width: 0; }
+.event-main > strong { overflow: hidden; font-size: .9rem; text-overflow: ellipsis; white-space: nowrap; }
 .event-main p { margin: 0; color: rgba(var(--v-theme-on-surface), .61); font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .event-nature { color: rgb(var(--v-theme-primary)); font-size: .68rem; font-weight: 750; }
 .similar-badge { width: fit-content; margin-top: 3px; padding: 2px 7px; border-radius: 999px; background: rgba(var(--v-theme-warning), .12); color: rgb(var(--v-theme-warning)); font-size: .66rem; font-weight: 700; }
-.event-context { display: grid; gap: 7px; min-width: 0; }
+.event-context { display: grid; gap: 4px; min-width: 0; }
 .event-meta { display: flex; flex-wrap: wrap; gap: 5px 14px; color: rgba(var(--v-theme-on-surface), .7); font-size: .76rem; }
 .event-meta span { position: relative; white-space: nowrap; }
 .event-meta span:not(:last-child)::after { position: absolute; inset-inline-end: -8px; color: rgba(var(--v-theme-on-surface), .22); content: "·"; }
@@ -485,7 +591,7 @@ onMounted(load);
 .event-amount small { color: rgba(var(--v-theme-on-surface), .5); font-size: .66rem; font-weight: 500; }
 .event-buttons { display: flex; gap: 5px; }
 .similar-list { border-top: 1px dashed var(--rule); background: rgba(var(--v-theme-primary), .025); }
-.similar-row { display: grid; grid-template-columns: 78px minmax(0, 1fr) minmax(140px, auto) auto; align-items: center; gap: 18px; padding: 12px 20px 12px 98px; border-bottom: 1px dashed var(--rule); }
+.similar-row { display: grid; grid-template-columns: 70px minmax(0, 1fr) minmax(130px, auto) auto; align-items: center; gap: 12px; padding: 9px 14px 9px 74px; border-bottom: 1px dashed var(--rule); }
 .similar-row:last-child { border-bottom: 0; }
 .similar-index { color: rgba(var(--v-theme-on-surface), .48); font-size: .7rem; }
 .similar-row > div:nth-child(2) { display: grid; min-width: 0; }
@@ -494,6 +600,14 @@ onMounted(load);
 .evidence-list { display: grid; gap: 8px; }
 .evidence-list article { display: grid; gap: 3px; padding: 13px; border-inline-start: 3px solid rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .055); }
 .evidence-list span, .evidence-list small { color: rgba(var(--v-theme-on-surface), .62); }
+.resolve-preview { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 11px 13px; border-inline-start: 3px solid rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .05); }
+.resolve-preview > div { display: grid; gap: 3px; min-width: 0; }
+.resolve-preview strong, .resolve-preview small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resolve-preview small { color: rgba(var(--v-theme-on-surface), .58); }
+.resolve-preview b { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.resolve-preview b.inflow { color: rgb(var(--v-theme-success)); }
+.resolve-preview b.outflow { color: rgb(var(--v-theme-error)); }
+.resolve-hint { margin: 14px 0 10px; color: rgba(var(--v-theme-on-surface), .66); font-size: .82rem; }
 @media (max-width: 900px) {
     .workflow-stages { grid-template-columns: 1fr; }
     .workflow-overview > header, .workflow-overview > footer { align-items: start; flex-direction: column; }

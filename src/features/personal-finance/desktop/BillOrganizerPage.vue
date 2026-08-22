@@ -1,175 +1,139 @@
 <template>
     <div class="bill-organizer">
-        <v-card class="organizer-intro overflow-hidden">
-            <div class="organizer-heading px-6 py-5 px-lg-8">
+        <v-card class="organizer-shell" elevation="0">
+            <div class="organizer-bar">
                 <div class="organizer-copy">
                     <div class="text-overline text-primary">{{ tt('personalFinance.organizer.eyebrow') }}</div>
-                    <h2 class="text-h4 font-weight-bold mt-1">{{ tt('personalFinance.organizer.title') }}</h2>
-                    <p class="text-body-large text-medium-emphasis mt-2 mb-0">
-                        {{ tt('personalFinance.organizer.subtitle') }}
-                    </p>
+                    <div class="organizer-title-row">
+                        <h2>{{ tt('personalFinance.organizer.title') }}</h2>
+                        <p>{{ tt('personalFinance.organizer.subtitle') }}</p>
+                    </div>
                 </div>
 
-                <ol class="organizer-steps" :aria-label="tt('personalFinance.organizer.flowLabel')">
-                    <li>
-                        <span>1</span>
-                        <div>
-                            <strong>{{ tt('personalFinance.organizer.step.upload') }}</strong>
-                            <small>{{ tt('personalFinance.organizer.step.uploadHint') }}</small>
-                        </div>
-                    </li>
-                    <li>
-                        <span>2</span>
-                        <div>
-                            <strong>{{ tt('personalFinance.organizer.step.resolve') }}</strong>
-                            <small>{{ tt('personalFinance.organizer.step.resolveHint') }}</small>
-                        </div>
-                    </li>
-                    <li>
-                        <span>3</span>
-                        <div>
-                            <strong>{{ tt('personalFinance.organizer.step.result') }}</strong>
-                            <small>{{ tt('personalFinance.organizer.step.resultHint') }}</small>
-                        </div>
-                    </li>
-                </ol>
+                <v-tabs class="organizer-tabs" color="primary" density="compact" v-model="activeView">
+                    <v-tab value="review" :prepend-icon="mdiClipboardCheckOutline">
+                        {{ tt('personalFinance.organizer.tab.review') }}
+                    </v-tab>
+                    <v-tab value="records" :prepend-icon="mdiFileDocumentMultipleOutline">
+                        {{ tt('personalFinance.organizer.tab.records') }}
+                    </v-tab>
+                </v-tabs>
             </div>
-
-            <v-divider />
-
-            <v-tabs class="organizer-tabs px-3 px-lg-5" color="primary" v-model="activeView">
-                <v-tab value="task" :prepend-icon="mdiClipboardCheckOutline">
-                    {{ tt('personalFinance.organizer.tab.task') }}
-                </v-tab>
-                <v-tab value="imports" :prepend-icon="mdiTrayArrowDown">
-                    {{ tt('personalFinance.organizer.tab.imports') }}
-                </v-tab>
-                <v-tab value="reconciliation" :prepend-icon="mdiLinkVariant">
-                    {{ tt('personalFinance.organizer.tab.reconciliation') }}
-                </v-tab>
-            </v-tabs>
         </v-card>
 
-        <personal-finance-results-flow-page class="mt-4" v-if="activeView === 'task'" @open-imports="activeView = 'imports'" />
-        <personal-finance-import-workbench-page class="mt-4" :embedded="true" v-else-if="activeView === 'imports'" />
-        <personal-finance-reconciliation-workbench-page class="mt-4" :embedded="true" v-else />
+        <keep-alive>
+            <personal-finance-results-flow-page
+                class="organizer-content"
+                v-if="activeView === 'review'"
+                @open-records="activeView = 'records'"
+            />
+            <personal-finance-import-workbench-page class="organizer-content" :embedded="true" v-else />
+        </keep-alive>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { mdiClipboardCheckOutline, mdiLinkVariant, mdiTrayArrowDown } from '@mdi/js';
+import { ref } from 'vue';
+import { mdiClipboardCheckOutline, mdiFileDocumentMultipleOutline } from '@mdi/js';
 
 import { useI18n } from '@/locales/helpers.ts';
 
 import PersonalFinanceResultsFlowPage from '../organizer/desktop/ResultsFlowPage.vue';
 import PersonalFinanceImportWorkbenchPage from './ImportWorkbenchPage.vue';
-import PersonalFinanceReconciliationWorkbenchPage from '../reconciliation/desktop/ReconciliationWorkbenchPage.vue';
 
-type BillOrganizerView = 'task' | 'imports' | 'reconciliation';
+type BillOrganizerView = 'review' | 'records';
 
 const { tt } = useI18n();
-const route = useRoute();
-const router = useRouter();
-
-const activeView = computed<BillOrganizerView>({
-    get: () => {
-        if (route.query['view'] === 'imports' || route.query['view'] === 'reconciliation') {
-            return route.query['view'];
-        }
-        return 'task';
-    },
-    set: view => {
-        if (view === activeView.value) {
-            return;
-        }
-
-        router.replace({
-            path: '/personal-finance/bills',
-            query: view === 'task' ? {} : { view }
-        });
-    }
-});
+const activeView = ref<BillOrganizerView>('review');
 </script>
 
 <style scoped>
 .bill-organizer {
     --organizer-rule: rgba(var(--v-theme-on-surface), 0.11);
+    display: grid;
     max-width: 1500px;
     margin-inline: auto;
+    gap: 10px;
 }
 
-.organizer-intro {
+.organizer-shell {
     border: 1px solid var(--organizer-rule);
-    border-radius: 22px 6px 22px 6px;
+    border-radius: 10px;
     box-shadow: none;
 }
 
-.organizer-heading {
-    display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-    align-items: center;
-    gap: 28px;
-    padding-block: 22px;
-    background:
-        linear-gradient(120deg, rgba(var(--v-theme-primary), 0.1), transparent 48%),
-        rgb(var(--v-theme-surface));
-}
-
-.organizer-copy p {
-    max-width: 680px;
-    line-height: 1.65;
-}
-
-.organizer-steps {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1px;
-    margin: 0;
-    padding: 1px;
-    border: 1px solid var(--organizer-rule);
-    background: var(--organizer-rule);
-    list-style: none;
-}
-
-.organizer-steps li {
+.organizer-bar {
     display: flex;
-    min-height: 0;
-    gap: 10px;
-    padding: 12px 14px;
-    background: rgb(var(--v-theme-surface));
+    align-items: end;
+    justify-content: space-between;
+    min-height: 88px;
+    gap: 24px;
+    padding: 12px 18px 0;
+    background: linear-gradient(105deg, rgba(var(--v-theme-primary), 0.07), transparent 42%);
 }
 
-.organizer-steps span {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 999px;
-    background: rgba(var(--v-theme-primary), 0.12);
-    color: rgb(var(--v-theme-primary));
-    font-weight: 700;
+.organizer-copy {
+    min-width: 0;
+    padding-bottom: 13px;
 }
 
-.organizer-steps small {
-    display: block;
+.organizer-copy .text-overline {
+    line-height: 1.2;
+}
+
+.organizer-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
     margin-top: 4px;
-    color: rgba(var(--v-theme-on-surface), 0.6);
+}
+
+.organizer-title-row h2 {
+    margin: 0;
+    font-size: 1.45rem;
+    letter-spacing: -0.025em;
+    white-space: nowrap;
+}
+
+.organizer-title-row p {
+    max-width: 680px;
+    margin: 0;
+    color: rgba(var(--v-theme-on-surface), 0.58);
+    font-size: 0.78rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .organizer-tabs {
-    min-height: 64px;
+    flex: 0 0 auto;
+    min-height: 42px;
 }
 
-@media (max-width: 1100px) {
-    .organizer-heading {
-        grid-template-columns: 1fr;
+.organizer-content {
+    margin-top: 0 !important;
+}
+
+@media (max-width: 900px) {
+    .organizer-bar {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 0;
+        padding-inline: 14px;
     }
 
-    .organizer-steps {
-        grid-template-columns: 1fr;
+    .organizer-copy {
+        padding-top: 12px;
+        padding-bottom: 4px;
+    }
+
+    .organizer-title-row {
+        display: block;
+    }
+
+    .organizer-title-row p {
+        margin-top: 4px;
+        white-space: normal;
     }
 }
 </style>

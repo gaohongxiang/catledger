@@ -17,23 +17,37 @@ describe('personal-finance simple web workflow', () => {
         expect(layout).toContain('personalFinance.simpleNav.more');
     });
 
-    it('combines result-first organization, statement upload, and evidence review', () => {
+    it('keeps review and raw statement records in one route-local workspace', () => {
         const organizer = source('./BillOrganizerPage.vue');
         const router = source('../../../router/desktop.ts');
 
         expect(organizer).toContain('ResultsFlowPage.vue');
         expect(organizer).not.toContain('TaskWorkbenchPage.vue');
         expect(organizer).toContain('ImportWorkbenchPage.vue');
-        expect(organizer).toContain('ReconciliationWorkbenchPage.vue');
-        expect(organizer).toContain("view === 'task'");
-        expect(organizer).toContain("value=\"task\"");
-        expect(organizer).toContain('value="imports"');
-        expect(organizer).toContain('value="reconciliation"');
+        expect(organizer).not.toContain('ReconciliationWorkbenchPage.vue');
+        expect(organizer).not.toContain('useRoute');
+        expect(organizer).not.toContain('useRouter');
+        expect(organizer).toContain("ref<BillOrganizerView>('review')");
+        expect(organizer).toContain('value="review"');
+        expect(organizer).toContain('value="records"');
+        expect(organizer).toContain('@open-records');
         expect(router).toContain("path: '/personal-finance/bills'");
         expect(router).toContain("path: '/personal-finance/imports'");
         expect(router).toContain("path: '/personal-finance/reconciliation'");
-        expect(router).toContain("view: 'imports'");
-        expect(router).toContain("view: 'reconciliation'");
+        expect(router).not.toContain("view: 'imports'");
+        expect(router).not.toContain("view: 'reconciliation'");
+    });
+
+    it('keeps raw records non-posting and reviews ledger fields in the organizer', () => {
+        const records = source('./ImportWorkbenchPage.vue');
+        const results = source('../organizer/desktop/ResultsFlowPage.vue');
+
+        expect(records).not.toContain('PostingDialog.vue');
+        expect(records).not.toContain('openPosting(row)');
+        expect(results).toContain('selectedLedgerAccountId');
+        expect(results).toContain('selectedCounterpartyLedgerAccountId');
+        expect(results).toContain('selectedCategoryId');
+        expect(results).toContain('fieldMask = 1 | 4 | 8 | 256');
     });
 
     it('teaches the batch-first workflow and progressively discloses loan details', () => {

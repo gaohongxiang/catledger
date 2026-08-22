@@ -11,6 +11,10 @@
                                 {{ tt('personalFinance.subtitle') }}
                             </p>
                         </div>
+                        <div class="records-copy" v-else>
+                            <strong>{{ tt('personalFinance.organizer.tab.records') }}</strong>
+                            <small>{{ tt('personalFinance.organizer.recordsHint') }}</small>
+                        </div>
                         <v-spacer />
                         <v-btn
                             color="primary"
@@ -243,7 +247,7 @@
                             </div>
 
                             <div class="rows-table-wrapper">
-                                <v-table class="rows-table" density="comfortable" hover>
+                                <v-table class="rows-table" density="compact" hover>
                                     <thead>
                                     <tr>
                                         <th>{{ tt('personalFinance.rowNumber') }}</th>
@@ -298,17 +302,17 @@
                                         <td class="text-end">
                                             <v-btn
                                                 size="small"
-                                                :color="isRowPaymentAccountUnresolved(row) ? 'warning' : 'primary'"
+                                                color="warning"
                                                 variant="tonal"
                                                 :disabled="personalFinanceStore.submitting"
-                                                @click="isRowPaymentAccountUnresolved(row) ? openPaymentAccountSetup() : openPosting(row)"
-                                                v-if="getRowAction(row) !== 'blocked'"
+                                                @click="openPaymentAccountSetup"
+                                                v-if="isRowPaymentAccountUnresolved(row)"
                                             >
-                                                {{ isRowPaymentAccountUnresolved(row)
-                                                    ? tt('personalFinance.paymentAccount.confirmFirst')
-                                                    : (getRowAction(row) === 'create_or_reuse' ? tt('personalFinance.confirmDuplicate') : tt('personalFinance.confirmRow')) }}
+                                                {{ tt('personalFinance.paymentAccount.review') }}
                                             </v-btn>
-                                            <span class="text-body-small text-medium-emphasis" v-else>—</span>
+                                            <span class="text-body-small text-medium-emphasis" v-else>
+                                                {{ getRowPaymentAccountGroup(row)?.mapped ? tt('personalFinance.paymentAccount.mapped') : '—' }}
+                                            </span>
                                         </td>
                                     </tr>
                                     </tbody>
@@ -364,7 +368,6 @@
     <generic-bank-import-dialog ref="genericBankImportDialog" @parsed="onParsed" />
     <ceb-credit-import-dialog ref="cebCreditImportDialog" @parsed="onParsed" />
     <payment-account-setup-dialog ref="paymentAccountSetupDialog" @saved="onPaymentAccountsSaved" />
-    <posting-dialog ref="postingDialog" @posted="onPosted" />
 	<confirm-dialog ref="confirmDialog" />
     <snack-bar ref="snackbar" />
 </template>
@@ -372,7 +375,6 @@
 <script setup lang="ts">
 import SnackBar from '@/components/desktop/SnackBar.vue';
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
-import PostingDialog from '../components/PostingDialog.vue';
 import SourceAccountDialog from '../components/SourceAccountDialog.vue';
 import GenericBankImportDialog from '../components/GenericBankImportDialog.vue';
 import CebCreditImportDialog from '../components/CebCreditImportDialog.vue';
@@ -400,7 +402,6 @@ import {
     canDeleteImportFileContent,
     canDiscardImportBatch,
     findPaymentAccountGroupForRow,
-    getRowAction,
     getSafePaymentAccountDisplayName,
     getUploadAction
 } from '../state.ts';
@@ -430,7 +431,6 @@ import {
 } from '@mdi/js';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
-type PostingDialogType = InstanceType<typeof PostingDialog>;
 type SourceAccountDialogType = InstanceType<typeof SourceAccountDialog>;
 type GenericBankImportDialogType = InstanceType<typeof GenericBankImportDialog>;
 type CebCreditImportDialogType = InstanceType<typeof CebCreditImportDialog>;
@@ -445,7 +445,6 @@ const userStore = useUserStore();
 const personalFinanceStore = usePersonalFinanceStore();
 
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput');
-const postingDialog = useTemplateRef<PostingDialogType>('postingDialog');
 const sourceAccountDialog = useTemplateRef<SourceAccountDialogType>('sourceAccountDialog');
 const genericBankImportDialog = useTemplateRef<GenericBankImportDialogType>('genericBankImportDialog');
 const cebCreditImportDialog = useTemplateRef<CebCreditImportDialogType>('cebCreditImportDialog');
@@ -737,14 +736,6 @@ function configureSelectedAsCebCredit(): void {
     openCebCreditImport(file.id, 'user_selected_ceb_credit_pdf');
 }
 
-function openPosting(row: PersonalFinanceImportRow): void {
-    if (!personalFinanceStore.selectedBatch) {
-        return;
-    }
-
-    postingDialog.value?.open(row, personalFinanceStore.selectedBatch, getRowPaymentAccountGroup(row)?.ledgerAccountId);
-}
-
 function onParsed(): void {
     snackbar.value?.showMessage('personalFinance.parseCompleted');
     maybeOpenPaymentAccountSetup();
@@ -787,10 +778,6 @@ async function onPaymentAccountsSaved(): Promise<void> {
     }
 }
 
-function onPosted(): void {
-    snackbar.value?.showMessage('personalFinance.posting.completed');
-}
-
 watch(batchPage, () => {
     personalFinanceStore.loadBatches(batchPage.value - 1, HISTORY_PAGE_SIZE)
         .catch(() => snackbar.value?.showMessage('personalFinance.error.operationFailed'));
@@ -810,7 +797,10 @@ onMounted(reload);
 
 <style scoped>
 .workbench-card {
-    min-height: 720px;
+    min-height: 620px;
+    border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
+    border-radius: 10px;
+    box-shadow: none;
 }
 
 .workbench-hero {
@@ -823,9 +813,23 @@ onMounted(reload);
     background: rgba(var(--v-theme-primary), 0.035);
 }
 
+.records-copy {
+    display: grid;
+    gap: 2px;
+}
+
+.records-copy strong {
+    font-size: 1rem;
+}
+
+.records-copy small {
+    color: rgba(var(--v-theme-on-surface), 0.58);
+    font-size: 0.74rem;
+}
+
 .history-column,
 .detail-column {
-    min-height: 590px;
+    min-height: 520px;
 }
 
 .history-list {
@@ -833,7 +837,7 @@ onMounted(reload);
 }
 
 .history-item {
-    min-height: 92px;
+    min-height: 72px;
 }
 
 .metric-tile {

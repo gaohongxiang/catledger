@@ -2913,10 +2913,10 @@
             "title": "账单整理",
             "subtitle": "电子支付不用逐笔手记。上传支付宝、微信、银行和信用卡账单，系统先整理，只把有歧义的项目交给你。",
             "flowLabel": "账单整理流程",
+            "recordsHint": "保留原始文件、解析记录和支付账户映射；交易确认与入账统一在整理结果完成。",
             "tab": {
-                "task": "账单整理",
-                "imports": "上传账单",
-                "reconciliation": "重复与转账"
+                "review": "交易核对",
+                "records": "账单记录"
             },
             "step": {
                 "upload": "上传账单",
@@ -2952,11 +2952,11 @@
             },
             "workflow": {
                 "eyebrow": "本轮账单",
-                "title": "从上传到账本，一次整理完",
-                "hint": "先确认本轮账单来源，再处理成组问题，最后把已就绪交易一次入账。",
+                "title": "本轮整理",
+                "hint": "核对账户与性质后统一入账。",
                 "upload": "已上传",
                 "sourceCount": "{count} 份账单",
-                "uploadAction": "继续上传账单",
+                "uploadAction": "查看账单记录",
                 "review": "待处理",
                 "groupCount": "{count} 组问题",
                 "eventCount": "共 {count} 笔记录",
@@ -3005,7 +3005,7 @@
             },
             "action": { "postAll": "全部入账（{count}）", "organize": "重新整理", "undo": "撤销本次入账", "new": "开始新一轮" },
             "evidence": { "title": "原始证据与来源", "empty": "没有可展示的证据行。" },
-            "resolve": { "title": "确认经济性质", "hint": "选择这笔事件实际代表什么；资金方向会随性质一起锁定。", "exclude": "不入账", "save": "确认并标记就绪" },
+            "resolve": { "title": "核对交易", "hint": "确认交易性质、记账账户和分类；转账或还款还要选择对方账户。", "nature": "交易性质", "ledgerAccount": "记账账户", "counterpartyAccount": "对方账户", "category": "分类", "categoryHint": "分类可稍后补充，但账户和交易性质必须确认。", "exclude": "不入账", "save": "保存并标记就绪" },
             "undo": { "title": "撤销影响", "impact": "将检查并撤销 {transactions} 笔正式交易。", "unsafe": "正式交易已被修改或共享，当前不能安全撤销。" },
             "mobile": { "title": "账单整理结果", "desktopAction": "前往账单导入" }
         },

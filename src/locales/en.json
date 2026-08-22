@@ -2913,10 +2913,10 @@
             "title": "Statement Organizer",
             "subtitle": "You do not need to enter every electronic payment by hand. Upload Alipay, WeChat Pay, bank, and credit-card statements; the system organizes them first and asks only about ambiguous items.",
             "flowLabel": "Statement organization flow",
+            "recordsHint": "Keep original files, parsed rows, and payment-account mappings here; confirm transactions and post them from the review workspace.",
             "tab": {
-                "task": "Organize statements",
-                "imports": "Upload statements",
-                "reconciliation": "Duplicates & transfers"
+                "review": "Transaction review",
+                "records": "Statement records"
             },
             "step": {
                 "upload": "Upload statements",
@@ -2952,11 +2952,11 @@
             },
             "workflow": {
                 "eyebrow": "Current statements",
-                "title": "One flow from upload to ledger",
-                "hint": "Confirm this round's sources, resolve grouped issues, then post every ready transaction in one action.",
+                "title": "Current review",
+                "hint": "Confirm accounts and transaction nature, then post once.",
                 "upload": "Uploaded",
                 "sourceCount": "{count} statement(s)",
-                "uploadAction": "Upload more statements",
+                "uploadAction": "View statement records",
                 "review": "To review",
                 "groupCount": "{count} issue group(s)",
                 "eventCount": "{count} record(s) in total",
@@ -3005,7 +3005,7 @@
             },
             "action": { "postAll": "Post all ({count})", "organize": "Organize again", "undo": "Undo this posting", "new": "Start a new update" },
             "evidence": { "title": "Raw evidence and sources", "empty": "No evidence rows are available." },
-            "resolve": { "title": "Confirm economic nature", "hint": "Choose what this event represents; its cash-flow direction is locked with that decision.", "exclude": "Do not post", "save": "Confirm and mark ready" },
+            "resolve": { "title": "Review transaction", "hint": "Confirm the transaction nature, ledger account, and category. Transfers and repayments also require a counterparty account.", "nature": "Transaction nature", "ledgerAccount": "Ledger account", "counterpartyAccount": "Counterparty account", "category": "Category", "categoryHint": "Category can be completed later, but account and transaction nature are required.", "exclude": "Do not post", "save": "Save and mark ready" },
             "undo": { "title": "Undo impact", "impact": "This will inspect and undo {transactions} ledger transactions.", "unsafe": "Ledger transactions were changed or shared, so this update cannot be safely undone." },
             "mobile": { "title": "Statement results", "desktopAction": "Open statement imports" }
         },

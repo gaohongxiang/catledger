@@ -127,18 +127,16 @@ const router = createRouter({
                 },
                 {
                     path: '/personal-finance/imports',
-                    redirect: route => ({
+                    redirect: () => ({
                         path: '/personal-finance/bills',
-                        query: { ...route.query, view: 'imports' },
                         replace: true
                     }),
                     beforeEnter: checkLogin
                 },
                 {
                     path: '/personal-finance/reconciliation',
-                    redirect: route => ({
+                    redirect: () => ({
                         path: '/personal-finance/bills',
-                        query: { ...route.query, view: 'reconciliation' },
                         replace: true
                     }),
                     beforeEnter: checkLogin
