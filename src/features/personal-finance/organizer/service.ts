@@ -1,5 +1,6 @@
 import services from '@/lib/services.ts';
 
+import type { PersonalFinanceSourceType } from '../models.ts';
 import type {
     EconomicEvent,
     EconomicEventPage,
@@ -61,6 +62,7 @@ const updateStatuses: readonly FinanceUpdateStatus[] = [
     'draft', 'organizing', 'review', 'posting', 'partially_posted', 'posted', 'failed', 'undone'
 ];
 const eventStatuses: readonly EconomicEventStatus[] = ['ready', 'needs_action', 'excluded', 'posted', 'corrected'];
+const sourceTypes: readonly PersonalFinanceSourceType[] = ['alipay', 'wechat', 'bank'];
 const flowDirections = ['inflow', 'outflow', 'neutral'] as const;
 const economicNatures = [
     'income', 'expense', 'internal_transfer', 'borrow', 'repayment',
@@ -81,7 +83,7 @@ function source(value: unknown): FinanceUpdateSource {
         batchId: identifier(item['batchId']),
         sourceOrder: integer(item['sourceOrder']),
         sourceAccountId: optional(item['sourceAccountId'], identifier),
-        sourceType: string(item['sourceType']),
+        sourceType: asEnum(item['sourceType'], sourceTypes),
         parserVersion: string(item['parserVersion']),
         normalizationVersion: string(item['normalizationVersion']),
         identityKeyVersion: string(item['identityKeyVersion'])

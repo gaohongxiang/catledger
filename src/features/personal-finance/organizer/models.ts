@@ -1,3 +1,5 @@
+import type { PersonalFinanceSourceType } from '../models.ts';
+
 export type FinanceUpdateStatus =
     'draft' | 'organizing' | 'review' | 'posting' | 'partially_posted' | 'posted' | 'failed' | 'undone';
 
@@ -13,7 +15,7 @@ export interface FinanceUpdateSource {
     readonly batchId: string;
     readonly sourceOrder: number;
     readonly sourceAccountId?: string;
-    readonly sourceType: string;
+    readonly sourceType: PersonalFinanceSourceType;
     readonly parserVersion: string;
     readonly normalizationVersion: string;
     readonly identityKeyVersion: string;

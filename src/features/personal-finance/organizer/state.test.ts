@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EconomicEvent, FinanceUpdate } from './models.ts';
-import { canPostUpdate, eventDisplayLabel, eventReasonCodes, eventReasonTranslationKeys, selectCurrentUpdate, updateConservationHolds } from './state.ts';
+import { canPostUpdate, eventDisplayLabel, eventReasonCodes, eventReasonTranslationKeys, groupVisuallyIdenticalEvents, selectCurrentUpdate, updateConservationHolds } from './state.ts';
 
 function update(overrides: Partial<FinanceUpdate> = {}): FinanceUpdate {
     return {
@@ -49,5 +49,23 @@ describe('organizer result state', () => {
             'personalFinance.organizerV2.reason.transferAccountRequired',
             'personalFinance.organizerV2.reason.generic'
         ]);
+    });
+
+    it('groups only visually identical rows without merging their identities', () => {
+        const base = {
+            status: 'needs_action', eventUnixTime: 1_700_000_000, timezoneUtcOffset: 480,
+            amount: '43.50', currency: 'CNY', flowDirection: 'outflow', economicNature: 'expense',
+            ledgerAccountId: '10', categoryId: '', counterparty: '1688 平台商家', item: '钱包',
+            paymentMethod: '信用卡', note: '', reasonCodesJson: '["relation_ambiguous"]'
+        } as EconomicEvent;
+        const first = { ...base, id: 'event-1' };
+        const second = { ...base, id: 'event-2', counterparty: '  1688 平台商家  ' };
+        const independent = { ...base, id: 'event-3', eventUnixTime: base.eventUnixTime! + 86_400 };
+
+        const groups = groupVisuallyIdenticalEvents([first, second, independent]);
+
+        expect(groups).toHaveLength(2);
+        expect(groups[0]?.map(event => event.id)).toEqual(['event-1', 'event-2']);
+        expect(groups[1]?.map(event => event.id)).toEqual(['event-3']);
     });
 });

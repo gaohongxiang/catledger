@@ -8,6 +8,8 @@ export const EVENT_FILTERS: readonly EconomicEventStatus[] = [
     'needs_action', 'ready', 'posted', 'excluded', 'corrected'
 ];
 
+export type EconomicEventDisplayGroup = readonly [EconomicEvent, ...EconomicEvent[]];
+
 export function selectCurrentUpdate(pages: readonly FinanceUpdate[][]): FinanceUpdate | undefined {
     return pages.flat().sort((left, right) => right.updatedUnixTime - left.updatedUnixTime)[0];
 }
@@ -32,7 +34,57 @@ export function canUndoUpdate(update: FinanceUpdate): boolean {
 }
 
 export function eventDisplayLabel(event: EconomicEvent): string {
-	return event.counterparty || event.item || event.note;
+    return event.counterparty || event.item || event.note;
+}
+
+function normalizedDisplayValue(value: string | undefined): string {
+    return (value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+function eventDisplayGroupKey(event: EconomicEvent): string {
+    const eventDay = event.eventUnixTime
+        ? Math.floor((event.eventUnixTime + (event.timezoneUtcOffset || 0) * 60) / 86_400)
+        : 0;
+    return [
+        eventDay,
+        event.amount || '',
+        event.currency,
+        event.flowDirection,
+        event.economicNature,
+        event.ledgerAccountId || '',
+        event.categoryId || '',
+        normalizedDisplayValue(event.counterparty),
+        normalizedDisplayValue(event.item),
+        normalizedDisplayValue(event.paymentMethod),
+        normalizedDisplayValue(event.note),
+        event.evidenceCount,
+        [...eventReasonCodes(event)].sort().join(',')
+    ].join('\u001f');
+}
+
+/**
+ * Groups only rows that would look identical in the organizer. This is a
+ * presentation convenience: every event keeps its own identity and actions.
+ */
+export function groupVisuallyIdenticalEvents(events: readonly EconomicEvent[]): readonly EconomicEventDisplayGroup[] {
+    const groups = new Map<string, EconomicEvent[]>();
+
+    for (const event of events) {
+        const key = eventDisplayGroupKey(event);
+        const group = groups.get(key);
+        if (group) {
+            group.push(event);
+        } else {
+            groups.set(key, [event]);
+        }
+    }
+
+    const result: EconomicEventDisplayGroup[] = [];
+    for (const group of groups.values()) {
+        const first = group[0];
+        if (first) result.push([first, ...group.slice(1)]);
+    }
+    return result;
 }
 
 export function eventReasonCodes(event: EconomicEvent): string[] {

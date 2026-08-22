@@ -2914,9 +2914,9 @@
             "subtitle": "You do not need to enter every electronic payment by hand. Upload Alipay, WeChat Pay, bank, and credit-card statements; the system organizes them first and asks only about ambiguous items.",
             "flowLabel": "Statement organization flow",
             "tab": {
-                "task": "Organize task",
-                "imports": "Upload & post",
-                "reconciliation": "Review overlaps"
+                "task": "Organize statements",
+                "imports": "Upload statements",
+                "reconciliation": "Duplicates & transfers"
             },
             "step": {
                 "upload": "Upload statements",
@@ -2949,6 +2949,26 @@
                 "needsActionHint": "Resolve or exclude these items, then post every ready event in one action.",
                 "ready": "The result is ready to post",
                 "readyHint": "Duplicate evidence is folded away while every final event remains auditable."
+            },
+            "workflow": {
+                "eyebrow": "Current statements",
+                "title": "One flow from upload to ledger",
+                "hint": "Confirm this round's sources, resolve grouped issues, then post every ready transaction in one action.",
+                "upload": "Uploaded",
+                "sourceCount": "{count} statement(s)",
+                "uploadAction": "Upload more statements",
+                "review": "To review",
+                "groupCount": "{count} issue group(s)",
+                "eventCount": "{count} record(s) in total",
+                "ready": "Ready to post",
+                "readyCount": "{count} transaction(s)",
+                "readyHint": "Post once after resolving issues",
+                "summary": "{total} transactions after organizing; {excluded} excluded and {posted} posted.",
+                "verify": "Verify organizer counts",
+                "similar": "{count} similar records",
+                "expand": "Review {count} records",
+                "collapse": "Collapse",
+                "item": "Record {index}"
             },
             "metric": { "posted": "Posted", "ready": "Ready to post", "needsAction": "Required", "excluded": "Excluded" },
             "conservation": { "evidence": "Valid evidence", "duplicates": "Duplicate evidence", "events": "Final events", "ok": "Evidence conservation verified", "invalid": "Counts do not reconcile; do not post" },

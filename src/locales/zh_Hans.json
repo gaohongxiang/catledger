@@ -2914,9 +2914,9 @@
             "subtitle": "电子支付不用逐笔手记。上传支付宝、微信、银行和信用卡账单，系统先整理，只把有歧义的项目交给你。",
             "flowLabel": "账单整理流程",
             "tab": {
-                "task": "整理任务",
-                "imports": "上传与入账",
-                "reconciliation": "处理重复与转账"
+                "task": "账单整理",
+                "imports": "上传账单",
+                "reconciliation": "重复与转账"
             },
             "step": {
                 "upload": "上传账单",
@@ -2949,6 +2949,26 @@
                 "needsActionHint": "处理或排除这些项目后，就能一次入账所有已就绪事件。",
                 "ready": "结果已经可以入账",
                 "readyHint": "重复证据已折叠，最终事件和原始证据仍可逐笔核验。"
+            },
+            "workflow": {
+                "eyebrow": "本轮账单",
+                "title": "从上传到账本，一次整理完",
+                "hint": "先确认本轮账单来源，再处理成组问题，最后把已就绪交易一次入账。",
+                "upload": "已上传",
+                "sourceCount": "{count} 份账单",
+                "uploadAction": "继续上传账单",
+                "review": "待处理",
+                "groupCount": "{count} 组问题",
+                "eventCount": "共 {count} 笔记录",
+                "ready": "可入账",
+                "readyCount": "{count} 笔交易",
+                "readyHint": "处理完问题后一次入账",
+                "summary": "整理后共 {total} 笔交易；已排除 {excluded} 笔，已入账 {posted} 笔。",
+                "verify": "核对整理数字",
+                "similar": "{count} 笔相似记录",
+                "expand": "展开核对 {count} 笔",
+                "collapse": "收起",
+                "item": "第 {index} 笔"
             },
             "metric": { "posted": "已入账", "ready": "待入账", "needsAction": "必须处理", "excluded": "已排除" },
             "conservation": { "evidence": "有效证据", "duplicates": "重复证据", "events": "最终事件", "ok": "证据守恒已核对", "invalid": "计数不守恒，请勿入账" },
