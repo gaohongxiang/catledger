@@ -173,6 +173,13 @@ func (tx *RepositoryTransaction) InsertSource(value *FinanceUpdateSource) error 
 	if err := tx.validate(); err != nil || !isValidSource(value, tx.uid) {
 		return fmt.Errorf("invalid finance update source insert")
 	}
+	update, err := findUpdateById(tx.session, tx.uid, value.UpdateId)
+	if err != nil {
+		return err
+	}
+	if update == nil || update.Status != UPDATE_STATUS_DRAFT {
+		return fmt.Errorf("finance update source membership is frozen")
+	}
 	return insertOne(tx.session, value, "finance update source")
 }
 
@@ -186,8 +193,19 @@ func (r *Repository) ListSources(c core.Context, uid int64, updateId int64) ([]*
 	}
 	sess := database.NewPrivacySession(c)
 	defer sess.Close()
+	return listSources(sess, uid, updateId)
+}
+
+func (tx *RepositoryTransaction) ListSources(updateId int64) ([]*FinanceUpdateSource, error) {
+	if err := tx.validate(); err != nil || updateId < 1 {
+		return nil, fmt.Errorf("invalid finance update source transaction lookup")
+	}
+	return listSources(tx.session, tx.uid, updateId)
+}
+
+func listSources(sess *xorm.Session, uid int64, updateId int64) ([]*FinanceUpdateSource, error) {
 	items := make([]*FinanceUpdateSource, 0)
-	if err = sess.Where("uid=? AND update_id=?", uid, updateId).Asc("source_order", "source_id").Find(&items); err != nil {
+	if err := sess.Where("uid=? AND update_id=?", uid, updateId).Asc("source_order", "source_id").Find(&items); err != nil {
 		return nil, fmt.Errorf("list finance update sources: %w", err)
 	}
 	return items, nil
@@ -376,6 +394,38 @@ func (r *Repository) CreateOrFindAction(c core.Context, candidate *FinanceAction
 	return nil, false, fmt.Errorf("finance action persistence retry limit reached")
 }
 
+func (r *Repository) FindActionById(c core.Context, uid int64, actionId int64) (*FinanceAction, error) {
+	if uid < 1 || actionId < 1 {
+		return nil, fmt.Errorf("invalid finance action lookup")
+	}
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	return findActionById(sess, uid, actionId)
+}
+
+func (tx *RepositoryTransaction) FindActionById(actionId int64) (*FinanceAction, error) {
+	if err := tx.validate(); err != nil || actionId < 1 {
+		return nil, fmt.Errorf("invalid finance action transaction lookup")
+	}
+	return findActionById(tx.session, tx.uid, actionId)
+}
+
+func findActionById(sess *xorm.Session, uid int64, actionId int64) (*FinanceAction, error) {
+	value := new(FinanceAction)
+	found, err := sess.Where("uid=? AND action_id=?", uid, actionId).Get(value)
+	if err != nil {
+		return nil, fmt.Errorf("find finance action: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+	return value, nil
+}
+
 func (tx *RepositoryTransaction) CreateOrFindAction(candidate *FinanceAction) (*FinanceAction, bool, error) {
 	if err := tx.validate(); err != nil || candidate == nil || candidate.Uid != tx.uid || !isValidNewAction(candidate) {
 		return nil, false, fmt.Errorf("invalid finance action transaction insert")
@@ -434,12 +484,21 @@ func createOrFindAction(sess *xorm.Session, databaseType string, candidate *Fina
 }
 
 func (tx *RepositoryTransaction) UpdateAction(next *FinanceAction) (bool, error) {
+	return tx.UpdateActionCAS("", next)
+}
+
+func (tx *RepositoryTransaction) UpdateActionCAS(expectedStatus ActionStatus, next *FinanceAction) (bool, error) {
 	if err := tx.validate(); err != nil || next == nil || next.Uid != tx.uid || next.ActionId < 1 ||
 		next.UpdateId < 1 || !isActionType(next.ActionType) || !isActionStatus(next.Status) ||
-		next.AppliedUpdateVersion < 0 || next.ReasonCodesJson == "" || next.UpdatedUnixTime < 1 {
+		next.AppliedUpdateVersion < 0 || next.ReasonCodesJson == "" || next.UpdatedUnixTime < 1 ||
+		(expectedStatus != "" && !isActionStatus(expectedStatus)) {
 		return false, fmt.Errorf("invalid finance action update")
 	}
-	updated, err := tx.session.Where("uid=? AND action_id=?", tx.uid, next.ActionId).
+	query := tx.session.Where("uid=? AND action_id=?", tx.uid, next.ActionId)
+	if expectedStatus != "" {
+		query = query.And("status=?", expectedStatus)
+	}
+	updated, err := query.
 		Cols("status", "applied_update_version", "reason_codes_json", "error_code", "started_unix_time",
 			"completed_unix_time", "failed_unix_time", "updated_unix_time").
 		MustCols("started_unix_time", "completed_unix_time", "failed_unix_time").Update(next)
@@ -447,6 +506,17 @@ func (tx *RepositoryTransaction) UpdateAction(next *FinanceAction) (bool, error)
 		return false, fmt.Errorf("update finance action: %w", err)
 	}
 	return updated == 1, nil
+}
+
+func (tx *RepositoryTransaction) CountEvents(updateId int64) (int64, error) {
+	if err := tx.validate(); err != nil || updateId < 1 {
+		return 0, fmt.Errorf("invalid economic event count")
+	}
+	count, err := tx.session.Where("uid=? AND update_id=?", tx.uid, updateId).Count(new(EconomicEvent))
+	if err != nil {
+		return 0, fmt.Errorf("count economic events: %w", err)
+	}
+	return count, nil
 }
 
 func insertOne(sess *xorm.Session, value any, name string) error {
