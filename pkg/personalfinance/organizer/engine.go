@@ -27,7 +27,7 @@ var (
 	ErrOrganizePlanExists      = errors.New("finance update already has an event plan")
 )
 
-// EvidenceReader 只读取 v009 来源快照指向的不可变解析证据。
+// EvidenceReader 只读取来源快照指向的不可变解析证据。
 type EvidenceReader interface {
 	FindImportBatchById(c core.Context, uid int64, batchId int64) (*importing.ImportBatch, error)
 	ListRawImportRows(c core.Context, uid int64, batchId int64) ([]*importing.RawImportRow, error)
@@ -50,11 +50,13 @@ type OrganizeRequest struct {
 }
 
 type OrganizeResult struct {
-	Update    *FinanceUpdate
-	Action    *FinanceAction
-	Events    []*EconomicEvent
-	Relations []*EconomicEventRelation
-	Replayed  bool
+	Update       *FinanceUpdate
+	Action       *FinanceAction
+	Events       []*EconomicEvent
+	Relations    []*EconomicEventRelation
+	Issues       []*ReviewIssue
+	IssueMembers []*ReviewIssueMember
+	Replayed     bool
 }
 
 // Engine 把一次更新从 draft 原子声明为 organizing，再把同一守恒计划原子推进到 review。
@@ -102,14 +104,22 @@ func (e *Engine) Organize(c core.Context, request OrganizeRequest) (*OrganizeRes
 		e.failOrganize(c, request, claimed, "source_snapshot_invalid", now)
 		return nil, err
 	}
-	plan, err := BuildOrganizePlan(request.Uid, request.UpdateId, sources, accountMap, now, func() int64 {
-		return e.ids.GenerateUuid(uuid.UUID_TYPE_PERSONAL_FINANCE)
-	})
+	generateId := func() int64 { return e.ids.GenerateUuid(uuid.UUID_TYPE_PERSONAL_FINANCE) }
+	plan, err := BuildOrganizePlan(request.Uid, request.UpdateId, sources, accountMap, now, generateId)
 	if err != nil {
 		e.failOrganize(c, request, claimed, "plan_invalid", now)
 		return nil, err
 	}
-	if err = e.persistPlan(c, request, claimed, plan, now); err != nil {
+	reviewPlan, err := BuildReviewIssuePlan(request.Uid, request.UpdateId, plan, sources, now, generateId)
+	if err != nil {
+		e.failOrganize(c, request, claimed, "review_issue_plan_invalid", now)
+		return nil, err
+	}
+	if err = ApplyReviewIssueBlockers(plan, reviewPlan); err != nil {
+		e.failOrganize(c, request, claimed, "review_issue_plan_invalid", now)
+		return nil, err
+	}
+	if err = e.persistPlan(c, request, claimed, plan, reviewPlan, now); err != nil {
 		persisted, findErr := e.repository.FindActionById(c, request.Uid, claimed.ActionId)
 		if findErr == nil && persisted != nil && persisted.Status == ACTION_STATUS_APPLIED {
 			return e.loadResult(c, request.Uid, request.UpdateId, persisted.ActionId, true)
@@ -262,7 +272,10 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 	return planningSources, accounts, nil
 }
 
-func (e *Engine) persistPlan(c core.Context, request OrganizeRequest, action *FinanceAction, plan *OrganizePlan, now int64) error {
+func (e *Engine) persistPlan(c core.Context, request OrganizeRequest, action *FinanceAction, plan *OrganizePlan, reviewPlan *ReviewIssuePlan, now int64) error {
+	if plan == nil || reviewPlan == nil {
+		return ErrOrganizeRequestInvalid
+	}
 	database, err := e.repository.database(request.Uid)
 	if err != nil {
 		return err
@@ -289,6 +302,9 @@ func (e *Engine) persistPlan(c core.Context, request OrganizeRequest, action *Fi
 			if err != nil {
 				return err
 			}
+			if err = tx.ReplaceReviewIssues(request.UpdateId); err != nil {
+				return err
+			}
 			if count != 0 {
 				if err = tx.ReplaceUnpostedPlan(request.UpdateId); err != nil {
 					return err
@@ -309,11 +325,21 @@ func (e *Engine) persistPlan(c core.Context, request OrganizeRequest, action *Fi
 					return err
 				}
 			}
+			for _, issue := range reviewPlan.Issues {
+				if err = tx.InsertReviewIssue(issue); err != nil {
+					return err
+				}
+			}
+			for _, member := range reviewPlan.Members {
+				if err = tx.InsertReviewIssueMember(member); err != nil {
+					return err
+				}
+			}
 
 			nextUpdate := *update
 			nextUpdate.Status = UPDATE_STATUS_REVIEW
 			nextUpdate.Version = update.Version + 1
-			nextUpdate.PlanVersion = PLAN_VERSION_V1
+			nextUpdate.PlanVersion = PLAN_VERSION_V2
 			nextUpdate.SourceCount = plan.SourceCount
 			nextUpdate.ValidEvidenceCount = plan.ValidEvidenceCount
 			nextUpdate.DuplicateEvidenceCount = plan.DuplicateEvidenceCount
@@ -419,7 +445,25 @@ func (e *Engine) loadResult(c core.Context, uid int64, updateId int64, actionId 
 		}
 	}
 	sort.Slice(relations, func(i, j int) bool { return relations[i].RelationId < relations[j].RelationId })
-	return &OrganizeResult{Update: update, Action: action, Events: events, Relations: relations, Replayed: replayed}, nil
+	issues, err := e.repository.ListReviewIssues(c, uid, updateId)
+	if err != nil {
+		return nil, err
+	}
+	members := make([]*ReviewIssueMember, 0)
+	if len(issues) > 0 {
+		issueIds := make([]int64, len(issues))
+		for index, issue := range issues {
+			issueIds[index] = issue.IssueId
+		}
+		members, err = e.repository.ListReviewIssueMembersForIssues(c, uid, issueIds)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &OrganizeResult{
+		Update: update, Action: action, Events: events, Relations: relations,
+		Issues: issues, IssueMembers: members, Replayed: replayed,
+	}, nil
 }
 
 func newOrganizeAction(request OrganizeRequest, actionId int64, now int64) *FinanceAction {
