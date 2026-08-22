@@ -1,3 +1,5 @@
+import axios from 'axios';
+
 import services from '@/lib/services.ts';
 
 import type { PersonalFinanceSourceType } from '../models.ts';
@@ -17,7 +19,17 @@ import type {
     OrganizerMutation,
     OrganizerRawRow,
     OrganizerRelation,
-    OrganizerTransactionLink
+    OrganizerTransactionLink,
+    ResolveReviewIssueRequest,
+    ReviewIssue,
+    ReviewIssueDetail,
+    ReviewIssueMember,
+    ReviewIssueMemberRole,
+    ReviewIssueMutation,
+    ReviewIssuePage,
+    ReviewIssueStatus,
+    ReviewIssueType,
+    ReviewObjectType
 } from './models.ts';
 
 type UnknownRecord = Record<string, unknown>;
@@ -68,6 +80,13 @@ const economicNatures = [
     'income', 'expense', 'internal_transfer', 'borrow', 'repayment',
     'refund', 'fee', 'balance_adjustment', 'unknown'
 ] as const;
+const reviewIssueStatuses: readonly ReviewIssueStatus[] = ['open', 'resolved', 'superseded'];
+const reviewIssueTypes: readonly ReviewIssueType[] = [
+    'account_mapping', 'shared_fields', 'same_event', 'refund_relation',
+    'transfer_accounts', 'identity_conflict', 'field_conflict'
+];
+const reviewIssueMemberRoles: readonly ReviewIssueMemberRole[] = ['subject', 'candidate', 'supporting'];
+const reviewObjectTypes: readonly ReviewObjectType[] = ['event', 'evidence', 'relation', 'transaction', 'source_account'];
 
 function unwrap(response: unknown): unknown {
     const data = record(record(response)['data']);
@@ -236,6 +255,57 @@ function eventEvidence(value: unknown): OrganizerEventEvidence {
     };
 }
 
+function reviewIssue(value: unknown): ReviewIssue {
+    const item = record(value);
+    return {
+        id: identifier(item['id']), updateId: identifier(item['updateId']),
+        status: asEnum(item['status'], reviewIssueStatuses), type: asEnum(item['type'], reviewIssueTypes),
+        version: integer(item['version']), blocking: boolean(item['blocking']),
+        primaryReasonCode: string(item['primaryReasonCode']), memberCount: integer(item['memberCount']),
+        candidateCount: integer(item['candidateCount']), resolvedActionId: optional(item['resolvedActionId'], identifier),
+        reasonCodesJson: string(item['reasonCodesJson']), createdUnixTime: integer(item['createdUnixTime']),
+        updatedUnixTime: integer(item['updatedUnixTime'])
+    };
+}
+
+function reviewIssueMember(value: unknown): ReviewIssueMember {
+    const item = record(value);
+    return {
+        id: identifier(item['id']), issueId: identifier(item['issueId']),
+        role: asEnum(item['role'], reviewIssueMemberRoles), objectType: asEnum(item['objectType'], reviewObjectTypes),
+        objectId: identifier(item['objectId']), objectVersion: integer(item['objectVersion']),
+        sortOrder: integer(item['sortOrder']), score: integer(item['score']), reasonCodesJson: string(item['reasonCodesJson'])
+    };
+}
+
+function reviewIssuePage(value: unknown): ReviewIssuePage {
+    const item = record(value);
+    const cursor = optional(item['nextCursor'], record);
+    return {
+        items: array(item['items']).map(reviewIssue), members: array(item['members']).map(reviewIssueMember),
+        ...(cursor ? { nextCursor: { updatedUnixTime: integer(cursor['updatedUnixTime']), issueId: identifier(cursor['issueId']) } } : {})
+    };
+}
+
+function reviewIssueDetail(value: unknown): ReviewIssueDetail {
+    const item = record(value);
+    return {
+        issue: reviewIssue(item['issue']), members: array(item['members']).map(reviewIssueMember),
+        events: array(item['events']).map(normalizeEconomicEvent), relations: array(item['relations']).map(relation),
+        transactions: array(item['transactions']).map(transactionLink)
+    };
+}
+
+function reviewIssueMutation(value: unknown): ReviewIssueMutation {
+    const item = record(value);
+    return {
+        update: normalizeFinanceUpdate(item['update']), issue: reviewIssue(item['issue']),
+        members: [], events: array(item['events']).map(normalizeEconomicEvent),
+        relations: array(item['relations']).map(relation), transactions: array(item['transactions']).map(transactionLink),
+        action: action(item['action']), replayed: boolean(item['replayed'])
+    };
+}
+
 function idempotencyRequest(update: FinanceUpdate, idempotencyKey: string) {
     return { updateId: update.id, expectedUpdateVersion: update.version, idempotencyKey };
 }
@@ -267,6 +337,17 @@ export const organizerApi = {
             updateId: update.id, eventId: event.id, expectedUpdateVersion: update.version,
             expectedEventVersion: event.version, idempotencyKey
         })));
+    },
+    async listReviewIssues(updateId: string, status: ReviewIssueStatus = 'open', type?: ReviewIssueType, limit = 100): Promise<ReviewIssuePage> {
+        const typeQuery = type ? `&type=${encodeURIComponent(type)}` : '';
+        const response = await axios.get(`v1/personal_finance/review_issues/list.json?update_id=${encodeURIComponent(updateId)}&status=${encodeURIComponent(status)}&limit=${limit}${typeQuery}`);
+        return reviewIssuePage(unwrap(response));
+    },
+    async getReviewIssue(issueId: string): Promise<ReviewIssueDetail> {
+        return reviewIssueDetail(unwrap(await axios.get(`v1/personal_finance/review_issues/get.json?id=${encodeURIComponent(issueId)}`)));
+    },
+    async resolveReviewIssue(request: ResolveReviewIssueRequest): Promise<ReviewIssueMutation> {
+        return reviewIssueMutation(unwrap(await axios.post('v1/personal_finance/review_issues/resolve.json', request)));
     },
     async postAllReady(update: FinanceUpdate, idempotencyKey: string): Promise<OrganizerMutation> {
         return mutation(unwrap(await services.postAllReadyPersonalFinanceOrganizerEvents(idempotencyRequest(update, idempotencyKey))));
