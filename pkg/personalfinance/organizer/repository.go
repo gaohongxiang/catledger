@@ -33,6 +33,16 @@ type UpdatePage struct {
 	NextCursor *UpdateCursor
 }
 
+type EventCursor struct {
+	UpdatedUnixTime int64
+	EventId         int64
+}
+
+type EventPage struct {
+	Items      []*EconomicEvent
+	NextCursor *EventCursor
+}
+
 type Repository struct {
 	store *datastore.DataStore
 }
@@ -203,6 +213,22 @@ func (tx *RepositoryTransaction) ListSources(updateId int64) ([]*FinanceUpdateSo
 	return listSources(tx.session, tx.uid, updateId)
 }
 
+func (tx *RepositoryTransaction) ListSourcesByBatchIds(batchIds []int64) ([]*FinanceUpdateSource, error) {
+	if err := tx.validate(); err != nil || len(batchIds) < 1 {
+		return nil, fmt.Errorf("invalid finance update source batch lookup")
+	}
+	for _, batchId := range batchIds {
+		if batchId < 1 {
+			return nil, fmt.Errorf("invalid finance update source batch lookup")
+		}
+	}
+	items := make([]*FinanceUpdateSource, 0)
+	if err := tx.session.Where("uid=?", tx.uid).In("batch_id", batchIds).Asc("source_id").Find(&items); err != nil {
+		return nil, fmt.Errorf("list finance update sources by batch: %w", err)
+	}
+	return items, nil
+}
+
 func listSources(sess *xorm.Session, uid int64, updateId int64) ([]*FinanceUpdateSource, error) {
 	items := make([]*FinanceUpdateSource, 0)
 	if err := sess.Where("uid=? AND update_id=?", uid, updateId).Asc("source_order", "source_id").Find(&items); err != nil {
@@ -261,6 +287,37 @@ func (r *Repository) ListEvents(c core.Context, uid int64, updateId int64) ([]*E
 	sess := database.NewPrivacySession(c)
 	defer sess.Close()
 	return listEvents(sess, uid, updateId)
+}
+
+func (r *Repository) ListEventsPage(c core.Context, uid int64, updateId int64, status EventStatus, cursor *EventCursor, limit int) (*EventPage, error) {
+	if uid < 1 || updateId < 1 || (status != "" && !isEventStatus(status)) || limit < 1 || limit > maximumRepositoryPageSize ||
+		(cursor != nil && (cursor.UpdatedUnixTime < 1 || cursor.EventId < 1)) {
+		return nil, fmt.Errorf("invalid economic event page")
+	}
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	items := make([]*EconomicEvent, 0, limit+1)
+	query := sess.Where("uid=? AND update_id=?", uid, updateId)
+	if status != "" {
+		query = query.And("status=?", status)
+	}
+	if cursor != nil {
+		query = query.And("(updated_unix_time<? OR (updated_unix_time=? AND event_id<?))", cursor.UpdatedUnixTime, cursor.UpdatedUnixTime, cursor.EventId)
+	}
+	if err = query.Desc("updated_unix_time", "event_id").Limit(limit + 1).Find(&items); err != nil {
+		return nil, fmt.Errorf("list economic event page: %w", err)
+	}
+	page := &EventPage{Items: items}
+	if len(items) > limit {
+		page.Items = items[:limit]
+		last := page.Items[len(page.Items)-1]
+		page.NextCursor = &EventCursor{UpdatedUnixTime: last.UpdatedUnixTime, EventId: last.EventId}
+	}
+	return page, nil
 }
 
 func (tx *RepositoryTransaction) ListEvents(updateId int64) ([]*EconomicEvent, error) {

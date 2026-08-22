@@ -1,0 +1,160 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
+)
+
+func TestOrganizerHandlersUseResourceContractsAndCurrentUser(t *testing.T) {
+	stub := &organizerAPITestApplication{
+		update: &organizer.FinanceUpdate{UpdateId: 701, Status: organizer.UPDATE_STATUS_DRAFT, Version: 1, PlanVersion: organizer.PLAN_VERSION_V1},
+		event:  &organizer.EconomicEvent{UpdateId: 701, EventId: 801, Status: organizer.EVENT_STATUS_NEEDS_ACTION, Version: 2, FlowDirection: organizer.FLOW_DIRECTION_INFLOW, EconomicNature: organizer.ECONOMIC_NATURE_UNKNOWN, FieldSourcesJson: "{}", ReasonCodesJson: "[]"},
+		action: &organizer.FinanceAction{UpdateId: 701, ActionId: 901, ActionType: organizer.ACTION_TYPE_CREATE_UPDATE, Status: organizer.ACTION_STATUS_APPLIED, ReasonCodesJson: "[]"},
+	}
+	api := newOrganizerTestAPI(t, stub)
+
+	response, apiErr := api.UpdateCreateHandler(newOrganizerTestContext(t, http.MethodPost, "/updates/create",
+		`{"batchIds":["101","102"],"idempotencyKey":"create-1"}`))
+	if apiErr != nil || stub.createUID != 1001 || len(stub.createBatchIds) != 2 || stub.createBatchIds[1] != 102 {
+		t.Fatalf("create request mismatch: uid=%d ids=%v response=%v err=%v", stub.createUID, stub.createBatchIds, response, apiErr)
+	}
+	encoded := marshalOrganizerResponse(t, response)
+	if !strings.Contains(encoded, `"id":"701"`) || strings.Contains(encoded, `"Uid"`) || strings.Contains(encoded, "idempotency") {
+		t.Fatalf("create response is not a safe resource: %s", encoded)
+	}
+
+	_, apiErr = api.UpdateOrganizeHandler(newOrganizerTestContext(t, http.MethodPost, "/updates/organize",
+		`{"updateId":"701","expectedUpdateVersion":1,"idempotencyKey":"organize-1"}`))
+	if apiErr != nil || stub.organizeRequest.Uid != 1001 || stub.organizeRequest.UpdateId != 701 || stub.organizeRequest.ExpectedUpdateVersion != 1 {
+		t.Fatalf("organize request mismatch: request=%+v err=%v", stub.organizeRequest, apiErr)
+	}
+
+	_, apiErr = api.EventCorrectHandler(newOrganizerTestContext(t, http.MethodPost, "/events/correct",
+		`{"updateId":"701","eventId":"801","expectedUpdateVersion":2,"expectedEventVersion":3,"idempotencyKey":"correct-1","fieldMask":128,"categoryId":"88"}`))
+	if apiErr != nil || stub.correctRequest.Uid != 1001 || stub.correctRequest.Correction.FieldMask != organizer.MANUAL_FIELD_CATEGORY ||
+		stub.correctRequest.Correction.CategoryId == nil || *stub.correctRequest.Correction.CategoryId != 88 {
+		t.Fatalf("correct request mismatch: request=%+v err=%v", stub.correctRequest, apiErr)
+	}
+
+	_, apiErr = api.ActionPostReadyHandler(newOrganizerTestContext(t, http.MethodPost, "/actions/post-ready",
+		`{"updateId":"701","expectedUpdateVersion":2,"idempotencyKey":"post-1"}`))
+	if apiErr != nil || stub.postRequest.Mode != organizer.POST_MODE_READY || stub.postRequest.Uid != 1001 {
+		t.Fatalf("post-ready request mismatch: request=%+v err=%v", stub.postRequest, apiErr)
+	}
+}
+
+func TestOrganizerHandlersRejectCompatibilityFieldsAndMapConflicts(t *testing.T) {
+	stub := &organizerAPITestApplication{update: &organizer.FinanceUpdate{UpdateId: 701}, event: &organizer.EconomicEvent{EventId: 801}, action: &organizer.FinanceAction{ActionId: 901}}
+	api := newOrganizerTestAPI(t, stub)
+	response, apiErr := api.UpdateCreateHandler(newOrganizerTestContext(t, http.MethodPost, "/updates/create",
+		`{"batchIds":["101"],"fileIds":["201"],"idempotencyKey":"old-field"}`))
+	if response != nil || apiErr != errs.ErrParameterInvalid {
+		t.Fatalf("old compatibility field was accepted: response=%v err=%v", response, apiErr)
+	}
+	stub.err = organizer.ErrPostVersionConflict
+	response, apiErr = api.ActionPostAllReadyHandler(newOrganizerTestContext(t, http.MethodPost, "/actions/post-all-ready",
+		`{"updateId":"701","expectedUpdateVersion":2,"idempotencyKey":"post-conflict"}`))
+	if response != nil || apiErr != errs.ErrRepeatedRequest {
+		t.Fatalf("version conflict mapping mismatch: response=%v err=%v", response, apiErr)
+	}
+}
+
+type organizerAPITestApplication struct {
+	update          *organizer.FinanceUpdate
+	event           *organizer.EconomicEvent
+	action          *organizer.FinanceAction
+	err             error
+	createUID       int64
+	createBatchIds  []int64
+	organizeRequest organizer.OrganizeRequest
+	correctRequest  organizer.CorrectEventRequest
+	postRequest     organizer.PostRequest
+}
+
+func (a *organizerAPITestApplication) CreateUpdate(_ core.Context, uid int64, batchIds []int64, _ string) (*organizerUpdateDetail, error) {
+	a.createUID, a.createBatchIds = uid, batchIds
+	return &organizerUpdateDetail{Update: a.update, Sources: []*organizer.FinanceUpdateSource{}}, a.err
+}
+
+func (a *organizerAPITestApplication) ListUpdates(_ core.Context, _ int64, _ organizer.UpdateStatus, _ *organizer.UpdateCursor, _ int) (*organizer.UpdatePage, error) {
+	return &organizer.UpdatePage{Items: []*organizer.FinanceUpdate{a.update}}, a.err
+}
+
+func (a *organizerAPITestApplication) GetUpdate(_ core.Context, _ int64, _ int64) (*organizerUpdateDetail, error) {
+	return &organizerUpdateDetail{Update: a.update, Sources: []*organizer.FinanceUpdateSource{}}, a.err
+}
+
+func (a *organizerAPITestApplication) Organize(_ core.Context, request organizer.OrganizeRequest) (*organizer.OrganizeResult, error) {
+	a.organizeRequest = request
+	return &organizer.OrganizeResult{Update: a.update, Action: a.action, Events: []*organizer.EconomicEvent{a.event}}, a.err
+}
+
+func (a *organizerAPITestApplication) ListEvents(_ core.Context, _ int64, _ int64, _ organizer.EventStatus, _ *organizer.EventCursor, _ int) (*organizer.EventPage, error) {
+	return &organizer.EventPage{Items: []*organizer.EconomicEvent{a.event}}, a.err
+}
+
+func (a *organizerAPITestApplication) GetEventEvidence(_ core.Context, _ int64, _ int64) (*organizerEventEvidenceDetail, error) {
+	return &organizerEventEvidenceDetail{Event: a.event, Evidence: []*organizer.EconomicEventEvidence{}, Relations: []*organizer.EconomicEventRelation{}, Links: []*organizer.EconomicEventTransaction{}}, a.err
+}
+
+func (a *organizerAPITestApplication) InspectEventCorrection(_ core.Context, _ int64, _ int64, _ int64) (*organizer.UndoImpact, error) {
+	return &organizer.UndoImpact{CanUndo: true, ReasonCodes: []string{}}, a.err
+}
+
+func (a *organizerAPITestApplication) CorrectEvent(_ core.Context, request organizer.CorrectEventRequest) (*organizerMutationResult, error) {
+	a.correctRequest = request
+	return &organizerMutationResult{Update: a.update, Event: a.event, Action: a.action}, a.err
+}
+
+func (a *organizerAPITestApplication) Post(_ core.Context, request organizer.PostRequest) (*organizer.PostResult, error) {
+	a.postRequest = request
+	return &organizer.PostResult{Update: a.update, Action: a.action, Events: []*organizer.EconomicEvent{a.event}}, a.err
+}
+
+func (a *organizerAPITestApplication) InspectUndo(_ core.Context, _ int64, _ int64) (*organizer.UndoImpact, error) {
+	return &organizer.UndoImpact{CanUndo: true, ReasonCodes: []string{}}, a.err
+}
+
+func (a *organizerAPITestApplication) Undo(_ core.Context, _ organizer.UndoRequest) (*organizer.UndoResult, error) {
+	return &organizer.UndoResult{Update: a.update, Action: a.action, Impact: &organizer.UndoImpact{CanUndo: true}}, a.err
+}
+
+func newOrganizerTestAPI(t *testing.T, application PersonalFinanceOrganizerApplication) *PersonalFinanceOrganizerApi {
+	t.Helper()
+	api, err := NewPersonalFinanceOrganizerApi(application)
+	if err != nil {
+		t.Fatalf("create organizer api: %v", err)
+	}
+	return api
+}
+
+func newOrganizerTestContext(t *testing.T, method string, target string, body string) *core.WebContext {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	request := httptest.NewRequest(method, target, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	ginContext.Request = request
+	webContext := &core.WebContext{Context: ginContext}
+	webContext.SetTokenClaims(&core.UserTokenClaims{Uid: 1001})
+	return webContext
+}
+
+func marshalOrganizerResponse(t *testing.T, response any) string {
+	t.Helper()
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal organizer response: %v", err)
+	}
+	return string(encoded)
+}

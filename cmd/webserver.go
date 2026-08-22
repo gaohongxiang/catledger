@@ -83,9 +83,9 @@ func startWebServer(c *core.CliContext) error {
 		return err
 	}
 
-	err = api.InitializePersonalFinanceBillflowApi()
+	err = api.InitializePersonalFinanceOrganizerApi()
 	if err != nil {
-		log.BootErrorf(c, "[webserver.startWebServer] initializes personal finance billflow API failed, because %s", err.Error())
+		log.BootErrorf(c, "[webserver.startWebServer] initializes personal finance organizer API failed, because %s", err.Error())
 		return err
 	}
 

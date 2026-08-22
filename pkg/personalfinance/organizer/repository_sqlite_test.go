@@ -3,6 +3,7 @@ package organizer_test
 import (
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -138,6 +139,39 @@ func TestRepositorySQLiteActionIdempotencyAndConservation(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("conservation validation failed: %v", err)
+	}
+}
+
+func TestRepositorySQLiteEventPageUsesStableStatusCursor(t *testing.T) {
+	repository, _ := newSQLiteOrganizerRepository(t)
+	const uid = int64(4004)
+	if err := repository.DoTransaction(nil, uid, func(tx *organizer.RepositoryTransaction) error {
+		if err := tx.InsertUpdate(testUpdate(uid, 401, 10)); err != nil {
+			return err
+		}
+		for index, spec := range []struct {
+			id     int64
+			status organizer.EventStatus
+			now    int64
+			key    byte
+		}{{501, organizer.EVENT_STATUS_READY, 10, 'a'}, {502, organizer.EVENT_STATUS_NEEDS_ACTION, 20, 'b'}, {503, organizer.EVENT_STATUS_READY, 30, 'c'}} {
+			event := testEvent(uid, 401, spec.id, spec.status, spec.now)
+			event.EventKey = strings.Repeat(string(spec.key), 64)
+			if err := tx.InsertEvent(event); err != nil {
+				return errors.New("insert paged event " + strconv.Itoa(index))
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed event page: %v", err)
+	}
+	first, err := repository.ListEventsPage(nil, uid, 401, organizer.EVENT_STATUS_READY, nil, 1)
+	if err != nil || len(first.Items) != 1 || first.Items[0].EventId != 503 || first.NextCursor == nil {
+		t.Fatalf("first event page mismatch: page=%+v err=%v", first, err)
+	}
+	second, err := repository.ListEventsPage(nil, uid, 401, organizer.EVENT_STATUS_READY, first.NextCursor, 1)
+	if err != nil || len(second.Items) != 1 || second.Items[0].EventId != 501 || second.NextCursor != nil {
+		t.Fatalf("second event page mismatch: page=%+v err=%v", second, err)
 	}
 }
 

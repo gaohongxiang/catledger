@@ -16,9 +16,6 @@ import (
 var PersonalFinanceCardCycle *PersonalFinanceCardCycleApi
 
 func InitializePersonalFinanceCardCycleApi() error {
-	if PersonalFinanceBillflow == nil {
-		return errors.New("personal finance billflow must be initialized before card cycle")
-	}
 	store := datastore.Container.UserDataStore
 	repository, err := cardcycle.NewRepository(store)
 	if err != nil {

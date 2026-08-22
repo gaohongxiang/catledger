@@ -52,17 +52,17 @@ func TestPersonalFinanceCardCycleRoutesAreUniqueAuthenticatedAndImportIndependen
 	}
 }
 
-func TestPersonalFinanceCardCycleCompositionFollowsBillflowAndStopsStartupOnFailure(t *testing.T) {
+func TestPersonalFinanceCardCycleCompositionFollowsOrganizerAndStopsStartupOnFailure(t *testing.T) {
 	sourceBytes, err := os.ReadFile("webserver.go")
 	if err != nil {
 		t.Fatalf("read webserver startup: %v", err)
 	}
 	source := string(sourceBytes)
-	billflowInit := strings.Index(source, "err = api.InitializePersonalFinanceBillflowApi()")
+	organizerInit := strings.Index(source, "err = api.InitializePersonalFinanceOrganizerApi()")
 	cardCycleInitText := "err = api.InitializePersonalFinanceCardCycleApi()"
 	cardCycleInit := strings.Index(source, cardCycleInitText)
 	requestId := strings.Index(source, "err = requestid.InitializeRequestIdGenerator")
-	if billflowInit < 0 || cardCycleInit < 0 || requestId < 0 || billflowInit > cardCycleInit || cardCycleInit > requestId ||
+	if organizerInit < 0 || cardCycleInit < 0 || requestId < 0 || organizerInit > cardCycleInit || cardCycleInit > requestId ||
 		strings.Count(source, cardCycleInitText) != 1 {
 		t.Fatal("card cycle composition order is invalid")
 	}
