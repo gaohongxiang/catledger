@@ -9,6 +9,9 @@ func ApplyReviewIssueBlockers(plan *OrganizePlan, reviewPlan *ReviewIssuePlan) e
 	if plan == nil || reviewPlan == nil {
 		return fmt.Errorf("review issue blocker input is nil")
 	}
+	if err := CoalesceSameEventReviewIssues(plan, reviewPlan); err != nil {
+		return err
+	}
 	events := make(map[int64]*EconomicEvent, len(plan.Events))
 	for _, event := range plan.Events {
 		if event == nil || event.EventId < 1 {
