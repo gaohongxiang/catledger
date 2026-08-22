@@ -9,6 +9,16 @@ export type EconomicNature =
     'income' | 'expense' | 'internal_transfer' | 'borrow' | 'repayment' |
     'refund' | 'fee' | 'balance_adjustment' | 'unknown';
 
+export type ReviewIssueStatus = 'open' | 'resolved' | 'superseded';
+export type ReviewIssueType =
+    'account_mapping' | 'shared_fields' | 'same_event' | 'refund_relation' |
+    'transfer_accounts' | 'identity_conflict' | 'field_conflict';
+export type ReviewIssueMemberRole = 'subject' | 'candidate' | 'supporting';
+export type ReviewObjectType = 'event' | 'evidence' | 'relation' | 'transaction' | 'source_account';
+export type ReviewIssueDecision =
+    'apply_fields' | 'confirm_distinct' | 'confirm_same' | 'exclude_events' |
+    'discard_evidence' | 'link_refund' | 'link_existing_transaction';
+
 export interface FinanceUpdateSource {
     readonly id: string;
     readonly fileId: string;
@@ -178,4 +188,76 @@ export interface OrganizerCorrectRequest {
     readonly amount?: string;
     readonly currency?: string;
     readonly categoryId?: string;
+}
+
+export interface ReviewIssue {
+    readonly id: string;
+    readonly updateId: string;
+    readonly status: ReviewIssueStatus;
+    readonly type: ReviewIssueType;
+    readonly version: number;
+    readonly blocking: boolean;
+    readonly primaryReasonCode: string;
+    readonly memberCount: number;
+    readonly candidateCount: number;
+    readonly resolvedActionId?: string;
+    readonly reasonCodesJson: string;
+    readonly createdUnixTime: number;
+    readonly updatedUnixTime: number;
+}
+
+export interface ReviewIssueMember {
+    readonly id: string;
+    readonly issueId: string;
+    readonly role: ReviewIssueMemberRole;
+    readonly objectType: ReviewObjectType;
+    readonly objectId: string;
+    readonly objectVersion: number;
+    readonly sortOrder: number;
+    readonly score: number;
+    readonly reasonCodesJson: string;
+}
+
+export interface ReviewIssuePage {
+    readonly items: readonly ReviewIssue[];
+    readonly members: readonly ReviewIssueMember[];
+    readonly nextCursor?: { readonly updatedUnixTime: number; readonly issueId: string };
+}
+
+export interface ReviewIssueDetail {
+    readonly issue: ReviewIssue;
+    readonly members: readonly ReviewIssueMember[];
+    readonly events: readonly EconomicEvent[];
+    readonly relations: readonly OrganizerRelation[];
+    readonly transactions: readonly OrganizerTransactionLink[];
+}
+
+export interface ResolveReviewIssueRequest {
+    readonly updateId: string;
+    readonly issueId: string;
+    readonly expectedUpdateVersion: number;
+    readonly expectedIssueVersion: number;
+    readonly idempotencyKey: string;
+    readonly decision: ReviewIssueDecision;
+    readonly fieldMask?: number;
+    readonly flowDirection?: EconomicFlowDirection;
+    readonly economicNature?: EconomicNature;
+    readonly ledgerAccountId?: string;
+    readonly counterpartyLedgerAccountId?: string;
+    readonly eventUnixTime?: number;
+    readonly timezoneUtcOffset?: number;
+    readonly amount?: string;
+    readonly currency?: string;
+    readonly categoryId?: string;
+    readonly primaryEventId?: string;
+    readonly eventIds?: readonly string[];
+    readonly evidenceId?: string;
+    readonly targetEventId?: string;
+    readonly transactionId?: string;
+}
+
+export interface ReviewIssueMutation extends ReviewIssueDetail {
+    readonly update: FinanceUpdate;
+    readonly action: FinanceAction;
+    readonly replayed: boolean;
 }
