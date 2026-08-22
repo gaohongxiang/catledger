@@ -260,8 +260,19 @@ func (r *Repository) ListEvents(c core.Context, uid int64, updateId int64) ([]*E
 	}
 	sess := database.NewPrivacySession(c)
 	defer sess.Close()
+	return listEvents(sess, uid, updateId)
+}
+
+func (tx *RepositoryTransaction) ListEvents(updateId int64) ([]*EconomicEvent, error) {
+	if err := tx.validate(); err != nil || updateId < 1 {
+		return nil, fmt.Errorf("invalid economic event transaction list")
+	}
+	return listEvents(tx.session, tx.uid, updateId)
+}
+
+func listEvents(sess *xorm.Session, uid int64, updateId int64) ([]*EconomicEvent, error) {
 	items := make([]*EconomicEvent, 0)
-	if err = sess.Where("uid=? AND update_id=?", uid, updateId).Asc("event_unix_time", "event_id").Find(&items); err != nil {
+	if err := sess.Where("uid=? AND update_id=?", uid, updateId).Asc("event_unix_time", "event_id").Find(&items); err != nil {
 		return nil, fmt.Errorf("list economic events: %w", err)
 	}
 	return items, nil
@@ -362,8 +373,19 @@ func (r *Repository) ListEventTransactions(c core.Context, uid int64, eventId in
 	}
 	sess := database.NewPrivacySession(c)
 	defer sess.Close()
+	return listEventTransactions(sess, uid, eventId)
+}
+
+func (tx *RepositoryTransaction) ListEventTransactions(eventId int64) ([]*EconomicEventTransaction, error) {
+	if err := tx.validate(); err != nil || eventId < 1 {
+		return nil, fmt.Errorf("invalid economic event transaction transaction lookup")
+	}
+	return listEventTransactions(tx.session, tx.uid, eventId)
+}
+
+func listEventTransactions(sess *xorm.Session, uid int64, eventId int64) ([]*EconomicEventTransaction, error) {
 	items := make([]*EconomicEventTransaction, 0)
-	if err = sess.Where("uid=? AND event_id=?", uid, eventId).Asc("link_id").Find(&items); err != nil {
+	if err := sess.Where("uid=? AND event_id=?", uid, eventId).Asc("link_id").Find(&items); err != nil {
 		return nil, fmt.Errorf("list economic event transactions: %w", err)
 	}
 	return items, nil

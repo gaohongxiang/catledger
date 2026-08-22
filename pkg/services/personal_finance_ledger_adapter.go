@@ -31,8 +31,8 @@ func (s *TransactionService) CreateTransactionInSession(c core.Context, database
 		return nil, nil, err
 	}
 
-	allowUncategorized := transaction.CategoryId == 0 &&
-		(transaction.Type == models.TRANSACTION_DB_TYPE_INCOME || transaction.Type == models.TRANSACTION_DB_TYPE_EXPENSE)
+	// organizer 将经济性质和生活分类分开；未分类不阻塞收支、退款或双账户事件。
+	allowUncategorized := transaction.CategoryId == 0
 	if err = s.doCreateTransactionWithOptions(c, database, sess, &transaction, indexes, uniqueTagIds, nil, nil, allowUncategorized); err != nil {
 		return nil, nil, err
 	}

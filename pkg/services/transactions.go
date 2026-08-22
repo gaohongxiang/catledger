@@ -2794,10 +2794,9 @@ func (s *TransactionService) doCreateTransactionWithOptions(c core.Context, data
 		return errs.ErrTransferTransactionAmountCannotBeLessThanZero
 	}
 
-	// PF 导入可以显式保留未分类收支并先写入权威余额；普通交易创建仍通过
-	// doCreateTransaction 强制校验叶子分类。
-	uncategorized := allowUncategorized && transaction.CategoryId == 0 &&
-		(transaction.Type == models.TRANSACTION_DB_TYPE_INCOME || transaction.Type == models.TRANSACTION_DB_TYPE_EXPENSE)
+	// PF 工作流可以显式保留未分类事件并先写入权威余额；普通交易创建仍通过
+	// doCreateTransaction 强制校验叶子分类。余额调整仍必须使用明确分类。
+	uncategorized := allowUncategorized && transaction.CategoryId == 0 && transaction.Type != models.TRANSACTION_DB_TYPE_MODIFY_BALANCE
 	if !uncategorized {
 		err = s.isCategoryValid(sess, transaction)
 	}

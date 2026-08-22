@@ -93,6 +93,20 @@ func TestCreateTransactionInSessionUsesCallerTransaction(t *testing.T) {
 	if err == nil {
 		t.Fatal("adapter accepted a session without an active transaction")
 	}
+
+	insertLedgerDeleteTransferFixtures(t, database, uid)
+	uncategorizedTransfer := &models.Transaction{
+		Uid: uid, Type: models.TRANSACTION_DB_TYPE_TRANSFER_OUT, AccountId: 11, RelatedAccountId: 12,
+		TransactionTime: utils.GetMinTransactionTimeFromUnixTime(time.Now().Unix() + 120), Amount: 50, RelatedAccountAmount: 50,
+	}
+	var transferOut, transferIn *models.Transaction
+	err = database.DoPrivacyTransaction(nil, func(sess *xorm.Session) error {
+		transferOut, transferIn, err = service.CreateTransactionInSession(nil, database, sess, uncategorizedTransfer, nil)
+		return err
+	})
+	if err != nil || transferOut == nil || transferIn == nil || transferOut.CategoryId != 0 || transferIn.CategoryId != 0 {
+		t.Fatalf("create uncategorized transfer in caller session: out=%+v in=%+v err=%v", transferOut, transferIn, err)
+	}
 }
 
 func TestDeleteTransactionInSessionSnapshotsPairsAndCallerRollback(t *testing.T) {
