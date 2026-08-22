@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EconomicEvent, FinanceUpdate } from './models.ts';
-import { canPostUpdate, eventDisplayLabel, eventReasonCodes, selectCurrentUpdate, updateConservationHolds } from './state.ts';
+import { canPostUpdate, eventDisplayLabel, eventReasonCodes, eventReasonTranslationKeys, selectCurrentUpdate, updateConservationHolds } from './state.ts';
 
 function update(overrides: Partial<FinanceUpdate> = {}): FinanceUpdate {
     return {
@@ -34,6 +34,20 @@ describe('organizer result state', () => {
         const event = { fieldSourcesJson: '{"counterparty":"Coffee"}', reasonCodesJson: '["unknown_nature"]', economicNature: 'expense' } as EconomicEvent;
         expect(eventDisplayLabel(event)).toBe('Coffee');
         expect(eventReasonCodes(event)).toEqual(['unknown_nature']);
+        expect(eventReasonTranslationKeys(event)).toEqual(['personalFinance.organizerV2.reason.generic']);
         expect(eventReasonCodes({ ...event, reasonCodesJson: 'broken' })).toEqual([]);
+    });
+
+    it('never exposes internal enum and reason-code fallbacks as display copy', () => {
+        const event = {
+            fieldSourcesJson: '{}', economicNature: 'unknown',
+            reasonCodesJson: '["economic_nature_required","transfer_account_required","future_internal_code"]'
+        } as EconomicEvent;
+        expect(eventDisplayLabel(event)).toBe('');
+        expect(eventReasonTranslationKeys(event)).toEqual([
+            'personalFinance.organizerV2.reason.economicNatureRequired',
+            'personalFinance.organizerV2.reason.transferAccountRequired',
+            'personalFinance.organizerV2.reason.generic'
+        ]);
     });
 });

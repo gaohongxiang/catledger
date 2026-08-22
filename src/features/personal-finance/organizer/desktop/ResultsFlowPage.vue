@@ -15,7 +15,7 @@
                     <v-checkbox-btn :model-value="selectedBatchIds.includes(batch.id)" @update:model-value="toggleBatch(batch.id)" />
                     <span>
                         <strong>{{ batch.file?.originalFileName || `${tt('personalFinance.organizerV2.start.batch')} #${batch.id}` }}</strong>
-                        <small>{{ batch.sourceType }} · {{ batch.validRowCount }} {{ tt('personalFinance.organizerV2.rows') }}</small>
+                        <small>{{ tt(getSourceTypeKey(batch.sourceType)) }} · {{ batch.validRowCount }} {{ tt('personalFinance.organizerV2.rows') }}</small>
                     </span>
                 </label>
             </div>
@@ -112,8 +112,8 @@
                         </div>
                         <div class="event-main">
                             <span class="event-nature">{{ tt(`personalFinance.organizerV2.nature.${event.economicNature}`) }}</span>
-                            <strong>{{ eventDisplayLabel(event) }}</strong>
-                            <small v-if="eventReasonCodes(event).length">{{ eventReasonCodes(event).join(' · ') }}</small>
+                            <strong>{{ eventDisplayLabel(event) || tt('personalFinance.organizerV2.events.unnamed') }}</strong>
+                            <small v-if="eventReasonTranslationKeys(event).length">{{ eventReasonTranslationKeys(event).map(key => tt(key)).join(' · ') }}</small>
                         </div>
                         <div class="event-amount" :class="event.flowDirection">
                             {{ formatEventAmount(event) }}
@@ -191,9 +191,10 @@ import { generateRandomUUID } from '@/lib/misc.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 
 import { usePersonalFinanceStore } from '../../store.ts';
+import { getSourceTypeKey } from '../../presentation.ts';
 import type { EconomicEvent, EconomicEventStatus, EconomicNature, FinanceUpdate, OrganizerEventEvidence, OrganizerImpact } from '../models.ts';
 import { organizerApi } from '../service.ts';
-import { RESULT_UPDATE_STATUSES, canOrganizeUpdate, canPostUpdate, canUndoUpdate, eventDisplayLabel, eventReasonCodes, selectCurrentUpdate, updateConservationHolds } from '../state.ts';
+import { RESULT_UPDATE_STATUSES, canOrganizeUpdate, canPostUpdate, canUndoUpdate, eventDisplayLabel, eventReasonTranslationKeys, selectCurrentUpdate, updateConservationHolds } from '../state.ts';
 
 defineEmits<{ (e: 'open-imports'): void }>();
 
