@@ -69,20 +69,27 @@ jobs:
           if [ -n "$files" ]; then
             unformatted=$(gofmt -l $files)
             if [ -n "$unformatted" ]; then
-              printf 'Unformatted Go files:\n%s\n' "$unformatted"
+              printf 'Unformatted Go files:\n%s\n' "$unformatted" | tee /tmp/format.log
               exit 1
             fi
           fi
+          echo 'All changed Go files are formatted.' > /tmp/format.log
 
       - name: Test personal finance backend
         id: backend_tests
         continue-on-error: true
-        run: go test ./pkg/personalfinance/... ./pkg/api/...
+        shell: bash
+        run: |
+          set -o pipefail
+          go test ./pkg/personalfinance/... ./pkg/api/... 2>&1 | tee /tmp/backend.log
 
       - name: Type-check frontend
         id: frontend_typecheck
         continue-on-error: true
-        run: npx vue-tsc --noEmit
+        shell: bash
+        run: |
+          set -o pipefail
+          npx vue-tsc --noEmit 2>&1 | tee /tmp/frontend.log
 
       - name: Report result on draft PR
         if: always()
@@ -93,16 +100,29 @@ jobs:
           FRONTEND_OUTCOME: ${{ steps.frontend_typecheck.outcome }}
         shell: bash
         run: |
-          cat > /tmp/pf-review-result.md <<EOF
-          <!-- pf-review-check-result -->
-          ### PF Review Checks
-
-          Commit: \`${GITHUB_SHA}\`
-
-          - Go formatting: **${FORMAT_OUTCOME}**
-          - Personal-finance backend tests: **${BACKEND_OUTCOME}**
-          - Vue/TypeScript type-check: **${FRONTEND_OUTCOME}**
-          EOF
+          {
+            echo '<!-- pf-review-check-result -->'
+            echo '### PF Review Checks'
+            echo
+            echo "Commit: \`${GITHUB_SHA}\`"
+            echo
+            echo "- Go formatting: **${FORMAT_OUTCOME}**"
+            echo "- Personal-finance backend tests: **${BACKEND_OUTCOME}**"
+            echo "- Vue/TypeScript type-check: **${FRONTEND_OUTCOME}**"
+            for item in format backend frontend; do
+              outcome_var="${item^^}_OUTCOME"
+              outcome="${!outcome_var:-failure}"
+              if [ "$outcome" != success ] && [ -f "/tmp/${item}.log" ]; then
+                echo
+                echo "<details><summary>${item} diagnostics</summary>"
+                echo
+                echo '```text'
+                tail -n 120 "/tmp/${item}.log"
+                echo '```'
+                echo '</details>'
+              fi
+            done
+          } > /tmp/pf-review-result.md
           gh pr comment 1 --repo "${GITHUB_REPOSITORY}" --body-file /tmp/pf-review-result.md
 
       - name: Enforce checks
