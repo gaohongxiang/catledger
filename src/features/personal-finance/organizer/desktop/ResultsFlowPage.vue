@@ -113,6 +113,15 @@
                         <div class="event-main">
                             <span class="event-nature">{{ tt(`personalFinance.organizerV2.nature.${event.economicNature}`) }}</span>
                             <strong>{{ eventDisplayLabel(event) || tt('personalFinance.organizerV2.events.unnamed') }}</strong>
+                            <p v-if="eventDescription(event)">{{ eventDescription(event) }}</p>
+                        </div>
+                        <div class="event-context">
+                            <div class="event-meta">
+                                <span v-if="event.paymentMethod">{{ event.paymentMethod }}</span>
+                                <span>{{ eventAccountName(event) }}</span>
+                                <span>{{ eventCategoryName(event) }}</span>
+                                <span>{{ tt('personalFinance.organizerV2.events.evidenceCount', { count: event.evidenceCount }) }}</span>
+                            </div>
                             <small v-if="eventReasonTranslationKeys(event).length">{{ eventReasonTranslationKeys(event).map(key => tt(key)).join(' · ') }}</small>
                         </div>
                         <div class="event-amount" :class="event.flowDirection">
@@ -189,6 +198,8 @@ import { mdiRefresh } from '@mdi/js';
 import { useI18n } from '@/locales/helpers.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
+import { useAccountsStore } from '@/stores/account.ts';
+import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 
 import { usePersonalFinanceStore } from '../../store.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
@@ -199,6 +210,8 @@ import { RESULT_UPDATE_STATUSES, canOrganizeUpdate, canPostUpdate, canUndoUpdate
 defineEmits<{ (e: 'open-imports'): void }>();
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
+const accountsStore = useAccountsStore();
+const categoriesStore = useTransactionCategoriesStore();
 const personalFinanceStore = usePersonalFinanceStore();
 const loading = ref(true);
 const loadingEvents = ref(false);
@@ -239,6 +252,18 @@ function eventMonth(unixTime?: number): string { return unixTime ? new Intl.Date
 function formatEventAmount(event: EconomicEvent): string {
     return event.amount ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(event.amount), event.currency) : '—';
 }
+function eventDescription(event: EconomicEvent): string {
+    const title = eventDisplayLabel(event);
+    return [...new Set([event.item, event.note].filter(value => value && value !== title))].join(' · ');
+}
+function eventAccountName(event: EconomicEvent): string {
+    return event.ledgerAccountId ? accountsStore.allAccountsMap[event.ledgerAccountId]?.name || tt('personalFinance.organizerV2.events.accountPending')
+        : tt('personalFinance.organizerV2.events.accountPending');
+}
+function eventCategoryName(event: EconomicEvent): string {
+    return event.categoryId ? categoriesStore.allTransactionCategoriesMap[event.categoryId]?.name || tt('personalFinance.organizerV2.events.uncategorized')
+        : tt('personalFinance.organizerV2.events.uncategorized');
+}
 function directionForNature(nature: EconomicNature): EconomicEvent['flowDirection'] {
     if (nature === 'income' || nature === 'borrow' || nature === 'refund') return 'inflow';
     if (nature === 'internal_transfer' || nature === 'balance_adjustment') return 'neutral';
@@ -251,7 +276,10 @@ async function load(): Promise<void> {
     try {
         const pages = await Promise.all(RESULT_UPDATE_STATUSES.map(status => organizerApi.listUpdates(status)));
         update.value = selectCurrentUpdate(pages.map(page => [...page.items]));
-        await personalFinanceStore.loadBatches(0, 100);
+        await Promise.all([
+            personalFinanceStore.loadBatches(0, 100),
+            Promise.allSettled([accountsStore.loadAllAccounts({ force: false }), categoriesStore.loadAllCategories({ force: false })])
+        ]);
         if (update.value) await loadEvents();
     } catch {
         showError.value = true;
@@ -365,15 +393,20 @@ onMounted(load);
 .event-workbench > header { display: flex; align-items: end; justify-content: space-between; gap: 20px; padding: 22px; border-bottom: 1px solid var(--rule); background: rgba(var(--v-theme-primary), .045); }
 .event-workbench h3 { margin: 4px 0 0; font-size: 1.35rem; }
 .event-workbench header p { margin: 4px 0 0; color: rgba(var(--v-theme-on-surface), .6); font-size: .82rem; }
-.event-list article { display: grid; grid-template-columns: 58px minmax(0, 1fr) minmax(140px, auto) auto; gap: 16px; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--rule); }
+.event-list article { display: grid; grid-template-columns: 58px minmax(220px, .72fr) minmax(320px, 1.28fr) minmax(140px, auto) auto; gap: 20px; align-items: center; padding: 17px 20px; border-bottom: 1px solid var(--rule); }
 .event-list article:last-child { border-bottom: 0; }
 .event-date { display: grid; text-align: center; border-inline-end: 1px solid var(--rule); }
 .event-date strong { font-size: 1.45rem; line-height: 1; }
 .event-date span { margin-top: 4px; color: rgba(var(--v-theme-on-surface), .52); font-size: .64rem; text-transform: uppercase; }
 .event-main { display: grid; gap: 3px; min-width: 0; }
-.event-main > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.event-main small { color: rgba(var(--v-theme-on-surface), .5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-main > strong { overflow: hidden; font-size: .98rem; text-overflow: ellipsis; white-space: nowrap; }
+.event-main p { margin: 0; color: rgba(var(--v-theme-on-surface), .61); font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .event-nature { color: rgb(var(--v-theme-primary)); font-size: .68rem; font-weight: 750; }
+.event-context { display: grid; gap: 7px; min-width: 0; }
+.event-meta { display: flex; flex-wrap: wrap; gap: 5px 14px; color: rgba(var(--v-theme-on-surface), .7); font-size: .76rem; }
+.event-meta span { position: relative; white-space: nowrap; }
+.event-meta span:not(:last-child)::after { position: absolute; inset-inline-end: -8px; color: rgba(var(--v-theme-on-surface), .22); content: "·"; }
+.event-context small { color: rgba(var(--v-theme-on-surface), .5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .event-amount { display: grid; text-align: end; font-weight: 750; font-variant-numeric: tabular-nums; }
 .event-amount.inflow { color: rgb(var(--v-theme-success)); }
 .event-amount.outflow { color: rgb(var(--v-theme-error)); }
@@ -390,6 +423,7 @@ onMounted(load);
     .conservation small { grid-column: 1 / -1; }
     .event-workbench > header { align-items: start; flex-direction: column; }
     .event-list article { grid-template-columns: 48px minmax(0, 1fr) auto; }
+    .event-context { grid-column: 2 / -1; }
     .event-buttons { grid-column: 2 / -1; }
 }
 </style>

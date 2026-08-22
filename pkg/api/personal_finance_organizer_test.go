@@ -50,6 +50,12 @@ func TestOrganizerHandlersUseResourceContractsAndCurrentUser(t *testing.T) {
 	if apiErr != nil || stub.postRequest.Mode != organizer.POST_MODE_READY || stub.postRequest.Uid != 1001 {
 		t.Fatalf("post-ready request mismatch: request=%+v err=%v", stub.postRequest, apiErr)
 	}
+
+	response, apiErr = api.EventListHandler(newOrganizerTestContext(t, http.MethodGet, "/events?update_id=701&status=needs_action&limit=20", ""))
+	encoded = marshalOrganizerResponse(t, response)
+	if apiErr != nil || !strings.Contains(encoded, `"counterparty":"商户"`) || !strings.Contains(encoded, `"evidenceCount":2`) {
+		t.Fatalf("event summary response mismatch: response=%s err=%v", encoded, apiErr)
+	}
 }
 
 func TestOrganizerHandlersRejectCompatibilityFieldsAndMapConflicts(t *testing.T) {
@@ -98,8 +104,8 @@ func (a *organizerAPITestApplication) Organize(_ core.Context, request organizer
 	return &organizer.OrganizeResult{Update: a.update, Action: a.action, Events: []*organizer.EconomicEvent{a.event}}, a.err
 }
 
-func (a *organizerAPITestApplication) ListEvents(_ core.Context, _ int64, _ int64, _ organizer.EventStatus, _ *organizer.EventCursor, _ int) (*organizer.EventPage, error) {
-	return &organizer.EventPage{Items: []*organizer.EconomicEvent{a.event}}, a.err
+func (a *organizerAPITestApplication) ListEvents(_ core.Context, _ int64, _ int64, _ organizer.EventStatus, _ *organizer.EventCursor, _ int) (*organizerEventPage, error) {
+	return &organizerEventPage{Items: []*organizerEventListItem{{Event: a.event, Summary: organizerEventSummary{Counterparty: "商户", Item: "商品", PaymentMethod: "支付方式", Note: "备注", EvidenceCount: 2}}}}, a.err
 }
 
 func (a *organizerAPITestApplication) GetEventEvidence(_ core.Context, _ int64, _ int64) (*organizerEventEvidenceDetail, error) {

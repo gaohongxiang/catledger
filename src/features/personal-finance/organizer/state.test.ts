@@ -31,7 +31,7 @@ describe('organizer result state', () => {
     });
 
     it('reads display labels and reason codes defensively', () => {
-        const event = { fieldSourcesJson: '{"counterparty":"Coffee"}', reasonCodesJson: '["unknown_nature"]', economicNature: 'expense' } as EconomicEvent;
+        const event = { counterparty: 'Coffee', item: '', note: '', reasonCodesJson: '["unknown_nature"]', economicNature: 'expense' } as EconomicEvent;
         expect(eventDisplayLabel(event)).toBe('Coffee');
         expect(eventReasonCodes(event)).toEqual(['unknown_nature']);
         expect(eventReasonTranslationKeys(event)).toEqual(['personalFinance.organizerV2.reason.generic']);
@@ -40,7 +40,7 @@ describe('organizer result state', () => {
 
     it('never exposes internal enum and reason-code fallbacks as display copy', () => {
         const event = {
-            fieldSourcesJson: '{}', economicNature: 'unknown',
+            counterparty: '', item: '', note: '', economicNature: 'unknown',
             reasonCodesJson: '["economic_nature_required","transfer_account_required","future_internal_code"]'
         } as EconomicEvent;
         expect(eventDisplayLabel(event)).toBe('');

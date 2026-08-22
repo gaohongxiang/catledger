@@ -32,7 +32,7 @@ export function canUndoUpdate(update: FinanceUpdate): boolean {
 }
 
 export function eventDisplayLabel(event: EconomicEvent): string {
-    return parseFirstString(event.fieldSourcesJson, ['counterparty', 'item', 'note']);
+	return event.counterparty || event.item || event.note;
 }
 
 export function eventReasonCodes(event: EconomicEvent): string[] {
@@ -78,18 +78,4 @@ export function eventReasonTranslationKeys(event: EconomicEvent): string[] {
     });
 
     return [...new Set(keys)];
-}
-
-function parseFirstString(value: string, keys: readonly string[]): string {
-    try {
-        const parsed: unknown = JSON.parse(value || '{}');
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return '';
-        const item = parsed as Record<string, unknown>;
-        for (const key of keys) {
-            if (typeof item[key] === 'string' && item[key]) return item[key];
-        }
-    } catch {
-        return '';
-    }
-    return '';
 }

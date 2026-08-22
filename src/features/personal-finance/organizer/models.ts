@@ -63,6 +63,11 @@ export interface EconomicEvent {
     readonly reasonCodesJson: string;
     readonly createdUnixTime: number;
     readonly updatedUnixTime: number;
+    readonly counterparty: string;
+    readonly item: string;
+    readonly paymentMethod: string;
+    readonly note: string;
+    readonly evidenceCount: number;
 }
 
 export interface EconomicEventPage {

@@ -2952,7 +2952,7 @@
             },
             "metric": { "posted": "已入账", "ready": "待入账", "needsAction": "必须处理", "excluded": "已排除" },
             "conservation": { "evidence": "有效证据", "duplicates": "重复证据", "events": "最终事件", "ok": "证据守恒已核对", "invalid": "计数不守恒，请勿入账" },
-            "events": { "eyebrow": "结果明细", "hint": "默认只看结果；原始行、版本和关系按需展开。", "evidence": "查看证据", "resolve": "处理", "empty": "这个分组暂时没有事件。", "unnamed": "账单交易" },
+            "events": { "eyebrow": "结果明细", "hint": "商户、商品、支付方式、账户和分类直接展示；完整原始记录按需查看。", "evidence": "查看证据", "resolve": "处理", "empty": "这个分组暂时没有事件。", "unnamed": "账单交易", "accountPending": "账户待确认", "uncategorized": "暂未分类", "evidenceCount": "{count} 条来源记录" },
             "filter": { "needs_action": "必须处理", "ready": "待入账", "posted": "已入账", "excluded": "已排除", "corrected": "已修正" },
             "status": {
                 "draft": "待整理", "organizing": "整理中", "review": "待核验", "posting": "入账中", "partially_posted": "部分入账", "posted": "已全部入账", "failed": "整理失败", "undone": "已撤销",

@@ -2952,7 +2952,7 @@
             },
             "metric": { "posted": "Posted", "ready": "Ready to post", "needsAction": "Required", "excluded": "Excluded" },
             "conservation": { "evidence": "Valid evidence", "duplicates": "Duplicate evidence", "events": "Final events", "ok": "Evidence conservation verified", "invalid": "Counts do not reconcile; do not post" },
-            "events": { "eyebrow": "Result details", "hint": "Start with results; open raw rows, versions, and relations only when needed.", "evidence": "View evidence", "resolve": "Resolve", "empty": "There are no events in this group.", "unnamed": "Statement transaction" },
+            "events": { "eyebrow": "Result details", "hint": "Merchant, item, payment method, account, and category are shown here; open the complete source record only when needed.", "evidence": "View evidence", "resolve": "Resolve", "empty": "There are no events in this group.", "unnamed": "Statement transaction", "accountPending": "Account required", "uncategorized": "Uncategorized", "evidenceCount": "{count} source record(s)" },
             "filter": { "needs_action": "Required", "ready": "Ready", "posted": "Posted", "excluded": "Excluded", "corrected": "Corrected" },
             "status": {
                 "draft": "Draft", "organizing": "Organizing", "review": "Review", "posting": "Posting", "partially_posted": "Partially posted", "posted": "Fully posted", "failed": "Failed", "undone": "Undone",

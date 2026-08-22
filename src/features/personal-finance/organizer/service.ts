@@ -141,7 +141,12 @@ export function normalizeEconomicEvent(value: unknown): EconomicEvent {
         fieldSourcesJson: string(item['fieldSourcesJson']),
         reasonCodesJson: string(item['reasonCodesJson']),
         createdUnixTime: integer(item['createdUnixTime']),
-        updatedUnixTime: integer(item['updatedUnixTime'])
+        updatedUnixTime: integer(item['updatedUnixTime']),
+        counterparty: string(item['counterparty']),
+        item: string(item['item']),
+        paymentMethod: string(item['paymentMethod']),
+        note: string(item['note']),
+        evidenceCount: integer(item['evidenceCount'])
     };
 }
 

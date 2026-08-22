@@ -375,6 +375,35 @@ func (r *Repository) ListEvidence(c core.Context, uid int64, eventId int64) ([]*
 	return items, nil
 }
 
+// ListEvidenceForEvents 批量读取一页事件的证据关系，供列表摘要使用。
+func (r *Repository) ListEvidenceForEvents(c core.Context, uid int64, eventIds []int64) ([]*EconomicEventEvidence, error) {
+	if uid < 1 || len(eventIds) < 1 || len(eventIds) > maximumRepositoryPageSize {
+		return nil, fmt.Errorf("invalid economic event evidence batch list")
+	}
+	seen := make(map[int64]struct{}, len(eventIds))
+	for _, eventId := range eventIds {
+		if eventId < 1 {
+			return nil, fmt.Errorf("invalid economic event evidence batch list")
+		}
+		if _, exists := seen[eventId]; exists {
+			return nil, fmt.Errorf("duplicate economic event evidence batch id")
+		}
+		seen[eventId] = struct{}{}
+	}
+
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*EconomicEventEvidence, 0)
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	if err = sess.Where("uid=?", uid).In("event_id", eventIds).Asc("event_id", "evidence_id").Find(&items); err != nil {
+		return nil, fmt.Errorf("list economic event evidence batch: %w", err)
+	}
+	return items, nil
+}
+
 func (tx *RepositoryTransaction) InsertRelation(value *EconomicEventRelation) error {
 	if err := tx.validate(); err != nil || !isValidNewRelation(value, tx.uid) {
 		return fmt.Errorf("invalid economic event relation insert")

@@ -81,6 +81,14 @@ func TestRepositorySQLiteUIDIsolationCASAndRollback(t *testing.T) {
 	if err != nil || len(evidence) != 1 || evidence[0].RowId != 601 {
 		t.Fatalf("evidence list mismatch: evidence=%+v err=%v", evidence, err)
 	}
+	batchedEvidence, err := repository.ListEvidenceForEvents(nil, firstUid, []int64{501})
+	if err != nil || len(batchedEvidence) != 1 || batchedEvidence[0].RowId != 601 {
+		t.Fatalf("batched evidence list mismatch: evidence=%+v err=%v", batchedEvidence, err)
+	}
+	foreignEvidence, err := repository.ListEvidenceForEvents(nil, secondUid, []int64{501})
+	if err != nil || len(foreignEvidence) != 0 {
+		t.Fatalf("cross-user batched evidence was visible: evidence=%+v err=%v", foreignEvidence, err)
+	}
 
 	rollbackCause := errors.New("rollback organizer transaction")
 	err = repository.DoTransaction(nil, firstUid, func(tx *organizer.RepositoryTransaction) error {

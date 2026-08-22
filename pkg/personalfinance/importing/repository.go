@@ -2,6 +2,7 @@ package importing
 
 import (
 	"fmt"
+	"sort"
 
 	"xorm.io/xorm"
 
@@ -462,6 +463,44 @@ func (r *Repository) FindRawImportRowById(c core.Context, uid int64, rowId int64
 	}
 
 	return row, nil
+}
+
+// FindRawImportRowsByIds 批量读取当前用户的原始行，避免列表摘要逐条查询。
+func (r *Repository) FindRawImportRowsByIds(c core.Context, uid int64, rowIds []int64) ([]*RawImportRow, error) {
+	if uid < 1 || len(rowIds) < 1 {
+		return nil, fmt.Errorf("invalid raw import row batch lookup")
+	}
+	unique := make([]int64, 0, len(rowIds))
+	seen := make(map[int64]struct{}, len(rowIds))
+	for _, rowId := range rowIds {
+		if rowId < 1 {
+			return nil, fmt.Errorf("invalid raw import row batch lookup")
+		}
+		if _, exists := seen[rowId]; exists {
+			continue
+		}
+		seen[rowId] = struct{}{}
+		unique = append(unique, rowId)
+	}
+	sort.Slice(unique, func(i, j int) bool { return unique[i] < unique[j] })
+
+	db, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]*RawImportRow, 0, len(unique))
+	sess := db.NewPrivacySession(c)
+	defer sess.Close()
+	for start := 0; start < len(unique); start += postingQueryChunkSize {
+		end := min(start+postingQueryChunkSize, len(unique))
+		chunk := make([]*RawImportRow, 0, end-start)
+		if err = sess.Where("uid=?", uid).In("row_id", unique[start:end]).Find(&chunk); err != nil {
+			return nil, fmt.Errorf("find personal finance raw import rows: %w", err)
+		}
+		rows = append(rows, chunk...)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].RowId < rows[j].RowId })
+	return rows, nil
 }
 
 // ListRawImportRows 按稳定行号顺序读取一个用户批次的全部原始行。

@@ -150,6 +150,11 @@ func assertRepositoryContract(t *testing.T, repository *importing.Repository, da
 		t.Fatalf("cross-user raw rows were visible")
 	}
 
+	batchedRows, err := repository.FindRawImportRowsByIds(nil, firstUid, []int64{502, 601, 501, 502})
+	if err != nil || len(batchedRows) != 2 || batchedRows[0].RowId != 501 || batchedRows[1].RowId != 502 {
+		t.Fatalf("batched raw rows were not stable or isolated: rows=%+v err=%v", batchedRows, err)
+	}
+
 	assertPaymentAccountRepositoryContract(t, repository, database, firstUid)
 }
 

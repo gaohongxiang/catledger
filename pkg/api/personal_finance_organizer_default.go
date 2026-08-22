@@ -95,7 +95,7 @@ func (a *personalFinanceOrganizerApplication) Organize(c core.Context, request o
 	return a.organize.Organize(c, request)
 }
 
-func (a *personalFinanceOrganizerApplication) ListEvents(c core.Context, uid int64, updateId int64, status organizer.EventStatus, cursor *organizer.EventCursor, limit int) (*organizer.EventPage, error) {
+func (a *personalFinanceOrganizerApplication) ListEvents(c core.Context, uid int64, updateId int64, status organizer.EventStatus, cursor *organizer.EventCursor, limit int) (*organizerEventPage, error) {
 	update, err := a.repository.FindUpdateById(c, uid, updateId)
 	if err != nil {
 		return nil, err
@@ -103,7 +103,80 @@ func (a *personalFinanceOrganizerApplication) ListEvents(c core.Context, uid int
 	if update == nil {
 		return nil, organizer.ErrOrganizeUpdateNotFound
 	}
-	return a.repository.ListEventsPage(c, uid, updateId, status, cursor, limit)
+	page, err := a.repository.ListEventsPage(c, uid, updateId, status, cursor, limit)
+	if err != nil {
+		return nil, err
+	}
+	result := &organizerEventPage{Items: make([]*organizerEventListItem, 0, len(page.Items)), NextCursor: page.NextCursor}
+	if len(page.Items) < 1 {
+		return result, nil
+	}
+	eventIds := make([]int64, 0, len(page.Items))
+	for _, event := range page.Items {
+		if event != nil {
+			eventIds = append(eventIds, event.EventId)
+		}
+	}
+	if len(eventIds) < 1 {
+		return result, nil
+	}
+	evidence, err := a.repository.ListEvidenceForEvents(c, uid, eventIds)
+	if err != nil {
+		return nil, err
+	}
+	rowIds := make([]int64, 0, len(evidence))
+	for _, link := range evidence {
+		if link != nil {
+			rowIds = append(rowIds, link.RowId)
+		}
+	}
+	rows := make([]*importing.RawImportRow, 0)
+	if len(rowIds) > 0 {
+		rows, err = a.evidence.FindRawImportRowsByIds(c, uid, rowIds)
+		if err != nil {
+			return nil, err
+		}
+	}
+	rowsById := make(map[int64]*importing.RawImportRow, len(rows))
+	for _, row := range rows {
+		if row != nil {
+			rowsById[row.RowId] = row
+		}
+	}
+	summaries := make(map[int64]*organizerEventSummary, len(page.Items))
+	selectedRoles := make(map[int64]organizer.EvidenceRole, len(page.Items))
+	for _, link := range evidence {
+		if link == nil {
+			continue
+		}
+		summary := summaries[link.EventId]
+		if summary == nil {
+			summary = &organizerEventSummary{}
+			summaries[link.EventId] = summary
+		}
+		summary.EvidenceCount++
+		row := rowsById[link.RowId]
+		selectedRole, selected := selectedRoles[link.EventId]
+		if row == nil || (selected && (selectedRole == organizer.EVIDENCE_ROLE_PRIMARY || link.EvidenceRole != organizer.EVIDENCE_ROLE_PRIMARY)) {
+			continue
+		}
+		selectedRoles[link.EventId] = link.EvidenceRole
+		summary.Counterparty = row.RawCounterparty
+		summary.Item = row.RawItem
+		summary.PaymentMethod = row.RawPaymentMethod
+		summary.Note = row.RawNote
+	}
+	for _, event := range page.Items {
+		if event == nil {
+			continue
+		}
+		item := &organizerEventListItem{Event: event}
+		if summary := summaries[event.EventId]; summary != nil {
+			item.Summary = *summary
+		}
+		result.Items = append(result.Items, item)
+	}
+	return result, nil
 }
 
 func (a *personalFinanceOrganizerApplication) GetEventEvidence(c core.Context, uid int64, eventId int64) (*organizerEventEvidenceDetail, error) {

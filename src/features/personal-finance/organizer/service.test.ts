@@ -21,7 +21,9 @@ function event(overrides: Record<string, unknown> = {}): Record<string, unknown>
         flowDirection: 'outflow', economicNature: 'unknown', ledgerAccountId: '31', counterpartyLedgerAccountId: null,
         eventUnixTime: 1787000010, timezoneUtcOffset: 480, amount: '9007199254740993', currency: 'CNY', categoryId: null,
         manualFieldMask: 0, fieldSourcesJson: '{}', reasonCodesJson: '["unknown_nature"]',
-        createdUnixTime: 1787000010, updatedUnixTime: 1787000010, ...overrides
+        createdUnixTime: 1787000010, updatedUnixTime: 1787000010,
+        counterparty: '示例商户', item: '示例商品', paymentMethod: '示例支付', note: '示例备注', evidenceCount: 2,
+        ...overrides
     };
 }
 
@@ -29,6 +31,8 @@ describe('organizer response protocol', () => {
     it('preserves int64 identifiers and amounts as strings', () => {
         expect(normalizeFinanceUpdate(update()).id).toBe('9007199254740993');
         expect(normalizeEconomicEvent(event()).amount).toBe('9007199254740993');
+        expect(normalizeEconomicEvent(event()).counterparty).toBe('示例商户');
+        expect(normalizeEconomicEvent(event()).evidenceCount).toBe(2);
     });
 
     it.each([

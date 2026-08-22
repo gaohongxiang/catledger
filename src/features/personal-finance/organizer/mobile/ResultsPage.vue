@@ -27,7 +27,7 @@
             <f7-block-title>{{ tt(`personalFinance.organizerV2.filter.${eventFilter}`) }}</f7-block-title>
             <f7-list strong inset media-list dividers v-if="events.length">
                 <f7-list-item :key="event.id" :title="eventDisplayLabel(event) || tt('personalFinance.organizerV2.events.unnamed')" :subtitle="tt(`personalFinance.organizerV2.nature.${event.economicNature}`)"
-                              :after="formatEventAmount(event)" v-for="event in events" />
+                              :text="mobileEventDetail(event)" :after="formatEventAmount(event)" v-for="event in events" />
             </f7-list>
             <f7-block strong inset v-else>{{ tt('personalFinance.organizerV2.events.empty') }}</f7-block>
             <f7-block><f7-button fill href="/personal-finance/imports">{{ tt('personalFinance.organizerV2.mobile.desktopAction') }}</f7-button></f7-block>
@@ -64,6 +64,14 @@ const conservationHolds = computed(() => !!update.value && updateConservationHol
 
 function formatEventAmount(event: EconomicEvent): string {
     return event.amount ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(event.amount), event.currency) : '—';
+}
+function mobileEventDetail(event: EconomicEvent): string {
+    const title = eventDisplayLabel(event);
+    return [...new Set([
+        event.item !== title ? event.item : '',
+        event.paymentMethod,
+        tt('personalFinance.organizerV2.events.evidenceCount', { count: event.evidenceCount })
+    ].filter(Boolean))].join(' · ');
 }
 async function load(): Promise<void> {
     loading.value = true; error.value = false;

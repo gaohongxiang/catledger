@@ -22,7 +22,7 @@ type PersonalFinanceOrganizerApplication interface {
 	ListUpdates(c core.Context, uid int64, status organizer.UpdateStatus, cursor *organizer.UpdateCursor, limit int) (*organizer.UpdatePage, error)
 	GetUpdate(c core.Context, uid int64, updateId int64) (*organizerUpdateDetail, error)
 	Organize(c core.Context, request organizer.OrganizeRequest) (*organizer.OrganizeResult, error)
-	ListEvents(c core.Context, uid int64, updateId int64, status organizer.EventStatus, cursor *organizer.EventCursor, limit int) (*organizer.EventPage, error)
+	ListEvents(c core.Context, uid int64, updateId int64, status organizer.EventStatus, cursor *organizer.EventCursor, limit int) (*organizerEventPage, error)
 	GetEventEvidence(c core.Context, uid int64, eventId int64) (*organizerEventEvidenceDetail, error)
 	InspectEventCorrection(c core.Context, uid int64, updateId int64, eventId int64) (*organizer.UndoImpact, error)
 	CorrectEvent(c core.Context, request organizer.CorrectEventRequest) (*organizerMutationResult, error)
@@ -55,6 +55,24 @@ type organizerEventEvidenceDetail struct {
 	Rows      []*importing.RawImportRow
 	Relations []*organizer.EconomicEventRelation
 	Links     []*organizer.EconomicEventTransaction
+}
+
+type organizerEventSummary struct {
+	Counterparty  string
+	Item          string
+	PaymentMethod string
+	Note          string
+	EvidenceCount int64
+}
+
+type organizerEventListItem struct {
+	Event   *organizer.EconomicEvent
+	Summary organizerEventSummary
+}
+
+type organizerEventPage struct {
+	Items      []*organizerEventListItem
+	NextCursor *organizer.EventCursor
 }
 
 type organizerMutationResult struct {
@@ -166,6 +184,11 @@ type personalFinanceOrganizerEventResponse struct {
 	ReasonCodesJson             string                   `json:"reasonCodesJson"`
 	CreatedUnixTime             int64                    `json:"createdUnixTime"`
 	UpdatedUnixTime             int64                    `json:"updatedUnixTime"`
+	Counterparty                string                   `json:"counterparty"`
+	Item                        string                   `json:"item"`
+	PaymentMethod               string                   `json:"paymentMethod"`
+	Note                        string                   `json:"note"`
+	EvidenceCount               int64                    `json:"evidenceCount"`
 }
 
 type personalFinanceOrganizerActionResponse struct {
@@ -626,12 +649,26 @@ func newOrganizerEventResponses(values []*organizer.EconomicEvent) []*personalFi
 	return items
 }
 
-func newOrganizerEventListResponse(page *organizer.EventPage) *personalFinanceOrganizerEventListResponse {
+func newOrganizerEventListResponse(page *organizerEventPage) *personalFinanceOrganizerEventListResponse {
 	response := &personalFinanceOrganizerEventListResponse{Items: []*personalFinanceOrganizerEventResponse{}}
 	if page == nil {
 		return response
 	}
-	response.Items = newOrganizerEventResponses(page.Items)
+	for _, item := range page.Items {
+		if item == nil {
+			continue
+		}
+		event := newOrganizerEventResponse(item.Event)
+		if event == nil {
+			continue
+		}
+		event.Counterparty = item.Summary.Counterparty
+		event.Item = item.Summary.Item
+		event.PaymentMethod = item.Summary.PaymentMethod
+		event.Note = item.Summary.Note
+		event.EvidenceCount = item.Summary.EvidenceCount
+		response.Items = append(response.Items, event)
+	}
 	if page.NextCursor != nil {
 		response.NextCursor = &personalFinanceOrganizerEventCursorResponse{UpdatedUnixTime: page.NextCursor.UpdatedUnixTime, EventId: strconv.FormatInt(page.NextCursor.EventId, 10)}
 	}
