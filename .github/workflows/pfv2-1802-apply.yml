@@ -7,6 +7,12 @@ on:
     paths:
       - .github/pfv2-1802-patches/**
       - .github/workflows/pfv2-1802-apply.yml
+  pull_request:
+    branches:
+      - codex/ux-1801-abandon-round
+    paths:
+      - .github/pfv2-1802-patches/**
+      - .github/workflows/pfv2-1802-apply.yml
   workflow_dispatch:
 
 permissions:
@@ -18,6 +24,7 @@ concurrency:
 
 jobs:
   apply:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
