@@ -1,0 +1,297 @@
+name: PF v2 One-shot Release Gate Repair
+
+on:
+  push:
+    branches:
+      - codex/pfv2-1702-review-issues
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfv2-one-shot-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout implementation branch
+        uses: actions/checkout@v6
+        with:
+          ref: codex/pfv2-1702-review-issues
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Apply verified fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          live = Path('pkg/personalfinance/migrations/schema_v010_live_test.go')
+          live.write_text(r'''package migrations
+
+          import (
+          	"net"
+          	"os"
+          	"strings"
+          	"testing"
+
+          	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+          	"github.com/mayswind/ezbookkeeping/pkg/settings"
+          )
+
+          // TestSchemaV010LiveDatabaseUpgrade exercises the real datastore drivers and
+          // the complete v001 -> v010 migration chain. Ordinary unit-test runs skip it;
+          // CI enables it once for MySQL and once for PostgreSQL through environment
+          // variables.
+          func TestSchemaV010LiveDatabaseUpgrade(t *testing.T) {
+          	rawDatabaseType := strings.TrimSpace(os.Getenv("PF_LIVE_DB_TYPE"))
+          	if rawDatabaseType == "" {
+          		t.Skip("PF_LIVE_DB_TYPE is not set")
+          	}
+
+          	databaseType, ok := normalizeLiveDatabaseType(rawDatabaseType)
+          	if !ok {
+          		t.Fatalf("unsupported live database type %q", rawDatabaseType)
+          	}
+
+          	config := &settings.DatabaseConfig{
+          		DatabaseType:          databaseType,
+          		DatabaseHost:          liveDatabaseHost(databaseType),
+          		DatabaseName:          envOrDefault("PF_LIVE_DB_NAME", "ezbookkeeping_pf_test"),
+          		DatabaseUser:          envOrDefault("PF_LIVE_DB_USER", defaultLiveDatabaseUser(databaseType)),
+          		DatabasePassword:      envOrDefault("PF_LIVE_DB_PASSWORD", "ezbookkeeping"),
+          		DatabaseSSLMode:       envOrDefault("PF_LIVE_DB_SSL_MODE", "disable"),
+          		MaxIdleConnection:     1,
+          		MaxOpenConnection:     4,
+          		ConnectionMaxLifeTime: 60,
+          	}
+
+          	database, err := datastore.OpenDatabase(config)
+          	if err != nil {
+          		t.Fatalf("open %s database: %v", databaseType, err)
+          	}
+          	t.Cleanup(func() {
+          		if closeErr := database.Close(); closeErr != nil {
+          			t.Errorf("close %s database: %v", databaseType, closeErr)
+          		}
+          	})
+
+          	store, err := datastore.NewDataStore(database)
+          	if err != nil {
+          		t.Fatalf("create %s datastore: %v", databaseType, err)
+          	}
+          	for index, commit := range []string{"live-v010-first", "live-v010-restart"} {
+          		if err = Upgrade(nil, store, ApplicationInfo{Version: "test", Commit: commit}); err != nil {
+          			t.Fatalf("upgrade %s database pass %d: %v", databaseType, index+1, err)
+          		}
+          	}
+          	if err = verifyMigrationTable(database); err != nil {
+          		t.Fatalf("verify %s migration ledger: %v", databaseType, err)
+          	}
+          	if err = verifySchemaV010(database); err != nil {
+          		t.Fatalf("verify %s v010 schema: %v", databaseType, err)
+          	}
+          }
+
+          func normalizeLiveDatabaseType(raw string) (string, bool) {
+          	switch strings.ToLower(strings.TrimSpace(raw)) {
+          	case settings.MySqlDbType:
+          		return settings.MySqlDbType, true
+          	case settings.PostgresDbType, "postgresql", "pg":
+          		return settings.PostgresDbType, true
+          	default:
+          		return "", false
+          	}
+          }
+
+          func liveDatabaseHost(databaseType string) string {
+          	host := envOrDefault("PF_LIVE_DB_HOST", "127.0.0.1")
+          	if strings.HasPrefix(host, "/") {
+          		return host
+          	}
+          	if _, _, err := net.SplitHostPort(host); err == nil {
+          		return host
+          	}
+          	return net.JoinHostPort(host, envOrDefault("PF_LIVE_DB_PORT", defaultLiveDatabasePort(databaseType)))
+          }
+
+          func envOrDefault(name string, fallback string) string {
+          	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+          		return value
+          	}
+          	return fallback
+          }
+
+          func defaultLiveDatabasePort(databaseType string) string {
+          	if databaseType == settings.PostgresDbType {
+          		return "5432"
+          	}
+          	return "3306"
+          }
+
+          func defaultLiveDatabaseUser(databaseType string) string {
+          	if databaseType == settings.PostgresDbType {
+          		return "postgres"
+          	}
+          	return "root"
+          }
+          ''')
+
+          simple = Path('src/features/personal-finance/desktop/SimpleWorkflow.test.ts')
+          text = simple.read_text()
+          old = "expect(results).toContain('organizerApi.getUpdate(selectedUpdate.id)');"
+          new = "expect(results).toContain('organizerApi.getUpdate(selected.id)');"
+          if old not in text:
+              raise SystemExit('stale getUpdate assertion was not found')
+          text = text.replace(old, new, 1)
+          old = "        expect(results).toContain('fieldMask = 1 | 4 | 8 | 256');"
+          new = "        expect(results).toContain('let fieldMask = 1 | 4 | 8');\n        expect(results).toContain('fieldMask |= 128');\n        expect(results).not.toContain('fieldMask |= 256');"
+          if old not in text:
+              raise SystemExit('stale field-mask assertion was not found')
+          simple.write_text(text.replace(old, new, 1))
+
+          repository = Path('pkg/personalfinance/reconciliation/decision_repository.go')
+          text = repository.read_text()
+          old = '''func (r *decisionRepository) markDecisionFailed(c core.Context, uid int64, decisionId int64, errorCode string, now int64) error {
+          	if uid < 1 || decisionId < 1 || validateSafeReasonCode(errorCode) != nil || now < 1 {
+          		return ErrDecisionRequestInvalid
+          	}
+          	database, _ := r.database(uid)
+          	failed := now
+          	sess := database.NewPrivacySession(c)
+          	updated, err := sess.Where("uid=? AND decision_id=? AND status=?", uid, decisionId, DECISION_STATUS_READY).
+          		Cols("status", "error_code", "failed_unix_time", "updated_unix_time").
+          		Update(&Decision{Status: DECISION_STATUS_FAILED, ErrorCode: errorCode, FailedUnixTime: &failed, UpdatedUnixTime: now})
+          	sess.Close()
+          	if err != nil {
+          		return fmt.Errorf("mark reconciliation decision failed: %w", err)
+          	}
+          	if updated == 1 {
+          		return nil
+          	}
+          	persisted, err := r.findDecisionById(c, uid, decisionId)
+          	if err == nil && persisted != nil && isTerminalDecisionStatus(persisted.Status) {
+          		return nil
+          	}
+          	return errDecisionNotAvailable
+          }
+          '''
+          new = '''func (r *decisionRepository) markDecisionFailed(c core.Context, uid int64, decisionId int64, errorCode string, now int64) error {
+          	if uid < 1 || decisionId < 1 || validateSafeReasonCode(errorCode) != nil || now < 1 {
+          		return ErrDecisionRequestInvalid
+          	}
+          	database, _ := r.database(uid)
+          	for attempt := 0; attempt < maximumCandidatePersistenceAttempts; attempt++ {
+          		retry, err := r.markDecisionFailedAttempt(c, database, uid, decisionId, errorCode, now)
+          		if err == nil {
+          			return nil
+          		}
+          		if !retry || attempt+1 == maximumCandidatePersistenceAttempts {
+          			return err
+          		}
+          		if waitErr := waitCandidatePersistenceRetry(c, initialCandidatePersistenceRetryDelay<<attempt); waitErr != nil {
+          			return waitErr
+          		}
+          	}
+          	return fmt.Errorf("reconciliation decision failure transition retry limit reached")
+          }
+
+          func (r *decisionRepository) markDecisionFailedAttempt(c core.Context, database *datastore.Database, uid int64, decisionId int64, errorCode string, now int64) (bool, error) {
+          	failed := now
+          	sess := database.NewPrivacySession(c)
+          	updated, err := sess.Where("uid=? AND decision_id=? AND status=?", uid, decisionId, DECISION_STATUS_READY).
+          		Cols("status", "error_code", "failed_unix_time", "updated_unix_time").
+          		Update(&Decision{Status: DECISION_STATUS_FAILED, ErrorCode: errorCode, FailedUnixTime: &failed, UpdatedUnixTime: now})
+          	sess.Close()
+          	if err != nil {
+          		wrapped := fmt.Errorf("mark reconciliation decision failed: %w", err)
+          		return isRetryableCandidatePersistenceError(database.DatabaseType(), wrapped), wrapped
+          	}
+          	if updated == 1 {
+          		return false, nil
+          	}
+
+          	persisted, findErr := r.findDecisionById(c, uid, decisionId)
+          	if findErr != nil {
+          		wrapped := fmt.Errorf("read reconciliation decision failure transition: %w", findErr)
+          		return isRetryableCandidatePersistenceError(database.DatabaseType(), wrapped), wrapped
+          	}
+          	if persisted != nil && isTerminalDecisionStatus(persisted.Status) {
+          		return false, nil
+          	}
+          	if persisted != nil && (persisted.Status == DECISION_STATUS_READY || persisted.Status == DECISION_STATUS_APPLYING) {
+          		return true, errDecisionNotAvailable
+          	}
+          	return false, errDecisionNotAvailable
+          }
+          '''
+          if old not in text:
+              raise SystemExit('decision failure transition function was not found')
+          repository.write_text(text.replace(old, new, 1))
+
+          workflow = Path('.github/workflows/pfv2-review-ci.yml')
+          text = workflow.read_text()
+          old = '''      - name: Run lint when configured
+                  shell: bash
+                  run: |
+                    if node -e "process.exit(require('./package.json').scripts?.lint ? 0 : 1)"; then
+                      npm run lint
+                    elif [ -x ./node_modules/.bin/eslint ]; then
+                      ./node_modules/.bin/eslint src
+                    else
+                      echo 'No lint command is configured; skipped.'
+                    fi
+          '''
+          new = '''      - name: Run lint
+                  shell: bash
+                  run: |
+                    if [ -x ./node_modules/.bin/eslint ]; then
+                      ./node_modules/.bin/eslint .
+                    elif node -e "process.exit(require('./package.json').scripts?.lint ? 0 : 1)"; then
+                      npm run lint
+                    else
+                      echo 'No lint command is configured.'
+                      exit 1
+                    fi
+          '''
+          if old not in text:
+              raise SystemExit('lint step was not found')
+          text = text.replace(old, new, 1)
+          old = '''.github/workflows/pfv2-dependencies.yml \\
+                    .github/workflows/pfv2-source-snapshot.yml'''
+          new = '''.github/workflows/pfv2-deps.yml \\
+                    .github/workflows/pfv2-snapshot.yml'''
+          if old not in text:
+              raise SystemExit('temporary workflow cleanup paths were not found')
+          workflow.write_text(text.replace(old, new, 1))
+          PY
+
+          gofmt -w \
+            pkg/personalfinance/migrations/schema_v010_live_test.go \
+            pkg/personalfinance/reconciliation/decision_repository.go
+          git rm -f .github/workflows/pfv2-apply-fixes.yml
+          git diff --check
+
+      - name: Verify focused fixes
+        run: |
+          go test -count=1 ./pkg/personalfinance/migrations ./pkg/personalfinance/reconciliation
+          go test -count=20 -run '^TestCaseAndDecisionServiceSQLiteIdempotencyCASIsolationAndRowOnlyDecisions$' ./pkg/personalfinance/reconciliation
+
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'fix(pf): close full release gate failures'
+          git push origin HEAD:codex/pfv2-1702-review-issues
