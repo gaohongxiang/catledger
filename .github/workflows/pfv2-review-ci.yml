@@ -1,5 +1,6 @@
 name: PF v2 Full Release Gate
 
+# This is the only retained PF v2 release gate; temporary repair workflows are removed.
 on:
   pull_request:
     branches:
