@@ -298,6 +298,20 @@ func registeredMigrations() []migration {
 		run:  backfillOrganizerPostedEvidenceV009,
 	})
 
+	v010Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV010()))
+	v010Steps := make([]migrationStep, 0, len(schemaBeansV010()))
+
+	for _, bean := range schemaBeansV010() {
+		bean := bean
+		tableName := bean.(interface{ TableName() string }).TableName()
+		v010Steps = append(v010Steps, migrationStep{
+			name: "create_" + tableName,
+			run: func(c context.Context, db *datastore.Database) error {
+				return syncFrozenSchemaBeanWithIndexes(c, db, bean)
+			},
+		})
+	}
+
 	return []migration{
 		{
 			version:   1,
@@ -370,6 +384,14 @@ func registeredMigrations() []migration {
 			preflight: validateSchemaV009PreflightWithContext,
 			steps:     v009Steps,
 			verify:    verifySchemaV009WithContext,
+		},
+		{
+			version:   10,
+			name:      "organizer_review_issues",
+			checksum:  hex.EncodeToString(v010Checksum[:]),
+			preflight: validateSchemaV010PreflightWithContext,
+			steps:     v010Steps,
+			verify:    verifySchemaV010WithContext,
 		},
 	}
 }

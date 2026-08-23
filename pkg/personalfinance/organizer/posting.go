@@ -184,6 +184,14 @@ func (e *PostingEngine) persist(c core.Context, request PostRequest, candidate *
 			if request.Mode == POST_MODE_READY && len(ready) == 0 {
 				return ErrPostEventNotPostable
 			}
+			// Re-derive readiness from the event and relation rows in this exact
+			// transaction. A stale or client-forged ready flag can never cross the
+			// core-ledger boundary.
+			for _, event := range ready {
+				if validateErr := validateReadyEventForPosting(tx, event); validateErr != nil {
+					return validateErr
+				}
+			}
 
 			applying := *action
 			applying.Status = ACTION_STATUS_APPLYING
@@ -266,6 +274,25 @@ func (e *PostingEngine) persist(c core.Context, request PostRequest, candidate *
 	return false, 0, lastErr
 }
 
+func validateReadyEventForPosting(tx *RepositoryTransaction, event *EconomicEvent) error {
+	if tx == nil || event == nil || event.Status != EVENT_STATUS_READY {
+		return ErrPostEventNotPostable
+	}
+	relations, err := tx.ListRelations(event.EventId)
+	if err != nil {
+		return err
+	}
+	result, err := EvaluatePostability(PostabilityInput{
+		Event:                   event,
+		Relations:               relations,
+		ExistingBlockingReasons: hardBlockingReasonCodes(event.ReasonCodesJson),
+	})
+	if err != nil || result.Status != EVENT_STATUS_READY {
+		return ErrPostEventNotPostable
+	}
+	return nil
+}
+
 func (e *PostingEngine) postEvent(c core.Context, tx *RepositoryTransaction, event *EconomicEvent, now int64) error {
 	draft, err := transactionDraftForEvent(event)
 	if err != nil {
@@ -329,11 +356,11 @@ func transactionDraftForEvent(event *EconomicEvent) (*models.Transaction, error)
 		draft.CategoryId = *event.CategoryId
 	}
 	switch event.EconomicNature {
-	case ECONOMIC_NATURE_INCOME, ECONOMIC_NATURE_REFUND, ECONOMIC_NATURE_BORROW:
+	case ECONOMIC_NATURE_INCOME, ECONOMIC_NATURE_REFUND:
 		draft.Type = models.TRANSACTION_DB_TYPE_INCOME
 	case ECONOMIC_NATURE_EXPENSE, ECONOMIC_NATURE_FEE:
 		draft.Type = models.TRANSACTION_DB_TYPE_EXPENSE
-	case ECONOMIC_NATURE_INTERNAL_TRANSFER, ECONOMIC_NATURE_REPAYMENT:
+	case ECONOMIC_NATURE_INTERNAL_TRANSFER, ECONOMIC_NATURE_REPAYMENT, ECONOMIC_NATURE_BORROW:
 		if event.CounterpartyLedgerAccountId == nil || *event.CounterpartyLedgerAccountId < 1 || *event.CounterpartyLedgerAccountId == *event.LedgerAccountId {
 			return nil, ErrPostEventNotPostable
 		}

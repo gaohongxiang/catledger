@@ -54,16 +54,17 @@ type PlanningSource struct {
 
 // OrganizePlan 是同一后端计划产生的事件、证据、关系和守恒计数。
 type OrganizePlan struct {
-	Events                 []*EconomicEvent
-	Evidence               []*EconomicEventEvidence
-	Relations              []*EconomicEventRelation
-	SourceCount            int64
-	ValidEvidenceCount     int64
-	DuplicateEvidenceCount int64
-	FinalEventCount        int64
-	ReadyEventCount        int64
-	NeedsActionEventCount  int64
-	ExcludedEventCount     int64
+	Events                   []*EconomicEvent
+	Evidence                 []*EconomicEventEvidence
+	Relations                []*EconomicEventRelation
+	SameEventCandidateGroups map[string][]int64
+	SourceCount              int64
+	ValidEvidenceCount       int64
+	DuplicateEvidenceCount   int64
+	FinalEventCount          int64
+	ReadyEventCount          int64
+	NeedsActionEventCount    int64
+	ExcludedEventCount       int64
 }
 
 type planIdentifierGenerator func() int64
@@ -75,10 +76,11 @@ type planningRow struct {
 }
 
 type planningGroup struct {
-	rows         []*planningRow
-	pairedNature EconomicNature
-	sameEvent    bool
-	ambiguous    bool
+	rows                  []*planningRow
+	pairedNature          EconomicNature
+	sameEvent             bool
+	ambiguous             bool
+	sameEventCandidateKey string
 }
 
 type groupSummary struct {
@@ -122,7 +124,10 @@ func BuildOrganizePlan(uid int64, updateId int64, sources []*PlanningSource, acc
 	groups = pairTransfersAndRepayments(groups)
 
 	ids := &checkedIdentifierGenerator{next: generateId, seen: make(map[int64]struct{})}
-	plan := &OrganizePlan{SourceCount: int64(len(sources)), ValidEvidenceCount: int64(len(rows))}
+	plan := &OrganizePlan{
+		SourceCount: int64(len(sources)), ValidEvidenceCount: int64(len(rows)),
+		SameEventCandidateGroups: make(map[string][]int64),
+	}
 	planned := make([]*plannedEvent, 0, len(groups))
 	for _, group := range groups {
 		item, evidence, buildErr := buildPlannedEvent(uid, updateId, group, now, ids)
@@ -133,6 +138,14 @@ func BuildOrganizePlan(uid int64, updateId int64, sources []*PlanningSource, acc
 		plan.Events = append(plan.Events, item.event)
 		plan.Evidence = append(plan.Evidence, evidence...)
 		plan.DuplicateEvidenceCount += int64(len(group.rows) - 1)
+		if group.sameEventCandidateKey != "" {
+			plan.SameEventCandidateGroups[group.sameEventCandidateKey] = append(
+				plan.SameEventCandidateGroups[group.sameEventCandidateKey], item.event.EventId,
+			)
+		}
+	}
+	if err = validateSameEventCandidateGroups(plan); err != nil {
+		return nil, err
 	}
 	if err = resolveRefundRelations(uid, updateId, planned, plan, now, ids); err != nil {
 		return nil, err
@@ -165,6 +178,47 @@ func BuildOrganizePlan(uid int64, updateId int64, sources []*PlanningSource, acc
 		return nil, fmt.Errorf("organizer planner conservation mismatch")
 	}
 	return plan, nil
+}
+
+func validateSameEventCandidateGroups(plan *OrganizePlan) error {
+	if plan == nil {
+		return fmt.Errorf("same-event candidate plan is nil")
+	}
+	events := make(map[int64]*EconomicEvent, len(plan.Events))
+	for _, event := range plan.Events {
+		if event == nil || event.EventId < 1 {
+			return fmt.Errorf("same-event candidate event is invalid")
+		}
+		events[event.EventId] = event
+	}
+	seen := make(map[int64]struct{})
+	for key, eventIds := range plan.SameEventCandidateGroups {
+		if !isLowerHexSHA256(key) || len(eventIds) < 2 {
+			return fmt.Errorf("same-event candidate group is invalid")
+		}
+		sort.Slice(eventIds, func(i, j int) bool { return eventIds[i] < eventIds[j] })
+		for _, eventId := range eventIds {
+			if _, exists := seen[eventId]; exists {
+				return fmt.Errorf("same-event candidate event belongs to multiple groups")
+			}
+			event := events[eventId]
+			if event == nil || event.Status != EVENT_STATUS_NEEDS_ACTION ||
+				!containsReasonCode(event.ReasonCodesJson, reasonRelationAmbiguous) {
+				return fmt.Errorf("same-event candidate event snapshot is invalid")
+			}
+			seen[eventId] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func containsReasonCode(encoded string, wanted string) bool {
+	for _, reason := range decodeReasonCodes(encoded) {
+		if reason == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func validatePlanningSources(uid int64, updateId int64, sources []*PlanningSource, accounts map[int64]*models.Account) ([]*planningRow, error) {
@@ -329,8 +383,9 @@ func mergeHighConfidenceSameEvents(groups []*planningGroup) []*planningGroup {
 	}
 	selectBalancedDateOnlyPairs(dateOnlyCandidates, groups, selected, selectPair)
 
+	allCandidates := append(append([]planningPair(nil), candidates...), dateOnlyCandidates...)
 	ambiguous := make(map[int]bool)
-	for _, item := range append(candidates, dateOnlyCandidates...) {
+	for _, item := range allCandidates {
 		if _, ok := selected[item.left]; !ok {
 			ambiguous[item.left] = true
 		}
@@ -338,7 +393,79 @@ func mergeHighConfidenceSameEvents(groups []*planningGroup) []*planningGroup {
 			ambiguous[item.right] = true
 		}
 	}
+	assignSameEventCandidateKeys(groups, allCandidates, ambiguous)
 	return compactPlanningGroups(groups, parent, nil, ambiguous)
+}
+
+func assignSameEventCandidateKeys(groups []*planningGroup, candidates []planningPair, ambiguous map[int]bool) {
+	if len(groups) < 2 || len(candidates) == 0 || len(ambiguous) == 0 {
+		return
+	}
+	components := newGroupUnion(len(groups))
+	for _, candidate := range candidates {
+		if !ambiguous[candidate.left] || !ambiguous[candidate.right] {
+			continue
+		}
+		components.union(candidate.left, candidate.right)
+	}
+	byRoot := make(map[int][]int)
+	for index := range groups {
+		if !ambiguous[index] {
+			continue
+		}
+		byRoot[components.find(index)] = append(byRoot[components.find(index)], index)
+	}
+	for _, indexes := range byRoot {
+		if len(indexes) < 2 {
+			continue
+		}
+		members := make([]string, 0, len(indexes))
+		for _, index := range indexes {
+			members = append(members, planningGroupCandidateIdentity(groups[index]))
+		}
+		sort.Strings(members)
+		key := stablePlanDigest(
+			"same-event-candidate-group",
+			string(SAME_EVENT_CANDIDATE_KEY_VERSION_V1),
+			strings.Join(members, "\x00"),
+		)
+		for _, index := range indexes {
+			groups[index].sameEventCandidateKey = key
+		}
+	}
+}
+
+func planningGroupCandidateIdentity(group *planningGroup) string {
+	if group == nil {
+		return ""
+	}
+	identities := make([]string, 0, len(group.rows))
+	for _, item := range group.rows {
+		if item == nil || item.row == nil {
+			continue
+		}
+		identities = append(identities, identityGroupKey(item.row))
+	}
+	sort.Strings(identities)
+	identities = uniquePlanningStrings(identities)
+	return stablePlanDigest(
+		"same-event-candidate-member",
+		string(SAME_EVENT_CANDIDATE_KEY_VERSION_V1),
+		strings.Join(identities, "\x00"),
+	)
+}
+
+func uniquePlanningStrings(values []string) []string {
+	if len(values) < 2 {
+		return values
+	}
+	result := values[:0]
+	for _, value := range values {
+		if len(result) == 0 || result[len(result)-1] != value {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func highConfidenceSameEvent(left *planningGroup, right *planningGroup) (bool, bool) {
@@ -498,6 +625,10 @@ func sameEventCompatible(left *planningGroup, right *planningGroup) bool {
 }
 
 func transferPairNature(left *planningGroup, right *planningGroup) (EconomicNature, bool) {
+	if left == nil || right == nil || left.ambiguous || right.ambiguous ||
+		left.sameEventCandidateKey != "" || right.sameEventCandidateKey != "" {
+		return "", false
+	}
 	leftSummary, rightSummary := summarizeGroup(left), summarizeGroup(right)
 	if !leftSummary.complete || !rightSummary.complete || leftSummary.conflict || rightSummary.conflict ||
 		leftSummary.accountId == rightSummary.accountId || leftSummary.amount != rightSummary.amount ||
@@ -535,6 +666,13 @@ func compactPlanningGroups(groups []*planningGroup, parent *groupUnion, pairNatu
 		merged.rows = append(merged.rows, group.rows...)
 		merged.sameEvent = merged.sameEvent || group.sameEvent
 		merged.ambiguous = merged.ambiguous || group.ambiguous || ambiguous[index]
+		if group.sameEventCandidateKey != "" {
+			if merged.sameEventCandidateKey == "" {
+				merged.sameEventCandidateKey = group.sameEventCandidateKey
+			} else if merged.sameEventCandidateKey != group.sameEventCandidateKey {
+				merged.sameEventCandidateKey = "invalid"
+			}
+		}
 		memberCounts[root]++
 	}
 	if pairNatures == nil {

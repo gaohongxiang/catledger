@@ -173,7 +173,11 @@ func (e *RebuildEngine) Rebuild(c core.Context, request CorrectEventRequest) (*R
 		}
 		working := *event
 		working.Status = EVENT_STATUS_READY
-		nextEvent, applyErr := applyEventCorrection(&working, request.Correction, action.ActionId, now)
+		relations, relationErr := tx.ListRelations(event.EventId)
+		if relationErr != nil {
+			return relationErr
+		}
+		nextEvent, applyErr := applyEventCorrection(&working, request.Correction, relations, action.ActionId, now)
 		if applyErr != nil {
 			return applyErr
 		}

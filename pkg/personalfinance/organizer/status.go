@@ -4,13 +4,14 @@ package organizer
 type RuleVersion string
 
 const (
-	PLAN_VERSION_V1                 RuleVersion = "organizer-plan-v1"
-	EVENT_KEY_VERSION_V1            RuleVersion = "economic-event-key-v1"
-	RELATION_KEY_VERSION_V1         RuleVersion = "economic-relation-key-v1"
-	ACTION_IDEMPOTENCY_VERSION_V1   RuleVersion = "idempotency-key-v1"
-	ACTION_REQUEST_VERSION_V1       RuleVersion = "finance-action-request-v1"
-	EVENT_TRANSACTION_VERSION_V1    RuleVersion = "event-transaction-link-v1"
-	LEGACY_BACKFILL_PLAN_VERSION_V1 RuleVersion = "organizer-legacy-backfill-v1"
+	PLAN_VERSION_V1                     RuleVersion = "organizer-plan-v1"
+	EVENT_KEY_VERSION_V1                RuleVersion = "economic-event-key-v1"
+	RELATION_KEY_VERSION_V1             RuleVersion = "economic-relation-key-v1"
+	ACTION_IDEMPOTENCY_VERSION_V1       RuleVersion = "idempotency-key-v1"
+	ACTION_REQUEST_VERSION_V1           RuleVersion = "finance-action-request-v1"
+	EVENT_TRANSACTION_VERSION_V1        RuleVersion = "event-transaction-link-v1"
+	SAME_EVENT_CANDIDATE_KEY_VERSION_V1 RuleVersion = "same-event-candidate-key-v1"
+	LEGACY_BACKFILL_PLAN_VERSION_V1     RuleVersion = "organizer-legacy-backfill-v1"
 )
 
 // ManualFieldMask 按字段保存用户事实，后续自动整理只能重算未锁定字段。
@@ -85,6 +86,7 @@ const (
 	EVIDENCE_ROLE_PRIMARY    EvidenceRole = "primary"
 	EVIDENCE_ROLE_SUPPORTING EvidenceRole = "supporting"
 	EVIDENCE_ROLE_DUPLICATE  EvidenceRole = "duplicate"
+	EVIDENCE_ROLE_DISCARDED  EvidenceRole = "discarded"
 )
 
 // RelationType 表示两个经济事件之间的业务关系。
@@ -124,15 +126,16 @@ const (
 type ActionType string
 
 const (
-	ACTION_TYPE_CREATE_UPDATE   ActionType = "create_update"
-	ACTION_TYPE_ORGANIZE        ActionType = "organize"
-	ACTION_TYPE_RESOLVE_EVENT   ActionType = "resolve_event"
-	ACTION_TYPE_EXCLUDE_EVENT   ActionType = "exclude_event"
-	ACTION_TYPE_POST_ALL_READY  ActionType = "post_all_ready"
-	ACTION_TYPE_POST_READY      ActionType = "post_ready"
-	ACTION_TYPE_CORRECT_EVENT   ActionType = "correct_event"
-	ACTION_TYPE_UNDO            ActionType = "undo"
-	ACTION_TYPE_LEGACY_BACKFILL ActionType = "legacy_backfill"
+	ACTION_TYPE_CREATE_UPDATE        ActionType = "create_update"
+	ACTION_TYPE_ORGANIZE             ActionType = "organize"
+	ACTION_TYPE_RESOLVE_EVENT        ActionType = "resolve_event"
+	ACTION_TYPE_EXCLUDE_EVENT        ActionType = "exclude_event"
+	ACTION_TYPE_RESOLVE_REVIEW_ISSUE ActionType = "resolve_review_issue"
+	ACTION_TYPE_POST_ALL_READY       ActionType = "post_all_ready"
+	ACTION_TYPE_POST_READY           ActionType = "post_ready"
+	ACTION_TYPE_CORRECT_EVENT        ActionType = "correct_event"
+	ACTION_TYPE_UNDO                 ActionType = "undo"
+	ACTION_TYPE_LEGACY_BACKFILL      ActionType = "legacy_backfill"
 )
 
 // ActionStatus 表示幂等命令状态。
@@ -181,7 +184,8 @@ func isEconomicNature(value EconomicNature) bool {
 }
 
 func isEvidenceRole(value EvidenceRole) bool {
-	return value == EVIDENCE_ROLE_PRIMARY || value == EVIDENCE_ROLE_SUPPORTING || value == EVIDENCE_ROLE_DUPLICATE
+	return value == EVIDENCE_ROLE_PRIMARY || value == EVIDENCE_ROLE_SUPPORTING ||
+		value == EVIDENCE_ROLE_DUPLICATE || value == EVIDENCE_ROLE_DISCARDED
 }
 
 func isRelationType(value RelationType) bool {
@@ -212,8 +216,8 @@ func isEventTransactionRole(value EventTransactionRole) bool {
 func isActionType(value ActionType) bool {
 	switch value {
 	case ACTION_TYPE_CREATE_UPDATE, ACTION_TYPE_ORGANIZE, ACTION_TYPE_RESOLVE_EVENT, ACTION_TYPE_EXCLUDE_EVENT,
-		ACTION_TYPE_POST_ALL_READY, ACTION_TYPE_POST_READY, ACTION_TYPE_CORRECT_EVENT, ACTION_TYPE_UNDO,
-		ACTION_TYPE_LEGACY_BACKFILL:
+		ACTION_TYPE_RESOLVE_REVIEW_ISSUE, ACTION_TYPE_POST_ALL_READY, ACTION_TYPE_POST_READY,
+		ACTION_TYPE_CORRECT_EVENT, ACTION_TYPE_UNDO, ACTION_TYPE_LEGACY_BACKFILL:
 		return true
 	default:
 		return false
