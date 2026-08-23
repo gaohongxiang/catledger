@@ -1,0 +1,39 @@
+name: Cleanup merged Codex branches
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/cleanup-codex-branches.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cleanup-merged-codex-branches
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Delete merged working branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          for branch in \
+            codex/design-1701-review-issues \
+            codex/pfv2-1702-review-issues
+          do
+            if git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1; then
+              git push origin --delete "${branch}"
+            fi
+          done
