@@ -124,6 +124,60 @@ func TestBuildReviewIssuePlanIncludesRefundRelationCandidate(t *testing.T) {
 	}
 }
 
+func TestBuildReviewIssuePlanUsesOnlyExactSameEventCandidateGroups(t *testing.T) {
+	const uid = int64(14)
+	const updateId = int64(25)
+	first := reviewIssueEvent(uid, updateId, 207, 107, ECONOMIC_NATURE_EXPENSE, FLOW_DIRECTION_OUTFLOW, reasonRelationAmbiguous)
+	second := reviewIssueEvent(uid, updateId, 208, 108, ECONOMIC_NATURE_EXPENSE, FLOW_DIRECTION_OUTFLOW, reasonRelationAmbiguous)
+	first.LedgerAccountId = cloneInt64Pointer(second.LedgerAccountId)
+	first.EventUnixTime = cloneInt64Pointer(second.EventUnixTime)
+	first.Amount = cloneInt64Pointer(second.Amount)
+	plan := &OrganizePlan{
+		Events: []*EconomicEvent{first, second},
+		Evidence: []*EconomicEventEvidence{
+			{Uid: uid, UpdateId: updateId, EventId: first.EventId, RowId: 107},
+			{Uid: uid, UpdateId: updateId, EventId: second.EventId, RowId: 108},
+		},
+		NeedsActionEventCount: 2,
+	}
+
+	independent, err := BuildReviewIssuePlan(uid, updateId, plan, nil, 1_700_000_003, sequentialReviewIssueIds(700))
+	if err != nil || independent == nil || len(independent.Issues) != 2 {
+		t.Fatalf("same-looking events were heuristically grouped: result=%+v err=%v", independent, err)
+	}
+
+	plan.SameEventCandidateGroups = map[string][]int64{strings.Repeat("b", 64): {first.EventId, second.EventId}}
+	exact, err := BuildReviewIssuePlan(uid, updateId, plan, nil, 1_700_000_004, sequentialReviewIssueIds(800))
+	if err != nil || exact == nil || len(exact.Issues) != 1 || len(exact.Members) != 2 {
+		t.Fatalf("exact same-event candidate group was not preserved: result=%+v err=%v", exact, err)
+	}
+	if exact.Issues[0].IssueType != REVIEW_ISSUE_TYPE_SAME_EVENT || exact.Issues[0].MemberCount != 2 {
+		t.Fatalf("exact same-event issue mismatch: %+v", exact.Issues[0])
+	}
+}
+
+func TestBuildReviewIssuePlanRejectsInvalidSameEventCandidateSnapshot(t *testing.T) {
+	const uid = int64(15)
+	const updateId = int64(26)
+	first := reviewIssueEvent(uid, updateId, 209, 109, ECONOMIC_NATURE_EXPENSE, FLOW_DIRECTION_OUTFLOW, reasonRelationAmbiguous)
+	second := reviewIssueEvent(uid, updateId, 210, 110, ECONOMIC_NATURE_EXPENSE, FLOW_DIRECTION_OUTFLOW, reasonCategoryUnclassified)
+	second.Status = EVENT_STATUS_READY
+	plan := &OrganizePlan{
+		Events: []*EconomicEvent{first, second},
+		Evidence: []*EconomicEventEvidence{
+			{Uid: uid, UpdateId: updateId, EventId: first.EventId, RowId: 109},
+			{Uid: uid, UpdateId: updateId, EventId: second.EventId, RowId: 110},
+		},
+		SameEventCandidateGroups: map[string][]int64{strings.Repeat("c", 64): {first.EventId, second.EventId}},
+		NeedsActionEventCount:    1,
+		ReadyEventCount:          1,
+	}
+
+	if _, err := BuildReviewIssuePlan(uid, updateId, plan, nil, 1_700_000_005, sequentialReviewIssueIds(900)); err == nil {
+		t.Fatal("invalid same-event candidate snapshot was accepted")
+	}
+}
+
 func reviewIssueRow(uid int64, batchId int64, rowId int64, counterparty string, item string, amount int64) *importing.RawImportRow {
 	timeValue := int64(1_700_000_000 + rowId)
 	return &importing.RawImportRow{

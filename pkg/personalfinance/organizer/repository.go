@@ -639,23 +639,49 @@ func (tx *RepositoryTransaction) CountEvents(updateId int64) (int64, error) {
 	return count, nil
 }
 
-// ReplaceUnpostedPlan 删除可重建、尚未承载人工事实或正式交易链接的事件投影。
-// 来源快照和动作审计保留，调用方随后必须在同一事务写入完整新计划。
-func (tx *RepositoryTransaction) ReplaceUnpostedPlan(updateId int64) error {
+// ensureUnpostedPlanReplaceable 在进入 organizing 之前只读核对重整边界，
+// 防止自动计划覆盖人工字段、关系裁决、已丢弃证据或正式账本链接。
+func (tx *RepositoryTransaction) ensureUnpostedPlanReplaceable(updateId int64) error {
 	if err := tx.validate(); err != nil || updateId < 1 {
-		return fmt.Errorf("invalid economic event plan replacement")
+		return fmt.Errorf("invalid economic event plan replacement preflight")
 	}
-	manualCount, err := tx.session.Where("uid=? AND update_id=? AND manual_field_mask<>0", tx.uid, updateId).Count(new(EconomicEvent))
+	manualEventCount, err := tx.session.Where("uid=? AND update_id=? AND manual_field_mask<>0", tx.uid, updateId).Count(new(EconomicEvent))
 	if err != nil {
 		return fmt.Errorf("count manual economic event facts: %w", err)
 	}
-	linkCount, err := tx.session.Where("uid=? AND update_id=?", tx.uid, updateId).Count(new(EconomicEventTransaction))
+	transactionLinkCount, err := tx.session.Where("uid=? AND update_id=?", tx.uid, updateId).Count(new(EconomicEventTransaction))
 	if err != nil {
 		return fmt.Errorf("count economic event transaction links: %w", err)
 	}
-	if manualCount != 0 || linkCount != 0 {
+	manualRelationCount, err := tx.session.Where("uid=? AND update_id=? AND manual=?", tx.uid, updateId, true).Count(new(EconomicEventRelation))
+	if err != nil {
+		return fmt.Errorf("count manual economic event relations: %w", err)
+	}
+	discardedEvidenceCount, err := tx.session.Where("uid=? AND update_id=? AND evidence_role=?", tx.uid, updateId, EVIDENCE_ROLE_DISCARDED).Count(new(EconomicEventEvidence))
+	if err != nil {
+		return fmt.Errorf("count discarded economic event evidence: %w", err)
+	}
+	durableIssueDecisionCount, err := tx.session.Where(
+		"uid=? AND update_id=? AND (status<>? OR resolved_action_id IS NOT NULL)",
+		tx.uid, updateId, REVIEW_ISSUE_STATUS_OPEN,
+	).Count(new(ReviewIssue))
+	if err != nil {
+		return fmt.Errorf("count durable review issue decisions: %w", err)
+	}
+	if manualEventCount != 0 || transactionLinkCount != 0 || manualRelationCount != 0 ||
+		discardedEvidenceCount != 0 || durableIssueDecisionCount != 0 {
 		return ErrOrganizePlanExists
 	}
+	return nil
+}
+
+// ReplaceUnpostedPlan 删除可重建、尚未承载人工事实或正式交易链接的事件投影。
+// 来源快照和动作审计保留，调用方随后必须在同一事务写入完整新计划。
+func (tx *RepositoryTransaction) ReplaceUnpostedPlan(updateId int64) error {
+	if err := tx.ensureUnpostedPlanReplaceable(updateId); err != nil {
+		return err
+	}
+	var err error
 	for _, item := range []struct {
 		bean any
 		name string

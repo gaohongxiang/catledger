@@ -216,6 +216,87 @@ func TestEngineSQLiteConcurrentReplayKeepsOnePlan(t *testing.T) {
 	}
 }
 
+func TestEngineSQLiteRejectsReorganizationBeforeStateTransitionWhenPlanHasManualFacts(t *testing.T) {
+	repository, database := newSQLiteOrganizerRepository(t)
+	const uid = int64(4351)
+	const updateId = int64(5351)
+	event := postingEvent(uid, updateId, 8351, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_EXPENSE)
+	event.ManualFieldMask = organizer.MANUAL_FIELD_CATEGORY
+	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{event})
+	engine, err := organizer.NewEngine(repository, &engineEvidenceStub{}, &engineAccountStub{}, &engineIdGenerator{next: 31000})
+	if err != nil {
+		t.Fatalf("create manual-fact organizer engine: %v", err)
+	}
+
+	_, err = engine.Organize(nil, organizer.OrganizeRequest{
+		Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 2, IdempotencyKey: "reject-manual-plan-rebuild",
+	})
+	if !errors.Is(err, organizer.ErrOrganizePlanExists) {
+		t.Fatalf("manual plan was allowed to enter organizing: %v", err)
+	}
+	update, findErr := repository.FindUpdateById(nil, uid, updateId)
+	if findErr != nil || update == nil || update.Status != organizer.UPDATE_STATUS_REVIEW || update.Version != 2 || update.CurrentActionId != nil {
+		t.Fatalf("manual plan rejection changed update state: update=%+v err=%v", update, findErr)
+	}
+	sess := database.NewPrivacySession(nil)
+	actionCount, countErr := sess.Where("uid=? AND update_id=? AND action_type=?", uid, updateId, organizer.ACTION_TYPE_ORGANIZE).Count(new(organizer.FinanceAction))
+	sess.Close()
+	if countErr != nil || actionCount != 0 {
+		t.Fatalf("manual plan rejection persisted an action: count=%d err=%v", actionCount, countErr)
+	}
+}
+
+func TestEngineSQLiteRejectsReorganizationBeforeStateTransitionAfterReviewDecision(t *testing.T) {
+	repository, database := newSQLiteOrganizerRepository(t)
+	const uid = int64(4352)
+	const updateId = int64(5352)
+	const issueId = int64(6352)
+	event := postingEvent(uid, updateId, 8352, organizer.EVENT_STATUS_NEEDS_ACTION, organizer.ECONOMIC_NATURE_UNKNOWN)
+	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{event})
+	seedReviewIssue(t, repository, uid, updateId, issueId, organizer.REVIEW_ISSUE_TYPE_SHARED_FIELDS, event)
+	if err := repository.DoTransaction(nil, uid, func(tx *organizer.RepositoryTransaction) error {
+		issue, err := tx.FindReviewIssueById(issueId)
+		if err != nil {
+			return err
+		}
+		actionId := int64(7352)
+		next := *issue
+		next.Status = organizer.REVIEW_ISSUE_STATUS_RESOLVED
+		next.Version = issue.Version + 1
+		next.Blocking = false
+		next.ResolvedActionId = &actionId
+		next.UpdatedUnixTime = issue.UpdatedUnixTime + 1
+		updated, err := tx.UpdateReviewIssueCAS(issue.Version, &next)
+		if err != nil || !updated {
+			return errors.New("resolve review issue fixture")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed resolved review issue: %v", err)
+	}
+	engine, err := organizer.NewEngine(repository, &engineEvidenceStub{}, &engineAccountStub{}, &engineIdGenerator{next: 32000})
+	if err != nil {
+		t.Fatalf("create decided-plan organizer engine: %v", err)
+	}
+
+	_, err = engine.Organize(nil, organizer.OrganizeRequest{
+		Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 2, IdempotencyKey: "reject-decided-plan-rebuild",
+	})
+	if !errors.Is(err, organizer.ErrOrganizePlanExists) {
+		t.Fatalf("decided plan was allowed to enter organizing: %v", err)
+	}
+	update, findErr := repository.FindUpdateById(nil, uid, updateId)
+	if findErr != nil || update == nil || update.Status != organizer.UPDATE_STATUS_REVIEW || update.Version != 2 || update.CurrentActionId != nil {
+		t.Fatalf("decided plan rejection changed update state: update=%+v err=%v", update, findErr)
+	}
+	sess := database.NewPrivacySession(nil)
+	actionCount, countErr := sess.Where("uid=? AND update_id=? AND action_type=?", uid, updateId, organizer.ACTION_TYPE_ORGANIZE).Count(new(organizer.FinanceAction))
+	sess.Close()
+	if countErr != nil || actionCount != 0 {
+		t.Fatalf("decided plan rejection persisted an action: count=%d err=%v", actionCount, countErr)
+	}
+}
+
 type engineEvidenceStub struct {
 	batches map[int64]*importing.ImportBatch
 	rows    map[int64][]*importing.RawImportRow

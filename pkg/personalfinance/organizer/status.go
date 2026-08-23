@@ -4,13 +4,14 @@ package organizer
 type RuleVersion string
 
 const (
-	PLAN_VERSION_V1                 RuleVersion = "organizer-plan-v1"
-	EVENT_KEY_VERSION_V1            RuleVersion = "economic-event-key-v1"
-	RELATION_KEY_VERSION_V1         RuleVersion = "economic-relation-key-v1"
-	ACTION_IDEMPOTENCY_VERSION_V1   RuleVersion = "idempotency-key-v1"
-	ACTION_REQUEST_VERSION_V1       RuleVersion = "finance-action-request-v1"
-	EVENT_TRANSACTION_VERSION_V1    RuleVersion = "event-transaction-link-v1"
-	LEGACY_BACKFILL_PLAN_VERSION_V1 RuleVersion = "organizer-legacy-backfill-v1"
+	PLAN_VERSION_V1                     RuleVersion = "organizer-plan-v1"
+	EVENT_KEY_VERSION_V1                RuleVersion = "economic-event-key-v1"
+	RELATION_KEY_VERSION_V1             RuleVersion = "economic-relation-key-v1"
+	ACTION_IDEMPOTENCY_VERSION_V1       RuleVersion = "idempotency-key-v1"
+	ACTION_REQUEST_VERSION_V1           RuleVersion = "finance-action-request-v1"
+	EVENT_TRANSACTION_VERSION_V1        RuleVersion = "event-transaction-link-v1"
+	SAME_EVENT_CANDIDATE_KEY_VERSION_V1 RuleVersion = "same-event-candidate-key-v1"
+	LEGACY_BACKFILL_PLAN_VERSION_V1     RuleVersion = "organizer-legacy-backfill-v1"
 )
 
 // ManualFieldMask 按字段保存用户事实，后续自动整理只能重算未锁定字段。

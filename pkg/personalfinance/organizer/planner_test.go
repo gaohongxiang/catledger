@@ -108,6 +108,44 @@ func TestBuildOrganizePlanPairsRepaymentsTransfersAndIsolatesAmbiguity(t *testin
 	}
 }
 
+func TestBuildOrganizePlanPreservesExactAmbiguousSameEventComponent(t *testing.T) {
+	const uid = int64(242)
+	const updateId = int64(542)
+	account := plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)
+	sources := []*organizer.PlanningSource{
+		plannerSource(uid, updateId, 0, 641, 741, importing.SOURCE_TYPE_ALIPAY),
+		plannerSource(uid, updateId, 1, 642, 742, importing.SOURCE_TYPE_WECHAT),
+		plannerSource(uid, updateId, 2, 643, 743, importing.SOURCE_TYPE_BANK),
+	}
+	for index, source := range sources {
+		row := plannerRow(uid, source.Batch.BatchId, int64(11+index), int64(3411+index), 11, 4350,
+			1703010000+int64(index), importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+		row.RawCounterparty = "1688 平台商家"
+		row.RawItem = "同一商品"
+		source.Rows = []*importing.RawImportRow{row}
+	}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, sources, map[int64]*models.Account{11: account},
+		1703020000, sequentialPlannerIds(10400))
+	if err != nil {
+		t.Fatalf("build ambiguous same-event plan: %v", err)
+	}
+	if plan.FinalEventCount != 3 || plan.NeedsActionEventCount != 3 || plan.ReadyEventCount != 0 ||
+		len(plan.SameEventCandidateGroups) != 1 {
+		t.Fatalf("ambiguous same-event component mismatch: %+v", plan)
+	}
+	for key, eventIds := range plan.SameEventCandidateGroups {
+		if len(key) != 64 || len(eventIds) != 3 {
+			t.Fatalf("same-event candidate key mismatch: key=%q events=%v", key, eventIds)
+		}
+	}
+	for _, event := range plan.Events {
+		if event.Status != organizer.EVENT_STATUS_NEEDS_ACTION || !strings.Contains(event.ReasonCodesJson, "relation_ambiguous") {
+			t.Fatalf("ambiguous same-event member escaped review: %+v", event)
+		}
+	}
+}
+
 func TestBuildOrganizePlanMergesBalancedDateOnlyBankEvidence(t *testing.T) {
 	const uid = int64(252)
 	bank := plannerSource(uid, 552, 0, 653, 753, importing.SOURCE_TYPE_BANK)

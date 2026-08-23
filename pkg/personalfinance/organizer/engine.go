@@ -181,6 +181,9 @@ func (e *Engine) claimOrganize(c core.Context, request OrganizeRequest, candidat
 				update.PostedEventCount != 0 {
 				return ErrOrganizeStateConflict
 			}
+			if err = tx.ensureUnpostedPlanReplaceable(request.UpdateId); err != nil {
+				return err
+			}
 			nextUpdate := *update
 			nextUpdate.Status = UPDATE_STATUS_ORGANIZING
 			nextUpdate.Version = update.Version + 1

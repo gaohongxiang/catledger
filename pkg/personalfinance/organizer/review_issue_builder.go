@@ -56,6 +56,10 @@ func BuildReviewIssuePlan(uid int64, updateId int64, plan *OrganizePlan, sources
 	if err != nil {
 		return nil, err
 	}
+	sameEventGroupByEvent, err := indexReviewSameEventCandidateGroups(plan)
+	if err != nil {
+		return nil, err
+	}
 
 	events := append([]*EconomicEvent(nil), plan.Events...)
 	sort.Slice(events, func(i, j int) bool {
@@ -80,7 +84,11 @@ func BuildReviewIssuePlan(uid int64, updateId int64, plan *OrganizePlan, sources
 		reasons := decodeReasonCodes(event.ReasonCodesJson)
 		spec := classifyReviewIssue(event, reasons)
 		signature := event.EventKey
-		if spec.groupable {
+		if spec.issueType == REVIEW_ISSUE_TYPE_SAME_EVENT {
+			if candidateKey := sameEventGroupByEvent[event.EventId]; candidateKey != "" {
+				signature = candidateKey
+			}
+		} else if spec.groupable {
 			signature = sharedReviewDecisionSignature(event, spec, reasons, evidenceByEvent[event.EventId])
 		}
 		key := stablePlanDigest(
@@ -137,6 +145,37 @@ func BuildReviewIssuePlan(uid int64, updateId int64, plan *OrganizePlan, sources
 	}
 	if int64(len(coveredEvents)) != needsActionCount {
 		return nil, fmt.Errorf("review issue coverage mismatch")
+	}
+	return result, nil
+}
+
+func indexReviewSameEventCandidateGroups(plan *OrganizePlan) (map[int64]string, error) {
+	result := make(map[int64]string)
+	if plan == nil {
+		return nil, fmt.Errorf("review issue candidate plan is nil")
+	}
+	events := make(map[int64]*EconomicEvent, len(plan.Events))
+	for _, event := range plan.Events {
+		if event == nil || event.EventId < 1 {
+			return nil, fmt.Errorf("review issue candidate event is invalid")
+		}
+		events[event.EventId] = event
+	}
+	for key, eventIds := range plan.SameEventCandidateGroups {
+		if !isLowerHexSHA256(key) || len(eventIds) < 2 {
+			return nil, fmt.Errorf("review issue candidate group is invalid")
+		}
+		for _, eventId := range eventIds {
+			if result[eventId] != "" {
+				return nil, fmt.Errorf("review issue candidate event belongs to multiple groups")
+			}
+			event := events[eventId]
+			if event == nil || event.Status != EVENT_STATUS_NEEDS_ACTION ||
+				!containsReasonCode(event.ReasonCodesJson, reasonRelationAmbiguous) {
+				return nil, fmt.Errorf("review issue candidate event snapshot is invalid")
+			}
+			result[eventId] = key
+		}
 	}
 	return result, nil
 }
