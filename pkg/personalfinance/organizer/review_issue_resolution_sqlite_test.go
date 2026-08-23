@@ -24,7 +24,7 @@ func TestReviewIssueEngineSQLiteAppliesOneDecisionToIndependentEvents(t *testing
 		Uid: uid, UpdateId: updateId, IssueId: 11401, ExpectedUpdateVersion: 2, ExpectedIssueVersion: 1,
 		IdempotencyKey: "batch-income", Decision: organizer.REVIEW_ISSUE_DECISION_APPLY_FIELDS,
 		Correction: organizer.EventCorrection{
-			FieldMask: organizer.MANUAL_FIELD_FLOW_DIRECTION | organizer.MANUAL_FIELD_ECONOMIC_NATURE,
+			FieldMask:     organizer.MANUAL_FIELD_FLOW_DIRECTION | organizer.MANUAL_FIELD_ECONOMIC_NATURE,
 			FlowDirection: organizer.FLOW_DIRECTION_INFLOW, EconomicNature: organizer.ECONOMIC_NATURE_INCOME,
 		},
 	})

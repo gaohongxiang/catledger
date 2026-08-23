@@ -11,8 +11,8 @@ const (
 	reasonBorrowAccountRequired            = "borrow_account_required"
 	reasonBalanceAdjustmentMappingRequired = "balance_adjustment_mapping_required"
 	reasonRefundRelationInvalid            = "refund_relation_invalid"
-	reasonBlockingIssueOpen                 = "blocking_issue_open"
-	reasonPostabilityDirectionConflict      = "postability_direction_conflict"
+	reasonBlockingIssueOpen                = "blocking_issue_open"
+	reasonPostabilityDirectionConflict     = "postability_direction_conflict"
 )
 
 // PostabilityInput contains the complete semantic facts required to derive an

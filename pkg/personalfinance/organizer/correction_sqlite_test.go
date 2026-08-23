@@ -61,7 +61,7 @@ func TestCorrectionEngineSQLiteCannotForgeReadyRefundWithoutRelation(t *testing.
 		IdempotencyKey: "refund-without-relation",
 		Correction: organizer.EventCorrection{
 			FieldMask: organizer.MANUAL_FIELD_STATUS | organizer.MANUAL_FIELD_FLOW_DIRECTION | organizer.MANUAL_FIELD_ECONOMIC_NATURE,
-			Status: organizer.EVENT_STATUS_READY, FlowDirection: organizer.FLOW_DIRECTION_INFLOW, EconomicNature: organizer.ECONOMIC_NATURE_REFUND,
+			Status:    organizer.EVENT_STATUS_READY, FlowDirection: organizer.FLOW_DIRECTION_INFLOW, EconomicNature: organizer.ECONOMIC_NATURE_REFUND,
 		},
 	})
 	if err != nil || result == nil || result.Event.Status != organizer.EVENT_STATUS_NEEDS_ACTION ||

@@ -77,8 +77,8 @@ func TestSchemaV010IndexContract(t *testing.T) {
 	}
 	expected := map[string]map[string]expectedIndex{
 		"pf_review_issue": {
-			"UQE_pf_rev_issue_uid_update_key":  {unique: true, columns: []string{"Uid", "UpdateId", "IssueKey"}},
-			"IDX_pf_rev_issue_uid_update_filter": {columns: []string{"Uid", "UpdateId", "Status", "IssueType", "UpdatedUnixTime", "IssueId"}},
+			"UQE_pf_rev_issue_uid_update_key":     {unique: true, columns: []string{"Uid", "UpdateId", "IssueKey"}},
+			"IDX_pf_rev_issue_uid_update_filter":  {columns: []string{"Uid", "UpdateId", "Status", "IssueType", "UpdatedUnixTime", "IssueId"}},
 			"IDX_pf_rev_issue_uid_status_updated": {columns: []string{"Uid", "Status", "UpdatedUnixTime", "IssueId"}},
 		},
 		"pf_review_issue_member": {

@@ -24,13 +24,13 @@ var (
 type ReviewIssueDecision string
 
 const (
-	REVIEW_ISSUE_DECISION_APPLY_FIELDS       ReviewIssueDecision = "apply_fields"
-	REVIEW_ISSUE_DECISION_CONFIRM_DISTINCT   ReviewIssueDecision = "confirm_distinct"
-	REVIEW_ISSUE_DECISION_CONFIRM_SAME       ReviewIssueDecision = "confirm_same"
-	REVIEW_ISSUE_DECISION_EXCLUDE_EVENTS     ReviewIssueDecision = "exclude_events"
-	REVIEW_ISSUE_DECISION_DISCARD_EVIDENCE   ReviewIssueDecision = "discard_evidence"
-	REVIEW_ISSUE_DECISION_LINK_REFUND        ReviewIssueDecision = "link_refund"
-	REVIEW_ISSUE_DECISION_LINK_EXISTING      ReviewIssueDecision = "link_existing_transaction"
+	REVIEW_ISSUE_DECISION_APPLY_FIELDS     ReviewIssueDecision = "apply_fields"
+	REVIEW_ISSUE_DECISION_CONFIRM_DISTINCT ReviewIssueDecision = "confirm_distinct"
+	REVIEW_ISSUE_DECISION_CONFIRM_SAME     ReviewIssueDecision = "confirm_same"
+	REVIEW_ISSUE_DECISION_EXCLUDE_EVENTS   ReviewIssueDecision = "exclude_events"
+	REVIEW_ISSUE_DECISION_DISCARD_EVIDENCE ReviewIssueDecision = "discard_evidence"
+	REVIEW_ISSUE_DECISION_LINK_REFUND      ReviewIssueDecision = "link_refund"
+	REVIEW_ISSUE_DECISION_LINK_EXISTING    ReviewIssueDecision = "link_existing_transaction"
 )
 
 type ResolveReviewIssueRequest struct {
@@ -471,7 +471,7 @@ func (e *ReviewIssueEngine) linkRefund(tx *RepositoryTransaction, issue *ReviewI
 		amount := *refund.Amount
 		selected = &EconomicEventRelation{
 			Uid: refund.Uid, UpdateId: refund.UpdateId,
-			RelationKey: relationKey(refund.Uid, RELATION_TYPE_REFUND_OF, refund.EventId, original.EventId),
+			RelationKey:        relationKey(refund.Uid, RELATION_TYPE_REFUND_OF, refund.EventId, original.EventId),
 			RelationKeyVersion: RELATION_KEY_VERSION_V1, RelationType: RELATION_TYPE_REFUND_OF,
 			Status: RELATION_STATUS_CONFIRMED, Version: 1, SourceEventId: refund.EventId, TargetEventId: original.EventId,
 			Amount: &amount, Currency: refund.Currency, Manual: true, RuleVersion: REVIEW_ISSUE_RULE_VERSION_V1,
@@ -821,10 +821,10 @@ func newResolveReviewIssueAction(request ResolveReviewIssueRequest, actionId int
 	}
 	return &FinanceAction{
 		Uid: request.Uid, UpdateId: request.UpdateId, ExpectedUpdateVersion: request.ExpectedUpdateVersion,
-		ActionType: ACTION_TYPE_RESOLVE_REVIEW_ISSUE,
-		IdempotencyKeyDigest: digestOrganizeValue(string(ACTION_IDEMPOTENCY_VERSION_V1), strconv.FormatInt(request.Uid, 10), strings.TrimSpace(request.IdempotencyKey)),
+		ActionType:            ACTION_TYPE_RESOLVE_REVIEW_ISSUE,
+		IdempotencyKeyDigest:  digestOrganizeValue(string(ACTION_IDEMPOTENCY_VERSION_V1), strconv.FormatInt(request.Uid, 10), strings.TrimSpace(request.IdempotencyKey)),
 		IdempotencyKeyVersion: ACTION_IDEMPOTENCY_VERSION_V1,
-		RequestDigest: digestOrganizeValue(parts...), RequestDigestVersion: ACTION_REQUEST_VERSION_V1,
+		RequestDigest:         digestOrganizeValue(parts...), RequestDigestVersion: ACTION_REQUEST_VERSION_V1,
 		Status: ACTION_STATUS_READY, ReasonCodesJson: "[]", CreatedUnixTime: now, UpdatedUnixTime: now, ActionId: actionId,
 	}
 }

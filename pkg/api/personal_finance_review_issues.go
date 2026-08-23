@@ -91,20 +91,20 @@ type personalFinanceReviewIssuePageResponse struct {
 }
 
 type personalFinanceReviewIssueDetailResponse struct {
-	Issue        *personalFinanceReviewIssueResponse           `json:"issue"`
-	Members      []*personalFinanceReviewIssueMemberResponse   `json:"members"`
-	Events       []*personalFinanceOrganizerEventResponse      `json:"events"`
-	Relations    []*personalFinanceOrganizerRelationResponse   `json:"relations"`
+	Issue        *personalFinanceReviewIssueResponse            `json:"issue"`
+	Members      []*personalFinanceReviewIssueMemberResponse    `json:"members"`
+	Events       []*personalFinanceOrganizerEventResponse       `json:"events"`
+	Relations    []*personalFinanceOrganizerRelationResponse    `json:"relations"`
 	Transactions []*personalFinanceOrganizerTransactionResponse `json:"transactions"`
 }
 
 type personalFinanceReviewIssueMutationResponse struct {
-	Update       *personalFinanceOrganizerUpdateResponse       `json:"update"`
+	Update       *personalFinanceOrganizerUpdateResponse        `json:"update"`
 	Issue        *personalFinanceReviewIssueResponse            `json:"issue"`
-	Events       []*personalFinanceOrganizerEventResponse      `json:"events"`
-	Relations    []*personalFinanceOrganizerRelationResponse   `json:"relations"`
+	Events       []*personalFinanceOrganizerEventResponse       `json:"events"`
+	Relations    []*personalFinanceOrganizerRelationResponse    `json:"relations"`
 	Transactions []*personalFinanceOrganizerTransactionResponse `json:"transactions"`
-	Action       *personalFinanceOrganizerActionResponse       `json:"action"`
+	Action       *personalFinanceOrganizerActionResponse        `json:"action"`
 	Replayed     bool                                           `json:"replayed"`
 }
 

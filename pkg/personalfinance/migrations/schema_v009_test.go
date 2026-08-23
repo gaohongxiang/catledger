@@ -12,7 +12,7 @@ func TestSchemaV009ChecksumGolden(t *testing.T) {
 	migrations := registeredMigrations()
 	const expectedChecksum = "fc6f746812da0ae26c58552a1376070fdb570edfe365b904ba86ef13c36c90cb"
 
-	if len(migrations) != 9 {
+	if len(migrations) < 9 {
 		t.Fatalf("unexpected registered migration count %d", len(migrations))
 	}
 	if migrations[8].version != 9 || migrations[8].name != "organizer_events_and_updates" || migrations[8].checksum != expectedChecksum {
