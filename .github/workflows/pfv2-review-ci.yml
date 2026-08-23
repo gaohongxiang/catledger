@@ -28,6 +28,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Package source snapshot
+        shell: bash
+        run: tar --exclude=.git -czf /tmp/ezbookkeeping-source.tgz .
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-${{ github.sha }}
+          path: /tmp/ezbookkeeping-source.tgz
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
