@@ -1,9 +1,9 @@
 name: PF Temporary Toolchain
 
 on:
-  push:
+  pull_request:
     branches:
-      - codex/pfv2-1702-review-issues
+      - main
   workflow_dispatch:
 
 permissions:
