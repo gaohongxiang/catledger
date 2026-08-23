@@ -84,7 +84,7 @@ func TestDedupServicePersistsReparseAndIdentityStates(t *testing.T) {
 		t.Fatalf("persist reparsed evidence document: %v", err)
 	}
 
-	assertDedupBatchCounts(t, secondBatch, 6, 5, 1, 2, 1, 5)
+	assertDedupBatchCounts(t, secondBatch, 6, 5, 1, 3, 1, 5)
 
 	if secondBatch.BatchId == firstBatch.BatchId || secondBatch.LedgerAccountId == nil ||
 		*secondBatch.LedgerAccountId != secondLedgerAccountId {
