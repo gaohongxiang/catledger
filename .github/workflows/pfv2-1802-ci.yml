@@ -1,0 +1,186 @@
+name: PFV2-1802 Focused Gate
+
+# Final temporary branch gate: validates the corrected source-identity branch,
+# records the implementation evidence, and removes all temporary workflows.
+on:
+  push:
+    branches:
+      - codex/pfv2-1802-source-identity
+  pull_request:
+    branches:
+      - codex/ux-1801-abandon-round
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfv2-1802-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          files=$(git diff --name-only "${{ github.event.pull_request.base.sha || github.event.before }}"...HEAD -- '*.go' 2>/dev/null || git ls-files '*.go')
+          if [ -n "$files" ]; then
+            unformatted=$(gofmt -l $files)
+            test -z "$unformatted" || { printf 'Unformatted Go files:\n%s\n' "$unformatted"; exit 1; }
+          fi
+      - name: Test importing and organizer
+        run: go test -count=1 ./pkg/personalfinance/importing ./pkg/personalfinance/organizer
+      - name: Vet importing and organizer
+        run: go vet ./pkg/personalfinance/importing ./pkg/personalfinance/organizer
+      - name: Repeat identity and multiplicity regressions
+        run: go test -count=10 -run 'TestDedupServicePreservesIdenticalPhysicalRowsWithoutStableIdentifiers|TestBuildOrganizePlanSplitsLegacyV1ContentFingerprintRows|TestBuildOrganizePlanKeepsLegacyV1StableTransactionIdentity|TestBuildOrganizePlanPreservesMultiplicityAcrossTwoByTwoSources' ./pkg/personalfinance/importing ./pkg/personalfinance/organizer
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Type-check
+        run: ./node_modules/.bin/vue-tsc --noEmit
+      - name: Focused unit tests
+        run: ./node_modules/.bin/vitest run src/features/personal-finance/desktop/SimpleWorkflow.test.ts src/features/personal-finance/organizer/state.test.ts src/features/personal-finance/organizer/service.test.ts
+      - name: Production build
+        run: npm run build
+
+  finalize:
+    needs:
+      - backend
+      - frontend
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && success() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FINAL_GATE_RUN: ${{ github.run_number }}
+    steps:
+      - name: Checkout implementation branch
+        uses: actions/checkout@v6
+        with:
+          ref: codex/pfv2-1802-source-identity
+          fetch-depth: 0
+
+      - name: Record implementation evidence and remove temporary tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          def sub_once(path: str, pattern: str, replacement: str, flags: int = 0) -> None:
+              target = Path(path)
+              text = target.read_text()
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}: {pattern[:100]!r}')
+              target.write_text(updated)
+
+          run_number = os.environ['FINAL_GATE_RUN']
+          design = 'docs/个人财务来源记录身份与重复语义设计.md'
+          sub_once(
+              design,
+              r'^> 状态：DESIGN-1802 冻结设计；PFV2-1802 实现中$',
+              '> 状态：DESIGN-1802 冻结设计；PFV2-1802 已实现，等待合并与真实数据验收',
+              re.MULTILINE,
+          )
+          sub_once(
+              design,
+              r'^不在本任务中部署、修改正式数据库、重整正式更新或执行真实入账。正式数据修复必须先在副本验证并再次获得用户授权。$',
+              f'实现证据：文档冻结提交为 `b5987979`，核心实现提交为 `078112ff`，测试汇总修正为 `c8e46ed5`；最终聚焦门禁 run #{run_number} 在 Go 1.26 与 Node 24 下通过 importing/organizer 完整包测试、vet、四项关键回归重复 10 次、前端类型检查、聚焦单测和生产构建。\n\n不在本任务中部署、修改正式数据库、重整正式更新或执行真实入账。正式数据修复必须先在副本验证并再次获得用户授权。',
+              re.MULTILINE,
+          )
+
+          plan = 'docs/个人财务实施规划.md'
+          sub_once(
+              plan,
+              r'^\| PFV2-1802 \|.*$',
+              '| PFV2-1802 | 修复无流水号来源身份与相同内容交易误合并 | UX-1801 | 待验收 | 当前主负责人 / `codex/pfv2-1802-source-identity` | `b5987979` 冻结 DESIGN-1802，`078112ff` 实现 identity-v2 与旧 v1 兼容拆分，`c8e46ed5` 修正重解析汇总金标；最终门禁通过 Go 包测试/vet/关键回归 10 次、前端类型/单测/构建；不改 schema、正式交易或生产数据 |',
+              re.MULTILINE,
+          )
+          sub_once(
+              plan,
+              r'^- 当前阶段：PFV2-1802.*$',
+              '- 当前阶段：PFV2-1802 代码与聚焦门禁已完成，草稿 PR #4 等待用户/主负责人审阅；合并和发布前不重整正式轮次；',
+              re.MULTILINE,
+          )
+          sub_once(
+              plan,
+              r'^- 当前文件所有权：来源身份与 organizer 规划相关代码/测试.*$',
+              '- 当前文件所有权：PFV2-1802 文档、来源身份与 organizer 规划代码/测试已冻结；后续只接受评审修正，不与其他实现会话并行改动这些文件；',
+              re.MULTILINE,
+          )
+          target = Path(plan)
+          text = target.read_text()
+          marker = '## 19. 当前下一步\n\n'
+          if text.count(marker) != 1:
+              raise SystemExit('implementation plan: next-step marker mismatch')
+          prefix = text.split(marker, 1)[0]
+          next_steps = '\n'.join([
+              '## 19. 当前下一步',
+              '',
+              '1. 用户/主负责人审阅草稿 PR #4，重点核对“稳定交易号保持 v1 身份、无稳定标识改用文件 SHA-256 + locator、旧 v1 强指纹按物理行拆开、跨来源保持多重集基数”四项边界；',
+              '2. 获得合并授权后，将 PFV2-1802 集成到 UX-1801 后续主线并按现行发布流程构建镜像；本任务本身不部署、不修改正式数据库；',
+              '3. 发布后先在正式副本使用 UX-1801 放弃旧未入账轮次，以原 3 份来源创建新轮，核对事件、问题、附加证据和状态守恒；',
+              '4. 光大目标验收必须确认 2026/07/01 第17/19行与 2026/07/06 第38/40行均保留，四笔消费不再产生来源内精确重复；',
+              '5. 同时复核稳定交易号重解析仍收敛、银行 2 条与支付宝 2 条形成 2 个事件/4 条证据、旧人工决定和正式 7 条交易保持不变；',
+              '6. PFV2-1802 真实数据验收通过后继续 DASH-1705 与 PFV2-1706 的报表、幂等、重启、总览和撤销验证；',
+              '7. 只有 PFV2-1802、DASH-1705 和 PFV2-1706 全部验收且再次获得用户明确授权后，才执行第一次真实「全部入账」。',
+              '',
+          ])
+          target.write_text(prefix + next_steps)
+
+          upload = 'docs/现行说明/账单上传与解析.md'
+          sub_once(
+              upload,
+              r'光大账单没有稳定订单号或流水号；当前 identity-v1 会把[^\n]*?PFV2-1802 将改为文件内容与物理定位身份。',
+              '光大账单没有稳定订单号或流水号；正式站当前发布的 identity-v1 会把时间、金额、说明和末四位等内容指纹当作来源身份，因此不同物理行内容相同时可能被误标为精确重复。本分支 identity-v2 已改为文件内容 SHA-256 与物理定位身份，并保留稳定交易号和完整订单组合的 v1 身份兼容。在合并、发布和重建旧轮之前，正式站旧结果不得用于真实入账。',
+          )
+          sub_once(
+              upload,
+              r'^当前 identity-v1 在稳定交易号和完整订单组合缺失时[^\n]*$',
+              '本分支 identity-v2 已在稳定交易号和完整订单组合缺失时改用文件内容 SHA-256 与物理 locator，同一文件不同物理行不再因内容相同共享来源身份；同一 locator 显式重解析仍会收敛。正式站尚未发布该实现，旧批次的精确重复数及其派生事件计数仍不可信；发布和重建前保持未入账，原始文件和物理行完整保留。',
+              re.MULTILINE,
+          )
+
+          organize = 'docs/现行说明/账单整理与入账.md'
+          sub_once(
+              organize,
+              r'^相同来源身份先归入同一判断单元；但当前 identity-v1[^\n]*?共同支持。',
+              '相同来源身份先归入同一判断单元。本分支 identity-v2 只信任稳定交易号、完整订单组合，或无稳定标识时的文件 SHA-256 + 物理 locator；整理器也会把旧 identity-v1 中没有稳定标识的共享强指纹按物理行拆开。正式站旧轮仍由 identity-v1 生成，发布并新建轮次前不得使用其数量入账。跨来源自动合并还必须有稳定业务引用和金额、币种、账户、方向、时间等语义共同支持。',
+              re.MULTILINE,
+          )
+          sub_once(
+              organize,
+              r'^- 已确认光大账单存在[^\n]*$',
+              '- PFV2-1802 已在分支修复光大不同物理行被强内容指纹误判的问题，并补齐旧 v1 拆分与跨来源基数回归；正式站旧轮尚未发布和重建，其重复证据、最终事件、待处理和可入账计数仍不得作为入账依据；原始证据完整，可在发布后按新规则重建。',
+              re.MULTILINE,
+          )
+          PY
+
+          git rm .github/workflows/pfv2-1802-source-snapshot.yml \
+            .github/workflows/pfv2-1802-finalize.yml \
+            .github/workflows/pfv2-1802-ci.yml
+          git add docs
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'docs(pf): record PFV2-1802 implementation evidence'
+          git push origin HEAD:codex/pfv2-1802-source-identity
