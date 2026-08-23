@@ -48,7 +48,7 @@ jobs:
           done
           git rm -r .github/pfv2-1802-patches .github/workflows/pfv2-1802-apply.yml
           git status --short
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'fix(pf): preserve physical source records without stable ids'
           git push origin HEAD:codex/pfv2-1802-source-identity
