@@ -1,5 +1,7 @@
 name: PFV2-1802 Focused Gate
 
+# Temporary branch gate: validates the source-identity fix and is removed after
+# the draft PR has stable backend, frontend, repeatability, and build evidence.
 on:
   push:
     branches:
