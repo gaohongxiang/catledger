@@ -30,6 +30,7 @@ function event(overrides: Record<string, unknown> = {}): Record<string, unknown>
 describe('organizer response protocol', () => {
     it('preserves int64 identifiers and amounts as strings', () => {
         expect(normalizeFinanceUpdate(update()).id).toBe('9007199254740993');
+        expect(normalizeFinanceUpdate(update({ status: 'abandoned' })).status).toBe('abandoned');
         expect(normalizeEconomicEvent(event()).amount).toBe('9007199254740993');
         expect(normalizeEconomicEvent(event()).counterparty).toBe('示例商户');
         expect(normalizeEconomicEvent(event()).evidenceCount).toBe(2);

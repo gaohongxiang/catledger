@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EconomicEvent, FinanceUpdate } from './models.ts';
-import { canPostUpdate, eventDisplayLabel, eventReasonCodes, eventReasonTranslationKeys, groupVisuallyIdenticalEvents, selectCurrentUpdate, updateConservationHolds } from './state.ts';
+import { canAbandonUpdate, canPostUpdate, eventDisplayLabel, eventReasonCodes, eventReasonTranslationKeys, groupVisuallyIdenticalEvents, selectCurrentUpdate, updateConservationHolds } from './state.ts';
 
 function update(overrides: Partial<FinanceUpdate> = {}): FinanceUpdate {
     return {
@@ -28,6 +28,15 @@ describe('organizer result state', () => {
         expect(canPostUpdate(update())).toBe(false);
         expect(canPostUpdate(update({ readyEventCount: 0 }))).toBe(false);
         expect(canPostUpdate(update({ status: 'posted' }))).toBe(false);
+    });
+
+    it('abandons only unposted draft, review, or failed rounds', () => {
+        expect(canAbandonUpdate(update({ postedEventCount: 0 }))).toBe(true);
+        expect(canAbandonUpdate(update({ status: 'draft', postedEventCount: 0 }))).toBe(true);
+        expect(canAbandonUpdate(update({ status: 'failed', postedEventCount: 0 }))).toBe(true);
+        expect(canAbandonUpdate(update({ status: 'partially_posted', postedEventCount: 1 }))).toBe(false);
+        expect(canAbandonUpdate(update({ status: 'posted', postedEventCount: 1 }))).toBe(false);
+        expect(canAbandonUpdate(update({ status: 'abandoned', postedEventCount: 0 }))).toBe(false);
     });
 
     it('reads display labels and reason codes defensively', () => {

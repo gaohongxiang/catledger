@@ -20,10 +20,6 @@ export function updateConservationHolds(update: FinanceUpdate): boolean {
             update.needsActionEventCount + update.excludedEventCount;
 }
 
-export function canOrganizeUpdate(status: FinanceUpdateStatus): boolean {
-    return status === 'draft' || status === 'review' || status === 'failed';
-}
-
 export function canPostUpdate(update: FinanceUpdate): boolean {
     return update.readyEventCount > 0 && update.needsActionEventCount === 0 &&
         (update.status === 'review' || update.status === 'partially_posted');
@@ -31,6 +27,11 @@ export function canPostUpdate(update: FinanceUpdate): boolean {
 
 export function canUndoUpdate(update: FinanceUpdate): boolean {
     return update.postedEventCount > 0 && (update.status === 'posted' || update.status === 'partially_posted');
+}
+
+export function canAbandonUpdate(update: FinanceUpdate): boolean {
+    return update.postedEventCount === 0 &&
+        (update.status === 'draft' || update.status === 'review' || update.status === 'failed');
 }
 
 export function eventDisplayLabel(event: EconomicEvent): string {

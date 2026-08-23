@@ -481,6 +481,17 @@ func (tx *RepositoryTransaction) ListEventTransactions(eventId int64) ([]*Econom
 	return listEventTransactions(tx.session, tx.uid, eventId)
 }
 
+func (tx *RepositoryTransaction) CountUpdateTransactionLinks(updateId int64) (int64, error) {
+	if err := tx.validate(); err != nil || updateId < 1 {
+		return 0, fmt.Errorf("invalid update transaction link count")
+	}
+	count, err := tx.session.Where("uid=? AND update_id=?", tx.uid, updateId).Count(new(EconomicEventTransaction))
+	if err != nil {
+		return 0, fmt.Errorf("count update transaction links: %w", err)
+	}
+	return count, nil
+}
+
 func listEventTransactions(sess *xorm.Session, uid int64, eventId int64) ([]*EconomicEventTransaction, error) {
 	items := make([]*EconomicEventTransaction, 0)
 	if err := sess.Where("uid=? AND event_id=?", uid, eventId).Asc("link_id").Find(&items); err != nil {

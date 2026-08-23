@@ -2932,7 +2932,7 @@
             }
         },
         "organizerV2": {
-            "error": "This financial update could not finish. Refresh and try again.",
+            "error": "This financial update could not finish. The page will sync again automatically; reopen it if the problem continues.",
             "rows": "rows",
             "start": {
                 "eyebrow": "New financial update",
@@ -2973,7 +2973,7 @@
             "sources": {
                 "eyebrow": "Step 1",
                 "title": "Statements in this round",
-                "lockedHint": "Once review begins, the round's sources are locked so every result remains traceable.",
+                "lockedHint": "Once organization starts, this round's statements are immutable. To add or remove statements, abandon this unposted round and start a new one.",
                 "rowCount": "{count} valid record(s)",
                 "selected": "Selected",
                 "nextRoundHint": "New uploads stay in statement records and can be selected before the next round; they never alter the current result silently.",
@@ -2984,7 +2984,7 @@
             "events": { "eyebrow": "Result details", "hint": "Merchant, item, payment method, account, and category are shown here; open the complete source record only when needed.", "evidence": "View evidence", "resolve": "Resolve", "empty": "There are no events in this group.", "unnamed": "Statement transaction", "accountPending": "Account required", "uncategorized": "Uncategorized", "evidenceCount": "{count} source record(s)" },
             "filter": { "needs_action": "Required", "ready": "Ready", "posted": "Posted", "excluded": "Excluded", "corrected": "Corrected" },
             "status": {
-                "draft": "Draft", "organizing": "Organizing", "review": "Review", "posting": "Posting", "partially_posted": "Partially posted", "posted": "Fully posted", "failed": "Failed", "undone": "Undone",
+                "draft": "Draft", "organizing": "Organizing", "review": "Review", "posting": "Posting", "partially_posted": "Partially posted", "posted": "Fully posted", "failed": "Failed", "undone": "Undone", "abandoned": "Abandoned",
                 "ready": "Ready", "needs_action": "Required", "excluded": "Excluded", "corrected": "Corrected"
             },
             "nature": { "income": "Income", "expense": "Expense", "internal_transfer": "Internal transfer", "borrow": "Borrowing", "repayment": "Repayment", "refund": "Refund", "fee": "Fee", "balance_adjustment": "Balance adjustment", "unknown": "Nature required" },
@@ -3012,7 +3012,9 @@
                 "legacyPostedEvidenceBackfill": "Generated from an existing ledger transaction",
                 "generic": "This transaction requires manual review"
             },
-            "action": { "postAll": "Post all ({count})", "organize": "Organize again", "undo": "Undo this posting", "new": "Start a new update" },
+            "action": { "continueReview": "Continue with {count} issue(s)", "confirmAndPost": "Confirm and post {count}", "undo": "Undo this posting", "new": "Start a new update", "more": "More round actions", "viewSources": "View round statements", "abandonAndReselect": "Abandon and reselect statements" },
+            "sync": { "syncing": "Syncing…", "pending": "Waiting to sync", "syncedAt": "Synced at {time}" },
+            "abandon": { "title": "Abandon this round and reselect statements?", "hint": "This round's unposted analysis and review decisions will remain in its audit history, but the round will stop and its statements can be selected in a new round.", "kept": "Uploaded files, parsed statement records, accounts, and formal ledger transactions are not deleted or changed.", "confirm": "Abandon and reselect" },
             "evidence": { "title": "Raw evidence and sources", "empty": "No evidence rows are available." },
             "resolve": { "title": "Review transaction", "hint": "Confirm the transaction nature, ledger account, and category. Transfers and repayments also require a counterparty account.", "nature": "Transaction nature", "ledgerAccount": "Ledger account", "counterpartyAccount": "Counterparty account", "category": "Category", "categoryHint": "Category can be completed later, but account and transaction nature are required.", "exclude": "Do not post", "save": "Save and mark ready" },
             "undo": { "title": "Undo impact", "impact": "This will inspect and undo {transactions} ledger transactions.", "unsafe": "Ledger transactions were changed or shared, so this update cannot be safely undone." },

@@ -53,13 +53,12 @@
                 </div>
                 <footer>
                     <div class="actions">
-                        <v-btn color="primary" :loading="busy" :disabled="!canPostUpdate(update)" @click="postAllReady">
-                            {{ tt('personalFinance.organizerV2.action.postAll', { count: update.readyEventCount }) }}
+                        <v-btn color="primary" v-if="update.needsActionEventCount > 0" @click="showEventStep('needs_action')">
+                            {{ tt('personalFinance.organizerV2.action.continueReview', { count: issueGroupCount }) }}
                         </v-btn>
-                        <v-btn variant="outlined" :loading="busy" v-if="canOrganizeUpdate(update.status)" @click="organizeCurrent">
-                            {{ tt('personalFinance.organizerV2.action.organize') }}
+                        <v-btn color="primary" :loading="busy" v-else-if="canPostUpdate(update)" @click="postAllReady">
+                            {{ tt('personalFinance.organizerV2.action.confirmAndPost', { count: update.readyEventCount }) }}
                         </v-btn>
-                        <v-btn variant="text" :prepend-icon="mdiRefresh" :loading="loading" @click="load">{{ tt('Refresh') }}</v-btn>
                         <v-btn variant="text" color="warning" v-if="canUndoUpdate(update)" @click="inspectUndo">
                             {{ tt('personalFinance.organizerV2.action.undo') }}
                         </v-btn>
@@ -67,7 +66,18 @@
                             {{ tt('personalFinance.organizerV2.action.new') }}
                         </v-btn>
                     </div>
-                    <small>{{ update.finalEventCount }} 个经济事件 · 已排除 {{ update.excludedEventCount }} · 已入账 {{ update.postedEventCount }}</small>
+                    <div class="round-meta">
+                        <small>{{ syncLabel }}</small>
+                        <v-menu>
+                            <template #activator="{ props }">
+                                <v-btn v-bind="props" :icon="mdiDotsHorizontal" variant="text" size="small" :aria-label="tt('personalFinance.organizerV2.action.more')" />
+                            </template>
+                            <v-list density="compact">
+                                <v-list-item :title="tt('personalFinance.organizerV2.action.viewSources')" @click="activeWorkflowStep = 1" />
+                                <v-list-item v-if="canAbandonUpdate(update)" :title="tt('personalFinance.organizerV2.action.abandonAndReselect')" @click="showAbandon = true" />
+                            </v-list>
+                        </v-menu>
+                    </div>
                 </footer>
             </section>
 
@@ -76,9 +86,9 @@
                 <article :key="item.source.id" v-for="item in currentSources">
                     <v-checkbox-btn :model-value="true" disabled />
                     <div><strong>{{ item.batch?.file?.originalFileName || tt(getSourceTypeKey(item.source.sourceType)) }}</strong><small>{{ tt(getSourceTypeKey(item.source.sourceType)) }} · {{ item.batch?.validRowCount ?? 0 }} 条</small></div>
-                    <span>已选入本轮</span>
+                    <span>{{ tt('personalFinance.organizerV2.sources.selected') }}</span>
                 </article>
-                <footer><v-btn color="primary" @click="showEventStep('needs_action')">继续处理问题</v-btn></footer>
+                <footer><v-btn color="primary" @click="showEventStep('needs_action')">{{ tt('personalFinance.organizerV2.sources.continue') }}</v-btn></footer>
             </section>
 
             <details class="verification" :class="{ invalid: !conservationHolds }" v-if="activeWorkflowStep !== 1">
@@ -183,6 +193,17 @@
             </v-card>
         </v-dialog>
 
+        <v-dialog max-width="560" v-model="showAbandon">
+            <v-card>
+                <v-card-title>{{ tt('personalFinance.organizerV2.abandon.title') }}</v-card-title>
+                <v-card-text>
+                    <p>{{ tt('personalFinance.organizerV2.abandon.hint') }}</p>
+                    <v-alert type="info" variant="tonal">{{ tt('personalFinance.organizerV2.abandon.kept') }}</v-alert>
+                </v-card-text>
+                <v-card-actions><v-spacer /><v-btn @click="showAbandon = false">{{ tt('Cancel') }}</v-btn><v-btn color="warning" :loading="busy" @click="abandonAndReselect">{{ tt('personalFinance.organizerV2.abandon.confirm') }}</v-btn></v-card-actions>
+            </v-card>
+        </v-dialog>
+
         <v-dialog max-width="560" v-model="showUndo">
             <v-card><v-card-title>{{ tt('personalFinance.organizerV2.undo.title') }}</v-card-title><v-card-text><p>{{ tt('personalFinance.organizerV2.undo.impact', { transactions: undoImpact?.transactionCount ?? 0 }) }}</p><v-alert type="warning" variant="tonal" v-if="undoImpact && !undoImpact.safeToApply">{{ tt('personalFinance.organizerV2.undo.unsafe') }}</v-alert></v-card-text><v-card-actions><v-spacer /><v-btn @click="showUndo = false">{{ tt('Cancel') }}</v-btn><v-btn color="warning" :disabled="!undoImpact?.safeToApply" :loading="busy" @click="undoCurrent">{{ tt('personalFinance.organizerV2.action.undo') }}</v-btn></v-card-actions></v-card>
         </v-dialog>
@@ -190,8 +211,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
-import { mdiRefresh } from '@mdi/js';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { mdiDotsHorizontal } from '@mdi/js';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
@@ -206,13 +227,15 @@ import { usePersonalFinanceStore } from '../../store.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
 import type { EconomicEvent, EconomicEventStatus, EconomicNature, FinanceUpdate, OrganizerEventEvidence, OrganizerImpact, ReviewIssue, ReviewIssueMember } from '../models.ts';
 import { organizerApi } from '../service.ts';
-import { RESULT_UPDATE_STATUSES, canOrganizeUpdate, canPostUpdate, canUndoUpdate, eventDisplayLabel, eventReasonTranslationKeys, selectCurrentUpdate, updateConservationHolds } from '../state.ts';
+import { RESULT_UPDATE_STATUSES, canAbandonUpdate, canPostUpdate, canUndoUpdate, eventDisplayLabel, eventReasonTranslationKeys, selectCurrentUpdate, updateConservationHolds } from '../state.ts';
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
 const accountsStore = useAccountsStore();
 const categoriesStore = useTransactionCategoriesStore();
 const personalFinanceStore = usePersonalFinanceStore();
 const loading = ref(true);
+const syncing = ref(false);
+const lastSyncedAt = ref(0);
 const loadingEvents = ref(false);
 const loadingEvidence = ref(false);
 const loadingRefundCandidates = ref(false);
@@ -236,12 +259,19 @@ const selectedCounterpartyLedgerAccountId = ref('');
 const selectedCategoryId = ref('');
 const selectedRefundTargetEventId = ref('');
 const refundCandidates = ref<readonly EconomicEvent[]>([]);
+const showAbandon = ref(false);
 const showUndo = ref(false);
 const undoImpact = ref<OrganizerImpact>();
 const visibleFilters: readonly EconomicEventStatus[] = ['needs_action', 'ready', 'posted', 'excluded'];
 const natures: readonly EconomicNature[] = ['expense', 'income', 'refund', 'fee', 'repayment', 'borrow', 'internal_transfer', 'balance_adjustment'];
 const readyBatches = computed(() => personalFinanceStore.batches.filter(batch => batch.status === 'ready'));
 const conservationHolds = computed(() => !!update.value && updateConservationHolds(update.value));
+const syncLabel = computed(() => {
+    if (syncing.value) return tt('personalFinance.organizerV2.sync.syncing');
+    if (!lastSyncedAt.value) return tt('personalFinance.organizerV2.sync.pending');
+    const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(lastSyncedAt.value);
+    return tt('personalFinance.organizerV2.sync.syncedAt', { time });
+});
 const natureOptions = computed(() => natures.map(value => ({ value, title: tt(`personalFinance.organizerV2.nature.${value}`) })));
 const availableLedgerAccounts = computed(() => accountsStore.allVisiblePlainAccounts.filter(account => !selectedEvent.value?.currency || account.currency === selectedEvent.value.currency));
 const needsCounterpartyAccount = computed(() => ['internal_transfer', 'repayment', 'borrow'].includes(selectedNature.value));
@@ -303,21 +333,25 @@ function directionForNature(nature: EconomicNature): EconomicEvent['flowDirectio
 function flattenCategories(categories: TransactionCategory[]): { title: string; value: string }[] { const result: { title: string; value: string }[] = []; for (const category of categories) for (const child of category.subCategories ?? []) if (!category.hidden && !child.hidden) result.push({ title: `${category.name} / ${child.name}`, value: child.id }); return result; }
 function amountAtLeast(left?: string, right?: string): boolean { try { return !!left && !!right && BigInt(left) >= BigInt(right); } catch { return false; } }
 
-async function load(): Promise<void> {
-    loading.value = true; showError.value = false;
+async function load(silent = false): Promise<void> {
+    if (syncing.value) return;
+    if (!silent) loading.value = true;
+    syncing.value = true;
+    showError.value = false;
     try {
         const pages = await Promise.all(RESULT_UPDATE_STATUSES.map(status => organizerApi.listUpdates(status)));
         const selected = selectCurrentUpdate(pages.map(page => [...page.items]));
         update.value = selected ? await organizerApi.getUpdate(selected.id) : undefined;
         await Promise.all([personalFinanceStore.loadBatches(0, 100), Promise.allSettled([accountsStore.loadAllAccounts({ force: false }), categoriesStore.loadAllCategories({ force: false })])]);
-        if (update.value) await loadEvents();
+        if (update.value) await loadEvents(silent);
+        lastSyncedAt.value = Date.now();
     } catch { showError.value = true; }
-    finally { loading.value = false; }
+    finally { loading.value = false; syncing.value = false; }
 }
 
-async function loadEvents(): Promise<void> {
+async function loadEvents(silent = false): Promise<void> {
     if (!update.value) return;
-    loadingEvents.value = true;
+    if (!silent) loadingEvents.value = true;
     try {
         if (eventFilter.value === 'needs_action') {
             const [eventPage, issuePage] = await Promise.all([organizerApi.listEvents(update.value.id, 'needs_action'), organizerApi.listReviewIssues(update.value.id)]);
@@ -326,15 +360,38 @@ async function loadEvents(): Promise<void> {
             events.value = (await organizerApi.listEvents(update.value.id, eventFilter.value)).items; reviewIssues.value = []; reviewMembers.value = [];
         }
     } catch { showError.value = true; }
-    finally { loadingEvents.value = false; }
+    finally { if (!silent) loadingEvents.value = false; }
 }
 
-function startNewUpdate(): void { update.value = undefined; events.value = []; reviewIssues.value = []; reviewMembers.value = []; selectedBatchIds.value = []; activeWorkflowStep.value = 1; }
+function resetToSourceSelection(batchIds: readonly string[] = []): void {
+    update.value = undefined;
+    events.value = [];
+    reviewIssues.value = [];
+    reviewMembers.value = [];
+    selectedBatchIds.value = [...batchIds];
+    activeWorkflowStep.value = 1;
+}
+function startNewUpdate(): void { resetToSourceSelection(); }
 async function onImportChanged(batchId: string): Promise<void> { await personalFinanceStore.loadBatches(0, 100); if (!update.value && readyBatches.value.some(batch => batch.id === batchId) && !selectedBatchIds.value.includes(batchId)) selectedBatchIds.value = [...selectedBatchIds.value, batchId]; }
-async function runMutation(operation: () => Promise<{ update: FinanceUpdate }>): Promise<void> { busy.value = true; try { update.value = (await operation()).update; await loadEvents(); } catch { showError.value = true; } finally { busy.value = false; } }
-async function createAndOrganize(): Promise<void> { busy.value = true; try { const created = await organizerApi.createUpdate(selectedBatchIds.value, idempotencyKey('create')); update.value = (await organizerApi.organize(created, idempotencyKey('organize'))).update; activeWorkflowStep.value = 2; eventFilter.value = 'needs_action'; await loadEvents(); } catch { showError.value = true; } finally { busy.value = false; } }
-async function organizeCurrent(): Promise<void> { if (update.value) await runMutation(() => organizerApi.organize(update.value as FinanceUpdate, idempotencyKey('organize'))); }
+async function runMutation(operation: () => Promise<{ update: FinanceUpdate }>): Promise<void> { busy.value = true; try { update.value = (await operation()).update; await loadEvents(); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
+async function createAndOrganize(): Promise<void> { busy.value = true; try { const created = await organizerApi.createUpdate(selectedBatchIds.value, idempotencyKey('create')); update.value = (await organizerApi.organize(created, idempotencyKey('organize'))).update; activeWorkflowStep.value = 2; eventFilter.value = 'needs_action'; await loadEvents(); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
 async function postAllReady(): Promise<void> { if (update.value) await runMutation(() => organizerApi.postAllReady(update.value as FinanceUpdate, idempotencyKey('post-all'))); }
+
+async function abandonAndReselect(): Promise<void> {
+    const current = update.value;
+    if (!current || !canAbandonUpdate(current)) return;
+    const previousBatchIds = (current.sources ?? []).map(source => source.batchId);
+    busy.value = true;
+    try {
+        await organizerApi.abandon(current, idempotencyKey('abandon'));
+        await personalFinanceStore.loadBatches(0, 100);
+        const selectable = new Set(readyBatches.value.map(batch => batch.id));
+        resetToSourceSelection(previousBatchIds.filter(batchId => selectable.has(batchId)));
+        showAbandon.value = false;
+        lastSyncedAt.value = Date.now();
+    } catch { showError.value = true; }
+    finally { busy.value = false; }
+}
 async function openEvidence(event: EconomicEvent): Promise<void> { showEvidence.value = true; loadingEvidence.value = true; evidence.value = undefined; try { evidence.value = await organizerApi.getEvidence(event.id); } catch { showError.value = true; showEvidence.value = false; } finally { loadingEvidence.value = false; } }
 
 async function openIssueResolve(issue: ReviewIssue): Promise<void> {
@@ -380,7 +437,19 @@ async function excludeIssue(issue: ReviewIssue): Promise<void> { if (!update.val
 async function inspectUndo(): Promise<void> { if (!update.value) return; busy.value = true; try { undoImpact.value = await organizerApi.getUndoImpact(update.value.id); showUndo.value = true; } catch { showError.value = true; } finally { busy.value = false; } }
 async function undoCurrent(): Promise<void> { if (!update.value) return; await runMutation(() => organizerApi.undo(update.value as FinanceUpdate, idempotencyKey('undo'))); showUndo.value = false; }
 
-onMounted(load);
+function autoSync(): void {
+    if (document.visibilityState === 'visible' && !busy.value) void load(true);
+}
+
+onMounted(() => {
+    window.addEventListener('focus', autoSync);
+    document.addEventListener('visibilitychange', autoSync);
+    void load();
+});
+onBeforeUnmount(() => {
+    window.removeEventListener('focus', autoSync);
+    document.removeEventListener('visibilitychange', autoSync);
+});
 </script>
 
 <style scoped>
@@ -411,7 +480,8 @@ onMounted(load);
 .source-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 0; }
 .source-chips span { padding: 5px 9px; border: 1px solid var(--rule); border-radius: 999px; color: rgba(var(--v-theme-on-surface), .62); font-size: .72rem; }
 .overview-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; }
-.overview-card > footer > small { color: rgba(var(--v-theme-on-surface), .55); }
+.round-meta { display: flex; align-items: center; gap: 4px; color: rgba(var(--v-theme-on-surface), .55); }
+.round-meta small { white-space: nowrap; }
 .source-stage article { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--rule); }
 .source-stage article > div { display: grid; }
 .source-stage article small { color: rgba(var(--v-theme-on-surface), .55); }
@@ -456,6 +526,7 @@ onMounted(load);
 @media (max-width: 900px) {
     .steps { grid-template-columns: 1fr; }
     .overview-card > header, .overview-card > footer, .workbench > header, .source-stage > header { align-items: start; flex-direction: column; }
+    .round-meta { align-self: stretch; justify-content: space-between; }
     .issue-event, .event-row { grid-template-columns: 48px minmax(0,1fr) auto; }
     .issue-event > .amount, .event-row .context { grid-column: 2; text-align: start; }
     .issue-event > .v-btn, .event-row > .v-btn { grid-column: 3; }
