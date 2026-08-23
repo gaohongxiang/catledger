@@ -1,0 +1,18 @@
+diff --git a/src/features/personal-finance/organizer/desktop/ResultsFlowPage.vue b/src/features/personal-finance/organizer/desktop/ResultsFlowPage.vue
+index 2ba4135..8ad24ac 100644
+--- a/src/features/personal-finance/organizer/desktop/ResultsFlowPage.vue
++++ b/src/features/personal-finance/organizer/desktop/ResultsFlowPage.vue
+@@ -93,8 +93,11 @@
+ 
+             <details class="verification" :class="{ invalid: !conservationHolds }" v-if="activeWorkflowStep !== 1">
+                 <summary>{{ tt('personalFinance.organizerV2.workflow.verify') }}</summary>
+-                <div>{{ update.validEvidenceCount }} 条证据 − {{ update.duplicateEvidenceCount }} 条重复 = {{ update.finalEventCount }} 个事件
+-                    <b>{{ conservationHolds ? '数据守恒正常' : '数据守恒异常，请勿入账' }}</b>
++                <div>
++                    {{ update.validEvidenceCount }} {{ tt('personalFinance.organizerV2.conservation.evidence') }} −
++                    {{ update.duplicateEvidenceCount }} {{ tt('personalFinance.organizerV2.conservation.duplicates') }} =
++                    {{ update.finalEventCount }} {{ tt('personalFinance.organizerV2.conservation.events') }}
++                    <b>{{ tt(conservationHolds ? 'personalFinance.organizerV2.conservation.ok' : 'personalFinance.organizerV2.conservation.invalid') }}</b>
+                 </div>
+             </details>
+ 

@@ -1,0 +1,148 @@
+diff --git a/pkg/personalfinance/importing/identity.go b/pkg/personalfinance/importing/identity.go
+index 731d72d..da7336d 100644
+--- a/pkg/personalfinance/importing/identity.go
++++ b/pkg/personalfinance/importing/identity.go
+@@ -6,6 +6,7 @@ import (
+ 	"fmt"
+ 	"strconv"
+ 	"strings"
++	"unicode/utf8"
+ )
+ 
+ // IdentityBuildInput 是中心身份构造器的唯一输入。
+@@ -13,6 +14,8 @@ type IdentityBuildInput struct {
+ 	ParseState           ParseState
+ 	SourceType           SourceType
+ 	SourceAccountKey     string
++	FileSha256           string
++	SourceLocator        string
+ 	BatchId              int64
+ 	RowNumber            int64
+ 	Identifiers          SourceIdentifiers
+@@ -36,8 +39,11 @@ type RowOutcome struct {
+ 	ProcessingState ProcessingState
+ }
+ 
+-// BuildIdentityCandidate 统一选择身份优先级、编码 key 并计算核心摘要。
+-// invalid 行返回 nil；调用方应持久化 identity_state=not_evaluated。
++// BuildIdentityCandidate 统一选择来源身份材料、编码 key 并计算核心摘要。
++//
++// 稳定交易号和完整订单组合继续使用冻结的 v1 编码，以便与历史来源身份收敛；
++// 缺少稳定标识时使用文件内容 SHA-256 与物理 locator 的 v2 身份。内容指纹
++// 只保留为候选材料，绝不再决定来源记录身份。invalid 行返回 nil。
+ func BuildIdentityCandidate(input IdentityBuildInput) (*IdentityCandidate, error) {
+ 	if input.ParseState == PARSE_STATE_INVALID {
+ 		return nil, nil
+@@ -59,32 +65,22 @@ func BuildIdentityCandidate(input IdentityBuildInput) (*IdentityCandidate, error
+ 		return nil, fmt.Errorf("invalid source account key")
+ 	}
+ 
+-	transactionId := normalizeStableIdentityIdentifier(input.Identifiers.TransactionId)
+-	orderId := normalizeStableIdentityIdentifier(input.Identifiers.OrderId)
+-	merchantOrderId := normalizeStableIdentityIdentifier(input.Identifiers.MerchantOrderId)
++	kind, identityParts, stable := stableSourceIdentityParts(input.Identifiers)
++	identityVersion := IDENTITY_KEY_VERSION_V1
+ 
+-	kind := IDENTITY_KIND_BATCH_LOCAL
+-	identityParts := []string(nil)
+-
+-	if transactionId != "" {
+-		kind = IDENTITY_KIND_SOURCE_TRANSACTION_ID
+-		identityParts = []string{transactionId}
+-	} else if orderId != "" && merchantOrderId != "" {
+-		kind = IDENTITY_KIND_ORDER_COMBINATION
+-		identityParts = []string{orderId, merchantOrderId}
+-	} else if hasStrongFingerprint(input) {
+-		kind = IDENTITY_KIND_STRONG_FINGERPRINT
+-		identityParts = strongFingerprintParts(input)
+-	} else {
+-		if input.BatchId < 1 || input.RowNumber < 1 {
+-			return nil, fmt.Errorf("batch-local identity requires positive batch and row numbers")
++	if !stable {
++		if !isLowerHexSHA256(input.FileSha256) || input.SourceLocator == "" ||
++			!utf8.ValidString(input.SourceLocator) || len(input.SourceLocator) > maximumPersistentSourceLocatorBytes {
++			return nil, fmt.Errorf("physical record identity requires a valid file digest and source locator")
+ 		}
+ 
+-		identityParts = []string{strconv.FormatInt(input.BatchId, 10), strconv.FormatInt(input.RowNumber, 10)}
++		kind = IDENTITY_KIND_PHYSICAL_RECORD
++		identityVersion = IDENTITY_KEY_VERSION_V2
++		identityParts = []string{input.FileSha256, input.SourceLocator}
+ 	}
+ 
+ 	keyValues := []string{
+-		string(IDENTITY_KEY_VERSION_V1),
++		string(identityVersion),
+ 		string(input.SourceType),
+ 		input.SourceAccountKey,
+ 		string(kind),
+@@ -93,7 +89,6 @@ func BuildIdentityCandidate(input IdentityBuildInput) (*IdentityCandidate, error
+ 	keyDigest := sha256.Sum256(encodeLengthPrefixed(keyValues...))
+ 
+ 	coreDigest, err := ComputeSourceCoreDigest(input.Normalized)
+-
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -102,12 +97,34 @@ func BuildIdentityCandidate(input IdentityBuildInput) (*IdentityCandidate, error
+ 		Kind:               kind,
+ 		SourceIdentityKey:  hex.EncodeToString(keyDigest[:]),
+ 		SourceCoreDigest:   coreDigest,
+-		IdentityKeyVersion: IDENTITY_KEY_VERSION_V1,
++		IdentityKeyVersion: identityVersion,
+ 		CoreDigestVersion:  CORE_DIGEST_VERSION_V1,
+ 		FingerprintVersion: FINGERPRINT_VERSION_V1,
+ 	}, nil
+ }
+ 
++// ResolveStableSourceIdentityKind reports whether source identifiers are strong
++// enough to identify one source-system record independently of file position.
++func ResolveStableSourceIdentityKind(identifiers SourceIdentifiers) (IdentityKind, bool) {
++	kind, _, stable := stableSourceIdentityParts(identifiers)
++	return kind, stable
++}
++
++func stableSourceIdentityParts(identifiers SourceIdentifiers) (IdentityKind, []string, bool) {
++	transactionId := normalizeStableIdentityIdentifier(identifiers.TransactionId)
++	if transactionId != "" {
++		return IDENTITY_KIND_SOURCE_TRANSACTION_ID, []string{transactionId}, true
++	}
++
++	orderId := normalizeStableIdentityIdentifier(identifiers.OrderId)
++	merchantOrderId := normalizeStableIdentityIdentifier(identifiers.MerchantOrderId)
++	if orderId != "" && merchantOrderId != "" {
++		return IDENTITY_KIND_ORDER_COMBINATION, []string{orderId, merchantOrderId}, true
++	}
++
++	return "", nil, false
++}
++
+ // ComputeSourceCoreDigest 计算来源身份的 v1 经济语义摘要。
+ // v1 只包含非负金额、币种、来源方向和经济效果；来源交易分类不够跨格式稳定，不进入摘要。
+ func ComputeSourceCoreDigest(normalized NormalizedEvidence) (string, error) {
+@@ -286,25 +303,6 @@ func validateNormalizedEvidence(normalized NormalizedEvidence) error {
+ 	return nil
+ }
+ 
+-func hasStrongFingerprint(input IdentityBuildInput) bool {
+-	return normalizeIdentifier(input.FingerprintMaterials.Counterparty) != "" &&
+-		(normalizeIdentifier(input.FingerprintMaterials.Item) != "" || normalizeIdentifier(input.FingerprintMaterials.PaymentMethod) != "")
+-}
+-
+-func strongFingerprintParts(input IdentityBuildInput) []string {
+-	return []string{
+-		string(FINGERPRINT_VERSION_V1),
+-		strconv.FormatInt(*input.Normalized.UnixTime, 10),
+-		strconv.FormatInt(*input.Normalized.Amount, 10),
+-		input.Normalized.Currency,
+-		string(input.Normalized.Direction),
+-		string(input.Normalized.EconomicEffect),
+-		normalizeIdentifier(input.FingerprintMaterials.Counterparty),
+-		normalizeIdentifier(input.FingerprintMaterials.Item),
+-		normalizeIdentifier(input.FingerprintMaterials.PaymentMethod),
+-	}
+-}
+-
+ func normalizeStableIdentityIdentifier(value string) string {
+ 	value = normalizeIdentifier(value)
+ 

@@ -1,0 +1,59 @@
+name: PFV2-1802 Focused Gate
+
+on:
+  push:
+    branches:
+      - codex/pfv2-1802-source-identity
+  pull_request:
+    branches:
+      - codex/ux-1801-abandon-round
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pfv2-1802-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          files=$(git diff --name-only "${{ github.event.pull_request.base.sha || github.event.before }}"...HEAD -- '*.go' 2>/dev/null || git ls-files '*.go')
+          if [ -n "$files" ]; then
+            unformatted=$(gofmt -l $files)
+            test -z "$unformatted" || { printf 'Unformatted Go files:\n%s\n' "$unformatted"; exit 1; }
+          fi
+      - name: Test importing and organizer
+        run: go test -count=1 ./pkg/personalfinance/importing ./pkg/personalfinance/organizer
+      - name: Vet importing and organizer
+        run: go vet ./pkg/personalfinance/importing ./pkg/personalfinance/organizer
+      - name: Repeat identity and multiplicity regressions
+        run: go test -count=10 -run 'TestDedupServicePreservesIdenticalPhysicalRowsWithoutStableIdentifiers|TestBuildOrganizePlanSplitsLegacyV1ContentFingerprintRows|TestBuildOrganizePlanKeepsLegacyV1StableTransactionIdentity|TestBuildOrganizePlanPreservesMultiplicityAcrossTwoByTwoSources' ./pkg/personalfinance/importing ./pkg/personalfinance/organizer
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Type-check
+        run: ./node_modules/.bin/vue-tsc --noEmit
+      - name: Focused unit tests
+        run: ./node_modules/.bin/vitest run src/features/personal-finance/desktop/SimpleWorkflow.test.ts src/features/personal-finance/organizer/state.test.ts src/features/personal-finance/organizer/service.test.ts
+      - name: Production build
+        run: npm run build

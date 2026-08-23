@@ -1,0 +1,29 @@
+diff --git a/pkg/personalfinance/importing/status.go b/pkg/personalfinance/importing/status.go
+index 532c39e..4202f6c 100644
+--- a/pkg/personalfinance/importing/status.go
++++ b/pkg/personalfinance/importing/status.go
+@@ -27,6 +27,7 @@ type RuleVersion string
+ const (
+ 	SOURCE_ACCOUNT_KEY_VERSION_V1    RuleVersion = "source-account-key-v1"
+ 	IDENTITY_KEY_VERSION_V1          RuleVersion = "identity-key-v1"
++	IDENTITY_KEY_VERSION_V2          RuleVersion = "identity-key-v2"
+ 	CORE_DIGEST_VERSION_V1           RuleVersion = "core-digest-v1"
+ 	FINGERPRINT_VERSION_V1           RuleVersion = "fingerprint-v1"
+ 	RAW_SNAPSHOT_VERSION_V1          RuleVersion = "raw-snapshot-v1"
+@@ -49,7 +50,7 @@ type CentralRuleVersions struct {
+ func CurrentCentralRuleVersions() CentralRuleVersions {
+ 	return CentralRuleVersions{
+ 		SourceAccountKeyVersion: SOURCE_ACCOUNT_KEY_VERSION_V1,
+-		IdentityKeyVersion:      IDENTITY_KEY_VERSION_V1,
++		IdentityKeyVersion:      IDENTITY_KEY_VERSION_V2,
+ 		CoreDigestVersion:       CORE_DIGEST_VERSION_V1,
+ 		FingerprintVersion:      FINGERPRINT_VERSION_V1,
+ 		RawSnapshotVersion:      RAW_SNAPSHOT_VERSION_V1,
+@@ -178,6 +179,7 @@ type IdentityKind string
+ const (
+ 	IDENTITY_KIND_SOURCE_TRANSACTION_ID IdentityKind = "source_transaction_id"
+ 	IDENTITY_KIND_ORDER_COMBINATION     IdentityKind = "order_combination"
++	IDENTITY_KIND_PHYSICAL_RECORD       IdentityKind = "physical_record"
+ 	IDENTITY_KIND_STRONG_FINGERPRINT    IdentityKind = "strong_fingerprint"
+ 	IDENTITY_KIND_BATCH_LOCAL           IdentityKind = "batch_local"
+ )

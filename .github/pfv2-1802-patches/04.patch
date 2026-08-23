@@ -1,0 +1,13 @@
+diff --git a/pkg/personalfinance/importing/evidence_helpers_test.go b/pkg/personalfinance/importing/evidence_helpers_test.go
+index db482a4..b78fe30 100644
+--- a/pkg/personalfinance/importing/evidence_helpers_test.go
++++ b/pkg/personalfinance/importing/evidence_helpers_test.go
+@@ -174,7 +174,7 @@ func TestParserDescriptorAndCentralVersions(t *testing.T) {
+ 	versions := CurrentCentralRuleVersions()
+ 
+ 	if versions.SourceAccountKeyVersion != SOURCE_ACCOUNT_KEY_VERSION_V1 ||
+-		versions.IdentityKeyVersion != IDENTITY_KEY_VERSION_V1 ||
++		versions.IdentityKeyVersion != IDENTITY_KEY_VERSION_V2 ||
+ 		versions.CoreDigestVersion != CORE_DIGEST_VERSION_V1 ||
+ 		versions.FingerprintVersion != FINGERPRINT_VERSION_V1 ||
+ 		versions.RawSnapshotVersion != RAW_SNAPSHOT_VERSION_V1 {

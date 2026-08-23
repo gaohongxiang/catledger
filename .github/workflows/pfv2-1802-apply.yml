@@ -1,0 +1,47 @@
+name: PFV2-1802 Apply Patches
+
+on:
+  push:
+    branches:
+      - codex/pfv2-1802-source-identity
+    paths:
+      - .github/pfv2-1802-patches/**
+      - .github/workflows/pfv2-1802-apply.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfv2-1802-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout implementation branch
+        uses: actions/checkout@v6
+        with:
+          ref: codex/pfv2-1802-source-identity
+          fetch-depth: 0
+
+      - name: Apply reviewed patches and remove temporary applier
+        shell: bash
+        run: |
+          shopt -s nullglob
+          patches=(.github/pfv2-1802-patches/*.patch)
+          test "${#patches[@]}" -eq 13
+          for patch in "${patches[@]}"; do
+            git apply --check "$patch"
+          done
+          for patch in "${patches[@]}"; do
+            git apply --index "$patch"
+          done
+          git rm -r .github/pfv2-1802-patches .github/workflows/pfv2-1802-apply.yml
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'fix(pf): preserve physical source records without stable ids'
+          git push origin HEAD:codex/pfv2-1802-source-identity

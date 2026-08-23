@@ -1,0 +1,115 @@
+diff --git a/pkg/personalfinance/organizer/planner_test.go b/pkg/personalfinance/organizer/planner_test.go
+index 5432cfd..bb0b8eb 100644
+--- a/pkg/personalfinance/organizer/planner_test.go
++++ b/pkg/personalfinance/organizer/planner_test.go
+@@ -170,6 +170,101 @@ func TestBuildOrganizePlanMergesBalancedDateOnlyBankEvidence(t *testing.T) {
+ 	}
+ }
+ 
++func TestBuildOrganizePlanSplitsLegacyV1ContentFingerprintRows(t *testing.T) {
++	const uid = int64(262)
++	const updateId = int64(562)
++	source := plannerSource(uid, updateId, 0, 655, 755, importing.SOURCE_TYPE_BANK)
++	rows := make([]*importing.RawImportRow, 0, 4)
++	for index := 0; index < 4; index++ {
++		row := plannerRow(uid, 755, int64(21+index), 3601, 11, 4350, 1704067200,
++			importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
++		row.IdentityKeyVersion = importing.IDENTITY_KEY_VERSION_V1
++		row.RawCounterparty = "支付宝朱永灵"
++		row.RawItem = "相同内容"
++		rows = append(rows, row)
++	}
++	source.Rows = rows
++
++	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{source},
++		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)},
++		1704200000, sequentialPlannerIds(10600))
++	if err != nil {
++		t.Fatalf("build legacy content-fingerprint plan: %v", err)
++	}
++	if plan.ValidEvidenceCount != 4 || plan.DuplicateEvidenceCount != 0 || plan.FinalEventCount != 4 ||
++		plan.ReadyEventCount != 4 || plan.NeedsActionEventCount != 0 {
++		t.Fatalf("legacy v1 physical rows were still collapsed: %+v", plan)
++	}
++}
++
++func TestBuildOrganizePlanKeepsLegacyV1StableTransactionIdentity(t *testing.T) {
++	const uid = int64(263)
++	const updateId = int64(563)
++	source := plannerSource(uid, updateId, 0, 656, 756, importing.SOURCE_TYPE_ALIPAY)
++	first := plannerRow(uid, 756, 31, 3701, 11, 4350, 1704067200,
++		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
++	second := plannerRow(uid, 756, 32, 3701, 11, 4350, 1704067200,
++		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
++	for _, row := range []*importing.RawImportRow{first, second} {
++		row.IdentityKeyVersion = importing.IDENTITY_KEY_VERSION_V1
++		row.SourceTransactionId = "stable-transaction-001"
++	}
++	source.Rows = []*importing.RawImportRow{first, second}
++
++	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{source},
++		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)},
++		1704200000, sequentialPlannerIds(10700))
++	if err != nil {
++		t.Fatalf("build legacy stable-identity plan: %v", err)
++	}
++	if plan.ValidEvidenceCount != 2 || plan.DuplicateEvidenceCount != 1 || plan.FinalEventCount != 1 ||
++		plan.ReadyEventCount != 1 {
++		t.Fatalf("legacy stable source identity was not preserved: %+v", plan)
++	}
++}
++
++func TestBuildOrganizePlanPreservesMultiplicityAcrossTwoByTwoSources(t *testing.T) {
++	const uid = int64(264)
++	const updateId = int64(564)
++	bank := plannerSource(uid, updateId, 0, 657, 757, importing.SOURCE_TYPE_BANK)
++	detail := plannerSource(uid, updateId, 1, 658, 758, importing.SOURCE_TYPE_ALIPAY)
++	zeroOffset := int16(0)
++	bank.Rows = []*importing.RawImportRow{
++		plannerRow(uid, 757, 41, 3801, 11, 4350, 1704067200, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_OTHER),
++		plannerRow(uid, 757, 42, 3802, 11, 4350, 1704067200, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_OTHER),
++	}
++	detail.Rows = []*importing.RawImportRow{
++		plannerRow(uid, 758, 51, 3901, 11, 4350, 1704110400, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT),
++		plannerRow(uid, 758, 52, 3902, 11, 4350, 1704114000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT),
++	}
++	for _, row := range bank.Rows {
++		row.NormalizedTimezoneUtcOffset = &zeroOffset
++		row.RawCounterparty = "支付宝朱永灵"
++	}
++	for index, row := range detail.Rows {
++		row.NormalizedTimezoneUtcOffset = &zeroOffset
++		row.RawCounterparty = "支付宝朱永灵"
++		row.SourceTransactionId = []string{"alipay-001", "alipay-002"}[index]
++		row.IdentityKeyVersion = importing.IDENTITY_KEY_VERSION_V1
++	}
++
++	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{bank, detail},
++		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)},
++		1704200000, sequentialPlannerIds(10800))
++	if err != nil {
++		t.Fatalf("build two-by-two cross-source plan: %v", err)
++	}
++	if plan.ValidEvidenceCount != 4 || plan.DuplicateEvidenceCount != 2 || plan.FinalEventCount != 2 ||
++		plan.ReadyEventCount != 2 || len(plan.Evidence) != 4 {
++		t.Fatalf("cross-source multiplicity was not preserved: %+v", plan)
++	}
++	for _, event := range plan.Events {
++		if !strings.Contains(event.ReasonCodesJson, "auto_same_event") {
++			t.Fatalf("balanced pair was not recorded as one event with supporting evidence: %+v", event)
++		}
++	}
++}
++
+ func TestBuildOrganizePlanLinksUniqueRefundsAndRejectsExcess(t *testing.T) {
+ 	for _, test := range []struct {
+ 		name              string
+@@ -282,7 +377,7 @@ func plannerRow(uid int64, batchId int64, rowId int64, identityId int64, ledgerA
+ 		NormalizedTimezoneUtcOffset: &offset, NormalizedAmount: &amount, Currency: "CNY", NormalizedDirection: direction,
+ 		NormalizedTransactionType: transactionType, EconomicEffect: importing.ECONOMIC_EFFECT_NORMAL,
+ 		LedgerAccountId: &ledgerAccountId, SemanticEligibility: importing.SEMANTIC_ELIGIBILITY_POSTABLE,
+-		Disposition: importing.IMPORT_DISPOSITION_POSTABLE, RowId: rowId,
++		Disposition: importing.IMPORT_DISPOSITION_POSTABLE, IdentityKeyVersion: importing.IDENTITY_KEY_VERSION_V2, RowId: rowId,
+ 	}
+ }
+ 

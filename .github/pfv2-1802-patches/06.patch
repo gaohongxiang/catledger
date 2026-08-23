@@ -1,0 +1,146 @@
+diff --git a/pkg/personalfinance/importing/identity_test.go b/pkg/personalfinance/importing/identity_test.go
+index cd13eb0..09ee74c 100644
+--- a/pkg/personalfinance/importing/identity_test.go
++++ b/pkg/personalfinance/importing/identity_test.go
+@@ -196,7 +196,9 @@ func TestIdentityPriorityAndInvalidRows(t *testing.T) {
+ 	base := IdentityBuildInput{
+ 		ParseState:       PARSE_STATE_VALID,
+ 		SourceType:       SOURCE_TYPE_WECHAT,
+-		SourceAccountKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
++		SourceAccountKey: strings.Repeat("a", 64),
++		FileSha256:       strings.Repeat("b", 64),
++		SourceLocator:    "v1:csv:13:13",
+ 		BatchId:          8,
+ 		RowNumber:        3,
+ 		Normalized: NormalizedEvidence{
+@@ -210,75 +212,77 @@ func TestIdentityPriorityAndInvalidRows(t *testing.T) {
+ 		},
+ 	}
+ 
+-	tests := []struct {
+-		name        string
+-		input       IdentityBuildInput
+-		kind        IdentityKind
+-		expectedKey string
+-	}{
+-		{
+-			name: "order combination",
+-			input: func() IdentityBuildInput {
+-				input := base
+-				input.Identifiers = SourceIdentifiers{OrderId: "order", MerchantOrderId: "merchant"}
+-				input.FingerprintMaterials = StrongFingerprintMaterials{Counterparty: "merchant", Item: "item"}
+-				return input
+-			}(),
+-			kind:        IDENTITY_KIND_ORDER_COMBINATION,
+-			expectedKey: "38701218cebb2d86fa7d842a2cb2d99ffcf0b98aa05b755d52b26a3e2aa00be1",
+-		},
+-		{
+-			name: "strong fingerprint",
+-			input: func() IdentityBuildInput {
+-				input := base
+-				input.FingerprintMaterials = StrongFingerprintMaterials{Counterparty: "merchant", Item: "item"}
+-				return input
+-			}(),
+-			kind:        IDENTITY_KIND_STRONG_FINGERPRINT,
+-			expectedKey: "196ab13ecb5bd8f4b0fd9a34b9ab0c9860b58e5b19f06f636624ada0b5c61659",
+-		},
+-		{
+-			name:        "batch local",
+-			input:       base,
+-			kind:        IDENTITY_KIND_BATCH_LOCAL,
+-			expectedKey: "8a821c6d689e2a75eb89eed10536b3a7342cf4aaff99b4bc2eba89b1a43609f4",
+-		},
++	orderCombination := base
++	orderCombination.Identifiers = SourceIdentifiers{OrderId: "order", MerchantOrderId: "merchant"}
++	orderCombination.FingerprintMaterials = StrongFingerprintMaterials{Counterparty: "merchant", Item: "item"}
++	candidate, err := BuildIdentityCandidate(orderCombination)
++	if err != nil || candidate.Kind != IDENTITY_KIND_ORDER_COMBINATION ||
++		candidate.IdentityKeyVersion != IDENTITY_KEY_VERSION_V1 ||
++		candidate.SourceIdentityKey != "38701218cebb2d86fa7d842a2cb2d99ffcf0b98aa05b755d52b26a3e2aa00be1" {
++		t.Fatalf("order identity golden changed: candidate=%+v err=%v", candidate, err)
+ 	}
+ 
+-	for _, test := range tests {
+-		t.Run(test.name, func(t *testing.T) {
+-			candidate, err := BuildIdentityCandidate(test.input)
++	physical := base
++	physical.FingerprintMaterials = StrongFingerprintMaterials{Counterparty: "merchant", Item: "item"}
++	candidate, err = BuildIdentityCandidate(physical)
++	if err != nil || candidate.Kind != IDENTITY_KIND_PHYSICAL_RECORD ||
++		candidate.IdentityKeyVersion != IDENTITY_KEY_VERSION_V2 ||
++		candidate.SourceIdentityKey != "be0659389fe0a9c37029e24afbf672e7ff811af1fcf1840dd585fe43aed4e0ac" {
++		t.Fatalf("physical identity golden changed: candidate=%+v err=%v", candidate, err)
++	}
++	physicalKey := candidate.SourceIdentityKey
+ 
+-			if err != nil {
+-				t.Fatalf("build identity candidate: %v", err)
+-			}
++	withoutContentFingerprint := base
++	candidate, err = BuildIdentityCandidate(withoutContentFingerprint)
++	if err != nil || candidate.SourceIdentityKey != physicalKey {
++		t.Fatalf("content fingerprint changed physical identity: candidate=%+v err=%v", candidate, err)
++	}
+ 
+-			if candidate.Kind != test.kind || candidate.SourceIdentityKey != test.expectedKey {
+-				t.Fatalf("identity golden changed: candidate=%+v expected kind=%s key=%s", candidate, test.kind, test.expectedKey)
+-			}
+-		})
++	nextLocator := base
++	nextLocator.SourceLocator = "v1:csv:14:14"
++	nextCandidate, err := BuildIdentityCandidate(nextLocator)
++	if err != nil || nextCandidate.SourceIdentityKey == physicalKey {
++		t.Fatalf("different physical rows were collapsed: candidate=%+v err=%v", nextCandidate, err)
++	}
++
++	reparse := base
++	reparse.BatchId = 99
++	reparse.RowNumber = 88
++	reparseCandidate, err := BuildIdentityCandidate(reparse)
++	if err != nil || reparseCandidate.SourceIdentityKey != physicalKey {
++		t.Fatalf("same file locator did not survive reparse: candidate=%+v err=%v", reparseCandidate, err)
++	}
++
++	differentFile := base
++	differentFile.FileSha256 = strings.Repeat("c", 64)
++	differentFileCandidate, err := BuildIdentityCandidate(differentFile)
++	if err != nil || differentFileCandidate.SourceIdentityKey == physicalKey {
++		t.Fatalf("different files shared an unproven physical identity: candidate=%+v err=%v", differentFileCandidate, err)
+ 	}
+ 
+ 	oneOrderOnly := base
+ 	oneOrderOnly.Identifiers = SourceIdentifiers{OrderId: "order"}
+-	assertIdentityKind(t, oneOrderOnly, IDENTITY_KIND_BATCH_LOCAL)
++	assertIdentityKind(t, oneOrderOnly, IDENTITY_KIND_PHYSICAL_RECORD)
+ 
+ 	maskedTransaction := base
+ 	maskedTransaction.Identifiers = SourceIdentifiers{TransactionId: "tx****001"}
+-	assertIdentityKind(t, maskedTransaction, IDENTITY_KIND_BATCH_LOCAL)
++	assertIdentityKind(t, maskedTransaction, IDENTITY_KIND_PHYSICAL_RECORD)
+ 
+-	nextRow := base
+-	nextRow.RowNumber = 4
+-	nextCandidate, err := BuildIdentityCandidate(nextRow)
++	if kind, stable := ResolveStableSourceIdentityKind(SourceIdentifiers{TransactionId: "tx-001"}); !stable || kind != IDENTITY_KIND_SOURCE_TRANSACTION_ID {
++		t.Fatalf("stable transaction identity was not recognized: kind=%q stable=%t", kind, stable)
++	}
++	if _, stable := ResolveStableSourceIdentityKind(SourceIdentifiers{OrderId: "order-only"}); stable {
++		t.Fatal("single order identifier was treated as stable")
++	}
+ 
+-	if err != nil || nextCandidate.SourceIdentityKey != "8c8030d99ceb3f6e6757b9bf1b220ee1ac9072888184866d38395b43e32e08f5" ||
+-		nextCandidate.SourceIdentityKey == tests[2].expectedKey {
+-		t.Fatalf("same-amount batch-local rows were collapsed: candidate=%+v err=%v", nextCandidate, err)
++	missingLocator := base
++	missingLocator.SourceLocator = ""
++	if _, err = BuildIdentityCandidate(missingLocator); err == nil {
++		t.Fatal("physical identity without locator was accepted")
+ 	}
+ 
+ 	invalid := IdentityBuildInput{ParseState: PARSE_STATE_INVALID}
+-	candidate, err := BuildIdentityCandidate(invalid)
+-
++	candidate, err = BuildIdentityCandidate(invalid)
+ 	if err != nil || candidate != nil {
+ 		t.Fatalf("invalid row should not get an identity: candidate=%+v err=%v", candidate, err)
+ 	}
