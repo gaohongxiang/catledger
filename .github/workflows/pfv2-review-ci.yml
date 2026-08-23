@@ -4,31 +4,13 @@ on:
   push:
     branches:
       - codex/pfv2-1702-review-issues
-    paths:
-      - 'pkg/personalfinance/**'
-      - 'pkg/api/**'
-      - 'src/features/personal-finance/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/pfv2-review-ci.yml'
   pull_request:
     branches:
       - main
-    paths:
-      - 'pkg/personalfinance/**'
-      - 'pkg/api/**'
-      - 'src/features/personal-finance/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/pfv2-review-ci.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   issues: write
   pull-requests: write
 
@@ -39,7 +21,7 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -58,59 +40,16 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Apply deterministic source fixes
-        if: github.event_name == 'push'
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          rebuild = Path('pkg/personalfinance/organizer/rebuild.go')
-          text = rebuild.read_text()
-          old = 'nextEvent, applyErr := applyEventCorrection(&working, request.Correction, action.ActionId, now)'
-          new = '''relations, relationErr := tx.ListRelations(event.EventId)
-          if relationErr != nil {
-              return relationErr
-          }
-          nextEvent, applyErr := applyEventCorrection(&working, request.Correction, relations, action.ActionId, now)'''
-          if old in text:
-              rebuild.write_text(text.replace(old, new, 1))
-
-          resolution = Path('pkg/personalfinance/organizer/review_issue_resolution.go')
-          text = resolution.read_text()
-          resolution.write_text(text.replace('\n\t"fmt"', '', 1))
-          PY
-
-      - name: Determine changed Go files
+      - name: Verify changed Go formatting
+        id: format
+        continue-on-error: true
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha || github.event.before }}"
           if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             base="$(git merge-base HEAD origin/main)"
           fi
-          git diff --name-only --diff-filter=ACMRT "$base"...HEAD -- '*.go' > /tmp/changed-go.txt
-
-      - name: Format and persist deterministic fixes
-        if: github.event_name == 'push'
-        shell: bash
-        run: |
-          if [ -s /tmp/changed-go.txt ]; then
-            xargs gofmt -w < /tmp/changed-go.txt
-          fi
-          if ! git diff --quiet -- '*.go'; then
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add -- '*.go'
-            git commit -m 'fix(pf): apply focused compile and formatting fixes'
-            git push
-          fi
-
-      - name: Verify formatting
-        id: format
-        continue-on-error: true
-        shell: bash
-        run: |
-          files=$(cat /tmp/changed-go.txt)
+          files=$(git diff --name-only --diff-filter=ACMRT "$base"...HEAD -- '*.go')
           if [ -n "$files" ]; then
             unformatted=$(gofmt -l $files)
             if [ -n "$unformatted" ]; then
@@ -118,20 +57,21 @@ jobs:
               exit 1
             fi
           fi
-          echo 'All changed Go files are formatted.' > /tmp/format.log
+          echo 'All changed Go files are formatted.' | tee /tmp/format.log
 
-      - name: Test personal finance backend
+      - name: Test personal-finance backend
         id: backend_tests
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          go test ./pkg/personalfinance/... ./pkg/api/... 2>&1 | tee /tmp/backend.log
+          go test -count=1 ./pkg/personalfinance/... ./pkg/api/... 2>&1 | tee /tmp/backend.log
 
       - name: Install frontend dependencies
         id: frontend_install
         continue-on-error: true
-        run: npm ci --ignore-scripts
+        shell: bash
+        run: npm ci --ignore-scripts 2>&1 | tee /tmp/frontend-install.log
 
       - name: Type-check frontend
         id: frontend_typecheck
@@ -162,15 +102,19 @@ jobs:
             echo "- Personal-finance backend tests: **${BACKEND_OUTCOME}**"
             echo "- Frontend install: **${FRONTEND_INSTALL_OUTCOME}**"
             echo "- Vue/TypeScript type-check: **${FRONTEND_OUTCOME}**"
-            for item in format backend frontend; do
-              outcome_var="${item^^}_OUTCOME"
-              outcome="${!outcome_var:-failure}"
+            for item in format backend frontend-install frontend; do
+              case "$item" in
+                format) outcome="$FORMAT_OUTCOME" ;;
+                backend) outcome="$BACKEND_OUTCOME" ;;
+                frontend-install) outcome="$FRONTEND_INSTALL_OUTCOME" ;;
+                frontend) outcome="$FRONTEND_OUTCOME" ;;
+              esac
               if [ "$outcome" != success ] && [ -f "/tmp/${item}.log" ]; then
                 echo
                 echo "<details><summary>${item} diagnostics</summary>"
                 echo
                 echo '```text'
-                tail -n 120 "/tmp/${item}.log"
+                tail -n 180 "/tmp/${item}.log"
                 echo '```'
                 echo '</details>'
               fi
