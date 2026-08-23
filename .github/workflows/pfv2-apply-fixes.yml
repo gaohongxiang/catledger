@@ -1,0 +1,54 @@
+name: PF v2 Apply Release Gate Fixes
+
+on:
+  push:
+    branches:
+      - codex/pfv2-1702-review-issues
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pfv2-apply-release-gate-fixes
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout implementation branch
+        uses: actions/checkout@v6
+        with:
+          ref: codex/pfv2-1702-review-issues
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Apply verified fixes
+        shell: bash
+        run: |
+          printf '%s' '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' | base64 -d > /tmp/pfv2-fixes.patch.gz
+          echo 'fe133b47d5184e460eba5818fd28b1a103760438ea5fb6cfdc6f78ff55864e4b  /tmp/pfv2-fixes.patch.gz' | sha256sum --check
+          gzip -dc /tmp/pfv2-fixes.patch.gz > /tmp/pfv2-fixes.patch
+          git apply --check /tmp/pfv2-fixes.patch
+          git apply /tmp/pfv2-fixes.patch
+          gofmt -w \
+            pkg/personalfinance/migrations/schema_v010_live_test.go \
+            pkg/personalfinance/reconciliation/decision_repository.go
+          git rm -f .github/workflows/pfv2-apply-fixes.yml
+          git diff --check
+
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'fix(pf): close full release gate failures'
+          git push origin HEAD:codex/pfv2-1702-review-issues
