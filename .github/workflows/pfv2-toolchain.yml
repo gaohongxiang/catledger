@@ -16,6 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Surface toolchain run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh pr comment 1 --repo "${GITHUB_REPOSITORY}" --body "<!-- pfv2-toolchain --> toolchain-run:${GITHUB_RUN_ID} commit:${GITHUB_SHA}"
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -24,7 +30,9 @@ jobs:
 
       - name: Package Go toolchain
         shell: bash
-        run: tar -C "$(dirname "$(dirname "$(command -v go)")")" -czf /tmp/go-1.26.0-linux-x64.tgz x64
+        run: |
+          go_root="$(go env GOROOT)"
+          tar -C "$(dirname "$go_root")" -czf /tmp/go-1.26.0-linux-x64.tgz "$(basename "$go_root")"
 
       - name: Upload Go toolchain
         uses: actions/upload-artifact@v4
@@ -33,9 +41,3 @@ jobs:
           path: /tmp/go-1.26.0-linux-x64.tgz
           retention-days: 1
           if-no-files-found: error
-
-      - name: Surface toolchain run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: gh pr comment 1 --repo "${GITHUB_REPOSITORY}" --body "<!-- pfv2-toolchain --> toolchain-run:${GITHUB_RUN_ID} commit:${GITHUB_SHA}"
