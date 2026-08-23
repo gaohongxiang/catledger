@@ -29,50 +29,60 @@ jobs:
       - name: Record implementation evidence and remove temporary tooling
         shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          def replace(path: str, old: str, new: str) -> None:
+          def sub_once(path: str, pattern: str, replacement: str, flags: int = 0) -> None:
               target = Path(path)
               text = target.read_text()
-              count = text.count(old)
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)
               if count != 1:
-                  raise SystemExit(f'{path}: expected one match, found {count}: {old[:80]!r}')
-              target.write_text(text.replace(old, new))
+                  raise SystemExit(f'{path}: expected one match, found {count}: {pattern[:100]!r}')
+              target.write_text(updated)
+              print(f'updated {path}: {pattern[:60]}')
 
-          replace(
-              'docs/个人财务来源记录身份与重复语义设计.md',
-              '> 状态：DESIGN-1802 冻结设计；PFV2-1802 实现中',
+          design = 'docs/个人财务来源记录身份与重复语义设计.md'
+          sub_once(
+              design,
+              r'^> 状态：DESIGN-1802 冻结设计；PFV2-1802 实现中$',
               '> 状态：DESIGN-1802 冻结设计；PFV2-1802 已实现，等待合并与真实数据验收',
+              re.MULTILINE,
           )
-          replace(
-              'docs/个人财务来源记录身份与重复语义设计.md',
-              '不在本任务中部署、修改正式数据库、重整正式更新或执行真实入账。正式数据修复必须先在副本验证并再次获得用户授权。',
+          sub_once(
+              design,
+              r'^不在本任务中部署、修改正式数据库、重整正式更新或执行真实入账。正式数据修复必须先在副本验证并再次获得用户授权。$',
               '实现证据：文档冻结提交为 `b5987979`，核心实现提交为 `078112ff`，测试汇总修正为 `c8e46ed5`；最终聚焦门禁 run #16 在 Go 1.26 与 Node 24 下通过 importing/organizer 完整包测试、vet、四项关键回归重复 10 次、前端类型检查、聚焦单测和生产构建。\n\n不在本任务中部署、修改正式数据库、重整正式更新或执行真实入账。正式数据修复必须先在副本验证并再次获得用户授权。',
+              re.MULTILINE,
           )
 
-          replace(
-              'docs/个人财务实施规划.md',
-              '| PFV2-1802 | 修复无流水号来源身份与相同内容交易误合并 | UX-1801 | 进行中 | 当前主负责人 / `codex/pfv2-1802-source-identity` | DESIGN-1802 已冻结：不同物理行默认不同记录，内容指纹只用于候选；新增物理记录身份策略并兼容拆开旧 v1 强指纹事件，不改 schema、正式交易或生产数据 |',
+          plan = 'docs/个人财务实施规划.md'
+          sub_once(
+              plan,
+              r'^\| PFV2-1802 \|.*$',
               '| PFV2-1802 | 修复无流水号来源身份与相同内容交易误合并 | UX-1801 | 待验收 | 当前主负责人 / `codex/pfv2-1802-source-identity` | `b5987979` 冻结 DESIGN-1802，`078112ff` 实现 identity-v2 与旧 v1 兼容拆分，`c8e46ed5` 修正重解析汇总金标；最终门禁通过 Go 包测试/vet/关键回归 10 次、前端类型/单测/构建；不改 schema、正式交易或生产数据 |',
+              re.MULTILINE,
           )
-          replace(
-              'docs/个人财务实施规划.md',
-              '- 当前阶段：PFV2-1802 正在修复无稳定流水号账单的来源身份和旧工作投影误合并；完成前不重整正式轮次；',
+          sub_once(
+              plan,
+              r'^- 当前阶段：PFV2-1802.*$',
               '- 当前阶段：PFV2-1802 代码与聚焦门禁已完成，草稿 PR #4 等待用户/主负责人审阅；合并和发布前不重整正式轮次；',
+              re.MULTILINE,
           )
-          replace(
-              'docs/个人财务实施规划.md',
-              '- 当前文件所有权：来源身份与 organizer 规划相关代码/测试，以及需求、业务规则、架构、DESIGN-1802、实施规划和对应现行说明；',
+          sub_once(
+              plan,
+              r'^- 当前文件所有权：来源身份与 organizer 规划相关代码/测试.*$',
               '- 当前文件所有权：PFV2-1802 文档、来源身份与 organizer 规划代码/测试已冻结；后续只接受评审修正，不与其他实现会话并行改动这些文件；',
+              re.MULTILINE,
           )
-          plan = Path('docs/个人财务实施规划.md')
-          text = plan.read_text()
+          target = Path(plan)
+          text = target.read_text()
           marker = '## 19. 当前下一步\n\n'
           if text.count(marker) != 1:
               raise SystemExit('implementation plan: next-step marker mismatch')
           prefix = text.split(marker, 1)[0]
-          next_steps = '''## 19. 当前下一步
+          target.write_text(prefix + '''## 19. 当前下一步
 
 1. 用户/主负责人审阅草稿 PR #4，重点核对“稳定交易号保持 v1 身份、无稳定标识改用文件 SHA-256 + locator、旧 v1 强指纹按物理行拆开、跨来源保持多重集基数”四项边界；
 2. 获得合并授权后，将 PFV2-1802 集成到 UX-1801 后续主线并按现行发布流程构建镜像；本任务本身不部署、不修改正式数据库；
@@ -81,29 +91,34 @@ jobs:
 5. 同时复核稳定交易号重解析仍收敛、银行 2 条与支付宝 2 条形成 2 个事件/4 条证据、旧人工决定和正式 7 条交易保持不变；
 6. PFV2-1802 真实数据验收通过后继续 DASH-1705 与 PFV2-1706 的报表、幂等、重启、总览和撤销验证；
 7. 只有 PFV2-1802、DASH-1705 和 PFV2-1706 全部验收且再次获得用户明确授权后，才执行第一次真实「全部入账」。
-'''
-          plan.write_text(prefix + next_steps)
+''')
+          print('updated implementation plan next steps')
 
-          replace(
-              'docs/现行说明/账单上传与解析.md',
-              '光大账单没有稳定订单号或流水号；当前 identity-v1 会把时间、金额、说明和末四位等内容指纹当作来源身份，因此不同物理行内容相同时可能被误标为精确重复。该结果不得用于真实入账，PFV2-1802 将改为文件内容与物理定位身份。',
+          upload = 'docs/现行说明/账单上传与解析.md'
+          sub_once(
+              upload,
+              r'光大账单没有稳定订单号或流水号；当前 identity-v1 会把[^\n]*?PFV2-1802 将改为文件内容与物理定位身份。',
               '光大账单没有稳定订单号或流水号；正式站当前发布的 identity-v1 会把时间、金额、说明和末四位等内容指纹当作来源身份，因此不同物理行内容相同时可能被误标为精确重复。本分支 identity-v2 已改为文件内容 SHA-256 与物理定位身份，并保留稳定交易号和完整订单组合的 v1 身份兼容。在合并、发布和重建旧轮之前，正式站旧结果不得用于真实入账。',
           )
-          replace(
-              'docs/现行说明/账单上传与解析.md',
-              '当前 identity-v1 在稳定交易号和完整订单组合缺失时仍可能使用强内容指纹作为来源身份。同一文件中的不同物理行若日期、金额和说明等完全相同，会被错误视为同一来源记录；当前批次的精确重复数及其派生事件计数因此不可信。修复前保持未入账，原始文件和物理行仍完整保留。',
+          sub_once(
+              upload,
+              r'^当前 identity-v1 在稳定交易号和完整订单组合缺失时[^\n]*$',
               '本分支 identity-v2 已在稳定交易号和完整订单组合缺失时改用文件内容 SHA-256 与物理 locator，同一文件不同物理行不再因内容相同共享来源身份；同一 locator 显式重解析仍会收敛。正式站尚未发布该实现，旧批次的精确重复数及其派生事件计数仍不可信；发布和重建前保持未入账，原始文件和物理行完整保留。',
+              re.MULTILINE,
           )
 
-          replace(
-              'docs/现行说明/账单整理与入账.md',
-              '相同来源身份先归入同一判断单元；但当前 identity-v1 会错误信任无稳定流水号记录的强内容指纹，导致内容相同的不同物理行提前归组。跨来源自动合并还必须有稳定业务引用和金额、币种、账户、方向、时间等语义共同支持。',
+          organize = 'docs/现行说明/账单整理与入账.md'
+          sub_once(
+              organize,
+              r'^相同来源身份先归入同一判断单元；但当前 identity-v1[^\n]*?共同支持。',
               '相同来源身份先归入同一判断单元。本分支 identity-v2 只信任稳定交易号、完整订单组合，或无稳定标识时的文件 SHA-256 + 物理 locator；整理器也会把旧 identity-v1 中没有稳定标识的共享强指纹按物理行拆开。正式站旧轮仍由 identity-v1 生成，发布并新建轮次前不得使用其数量入账。跨来源自动合并还必须有稳定业务引用和金额、币种、账户、方向、时间等语义共同支持。',
+              re.MULTILINE,
           )
-          replace(
-              'docs/现行说明/账单整理与入账.md',
-              '- 已确认光大账单存在不同物理行被强内容指纹误判为精确重复，当前显示的重复证据、最终事件、待处理和可入账计数不得作为入账依据；原始证据仍完整，可在新规则下重建。',
+          sub_once(
+              organize,
+              r'^- 已确认光大账单存在[^\n]*$',
               '- PFV2-1802 已在分支修复光大不同物理行被强内容指纹误判的问题，并补齐旧 v1 拆分与跨来源基数回归；正式站旧轮尚未发布和重建，其重复证据、最终事件、待处理和可入账计数仍不得作为入账依据；原始证据完整，可在发布后按新规则重建。',
+              re.MULTILINE,
           )
           PY
 
