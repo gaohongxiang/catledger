@@ -133,11 +133,7 @@ func TestBuildReviewIssuePlanUsesOnlyExactSameEventCandidateGroups(t *testing.T)
 	first.EventUnixTime = cloneInt64Pointer(second.EventUnixTime)
 	first.Amount = cloneInt64Pointer(second.Amount)
 	plan := &OrganizePlan{
-		Events: []*EconomicEvent{first, second},
-		Evidence: []*EconomicEventEvidence{
-			{Uid: uid, UpdateId: updateId, EventId: first.EventId, RowId: 107},
-			{Uid: uid, UpdateId: updateId, EventId: second.EventId, RowId: 108},
-		},
+		Events:                []*EconomicEvent{first, second},
 		NeedsActionEventCount: 2,
 	}
 
@@ -163,11 +159,7 @@ func TestBuildReviewIssuePlanRejectsInvalidSameEventCandidateSnapshot(t *testing
 	second := reviewIssueEvent(uid, updateId, 210, 110, ECONOMIC_NATURE_EXPENSE, FLOW_DIRECTION_OUTFLOW, reasonCategoryUnclassified)
 	second.Status = EVENT_STATUS_READY
 	plan := &OrganizePlan{
-		Events: []*EconomicEvent{first, second},
-		Evidence: []*EconomicEventEvidence{
-			{Uid: uid, UpdateId: updateId, EventId: first.EventId, RowId: 109},
-			{Uid: uid, UpdateId: updateId, EventId: second.EventId, RowId: 110},
-		},
+		Events:                   []*EconomicEvent{first, second},
 		SameEventCandidateGroups: map[string][]int64{strings.Repeat("c", 64): {first.EventId, second.EventId}},
 		NeedsActionEventCount:    1,
 		ReadyEventCount:          1,
