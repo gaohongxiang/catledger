@@ -17,10 +17,10 @@ func TestUndoEngineSQLiteInspectsAndReversesAtomically(t *testing.T) {
 	}
 	const uid = int64(9601)
 	const updateId = int64(9701)
-	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{
-		postingEvent(uid, updateId, 9711, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_EXPENSE),
-		postingEvent(uid, updateId, 9712, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_REFUND),
-	})
+	expense := postingEvent(uid, updateId, 9711, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_EXPENSE)
+	refund := postingEvent(uid, updateId, 9712, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_REFUND)
+	seedPostingUpdateWithRelations(t, repository, uid, updateId, []*organizer.EconomicEvent{expense, refund},
+		[]*organizer.EconomicEventRelation{postingRefundRelation(uid, updateId, refund, expense, 9713)})
 	ledger := &postingLedgerStub{next: 9800}
 	ids := &engineIdGenerator{next: 9900}
 	posting, err := organizer.NewPostingEngine(repository, ledger, ids)
