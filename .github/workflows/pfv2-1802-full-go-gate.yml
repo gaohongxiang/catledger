@@ -1,0 +1,38 @@
+name: PFV2-1802 Full Go Gate
+
+on:
+  pull_request:
+    branches:
+      - codex/ux-1801-abandon-round
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pfv2-1802-full-go-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  full-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check patch whitespace
+        run: git diff --check "${{ github.event.pull_request.base.sha }}"...HEAD
+
+      - name: Run complete Go test suite
+        run: go test -count=1 ./...
+
+      - name: Run complete Go vet
+        run: go vet ./...
