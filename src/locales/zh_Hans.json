@@ -2948,7 +2948,7 @@
                 "needsAction": "还有 {count} 个必要问题",
                 "needsActionHint": "处理或排除这些项目后，就能一次入账所有已就绪事件。",
                 "ready": "结果已经可以入账",
-                "readyHint": "重复证据已折叠，最终事件和原始证据仍可逐笔核验。"
+                "readyHint": "附加证据已归入对应事件，最终事件和原始证据仍可逐笔核验。"
             },
             "workflow": {
                 "eyebrow": "本轮账单",
@@ -2980,7 +2980,7 @@
                 "continue": "返回交易核对"
             },
             "metric": { "posted": "已入账", "ready": "待入账", "needsAction": "必须处理", "excluded": "已排除" },
-            "conservation": { "evidence": "有效证据", "duplicates": "重复证据", "events": "最终事件", "ok": "证据守恒已核对", "invalid": "计数不守恒，请勿入账" },
+            "conservation": { "evidence": "有效证据", "duplicates": "附加证据", "events": "最终事件", "ok": "证据守恒已核对", "invalid": "计数不守恒，请勿入账" },
             "events": { "eyebrow": "结果明细", "hint": "商户、商品、支付方式、账户和分类直接展示；完整原始记录按需查看。", "evidence": "查看证据", "resolve": "处理", "empty": "这个分组暂时没有事件。", "unnamed": "账单交易", "accountPending": "账户待确认", "uncategorized": "暂未分类", "evidenceCount": "{count} 条来源记录" },
             "filter": { "needs_action": "必须处理", "ready": "待入账", "posted": "已入账", "excluded": "已排除", "corrected": "已修正" },
             "status": {
