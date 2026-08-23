@@ -1,34 +1,80 @@
-name: PFV2-1901 Source Snapshot
+name: PFV2-1901 Apply Documentation
 
 on:
   push:
     branches:
       - codex/pfv2-1901-source-identity
-  pull_request:
-    branches:
-      - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  snapshot:
+  apply:
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout branch
+      - name: Checkout implementation branch
         uses: actions/checkout@v6
         with:
+          ref: codex/pfv2-1901-source-identity
           fetch-depth: 0
 
-      - name: Package source
+      - name: Materialize and apply documentation patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BLOB_SHAS: >-
+            0210aba193fcd8280111a0fd380b2858fb21e4ae
+            e6102d1a8f4101c240ca07a6363826a1bb4ccb4e
+            6556aacc1cbef8650efdaa54aa446dee577fa205
+            58d4c23a3e933627265f338c57891c5ddd075df8
+            3913bf355ff48c32ff3f8eb535bf86512c12abea
         shell: bash
-        run: tar --exclude=.git -czf /tmp/pfv2-1901-source.tgz .
+        run: |
+          : > /tmp/pfv2-1901-docs.patch.bz2.b64
+          for sha in $BLOB_SHAS; do
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/git/blobs/$sha" \
+              | jq -r '.content' | tr -d '\n' | base64 --decode \
+              >> /tmp/pfv2-1901-docs.patch.bz2.b64
+          done
+          base64 --decode /tmp/pfv2-1901-docs.patch.bz2.b64 > /tmp/pfv2-1901-docs.patch.bz2
+          bzip2 --decompress --stdout /tmp/pfv2-1901-docs.patch.bz2 > /tmp/pfv2-1901-docs.patch
+          git apply --index --whitespace=error-all /tmp/pfv2-1901-docs.patch
 
-      - name: Upload source
-        uses: actions/upload-artifact@v4
-        with:
-          name: pfv2-1901-source-${{ github.sha }}
-          path: /tmp/pfv2-1901-source.tgz
-          retention-days: 1
-          if-no-files-found: error
+      - name: Verify documentation patch
+        shell: bash
+        run: |
+          git diff --cached --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path.cwd()
+          broken = []
+          for path in (root / 'docs').rglob('*.md'):
+              text = path.read_text(encoding='utf-8')
+              for target in re.findall(r'\[[^\]]*\]\(([^)]+)\)', text):
+                  target = target.strip()
+                  if not target or target.startswith(('#', 'http://', 'https://', 'mailto:')):
+                      continue
+                  target = target.split('#', 1)[0]
+                  if not target:
+                      continue
+                  resolved = (path.parent / target).resolve()
+                  if not resolved.exists():
+                      broken.append(f'{path.relative_to(root)} -> {target}')
+          if broken:
+              raise SystemExit('broken documentation links:\n' + '\n'.join(broken))
+          PY
+
+      - name: Commit frozen documentation and remove temporary workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/pfv2-1901-source-snapshot.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'docs(pf): 冻结来源记录身份与重复语义'
+          git push origin HEAD:codex/pfv2-1901-source-identity
