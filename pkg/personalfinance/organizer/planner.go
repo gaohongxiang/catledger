@@ -291,6 +291,12 @@ func buildIdentityGroups(rows []*planningRow) []*planningGroup {
 }
 
 func identityGroupKey(row *importing.RawImportRow) string {
+	if row == nil || !canGroupByPersistedSourceIdentity(row) {
+		if row == nil {
+			return "row:nil"
+		}
+		return "row:" + strconv.FormatInt(row.RowId, 10)
+	}
 	if row.IdentityId != nil && *row.IdentityId > 0 {
 		return "identity:" + strconv.FormatInt(*row.IdentityId, 10)
 	}
@@ -298,6 +304,29 @@ func identityGroupKey(row *importing.RawImportRow) string {
 		return "observed:" + row.ObservedSourceIdentityKey
 	}
 	return "row:" + strconv.FormatInt(row.RowId, 10)
+}
+
+// canGroupByPersistedSourceIdentity prevents legacy identity-v1 content
+// fingerprints from collapsing different physical rows before cross-source
+// matching. V2 rows use stable source identifiers or file+locator identities;
+// V1 rows are trusted only when their raw identifiers prove the stable kind.
+func canGroupByPersistedSourceIdentity(row *importing.RawImportRow) bool {
+	if row == nil {
+		return false
+	}
+	switch row.IdentityKeyVersion {
+	case importing.IDENTITY_KEY_VERSION_V2:
+		return true
+	case importing.IDENTITY_KEY_VERSION_V1:
+		_, stable := importing.ResolveStableSourceIdentityKind(importing.SourceIdentifiers{
+			TransactionId:   row.SourceTransactionId,
+			OrderId:         row.SourceOrderId,
+			MerchantOrderId: row.SourceMerchantOrderId,
+		})
+		return stable
+	default:
+		return false
+	}
 }
 
 func mergeStrongSameEvents(groups []*planningGroup) []*planningGroup {

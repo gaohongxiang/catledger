@@ -20,7 +20,11 @@
             </div>
 
             <f7-block strong inset class="conservation" :class="{ invalid: !conservationHolds }">
-                <strong>{{ update.validEvidenceCount }} − {{ update.duplicateEvidenceCount }} = {{ update.finalEventCount }}</strong>
+                <strong>
+                    {{ update.validEvidenceCount }} {{ tt('personalFinance.organizerV2.conservation.evidence') }} −
+                    {{ update.duplicateEvidenceCount }} {{ tt('personalFinance.organizerV2.conservation.duplicates') }} =
+                    {{ update.finalEventCount }} {{ tt('personalFinance.organizerV2.conservation.events') }}
+                </strong>
                 <span>{{ tt(conservationHolds ? 'personalFinance.organizerV2.conservation.ok' : 'personalFinance.organizerV2.conservation.invalid') }}</span>
             </f7-block>
 

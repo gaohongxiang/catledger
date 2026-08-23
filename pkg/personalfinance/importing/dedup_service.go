@@ -43,6 +43,7 @@ type EvidenceBatchPersistence struct {
 	Batch                    *ImportBatch
 	CardHeader               *CardHeader
 	ExpectedSourceAccountKey string
+	ExpectedFileSha256       string
 	DocumentIssues           []*ImportBatchIssue
 	Rows                     []EvidenceBatchPersistenceRow
 }
@@ -138,7 +139,7 @@ func (s *DedupService) PersistEvidenceDocument(c core.Context, request PersistEv
 		return nil, ErrImportIdentifierUnavailable
 	}
 
-	persistence, err := s.buildEvidenceBatchPersistence(request, account, eligibilities, batchId, now)
+	persistence, err := s.buildEvidenceBatchPersistence(request, file, account, eligibilities, batchId, now)
 
 	if err != nil {
 		return nil, err
@@ -222,7 +223,11 @@ func validateSelectedSourceAccount(request PersistEvidenceDocumentRequest, accou
 	return nil
 }
 
-func (s *DedupService) buildEvidenceBatchPersistence(request PersistEvidenceDocumentRequest, account *SourceAccount, eligibilities []SemanticEligibility, batchId int64, now int64) (*EvidenceBatchPersistence, error) {
+func (s *DedupService) buildEvidenceBatchPersistence(request PersistEvidenceDocumentRequest, file *ImportFile, account *SourceAccount, eligibilities []SemanticEligibility, batchId int64, now int64) (*EvidenceBatchPersistence, error) {
+	if file == nil || file.Uid != request.Uid || file.FileId != request.FileId || !isLowerHexSHA256(file.FileSha256) {
+		return nil, ErrImportRequestInvalid
+	}
+
 	versions := CurrentCentralRuleVersions()
 	sourceAccountId := account.SourceAccountId
 	completedUnixTime := now
@@ -311,6 +316,8 @@ func (s *DedupService) buildEvidenceBatchPersistence(request PersistEvidenceDocu
 			ParseState:           evidenceRow.ParseStatus,
 			SourceType:           request.Descriptor.SourceType,
 			SourceAccountKey:     account.SourceAccountKey,
+			FileSha256:           file.FileSha256,
+			SourceLocator:        row.SourceLocator,
 			BatchId:              batchId,
 			RowNumber:            evidenceRow.RowNumber,
 			Identifiers:          evidenceRow.Identifiers,
@@ -331,6 +338,7 @@ func (s *DedupService) buildEvidenceBatchPersistence(request PersistEvidenceDocu
 
 			row.ObservedSourceIdentityKey = candidate.SourceIdentityKey
 			row.ObservedSourceCoreDigest = candidate.SourceCoreDigest
+			row.IdentityKeyVersion = candidate.IdentityKeyVersion
 			rows[index].IdentityCandidate = candidate
 			rows[index].FingerprintMaterials = evidenceRow.FingerprintMaterials
 			rows[index].CandidateIdentityId = candidateIdentityId
@@ -341,6 +349,7 @@ func (s *DedupService) buildEvidenceBatchPersistence(request PersistEvidenceDocu
 		Batch:                    batch,
 		CardHeader:               cardHeader,
 		ExpectedSourceAccountKey: account.SourceAccountKey,
+		ExpectedFileSha256:       file.FileSha256,
 		DocumentIssues:           documentIssues,
 		Rows:                     rows,
 	}, nil

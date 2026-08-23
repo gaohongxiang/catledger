@@ -174,7 +174,7 @@ func TestParserDescriptorAndCentralVersions(t *testing.T) {
 	versions := CurrentCentralRuleVersions()
 
 	if versions.SourceAccountKeyVersion != SOURCE_ACCOUNT_KEY_VERSION_V1 ||
-		versions.IdentityKeyVersion != IDENTITY_KEY_VERSION_V1 ||
+		versions.IdentityKeyVersion != IDENTITY_KEY_VERSION_V2 ||
 		versions.CoreDigestVersion != CORE_DIGEST_VERSION_V1 ||
 		versions.FingerprintVersion != FINGERPRINT_VERSION_V1 ||
 		versions.RawSnapshotVersion != RAW_SNAPSHOT_VERSION_V1 {
