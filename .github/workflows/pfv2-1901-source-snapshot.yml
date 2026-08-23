@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - codex/pfv2-1901-source-identity
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
