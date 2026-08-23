@@ -77,15 +77,16 @@ jobs:
       - name: Type-check Vue and TypeScript
         run: ./node_modules/.bin/vue-tsc --noEmit
 
-      - name: Run lint when configured
+      - name: Run lint
         shell: bash
         run: |
-          if node -e "process.exit(require('./package.json').scripts?.lint ? 0 : 1)"; then
+          if [ -x ./node_modules/.bin/eslint ]; then
+            ./node_modules/.bin/eslint .
+          elif node -e "process.exit(require('./package.json').scripts?.lint ? 0 : 1)"; then
             npm run lint
-          elif [ -x ./node_modules/.bin/eslint ]; then
-            ./node_modules/.bin/eslint src
           else
-            echo 'No lint command is configured; skipped.'
+            echo 'No lint command is configured.'
+            exit 1
           fi
 
       - name: Run unit tests
@@ -211,8 +212,10 @@ jobs:
         run: |
           git rm -f --ignore-unmatch \
             .github/workflows/pfv2-toolchain.yml \
-            .github/workflows/pfv2-dependencies.yml \
-            .github/workflows/pfv2-source-snapshot.yml
+            .github/workflows/pfv2-deps.yml \
+            .github/workflows/pfv2-snapshot.yml \
+            .github/workflows/pfv2-apply-fixes.yml \
+            .github/pfv2-repair-trigger
           if git diff --cached --quiet; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
             exit 0
