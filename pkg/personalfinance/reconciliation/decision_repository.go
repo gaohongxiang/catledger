@@ -262,6 +262,22 @@ func (r *decisionRepository) markDecisionFailed(c core.Context, uid int64, decis
 		return ErrDecisionRequestInvalid
 	}
 	database, _ := r.database(uid)
+	for attempt := 0; attempt < maximumCandidatePersistenceAttempts; attempt++ {
+		retry, err := r.markDecisionFailedAttempt(c, database, uid, decisionId, errorCode, now)
+		if err == nil {
+			return nil
+		}
+		if !retry || attempt+1 == maximumCandidatePersistenceAttempts {
+			return err
+		}
+		if waitErr := waitCandidatePersistenceRetry(c, initialCandidatePersistenceRetryDelay<<attempt); waitErr != nil {
+			return waitErr
+		}
+	}
+	return fmt.Errorf("reconciliation decision failure transition retry limit reached")
+}
+
+func (r *decisionRepository) markDecisionFailedAttempt(c core.Context, database *datastore.Database, uid int64, decisionId int64, errorCode string, now int64) (bool, error) {
 	failed := now
 	sess := database.NewPrivacySession(c)
 	updated, err := sess.Where("uid=? AND decision_id=? AND status=?", uid, decisionId, DECISION_STATUS_READY).
@@ -269,16 +285,25 @@ func (r *decisionRepository) markDecisionFailed(c core.Context, uid int64, decis
 		Update(&Decision{Status: DECISION_STATUS_FAILED, ErrorCode: errorCode, FailedUnixTime: &failed, UpdatedUnixTime: now})
 	sess.Close()
 	if err != nil {
-		return fmt.Errorf("mark reconciliation decision failed: %w", err)
+		wrapped := fmt.Errorf("mark reconciliation decision failed: %w", err)
+		return isRetryableCandidatePersistenceError(database.DatabaseType(), wrapped), wrapped
 	}
 	if updated == 1 {
-		return nil
+		return false, nil
 	}
-	persisted, err := r.findDecisionById(c, uid, decisionId)
-	if err == nil && persisted != nil && isTerminalDecisionStatus(persisted.Status) {
-		return nil
+
+	persisted, findErr := r.findDecisionById(c, uid, decisionId)
+	if findErr != nil {
+		wrapped := fmt.Errorf("read reconciliation decision failure transition: %w", findErr)
+		return isRetryableCandidatePersistenceError(database.DatabaseType(), wrapped), wrapped
 	}
-	return errDecisionNotAvailable
+	if persisted != nil && isTerminalDecisionStatus(persisted.Status) {
+		return false, nil
+	}
+	if persisted != nil && (persisted.Status == DECISION_STATUS_READY || persisted.Status == DECISION_STATUS_APPLYING) {
+		return true, errDecisionNotAvailable
+	}
+	return false, errDecisionNotAvailable
 }
 
 func (r *decisionRepository) getUndoImpact(c core.Context, uid int64, caseId int64) (*UndoImpact, error) {
