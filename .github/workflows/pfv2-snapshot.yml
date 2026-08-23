@@ -1,0 +1,33 @@
+name: PF Source Snapshot
+
+on:
+  push:
+    branches:
+      - codex/pfv2-1702-review-issues
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v6
+        with:
+          ref: codex/pfv2-1702-review-issues
+          fetch-depth: 0
+
+      - name: Package source
+        shell: bash
+        run: tar --exclude=.git -czf /tmp/ezbookkeeping-source.tgz .
+
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: pfv2-source-${{ github.sha }}
+          path: /tmp/ezbookkeeping-source.tgz
+          retention-days: 1
+          if-no-files-found: error
