@@ -1,10 +1,8 @@
 package migrations
 
 import (
-	"fmt"
+	"net"
 	"os"
-	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -17,22 +15,27 @@ import (
 // CI enables it once for MySQL and once for PostgreSQL through environment
 // variables.
 func TestSchemaV010LiveDatabaseUpgrade(t *testing.T) {
-	databaseType := strings.TrimSpace(os.Getenv("PF_LIVE_DB_TYPE"))
-	if databaseType == "" {
+	rawDatabaseType := strings.TrimSpace(os.Getenv("PF_LIVE_DB_TYPE"))
+	if rawDatabaseType == "" {
 		t.Skip("PF_LIVE_DB_TYPE is not set")
 	}
 
-	config := new(settings.DatabaseConfig)
-	setRequiredDatabaseConfigField(t, config, []string{"DatabaseType", "Type"}, databaseType)
-	setRequiredDatabaseConfigField(t, config, []string{"DatabaseHost", "Host"}, envOrDefault("PF_LIVE_DB_HOST", "127.0.0.1"))
-	setRequiredDatabaseConfigField(t, config, []string{"DatabasePort", "Port"}, envOrDefault("PF_LIVE_DB_PORT", defaultLiveDatabasePort(databaseType)))
-	setRequiredDatabaseConfigField(t, config, []string{"DatabaseName", "Name"}, envOrDefault("PF_LIVE_DB_NAME", "ezbookkeeping_pf_test"))
-	setRequiredDatabaseConfigField(t, config, []string{"DatabaseUser", "User", "Username"}, envOrDefault("PF_LIVE_DB_USER", defaultLiveDatabaseUser(databaseType)))
-	setRequiredDatabaseConfigField(t, config, []string{"DatabasePassword", "Password"}, envOrDefault("PF_LIVE_DB_PASSWORD", "ezbookkeeping"))
-	setOptionalDatabaseConfigField(t, config, []string{"DatabaseSSLMode", "SSLMode"}, envOrDefault("PF_LIVE_DB_SSL_MODE", "disable"))
-	setOptionalDatabaseConfigField(t, config, []string{"MaxIdleConnection", "MaxIdleConnections"}, "1")
-	setOptionalDatabaseConfigField(t, config, []string{"MaxOpenConnection", "MaxOpenConnections"}, "4")
-	setOptionalDatabaseConfigField(t, config, []string{"ConnectionMaxLifeTime", "ConnectionMaxLifetime"}, "60")
+	databaseType, ok := normalizeLiveDatabaseType(rawDatabaseType)
+	if !ok {
+		t.Fatalf("unsupported live database type %q", rawDatabaseType)
+	}
+
+	config := &settings.DatabaseConfig{
+		DatabaseType:          databaseType,
+		DatabaseHost:          liveDatabaseHost(databaseType),
+		DatabaseName:          envOrDefault("PF_LIVE_DB_NAME", "ezbookkeeping_pf_test"),
+		DatabaseUser:          envOrDefault("PF_LIVE_DB_USER", defaultLiveDatabaseUser(databaseType)),
+		DatabasePassword:      envOrDefault("PF_LIVE_DB_PASSWORD", "ezbookkeeping"),
+		DatabaseSSLMode:       envOrDefault("PF_LIVE_DB_SSL_MODE", "disable"),
+		MaxIdleConnection:     1,
+		MaxOpenConnection:     4,
+		ConnectionMaxLifeTime: 60,
+	}
 
 	database, err := datastore.OpenDatabase(config)
 	if err != nil {
@@ -61,75 +64,26 @@ func TestSchemaV010LiveDatabaseUpgrade(t *testing.T) {
 	}
 }
 
-func setRequiredDatabaseConfigField(t *testing.T, config *settings.DatabaseConfig, names []string, raw string) {
-	t.Helper()
-	if !setDatabaseConfigField(t, config, names, raw) {
-		t.Fatalf("database config does not expose any required field %v; available fields: %s", names, databaseConfigFieldNames(config))
-	}
-}
-
-func setOptionalDatabaseConfigField(t *testing.T, config *settings.DatabaseConfig, names []string, raw string) {
-	t.Helper()
-	_ = setDatabaseConfigField(t, config, names, raw)
-}
-
-func setDatabaseConfigField(t *testing.T, config *settings.DatabaseConfig, names []string, raw string) bool {
-	t.Helper()
-	value := reflect.ValueOf(config)
-	if value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Struct {
-		t.Fatal("database config is not a writable struct pointer")
-	}
-	for _, name := range names {
-		field := value.Elem().FieldByName(name)
-		if !field.IsValid() || !field.CanSet() {
-			continue
-		}
-		if err := assignDatabaseConfigField(field, raw); err != nil {
-			t.Fatalf("set database config field %s: %v", name, err)
-		}
-		return true
-	}
-	return false
-}
-
-func assignDatabaseConfigField(field reflect.Value, raw string) error {
-	switch field.Kind() {
-	case reflect.String:
-		field.SetString(raw)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		value, err := strconv.ParseInt(raw, 10, field.Type().Bits())
-		if err != nil {
-			return err
-		}
-		field.SetInt(value)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		value, err := strconv.ParseUint(raw, 10, field.Type().Bits())
-		if err != nil {
-			return err
-		}
-		field.SetUint(value)
-	case reflect.Bool:
-		value, err := strconv.ParseBool(raw)
-		if err != nil {
-			return err
-		}
-		field.SetBool(value)
+func normalizeLiveDatabaseType(raw string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case settings.MySqlDbType:
+		return settings.MySqlDbType, true
+	case settings.PostgresDbType, "postgresql", "pg":
+		return settings.PostgresDbType, true
 	default:
-		return fmt.Errorf("unsupported kind %s", field.Kind())
+		return "", false
 	}
-	return nil
 }
 
-func databaseConfigFieldNames(config *settings.DatabaseConfig) string {
-	typeOf := reflect.TypeOf(config)
-	if typeOf.Kind() == reflect.Pointer {
-		typeOf = typeOf.Elem()
+func liveDatabaseHost(databaseType string) string {
+	host := envOrDefault("PF_LIVE_DB_HOST", "127.0.0.1")
+	if strings.HasPrefix(host, "/") {
+		return host
 	}
-	names := make([]string, 0, typeOf.NumField())
-	for index := 0; index < typeOf.NumField(); index++ {
-		names = append(names, typeOf.Field(index).Name)
+	if _, _, err := net.SplitHostPort(host); err == nil {
+		return host
 	}
-	return strings.Join(names, ",")
+	return net.JoinHostPort(host, envOrDefault("PF_LIVE_DB_PORT", defaultLiveDatabasePort(databaseType)))
 }
 
 func envOrDefault(name string, fallback string) string {
@@ -140,14 +94,14 @@ func envOrDefault(name string, fallback string) string {
 }
 
 func defaultLiveDatabasePort(databaseType string) string {
-	if strings.Contains(strings.ToLower(databaseType), "post") {
+	if databaseType == settings.PostgresDbType {
 		return "5432"
 	}
 	return "3306"
 }
 
 func defaultLiveDatabaseUser(databaseType string) string {
-	if strings.Contains(strings.ToLower(databaseType), "post") {
+	if databaseType == settings.PostgresDbType {
 		return "postgres"
 	}
 	return "root"
