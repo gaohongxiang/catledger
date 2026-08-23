@@ -1,7 +1,7 @@
 import type { PersonalFinanceSourceType } from '../models.ts';
 
 export type FinanceUpdateStatus =
-    'draft' | 'organizing' | 'review' | 'posting' | 'partially_posted' | 'posted' | 'failed' | 'undone';
+    'draft' | 'organizing' | 'review' | 'posting' | 'partially_posted' | 'posted' | 'failed' | 'undone' | 'abandoned';
 
 export type EconomicEventStatus = 'ready' | 'needs_action' | 'excluded' | 'posted' | 'corrected';
 export type EconomicFlowDirection = 'inflow' | 'outflow' | 'neutral';

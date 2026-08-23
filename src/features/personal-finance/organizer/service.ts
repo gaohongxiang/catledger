@@ -71,7 +71,7 @@ function asEnum<T extends string>(value: unknown, values: readonly T[]): T {
 }
 
 const updateStatuses: readonly FinanceUpdateStatus[] = [
-    'draft', 'organizing', 'review', 'posting', 'partially_posted', 'posted', 'failed', 'undone'
+    'draft', 'organizing', 'review', 'posting', 'partially_posted', 'posted', 'failed', 'undone', 'abandoned'
 ];
 const eventStatuses: readonly EconomicEventStatus[] = ['ready', 'needs_action', 'excluded', 'posted', 'corrected'];
 const sourceTypes: readonly PersonalFinanceSourceType[] = ['alipay', 'wechat', 'bank'];
@@ -322,6 +322,9 @@ export const organizerApi = {
     },
     async organize(update: FinanceUpdate, idempotencyKey: string): Promise<OrganizerMutation> {
         return mutation(unwrap(await services.organizePersonalFinanceUpdate(idempotencyRequest(update, idempotencyKey))));
+    },
+    async abandon(update: FinanceUpdate, idempotencyKey: string): Promise<OrganizerMutation> {
+        return mutation(unwrap(await services.abandonPersonalFinanceOrganizerUpdate(idempotencyRequest(update, idempotencyKey))));
     },
     async listEvents(updateId: string, status?: EconomicEventStatus, limit = 100): Promise<EconomicEventPage> {
         return normalizeEventPage(unwrap(await services.listPersonalFinanceOrganizerEvents({ updateId, status, limit })));

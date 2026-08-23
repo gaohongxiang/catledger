@@ -38,6 +38,12 @@ func TestOrganizerHandlersUseResourceContractsAndCurrentUser(t *testing.T) {
 		t.Fatalf("organize request mismatch: request=%+v err=%v", stub.organizeRequest, apiErr)
 	}
 
+	_, apiErr = api.UpdateAbandonHandler(newOrganizerTestContext(t, http.MethodPost, "/updates/abandon",
+		`{"updateId":"701","expectedUpdateVersion":1,"idempotencyKey":"abandon-1"}`))
+	if apiErr != nil || stub.abandonRequest.Uid != 1001 || stub.abandonRequest.UpdateId != 701 || stub.abandonRequest.ExpectedUpdateVersion != 1 {
+		t.Fatalf("abandon request mismatch: request=%+v err=%v", stub.abandonRequest, apiErr)
+	}
+
 	_, apiErr = api.EventCorrectHandler(newOrganizerTestContext(t, http.MethodPost, "/events/correct",
 		`{"updateId":"701","eventId":"801","expectedUpdateVersion":2,"expectedEventVersion":3,"idempotencyKey":"correct-1","fieldMask":128,"categoryId":"88"}`))
 	if apiErr != nil || stub.correctRequest.Uid != 1001 || stub.correctRequest.Correction.FieldMask != organizer.MANUAL_FIELD_CATEGORY ||
@@ -82,6 +88,7 @@ type organizerAPITestApplication struct {
 	createUID       int64
 	createBatchIds  []int64
 	organizeRequest organizer.OrganizeRequest
+	abandonRequest  organizer.AbandonRequest
 	correctRequest  organizer.CorrectEventRequest
 	postRequest     organizer.PostRequest
 }
@@ -102,6 +109,11 @@ func (a *organizerAPITestApplication) GetUpdate(_ core.Context, _ int64, _ int64
 func (a *organizerAPITestApplication) Organize(_ core.Context, request organizer.OrganizeRequest) (*organizer.OrganizeResult, error) {
 	a.organizeRequest = request
 	return &organizer.OrganizeResult{Update: a.update, Action: a.action, Events: []*organizer.EconomicEvent{a.event}}, a.err
+}
+
+func (a *organizerAPITestApplication) Abandon(_ core.Context, request organizer.AbandonRequest) (*organizer.AbandonResult, error) {
+	a.abandonRequest = request
+	return &organizer.AbandonResult{Update: a.update, Action: a.action}, a.err
 }
 
 func (a *organizerAPITestApplication) ListEvents(_ core.Context, _ int64, _ int64, _ organizer.EventStatus, _ *organizer.EventCursor, _ int) (*organizerEventPage, error) {

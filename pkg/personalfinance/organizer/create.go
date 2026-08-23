@@ -104,7 +104,8 @@ func (e *CreateEngine) Create(c core.Context, request CreateUpdateRequest) (*Cre
 			if findErr != nil {
 				return findErr
 			}
-			if claimedUpdate != nil && claimedUpdate.Status != UPDATE_STATUS_FAILED && claimedUpdate.Status != UPDATE_STATUS_UNDONE {
+			if claimedUpdate != nil && claimedUpdate.Status != UPDATE_STATUS_FAILED && claimedUpdate.Status != UPDATE_STATUS_UNDONE &&
+				claimedUpdate.Status != UPDATE_STATUS_ABANDONED {
 				return ErrCreateUpdateStateConflict
 			}
 		}

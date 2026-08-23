@@ -69,7 +69,7 @@ func TestEngineSQLitePersistsPlanAndReplaysIdempotently(t *testing.T) {
 	}
 }
 
-func TestEngineSQLiteReplacesOnlyUnpostedAutomaticPlan(t *testing.T) {
+func TestEngineSQLiteRejectsReorganizationForAutomaticPlan(t *testing.T) {
 	repository, database := newSQLiteOrganizerRepository(t)
 	const uid = int64(4151)
 	const updateId = int64(5151)
@@ -80,7 +80,7 @@ func TestEngineSQLiteReplacesOnlyUnpostedAutomaticPlan(t *testing.T) {
 		}
 		return tx.InsertSource(testSource(uid, updateId, 6151, 7150, batchId, 10))
 	}); err != nil {
-		t.Fatalf("seed replaceable organizer update: %v", err)
+		t.Fatalf("seed immutable organizer update: %v", err)
 	}
 	row := plannerRow(uid, batchId, 8151, 9151, 11, 1234, 1701500000, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
 	evidence := &engineEvidenceStub{
@@ -91,32 +91,38 @@ func TestEngineSQLiteReplacesOnlyUnpostedAutomaticPlan(t *testing.T) {
 		&engineAccountStub{items: map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}},
 		&engineIdGenerator{next: 15000})
 	if err != nil {
-		t.Fatalf("create replaceable organizer engine: %v", err)
+		t.Fatalf("create immutable organizer engine: %v", err)
 	}
 	first, err := engine.Organize(nil, organizer.OrganizeRequest{Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 1, IdempotencyKey: "organize-5151-v1"})
 	if err != nil || first == nil || len(first.Events) != 1 {
 		t.Fatalf("create first organizer plan: result=%+v err=%v", first, err)
 	}
 	firstEventId := first.Events[0].EventId
+	firstAmount := *first.Events[0].Amount
 	newAmount := int64(2345)
 	row.NormalizedAmount = &newAmount
 	row.NormalizedTransactionType = importing.SOURCE_TRANSACTION_TYPE_UNKNOWN
 	row.SemanticEligibility = importing.SEMANTIC_ELIGIBILITY_REVIEW_REQUIRED
 	row.Disposition = importing.IMPORT_DISPOSITION_REVIEW_REQUIRED
-	rebuilt, err := engine.Organize(nil, organizer.OrganizeRequest{Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 3, IdempotencyKey: "organize-5151-v3"})
-	if err != nil || rebuilt == nil || rebuilt.Update.Version != 5 || rebuilt.Update.ReadyEventCount != 1 || len(rebuilt.Events) != 1 ||
-		rebuilt.Events[0].Amount == nil || *rebuilt.Events[0].Amount != newAmount || rebuilt.Events[0].EconomicNature != organizer.ECONOMIC_NATURE_EXPENSE {
-		t.Fatalf("replace organizer plan mismatch: result=%+v err=%v", rebuilt, err)
+
+	_, err = engine.Organize(nil, organizer.OrganizeRequest{Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 3, IdempotencyKey: "organize-5151-v3"})
+	if !errors.Is(err, organizer.ErrOrganizeStateConflict) {
+		t.Fatalf("automatic review plan was allowed to be reorganized: %v", err)
 	}
-	if old, findErr := repository.FindEventById(nil, uid, firstEventId); findErr != nil || old != nil {
-		t.Fatalf("old automatic event survived replacement: event=%+v err=%v", old, findErr)
+	persisted, findErr := repository.FindEventById(nil, uid, firstEventId)
+	if findErr != nil || persisted == nil || persisted.Amount == nil || *persisted.Amount != firstAmount {
+		t.Fatalf("immutable automatic event changed: event=%+v err=%v", persisted, findErr)
+	}
+	update, findErr := repository.FindUpdateById(nil, uid, updateId)
+	if findErr != nil || update == nil || update.Status != organizer.UPDATE_STATUS_REVIEW || update.Version != 3 {
+		t.Fatalf("rejected reorganization changed update: update=%+v err=%v", update, findErr)
 	}
 	sess := database.NewSession(nil)
 	actionCount, actionErr := sess.Where("uid=? AND update_id=?", uid, updateId).Count(new(organizer.FinanceAction))
 	eventCount, eventErr := sess.Where("uid=? AND update_id=?", uid, updateId).Count(new(organizer.EconomicEvent))
 	sess.Close()
-	if actionErr != nil || eventErr != nil || actionCount != 2 || eventCount != 1 {
-		t.Fatalf("replaced plan audit mismatch: actions=%d events=%d errors=%v/%v", actionCount, eventCount, actionErr, eventErr)
+	if actionErr != nil || eventErr != nil || actionCount != 1 || eventCount != 1 {
+		t.Fatalf("immutable plan audit mismatch: actions=%d events=%d errors=%v/%v", actionCount, eventCount, actionErr, eventErr)
 	}
 }
 
@@ -158,6 +164,10 @@ func TestEngineSQLiteMarksSnapshotFailureWithoutPartialPlan(t *testing.T) {
 	action, actionErr := repository.FindActionById(nil, uid, *update.CurrentActionId)
 	if actionErr != nil || action == nil || action.Status != organizer.ACTION_STATUS_FAILED || action.ErrorCode != "source_snapshot_invalid" {
 		t.Fatalf("failed action mismatch: action=%+v err=%v", action, actionErr)
+	}
+	_, retryErr := engine.Organize(nil, organizer.OrganizeRequest{Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: update.Version, IdempotencyKey: "retry-failed-5202"})
+	if !errors.Is(retryErr, organizer.ErrOrganizeStateConflict) {
+		t.Fatalf("failed round was allowed to be reorganized: %v", retryErr)
 	}
 }
 
@@ -231,8 +241,8 @@ func TestEngineSQLiteRejectsReorganizationBeforeStateTransitionWhenPlanHasManual
 	_, err = engine.Organize(nil, organizer.OrganizeRequest{
 		Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 2, IdempotencyKey: "reject-manual-plan-rebuild",
 	})
-	if !errors.Is(err, organizer.ErrOrganizePlanExists) {
-		t.Fatalf("manual plan was allowed to enter organizing: %v", err)
+	if !errors.Is(err, organizer.ErrOrganizeStateConflict) {
+		t.Fatalf("review round was allowed to be reorganized: %v", err)
 	}
 	update, findErr := repository.FindUpdateById(nil, uid, updateId)
 	if findErr != nil || update == nil || update.Status != organizer.UPDATE_STATUS_REVIEW || update.Version != 2 || update.CurrentActionId != nil {
@@ -282,8 +292,8 @@ func TestEngineSQLiteRejectsReorganizationBeforeStateTransitionAfterReviewDecisi
 	_, err = engine.Organize(nil, organizer.OrganizeRequest{
 		Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 2, IdempotencyKey: "reject-decided-plan-rebuild",
 	})
-	if !errors.Is(err, organizer.ErrOrganizePlanExists) {
-		t.Fatalf("decided plan was allowed to enter organizing: %v", err)
+	if !errors.Is(err, organizer.ErrOrganizeStateConflict) {
+		t.Fatalf("decided review round was allowed to be reorganized: %v", err)
 	}
 	update, findErr := repository.FindUpdateById(nil, uid, updateId)
 	if findErr != nil || update == nil || update.Status != organizer.UPDATE_STATUS_REVIEW || update.Version != 2 || update.CurrentActionId != nil {

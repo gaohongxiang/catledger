@@ -177,8 +177,7 @@ func (e *Engine) claimOrganize(c core.Context, request OrganizeRequest, candidat
 			if update.Version != request.ExpectedUpdateVersion {
 				return ErrOrganizeVersionConflict
 			}
-			if (update.Status != UPDATE_STATUS_DRAFT && update.Status != UPDATE_STATUS_REVIEW && update.Status != UPDATE_STATUS_FAILED) ||
-				update.PostedEventCount != 0 {
+			if update.Status != UPDATE_STATUS_DRAFT || update.PostedEventCount != 0 {
 				return ErrOrganizeStateConflict
 			}
 			if err = tx.ensureUnpostedPlanReplaceable(request.UpdateId); err != nil {

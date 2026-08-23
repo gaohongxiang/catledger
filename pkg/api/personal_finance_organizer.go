@@ -22,6 +22,7 @@ type PersonalFinanceOrganizerApplication interface {
 	ListUpdates(c core.Context, uid int64, status organizer.UpdateStatus, cursor *organizer.UpdateCursor, limit int) (*organizer.UpdatePage, error)
 	GetUpdate(c core.Context, uid int64, updateId int64) (*organizerUpdateDetail, error)
 	Organize(c core.Context, request organizer.OrganizeRequest) (*organizer.OrganizeResult, error)
+	Abandon(c core.Context, request organizer.AbandonRequest) (*organizer.AbandonResult, error)
 	ListEvents(c core.Context, uid int64, updateId int64, status organizer.EventStatus, cursor *organizer.EventCursor, limit int) (*organizerEventPage, error)
 	GetEventEvidence(c core.Context, uid int64, eventId int64) (*organizerEventEvidenceDetail, error)
 	InspectEventCorrection(c core.Context, uid int64, updateId int64, eventId int64) (*organizer.UndoImpact, error)
@@ -334,6 +335,18 @@ func (a *PersonalFinanceOrganizerApi) UpdateOrganizeHandler(c *core.WebContext) 
 	return &personalFinanceOrganizerMutationResponse{Update: newOrganizerUpdateResponse(result.Update), Events: newOrganizerEventResponses(result.Events), Action: newOrganizerActionResponse(result.Action), Replayed: result.Replayed}, nil
 }
 
+func (a *PersonalFinanceOrganizerApi) UpdateAbandonHandler(c *core.WebContext) (any, *errs.Error) {
+	request, ok := a.actionRequest(c)
+	if !ok {
+		return nil, errs.ErrParameterInvalid
+	}
+	result, err := a.application.Abandon(c, organizer.AbandonRequest{Uid: c.GetCurrentUid(), UpdateId: request.UpdateId, ExpectedUpdateVersion: request.ExpectedUpdateVersion, IdempotencyKey: request.IdempotencyKey})
+	if err != nil {
+		return a.failed(c, "abandon", err)
+	}
+	return &personalFinanceOrganizerMutationResponse{Update: newOrganizerUpdateResponse(result.Update), Action: newOrganizerActionResponse(result.Action), Replayed: result.Replayed}, nil
+}
+
 func (a *PersonalFinanceOrganizerApi) EventListHandler(c *core.WebContext) (any, *errs.Error) {
 	if !a.available(c) || !personalFinanceInstallmentQueryAllowed(c, "update_id", "status", "limit", "cursor_updated_unix_time", "cursor_event_id") {
 		return nil, errs.ErrParameterInvalid
@@ -502,7 +515,7 @@ func organizerUpdateStatusAllowed(status organizer.UpdateStatus) bool {
 	switch status {
 	case organizer.UPDATE_STATUS_DRAFT, organizer.UPDATE_STATUS_ORGANIZING, organizer.UPDATE_STATUS_REVIEW,
 		organizer.UPDATE_STATUS_POSTING, organizer.UPDATE_STATUS_PARTIALLY_POSTED, organizer.UPDATE_STATUS_POSTED,
-		organizer.UPDATE_STATUS_FAILED, organizer.UPDATE_STATUS_UNDONE:
+		organizer.UPDATE_STATUS_FAILED, organizer.UPDATE_STATUS_UNDONE, organizer.UPDATE_STATUS_ABANDONED:
 		return true
 	default:
 		return false
@@ -763,18 +776,19 @@ func personalFinanceOrganizerServiceError(err error) *errs.Error {
 	switch {
 	case errors.Is(err, organizer.ErrCreateUpdateRequestInvalid), errors.Is(err, organizer.ErrCreateUpdateBatchNotFound),
 		errors.Is(err, organizer.ErrCreateUpdateBatchNotReady), errors.Is(err, organizer.ErrOrganizeRequestInvalid),
-		errors.Is(err, organizer.ErrOrganizeUpdateNotFound),
+		errors.Is(err, organizer.ErrOrganizeUpdateNotFound), errors.Is(err, organizer.ErrAbandonRequestInvalid),
+		errors.Is(err, organizer.ErrAbandonUpdateNotFound),
 		errors.Is(err, organizer.ErrPostRequestInvalid), errors.Is(err, organizer.ErrPostUpdateNotFound),
 		errors.Is(err, organizer.ErrCorrectionRequestInvalid), errors.Is(err, organizer.ErrUndoRequestInvalid),
 		errors.Is(err, organizer.ErrRebuildRequestInvalid):
 		return errs.ErrParameterInvalid
 	case errors.Is(err, organizer.ErrActionRequestConflict), errors.Is(err, organizer.ErrCreateUpdateStateConflict),
-		errors.Is(err, organizer.ErrOrganizeVersionConflict),
-		errors.Is(err, organizer.ErrOrganizeStateConflict), errors.Is(err, organizer.ErrPostVersionConflict),
-		errors.Is(err, organizer.ErrPostStateConflict), errors.Is(err, organizer.ErrPostUnresolvedEvents),
-		errors.Is(err, organizer.ErrPostEventNotPostable), errors.Is(err, organizer.ErrCorrectionUpdateConflict),
-		errors.Is(err, organizer.ErrCorrectionEventConflict), errors.Is(err, organizer.ErrUndoStateConflict),
-		errors.Is(err, organizer.ErrRebuildStateConflict):
+		errors.Is(err, organizer.ErrOrganizeVersionConflict), errors.Is(err, organizer.ErrAbandonVersionConflict),
+		errors.Is(err, organizer.ErrOrganizeStateConflict), errors.Is(err, organizer.ErrAbandonStateConflict),
+		errors.Is(err, organizer.ErrPostVersionConflict), errors.Is(err, organizer.ErrPostStateConflict),
+		errors.Is(err, organizer.ErrPostUnresolvedEvents), errors.Is(err, organizer.ErrPostEventNotPostable),
+		errors.Is(err, organizer.ErrCorrectionUpdateConflict), errors.Is(err, organizer.ErrCorrectionEventConflict),
+		errors.Is(err, organizer.ErrUndoStateConflict), errors.Is(err, organizer.ErrRebuildStateConflict):
 		return errs.ErrRepeatedRequest
 	default:
 		return errs.ErrOperationFailed

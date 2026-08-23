@@ -44,6 +44,20 @@ describe('personal-finance simple web workflow', () => {
         expect(router).not.toContain("view: 'reconciliation'");
     });
 
+    it('keeps one primary round action and abandons immutable sources before reselection', () => {
+        const results = source('../organizer/desktop/ResultsFlowPage.vue');
+
+        expect(results).toContain('personalFinance.organizerV2.action.continueReview');
+        expect(results).toContain('personalFinance.organizerV2.action.confirmAndPost');
+        expect(results).toContain('canAbandonUpdate(update)');
+        expect(results).toContain('organizerApi.abandon(current');
+        expect(results).toContain('abandonAndReselect');
+        expect(results).toContain('visibilitychange');
+        expect(results).not.toContain('organizeCurrent');
+        expect(results).not.toContain('mdiRefresh');
+        expect(results).not.toContain('@click="load"');
+    });
+
     it('keeps raw records non-posting and reviews ledger fields in the organizer', () => {
         const records = source('./ImportWorkbenchPage.vue');
         const results = source('../organizer/desktop/ResultsFlowPage.vue');

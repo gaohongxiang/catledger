@@ -16,6 +16,7 @@ type personalFinanceOrganizerApplication struct {
 	evidence   *importing.Repository
 	create     *organizer.CreateEngine
 	organize   *organizer.Engine
+	abandon    *organizer.AbandonEngine
 	posting    *organizer.PostingEngine
 	correction *organizer.CorrectionEngine
 	undo       *organizer.UndoEngine
@@ -40,6 +41,10 @@ func InitializePersonalFinanceOrganizerApi() error {
 	if err != nil {
 		return err
 	}
+	abandon, err := organizer.NewAbandonEngine(repository, uuid.Container)
+	if err != nil {
+		return err
+	}
 	posting, err := organizer.NewPostingEngine(repository, services.Transactions, uuid.Container)
 	if err != nil {
 		return err
@@ -57,7 +62,7 @@ func InitializePersonalFinanceOrganizerApi() error {
 		return err
 	}
 	application := &personalFinanceOrganizerApplication{
-		repository: repository, evidence: evidence, create: create, organize: engine,
+		repository: repository, evidence: evidence, create: create, organize: engine, abandon: abandon,
 		posting: posting, correction: correction, undo: undo, rebuild: rebuild,
 	}
 	PersonalFinanceOrganizer, err = NewPersonalFinanceOrganizerApi(application)
@@ -93,6 +98,10 @@ func (a *personalFinanceOrganizerApplication) GetUpdate(c core.Context, uid int6
 
 func (a *personalFinanceOrganizerApplication) Organize(c core.Context, request organizer.OrganizeRequest) (*organizer.OrganizeResult, error) {
 	return a.organize.Organize(c, request)
+}
+
+func (a *personalFinanceOrganizerApplication) Abandon(c core.Context, request organizer.AbandonRequest) (*organizer.AbandonResult, error) {
+	return a.abandon.Abandon(c, request)
 }
 
 func (a *personalFinanceOrganizerApplication) ListEvents(c core.Context, uid int64, updateId int64, status organizer.EventStatus, cursor *organizer.EventCursor, limit int) (*organizerEventPage, error) {

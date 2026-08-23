@@ -67,6 +67,7 @@ func RegisterPersonalFinanceRoutes(apiV1Route gin.IRoutes, config *settings.Conf
 	apiV1Route.GET("/personal_finance/updates/list.json", bindApi(PersonalFinanceOrganizer.UpdateListHandler, config))
 	apiV1Route.GET("/personal_finance/updates/get.json", bindApi(PersonalFinanceOrganizer.UpdateGetHandler, config))
 	apiV1Route.POST("/personal_finance/updates/organize.json", bindApi(PersonalFinanceOrganizer.UpdateOrganizeHandler, config))
+	apiV1Route.POST("/personal_finance/updates/abandon.json", bindApi(PersonalFinanceOrganizer.UpdateAbandonHandler, config))
 	apiV1Route.GET("/personal_finance/events/list.json", bindApi(PersonalFinanceOrganizer.EventListHandler, config))
 	apiV1Route.GET("/personal_finance/events/evidence.json", bindApi(PersonalFinanceOrganizer.EventEvidenceHandler, config))
 	apiV1Route.GET("/personal_finance/events/correction_impact.json", bindApi(PersonalFinanceOrganizer.EventCorrectionImpactHandler, config))

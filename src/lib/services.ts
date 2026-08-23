@@ -1043,6 +1043,9 @@ export default {
     organizePersonalFinanceUpdate: (request: { updateId: string, expectedUpdateVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/updates/organize.json', request);
     },
+    abandonPersonalFinanceOrganizerUpdate: (request: { updateId: string, expectedUpdateVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
+        return axios.post<ApiResponse<unknown>>('v1/personal_finance/updates/abandon.json', request);
+    },
     listPersonalFinanceOrganizerEvents: (params: { updateId: string, status?: string, limit: number, cursorUpdatedUnixTime?: number, cursorEventId?: string }): ApiResponsePromise<unknown> => {
         const status = params.status ? `&status=${encodeURIComponent(params.status)}` : '';
         const cursor = params.cursorUpdatedUnixTime && params.cursorEventId

@@ -59,6 +59,7 @@ var frozenPersonalFinanceRoutes = []personalFinanceRouteSpec{
 	{method: "GET", path: "/personal_finance/updates/list.json", handler: "PersonalFinanceOrganizer.UpdateListHandler"},
 	{method: "GET", path: "/personal_finance/updates/get.json", handler: "PersonalFinanceOrganizer.UpdateGetHandler"},
 	{method: "POST", path: "/personal_finance/updates/organize.json", handler: "PersonalFinanceOrganizer.UpdateOrganizeHandler"},
+	{method: "POST", path: "/personal_finance/updates/abandon.json", handler: "PersonalFinanceOrganizer.UpdateAbandonHandler"},
 	{method: "GET", path: "/personal_finance/events/list.json", handler: "PersonalFinanceOrganizer.EventListHandler"},
 	{method: "GET", path: "/personal_finance/events/evidence.json", handler: "PersonalFinanceOrganizer.EventEvidenceHandler"},
 	{method: "GET", path: "/personal_finance/events/correction_impact.json", handler: "PersonalFinanceOrganizer.EventCorrectionImpactHandler"},
