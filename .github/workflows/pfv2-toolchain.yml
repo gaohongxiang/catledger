@@ -1,0 +1,41 @@
+name: PF Temporary Toolchain
+
+on:
+  push:
+    branches:
+      - codex/pfv2-1702-review-issues
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.0'
+          cache: false
+
+      - name: Package Go toolchain
+        shell: bash
+        run: tar -C "$(dirname "$(dirname "$(command -v go)")")" -czf /tmp/go-1.26.0-linux-x64.tgz x64
+
+      - name: Upload Go toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: pfv2-go-1.26.0-${{ github.sha }}
+          path: /tmp/go-1.26.0-linux-x64.tgz
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Surface toolchain run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh pr comment 1 --repo "${GITHUB_REPOSITORY}" --body "<!-- pfv2-toolchain --> toolchain-run:${GITHUB_RUN_ID} commit:${GITHUB_SHA}"
