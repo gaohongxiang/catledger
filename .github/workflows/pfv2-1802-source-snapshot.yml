@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - codex/pfv2-1802-source-identity
+  pull_request:
+    branches:
+      - codex/ux-1801-abandon-round
   workflow_dispatch:
 
 permissions:
