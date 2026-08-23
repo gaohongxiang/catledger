@@ -35,7 +35,7 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('activeWorkflowStep === 1');
         expect(results).toContain('<import-upload-button');
         expect(results).toContain('selectedBatchIds.includes(batch.id)');
-        expect(results).toContain('organizerApi.getUpdate(selectedUpdate.id)');
+        expect(results).toContain('organizerApi.getUpdate(selected.id)');
         expect(results).not.toContain("emit('open-records')");
         expect(router).toContain("path: '/personal-finance/bills'");
         expect(router).toContain("path: '/personal-finance/imports'");
@@ -53,7 +53,9 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('selectedLedgerAccountId');
         expect(results).toContain('selectedCounterpartyLedgerAccountId');
         expect(results).toContain('selectedCategoryId');
-        expect(results).toContain('fieldMask = 1 | 4 | 8 | 256');
+        expect(results).toContain('let fieldMask = 1 | 4 | 8');
+        expect(results).toContain('fieldMask |= 128');
+        expect(results).not.toContain('fieldMask |= 256');
     });
 
     it('teaches the batch-first workflow and progressively discloses loan details', () => {
