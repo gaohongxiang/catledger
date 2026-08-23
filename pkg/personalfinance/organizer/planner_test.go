@@ -175,10 +175,12 @@ func TestBuildOrganizePlanSplitsLegacyV1ContentFingerprintRows(t *testing.T) {
 	const updateId = int64(562)
 	source := plannerSource(uid, updateId, 0, 655, 755, importing.SOURCE_TYPE_BANK)
 	rows := make([]*importing.RawImportRow, 0, 4)
+	locators := []string{"v1:pdf:1:17", "v1:pdf:1:19", "v1:pdf:1:38", "v1:pdf:1:40"}
 	for index := 0; index < 4; index++ {
 		row := plannerRow(uid, 755, int64(21+index), 3601, 11, 4350, 1704067200,
 			importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
 		row.IdentityKeyVersion = importing.IDENTITY_KEY_VERSION_V1
+		row.SourceLocator = locators[index]
 		row.RawCounterparty = "支付宝朱永灵"
 		row.RawItem = "相同内容"
 		rows = append(rows, row)
@@ -194,6 +196,106 @@ func TestBuildOrganizePlanSplitsLegacyV1ContentFingerprintRows(t *testing.T) {
 	if plan.ValidEvidenceCount != 4 || plan.DuplicateEvidenceCount != 0 || plan.FinalEventCount != 4 ||
 		plan.ReadyEventCount != 4 || plan.NeedsActionEventCount != 0 {
 		t.Fatalf("legacy v1 physical rows were still collapsed: %+v", plan)
+	}
+}
+
+func TestBuildOrganizePlanReusesLegacyV1PhysicalRecordAcrossReparse(t *testing.T) {
+	const uid = int64(265)
+	const updateId = int64(565)
+	const fileId = int64(659)
+	firstSource := plannerSource(uid, updateId, 0, fileId, 759, importing.SOURCE_TYPE_BANK)
+	secondSource := plannerSource(uid, updateId, 1, fileId, 760, importing.SOURCE_TYPE_BANK)
+	secondSource.Source.SourceAccountId = clonePlannerInt64(firstSource.Source.SourceAccountId)
+	secondSource.Batch.SourceAccountId = clonePlannerInt64(firstSource.Batch.SourceAccountId)
+	first := plannerRow(uid, firstSource.Batch.BatchId, 61, 4001, 11, 4350, 1704067200,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	second := plannerRow(uid, secondSource.Batch.BatchId, 62, 4002, 11, 4350, 1704067200,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	for _, row := range []*importing.RawImportRow{first, second} {
+		row.IdentityKeyVersion = importing.IDENTITY_KEY_VERSION_V1
+		row.SourceLocator = "v1:pdf:1:17"
+		row.RawCounterparty = "支付宝朱永灵"
+	}
+	firstSource.Rows = []*importing.RawImportRow{first}
+	secondSource.Rows = []*importing.RawImportRow{second}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{firstSource, secondSource},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)},
+		1704200000, sequentialPlannerIds(10650))
+	if err != nil {
+		t.Fatalf("build legacy physical-record reparse plan: %v", err)
+	}
+	if plan.ValidEvidenceCount != 2 || plan.DuplicateEvidenceCount != 1 || plan.FinalEventCount != 1 ||
+		plan.ReadyEventCount != 1 || len(plan.Evidence) != 2 {
+		t.Fatalf("legacy same-locator reparse was not reused: %+v", plan)
+	}
+}
+
+func TestBuildOrganizePlanReusesPhysicalRecordWhenReparseAddsStableIdentifier(t *testing.T) {
+	const uid = int64(266)
+	const updateId = int64(566)
+	const fileId = int64(660)
+	firstSource := plannerSource(uid, updateId, 0, fileId, 761, importing.SOURCE_TYPE_BANK)
+	secondSource := plannerSource(uid, updateId, 1, fileId, 762, importing.SOURCE_TYPE_BANK)
+	secondSource.Source.SourceAccountId = clonePlannerInt64(firstSource.Source.SourceAccountId)
+	secondSource.Batch.SourceAccountId = clonePlannerInt64(firstSource.Batch.SourceAccountId)
+	physical := plannerRow(uid, firstSource.Batch.BatchId, 63, 4011, 11, 4350, 1704067200,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	stable := plannerRow(uid, secondSource.Batch.BatchId, 64, 4012, 11, 4350, 1704067200,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	for _, source := range []*organizer.PlanningSource{firstSource, secondSource} {
+		source.Source.IdentityKeyVersion = organizer.RuleVersion(importing.IDENTITY_KEY_VERSION_V2)
+		source.Batch.IdentityKeyVersion = importing.IDENTITY_KEY_VERSION_V2
+	}
+	physical.IdentityKeyVersion = importing.IDENTITY_KEY_VERSION_V2
+	stable.IdentityKeyVersion = importing.IDENTITY_KEY_VERSION_V1
+	stable.SourceTransactionId = "newly-extracted-stable-id"
+	for _, row := range []*importing.RawImportRow{physical, stable} {
+		row.SourceLocator = "v1:pdf:1:19"
+		row.RawCounterparty = "支付宝朱永灵"
+	}
+	firstSource.Rows = []*importing.RawImportRow{physical}
+	secondSource.Rows = []*importing.RawImportRow{stable}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{firstSource, secondSource},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)},
+		1704200000, sequentialPlannerIds(10675))
+	if err != nil {
+		t.Fatalf("build upgraded physical-record identity plan: %v", err)
+	}
+	if plan.ValidEvidenceCount != 2 || plan.DuplicateEvidenceCount != 1 || plan.FinalEventCount != 1 ||
+		plan.ReadyEventCount != 1 || len(plan.Evidence) != 2 {
+		t.Fatalf("stable identifier upgrade duplicated one physical record: %+v", plan)
+	}
+}
+
+func TestBuildOrganizePlanDoesNotReusePhysicalRecordAcrossSourceAccounts(t *testing.T) {
+	const uid = int64(267)
+	const updateId = int64(567)
+	const fileId = int64(661)
+	firstSource := plannerSource(uid, updateId, 0, fileId, 763, importing.SOURCE_TYPE_BANK)
+	secondSource := plannerSource(uid, updateId, 1, fileId, 764, importing.SOURCE_TYPE_BANK)
+	first := plannerRow(uid, firstSource.Batch.BatchId, 65, 4021, 11, 4350, 1704067200,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	second := plannerRow(uid, secondSource.Batch.BatchId, 66, 4022, 11, 4350, 1704067200,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	for _, row := range []*importing.RawImportRow{first, second} {
+		row.IdentityKeyVersion = importing.IDENTITY_KEY_VERSION_V1
+		row.SourceLocator = "v1:pdf:1:20"
+		row.RawCounterparty = "支付宝朱永灵"
+	}
+	firstSource.Rows = []*importing.RawImportRow{first}
+	secondSource.Rows = []*importing.RawImportRow{second}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{firstSource, secondSource},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)},
+		1704200000, sequentialPlannerIds(10690))
+	if err != nil {
+		t.Fatalf("build cross-account physical-record plan: %v", err)
+	}
+	if plan.ValidEvidenceCount != 2 || plan.DuplicateEvidenceCount != 0 || plan.FinalEventCount != 2 ||
+		plan.ReadyEventCount != 2 || len(plan.Evidence) != 2 {
+		t.Fatalf("same locator across source accounts was merged: %+v", plan)
 	}
 }
 
@@ -379,6 +481,14 @@ func plannerRow(uid int64, batchId int64, rowId int64, identityId int64, ledgerA
 		LedgerAccountId: &ledgerAccountId, SemanticEligibility: importing.SEMANTIC_ELIGIBILITY_POSTABLE,
 		Disposition: importing.IMPORT_DISPOSITION_POSTABLE, IdentityKeyVersion: importing.IDENTITY_KEY_VERSION_V2, RowId: rowId,
 	}
+}
+
+func clonePlannerInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func plannerAccount(uid int64, accountId int64, category models.AccountCategory) *models.Account {

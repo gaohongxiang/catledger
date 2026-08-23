@@ -119,6 +119,7 @@ func BuildOrganizePlan(uid int64, updateId int64, sources []*PlanningSource, acc
 		return nil, err
 	}
 	groups := buildIdentityGroups(rows)
+	groups = mergeSamePhysicalObservations(groups)
 	groups = mergeStrongSameEvents(groups)
 	groups = mergeHighConfidenceSameEvents(groups)
 	groups = pairTransfersAndRepayments(groups)
@@ -304,6 +305,61 @@ func identityGroupKey(row *importing.RawImportRow) string {
 		return "observed:" + row.ObservedSourceIdentityKey
 	}
 	return "row:" + strconv.FormatInt(row.RowId, 10)
+}
+
+// mergeSamePhysicalObservations preserves the file+locator identity across
+// immutable reparses, including legacy v1 batches and parser upgrades that
+// newly expose a stable transaction identifier. The source type and intrinsic
+// source account remain part of the boundary, matching central identity scope.
+func mergeSamePhysicalObservations(groups []*planningGroup) []*planningGroup {
+	if len(groups) < 2 {
+		return groups
+	}
+	parent := newGroupUnion(len(groups))
+	byPhysicalRecord := make(map[string][]int)
+	for index, group := range groups {
+		seen := make(map[string]struct{})
+		for _, item := range group.rows {
+			key, ok := physicalObservationGroupKey(item)
+			if !ok {
+				continue
+			}
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			byPhysicalRecord[key] = append(byPhysicalRecord[key], index)
+		}
+	}
+	for _, indexes := range byPhysicalRecord {
+		for index := 1; index < len(indexes); index++ {
+			parent.union(indexes[0], indexes[index])
+		}
+	}
+	return compactPlanningGroups(groups, parent, nil, nil)
+}
+
+func physicalObservationGroupKey(item *planningRow) (string, bool) {
+	if item == nil || item.row == nil || item.source == nil || item.source.Source == nil ||
+		item.source.Source.FileId < 1 || item.source.Source.SourceTypeSnapshot == "" {
+		return "", false
+	}
+	locator := strings.TrimSpace(item.row.SourceLocator)
+	if locator == "" {
+		return "", false
+	}
+	sourceAccountId := int64(0)
+	if item.source.Source.SourceAccountId != nil && *item.source.Source.SourceAccountId > 0 {
+		sourceAccountId = *item.source.Source.SourceAccountId
+	}
+	return stablePlanDigest(
+		"physical-source-observation",
+		strconv.FormatInt(item.source.Source.Uid, 10),
+		item.source.Source.SourceTypeSnapshot,
+		strconv.FormatInt(sourceAccountId, 10),
+		strconv.FormatInt(item.source.Source.FileId, 10),
+		locator,
+	), true
 }
 
 // canGroupByPersistedSourceIdentity prevents legacy identity-v1 content
