@@ -1,0 +1,70 @@
+name: PF Temporary Dependencies
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Surface dependency run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh pr comment 1 --repo "${GITHUB_REPOSITORY}" --body "<!-- pfv2-deps --> deps-run:${GITHUB_RUN_ID} commit:${GITHUB_SHA}"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Package Go modules
+        shell: bash
+        run: |
+          module_cache="$(go env GOMODCACHE)"
+          tar -C "$(dirname "$module_cache")" -czf /tmp/go-mod-cache.tgz "$(basename "$module_cache")"
+
+      - name: Upload Go modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: pfv2-go-mod-${{ github.sha }}
+          path: /tmp/go-mod-cache.tgz
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Package frontend dependencies
+        shell: bash
+        run: tar -czf /tmp/node-modules.tgz node_modules
+
+      - name: Upload frontend dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: pfv2-node-modules-${{ github.sha }}
+          path: /tmp/node-modules.tgz
+          retention-days: 1
+          if-no-files-found: error
