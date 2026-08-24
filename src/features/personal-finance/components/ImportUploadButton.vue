@@ -1,12 +1,13 @@
 <template>
     <v-btn
-        color="primary"
+        :color="color"
         :size="size"
+        :variant="variant"
         :prepend-icon="mdiTrayArrowUp"
         :loading="personalFinanceStore.submitting"
         @click="fileInput?.click()"
     >
-        {{ tt('personalFinance.upload') }}
+        {{ label || tt('personalFinance.upload') }}
     </v-btn>
     <input
         ref="fileInput"
@@ -32,7 +33,6 @@
     <source-account-dialog ref="sourceAccountDialog" @parsed="onParsed" />
     <generic-bank-import-dialog ref="genericBankImportDialog" @parsed="onParsed" />
     <ceb-credit-import-dialog ref="cebCreditImportDialog" @parsed="onParsed" />
-    <payment-account-setup-dialog ref="paymentAccountSetupDialog" @saved="onPaymentAccountsSaved" />
     <snack-bar ref="snackbar" />
 </template>
 
@@ -51,19 +51,23 @@ import { canConfigureCebCreditPdf, canConfigureGenericBankCsv, getUploadAction }
 import { usePersonalFinanceStore } from '../store.ts';
 import CebCreditImportDialog from './CebCreditImportDialog.vue';
 import GenericBankImportDialog from './GenericBankImportDialog.vue';
-import PaymentAccountSetupDialog from './PaymentAccountSetupDialog.vue';
 import SourceAccountDialog from './SourceAccountDialog.vue';
 
 type SnackBarType = InstanceType<typeof SnackBar>;
 type SourceAccountDialogType = InstanceType<typeof SourceAccountDialog>;
 type GenericBankImportDialogType = InstanceType<typeof GenericBankImportDialog>;
 type CebCreditImportDialogType = InstanceType<typeof CebCreditImportDialog>;
-type PaymentAccountSetupDialogType = InstanceType<typeof PaymentAccountSetupDialog>;
 
 withDefaults(defineProps<{
     size?: 'x-small' | 'small' | 'default' | 'large' | 'x-large';
+    color?: string;
+    variant?: 'flat' | 'text' | 'elevated' | 'tonal' | 'outlined' | 'plain';
+    label?: string;
 }>(), {
-    size: 'default'
+    size: 'default',
+    color: 'primary',
+    variant: 'flat',
+    label: ''
 });
 
 const emit = defineEmits<{
@@ -77,7 +81,6 @@ const fileInput = useTemplateRef<HTMLInputElement>('fileInput');
 const sourceAccountDialog = useTemplateRef<SourceAccountDialogType>('sourceAccountDialog');
 const genericBankImportDialog = useTemplateRef<GenericBankImportDialogType>('genericBankImportDialog');
 const cebCreditImportDialog = useTemplateRef<CebCreditImportDialogType>('cebCreditImportDialog');
-const paymentAccountSetupDialog = useTemplateRef<PaymentAccountSetupDialogType>('paymentAccountSetupDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const showDuplicateDialog = ref(false);
 const duplicateUpload = ref<PersonalFinanceImportUploadResult>();
@@ -138,9 +141,6 @@ async function onParsed(batchId: string): Promise<void> {
     ]);
     snackbar.value?.showMessage('personalFinance.parseCompleted');
     emit('changed', batchId);
-    if (personalFinanceStore.paymentAccounts.some(group => !group.mapped)) {
-        paymentAccountSetupDialog.value?.open(batchId);
-    }
 }
 
 async function openLatestDuplicate(): Promise<void> {
@@ -182,8 +182,4 @@ function openExplicitParserFallback(file: PersonalFinanceImportUploadResult['fil
     return false;
 }
 
-function onPaymentAccountsSaved(): void {
-    const batchId = personalFinanceStore.selectedBatch?.id;
-    if (batchId) emit('changed', batchId);
-}
 </script>
