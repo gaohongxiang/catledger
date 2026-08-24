@@ -49,8 +49,11 @@
                     </button>
                 </div>
                 <footer>
-                    <div class="actions">
-                        <v-btn color="primary" v-if="update.needsActionEventCount > 0" @click="showEventStep('needs_action')">
+                    <div class="round-meta">
+                        <small>{{ syncLabel }}</small>
+                    </div>
+                    <div class="actions" v-if="(update.needsActionEventCount > 0 && activeWorkflowStep !== 2) || canPostUpdate(update) || canUndoUpdate(update)">
+                        <v-btn color="primary" v-if="update.needsActionEventCount > 0 && activeWorkflowStep !== 2" @click="showEventStep('needs_action')">
                             {{ tt('personalFinance.organizerV2.action.continueReview', { count: issueGroupCount }) }}
                         </v-btn>
                         <v-btn color="primary" :loading="busy" v-else-if="canPostUpdate(update)" @click="postAllReady">
@@ -59,9 +62,6 @@
                         <v-btn variant="text" color="warning" v-if="canUndoUpdate(update)" @click="inspectUndo">
                             {{ tt('personalFinance.organizerV2.action.undo') }}
                         </v-btn>
-                    </div>
-                    <div class="round-meta">
-                        <small>{{ syncLabel }}</small>
                     </div>
                 </footer>
             </section>
@@ -83,9 +83,10 @@
             <details class="verification" :class="{ invalid: !conservationHolds }" v-if="activeWorkflowStep !== 1">
                 <summary>{{ tt('personalFinance.organizerV2.workflow.verify') }}</summary>
                 <div>
-                    {{ update.validEvidenceCount }} {{ tt('personalFinance.organizerV2.conservation.evidence') }} −
-                    {{ update.duplicateEvidenceCount }} {{ tt('personalFinance.organizerV2.conservation.duplicates') }} =
-                    {{ update.finalEventCount }} {{ tt('personalFinance.organizerV2.conservation.events') }}
+                    <span class="verification-equations">
+                        <span>{{ update.validEvidenceCount }} {{ tt('personalFinance.organizerV2.conservation.evidence') }} − {{ update.duplicateEvidenceCount }} {{ tt('personalFinance.organizerV2.conservation.duplicates') }} = {{ update.finalEventCount }} {{ tt('personalFinance.organizerV2.conservation.events') }}</span>
+                        <span>{{ update.finalEventCount }} {{ tt('personalFinance.organizerV2.conservation.events') }} − {{ update.excludedEventCount }} {{ tt('personalFinance.organizerV2.metric.excluded') }} = {{ update.finalEventCount - update.excludedEventCount }} 保留事件（{{ update.readyEventCount }} {{ tt('personalFinance.organizerV2.metric.ready') }} + {{ update.needsActionEventCount }} 待处理 + {{ update.postedEventCount }} {{ tt('personalFinance.organizerV2.metric.posted') }}）</span>
+                    </span>
                     <b>{{ tt(conservationHolds ? 'personalFinance.organizerV2.conservation.ok' : 'personalFinance.organizerV2.conservation.invalid') }}</b>
                 </div>
             </details>
@@ -103,8 +104,17 @@
                 <div class="issue-list" v-else-if="eventFilter === 'needs_action' && reviewIssues.length">
                     <article class="issue-card" :key="issue.id" v-for="issue in reviewIssues">
                         <header>
-                            <div><span>{{ reviewIssueLabel(issue) }}</span><strong>{{ reviewIssueTitle(issue) }}</strong><small>{{ reviewIssueHint(issue) }}</small></div>
-                            <em>{{ issue.memberCount }} 项</em>
+                            <div class="issue-heading"><span>{{ reviewIssueLabel(issue) }}</span><small>{{ reviewIssueHint(issue) }}</small></div>
+                            <div class="issue-actions">
+                                <em>{{ issue.memberCount }} 项</em>
+                                <template v-if="issue.type === 'same_event'">
+                                    <v-btn size="small" density="compact" color="primary" :loading="busy" @click="confirmSame(issue)">确认是同一笔</v-btn>
+                                    <v-btn size="small" density="compact" variant="outlined" :loading="busy" @click="confirmDistinct(issue)">确认是多笔独立交易</v-btn>
+                                </template>
+                                <v-btn size="small" density="compact" color="primary" :loading="busy" v-else-if="issue.type === 'refund_relation'" @click="openIssueResolve(issue)">选择退款原交易</v-btn>
+                                <v-btn size="small" density="compact" color="primary" :loading="busy" v-else @click="openIssueResolve(issue)">{{ issue.memberCount > 1 ? '批量处理' : tt('personalFinance.organizerV2.events.resolve') }}</v-btn>
+                                <v-btn size="small" density="compact" color="warning" variant="text" :loading="busy" @click="excludeIssue(issue)">排除本问题中的记录</v-btn>
+                            </div>
                         </header>
                         <div class="issue-events">
                             <div class="issue-event" :key="event.id" v-for="event in issueEvents(issue)">
@@ -114,16 +124,6 @@
                                 <v-btn size="small" variant="text" @click="openEvidence(event)">{{ tt('personalFinance.organizerV2.events.evidence') }}</v-btn>
                             </div>
                         </div>
-                        <footer>
-                            <template v-if="issue.type === 'same_event'">
-                                <v-btn color="primary" :loading="busy" @click="confirmSame(issue)">确认是同一笔</v-btn>
-                                <v-btn variant="outlined" :loading="busy" @click="confirmDistinct(issue)">确认是多笔独立交易</v-btn>
-                            </template>
-                            <v-btn color="primary" :loading="busy" v-else-if="issue.type === 'refund_relation'" @click="openIssueResolve(issue)">选择退款原交易</v-btn>
-                            <v-btn color="primary" :loading="busy" v-else @click="openIssueResolve(issue)">{{ issue.memberCount > 1 ? '批量处理' : tt('personalFinance.organizerV2.events.resolve') }}</v-btn>
-                            <v-spacer />
-                            <v-btn color="warning" variant="text" :loading="busy" @click="excludeIssue(issue)">排除本问题中的记录</v-btn>
-                        </footer>
                     </article>
                 </div>
 
@@ -310,7 +310,6 @@ function reviewIssueLabel(issue?: ReviewIssue): string {
     const labels: Record<string, string> = { account_mapping: '账户待确认', shared_fields: '多笔需要相同判断', same_event: '疑似同一笔交易', refund_relation: '退款关系待确认', transfer_accounts: '转账双方待确认', identity_conflict: '来源身份冲突', field_conflict: '字段冲突' };
     return issue ? labels[issue.type] || '必须处理' : '必须处理';
 }
-function reviewIssueTitle(issue: ReviewIssue): string { const subjects = issueEvents(issue); return subjects.length === 1 ? eventDisplayLabel(subjects[0] as EconomicEvent) || '未命名交易' : `${subjects.length} 笔记录需要一个决定`; }
 function reviewIssueHint(issue: ReviewIssue): string {
     const hints: Record<string, string> = { same_event: '请选择它们是同一笔经济事件，还是多笔真实交易。', refund_relation: '退款必须关联原消费，系统才会冲减消费而不是增加收入。', shared_fields: '一次设置性质、账户和分类，不会合并独立交易。', account_mapping: '确认记账账户后，本组记录会一起更新。', transfer_accounts: '请选择资金转出和转入账户。', identity_conflict: '来源身份存在冲突，需要人工确认。', field_conflict: '来源核心字段不一致，需要人工裁决。' };
     return hints[issue.type] || '请完成必要决定后再入账。';
@@ -476,7 +475,9 @@ onBeforeUnmount(() => {
 .steps button strong { color: rgb(var(--v-theme-on-surface)); font-size: 1rem; line-height: 1.15; }
 .steps button small { color: rgb(var(--v-theme-warning)); }
 .overview-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 48px; padding: 8px 14px; }
+.overview-card > footer > .actions { justify-content: flex-end; margin-inline-start: auto; }
 .round-meta { display: flex; align-items: center; gap: 4px; color: rgba(var(--v-theme-on-surface), .55); }
+.round-meta:only-child { margin-inline-start: auto; }
 .round-meta small { white-space: nowrap; }
 .source-stage > header { align-items: center; padding-block: 10px; }
 .source-stage > header > div { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
@@ -490,22 +491,22 @@ onBeforeUnmount(() => {
 .verification.invalid { border-color: rgb(var(--v-theme-error)); background: rgba(var(--v-theme-error), .06); }
 .verification summary { padding: 9px 2px; cursor: pointer; font-size: .74rem; font-weight: 700; }
 .verification div { display: flex; justify-content: space-between; gap: 12px; padding: 0 2px 12px; color: rgba(var(--v-theme-on-surface), .65); font-size: .78rem; }
-.issue-list { display: grid; gap: 10px; padding: 12px; background: rgba(var(--v-theme-on-surface), .025); }
+.verification-equations { display: grid; gap: 3px; }
+.issue-list { display: grid; gap: 7px; padding: 10px; background: rgba(var(--v-theme-on-surface), .025); }
 .issue-card { border: 1px solid var(--rule); border-radius: 10px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
-.issue-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; background: rgba(var(--v-theme-warning), .055); }
-.issue-card > header > div { display: grid; min-width: 0; }
+.issue-card > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; background: rgba(var(--v-theme-warning), .055); }
+.issue-heading { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .issue-card > header span { color: rgb(var(--v-theme-warning)); font-size: .68rem; font-weight: 800; }
-.issue-card > header strong { margin-top: 2px; }
-.issue-card > header small { margin-top: 2px; color: rgba(var(--v-theme-on-surface), .56); }
+.issue-card > header small { overflow: hidden; color: rgba(var(--v-theme-on-surface), .56); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
 .issue-card > header em { padding: 4px 8px; border-radius: 999px; background: rgba(var(--v-theme-warning), .12); color: rgb(var(--v-theme-warning)); font-size: .7rem; font-style: normal; white-space: nowrap; }
+.issue-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex: none; }
 .issue-events { display: grid; }
-.issue-event, .event-row { display: grid; grid-template-columns: 52px minmax(0,1fr) minmax(130px,auto) auto; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--rule); }
+.issue-event, .event-row { display: grid; grid-template-columns: 52px minmax(0,1fr) minmax(130px,auto) auto; align-items: center; gap: 10px; padding: 8px 10px; border-top: 1px solid var(--rule); }
 .issue-event time, .event-row time { display: grid; text-align: center; border-inline-end: 1px solid var(--rule); }
 .issue-event time b, .event-row time b { font-size: 1.05rem; }
 .issue-event time small, .event-row time small { color: rgba(var(--v-theme-on-surface), .5); font-size: .65rem; }
 .issue-event > div, .event-row > div { display: grid; min-width: 0; }
 .issue-event > div > small, .issue-event > div > span, .event-row > div > small, .event-row .context { color: rgba(var(--v-theme-on-surface), .55); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.issue-card > footer { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--rule); background: rgba(var(--v-theme-primary), .02); }
 .event-list { display: grid; }
 .event-row { grid-template-columns: 52px minmax(220px,.8fr) minmax(260px,1.2fr) minmax(130px,auto) auto; }
 .event-row > div > span { color: rgb(var(--v-theme-primary)); font-size: .68rem; }
@@ -528,10 +529,12 @@ onBeforeUnmount(() => {
     .overview-card > header > div { grid-template-columns: auto 1fr; }
     .overview-card > header p { grid-column: 1 / -1; }
     .source-stage > header > div { display: grid; gap: 2px; }
-    .round-meta { align-self: stretch; justify-content: space-between; }
+    .round-meta:not(:only-child) { align-self: stretch; justify-content: space-between; }
+    .overview-card > footer > .actions { align-self: stretch; }
+    .issue-card > header { align-items: stretch; flex-direction: column; }
+    .issue-actions { justify-content: flex-start; flex-wrap: wrap; }
     .issue-event, .event-row { grid-template-columns: 48px minmax(0,1fr) auto; }
     .issue-event > .amount, .event-row .context { grid-column: 2; text-align: start; }
     .issue-event > .v-btn, .event-row > .v-btn { grid-column: 3; }
-    .issue-card > footer { flex-wrap: wrap; }
 }
 </style>
