@@ -52,6 +52,14 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('canAbandonUpdate(update)');
         expect(results).toContain('organizerApi.abandon(current');
         expect(results).toContain('abandonAndReselect');
+        expect(results.match(/personalFinance\.organizerV2\.action\.abandonAndReselect/g)).toHaveLength(1);
+        expect(results).toContain('<import-upload-button v-else-if="update.status === \'posted\' || update.status === \'undone\'" @changed="onImportChanged" />');
+        expect(results).toContain("update.value?.status === 'posted' || update.value?.status === 'undone'");
+        expect(results).toContain('resetToSourceSelection([batchId])');
+        expect(results).not.toContain('personalFinance.organizerV2.action.new');
+        expect(results).not.toContain('source-chips');
+        expect(results).not.toContain('updateSourceNames');
+        expect(results).not.toContain('<header><div><h3>{{ tt(\'personalFinance.organizerV2.sources.title\') }}</h3><p>{{ tt(\'personalFinance.organizerV2.sources.lockedHint\') }}</p></div><import-upload-button');
         expect(results).not.toContain('<v-menu>');
         expect(results).not.toContain('personalFinance.organizerV2.sources.continue');
         expect(results).not.toContain('mdiDotsHorizontal');
