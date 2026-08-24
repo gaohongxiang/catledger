@@ -70,7 +70,9 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toMatch(/<footer>\s*<div class="overview-controls"[\s\S]*?<div class="actions"[^>]*>/);
         expect(results).toContain('eventFilterCount(filter)');
         expect(results).toContain('class="conservation-inline"');
-        expect(results).toContain('class="sync-inline"');
+        expect(results).toContain('class="round-meta"');
+        expect(results).not.toContain('personalFinance.organizerV2.workflow.title');
+        expect(results).not.toContain('personalFinance.organizerV2.workflow.hint');
         expect(results).not.toContain('class="verification"');
         expect(results).toContain('update.needsActionEventCount > 0 && activeWorkflowStep !== 2');
         expect(results).toContain('.overview-card > footer > .actions { justify-content: flex-end; margin-inline-start: auto; }');
@@ -82,6 +84,9 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('item.row.rawFields');
         expect(results).toContain('personalFinance.organizerV2.evidence.originalFields');
         expect(results).toContain('personalFinance.organizerV2.audit.title');
+        expect(results).toContain("'needs_action', 'ready', 'posted', 'excluded', 'audit'");
+        expect(results).toContain("eventFilter === 'audit'");
+        expect(results).toContain("eventFilter !== 'audit'");
         expect(results).toContain('auditEvents.value = pages.flat().filter(event => event.evidenceCount > 1)');
         expect(results).toContain("reasons.includes('auto_same_event')");
         expect(results).toContain('personalFinance.organizerV2.audit.amountWarning');

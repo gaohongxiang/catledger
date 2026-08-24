@@ -3009,7 +3009,7 @@
                 "role": { "primary": "Primary record", "supporting": "Supporting record", "duplicate": "Supporting record", "discarded": "Excluded record" }
             },
             "events": { "eyebrow": "Result details", "hint": "Cards show the organized result; open the statement text only when needed.", "evidence": "View source record", "resolve": "Resolve", "empty": "There are no events in this group.", "unnamed": "Statement transaction", "accountPending": "Account required", "uncategorized": "Uncategorized", "evidenceCount": "{count} source record(s)" },
-            "filter": { "needs_action": "Required", "ready": "Ready", "posted": "Posted", "excluded": "Excluded", "corrected": "Corrected" },
+            "filter": { "needs_action": "Required", "ready": "Ready", "posted": "Posted", "excluded": "Excluded", "audit": "Dedup review", "corrected": "Corrected" },
             "status": {
                 "draft": "Draft", "organizing": "Organizing", "review": "Review", "posting": "Posting", "partially_posted": "Partially posted", "posted": "Fully posted", "failed": "Failed", "undone": "Undone", "abandoned": "Abandoned",
                 "ready": "Ready", "needs_action": "Required", "excluded": "Excluded", "corrected": "Corrected"
