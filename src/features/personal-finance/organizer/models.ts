@@ -125,6 +125,7 @@ export interface OrganizerRawRow {
     readonly id: string;
     readonly batchId: string;
     readonly rowNumber: number;
+    readonly sourceLocator: string;
     readonly unixTime?: number;
     readonly amount?: string;
     readonly currency: string;
@@ -134,6 +135,12 @@ export interface OrganizerRawRow {
     readonly item: string;
     readonly paymentMethod: string;
     readonly note: string;
+    readonly rawFields: readonly OrganizerRawField[];
+}
+
+export interface OrganizerRawField {
+    readonly name: string;
+    readonly value: string;
 }
 
 export interface OrganizerEvidenceItem {

@@ -2981,7 +2981,7 @@
             },
             "metric": { "posted": "已入账", "ready": "待入账", "needsAction": "必须处理", "excluded": "已排除" },
             "conservation": { "evidence": "有效证据", "duplicates": "附加证据", "events": "最终事件", "ok": "证据守恒已核对", "invalid": "计数不守恒，请勿入账" },
-            "events": { "eyebrow": "结果明细", "hint": "商户、商品、支付方式、账户和分类直接展示；完整原始记录按需查看。", "evidence": "查看证据", "resolve": "处理", "empty": "这个分组暂时没有事件。", "unnamed": "账单交易", "accountPending": "账户待确认", "uncategorized": "暂未分类", "evidenceCount": "{count} 条来源记录" },
+            "events": { "eyebrow": "结果明细", "hint": "卡片展示整理结果；账单原文按需查看。", "evidence": "查看原始记录", "resolve": "处理", "empty": "这个分组暂时没有事件。", "unnamed": "账单交易", "accountPending": "账户待确认", "uncategorized": "暂未分类", "evidenceCount": "{count} 条原始记录" },
             "filter": { "needs_action": "必须处理", "ready": "待入账", "posted": "已入账", "excluded": "已排除", "corrected": "已修正" },
             "status": {
                 "draft": "待整理", "organizing": "整理中", "review": "待核验", "posting": "入账中", "partially_posted": "部分入账", "posted": "已全部入账", "failed": "整理失败", "undone": "已撤销", "abandoned": "已放弃",
@@ -3015,7 +3015,7 @@
             "action": { "continueReview": "继续处理 {count} 个问题", "confirmAndPost": "确认并入账 {count} 笔", "undo": "撤销本次入账", "new": "开始新一轮", "more": "更多本轮操作", "viewSources": "查看本轮账单", "abandonAndReselect": "放弃本轮，重选账单" },
             "sync": { "syncing": "正在同步…", "pending": "等待同步", "syncedAt": "已同步 · {time}" },
             "abandon": { "title": "放弃本轮并重新选择账单？", "hint": "本轮尚未入账的分析结果和人工处理结论会保留在审计记录中，但本轮将停止，原账单可以重新选入新一轮。", "kept": "已上传文件、解析后的账单记录、账户和正式交易都不会被删除或修改。", "confirm": "放弃并重新选择" },
-            "evidence": { "title": "原始证据与来源", "empty": "没有可展示的证据行。" },
+            "evidence": { "title": "原始账单记录", "source": "账单来源", "empty": "没有可展示的原始记录。", "emptyFields": "该来源没有保留可展示的原始字段。", "originalFields": "{count} 个原始字段", "rowNumber": "账单第 {number} 条", "unnamedField": "未命名字段" },
             "resolve": { "title": "核对交易", "hint": "确认交易性质、记账账户和分类；转账或还款还要选择对方账户。", "nature": "交易性质", "ledgerAccount": "记账账户", "counterpartyAccount": "对方账户", "category": "分类", "categoryHint": "分类可稍后补充，但账户和交易性质必须确认。", "exclude": "不入账", "save": "保存并标记就绪" },
             "undo": { "title": "撤销影响", "impact": "将检查并撤销 {transactions} 笔正式交易。", "unsafe": "正式交易已被修改或共享，当前不能安全撤销。" },
             "mobile": { "title": "账单整理结果", "desktopAction": "前往账单导入" }
