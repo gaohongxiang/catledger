@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -235,18 +236,20 @@ type personalFinanceOrganizerEvidenceResponse struct {
 }
 
 type personalFinanceOrganizerRawRowResponse struct {
-	Id              string  `json:"id"`
-	BatchId         string  `json:"batchId"`
-	RowNumber       int64   `json:"rowNumber"`
-	UnixTime        *int64  `json:"unixTime"`
-	Amount          *string `json:"amount"`
-	Currency        string  `json:"currency"`
-	Direction       string  `json:"direction"`
-	TransactionType string  `json:"transactionType"`
-	Counterparty    string  `json:"counterparty"`
-	Item            string  `json:"item"`
-	PaymentMethod   string  `json:"paymentMethod"`
-	Note            string  `json:"note"`
+	Id              string          `json:"id"`
+	BatchId         string          `json:"batchId"`
+	RowNumber       int64           `json:"rowNumber"`
+	SourceLocator   string          `json:"sourceLocator"`
+	UnixTime        *int64          `json:"unixTime"`
+	Amount          *string         `json:"amount"`
+	Currency        string          `json:"currency"`
+	Direction       string          `json:"direction"`
+	TransactionType string          `json:"transactionType"`
+	Counterparty    string          `json:"counterparty"`
+	Item            string          `json:"item"`
+	PaymentMethod   string          `json:"paymentMethod"`
+	Note            string          `json:"note"`
+	RawFields       json.RawMessage `json:"rawFields"`
 }
 
 type personalFinanceOrganizerEventEvidenceResponse struct {
@@ -761,7 +764,11 @@ func newOrganizerRawRowResponse(value *importing.RawImportRow) *personalFinanceO
 	if value == nil {
 		return nil
 	}
-	return &personalFinanceOrganizerRawRowResponse{Id: strconv.FormatInt(value.RowId, 10), BatchId: strconv.FormatInt(value.BatchId, 10), RowNumber: value.RowNumber, UnixTime: value.NormalizedUnixTime, Amount: organizerStringId(value.NormalizedAmount), Currency: value.Currency, Direction: string(value.NormalizedDirection), TransactionType: string(value.NormalizedTransactionType), Counterparty: value.RawCounterparty, Item: value.RawItem, PaymentMethod: value.RawPaymentMethod, Note: value.RawNote}
+	rawFields := json.RawMessage("[]")
+	if json.Valid([]byte(value.RawFieldsJson)) {
+		rawFields = json.RawMessage(value.RawFieldsJson)
+	}
+	return &personalFinanceOrganizerRawRowResponse{Id: strconv.FormatInt(value.RowId, 10), BatchId: strconv.FormatInt(value.BatchId, 10), RowNumber: value.RowNumber, SourceLocator: value.SourceLocator, UnixTime: value.NormalizedUnixTime, Amount: organizerStringId(value.NormalizedAmount), Currency: value.Currency, Direction: string(value.NormalizedDirection), TransactionType: string(value.NormalizedTransactionType), Counterparty: value.RawCounterparty, Item: value.RawItem, PaymentMethod: value.RawPaymentMethod, Note: value.RawNote, RawFields: rawFields}
 }
 
 func organizerStringId(value *int64) *string {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 )
 
@@ -77,6 +78,25 @@ func TestOrganizerHandlersRejectCompatibilityFieldsAndMapConflicts(t *testing.T)
 		`{"updateId":"701","expectedUpdateVersion":2,"idempotencyKey":"post-conflict"}`))
 	if response != nil || apiErr != errs.ErrRepeatedRequest {
 		t.Fatalf("version conflict mapping mismatch: response=%v err=%v", response, apiErr)
+	}
+}
+
+func TestOrganizerEvidenceResponseIncludesOriginalSourceFields(t *testing.T) {
+	response := newOrganizerEventEvidenceResponse(&organizerEventEvidenceDetail{
+		Event:    &organizer.EconomicEvent{EventId: 801, UpdateId: 701, Status: organizer.EVENT_STATUS_NEEDS_ACTION, Version: 1, FieldSourcesJson: "{}", ReasonCodesJson: "[]"},
+		Evidence: []*organizer.EconomicEventEvidence{{EvidenceId: 901, EventId: 801, RowId: 1001, EvidenceRole: organizer.EVIDENCE_ROLE_PRIMARY}},
+		Rows: []*importing.RawImportRow{{
+			RowId: 1001, BatchId: 2001, RowNumber: 17, SourceLocator: "v1:csv:18:18",
+			RawFieldsJson: `[{"name":"交易号","value":"source-id-canary"},{"name":"备注","value":"第一条"},{"name":"备注","value":"第二条"}]`,
+		}},
+		Relations: []*organizer.EconomicEventRelation{}, Links: []*organizer.EconomicEventTransaction{},
+	})
+	encoded := marshalOrganizerResponse(t, response)
+
+	if !strings.Contains(encoded, `"sourceLocator":"v1:csv:18:18"`) ||
+		!strings.Contains(encoded, `"rawFields":[{"name":"交易号","value":"source-id-canary"}`) ||
+		strings.Count(encoded, `"name":"备注"`) != 2 {
+		t.Fatalf("original source fields were not preserved: %s", encoded)
 	}
 }
 

@@ -112,7 +112,7 @@ function formatEventAmount(event: EconomicEvent): string {
 }
 function mobileEventDetail(event: EconomicEvent): string {
     const title = eventDisplayLabel(event);
-    return [...new Set([event.item !== title ? event.item : '', event.paymentMethod, `${event.evidenceCount} 条证据`].filter(Boolean))].join(' · ');
+    return [...new Set([event.item !== title ? event.item : '', event.paymentMethod, `${event.evidenceCount} 条来源记录`].filter(Boolean))].join(' · ');
 }
 function issueEvents(issue: ReviewIssue): EconomicEvent[] {
     return (membersByIssue.value.get(issue.id) ?? []).filter(member => member.role === 'subject' && member.objectType === 'event')

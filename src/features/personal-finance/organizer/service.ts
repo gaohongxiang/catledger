@@ -217,10 +217,15 @@ function rawRow(value: unknown): OrganizerRawRow {
     const item = record(value);
     return {
         id: identifier(item['id']), batchId: identifier(item['batchId']), rowNumber: integer(item['rowNumber']),
+        sourceLocator: string(item['sourceLocator']),
         unixTime: optional(item['unixTime'], integer), amount: optional(item['amount'], string), currency: string(item['currency']),
         direction: string(item['direction']), transactionType: string(item['transactionType']),
         counterparty: string(item['counterparty']), item: string(item['item']),
-        paymentMethod: string(item['paymentMethod']), note: string(item['note'])
+        paymentMethod: string(item['paymentMethod']), note: string(item['note']),
+        rawFields: array(item['rawFields']).map(value => {
+            const field = record(value);
+            return { name: string(field['name']), value: string(field['value']) };
+        })
     };
 }
 
@@ -247,7 +252,7 @@ function transactionLink(value: unknown): OrganizerTransactionLink {
     };
 }
 
-function eventEvidence(value: unknown): OrganizerEventEvidence {
+export function normalizeOrganizerEventEvidence(value: unknown): OrganizerEventEvidence {
     const item = record(value);
     return {
         event: normalizeEconomicEvent(item['event']), evidence: array(item['evidence']).map(evidence),
@@ -330,7 +335,7 @@ export const organizerApi = {
         return normalizeEventPage(unwrap(await services.listPersonalFinanceOrganizerEvents({ updateId, status, limit })));
     },
     async getEvidence(eventId: string): Promise<OrganizerEventEvidence> {
-        return eventEvidence(unwrap(await services.getPersonalFinanceOrganizerEventEvidence({ eventId })));
+        return normalizeOrganizerEventEvidence(unwrap(await services.getPersonalFinanceOrganizerEventEvidence({ eventId })));
     },
     async correctEvent(request: OrganizerCorrectRequest): Promise<OrganizerMutation> {
         return mutation(unwrap(await services.correctPersonalFinanceOrganizerEvent(request)));

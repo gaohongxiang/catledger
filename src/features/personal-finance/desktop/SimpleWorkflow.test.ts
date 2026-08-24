@@ -75,6 +75,9 @@ describe('personal-finance simple web workflow', () => {
         expect(results).not.toContain('.issue-card > footer');
         expect(results).toContain('update.finalEventCount - update.excludedEventCount');
         expect(results).toContain('update.postedEventCount');
+        expect(results).toContain('item.row.rawFields');
+        expect(results).toContain('personalFinance.organizerV2.evidence.originalFields');
+        expect(results).not.toContain('原始证据与来源');
     });
 
     it('keeps raw records non-posting and reviews ledger fields in the organizer', () => {

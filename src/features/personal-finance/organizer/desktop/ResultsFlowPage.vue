@@ -119,9 +119,9 @@
                         <div class="issue-events">
                             <div class="issue-event" :key="event.id" v-for="event in issueEvents(issue)">
                                 <time><b>{{ eventDay(event.eventUnixTime) }}</b><small>{{ eventMonth(event.eventUnixTime) }}</small></time>
-                                <div><strong>{{ eventDisplayLabel(event) || tt('personalFinance.organizerV2.events.unnamed') }}</strong><small>{{ eventDescription(event) || eventReasonTranslationKeys(event).map(key => tt(key)).join(' · ') }}</small><span>{{ eventAccountName(event) }} · {{ eventCategoryName(event) }} · {{ event.evidenceCount }} 条证据</span></div>
+                                <div><strong>{{ eventDisplayLabel(event) || tt('personalFinance.organizerV2.events.unnamed') }}</strong><small>{{ eventDescription(event) || eventReasonTranslationKeys(event).map(key => tt(key)).join(' · ') }}</small><span>{{ tt(`personalFinance.organizerV2.nature.${event.economicNature}`) }} · {{ eventAccountName(event) }} · {{ eventCategoryName(event) }}</span></div>
                                 <b class="amount" :class="event.flowDirection">{{ formatEventAmount(event) }}</b>
-                                <v-btn size="small" variant="text" @click="openEvidence(event)">{{ tt('personalFinance.organizerV2.events.evidence') }}</v-btn>
+                                <v-btn class="raw-record-action" size="small" variant="text" @click="openEvidence(event)">{{ tt('personalFinance.organizerV2.events.evidenceCount', { count: event.evidenceCount }) }}</v-btn>
                             </div>
                         </div>
                     </article>
@@ -131,9 +131,9 @@
                     <article class="event-row" :key="event.id" v-for="event in events">
                         <time><b>{{ eventDay(event.eventUnixTime) }}</b><small>{{ eventMonth(event.eventUnixTime) }}</small></time>
                         <div><span>{{ tt(`personalFinance.organizerV2.nature.${event.economicNature}`) }}</span><strong>{{ eventDisplayLabel(event) || tt('personalFinance.organizerV2.events.unnamed') }}</strong><small>{{ eventDescription(event) }}</small></div>
-                        <div class="context">{{ eventAccountName(event) }} · {{ eventCategoryName(event) }} · {{ event.evidenceCount }} 条证据</div>
+                        <div class="context">{{ eventAccountName(event) }} · {{ eventCategoryName(event) }}</div>
                         <b class="amount" :class="event.flowDirection">{{ formatEventAmount(event) }}</b>
-                        <v-btn size="small" variant="text" @click="openEvidence(event)">{{ tt('personalFinance.organizerV2.events.evidence') }}</v-btn>
+                        <v-btn class="raw-record-action" size="small" variant="text" @click="openEvidence(event)">{{ tt('personalFinance.organizerV2.events.evidenceCount', { count: event.evidenceCount }) }}</v-btn>
                     </article>
                 </div>
                 <div class="empty" v-else>{{ tt('personalFinance.organizerV2.events.empty') }}</div>
@@ -142,15 +142,27 @@
 
         <v-skeleton-loader type="heading, image, list-item-three-line@3" v-else />
 
-        <v-dialog max-width="760" v-model="showEvidence">
-            <v-card>
-                <v-card-title>{{ tt('personalFinance.organizerV2.evidence.title') }}</v-card-title>
-                <v-card-text>
+        <v-dialog max-width="980" v-model="showEvidence">
+            <v-card class="evidence-dialog">
+                <v-card-title class="evidence-dialog-title">
+                    <span>{{ tt('personalFinance.organizerV2.evidence.title') }}</span>
+                    <small v-if="evidence">{{ tt('personalFinance.organizerV2.events.evidenceCount', { count: evidence.evidence.length }) }}</small>
+                </v-card-title>
+                <v-card-text class="evidence-dialog-body">
                     <v-skeleton-loader type="list-item-three-line@3" v-if="loadingEvidence" />
                     <div class="evidence-list" v-else>
-                        <article :class="item.evidenceRole" :key="item.id" v-for="item in evidence?.evidence">
-                            <strong>{{ item.row.counterparty || item.row.item || `#${item.row.rowNumber}` }}</strong>
-                            <span>{{ item.row.item }}</span><small>{{ item.row.paymentMethod }} · {{ item.row.amount || '—' }} {{ item.row.currency }}</small>
+                        <article class="evidence-record" :class="item.evidenceRole" :key="item.id" v-for="item in evidence?.evidence">
+                            <header>
+                                <div><strong>{{ evidenceFileName(item) }}</strong><small>{{ evidenceSourceMeta(item) }}</small></div>
+                                <span>{{ tt('personalFinance.organizerV2.evidence.originalFields', { count: item.row.rawFields.length }) }}</span>
+                            </header>
+                            <dl class="raw-fields" v-if="item.row.rawFields.length">
+                                <div :key="`${index}-${field.name}`" v-for="(field, index) in item.row.rawFields">
+                                    <dt>{{ field.name || tt('personalFinance.organizerV2.evidence.unnamedField') }}</dt>
+                                    <dd>{{ field.value || '—' }}</dd>
+                                </div>
+                            </dl>
+                            <p class="empty-fields" v-else>{{ tt('personalFinance.organizerV2.evidence.emptyFields') }}</p>
                         </article>
                         <p v-if="!evidence?.evidence.length">{{ tt('personalFinance.organizerV2.evidence.empty') }}</p>
                     </div>
@@ -215,7 +227,7 @@ import type { TransactionCategory } from '@/models/transaction_category.ts';
 import ImportUploadButton from '../../components/ImportUploadButton.vue';
 import { usePersonalFinanceStore } from '../../store.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
-import type { EconomicEvent, EconomicEventStatus, EconomicNature, FinanceUpdate, OrganizerEventEvidence, OrganizerImpact, ReviewIssue, ReviewIssueMember } from '../models.ts';
+import type { EconomicEvent, EconomicEventStatus, EconomicNature, FinanceUpdate, OrganizerEventEvidence, OrganizerEvidenceItem, OrganizerImpact, ReviewIssue, ReviewIssueMember } from '../models.ts';
 import { organizerApi } from '../service.ts';
 import { RESULT_UPDATE_STATUSES, canAbandonUpdate, canPostUpdate, canUndoUpdate, eventDisplayLabel, eventReasonTranslationKeys, selectCurrentUpdate, updateConservationHolds } from '../state.ts';
 
@@ -305,6 +317,9 @@ function formatEventAmount(event: EconomicEvent): string { return event.amount ?
 function eventDescription(event: EconomicEvent): string { const title = eventDisplayLabel(event); return [...new Set([event.item, event.note].filter(value => value && value !== title))].join(' · '); }
 function eventAccountName(event: EconomicEvent): string { return event.ledgerAccountId ? accountsStore.allAccountsMap[event.ledgerAccountId]?.name || '账户待确认' : '账户待确认'; }
 function eventCategoryName(event: EconomicEvent): string { return event.categoryId ? categoriesStore.allTransactionCategoriesMap[event.categoryId]?.name || '暂未分类' : '暂未分类'; }
+function evidenceBatch(item: OrganizerEvidenceItem) { return personalFinanceStore.batches.find(batch => batch.id === item.row.batchId); }
+function evidenceFileName(item: OrganizerEvidenceItem): string { const batch = evidenceBatch(item); return batch?.file?.originalFileName || tt('personalFinance.organizerV2.evidence.source'); }
+function evidenceSourceMeta(item: OrganizerEvidenceItem): string { const batch = evidenceBatch(item); const source = batch ? tt(getSourceTypeKey(batch.sourceType)) : tt('personalFinance.organizerV2.evidence.source'); return `${source} · ${tt('personalFinance.organizerV2.evidence.rowNumber', { number: item.row.rowNumber })}`; }
 function issueEvents(issue: ReviewIssue): EconomicEvent[] { return (memberMap.value.get(issue.id) ?? []).filter(member => member.role === 'subject' && member.objectType === 'event').map(member => eventMap.value.get(member.objectId)).filter((event): event is EconomicEvent => !!event); }
 function reviewIssueLabel(issue?: ReviewIssue): string {
     const labels: Record<string, string> = { account_mapping: '账户待确认', shared_fields: '多笔需要相同判断', same_event: '疑似同一笔交易', refund_relation: '退款关系待确认', transfer_accounts: '转账双方待确认', identity_conflict: '来源身份冲突', field_conflict: '字段冲突' };
@@ -513,11 +528,25 @@ onBeforeUnmount(() => {
 .amount { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .amount.inflow, .resolve-preview b.inflow { color: rgb(var(--v-theme-success)); }
 .amount.outflow, .resolve-preview b.outflow { color: rgb(var(--v-theme-error)); }
+.raw-record-action { font-size: .72rem; font-weight: 700; white-space: nowrap; }
 .empty { padding: 56px; color: rgba(var(--v-theme-on-surface), .55); text-align: center; }
-.evidence-list { display: grid; gap: 8px; }
-.evidence-list article { display: grid; gap: 3px; padding: 12px; border-inline-start: 3px solid rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .05); }
-.evidence-list article.discarded { opacity: .55; text-decoration: line-through; }
-.evidence-list span, .evidence-list small { color: rgba(var(--v-theme-on-surface), .6); }
+.evidence-dialog-title { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 18px 20px 12px; }
+.evidence-dialog-title small { color: rgba(var(--v-theme-on-surface), .52); font-size: .76rem; font-weight: 600; }
+.evidence-dialog-body { max-height: min(72vh, 720px); padding: 0 20px 16px; overflow-y: auto; }
+.evidence-list { display: grid; gap: 12px; }
+.evidence-record { overflow: hidden; border: 1px solid var(--rule); border-radius: 10px; background: rgb(var(--v-theme-surface)); }
+.evidence-record > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 12px; border-bottom: 1px solid var(--rule); background: rgba(var(--v-theme-primary), .045); }
+.evidence-record > header > div { display: grid; min-width: 0; }
+.evidence-record > header strong, .evidence-record > header small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evidence-record > header small { color: rgba(var(--v-theme-on-surface), .55); font-size: .7rem; }
+.evidence-record > header > span { color: rgb(var(--v-theme-primary)); font-size: .7rem; font-weight: 700; white-space: nowrap; }
+.evidence-record.discarded { opacity: .62; }
+.raw-fields { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); margin: 0; }
+.raw-fields > div { display: grid; grid-template-columns: minmax(92px,.38fr) minmax(0,1fr); align-items: baseline; gap: 10px; min-height: 34px; padding: 7px 11px; border-bottom: 1px solid rgba(var(--v-theme-on-surface), .07); }
+.raw-fields > div:nth-child(odd) { border-inline-end: 1px solid rgba(var(--v-theme-on-surface), .07); }
+.raw-fields dt { overflow: hidden; color: rgba(var(--v-theme-on-surface), .52); font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
+.raw-fields dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: .76rem; line-height: 1.35; }
+.empty-fields { margin: 0; padding: 24px; color: rgba(var(--v-theme-on-surface), .55); text-align: center; }
 .resolve-preview { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px; border-inline-start: 3px solid rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .05); }
 .resolve-preview > div { display: grid; min-width: 0; }
 .resolve-preview small { color: rgba(var(--v-theme-on-surface), .58); }
@@ -536,5 +565,7 @@ onBeforeUnmount(() => {
     .issue-event, .event-row { grid-template-columns: 48px minmax(0,1fr) auto; }
     .issue-event > .amount, .event-row .context { grid-column: 2; text-align: start; }
     .issue-event > .v-btn, .event-row > .v-btn { grid-column: 3; }
+    .raw-fields { grid-template-columns: 1fr; }
+    .raw-fields > div:nth-child(odd) { border-inline-end: 0; }
 }
 </style>
