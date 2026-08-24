@@ -3009,7 +3009,8 @@
                 "role": { "primary": "Primary record", "supporting": "Supporting record", "duplicate": "Supporting record", "discarded": "Excluded record" }
             },
             "events": { "eyebrow": "Result details", "hint": "Cards show the organized result; open the statement text only when needed.", "evidence": "View source record", "resolve": "Resolve", "empty": "There are no events in this group.", "unnamed": "Statement transaction", "accountPending": "Account required", "uncategorized": "Uncategorized", "evidenceCount": "{count} source record(s)" },
-            "filter": { "needs_action": "Required", "ready": "Ready", "posted": "Posted", "excluded": "Excluded", "audit": "Dedup review", "corrected": "Corrected" },
+            "filter": { "needs_action": "Required", "ready": "Ready to post", "posted": "Posted", "excluded": "Excluded", "audit": "Dedup review", "corrected": "Corrected" },
+            "posted": { "eyebrow": "Round complete", "title": "{count} transaction(s) posted", "hint": "This round is now in the formal ledger. Review it under Transactions; original statements and audit evidence remain available." },
             "status": {
                 "draft": "Draft", "organizing": "Organizing", "review": "Review", "posting": "Posting", "partially_posted": "Partially posted", "posted": "Fully posted", "failed": "Failed", "undone": "Undone", "abandoned": "Abandoned",
                 "ready": "Ready", "needs_action": "Required", "excluded": "Excluded", "corrected": "Corrected"

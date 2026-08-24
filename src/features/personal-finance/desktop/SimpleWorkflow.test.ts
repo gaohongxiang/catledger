@@ -84,7 +84,12 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('item.row.rawFields');
         expect(results).toContain('personalFinance.organizerV2.evidence.originalFields');
         expect(results).toContain('personalFinance.organizerV2.audit.title');
-        expect(results).toContain("'needs_action', 'ready', 'posted', 'excluded', 'audit'");
+        expect(results).toContain("['needs_action', 'excluded', 'audit']");
+        expect(results).not.toContain("['needs_action', 'ready', 'excluded', 'audit']");
+        expect(results).not.toContain("['needs_action', 'ready', 'posted', 'excluded', 'audit']");
+        expect(results).toContain('showPostingStep');
+        expect(results).toContain('postingStepShowsPosted');
+        expect(results).toContain('class="posting-complete"');
         expect(results).toContain("eventFilter === 'audit'");
         expect(results).toContain("eventFilter !== 'audit'");
         expect(results).toContain('auditEvents.value = pages.flat().filter(event => event.evidenceCount > 1)');

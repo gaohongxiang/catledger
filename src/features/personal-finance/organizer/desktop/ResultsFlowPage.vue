@@ -36,8 +36,8 @@
                     <button class="attention" @click="showEventStep('needs_action')" :class="{ active: activeWorkflowStep === 2 }">
                         <b>2</b><span>{{ tt('personalFinance.organizerV2.workflow.review') }}<strong>{{ issueGroupCount }}</strong><small>{{ update.needsActionEventCount }} 笔记录</small></span>
                     </button>
-                    <button @click="showEventStep('ready')" :class="{ active: activeWorkflowStep === 3 }">
-                        <b>3</b><span>{{ tt('personalFinance.organizerV2.workflow.ready') }}<strong>{{ update.readyEventCount }}</strong></span>
+                    <button @click="showPostingStep" :class="{ active: activeWorkflowStep === 3 }">
+                        <b>3</b><span>{{ tt(postingStepLabelKey) }}<strong>{{ postingStepCount }}</strong></span>
                     </button>
                 </div>
                 <footer>
@@ -80,7 +80,13 @@
                 </article>
             </section>
 
-            <section class="evidence-audit" v-if="activeWorkflowStep !== 1 && eventFilter === 'audit'">
+            <section class="posting-complete" v-if="activeWorkflowStep === 3 && postingStepShowsPosted">
+                <span class="kicker">{{ tt('personalFinance.organizerV2.posted.eyebrow') }}</span>
+                <strong>{{ tt('personalFinance.organizerV2.posted.title', { count: update.postedEventCount }) }}</strong>
+                <p>{{ tt('personalFinance.organizerV2.posted.hint') }}</p>
+            </section>
+
+            <section class="evidence-audit" v-else-if="activeWorkflowStep !== 1 && eventFilter === 'audit'">
                 <header>
                     <div>
                         <span class="kicker">{{ tt('personalFinance.organizerV2.audit.eyebrow') }}</span>
@@ -118,7 +124,7 @@
                 <p class="audit-empty" v-if="!loadingAudit && !auditEvents.length">{{ tt('personalFinance.organizerV2.audit.empty') }}</p>
             </section>
 
-            <section class="workbench" v-if="activeWorkflowStep !== 1 && eventFilter !== 'audit'">
+            <section class="workbench" v-else-if="activeWorkflowStep !== 1 && eventFilter !== 'audit'">
                 <header>
                     <div><span class="kicker">{{ tt('personalFinance.organizerV2.events.eyebrow') }}</span><h3>{{ eventFilter === 'needs_action' ? '必须处理的问题' : tt(`personalFinance.organizerV2.filter.${eventFilter}`) }}</h3><p>{{ eventFilter === 'needs_action' ? '一张卡片只问一个决定；相同答案可一次应用，多来源疑似重复必须明确裁决。' : tt('personalFinance.organizerV2.events.hint') }}</p></div>
                 </header>
@@ -299,7 +305,8 @@ const refundCandidates = ref<readonly EconomicEvent[]>([]);
 const showAbandon = ref(false);
 const showUndo = ref(false);
 const undoImpact = ref<OrganizerImpact>();
-const visibleFilters: readonly ResultsFilter[] = ['needs_action', 'ready', 'posted', 'excluded', 'audit'];
+const auditEventStatuses: readonly EconomicEventStatus[] = ['needs_action', 'ready', 'posted', 'excluded'];
+const visibleFilters: readonly ResultsFilter[] = ['needs_action', 'excluded', 'audit'];
 const auditPreviewLimit = 6;
 const natures: readonly EconomicNature[] = ['expense', 'income', 'refund', 'fee', 'repayment', 'borrow', 'internal_transfer', 'balance_adjustment'];
 const readyBatches = computed(() => personalFinanceStore.batches.filter(batch => batch.status === 'ready'));
@@ -327,6 +334,9 @@ const canResolveSelected = computed(() => {
     return !!selectedLedgerAccountId.value && selectedNature.value !== 'unknown' && (!needsCounterpartyAccount.value || (!!selectedCounterpartyLedgerAccountId.value && selectedCounterpartyLedgerAccountId.value !== selectedLedgerAccountId.value));
 });
 const issueGroupCount = computed(() => reviewIssues.value.length || update.value?.needsActionEventCount || 0);
+const postingStepShowsPosted = computed(() => !!update.value?.postedEventCount && !update.value.readyEventCount);
+const postingStepLabelKey = computed(() => postingStepShowsPosted.value ? 'personalFinance.organizerV2.filter.posted' : 'personalFinance.organizerV2.workflow.ready');
+const postingStepCount = computed(() => postingStepShowsPosted.value ? update.value?.postedEventCount ?? 0 : update.value?.readyEventCount ?? 0);
 const eventMap = computed(() => new Map(events.value.map(event => [event.id, event])));
 const memberMap = computed(() => {
     const result = new Map<string, ReviewIssueMember[]>();
@@ -343,14 +353,18 @@ const currentSources = computed(() => {
 });
 
 watch(eventFilter, () => {
-    if (activeWorkflowStep.value !== 1) activeWorkflowStep.value = eventFilter.value === 'ready' ? 3 : 2;
+    if (activeWorkflowStep.value !== 1) activeWorkflowStep.value = eventFilter.value === 'ready' || eventFilter.value === 'posted' ? 3 : 2;
     if (eventFilter.value !== 'audit') void loadEvents();
 });
 watch(selectedNature, () => { if (!needsCounterpartyAccount.value) selectedCounterpartyLedgerAccountId.value = ''; if (selectedCategoryId.value && !categoryOptions.value.some(option => option.value === selectedCategoryId.value)) selectedCategoryId.value = ''; });
 
 function idempotencyKey(action: string): string { return `pf-review-ui-v1:${action}:${generateRandomUUID()}`; }
 function toggleBatch(id: string): void { selectedBatchIds.value = selectedBatchIds.value.includes(id) ? selectedBatchIds.value.filter(value => value !== id) : [...selectedBatchIds.value, id]; }
-function showEventStep(filter: EconomicEventStatus): void { activeWorkflowStep.value = filter === 'ready' ? 3 : 2; eventFilter.value = filter; }
+function showEventStep(filter: EconomicEventStatus): void { activeWorkflowStep.value = filter === 'ready' || filter === 'posted' ? 3 : 2; eventFilter.value = filter; }
+function showPostingStep(): void {
+    activeWorkflowStep.value = 3;
+    if (!postingStepShowsPosted.value) eventFilter.value = 'ready';
+}
 function eventFilterCount(filter: ResultsFilter): number {
     if (!update.value) return 0;
     if (filter === 'audit') return auditEvents.value.length;
@@ -425,7 +439,7 @@ async function loadEvidenceAudit(silent = false): Promise<void> {
     if (!update.value || update.value.duplicateEvidenceCount < 1) { auditEvents.value = []; return; }
     if (!silent) loadingAudit.value = true;
     try {
-        const pages = await Promise.all(visibleFilters.filter((status): status is EconomicEventStatus => status !== 'audit').map(status => listAllEvents((update.value as FinanceUpdate).id, status)));
+        const pages = await Promise.all(auditEventStatuses.map(status => listAllEvents((update.value as FinanceUpdate).id, status)));
         auditEvents.value = pages.flat().filter(event => event.evidenceCount > 1).sort((left, right) =>
             (left.eventUnixTime ?? Number.MAX_SAFE_INTEGER) - (right.eventUnixTime ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id));
     } catch { showError.value = true; }
@@ -467,7 +481,11 @@ async function onImportChanged(batchId: string): Promise<void> {
 }
 async function runMutation(operation: () => Promise<{ update: FinanceUpdate }>): Promise<void> { busy.value = true; try { update.value = (await operation()).update; await Promise.all([loadEvents(), loadEvidenceAudit()]); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
 async function createAndOrganize(): Promise<void> { busy.value = true; try { const created = await organizerApi.createUpdate(selectedBatchIds.value, idempotencyKey('create')); update.value = (await organizerApi.organize(created, idempotencyKey('organize'))).update; activeWorkflowStep.value = 2; eventFilter.value = 'needs_action'; await Promise.all([loadEvents(), loadEvidenceAudit()]); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
-async function postAllReady(): Promise<void> { if (update.value) await runMutation(() => organizerApi.postAllReady(update.value as FinanceUpdate, idempotencyKey('post-all'))); }
+async function postAllReady(): Promise<void> {
+    if (!update.value) return;
+    await runMutation(() => organizerApi.postAllReady(update.value as FinanceUpdate, idempotencyKey('post-all')));
+    activeWorkflowStep.value = 3;
+}
 
 async function abandonAndReselect(): Promise<void> {
     const current = update.value;
@@ -547,7 +565,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .results-flow { --rule: rgba(var(--v-theme-on-surface), .12); display: grid; gap: 10px; }
 .kicker { color: rgb(var(--v-theme-primary)); font-size: .68rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-.empty-stage, .overview-card, .source-stage, .evidence-audit, .workbench { border: 1px solid var(--rule); border-radius: 12px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
+.empty-stage, .overview-card, .source-stage, .posting-complete, .evidence-audit, .workbench { border: 1px solid var(--rule); border-radius: 12px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
 .empty-stage { display: flex; flex-direction: column; min-height: 420px; padding: clamp(28px, 5vw, 62px); background: linear-gradient(125deg, rgba(var(--v-theme-primary), .09), transparent 48%), rgb(var(--v-theme-surface)); }
 .empty-stage h2 { margin: 8px 0; font-size: clamp(1.8rem, 4vw, 3rem); }
 .empty-stage p, .overview-card p, .workbench p, .source-stage p { color: rgba(var(--v-theme-on-surface), .6); }
@@ -577,6 +595,9 @@ onBeforeUnmount(() => {
 .conservation-inline { overflow: hidden; color: rgba(var(--v-theme-on-surface), .48); font-size: .68rem; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .conservation-inline.invalid { color: rgb(var(--v-theme-error)); }
 .round-meta { margin-inline-start: auto; color: rgba(var(--v-theme-on-surface), .46); font-size: .67rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.posting-complete { display: grid; grid-template-columns: auto auto minmax(0,1fr); align-items: baseline; gap: 10px; padding: 12px 14px; border-inline-start: 4px solid rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .045); }
+.posting-complete strong { font-size: .92rem; }
+.posting-complete p { margin: 0; color: rgba(var(--v-theme-on-surface), .58); font-size: .74rem; }
 .source-stage > header { align-items: center; padding-block: 10px; }
 .source-stage > header > div { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .source-stage > header p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -665,6 +686,8 @@ onBeforeUnmount(() => {
     .overview-controls .v-btn-toggle { align-self: stretch; overflow-x: auto; }
     .conservation-inline { white-space: normal; }
     .round-meta { margin-inline-start: 0; }
+    .posting-complete { grid-template-columns: auto 1fr; }
+    .posting-complete p { grid-column: 1 / -1; }
     .overview-card > footer > .actions { align-self: stretch; }
     .issue-card > header { align-items: stretch; flex-direction: column; }
     .evidence-audit > header { align-items: start; }

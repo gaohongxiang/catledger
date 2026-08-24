@@ -3009,7 +3009,8 @@
                 "role": { "primary": "主记录", "supporting": "附加记录", "duplicate": "附加记录", "discarded": "已排除记录" }
             },
             "events": { "eyebrow": "结果明细", "hint": "卡片展示整理结果；账单原文按需查看。", "evidence": "查看原始记录", "resolve": "处理", "empty": "这个分组暂时没有事件。", "unnamed": "账单交易", "accountPending": "账户待确认", "uncategorized": "暂未分类", "evidenceCount": "{count} 条原始记录" },
-            "filter": { "needs_action": "必须处理", "ready": "待入账", "posted": "已入账", "excluded": "已排除", "audit": "去重核对", "corrected": "已修正" },
+            "filter": { "needs_action": "必须处理", "ready": "可入账", "posted": "已入账", "excluded": "已排除", "audit": "去重核对", "corrected": "已修正" },
+            "posted": { "eyebrow": "本轮完成", "title": "已入账 {count} 笔交易", "hint": "本轮交易已统一写入正式账本，可在“记账与明细”中查看；原始账单和核对依据继续保留。" },
             "status": {
                 "draft": "待整理", "organizing": "整理中", "review": "待核验", "posting": "入账中", "partially_posted": "部分入账", "posted": "已全部入账", "failed": "整理失败", "undone": "已撤销", "abandoned": "已放弃",
                 "ready": "待入账", "needs_action": "必须处理", "excluded": "已排除", "corrected": "已修正"
