@@ -68,6 +68,30 @@ func TestBuildOrganizePlanConservesEvidenceAndRequiresStrongMergeEvidence(t *tes
 	}
 }
 
+func TestBuildOrganizePlanKeepsClosedAndFailedReasonsForAudit(t *testing.T) {
+	const uid = int64(102)
+	source := plannerSource(uid, 505, 0, 605, 705, importing.SOURCE_TYPE_ALIPAY)
+	closed := plannerRow(uid, 705, 107, 1007, 11, 100, 1700000600, importing.NORMALIZED_DIRECTION_NEUTRAL, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	failed := plannerRow(uid, 705, 108, 1008, 11, 200, 1700000700, importing.NORMALIZED_DIRECTION_NEUTRAL, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	closed.EconomicEffect = importing.ECONOMIC_EFFECT_CLOSED
+	closed.SemanticEligibility = importing.SEMANTIC_ELIGIBILITY_NON_POSTABLE
+	closed.Disposition = importing.IMPORT_DISPOSITION_NON_POSTABLE
+	closed.ProcessingState = importing.PROCESSING_STATE_IGNORED
+	failed.EconomicEffect = importing.ECONOMIC_EFFECT_FAILED
+	failed.SemanticEligibility = importing.SEMANTIC_ELIGIBILITY_NON_POSTABLE
+	failed.Disposition = importing.IMPORT_DISPOSITION_NON_POSTABLE
+	failed.ProcessingState = importing.PROCESSING_STATE_IGNORED
+	source.Rows = []*importing.RawImportRow{closed, failed}
+
+	plan, err := organizer.BuildOrganizePlan(uid, 505, []*organizer.PlanningSource{source}, map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}, 1700001000, sequentialPlannerIds(9500))
+	if err != nil {
+		t.Fatalf("build organizer plan: %v", err)
+	}
+	if len(plan.Events) != 2 || !strings.Contains(plan.Events[0].ReasonCodesJson, "transaction_closed") || !strings.Contains(plan.Events[1].ReasonCodesJson, "transaction_failed") {
+		t.Fatalf("closed/failed audit reasons missing: %+v", plan.Events)
+	}
+}
+
 func TestBuildOrganizePlanPairsRepaymentsTransfersAndIsolatesAmbiguity(t *testing.T) {
 	const uid = int64(202)
 	asset := plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)

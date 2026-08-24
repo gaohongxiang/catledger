@@ -921,7 +921,7 @@ func normalizeAlipayEconomicEffect(value string) importing.EconomicEffect {
 	case alipayTransactionDataStatusClosedName,
 		"已关闭", "交易取消", "已取消", "交易撤销", "已撤销":
 		return importing.ECONOMIC_EFFECT_CLOSED
-	case "交易失败", "支付失败", "收款失败", "失败":
+	case "交易失败", "支付失败", "收款失败", "还款失败", "失败":
 		return importing.ECONOMIC_EFFECT_FAILED
 	default:
 		return importing.ECONOMIC_EFFECT_UNKNOWN

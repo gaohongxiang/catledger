@@ -160,7 +160,7 @@
                 <div class="event-list" v-else-if="events.length">
                     <article class="event-row" :key="event.id" v-for="event in events">
                         <time><b>{{ eventDay(event.eventUnixTime) }}</b><small>{{ eventMonth(event.eventUnixTime) }}</small></time>
-                        <div><span>{{ tt(`personalFinance.organizerV2.nature.${event.economicNature}`) }}</span><strong>{{ eventDisplayLabel(event) || tt('personalFinance.organizerV2.events.unnamed') }}</strong><small>{{ eventDescription(event) }}</small></div>
+                        <div><span>{{ eventFilter === 'anomaly' ? eventAnomalyLabel(event) : tt(`personalFinance.organizerV2.nature.${event.economicNature}`) }}</span><strong>{{ eventDisplayLabel(event) || tt('personalFinance.organizerV2.events.unnamed') }}</strong><small>{{ eventDescription(event) }}</small></div>
                         <div class="context">{{ eventAccountName(event) }} · {{ eventCategoryName(event) }}</div>
                         <b class="amount" :class="event.flowDirection">{{ formatEventAmount(event) }}</b>
                         <v-btn class="raw-record-action" size="small" variant="text" @click="openEvidence(event)">{{ tt('personalFinance.organizerV2.events.evidenceCount', { count: event.evidenceCount }) }}</v-btn>
@@ -290,9 +290,10 @@ const showError = ref(false);
 const update = ref<FinanceUpdate>();
 const events = ref<readonly EconomicEvent[]>([]);
 const auditEvents = ref<readonly EconomicEvent[]>([]);
+const anomalyEvents = ref<readonly EconomicEvent[]>([]);
 const reviewIssues = ref<readonly ReviewIssue[]>([]);
 const reviewMembers = ref<readonly ReviewIssueMember[]>([]);
-type ResultsFilter = EconomicEventStatus | 'audit';
+type ResultsFilter = EconomicEventStatus | 'anomaly' | 'audit';
 
 const eventFilter = ref<ResultsFilter>('needs_action');
 const selectedBatchIds = ref<string[]>([]);
@@ -314,7 +315,7 @@ const showAbandon = ref(false);
 const showUndo = ref(false);
 const undoImpact = ref<OrganizerImpact>();
 const auditEventStatuses: readonly EconomicEventStatus[] = ['needs_action', 'ready', 'posted', 'excluded'];
-const visibleFilters: readonly ResultsFilter[] = ['needs_action', 'excluded', 'audit'];
+const visibleFilters: readonly ResultsFilter[] = ['needs_action', 'anomaly', 'excluded', 'audit'];
 const natures: readonly EconomicNature[] = ['expense', 'income', 'refund', 'fee', 'repayment', 'borrow', 'internal_transfer', 'balance_adjustment'];
 const readyBatches = computed(() => personalFinanceStore.batches.filter(batch => batch.status === 'ready'));
 const selectedBatches = computed(() => {
@@ -379,6 +380,7 @@ function showPostingStep(): void {
 function eventFilterCount(filter: ResultsFilter): number {
     if (!update.value) return 0;
     if (filter === 'audit') return auditEvents.value.length;
+    if (filter === 'anomaly') return anomalyEvents.value.length;
     if (filter === 'needs_action') return update.value.needsActionEventCount;
     if (filter === 'ready') return update.value.readyEventCount;
     if (filter === 'posted') return update.value.postedEventCount;
@@ -396,6 +398,13 @@ function evidenceFileName(item: OrganizerEvidenceItem): string { const batch = e
 function evidenceSourceMeta(item: OrganizerEvidenceItem): string { const batch = evidenceBatch(item); const source = batch ? tt(getSourceTypeKey(batch.sourceType)) : tt('personalFinance.organizerV2.evidence.source'); return `${source} · ${tt('personalFinance.organizerV2.evidence.rowNumber', { number: item.row.rowNumber })}`; }
 function evidenceRoleLabel(item: OrganizerEvidenceItem): string { return tt(`personalFinance.organizerV2.audit.role.${item.evidenceRole}`); }
 function eventReasonCodes(event: EconomicEvent): readonly string[] { try { const value: unknown = JSON.parse(event.reasonCodesJson || '[]'); return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []; } catch { return []; } }
+function isAnomalyEvent(event: EconomicEvent): boolean { return eventReasonCodes(event).some(reason => ['transaction_closed', 'transaction_failed', 'core_fields_conflict', 'postability_direction_conflict'].includes(reason)); }
+function eventAnomalyLabel(event: EconomicEvent): string {
+    const reasons = eventReasonCodes(event);
+    if (reasons.includes('transaction_closed')) return tt('personalFinance.organizerV2.anomaly.closed');
+    if (reasons.includes('transaction_failed')) return tt('personalFinance.organizerV2.anomaly.failed');
+    return tt('personalFinance.organizerV2.anomaly.conflict');
+}
 function auditGroupType(event: EconomicEvent): 'sameEvent' | 'transfer' | 'repayment' | 'sourceIdentity' {
     const reasons = eventReasonCodes(event);
     if (reasons.includes('auto_same_event')) return 'sameEvent';
@@ -433,7 +442,7 @@ async function load(silent = false): Promise<void> {
             selectedBatchIds.value = readyBatches.value.map(batch => batch.id);
             sourceSelectionInitialized.value = true;
         }
-        if (update.value) await Promise.all([loadEvents(silent), loadEvidenceAudit(silent)]);
+        if (update.value) await Promise.all([loadEvents(silent), loadEvidenceAudit(silent), loadAnomalyEvents()]);
         lastSyncedAt.value = Date.now();
     } catch { showError.value = true; }
     finally { loading.value = false; syncing.value = false; }
@@ -461,11 +470,22 @@ async function loadEvidenceAudit(silent = false): Promise<void> {
     finally { if (!silent) loadingAudit.value = false; }
 }
 
+async function loadAnomalyEvents(): Promise<void> {
+    if (!update.value) { anomalyEvents.value = []; return; }
+    try {
+        const pages = await Promise.all(['needs_action', 'excluded'].map(status => listAllEvents((update.value as FinanceUpdate).id, status as EconomicEventStatus)));
+        anomalyEvents.value = pages.flat().filter(isAnomalyEvent).sort((left, right) =>
+            (left.eventUnixTime ?? Number.MAX_SAFE_INTEGER) - (right.eventUnixTime ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id));
+    } catch { showError.value = true; }
+}
+
 async function loadEvents(silent = false): Promise<void> {
     if (!update.value || eventFilter.value === 'audit') return;
     if (!silent) loadingEvents.value = true;
     try {
-        if (eventFilter.value === 'needs_action') {
+        if (eventFilter.value === 'anomaly') {
+            await loadAnomalyEvents(); events.value = anomalyEvents.value; reviewIssues.value = []; reviewMembers.value = [];
+        } else if (eventFilter.value === 'needs_action') {
             const [eventPage, issuePage] = await Promise.all([organizerApi.listEvents(update.value.id, 'needs_action'), organizerApi.listReviewIssues(update.value.id)]);
             events.value = eventPage.items; reviewIssues.value = issuePage.items; reviewMembers.value = issuePage.members;
         } else {
@@ -479,6 +499,7 @@ function resetToSourceSelection(batchIds: readonly string[] = []): void {
     update.value = undefined;
     events.value = [];
     auditEvents.value = [];
+    anomalyEvents.value = [];
     reviewIssues.value = [];
     reviewMembers.value = [];
     selectedBatchIds.value = [...batchIds];
@@ -494,7 +515,7 @@ async function onImportChanged(batchId: string): Promise<void> {
         selectedBatchIds.value = [...selectedBatchIds.value, batchId];
     }
 }
-async function runMutation(operation: () => Promise<{ update: FinanceUpdate }>): Promise<void> { busy.value = true; try { update.value = (await operation()).update; await Promise.all([loadEvents(), loadEvidenceAudit()]); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
+async function runMutation(operation: () => Promise<{ update: FinanceUpdate }>): Promise<void> { busy.value = true; try { update.value = (await operation()).update; await Promise.all([loadEvents(), loadEvidenceAudit(), loadAnomalyEvents()]); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
 async function startOrganizing(): Promise<void> {
     if (selectedBatchIds.value.length < 1 || checkingPaymentAccounts.value || busy.value) return;
     checkingPaymentAccounts.value = true;
@@ -507,7 +528,7 @@ async function startOrganizing(): Promise<void> {
         checkingPaymentAccounts.value = false;
     }
 }
-async function createAndOrganize(): Promise<void> { busy.value = true; try { const created = await organizerApi.createUpdate(selectedBatchIds.value, idempotencyKey('create')); update.value = (await organizerApi.organize(created, idempotencyKey('organize'))).update; activeWorkflowStep.value = 2; eventFilter.value = 'needs_action'; await Promise.all([loadEvents(), loadEvidenceAudit()]); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
+async function createAndOrganize(): Promise<void> { busy.value = true; try { const created = await organizerApi.createUpdate(selectedBatchIds.value, idempotencyKey('create')); update.value = (await organizerApi.organize(created, idempotencyKey('organize'))).update; activeWorkflowStep.value = 2; eventFilter.value = 'needs_action'; await Promise.all([loadEvents(), loadEvidenceAudit(), loadAnomalyEvents()]); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
 async function postAllReady(): Promise<void> {
     if (!update.value) return;
     await runMutation(() => organizerApi.postAllReady(update.value as FinanceUpdate, idempotencyKey('post-all')));

@@ -407,6 +407,12 @@ func TestAlipayEvidenceParserRetainsStructurallyInvalidLogicalRows(t *testing.T)
 	}
 }
 
+func TestNormalizeAlipayEconomicEffectTreatsRepaymentFailureAsFailed(t *testing.T) {
+	if actual := normalizeAlipayEconomicEffect("还款失败"); actual != importing.ECONOMIC_EFFECT_FAILED {
+		t.Fatalf("还款失败不应进入人工性质判断: %s", actual)
+	}
+}
+
 func TestAlipayEvidenceParserSafeFileErrors(t *testing.T) {
 	tests := []struct {
 		name     string

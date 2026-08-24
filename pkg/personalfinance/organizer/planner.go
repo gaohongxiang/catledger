@@ -43,6 +43,8 @@ const (
 	reasonRelationAmbiguous        = "relation_ambiguous"
 	reasonRepaymentAccountRequired = "repayment_account_required"
 	reasonTransferAccountRequired  = "transfer_account_required"
+	reasonTransactionClosed        = "transaction_closed"
+	reasonTransactionFailed        = "transaction_failed"
 )
 
 // PlanningSource 把一次更新冻结的来源快照与不可变解析证据交给规划器。
@@ -764,6 +766,7 @@ func buildPlannedEvent(uid int64, updateId int64, group *planningGroup, now int6
 		event.Status = EVENT_STATUS_EXCLUDED
 		event.EconomicNature = excludedNature(group)
 		reasons = append(reasons, reasonEvidenceExcluded)
+		reasons = append(reasons, excludedTransactionReasons(group)...)
 		if groupAllLinked(group) {
 			reasons = append(reasons, reasonAlreadyPosted)
 		}
@@ -1230,6 +1233,19 @@ func groupAllExcluded(group *planningGroup) bool {
 		}
 	}
 	return true
+}
+
+func excludedTransactionReasons(group *planningGroup) []string {
+	reasons := make([]string, 0, 2)
+	for _, item := range group.rows {
+		switch item.row.EconomicEffect {
+		case importing.ECONOMIC_EFFECT_CLOSED:
+			reasons = appendUniqueReasons(reasons, reasonTransactionClosed)
+		case importing.ECONOMIC_EFFECT_FAILED:
+			reasons = appendUniqueReasons(reasons, reasonTransactionFailed)
+		}
+	}
+	return reasons
 }
 
 func groupAllLinked(group *planningGroup) bool {

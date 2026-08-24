@@ -117,9 +117,11 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('item.row.rawFields');
         expect(results).toContain('personalFinance.organizerV2.evidence.originalFields');
         expect(results).toContain('personalFinance.organizerV2.audit.title');
-        expect(results).toContain("['needs_action', 'excluded', 'audit']");
+        expect(results).toContain("['needs_action', 'anomaly', 'excluded', 'audit']");
         expect(results).not.toContain("['needs_action', 'ready', 'excluded', 'audit']");
         expect(results).not.toContain("['needs_action', 'ready', 'posted', 'excluded', 'audit']");
+        expect(results).not.toContain("'all'");
+        expect(results).not.toContain("'relation'");
         expect(results).toContain('showPostingStep');
         expect(results).toContain('postingStepShowsPosted');
         expect(results).toContain('class="posting-complete"');
@@ -142,10 +144,14 @@ describe('personal-finance simple web workflow', () => {
         expect(records).not.toContain('openPosting(row)');
         expect(results).toContain('selectedLedgerAccountId');
         expect(results).toContain('selectedCounterpartyLedgerAccountId');
+        expect(results).toContain('selectedCounterpartyLedgerAccountId.value !== selectedLedgerAccountId.value');
         expect(results).toContain('selectedCategoryId');
         expect(results).toContain('let fieldMask = 1 | 4 | 8');
         expect(results).toContain('fieldMask |= 128');
         expect(results).not.toContain('fieldMask |= 256');
+        const locale = source('../../../locales/zh_Hans.json');
+        expect(locale).toContain('"title": "核对资金账户"');
+        expect(locale).toContain('"anomaly": "交易异常"');
     });
 
     it('teaches the batch-first workflow and progressively discloses loan details', () => {

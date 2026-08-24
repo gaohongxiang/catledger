@@ -117,6 +117,8 @@ const EVENT_REASON_TRANSLATION_KEYS: Readonly<Record<string, string>> = {
     relation_ambiguous: 'personalFinance.organizerV2.reason.relationAmbiguous',
     repayment_account_required: 'personalFinance.organizerV2.reason.repaymentAccountRequired',
     transfer_account_required: 'personalFinance.organizerV2.reason.transferAccountRequired',
+    transaction_closed: 'personalFinance.organizerV2.reason.transactionClosed',
+    transaction_failed: 'personalFinance.organizerV2.reason.transactionFailed',
     manual_correction: 'personalFinance.organizerV2.reason.manualCorrection',
     legacy_posted_evidence_backfill: 'personalFinance.organizerV2.reason.legacyPostedEvidenceBackfill'
 };
