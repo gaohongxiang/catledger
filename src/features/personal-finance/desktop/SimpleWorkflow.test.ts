@@ -67,6 +67,14 @@ describe('personal-finance simple web workflow', () => {
         expect(results).not.toContain('organizeCurrent');
         expect(results).not.toContain('mdiRefresh');
         expect(results).not.toContain('@click="load"');
+        expect(results).toMatch(/<footer>\s*<div class="round-meta">[\s\S]*?<div class="actions"[^>]*>/);
+        expect(results).toContain('update.needsActionEventCount > 0 && activeWorkflowStep !== 2');
+        expect(results).toContain('.overview-card > footer > .actions { justify-content: flex-end; margin-inline-start: auto; }');
+        expect(results).toContain('class="issue-actions"');
+        expect(results).not.toContain('reviewIssueTitle');
+        expect(results).not.toContain('.issue-card > footer');
+        expect(results).toContain('update.finalEventCount - update.excludedEventCount');
+        expect(results).toContain('update.postedEventCount');
     });
 
     it('keeps raw records non-posting and reviews ledger fields in the organizer', () => {
