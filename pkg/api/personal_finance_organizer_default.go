@@ -12,15 +12,16 @@ import (
 )
 
 type personalFinanceOrganizerApplication struct {
-	repository *organizer.Repository
-	evidence   *importing.Repository
-	create     *organizer.CreateEngine
-	organize   *organizer.Engine
-	abandon    *organizer.AbandonEngine
-	posting    *organizer.PostingEngine
-	correction *organizer.CorrectionEngine
-	undo       *organizer.UndoEngine
-	rebuild    *organizer.RebuildEngine
+	repository      *organizer.Repository
+	evidence        *importing.Repository
+	accountMappings *personalFinanceReviewAccountMappingCoordinator
+	create          *organizer.CreateEngine
+	organize        *organizer.Engine
+	abandon         *organizer.AbandonEngine
+	posting         *organizer.PostingEngine
+	correction      *organizer.CorrectionEngine
+	undo            *organizer.UndoEngine
+	rebuild         *organizer.RebuildEngine
 }
 
 func InitializePersonalFinanceOrganizerApi() error {
@@ -30,6 +31,17 @@ func InitializePersonalFinanceOrganizerApi() error {
 		return err
 	}
 	evidence, err := importing.NewRepository(store)
+	if err != nil {
+		return err
+	}
+	generateId := func() int64 {
+		return uuid.Container.GenerateUuid(uuid.UUID_TYPE_PERSONAL_FINANCE)
+	}
+	sourceAccounts, err := importing.NewSourceAccountService(evidence, generateId)
+	if err != nil {
+		return err
+	}
+	paymentAccounts, err := importing.NewPaymentAccountService(evidence, generateId)
 	if err != nil {
 		return err
 	}
@@ -62,7 +74,12 @@ func InitializePersonalFinanceOrganizerApi() error {
 		return err
 	}
 	application := &personalFinanceOrganizerApplication{
-		repository: repository, evidence: evidence, create: create, organize: engine, abandon: abandon,
+		repository: repository, evidence: evidence,
+		accountMappings: &personalFinanceReviewAccountMappingCoordinator{
+			repository: repository, evidence: evidence, accounts: services.Accounts,
+			sourceAccounts: sourceAccounts, paymentAccounts: paymentAccounts,
+		},
+		create: create, organize: engine, abandon: abandon,
 		posting: posting, correction: correction, undo: undo, rebuild: rebuild,
 	}
 	PersonalFinanceOrganizer, err = NewPersonalFinanceOrganizerApi(application)

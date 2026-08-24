@@ -351,7 +351,14 @@ func (s *PaymentAccountService) ConfirmBatchPaymentAccount(c core.Context, reque
 	unlock := lockBatchMutation(request.Uid, request.BatchId)
 	defer unlock()
 
-	batch, rows, _, _, err := s.loadBatchPaymentAccounts(c, request.Uid, request.BatchId)
+	batch, err := s.repository.FindImportBatchById(c, request.Uid, request.BatchId)
+	if err != nil {
+		return nil, err
+	}
+	if batch == nil || batch.Uid != request.Uid || batch.BatchId != request.BatchId || !isPaymentAccountSourceType(batch.SourceTypeSnapshot) {
+		return nil, ErrPaymentAccountBatchNotFound
+	}
+	rows, err := s.repository.ListPaymentAccountRows(c, request.Uid, request.BatchId)
 	if err != nil {
 		return nil, err
 	}

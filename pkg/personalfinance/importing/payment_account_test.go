@@ -202,6 +202,44 @@ func TestPaymentAccountServiceGroupsBankCardLastFourDigits(t *testing.T) {
 	}
 }
 
+func TestPaymentAccountServiceConfirmsReusableAliasOutsideGroupedWorkbench(t *testing.T) {
+	repository, database := newSQLiteDedupRepository(t, 1)
+	_, accountKey := dedupSourceAccountEvidence(t)
+	const uid = int64(7141)
+	const fileId = int64(7241)
+	const sourceAccountId = int64(7341)
+	const batchId = int64(7441)
+	insertDedupFixtures(t, database, uid, fileId, sourceAccountId, accountKey, nil, "7")
+
+	batch := testImportBatch(uid, batchId, fileId, 100)
+	batch.Status = importing.IMPORT_BATCH_STATUS_READY
+	batch.SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	batch.ParserName = "generic_bank_xlsx"
+	batch.SourceAccountId = int64Pointer(sourceAccountId)
+	batch.TotalRowCount = 1
+	batch.ValidRowCount = 1
+	batch.PendingRowCount = 1
+	row := paymentAccountRow(uid, batchId, 7641, 1, "兴业银行信用卡(6106)", importing.PROCESSING_STATE_PENDING, nil)
+	insertRepositoryBeans(t, database, batch, row)
+
+	service, err := importing.NewPaymentAccountService(repository, func() int64 { return 8141 })
+	if err != nil {
+		t.Fatalf("create payment account service: %v", err)
+	}
+	groups, err := service.ListBatchPaymentAccounts(nil, uid, batchId)
+	if err != nil || len(groups) != 0 {
+		t.Fatalf("generic parser unexpectedly entered the grouped workbench: groups=%+v err=%v", groups, err)
+	}
+	confirmed, err := service.ConfirmBatchPaymentAccount(nil, importing.PaymentAccountConfirmRequest{
+		Uid: uid, BatchId: batchId, RowId: row.RowId,
+		LedgerAccountId: 8241, LedgerAccountCurrency: "CNY",
+	})
+	if err != nil || confirmed == nil || !confirmed.Mapped || confirmed.LedgerAccountId == nil || *confirmed.LedgerAccountId != 8241 {
+		t.Fatalf("review flow could not persist a reusable generic-bank alias: confirmed=%+v err=%v", confirmed, err)
+	}
+	assertPaymentRowLedgerAccounts(t, repository, uid, batchId, map[int64]*int64{row.RowId: int64Pointer(8241)})
+}
+
 func TestPaymentAccountServicePrefixesPlatformWallets(t *testing.T) {
 	repository, database := newSQLiteDedupRepository(t, 1)
 	_, accountKey := dedupSourceAccountEvidence(t)

@@ -282,11 +282,24 @@ func (a *personalFinanceOrganizerApplication) GetReviewIssue(c core.Context, uid
 }
 
 func (a *personalFinanceOrganizerApplication) ResolveReviewIssue(c core.Context, request organizer.ResolveReviewIssueRequest) (*organizer.ResolveReviewIssueResult, error) {
+	mappingPlan, err := a.accountMappings.prepare(c, request)
+	if err != nil {
+		return nil, err
+	}
 	engine, err := organizer.NewReviewIssueEngine(a.repository, uuid.Container)
 	if err != nil {
 		return nil, err
 	}
-	return engine.Resolve(c, request)
+	result, err := engine.Resolve(c, request)
+	if err != nil {
+		return nil, err
+	}
+	if mappingPlan != nil {
+		if err = a.accountMappings.apply(c, mappingPlan); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
 }
 
 func newReviewIssueResponse(value *organizer.ReviewIssue) *personalFinanceReviewIssueResponse {
