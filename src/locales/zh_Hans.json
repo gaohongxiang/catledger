@@ -2981,6 +2981,33 @@
             },
             "metric": { "posted": "已入账", "ready": "待入账", "needsAction": "必须处理", "excluded": "已排除" },
             "conservation": { "evidence": "有效证据", "duplicates": "附加证据", "events": "最终事件", "ok": "证据守恒已核对", "invalid": "计数不守恒，请勿入账" },
+            "audit": {
+                "eyebrow": "自动归组审计",
+                "title": "附加证据与同一事件核对",
+                "hint": "逐组核对为何多条来源记录只形成一个最终事件；相同金额本身不是归组依据。",
+                "additionalEvidence": "条附加证据",
+                "groupCount": "分布在 {count} 个最终事件",
+                "reviewRecords": "核对 {count} 条原始记录",
+                "equation": "{records} 条来源记录 → 1 个最终事件",
+                "showAll": "查看全部 {count} 组",
+                "collapse": "收起其余核对组",
+                "compactConservation": "{evidence} 条证据 − {supporting} 条附加 = {events} 个事件；扣除 {excluded} 个排除 = {ready} 个待入账 + {pending} 个待处理 + {posted} 个已入账",
+                "amountWarning": "金额或日期相同只能参与候选，不能单独证明是同一事件；请结合原始流水号、账户、方向、来源和数量关系核对。",
+                "empty": "暂未找到需要核对的附加证据组。",
+                "kind": {
+                    "sourceIdentity": "同一来源记录再次观察",
+                    "sameEvent": "跨来源同一事件",
+                    "transfer": "转账两侧",
+                    "repayment": "还款两侧"
+                },
+                "rule": {
+                    "sourceIdentity": "依据相同稳定流水或订单身份；无稳定编号时只认可同一文件的同一物理位置。",
+                    "sameEvent": "不同来源须同时满足账户、金额、币种、方向与来源语义，并具备唯一时间/文本解释或同日等量一一匹配。",
+                    "transfer": "一笔转出与一笔转入共同描述一次账户间资金移动；两条原始记录都保留。",
+                    "repayment": "资产账户转出与负债账户入账共同描述一次还款；两条原始记录都保留。"
+                },
+                "role": { "primary": "主记录", "supporting": "附加记录", "duplicate": "附加记录", "discarded": "已排除记录" }
+            },
             "events": { "eyebrow": "结果明细", "hint": "卡片展示整理结果；账单原文按需查看。", "evidence": "查看原始记录", "resolve": "处理", "empty": "这个分组暂时没有事件。", "unnamed": "账单交易", "accountPending": "账户待确认", "uncategorized": "暂未分类", "evidenceCount": "{count} 条原始记录" },
             "filter": { "needs_action": "必须处理", "ready": "待入账", "posted": "已入账", "excluded": "已排除", "corrected": "已修正" },
             "status": {

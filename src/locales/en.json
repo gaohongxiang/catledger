@@ -2981,6 +2981,33 @@
             },
             "metric": { "posted": "Posted", "ready": "Ready to post", "needsAction": "Required", "excluded": "Excluded" },
             "conservation": { "evidence": "Valid evidence", "duplicates": "Supporting evidence", "events": "Final events", "ok": "Evidence conservation verified", "invalid": "Counts do not reconcile; do not post" },
+            "audit": {
+                "eyebrow": "Automatic grouping audit",
+                "title": "Supporting evidence and same-event review",
+                "hint": "Review why multiple source records form one final event. Equal amounts alone never justify grouping.",
+                "additionalEvidence": "supporting record(s)",
+                "groupCount": "across {count} final event(s)",
+                "reviewRecords": "Review {count} source record(s)",
+                "equation": "{records} source records → 1 final event",
+                "showAll": "Show all {count} groups",
+                "collapse": "Collapse remaining groups",
+                "compactConservation": "{evidence} evidence − {supporting} supporting = {events} events; minus {excluded} excluded = {ready} ready + {pending} pending + {posted} posted",
+                "amountWarning": "An equal amount or date can only produce a candidate. Verify source IDs, accounts, direction, source semantics, and cardinality in the original records.",
+                "empty": "No supporting-evidence groups are available for review.",
+                "kind": {
+                    "sourceIdentity": "Same source record observed again",
+                    "sameEvent": "Cross-source same event",
+                    "transfer": "Transfer sides",
+                    "repayment": "Repayment sides"
+                },
+                "rule": {
+                    "sourceIdentity": "Based on the same stable transaction or order identity; without one, only the same physical locator in the same file qualifies.",
+                    "sameEvent": "Different sources must agree on account, amount, currency, direction, and source semantics, with a unique time/text explanation or balanced one-to-one daily matching.",
+                    "transfer": "An outflow and an inflow describe one movement between accounts; both original records remain preserved.",
+                    "repayment": "An asset-account outflow and liability-account inflow describe one repayment; both original records remain preserved."
+                },
+                "role": { "primary": "Primary record", "supporting": "Supporting record", "duplicate": "Supporting record", "discarded": "Excluded record" }
+            },
             "events": { "eyebrow": "Result details", "hint": "Cards show the organized result; open the statement text only when needed.", "evidence": "View source record", "resolve": "Resolve", "empty": "There are no events in this group.", "unnamed": "Statement transaction", "accountPending": "Account required", "uncategorized": "Uncategorized", "evidenceCount": "{count} source record(s)" },
             "filter": { "needs_action": "Required", "ready": "Ready", "posted": "Posted", "excluded": "Excluded", "corrected": "Corrected" },
             "status": {
