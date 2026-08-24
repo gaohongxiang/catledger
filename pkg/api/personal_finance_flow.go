@@ -23,6 +23,7 @@ type personalFinanceFlowApplication interface {
 	SaveSourceAccount(c core.Context, request importing.SourceAccountSaveRequest) (*importing.SourceAccount, error)
 	ListBatchPaymentAccounts(c core.Context, uid int64, batchId int64) ([]*importing.PaymentAccountGroup, error)
 	ConfirmBatchPaymentAccount(c core.Context, request importing.PaymentAccountConfirmRequest) (*importing.PaymentAccountGroup, error)
+	ExcludePaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error)
 }
 
 type personalFinanceFlowService struct {
@@ -49,6 +50,10 @@ func (s *personalFinanceFlowService) ListBatchPaymentAccounts(c core.Context, ui
 
 func (s *personalFinanceFlowService) ConfirmBatchPaymentAccount(c core.Context, request importing.PaymentAccountConfirmRequest) (*importing.PaymentAccountGroup, error) {
 	return s.paymentAccounts.ConfirmBatchPaymentAccount(c, request)
+}
+
+func (s *personalFinanceFlowService) ExcludePaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error) {
+	return s.paymentAccounts.ExcludePaymentAccount(c, request)
 }
 
 func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error) {
@@ -160,6 +165,11 @@ type personalFinancePaymentAccountConfirmRequest struct {
 	LedgerAccountId int64 `json:"ledgerAccountId,string" binding:"required,min=1"`
 }
 
+type personalFinancePaymentAccountExcludeRequest struct {
+	BatchId int64 `json:"batchId,string" binding:"required,min=1"`
+	RowId   int64 `json:"rowId,string" binding:"required,min=1"`
+}
+
 type personalFinancePaymentAccountResponse struct {
 	SourceType      importing.SourceType `json:"sourceType"`
 	Currency        string               `json:"currency"`
@@ -169,6 +179,7 @@ type personalFinancePaymentAccountResponse struct {
 	SampleRowId     int64                `json:"sampleRowId,string"`
 	LedgerAccountId *int64               `json:"ledgerAccountId,string,omitempty"`
 	Mapped          bool                 `json:"mapped"`
+	Excluded        bool                 `json:"excluded"`
 }
 
 type personalFinancePaymentAccountListResponse struct {
@@ -441,6 +452,34 @@ func (a *PersonalFinanceImportsApi) PaymentAccountConfirmHandler(c *core.WebCont
 	return response, nil
 }
 
+// PaymentAccountExcludeHandler 忽略一个付款账户，并记住该选择供后续账单复用。
+func (a *PersonalFinanceImportsApi) PaymentAccountExcludeHandler(c *core.WebContext) (any, *errs.Error) {
+	if writeErr := a.ensurePersonalFinanceImportWriteAllowed(c); writeErr != nil {
+		return nil, writeErr
+	}
+
+	request := new(personalFinancePaymentAccountExcludeRequest)
+	if err := c.ShouldBindJSON(request); err != nil {
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	service, err := a.newPersonalFinanceFlowService()
+	if err != nil {
+		return nil, errs.ErrOperationFailed
+	}
+	group, err := service.ExcludePaymentAccount(c, importing.PaymentAccountSkipRequest{
+		Uid: c.GetCurrentUid(), BatchId: request.BatchId, RowId: request.RowId,
+	})
+	if err != nil {
+		return nil, personalFinanceFlowError(err)
+	}
+	response := newPersonalFinancePaymentAccountResponse(group)
+	if response == nil {
+		return nil, errs.ErrOperationFailed
+	}
+	return response, nil
+}
+
 func isPersonalFinancePaymentLedgerAccountUsable(account *models.Account, currency string) bool {
 	return account != nil && !account.Deleted && !account.Hidden && account.Type == models.ACCOUNT_TYPE_SINGLE_ACCOUNT && account.Currency == currency
 }
@@ -586,7 +625,7 @@ func newPersonalFinancePaymentAccountResponse(group *importing.PaymentAccountGro
 	return &personalFinancePaymentAccountResponse{
 		SourceType: group.SourceType, Currency: group.Currency, DisplayName: group.DisplayName,
 		RowCount: group.RowCount, PendingRowCount: group.PendingRowCount, SampleRowId: group.SampleRowId,
-		LedgerAccountId: group.LedgerAccountId, Mapped: group.Mapped,
+		LedgerAccountId: group.LedgerAccountId, Mapped: group.Mapped, Excluded: group.Excluded,
 	}
 }
 

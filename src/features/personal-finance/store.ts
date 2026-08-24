@@ -11,6 +11,7 @@ import type {
     PersonalFinanceImportRowPage,
     PersonalFinanceImportUploadResult,
     PersonalFinancePaymentAccountConfirmRequest,
+    PersonalFinancePaymentAccountExcludeRequest,
     PersonalFinancePaymentAccountGroup,
     PersonalFinancePaymentAccountPage,
     PersonalFinancePostingDraft,
@@ -205,6 +206,19 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         }
     }
 
+    async function excludePaymentAccount(request: PersonalFinancePaymentAccountExcludeRequest): Promise<PersonalFinancePaymentAccountGroup> {
+        submitting.value = true;
+
+        try {
+            return await unwrapResponse(
+                services.excludePersonalFinancePaymentAccount(request),
+                'Unable to exclude personal finance payment account'
+            );
+        } finally {
+            submitting.value = false;
+        }
+    }
+
     async function postRow(row: PersonalFinanceImportRow, draft?: PersonalFinancePostingDraft): Promise<PersonalFinancePostingResult> {
         submitting.value = true;
 
@@ -276,6 +290,7 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         saveSourceAccount,
         loadPaymentAccounts,
         confirmPaymentAccount,
+        excludePaymentAccount,
         postRow,
 		discardBatch,
 		deleteFileContent,

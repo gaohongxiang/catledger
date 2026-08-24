@@ -61,8 +61,12 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('<payment-account-setup-dialog ref="paymentAccountSetupDialog" @saved="createAndOrganize" />');
         expect(upload).not.toContain('PaymentAccountSetupDialog');
         expect(upload).not.toContain('paymentAccountSetupDialog.value?.open');
-        expect(paymentAccounts).toContain('.filter(group => !options.unresolvedOnly || !group.mapped)');
         expect(paymentAccounts).toContain('Promise.all(batchIds.map');
+        expect(paymentAccounts).toContain('const merged = new Map<string, PaymentAccountMember[]>()');
+        expect(paymentAccounts).toContain('paymentAccountKey(group)');
+        expect(paymentAccounts).toContain('personalFinanceStore.excludePaymentAccount');
+        expect(paymentAccounts).toContain('personalFinance.paymentAccount.ignore');
+        expect(paymentAccounts).toContain('.filter(draft => !options.unresolvedOnly || !draft.group.mapped)');
         expect(results).toContain('personalFinance.organizerV2.action.continueReview');
         expect(results).toContain('personalFinance.organizerV2.action.confirmAndPost');
         expect(results).toContain('canAbandonUpdate(update)');

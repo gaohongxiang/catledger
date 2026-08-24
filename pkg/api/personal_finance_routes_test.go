@@ -21,6 +21,7 @@ var frozenPersonalFinanceRoutes = []personalFinanceRouteSpec{
 	{method: "POST", path: "/personal_finance/import_batches/post.json", handler: "PersonalFinanceImports.ImportBatchPostHandler", importGated: true},
 	{method: "POST", path: "/personal_finance/source_accounts/save.json", handler: "PersonalFinanceImports.SourceAccountSaveHandler", importGated: true},
 	{method: "POST", path: "/personal_finance/import_batches/payment_accounts/confirm.json", handler: "PersonalFinanceImports.PaymentAccountConfirmHandler", importGated: true},
+	{method: "POST", path: "/personal_finance/import_batches/payment_accounts/exclude.json", handler: "PersonalFinanceImports.PaymentAccountExcludeHandler", importGated: true},
 	{method: "POST", path: "/personal_finance/reconciliation/candidates/generate.json", handler: "PersonalFinanceImports.ReconciliationCandidateGenerateHandler", importGated: true},
 	{method: "GET", path: "/personal_finance/import_files/list.json", handler: "PersonalFinanceImports.ImportFileListHandler"},
 	{method: "GET", path: "/personal_finance/import_files/get.json", handler: "PersonalFinanceImports.ImportFileGetHandler"},

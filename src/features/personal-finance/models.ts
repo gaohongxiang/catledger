@@ -139,6 +139,7 @@ export interface PersonalFinancePaymentAccountGroup {
     readonly sampleRowId: string;
     readonly ledgerAccountId?: string;
     readonly mapped: boolean;
+    readonly excluded?: boolean;
 }
 
 export interface PersonalFinancePaymentAccountPage {
@@ -149,6 +150,11 @@ export interface PersonalFinancePaymentAccountConfirmRequest {
     readonly batchId: string;
     readonly rowId: string;
     readonly ledgerAccountId: string;
+}
+
+export interface PersonalFinancePaymentAccountExcludeRequest {
+    readonly batchId: string;
+    readonly rowId: string;
 }
 
 export interface PersonalFinanceSourceAccountDiscovery {

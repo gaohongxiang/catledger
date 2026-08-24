@@ -187,6 +187,7 @@ import type {
     PersonalFinanceImportRowPage,
     PersonalFinanceImportUploadResult,
     PersonalFinancePaymentAccountConfirmRequest,
+    PersonalFinancePaymentAccountExcludeRequest,
     PersonalFinancePaymentAccountGroup,
     PersonalFinancePaymentAccountPage,
     PersonalFinancePostingRequest,
@@ -946,6 +947,9 @@ export default {
     },
     confirmPersonalFinancePaymentAccount: (request: PersonalFinancePaymentAccountConfirmRequest): ApiResponsePromise<PersonalFinancePaymentAccountGroup> => {
         return axios.post<ApiResponse<PersonalFinancePaymentAccountGroup>>('v1/personal_finance/import_batches/payment_accounts/confirm.json', request);
+    },
+    excludePersonalFinancePaymentAccount: (request: PersonalFinancePaymentAccountExcludeRequest): ApiResponsePromise<PersonalFinancePaymentAccountGroup> => {
+        return axios.post<ApiResponse<PersonalFinancePaymentAccountGroup>>('v1/personal_finance/import_batches/payment_accounts/exclude.json', request);
     },
     postPersonalFinanceImportBatch: (request: PersonalFinancePostingRequest): ApiResponsePromise<PersonalFinancePostingResult> => {
         return axios.post<ApiResponse<PersonalFinancePostingResult>>('v1/personal_finance/import_batches/post.json', request);
