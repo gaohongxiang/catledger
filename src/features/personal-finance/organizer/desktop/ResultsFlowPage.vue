@@ -48,9 +48,6 @@
                         <b>3</b><span>{{ tt('personalFinance.organizerV2.workflow.ready') }}<strong>{{ update.readyEventCount }}</strong></span>
                     </button>
                 </div>
-                <div class="source-chips" v-if="updateSourceNames.length">
-                    <span :key="`${name}-${index}`" v-for="(name, index) in updateSourceNames">{{ name }}</span>
-                </div>
                 <footer>
                     <div class="actions">
                         <v-btn color="primary" v-if="update.needsActionEventCount > 0" @click="showEventStep('needs_action')">
@@ -62,12 +59,6 @@
                         <v-btn variant="text" color="warning" v-if="canUndoUpdate(update)" @click="inspectUndo">
                             {{ tt('personalFinance.organizerV2.action.undo') }}
                         </v-btn>
-                        <v-btn variant="text" v-if="update.status === 'posted' || update.status === 'undone'" @click="startNewUpdate">
-                            {{ tt('personalFinance.organizerV2.action.new') }}
-                        </v-btn>
-                        <v-btn variant="outlined" color="warning" v-if="canAbandonUpdate(update)" @click="showAbandon = true">
-                            {{ tt('personalFinance.organizerV2.action.abandonAndReselect') }}
-                        </v-btn>
                     </div>
                     <div class="round-meta">
                         <small>{{ syncLabel }}</small>
@@ -76,7 +67,13 @@
             </section>
 
             <section class="source-stage" v-if="activeWorkflowStep === 1">
-                <header><div><h3>{{ tt('personalFinance.organizerV2.sources.title') }}</h3><p>{{ tt('personalFinance.organizerV2.sources.lockedHint') }}</p></div><import-upload-button @changed="onImportChanged" /></header>
+                <header>
+                    <div><h3>{{ tt('personalFinance.organizerV2.sources.title') }}</h3><p>{{ tt('personalFinance.organizerV2.sources.lockedHint') }}</p></div>
+                    <v-btn variant="outlined" color="warning" v-if="canAbandonUpdate(update)" @click="showAbandon = true">
+                        {{ tt('personalFinance.organizerV2.action.abandonAndReselect') }}
+                    </v-btn>
+                    <import-upload-button v-else-if="update.status === 'posted' || update.status === 'undone'" @changed="onImportChanged" />
+                </header>
                 <article :key="item.source.id" v-for="item in currentSources">
                     <div><strong>{{ item.batch?.file?.originalFileName || tt(getSourceTypeKey(item.source.sourceType)) }}</strong><small>{{ tt(getSourceTypeKey(item.source.sourceType)) }} · {{ item.batch?.validRowCount ?? 0 }} 条</small></div>
                     <span>{{ tt('personalFinance.organizerV2.sources.selected') }}</span>
@@ -291,10 +288,6 @@ const memberMap = computed(() => {
     return result;
 });
 const refundCandidateOptions = computed(() => refundCandidates.value.map(event => ({ value: event.id, title: `${eventDay(event.eventUnixTime)} ${eventMonth(event.eventUnixTime)} · ${eventDisplayLabel(event) || '未命名消费'} · ${formatEventAmount(event)}` })));
-const updateSourceNames = computed(() => {
-    const batches = new Map(personalFinanceStore.batches.map(batch => [batch.id, batch]));
-    return (update.value?.sources ?? []).map(source => batches.get(source.batchId)?.file?.originalFileName || tt(getSourceTypeKey(source.sourceType)));
-});
 const currentSources = computed(() => {
     const batches = new Map(personalFinanceStore.batches.map(batch => [batch.id, batch]));
     return (update.value?.sources ?? []).map(source => ({ source, batch: batches.get(source.batchId) }));
@@ -364,8 +357,15 @@ function resetToSourceSelection(batchIds: readonly string[] = []): void {
     selectedBatchIds.value = [...batchIds];
     activeWorkflowStep.value = 1;
 }
-function startNewUpdate(): void { resetToSourceSelection(); }
-async function onImportChanged(batchId: string): Promise<void> { await personalFinanceStore.loadBatches(0, 100); if (!update.value && readyBatches.value.some(batch => batch.id === batchId) && !selectedBatchIds.value.includes(batchId)) selectedBatchIds.value = [...selectedBatchIds.value, batchId]; }
+async function onImportChanged(batchId: string): Promise<void> {
+    await personalFinanceStore.loadBatches(0, 100);
+    if (!readyBatches.value.some(batch => batch.id === batchId)) return;
+    if (update.value?.status === 'posted' || update.value?.status === 'undone') {
+        resetToSourceSelection([batchId]);
+    } else if (!update.value && !selectedBatchIds.value.includes(batchId)) {
+        selectedBatchIds.value = [...selectedBatchIds.value, batchId];
+    }
+}
 async function runMutation(operation: () => Promise<{ update: FinanceUpdate }>): Promise<void> { busy.value = true; try { update.value = (await operation()).update; await loadEvents(); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
 async function createAndOrganize(): Promise<void> { busy.value = true; try { const created = await organizerApi.createUpdate(selectedBatchIds.value, idempotencyKey('create')); update.value = (await organizerApi.organize(created, idempotencyKey('organize'))).update; activeWorkflowStep.value = 2; eventFilter.value = 'needs_action'; await loadEvents(); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
 async function postAllReady(): Promise<void> { if (update.value) await runMutation(() => organizerApi.postAllReady(update.value as FinanceUpdate, idempotencyKey('post-all'))); }
@@ -449,7 +449,7 @@ onBeforeUnmount(() => {
 .results-flow { --rule: rgba(var(--v-theme-on-surface), .12); display: grid; gap: 10px; }
 .kicker { color: rgb(var(--v-theme-primary)); font-size: .68rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .empty-stage, .overview-card, .source-stage, .workbench { border: 1px solid var(--rule); border-radius: 12px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
-.empty-stage { min-height: 420px; padding: clamp(28px, 5vw, 62px); background: linear-gradient(125deg, rgba(var(--v-theme-primary), .09), transparent 48%), rgb(var(--v-theme-surface)); }
+.empty-stage { display: flex; flex-direction: column; min-height: 420px; padding: clamp(28px, 5vw, 62px); background: linear-gradient(125deg, rgba(var(--v-theme-primary), .09), transparent 48%), rgb(var(--v-theme-surface)); }
 .empty-stage h2 { margin: 8px 0; font-size: clamp(1.8rem, 4vw, 3rem); }
 .empty-stage p, .overview-card p, .workbench p, .source-stage p { color: rgba(var(--v-theme-on-surface), .6); }
 .source-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 9px; margin: 28px 0 20px; }
@@ -459,6 +459,7 @@ onBeforeUnmount(() => {
 .source-picker strong, .source-picker small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-picker small { color: rgba(var(--v-theme-on-surface), .55); }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.empty-stage > .actions { justify-content: flex-end; margin-top: auto; }
 .overview-card > header, .workbench > header, .source-stage > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 12px 14px; background: rgba(var(--v-theme-primary), .035); }
 .overview-card > header { align-items: center; }
 .overview-card > header > div { display: grid; grid-template-columns: auto auto minmax(0,1fr); align-items: baseline; column-gap: 12px; min-width: 0; }
@@ -474,8 +475,6 @@ onBeforeUnmount(() => {
 .steps button span { display: grid; color: rgba(var(--v-theme-on-surface), .58); font-size: .72rem; }
 .steps button strong { color: rgb(var(--v-theme-on-surface)); font-size: 1rem; line-height: 1.15; }
 .steps button small { color: rgb(var(--v-theme-warning)); }
-.source-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 7px 14px 0; }
-.source-chips span { max-width: min(360px, 34vw); padding: 3px 8px; overflow: hidden; border: 1px solid var(--rule); border-radius: 999px; color: rgba(var(--v-theme-on-surface), .62); font-size: .69rem; text-overflow: ellipsis; white-space: nowrap; }
 .overview-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 48px; padding: 8px 14px; }
 .round-meta { display: flex; align-items: center; gap: 4px; color: rgba(var(--v-theme-on-surface), .55); }
 .round-meta small { white-space: nowrap; }

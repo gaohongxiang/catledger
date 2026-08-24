@@ -2939,7 +2939,7 @@
                 "title": "Upload and choose statements for this round",
                 "hint": "Choose which statements enter this round first. The system then reduces multi-source evidence to unique economic events and returns only required decisions.",
                 "batch": "Import batch",
-                "action": "Start with {count} selected statement(s)",
+                "action": "Organize {count} selected statement(s)",
                 "import": "Upload or inspect statements"
             },
             "result": {
