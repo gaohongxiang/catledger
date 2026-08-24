@@ -46,6 +46,7 @@ describe('personal-finance simple web workflow', () => {
 
     it('keeps one primary round action and abandons immutable sources before reselection', () => {
         const results = source('../organizer/desktop/ResultsFlowPage.vue');
+        const organizer = source('./BillOrganizerPage.vue');
 
         expect(results).toContain('personalFinance.organizerV2.action.continueReview');
         expect(results).toContain('personalFinance.organizerV2.action.confirmAndPost');
@@ -67,15 +68,24 @@ describe('personal-finance simple web workflow', () => {
         expect(results).not.toContain('organizeCurrent');
         expect(results).not.toContain('mdiRefresh');
         expect(results).not.toContain('@click="load"');
-        expect(results).toMatch(/<footer>\s*<div class="overview-controls"[\s\S]*?<div class="actions"[^>]*>/);
+        expect(results).toContain('<footer v-if="activeWorkflowStep !== 1">');
         expect(results).toContain('eventFilterCount(filter)');
         expect(results).toContain('class="conservation-inline"');
-        expect(results).toContain('class="round-meta"');
+        expect(results).not.toContain('class="round-meta"');
+        expect(results).not.toContain('#{{ update.id }}');
+        expect(organizer).toContain('class="organizer-sync"');
+        expect(organizer).toContain('@sync-label="organizerSyncLabel = $event"');
         expect(results).not.toContain('personalFinance.organizerV2.workflow.title');
         expect(results).not.toContain('personalFinance.organizerV2.workflow.hint');
         expect(results).not.toContain('class="verification"');
-        expect(results).toContain('update.needsActionEventCount > 0 && activeWorkflowStep !== 2');
-        expect(results).toContain('.overview-card > footer > .actions { justify-content: flex-end; margin-inline-start: auto; }');
+        expect(results.match(/class="round-primary-action"/g)).toHaveLength(2);
+        expect(results).toContain('<footer v-if="update.needsActionEventCount > 0">');
+        expect(results).toContain('class="post-all-action"');
+        expect(results).toContain(':disabled="!canPostUpdate(update)"');
+        expect(results).toContain('personalFinance.organizerV2.action.resolveBeforePost');
+        expect(results).not.toContain('activeWorkflowStep !== 2');
+        expect(results).not.toContain('personalFinance.organizerV2.events.eyebrow');
+        expect(results).not.toContain('personalFinance.organizerV2.events.hint');
         expect(results).toContain('class="issue-actions"');
         expect(results).not.toContain('reviewIssueTitle');
         expect(results).not.toContain('.issue-card > footer');
@@ -95,6 +105,9 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('auditEvents.value = pages.flat().filter(event => event.evidenceCount > 1)');
         expect(results).toContain("reasons.includes('auto_same_event')");
         expect(results).toContain('personalFinance.organizerV2.audit.amountWarning');
+        expect(results).toContain('v-for="event in auditEvents"');
+        expect(results).not.toContain('showAllAuditEvents');
+        expect(results).not.toContain('auditPreviewLimit');
         expect(results).not.toContain('原始证据与来源');
     });
 

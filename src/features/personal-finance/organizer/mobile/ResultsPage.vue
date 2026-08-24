@@ -7,7 +7,7 @@
 
         <template v-if="update">
             <f7-block strong inset class="result-head" :class="{ warning: update.needsActionEventCount > 0 }">
-                <div class="result-kicker">{{ tt('personalFinance.organizerV2.result.eyebrow') }} · #{{ update.id }}</div>
+                <div class="result-kicker">{{ tt('personalFinance.organizerV2.result.eyebrow') }}</div>
                 <h2>{{ update.needsActionEventCount ? `${reviewIssues.length || update.needsActionEventCount} 个问题待处理` : tt('personalFinance.organizerV2.result.ready') }}</h2>
                 <p>一张卡片只问一个决定；批量处理不会合并独立交易。</p>
             </f7-block>

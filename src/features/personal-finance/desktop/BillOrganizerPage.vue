@@ -7,6 +7,7 @@
                     <div class="organizer-title-row">
                         <h2>{{ tt('personalFinance.organizer.title') }}</h2>
                         <p>{{ tt('personalFinance.organizer.subtitle') }}</p>
+                        <small class="organizer-sync" v-if="activeView === 'review' && organizerSyncLabel">{{ organizerSyncLabel }}</small>
                     </div>
                 </div>
 
@@ -25,6 +26,7 @@
             <personal-finance-results-flow-page
                 class="organizer-content"
                 v-if="activeView === 'review'"
+                @sync-label="organizerSyncLabel = $event"
             />
             <personal-finance-import-workbench-page class="organizer-content" :embedded="true" v-else />
         </keep-alive>
@@ -44,6 +46,7 @@ type BillOrganizerView = 'review' | 'records';
 
 const { tt } = useI18n();
 const activeView = ref<BillOrganizerView>('review');
+const organizerSyncLabel = ref('');
 </script>
 
 <style scoped>
@@ -101,6 +104,14 @@ const activeView = ref<BillOrganizerView>('review');
     font-size: 0.78rem;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.organizer-sync {
+    flex: 0 0 auto;
+    color: rgba(var(--v-theme-on-surface), 0.46);
+    font-size: 0.68rem;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 

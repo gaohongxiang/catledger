@@ -21,7 +21,7 @@
             </div>
             <div class="actions">
                 <import-upload-button size="large" @changed="onImportChanged" />
-                <v-btn color="primary" size="large" :loading="busy" :disabled="selectedBatchIds.length < 1" @click="createAndOrganize">
+                <v-btn class="round-primary-action" color="primary" size="large" :loading="busy" :disabled="selectedBatchIds.length < 1" @click="createAndOrganize">
                     {{ tt('personalFinance.organizerV2.start.action', { count: selectedBatchIds.length }) }}
                 </v-btn>
             </div>
@@ -34,14 +34,14 @@
                         <b>1</b><span>{{ tt('personalFinance.organizerV2.workflow.upload') }}<strong>{{ update.sourceCount }}</strong></span>
                     </button>
                     <button class="attention" @click="showEventStep('needs_action')" :class="{ active: activeWorkflowStep === 2 }">
-                        <b>2</b><span>{{ tt('personalFinance.organizerV2.workflow.review') }}<strong>{{ issueGroupCount }}</strong><small>{{ update.needsActionEventCount }} 笔记录</small></span>
+                        <b>2</b><span>{{ tt('personalFinance.organizerV2.workflow.review') }}<strong>{{ issueGroupCount }}</strong><small>{{ tt('personalFinance.organizerV2.workflow.eventCount', { count: update.needsActionEventCount }) }}</small></span>
                     </button>
                     <button @click="showPostingStep" :class="{ active: activeWorkflowStep === 3 }">
                         <b>3</b><span>{{ tt(postingStepLabelKey) }}<strong>{{ postingStepCount }}</strong></span>
                     </button>
                 </div>
-                <footer>
-                    <div class="overview-controls" v-if="activeWorkflowStep !== 1">
+                <footer v-if="activeWorkflowStep !== 1">
+                    <div class="overview-controls">
                         <v-btn-toggle density="compact" divided mandatory variant="outlined" v-model="eventFilter">
                             <v-btn :value="filter" :key="filter" v-for="filter in visibleFilters">
                                 {{ tt(`personalFinance.organizerV2.filter.${filter}`) }} <b>{{ eventFilterCount(filter) }}</b>
@@ -50,18 +50,6 @@
                         <small class="conservation-inline" :class="{ invalid: !conservationHolds }">
                             {{ tt('personalFinance.organizerV2.audit.compactConservation', { evidence: update.validEvidenceCount, supporting: update.duplicateEvidenceCount, events: update.finalEventCount, excluded: update.excludedEventCount, ready: update.readyEventCount, pending: update.needsActionEventCount, posted: update.postedEventCount }) }}
                         </small>
-                    </div>
-                    <small class="round-meta">#{{ update.id }} · {{ tt(`personalFinance.organizerV2.status.${update.status}`) }} · {{ syncLabel }}</small>
-                    <div class="actions" v-if="(update.needsActionEventCount > 0 && activeWorkflowStep !== 2) || canPostUpdate(update) || canUndoUpdate(update)">
-                        <v-btn color="primary" v-if="update.needsActionEventCount > 0 && activeWorkflowStep !== 2" @click="showEventStep('needs_action')">
-                            {{ tt('personalFinance.organizerV2.action.continueReview', { count: issueGroupCount }) }}
-                        </v-btn>
-                        <v-btn color="primary" :loading="busy" v-else-if="canPostUpdate(update)" @click="postAllReady">
-                            {{ tt('personalFinance.organizerV2.action.confirmAndPost', { count: update.readyEventCount }) }}
-                        </v-btn>
-                        <v-btn variant="text" color="warning" v-if="canUndoUpdate(update)" @click="inspectUndo">
-                            {{ tt('personalFinance.organizerV2.action.undo') }}
-                        </v-btn>
                     </div>
                 </footer>
             </section>
@@ -78,18 +66,25 @@
                     <div><strong>{{ item.batch?.file?.originalFileName || tt(getSourceTypeKey(item.source.sourceType)) }}</strong><small>{{ tt(getSourceTypeKey(item.source.sourceType)) }} · {{ item.batch?.validRowCount ?? 0 }} 条</small></div>
                     <span>{{ tt('personalFinance.organizerV2.sources.selected') }}</span>
                 </article>
+                <footer v-if="update.needsActionEventCount > 0">
+                    <v-btn class="round-primary-action" color="primary" @click="showEventStep('needs_action')">
+                        {{ tt('personalFinance.organizerV2.action.continueReview', { count: issueGroupCount }) }}
+                    </v-btn>
+                </footer>
             </section>
 
             <section class="posting-complete" v-if="activeWorkflowStep === 3 && postingStepShowsPosted">
                 <span class="kicker">{{ tt('personalFinance.organizerV2.posted.eyebrow') }}</span>
                 <strong>{{ tt('personalFinance.organizerV2.posted.title', { count: update.postedEventCount }) }}</strong>
                 <p>{{ tt('personalFinance.organizerV2.posted.hint') }}</p>
+                <v-btn variant="text" color="warning" v-if="canUndoUpdate(update)" @click="inspectUndo">
+                    {{ tt('personalFinance.organizerV2.action.undo') }}
+                </v-btn>
             </section>
 
             <section class="evidence-audit" v-else-if="activeWorkflowStep !== 1 && eventFilter === 'audit'">
                 <header>
                     <div>
-                        <span class="kicker">{{ tt('personalFinance.organizerV2.audit.eyebrow') }}</span>
                         <h3>{{ tt('personalFinance.organizerV2.audit.title') }}</h3>
                         <p>{{ tt('personalFinance.organizerV2.audit.hint') }}</p>
                     </div>
@@ -101,7 +96,7 @@
                 </header>
                 <v-skeleton-loader type="list-item-two-line@4" v-if="loadingAudit" />
                 <div class="audit-list" v-else-if="auditEvents.length">
-                    <article :key="event.id" v-for="event in visibleAuditEvents">
+                    <article :key="event.id" v-for="event in auditEvents">
                         <div class="audit-kind">
                             <span>{{ auditGroupLabel(event) }}</span>
                             <small>{{ auditGroupEquation(event) }}</small>
@@ -116,17 +111,15 @@
                         <v-btn class="raw-record-action" size="small" variant="text" @click="openEvidence(event)">{{ tt('personalFinance.organizerV2.audit.reviewRecords', { count: event.evidenceCount }) }}</v-btn>
                     </article>
                 </div>
-                <footer v-if="auditEvents.length > auditPreviewLimit">
-                    <v-btn size="small" variant="text" color="primary" @click="showAllAuditEvents = !showAllAuditEvents">
-                        {{ tt(showAllAuditEvents ? 'personalFinance.organizerV2.audit.collapse' : 'personalFinance.organizerV2.audit.showAll', { count: auditEvents.length }) }}
-                    </v-btn>
-                </footer>
                 <p class="audit-empty" v-if="!loadingAudit && !auditEvents.length">{{ tt('personalFinance.organizerV2.audit.empty') }}</p>
             </section>
 
             <section class="workbench" v-else-if="activeWorkflowStep !== 1 && eventFilter !== 'audit'">
                 <header>
-                    <div><span class="kicker">{{ tt('personalFinance.organizerV2.events.eyebrow') }}</span><h3>{{ eventFilter === 'needs_action' ? '必须处理的问题' : tt(`personalFinance.organizerV2.filter.${eventFilter}`) }}</h3><p>{{ eventFilter === 'needs_action' ? '一张卡片只问一个决定；相同答案可一次应用，多来源疑似重复必须明确裁决。' : tt('personalFinance.organizerV2.events.hint') }}</p></div>
+                    <div><h3>{{ tt(`personalFinance.organizerV2.filter.${eventFilter}`) }}</h3><p>{{ tt(`personalFinance.organizerV2.events.tabHint.${eventFilter}`, { count: eventFilterCount(eventFilter) }) }}</p></div>
+                    <v-btn class="post-all-action" color="primary" :loading="busy" :disabled="!canPostUpdate(update)" v-if="eventFilter === 'ready'" @click="postAllReady">
+                        {{ update.needsActionEventCount > 0 ? tt('personalFinance.organizerV2.action.resolveBeforePost', { count: issueGroupCount }) : tt('personalFinance.organizerV2.action.confirmAndPost', { count: update.readyEventCount }) }}
+                    </v-btn>
                 </header>
 
                 <v-skeleton-loader type="list-item-three-line@4" v-if="loadingEvents" />
@@ -267,6 +260,7 @@ import { organizerApi } from '../service.ts';
 import { RESULT_UPDATE_STATUSES, canAbandonUpdate, canPostUpdate, canUndoUpdate, eventDisplayLabel, eventReasonTranslationKeys, selectCurrentUpdate, updateConservationHolds } from '../state.ts';
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
+const emit = defineEmits<{ (event: 'sync-label', value: string): void }>();
 const accountsStore = useAccountsStore();
 const categoriesStore = useTransactionCategoriesStore();
 const personalFinanceStore = usePersonalFinanceStore();
@@ -282,7 +276,6 @@ const showError = ref(false);
 const update = ref<FinanceUpdate>();
 const events = ref<readonly EconomicEvent[]>([]);
 const auditEvents = ref<readonly EconomicEvent[]>([]);
-const showAllAuditEvents = ref(false);
 const reviewIssues = ref<readonly ReviewIssue[]>([]);
 const reviewMembers = ref<readonly ReviewIssueMember[]>([]);
 type ResultsFilter = EconomicEventStatus | 'audit';
@@ -307,17 +300,16 @@ const showUndo = ref(false);
 const undoImpact = ref<OrganizerImpact>();
 const auditEventStatuses: readonly EconomicEventStatus[] = ['needs_action', 'ready', 'posted', 'excluded'];
 const visibleFilters: readonly ResultsFilter[] = ['needs_action', 'excluded', 'audit'];
-const auditPreviewLimit = 6;
 const natures: readonly EconomicNature[] = ['expense', 'income', 'refund', 'fee', 'repayment', 'borrow', 'internal_transfer', 'balance_adjustment'];
 const readyBatches = computed(() => personalFinanceStore.batches.filter(batch => batch.status === 'ready'));
 const conservationHolds = computed(() => !!update.value && updateConservationHolds(update.value));
-const visibleAuditEvents = computed(() => showAllAuditEvents.value ? auditEvents.value : auditEvents.value.slice(0, auditPreviewLimit));
 const syncLabel = computed(() => {
     if (syncing.value) return tt('personalFinance.organizerV2.sync.syncing');
     if (!lastSyncedAt.value) return tt('personalFinance.organizerV2.sync.pending');
     const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(lastSyncedAt.value);
     return tt('personalFinance.organizerV2.sync.syncedAt', { time });
 });
+watch(syncLabel, value => emit('sync-label', value), { immediate: true });
 const natureOptions = computed(() => natures.map(value => ({ value, title: tt(`personalFinance.organizerV2.nature.${value}`) })));
 const availableLedgerAccounts = computed(() => accountsStore.allVisiblePlainAccounts.filter(account => !selectedEvent.value?.currency || account.currency === selectedEvent.value.currency));
 const needsCounterpartyAccount = computed(() => ['internal_transfer', 'repayment', 'borrow'].includes(selectedNature.value));
@@ -464,7 +456,6 @@ function resetToSourceSelection(batchIds: readonly string[] = []): void {
     update.value = undefined;
     events.value = [];
     auditEvents.value = [];
-    showAllAuditEvents.value = false;
     reviewIssues.value = [];
     reviewMembers.value = [];
     selectedBatchIds.value = [...batchIds];
@@ -589,13 +580,11 @@ onBeforeUnmount(() => {
 .steps button strong { color: rgb(var(--v-theme-on-surface)); font-size: 1rem; line-height: 1.15; }
 .steps button small { color: rgb(var(--v-theme-warning)); }
 .overview-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 48px; padding: 8px 14px; }
-.overview-card > footer > .actions { justify-content: flex-end; margin-inline-start: auto; }
 .overview-controls { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .overview-controls .v-btn b { margin-inline-start: 5px; color: rgb(var(--v-theme-primary)); font-size: .72rem; font-variant-numeric: tabular-nums; }
 .conservation-inline { overflow: hidden; color: rgba(var(--v-theme-on-surface), .48); font-size: .68rem; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .conservation-inline.invalid { color: rgb(var(--v-theme-error)); }
-.round-meta { margin-inline-start: auto; color: rgba(var(--v-theme-on-surface), .46); font-size: .67rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.posting-complete { display: grid; grid-template-columns: auto auto minmax(0,1fr); align-items: baseline; gap: 10px; padding: 12px 14px; border-inline-start: 4px solid rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .045); }
+.posting-complete { display: grid; grid-template-columns: auto auto minmax(0,1fr) auto; align-items: baseline; gap: 10px; padding: 12px 14px; border-inline-start: 4px solid rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .045); }
 .posting-complete strong { font-size: .92rem; }
 .posting-complete p { margin: 0; color: rgba(var(--v-theme-on-surface), .58); font-size: .74rem; }
 .source-stage > header { align-items: center; padding-block: 10px; }
@@ -606,8 +595,9 @@ onBeforeUnmount(() => {
 .source-stage article strong, .source-stage article small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-stage article small { margin-top: 2px; color: rgba(var(--v-theme-on-surface), .55); font-size: .7rem; }
 .source-stage article > span { padding: 3px 7px; border-radius: 999px; background: rgba(var(--v-theme-success), .08); color: rgb(var(--v-theme-success)); font-size: .68rem; white-space: nowrap; }
+.source-stage > footer { display: flex; justify-content: flex-end; padding: 9px 14px; border-top: 1px solid var(--rule); }
 .evidence-audit > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 14px; border-bottom: 1px solid var(--rule); background: rgba(var(--v-theme-primary), .035); }
-.evidence-audit > header > div:first-child { display: grid; grid-template-columns: auto auto minmax(0,1fr); align-items: baseline; gap: 10px; min-width: 0; }
+.evidence-audit > header > div:first-child { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: baseline; gap: 10px; min-width: 0; }
 .evidence-audit h3 { margin: 0; font-size: 1rem; }
 .evidence-audit > header p { margin: 0; overflow: hidden; color: rgba(var(--v-theme-on-surface), .58); font-size: .74rem; text-overflow: ellipsis; white-space: nowrap; }
 .audit-total { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 0 5px; flex: none; text-align: end; }
@@ -685,10 +675,8 @@ onBeforeUnmount(() => {
     .overview-controls { align-items: stretch; flex-direction: column; width: 100%; }
     .overview-controls .v-btn-toggle { align-self: stretch; overflow-x: auto; }
     .conservation-inline { white-space: normal; }
-    .round-meta { margin-inline-start: 0; }
     .posting-complete { grid-template-columns: auto 1fr; }
     .posting-complete p { grid-column: 1 / -1; }
-    .overview-card > footer > .actions { align-self: stretch; }
     .issue-card > header { align-items: stretch; flex-direction: column; }
     .evidence-audit > header { align-items: start; }
     .evidence-audit > header > div:first-child { grid-template-columns: auto 1fr; }

@@ -2983,8 +2983,8 @@
             "conservation": { "evidence": "有效证据", "duplicates": "附加证据", "events": "最终事件", "ok": "证据守恒已核对", "invalid": "计数不守恒，请勿入账" },
             "audit": {
                 "eyebrow": "自动归组审计",
-                "title": "附加证据与同一事件核对",
-                "hint": "逐组核对为何多条来源记录只形成一个最终事件；相同金额本身不是归组依据。",
+                "title": "去重核对",
+                "hint": "逐组说明多条原始记录为何只形成一笔交易；金额相同不作为归组依据。",
                 "additionalEvidence": "条附加证据",
                 "groupCount": "分布在 {count} 个最终事件",
                 "reviewRecords": "核对 {count} 条原始记录",
@@ -3008,7 +3008,7 @@
                 },
                 "role": { "primary": "主记录", "supporting": "附加记录", "duplicate": "附加记录", "discarded": "已排除记录" }
             },
-            "events": { "eyebrow": "结果明细", "hint": "卡片展示整理结果；账单原文按需查看。", "evidence": "查看原始记录", "resolve": "处理", "empty": "这个分组暂时没有事件。", "unnamed": "账单交易", "accountPending": "账户待确认", "uncategorized": "暂未分类", "evidenceCount": "{count} 条原始记录" },
+            "events": { "eyebrow": "结果明细", "hint": "卡片展示整理结果；账单原文按需查看。", "tabHint": { "needs_action": "完成这些必要决定后才能整批入账。", "ready": "{count} 笔交易已就绪；必要问题清零后可整批入账。", "excluded": "这些交易不会入账，原始记录仍然保留。" }, "evidence": "查看原始记录", "resolve": "处理", "empty": "这个分组暂时没有事件。", "unnamed": "账单交易", "accountPending": "账户待确认", "uncategorized": "暂未分类", "evidenceCount": "{count} 条原始记录" },
             "filter": { "needs_action": "必须处理", "ready": "可入账", "posted": "已入账", "excluded": "已排除", "audit": "去重核对", "corrected": "已修正" },
             "posted": { "eyebrow": "本轮完成", "title": "已入账 {count} 笔交易", "hint": "本轮交易已统一写入正式账本，可在“记账与明细”中查看；原始账单和核对依据继续保留。" },
             "status": {
@@ -3040,7 +3040,7 @@
                 "legacyPostedEvidenceBackfill": "由既有正式交易生成",
                 "generic": "这笔交易需要人工核对"
             },
-            "action": { "continueReview": "继续处理 {count} 个问题", "confirmAndPost": "确认并入账 {count} 笔", "undo": "撤销本次入账", "new": "开始新一轮", "more": "更多本轮操作", "viewSources": "查看本轮账单", "abandonAndReselect": "放弃本轮，重选账单" },
+            "action": { "continueReview": "继续处理 {count} 个问题", "confirmAndPost": "整批入账 {count} 笔", "resolveBeforePost": "请先处理 {count} 个问题", "undo": "撤销本次入账", "new": "开始新一轮", "more": "更多本轮操作", "viewSources": "查看本轮账单", "abandonAndReselect": "放弃本轮，重选账单" },
             "sync": { "syncing": "正在同步…", "pending": "等待同步", "syncedAt": "已同步 · {time}" },
             "abandon": { "title": "放弃本轮并重新选择账单？", "hint": "本轮尚未入账的分析结果和人工处理结论会保留在审计记录中，但本轮将停止，原账单可以重新选入新一轮。", "kept": "已上传文件、解析后的账单记录、账户和正式交易都不会被删除或修改。", "confirm": "放弃并重新选择" },
             "evidence": { "title": "原始账单记录", "source": "账单来源", "empty": "没有可展示的原始记录。", "emptyFields": "该来源没有保留可展示的原始字段。", "originalFields": "{count} 个原始字段", "rowNumber": "账单第 {number} 条", "unnamedField": "未命名字段" },

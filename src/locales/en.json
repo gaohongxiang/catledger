@@ -2983,8 +2983,8 @@
             "conservation": { "evidence": "Valid evidence", "duplicates": "Supporting evidence", "events": "Final events", "ok": "Evidence conservation verified", "invalid": "Counts do not reconcile; do not post" },
             "audit": {
                 "eyebrow": "Automatic grouping audit",
-                "title": "Supporting evidence and same-event review",
-                "hint": "Review why multiple source records form one final event. Equal amounts alone never justify grouping.",
+                "title": "Dedup review",
+                "hint": "Each group explains why multiple source records form one transaction; equal amounts alone never justify grouping.",
                 "additionalEvidence": "supporting record(s)",
                 "groupCount": "across {count} final event(s)",
                 "reviewRecords": "Review {count} source record(s)",
@@ -3008,7 +3008,7 @@
                 },
                 "role": { "primary": "Primary record", "supporting": "Supporting record", "duplicate": "Supporting record", "discarded": "Excluded record" }
             },
-            "events": { "eyebrow": "Result details", "hint": "Cards show the organized result; open the statement text only when needed.", "evidence": "View source record", "resolve": "Resolve", "empty": "There are no events in this group.", "unnamed": "Statement transaction", "accountPending": "Account required", "uncategorized": "Uncategorized", "evidenceCount": "{count} source record(s)" },
+            "events": { "eyebrow": "Result details", "hint": "Cards show the organized result; open the statement text only when needed.", "tabHint": { "needs_action": "Complete these required decisions before posting the round.", "ready": "{count} transaction(s) are ready; resolve every required issue to post the round.", "excluded": "These transactions will not be posted; their source records remain preserved." }, "evidence": "View source record", "resolve": "Resolve", "empty": "There are no events in this group.", "unnamed": "Statement transaction", "accountPending": "Account required", "uncategorized": "Uncategorized", "evidenceCount": "{count} source record(s)" },
             "filter": { "needs_action": "Required", "ready": "Ready to post", "posted": "Posted", "excluded": "Excluded", "audit": "Dedup review", "corrected": "Corrected" },
             "posted": { "eyebrow": "Round complete", "title": "{count} transaction(s) posted", "hint": "This round is now in the formal ledger. Review it under Transactions; original statements and audit evidence remain available." },
             "status": {
@@ -3040,7 +3040,7 @@
                 "legacyPostedEvidenceBackfill": "Generated from an existing ledger transaction",
                 "generic": "This transaction requires manual review"
             },
-            "action": { "continueReview": "Continue with {count} issue(s)", "confirmAndPost": "Confirm and post {count}", "undo": "Undo this posting", "new": "Start a new update", "more": "More round actions", "viewSources": "View round statements", "abandonAndReselect": "Abandon round and reselect" },
+            "action": { "continueReview": "Continue with {count} issue(s)", "confirmAndPost": "Post all {count}", "resolveBeforePost": "Resolve {count} issue(s) first", "undo": "Undo this posting", "new": "Start a new update", "more": "More round actions", "viewSources": "View round statements", "abandonAndReselect": "Abandon round and reselect" },
             "sync": { "syncing": "Syncing…", "pending": "Waiting to sync", "syncedAt": "Synced at {time}" },
             "abandon": { "title": "Abandon this round and reselect statements?", "hint": "This round's unposted analysis and review decisions will remain in its audit history, but the round will stop and its statements can be selected in a new round.", "kept": "Uploaded files, parsed statement records, accounts, and formal ledger transactions are not deleted or changed.", "confirm": "Abandon and reselect" },
             "evidence": { "title": "Original statement records", "source": "Statement source", "empty": "No source records are available.", "emptyFields": "This source did not retain displayable original fields.", "originalFields": "{count} original field(s)", "rowNumber": "Statement row {number}", "unnamedField": "Unnamed field" },
