@@ -331,8 +331,12 @@ export const organizerApi = {
     async abandon(update: FinanceUpdate, idempotencyKey: string): Promise<OrganizerMutation> {
         return mutation(unwrap(await services.abandonPersonalFinanceOrganizerUpdate(idempotencyRequest(update, idempotencyKey))));
     },
-    async listEvents(updateId: string, status?: EconomicEventStatus, limit = 100): Promise<EconomicEventPage> {
-        return normalizeEventPage(unwrap(await services.listPersonalFinanceOrganizerEvents({ updateId, status, limit })));
+    async listEvents(updateId: string, status?: EconomicEventStatus, limit = 100, cursor?: EconomicEventPage['nextCursor']): Promise<EconomicEventPage> {
+        return normalizeEventPage(unwrap(await services.listPersonalFinanceOrganizerEvents({
+            updateId, status, limit,
+            cursorUpdatedUnixTime: cursor?.updatedUnixTime,
+            cursorEventId: cursor?.eventId
+        })));
     },
     async getEvidence(eventId: string): Promise<OrganizerEventEvidence> {
         return normalizeOrganizerEventEvidence(unwrap(await services.getPersonalFinanceOrganizerEventEvidence({ eventId })));
