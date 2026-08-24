@@ -65,18 +65,12 @@
                         <v-btn variant="text" v-if="update.status === 'posted' || update.status === 'undone'" @click="startNewUpdate">
                             {{ tt('personalFinance.organizerV2.action.new') }}
                         </v-btn>
+                        <v-btn variant="outlined" color="warning" v-if="canAbandonUpdate(update)" @click="showAbandon = true">
+                            {{ tt('personalFinance.organizerV2.action.abandonAndReselect') }}
+                        </v-btn>
                     </div>
                     <div class="round-meta">
                         <small>{{ syncLabel }}</small>
-                        <v-menu>
-                            <template #activator="{ props }">
-                                <v-btn v-bind="props" :icon="mdiDotsHorizontal" variant="text" size="small" :aria-label="tt('personalFinance.organizerV2.action.more')" />
-                            </template>
-                            <v-list density="compact">
-                                <v-list-item :title="tt('personalFinance.organizerV2.action.viewSources')" @click="activeWorkflowStep = 1" />
-                                <v-list-item v-if="canAbandonUpdate(update)" :title="tt('personalFinance.organizerV2.action.abandonAndReselect')" @click="showAbandon = true" />
-                            </v-list>
-                        </v-menu>
                     </div>
                 </footer>
             </section>
@@ -84,11 +78,9 @@
             <section class="source-stage" v-if="activeWorkflowStep === 1">
                 <header><div><h3>{{ tt('personalFinance.organizerV2.sources.title') }}</h3><p>{{ tt('personalFinance.organizerV2.sources.lockedHint') }}</p></div><import-upload-button @changed="onImportChanged" /></header>
                 <article :key="item.source.id" v-for="item in currentSources">
-                    <v-checkbox-btn :model-value="true" disabled />
                     <div><strong>{{ item.batch?.file?.originalFileName || tt(getSourceTypeKey(item.source.sourceType)) }}</strong><small>{{ tt(getSourceTypeKey(item.source.sourceType)) }} · {{ item.batch?.validRowCount ?? 0 }} 条</small></div>
                     <span>{{ tt('personalFinance.organizerV2.sources.selected') }}</span>
                 </article>
-                <footer><v-btn color="primary" @click="showEventStep('needs_action')">{{ tt('personalFinance.organizerV2.sources.continue') }}</v-btn></footer>
             </section>
 
             <details class="verification" :class="{ invalid: !conservationHolds }" v-if="activeWorkflowStep !== 1">
@@ -215,8 +207,6 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { mdiDotsHorizontal } from '@mdi/js';
-
 import { useI18n } from '@/locales/helpers.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
@@ -456,7 +446,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.results-flow { --rule: rgba(var(--v-theme-on-surface), .12); display: grid; gap: 12px; }
+.results-flow { --rule: rgba(var(--v-theme-on-surface), .12); display: grid; gap: 10px; }
 .kicker { color: rgb(var(--v-theme-primary)); font-size: .68rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .empty-stage, .overview-card, .source-stage, .workbench { border: 1px solid var(--rule); border-radius: 12px; background: rgb(var(--v-theme-surface)); overflow: hidden; }
 .empty-stage { min-height: 420px; padding: clamp(28px, 5vw, 62px); background: linear-gradient(125deg, rgba(var(--v-theme-primary), .09), transparent 48%), rgb(var(--v-theme-surface)); }
@@ -468,28 +458,35 @@ onBeforeUnmount(() => {
 .source-picker label span { display: grid; min-width: 0; }
 .source-picker strong, .source-picker small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-picker small { color: rgba(var(--v-theme-on-surface), .55); }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.overview-card > header, .workbench > header, .source-stage > header { display: flex; align-items: start; justify-content: space-between; gap: 18px; padding: 14px 16px; background: rgba(var(--v-theme-primary), .035); }
-.overview-card h3, .workbench h3, .source-stage h3 { margin: 3px 0 0; }
-.overview-card header p, .workbench header p, .source-stage header p { margin: 4px 0 0; font-size: .8rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.overview-card > header, .workbench > header, .source-stage > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 12px 14px; background: rgba(var(--v-theme-primary), .035); }
+.overview-card > header { align-items: center; }
+.overview-card > header > div { display: grid; grid-template-columns: auto auto minmax(0,1fr); align-items: baseline; column-gap: 12px; min-width: 0; }
+.overview-card h3, .workbench h3, .source-stage h3 { margin: 0; }
+.overview-card header p, .workbench header p, .source-stage header p { margin: 2px 0 0; font-size: .78rem; }
+.overview-card > header p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overview-card > header > small { color: rgba(var(--v-theme-on-surface), .52); white-space: nowrap; }
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--rule); border-block: 1px solid var(--rule); }
-.steps button { display: flex; align-items: center; gap: 11px; min-height: 72px; padding: 11px 15px; border: 0; background: rgb(var(--v-theme-surface)); color: inherit; cursor: pointer; text-align: start; }
+.steps button { display: flex; align-items: center; gap: 9px; min-height: 56px; padding: 8px 14px; border: 0; background: rgb(var(--v-theme-surface)); color: inherit; cursor: pointer; text-align: start; }
 .steps button.active { box-shadow: inset 0 3px rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .05); }
 .steps button.attention.active { box-shadow: inset 0 3px rgb(var(--v-theme-warning)); }
-.steps button > b { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(var(--v-theme-primary), .1); color: rgb(var(--v-theme-primary)); }
+.steps button > b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(var(--v-theme-primary), .1); color: rgb(var(--v-theme-primary)); font-size: .78rem; }
 .steps button span { display: grid; color: rgba(var(--v-theme-on-surface), .58); font-size: .72rem; }
-.steps button strong { color: rgb(var(--v-theme-on-surface)); font-size: 1.15rem; }
+.steps button strong { color: rgb(var(--v-theme-on-surface)); font-size: 1rem; line-height: 1.15; }
 .steps button small { color: rgb(var(--v-theme-warning)); }
-.source-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 0; }
-.source-chips span { padding: 5px 9px; border: 1px solid var(--rule); border-radius: 999px; color: rgba(var(--v-theme-on-surface), .62); font-size: .72rem; }
-.overview-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; }
+.source-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 7px 14px 0; }
+.source-chips span { max-width: min(360px, 34vw); padding: 3px 8px; overflow: hidden; border: 1px solid var(--rule); border-radius: 999px; color: rgba(var(--v-theme-on-surface), .62); font-size: .69rem; text-overflow: ellipsis; white-space: nowrap; }
+.overview-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 48px; padding: 8px 14px; }
 .round-meta { display: flex; align-items: center; gap: 4px; color: rgba(var(--v-theme-on-surface), .55); }
 .round-meta small { white-space: nowrap; }
-.source-stage article { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--rule); }
-.source-stage article > div { display: grid; }
-.source-stage article small { color: rgba(var(--v-theme-on-surface), .55); }
-.source-stage article > span { color: rgb(var(--v-theme-success)); font-size: .72rem; }
-.source-stage footer { padding: 12px 16px; border-top: 1px solid var(--rule); }
+.source-stage > header { align-items: center; padding-block: 10px; }
+.source-stage > header > div { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.source-stage > header p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-stage article { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; min-height: 54px; padding: 7px 14px; border-top: 1px solid var(--rule); }
+.source-stage article > div { display: grid; min-width: 0; line-height: 1.25; }
+.source-stage article strong, .source-stage article small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-stage article small { margin-top: 2px; color: rgba(var(--v-theme-on-surface), .55); font-size: .7rem; }
+.source-stage article > span { padding: 3px 7px; border-radius: 999px; background: rgba(var(--v-theme-success), .08); color: rgb(var(--v-theme-success)); font-size: .68rem; white-space: nowrap; }
 .verification { padding: 0 14px; border-inline-start: 3px solid rgb(var(--v-theme-success)); background: rgba(var(--v-theme-success), .05); }
 .verification.invalid { border-color: rgb(var(--v-theme-error)); background: rgba(var(--v-theme-error), .06); }
 .verification summary { padding: 9px 2px; cursor: pointer; font-size: .74rem; font-weight: 700; }
@@ -529,6 +526,9 @@ onBeforeUnmount(() => {
 @media (max-width: 900px) {
     .steps { grid-template-columns: 1fr; }
     .overview-card > header, .overview-card > footer, .workbench > header, .source-stage > header { align-items: start; flex-direction: column; }
+    .overview-card > header > div { grid-template-columns: auto 1fr; }
+    .overview-card > header p { grid-column: 1 / -1; }
+    .source-stage > header > div { display: grid; gap: 2px; }
     .round-meta { align-self: stretch; justify-content: space-between; }
     .issue-event, .event-row { grid-template-columns: 48px minmax(0,1fr) auto; }
     .issue-event > .amount, .event-row .context { grid-column: 2; text-align: start; }

@@ -3012,7 +3012,7 @@
                 "legacyPostedEvidenceBackfill": "由既有正式交易生成",
                 "generic": "这笔交易需要人工核对"
             },
-            "action": { "continueReview": "继续处理 {count} 个问题", "confirmAndPost": "确认并入账 {count} 笔", "undo": "撤销本次入账", "new": "开始新一轮", "more": "更多本轮操作", "viewSources": "查看本轮账单", "abandonAndReselect": "放弃并重新选择账单" },
+            "action": { "continueReview": "继续处理 {count} 个问题", "confirmAndPost": "确认并入账 {count} 笔", "undo": "撤销本次入账", "new": "开始新一轮", "more": "更多本轮操作", "viewSources": "查看本轮账单", "abandonAndReselect": "放弃本轮，重选账单" },
             "sync": { "syncing": "正在同步…", "pending": "等待同步", "syncedAt": "已同步 · {time}" },
             "abandon": { "title": "放弃本轮并重新选择账单？", "hint": "本轮尚未入账的分析结果和人工处理结论会保留在审计记录中，但本轮将停止，原账单可以重新选入新一轮。", "kept": "已上传文件、解析后的账单记录、账户和正式交易都不会被删除或修改。", "confirm": "放弃并重新选择" },
             "evidence": { "title": "原始证据与来源", "empty": "没有可展示的证据行。" },

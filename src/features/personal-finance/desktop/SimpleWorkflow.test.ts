@@ -52,6 +52,9 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('canAbandonUpdate(update)');
         expect(results).toContain('organizerApi.abandon(current');
         expect(results).toContain('abandonAndReselect');
+        expect(results).not.toContain('<v-menu>');
+        expect(results).not.toContain('personalFinance.organizerV2.sources.continue');
+        expect(results).not.toContain('mdiDotsHorizontal');
         expect(results).toContain('visibilitychange');
         expect(results).not.toContain('organizeCurrent');
         expect(results).not.toContain('mdiRefresh');

@@ -3012,7 +3012,7 @@
                 "legacyPostedEvidenceBackfill": "Generated from an existing ledger transaction",
                 "generic": "This transaction requires manual review"
             },
-            "action": { "continueReview": "Continue with {count} issue(s)", "confirmAndPost": "Confirm and post {count}", "undo": "Undo this posting", "new": "Start a new update", "more": "More round actions", "viewSources": "View round statements", "abandonAndReselect": "Abandon and reselect statements" },
+            "action": { "continueReview": "Continue with {count} issue(s)", "confirmAndPost": "Confirm and post {count}", "undo": "Undo this posting", "new": "Start a new update", "more": "More round actions", "viewSources": "View round statements", "abandonAndReselect": "Abandon round and reselect" },
             "sync": { "syncing": "Syncing…", "pending": "Waiting to sync", "syncedAt": "Synced at {time}" },
             "abandon": { "title": "Abandon this round and reselect statements?", "hint": "This round's unposted analysis and review decisions will remain in its audit history, but the round will stop and its statements can be selected in a new round.", "kept": "Uploaded files, parsed statement records, accounts, and formal ledger transactions are not deleted or changed.", "confirm": "Abandon and reselect" },
             "evidence": { "title": "Raw evidence and sources", "empty": "No evidence rows are available." },
