@@ -34,7 +34,9 @@ describe('personal-finance simple web workflow', () => {
         const results = source('../organizer/desktop/ResultsFlowPage.vue');
         expect(results).toContain('activeWorkflowStep === 1');
         expect(results).toContain('<import-upload-button');
-        expect(results).toContain('selectedBatchIds.includes(batch.id)');
+        expect(results).toContain('v-for="batch in selectedBatches"');
+        expect(results).toContain('@click="removeBatch(batch.id)"');
+        expect(results).not.toContain('v-checkbox-btn');
         expect(results).toContain('organizerApi.getUpdate(selected.id)');
         expect(results).not.toContain("emit('open-records')");
         expect(router).toContain("path: '/personal-finance/bills'");
@@ -44,10 +46,23 @@ describe('personal-finance simple web workflow', () => {
         expect(router).not.toContain("view: 'reconciliation'");
     });
 
-    it('keeps one primary round action and abandons immutable sources before reselection', () => {
+    it('keeps one primary round action while allowing more statements to be added', () => {
         const results = source('../organizer/desktop/ResultsFlowPage.vue');
         const organizer = source('./BillOrganizerPage.vue');
+        const upload = source('../components/ImportUploadButton.vue');
+        const paymentAccounts = source('../components/PaymentAccountSetupDialog.vue');
 
+        expect(results).toContain('<import-upload-button size="large" v-if="selectedBatchIds.length < 1" @changed="onImportChanged" />');
+        expect(results).toContain('class="source-add"');
+        expect(results).toContain('personalFinance.organizerV2.start.add');
+        expect(results).toContain('v-else @click="startOrganizing"');
+        expect(results).toContain('selectedBatchIds.value = readyBatches.value.map(batch => batch.id)');
+        expect(results).toContain("paymentAccountSetupDialog.value?.open(selectedBatchIds.value, { unresolvedOnly: true })");
+        expect(results).toContain('<payment-account-setup-dialog ref="paymentAccountSetupDialog" @saved="createAndOrganize" />');
+        expect(upload).not.toContain('PaymentAccountSetupDialog');
+        expect(upload).not.toContain('paymentAccountSetupDialog.value?.open');
+        expect(paymentAccounts).toContain('.filter(group => !options.unresolvedOnly || !group.mapped)');
+        expect(paymentAccounts).toContain('Promise.all(batchIds.map');
         expect(results).toContain('personalFinance.organizerV2.action.continueReview');
         expect(results).toContain('personalFinance.organizerV2.action.confirmAndPost');
         expect(results).toContain('canAbandonUpdate(update)');

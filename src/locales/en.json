@@ -2936,10 +2936,12 @@
             "rows": "rows",
             "start": {
                 "eyebrow": "New financial update",
-                "title": "Upload and choose statements for this round",
-                "hint": "Choose which statements enter this round first. The system then reduces multi-source evidence to unique economic events and returns only required decisions.",
+                "title": "Upload statements for this round",
+                "hint": "Uploaded statements join this round automatically. Start organizing when the list is correct.",
                 "batch": "Import batch",
                 "action": "Organize {count} selected statement(s)",
+                "add": "Add statement",
+                "remove": "Remove from this round",
                 "import": "Upload or inspect statements"
             },
             "result": {
@@ -3290,9 +3292,9 @@
         "documentIssues": "Statement-level notes",
         "sourceAccount": "Source account profile",
         "paymentAccount": {
-            "title": "Confirm statement payment accounts",
-            "subtitle": "Each payment method only needs one confirmation per batch.",
-            "scopeHint": "The statement source (Alipay or WeChat) is separate from the account actually charged. This only sets the charged ledger account; source identity and duplicate detection stay unchanged.",
+            "title": "Review payment accounts",
+            "subtitle": "Before organizing, confirm only the payment methods not yet recognized in this round.",
+            "scopeHint": "This sets the account actually charged without changing the statement source, transaction identity, or deduplication. Reliable mappings are reused automatically.",
             "paymentMethod": "Payment Method",
             "affectedRows": "{count} transaction(s) use this payment method",
             "mapped": "Confirmed",
@@ -3303,7 +3305,7 @@
             "createNew": "+ Create a new account",
             "createHint": "The account is created only after you click Confirm and Apply. Its opening balance is zero and can be adjusted later.",
             "none": "No payment accounts need setup in this batch",
-            "confirm": "Confirm and Apply",
+            "confirm": "Confirm and Start",
             "batchNeedsConfirmation": "{total} payment account(s) detected; {count} need confirmation",
             "batchMapped": "All {count} payment account(s) are confirmed",
             "batchHint": "Confirm once to apply the choice to the same payment method throughout this batch and reuse it in future statements.",

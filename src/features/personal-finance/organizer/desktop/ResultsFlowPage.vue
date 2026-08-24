@@ -10,18 +10,25 @@
                 <h2>{{ tt('personalFinance.organizerV2.start.title') }}</h2>
                 <p>{{ tt('personalFinance.organizerV2.start.hint') }}</p>
             </div>
-            <div class="source-picker" v-if="readyBatches.length">
-                <label :class="{ selected: selectedBatchIds.includes(batch.id) }" :key="batch.id" v-for="batch in readyBatches">
-                    <v-checkbox-btn :model-value="selectedBatchIds.includes(batch.id)" @update:model-value="toggleBatch(batch.id)" />
+            <div class="source-picker" v-if="selectedBatches.length">
+                <article :key="batch.id" v-for="batch in selectedBatches">
                     <span>
                         <strong>{{ batch.file?.originalFileName || `${tt('personalFinance.organizerV2.start.batch')} #${batch.id}` }}</strong>
                         <small>{{ tt(getSourceTypeKey(batch.sourceType)) }} · {{ batch.validRowCount }} {{ tt('personalFinance.organizerV2.rows') }}</small>
                     </span>
-                </label>
+                    <v-btn density="compact" variant="text" :icon="mdiClose" :aria-label="tt('personalFinance.organizerV2.start.remove')" @click="removeBatch(batch.id)" />
+                </article>
+                <div class="source-add">
+                    <import-upload-button
+                        variant="text"
+                        :label="tt('personalFinance.organizerV2.start.add')"
+                        @changed="onImportChanged"
+                    />
+                </div>
             </div>
             <div class="actions">
-                <import-upload-button size="large" @changed="onImportChanged" />
-                <v-btn class="round-primary-action" color="primary" size="large" :loading="busy" :disabled="selectedBatchIds.length < 1" @click="createAndOrganize">
+                <import-upload-button size="large" v-if="selectedBatchIds.length < 1" @changed="onImportChanged" />
+                <v-btn class="round-primary-action" color="primary" size="large" :loading="busy || checkingPaymentAccounts" v-else @click="startOrganizing">
                     {{ tt('personalFinance.organizerV2.start.action', { count: selectedBatchIds.length }) }}
                 </v-btn>
             </div>
@@ -165,6 +172,8 @@
 
         <v-skeleton-loader type="heading, image, list-item-three-line@3" v-else />
 
+        <payment-account-setup-dialog ref="paymentAccountSetupDialog" @saved="createAndOrganize" />
+
         <v-dialog max-width="980" v-model="showEvidence">
             <v-card class="evidence-dialog">
                 <v-card-title class="evidence-dialog-title">
@@ -243,7 +252,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
+import { mdiClose } from '@mdi/js';
 import { useI18n } from '@/locales/helpers.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
@@ -253,6 +263,7 @@ import { CategoryType } from '@/core/category.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
 
 import ImportUploadButton from '../../components/ImportUploadButton.vue';
+import PaymentAccountSetupDialog from '../../components/PaymentAccountSetupDialog.vue';
 import { usePersonalFinanceStore } from '../../store.ts';
 import { getSourceTypeKey } from '../../presentation.ts';
 import type { EconomicEvent, EconomicEventStatus, EconomicNature, FinanceUpdate, OrganizerEventEvidence, OrganizerEvidenceItem, OrganizerImpact, ReviewIssue, ReviewIssueMember } from '../models.ts';
@@ -264,6 +275,8 @@ const emit = defineEmits<{ (event: 'sync-label', value: string): void }>();
 const accountsStore = useAccountsStore();
 const categoriesStore = useTransactionCategoriesStore();
 const personalFinanceStore = usePersonalFinanceStore();
+type PaymentAccountSetupDialogType = InstanceType<typeof PaymentAccountSetupDialog>;
+const paymentAccountSetupDialog = useTemplateRef<PaymentAccountSetupDialogType>('paymentAccountSetupDialog');
 const loading = ref(true);
 const syncing = ref(false);
 const lastSyncedAt = ref(0);
@@ -272,6 +285,7 @@ const loadingAudit = ref(false);
 const loadingEvidence = ref(false);
 const loadingRefundCandidates = ref(false);
 const busy = ref(false);
+const checkingPaymentAccounts = ref(false);
 const showError = ref(false);
 const update = ref<FinanceUpdate>();
 const events = ref<readonly EconomicEvent[]>([]);
@@ -282,6 +296,7 @@ type ResultsFilter = EconomicEventStatus | 'audit';
 
 const eventFilter = ref<ResultsFilter>('needs_action');
 const selectedBatchIds = ref<string[]>([]);
+const sourceSelectionInitialized = ref(false);
 const activeWorkflowStep = ref<1 | 2 | 3>(2);
 const showEvidence = ref(false);
 const evidence = ref<OrganizerEventEvidence>();
@@ -302,6 +317,10 @@ const auditEventStatuses: readonly EconomicEventStatus[] = ['needs_action', 'rea
 const visibleFilters: readonly ResultsFilter[] = ['needs_action', 'excluded', 'audit'];
 const natures: readonly EconomicNature[] = ['expense', 'income', 'refund', 'fee', 'repayment', 'borrow', 'internal_transfer', 'balance_adjustment'];
 const readyBatches = computed(() => personalFinanceStore.batches.filter(batch => batch.status === 'ready'));
+const selectedBatches = computed(() => {
+    const selected = new Set(selectedBatchIds.value);
+    return readyBatches.value.filter(batch => selected.has(batch.id));
+});
 const conservationHolds = computed(() => !!update.value && updateConservationHolds(update.value));
 const syncLabel = computed(() => {
     if (syncing.value) return tt('personalFinance.organizerV2.sync.syncing');
@@ -351,7 +370,7 @@ watch(eventFilter, () => {
 watch(selectedNature, () => { if (!needsCounterpartyAccount.value) selectedCounterpartyLedgerAccountId.value = ''; if (selectedCategoryId.value && !categoryOptions.value.some(option => option.value === selectedCategoryId.value)) selectedCategoryId.value = ''; });
 
 function idempotencyKey(action: string): string { return `pf-review-ui-v1:${action}:${generateRandomUUID()}`; }
-function toggleBatch(id: string): void { selectedBatchIds.value = selectedBatchIds.value.includes(id) ? selectedBatchIds.value.filter(value => value !== id) : [...selectedBatchIds.value, id]; }
+function removeBatch(id: string): void { selectedBatchIds.value = selectedBatchIds.value.filter(value => value !== id); }
 function showEventStep(filter: EconomicEventStatus): void { activeWorkflowStep.value = filter === 'ready' || filter === 'posted' ? 3 : 2; eventFilter.value = filter; }
 function showPostingStep(): void {
     activeWorkflowStep.value = 3;
@@ -410,6 +429,10 @@ async function load(silent = false): Promise<void> {
         const selected = selectCurrentUpdate(pages.map(page => [...page.items]));
         update.value = selected ? await organizerApi.getUpdate(selected.id) : undefined;
         await Promise.all([personalFinanceStore.loadBatches(0, 100), Promise.allSettled([accountsStore.loadAllAccounts({ force: false }), categoriesStore.loadAllCategories({ force: false })])]);
+        if (!update.value && !sourceSelectionInitialized.value) {
+            selectedBatchIds.value = readyBatches.value.map(batch => batch.id);
+            sourceSelectionInitialized.value = true;
+        }
         if (update.value) await Promise.all([loadEvents(silent), loadEvidenceAudit(silent)]);
         lastSyncedAt.value = Date.now();
     } catch { showError.value = true; }
@@ -459,6 +482,7 @@ function resetToSourceSelection(batchIds: readonly string[] = []): void {
     reviewIssues.value = [];
     reviewMembers.value = [];
     selectedBatchIds.value = [...batchIds];
+    sourceSelectionInitialized.value = true;
     activeWorkflowStep.value = 1;
 }
 async function onImportChanged(batchId: string): Promise<void> {
@@ -471,6 +495,18 @@ async function onImportChanged(batchId: string): Promise<void> {
     }
 }
 async function runMutation(operation: () => Promise<{ update: FinanceUpdate }>): Promise<void> { busy.value = true; try { update.value = (await operation()).update; await Promise.all([loadEvents(), loadEvidenceAudit()]); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
+async function startOrganizing(): Promise<void> {
+    if (selectedBatchIds.value.length < 1 || checkingPaymentAccounts.value || busy.value) return;
+    checkingPaymentAccounts.value = true;
+    try {
+        const needsConfirmation = await paymentAccountSetupDialog.value?.open(selectedBatchIds.value, { unresolvedOnly: true });
+        if (!needsConfirmation) await createAndOrganize();
+    } catch {
+        showError.value = true;
+    } finally {
+        checkingPaymentAccounts.value = false;
+    }
+}
 async function createAndOrganize(): Promise<void> { busy.value = true; try { const created = await organizerApi.createUpdate(selectedBatchIds.value, idempotencyKey('create')); update.value = (await organizerApi.organize(created, idempotencyKey('organize'))).update; activeWorkflowStep.value = 2; eventFilter.value = 'needs_action'; await Promise.all([loadEvents(), loadEvidenceAudit()]); lastSyncedAt.value = Date.now(); } catch { showError.value = true; } finally { busy.value = false; } }
 async function postAllReady(): Promise<void> {
     if (!update.value) return;
@@ -561,11 +597,13 @@ onBeforeUnmount(() => {
 .empty-stage h2 { margin: 8px 0; font-size: clamp(1.8rem, 4vw, 3rem); }
 .empty-stage p, .overview-card p, .workbench p, .source-stage p { color: rgba(var(--v-theme-on-surface), .6); }
 .source-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 9px; margin: 28px 0 20px; }
-.source-picker label { display: flex; gap: 10px; padding: 13px; border: 1px solid var(--rule); cursor: pointer; }
-.source-picker label.selected { border-color: rgb(var(--v-theme-primary)); box-shadow: inset 3px 0 rgb(var(--v-theme-primary)); }
-.source-picker label span { display: grid; min-width: 0; }
+.source-picker article { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 11px 11px 13px; border: 1px solid var(--rule); border-radius: 8px; background: rgb(var(--v-theme-surface)); }
+.source-picker article span { display: grid; min-width: 0; }
 .source-picker strong, .source-picker small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-picker small { color: rgba(var(--v-theme-on-surface), .55); }
+.source-picker article :deep(.v-btn) { color: rgba(var(--v-theme-on-surface), .48); }
+.source-picker article :deep(.v-btn:hover) { color: rgb(var(--v-theme-error)); }
+.source-add { display: grid; place-items: center; min-height: 58px; border: 1px dashed rgba(var(--v-theme-primary), .42); border-radius: 8px; background: rgba(var(--v-theme-primary), .025); }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .empty-stage > .actions { justify-content: flex-end; margin-top: auto; }
 .workbench > header, .source-stage > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 12px 14px; background: rgba(var(--v-theme-primary), .035); }
