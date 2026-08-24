@@ -19,7 +19,9 @@ func RegisterPersonalFinanceRoutes(apiV1Route gin.IRoutes, config *settings.Conf
 		apiV1Route.POST("/personal_finance/import_batches/post.json", bindApi(PersonalFinanceImports.ImportBatchPostHandler, config))
 		apiV1Route.POST("/personal_finance/source_accounts/save.json", bindApi(PersonalFinanceImports.SourceAccountSaveHandler, config))
 		apiV1Route.POST("/personal_finance/import_batches/payment_accounts/confirm.json", bindApi(PersonalFinanceImports.PaymentAccountConfirmHandler, config))
+		apiV1Route.POST("/personal_finance/import_batches/payment_accounts/skip.json", bindApi(PersonalFinanceImports.PaymentAccountSkipHandler, config))
 		apiV1Route.POST("/personal_finance/import_batches/payment_accounts/exclude.json", bindApi(PersonalFinanceImports.PaymentAccountExcludeHandler, config))
+		apiV1Route.POST("/personal_finance/import_batches/payment_accounts/restore.json", bindApi(PersonalFinanceImports.PaymentAccountRestoreHandler, config))
 		apiV1Route.POST("/personal_finance/reconciliation/candidates/generate.json", bindApi(PersonalFinanceImports.ReconciliationCandidateGenerateHandler, config))
 	}
 

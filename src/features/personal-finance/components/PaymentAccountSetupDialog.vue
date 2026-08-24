@@ -15,8 +15,13 @@
             <v-card-text class="dialog-body" v-else>
                 <p class="scope-hint">{{ tt('personalFinance.paymentAccount.scopeHint') }}</p>
 
-                <div class="mapping-list" v-if="drafts.length">
-                    <section class="payment-account-item" :class="{ ignored: draft.ignored }" :key="draft.key" v-for="draft in drafts">
+                <div class="mapping-list" v-if="orderedDrafts.length">
+                    <template :key="draft.key" v-for="(draft, index) in orderedDrafts">
+                    <div class="ignored-section-heading" v-if="index === firstPersistentlyIgnoredIndex">
+                        <strong>{{ tt('personalFinance.paymentAccount.ignoredAccounts', { count: persistentlyIgnoredCount }) }}</strong>
+                        <small>{{ tt('personalFinance.paymentAccount.ignoredAccountsHint') }}</small>
+                    </div>
+                    <section class="payment-account-item" :class="{ ignored: draft.ignoreMode !== 'none' }">
                         <div class="payment-account-summary">
                             <v-avatar color="primary" size="34" variant="tonal">
                                 <v-icon size="18" :icon="mdiCreditCardOutline" />
@@ -44,20 +49,33 @@
                                 :items="accountOptions(draft)"
                                 :label="tt('personalFinance.paymentAccount.ledgerAccount')"
                                 :disabled="submitting"
-                                v-if="!draft.ignored"
+                                v-if="draft.ignoreMode === 'none'"
                                 v-model="draft.selection"
                             />
-                            <div class="ignored-hint" v-else>{{ tt('personalFinance.paymentAccount.ignoredHint') }}</div>
-                            <v-btn color="primary" density="compact" size="small" variant="text" :disabled="submitting" @click="draft.ignored = !draft.ignored">
-                                {{ tt(draft.ignored ? 'personalFinance.paymentAccount.undoIgnore' : 'personalFinance.paymentAccount.ignore') }}
+                            <div class="ignore-actions" v-if="draft.ignoreMode === 'none'">
+                                <v-btn density="compact" size="small" variant="text" :disabled="submitting" @click="draft.ignoreMode = 'current'">
+                                    {{ tt('personalFinance.paymentAccount.ignoreCurrent') }}
+                                </v-btn>
+                                <v-btn color="primary" density="compact" size="small" variant="text" :disabled="submitting" @click="draft.ignoreMode = 'persistent'">
+                                    {{ tt('personalFinance.paymentAccount.ignoreFuture') }}
+                                </v-btn>
+                            </div>
+                            <div class="ignored-hint" v-else>
+                                {{ tt(draft.ignoreMode === 'current' ? 'personalFinance.paymentAccount.currentIgnoredHint' : 'personalFinance.paymentAccount.persistentIgnoredHint') }}
+                            </div>
+                            <v-btn color="primary" density="compact" size="small" variant="text" :disabled="submitting" v-if="draft.ignoreMode === 'current'" @click="draft.ignoreMode = 'none'">
+                                {{ tt('personalFinance.paymentAccount.undoCurrentIgnore') }}
+                            </v-btn>
+                            <v-btn color="primary" density="compact" size="small" variant="text" :disabled="submitting" v-else-if="draft.ignoreMode === 'persistent'" @click="draft.ignoreMode = 'none'">
+                                {{ tt('personalFinance.paymentAccount.restorePersistent') }}
                             </v-btn>
                         </div>
 
-                        <div class="suggestion" v-if="!draft.ignored && draft.recommendedAccountId && draft.selection === draft.recommendedAccountId && !draft.group.mapped">
+                        <div class="suggestion" v-if="draft.ignoreMode === 'none' && draft.recommendedAccountId && draft.selection === draft.recommendedAccountId && !draft.group.mapped">
                             {{ tt('personalFinance.paymentAccount.existingSuggested') }}
                         </div>
 
-                        <div class="create-account-fields" v-if="!draft.ignored && draft.selection === CREATE_ACCOUNT_VALUE">
+                        <div class="create-account-fields" v-if="draft.ignoreMode === 'none' && draft.selection === CREATE_ACCOUNT_VALUE">
                             <v-text-field
                                 density="compact"
                                 hide-details="auto"
@@ -79,6 +97,7 @@
                             <small>{{ tt('personalFinance.paymentAccount.createHint') }}</small>
                         </div>
                     </section>
+                    </template>
                 </div>
 
                 <div class="empty-state" v-else>{{ tt('personalFinance.paymentAccount.none') }}</div>
@@ -131,7 +150,7 @@ interface PaymentAccountDraft {
     selection: string;
     accountName: string;
     accountCategory: number;
-    ignored: boolean;
+    ignoreMode: 'none' | 'current' | 'persistent';
 }
 
 interface PaymentAccountDialogOptions {
@@ -154,6 +173,15 @@ const loading = ref(false);
 const submitting = ref(false);
 const drafts = ref<PaymentAccountDraft[]>([]);
 
+const orderedDrafts = computed(() => [
+    ...drafts.value.filter(draft => draft.ignoreMode !== 'persistent'),
+    ...drafts.value.filter(draft => draft.ignoreMode === 'persistent')
+]);
+const persistentlyIgnoredCount = computed(() => drafts.value.filter(draft => draft.ignoreMode === 'persistent').length);
+const firstPersistentlyIgnoredIndex = computed(() => persistentlyIgnoredCount.value > 0
+    ? orderedDrafts.value.length - persistentlyIgnoredCount.value
+    : -1);
+
 const accountCategoryOptions = computed(() => [
     AccountCategory.Cash,
     AccountCategory.CheckingAccount,
@@ -163,7 +191,7 @@ const accountCategoryOptions = computed(() => [
 ].map(category => ({ title: tt(category.name), value: category.type })));
 
 const canSubmit = computed(() => !loading.value && !submitting.value && drafts.value.length > 0 && drafts.value.every(draft => {
-    if (draft.ignored) return true;
+    if (draft.ignoreMode !== 'none') return true;
     if (!draft.selection) return false;
     return draft.selection !== CREATE_ACCOUNT_VALUE ||
         (!!draft.accountName.trim() && [...draft.accountName.trim()].length <= 64 && !!AccountCategory.valueOf(draft.accountCategory));
@@ -200,11 +228,11 @@ function buildDraft(key: string, members: PaymentAccountMember[]): PaymentAccoun
         : undefined;
     const mergedGroup: PersonalFinancePaymentAccountGroup = {
         ...representative,
-        rowCount: activeMembers.reduce((sum, member) => sum + member.group.rowCount, 0),
-        pendingRowCount: activeMembers.reduce((sum, member) => sum + member.group.pendingRowCount, 0),
+        rowCount: members.reduce((sum, member) => sum + member.group.rowCount, 0),
+        pendingRowCount: members.reduce((sum, member) => sum + member.group.pendingRowCount, 0),
         ledgerAccountId: mappedAccount?.id,
         mapped: activeMembers.length > 0 && activeMembers.every(member => member.group.mapped && member.group.ledgerAccountId === mappedAccount?.id),
-        excluded: false
+        excluded: members.some(member => member.group.excluded)
     };
     const suggestion = suggestPaymentAccount(mergedGroup, accountsStore.allVisiblePlainAccounts);
     const recommendedAccount = suggestion.ledgerAccountId
@@ -214,13 +242,13 @@ function buildDraft(key: string, members: PaymentAccountMember[]): PaymentAccoun
 
     return {
         key,
-        members: activeMembers,
+        members,
         group: mergedGroup,
         recommendedAccountId: !mappedAccount ? recommendedAccount?.id : undefined,
         selection: selectedAccountId ?? CREATE_ACCOUNT_VALUE,
         accountName: truncateAccountName(representative.displayName),
         accountCategory: inferPaymentAccountCategory(representative.displayName, representative.sourceType),
-        ignored: false
+        ignoreMode: mergedGroup.excluded ? 'persistent' : 'none'
     };
 }
 
@@ -255,7 +283,7 @@ async function open(currentBatchIds: string | readonly string[], options: Paymen
         drafts.value = [...merged.entries()]
             .map(([key, members]) => buildDraft(key, members))
             .filter(draft => draft.members.length > 0)
-            .filter(draft => !options.unresolvedOnly || !draft.group.mapped);
+            .filter(draft => !options.unresolvedOnly || draft.group.excluded || !draft.group.mapped);
         if (!drafts.value.length) showState.value = false;
         return drafts.value.length > 0;
     } catch {
@@ -292,9 +320,25 @@ async function submit(): Promise<void> {
 
     try {
         for (const draft of drafts.value) {
-            if (draft.ignored) {
+            if (draft.ignoreMode === 'persistent') {
                 for (const member of draft.members) {
+                    if (member.group.excluded) continue;
                     await personalFinanceStore.excludePaymentAccount({
+                        batchId: member.batchId,
+                        rowId: member.group.sampleRowId
+                    });
+                }
+                continue;
+            }
+            if (draft.ignoreMode === 'current') {
+                for (const member of draft.members) {
+                    if (member.group.excluded) {
+                        await personalFinanceStore.restorePaymentAccount({
+                            batchId: member.batchId,
+                            rowId: member.group.sampleRowId
+                        });
+                    }
+                    await personalFinanceStore.skipPaymentAccount({
                         batchId: member.batchId,
                         rowId: member.group.sampleRowId
                     });
@@ -306,7 +350,14 @@ async function submit(): Promise<void> {
                 : draft.selection;
 
             for (const member of draft.members) {
-                if (member.group.mapped && member.group.ledgerAccountId === ledgerAccountId) continue;
+                if (member.group.excluded) {
+                    await personalFinanceStore.restorePaymentAccount({
+                        batchId: member.batchId,
+                        rowId: member.group.sampleRowId
+                    });
+                } else if (member.group.mapped && member.group.ledgerAccountId === ledgerAccountId) {
+                    continue;
+                }
                 await personalFinanceStore.confirmPaymentAccount({
                     batchId: member.batchId,
                     rowId: member.group.sampleRowId,
@@ -374,6 +425,24 @@ defineExpose({ open });
     gap: 8px;
 }
 
+.ignored-section-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 6px;
+    padding: 9px 2px 1px;
+    border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.ignored-section-heading strong {
+    font-size: .82rem;
+}
+
+.ignored-section-heading small {
+    color: rgba(var(--v-theme-on-surface), .58);
+    font-size: .72rem;
+}
+
 .payment-account-item {
     display: grid;
     grid-template-columns: minmax(230px, .9fr) minmax(300px, 1.25fr);
@@ -424,6 +493,12 @@ defineExpose({ open });
 
 .account-choice .account-select {
     flex: 1;
+}
+
+.ignore-actions {
+    display: flex;
+    flex: none;
+    gap: 2px;
 }
 
 .ignored-hint {

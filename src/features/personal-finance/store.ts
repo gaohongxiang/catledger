@@ -219,6 +219,32 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         }
     }
 
+    async function skipPaymentAccount(request: PersonalFinancePaymentAccountExcludeRequest): Promise<PersonalFinancePaymentAccountGroup> {
+        submitting.value = true;
+
+        try {
+            return await unwrapResponse(
+                services.skipPersonalFinancePaymentAccount(request),
+                'Unable to skip personal finance payment account for this round'
+            );
+        } finally {
+            submitting.value = false;
+        }
+    }
+
+    async function restorePaymentAccount(request: PersonalFinancePaymentAccountExcludeRequest): Promise<PersonalFinancePaymentAccountGroup> {
+        submitting.value = true;
+
+        try {
+            return await unwrapResponse(
+                services.restorePersonalFinancePaymentAccount(request),
+                'Unable to restore personal finance payment account'
+            );
+        } finally {
+            submitting.value = false;
+        }
+    }
+
     async function postRow(row: PersonalFinanceImportRow, draft?: PersonalFinancePostingDraft): Promise<PersonalFinancePostingResult> {
         submitting.value = true;
 
@@ -291,6 +317,8 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         loadPaymentAccounts,
         confirmPaymentAccount,
         excludePaymentAccount,
+        skipPaymentAccount,
+        restorePaymentAccount,
         postRow,
 		discardBatch,
 		deleteFileContent,

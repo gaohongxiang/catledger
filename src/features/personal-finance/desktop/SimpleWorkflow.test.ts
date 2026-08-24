@@ -65,8 +65,12 @@ describe('personal-finance simple web workflow', () => {
         expect(paymentAccounts).toContain('const merged = new Map<string, PaymentAccountMember[]>()');
         expect(paymentAccounts).toContain('paymentAccountKey(group)');
         expect(paymentAccounts).toContain('personalFinanceStore.excludePaymentAccount');
-        expect(paymentAccounts).toContain('personalFinance.paymentAccount.ignore');
-        expect(paymentAccounts).toContain('.filter(draft => !options.unresolvedOnly || !draft.group.mapped)');
+        expect(paymentAccounts).toContain('personalFinanceStore.skipPaymentAccount');
+        expect(paymentAccounts).toContain('personalFinanceStore.restorePaymentAccount');
+        expect(paymentAccounts).toContain('personalFinance.paymentAccount.ignoreCurrent');
+        expect(paymentAccounts).toContain('personalFinance.paymentAccount.ignoreFuture');
+        expect(paymentAccounts).toContain('personalFinance.paymentAccount.ignoredAccounts');
+        expect(paymentAccounts).toContain('.filter(draft => !options.unresolvedOnly || draft.group.excluded || !draft.group.mapped)');
         expect(results).toContain('personalFinance.organizerV2.action.continueReview');
         expect(results).toContain('personalFinance.organizerV2.action.confirmAndPost');
         expect(results).toContain('canAbandonUpdate(update)');

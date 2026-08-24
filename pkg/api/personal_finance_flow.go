@@ -23,7 +23,9 @@ type personalFinanceFlowApplication interface {
 	SaveSourceAccount(c core.Context, request importing.SourceAccountSaveRequest) (*importing.SourceAccount, error)
 	ListBatchPaymentAccounts(c core.Context, uid int64, batchId int64) ([]*importing.PaymentAccountGroup, error)
 	ConfirmBatchPaymentAccount(c core.Context, request importing.PaymentAccountConfirmRequest) (*importing.PaymentAccountGroup, error)
+	SkipPaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error)
 	ExcludePaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error)
+	RestorePaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error)
 }
 
 type personalFinanceFlowService struct {
@@ -54,6 +56,25 @@ func (s *personalFinanceFlowService) ConfirmBatchPaymentAccount(c core.Context, 
 
 func (s *personalFinanceFlowService) ExcludePaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error) {
 	return s.paymentAccounts.ExcludePaymentAccount(c, request)
+}
+
+func (s *personalFinanceFlowService) SkipPaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error) {
+	rows, err := s.paymentAccounts.ListPaymentAccountGroupRows(c, request.Uid, request.BatchId, request.RowId)
+	if err != nil {
+		return nil, err
+	}
+	rowIds := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		if row != nil && !row.Skipped {
+			rowIds = append(rowIds, row.RowId)
+		}
+	}
+	request.RowIds = rowIds
+	return s.paymentAccounts.SkipPaymentAccountRows(c, request)
+}
+
+func (s *personalFinanceFlowService) RestorePaymentAccount(c core.Context, request importing.PaymentAccountSkipRequest) (*importing.PaymentAccountGroup, error) {
+	return s.paymentAccounts.RestorePaymentAccount(c, request)
 }
 
 func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error) {
@@ -452,8 +473,22 @@ func (a *PersonalFinanceImportsApi) PaymentAccountConfirmHandler(c *core.WebCont
 	return response, nil
 }
 
+// PaymentAccountSkipHandler 只在当前批次忽略一个付款账户，不保存长期规则。
+func (a *PersonalFinanceImportsApi) PaymentAccountSkipHandler(c *core.WebContext) (any, *errs.Error) {
+	return a.mutatePaymentAccountSkip(c, "current")
+}
+
 // PaymentAccountExcludeHandler 忽略一个付款账户，并记住该选择供后续账单复用。
 func (a *PersonalFinanceImportsApi) PaymentAccountExcludeHandler(c *core.WebContext) (any, *errs.Error) {
+	return a.mutatePaymentAccountSkip(c, "persistent")
+}
+
+// PaymentAccountRestoreHandler 取消长期忽略，并把当前批次内该账户的记录恢复为待处理。
+func (a *PersonalFinanceImportsApi) PaymentAccountRestoreHandler(c *core.WebContext) (any, *errs.Error) {
+	return a.mutatePaymentAccountSkip(c, "restore")
+}
+
+func (a *PersonalFinanceImportsApi) mutatePaymentAccountSkip(c *core.WebContext, action string) (any, *errs.Error) {
 	if writeErr := a.ensurePersonalFinanceImportWriteAllowed(c); writeErr != nil {
 		return nil, writeErr
 	}
@@ -467,9 +502,20 @@ func (a *PersonalFinanceImportsApi) PaymentAccountExcludeHandler(c *core.WebCont
 	if err != nil {
 		return nil, errs.ErrOperationFailed
 	}
-	group, err := service.ExcludePaymentAccount(c, importing.PaymentAccountSkipRequest{
+	skip := importing.PaymentAccountSkipRequest{
 		Uid: c.GetCurrentUid(), BatchId: request.BatchId, RowId: request.RowId,
-	})
+	}
+	var group *importing.PaymentAccountGroup
+	switch action {
+	case "current":
+		group, err = service.SkipPaymentAccount(c, skip)
+	case "persistent":
+		group, err = service.ExcludePaymentAccount(c, skip)
+	case "restore":
+		group, err = service.RestorePaymentAccount(c, skip)
+	default:
+		return nil, errs.ErrParameterInvalid
+	}
 	if err != nil {
 		return nil, personalFinanceFlowError(err)
 	}
