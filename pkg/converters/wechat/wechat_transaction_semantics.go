@@ -23,7 +23,7 @@ const (
 	wechatTransactionActionInvestment
 )
 
-// classifyWechatTransactionAction 统一旧单文件导入与多账单证据解析使用的微信具体动作。
+// classifyWechatTransactionAction 统一单文件导入与账单整理证据解析使用的微信具体动作。
 // 顺序很重要：手续费、充值、提现和还款必须先于“支付、收款”等宽泛文本。
 func classifyWechatTransactionAction(transactionType string) wechatTransactionAction {
 	transactionType = normalizeWechatSemanticText(transactionType)
