@@ -543,48 +543,11 @@ func normalizeWechatEvidenceDirection(value string) importing.NormalizedDirectio
 }
 
 func normalizeWechatEvidenceTransactionType(value string) importing.SourceTransactionType {
-	value = normalizeWechatEvidenceText(value, true)
-
-	if value == "" {
-		return importing.SOURCE_TRANSACTION_TYPE_UNKNOWN
-	}
-
-	switch {
-	case strings.Contains(value, "手续费") || strings.Contains(value, "服务费"):
-		return importing.SOURCE_TRANSACTION_TYPE_FEE
-	case strings.Contains(value, "零钱充值") || strings.Contains(value, "余额充值"):
-		return importing.SOURCE_TRANSACTION_TYPE_TOP_UP
-	case strings.Contains(value, "零钱提现") || strings.Contains(value, "余额提现"):
-		return importing.SOURCE_TRANSACTION_TYPE_WITHDRAWAL
-	case strings.Contains(value, "信用卡还款") || strings.Contains(value, "转账") || strings.Contains(value, "红包") || strings.Contains(value, "群收款"):
-		return importing.SOURCE_TRANSACTION_TYPE_TRANSFER
-	case strings.Contains(value, "消费") || strings.Contains(value, "付款") || strings.Contains(value, "收款") || strings.Contains(value, "支付") || strings.Contains(value, "退款"):
-		return importing.SOURCE_TRANSACTION_TYPE_PAYMENT
-	case strings.Contains(value, "零钱通") || strings.Contains(value, "理财通"):
-		return importing.SOURCE_TRANSACTION_TYPE_OTHER
-	default:
-		return importing.SOURCE_TRANSACTION_TYPE_UNKNOWN
-	}
+	return classifyWechatTransactionAction(value).sourceTransactionType()
 }
 
 func normalizeWechatEvidenceEconomicEffect(transactionType string, status string) importing.EconomicEffect {
-	transactionType = normalizeWechatEvidenceText(transactionType, false)
-	status = normalizeWechatEvidenceText(status, true)
-
-	switch {
-	case strings.Contains(status, "失败") || strings.Contains(status, "未支付") || strings.Contains(status, "未收款"):
-		return importing.ECONOMIC_EFFECT_FAILED
-	case strings.Contains(status, "关闭") || strings.Contains(status, "撤销") || strings.Contains(status, "取消"):
-		return importing.ECONOMIC_EFFECT_CLOSED
-	case strings.Contains(status, "退款成功") || strings.Contains(status, "退款完成") || strings.Contains(status, "已退款") || strings.Contains(status, "已退还") || strings.Contains(status, "已全额退款") || strings.Contains(status, "已部分退款"):
-		return importing.ECONOMIC_EFFECT_REFUND
-	case strings.Contains(transactionType, "退款") && (strings.Contains(status, "成功") || strings.Contains(status, "完成") || strings.Contains(status, "到账")):
-		return importing.ECONOMIC_EFFECT_REFUND
-	case strings.Contains(status, "成功") || strings.Contains(status, "完成") || strings.Contains(status, "已收钱") || strings.Contains(status, "已到账") || strings.Contains(status, "已支付") || strings.Contains(status, "已存入") || strings.Contains(status, "已转账") || strings.Contains(status, "已领取"):
-		return importing.ECONOMIC_EFFECT_NORMAL
-	default:
-		return importing.ECONOMIC_EFFECT_UNKNOWN
-	}
+	return classifyWechatEconomicEffect(transactionType, status)
 }
 
 func parseWechatEvidenceAmount(value string) (int64, bool) {

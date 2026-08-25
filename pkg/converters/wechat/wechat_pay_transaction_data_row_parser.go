@@ -9,6 +9,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/locales"
 	"github.com/mayswind/ezbookkeeping/pkg/log"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
 
@@ -23,12 +24,6 @@ const wechatPayTransactionAmountColumnName = "金额(元)"
 const wechatPayTransactionRelatedAccountColumnName = "支付方式"
 const wechatPayTransactionStatusColumnName = "当前状态"
 const wechatPayTransactionDescriptionColumnName = "备注"
-
-const wechatPayTransactionDataCategoryTransferToWeChatWallet = "零钱充值"
-const wechatPayTransactionDataCategoryTransferFromWeChatWallet = "零钱提现"
-const wechatPayTransactionDataCategoryCreditCardRepayment = "信用卡还款"
-
-const wechatPayTransactionDataStatusRefundName = "退款"
 
 var wechatPayTransactionSupportedColumns = map[datatable.TransactionDataTableColumn]bool{
 	datatable.TRANSACTION_DATA_TABLE_TRANSACTION_TIME:     true,
@@ -101,6 +96,13 @@ func (p *weChatPayTransactionDataRowParser) Parse(ctx core.Context, user *models
 		statusName = dataRow.GetData(wechatPayTransactionStatusColumnName)
 	}
 
+	economicEffect := classifyWechatEconomicEffect(dataRow.GetData(wechatPayTransactionCategoryColumnName), statusName)
+
+	if economicEffect == importing.ECONOMIC_EFFECT_FAILED || economicEffect == importing.ECONOMIC_EFFECT_CLOSED {
+		log.Warnf(ctx, "[wechat_pay_transaction_data_row_parser.Parse] skip parsing transaction in row \"%s\", because status has no economic effect", rowId)
+		return nil, false, nil
+	}
+
 	locale := user.Language
 
 	if locale == "" {
@@ -120,16 +122,17 @@ func (p *weChatPayTransactionDataRowParser) Parse(ctx core.Context, user *models
 				data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 			}
 		} else if dataRow.GetData(wechatPayTransactionTypeColumnName) == wechatPayTransactionTypeNameMapping[models.TRANSACTION_TYPE_TRANSFER] {
-			if data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY] == wechatPayTransactionDataCategoryTransferToWeChatWallet {
+			switch classifyWechatTransactionAction(data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY]) {
+			case wechatTransactionActionTopUp:
 				data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 				data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = localeTextItems.DataConverterTextItems.WeChatWallet
-			} else if data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY] == wechatPayTransactionDataCategoryTransferFromWeChatWallet {
+			case wechatTransactionActionWithdrawal:
 				data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = localeTextItems.DataConverterTextItems.WeChatWallet
 				data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = relatedAccountName
-			} else if data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY] == wechatPayTransactionDataCategoryCreditCardRepayment {
+			case wechatTransactionActionRepayment:
 				data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 				data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = ""
-			} else {
+			default:
 				log.Warnf(ctx, "[wechat_pay_transaction_data_row_parser.Parse] skip parsing transaction in row \"%s\", because unknown transfer transaction category \"%s\"", rowId, data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY])
 				return nil, false, nil
 			}
@@ -139,14 +142,12 @@ func (p *weChatPayTransactionDataRowParser) Parse(ctx core.Context, user *models
 		}
 	}
 
-	if data[datatable.TRANSACTION_DATA_TABLE_TRANSACTION_TYPE] == wechatPayTransactionTypeNameMapping[models.TRANSACTION_TYPE_INCOME] && statusName != "" {
-		if strings.Index(statusName, wechatPayTransactionDataStatusRefundName) >= 0 {
-			amount, err := utils.ParseAmount(data[datatable.TRANSACTION_DATA_TABLE_AMOUNT])
+	if data[datatable.TRANSACTION_DATA_TABLE_TRANSACTION_TYPE] == wechatPayTransactionTypeNameMapping[models.TRANSACTION_TYPE_INCOME] && economicEffect == importing.ECONOMIC_EFFECT_REFUND {
+		amount, err := utils.ParseAmount(data[datatable.TRANSACTION_DATA_TABLE_AMOUNT])
 
-			if err == nil {
-				data[datatable.TRANSACTION_DATA_TABLE_TRANSACTION_TYPE] = wechatPayTransactionTypeNameMapping[models.TRANSACTION_TYPE_EXPENSE]
-				data[datatable.TRANSACTION_DATA_TABLE_AMOUNT] = utils.FormatAmount(-amount)
-			}
+		if err == nil {
+			data[datatable.TRANSACTION_DATA_TABLE_TRANSACTION_TYPE] = wechatPayTransactionTypeNameMapping[models.TRANSACTION_TYPE_EXPENSE]
+			data[datatable.TRANSACTION_DATA_TABLE_AMOUNT] = utils.FormatAmount(-amount)
 		}
 	}
 

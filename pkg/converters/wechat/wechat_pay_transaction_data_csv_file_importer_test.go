@@ -120,6 +120,27 @@ func TestWeChatPayCsvFileImporterParseImportedData_ParseRefundTransaction(t *tes
 	assert.Equal(t, "xxx-退款", allNewTransactions[0].OriginalCategoryName)
 }
 
+func TestWeChatPayCsvFileImporterParseImportedData_SkipsFailedAndClosedTransactions(t *testing.T) {
+	importer := WeChatPayTransactionDataCsvFileImporter
+	context := core.NewNullContext()
+	user := &models.User{Uid: 1234567890, DefaultCurrency: "CNY"}
+
+	data := "微信支付账单明细,,,,\n" +
+		"微信昵称：[xxx],,,,\n" +
+		"起始时间：[2024-01-01 00:00:00] 终止时间：[2024-09-01 23:59:59],,,,\n" +
+		",,,,\n" +
+		"----------------------微信支付账单明细列表--------------------,,,,\n" +
+		"交易时间,交易类型,收/支,金额(元),当前状态\n" +
+		"2024-09-01 01:23:45,商户消费,支出,￥1.00,支付成功\n" +
+		"2024-09-01 02:23:45,商户消费-退款,收入,￥2.00,退款失败\n" +
+		"2024-09-01 03:23:45,商户消费,支出,￥3.00,交易已关闭\n"
+
+	transactions, _, _, _, _, _, err := importer.ParseImportedData(context, user, []byte(data), time.UTC, converter.DefaultImporterOptions, nil, nil, nil, nil, nil)
+	assert.Nil(t, err)
+	assert.Len(t, transactions, 1)
+	assert.Equal(t, int64(100), transactions[0].Amount)
+}
+
 func TestWeChatPayCsvFileImporterParseImportedData_ParseInvalidTime(t *testing.T) {
 	importer := WeChatPayTransactionDataCsvFileImporter
 	context := core.NewNullContext()
