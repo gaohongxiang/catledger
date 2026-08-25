@@ -18,7 +18,7 @@ const (
 	alipayProductActionRepayment
 )
 
-// classifyAlipayProductAction 统一旧单文件导入与多账单证据解析使用的支付宝具体产品动作。
+// classifyAlipayProductAction 统一单文件导入与账单整理证据解析使用的支付宝具体产品动作。
 // “收益发放”等具体动作必须优先于“投资理财”等宽泛交易分类。
 func classifyAlipayProductAction(productName string) alipayProductAction {
 	productName = normalizeAlipayText(productName)
