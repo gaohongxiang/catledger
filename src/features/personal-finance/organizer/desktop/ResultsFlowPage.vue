@@ -10,7 +10,7 @@
                 <h2>{{ tt('personalFinance.organizerV2.start.title') }}</h2>
                 <p>{{ tt('personalFinance.organizerV2.start.hint') }}</p>
             </div>
-            <div class="source-picker" v-if="selectedBatches.length">
+            <div class="source-picker">
                 <article :key="batch.id" v-for="batch in selectedBatches">
                     <span>
                         <strong>{{ batch.file?.originalFileName || `${tt('personalFinance.organizerV2.start.batch')} #${batch.id}` }}</strong>
@@ -26,9 +26,8 @@
                     />
                 </div>
             </div>
-            <div class="actions">
-                <import-upload-button size="large" v-if="selectedBatchIds.length < 1" @changed="onImportChanged" />
-                <v-btn class="round-primary-action" color="primary" size="large" :loading="busy || checkingPaymentAccounts" v-else @click="startOrganizing">
+            <div class="actions" v-if="selectedBatchIds.length">
+                <v-btn class="round-primary-action" color="primary" size="large" :loading="busy || checkingPaymentAccounts" @click="startOrganizing">
                     {{ tt('personalFinance.organizerV2.start.action', { count: selectedBatchIds.length }) }}
                 </v-btn>
             </div>

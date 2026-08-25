@@ -52,10 +52,13 @@ describe('personal-finance simple web workflow', () => {
         const upload = source('../components/ImportUploadButton.vue');
         const paymentAccounts = source('../components/PaymentAccountSetupDialog.vue');
 
-        expect(results).toContain('<import-upload-button size="large" v-if="selectedBatchIds.length < 1" @changed="onImportChanged" />');
         expect(results).toContain('class="source-add"');
         expect(results).toContain('personalFinance.organizerV2.start.add');
-        expect(results).toContain('v-else @click="startOrganizing"');
+        expect(results).toContain('<div class="source-picker">');
+        expect(results).not.toContain('<div class="source-picker" v-if="selectedBatches.length">');
+        expect(results).not.toContain('<import-upload-button size="large"');
+        expect(results).toContain('<div class="actions" v-if="selectedBatchIds.length">');
+        expect(results).toContain('@click="startOrganizing"');
         expect(results).toContain('selectedBatchIds.value = readyBatches.value.map(batch => batch.id)');
         expect(results).toContain("paymentAccountSetupDialog.value?.open(selectedBatchIds.value, { unresolvedOnly: true })");
         expect(results).toContain('<payment-account-setup-dialog ref="paymentAccountSetupDialog" @saved="createAndOrganize" />');
