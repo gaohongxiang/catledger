@@ -3368,9 +3368,9 @@
         },
         "duplicateDialog": {
             "title": "This statement was uploaded before",
-            "message": "The original file remains unchanged. Open its latest batch, or explicitly create a new immutable parsing batch.",
-            "openLatest": "Open Latest Batch",
-            "reparse": "Create New Batch"
+            "message": "This statement matches one imported previously. To avoid duplicate import results, you can view the previous result, or reparse the statement with new settings; the previous result will remain available.",
+            "openLatest": "View Previous Result",
+            "reparse": "Reparse"
         },
         "sourceDialog": {
             "title": "Choose the statement account",
