@@ -20,7 +20,7 @@ import (
 
 const (
 	alipayEvidenceParserVersion        importing.RuleVersion = "alipay-evidence-parser-v1"
-	alipayEvidenceNormalizationVersion importing.RuleVersion = "alipay-normalization-v2"
+	alipayEvidenceNormalizationVersion importing.RuleVersion = "alipay-normalization-v1"
 
 	alipayIssueSourceAccountMissing   importing.IssueCode = "alipay_source_account_missing"
 	alipayIssueSourceAccountUnusable  importing.IssueCode = "alipay_source_account_unusable"

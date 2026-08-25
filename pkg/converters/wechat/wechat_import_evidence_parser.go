@@ -12,7 +12,7 @@ const (
 	wechatPayXlsxEvidenceParserName   = "wechat-pay-xlsx-evidence"
 	wechatPayCsvParserVersion         = importing.RuleVersion("wechat-csv-parser-v1")
 	wechatPayXlsxParserVersion        = importing.RuleVersion("wechat-xlsx-parser-v1")
-	wechatPayNormalizationVersion     = importing.RuleVersion("wechat-normalization-v2")
+	wechatPayNormalizationVersion     = importing.RuleVersion("wechat-normalization-v1")
 	wechatPayIssueFilePreambleMissing = importing.IssueCode("wechat_file_preamble_missing")
 	wechatPayIssueSheetStructure      = importing.IssueCode("wechat_sheet_structure_ignored")
 	wechatPayIssueNicknameInvalid     = importing.IssueCode("wechat_source_account_nickname_invalid")
