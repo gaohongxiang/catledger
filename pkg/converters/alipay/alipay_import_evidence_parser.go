@@ -20,7 +20,7 @@ import (
 
 const (
 	alipayEvidenceParserVersion        importing.RuleVersion = "alipay-evidence-parser-v1"
-	alipayEvidenceNormalizationVersion importing.RuleVersion = "alipay-normalization-v1"
+	alipayEvidenceNormalizationVersion importing.RuleVersion = "alipay-normalization-v2"
 
 	alipayIssueSourceAccountMissing   importing.IssueCode = "alipay_source_account_missing"
 	alipayIssueSourceAccountUnusable  importing.IssueCode = "alipay_source_account_unusable"
@@ -740,7 +740,11 @@ func parseAlipayEvidenceRow(rowNumber int64, record alipayPhysicalCSVRecord, hea
 
 	parseAlipayRowTime(raw.TransactionTime, &normalized, &issues)
 	parseAlipayRowAmount(raw.Amount, &normalized, &issues)
-	normalized.Direction = normalizeAlipayDirection(raw.Direction)
+	normalized.Direction, normalized.TransactionType = normalizeAlipayTransactionSemantics(
+		raw.TransactionType,
+		raw.Item,
+		normalizeAlipayDirection(raw.Direction),
+	)
 
 	if normalized.Direction == importing.NORMALIZED_DIRECTION_UNKNOWN {
 		issues = append(issues, importing.EvidenceIssue{
@@ -759,8 +763,6 @@ func parseAlipayEvidenceRow(rowNumber int64, record alipayPhysicalCSVRecord, hea
 			Severity: importing.ISSUE_SEVERITY_WARNING,
 		})
 	}
-
-	normalized.TransactionType = normalizeAlipaySourceTransactionType(raw.TransactionType, raw.Item, normalized.Direction)
 
 	if normalized.TransactionType == importing.SOURCE_TRANSACTION_TYPE_UNKNOWN {
 		issues = append(issues, importing.EvidenceIssue{
@@ -928,6 +930,27 @@ func normalizeAlipayEconomicEffect(value string) importing.EconomicEffect {
 	}
 }
 
+func normalizeAlipayTransactionSemantics(rawType, rawItem string, direction importing.NormalizedDirection) (importing.NormalizedDirection, importing.SourceTransactionType) {
+	switch classifyAlipayProductAction(rawItem) {
+	case alipayProductActionEarning:
+		return importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_OTHER
+	case alipayProductActionTransferToWallet:
+		return direction, importing.SOURCE_TRANSACTION_TYPE_TOP_UP
+	case alipayProductActionTransferFromWallet:
+		return direction, importing.SOURCE_TRANSACTION_TYPE_WITHDRAWAL
+	case alipayProductActionPurchaseInvestment,
+		alipayProductActionPurchaseInvestmentRefund,
+		alipayProductActionSellInvestment,
+		alipayProductActionTransferIn,
+		alipayProductActionTransferOut,
+		alipayProductActionTransfer,
+		alipayProductActionRepayment:
+		return direction, importing.SOURCE_TRANSACTION_TYPE_TRANSFER
+	}
+
+	return direction, normalizeAlipaySourceTransactionType(rawType, rawItem, direction)
+}
+
 func normalizeAlipaySourceTransactionType(rawType, rawItem string, direction importing.NormalizedDirection) importing.SourceTransactionType {
 	typeText := normalizeAlipayText(rawType)
 	itemText := normalizeAlipayText(rawItem)
@@ -936,8 +959,6 @@ func normalizeAlipaySourceTransactionType(rawType, rawItem string, direction imp
 		if transactionType := classifyAlipaySourceTransactionType(typeText); transactionType != importing.SOURCE_TRANSACTION_TYPE_UNKNOWN {
 			return transactionType
 		}
-
-		return importing.SOURCE_TRANSACTION_TYPE_UNKNOWN
 	}
 
 	if transactionType := classifyAlipaySourceTransactionType(itemText); transactionType != importing.SOURCE_TRANSACTION_TYPE_UNKNOWN {

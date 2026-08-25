@@ -1,8 +1,6 @@
 package alipay
 
 import (
-	"strings"
-
 	"github.com/mayswind/ezbookkeeping/pkg/converters/datatable"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/locales"
@@ -133,11 +131,13 @@ func (p *alipayTransactionDataRowParser) Parse(ctx core.Context, user *models.Us
 				productName = dataRow.GetData(p.columns.productNameColumnName)
 			}
 
+			productAction := classifyAlipayProductAction(productName)
+
 			if statusName == alipayTransactionDataStatusRefundSuccessName {
-				if len(productName) > len(alipayTransactionDataProductNamePurchaseInvestmentText) && strings.Index(productName, alipayTransactionDataProductNamePurchaseInvestmentText) == len(productName)-len(alipayTransactionDataProductNamePurchaseInvestmentText) { // purchase investment
+				if productAction == alipayProductActionPurchaseInvestment {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if len(productName) > len(alipayTransactionDataProductNamePurchaseInvestmentRefundText) && strings.Index(productName, alipayTransactionDataProductNamePurchaseInvestmentRefundText) == len(productName)-len(alipayTransactionDataProductNamePurchaseInvestmentRefundText) { // purchase investment refund
+				} else if productAction == alipayProductActionPurchaseInvestmentRefund {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = targetName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = relatedAccountName
 				} else {
@@ -146,32 +146,32 @@ func (p *alipayTransactionDataRowParser) Parse(ctx core.Context, user *models.Us
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = ""
 				}
 			} else {
-				if len(productName) > len(alipayTransactionDataProductNameEarningText) && strings.Index(productName, alipayTransactionDataProductNameEarningText) == len(productName)-len(alipayTransactionDataProductNameEarningText) { // earning
+				if productAction == alipayProductActionEarning {
 					data[datatable.TRANSACTION_DATA_TABLE_TRANSACTION_TYPE] = alipayTransactionTypeNameMapping[models.TRANSACTION_TYPE_INCOME]
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if len(productName) > len(alipayTransactionDataProductNamePurchaseInvestmentText) && strings.Index(productName, alipayTransactionDataProductNamePurchaseInvestmentText) == len(productName)-len(alipayTransactionDataProductNamePurchaseInvestmentText) { // purchase investment
+				} else if productAction == alipayProductActionPurchaseInvestment {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if strings.Index(productName, alipayTransactionDataProductNameSellInvestmentRefundText) >= 0 { // sell investment
+				} else if productAction == alipayProductActionSellInvestment {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = targetName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = relatedAccountName
-				} else if strings.Index(productName, alipayTransactionDataProductNameTransferToAlipayPrefix) == 0 { // transfer to alipay wallet
+				} else if productAction == alipayProductActionTransferToWallet {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = ""
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = localeTextItems.DataConverterTextItems.Alipay
-				} else if strings.Index(productName, alipayTransactionDataProductNameTransferFromAlipayPrefix) == 0 { // transfer from alipay wallet
+				} else if productAction == alipayProductActionTransferFromWallet {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = localeTextItems.DataConverterTextItems.Alipay
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if strings.Index(productName, alipayTransactionDataProductNameTransferInText) >= 0 { // transfer in
+				} else if productAction == alipayProductActionTransferIn {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if strings.Index(productName, alipayTransactionDataProductNameTransferOutText) >= 0 { // transfer out
+				} else if productAction == alipayProductActionTransferOut {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if strings.Index(productName, alipayTransactionDataProductNameTransferText) >= 0 { // transfer
+				} else if productAction == alipayProductActionTransfer {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if strings.Index(productName, alipayTransactionDataProductNameRepaymentText) >= 0 { // repayment
+				} else if productAction == alipayProductActionRepayment {
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
 				} else {
