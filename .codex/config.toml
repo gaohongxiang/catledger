@@ -1,12 +1,12 @@
 # 本仓库的 Codex 默认配置。只放稳定、项目级设置；个人账号、认证和
 # 全局通知等仍由 ~/.codex/config.toml 管理。
 
-model = "gpt-5.6-sol"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "high"
 plan_mode_reasoning_effort = "medium"
 
 [agents]
-default_subagent_model = "gpt-5.6-sol"
+default_subagent_model = "gpt-5.6-terra"
 default_subagent_reasoning_effort = "high"
 
 # 当前 Web 主线和未来微信小程序都可能使用 CloudBase 能力，因此保留
