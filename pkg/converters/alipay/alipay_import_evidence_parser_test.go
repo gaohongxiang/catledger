@@ -138,6 +138,35 @@ func TestAlipayEvidenceParserUsesConcreteProductSemanticsBeforeBroadCategory(t *
 	}
 }
 
+func TestAlipayEvidenceParserTreatsExplicitRewardAsIncome(t *testing.T) {
+	content := []byte("------------------------------------------------------------------------------------\n" +
+		"支付宝账户：synthetic@example.test\n" +
+		"------------------------支付宝支付科技有限公司  电子客户回单------------------------\n" +
+		"交易时间,交易分类,交易对方,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,备注\n" +
+		"2026-07-23 15:30:54,转账红包,活动平台,平台活动奖励,收入,30.00,-,交易成功,SYN-REWARD-001,\n")
+
+	document, err := AlipayAppImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{
+		OriginalFileName: "synthetic-reward.csv",
+		Content:          content,
+	}, alipayEvidenceTestOptions)
+	if err != nil {
+		t.Fatalf("解析活动奖励样例失败: %v", err)
+	}
+	if len(document.Rows) != 1 {
+		t.Fatalf("活动奖励样例行数错误: %d", len(document.Rows))
+	}
+	row := document.Rows[0]
+	if row.Normalized.Direction != importing.NORMALIZED_DIRECTION_INCOME ||
+		row.Normalized.TransactionType != importing.SOURCE_TRANSACTION_TYPE_OTHER ||
+		row.Normalized.EconomicEffect != importing.ECONOMIC_EFFECT_NORMAL {
+		t.Fatalf("活动奖励语义错误: %+v", row.Normalized)
+	}
+	if hasAlipayEvidenceIssue(row.Issues, importing.ISSUE_CODE_ROW_DIRECTION_UNKNOWN) ||
+		hasAlipayEvidenceIssue(row.Issues, importing.ISSUE_CODE_ROW_TRANSACTION_TYPE_UNKNOWN) {
+		t.Fatalf("活动奖励不应进入方向或类型待确认: %+v", row.Issues)
+	}
+}
+
 func TestAlipayAppEvidenceParserGoldenDocument(t *testing.T) {
 	content := readAlipayEvidenceFixture(t, "testdata/alipay_app_utf8_bom.csv")
 	document, err := AlipayAppImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{

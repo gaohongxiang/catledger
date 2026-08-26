@@ -13,6 +13,9 @@ func TestClassifyAlipayProductAction(t *testing.T) {
 		expected    alipayProductAction
 	}{
 		{name: "earning", productName: "余额宝-2026.07.02-收益发放", expected: alipayProductActionEarning},
+		{name: "activity reward", productName: "平台活动奖励", expected: alipayProductActionEarning},
+		{name: "cash reward", productName: "任务现金奖励", expected: alipayProductActionEarning},
+		{name: "reward money", productName: "会员奖励金", expected: alipayProductActionEarning},
 		{name: "purchase refund precedes purchase", productName: "基金产品-买入退款", expected: alipayProductActionPurchaseInvestmentRefund},
 		{name: "purchase", productName: "基金产品-买入", expected: alipayProductActionPurchaseInvestment},
 		{name: "sell", productName: "基金产品-卖出至余额宝", expected: alipayProductActionSellInvestment},
@@ -43,6 +46,18 @@ func TestNormalizeAlipayTransactionSemanticsPrefersConcreteProductAction(t *test
 
 	if direction != importing.NORMALIZED_DIRECTION_INCOME || transactionType != importing.SOURCE_TRANSACTION_TYPE_OTHER {
 		t.Fatalf("收益发放不应被宽泛投资理财覆盖: direction=%s type=%s", direction, transactionType)
+	}
+}
+
+func TestNormalizeAlipayTransactionSemanticsPrefersRewardOverTransferCategory(t *testing.T) {
+	direction, transactionType := normalizeAlipayTransactionSemantics(
+		"转账红包",
+		"平台活动奖励",
+		importing.NORMALIZED_DIRECTION_INCOME,
+	)
+
+	if direction != importing.NORMALIZED_DIRECTION_INCOME || transactionType != importing.SOURCE_TRANSACTION_TYPE_OTHER {
+		t.Fatalf("明确活动奖励不应被宽泛转账分类覆盖: direction=%s type=%s", direction, transactionType)
 	}
 }
 

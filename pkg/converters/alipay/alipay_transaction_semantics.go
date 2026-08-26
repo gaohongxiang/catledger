@@ -28,7 +28,8 @@ func classifyAlipayProductAction(productName string) alipayProductAction {
 	productName = normalizeAlipayText(productName)
 
 	switch {
-	case strings.HasSuffix(productName, alipayTransactionDataProductNameEarningText):
+	case strings.HasSuffix(productName, alipayTransactionDataProductNameEarningText),
+		containsAnyAlipayText(productName, "活动奖励", "现金奖励", "奖励金"):
 		return alipayProductActionEarning
 	case strings.HasSuffix(productName, alipayTransactionDataProductNamePurchaseInvestmentRefundText):
 		return alipayProductActionPurchaseInvestmentRefund
