@@ -269,12 +269,10 @@ func CreateNewExcelOOXMLFileBasicDataTable(data []byte, hasTitleLine bool) (data
 func CreateNewExcelOOXMLFileBasicDataTables(data []byte, hasTitleLine bool) ([]datatable.BasicDataTable, error) {
 	reader := bytes.NewReader(data)
 	file, err := excelize.OpenReader(reader)
-
-	defer file.Close()
-
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
 	sheetNames := file.GetSheetList()
 	var dataTables []datatable.BasicDataTable

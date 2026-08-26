@@ -52,6 +52,13 @@ func TestSpreadsheetParsersReuseMappingAndPreserveWorksheetLocator(t *testing.T)
 			if probe := test.parser.Probe(context.Background(), importing.EvidenceFile{Content: content}); !probe.Confidence.Matched() || probe.Format != test.format {
 				t.Fatalf("spreadsheet was not probed: %+v", probe)
 			}
+			other := ImportEvidenceXLSParser
+			if test.parser == ImportEvidenceXLSParser {
+				other = ImportEvidenceXLSXParser
+			}
+			if probe := other.Probe(context.Background(), importing.EvidenceFile{Content: content}); probe.Confidence.Matched() {
+				t.Fatalf("wrong spreadsheet container was claimed: %+v", probe)
+			}
 
 			mapping := baseMapping()
 			mapping.SheetIndex = 0

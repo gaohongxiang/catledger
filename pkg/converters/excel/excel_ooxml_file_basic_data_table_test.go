@@ -18,6 +18,12 @@ func TestExcelOOXMLFileBasicDataTableDataRowCount(t *testing.T) {
 	assert.Equal(t, 3, datatable.DataRowCount())
 }
 
+func TestCreateNewExcelOOXMLFileBasicDataTablesRejectsNonOOXMLWithoutPanic(t *testing.T) {
+	tables, err := CreateNewExcelOOXMLFileBasicDataTables([]byte("not-an-ooxml-workbook"), false)
+	assert.Error(t, err)
+	assert.Nil(t, tables)
+}
+
 func TestExcelOOXMLFileBasicDataTableDataRowCount_HasTitleLine(t *testing.T) {
 	testdata, err := os.ReadFile("../../../testdata/simple_excel_file.xlsx")
 	assert.Nil(t, err)

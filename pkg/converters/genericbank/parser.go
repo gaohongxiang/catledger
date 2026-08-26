@@ -89,6 +89,10 @@ func (p *genericBankTableParser) Probe(ctx context.Context, file importing.Evide
 		return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_NONE}
 	}
 	if p.container != tableContainerCSV {
+		if (p.container == tableContainerXLS && !hasMSCFBHeader(file.Content)) ||
+			(p.container == tableContainerXLSX && !hasOOXMLHeader(file.Content)) {
+			return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_NONE}
+		}
 		tables, err := readSpreadsheetTables(file.Content, p.container)
 		if err != nil || len(tables) == 0 {
 			return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_NONE}
@@ -122,6 +126,14 @@ func (p *genericBankTableParser) Probe(ctx context.Context, file importing.Evide
 	}
 
 	return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_NONE}
+}
+
+func hasMSCFBHeader(content []byte) bool {
+	return len(content) >= 8 && bytes.Equal(content[:8], []byte{0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1})
+}
+
+func hasOOXMLHeader(content []byte) bool {
+	return len(content) >= 4 && bytes.Equal(content[:4], []byte{'P', 'K', 0x03, 0x04})
 }
 
 func (p *genericBankTableParser) Parse(ctx context.Context, file importing.EvidenceFile, opts importing.ResolvedParseOptions) (*importing.EvidenceDocument, error) {
