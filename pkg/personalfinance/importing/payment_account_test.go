@@ -63,6 +63,19 @@ func TestPaymentAccountAliasNormalizesFormattingAndMasksLongDigits(t *testing.T)
 	}
 }
 
+func TestCreditCardAccountFamilyAliasMatchesRepaymentCounterpartySafely(t *testing.T) {
+	mapped, mappedOK := importing.CreditCardAccountFamilyAlias("兴业银行信用卡(6106)")
+	repayment, repaymentOK := importing.CreditCardAccountFamilyAlias("兴业银行信用卡还款")
+	if !mappedOK || !repaymentOK || mapped != repayment {
+		t.Fatalf("credit-card family aliases must match: mapped=%q repayment=%q", mapped, repayment)
+	}
+	for _, ambiguous := range []string{"信用卡还款", "银行信用卡还款", "零钱", "兴业银行储蓄卡(6106)"} {
+		if family, ok := importing.CreditCardAccountFamilyAlias(ambiguous); ok {
+			t.Fatalf("ambiguous credit-card family %q must not be reusable: %q", ambiguous, family)
+		}
+	}
+}
+
 func TestComparablePaymentAccountTextComposesEverbrightLastFour(t *testing.T) {
 	composed := importing.ComparablePaymentAccountText("末四位2690")
 	alipay := importing.ComparablePaymentAccountText("光大银行信用卡(2690)")

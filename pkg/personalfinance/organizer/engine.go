@@ -314,15 +314,30 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 }
 
 func indexPaymentAccountMappings(mappings []*importing.PaymentAccountMapping) map[string]int64 {
-	result := make(map[string]int64, len(mappings))
+	result := make(map[string]int64, len(mappings)*2)
 	for _, mapping := range mappings {
 		if mapping == nil || mapping.Currency == "" || mapping.AliasKey == "" || mapping.LedgerAccountId < 1 ||
 			mapping.AliasKeyVersion != importing.PAYMENT_ACCOUNT_ALIAS_VERSION_V1 {
 			continue
 		}
 		result[mapping.Currency+"\x00"+mapping.AliasKey] = mapping.LedgerAccountId
+		family, ok := importing.CreditCardAccountFamilyAlias(mapping.MaskedDisplayName)
+		if !ok {
+			continue
+		}
+		key := creditCardFamilyMappingKey(mapping.Currency, family)
+		if existing, exists := result[key]; !exists || existing == mapping.LedgerAccountId {
+			result[key] = mapping.LedgerAccountId
+		} else {
+			// 同一发卡行映射到多个正式账户时保留歧义，不自动猜卡。
+			result[key] = 0
+		}
 	}
 	return result
+}
+
+func creditCardFamilyMappingKey(currency string, family string) string {
+	return currency + "\x00credit-card-family\x00" + family
 }
 
 func resolvePlanningFundsMovement(row *importing.RawImportRow, batch *importing.ImportBatch, projection importing.SourceFundsProjection, mappings map[string]int64) *PlanningFundsMovement {
@@ -350,6 +365,16 @@ func resolveFundsAccountReference(row *importing.RawImportRow, batch *importing.
 			}
 		}
 		accountId := mappings[row.Currency+"\x00"+alias.Key]
+		if accountId < 1 {
+			return nil
+		}
+		return &accountId
+	case importing.SOURCE_FUNDS_ACCOUNT_CREDIT_CARD_FAMILY:
+		family, ok := importing.CreditCardAccountFamilyAlias(reference.Raw)
+		if !ok {
+			return nil
+		}
+		accountId := mappings[creditCardFamilyMappingKey(row.Currency, family)]
 		if accountId < 1 {
 			return nil
 		}

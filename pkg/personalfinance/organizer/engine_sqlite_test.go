@@ -76,6 +76,67 @@ func TestEngineSQLiteProjectsWechatWithdrawalFromStatementAccountToPaymentAccoun
 	}
 }
 
+func TestEngineSQLiteProjectsWechatCreditCardRepaymentFromWalletToUniqueMappedCard(t *testing.T) {
+	repository, _ := newSQLiteOrganizerRepository(t)
+	const uid = int64(4052)
+	const updateId = int64(5052)
+	const batchId = int64(7052)
+	const walletAccountId = int64(31)
+	const cardAccountId = int64(32)
+	source := testSource(uid, updateId, 6052, 7053, batchId, 10)
+	source.SourceTypeSnapshot = string(importing.SOURCE_TYPE_WECHAT)
+	if err := repository.DoTransaction(nil, uid, func(tx *organizer.RepositoryTransaction) error {
+		if err := tx.InsertUpdate(testUpdate(uid, updateId, 10)); err != nil {
+			return err
+		}
+		return tx.InsertSource(source)
+	}); err != nil {
+		t.Fatalf("seed wechat repayment update: %v", err)
+	}
+
+	batch := engineBatch(uid, 7053, batchId)
+	batch.SourceTypeSnapshot = importing.SOURCE_TYPE_WECHAT
+	row := plannerRow(uid, batchId, 8052, 9052, walletAccountId, 550550, 1783500000, importing.NORMALIZED_DIRECTION_NEUTRAL, importing.SOURCE_TRANSACTION_TYPE_TRANSFER)
+	row.RawTransactionType = "信用卡还款"
+	row.RawCounterparty = "兴业银行信用卡还款"
+	row.RawPaymentMethod = "零钱"
+	cardAlias, ok := importing.BuildPaymentAccountAlias("兴业银行信用卡(6106)")
+	if !ok {
+		t.Fatal("build mapped credit-card alias")
+	}
+	evidence := &engineEvidenceStub{
+		batches: map[int64]*importing.ImportBatch{batchId: batch},
+		rows:    map[int64][]*importing.RawImportRow{batchId: {row}},
+		mappings: map[importing.SourceType][]*importing.PaymentAccountMapping{
+			importing.SOURCE_TYPE_WECHAT: {{
+				Uid: uid, SourceType: importing.SOURCE_TYPE_WECHAT, Currency: "CNY", AliasKey: cardAlias.Key,
+				AliasKeyVersion: cardAlias.Version, LedgerAccountId: cardAccountId, MaskedDisplayName: "兴业银行信用卡(6106)", MappingId: 2,
+			}},
+		},
+	}
+	accounts := &engineAccountStub{items: map[int64]*models.Account{
+		walletAccountId: plannerAccount(uid, walletAccountId, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT),
+		cardAccountId:   plannerAccount(uid, cardAccountId, models.ACCOUNT_CATEGORY_CREDIT_CARD),
+	}}
+	engine, err := organizer.NewEngine(repository, evidence, accounts, converters.NewSourceFundsProjector(), &engineIdGenerator{next: 9600})
+	if err != nil {
+		t.Fatalf("create projected organizer engine: %v", err)
+	}
+	result, err := engine.Organize(nil, organizer.OrganizeRequest{
+		Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 1, IdempotencyKey: "wechat-repayment-5052-v1",
+	})
+	if err != nil || result == nil || len(result.Events) != 1 {
+		t.Fatalf("organize projected repayment: result=%+v err=%v", result, err)
+	}
+	event := result.Events[0]
+	if event.Status != organizer.EVENT_STATUS_READY || event.EconomicNature != organizer.ECONOMIC_NATURE_REPAYMENT ||
+		event.FlowDirection != organizer.FLOW_DIRECTION_NEUTRAL || event.LedgerAccountId == nil || *event.LedgerAccountId != walletAccountId ||
+		event.CounterpartyLedgerAccountId == nil || *event.CounterpartyLedgerAccountId != cardAccountId ||
+		result.Update.ReadyEventCount != 1 || result.Update.NeedsActionEventCount != 0 {
+		t.Fatalf("wechat repayment was not auto-confirmable: event=%+v update=%+v", event, result.Update)
+	}
+}
+
 func TestEngineSQLitePersistsPlanAndReplaysIdempotently(t *testing.T) {
 	repository, database := newSQLiteOrganizerRepository(t)
 	const uid = int64(4101)

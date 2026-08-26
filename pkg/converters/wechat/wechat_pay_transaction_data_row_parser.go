@@ -18,6 +18,7 @@ const wechatPayTransactionDataHeaderStartContentBeginning = "-------------------
 
 const wechatPayTransactionTimeColumnName = "交易时间"
 const wechatPayTransactionCategoryColumnName = "交易类型"
+const wechatPayTransactionCounterpartyColumnName = "交易对方"
 const wechatPayTransactionProductNameColumnName = "商品"
 const wechatPayTransactionTypeColumnName = "收/支"
 const wechatPayTransactionAmountColumnName = "金额(元)"
@@ -122,7 +123,11 @@ func (p *weChatPayTransactionDataRowParser) Parse(ctx core.Context, user *models
 				data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 			}
 		} else if dataRow.GetData(wechatPayTransactionTypeColumnName) == wechatPayTransactionTypeNameMapping[models.TRANSACTION_TYPE_TRANSFER] {
-			projection, projected := ProjectSourceFunds(data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY], relatedAccountName)
+			projection, projected := ProjectSourceFunds(
+				data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY],
+				relatedAccountName,
+				dataRow.GetData(wechatPayTransactionCounterpartyColumnName),
+			)
 			if !projected {
 				log.Warnf(ctx, "[wechat_pay_transaction_data_row_parser.Parse] skip parsing transaction in row \"%s\", because unknown transfer transaction category \"%s\"", rowId, data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY])
 				return nil, false, nil

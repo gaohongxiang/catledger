@@ -20,7 +20,7 @@ func (sourceFundsProjector) ProjectSourceFunds(sourceType importing.SourceType, 
 	}
 	switch sourceType {
 	case importing.SOURCE_TYPE_WECHAT:
-		return wechat.ProjectSourceFunds(row.RawTransactionType, row.RawPaymentMethod)
+		return wechat.ProjectSourceFunds(row.RawTransactionType, row.RawPaymentMethod, row.RawCounterparty)
 	case importing.SOURCE_TYPE_ALIPAY:
 		return alipay.ProjectSourceFunds(
 			row.RawItem,

@@ -74,7 +74,7 @@ func (action wechatTransactionAction) sourceTransactionType() importing.SourceTr
 }
 
 // ProjectSourceFunds 复用微信动作分类，给单文件导入和账单整理提供同一套账户方向。
-func ProjectSourceFunds(transactionType string, paymentMethod string) (importing.SourceFundsProjection, bool) {
+func ProjectSourceFunds(transactionType string, paymentMethod string, counterparty string) (importing.SourceFundsProjection, bool) {
 	statement := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_STATEMENT}
 	payment := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: paymentMethod}
 	projection := importing.SourceFundsProjection{
@@ -90,6 +90,7 @@ func ProjectSourceFunds(transactionType string, paymentMethod string) (importing
 	case wechatTransactionActionRepayment:
 		projection.Kind = importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT
 		projection.From = payment
+		projection.To = importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_CREDIT_CARD_FAMILY, Raw: counterparty}
 	default:
 		return importing.SourceFundsProjection{}, false
 	}

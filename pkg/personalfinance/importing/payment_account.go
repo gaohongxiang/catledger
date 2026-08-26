@@ -161,6 +161,23 @@ func ComparablePaymentAccountText(raw string) string {
 	return canonicalPaymentAccountAlias(qualifyPaymentAccountDisplayName(SOURCE_TYPE_BANK, instrument))
 }
 
+// CreditCardAccountFamilyAlias 把信用卡还款对方和已映射卡号收敛到发卡行级别。
+// 该别名只能用于唯一候选查找，不能替代带尾号的稳定付款账户身份。
+func CreditCardAccountFamilyAlias(raw string) (string, bool) {
+	canonical := strings.TrimSuffix(canonicalPaymentAccountAlias(paymentAccountInstrumentName(raw)), "还款")
+	var builder strings.Builder
+	for _, char := range canonical {
+		if !unicode.IsDigit(char) {
+			builder.WriteRune(char)
+		}
+	}
+	family := builder.String()
+	if !strings.Contains(family, "银行") || !strings.HasSuffix(family, "信用卡") || family == "银行信用卡" {
+		return "", false
+	}
+	return family, true
+}
+
 // QualifiedPaymentAccountDisplayName 与核对账户同一套组成规则：光大月结单「末四位xxxx」显示为「光大银行信用卡(xxxx)」。
 func QualifiedPaymentAccountDisplayName(sourceType SourceType, raw string) string {
 	instrument := paymentAccountInstrumentName(raw)
