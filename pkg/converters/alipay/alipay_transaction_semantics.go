@@ -56,7 +56,7 @@ func classifyAlipayProductAction(productName string) alipayProductAction {
 
 // ProjectSourceFunds 复用支付宝产品动作分类，给单文件导入和账单整理提供同一套账户方向。
 func ProjectSourceFunds(productName string, paymentMethod string, counterparty string, refund bool) (importing.SourceFundsProjection, bool) {
-	statement := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_STATEMENT}
+	statement := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_STATEMENT, Raw: "余额"}
 	payment := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: paymentMethod}
 	target := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: counterparty}
 	yuEBao := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: "余额宝"}

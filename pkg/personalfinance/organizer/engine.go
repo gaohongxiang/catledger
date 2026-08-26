@@ -416,6 +416,13 @@ func resolveFundsAccountReference(row *importing.RawImportRow, batch *importing.
 		if batch != nil && batch.LedgerAccountId != nil && *batch.LedgerAccountId > 0 {
 			return cloneInt64Pointer(batch.LedgerAccountId)
 		}
+		// 平台账单的归属身份不等于具体钱包。来源投影给出“零钱/余额”等明确别名时，
+		// 优先复用该钱包映射，不能把本行银行卡付款方式误当作平台侧账户。
+		if row != nil && reference.Raw != "" {
+			if accountId := resolvePaymentAccountReference(row, reference.Raw, mappings); accountId != nil {
+				return accountId
+			}
+		}
 		// 银行批次的账单账户可能在解析后才通过付款方式映射确认。
 		// 整理时再次解析当前映射，使不可变旧证据也能沿用最新账户事实。
 		if row != nil {

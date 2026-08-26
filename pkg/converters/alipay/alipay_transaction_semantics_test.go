@@ -97,6 +97,7 @@ func TestProjectSourceFundsReusesAlipayProductDirections(t *testing.T) {
 	withdrawal, ok := ProjectSourceFunds("提现-实时提现", "余额", "合成银行卡(0000)", false)
 	if !ok || withdrawal.Kind != importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER ||
 		withdrawal.From.Kind != importing.SOURCE_FUNDS_ACCOUNT_STATEMENT ||
+		withdrawal.From.Raw != "余额" ||
 		withdrawal.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_PAYMENT || withdrawal.To.Raw != "合成银行卡(0000)" {
 		t.Fatalf("支付宝提现资金方向错误: %+v ok=%v", withdrawal, ok)
 	}
@@ -105,7 +106,8 @@ func TestProjectSourceFundsReusesAlipayProductDirections(t *testing.T) {
 		t.Fatalf("支付宝投资买入资金方向错误: %+v ok=%v", purchase, ok)
 	}
 	topUp, ok := ProjectSourceFunds("充值-普通充值", "合成银行卡(0000)", "", false)
-	if !ok || topUp.From.Raw != "合成银行卡(0000)" || topUp.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_STATEMENT {
+	if !ok || topUp.From.Raw != "合成银行卡(0000)" ||
+		topUp.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_STATEMENT || topUp.To.Raw != "余额" {
 		t.Fatalf("支付宝充值资金方向错误: %+v ok=%v", topUp, ok)
 	}
 	repayment, ok := ProjectSourceFunds("自动还款-花呗账单", "余额", "花呗", false)

@@ -89,3 +89,30 @@ func TestResolveStatementAccountFallsBackToLatestPaymentMapping(t *testing.T) {
 		t.Fatalf("explicit batch account must keep priority: %v", account)
 	}
 }
+
+func TestResolveStatementAccountPrefersExplicitPlatformWallet(t *testing.T) {
+	bankAccountId := int64(41)
+	walletAccountId := int64(42)
+	row := &importing.RawImportRow{
+		Currency:         "CNY",
+		RawPaymentMethod: "合成银行卡(0000)",
+		LedgerAccountId:  &bankAccountId,
+	}
+	bankAlias, bankOK := importing.BuildPaymentAccountAlias("合成银行卡(0000)")
+	walletAlias, walletOK := importing.BuildPaymentAccountAlias("零钱")
+	if !bankOK || !walletOK {
+		t.Fatal("build platform wallet mappings")
+	}
+	mappings := map[string]int64{
+		"CNY\x00" + bankAlias.Key:   bankAccountId,
+		"CNY\x00" + walletAlias.Key: walletAccountId,
+	}
+
+	account := resolveFundsAccountReference(row, &importing.ImportBatch{}, importing.SourceFundsAccountReference{
+		Kind: importing.SOURCE_FUNDS_ACCOUNT_STATEMENT,
+		Raw:  "零钱",
+	}, mappings)
+	if account == nil || *account != walletAccountId {
+		t.Fatalf("explicit platform wallet must not fall back to row payment account: %v", account)
+	}
+}
