@@ -14,7 +14,7 @@ const (
 	maximumEvidenceBatchSnapshotBytes   = 16 * 1024 * 1024
 	maximumPersistentSourceLocatorBytes = 255
 	parseOptionsDigestVersionV1         = "parse-options-v1"
-	genericParseOptionsDigestVersionV1  = "generic-parse-options-v1"
+	genericParseOptionsDigestVersionV2  = "generic-bank-parse-options-v2"
 )
 
 var (
@@ -450,14 +450,14 @@ func persistentEvidenceSnapshotBytes(row *RawImportRow) int {
 }
 
 func computeParseOptionsDigest(options ResolvedParseOptions) string {
-	if options.GenericCSVMapping != nil {
-		mapping, err := NormalizeGenericCSVMapping(*options.GenericCSVMapping)
+	if options.GenericBankMapping != nil {
+		mapping, err := NormalizeGenericBankMapping(*options.GenericBankMapping)
 		if err != nil {
 			return ""
 		}
 		values := []string{
-			genericParseOptionsDigestVersionV1, options.Currency, strconv.FormatInt(int64(options.TimezoneUtcOffset), 10),
-			string(mapping.Encoding), string(mapping.Delimiter), strconv.Itoa(mapping.HeaderRow), string(mapping.TimeFormat),
+			genericParseOptionsDigestVersionV2, options.Currency, strconv.FormatInt(int64(options.TimezoneUtcOffset), 10),
+			string(mapping.Encoding), string(mapping.Delimiter), strconv.Itoa(mapping.SheetIndex), strconv.Itoa(mapping.HeaderRow), string(mapping.TimeFormat),
 			string(mapping.AmountMode), string(mapping.SignedPositiveDirection),
 			strconv.Itoa(mapping.TimeColumn), strconv.Itoa(mapping.AmountColumn), strconv.Itoa(mapping.DirectionColumn),
 			strconv.Itoa(mapping.IncomeColumn), strconv.Itoa(mapping.ExpenseColumn), strconv.Itoa(mapping.CurrencyColumn),

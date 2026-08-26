@@ -21,6 +21,18 @@ type ExcelOOXMLFileBasicDataTable struct {
 	sheets                []*excelOOXMLSheet
 	headerLineColumnNames []string
 	hasTitleLine          bool
+	worksheetIndex        int
+}
+
+// WorksheetIndex 返回单工作表数据表在原工作簿中的零基索引；聚合数据表返回 -1。
+func (t *ExcelOOXMLFileBasicDataTable) WorksheetIndex() int { return t.worksheetIndex }
+
+// WorksheetName 返回单工作表数据表的原始工作表名；聚合数据表返回空字符串。
+func (t *ExcelOOXMLFileBasicDataTable) WorksheetName() string {
+	if t.worksheetIndex < 0 || len(t.sheets) != 1 || t.sheets[0] == nil {
+		return ""
+	}
+	return t.sheets[0].sheetName
 }
 
 // ExcelOOXMLFileBasicDataTableRow defines the structure of excel (Office Open XML) file data table row
@@ -176,12 +188,10 @@ func (t *ExcelOOXMLFileBasicDataTableRowIterator) Next() datatable.BasicDataTabl
 func CreateNewExcelOOXMLFileBasicDataTable(data []byte, hasTitleLine bool) (datatable.BasicDataTable, error) {
 	reader := bytes.NewReader(data)
 	file, err := excelize.OpenReader(reader)
-
-	defer file.Close()
-
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
 	sheetNames := file.GetSheetList()
 	var firstRowItems []string
@@ -239,6 +249,7 @@ func CreateNewExcelOOXMLFileBasicDataTable(data []byte, hasTitleLine bool) (data
 		sheets:                sheets,
 		headerLineColumnNames: headerLineColumnNames,
 		hasTitleLine:          hasTitleLine,
+		worksheetIndex:        -1,
 	}, nil
 }
 
@@ -293,6 +304,7 @@ func CreateNewExcelOOXMLFileBasicDataTables(data []byte, hasTitleLine bool) ([]d
 			},
 			headerLineColumnNames: headerLineColumnNames,
 			hasTitleLine:          hasTitleLine,
+			worksheetIndex:        i,
 		})
 	}
 

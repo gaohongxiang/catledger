@@ -171,7 +171,7 @@ export interface PersonalFinanceReparseRequest {
     readonly currency: string;
     readonly timezoneUtcOffset: number;
     readonly reasonCode: string;
-    readonly genericCsvMapping?: PersonalFinanceGenericCsvMapping;
+    readonly genericBankMapping?: PersonalFinanceGenericBankMapping;
 }
 
 export type PersonalFinanceGenericCsvEncoding = 'utf8' | 'gb18030' | 'gbk';
@@ -185,9 +185,10 @@ export type PersonalFinanceGenericCsvTimeFormat =
     '2006-01-02' |
     '2006/01/02';
 
-export interface PersonalFinanceGenericCsvMapping {
+export interface PersonalFinanceGenericBankMapping {
     readonly encoding: PersonalFinanceGenericCsvEncoding;
     readonly delimiter: PersonalFinanceGenericCsvDelimiter;
+	readonly sheetIndex: number;
     readonly headerRow: number;
     readonly timeFormat: PersonalFinanceGenericCsvTimeFormat;
     readonly amountMode: PersonalFinanceGenericCsvAmountMode;
@@ -214,6 +215,7 @@ export interface PersonalFinanceGenericCsvMapping {
 export interface PersonalFinanceGenericBankMappingForm {
     encoding: PersonalFinanceGenericCsvEncoding;
     delimiter: PersonalFinanceGenericCsvDelimiter;
+	sheetNumber: number | null;
     headerRow: number | null;
     timeFormat: PersonalFinanceGenericCsvTimeFormat;
     amountMode: PersonalFinanceGenericCsvAmountMode;

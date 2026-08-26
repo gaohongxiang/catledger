@@ -17,7 +17,7 @@ import type {
     PersonalFinancePostingDraft,
     PersonalFinancePostingResult,
     PersonalFinanceUndoImpact,
-    PersonalFinanceGenericCsvMapping,
+    PersonalFinanceGenericBankMapping,
     PersonalFinanceReparseResult,
     PersonalFinanceSourceAccount,
     PersonalFinanceSourceAccountPage,
@@ -113,7 +113,7 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         currency: string;
         timezoneUtcOffset: number;
         reasonCode?: string;
-        genericCsvMapping?: PersonalFinanceGenericCsvMapping;
+        genericBankMapping?: PersonalFinanceGenericBankMapping;
     }): Promise<PersonalFinanceReparseResult> {
         submitting.value = true;
 
@@ -126,7 +126,7 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
                     currency: params.currency,
                     timezoneUtcOffset: params.timezoneUtcOffset,
                     reasonCode: params.reasonCode ?? 'user_requested',
-                    genericCsvMapping: params.genericCsvMapping
+                    genericBankMapping: params.genericBankMapping
                 })),
                 'Unable to parse personal finance import file'
             );

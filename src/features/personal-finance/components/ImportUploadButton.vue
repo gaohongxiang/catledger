@@ -13,7 +13,7 @@
         ref="fileInput"
         type="file"
         class="d-none"
-        accept=".csv,.xlsx,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+		accept=".csv,.xls,.xlsx,.pdf,text/csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         @change="upload"
     />
 
@@ -47,7 +47,7 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useUserStore } from '@/stores/user.ts';
 
 import type { PersonalFinanceImportUploadResult } from '../models.ts';
-import { canConfigureCebCreditPdf, canConfigureGenericBankCsv, getUploadAction } from '../state.ts';
+import { canConfigureCebCreditPdf, canConfigureGenericBankTable, getUploadAction } from '../state.ts';
 import { usePersonalFinanceStore } from '../store.ts';
 import CebCreditImportDialog from './CebCreditImportDialog.vue';
 import GenericBankImportDialog from './GenericBankImportDialog.vue';
@@ -174,8 +174,8 @@ function openExplicitParserFallback(file: PersonalFinanceImportUploadResult['fil
         snackbar.value?.showMessage('personalFinance.cebCredit.autoDetectionFailed');
         return true;
     }
-    if (canConfigureGenericBankCsv(file)) {
-        genericBankImportDialog.value?.open({ ...common, reasonCode: genericReason });
+    if (canConfigureGenericBankTable(file)) {
+		genericBankImportDialog.value?.open({ ...common, fileExtension: file.fileExtension, reasonCode: genericReason });
         snackbar.value?.showMessage('personalFinance.genericBank.autoDetectionFailed');
         return true;
     }

@@ -108,7 +108,9 @@ func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error)
 			alipay.AlipayWebImportEvidenceParser,
 			wechat.WeChatPayImportEvidenceCsvParser,
 			wechat.WeChatPayImportEvidenceXlsxParser,
-			genericbank.ImportEvidenceParser,
+			genericbank.ImportEvidenceCSVParser,
+			genericbank.ImportEvidenceXLSParser,
+			genericbank.ImportEvidenceXLSXParser,
 			ceb.ImportEvidenceParser,
 		},
 		sourceAccounts,
@@ -122,18 +124,19 @@ func newPersonalFinanceFlowApplication() (personalFinanceFlowApplication, error)
 }
 
 type personalFinanceReparseRequest struct {
-	FileId            int64                             `json:"fileId,string" binding:"required,min=1"`
-	SourceAccountId   int64                             `json:"sourceAccountId,string" binding:"omitempty,min=1"`
-	ParserName        string                            `json:"parserName" binding:"omitempty,max=64"`
-	Currency          string                            `json:"currency" binding:"required,len=3"`
-	TimezoneUtcOffset int16                             `json:"timezoneUtcOffset" binding:"min=-720,max=840"`
-	ReasonCode        string                            `json:"reasonCode" binding:"required,max=64"`
-	GenericCSVMapping *personalFinanceGenericCSVMapping `json:"genericCsvMapping"`
+	FileId             int64                              `json:"fileId,string" binding:"required,min=1"`
+	SourceAccountId    int64                              `json:"sourceAccountId,string" binding:"omitempty,min=1"`
+	ParserName         string                             `json:"parserName" binding:"omitempty,max=64"`
+	Currency           string                             `json:"currency" binding:"required,len=3"`
+	TimezoneUtcOffset  int16                              `json:"timezoneUtcOffset" binding:"min=-720,max=840"`
+	ReasonCode         string                             `json:"reasonCode" binding:"required,max=64"`
+	GenericBankMapping *personalFinanceGenericBankMapping `json:"genericBankMapping"`
 }
 
-type personalFinanceGenericCSVMapping struct {
+type personalFinanceGenericBankMapping struct {
 	Encoding                importing.GenericCSVEncoding   `json:"encoding"`
 	Delimiter               importing.GenericCSVDelimiter  `json:"delimiter"`
+	SheetIndex              int                            `json:"sheetIndex"`
 	HeaderRow               int                            `json:"headerRow"`
 	TimeFormat              importing.GenericCSVTimeFormat `json:"timeFormat"`
 	AmountMode              importing.GenericCSVAmountMode `json:"amountMode"`
@@ -286,9 +289,9 @@ func (a *PersonalFinanceImportsApi) ImportBatchReparseHandler(c *core.WebContext
 		SourceAccountId: request.SourceAccountId,
 		ParserName:      request.ParserName,
 		ParseOptions: importing.ResolvedParseOptions{
-			Currency:          request.Currency,
-			TimezoneUtcOffset: request.TimezoneUtcOffset,
-			GenericCSVMapping: newGenericCSVMapping(request.GenericCSVMapping),
+			Currency:           request.Currency,
+			TimezoneUtcOffset:  request.TimezoneUtcOffset,
+			GenericBankMapping: newGenericBankMapping(request.GenericBankMapping),
 		},
 		ReparseReasonCode: request.ReasonCode,
 	})
@@ -326,12 +329,12 @@ func (a *PersonalFinanceImportsApi) ImportBatchReparseHandler(c *core.WebContext
 	}, nil
 }
 
-func newGenericCSVMapping(mapping *personalFinanceGenericCSVMapping) *importing.GenericCSVMapping {
+func newGenericBankMapping(mapping *personalFinanceGenericBankMapping) *importing.GenericBankMapping {
 	if mapping == nil {
 		return nil
 	}
-	return &importing.GenericCSVMapping{
-		Encoding: mapping.Encoding, Delimiter: mapping.Delimiter, HeaderRow: mapping.HeaderRow,
+	return &importing.GenericBankMapping{
+		Encoding: mapping.Encoding, Delimiter: mapping.Delimiter, SheetIndex: mapping.SheetIndex, HeaderRow: mapping.HeaderRow,
 		TimeFormat: mapping.TimeFormat, AmountMode: mapping.AmountMode, SignedPositiveDirection: mapping.SignedPositiveDirection,
 		TimeColumn: mapping.TimeColumn, AmountColumn: mapping.AmountColumn, DirectionColumn: mapping.DirectionColumn,
 		IncomeColumn: mapping.IncomeColumn, ExpenseColumn: mapping.ExpenseColumn, CurrencyColumn: mapping.CurrencyColumn,

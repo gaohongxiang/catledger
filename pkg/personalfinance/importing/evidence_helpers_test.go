@@ -96,11 +96,11 @@ func TestIssueCodeNamespaces(t *testing.T) {
 	}
 }
 
-func TestGenericCSVMappingValidationAndCanonicalization(t *testing.T) {
-	mapping := validGenericCSVMapping()
+func TestGenericBankMappingValidationAndCanonicalization(t *testing.T) {
+	mapping := validGenericBankMapping()
 	mapping.IncomeValues = []string{" Credit ", "IN"}
 	mapping.ExpenseValues = []string{"debit", "OUT"}
-	normalized, err := NormalizeGenericCSVMapping(mapping)
+	normalized, err := NormalizeGenericBankMapping(mapping)
 	if err != nil {
 		t.Fatalf("valid mapping rejected: %v", err)
 	}
@@ -108,22 +108,22 @@ func TestGenericCSVMappingValidationAndCanonicalization(t *testing.T) {
 		t.Fatalf("direction values were not canonicalized: %+v", normalized)
 	}
 
-	invalid := []GenericCSVMapping{mapping, mapping, mapping, mapping, mapping}
+	invalid := []GenericBankMapping{mapping, mapping, mapping, mapping, mapping}
 	invalid[0].TimeColumn = -2
 	invalid[1].AmountColumn = invalid[1].TimeColumn
 	invalid[2].IncomeValues = []string{"credit", " CREDIT "}
 	invalid[3].ExpenseValues = []string{"credit"}
 	invalid[4].IncomeColumn = 4
 	for index, candidate := range invalid {
-		if _, err := NormalizeGenericCSVMapping(candidate); err == nil {
+		if _, err := NormalizeGenericBankMapping(candidate); err == nil {
 			t.Fatalf("invalid mapping %d was accepted: %+v", index, candidate)
 		}
 	}
 }
 
-func validGenericCSVMapping() GenericCSVMapping {
-	return GenericCSVMapping{
-		Encoding: GENERIC_CSV_ENCODING_UTF8, Delimiter: GENERIC_CSV_DELIMITER_COMMA, HeaderRow: 1,
+func validGenericBankMapping() GenericBankMapping {
+	return GenericBankMapping{
+		Encoding: GENERIC_CSV_ENCODING_UTF8, Delimiter: GENERIC_CSV_DELIMITER_COMMA, SheetIndex: -1, HeaderRow: 1,
 		TimeFormat: GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, AmountMode: GENERIC_CSV_AMOUNT_MODE_AMOUNT_DIRECTION,
 		TimeColumn: 0, AmountColumn: 1, DirectionColumn: 2, IncomeColumn: -1, ExpenseColumn: -1,
 		CurrencyColumn: -1, TransactionIdColumn: -1, OrderIdColumn: -1, MerchantOrderIdColumn: -1,

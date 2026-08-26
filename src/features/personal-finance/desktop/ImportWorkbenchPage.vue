@@ -374,7 +374,7 @@ import {
 } from '../presentation.ts';
 import {
     canConfigureCebCreditPdf,
-    canConfigureGenericBankCsv,
+    canConfigureGenericBankTable,
     canDeleteImportFileContent,
     canDiscardImportBatch,
     findPaymentAccountGroupForRow,
@@ -439,7 +439,7 @@ const canDeleteSelectedFile = computed<boolean>(() => {
 	return canDeleteImportFileContent(personalFinanceStore.selectedBatch?.file);
 });
 const canConfigureSelectedFileAsGenericBank = computed<boolean>(() => {
-    return canConfigureGenericBankCsv(personalFinanceStore.selectedBatch?.file);
+    return canConfigureGenericBankTable(personalFinanceStore.selectedBatch?.file);
 });
 const canConfigureSelectedFileAsCebCredit = computed<boolean>(() => {
     return canConfigureCebCreditPdf(personalFinanceStore.selectedBatch?.file);
@@ -576,8 +576,8 @@ async function reparseSelectedBatch(): Promise<void> {
         return;
     }
 
-    if (batch?.parserName === 'generic_bank_csv') {
-        openGenericBankImport(file.id, 'user_requested_generic_reparse');
+	if (batch?.parserName?.startsWith('generic_bank_')) {
+		openGenericBankImport(file.id, file.fileExtension, 'user_requested_generic_reparse');
         return;
     }
 
@@ -595,9 +595,10 @@ async function reparseSelectedBatch(): Promise<void> {
     }
 }
 
-function openGenericBankImport(fileId: string, reasonCode: string): void {
+function openGenericBankImport(fileId: string, fileExtension: string, reasonCode: string): void {
     genericBankImportDialog.value?.open({
         fileId,
+		fileExtension,
         currency: userStore.currentUserDefaultCurrency,
         timezoneUtcOffset: getTimezoneOffsetMinutes(getCurrentUnixTime()),
         reasonCode
@@ -622,8 +623,8 @@ function openExplicitParserFallback(file: PersonalFinanceImportUploadResult['fil
         snackbar.value?.showMessage('personalFinance.cebCredit.autoDetectionFailed');
         return true;
     }
-    if (canConfigureGenericBankCsv(file)) {
-        openGenericBankImport(file.id, genericReason);
+    if (canConfigureGenericBankTable(file)) {
+		openGenericBankImport(file.id, file.fileExtension, genericReason);
         snackbar.value?.showMessage('personalFinance.genericBank.autoDetectionFailed');
         return true;
     }
@@ -633,11 +634,11 @@ function openExplicitParserFallback(file: PersonalFinanceImportUploadResult['fil
 function configureSelectedAsGenericBank(): void {
     const file = personalFinanceStore.selectedBatch?.file;
 
-    if (!file || !canConfigureGenericBankCsv(file)) {
+    if (!file || !canConfigureGenericBankTable(file)) {
         return;
     }
 
-    openGenericBankImport(file.id, 'user_selected_generic_bank');
+	openGenericBankImport(file.id, file.fileExtension, 'user_selected_generic_bank');
 }
 
 function configureSelectedAsCebCredit(): void {

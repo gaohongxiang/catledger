@@ -27,12 +27,21 @@
                     </div>
 
                     <v-row>
-                        <v-col cols="12" sm="6" md="3">
+                        <v-col cols="12" sm="6" md="3" v-if="isCsv">
                             <v-select :items="encodingOptions" :label="tt('personalFinance.genericBank.encoding')" v-model="form.encoding" />
                         </v-col>
-                        <v-col cols="12" sm="6" md="3">
+                        <v-col cols="12" sm="6" md="3" v-if="isCsv">
                             <v-select :items="delimiterOptions" :label="tt('personalFinance.genericBank.delimiter')" v-model="form.delimiter" />
                         </v-col>
+                        <v-col cols="12" sm="6" md="3" v-else>
+							<v-text-field
+								type="number"
+								min="1"
+								max="1024"
+								:label="tt('personalFinance.genericBank.sheetNumber')"
+								v-model.number="form.sheetNumber"
+							/>
+						</v-col>
                         <v-col cols="12" sm="6" md="3">
                             <v-text-field
                                 type="number"
@@ -241,10 +250,12 @@ const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const showState = ref<boolean>(false);
 const submitting = ref<boolean>(false);
 const fileId = ref<string>('');
+const fileExtension = ref<string>('csv');
 const currency = ref<string>('');
 const timezoneUtcOffset = ref<number>(0);
 const reasonCode = ref<string>('generic_bank_mapping');
 const form = reactive<PersonalFinanceGenericBankMappingForm>(createDefaultGenericBankMappingForm());
+const isCsv = computed<boolean>(() => fileExtension.value === 'csv');
 
 const encodingOptions = computed(() => [
     { title: tt('personalFinance.genericBank.encodingOption.utf8'), value: 'utf8' },
@@ -299,12 +310,14 @@ function close(): void {
 
 function open(options: {
     fileId: string;
+	fileExtension: string;
     currency: string;
     timezoneUtcOffset: number;
     reasonCode?: string;
 }): void {
     showState.value = true;
     fileId.value = options.fileId;
+	fileExtension.value = options.fileExtension.replace(/^\./, '').toLowerCase();
     currency.value = options.currency;
     timezoneUtcOffset.value = options.timezoneUtcOffset;
     reasonCode.value = options.reasonCode ?? 'generic_bank_mapping';
@@ -321,6 +334,7 @@ async function submit(): Promise<void> {
     try {
         const request = buildGenericBankReparseRequest({
             fileId: fileId.value,
+			fileExtension: fileExtension.value,
             currency: currency.value,
             timezoneUtcOffset: timezoneUtcOffset.value,
             reasonCode: reasonCode.value,

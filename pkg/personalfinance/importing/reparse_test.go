@@ -250,8 +250,8 @@ func TestReparseServiceSkipsGenericBankUnlessExplicitlySelected(t *testing.T) {
 	}}
 	persister := new(flowTestPersister)
 	service := newFlowTestService(t, []byte("time,amount\n"), []importing.ImportEvidenceParser{parser}, accounts, persister)
-	mapping := importing.GenericCSVMapping{
-		Encoding: importing.GENERIC_CSV_ENCODING_UTF8, Delimiter: importing.GENERIC_CSV_DELIMITER_COMMA, HeaderRow: 1,
+	mapping := importing.GenericBankMapping{
+		Encoding: importing.GENERIC_CSV_ENCODING_UTF8, Delimiter: importing.GENERIC_CSV_DELIMITER_COMMA, SheetIndex: -1, HeaderRow: 1,
 		TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, AmountMode: importing.GENERIC_CSV_AMOUNT_MODE_SIGNED,
 		SignedPositiveDirection: importing.NORMALIZED_DIRECTION_EXPENSE, TimeColumn: 0, AmountColumn: 1,
 		DirectionColumn: -1, IncomeColumn: -1, ExpenseColumn: -1, CurrencyColumn: -1, TransactionIdColumn: -1,
@@ -260,7 +260,7 @@ func TestReparseServiceSkipsGenericBankUnlessExplicitlySelected(t *testing.T) {
 	}
 	base := importing.ReparseImportFileRequest{
 		Uid: 101, FileId: 201, SourceAccountId: 301,
-		ParseOptions:      importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericCSVMapping: &mapping},
+		ParseOptions:      importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericBankMapping: &mapping},
 		ReparseReasonCode: "generic_bank_test",
 	}
 	if _, err := service.ReparseImportFile(nil, base); !errors.Is(err, importing.ErrImportFormatInvalid) || parser.parseCalls != 0 {
@@ -282,7 +282,7 @@ func TestReparseServiceSkipsGenericBankUnlessExplicitlySelected(t *testing.T) {
 	if err != nil || result == nil || result.Batch == nil || persister.calls != 2 || parser.parseCalls != 2 {
 		t.Fatalf("explicit generic bank reparse failed: result=%+v calls=%d parse=%d err=%v", result, persister.calls, parser.parseCalls, err)
 	}
-	if persister.request.ParseOptions.GenericCSVMapping == nil || persister.request.Descriptor.Name != descriptor.Name {
+	if persister.request.ParseOptions.GenericBankMapping == nil || persister.request.Descriptor.Name != descriptor.Name {
 		t.Fatalf("explicit parser or mapping was not carried to persistence: %+v", persister.request)
 	}
 }

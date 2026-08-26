@@ -53,9 +53,9 @@ func (d ParserDescriptor) Validate() error {
 		if d.SourceType != SOURCE_TYPE_WECHAT || d.ExplicitSelectionOnly {
 			return fmt.Errorf("WeChat evidence format requires WeChat source type")
 		}
-	case EVIDENCE_FORMAT_BANK_GENERIC_CSV:
+	case EVIDENCE_FORMAT_BANK_GENERIC_CSV, EVIDENCE_FORMAT_BANK_GENERIC_XLS, EVIDENCE_FORMAT_BANK_GENERIC_XLSX:
 		if d.SourceType != SOURCE_TYPE_BANK || !d.ExplicitSelectionOnly {
-			return fmt.Errorf("generic bank CSV evidence format requires explicit bank selection")
+			return fmt.Errorf("generic bank table evidence format requires explicit bank selection")
 		}
 	case EVIDENCE_FORMAT_CEB_CREDIT_PDF:
 		if d.SourceType != SOURCE_TYPE_BANK || !d.ExplicitSelectionOnly {
@@ -106,15 +106,17 @@ func (r ProbeResult) Validate(descriptor ParserDescriptor) error {
 // ResolvedParseOptions 是调用解析器前已经解析并校验的必填选项。
 // Currency 使用大写 ISO 4217 三字母代码；UTC offset 单位为分钟。
 type ResolvedParseOptions struct {
-	Currency          string
-	TimezoneUtcOffset int16
-	GenericCSVMapping *GenericCSVMapping
+	Currency           string
+	TimezoneUtcOffset  int16
+	GenericBankMapping *GenericBankMapping
 }
 
-// GenericCSVMapping 是显式通用银行 CSV 的规范化列映射。列索引从 0 开始，未使用列固定为 -1。
-type GenericCSVMapping struct {
+// GenericBankMapping 是显式通用银行 CSV/XLS/XLSX 共用的规范化列映射。
+// 列和工作表索引从 0 开始；CSV 的 SheetIndex 固定为 -1，未使用列固定为 -1。
+type GenericBankMapping struct {
 	Encoding                GenericCSVEncoding
 	Delimiter               GenericCSVDelimiter
+	SheetIndex              int
 	HeaderRow               int
 	TimeFormat              GenericCSVTimeFormat
 	AmountMode              GenericCSVAmountMode
@@ -154,8 +156,8 @@ func (o ResolvedParseOptions) Validate() error {
 		return fmt.Errorf("timezone UTC offset is out of range")
 	}
 
-	if o.GenericCSVMapping != nil {
-		if _, err := NormalizeGenericCSVMapping(*o.GenericCSVMapping); err != nil {
+	if o.GenericBankMapping != nil {
+		if _, err := NormalizeGenericBankMapping(*o.GenericBankMapping); err != nil {
 			return err
 		}
 	}
@@ -171,16 +173,31 @@ func (o ResolvedParseOptions) ValidateForDescriptor(descriptor ParserDescriptor)
 	if err := o.Validate(); err != nil {
 		return err
 	}
-	if descriptor.Format == EVIDENCE_FORMAT_BANK_GENERIC_CSV {
-		if o.GenericCSVMapping == nil {
-			return fmt.Errorf("generic bank CSV mapping is required")
+	if isGenericBankEvidenceFormat(descriptor.Format) {
+		if o.GenericBankMapping == nil {
+			return fmt.Errorf("generic bank mapping is required")
+		}
+		if descriptor.Format == EVIDENCE_FORMAT_BANK_GENERIC_CSV && o.GenericBankMapping.SheetIndex != -1 {
+			return fmt.Errorf("generic bank CSV must not select a worksheet")
+		}
+		if descriptor.Format != EVIDENCE_FORMAT_BANK_GENERIC_CSV && o.GenericBankMapping.SheetIndex < 0 {
+			return fmt.Errorf("generic bank spreadsheet requires a worksheet")
 		}
 		return nil
 	}
-	if o.GenericCSVMapping != nil {
-		return fmt.Errorf("generic CSV mapping is only valid for the generic bank parser")
+	if o.GenericBankMapping != nil {
+		return fmt.Errorf("generic bank mapping is only valid for generic bank parsers")
 	}
 	return nil
+}
+
+func isGenericBankEvidenceFormat(format EvidenceFormat) bool {
+	switch format {
+	case EVIDENCE_FORMAT_BANK_GENERIC_CSV, EVIDENCE_FORMAT_BANK_GENERIC_XLS, EVIDENCE_FORMAT_BANK_GENERIC_XLSX:
+		return true
+	default:
+		return false
+	}
 }
 
 // EvidenceDocument 包含文档元数据、每一逻辑行和文档级问题。

@@ -25,20 +25,20 @@ func TestParseOptionsDigestGolden(t *testing.T) {
 }
 
 func TestGenericParseOptionsDigestIncludesCanonicalMapping(t *testing.T) {
-	mapping := validGenericCSVMapping()
+	mapping := validGenericBankMapping()
 	mapping.IncomeValues = []string{"IN", " Credit "}
-	first := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericCSVMapping: &mapping})
-	const expected = "8fca32a958301d4678fa25117f40f3f403b006743712546944c0807143305a67"
+	first := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericBankMapping: &mapping})
+	const expected = "862452ba6d23aaf1b0cca742f607f71bd456cbdac20552f8afcc0bd9a3d27624"
 	if first != expected {
 		t.Fatalf("generic parse-options digest changed: got %s, expected %s", first, expected)
 	}
 	mapping.IncomeValues = []string{"credit", "in"}
-	second := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericCSVMapping: &mapping})
+	second := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericBankMapping: &mapping})
 	if first == "" || first != second {
 		t.Fatalf("canonical generic digest is unstable: %q %q", first, second)
 	}
 	mapping.NoteColumn = 3
-	if changed := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericCSVMapping: &mapping}); changed == first {
+	if changed := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericBankMapping: &mapping}); changed == first {
 		t.Fatal("column mapping did not change generic parse-options digest")
 	}
 }

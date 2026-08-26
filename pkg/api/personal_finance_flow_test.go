@@ -82,20 +82,20 @@ func TestTransactionEvidenceResponseRedactsRawIdentityAndStorageFields(t *testin
 	}
 }
 
-func TestGenericCSVMappingRequestConversionPreservesExplicitIndexes(t *testing.T) {
-	request := &personalFinanceGenericCSVMapping{
+func TestGenericBankMappingRequestConversionPreservesExplicitIndexes(t *testing.T) {
+	request := &personalFinanceGenericBankMapping{
 		Encoding: importing.GENERIC_CSV_ENCODING_UTF8, Delimiter: importing.GENERIC_CSV_DELIMITER_COMMA,
-		HeaderRow: 3, TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, AmountMode: importing.GENERIC_CSV_AMOUNT_MODE_SIGNED,
+		SheetIndex: -1, HeaderRow: 3, TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, AmountMode: importing.GENERIC_CSV_AMOUNT_MODE_SIGNED,
 		SignedPositiveDirection: importing.NORMALIZED_DIRECTION_EXPENSE, TimeColumn: 0, AmountColumn: 4,
 		DirectionColumn: -1, IncomeColumn: -1, ExpenseColumn: -1, CurrencyColumn: -1, TransactionIdColumn: 2,
 		OrderIdColumn: -1, MerchantOrderIdColumn: -1, CounterpartyColumn: -1, ItemColumn: -1,
 		PaymentMethodColumn: -1, StatusColumn: -1, TransactionTypeColumn: -1, NoteColumn: -1,
 	}
-	mapping := newGenericCSVMapping(request)
+	mapping := newGenericBankMapping(request)
 	if mapping == nil || mapping.HeaderRow != 3 || mapping.AmountColumn != 4 || mapping.TransactionIdColumn != 2 || mapping.DirectionColumn != -1 {
 		t.Fatalf("API mapping conversion changed explicit indexes: %+v", mapping)
 	}
-	if _, err := importing.NormalizeGenericCSVMapping(*mapping); err != nil {
+	if _, err := importing.NormalizeGenericBankMapping(*mapping); err != nil {
 		t.Fatalf("converted API mapping is invalid: %v", err)
 	}
 }

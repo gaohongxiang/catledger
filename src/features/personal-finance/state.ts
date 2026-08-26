@@ -3,7 +3,7 @@ import { TransactionType } from '@/core/transaction.ts';
 
 import type {
 	PersonalFinanceGenericBankMappingForm,
-	PersonalFinanceGenericCsvMapping,
+	PersonalFinanceGenericBankMapping,
 	PersonalFinanceImportBatch,
 	PersonalFinanceImportFile,
     PersonalFinanceImportRow,
@@ -19,6 +19,7 @@ import type {
 export type PersonalFinanceUploadAction = 'reparse' | 'choose_duplicate_action';
 export type PersonalFinanceRowAction = 'create' | 'create_or_reuse' | 'blocked';
 export type PersonalFinanceGenericBankMappingError =
+	'sheet_number_required' |
     'header_row_required' |
     'column_required' |
     'column_out_of_range' |
@@ -70,8 +71,9 @@ export function canDeleteImportFileContent(file: PersonalFinanceImportFile | und
 	return !!file && file.contentState !== 'pending' && file.contentState !== 'deleted';
 }
 
-export function canConfigureGenericBankCsv(file: PersonalFinanceImportFile | undefined): boolean {
-    return !!file && file.contentState === 'available' && file.fileExtension.replace(/^\./, '').toLowerCase() === 'csv';
+export function canConfigureGenericBankTable(file: PersonalFinanceImportFile | undefined): boolean {
+	const extension = file?.fileExtension.replace(/^\./, '').toLowerCase();
+	return !!file && file.contentState === 'available' && (extension === 'csv' || extension === 'xls' || extension === 'xlsx');
 }
 
 export function canConfigureCebCreditPdf(file: PersonalFinanceImportFile | undefined): boolean {
@@ -236,9 +238,10 @@ export function findPaymentAccountGroupForRow(
 }
 
 export function createDefaultGenericBankMappingForm(): PersonalFinanceGenericBankMappingForm {
-    return {
-        encoding: 'utf8',
-        delimiter: 'comma',
+	return {
+		encoding: 'utf8',
+		delimiter: 'comma',
+		sheetNumber: 1,
         headerRow: 1,
         timeFormat: '2006-01-02 15:04:05',
         amountMode: 'signed',
@@ -283,10 +286,14 @@ function normalizeDirectionValues(values: string[]): string[] | null {
 }
 
 export function validateGenericBankMappingForm(form: PersonalFinanceGenericBankMappingForm): {
-    mapping?: PersonalFinanceGenericCsvMapping;
+    mapping?: PersonalFinanceGenericBankMapping;
     errors: PersonalFinanceGenericBankMappingError[];
 } {
-    const errors = new Set<PersonalFinanceGenericBankMappingError>();
+	const errors = new Set<PersonalFinanceGenericBankMappingError>();
+
+	if (!Number.isInteger(form.sheetNumber) || !form.sheetNumber || form.sheetNumber < 1 || form.sheetNumber > 1024) {
+		errors.add('sheet_number_required');
+	}
 
     if (!Number.isInteger(form.headerRow) || !form.headerRow || form.headerRow < 1 || form.headerRow > MAXIMUM_GENERIC_CSV_HEADER_ROW) {
         errors.add('header_row_required');
@@ -354,6 +361,7 @@ export function validateGenericBankMappingForm(form: PersonalFinanceGenericBankM
         mapping: {
             encoding: form.encoding,
             delimiter: form.delimiter,
+			sheetIndex: form.sheetNumber! - 1,
             headerRow: form.headerRow!,
             timeFormat: form.timeFormat,
             amountMode: form.amountMode,
@@ -386,7 +394,7 @@ export function buildPersonalFinanceReparseRequest(params: {
     currency: string;
     timezoneUtcOffset: number;
     reasonCode: string;
-    genericCsvMapping?: PersonalFinanceGenericCsvMapping;
+    genericBankMapping?: PersonalFinanceGenericBankMapping;
 }): PersonalFinanceReparseRequest {
     return {
         fileId: params.fileId,
@@ -395,12 +403,13 @@ export function buildPersonalFinanceReparseRequest(params: {
         currency: params.currency,
         timezoneUtcOffset: params.timezoneUtcOffset,
         reasonCode: params.reasonCode,
-        ...(params.genericCsvMapping ? { genericCsvMapping: params.genericCsvMapping } : {})
+        ...(params.genericBankMapping ? { genericBankMapping: params.genericBankMapping } : {})
     };
 }
 
 export function buildGenericBankReparseRequest(params: {
     fileId: string;
+	fileExtension: string;
     currency: string;
     timezoneUtcOffset: number;
     reasonCode: string;
@@ -412,13 +421,28 @@ export function buildGenericBankReparseRequest(params: {
         throw new Error(validation.errors[0] ?? 'invalid_generic_bank_mapping');
     }
 
-    return buildPersonalFinanceReparseRequest({
+	const extension = params.fileExtension.replace(/^\./, '').toLowerCase();
+	const parserName = extension === 'csv'
+		? 'generic_bank_csv'
+		: extension === 'xls'
+			? 'generic_bank_xls'
+			: extension === 'xlsx'
+				? 'generic_bank_xlsx'
+				: '';
+	if (!parserName) {
+		throw new Error('unsupported_generic_bank_file');
+	}
+	const genericBankMapping = extension === 'csv'
+		? { ...validation.mapping, sheetIndex: -1 }
+		: validation.mapping;
+
+	return buildPersonalFinanceReparseRequest({
         fileId: params.fileId,
-        parserName: 'generic_bank_csv',
+		parserName,
         currency: params.currency,
         timezoneUtcOffset: params.timezoneUtcOffset,
         reasonCode: params.reasonCode,
-        genericCsvMapping: validation.mapping
+		genericBankMapping
     });
 }
 

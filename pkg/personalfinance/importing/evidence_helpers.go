@@ -53,6 +53,13 @@ func EncodeSourceLocator(locator SourceLocator) (string, error) {
 
 		sheetName := base64.RawURLEncoding.EncodeToString([]byte(locator.SheetName))
 		return fmt.Sprintf("v1:xlsx:%d:%s:%d", locator.SheetIndex, sheetName, locator.XLSXRow), nil
+	case LOCATOR_KIND_SPREADSHEET:
+		if locator.SheetIndex < 0 || locator.SheetName == "" || locator.XLSXRow < 1 {
+			return "", fmt.Errorf("invalid spreadsheet source locator")
+		}
+
+		sheetName := base64.RawURLEncoding.EncodeToString([]byte(locator.SheetName))
+		return fmt.Sprintf("v1:spreadsheet:%d:%s:%d", locator.SheetIndex, sheetName, locator.XLSXRow), nil
 	case LOCATOR_KIND_PDF:
 		if locator.PDFPage < 1 || locator.PDFLine < 1 {
 			return "", fmt.Errorf("invalid PDF source locator")
@@ -93,16 +100,19 @@ const (
 	maximumGenericCSVValues      = 32
 )
 
-// NormalizeGenericCSVMapping 完整校验并规范化通用 CSV 映射，供解析与摘要共同消费。
-func NormalizeGenericCSVMapping(mapping GenericCSVMapping) (GenericCSVMapping, error) {
+// NormalizeGenericBankMapping 完整校验并规范化通用银行表格映射，供解析与摘要共同消费。
+func NormalizeGenericBankMapping(mapping GenericBankMapping) (GenericBankMapping, error) {
 	if mapping.Encoding != GENERIC_CSV_ENCODING_UTF8 && mapping.Encoding != GENERIC_CSV_ENCODING_GB18030 && mapping.Encoding != GENERIC_CSV_ENCODING_GBK {
-		return GenericCSVMapping{}, fmt.Errorf("invalid generic CSV encoding")
+		return GenericBankMapping{}, fmt.Errorf("invalid generic bank CSV encoding")
 	}
 	if mapping.Delimiter != GENERIC_CSV_DELIMITER_COMMA && mapping.Delimiter != GENERIC_CSV_DELIMITER_TAB {
-		return GenericCSVMapping{}, fmt.Errorf("invalid generic CSV delimiter")
+		return GenericBankMapping{}, fmt.Errorf("invalid generic bank CSV delimiter")
+	}
+	if mapping.SheetIndex < -1 || mapping.SheetIndex > 1023 {
+		return GenericBankMapping{}, fmt.Errorf("invalid generic bank worksheet")
 	}
 	if mapping.HeaderRow < 1 || mapping.HeaderRow > maximumGenericCSVHeaderRow || !isValidGenericCSVTimeFormat(mapping.TimeFormat) {
-		return GenericCSVMapping{}, fmt.Errorf("invalid generic CSV header row or time format")
+		return GenericBankMapping{}, fmt.Errorf("invalid generic bank header row or time format")
 	}
 
 	columns := []*int{
@@ -114,27 +124,27 @@ func NormalizeGenericCSVMapping(mapping GenericCSVMapping) (GenericCSVMapping, e
 	seen := make(map[int]struct{}, len(columns))
 	for _, column := range columns {
 		if *column < -1 || *column > maximumGenericCSVColumnIndex {
-			return GenericCSVMapping{}, fmt.Errorf("generic CSV column is out of range")
+			return GenericBankMapping{}, fmt.Errorf("generic bank column is out of range")
 		}
 		if *column >= 0 {
 			if _, exists := seen[*column]; exists {
-				return GenericCSVMapping{}, fmt.Errorf("generic CSV columns must be unique")
+				return GenericBankMapping{}, fmt.Errorf("generic bank columns must be unique")
 			}
 			seen[*column] = struct{}{}
 		}
 	}
 	if mapping.TimeColumn < 0 {
-		return GenericCSVMapping{}, fmt.Errorf("generic CSV time column is required")
+		return GenericBankMapping{}, fmt.Errorf("generic bank time column is required")
 	}
 
 	var err error
 	mapping.IncomeValues, err = normalizeGenericCSVValues(mapping.IncomeValues)
 	if err != nil {
-		return GenericCSVMapping{}, err
+		return GenericBankMapping{}, err
 	}
 	mapping.ExpenseValues, err = normalizeGenericCSVValues(mapping.ExpenseValues)
 	if err != nil {
-		return GenericCSVMapping{}, err
+		return GenericBankMapping{}, err
 	}
 
 	switch mapping.AmountMode {
@@ -142,12 +152,12 @@ func NormalizeGenericCSVMapping(mapping GenericCSVMapping) (GenericCSVMapping, e
 		if mapping.AmountColumn < 0 || mapping.DirectionColumn != -1 || mapping.IncomeColumn != -1 || mapping.ExpenseColumn != -1 ||
 			(mapping.SignedPositiveDirection != NORMALIZED_DIRECTION_INCOME && mapping.SignedPositiveDirection != NORMALIZED_DIRECTION_EXPENSE) ||
 			len(mapping.IncomeValues) != 0 || len(mapping.ExpenseValues) != 0 {
-			return GenericCSVMapping{}, fmt.Errorf("invalid signed amount mapping")
+			return GenericBankMapping{}, fmt.Errorf("invalid signed amount mapping")
 		}
 	case GENERIC_CSV_AMOUNT_MODE_AMOUNT_DIRECTION:
 		if mapping.AmountColumn < 0 || mapping.DirectionColumn < 0 || mapping.IncomeColumn != -1 || mapping.ExpenseColumn != -1 ||
 			mapping.SignedPositiveDirection != "" || len(mapping.IncomeValues) == 0 || len(mapping.ExpenseValues) == 0 {
-			return GenericCSVMapping{}, fmt.Errorf("invalid amount-direction mapping")
+			return GenericBankMapping{}, fmt.Errorf("invalid amount-direction mapping")
 		}
 		values := make(map[string]struct{}, len(mapping.IncomeValues))
 		for _, value := range mapping.IncomeValues {
@@ -155,16 +165,16 @@ func NormalizeGenericCSVMapping(mapping GenericCSVMapping) (GenericCSVMapping, e
 		}
 		for _, value := range mapping.ExpenseValues {
 			if _, exists := values[value]; exists {
-				return GenericCSVMapping{}, fmt.Errorf("generic CSV direction values overlap")
+				return GenericBankMapping{}, fmt.Errorf("generic bank direction values overlap")
 			}
 		}
 	case GENERIC_CSV_AMOUNT_MODE_INCOME_EXPENSE:
 		if mapping.AmountColumn != -1 || mapping.DirectionColumn != -1 || mapping.IncomeColumn < 0 || mapping.ExpenseColumn < 0 ||
 			mapping.SignedPositiveDirection != "" || len(mapping.IncomeValues) != 0 || len(mapping.ExpenseValues) != 0 {
-			return GenericCSVMapping{}, fmt.Errorf("invalid income-expense mapping")
+			return GenericBankMapping{}, fmt.Errorf("invalid income-expense mapping")
 		}
 	default:
-		return GenericCSVMapping{}, fmt.Errorf("invalid generic CSV amount mode")
+		return GenericBankMapping{}, fmt.Errorf("invalid generic bank amount mode")
 	}
 
 	return mapping, nil

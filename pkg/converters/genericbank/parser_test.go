@@ -2,6 +2,7 @@ package genericbank
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -13,16 +14,65 @@ import (
 )
 
 func TestDescriptorRequiresExplicitSelectionAndProbeRejectsBinary(t *testing.T) {
-	descriptor := ImportEvidenceParser.Descriptor()
+	descriptor := ImportEvidenceCSVParser.Descriptor()
 	if descriptor.Name != "generic_bank_csv" || descriptor.SourceType != importing.SOURCE_TYPE_BANK ||
 		descriptor.Format != importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV || !descriptor.ExplicitSelectionOnly {
 		t.Fatalf("unexpected generic bank descriptor: %+v", descriptor)
 	}
-	if result := ImportEvidenceParser.Probe(context.Background(), importing.EvidenceFile{Content: []byte("time,amount\n2026-01-01,1.00\n")}); !result.Confidence.Matched() {
+	if result := ImportEvidenceCSVParser.Probe(context.Background(), importing.EvidenceFile{Content: []byte("time,amount\n2026-01-01,1.00\n")}); !result.Confidence.Matched() {
 		t.Fatalf("supported CSV was not probed: %+v", result)
 	}
-	if result := ImportEvidenceParser.Probe(context.Background(), importing.EvidenceFile{Content: []byte{'P', 'K', 3, 4}}); result.Confidence.Matched() {
+	if result := ImportEvidenceCSVParser.Probe(context.Background(), importing.EvidenceFile{Content: []byte{'P', 'K', 3, 4}}); result.Confidence.Matched() {
 		t.Fatalf("binary content was claimed as CSV: %+v", result)
+	}
+}
+
+func TestSpreadsheetParsersReuseMappingAndPreserveWorksheetLocator(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		parser     importing.ImportEvidenceParser
+		format     importing.EvidenceFormat
+		parserName string
+	}{
+		{"xls", "../../../testdata/simple_excel_file.xls", ImportEvidenceXLSParser, importing.EVIDENCE_FORMAT_BANK_GENERIC_XLS, "generic_bank_xls"},
+		{"xlsx", "../../../testdata/simple_excel_file.xlsx", ImportEvidenceXLSXParser, importing.EVIDENCE_FORMAT_BANK_GENERIC_XLSX, "generic_bank_xlsx"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			content, err := os.ReadFile(test.path)
+			if err != nil {
+				t.Fatalf("read spreadsheet fixture: %v", err)
+			}
+			descriptor := test.parser.Descriptor()
+			if descriptor.Name != test.parserName || descriptor.Format != test.format || !descriptor.ExplicitSelectionOnly {
+				t.Fatalf("unexpected descriptor: %+v", descriptor)
+			}
+			if probe := test.parser.Probe(context.Background(), importing.EvidenceFile{Content: content}); !probe.Confidence.Matched() || probe.Format != test.format {
+				t.Fatalf("spreadsheet was not probed: %+v", probe)
+			}
+
+			mapping := baseMapping()
+			mapping.SheetIndex = 0
+			mapping.AmountMode = importing.GENERIC_CSV_AMOUNT_MODE_SIGNED
+			mapping.AmountColumn = 1
+			mapping.SignedPositiveDirection = importing.NORMALIZED_DIRECTION_EXPENSE
+			document, err := test.parser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(mapping))
+			if err != nil {
+				t.Fatalf("parse spreadsheet: %v", err)
+			}
+			if len(document.Rows) != 2 {
+				t.Fatalf("unexpected row count: %d", len(document.Rows))
+			}
+			row := document.Rows[0]
+			if row.Raw.TransactionTime != "A2" || row.Raw.Amount != "B2" || row.Locator.Kind != importing.LOCATOR_KIND_SPREADSHEET ||
+				row.Locator.SheetIndex != 0 || row.Locator.SheetName == "" || row.Locator.XLSXRow != 2 {
+				t.Fatalf("spreadsheet evidence or locator changed: %+v", row)
+			}
+			if encoded, err := importing.EncodeSourceLocator(row.Locator); err != nil || !strings.HasPrefix(encoded, "v1:spreadsheet:0:") {
+				t.Fatalf("spreadsheet locator was not stable: %q %v", encoded, err)
+			}
+		})
 	}
 }
 
@@ -40,7 +90,7 @@ func TestParseSignedRowsPreservesPhysicalEvidence(t *testing.T) {
 	mapping.CounterpartyColumn = 3
 	mapping.ItemColumn = 4
 	mapping.StatusColumn = 5
-	document, err := ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(mapping))
+	document, err := ImportEvidenceCSVParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(mapping))
 	if err != nil {
 		t.Fatalf("parse signed CSV: %v", err)
 	}
@@ -88,7 +138,7 @@ func TestParseAmountDirectionGBKTabAndIncomeExpense(t *testing.T) {
 			t.Fatalf("encode %s fixture: %v", test.name, err)
 		}
 		mapping.Encoding = test.name
-		document, err = ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: encoded}, options(mapping))
+		document, err = ImportEvidenceCSVParser.Parse(context.Background(), importing.EvidenceFile{Content: encoded}, options(mapping))
 		if err != nil {
 			t.Fatalf("parse %s tab CSV: %v", test.name, err)
 		}
@@ -101,7 +151,7 @@ func TestParseAmountDirectionGBKTabAndIncomeExpense(t *testing.T) {
 	incomeExpense.AmountMode = importing.GENERIC_CSV_AMOUNT_MODE_INCOME_EXPENSE
 	incomeExpense.IncomeColumn, incomeExpense.ExpenseColumn = 1, 2
 	content := []byte("time,income,expense\n2026-08-13 10:00:00,10.00,\n2026-08-13 11:00:00,,3.00\n")
-	document, err := ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(incomeExpense))
+	document, err := ImportEvidenceCSVParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(incomeExpense))
 	if err != nil {
 		t.Fatalf("parse income-expense CSV: %v", err)
 	}
@@ -129,7 +179,7 @@ func TestParseLocksMappedColumnSlots(t *testing.T) {
 	mapping.OrderIdColumn = 10
 	mapping.MerchantOrderIdColumn = 11
 
-	document, err := ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(mapping))
+	document, err := ImportEvidenceCSVParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(mapping))
 	if err != nil {
 		t.Fatalf("parse mapped CSV: %v", err)
 	}
@@ -165,7 +215,7 @@ func TestParseLocksMappedColumnSlots(t *testing.T) {
 	unmapped.AmountMode = importing.GENERIC_CSV_AMOUNT_MODE_SIGNED
 	unmapped.AmountColumn = 1
 	unmapped.SignedPositiveDirection = importing.NORMALIZED_DIRECTION_EXPENSE
-	document, err = ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: []byte("time,amount,counterparty\n2026-08-17 10:11:12,1.00,MAP-COUNTERPARTY\n")}, options(unmapped))
+	document, err = ImportEvidenceCSVParser.Parse(context.Background(), importing.EvidenceFile{Content: []byte("time,amount,counterparty\n2026-08-17 10:11:12,1.00,MAP-COUNTERPARTY\n")}, options(unmapped))
 	if err != nil {
 		t.Fatalf("parse unmapped CSV: %v", err)
 	}
@@ -176,7 +226,7 @@ func TestParseLocksMappedColumnSlots(t *testing.T) {
 	incomeExpense := baseMapping()
 	incomeExpense.AmountMode = importing.GENERIC_CSV_AMOUNT_MODE_INCOME_EXPENSE
 	incomeExpense.IncomeColumn, incomeExpense.ExpenseColumn = 1, 2
-	document, err = ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: []byte("time,income,expense\n2026-08-17 10:11:12,,3.00\n")}, options(incomeExpense))
+	document, err = ImportEvidenceCSVParser.Parse(context.Background(), importing.EvidenceFile{Content: []byte("time,income,expense\n2026-08-17 10:11:12,,3.00\n")}, options(incomeExpense))
 	if err != nil {
 		t.Fatalf("parse income-expense mapping: %v", err)
 	}
@@ -191,11 +241,11 @@ func TestParseRejectsSelectedEncodingAndStructuralMappingMismatch(t *testing.T) 
 	mapping.AmountColumn = 1
 	mapping.SignedPositiveDirection = importing.NORMALIZED_DIRECTION_INCOME
 	invalidUTF8 := []byte("time,amount\n2026-01-01 00:00:00,1.00\xff")
-	if _, err := ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: invalidUTF8}, options(mapping)); err == nil || importing.NormalizeEvidenceParseError(ImportEvidenceParser.Descriptor(), err) != importing.ISSUE_CODE_FILE_ENCODING_INVALID {
+	if _, err := ImportEvidenceCSVParser.Parse(context.Background(), importing.EvidenceFile{Content: invalidUTF8}, options(mapping)); err == nil || importing.NormalizeEvidenceParseError(ImportEvidenceCSVParser.Descriptor(), err) != importing.ISSUE_CODE_FILE_ENCODING_INVALID {
 		t.Fatalf("invalid selected encoding was not rejected safely: %v", err)
 	}
 	mapping.NoteColumn = 9
-	if _, err := ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: []byte("time,amount\n2026-01-01 00:00:00,1.00\n")}, options(mapping)); err == nil {
+	if _, err := ImportEvidenceCSVParser.Parse(context.Background(), importing.EvidenceFile{Content: []byte("time,amount\n2026-01-01 00:00:00,1.00\n")}, options(mapping)); err == nil {
 		t.Fatal("out-of-header mapping was not rejected as a structural error")
 	}
 }
@@ -207,7 +257,7 @@ func TestParsePreservesMultilineCSVLocatorAndRejectsAmountOverflow(t *testing.T)
 	mapping.SignedPositiveDirection = importing.NORMALIZED_DIRECTION_INCOME
 	mapping.NoteColumn = 2
 	content := []byte("time,amount,note\n2026-08-13 10:00:00,1.00,\"line one\nline two\"\n")
-	document, err := ImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(mapping))
+	document, err := ImportEvidenceCSVParser.Parse(context.Background(), importing.EvidenceFile{Content: content}, options(mapping))
 	if err != nil {
 		t.Fatalf("parse multiline CSV: %v", err)
 	}
@@ -219,16 +269,16 @@ func TestParsePreservesMultilineCSVLocatorAndRejectsAmountOverflow(t *testing.T)
 	}
 }
 
-func baseMapping() importing.GenericCSVMapping {
-	return importing.GenericCSVMapping{
+func baseMapping() importing.GenericBankMapping {
+	return importing.GenericBankMapping{
 		Encoding: importing.GENERIC_CSV_ENCODING_UTF8, Delimiter: importing.GENERIC_CSV_DELIMITER_COMMA,
-		HeaderRow: 1, TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, TimeColumn: 0,
+		SheetIndex: -1, HeaderRow: 1, TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, TimeColumn: 0,
 		AmountColumn: -1, DirectionColumn: -1, IncomeColumn: -1, ExpenseColumn: -1, CurrencyColumn: -1,
 		TransactionIdColumn: -1, OrderIdColumn: -1, MerchantOrderIdColumn: -1, CounterpartyColumn: -1,
 		ItemColumn: -1, PaymentMethodColumn: -1, StatusColumn: -1, TransactionTypeColumn: -1, NoteColumn: -1,
 	}
 }
 
-func options(mapping importing.GenericCSVMapping) importing.ResolvedParseOptions {
-	return importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericCSVMapping: &mapping}
+func options(mapping importing.GenericBankMapping) importing.ResolvedParseOptions {
+	return importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericBankMapping: &mapping}
 }

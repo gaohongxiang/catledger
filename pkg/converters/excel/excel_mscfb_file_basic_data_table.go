@@ -15,6 +15,18 @@ type ExcelMSCFBFileBasicDataTable struct {
 	sheets                []*xls.WorkSheet
 	headerLineColumnNames []string
 	hasTitleLine          bool
+	worksheetIndex        int
+}
+
+// WorksheetIndex 返回单工作表数据表在原工作簿中的零基索引；聚合数据表返回 -1。
+func (t *ExcelMSCFBFileBasicDataTable) WorksheetIndex() int { return t.worksheetIndex }
+
+// WorksheetName 返回单工作表数据表的原始工作表名；聚合数据表返回空字符串。
+func (t *ExcelMSCFBFileBasicDataTable) WorksheetName() string {
+	if t.worksheetIndex < 0 || len(t.sheets) != 1 || t.sheets[0] == nil {
+		return ""
+	}
+	return t.sheets[0].Name
 }
 
 // ExcelMSCFBFileBasicDataTableRow defines the structure of excel (microsoft compound file binary) file data table row
@@ -237,6 +249,7 @@ func CreateNewExcelMSCFBFileBasicDataTable(data []byte, hasTitleLine bool) (data
 		sheets:                sheets,
 		headerLineColumnNames: headerLineColumnNames,
 		hasTitleLine:          hasTitleLine,
+		worksheetIndex:        -1,
 	}, nil
 }
 
@@ -289,6 +302,7 @@ func CreateNewExcelMSCFBFileBasicDataTables(data []byte, hasTitleLine bool) ([]d
 			sheets:                []*xls.WorkSheet{sheet},
 			headerLineColumnNames: headerLineColumnNames,
 			hasTitleLine:          hasTitleLine,
+			worksheetIndex:        i,
 		})
 	}
 

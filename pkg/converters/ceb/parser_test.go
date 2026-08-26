@@ -178,16 +178,16 @@ func TestParseRejectsMappingAndHeaderOnlyStatement(t *testing.T) {
 		t.Fatalf("header-only statement was accepted: %v", err)
 	}
 
-	mapping := importing.GenericCSVMapping{
+	mapping := importing.GenericBankMapping{
 		Encoding: importing.GENERIC_CSV_ENCODING_UTF8, Delimiter: importing.GENERIC_CSV_DELIMITER_COMMA,
-		HeaderRow: 1, TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_SLASH_DATE, TimeColumn: 0,
+		SheetIndex: -1, HeaderRow: 1, TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_SLASH_DATE, TimeColumn: 0,
 		AmountMode: importing.GENERIC_CSV_AMOUNT_MODE_SIGNED, SignedPositiveDirection: importing.NORMALIZED_DIRECTION_EXPENSE,
 		AmountColumn: 1, DirectionColumn: -1, IncomeColumn: -1, ExpenseColumn: -1, CurrencyColumn: -1,
 		TransactionIdColumn: -1, OrderIdColumn: -1, MerchantOrderIdColumn: -1, CounterpartyColumn: -1,
 		ItemColumn: -1, PaymentMethodColumn: -1, StatusColumn: -1, TransactionTypeColumn: -1, NoteColumn: -1,
 	}
 	opts := cebOptions()
-	opts.GenericCSVMapping = &mapping
+	opts.GenericBankMapping = &mapping
 	content = syntheticCEBStatementPDF([][]string{cebStatementLines(
 		[]string{"2026/07/01", "2026/07/02", "1234", "测试商户甲", "12.34"},
 	)})

@@ -7,7 +7,7 @@ import {
     buildPersonalFinanceReparseRequest,
     buildSingleRowPostingRequest,
     canConfigureCebCreditPdf,
-    canConfigureGenericBankCsv,
+    canConfigureGenericBankTable,
     canDeleteImportFileContent,
     canDiscardImportBatch,
     createDefaultGenericBankMappingForm,
@@ -128,9 +128,11 @@ describe('personal finance import workflow state', () => {
 		expect(canDeleteImportFileContent({ ...file, contentState: 'deleted' })).toBe(false);
 
         const csvFile = { contentState: 'available', fileExtension: 'csv' } as PersonalFinanceImportFile;
-        expect(canConfigureGenericBankCsv(csvFile)).toBe(true);
-        expect(canConfigureGenericBankCsv({ ...csvFile, contentState: 'missing' })).toBe(false);
-        expect(canConfigureGenericBankCsv({ ...csvFile, fileExtension: 'xlsx' })).toBe(false);
+        expect(canConfigureGenericBankTable(csvFile)).toBe(true);
+        expect(canConfigureGenericBankTable({ ...csvFile, contentState: 'missing' })).toBe(false);
+		expect(canConfigureGenericBankTable({ ...csvFile, fileExtension: 'xls' })).toBe(true);
+		expect(canConfigureGenericBankTable({ ...csvFile, fileExtension: 'xlsx' })).toBe(true);
+		expect(canConfigureGenericBankTable({ ...csvFile, fileExtension: 'pdf' })).toBe(false);
 
         const pdfFile = { contentState: 'available', fileExtension: 'pdf' } as PersonalFinanceImportFile;
         expect(canConfigureCebCreditPdf(pdfFile)).toBe(true);
@@ -225,6 +227,7 @@ describe('generic bank CSV mapping state', () => {
         const form = createDefaultGenericBankMappingForm();
         const base = {
             fileId: 'file-1',
+			fileExtension: 'csv',
             currency: 'CNY',
             timezoneUtcOffset: 480,
             reasonCode: 'user_selected_generic_bank',
@@ -234,9 +237,17 @@ describe('generic bank CSV mapping state', () => {
         expect(buildGenericBankReparseRequest(base)).toMatchObject({
             fileId: 'file-1',
             parserName: 'generic_bank_csv',
-            genericCsvMapping: { amountMode: 'signed' }
+			genericBankMapping: { amountMode: 'signed', sheetIndex: -1 }
         });
-        expect(buildGenericBankReparseRequest(base).sourceAccountId).toBeUndefined();
+		expect(buildGenericBankReparseRequest(base).sourceAccountId).toBeUndefined();
+		expect(buildGenericBankReparseRequest({ ...base, fileExtension: 'xls' })).toMatchObject({
+			parserName: 'generic_bank_xls',
+			genericBankMapping: { sheetIndex: 0 }
+		});
+		expect(buildGenericBankReparseRequest({ ...base, fileExtension: 'xlsx' })).toMatchObject({
+			parserName: 'generic_bank_xlsx',
+			genericBankMapping: { sheetIndex: 0 }
+		});
     });
 
     it('builds a CEB request without asking for a ledger account first', () => {
@@ -271,7 +282,7 @@ describe('generic bank CSV mapping state', () => {
             reasonCode: 'user_requested'
         });
         expect('parserName' in request).toBe(false);
-        expect('genericCsvMapping' in request).toBe(false);
+        expect('genericBankMapping' in request).toBe(false);
     });
 });
 

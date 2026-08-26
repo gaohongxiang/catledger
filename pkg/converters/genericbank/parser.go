@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"strings"
@@ -15,41 +17,85 @@ import (
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/mayswind/ezbookkeeping/pkg/converters/datatable"
+	"github.com/mayswind/ezbookkeeping/pkg/converters/excel"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 )
 
 const (
-	parserName           = "generic_bank_csv"
-	parserVersion        = importing.RuleVersion("generic-bank-csv-parser-v1")
+	csvParserName        = "generic_bank_csv"
+	xlsParserName        = "generic_bank_xls"
+	xlsxParserName       = "generic_bank_xlsx"
+	csvParserVersion     = importing.RuleVersion("generic-bank-csv-parser-v1")
+	xlsParserVersion     = importing.RuleVersion("generic-bank-xls-parser-v1")
+	xlsxParserVersion    = importing.RuleVersion("generic-bank-xlsx-parser-v1")
 	normalizationVersion = importing.RuleVersion("generic-bank-normalization-v1")
 )
 
-// ImportEvidenceParser 仅能由调用方显式选择，不参与支付宝、微信或其他来源的自动探测。
-var ImportEvidenceParser importing.ImportEvidenceParser = &genericBankCSVParser{}
+type tableContainer uint8
 
-type genericBankCSVParser struct{}
+const (
+	tableContainerCSV tableContainer = iota
+	tableContainerXLS
+	tableContainerXLSX
+)
 
-type physicalRecord struct {
-	values   []string
-	startRow int64
-	endRow   int64
+// 三种 parser 只区分文件容器，列映射和标准化逻辑完全共用，且都必须由调用方显式选择。
+var (
+	ImportEvidenceCSVParser importing.ImportEvidenceParser = &genericBankTableParser{
+		name: csvParserName, version: csvParserVersion, format: importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV, container: tableContainerCSV,
+	}
+	ImportEvidenceXLSParser importing.ImportEvidenceParser = &genericBankTableParser{
+		name: xlsParserName, version: xlsParserVersion, format: importing.EVIDENCE_FORMAT_BANK_GENERIC_XLS, container: tableContainerXLS,
+	}
+	ImportEvidenceXLSXParser importing.ImportEvidenceParser = &genericBankTableParser{
+		name: xlsxParserName, version: xlsxParserVersion, format: importing.EVIDENCE_FORMAT_BANK_GENERIC_XLSX, container: tableContainerXLSX,
+	}
+)
+
+type genericBankTableParser struct {
+	name      string
+	version   importing.RuleVersion
+	format    importing.EvidenceFormat
+	container tableContainer
 }
 
-func (p *genericBankCSVParser) Descriptor() importing.ParserDescriptor {
+type physicalRecord struct {
+	values  []string
+	locator importing.SourceLocator
+}
+
+type csvEncodingError struct {
+	err error
+}
+
+func (e *csvEncodingError) Error() string { return e.err.Error() }
+func (e *csvEncodingError) Unwrap() error { return e.err }
+
+func (p *genericBankTableParser) Descriptor() importing.ParserDescriptor {
 	return importing.ParserDescriptor{
-		Name:                  parserName,
+		Name:                  p.name,
 		SourceType:            importing.SOURCE_TYPE_BANK,
-		Format:                importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV,
-		ParserVersion:         parserVersion,
+		Format:                p.format,
+		ParserVersion:         p.version,
 		NormalizationVersion:  normalizationVersion,
 		ExplicitSelectionOnly: true,
 	}
 }
 
-// Probe 只确认内容至少能按一种受支持编码和分隔符读取为多列 CSV。
-// 实际显式编码、分隔符和表头仍由 Parse 严格校验。
-func (p *genericBankCSVParser) Probe(ctx context.Context, file importing.EvidenceFile) importing.ProbeResult {
-	if ctx.Err() != nil || len(file.Content) == 0 || bytes.HasPrefix(file.Content, []byte{'P', 'K', 0x03, 0x04}) {
+// Probe 只确认文件容器可由原项目成熟读取器打开；列布局仍由显式映射严格校验。
+func (p *genericBankTableParser) Probe(ctx context.Context, file importing.EvidenceFile) importing.ProbeResult {
+	if ctx.Err() != nil || len(file.Content) == 0 {
+		return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_NONE}
+	}
+	if p.container != tableContainerCSV {
+		tables, err := readSpreadsheetTables(file.Content, p.container)
+		if err != nil || len(tables) == 0 {
+			return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_NONE}
+		}
+		return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_POSSIBLE, SourceType: importing.SOURCE_TYPE_BANK, Format: p.format}
+	}
+	if bytes.HasPrefix(file.Content, []byte{'P', 'K', 0x03, 0x04}) {
 		return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_NONE}
 	}
 
@@ -69,7 +115,7 @@ func (p *genericBankCSVParser) Probe(ctx context.Context, file importing.Evidenc
 				return importing.ProbeResult{
 					Confidence: importing.PROBE_CONFIDENCE_POSSIBLE,
 					SourceType: importing.SOURCE_TYPE_BANK,
-					Format:     importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV,
+					Format:     p.format,
 				}
 			}
 		}
@@ -78,12 +124,12 @@ func (p *genericBankCSVParser) Probe(ctx context.Context, file importing.Evidenc
 	return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_NONE}
 }
 
-func (p *genericBankCSVParser) Parse(ctx context.Context, file importing.EvidenceFile, opts importing.ResolvedParseOptions) (*importing.EvidenceDocument, error) {
+func (p *genericBankTableParser) Parse(ctx context.Context, file importing.EvidenceFile, opts importing.ResolvedParseOptions) (*importing.EvidenceDocument, error) {
 	descriptor := p.Descriptor()
-	if err := opts.ValidateForDescriptor(descriptor); err != nil || opts.GenericCSVMapping == nil {
+	if err := opts.ValidateForDescriptor(descriptor); err != nil || opts.GenericBankMapping == nil {
 		return nil, parseError(importing.ISSUE_CODE_FILE_STRUCTURE_INVALID)
 	}
-	mapping, err := importing.NormalizeGenericCSVMapping(*opts.GenericCSVMapping)
+	mapping, err := importing.NormalizeGenericBankMapping(*opts.GenericBankMapping)
 	if err != nil {
 		return nil, parseError(importing.ISSUE_CODE_FILE_STRUCTURE_INVALID)
 	}
@@ -91,18 +137,13 @@ func (p *genericBankCSVParser) Parse(ctx context.Context, file importing.Evidenc
 		return nil, err
 	}
 
-	decoded, err := decodeContent(file.Content, mapping.Encoding)
-	if err != nil {
-		return nil, parseError(importing.ISSUE_CODE_FILE_ENCODING_INVALID)
-	}
-	delimiter := ','
-	if mapping.Delimiter == importing.GENERIC_CSV_DELIMITER_TAB {
-		delimiter = '\t'
-	}
-	records, err := readPhysicalRecords(ctx, decoded, delimiter)
+	records, err := p.readPhysicalRecords(ctx, file.Content, mapping)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		if p.container == tableContainerCSV && errorsIsEncoding(err) {
+			return nil, parseError(importing.ISSUE_CODE_FILE_ENCODING_INVALID)
 		}
 		return nil, parseError(importing.ISSUE_CODE_FILE_STRUCTURE_INVALID)
 	}
@@ -136,7 +177,87 @@ func (p *genericBankCSVParser) Parse(ctx context.Context, file importing.Evidenc
 	return document, nil
 }
 
-func buildRow(rowNumber int64, record physicalRecord, header []string, mapping importing.GenericCSVMapping, opts importing.ResolvedParseOptions) importing.EvidenceRow {
+func (p *genericBankTableParser) readPhysicalRecords(ctx context.Context, content []byte, mapping importing.GenericBankMapping) ([]physicalRecord, error) {
+	if p.container == tableContainerCSV {
+		decoded, err := decodeContent(content, mapping.Encoding)
+		if err != nil {
+			return nil, &csvEncodingError{err: err}
+		}
+		delimiter := ','
+		if mapping.Delimiter == importing.GENERIC_CSV_DELIMITER_TAB {
+			delimiter = '\t'
+		}
+		return readPhysicalRecords(ctx, decoded, delimiter)
+	}
+
+	tables, err := readSpreadsheetTables(content, p.container)
+	if err != nil {
+		return nil, err
+	}
+	var selected excel.WorksheetDataTable
+	for _, table := range tables {
+		worksheet, ok := table.(excel.WorksheetDataTable)
+		if ok && worksheet.WorksheetIndex() == mapping.SheetIndex {
+			selected = worksheet
+			break
+		}
+	}
+	if selected == nil {
+		return nil, fmt.Errorf("worksheet %d does not exist", mapping.SheetIndex)
+	}
+
+	sheetName := selected.WorksheetName()
+	if sheetName == "" {
+		sheetName = fmt.Sprintf("Sheet%d", selected.WorksheetIndex()+1)
+	}
+	iterator := selected.DataRowIterator()
+	records := make([]physicalRecord, 0, selected.DataRowCount())
+	for iterator.HasNext() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		row := iterator.Next()
+		if row == nil {
+			return nil, io.ErrUnexpectedEOF
+		}
+		var iteratorSheet, rowIndex int
+		if _, err := fmt.Sscanf(iterator.CurrentRowId(), "sheet#%d-row#%d", &iteratorSheet, &rowIndex); err != nil || rowIndex < 0 {
+			return nil, io.ErrUnexpectedEOF
+		}
+		values := make([]string, row.ColumnCount())
+		for column := range values {
+			values[column] = row.GetData(column)
+		}
+		records = append(records, physicalRecord{
+			values: values,
+			locator: importing.SourceLocator{
+				Kind:       importing.LOCATOR_KIND_SPREADSHEET,
+				SheetIndex: selected.WorksheetIndex(),
+				SheetName:  sheetName,
+				XLSXRow:    int64(rowIndex + 1),
+			},
+		})
+	}
+	return records, nil
+}
+
+func readSpreadsheetTables(content []byte, container tableContainer) ([]datatable.BasicDataTable, error) {
+	switch container {
+	case tableContainerXLS:
+		return excel.CreateNewExcelMSCFBFileBasicDataTables(content, false)
+	case tableContainerXLSX:
+		return excel.CreateNewExcelOOXMLFileBasicDataTables(content, false)
+	default:
+		return nil, fmt.Errorf("unsupported spreadsheet container")
+	}
+}
+
+func errorsIsEncoding(err error) bool {
+	var encodingErr *csvEncodingError
+	return errors.As(err, &encodingErr)
+}
+
+func buildRow(rowNumber int64, record physicalRecord, header []string, mapping importing.GenericBankMapping, opts importing.ResolvedParseOptions) importing.EvidenceRow {
 	fields := make([]importing.RawField, len(record.values))
 	for index, value := range record.values {
 		name := ""
@@ -206,7 +327,7 @@ func buildRow(rowNumber int64, record physicalRecord, header []string, mapping i
 	}
 	return importing.EvidenceRow{
 		RowNumber:            rowNumber,
-		Locator:              importing.SourceLocator{Kind: importing.LOCATOR_KIND_CSV, CSVStartRow: record.startRow, CSVEndRow: record.endRow},
+		Locator:              record.locator,
 		RawFields:            fields,
 		Raw:                  raw,
 		Identifiers:          identifiers,
@@ -233,7 +354,7 @@ func parseTime(value string, format importing.GenericCSVTimeFormat, offset int16
 	normalized.UnixTime = &unixTime
 }
 
-func parseAmountAndDirection(values []string, mapping importing.GenericCSVMapping, normalized *importing.NormalizedEvidence, issues *[]importing.EvidenceIssue) {
+func parseAmountAndDirection(values []string, mapping importing.GenericBankMapping, normalized *importing.NormalizedEvidence, issues *[]importing.EvidenceIssue) {
 	get := func(column int) string {
 		if column < 0 || column >= len(values) {
 			return ""
@@ -408,7 +529,7 @@ func hasMultiColumnRecord(records []physicalRecord) bool {
 	return false
 }
 
-func mappingColumnsFit(mapping importing.GenericCSVMapping, width int) bool {
+func mappingColumnsFit(mapping importing.GenericBankMapping, width int) bool {
 	columns := []int{mapping.TimeColumn, mapping.AmountColumn, mapping.DirectionColumn, mapping.IncomeColumn, mapping.ExpenseColumn,
 		mapping.CurrencyColumn, mapping.TransactionIdColumn, mapping.OrderIdColumn, mapping.MerchantOrderIdColumn,
 		mapping.CounterpartyColumn, mapping.ItemColumn, mapping.PaymentMethodColumn, mapping.StatusColumn, mapping.TransactionTypeColumn, mapping.NoteColumn}
@@ -497,7 +618,10 @@ func parseRecord(data []byte, delimiter rune, startLine, endLine int64) (physica
 		}
 		values = parsed
 	}
-	return physicalRecord{values: values, startRow: startLine, endRow: endLine}, nil
+	return physicalRecord{
+		values:  values,
+		locator: importing.SourceLocator{Kind: importing.LOCATOR_KIND_CSV, CSVStartRow: startLine, CSVEndRow: endLine},
+	}, nil
 }
 
 func clearOversizedCanonical(raw *importing.CanonicalRawEvidence, normalized *importing.NormalizedEvidence, identifiers *importing.SourceIdentifiers, issues *[]importing.EvidenceIssue) {
