@@ -390,7 +390,15 @@ func resolvePlanningFundsMovement(row *importing.RawImportRow, batch *importing.
 func resolveFundsAccountReference(row *importing.RawImportRow, batch *importing.ImportBatch, reference importing.SourceFundsAccountReference, mappings map[string]int64) *int64 {
 	switch reference.Kind {
 	case importing.SOURCE_FUNDS_ACCOUNT_STATEMENT:
-		return cloneInt64Pointer(batch.LedgerAccountId)
+		if batch != nil && batch.LedgerAccountId != nil && *batch.LedgerAccountId > 0 {
+			return cloneInt64Pointer(batch.LedgerAccountId)
+		}
+		// 银行批次的账单账户可能在解析后才通过付款方式映射确认。
+		// 整理时再次解析当前映射，使不可变旧证据也能沿用最新账户事实。
+		if row != nil {
+			return resolvePaymentAccountReference(row, row.RawPaymentMethod, mappings)
+		}
+		return nil
 	case importing.SOURCE_FUNDS_ACCOUNT_PAYMENT:
 		return resolvePaymentAccountReference(row, reference.Raw, mappings)
 	case importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET:

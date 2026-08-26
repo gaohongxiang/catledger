@@ -62,3 +62,30 @@ func TestResolveRepaymentTargetUsesExactMappingBeforeUniqueCardFamily(t *testing
 		t.Fatalf("composite repayment target must remain unresolved: %d", *composite)
 	}
 }
+
+func TestResolveStatementAccountFallsBackToLatestPaymentMapping(t *testing.T) {
+	alias, ok := importing.BuildPaymentAccountAlias("兴业银行信用卡(6106)")
+	if !ok {
+		t.Fatal("build statement account alias")
+	}
+	row := &importing.RawImportRow{
+		Currency:         "CNY",
+		RawPaymentMethod: "兴业银行信用卡(主卡6106)",
+	}
+	mappings := map[string]int64{"CNY\x00" + alias.Key: 61}
+
+	account := resolveFundsAccountReference(row, &importing.ImportBatch{}, importing.SourceFundsAccountReference{
+		Kind: importing.SOURCE_FUNDS_ACCOUNT_STATEMENT,
+	}, mappings)
+	if account == nil || *account != 61 {
+		t.Fatalf("statement account should use latest payment mapping: %v", account)
+	}
+
+	batchAccountId := int64(62)
+	account = resolveFundsAccountReference(row, &importing.ImportBatch{LedgerAccountId: &batchAccountId}, importing.SourceFundsAccountReference{
+		Kind: importing.SOURCE_FUNDS_ACCOUNT_STATEMENT,
+	}, mappings)
+	if account == nil || *account != batchAccountId {
+		t.Fatalf("explicit batch account must keep priority: %v", account)
+	}
+}
