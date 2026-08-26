@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xuri/excelize/v2"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
@@ -13,10 +14,10 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 )
 
-func TestDescriptorRequiresExplicitSelectionAndProbeRejectsBinary(t *testing.T) {
+func TestDescriptorSupportsAutomaticSelectionAndProbeRejectsBinary(t *testing.T) {
 	descriptor := ImportEvidenceCSVParser.Descriptor()
 	if descriptor.Name != "generic_bank_csv" || descriptor.SourceType != importing.SOURCE_TYPE_BANK ||
-		descriptor.Format != importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV || !descriptor.ExplicitSelectionOnly {
+		descriptor.Format != importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV || descriptor.ExplicitSelectionOnly {
 		t.Fatalf("unexpected generic bank descriptor: %+v", descriptor)
 	}
 	if result := ImportEvidenceCSVParser.Probe(context.Background(), importing.EvidenceFile{Content: []byte("time,amount\n2026-01-01,1.00\n")}); !result.Confidence.Matched() {
@@ -45,7 +46,7 @@ func TestSpreadsheetParsersReuseMappingAndPreserveWorksheetLocator(t *testing.T)
 				t.Fatalf("read spreadsheet fixture: %v", err)
 			}
 			descriptor := test.parser.Descriptor()
-			if descriptor.Name != test.parserName || descriptor.Format != test.format || !descriptor.ExplicitSelectionOnly {
+			if descriptor.Name != test.parserName || descriptor.Format != test.format || descriptor.ExplicitSelectionOnly {
 				t.Fatalf("unexpected descriptor: %+v", descriptor)
 			}
 			if probe := test.parser.Probe(context.Background(), importing.EvidenceFile{Content: content}); !probe.Confidence.Matched() || probe.Format != test.format {
@@ -73,6 +74,105 @@ func TestSpreadsheetParsersReuseMappingAndPreserveWorksheetLocator(t *testing.T)
 				t.Fatalf("spreadsheet locator was not stable: %q %v", encoded, err)
 			}
 		})
+	}
+}
+
+func TestInferXingyeCreditCardXLSXMappingAndParseRows(t *testing.T) {
+	workbook := excelize.NewFile()
+	sheet := "Sheet1"
+	setSpreadsheetRow(t, workbook, sheet, 7, []interface{}{"账单日", "到期还款日", "本期应还款额"})
+	setSpreadsheetRow(t, workbook, sheet, 8, []interface{}{"Statement Date", "Payment Due Date", "New Balance"})
+	setSpreadsheetRow(t, workbook, sheet, 12, []interface{}{"交易日期", "记账日期", "交易金额", "交易摘要", "尾号4位"})
+	setSpreadsheetRow(t, workbook, sheet, 13, []interface{}{"Trans Date", "Post Date", "Amount", "Tran Description", "Card No."})
+	setSpreadsheetRow(t, workbook, sheet, 14, []interface{}{"20260701 10:20", "20260702", "¥12.34", "合成消费", "1234"})
+	setSpreadsheetRow(t, workbook, sheet, 15, []interface{}{"20260703 08:30", "20260703", "-¥20.00", "合成还款", "1234"})
+	setSpreadsheetRow(t, workbook, sheet, 17, []interface{}{"说明", "以下不是交易"})
+	buffer, err := workbook.WriteToBuffer()
+	if err != nil {
+		t.Fatalf("write synthetic statement: %v", err)
+	}
+	if err := workbook.Close(); err != nil {
+		t.Fatalf("close synthetic statement: %v", err)
+	}
+
+	resolver, ok := ImportEvidenceXLSXParser.(importing.ImportEvidenceParseOptionsResolver)
+	if !ok {
+		t.Fatal("generic XLSX parser does not expose safe mapping inference")
+	}
+	resolved, err := resolver.ResolveParseOptions(context.Background(), importing.EvidenceFile{Content: buffer.Bytes()}, importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480})
+	if err != nil {
+		t.Fatalf("infer synthetic Xingye mapping: %v", err)
+	}
+	mapping := resolved.GenericBankMapping
+	if mapping == nil || mapping.SheetIndex != 0 || mapping.HeaderRow != 13 || mapping.DataStartRow != 14 || mapping.DataEndRow != 15 ||
+		mapping.TimeFormat != importing.GENERIC_CSV_TIME_FORMAT_COMPACT_DATE_TIME_MINUTES || mapping.AmountMode != importing.GENERIC_CSV_AMOUNT_MODE_SIGNED ||
+		mapping.SignedPositiveDirection != importing.NORMALIZED_DIRECTION_EXPENSE || mapping.TimeColumn != 0 || mapping.AmountColumn != 2 ||
+		mapping.CounterpartyColumn != 3 || mapping.PaymentMethodColumn != 4 || mapping.PaymentMethodPrefix != "兴业银行信用卡" {
+		t.Fatalf("unexpected inferred mapping: %+v", mapping)
+	}
+
+	document, err := ImportEvidenceXLSXParser.Parse(context.Background(), importing.EvidenceFile{Content: buffer.Bytes()}, resolved)
+	if err != nil {
+		t.Fatalf("parse inferred synthetic Xingye statement: %v", err)
+	}
+	if len(document.Rows) != 2 || document.Rows[0].ParseStatus != importing.PARSE_STATE_VALID || document.Rows[1].ParseStatus != importing.PARSE_STATE_VALID {
+		t.Fatalf("unexpected inferred rows: %+v", document.Rows)
+	}
+	if document.Rows[0].Normalized.Amount == nil || *document.Rows[0].Normalized.Amount != 1234 ||
+		document.Rows[0].Normalized.Direction != importing.NORMALIZED_DIRECTION_EXPENSE ||
+		document.Rows[1].Normalized.Amount == nil || *document.Rows[1].Normalized.Amount != 2000 ||
+		document.Rows[1].Normalized.Direction != importing.NORMALIZED_DIRECTION_INCOME ||
+		document.Rows[0].Raw.PaymentMethod != "兴业银行信用卡(1234)" || document.Rows[0].Locator.XLSXRow != 14 {
+		t.Fatalf("inferred Xingye semantics changed: %+v / %+v", document.Rows[0], document.Rows[1])
+	}
+}
+
+func TestInferGenericCSVOnlyWhenDirectionIsUnambiguous(t *testing.T) {
+	resolver := ImportEvidenceCSVParser.(importing.ImportEvidenceParseOptionsResolver)
+	base := importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480}
+	safe := importing.EvidenceFile{Content: []byte("交易时间,收入金额,支出金额,交易对方\n2026-08-01 10:00:00,12.00,,合成甲\n2026-08-02 11:00:00,,3.50,合成乙\n")}
+	resolved, err := resolver.ResolveParseOptions(context.Background(), safe, base)
+	if err != nil || resolved.GenericBankMapping == nil || resolved.GenericBankMapping.AmountMode != importing.GENERIC_CSV_AMOUNT_MODE_INCOME_EXPENSE {
+		t.Fatalf("safe generic CSV was not inferred: mapping=%+v err=%v", resolved.GenericBankMapping, err)
+	}
+
+	ambiguous := importing.EvidenceFile{Content: []byte("交易时间,交易金额,交易对方\n2026-08-01 10:00:00,12.00,合成甲\n2026-08-02 11:00:00,-3.50,合成乙\n")}
+	if _, err := resolver.ResolveParseOptions(context.Background(), ambiguous, base); err == nil {
+		t.Fatal("generic signed amounts without a known profile must require user confirmation")
+	}
+}
+
+func TestNormalizeSignedAmountAcceptsCommonCurrencyNotation(t *testing.T) {
+	tests := []struct {
+		value    string
+		unsigned string
+		negative bool
+	}{
+		{"¥1,234.50", "1,234.50", false},
+		{"-¥12.34", "12.34", true},
+		{"¥-12.34", "12.34", true},
+		{"(RMB 8.00)", "8.00", true},
+		{"10.00元", "10.00", false},
+	}
+	for _, test := range tests {
+		unsigned, negative, ok := normalizeSignedAmount(test.value)
+		if !ok || unsigned != test.unsigned || negative != test.negative {
+			t.Fatalf("normalize %q: got %q negative=%v ok=%v", test.value, unsigned, negative, ok)
+		}
+		if _, ok := parseUnsignedAmount(unsigned); !ok {
+			t.Fatalf("normalized amount %q is not parseable", unsigned)
+		}
+	}
+}
+
+func setSpreadsheetRow(t *testing.T, workbook *excelize.File, sheet string, row int, values []interface{}) {
+	t.Helper()
+	cell, err := excelize.CoordinatesToCellName(1, row)
+	if err != nil {
+		t.Fatalf("coordinate row %d: %v", row, err)
+	}
+	if err := workbook.SetSheetRow(sheet, cell, &values); err != nil {
+		t.Fatalf("set row %d: %v", row, err)
 	}
 }
 

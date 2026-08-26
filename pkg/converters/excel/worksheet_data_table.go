@@ -8,4 +8,5 @@ type WorksheetDataTable interface {
 	datatable.BasicDataTable
 	WorksheetIndex() int
 	WorksheetName() string
+	PhysicalRows() [][]string
 }

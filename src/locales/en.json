@@ -3385,11 +3385,11 @@
             "noLedgerMapping": "No ledger mapping"
         },
         "genericBank": {
-            "title": "Configure Generic Bank Statement",
+            "title": "Confirm Bank Statement Structure",
             "configure": "Configure as Generic Bank Table",
-            "templateNotice": "CSV, XLS and XLSX share one field-mapping and normalization pipeline, so each bank does not need its own template.",
+            "templateNotice": "CSV, XLS and XLSX are detected automatically first. Confirm here only when field meaning or amount direction is ambiguous.",
             "privacyNotice": "The column mapping is submitted only with this parse request. Full account numbers and raw fields are not logged by this view.",
-            "autoDetectionFailed": "The statement was not detected automatically. Generic bank table setup is now open.",
+            "autoDetectionFailed": "The statement structure is ambiguous. Confirm the required fields.",
             "sourceSection": "Bank Source Account",
             "sourceHint": "Choose or create a bank source profile with a required formal ledger-account mapping.",
             "noUsableSourceAccount": "No bank profile has a ledger-account mapping",

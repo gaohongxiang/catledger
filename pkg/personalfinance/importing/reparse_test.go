@@ -231,6 +231,39 @@ func TestReparseServiceRejectsHighestConfidenceTie(t *testing.T) {
 	}
 }
 
+func TestReparseServicePrefersSourceSpecificParserOverGenericFallback(t *testing.T) {
+	content := []byte("safe-fixture")
+	specific := &flowTestParser{
+		descriptor: importing.ParserDescriptor{
+			Name: "wechat-pay-csv-evidence", SourceType: importing.SOURCE_TYPE_WECHAT, Format: importing.EVIDENCE_FORMAT_WECHAT_CSV,
+			ParserVersion: "wechat-parser-v1", NormalizationVersion: "wechat-normalization-v1",
+		},
+		probe: importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_POSSIBLE, SourceType: importing.SOURCE_TYPE_WECHAT, Format: importing.EVIDENCE_FORMAT_WECHAT_CSV},
+		document: &importing.EvidenceDocument{Metadata: importing.DocumentMetadata{SourceType: importing.SOURCE_TYPE_WECHAT, SourceAccount: importing.SourceAccountCandidate{
+			Kind: importing.SOURCE_ACCOUNT_EVIDENCE_DISPLAY_ONLY, DisplayName: "合成昵称", DiscoveryMethod: importing.SOURCE_ACCOUNT_DISCOVERY_WECHAT_PREAMBLE_NICKNAME,
+		}}},
+	}
+	generic := &flowTestParser{
+		descriptor: importing.ParserDescriptor{
+			Name: "generic_bank_csv", SourceType: importing.SOURCE_TYPE_BANK, Format: importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV,
+			ParserVersion: "generic-bank-parser-v2", NormalizationVersion: "generic-bank-normalization-v2",
+		},
+		probe: importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_POSSIBLE, SourceType: importing.SOURCE_TYPE_BANK, Format: importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV},
+	}
+	accounts := &flowTestSourceAccounts{resolved: &importing.SourceAccount{
+		Uid: 101, SourceAccountId: 301, SourceType: importing.SOURCE_TYPE_WECHAT, Status: importing.SOURCE_ACCOUNT_STATUS_ACTIVE,
+		SourceAccountKey: strings.Repeat("f", 64), SourceAccountKeyVersion: importing.SOURCE_ACCOUNT_KEY_VERSION_V1,
+	}}
+	persister := new(flowTestPersister)
+	service := newFlowTestService(t, content, []importing.ImportEvidenceParser{specific, generic}, accounts, persister)
+	result, err := service.ReparseImportFile(nil, importing.ReparseImportFileRequest{
+		Uid: 101, FileId: 201, ParseOptions: importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480}, ReparseReasonCode: "specific_before_fallback",
+	})
+	if err != nil || result == nil || result.Descriptor.Name != specific.descriptor.Name || specific.parseCalls != 1 || generic.parseCalls != 0 {
+		t.Fatalf("source-specific parser did not outrank generic fallback: result=%+v specific=%d generic=%d err=%v", result, specific.parseCalls, generic.parseCalls, err)
+	}
+}
+
 func TestReparseServiceSkipsGenericBankUnlessExplicitlySelected(t *testing.T) {
 	descriptor := importing.ParserDescriptor{
 		Name: "generic_bank_csv", SourceType: importing.SOURCE_TYPE_BANK, Format: importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV,
@@ -284,6 +317,47 @@ func TestReparseServiceSkipsGenericBankUnlessExplicitlySelected(t *testing.T) {
 	}
 	if persister.request.ParseOptions.GenericBankMapping == nil || persister.request.Descriptor.Name != descriptor.Name {
 		t.Fatalf("explicit parser or mapping was not carried to persistence: %+v", persister.request)
+	}
+}
+
+func TestReparseServicePersistsAutomaticallyResolvedGenericBankOptions(t *testing.T) {
+	descriptor := importing.ParserDescriptor{
+		Name: "generic_bank_csv", SourceType: importing.SOURCE_TYPE_BANK, Format: importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV,
+		ParserVersion: "generic-bank-parser-v2", NormalizationVersion: "generic-bank-normalization-v2",
+	}
+	mapping := importing.GenericBankMapping{
+		Encoding: importing.GENERIC_CSV_ENCODING_UTF8, Delimiter: importing.GENERIC_CSV_DELIMITER_COMMA, SheetIndex: -1,
+		HeaderRow: 1, DataStartRow: 2, DataEndRow: 2, TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS,
+		AmountMode: importing.GENERIC_CSV_AMOUNT_MODE_SIGNED, SignedPositiveDirection: importing.NORMALIZED_DIRECTION_EXPENSE,
+		TimeColumn: 0, AmountColumn: 1, DirectionColumn: -1, IncomeColumn: -1, ExpenseColumn: -1, CurrencyColumn: -1,
+		TransactionIdColumn: -1, OrderIdColumn: -1, MerchantOrderIdColumn: -1, CounterpartyColumn: -1, ItemColumn: -1,
+		PaymentMethodColumn: -1, StatusColumn: -1, TransactionTypeColumn: -1, NoteColumn: -1,
+	}
+	baseParser := &flowTestParser{
+		descriptor: descriptor,
+		probe:      importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_POSSIBLE, SourceType: importing.SOURCE_TYPE_BANK, Format: importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV},
+		document: &importing.EvidenceDocument{Metadata: importing.DocumentMetadata{SourceType: importing.SOURCE_TYPE_BANK, SourceAccount: importing.SourceAccountCandidate{
+			Kind: importing.SOURCE_ACCOUNT_EVIDENCE_MISSING, DiscoveryMethod: importing.SOURCE_ACCOUNT_DISCOVERY_MISSING,
+		}}},
+	}
+	parser := &flowTestResolvingParser{flowTestParser: baseParser, mapping: mapping}
+	accounts := &flowTestSourceAccounts{fileEnsured: &importing.SourceAccount{
+		Uid: 101, SourceAccountId: 501, SourceType: importing.SOURCE_TYPE_BANK, Status: importing.SOURCE_ACCOUNT_STATUS_ACTIVE,
+		SourceAccountKey: strings.Repeat("e", 64), SourceAccountKeyVersion: importing.SOURCE_ACCOUNT_KEY_VERSION_V1,
+	}}
+	persister := new(flowTestPersister)
+	service := newFlowTestService(t, []byte("time,amount\n2026-01-01 00:00:00,1.00\n"), []importing.ImportEvidenceParser{parser}, accounts, persister)
+
+	result, err := service.ReparseImportFile(nil, importing.ReparseImportFileRequest{
+		Uid: 101, FileId: 201, ParseOptions: importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480},
+		ReparseReasonCode: "automatic_generic_bank",
+	})
+	if err != nil || result == nil || result.Batch == nil || parser.resolveCalls != 1 || baseParser.parseCalls != 1 || persister.calls != 1 {
+		t.Fatalf("automatic generic bank options were not resolved and persisted: result=%+v resolve=%d parse=%d persist=%d err=%v", result, parser.resolveCalls, baseParser.parseCalls, persister.calls, err)
+	}
+	if baseParser.lastOptions.GenericBankMapping == nil || persister.request.ParseOptions.GenericBankMapping == nil ||
+		baseParser.lastOptions.GenericBankMapping.DataEndRow != 2 || persister.request.ParseOptions.GenericBankMapping.DataEndRow != 2 {
+		t.Fatalf("resolved options did not reach parsing and persistence: parse=%+v persist=%+v", baseParser.lastOptions, persister.request.ParseOptions)
 	}
 }
 
@@ -362,10 +436,11 @@ func (s *flowTestStorage) ReadAvailable(_ core.Context, _ string, expectedSHA256
 }
 
 type flowTestParser struct {
-	descriptor importing.ParserDescriptor
-	probe      importing.ProbeResult
-	document   *importing.EvidenceDocument
-	parseCalls int
+	descriptor  importing.ParserDescriptor
+	probe       importing.ProbeResult
+	document    *importing.EvidenceDocument
+	lastOptions importing.ResolvedParseOptions
+	parseCalls  int
 }
 
 func (p *flowTestParser) Descriptor() importing.ParserDescriptor {
@@ -376,9 +451,22 @@ func (p *flowTestParser) Probe(_ context.Context, _ importing.EvidenceFile) impo
 	return p.probe
 }
 
-func (p *flowTestParser) Parse(_ context.Context, _ importing.EvidenceFile, _ importing.ResolvedParseOptions) (*importing.EvidenceDocument, error) {
+func (p *flowTestParser) Parse(_ context.Context, _ importing.EvidenceFile, options importing.ResolvedParseOptions) (*importing.EvidenceDocument, error) {
 	p.parseCalls++
+	p.lastOptions = options
 	return p.document, nil
+}
+
+type flowTestResolvingParser struct {
+	*flowTestParser
+	mapping      importing.GenericBankMapping
+	resolveCalls int
+}
+
+func (p *flowTestResolvingParser) ResolveParseOptions(_ context.Context, _ importing.EvidenceFile, options importing.ResolvedParseOptions) (importing.ResolvedParseOptions, error) {
+	p.resolveCalls++
+	options.GenericBankMapping = &p.mapping
+	return options, nil
 }
 
 type flowTestSourceAccounts struct {
@@ -401,7 +489,7 @@ func (s *flowTestSourceAccounts) ResolveStableSourceAccount(_ core.Context, _ in
 }
 
 func (s *flowTestSourceAccounts) ResolveDisplaySourceAccount(_ core.Context, _ int64, _ importing.SourceType, _ importing.SourceAccountCandidate) (*importing.SourceAccount, error) {
-	return nil, nil
+	return s.resolved, nil
 }
 
 func (s *flowTestSourceAccounts) EnsureFileSourceAccount(_ core.Context, _ int64, _ importing.SourceType, _ importing.EvidenceFormat, _ string) (*importing.SourceAccount, error) {

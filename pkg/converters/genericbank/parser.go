@@ -26,10 +26,10 @@ const (
 	csvParserName        = "generic_bank_csv"
 	xlsParserName        = "generic_bank_xls"
 	xlsxParserName       = "generic_bank_xlsx"
-	csvParserVersion     = importing.RuleVersion("generic-bank-csv-parser-v1")
-	xlsParserVersion     = importing.RuleVersion("generic-bank-xls-parser-v1")
-	xlsxParserVersion    = importing.RuleVersion("generic-bank-xlsx-parser-v1")
-	normalizationVersion = importing.RuleVersion("generic-bank-normalization-v1")
+	csvParserVersion     = importing.RuleVersion("generic-bank-csv-parser-v2")
+	xlsParserVersion     = importing.RuleVersion("generic-bank-xls-parser-v2")
+	xlsxParserVersion    = importing.RuleVersion("generic-bank-xlsx-parser-v2")
+	normalizationVersion = importing.RuleVersion("generic-bank-normalization-v2")
 )
 
 type tableContainer uint8
@@ -40,7 +40,7 @@ const (
 	tableContainerXLSX
 )
 
-// 三种 parser 只区分文件容器，列映射和标准化逻辑完全共用，且都必须由调用方显式选择。
+// 三种 parser 只区分文件容器，列映射、自动推断和标准化逻辑完全共用。
 var (
 	ImportEvidenceCSVParser importing.ImportEvidenceParser = &genericBankTableParser{
 		name: csvParserName, version: csvParserVersion, format: importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV, container: tableContainerCSV,
@@ -79,11 +79,11 @@ func (p *genericBankTableParser) Descriptor() importing.ParserDescriptor {
 		Format:                p.format,
 		ParserVersion:         p.version,
 		NormalizationVersion:  normalizationVersion,
-		ExplicitSelectionOnly: true,
+		ExplicitSelectionOnly: false,
 	}
 }
 
-// Probe 只确认文件容器可由原项目成熟读取器打开；列布局仍由显式映射严格校验。
+// Probe 只确认文件容器可由原项目成熟读取器打开；列布局由后续安全推断或用户映射确定。
 func (p *genericBankTableParser) Probe(ctx context.Context, file importing.EvidenceFile) importing.ProbeResult {
 	if ctx.Err() != nil || len(file.Content) == 0 {
 		return importing.ProbeResult{Confidence: importing.PROBE_CONFIDENCE_NONE}
@@ -155,6 +155,16 @@ func (p *genericBankTableParser) Parse(ctx context.Context, file importing.Evide
 		return nil, parseError(importing.ISSUE_CODE_FILE_STRUCTURE_INVALID)
 	}
 
+	dataEnd := len(records)
+	if mapping.DataEndRow > 0 {
+		if mapping.DataEndRow > len(records) {
+			return nil, parseError(importing.ISSUE_CODE_FILE_STRUCTURE_INVALID)
+		}
+		dataEnd = mapping.DataEndRow
+	}
+	if mapping.DataStartRow > dataEnd {
+		return nil, parseError(importing.ISSUE_CODE_FILE_STRUCTURE_INVALID)
+	}
 	document := &importing.EvidenceDocument{
 		Metadata: importing.DocumentMetadata{
 			SourceType: importing.SOURCE_TYPE_BANK,
@@ -163,9 +173,9 @@ func (p *genericBankTableParser) Parse(ctx context.Context, file importing.Evide
 				DiscoveryMethod: importing.SOURCE_ACCOUNT_DISCOVERY_MISSING,
 			},
 		},
-		Rows: make([]importing.EvidenceRow, 0, len(records)-mapping.HeaderRow),
+		Rows: make([]importing.EvidenceRow, 0, dataEnd-mapping.DataStartRow+1),
 	}
-	for index := mapping.HeaderRow; index < len(records); index++ {
+	for index := mapping.DataStartRow - 1; index < dataEnd; index++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -210,33 +220,21 @@ func (p *genericBankTableParser) readPhysicalRecords(ctx context.Context, conten
 	if sheetName == "" {
 		sheetName = fmt.Sprintf("Sheet%d", selected.WorksheetIndex()+1)
 	}
-	iterator := selected.DataRowIterator()
-	records := make([]physicalRecord, 0, selected.DataRowCount())
-	for iterator.HasNext() {
+	rows := selected.PhysicalRows()
+	records := make([]physicalRecord, len(rows))
+	for rowIndex, values := range rows {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		row := iterator.Next()
-		if row == nil {
-			return nil, io.ErrUnexpectedEOF
-		}
-		var iteratorSheet, rowIndex int
-		if _, err := fmt.Sscanf(iterator.CurrentRowId(), "sheet#%d-row#%d", &iteratorSheet, &rowIndex); err != nil || rowIndex < 0 {
-			return nil, io.ErrUnexpectedEOF
-		}
-		values := make([]string, row.ColumnCount())
-		for column := range values {
-			values[column] = row.GetData(column)
-		}
-		records = append(records, physicalRecord{
-			values: values,
+		records[rowIndex] = physicalRecord{
+			values: append([]string(nil), values...),
 			locator: importing.SourceLocator{
 				Kind:       importing.LOCATOR_KIND_SPREADSHEET,
 				SheetIndex: selected.WorksheetIndex(),
 				SheetName:  sheetName,
 				XLSXRow:    int64(rowIndex + 1),
 			},
-		})
+		}
 	}
 	return records, nil
 }
@@ -283,6 +281,9 @@ func buildRow(rowNumber int64, record physicalRecord, header []string, mapping i
 		Item:            get(mapping.ItemColumn),
 		PaymentMethod:   get(mapping.PaymentMethodColumn),
 		Note:            get(mapping.NoteColumn),
+	}
+	if mapping.PaymentMethodPrefix != "" && strings.TrimSpace(raw.PaymentMethod) != "" {
+		raw.PaymentMethod = mapping.PaymentMethodPrefix + "(" + strings.TrimSpace(raw.PaymentMethod) + ")"
 	}
 	if mapping.AmountMode == importing.GENERIC_CSV_AMOUNT_MODE_INCOME_EXPENSE {
 		raw.Amount = get(mapping.IncomeColumn)
@@ -365,17 +366,18 @@ func parseAmountAndDirection(values []string, mapping importing.GenericBankMappi
 	var direction importing.NormalizedDirection
 	switch mapping.AmountMode {
 	case importing.GENERIC_CSV_AMOUNT_MODE_SIGNED:
-		amountText = normalizeText(get(mapping.AmountColumn))
-		negative := strings.HasPrefix(amountText, "-")
-		if strings.HasPrefix(amountText, "+") || negative {
-			amountText = amountText[1:]
+		var negative bool
+		var valid bool
+		amountText, negative, valid = normalizeSignedAmount(get(mapping.AmountColumn))
+		if !valid {
+			amountText = ""
 		}
 		direction = mapping.SignedPositiveDirection
 		if negative {
 			direction = oppositeDirection(direction)
 		}
 	case importing.GENERIC_CSV_AMOUNT_MODE_AMOUNT_DIRECTION:
-		amountText = normalizeText(get(mapping.AmountColumn))
+		amountText, _, _ = normalizeSignedAmount(get(mapping.AmountColumn))
 		rawDirection := strings.ToLower(normalizeText(get(mapping.DirectionColumn)))
 		if contains(mapping.IncomeValues, rawDirection) {
 			direction = importing.NORMALIZED_DIRECTION_INCOME
@@ -384,8 +386,14 @@ func parseAmountAndDirection(values []string, mapping importing.GenericBankMappi
 			direction = importing.NORMALIZED_DIRECTION_EXPENSE
 		}
 	case importing.GENERIC_CSV_AMOUNT_MODE_INCOME_EXPENSE:
-		income := normalizeText(get(mapping.IncomeColumn))
-		expense := normalizeText(get(mapping.ExpenseColumn))
+		income, _, incomeValid := normalizeSignedAmount(get(mapping.IncomeColumn))
+		expense, _, expenseValid := normalizeSignedAmount(get(mapping.ExpenseColumn))
+		if !incomeValid {
+			income = ""
+		}
+		if !expenseValid {
+			expense = ""
+		}
 		if income != "" && expense == "" {
 			amountText, direction = income, importing.NORMALIZED_DIRECTION_INCOME
 		}
@@ -406,6 +414,36 @@ func parseAmountAndDirection(values []string, mapping importing.GenericBankMappi
 		*issues = append(*issues, importing.EvidenceIssue{Code: importing.ISSUE_CODE_ROW_DIRECTION_UNKNOWN, Field: "direction", Severity: importing.ISSUE_SEVERITY_WARNING})
 	}
 	normalized.Direction = direction
+}
+
+func normalizeSignedAmount(value string) (unsigned string, negative bool, ok bool) {
+	value = strings.ReplaceAll(normalizeText(value), " ", "")
+	if value == "" {
+		return "", false, false
+	}
+	if strings.HasPrefix(value, "(") && strings.HasSuffix(value, ")") {
+		negative = true
+		value = value[1 : len(value)-1]
+	}
+	if strings.HasPrefix(value, "+") || strings.HasPrefix(value, "-") {
+		negative = negative || strings.HasPrefix(value, "-")
+		value = value[1:]
+	}
+	value = strings.ToUpper(value)
+	for _, prefix := range []string{"CNY", "RMB", "¥", "￥"} {
+		value = strings.TrimPrefix(value, prefix)
+	}
+	if strings.HasPrefix(value, "+") || strings.HasPrefix(value, "-") {
+		negative = negative || strings.HasPrefix(value, "-")
+		value = value[1:]
+	}
+	for _, suffix := range []string{"CNY", "RMB", "元"} {
+		value = strings.TrimSuffix(value, suffix)
+	}
+	if value == "" {
+		return "", false, false
+	}
+	return value, negative, true
 }
 
 func parseUnsignedAmount(value string) (int64, bool) {

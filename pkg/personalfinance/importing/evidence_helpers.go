@@ -114,6 +114,18 @@ func NormalizeGenericBankMapping(mapping GenericBankMapping) (GenericBankMapping
 	if mapping.HeaderRow < 1 || mapping.HeaderRow > maximumGenericCSVHeaderRow || !isValidGenericCSVTimeFormat(mapping.TimeFormat) {
 		return GenericBankMapping{}, fmt.Errorf("invalid generic bank header row or time format")
 	}
+	if mapping.DataStartRow == 0 {
+		mapping.DataStartRow = mapping.HeaderRow + 1
+	}
+	if mapping.DataStartRow <= mapping.HeaderRow || mapping.DataStartRow > maximumGenericCSVHeaderRow ||
+		mapping.DataEndRow < 0 || mapping.DataEndRow > maximumGenericCSVHeaderRow ||
+		(mapping.DataEndRow > 0 && mapping.DataEndRow < mapping.DataStartRow) {
+		return GenericBankMapping{}, fmt.Errorf("invalid generic bank data row range")
+	}
+	mapping.PaymentMethodPrefix = strings.TrimSpace(norm.NFKC.String(mapping.PaymentMethodPrefix))
+	if !utf8.ValidString(mapping.PaymentMethodPrefix) || utf8.RuneCountInString(mapping.PaymentMethodPrefix) > 64 {
+		return GenericBankMapping{}, fmt.Errorf("invalid generic bank payment method prefix")
+	}
 
 	columns := []*int{
 		&mapping.TimeColumn, &mapping.AmountColumn, &mapping.DirectionColumn, &mapping.IncomeColumn, &mapping.ExpenseColumn,
@@ -184,6 +196,7 @@ func isValidGenericCSVTimeFormat(value GenericCSVTimeFormat) bool {
 	switch value {
 	case GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, GENERIC_CSV_TIME_FORMAT_DATE_TIME_MINUTES,
 		GENERIC_CSV_TIME_FORMAT_SLASH_DATE_TIME_SECONDS, GENERIC_CSV_TIME_FORMAT_SLASH_DATE_TIME_MINUTES,
+		GENERIC_CSV_TIME_FORMAT_COMPACT_DATE_TIME_MINUTES, GENERIC_CSV_TIME_FORMAT_COMPACT_DATE,
 		GENERIC_CSV_TIME_FORMAT_DATE, GENERIC_CSV_TIME_FORMAT_SLASH_DATE:
 		return true
 	default:

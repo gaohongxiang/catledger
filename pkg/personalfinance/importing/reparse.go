@@ -157,13 +157,22 @@ func (s *ReparseService) ReparseImportFile(c core.Context, request ReparseImport
 	if err != nil {
 		return nil, err
 	}
-	if err := request.ParseOptions.ValidateForDescriptor(descriptor); err != nil {
-		return nil, ErrImportRequestInvalid
-	}
 
 	parseContext := context.Context(c)
 	if parseContext == nil {
 		parseContext = context.Background()
+	}
+	if resolver, ok := parser.(ImportEvidenceParseOptionsResolver); ok {
+		request.ParseOptions, err = resolver.ResolveParseOptions(parseContext, evidenceFile, request.ParseOptions)
+		if err != nil {
+			if parseContext.Err() != nil {
+				return nil, parseContext.Err()
+			}
+			return nil, &ImportFormatError{Code: NormalizeEvidenceParseError(descriptor, err)}
+		}
+	}
+	if err := request.ParseOptions.ValidateForDescriptor(descriptor); err != nil {
+		return nil, ErrImportRequestInvalid
 	}
 
 	document, err := parser.Parse(parseContext, evidenceFile, request.ParseOptions)
@@ -252,7 +261,18 @@ func (s *ReparseService) selectParser(c core.Context, file EvidenceFile, parserN
 			bestConfidence = probe.Confidence
 			bestCount = 1
 		} else if probe.Confidence == bestConfidence {
-			bestCount++
+			selectedIsGeneric := isGenericBankEvidenceFormat(selectedDescriptor.Format)
+			candidateIsGeneric := isGenericBankEvidenceFormat(descriptor.Format)
+			switch {
+			case selectedIsGeneric && !candidateIsGeneric:
+				selected = parser
+				selectedDescriptor = descriptor
+				bestCount = 1
+			case !selectedIsGeneric && candidateIsGeneric:
+				// 通用银行表格是结构化兜底，不与同置信度的来源专用解析器争抢。
+			default:
+				bestCount++
+			}
 		}
 	}
 

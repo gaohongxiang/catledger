@@ -35,6 +35,18 @@ func (t *ExcelOOXMLFileBasicDataTable) WorksheetName() string {
 	return t.sheets[0].sheetName
 }
 
+// PhysicalRows 返回工作表物理行的副本，避免调用方修改读取器内部数据。
+func (t *ExcelOOXMLFileBasicDataTable) PhysicalRows() [][]string {
+	if t.worksheetIndex < 0 || len(t.sheets) != 1 || t.sheets[0] == nil {
+		return nil
+	}
+	rows := make([][]string, len(t.sheets[0].allData))
+	for rowIndex, row := range t.sheets[0].allData {
+		rows[rowIndex] = append([]string(nil), row...)
+	}
+	return rows
+}
+
 // ExcelOOXMLFileBasicDataTableRow defines the structure of excel (Office Open XML) file data table row
 type ExcelOOXMLFileBasicDataTableRow struct {
 	sheet    *excelOOXMLSheet

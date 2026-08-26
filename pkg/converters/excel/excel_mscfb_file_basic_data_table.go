@@ -29,6 +29,27 @@ func (t *ExcelMSCFBFileBasicDataTable) WorksheetName() string {
 	return t.sheets[0].Name
 }
 
+// PhysicalRows 返回工作表从第一行到最后一行的物理单元格值，保留中间空行。
+func (t *ExcelMSCFBFileBasicDataTable) PhysicalRows() [][]string {
+	if t.worksheetIndex < 0 || len(t.sheets) != 1 || t.sheets[0] == nil {
+		return nil
+	}
+	sheet := t.sheets[0]
+	rows := make([][]string, int(sheet.MaxRow)+1)
+	for rowIndex := 0; rowIndex <= int(sheet.MaxRow); rowIndex++ {
+		row := sheet.Row(rowIndex)
+		if row == nil {
+			continue
+		}
+		values := make([]string, row.LastCol())
+		for column := range values {
+			values[column] = row.Col(column)
+		}
+		rows[rowIndex] = values
+	}
+	return rows
+}
+
 // ExcelMSCFBFileBasicDataTableRow defines the structure of excel (microsoft compound file binary) file data table row
 type ExcelMSCFBFileBasicDataTableRow struct {
 	sheet    *xls.WorkSheet

@@ -14,7 +14,7 @@ const (
 	maximumEvidenceBatchSnapshotBytes   = 16 * 1024 * 1024
 	maximumPersistentSourceLocatorBytes = 255
 	parseOptionsDigestVersionV1         = "parse-options-v1"
-	genericParseOptionsDigestVersionV2  = "generic-bank-parse-options-v2"
+	genericParseOptionsDigestVersionV3  = "generic-bank-parse-options-v3"
 )
 
 var (
@@ -456,14 +456,15 @@ func computeParseOptionsDigest(options ResolvedParseOptions) string {
 			return ""
 		}
 		values := []string{
-			genericParseOptionsDigestVersionV2, options.Currency, strconv.FormatInt(int64(options.TimezoneUtcOffset), 10),
-			string(mapping.Encoding), string(mapping.Delimiter), strconv.Itoa(mapping.SheetIndex), strconv.Itoa(mapping.HeaderRow), string(mapping.TimeFormat),
+			genericParseOptionsDigestVersionV3, options.Currency, strconv.FormatInt(int64(options.TimezoneUtcOffset), 10),
+			string(mapping.Encoding), string(mapping.Delimiter), strconv.Itoa(mapping.SheetIndex), strconv.Itoa(mapping.HeaderRow),
+			strconv.Itoa(mapping.DataStartRow), strconv.Itoa(mapping.DataEndRow), string(mapping.TimeFormat),
 			string(mapping.AmountMode), string(mapping.SignedPositiveDirection),
 			strconv.Itoa(mapping.TimeColumn), strconv.Itoa(mapping.AmountColumn), strconv.Itoa(mapping.DirectionColumn),
 			strconv.Itoa(mapping.IncomeColumn), strconv.Itoa(mapping.ExpenseColumn), strconv.Itoa(mapping.CurrencyColumn),
 			strconv.Itoa(mapping.TransactionIdColumn), strconv.Itoa(mapping.OrderIdColumn), strconv.Itoa(mapping.MerchantOrderIdColumn),
 			strconv.Itoa(mapping.CounterpartyColumn), strconv.Itoa(mapping.ItemColumn), strconv.Itoa(mapping.PaymentMethodColumn),
-			strconv.Itoa(mapping.StatusColumn), strconv.Itoa(mapping.TransactionTypeColumn), strconv.Itoa(mapping.NoteColumn),
+			strconv.Itoa(mapping.StatusColumn), strconv.Itoa(mapping.TransactionTypeColumn), strconv.Itoa(mapping.NoteColumn), mapping.PaymentMethodPrefix,
 			strconv.Itoa(len(mapping.IncomeValues)),
 		}
 		values = append(values, mapping.IncomeValues...)

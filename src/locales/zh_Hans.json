@@ -3385,11 +3385,11 @@
             "noLedgerMapping": "未映射账本账户"
         },
         "genericBank": {
-            "title": "配置通用银行账单",
+            "title": "确认银行账单结构",
             "configure": "按通用银行表格配置",
-            "templateNotice": "CSV、XLS、XLSX 共用这一套字段映射和标准化规则，不需要为每家银行编写模板。",
+            "templateNotice": "系统会先自动识别 CSV、XLS、XLSX；这里只在字段含义或金额方向无法唯一判断时请你确认。",
             "privacyNotice": "列映射只随本次解析请求提交；界面不会记录完整账号或原始字段。",
-            "autoDetectionFailed": "未自动识别账单，已打开通用银行表格配置。",
+            "autoDetectionFailed": "无法唯一判断账单结构，请确认必要字段。",
             "sourceSection": "银行来源账户",
             "sourceHint": "必须选择或创建银行来源档案，并映射一个正式账本账户。",
             "noUsableSourceAccount": "没有已映射账本账户的银行档案",

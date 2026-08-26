@@ -20,6 +20,12 @@ type ImportEvidenceParser interface {
 	Parse(ctx context.Context, file EvidenceFile, opts ResolvedParseOptions) (*EvidenceDocument, error)
 }
 
+// ImportEvidenceParseOptionsResolver 在解析前根据不可变文件内容补全可安全推断的解析选项。
+// 解析服务会把返回的完整选项同时用于解析和持久摘要。
+type ImportEvidenceParseOptionsResolver interface {
+	ResolveParseOptions(ctx context.Context, file EvidenceFile, opts ResolvedParseOptions) (ResolvedParseOptions, error)
+}
+
 // EvidenceFile 是解析器收到的不可变原始上传内容。
 type EvidenceFile struct {
 	OriginalFileName string
@@ -54,8 +60,8 @@ func (d ParserDescriptor) Validate() error {
 			return fmt.Errorf("WeChat evidence format requires WeChat source type")
 		}
 	case EVIDENCE_FORMAT_BANK_GENERIC_CSV, EVIDENCE_FORMAT_BANK_GENERIC_XLS, EVIDENCE_FORMAT_BANK_GENERIC_XLSX:
-		if d.SourceType != SOURCE_TYPE_BANK || !d.ExplicitSelectionOnly {
-			return fmt.Errorf("generic bank table evidence format requires explicit bank selection")
+		if d.SourceType != SOURCE_TYPE_BANK {
+			return fmt.Errorf("generic bank table evidence format requires bank source type")
 		}
 	case EVIDENCE_FORMAT_CEB_CREDIT_PDF:
 		if d.SourceType != SOURCE_TYPE_BANK || !d.ExplicitSelectionOnly {
@@ -111,13 +117,15 @@ type ResolvedParseOptions struct {
 	GenericBankMapping *GenericBankMapping
 }
 
-// GenericBankMapping 是显式通用银行 CSV/XLS/XLSX 共用的规范化列映射。
+// GenericBankMapping 是通用银行 CSV/XLS/XLSX 共用的规范化列映射，可由解析器推断或用户显式提供。
 // 列和工作表索引从 0 开始；CSV 的 SheetIndex 固定为 -1，未使用列固定为 -1。
 type GenericBankMapping struct {
 	Encoding                GenericCSVEncoding
 	Delimiter               GenericCSVDelimiter
 	SheetIndex              int
 	HeaderRow               int
+	DataStartRow            int
+	DataEndRow              int
 	TimeFormat              GenericCSVTimeFormat
 	AmountMode              GenericCSVAmountMode
 	SignedPositiveDirection NormalizedDirection
@@ -136,6 +144,7 @@ type GenericBankMapping struct {
 	StatusColumn            int
 	TransactionTypeColumn   int
 	NoteColumn              int
+	PaymentMethodPrefix     string
 	IncomeValues            []string
 	ExpenseValues           []string
 }
@@ -165,7 +174,7 @@ func (o ResolvedParseOptions) Validate() error {
 	return nil
 }
 
-// ValidateForDescriptor 绑定通用映射与显式 parser，避免旧来源请求改变既有解析语义。
+// ValidateForDescriptor 绑定通用映射与对应 parser，避免其他来源请求改变既有解析语义。
 func (o ResolvedParseOptions) ValidateForDescriptor(descriptor ParserDescriptor) error {
 	if err := descriptor.Validate(); err != nil {
 		return err

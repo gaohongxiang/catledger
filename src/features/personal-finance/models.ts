@@ -182,8 +182,10 @@ export type PersonalFinanceGenericCsvTimeFormat =
     '2006-01-02 15:04' |
     '2006/01/02 15:04:05' |
     '2006/01/02 15:04' |
+	'20060102 15:04' |
     '2006-01-02' |
-    '2006/01/02';
+	'2006/01/02' |
+	'20060102';
 
 export interface PersonalFinanceGenericBankMapping {
     readonly encoding: PersonalFinanceGenericCsvEncoding;

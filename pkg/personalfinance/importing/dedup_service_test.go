@@ -28,7 +28,7 @@ func TestGenericParseOptionsDigestIncludesCanonicalMapping(t *testing.T) {
 	mapping := validGenericBankMapping()
 	mapping.IncomeValues = []string{"IN", " Credit "}
 	first := computeParseOptionsDigest(ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericBankMapping: &mapping})
-	const expected = "862452ba6d23aaf1b0cca742f607f71bd456cbdac20552f8afcc0bd9a3d27624"
+	const expected = "aeea479f594c4e564639207acd0bfb1c4a94e60cf317d34101b839ad3b61d6fc"
 	if first != expected {
 		t.Fatalf("generic parse-options digest changed: got %s, expected %s", first, expected)
 	}
