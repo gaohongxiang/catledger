@@ -173,6 +173,7 @@ func TestEngineSQLiteMapsOrdinaryBankRowAndMergesWechatEvidence(t *testing.T) {
 	wechatRow := plannerRow(uid, wechatBatchId, 8054, 9054, cardAccountId, 5777, 1783750972,
 		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
 	wechatRow.RawCounterparty = "美团平台商户"
+	wechatRow.RawItem = "美团订单-渠道订单说明"
 	wechatRow.RawPaymentMethod = "兴业银行信用卡(6106)"
 	alias, ok := importing.BuildPaymentAccountAlias(wechatRow.RawPaymentMethod)
 	if !ok {

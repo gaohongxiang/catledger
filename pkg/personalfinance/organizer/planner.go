@@ -1400,15 +1400,22 @@ func groupHasEconomicEffect(group *planningGroup, effect importing.EconomicEffec
 }
 
 func groupsHaveSimilarEvidenceText(left *planningGroup, right *planningGroup) bool {
-	leftText := groupComparableEvidenceText(left)
-	rightText := groupComparableEvidenceText(right)
-	return len([]rune(leftText)) >= 3 && len([]rune(rightText)) >= 3 &&
-		(leftText == rightText || strings.Contains(leftText, rightText) || strings.Contains(rightText, leftText))
-}
-
-func groupComparableEvidenceText(group *planningGroup) string {
-	row := summarizeGroup(group).representative.row
-	return canonicalEvidenceText(strings.Join([]string{row.RawCounterparty, row.RawItem}, " "))
+	leftRow := summarizeGroup(left).representative.row
+	rightRow := summarizeGroup(right).representative.row
+	pairs := [][2]string{
+		{leftRow.RawCounterparty, rightRow.RawCounterparty},
+		{leftRow.RawItem, rightRow.RawItem},
+		{strings.Join([]string{leftRow.RawCounterparty, leftRow.RawItem}, " "), strings.Join([]string{rightRow.RawCounterparty, rightRow.RawItem}, " ")},
+	}
+	for _, pair := range pairs {
+		leftText := canonicalEvidenceText(pair[0])
+		rightText := canonicalEvidenceText(pair[1])
+		if len([]rune(leftText)) >= 3 && len([]rune(rightText)) >= 3 &&
+			(leftText == rightText || strings.Contains(leftText, rightText) || strings.Contains(rightText, leftText)) {
+			return true
+		}
+	}
+	return false
 }
 
 func rowHasDateOnlyTime(row *importing.RawImportRow) bool {
