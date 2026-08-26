@@ -124,6 +124,113 @@ func TestBuildOrganizePlanKeepsUnsafeProjectedFundsInReview(t *testing.T) {
 	}
 }
 
+func TestBuildOrganizePlanMergesProjectedRepaymentWithUniqueBankEvidence(t *testing.T) {
+	const uid = int64(1823)
+	const updateId = int64(5823)
+	asset := plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)
+	credit := plannerAccount(uid, 22, models.ACCOUNT_CATEGORY_CREDIT_CARD)
+	wechat := plannerSource(uid, updateId, 0, 6823, 7823, importing.SOURCE_TYPE_WECHAT)
+	bank := plannerSource(uid, updateId, 1, 6824, 7824, importing.SOURCE_TYPE_BANK)
+	projected := plannerRow(uid, 7823, 18231, 28231, 11, 550550, 1785995784,
+		importing.NORMALIZED_DIRECTION_NEUTRAL, importing.SOURCE_TRANSACTION_TYPE_TRANSFER)
+	projected.RawTransactionType = "信用卡还款"
+	projected.RawCounterparty = "兴业银行信用卡还款"
+	statement := plannerRow(uid, 7824, 18232, 28232, 22, 550550, 1785996000,
+		importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	statement.RawCounterparty = "款项转入-信用卡还款"
+	wechat.Rows = []*importing.RawImportRow{projected}
+	wechat.FundsMovements = map[int64]*organizer.PlanningFundsMovement{projected.RowId: {
+		Kind: importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT, FromLedgerAccountId: int64TestPointer(11),
+		ToLedgerAccountId: int64TestPointer(22), RuleVersion: importing.SOURCE_FUNDS_RULE_VERSION_V1,
+	}}
+	bank.Rows = []*importing.RawImportRow{statement}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{wechat, bank},
+		map[int64]*models.Account{11: asset, 22: credit}, 1786000000, sequentialPlannerIds(182300))
+	if err != nil {
+		t.Fatalf("build projected repayment evidence plan: %v", err)
+	}
+	if plan.ValidEvidenceCount != 2 || plan.DuplicateEvidenceCount != 1 || plan.FinalEventCount != 1 ||
+		plan.ReadyEventCount != 1 || len(plan.Evidence) != 2 {
+		t.Fatalf("projected repayment bank evidence was not conserved: %+v", plan)
+	}
+	event := plan.Events[0]
+	if event.EconomicNature != organizer.ECONOMIC_NATURE_REPAYMENT || event.Status != organizer.EVENT_STATUS_READY ||
+		event.LedgerAccountId == nil || *event.LedgerAccountId != 11 ||
+		event.CounterpartyLedgerAccountId == nil || *event.CounterpartyLedgerAccountId != 22 ||
+		!strings.Contains(event.ReasonCodesJson, "auto_same_event") {
+		t.Fatalf("projected repayment did not retain platform semantics with bank evidence: %+v", event)
+	}
+}
+
+func TestBuildOrganizePlanKeepsAmbiguousRepaymentBankEvidenceForReview(t *testing.T) {
+	const uid = int64(1824)
+	const updateId = int64(5824)
+	asset := plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)
+	credit := plannerAccount(uid, 22, models.ACCOUNT_CATEGORY_CREDIT_CARD)
+	wechat := plannerSource(uid, updateId, 0, 6831, 7831, importing.SOURCE_TYPE_WECHAT)
+	bank := plannerSource(uid, updateId, 1, 6832, 7832, importing.SOURCE_TYPE_BANK)
+	projected := plannerRow(uid, 7831, 18301, 28301, 11, 550550, 1785995784,
+		importing.NORMALIZED_DIRECTION_NEUTRAL, importing.SOURCE_TRANSACTION_TYPE_TRANSFER)
+	projected.RawTransactionType = "信用卡还款"
+	wechat.Rows = []*importing.RawImportRow{projected}
+	wechat.FundsMovements = map[int64]*organizer.PlanningFundsMovement{projected.RowId: {
+		Kind: importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT, FromLedgerAccountId: int64TestPointer(11),
+		ToLedgerAccountId: int64TestPointer(22), RuleVersion: importing.SOURCE_FUNDS_RULE_VERSION_V1,
+	}}
+	bank.Rows = []*importing.RawImportRow{
+		plannerRow(uid, 7832, 18302, 28302, 22, 550550, 1785995900, importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_OTHER),
+		plannerRow(uid, 7832, 18303, 28303, 22, 550550, 1785996000, importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_OTHER),
+	}
+	for _, row := range bank.Rows {
+		row.RawCounterparty = "款项转入-信用卡还款"
+	}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{wechat, bank},
+		map[int64]*models.Account{11: asset, 22: credit}, 1786000000, sequentialPlannerIds(182400))
+	if err != nil {
+		t.Fatalf("build ambiguous repayment evidence plan: %v", err)
+	}
+	if plan.FinalEventCount != 3 || plan.DuplicateEvidenceCount != 0 || plan.ReadyEventCount != 0 ||
+		plan.NeedsActionEventCount != 3 || len(plan.SameEventCandidateGroups) != 1 {
+		t.Fatalf("ambiguous repayment evidence escaped review: %+v", plan)
+	}
+	for _, event := range plan.Events {
+		if !strings.Contains(event.ReasonCodesJson, "relation_ambiguous") {
+			t.Fatalf("ambiguous repayment candidate lacks review reason: %+v", event)
+		}
+	}
+}
+
+func TestBuildOrganizePlanDoesNotMergeOrdinaryBankInflowIntoProjectedRepayment(t *testing.T) {
+	const uid = int64(1825)
+	const updateId = int64(5825)
+	asset := plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)
+	credit := plannerAccount(uid, 22, models.ACCOUNT_CATEGORY_CREDIT_CARD)
+	wechat := plannerSource(uid, updateId, 0, 6841, 7841, importing.SOURCE_TYPE_WECHAT)
+	bank := plannerSource(uid, updateId, 1, 6842, 7842, importing.SOURCE_TYPE_BANK)
+	projected := plannerRow(uid, 7841, 18401, 28401, 11, 550550, 1785995784,
+		importing.NORMALIZED_DIRECTION_NEUTRAL, importing.SOURCE_TRANSACTION_TYPE_TRANSFER)
+	ordinary := plannerRow(uid, 7842, 18402, 28402, 22, 550550, 1785995900,
+		importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	ordinary.RawCounterparty = "普通入账"
+	wechat.Rows = []*importing.RawImportRow{projected}
+	wechat.FundsMovements = map[int64]*organizer.PlanningFundsMovement{projected.RowId: {
+		Kind: importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT, FromLedgerAccountId: int64TestPointer(11),
+		ToLedgerAccountId: int64TestPointer(22), RuleVersion: importing.SOURCE_FUNDS_RULE_VERSION_V1,
+	}}
+	bank.Rows = []*importing.RawImportRow{ordinary}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{wechat, bank},
+		map[int64]*models.Account{11: asset, 22: credit}, 1786000000, sequentialPlannerIds(182500))
+	if err != nil {
+		t.Fatalf("build ordinary bank inflow plan: %v", err)
+	}
+	if plan.FinalEventCount != 2 || plan.DuplicateEvidenceCount != 0 {
+		t.Fatalf("ordinary equal bank inflow was merged into repayment: %+v", plan)
+	}
+}
+
 func TestBuildOrganizePlanPairsRepaymentsTransfersAndIsolatesAmbiguity(t *testing.T) {
 	const uid = int64(202)
 	asset := plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)

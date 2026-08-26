@@ -354,22 +354,11 @@ func resolveFundsAccountReference(row *importing.RawImportRow, batch *importing.
 	case importing.SOURCE_FUNDS_ACCOUNT_STATEMENT:
 		return cloneInt64Pointer(batch.LedgerAccountId)
 	case importing.SOURCE_FUNDS_ACCOUNT_PAYMENT:
-		alias, ok := importing.BuildPaymentAccountAlias(reference.Raw)
-		if !ok {
-			return nil
+		return resolvePaymentAccountReference(row, reference.Raw, mappings)
+	case importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET:
+		if accountId := resolvePaymentAccountReference(row, reference.Raw, mappings); accountId != nil {
+			return accountId
 		}
-		if row.LedgerAccountId != nil {
-			rowAlias, rowAliasOK := importing.BuildPaymentAccountAlias(row.RawPaymentMethod)
-			if rowAliasOK && rowAlias.Key == alias.Key {
-				return cloneInt64Pointer(row.LedgerAccountId)
-			}
-		}
-		accountId := mappings[row.Currency+"\x00"+alias.Key]
-		if accountId < 1 {
-			return nil
-		}
-		return &accountId
-	case importing.SOURCE_FUNDS_ACCOUNT_CREDIT_CARD_FAMILY:
 		family, ok := importing.CreditCardAccountFamilyAlias(reference.Raw)
 		if !ok {
 			return nil
@@ -382,6 +371,24 @@ func resolveFundsAccountReference(row *importing.RawImportRow, batch *importing.
 	default:
 		return nil
 	}
+}
+
+func resolvePaymentAccountReference(row *importing.RawImportRow, raw string, mappings map[string]int64) *int64 {
+	alias, ok := importing.BuildPaymentAccountAlias(raw)
+	if !ok {
+		return nil
+	}
+	if row.LedgerAccountId != nil {
+		rowAlias, rowAliasOK := importing.BuildPaymentAccountAlias(row.RawPaymentMethod)
+		if rowAliasOK && rowAlias.Key == alias.Key {
+			return cloneInt64Pointer(row.LedgerAccountId)
+		}
+	}
+	accountId := mappings[row.Currency+"\x00"+alias.Key]
+	if accountId < 1 {
+		return nil
+	}
+	return &accountId
 }
 
 func (e *Engine) persistPlan(c core.Context, request OrganizeRequest, action *FinanceAction, plan *OrganizePlan, reviewPlan *ReviewIssuePlan, now int64) error {

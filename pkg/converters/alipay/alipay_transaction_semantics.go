@@ -89,7 +89,8 @@ func ProjectSourceFunds(productName string, paymentMethod string, counterparty s
 		projection.From, projection.To = payment, target
 	case alipayProductActionRepayment:
 		projection.Kind = importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT
-		projection.From, projection.To = payment, target
+		projection.From = payment
+		projection.To = importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET, Raw: counterparty}
 	default:
 		return importing.SourceFundsProjection{}, false
 	}

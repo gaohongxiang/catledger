@@ -74,7 +74,7 @@ func TestProjectSourceFundsUsesStatementAccountForWechatWallet(t *testing.T) {
 	repayment, ok := ProjectSourceFunds("信用卡还款", "零钱", "兴业银行信用卡还款")
 	if !ok || repayment.Kind != importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT ||
 		repayment.From.Kind != importing.SOURCE_FUNDS_ACCOUNT_PAYMENT || repayment.From.Raw != "零钱" ||
-		repayment.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_CREDIT_CARD_FAMILY || repayment.To.Raw != "兴业银行信用卡还款" {
+		repayment.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET || repayment.To.Raw != "兴业银行信用卡还款" {
 		t.Fatalf("微信信用卡还款资金方向错误: %+v ok=%v", repayment, ok)
 	}
 	if _, ok = ProjectSourceFunds("转账", "合成银行卡(0000)", "普通商户"); ok {

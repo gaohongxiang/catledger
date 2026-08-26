@@ -27,3 +27,38 @@ func TestIndexPaymentAccountMappingsKeepsCreditCardFamilyAmbiguous(t *testing.T)
 		t.Fatal("exact credit-card mappings must remain available")
 	}
 }
+
+func TestResolveRepaymentTargetUsesExactMappingBeforeUniqueCardFamily(t *testing.T) {
+	row := &importing.RawImportRow{Currency: "CNY", RawPaymentMethod: "支付宝账户余额"}
+	huaBeiAlias, ok := importing.BuildPaymentAccountAlias("花呗")
+	if !ok {
+		t.Fatal("build exact repayment target alias")
+	}
+	xingyeAlias, ok := importing.BuildPaymentAccountAlias("兴业银行信用卡(6106)")
+	if !ok {
+		t.Fatal("build credit-card repayment target alias")
+	}
+	mappings := indexPaymentAccountMappings([]*importing.PaymentAccountMapping{
+		{Currency: "CNY", AliasKey: huaBeiAlias.Key, AliasKeyVersion: huaBeiAlias.Version, LedgerAccountId: 51, MaskedDisplayName: "花呗"},
+		{Currency: "CNY", AliasKey: xingyeAlias.Key, AliasKeyVersion: xingyeAlias.Version, LedgerAccountId: 52, MaskedDisplayName: "兴业银行信用卡(6106)"},
+	})
+
+	exact := resolveFundsAccountReference(row, &importing.ImportBatch{}, importing.SourceFundsAccountReference{
+		Kind: importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET, Raw: "花呗",
+	}, mappings)
+	if exact == nil || *exact != 51 {
+		t.Fatalf("exact repayment target mapping mismatch: %v", exact)
+	}
+	family := resolveFundsAccountReference(row, &importing.ImportBatch{}, importing.SourceFundsAccountReference{
+		Kind: importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET, Raw: "兴业银行信用卡还款",
+	}, mappings)
+	if family == nil || *family != 52 {
+		t.Fatalf("unique credit-card family mapping mismatch: %v", family)
+	}
+	composite := resolveFundsAccountReference(row, &importing.ImportBatch{}, importing.SourceFundsAccountReference{
+		Kind: importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET, Raw: "花呗|信用购",
+	}, mappings)
+	if composite != nil {
+		t.Fatalf("composite repayment target must remain unresolved: %d", *composite)
+	}
+}

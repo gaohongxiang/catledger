@@ -90,7 +90,7 @@ func ProjectSourceFunds(transactionType string, paymentMethod string, counterpar
 	case wechatTransactionActionRepayment:
 		projection.Kind = importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT
 		projection.From = payment
-		projection.To = importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_CREDIT_CARD_FAMILY, Raw: counterparty}
+		projection.To = importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET, Raw: counterparty}
 	default:
 		return importing.SourceFundsProjection{}, false
 	}

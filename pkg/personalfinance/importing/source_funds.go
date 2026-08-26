@@ -8,15 +8,15 @@ const (
 	SOURCE_FUNDS_MOVEMENT_REPAYMENT         SourceFundsMovementKind = "repayment"
 )
 
-// SourceFundsAccountReferenceKind 区分账单归属账户、付款账户别名与信用卡还款目标。
+// SourceFundsAccountReferenceKind 区分账单归属账户、付款账户别名与还款目标。
 // statement_account 由批次冻结的来源账户映射解析；payment_account 由付款方式映射解析；
-// credit_card_family 只在同一来源、币种下唯一命中已映射信用卡时解析。
+// repayment_target 先按精确付款账户别名解析，再按唯一发卡行信用卡兜底。
 type SourceFundsAccountReferenceKind string
 
 const (
-	SOURCE_FUNDS_ACCOUNT_STATEMENT          SourceFundsAccountReferenceKind = "statement_account"
-	SOURCE_FUNDS_ACCOUNT_PAYMENT            SourceFundsAccountReferenceKind = "payment_account"
-	SOURCE_FUNDS_ACCOUNT_CREDIT_CARD_FAMILY SourceFundsAccountReferenceKind = "credit_card_family"
+	SOURCE_FUNDS_ACCOUNT_STATEMENT        SourceFundsAccountReferenceKind = "statement_account"
+	SOURCE_FUNDS_ACCOUNT_PAYMENT          SourceFundsAccountReferenceKind = "payment_account"
+	SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET SourceFundsAccountReferenceKind = "repayment_target"
 )
 
 type SourceFundsAccountReference struct {

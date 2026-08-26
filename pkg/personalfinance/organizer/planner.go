@@ -133,6 +133,7 @@ func BuildOrganizePlan(uid int64, updateId int64, sources []*PlanningSource, acc
 	groups := buildIdentityGroups(rows)
 	groups = mergeStrongSameEvents(groups)
 	groups = mergeHighConfidenceSameEvents(groups)
+	groups = mergeProjectedRepaymentEvidence(groups)
 	groups = pairTransfersAndRepayments(groups)
 
 	ids := &checkedIdentifierGenerator{next: generateId, seen: make(map[int64]struct{})}
@@ -693,6 +694,88 @@ func pairTransfersAndRepayments(groups []*planningGroup) []*planningGroup {
 	return compactPlanningGroups(groups, parent, pairNature, ambiguous)
 }
 
+// mergeProjectedRepaymentEvidence 把支付宝/微信已经确定双边账户的还款，与银行账单中
+// 同一笔单边流水收敛为一个事件。平台投影保留还款语义，银行行只作为附加证据；
+// 每个账户侧只有唯一候选时才自动归并，多候选继续交给同一事件裁决。
+func mergeProjectedRepaymentEvidence(groups []*planningGroup) []*planningGroup {
+	if len(groups) < 2 {
+		return groups
+	}
+	type candidate struct {
+		projected int
+		bank      int
+		side      int64
+	}
+	candidates := make([]candidate, 0)
+	byProjectedSide := make(map[[2]int64]int)
+	byBank := make(map[int]int)
+	for projected := range groups {
+		movement, ok := summarizeProjectedFundsMovement(groups[projected])
+		if !ok || movement.Kind != importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT ||
+			movement.FromLedgerAccountId == nil || movement.ToLedgerAccountId == nil ||
+			*movement.FromLedgerAccountId == *movement.ToLedgerAccountId ||
+			groupHasSourceType(groups[projected], importing.SOURCE_TYPE_BANK) {
+			continue
+		}
+		for bank := range groups {
+			if bank == projected {
+				continue
+			}
+			side, matched := projectedRepaymentEvidenceSide(groups[projected], groups[bank], movement)
+			if !matched {
+				continue
+			}
+			candidates = append(candidates, candidate{projected: projected, bank: bank, side: side})
+			byProjectedSide[[2]int64{int64(projected), side}]++
+			byBank[bank]++
+		}
+	}
+	if len(candidates) == 0 {
+		return groups
+	}
+
+	parent := newGroupUnion(len(groups))
+	ambiguous := make(map[int]bool)
+	candidatePairs := make([]planningPair, 0, len(candidates))
+	for _, item := range candidates {
+		candidatePairs = append(candidatePairs, planningPair{left: item.projected, right: item.bank})
+		if byProjectedSide[[2]int64{int64(item.projected), item.side}] == 1 && byBank[item.bank] == 1 {
+			parent.union(item.projected, item.bank)
+			continue
+		}
+		ambiguous[item.projected] = true
+		ambiguous[item.bank] = true
+	}
+	assignSameEventCandidateKeys(groups, candidatePairs, ambiguous)
+	return compactPlanningGroups(groups, parent, nil, ambiguous)
+}
+
+func projectedRepaymentEvidenceSide(projected *planningGroup, bank *planningGroup, movement *PlanningFundsMovement) (int64, bool) {
+	if projected == nil || bank == nil || movement == nil || projected.ambiguous || bank.ambiguous ||
+		projected.sameEventCandidateKey != "" || bank.sameEventCandidateKey != "" ||
+		!groupHasOnlySourceType(bank, importing.SOURCE_TYPE_BANK) || groupHasProjectedFundsMovement(bank) ||
+		groupsShareSourceAccount(projected, bank) {
+		return 0, false
+	}
+	projectedSummary, bankSummary := summarizeGroup(projected), summarizeGroup(bank)
+	if projectedSummary.conflict || bankSummary.conflict || !bankSummary.complete ||
+		projectedSummary.amount < 0 || projectedSummary.unixTime < 1 || projectedSummary.currency == "" ||
+		projectedSummary.amount != bankSummary.amount || projectedSummary.currency != bankSummary.currency ||
+		absoluteDifference(projectedSummary.unixTime, bankSummary.unixTime) > planCrossSourceWindowSeconds ||
+		!groupHasRepaymentSemanticSignal(bank) {
+		return 0, false
+	}
+	if bankSummary.accountId == pointerInt64Value(movement.ToLedgerAccountId) &&
+		bankSummary.direction == importing.NORMALIZED_DIRECTION_INCOME && accountIsLiability(bankSummary.representative.account) {
+		return bankSummary.accountId, true
+	}
+	if bankSummary.accountId == pointerInt64Value(movement.FromLedgerAccountId) &&
+		bankSummary.direction == importing.NORMALIZED_DIRECTION_EXPENSE && accountIsAsset(bankSummary.representative.account) {
+		return bankSummary.accountId, true
+	}
+	return 0, false
+}
+
 func sameEventCompatible(left *planningGroup, right *planningGroup) bool {
 	leftSummary, rightSummary := summarizeGroup(left), summarizeGroup(right)
 	if !leftSummary.complete || !rightSummary.complete || leftSummary.conflict || rightSummary.conflict ||
@@ -969,7 +1052,7 @@ func summarizeProjectedFundsMovement(group *planningGroup) (*PlanningFundsMoveme
 	var result *PlanningFundsMovement
 	for _, item := range group.rows {
 		if item.fundsMovement == nil {
-			return nil, false
+			continue
 		}
 		if result == nil {
 			copy := *item.fundsMovement
@@ -1116,6 +1199,7 @@ func summarizeGroup(group *planningGroup) groupSummary {
 	result.direction = effectivePlanningDirection(row)
 	result.complete = result.accountId > 0 && result.amount >= 0 && result.unixTime > 0 && len(result.currency) == 3 &&
 		result.direction != importing.NORMALIZED_DIRECTION_UNKNOWN
+	_, hasProjectedFunds := summarizeProjectedFundsMovement(group)
 	if result.representative.account != nil && result.currency != "" && result.representative.account.Currency != result.currency {
 		result.conflict = true
 	}
@@ -1127,7 +1211,8 @@ func summarizeGroup(group *planningGroup) groupSummary {
 		if candidate.Currency != "" && result.currency != "" && candidate.Currency != result.currency {
 			result.conflict = true
 		}
-		if candidate.LedgerAccountId != nil && item.account != nil && result.accountId > 0 && *candidate.LedgerAccountId != result.accountId && group.pairedNature == "" {
+		if candidate.LedgerAccountId != nil && item.account != nil && result.accountId > 0 && *candidate.LedgerAccountId != result.accountId &&
+			group.pairedNature == "" && !hasProjectedFunds {
 			result.conflict = true
 		}
 		if candidate.NormalizedUnixTime != nil && result.unixTime > 0 && *candidate.NormalizedUnixTime != result.unixTime && !group.sameEvent && group.pairedNature == "" {
@@ -1138,7 +1223,7 @@ func summarizeGroup(group *planningGroup) groupSummary {
 		}
 		candidateDirection := effectivePlanningDirection(candidate)
 		if candidateDirection != importing.NORMALIZED_DIRECTION_UNKNOWN && result.direction != importing.NORMALIZED_DIRECTION_UNKNOWN &&
-			candidateDirection != result.direction && group.pairedNature == "" {
+			candidateDirection != result.direction && group.pairedNature == "" && !hasProjectedFunds {
 			result.conflict = true
 		}
 	}
@@ -1173,6 +1258,9 @@ func preferredPlanningRow(rows []*planningRow) *planningRow {
 func planningRowCompleteness(item *planningRow) int {
 	score := 0
 	row := item.row
+	if item.fundsMovement != nil {
+		score += 16
+	}
 	if row.LedgerAccountId != nil && item.account != nil {
 		score += 8
 	}
@@ -1237,6 +1325,27 @@ func groupsShareSourceType(left *planningGroup, right *planningGroup) bool {
 func groupHasSourceType(group *planningGroup, sourceType importing.SourceType) bool {
 	for _, item := range group.rows {
 		if item.source.Source.SourceTypeSnapshot == string(sourceType) {
+			return true
+		}
+	}
+	return false
+}
+
+func groupHasOnlySourceType(group *planningGroup, sourceType importing.SourceType) bool {
+	if group == nil || len(group.rows) == 0 {
+		return false
+	}
+	for _, item := range group.rows {
+		if item.source.Source.SourceTypeSnapshot != string(sourceType) {
+			return false
+		}
+	}
+	return true
+}
+
+func groupHasProjectedFundsMovement(group *planningGroup) bool {
+	for _, item := range group.rows {
+		if item.fundsMovement != nil {
 			return true
 		}
 	}
@@ -1337,6 +1446,15 @@ func repaymentSemanticSignal(row *importing.RawImportRow) bool {
 	text := canonicalEvidenceText(strings.Join([]string{row.RawTransactionType, row.RawCounterparty, row.RawItem, row.RawNote}, " "))
 	for _, token := range []string{"信用卡还款", "还款", "款项转入", "repayment", "paymentreceived", "cardpayment"} {
 		if strings.Contains(text, canonicalEvidenceText(token)) {
+			return true
+		}
+	}
+	return false
+}
+
+func groupHasRepaymentSemanticSignal(group *planningGroup) bool {
+	for _, item := range group.rows {
+		if repaymentSemanticSignal(item.row) {
 			return true
 		}
 	}

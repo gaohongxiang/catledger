@@ -73,6 +73,12 @@ func TestProjectSourceFundsReusesAlipayProductDirections(t *testing.T) {
 	if !ok || topUp.From.Raw != "合成银行卡(0000)" || topUp.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_STATEMENT {
 		t.Fatalf("支付宝充值资金方向错误: %+v ok=%v", topUp, ok)
 	}
+	repayment, ok := ProjectSourceFunds("自动还款-花呗账单", "余额", "花呗", false)
+	if !ok || repayment.Kind != importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT ||
+		repayment.From.Kind != importing.SOURCE_FUNDS_ACCOUNT_PAYMENT || repayment.From.Raw != "余额" ||
+		repayment.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET || repayment.To.Raw != "花呗" {
+		t.Fatalf("支付宝还款资金方向错误: %+v ok=%v", repayment, ok)
+	}
 	if _, ok = ProjectSourceFunds("普通商品", "余额", "普通商户", false); ok {
 		t.Fatal("普通支付宝消费不应产生双边资金投影")
 	}
