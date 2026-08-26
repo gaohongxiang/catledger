@@ -92,6 +92,38 @@ func TestBuildOrganizePlanKeepsClosedAndFailedReasonsForAudit(t *testing.T) {
 	}
 }
 
+func TestBuildOrganizePlanKeepsUnsafeProjectedFundsInReview(t *testing.T) {
+	const uid = int64(152)
+	for _, test := range []struct {
+		name string
+		to   *int64
+	}{
+		{name: "missing destination"},
+		{name: "same account", to: int64TestPointer(11)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := plannerSource(uid, 555, 0, 655, 755, importing.SOURCE_TYPE_WECHAT)
+			row := plannerRow(uid, 755, 155, 1155, 11, 1001, 1700000800, importing.NORMALIZED_DIRECTION_NEUTRAL, importing.SOURCE_TRANSACTION_TYPE_WITHDRAWAL)
+			source.Rows = []*importing.RawImportRow{row}
+			source.FundsMovements = map[int64]*organizer.PlanningFundsMovement{row.RowId: {
+				Kind: importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER, FromLedgerAccountId: int64TestPointer(11),
+				ToLedgerAccountId: test.to, RuleVersion: importing.SOURCE_FUNDS_RULE_VERSION_V1,
+			}}
+			plan, err := organizer.BuildOrganizePlan(uid, 555, []*organizer.PlanningSource{source},
+				map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)},
+				1700001000, sequentialPlannerIds(9800))
+			if err != nil {
+				t.Fatalf("build projected funds plan: %v", err)
+			}
+			event := plan.Events[0]
+			if event.Status != organizer.EVENT_STATUS_NEEDS_ACTION || event.EconomicNature != organizer.ECONOMIC_NATURE_INTERNAL_TRANSFER ||
+				!strings.Contains(event.ReasonCodesJson, "transfer_account_required") {
+				t.Fatalf("unsafe projected movement escaped review: %+v", event)
+			}
+		})
+	}
+}
+
 func TestBuildOrganizePlanPairsRepaymentsTransfersAndIsolatesAmbiguity(t *testing.T) {
 	const uid = int64(202)
 	asset := plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)

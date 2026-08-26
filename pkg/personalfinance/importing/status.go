@@ -35,6 +35,7 @@ const (
 	POSTING_REQUEST_VERSION_V1       RuleVersion = "posting-request-v1"
 	POSTING_LINK_VERSION_V1          RuleVersion = "posting-link-v1"
 	PAYMENT_ACCOUNT_ALIAS_VERSION_V1 RuleVersion = "payment-account-alias-v1"
+	SOURCE_FUNDS_RULE_VERSION_V1     RuleVersion = "source-funds-v1"
 )
 
 // CentralRuleVersions 是 parser 不得覆盖的中心规则版本集合。

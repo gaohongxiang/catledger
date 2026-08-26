@@ -6,6 +6,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/locales"
 	"github.com/mayswind/ezbookkeeping/pkg/log"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
 
@@ -131,49 +132,24 @@ func (p *alipayTransactionDataRowParser) Parse(ctx core.Context, user *models.Us
 				productName = dataRow.GetData(p.columns.productNameColumnName)
 			}
 
-			productAction := classifyAlipayProductAction(productName)
-
 			if statusName == alipayTransactionDataStatusRefundSuccessName {
-				if productAction == alipayProductActionPurchaseInvestment {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if productAction == alipayProductActionPurchaseInvestmentRefund {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = targetName
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = relatedAccountName
+				if projection, projected := ProjectSourceFunds(productName, relatedAccountName, targetName, true); projected {
+					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = renderAlipayFundsReference(projection.From, localeTextItems.DataConverterTextItems.Alipay)
+					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = renderAlipayFundsReference(projection.To, localeTextItems.DataConverterTextItems.Alipay)
 				} else {
 					data[datatable.TRANSACTION_DATA_TABLE_TRANSACTION_TYPE] = alipayTransactionTypeNameMapping[models.TRANSACTION_TYPE_INCOME]
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = ""
 				}
 			} else {
+				productAction := classifyAlipayProductAction(productName)
 				if productAction == alipayProductActionEarning {
 					data[datatable.TRANSACTION_DATA_TABLE_TRANSACTION_TYPE] = alipayTransactionTypeNameMapping[models.TRANSACTION_TYPE_INCOME]
 					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if productAction == alipayProductActionPurchaseInvestment {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if productAction == alipayProductActionSellInvestment {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = targetName
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = relatedAccountName
-				} else if productAction == alipayProductActionTransferToWallet {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = ""
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = localeTextItems.DataConverterTextItems.Alipay
-				} else if productAction == alipayProductActionTransferFromWallet {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = localeTextItems.DataConverterTextItems.Alipay
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if productAction == alipayProductActionTransferIn {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if productAction == alipayProductActionTransferOut {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if productAction == alipayProductActionTransfer {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
-				} else if productAction == alipayProductActionRepayment {
-					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
-					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = targetName
+				} else if projection, projected := ProjectSourceFunds(productName, relatedAccountName, targetName, false); projected {
+					data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = renderAlipayFundsReference(projection.From, localeTextItems.DataConverterTextItems.Alipay)
+					data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = renderAlipayFundsReference(projection.To, localeTextItems.DataConverterTextItems.Alipay)
 				} else {
 					log.Warnf(ctx, "[alipay_transaction_data_row_parser.Parse] skip parsing transaction in row \"%s\", because product name (\"%s\") is unknown", rowId, productName)
 					return nil, false, nil
@@ -197,6 +173,13 @@ func (p *alipayTransactionDataRowParser) Parse(ctx core.Context, user *models.Us
 	}
 
 	return data, true, nil
+}
+
+func renderAlipayFundsReference(reference importing.SourceFundsAccountReference, statementName string) string {
+	if reference.Kind == importing.SOURCE_FUNDS_ACCOUNT_STATEMENT {
+		return statementName
+	}
+	return reference.Raw
 }
 
 func (p *alipayTransactionDataRowParser) hasOriginalColumn(columnName string) bool {

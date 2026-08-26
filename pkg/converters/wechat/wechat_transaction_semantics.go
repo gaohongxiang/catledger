@@ -73,6 +73,29 @@ func (action wechatTransactionAction) sourceTransactionType() importing.SourceTr
 	}
 }
 
+// ProjectSourceFunds 复用微信动作分类，给单文件导入和账单整理提供同一套账户方向。
+func ProjectSourceFunds(transactionType string, paymentMethod string) (importing.SourceFundsProjection, bool) {
+	statement := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_STATEMENT}
+	payment := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: paymentMethod}
+	projection := importing.SourceFundsProjection{
+		Kind:        importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER,
+		RuleVersion: importing.SOURCE_FUNDS_RULE_VERSION_V1,
+	}
+
+	switch classifyWechatTransactionAction(transactionType) {
+	case wechatTransactionActionTopUp:
+		projection.From, projection.To = payment, statement
+	case wechatTransactionActionWithdrawal:
+		projection.From, projection.To = statement, payment
+	case wechatTransactionActionRepayment:
+		projection.Kind = importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT
+		projection.From = payment
+	default:
+		return importing.SourceFundsProjection{}, false
+	}
+	return projection, true
+}
+
 func classifyWechatEconomicEffect(transactionType string, status string) importing.EconomicEffect {
 	transactionType = normalizeWechatSemanticText(transactionType)
 	status = normalizeWechatSemanticText(status)

@@ -33,6 +33,10 @@ type EvidenceReader interface {
 	ListRawImportRows(c core.Context, uid int64, batchId int64) ([]*importing.RawImportRow, error)
 }
 
+type PaymentAccountMappingReader interface {
+	ListPaymentAccountMappings(c core.Context, uid int64, sourceType importing.SourceType) ([]*importing.PaymentAccountMapping, error)
+}
+
 // LedgerAccountReader 为经济性质判断提供正式账户类别和币种，不允许规划器写账。
 type LedgerAccountReader interface {
 	GetAccountsByAccountIds(c core.Context, uid int64, accountIds []int64) (map[int64]*models.Account, error)
@@ -65,19 +69,25 @@ type Engine struct {
 	repository *Repository
 	evidence   EvidenceReader
 	accounts   LedgerAccountReader
+	mappings   PaymentAccountMappingReader
+	projector  importing.SourceFundsProjector
 	ids        IdentifierGenerator
 	now        func() time.Time
 }
 
-func NewEngine(repository *Repository, evidence EvidenceReader, accounts LedgerAccountReader, ids IdentifierGenerator) (*Engine, error) {
-	if repository == nil || evidence == nil || accounts == nil || ids == nil {
+func NewEngine(repository *Repository, evidence EvidenceReader, accounts LedgerAccountReader, projector importing.SourceFundsProjector, ids IdentifierGenerator) (*Engine, error) {
+	mappings, ok := evidence.(PaymentAccountMappingReader)
+	if !ok {
 		return nil, ErrOrganizeRequestInvalid
 	}
-	return &Engine{repository: repository, evidence: evidence, accounts: accounts, ids: ids, now: time.Now}, nil
+	if repository == nil || evidence == nil || accounts == nil || projector == nil || ids == nil {
+		return nil, ErrOrganizeRequestInvalid
+	}
+	return &Engine{repository: repository, evidence: evidence, accounts: accounts, mappings: mappings, projector: projector, ids: ids, now: time.Now}, nil
 }
 
 func (e *Engine) Organize(c core.Context, request OrganizeRequest) (*OrganizeResult, error) {
-	if e == nil || e.repository == nil || e.evidence == nil || e.accounts == nil || e.ids == nil || e.now == nil ||
+	if e == nil || e.repository == nil || e.evidence == nil || e.accounts == nil || e.projector == nil || e.ids == nil || e.now == nil ||
 		request.Uid < 1 || request.UpdateId < 1 || request.ExpectedUpdateVersion < 1 ||
 		strings.TrimSpace(request.IdempotencyKey) == "" || len(request.IdempotencyKey) > maximumOrganizeIdempotencyKeyLength {
 		return nil, ErrOrganizeRequestInvalid
@@ -233,6 +243,7 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 	}
 	planningSources := make([]*PlanningSource, 0, len(sources))
 	accountIds := make(map[int64]struct{})
+	mappingsBySource := make(map[importing.SourceType]map[string]int64)
 	for _, source := range sources {
 		batch, findErr := e.evidence.FindImportBatchById(c, uid, source.BatchId)
 		if findErr != nil {
@@ -252,12 +263,40 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 		if listErr != nil {
 			return nil, nil, listErr
 		}
+		sourceType := importing.SourceType(source.SourceTypeSnapshot)
+		mappingIndex := mappingsBySource[sourceType]
+		if mappingIndex == nil && e.mappings != nil {
+			mappings, mappingErr := e.mappings.ListPaymentAccountMappings(c, uid, sourceType)
+			if mappingErr != nil {
+				return nil, nil, mappingErr
+			}
+			mappingIndex = indexPaymentAccountMappings(mappings)
+			mappingsBySource[sourceType] = mappingIndex
+		}
+		if mappingIndex == nil {
+			mappingIndex = map[string]int64{}
+		}
+		movements := make(map[int64]*PlanningFundsMovement)
 		for _, row := range rows {
 			if row != nil && row.LedgerAccountId != nil && *row.LedgerAccountId > 0 {
 				accountIds[*row.LedgerAccountId] = struct{}{}
 			}
+			if row == nil {
+				continue
+			}
+			projection, projected := e.projector.ProjectSourceFunds(sourceType, row)
+			if !projected {
+				continue
+			}
+			movement := resolvePlanningFundsMovement(row, batch, projection, mappingIndex)
+			movements[row.RowId] = movement
+			for _, accountId := range []*int64{movement.FromLedgerAccountId, movement.ToLedgerAccountId} {
+				if accountId != nil && *accountId > 0 {
+					accountIds[*accountId] = struct{}{}
+				}
+			}
 		}
-		planningSources = append(planningSources, &PlanningSource{Source: source, Batch: batch, Rows: rows})
+		planningSources = append(planningSources, &PlanningSource{Source: source, Batch: batch, Rows: rows, FundsMovements: movements})
 	}
 	ids := make([]int64, 0, len(accountIds))
 	for accountId := range accountIds {
@@ -272,6 +311,52 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 		}
 	}
 	return planningSources, accounts, nil
+}
+
+func indexPaymentAccountMappings(mappings []*importing.PaymentAccountMapping) map[string]int64 {
+	result := make(map[string]int64, len(mappings))
+	for _, mapping := range mappings {
+		if mapping == nil || mapping.Currency == "" || mapping.AliasKey == "" || mapping.LedgerAccountId < 1 ||
+			mapping.AliasKeyVersion != importing.PAYMENT_ACCOUNT_ALIAS_VERSION_V1 {
+			continue
+		}
+		result[mapping.Currency+"\x00"+mapping.AliasKey] = mapping.LedgerAccountId
+	}
+	return result
+}
+
+func resolvePlanningFundsMovement(row *importing.RawImportRow, batch *importing.ImportBatch, projection importing.SourceFundsProjection, mappings map[string]int64) *PlanningFundsMovement {
+	return &PlanningFundsMovement{
+		Kind:                projection.Kind,
+		FromLedgerAccountId: resolveFundsAccountReference(row, batch, projection.From, mappings),
+		ToLedgerAccountId:   resolveFundsAccountReference(row, batch, projection.To, mappings),
+		RuleVersion:         projection.RuleVersion,
+	}
+}
+
+func resolveFundsAccountReference(row *importing.RawImportRow, batch *importing.ImportBatch, reference importing.SourceFundsAccountReference, mappings map[string]int64) *int64 {
+	switch reference.Kind {
+	case importing.SOURCE_FUNDS_ACCOUNT_STATEMENT:
+		return cloneInt64Pointer(batch.LedgerAccountId)
+	case importing.SOURCE_FUNDS_ACCOUNT_PAYMENT:
+		alias, ok := importing.BuildPaymentAccountAlias(reference.Raw)
+		if !ok {
+			return nil
+		}
+		if row.LedgerAccountId != nil {
+			rowAlias, rowAliasOK := importing.BuildPaymentAccountAlias(row.RawPaymentMethod)
+			if rowAliasOK && rowAlias.Key == alias.Key {
+				return cloneInt64Pointer(row.LedgerAccountId)
+			}
+		}
+		accountId := mappings[row.Currency+"\x00"+alias.Key]
+		if accountId < 1 {
+			return nil
+		}
+		return &accountId
+	default:
+		return nil
+	}
 }
 
 func (e *Engine) persistPlan(c core.Context, request OrganizeRequest, action *FinanceAction, plan *OrganizePlan, reviewPlan *ReviewIssuePlan, now int64) error {

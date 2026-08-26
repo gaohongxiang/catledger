@@ -57,3 +57,23 @@ func TestNormalizeAlipayTransactionSemanticsKeepsInvestmentMovementAsTransfer(t 
 		t.Fatalf("投资买入应继续作为账户关系核对: direction=%s type=%s", direction, transactionType)
 	}
 }
+
+func TestProjectSourceFundsReusesAlipayProductDirections(t *testing.T) {
+	withdrawal, ok := ProjectSourceFunds("提现-实时提现", "余额", "合成银行卡(0000)", false)
+	if !ok || withdrawal.Kind != importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER ||
+		withdrawal.From.Kind != importing.SOURCE_FUNDS_ACCOUNT_STATEMENT ||
+		withdrawal.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_PAYMENT || withdrawal.To.Raw != "合成银行卡(0000)" {
+		t.Fatalf("支付宝提现资金方向错误: %+v ok=%v", withdrawal, ok)
+	}
+	purchase, ok := ProjectSourceFunds("基金产品-买入", "余额", "基金账户", false)
+	if !ok || purchase.From.Raw != "余额" || purchase.To.Raw != "基金账户" {
+		t.Fatalf("支付宝投资买入资金方向错误: %+v ok=%v", purchase, ok)
+	}
+	topUp, ok := ProjectSourceFunds("充值-普通充值", "合成银行卡(0000)", "", false)
+	if !ok || topUp.From.Raw != "合成银行卡(0000)" || topUp.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_STATEMENT {
+		t.Fatalf("支付宝充值资金方向错误: %+v ok=%v", topUp, ok)
+	}
+	if _, ok = ProjectSourceFunds("普通商品", "余额", "普通商户", false); ok {
+		t.Fatal("普通支付宝消费不应产生双边资金投影")
+	}
+}

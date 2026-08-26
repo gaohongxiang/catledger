@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/billflow"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/legacydata"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
@@ -19,7 +19,7 @@ func TestUserDataModulesCoverEveryMigratedUserTable(t *testing.T) {
 	registered := make(map[string]struct{})
 	for _, module := range []core.UserDataModule{
 		organizer.UserDataModule(),
-		billflow.UserDataModule(),
+		legacydata.BillflowUserDataModule(),
 		installments.UserDataModule(),
 		cardcycle.UserDataModule(),
 		loans.UserDataModule(),

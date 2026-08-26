@@ -1,8 +1,8 @@
-package billflow
+package legacydata
 
 import "github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 
-// Task 保存一次多文件联合整理的逻辑任务，不复制原始行或正式账本。
+// 以下结构只描述历史 billflow 表，供迁移校验和用户数据清理使用，不是运行时业务模型。
 type Task struct {
 	Uid                 int64         `xorm:"BIGINT INDEX(IDX_pf_billflow_task_uid_status_updated) NOT NULL"`
 	Status              TaskStatus    `xorm:"VARCHAR(32) INDEX(IDX_pf_billflow_task_uid_status_updated) NOT NULL"`

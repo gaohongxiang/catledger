@@ -49,9 +49,18 @@ const (
 
 // PlanningSource 把一次更新冻结的来源快照与不可变解析证据交给规划器。
 type PlanningSource struct {
-	Source *FinanceUpdateSource
-	Batch  *importing.ImportBatch
-	Rows   []*importing.RawImportRow
+	Source         *FinanceUpdateSource
+	Batch          *importing.ImportBatch
+	Rows           []*importing.RawImportRow
+	FundsMovements map[int64]*PlanningFundsMovement
+}
+
+// PlanningFundsMovement 是解析器投影经现有账户映射解析后的内存输入，不单独持久化。
+type PlanningFundsMovement struct {
+	Kind                importing.SourceFundsMovementKind
+	FromLedgerAccountId *int64
+	ToLedgerAccountId   *int64
+	RuleVersion         importing.RuleVersion
 }
 
 // OrganizePlan 是同一后端计划产生的事件、证据、关系和守恒计数。
@@ -72,9 +81,10 @@ type OrganizePlan struct {
 type planIdentifierGenerator func() int64
 
 type planningRow struct {
-	row     *importing.RawImportRow
-	source  *PlanningSource
-	account *models.Account
+	row           *importing.RawImportRow
+	source        *PlanningSource
+	account       *models.Account
+	fundsMovement *PlanningFundsMovement
 }
 
 type planningGroup struct {
@@ -246,6 +256,17 @@ func validatePlanningSources(uid int64, updateId int64, sources []*PlanningSourc
 		}
 		seenSources[item.Source.SourceId] = struct{}{}
 		seenBatches[item.Source.BatchId] = struct{}{}
+		sourceRows := make(map[int64]struct{}, len(item.Rows))
+		for _, row := range item.Rows {
+			if row != nil {
+				sourceRows[row.RowId] = struct{}{}
+			}
+		}
+		for rowId := range item.FundsMovements {
+			if _, exists := sourceRows[rowId]; !exists {
+				return nil, fmt.Errorf("organizer funds movement row mismatch")
+			}
+		}
 		for _, row := range item.Rows {
 			if row == nil || row.Uid != uid || row.BatchId != item.Source.BatchId || row.RowId < 1 {
 				return nil, fmt.Errorf("organizer evidence owner mismatch")
@@ -264,11 +285,43 @@ func validatePlanningSources(uid int64, updateId int64, sources []*PlanningSourc
 					account = nil
 				}
 			}
-			rows = append(rows, &planningRow{row: row, source: item, account: account})
+			movement := item.FundsMovements[row.RowId]
+			if movementErr := validatePlanningFundsMovement(uid, row, movement, accounts); movementErr != nil {
+				return nil, movementErr
+			}
+			rows = append(rows, &planningRow{row: row, source: item, account: account, fundsMovement: movement})
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].row.RowId < rows[j].row.RowId })
 	return rows, nil
+}
+
+func validatePlanningFundsMovement(uid int64, row *importing.RawImportRow, movement *PlanningFundsMovement, accounts map[int64]*models.Account) error {
+	if movement == nil {
+		return nil
+	}
+	if movement.RuleVersion != importing.SOURCE_FUNDS_RULE_VERSION_V1 ||
+		(movement.Kind != importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER && movement.Kind != importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT) {
+		return fmt.Errorf("organizer funds movement is invalid")
+	}
+	validateAccount := func(accountId *int64) error {
+		if accountId == nil {
+			return nil
+		}
+		if *accountId < 1 {
+			return fmt.Errorf("organizer funds movement account is invalid")
+		}
+		account := accounts[*accountId]
+		if account == nil || account.Uid != uid || account.AccountId != *accountId || account.Deleted ||
+			(row.Currency != "" && account.Currency != row.Currency) {
+			return fmt.Errorf("organizer funds movement account mismatch")
+		}
+		return nil
+	}
+	if err := validateAccount(movement.FromLedgerAccountId); err != nil {
+		return err
+	}
+	return validateAccount(movement.ToLedgerAccountId)
 }
 
 func buildIdentityGroups(rows []*planningRow) []*planningGroup {
@@ -780,10 +833,10 @@ func buildPlannedEvent(uid int64, updateId int64, group *planningGroup, now int6
 		if group.sameEvent {
 			reasons = append(reasons, reasonAutoSameEvent)
 		}
-		if !summary.complete {
+		if !summary.complete && !projectedGroupCoreComplete(group, summary) {
 			reasons = append(reasons, reasonCoreFieldsMissing)
 		}
-		if summary.accountId < 1 {
+		if summary.accountId < 1 && !groupHasResolvedFundsSource(group) {
 			reasons = append(reasons, reasonLedgerAccountRequired)
 		}
 		if groupNeedsIdentityReview(group) {
@@ -848,6 +901,14 @@ func classifySingleGroup(event *EconomicEvent, group *planningGroup, reasons *[]
 		event.EconomicNature = ECONOMIC_NATURE_REFUND
 		event.Status = EVENT_STATUS_NEEDS_ACTION
 		*reasons = append(*reasons, reasonRefundRelationRequired)
+	case configureProjectedFundsEvent(event, group):
+		if event.Status == EVENT_STATUS_NEEDS_ACTION {
+			if event.EconomicNature == ECONOMIC_NATURE_REPAYMENT {
+				*reasons = append(*reasons, reasonRepaymentAccountRequired)
+			} else {
+				*reasons = append(*reasons, reasonTransferAccountRequired)
+			}
+		}
 	case isRepaymentGroup(group):
 		event.EconomicNature = ECONOMIC_NATURE_REPAYMENT
 		event.FlowDirection = FLOW_DIRECTION_NEUTRAL
@@ -875,6 +936,65 @@ func classifySingleGroup(event *EconomicEvent, group *planningGroup, reasons *[]
 	if groupNeedsIdentityReview(group) {
 		event.Status = EVENT_STATUS_NEEDS_ACTION
 	}
+}
+
+func configureProjectedFundsEvent(event *EconomicEvent, group *planningGroup) bool {
+	movement, ok := summarizeProjectedFundsMovement(group)
+	if !ok {
+		return false
+	}
+	event.FlowDirection = FLOW_DIRECTION_NEUTRAL
+	switch movement.Kind {
+	case importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER:
+		event.EconomicNature = ECONOMIC_NATURE_INTERNAL_TRANSFER
+	case importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT:
+		event.EconomicNature = ECONOMIC_NATURE_REPAYMENT
+	default:
+		return false
+	}
+	event.LedgerAccountId = cloneInt64Pointer(movement.FromLedgerAccountId)
+	event.CounterpartyLedgerAccountId = cloneInt64Pointer(movement.ToLedgerAccountId)
+	event.Status = EVENT_STATUS_NEEDS_ACTION
+	if event.LedgerAccountId != nil && event.CounterpartyLedgerAccountId != nil &&
+		*event.LedgerAccountId != *event.CounterpartyLedgerAccountId {
+		event.Status = EVENT_STATUS_READY
+	}
+	return true
+}
+
+func summarizeProjectedFundsMovement(group *planningGroup) (*PlanningFundsMovement, bool) {
+	if group == nil || len(group.rows) < 1 {
+		return nil, false
+	}
+	var result *PlanningFundsMovement
+	for _, item := range group.rows {
+		if item.fundsMovement == nil {
+			return nil, false
+		}
+		if result == nil {
+			copy := *item.fundsMovement
+			result = &copy
+			continue
+		}
+		if result.Kind != item.fundsMovement.Kind || result.RuleVersion != item.fundsMovement.RuleVersion ||
+			pointerInt64Value(result.FromLedgerAccountId) != pointerInt64Value(item.fundsMovement.FromLedgerAccountId) ||
+			pointerInt64Value(result.ToLedgerAccountId) != pointerInt64Value(item.fundsMovement.ToLedgerAccountId) {
+			return nil, false
+		}
+	}
+	return result, result != nil
+}
+
+func groupHasResolvedFundsSource(group *planningGroup) bool {
+	movement, ok := summarizeProjectedFundsMovement(group)
+	return ok && movement.FromLedgerAccountId != nil
+}
+
+func projectedGroupCoreComplete(group *planningGroup, summary groupSummary) bool {
+	movement, ok := summarizeProjectedFundsMovement(group)
+	return ok && movement.FromLedgerAccountId != nil && movement.ToLedgerAccountId != nil &&
+		summary.amount >= 0 && summary.unixTime > 0 && len(summary.currency) == 3 &&
+		summary.direction != importing.NORMALIZED_DIRECTION_UNKNOWN
 }
 
 func configurePairedEvent(event *EconomicEvent, group *planningGroup, nature EconomicNature) {

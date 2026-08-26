@@ -1,6 +1,4 @@
-package billflow
-
-import "github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+package legacydata
 
 // RuleVersion 标识会影响整理任务持久结果或幂等语义的规则版本。
 type RuleVersion string
@@ -98,69 +96,3 @@ const (
 	SUBJECT_KIND_PAYMENT_ALIAS         SubjectKind = "payment_alias"
 	SUBJECT_KIND_TRANSACTION           SubjectKind = "transaction"
 )
-
-func isTaskStatus(value TaskStatus) bool {
-	switch value {
-	case TASK_STATUS_RECEIVING, TASK_STATUS_ACCOUNTS_PENDING, TASK_STATUS_PROCESSING,
-		TASK_STATUS_AWAITING_CONFIRM, TASK_STATUS_READY, TASK_STATUS_FAILED:
-		return true
-	default:
-		return false
-	}
-}
-
-func isConfirmPolicy(value ConfirmPolicy) bool {
-	return value == CONFIRM_POLICY_CONFIRM_THEN_POST || value == CONFIRM_POLICY_AUTO_POST
-}
-
-func isActionType(value ActionType) bool {
-	switch value {
-	case ACTION_TYPE_CREATE_TASK, ACTION_TYPE_REPLACE_FILES, ACTION_TYPE_APPLY_ACCOUNTS, ACTION_TYPE_RUN_ORGANIZE,
-		ACTION_TYPE_CONFIRM_POST, ACTION_TYPE_RESOLVE_TODO, ACTION_TYPE_UNDO_POST,
-		ACTION_TYPE_CONFIRM_INSTALLMENT, ACTION_TYPE_SAVE_INSTALLMENT_DETAILS,
-		ACTION_TYPE_SAVE_BALANCE_REVIEW, ACTION_TYPE_SAVE_CARD_RULE:
-		return true
-	default:
-		return false
-	}
-}
-
-func isActionStatus(value ActionStatus) bool {
-	switch value {
-	case ACTION_STATUS_READY, ACTION_STATUS_APPLYING, ACTION_STATUS_APPLIED,
-		ACTION_STATUS_ACTION_REQUIRED, ACTION_STATUS_FAILED:
-		return true
-	default:
-		return false
-	}
-}
-
-func isTodoKind(value TodoKind) bool {
-	switch value {
-	case TODO_KIND_UNRESOLVED_PAYMENT_ACCOUNT, TODO_KIND_IDENTITY_CONFLICT, TODO_KIND_CORE_FIELD_CONFLICT,
-		TODO_KIND_LEDGER_MISMATCH, TODO_KIND_CROSS_SOURCE_AMBIGUOUS, TODO_KIND_TRANSFER_UNCLEAR,
-		TODO_KIND_REFUND_UNCLEAR, TODO_KIND_REPAYMENT_UNCLEAR, TODO_KIND_INSTALLMENT_CANDIDATE,
-		TODO_KIND_UNCATEGORIZED:
-		return true
-	default:
-		return false
-	}
-}
-
-func isTodoStatus(value TodoStatus) bool {
-	return value == TODO_STATUS_OPEN || value == TODO_STATUS_RESOLVED || value == TODO_STATUS_DISMISSED
-}
-
-func isSubjectKind(value SubjectKind) bool {
-	switch value {
-	case SUBJECT_KIND_RAW_ROW, SUBJECT_KIND_SOURCE_IDENTITY, SUBJECT_KIND_RECONCILIATION_CASE,
-		SUBJECT_KIND_INSTALLMENT_CANDIDATE, SUBJECT_KIND_PAYMENT_ALIAS, SUBJECT_KIND_TRANSACTION:
-		return true
-	default:
-		return false
-	}
-}
-
-func isSourceType(value importing.SourceType) bool {
-	return value == importing.SOURCE_TYPE_ALIPAY || value == importing.SOURCE_TYPE_WECHAT || value == importing.SOURCE_TYPE_BANK
-}

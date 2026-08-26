@@ -58,3 +58,20 @@ func TestClassifyWechatEconomicEffect(t *testing.T) {
 		})
 	}
 }
+
+func TestProjectSourceFundsUsesStatementAccountForWechatWallet(t *testing.T) {
+	withdrawal, ok := ProjectSourceFunds("零钱提现", "浙江农商联合银行储蓄卡(5564)")
+	if !ok || withdrawal.Kind != importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER ||
+		withdrawal.From.Kind != importing.SOURCE_FUNDS_ACCOUNT_STATEMENT ||
+		withdrawal.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_PAYMENT ||
+		withdrawal.To.Raw != "浙江农商联合银行储蓄卡(5564)" {
+		t.Fatalf("微信零钱提现资金方向错误: %+v ok=%v", withdrawal, ok)
+	}
+	topUp, ok := ProjectSourceFunds("零钱充值", "合成银行卡(0000)")
+	if !ok || topUp.From.Kind != importing.SOURCE_FUNDS_ACCOUNT_PAYMENT || topUp.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_STATEMENT {
+		t.Fatalf("微信零钱充值资金方向错误: %+v ok=%v", topUp, ok)
+	}
+	if _, ok = ProjectSourceFunds("转账", "合成银行卡(0000)"); ok {
+		t.Fatal("普通微信转账的另一方不明确，不应产生双边投影")
+	}
+}

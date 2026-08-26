@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mayswind/ezbookkeeping/pkg/converters"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
@@ -70,6 +71,7 @@ func TestEngineDatabaseIntegration(t *testing.T) {
 			}},
 		},
 		&engineAccountStub{items: map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}},
+		converters.NewSourceFundsProjector(),
 		&engineIdGenerator{next: 9000},
 	)
 	if err != nil {

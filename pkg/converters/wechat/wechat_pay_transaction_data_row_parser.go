@@ -122,20 +122,13 @@ func (p *weChatPayTransactionDataRowParser) Parse(ctx core.Context, user *models
 				data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 			}
 		} else if dataRow.GetData(wechatPayTransactionTypeColumnName) == wechatPayTransactionTypeNameMapping[models.TRANSACTION_TYPE_TRANSFER] {
-			switch classifyWechatTransactionAction(data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY]) {
-			case wechatTransactionActionTopUp:
-				data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
-				data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = localeTextItems.DataConverterTextItems.WeChatWallet
-			case wechatTransactionActionWithdrawal:
-				data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = localeTextItems.DataConverterTextItems.WeChatWallet
-				data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = relatedAccountName
-			case wechatTransactionActionRepayment:
-				data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
-				data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = ""
-			default:
+			projection, projected := ProjectSourceFunds(data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY], relatedAccountName)
+			if !projected {
 				log.Warnf(ctx, "[wechat_pay_transaction_data_row_parser.Parse] skip parsing transaction in row \"%s\", because unknown transfer transaction category \"%s\"", rowId, data[datatable.TRANSACTION_DATA_TABLE_SUB_CATEGORY])
 				return nil, false, nil
 			}
+			data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = renderWechatFundsReference(projection.From, localeTextItems.DataConverterTextItems.WeChatWallet)
+			data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = renderWechatFundsReference(projection.To, localeTextItems.DataConverterTextItems.WeChatWallet)
 		} else {
 			data[datatable.TRANSACTION_DATA_TABLE_ACCOUNT_NAME] = relatedAccountName
 			data[datatable.TRANSACTION_DATA_TABLE_RELATED_ACCOUNT_NAME] = ""
@@ -152,6 +145,13 @@ func (p *weChatPayTransactionDataRowParser) Parse(ctx core.Context, user *models
 	}
 
 	return data, true, nil
+}
+
+func renderWechatFundsReference(reference importing.SourceFundsAccountReference, walletName string) string {
+	if reference.Kind == importing.SOURCE_FUNDS_ACCOUNT_STATEMENT {
+		return walletName
+	}
+	return reference.Raw
 }
 
 func (p *weChatPayTransactionDataRowParser) hasOriginalColumn(columnName string) bool {

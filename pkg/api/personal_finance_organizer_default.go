@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 
+	"github.com/mayswind/ezbookkeeping/pkg/converters"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
@@ -49,7 +50,7 @@ func InitializePersonalFinanceOrganizerApi() error {
 	if err != nil {
 		return err
 	}
-	engine, err := organizer.NewEngine(repository, evidence, services.Accounts, uuid.Container)
+	engine, err := organizer.NewEngine(repository, evidence, services.Accounts, converters.NewSourceFundsProjector(), uuid.Container)
 	if err != nil {
 		return err
 	}

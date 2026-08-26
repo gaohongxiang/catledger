@@ -14,10 +14,10 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/billflow"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/legacydata"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
@@ -1098,8 +1098,8 @@ func TestMigrationProtocol(t *testing.T) {
 		requireUpgrade(t, store)
 		now := requireDatabaseUnixTime(t, integrationDatabase)
 
-		firstTask := &billflow.Task{
-			Uid: 1001, Status: billflow.TASK_STATUS_RECEIVING, ConfirmPolicy: billflow.CONFIRM_POLICY_AUTO_POST,
+		firstTask := &legacydata.Task{
+			Uid: 1001, Status: legacydata.TASK_STATUS_RECEIVING, ConfirmPolicy: legacydata.CONFIRM_POLICY_AUTO_POST,
 			Version: 1, CreatedUnixTime: now, UpdatedUnixTime: now, TaskId: 101,
 		}
 		requireInsertBean(t, firstTask)
@@ -1107,7 +1107,7 @@ func TestMigrationProtocol(t *testing.T) {
 		secondTask.TaskId = 102
 		requireInsertBean(t, &secondTask)
 
-		firstMember := &billflow.TaskMember{
+		firstMember := &legacydata.TaskMember{
 			Uid: 1001, TaskId: 101, MemberOrder: 0, FileId: 201, BatchId: 301, CreatedUnixTime: now, MemberId: 401,
 		}
 		requireInsertBean(t, firstMember)
@@ -1125,11 +1125,11 @@ func TestMigrationProtocol(t *testing.T) {
 		secondUserMember.MemberId = 404
 		requireInsertBean(t, &secondUserMember)
 
-		firstAction := &billflow.Action{
-			Uid: 1001, TaskId: 101, ExpectedTaskVersion: 1, ActionType: billflow.ACTION_TYPE_CREATE_TASK,
-			IdempotencyKeyDigest: strings.Repeat("a", 64), IdempotencyKeyVersion: billflow.IDEMPOTENCY_KEY_VERSION_V1,
-			RequestDigest: strings.Repeat("b", 64), RequestDigestVersion: billflow.ACTION_REQUEST_DIGEST_VERSION_V1,
-			Status: billflow.ACTION_STATUS_READY, ReasonCodesJson: "[]", CreatedUnixTime: now, UpdatedUnixTime: now, ActionId: 501,
+		firstAction := &legacydata.Action{
+			Uid: 1001, TaskId: 101, ExpectedTaskVersion: 1, ActionType: legacydata.ACTION_TYPE_CREATE_TASK,
+			IdempotencyKeyDigest: strings.Repeat("a", 64), IdempotencyKeyVersion: legacydata.IDEMPOTENCY_KEY_VERSION_V1,
+			RequestDigest: strings.Repeat("b", 64), RequestDigestVersion: legacydata.ACTION_REQUEST_DIGEST_VERSION_V1,
+			Status: legacydata.ACTION_STATUS_READY, ReasonCodesJson: "[]", CreatedUnixTime: now, UpdatedUnixTime: now, ActionId: 501,
 		}
 		requireInsertBean(t, firstAction)
 		duplicateAction := *firstAction
@@ -1137,9 +1137,9 @@ func TestMigrationProtocol(t *testing.T) {
 		duplicateAction.RequestDigest = strings.Repeat("c", 64)
 		requireInsertBeanFailure(t, &duplicateAction)
 
-		firstTodo := &billflow.Todo{
-			Uid: 1001, TaskId: 101, TodoKind: billflow.TODO_KIND_UNCATEGORIZED, Status: billflow.TODO_STATUS_OPEN,
-			SubjectKind: billflow.SUBJECT_KIND_TRANSACTION, SubjectId: 701, ReasonCodesJson: "[]",
+		firstTodo := &legacydata.Todo{
+			Uid: 1001, TaskId: 101, TodoKind: legacydata.TODO_KIND_UNCATEGORIZED, Status: legacydata.TODO_STATUS_OPEN,
+			SubjectKind: legacydata.SUBJECT_KIND_TRANSACTION, SubjectId: 701, ReasonCodesJson: "[]",
 			Version: 1, CreatedUnixTime: now, UpdatedUnixTime: now, TodoId: 601,
 		}
 		requireInsertBean(t, firstTodo)
@@ -1147,9 +1147,9 @@ func TestMigrationProtocol(t *testing.T) {
 		duplicateTodo.TodoId = 602
 		requireInsertBeanFailure(t, &duplicateTodo)
 
-		firstAlias := &billflow.CategoryAliasMapping{
+		firstAlias := &legacydata.CategoryAliasMapping{
 			Uid: 1001, SourceType: importing.SOURCE_TYPE_ALIPAY, AliasKey: strings.Repeat("d", 64),
-			AliasKeyVersion: billflow.CATEGORY_ALIAS_VERSION_V1, LedgerCategoryId: 11, MaskedDisplayName: "餐饮",
+			AliasKeyVersion: legacydata.CATEGORY_ALIAS_VERSION_V1, LedgerCategoryId: 11, MaskedDisplayName: "餐饮",
 			CreatedUnixTime: now, UpdatedUnixTime: now, MappingId: 801,
 		}
 		requireInsertBean(t, firstAlias)

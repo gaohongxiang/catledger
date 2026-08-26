@@ -1,6 +1,10 @@
 package alipay
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+)
 
 type alipayProductAction uint8
 
@@ -47,4 +51,47 @@ func classifyAlipayProductAction(productName string) alipayProductAction {
 	default:
 		return alipayProductActionUnknown
 	}
+}
+
+// ProjectSourceFunds 复用支付宝产品动作分类，给单文件导入和账单整理提供同一套账户方向。
+func ProjectSourceFunds(productName string, paymentMethod string, counterparty string, refund bool) (importing.SourceFundsProjection, bool) {
+	statement := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_STATEMENT}
+	payment := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: paymentMethod}
+	target := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: counterparty}
+	projection := importing.SourceFundsProjection{
+		Kind:        importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER,
+		RuleVersion: importing.SOURCE_FUNDS_RULE_VERSION_V1,
+	}
+
+	action := classifyAlipayProductAction(productName)
+	if refund {
+		switch action {
+		case alipayProductActionPurchaseInvestment:
+			projection.From, projection.To = payment, target
+		case alipayProductActionPurchaseInvestmentRefund:
+			projection.From, projection.To = target, payment
+		default:
+			return importing.SourceFundsProjection{}, false
+		}
+		return projection, true
+	}
+
+	switch action {
+	case alipayProductActionPurchaseInvestment:
+		projection.From, projection.To = payment, target
+	case alipayProductActionSellInvestment:
+		projection.From, projection.To = target, payment
+	case alipayProductActionTransferToWallet:
+		projection.From, projection.To = payment, statement
+	case alipayProductActionTransferFromWallet:
+		projection.From, projection.To = statement, target
+	case alipayProductActionTransferIn, alipayProductActionTransferOut, alipayProductActionTransfer:
+		projection.From, projection.To = payment, target
+	case alipayProductActionRepayment:
+		projection.Kind = importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT
+		projection.From, projection.To = payment, target
+	default:
+		return importing.SourceFundsProjection{}, false
+	}
+	return projection, true
 }

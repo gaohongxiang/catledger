@@ -439,7 +439,7 @@ func TestAlipayCsvFileImporterParseImportedData_ParseRelatedAccount(t *testing.T
 	assert.Nil(t, err)
 
 	assert.Equal(t, 9, len(allNewTransactions))
-	assert.Equal(t, 6, len(allNewAccounts))
+	assert.Equal(t, 5, len(allNewAccounts))
 
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_INCOME, allNewTransactions[0].Type)
 	assert.Equal(t, int64(1234567890), allNewTransactions[0].Uid)
@@ -465,7 +465,7 @@ func TestAlipayCsvFileImporterParseImportedData_ParseRelatedAccount(t *testing.T
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, allNewTransactions[3].Type)
 	assert.Equal(t, int64(1234567890), allNewTransactions[3].Uid)
 	assert.Equal(t, int64(1), allNewTransactions[3].Amount)
-	assert.Equal(t, "", allNewTransactions[3].OriginalSourceAccountName)
+	assert.Equal(t, "Test Account", allNewTransactions[3].OriginalSourceAccountName)
 	assert.Equal(t, "Alipay", allNewTransactions[3].OriginalDestinationAccountName)
 	assert.Equal(t, "transfer to alipay wallet", allNewTransactions[3].Comment)
 
@@ -513,20 +513,16 @@ func TestAlipayCsvFileImporterParseImportedData_ParseRelatedAccount(t *testing.T
 	assert.Equal(t, "CNY", allNewAccounts[1].Currency)
 
 	assert.Equal(t, int64(1234567890), allNewAccounts[2].Uid)
-	assert.Equal(t, "", allNewAccounts[2].Name)
+	assert.Equal(t, "Alipay", allNewAccounts[2].Name)
 	assert.Equal(t, "CNY", allNewAccounts[2].Currency)
 
 	assert.Equal(t, int64(1234567890), allNewAccounts[3].Uid)
-	assert.Equal(t, "Alipay", allNewAccounts[3].Name)
+	assert.Equal(t, "Test Account3", allNewAccounts[3].Name)
 	assert.Equal(t, "CNY", allNewAccounts[3].Currency)
 
 	assert.Equal(t, int64(1234567890), allNewAccounts[4].Uid)
-	assert.Equal(t, "Test Account3", allNewAccounts[4].Name)
+	assert.Equal(t, "Test Account4", allNewAccounts[4].Name)
 	assert.Equal(t, "CNY", allNewAccounts[4].Currency)
-
-	assert.Equal(t, int64(1234567890), allNewAccounts[5].Uid)
-	assert.Equal(t, "Test Account4", allNewAccounts[5].Name)
-	assert.Equal(t, "CNY", allNewAccounts[5].Currency)
 }
 
 func TestAlipayCsvFileImporterParseImportedData_ParseDescription(t *testing.T) {

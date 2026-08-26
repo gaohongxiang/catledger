@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/billflow"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/legacydata"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
 )
 
@@ -79,11 +79,11 @@ func TestRuntimeModelsMatchFrozenSchemaV006(t *testing.T) {
 		frozen  any
 		runtime any
 	}{
-		{new(billflowTaskV006), new(billflow.Task)},
-		{new(billflowTaskMemberV006), new(billflow.TaskMember)},
-		{new(billflowActionV006), new(billflow.Action)},
-		{new(billflowTodoV006), new(billflow.Todo)},
-		{new(categoryAliasMappingV006), new(billflow.CategoryAliasMapping)},
+		{new(billflowTaskV006), new(legacydata.Task)},
+		{new(billflowTaskMemberV006), new(legacydata.TaskMember)},
+		{new(billflowActionV006), new(legacydata.Action)},
+		{new(billflowTodoV006), new(legacydata.Todo)},
+		{new(categoryAliasMappingV006), new(legacydata.CategoryAliasMapping)},
 		{new(installmentCandidateV006), new(installments.Candidate)},
 		{new(installmentCandidateMemberV006), new(installments.CandidateMember)},
 		{new(accountBalanceReviewV006), new(cardcycle.BalanceReview)},

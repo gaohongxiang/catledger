@@ -1,11 +1,11 @@
-package billflow
+package legacydata
 
 import "github.com/mayswind/ezbookkeeping/pkg/core"
 
-// UserDataModule 覆盖多账单整理用户表。
-func UserDataModule() core.UserDataModule {
+// BillflowUserDataModule 只登记历史表，保证用户数据计数与删除不会遗漏。
+func BillflowUserDataModule() core.UserDataModule {
 	return core.UserDataModule{
-		Name: "billflow",
+		Name: "legacy_billflow",
 		Tables: core.UserDataTables(
 			"pf_billflow_todo",
 			"pf_billflow_action",

@@ -6,12 +6,75 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mayswind/ezbookkeeping/pkg/converters"
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 	"github.com/mayswind/ezbookkeeping/pkg/uuid"
 )
+
+func TestEngineSQLiteProjectsWechatWithdrawalFromStatementAccountToPaymentAccount(t *testing.T) {
+	repository, _ := newSQLiteOrganizerRepository(t)
+	const uid = int64(4051)
+	const updateId = int64(5051)
+	const batchId = int64(7051)
+	const walletAccountId = int64(11)
+	const bankAccountId = int64(22)
+	source := testSource(uid, updateId, 6051, 7050, batchId, 10)
+	source.SourceTypeSnapshot = string(importing.SOURCE_TYPE_WECHAT)
+	if err := repository.DoTransaction(nil, uid, func(tx *organizer.RepositoryTransaction) error {
+		if err := tx.InsertUpdate(testUpdate(uid, updateId, 10)); err != nil {
+			return err
+		}
+		return tx.InsertSource(source)
+	}); err != nil {
+		t.Fatalf("seed wechat withdrawal update: %v", err)
+	}
+
+	batch := engineBatch(uid, 7050, batchId)
+	batch.SourceTypeSnapshot = importing.SOURCE_TYPE_WECHAT
+	batch.LedgerAccountId = int64TestPointer(walletAccountId)
+	row := plannerRow(uid, batchId, 8051, 9051, bankAccountId, 1001, 1783500000, importing.NORMALIZED_DIRECTION_NEUTRAL, importing.SOURCE_TRANSACTION_TYPE_WITHDRAWAL)
+	row.LedgerAccountId = nil
+	row.RawTransactionType = "零钱提现"
+	row.RawPaymentMethod = "浙江农商联合银行储蓄卡(5564)"
+	alias, ok := importing.BuildPaymentAccountAlias(row.RawPaymentMethod)
+	if !ok {
+		t.Fatal("build payment account alias")
+	}
+	evidence := &engineEvidenceStub{
+		batches: map[int64]*importing.ImportBatch{batchId: batch},
+		rows:    map[int64][]*importing.RawImportRow{batchId: {row}},
+		mappings: map[importing.SourceType][]*importing.PaymentAccountMapping{
+			importing.SOURCE_TYPE_WECHAT: {{
+				Uid: uid, SourceType: importing.SOURCE_TYPE_WECHAT, Currency: "CNY", AliasKey: alias.Key,
+				AliasKeyVersion: alias.Version, LedgerAccountId: bankAccountId, MappingId: 1,
+			}},
+		},
+	}
+	accounts := &engineAccountStub{items: map[int64]*models.Account{
+		walletAccountId: plannerAccount(uid, walletAccountId, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT),
+		bankAccountId:   plannerAccount(uid, bankAccountId, models.ACCOUNT_CATEGORY_SAVINGS_ACCOUNT),
+	}}
+	engine, err := organizer.NewEngine(repository, evidence, accounts, converters.NewSourceFundsProjector(), &engineIdGenerator{next: 9500})
+	if err != nil {
+		t.Fatalf("create projected organizer engine: %v", err)
+	}
+	result, err := engine.Organize(nil, organizer.OrganizeRequest{
+		Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 1, IdempotencyKey: "wechat-withdrawal-5051-v1",
+	})
+	if err != nil || result == nil || len(result.Events) != 1 {
+		t.Fatalf("organize projected withdrawal: result=%+v err=%v", result, err)
+	}
+	event := result.Events[0]
+	if event.Status != organizer.EVENT_STATUS_READY || event.EconomicNature != organizer.ECONOMIC_NATURE_INTERNAL_TRANSFER ||
+		event.FlowDirection != organizer.FLOW_DIRECTION_NEUTRAL || event.LedgerAccountId == nil || *event.LedgerAccountId != walletAccountId ||
+		event.CounterpartyLedgerAccountId == nil || *event.CounterpartyLedgerAccountId != bankAccountId ||
+		result.Update.ReadyEventCount != 1 || result.Update.NeedsActionEventCount != 0 {
+		t.Fatalf("wechat withdrawal was not auto-confirmable: event=%+v update=%+v", event, result.Update)
+	}
+}
 
 func TestEngineSQLitePersistsPlanAndReplaysIdempotently(t *testing.T) {
 	repository, database := newSQLiteOrganizerRepository(t)
@@ -35,7 +98,7 @@ func TestEngineSQLitePersistsPlanAndReplaysIdempotently(t *testing.T) {
 	}
 	accounts := &engineAccountStub{items: map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}}
 	ids := &engineIdGenerator{next: 10000}
-	engine, err := organizer.NewEngine(repository, evidence, accounts, ids)
+	engine, err := organizer.NewEngine(repository, evidence, accounts, converters.NewSourceFundsProjector(), ids)
 	if err != nil {
 		t.Fatalf("create organizer engine: %v", err)
 	}
@@ -89,6 +152,7 @@ func TestEngineSQLiteRejectsReorganizationForAutomaticPlan(t *testing.T) {
 	}
 	engine, err := organizer.NewEngine(repository, evidence,
 		&engineAccountStub{items: map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}},
+		converters.NewSourceFundsProjector(),
 		&engineIdGenerator{next: 15000})
 	if err != nil {
 		t.Fatalf("create immutable organizer engine: %v", err)
@@ -142,7 +206,7 @@ func TestEngineSQLiteMarksSnapshotFailureWithoutPartialPlan(t *testing.T) {
 	batch := engineBatch(uid, 7200, batchId)
 	batch.ParserVersion = "different-parser"
 	engine, err := organizer.NewEngine(repository, &engineEvidenceStub{batches: map[int64]*importing.ImportBatch{batchId: batch}, rows: map[int64][]*importing.RawImportRow{batchId: {}}},
-		&engineAccountStub{items: map[int64]*models.Account{}}, &engineIdGenerator{next: 20000})
+		&engineAccountStub{items: map[int64]*models.Account{}}, converters.NewSourceFundsProjector(), &engineIdGenerator{next: 20000})
 	if err != nil {
 		t.Fatalf("create failing organizer engine: %v", err)
 	}
@@ -193,6 +257,7 @@ func TestEngineSQLiteConcurrentReplayKeepsOnePlan(t *testing.T) {
 	}
 	engine, err := organizer.NewEngine(repository, evidence,
 		&engineAccountStub{items: map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}},
+		converters.NewSourceFundsProjector(),
 		&engineIdGenerator{next: 30000})
 	if err != nil {
 		t.Fatalf("create concurrent organizer engine: %v", err)
@@ -233,7 +298,7 @@ func TestEngineSQLiteRejectsReorganizationBeforeStateTransitionWhenPlanHasManual
 	event := postingEvent(uid, updateId, 8351, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_EXPENSE)
 	event.ManualFieldMask = organizer.MANUAL_FIELD_CATEGORY
 	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{event})
-	engine, err := organizer.NewEngine(repository, &engineEvidenceStub{}, &engineAccountStub{}, &engineIdGenerator{next: 31000})
+	engine, err := organizer.NewEngine(repository, &engineEvidenceStub{}, &engineAccountStub{}, converters.NewSourceFundsProjector(), &engineIdGenerator{next: 31000})
 	if err != nil {
 		t.Fatalf("create manual-fact organizer engine: %v", err)
 	}
@@ -284,7 +349,7 @@ func TestEngineSQLiteRejectsReorganizationBeforeStateTransitionAfterReviewDecisi
 	}); err != nil {
 		t.Fatalf("seed resolved review issue: %v", err)
 	}
-	engine, err := organizer.NewEngine(repository, &engineEvidenceStub{}, &engineAccountStub{}, &engineIdGenerator{next: 32000})
+	engine, err := organizer.NewEngine(repository, &engineEvidenceStub{}, &engineAccountStub{}, converters.NewSourceFundsProjector(), &engineIdGenerator{next: 32000})
 	if err != nil {
 		t.Fatalf("create decided-plan organizer engine: %v", err)
 	}
@@ -308,11 +373,24 @@ func TestEngineSQLiteRejectsReorganizationBeforeStateTransitionAfterReviewDecisi
 }
 
 type engineEvidenceStub struct {
-	batches map[int64]*importing.ImportBatch
-	rows    map[int64][]*importing.RawImportRow
-	mu      sync.Mutex
-	calls   int
-	barrier chan struct{}
+	batches  map[int64]*importing.ImportBatch
+	rows     map[int64][]*importing.RawImportRow
+	mappings map[importing.SourceType][]*importing.PaymentAccountMapping
+	mu       sync.Mutex
+	calls    int
+	barrier  chan struct{}
+}
+
+func (s *engineEvidenceStub) ListPaymentAccountMappings(_ core.Context, uid int64, sourceType importing.SourceType) ([]*importing.PaymentAccountMapping, error) {
+	result := make([]*importing.PaymentAccountMapping, 0, len(s.mappings[sourceType]))
+	for _, mapping := range s.mappings[sourceType] {
+		if mapping == nil || mapping.Uid != uid {
+			continue
+		}
+		cloned := *mapping
+		result = append(result, &cloned)
+	}
+	return result, nil
 }
 
 func (s *engineEvidenceStub) FindImportBatchById(_ core.Context, uid int64, batchId int64) (*importing.ImportBatch, error) {
@@ -381,4 +459,8 @@ func engineBatch(uid int64, fileId int64, batchId int64) *importing.ImportBatch 
 		Uid: uid, FileId: fileId, Status: importing.IMPORT_BATCH_STATUS_READY, SourceTypeSnapshot: importing.SOURCE_TYPE_ALIPAY,
 		ParserVersion: "parser-v1", NormalizationVersion: "normalization-v1", IdentityKeyVersion: "identity-v1", BatchId: batchId,
 	}
+}
+
+func int64TestPointer(value int64) *int64 {
+	return &value
 }

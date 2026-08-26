@@ -7,9 +7,9 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/billflow"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/legacydata"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
@@ -140,8 +140,8 @@ func insertUserDataFixtures(t *testing.T, database *datastore.Database, uid int6
 		LiabilityAccountId: uid + 10, Status: loans.CONTRACT_STATUS_ACTIVE, CloseReasonCode: loans.CLOSE_REASON_NONE,
 		Currency: "CNY", Note: "", Version: 1, CurrentRevisionId: uid + 1, CreatedUnixTime: now, UpdatedUnixTime: now, ContractId: uid,
 	}
-	task := &billflow.Task{
-		Uid: uid, Status: billflow.TASK_STATUS_RECEIVING, ConfirmPolicy: billflow.CONFIRM_POLICY_CONFIRM_THEN_POST,
+	task := &legacydata.Task{
+		Uid: uid, Status: legacydata.TASK_STATUS_RECEIVING, ConfirmPolicy: legacydata.CONFIRM_POLICY_CONFIRM_THEN_POST,
 		Version: 1, CreatedUnixTime: now, UpdatedUnixTime: now, TaskId: uid,
 	}
 	rule := &cardcycle.CycleRule{

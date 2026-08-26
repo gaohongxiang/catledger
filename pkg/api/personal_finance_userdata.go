@@ -5,10 +5,10 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/billflow"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/legacydata"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
@@ -44,7 +44,7 @@ func registerPersonalFinanceUserDataHooks(store *datastore.DataStore, storage im
 
 	modules := []core.UserDataModule{
 		organizer.UserDataModule(),
-		billflow.UserDataModule(),
+		legacydata.BillflowUserDataModule(),
 		installments.UserDataModule(),
 		cardcycle.UserDataModule(),
 		loans.UserDataModule(),
