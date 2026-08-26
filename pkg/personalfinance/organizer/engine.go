@@ -287,7 +287,14 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 			mappingIndex = map[string]int64{}
 		}
 		movements := make(map[int64]*PlanningFundsMovement)
-		for _, row := range rows {
+		for index, row := range rows {
+			resolvedAccountId := resolvePlanningRowLedgerAccount(row, batch, sourceType, mappingIndex)
+			if row != nil && resolvedAccountId != nil && (row.LedgerAccountId == nil || *row.LedgerAccountId < 1) {
+				planningRow := *row
+				planningRow.LedgerAccountId = resolvedAccountId
+				row = &planningRow
+				rows[index] = row
+			}
 			if row != nil && row.LedgerAccountId != nil && *row.LedgerAccountId > 0 {
 				accountIds[*row.LedgerAccountId] = struct{}{}
 			}
@@ -321,6 +328,22 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 		}
 	}
 	return planningSources, accounts, nil
+}
+
+func resolvePlanningRowLedgerAccount(row *importing.RawImportRow, batch *importing.ImportBatch, sourceType importing.SourceType, mappings map[string]int64) *int64 {
+	if row == nil {
+		return nil
+	}
+	if row.LedgerAccountId != nil && *row.LedgerAccountId > 0 {
+		return cloneInt64Pointer(row.LedgerAccountId)
+	}
+	if sourceType != importing.SOURCE_TYPE_BANK {
+		return nil
+	}
+	if batch != nil && batch.LedgerAccountId != nil && *batch.LedgerAccountId > 0 {
+		return cloneInt64Pointer(batch.LedgerAccountId)
+	}
+	return resolvePaymentAccountReference(row, row.RawPaymentMethod, mappings)
 }
 
 func indexReusablePaymentAccountMappings(uid int64, sourceType importing.SourceType, mappings []*importing.PaymentAccountMapping) map[string]int64 {

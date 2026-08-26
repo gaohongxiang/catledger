@@ -137,6 +137,86 @@ func TestEngineSQLiteProjectsWechatCreditCardRepaymentFromWalletToUniqueMappedCa
 	}
 }
 
+func TestEngineSQLiteMapsOrdinaryBankRowAndMergesWechatEvidence(t *testing.T) {
+	repository, _ := newSQLiteOrganizerRepository(t)
+	const uid = int64(4053)
+	const updateId = int64(5053)
+	const bankBatchId = int64(7054)
+	const wechatBatchId = int64(7055)
+	const cardAccountId = int64(41)
+	bankSource := testSource(uid, updateId, 6053, 7056, bankBatchId, 10)
+	bankSource.SourceTypeSnapshot = string(importing.SOURCE_TYPE_BANK)
+	wechatSource := testSource(uid, updateId, 6054, 7057, wechatBatchId, 10)
+	wechatSource.SourceOrder = 1
+	wechatSource.SourceTypeSnapshot = string(importing.SOURCE_TYPE_WECHAT)
+	if err := repository.DoTransaction(nil, uid, func(tx *organizer.RepositoryTransaction) error {
+		if err := tx.InsertUpdate(testUpdate(uid, updateId, 10)); err != nil {
+			return err
+		}
+		if err := tx.InsertSource(bankSource); err != nil {
+			return err
+		}
+		return tx.InsertSource(wechatSource)
+	}); err != nil {
+		t.Fatalf("seed bank and wechat update: %v", err)
+	}
+
+	bankBatch := engineBatch(uid, 7056, bankBatchId)
+	bankBatch.SourceTypeSnapshot = importing.SOURCE_TYPE_BANK
+	wechatBatch := engineBatch(uid, 7057, wechatBatchId)
+	wechatBatch.SourceTypeSnapshot = importing.SOURCE_TYPE_WECHAT
+	bankRow := plannerRow(uid, bankBatchId, 8053, 9053, cardAccountId, 5777, 1783750972,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	bankRow.LedgerAccountId = nil
+	bankRow.RawCounterparty = "财付通快捷--美团平台商户"
+	bankRow.RawPaymentMethod = "兴业银行信用卡(主卡6106)"
+	wechatRow := plannerRow(uid, wechatBatchId, 8054, 9054, cardAccountId, 5777, 1783750972,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	wechatRow.RawCounterparty = "美团平台商户"
+	wechatRow.RawPaymentMethod = "兴业银行信用卡(6106)"
+	alias, ok := importing.BuildPaymentAccountAlias(wechatRow.RawPaymentMethod)
+	if !ok {
+		t.Fatal("build mapped bank account alias")
+	}
+	evidence := &engineEvidenceStub{
+		batches: map[int64]*importing.ImportBatch{bankBatchId: bankBatch, wechatBatchId: wechatBatch},
+		rows: map[int64][]*importing.RawImportRow{
+			bankBatchId:   {bankRow},
+			wechatBatchId: {wechatRow},
+		},
+		mappings: map[importing.SourceType][]*importing.PaymentAccountMapping{
+			importing.SOURCE_TYPE_WECHAT: {{
+				Uid: uid, SourceType: importing.SOURCE_TYPE_WECHAT, Currency: "CNY", AliasKey: alias.Key,
+				AliasKeyVersion: alias.Version, LedgerAccountId: cardAccountId,
+				MaskedDisplayName: "兴业银行信用卡(6106)", MappingId: 3,
+			}},
+		},
+	}
+	accounts := &engineAccountStub{items: map[int64]*models.Account{
+		cardAccountId: plannerAccount(uid, cardAccountId, models.ACCOUNT_CATEGORY_CREDIT_CARD),
+	}}
+	engine, err := organizer.NewEngine(repository, evidence, accounts, converters.NewSourceFundsProjector(), &engineIdGenerator{next: 9700})
+	if err != nil {
+		t.Fatalf("create bank and wechat organizer engine: %v", err)
+	}
+	result, err := engine.Organize(nil, organizer.OrganizeRequest{
+		Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 1, IdempotencyKey: "bank-wechat-5053-v1",
+	})
+	if err != nil || result == nil || len(result.Events) != 1 {
+		t.Fatalf("organize bank and wechat evidence: result=%+v err=%v", result, err)
+	}
+	event := result.Events[0]
+	if event.Status != organizer.EVENT_STATUS_READY || event.LedgerAccountId == nil || *event.LedgerAccountId != cardAccountId ||
+		result.Update.ValidEvidenceCount != 2 || result.Update.FinalEventCount != 1 || result.Update.ReadyEventCount != 1 ||
+		result.Update.NeedsActionEventCount != 0 {
+		t.Fatalf("bank and wechat evidence did not converge: event=%+v update=%+v", event, result.Update)
+	}
+	rows, err := repository.ListEvidence(nil, uid, event.EventId)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("merged event evidence mismatch: rows=%+v err=%v", rows, err)
+	}
+}
+
 func TestEngineSQLitePersistsPlanAndReplaysIdempotently(t *testing.T) {
 	repository, database := newSQLiteOrganizerRepository(t)
 	const uid = int64(4101)
