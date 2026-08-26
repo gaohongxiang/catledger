@@ -167,6 +167,31 @@ func TestAlipayEvidenceParserTreatsExplicitRewardAsIncome(t *testing.T) {
 	}
 }
 
+func TestAlipayEvidenceParserKeepsIncomingPersonTransferAsIncome(t *testing.T) {
+	content := []byte("------------------------------------------------------------------------------------\n" +
+		"支付宝账户：synthetic@example.test\n" +
+		"------------------------支付宝支付科技有限公司  电子客户回单------------------------\n" +
+		"交易时间,交易分类,交易对方,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,备注\n" +
+		"2026-07-09 14:28:36,转账红包,合成交易对方,转账,收入,15.00,账户余额,交易成功,SYN-INCOMING-001,\n")
+
+	document, err := AlipayAppImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{
+		OriginalFileName: "synthetic-incoming-transfer.csv",
+		Content:          content,
+	}, alipayEvidenceTestOptions)
+	if err != nil {
+		t.Fatalf("解析对人转入样例失败: %v", err)
+	}
+	if len(document.Rows) != 1 {
+		t.Fatalf("对人转入样例行数错误: %d", len(document.Rows))
+	}
+	row := document.Rows[0]
+	if row.Normalized.Direction != importing.NORMALIZED_DIRECTION_INCOME ||
+		row.Normalized.TransactionType != importing.SOURCE_TRANSACTION_TYPE_PAYMENT ||
+		row.Normalized.EconomicEffect != importing.ECONOMIC_EFFECT_NORMAL {
+		t.Fatalf("对人转入语义错误: %+v", row.Normalized)
+	}
+}
+
 func TestAlipayAppEvidenceParserGoldenDocument(t *testing.T) {
 	content := readAlipayEvidenceFixture(t, "testdata/alipay_app_utf8_bom.csv")
 	document, err := AlipayAppImportEvidenceParser.Parse(context.Background(), importing.EvidenceFile{

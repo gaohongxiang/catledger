@@ -59,6 +59,7 @@ func ProjectSourceFunds(productName string, paymentMethod string, counterparty s
 	statement := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_STATEMENT}
 	payment := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: paymentMethod}
 	target := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: counterparty}
+	yuEBao := importing.SourceFundsAccountReference{Kind: importing.SOURCE_FUNDS_ACCOUNT_PAYMENT, Raw: "余额宝"}
 	projection := importing.SourceFundsProjection{
 		Kind:        importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER,
 		RuleVersion: importing.SOURCE_FUNDS_RULE_VERSION_V1,
@@ -86,7 +87,19 @@ func ProjectSourceFunds(productName string, paymentMethod string, counterparty s
 		projection.From, projection.To = payment, statement
 	case alipayProductActionTransferFromWallet:
 		projection.From, projection.To = statement, target
-	case alipayProductActionTransferIn, alipayProductActionTransferOut, alipayProductActionTransfer:
+	case alipayProductActionTransferIn:
+		if strings.Contains(normalizeAlipayText(productName), "余额宝") {
+			projection.From, projection.To = payment, yuEBao
+		} else {
+			projection.From, projection.To = payment, target
+		}
+	case alipayProductActionTransferOut:
+		if strings.Contains(normalizeAlipayText(productName), "余额宝") {
+			projection.From, projection.To = yuEBao, payment
+		} else {
+			projection.From, projection.To = payment, target
+		}
+	case alipayProductActionTransfer:
 		projection.From, projection.To = payment, target
 	case alipayProductActionRepayment:
 		projection.Kind = importing.SOURCE_FUNDS_MOVEMENT_REPAYMENT

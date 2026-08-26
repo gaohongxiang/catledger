@@ -943,8 +943,14 @@ func normalizeAlipayTransactionSemantics(rawType, rawItem string, direction impo
 		alipayProductActionSellInvestment,
 		alipayProductActionTransferIn,
 		alipayProductActionTransferOut,
-		alipayProductActionTransfer,
 		alipayProductActionRepayment:
+		return direction, importing.SOURCE_TRANSACTION_TYPE_TRANSFER
+	case alipayProductActionTransfer:
+		// 普通对人转账不是本人账户间资金移动。支付宝已经给出收入或支出时，
+		// 保留该经济方向；只有“不计收支”才继续作为待核对的转账。
+		if direction == importing.NORMALIZED_DIRECTION_INCOME || direction == importing.NORMALIZED_DIRECTION_EXPENSE {
+			return direction, importing.SOURCE_TRANSACTION_TYPE_PAYMENT
+		}
 		return direction, importing.SOURCE_TRANSACTION_TYPE_TRANSFER
 	}
 

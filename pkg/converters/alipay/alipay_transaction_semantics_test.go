@@ -73,6 +73,26 @@ func TestNormalizeAlipayTransactionSemanticsKeepsInvestmentMovementAsTransfer(t 
 	}
 }
 
+func TestNormalizeAlipayTransactionSemanticsKeepsPersonTransferDirection(t *testing.T) {
+	tests := []struct {
+		name      string
+		direction importing.NormalizedDirection
+		expected  importing.SourceTransactionType
+	}{
+		{name: "incoming", direction: importing.NORMALIZED_DIRECTION_INCOME, expected: importing.SOURCE_TRANSACTION_TYPE_PAYMENT},
+		{name: "outgoing", direction: importing.NORMALIZED_DIRECTION_EXPENSE, expected: importing.SOURCE_TRANSACTION_TYPE_PAYMENT},
+		{name: "neutral", direction: importing.NORMALIZED_DIRECTION_NEUTRAL, expected: importing.SOURCE_TRANSACTION_TYPE_TRANSFER},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			direction, transactionType := normalizeAlipayTransactionSemantics("转账红包", "转账", test.direction)
+			if direction != test.direction || transactionType != test.expected {
+				t.Fatalf("普通对人转账语义错误: direction=%s type=%s", direction, transactionType)
+			}
+		})
+	}
+}
+
 func TestProjectSourceFundsReusesAlipayProductDirections(t *testing.T) {
 	withdrawal, ok := ProjectSourceFunds("提现-实时提现", "余额", "合成银行卡(0000)", false)
 	if !ok || withdrawal.Kind != importing.SOURCE_FUNDS_MOVEMENT_INTERNAL_TRANSFER ||
@@ -93,6 +113,14 @@ func TestProjectSourceFundsReusesAlipayProductDirections(t *testing.T) {
 		repayment.From.Kind != importing.SOURCE_FUNDS_ACCOUNT_PAYMENT || repayment.From.Raw != "余额" ||
 		repayment.To.Kind != importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET || repayment.To.Raw != "花呗" {
 		t.Fatalf("支付宝还款资金方向错误: %+v ok=%v", repayment, ok)
+	}
+	yuEBaoOut, ok := ProjectSourceFunds("余额宝-转出到余额", "账户余额", "合成账户", false)
+	if !ok || yuEBaoOut.From.Raw != "余额宝" || yuEBaoOut.To.Raw != "账户余额" {
+		t.Fatalf("余额宝转出到余额资金方向错误: %+v ok=%v", yuEBaoOut, ok)
+	}
+	yuEBaoIn, ok := ProjectSourceFunds("余额宝-单次转入", "账户余额", "合成账户", false)
+	if !ok || yuEBaoIn.From.Raw != "账户余额" || yuEBaoIn.To.Raw != "余额宝" {
+		t.Fatalf("余额转入余额宝资金方向错误: %+v ok=%v", yuEBaoIn, ok)
 	}
 	if _, ok = ProjectSourceFunds("普通商品", "余额", "普通商户", false); ok {
 		t.Fatal("普通支付宝消费不应产生双边资金投影")

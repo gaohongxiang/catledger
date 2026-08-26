@@ -22,6 +22,11 @@ func (sourceFundsProjector) ProjectSourceFunds(sourceType importing.SourceType, 
 	case importing.SOURCE_TYPE_WECHAT:
 		return wechat.ProjectSourceFunds(row.RawTransactionType, row.RawPaymentMethod, row.RawCounterparty)
 	case importing.SOURCE_TYPE_ALIPAY:
+		// 明确收入或支出的普通对人转账已经由支付宝标准化器定为经济收支，
+		// 不得再被商品说明里的宽泛“转账”投影成本人双边账户移动。
+		if row.NormalizedTransactionType == importing.SOURCE_TRANSACTION_TYPE_PAYMENT {
+			return importing.SourceFundsProjection{}, false
+		}
 		return alipay.ProjectSourceFunds(
 			row.RawItem,
 			row.RawPaymentMethod,
