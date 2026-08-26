@@ -213,6 +213,7 @@ function paymentAccountKey(group: PersonalFinancePaymentAccountGroup): string {
     const normalizedName = group.displayName.normalize('NFKC').toLocaleLowerCase()
         .replace(/^(微信支付|微信|支付宝)/u, '')
         .replace(/(末四位|后四位|尾号|卡号)/gu, '')
+        .replace(/主卡/gu, '')
         .replace(/[^\p{L}\p{N}]/gu, '');
     return `${group.currency}\u0000${normalizedName}`;
 }

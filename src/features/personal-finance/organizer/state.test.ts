@@ -60,6 +60,18 @@ describe('organizer result state', () => {
         ]);
     });
 
+    it('does not claim parsed core values are missing when only the account needs confirmation', () => {
+        const event = {
+            amount: '57.77', currency: 'CNY', eventUnixTime: 1_783_756_800,
+            counterparty: '平台商户', item: '', note: '', economicNature: 'expense',
+            reasonCodesJson: '["blocking_issue_open","core_fields_missing","ledger_account_required"]'
+        } as EconomicEvent;
+
+        expect(eventReasonTranslationKeys(event)).toEqual([
+            'personalFinance.organizerV2.reason.ledgerAccountRequired'
+        ]);
+    });
+
     it('groups only visually identical rows without merging their identities', () => {
         const base = {
             status: 'needs_action', eventUnixTime: 1_700_000_000, timezoneUtcOffset: 480,

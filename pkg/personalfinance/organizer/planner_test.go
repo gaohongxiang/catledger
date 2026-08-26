@@ -333,6 +333,44 @@ func TestBuildOrganizePlanMergesBalancedDateOnlyBankEvidence(t *testing.T) {
 	}
 }
 
+func TestBuildOrganizePlanMergesBankEvidenceIntoExplicitPartialRefund(t *testing.T) {
+	const uid = int64(253)
+	const updateId = int64(553)
+	bank := plannerSource(uid, updateId, 0, 663, 763, importing.SOURCE_TYPE_BANK)
+	wechat := plannerSource(uid, updateId, 1, 664, 764, importing.SOURCE_TYPE_WECHAT)
+	bankOriginal := plannerRow(uid, 763, 11, 3601, 11, 5777, 1783699200, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	bankRefund := plannerRow(uid, 763, 12, 3602, 11, 20, 1783699200, importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	wechatOriginal := plannerRow(uid, 764, 21, 4601, 11, 5777, 1783751092, importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	wechatRefund := plannerRow(uid, 764, 22, 4602, 11, 20, 1783760242, importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	zeroOffset := int16(0)
+	for _, row := range []*importing.RawImportRow{bankOriginal, bankRefund, wechatOriginal, wechatRefund} {
+		row.NormalizedTimezoneUtcOffset = &zeroOffset
+		row.RawCounterparty = "美团平台商户"
+	}
+	wechatOriginal.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND
+	wechatRefund.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND
+	wechatOriginal.RawStatus = "已退款(¥0.20)"
+	wechatRefund.RawStatus = "已退款¥0.20"
+	bank.Rows = []*importing.RawImportRow{bankOriginal, bankRefund}
+	wechat.Rows = []*importing.RawImportRow{wechatOriginal, wechatRefund}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{bank, wechat},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)},
+		1783800000, sequentialPlannerIds(10800))
+	if err != nil {
+		t.Fatalf("build bank-backed partial refund plan: %v", err)
+	}
+	if plan.ValidEvidenceCount != 4 || plan.DuplicateEvidenceCount != 2 || plan.FinalEventCount != 2 ||
+		plan.ReadyEventCount != 2 || plan.NeedsActionEventCount != 0 || len(plan.Relations) != 1 {
+		t.Fatalf("bank-backed partial refund did not converge: %+v", plan)
+	}
+	refund := findEventByNature(plan.Events, organizer.ECONOMIC_NATURE_REFUND)
+	if refund == nil || refund.Amount == nil || *refund.Amount != 20 || !strings.Contains(refund.ReasonCodesJson, "auto_same_event") ||
+		plan.Relations[0].RelationType != organizer.RELATION_TYPE_REFUND_OF || plan.Relations[0].Status != organizer.RELATION_STATUS_CONFIRMED {
+		t.Fatalf("partial refund relation or evidence role mismatch: event=%+v relation=%+v", refund, plan.Relations[0])
+	}
+}
+
 func TestBuildOrganizePlanSplitsLegacyV1ContentFingerprintRows(t *testing.T) {
 	const uid = int64(262)
 	const updateId = int64(562)

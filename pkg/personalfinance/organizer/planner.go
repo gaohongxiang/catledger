@@ -977,10 +977,10 @@ func buildPlannedEvent(uid int64, updateId int64, group *planningGroup, now int6
 func classifySingleGroup(event *EconomicEvent, group *planningGroup, reasons *[]string) {
 	row := summarizeGroup(group).representative.row
 	switch {
-	case row.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE:
+	case groupHasEconomicEffect(group, importing.ECONOMIC_EFFECT_REFUND) && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE:
 		event.EconomicNature = ECONOMIC_NATURE_EXPENSE
 		event.Status = EVENT_STATUS_READY
-	case row.EconomicEffect == importing.ECONOMIC_EFFECT_REFUND:
+	case groupHasEconomicEffect(group, importing.ECONOMIC_EFFECT_REFUND):
 		event.EconomicNature = ECONOMIC_NATURE_REFUND
 		event.Status = EVENT_STATUS_NEEDS_ACTION
 		*reasons = append(*reasons, reasonRefundRelationRequired)
@@ -1372,7 +1372,31 @@ func groupsHaveOrdinaryPaymentSemantics(left *planningGroup, right *planningGrou
 		return effect
 	}
 	leftEffect, rightEffect := allowed(left), allowed(right)
-	return leftEffect != "" && leftEffect == rightEffect
+	if leftEffect == "" || rightEffect == "" {
+		return false
+	}
+	if leftEffect == rightEffect {
+		return true
+	}
+	// 通用银行表格只可靠表达入账方向，平台明细才能明确说明原消费发生了
+	// 部分退款。两侧其余强条件已由 highConfidenceSameEvent 校验；这里只
+	// 允许纯银行 normal 与非银行 refund 互补，不把两个普通来源猜成退款。
+	return (leftEffect == importing.ECONOMIC_EFFECT_NORMAL && groupHasOnlySourceType(left, importing.SOURCE_TYPE_BANK) &&
+		rightEffect == importing.ECONOMIC_EFFECT_REFUND && !groupHasOnlySourceType(right, importing.SOURCE_TYPE_BANK)) ||
+		(rightEffect == importing.ECONOMIC_EFFECT_NORMAL && groupHasOnlySourceType(right, importing.SOURCE_TYPE_BANK) &&
+			leftEffect == importing.ECONOMIC_EFFECT_REFUND && !groupHasOnlySourceType(left, importing.SOURCE_TYPE_BANK))
+}
+
+func groupHasEconomicEffect(group *planningGroup, effect importing.EconomicEffect) bool {
+	if group == nil {
+		return false
+	}
+	for _, item := range group.rows {
+		if item != nil && item.row != nil && item.row.EconomicEffect == effect {
+			return true
+		}
+	}
+	return false
 }
 
 func groupsHaveSimilarEvidenceText(left *planningGroup, right *planningGroup) bool {

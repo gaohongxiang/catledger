@@ -244,6 +244,8 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 	planningSources := make([]*PlanningSource, 0, len(sources))
 	accountIds := make(map[int64]struct{})
 	mappingsBySource := make(map[importing.SourceType]map[string]int64)
+	allPaymentMappings := make([]*importing.PaymentAccountMapping, 0)
+	paymentMappingsLoaded := false
 	for _, source := range sources {
 		batch, findErr := e.evidence.FindImportBatchById(c, uid, source.BatchId)
 		if findErr != nil {
@@ -266,11 +268,19 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 		sourceType := importing.SourceType(source.SourceTypeSnapshot)
 		mappingIndex := mappingsBySource[sourceType]
 		if mappingIndex == nil && e.mappings != nil {
-			mappings, mappingErr := e.mappings.ListPaymentAccountMappings(c, uid, sourceType)
-			if mappingErr != nil {
-				return nil, nil, mappingErr
+			if !paymentMappingsLoaded {
+				for _, mappingSourceType := range []importing.SourceType{
+					importing.SOURCE_TYPE_ALIPAY, importing.SOURCE_TYPE_WECHAT, importing.SOURCE_TYPE_BANK,
+				} {
+					mappings, mappingErr := e.mappings.ListPaymentAccountMappings(c, uid, mappingSourceType)
+					if mappingErr != nil {
+						return nil, nil, mappingErr
+					}
+					allPaymentMappings = append(allPaymentMappings, mappings...)
+				}
+				paymentMappingsLoaded = true
 			}
-			mappingIndex = indexPaymentAccountMappings(mappings)
+			mappingIndex = indexReusablePaymentAccountMappings(uid, sourceType, allPaymentMappings)
 			mappingsBySource[sourceType] = mappingIndex
 		}
 		if mappingIndex == nil {
@@ -311,6 +321,34 @@ func (e *Engine) loadPlanningInput(c core.Context, uid int64, updateId int64) ([
 		}
 	}
 	return planningSources, accounts, nil
+}
+
+func indexReusablePaymentAccountMappings(uid int64, sourceType importing.SourceType, mappings []*importing.PaymentAccountMapping) map[string]int64 {
+	resolved := importing.ReusablePaymentAccountMappingsByKey(uid, sourceType, mappings)
+	result := make(map[string]int64, len(resolved)*2)
+	keys := make([]string, 0, len(resolved))
+	for key := range resolved {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		mapping := resolved[key]
+		if mapping == nil || mapping.LedgerAccountId < 1 {
+			continue
+		}
+		result[key] = mapping.LedgerAccountId
+		family, ok := importing.CreditCardAccountFamilyAlias(mapping.MaskedDisplayName)
+		if !ok {
+			continue
+		}
+		familyKey := creditCardFamilyMappingKey(mapping.Currency, family)
+		if existing, exists := result[familyKey]; !exists || existing == mapping.LedgerAccountId {
+			result[familyKey] = mapping.LedgerAccountId
+		} else {
+			result[familyKey] = 0
+		}
+	}
+	return result
 }
 
 func indexPaymentAccountMappings(mappings []*importing.PaymentAccountMapping) map[string]int64 {

@@ -124,7 +124,12 @@ const EVENT_REASON_TRANSLATION_KEYS: Readonly<Record<string, string>> = {
 };
 
 export function eventReasonTranslationKeys(event: EconomicEvent): string[] {
-    const keys = eventReasonCodes(event).map(code => {
+    const reasonCodes = eventReasonCodes(event).filter(code => code !== 'blocking_issue_open');
+    const coreValuesPresent = !!event.amount && event.currency.length === 3 && !!event.eventUnixTime;
+    const displayCodes = coreValuesPresent && reasonCodes.includes('ledger_account_required')
+        ? reasonCodes.filter(code => code !== 'core_fields_missing')
+        : reasonCodes;
+    const keys = displayCodes.map(code => {
         if (code.startsWith('manual_field_mask:')) {
             return 'personalFinance.organizerV2.reason.manualCorrection';
         }

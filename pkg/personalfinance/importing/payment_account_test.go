@@ -19,6 +19,7 @@ func TestPaymentAccountAliasNormalizesFormattingAndMasksLongDigits(t *testing.T)
 		"兴业银行信用卡（6106）",
 		" 兴业银行信用卡 尾号 6106 ",
 		"兴业银行信用卡6106",
+		"兴业银行信用卡(主卡6106)",
 	}
 	var expectedKey string
 
@@ -60,6 +61,49 @@ func TestPaymentAccountAliasNormalizesFormattingAndMasksLongDigits(t *testing.T)
 		if _, ok := importing.BuildPaymentAccountAlias(generic); ok {
 			t.Fatalf("generic payment method must not become a reusable mapping: %q", generic)
 		}
+	}
+}
+
+func TestPaymentAccountMappingReusesOnlyUniqueCrossSourceBankCard(t *testing.T) {
+	const uid = int64(7001)
+	alias, ok := importing.BuildPaymentAccountAlias("兴业银行信用卡(6106)")
+	if !ok {
+		t.Fatal("build bank-card alias")
+	}
+	wechat := &importing.PaymentAccountMapping{
+		Uid: uid, SourceType: importing.SOURCE_TYPE_WECHAT, Currency: "CNY", AliasKey: alias.Key,
+		AliasKeyVersion: alias.Version, LedgerAccountId: 81, MaskedDisplayName: "兴业银行信用卡(6106)", MappingId: 1,
+	}
+	lookup := importing.ReusablePaymentAccountMappingsByKey(uid, importing.SOURCE_TYPE_BANK, []*importing.PaymentAccountMapping{wechat})
+	if mapping := lookup["CNY\x00"+alias.Key]; mapping == nil || mapping.LedgerAccountId != 81 {
+		t.Fatalf("unique cross-source card mapping was not reused: %+v", mapping)
+	}
+
+	alipayConflict := *wechat
+	alipayConflict.SourceType = importing.SOURCE_TYPE_ALIPAY
+	alipayConflict.LedgerAccountId = 82
+	alipayConflict.MappingId = 2
+	lookup = importing.ReusablePaymentAccountMappingsByKey(uid, importing.SOURCE_TYPE_BANK, []*importing.PaymentAccountMapping{wechat, &alipayConflict})
+	if mapping := lookup["CNY\x00"+alias.Key]; mapping != nil {
+		t.Fatalf("conflicting cross-source card mapping must remain unresolved: %+v", mapping)
+	}
+
+	bankExact := alipayConflict
+	bankExact.SourceType = importing.SOURCE_TYPE_BANK
+	bankExact.LedgerAccountId = 83
+	bankExact.MappingId = 3
+	lookup = importing.ReusablePaymentAccountMappingsByKey(uid, importing.SOURCE_TYPE_BANK, []*importing.PaymentAccountMapping{wechat, &alipayConflict, &bankExact})
+	if mapping := lookup["CNY\x00"+alias.Key]; mapping == nil || mapping.LedgerAccountId != 83 {
+		t.Fatalf("current-source mapping must take precedence: %+v", mapping)
+	}
+
+	legacyDigest := sha256.Sum256([]byte(string(importing.PAYMENT_ACCOUNT_ALIAS_VERSION_V1) + "\x00兴业银行信用卡主卡6106"))
+	legacyBank := bankExact
+	legacyBank.AliasKey = hex.EncodeToString(legacyDigest[:])
+	legacyBank.MaskedDisplayName = "兴业银行信用卡(主卡6106)"
+	lookup = importing.ReusablePaymentAccountMappingsByKey(uid, importing.SOURCE_TYPE_BANK, []*importing.PaymentAccountMapping{&legacyBank})
+	if mapping := lookup["CNY\x00"+alias.Key]; mapping == nil || mapping.LedgerAccountId != 83 {
+		t.Fatalf("legacy primary-card mapping was not read through the current alias: %+v", mapping)
 	}
 }
 
@@ -222,7 +266,7 @@ func TestPaymentAccountServiceGroupsBankCardLastFourDigits(t *testing.T) {
 	}
 }
 
-func TestPaymentAccountServiceConfirmsReusableAliasOutsideGroupedWorkbench(t *testing.T) {
+func TestPaymentAccountServiceGroupsReusableGenericBankAlias(t *testing.T) {
 	repository, database := newSQLiteDedupRepository(t, 1)
 	_, accountKey := dedupSourceAccountEvidence(t)
 	const uid = int64(7141)
@@ -247,8 +291,8 @@ func TestPaymentAccountServiceConfirmsReusableAliasOutsideGroupedWorkbench(t *te
 		t.Fatalf("create payment account service: %v", err)
 	}
 	groups, err := service.ListBatchPaymentAccounts(nil, uid, batchId)
-	if err != nil || len(groups) != 0 {
-		t.Fatalf("generic parser unexpectedly entered the grouped workbench: groups=%+v err=%v", groups, err)
+	if err != nil || len(groups) != 1 || groups[0].Mapped || groups[0].RowCount != 1 {
+		t.Fatalf("generic bank card was not exposed to the grouped workbench: groups=%+v err=%v", groups, err)
 	}
 	confirmed, err := service.ConfirmBatchPaymentAccount(nil, importing.PaymentAccountConfirmRequest{
 		Uid: uid, BatchId: batchId, RowId: row.RowId,
@@ -258,6 +302,68 @@ func TestPaymentAccountServiceConfirmsReusableAliasOutsideGroupedWorkbench(t *te
 		t.Fatalf("review flow could not persist a reusable generic-bank alias: confirmed=%+v err=%v", confirmed, err)
 	}
 	assertPaymentRowLedgerAccounts(t, repository, uid, batchId, map[int64]*int64{row.RowId: int64Pointer(8241)})
+}
+
+func TestBankEvidenceParseReusesUniqueWechatCardMapping(t *testing.T) {
+	repository, database := newSQLiteDedupRepository(t, 1)
+	const uid = int64(7151)
+	const fileId = int64(7251)
+	const sourceAccountId = int64(7351)
+	const ledgerAccountId = int64(8251)
+	candidate := importing.SourceAccountCandidate{
+		Kind: importing.SOURCE_ACCOUNT_EVIDENCE_MISSING, DiscoveryMethod: importing.SOURCE_ACCOUNT_DISCOVERY_MISSING,
+	}
+	accountKey := strings.Repeat("b", 64)
+	file := testImportFile(uid, fileId, "9", 100)
+	file.ContentState = importing.IMPORT_FILE_CONTENT_STATE_AVAILABLE
+	account := &importing.SourceAccount{
+		Uid: uid, SourceType: importing.SOURCE_TYPE_BANK, SourceAccountKey: accountKey,
+		SourceAccountKeyVersion: importing.SOURCE_ACCOUNT_KEY_VERSION_V1, Status: importing.SOURCE_ACCOUNT_STATUS_ACTIVE,
+		MaskedDisplayName: "银行账单", DiscoveryMethod: importing.SOURCE_ACCOUNT_DISCOVERY_USER_SELECTED,
+		CreatedUnixTime: 100, UpdatedUnixTime: 100, SourceAccountId: sourceAccountId,
+	}
+	alias, ok := importing.BuildPaymentAccountAlias("兴业银行信用卡(6106)")
+	if !ok {
+		t.Fatal("build wechat card mapping alias")
+	}
+	mapping := &importing.PaymentAccountMapping{
+		Uid: uid, SourceType: importing.SOURCE_TYPE_WECHAT, Currency: "CNY", AliasKey: alias.Key,
+		AliasKeyVersion: alias.Version, LedgerAccountId: ledgerAccountId, MaskedDisplayName: "兴业银行信用卡(6106)",
+		CreatedUnixTime: 100, UpdatedUnixTime: 100, MappingId: 7451,
+	}
+	insertRepositoryBeans(t, database, file, account, mapping)
+
+	row := dedupValidRow(1, "bank-row", 5777, false)
+	row.Raw.PaymentMethod = "兴业银行信用卡(主卡6106)"
+	descriptor := dedupParserDescriptor()
+	descriptor.Name = "generic_bank_csv"
+	descriptor.SourceType = importing.SOURCE_TYPE_BANK
+	descriptor.Format = importing.EVIDENCE_FORMAT_BANK_GENERIC_CSV
+	bankMapping := importing.GenericBankMapping{
+		Encoding: importing.GENERIC_CSV_ENCODING_UTF8, Delimiter: importing.GENERIC_CSV_DELIMITER_COMMA, SheetIndex: -1, HeaderRow: 1,
+		TimeFormat: importing.GENERIC_CSV_TIME_FORMAT_DATE_TIME_SECONDS, AmountMode: importing.GENERIC_CSV_AMOUNT_MODE_SIGNED,
+		SignedPositiveDirection: importing.NORMALIZED_DIRECTION_EXPENSE, TimeColumn: 0, AmountColumn: 1,
+		DirectionColumn: -1, IncomeColumn: -1, ExpenseColumn: -1, CurrencyColumn: -1, TransactionIdColumn: -1,
+		OrderIdColumn: -1, MerchantOrderIdColumn: -1, CounterpartyColumn: -1, ItemColumn: -1,
+		PaymentMethodColumn: -1, StatusColumn: -1, TransactionTypeColumn: -1, NoteColumn: -1,
+	}
+	request := importing.PersistEvidenceDocumentRequest{
+		Uid: uid, FileId: fileId, SourceAccountId: sourceAccountId, Descriptor: descriptor,
+		ParseOptions:      importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480, GenericBankMapping: &bankMapping},
+		ReparseReasonCode: "cross_source_card_mapping_test",
+		Document: &importing.EvidenceDocument{
+			Metadata: importing.DocumentMetadata{SourceType: importing.SOURCE_TYPE_BANK, SourceAccount: candidate},
+			Rows:     []importing.EvidenceRow{row},
+		},
+	}
+	batch, err := newDedupTestService(t, repository, 22000).PersistEvidenceDocument(nil, request)
+	if err != nil {
+		t.Fatalf("persist bank evidence: %v", err)
+	}
+	rows := listDedupRows(t, repository, uid, batch.BatchId)
+	if len(rows) != 1 || rows[0].LedgerAccountId == nil || *rows[0].LedgerAccountId != ledgerAccountId {
+		t.Fatalf("bank evidence did not reuse the unique wechat card mapping: %+v", rows)
+	}
 }
 
 func TestPaymentAccountServicePrefixesPlatformWallets(t *testing.T) {

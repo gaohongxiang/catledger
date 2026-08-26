@@ -20,6 +20,7 @@ const maximumPaymentAccountDisplayRunes = 128
 
 var paymentAccountMaskRunPattern = regexp.MustCompile(`[xX]{2,}`)
 var paymentAccountLongDigitRunPattern = regexp.MustCompile(`[0-9]{8,}`)
+var paymentAccountCardTailPattern = regexp.MustCompile(`[0-9]{4}`)
 var cebLastFourOnlyDisplayPattern = regexp.MustCompile(`^末四位(\d{4})$`)
 
 var (
@@ -272,6 +273,10 @@ func isPaymentAccountCouponSegment(part string) bool {
 }
 
 func canonicalPaymentAccountAlias(raw string) string {
+	return canonicalPaymentAccountAliasWithPrimaryCard(raw, true)
+}
+
+func canonicalPaymentAccountAliasWithPrimaryCard(raw string, normalizePrimaryCard bool) string {
 	value := norm.NFKC.String(strings.TrimSpace(raw))
 	value = paymentAccountMaskRunPattern.ReplaceAllString(value, "")
 	value = paymentAccountLongDigitRunPattern.ReplaceAllStringFunc(value, func(digits string) string {
@@ -289,6 +294,11 @@ func canonicalPaymentAccountAlias(raw string) string {
 	for _, token := range []string{"末四位", "后四位", "尾号", "卡号"} {
 		canonical = strings.ReplaceAll(canonical, token, "")
 	}
+	// 银行月结单可能把同一张卡写成「主卡6106」，聚合支付账单则只写
+	// 「6106」。主卡只是卡片角色，不是账户身份的一部分。
+	if normalizePrimaryCard {
+		canonical = strings.ReplaceAll(canonical, "主卡", "")
+	}
 	for _, token := range []string{"微信支付", "微信", "支付宝"} {
 		canonical = strings.TrimPrefix(canonical, token)
 	}
@@ -297,6 +307,12 @@ func canonicalPaymentAccountAlias(raw string) string {
 		return "余额"
 	}
 	return canonical
+}
+
+func legacyPrimaryCardAliasKey(raw string) string {
+	canonical := canonicalPaymentAccountAliasWithPrimaryCard(paymentAccountInstrumentName(raw), false)
+	digest := sha256.Sum256([]byte(string(PAYMENT_ACCOUNT_ALIAS_VERSION_V1) + "\x00" + canonical))
+	return hex.EncodeToString(digest[:])
 }
 
 func isReusablePaymentAccountAlias(value string) bool {
@@ -473,7 +489,9 @@ func usesPaymentAccountGroups(batch *ImportBatch) bool {
 	case SOURCE_TYPE_ALIPAY, SOURCE_TYPE_WECHAT:
 		return true
 	case SOURCE_TYPE_BANK:
-		return batch.ParserName == "ceb_credit_pdf"
+		// 专用银行模板和通用 CSV/XLS/XLSX 都把可辨识卡片写入
+		// RawPaymentMethod；空值自然不会形成核对组。
+		return true
 	default:
 		return false
 	}
@@ -495,9 +513,13 @@ func (s *PaymentAccountService) loadBatchPaymentAccounts(c core.Context, uid int
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	mappings, err := s.repository.ListPaymentAccountMappings(c, uid, batch.SourceTypeSnapshot)
-	if err != nil {
-		return nil, nil, nil, nil, err
+	mappings := make([]*PaymentAccountMapping, 0)
+	for _, sourceType := range []SourceType{SOURCE_TYPE_ALIPAY, SOURCE_TYPE_WECHAT, SOURCE_TYPE_BANK} {
+		items, mappingErr := s.repository.ListPaymentAccountMappings(c, uid, sourceType)
+		if mappingErr != nil {
+			return nil, nil, nil, nil, mappingErr
+		}
+		mappings = append(mappings, items...)
 	}
 	exclusions, err := s.repository.ListPaymentAccountExclusions(c, uid, batch.SourceTypeSnapshot)
 	if err != nil {
@@ -511,7 +533,7 @@ func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mapping
 		return []*PaymentAccountGroup{}
 	}
 
-	mappingByKey := paymentAccountMappingByKey(batch.Uid, batch.SourceTypeSnapshot, mappings)
+	mappingByKey := ReusablePaymentAccountMappingsByKey(batch.Uid, batch.SourceTypeSnapshot, mappings)
 
 	type groupEntry struct {
 		group    *PaymentAccountGroup
@@ -583,6 +605,26 @@ func paymentAccountMappingByKey(uid int64, sourceType SourceType, mappings []*Pa
 		}
 		lookup[mapping.Currency+"\x00"+mapping.AliasKey] = mapping
 	}
+	// 兼容已经按旧 v1 规则保存的「主卡」映射；新解析统一写当前别名，
+	// 旧映射只作为读兼容，不产生第二套运行语义。
+	for _, mapping := range mappings {
+		if mapping == nil || mapping.Uid != uid || mapping.SourceType != sourceType || mapping.AliasKeyVersion != PAYMENT_ACCOUNT_ALIAS_VERSION_V1 ||
+			!strings.Contains(mapping.MaskedDisplayName, "主卡") || mapping.AliasKey != legacyPrimaryCardAliasKey(mapping.MaskedDisplayName) ||
+			!isValidPaymentAccountCurrency(mapping.Currency) || mapping.LedgerAccountId < 1 {
+			continue
+		}
+		currentAlias, ok := BuildPaymentAccountAlias(mapping.MaskedDisplayName)
+		if !ok {
+			continue
+		}
+		currentKey := mapping.Currency + "\x00" + currentAlias.Key
+		current := lookup[currentKey]
+		if current == nil {
+			lookup[currentKey] = mapping
+		} else if current.LedgerAccountId != mapping.LedgerAccountId {
+			delete(lookup, currentKey)
+		}
+	}
 
 	if sourceType != SOURCE_TYPE_ALIPAY {
 		return lookup
@@ -607,6 +649,60 @@ func paymentAccountMappingByKey(uid int64, sourceType SourceType, mappings []*Pa
 		}
 	}
 	return lookup
+}
+
+// ReusablePaymentAccountMappingsByKey 优先使用当前来源已经确认的映射；当前
+// 来源没有映射时，只沿用支付宝、微信和银行间唯一一致的可辨识银行卡映射。
+// 同一别名指向不同正式账户时不选边，交给用户确认。
+func ReusablePaymentAccountMappingsByKey(uid int64, sourceType SourceType, mappings []*PaymentAccountMapping) map[string]*PaymentAccountMapping {
+	result := paymentAccountMappingByKey(uid, sourceType, mappings)
+	type candidate struct {
+		mapping    *PaymentAccountMapping
+		conflicted bool
+	}
+	candidates := make(map[string]*candidate)
+	for _, otherType := range []SourceType{SOURCE_TYPE_ALIPAY, SOURCE_TYPE_WECHAT, SOURCE_TYPE_BANK} {
+		if otherType == sourceType {
+			continue
+		}
+		for key, mapping := range paymentAccountMappingByKey(uid, otherType, mappings) {
+			if result[key] != nil || !isCrossSourcePaymentAccountMapping(mapping) {
+				continue
+			}
+			current := candidates[key]
+			if current == nil {
+				candidates[key] = &candidate{mapping: mapping}
+				continue
+			}
+			if current.mapping.LedgerAccountId != mapping.LedgerAccountId {
+				current.conflicted = true
+			} else if mapping.MappingId > 0 && (current.mapping.MappingId < 1 || mapping.MappingId < current.mapping.MappingId) {
+				current.mapping = mapping
+			}
+		}
+	}
+	for key, item := range candidates {
+		if item != nil && !item.conflicted && item.mapping != nil {
+			result[key] = item.mapping
+		}
+	}
+	return result
+}
+
+func isCrossSourcePaymentAccountMapping(mapping *PaymentAccountMapping) bool {
+	if mapping == nil || mapping.LedgerAccountId < 1 {
+		return false
+	}
+	canonical := canonicalPaymentAccountAlias(mapping.MaskedDisplayName)
+	if !strings.Contains(canonical, "银行") || !paymentAccountCardTailPattern.MatchString(canonical) {
+		return false
+	}
+	for _, token := range []string{"信用卡", "贷记卡", "储蓄卡", "借记卡"} {
+		if strings.Contains(canonical, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func isValidPaymentAccountCurrency(currency string) bool {

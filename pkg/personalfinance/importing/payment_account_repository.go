@@ -183,10 +183,10 @@ func (tx *RepositoryTransaction) paymentAccountMappingLookup(uid int64, sourceTy
 	}
 
 	mappings := make([]*PaymentAccountMapping, 0)
-	if err := tx.session.Where("uid=? AND source_type=?", uid, sourceType).Find(&mappings); err != nil {
+	if err := tx.session.Where("uid=?", uid).Find(&mappings); err != nil {
 		return nil, fmt.Errorf("load payment account mappings for evidence: %w", err)
 	}
-	return paymentAccountMappingByKey(uid, sourceType, mappings), nil
+	return ReusablePaymentAccountMappingsByKey(uid, sourceType, mappings), nil
 }
 
 func resolveEvidenceLedgerAccount(account *SourceAccount, sourceType SourceType, row *RawImportRow, mappings map[string]*PaymentAccountMapping) *int64 {
