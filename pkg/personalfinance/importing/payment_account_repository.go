@@ -162,26 +162,31 @@ func (tx *RepositoryTransaction) resolvePaymentAccountMapping(candidate *Payment
 		persisted.UpdatedUnixTime = candidate.UpdatedUnixTime
 	}
 
+	if candidate.SourceType == SOURCE_TYPE_ALIPAY {
+		balanceAlias, ok := BuildPaymentAccountAlias("余额")
+		if ok && candidate.AliasKey == balanceAlias.Key {
+			if _, err := tx.session.Where(
+				"uid=? AND source_type=? AND currency=? AND alias_key=?",
+				candidate.Uid, candidate.SourceType, candidate.Currency, legacyAlipayAccountBalanceAliasKey(),
+			).Delete(new(PaymentAccountMapping)); err != nil {
+				return nil, fmt.Errorf("remove legacy alipay account balance mapping: %w", err)
+			}
+		}
+	}
+
 	return persisted, nil
 }
 
 func (tx *RepositoryTransaction) paymentAccountMappingLookup(uid int64, sourceType SourceType) (map[string]*PaymentAccountMapping, error) {
-	lookup := make(map[string]*PaymentAccountMapping)
 	if !isPaymentAccountSourceType(sourceType) {
-		return lookup, nil
+		return map[string]*PaymentAccountMapping{}, nil
 	}
 
 	mappings := make([]*PaymentAccountMapping, 0)
 	if err := tx.session.Where("uid=? AND source_type=?", uid, sourceType).Find(&mappings); err != nil {
 		return nil, fmt.Errorf("load payment account mappings for evidence: %w", err)
 	}
-	for _, mapping := range mappings {
-		if mapping != nil && mapping.AliasKeyVersion == PAYMENT_ACCOUNT_ALIAS_VERSION_V1 &&
-			isLowerHexSHA256(mapping.AliasKey) && isValidPaymentAccountCurrency(mapping.Currency) && mapping.LedgerAccountId > 0 {
-			lookup[mapping.Currency+"\x00"+mapping.AliasKey] = mapping
-		}
-	}
-	return lookup, nil
+	return paymentAccountMappingByKey(uid, sourceType, mappings), nil
 }
 
 func resolveEvidenceLedgerAccount(account *SourceAccount, sourceType SourceType, row *RawImportRow, mappings map[string]*PaymentAccountMapping) *int64 {

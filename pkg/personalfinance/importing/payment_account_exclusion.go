@@ -70,7 +70,7 @@ func (s *PaymentAccountService) ListPaymentAccountGroupRows(c core.Context, uid 
 	if err != nil {
 		return nil, err
 	}
-	excluded := paymentAccountExclusionByKey(exclusions, sample.Currency, alias.Key) != nil
+	excluded := paymentAccountExclusionByKey(batch.Uid, batch.SourceTypeSnapshot, exclusions, sample.Currency, alias.Key) != nil
 	views := make([]*PaymentAccountRowView, 0)
 	for _, row := range rows {
 		if row == nil || !samePaymentAccountAlias(row, sample, alias.Key) {
@@ -255,6 +255,17 @@ func (r *Repository) SavePaymentAccountExclusion(c core.Context, candidate *Paym
 			persisted.MaskedDisplayName = candidate.MaskedDisplayName
 			persisted.UpdatedUnixTime = candidate.UpdatedUnixTime
 		}
+		if candidate.SourceType == SOURCE_TYPE_ALIPAY {
+			balanceAlias, ok := BuildPaymentAccountAlias("余额")
+			if ok && candidate.AliasKey == balanceAlias.Key {
+				if _, err := tx.session.Where(
+					"uid=? AND source_type=? AND currency=? AND alias_key=?",
+					candidate.Uid, candidate.SourceType, candidate.Currency, legacyAlipayAccountBalanceAliasKey(),
+				).Delete(new(PaymentAccountExclusion)); err != nil {
+					return fmt.Errorf("remove legacy alipay account balance exclusion: %w", err)
+				}
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -271,6 +282,15 @@ func (r *Repository) DeletePaymentAccountExclusion(c core.Context, uid int64, so
 		if _, err := tx.session.Where("uid=? AND source_type=? AND currency=? AND alias_key=?", uid, sourceType, currency, aliasKey).
 			Delete(new(PaymentAccountExclusion)); err != nil {
 			return fmt.Errorf("delete payment account exclusion: %w", err)
+		}
+		if sourceType == SOURCE_TYPE_ALIPAY {
+			balanceAlias, ok := BuildPaymentAccountAlias("余额")
+			if ok && aliasKey == balanceAlias.Key {
+				if _, err := tx.session.Where("uid=? AND source_type=? AND currency=? AND alias_key=?", uid, sourceType, currency, legacyAlipayAccountBalanceAliasKey()).
+					Delete(new(PaymentAccountExclusion)); err != nil {
+					return fmt.Errorf("delete legacy alipay account balance exclusion: %w", err)
+				}
+			}
 		}
 		return nil
 	})
@@ -344,7 +364,7 @@ func matchingPendingRowIds(batch *ImportBatch, rows []*RawImportRow, exclusions 
 			if (sampleCurrency != "" && row.Currency != sampleCurrency) || rowAlias.Key != alias.Key {
 				continue
 			}
-		} else if paymentAccountExclusionByKey(exclusions, row.Currency, rowAlias.Key) == nil {
+		} else if paymentAccountExclusionByKey(batch.Uid, batch.SourceTypeSnapshot, exclusions, row.Currency, rowAlias.Key) == nil {
 			continue
 		}
 		rowIds = append(rowIds, row.RowId)
@@ -377,9 +397,24 @@ func isUserSkippedPaymentAccountRow(row *RawImportRow) bool {
 		(row.Disposition == IMPORT_DISPOSITION_POSTABLE || row.Disposition == IMPORT_DISPOSITION_REVIEW_REQUIRED)
 }
 
-func paymentAccountExclusionByKey(exclusions []*PaymentAccountExclusion, currency string, aliasKey string) *PaymentAccountExclusion {
+func paymentAccountExclusionByKey(uid int64, sourceType SourceType, exclusions []*PaymentAccountExclusion, currency string, aliasKey string) *PaymentAccountExclusion {
 	for _, exclusion := range exclusions {
-		if exclusion != nil && exclusion.Currency == currency && exclusion.AliasKey == aliasKey {
+		if exclusion != nil && exclusion.Uid == uid && exclusion.SourceType == sourceType && exclusion.AliasKeyVersion == PAYMENT_ACCOUNT_ALIAS_VERSION_V1 &&
+			exclusion.Currency == currency && exclusion.AliasKey == aliasKey {
+			return exclusion
+		}
+	}
+	if sourceType != SOURCE_TYPE_ALIPAY {
+		return nil
+	}
+	balanceAlias, ok := BuildPaymentAccountAlias("余额")
+	if !ok || aliasKey != balanceAlias.Key {
+		return nil
+	}
+	legacyKey := legacyAlipayAccountBalanceAliasKey()
+	for _, exclusion := range exclusions {
+		if exclusion != nil && exclusion.Uid == uid && exclusion.SourceType == sourceType && exclusion.AliasKeyVersion == PAYMENT_ACCOUNT_ALIAS_VERSION_V1 &&
+			exclusion.Currency == currency && exclusion.AliasKey == legacyKey {
 			return exclusion
 		}
 	}

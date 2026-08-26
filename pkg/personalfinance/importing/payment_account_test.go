@@ -1,6 +1,8 @@
 package importing_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"sync"
@@ -47,6 +49,11 @@ func TestPaymentAccountAliasNormalizesFormattingAndMasksLongDigits(t *testing.T)
 	wechatChange, wechatOK := importing.BuildPaymentAccountAlias("微信零钱")
 	if !ok || !wechatOK || change.Key != wechatChange.Key {
 		t.Fatalf("wechat change variants must share an alias key: %+v %+v", change, wechatChange)
+	}
+	alipayBalance, alipayBalanceOK := importing.BuildPaymentAccountAlias("余额")
+	alipayAccountBalance, alipayAccountBalanceOK := importing.BuildPaymentAccountAlias("账户余额")
+	if !alipayBalanceOK || !alipayAccountBalanceOK || alipayBalance.Key != alipayAccountBalance.Key {
+		t.Fatalf("alipay balance variants must share an alias key: %+v %+v", alipayBalance, alipayAccountBalance)
 	}
 
 	for _, generic := range []string{"", "银行卡", "信用卡", "储蓄卡", "未知", "付款方式"} {
@@ -258,6 +265,12 @@ func TestPaymentAccountServicePrefixesPlatformWallets(t *testing.T) {
 	alipayBatch.TotalRowCount = 4
 	alipayBatch.ValidRowCount = 4
 	alipayBatch.PendingRowCount = 4
+	legacyDigest := sha256.Sum256([]byte(string(importing.PAYMENT_ACCOUNT_ALIAS_VERSION_V1) + "\x00账户余额"))
+	legacyBalanceMapping := &importing.PaymentAccountMapping{
+		Uid: uid, SourceType: importing.SOURCE_TYPE_ALIPAY, Currency: "CNY", AliasKey: hex.EncodeToString(legacyDigest[:]),
+		AliasKeyVersion: importing.PAYMENT_ACCOUNT_ALIAS_VERSION_V1, LedgerAccountId: 8701, MaskedDisplayName: "支付宝账户余额",
+		CreatedUnixTime: 100, UpdatedUnixTime: 100, MappingId: 7627,
+	}
 
 	wechatFileId := int64(7222)
 	wechatFile := testImportFile(uid, wechatFileId, "8", 101)
@@ -271,7 +284,7 @@ func TestPaymentAccountServicePrefixesPlatformWallets(t *testing.T) {
 	wechatBatch.ValidRowCount = 2
 	wechatBatch.PendingRowCount = 2
 
-	insertRepositoryBeans(t, database, alipayBatch, wechatFile, wechatBatch,
+	insertRepositoryBeans(t, database, alipayBatch, wechatFile, wechatBatch, legacyBalanceMapping,
 		paymentAccountRow(uid, alipayBatchId, 7621, 1, "余额", importing.PROCESSING_STATE_PENDING, nil),
 		paymentAccountRow(uid, alipayBatchId, 7622, 2, "余额宝", importing.PROCESSING_STATE_PENDING, nil),
 		paymentAccountRow(uid, alipayBatchId, 7623, 3, "账户余额", importing.PROCESSING_STATE_PENDING, nil),
@@ -289,10 +302,46 @@ func TestPaymentAccountServicePrefixesPlatformWallets(t *testing.T) {
 		t.Fatalf("list alipay payment accounts: %v", err)
 	}
 	alipayNames := paymentAccountDisplayNames(alipayGroups)
-	if alipayNames["支付宝余额"] != 1 || alipayNames["支付宝余额宝"] != 1 || alipayNames["支付宝账户余额"] != 1 {
-		t.Fatalf("alipay wallets were not prefixed: %v", alipayNames)
+	if alipayNames["支付宝账户余额"] != 1 || alipayNames["支付宝余额宝"] != 1 {
+		t.Fatalf("alipay wallets were not normalized: %v", alipayNames)
 	}
-	if alipayNames["光大银行信用卡(2690)"] != 1 || alipayNames["余额"] != 0 || alipayNames["余额宝"] != 0 {
+	alipayBalance := findPaymentAccountGroup(t, alipayGroups, "支付宝账户余额")
+	if alipayBalance.RowCount != 2 || alipayBalance.PendingRowCount != 2 || !alipayBalance.Mapped ||
+		alipayBalance.LedgerAccountId == nil || *alipayBalance.LedgerAccountId != 8701 {
+		t.Fatalf("alipay balance variants were not grouped: %+v", alipayBalance)
+	}
+	currentBalanceAlias, ok := importing.BuildPaymentAccountAlias("余额")
+	if !ok {
+		t.Fatal("build current alipay balance alias")
+	}
+	insertRepositoryBeans(t, database, &importing.PaymentAccountMapping{
+		Uid: uid, SourceType: importing.SOURCE_TYPE_ALIPAY, Currency: "CNY", AliasKey: currentBalanceAlias.Key,
+		AliasKeyVersion: importing.PAYMENT_ACCOUNT_ALIAS_VERSION_V1, LedgerAccountId: 8702, MaskedDisplayName: "支付宝账户余额",
+		CreatedUnixTime: 101, UpdatedUnixTime: 101, MappingId: 7628,
+	})
+	alipayGroups, err = service.ListBatchPaymentAccounts(nil, uid, alipayBatchId)
+	if err != nil {
+		t.Fatalf("list conflicting alipay payment accounts: %v", err)
+	}
+	alipayBalance = findPaymentAccountGroup(t, alipayGroups, "支付宝账户余额")
+	if alipayBalance.Mapped || alipayBalance.LedgerAccountId != nil {
+		t.Fatalf("conflicting legacy mappings must require confirmation: %+v", alipayBalance)
+	}
+	confirmed, err := service.ConfirmBatchPaymentAccount(nil, importing.PaymentAccountConfirmRequest{
+		Uid: uid, BatchId: alipayBatchId, RowId: alipayBalance.SampleRowId,
+		LedgerAccountId: 8801, LedgerAccountCurrency: "CNY",
+	})
+	if err != nil || confirmed == nil || !confirmed.Mapped || confirmed.RowCount != 2 || confirmed.LedgerAccountId == nil || *confirmed.LedgerAccountId != 8801 {
+		t.Fatalf("confirm normalized alipay balance: %+v %v", confirmed, err)
+	}
+	assertPaymentRowLedgerAccounts(t, repository, uid, alipayBatchId, map[int64]*int64{
+		7621: int64Pointer(8801), 7622: nil, 7623: int64Pointer(8801), 7624: nil,
+	})
+	mappings, err := repository.ListPaymentAccountMappings(nil, uid, importing.SOURCE_TYPE_ALIPAY)
+	if err != nil || len(mappings) != 1 || mappings[0].LedgerAccountId != 8801 || mappings[0].MaskedDisplayName != "支付宝账户余额" {
+		t.Fatalf("confirm should replace the legacy alipay balance mapping: %+v %v", mappings, err)
+	}
+	if alipayNames["光大银行信用卡(2690)"] != 1 || alipayNames["支付宝余额"] != 0 || alipayNames["余额宝"] != 0 {
 		t.Fatalf("bank card must stay unprefixed: %v", alipayNames)
 	}
 

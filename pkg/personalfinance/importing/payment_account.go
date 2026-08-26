@@ -146,6 +146,11 @@ func BuildPaymentAccountAlias(raw string) (PaymentAccountAlias, bool) {
 	}, true
 }
 
+func legacyAlipayAccountBalanceAliasKey() string {
+	digest := sha256.Sum256([]byte(string(PAYMENT_ACCOUNT_ALIAS_VERSION_V1) + "\x00账户余额"))
+	return hex.EncodeToString(digest[:])
+}
+
 // ComparablePaymentAccountText 把付款方式收到与核对账户相同的组成规则后再比。
 // 光大月结单原始值仍是「末四位xxxx」，比对时组成「光大银行信用卡(xxxx)」；不改身份键。
 func ComparablePaymentAccountText(raw string) string {
@@ -169,6 +174,11 @@ func qualifyPaymentAccountDisplayName(sourceType SourceType, displayName string)
 	name := strings.TrimSpace(displayName)
 	if name == "" {
 		return name
+	}
+	// 支付宝 App 导出会在同一份账单中交替使用「余额」和「账户余额」。
+	// 它们都是支付宝现金余额，不是两个资金池；统一采用官方全称显示。
+	if sourceType == SOURCE_TYPE_ALIPAY && canonicalPaymentAccountAlias(name) == "余额" {
+		return "支付宝账户余额"
 	}
 	prefix := ""
 	switch sourceType {
@@ -264,6 +274,10 @@ func canonicalPaymentAccountAlias(raw string) string {
 	}
 	for _, token := range []string{"微信支付", "微信", "支付宝"} {
 		canonical = strings.TrimPrefix(canonical, token)
+	}
+	// 支付宝账单会按交易场景交替写「余额」和「账户余额」，两者指向同一现金余额。
+	if canonical == "账户余额" {
+		return "余额"
 	}
 	return canonical
 }
@@ -480,22 +494,7 @@ func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mapping
 		return []*PaymentAccountGroup{}
 	}
 
-	mappingByKey := make(map[string]*PaymentAccountMapping, len(mappings))
-	for _, mapping := range mappings {
-		if mapping != nil && mapping.Uid == batch.Uid && mapping.SourceType == batch.SourceTypeSnapshot &&
-			mapping.AliasKeyVersion == PAYMENT_ACCOUNT_ALIAS_VERSION_V1 && isLowerHexSHA256(mapping.AliasKey) &&
-			isValidPaymentAccountCurrency(mapping.Currency) && mapping.LedgerAccountId > 0 {
-			mappingByKey[mapping.Currency+"\x00"+mapping.AliasKey] = mapping
-		}
-	}
-	exclusionByKey := make(map[string]*PaymentAccountExclusion, len(exclusions))
-	for _, exclusion := range exclusions {
-		if exclusion != nil && exclusion.Uid == batch.Uid && exclusion.SourceType == batch.SourceTypeSnapshot &&
-			exclusion.AliasKeyVersion == PAYMENT_ACCOUNT_ALIAS_VERSION_V1 && isLowerHexSHA256(exclusion.AliasKey) &&
-			isValidPaymentAccountCurrency(exclusion.Currency) {
-			exclusionByKey[exclusion.Currency+"\x00"+exclusion.AliasKey] = exclusion
-		}
-	}
+	mappingByKey := paymentAccountMappingByKey(batch.Uid, batch.SourceTypeSnapshot, mappings)
 
 	type groupEntry struct {
 		group    *PaymentAccountGroup
@@ -524,7 +523,7 @@ func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mapping
 				entry.group.Mapped = true
 				entry.group.DisplayName = qualifyPaymentAccountDisplayName(batch.SourceTypeSnapshot, mapping.MaskedDisplayName)
 			}
-			if exclusion := exclusionByKey[key]; exclusion != nil {
+			if exclusion := paymentAccountExclusionByKey(batch.Uid, batch.SourceTypeSnapshot, exclusions, row.Currency, alias.Key); exclusion != nil {
 				entry.group.Excluded = true
 				entry.group.DisplayName = qualifyPaymentAccountDisplayName(batch.SourceTypeSnapshot, exclusion.MaskedDisplayName)
 			}
@@ -554,6 +553,43 @@ func buildPaymentAccountGroups(batch *ImportBatch, rows []*RawImportRow, mapping
 		result[index] = entry.group
 	}
 	return result
+}
+
+// paymentAccountMappingByKey 同时兼容支付宝旧的「账户余额」别名。
+// 若旧的「余额」与「账户余额」已被映射到不同正式账户，停止自动沿用，要求用户重新确认。
+func paymentAccountMappingByKey(uid int64, sourceType SourceType, mappings []*PaymentAccountMapping) map[string]*PaymentAccountMapping {
+	lookup := make(map[string]*PaymentAccountMapping, len(mappings))
+	for _, mapping := range mappings {
+		if mapping == nil || mapping.Uid != uid || mapping.SourceType != sourceType || mapping.AliasKeyVersion != PAYMENT_ACCOUNT_ALIAS_VERSION_V1 ||
+			!isLowerHexSHA256(mapping.AliasKey) || !isValidPaymentAccountCurrency(mapping.Currency) || mapping.LedgerAccountId < 1 {
+			continue
+		}
+		lookup[mapping.Currency+"\x00"+mapping.AliasKey] = mapping
+	}
+
+	if sourceType != SOURCE_TYPE_ALIPAY {
+		return lookup
+	}
+
+	legacyKey := legacyAlipayAccountBalanceAliasKey()
+	currentAlias, ok := BuildPaymentAccountAlias("余额")
+	if !ok {
+		return lookup
+	}
+	for _, mapping := range mappings {
+		if mapping == nil || mapping.Uid != uid || mapping.SourceType != sourceType || mapping.AliasKeyVersion != PAYMENT_ACCOUNT_ALIAS_VERSION_V1 ||
+			mapping.AliasKey != legacyKey || !isValidPaymentAccountCurrency(mapping.Currency) || mapping.LedgerAccountId < 1 {
+			continue
+		}
+		currentKey := mapping.Currency + "\x00" + currentAlias.Key
+		current := lookup[currentKey]
+		if current == nil {
+			lookup[currentKey] = mapping
+		} else if current.LedgerAccountId != mapping.LedgerAccountId {
+			delete(lookup, currentKey)
+		}
+	}
+	return lookup
 }
 
 func isValidPaymentAccountCurrency(currency string) bool {
