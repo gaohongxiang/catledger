@@ -110,11 +110,11 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("migration table is not exact: %v", err)
 		}
 
-		if err := verifySchemaV009(integrationDatabase); err != nil {
-			t.Fatalf("v006 schema is not exact: %v", err)
+		if err := verifySchemaV012(integrationDatabase); err != nil {
+			t.Fatalf("latest schema is not exact: %v", err)
 		}
 
-		record := requireMigrationRecord(t, integrationDatabase, 9)
+		record := requireMigrationRecord(t, integrationDatabase, 12)
 
 		if !record.Success || record.AppliedUnixTime == nil || record.FailureCode != "" {
 			t.Fatalf("unexpected successful migration record: %+v", record)
@@ -140,7 +140,7 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("advance to v006: %v", err)
 		}
 
-		if err := verifySchemaV009(integrationDatabase); err != nil {
+		if err := verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("advanced v006 schema is not exact: %v", err)
 		}
 
@@ -170,7 +170,7 @@ func TestMigrationProtocol(t *testing.T) {
 			t.Fatalf("advance v003 to v006: %v", err)
 		}
 
-		if err := verifySchemaV009(integrationDatabase); err != nil {
+		if err := verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("v003 to v006 schema is not exact: %v", err)
 		}
 
@@ -197,7 +197,7 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v004-to-v006"}); err != nil {
 			t.Fatalf("advance v004 to v006: %v", err)
 		}
-		if err := verifySchemaV009(integrationDatabase); err != nil {
+		if err := verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("v004 to v006 schema is not exact: %v", err)
 		}
 
@@ -382,7 +382,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV009(integrationDatabase); err != nil {
+		if err = verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("recovered schema is not exact: %v", err)
 		}
 
@@ -474,7 +474,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV009(integrationDatabase); err != nil {
+		if err = verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("resumed through v006 schema is not exact: %v", err)
 		}
 
@@ -566,7 +566,7 @@ func TestMigrationProtocol(t *testing.T) {
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
 
-		if err = verifySchemaV009(integrationDatabase); err != nil {
+		if err = verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("resumed through v006 schema is not exact: %v", err)
 		}
 
@@ -649,7 +649,7 @@ func TestMigrationProtocol(t *testing.T) {
 
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
-		if err = verifySchemaV009(integrationDatabase); err != nil {
+		if err = verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("resumed v005 through v006 schema is not exact: %v", err)
 		}
 
@@ -675,7 +675,7 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v005-to-v006"}); err != nil {
 			t.Fatalf("advance v005 to v006: %v", err)
 		}
-		if err := verifySchemaV009(integrationDatabase); err != nil {
+		if err := verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("v005 to v006 schema is not exact: %v", err)
 		}
 
@@ -757,7 +757,7 @@ func TestMigrationProtocol(t *testing.T) {
 
 		store := integrationDataStore(t, integrationDatabase)
 		requireUpgrade(t, store)
-		if err = verifySchemaV009(integrationDatabase); err != nil {
+		if err = verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("resumed v006 schema is not exact: %v", err)
 		}
 
@@ -783,7 +783,7 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v006-to-v007"}); err != nil {
 			t.Fatalf("advance v006 to v007: %v", err)
 		}
-		if err := verifySchemaV009(integrationDatabase); err != nil {
+		if err := verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("v006 to v007 schema is not exact: %v", err)
 		}
 
@@ -845,7 +845,7 @@ func TestMigrationProtocol(t *testing.T) {
 		if err := Upgrade(nil, store, ApplicationInfo{Version: "integration", Commit: "v007-to-v008"}); err != nil {
 			t.Fatalf("advance v007 to v008: %v", err)
 		}
-		if err := verifySchemaV009(integrationDatabase); err != nil {
+		if err := verifySchemaV012(integrationDatabase); err != nil {
 			t.Fatalf("v007 to v008 schema is not exact: %v", err)
 		}
 
@@ -1674,49 +1674,11 @@ func cleanupPersonalFinanceTables(db *datastore.Database) error {
 		}
 	}
 
-	tables := []string{
-		"pf_finance_action",
-		"pf_economic_event_transaction",
-		"pf_economic_event_relation",
-		"pf_economic_event_evidence",
-		"pf_economic_event",
-		"pf_finance_update_source",
-		"pf_finance_update",
-		"pf_month_report_revision",
-		"pf_card_statement_coverage",
-		"pf_card_cycle_rule",
-		"pf_account_balance_review",
-		"pf_installment_candidate_member",
-		"pf_installment_candidate",
-		"pf_category_alias_mapping",
-		"pf_billflow_todo",
-		"pf_billflow_action",
-		"pf_billflow_task_member",
-		"pf_billflow_task",
-		"pf_payment_account_exclusion",
-		"pf_payment_account_mapping",
-		"pf_loan_transaction_allocation",
-		"pf_loan_transaction_binding",
-		"pf_loan_action",
-		"pf_loan_installment",
-		"pf_loan_contract_revision",
-		"pf_loan_contract",
-		"pf_reconciliation_ledger_effect",
-		"pf_reconciliation_transaction_link",
-		"pf_reconciliation_decision",
-		"pf_reconciliation_case_member",
-		"pf_reconciliation_case",
-		"pf_raw_row_transaction_link",
-		"pf_import_batch_issue",
-		"pf_import_posting",
-		"pf_import_batch_card_header",
-		"pf_raw_import_row",
-		"pf_source_identity",
-		"pf_import_batch",
-		"pf_source_account",
-		"pf_import_file",
-		"pf_schema_migration",
+	tables := UserDataTableNames()
+	for left, right := 0, len(tables)-1; left < right; left, right = left+1, right-1 {
+		tables[left], tables[right] = tables[right], tables[left]
 	}
+	tables = append(tables, "pf_schema_migration")
 
 	for _, tableName := range tables {
 		sess := db.NewSession(nil)

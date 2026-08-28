@@ -122,49 +122,11 @@ func cleanupImportingIntegrationTables(database *datastore.Database) error {
 		return fmt.Errorf("drop isolated transaction table: %w", err)
 	}
 
-	tables := []string{
-		"pf_finance_action",
-		"pf_economic_event_transaction",
-		"pf_economic_event_relation",
-		"pf_economic_event_evidence",
-		"pf_economic_event",
-		"pf_finance_update_source",
-		"pf_finance_update",
-		"pf_month_report_revision",
-		"pf_card_statement_coverage",
-		"pf_card_cycle_rule",
-		"pf_account_balance_review",
-		"pf_installment_candidate_member",
-		"pf_installment_candidate",
-		"pf_category_alias_mapping",
-		"pf_billflow_todo",
-		"pf_billflow_action",
-		"pf_billflow_task_member",
-		"pf_billflow_task",
-		"pf_payment_account_exclusion",
-		"pf_payment_account_mapping",
-		"pf_loan_transaction_allocation",
-		"pf_loan_transaction_binding",
-		"pf_loan_action",
-		"pf_loan_installment",
-		"pf_loan_contract_revision",
-		"pf_loan_contract",
-		"pf_reconciliation_ledger_effect",
-		"pf_reconciliation_transaction_link",
-		"pf_reconciliation_decision",
-		"pf_reconciliation_case_member",
-		"pf_reconciliation_case",
-		"pf_raw_row_transaction_link",
-		"pf_import_batch_issue",
-		"pf_import_posting",
-		"pf_import_batch_card_header",
-		"pf_raw_import_row",
-		"pf_source_identity",
-		"pf_import_batch",
-		"pf_source_account",
-		"pf_import_file",
-		"pf_schema_migration",
+	tables := migrations.UserDataTableNames()
+	for left, right := 0, len(tables)-1; left < right; left, right = left+1, right-1 {
+		tables[left], tables[right] = tables[right], tables[left]
 	}
+	tables = append(tables, "pf_schema_migration")
 
 	for _, tableName := range tables {
 		session := database.NewPrivacySession(nil)

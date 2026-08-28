@@ -13,3 +13,7 @@ func validateSchemaV012PreflightWithContext(c context.Context, db *datastore.Dat
 func verifySchemaV012WithContext(c context.Context, db *datastore.Database) error {
 	return verifyPersonalFinanceTablesWithContext(c, db, schemaBeansThroughV012(), schemaExact)
 }
+
+func verifySchemaV012(db *datastore.Database) error {
+	return verifySchemaV012WithContext(context.Background(), db)
+}
