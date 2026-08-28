@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "Bu işlem GERİ ALINAMAZ. {count} işlemin tüm etiketleri kalıcı olarak temizlenecektir.",
             "accountActivationAndResendValidationEmailTip": "Hesap aktivasyon bağlantısı e-posta adresinize ({email}) gönderildi. Eğer e-postayı almadıysanız, lütfen şifrenizi tekrar girin ve doğrulama postasını yeniden göndermek için aşağıdaki butona tıklayın.",
             "resendValidationEmailTip": "Eğer e-postayı almadıysanız, lütfen şifrenizi tekrar girin ve doğrulama postasını şu adrese yeniden göndermek için aşağıdaki butona tıklayın: {email}",
-            "oauth2bindTip": "{providerName} kullanarak {userName} hesabına giriş yapıyorsunuz. Doğrulamak için lütfen ezBookkeeping şifrenizi girin."
+            "oauth2bindTip": "{providerName} kullanarak {userName} hesabına giriş yapıyorsunuz. Doğrulamak için lütfen CatLedger şifrenizi girin."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "Dili Değiştir",
     "Date is too early": "Tarih çok erken",
     "User Canceled": "Kullanıcı İptal Etti",
-    "Welcome to ezBookkeeping": "ezBookkeeping'e Hoş Geldiniz",
-    "Please log in with your ezBookkeeping account": "Lütfen ezBookkeeping hesabınızla giriş yapın",
+    "Welcome to ezBookkeeping": "CatLedger'e Hoş Geldiniz",
+    "Please log in with your ezBookkeeping account": "Lütfen CatLedger hesabınızla giriş yapın",
     "Unlock Application": "Uygulamanın Kilidini Aç",
     "Please enter your PIN code or use WebAuthn to unlock application": "Uygulamanın kilidini açmak için PIN kodunuzu girin veya WebAuthn kullanın",
     "Please enter your PIN code to unlock application": "Uygulamanın kilidini açmak için PIN kodunuzu girin",

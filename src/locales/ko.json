@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "You CANNOT undo this action. This will clear all tags from {count} transactions.",
             "accountActivationAndResendValidationEmailTip": "계정 활성화 링크가 귀하의 이메일 주소({email})로 전송되었습니다. 메일을 받지 못하신 경우, 비밀번호를 다시 입력하고 아래 버튼을 클릭하여 확인 메일을 재전송하십시오.",
             "resendValidationEmailTip": "메일을 받지 못하신 경우, 비밀번호를 다시 입력하고 아래 버튼을 클릭하여 확인 메일을 {email}로 재전송하십시오.",
-            "oauth2bindTip": "{providerName}를 사용하여 {userName} 사용자로 로그인하고 있습니다. 확인을 위해 ezBookkeeping 비밀번호를 입력하세요."
+            "oauth2bindTip": "{providerName}를 사용하여 {userName} 사용자로 로그인하고 있습니다. 확인을 위해 CatLedger 비밀번호를 입력하세요."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "언어 변경",
     "Date is too early": "날짜가 너무 이름니다",
     "User Canceled": "사용자가 취소했습니다",
-    "Welcome to ezBookkeeping": "ezBookkeeping에 오신 것을 환영합니다",
-    "Please log in with your ezBookkeeping account": "ezBookkeeping 계정으로 로그인해 주세요",
+    "Welcome to ezBookkeeping": "CatLedger에 오신 것을 환영합니다",
+    "Please log in with your ezBookkeeping account": "CatLedger 계정으로 로그인해 주세요",
     "Unlock Application": "애플리케이션 잠금 해제",
     "Please enter your PIN code or use WebAuthn to unlock application": "PIN 코드를 입력하거나 WebAuthn을 사용하여 애플리케이션 잠금을 해제해 주세요",
     "Please enter your PIN code to unlock application": "PIN 코드를 입력하여 애플리케이션 잠금을 해제해 주세요",

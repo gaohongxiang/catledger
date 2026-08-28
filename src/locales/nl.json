@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "You CANNOT undo this action. This will clear all tags from {count} transactions.",
             "accountActivationAndResendValidationEmailTip": "Een activatielink is verzonden naar je e-mailadres: {email}. Als je de e-mail niet ontvangt, vul dan je wachtwoord opnieuw in en klik op de knop hieronder om de validatiemail opnieuw te verzenden.",
             "resendValidationEmailTip": "Als je de e-mail niet ontvangt, vul dan je wachtwoord opnieuw in en klik op de knop hieronder om de validatiemail opnieuw te verzenden naar: {email}",
-            "oauth2bindTip": "You're signing in to the {userName} user using {providerName}. Please enter your ezBookkeeping password to verify."
+            "oauth2bindTip": "You're signing in to the {userName} user using {providerName}. Please enter your CatLedger password to verify."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "Taal wijzigen",
     "Date is too early": "Datum is te vroeg",
     "User Canceled": "User Canceled",
-    "Welcome to ezBookkeeping": "Welkom bij ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "Log in met je ezBookkeeping-account",
+    "Welcome to ezBookkeeping": "Welkom bij CatLedger",
+    "Please log in with your ezBookkeeping account": "Log in met je CatLedger-account",
     "Unlock Application": "Applicatie ontgrendelen",
     "Please enter your PIN code or use WebAuthn to unlock application": "Voer je pincode in of gebruik WebAuthn om de applicatie te ontgrendelen",
     "Please enter your PIN code to unlock application": "Voer je pincode in om de applicatie te ontgrendelen",

@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "Цю дію НЕ МОЖНА скасувати. Це призведе до очищення всіх тегів із транзакцій (кількість: {count}).",
             "accountActivationAndResendValidationEmailTip": "Посилання для активації облікового запису було надіслано на вашу електронну адресу: {email}. Якщо ви не отримали лист, введіть пароль ще раз і натисніть кнопку нижче, щоб надіслати лист повторно.",
             "resendValidationEmailTip": "Якщо ви не отримали лист, введіть пароль ще раз і натисніть кнопку нижче, щоб надіслати лист повторно на адресу: {email}",
-            "oauth2bindTip": "Ви входите як користувач {userName}, використовуючи {providerName}. Введіть пароль ezBookkeeping для підтвердження."
+            "oauth2bindTip": "Ви входите як користувач {userName}, використовуючи {providerName}. Введіть пароль CatLedger для підтвердження."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "Змінити мову",
     "Date is too early": "Дата занадто рання",
     "User Canceled": "Скасовано користувачем",
-    "Welcome to ezBookkeeping": "Ласкаво просимо до ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "Будь ласка, увійдіть до свого облікового запису ezBookkeeping",
+    "Welcome to ezBookkeeping": "Ласкаво просимо до CatLedger",
+    "Please log in with your ezBookkeeping account": "Будь ласка, увійдіть до свого облікового запису CatLedger",
     "Unlock Application": "Розблокувати застосунок",
     "Please enter your PIN code or use WebAuthn to unlock application": "Будь ласка, введіть PIN-код або скористайтеся WebAuthn для розблокування застосунку",
     "Please enter your PIN code to unlock application": "Будь ласка, введіть PIN-код для розблокування застосунку",

@@ -6,7 +6,7 @@ import (
 
 var zhHant = &LocaleTextItems{
 	GlobalTextItems: &GlobalTextItems{
-		AppName: "ezBookkeeping",
+		AppName: "貓帳",
 	},
 	DefaultTypes: &DefaultTypes{
 		DecimalSeparator:    core.DECIMAL_SEPARATOR_DOT,

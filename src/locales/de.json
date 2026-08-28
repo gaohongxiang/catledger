@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "Diese Aktion kann NICHT rückgängig gemacht werden. Dies wird von {count} Transaktionen alle Tags löschen.",
             "accountActivationAndResendValidationEmailTip": "Ein Aktivierungslink wurde an Ihre E-Mail-Adresse gesendet: {email}. Wenn Sie die E-Mail nicht erhalten haben, geben Sie bitte das Passwort erneut ein und klicken Sie auf die Schaltfläche unten, um die Bestätigungs-E-Mail erneut zu senden.",
             "resendValidationEmailTip": "Wenn Sie die E-Mail nicht erhalten haben, geben Sie bitte das Passwort erneut ein und klicken Sie auf die Schaltfläche unten, um die Bestätigungs-E-Mail an: {email} erneut zu senden.",
-            "oauth2bindTip": "Sie melden sich beim Benutzer {userName} mit {providerName} an. Bitte geben Sie Ihr ezBookkeeping-Passwort zur Bestätigung ein."
+            "oauth2bindTip": "Sie melden sich beim Benutzer {userName} mit {providerName} an. Bitte geben Sie Ihr CatLedger-Passwort zur Bestätigung ein."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "Sprache ändern",
     "Date is too early": "Datum ist zu früh",
     "User Canceled": "Benutzer hat abgebrochen",
-    "Welcome to ezBookkeeping": "Willkommen bei ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "Bitte melden Sie sich mit Ihrem ezBookkeeping-Konto an",
+    "Welcome to ezBookkeeping": "Willkommen bei CatLedger",
+    "Please log in with your ezBookkeeping account": "Bitte melden Sie sich mit Ihrem CatLedger-Konto an",
     "Unlock Application": "Anwendung entsperren",
     "Please enter your PIN code or use WebAuthn to unlock application": "Bitte geben Sie Ihren PIN-Code ein oder verwenden Sie WebAuthn, um die Anwendung zu entsperren",
     "Please enter your PIN code to unlock application": "Bitte geben Sie Ihren PIN-Code ein, um die Anwendung zu entsperren",

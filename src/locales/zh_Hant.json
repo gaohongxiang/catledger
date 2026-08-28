@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "貓帳"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "您不能還原此操作。此操作將會清除 {count} 個交易中的全部標籤。",
             "accountActivationAndResendValidationEmailTip": "帳號啟用連結已經傳送到您的信箱地址：{email}，如果您沒有收到郵件，請再次輸入密碼並點擊下方的按鈕重新發送驗證郵件。",
             "resendValidationEmailTip": "如果您沒有收到郵件，請再次輸入密碼並點擊下方的按鈕重新發送驗證郵件到：{email}",
-            "oauth2bindTip": "您正在使用 {providerName} 登入 \"{userName}\" 使用者，請輸入您的 ezBookkeeping 的密碼以進行驗證。"
+            "oauth2bindTip": "您正在使用 {providerName} 登入 \"{userName}\" 使用者，請輸入您的貓帳密碼以進行驗證。"
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "變更語言",
     "Date is too early": "日期過早",
     "User Canceled": "使用者已取消",
-    "Welcome to ezBookkeeping": "歡迎使用 ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "請使用您的 ezBookkeeping 帳號登入",
+    "Welcome to ezBookkeeping": "歡迎使用貓帳",
+    "Please log in with your ezBookkeeping account": "請使用您的貓帳帳號登入",
     "Unlock Application": "解鎖應用程式",
     "Please enter your PIN code or use WebAuthn to unlock application": "請輸入您的 PIN 碼，或使用 WebAuthn 解鎖應用程式",
     "Please enter your PIN code to unlock application": "請輸入您的 PIN 碼解鎖應用程式",

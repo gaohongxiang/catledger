@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "You CANNOT undo this action. This will clear all tags from {count} transactions.",
             "accountActivationAndResendValidationEmailTip": "ಖಾತೆ ಸಕ್ರಿಯಗೊಳಿಸುವ ಲಿಂಕ್ ಅನ್ನು ನಿಮ್ಮ ಈಮೇಲ್‌ಗೆ ಕಳುಹಿಸಲಾಗಿದೆ: {email}. ನೀವು ಇಮೇಲ್ ಪಡೆಯದಿದ್ದರೆ, ದಯವಿಟ್ಟು ಪಾಸ್‌ವರ್ಡ್ ಮರು ನಮೂದಿಸಿ ಮತ್ತು ಕೆಳಗಿನ ಬಟನ್ ಒತ್ತಿ ಸರೀಕರಿಸುವ ಇಮೇಲ್ ಮರು ಕಳುಹಿಸಿ.",
             "resendValidationEmailTip": "ನೀವು ಇಮೇಲ್ ಪಡೆಯದಿದ್ದರೆ, ದಯವಿಟ್ಟು ಪಾಸ್‌ವರ್ಡ್ ಮರು ನಮೂದಿಸಿ ಮತ್ತು ಕೆಳಗಿನ ಬಟನ್ ಒತ್ತಿ ಮರು ಸರೀಕರಿಸುವ ಇಮೇಲ್ ಕಳುಹಿಸಲಾಗುವುದು: {email}",
-            "oauth2bindTip": "ನೀವು {providerName} ಬಳಸಿ {userName} ಬಳಕೆದಾರರಾಗಿ ಲಾಗಿನ್ ಆಗುತ್ತಿದ್ದೀರಿ. ದೃಢೀಕರಿಸಲು ದಯವಿಟ್ಟು ನಿಮ್ಮ ezBookkeeping ಪಾಸ್‌ವರ್ಡ್ ನಮೂದಿಸಿ."
+            "oauth2bindTip": "ನೀವು {providerName} ಬಳಸಿ {userName} ಬಳಕೆದಾರರಾಗಿ ಲಾಗಿನ್ ಆಗುತ್ತಿದ್ದೀರಿ. ದೃಢೀಕರಿಸಲು ದಯವಿಟ್ಟು ನಿಮ್ಮ CatLedger ಪಾಸ್‌ವರ್ಡ್ ನಮೂದಿಸಿ."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "ಭಾಷೆ ಬದಲಾಯಿಸಿ",
     "Date is too early": "ದಿನಾಂಕ ಬಹಳ ಬೇಗಿದೆ",
     "User Canceled": "ಬಳಕೆದಾರನು ರದ್ದುಗೊಳಿಸಿದ್ದಾರೆ",
-    "Welcome to ezBookkeeping": "ezBookkeeping ಗೆ ಸ್ವಾಗತ",
-    "Please log in with your ezBookkeeping account": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ezBookkeeping ಖಾತೆಯಿಂದ ಲಾಗಿನ್ ಆಗಿ",
+    "Welcome to ezBookkeeping": "CatLedger ಗೆ ಸ್ವಾಗತ",
+    "Please log in with your ezBookkeeping account": "ದಯವಿಟ್ಟು ನಿಮ್ಮ CatLedger ಖಾತೆಯಿಂದ ಲಾಗಿನ್ ಆಗಿ",
     "Unlock Application": "ಅನ್ವಯವನ್ನು ಅನ್‌ಲಾಕ್ ಮಾಡಿ",
     "Please enter your PIN code or use WebAuthn to unlock application": "PIN ನಮೂದಿಸಿ ಅಥವಾ WebAuthn ಬಳಸಿ ಅನ್ವಯವನ್ನು ಅನ್‌ಲಾಕ್ ಮಾಡಿ",
     "Please enter your PIN code to unlock application": "ಅನ್ವಯವನ್ನು ಅನ್‌ಲಾಕ್ ಮಾಡಲು PIN ನಮೂದಿಸಿ",

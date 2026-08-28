@@ -6,7 +6,7 @@ import (
 
 var ta = &LocaleTextItems{
 	GlobalTextItems: &GlobalTextItems{
-		AppName: "ezBookkeeping",
+		AppName: "CatLedger",
 	},
 	DefaultTypes: &DefaultTypes{
 		DecimalSeparator:    core.DECIMAL_SEPARATOR_DOT,

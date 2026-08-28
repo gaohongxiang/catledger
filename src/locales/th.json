@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "You CANNOT undo this action. This will clear all tags from {count} transactions.",
             "accountActivationAndResendValidationEmailTip": "ลิงก์สำหรับเปิดใช้งานบัญชีได้ถูกส่งไปยังอีเมลของคุณแล้ว: {email} หากคุณไม่ได้รับอีเมล โปรดกรอกรหัสผ่านอีกครั้งแล้วกดปุ่มด้านล่างเพื่อส่งอีเมลยืนยันอีกครั้ง",
             "resendValidationEmailTip": "หากคุณไม่ได้รับอีเมล โปรดกรอกรหัสผ่านอีกครั้งแล้วกดปุ่มด้านล่างเพื่อส่งอีเมลยืนยันไปยัง: {email}",
-            "oauth2bindTip": "You're signing in to the {userName} user using {providerName}. Please enter your ezBookkeeping password to verify."
+            "oauth2bindTip": "You're signing in to the {userName} user using {providerName}. Please enter your CatLedger password to verify."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "เปลี่ยนภาษา",
     "Date is too early": "วันที่เร็วเกินไป",
     "User Canceled": "User Canceled",
-    "Welcome to ezBookkeeping": "ยินดีต้อนรับสู่ ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "กรุณาเข้าสู่ระบบด้วยบัญชี ezBookkeeping ของคุณ",
+    "Welcome to ezBookkeeping": "ยินดีต้อนรับสู่ CatLedger",
+    "Please log in with your ezBookkeeping account": "กรุณาเข้าสู่ระบบด้วยบัญชี CatLedger ของคุณ",
     "Unlock Application": "ปลดล็อกแอปพลิเคชัน",
     "Please enter your PIN code or use WebAuthn to unlock application": "กรุณาใส่รหัส PIN หรือใช้ WebAuthn เพื่อปลดล็อกแอปพลิเคชัน",
     "Please enter your PIN code to unlock application": "กรุณาใส่รหัส PIN เพื่อปลดล็อกแอปพลิเคชัน",

@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "You CANNOT undo this action. This will clear all tags from {count} transactions.",
             "accountActivationAndResendValidationEmailTip": "Liên kết kích hoạt tài khoản đã được gửi tới email của bạn: {email}. Nếu bạn không nhận được email, vui lòng nhập lại mật khẩu và nhấp nút bên dưới để gửi lại email xác nhận.",
             "resendValidationEmailTip": "Nếu bạn không nhận được email, vui lòng nhập lại mật khẩu và nhấp nút bên dưới để gửi lại email xác nhận tới: {email}",
-            "oauth2bindTip": "You're signing in to the {userName} user using {providerName}. Please enter your ezBookkeeping password to verify."
+            "oauth2bindTip": "You're signing in to the {userName} user using {providerName}. Please enter your CatLedger password to verify."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "Thay đổi ngôn ngữ",
     "Date is too early": "Ngày quá sớm",
     "User Canceled": "User Canceled",
-    "Welcome to ezBookkeeping": "Chào mừng đến với ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "Vui lòng đăng nhập bằng tài khoản ezBookkeeping của bạn",
+    "Welcome to ezBookkeeping": "Chào mừng đến với CatLedger",
+    "Please log in with your ezBookkeeping account": "Vui lòng đăng nhập bằng tài khoản CatLedger của bạn",
     "Unlock Application": "Mở khóa ứng dụng",
     "Please enter your PIN code or use WebAuthn to unlock application": "Vui lòng nhập mã PIN hoặc sử dụng WebAuthn để mở khóa ứng dụng",
     "Please enter your PIN code to unlock application": "Vui lòng nhập mã PIN để mở khóa ứng dụng",

@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "You CANNOT undo this action. This will clear all tags from {count} transactions.",
             "accountActivationAndResendValidationEmailTip": "O link de ativação da conta foi enviado para seu endereço de e-mail: {email}. Se você não receber o e-mail, por favor, insira a senha novamente e clique no botão abaixo para reenviar o e-mail de validação.",
             "resendValidationEmailTip": "Se você não receber o e-mail, por favor, insira a senha novamente e clique no botão abaixo para reenviar o e-mail de validação para: {email}",
-            "oauth2bindTip": "Você está fazendo login como {userName} usando {providerName}. Por favor, insira sua senha do ezBookkeeping para verificar."
+            "oauth2bindTip": "Você está fazendo login como {userName} usando {providerName}. Por favor, insira sua senha do CatLedger para verificar."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "Alterar Idioma",
     "Date is too early": "A data é muito antiga",
     "User Canceled": "Usuário cancelou",
-    "Welcome to ezBookkeeping": "Bem-vindo ao ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "Por favor, faça login com sua conta ezBookkeeping",
+    "Welcome to ezBookkeeping": "Bem-vindo ao CatLedger",
+    "Please log in with your ezBookkeeping account": "Por favor, faça login com sua conta CatLedger",
     "Unlock Application": "Desbloquear Aplicativo",
     "Please enter your PIN code or use WebAuthn to unlock application": "Por favor, digite seu código PIN ou use o WebAuthn para desbloquear o aplicativo",
     "Please enter your PIN code to unlock application": "Por favor, digite seu código PIN para desbloquear o aplicativo",

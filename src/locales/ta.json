@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "You CANNOT undo this action. This will clear all tags from {count} transactions.",
             "accountActivationAndResendValidationEmailTip": "கணக்கு செயல்படுத்தும் இணைப்பு உங்கள் மின்னஞ்சலுக்கு அனுப்பப்பட்டது: {email}. நீங்கள் மின்னஞ்சலைப் பெறவில்லை என்றால், கடவுச்சொல்லை மீண்டும் உள்ளிட்டு கீழே உள்ள பொத்தானை அழுத்தி சரிபார்ப்பு மின்னஞ்சலை மீண்டும் அனுப்பவும்.",
             "resendValidationEmailTip": "நீங்கள் மின்னஞ்சலைப் பெறவில்லை என்றால், கடவுச்சொல்லை மீண்டும் உள்ளிட்டு கீழே உள்ள பொத்தானை அழுத்தவும், சரிபார்ப்பு மின்னஞ்சல் அனுப்பப்படும்: {email}",
-            "oauth2bindTip": "நீங்கள் {providerName} பயன்படுத்தி {userName} பயனராக உள்நுழைகிறீர்கள். உறுதிப்படுத்த உங்கள் ezBookkeeping கடவுச்சொல்லை உள்ளிடவும்."
+            "oauth2bindTip": "நீங்கள் {providerName} பயன்படுத்தி {userName} பயனராக உள்நுழைகிறீர்கள். உறுதிப்படுத்த உங்கள் CatLedger கடவுச்சொல்லை உள்ளிடவும்."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "மொழியை மாற்று",
     "Date is too early": "தேதி மிக முன்னதாக உள்ளது",
     "User Canceled": "பயனர் ரத்துப்படுத்தியுள்ளார்",
-    "Welcome to ezBookkeeping": "ezBookkeeping க்கு வரவேற்கிறோம்",
-    "Please log in with your ezBookkeeping account": "உங்கள் ezBookkeeping கணக்குடன் உள்நுழையவும்",
+    "Welcome to ezBookkeeping": "CatLedger க்கு வரவேற்கிறோம்",
+    "Please log in with your ezBookkeeping account": "உங்கள் CatLedger கணக்குடன் உள்நுழையவும்",
     "Unlock Application": "பயன்பாடுவை அன்‌பூட்டு செய்",
     "Please enter your PIN code or use WebAuthn to unlock application": "PIN உள்ளிடவும் அல்லது WebAuthn பயன்படுத்தி பயன்பாடுவை அன்‌பூட்டு செய்",
     "Please enter your PIN code to unlock application": "பயன்பாடுவை அன்‌பூட்டு செய்ய PIN உள்ளிடவும்",

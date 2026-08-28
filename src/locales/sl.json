@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "You CANNOT undo this action. This will clear all tags from {count} transactions.",
             "accountActivationAndResendValidationEmailTip": "Povezava za aktivacijo računa je bila poslana na vaš e-poštni naslov: {email}. Če e-pošte ne prejmete, ponovno vnesite geslo in kliknite spodnji gumb, da ponovno pošljete potrditveno e-pošto.",
             "resendValidationEmailTip": "Če ne prejmete e-pošte, ponovno vnesite geslo in kliknite spodnji gumb, da ponovno pošljete potrditveno e-pošto na: {email}",
-            "oauth2bindTip": "Prijavljate se v uporabniški račun {userName} z uporabo računa {providerName}. Za potrditev vnesite svoje geslo za ezBookkeeping."
+            "oauth2bindTip": "Prijavljate se v uporabniški račun {userName} z uporabo računa {providerName}. Za potrditev vnesite svoje geslo za CatLedger."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "Spremeni jezik",
     "Date is too early": "Datum je prezgoden",
     "User Canceled": "Uporabnik je preklical",
-    "Welcome to ezBookkeeping": "Dobrodošli v ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "Prosimo, prijavite se s svojim računom ezBookkeeping",
+    "Welcome to ezBookkeeping": "Dobrodošli v CatLedger",
+    "Please log in with your ezBookkeeping account": "Prosimo, prijavite se s svojim računom CatLedger",
     "Unlock Application": "Odkleni aplikacijo",
     "Please enter your PIN code or use WebAuthn to unlock application": "Prosimo, vnesite svojo kodo PIN ali uporabite WebAuthn za odklepanje aplikacije",
     "Please enter your PIN code to unlock application": "Prosimo, vnesite svojo kodo PIN za odklepanje aplikacije",

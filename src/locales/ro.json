@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -160,7 +160,7 @@
             "clearTransactionsTagsTip": "Această acțiune NU poate fi anulată. Toate etichetele vor fi șterse de pe {count} tranzacții.",
             "accountActivationAndResendValidationEmailTip": "Linkul de activare a contului a fost trimis la adresa ta de email: {email}. Dacă nu primești mesajul, te rugăm să introduci din nou parola și să faci clic pe butonul de mai jos pentru a retrimite emailul de validare.",
             "resendValidationEmailTip": "Dacă nu primești mesajul, te rugăm să introduci din nou parola și să faci clic pe butonul de mai jos pentru a retrimite emailul de validare la: {email}",
-            "oauth2bindTip": "Te autentifici în contul de utilizator {userName} folosind {providerName}. Te rugăm să introduci parola ezBookkeeping pentru verificare."
+            "oauth2bindTip": "Te autentifici în contul de utilizator {userName} folosind {providerName}. Te rugăm să introduci parola CatLedger pentru verificare."
         }
     },
     "dataExport": {
@@ -1691,8 +1691,8 @@
     "Change Language": "Schimbă limba",
     "Date is too early": "Data este prea timpurie",
     "User Canceled": "Anulat de utilizator",
-    "Welcome to ezBookkeeping": "Bun venit la ezBookkeeping",
-    "Please log in with your ezBookkeeping account": "Te rugăm să te autentifici cu contul ezBookkeeping",
+    "Welcome to ezBookkeeping": "Bun venit la CatLedger",
+    "Please log in with your ezBookkeeping account": "Te rugăm să te autentifici cu contul CatLedger",
     "Unlock Application": "Deblochează aplicația",
     "Please enter your PIN code or use WebAuthn to unlock application": "Te rugăm să introduci codul PIN sau să folosești WebAuthn pentru a debloca aplicația",
     "Please enter your PIN code to unlock application": "Te rugăm să introduci codul PIN pentru a debloca aplicația",

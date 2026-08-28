@@ -1,4 +1,6 @@
-# ezBookkeeping
+# 猫账 · CatLedger
+
+猫账是一款以日常记账为核心的轻量、自托管个人财务应用，基于 [ezBookkeeping](https://github.com/mayswind/ezbookkeeping) 持续演进。代码包名、数据格式和部署命令暂时保留 `ezbookkeeping` 兼容标识。
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/mayswind/ezbookkeeping/blob/master/LICENSE)
 [![Latest Release](https://img.shields.io/github/release/mayswind/ezbookkeeping.svg?style=flat)](https://github.com/mayswind/ezbookkeeping/releases)
 [![Latest Build](https://img.shields.io/github/actions/workflow/status/mayswind/ezbookkeeping/build-snapshot.yml?branch=main)](https://github.com/mayswind/ezbookkeeping/actions)
