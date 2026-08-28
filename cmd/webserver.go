@@ -499,24 +499,6 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/transaction/tags/move.json", bindApi(api.TransactionTags.TagMoveHandler, config))
 			apiV1Route.POST("/transaction/tags/delete.json", bindApi(api.TransactionTags.TagDeleteHandler, config))
 
-			// Transaction Templates
-			apiV1Route.GET("/transaction/templates/list.json", bindApi(api.TransactionTemplates.TemplateListHandler, config))
-			apiV1Route.GET("/transaction/templates/get.json", bindApi(api.TransactionTemplates.TemplateGetHandler, config))
-			apiV1Route.POST("/transaction/templates/add.json", bindApi(api.TransactionTemplates.TemplateCreateHandler, config))
-			apiV1Route.POST("/transaction/templates/modify.json", bindApi(api.TransactionTemplates.TemplateModifyHandler, config))
-			apiV1Route.POST("/transaction/templates/hide.json", bindApi(api.TransactionTemplates.TemplateHideHandler, config))
-			apiV1Route.POST("/transaction/templates/move.json", bindApi(api.TransactionTemplates.TemplateMoveHandler, config))
-			apiV1Route.POST("/transaction/templates/delete.json", bindApi(api.TransactionTemplates.TemplateDeleteHandler, config))
-
-			// Insights Explorers
-			apiV1Route.GET("/insights/explorers/list.json", bindApi(api.InsightsExplorers.InsightsExplorerListHandler, config))
-			apiV1Route.GET("/insights/explorers/get.json", bindApi(api.InsightsExplorers.InsightsExplorerGetHandler, config))
-			apiV1Route.POST("/insights/explorers/add.json", bindApi(api.InsightsExplorers.InsightsExplorerCreateHandler, config))
-			apiV1Route.POST("/insights/explorers/modify.json", bindApi(api.InsightsExplorers.InsightsExplorerModifyHandler, config))
-			apiV1Route.POST("/insights/explorers/hide.json", bindApi(api.InsightsExplorers.InsightsExplorerHideHandler, config))
-			apiV1Route.POST("/insights/explorers/move.json", bindApi(api.InsightsExplorers.InsightsExplorerMoveHandler, config))
-			apiV1Route.POST("/insights/explorers/delete.json", bindApi(api.InsightsExplorers.InsightsExplorerDeleteHandler, config))
-
 			// Large Language Models
 			if config.TextRecognitionLLMConfig != nil && config.TextRecognitionLLMConfig.LLMProvider != "" {
 				if config.TransactionFromAITextRecognition {

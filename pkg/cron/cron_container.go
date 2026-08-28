@@ -81,9 +81,6 @@ func (c *CronJobSchedulerContainer) registerAllJobs(ctx core.Context, config *se
 		Container.registerIntervalJob(ctx, RemoveExpiredTokensJob)
 	}
 
-	if config.EnableCreateScheduledTransaction {
-		Container.registerIntervalJob(ctx, CreateScheduledTransactionJob)
-	}
 }
 
 func (c *CronJobSchedulerContainer) registerIntervalJob(ctx core.Context, job *CronJob) {

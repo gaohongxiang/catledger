@@ -26,9 +26,6 @@ export function useDataManagementPageBase() {
             totalTransactionCategoryCount: formatBigDecimalToLocalizedNumerals(parseBigDecimal(dataStatistics.value.totalTransactionCategoryCount)),
             totalTransactionTagCount: formatBigDecimalToLocalizedNumerals(parseBigDecimal(dataStatistics.value.totalTransactionTagCount)),
             totalTransactionPictureCount: formatBigDecimalToLocalizedNumerals(parseBigDecimal(dataStatistics.value.totalTransactionPictureCount)),
-            totalExplorationCount: formatBigDecimalToLocalizedNumerals(parseBigDecimal(dataStatistics.value.totalExplorationCount)),
-            totalTransactionTemplateCount: formatBigDecimalToLocalizedNumerals(parseBigDecimal(dataStatistics.value.totalTransactionTemplateCount)),
-            totalScheduledTransactionCount: formatBigDecimalToLocalizedNumerals(parseBigDecimal(dataStatistics.value.totalScheduledTransactionCount)),
 			totalPersonalFinanceImportFileCount: formatBigDecimalToLocalizedNumerals(parseBigDecimal(dataStatistics.value.totalPersonalFinanceImportFileCount)),
 			totalPersonalFinanceImportBatchCount: formatBigDecimalToLocalizedNumerals(parseBigDecimal(dataStatistics.value.totalPersonalFinanceImportBatchCount)),
 			totalPersonalFinanceRawRowCount: formatBigDecimalToLocalizedNumerals(parseBigDecimal(dataStatistics.value.totalPersonalFinanceRawRowCount))

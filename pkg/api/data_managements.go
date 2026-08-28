@@ -30,9 +30,7 @@ type DataManagementsApi struct {
 	tags                    *services.TransactionTagService
 	tagGroups               *services.TransactionTagGroupService
 	pictures                *services.TransactionPictureService
-	templates               *services.TransactionTemplateService
 	userCustomExchangeRates *services.UserCustomExchangeRatesService
-	insightsExploreres      *services.InsightsExplorerService
 }
 
 // Initialize a data management api singleton instance
@@ -49,9 +47,7 @@ var (
 		tags:                    services.TransactionTags,
 		tagGroups:               services.TransactionTagGroups,
 		pictures:                services.TransactionPictures,
-		templates:               services.TransactionTemplates,
 		userCustomExchangeRates: services.UserCustomExchangeRates,
-		insightsExploreres:      services.InsightsExplorers,
 	}
 )
 
@@ -103,27 +99,6 @@ func (a *DataManagementsApi) DataStatisticsHandler(c *core.WebContext) (any, *er
 		return nil, errs.ErrOperationFailed
 	}
 
-	totalExplorationCount, err := a.insightsExploreres.GetTotalExplorationsCountByUid(c, uid)
-
-	if err != nil {
-		log.Errorf(c, "[data_managements.DataStatisticsHandler] failed to get total exploration count for user \"uid:%d\", because %s", uid, err.Error())
-		return nil, errs.ErrOperationFailed
-	}
-
-	totalTransactionTemplateCount, err := a.templates.GetTotalNormalTemplateCountByUid(c, uid)
-
-	if err != nil {
-		log.Errorf(c, "[data_managements.DataStatisticsHandler] failed to get total transaction template count for user \"uid:%d\", because %s", uid, err.Error())
-		return nil, errs.ErrOperationFailed
-	}
-
-	totalScheduledTransactionCount, err := a.templates.GetTotalScheduledTemplateCountByUid(c, uid)
-
-	if err != nil {
-		log.Errorf(c, "[data_managements.DataStatisticsHandler] failed to get total scheduled transaction count for user \"uid:%d\", because %s", uid, err.Error())
-		return nil, errs.ErrOperationFailed
-	}
-
 	personalFinanceCounts, err := core.CountUserData(c, uid)
 	if err != nil {
 		log.Errorf(c, "[data_managements.DataStatisticsHandler] failed to get personal finance statistics for user \"uid:%d\"", uid)
@@ -136,9 +111,6 @@ func (a *DataManagementsApi) DataStatisticsHandler(c *core.WebContext) (any, *er
 		TotalTransactionTagCount:             totalTransactionTagCount,
 		TotalTransactionCount:                totalTransactionCount,
 		TotalTransactionPictureCount:         totalTransactionPictureCount,
-		TotalExplorationCount:                totalExplorationCount,
-		TotalTransactionTemplateCount:        totalTransactionTemplateCount,
-		TotalScheduledTransactionCount:       totalScheduledTransactionCount,
 		TotalPersonalFinanceImportFileCount:  core.UserDataCountOf(personalFinanceCounts, "pf_import_file"),
 		TotalPersonalFinanceImportBatchCount: core.UserDataCountOf(personalFinanceCounts, "pf_import_batch"),
 		TotalPersonalFinanceRawRowCount:      core.UserDataCountOf(personalFinanceCounts, "pf_raw_import_row"),
@@ -182,13 +154,6 @@ func (a *DataManagementsApi) ClearAllDataHandler(c *core.WebContext) (any, *errs
 		return nil, errs.ErrOperationFailed
 	}
 
-	err = a.templates.DeleteAllTemplates(c, uid)
-
-	if err != nil {
-		log.Errorf(c, "[data_managements.ClearAllDataHandler] failed to delete all transaction templates, because %s", err.Error())
-		return nil, errs.Or(err, errs.ErrOperationFailed)
-	}
-
 	err = a.transactions.DeleteAllTransactions(c, uid, true)
 
 	if err != nil {
@@ -221,13 +186,6 @@ func (a *DataManagementsApi) ClearAllDataHandler(c *core.WebContext) (any, *errs
 
 	if err != nil {
 		log.Errorf(c, "[data_managements.ClearAllDataHandler] failed to delete all user custom exchange rates, because %s", err.Error())
-		return nil, errs.Or(err, errs.ErrOperationFailed)
-	}
-
-	err = a.insightsExploreres.DeleteAllExplorations(c, uid)
-
-	if err != nil {
-		log.Errorf(c, "[data_managements.ClearAllDataHandler] failed to delete all explorations, because %s", err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 

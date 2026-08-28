@@ -166,14 +166,6 @@ func updateAllDatabaseTablesStructure(c *core.CliContext) error {
 
 	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] user external auth table maintained successfully")
 
-	err = datastore.Container.UserDataStore.SyncStructs(new(models.InsightsExplorer))
-
-	if err != nil {
-		return err
-	}
-
-	log.BootInfof(c, "[database.updateAllDatabaseTablesStructure] insights explorer table maintained successfully")
-
 	err = migrations.Upgrade(c, datastore.Container.UserDataStore, migrations.ApplicationInfo{
 		Version: core.Version,
 		Commit:  core.CommitHash,
