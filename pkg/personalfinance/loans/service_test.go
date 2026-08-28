@@ -73,9 +73,34 @@ func TestServiceZeroAllocationStatusRemainsUnpaid(t *testing.T) {
 		installments[index] = &Installment{InstallmentId: int64(index + 1), InstallmentNumber: row.InstallmentNumber,
 			DueDate: row.DueDate, PrincipalAmount: row.PrincipalAmount, InterestAmount: row.InterestAmount, FeeAmount: row.FeeAmount}
 	}
-	progressRows, _, _, err := derivePlanProgress(installments, nil, "2026-09-16")
+	progressRows, _, _, err := derivePlanProgress(installments, nil, 0, "2026-09-16")
 	if err != nil || progressRows[0].Status != INSTALLMENT_PROGRESS_UNPAID || progressRows[0].Overdue {
 		t.Fatal("zero-allocation installment was not derived as unpaid")
+	}
+}
+
+func TestServiceOpeningCompletedInstallmentsPersistWithoutFakeAllocations(t *testing.T) {
+	service, _, _, _ := newSQLiteLoanService(t, 1, 150_000)
+	spec := serviceTestSpec()
+	spec.OpeningCompletedInstallmentCount = 1
+	created, err := service.CreateContract(nil, CreateContractRequest{
+		Uid: 1001, Spec: spec, IdempotencyKey: "create-opening-progress",
+	})
+	if err != nil || created == nil || created.Revision == nil || created.Revision.OpeningCompletedInstallmentCount != 1 {
+		t.Fatal("opening installment progress was not persisted with the revision")
+	}
+	detail, err := service.GetContract(nil, 1001, created.Action.ContractId, "2026-09-16")
+	if err != nil || detail == nil || len(detail.InstallmentProgress) != 2 {
+		t.Fatal("opening installment progress could not be queried")
+	}
+	first := detail.InstallmentProgress[0]
+	if !first.OpeningCompleted || first.Status != INSTALLMENT_PROGRESS_PAID || first.AllocationCount != 0 || first.OutstandingPayment != 0 {
+		t.Fatal("opening installment was not represented as completed without a fabricated allocation")
+	}
+	if detail.Progress.OpeningCompletedInstallmentCount != 1 || detail.Progress.PaidInstallmentCount != 1 ||
+		detail.Progress.UnpaidInstallmentCount != 1 || detail.Progress.AllocatedPaymentAmount != 0 || detail.Progress.NextDueDate == nil ||
+		*detail.Progress.NextDueDate != "2026-10-15" {
+		t.Fatal("opening installment did not advance the formal plan to the next due period")
 	}
 }
 

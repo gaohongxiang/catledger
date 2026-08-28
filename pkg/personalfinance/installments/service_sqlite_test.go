@@ -33,6 +33,10 @@ type fakeContracts struct {
 	lastCreate loans.CreateContractRequest
 }
 
+func (f *fakeContracts) Calculate(_ loans.CalculateRequest) (*loans.CalculationResult, error) {
+	return &loans.CalculationResult{}, f.err
+}
+
 func (f *fakeContracts) CreateContract(_ core.Context, request loans.CreateContractRequest) (*loans.CommandResult, error) {
 	f.lastCreate = request
 	return f.created, f.err
@@ -136,7 +140,7 @@ func TestServiceIngestGroupsPeriodsRejectsUnknownZeroAndConfirmsThreeWays(t *tes
 	if err != nil || len(thirdPage.Items) != 1 {
 		t.Fatalf("third pending candidate: %+v err=%v", thirdPage, err)
 	}
-	converted, err := service.ConfirmCandidate(nil, installments.ConfirmRequest{
+	staged, err := service.ConfirmCandidate(nil, installments.ConfirmRequest{
 		Uid: 1001, CandidateId: thirdPage.Items[0].CandidateId, ExpectedVersion: thirdPage.Items[0].Version,
 		TreatAsInstallment: true,
 		Contract: &loans.ContractSpec{
@@ -145,11 +149,28 @@ func TestServiceIngestGroupsPeriodsRejectsUnknownZeroAndConfirmsThreeWays(t *tes
 			Terms: loans.CalculationTerms{PrincipalAmount: 1200, TermCount: 3, ActualDisbursementAmount: 1200},
 		},
 	})
+	if err != nil || staged.Status != installments.CANDIDATE_STATUS_PENDING || staged.LinkedContractId != nil {
+		t.Fatalf("contract draft was not staged behind posting: %+v err=%v", staged, err)
+	}
+	if contracts.lastCreate.IdempotencyKey != "" {
+		t.Fatalf("formal contract was created before batch posting: %+v", contracts.lastCreate)
+	}
+	draft, err := repository.FindContractDraft(nil, 1001, thirdPage.Items[0].CandidateId)
+	if err != nil || draft == nil {
+		t.Fatalf("staged contract draft missing: %+v err=%v", draft, err)
+	}
+	if err := service.PromoteAfterPosting(nil, installments.PromoteRequest{Uid: 1001, CandidateIds: []int64{thirdPage.Items[0].CandidateId}}); err != nil {
+		t.Fatalf("create staged contract after posting: %v", err)
+	}
+	converted, err := service.GetCandidate(nil, 1001, thirdPage.Items[0].CandidateId)
 	if err != nil || converted.Status != installments.CANDIDATE_STATUS_CONVERTED || converted.LinkedContractId == nil || *converted.LinkedContractId != 88 {
-		t.Fatalf("create_contract confirm failed: %+v err=%v", converted, err)
+		t.Fatalf("staged contract was not created after posting: %+v err=%v", converted, err)
 	}
 	if contracts.lastCreate.IdempotencyKey != "installment-candidate-"+strconv.FormatInt(thirdPage.Items[0].CandidateId, 10) {
 		t.Fatalf("create_contract used unstable idempotency key: %q", contracts.lastCreate.IdempotencyKey)
+	}
+	if draft, err = repository.FindContractDraft(nil, 1001, thirdPage.Items[0].CandidateId); err != nil || draft != nil {
+		t.Fatalf("staged contract draft was not removed after creation: %+v err=%v", draft, err)
 	}
 
 	got, err := service.GetCandidate(nil, 1001, converted.CandidateId)
@@ -158,6 +179,60 @@ func TestServiceIngestGroupsPeriodsRejectsUnknownZeroAndConfirmsThreeWays(t *tes
 	}
 	if _, err := service.GetCandidate(nil, 2002, converted.CandidateId); !errors.Is(err, installments.ErrServiceCandidateNotFound) {
 		t.Fatalf("cross-user get was not isolated: %v", err)
+	}
+
+	evidence.rows[34] = []*importing.RawImportRow{
+		testEvidenceRow(1001, 34, 701, int64Ptr(501), "ORDER-D", "电销现分按月收12期第7期共12期", &liability),
+	}
+	if _, err := service.IngestBatches(nil, installments.IngestRequest{Uid: 1001, BatchIds: []int64{34}}); err != nil {
+		t.Fatalf("ingest post-gated candidate: %v", err)
+	}
+	pending, err := service.ListCandidates(nil, 1001, installments.CANDIDATE_STATUS_PENDING, nil, 10)
+	if err != nil || len(pending.Items) != 1 {
+		t.Fatalf("post-gated pending candidate: %+v err=%v", pending, err)
+	}
+	promote := installments.PromoteRequest{Uid: 1001, CandidateIds: []int64{pending.Items[0].CandidateId}}
+	if err := service.PromoteAfterPosting(nil, promote); err != nil {
+		t.Fatalf("promote after posting: %v", err)
+	}
+	if err := service.PromoteAfterPosting(nil, promote); err != nil {
+		t.Fatalf("idempotent promotion failed: %v", err)
+	}
+	promoted, err := service.GetCandidate(nil, 1001, pending.Items[0].CandidateId)
+	if err != nil || promoted.Status != installments.CANDIDATE_STATUS_NEEDS_DETAILS {
+		t.Fatalf("candidate was not promoted after posting: %+v err=%v", promoted, err)
+	}
+
+	// 放弃整理轮次只清除暂存表单，不删除候选或创建正式合同。
+	evidence.rows[35] = []*importing.RawImportRow{
+		testEvidenceRow(1001, 35, 801, int64Ptr(601), "ORDER-E", "花呗分期 第1/6期", &liability),
+	}
+	if _, err := service.IngestBatches(nil, installments.IngestRequest{Uid: 1001, BatchIds: []int64{35}}); err != nil {
+		t.Fatalf("ingest discardable candidate: %v", err)
+	}
+	discardable, err := service.ListCandidates(nil, 1001, installments.CANDIDATE_STATUS_PENDING, nil, 10)
+	if err != nil || len(discardable.Items) != 1 {
+		t.Fatalf("discardable candidate missing: %+v err=%v", discardable, err)
+	}
+	if _, err = service.ConfirmCandidate(nil, installments.ConfirmRequest{
+		Uid: 1001, CandidateId: discardable.Items[0].CandidateId, ExpectedVersion: discardable.Items[0].Version,
+		TreatAsInstallment: true,
+		Contract: &loans.ContractSpec{
+			Name: "discardable", LenderName: "fixture", ContractType: loans.CONTRACT_TYPE_CREDIT_CARD_INSTALLMENT,
+			LiabilityAccountId: 11, Currency: "CNY",
+			Terms: loans.CalculationTerms{PrincipalAmount: 600, TermCount: 6, ActualDisbursementAmount: 600},
+		},
+	}); err != nil {
+		t.Fatalf("stage discardable contract: %v", err)
+	}
+	if err = service.DiscardContractDrafts(nil, 1001, []int64{discardable.Items[0].CandidateId}); err != nil {
+		t.Fatalf("discard contract draft: %v", err)
+	}
+	if draft, err = repository.FindContractDraft(nil, 1001, discardable.Items[0].CandidateId); err != nil || draft != nil {
+		t.Fatalf("discarded batch left a contract draft: %+v err=%v", draft, err)
+	}
+	if candidate, getErr := service.GetCandidate(nil, 1001, discardable.Items[0].CandidateId); getErr != nil || candidate.Status != installments.CANDIDATE_STATUS_PENDING {
+		t.Fatalf("discard removed or changed candidate evidence: %+v err=%v", candidate, getErr)
 	}
 	_ = serviceNow
 }

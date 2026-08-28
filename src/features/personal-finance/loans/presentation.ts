@@ -81,8 +81,11 @@ export function getLoanStatusColor(status: LoanContractStatus | LoanInstallmentD
     if (status === 'partial') {
         return 'warning';
     }
-    if (status === 'overdue' || status === 'action_required') {
+    if (status === 'action_required') {
         return 'error';
+    }
+    if (status === 'overdue') {
+        return 'warning';
     }
     return status === 'cancelled' ? 'secondary' : 'primary';
 }

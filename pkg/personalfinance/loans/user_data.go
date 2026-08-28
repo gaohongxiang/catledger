@@ -7,6 +7,7 @@ func UserDataModule() core.UserDataModule {
 	return core.UserDataModule{
 		Name: "loans",
 		Tables: core.UserDataTables(
+			"pf_loan_progress_baseline",
 			"pf_loan_transaction_allocation",
 			"pf_loan_transaction_binding",
 			"pf_loan_installment",

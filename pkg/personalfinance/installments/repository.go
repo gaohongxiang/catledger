@@ -102,12 +102,146 @@ func (r *Repository) FindCandidateById(c core.Context, uid int64, candidateId in
 	return findCandidateById(sess, uid, candidateId)
 }
 
+// FindCandidatesByRawRowIds 返回与指定不可变原始行存在显式成员关系的候选。
+func (r *Repository) FindCandidatesByRawRowIds(c core.Context, uid int64, rowIds []int64) ([]*Candidate, error) {
+	if uid < 1 || len(rowIds) < 1 {
+		return nil, fmt.Errorf("invalid installment candidate raw row lookup")
+	}
+	unique := make([]int64, 0, len(rowIds))
+	seenRows := make(map[int64]struct{}, len(rowIds))
+	for _, rowId := range rowIds {
+		if rowId < 1 {
+			return nil, fmt.Errorf("invalid installment candidate raw row lookup")
+		}
+		if _, exists := seenRows[rowId]; exists {
+			continue
+		}
+		seenRows[rowId] = struct{}{}
+		unique = append(unique, rowId)
+	}
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	members := make([]*CandidateMember, 0)
+	if err = sess.Where("uid=? AND member_kind=?", uid, MEMBER_KIND_RAW_ROW).In("member_ref_id", unique).Find(&members); err != nil {
+		return nil, fmt.Errorf("find installment candidates by raw rows: %w", err)
+	}
+	candidateIds := make([]int64, 0, len(members))
+	seenCandidates := make(map[int64]struct{}, len(members))
+	for _, member := range members {
+		if _, exists := seenCandidates[member.CandidateId]; exists {
+			continue
+		}
+		seenCandidates[member.CandidateId] = struct{}{}
+		candidateIds = append(candidateIds, member.CandidateId)
+	}
+	if len(candidateIds) < 1 {
+		return []*Candidate{}, nil
+	}
+	candidates := make([]*Candidate, 0, len(candidateIds))
+	if err = sess.Where("uid=?", uid).In("candidate_id", candidateIds).Asc("candidate_id").Find(&candidates); err != nil {
+		return nil, fmt.Errorf("load installment candidates by raw rows: %w", err)
+	}
+	return candidates, nil
+}
+
 func (tx *RepositoryTransaction) FindCandidateById(candidateId int64) (*Candidate, error) {
 	if err := tx.validate(); err != nil || candidateId < 1 {
 		return nil, fmt.Errorf("invalid installment candidate transaction lookup")
 	}
 
 	return findCandidateById(tx.session, tx.uid, candidateId)
+}
+
+// FindContractDraft 返回候选对应的暂存合同；不存在时返回 (nil, nil)。
+func (r *Repository) FindContractDraft(c core.Context, uid int64, candidateId int64) (*ContractDraft, error) {
+	if uid < 1 || candidateId < 1 {
+		return nil, fmt.Errorf("invalid installment contract draft lookup")
+	}
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	draft := new(ContractDraft)
+	found, err := sess.Where("uid=? AND candidate_id=?", uid, candidateId).Get(draft)
+	if err != nil {
+		return nil, fmt.Errorf("find installment contract draft: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+	return draft, nil
+}
+
+// DeleteContractDraft 删除已经投影为正式合同的暂存数据；重复调用安全。
+func (r *Repository) DeleteContractDraft(c core.Context, uid int64, candidateId int64) error {
+	if uid < 1 || candidateId < 1 {
+		return fmt.Errorf("invalid installment contract draft delete")
+	}
+	database, err := r.database(uid)
+	if err != nil {
+		return err
+	}
+	return database.DoPrivacyTransaction(c, func(sess *xorm.Session) error {
+		if _, deleteErr := sess.Where("uid=? AND candidate_id=?", uid, candidateId).Delete(new(ContractDraft)); deleteErr != nil {
+			return fmt.Errorf("delete installment contract draft: %w", deleteErr)
+		}
+		return nil
+	})
+}
+
+// DeleteContractDrafts 删除一组尚未生效的合同草稿；重复调用安全。
+func (r *Repository) DeleteContractDrafts(c core.Context, uid int64, candidateIds []int64) error {
+	if uid < 1 || len(candidateIds) < 1 {
+		return fmt.Errorf("invalid installment contract drafts delete")
+	}
+	database, err := r.database(uid)
+	if err != nil {
+		return err
+	}
+	return database.DoPrivacyTransaction(c, func(sess *xorm.Session) error {
+		if _, deleteErr := sess.Where("uid=?", uid).In("candidate_id", candidateIds).Delete(new(ContractDraft)); deleteErr != nil {
+			return fmt.Errorf("delete installment contract drafts: %w", deleteErr)
+		}
+		return nil
+	})
+}
+
+// SaveContractDraft 在候选事务内创建或替换合同草稿。
+func (tx *RepositoryTransaction) SaveContractDraft(draft *ContractDraft) error {
+	if err := tx.validate(); err != nil || draft == nil || draft.Uid != tx.uid || draft.CandidateId < 1 ||
+		draft.Version < 1 || draft.ContractSpecJson == "" || draft.CreatedUnixTime < 1 || draft.UpdatedUnixTime < draft.CreatedUnixTime || draft.DraftId < 1 {
+		return fmt.Errorf("invalid installment contract draft")
+	}
+	existing := new(ContractDraft)
+	found, err := tx.session.Where("uid=? AND candidate_id=?", tx.uid, draft.CandidateId).Get(existing)
+	if err != nil {
+		return fmt.Errorf("find installment contract draft for save: %w", err)
+	}
+	if !found {
+		inserted, insertErr := tx.session.Insert(draft)
+		if insertErr != nil || inserted != 1 {
+			return fmt.Errorf("insert installment contract draft: %w", insertErr)
+		}
+		return nil
+	}
+	draft.DraftId = existing.DraftId
+	draft.CreatedUnixTime = existing.CreatedUnixTime
+	draft.Version = existing.Version + 1
+	updated, err := tx.session.Where("uid=? AND candidate_id=? AND version=?", tx.uid, draft.CandidateId, existing.Version).
+		Cols("version", "contract_spec_json", "updated_unix_time").Update(draft)
+	if err != nil {
+		return fmt.Errorf("update installment contract draft: %w", err)
+	}
+	if updated != 1 {
+		return fmt.Errorf("installment contract draft version conflict")
+	}
+	return nil
 }
 
 func findCandidateById(sess *xorm.Session, uid int64, candidateId int64) (*Candidate, error) {

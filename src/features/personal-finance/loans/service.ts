@@ -425,6 +425,9 @@ function normalizeRevision(value: unknown): LoanRevision {
         revisionNumber: asPositiveInteger(revision['revisionNumber']),
         ...(typeof previousRevisionId === 'undefined' ? {} : { previousRevisionId }),
         effectiveDate,
+        openingCompletedInstallmentCount: typeof revision['openingCompletedInstallmentCount'] === 'undefined'
+            ? 0
+            : asNonNegativeInteger(revision['openingCompletedInstallmentCount']),
         input,
         calculation: normalizeLoanCalculationResult(revision['calculation']),
         createdUnixTime: asNonNegativeInteger(revision['createdUnixTime'])
@@ -436,6 +439,9 @@ function normalizeInstallmentProgress(value: unknown): LoanInstallmentProgress {
     return {
         settlementStatus: asEnum<LoanInstallmentSettlementStatus>(progress['settlementStatus'], settlementStatuses),
         overdue: asBoolean(progress['overdue']),
+        openingCompleted: typeof progress['openingCompleted'] === 'undefined'
+            ? false
+            : asBoolean(progress['openingCompleted']),
         allocatedPrincipalAmount: asNonNegativeInteger(progress['allocatedPrincipalAmount']),
         allocatedInterestAmount: asNonNegativeInteger(progress['allocatedInterestAmount']),
         allocatedFeeAmount: asNonNegativeInteger(progress['allocatedFeeAmount']),

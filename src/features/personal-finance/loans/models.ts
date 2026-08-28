@@ -116,6 +116,7 @@ export interface LoanRevision {
     readonly revisionNumber: number;
     readonly previousRevisionId?: string;
     readonly effectiveDate: string;
+    readonly openingCompletedInstallmentCount: number;
     readonly input: LoanCalculationInput;
     readonly calculation: LoanCalculationResult;
     readonly createdUnixTime: number;
@@ -124,6 +125,7 @@ export interface LoanRevision {
 export interface LoanInstallmentProgress {
     readonly settlementStatus: LoanInstallmentSettlementStatus;
     readonly overdue: boolean;
+    readonly openingCompleted: boolean;
     readonly allocatedPrincipalAmount: number;
     readonly allocatedInterestAmount: number;
     readonly allocatedFeeAmount: number;

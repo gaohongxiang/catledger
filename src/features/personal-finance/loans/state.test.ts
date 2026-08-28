@@ -55,6 +55,7 @@ function installment(overrides: Partial<LoanInstallment> = {}): LoanInstallment 
         progress: {
             settlementStatus: 'unpaid',
             overdue: false,
+            openingCompleted: false,
             allocatedPrincipalAmount: 0,
             allocatedInterestAmount: 0,
             allocatedFeeAmount: 0,
@@ -98,6 +99,12 @@ describe('personal finance loan shell state', () => {
         expect(parseLoanPercentageToPptr('12.1234567890')).toBe('121234567890');
         expect(parseLoanPercentageToPptr('12.12345678901')).toBeUndefined();
         expect(parseLoanPercentageToPptr('100.0000000001', '1000000000000')).toBeUndefined();
+        expect(parseLoanPercentageToPptr('0.4167', undefined, 4)).toBe('4167000000');
+        expect(parseLoanPercentageToPptr('０。４１６７', undefined, 4)).toBe('4167000000');
+        expect(parseLoanPercentageToPptr('0，4167', undefined, 4)).toBe('4167000000');
+        expect(parseLoanPercentageToPptr('0.41671', undefined, 4)).toBeUndefined();
+        expect(formatLoanPptrAsPercentage('91042732511', 2)).toBe('9.10');
+        expect(formatLoanPptrAsPercentage('47999824815', 2)).toBe('4.80');
     });
 
     it('invalidates stale percentage input and rejects a zero interest-rate discount', () => {

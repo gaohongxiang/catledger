@@ -136,14 +136,15 @@ type CalculationTerms struct {
 
 // ContractSpec 是创建与修订共享的合同业务字段。
 type ContractSpec struct {
-	Name                    string
-	LenderName              string
-	ContractType            ContractType
-	LiabilityAccountId      int64
-	DefaultPaymentAccountId *int64
-	Currency                string
-	Note                    string
-	Terms                   CalculationTerms
+	Name                             string
+	LenderName                       string
+	ContractType                     ContractType
+	LiabilityAccountId               int64
+	DefaultPaymentAccountId          *int64
+	Currency                         string
+	Note                             string
+	OpeningCompletedInstallmentCount int64
+	Terms                            CalculationTerms
 }
 
 type CalculateRequest struct {
@@ -247,45 +248,46 @@ type ContractResult struct {
 
 // RevisionResult 排除 uid、action_id 和内部 schedule digest，仅保留业务输入与计算结果。
 type RevisionResult struct {
-	RevisionId                    int64
-	ContractId                    int64
-	RevisionNumber                int64
-	PreviousRevisionId            *int64
-	EffectiveDate                 string
-	ContractDate                  string
-	FirstDueDate                  string
-	FundingType                   FundingType
-	InputMode                     InputMode
-	RepaymentMethod               RepaymentMethod
-	RateQuoteType                 RateQuoteType
-	FrequencyType                 FrequencyType
-	FrequencyInterval             int64
-	PrincipalAmount               int64
-	ActualDisbursementAmount      int64
-	UpfrontFeeAmount              int64
-	PerPeriodFeeAmount            int64
-	PaymentBasisAmount            *int64
-	TermCount                     int64
-	QuotedRatePptr                *int64
-	DiscountType                  DiscountType
-	DiscountRatePptr              *int64
-	DiscountAmount                int64
-	CalculationVersion            RuleVersion
-	RoundingVersion               RuleVersion
-	IrrVersion                    RuleVersion
-	PreDiscountTotalPaymentAmount int64
-	PreDiscountTotalCostAmount    int64
-	TotalPaymentAmount            int64
-	TotalInterestAmount           int64
-	TotalFeeAmount                int64
-	TotalDiscountAmount           int64
-	TotalCostAmount               int64
-	CostRatioPptr                 int64
-	IrrStatus                     IRRStatus
-	MonthlyIrrPptr                *int64
-	SimpleAprPptr                 *int64
-	EffectiveAprPptr              *int64
-	CreatedUnixTime               int64
+	RevisionId                       int64
+	ContractId                       int64
+	RevisionNumber                   int64
+	PreviousRevisionId               *int64
+	EffectiveDate                    string
+	ContractDate                     string
+	FirstDueDate                     string
+	FundingType                      FundingType
+	InputMode                        InputMode
+	RepaymentMethod                  RepaymentMethod
+	RateQuoteType                    RateQuoteType
+	FrequencyType                    FrequencyType
+	FrequencyInterval                int64
+	PrincipalAmount                  int64
+	ActualDisbursementAmount         int64
+	UpfrontFeeAmount                 int64
+	PerPeriodFeeAmount               int64
+	PaymentBasisAmount               *int64
+	TermCount                        int64
+	OpeningCompletedInstallmentCount int64
+	QuotedRatePptr                   *int64
+	DiscountType                     DiscountType
+	DiscountRatePptr                 *int64
+	DiscountAmount                   int64
+	CalculationVersion               RuleVersion
+	RoundingVersion                  RuleVersion
+	IrrVersion                       RuleVersion
+	PreDiscountTotalPaymentAmount    int64
+	PreDiscountTotalCostAmount       int64
+	TotalPaymentAmount               int64
+	TotalInterestAmount              int64
+	TotalFeeAmount                   int64
+	TotalDiscountAmount              int64
+	TotalCostAmount                  int64
+	CostRatioPptr                    int64
+	IrrStatus                        IRRStatus
+	MonthlyIrrPptr                   *int64
+	SimpleAprPptr                    *int64
+	EffectiveAprPptr                 *int64
+	CreatedUnixTime                  int64
 }
 
 // InstallmentResult 排除 uid、合同/revision 重复外键，保留结算所需 installment_id。
@@ -347,22 +349,24 @@ type InstallmentProgress struct {
 	Status             InstallmentProgressStatus
 	Overdue            bool
 	AllocationCount    int64
+	OpeningCompleted   bool
 	Components         ComponentProgress
 	OutstandingPayment int64
 }
 
 type PlanProgress struct {
-	InstallmentCount        int64
-	UnpaidInstallmentCount  int64
-	PartialInstallmentCount int64
-	PaidInstallmentCount    int64
-	OverdueInstallmentCount int64
-	AllocatedPaymentAmount  int64
-	OutstandingPayment      int64
-	OutstandingPrincipal    int64
-	OutstandingInterest     int64
-	OutstandingFee          int64
-	NextDueDate             *string
+	InstallmentCount                 int64
+	UnpaidInstallmentCount           int64
+	PartialInstallmentCount          int64
+	PaidInstallmentCount             int64
+	OpeningCompletedInstallmentCount int64
+	OverdueInstallmentCount          int64
+	AllocatedPaymentAmount           int64
+	OutstandingPayment               int64
+	OutstandingPrincipal             int64
+	OutstandingInterest              int64
+	OutstandingFee                   int64
+	NextDueDate                      *string
 }
 
 type PlanRemaining struct {

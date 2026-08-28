@@ -97,15 +97,23 @@ func (s *Service) getContractFromSelector(c core.Context, uid int64, contract *C
 	if int64(len(installments)) != revision.TermCount {
 		return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
 	}
+	baseline, err := s.repository.FindProgressBaselineByRevisionId(c, uid, revision.RevisionId)
+	if err != nil {
+		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	openingCompleted := completedInstallmentCount(baseline)
+	if openingCompleted < 0 || openingCompleted >= revision.TermCount {
+		return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+	}
 	validation, err := s.validateActiveAllocations(c, nil, contract, revision, installments)
 	if err != nil {
 		return nil, err
 	}
-	rows, progress, remaining, err := derivePlanProgress(installments, validation.aggregates, asOfDate)
+	rows, progress, remaining, err := derivePlanProgress(installments, validation.aggregates, openingCompleted, asOfDate)
 	if err != nil {
 		return nil, err
 	}
-	detail := &ContractDetail{Contract: contractResult(contract), CurrentRevision: revisionResult(revision), Installments: installmentResults(installments),
+	detail := &ContractDetail{Contract: contractResult(contract), CurrentRevision: revisionResult(revision, openingCompleted), Installments: installmentResults(installments),
 		ActiveAllocationAggregates: validation.aggregates, InstallmentProgress: rows, Progress: progress, Remaining: remaining,
 		InvalidAllocationCount: validation.invalidCount, ActionRequired: validation.invalidCount > 0,
 		ReasonCodes: append([]ServiceErrorCode(nil), validation.reasonCodes...)}
@@ -220,7 +228,7 @@ func contractResult(contract *Contract) *ContractResult {
 		CreatedUnixTime: contract.CreatedUnixTime, UpdatedUnixTime: contract.UpdatedUnixTime, ClosedUnixTime: cloneInt64(contract.ClosedUnixTime)}
 }
 
-func revisionResult(revision *ContractRevision) *RevisionResult {
+func revisionResult(revision *ContractRevision, openingCompleted int64) *RevisionResult {
 	if revision == nil {
 		return nil
 	}
@@ -231,7 +239,8 @@ func revisionResult(revision *ContractRevision) *RevisionResult {
 		FrequencyInterval: revision.FrequencyInterval, PrincipalAmount: revision.PrincipalAmount,
 		ActualDisbursementAmount: revision.ActualDisbursementAmount, UpfrontFeeAmount: revision.UpfrontFeeAmount,
 		PerPeriodFeeAmount: revision.PerPeriodFeeAmount, PaymentBasisAmount: cloneInt64(revision.PaymentBasisAmount),
-		TermCount: revision.TermCount, QuotedRatePptr: cloneInt64(revision.QuotedRatePptr), DiscountType: revision.DiscountType,
+		TermCount: revision.TermCount, OpeningCompletedInstallmentCount: openingCompleted,
+		QuotedRatePptr: cloneInt64(revision.QuotedRatePptr), DiscountType: revision.DiscountType,
 		DiscountRatePptr: cloneInt64(revision.DiscountRatePptr), DiscountAmount: revision.DiscountAmount,
 		CalculationVersion: revision.CalculationVersion, RoundingVersion: revision.RoundingVersion, IrrVersion: revision.IrrVersion,
 		PreDiscountTotalPaymentAmount: revision.PreDiscountTotalPaymentAmount, PreDiscountTotalCostAmount: revision.PreDiscountTotalCostAmount,
@@ -285,7 +294,10 @@ type allocatedComponents struct {
 	count     int64
 }
 
-func derivePlanProgress(installments []*Installment, aggregates []*AllocationAggregate, asOfDate string) ([]*InstallmentProgress, PlanProgress, PlanRemaining, error) {
+func derivePlanProgress(installments []*Installment, aggregates []*AllocationAggregate, openingCompleted int64, asOfDate string) ([]*InstallmentProgress, PlanProgress, PlanRemaining, error) {
+	if openingCompleted < 0 || openingCompleted >= int64(len(installments)) {
+		return nil, PlanProgress{}, PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+	}
 	allocated := make(map[int64]*allocatedComponents, len(installments))
 	for _, installment := range installments {
 		if installment == nil || installment.InstallmentId < 1 || !isCivilDate(installment.DueDate) || allocated[installment.InstallmentId] != nil {
@@ -328,10 +340,14 @@ func derivePlanProgress(installments []*Installment, aggregates []*AllocationAgg
 	}
 
 	rows := make([]*InstallmentProgress, len(installments))
-	progress := PlanProgress{InstallmentCount: int64(len(installments))}
+	progress := PlanProgress{InstallmentCount: int64(len(installments)), OpeningCompletedInstallmentCount: openingCompleted}
 	remaining := PlanRemaining{}
 	for index, installment := range installments {
 		entry := allocated[installment.InstallmentId]
+		opening := installment.InstallmentNumber <= openingCompleted
+		if opening && entry.count != 0 {
+			return nil, PlanProgress{}, PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+		}
 		if entry.principal > installment.PrincipalAmount || entry.interest > installment.InterestAmount || entry.fee > installment.FeeAmount {
 			return nil, PlanProgress{}, PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
 		}
@@ -340,6 +356,11 @@ func derivePlanProgress(installments []*Installment, aggregates []*AllocationAgg
 			AllocatedPrincipalAmount: entry.principal, AllocatedInterestAmount: entry.interest, AllocatedFeeAmount: entry.fee,
 			OutstandingPrincipal: installment.PrincipalAmount - entry.principal,
 			OutstandingInterest:  installment.InterestAmount - entry.interest, OutstandingFee: installment.FeeAmount - entry.fee}
+		if opening {
+			components.OutstandingPrincipal = 0
+			components.OutstandingInterest = 0
+			components.OutstandingFee = 0
+		}
 		outstanding, err := checkedServiceAdd(components.OutstandingPrincipal, components.OutstandingInterest)
 		if err != nil {
 			return nil, PlanProgress{}, PlanRemaining{}, err
@@ -357,7 +378,10 @@ func derivePlanProgress(installments []*Installment, aggregates []*AllocationAgg
 			return nil, PlanProgress{}, PlanRemaining{}, err
 		}
 		status := INSTALLMENT_PROGRESS_UNPAID
-		if entry.count == 0 {
+		if opening {
+			status = INSTALLMENT_PROGRESS_PAID
+			progress.PaidInstallmentCount++
+		} else if entry.count == 0 {
 			progress.UnpaidInstallmentCount++
 		} else if outstanding == 0 {
 			status = INSTALLMENT_PROGRESS_PAID
@@ -376,7 +400,7 @@ func derivePlanProgress(installments []*Installment, aggregates []*AllocationAgg
 		}
 		rows[index] = &InstallmentProgress{InstallmentId: installment.InstallmentId, InstallmentNumber: installment.InstallmentNumber,
 			DueDate: installment.DueDate, Status: status, Overdue: overdue, AllocationCount: entry.count,
-			Components: components, OutstandingPayment: outstanding}
+			OpeningCompleted: opening, Components: components, OutstandingPayment: outstanding}
 		progress.AllocatedPaymentAmount, err = checkedServiceAdd(progress.AllocatedPaymentAmount, allocatedPayment)
 		if err != nil {
 			return nil, PlanProgress{}, PlanRemaining{}, err

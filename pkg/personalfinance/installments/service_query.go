@@ -38,3 +38,23 @@ func (s *Service) GetCandidate(c core.Context, uid int64, candidateId int64) (*C
 	}
 	return candidateView(candidate, members), nil
 }
+
+// FindCandidatesByRawRows 仅按已持久化的候选成员关系查找，不使用金额或时间近似。
+func (s *Service) FindCandidatesByRawRows(c core.Context, uid int64, rowIds []int64) ([]*CandidateView, error) {
+	if s == nil || s.repository == nil || uid < 1 || len(rowIds) < 1 {
+		return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	candidates, err := s.repository.FindCandidatesByRawRowIds(c, uid, rowIds)
+	if err != nil {
+		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	result := make([]*CandidateView, 0, len(candidates))
+	for _, candidate := range candidates {
+		members, memberErr := s.repository.ListMembers(c, uid, candidate.CandidateId)
+		if memberErr != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		result = append(result, candidateView(candidate, members))
+	}
+	return result, nil
+}

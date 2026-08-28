@@ -65,6 +65,7 @@ type EvidenceReader interface {
 
 // ContractGateway 仅在用户确认创建或关联合同时调用贷款服务。
 type ContractGateway interface {
+	Calculate(request loans.CalculateRequest) (*loans.CalculationResult, error)
 	CreateContract(c core.Context, request loans.CreateContractRequest) (*loans.CommandResult, error)
 	GetContract(c core.Context, uid int64, contractId int64, asOfDate string) (*loans.ContractDetail, error)
 }
@@ -95,6 +96,13 @@ type IngestResult struct {
 	CandidateCount int64
 	MemberCount    int64
 	SkippedCount   int64
+}
+
+// PromoteRequest 在整批账单成功入账后生效已确认的分期本金决定。
+// 有完整草稿时创建正式合同；没有草稿时保留为待完善候选。它不改变正式账本交易。
+type PromoteRequest struct {
+	Uid          int64
+	CandidateIds []int64
 }
 
 type CandidateView struct {

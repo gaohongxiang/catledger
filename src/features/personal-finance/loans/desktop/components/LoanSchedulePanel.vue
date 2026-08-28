@@ -1,56 +1,42 @@
 <template>
-    <v-card class="schedule-panel overflow-hidden" variant="outlined">
+    <section class="schedule-panel overflow-hidden">
         <template v-if="detail">
-            <div class="schedule-heading pa-5 pa-lg-6">
+            <div class="schedule-heading px-5 py-3">
                 <div>
-                    <div class="d-flex flex-wrap align-center ga-2">
-                        <h3 class="text-h5 font-weight-bold">{{ detail.contract.name }}</h3>
-                        <v-chip size="small" :color="getLoanStatusColor(detail.contract.status)" variant="tonal">
-                            {{ tt(getLoanContractStatusKey(detail.contract.status)) }}
-                        </v-chip>
-                    </div>
-                    <div class="text-body-small text-medium-emphasis mt-2">
-                        {{ tt(getLoanRepaymentMethodKey(detail.currentRevision.input.repaymentMethod)) }} ·
+                    <div class="text-subtitle-1 font-weight-bold">{{ tt('personalFinance.loans.result.scheduleTitle') }}</div>
+                    <div class="text-body-small text-medium-emphasis">
                         {{ tt('personalFinance.loans.schedule.revision', { revision: detail.currentRevision.revisionNumber }) }} ·
                         {{ tt('personalFinance.loans.schedule.asOf', { date: detail.asOfDate }) }}
                     </div>
                 </div>
-                <v-spacer />
-                <v-btn variant="tonal" :disabled="!canRevise" @click="emit('revise')">
-                    {{ tt('personalFinance.loans.schedule.revise') }}
-                </v-btn>
             </div>
 
             <v-divider />
 
-            <div class="comparison-grid pa-5 pa-lg-6">
+            <div class="comparison-grid px-5 py-3">
                 <section>
                     <span>{{ tt('personalFinance.loans.schedule.plannedOutstanding') }}</span>
                     <strong>{{ formatAmount(detail.liabilityComparison.plannedOutstandingPrincipalAmount) }}</strong>
-                    <small>{{ tt('personalFinance.loans.schedule.planSource') }}</small>
                 </section>
                 <section>
                     <span>{{ tt('personalFinance.loans.schedule.ledgerLiability') }}</span>
                     <strong>{{ formatAmount(detail.liabilityComparison.ledgerOutstandingLiabilityAmount) }}</strong>
-                    <small>{{ tt('personalFinance.loans.schedule.ledgerSource') }}</small>
                 </section>
                 <section :class="{ 'comparison-warning': detail.liabilityComparison.actionRequired }">
                     <span>{{ tt('personalFinance.loans.schedule.difference') }}</span>
                     <strong>{{ formatAmount(detail.liabilityComparison.differenceAmount) }}</strong>
-                    <small>{{ tt('personalFinance.loans.schedule.differenceHint') }}</small>
                 </section>
             </div>
 
-            <div class="px-5 px-lg-6 pb-5">
-                <v-alert type="info" variant="tonal">
-                    {{ tt('personalFinance.loans.boundary.planIsNotPayment') }}
-                </v-alert>
+            <div class="boundary-note px-5 py-2">
+                <v-icon size="16" :icon="mdiInformationOutline" />
+                <span>{{ tt('personalFinance.loans.boundary.planIsNotPayment') }}</span>
             </div>
 
             <v-divider />
 
             <div class="schedule-table">
-                <v-table hover>
+                <v-table density="compact" hover>
                     <thead>
                         <tr>
                             <th>{{ tt('personalFinance.loans.schedule.period') }}</th>
@@ -103,24 +89,18 @@
             <div class="text-h6 mt-4">{{ tt('personalFinance.loans.schedule.empty') }}</div>
             <div class="text-body-medium text-medium-emphasis mt-1">{{ tt('personalFinance.loans.schedule.emptyHint') }}</div>
         </div>
-    </v-card>
+    </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { mdiCalendarMonthOutline } from '@mdi/js';
+import { mdiCalendarMonthOutline, mdiInformationOutline } from '@mdi/js';
 
 import { useI18n } from '@/locales/helpers.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 
 import type { LoanContractDetail, LoanInstallment, LoanInstallmentDisplayStatus } from '../../models.ts';
-import {
-    getLoanContractStatusKey,
-    getLoanInstallmentStatusKey,
-    getLoanRepaymentMethodKey,
-    getLoanStatusColor
-} from '../../presentation.ts';
-import { canReviseLoanContract, getLoanInstallmentDisplayStatus } from '../../state.ts';
+import { getLoanInstallmentStatusKey, getLoanStatusColor } from '../../presentation.ts';
+import { getLoanInstallmentDisplayStatus } from '../../state.ts';
 
 const props = withDefaults(defineProps<{
     detail?: LoanContractDetail | null;
@@ -131,14 +111,11 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-    (e: 'revise'): void;
     (e: 'selectInstallment', installmentId: string): void;
     (e: 'settle', installmentId: string): void;
 }>();
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
-const canRevise = computed(() => canReviseLoanContract(props.detail ?? null));
-
 function displayStatus(item: LoanInstallment): LoanInstallmentDisplayStatus {
     return getLoanInstallmentDisplayStatus(item);
 }
@@ -152,7 +129,8 @@ function formatAmount(amount: number): string {
 
 <style scoped>
 .schedule-panel {
-    min-height: 520px;
+    display: block;
+    border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
 .schedule-heading {
@@ -164,17 +142,19 @@ function formatAmount(amount: number): string {
 .comparison-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
+    gap: 0;
+    background: rgba(var(--v-theme-on-surface), .018);
 }
 
 .comparison-grid section {
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    padding: 16px;
-    border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-    border-radius: 12px;
+    gap: 2px;
+    padding: 7px 14px;
+    border-inline-end: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
+
+.comparison-grid section:last-child { border-inline-end: 0; }
 
 .comparison-grid span,
 .comparison-grid small {
@@ -182,13 +162,15 @@ function formatAmount(amount: number): string {
 }
 
 .comparison-grid strong {
-    font-size: 1.15rem;
+    font-size: 1rem;
 }
 
 .comparison-grid .comparison-warning {
-    border-color: rgba(var(--v-theme-error), 0.55);
-    background: rgba(var(--v-theme-error), 0.04);
+    color: rgb(var(--v-theme-error));
+    background: rgba(var(--v-theme-error), 0.045);
 }
+
+.boundary-note { display: flex; align-items: center; gap: 7px; color: rgba(var(--v-theme-on-surface), .62); font-size: .78rem; }
 
 .schedule-table {
     overflow-x: auto;
@@ -202,9 +184,13 @@ function formatAmount(amount: number): string {
     background: rgba(var(--v-theme-primary), 0.06);
 }
 
+.schedule-table :deep(th), .schedule-table :deep(td) { white-space: nowrap; }
+
 @media (max-width: 959px) {
     .comparison-grid {
         grid-template-columns: 1fr;
     }
+    .comparison-grid section { border-inline-end: 0; border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+    .comparison-grid section:last-child { border-bottom: 0; }
 }
 </style>

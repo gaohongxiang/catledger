@@ -1,17 +1,28 @@
 <template>
-    <v-card class="contract-form" variant="outlined">
-        <v-card-title class="d-flex align-center ga-3 px-5 pt-5">
-            <span>{{ tt('personalFinance.loans.contractForm.title') }}</span>
+    <v-card class="contract-form" :class="{ 'contract-form--embedded': embedded }" :variant="embedded ? 'flat' : 'outlined'">
+        <v-card-title class="d-flex align-center ga-3 px-5 pt-5" v-if="!embedded">
+            <span>{{ tt(embedded ? 'personalFinance.loans.contractForm.embeddedTitle' : 'personalFinance.loans.contractForm.title') }}</span>
             <v-spacer />
-            <v-chip color="primary" size="small" variant="tonal">
+            <v-chip color="primary" size="small" variant="tonal" v-if="!embedded">
                 {{ tt('personalFinance.loans.contractForm.identityOnly') }}
             </v-chip>
         </v-card-title>
-        <v-card-subtitle class="px-5 pt-1">
+        <v-card-subtitle class="px-5 pt-1" v-if="!embedded">
             {{ tt('personalFinance.loans.contractForm.subtitle') }}
         </v-card-subtitle>
         <v-card-text class="pa-5">
-            <v-row>
+            <v-row v-if="compactInstallment">
+                <v-col cols="12">
+                    <v-text-field
+                        maxlength="128"
+                        :label="tt('personalFinance.loans.installmentRecord.field.name')"
+                        :disabled="disabled"
+                        :model-value="modelValue.name"
+                        @update:model-value="value => updateField('name', value)"
+                    />
+                </v-col>
+            </v-row>
+            <v-row v-else>
                 <v-col cols="12" md="6">
                     <v-text-field
                         maxlength="128"
@@ -86,7 +97,7 @@
                 </v-col>
             </v-row>
 
-            <v-alert type="info" variant="tonal">
+            <v-alert type="info" variant="tonal" v-if="!embedded">
                 {{ tt('personalFinance.loans.contractForm.accountBoundary') }}
             </v-alert>
         </v-card-text>
@@ -111,10 +122,14 @@ const props = withDefaults(defineProps<{
     liabilityAccounts?: LoanContractAccountOption[];
     paymentAccounts?: LoanContractAccountOption[];
     disabled?: boolean;
+    embedded?: boolean;
+    compactInstallment?: boolean;
 }>(), {
     liabilityAccounts: () => [],
     paymentAccounts: () => [],
-    disabled: false
+    disabled: false,
+    embedded: false,
+    compactInstallment: false
 });
 
 const emit = defineEmits<{
@@ -143,5 +158,10 @@ function updateCurrency(value: unknown): void {
     background:
         linear-gradient(145deg, rgba(var(--v-theme-primary), 0.035), transparent 44%),
         rgb(var(--v-theme-surface));
+}
+
+.contract-form--embedded {
+    border-radius: 0;
+    background: transparent;
 }
 </style>

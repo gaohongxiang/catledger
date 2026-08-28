@@ -7,6 +7,7 @@ func UserDataModule() core.UserDataModule {
 	return core.UserDataModule{
 		Name: "installments",
 		Tables: core.UserDataTables(
+			"pf_installment_contract_draft",
 			"pf_installment_candidate_member",
 			"pf_installment_candidate",
 		),

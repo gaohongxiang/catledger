@@ -230,6 +230,40 @@ func findRevisionById(sess *xorm.Session, uid int64, revisionId int64) (*Contrac
 	return revision, nil
 }
 
+// FindProgressBaselineByRevisionId 读取某个 revision 的期初已完成期数；旧数据没有记录时返回 nil。
+func (r *Repository) FindProgressBaselineByRevisionId(c core.Context, uid int64, revisionId int64) (*ProgressBaseline, error) {
+	if uid < 1 || revisionId < 1 {
+		return nil, fmt.Errorf("invalid loan progress baseline owner or revision")
+	}
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	return findProgressBaselineByRevisionId(sess, uid, revisionId)
+}
+
+// FindProgressBaselineByRevisionId 在当前隐私事务中读取期初进度。
+func (tx *RepositoryTransaction) FindProgressBaselineByRevisionId(revisionId int64) (*ProgressBaseline, error) {
+	if err := tx.validate(); err != nil || revisionId < 1 {
+		return nil, fmt.Errorf("invalid loan progress baseline transaction lookup")
+	}
+	return findProgressBaselineByRevisionId(tx.session, tx.uid, revisionId)
+}
+
+func findProgressBaselineByRevisionId(sess *xorm.Session, uid int64, revisionId int64) (*ProgressBaseline, error) {
+	value := new(ProgressBaseline)
+	found, err := sess.Where("uid=? AND revision_id=?", uid, revisionId).Get(value)
+	if err != nil {
+		return nil, fmt.Errorf("find loan progress baseline: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+	return value, nil
+}
+
 // FindRevisionByActionId 读取一个 action 唯一产生的 revision。
 func (r *Repository) FindRevisionByActionId(c core.Context, uid int64, actionId int64) (*ContractRevision, error) {
 	if uid < 1 || actionId < 1 {
@@ -333,6 +367,19 @@ func (r *Repository) ListInstallmentsByRevision(c core.Context, uid int64, contr
 	}
 
 	return page, nil
+}
+
+// ListAllInstallmentsByRevision 在当前隐私事务中读取一个 revision 的完整有序计划。
+func (tx *RepositoryTransaction) ListAllInstallmentsByRevision(contractId int64, revisionId int64) ([]*Installment, error) {
+	if err := tx.validate(); err != nil || contractId < 1 || revisionId < 1 {
+		return nil, fmt.Errorf("invalid loan installment transaction list")
+	}
+	items := make([]*Installment, 0)
+	if err := tx.session.Where("uid=? AND contract_id=? AND revision_id=?", tx.uid, contractId, revisionId).
+		Asc("installment_number", "installment_id").Find(&items); err != nil {
+		return nil, fmt.Errorf("list loan installments in transaction: %w", err)
+	}
+	return items, nil
 }
 
 // FindActionById 按 uid 和 action ID 查询，不存在时返回 (nil, nil)。
@@ -807,6 +854,21 @@ func (tx *RepositoryTransaction) InsertRevision(revision *ContractRevision) erro
 	return nil
 }
 
+// InsertProgressBaseline 为不可变 revision 追加唯一的期初进度基线。
+func (tx *RepositoryTransaction) InsertProgressBaseline(value *ProgressBaseline) error {
+	if err := tx.validate(); err != nil || !isValidNewProgressBaseline(value, tx.uid) {
+		return fmt.Errorf("invalid loan progress baseline insert")
+	}
+	inserted, err := tx.session.Insert(value)
+	if err != nil {
+		return fmt.Errorf("insert loan progress baseline: %w", err)
+	}
+	if inserted != 1 {
+		return fmt.Errorf("loan progress baseline was not inserted")
+	}
+	return nil
+}
+
 // InsertInstallments 在当前隐私事务中原子追加一组不可变逐期计划。
 func (tx *RepositoryTransaction) InsertInstallments(installments []*Installment) error {
 	if err := tx.validate(); err != nil || len(installments) < 1 {
@@ -1001,6 +1063,11 @@ func isValidNewRevision(value *ContractRevision, uid int64) bool {
 		value.FrequencyType == FREQUENCY_TYPE_MONTHLY && isDiscountType(value.DiscountType) && isIRRStatus(value.IrrStatus) &&
 		value.CalculationVersion != "" && value.RoundingVersion != "" && value.IrrVersion != "" &&
 		isNilOrPositive(value.PreviousRevisionId)
+}
+
+func isValidNewProgressBaseline(value *ProgressBaseline, uid int64) bool {
+	return value != nil && value.Uid == uid && value.ContractId > 0 && value.RevisionId > 0 && value.BaselineId > 0 &&
+		value.CompletedInstallmentCount >= 0 && value.CreatedUnixTime > 0
 }
 
 func isValidRevisionRateQuote(inputMode InputMode, rateQuoteType RateQuoteType, quotedRate *int64, paymentBasis *int64) bool {

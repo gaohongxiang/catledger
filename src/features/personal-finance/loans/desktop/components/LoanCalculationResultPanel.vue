@@ -1,7 +1,7 @@
 <template>
     <div class="loan-result-panel">
         <div class="result-grid">
-            <div>
+            <div v-if="showActualDisbursement">
                 <span>{{ tt('personalFinance.loans.result.actualDisbursement') }}</span>
                 <strong>{{ formatAmount(input.actualDisbursementAmount) }}</strong>
             </div>
@@ -79,8 +79,10 @@ const props = withDefaults(defineProps<{
     result: LoanCalculationResult;
     currency: string;
     showInstallments?: boolean;
+    showActualDisbursement?: boolean;
 }>(), {
-    showInstallments: true
+    showInstallments: true,
+    showActualDisbursement: true
 });
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
@@ -90,7 +92,7 @@ function formatAmount(amount: number): string {
 }
 
 function formatPptr(value?: string): string {
-    const percentage = formatLoanPptrAsPercentage(value);
+    const percentage = formatLoanPptrAsPercentage(value, 2);
     return percentage ? `${percentage}%` : tt('Unknown');
 }
 </script>

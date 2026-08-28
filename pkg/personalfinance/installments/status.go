@@ -6,6 +6,26 @@ type RuleVersion string
 const (
 	CANDIDATE_KEY_VERSION_V1 RuleVersion = "installment-candidate-key-v1"
 	DETECT_VERSION_V1        RuleVersion = "installment-detect-v1"
+	DETECT_VERSION_V2        RuleVersion = "installment-detect-v2"
+)
+
+// ComponentType 表示账单行在分期中的会计组成。未知时不得猜测成本金。
+type ComponentType string
+
+const (
+	COMPONENT_TYPE_UNKNOWN   ComponentType = ""
+	COMPONENT_TYPE_PRINCIPAL ComponentType = "principal"
+	COMPONENT_TYPE_INTEREST  ComponentType = "interest"
+	COMPONENT_TYPE_FEE       ComponentType = "fee"
+)
+
+// FundingType 与贷款合同的资金用途保持同一语义，但检测不足时保留未知。
+type FundingType string
+
+const (
+	FUNDING_TYPE_UNKNOWN              FundingType = ""
+	FUNDING_TYPE_CASH_DISBURSEMENT    FundingType = "cash_disbursement"
+	FUNDING_TYPE_PURCHASE_INSTALLMENT FundingType = "purchase_installment"
 )
 
 // CandidateStatus 表示待确认分期候选的生命周期。
@@ -54,6 +74,8 @@ type MemberRole string
 
 const (
 	MEMBER_ROLE_INSTALLMENT_CHARGE MemberRole = "installment_charge"
+	MEMBER_ROLE_PRINCIPAL          MemberRole = "principal"
+	MEMBER_ROLE_INTEREST           MemberRole = "interest"
 	MEMBER_ROLE_ORIGINAL_PURCHASE  MemberRole = "original_purchase"
 	MEMBER_ROLE_FEE                MemberRole = "fee"
 )
@@ -88,5 +110,6 @@ func isMemberKind(value MemberKind) bool {
 }
 
 func isMemberRole(value MemberRole) bool {
-	return value == MEMBER_ROLE_INSTALLMENT_CHARGE || value == MEMBER_ROLE_ORIGINAL_PURCHASE || value == MEMBER_ROLE_FEE
+	return value == MEMBER_ROLE_INSTALLMENT_CHARGE || value == MEMBER_ROLE_PRINCIPAL || value == MEMBER_ROLE_INTEREST ||
+		value == MEMBER_ROLE_ORIGINAL_PURCHASE || value == MEMBER_ROLE_FEE
 }

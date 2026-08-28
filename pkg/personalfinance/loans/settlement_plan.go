@@ -45,6 +45,19 @@ func (s *Service) loadSettlementPlan(c core.Context, tx *RepositoryTransaction, 
 	if revision == nil || revision.Uid != uid || revision.ContractId != contractId || revision.RevisionId != contract.CurrentRevisionId {
 		return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
 	}
+	var baseline *ProgressBaseline
+	if tx == nil {
+		baseline, err = s.repository.FindProgressBaselineByRevisionId(c, uid, revision.RevisionId)
+	} else {
+		baseline, err = tx.FindProgressBaselineByRevisionId(revision.RevisionId)
+	}
+	if err != nil {
+		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	openingCompleted := completedInstallmentCount(baseline)
+	if openingCompleted < 0 || openingCompleted >= revision.TermCount {
+		return nil, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+	}
 
 	selection := &settlementPlanSelection{contract: contract, revision: revision}
 	installments := make([]*Installment, 0, 1)
@@ -69,6 +82,9 @@ func (s *Service) loadSettlementPlan(c core.Context, tx *RepositoryTransaction, 
 		}
 		if selection.installment == nil || selection.installment.ContractId != contractId || selection.installment.RevisionId != revision.RevisionId {
 			return nil, serviceError(ErrServiceSettlementRejected, SERVICE_ERROR_INSTALLMENT_NOT_FOUND)
+		}
+		if selection.installment.InstallmentNumber <= openingCompleted {
+			return nil, serviceError(ErrServiceSettlementRejected, SERVICE_ERROR_COMPONENT_MISMATCH)
 		}
 		installments = append(installments, selection.installment)
 		switch component {

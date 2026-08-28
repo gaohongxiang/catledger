@@ -269,7 +269,7 @@ func TestSchemaV006UpgradeIsExactOnSQLite(t *testing.T) {
 	if err := verifyMigrationTable(database); err != nil {
 		t.Fatalf("migration table is not exact: %v", err)
 	}
-	if err := verifySchemaV010(database); err != nil {
+	if err := verifySchemaV012WithContext(nil, database); err != nil {
 		t.Fatalf("latest schema is not exact: %v", err)
 	}
 
@@ -282,9 +282,9 @@ func TestSchemaV006UpgradeIsExactOnSQLite(t *testing.T) {
 	}
 	latest := new(SchemaMigration)
 	sess = database.NewSession(nil)
-	found, getErr = sess.ID(int64(10)).Get(latest)
+	found, getErr = sess.ID(int64(12)).Get(latest)
 	sess.Close()
 	if getErr != nil || !found || !latest.Success || latest.FailureCode != "" {
-		t.Fatalf("unexpected v010 migration record: found=%t record=%+v err=%v", found, latest, getErr)
+		t.Fatalf("unexpected v012 migration record: found=%t record=%+v err=%v", found, latest, getErr)
 	}
 }

@@ -312,6 +312,32 @@ func registeredMigrations() []migration {
 		})
 	}
 
+	v011Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV011()))
+	v011Steps := make([]migrationStep, 0, len(schemaBeansV011()))
+	for _, bean := range schemaBeansV011() {
+		bean := bean
+		tableName := bean.(interface{ TableName() string }).TableName()
+		v011Steps = append(v011Steps, migrationStep{
+			name: "create_" + tableName,
+			run: func(c context.Context, db *datastore.Database) error {
+				return syncFrozenSchemaBeanWithIndexes(c, db, bean)
+			},
+		})
+	}
+
+	v012Checksum := sha256.Sum256([]byte(canonicalSchemaManifestV012()))
+	v012Steps := make([]migrationStep, 0, len(schemaBeansV012()))
+	for _, bean := range schemaBeansV012() {
+		bean := bean
+		tableName := bean.(interface{ TableName() string }).TableName()
+		v012Steps = append(v012Steps, migrationStep{
+			name: "create_" + tableName,
+			run: func(c context.Context, db *datastore.Database) error {
+				return syncFrozenSchemaBeanWithIndexes(c, db, bean)
+			},
+		})
+	}
+
 	return []migration{
 		{
 			version:   1,
@@ -392,6 +418,22 @@ func registeredMigrations() []migration {
 			preflight: validateSchemaV010PreflightWithContext,
 			steps:     v010Steps,
 			verify:    verifySchemaV010WithContext,
+		},
+		{
+			version:   11,
+			name:      "installment_contract_drafts",
+			checksum:  hex.EncodeToString(v011Checksum[:]),
+			preflight: validateSchemaV011PreflightWithContext,
+			steps:     v011Steps,
+			verify:    verifySchemaV011WithContext,
+		},
+		{
+			version:   12,
+			name:      "loan_opening_progress_baselines",
+			checksum:  hex.EncodeToString(v012Checksum[:]),
+			preflight: validateSchemaV012PreflightWithContext,
+			steps:     v012Steps,
+			verify:    verifySchemaV012WithContext,
 		},
 	}
 }

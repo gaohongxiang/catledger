@@ -38,10 +38,10 @@ const detail: LoanContractDetail = {
         id: '101', name: 'Mortgage', lenderName: 'Bank', contractType: 'bank_loan', status: 'active', liabilityAccountId: '11',
         defaultPaymentAccountId: '12', currency: 'CNY', note: '', version: 7, currentRevisionId: '201', createdUnixTime: 1, updatedUnixTime: 2
     },
-    currentRevision: { id: '201', revisionNumber: 1, effectiveDate: input.effectiveDate, input, calculation, createdUnixTime: 1 },
+    currentRevision: { id: '201', revisionNumber: 1, effectiveDate: input.effectiveDate, openingCompletedInstallmentCount: 0, input, calculation, createdUnixTime: 1 },
     installments: [{
         id: '301', revisionId: '201', ...calculation.installments[0]!, progress: {
-            settlementStatus: 'unpaid', overdue: false, allocatedPrincipalAmount: 0, allocatedInterestAmount: 0, allocatedFeeAmount: 0,
+            settlementStatus: 'unpaid', overdue: false, openingCompleted: false, allocatedPrincipalAmount: 0, allocatedInterestAmount: 0, allocatedFeeAmount: 0,
             outstandingPrincipalAmount: 400000, outstandingInterestAmount: 24000, outstandingFeeAmount: 1000,
             outstandingPaymentAmount: 425000, actionRequired: false, reasonCodes: []
         }

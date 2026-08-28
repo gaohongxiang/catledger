@@ -32,13 +32,16 @@ func normalizeContractSpec(spec ContractSpec) (ContractSpec, calculation.Input, 
 	if spec.LiabilityAccountId < 1 || !isNilOrPositive(spec.DefaultPaymentAccountId) ||
 		!isContractType(spec.ContractType) || !validSensitiveText(spec.Name, maximumContractNameCharacters, true) ||
 		!validSensitiveText(spec.LenderName, maximumLenderNameCharacters, false) || !validSensitiveText(spec.Note, maximumContractNoteCharacters, false) ||
-		!isCurrencyCode(spec.Currency) {
+		!isCurrencyCode(spec.Currency) || spec.OpeningCompletedInstallmentCount < 0 {
 		return ContractSpec{}, calculation.Input{}, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
 	}
 
 	terms, input, err := normalizeCalculationTerms(spec.Terms)
 	if err != nil {
 		return ContractSpec{}, calculation.Input{}, err
+	}
+	if spec.OpeningCompletedInstallmentCount >= terms.TermCount {
+		return ContractSpec{}, calculation.Input{}, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
 	}
 	spec.DefaultPaymentAccountId = cloneInt64(spec.DefaultPaymentAccountId)
 	spec.Terms = terms
@@ -120,6 +123,7 @@ func writeContractSpecDigest(hasher hash.Hash, spec ContractSpec) {
 	writeServiceDigestOptionalInt64(hasher, spec.DefaultPaymentAccountId)
 	writeServiceDigestString(hasher, spec.Currency)
 	writeServiceDigestString(hasher, spec.Note)
+	writeServiceDigestInt64(hasher, spec.OpeningCompletedInstallmentCount)
 	writeCalculationTermsDigest(hasher, spec.Terms)
 }
 

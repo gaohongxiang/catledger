@@ -1,49 +1,141 @@
 <template>
-    <v-row class="match-height">
-        <v-col cols="12">
-            <v-card class="loan-workbench overflow-hidden">
-                <div class="loan-hero pa-6 pa-lg-8">
-                    <div>
-                        <div class="text-overline text-primary">{{ tt('personalFinance.loans.eyebrow') }}</div>
-                        <h2 class="text-h4 font-weight-bold mt-1">{{ tt('personalFinance.loans.title') }}</h2>
-                        <p class="text-body-large text-medium-emphasis mt-2 mb-0">
-                            {{ tt('personalFinance.loans.subtitle') }}
-                        </p>
-                    </div>
+    <v-card class="loan-workbench overflow-hidden">
+        <div class="loan-hero px-5 py-4">
+            <div class="loan-hero-copy">
+                <div class="text-overline text-primary">{{ tt('personalFinance.loans.eyebrow') }}</div>
+                <div class="loan-title-row">
+                    <h2 class="text-h5 font-weight-bold">{{ tt('personalFinance.loans.title') }}</h2>
+                    <p class="text-body-medium text-medium-emphasis mb-0">
+                        {{ tt('personalFinance.loans.subtitle') }}
+                    </p>
                 </div>
+            </div>
+            <div class="loan-hero-actions">
+                <v-btn color="primary" size="small" variant="tonal" :prepend-icon="mdiPlus" @click="startCreate">
+                    {{ tt('personalFinance.loans.contracts.create') }}
+                </v-btn>
+                <v-btn :icon="mdiRefresh" size="small" variant="text" :loading="loadingList || loadingInstallmentCandidates" @click="refresh">
+                    <v-tooltip activator="parent">{{ tt('Refresh') }}</v-tooltip>
+                </v-btn>
+            </div>
+        </div>
 
-                <v-divider />
+        <v-divider />
 
-                <div class="toolbar px-5 py-3">
-                    <v-btn-toggle color="primary" density="compact" divided mandatory variant="outlined" :model-value="status" @update:model-value="changeFilter">
-                        <v-btn value="active">{{ tt('personalFinance.loans.status.active') }}</v-btn>
-                        <v-btn value="closed">{{ tt('personalFinance.loans.status.closed') }}</v-btn>
-                        <v-btn value="cancelled">{{ tt('personalFinance.loans.status.cancelled') }}</v-btn>
-                    </v-btn-toggle>
-                    <v-spacer />
-                    <v-btn :icon="mdiRefresh" variant="text" :loading="loadingList" @click="refresh">
-                        <v-tooltip activator="parent">{{ tt('Refresh') }}</v-tooltip>
+        <nav class="workspace-nav px-5 py-3" :aria-label="tt('personalFinance.loans.workspace.label')">
+            <v-btn-toggle color="primary" density="compact" divided mandatory variant="outlined" :model-value="workspaceView" @update:model-value="changeWorkspace">
+                <v-btn value="active">{{ tt('personalFinance.loans.workspace.active') }}</v-btn>
+                <v-btn value="incomplete">
+                    {{ tt('personalFinance.loans.workspace.incomplete') }}
+                    <span class="workspace-count" v-if="installmentCandidates.length">{{ installmentCandidates.length }}</span>
+                </v-btn>
+            </v-btn-toggle>
+        </nav>
+
+        <v-divider />
+
+        <section class="installment-inbox px-5 py-4" v-if="workspaceView === 'incomplete'">
+            <div class="installment-inbox-heading">
+                <div>
+                    <div class="text-subtitle-1 font-weight-bold">
+                        {{ tt('personalFinance.loans.candidates.title') }}
+                        <span class="text-primary">{{ installmentCandidates.length }}</span>
+                    </div>
+                    <div class="text-body-small text-medium-emphasis">{{ tt('personalFinance.loans.candidates.hint') }}</div>
+                </div>
+                <v-progress-circular v-if="loadingInstallmentCandidates" color="primary" indeterminate size="24" width="2" />
+            </div>
+            <div class="installment-candidate-list mt-3" v-if="installmentCandidates.length">
+                <div class="installment-candidate-row" :key="candidate.id" v-for="candidate in installmentCandidates">
+                    <div class="installment-candidate-copy">
+                        <strong>{{ candidateName(candidate) }}</strong>
+                        <span class="text-body-small text-medium-emphasis">
+                            {{ candidateFacts(candidate).join(' · ') }}
+                        </span>
+                    </div>
+                    <v-btn color="primary" size="small" variant="tonal" @click="completeInstallmentCandidate(candidate)">
+                        {{ tt('personalFinance.loans.candidates.complete') }}
                     </v-btn>
                 </div>
+            </div>
+            <div class="installment-empty py-16 text-center" v-else-if="!loadingInstallmentCandidates">
+                <v-icon color="medium-emphasis" size="48" :icon="mdiFileDocumentOutline" />
+                <div class="text-subtitle-1 font-weight-bold mt-3">{{ tt('personalFinance.loans.workspace.incompleteEmpty') }}</div>
+                <div class="text-body-small text-medium-emphasis mt-1">{{ tt('personalFinance.loans.workspace.incompleteEmptyHint') }}</div>
+            </div>
+        </section>
 
-                <v-divider />
-
-                <v-row class="ma-0">
-                    <v-col cols="12" lg="4" class="pa-0 contract-column">
+        <div class="workbench-grid" v-else>
+                    <aside class="contract-column" v-if="!selectedDetail">
+                        <section class="portfolio-overview px-5 py-4">
+                            <div class="portfolio-heading">
+                                <div>
+                                    <h3 class="text-h6 font-weight-bold">{{ tt('personalFinance.loans.portfolio.title') }}</h3>
+                                    <p class="text-body-small text-medium-emphasis mb-0">{{ tt('personalFinance.loans.portfolio.hint') }}</p>
+                                </div>
+                                <span class="portfolio-record-count">
+                                    {{ tt('personalFinance.loans.portfolio.recordCount', { count: items.length }) }}
+                                </span>
+                            </div>
+                            <div class="portfolio-currency-grid mt-4" v-if="portfolioSummaries.length">
+                                <article class="portfolio-currency-card" :key="summary.currency" v-for="summary in portfolioSummaries">
+                                    <div class="portfolio-primary">
+                                        <div class="portfolio-card-label">
+                                            {{ tt('personalFinance.loans.portfolio.remainingPayment') }}
+                                            <v-chip size="x-small" variant="tonal">{{ summary.currency }}</v-chip>
+                                        </div>
+                                        <strong>{{ formatAmount(summary.outstandingPaymentAmount, summary.currency) }}</strong>
+                                        <span>
+                                            {{ tt('personalFinance.loans.portfolio.activeCount', { count: summary.recordCount }) }}
+                                            <template v-if="summary.actionRequiredCount">
+                                                · {{ tt('personalFinance.loans.portfolio.actionCount', { count: summary.actionRequiredCount }) }}
+                                            </template>
+                                        </span>
+                                    </div>
+                                    <div class="portfolio-metrics">
+                                        <div>
+                                            <span>{{ tt('personalFinance.loans.result.principal') }}</span>
+                                            <strong>{{ formatAmount(summary.totalPrincipalAmount, summary.currency) }}</strong>
+                                        </div>
+                                        <div>
+                                            <span>{{ tt('personalFinance.loans.result.totalCost') }}</span>
+                                            <strong>{{ formatAmount(summary.totalCostAmount, summary.currency) }}</strong>
+                                        </div>
+                                        <div>
+                                            <span>{{ tt('personalFinance.loans.result.remainingPrincipal') }}</span>
+                                            <strong>{{ formatAmount(summary.outstandingPrincipalAmount, summary.currency) }}</strong>
+                                        </div>
+                                        <div>
+                                            <span>{{ tt('personalFinance.loans.portfolio.remainingCost') }}</span>
+                                            <strong>{{ formatAmount(summary.outstandingCostAmount, summary.currency) }}</strong>
+                                        </div>
+                                        <div>
+                                            <span>{{ tt('personalFinance.loans.portfolio.nextPayment') }}</span>
+                                            <strong v-if="summary.nextDueDate">{{ formatAmount(summary.nextDueAmount, summary.currency) }}</strong>
+                                            <strong v-else>—</strong>
+                                            <small>{{ summary.nextDueDate ?? tt('personalFinance.loans.portfolio.completed') }}</small>
+                                        </div>
+                                    </div>
+                                </article>
+                            </div>
+                        </section>
+                        <v-divider />
+                        <div class="record-list-heading px-5 py-3">
+                            <div>
+                                <div class="text-subtitle-1 font-weight-bold">{{ tt('personalFinance.loans.contracts.title') }}</div>
+                                <div class="text-body-small text-medium-emphasis">{{ tt('personalFinance.loans.contracts.listHint') }}</div>
+                            </div>
+                        </div>
                         <loan-contract-list
                             :items="items"
                             :loading="loadingList"
                             :has-more="!!nextCursor"
-                            :selected-contract-id="selectedDetail?.contract.id"
-                            @create="startCreate"
                             @load-more="loadMore"
                             @select="openContract"
                         />
-                    </v-col>
+                    </aside>
 
-                    <v-divider vertical class="d-none d-lg-block" />
-
-                    <v-col cols="12" lg="8" class="pa-0 detail-column">
+                    <main class="detail-column" v-else>
                         <v-skeleton-loader class="pa-6" type="heading, paragraph, image, paragraph" v-if="loadingDetail && !selectedDetail" />
 
                         <div class="empty-detail pa-12 text-center" v-else-if="!selectedDetail">
@@ -53,7 +145,10 @@
                         </div>
 
                         <template v-else>
-                            <div class="detail-header pa-5 pa-lg-6">
+                            <div class="detail-header px-5 py-4">
+                                <v-btn :icon="mdiArrowLeft" size="small" variant="text" @click="closeDetail">
+                                    <v-tooltip activator="parent">{{ tt('Back') }}</v-tooltip>
+                                </v-btn>
                                 <div>
                                     <div class="d-flex flex-wrap align-center ga-2">
                                         <h3 class="text-h5 font-weight-bold">{{ selectedDetail.contract.name }}</h3>
@@ -90,8 +185,8 @@
                                 </div>
                             </div>
 
-                            <div class="px-5 px-lg-6 pb-5" v-if="allDetailReasons.length">
-                                <v-alert type="warning" variant="tonal">
+                            <div class="px-5 pb-4" v-if="allDetailReasons.length">
+                                <v-alert density="compact" type="warning" variant="tonal">
                                     <div class="font-weight-bold">{{ tt('personalFinance.loans.actionRequired') }}</div>
                                     <div class="mt-1" :key="`${reason.code}-${index}`" v-for="(reason, index) in allDetailReasons">
                                         {{ reasonText(reason.code, reason.count) }}
@@ -101,31 +196,20 @@
 
                             <v-divider />
 
-                            <v-expansion-panels class="calculation-disclosure pa-5 pa-lg-6" variant="accordion">
-                                <v-expansion-panel elevation="0">
-                                    <v-expansion-panel-title>
-                                        <div>
-                                            <strong>{{ tt('personalFinance.loans.advanced.title') }}</strong>
-                                            <div class="text-body-small text-medium-emphasis mt-1">
-                                                {{ tt('personalFinance.loans.advanced.hint') }}
-                                            </div>
-                                        </div>
-                                    </v-expansion-panel-title>
-                                    <v-expansion-panel-text>
-                                        <loan-calculation-result-panel
-                                            :input="selectedDetail.currentRevision.input"
-                                            :result="selectedDetail.currentRevision.calculation"
-                                            :currency="selectedDetail.contract.currency"
-                                            :show-installments="false"
-                                        />
-                                    </v-expansion-panel-text>
-                                </v-expansion-panel>
-                            </v-expansion-panels>
+                            <section class="calculation-summary px-5 py-4">
+                                <loan-calculation-result-panel
+                                    :input="selectedDetail.currentRevision.input"
+                                    :result="selectedDetail.currentRevision.calculation"
+                                    :currency="selectedDetail.contract.currency"
+                                    :show-actual-disbursement="selectedDetail.contract.contractType !== 'credit_card_installment'"
+                                    :show-installments="false"
+                                />
+                            </section>
 
                             <v-divider />
 
-                            <div class="pa-5 pa-lg-6" v-if="canRecordFundingComponents && !selectedInstallmentId">
-                                <v-alert class="disbursement-callout" type="info" variant="tonal">
+                            <div class="px-5 py-4" v-if="canRecordFundingComponents && !selectedInstallmentId">
+                                <v-alert class="disbursement-callout" density="compact" type="info" variant="tonal">
                                     <template #title>{{ tt('personalFinance.loans.disbursement.title') }}</template>
                                     {{ tt('personalFinance.loans.disbursement.hint') }}
                                     <div class="funding-component mt-4" v-if="canRecordDisbursement">
@@ -210,12 +294,11 @@
                             <loan-schedule-panel
                                 :detail="selectedDetail"
                                 :selected-installment-id="selectedInstallmentId"
-                                @revise="startRevise"
                                 @select-installment="selectInstallment"
                                 @settle="selectInstallment"
                             />
 
-                            <div class="pa-5 pa-lg-6">
+                            <div class="settlement-wrap px-5 py-4" v-if="selectedInstallment">
                                 <loan-settlement-panel
                                     :installment="selectedInstallment"
                                     :currency="selectedDetail.contract.currency"
@@ -234,13 +317,11 @@
                                 />
                             </div>
                         </template>
-                    </v-col>
-                </v-row>
-            </v-card>
-        </v-col>
-    </v-row>
+                    </main>
+        </div>
+    </v-card>
 
-    <v-dialog max-width="1040" scrollable v-model="showComposer">
+    <v-dialog :max-width="composerMode === 'revise' ? 900 : 1040" scrollable v-model="showComposer">
         <v-card>
             <v-card-title class="d-flex align-center px-5 pt-5">
                 <span>{{ tt(composerMode === 'create' ? 'personalFinance.loans.create.title' : 'personalFinance.loans.revise.title') }}</span>
@@ -248,32 +329,54 @@
                 <v-btn :icon="mdiClose" variant="text" @click="closeComposer" />
             </v-card-title>
             <v-card-text class="pa-5">
-                <v-alert class="mb-5" type="info" variant="tonal" v-if="composerMode === 'revise'">
-                    {{ tt('personalFinance.loans.revise.identityLocked') }}
+                <v-alert class="mb-5" type="info" variant="tonal" v-if="composerCandidate">
+                    {{ tt('personalFinance.loans.candidates.composerHint', {
+                        term: composerCandidate.termCount ?? tt('personalFinance.loans.candidates.unknown'),
+                        period: composerCandidate.currentPeriod ?? tt('personalFinance.loans.candidates.unknown')
+                    }) }}
                 </v-alert>
+                <div class="edit-installment-note mb-4" v-if="composerMode === 'revise' && selectedDetail">
+                    <div>
+                        <strong>{{ selectedDetail.contract.name }}</strong>
+                        <span>{{ selectedLiabilityAccountName }}</span>
+                    </div>
+                    <p>{{ tt('personalFinance.loans.revise.identityLocked') }}</p>
+                </div>
                 <loan-contract-form
                     v-if="composerMode === 'create'"
                     :model-value="identity"
                     :liability-accounts="liabilityAccountOptions"
                     :payment-accounts="compatiblePaymentAccountOptions"
-                    :disabled="submitting"
+                    :disabled="composerSubmitting"
                     @update:model-value="updateIdentity"
                 />
                 <loan-calculator-panel
-                    class="mt-5"
+                    :class="{ 'mt-5': composerMode === 'create' }"
                     :model-value="calculationInput"
                     :result="calculationResult"
                     :currency="composerCurrency"
                     :loading="calculating"
-                    :disabled="submitting"
+                    :disabled="composerSubmitting"
+                    :embedded="composerMode === 'revise'"
+                    :compact-installment="composerMode === 'revise' && selectedDetail?.contract.contractType === 'credit_card_installment'"
+                    :show-opening-completed-installment-count="composerMode !== 'revise'"
+                    :purpose="composerMode === 'revise' ? 'installment-record' : 'calculation'"
                     @update:model-value="updateCalculation"
                     @calculate="runCalculation"
-                />
+                >
+                    <template #compact-liability-account v-if="composerMode === 'revise'">
+                        <v-text-field
+                            readonly
+                            :label="tt('personalFinance.loans.field.liabilityAccount')"
+                            :model-value="selectedLiabilityAccountName"
+                        />
+                    </template>
+                </loan-calculator-panel>
             </v-card-text>
             <v-card-actions class="px-5 pb-5">
                 <v-spacer />
-                <v-btn variant="text" :disabled="submitting" @click="closeComposer">{{ tt('Cancel') }}</v-btn>
-                <v-btn color="primary" :disabled="!calculationResult || !canSubmitComposer" :loading="submitting" @click="submitComposer">
+                <v-btn variant="text" :disabled="composerSubmitting" @click="closeComposer">{{ tt('Cancel') }}</v-btn>
+                <v-btn color="primary" :disabled="!calculationResult || !canSubmitComposer" :loading="composerSubmitting" @click="submitComposer">
                     {{ tt(composerMode === 'create' ? 'personalFinance.loans.create.submit' : 'personalFinance.loans.revise.submit') }}
                 </v-btn>
             </v-card-actions>
@@ -338,7 +441,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef } from 'vue';
-import { mdiBankOutline, mdiClose, mdiDotsVertical, mdiRefresh } from '@mdi/js';
+import { useRoute, useRouter } from 'vue-router';
+import { mdiArrowLeft, mdiBankOutline, mdiClose, mdiDotsVertical, mdiFileDocumentOutline, mdiPlus, mdiRefresh } from '@mdi/js';
 
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import AmountInput from '@/components/desktop/AmountInput.vue';
@@ -353,6 +457,8 @@ import { useAccountsStore } from '@/stores/account.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { useUserStore } from '@/stores/user.ts';
 
+import type { InstallmentCandidate } from '../../installments/models.ts';
+import { installmentApi } from '../../installments/service.ts';
 import { createLoanWorkbenchController } from '../controller.ts';
 import { loanApi } from '../service.ts';
 import type {
@@ -360,7 +466,6 @@ import type {
     LoanCloseReason,
     LoanComponentType,
     LoanContractIdentityInput,
-    LoanContractStatus,
     LoanReason,
     LoanSettlementCandidate
 } from '../models.ts';
@@ -383,25 +488,33 @@ import LoanSettlementPanel from './components/LoanSettlementPanel.vue';
 type SnackBarType = InstanceType<typeof SnackBar>;
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type ComposerMode = 'create' | 'revise';
+type WorkspaceView = 'active' | 'incomplete';
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
+const route = useRoute();
+const router = useRouter();
 const accountsStore = useAccountsStore();
 const categoriesStore = useTransactionCategoriesStore();
 const userStore = useUserStore();
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
-const controller = createLoanWorkbenchController({ service: loanApi });
+const controller = createLoanWorkbenchController({ service: loanApi, pageLimit: 100 });
 const {
-    status, items, nextCursor, selectedDetail, selectedInstallmentId, calculationInput, calculationResult,
+    items, nextCursor, selectedDetail, selectedInstallmentId, calculationInput, calculationResult,
     candidates, components, undoImpact, lastSettlementActionId, loadingList, loadingDetail, calculating,
     submitting, loadingComponent
 } = controller;
 
 const identity = ref<LoanContractIdentityInput>(createIdentity());
+const workspaceView = ref<WorkspaceView>('active');
 const allAccounts = ref<Account[]>([]);
 const allCategories = ref<Record<number, TransactionCategory[]>>({});
 const showComposer = ref(false);
 const composerMode = ref<ComposerMode>('create');
+const composerCandidate = ref<InstallmentCandidate>();
+const installmentCandidates = ref<InstallmentCandidate[]>([]);
+const loadingInstallmentCandidates = ref(false);
+const submittingInstallmentCandidate = ref(false);
 const showDraftDialog = ref(false);
 const draftComponent = ref<LoanComponentType>('principal');
 const draft = reactive({ sourceAccountId: '', destinationAccountId: '', categoryId: '', transactionDate: '', amount: 0 });
@@ -420,7 +533,12 @@ const paymentAccountOptions = computed(() => flattenedAccounts.value
     .map(toAccountOption));
 const compatiblePaymentAccountOptions = computed(() => paymentAccountOptions.value.filter(account => account.currency === identity.value.currency));
 const selectedInstallment = computed(() => selectedDetail.value?.installments.find(item => item.id === selectedInstallmentId.value) ?? null);
+const selectedLiabilityAccountName = computed(() => {
+    const accountId = selectedDetail.value?.contract.liabilityAccountId;
+    return liabilityAccountOptions.value.find(account => account.id === accountId)?.name ?? selectedDetail.value?.contract.lenderName ?? '';
+});
 const composerCurrency = computed(() => composerMode.value === 'create' ? identity.value.currency : selectedDetail.value?.contract.currency ?? userStore.currentUserDefaultCurrency);
+const composerSubmitting = computed(() => submitting.value || submittingInstallmentCandidate.value);
 const canSubmitComposer = computed(() => composerMode.value === 'revise' || (
     !!identity.value.name.trim() && !!identity.value.lenderName.trim() && !!identity.value.liabilityAccountId &&
     /^[A-Z]{3}$/.test(identity.value.currency) && liabilityAccountOptions.value.some(account => account.id === identity.value.liabilityAccountId && account.currency === identity.value.currency) &&
@@ -476,6 +594,53 @@ const closeReasonOptions = computed(() => [
     { title: tt('personalFinance.loans.lifecycle.manualClose'), value: 'manual_close' },
     { title: tt('personalFinance.loans.lifecycle.writtenOff'), value: 'written_off' }
 ]);
+const portfolioSummaries = computed(() => {
+    const groups = new Map<string, {
+        currency: string;
+        recordCount: number;
+        actionRequiredCount: number;
+        totalPrincipalAmount: number;
+        totalCostAmount: number;
+        outstandingPrincipalAmount: number;
+        outstandingPaymentAmount: number;
+        outstandingCostAmount: number;
+        nextDueDate?: string;
+        nextDueAmount: number;
+    }>();
+
+    for (const item of items.value) {
+        const currency = item.contract.currency;
+        const summary = groups.get(currency) ?? {
+            currency,
+            recordCount: 0,
+            actionRequiredCount: 0,
+            totalPrincipalAmount: 0,
+            totalCostAmount: 0,
+            outstandingPrincipalAmount: 0,
+            outstandingPaymentAmount: 0,
+            outstandingCostAmount: 0,
+            nextDueAmount: 0
+        };
+        summary.recordCount += 1;
+        summary.actionRequiredCount += item.actionRequired ? 1 : 0;
+        summary.totalPrincipalAmount += Math.max(0, item.calculation.totalPaymentAmount - item.calculation.totalCostAmount);
+        summary.totalCostAmount += item.calculation.totalCostAmount;
+        summary.outstandingPrincipalAmount += item.outstandingPrincipalAmount;
+        summary.outstandingPaymentAmount += item.outstandingPaymentAmount;
+        summary.outstandingCostAmount += Math.max(0, item.outstandingPaymentAmount - item.outstandingPrincipalAmount);
+
+        const next = item.nextInstallment;
+        if (next && (!summary.nextDueDate || next.dueDate <= summary.nextDueDate)) {
+            if (next.dueDate < (summary.nextDueDate ?? '9999-12-31')) {
+                summary.nextDueDate = next.dueDate;
+                summary.nextDueAmount = 0;
+            }
+            summary.nextDueAmount += next.progress.outstandingPaymentAmount;
+        }
+        groups.set(currency, summary);
+    }
+    return [...groups.values()].sort((left, right) => left.currency.localeCompare(right.currency));
+});
 
 function createIdentity(): LoanContractIdentityInput {
     return { name: '', lenderName: '', contractType: 'bank_loan', liabilityAccountId: '', currency: userStore.currentUserDefaultCurrency || 'CNY', note: '' };
@@ -520,6 +685,7 @@ function updateIdentity(value: LoanContractIdentityInput): void {
 }
 
 function startCreate(): void {
+    composerCandidate.value = undefined;
     composerMode.value = 'create';
     identity.value = createIdentity();
     resetCalculation();
@@ -528,15 +694,92 @@ function startCreate(): void {
 
 function startRevise(): void {
     if (!selectedDetail.value || !canReviseLoanContract(selectedDetail.value)) return;
+    composerCandidate.value = undefined;
     composerMode.value = 'revise';
     calculationInput.value = { ...selectedDetail.value.currentRevision.input };
     calculationResult.value = undefined;
     showComposer.value = true;
 }
 
+function closeDetail(): void {
+    selectedDetail.value = null;
+    selectedInstallmentId.value = undefined;
+}
+
 function closeComposer(): void {
     showComposer.value = false;
+    composerCandidate.value = undefined;
     calculationResult.value = undefined;
+}
+
+function candidateName(candidate: InstallmentCandidate): string {
+    return candidate.termCount
+        ? tt('personalFinance.loans.candidates.defaultName', { count: candidate.termCount })
+        : tt('personalFinance.loans.candidates.unknownTermName');
+}
+
+function candidateFacts(candidate: InstallmentCandidate): string[] {
+    const facts: string[] = [];
+    if (candidate.termCount) facts.push(tt('personalFinance.loans.candidates.termCount', { count: candidate.termCount }));
+    if (candidate.currentPeriod) facts.push(tt('personalFinance.loans.candidates.currentPeriod', { count: candidate.currentPeriod }));
+    facts.push(candidate.liabilityAccountId
+        ? liabilityAccountOptions.value.find(account => account.id === candidate.liabilityAccountId)?.name ?? tt('personalFinance.loans.candidates.liabilityPending')
+        : tt('personalFinance.loans.candidates.liabilityPending'));
+    return facts;
+}
+
+async function loadInstallmentCandidates(): Promise<void> {
+    loadingInstallmentCandidates.value = true;
+    try {
+        const result: InstallmentCandidate[] = [];
+        let cursor: Awaited<ReturnType<typeof installmentApi.listCandidates>>['nextCursor'];
+        do {
+            const page = await installmentApi.listCandidates('needs_details', cursor, 100);
+            result.push(...page.items);
+            cursor = page.nextCursor;
+        } while (cursor);
+        installmentCandidates.value = result;
+    } finally {
+        loadingInstallmentCandidates.value = false;
+    }
+}
+
+async function openRequestedInstallmentCandidate(): Promise<void> {
+    const candidateId = typeof route.query['installmentCandidate'] === 'string'
+        ? route.query['installmentCandidate']
+        : '';
+    if (!candidateId) return;
+
+    const candidate = installmentCandidates.value.find(item => item.id === candidateId);
+    if (candidate) {
+        workspaceView.value = 'incomplete';
+        completeInstallmentCandidate(candidate);
+    }
+
+    const query = { ...route.query };
+    delete query['installmentCandidate'];
+    await router.replace({ query });
+}
+
+function completeInstallmentCandidate(candidate: InstallmentCandidate): void {
+    const liability = liabilityAccountOptions.value.find(account => account.id === candidate.liabilityAccountId);
+    composerCandidate.value = candidate;
+    composerMode.value = 'create';
+    identity.value = {
+        name: candidateName(candidate),
+        lenderName: liability?.name ?? tt('personalFinance.loans.candidates.unknownLender'),
+        contractType: 'credit_card_installment',
+        liabilityAccountId: liability?.id ?? '',
+        currency: liability?.currency ?? userStore.currentUserDefaultCurrency ?? 'CNY',
+        note: tt('personalFinance.loans.candidates.note')
+    };
+    resetCalculation();
+    calculationInput.value = {
+        ...calculationInput.value,
+        fundingType: 'purchase_installment',
+        termCount: candidate.termCount ?? calculationInput.value.termCount
+    };
+    showComposer.value = true;
 }
 
 async function runCalculation(): Promise<void> {
@@ -545,21 +788,44 @@ async function runCalculation(): Promise<void> {
 
 async function submitComposer(): Promise<void> {
     await safely(async () => {
+        if (composerMode.value === 'create' && composerCandidate.value) {
+            submittingInstallmentCandidate.value = true;
+            try {
+                await installmentApi.confirmCandidate({
+                    candidateId: composerCandidate.value.id,
+                    expectedVersion: composerCandidate.value.version,
+                    treatAsInstallment: true,
+                    liabilityAccountId: identity.value.liabilityAccountId,
+                    termCount: calculationInput.value.termCount,
+                    contract: identity.value,
+                    calculation: calculationInput.value
+                });
+                await Promise.all([controller.reload(true), loadInstallmentCandidates()]);
+                workspaceView.value = 'active';
+                showComposer.value = false;
+                composerCandidate.value = undefined;
+                snackbar.value?.showMessage('personalFinance.loans.candidates.created');
+            } finally {
+                submittingInstallmentCandidate.value = false;
+            }
+            return;
+        }
         const result = composerMode.value === 'create'
             ? await controller.createContract(identity.value)
             : await controller.reviseContract();
         if (showActionResult(result, composerMode.value === 'create' ? 'personalFinance.loans.message.created' : 'personalFinance.loans.message.revised')) {
+            if (composerMode.value === 'create') workspaceView.value = 'active';
             showComposer.value = false;
         }
     });
 }
 
-async function changeFilter(value: LoanContractStatus): Promise<void> {
-    await safely(() => controller.changeStatus(value));
+function changeWorkspace(value: WorkspaceView | null): void {
+    if (value) workspaceView.value = value;
 }
 
 async function refresh(): Promise<void> {
-    await safely(() => controller.reload(!selectedDetail.value));
+    await safely(() => Promise.all([controller.reload(!selectedDetail.value), loadInstallmentCandidates()]));
 }
 
 async function loadMore(): Promise<void> {
@@ -712,22 +978,84 @@ onMounted(async () => {
     } catch {
         snackbar.value?.showMessage('personalFinance.loans.error.referenceDataFailed');
     }
-    await safely(() => controller.reload(true));
+    await safely(async () => {
+        await Promise.all([controller.reload(false), loadInstallmentCandidates()]);
+        await openRequestedInstallmentCandidate();
+    });
 });
 
 onBeforeUnmount(() => controller.dispose());
 </script>
 
 <style scoped>
-.loan-workbench { min-height: calc(100vh - 130px); }
-.loan-hero { display: flex; align-items: center; gap: 28px; background: radial-gradient(circle at 92% 8%, rgba(var(--v-theme-primary), .14), transparent 28%), linear-gradient(135deg, rgba(var(--v-theme-primary), .045), transparent 50%); }
-.toolbar, .detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.contract-column { min-height: 680px; }
-.detail-column { min-width: 0; }
-.calculation-disclosure :deep(.v-expansion-panel) { border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.loan-workbench { min-height: calc(100vh - 118px); }
+.loan-hero { display: flex; align-items: center; justify-content: space-between; gap: 24px; background: linear-gradient(90deg, rgba(var(--v-theme-primary), .055), transparent 55%); }
+.loan-hero-copy { min-width: 0; }
+.loan-title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; }
+.loan-hero-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.workspace-nav { display: flex; align-items: center; min-height: 54px; background: rgb(var(--v-theme-surface)); }
+.workspace-count { margin-inline-start: 7px; color: rgb(var(--v-theme-primary)); font-weight: 700; }
+.installment-inbox { background: rgba(var(--v-theme-primary), .025); }
+.installment-inbox-heading, .installment-candidate-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.installment-candidate-list { overflow: hidden; border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); border-radius: 10px; background: rgb(var(--v-theme-surface)); }
+.installment-candidate-row { min-height: 52px; padding: 7px 12px; }
+.installment-candidate-row + .installment-candidate-row { border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.installment-candidate-copy { display: grid; min-width: 0; gap: 2px; }
+.installment-empty { color: rgba(var(--v-theme-on-surface), .68); }
+.detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.workbench-grid { display: block; }
+.contract-column { min-height: 560px; background: rgba(var(--v-theme-on-surface), .012); }
+.detail-column { min-width: 0; overflow: hidden; }
+.portfolio-overview { background: linear-gradient(135deg, rgba(var(--v-theme-primary), .075), rgba(var(--v-theme-primary), .018) 55%, transparent); }
+.portfolio-heading,
+.record-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.portfolio-record-count { flex: none; padding: 5px 10px; border-radius: 999px; background: rgba(var(--v-theme-primary), .095); color: rgb(var(--v-theme-primary)); font-size: .75rem; font-weight: 700; }
+.portfolio-currency-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 12px; }
+.portfolio-currency-card { display: grid; grid-template-columns: minmax(205px, .72fr) minmax(0, 1.8fr); overflow: hidden; border: 1px solid rgba(var(--v-theme-primary), .18); border-radius: 12px; background: rgba(var(--v-theme-surface), .96); box-shadow: 0 7px 22px rgba(var(--v-theme-on-surface), .035); }
+.portfolio-primary { display: grid; align-content: center; gap: 7px; padding: 18px 20px; border-inline-end: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.portfolio-card-label { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: rgba(var(--v-theme-on-surface), .62); font-size: .76rem; }
+.portfolio-primary > strong { font-size: 1.55rem; line-height: 1.1; letter-spacing: -.02em; }
+.portfolio-primary > span { color: rgba(var(--v-theme-on-surface), .58); font-size: .72rem; }
+.portfolio-metrics { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); align-items: stretch; }
+.portfolio-metrics > div { display: grid; min-width: 0; align-content: center; gap: 4px; padding: 14px 12px; }
+.portfolio-metrics > div + div { border-inline-start: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * .7)); }
+.portfolio-metrics span,
+.portfolio-metrics small { overflow: hidden; color: rgba(var(--v-theme-on-surface), .56); font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
+.portfolio-metrics strong { overflow: hidden; font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }
+.record-list-heading { background: rgb(var(--v-theme-surface)); }
+.edit-installment-note { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 11px 14px; border-inline-start: 3px solid rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .045); }
+.edit-installment-note > div { display: grid; min-width: 0; gap: 2px; }
+.edit-installment-note strong,
+.edit-installment-note span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.edit-installment-note span,
+.edit-installment-note p { color: rgba(var(--v-theme-on-surface), .6); font-size: .75rem; }
+.edit-installment-note p { max-width: 520px; margin: 0; text-align: end; }
+.calculation-summary { background: rgba(var(--v-theme-on-surface), .008); }
+.settlement-wrap { border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
 .candidate-rail { display: flex; flex-wrap: wrap; gap: 8px; }
 .funding-component { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 0; }
 .funding-component + .funding-component { border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
 .disbursement-callout { border-inline-start: 4px solid rgb(var(--v-theme-primary)); }
-@media (max-width: 959px) { .loan-hero { align-items: flex-start; flex-direction: column; } .contract-column { min-height: auto; } }
+@media (max-width: 959px) {
+    .loan-hero { align-items: flex-start; flex-direction: column; }
+    .loan-hero-actions { width: 100%; justify-content: space-between; }
+    .contract-column { min-height: auto; }
+    .portfolio-currency-grid { grid-template-columns: 1fr; }
+    .portfolio-currency-card { grid-template-columns: minmax(180px, .65fr) minmax(0, 1.75fr); }
+    .portfolio-metrics { grid-template-columns: repeat(3, minmax(100px, 1fr)); }
+    .portfolio-metrics > div:nth-child(4) { border-inline-start: 0; }
+    .installment-candidate-row { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 599px) {
+    .loan-hero-actions :deep(.v-btn) { padding-inline: 9px; }
+    .workspace-nav { padding-inline: 12px !important; }
+    .portfolio-heading,
+    .record-list-heading,
+    .edit-installment-note { align-items: flex-start; flex-direction: column; }
+    .portfolio-currency-card { grid-template-columns: 1fr; }
+    .portfolio-primary { border-inline-end: 0; border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+    .portfolio-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .portfolio-metrics > div:nth-child(odd) { border-inline-start: 0; }
+    .edit-installment-note p { text-align: start; }
+}
 </style>

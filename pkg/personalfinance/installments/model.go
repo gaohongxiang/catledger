@@ -46,3 +46,19 @@ type CandidateMember struct {
 func (CandidateMember) TableName() string {
 	return "pf_installment_candidate_member"
 }
+
+// ContractDraft 保存账单核对阶段已填写、但尚未随整批入账生效的合同草稿。
+// 草稿不会出现在正式贷款与分期列表；只有整批入账成功后才创建正式合同。
+type ContractDraft struct {
+	Uid              int64  `xorm:"BIGINT UNIQUE(UQE_pf_inst_draft_uid_candidate) NOT NULL"`
+	CandidateId      int64  `xorm:"BIGINT UNIQUE(UQE_pf_inst_draft_uid_candidate) NOT NULL"`
+	Version          int64  `xorm:"BIGINT NOT NULL"`
+	ContractSpecJson string `xorm:"TEXT NOT NULL"`
+	CreatedUnixTime  int64  `xorm:"BIGINT NOT NULL"`
+	UpdatedUnixTime  int64  `xorm:"BIGINT NOT NULL"`
+	DraftId          int64  `xorm:"BIGINT PK NOT NULL"`
+}
+
+func (ContractDraft) TableName() string {
+	return "pf_installment_contract_draft"
+}

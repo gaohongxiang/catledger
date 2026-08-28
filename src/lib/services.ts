@@ -190,9 +190,7 @@ import type {
     PersonalFinancePaymentAccountExcludeRequest,
     PersonalFinancePaymentAccountGroup,
     PersonalFinancePaymentAccountPage,
-    PersonalFinancePostingRequest,
     PersonalFinancePostingDraft,
-    PersonalFinancePostingResult,
     PersonalFinanceReparseRequest,
     PersonalFinanceReparseResult,
     PersonalFinanceSourceAccount,
@@ -957,9 +955,6 @@ export default {
     restorePersonalFinancePaymentAccount: (request: PersonalFinancePaymentAccountExcludeRequest): ApiResponsePromise<PersonalFinancePaymentAccountGroup> => {
         return axios.post<ApiResponse<PersonalFinancePaymentAccountGroup>>('v1/personal_finance/import_batches/payment_accounts/restore.json', request);
     },
-    postPersonalFinanceImportBatch: (request: PersonalFinancePostingRequest): ApiResponsePromise<PersonalFinancePostingResult> => {
-        return axios.post<ApiResponse<PersonalFinancePostingResult>>('v1/personal_finance/import_batches/post.json', request);
-    },
     getPersonalFinanceTransactionEvidence: ({ transactionId }: { transactionId: string }): ApiResponsePromise<PersonalFinanceEvidenceResult> => {
         return axios.get<ApiResponse<PersonalFinanceEvidenceResult>>(`v1/personal_finance/transactions/evidence.json?transaction_id=${encodeURIComponent(transactionId)}`);
     },
@@ -1065,9 +1060,12 @@ export default {
     getPersonalFinanceOrganizerEventEvidence: ({ eventId }: { eventId: string }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/events/evidence.json?id=${encodeURIComponent(eventId)}`);
     },
-    getPersonalFinanceOrganizerCorrectionImpact: ({ updateId, eventId }: { updateId: string, eventId: string }): ApiResponsePromise<unknown> => {
-        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/events/correction_impact.json?update_id=${encodeURIComponent(updateId)}&event_id=${encodeURIComponent(eventId)}`);
-    },
+	getPersonalFinanceOrganizerCorrectionImpact: ({ updateId, eventId }: { updateId: string, eventId: string }): ApiResponsePromise<unknown> => {
+		return axios.get<ApiResponse<unknown>>(`v1/personal_finance/events/correction_impact.json?update_id=${encodeURIComponent(updateId)}&event_id=${encodeURIComponent(eventId)}`);
+	},
+	getPersonalFinanceOrganizerCategoryScope: ({ updateId, eventId }: { updateId: string, eventId: string }): ApiResponsePromise<unknown> => {
+		return axios.get<ApiResponse<unknown>>(`v1/personal_finance/events/category_scope.json?update_id=${encodeURIComponent(updateId)}&event_id=${encodeURIComponent(eventId)}`);
+	},
     correctPersonalFinanceOrganizerEvent: (request: object): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/events/correct.json', request);
     },
@@ -1077,9 +1075,6 @@ export default {
     postAllReadyPersonalFinanceOrganizerEvents: (request: { updateId: string, expectedUpdateVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/actions/post-all-ready.json', request);
     },
-    postReadyPersonalFinanceOrganizerEvents: (request: { updateId: string, expectedUpdateVersion: number, idempotencyKey: string }): ApiResponsePromise<unknown> => {
-        return axios.post<ApiResponse<unknown>>('v1/personal_finance/actions/post-ready.json', request);
-    },
     getPersonalFinanceOrganizerUndoImpact: ({ updateId }: { updateId: string }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/actions/undo_impact.json?update_id=${encodeURIComponent(updateId)}`);
     },
@@ -1088,6 +1083,11 @@ export default {
     },
     getPersonalFinanceInstallmentCandidate: ({ candidateId }: { candidateId: string }): ApiResponsePromise<unknown> => {
         return axios.get<ApiResponse<unknown>>(`v1/personal_finance/installments/candidates/get.json?id=${encodeURIComponent(candidateId)}`);
+    },
+    listPersonalFinanceInstallmentCandidates: (params: { status: string, limit: number, cursorUpdatedUnixTime?: number, cursorCandidateId?: string }): ApiResponsePromise<unknown> => {
+        const cursor = params.cursorUpdatedUnixTime && params.cursorCandidateId
+            ? `&cursor_updated_unix_time=${params.cursorUpdatedUnixTime}&cursor_candidate_id=${encodeURIComponent(params.cursorCandidateId)}` : '';
+        return axios.get<ApiResponse<unknown>>(`v1/personal_finance/installments/candidates/list.json?status=${encodeURIComponent(params.status)}&limit=${params.limit}${cursor}`);
     },
     confirmPersonalFinanceInstallmentCandidate: (request: Record<string, unknown>): ApiResponsePromise<unknown> => {
         return axios.post<ApiResponse<unknown>>('v1/personal_finance/installments/candidates/confirm.json', request);

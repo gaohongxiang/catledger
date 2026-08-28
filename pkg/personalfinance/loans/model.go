@@ -76,6 +76,22 @@ func (ContractRevision) TableName() string {
 	return "pf_loan_contract_revision"
 }
 
+// ProgressBaseline 保存某个不可变 revision 建立时已经完成的历史期数。
+// 它只影响计划剩余进度，不伪造正式交易或历史分配。
+type ProgressBaseline struct {
+	Uid                       int64 `xorm:"BIGINT UNIQUE(UQE_pf_loan_progress_baseline_uid_revision) INDEX(IDX_pf_loan_progress_baseline_uid_contract) NOT NULL"`
+	ContractId                int64 `xorm:"BIGINT INDEX(IDX_pf_loan_progress_baseline_uid_contract) NOT NULL"`
+	RevisionId                int64 `xorm:"BIGINT UNIQUE(UQE_pf_loan_progress_baseline_uid_revision) NOT NULL"`
+	CompletedInstallmentCount int64 `xorm:"BIGINT NOT NULL"`
+	CreatedUnixTime           int64 `xorm:"BIGINT NOT NULL"`
+	BaselineId                int64 `xorm:"BIGINT PK NOT NULL"`
+}
+
+// TableName 返回固定的个人财务表名。
+func (ProgressBaseline) TableName() string {
+	return "pf_loan_progress_baseline"
+}
+
 // Installment 保存某一 revision 的不可变逐期结果。
 type Installment struct {
 	Uid                       int64  `xorm:"BIGINT UNIQUE(UQE_pf_loan_installment_uid_revision_number) INDEX(IDX_pf_loan_installment_uid_contract_due) INDEX(IDX_pf_loan_installment_uid_revision_order) NOT NULL"`

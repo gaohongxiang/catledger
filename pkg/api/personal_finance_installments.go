@@ -23,6 +23,18 @@ type PersonalFinanceInstallmentsApplication interface {
 	ConfirmCandidate(c core.Context, request installments.ConfirmRequest) (*installments.CandidateView, error)
 }
 
+type personalFinanceInstallmentIngester interface {
+	IngestBatches(c core.Context, request installments.IngestRequest) (*installments.IngestResult, error)
+}
+
+type personalFinanceInstallmentCoordinator interface {
+	personalFinanceInstallmentIngester
+	GetCandidate(c core.Context, uid int64, candidateId int64) (*installments.CandidateView, error)
+	FindCandidatesByRawRows(c core.Context, uid int64, rowIds []int64) ([]*installments.CandidateView, error)
+	PromoteAfterPosting(c core.Context, request installments.PromoteRequest) error
+	DiscardContractDrafts(c core.Context, uid int64, candidateIds []int64) error
+}
+
 var _ PersonalFinanceInstallmentsApplication = (*installments.Service)(nil)
 
 type PersonalFinanceInstallmentsApi struct {
@@ -37,16 +49,17 @@ func NewPersonalFinanceInstallmentsApi(application PersonalFinanceInstallmentsAp
 }
 
 type personalFinanceInstallmentConfirmRequest struct {
-	CandidateId                 int64                                       `json:"candidateId,string"`
-	ExpectedVersion             int64                                       `json:"expectedVersion"`
-	TreatAsInstallment          *bool                                       `json:"treatAsInstallment"`
-	LiabilityAccountId          *int64                                      `json:"liabilityAccountId,string"`
-	TermCount                   *int64                                      `json:"termCount"`
-	PurchaseRelation            installments.PurchaseRelation               `json:"purchaseRelation"`
-	LinkedPurchaseTransactionId *int64                                      `json:"linkedPurchaseTransactionId,string"`
-	LinkedContractId            *int64                                      `json:"linkedContractId,string"`
-	Contract                    *personalFinanceLoanContractIdentityRequest `json:"contract"`
-	Calculation                 *personalFinanceLoanCalculationRequest      `json:"calculation"`
+	CandidateId                      int64                                       `json:"candidateId,string"`
+	ExpectedVersion                  int64                                       `json:"expectedVersion"`
+	TreatAsInstallment               *bool                                       `json:"treatAsInstallment"`
+	LiabilityAccountId               *int64                                      `json:"liabilityAccountId,string"`
+	TermCount                        *int64                                      `json:"termCount"`
+	OpeningCompletedInstallmentCount int64                                       `json:"openingCompletedInstallmentCount"`
+	PurchaseRelation                 installments.PurchaseRelation               `json:"purchaseRelation"`
+	LinkedPurchaseTransactionId      *int64                                      `json:"linkedPurchaseTransactionId,string"`
+	LinkedContractId                 *int64                                      `json:"linkedContractId,string"`
+	Contract                         *personalFinanceLoanContractIdentityRequest `json:"contract"`
+	Calculation                      *personalFinanceLoanCalculationRequest      `json:"calculation"`
 }
 
 type personalFinanceInstallmentMemberResponse struct {
@@ -228,7 +241,8 @@ func (request *personalFinanceInstallmentConfirmRequest) contractSpec() (*loans.
 	if request.Contract == nil || request.Calculation == nil {
 		return nil, errors.New("installment contract details are incomplete")
 	}
-	spec, err := (&personalFinanceLoanCreateRequest{Contract: *request.Contract, Calculation: *request.Calculation}).spec()
+	spec, err := (&personalFinanceLoanCreateRequest{Contract: *request.Contract, Calculation: *request.Calculation,
+		OpeningCompletedInstallmentCount: request.OpeningCompletedInstallmentCount}).spec()
 	if err != nil {
 		return nil, err
 	}

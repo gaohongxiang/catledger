@@ -54,6 +54,12 @@ export type LoanEditableAmountField =
     'paymentBasisAmount' |
     'discountAmount';
 
+export function normalizeLoanPercentageTextInput(value: string): string {
+    return value
+        .replace(/[０-９]/g, digit => String.fromCharCode(digit.charCodeAt(0) - 0xfee0))
+        .replace(/[。．，,]/g, '.');
+}
+
 export function updateLoanCalculationAmount(
     input: LoanCalculationInput,
     field: LoanEditableAmountField,
@@ -66,15 +72,22 @@ export function updateLoanCalculationAmount(
     return updated;
 }
 
-export function parseLoanPercentageToPptr(value: string, maximumPptr: string = MAX_LOAN_PPTR.toString()): string | undefined {
-    const match = /^\s*(\d+)(?:\.(\d{0,10}))?\s*$/.exec(value);
+export function parseLoanPercentageToPptr(
+    value: string,
+    maximumPptr: string = MAX_LOAN_PPTR.toString(),
+    maximumFractionDigits: number = 10
+): string | undefined {
+    const match = /^\s*(\d+)(?:\.(\d{0,10}))?\s*$/.exec(normalizeLoanPercentageTextInput(value));
     const wholeText = match?.[1];
-    if (!wholeText || wholeText.length > 10 || !/^(0|[1-9]\d*)$/.test(maximumPptr)) {
+    const fractionText = match?.[2] ?? '';
+    if (!wholeText || wholeText.length > 10 || !Number.isSafeInteger(maximumFractionDigits) ||
+        maximumFractionDigits < 0 || maximumFractionDigits > 10 || fractionText.length > maximumFractionDigits ||
+        !/^(0|[1-9]\d*)$/.test(maximumPptr)) {
         return undefined;
     }
 
     const whole = BigInt(wholeText);
-    const fraction = (match[2] ?? '').padEnd(10, '0');
+    const fraction = fractionText.padEnd(10, '0');
     const pptr = whole * PPTR_PER_PERCENT + BigInt(fraction || '0');
     if (pptr > BigInt(maximumPptr)) {
         return undefined;
@@ -85,21 +98,33 @@ export function parseLoanPercentageToPptr(value: string, maximumPptr: string = M
 export function normalizeLoanPercentageInput(
     value: string,
     maximumPptr: string = MAX_LOAN_PPTR.toString(),
-    allowZero: boolean = true
+    allowZero: boolean = true,
+    maximumFractionDigits: number = 10
 ): string {
-    const parsed = parseLoanPercentageToPptr(value, maximumPptr);
+    const parsed = parseLoanPercentageToPptr(value, maximumPptr, maximumFractionDigits);
     if (typeof parsed === 'undefined' || (!allowZero && parsed === '0')) {
         return '';
     }
     return parsed;
 }
 
-export function formatLoanPptrAsPercentage(value?: string): string {
+export function formatLoanPptrAsPercentage(value?: string, fixedFractionDigits?: number): string {
     if (!value || !/^(0|[1-9]\d*)$/.test(value) || BigInt(value) > MAX_LOAN_PPTR) {
         return '';
     }
 
     const pptr = BigInt(value);
+    if (typeof fixedFractionDigits !== 'undefined') {
+        if (!Number.isSafeInteger(fixedFractionDigits) || fixedFractionDigits < 0 || fixedFractionDigits > 10) return '';
+        const precisionDivisor = 10n ** BigInt(10 - fixedFractionDigits);
+        const rounded = (pptr + precisionDivisor / 2n) / precisionDivisor;
+        if (fixedFractionDigits === 0) return rounded.toString();
+        const displayScale = 10n ** BigInt(fixedFractionDigits);
+        const whole = rounded / displayScale;
+        const fraction = (rounded % displayScale).toString().padStart(fixedFractionDigits, '0');
+        return `${whole}.${fraction}`;
+    }
+
     const whole = pptr / PPTR_PER_PERCENT;
     const fraction = (pptr % PPTR_PER_PERCENT).toString().padStart(10, '0').replace(/0+$/, '');
     return fraction ? `${whole}.${fraction}` : whole.toString();

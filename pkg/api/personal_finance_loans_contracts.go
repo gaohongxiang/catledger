@@ -101,9 +101,10 @@ type personalFinanceLoanContractIdentityRequest struct {
 }
 
 type personalFinanceLoanCreateRequest struct {
-	Contract       personalFinanceLoanContractIdentityRequest `json:"contract"`
-	Calculation    personalFinanceLoanCalculationRequest      `json:"calculation"`
-	IdempotencyKey string                                     `json:"idempotencyKey"`
+	Contract                         personalFinanceLoanContractIdentityRequest `json:"contract"`
+	Calculation                      personalFinanceLoanCalculationRequest      `json:"calculation"`
+	OpeningCompletedInstallmentCount int64                                      `json:"openingCompletedInstallmentCount"`
+	IdempotencyKey                   string                                     `json:"idempotencyKey"`
 }
 
 type personalFinanceLoanReviseRequest struct {
@@ -209,13 +210,14 @@ type personalFinanceLoanContractResponse struct {
 }
 
 type personalFinanceLoanRevisionResponse struct {
-	Id                 int64                                        `json:"id,string"`
-	RevisionNumber     int64                                        `json:"revisionNumber"`
-	PreviousRevisionId *int64                                       `json:"previousRevisionId,string,omitempty"`
-	EffectiveDate      string                                       `json:"effectiveDate"`
-	Input              *personalFinanceLoanCalculationInputResponse `json:"input"`
-	Calculation        *personalFinanceLoanCalculationResponse      `json:"calculation"`
-	CreatedUnixTime    int64                                        `json:"createdUnixTime"`
+	Id                               int64                                        `json:"id,string"`
+	RevisionNumber                   int64                                        `json:"revisionNumber"`
+	PreviousRevisionId               *int64                                       `json:"previousRevisionId,string,omitempty"`
+	EffectiveDate                    string                                       `json:"effectiveDate"`
+	OpeningCompletedInstallmentCount int64                                        `json:"openingCompletedInstallmentCount"`
+	Input                            *personalFinanceLoanCalculationInputResponse `json:"input"`
+	Calculation                      *personalFinanceLoanCalculationResponse      `json:"calculation"`
+	CreatedUnixTime                  int64                                        `json:"createdUnixTime"`
 }
 
 type personalFinanceLoanReasonResponse struct {
@@ -225,6 +227,7 @@ type personalFinanceLoanReasonResponse struct {
 type personalFinanceLoanInstallmentProgressResponse struct {
 	SettlementStatus           loans.InstallmentProgressStatus      `json:"settlementStatus"`
 	Overdue                    bool                                 `json:"overdue"`
+	OpeningCompleted           bool                                 `json:"openingCompleted"`
 	AllocatedPrincipalAmount   int64                                `json:"allocatedPrincipalAmount"`
 	AllocatedInterestAmount    int64                                `json:"allocatedInterestAmount"`
 	AllocatedFeeAmount         int64                                `json:"allocatedFeeAmount"`
@@ -425,7 +428,8 @@ func (a *PersonalFinanceLoansContractsApi) LoanContractReviseHandler(c *core.Web
 	identity := current.Contract
 	spec := loans.ContractSpec{Name: identity.Name, LenderName: identity.LenderName, ContractType: identity.ContractType,
 		LiabilityAccountId: identity.LiabilityAccountId, DefaultPaymentAccountId: clonePersonalFinanceLoanInt64(identity.DefaultPaymentAccountId),
-		Currency: identity.Currency, Note: identity.Note, Terms: terms}
+		Currency: identity.Currency, Note: identity.Note,
+		OpeningCompletedInstallmentCount: current.CurrentRevision.OpeningCompletedInstallmentCount, Terms: terms}
 	result, err := a.application.ReviseContract(c, loans.ReviseContractRequest{Uid: uid, ContractId: request.ContractId,
 		ExpectedContractVersion: request.ExpectedContractVersion, Spec: spec, IdempotencyKey: request.IdempotencyKey})
 	if err != nil {
@@ -565,7 +569,8 @@ func (request *personalFinanceLoanCreateRequest) spec() (loans.ContractSpec, err
 	}
 	return loans.ContractSpec{Name: request.Contract.Name, LenderName: request.Contract.LenderName, ContractType: request.Contract.ContractType,
 		LiabilityAccountId: request.Contract.LiabilityAccountId, DefaultPaymentAccountId: clonePersonalFinanceLoanInt64(request.Contract.DefaultPaymentAccountId),
-		Currency: request.Contract.Currency, Note: request.Contract.Note, Terms: terms}, nil
+		Currency: request.Contract.Currency, Note: request.Contract.Note,
+		OpeningCompletedInstallmentCount: request.OpeningCompletedInstallmentCount, Terms: terms}, nil
 }
 
 func parsePersonalFinanceLoanListRequest(c *core.WebContext) (*personalFinanceLoanListRequest, error) {
@@ -884,6 +889,7 @@ func newPersonalFinanceLoanRevisionInput(value *loans.RevisionResult) (*personal
 func newPersonalFinanceLoanRevisionResponse(value *loans.RevisionResult, installments []*loans.InstallmentResult) (*personalFinanceLoanRevisionResponse, error) {
 	if value == nil || value.RevisionId < 1 || value.ContractId < 1 || value.RevisionNumber < 1 || !isPersonalFinanceLoanSafeNumber(value.RevisionNumber) ||
 		(value.PreviousRevisionId != nil && *value.PreviousRevisionId < 1) || value.CreatedUnixTime < 1 || !isPersonalFinanceLoanSafeNumber(value.CreatedUnixTime) ||
+		value.OpeningCompletedInstallmentCount < 0 || value.OpeningCompletedInstallmentCount >= value.TermCount ||
 		value.CalculationVersion != loans.CALCULATION_VERSION_V1 || value.RoundingVersion != loans.ROUNDING_VERSION_V1 || value.IrrVersion != loans.IRR_VERSION_V1 {
 		return nil, errors.New("loan revision result is invalid")
 	}
@@ -920,7 +926,8 @@ func newPersonalFinanceLoanRevisionResponse(value *loans.RevisionResult, install
 		return nil, errors.New("loan revision installment count is invalid")
 	}
 	return &personalFinanceLoanRevisionResponse{Id: value.RevisionId, RevisionNumber: value.RevisionNumber,
-		PreviousRevisionId: clonePersonalFinanceLoanInt64(value.PreviousRevisionId), EffectiveDate: value.EffectiveDate, Input: input,
+		PreviousRevisionId: clonePersonalFinanceLoanInt64(value.PreviousRevisionId), EffectiveDate: value.EffectiveDate,
+		OpeningCompletedInstallmentCount: value.OpeningCompletedInstallmentCount, Input: input,
 		Calculation: &personalFinanceLoanCalculationResponse{CalculationVersion: string(value.CalculationVersion), RoundingVersion: string(value.RoundingVersion),
 			IrrVersion: string(value.IrrVersion), Summary: summary, Installments: rows}, CreatedUnixTime: value.CreatedUnixTime}, nil
 }
@@ -1023,9 +1030,10 @@ func newPersonalFinanceLoanContractDetailResponse(value *loans.ContractDetail, a
 		if progress.Components.PlannedPrincipalAmount != item.PrincipalAmount || progress.Components.PlannedInterestAmount != item.InterestAmount ||
 			progress.Components.PlannedFeeAmount != item.FeeAmount || progress.Components.AllocatedPrincipalAmount > item.PrincipalAmount ||
 			progress.Components.AllocatedInterestAmount > item.InterestAmount || progress.Components.AllocatedFeeAmount > item.FeeAmount ||
-			progress.Components.OutstandingPrincipal != item.PrincipalAmount-progress.Components.AllocatedPrincipalAmount ||
-			progress.Components.OutstandingInterest != item.InterestAmount-progress.Components.AllocatedInterestAmount ||
-			progress.Components.OutstandingFee != item.FeeAmount-progress.Components.AllocatedFeeAmount {
+			(!progress.OpeningCompleted && (progress.Components.OutstandingPrincipal != item.PrincipalAmount-progress.Components.AllocatedPrincipalAmount ||
+				progress.Components.OutstandingInterest != item.InterestAmount-progress.Components.AllocatedInterestAmount ||
+				progress.Components.OutstandingFee != item.FeeAmount-progress.Components.AllocatedFeeAmount)) ||
+			(progress.OpeningCompleted && (progress.Components.OutstandingPrincipal != 0 || progress.Components.OutstandingInterest != 0 || progress.Components.OutstandingFee != 0)) {
 			return nil, errors.New("loan installment progress components are inconsistent")
 		}
 		allocatedPrincipal += progress.Components.AllocatedPrincipalAmount
@@ -1068,9 +1076,10 @@ func newPersonalFinanceLoanInstallmentResponse(item *loans.InstallmentResult, pr
 		progress.Components.PlannedPrincipalAmount != item.PrincipalAmount || progress.Components.PlannedInterestAmount != item.InterestAmount ||
 		progress.Components.PlannedFeeAmount != item.FeeAmount || progress.Components.AllocatedPrincipalAmount > item.PrincipalAmount ||
 		progress.Components.AllocatedInterestAmount > item.InterestAmount || progress.Components.AllocatedFeeAmount > item.FeeAmount ||
-		progress.Components.OutstandingPrincipal != item.PrincipalAmount-progress.Components.AllocatedPrincipalAmount ||
-		progress.Components.OutstandingInterest != item.InterestAmount-progress.Components.AllocatedInterestAmount ||
-		progress.Components.OutstandingFee != item.FeeAmount-progress.Components.AllocatedFeeAmount {
+		(!progress.OpeningCompleted && (progress.Components.OutstandingPrincipal != item.PrincipalAmount-progress.Components.AllocatedPrincipalAmount ||
+			progress.Components.OutstandingInterest != item.InterestAmount-progress.Components.AllocatedInterestAmount ||
+			progress.Components.OutstandingFee != item.FeeAmount-progress.Components.AllocatedFeeAmount)) ||
+		(progress.OpeningCompleted && (progress.Components.OutstandingPrincipal != 0 || progress.Components.OutstandingInterest != 0 || progress.Components.OutstandingFee != 0)) {
 		return nil, errors.New("loan installment progress components are inconsistent")
 	}
 	calculated, err := newPersonalFinanceLoanCalculatedInstallment(calculation.Installment{InstallmentNumber: item.InstallmentNumber,
@@ -1084,8 +1093,9 @@ func newPersonalFinanceLoanInstallmentResponse(item *loans.InstallmentResult, pr
 	}
 	return &personalFinanceLoanInstallmentResponse{personalFinanceLoanCalculatedInstallmentResponse: calculated,
 		Id: item.InstallmentId, RevisionId: revisionId, Progress: &personalFinanceLoanInstallmentProgressResponse{
-			SettlementStatus: progress.Status, Overdue: progress.Overdue, AllocatedPrincipalAmount: progress.Components.AllocatedPrincipalAmount,
-			AllocatedInterestAmount: progress.Components.AllocatedInterestAmount, AllocatedFeeAmount: progress.Components.AllocatedFeeAmount,
+			SettlementStatus: progress.Status, Overdue: progress.Overdue, OpeningCompleted: progress.OpeningCompleted,
+			AllocatedPrincipalAmount: progress.Components.AllocatedPrincipalAmount,
+			AllocatedInterestAmount:  progress.Components.AllocatedInterestAmount, AllocatedFeeAmount: progress.Components.AllocatedFeeAmount,
 			OutstandingPrincipalAmount: progress.Components.OutstandingPrincipal, OutstandingInterestAmount: progress.Components.OutstandingInterest,
 			OutstandingFeeAmount: progress.Components.OutstandingFee, OutstandingPaymentAmount: progress.OutstandingPayment,
 			ActionRequired: false, ReasonCodes: []*personalFinanceLoanReasonResponse{}}}, nil
@@ -1199,7 +1209,8 @@ func newPersonalFinanceLoanActionResponse(value *loans.CommandResult) (*personal
 }
 
 func isPersonalFinanceLoanProgress(value loans.PlanProgress) bool {
-	counts := []int64{value.InstallmentCount, value.UnpaidInstallmentCount, value.PartialInstallmentCount, value.PaidInstallmentCount, value.OverdueInstallmentCount}
+	counts := []int64{value.InstallmentCount, value.UnpaidInstallmentCount, value.PartialInstallmentCount, value.PaidInstallmentCount,
+		value.OpeningCompletedInstallmentCount, value.OverdueInstallmentCount}
 	for _, count := range counts {
 		if !isPersonalFinanceLoanSafeNumber(count) {
 			return false
@@ -1210,7 +1221,8 @@ func isPersonalFinanceLoanProgress(value loans.PlanProgress) bool {
 			return false
 		}
 	}
-	if value.UnpaidInstallmentCount+value.PartialInstallmentCount+value.PaidInstallmentCount != value.InstallmentCount || value.OverdueInstallmentCount > value.InstallmentCount {
+	if value.UnpaidInstallmentCount+value.PartialInstallmentCount+value.PaidInstallmentCount != value.InstallmentCount ||
+		value.OpeningCompletedInstallmentCount > value.PaidInstallmentCount || value.OverdueInstallmentCount > value.InstallmentCount {
 		return false
 	}
 	if (value.OutstandingPayment == 0) != (value.NextDueDate == nil) {
@@ -1234,6 +1246,9 @@ func isPersonalFinanceLoanInstallmentProgress(value *loans.InstallmentProgress) 
 		if !isPersonalFinanceLoanAmount(amount, false) {
 			return false
 		}
+	}
+	if value.OpeningCompleted && (value.Status != loans.INSTALLMENT_PROGRESS_PAID || value.Overdue || value.AllocationCount != 0) {
+		return false
 	}
 	return value.Components.OutstandingPrincipal+value.Components.OutstandingInterest+value.Components.OutstandingFee == value.OutstandingPayment
 }

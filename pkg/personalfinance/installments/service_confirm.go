@@ -1,11 +1,114 @@
 package installments
 
 import (
+	"encoding/json"
+	"sort"
 	"strconv"
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
 )
+
+// DiscardContractDrafts 清理由被放弃整理轮次暂存、但从未生效的合同表单。
+// 它不删除候选、原始证据或任何正式合同。
+func (s *Service) DiscardContractDrafts(c core.Context, uid int64, candidateIds []int64) error {
+	if s == nil || s.repository == nil || uid < 1 || len(candidateIds) < 1 {
+		return serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	ids := append([]int64(nil), candidateIds...)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	for index, candidateId := range ids {
+		if candidateId < 1 || (index > 0 && candidateId == ids[index-1]) {
+			return serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+	}
+	if err := s.repository.DeleteContractDrafts(c, uid, ids); err != nil {
+		return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+	}
+	return nil
+}
+
+// PromoteAfterPosting 只在所属账单整批入账成功后调用。
+// 已暂存完整合同信息时创建正式合同；没有草稿时才退回 needs_details。
+func (s *Service) PromoteAfterPosting(c core.Context, request PromoteRequest) error {
+	if s == nil || s.repository == nil || request.Uid < 1 || len(request.CandidateIds) < 1 {
+		return serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+	}
+	ids := append([]int64(nil), request.CandidateIds...)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	for index, candidateId := range ids {
+		if candidateId < 1 || (index > 0 && candidateId == ids[index-1]) {
+			return serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+	}
+	for _, candidateId := range ids {
+		candidate, err := s.repository.FindCandidateById(c, request.Uid, candidateId)
+		if err != nil {
+			return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		if candidate == nil {
+			return serviceError(ErrServiceCandidateNotFound, SERVICE_ERROR_CANDIDATE_NOT_FOUND)
+		}
+		switch candidate.Status {
+		case CANDIDATE_STATUS_PENDING:
+			draft, draftErr := s.repository.FindContractDraft(c, request.Uid, candidateId)
+			if draftErr != nil {
+				return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+			}
+			if draft != nil {
+				if s.contracts == nil {
+					return serviceError(ErrServiceContractRejected, SERVICE_ERROR_CONTRACT_REJECTED)
+				}
+				var spec loans.ContractSpec
+				if json.Unmarshal([]byte(draft.ContractSpecJson), &spec) != nil {
+					return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+				}
+				result, createErr := s.contracts.CreateContract(c, loans.CreateContractRequest{
+					Uid: request.Uid, Spec: spec,
+					IdempotencyKey: "installment-candidate-" + strconv.FormatInt(candidateId, 10),
+				})
+				if createErr != nil || result == nil || result.Action == nil || result.Action.ContractId < 1 {
+					return serviceError(ErrServiceContractRejected, SERVICE_ERROR_CONTRACT_REJECTED)
+				}
+				next := cloneCandidateForUpdate(candidate)
+				contractId := result.Action.ContractId
+				next.LinkedContractId = &contractId
+				termCount := spec.Terms.TermCount
+				next.TermCount = &termCount
+				liability := spec.LiabilityAccountId
+				next.LiabilityAccountId = &liability
+				next.Status = CANDIDATE_STATUS_CONVERTED
+				next.Version = candidate.Version + 1
+				next.UpdatedUnixTime = s.now().Unix()
+				if _, err = s.commitCandidate(c, ConfirmRequest{Uid: request.Uid, CandidateId: candidateId, ExpectedVersion: candidate.Version}, next); err != nil {
+					return err
+				}
+				if err = s.repository.DeleteContractDraft(c, request.Uid, candidateId); err != nil {
+					return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+				}
+				continue
+			}
+			next := cloneCandidateForUpdate(candidate)
+			next.Status = CANDIDATE_STATUS_NEEDS_DETAILS
+			next.Version = candidate.Version + 1
+			next.UpdatedUnixTime = s.now().Unix()
+			if _, err = s.commitCandidate(c, ConfirmRequest{Uid: request.Uid, CandidateId: candidateId, ExpectedVersion: candidate.Version}, next); err != nil {
+				return err
+			}
+		case CANDIDATE_STATUS_CONVERTED:
+			if err = s.repository.DeleteContractDraft(c, request.Uid, candidateId); err != nil {
+				return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+			}
+		case CANDIDATE_STATUS_NEEDS_DETAILS, CANDIDATE_STATUS_LINKED, CANDIDATE_STATUS_DISMISSED:
+			// 已执行或用户已明确处理的状态均不反向覆盖。
+		case CANDIDATE_STATUS_ACTION_REQUIRED:
+			return serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
+		default:
+			return serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
+		}
+	}
+	return nil
+}
 
 func (s *Service) ConfirmCandidate(c core.Context, request ConfirmRequest) (*CandidateView, error) {
 	if s == nil || s.repository == nil || request.Uid < 1 || request.CandidateId < 1 || request.ExpectedVersion < 1 {
@@ -36,6 +139,43 @@ func (s *Service) ConfirmCandidate(c core.Context, request ConfirmRequest) (*Can
 	}
 	if candidate.Status == CANDIDATE_STATUS_CONVERTED || candidate.Status == CANDIDATE_STATUS_DISMISSED {
 		return nil, serviceError(ErrServiceStateConflict, SERVICE_ERROR_STATE_CONFLICT)
+	}
+	if request.Contract != nil && candidate.Status == CANDIDATE_STATUS_PENDING {
+		if !request.TreatAsInstallment || s.contracts == nil || request.Contract.Terms.PrincipalAmount < 1 || request.Contract.Terms.TermCount < 1 {
+			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_UNKNOWN_ZERO)
+		}
+		if candidate.LiabilityAccountId != nil && request.Contract.LiabilityAccountId != *candidate.LiabilityAccountId {
+			return nil, serviceError(ErrServiceContractRejected, SERVICE_ERROR_CONTRACT_REJECTED)
+		}
+		if err := s.validateLiabilityAccount(c, request.Uid, request.Contract.LiabilityAccountId); err != nil {
+			return nil, err
+		}
+		if _, err := s.contracts.Calculate(loans.CalculateRequest{Terms: request.Contract.Terms}); err != nil {
+			return nil, serviceError(ErrServiceContractRejected, SERVICE_ERROR_CONTRACT_REJECTED)
+		}
+		encoded, err := json.Marshal(request.Contract)
+		if err != nil {
+			return nil, serviceError(ErrServiceInvalidRequest, SERVICE_ERROR_INVALID_REQUEST)
+		}
+		now := s.now().Unix()
+		err = s.repository.DoTransaction(c, request.Uid, func(tx *RepositoryTransaction) error {
+			current, findErr := tx.FindCandidateById(request.CandidateId)
+			if findErr != nil || current == nil || current.Version != request.ExpectedVersion || current.Status != CANDIDATE_STATUS_PENDING {
+				return serviceError(ErrServiceVersionConflict, SERVICE_ERROR_VERSION_CONFLICT)
+			}
+			return tx.SaveContractDraft(&ContractDraft{
+				Uid: request.Uid, CandidateId: request.CandidateId, Version: 1,
+				ContractSpecJson: string(encoded), CreatedUnixTime: now, UpdatedUnixTime: now, DraftId: s.generateId(),
+			})
+		})
+		if err != nil {
+			return nil, err
+		}
+		members, listErr := s.repository.ListMembers(c, request.Uid, request.CandidateId)
+		if listErr != nil {
+			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+		}
+		return candidateView(candidate, members), nil
 	}
 
 	next := cloneCandidateForUpdate(candidate)

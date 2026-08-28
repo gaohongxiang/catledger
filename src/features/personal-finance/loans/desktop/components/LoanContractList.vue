@@ -1,46 +1,50 @@
 <template>
-    <v-card class="contract-list overflow-hidden" variant="outlined">
-        <div class="d-flex align-center ga-3 px-5 py-4">
-            <div>
-                <div class="text-subtitle-1 font-weight-bold">{{ tt('personalFinance.loans.contracts.title') }}</div>
-                <div class="text-body-small text-medium-emphasis">{{ tt('personalFinance.loans.contracts.subtitle') }}</div>
-            </div>
-            <v-spacer />
-            <v-btn color="primary" size="small" variant="tonal" :disabled="loading" @click="emit('create')">
-                {{ tt('personalFinance.loans.contracts.create') }}
-            </v-btn>
-        </div>
-
-        <v-divider />
-
+    <div class="contract-list overflow-hidden">
         <v-skeleton-loader type="list-item-three-line@4" v-if="loading && !items.length" />
 
-        <v-list class="pa-0" lines="three" v-else-if="items.length">
+        <v-list class="contract-records pa-0" v-else-if="items.length">
             <template :key="item.contract.id" v-for="(item, index) in items">
                 <v-list-item
-                    class="contract-item px-5 py-4"
+                    class="contract-item px-4 py-3"
                     color="primary"
                     :active="selectedContractId === item.contract.id"
                     @click="emit('select', item.contract.id)"
                 >
-                    <template #prepend>
-                        <div class="contract-mark" :class="{ 'needs-action': item.actionRequired }">
-                            {{ item.paidInstallmentCount }}/{{ item.totalInstallmentCount }}
+                    <div class="contract-row">
+                        <div class="contract-identity">
+                            <div class="contract-progress-mark" :class="{ 'needs-action': item.actionRequired }">
+                                <strong>{{ item.paidInstallmentCount }}/{{ item.totalInstallmentCount }}</strong>
+                                <span>{{ tt('personalFinance.loans.contracts.paidProgress') }}</span>
+                            </div>
+                            <div class="contract-copy">
+                                <div class="contract-name-row">
+                                    <strong class="contract-name">{{ item.contract.name }}</strong>
+                                    <v-chip v-if="item.actionRequired" size="x-small" color="error" variant="tonal">
+                                        {{ tt('personalFinance.loans.actionRequired') }}
+                                    </v-chip>
+                                </div>
+                                <span class="contract-type">{{ tt(getLoanContractTypeKey(item.contract.contractType)) }}</span>
+                            </div>
                         </div>
-                    </template>
-                    <v-list-item-title class="font-weight-bold">{{ item.contract.name }}</v-list-item-title>
-                    <v-list-item-subtitle class="mt-1">
-                        {{ tt(getLoanContractTypeKey(item.contract.contractType)) }} · {{ item.contract.lenderName }}
-                    </v-list-item-subtitle>
-                    <v-list-item-subtitle class="mt-2 d-flex flex-wrap align-center ga-2">
-                        <v-chip size="x-small" :color="getLoanStatusColor(item.contract.status)" variant="tonal">
-                            {{ tt(getLoanContractStatusKey(item.contract.status)) }}
-                        </v-chip>
-                        <span>{{ tt('personalFinance.loans.contracts.outstanding', { amount: formatAmount(item.outstandingPrincipalAmount, item.contract.currency) }) }}</span>
-                    </v-list-item-subtitle>
-                    <template #append>
-                        <v-icon :color="item.actionRequired ? 'error' : 'medium-emphasis'" :icon="item.actionRequired ? mdiAlertCircleOutline : mdiChevronRight" />
-                    </template>
+
+                        <div class="contract-stat">
+                            <span>{{ tt('personalFinance.loans.portfolio.remainingPayment') }}</span>
+                            <strong>{{ formatAmount(item.outstandingPaymentAmount, item.contract.currency) }}</strong>
+                        </div>
+                        <div class="contract-stat">
+                            <span>{{ tt('personalFinance.loans.result.remainingPrincipal') }}</span>
+                            <strong>{{ formatAmount(item.outstandingPrincipalAmount, item.contract.currency) }}</strong>
+                        </div>
+                        <div class="contract-stat contract-stat-next">
+                            <span>{{ tt('personalFinance.loans.portfolio.nextPayment') }}</span>
+                            <strong v-if="item.nextInstallment">
+                                {{ formatAmount(item.nextInstallment.progress.outstandingPaymentAmount, item.contract.currency) }}
+                            </strong>
+                            <strong v-else>—</strong>
+                            <small>{{ item.nextInstallment?.dueDate ?? tt('personalFinance.loans.portfolio.completed') }}</small>
+                        </div>
+                        <v-icon class="contract-arrow" :color="item.actionRequired ? 'error' : 'medium-emphasis'" :icon="item.actionRequired ? mdiAlertCircleOutline : mdiChevronRight" />
+                    </div>
                 </v-list-item>
                 <v-divider v-if="index < items.length - 1" />
             </template>
@@ -60,7 +64,7 @@
                 </v-btn>
             </div>
         </template>
-    </v-card>
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -70,11 +74,7 @@ import { useI18n } from '@/locales/helpers.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 
 import type { LoanContractSummary } from '../../models.ts';
-import {
-    getLoanContractStatusKey,
-    getLoanContractTypeKey,
-    getLoanStatusColor
-} from '../../presentation.ts';
+import { getLoanContractTypeKey } from '../../presentation.ts';
 
 withDefaults(defineProps<{
     items: LoanContractSummary[];
@@ -89,7 +89,6 @@ withDefaults(defineProps<{
 
 const emit = defineEmits<{
     (e: 'select', contractId: string): void;
-    (e: 'create'): void;
     (e: 'loadMore'): void;
 }>();
 
@@ -102,28 +101,86 @@ function formatAmount(amount: number, currency: string): string {
 
 <style scoped>
 .contract-list {
-    min-height: 420px;
+    min-height: 320px;
+    background: transparent;
 }
 
 .contract-item {
-    min-height: 108px;
+    min-height: 88px;
 }
 
-.contract-mark {
-    width: 50px;
-    height: 50px;
-    border: 2px solid rgba(var(--v-theme-primary), 0.5);
-    border-radius: 15px 15px 15px 5px;
+.contract-row {
     display: grid;
-    place-items: center;
-    color: rgb(var(--v-theme-primary));
-    font-size: 0.78rem;
-    font-weight: 800;
+    grid-template-columns: minmax(260px, 1.45fr) repeat(3, minmax(132px, .7fr)) 28px;
+    align-items: center;
+    gap: 22px;
+    width: 100%;
 }
 
-.contract-mark.needs-action {
+.contract-identity {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 14px;
+}
+
+.contract-progress-mark {
+    display: grid;
+    width: 56px;
+    height: 48px;
+    flex: 0 0 56px;
+    place-items: center;
+    border: 1px solid rgba(var(--v-theme-primary), 0.4);
+    border-radius: 10px;
+    color: rgb(var(--v-theme-primary));
+    line-height: 1.05;
+}
+
+.contract-progress-mark strong { font-size: .82rem; }
+.contract-progress-mark span { font-size: .62rem; font-weight: 700; opacity: .82; }
+.contract-copy { display: grid; min-width: 0; gap: 4px; }
+.contract-name-row { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.contract-name { overflow: hidden; font-size: .96rem; text-overflow: ellipsis; white-space: nowrap; }
+.contract-type { color: rgba(var(--v-theme-on-surface), .62); font-size: .75rem; }
+
+.contract-stat {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.contract-stat span,
+.contract-stat small {
+    overflow: hidden;
+    color: rgba(var(--v-theme-on-surface), .58);
+    font-size: .72rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.contract-stat strong {
+    overflow: hidden;
+    font-size: .88rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.contract-stat-next strong { color: rgb(var(--v-theme-primary)); }
+.contract-arrow { justify-self: end; }
+
+.contract-progress-mark.needs-action {
     border-color: rgb(var(--v-theme-error));
     color: rgb(var(--v-theme-error));
+}
+
+@media (max-width: 959px) {
+    .contract-row { grid-template-columns: minmax(220px, 1.3fr) repeat(2, minmax(120px, .7fr)) 24px; gap: 14px; }
+    .contract-stat-next { display: none; }
+}
+
+@media (max-width: 699px) {
+    .contract-row { grid-template-columns: minmax(0, 1fr) 24px; }
+    .contract-stat { display: none; }
 }
 
 .empty-state {

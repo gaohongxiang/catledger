@@ -99,8 +99,9 @@ func (s *Service) CreateContract(c core.Context, request CreateContractRequest) 
 	contractId := s.generateId()
 	actionId := s.generateId()
 	revisionId := s.generateId()
+	baselineId := s.generateId()
 	installmentIds := s.generateIds(len(calculated.Installments))
-	if now < 1 || contractId < 1 || actionId < 1 || revisionId < 1 || installmentIds == nil {
+	if now < 1 || contractId < 1 || actionId < 1 || revisionId < 1 || baselineId < 1 || installmentIds == nil {
 		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 	}
 	candidate := newReadyAction(request.Uid, contractId, 0, ACTION_TYPE_CREATE_CONTRACT, actionId, keyDigest, requestDigest, now)
@@ -124,6 +125,10 @@ func (s *Service) CreateContract(c core.Context, request CreateContractRequest) 
 		}
 		revision := revisionFromCalculation(request.Uid, contractId, revisionId, 1, nil, actionId, spec.Terms, input, calculated, now)
 		if insertErr := tx.InsertRevision(revision); insertErr != nil {
+			return insertErr
+		}
+		baseline := progressBaselineFromSpec(request.Uid, contractId, revisionId, baselineId, spec, now)
+		if insertErr := tx.InsertProgressBaseline(baseline); insertErr != nil {
 			return insertErr
 		}
 		installments := installmentsFromCalculation(request.Uid, contractId, revisionId, installmentIds, calculated, now)
@@ -171,8 +176,9 @@ func (s *Service) ReviseContract(c core.Context, request ReviseContractRequest) 
 	now := s.now().Unix()
 	actionId := s.generateId()
 	revisionId := s.generateId()
+	baselineId := s.generateId()
 	installmentIds := s.generateIds(len(calculated.Installments))
-	if now < 1 || actionId < 1 || revisionId < 1 || installmentIds == nil {
+	if now < 1 || actionId < 1 || revisionId < 1 || baselineId < 1 || installmentIds == nil {
 		return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 	}
 	candidate := newReadyAction(request.Uid, request.ContractId, request.ExpectedContractVersion, ACTION_TYPE_REVISE_CONTRACT,
@@ -244,6 +250,10 @@ func (s *Service) ReviseContract(c core.Context, request ReviseContractRequest) 
 		revision := revisionFromCalculation(request.Uid, contract.ContractId, revisionId, currentRevision.RevisionNumber+1,
 			&previousRevisionId, actionId, spec.Terms, input, calculated, now)
 		if insertErr := tx.InsertRevision(revision); insertErr != nil {
+			return insertErr
+		}
+		baseline := progressBaselineFromSpec(request.Uid, contract.ContractId, revisionId, baselineId, spec, now)
+		if insertErr := tx.InsertProgressBaseline(baseline); insertErr != nil {
 			return insertErr
 		}
 		installments := installmentsFromCalculation(request.Uid, contract.ContractId, revisionId, installmentIds, calculated, now)
@@ -374,7 +384,15 @@ func (s *Service) lifecycle(c core.Context, request ContractCommandRequest, acti
 				adjudicated = serviceError(ErrServiceLedgerEventRejected, code)
 				return startErr
 			}
-			remaining, remainingErr := remainingFromRevision(revision, validation.aggregates)
+			baseline, baselineErr := tx.FindProgressBaselineByRevisionId(revision.RevisionId)
+			if baselineErr != nil {
+				return baselineErr
+			}
+			installments, installmentsErr := tx.ListAllInstallmentsByRevision(contract.ContractId, revision.RevisionId)
+			if installmentsErr != nil {
+				return installmentsErr
+			}
+			remaining, remainingErr := remainingFromRevision(revision, installments, completedInstallmentCount(baseline), validation.aggregates)
 			if remainingErr != nil {
 				return remainingErr
 			}
@@ -641,6 +659,18 @@ func contractFromSpec(uid int64, contractId int64, revisionId int64, spec Contra
 		Version: 1, CurrentRevisionId: revisionId, CreatedUnixTime: now, UpdatedUnixTime: now, ContractId: contractId}
 }
 
+func progressBaselineFromSpec(uid int64, contractId int64, revisionId int64, baselineId int64, spec ContractSpec, now int64) *ProgressBaseline {
+	return &ProgressBaseline{Uid: uid, ContractId: contractId, RevisionId: revisionId,
+		CompletedInstallmentCount: spec.OpeningCompletedInstallmentCount, CreatedUnixTime: now, BaselineId: baselineId}
+}
+
+func completedInstallmentCount(value *ProgressBaseline) int64 {
+	if value == nil {
+		return 0
+	}
+	return value.CompletedInstallmentCount
+}
+
 func revisionFromCalculation(uid int64, contractId int64, revisionId int64, revisionNumber int64, previousRevisionId *int64,
 	actionId int64, terms CalculationTerms, input calculation.Input, result calculation.Result, now int64) *ContractRevision {
 	return &ContractRevision{Uid: uid, ContractId: contractId, RevisionNumber: revisionNumber, PreviousRevisionId: cloneInt64(previousRevisionId),
@@ -752,7 +782,14 @@ func (s *Service) commandResultOnce(c core.Context, uid int64, action *Action, r
 		if findErr != nil || (action.Status == ACTION_STATUS_APPLIED && revision == nil) {
 			return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
 		}
-		result.Revision = revisionResult(revision)
+		var baseline *ProgressBaseline
+		if revision != nil {
+			baseline, findErr = s.repository.FindProgressBaselineByRevisionId(c, uid, revision.RevisionId)
+			if findErr != nil {
+				return nil, serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
+			}
+		}
+		result.Revision = revisionResult(revision, completedInstallmentCount(baseline))
 		if revision != nil {
 			rows, loadErr := s.loadAllInstallments(c, uid, revision.ContractId, revision.RevisionId)
 			if loadErr != nil {
@@ -774,12 +811,25 @@ func (s *Service) commandResultOnce(c core.Context, uid int64, action *Action, r
 	return result, nil
 }
 
-func remainingFromRevision(revision *ContractRevision, aggregates []*AllocationAggregate) (PlanRemaining, error) {
+func remainingFromRevision(revision *ContractRevision, installments []*Installment, openingCompleted int64, aggregates []*AllocationAggregate) (PlanRemaining, error) {
 	if revision == nil || revision.PrincipalAmount < 0 || revision.TotalInterestAmount < 0 || revision.TotalFeeAmount < revision.UpfrontFeeAmount {
 		return PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
 	}
 	remaining := PlanRemaining{PrincipalAmount: revision.PrincipalAmount, InterestAmount: revision.TotalInterestAmount,
 		FeeAmount: revision.TotalFeeAmount - revision.UpfrontFeeAmount}
+	if int64(len(installments)) != revision.TermCount || openingCompleted < 0 || openingCompleted >= revision.TermCount {
+		return PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+	}
+	for _, installment := range installments {
+		if installment == nil || installment.InstallmentNumber < 1 || installment.InstallmentNumber > revision.TermCount {
+			return PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)
+		}
+		if installment.InstallmentNumber <= openingCompleted {
+			remaining.PrincipalAmount -= installment.PrincipalAmount
+			remaining.InterestAmount -= installment.InterestAmount
+			remaining.FeeAmount -= installment.FeeAmount
+		}
+	}
 	for _, aggregate := range aggregates {
 		if aggregate == nil || aggregate.AllocatedAmount < 0 {
 			return PlanRemaining{}, serviceError(ErrServiceInvariantViolation, SERVICE_ERROR_INVARIANT)

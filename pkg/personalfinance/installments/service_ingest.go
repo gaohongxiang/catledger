@@ -12,6 +12,7 @@ type ingestGroup struct {
 	rows    []*importing.RawImportRow
 	periods []*int64
 	terms   []*int64
+	roles   []MemberRole
 }
 
 func (s *Service) IngestBatches(c core.Context, request IngestRequest) (*IngestResult, error) {
@@ -38,7 +39,8 @@ func (s *Service) IngestBatches(c core.Context, request IngestRequest) (*IngestR
 			evidence := Evidence{
 				RowId: row.RowId, IdentityId: row.IdentityId, SourceOrderId: row.SourceOrderId,
 				SourceMerchantId: row.SourceMerchantOrderId, RawTransactionType: row.RawTransactionType,
-				RawItem: row.RawItem, RawNote: row.RawNote, LedgerAccountId: row.LedgerAccountId,
+				RawCounterparty: row.RawCounterparty, RawItem: row.RawItem, RawNote: row.RawNote,
+				LedgerAccountId: row.LedgerAccountId,
 			}
 			detection := detectInstallment(evidence)
 			if !detection.Matched {
@@ -59,6 +61,7 @@ func (s *Service) IngestBatches(c core.Context, request IngestRequest) (*IngestR
 			group.rows = append(group.rows, row)
 			group.periods = append(group.periods, detection.PeriodNumber)
 			group.terms = append(group.terms, detection.TermCount)
+			group.roles = append(group.roles, memberRoleForDetection(detection))
 		}
 	}
 
@@ -121,6 +124,7 @@ func (s *Service) persistGroup(c core.Context, uid int64, group *ingestGroup) (b
 
 		for index, row := range group.rows {
 			period := group.periods[index]
+			role := group.roles[index]
 			if period != nil {
 				if owner, exists := periodOwners[*period]; exists && owner != row.RowId {
 					conflict = true
@@ -133,7 +137,7 @@ func (s *Service) persistGroup(c core.Context, uid int64, group *ingestGroup) (b
 			}
 			if err := tx.InsertMember(&CandidateMember{
 				Uid: uid, CandidateId: candidate.CandidateId, MemberKind: MEMBER_KIND_RAW_ROW,
-				MemberRefId: row.RowId, MemberRole: MEMBER_ROLE_INSTALLMENT_CHARGE, PeriodNumber: cloneInt64(period),
+				MemberRefId: row.RowId, MemberRole: role, PeriodNumber: cloneInt64(period),
 				CreatedUnixTime: now, MemberId: s.generateId(),
 			}); err != nil {
 				return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
@@ -146,7 +150,7 @@ func (s *Service) persistGroup(c core.Context, uid int64, group *ingestGroup) (b
 				}
 				if err := tx.InsertMember(&CandidateMember{
 					Uid: uid, CandidateId: candidate.CandidateId, MemberKind: MEMBER_KIND_SOURCE_IDENTITY,
-					MemberRefId: *row.IdentityId, MemberRole: MEMBER_ROLE_INSTALLMENT_CHARGE, PeriodNumber: cloneInt64(period),
+					MemberRefId: *row.IdentityId, MemberRole: role, PeriodNumber: cloneInt64(period),
 					CreatedUnixTime: now, MemberId: s.generateId(),
 				}); err != nil {
 					return serviceError(ErrServicePersistenceFailed, SERVICE_ERROR_PERSISTENCE)
@@ -192,6 +196,19 @@ func (s *Service) persistGroup(c core.Context, uid int64, group *ingestGroup) (b
 		return false, 0, err
 	}
 	return created, added, nil
+}
+
+func memberRoleForDetection(detection Detection) MemberRole {
+	switch detection.Component {
+	case COMPONENT_TYPE_PRINCIPAL:
+		return MEMBER_ROLE_PRINCIPAL
+	case COMPONENT_TYPE_INTEREST:
+		return MEMBER_ROLE_INTEREST
+	case COMPONENT_TYPE_FEE:
+		return MEMBER_ROLE_FEE
+	default:
+		return MEMBER_ROLE_INSTALLMENT_CHARGE
+	}
 }
 
 func memberKey(kind MemberKind, refId int64) string {

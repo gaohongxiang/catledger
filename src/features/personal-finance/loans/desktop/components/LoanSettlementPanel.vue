@@ -1,6 +1,6 @@
 <template>
     <v-card class="settlement-panel overflow-hidden" variant="outlined">
-        <div class="d-flex flex-wrap align-center ga-3 px-5 py-4">
+        <div class="d-flex flex-wrap align-center ga-3 px-4 py-3">
             <div>
                 <div class="text-subtitle-1 font-weight-bold">{{ tt('personalFinance.loans.settlement.title') }}</div>
                 <div class="text-body-small text-medium-emphasis" v-if="installment">
@@ -18,16 +18,16 @@
 
         <v-divider />
 
-        <div class="pa-5" v-if="installment">
-            <v-alert class="mb-3" type="warning" variant="tonal">
+        <div class="pa-4" v-if="installment">
+            <v-alert class="mb-2" density="compact" type="warning" variant="tonal">
                 {{ tt('personalFinance.loans.boundary.combinedPaymentMustBeSplit') }}
             </v-alert>
-            <v-alert class="mb-5" type="info" variant="tonal">
+            <v-alert class="mb-3" density="compact" type="info" variant="tonal">
                 {{ tt('personalFinance.loans.boundary.principalIsNotExpense') }}
             </v-alert>
 
-            <section class="component-card mb-4" :key="component.type" v-for="component in outstandingComponents">
-                <div class="component-heading px-4 py-3">
+            <section class="component-card mb-3" :key="component.type" v-for="component in outstandingComponents">
+                <div class="component-heading px-3 py-2">
                     <div>
                         <div class="font-weight-bold">{{ tt(getLoanComponentTypeKey(component.type)) }}</div>
                         <div class="text-body-small text-medium-emphasis">
@@ -129,10 +129,12 @@
             </template>
         </div>
 
-        <div class="empty-settlement pa-12 text-center" v-else>
-            <v-icon color="medium-emphasis" size="54" :icon="mdiCallSplit" />
-            <div class="text-h6 mt-4">{{ tt('personalFinance.loans.settlement.empty') }}</div>
-            <div class="text-body-medium text-medium-emphasis mt-1">{{ tt('personalFinance.loans.settlement.emptyHint') }}</div>
+        <div class="empty-settlement px-4 py-5" v-else>
+            <v-icon color="medium-emphasis" size="28" :icon="mdiCallSplit" />
+            <div>
+                <div class="text-subtitle-2 font-weight-bold">{{ tt('personalFinance.loans.settlement.empty') }}</div>
+                <div class="text-body-small text-medium-emphasis">{{ tt('personalFinance.loans.settlement.emptyHint') }}</div>
+            </div>
         </div>
     </v-card>
 </template>
@@ -216,13 +218,13 @@ function formatAmount(amount: number): string {
 
 <style scoped>
 .settlement-panel {
-    min-height: 520px;
+    border-radius: 10px;
 }
 
 .component-card {
     overflow: hidden;
     border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-    border-radius: 14px;
+    border-radius: 9px;
 }
 
 .component-heading {
@@ -244,12 +246,14 @@ function formatAmount(amount: number): string {
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 12px;
-    padding: 13px 16px;
+    padding: 9px 12px;
     color: inherit;
     text-align: start;
     background: transparent;
     cursor: pointer;
 }
+
+.empty-settlement { display: flex; align-items: center; gap: 12px; }
 
 .candidate-row:last-child {
     border-bottom: 0;
