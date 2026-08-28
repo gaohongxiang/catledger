@@ -46,7 +46,7 @@ func TestWeChatPayCsvFileImporterParseImportedData_MinimumValidData(t *testing.T
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_INCOME, allNewTransactions[0].Type)
 	assert.Equal(t, "2024-09-01 01:23:45", utils.FormatUnixTimeToLongDateTime(utils.GetUnixTimeFromTransactionTime(allNewTransactions[0].TransactionTime), time.UTC))
 	assert.Equal(t, int64(12), allNewTransactions[0].Amount)
-	assert.Equal(t, "Wallet", allNewTransactions[0].OriginalSourceAccountName)
+	assert.Equal(t, "零钱", allNewTransactions[0].OriginalSourceAccountName)
 	assert.Equal(t, "二维码收款", allNewTransactions[0].OriginalCategoryName)
 
 	assert.Equal(t, int64(1234567890), allNewTransactions[1].Uid)
@@ -61,19 +61,19 @@ func TestWeChatPayCsvFileImporterParseImportedData_MinimumValidData(t *testing.T
 	assert.Equal(t, "2024-09-01 23:59:59", utils.FormatUnixTimeToLongDateTime(utils.GetUnixTimeFromTransactionTime(allNewTransactions[2].TransactionTime), time.UTC))
 	assert.Equal(t, int64(5), allNewTransactions[2].Amount)
 	assert.Equal(t, "", allNewTransactions[2].OriginalSourceAccountName)
-	assert.Equal(t, "Wallet", allNewTransactions[2].OriginalDestinationAccountName)
+	assert.Equal(t, "零钱", allNewTransactions[2].OriginalDestinationAccountName)
 	assert.Equal(t, "零钱充值", allNewTransactions[2].OriginalCategoryName)
 
 	assert.Equal(t, int64(1234567890), allNewTransactions[3].Uid)
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, allNewTransactions[3].Type)
 	assert.Equal(t, "2024-09-02 23:59:59", utils.FormatUnixTimeToLongDateTime(utils.GetUnixTimeFromTransactionTime(allNewTransactions[3].TransactionTime), time.UTC))
 	assert.Equal(t, int64(3), allNewTransactions[3].Amount)
-	assert.Equal(t, "Wallet", allNewTransactions[3].OriginalSourceAccountName)
+	assert.Equal(t, "零钱", allNewTransactions[3].OriginalSourceAccountName)
 	assert.Equal(t, "", allNewTransactions[3].OriginalDestinationAccountName)
 	assert.Equal(t, "零钱提现", allNewTransactions[3].OriginalCategoryName)
 
 	assert.Equal(t, int64(1234567890), allNewAccounts[0].Uid)
-	assert.Equal(t, "Wallet", allNewAccounts[0].Name)
+	assert.Equal(t, "零钱", allNewAccounts[0].Name)
 	assert.Equal(t, "CNY", allNewAccounts[0].Currency)
 
 	assert.Equal(t, int64(1234567890), allNewAccounts[1].Uid)
@@ -116,7 +116,7 @@ func TestWeChatPayCsvFileImporterParseImportedData_ParseRefundTransaction(t *tes
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_EXPENSE, allNewTransactions[0].Type)
 	assert.Equal(t, "2024-09-01 01:23:45", utils.FormatUnixTimeToLongDateTime(utils.GetUnixTimeFromTransactionTime(allNewTransactions[0].TransactionTime), time.UTC))
 	assert.Equal(t, int64(-12), allNewTransactions[0].Amount)
-	assert.Equal(t, "Wallet", allNewTransactions[0].OriginalSourceAccountName)
+	assert.Equal(t, "零钱", allNewTransactions[0].OriginalSourceAccountName)
 	assert.Equal(t, "xxx-退款", allNewTransactions[0].OriginalCategoryName)
 }
 
@@ -255,7 +255,7 @@ func TestWeChatPayCsvFileImporterParseImportedData_ParseAccountName(t *testing.T
 	assert.Nil(t, err)
 
 	assert.Equal(t, 1, len(allNewTransactions))
-	assert.Equal(t, "Wallet", allNewTransactions[0].OriginalSourceAccountName)
+	assert.Equal(t, "零钱", allNewTransactions[0].OriginalSourceAccountName)
 
 	// refund to other account
 	data2 := "微信支付账单明细,,,,\n" +
@@ -288,7 +288,7 @@ func TestWeChatPayCsvFileImporterParseImportedData_ParseAccountName(t *testing.T
 
 	assert.Equal(t, 1, len(allNewTransactions))
 	assert.Equal(t, "test", allNewTransactions[0].OriginalSourceAccountName)
-	assert.Equal(t, "Wallet", allNewTransactions[0].OriginalDestinationAccountName)
+	assert.Equal(t, "零钱", allNewTransactions[0].OriginalDestinationAccountName)
 
 	// transfer from wechat wallet
 	data4 := "微信支付账单明细,,,,\n" +
@@ -304,7 +304,7 @@ func TestWeChatPayCsvFileImporterParseImportedData_ParseAccountName(t *testing.T
 	assert.Nil(t, err)
 
 	assert.Equal(t, 1, len(allNewTransactions))
-	assert.Equal(t, "Wallet", allNewTransactions[0].OriginalSourceAccountName)
+	assert.Equal(t, "零钱", allNewTransactions[0].OriginalSourceAccountName)
 	assert.Equal(t, "test", allNewTransactions[0].OriginalDestinationAccountName)
 
 	// transfer from wechat wallet

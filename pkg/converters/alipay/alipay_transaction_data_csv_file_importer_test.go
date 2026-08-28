@@ -50,7 +50,7 @@ func TestAlipayCsvFileImporterParseImportedData_MinimumValidData(t *testing.T) {
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_INCOME, allNewTransactions[0].Type)
 	assert.Equal(t, "2024-09-01 01:23:45", utils.FormatUnixTimeToLongDateTime(utils.GetUnixTimeFromTransactionTime(allNewTransactions[0].TransactionTime), time.UTC))
 	assert.Equal(t, int64(12), allNewTransactions[0].Amount)
-	assert.Equal(t, "Alipay", allNewTransactions[0].OriginalSourceAccountName)
+	assert.Equal(t, "支付宝", allNewTransactions[0].OriginalSourceAccountName)
 	assert.Equal(t, "", allNewTransactions[0].OriginalCategoryName)
 
 	assert.Equal(t, int64(1234567890), allNewTransactions[1].Uid)
@@ -65,19 +65,19 @@ func TestAlipayCsvFileImporterParseImportedData_MinimumValidData(t *testing.T) {
 	assert.Equal(t, "2024-09-01 23:59:59", utils.FormatUnixTimeToLongDateTime(utils.GetUnixTimeFromTransactionTime(allNewTransactions[2].TransactionTime), time.UTC))
 	assert.Equal(t, int64(5), allNewTransactions[2].Amount)
 	assert.Equal(t, "", allNewTransactions[2].OriginalSourceAccountName)
-	assert.Equal(t, "Alipay", allNewTransactions[2].OriginalDestinationAccountName)
+	assert.Equal(t, "支付宝", allNewTransactions[2].OriginalDestinationAccountName)
 	assert.Equal(t, "", allNewTransactions[2].OriginalCategoryName)
 
 	assert.Equal(t, int64(1234567890), allNewTransactions[3].Uid)
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, allNewTransactions[3].Type)
 	assert.Equal(t, "2024-09-02 23:59:59", utils.FormatUnixTimeToLongDateTime(utils.GetUnixTimeFromTransactionTime(allNewTransactions[3].TransactionTime), time.UTC))
 	assert.Equal(t, int64(3), allNewTransactions[3].Amount)
-	assert.Equal(t, "Alipay", allNewTransactions[3].OriginalSourceAccountName)
+	assert.Equal(t, "支付宝", allNewTransactions[3].OriginalSourceAccountName)
 	assert.Equal(t, "", allNewTransactions[3].OriginalDestinationAccountName)
 	assert.Equal(t, "", allNewTransactions[3].OriginalCategoryName)
 
 	assert.Equal(t, int64(1234567890), allNewAccounts[0].Uid)
-	assert.Equal(t, "Alipay", allNewAccounts[0].Name)
+	assert.Equal(t, "支付宝", allNewAccounts[0].Name)
 	assert.Equal(t, "CNY", allNewAccounts[0].Currency)
 
 	assert.Equal(t, int64(1234567890), allNewAccounts[1].Uid)
@@ -263,7 +263,7 @@ func TestAlipayCsvFileImporterParseImportedData_ParseAccountName(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, 1, len(allNewTransactions))
-	assert.Equal(t, "Alipay", allNewTransactions[0].OriginalSourceAccountName)
+	assert.Equal(t, "支付宝", allNewTransactions[0].OriginalSourceAccountName)
 
 	// refund to other account
 	data2, err := simplifiedchinese.GB18030.NewEncoder().String("支付宝交易记录明细查询\n" +
@@ -296,7 +296,7 @@ func TestAlipayCsvFileImporterParseImportedData_ParseAccountName(t *testing.T) {
 
 	assert.Equal(t, 1, len(allNewTransactions))
 	assert.Equal(t, "", allNewTransactions[0].OriginalSourceAccountName)
-	assert.Equal(t, "Alipay", allNewTransactions[0].OriginalDestinationAccountName)
+	assert.Equal(t, "支付宝", allNewTransactions[0].OriginalDestinationAccountName)
 
 	// transfer from alipay wallet
 	data4, err := simplifiedchinese.GB18030.NewEncoder().String("支付宝交易记录明细查询\n" +
@@ -312,7 +312,7 @@ func TestAlipayCsvFileImporterParseImportedData_ParseAccountName(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, 1, len(allNewTransactions))
-	assert.Equal(t, "Alipay", allNewTransactions[0].OriginalSourceAccountName)
+	assert.Equal(t, "支付宝", allNewTransactions[0].OriginalSourceAccountName)
 	assert.Equal(t, "test", allNewTransactions[0].OriginalDestinationAccountName)
 
 	// transfer in
@@ -466,13 +466,13 @@ func TestAlipayCsvFileImporterParseImportedData_ParseRelatedAccount(t *testing.T
 	assert.Equal(t, int64(1234567890), allNewTransactions[3].Uid)
 	assert.Equal(t, int64(1), allNewTransactions[3].Amount)
 	assert.Equal(t, "Test Account", allNewTransactions[3].OriginalSourceAccountName)
-	assert.Equal(t, "Alipay", allNewTransactions[3].OriginalDestinationAccountName)
+	assert.Equal(t, "支付宝", allNewTransactions[3].OriginalDestinationAccountName)
 	assert.Equal(t, "transfer to alipay wallet", allNewTransactions[3].Comment)
 
 	assert.Equal(t, models.TRANSACTION_DB_TYPE_TRANSFER_OUT, allNewTransactions[4].Type)
 	assert.Equal(t, int64(1234567890), allNewTransactions[4].Uid)
 	assert.Equal(t, int64(1), allNewTransactions[4].Amount)
-	assert.Equal(t, "Alipay", allNewTransactions[4].OriginalSourceAccountName)
+	assert.Equal(t, "支付宝", allNewTransactions[4].OriginalSourceAccountName)
 	assert.Equal(t, "Test Account3", allNewTransactions[4].OriginalDestinationAccountName)
 	assert.Equal(t, "transfer from alipay wallet", allNewTransactions[4].Comment)
 
@@ -513,7 +513,7 @@ func TestAlipayCsvFileImporterParseImportedData_ParseRelatedAccount(t *testing.T
 	assert.Equal(t, "CNY", allNewAccounts[1].Currency)
 
 	assert.Equal(t, int64(1234567890), allNewAccounts[2].Uid)
-	assert.Equal(t, "Alipay", allNewAccounts[2].Name)
+	assert.Equal(t, "支付宝", allNewAccounts[2].Name)
 	assert.Equal(t, "CNY", allNewAccounts[2].Currency)
 
 	assert.Equal(t, int64(1234567890), allNewAccounts[3].Uid)

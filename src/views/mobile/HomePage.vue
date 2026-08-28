@@ -174,7 +174,7 @@
             </f7-link>
             <!-- "homepage-add-button" must have the "dragenabled" class, otherwise the popover disappears immediately after the second long press -->
             <f7-link id="homepage-add-button" class="link dragenabled"
-                     href="/transaction/add" @taphold="openQuickEntryPopover">
+                     href="#" @click="openQuickEntryPopover">
                 <f7-icon f7="plus_square" class="ebk-tarbar-big-icon"></f7-icon>
             </f7-link>
             <f7-link class="link" href="/statistic/transaction">
@@ -189,7 +189,19 @@
 
         <f7-popover class="quick-entry-popover-menu" target-el="#homepage-add-button"
                     v-model:opened="showQuickEntryPopover">
-            <f7-list dividers v-if="isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled()">
+            <f7-list dividers>
+                <f7-list-item key="RecordTransaction" link="/transaction/add" no-chevron popover-close
+                              :title="tt('Record Transaction')">
+                    <template #media>
+                        <f7-icon f7="square_pencil"></f7-icon>
+                    </template>
+                </f7-list-item>
+                <f7-list-item key="ImportBill" link="/personal-finance/bills" no-chevron popover-close
+                              :title="tt('Import Bill')">
+                    <template #media>
+                        <f7-icon f7="square_arrow_up"></f7-icon>
+                    </template>
+                </f7-list-item>
                 <f7-list-item key="AIClipboardTextRecognition" link="#" no-chevron popover-close
                               :title="tt('AI Clipboard Text Recognition')"
                               @click="addByRecognizingClipboardText"
@@ -270,9 +282,7 @@ const showQuickEntryPopover = ref<boolean>(false);
 const showAIReceiptImageRecognitionSheet = ref<boolean>(false);
 
 function openQuickEntryPopover(): void {
-    if (isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled()) {
-        showQuickEntryPopover.value = true;
-    }
+    showQuickEntryPopover.value = true;
 }
 
 function init(): void {

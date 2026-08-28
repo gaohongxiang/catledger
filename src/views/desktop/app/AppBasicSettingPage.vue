@@ -1,7 +1,7 @@
 <template>
     <v-row>
         <v-col cols="12">
-            <v-card :title="tt('Basic Settings')">
+            <v-card :title="tt('Preferences')">
                 <v-card-text>
                     <v-row>
                         <v-col cols="12" md="6">

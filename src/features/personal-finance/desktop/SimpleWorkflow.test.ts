@@ -112,8 +112,9 @@ describe('personal-finance simple web workflow', () => {
         expect(results).toContain('organizerApi.getUpdate(selected.id)');
         expect(results).not.toContain("emit('open-records')");
         expect(router).toContain("path: '/personal-finance/bills'");
-        expect(router).toContain("path: '/personal-finance/imports'");
-        expect(router).toContain("path: '/personal-finance/reconciliation'");
+        expect(router).not.toContain("path: '/personal-finance/imports'");
+        expect(router).not.toContain("path: '/personal-finance/reconciliation'");
+        expect(router).not.toContain("path: '/personal-finance/dashboard'");
         expect(router).not.toContain("view: 'imports'");
         expect(router).not.toContain("view: 'reconciliation'");
     });

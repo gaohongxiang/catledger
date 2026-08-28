@@ -7,10 +7,6 @@
             <f7-list-item :title="tt('User Profile')" link="/user/profile" />
             <f7-list-item :title="tt('Transaction Categories')" link="/category/all" />
             <f7-list-item :title="tt('Data Management')" link="/user/data/management" />
-            <f7-list-item :title="tt('personalFinance.nav')" link="/personal-finance/bills" />
-            <f7-list-item :title="tt('personalFinance.reconciliation.nav')" link="/personal-finance/reconciliation" />
-            <f7-list-item :title="tt('personalFinance.loans.nav')" link="/personal-finance/loans" />
-            <f7-list-item :title="tt('personalFinance.dashboard.nav')" link="/personal-finance/dashboard" />
             <f7-list-item :title="tt('Two-Factor Authentication')" link="/user/2fa" />
             <f7-list-item :title="tt('Device & Sessions')" link="/user/sessions" />
             <f7-list-button :class="{ 'disabled': logouting }" @click="logout">{{ tt('Log Out') }}</f7-list-button>
@@ -37,6 +33,7 @@
                           :after="isEnableApplicationLock ? tt('Enabled') : tt('Disabled')"
                           link="/app_lock" />
             <f7-list-item :title="tt('AI Recognition Settings')" link="/settings/page" />
+            <f7-list-item :title="tt('Exchange Rates Data')" link="/exchange_rates" v-if="showExchangeRates" />
             <f7-list-item link="#" no-chevron :title="tt('Switch to Desktop Version')"
                           @click="switchToDesktopVersion" />
             <f7-list-item :title="tt('About')" link="/about" :after="version" />
@@ -45,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import type { Router } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
@@ -54,6 +51,7 @@ import { useAppSettingPageBase } from '@/views/base/settings/AppSettingsPageBase
 import { useRootStore } from '@/stores/index.ts';
 import { useSettingsStore } from '@/stores/setting.ts';
 import { useUserStore } from '@/stores/user.ts';
+import { useAccountsStore } from '@/stores/account.ts';
 
 import { findNameByValue } from '@/lib/common.ts';
 import { getClientDisplayVersion, getDesktopVersionPath } from '@/lib/version.ts';
@@ -67,6 +65,7 @@ const { allThemes, showAccountBalance } = useAppSettingPageBase();
 const rootStore = useRootStore();
 const settingsStore = useSettingsStore();
 const userStore = useUserStore();
+const accountsStore = useAccountsStore();
 
 const version = getClientDisplayVersion();
 const logouting = ref<boolean>(false);
@@ -74,6 +73,9 @@ const showThemePopup = ref<boolean>(false);
 
 const currentNickName = computed<string>(() => userStore.currentUserNickname || tt('User'));
 const isEnableApplicationLock = computed<boolean>(() => settingsStore.appSettings.applicationLock);
+const showExchangeRates = computed<boolean>(() => accountsStore.allPlainAccounts.some(account =>
+    account.currency !== userStore.currentUserDefaultCurrency
+));
 const currentTheme = computed<string>({
     get: () => settingsStore.appSettings.theme,
     set: value => {
@@ -114,4 +116,8 @@ function logout(): void {
         });
     });
 }
+
+onMounted(() => {
+    accountsStore.loadAllAccounts({ force: false }).catch(() => undefined);
+});
 </script>

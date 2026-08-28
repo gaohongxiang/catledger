@@ -30,7 +30,6 @@ import UserSecuritySettingPage from '@/views/desktop/user/UserSecuritySettingPag
 import UserTwoFactorAuthSettingPage from '@/views/desktop/user/UserTwoFactorAuthSettingPage.vue';
 import UserDataManagementSettingPage from '@/views/desktop/user/UserDataManagementSettingPage.vue';
 
-import AppSettingsPageLayout from '@/views/desktop/app/AppSettingsPageLayout.vue';
 import AppBasicSettingPage from '@/views/desktop/app/AppBasicSettingPage.vue';
 import AppLockSettingPage from '@/views/desktop/app/AppLockSettingPage.vue';
 import ExchangeRatesListPage from '@/views/desktop/exchangerates/ListPage.vue';
@@ -108,21 +107,9 @@ const router = createRouter({
                     beforeEnter: checkLogin
                 },
                 {
-                    path: '/personal-finance/imports',
-                    redirect: () => ({ path: '/personal-finance/bills', replace: true })
-                },
-                {
-                    path: '/personal-finance/reconciliation',
-                    redirect: () => ({ path: '/personal-finance/bills', replace: true })
-                },
-                {
                     path: '/personal-finance/loans',
                     component: PersonalFinanceLoanWorkbenchPage,
                     beforeEnter: checkLogin
-                },
-                {
-                    path: '/personal-finance/dashboard',
-                    redirect: () => ({ path: '/', replace: true })
                 }
             ]
         },
@@ -205,14 +192,7 @@ const router = createRouter({
                     path: '/user/settings/data_management',
                     component: UserDataManagementSettingPage,
                     beforeEnter: checkLogin
-                }
-            ]
-        },
-        {
-            path: '/',
-            component: AppSettingsPageLayout,
-            beforeEnter: checkLogin,
-            children: [
+                },
                 {
                     path: '/app/settings/basic',
                     component: AppBasicSettingPage,

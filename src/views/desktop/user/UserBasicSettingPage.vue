@@ -3,7 +3,7 @@
         <v-col cols="12">
             <v-card :class="{ 'disabled': loading || saving }">
                 <template #title>
-                    <span>{{ tt('Basic Settings') }}</span>
+                    <span>{{ tt('User Profile') }}</span>
                     <v-progress-circular indeterminate size="20" class="ms-3" v-if="loading"></v-progress-circular>
                 </template>
 
@@ -140,7 +140,7 @@
                                 <language-select :disabled="loading || saving"
                                                  :label="languageTitle"
                                                  :placeholder="languageTitle"
-                                                 :include-system-default="true"
+                                                 :include-system-default="false"
                                                  :use-model-value="true" v-model="newProfile.language" />
                             </v-col>
 
@@ -151,7 +151,16 @@
                                                  v-model="newProfile.defaultCurrency" />
                             </v-col>
 
-                            <v-col cols="12" md="6">
+                            <v-col cols="12" class="advanced-display-settings-toggle">
+                                <v-btn color="default" variant="text"
+                                       :append-icon="showAdvancedDisplaySettings ? mdiChevronUp : mdiChevronDown"
+                                       @click="showAdvancedDisplaySettings = !showAdvancedDisplaySettings">
+                                    {{ tt('Advanced Display Settings') }}
+                                </v-btn>
+                                <span>{{ tt('Advanced Display Settings Description') }}</span>
+                            </v-col>
+
+                            <v-col cols="12" md="6" v-if="showAdvancedDisplaySettings">
                                 <v-select
                                     item-title="displayName"
                                     item-value="type"
@@ -164,7 +173,7 @@
                                 />
                             </v-col>
 
-                            <v-col cols="12" md="6">
+                            <v-col cols="12" md="6" v-if="showAdvancedDisplaySettings">
                                 <fiscal-year-start-select
                                     persistent-placeholder
                                     :disabled="loading || saving"
@@ -177,9 +186,11 @@
                         </v-row>
                     </v-card-text>
 
-                    <v-divider />
+                    <v-expand-transition>
+                        <div v-show="showAdvancedDisplaySettings">
+                            <v-divider />
 
-                    <v-card-text class="mt-1">
+                            <v-card-text class="mt-1">
                         <v-row>
                             <v-col cols="12" md="6">
                                 <v-select
@@ -272,11 +283,11 @@
                                 />
                             </v-col>
                         </v-row>
-                    </v-card-text>
+                            </v-card-text>
 
-                    <v-divider />
+                            <v-divider />
 
-                    <v-card-text class="mt-1">
+                            <v-card-text class="mt-1">
                         <v-row>
                             <v-col cols="12" md="6">
                                 <v-select
@@ -343,11 +354,11 @@
                                 />
                             </v-col>
                         </v-row>
-                    </v-card-text>
+                            </v-card-text>
 
-                    <v-divider />
+                            <v-divider />
 
-                    <v-card-text class="mt-1">
+                            <v-card-text class="mt-1">
                         <v-row>
                             <v-col cols="12" md="6">
                                 <v-select
@@ -362,11 +373,11 @@
                                 />
                             </v-col>
                         </v-row>
-                    </v-card-text>
+                            </v-card-text>
 
-                    <v-divider />
+                            <v-divider />
 
-                    <v-card-text class="mt-1">
+                            <v-card-text class="mt-1">
                         <v-row>
                             <v-col cols="12" md="6">
                                 <v-select
@@ -394,7 +405,9 @@
                                 />
                             </v-col>
                         </v-row>
-                    </v-card-text>
+                            </v-card-text>
+                        </div>
+                    </v-expand-transition>
 
                     <v-divider />
 
@@ -441,7 +454,9 @@ import { isUserVerifyEmailEnabled } from '@/lib/server_settings.ts';
 
 import {
     mdiAccount,
-    mdiAccountEditOutline
+    mdiAccountEditOutline,
+    mdiChevronDown,
+    mdiChevronUp
 } from '@mdi/js';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
@@ -501,6 +516,7 @@ const avatarInput = useTemplateRef<HTMLInputElement>('avatarInput');
 const avatarUrl = ref<string>('');
 const avatarProvider = ref<string | undefined>('');
 const avatarNoCacheId = ref<string>('');
+const showAdvancedDisplaySettings = ref<boolean>(false);
 
 const currentUserAvatar = computed<string | null>(() => userStore.getUserAvatarUrl(avatarUrl.value, avatarNoCacheId.value));
 
@@ -661,5 +677,18 @@ init();
 
 .user-profile-avatar-icon-modifiable:hover .user-profile-avatar-placeholder {
     display: none;
+}
+
+.advanced-display-settings-toggle {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    padding-top: 0;
+}
+
+.advanced-display-settings-toggle > span {
+    color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+    font-size: 0.8125rem;
 }
 </style>

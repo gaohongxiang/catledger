@@ -103,17 +103,6 @@
 
                         </div>
                         <v-spacer />
-                        <v-btn class="ms-2" color="primary" variant="text" density="comfortable"
-                               :aria-label="tt('Use on Mobile Device')"
-                               :icon="true" @click="showMobileQrCode = true">
-                            <v-icon :icon="mdiCellphone" size="24" />
-                            <v-tooltip activator="parent">{{ tt('Use on Mobile Device') }}</v-tooltip>
-                        </v-btn>
-                        <v-btn class="ms-2" color="primary" variant="text" density="comfortable"
-                               :aria-label="tt('Theme')"
-                               :icon="true" @click="(currentTheme === 'light' ? currentTheme = 'dark' : (currentTheme === 'dark' ? currentTheme = 'auto' : currentTheme = 'light'))">
-                            <v-icon :icon="(currentTheme === 'light' ? mdiWeatherSunny : (currentTheme === 'dark' ? mdiWeatherNight : mdiThemeLightDark))" size="24" />
-                        </v-btn>
                         <v-avatar class="cursor-pointer ms-3" variant="tonal"
                                   :color="currentUserAvatar ? 'rgba(0,0,0,0)' : 'primary'">
                             <v-icon :color="currentUserAvatar ? 'primary' : undefined" :icon="mdiAccount"/>
@@ -141,12 +130,15 @@
                                         </v-list-item-title>
                                     </v-list-item>
                                     <v-divider class="my-1"/>
-                                    <v-list-item :prepend-icon="mdiAccountCogOutline"
-                                                 :title="tt('User Settings')"
-                                                 to="/user/settings/basic"></v-list-item>
                                     <v-list-item :prepend-icon="mdiCogOutline"
-                                                 :title="tt('Application Settings')"
-                                                 to="/app/settings/basic"></v-list-item>
+                                                 :title="tt('Settings')"
+                                                 to="/user/settings/basic"></v-list-item>
+                                    <v-list-item :prepend-icon="mdiCellphone"
+                                                 :title="tt('Use on Mobile Device')"
+                                                 @click="showMobileQrCode = true"></v-list-item>
+                                    <v-list-item :prepend-icon="currentThemeIcon"
+                                                 :title="tt('Theme')"
+                                                 @click="cycleTheme"></v-list-item>
                                     <v-divider class="my-1"/>
                                     <v-list-item :prepend-icon="mdiInformationOutline"
                                                  :title="tt('About')"
@@ -226,7 +218,6 @@ import {
     mdiWeatherSunny,
     mdiWeatherNight,
     mdiAccount,
-    mdiAccountCogOutline,
     mdiCogOutline,
     mdiInformationOutline,
     mdiLockOutline,
@@ -282,6 +273,9 @@ const currentTheme = computed<string>({
         }
     }
 });
+const currentThemeIcon = computed<string>(() => currentTheme.value === ThemeType.Light
+    ? mdiWeatherSunny
+    : (currentTheme.value === ThemeType.Dark ? mdiWeatherNight : mdiThemeLightDark));
 
 const showAddTransactionButtonInDesktopNavbar = computed<boolean>(() => settingsStore.appSettings.showAddTransactionButtonInDesktopNavbar);
 const isEnableApplicationLock = computed<boolean>(() => settingsStore.appSettings.applicationLock);
@@ -290,6 +284,12 @@ const isAccountsNavigationActive = computed<boolean>(() => route.path === '/acco
 
 function isTopNavigationActive(path: string): boolean {
     return route.path === path;
+}
+
+function cycleTheme(): void {
+    currentTheme.value = currentTheme.value === ThemeType.Light
+        ? ThemeType.Dark
+        : (currentTheme.value === ThemeType.Dark ? 'auto' : ThemeType.Light);
 }
 
 function lock(): void {

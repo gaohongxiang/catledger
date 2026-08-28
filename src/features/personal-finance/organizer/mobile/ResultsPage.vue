@@ -47,7 +47,6 @@
                     </f7-card-footer>
                     <f7-card-footer v-else>
                         <span>{{ issueHint(issue) }}</span>
-                        <f7-link href="/personal-finance/imports">处理</f7-link>
                     </f7-card-footer>
                 </f7-card>
             </template>
@@ -61,7 +60,6 @@
                 <f7-block strong inset v-else>{{ tt('personalFinance.organizerV2.events.empty') }}</f7-block>
             </template>
 
-            <f7-block><f7-button fill href="/personal-finance/imports">打开完整问题工作台</f7-button></f7-block>
         </template>
 
         <template v-else-if="!loading">
@@ -69,7 +67,7 @@
                 <h2>{{ tt('personalFinance.organizerV2.start.title') }}</h2>
                 <p>{{ tt('personalFinance.organizerV2.start.hint') }}</p>
             </f7-block>
-            <f7-block><f7-button fill href="/personal-finance/imports">{{ tt('personalFinance.organizerV2.start.import') }}</f7-button></f7-block>
+            <f7-block strong inset>{{ tt('personalFinance.organizerV2.mobile.desktopAction') }}</f7-block>
         </template>
     </f7-page>
 </template>

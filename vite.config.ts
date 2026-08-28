@@ -16,6 +16,18 @@ const SRC_DIR = resolve(__dirname, './src');
 const PUBLIC_DIR = resolve(__dirname, './public');
 const BUILD_DIR = resolve(__dirname, './dist',);
 
+function getBuildCommitHash(): string {
+    if (process.env['COMMIT_HASH']) {
+        return process.env['COMMIT_HASH'];
+    }
+
+    try {
+        return git.short();
+    } catch {
+        return 'unknown';
+    }
+}
+
 function injectFramework7CssFile({ htmlFileName, placeHolders }: { htmlFileName: string, placeHolders: { name: string, srcFileName: string, distFileNamePrefix: string }[] }): Plugin[] {
     return [
         {
@@ -66,7 +78,7 @@ function injectFramework7CssFile({ htmlFileName, placeHolders }: { htmlFileName:
 export default defineConfig(() => {
     const licenseContent = fs.readFileSync('./LICENSE', { encoding: 'utf-8' });
     const buildUnixTime = process.env['buildUnixTime'] || '';
-    const buildCommitHash = process.env['COMMIT_HASH'] || git.short();
+    const buildCommitHash = getBuildCommitHash();
 
     const options: UserConfig = {
         root: SRC_DIR,

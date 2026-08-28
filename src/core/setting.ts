@@ -189,7 +189,7 @@ export const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
     // Basic Settings
     theme: 'auto',
     fontSize: 1,
-    timeZone: '',
+    timeZone: 'Asia/Shanghai',
     autoUpdateExchangeRatesData: true,
     showAccountBalance: true,
     swipeBack: true,
