@@ -148,10 +148,6 @@ import {
 } from '@/core/import_transaction.ts';
 
 import {
-    ScheduledTemplateFrequencyType
-} from '@/core/template.ts';
-
-import {
     StatisticsAnalysisType,
     CategoricalChartType,
     TrendChartType,
@@ -2606,7 +2602,6 @@ export function useI18n() {
         getAllTransactionEditScopeTypes: (useLastReconciledTime: boolean) => getLocalizedDisplayNameAndType(TransactionEditScopeType.values(useLastReconciledTime)),
         getAllTransactionQuickSaveButtonStyles: () => getLocalizedDisplayNameAndType(TransactionQuickSaveButtonStyle.values()),
         getAllTransactionQuickAddButtonActionTypes: () => getLocalizedDisplayNameAndType(TransactionQuickAddButtonActionType.values()),
-        getAllTransactionScheduledFrequencyTypes: () => getLocalizedDisplayNameAndType(ScheduledTemplateFrequencyType.values()),
         getAllImportTransactionColumnTypes: () => getLocalizedDisplayNameAndType(ImportTransactionColumnType.values()),
         getAllTransactionDefaultCategories,
         getAllDisplayExchangeRates,

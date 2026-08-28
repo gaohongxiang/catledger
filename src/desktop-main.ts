@@ -109,7 +109,6 @@ import FiscalYearStartSelect from '@/components/desktop/FiscalYearStartSelect.vu
 import ColorSelect from '@/components/desktop/ColorSelect.vue';
 import IconSelect from '@/components/desktop/IconSelect.vue';
 import TwoColumnSelect from '@/components/desktop/TwoColumnSelect.vue';
-import ScheduleFrequencySelect from '@/components/desktop/ScheduleFrequencySelect.vue';
 import StepsBar from '@/components/desktop/StepsBar.vue';
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
@@ -571,7 +570,6 @@ app.component('FiscalYearStartSelect', FiscalYearStartSelect);
 app.component('ColorSelect', ColorSelect);
 app.component('IconSelect', IconSelect);
 app.component('TwoColumnSelect', TwoColumnSelect);
-app.component('ScheduleFrequencySelect', ScheduleFrequencySelect);
 app.component('StepsBar', StepsBar);
 app.component('ConfirmDialog', ConfirmDialog);
 app.component('SnackBar', SnackBar);

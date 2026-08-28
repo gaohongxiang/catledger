@@ -13,14 +13,14 @@
                 </v-btn>
                 <v-btn density="compact" color="default" variant="text" class="ms-2" :icon="true"
                        :disabled="loading || submitting || recognizing"
-                       v-if="mode === TransactionEditPageMode.View && type === TransactionEditPageType.Transaction && !!transaction.id"
+                       v-if="mode === TransactionEditPageMode.View && !!transaction.id"
                        @click="transactionEvidenceDialog?.open(transaction.id)">
                     <v-icon :icon="mdiFileDocumentCheckOutline" size="22"/>
                     <v-tooltip activator="parent">{{ tt('personalFinance.evidence.title') }}</v-tooltip>
                 </v-btn>
                 <v-btn density="compact" color="default" variant="text" class="ms-2" :icon="true"
                        :disabled="loading || submitting || recognizing"
-                       v-if="mode !== TransactionEditPageMode.View && type === TransactionEditPageType.Transaction && activeTab === 'basicInfo' && isTransactionFromAITextRecognitionEnabled()"
+                       v-if="mode !== TransactionEditPageMode.View && activeTab === 'basicInfo' && isTransactionFromAITextRecognitionEnabled()"
                        @click="recognizeFromClipboard">
                     <v-icon :icon="mdiMagicStaff" size="22" v-if="!recognizing"/>
                     <v-tooltip activator="parent">{{ tt('AI Clipboard Text Recognition') }}</v-tooltip>
@@ -61,18 +61,18 @@
 
             <template #content-left-column>
                 <div class="px-4">
-                    <v-tabs class="v-tabs-pill" direction="vertical" :class="{ 'readonly': type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit }"
+                    <v-tabs class="v-tabs-pill" direction="vertical" :class="{ 'readonly': mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit }"
                             :disabled="loading || submitting || recognizing" v-model="transaction.type">
-                        <v-tab :value="TransactionType.Expense" :disabled="type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Expense" v-if="transaction.type !== TransactionType.ModifyBalance">
+                        <v-tab :value="TransactionType.Expense" :disabled="mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Expense" v-if="transaction.type !== TransactionType.ModifyBalance">
                             <span>{{ tt('Expense') }}</span>
                         </v-tab>
-                        <v-tab :value="TransactionType.Income" :disabled="type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Income" v-if="transaction.type !== TransactionType.ModifyBalance">
+                        <v-tab :value="TransactionType.Income" :disabled="mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Income" v-if="transaction.type !== TransactionType.ModifyBalance">
                             <span>{{ tt('Income') }}</span>
                         </v-tab>
-                        <v-tab :value="TransactionType.Transfer" :disabled="type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Transfer" v-if="transaction.type !== TransactionType.ModifyBalance">
+                        <v-tab :value="TransactionType.Transfer" :disabled="mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Transfer" v-if="transaction.type !== TransactionType.ModifyBalance">
                             <span>{{ tt('Transfer') }}</span>
                         </v-tab>
-                        <v-tab :value="TransactionType.ModifyBalance" v-if="type === TransactionEditPageType.Transaction && transaction.type === TransactionType.ModifyBalance">
+                        <v-tab :value="TransactionType.ModifyBalance" v-if="transaction.type === TransactionType.ModifyBalance">
                             <span>{{ tt('Modify Balance') }}</span>
                         </v-tab>
                     </v-tabs>
@@ -83,7 +83,7 @@
                         <v-tab value="basicInfo">
                             <span>{{ tt('Basic Information') }}</span>
                         </v-tab>
-                        <v-tab value="pictures" :disabled="mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && (!transaction.pictures || !transaction.pictures.length)" v-if="type === TransactionEditPageType.Transaction && isTransactionPicturesEnabled()">
+                        <v-tab value="pictures" :disabled="mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && (!transaction.pictures || !transaction.pictures.length)" v-if="isTransactionPicturesEnabled()">
                             <span>{{ tt('Pictures') }}</span>
                         </v-tab>
                     </v-tabs>
@@ -96,16 +96,6 @@
                     <v-window-item value="basicInfo">
                         <v-form class="my-4">
                             <v-row>
-                                <v-col cols="12" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate">
-                                    <v-text-field
-                                        type="text"
-                                        persistent-placeholder
-                                        :disabled="loading || submitting || recognizing"
-                                        :label="tt('Template Name')"
-                                        :placeholder="tt('Template Name')"
-                                        v-model="transaction.name"
-                                    />
-                                </v-col>
                                 <v-col cols="12" :md="transaction.type === TransactionType.Transfer ? 6 : 12">
                                     <amount-input class="transaction-edit-amount font-weight-bold"
                                                   :color="sourceAmountColor"
@@ -255,7 +245,7 @@
                                         </template>
                                     </v-tooltip>
                                 </v-col>
-                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Transaction">
+                                <v-col cols="12" md="6">
                                     <date-time-select
                                         :readonly="mode === TransactionEditPageMode.View"
                                         :disabled="loading || submitting || recognizing || (mode === TransactionEditPageMode.Edit && transaction.type === TransactionType.ModifyBalance)"
@@ -265,15 +255,7 @@
                                         @update:model-value="updateTransactionTime"
                                         @error="onShowDateTimeError" />
                                 </v-col>
-                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type">
-                                    <schedule-frequency-select
-                                        :readonly="mode === TransactionEditPageMode.View"
-                                        :disabled="loading || submitting || recognizing"
-                                        :label="tt('Scheduled Transaction Frequency')"
-                                        v-model:type="transaction.scheduledFrequencyType"
-                                        v-model="transaction.scheduledFrequency" />
-                                </v-col>
-                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Transaction || (type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type)">
+                                <v-col cols="12" md="6">
                                     <v-autocomplete
                                         class="transaction-edit-timezone"
                                         item-title="displayNameWithUtcOffset"
@@ -295,24 +277,6 @@
                                                 </span>
                                         </template>
                                     </v-autocomplete>
-                                </v-col>
-                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type">
-                                    <date-select
-                                        :readonly="mode === TransactionEditPageMode.View"
-                                        :disabled="loading || submitting || recognizing"
-                                        :clearable="true"
-                                        :label="tt('Start Date')"
-                                        :no-data-text="tt('No limit')"
-                                        v-model="transaction.scheduledStartDate" />
-                                </v-col>
-                                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type">
-                                    <date-select
-                                        :readonly="mode === TransactionEditPageMode.View"
-                                        :disabled="loading || submitting || recognizing"
-                                        :clearable="true"
-                                        :label="tt('End Date')"
-                                        :no-data-text="tt('No limit')"
-                                        v-model="transaction.scheduledEndDate" />
                                 </v-col>
                                 <v-col cols="12" md="12">
                                     <v-textarea
@@ -386,7 +350,7 @@
                                 </v-btn>
                                 <v-btn color="primary" density="compact"
                                        :disabled="inputIsEmpty || loading || submitting || recognizing" :icon="true"
-                                       v-if="type === TransactionEditPageType.Transaction && mode === TransactionEditPageMode.Add">
+                                       v-if="mode === TransactionEditPageMode.Add">
                                     <v-icon :icon="mdiMenuDown" size="24" />
                                     <v-menu activator="parent">
                                         <v-list>
@@ -466,17 +430,14 @@ import { useUserStore } from '@/stores/user.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { useTransactionsStore } from '@/stores/transaction.ts';
-import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
 
 import { CategoryType } from '@/core/category.ts';
 import { TransactionType, TransactionEditScopeType, TransactionQuickAddButtonActionType } from '@/core/transaction.ts';
-import { TemplateType, ScheduledTemplateFrequencyType } from '@/core/template.ts';
 import { KnownFileType } from '@/core/file.ts';
 
 import { KnownErrorCode } from '@/consts/api.ts';
 import { SUPPORTED_IMAGE_EXTENSIONS } from '@/consts/file.ts';
 
-import { TransactionTemplate } from '@/models/transaction_template.ts';
 import type { TransactionPictureInfoBasicResponse } from '@/models/transaction_picture_info.ts';
 import { Transaction } from '@/models/transaction.ts';
 
@@ -514,10 +475,7 @@ import {
 
 export interface TransactionEditOptions extends SetTransactionOptions {
     id?: string;
-    templateType?: number;
-    template?: TransactionTemplate;
     currentTransaction?: Transaction;
-    currentTemplate?: TransactionTemplate;
     autoUploadPicture?: File;
     autoRecognizeClipboardText?: string;
     noTransactionDraft?: boolean;
@@ -531,7 +489,7 @@ type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
 type TransactionEvidenceDialogType = InstanceType<typeof TransactionEvidenceDialog>;
 
-const props = defineProps<{
+defineProps<{
     type: TransactionEditPageType;
     persistent?: boolean;
     show?: boolean;
@@ -586,14 +544,13 @@ const {
     updateTransactionTimezone,
     swapTransactionData,
     getTransactionPictureUrl
-} = useTransactionEditPageBase(props.type);
+} = useTransactionEditPageBase();
 
 const settingsStore = useSettingsStore();
 const userStore = useUserStore();
 const accountsStore = useAccountsStore();
 const transactionCategoriesStore = useTransactionCategoriesStore();
 const transactionsStore = useTransactionsStore();
-const transactionTemplatesStore = useTransactionTemplatesStore();
 
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
@@ -607,7 +564,6 @@ const showState = ref<boolean>(false);
 const showPasteTextDialog = ref<boolean>(false);
 const activeTab = ref<string>('basicInfo');
 const initTransaction = ref<Transaction | null>(null);
-const initTemplate = ref<TransactionTemplate | null>(null);
 const originalTransactionEditable = ref<boolean>(false);
 const noTransactionDraft = ref<boolean>(false);
 const removingPictureId = ref<string>('');
@@ -629,23 +585,9 @@ const sourceAmountColor = computed<string | undefined>(() => {
 
 const isTransactionModified = computed<boolean>(() => {
     if (mode.value === TransactionEditPageMode.Add) {
-        if (props.type === TransactionEditPageType.Transaction) {
-            return transactionsStore.isTransactionDraftModified(transaction.value, initOptions.value?.amount, initOptions.value?.categoryId, initOptions.value?.accountId, initOptions.value?.tagIds, firstVisibleAccountId.value);
-        } else if (props.type === TransactionEditPageType.Template && transaction.value instanceof TransactionTemplate) {
-            const template = transaction.value as TransactionTemplate;
-            return !!initTemplate.value && !isEquals(template.toTemplateCreateRequest(clientSessionId.value), initTemplate.value.toTemplateCreateRequest(clientSessionId.value));
-        } else {
-            return true;
-        }
+        return transactionsStore.isTransactionDraftModified(transaction.value, initOptions.value?.amount, initOptions.value?.categoryId, initOptions.value?.accountId, initOptions.value?.tagIds, firstVisibleAccountId.value);
     } else if (mode.value === TransactionEditPageMode.Edit) {
-        if (props.type === TransactionEditPageType.Transaction) {
-            return !!initTransaction.value && !isEquals(transaction.value.toModifyRequest(), initTransaction.value.toModifyRequest());
-        } else if (props.type === TransactionEditPageType.Template && transaction.value instanceof TransactionTemplate) {
-            const template = transaction.value as TransactionTemplate;
-            return !!initTemplate.value && !isEquals(template.toTemplateModifyRequest(), initTemplate.value.toTemplateModifyRequest());
-        } else {
-            return true;
-        }
+        return !!initTransaction.value && !isEquals(transaction.value.toModifyRequest(), initTransaction.value.toModifyRequest());
     } else {
         return false;
     }
@@ -673,59 +615,20 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
         transactionCategoriesStore.loadAllCategories({ force: false })
     ];
 
-    if (props.type === TransactionEditPageType.Transaction) {
-        if (options && options.id) {
-            if (options.currentTransaction) {
-                setTransactionModel(options.currentTransaction, options, true);
-            }
-
-            mode.value = TransactionEditPageMode.View;
-            editId.value = options.id;
-
-            promises.push(transactionsStore.getTransaction({ transactionId: editId.value }));
-        } else {
-            mode.value = TransactionEditPageMode.Add;
-            editId.value = null;
-
-            if (options.template) {
-                setTransactionModel(options.template, options, false);
-                initTransaction.value = Transaction.of(transaction.value);
-                addByTemplateId.value = options.template.id;
-            } else if (!options.noTransactionDraft && (settingsStore.appSettings.autoSaveTransactionDraft === 'enabled' || settingsStore.appSettings.autoSaveTransactionDraft === 'confirmation') && transactionsStore.transactionDraft) {
-                setTransactionModel(Transaction.ofDraft(transactionsStore.transactionDraft), options, false);
-            }
-
-        }
-    } else if (props.type === TransactionEditPageType.Template) {
-        initTemplate.value = TransactionTemplate.createNewTransactionTemplate(transaction.value);
-        initTemplate.value.name = '';
-
-        if (options && options.templateType) {
-            initTemplate.value.templateType = options.templateType;
+    if (options.id) {
+        if (options.currentTransaction) {
+            setTransactionModel(options.currentTransaction, options, true);
         }
 
-        if (initTemplate.value.templateType === TemplateType.Schedule.type) {
-            initTemplate.value.scheduledFrequencyType = ScheduledTemplateFrequencyType.Disabled.type;
-            initTemplate.value.scheduledFrequency = '';
-        }
+        mode.value = TransactionEditPageMode.View;
+        editId.value = options.id;
+        promises.push(transactionsStore.getTransaction({ transactionId: editId.value }));
+    } else {
+        mode.value = TransactionEditPageMode.Add;
+        editId.value = null;
 
-        transaction.value = TransactionTemplate.ofTemplate(initTemplate.value);
-
-        if (options && options.id) {
-            if (options.currentTemplate) {
-                setTransactionModel(options.currentTemplate, options, false);
-                (transaction.value as TransactionTemplate).fillFrom(options.currentTemplate);
-            }
-
-            mode.value = TransactionEditPageMode.Edit;
-            editId.value = options.id;
-            transaction.value.id = options.id;
-
-            promises.push(transactionTemplatesStore.getTemplate({ templateId: editId.value }));
-        } else {
-            mode.value = TransactionEditPageMode.Add;
-            editId.value = null;
-            transaction.value.id = '';
+        if (!options.noTransactionDraft && (settingsStore.appSettings.autoSaveTransactionDraft === 'enabled' || settingsStore.appSettings.autoSaveTransactionDraft === 'confirmation') && transactionsStore.transactionDraft) {
+            setTransactionModel(Transaction.ofDraft(transactionsStore.transactionDraft), options, false);
         }
     }
 
@@ -740,41 +643,22 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
     }
 
     Promise.all(promises).then(function (responses) {
-        if (editId.value && !responses[3]) {
+        if (editId.value && !responses[2]) {
             if (rejectFunc) {
-                if (props.type === TransactionEditPageType.Transaction) {
-                    rejectFunc('Unable to retrieve transaction');
-                } else if (props.type === TransactionEditPageType.Template) {
-                    rejectFunc('Unable to retrieve template');
-                }
+                rejectFunc('Unable to retrieve transaction');
             }
 
             return;
         }
 
-        if (props.type === TransactionEditPageType.Transaction && options && options.id && responses[3] && responses[3] instanceof Transaction) {
-            const transaction: Transaction = responses[3];
+        if (options.id && responses[2] && responses[2] instanceof Transaction) {
+            const transaction: Transaction = responses[2];
             setTransactionModel(transaction, options, true);
             initTransaction.value = Transaction.of(transaction);
             originalTransactionEditable.value = transaction.editable;
-        } else if (props.type === TransactionEditPageType.Template && options && options.id && responses[3] && responses[3] instanceof TransactionTemplate) {
-            const template: TransactionTemplate = responses[3];
-            setTransactionModel(template, options, false);
-
-            if (!(transaction.value instanceof TransactionTemplate)) {
-                transaction.value = TransactionTemplate.createNewTransactionTemplate(transaction.value);
-            }
-
-            (transaction.value as TransactionTemplate).fillFrom(template);
-            initTemplate.value = TransactionTemplate.ofTemplate(template);
         } else {
             setTransactionModel(null, options, true);
-
-            if (props.type === TransactionEditPageType.Transaction) {
-                initTransaction.value = Transaction.of(transaction.value);
-            } else if (props.type === TransactionEditPageType.Template && transaction.value instanceof TransactionTemplate) {
-                initTemplate.value = TransactionTemplate.ofTemplate(transaction.value);
-            }
+            initTransaction.value = Transaction.of(transaction.value);
         }
 
         if (options.autoUploadPicture) {
@@ -819,7 +703,7 @@ function save(afterAction: AfterSaveAction): void {
         return;
     }
 
-    if (props.type === TransactionEditPageType.Transaction && (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit)) {
+    if (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit) {
         const doSubmit = function () {
             submitting.value = true;
 
@@ -889,36 +773,6 @@ function save(afterAction: AfterSaveAction): void {
         } else {
             doSubmit();
         }
-    } else if (props.type === TransactionEditPageType.Template && (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit)) {
-        submitting.value = true;
-
-        transactionTemplatesStore.saveTemplateContent({
-            template: transaction.value as TransactionTemplate,
-            isEdit: mode.value === TransactionEditPageMode.Edit,
-            clientSessionId: clientSessionId.value
-        }).then(() => {
-            submitting.value = false;
-
-            if (resolveFunc) {
-                if (mode.value === TransactionEditPageMode.Add) {
-                    resolveFunc({
-                        message: 'You have added a new template'
-                    });
-                } else if (mode.value === TransactionEditPageMode.Edit) {
-                    resolveFunc({
-                        message: 'You have saved this template'
-                    });
-                }
-            }
-
-            showState.value = false;
-        }).catch(error => {
-            submitting.value = false;
-
-            if (!error.processed) {
-                snackbar.value?.showError(error);
-            }
-        });
     }
 }
 
@@ -967,7 +821,7 @@ function recognizeFromClipboard(): void {
 }
 
 function duplicate(withTime?: boolean): void {
-    if (props.type !== TransactionEditPageType.Transaction || mode.value !== TransactionEditPageMode.View) {
+    if (mode.value !== TransactionEditPageMode.View) {
         return;
     }
 
@@ -991,7 +845,7 @@ function duplicate(withTime?: boolean): void {
 }
 
 function edit(): void {
-    if (props.type !== TransactionEditPageType.Transaction || mode.value !== TransactionEditPageMode.View) {
+    if (mode.value !== TransactionEditPageMode.View) {
         return;
     }
 
@@ -999,7 +853,7 @@ function edit(): void {
 }
 
 function remove(): void {
-    if (props.type !== TransactionEditPageType.Transaction || mode.value !== TransactionEditPageMode.View) {
+    if (mode.value !== TransactionEditPageMode.View) {
         return;
     }
 
@@ -1028,7 +882,7 @@ function remove(): void {
 
 function cancel(): void {
     const doClose = function () {
-        if (props.type === TransactionEditPageType.Transaction && mode.value === TransactionEditPageMode.Add && submitted.value && resolveFunc) {
+        if (mode.value === TransactionEditPageMode.Add && submitted.value && resolveFunc) {
             resolveFunc({
                 message: 'You have added a new transaction'
             });
@@ -1039,7 +893,7 @@ function cancel(): void {
         showState.value = false;
     };
 
-    if (props.type !== TransactionEditPageType.Transaction || mode.value !== TransactionEditPageMode.Add || noTransactionDraft.value || addByTemplateId.value || duplicateFromId.value) {
+    if (mode.value !== TransactionEditPageMode.Add || noTransactionDraft.value || addByTemplateId.value || duplicateFromId.value) {
         doClose();
         return;
     }

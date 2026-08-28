@@ -77,6 +77,16 @@ describe('personal-finance simple web workflow', () => {
         expect(mobileRouter).not.toContain("path: '/tag/list'");
         expect(mobileRouter).not.toContain("path: '/template/list'");
         expect(mobileRouter).not.toContain("path: '/schedule/list'");
+
+        const services = source('../../../lib/services.ts');
+        const desktopEditor = source('../../../views/desktop/transactions/list/dialogs/EditDialog.vue');
+        const mobileEditor = source('../../../views/mobile/transactions/EditPage.vue');
+        expect(services).not.toContain('v1/transaction/templates/');
+        expect(desktopEditor).not.toContain('TransactionTemplate');
+        expect(desktopEditor).not.toContain('TransactionEditPageType.Template');
+        expect(mobileEditor).not.toContain('TransactionTemplate');
+        expect(mobileEditor).not.toContain("'/template/add'");
+        expect(mobileEditor).not.toContain("'/template/edit'");
     });
 
     it('keeps review and raw statement records in one route-local workspace', () => {

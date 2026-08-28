@@ -125,14 +125,6 @@ import type {
     TransactionTagInfoResponse
 } from '@/models/transaction_tag.ts';
 import type {
-    TransactionTemplateCreateRequest,
-    TransactionTemplateModifyRequest,
-    TransactionTemplateHideRequest,
-    TransactionTemplateMoveRequest,
-    TransactionTemplateDeleteRequest,
-    TransactionTemplateInfoResponse
-} from '@/models/transaction_template.ts';
-import type {
     TokenGenerateAPIRequest,
     TokenGenerateMCPRequest,
     TokenRevokeRequest,
@@ -851,27 +843,6 @@ export default {
     },
     deleteTransactionTag: (req: TransactionTagDeleteRequest): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/transaction/tags/delete.json', req);
-    },
-    getAllTransactionTemplates: ({ templateType }: { templateType: number }): ApiResponsePromise<TransactionTemplateInfoResponse[]> => {
-        return axios.get<ApiResponse<TransactionTemplateInfoResponse[]>>('v1/transaction/templates/list.json?templateType=' + templateType);
-    },
-    getTransactionTemplate: ({ id }: { id: string }): ApiResponsePromise<TransactionTemplateInfoResponse> => {
-        return axios.get<ApiResponse<TransactionTemplateInfoResponse>>('v1/transaction/templates/get.json?id=' + id);
-    },
-    addTransactionTemplate: (req: TransactionTemplateCreateRequest): ApiResponsePromise<TransactionTemplateInfoResponse> => {
-        return axios.post<ApiResponse<TransactionTemplateInfoResponse>>('v1/transaction/templates/add.json', req);
-    },
-    modifyTransactionTemplate: (req: TransactionTemplateModifyRequest): ApiResponsePromise<TransactionTemplateInfoResponse> => {
-        return axios.post<ApiResponse<TransactionTemplateInfoResponse>>('v1/transaction/templates/modify.json', req);
-    },
-    hideTransactionTemplate: (req: TransactionTemplateHideRequest): ApiResponsePromise<boolean> => {
-        return axios.post<ApiResponse<boolean>>('v1/transaction/templates/hide.json', req);
-    },
-    moveTransactionTemplate: (req: TransactionTemplateMoveRequest): ApiResponsePromise<boolean> => {
-        return axios.post<ApiResponse<boolean>>('v1/transaction/templates/move.json', req);
-    },
-    deleteTransactionTemplate: (req: TransactionTemplateDeleteRequest): ApiResponsePromise<boolean> => {
-        return axios.post<ApiResponse<boolean>>('v1/transaction/templates/delete.json', req);
     },
     recognizeTransactionText: ({ text }: { text: string }): ApiResponsePromise<RecognizedTransactionResponse> => {
         return axios.post<ApiResponse<RecognizedTransactionResponse>>('v1/llm/transactions/recognize_text.json', {
