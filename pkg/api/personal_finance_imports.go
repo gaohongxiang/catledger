@@ -51,7 +51,7 @@ type PersonalFinanceImportsApi struct {
 	accounts                personalFinanceAccountReader
 	serviceFactory          func() (personalFinanceImportApplication, error)
 	flowServiceFactory      func() (personalFinanceFlowApplication, error)
-	postingServiceFactory   func() (personalFinancePostingApplication, error)
+	evidenceServiceFactory  func() (personalFinanceEvidenceApplication, error)
 	lifecycleServiceFactory func() (personalFinanceLifecycleApplication, error)
 	candidateServiceFactory func() (personalFinanceCandidateApplication, error)
 }
@@ -77,7 +77,7 @@ var PersonalFinanceImports = &PersonalFinanceImportsApi{
 		)
 	},
 	flowServiceFactory: newPersonalFinanceFlowApplication,
-	postingServiceFactory: func() (personalFinancePostingApplication, error) {
+	evidenceServiceFactory: func() (personalFinanceEvidenceApplication, error) {
 		repository, err := importing.NewRepository(datastore.Container.UserDataStore)
 
 		if err != nil {
@@ -163,10 +163,9 @@ type personalFinanceImportFileResponse struct {
 }
 
 type personalFinanceImportFileUploadResponse struct {
-	File        *personalFinanceImportFileResponse  `json:"file"`
-	LatestBatch *personalFinanceImportBatchResponse `json:"latestBatch,omitempty"`
-	Duplicate   bool                                `json:"duplicate"`
-	Recovered   bool                                `json:"recovered"`
+	File      *personalFinanceImportFileResponse `json:"file"`
+	Duplicate bool                               `json:"duplicate"`
+	Recovered bool                               `json:"recovered"`
 }
 
 type personalFinanceImportFilePageResponse struct {
@@ -373,10 +372,9 @@ func (a *PersonalFinanceImportsApi) ImportFileUploadHandler(c *core.WebContext) 
 
 	log.Infof(c, "[personal_finance_imports.ImportFileUploadHandler] import file \"id:%d\" is durable for user \"uid:%d\"", result.File.FileId, uid)
 	return &personalFinanceImportFileUploadResponse{
-		File:        newPersonalFinanceImportFileResponse(result.File),
-		LatestBatch: newPersonalFinanceImportBatchResponse(&importing.ImportBatchDetails{Batch: result.LatestBatch}),
-		Duplicate:   result.Duplicate,
-		Recovered:   result.Recovered,
+		File:      newPersonalFinanceImportFileResponse(result.File),
+		Duplicate: result.Duplicate,
+		Recovered: result.Recovered,
 	}, nil
 }
 

@@ -179,6 +179,26 @@ func CreditCardAccountFamilyAlias(raw string) (string, bool) {
 	return family, true
 }
 
+// ConsumerCreditAccountFamilyAlias 把支付宝消费信贷的单项和合并还款名称
+// 收敛到同一候选族。它只用于“已有映射唯一一致”时的还款目标回退；
+// 若花呗与信用购已分别映射到不同正式账户，整理器必须停止自动选择。
+func ConsumerCreditAccountFamilyAlias(raw string) (string, bool) {
+	canonical := canonicalPaymentAccountAlias(paymentAccountInstrumentName(raw))
+	if canonical == "" {
+		return "", false
+	}
+	hasHuabei := strings.Contains(canonical, "花呗")
+	hasCreditPurchase := strings.Contains(canonical, "信用购")
+	if !hasHuabei && !hasCreditPurchase {
+		return "", false
+	}
+	remaining := strings.NewReplacer("花呗", "", "信用购", "", "还款", "").Replace(canonical)
+	if remaining != "" {
+		return "", false
+	}
+	return "alipay-consumer-credit", true
+}
+
 // QualifiedPaymentAccountDisplayName 与核对账户同一套组成规则：光大月结单「末四位xxxx」显示为「光大银行信用卡(xxxx)」。
 func QualifiedPaymentAccountDisplayName(sourceType SourceType, raw string) string {
 	instrument := paymentAccountInstrumentName(raw)

@@ -102,6 +102,30 @@ func TestReviewIssueEngineSQLiteLinksRefundAndDerivesReady(t *testing.T) {
 	}
 }
 
+func TestReviewIssueEngineSQLiteConfirmsInstallmentPrincipalWithoutCreatingLedgerEvent(t *testing.T) {
+	repository, _ := newSQLiteOrganizerRepository(t)
+	const uid = int64(11104)
+	const updateId = int64(11204)
+	principal := postingEvent(uid, updateId, 11331, organizer.EVENT_STATUS_NEEDS_ACTION, organizer.ECONOMIC_NATURE_EXPENSE)
+	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{principal})
+	seedReviewIssue(t, repository, uid, updateId, 11431, organizer.REVIEW_ISSUE_TYPE_INSTALLMENT_ORIGIN, principal)
+
+	engine, _ := organizer.NewReviewIssueEngine(repository, &engineIdGenerator{next: 12000})
+	result, err := engine.Resolve(nil, organizer.ResolveReviewIssueRequest{
+		Uid: uid, UpdateId: updateId, IssueId: 11431, ExpectedUpdateVersion: 2, ExpectedIssueVersion: 1,
+		IdempotencyKey: "installment-principal", Decision: organizer.REVIEW_ISSUE_DECISION_CONFIRM_INSTALLMENT_PRINCIPAL,
+		InstallmentCandidateId: 88101,
+	})
+	if err != nil || result == nil || result.Update.ReadyEventCount != 0 || result.Update.NeedsActionEventCount != 0 ||
+		result.Update.ExcludedEventCount != 1 || len(result.Events) != 1 || result.Events[0].Status != organizer.EVENT_STATUS_EXCLUDED {
+		t.Fatalf("installment principal decision mismatch: result=%+v err=%v", result, err)
+	}
+	if !strings.Contains(result.Action.ReasonCodesJson, "installment_candidate:88101") ||
+		!strings.Contains(result.Events[0].ReasonCodesJson, "installment_principal_confirmed") {
+		t.Fatalf("installment decision did not retain durable projection intent: action=%s event=%s", result.Action.ReasonCodesJson, result.Events[0].ReasonCodesJson)
+	}
+}
+
 func seedReviewIssue(t *testing.T, repository *organizer.Repository, uid int64, updateId int64, issueId int64,
 	issueType organizer.ReviewIssueType, events ...*organizer.EconomicEvent) {
 	t.Helper()

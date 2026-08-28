@@ -49,6 +49,7 @@ type personalFinanceReviewIssueResolveRequest struct {
 	EvidenceId                  int64                         `json:"evidenceId,string"`
 	TargetEventId               int64                         `json:"targetEventId,string"`
 	TransactionId               int64                         `json:"transactionId,string"`
+	InstallmentCandidateId      int64                         `json:"installmentCandidateId,string"`
 }
 
 type personalFinanceReviewIssueResponse struct {
@@ -166,6 +167,7 @@ func (a *PersonalFinanceOrganizerApi) ReviewIssueResolveHandler(c *core.WebConte
 		},
 		PrimaryEventId: request.PrimaryEventId, EventIds: eventIds, EvidenceId: request.EvidenceId,
 		TargetEventId: request.TargetEventId, TransactionId: request.TransactionId,
+		InstallmentCandidateId: request.InstallmentCandidateId,
 	})
 	if err != nil {
 		return a.reviewIssueFailed(c, "resolve", err)
@@ -282,11 +284,16 @@ func (a *personalFinanceOrganizerApplication) GetReviewIssue(c core.Context, uid
 }
 
 func (a *personalFinanceOrganizerApplication) ResolveReviewIssue(c core.Context, request organizer.ResolveReviewIssueRequest) (*organizer.ResolveReviewIssueResult, error) {
+	if request.Decision == organizer.REVIEW_ISSUE_DECISION_CONFIRM_INSTALLMENT_PRINCIPAL {
+		if err := a.validateInstallmentPrincipalDecision(c, request); err != nil {
+			return nil, err
+		}
+	}
 	mappingPlan, err := a.accountMappings.prepare(c, request)
 	if err != nil {
 		return nil, err
 	}
-	engine, err := organizer.NewReviewIssueEngine(a.repository, uuid.Container)
+	engine, err := organizer.NewReviewIssueEngine(a.repository, uuid.Container, a.evidence)
 	if err != nil {
 		return nil, err
 	}

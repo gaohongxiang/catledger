@@ -21,6 +21,13 @@ var (
 
 const reasonManualCorrection = "manual_correction"
 
+type CategoryCorrectionScope string
+
+const (
+	CATEGORY_CORRECTION_SCOPE_SINGLE                 CategoryCorrectionScope = "single"
+	CATEGORY_CORRECTION_SCOPE_MATCHING_UNCATEGORIZED CategoryCorrectionScope = "matching_uncategorized"
+)
+
 type EventCorrection struct {
 	FieldMask                   int64
 	Status                      EventStatus
@@ -42,28 +49,42 @@ type CorrectEventRequest struct {
 	ExpectedUpdateVersion int64
 	ExpectedEventVersion  int64
 	IdempotencyKey        string
+	CategoryScope         CategoryCorrectionScope
 	Correction            EventCorrection
 }
 
 type CorrectEventResult struct {
 	Update   *FinanceUpdate
 	Event    *EconomicEvent
+	Events   []*EconomicEvent
 	Action   *FinanceAction
 	Replayed bool
 }
 
+type CategoryCorrectionScopePreview struct {
+	MatchingEventCount int64
+}
+
 type CorrectionEngine struct {
 	repository *Repository
+	evidence   EvidenceReader
 	ids        IdentifierGenerator
 	now        func() time.Time
 	locks      *postingLockSet
 }
 
-func NewCorrectionEngine(repository *Repository, ids IdentifierGenerator) (*CorrectionEngine, error) {
+func NewCorrectionEngine(repository *Repository, ids IdentifierGenerator, evidenceReaders ...EvidenceReader) (*CorrectionEngine, error) {
 	if repository == nil || ids == nil {
 		return nil, ErrCorrectionRequestInvalid
 	}
-	return &CorrectionEngine{repository: repository, ids: ids, now: time.Now, locks: globalPostingLocks}, nil
+	if len(evidenceReaders) > 1 || (len(evidenceReaders) == 1 && evidenceReaders[0] == nil) {
+		return nil, ErrCorrectionRequestInvalid
+	}
+	var evidence EvidenceReader
+	if len(evidenceReaders) == 1 {
+		evidence = evidenceReaders[0]
+	}
+	return &CorrectionEngine{repository: repository, evidence: evidence, ids: ids, now: time.Now, locks: globalPostingLocks}, nil
 }
 
 func (e *CorrectionEngine) Correct(c core.Context, request CorrectEventRequest) (*CorrectEventResult, error) {
@@ -84,6 +105,14 @@ func (e *CorrectionEngine) Correct(c core.Context, request CorrectEventRequest) 
 	actionId := e.ids.GenerateUuid(uuid.UUID_TYPE_PERSONAL_FINANCE)
 	if now < 1 || actionId < 1 {
 		return nil, ErrCorrectionRequestInvalid
+	}
+	correctedEventIds, err := e.categoryCorrectionEventIds(c, request, sources)
+	if err != nil {
+		return nil, err
+	}
+	categoryAliases, err := e.categoryAliasesForCorrection(c, request, sources, correctedEventIds, now)
+	if err != nil {
+		return nil, err
 	}
 	candidate := newCorrectionAction(request, actionId, now)
 	var persistedActionId int64
@@ -118,20 +147,40 @@ func (e *CorrectionEngine) Correct(c core.Context, request CorrectEventRequest) 
 		if event.Status == EVENT_STATUS_POSTED || event.Status == EVENT_STATUS_CORRECTED {
 			return ErrCorrectionPostedRequiresRebuild
 		}
-		if update.Status != UPDATE_STATUS_REVIEW && update.Status != UPDATE_STATUS_PARTIALLY_POSTED {
+		if update.Status != UPDATE_STATUS_REVIEW {
 			return ErrCorrectionUpdateConflict
-		}
-		relations, findErr := tx.ListRelations(request.EventId)
-		if findErr != nil {
-			return findErr
 		}
 		manualMask, validMask := correctionEffectiveMask(request.Correction)
 		if !validMask {
 			return ErrCorrectionRequestInvalid
 		}
-		nextEvent, applyErr := applyEventCorrection(event, request.Correction, relations, action.ActionId, now)
-		if applyErr != nil {
-			return applyErr
+		currentEvents := make([]*EconomicEvent, 0, len(correctedEventIds))
+		nextEvents := make([]*EconomicEvent, 0, len(correctedEventIds))
+		for _, eventId := range correctedEventIds {
+			current := event
+			if eventId != request.EventId {
+				current, findErr = tx.FindEventById(eventId)
+				if findErr != nil {
+					return findErr
+				}
+			}
+			if current == nil || current.UpdateId != request.UpdateId {
+				return ErrCorrectionEventConflict
+			}
+			if normalizedCategoryCorrectionScope(request.CategoryScope) == CATEGORY_CORRECTION_SCOPE_MATCHING_UNCATEGORIZED &&
+				(current.Status != EVENT_STATUS_READY || current.CategoryId != nil || current.EconomicNature != event.EconomicNature) {
+				return ErrCorrectionEventConflict
+			}
+			relations, relationErr := tx.ListRelations(eventId)
+			if relationErr != nil {
+				return relationErr
+			}
+			nextEvent, applyErr := applyEventCorrection(current, request.Correction, relations, action.ActionId, now)
+			if applyErr != nil {
+				return applyErr
+			}
+			currentEvents = append(currentEvents, current)
+			nextEvents = append(nextEvents, nextEvent)
 		}
 		applying := *action
 		applying.Status = ACTION_STATUS_APPLYING
@@ -141,15 +190,22 @@ func (e *CorrectionEngine) Correct(c core.Context, request CorrectEventRequest) 
 		if updateErr != nil || !updated {
 			return ErrCorrectionEventConflict
 		}
-		updated, updateErr = tx.UpdateEventCAS(event.Version, nextEvent)
-		if updateErr != nil || !updated {
-			return ErrCorrectionEventConflict
+		for index, nextEvent := range nextEvents {
+			updated, updateErr = tx.UpdateEventCAS(currentEvents[index].Version, nextEvent)
+			if updateErr != nil || !updated {
+				return ErrCorrectionEventConflict
+			}
+		}
+		if err = tx.SaveCategoryAliases(categoryAliases); err != nil {
+			return err
 		}
 		nextUpdate := *update
 		nextUpdate.Version = update.Version + 1
 		nextUpdate.CurrentActionId = &action.ActionId
-		if !moveEventCount(&nextUpdate, event.Status, nextEvent.Status) {
-			return ErrCorrectionUpdateConflict
+		for index, nextEvent := range nextEvents {
+			if !moveEventCount(&nextUpdate, currentEvents[index].Status, nextEvent.Status) {
+				return ErrCorrectionUpdateConflict
+			}
 		}
 		nextUpdate.UpdatedUnixTime = now
 		updated, updateErr = tx.UpdateUpdateCAS(update.Version, &nextUpdate)
@@ -183,14 +239,127 @@ func (e *CorrectionEngine) Correct(c core.Context, request CorrectEventRequest) 
 	if err != nil {
 		return nil, err
 	}
-	return &CorrectEventResult{Update: update, Event: event, Action: action, Replayed: replayed}, nil
+	allEvents, err := e.repository.ListEvents(c, request.Uid, request.UpdateId)
+	if err != nil {
+		return nil, err
+	}
+	wanted := make(map[int64]struct{}, len(correctedEventIds))
+	for _, eventId := range correctedEventIds {
+		wanted[eventId] = struct{}{}
+	}
+	correctedEvents := make([]*EconomicEvent, 0, len(correctedEventIds))
+	for _, item := range allEvents {
+		if _, ok := wanted[item.EventId]; ok {
+			correctedEvents = append(correctedEvents, item)
+		}
+	}
+	return &CorrectEventResult{Update: update, Event: event, Events: correctedEvents, Action: action, Replayed: replayed}, nil
+}
+
+func (e *CorrectionEngine) categoryAliasesForCorrection(c core.Context, request CorrectEventRequest, sources []*FinanceUpdateSource, eventIds []int64, now int64) ([]*CategoryAliasMapping, error) {
+	if e.evidence == nil || request.Correction.FieldMask&MANUAL_FIELD_CATEGORY == 0 || request.Correction.CategoryId == nil || *request.Correction.CategoryId < 1 {
+		return nil, nil
+	}
+	return buildCategoryAliases(c, e.repository, e.evidence, e.ids, request.Uid, sources, eventIds, *request.Correction.CategoryId, now)
+}
+
+func (e *CorrectionEngine) categoryCorrectionEventIds(c core.Context, request CorrectEventRequest, sources []*FinanceUpdateSource) ([]int64, error) {
+	if normalizedCategoryCorrectionScope(request.CategoryScope) != CATEGORY_CORRECTION_SCOPE_MATCHING_UNCATEGORIZED {
+		return []int64{request.EventId}, nil
+	}
+	if e.evidence == nil || !isCategoryOnlyCorrection(request.Correction) {
+		return nil, ErrCorrectionRequestInvalid
+	}
+	return e.matchingUncategorizedCategoryEventIds(c, request.Uid, request.UpdateId, request.EventId, sources, request.Correction.CategoryId)
+}
+
+func (e *CorrectionEngine) InspectCategoryCorrectionScope(c core.Context, uid int64, updateId int64, eventId int64) (*CategoryCorrectionScopePreview, error) {
+	if e == nil || e.repository == nil || e.evidence == nil || uid < 1 || updateId < 1 || eventId < 1 {
+		return nil, ErrCorrectionRequestInvalid
+	}
+	sources, err := e.repository.ListSources(c, uid, updateId)
+	if err != nil {
+		return nil, err
+	}
+	eventIds, err := e.matchingUncategorizedCategoryEventIds(c, uid, updateId, eventId, sources, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &CategoryCorrectionScopePreview{MatchingEventCount: int64(len(eventIds))}, nil
+}
+
+func (e *CorrectionEngine) matchingUncategorizedCategoryEventIds(c core.Context, uid int64, updateId int64, eventId int64,
+	sources []*FinanceUpdateSource, allowedSelectedCategoryId *int64) ([]int64, error) {
+	events, err := e.repository.ListEvents(c, uid, updateId)
+	if err != nil {
+		return nil, err
+	}
+	var selected *EconomicEvent
+	eventIds := make([]int64, 0, len(events))
+	for _, event := range events {
+		if event == nil {
+			continue
+		}
+		eventIds = append(eventIds, event.EventId)
+		if event.EventId == eventId {
+			selected = event
+		}
+	}
+	if selected == nil || selected.Status != EVENT_STATUS_READY || categoryTypeForNature(selected.EconomicNature) == 0 ||
+		(selected.CategoryId != nil && (allowedSelectedCategoryId == nil || *selected.CategoryId != *allowedSelectedCategoryId)) {
+		return nil, ErrCorrectionEventConflict
+	}
+	keysByEvent, err := categoryAliasKeysForEvents(c, e.repository, e.evidence, uid, sources, eventIds)
+	if err != nil {
+		return nil, err
+	}
+	selectedKeys := keysByEvent[selected.EventId]
+	result := []int64{selected.EventId}
+	if len(selectedKeys) < 1 {
+		return result, nil
+	}
+	for _, event := range events {
+		if event == nil || event.EventId == selected.EventId || event.Status != EVENT_STATUS_READY || event.CategoryId != nil ||
+			event.EconomicNature != selected.EconomicNature || !categoryKeySetsIntersect(selectedKeys, keysByEvent[event.EventId]) {
+			continue
+		}
+		result = append(result, event.EventId)
+	}
+	return result, nil
+}
+
+func normalizedCategoryCorrectionScope(scope CategoryCorrectionScope) CategoryCorrectionScope {
+	if scope == "" {
+		return CATEGORY_CORRECTION_SCOPE_SINGLE
+	}
+	return scope
+}
+
+func isCategoryOnlyCorrection(correction EventCorrection) bool {
+	mask, valid := correctionEffectiveMask(correction)
+	return valid && correction.FieldMask == MANUAL_FIELD_CATEGORY && mask == MANUAL_FIELD_CATEGORY &&
+		correction.CategoryId != nil && *correction.CategoryId > 0
+}
+
+func categoryKeySetsIntersect(left map[string]struct{}, right map[string]struct{}) bool {
+	if len(left) > len(right) {
+		left, right = right, left
+	}
+	for key := range left {
+		if _, ok := right[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func validCorrectionRequest(engine *CorrectionEngine, request CorrectEventRequest) bool {
 	_, validMask := correctionEffectiveMask(request.Correction)
+	scope := normalizedCategoryCorrectionScope(request.CategoryScope)
 	return engine != nil && engine.repository != nil && engine.ids != nil && engine.now != nil && engine.locks != nil &&
 		request.Uid > 0 && request.UpdateId > 0 && request.EventId > 0 && request.ExpectedUpdateVersion > 0 && request.ExpectedEventVersion > 0 &&
-		strings.TrimSpace(request.IdempotencyKey) != "" && len(request.IdempotencyKey) <= maximumOrganizeIdempotencyKeyLength && validMask
+		strings.TrimSpace(request.IdempotencyKey) != "" && len(request.IdempotencyKey) <= maximumOrganizeIdempotencyKeyLength && validMask &&
+		(scope == CATEGORY_CORRECTION_SCOPE_SINGLE || (scope == CATEGORY_CORRECTION_SCOPE_MATCHING_UNCATEGORIZED && isCategoryOnlyCorrection(request.Correction)))
 }
 
 // correctionEffectiveMask keeps the legacy status field as a compatibility
@@ -345,7 +514,7 @@ func newCorrectionAction(request CorrectEventRequest, actionId int64, now int64)
 		IdempotencyKeyVersion: ACTION_IDEMPOTENCY_VERSION_V1,
 		RequestDigest: digestOrganizeValue(string(ACTION_REQUEST_VERSION_V1), strconv.FormatInt(request.Uid, 10), strconv.FormatInt(request.UpdateId, 10),
 			strconv.FormatInt(request.EventId, 10), strconv.FormatInt(request.ExpectedUpdateVersion, 10), strconv.FormatInt(request.ExpectedEventVersion, 10),
-			strconv.FormatInt(request.Correction.FieldMask, 10), correctionDigest(request.Correction)),
+			strconv.FormatInt(request.Correction.FieldMask, 10), string(normalizedCategoryCorrectionScope(request.CategoryScope)), correctionDigest(request.Correction)),
 		RequestDigestVersion: ACTION_REQUEST_VERSION_V1, Status: ACTION_STATUS_READY, ReasonCodesJson: "[]",
 		CreatedUnixTime: now, UpdatedUnixTime: now, ActionId: actionId,
 	}

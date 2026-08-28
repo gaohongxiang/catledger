@@ -58,8 +58,45 @@ func TestResolveRepaymentTargetUsesExactMappingBeforeUniqueCardFamily(t *testing
 	composite := resolveFundsAccountReference(row, &importing.ImportBatch{}, importing.SourceFundsAccountReference{
 		Kind: importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET, Raw: "花呗|信用购",
 	}, mappings)
+	if composite == nil || *composite != 51 {
+		t.Fatalf("unique consumer-credit family mapping mismatch: %v", composite)
+	}
+}
+
+func TestResolveRepaymentTargetKeepsConsumerCreditFamilyAmbiguous(t *testing.T) {
+	row := &importing.RawImportRow{Currency: "CNY"}
+	huaBeiAlias, _ := importing.BuildPaymentAccountAlias("花呗")
+	creditPurchaseAlias, _ := importing.BuildPaymentAccountAlias("信用购")
+	mappings := indexPaymentAccountMappings([]*importing.PaymentAccountMapping{
+		{Currency: "CNY", AliasKey: huaBeiAlias.Key, AliasKeyVersion: huaBeiAlias.Version, LedgerAccountId: 51, MaskedDisplayName: "花呗"},
+		{Currency: "CNY", AliasKey: creditPurchaseAlias.Key, AliasKeyVersion: creditPurchaseAlias.Version, LedgerAccountId: 53, MaskedDisplayName: "信用购"},
+	})
+	composite := resolveFundsAccountReference(row, &importing.ImportBatch{}, importing.SourceFundsAccountReference{
+		Kind: importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET, Raw: "花呗|信用购",
+	}, mappings)
 	if composite != nil {
-		t.Fatalf("composite repayment target must remain unresolved: %d", *composite)
+		t.Fatalf("conflicting consumer-credit accounts must remain unresolved: %d", *composite)
+	}
+}
+
+func TestResolveAlipayIncomeFallsBackToMappedAccountBalance(t *testing.T) {
+	balanceAlias, ok := importing.BuildPaymentAccountAlias("余额")
+	if !ok {
+		t.Fatal("build alipay balance alias")
+	}
+	row := &importing.RawImportRow{
+		Currency: "CNY", RawPaymentMethod: "-", NormalizedDirection: importing.NORMALIZED_DIRECTION_INCOME,
+		EconomicEffect: importing.ECONOMIC_EFFECT_NORMAL,
+	}
+	account := resolvePlanningRowLedgerAccount(row, &importing.ImportBatch{}, importing.SOURCE_TYPE_ALIPAY,
+		map[string]int64{"CNY\x00" + balanceAlias.Key: 71})
+	if account == nil || *account != 71 {
+		t.Fatalf("alipay income did not reuse account balance: %v", account)
+	}
+	row.NormalizedDirection = importing.NORMALIZED_DIRECTION_EXPENSE
+	if account = resolvePlanningRowLedgerAccount(row, &importing.ImportBatch{}, importing.SOURCE_TYPE_ALIPAY,
+		map[string]int64{"CNY\x00" + balanceAlias.Key: 71}); account != nil {
+		t.Fatalf("alipay expense without payment method used income fallback: %d", *account)
 	}
 }
 

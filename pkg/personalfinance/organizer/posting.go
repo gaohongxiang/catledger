@@ -32,7 +32,6 @@ type PostMode string
 
 const (
 	POST_MODE_ALL_READY PostMode = "all_ready"
-	POST_MODE_READY     PostMode = "ready"
 )
 
 // LedgerSessionWriter 由核心账本服务实现；写入必须复用 organizer 持有的同一个用户隐私事务。
@@ -75,7 +74,7 @@ func (e *PostingEngine) Post(c core.Context, request PostRequest) (*PostResult, 
 	if e == nil || e.repository == nil || e.ledger == nil || e.ids == nil || e.now == nil || e.locks == nil ||
 		request.Uid < 1 || request.UpdateId < 1 || request.ExpectedUpdateVersion < 1 ||
 		strings.TrimSpace(request.IdempotencyKey) == "" || len(request.IdempotencyKey) > maximumOrganizeIdempotencyKeyLength ||
-		(request.Mode != POST_MODE_ALL_READY && request.Mode != POST_MODE_READY) {
+		request.Mode != POST_MODE_ALL_READY {
 		return nil, ErrPostRequestInvalid
 	}
 	now := e.now().Unix()
@@ -144,7 +143,7 @@ func (e *PostingEngine) persist(c core.Context, request PostRequest, candidate *
 			if update.Version != request.ExpectedUpdateVersion {
 				return ErrPostVersionConflict
 			}
-			if update.Status != UPDATE_STATUS_REVIEW && update.Status != UPDATE_STATUS_PARTIALLY_POSTED {
+			if update.Status != UPDATE_STATUS_REVIEW {
 				return ErrPostStateConflict
 			}
 			persistedSources, sourceErr := tx.ListSources(request.UpdateId)
@@ -166,9 +165,7 @@ func (e *PostingEngine) persist(c core.Context, request PostRequest, candidate *
 					ready = append(ready, event)
 				case EVENT_STATUS_NEEDS_ACTION:
 					needsActionCount++
-					if request.Mode == POST_MODE_ALL_READY {
-						return ErrPostUnresolvedEvents
-					}
+					return ErrPostUnresolvedEvents
 				case EVENT_STATUS_POSTED:
 					postedCount++
 				case EVENT_STATUS_EXCLUDED:
@@ -180,9 +177,6 @@ func (e *PostingEngine) persist(c core.Context, request PostRequest, candidate *
 			if int64(len(events)) != update.FinalEventCount || int64(len(ready)) != update.ReadyEventCount ||
 				postedCount != update.PostedEventCount || needsActionCount != update.NeedsActionEventCount || excludedCount != update.ExcludedEventCount {
 				return ErrPostStateConflict
-			}
-			if request.Mode == POST_MODE_READY && len(ready) == 0 {
-				return ErrPostEventNotPostable
 			}
 			// Re-derive readiness from the event and relation rows in this exact
 			// transaction. A stale or client-forged ready flag can never cross the
@@ -231,13 +225,10 @@ func (e *PostingEngine) persist(c core.Context, request PostRequest, candidate *
 			if final.ReadyEventCount != 0 {
 				return ErrPostStateConflict
 			}
-			if final.NeedsActionEventCount == 0 {
-				final.Status = UPDATE_STATUS_POSTED
-			} else if request.Mode == POST_MODE_READY {
-				final.Status = UPDATE_STATUS_PARTIALLY_POSTED
-			} else {
+			if final.NeedsActionEventCount != 0 {
 				return ErrPostUnresolvedEvents
 			}
+			final.Status = UPDATE_STATUS_POSTED
 			final.UpdatedUnixTime = now
 			updated, updateErr = tx.UpdateUpdateCAS(posting.Version, &final)
 			if updateErr != nil {
@@ -400,9 +391,6 @@ func (e *PostingEngine) loadResult(c core.Context, uid int64, updateId int64, ac
 
 func newPostAction(request PostRequest, actionId int64, now int64) *FinanceAction {
 	actionType := ACTION_TYPE_POST_ALL_READY
-	if request.Mode == POST_MODE_READY {
-		actionType = ACTION_TYPE_POST_READY
-	}
 	return &FinanceAction{
 		Uid: request.Uid, UpdateId: request.UpdateId, ExpectedUpdateVersion: request.ExpectedUpdateVersion, ActionType: actionType,
 		IdempotencyKeyDigest:  digestOrganizeValue(string(ACTION_IDEMPOTENCY_VERSION_V1), strconv.FormatInt(request.Uid, 10), strings.TrimSpace(request.IdempotencyKey)),

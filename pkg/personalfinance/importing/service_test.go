@@ -42,23 +42,13 @@ func TestUploadImportFileIsDurableIdempotentAndIsolatedByUID(t *testing.T) {
 		t.Fatalf("final object content changed")
 	}
 
-	repository.mutex.Lock()
-	repository.batches[memoryImportKey(101, 9001)] = &ImportBatch{
-		Uid:             101,
-		BatchId:         9001,
-		FileId:          first.File.FileId,
-		CreatedUnixTime: 1700000001,
-	}
-	repository.mutex.Unlock()
-
 	second, err := service.UploadImportFile(nil, testImportFileUpload(101, "renamed.csv", content))
 
 	if err != nil {
 		t.Fatalf("idempotent upload failed: %v", err)
 	}
 
-	if !second.Duplicate || second.Recovered || second.File.FileId != first.File.FileId ||
-		second.LatestBatch == nil || second.LatestBatch.BatchId != 9001 {
+	if !second.Duplicate || second.Recovered || second.File.FileId != first.File.FileId {
 		t.Fatalf("same uid and content did not return the existing file")
 	}
 

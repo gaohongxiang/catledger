@@ -378,7 +378,8 @@ import {
     canDeleteImportFileContent,
     canDiscardImportBatch,
     findPaymentAccountGroupForRow,
-    getSafePaymentAccountDisplayName
+    getSafePaymentAccountDisplayName,
+    isPaymentAccountGroupUnresolved
 } from '../state.ts';
 import { usePersonalFinanceStore } from '../store.ts';
 
@@ -430,7 +431,7 @@ const rowPage = ref<number>(1);
 const showUndoImpactDialog = ref<boolean>(false);
 const undoImpact = ref<PersonalFinanceUndoImpact | null>(null);
 
-const unresolvedPaymentAccountCount = computed<number>(() => personalFinanceStore.paymentAccounts.filter(group => !group.mapped).length);
+const unresolvedPaymentAccountCount = computed<number>(() => personalFinanceStore.paymentAccounts.filter(isPaymentAccountGroupUnresolved).length);
 
 const canDiscardSelectedBatch = computed<boolean>(() => {
 	return canDiscardImportBatch(personalFinanceStore.selectedBatch);
@@ -554,6 +555,11 @@ async function reparseFile(fileId: string, reasonCode: string): Promise<void> {
         reasonCode
     });
 
+    if (result.alreadyPosted) {
+        snackbar.value?.showMessage('personalFinance.alreadyPosted');
+        return;
+    }
+
     if (result.requiresSourceAccount && result.discovery) {
         sourceAccountDialog.value?.open({
             fileId,
@@ -665,7 +671,7 @@ function getRowPaymentAccountGroup(row: PersonalFinanceImportRow): PersonalFinan
 
 function isRowPaymentAccountUnresolved(row: PersonalFinanceImportRow): boolean {
     const group = getRowPaymentAccountGroup(row);
-    return !!group && !group.mapped;
+    return !!group && isPaymentAccountGroupUnresolved(group);
 }
 
 function openPaymentAccountSetup(): void {

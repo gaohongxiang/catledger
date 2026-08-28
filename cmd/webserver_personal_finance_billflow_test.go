@@ -27,7 +27,6 @@ func TestPersonalFinanceOrganizerRoutesReplaceBillflowAndRemainImportIndependent
 		{method: "POST", path: "/personal_finance/events/correct.json", handler: "EventCorrectHandler"},
 		{method: "POST", path: "/personal_finance/events/exclude.json", handler: "EventExcludeHandler"},
 		{method: "POST", path: "/personal_finance/actions/post-all-ready.json", handler: "ActionPostAllReadyHandler"},
-		{method: "POST", path: "/personal_finance/actions/post-ready.json", handler: "ActionPostReadyHandler"},
 		{method: "GET", path: "/personal_finance/actions/undo_impact.json", handler: "ActionUndoImpactHandler"},
 		{method: "POST", path: "/personal_finance/actions/undo.json", handler: "ActionUndoHandler"},
 	}

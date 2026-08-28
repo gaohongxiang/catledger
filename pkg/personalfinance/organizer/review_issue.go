@@ -4,13 +4,14 @@ package organizer
 type ReviewIssueType string
 
 const (
-	REVIEW_ISSUE_TYPE_ACCOUNT_MAPPING   ReviewIssueType = "account_mapping"
-	REVIEW_ISSUE_TYPE_SHARED_FIELDS     ReviewIssueType = "shared_fields"
-	REVIEW_ISSUE_TYPE_SAME_EVENT        ReviewIssueType = "same_event"
-	REVIEW_ISSUE_TYPE_REFUND_RELATION   ReviewIssueType = "refund_relation"
-	REVIEW_ISSUE_TYPE_TRANSFER_ACCOUNTS ReviewIssueType = "transfer_accounts"
-	REVIEW_ISSUE_TYPE_IDENTITY_CONFLICT ReviewIssueType = "identity_conflict"
-	REVIEW_ISSUE_TYPE_FIELD_CONFLICT    ReviewIssueType = "field_conflict"
+	REVIEW_ISSUE_TYPE_ACCOUNT_MAPPING    ReviewIssueType = "account_mapping"
+	REVIEW_ISSUE_TYPE_SHARED_FIELDS      ReviewIssueType = "shared_fields"
+	REVIEW_ISSUE_TYPE_SAME_EVENT         ReviewIssueType = "same_event"
+	REVIEW_ISSUE_TYPE_REFUND_RELATION    ReviewIssueType = "refund_relation"
+	REVIEW_ISSUE_TYPE_TRANSFER_ACCOUNTS  ReviewIssueType = "transfer_accounts"
+	REVIEW_ISSUE_TYPE_IDENTITY_CONFLICT  ReviewIssueType = "identity_conflict"
+	REVIEW_ISSUE_TYPE_FIELD_CONFLICT     ReviewIssueType = "field_conflict"
+	REVIEW_ISSUE_TYPE_INSTALLMENT_ORIGIN ReviewIssueType = "installment_origin"
 )
 
 // ReviewIssueStatus 表示稳定评审问题的生命周期。
@@ -96,7 +97,7 @@ func isReviewIssueType(value ReviewIssueType) bool {
 	switch value {
 	case REVIEW_ISSUE_TYPE_ACCOUNT_MAPPING, REVIEW_ISSUE_TYPE_SHARED_FIELDS, REVIEW_ISSUE_TYPE_SAME_EVENT,
 		REVIEW_ISSUE_TYPE_REFUND_RELATION, REVIEW_ISSUE_TYPE_TRANSFER_ACCOUNTS, REVIEW_ISSUE_TYPE_IDENTITY_CONFLICT,
-		REVIEW_ISSUE_TYPE_FIELD_CONFLICT:
+		REVIEW_ISSUE_TYPE_FIELD_CONFLICT, REVIEW_ISSUE_TYPE_INSTALLMENT_ORIGIN:
 		return true
 	default:
 		return false

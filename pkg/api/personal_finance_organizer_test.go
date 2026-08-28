@@ -12,8 +12,25 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 )
+
+func TestUniqueKnownInstallmentCandidateRequiresOneStableExistingRelation(t *testing.T) {
+	linked := &installments.CandidateView{CandidateId: 41, Status: installments.CANDIDATE_STATUS_LINKED}
+	converted := &installments.CandidateView{CandidateId: 42, Status: installments.CANDIDATE_STATUS_CONVERTED}
+	pending := &installments.CandidateView{CandidateId: 43, Status: installments.CANDIDATE_STATUS_PENDING}
+
+	if got := uniqueKnownInstallmentCandidate([]*installments.CandidateView{pending, linked}); got != linked {
+		t.Fatalf("one stable existing relation was not reused: %+v", got)
+	}
+	if got := uniqueKnownInstallmentCandidate([]*installments.CandidateView{linked, converted}); got != nil {
+		t.Fatalf("ambiguous existing relations were guessed: %+v", got)
+	}
+	if got := uniqueKnownInstallmentCandidate([]*installments.CandidateView{pending}); got != nil {
+		t.Fatalf("unlinked candidate was treated as an existing relation: %+v", got)
+	}
+}
 
 func TestOrganizerHandlersUseResourceContractsAndCurrentUser(t *testing.T) {
 	stub := &organizerAPITestApplication{
@@ -46,16 +63,24 @@ func TestOrganizerHandlersUseResourceContractsAndCurrentUser(t *testing.T) {
 	}
 
 	_, apiErr = api.EventCorrectHandler(newOrganizerTestContext(t, http.MethodPost, "/events/correct",
-		`{"updateId":"701","eventId":"801","expectedUpdateVersion":2,"expectedEventVersion":3,"idempotencyKey":"correct-1","fieldMask":128,"categoryId":"88"}`))
+		`{"updateId":"701","eventId":"801","expectedUpdateVersion":2,"expectedEventVersion":3,"idempotencyKey":"correct-1","categoryScope":"matching_uncategorized","fieldMask":128,"categoryId":"88"}`))
 	if apiErr != nil || stub.correctRequest.Uid != 1001 || stub.correctRequest.Correction.FieldMask != organizer.MANUAL_FIELD_CATEGORY ||
-		stub.correctRequest.Correction.CategoryId == nil || *stub.correctRequest.Correction.CategoryId != 88 {
+		stub.correctRequest.Correction.CategoryId == nil || *stub.correctRequest.Correction.CategoryId != 88 ||
+		stub.correctRequest.CategoryScope != organizer.CATEGORY_CORRECTION_SCOPE_MATCHING_UNCATEGORIZED {
 		t.Fatalf("correct request mismatch: request=%+v err=%v", stub.correctRequest, apiErr)
 	}
 
-	_, apiErr = api.ActionPostReadyHandler(newOrganizerTestContext(t, http.MethodPost, "/actions/post-ready",
+	stub.categoryScope = &organizer.CategoryCorrectionScopePreview{MatchingEventCount: 6}
+	response, apiErr = api.EventCategoryScopeHandler(newOrganizerTestContext(t, http.MethodGet, "/events/category-scope?update_id=701&event_id=801", ""))
+	encoded = marshalOrganizerResponse(t, response)
+	if apiErr != nil || !strings.Contains(encoded, `"matchingEventCount":6`) {
+		t.Fatalf("category scope response mismatch: response=%s err=%v", encoded, apiErr)
+	}
+
+	_, apiErr = api.ActionPostAllReadyHandler(newOrganizerTestContext(t, http.MethodPost, "/actions/post-all-ready",
 		`{"updateId":"701","expectedUpdateVersion":2,"idempotencyKey":"post-1"}`))
-	if apiErr != nil || stub.postRequest.Mode != organizer.POST_MODE_READY || stub.postRequest.Uid != 1001 {
-		t.Fatalf("post-ready request mismatch: request=%+v err=%v", stub.postRequest, apiErr)
+	if apiErr != nil || stub.postRequest.Mode != organizer.POST_MODE_ALL_READY || stub.postRequest.Uid != 1001 {
+		t.Fatalf("post-all request mismatch: request=%+v err=%v", stub.postRequest, apiErr)
 	}
 
 	response, apiErr = api.EventListHandler(newOrganizerTestContext(t, http.MethodGet, "/events?update_id=701&status=needs_action&limit=20", ""))
@@ -111,6 +136,7 @@ type organizerAPITestApplication struct {
 	abandonRequest  organizer.AbandonRequest
 	correctRequest  organizer.CorrectEventRequest
 	postRequest     organizer.PostRequest
+	categoryScope   *organizer.CategoryCorrectionScopePreview
 }
 
 func (a *organizerAPITestApplication) CreateUpdate(_ core.Context, uid int64, batchIds []int64, _ string) (*organizerUpdateDetail, error) {
@@ -146,6 +172,10 @@ func (a *organizerAPITestApplication) GetEventEvidence(_ core.Context, _ int64, 
 
 func (a *organizerAPITestApplication) InspectEventCorrection(_ core.Context, _ int64, _ int64, _ int64) (*organizer.UndoImpact, error) {
 	return &organizer.UndoImpact{CanUndo: true, ReasonCodes: []string{}}, a.err
+}
+
+func (a *organizerAPITestApplication) InspectCategoryCorrectionScope(_ core.Context, _ int64, _ int64, _ int64) (*organizer.CategoryCorrectionScopePreview, error) {
+	return a.categoryScope, a.err
 }
 
 func (a *organizerAPITestApplication) CorrectEvent(_ core.Context, request organizer.CorrectEventRequest) (*organizerMutationResult, error) {

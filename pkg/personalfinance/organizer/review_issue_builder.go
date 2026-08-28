@@ -257,8 +257,10 @@ func classifyReviewIssue(event *EconomicEvent, reasons []string) reviewIssueSpec
 		return reviewIssueSpec{issueType: REVIEW_ISSUE_TYPE_IDENTITY_CONFLICT, primaryReason: firstReviewReason(reasons, reasonIdentityConflict, reasonIdentityReviewRequired)}
 	case has(reasonCoreFieldsConflict):
 		return reviewIssueSpec{issueType: REVIEW_ISSUE_TYPE_FIELD_CONFLICT, primaryReason: reasonCoreFieldsConflict}
-	case event.EconomicNature == ECONOMIC_NATURE_REFUND || has(reasonRefundRelationRequired, reasonRefundRelationAmbiguous, reasonRefundAmountExceeded, reasonRefundRelationInvalid):
+	case has(reasonRefundRelationRequired, reasonRefundRelationAmbiguous, reasonRefundAmountExceeded, reasonRefundRelationInvalid):
 		return reviewIssueSpec{issueType: REVIEW_ISSUE_TYPE_REFUND_RELATION, primaryReason: firstReviewReason(reasons, reasonRefundRelationAmbiguous, reasonRefundAmountExceeded, reasonRefundRelationInvalid, reasonRefundRelationRequired)}
+	case has(reasonInstallmentOriginRequired, reasonInstallmentCompositionRequired):
+		return reviewIssueSpec{issueType: REVIEW_ISSUE_TYPE_INSTALLMENT_ORIGIN, primaryReason: firstReviewReason(reasons, reasonInstallmentOriginRequired, reasonInstallmentCompositionRequired)}
 	case event.EconomicNature == ECONOMIC_NATURE_INTERNAL_TRANSFER || event.EconomicNature == ECONOMIC_NATURE_REPAYMENT || event.EconomicNature == ECONOMIC_NATURE_BORROW ||
 		has(reasonTransferAccountRequired, reasonRepaymentAccountRequired, reasonBorrowAccountRequired):
 		return reviewIssueSpec{issueType: REVIEW_ISSUE_TYPE_TRANSFER_ACCOUNTS, primaryReason: firstReviewReason(reasons, reasonRelationAmbiguous, reasonRepaymentAccountRequired, reasonBorrowAccountRequired, reasonTransferAccountRequired), groupable: true}
@@ -327,7 +329,8 @@ func sharedReviewDecisionSignature(event *EconomicEvent, spec reviewIssueSpec, r
 func reviewReasonFamily(reasons []string) string {
 	managed := make([]string, 0, len(reasons))
 	for _, reason := range reasons {
-		if isManagedPostabilityReason(reason) || reason == reasonIdentityConflict || reason == reasonIdentityReviewRequired || reason == reasonCoreFieldsConflict {
+		if isManagedPostabilityReason(reason) || reason == reasonIdentityConflict || reason == reasonIdentityReviewRequired || reason == reasonCoreFieldsConflict ||
+			reason == reasonInstallmentOriginRequired || reason == reasonInstallmentCompositionRequired {
 			managed = append(managed, reason)
 		}
 	}

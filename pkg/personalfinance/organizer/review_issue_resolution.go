@@ -24,29 +24,31 @@ var (
 type ReviewIssueDecision string
 
 const (
-	REVIEW_ISSUE_DECISION_APPLY_FIELDS     ReviewIssueDecision = "apply_fields"
-	REVIEW_ISSUE_DECISION_CONFIRM_DISTINCT ReviewIssueDecision = "confirm_distinct"
-	REVIEW_ISSUE_DECISION_CONFIRM_SAME     ReviewIssueDecision = "confirm_same"
-	REVIEW_ISSUE_DECISION_EXCLUDE_EVENTS   ReviewIssueDecision = "exclude_events"
-	REVIEW_ISSUE_DECISION_DISCARD_EVIDENCE ReviewIssueDecision = "discard_evidence"
-	REVIEW_ISSUE_DECISION_LINK_REFUND      ReviewIssueDecision = "link_refund"
-	REVIEW_ISSUE_DECISION_LINK_EXISTING    ReviewIssueDecision = "link_existing_transaction"
+	REVIEW_ISSUE_DECISION_APPLY_FIELDS                  ReviewIssueDecision = "apply_fields"
+	REVIEW_ISSUE_DECISION_CONFIRM_DISTINCT              ReviewIssueDecision = "confirm_distinct"
+	REVIEW_ISSUE_DECISION_CONFIRM_SAME                  ReviewIssueDecision = "confirm_same"
+	REVIEW_ISSUE_DECISION_EXCLUDE_EVENTS                ReviewIssueDecision = "exclude_events"
+	REVIEW_ISSUE_DECISION_CONFIRM_INSTALLMENT_PRINCIPAL ReviewIssueDecision = "confirm_installment_principal"
+	REVIEW_ISSUE_DECISION_DISCARD_EVIDENCE              ReviewIssueDecision = "discard_evidence"
+	REVIEW_ISSUE_DECISION_LINK_REFUND                   ReviewIssueDecision = "link_refund"
+	REVIEW_ISSUE_DECISION_LINK_EXISTING                 ReviewIssueDecision = "link_existing_transaction"
 )
 
 type ResolveReviewIssueRequest struct {
-	Uid                   int64
-	UpdateId              int64
-	IssueId               int64
-	ExpectedUpdateVersion int64
-	ExpectedIssueVersion  int64
-	IdempotencyKey        string
-	Decision              ReviewIssueDecision
-	Correction            EventCorrection
-	PrimaryEventId        int64
-	EventIds              []int64
-	EvidenceId            int64
-	TargetEventId         int64
-	TransactionId         int64
+	Uid                    int64
+	UpdateId               int64
+	IssueId                int64
+	ExpectedUpdateVersion  int64
+	ExpectedIssueVersion   int64
+	IdempotencyKey         string
+	Decision               ReviewIssueDecision
+	Correction             EventCorrection
+	PrimaryEventId         int64
+	EventIds               []int64
+	EvidenceId             int64
+	TargetEventId          int64
+	TransactionId          int64
+	InstallmentCandidateId int64
 }
 
 type ResolveReviewIssueResult struct {
@@ -61,16 +63,24 @@ type ResolveReviewIssueResult struct {
 
 type ReviewIssueEngine struct {
 	repository *Repository
+	evidence   EvidenceReader
 	ids        IdentifierGenerator
 	now        func() time.Time
 	locks      *postingLockSet
 }
 
-func NewReviewIssueEngine(repository *Repository, ids IdentifierGenerator) (*ReviewIssueEngine, error) {
+func NewReviewIssueEngine(repository *Repository, ids IdentifierGenerator, evidenceReaders ...EvidenceReader) (*ReviewIssueEngine, error) {
 	if repository == nil || ids == nil {
 		return nil, ErrReviewIssueRequestInvalid
 	}
-	return &ReviewIssueEngine{repository: repository, ids: ids, now: time.Now, locks: globalPostingLocks}, nil
+	if len(evidenceReaders) > 1 || (len(evidenceReaders) == 1 && evidenceReaders[0] == nil) {
+		return nil, ErrReviewIssueRequestInvalid
+	}
+	var evidence EvidenceReader
+	if len(evidenceReaders) == 1 {
+		evidence = evidenceReaders[0]
+	}
+	return &ReviewIssueEngine{repository: repository, evidence: evidence, ids: ids, now: time.Now, locks: globalPostingLocks}, nil
 }
 
 func (e *ReviewIssueEngine) Resolve(c core.Context, request ResolveReviewIssueRequest) (*ResolveReviewIssueResult, error) {
@@ -92,6 +102,10 @@ func (e *ReviewIssueEngine) Resolve(c core.Context, request ResolveReviewIssueRe
 	actionId := e.ids.GenerateUuid(uuid.UUID_TYPE_PERSONAL_FINANCE)
 	if now < 1 || actionId < 1 {
 		return nil, ErrReviewIssueRequestInvalid
+	}
+	categoryAliases, err := e.categoryAliasesForResolution(c, request, sources, now)
+	if err != nil {
+		return nil, err
 	}
 	candidate := newResolveReviewIssueAction(request, actionId, now)
 	persistedActionId := int64(0)
@@ -117,7 +131,7 @@ func (e *ReviewIssueEngine) Resolve(c core.Context, request ResolveReviewIssueRe
 		if update == nil || update.Version != request.ExpectedUpdateVersion {
 			return ErrReviewIssueVersionConflict
 		}
-		if update.Status != UPDATE_STATUS_REVIEW && update.Status != UPDATE_STATUS_PARTIALLY_POSTED {
+		if update.Status != UPDATE_STATUS_REVIEW {
 			return ErrReviewIssueStateConflict
 		}
 		issue, findErr := tx.FindReviewIssueById(request.IssueId)
@@ -156,6 +170,9 @@ func (e *ReviewIssueEngine) Resolve(c core.Context, request ResolveReviewIssueRe
 		if decisionErr != nil {
 			return decisionErr
 		}
+		if saveErr := tx.SaveCategoryAliases(categoryAliases); saveErr != nil {
+			return saveErr
+		}
 
 		resolvedIssue := *issue
 		resolvedIssue.Status = REVIEW_ISSUE_STATUS_RESOLVED
@@ -185,7 +202,11 @@ func (e *ReviewIssueEngine) Resolve(c core.Context, request ResolveReviewIssueRe
 		applied := applying
 		applied.Status = ACTION_STATUS_APPLIED
 		applied.AppliedUpdateVersion = nextUpdate.Version
-		applied.ReasonCodesJson = reasonCodesJSON([]string{"review_issue_resolved", "decision:" + string(request.Decision)})
+		actionReasons := []string{"review_issue_resolved", "decision:" + string(request.Decision)}
+		if request.Decision == REVIEW_ISSUE_DECISION_CONFIRM_INSTALLMENT_PRINCIPAL {
+			actionReasons = append(actionReasons, "installment_candidate:"+strconv.FormatInt(request.InstallmentCandidateId, 10))
+		}
+		applied.ReasonCodesJson = reasonCodesJSON(actionReasons)
 		applied.CompletedUnixTime = &now
 		applied.UpdatedUnixTime = now
 		updated, updateErr = tx.UpdateActionCAS(ACTION_STATUS_APPLYING, &applied)
@@ -198,6 +219,25 @@ func (e *ReviewIssueEngine) Resolve(c core.Context, request ResolveReviewIssueRe
 		return nil, err
 	}
 	return e.loadResult(c, request, persistedActionId, replayed)
+}
+
+func (e *ReviewIssueEngine) categoryAliasesForResolution(c core.Context, request ResolveReviewIssueRequest,
+	sources []*FinanceUpdateSource, now int64) ([]*CategoryAliasMapping, error) {
+	if e.evidence == nil || request.Decision != REVIEW_ISSUE_DECISION_APPLY_FIELDS ||
+		request.Correction.FieldMask&MANUAL_FIELD_CATEGORY == 0 || request.Correction.CategoryId == nil || *request.Correction.CategoryId < 1 {
+		return nil, nil
+	}
+	members, err := e.repository.ListReviewIssueMembers(c, request.Uid, request.IssueId)
+	if err != nil {
+		return nil, err
+	}
+	eventIds := make([]int64, 0, len(members))
+	for _, member := range members {
+		if member.Role == REVIEW_ISSUE_MEMBER_ROLE_SUBJECT && member.ObjectType == REVIEW_OBJECT_TYPE_EVENT {
+			eventIds = append(eventIds, member.ObjectId)
+		}
+	}
+	return buildCategoryAliases(c, e.repository, e.evidence, e.ids, request.Uid, sources, eventIds, *request.Correction.CategoryId, now)
 }
 
 func validResolveReviewIssueRequest(engine *ReviewIssueEngine, request ResolveReviewIssueRequest) bool {
@@ -218,6 +258,8 @@ func validResolveReviewIssueRequest(engine *ReviewIssueEngine, request ResolveRe
 		return request.TargetEventId > 0
 	case REVIEW_ISSUE_DECISION_LINK_EXISTING:
 		return request.TransactionId > 0
+	case REVIEW_ISSUE_DECISION_CONFIRM_INSTALLMENT_PRINCIPAL:
+		return request.InstallmentCandidateId > 0
 	default:
 		return true
 	}
@@ -227,6 +269,7 @@ func isReviewIssueDecision(value ReviewIssueDecision) bool {
 	switch value {
 	case REVIEW_ISSUE_DECISION_APPLY_FIELDS, REVIEW_ISSUE_DECISION_CONFIRM_DISTINCT,
 		REVIEW_ISSUE_DECISION_CONFIRM_SAME, REVIEW_ISSUE_DECISION_EXCLUDE_EVENTS,
+		REVIEW_ISSUE_DECISION_CONFIRM_INSTALLMENT_PRINCIPAL,
 		REVIEW_ISSUE_DECISION_DISCARD_EVIDENCE, REVIEW_ISSUE_DECISION_LINK_REFUND,
 		REVIEW_ISSUE_DECISION_LINK_EXISTING:
 		return true
@@ -289,7 +332,12 @@ func (e *ReviewIssueEngine) applyDecision(tx *RepositoryTransaction, issue *Revi
 		}
 		return e.confirmSameEvent(tx, issue, events, request.PrimaryEventId, update, actionId, now)
 	case REVIEW_ISSUE_DECISION_EXCLUDE_EVENTS:
-		return e.excludeEvents(tx, issue, selectReviewEvents(events, request.EventIds), update, actionId, now)
+		return e.excludeEvents(tx, issue, selectReviewEvents(events, request.EventIds), update, actionId, now, "manual_exclusion")
+	case REVIEW_ISSUE_DECISION_CONFIRM_INSTALLMENT_PRINCIPAL:
+		if issue.IssueType != REVIEW_ISSUE_TYPE_INSTALLMENT_ORIGIN {
+			return nil, ErrReviewIssueDecisionInvalid
+		}
+		return e.excludeEvents(tx, issue, events, update, actionId, now, "installment_principal_confirmed")
 	case REVIEW_ISSUE_DECISION_DISCARD_EVIDENCE:
 		return e.discardEvidence(tx, issue, events, request.EvidenceId, update, actionId, now)
 	case REVIEW_ISSUE_DECISION_LINK_REFUND:
@@ -377,7 +425,7 @@ func (e *ReviewIssueEngine) confirmSameEvent(tx *RepositoryTransaction, issue *R
 }
 
 func (e *ReviewIssueEngine) excludeEvents(tx *RepositoryTransaction, issue *ReviewIssue, events []*EconomicEvent,
-	update *FinanceUpdate, actionId int64, now int64) ([]*EconomicEvent, error) {
+	update *FinanceUpdate, actionId int64, now int64, reason string) ([]*EconomicEvent, error) {
 	if len(events) < 1 {
 		return nil, ErrReviewIssueDecisionInvalid
 	}
@@ -388,7 +436,7 @@ func (e *ReviewIssueEngine) excludeEvents(tx *RepositoryTransaction, issue *Revi
 		next.Version = event.Version + 1
 		next.ManualFieldMask |= MANUAL_FIELD_STATUS
 		next.FieldSourcesJson = correctedFieldSources(event.FieldSourcesJson, MANUAL_FIELD_STATUS, 0, actionId)
-		next.ReasonCodesJson = reasonCodesJSON(appendUniqueReasons(retainedInformationalReasonCodes(event.ReasonCodesJson), "manual_exclusion"))
+		next.ReasonCodesJson = reasonCodesJSON(appendUniqueReasons(retainedInformationalReasonCodes(event.ReasonCodesJson), reason))
 		next.UpdatedUnixTime = now
 		updated, err := tx.UpdateEventCAS(event.Version, &next)
 		if err != nil || !updated {
@@ -429,7 +477,7 @@ func (e *ReviewIssueEngine) discardEvidence(tx *RepositoryTransaction, issue *Re
 			continue
 		}
 		if usable == 0 {
-			return e.excludeEvents(tx, issue, []*EconomicEvent{event}, update, actionId, now)
+			return e.excludeEvents(tx, issue, []*EconomicEvent{event}, update, actionId, now, "manual_exclusion")
 		}
 		return e.rederiveEvents(tx, issue, []*EconomicEvent{event}, update, actionId, now)
 	}
@@ -691,6 +739,9 @@ func reviewIssueResolvesReason(issueType ReviewIssueType, reason string) bool {
 		return reason == reasonIdentityConflict || reason == reasonIdentityReviewRequired
 	case REVIEW_ISSUE_TYPE_FIELD_CONFLICT:
 		return reason == reasonCoreFieldsConflict
+	case REVIEW_ISSUE_TYPE_INSTALLMENT_ORIGIN:
+		return reason == reasonInstallmentOriginRequired || reason == reasonInstallmentCompositionRequired ||
+			reason == reasonEconomicNatureRequired || reason == reasonCoreFieldsMissing
 	default:
 		return false
 	}
@@ -815,6 +866,9 @@ func newResolveReviewIssueAction(request ResolveReviewIssueRequest, actionId int
 		strconv.FormatInt(request.IssueId, 10), strconv.FormatInt(request.ExpectedUpdateVersion, 10), strconv.FormatInt(request.ExpectedIssueVersion, 10),
 		string(request.Decision), strconv.FormatInt(request.PrimaryEventId, 10), strconv.FormatInt(request.EvidenceId, 10),
 		strconv.FormatInt(request.TargetEventId, 10), strconv.FormatInt(request.TransactionId, 10), string(encodedCorrection),
+	}
+	if request.Decision == REVIEW_ISSUE_DECISION_CONFIRM_INSTALLMENT_PRINCIPAL {
+		parts = append(parts, strconv.FormatInt(request.InstallmentCandidateId, 10))
 	}
 	for _, eventId := range eventIds {
 		parts = append(parts, strconv.FormatInt(eventId, 10))

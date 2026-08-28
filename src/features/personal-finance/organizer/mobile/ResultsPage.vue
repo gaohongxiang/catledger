@@ -30,10 +30,10 @@
 
             <template v-if="eventFilter === 'needs_action' && reviewIssues.length">
                 <f7-block-title>必须处理</f7-block-title>
-                <f7-card class="issue-card" :key="issue.id" v-for="issue in reviewIssues">
+                <f7-card class="issue-card" :key="issue.id" v-for="issue in sortedReviewIssues">
                     <f7-card-header>
                         <div><small>{{ issueLabel(issue) }}</small><strong>{{ issueTitle(issue) }}</strong></div>
-                        <span>{{ issue.memberCount }} 项</span>
+                        <span>{{ tt('personalFinance.organizerV2.issue.count', { count: issuePresentation(issue).count }) }}</span>
                     </f7-card-header>
                     <f7-card-content>
                         <div class="issue-event" :key="event.id" v-for="event in issueEvents(issue)">
@@ -84,7 +84,7 @@ import { parseBigDecimal } from '@/lib/numeral.ts';
 
 import type { EconomicEvent, EconomicEventStatus, FinanceUpdate, ReviewIssue, ReviewIssueMember } from '../models.ts';
 import { organizerApi } from '../service.ts';
-import { RESULT_UPDATE_STATUSES, eventDisplayLabel, selectCurrentUpdate, updateConservationHolds } from '../state.ts';
+import { RESULT_UPDATE_STATUSES, eventDisplayLabel, reviewIssuePresentation, selectCurrentUpdate, sortEconomicEventsOldestFirst, updateConservationHolds } from '../state.ts';
 
 const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
 const loading = ref(false);
@@ -106,6 +106,12 @@ const membersByIssue = computed(() => {
     }
     return result;
 });
+const sortedReviewIssues = computed(() => [...reviewIssues.value].sort((left, right) => {
+    const leftEvent = issueEvents(left)[0];
+    const rightEvent = issueEvents(right)[0];
+    return (leftEvent?.eventUnixTime ?? Number.MAX_SAFE_INTEGER) - (rightEvent?.eventUnixTime ?? Number.MAX_SAFE_INTEGER) ||
+        left.id.localeCompare(right.id);
+}));
 
 function formatEventAmount(event: EconomicEvent): string {
     return event.amount ? formatAmountToLocalizedNumeralsWithCurrency(parseBigDecimal(event.amount), event.currency) : '—';
@@ -115,23 +121,32 @@ function mobileEventDetail(event: EconomicEvent): string {
     return [...new Set([event.item !== title ? event.item : '', event.paymentMethod, `${event.evidenceCount} 条来源记录`].filter(Boolean))].join(' · ');
 }
 function issueEvents(issue: ReviewIssue): EconomicEvent[] {
-    return (membersByIssue.value.get(issue.id) ?? []).filter(member => member.role === 'subject' && member.objectType === 'event')
-        .map(member => eventMap.value.get(member.objectId)).filter((event): event is EconomicEvent => !!event);
+    return sortEconomicEventsOldestFirst((membersByIssue.value.get(issue.id) ?? []).filter(member => member.role === 'subject' && member.objectType === 'event')
+        .map(member => eventMap.value.get(member.objectId)).filter((event): event is EconomicEvent => !!event));
 }
 function issueLabel(issue: ReviewIssue): string {
-    const labels: Record<string, string> = { account_mapping: '账户待确认', shared_fields: '多笔需要相同判断', same_event: '疑似同一笔交易', refund_relation: '退款关系', transfer_accounts: '转账双方', identity_conflict: '来源身份冲突', field_conflict: '字段冲突' };
-    return labels[issue.type] || '必须处理';
+    return tt(issuePresentation(issue).labelKey);
 }
 function issueTitle(issue: ReviewIssue): string {
     const values = issueEvents(issue);
     return values.length === 1 ? eventDisplayLabel(values[0] as EconomicEvent) || '未命名交易' : `${values.length} 笔记录需要一个决定`;
 }
 function issueHint(issue: ReviewIssue): string {
-    if (issue.type === 'refund_relation') return '请选择原消费后才能入账';
-    if (issue.memberCount > 1) return '可一次应用到本组全部记录';
-    return '需要补充必要信息';
+    const presentation = issuePresentation(issue);
+    return tt(presentation.hintKey, { count: presentation.count });
 }
+function issuePresentation(issue: ReviewIssue) { return reviewIssuePresentation(issue, issueEvents(issue)); }
 function idempotencyKey(action: string): string { return `pf-review-mobile-v1:${action}:${generateRandomUUID()}`; }
+async function listAllEvents(updateId: string, status: EconomicEventStatus): Promise<EconomicEvent[]> {
+    const result: EconomicEvent[] = [];
+    let cursor: { updatedUnixTime: number; eventId: string } | undefined;
+    do {
+        const page = await organizerApi.listEvents(updateId, status, 100, cursor);
+        result.push(...page.items);
+        cursor = page.nextCursor;
+    } while (cursor);
+    return sortEconomicEventsOldestFirst(result);
+}
 async function load(): Promise<void> {
     loading.value = true; error.value = false;
     try {
@@ -139,10 +154,10 @@ async function load(): Promise<void> {
         update.value = selectCurrentUpdate(pages.map(page => [...page.items]));
         if (!update.value) { events.value = []; reviewIssues.value = []; reviewMembers.value = []; return; }
         if (eventFilter.value === 'needs_action') {
-            const [eventPage, issuePage] = await Promise.all([organizerApi.listEvents(update.value.id, 'needs_action'), organizerApi.listReviewIssues(update.value.id)]);
-            events.value = eventPage.items; reviewIssues.value = issuePage.items; reviewMembers.value = issuePage.members;
+            const [eventItems, issuePage] = await Promise.all([listAllEvents(update.value.id, 'needs_action'), organizerApi.listReviewIssues(update.value.id)]);
+            events.value = eventItems; reviewIssues.value = issuePage.items; reviewMembers.value = issuePage.members;
         } else {
-            events.value = (await organizerApi.listEvents(update.value.id, eventFilter.value)).items;
+            events.value = await listAllEvents(update.value.id, eventFilter.value);
             reviewIssues.value = []; reviewMembers.value = [];
         }
     } catch { error.value = true; }

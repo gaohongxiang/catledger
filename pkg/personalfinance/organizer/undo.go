@@ -152,8 +152,7 @@ func (e *UndoEngine) Undo(c core.Context, request UndoRequest) (*UndoResult, err
 		if findErr != nil {
 			return findErr
 		}
-		if update == nil || update.Version != request.ExpectedUpdateVersion ||
-			(update.Status != UPDATE_STATUS_POSTED && update.Status != UPDATE_STATUS_PARTIALLY_POSTED) {
+		if update == nil || update.Version != request.ExpectedUpdateVersion || update.Status != UPDATE_STATUS_POSTED {
 			return ErrUndoStateConflict
 		}
 		inspection, inspectErr := inspectUndoInSession(tx, request.UpdateId)
@@ -256,7 +255,7 @@ func inspectUndoInSession(tx *RepositoryTransaction, updateId int64) (*undoInspe
 	if err != nil {
 		return nil, err
 	}
-	if update == nil || (update.Status != UPDATE_STATUS_POSTED && update.Status != UPDATE_STATUS_PARTIALLY_POSTED) {
+	if update == nil || update.Status != UPDATE_STATUS_POSTED {
 		return nil, ErrUndoStateConflict
 	}
 	events, err := tx.ListEvents(updateId)
@@ -266,7 +265,7 @@ func inspectUndoInSession(tx *RepositoryTransaction, updateId int64) (*undoInspe
 	inspection := &undoInspection{impact: &UndoImpact{}, events: events, linksByEvent: make(map[int64][]*EconomicEventTransaction), transactions: make(map[int64]*models.Transaction)}
 	reasons := make(map[string]struct{})
 	postedActions, err := tx.session.Where("uid=? AND update_id=? AND status=?", tx.uid, updateId, ACTION_STATUS_APPLIED).
-		In("action_type", []ActionType{ACTION_TYPE_POST_ALL_READY, ACTION_TYPE_POST_READY}).Count(new(FinanceAction))
+		And("action_type=?", ACTION_TYPE_POST_ALL_READY).Count(new(FinanceAction))
 	if err != nil {
 		return nil, err
 	}

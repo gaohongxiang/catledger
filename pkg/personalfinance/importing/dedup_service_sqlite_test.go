@@ -140,8 +140,12 @@ func TestDedupServicePersistsReparseAndIdentityStates(t *testing.T) {
 
 	batches, totalCount, err := repository.ListImportBatches(nil, uid, fileId, 0, 10)
 
-	if err != nil || totalCount != 2 || len(batches) != 2 {
-		t.Fatalf("explicit reparse history is incomplete: %d %d %v", totalCount, len(batches), err)
+	if err != nil || totalCount != 1 || len(batches) != 1 || batches[0].BatchId != secondBatch.BatchId {
+		t.Fatalf("explicit reparse did not leave one active batch: %d %d %v", totalCount, len(batches), err)
+	}
+	oldBatch, err := repository.FindImportBatchById(nil, uid, firstBatch.BatchId)
+	if err != nil || oldBatch == nil || oldBatch.Status != importing.IMPORT_BATCH_STATUS_DISCARDED {
+		t.Fatalf("superseded batch evidence was not retained as discarded: batch=%+v err=%v", oldBatch, err)
 	}
 
 	assertDedupCrossUserIsolation(t, repository, database, service, candidate, accountKey, firstRows[0])

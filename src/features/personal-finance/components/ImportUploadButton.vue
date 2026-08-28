@@ -17,19 +17,6 @@
         @change="upload"
     />
 
-    <v-dialog width="560" v-model="showDuplicateDialog">
-        <v-card>
-            <v-card-title class="pa-5">{{ tt('personalFinance.duplicateDialog.title') }}</v-card-title>
-            <v-card-text class="px-5 pb-5">{{ tt('personalFinance.duplicateDialog.message') }}</v-card-text>
-            <v-card-actions class="px-5 pb-5">
-                <v-spacer />
-                <v-btn variant="text" @click="showDuplicateDialog = false">{{ tt('Cancel') }}</v-btn>
-                <v-btn variant="tonal" @click="openLatestDuplicate">{{ tt('personalFinance.duplicateDialog.openLatest') }}</v-btn>
-                <v-btn color="primary" @click="reparseDuplicate">{{ tt('personalFinance.duplicateDialog.reparse') }}</v-btn>
-            </v-card-actions>
-        </v-card>
-    </v-dialog>
-
     <source-account-dialog ref="sourceAccountDialog" @parsed="onParsed" />
     <generic-bank-import-dialog ref="genericBankImportDialog" @parsed="onParsed" />
     <ceb-credit-import-dialog ref="cebCreditImportDialog" @parsed="onParsed" />
@@ -39,7 +26,7 @@
 <script setup lang="ts">
 import SnackBar from '@/components/desktop/SnackBar.vue';
 
-import { ref, useTemplateRef } from 'vue';
+import { useTemplateRef } from 'vue';
 import { mdiTrayArrowUp } from '@mdi/js';
 
 import { getCurrentUnixTime, getTimezoneOffsetMinutes } from '@/lib/datetime.ts';
@@ -47,7 +34,7 @@ import { useI18n } from '@/locales/helpers.ts';
 import { useUserStore } from '@/stores/user.ts';
 
 import type { PersonalFinanceImportUploadResult } from '../models.ts';
-import { canConfigureCebCreditPdf, canConfigureGenericBankTable, getUploadAction } from '../state.ts';
+import { canConfigureCebCreditPdf, canConfigureGenericBankTable } from '../state.ts';
 import { usePersonalFinanceStore } from '../store.ts';
 import CebCreditImportDialog from './CebCreditImportDialog.vue';
 import GenericBankImportDialog from './GenericBankImportDialog.vue';
@@ -82,9 +69,6 @@ const sourceAccountDialog = useTemplateRef<SourceAccountDialogType>('sourceAccou
 const genericBankImportDialog = useTemplateRef<GenericBankImportDialogType>('genericBankImportDialog');
 const cebCreditImportDialog = useTemplateRef<CebCreditImportDialogType>('cebCreditImportDialog');
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
-const showDuplicateDialog = ref(false);
-const duplicateUpload = ref<PersonalFinanceImportUploadResult>();
-
 async function upload(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -99,16 +83,11 @@ async function upload(event: Event): Promise<void> {
         return;
     }
 
-    if (getUploadAction(result) === 'choose_duplicate_action') {
-        duplicateUpload.value = result;
-        showDuplicateDialog.value = true;
-        return;
-    }
-
     try {
-        await reparseFile(result.file.id, 'initial_upload');
+        await reparseFile(result.file.id, result.duplicate ? 'duplicate_upload_reparse' : 'initial_upload');
     } catch {
-        if (!openExplicitParserFallback(result.file, 'initial_upload_generic_fallback', 'initial_upload_ceb_fallback')) {
+        const reasonPrefix = result.duplicate ? 'duplicate_upload' : 'initial_upload';
+        if (!openExplicitParserFallback(result.file, `${reasonPrefix}_generic_fallback`, `${reasonPrefix}_ceb_fallback`)) {
             snackbar.value?.showMessage('personalFinance.error.operationFailed');
         }
     }
@@ -122,6 +101,10 @@ async function reparseFile(fileId: string, reasonCode: string): Promise<void> {
         timezoneUtcOffset,
         reasonCode
     });
+	if (result.alreadyPosted) {
+		snackbar.value?.showMessage('personalFinance.alreadyPosted');
+		return;
+	}
     if (result.requiresSourceAccount && result.discovery) {
         sourceAccountDialog.value?.open({
             fileId,
@@ -141,26 +124,6 @@ async function onParsed(batchId: string): Promise<void> {
     ]);
     snackbar.value?.showMessage('personalFinance.parseCompleted');
     emit('changed', batchId);
-}
-
-async function openLatestDuplicate(): Promise<void> {
-    const latestBatch = duplicateUpload.value?.latestBatch;
-    showDuplicateDialog.value = false;
-    if (!latestBatch) return;
-    await onParsed(latestBatch.id);
-}
-
-async function reparseDuplicate(): Promise<void> {
-    const file = duplicateUpload.value?.file;
-    showDuplicateDialog.value = false;
-    if (!file) return;
-    try {
-        await reparseFile(file.id, 'duplicate_upload_reparse');
-    } catch {
-        if (!openExplicitParserFallback(file, 'duplicate_upload_generic_fallback', 'duplicate_upload_ceb_fallback')) {
-            snackbar.value?.showMessage('personalFinance.error.operationFailed');
-        }
-    }
 }
 
 function openExplicitParserFallback(file: PersonalFinanceImportUploadResult['file'], genericReason: string, cebReason: string): boolean {

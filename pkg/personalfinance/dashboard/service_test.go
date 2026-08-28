@@ -74,6 +74,21 @@ func TestDeriveLedgerOverviewSeparatesLoanCashFlowAndReversesAfterAsOf(t *testin
 	}
 }
 
+func TestApplyCashFlowTreatsRefundAsConsumptionReversalNotIncome(t *testing.T) {
+	flow := &CashFlowCurrency{Currency: "CNY"}
+	account := &LedgerAccount{AccountId: 1, Kind: LedgerAccountKindAsset, Currency: "CNY", Liquid: true, Single: true}
+	transaction := &LedgerTransaction{
+		TransactionId: 1, Type: LedgerTransactionIncome, EconomicNature: LedgerTransactionEconomicNatureRefund,
+		AccountId: 1, TransactionTime: 1, Amount: 466,
+	}
+	if err := applyCashFlowTransaction(flow, transaction, account, 466, ""); err != nil {
+		t.Fatalf("apply refund cash flow: %v", err)
+	}
+	if flow.Income != 0 || flow.Consumption != -466 || flow.LiquidFundsNetChange != 466 {
+		t.Fatalf("refund polluted income or balance effect: %+v", flow)
+	}
+}
+
 func TestDeriveLedgerOverviewBuildsTodayWeekMonthAndYearFromUserWeekStart(t *testing.T) {
 	location := time.UTC
 	start, _ := parseCivilDate("2024-01-01", location)

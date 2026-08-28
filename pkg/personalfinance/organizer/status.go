@@ -34,15 +34,14 @@ const (
 type UpdateStatus string
 
 const (
-	UPDATE_STATUS_DRAFT            UpdateStatus = "draft"
-	UPDATE_STATUS_ORGANIZING       UpdateStatus = "organizing"
-	UPDATE_STATUS_REVIEW           UpdateStatus = "review"
-	UPDATE_STATUS_POSTING          UpdateStatus = "posting"
-	UPDATE_STATUS_PARTIALLY_POSTED UpdateStatus = "partially_posted"
-	UPDATE_STATUS_POSTED           UpdateStatus = "posted"
-	UPDATE_STATUS_FAILED           UpdateStatus = "failed"
-	UPDATE_STATUS_UNDONE           UpdateStatus = "undone"
-	UPDATE_STATUS_ABANDONED        UpdateStatus = "abandoned"
+	UPDATE_STATUS_DRAFT      UpdateStatus = "draft"
+	UPDATE_STATUS_ORGANIZING UpdateStatus = "organizing"
+	UPDATE_STATUS_REVIEW     UpdateStatus = "review"
+	UPDATE_STATUS_POSTING    UpdateStatus = "posting"
+	UPDATE_STATUS_POSTED     UpdateStatus = "posted"
+	UPDATE_STATUS_FAILED     UpdateStatus = "failed"
+	UPDATE_STATUS_UNDONE     UpdateStatus = "undone"
+	UPDATE_STATUS_ABANDONED  UpdateStatus = "abandoned"
 )
 
 // EventStatus 表示经济事件的整理和入账状态。
@@ -133,7 +132,6 @@ const (
 	ACTION_TYPE_EXCLUDE_EVENT        ActionType = "exclude_event"
 	ACTION_TYPE_RESOLVE_REVIEW_ISSUE ActionType = "resolve_review_issue"
 	ACTION_TYPE_POST_ALL_READY       ActionType = "post_all_ready"
-	ACTION_TYPE_POST_READY           ActionType = "post_ready"
 	ACTION_TYPE_CORRECT_EVENT        ActionType = "correct_event"
 	ACTION_TYPE_UNDO                 ActionType = "undo"
 	ACTION_TYPE_ABANDON_UPDATE       ActionType = "abandon_update"
@@ -154,7 +152,7 @@ const (
 func isUpdateStatus(value UpdateStatus) bool {
 	switch value {
 	case UPDATE_STATUS_DRAFT, UPDATE_STATUS_ORGANIZING, UPDATE_STATUS_REVIEW, UPDATE_STATUS_POSTING,
-		UPDATE_STATUS_PARTIALLY_POSTED, UPDATE_STATUS_POSTED, UPDATE_STATUS_FAILED, UPDATE_STATUS_UNDONE,
+		UPDATE_STATUS_POSTED, UPDATE_STATUS_FAILED, UPDATE_STATUS_UNDONE,
 		UPDATE_STATUS_ABANDONED:
 		return true
 	default:
@@ -219,7 +217,7 @@ func isEventTransactionRole(value EventTransactionRole) bool {
 func isActionType(value ActionType) bool {
 	switch value {
 	case ACTION_TYPE_CREATE_UPDATE, ACTION_TYPE_ORGANIZE, ACTION_TYPE_RESOLVE_EVENT, ACTION_TYPE_EXCLUDE_EVENT,
-		ACTION_TYPE_RESOLVE_REVIEW_ISSUE, ACTION_TYPE_POST_ALL_READY, ACTION_TYPE_POST_READY,
+		ACTION_TYPE_RESOLVE_REVIEW_ISSUE, ACTION_TYPE_POST_ALL_READY,
 		ACTION_TYPE_CORRECT_EVENT, ACTION_TYPE_UNDO, ACTION_TYPE_ABANDON_UPDATE, ACTION_TYPE_LEGACY_BACKFILL:
 		return true
 	default:

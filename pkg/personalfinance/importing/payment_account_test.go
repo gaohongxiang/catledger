@@ -62,6 +62,11 @@ func TestPaymentAccountAliasNormalizesFormattingAndMasksLongDigits(t *testing.T)
 			t.Fatalf("generic payment method must not become a reusable mapping: %q", generic)
 		}
 	}
+	for _, consumerCredit := range []string{"花呗", "信用购", "花呗|信用购", "花呗｜信用购还款"} {
+		if family, ok := importing.ConsumerCreditAccountFamilyAlias(consumerCredit); !ok || family != "alipay-consumer-credit" {
+			t.Fatalf("consumer-credit family mismatch for %q: %q %v", consumerCredit, family, ok)
+		}
+	}
 }
 
 func TestPaymentAccountMappingReusesOnlyUniqueCrossSourceBankCard(t *testing.T) {
@@ -727,12 +732,33 @@ func TestPaymentAccountServiceExcludesGroupAppliesLaterAndRestores(t *testing.T)
 		t.Fatalf("later batch did not reuse exclusion: %+v", laterXingye)
 	}
 
+	idempotentBatch := testImportBatch(uid, 8403, fileId, 201)
+	idempotentBatch.Status = importing.IMPORT_BATCH_STATUS_READY
+	idempotentRow := paymentAccountRow(uid, 8403, 8505, 1, "兴业银行信用卡（6106）", importing.PROCESSING_STATE_PENDING, nil)
+	insertRepositoryBeans(t, database, idempotentBatch, idempotentRow)
+	idempotentGroups, err := service.ListBatchPaymentAccounts(nil, uid, 8403)
+	if err != nil {
+		t.Fatalf("list idempotent exclusion batch: %v", err)
+	}
+	idempotentXingye := findPaymentAccountGroup(t, idempotentGroups, "兴业银行信用卡")
+	if idempotentXingye == nil || !idempotentXingye.Excluded || idempotentXingye.PendingRowCount != 1 {
+		t.Fatalf("persisted exclusion was not visible before row synchronization: %+v", idempotentXingye)
+	}
+	resynchronized, err := service.ExcludePaymentAccount(nil, importing.PaymentAccountSkipRequest{Uid: uid, BatchId: 8403, RowId: idempotentXingye.SampleRowId})
+	if err != nil || resynchronized == nil || !resynchronized.Excluded || resynchronized.PendingRowCount != 0 {
+		t.Fatalf("idempotent exclusion did not synchronize pending rows: %+v %v", resynchronized, err)
+	}
+	assertPaymentRowProcessing(t, repository, uid, 8403, map[int64]importing.ProcessingState{8505: importing.PROCESSING_STATE_IGNORED})
+
 	restored, err := service.RestorePaymentAccount(nil, importing.PaymentAccountSkipRequest{Uid: uid, BatchId: batchId, RowId: xingye.SampleRowId})
 	if err != nil || restored == nil || restored.Excluded || restored.PendingRowCount != 2 {
 		t.Fatalf("restore grouped payment account: %+v %v", restored, err)
 	}
 	if _, err := service.RestorePaymentAccount(nil, importing.PaymentAccountSkipRequest{Uid: uid, BatchId: 8402, RowId: laterXingye.SampleRowId}); err != nil {
 		t.Fatalf("restore later batch: %v", err)
+	}
+	if _, err := service.RestorePaymentAccount(nil, importing.PaymentAccountSkipRequest{Uid: uid, BatchId: 8403, RowId: idempotentXingye.SampleRowId}); err != nil {
+		t.Fatalf("restore idempotent batch: %v", err)
 	}
 	remaining, err := repository.ListPaymentAccountExclusions(nil, uid, importing.SOURCE_TYPE_ALIPAY)
 	if err != nil || len(remaining) != 0 {
@@ -742,6 +768,7 @@ func TestPaymentAccountServiceExcludesGroupAppliesLaterAndRestores(t *testing.T)
 		8501: importing.PROCESSING_STATE_PENDING, 8502: importing.PROCESSING_STATE_PENDING, 8503: importing.PROCESSING_STATE_PENDING,
 	})
 	assertPaymentRowProcessing(t, repository, uid, 8402, map[int64]importing.ProcessingState{8504: importing.PROCESSING_STATE_PENDING})
+	assertPaymentRowProcessing(t, repository, uid, 8403, map[int64]importing.ProcessingState{8505: importing.PROCESSING_STATE_PENDING})
 }
 
 func TestPaymentAccountServiceSkipRowsDoesNotPersistExclusion(t *testing.T) {

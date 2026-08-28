@@ -2,8 +2,6 @@ import { ref } from 'vue';
 import { defineStore } from 'pinia';
 
 import services, { type ApiResponsePromise } from '@/lib/services.ts';
-import { generateRandomUUID } from '@/lib/misc.ts';
-
 import type {
     PersonalFinanceImportBatch,
     PersonalFinanceImportBatchPage,
@@ -14,8 +12,6 @@ import type {
     PersonalFinancePaymentAccountExcludeRequest,
     PersonalFinancePaymentAccountGroup,
     PersonalFinancePaymentAccountPage,
-    PersonalFinancePostingDraft,
-    PersonalFinancePostingResult,
     PersonalFinanceUndoImpact,
     PersonalFinanceGenericBankMapping,
     PersonalFinanceReparseResult,
@@ -23,7 +19,7 @@ import type {
     PersonalFinanceSourceAccountPage,
     PersonalFinanceSourceAccountSaveRequest
 } from './models.ts';
-import { buildPersonalFinanceReparseRequest, buildSingleRowPostingRequest } from './state.ts';
+import { buildPersonalFinanceReparseRequest } from './state.ts';
 
 async function unwrapResponse<T>(request: ApiResponsePromise<T>, fallbackMessage: string): Promise<T> {
     const response = await request;
@@ -245,26 +241,6 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         }
     }
 
-    async function postRow(row: PersonalFinanceImportRow, draft?: PersonalFinancePostingDraft): Promise<PersonalFinancePostingResult> {
-        submitting.value = true;
-
-        try {
-            const result = await unwrapResponse(
-                services.postPersonalFinanceImportBatch(
-                    buildSingleRowPostingRequest(row, `pf-ui-v1:${generateRandomUUID()}`, draft)
-                ),
-                'Unable to post personal finance import row'
-            );
-            await Promise.allSettled([
-                loadBatches(),
-                openBatch(row.batchId)
-            ]);
-            return result;
-        } finally {
-            submitting.value = false;
-        }
-    }
-
 	async function discardBatch(batchId: string): Promise<void> {
 		submitting.value = true;
 		try {
@@ -319,7 +295,6 @@ export const usePersonalFinanceStore = defineStore('personalFinance', () => {
         excludePaymentAccount,
         skipPaymentAccount,
         restorePaymentAccount,
-        postRow,
 		discardBatch,
 		deleteFileContent,
 		getUndoImpact,

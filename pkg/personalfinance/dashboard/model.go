@@ -45,6 +45,14 @@ const (
 	LedgerTransactionTransferIn    LedgerTransactionType = "transfer_in"
 )
 
+// LedgerTransactionEconomicNature 仅携带会改变现金流分类的 PF 经济语义。
+// 核心 Transaction 仍是余额权威；该投影不改变账户余额计算。
+type LedgerTransactionEconomicNature string
+
+const (
+	LedgerTransactionEconomicNatureRefund LedgerTransactionEconomicNature = "refund"
+)
+
 // LedgerAccount 是总览所需的最小账户事实；名称、备注和显示属性不会进入聚合层。
 type LedgerAccount struct {
 	AccountId      int64
@@ -60,6 +68,7 @@ type LedgerAccount struct {
 type LedgerTransaction struct {
 	TransactionId   int64
 	Type            LedgerTransactionType
+	EconomicNature  LedgerTransactionEconomicNature
 	AccountId       int64
 	TransactionTime int64
 	Amount          int64

@@ -35,16 +35,24 @@ type RebuildResult struct {
 type RebuildEngine struct {
 	repository *Repository
 	ledger     LedgerSessionEditor
+	evidence   EvidenceReader
 	ids        IdentifierGenerator
 	now        func() time.Time
 	locks      *postingLockSet
 }
 
-func NewRebuildEngine(repository *Repository, ledger LedgerSessionEditor, ids IdentifierGenerator) (*RebuildEngine, error) {
+func NewRebuildEngine(repository *Repository, ledger LedgerSessionEditor, ids IdentifierGenerator, evidenceReaders ...EvidenceReader) (*RebuildEngine, error) {
 	if repository == nil || ledger == nil || ids == nil {
 		return nil, ErrRebuildRequestInvalid
 	}
-	return &RebuildEngine{repository: repository, ledger: ledger, ids: ids, now: time.Now, locks: globalPostingLocks}, nil
+	if len(evidenceReaders) > 1 || (len(evidenceReaders) == 1 && evidenceReaders[0] == nil) {
+		return nil, ErrRebuildRequestInvalid
+	}
+	var evidence EvidenceReader
+	if len(evidenceReaders) == 1 {
+		evidence = evidenceReaders[0]
+	}
+	return &RebuildEngine{repository: repository, ledger: ledger, evidence: evidence, ids: ids, now: time.Now, locks: globalPostingLocks}, nil
 }
 
 func (e *RebuildEngine) Inspect(c core.Context, uid int64, updateId int64, eventId int64) (*UndoImpact, error) {
@@ -85,6 +93,10 @@ func (e *RebuildEngine) Rebuild(c core.Context, request CorrectEventRequest) (*R
 	if now < 1 || actionId < 1 {
 		return nil, ErrRebuildRequestInvalid
 	}
+	categoryAliases, err := e.categoryAliasesForRebuild(c, request, sources, now)
+	if err != nil {
+		return nil, err
+	}
 	candidate := newCorrectionAction(request, actionId, now)
 	var impact *UndoImpact
 	var persistedActionId int64
@@ -111,8 +123,7 @@ func (e *RebuildEngine) Rebuild(c core.Context, request CorrectEventRequest) (*R
 		if findErr != nil {
 			return findErr
 		}
-		if update == nil || update.Version != request.ExpectedUpdateVersion ||
-			(update.Status != UPDATE_STATUS_POSTED && update.Status != UPDATE_STATUS_PARTIALLY_POSTED) {
+		if update == nil || update.Version != request.ExpectedUpdateVersion || update.Status != UPDATE_STATUS_POSTED {
 			return ErrRebuildStateConflict
 		}
 		event, findErr := tx.FindEventById(request.EventId)
@@ -181,6 +192,9 @@ func (e *RebuildEngine) Rebuild(c core.Context, request CorrectEventRequest) (*R
 		if applyErr != nil {
 			return applyErr
 		}
+		if nextEvent.Status == EVENT_STATUS_NEEDS_ACTION {
+			return ErrRebuildRequestInvalid
+		}
 		if nextEvent.Status == EVENT_STATUS_READY {
 			if createErr := e.createReplacement(c, tx, nextEvent, now); createErr != nil {
 				return createErr
@@ -191,17 +205,19 @@ func (e *RebuildEngine) Rebuild(c core.Context, request CorrectEventRequest) (*R
 		if updateErr != nil || !updated {
 			return ErrRebuildStateConflict
 		}
+		if saveErr := tx.SaveCategoryAliases(categoryAliases); saveErr != nil {
+			return saveErr
+		}
 		nextUpdate := *update
 		nextUpdate.Version = update.Version + 1
 		nextUpdate.CurrentActionId = &action.ActionId
 		if nextEvent.Status != EVENT_STATUS_POSTED && !moveEventCount(&nextUpdate, EVENT_STATUS_POSTED, nextEvent.Status) {
 			return ErrRebuildStateConflict
 		}
-		if nextUpdate.ReadyEventCount == 0 && nextUpdate.NeedsActionEventCount == 0 {
-			nextUpdate.Status = UPDATE_STATUS_POSTED
-		} else {
-			nextUpdate.Status = UPDATE_STATUS_PARTIALLY_POSTED
+		if nextUpdate.ReadyEventCount != 0 || nextUpdate.NeedsActionEventCount != 0 {
+			return ErrRebuildStateConflict
 		}
+		nextUpdate.Status = UPDATE_STATUS_POSTED
 		nextUpdate.UpdatedUnixTime = now
 		updated, updateErr = tx.UpdateUpdateCAS(update.Version, &nextUpdate)
 		if updateErr != nil || !updated {
@@ -238,6 +254,15 @@ func (e *RebuildEngine) Rebuild(c core.Context, request CorrectEventRequest) (*R
 		return nil, err
 	}
 	return &RebuildResult{Update: update, Event: event, Action: action, Impact: impact, Replayed: replayed}, nil
+}
+
+func (e *RebuildEngine) categoryAliasesForRebuild(c core.Context, request CorrectEventRequest,
+	sources []*FinanceUpdateSource, now int64) ([]*CategoryAliasMapping, error) {
+	if e.evidence == nil || request.Correction.FieldMask&MANUAL_FIELD_CATEGORY == 0 ||
+		request.Correction.CategoryId == nil || *request.Correction.CategoryId < 1 {
+		return nil, nil
+	}
+	return buildCategoryAliases(c, e.repository, e.evidence, e.ids, request.Uid, sources, []int64{request.EventId}, *request.Correction.CategoryId, now)
 }
 
 func (e *RebuildEngine) createReplacement(c core.Context, tx *RepositoryTransaction, event *EconomicEvent, now int64) error {

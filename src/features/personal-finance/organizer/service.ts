@@ -6,7 +6,8 @@ import type { PersonalFinanceSourceType } from '../models.ts';
 import type {
     EconomicEvent,
     EconomicEventPage,
-    EconomicEventStatus,
+	EconomicEventStatus,
+	CategoryCorrectionScopePreview,
     FinanceAction,
     FinanceUpdate,
     FinanceUpdatePage,
@@ -71,7 +72,7 @@ function asEnum<T extends string>(value: unknown, values: readonly T[]): T {
 }
 
 const updateStatuses: readonly FinanceUpdateStatus[] = [
-    'draft', 'organizing', 'review', 'posting', 'partially_posted', 'posted', 'failed', 'undone', 'abandoned'
+    'draft', 'organizing', 'review', 'posting', 'posted', 'failed', 'undone', 'abandoned'
 ];
 const eventStatuses: readonly EconomicEventStatus[] = ['ready', 'needs_action', 'excluded', 'posted', 'corrected'];
 const sourceTypes: readonly PersonalFinanceSourceType[] = ['alipay', 'wechat', 'bank'];
@@ -83,7 +84,7 @@ const economicNatures = [
 const reviewIssueStatuses: readonly ReviewIssueStatus[] = ['open', 'resolved', 'superseded'];
 const reviewIssueTypes: readonly ReviewIssueType[] = [
     'account_mapping', 'shared_fields', 'same_event', 'refund_relation',
-    'transfer_accounts', 'identity_conflict', 'field_conflict'
+    'transfer_accounts', 'identity_conflict', 'field_conflict', 'installment_origin'
 ];
 const reviewIssueMemberRoles: readonly ReviewIssueMemberRole[] = ['subject', 'candidate', 'supporting'];
 const reviewObjectTypes: readonly ReviewObjectType[] = ['event', 'evidence', 'relation', 'transaction', 'source_account'];
@@ -201,6 +202,11 @@ function impact(value: unknown): OrganizerImpact {
         incompleteTransferPairCount: integer(item['incompleteTransferPairCount']),
         reasonCodes: array(item['reasonCodes']).map(string)
     };
+}
+
+function categoryScopePreview(value: unknown): CategoryCorrectionScopePreview {
+	const item = record(value);
+	return { matchingEventCount: integer(item['matchingEventCount']) };
 }
 
 function mutation(value: unknown): OrganizerMutation {
@@ -338,9 +344,12 @@ export const organizerApi = {
             cursorEventId: cursor?.eventId
         })));
     },
-    async getEvidence(eventId: string): Promise<OrganizerEventEvidence> {
-        return normalizeOrganizerEventEvidence(unwrap(await services.getPersonalFinanceOrganizerEventEvidence({ eventId })));
-    },
+	async getEvidence(eventId: string): Promise<OrganizerEventEvidence> {
+		return normalizeOrganizerEventEvidence(unwrap(await services.getPersonalFinanceOrganizerEventEvidence({ eventId })));
+	},
+	async getCategoryCorrectionScope(updateId: string, eventId: string): Promise<CategoryCorrectionScopePreview> {
+		return categoryScopePreview(unwrap(await services.getPersonalFinanceOrganizerCategoryScope({ updateId, eventId })));
+	},
     async correctEvent(request: OrganizerCorrectRequest): Promise<OrganizerMutation> {
         return mutation(unwrap(await services.correctPersonalFinanceOrganizerEvent(request)));
     },
@@ -363,9 +372,6 @@ export const organizerApi = {
     },
     async postAllReady(update: FinanceUpdate, idempotencyKey: string): Promise<OrganizerMutation> {
         return mutation(unwrap(await services.postAllReadyPersonalFinanceOrganizerEvents(idempotencyRequest(update, idempotencyKey))));
-    },
-    async postReady(update: FinanceUpdate, idempotencyKey: string): Promise<OrganizerMutation> {
-        return mutation(unwrap(await services.postReadyPersonalFinanceOrganizerEvents(idempotencyRequest(update, idempotencyKey))));
     },
     async getUndoImpact(updateId: string): Promise<OrganizerImpact> {
         return impact(unwrap(await services.getPersonalFinanceOrganizerUndoImpact({ updateId })));

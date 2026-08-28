@@ -98,6 +98,12 @@ async function submit(): Promise<void> {
             reasonCode: reasonCode.value
         }));
 
+        if (result.alreadyPosted) {
+            showState.value = false;
+            snackbar.value?.showMessage('personalFinance.alreadyPosted');
+            return;
+        }
+
         if (!result.batch) {
             throw new Error('ceb credit parser did not create a batch');
         }

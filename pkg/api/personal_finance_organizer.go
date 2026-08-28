@@ -27,6 +27,7 @@ type PersonalFinanceOrganizerApplication interface {
 	ListEvents(c core.Context, uid int64, updateId int64, status organizer.EventStatus, cursor *organizer.EventCursor, limit int) (*organizerEventPage, error)
 	GetEventEvidence(c core.Context, uid int64, eventId int64) (*organizerEventEvidenceDetail, error)
 	InspectEventCorrection(c core.Context, uid int64, updateId int64, eventId int64) (*organizer.UndoImpact, error)
+	InspectCategoryCorrectionScope(c core.Context, uid int64, updateId int64, eventId int64) (*organizer.CategoryCorrectionScopePreview, error)
 	CorrectEvent(c core.Context, request organizer.CorrectEventRequest) (*organizerMutationResult, error)
 	Post(c core.Context, request organizer.PostRequest) (*organizer.PostResult, error)
 	InspectUndo(c core.Context, uid int64, updateId int64) (*organizer.UndoImpact, error)
@@ -80,6 +81,7 @@ type organizerEventPage struct {
 type organizerMutationResult struct {
 	Update   *organizer.FinanceUpdate
 	Event    *organizer.EconomicEvent
+	Events   []*organizer.EconomicEvent
 	Action   *organizer.FinanceAction
 	Impact   *organizer.UndoImpact
 	Replayed bool
@@ -97,22 +99,23 @@ type personalFinanceOrganizerActionRequest struct {
 }
 
 type personalFinanceOrganizerCorrectRequest struct {
-	UpdateId                    int64                    `json:"updateId,string"`
-	EventId                     int64                    `json:"eventId,string"`
-	ExpectedUpdateVersion       int64                    `json:"expectedUpdateVersion"`
-	ExpectedEventVersion        int64                    `json:"expectedEventVersion"`
-	IdempotencyKey              string                   `json:"idempotencyKey"`
-	FieldMask                   int64                    `json:"fieldMask"`
-	Status                      organizer.EventStatus    `json:"status"`
-	FlowDirection               organizer.FlowDirection  `json:"flowDirection"`
-	EconomicNature              organizer.EconomicNature `json:"economicNature"`
-	LedgerAccountId             *int64                   `json:"ledgerAccountId,string"`
-	CounterpartyLedgerAccountId *int64                   `json:"counterpartyLedgerAccountId,string"`
-	EventUnixTime               *int64                   `json:"eventUnixTime"`
-	TimezoneUtcOffset           *int16                   `json:"timezoneUtcOffset"`
-	Amount                      *int64                   `json:"amount,string"`
-	Currency                    string                   `json:"currency"`
-	CategoryId                  *int64                   `json:"categoryId,string"`
+	UpdateId                    int64                             `json:"updateId,string"`
+	EventId                     int64                             `json:"eventId,string"`
+	ExpectedUpdateVersion       int64                             `json:"expectedUpdateVersion"`
+	ExpectedEventVersion        int64                             `json:"expectedEventVersion"`
+	IdempotencyKey              string                            `json:"idempotencyKey"`
+	CategoryScope               organizer.CategoryCorrectionScope `json:"categoryScope"`
+	FieldMask                   int64                             `json:"fieldMask"`
+	Status                      organizer.EventStatus             `json:"status"`
+	FlowDirection               organizer.FlowDirection           `json:"flowDirection"`
+	EconomicNature              organizer.EconomicNature          `json:"economicNature"`
+	LedgerAccountId             *int64                            `json:"ledgerAccountId,string"`
+	CounterpartyLedgerAccountId *int64                            `json:"counterpartyLedgerAccountId,string"`
+	EventUnixTime               *int64                            `json:"eventUnixTime"`
+	TimezoneUtcOffset           *int16                            `json:"timezoneUtcOffset"`
+	Amount                      *int64                            `json:"amount,string"`
+	Currency                    string                            `json:"currency"`
+	CategoryId                  *int64                            `json:"categoryId,string"`
 }
 
 type personalFinanceOrganizerSourceResponse struct {
@@ -216,6 +219,10 @@ type personalFinanceOrganizerImpactResponse struct {
 	DebtRelationCount           int64    `json:"debtRelationCount"`
 	IncompleteTransferPairCount int64    `json:"incompleteTransferPairCount"`
 	ReasonCodes                 []string `json:"reasonCodes"`
+}
+
+type personalFinanceOrganizerCategoryScopeResponse struct {
+	MatchingEventCount int64 `json:"matchingEventCount"`
 }
 
 type personalFinanceOrganizerMutationResponse struct {
@@ -401,6 +408,22 @@ func (a *PersonalFinanceOrganizerApi) EventCorrectionImpactHandler(c *core.WebCo
 	return newOrganizerImpactResponse(impact), nil
 }
 
+func (a *PersonalFinanceOrganizerApi) EventCategoryScopeHandler(c *core.WebContext) (any, *errs.Error) {
+	if !a.available(c) || !personalFinanceInstallmentQueryAllowed(c, "update_id", "event_id") {
+		return nil, errs.ErrParameterInvalid
+	}
+	updateId, updateErr := strconv.ParseInt(strings.TrimSpace(c.Query("update_id")), 10, 64)
+	eventId, eventErr := strconv.ParseInt(strings.TrimSpace(c.Query("event_id")), 10, 64)
+	if updateErr != nil || eventErr != nil || updateId < 1 || eventId < 1 {
+		return nil, errs.ErrParameterInvalid
+	}
+	preview, err := a.application.InspectCategoryCorrectionScope(c, c.GetCurrentUid(), updateId, eventId)
+	if err != nil {
+		return a.failed(c, "category_scope", err)
+	}
+	return newOrganizerCategoryScopeResponse(preview), nil
+}
+
 func (a *PersonalFinanceOrganizerApi) EventCorrectHandler(c *core.WebContext) (any, *errs.Error) {
 	request := new(personalFinanceOrganizerCorrectRequest)
 	if !a.available(c) || decodePersonalFinanceLoanJSON(c, request) != nil {
@@ -423,7 +446,7 @@ func (a *PersonalFinanceOrganizerApi) correct(c *core.WebContext, request *perso
 	result, err := a.application.CorrectEvent(c, organizer.CorrectEventRequest{
 		Uid: c.GetCurrentUid(), UpdateId: request.UpdateId, EventId: request.EventId,
 		ExpectedUpdateVersion: request.ExpectedUpdateVersion, ExpectedEventVersion: request.ExpectedEventVersion,
-		IdempotencyKey: request.IdempotencyKey, Correction: organizer.EventCorrection{
+		IdempotencyKey: request.IdempotencyKey, CategoryScope: request.CategoryScope, Correction: organizer.EventCorrection{
 			FieldMask: request.FieldMask, Status: request.Status, FlowDirection: request.FlowDirection,
 			EconomicNature: request.EconomicNature, LedgerAccountId: request.LedgerAccountId,
 			CounterpartyLedgerAccountId: request.CounterpartyLedgerAccountId, EventUnixTime: request.EventUnixTime,
@@ -438,10 +461,6 @@ func (a *PersonalFinanceOrganizerApi) correct(c *core.WebContext, request *perso
 
 func (a *PersonalFinanceOrganizerApi) ActionPostAllReadyHandler(c *core.WebContext) (any, *errs.Error) {
 	return a.post(c, organizer.POST_MODE_ALL_READY)
-}
-
-func (a *PersonalFinanceOrganizerApi) ActionPostReadyHandler(c *core.WebContext) (any, *errs.Error) {
-	return a.post(c, organizer.POST_MODE_READY)
 }
 
 func (a *PersonalFinanceOrganizerApi) post(c *core.WebContext, mode organizer.PostMode) (any, *errs.Error) {
@@ -517,7 +536,7 @@ func parseOrganizerIDs(raw []string) ([]int64, bool) {
 func organizerUpdateStatusAllowed(status organizer.UpdateStatus) bool {
 	switch status {
 	case organizer.UPDATE_STATUS_DRAFT, organizer.UPDATE_STATUS_ORGANIZING, organizer.UPDATE_STATUS_REVIEW,
-		organizer.UPDATE_STATUS_POSTING, organizer.UPDATE_STATUS_PARTIALLY_POSTED, organizer.UPDATE_STATUS_POSTED,
+		organizer.UPDATE_STATUS_POSTING, organizer.UPDATE_STATUS_POSTED,
 		organizer.UPDATE_STATUS_FAILED, organizer.UPDATE_STATUS_UNDONE, organizer.UPDATE_STATUS_ABANDONED:
 		return true
 	default:
@@ -539,7 +558,7 @@ func organizerExcludeRequestClean(request *personalFinanceOrganizerCorrectReques
 	return request != nil && request.FieldMask == 0 && request.Status == "" && request.FlowDirection == "" &&
 		request.EconomicNature == "" && request.LedgerAccountId == nil && request.CounterpartyLedgerAccountId == nil &&
 		request.EventUnixTime == nil && request.TimezoneUtcOffset == nil && request.Amount == nil &&
-		request.Currency == "" && request.CategoryId == nil
+		request.Currency == "" && request.CategoryId == nil && request.CategoryScope == ""
 }
 
 func parseOrganizerIDQuery(c *core.WebContext, key string) (int64, bool) {
@@ -709,11 +728,22 @@ func newOrganizerImpactResponse(value *organizer.UndoImpact) *personalFinanceOrg
 	return &personalFinanceOrganizerImpactResponse{SafeToApply: value.CanUndo, PostedEventCount: value.PostedEventCount, TransactionCount: value.TransactionCount, MissingTransactionCount: value.MissingTransactionCount, ModifiedTransactionCount: value.ModifiedTransactionCount, SharedTransactionCount: value.SharedTransactionCount, BatchRelationCount: value.BatchRelationCount, DebtRelationCount: value.DebtRelationCount, IncompleteTransferPairCount: value.IncompleteTransferPairCount, ReasonCodes: reasons}
 }
 
+func newOrganizerCategoryScopeResponse(value *organizer.CategoryCorrectionScopePreview) *personalFinanceOrganizerCategoryScopeResponse {
+	if value == nil {
+		return nil
+	}
+	return &personalFinanceOrganizerCategoryScopeResponse{MatchingEventCount: value.MatchingEventCount}
+}
+
 func newOrganizerMutationResponse(value *organizerMutationResult) *personalFinanceOrganizerMutationResponse {
 	if value == nil {
 		return nil
 	}
-	return &personalFinanceOrganizerMutationResponse{Update: newOrganizerUpdateResponse(value.Update), Event: newOrganizerEventResponse(value.Event), Action: newOrganizerActionResponse(value.Action), Impact: newOrganizerImpactResponse(value.Impact), Replayed: value.Replayed}
+	response := &personalFinanceOrganizerMutationResponse{Update: newOrganizerUpdateResponse(value.Update), Event: newOrganizerEventResponse(value.Event), Action: newOrganizerActionResponse(value.Action), Impact: newOrganizerImpactResponse(value.Impact), Replayed: value.Replayed}
+	if len(value.Events) > 0 {
+		response.Events = newOrganizerEventResponses(value.Events)
+	}
+	return response
 }
 
 func newOrganizerEventEvidenceResponse(value *organizerEventEvidenceDetail) *personalFinanceOrganizerEventEvidenceResponse {

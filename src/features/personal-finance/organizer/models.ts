@@ -1,7 +1,7 @@
 import type { PersonalFinanceSourceType } from '../models.ts';
 
 export type FinanceUpdateStatus =
-    'draft' | 'organizing' | 'review' | 'posting' | 'partially_posted' | 'posted' | 'failed' | 'undone' | 'abandoned';
+    'draft' | 'organizing' | 'review' | 'posting' | 'posted' | 'failed' | 'undone' | 'abandoned';
 
 export type EconomicEventStatus = 'ready' | 'needs_action' | 'excluded' | 'posted' | 'corrected';
 export type EconomicFlowDirection = 'inflow' | 'outflow' | 'neutral';
@@ -12,12 +12,13 @@ export type EconomicNature =
 export type ReviewIssueStatus = 'open' | 'resolved' | 'superseded';
 export type ReviewIssueType =
     'account_mapping' | 'shared_fields' | 'same_event' | 'refund_relation' |
-    'transfer_accounts' | 'identity_conflict' | 'field_conflict';
+    'transfer_accounts' | 'identity_conflict' | 'field_conflict' | 'installment_origin';
 export type ReviewIssueMemberRole = 'subject' | 'candidate' | 'supporting';
 export type ReviewObjectType = 'event' | 'evidence' | 'relation' | 'transaction' | 'source_account';
 export type ReviewIssueDecision =
     'apply_fields' | 'confirm_distinct' | 'confirm_same' | 'exclude_events' |
-    'discard_evidence' | 'link_refund' | 'link_existing_transaction';
+    'discard_evidence' | 'link_refund' | 'link_existing_transaction' |
+    'confirm_installment_principal';
 
 export interface FinanceUpdateSource {
     readonly id: string;
@@ -184,6 +185,7 @@ export interface OrganizerCorrectRequest {
     readonly expectedUpdateVersion: number;
     readonly expectedEventVersion: number;
     readonly idempotencyKey: string;
+    readonly categoryScope?: 'single' | 'matching_uncategorized';
     readonly fieldMask: number;
     readonly status?: EconomicEventStatus;
     readonly flowDirection?: EconomicFlowDirection;
@@ -195,6 +197,10 @@ export interface OrganizerCorrectRequest {
     readonly amount?: string;
     readonly currency?: string;
     readonly categoryId?: string;
+}
+
+export interface CategoryCorrectionScopePreview {
+	readonly matchingEventCount: number;
 }
 
 export interface ReviewIssue {
@@ -261,6 +267,7 @@ export interface ResolveReviewIssueRequest {
     readonly evidenceId?: string;
     readonly targetEventId?: string;
     readonly transactionId?: string;
+    readonly installmentCandidateId?: string;
 }
 
 export interface ReviewIssueMutation extends ReviewIssueDetail {

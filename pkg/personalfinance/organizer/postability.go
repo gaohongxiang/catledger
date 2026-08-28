@@ -166,9 +166,6 @@ func evaluateRefundPostability(event *EconomicEvent, relations []*EconomicEventR
 
 	reasons := make([]string, 0, 3)
 	resolvedTargets := confirmedCount + originalLinkCount
-	if resolvedTargets == 0 {
-		reasons = appendUniqueReasons(reasons, reasonRefundRelationRequired)
-	}
 	if resolvedTargets > 1 || proposedCount > 0 {
 		reasons = appendUniqueReasons(reasons, reasonRelationAmbiguous)
 	}
@@ -242,6 +239,8 @@ func isManagedPostabilityReason(reason string) bool {
 		reasonBorrowAccountRequired,
 		reasonBalanceAdjustmentMappingRequired,
 		reasonRefundRelationInvalid,
+		reasonInstallmentOriginRequired,
+		reasonInstallmentCompositionRequired,
 		reasonBlockingIssueOpen,
 		reasonPostabilityDirectionConflict:
 		return true

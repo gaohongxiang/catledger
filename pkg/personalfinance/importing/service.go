@@ -58,7 +58,6 @@ type ImportRepository interface {
 	ListImportFiles(c core.Context, uid int64, offset int, limit int) ([]*ImportFile, int64, error)
 	FindImportBatchById(c core.Context, uid int64, batchId int64) (*ImportBatch, error)
 	FindCardHeaderByBatch(c core.Context, uid int64, batchId int64) (*CardHeader, error)
-	FindLatestImportBatchByFileId(c core.Context, uid int64, fileId int64) (*ImportBatch, error)
 	ListImportBatches(c core.Context, uid int64, fileId int64, offset int, limit int) ([]*ImportBatch, int64, error)
 	ListImportBatchIssues(c core.Context, uid int64, batchId int64) ([]*ImportBatchIssue, error)
 	ListRawImportRowsPage(c core.Context, uid int64, batchId int64, offset int, limit int) ([]*RawImportRow, int64, error)
@@ -93,10 +92,9 @@ type ImportFileUpload struct {
 
 // ImportFileUploadResult 描述持久文件身份及是否命中已有内容。
 type ImportFileUploadResult struct {
-	File        *ImportFile
-	LatestBatch *ImportBatch
-	Duplicate   bool
-	Recovered   bool
+	File      *ImportFile
+	Duplicate bool
+	Recovered bool
 }
 
 // ImportFilePage 是稳定排序的原文件分页结果。
@@ -630,17 +628,10 @@ func (s *ImportService) markImportFileFailed(c core.Context, file *ImportFile) {
 }
 
 func (s *ImportService) importFileUploadResult(c core.Context, file *ImportFile, duplicate bool, recovered bool) (*ImportFileUploadResult, error) {
-	latestBatch, err := s.repository.FindLatestImportBatchByFileId(c, file.Uid, file.FileId)
-
-	if err != nil {
-		return nil, ErrImportPersistenceUnavailable
-	}
-
 	return &ImportFileUploadResult{
-		File:        file,
-		LatestBatch: latestBatch,
-		Duplicate:   duplicate,
-		Recovered:   recovered,
+		File:      file,
+		Duplicate: duplicate,
+		Recovered: recovered,
 	}, nil
 }
 

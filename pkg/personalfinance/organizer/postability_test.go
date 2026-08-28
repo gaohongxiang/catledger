@@ -24,10 +24,10 @@ func TestEvaluatePostabilityDerivesOrdinaryAndPairedEvents(t *testing.T) {
 	}
 }
 
-func TestEvaluatePostabilityRequiresConfirmedRefundRelation(t *testing.T) {
+func TestEvaluatePostabilityAllowsUnlinkedRefundAndValidatesPresentRelation(t *testing.T) {
 	refund := postabilityFixture(ECONOMIC_NATURE_REFUND, FLOW_DIRECTION_INFLOW)
 	result, err := EvaluatePostability(PostabilityInput{Event: refund})
-	if err != nil || result.Status != EVENT_STATUS_NEEDS_ACTION || !containsPostabilityReason(result.ReasonCodes, reasonRefundRelationRequired) {
+	if err != nil || result.Status != EVENT_STATUS_READY || len(result.ReasonCodes) != 0 {
 		t.Fatalf("refund without relation mismatch: result=%+v err=%v", result, err)
 	}
 

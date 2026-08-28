@@ -35,7 +35,15 @@ type personalFinanceFlowService struct {
 }
 
 func (s *personalFinanceFlowService) ReparseImportFile(c core.Context, request importing.ReparseImportFileRequest) (*importing.ReparseImportFileResult, error) {
-	return s.reparse.ReparseImportFile(c, request)
+	result, err := s.reparse.ReparseImportFile(c, request)
+	if err != nil || result == nil || result.Batch == nil || result.AlreadyPosted {
+		return result, err
+	}
+	// 新批次立即沿用已确认的长期忽略策略，不能只在界面上标记为已忽略。
+	if err = s.paymentAccounts.ApplyPersistedExclusions(c, request.Uid, result.Batch.BatchId); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (s *personalFinanceFlowService) ListSourceAccounts(c core.Context, uid int64) ([]*importing.SourceAccount, error) {
@@ -229,6 +237,7 @@ type personalFinanceReparseResponse struct {
 	ParserName            string                                         `json:"parserName"`
 	SourceType            importing.SourceType                           `json:"sourceType"`
 	Format                importing.EvidenceFormat                       `json:"format"`
+	AlreadyPosted         bool                                           `json:"alreadyPosted"`
 }
 
 type personalFinanceTransactionEvidenceRequest struct {
@@ -326,6 +335,7 @@ func (a *PersonalFinanceImportsApi) ImportBatchReparseHandler(c *core.WebContext
 		ParserName:            result.Descriptor.Name,
 		SourceType:            result.Descriptor.SourceType,
 		Format:                result.Descriptor.Format,
+		AlreadyPosted:         result.AlreadyPosted,
 	}, nil
 }
 
@@ -540,11 +550,11 @@ func (a *PersonalFinanceImportsApi) TransactionEvidenceHandler(c *core.WebContex
 		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
 	}
 
-	if a.postingServiceFactory == nil {
+	if a.evidenceServiceFactory == nil {
 		return nil, errs.ErrOperationFailed
 	}
 
-	service, err := a.postingServiceFactory()
+	service, err := a.evidenceServiceFactory()
 	if err != nil {
 		return nil, errs.ErrOperationFailed
 	}

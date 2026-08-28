@@ -42,6 +42,11 @@ type LedgerAccountReader interface {
 	GetAccountsByAccountIds(c core.Context, uid int64, accountIds []int64) (map[int64]*models.Account, error)
 }
 
+// LedgerCategoryReader 只读取正式账本分类目录，整理器不创建或修改分类。
+type LedgerCategoryReader interface {
+	GetAllCategoriesByUid(c core.Context, uid int64, categoryType models.TransactionCategoryType, parentCategoryId int64) ([]*models.TransactionCategory, error)
+}
+
 type IdentifierGenerator interface {
 	GenerateUuid(uuidType uuid.UuidType) int64
 }
@@ -69,13 +74,14 @@ type Engine struct {
 	repository *Repository
 	evidence   EvidenceReader
 	accounts   LedgerAccountReader
+	categories LedgerCategoryReader
 	mappings   PaymentAccountMappingReader
 	projector  importing.SourceFundsProjector
 	ids        IdentifierGenerator
 	now        func() time.Time
 }
 
-func NewEngine(repository *Repository, evidence EvidenceReader, accounts LedgerAccountReader, projector importing.SourceFundsProjector, ids IdentifierGenerator) (*Engine, error) {
+func NewEngine(repository *Repository, evidence EvidenceReader, accounts LedgerAccountReader, projector importing.SourceFundsProjector, ids IdentifierGenerator, categoryReaders ...LedgerCategoryReader) (*Engine, error) {
 	mappings, ok := evidence.(PaymentAccountMappingReader)
 	if !ok {
 		return nil, ErrOrganizeRequestInvalid
@@ -83,7 +89,14 @@ func NewEngine(repository *Repository, evidence EvidenceReader, accounts LedgerA
 	if repository == nil || evidence == nil || accounts == nil || projector == nil || ids == nil {
 		return nil, ErrOrganizeRequestInvalid
 	}
-	return &Engine{repository: repository, evidence: evidence, accounts: accounts, mappings: mappings, projector: projector, ids: ids, now: time.Now}, nil
+	if len(categoryReaders) > 1 || (len(categoryReaders) == 1 && categoryReaders[0] == nil) {
+		return nil, ErrOrganizeRequestInvalid
+	}
+	var categories LedgerCategoryReader
+	if len(categoryReaders) == 1 {
+		categories = categoryReaders[0]
+	}
+	return &Engine{repository: repository, evidence: evidence, accounts: accounts, categories: categories, mappings: mappings, projector: projector, ids: ids, now: time.Now}, nil
 }
 
 func (e *Engine) Organize(c core.Context, request OrganizeRequest) (*OrganizeResult, error) {
@@ -114,8 +127,13 @@ func (e *Engine) Organize(c core.Context, request OrganizeRequest) (*OrganizeRes
 		e.failOrganize(c, request, claimed, "source_snapshot_invalid", now)
 		return nil, err
 	}
+	categoryRules, err := e.loadCategoryIndex(c, request.Uid)
+	if err != nil {
+		e.failOrganize(c, request, claimed, "category_rules_invalid", now)
+		return nil, err
+	}
 	generateId := func() int64 { return e.ids.GenerateUuid(uuid.UUID_TYPE_PERSONAL_FINANCE) }
-	plan, err := BuildOrganizePlan(request.Uid, request.UpdateId, sources, accountMap, now, generateId)
+	plan, err := BuildOrganizePlan(request.Uid, request.UpdateId, sources, accountMap, now, generateId, categoryRules)
 	if err != nil {
 		e.failOrganize(c, request, claimed, "plan_invalid", now)
 		return nil, err
@@ -137,6 +155,21 @@ func (e *Engine) Organize(c core.Context, request OrganizeRequest) (*OrganizeRes
 		return nil, err
 	}
 	return e.loadResult(c, request.Uid, request.UpdateId, claimed.ActionId, false)
+}
+
+func (e *Engine) loadCategoryIndex(c core.Context, uid int64) (*categoryIndex, error) {
+	aliases, err := e.repository.ListCategoryAliases(c, uid)
+	if err != nil {
+		return nil, err
+	}
+	catalog := make([]*models.TransactionCategory, 0)
+	if e.categories != nil {
+		catalog, err = e.categories.GetAllCategoriesByUid(c, uid, 0, -1)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return newCategoryIndex(catalog, aliases), nil
 }
 
 func (e *Engine) claimOrganize(c core.Context, request OrganizeRequest, candidate *FinanceAction, now int64) (*FinanceAction, bool, error) {
@@ -337,6 +370,17 @@ func resolvePlanningRowLedgerAccount(row *importing.RawImportRow, batch *importi
 	if row.LedgerAccountId != nil && *row.LedgerAccountId > 0 {
 		return cloneInt64Pointer(row.LedgerAccountId)
 	}
+	if sourceType == importing.SOURCE_TYPE_ALIPAY {
+		if accountId := resolvePaymentAccountReference(row, row.RawPaymentMethod, mappings); accountId != nil {
+			return accountId
+		}
+		// 原项目的支付宝导入在明确收入未提供收款方式时回落到支付宝钱包。
+		// 统一整理流复用同一成熟口径，但只在支付宝明确给出正常收入时生效。
+		if row.NormalizedDirection == importing.NORMALIZED_DIRECTION_INCOME && row.EconomicEffect == importing.ECONOMIC_EFFECT_NORMAL {
+			return resolvePaymentAccountReference(row, "余额", mappings)
+		}
+		return nil
+	}
 	if sourceType != importing.SOURCE_TYPE_BANK {
 		return nil
 	}
@@ -361,14 +405,22 @@ func indexReusablePaymentAccountMappings(uid int64, sourceType importing.SourceT
 		}
 		result[key] = mapping.LedgerAccountId
 		family, ok := importing.CreditCardAccountFamilyAlias(mapping.MaskedDisplayName)
-		if !ok {
-			continue
+		if ok {
+			familyKey := creditCardFamilyMappingKey(mapping.Currency, family)
+			if existing, exists := result[familyKey]; !exists || existing == mapping.LedgerAccountId {
+				result[familyKey] = mapping.LedgerAccountId
+			} else {
+				result[familyKey] = 0
+			}
 		}
-		familyKey := creditCardFamilyMappingKey(mapping.Currency, family)
-		if existing, exists := result[familyKey]; !exists || existing == mapping.LedgerAccountId {
-			result[familyKey] = mapping.LedgerAccountId
-		} else {
-			result[familyKey] = 0
+		consumerFamily, consumerOK := importing.ConsumerCreditAccountFamilyAlias(mapping.MaskedDisplayName)
+		if consumerOK {
+			familyKey := consumerCreditFamilyMappingKey(mapping.Currency, consumerFamily)
+			if existing, exists := result[familyKey]; !exists || existing == mapping.LedgerAccountId {
+				result[familyKey] = mapping.LedgerAccountId
+			} else {
+				result[familyKey] = 0
+			}
 		}
 	}
 	return result
@@ -383,15 +435,24 @@ func indexPaymentAccountMappings(mappings []*importing.PaymentAccountMapping) ma
 		}
 		result[mapping.Currency+"\x00"+mapping.AliasKey] = mapping.LedgerAccountId
 		family, ok := importing.CreditCardAccountFamilyAlias(mapping.MaskedDisplayName)
-		if !ok {
-			continue
+		if ok {
+			key := creditCardFamilyMappingKey(mapping.Currency, family)
+			if existing, exists := result[key]; !exists || existing == mapping.LedgerAccountId {
+				result[key] = mapping.LedgerAccountId
+			} else {
+				// 同一发卡行映射到多个正式账户时保留歧义，不自动猜卡。
+				result[key] = 0
+			}
 		}
-		key := creditCardFamilyMappingKey(mapping.Currency, family)
-		if existing, exists := result[key]; !exists || existing == mapping.LedgerAccountId {
-			result[key] = mapping.LedgerAccountId
-		} else {
-			// 同一发卡行映射到多个正式账户时保留歧义，不自动猜卡。
-			result[key] = 0
+		consumerFamily, consumerOK := importing.ConsumerCreditAccountFamilyAlias(mapping.MaskedDisplayName)
+		if consumerOK {
+			key := consumerCreditFamilyMappingKey(mapping.Currency, consumerFamily)
+			if existing, exists := result[key]; !exists || existing == mapping.LedgerAccountId {
+				result[key] = mapping.LedgerAccountId
+			} else {
+				// 花呗与信用购明确指向不同账户时，合并还款必须人工决定。
+				result[key] = 0
+			}
 		}
 	}
 	return result
@@ -399,6 +460,10 @@ func indexPaymentAccountMappings(mappings []*importing.PaymentAccountMapping) ma
 
 func creditCardFamilyMappingKey(currency string, family string) string {
 	return currency + "\x00credit-card-family\x00" + family
+}
+
+func consumerCreditFamilyMappingKey(currency string, family string) string {
+	return currency + "\x00consumer-credit-family\x00" + family
 }
 
 func resolvePlanningFundsMovement(row *importing.RawImportRow, batch *importing.ImportBatch, projection importing.SourceFundsProjection, mappings map[string]int64) *PlanningFundsMovement {
@@ -434,6 +499,11 @@ func resolveFundsAccountReference(row *importing.RawImportRow, batch *importing.
 	case importing.SOURCE_FUNDS_ACCOUNT_REPAYMENT_TARGET:
 		if accountId := resolvePaymentAccountReference(row, reference.Raw, mappings); accountId != nil {
 			return accountId
+		}
+		if family, ok := importing.ConsumerCreditAccountFamilyAlias(reference.Raw); ok {
+			if accountId := mappings[consumerCreditFamilyMappingKey(row.Currency, family)]; accountId > 0 {
+				return &accountId
+			}
 		}
 		family, ok := importing.CreditCardAccountFamilyAlias(reference.Raw)
 		if !ok {

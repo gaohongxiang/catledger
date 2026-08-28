@@ -190,6 +190,12 @@ async function continueReparse(): Promise<void> {
             reasonCode: 'user_selected_source'
         });
 
+        if (result.alreadyPosted) {
+            showState.value = false;
+            snackbar.value?.showMessage('personalFinance.alreadyPosted');
+            return;
+        }
+
         if (!result.batch) {
             snackbar.value?.showMessage('personalFinance.error.operationFailed');
             return;

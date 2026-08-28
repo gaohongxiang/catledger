@@ -9,7 +9,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 )
 
-func TestBuildOrganizePlanConservesEvidenceAndRequiresStrongMergeEvidence(t *testing.T) {
+func TestBuildOrganizePlanConservesEvidenceAndUsesNormalizedIncome(t *testing.T) {
 	const uid = int64(101)
 	account := plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)
 	first := plannerSource(uid, 501, 0, 601, 701, importing.SOURCE_TYPE_ALIPAY)
@@ -44,7 +44,7 @@ func TestBuildOrganizePlanConservesEvidenceAndRequiresStrongMergeEvidence(t *tes
 		t.Fatalf("build organizer plan: %v", err)
 	}
 	if plan.ValidEvidenceCount != 8 || plan.DuplicateEvidenceCount != 2 || plan.FinalEventCount != 6 ||
-		plan.ReadyEventCount != 4 || plan.NeedsActionEventCount != 1 || plan.ExcludedEventCount != 1 {
+		plan.ReadyEventCount != 5 || plan.NeedsActionEventCount != 0 || plan.ExcludedEventCount != 1 {
 		t.Fatalf("unexpected conservation counts: %+v", plan)
 	}
 	merged := findEventByAmount(plan.Events, 1000)
@@ -59,8 +59,8 @@ func TestBuildOrganizePlanConservesEvidenceAndRequiresStrongMergeEvidence(t *tes
 		t.Fatalf("same amount/time with conflicting text was merged: %+v", plan.Events)
 	}
 	inflow := findEventByAmount(plan.Events, 3000)
-	if inflow == nil || inflow.Status != organizer.EVENT_STATUS_NEEDS_ACTION || inflow.EconomicNature != organizer.ECONOMIC_NATURE_UNKNOWN {
-		t.Fatalf("direction-only inflow was treated as income: %+v", inflow)
+	if inflow == nil || inflow.Status != organizer.EVENT_STATUS_READY || inflow.EconomicNature != organizer.ECONOMIC_NATURE_INCOME {
+		t.Fatalf("normalized ordinary inflow was not treated as income: %+v", inflow)
 	}
 	excluded := findEventByAmount(plan.Events, 5000)
 	if excluded == nil || excluded.Status != organizer.EVENT_STATUS_EXCLUDED {
@@ -231,6 +231,29 @@ func TestBuildOrganizePlanDoesNotMergeOrdinaryBankInflowIntoProjectedRepayment(t
 	}
 }
 
+func TestBuildOrganizePlanKeepsKnownCreditCardAsRepaymentTarget(t *testing.T) {
+	const uid = int64(1826)
+	const updateId = int64(5826)
+	credit := plannerAccount(uid, 22, models.ACCOUNT_CATEGORY_CREDIT_CARD)
+	bank := plannerSource(uid, updateId, 0, 6851, 7851, importing.SOURCE_TYPE_BANK)
+	statement := plannerRow(uid, 7851, 18501, 28501, 22, 550550, 1785996000,
+		importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	statement.RawCounterparty = "款项转入-信用卡还款"
+	bank.Rows = []*importing.RawImportRow{statement}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{bank},
+		map[int64]*models.Account{22: credit}, 1786000000, sequentialPlannerIds(182600))
+	if err != nil {
+		t.Fatalf("build single-sided repayment plan: %v", err)
+	}
+	event := plan.Events[0]
+	if event.EconomicNature != organizer.ECONOMIC_NATURE_REPAYMENT || event.Status != organizer.EVENT_STATUS_NEEDS_ACTION ||
+		event.LedgerAccountId != nil || event.CounterpartyLedgerAccountId == nil || *event.CounterpartyLedgerAccountId != 22 ||
+		!strings.Contains(event.ReasonCodesJson, "repayment_account_required") {
+		t.Fatalf("known credit card was not retained as repayment target: %+v", event)
+	}
+}
+
 func TestBuildOrganizePlanPairsRepaymentsTransfersAndIsolatesAmbiguity(t *testing.T) {
 	const uid = int64(202)
 	asset := plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)
@@ -330,6 +353,40 @@ func TestBuildOrganizePlanMergesBalancedDateOnlyBankEvidence(t *testing.T) {
 	if plan.ValidEvidenceCount != 2 || plan.DuplicateEvidenceCount != 1 || plan.FinalEventCount != 1 || plan.ReadyEventCount != 1 ||
 		!strings.Contains(plan.Events[0].ReasonCodesJson, "auto_same_event") {
 		t.Fatalf("balanced statement evidence was not merged: %+v", plan)
+	}
+}
+
+func TestBuildOrganizePlanUsesBankPostingDateForPlatformRefundEvidence(t *testing.T) {
+	const uid = int64(254)
+	const updateId = int64(554)
+	bank := plannerSource(uid, updateId, 0, 665, 765, importing.SOURCE_TYPE_BANK)
+	alipay := plannerSource(uid, updateId, 1, 666, 766, importing.SOURCE_TYPE_ALIPAY)
+	bankRefund := plannerRow(uid, 765, 12, 3612, 11, 8250, 1704067200,
+		importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_OTHER)
+	alipayRefund := plannerRow(uid, 766, 22, 4612, 11, 8250, 1704196800,
+		importing.NORMALIZED_DIRECTION_NEUTRAL, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	zeroOffset := int16(0)
+	bankRefund.NormalizedTimezoneUtcOffset = &zeroOffset
+	bankRefund.RawCounterparty = "网上支付 支付宝 合成商户"
+	bankRefund.RawNote = "2024/01/02"
+	alipayRefund.NormalizedTimezoneUtcOffset = &zeroOffset
+	alipayRefund.RawCounterparty = "合成商户"
+	alipayRefund.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND
+	alipayRefund.RawStatus = "退款成功"
+	bank.Rows = []*importing.RawImportRow{bankRefund}
+	alipay.Rows = []*importing.RawImportRow{alipayRefund}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{bank, alipay},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)},
+		1704300000, sequentialPlannerIds(10900))
+	if err != nil {
+		t.Fatalf("build posting-date refund plan: %v", err)
+	}
+	if plan.ValidEvidenceCount != 2 || plan.DuplicateEvidenceCount != 1 || plan.FinalEventCount != 1 ||
+		plan.ReadyEventCount != 1 || plan.NeedsActionEventCount != 0 || len(plan.Evidence) != 2 ||
+		plan.Events[0].EconomicNature != organizer.ECONOMIC_NATURE_REFUND ||
+		!strings.Contains(plan.Events[0].ReasonCodesJson, "auto_same_event") {
+		t.Fatalf("bank posting-date refund evidence was not merged: %+v", plan)
 	}
 }
 
@@ -468,14 +525,12 @@ func TestBuildOrganizePlanPreservesMultiplicityAcrossTwoByTwoSources(t *testing.
 
 func TestBuildOrganizePlanLinksUniqueRefundsAndRejectsExcess(t *testing.T) {
 	for _, test := range []struct {
-		name              string
-		refundAmounts     []int64
-		wantReady         int64
-		wantNeedsAction   int64
-		wantRelationState organizer.RelationStatus
+		name          string
+		refundAmounts []int64
+		wantRelations int
 	}{
-		{name: "within original amount", refundAmounts: []int64{400, 500}, wantReady: 3, wantRelationState: organizer.RELATION_STATUS_CONFIRMED},
-		{name: "exceeds original amount", refundAmounts: []int64{600, 500}, wantReady: 1, wantNeedsAction: 2, wantRelationState: organizer.RELATION_STATUS_PROPOSED},
+		{name: "within original amount", refundAmounts: []int64{400, 500}, wantRelations: 2},
+		{name: "exceeds original amount stays unlinked", refundAmounts: []int64{600, 500}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			const uid = int64(303)
@@ -495,15 +550,56 @@ func TestBuildOrganizePlanLinksUniqueRefundsAndRejectsExcess(t *testing.T) {
 			if err != nil {
 				t.Fatalf("build refund plan: %v", err)
 			}
-			if plan.ReadyEventCount != test.wantReady || plan.NeedsActionEventCount != test.wantNeedsAction || len(plan.Relations) != 2 {
+			if plan.ReadyEventCount != 3 || plan.NeedsActionEventCount != 0 || len(plan.Relations) != test.wantRelations {
 				t.Fatalf("unexpected refund plan: %+v", plan)
 			}
 			for _, relation := range plan.Relations {
-				if relation.RelationType != organizer.RELATION_TYPE_REFUND_OF || relation.Status != test.wantRelationState {
+				if relation.RelationType != organizer.RELATION_TYPE_REFUND_OF || relation.Status != organizer.RELATION_STATUS_CONFIRMED {
 					t.Fatalf("refund relation mismatch: %+v", relation)
 				}
 			}
+			if test.wantRelations == 0 {
+				for _, event := range plan.Events {
+					if event.EconomicNature == organizer.ECONOMIC_NATURE_REFUND && !strings.Contains(event.ReasonCodesJson, "refund_relation_unlinked") {
+						t.Fatalf("excess refund did not remain explicitly unlinked: %+v", event)
+					}
+				}
+			}
 		})
+	}
+}
+
+func TestBuildOrganizePlanAllowsExplicitRefundWithoutUniqueOriginal(t *testing.T) {
+	const uid = int64(333)
+	source := plannerSource(uid, 533, 0, 634, 734, importing.SOURCE_TYPE_ALIPAY)
+	refund := plannerRow(uid, 734, 1, 4301, 11, 466, 1700200000, importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	refund.EconomicEffect = importing.ECONOMIC_EFFECT_REFUND
+	refund.RawCounterparty = "退款商户"
+	source.Rows = []*importing.RawImportRow{refund}
+	plan, err := organizer.BuildOrganizePlan(uid, 533, []*organizer.PlanningSource{source},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}, 1700300000, sequentialPlannerIds(11400))
+	if err != nil {
+		t.Fatalf("build unlinked refund plan: %v", err)
+	}
+	if plan.FinalEventCount != 1 || plan.ReadyEventCount != 1 || plan.NeedsActionEventCount != 0 || len(plan.Relations) != 0 ||
+		plan.Events[0].EconomicNature != organizer.ECONOMIC_NATURE_REFUND || !strings.Contains(plan.Events[0].ReasonCodesJson, "refund_relation_unlinked") {
+		t.Fatalf("unlinked refund should remain postable and explicit: %+v", plan)
+	}
+}
+
+func TestBuildOrganizePlanTreatsNormalizedIncomingPaymentAsIncome(t *testing.T) {
+	const uid = int64(343)
+	source := plannerSource(uid, 543, 0, 644, 744, importing.SOURCE_TYPE_ALIPAY)
+	incoming := plannerRow(uid, 744, 1, 4401, 11, 1500, 1700200000, importing.NORMALIZED_DIRECTION_INCOME, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	incoming.EconomicEffect = importing.ECONOMIC_EFFECT_NORMAL
+	source.Rows = []*importing.RawImportRow{incoming}
+	plan, err := organizer.BuildOrganizePlan(uid, 543, []*organizer.PlanningSource{source},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CHECKING_ACCOUNT)}, 1700300000, sequentialPlannerIds(11450))
+	if err != nil {
+		t.Fatalf("build incoming payment plan: %v", err)
+	}
+	if plan.ReadyEventCount != 1 || plan.NeedsActionEventCount != 0 || plan.Events[0].EconomicNature != organizer.ECONOMIC_NATURE_INCOME {
+		t.Fatalf("normalized incoming payment was not accepted as income: %+v", plan)
 	}
 }
 
@@ -551,6 +647,47 @@ func TestBuildOrganizePlanIsolatesIdentityConflictAndMissingAccount(t *testing.T
 		if event.Status != organizer.EVENT_STATUS_NEEDS_ACTION {
 			t.Fatalf("conflicted event escaped isolation: %+v", event)
 		}
+	}
+}
+
+func TestBuildOrganizePlanSeparatesInstallmentPrincipalFromInterest(t *testing.T) {
+	const uid = int64(1504)
+	const updateId = int64(5504)
+	source := plannerSource(uid, updateId, 0, 6504, 7504, importing.SOURCE_TYPE_BANK)
+	principal := plannerRow(uid, 7504, 15041, 25041, 11, 190275, 1785513600,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	// 兴业 XLS 把分期摘要放在交易对方列，而不是商品或备注列。
+	principal.RawCounterparty = "电销现分按月收12期第7期共12期"
+	interest := plannerRow(uid, 7504, 15042, 25042, 11, 9133, 1785513660,
+		importing.NORMALIZED_DIRECTION_EXPENSE, importing.SOURCE_TRANSACTION_TYPE_PAYMENT)
+	interest.RawCounterparty = "分期付款利息第7期共12期"
+	source.Rows = []*importing.RawImportRow{principal, interest}
+
+	plan, err := organizer.BuildOrganizePlan(uid, updateId, []*organizer.PlanningSource{source},
+		map[int64]*models.Account{11: plannerAccount(uid, 11, models.ACCOUNT_CATEGORY_CREDIT_CARD)},
+		1785514000, sequentialPlannerIds(150400))
+	if err != nil {
+		t.Fatalf("build installment plan: %v", err)
+	}
+	principalEvent := findEventByAmount(plan.Events, 190275)
+	interestEvent := findEventByAmount(plan.Events, 9133)
+	if principalEvent == nil || principalEvent.Status != organizer.EVENT_STATUS_NEEDS_ACTION ||
+		principalEvent.EconomicNature != organizer.ECONOMIC_NATURE_UNKNOWN ||
+		!strings.Contains(principalEvent.ReasonCodesJson, "installment_origin_required") {
+		t.Fatalf("installment principal was treated as ordinary expense: %+v", principalEvent)
+	}
+	if interestEvent == nil || interestEvent.Status != organizer.EVENT_STATUS_READY ||
+		interestEvent.EconomicNature != organizer.ECONOMIC_NATURE_FEE ||
+		!strings.Contains(interestEvent.ReasonCodesJson, "installment_interest") {
+		t.Fatalf("installment interest was not treated as a fee expense: %+v", interestEvent)
+	}
+	review, err := organizer.BuildReviewIssuePlan(uid, updateId, plan, []*organizer.PlanningSource{source}, 1785514000, sequentialPlannerIds(151000))
+	if err != nil {
+		t.Fatalf("build installment review issue: %v", err)
+	}
+	if len(review.Issues) != 1 || review.Issues[0].IssueType != organizer.REVIEW_ISSUE_TYPE_INSTALLMENT_ORIGIN ||
+		review.Issues[0].PrimaryReasonCode != "installment_origin_required" {
+		t.Fatalf("installment origin did not get a precise review issue: %+v", review.Issues)
 	}
 }
 

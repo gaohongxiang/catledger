@@ -7,6 +7,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/dashboard"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 )
 
 // PersonalFinanceDashboardLedgerAdapter 通过 caller uid 所在分片的 privacy session
@@ -47,6 +48,29 @@ func (a *PersonalFinanceDashboardLedgerAdapter) ReadLedgerData(c core.Context, u
 	if len(transactions) > maximumTransactions {
 		return nil, dashboard.ErrReadLimitReached
 	}
+	type semanticRow struct {
+		TransactionId  int64  `xorm:"transaction_id"`
+		EconomicNature string `xorm:"economic_nature"`
+	}
+	semanticRows := make([]*semanticRow, 0)
+	semanticSession := database.NewPrivacySession(c)
+	err = semanticSession.Table(new(organizer.EconomicEventTransaction)).Alias("l").
+		Join("INNER", []any{new(organizer.EconomicEvent), "e"}, "e.uid=l.uid AND e.event_id=l.event_id").
+		Join("INNER", []any{new(models.Transaction), "t"}, "t.uid=l.uid AND t.transaction_id=l.transaction_id").
+		Select("l.transaction_id, e.economic_nature").
+		Where("l.uid=? AND t.uid=? AND t.deleted=? AND t.transaction_time>=?", uid, uid, false, minimumTransactionTime).
+		Find(&semanticRows)
+	semanticSession.Close()
+	if err != nil {
+		return nil, fmt.Errorf("read dashboard transaction semantics: %w", err)
+	}
+	semanticByTransaction := make(map[int64]dashboard.LedgerTransactionEconomicNature, len(semanticRows))
+	for _, row := range semanticRows {
+		if row == nil || row.TransactionId < 1 || row.EconomicNature != string(organizer.ECONOMIC_NATURE_REFUND) {
+			continue
+		}
+		semanticByTransaction[row.TransactionId] = dashboard.LedgerTransactionEconomicNatureRefund
+	}
 
 	result := &dashboard.LedgerData{
 		Accounts:     make([]*dashboard.LedgerAccount, 0, len(accounts)),
@@ -70,6 +94,7 @@ func (a *PersonalFinanceDashboardLedgerAdapter) ReadLedgerData(c core.Context, u
 		}
 		result.Transactions = append(result.Transactions, &dashboard.LedgerTransaction{
 			TransactionId: transaction.TransactionId, Type: transactionType, AccountId: transaction.AccountId,
+			EconomicNature:  semanticByTransaction[transaction.TransactionId],
 			TransactionTime: transaction.TransactionTime, Amount: transaction.Amount,
 			Adjustment: transaction.RelatedAccountAmount,
 		})

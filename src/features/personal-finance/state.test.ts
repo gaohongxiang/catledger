@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PersonalFinanceImportBatch, PersonalFinanceImportFile, PersonalFinanceImportRow, PersonalFinanceImportUploadResult, PersonalFinancePaymentAccountGroup, PersonalFinancePostingDraft, PersonalFinanceSourceAccount } from './models.ts';
+import type { PersonalFinanceImportBatch, PersonalFinanceImportFile, PersonalFinanceImportRow, PersonalFinancePaymentAccountGroup, PersonalFinanceSourceAccount } from './models.ts';
 import {
     buildCebCreditReparseRequest,
     buildGenericBankReparseRequest,
     buildPersonalFinanceReparseRequest,
-    buildSingleRowPostingRequest,
     canConfigureCebCreditPdf,
     canConfigureGenericBankTable,
     canDeleteImportFileContent,
@@ -14,16 +13,14 @@ import {
     findPaymentAccountGroupForRow,
     getSafePaymentAccountDisplayName,
     getCompatibleSourceAccounts,
-    getRowAction,
-    getUploadAction,
     inferPaymentAccountCategory,
+    isPaymentAccountGroupUnresolved,
     normalizePaymentAccountName,
     suggestPaymentAccount,
     toGenericCsvApiColumnIndex,
     validateGenericBankMappingForm
 } from './state.ts';
 import { AccountCategory } from '@/core/account.ts';
-import { TransactionType } from '@/core/transaction.ts';
 
 function row(overrides: Partial<PersonalFinanceImportRow> = {}): PersonalFinanceImportRow {
     return {
@@ -58,33 +55,7 @@ function row(overrides: Partial<PersonalFinanceImportRow> = {}): PersonalFinance
     };
 }
 
-const draft: PersonalFinancePostingDraft = {
-    type: TransactionType.Expense,
-    categoryId: '401',
-    time: 1700000000,
-    utcOffset: 480,
-    sourceAccountId: '501',
-    destinationAccountId: '0',
-    sourceAmount: 1234,
-    destinationAmount: 0,
-    hideAmount: false,
-    tagIds: [],
-    comment: ''
-};
-
 describe('personal finance import workflow state', () => {
-    it('asks before reparsing a duplicate file with existing history', () => {
-        const result = {
-            duplicate: true,
-            recovered: false,
-            latestBatch: { id: '201' },
-            file: { id: '1' }
-        } as PersonalFinanceImportUploadResult;
-
-        expect(getUploadAction(result)).toBe('choose_duplicate_action');
-        expect(getUploadAction({ ...result, duplicate: false })).toBe('reparse');
-    });
-
     it('only offers active profiles from the detected source', () => {
         const accounts = [
             { id: '1', sourceType: 'alipay', status: 'active' },
@@ -95,25 +66,11 @@ describe('personal finance import workflow state', () => {
         expect(getCompatibleSourceAccounts(accounts, 'alipay').map(account => account.id)).toEqual(['1']);
     });
 
-    it('allows a new row only with an explicit draft', () => {
-        expect(getRowAction(row())).toBe('create');
-        expect(() => buildSingleRowPostingRequest(row(), 'pf-ui-v1:key')).toThrow();
-        expect(buildSingleRowPostingRequest(row(), 'pf-ui-v1:key', draft).commands[0]?.draft).toEqual(draft);
-    });
-
-    it('requires an explicit draft for an exact duplicate confirmation', () => {
-        const duplicate = row({ identityState: 'exact_duplicate' });
-        const request = buildSingleRowPostingRequest(duplicate, 'pf-ui-v1:key', draft);
-
-        expect(getRowAction(duplicate)).toBe('create_or_reuse');
-        expect(() => buildSingleRowPostingRequest(duplicate, 'pf-ui-v1:key')).toThrow();
-        expect(request.commands[0]).toEqual({ rowIds: ['101'], draft });
-    });
-
-    it('blocks conflicts, invalid and already-linked rows', () => {
-        expect(getRowAction(row({ identityState: 'identity_conflict' }))).toBe('blocked');
-        expect(getRowAction(row({ parseState: 'invalid' }))).toBe('blocked');
-        expect(getRowAction(row({ processingState: 'linked' }))).toBe('blocked');
+    it('does not treat persistently ignored accounts as unresolved', () => {
+        const group = { mapped: false, excluded: false } as PersonalFinancePaymentAccountGroup;
+        expect(isPaymentAccountGroupUnresolved(group)).toBe(true);
+        expect(isPaymentAccountGroupUnresolved({ ...group, mapped: true })).toBe(false);
+        expect(isPaymentAccountGroupUnresolved({ ...group, excluded: true })).toBe(false);
     });
 
 	it('only enables lifecycle actions for server-eligible states', () => {

@@ -344,6 +344,12 @@ async function submit(): Promise<void> {
         });
         const result = await personalFinanceStore.reparseFile(request);
 
+        if (result.alreadyPosted) {
+            showState.value = false;
+            snackbar.value?.showMessage('personalFinance.alreadyPosted');
+            return;
+        }
+
         if (!result.batch) {
             throw new Error('generic bank parser did not create a batch');
         }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
 )
 
@@ -235,6 +237,61 @@ func listSources(sess *xorm.Session, uid int64, updateId int64) ([]*FinanceUpdat
 		return nil, fmt.Errorf("list finance update sources: %w", err)
 	}
 	return items, nil
+}
+
+// ListCategoryAliases 读取当前用户全部已确认分类规则。映射值不包含原始账单文本。
+func (r *Repository) ListCategoryAliases(c core.Context, uid int64) ([]*CategoryAliasMapping, error) {
+	if uid < 1 {
+		return nil, fmt.Errorf("invalid category alias owner")
+	}
+	database, err := r.database(uid)
+	if err != nil {
+		return nil, err
+	}
+	sess := database.NewPrivacySession(c)
+	defer sess.Close()
+	items := make([]*CategoryAliasMapping, 0)
+	if err = sess.Where("uid=?", uid).Asc("mapping_id").Find(&items); err != nil {
+		return nil, fmt.Errorf("list organizer category aliases: %w", err)
+	}
+	return items, nil
+}
+
+// SaveCategoryAliases 保存用户本次明确确认的分类，并由数据库唯一约束裁决并发更新。
+func (tx *RepositoryTransaction) SaveCategoryAliases(values []*CategoryAliasMapping) error {
+	if err := tx.validate(); err != nil {
+		return err
+	}
+	for _, value := range values {
+		if !isValidCategoryAlias(value, tx.uid) {
+			return fmt.Errorf("invalid organizer category alias")
+		}
+		statement := `INSERT INTO pf_category_alias_mapping (
+			uid, source_type, alias_key, alias_key_version, ledger_category_id,
+			masked_display_name, created_unix_time, updated_unix_time, mapping_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		switch tx.database.DatabaseType() {
+		case settings.Sqlite3DbType, settings.PostgresDbType:
+			statement += ` ON CONFLICT (uid, source_type, alias_key) DO UPDATE SET
+				alias_key_version=excluded.alias_key_version,
+				ledger_category_id=excluded.ledger_category_id,
+				masked_display_name=excluded.masked_display_name,
+				updated_unix_time=excluded.updated_unix_time`
+		case settings.MySqlDbType:
+			statement += ` ON DUPLICATE KEY UPDATE
+				alias_key_version=VALUES(alias_key_version),
+				ledger_category_id=VALUES(ledger_category_id),
+				masked_display_name=VALUES(masked_display_name),
+				updated_unix_time=VALUES(updated_unix_time)`
+		default:
+			return fmt.Errorf("unsupported organizer category alias database type")
+		}
+		if _, err := tx.session.Exec(statement, value.Uid, value.SourceType, value.AliasKey, value.AliasKeyVersion,
+			value.LedgerCategoryId, value.MaskedDisplayName, value.CreatedUnixTime, value.UpdatedUnixTime, value.MappingId); err != nil {
+			return fmt.Errorf("save organizer category alias: %w", err)
+		}
+	}
+	return nil
 }
 
 func (tx *RepositoryTransaction) InsertEvent(value *EconomicEvent) error {
@@ -809,6 +866,22 @@ func isValidNewAction(value *FinanceAction) bool {
 		value.IdempotencyKeyVersion != "" && value.RequestDigestVersion != "" && value.ReasonCodesJson == "[]" &&
 		value.ErrorCode == "" && value.CreatedUnixTime > 0 && value.UpdatedUnixTime == value.CreatedUnixTime &&
 		value.StartedUnixTime == nil && value.CompletedUnixTime == nil && value.FailedUnixTime == nil
+}
+
+func isValidCategoryAlias(value *CategoryAliasMapping, uid int64) bool {
+	if value == nil || value.Uid != uid || value.MappingId < 1 || value.LedgerCategoryId < 1 ||
+		value.AliasKeyVersion != CATEGORY_ALIAS_VERSION_V1 || !isLowerHexSHA256(value.AliasKey) ||
+		value.CreatedUnixTime < 1 || value.UpdatedUnixTime < value.CreatedUnixTime ||
+		!utf8.ValidString(value.MaskedDisplayName) || utf8.RuneCountInString(value.MaskedDisplayName) < 1 ||
+		utf8.RuneCountInString(value.MaskedDisplayName) > 128 {
+		return false
+	}
+	switch value.SourceType {
+	case importing.SOURCE_TYPE_ALIPAY, importing.SOURCE_TYPE_WECHAT, importing.SOURCE_TYPE_BANK:
+		return true
+	default:
+		return false
+	}
 }
 
 func isLowerHexSHA256(value string) bool {

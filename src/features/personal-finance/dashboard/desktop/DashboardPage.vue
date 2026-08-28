@@ -348,6 +348,7 @@ import { formatLoanPptrAsPercentage } from '../../loans/state.ts';
 import { composeDashboardHeadline, nearestNextPayment, primaryDashboardHeadline } from '../state.ts';
 import { listCardCycleAccounts } from '../service.ts';
 import { organizerApi } from '../../organizer/service.ts';
+import type { EconomicEvent } from '../../organizer/models.ts';
 import { coverageTone, formatCoverageRange, sourceCoverageTone } from '../presentation.ts';
 import { useDashboard } from '../useDashboard.ts';
 import CashFlowTrendChart from './CashFlowTrendChart.vue';
@@ -426,21 +427,35 @@ function refresh(): void {
 
 async function loadHeadlineExtras(): Promise<void> {
     try {
-        const [reviews, partial, cards] = await Promise.all([
+        const [reviews, posted, cards] = await Promise.all([
             organizerApi.listUpdates('review'),
-            organizerApi.listUpdates('partially_posted'),
+            organizerApi.listUpdates('posted'),
             listCardCycleAccounts(asOfDate.value)
         ]);
-        const update = [...reviews.items, ...partial.items].sort((left, right) => right.updatedUnixTime - left.updatedUnixTime)[0];
-        const needsAction = update ? await organizerApi.listEvents(update.id, 'needs_action') : { items: [] };
+        const latestReview = [...reviews.items].sort((left, right) => right.updatedUnixTime - left.updatedUnixTime)[0];
+        const latestPosted = [...posted.items].sort((left, right) => right.updatedUnixTime - left.updatedUnixTime)[0];
+        const update = latestReview ?? latestPosted;
+        const status = update?.status === 'review' ? 'ready' : update?.status === 'posted' ? 'posted' : undefined;
+        const categorizedCandidates = update && status ? await listAllHeadlineEvents(update.id, status) : [];
         headlineExtras.value = {
-            uncategorizedCount: needsAction.items.filter(item => !item.categoryId).length,
-            todoOpenCount: update?.needsActionEventCount ?? needsAction.items.length,
+            uncategorizedCount: categorizedCandidates.filter(item => ['expense', 'income', 'fee'].includes(item.economicNature) && !item.categoryId).length,
+            todoOpenCount: latestReview?.needsActionEventCount ?? 0,
             balanceUnverifiedCount: cards.filter(card => !card.balanceReview || card.balanceReview.status === 'unverified').length
         };
     } catch {
         headlineExtras.value = { uncategorizedCount: 0, todoOpenCount: 0, balanceUnverifiedCount: 0 };
     }
+}
+
+async function listAllHeadlineEvents(updateId: string, status: 'ready' | 'posted') {
+    const result: EconomicEvent[] = [];
+    let cursor: { updatedUnixTime: number; eventId: string } | undefined;
+    do {
+        const page = await organizerApi.listEvents(updateId, status, 100, cursor);
+        result.push(...page.items);
+        cursor = page.nextCursor;
+    } while (cursor);
+    return result;
 }
 
 function dismissGettingStarted(): void {

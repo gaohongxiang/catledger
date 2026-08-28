@@ -338,6 +338,14 @@ func applyCashFlowTransaction(flow *CashFlowCurrency, transaction *LedgerTransac
 			return err
 		}
 	}
+	if transaction.EconomicNature == LedgerTransactionEconomicNatureRefund {
+		if transaction.Type != LedgerTransactionIncome {
+			return ErrInvariantViolation
+		}
+		// 退款在核心账本中以流入交易恢复资产余额，但在现金流中冲减消费，不是收入。
+		flow.Consumption, err = checkedSubtract(flow.Consumption, transaction.Amount)
+		return err
+	}
 	switch transaction.Type {
 	case LedgerTransactionModifyBalance:
 		flow.BalanceAdjustment, err = checkedAdd(flow.BalanceAdjustment, transaction.Adjustment)

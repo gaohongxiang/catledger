@@ -153,10 +153,6 @@ interface PaymentAccountDraft {
     ignoreMode: 'none' | 'current' | 'persistent';
 }
 
-interface PaymentAccountDialogOptions {
-    readonly unresolvedOnly?: boolean;
-}
-
 const CREATE_ACCOUNT_VALUE = '__create_account__';
 
 const emit = defineEmits<{
@@ -257,7 +253,7 @@ function sourceSummary(draft: PaymentAccountDraft): string {
     return [...new Set(draft.members.map(member => tt(`personalFinance.source.${member.group.sourceType}`)))].join('、');
 }
 
-async function open(currentBatchIds: string | readonly string[], options: PaymentAccountDialogOptions = {}): Promise<boolean> {
+async function open(currentBatchIds: string | readonly string[]): Promise<boolean> {
     const batchIds = [...new Set(Array.isArray(currentBatchIds) ? currentBatchIds : [currentBatchIds])].filter(Boolean);
     if (!batchIds.length) return false;
 
@@ -283,8 +279,7 @@ async function open(currentBatchIds: string | readonly string[], options: Paymen
         }
         drafts.value = [...merged.entries()]
             .map(([key, members]) => buildDraft(key, members))
-            .filter(draft => draft.members.length > 0)
-            .filter(draft => !options.unresolvedOnly || draft.group.excluded || !draft.group.mapped);
+            .filter(draft => draft.members.length > 0);
         if (!drafts.value.length) showState.value = false;
         return drafts.value.length > 0;
     } catch {
@@ -323,7 +318,6 @@ async function submit(): Promise<void> {
         for (const draft of drafts.value) {
             if (draft.ignoreMode === 'persistent') {
                 for (const member of draft.members) {
-                    if (member.group.excluded) continue;
                     await personalFinanceStore.excludePaymentAccount({
                         batchId: member.batchId,
                         rowId: member.group.sampleRowId

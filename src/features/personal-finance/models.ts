@@ -110,7 +110,6 @@ export interface PersonalFinanceImportRowPage {
 
 export interface PersonalFinanceImportUploadResult {
     readonly file: PersonalFinanceImportFile;
-    readonly latestBatch?: PersonalFinanceImportBatch;
     readonly duplicate: boolean;
     readonly recovered: boolean;
 }
@@ -249,6 +248,7 @@ export interface PersonalFinanceReparseResult {
     readonly parserName: string;
     readonly sourceType: PersonalFinanceSourceType;
     readonly format: string;
+	readonly alreadyPosted: boolean;
 }
 
 export interface PersonalFinanceSourceAccountSaveRequest {
@@ -271,29 +271,6 @@ export interface PersonalFinancePostingDraft {
     readonly hideAmount: boolean;
     readonly tagIds: string[];
     readonly comment: string;
-}
-
-export interface PersonalFinancePostingRequest {
-    readonly batchId: string;
-    readonly idempotencyKey: string;
-    readonly commands: Array<{
-        readonly rowIds: string[];
-        readonly draft?: PersonalFinancePostingDraft;
-    }>;
-}
-
-export interface PersonalFinancePostingResult {
-    readonly id: string;
-    readonly batchId: string;
-    readonly status: 'ready' | 'posting' | 'completed' | 'failed';
-    readonly selectedRowCount: number;
-    readonly createdTransactionCount: number;
-    readonly reusedTransactionCount: number;
-    readonly createdUnixTime: number;
-    readonly startedUnixTime?: number;
-    readonly completedUnixTime?: number;
-    readonly failedUnixTime?: number;
-    readonly replayed: boolean;
 }
 
 export interface PersonalFinanceEvidenceItem {

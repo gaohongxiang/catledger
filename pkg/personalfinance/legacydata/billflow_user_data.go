@@ -11,7 +11,6 @@ func BillflowUserDataModule() core.UserDataModule {
 			"pf_billflow_action",
 			"pf_billflow_task_member",
 			"pf_billflow_task",
-			"pf_category_alias_mapping",
 		),
 	}
 }

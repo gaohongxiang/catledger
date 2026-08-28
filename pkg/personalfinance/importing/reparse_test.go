@@ -10,7 +10,72 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
 )
+
+func TestReparseServiceReturnsPostedBatchWithoutCreatingAnotherParse(t *testing.T) {
+	content := []byte("safe-posted-fixture")
+	digest := sha256.Sum256(content)
+	digestText := hex.EncodeToString(digest[:])
+	repository, database := newSQLiteDedupRepository(t, 1)
+	file := &importing.ImportFile{
+		Uid: 101, FileId: 201, OriginalFileName: "posted.csv", FileSize: int64(len(content)), FileSha256: digestText,
+		StorageObjectKey: "objects/posted", ContentState: importing.IMPORT_FILE_CONTENT_STATE_AVAILABLE,
+		CreatedIp: "192.0.2.10", MimeType: "text/csv", FileExtension: "csv", CreatedUnixTime: 100, UpdatedUnixTime: 100,
+	}
+	batch := testImportBatch(101, 301, 201, 100)
+	batch.ParserName = "posted_parser"
+	update := &organizer.FinanceUpdate{Uid: 101, UpdateId: 401, Status: organizer.UPDATE_STATUS_POSTED, Version: 4,
+		PlanVersion: organizer.PLAN_VERSION_V1, SourceCount: 1, PostedEventCount: 1, FinalEventCount: 1,
+		CreatedUnixTime: 100, UpdatedUnixTime: 100}
+	source := &organizer.FinanceUpdateSource{Uid: 101, UpdateId: 401, SourceId: 501, SourceOrder: 0,
+		FileId: 201, BatchId: 301, SourceTypeSnapshot: string(importing.SOURCE_TYPE_ALIPAY),
+		ParserVersion: organizer.RuleVersion(batch.ParserVersion), NormalizationVersion: organizer.RuleVersion(batch.NormalizationVersion),
+		IdentityKeyVersion: organizer.RuleVersion(batch.IdentityKeyVersion), CreatedUnixTime: 100}
+	insertRepositoryBeans(t, database, file, batch, update, source)
+
+	parser := &flowTestParser{descriptor: importing.ParserDescriptor{
+		Name: "posted_parser", SourceType: importing.SOURCE_TYPE_ALIPAY, Format: importing.EVIDENCE_FORMAT_ALIPAY_APP_CSV,
+		ParserVersion: batch.ParserVersion, NormalizationVersion: batch.NormalizationVersion,
+	}}
+	service, err := importing.NewReparseService(repository, &flowTestStorage{content: content, expectedSHA256: digestText},
+		[]importing.ImportEvidenceParser{parser}, &flowTestSourceAccounts{}, new(flowTestPersister))
+	if err != nil {
+		t.Fatalf("create posted reparse service: %v", err)
+	}
+	result, err := service.ReparseImportFile(nil, importing.ReparseImportFileRequest{Uid: 101, FileId: 201,
+		ParseOptions: importing.ResolvedParseOptions{Currency: "CNY", TimezoneUtcOffset: 480}, ReparseReasonCode: "duplicate_upload_reparse"})
+	if err != nil || result == nil || !result.AlreadyPosted || result.Batch == nil || result.Batch.BatchId != 301 || parser.parseCalls != 0 {
+		t.Fatalf("posted file was reparsed: result=%+v parseCalls=%d err=%v", result, parser.parseCalls, err)
+	}
+	batches, total, err := repository.ListImportBatches(nil, 101, 201, 0, 100)
+	if err != nil || total != 1 || len(batches) != 1 || batches[0].BatchId != 301 {
+		t.Fatalf("posted duplicate created another batch: total=%d batches=%d err=%v", total, len(batches), err)
+	}
+}
+
+func TestRepositoryFindsLegacyPostedBatchByFileId(t *testing.T) {
+	repository, database := newSQLiteDedupRepository(t, 1)
+	file := &importing.ImportFile{
+		Uid: 101, FileId: 201, OriginalFileName: "legacy.csv", FileSize: 1, FileSha256: strings.Repeat("a", 64),
+		StorageObjectKey: "objects/legacy", ContentState: importing.IMPORT_FILE_CONTENT_STATE_AVAILABLE,
+		CreatedIp: "192.0.2.10", MimeType: "text/csv", FileExtension: "csv", CreatedUnixTime: 100, UpdatedUnixTime: 100,
+	}
+	batch := testImportBatch(101, 301, 201, 100)
+	posting := &importing.ImportPosting{
+		Uid: 101, BatchId: 301, PostingId: 401,
+		IdempotencyKeyDigest: strings.Repeat("b", 64), IdempotencyKeyVersion: importing.IDEMPOTENCY_KEY_VERSION_V1,
+		RequestDigest: strings.Repeat("c", 64), RequestDigestVersion: importing.POSTING_REQUEST_VERSION_V1,
+		Status: importing.IMPORT_POSTING_STATUS_COMPLETED, SelectedRowCount: 1, CreatedTransactionCount: 1,
+		CreatedUnixTime: 100, UpdatedUnixTime: 100,
+	}
+	insertRepositoryBeans(t, database, file, batch, posting)
+
+	found, err := repository.FindPostedImportBatchByFileId(nil, 101, 201)
+	if err != nil || found == nil || found.BatchId != 301 {
+		t.Fatalf("legacy posting evidence did not protect the batch: batch=%+v err=%v", found, err)
+	}
+}
 
 func TestReparseServicePersistsUniqueParserWithStableAccount(t *testing.T) {
 	content := []byte("safe-fixture")
@@ -100,8 +165,12 @@ func TestReparseServicePersistsUniqueParserWithStableAccount(t *testing.T) {
 		first.SourceAccount == nil || second.SourceAccount == nil ||
 		first.SourceAccount.SourceAccountId != second.SourceAccount.SourceAccountId ||
 		first.Discovery == nil || first.Discovery.DisplayName == candidate.Identifier ||
-		len(savedAccounts) != 1 || len(batches) != 2 || total != 2 {
-		t.Fatalf("SQLite reparse did not converge on one source account and two immutable batches")
+		len(savedAccounts) != 1 || len(batches) != 1 || total != 1 || batches[0].BatchId != second.Batch.BatchId {
+		t.Fatalf("SQLite reparse did not converge on one source account and one active batch")
+	}
+	oldBatch, err := repository.FindImportBatchById(nil, 101, first.Batch.BatchId)
+	if err != nil || oldBatch == nil || oldBatch.Status != importing.IMPORT_BATCH_STATUS_DISCARDED {
+		t.Fatalf("superseded unposted batch was not discarded: batch=%+v err=%v", oldBatch, err)
 	}
 
 	_, err = service.ReparseImportFile(nil, importing.ReparseImportFileRequest{
@@ -412,7 +481,8 @@ func newFlowTestService(t *testing.T, content []byte, parsers []importing.Import
 }
 
 type flowTestFileRepository struct {
-	file *importing.ImportFile
+	file        *importing.ImportFile
+	postedBatch *importing.ImportBatch
 }
 
 func (r *flowTestFileRepository) FindImportFileById(_ core.Context, uid int64, fileId int64) (*importing.ImportFile, error) {
@@ -420,6 +490,14 @@ func (r *flowTestFileRepository) FindImportFileById(_ core.Context, uid int64, f
 		return nil, nil
 	}
 	copy := *r.file
+	return &copy, nil
+}
+
+func (r *flowTestFileRepository) FindPostedImportBatchByFileId(_ core.Context, uid int64, fileId int64) (*importing.ImportBatch, error) {
+	if r.postedBatch == nil || r.postedBatch.Uid != uid || r.postedBatch.FileId != fileId {
+		return nil, nil
+	}
+	copy := *r.postedBatch
 	return &copy, nil
 }
 

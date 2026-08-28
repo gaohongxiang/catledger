@@ -246,6 +246,47 @@ func (tx *RepositoryTransaction) persistEvidenceBatch(persistence *EvidenceBatch
 		}
 	}
 
+	if err = tx.discardSupersededUnpostedBatches(batch.Uid, batch.FileId, batch.BatchId, batch.UpdatedUnixTime); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// discardSupersededUnpostedBatches 让同一原文件只保留一个可继续整理的解析结果。
+// 已进入活动更新、已经入账或已有正式交易证据链接的批次绝不自动废弃。
+func (tx *RepositoryTransaction) discardSupersededUnpostedBatches(uid int64, fileId int64, replacementBatchId int64, now int64) error {
+	if uid < 1 || fileId < 1 || replacementBatchId < 1 || now < 1 {
+		return fmt.Errorf("invalid superseded import batch replacement")
+	}
+
+	query := tx.session.Where("uid=? AND file_id=? AND batch_id<>? AND posted_row_count=0", uid, fileId, replacementBatchId).
+		In("status", []ImportBatchStatus{IMPORT_BATCH_STATUS_AWAITING_SOURCE_ACCOUNT, IMPORT_BATCH_STATUS_READY}).
+		And(`NOT EXISTS (
+			SELECT 1 FROM pf_import_posting posting
+			WHERE posting.uid=pf_import_batch.uid AND posting.batch_id=pf_import_batch.batch_id
+		)`).
+		And(`NOT EXISTS (
+			SELECT 1 FROM pf_raw_import_row raw_row
+			INNER JOIN pf_raw_row_transaction_link row_link
+				ON row_link.uid=raw_row.uid AND row_link.row_id=raw_row.row_id
+			WHERE raw_row.uid=pf_import_batch.uid AND raw_row.batch_id=pf_import_batch.batch_id
+		)`).
+		And(`NOT EXISTS (
+			SELECT 1 FROM pf_finance_update_source update_source
+			INNER JOIN pf_finance_update finance_update
+				ON finance_update.uid=update_source.uid AND finance_update.update_id=update_source.update_id
+			WHERE update_source.uid=pf_import_batch.uid
+				AND update_source.batch_id=pf_import_batch.batch_id
+				AND finance_update.status NOT IN ('failed', 'undone', 'abandoned')
+		)`)
+
+	if _, err := query.Cols("status", "updated_unix_time").Update(&ImportBatch{
+		Status:          IMPORT_BATCH_STATUS_DISCARDED,
+		UpdatedUnixTime: now,
+	}); err != nil {
+		return fmt.Errorf("discard superseded personal finance import batches: %w", err)
+	}
 	return nil
 }
 

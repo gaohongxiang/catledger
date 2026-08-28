@@ -15,6 +15,7 @@ import (
 
 	"github.com/mayswind/ezbookkeeping/pkg/models"
 	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
 )
 
 const (
@@ -24,27 +25,32 @@ const (
 )
 
 const (
-	reasonAlreadyPosted            = "already_posted"
-	reasonAutoRefundRelation       = "auto_refund_relation"
-	reasonAutoRepaymentPair        = "auto_repayment_pair"
-	reasonAutoSameEvent            = "auto_same_event"
-	reasonAutoTransferPair         = "auto_transfer_pair"
-	reasonCategoryUnclassified     = "category_unclassified"
-	reasonCoreFieldsConflict       = "core_fields_conflict"
-	reasonCoreFieldsMissing        = "core_fields_missing"
-	reasonEconomicNatureRequired   = "economic_nature_required"
-	reasonEvidenceExcluded         = "evidence_excluded"
-	reasonIdentityConflict         = "identity_conflict"
-	reasonIdentityReviewRequired   = "identity_review_required"
-	reasonLedgerAccountRequired    = "ledger_account_required"
-	reasonRefundAmountExceeded     = "refund_amount_exceeded"
-	reasonRefundRelationAmbiguous  = "refund_relation_ambiguous"
-	reasonRefundRelationRequired   = "refund_relation_required"
-	reasonRelationAmbiguous        = "relation_ambiguous"
-	reasonRepaymentAccountRequired = "repayment_account_required"
-	reasonTransferAccountRequired  = "transfer_account_required"
-	reasonTransactionClosed        = "transaction_closed"
-	reasonTransactionFailed        = "transaction_failed"
+	reasonAlreadyPosted                  = "already_posted"
+	reasonAutoRefundRelation             = "auto_refund_relation"
+	reasonAutoRepaymentPair              = "auto_repayment_pair"
+	reasonAutoSameEvent                  = "auto_same_event"
+	reasonAutoTransferPair               = "auto_transfer_pair"
+	reasonCategoryUnclassified           = "category_unclassified"
+	reasonCoreFieldsConflict             = "core_fields_conflict"
+	reasonCoreFieldsMissing              = "core_fields_missing"
+	reasonEconomicNatureRequired         = "economic_nature_required"
+	reasonEvidenceExcluded               = "evidence_excluded"
+	reasonIdentityConflict               = "identity_conflict"
+	reasonIdentityReviewRequired         = "identity_review_required"
+	reasonInstallmentOriginRequired      = "installment_origin_required"
+	reasonInstallmentCompositionRequired = "installment_composition_required"
+	reasonInstallmentInterest            = "installment_interest"
+	reasonInstallmentFee                 = "installment_fee"
+	reasonLedgerAccountRequired          = "ledger_account_required"
+	reasonRefundAmountExceeded           = "refund_amount_exceeded"
+	reasonRefundRelationAmbiguous        = "refund_relation_ambiguous"
+	reasonRefundRelationRequired         = "refund_relation_required"
+	reasonRefundRelationUnlinked         = "refund_relation_unlinked"
+	reasonRelationAmbiguous              = "relation_ambiguous"
+	reasonRepaymentAccountRequired       = "repayment_account_required"
+	reasonTransferAccountRequired        = "transfer_account_required"
+	reasonTransactionClosed              = "transaction_closed"
+	reasonTransactionFailed              = "transaction_failed"
 )
 
 // PlanningSource 把一次更新冻结的来源快照与不可变解析证据交给规划器。
@@ -122,9 +128,13 @@ type checkedIdentifierGenerator struct {
 }
 
 // BuildOrganizePlan 是无数据库副作用的统一整理入口。原始文本只参与内存比较，持久结果仅保存稳定代码和行 ID。
-func BuildOrganizePlan(uid int64, updateId int64, sources []*PlanningSource, accounts map[int64]*models.Account, now int64, generateId func() int64) (*OrganizePlan, error) {
-	if uid < 1 || updateId < 1 || now < 1 || generateId == nil {
+func BuildOrganizePlan(uid int64, updateId int64, sources []*PlanningSource, accounts map[int64]*models.Account, now int64, generateId func() int64, categoryIndexes ...*categoryIndex) (*OrganizePlan, error) {
+	if uid < 1 || updateId < 1 || now < 1 || generateId == nil || len(categoryIndexes) > 1 {
 		return nil, fmt.Errorf("invalid organizer planning request")
+	}
+	var categories *categoryIndex
+	if len(categoryIndexes) == 1 {
+		categories = categoryIndexes[0]
 	}
 	rows, err := validatePlanningSources(uid, updateId, sources, accounts)
 	if err != nil {
@@ -143,7 +153,7 @@ func BuildOrganizePlan(uid int64, updateId int64, sources []*PlanningSource, acc
 	}
 	planned := make([]*plannedEvent, 0, len(groups))
 	for _, group := range groups {
-		item, evidence, buildErr := buildPlannedEvent(uid, updateId, group, now, ids)
+		item, evidence, buildErr := buildPlannedEvent(uid, updateId, group, now, ids, categories)
 		if buildErr != nil {
 			return nil, buildErr
 		}
@@ -420,7 +430,7 @@ func mergeStrongSameEvents(groups []*planningGroup) []*planningGroup {
 
 // mergeHighConfidenceSameEvents 处理没有共享订单号、但具备跨来源强结构证据的同一事件。
 // 普通明细必须同时满足账户、金额、方向、时间和文本；只有日期的银行月结行还要求
-// 同日等额桶两侧数量相等且存在完整一一匹配，不能仅凭金额和时间合并。
+// 交易日或记账日与平台明细同日、等额桶两侧数量相等且存在完整一一匹配，不能仅凭金额和时间合并。
 func mergeHighConfidenceSameEvents(groups []*planningGroup) []*planningGroup {
 	if len(groups) < 2 {
 		return groups
@@ -566,7 +576,7 @@ func highConfidenceSameEvent(left *planningGroup, right *planningGroup) (bool, b
 	leftRow, rightRow := leftSummary.representative.row, rightSummary.representative.row
 	leftDateOnly, rightDateOnly := rowHasDateOnlyTime(leftRow), rowHasDateOnlyTime(rightRow)
 	if leftDateOnly != rightDateOnly {
-		return true, rowCivilDate(leftRow) != "" && rowCivilDate(leftRow) == rowCivilDate(rightRow) &&
+		return true, sharedCivilDate(leftRow, rightRow) != "" &&
 			(groupHasSourceType(left, importing.SOURCE_TYPE_BANK) || groupHasSourceType(right, importing.SOURCE_TYPE_BANK))
 	}
 	return false, absoluteDifference(leftSummary.unixTime, rightSummary.unixTime) <= planHighConfidenceWindowSeconds &&
@@ -584,8 +594,12 @@ func selectBalancedDateOnlyPairs(candidates []planningPair, groups []*planningGr
 	buckets := make(map[bucketKey][]planningPair)
 	for _, item := range candidates {
 		left := summarizeGroup(groups[item.left])
-		buckets[bucketKey{accountId: left.accountId, amount: left.amount, currency: left.currency, direction: left.direction, date: rowCivilDate(left.representative.row)}] =
-			append(buckets[bucketKey{accountId: left.accountId, amount: left.amount, currency: left.currency, direction: left.direction, date: rowCivilDate(left.representative.row)}], item)
+		date := sharedCivilDate(left.representative.row, summarizeGroup(groups[item.right]).representative.row)
+		if date == "" {
+			continue
+		}
+		key := bucketKey{accountId: left.accountId, amount: left.amount, currency: left.currency, direction: left.direction, date: date}
+		buckets[key] = append(buckets[key], item)
 	}
 	for _, items := range buckets {
 		leftNodes, rightNodes := make(map[int]struct{}), make(map[int]struct{})
@@ -862,7 +876,7 @@ func compactPlanningGroups(groups []*planningGroup, parent *groupUnion, pairNatu
 	return result
 }
 
-func buildPlannedEvent(uid int64, updateId int64, group *planningGroup, now int64, ids *checkedIdentifierGenerator) (*plannedEvent, []*EconomicEventEvidence, error) {
+func buildPlannedEvent(uid int64, updateId int64, group *planningGroup, now int64, ids *checkedIdentifierGenerator, categories *categoryIndex) (*plannedEvent, []*EconomicEventEvidence, error) {
 	if group == nil || len(group.rows) < 1 {
 		return nil, nil, fmt.Errorf("empty organizer planning group")
 	}
@@ -951,6 +965,13 @@ func buildPlannedEvent(uid int64, updateId int64, group *planningGroup, now int6
 			reasons = append(reasons, reasonEconomicNatureRequired)
 		}
 	}
+	if event.CategoryId == nil && event.Status != EVENT_STATUS_EXCLUDED {
+		if match := categories.mapped(group, event.EconomicNature); match.categoryId > 0 {
+			value := match.categoryId
+			event.CategoryId = &value
+			event.FieldSourcesJson = setCategoryFieldSource(event.FieldSourcesJson, match.sourceRef)
+		}
+	}
 	if event.Status == EVENT_STATUS_READY && event.CategoryId == nil && event.EconomicNature == ECONOMIC_NATURE_EXPENSE {
 		reasons = append(reasons, reasonCategoryUnclassified)
 	}
@@ -976,14 +997,33 @@ func buildPlannedEvent(uid int64, updateId int64, group *planningGroup, now int6
 
 func classifySingleGroup(event *EconomicEvent, group *planningGroup, reasons *[]string) {
 	row := summarizeGroup(group).representative.row
+	installment := detectPlanningInstallment(group)
 	switch {
+	case installment.Matched && installment.Component == installments.COMPONENT_TYPE_INTEREST:
+		event.EconomicNature = ECONOMIC_NATURE_FEE
+		event.Status = EVENT_STATUS_READY
+		*reasons = append(*reasons, reasonInstallmentInterest)
+	case installment.Matched && installment.Component == installments.COMPONENT_TYPE_FEE:
+		event.EconomicNature = ECONOMIC_NATURE_FEE
+		event.Status = EVENT_STATUS_READY
+		*reasons = append(*reasons, reasonInstallmentFee)
+	case installment.Matched && installment.Component == installments.COMPONENT_TYPE_PRINCIPAL:
+		// 分期本金只证明债务计划的推进，不能再次记成日常消费。
+		// 在可靠关联到原消费、借款或既有合同前保持待确认。
+		event.EconomicNature = ECONOMIC_NATURE_UNKNOWN
+		event.Status = EVENT_STATUS_NEEDS_ACTION
+		*reasons = append(*reasons, reasonInstallmentOriginRequired)
+	case installment.Matched && installment.PeriodNumber != nil:
+		event.EconomicNature = ECONOMIC_NATURE_UNKNOWN
+		event.Status = EVENT_STATUS_NEEDS_ACTION
+		*reasons = append(*reasons, reasonInstallmentCompositionRequired)
 	case groupHasEconomicEffect(group, importing.ECONOMIC_EFFECT_REFUND) && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE:
 		event.EconomicNature = ECONOMIC_NATURE_EXPENSE
 		event.Status = EVENT_STATUS_READY
 	case groupHasEconomicEffect(group, importing.ECONOMIC_EFFECT_REFUND):
 		event.EconomicNature = ECONOMIC_NATURE_REFUND
-		event.Status = EVENT_STATUS_NEEDS_ACTION
-		*reasons = append(*reasons, reasonRefundRelationRequired)
+		event.Status = EVENT_STATUS_READY
+		*reasons = append(*reasons, reasonRefundRelationUnlinked)
 	case configureProjectedFundsEvent(event, group):
 		if event.Status == EVENT_STATUS_NEEDS_ACTION {
 			if event.EconomicNature == ECONOMIC_NATURE_REPAYMENT {
@@ -993,6 +1033,11 @@ func classifySingleGroup(event *EconomicEvent, group *planningGroup, reasons *[]
 			}
 		}
 	case isRepaymentGroup(group):
+		// 信用卡账单的还款流入已经证明还入的负债账户，未知的是资金来源。
+		// 事件字段统一保持 ledger=转出、counterparty=转入，避免界面反向询问用户。
+		targetAccountId := cloneInt64Pointer(event.LedgerAccountId)
+		event.LedgerAccountId = nil
+		event.CounterpartyLedgerAccountId = targetAccountId
 		event.EconomicNature = ECONOMIC_NATURE_REPAYMENT
 		event.FlowDirection = FLOW_DIRECTION_NEUTRAL
 		event.Status = EVENT_STATUS_NEEDS_ACTION
@@ -1003,8 +1048,7 @@ func classifySingleGroup(event *EconomicEvent, group *planningGroup, reasons *[]
 	case row.EconomicEffect == importing.ECONOMIC_EFFECT_NORMAL && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_EXPENSE && !groupTransferLike(group):
 		event.EconomicNature = ECONOMIC_NATURE_EXPENSE
 		event.Status = EVENT_STATUS_READY
-	case row.EconomicEffect == importing.ECONOMIC_EFFECT_NORMAL && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_INCOME &&
-		row.NormalizedTransactionType == importing.SOURCE_TRANSACTION_TYPE_OTHER && !groupTransferLike(group):
+	case row.EconomicEffect == importing.ECONOMIC_EFFECT_NORMAL && row.NormalizedDirection == importing.NORMALIZED_DIRECTION_INCOME && !groupTransferLike(group):
 		event.EconomicNature = ECONOMIC_NATURE_INCOME
 		event.Status = EVENT_STATUS_READY
 	case groupTransferLike(group):
@@ -1019,6 +1063,53 @@ func classifySingleGroup(event *EconomicEvent, group *planningGroup, reasons *[]
 	if groupNeedsIdentityReview(group) {
 		event.Status = EVENT_STATUS_NEEDS_ACTION
 	}
+}
+
+func detectPlanningInstallment(group *planningGroup) installments.Detection {
+	result := installments.Detection{}
+	if group == nil {
+		return result
+	}
+	for _, item := range group.rows {
+		if item == nil || item.row == nil {
+			continue
+		}
+		row := item.row
+		detected := installments.Detect(installments.Evidence{
+			RowId: row.RowId, IdentityId: row.IdentityId, SourceOrderId: row.SourceOrderId,
+			SourceMerchantId: row.SourceMerchantOrderId, RawTransactionType: row.RawTransactionType,
+			RawCounterparty: row.RawCounterparty, RawItem: row.RawItem, RawNote: row.RawNote,
+			LedgerAccountId: row.LedgerAccountId,
+		})
+		if !detected.Matched {
+			continue
+		}
+		if !result.Matched {
+			result = detected
+			continue
+		}
+		if result.Component != "" && detected.Component != "" && result.Component != detected.Component {
+			result.Component = installments.COMPONENT_TYPE_UNKNOWN
+		} else if result.Component == "" {
+			result.Component = detected.Component
+		}
+		if result.Funding != "" && detected.Funding != "" && result.Funding != detected.Funding {
+			result.Funding = installments.FUNDING_TYPE_UNKNOWN
+		} else if result.Funding == "" {
+			result.Funding = detected.Funding
+		}
+		if result.PeriodNumber == nil {
+			result.PeriodNumber = cloneInt64Pointer(detected.PeriodNumber)
+		} else if detected.PeriodNumber != nil && *result.PeriodNumber != *detected.PeriodNumber {
+			result.PeriodNumber = nil
+		}
+		if result.TermCount == nil {
+			result.TermCount = cloneInt64Pointer(detected.TermCount)
+		} else if detected.TermCount != nil && *result.TermCount != *detected.TermCount {
+			result.TermCount = nil
+		}
+	}
+	return result
 }
 
 func configureProjectedFundsEvent(event *EconomicEvent, group *planningGroup) bool {
@@ -1135,11 +1226,6 @@ func resolveRefundRelations(uid int64, updateId int64, planned []*plannedEvent, 
 			candidates = append(candidates, original)
 		}
 		if len(candidates) != 1 {
-			reasons := decodeReasonCodes(refund.event.ReasonCodesJson)
-			if len(candidates) > 1 {
-				reasons = append(reasons, reasonRefundRelationAmbiguous)
-			}
-			refund.event.ReasonCodesJson = reasonCodesJSON(reasons)
 			continue
 		}
 		original := candidates[0]
@@ -1165,13 +1251,12 @@ func resolveRefundRelations(uid int64, updateId int64, planned []*plannedEvent, 
 	for _, match := range matches {
 		reasons := decodeReasonCodes(match.refund.event.ReasonCodesJson)
 		if match.original.event.Amount == nil || totalByOriginal[match.original.event.EventId] > *match.original.event.Amount {
-			match.relation.Status = RELATION_STATUS_PROPOSED
-			match.relation.ReasonCodesJson = reasonCodesJSON([]string{reasonRefundAmountExceeded})
-			match.refund.event.Status = EVENT_STATUS_NEEDS_ACTION
-			reasons = append(reasons, reasonRefundAmountExceeded)
+			// 不为了强行关联而阻塞一笔来源已明确的退款。
+			// 累计金额超出原消费时只放弃该自动关系，保留未关联退款语义。
+			continue
 		} else if eventHasRequiredFields(match.refund.event) {
 			match.refund.event.Status = EVENT_STATUS_READY
-			reasons = removeReason(reasons, reasonRefundRelationRequired)
+			reasons = removeReason(reasons, reasonRefundRelationUnlinked)
 			reasons = append(reasons, reasonAutoRefundRelation)
 		}
 		match.refund.event.ReasonCodesJson = reasonCodesJSON(reasons)
@@ -1433,6 +1518,41 @@ func rowCivilDate(row *importing.RawImportRow) string {
 	return time.Unix(*row.NormalizedUnixTime, 0).In(time.FixedZone("organizer-row", rowTimezoneSeconds(row))).Format(time.DateOnly)
 }
 
+// sharedCivilDate 同时核对银行交易日与记账日。平台退款常在银行交易日次日入账；
+// 记账日只扩展日期候选，最终仍须通过账户、金额、币种、方向和一一对应约束。
+func sharedCivilDate(left *importing.RawImportRow, right *importing.RawImportRow) string {
+	leftDates, rightDates := rowCivilDates(left), rowCivilDates(right)
+	shared := make([]string, 0, 2)
+	for date := range leftDates {
+		if _, exists := rightDates[date]; exists {
+			shared = append(shared, date)
+		}
+	}
+	if len(shared) == 0 {
+		return ""
+	}
+	sort.Strings(shared)
+	return shared[0]
+}
+
+func rowCivilDates(row *importing.RawImportRow) map[string]struct{} {
+	dates := make(map[string]struct{}, 2)
+	if date := rowCivilDate(row); date != "" {
+		dates[date] = struct{}{}
+	}
+	if row == nil {
+		return dates
+	}
+	note := strings.TrimSpace(row.RawNote)
+	for _, layout := range []string{"2006/01/02", time.DateOnly} {
+		if parsed, err := time.Parse(layout, note); err == nil {
+			dates[parsed.Format(time.DateOnly)] = struct{}{}
+			break
+		}
+	}
+	return dates
+}
+
 func rowTimezoneSeconds(row *importing.RawImportRow) int {
 	if row != nil && row.NormalizedTimezoneUtcOffset != nil {
 		return int(*row.NormalizedTimezoneUtcOffset) * 60
@@ -1690,6 +1810,17 @@ func fieldSourcesJSON(row *importing.RawImportRow) string {
 	}
 	encoded, _ := json.Marshal(fields)
 	return string(encoded)
+}
+
+func setCategoryFieldSource(encoded string, source string) string {
+	if source == "" {
+		return encoded
+	}
+	fields := make(map[string]string)
+	_ = json.Unmarshal([]byte(encoded), &fields)
+	fields["category"] = source
+	value, _ := json.Marshal(fields)
+	return string(value)
 }
 
 func reasonCodesJSON(reasons []string) string {

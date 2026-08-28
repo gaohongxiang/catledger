@@ -97,6 +97,40 @@ func TestRebuildEngineSQLiteBlocksExternallyModifiedTransaction(t *testing.T) {
 	assertTransactionLifecycleCounts(t, database, uid, 1, 0)
 }
 
+func TestRebuildEngineSQLiteRollsBackCorrectionThatWouldSplitPostedBatch(t *testing.T) {
+	repository, database := newSQLiteOrganizerRepository(t)
+	if err := database.SyncStructs(new(models.Transaction)); err != nil {
+		t.Fatalf("create atomic rebuild ledger table: %v", err)
+	}
+	const uid = int64(11103)
+	const updateId = int64(11203)
+	event := postingEvent(uid, updateId, 11321, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_EXPENSE)
+	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{event})
+	ledger := &postingLedgerStub{next: 11420}
+	ids := &engineIdGenerator{next: 11520}
+	posting, _ := organizer.NewPostingEngine(repository, ledger, ids)
+	posted, err := posting.Post(nil, organizer.PostRequest{Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 2, IdempotencyKey: "atomic-rebuild-post", Mode: organizer.POST_MODE_ALL_READY})
+	if err != nil {
+		t.Fatalf("post atomic rebuild fixture: %v", err)
+	}
+	rebuild, _ := organizer.NewRebuildEngine(repository, ledger, ids)
+	_, err = rebuild.Rebuild(nil, organizer.CorrectEventRequest{
+		Uid: uid, UpdateId: updateId, EventId: event.EventId, ExpectedUpdateVersion: posted.Update.Version, ExpectedEventVersion: 2,
+		IdempotencyKey: "atomic-rebuild-reject", Correction: organizer.EventCorrection{FieldMask: organizer.MANUAL_FIELD_LEDGER_ACCOUNT},
+	})
+	if !errors.Is(err, organizer.ErrRebuildRequestInvalid) {
+		t.Fatalf("correction split a posted batch instead of rolling back: %v", err)
+	}
+	currentUpdate, updateErr := repository.FindUpdateById(nil, uid, updateId)
+	currentEvent, eventErr := repository.FindEventById(nil, uid, event.EventId)
+	if updateErr != nil || eventErr != nil || currentUpdate == nil || currentEvent == nil ||
+		currentUpdate.Status != organizer.UPDATE_STATUS_POSTED || currentUpdate.Version != posted.Update.Version ||
+		currentEvent.Status != organizer.EVENT_STATUS_POSTED || currentEvent.Version != 2 {
+		t.Fatalf("rejected correction changed posted state: update=%+v event=%+v errors=%v/%v", currentUpdate, currentEvent, updateErr, eventErr)
+	}
+	assertTransactionLifecycleCounts(t, database, uid, 1, 0)
+}
+
 func assertTransactionLifecycleCounts(t *testing.T, database *datastore.Database, uid int64, activeWant int64, deletedWant int64) {
 	t.Helper()
 	sess := database.NewPrivacySession(nil)

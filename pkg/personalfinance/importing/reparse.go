@@ -20,6 +20,7 @@ type ImportAvailableFileReader interface {
 // ReparseImportRepository 是解析编排所需的只读文件元数据契约。
 type ReparseImportRepository interface {
 	FindImportFileById(c core.Context, uid int64, fileId int64) (*ImportFile, error)
+	FindPostedImportBatchByFileId(c core.Context, uid int64, fileId int64) (*ImportBatch, error)
 }
 
 // EvidenceDocumentPersister 是解析编排所需的最小去重持久化契约。
@@ -60,6 +61,7 @@ type ReparseImportFileResult struct {
 	SourceAccount *SourceAccount
 	Discovery     *SourceAccountDiscovery
 	Descriptor    ParserDescriptor
+	AlreadyPosted bool
 }
 
 // ImportFormatError 只携带可安全返回的稳定问题码。
@@ -132,6 +134,21 @@ func (s *ReparseService) ReparseImportFile(c core.Context, request ReparseImport
 		(request.ParserName != "" && !isTechnicalIdentifier(request.ParserName, 64)) ||
 		!isTechnicalIdentifier(request.ReparseReasonCode, 64) || request.ParseOptions.Validate() != nil {
 		return nil, ErrImportRequestInvalid
+	}
+
+	unlock := lockImportFileMutation(request.Uid, request.FileId)
+	defer unlock()
+
+	postedBatch, err := s.repository.FindPostedImportBatchByFileId(c, request.Uid, request.FileId)
+	if err != nil {
+		return nil, ErrImportPersistenceUnavailable
+	}
+	if postedBatch != nil {
+		return &ReparseImportFileResult{
+			Batch:         postedBatch,
+			Descriptor:    s.descriptorForBatch(postedBatch),
+			AlreadyPosted: true,
+		}, nil
 	}
 
 	file, err := s.repository.FindImportFileById(c, request.Uid, request.FileId)
@@ -221,6 +238,24 @@ func (s *ReparseService) ReparseImportFile(c core.Context, request ReparseImport
 
 	result.Batch = batch
 	return result, nil
+}
+
+func (s *ReparseService) descriptorForBatch(batch *ImportBatch) ParserDescriptor {
+	if batch == nil {
+		return ParserDescriptor{}
+	}
+	for _, parser := range s.parsers {
+		descriptor := parser.Descriptor()
+		if descriptor.Name == batch.ParserName {
+			return descriptor
+		}
+	}
+	return ParserDescriptor{
+		Name:                 batch.ParserName,
+		SourceType:           batch.SourceTypeSnapshot,
+		ParserVersion:        batch.ParserVersion,
+		NormalizationVersion: batch.NormalizationVersion,
+	}
 }
 
 func (s *ReparseService) selectParser(c core.Context, file EvidenceFile, parserName string) (ImportEvidenceParser, ParserDescriptor, error) {

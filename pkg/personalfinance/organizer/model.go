@@ -1,5 +1,7 @@
 package organizer
 
+import "github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+
 // FinanceUpdate 是用户一次多文件财务更新，也是默认核对和入账单位。
 type FinanceUpdate struct {
 	Uid                    int64        `xorm:"BIGINT UNIQUE(UQE_pf_fin_update_uid_id) INDEX(IDX_pf_fin_update_uid_status_updated) NOT NULL"`
@@ -40,6 +42,22 @@ type FinanceUpdateSource struct {
 }
 
 func (FinanceUpdateSource) TableName() string { return "pf_finance_update_source" }
+
+// CategoryAliasMapping 保存用户确认过的来源分类或商户别名到正式账本分类的映射。
+// 该表沿用 v006 已存在的 pf_category_alias_mapping，不创建第二套分类规则。
+type CategoryAliasMapping struct {
+	Uid               int64                `xorm:"BIGINT UNIQUE(UQE_pf_cat_alias_uid_type_key) NOT NULL"`
+	SourceType        importing.SourceType `xorm:"VARCHAR(32) UNIQUE(UQE_pf_cat_alias_uid_type_key) NOT NULL"`
+	AliasKey          string               `xorm:"CHAR(64) UNIQUE(UQE_pf_cat_alias_uid_type_key) NOT NULL"`
+	AliasKeyVersion   RuleVersion          `xorm:"VARCHAR(32) NOT NULL"`
+	LedgerCategoryId  int64                `xorm:"BIGINT NOT NULL"`
+	MaskedDisplayName string               `xorm:"VARCHAR(128) NOT NULL"`
+	CreatedUnixTime   int64                `xorm:"BIGINT NOT NULL"`
+	UpdatedUnixTime   int64                `xorm:"BIGINT NOT NULL"`
+	MappingId         int64                `xorm:"BIGINT PK NOT NULL"`
+}
+
+func (CategoryAliasMapping) TableName() string { return "pf_category_alias_mapping" }
 
 // EconomicEvent 是可重建的经济语义投影，不参与余额计算。
 type EconomicEvent struct {

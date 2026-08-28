@@ -43,7 +43,7 @@ func TestPostingEngineSQLitePostsAtomicallyAndReplays(t *testing.T) {
 	assertPostingCounts(t, database, uid, 2, 2, 1)
 }
 
-func TestPostingEngineSQLiteRejectsForgedReadyRefundWithoutRelation(t *testing.T) {
+func TestPostingEngineSQLitePostsExplicitUnlinkedRefund(t *testing.T) {
 	repository, database := newSQLiteOrganizerRepository(t)
 	if err := database.SyncStructs(new(models.Transaction)); err != nil {
 		t.Fatalf("create refund guard ledger table: %v", err)
@@ -53,20 +53,20 @@ func TestPostingEngineSQLiteRejectsForgedReadyRefundWithoutRelation(t *testing.T
 	refund := postingEvent(uid, updateId, 9331, organizer.EVENT_STATUS_READY, organizer.ECONOMIC_NATURE_REFUND)
 	seedPostingUpdate(t, repository, uid, updateId, []*organizer.EconomicEvent{refund})
 	engine, _ := organizer.NewPostingEngine(repository, &postingLedgerStub{next: 9430}, &engineIdGenerator{next: 9530})
-	_, err := engine.Post(nil, organizer.PostRequest{
+	result, err := engine.Post(nil, organizer.PostRequest{
 		Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 2, IdempotencyKey: "forged-refund-ready", Mode: organizer.POST_MODE_ALL_READY,
 	})
-	if !errors.Is(err, organizer.ErrPostEventNotPostable) {
-		t.Fatalf("refund without relation crossed ledger boundary: %v", err)
+	if err != nil || result == nil || result.Update.Status != organizer.UPDATE_STATUS_POSTED || result.Update.PostedEventCount != 1 {
+		t.Fatalf("explicit unlinked refund was not posted atomically: result=%+v err=%v", result, err)
 	}
 	update, findErr := repository.FindUpdateById(nil, uid, updateId)
-	if findErr != nil || update == nil || update.Status != organizer.UPDATE_STATUS_REVIEW || update.Version != 2 || update.PostedEventCount != 0 {
+	if findErr != nil || update == nil || update.Status != organizer.UPDATE_STATUS_POSTED || update.PostedEventCount != 1 {
 		t.Fatalf("rejected refund changed update: update=%+v err=%v", update, findErr)
 	}
-	assertPostingCounts(t, database, uid, 0, 0, 0)
+	assertPostingCounts(t, database, uid, 1, 1, 1)
 }
 
-func TestPostingEngineSQLiteRequiresExplicitPartialPosting(t *testing.T) {
+func TestPostingEngineSQLiteRejectsUnresolvedAndPartialPosting(t *testing.T) {
 	repository, database := newSQLiteOrganizerRepository(t)
 	if err := database.SyncStructs(new(models.Transaction)); err != nil {
 		t.Fatalf("create partial ledger test table: %v", err)
@@ -86,12 +86,11 @@ func TestPostingEngineSQLiteRequiresExplicitPartialPosting(t *testing.T) {
 		t.Fatalf("default posting accepted unresolved events: %v", err)
 	}
 	assertPostingCounts(t, database, uid, 0, 0, 0)
-	result, err := engine.Post(nil, organizer.PostRequest{Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 2, IdempotencyKey: "post-ready-explicit", Mode: organizer.POST_MODE_READY})
-	if err != nil || result == nil || result.Update.Status != organizer.UPDATE_STATUS_PARTIALLY_POSTED ||
-		result.Update.PostedEventCount != 1 || result.Update.NeedsActionEventCount != 1 || len(result.Links) != 1 {
-		t.Fatalf("explicit partial posting mismatch: result=%+v err=%v", result, err)
+	_, err = engine.Post(nil, organizer.PostRequest{Uid: uid, UpdateId: updateId, ExpectedUpdateVersion: 2, IdempotencyKey: "post-ready-rejected", Mode: organizer.PostMode("ready")})
+	if !errors.Is(err, organizer.ErrPostRequestInvalid) {
+		t.Fatalf("partial posting mode was accepted: %v", err)
 	}
-	assertPostingCounts(t, database, uid, 1, 1, 1)
+	assertPostingCounts(t, database, uid, 0, 0, 0)
 }
 
 func TestPostingEngineSQLiteRollsBackLedgerAndProjectionTogether(t *testing.T) {

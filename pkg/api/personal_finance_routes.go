@@ -16,7 +16,6 @@ func RegisterPersonalFinanceRoutes(apiV1Route gin.IRoutes, config *settings.Conf
 	if config.EnableDataImport {
 		apiV1Route.POST("/personal_finance/import_files/upload.json", bindApi(PersonalFinanceImports.ImportFileUploadHandler, config))
 		apiV1Route.POST("/personal_finance/import_batches/reparse.json", bindApi(PersonalFinanceImports.ImportBatchReparseHandler, config))
-		apiV1Route.POST("/personal_finance/import_batches/post.json", bindApi(PersonalFinanceImports.ImportBatchPostHandler, config))
 		apiV1Route.POST("/personal_finance/source_accounts/save.json", bindApi(PersonalFinanceImports.SourceAccountSaveHandler, config))
 		apiV1Route.POST("/personal_finance/import_batches/payment_accounts/confirm.json", bindApi(PersonalFinanceImports.PaymentAccountConfirmHandler, config))
 		apiV1Route.POST("/personal_finance/import_batches/payment_accounts/skip.json", bindApi(PersonalFinanceImports.PaymentAccountSkipHandler, config))
@@ -74,13 +73,13 @@ func RegisterPersonalFinanceRoutes(apiV1Route gin.IRoutes, config *settings.Conf
 	apiV1Route.GET("/personal_finance/events/list.json", bindApi(PersonalFinanceOrganizer.EventListHandler, config))
 	apiV1Route.GET("/personal_finance/events/evidence.json", bindApi(PersonalFinanceOrganizer.EventEvidenceHandler, config))
 	apiV1Route.GET("/personal_finance/events/correction_impact.json", bindApi(PersonalFinanceOrganizer.EventCorrectionImpactHandler, config))
+	apiV1Route.GET("/personal_finance/events/category_scope.json", bindApi(PersonalFinanceOrganizer.EventCategoryScopeHandler, config))
 	apiV1Route.POST("/personal_finance/events/correct.json", bindApi(PersonalFinanceOrganizer.EventCorrectHandler, config))
 	apiV1Route.POST("/personal_finance/events/exclude.json", bindApi(PersonalFinanceOrganizer.EventExcludeHandler, config))
 	apiV1Route.GET("/personal_finance/review_issues/list.json", bindApi(PersonalFinanceOrganizer.ReviewIssueListHandler, config))
 	apiV1Route.GET("/personal_finance/review_issues/get.json", bindApi(PersonalFinanceOrganizer.ReviewIssueGetHandler, config))
 	apiV1Route.POST("/personal_finance/review_issues/resolve.json", bindApi(PersonalFinanceOrganizer.ReviewIssueResolveHandler, config))
 	apiV1Route.POST("/personal_finance/actions/post-all-ready.json", bindApi(PersonalFinanceOrganizer.ActionPostAllReadyHandler, config))
-	apiV1Route.POST("/personal_finance/actions/post-ready.json", bindApi(PersonalFinanceOrganizer.ActionPostReadyHandler, config))
 	apiV1Route.GET("/personal_finance/actions/undo_impact.json", bindApi(PersonalFinanceOrganizer.ActionUndoImpactHandler, config))
 	apiV1Route.POST("/personal_finance/actions/undo.json", bindApi(PersonalFinanceOrganizer.ActionUndoHandler, config))
 

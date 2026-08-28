@@ -359,6 +359,48 @@ func (r *Repository) FindLatestImportBatchByFileId(c core.Context, uid int64, fi
 	return batch, nil
 }
 
+// FindPostedImportBatchByFileId 返回已有正式账本写入证据的最近解析批次。
+// organizer v2 的整批入账是当前入口；旧 posting 和行证据关系仅用于防止历史数据重复写账。
+func (r *Repository) FindPostedImportBatchByFileId(c core.Context, uid int64, fileId int64) (*ImportBatch, error) {
+	if uid < 1 || fileId < 1 {
+		return nil, fmt.Errorf("invalid posted import batch owner or file id")
+	}
+
+	db, _ := r.database(uid)
+	batch := new(ImportBatch)
+	sess := db.NewPrivacySession(c)
+	defer sess.Close()
+
+	found, err := sess.Table("pf_import_batch").Alias("batch").
+		Where(`batch.uid=? AND batch.file_id=? AND (
+			EXISTS (
+				SELECT 1 FROM pf_finance_update_source update_source
+				INNER JOIN pf_finance_update finance_update
+					ON finance_update.uid=update_source.uid AND finance_update.update_id=update_source.update_id
+				WHERE update_source.uid=batch.uid AND update_source.batch_id=batch.batch_id
+					AND finance_update.status IN ('posted', 'partially_posted')
+			)
+			OR EXISTS (
+				SELECT 1 FROM pf_import_posting posting
+				WHERE posting.uid=batch.uid AND posting.batch_id=batch.batch_id AND posting.status='completed'
+			)
+			OR EXISTS (
+				SELECT 1 FROM pf_raw_import_row raw_row
+				INNER JOIN pf_raw_row_transaction_link row_link
+					ON row_link.uid=raw_row.uid AND row_link.row_id=raw_row.row_id
+				WHERE raw_row.uid=batch.uid AND raw_row.batch_id=batch.batch_id
+			)
+		)`, uid, fileId).
+		Desc("batch.created_unix_time", "batch.batch_id").Limit(1).Get(batch)
+	if err != nil {
+		return nil, fmt.Errorf("find posted personal finance import batch: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+	return batch, nil
+}
+
 // ListImportBatchIssues 按持久 issue_order 返回文档级问题。
 func (r *Repository) ListImportBatchIssues(c core.Context, uid int64, batchId int64) ([]*ImportBatchIssue, error) {
 	if uid < 1 || batchId < 1 {
@@ -386,7 +428,7 @@ func (r *Repository) ListImportBatches(c core.Context, uid int64, fileId int64, 
 
 	db, _ := r.database(uid)
 	countSession := db.NewPrivacySession(c)
-	countQuery := countSession.Where("uid=?", uid)
+	countQuery := countSession.Where("uid=? AND status<>?", uid, IMPORT_BATCH_STATUS_DISCARDED)
 
 	if fileId > 0 {
 		countQuery = countQuery.And("file_id=?", fileId)
@@ -402,7 +444,7 @@ func (r *Repository) ListImportBatches(c core.Context, uid int64, fileId int64, 
 	batches := make([]*ImportBatch, 0)
 	listSession := db.NewPrivacySession(c)
 	defer listSession.Close()
-	listQuery := listSession.Where("uid=?", uid)
+	listQuery := listSession.Where("uid=? AND status<>?", uid, IMPORT_BATCH_STATUS_DISCARDED)
 
 	if fileId > 0 {
 		listQuery = listQuery.And("file_id=?", fileId)
