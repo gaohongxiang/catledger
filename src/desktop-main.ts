@@ -87,11 +87,11 @@ import { DecimalSeparator, DigitGroupingSymbol } from '@/core/numeral.ts';
 import { getI18nOptions, getRtlLocales } from '@/locales/helpers.ts';
 
 import PinCodeInput from '@/components/common/PinCodeInput.vue';
-import MapView from '@/components/common/MapView.vue';
 import DateTimePicker from '@/components/common/DateTimePicker.vue';
 import MonthPicker from '@/components/common/MonthPicker.vue';
 import TransactionCalendar from '@/components/common/TransactionCalendar.vue';
 
+import MainPageLayout from '@/components/desktop/MainPageLayout.vue';
 import OneColumnDialogLayout from '@/components/desktop/OneColumnDialogLayout.vue';
 import TwoColumnDialogLayout from '@/components/desktop/TwoColumnDialogLayout.vue';
 import ItemIcon from '@/components/desktop/ItemIcon.vue';
@@ -109,8 +109,6 @@ import FiscalYearStartSelect from '@/components/desktop/FiscalYearStartSelect.vu
 import ColorSelect from '@/components/desktop/ColorSelect.vue';
 import IconSelect from '@/components/desktop/IconSelect.vue';
 import TwoColumnSelect from '@/components/desktop/TwoColumnSelect.vue';
-import TransactionTagAutoComplete from '@/components/desktop/TransactionTagAutoComplete.vue';
-import ScheduleFrequencySelect from '@/components/desktop/ScheduleFrequencySelect.vue';
 import StepsBar from '@/components/desktop/StepsBar.vue';
 import ConfirmDialog from '@/components/desktop/ConfirmDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
@@ -550,11 +548,11 @@ app.component('VueDatePicker', VueDatePicker);
 app.component('DraggableList', draggable);
 
 app.component('PinCodeInput', PinCodeInput);
-app.component('MapView', MapView);
 app.component('DateTimePicker', DateTimePicker);
 app.component('MonthPicker', MonthPicker);
 app.component('TransactionCalendar', TransactionCalendar);
 
+app.component('MainPageLayout', MainPageLayout);
 app.component('OneColumnDialogLayout', OneColumnDialogLayout);
 app.component('TwoColumnDialogLayout', TwoColumnDialogLayout);
 app.component('ItemIcon', ItemIcon);
@@ -572,8 +570,6 @@ app.component('FiscalYearStartSelect', FiscalYearStartSelect);
 app.component('ColorSelect', ColorSelect);
 app.component('IconSelect', IconSelect);
 app.component('TwoColumnSelect', TwoColumnSelect);
-app.component('TransactionTagAutoComplete', TransactionTagAutoComplete);
-app.component('ScheduleFrequencySelect', ScheduleFrequencySelect);
 app.component('StepsBar', StepsBar);
 app.component('ConfirmDialog', ConfirmDialog);
 app.component('SnackBar', SnackBar);

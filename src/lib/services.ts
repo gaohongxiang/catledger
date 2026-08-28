@@ -125,22 +125,6 @@ import type {
     TransactionTagInfoResponse
 } from '@/models/transaction_tag.ts';
 import type {
-    TransactionTemplateCreateRequest,
-    TransactionTemplateModifyRequest,
-    TransactionTemplateHideRequest,
-    TransactionTemplateMoveRequest,
-    TransactionTemplateDeleteRequest,
-    TransactionTemplateInfoResponse
-} from '@/models/transaction_template.ts';
-import type {
-    InsightsExplorerCreateRequest,
-    InsightsExplorerModifyRequest,
-    InsightsExplorerHideRequest,
-    InsightsExplorerMoveRequest,
-    InsightsExplorerDeleteRequest,
-    InsightsExplorerInfoResponse,
-} from '@/models/explorer.ts';
-import type {
     TokenGenerateAPIRequest,
     TokenGenerateMCPRequest,
     TokenRevokeRequest,
@@ -857,48 +841,6 @@ export default {
     },
     deleteTransactionTag: (req: TransactionTagDeleteRequest): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/transaction/tags/delete.json', req);
-    },
-    getAllTransactionTemplates: ({ templateType }: { templateType: number }): ApiResponsePromise<TransactionTemplateInfoResponse[]> => {
-        return axios.get<ApiResponse<TransactionTemplateInfoResponse[]>>('v1/transaction/templates/list.json?templateType=' + templateType);
-    },
-    getTransactionTemplate: ({ id }: { id: string }): ApiResponsePromise<TransactionTemplateInfoResponse> => {
-        return axios.get<ApiResponse<TransactionTemplateInfoResponse>>('v1/transaction/templates/get.json?id=' + id);
-    },
-    addTransactionTemplate: (req: TransactionTemplateCreateRequest): ApiResponsePromise<TransactionTemplateInfoResponse> => {
-        return axios.post<ApiResponse<TransactionTemplateInfoResponse>>('v1/transaction/templates/add.json', req);
-    },
-    modifyTransactionTemplate: (req: TransactionTemplateModifyRequest): ApiResponsePromise<TransactionTemplateInfoResponse> => {
-        return axios.post<ApiResponse<TransactionTemplateInfoResponse>>('v1/transaction/templates/modify.json', req);
-    },
-    hideTransactionTemplate: (req: TransactionTemplateHideRequest): ApiResponsePromise<boolean> => {
-        return axios.post<ApiResponse<boolean>>('v1/transaction/templates/hide.json', req);
-    },
-    moveTransactionTemplate: (req: TransactionTemplateMoveRequest): ApiResponsePromise<boolean> => {
-        return axios.post<ApiResponse<boolean>>('v1/transaction/templates/move.json', req);
-    },
-    deleteTransactionTemplate: (req: TransactionTemplateDeleteRequest): ApiResponsePromise<boolean> => {
-        return axios.post<ApiResponse<boolean>>('v1/transaction/templates/delete.json', req);
-    },
-    getAllExplorations: (): ApiResponsePromise<InsightsExplorerInfoResponse[]> => {
-        return axios.get<ApiResponse<InsightsExplorerInfoResponse[]>>('v1/insights/explorers/list.json');
-    },
-    getExploration: ({ id }: { id: string }): ApiResponsePromise<InsightsExplorerInfoResponse> => {
-        return axios.get<ApiResponse<InsightsExplorerInfoResponse>>('v1/insights/explorers/get.json?id=' + id);
-    },
-    addExploration: (req: InsightsExplorerCreateRequest): ApiResponsePromise<InsightsExplorerInfoResponse> => {
-        return axios.post<ApiResponse<InsightsExplorerInfoResponse>>('v1/insights/explorers/add.json', req);
-    },
-    modifyExploration: (req: InsightsExplorerModifyRequest): ApiResponsePromise<InsightsExplorerInfoResponse> => {
-        return axios.post<ApiResponse<InsightsExplorerInfoResponse>>('v1/insights/explorers/modify.json', req);
-    },
-    hideExploration: (req: InsightsExplorerHideRequest): ApiResponsePromise<boolean> => {
-        return axios.post<ApiResponse<boolean>>('v1/insights/explorers/hide.json', req);
-    },
-    moveExploration: (req: InsightsExplorerMoveRequest): ApiResponsePromise<boolean> => {
-        return axios.post<ApiResponse<boolean>>('v1/insights/explorers/move.json', req);
-    },
-    deleteExploration: (req: InsightsExplorerDeleteRequest): ApiResponsePromise<boolean> => {
-        return axios.post<ApiResponse<boolean>>('v1/insights/explorers/delete.json', req);
     },
     recognizeTransactionText: ({ text }: { text: string }): ApiResponsePromise<RecognizedTransactionResponse> => {
         return axios.post<ApiResponse<RecognizedTransactionResponse>>('v1/llm/transactions/recognize_text.json', {

@@ -27,6 +27,7 @@ import {
     isString,
     isNumber
 } from '@/lib/common.ts';
+import { generateRandomUUID } from '@/lib/misc.ts';
 
 import {
     getCurrentUserInfo,
@@ -40,6 +41,7 @@ import services from '@/lib/services.ts';
 export const useUserStore = defineStore('user', () => {
     const settingsStore = useSettingsStore();
     const currentUserBasicInfo = ref<UserBasicInfo | null>(getCurrentUserInfo());
+    const currentUserAvatarNoCacheId = ref<string>(generateRandomUUID());
 
     const currentUserNickname = computed<string | null>(() => {
         const userInfo = currentUserBasicInfo.value || EMPTY_USER_BASIC_INFO;
@@ -48,7 +50,7 @@ export const useUserStore = defineStore('user', () => {
 
     const currentUserAvatar = computed<string | null>(() => {
         const userInfo = currentUserBasicInfo.value || EMPTY_USER_BASIC_INFO;
-        return getUserAvatarUrl(userInfo, false);
+        return getUserAvatarUrl(userInfo, currentUserAvatarNoCacheId.value);
     });
 
     const currentUserDefaultAccountId = computed<string>(() => {
@@ -167,6 +169,7 @@ export const useUserStore = defineStore('user', () => {
 
     function resetUserBasicInfo(): void {
         currentUserBasicInfo.value = null;
+        currentUserAvatarNoCacheId.value = generateRandomUUID();
         clearCurrentUserInfo();
     }
 
@@ -233,6 +236,7 @@ export const useUserStore = defineStore('user', () => {
                 }
 
                 storeUserBasicInfo(data.result);
+                currentUserAvatarNoCacheId.value = generateRandomUUID();
 
                 resolve(data.result);
             }).catch(error => {

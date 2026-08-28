@@ -27,13 +27,6 @@
             <f7-list-item :title="tt('Provider')" :after="exchangeRatesData.dataSource" v-if="!exchangeRatesData.referenceUrl"></f7-list-item>
         </f7-list>
 
-        <f7-block-title class="margin-top" v-if="mapProviderName">{{ tt('Map') }}</f7-block-title>
-        <f7-list strong inset dividers v-if="mapProviderName">
-            <f7-list-item :title="tt('Provider')" :after="mapProviderName" link="#"
-                          @click="openExternalUrl(mapProviderWebsite)" v-if="mapProviderWebsite"></f7-list-item>
-            <f7-list-item :title="tt('Provider')" :after="mapProviderName" v-if="!mapProviderWebsite"></f7-list-item>
-        </f7-list>
-
         <f7-popup push swipe-to-close swipe-handler=".swipe-handler" class="license-popup">
             <f7-page>
                 <f7-navbar>
@@ -137,9 +130,6 @@
 
         <f7-actions close-by-outside-click close-on-escape :opened="showDiagnosisActionSheet" @actions:closed="showDiagnosisActionSheet = false">
             <f7-actions-group>
-                <f7-actions-button @click="refreshBrowserCache">{{ tt('Refresh Browser Cache') }}</f7-actions-button>
-            </f7-actions-group>
-            <f7-actions-group>
                 <f7-actions-button @click="showDiagnosisInformation">{{ tt('Show Diagnosis Information') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
@@ -177,12 +167,9 @@ const {
     clientBuildTime,
     exchangeRatesData,
     isUserCustomExchangeRates,
-    mapProviderName,
-    mapProviderWebsite,
     contributors,
     licenseLines,
     thirdPartyLicenses,
-    refreshBrowserCache,
     init
 } = useAboutPageBase();
 

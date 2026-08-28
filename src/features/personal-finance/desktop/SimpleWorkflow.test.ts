@@ -7,14 +7,86 @@ function source(path: string): string {
 }
 
 describe('personal-finance simple web workflow', () => {
-    it('keeps one top-level overview and one statement-organizing entry', () => {
-        const layout = source('../../../views/desktop/MainLayout.vue');
+    it('keeps one top-level overview and one unified add entry', () => {
+        const layout = source('../../../components/desktop/MainPageLayout.vue');
 
         expect(layout.match(/<router-link to="\/">/g)).toHaveLength(1);
-        expect(layout.match(/to="\/personal-finance\/bills"/g)).toHaveLength(1);
+        expect(layout).not.toContain('to="/personal-finance/bills"');
         expect(layout).not.toContain('to="/personal-finance/imports"');
         expect(layout).not.toContain('to="/personal-finance/reconciliation"');
-        expect(layout).toContain('personalFinance.simpleNav.more');
+        expect(layout).toContain("tt('Record Transaction')");
+        expect(layout).toContain("tt('Import Bill')");
+        expect(layout.match(/class="add-transaction-button/g)).toHaveLength(1);
+        expect(layout).toContain("router.push('/personal-finance/bills')");
+        expect(layout.indexOf("tt('Record Transaction')")).toBeLessThan(layout.indexOf("tt('Import Bill')"));
+        expect(layout.indexOf('to="/category/list"')).toBeLessThan(layout.indexOf("tt('Record Transaction')"));
+
+        const personalFinanceLayout = source('../../../components/desktop/PersonalFinancePageLayout.vue');
+        expect(personalFinanceLayout).not.toContain('to="/personal-finance/bills"');
+        expect(personalFinanceLayout).toContain('to="/account/list"');
+        expect(personalFinanceLayout).toContain('to="/personal-finance/loans"');
+
+        const transactionList = source('../../../views/desktop/transactions/ListPage.vue');
+        expect(transactionList).toContain('<main-page-layout :no-navbar="true">');
+        expect(transactionList).toContain("tt('Transaction Details')");
+        expect(transactionList).toContain('class="transaction-period-summary');
+        expect(transactionList).toContain('class="transaction-date-range-filter"');
+        expect(transactionList).toContain(':items="recentDateRangeOptions"');
+        expect(transactionList).toContain('class="transaction-toolbar-actions');
+        expect(transactionList).toContain('class="transaction-page-size-control');
+        expect(transactionList).toContain('class="transaction-empty-state');
+        expect(transactionList).toContain('table-layout: fixed;');
+        expect(transactionList).not.toContain('TransactionListPageType.Calendar.type');
+        expect(transactionList).not.toContain('<transaction-calendar');
+        expect(transactionList).not.toContain("tt('Transaction List')");
+        expect(transactionList).not.toContain("tt('Transaction Calendar')");
+        expect(transactionList).not.toContain('transaction-gallery-container');
+        expect(transactionList).not.toContain('TransactionListPageType.values()');
+        expect(transactionList).not.toContain("./import/ImportDialog.vue");
+        expect(transactionList).not.toContain("tt('Import')");
+
+        const accountList = source('../../../views/desktop/accounts/ListPage.vue');
+        expect(accountList).toContain('to="/personal-finance/loans"');
+        expect(layout).toContain("route.path === '/personal-finance/loans'");
+
+        const router = source('../../../router/desktop.ts');
+        const userSettingsLayout = source('../../../views/desktop/user/UserSettingsPageLayout.vue');
+        expect(router).toContain("path: '/category'");
+        expect(router).toContain('component: CategoryPageLayout');
+        expect(userSettingsLayout).not.toContain('to="/category/list"');
+        expect(userSettingsLayout).not.toContain('to="/tag/list"');
+        expect(userSettingsLayout).not.toContain("tt('Advanced Management')");
+
+        const appSettings = source('../../../views/desktop/app/AppBasicSettingPage.vue');
+        const mobileSettings = source('../../../views/mobile/SettingsPage.vue');
+        const mobileHome = source('../../../views/mobile/HomePage.vue');
+        const mobileRouter = source('../../../router/mobile.ts');
+        expect(router).not.toContain("path: '/insights/explorer'");
+        expect(router).not.toContain("path: '/tag/list'");
+        expect(router).not.toContain("path: '/template/list'");
+        expect(router).not.toContain("path: '/schedule/list'");
+        expect(appSettings).not.toContain("tt('Insights Explorer Page')");
+        expect(appSettings).not.toContain("tt('Automatically Add Geolocation')");
+        expect(appSettings).toContain("tt('AI Clipboard Text Recognition')");
+        expect(appSettings).toContain("tt('AI Image Recognition')");
+        expect(mobileSettings).toContain("tt('AI Recognition Settings')");
+        expect(mobileHome).toContain("tt('AI Clipboard Text Recognition')");
+        expect(mobileHome).toContain("tt('AI Image Recognition')");
+        expect(mobileHome).not.toContain('allTransactionTemplates');
+        expect(mobileHome).not.toContain('recognizedResponse.tagIds');
+        expect(mobileRouter).not.toContain("path: '/tag/list'");
+        expect(mobileRouter).not.toContain("path: '/template/list'");
+        expect(mobileRouter).not.toContain("path: '/schedule/list'");
+
+        const services = source('../../../lib/services.ts');
+        const desktopEditor = source('../../../views/desktop/transactions/list/dialogs/EditDialog.vue');
+        const mobileEditor = source('../../../views/mobile/transactions/EditPage.vue');
+        expect(services).not.toContain('v1/transaction/templates/');
+        expect(desktopEditor).not.toContain('TransactionTemplate');
+        expect(desktopEditor).not.toContain('TransactionEditPageType.Template');
+        expect(mobileEditor).not.toContain('TransactionTemplate');
+        expect(mobileEditor).not.toContain("'/template/add'");
+        expect(mobileEditor).not.toContain("'/template/edit'");
     });
 
     it('keeps review and raw statement records in one route-local workspace', () => {

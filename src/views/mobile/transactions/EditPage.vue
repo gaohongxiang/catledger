@@ -10,26 +10,25 @@
         </f7-navbar>
 
         <f7-block :class="{ 'subnav-segmented-bar': true, 'disabled': loading }">
-            <f7-segmented strong round :class="{ 'readonly': pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit }">
+            <f7-segmented strong round :class="{ 'readonly': mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit }">
                 <f7-button round :text="tt('Expense')" :active="transaction.type === TransactionType.Expense"
-                           :disabled="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Expense"
+                           :disabled="mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Expense"
                            v-if="transaction.type !== TransactionType.ModifyBalance"
                            @click="transaction.type = TransactionType.Expense"></f7-button>
                 <f7-button round :text="tt('Income')" :active="transaction.type === TransactionType.Income"
-                           :disabled="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Income"
+                           :disabled="mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Income"
                            v-if="transaction.type !== TransactionType.ModifyBalance"
                            @click="transaction.type = TransactionType.Income"></f7-button>
                 <f7-button round :text="tt('Transfer')" :active="transaction.type === TransactionType.Transfer"
-                           :disabled="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Transfer"
+                           :disabled="mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Transfer"
                            v-if="transaction.type !== TransactionType.ModifyBalance"
                            @click="transaction.type = TransactionType.Transfer"></f7-button>
                 <f7-button round :text="tt('Modify Balance')" :active="transaction.type === TransactionType.ModifyBalance"
-                           v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction && transaction.type === TransactionType.ModifyBalance"></f7-button>
+                           v-if="transaction.type === TransactionType.ModifyBalance"></f7-button>
             </f7-segmented>
         </f7-block>
 
         <f7-list strong inset dividers class="margin-vertical-half skeleton-text" v-if="loading">
-            <f7-list-input label="Template Name" placeholder="Template Name" v-if="pageTypeAndMode?.type === TransactionEditPageType.Template"></f7-list-input>
             <f7-list-item
                 class="transaction-edit-amount ebk-large-amount"
                 header="Expense Amount" title="0.00">
@@ -41,30 +40,12 @@
             <f7-list-item class="list-item-with-header-and-title list-item-title-hide-overflow" header="Category" title="Category Names" v-if="transaction.type !== TransactionType.ModifyBalance"></f7-list-item>
             <f7-list-item class="list-item-with-header-and-title" header="Account" title="Account Name"></f7-list-item>
             <f7-list-item class="list-item-with-header-and-title" header="Destination Account" title="Account Name" v-if="transaction.type === TransactionType.Transfer"></f7-list-item>
-            <f7-list-item class="list-item-with-header-and-title" header="Transaction Time" title="YYYY/MM/DD HH:mm:ss" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction"></f7-list-item>
-            <f7-list-item class="list-item-with-header-and-title" header="Scheduled Transaction Frequency" title="Every XXXXX" v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"></f7-list-item>
-            <f7-list-item class="list-item-with-header-and-title list-item-title-hide-overflow list-item-no-item-after" header="Transaction Timezone" title="(UTC XX:XX) System Default" link="#" :no-chevron="mode === TransactionEditPageMode.View" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction || (pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type)"></f7-list-item>
-            <f7-list-item class="list-item-with-header-and-title list-item-title-hide-overflow" header="Geographic Location" title="No Location" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction"></f7-list-item>
-            <f7-list-item header="Tags">
-                <template #footer>
-                    <f7-block class="margin-top-half no-padding no-margin">
-                        <f7-chip class="transaction-edit-tag" text="None"></f7-chip>
-                    </f7-block>
-                </template>
-            </f7-list-item>
+            <f7-list-item class="list-item-with-header-and-title" header="Transaction Time" title="YYYY/MM/DD HH:mm:ss"></f7-list-item>
+            <f7-list-item class="list-item-with-header-and-title list-item-title-hide-overflow list-item-no-item-after" header="Transaction Timezone" title="(UTC XX:XX) System Default" link="#" :no-chevron="mode === TransactionEditPageMode.View"></f7-list-item>
             <f7-list-input type="textarea" label="Description" placeholder="Your transaction description (optional)"></f7-list-input>
         </f7-list>
 
         <f7-list form strong inset dividers class="margin-vertical-half" v-else-if="!loading">
-            <f7-list-input
-                type="text"
-                clear-button
-                :label="tt('Template Name')"
-                :placeholder="tt('Template Name')"
-                v-model:value="transaction.name"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate"
-            ></f7-list-input>
-
             <f7-list-item
                 class="transaction-edit-amount"
                 link="#" no-chevron
@@ -245,7 +226,6 @@
                 class="transaction-edit-datetime list-item-with-header-and-title"
                 link="#" no-chevron
                 :class="{ 'disabled': mode === TransactionEditPageMode.Edit && transaction.type === TransactionType.ModifyBalance, 'readonly': mode === TransactionEditPageMode.View && transaction.utcOffset === currentTimezoneOffsetMinutes }"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction"
             >
                 <template #header>
                     <div class="transaction-edit-datetime-header" @click="showDateTimeDialog('time')">{{ tt('Transaction Time') }}</div>
@@ -264,55 +244,11 @@
             </f7-list-item>
 
             <f7-list-item
-                class="list-item-with-header-and-title"
-                link="#" no-chevron
-                :class="{ 'readonly': mode === TransactionEditPageMode.View }"
-                :header="tt('Scheduled Transaction Frequency')"
-                :title="transactionDisplayScheduledFrequency"
-                @click="showTransactionScheduledFrequencySheet = true"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"
-            >
-                <schedule-frequency-sheet v-model:show="showTransactionScheduledFrequencySheet"
-                                          v-model:type="transaction.scheduledFrequencyType"
-                                          v-model="transaction.scheduledFrequency">
-                </schedule-frequency-sheet>
-            </f7-list-item>
-
-            <f7-list-item
-                class="transaction-edit-datetime list-item-with-header-and-title"
-                link="#" no-chevron
-                :class="{ 'readonly': mode === TransactionEditPageMode.View }"
-                :header="tt('Start Date')"
-                :title="transactionDisplayScheduledStartDate"
-                @click="showScheduledStartDateSheet = true"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"
-            >
-                <date-selection-sheet v-model:show="showScheduledStartDateSheet"
-                                      v-model="transaction.scheduledStartDate">
-                </date-selection-sheet>
-            </f7-list-item>
-
-            <f7-list-item
-                class="transaction-edit-datetime list-item-with-header-and-title"
-                link="#" no-chevron
-                :class="{ 'readonly': mode === TransactionEditPageMode.View }"
-                :header="tt('End Date')"
-                :title="transactionDisplayScheduledEndDate"
-                @click="showScheduledEndDateSheet = true"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"
-            >
-                <date-selection-sheet v-model:show="showScheduledEndDateSheet"
-                                      v-model="transaction.scheduledEndDate">
-                </date-selection-sheet>
-            </f7-list-item>
-
-            <f7-list-item
                 :no-chevron="mode === TransactionEditPageMode.View"
                 link="#"
                 class="list-item-with-header-and-title list-item-title-hide-overflow list-item-no-item-after"
                 :class="{ 'disabled': mode === TransactionEditPageMode.Edit && transaction.type === TransactionType.ModifyBalance, 'readonly': mode === TransactionEditPageMode.View }"
                 :header="tt('Transaction Timezone')"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction || (pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type)"
                 @click="showTimezonePopup = true"
             >
                 <template #title>
@@ -334,57 +270,6 @@
                                            v-model:show="showTimezonePopup"
                                            @update:model-value="updateTransactionTimezone">
                 </list-item-selection-popup>
-            </f7-list-item>
-
-            <f7-list-item
-                link="#" no-chevron
-                class="list-item-with-header-and-title list-item-title-hide-overflow"
-                :class="{ 'readonly': mode === TransactionEditPageMode.View && !transaction.geoLocation }"
-                :header="tt('Geographic Location')"
-                @click="showGeoLocationActionSheet = true"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction"
-            >
-                <template #title>
-                    <f7-block class="list-item-custom-title no-padding no-margin">
-                        <span v-if="transaction.geoLocation">{{ `(${formatCoordinate(transaction.geoLocation, coordinateDisplayType)})` }}</span>
-                        <span v-else-if="!transaction.geoLocation">{{ geoLocationStatusInfo }}</span>
-                    </f7-block>
-                </template>
-
-                <map-sheet :readonly="mode === TransactionEditPageMode.View"
-                           v-model="transaction.geoLocation"
-                           v-model:set-geo-location-by-click-map="setGeoLocationByClickMap"
-                           v-model:show="showGeoLocationMapSheet">
-                </map-sheet>
-            </f7-list-item>
-
-            <f7-list-item
-                link="#" no-chevron
-                :class="{ 'readonly': mode === TransactionEditPageMode.View }"
-                :header="tt('Tags')"
-                @click="showTransactionTagSheet = true"
-            >
-                <transaction-tag-selection-sheet :allow-add-new-tag="true" :enable-filter="true"
-                                                 v-model:show="showTransactionTagSheet"
-                                                 v-model="transaction.tagIds">
-                </transaction-tag-selection-sheet>
-
-                <template #footer>
-                    <f7-block class="margin-top-half no-padding no-margin" v-if="transaction.tagIds && transaction.tagIds.length">
-                        <f7-chip media-text-color="var(--f7-chip-text-color)" class="transaction-edit-tag"
-                                 :text="allTagsMap[tagId]?.name ?? ''"
-                                 :key="tagId"
-                                 v-for="tagId in transaction.tagIds">
-                            <template #media>
-                                <f7-icon f7="number"></f7-icon>
-                            </template>
-                        </f7-chip>
-                    </f7-block>
-                    <f7-block class="margin-top-half no-padding no-margin" v-else-if="!transaction.tagIds || !transaction.tagIds.length">
-                        <f7-chip class="transaction-edit-tag" :text="tt('None')">
-                        </f7-chip>
-                    </f7-block>
-                </template>
             </f7-list-item>
 
             <f7-list-item
@@ -439,21 +324,8 @@
             ></f7-list-input>
         </f7-list>
 
-        <f7-actions close-by-outside-click close-on-escape :opened="showGeoLocationActionSheet" @actions:closed="showGeoLocationActionSheet = false">
-            <f7-actions-group>
-                <f7-actions-button v-if="mode !== TransactionEditPageMode.View" @click="updateGeoLocation(true)">{{ tt('Update Geographic Location') }}</f7-actions-button>
-                <f7-actions-button v-if="mode !== TransactionEditPageMode.View" @click="clearGeoLocation">{{ tt('Clear Geographic Location') }}</f7-actions-button>
-            </f7-actions-group>
-            <f7-actions-group v-if="!!getMapProvider()">
-                <f7-actions-button :class="{ 'disabled': !transaction.geoLocation }" @click="setGeoLocationByClickMap = false; showGeoLocationMapSheet = true">{{ tt('Show on the map') }}</f7-actions-button>
-            </f7-actions-group>
-            <f7-actions-group>
-                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
-            </f7-actions-group>
-        </f7-actions>
-
         <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
-            <f7-actions-group v-if="mode !== TransactionEditPageMode.View && pageTypeAndMode?.type === TransactionEditPageType.Transaction && isTransactionFromAITextRecognitionEnabled()">
+            <f7-actions-group v-if="mode !== TransactionEditPageMode.View && isTransactionFromAITextRecognitionEnabled()">
                 <f7-actions-button @click="recognizeFromClipboard">{{ tt('AI Clipboard Text Recognition') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group v-if="mode !== TransactionEditPageMode.View && transaction.type === TransactionType.Transfer">
@@ -467,14 +339,12 @@
                 <f7-actions-button v-if="transaction.hideAmount" @click="transaction.hideAmount = false">{{ tt('Show Amount') }}</f7-actions-button>
                 <f7-actions-button v-if="!transaction.hideAmount" @click="transaction.hideAmount = true">{{ tt('Hide Amount') }}</f7-actions-button>
             </f7-actions-group>
-            <f7-actions-group v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction && (mode === TransactionEditPageMode.Add || mode === TransactionEditPageMode.Edit) && isTransactionPicturesEnabled() && !showTransactionPictures">
+            <f7-actions-group v-if="(mode === TransactionEditPageMode.Add || mode === TransactionEditPageMode.Edit) && isTransactionPicturesEnabled() && !showTransactionPictures">
                 <f7-actions-button @click="showTransactionPictures = true">{{ tt('Add Picture') }}</f7-actions-button>
             </f7-actions-group>
-            <f7-actions-group v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode === TransactionEditPageMode.View && transaction.type !== TransactionType.ModifyBalance">
-                <f7-actions-button @click="duplicate(false, false)">{{ tt('Duplicate') }}</f7-actions-button>
-                <f7-actions-button @click="duplicate(true, false)">{{ tt('Duplicate (With Time)') }}</f7-actions-button>
-                <f7-actions-button @click="duplicate(false, true)" v-if="transaction.geoLocation">{{ tt('Duplicate (With Geographic Location)') }}</f7-actions-button>
-                <f7-actions-button @click="duplicate(true, true)" v-if="transaction.geoLocation">{{ tt('Duplicate (With Time and Geographic Location)') }}</f7-actions-button>
+            <f7-actions-group v-if="mode === TransactionEditPageMode.View && transaction.type !== TransactionType.ModifyBalance">
+                <f7-actions-button @click="duplicate(false)">{{ tt('Duplicate') }}</f7-actions-button>
+                <f7-actions-button @click="duplicate(true)">{{ tt('Duplicate (With Time)') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
@@ -526,7 +396,6 @@ import { useI18nUIComponents, isiOS, showLoading, hideLoading, closeAllDialog } 
 import {
     TransactionEditPageMode,
     TransactionEditPageType,
-    GeoLocationStatus,
     AfterSaveAction,
     useTransactionEditPageBase
 } from '@/views/base/transactions/TransactionEditPageBase.ts';
@@ -535,9 +404,7 @@ import { useSettingsStore } from '@/stores/setting.ts';
 import { useUserStore } from '@/stores/user.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
-import { useTransactionTagsStore } from '@/stores/transactionTag.ts';
 import { useTransactionsStore } from '@/stores/transaction.ts';
-import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
 
 import { CategoryType } from '@/core/category.ts';
 import {
@@ -546,14 +413,12 @@ import {
     TransactionQuickSaveButtonStyle,
     TransactionQuickAddButtonActionType
 } from '@/core/transaction.ts';
-import { ScheduledTemplateFrequencyType, TemplateType } from '@/core/template.ts';
 import { KnownFileType } from '@/core/file.ts';
 
 import { TRANSACTION_MAX_AMOUNT, TRANSACTION_MIN_AMOUNT } from '@/consts/transaction.ts';
 import { KnownErrorCode } from '@/consts/api.ts';
 import { SUPPORTED_IMAGE_EXTENSIONS } from '@/consts/file.ts';
 
-import { TransactionTemplate } from '@/models/transaction_template.ts';
 import type { TransactionPictureInfoBasicResponse } from '@/models/transaction_picture_info.ts';
 import { Transaction } from '@/models/transaction.ts';
 
@@ -564,14 +429,12 @@ import {
     getTimezoneOffsetMinutes,
     parseDateTimeFromUnixTimeWithTimezoneOffset
 } from '@/lib/datetime.ts';
-import { formatCoordinate } from '@/lib/coordinate.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { getTransactionPrimaryCategoryName, getTransactionSecondaryCategoryName } from '@/lib/category.ts';
 import { type SetTransactionOptions } from '@/lib/transaction.ts';
 import {
     isTransactionFromAITextRecognitionEnabled,
-    isTransactionPicturesEnabled,
-    getMapProvider
+    isTransactionPicturesEnabled
 } from '@/lib/server_settings.ts';
 import { compressJpgImageByQuality } from '@/lib/ui/common.ts';
 import logger from '@/lib/logger.ts';
@@ -588,19 +451,14 @@ const pageTypeAndMode = getPageTypeNameMode();
 
 const {
     tt,
-    getMultiMonthAndDayLongNames,
-    getMultiMonthdayShortNames,
-    getMultiWeekdayLongNames,
     formatDateTimeToLongDate,
     formatDateTimeToLongTime,
-    formatGregorianTextualYearMonthDayToLongDate,
     parseAmountFromLocalizedNumerals
 } = useI18n();
 const { showAlert, showConfirm, showCancelableLoading, showToast, routeBackOnError } = useI18nUIComponents();
 
 const {
     mode,
-    isSupportGeoLocation,
     editId,
     addByTemplateId,
     duplicateFromId,
@@ -610,20 +468,15 @@ const {
     submitting,
     submitted,
     uploadingPicture,
-    geoLocationStatus,
-    setGeoLocationByClickMap,
     transaction,
     numeralSystem,
     currentTimezoneOffsetMinutes,
     defaultCurrency,
-    firstDayOfWeek,
-    coordinateDisplayType,
     imageUploadQualityType,
     allTimezones,
     allVisibleAccounts,
     allVisibleCategorizedAccounts,
     allCategories,
-    allTagsMap,
     firstVisibleAccountId,
     hasVisibleExpenseCategories,
     hasVisibleIncomeCategories,
@@ -640,7 +493,6 @@ const {
     destinationAccountCurrency,
     transactionDisplayTimezone,
     transactionTimezoneTimeDifference,
-    geoLocationStatusInfo,
     transactionDescriptionTitle,
     inputEmptyProblemMessage,
     inputIsEmpty,
@@ -652,7 +504,7 @@ const {
     swapTransactionData,
     getDisplayAmount,
     getTransactionPictureUrl
-} = useTransactionEditPageBase(pageTypeAndMode?.type || TransactionEditPageType.Transaction, pageTypeAndMode?.mode, query['type'] ? parseInt(query['type']) : undefined);
+} = useTransactionEditPageBase(pageTypeAndMode?.mode, query['type'] ? parseInt(query['type']) : undefined);
 
 const isSupportClipboard = !!navigator.clipboard;
 
@@ -660,9 +512,7 @@ const settingsStore = useSettingsStore();
 const userStore = useUserStore();
 const accountsStore = useAccountsStore();
 const transactionCategoriesStore = useTransactionCategoriesStore();
-const transactionTagsStore = useTransactionTagsStore();
 const transactionsStore = useTransactionsStore();
-const transactionTemplatesStore = useTransactionTemplatesStore();
 
 const pictureBrowser = useTemplateRef<PhotoBrowser.PhotoBrowser>('pictureBrowser');
 const pictureInput = useTemplateRef<HTMLInputElement>('pictureInput');
@@ -674,7 +524,6 @@ const transactionDateTimeSheetMode = ref<string>('time');
 const showTimeInDefaultTimezone = ref<boolean>(false);
 const showQuickSavePopover = ref<boolean>(false);
 const showTimezonePopup = ref<boolean>(false);
-const showGeoLocationActionSheet = ref<boolean>(false);
 const showMoreActionSheet = ref<boolean>(false);
 const showSourceAmountSheet = ref<boolean>(false);
 const showDestinationAmountSheet = ref<boolean>(false);
@@ -682,13 +531,7 @@ const showCategorySheet = ref<boolean>(false);
 const showSourceAccountSheet = ref<boolean>(false);
 const showDestinationAccountSheet = ref<boolean>(false);
 const showTransactionDateTimeSheet = ref<boolean>(false);
-const showTransactionScheduledFrequencySheet = ref<boolean>(false);
-const showScheduledStartDateSheet = ref<boolean>(false);
-const showScheduledEndDateSheet = ref<boolean>(false);
-const showGeoLocationMapSheet = ref<boolean>(false);
-const showTransactionTagSheet = ref<boolean>(false);
-const showTransactionPictures = ref<boolean>(pageTypeAndMode?.type === TransactionEditPageType.Transaction
-    && (pageTypeAndMode?.mode === TransactionEditPageMode.Add || pageTypeAndMode?.mode === TransactionEditPageMode.Edit)
+const showTransactionPictures = ref<boolean>((pageTypeAndMode?.mode === TransactionEditPageMode.Add || pageTypeAndMode?.mode === TransactionEditPageMode.Edit)
     && settingsStore.appSettings.alwaysShowTransactionPicturesInMobileTransactionEditPage);
 const showAITextRecognitionSheet = ref<boolean>(false);
 
@@ -790,93 +633,6 @@ const transactionThumbs = computed<(string | undefined)[]>(() => {
     return thumbs;
 });
 
-const transactionDisplayScheduledFrequency = computed<string>(() => {
-    if (pageTypeAndMode?.type !== TransactionEditPageType.Template) {
-        return '';
-    }
-
-    const template = transaction.value as TransactionTemplate;
-
-    if (template.scheduledFrequencyType === ScheduledTemplateFrequencyType.Disabled.type) {
-        return tt('Disabled');
-    }
-
-    const items = (template.scheduledFrequency || '').split(',');
-    const scheduledFrequencyValues: number[] = [];
-
-    for (const item of items) {
-        if (item) {
-            scheduledFrequencyValues.push(parseInt(item));
-        }
-    }
-
-    if (template.scheduledFrequencyType === ScheduledTemplateFrequencyType.Daily.type) {
-        return tt('Daily');
-    } else if (template.scheduledFrequencyType === ScheduledTemplateFrequencyType.EveryNDays.type) {
-        if (scheduledFrequencyValues.length) {
-            return tt('format.misc.everyNDays', {
-                n: scheduledFrequencyValues[0]
-            });
-        } else {
-            return tt('Every N Days');
-        }
-    } else if (template.scheduledFrequencyType === ScheduledTemplateFrequencyType.Weekly.type) {
-        if (scheduledFrequencyValues.length) {
-            return tt('format.misc.everyMultiDaysOfWeek', {
-                days: getMultiWeekdayLongNames(scheduledFrequencyValues, firstDayOfWeek.value)
-            });
-        } else {
-            return tt('Weekly');
-        }
-    } else if (template.scheduledFrequencyType === ScheduledTemplateFrequencyType.Monthly.type) {
-        if (scheduledFrequencyValues.length) {
-            return tt('format.misc.everyMultiDaysOfMonth', {
-                days: getMultiMonthdayShortNames(scheduledFrequencyValues)
-            });
-        } else {
-            return tt('Monthly');
-        }
-    } else if (template.scheduledFrequencyType === ScheduledTemplateFrequencyType.Yearly.type) {
-        if (scheduledFrequencyValues.length) {
-            return tt('format.misc.everyMultiDaysOfYear', {
-                days: getMultiMonthAndDayLongNames(scheduledFrequencyValues)
-            });
-        } else {
-            return tt('Yearly');
-        }
-    } else {
-        return '';
-    }
-});
-
-const transactionDisplayScheduledStartDate = computed<string>(() => {
-    if (pageTypeAndMode?.type !== TransactionEditPageType.Template) {
-        return '';
-    }
-
-    const template = transaction.value as TransactionTemplate;
-
-    if (template.scheduledStartDate) {
-        return formatGregorianTextualYearMonthDayToLongDate(template.scheduledStartDate);
-    } else {
-        return tt('No limit');
-    }
-});
-
-const transactionDisplayScheduledEndDate = computed<string>(() => {
-    if (pageTypeAndMode?.type !== TransactionEditPageType.Template) {
-        return '';
-    }
-
-    const template = transaction.value as TransactionTemplate;
-
-    if (template.scheduledEndDate) {
-        return formatGregorianTextualYearMonthDayToLongDate(template.scheduledEndDate);
-    } else {
-        return tt('No limit');
-    }
-});
-
 function getPageTypeNameMode(): { type: TransactionEditPageType, mode: TransactionEditPageMode } | null {
     if (props.f7route.path === '/transaction/add') {
         return {
@@ -892,16 +648,6 @@ function getPageTypeNameMode(): { type: TransactionEditPageType, mode: Transacti
         return {
             type: TransactionEditPageType.Transaction,
             mode: TransactionEditPageMode.View
-        };
-    } else if (props.f7route.path === '/template/add') {
-        return {
-            type: TransactionEditPageType.Template,
-            mode: TransactionEditPageMode.Add
-        };
-    } else if (props.f7route.path === '/template/edit') {
-        return {
-            type: TransactionEditPageType.Template,
-            mode: TransactionEditPageMode.Edit
         };
     } else {
         return null;
@@ -945,43 +691,17 @@ function init(): void {
 
     const promises: Promise<unknown>[] = [
         accountsStore.loadAllAccounts({ force: false }),
-        transactionCategoriesStore.loadAllCategories({ force: false }),
-        transactionTagsStore.loadAllTags({ force: false }),
-        transactionTemplatesStore.loadAllTemplates({ force: false, templateType: TemplateType.Normal.type })
+        transactionCategoriesStore.loadAllCategories({ force: false })
     ];
 
-    if (pageTypeAndMode.type === TransactionEditPageType.Transaction) {
-        if (query['id']) {
-            if (mode.value === TransactionEditPageMode.Edit) {
-                editId.value = query['id'];
-            } else if (mode.value === TransactionEditPageMode.Add) {
-                duplicateFromId.value = query['id'];
-            }
-
-            promises.push(transactionsStore.getTransaction({ transactionId: query['id'], withPictures: mode.value !== TransactionEditPageMode.Add }));
-        }
-    } else if (pageTypeAndMode.type === TransactionEditPageType.Template) {
-        const template = TransactionTemplate.createNewTransactionTemplate(transaction.value);
-        template.name = '';
-
-        if (query['templateType']) {
-            template.templateType = parseInt(query['templateType']);
+    if (query['id']) {
+        if (mode.value === TransactionEditPageMode.Edit) {
+            editId.value = query['id'];
+        } else if (mode.value === TransactionEditPageMode.Add) {
+            duplicateFromId.value = query['id'];
         }
 
-        if (template.templateType === TemplateType.Schedule.type) {
-            template.scheduledFrequencyType = ScheduledTemplateFrequencyType.Disabled.type;
-            template.scheduledFrequency = '';
-        }
-
-        transaction.value = template;
-
-        if (query['id']) {
-            if (mode.value === TransactionEditPageMode.Edit) {
-                editId.value = query['id'];
-            }
-
-            promises.push(transactionTemplatesStore.getTemplate({ templateId: query['id'] }));
-        }
+        promises.push(transactionsStore.getTransaction({ transactionId: query['id'], withPictures: mode.value !== TransactionEditPageMode.Add }));
     }
 
     const initOptions = getQueryTransactionOptions();
@@ -990,9 +710,7 @@ function init(): void {
         initOptions.type >= TransactionType.Income &&
         initOptions.type <= TransactionType.Transfer) {
         transaction.value.type = initOptions.type;
-    } else if (initOptions.type === TransactionType.ModifyBalance &&
-        pageTypeAndMode.type === TransactionEditPageType.Transaction &&
-        mode.value === TransactionEditPageMode.View) {
+    } else if (initOptions.type === TransactionType.ModifyBalance && mode.value === TransactionEditPageMode.View) {
         transaction.value.type = initOptions.type;
     }
 
@@ -1001,45 +719,27 @@ function init(): void {
     }
 
     Promise.all(promises).then(function (responses) {
-        if (query['id'] && !responses[4]) {
-            if (pageTypeAndMode.type === TransactionEditPageType.Transaction) {
-                showToast('Unable to retrieve transaction');
-                loadingError.value = 'Unable to retrieve transaction';
-            } else if (pageTypeAndMode.type === TransactionEditPageType.Template) {
-                showToast('Unable to retrieve template');
-                loadingError.value = 'Unable to retrieve template';
-            }
-
+        if (query['id'] && !responses[2]) {
+            showToast('Unable to retrieve transaction');
+            loadingError.value = 'Unable to retrieve transaction';
             return;
         }
 
-        let fromTransaction: Transaction | TransactionTemplate | null = null;
+        let fromTransaction: Transaction | null = null;
 
-        if (pageTypeAndMode.type === TransactionEditPageType.Transaction) {
-            if (query['id'] && responses[4] instanceof Transaction) {
-                fromTransaction = responses[4];
-            } else if (query['templateId'] && transactionTemplatesStore.allTransactionTemplatesMap && transactionTemplatesStore.allTransactionTemplatesMap[TemplateType.Normal.type]) {
-                fromTransaction = (transactionTemplatesStore.allTransactionTemplatesMap[TemplateType.Normal.type] as Record<string, TransactionTemplate>)[query['templateId']] ?? null;
-
-                if (fromTransaction) {
-                    addByTemplateId.value = fromTransaction.id;
-                }
-            } else if (query['noTransactionDraft'] !== 'true' && (settingsStore.appSettings.autoSaveTransactionDraft === 'enabled' || settingsStore.appSettings.autoSaveTransactionDraft === 'confirmation') && transactionsStore.transactionDraft) {
-                fromTransaction = Transaction.ofDraft(transactionsStore.transactionDraft);
-            }
-        } else if (pageTypeAndMode.type === TransactionEditPageType.Template && responses[4] instanceof TransactionTemplate) {
-            if (query['id']) {
-                fromTransaction = responses[4];
-            }
+        if (query['id'] && responses[2] instanceof Transaction) {
+            fromTransaction = responses[2];
+        } else if (query['noTransactionDraft'] !== 'true' && (settingsStore.appSettings.autoSaveTransactionDraft === 'enabled' || settingsStore.appSettings.autoSaveTransactionDraft === 'confirmation') && transactionsStore.transactionDraft) {
+            fromTransaction = Transaction.ofDraft(transactionsStore.transactionDraft);
         }
 
         setTransactionModel(
             fromTransaction,
             initOptions,
-            pageTypeAndMode.type === TransactionEditPageType.Transaction && (mode.value === TransactionEditPageMode.Edit || mode.value === TransactionEditPageMode.View)
+            mode.value === TransactionEditPageMode.Edit || mode.value === TransactionEditPageMode.View
         );
 
-        if (pageTypeAndMode.type === TransactionEditPageType.Transaction && query['id'] && responses[4] instanceof Transaction) {
+        if (query['id'] && responses[2] instanceof Transaction) {
             if (fromTransaction && query['withTime'] && query['withTime'] === 'true') {
                 transaction.value.time = fromTransaction.time;
                 transaction.value.timeZone = fromTransaction.timeZone;
@@ -1049,15 +749,6 @@ function init(): void {
             if (fromTransaction && query['withGeoLocation'] && query['withGeoLocation'] === 'true') {
                 transaction.value.setGeoLocation(fromTransaction.geoLocation);
             }
-        } else if (pageTypeAndMode.type === TransactionEditPageType.Template && query['id'] && responses[4] instanceof TransactionTemplate) {
-            const template = responses[4];
-            transaction.value.id = template.id;
-
-            if (!(transaction.value instanceof TransactionTemplate)) {
-                transaction.value = TransactionTemplate.createNewTransactionTemplate(transaction.value);
-            }
-
-            (transaction.value as TransactionTemplate).fillFrom(template);
         }
 
         if (props.autoUploadPicture) {
@@ -1102,7 +793,7 @@ function save(afterAction: AfterSaveAction): void {
         return;
     }
 
-    if (pageTypeAndMode?.type === TransactionEditPageType.Transaction && (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit)) {
+    if (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit) {
         const doSubmit = function () {
             submitting.value = true;
             showLoading(() => submitting.value);
@@ -1172,34 +863,6 @@ function save(afterAction: AfterSaveAction): void {
         } else {
             doSubmit();
         }
-    } else if (pageTypeAndMode?.type === TransactionEditPageType.Template && (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit)) {
-        submitting.value = true;
-        showLoading(() => submitting.value);
-
-        transactionTemplatesStore.saveTemplateContent({
-            template: transaction.value as TransactionTemplate,
-            isEdit: mode.value === TransactionEditPageMode.Edit,
-            clientSessionId: clientSessionId.value
-        }).then(() => {
-            submitting.value = false;
-            submitted.value = true;
-            hideLoading();
-
-            if (mode.value === TransactionEditPageMode.Add) {
-                showToast('You have added a new template');
-            } else if (mode.value === TransactionEditPageMode.Edit) {
-                showToast('You have saved this template');
-            }
-
-            router.back();
-        }).catch(error => {
-            submitting.value = false;
-            hideLoading();
-
-            if (!error.processed) {
-                showToast(error.message || error);
-            }
-        });
     }
 }
 
@@ -1208,7 +871,7 @@ function quickSave(): void {
         return;
     }
 
-    if (pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode.value === TransactionEditPageMode.Add) {
+    if (mode.value === TransactionEditPageMode.Add) {
         const quickAddActionType = settingsStore.appSettings.quickAddButtonActionInMobileTransactionEditPage;
 
         if (quickAddActionType === TransactionQuickAddButtonActionType.OpenMenu.type) {
@@ -1310,48 +973,6 @@ function pasteAmount(type: 'sourceAmount' | 'destinationAmount'): void {
     });
 }
 
-function updateGeoLocation(forceUpdate: boolean): void {
-    if (!isSupportGeoLocation) {
-        logger.warn('this browser does not support geo location');
-
-        if (forceUpdate) {
-            showToast('Unable to retrieve current position');
-        }
-        return;
-    }
-
-    navigator.geolocation.getCurrentPosition(function (position) {
-        if (!position || !position.coords) {
-            logger.error('current position is null');
-            geoLocationStatus.value = GeoLocationStatus.Error;
-
-            if (forceUpdate) {
-                showToast('Unable to retrieve current position');
-            }
-
-            return;
-        }
-
-        geoLocationStatus.value = GeoLocationStatus.Success;
-
-        transaction.value.setLatitudeAndLongitude(position.coords.latitude, position.coords.longitude);
-    }, function (err) {
-        logger.error('cannot retrieve current position', err);
-        geoLocationStatus.value = GeoLocationStatus.Error;
-
-        if (forceUpdate) {
-            showToast('Unable to retrieve current position');
-        }
-    });
-
-    geoLocationStatus.value = GeoLocationStatus.Getting;
-}
-
-function clearGeoLocation(): void {
-    geoLocationStatus.value = null;
-    transaction.value.removeGeoLocation();
-}
-
 function showDateTimeDialog(sheetMode: string): void {
     if (mode.value === TransactionEditPageMode.View) {
         showTimeInDefaultTimezone.value = !showTimeInDefaultTimezone.value;
@@ -1425,8 +1046,8 @@ function viewOrRemovePicture(pictureInfo: TransactionPictureInfoBasicResponse): 
     });
 }
 
-function duplicate(withTime?: boolean, withGeoLocation?: boolean): void {
-    props.f7router.navigate(`/transaction/add?id=${transaction.value.id}&type=${transaction.value.type}&withTime=${withTime ?? false}&withGeoLocation=${withGeoLocation ?? false}`);
+function duplicate(withTime?: boolean): void {
+    props.f7router.navigate(`/transaction/add?id=${transaction.value.id}&type=${transaction.value.type}&withTime=${withTime ?? false}`);
 }
 
 function onUploadPicture(event: Event): void {
@@ -1449,14 +1070,10 @@ function onUploadPicture(event: Event): void {
 function onPageAfterIn(): void {
     routeBackOnError(props.f7router, loadingError);
 
-    if (settingsStore.appSettings.autoGetCurrentGeoLocation && mode.value === TransactionEditPageMode.Add
-        && !geoLocationStatus.value && !transaction.value.geoLocation) {
-        updateGeoLocation(false);
-    }
 }
 
 function onPageBeforeOut(): void {
-    if (submitted.value || pageTypeAndMode?.type !== TransactionEditPageType.Transaction || mode.value !== TransactionEditPageMode.Add || query['noTransactionDraft'] === 'true' || addByTemplateId.value || duplicateFromId.value) {
+    if (submitted.value || mode.value !== TransactionEditPageMode.Add || query['noTransactionDraft'] === 'true' || addByTemplateId.value || duplicateFromId.value) {
         return;
     }
 
@@ -1523,23 +1140,6 @@ init();
 
 .transaction-edit-timezone-name {
     padding-inline-start: 4px;
-}
-
-.transaction-edit-tag {
-    --f7-chip-bg-color: var(--ebk-transaction-tag-chip-bg-color);
-    margin-inline-end: 4px;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.chip.transaction-edit-tag .chip-media+.chip-label {
-    margin-inline-start: 0;
-}
-
-.chip.transaction-edit-tag .chip-media i.icon {
-    font-size: calc(var(--f7-chip-media-size) - 12px);
-    height: calc(var(--f7-chip-media-size) - 12px);
 }
 
 .transaction-pictures {

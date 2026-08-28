@@ -148,10 +148,6 @@ import {
 } from '@/core/import_transaction.ts';
 
 import {
-    ScheduledTemplateFrequencyType
-} from '@/core/template.ts';
-
-import {
     StatisticsAnalysisType,
     CategoricalChartType,
     TrendChartType,
@@ -160,14 +156,6 @@ import {
     ChartSortingType,
     ChartDateAggregationType
 } from '@/core/statistics.ts';
-
-import {
-    TransactionExplorerConditionField,
-    TransactionExplorerConditionOperator,
-    TransactionExplorerDataDimension,
-    TransactionExplorerValueMetric,
-    TransactionExplorerChartType
-} from '@/core/explorer.ts';
 
 import {
     type LocalizedImportFileCategoryAndTypes,
@@ -609,19 +597,6 @@ export function useI18n() {
             ret.push({
                 type: typeAndName.type,
                 displayName: t(name)
-            });
-        }
-
-        return ret;
-    }
-
-    function getLocalizedNameValue(nameValues: NameValue[]): NameValue[] {
-        const ret: NameValue[] = [];
-
-        for (const nameValue of nameValues) {
-            ret.push({
-                name: t(nameValue.name),
-                value: nameValue.value
             });
         }
 
@@ -2627,16 +2602,10 @@ export function useI18n() {
         getAllTransactionEditScopeTypes: (useLastReconciledTime: boolean) => getLocalizedDisplayNameAndType(TransactionEditScopeType.values(useLastReconciledTime)),
         getAllTransactionQuickSaveButtonStyles: () => getLocalizedDisplayNameAndType(TransactionQuickSaveButtonStyle.values()),
         getAllTransactionQuickAddButtonActionTypes: () => getLocalizedDisplayNameAndType(TransactionQuickAddButtonActionType.values()),
-        getAllTransactionScheduledFrequencyTypes: () => getLocalizedDisplayNameAndType(ScheduledTemplateFrequencyType.values()),
         getAllImportTransactionColumnTypes: () => getLocalizedDisplayNameAndType(ImportTransactionColumnType.values()),
         getAllTransactionDefaultCategories,
         getAllDisplayExchangeRates,
         getAllSupportedImportFileCagtegoryAndTypes,
-        getAllTransactionExplorerConditionFields: () => getLocalizedNameValue(TransactionExplorerConditionField.values()),
-        getAllTransactionExplorerConditionOperators: (operators?: TransactionExplorerConditionOperator[]) => getLocalizedNameValue(operators ?? TransactionExplorerConditionOperator.values()),
-        getAllTransactionExplorerDataDimensions: (operators?: TransactionExplorerDataDimension[]) => getLocalizedNameValue(operators ?? TransactionExplorerDataDimension.values()),
-        getAllTransactionExplorerValueMetrics: (operators?: TransactionExplorerValueMetric[]) => getLocalizedNameValue(operators ?? TransactionExplorerValueMetric.values()),
-        getAllTransactionExplorerChartTypes: (operators?: TransactionExplorerChartType[]) => getLocalizedNameValue(operators ?? TransactionExplorerChartType.values()),
         // get localized info
         getLanguageInfo,
         getEnableDisableOption: (value: boolean) => t(value ? 'Enabled' : 'Disabled'),

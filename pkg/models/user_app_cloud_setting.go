@@ -45,9 +45,6 @@ var ALL_ALLOWED_CLOUD_SYNC_APP_SETTING_KEY_TYPES = map[string]UserApplicationClo
 	// Import Transaction Dialog
 	"rememberLastSelectedFileTypeInImportTransactionDialog": USER_APPLICATION_CLOUD_SETTING_TYPE_BOOLEAN,
 	"lastSelectedFileTypeInImportTransactionDialog":         USER_APPLICATION_CLOUD_SETTING_TYPE_STRING,
-	// Insights Explorer Page
-	"insightsExplorerDefaultDateRangeType": USER_APPLICATION_CLOUD_SETTING_TYPE_NUMBER,
-	"showTagInInsightsExplorerPage":        USER_APPLICATION_CLOUD_SETTING_TYPE_BOOLEAN,
 	// Account List Page
 	"totalAmountExcludeAccountIds":                               USER_APPLICATION_CLOUD_SETTING_TYPE_STRING_BOOLEAN_MAP,
 	"accountCategoryOrders":                                      USER_APPLICATION_CLOUD_SETTING_TYPE_STRING,

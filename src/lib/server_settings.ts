@@ -35,10 +35,6 @@ export function isTransactionPicturesEnabled(): boolean {
     return getServerSetting('p') === 1;
 }
 
-export function isUserScheduledTransactionEnabled(): boolean {
-    return getServerSetting('s') === 1;
-}
-
 export function isDataExportingEnabled(): boolean {
     return getServerSetting('e') === 1;
 }
@@ -69,14 +65,6 @@ export function isTransactionFromAIImageRecognitionEnabled(): boolean {
 
 export function getLoginPageTips(): Record<string, string>{
     return getServerSetting('lpt') as Record<string, string>;
-}
-
-export function getMapProvider(): string {
-    return getServerSetting('m') as string;
-}
-
-export function isMapDataFetchProxyEnabled(): boolean {
-    return getServerSetting('mp') === 1;
 }
 
 export function getCustomMapTileLayerUrl(): string {

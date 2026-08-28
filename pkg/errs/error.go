@@ -43,7 +43,6 @@ const (
 	NormalSubcategoryLargeLanguageModel     = 15
 	NormalSubcategoryUserExternalAuth       = 16
 	NormalSubcategoryOAuth2                 = 17
-	NormalSubcategoryInsightsExplorer       = 18
 	NormalSubcategoryTagGroup               = 19
 )
 

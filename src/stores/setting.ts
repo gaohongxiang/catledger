@@ -332,19 +332,6 @@ export const useSettingsStore = defineStore('settings', () => {
         updateUserApplicationCloudSettingValue('lastSelectedFileTypeInImportTransactionDialog', value);
     }
 
-    // Insights Explorer Page
-    function setInsightsExplorerDefaultDateRangeType(value: number): void {
-        updateApplicationSettingsValue('insightsExplorerDefaultDateRangeType', value);
-        appSettings.value.insightsExplorerDefaultDateRangeType = value;
-        updateUserApplicationCloudSettingValue('insightsExplorerDefaultDateRangeType', value);
-    }
-
-    function setShowTagInInsightsExplorerPage(value: boolean): void {
-        updateApplicationSettingsValue('showTagInInsightsExplorerPage', value);
-        appSettings.value.showTagInInsightsExplorerPage = value;
-        updateUserApplicationCloudSettingValue('showTagInInsightsExplorerPage', value);
-    }
-
     // Account List Page
     function setTotalAmountExcludeAccountIds(value: Record<string, boolean>): void {
         updateApplicationSettingsValue('totalAmountExcludeAccountIds', value);
@@ -625,9 +612,6 @@ export const useSettingsStore = defineStore('settings', () => {
         // -- Import Transaction Dialog
         setRememberLastSelectedFileTypeInImportTransactionDialog,
         setLastSelectedFileTypeInImportTransactionDialog,
-        // -- Insights Explorer Page
-        setInsightsExplorerDefaultDateRangeType,
-        setShowTagInInsightsExplorerPage,
         // -- Account List Page
         setTotalAmountExcludeAccountIds,
         setAccountCategoryOrders,

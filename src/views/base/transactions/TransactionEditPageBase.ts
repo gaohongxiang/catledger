@@ -11,11 +11,9 @@ import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
 
 import type { BigDecimal, NumeralSystem } from '@/core/numeral.ts';
-import type { WeekDayValue } from '@/core/datetime.ts';
 import type { LocalizedTimezoneInfo } from '@/core/timezone.ts';
 import { ImageUploadQualityType } from '@/core/image.ts';
 import { TransactionType, TransactionQuickAddButtonActionType } from '@/core/transaction.ts';
-import { TemplateType } from '@/core/template.ts';
 import { DISPLAY_HIDDEN_AMOUNT } from '@/consts/numeral.ts';
 import { TRANSACTION_MAX_PICTURE_COUNT, TRANSACTION_MAX_COMMENT_LENGTH, TRANSACTION_COMMENT_HINT_MIN_LENGTH } from '@/consts/transaction.ts';
 
@@ -24,7 +22,6 @@ import type { TransactionCategory } from '@/models/transaction_category.ts';
 import type { TransactionTag } from '@/models/transaction_tag.ts';
 import type { TransactionPictureInfoBasicResponse } from '@/models/transaction_picture_info.ts';
 import { Transaction } from '@/models/transaction.ts';
-import { TransactionTemplate } from '@/models/transaction_template.ts';
 import type { RecognizedTransactionResponse } from '@/models/large_language_model.ts';
 
 import {
@@ -51,8 +48,7 @@ import {
 } from '@/lib/transaction.ts';
 
 export enum TransactionEditPageType {
-    Transaction = 'transaction',
-    Template = 'template'
+    Transaction = 'transaction'
 }
 
 export enum TransactionEditPageMode {
@@ -73,7 +69,7 @@ export enum AfterSaveAction {
     StayWithCurrentTransaction = 'stayWithCurrentTransaction'
 }
 
-export function useTransactionEditPageBase(type: TransactionEditPageType, initMode?: TransactionEditPageMode, transactionDefaultType?: number) {
+export function useTransactionEditPageBase(initMode?: TransactionEditPageMode, transactionDefaultType?: number) {
     const {
         tt,
         getAllTimezones,
@@ -109,7 +105,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
     const geoLocationStatus = ref<GeoLocationStatus | null>(null);
     const setGeoLocationByClickMap = ref<boolean>(false);
 
-    const transaction = ref<Transaction | TransactionTemplate>(createNewTransactionModel(transactionDefaultType));
+    const transaction = ref<Transaction>(createNewTransactionModel(transactionDefaultType));
 
     const numeralSystem = computed<NumeralSystem>(() => getCurrentNumeralSystemType());
     const currentTimezoneOffsetMinutes = computed<number>(() => getTimezoneOffsetMinutes(transaction.value.time));
@@ -117,17 +113,10 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
     const customAccountCategoryOrder = computed<string>(() => settingsStore.appSettings.accountCategoryOrders);
     const defaultCurrency = computed<string>(() => userStore.currentUserDefaultCurrency);
     const defaultAccountId = computed<string>(() => userStore.currentUserDefaultAccountId);
-    const firstDayOfWeek = computed<WeekDayValue>(() => userStore.currentUserFirstDayOfWeek);
     const coordinateDisplayType = computed<number>(() => userStore.currentUserCoordinateDisplayType);
     const imageUploadQualityType = computed<ImageUploadQualityType>(() => ImageUploadQualityType.valueOf(settingsStore.appSettings.transactionPictureQuality) ?? ImageUploadQualityType.Default);
 
-    const allTimezones = computed<LocalizedTimezoneInfo[]>(() => {
-        if (type === TransactionEditPageType.Template && transaction.value instanceof TransactionTemplate) {
-            return getAllTimezones(getCurrentUnixTime(), true);
-        } else {
-            return getAllTimezones(transaction.value.time, true)
-        }
-    });
+    const allTimezones = computed<LocalizedTimezoneInfo[]>(() => getAllTimezones(transaction.value.time, true));
     const allAccounts = computed<Account[]>(() => accountsStore.allPlainAccounts);
     const allVisibleAccounts = computed<Account[]>(() => accountsStore.allVisiblePlainAccounts);
     const allAccountsMap = computed<Record<string, Account>>(() => accountsStore.allAccountsMap);
@@ -142,7 +131,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
     const hasVisibleTransferCategories = computed<boolean>(() => transactionCategoriesStore.hasVisibleTransferCategories);
 
     const canAddTransactionPicture = computed<boolean>(() => {
-        if (type !== TransactionEditPageType.Transaction || (mode.value !== TransactionEditPageMode.Add && mode.value !== TransactionEditPageMode.Edit)) {
+        if (mode.value !== TransactionEditPageMode.Add && mode.value !== TransactionEditPageMode.Edit) {
             return false;
         }
 
@@ -150,29 +139,13 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
     });
 
     const title = computed<string>(() => {
-        if (type === TransactionEditPageType.Transaction) {
-            if (mode.value === TransactionEditPageMode.Add) {
-                return 'Add Transaction';
-            } else if (mode.value === TransactionEditPageMode.Edit) {
-                return 'Edit Transaction';
-            } else {
-                return 'Transaction Detail';
-            }
-        } else if (type === TransactionEditPageType.Template && (transaction.value as TransactionTemplate).templateType === TemplateType.Normal.type) {
-            if (mode.value === TransactionEditPageMode.Add) {
-                return 'Add Transaction Template';
-            } else if (mode.value === TransactionEditPageMode.Edit) {
-                return 'Edit Transaction Template';
-            }
-        } else if (type === TransactionEditPageType.Template && (transaction.value as TransactionTemplate).templateType === TemplateType.Schedule.type) {
-            if (mode.value === TransactionEditPageMode.Add) {
-                return 'Add Scheduled Transaction';
-            } else if (mode.value === TransactionEditPageMode.Edit) {
-                return 'Edit Scheduled Transaction';
-            }
+        if (mode.value === TransactionEditPageMode.Add) {
+            return 'Add Transaction';
+        } else if (mode.value === TransactionEditPageMode.Edit) {
+            return 'Edit Transaction';
+        } else {
+            return 'Transaction Detail';
         }
-
-        return '';
     });
 
     const saveButtonTitle = computed<string>(() => {
@@ -375,12 +348,6 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
             }
         }
 
-        if (type === TransactionEditPageType.Template && transaction.value instanceof TransactionTemplate) {
-            if (!transaction.value.name) {
-                return 'Template name cannot be blank';
-            }
-        }
-
         return null;
     });
 
@@ -392,7 +359,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         return getSameDateTimeWithCurrentTimezone(parseDateTimeFromUnixTimeWithBrowserTimezone(getCurrentUnixTime())).getUnixTime();
     }
 
-    function createNewTransactionModel(transactionType?: number): Transaction | TransactionTemplate {
+    function createNewTransactionModel(transactionType?: number): Transaction {
         const now: number = getCurrentUnixTimeForNewTransaction();
         const currentTimezone: string = settingsStore.appSettings.timeZone;
 
@@ -404,13 +371,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
             defaultType = TransactionType.Transfer;
         }
 
-        let newTransaction: Transaction | TransactionTemplate = Transaction.createNewTransaction(defaultType, now, currentTimezone, getTimezoneOffsetMinutes(now, currentTimezone));
-
-        if (type === TransactionEditPageType.Template) {
-            newTransaction = TransactionTemplate.createNewTransactionTemplate(newTransaction);
-        }
-
-        return newTransaction;
+        return Transaction.createNewTransaction(defaultType, now, currentTimezone, getTimezoneOffsetMinutes(now, currentTimezone));
     }
 
     function setTransactionModel(newTransaction: Transaction | null, options: SetTransactionOptions | undefined, setContextData: boolean): void {
@@ -570,7 +531,6 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         showAccountBalance,
         defaultCurrency,
         defaultAccountId,
-        firstDayOfWeek,
         coordinateDisplayType,
         imageUploadQualityType,
         allTimezones,

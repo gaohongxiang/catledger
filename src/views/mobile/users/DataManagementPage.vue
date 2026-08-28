@@ -6,11 +6,7 @@
             <f7-list-item title="Transactions" after="Count"></f7-list-item>
             <f7-list-item title="Transaction Pictures" after="Count"></f7-list-item>
             <f7-list-item title="Accounts" after="Count"></f7-list-item>
-            <f7-list-item title="Explorations" after="Count"></f7-list-item>
             <f7-list-item title="Transaction Categories" after="Count"></f7-list-item>
-            <f7-list-item title="Transaction Tags" after="Count"></f7-list-item>
-            <f7-list-item title="Transaction Templates" after="Count"></f7-list-item>
-            <f7-list-item title="Scheduled Transactions" after="Count"></f7-list-item>
 			<f7-list-item title="Import files" after="Count"></f7-list-item>
 			<f7-list-item title="Import batches" after="Count"></f7-list-item>
 			<f7-list-item title="Raw evidence rows" after="Count"></f7-list-item>
@@ -20,11 +16,7 @@
             <f7-list-item :title="tt('Transactions')" :after="displayDataStatistics ? displayDataStatistics.totalTransactionCount : '-'"></f7-list-item>
             <f7-list-item :title="tt('Transaction Pictures')" :after="displayDataStatistics ? displayDataStatistics.totalTransactionPictureCount : '-'"></f7-list-item>
             <f7-list-item :title="tt('Accounts')" :after="displayDataStatistics ? displayDataStatistics.totalAccountCount : '-'"></f7-list-item>
-            <f7-list-item :title="tt('Explorations')" :after="displayDataStatistics ? displayDataStatistics.totalExplorationCount : '-'"></f7-list-item>
             <f7-list-item :title="tt('Transaction Categories')" :after="displayDataStatistics ? displayDataStatistics.totalTransactionCategoryCount : '-'"></f7-list-item>
-            <f7-list-item :title="tt('Transaction Tags')" :after="displayDataStatistics ? displayDataStatistics.totalTransactionTagCount : '-'"></f7-list-item>
-            <f7-list-item :title="tt('Transaction Templates')" :after="displayDataStatistics ? displayDataStatistics.totalTransactionTemplateCount : '-'"></f7-list-item>
-            <f7-list-item :title="tt('Scheduled Transactions')" :after="displayDataStatistics ? displayDataStatistics.totalScheduledTransactionCount : '-'"></f7-list-item>
 			<f7-list-item :title="tt('personalFinance.dataManagement.files')" :after="displayDataStatistics ? displayDataStatistics.totalPersonalFinanceImportFileCount : '-'"></f7-list-item>
 			<f7-list-item :title="tt('personalFinance.dataManagement.batches')" :after="displayDataStatistics ? displayDataStatistics.totalPersonalFinanceImportBatchCount : '-'"></f7-list-item>
 			<f7-list-item :title="tt('personalFinance.dataManagement.rows')" :after="displayDataStatistics ? displayDataStatistics.totalPersonalFinanceRawRowCount : '-'"></f7-list-item>
