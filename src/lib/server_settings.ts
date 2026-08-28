@@ -35,10 +35,6 @@ export function isTransactionPicturesEnabled(): boolean {
     return getServerSetting('p') === 1;
 }
 
-export function isUserScheduledTransactionEnabled(): boolean {
-    return getServerSetting('s') === 1;
-}
-
 export function isDataExportingEnabled(): boolean {
     return getServerSetting('e') === 1;
 }

@@ -381,8 +381,7 @@ type Config struct {
 	DuplicateSubmissionsIntervalDuration            time.Duration
 
 	// Cron
-	EnableRemoveExpiredTokens        bool
-	EnableCreateScheduledTransaction bool
+	EnableRemoveExpiredTokens bool
 
 	// Secret
 	SecretKeyNoSet                        bool
@@ -432,7 +431,6 @@ type Config struct {
 	EnableUserForceVerifyEmail    bool
 	EnableTransactionPictures     bool
 	MaxTransactionPictureFileSize uint32
-	EnableScheduledTransaction    bool
 	AvatarProvider                core.UserAvatarProviderType
 	MaxAvatarFileSize             uint32
 	DefaultFeatureRestrictions    core.UserFeatureRestrictions
@@ -1015,7 +1013,6 @@ func loadDuplicateCheckerConfiguration(config *Config, configFile *ini.File, sec
 
 func loadCronConfiguration(config *Config, configFile *ini.File, sectionName string) error {
 	config.EnableRemoveExpiredTokens = getConfigItemBoolValue(configFile, sectionName, "enable_remove_expired_tokens", false)
-	config.EnableCreateScheduledTransaction = getConfigItemBoolValue(configFile, sectionName, "enable_create_scheduled_transaction", false)
 
 	return nil
 }
@@ -1147,7 +1144,6 @@ func loadUserConfiguration(config *Config, configFile *ini.File, sectionName str
 	config.EnableUserForceVerifyEmail = getConfigItemBoolValue(configFile, sectionName, "enable_force_email_verify", false)
 	config.EnableTransactionPictures = getConfigItemBoolValue(configFile, sectionName, "enable_transaction_picture", false)
 	config.MaxTransactionPictureFileSize = getConfigItemUint32Value(configFile, sectionName, "max_transaction_picture_size", defaultTransactionPictureFileMaxSize)
-	config.EnableScheduledTransaction = getConfigItemBoolValue(configFile, sectionName, "enable_scheduled_transaction", false)
 
 	if getConfigItemStringValue(configFile, sectionName, "avatar_provider") == string(core.USER_AVATAR_PROVIDER_INTERNAL) {
 		config.AvatarProvider = core.USER_AVATAR_PROVIDER_INTERNAL

@@ -1,7 +1,6 @@
 package services
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -724,31 +723,6 @@ func (s *AccountService) DeleteAccount(c core.Context, uid int64, accountId int6
 			}
 		}
 
-		transactionTemplateQueryCondition := fmt.Sprintf("uid=? AND deleted=? AND (template_type=? OR (template_type=? AND scheduled_frequency_type<>? AND (scheduled_end_time IS NULL OR scheduled_end_time>=?))) AND (account_id IN (%s) OR related_account_id IN (%s))", accountAndSubAccountIdsConditions.String(), accountAndSubAccountIdsConditions.String())
-		transactionTemplateQueryConditionParams := make([]any, 0, len(accountAndSubAccountIds)*2+6)
-		transactionTemplateQueryConditionParams = append(transactionTemplateQueryConditionParams, uid)
-		transactionTemplateQueryConditionParams = append(transactionTemplateQueryConditionParams, false)
-		transactionTemplateQueryConditionParams = append(transactionTemplateQueryConditionParams, models.TRANSACTION_TEMPLATE_TYPE_NORMAL)
-		transactionTemplateQueryConditionParams = append(transactionTemplateQueryConditionParams, models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE)
-		transactionTemplateQueryConditionParams = append(transactionTemplateQueryConditionParams, models.TRANSACTION_SCHEDULE_FREQUENCY_TYPE_DISABLED)
-		transactionTemplateQueryConditionParams = append(transactionTemplateQueryConditionParams, now)
-
-		for i := 0; i < len(accountAndSubAccountIds); i++ {
-			transactionTemplateQueryConditionParams = append(transactionTemplateQueryConditionParams, accountAndSubAccountIds[i])
-		}
-
-		for i := 0; i < len(accountAndSubAccountIds); i++ {
-			transactionTemplateQueryConditionParams = append(transactionTemplateQueryConditionParams, accountAndSubAccountIds[i])
-		}
-
-		exists, err := sess.Cols("uid", "deleted", "account_id", "related_account_id", "template_type", "scheduled_frequency_type", "scheduled_end_time").Where(transactionTemplateQueryCondition, transactionTemplateQueryConditionParams...).Limit(1).Exist(&models.TransactionTemplate{})
-
-		if err != nil {
-			return err
-		} else if exists {
-			return errs.ErrAccountInUseCannotBeDeleted
-		}
-
 		deletedRows, err := sess.Cols("balance", "deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).In("account_id", accountAndSubAccountIds).Update(updateModel)
 
 		if err != nil {
@@ -828,14 +802,6 @@ func (s *AccountService) DeleteSubAccount(c core.Context, uid int64, accountId i
 					return errs.ErrSubAccountInUseCannotBeDeleted
 				}
 			}
-		}
-
-		exists, err := sess.Cols("uid", "deleted", "account_id", "related_account_id", "template_type", "scheduled_frequency_type", "scheduled_end_time").Where("uid=? AND deleted=? AND (template_type=? OR (template_type=? AND scheduled_frequency_type<>? AND (scheduled_end_time IS NULL OR scheduled_end_time>=?))) AND (account_id=? OR related_account_id=?)", uid, false, models.TRANSACTION_TEMPLATE_TYPE_NORMAL, models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE, models.TRANSACTION_SCHEDULE_FREQUENCY_TYPE_DISABLED, now, accountId, accountId).Limit(1).Exist(&models.TransactionTemplate{})
-
-		if err != nil {
-			return err
-		} else if exists {
-			return errs.ErrSubAccountInUseCannotBeDeleted
 		}
 
 		deletedRows, err := sess.Cols("balance", "deleted", "deleted_unix_time").Where("uid=? AND deleted=? AND account_id=?", uid, false, accountId).Update(updateModel)

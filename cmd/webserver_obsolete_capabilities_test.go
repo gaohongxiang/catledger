@@ -33,6 +33,15 @@ func TestRemovedCapabilitiesAreNotRegistered(t *testing.T) {
 		t.Fatal("scheduled transaction cron job is still registered")
 	}
 
+	cronJobsBytes, err := os.ReadFile("../pkg/cron/cron_jobs.go")
+	if err != nil {
+		t.Fatalf("read cron jobs: %v", err)
+	}
+
+	if strings.Contains(string(cronJobsBytes), "CreateScheduledTransactionJob") {
+		t.Fatal("scheduled transaction cron job implementation still exists")
+	}
+
 	databaseBytes, err := os.ReadFile("database.go")
 	if err != nil {
 		t.Fatalf("read database setup: %v", err)
@@ -40,5 +49,9 @@ func TestRemovedCapabilitiesAreNotRegistered(t *testing.T) {
 
 	if strings.Contains(string(databaseBytes), "new(models.InsightsExplorer)") {
 		t.Fatal("new databases still create the removed insights explorer table")
+	}
+
+	if strings.Contains(string(databaseBytes), "new(models.TransactionTemplate)") {
+		t.Fatal("new databases still create the removed transaction template table")
 	}
 }
