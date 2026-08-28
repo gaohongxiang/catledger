@@ -374,7 +374,6 @@
             <f7-actions-group>
                 <f7-actions-button :class="{ 'disabled': reloading }" @click="filterAccounts">{{ tt('Filter Accounts') }}</f7-actions-button>
                 <f7-actions-button :class="{ 'disabled': reloading }" @click="filterCategories" v-if="canUseCategoryFilter">{{ tt('Filter Transaction Categories') }}</f7-actions-button>
-                <f7-actions-button :class="{ 'disabled': reloading }" @click="filterTags" v-if="canUseTagFilter">{{ tt('Filter Transaction Tags') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group v-if="canUseKeywordFilter">
                 <f7-actions-label v-if="query.keyword">{{ query.keyword }}</f7-actions-label>
@@ -466,7 +465,6 @@ const {
     canChangeDateRange,
     canShiftDateRange,
     canUseCategoryFilter,
-    canUseTagFilter,
     canUseKeywordFilter,
     showAmountInChart,
     totalAmountName,
@@ -833,10 +831,6 @@ function filterAccounts(): void {
 
 function filterCategories(): void {
     props.f7router.navigate('/settings/filter/category?type=statisticsCurrent');
-}
-
-function filterTags(): void {
-    props.f7router.navigate('/settings/filter/tag?type=statisticsCurrent');
 }
 
 function filterDescription(): void {

@@ -44,14 +44,6 @@
             <f7-list-item class="list-item-with-header-and-title" header="Transaction Time" title="YYYY/MM/DD HH:mm:ss" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction"></f7-list-item>
             <f7-list-item class="list-item-with-header-and-title" header="Scheduled Transaction Frequency" title="Every XXXXX" v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type"></f7-list-item>
             <f7-list-item class="list-item-with-header-and-title list-item-title-hide-overflow list-item-no-item-after" header="Transaction Timezone" title="(UTC XX:XX) System Default" link="#" :no-chevron="mode === TransactionEditPageMode.View" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction || (pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate && transaction.templateType === TemplateType.Schedule.type)"></f7-list-item>
-            <f7-list-item class="list-item-with-header-and-title list-item-title-hide-overflow" header="Geographic Location" title="No Location" v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction"></f7-list-item>
-            <f7-list-item header="Tags">
-                <template #footer>
-                    <f7-block class="margin-top-half no-padding no-margin">
-                        <f7-chip class="transaction-edit-tag" text="None"></f7-chip>
-                    </f7-block>
-                </template>
-            </f7-list-item>
             <f7-list-input type="textarea" label="Description" placeholder="Your transaction description (optional)"></f7-list-input>
         </f7-list>
 
@@ -338,57 +330,6 @@
 
             <f7-list-item
                 link="#" no-chevron
-                class="list-item-with-header-and-title list-item-title-hide-overflow"
-                :class="{ 'readonly': mode === TransactionEditPageMode.View && !transaction.geoLocation }"
-                :header="tt('Geographic Location')"
-                @click="showGeoLocationActionSheet = true"
-                v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction"
-            >
-                <template #title>
-                    <f7-block class="list-item-custom-title no-padding no-margin">
-                        <span v-if="transaction.geoLocation">{{ `(${formatCoordinate(transaction.geoLocation, coordinateDisplayType)})` }}</span>
-                        <span v-else-if="!transaction.geoLocation">{{ geoLocationStatusInfo }}</span>
-                    </f7-block>
-                </template>
-
-                <map-sheet :readonly="mode === TransactionEditPageMode.View"
-                           v-model="transaction.geoLocation"
-                           v-model:set-geo-location-by-click-map="setGeoLocationByClickMap"
-                           v-model:show="showGeoLocationMapSheet">
-                </map-sheet>
-            </f7-list-item>
-
-            <f7-list-item
-                link="#" no-chevron
-                :class="{ 'readonly': mode === TransactionEditPageMode.View }"
-                :header="tt('Tags')"
-                @click="showTransactionTagSheet = true"
-            >
-                <transaction-tag-selection-sheet :allow-add-new-tag="true" :enable-filter="true"
-                                                 v-model:show="showTransactionTagSheet"
-                                                 v-model="transaction.tagIds">
-                </transaction-tag-selection-sheet>
-
-                <template #footer>
-                    <f7-block class="margin-top-half no-padding no-margin" v-if="transaction.tagIds && transaction.tagIds.length">
-                        <f7-chip media-text-color="var(--f7-chip-text-color)" class="transaction-edit-tag"
-                                 :text="allTagsMap[tagId]?.name ?? ''"
-                                 :key="tagId"
-                                 v-for="tagId in transaction.tagIds">
-                            <template #media>
-                                <f7-icon f7="number"></f7-icon>
-                            </template>
-                        </f7-chip>
-                    </f7-block>
-                    <f7-block class="margin-top-half no-padding no-margin" v-else-if="!transaction.tagIds || !transaction.tagIds.length">
-                        <f7-chip class="transaction-edit-tag" :text="tt('None')">
-                        </f7-chip>
-                    </f7-block>
-                </template>
-            </f7-list-item>
-
-            <f7-list-item
-                link="#" no-chevron
                 :header="tt('Pictures')"
                 v-if="showTransactionPictures || (transaction.pictures && transaction.pictures.length > 0)"
             >
@@ -439,19 +380,6 @@
             ></f7-list-input>
         </f7-list>
 
-        <f7-actions close-by-outside-click close-on-escape :opened="showGeoLocationActionSheet" @actions:closed="showGeoLocationActionSheet = false">
-            <f7-actions-group>
-                <f7-actions-button v-if="mode !== TransactionEditPageMode.View" @click="updateGeoLocation(true)">{{ tt('Update Geographic Location') }}</f7-actions-button>
-                <f7-actions-button v-if="mode !== TransactionEditPageMode.View" @click="clearGeoLocation">{{ tt('Clear Geographic Location') }}</f7-actions-button>
-            </f7-actions-group>
-            <f7-actions-group v-if="!!getMapProvider()">
-                <f7-actions-button :class="{ 'disabled': !transaction.geoLocation }" @click="setGeoLocationByClickMap = false; showGeoLocationMapSheet = true">{{ tt('Show on the map') }}</f7-actions-button>
-            </f7-actions-group>
-            <f7-actions-group>
-                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
-            </f7-actions-group>
-        </f7-actions>
-
         <f7-actions close-by-outside-click close-on-escape :opened="showMoreActionSheet" @actions:closed="showMoreActionSheet = false">
             <f7-actions-group v-if="mode !== TransactionEditPageMode.View && pageTypeAndMode?.type === TransactionEditPageType.Transaction && isTransactionFromAITextRecognitionEnabled()">
                 <f7-actions-button @click="recognizeFromClipboard">{{ tt('AI Clipboard Text Recognition') }}</f7-actions-button>
@@ -471,10 +399,8 @@
                 <f7-actions-button @click="showTransactionPictures = true">{{ tt('Add Picture') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode === TransactionEditPageMode.View && transaction.type !== TransactionType.ModifyBalance">
-                <f7-actions-button @click="duplicate(false, false)">{{ tt('Duplicate') }}</f7-actions-button>
-                <f7-actions-button @click="duplicate(true, false)">{{ tt('Duplicate (With Time)') }}</f7-actions-button>
-                <f7-actions-button @click="duplicate(false, true)" v-if="transaction.geoLocation">{{ tt('Duplicate (With Geographic Location)') }}</f7-actions-button>
-                <f7-actions-button @click="duplicate(true, true)" v-if="transaction.geoLocation">{{ tt('Duplicate (With Time and Geographic Location)') }}</f7-actions-button>
+                <f7-actions-button @click="duplicate(false)">{{ tt('Duplicate') }}</f7-actions-button>
+                <f7-actions-button @click="duplicate(true)">{{ tt('Duplicate (With Time)') }}</f7-actions-button>
             </f7-actions-group>
             <f7-actions-group>
                 <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
@@ -526,7 +452,6 @@ import { useI18nUIComponents, isiOS, showLoading, hideLoading, closeAllDialog } 
 import {
     TransactionEditPageMode,
     TransactionEditPageType,
-    GeoLocationStatus,
     AfterSaveAction,
     useTransactionEditPageBase
 } from '@/views/base/transactions/TransactionEditPageBase.ts';
@@ -535,7 +460,6 @@ import { useSettingsStore } from '@/stores/setting.ts';
 import { useUserStore } from '@/stores/user.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
-import { useTransactionTagsStore } from '@/stores/transactionTag.ts';
 import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
 
@@ -564,14 +488,12 @@ import {
     getTimezoneOffsetMinutes,
     parseDateTimeFromUnixTimeWithTimezoneOffset
 } from '@/lib/datetime.ts';
-import { formatCoordinate } from '@/lib/coordinate.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import { getTransactionPrimaryCategoryName, getTransactionSecondaryCategoryName } from '@/lib/category.ts';
 import { type SetTransactionOptions } from '@/lib/transaction.ts';
 import {
     isTransactionFromAITextRecognitionEnabled,
-    isTransactionPicturesEnabled,
-    getMapProvider
+    isTransactionPicturesEnabled
 } from '@/lib/server_settings.ts';
 import { compressJpgImageByQuality } from '@/lib/ui/common.ts';
 import logger from '@/lib/logger.ts';
@@ -600,7 +522,6 @@ const { showAlert, showConfirm, showCancelableLoading, showToast, routeBackOnErr
 
 const {
     mode,
-    isSupportGeoLocation,
     editId,
     addByTemplateId,
     duplicateFromId,
@@ -610,20 +531,16 @@ const {
     submitting,
     submitted,
     uploadingPicture,
-    geoLocationStatus,
-    setGeoLocationByClickMap,
     transaction,
     numeralSystem,
     currentTimezoneOffsetMinutes,
     defaultCurrency,
     firstDayOfWeek,
-    coordinateDisplayType,
     imageUploadQualityType,
     allTimezones,
     allVisibleAccounts,
     allVisibleCategorizedAccounts,
     allCategories,
-    allTagsMap,
     firstVisibleAccountId,
     hasVisibleExpenseCategories,
     hasVisibleIncomeCategories,
@@ -640,7 +557,6 @@ const {
     destinationAccountCurrency,
     transactionDisplayTimezone,
     transactionTimezoneTimeDifference,
-    geoLocationStatusInfo,
     transactionDescriptionTitle,
     inputEmptyProblemMessage,
     inputIsEmpty,
@@ -660,7 +576,6 @@ const settingsStore = useSettingsStore();
 const userStore = useUserStore();
 const accountsStore = useAccountsStore();
 const transactionCategoriesStore = useTransactionCategoriesStore();
-const transactionTagsStore = useTransactionTagsStore();
 const transactionsStore = useTransactionsStore();
 const transactionTemplatesStore = useTransactionTemplatesStore();
 
@@ -674,7 +589,6 @@ const transactionDateTimeSheetMode = ref<string>('time');
 const showTimeInDefaultTimezone = ref<boolean>(false);
 const showQuickSavePopover = ref<boolean>(false);
 const showTimezonePopup = ref<boolean>(false);
-const showGeoLocationActionSheet = ref<boolean>(false);
 const showMoreActionSheet = ref<boolean>(false);
 const showSourceAmountSheet = ref<boolean>(false);
 const showDestinationAmountSheet = ref<boolean>(false);
@@ -685,8 +599,6 @@ const showTransactionDateTimeSheet = ref<boolean>(false);
 const showTransactionScheduledFrequencySheet = ref<boolean>(false);
 const showScheduledStartDateSheet = ref<boolean>(false);
 const showScheduledEndDateSheet = ref<boolean>(false);
-const showGeoLocationMapSheet = ref<boolean>(false);
-const showTransactionTagSheet = ref<boolean>(false);
 const showTransactionPictures = ref<boolean>(pageTypeAndMode?.type === TransactionEditPageType.Transaction
     && (pageTypeAndMode?.mode === TransactionEditPageMode.Add || pageTypeAndMode?.mode === TransactionEditPageMode.Edit)
     && settingsStore.appSettings.alwaysShowTransactionPicturesInMobileTransactionEditPage);
@@ -946,7 +858,6 @@ function init(): void {
     const promises: Promise<unknown>[] = [
         accountsStore.loadAllAccounts({ force: false }),
         transactionCategoriesStore.loadAllCategories({ force: false }),
-        transactionTagsStore.loadAllTags({ force: false }),
         transactionTemplatesStore.loadAllTemplates({ force: false, templateType: TemplateType.Normal.type })
     ];
 
@@ -1310,48 +1221,6 @@ function pasteAmount(type: 'sourceAmount' | 'destinationAmount'): void {
     });
 }
 
-function updateGeoLocation(forceUpdate: boolean): void {
-    if (!isSupportGeoLocation) {
-        logger.warn('this browser does not support geo location');
-
-        if (forceUpdate) {
-            showToast('Unable to retrieve current position');
-        }
-        return;
-    }
-
-    navigator.geolocation.getCurrentPosition(function (position) {
-        if (!position || !position.coords) {
-            logger.error('current position is null');
-            geoLocationStatus.value = GeoLocationStatus.Error;
-
-            if (forceUpdate) {
-                showToast('Unable to retrieve current position');
-            }
-
-            return;
-        }
-
-        geoLocationStatus.value = GeoLocationStatus.Success;
-
-        transaction.value.setLatitudeAndLongitude(position.coords.latitude, position.coords.longitude);
-    }, function (err) {
-        logger.error('cannot retrieve current position', err);
-        geoLocationStatus.value = GeoLocationStatus.Error;
-
-        if (forceUpdate) {
-            showToast('Unable to retrieve current position');
-        }
-    });
-
-    geoLocationStatus.value = GeoLocationStatus.Getting;
-}
-
-function clearGeoLocation(): void {
-    geoLocationStatus.value = null;
-    transaction.value.removeGeoLocation();
-}
-
 function showDateTimeDialog(sheetMode: string): void {
     if (mode.value === TransactionEditPageMode.View) {
         showTimeInDefaultTimezone.value = !showTimeInDefaultTimezone.value;
@@ -1425,8 +1294,8 @@ function viewOrRemovePicture(pictureInfo: TransactionPictureInfoBasicResponse): 
     });
 }
 
-function duplicate(withTime?: boolean, withGeoLocation?: boolean): void {
-    props.f7router.navigate(`/transaction/add?id=${transaction.value.id}&type=${transaction.value.type}&withTime=${withTime ?? false}&withGeoLocation=${withGeoLocation ?? false}`);
+function duplicate(withTime?: boolean): void {
+    props.f7router.navigate(`/transaction/add?id=${transaction.value.id}&type=${transaction.value.type}&withTime=${withTime ?? false}`);
 }
 
 function onUploadPicture(event: Event): void {
@@ -1449,10 +1318,6 @@ function onUploadPicture(event: Event): void {
 function onPageAfterIn(): void {
     routeBackOnError(props.f7router, loadingError);
 
-    if (settingsStore.appSettings.autoGetCurrentGeoLocation && mode.value === TransactionEditPageMode.Add
-        && !geoLocationStatus.value && !transaction.value.geoLocation) {
-        updateGeoLocation(false);
-    }
 }
 
 function onPageBeforeOut(): void {
@@ -1523,23 +1388,6 @@ init();
 
 .transaction-edit-timezone-name {
     padding-inline-start: 4px;
-}
-
-.transaction-edit-tag {
-    --f7-chip-bg-color: var(--ebk-transaction-tag-chip-bg-color);
-    margin-inline-end: 4px;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.chip.transaction-edit-tag .chip-media+.chip-label {
-    margin-inline-start: 0;
-}
-
-.chip.transaction-edit-tag .chip-media i.icon {
-    font-size: calc(var(--f7-chip-media-size) - 12px);
-    height: calc(var(--f7-chip-media-size) - 12px);
 }
 
 .transaction-pictures {

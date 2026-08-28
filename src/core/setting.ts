@@ -18,7 +18,6 @@ import {
     DEFAULT_RECONCILIATION_STATEMENT_DATE_RANGE_IN_DESKTOP,
     DEFAULT_RECONCILIATION_STATEMENT_DATE_RANGE_IN_MOBILE,
 } from './statistics.ts';
-import { DEFAULT_TRANSACTION_EXPLORER_DATE_RANGE } from './explorer.ts';
 import { DEFAULT_CURRENCY_CODE } from '@/consts/currency.ts';
 
 export type ApplicationSettingKey = string;
@@ -71,9 +70,6 @@ export interface ApplicationSettings extends BaseApplicationSetting {
     // Import Transaction Dialog
     rememberLastSelectedFileTypeInImportTransactionDialog: boolean;
     lastSelectedFileTypeInImportTransactionDialog: string;
-    // Insights Explorer Page
-    insightsExplorerDefaultDateRangeType: number;
-    showTagInInsightsExplorerPage: boolean;
     // Account List Page
     totalAmountExcludeAccountIds: Record<string, boolean>;
     accountCategoryOrders: string;
@@ -161,8 +157,6 @@ export const ALL_ALLOWED_CLOUD_SYNC_APP_SETTING_KEY_TYPES: Record<string, UserAp
     'rememberLastSelectedFileTypeInImportTransactionDialog': UserApplicationCloudSettingType.Boolean,
     'lastSelectedFileTypeInImportTransactionDialog': UserApplicationCloudSettingType.String,
     // Insights Explorer Page
-    'insightsExplorerDefaultDateRangeType': UserApplicationCloudSettingType.Number,
-    'showTagInInsightsExplorerPage': UserApplicationCloudSettingType.Boolean,
     // Account List Page
     'totalAmountExcludeAccountIds': UserApplicationCloudSettingType.StringBooleanMap,
     'accountCategoryOrders': UserApplicationCloudSettingType.String,
@@ -231,9 +225,6 @@ export const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
     // Import Transaction Dialog
     rememberLastSelectedFileTypeInImportTransactionDialog: true,
     lastSelectedFileTypeInImportTransactionDialog: '',
-    // Insights Explorer Page
-    insightsExplorerDefaultDateRangeType: DEFAULT_TRANSACTION_EXPLORER_DATE_RANGE.type,
-    showTagInInsightsExplorerPage: true,
     // Account List Page
     totalAmountExcludeAccountIds: {},
     accountCategoryOrders: '',

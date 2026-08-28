@@ -39,7 +39,7 @@
                                                    :ripple="false" :icon="true" @click="showNav = !showNav">
                                                 <v-icon :icon="mdiMenu" size="24" />
                                             </v-btn>
-                                            <span>{{ tt('Transaction Categories') }}</span>
+                                            <span>{{ tt('Category Management') }}</span>
                                             <v-btn class="ms-3" color="default" variant="outlined"
                                                    :disabled="loading || updating" @click="add">{{ tt('Add') }}</v-btn>
                                             <v-btn class="ms-3" color="primary" variant="tonal"

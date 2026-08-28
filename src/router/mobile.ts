@@ -22,17 +22,10 @@ import AccountReconciliationStatementPage from '@/views/mobile/accounts/Reconcil
 import AccountMoveAllTransactionsPage from '@/views/mobile/accounts/MoveAllTransactionsPage.vue';
 
 import StatisticsTransactionPage from '@/views/mobile/statistics/TransactionPage.vue';
-import StatisticsSettingsPage from '@/views/mobile/statistics/SettingsPage.vue';
 
-import TextSizeSettingsPage from '@/views/mobile/settings/TextSizeSettingsPage.vue';
 import PageSettingsPage from '@/views/mobile/settings/PageSettingsPage.vue';
-import ChartColorSchemeSettingsPage from '@/views/mobile/settings/ChartColorSchemeSettingsPage.vue';
-import AccountCategoryDisplayOrderSettingsPage from '@/views/mobile/settings/AccountCategoryDisplayOrderSettingsPage.vue';
-import ApplicationCloudSyncSettingsPage from '@/views/mobile/settings/ApplicationCloudSyncSettingsPage.vue';
-import BrowserCacheSettingPage from '@/views/mobile/settings/BrowserCacheSettingPage.vue';
 import AccountFilterSettingsPage from '@/views/mobile/settings/AccountFilterSettingsPage.vue';
 import CategoryFilterSettingsPage from '@/views/mobile/settings/CategoryFilterSettingsPage.vue';
-import TransactionTagFilterSettingsPage from '@/views/mobile/settings/TransactionTagFilterSettingsPage.vue';
 
 import SettingsPage from '@/views/mobile/SettingsPage.vue';
 import ApplicationLockPage from '@/views/mobile/ApplicationLockPage.vue';
@@ -49,11 +42,6 @@ import CategoryAllPage from '@/views/mobile/categories/AllPage.vue';
 import CategoryListPage from '@/views/mobile/categories/ListPage.vue';
 import CategoryEditPage from '@/views/mobile/categories/EditPage.vue';
 import CategoryPresetPage from '@/views/mobile/categories/PresetPage.vue';
-
-import TagListPage from '@/views/mobile/tags/ListPage.vue';
-import TagGroupListPage from '@/views/mobile/tags/GroupListPage.vue';
-
-import TemplateListPage from '@/views/mobile/templates/ListPage.vue';
 
 function asyncResolve(component: unknown): (ctx: Router.RouteCallbackCtx) => void {
     return function({ resolve }: { resolve: ({ component }: { component: unknown }) => void }): void {
@@ -243,16 +231,6 @@ const routes: Router.RouteParameters[] = [
         beforeEnter: [checkLogin]
     },
     {
-        path: '/statistic/settings',
-        async: asyncResolve(StatisticsSettingsPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/settings/textsize',
-        async: asyncResolve(TextSizeSettingsPage),
-        beforeEnter: [checkLogin]
-    },
-    {
         path: '/settings/filter/account',
         async: asyncResolve(AccountFilterSettingsPage),
         beforeEnter: [checkLogin]
@@ -263,33 +241,8 @@ const routes: Router.RouteParameters[] = [
         beforeEnter: [checkLogin]
     },
     {
-        path: '/settings/filter/tag',
-        async: asyncResolve(TransactionTagFilterSettingsPage),
-        beforeEnter: [checkLogin]
-    },
-    {
         path: '/settings/page',
         async: asyncResolve(PageSettingsPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/settings/chart_color_scheme',
-        async: asyncResolve(ChartColorSchemeSettingsPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/settings/account_category_display_order',
-        async: asyncResolve(AccountCategoryDisplayOrderSettingsPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/settings/sync',
-        async: asyncResolve(ApplicationCloudSyncSettingsPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/settings/browser_caches',
-        async: asyncResolve(BrowserCacheSettingPage),
         beforeEnter: [checkLogin]
     },
     {
@@ -360,36 +313,6 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/category/preset',
         async: asyncResolve(CategoryPresetPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/tag/list',
-        async: asyncResolve(TagListPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/tag/group/list',
-        async: asyncResolve(TagGroupListPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/template/list',
-        async: asyncResolve(TemplateListPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/schedule/list',
-        async: asyncResolve(TemplateListPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/template/add',
-        async: asyncResolve(TransactionEditPage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/template/edit',
-        async: asyncResolve(TransactionEditPage),
         beforeEnter: [checkLogin]
     },
     {

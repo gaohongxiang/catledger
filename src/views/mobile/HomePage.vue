@@ -174,7 +174,7 @@
             </f7-link>
             <!-- "homepage-add-button" must have the "dragenabled" class, otherwise the popover disappears immediately after the second long press -->
             <f7-link id="homepage-add-button" class="link dragenabled"
-                     href="/transaction/add" @taphold="openTransactionTemplatePopover">
+                     href="/transaction/add" @taphold="openQuickEntryPopover">
                 <f7-icon f7="plus_square" class="ebk-tarbar-big-icon"></f7-icon>
             </f7-link>
             <f7-link class="link" href="/statistic/transaction">
@@ -187,9 +187,9 @@
             </f7-link>
         </f7-toolbar>
 
-        <f7-popover class="template-popover-menu" target-el="#homepage-add-button"
-                    v-model:opened="showTransactionTemplatePopover">
-            <f7-list dividers v-if="isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled() || (allTransactionTemplates && allTransactionTemplates.length)">
+        <f7-popover class="quick-entry-popover-menu" target-el="#homepage-add-button"
+                    v-model:opened="showQuickEntryPopover">
+            <f7-list dividers v-if="isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled()">
                 <f7-list-item key="AIClipboardTextRecognition" link="#" no-chevron popover-close
                               :title="tt('AI Clipboard Text Recognition')"
                               @click="addByRecognizingClipboardText"
@@ -206,13 +206,6 @@
                         <f7-icon f7="wand_stars"></f7-icon>
                     </template>
                 </f7-list-item>
-                <f7-list-item popover-close :key="template.id" :title="template.name"
-                              :link="'/transaction/add?templateId=' + template.id"
-                              v-for="template in allTransactionTemplates">
-                    <template #media>
-                        <f7-icon f7="doc_plaintext"></f7-icon>
-                    </template>
-                </f7-list-item>
             </f7-list>
         </f7-popover>
 
@@ -225,7 +218,7 @@
 <script setup lang="ts">
 import AIImageRecognitionSheet, { type AIImageRecognitionResult } from '@/components/mobile/AIImageRecognitionSheet.vue';
 
-import { ref, computed, useTemplateRef } from 'vue';
+import { ref, useTemplateRef } from 'vue';
 import type { Router } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
@@ -235,12 +228,9 @@ import { useHomePageBase } from '@/views/base/HomePageBase.ts';
 import { useSettingsStore } from '@/stores/setting.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
-import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
 import { useOverviewStore } from '@/stores/overview.ts';
 
 import { DateRange } from '@/core/datetime.ts';
-import { TemplateType } from '@/core/template.ts';
-import { TransactionTemplate } from '@/models/transaction_template.ts';
 
 import { isFunction } from '@/lib/common.ts';
 import { isUserLogined, isUserUnlocked } from '@/lib/userstate.ts';
@@ -271,23 +261,17 @@ const {
 const settingsStore = useSettingsStore();
 const accountsStore = useAccountsStore();
 const transactionCategoriesStore = useTransactionCategoriesStore();
-const transactionTemplatesStore = useTransactionTemplatesStore();
 const overviewStore = useOverviewStore();
 
 const aiImageRecognitionSheet = useTemplateRef<AIImageRecognitionSheetType>('aiImageRecognitionSheet');
 
 const loading = ref<boolean>(true);
-const showTransactionTemplatePopover = ref<boolean>(false);
+const showQuickEntryPopover = ref<boolean>(false);
 const showAIReceiptImageRecognitionSheet = ref<boolean>(false);
 
-const allTransactionTemplates = computed<TransactionTemplate[]>(() => {
-    const allTemplates = transactionTemplatesStore.allVisibleTemplates;
-    return allTemplates[TemplateType.Normal.type] || [];
-});
-
-function openTransactionTemplatePopover(): void {
-    if (isTransactionFromAIImageRecognitionEnabled() || (allTransactionTemplates.value && allTransactionTemplates.value.length)) {
-        showTransactionTemplatePopover.value = true;
+function openQuickEntryPopover(): void {
+    if (isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled()) {
+        showQuickEntryPopover.value = true;
     }
 }
 
@@ -299,7 +283,6 @@ function init(): void {
             getShareCacheImageBlob(),
             accountsStore.loadAllAccounts({ force: false }),
             transactionCategoriesStore.loadAllCategories({ force: false }),
-            transactionTemplatesStore.loadAllTemplates({ templateType: TemplateType.Normal.type,  force: false }),
             overviewStore.loadTransactionOverview({ force: false })
         ];
 
@@ -397,10 +380,6 @@ function onReceiptRecognitionChanged(result: AIImageRecognitionResult): void {
 
     if (recognizedResponse.destinationAmount) {
         params.push(`destinationAmount=${recognizedResponse.destinationAmount}`);
-    }
-
-    if (recognizedResponse.tagIds) {
-        params.push(`tagIds=${recognizedResponse.tagIds.join(',')}`);
     }
 
     if (recognizedResponse.comment) {
@@ -501,7 +480,7 @@ init();
     line-height: var(--ebk-big-icon-button-size);
 }
 
-.template-popover-menu .popover-inner {
+.quick-entry-popover-menu .popover-inner {
     max-height: 400px;
     overflow-y: auto;
 }

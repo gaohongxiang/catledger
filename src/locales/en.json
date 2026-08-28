@@ -1,7 +1,7 @@
 {
     "global": {
         "app": {
-            "title": "ezBookkeeping"
+            "title": "CatLedger"
         }
     },
     "language": {
@@ -1796,6 +1796,8 @@
     "Transaction Gallery": "Transaction Gallery",
     "Transaction Details": "Transaction Details",
     "Statistics & Analysis": "Statistics & Analysis",
+    "Standard Analysis": "Standard Analysis",
+    "Custom Analysis": "Custom Analysis",
     "Insights Explorer": "Insights Explorer",
     "Explorations": "Explorations",
     "Query": "Query",
@@ -2024,6 +2026,8 @@
     "Transaction Pictures": "Transaction Pictures",
     "Pictures": "Pictures",
     "Add Transaction": "Add Transaction",
+    "Record Transaction": "Record Transaction",
+    "Import Bill": "Import Bill",
     "Edit Transaction": "Edit Transaction",
     "Add Transaction Template": "Add Transaction Template",
     "Edit Transaction Template": "Edit Transaction Template",
@@ -2051,6 +2055,7 @@
     "Duplicate (With Geographic Location)": "Duplicate (With Geographic Location)",
     "Duplicate (With Time and Geographic Location)": "Duplicate (With Time and Geographic Location)",
     "AI Clipboard Text Recognition": "AI Clipboard Text Recognition",
+    "AI Recognition Settings": "AI Recognition Settings",
     "Unable to recognize text": "Unable to recognize text",
     "AI text recognition is disabled": "AI text recognition is disabled",
     "Click here to paste a transaction description": "Click here to paste a transaction description",
@@ -2529,6 +2534,12 @@
     "Other Device": "Other Device",
     "Unknown Device": "Unknown Device",
     "Transaction Categories": "Transaction Categories",
+    "Basic Data": "Basic Data",
+    "Category Management": "Category Management",
+    "Bookkeeping Tools": "Bookkeeping Tools",
+    "Quick Entry": "Quick Entry",
+    "Advanced Management": "Advanced Management",
+    "Tag Management": "Tag Management",
     "Expense Categories": "Expense Categories",
     "Income Categories": "Income Categories",
     "Transfer Categories": "Transfer Categories",

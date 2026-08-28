@@ -38,35 +38,11 @@
                                 color: 'primary'
                             },
                             {
-                                title: 'Explorations',
-                                count: displayDataStatistics ? displayDataStatistics.totalExplorationCount : '-',
-                                icon: mdiCompassOutline,
-                                color: 'warning'
-                            },
-                            {
                                 title: 'Transaction Categories',
                                 count: displayDataStatistics ? displayDataStatistics.totalTransactionCategoryCount : '-',
                                 icon: mdiViewDashboardOutline,
                                 color: 'teal'
                             },
-                            {
-                                title: 'Transaction Tags',
-                                count: displayDataStatistics ? displayDataStatistics.totalTransactionTagCount : '-',
-                                icon: mdiTagOutline,
-                                color: 'grey'
-                            },
-                            {
-                                title: 'Transaction Templates',
-                                count: displayDataStatistics ? displayDataStatistics.totalTransactionTemplateCount : '-',
-                                icon: mdiClipboardTextOutline,
-                                color: 'secondary-darken-1'
-                            },
-                            {
-                                title: 'Scheduled Transactions',
-                                count: displayDataStatistics ? displayDataStatistics.totalScheduledTransactionCount : '-',
-                                icon: mdiClipboardTextClockOutline,
-                                color: 'success-darken-1'
-							},
 							{
 								title: 'personalFinance.dataManagement.files',
 								count: displayDataStatistics ? displayDataStatistics.totalPersonalFinanceImportFileCount : '-',
@@ -206,11 +182,7 @@ import {
     mdiListBoxOutline,
     mdiCreditCardOutline,
     mdiImage,
-    mdiCompassOutline,
     mdiViewDashboardOutline,
-    mdiTagOutline,
-    mdiClipboardTextOutline,
-    mdiClipboardTextClockOutline,
 	mdiDatabaseOutline,
 	mdiFileDocumentMultipleOutline,
 	mdiTable,

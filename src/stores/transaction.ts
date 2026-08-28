@@ -7,7 +7,6 @@ import { useAccountsStore } from './account.ts';
 import { useTransactionCategoriesStore } from './transactionCategory.ts';
 import { useOverviewStore } from './overview.ts';
 import { useStatisticsStore } from './statistics.ts';
-import { useExplorersStore } from '@/stores/explorer.ts';
 import { useExchangeRatesStore } from './exchangeRates.ts';
 
 import { type BeforeResolveFunction, itemAndIndex, entries, keys } from '@/core/base.ts';
@@ -113,7 +112,6 @@ export const useTransactionsStore = defineStore('transactions', () => {
     const transactionCategoriesStore = useTransactionCategoriesStore();
     const overviewStore = useOverviewStore();
     const statisticsStore = useStatisticsStore();
-    const explorersStore = useExplorersStore();
     const exchangeRatesStore = useExchangeRatesStore();
 
     const transactionDraft = ref<TransactionDraft | null>(getUserTransactionDraft());
@@ -615,7 +613,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
         transactionReconciliationStatementStateInvalid.value = invalidState;
     }
 
-    function updateStoreInvalidState(options: { transactionList?: boolean, reconciliationStatement?: boolean, accountList?: boolean, overview?: boolean, statistics?: boolean, explorer?: boolean }): void {
+    function updateStoreInvalidState(options: { transactionList?: boolean, reconciliationStatement?: boolean, accountList?: boolean, overview?: boolean, statistics?: boolean }): void {
         if (options.transactionList && !transactionListStateInvalid.value) {
             updateTransactionListInvalidState(true);
         }
@@ -636,9 +634,6 @@ export const useTransactionsStore = defineStore('transactions', () => {
             statisticsStore.updateTransactionStatisticsInvalidState(true);
         }
 
-        if (options.explorer && !explorersStore.transactionExplorerStateInvalid) {
-            explorersStore.updateTransactionExplorerInvalidState(true);
-        }
     }
 
     function resetTransactions(): void {
@@ -1138,8 +1133,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
                     reconciliationStatement: true,
                     accountList: true,
                     overview: true,
-                    statistics: true,
-                    explorer: true
+                    statistics: true
                 });
 
                 resolve(transaction);
@@ -1175,8 +1169,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
                     transactionList: true,
                     reconciliationStatement: true,
                     overview: true,
-                    statistics: true,
-                    explorer: true
+                    statistics: true
                 });
 
                 resolve(data.result);
@@ -1209,8 +1202,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
                     reconciliationStatement: true,
                     accountList: true,
                     overview: true,
-                    statistics: true,
-                    explorer: true
+                    statistics: true
                 });
 
                 resolve(data.result);
@@ -1241,7 +1233,6 @@ export const useTransactionsStore = defineStore('transactions', () => {
                 updateStoreInvalidState({
                     transactionList: true,
                     reconciliationStatement: true,
-                    explorer: true
                 });
 
                 resolve(data.result);
@@ -1272,7 +1263,6 @@ export const useTransactionsStore = defineStore('transactions', () => {
                 updateStoreInvalidState({
                     transactionList: true,
                     reconciliationStatement: true,
-                    explorer: true
                 });
 
                 resolve(data.result);
@@ -1303,7 +1293,6 @@ export const useTransactionsStore = defineStore('transactions', () => {
                 updateStoreInvalidState({
                     transactionList: true,
                     reconciliationStatement: true,
-                    explorer: true
                 });
 
                 resolve(data.result);
@@ -1336,8 +1325,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
                     reconciliationStatement: true,
                     accountList: true,
                     overview: true,
-                    statistics: true,
-                    explorer: true
+                    statistics: true
                 });
 
                 resolve(data.result);
@@ -1385,8 +1373,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
                     reconciliationStatement: true,
                     accountList: true,
                     overview: true,
-                    statistics: true,
-                    explorer: true
+                    statistics: true
                 });
 
                 resolve(data.result);
@@ -1422,8 +1409,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
                     reconciliationStatement: true,
                     accountList: true,
                     overview: true,
-                    statistics: true,
-                    explorer: true
+                    statistics: true
                 });
 
                 resolve(data.result);
@@ -1435,8 +1421,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
                     reconciliationStatement: true,
                     accountList: true,
                     overview: true,
-                    statistics: true,
-                    explorer: true
+                    statistics: true
                 });
 
                 if (error.response && error.response.data && error.response.data.errorMessage) {

@@ -26,13 +26,12 @@ import { ThemeType } from '@/core/theme.ts';
 import { isFunction } from '@/lib/common.ts';
 import { isProduction } from '@/lib/version.ts';
 import { getTheme, isEnableSwipeBack, isEnableAnimate } from '@/lib/settings.ts';
-import { initMapProvider } from '@/lib/map/index.ts';
 import { isUserLogined, isUserUnlocked } from '@/lib/userstate.ts';
 import { updateMapCacheExpiration } from '@/lib/cache.ts';
 import { setExpenseAndIncomeAmountColor } from '@/lib/ui/common.ts';
 import { isiOSHomeScreenMode, isModalShowing, setAppFontSize } from '@/lib/ui/mobile.ts';
 
-const { tt, getCurrentLanguageInfo, setLanguage, initLocale } = useI18n();
+const { tt, setLanguage, initLocale } = useI18n();
 
 const rootStore = useRootStore();
 const settingsStore = useSettingsStore();
@@ -177,11 +176,6 @@ onMounted(() => {
             environmentsStore.framework7DarkMode = darkMode;
             setThemeColorMeta(darkMode);
         });
-    });
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const languageInfo = getCurrentLanguageInfo();
-        initMapProvider(languageInfo?.alternativeLanguageTag);
     });
 
     document.addEventListener('dragstart', (e) => {

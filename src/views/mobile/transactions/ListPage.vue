@@ -65,7 +65,7 @@
                 <span :class="{ 'tabbar-item-changed': query.accountIds }">{{ queryAccountName }}</span>
             </f7-link>
             <f7-link popover-open=".more-popover-menu" :class="{ 'disabled': loading }">
-                <f7-icon f7="ellipsis_vertical" :class="{ 'tabbar-item-changed': query.type > 0 || query.amountFilter || query.tagFilter }"></f7-icon>
+                <f7-icon f7="ellipsis_vertical" :class="{ 'tabbar-item-changed': query.type > 0 || query.amountFilter }"></f7-icon>
             </f7-link>
         </f7-toolbar>
 
@@ -273,16 +273,6 @@
                                             </div>
                                         </div>
                                         <div class="item-footer">
-                                            <div class="transaction-tags" v-if="showTagInTransactionListPage && transaction.tagIds && transaction.tagIds.length">
-                                                <f7-chip media-text-color="var(--f7-chip-text-color)" class="transaction-tag"
-                                                         :text="allTransactionTags[tagId]?.name"
-                                                         :key="tagId"
-                                                         v-for="tagId in transaction.tagIds">
-                                                    <template #media>
-                                                        <f7-icon f7="number"></f7-icon>
-                                                    </template>
-                                                </f7-chip>
-                                            </div>
                                             <div class="transaction-footer">
                                                 <span>{{ getDisplayTime(transaction) }}</span>
                                                 <span v-if="!isSameAsDefaultTimezoneOffsetMinutes(transaction)">{{ `(${getDisplayTimezone(transaction)})` }}</span>
@@ -574,58 +564,6 @@
                     </template>
                 </f7-list-item>
 
-                <f7-list-item group-title>
-                    <small>{{ tt('Tags') }}</small>
-                </f7-list-item>
-                <f7-list-item link="#" no-chevron popover-close
-                              :class="{ 'list-item-selected': !query.tagFilter }"
-                              :title="tt('All')"
-                              @click="changeTagFilter('')">
-                    <template #after>
-                        <f7-icon class="list-item-checked-icon" f7="checkmark_alt" v-if="!query.tagFilter"></f7-icon>
-                    </template>
-                </f7-list-item>
-                <f7-list-item link="#" no-chevron popover-close
-                              :class="{ 'list-item-selected': query.tagFilter === TransactionTagFilter.TransactionNoTagFilterValue }"
-                              :title="tt('Without Tags')"
-                              @click="changeTagFilter(TransactionTagFilter.TransactionNoTagFilterValue)">
-                    <template #after>
-                        <f7-icon class="list-item-checked-icon" f7="checkmark_alt" v-if="query.tagFilter === TransactionTagFilter.TransactionNoTagFilterValue"></f7-icon>
-                    </template>
-                </f7-list-item>
-                <f7-list-item link="#" no-chevron popover-close
-                              :class="{ 'list-item-selected': query.tagFilter && queryAllFilterTagIdsCount > 1 }"
-                              :title="tt('Multiple Tags')" @click="filterMultipleTags()" v-if="allAvailableTagsCount > 0">
-                    <template #after>
-                        <f7-icon class="list-item-checked-icon" f7="checkmark_alt" v-if="query.tagFilter && queryAllFilterTagIdsCount > 1"></f7-icon>
-                    </template>
-                </f7-list-item>
-
-                <template :key="transactionTagGroup.id"
-                          v-for="transactionTagGroup in allTransactionTagGroupsWithDefault">
-                    <f7-list-item group-title class="transaction-tag-group" v-if="allTransactionTagsByGroup[transactionTagGroup.id] && allTransactionTagsByGroup[transactionTagGroup.id]?.length && hasVisibleTagsInTagGroup(transactionTagGroup)">
-                        <small>{{ transactionTagGroup.name }}</small>
-                    </f7-list-item>
-
-                    <f7-list-item link="#" no-chevron popover-close
-                                  :title="transactionTag.name"
-                                  :class="{ 'list-item-selected': queryAllFilterTagIdsCount === 1 && isDefined(queryAllFilterTagIds[transactionTag.id]), 'item-in-multiple-selection': queryAllFilterTagIdsCount > 1 && isDefined(queryAllFilterTagIds[transactionTag.id]) }"
-                                  :key="transactionTag.id"
-                                  v-for="transactionTag in (allTransactionTagsByGroup[transactionTagGroup.id] ?? [])"
-                                  v-show="!transactionTag.hidden || isDefined(queryAllFilterTagIds[transactionTag.id])"
-                                  @click="changeTagFilter(TransactionTagFilter.of(transactionTag.id).toTextualTagFilter())"
-                    >
-                        <template #before-title>
-                            <f7-icon class="transaction-tag-name transaction-tag-icon" f7="number"></f7-icon>
-                        </template>
-                        <template #after>
-                            <f7-icon class="list-item-checked-icon"
-                                     :f7="queryAllFilterTagIds[transactionTag.id] === true ? 'checkmark_alt' : (queryAllFilterTagIds[transactionTag.id] === false ? 'multiply' : undefined)"
-                                     v-if="isDefined(queryAllFilterTagIds[transactionTag.id])">
-                            </f7-icon>
-                        </template>
-                    </f7-list-item>
-                </template>
             </f7-list>
         </f7-popover>
 
@@ -662,7 +600,6 @@ import { TransactionListPageType, useTransactionListPageBase } from '@/views/bas
 import { useEnvironmentsStore } from '@/stores/environment.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
-import { useTransactionTagsStore } from '@/stores/transactionTag.ts';
 import { type TransactionMonthList, useTransactionsStore } from '@/stores/transaction.ts';
 
 import { keys } from '@/core/base.ts';
@@ -677,13 +614,9 @@ import {
 import { AmountFilterType } from '@/core/numeral.ts';
 import { TransactionType } from '@/core/transaction.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
-import { type Transaction, TransactionTagFilter } from '@/models/transaction.ts';
+import { type Transaction } from '@/models/transaction.ts';
 
-import {
-    isDefined,
-    isNumber,
-    objectFieldWithValueToArrayItem
-} from '@/lib/common.ts';
+import { isNumber } from '@/lib/common.ts';
 import { BIG_DECIMAL_ZERO } from '@/lib/numeral.ts';
 import {
     getCurrentUnixTime,
@@ -731,7 +664,6 @@ const {
     fiscalYearStart,
     selectedAccountDefaultCurrency,
     showTotalAmountInTransactionListPage,
-    showTagInTransactionListPage,
     allDateRanges,
     allAccounts,
     allAccountsMap,
@@ -739,10 +671,6 @@ const {
     allCategories,
     allPrimaryCategories,
     allAvailableCategoriesCount,
-    allTransactionTagGroupsWithDefault,
-    allTransactionTagsByGroup,
-    allTransactionTags,
-    allAvailableTagsCount,
     displayPageTypeName,
     query,
     queryDateRangeName,
@@ -752,10 +680,8 @@ const {
     queryMonth,
     queryAllFilterCategoryIds,
     queryAllFilterAccountIds,
-    queryAllFilterTagIds,
     queryAllFilterCategoryIdsCount,
     queryAllFilterAccountIdsCount,
-    queryAllFilterTagIdsCount,
     queryAccountName,
     queryCategoryName,
     queryAmount,
@@ -763,7 +689,6 @@ const {
     transactionCalendarMaxDate,
     currentMonthTransactionData,
     hasSubCategoryInQuery,
-    hasVisibleTagsInTagGroup,
     isSameAsDefaultTimezoneOffsetMinutes,
     canAddTransaction,
     getDisplayTime,
@@ -778,7 +703,6 @@ const {
 const environmentsStore = useEnvironmentsStore();
 const accountsStore = useAccountsStore();
 const transactionCategoriesStore = useTransactionCategoriesStore();
-const transactionTagsStore = useTransactionTagsStore();
 const transactionsStore = useTransactionsStore();
 
 const loadingError = ref<unknown | null>(null);
@@ -994,7 +918,6 @@ function init(): void {
         type: initQuery['type'] && parseInt(initQuery['type']) > 0 ? parseInt(initQuery['type']) : undefined,
         categoryIds: initQuery['categoryIds'],
         accountIds: initQuery['accountIds'],
-        tagFilter: initQuery['tagFilter'],
         keyword: initQuery['keyword'],
         matchMode: initQuery['matchMode'] && parseInt(initQuery['matchMode']) >= 0 ? parseInt(initQuery['matchMode']) : undefined
     });
@@ -1016,8 +939,7 @@ function reload(done?: () => void): void {
 
     Promise.all([
         accountsStore.loadAllAccounts({ force: false }),
-        transactionCategoriesStore.loadAllCategories({ force: false }),
-        transactionTagsStore.loadAllTags({ force: false })
+        transactionCategoriesStore.loadAllCategories({ force: false })
     ]).then(() => {
         if (queryMonthlyData.value) {
             const currentMonthMinDate = parseDateTimeFromUnixTime(query.value.minTime);
@@ -1351,24 +1273,6 @@ function filterMultipleAccounts(): void {
     props.f7router.navigate('/settings/filter/account?type=transactionListCurrent');
 }
 
-function changeTagFilter(tagFilter: string): void {
-    if (query.value.tagFilter === tagFilter) {
-        return;
-    }
-
-    const changed = transactionsStore.updateTransactionListFilter({
-        tagFilter: tagFilter
-    });
-
-    if (changed) {
-        reload();
-    }
-}
-
-function filterMultipleTags(): void {
-    props.f7router.navigate('/settings/filter/tag?type=transactionListCurrent');
-}
-
 function toggleSearchbar(): void {
     if (!showSearchbar.value) {
         showSearchbar.value = true;
@@ -1446,10 +1350,6 @@ function add(): void {
 
     if (queryAllFilterAccountIdsCount.value === 1) {
         params.push(`accountId=${query.value.accountIds}`);
-    }
-
-    if (query.value.tagFilter) {
-        params.push(`tagIds=${objectFieldWithValueToArrayItem(queryAllFilterTagIds.value, true).join(',') || ''}`);
     }
 
     props.f7router.navigate(`/transaction/add?${params.join('&')}`);
@@ -1610,23 +1510,6 @@ html[dir="rtl"] .list.transaction-info-list li.transaction-info .transaction-day
     padding-bottom: 2px;
 }
 
-.list.transaction-info-list li.transaction-info .chip.transaction-tag {
-    --f7-chip-media-size: var(--ebk-transaction-tag-chip-media-size);
-    --f7-chip-media-font-size: var(--ebk-transaction-tag-chip-font-size);
-    --f7-chip-font-size: var(--ebk-transaction-tag-chip-font-size);
-    --f7-chip-height: var(--ebk-transaction-tag-chip-height);
-    --f7-chip-text-color: var(--f7-list-item-footer-text-color);
-    --f7-chip-bg-color: var(--ebk-transaction-tag-chip-bg-color);
-    margin-inline-end: 4px;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.list.transaction-info-list li.transaction-info .chip.transaction-tag .chip-media+.chip-label {
-    margin-inline-start: 0;
-}
-
 .list.transaction-info-list li.transaction-info .transaction-footer {
     padding-top: 4px;
 }
@@ -1666,26 +1549,12 @@ html[dir="rtl"] .list.transaction-info-list li.transaction-info .transaction-foo
     text-overflow: ellipsis;
 }
 
-.more-popover-menu .transaction-tag-name {
-    padding-inline-end: 4px;
-    font-size: var(--f7-list-item-title-font-size);
-}
-
 .date-popover-menu .popover-inner,
 .category-popover-menu .popover-inner,
 .account-popover-menu .popover-inner,
 .more-popover-menu .popover-inner {
     max-height: 400px;
     overflow-y: auto;
-}
-
-.more-popover-menu .transaction-tag-group {
-    background-color: inherit;
-
-    > small {
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
 }
 
 .transaction-calendar-container .dp--theme-light,

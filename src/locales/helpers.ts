@@ -162,14 +162,6 @@ import {
 } from '@/core/statistics.ts';
 
 import {
-    TransactionExplorerConditionField,
-    TransactionExplorerConditionOperator,
-    TransactionExplorerDataDimension,
-    TransactionExplorerValueMetric,
-    TransactionExplorerChartType
-} from '@/core/explorer.ts';
-
-import {
     type LocalizedImportFileCategoryAndTypes,
     type LocalizedImportFileType,
     type LocalizedImportFileTypeSubType,
@@ -609,19 +601,6 @@ export function useI18n() {
             ret.push({
                 type: typeAndName.type,
                 displayName: t(name)
-            });
-        }
-
-        return ret;
-    }
-
-    function getLocalizedNameValue(nameValues: NameValue[]): NameValue[] {
-        const ret: NameValue[] = [];
-
-        for (const nameValue of nameValues) {
-            ret.push({
-                name: t(nameValue.name),
-                value: nameValue.value
             });
         }
 
@@ -2632,11 +2611,6 @@ export function useI18n() {
         getAllTransactionDefaultCategories,
         getAllDisplayExchangeRates,
         getAllSupportedImportFileCagtegoryAndTypes,
-        getAllTransactionExplorerConditionFields: () => getLocalizedNameValue(TransactionExplorerConditionField.values()),
-        getAllTransactionExplorerConditionOperators: (operators?: TransactionExplorerConditionOperator[]) => getLocalizedNameValue(operators ?? TransactionExplorerConditionOperator.values()),
-        getAllTransactionExplorerDataDimensions: (operators?: TransactionExplorerDataDimension[]) => getLocalizedNameValue(operators ?? TransactionExplorerDataDimension.values()),
-        getAllTransactionExplorerValueMetrics: (operators?: TransactionExplorerValueMetric[]) => getLocalizedNameValue(operators ?? TransactionExplorerValueMetric.values()),
-        getAllTransactionExplorerChartTypes: (operators?: TransactionExplorerChartType[]) => getLocalizedNameValue(operators ?? TransactionExplorerChartType.values()),
         // get localized info
         getLanguageInfo,
         getEnableDisableOption: (value: boolean) => t(value ? 'Enabled' : 'Disabled'),

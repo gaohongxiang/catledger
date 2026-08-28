@@ -219,10 +219,6 @@ export default defineConfig(() => {
                         includeDependenciesRecursively: false,
                         groups: [
                             {
-                                name:  'leaflet',
-                                test: /[\\/]node_modules[\\/]leaflet[\\/]/i
-                            },
-                            {
                                 name:  'moment',
                                 test: /[\\/]node_modules[\\/](moment|moment-timezone)[\\/]/i
                             },
