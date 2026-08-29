@@ -1,0 +1,27 @@
+<view class="page-canvas category-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="category-heading">
+    <view>
+      <text class="category-kicker">CATEGORY BOOK</text>
+      <text class="category-title serif-title">每一笔，都有归处。</text>
+    </view>
+    <text class="category-total money-number">{{expenseCategories.length + incomeCategories.length}}</text>
+  </view>
+
+  <text class="category-intro">分类会同时用于导入账单、手动记账和明细筛选。</text>
+
+  <view class="kind-switch">
+    <view class="kind-option {{selectedKind === 'expense' ? 'kind-option-selected' : ''}}" data-kind="expense" bindtap="selectKind">支出 {{expenseCategories.length}}</view>
+    <view class="kind-option {{selectedKind === 'income' ? 'kind-option-selected' : ''}}" data-kind="income" bindtap="selectKind">收入 {{incomeCategories.length}}</view>
+  </view>
+
+  <view wx:if="{{visibleCategories.length > 0}}" class="category-list">
+    <view wx:for="{{visibleCategories}}" wx:key="id" class="category-row">
+      <view class="category-mark {{selectedKind === 'income' ? 'category-mark-income' : ''}}">{{item.initial}}</view>
+      <text class="category-name">{{item.name}}</text>
+      <text class="category-order money-number">{{item.orderText}}</text>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="category-status">正在整理分类…</view>
+  <view wx:if="{{errorMessage}}" class="category-error" bindtap="loadCategories">{{errorMessage}} · 点此重试</view>
+</view>

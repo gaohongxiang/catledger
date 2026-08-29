@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "envId": "cloud1-d6gqxki3s97cc4ee9",
+  "functionRoot": "cloudfunctions",
+  "functions": [
+    {
+      "name": "catledger-api",
+      "type": "Event",
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "timeout": 20,
+      "memorySize": 256,
+      "installDependency": false,
+      "isWaitInstall": true,
+      "ignore": [
+        "test/**",
+        "scripts/**",
+        ".DS_Store"
+      ]
+    }
+  ]
+}

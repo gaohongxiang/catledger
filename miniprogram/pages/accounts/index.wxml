@@ -1,0 +1,88 @@
+<view class="page-canvas account-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="account-heading">
+    <view>
+      <text class="account-kicker">ACCOUNT BOOK</text>
+      <text class="account-title serif-title">钱，分别住在哪里。</text>
+    </view>
+    <button class="create-account-button" bindtap="openCreate">新账户</button>
+  </view>
+
+  <view wx:if="{{assets.length > 0}}" class="account-group">
+    <text class="group-number money-number">01</text>
+    <text class="group-title serif-title">资产账户</text>
+    <view wx:for="{{assets}}" wx:key="accountId" class="account-row">
+      <view class="account-row-main">
+        <text class="account-row-name">{{item.name}}</text>
+        <text class="account-row-type">{{item.typeLabel}} · {{item.directionText}}</text>
+      </view>
+      <text class="account-row-balance money-number">{{item.balanceText}}</text>
+      <view class="account-actions">
+        <text data-id="{{item.accountId}}" bindtap="openRename">改名</text>
+        <text data-id="{{item.accountId}}" bindtap="openCorrection">校正</text>
+        <text class="archive-action" data-id="{{item.accountId}}" bindtap="archive">停用</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{liabilities.length > 0}}" class="account-group liability-group">
+    <text class="group-number money-number">02</text>
+    <text class="group-title serif-title">负债账户</text>
+    <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row">
+      <view class="account-row-main">
+        <text class="account-row-name">{{item.name}}</text>
+        <text class="account-row-type">{{item.typeLabel}} · {{item.directionText}}</text>
+      </view>
+      <text class="account-row-balance money-number liability-balance">{{item.balanceText}}</text>
+      <view class="account-actions">
+        <text data-id="{{item.accountId}}" bindtap="openRename">改名</text>
+        <text data-id="{{item.accountId}}" bindtap="openCorrection">校正</text>
+        <text class="archive-action" data-id="{{item.accountId}}" bindtap="archive">停用</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{archivedAccounts.length > 0}}" class="account-group archived-group">
+    <text class="group-number money-number">03</text>
+    <text class="group-title serif-title">已停用</text>
+    <view wx:for="{{archivedAccounts}}" wx:key="accountId" class="account-row account-row-archived">
+      <view class="account-row-main">
+        <text class="account-row-name">{{item.name}}</text>
+        <text class="account-row-type">{{item.typeLabel}} · 历史保留</text>
+      </view>
+      <text class="account-row-balance money-number">{{item.balanceText}}</text>
+    </view>
+  </view>
+
+  <view wx:if="{{assets.length === 0 && liabilities.length === 0 && !loading}}" class="empty-ledger account-empty">
+    <text class="empty-ledger-title">先创建第一个账户</text>
+    <text class="empty-ledger-copy">填写现在的余额，猫账会把它记成余额起点，不算作收入或支出。</text>
+    <button class="primary-button account-empty-action" bindtap="openCreate">创建账户</button>
+  </view>
+
+  <view wx:if="{{loading}}" class="account-status">正在核对账户…</view>
+  <view wx:if="{{errorMessage && !formOpen}}" class="account-error" bindtap="loadAccounts">{{errorMessage}} · 点此重试</view>
+
+  <view wx:if="{{formOpen}}" class="sheet-mask" bindtap="closeForm">
+    <view class="account-sheet" catchtap="stopBubble">
+      <view class="sheet-handle"></view>
+      <text class="sheet-kicker">ACCOUNT FORM</text>
+      <text class="sheet-title serif-title">{{formTitle}}</text>
+
+      <picker wx:if="{{formMode === 'create'}}" mode="selector" range="{{typeOptions}}" range-key="label" value="{{typeIndex}}" bindchange="changeType">
+        <view class="sheet-field"><text>账户类型</text><text class="sheet-value">{{typeOptions[typeIndex].label}}</text></view>
+      </picker>
+      <view wx:if="{{formMode !== 'correct'}}" class="sheet-field">
+        <text>账户名称</text>
+        <input class="sheet-input" value="{{name}}" maxlength="32" placeholder="例如：日常银行卡" bindinput="bindName" />
+      </view>
+      <view wx:if="{{formMode !== 'rename'}}" class="sheet-field">
+        <text>{{formMode === 'create' ? '当前余额' : '正确余额'}}</text>
+        <input class="sheet-input money-number" type="digit" value="{{balanceYuan}}" placeholder="0.00" maxlength="18" bindinput="bindBalance" />
+      </view>
+      <text wx:if="{{formMode === 'correct'}}" class="sheet-note">猫账会新增一笔差额调整，不改写旧交易，也不计入收支。</text>
+      <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
+      <button class="primary-button sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveForm">保存</button>
+      <button class="secondary-button sheet-cancel" disabled="{{saving}}" bindtap="closeForm">取消</button>
+    </view>
+  </view>
+</view>

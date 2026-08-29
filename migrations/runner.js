@@ -3,6 +3,7 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 
 const MIGRATION_FILE_PATTERN = /^(\d{4})_[a-z0-9_]+\.sql$/
+const MIGRATION_LOCK_NAME = 'catledger:schema-migrations'
 
 function checksum(contents) {
   return crypto.createHash('sha256').update(contents, 'utf8').digest('hex')
@@ -93,8 +94,18 @@ async function getAppliedMigration(connection, version) {
 async function runMigrations({ pool, migrationsDirectory }) {
   const connection = await pool.getConnection()
   const applied = []
+  let lockAcquired = false
 
   try {
+    const [[lockResult]] = await connection.execute(
+      'SELECT GET_LOCK(?, 30) AS acquired',
+      [MIGRATION_LOCK_NAME]
+    )
+    lockAcquired = Number(lockResult && lockResult.acquired) === 1
+    if (!lockAcquired) {
+      throw new Error('Could not acquire the Catledger migration lock')
+    }
+
     await ensureMigrationTable(connection)
     const files = await listMigrationFiles(migrationsDirectory)
 
@@ -123,6 +134,9 @@ async function runMigrations({ pool, migrationsDirectory }) {
 
     return applied
   } finally {
+    if (lockAcquired) {
+      await connection.execute('SELECT RELEASE_LOCK(?) AS released', [MIGRATION_LOCK_NAME])
+    }
     connection.release()
   }
 }

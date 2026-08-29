@@ -1,0 +1,81 @@
+<view class="page-canvas detail-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="month-switcher">
+    <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><view class="arrow-left"></view></view>
+    <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate">
+      <view class="date-picker-content">
+        <text class="month-current money-number">{{selectedDateLabel || monthLabel}}</text>
+        <view class="date-picker-chevron"></view>
+      </view>
+    </picker>
+    <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><view class="arrow-right"></view></view>
+  </view>
+
+  <view wx:if="{{selectedDate}}" class="date-filter-note">
+    <text>只看当天账目</text>
+    <text class="date-clear" bindtap="clearDate">查看整月</text>
+  </view>
+
+  <view class="summary-strip">
+    <view class="summary-cell">
+      <text class="summary-label">收入</text>
+      <text class="money-number summary-value summary-income">{{incomeText}}</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell">
+      <text class="summary-label">支出</text>
+      <text class="money-number summary-value summary-expense">{{expenseText}}</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell">
+      <text class="summary-label">结余</text>
+      <text class="money-number summary-value {{netClass}}">{{netText}}</text>
+    </view>
+  </view>
+
+  <view class="filter-toolbar">
+    <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter">
+      <view class="filter-content"><text>{{accountFilters[accountFilterIndex].name}}</text><view class="filter-chevron"></view></view>
+    </picker>
+    <picker class="filter-picker" mode="selector" range="{{categoryFilters}}" range-key="name" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter">
+      <view class="filter-content"><text>{{categoryFilters[categoryFilterIndex].name}}</text><view class="filter-chevron"></view></view>
+    </picker>
+    <view class="search-trigger {{searchOpen || search ? 'search-trigger-active' : ''}}" role="button" aria-label="搜索备注" bindtap="toggleSearch">
+      <view class="search-icon"></view>
+    </view>
+  </view>
+
+  <view wx:if="{{searchOpen}}" class="search-strip">
+    <input class="search-input" value="{{search}}" placeholder="搜索备注" maxlength="40" confirm-type="search" bindinput="bindSearch" bindconfirm="applySearch" />
+    <text class="search-action" bindtap="applySearch">查找</text>
+    <text class="search-cancel" bindtap="cancelSearch">取消</text>
+  </view>
+
+  <view wx:if="{{transactions.length > 0}}" class="detail-timeline">
+    <view
+      wx:for="{{transactions}}"
+      wx:key="transactionId"
+      class="detail-item"
+      data-index="{{index}}"
+      bindtap="editTransaction"
+    >
+      <view class="detail-main">
+        <view class="detail-copy">
+          <view class="detail-line">
+            <text class="detail-label">{{item.label}}</text>
+            <text class="detail-amount money-number {{item.amountClass}}">{{item.amountText}}</text>
+          </view>
+          <text class="detail-meta">{{item.timeText}} · {{item.typeLabel}} · {{item.accountLine}}</text>
+          <text wx:if="{{item.note}}" class="detail-note">{{item.note}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:elif="{{!loading}}" class="empty-ledger detail-empty">
+    <text class="empty-ledger-title">这里暂时没有账目</text>
+    <text class="empty-ledger-copy">换一个月份或筛选条件试试；新增账目请使用底部加号。</text>
+  </view>
+
+  <view wx:if="{{loading || loadingMore}}" class="detail-status">正在整理账页…</view>
+  <view wx:if="{{errorMessage}}" class="detail-error" bindtap="prepareAndLoad">{{errorMessage}} · 点此重试</view>
+</view>

@@ -1,0 +1,52 @@
+<view class="page-canvas ledger-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="ledger-heading">
+    <view>
+      <text class="ledger-kicker">LEDGER STRUCTURE</text>
+      <text class="ledger-title serif-title">钱放哪里，账归何处。</text>
+    </view>
+    <text class="ledger-count money-number">{{loggedIn ? structureCount : '—'}}</text>
+  </view>
+
+  <view class="ledger-overview">
+    <view class="overview-item">
+      <text class="overview-value money-number">{{loggedIn ? accountCount : '—'}}</text>
+      <text class="overview-label">活动账户</text>
+    </view>
+    <view class="overview-line"></view>
+    <view class="overview-item">
+      <text class="overview-value money-number">{{loggedIn ? expenseCategoryCount : '—'}}</text>
+      <text class="overview-label">支出分类</text>
+    </view>
+    <view class="overview-line"></view>
+    <view class="overview-item">
+      <text class="overview-value money-number">{{loggedIn ? incomeCategoryCount : '—'}}</text>
+      <text class="overview-label">收入分类</text>
+    </view>
+  </view>
+
+  <view class="management-list">
+    <view class="management-row" role="button" aria-label="进入账户管理" bindtap="openAccounts">
+      <view class="management-icon">
+        <image src="/assets/icons/tab-wallet.svg" mode="aspectFit" />
+      </view>
+      <view class="management-copy">
+        <text class="management-title">账户管理</text>
+        <text class="management-note">{{accountSummaryText}}</text>
+      </view>
+      <view class="row-chevron"></view>
+    </view>
+    <view class="management-row" role="button" aria-label="进入分类管理" bindtap="openCategories">
+      <view class="management-icon management-icon-category">
+        <image src="/assets/icons/category.svg" mode="aspectFit" />
+      </view>
+      <view class="management-copy">
+        <text class="management-title">分类管理</text>
+        <text class="management-note">{{categorySummaryText}}</text>
+      </view>
+      <view class="row-chevron"></view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="ledger-status">正在整理账本结构…</view>
+  <view wx:if="{{errorMessage}}" class="ledger-error" bindtap="loadLedger">{{errorMessage}} · 点此重试</view>
+</view>

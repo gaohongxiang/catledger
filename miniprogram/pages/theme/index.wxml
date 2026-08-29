@@ -1,0 +1,50 @@
+<view class="page-canvas theme-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="theme-heading">
+    <text class="theme-kicker">VISUAL THEMES</text>
+    <text class="theme-title serif-title">换一种方式，看同一本账。</text>
+    <text class="theme-intro">只改变颜色、留白与纸张气质，不改变任何账目和统计含义。</text>
+  </view>
+
+  <view class="theme-list">
+    <view
+      wx:for="{{themes}}"
+      wx:key="id"
+      class="theme-card {{item.selected ? 'theme-card-selected' : ''}}"
+      style="{{item.previewStyle}}"
+      data-id="{{item.id}}"
+      role="button"
+      aria-label="选择{{item.name}}主题"
+      bindtap="chooseTheme"
+    >
+      <view class="theme-card-copy">
+        <view class="theme-card-heading">
+          <view>
+            <text class="theme-card-kicker">{{item.eyebrow}}</text>
+            <text class="theme-card-name">{{item.name}}</text>
+          </view>
+          <text wx:if="{{item.selected}}" class="theme-current">当前使用</text>
+          <view wx:else class="theme-select-dot"></view>
+        </view>
+        <text class="theme-card-description">{{item.description}}</text>
+        <view class="theme-swatches">
+          <view class="theme-swatch theme-swatch-accent"></view>
+          <view class="theme-swatch theme-swatch-secondary"></view>
+          <view class="theme-swatch theme-swatch-paper"></view>
+        </view>
+      </view>
+
+      <view class="ledger-preview">
+        <view class="preview-topline"><text>本月收支</text><text>08</text></view>
+        <text class="preview-balance money-number">¥ 4,286</text>
+        <view class="preview-chart">
+          <view class="preview-column"><view class="preview-income preview-bar-height-1"></view><view class="preview-expense preview-bar-height-2"></view></view>
+          <view class="preview-column"><view class="preview-income preview-bar-height-3"></view><view class="preview-expense preview-bar-height-1"></view></view>
+          <view class="preview-column"><view class="preview-income preview-bar-height-2"></view><view class="preview-expense preview-bar-height-4"></view></view>
+          <view class="preview-column"><view class="preview-income preview-bar-height-4"></view><view class="preview-expense preview-bar-height-2"></view></view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <text class="theme-footnote">主题保存在当前设备，不需要登录，也不会同步或修改云端账本。</text>
+</view>

@@ -39,9 +39,8 @@ test('bootstrap rejects identity fields supplied by the client', async () => {
   })
 
   const variants = [
-    { action: 'bootstrap', uid: 'client-user' },
-    { action: 'bootstrap', openid: 'client-openid' },
-    { action: 'bootstrap', data: { OPENID: 'client-openid' } }
+    { action: 'bootstrap', data: { OPENID: 'client-openid' } },
+    { action: 'bootstrap', data: { nested: { openId: 'client-openid' } } }
   ]
 
   for (const event of variants) {
@@ -50,6 +49,79 @@ test('bootstrap rejects identity fields supplied by the client', async () => {
     assert.equal(result.error.code, 'INVALID_REQUEST')
   }
   assert.equal(called, false)
+})
+
+test('runtime identity fields outside public data do not look like client input', async () => {
+  let called = false
+  const handler = createHandler({
+    getWxContext: () => ({ OPENID: 'trusted-openid' }),
+    repository: {
+      async bootstrap() {
+        called = true
+        return { isNewUser: false, categories: [] }
+      }
+    },
+    logger: createLogger()
+  })
+
+  const result = await handler({
+    action: 'bootstrap',
+    OPENID: 'platform-injected-openid',
+    userInfo: { openId: 'platform-injected-openid' }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(called, true)
+})
+
+test('ledger actions receive only trusted identity and public data', async () => {
+  let input
+  const handler = createHandler({
+    getWxContext: () => ({ OPENID: 'trusted-ledger-user' }),
+    repository: {},
+    services: {
+      'accounts.list': async (value) => {
+        input = value
+        return { accounts: [] }
+      }
+    },
+    logger: createLogger()
+  })
+
+  const result = await handler({ action: 'accounts.list', data: { includeArchived: true } })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.data, { accounts: [] })
+  assert.deepEqual(input, {
+    provider: 'wechat-mini',
+    subjectHash: hashWechatSubject('trusted-ledger-user'),
+    data: { includeArchived: true }
+  })
+  assert.doesNotMatch(JSON.stringify(result), /trusted-ledger-user|subjectHash|uid/)
+})
+
+test('ledger actions return stable public service errors', async () => {
+  const handler = createHandler({
+    getWxContext: () => ({ OPENID: 'trusted-ledger-user' }),
+    repository: {},
+    services: {
+      'accounts.create': async () => {
+        const error = new Error('private validation details')
+        error.publicCode = 'VALIDATION_ERROR'
+        throw error
+      }
+    },
+    logger: createLogger()
+  })
+
+  const result = await handler({ action: 'accounts.create', data: {} })
+  assert.deepEqual(result, {
+    ok: false,
+    error: {
+      code: 'VALIDATION_ERROR',
+      message: '请检查填写内容'
+    }
+  })
 })
 
 test('bootstrap ignores request properties outside the public contract', async () => {

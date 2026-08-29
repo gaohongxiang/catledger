@@ -1,14 +1,35 @@
 {
   "pages": [
-    "pages/index/index"
+    "pages/index/index",
+    "pages/transactions/index",
+    "pages/ledger/index",
+    "pages/profile/index",
+    "pages/transaction-editor/index",
+    "pages/accounts/index",
+    "pages/categories/index",
+    "pages/statistics/index",
+    "pages/theme/index"
   ],
+  "lazyCodeLoading": "requiredComponents",
   "style": "v2",
   "sitemapLocation": "sitemap.json",
   "window": {
-    "backgroundColor": "#F4F0E8",
+    "backgroundColor": "#F8F3EA",
     "backgroundTextStyle": "dark",
-    "navigationBarBackgroundColor": "#F4F0E8",
+    "navigationBarBackgroundColor": "#F8F3EA",
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "猫账"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#746A60",
+    "selectedColor": "#CF7439",
+    "backgroundColor": "#FFFDF9",
+    "list": [
+      { "pagePath": "pages/index/index", "text": "首页" },
+      { "pagePath": "pages/transactions/index", "text": "明细" },
+      { "pagePath": "pages/ledger/index", "text": "账本" },
+      { "pagePath": "pages/profile/index", "text": "我的" }
+    ]
   }
 }

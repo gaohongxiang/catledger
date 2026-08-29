@@ -1,57 +1,148 @@
-<view class="page-shell">
-  <view class="ledger-sheet">
-    <view class="brand-row">
-      <image
-        class="brand-logo"
-        mode="aspectFill"
-        src="/assets/catledger-logo.png"
-      />
-      <view class="brand-copy">
-        <text class="eyebrow">个人账单整理</text>
-        <text class="brand-name">猫账</text>
+<view class="page-canvas home-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="home-header">
+    <view>
+      <text class="home-kicker">CAT LEDGER · {{monthLabel}}</text>
+      <text class="home-title serif-title">把账，记得有温度。</text>
+    </view>
+    <image class="home-logo" src="/assets/catledger-logo.png" mode="aspectFill" />
+  </view>
+
+  <view wx:if="{{!cloudAvailable}}" class="empty-ledger">
+    <text class="empty-ledger-title">当前基础库不支持云开发</text>
+    <text class="empty-ledger-copy">请升级微信开发者工具或小程序基础库后再打开猫账。</text>
+  </view>
+
+  <block wx:else>
+    <view class="net-worth-card">
+      <text class="net-worth-label">人民币净值</text>
+      <text class="net-worth-number money-number">{{netWorthText}}</text>
+      <text class="net-worth-note">由所有正式账户与未删除交易汇总</text>
+      <view class="cat-stamp"><text>CAT</text><text>LEDGER</text></view>
+    </view>
+
+    <view class="month-strip">
+      <view class="month-stat month-stat-divider">
+        <view class="month-stat-heading">
+          <image class="month-stat-icon" src="/assets/icons/summary-income.svg" mode="aspectFit" />
+          <text class="month-stat-label">收入</text>
+        </view>
+        <text class="month-stat-value money-number">{{incomeText}}</text>
+      </view>
+      <view class="month-stat month-stat-divider">
+        <view class="month-stat-heading">
+          <image class="month-stat-icon" src="/assets/icons/summary-expense.svg" mode="aspectFit" />
+          <text class="month-stat-label">支出</text>
+        </view>
+        <text class="month-stat-value money-number">{{expenseText}}</text>
+      </view>
+      <view class="month-stat">
+        <view class="month-stat-heading">
+          <image class="month-stat-icon" src="/assets/icons/summary-balance.svg" mode="aspectFit" />
+          <text class="month-stat-label">结余</text>
+        </view>
+        <text class="month-stat-value money-number">{{netIncomeText}}</text>
       </view>
     </view>
 
-    <view class="hero-copy">
-      <text class="hero-title">账单很多，核对要少。</text>
-      <text class="hero-description">
-        上传支付宝和微信账单，猫账负责整理；只有真正拿不准的地方，再交给你确认。
-      </text>
+    <button wx:if="{{!loggedIn}}" class="home-login-button" bindtap="promptWechatLogin">登录</button>
+
+    <view class="section-heading statistics-heading">
+        <view>
+          <text class="section-kicker">INSIGHTS</text>
+          <text class="section-title serif-title">统计分析</text>
+        </view>
+        <text class="section-link" bindtap="openStatistics">全部</text>
     </view>
 
-    <view class="rule-line"></view>
+    <view class="statistics-card" role="button" aria-label="查看全部统计" bindtap="openStatistics">
+        <view class="statistics-card-heading">
+          <view class="statistics-card-title">
+            <view class="statistics-icon"><image src="/assets/icons/statistics.svg" mode="aspectFit" /></view>
+            <text>近半年收支趋势</text>
+          </view>
+          <view class="trend-legend">
+            <view class="trend-legend-item"><view class="trend-dot trend-dot-income"></view><text>收入</text></view>
+            <view class="trend-legend-item"><view class="trend-dot trend-dot-expense"></view><text>支出</text></view>
+          </view>
+        </view>
+        <view wx:if="{{cashFlowTrend.length > 0}}" class="trend-chart">
+          <view class="trend-grid trend-grid-top"></view>
+          <view class="trend-grid trend-grid-middle"></view>
+          <view class="trend-columns">
+            <view wx:for="{{cashFlowTrend}}" wx:key="month" class="trend-column">
+              <view class="trend-bars">
+                <view class="trend-bar trend-bar-income" style="height: {{item.incomeHeight}}rpx;"></view>
+                <view class="trend-bar trend-bar-expense" style="height: {{item.expenseHeight}}rpx;"></view>
+              </view>
+              <text class="trend-month money-number">{{item.showMonth ? item.monthText : ''}}</text>
+            </view>
+          </view>
+        </view>
+        <view wx:elif="{{!loggedIn}}" class="statistics-card-empty">暂无收支数据</view>
+        <view wx:elif="{{loading}}" class="statistics-card-empty">正在汇总本月账目…</view>
+        <view wx:elif="{{trendReady}}" class="statistics-card-empty">近半年还没有收支</view>
+        <view wx:else class="statistics-card-empty">统计数据暂未连接</view>
+    </view>
 
-    <view class="foundation-card">
-      <view class="card-heading">
-        <text class="card-index">01</text>
+    <view wx:if="{{errorMessage}}" class="sync-note" bindtap="loadDashboard">
+      <text>数据暂未同步</text>
+      <text class="sync-action">重试</text>
+    </view>
+    <view wx:elif="{{loading}}" class="sync-note sync-note-loading">正在更新…</view>
+
+    <view class="section-heading">
         <view>
-          <text class="card-title">你的账本</text>
-          <text class="card-caption">首次打开会创建独立账本，并准备常用的收入与支出分类。</text>
+          <text class="section-kicker">ACCOUNTS</text>
+          <text class="section-title serif-title">账户余额</text>
+        </view>
+        <text class="section-link" bindtap="openAccounts">全部</text>
+    </view>
+
+    <view wx:if="{{accounts.length > 0}}" class="account-list">
+        <view wx:for="{{accounts}}" wx:key="accountId" class="account-row" bindtap="openAccounts">
+          <view class="account-icon"><image src="{{item.iconPath}}" mode="aspectFit" /></view>
+          <text class="account-name">{{item.name}}</text>
+          <view class="account-value">
+            <text class="account-direction">{{item.directionText}}</text>
+            <text class="account-balance money-number">{{item.balanceText}}</text>
+          </view>
+        </view>
+    </view>
+    <view wx:else class="account-empty">暂无账户数据</view>
+
+    <view class="section-heading recent-heading">
+      <view>
+        <text class="section-kicker">RECENT</text>
+        <text class="section-title serif-title">最近账目</text>
+      </view>
+        <text wx:if="{{hasDashboard}}" class="section-link" bindtap="openTransactions">全部</text>
+    </view>
+
+    <block wx:if="{{hasDashboard}}">
+      <view wx:if="{{recentTransactions.length > 0}}" class="timeline">
+        <view
+          wx:for="{{recentTransactions}}"
+          wx:key="transactionId"
+          class="timeline-item"
+          data-index="{{index}}"
+          bindtap="editTransaction"
+        >
+          <view class="timeline-dot {{item.amountClass}}"></view>
+          <view class="timeline-copy">
+            <text class="timeline-label">{{item.label}}</text>
+            <text class="timeline-meta">{{item.accountLine}} · {{item.timeText}}</text>
+          </view>
+          <text class="timeline-amount money-number {{item.amountClass}}">{{item.amountText}}</text>
         </view>
       </view>
-
-      <view class="status-row">
-        <view class="status-mark {{categoryCount > 0 ? 'status-mark-ready' : ''}}"></view>
-        <text class="status-label">{{initializationState}}</text>
+      <view wx:else class="recent-empty">
+        <text class="recent-empty-title">这个月还没有账</text>
+        <text class="recent-empty-copy">导入或手动记录后，最新账目会出现在这里。</text>
       </view>
-
-      <text wx:if="{{categoryCount > 0}}" class="category-summary">
-        已准备 {{categoryCount}} 个常用分类
-      </text>
-
-      <button
-        class="connection-button"
-        disabled="{{!cloudAvailable || initializing}}"
-        loading="{{initializing}}"
-        bindtap="initializeLedger"
-      >
-        重新准备
-      </button>
+    </block>
+    <view wx:else class="recent-empty recent-empty-pending">
+      <text class="recent-empty-title">暂无最近账目</text>
+      <text class="recent-empty-copy">导入或手动记录后，最新账目会出现在这里。</text>
     </view>
-
-    <view class="next-note">
-      <text class="next-label">下一步</text>
-      <text class="next-copy">上传账单 · 自动整理 · 逐项确认</text>
-    </view>
-  </view>
+  </block>
 </view>

@@ -1,0 +1,160 @@
+const app = getApp()
+const api = require('../../services/catledger-api')
+const themeService = require('../../theme/service')
+
+Page({
+  data: {
+    loggedIn: false,
+    loading: false,
+    connected: false,
+    nickname: '',
+    avatarUrl: '',
+    identityStatusText: '数据未连接',
+    errorMessage: '',
+    accountCount: 0,
+    categoryCount: 0
+  },
+
+  onShow: function () {
+    themeService.bindPage(this)
+    if (this.getTabBar()) {
+      this.getTabBar().setData({ selected: 3, hidden: false })
+    }
+    const loggedIn = app.hasLoginApproval()
+    const profile = app.globalData.profile || {}
+    this.setData({
+      loggedIn: loggedIn,
+      nickname: loggedIn ? profile.nickname : '',
+      avatarUrl: loggedIn ? profile.avatarUrl : '',
+      connected: false,
+      identityStatusText: loggedIn ? '正在核对微信身份' : '数据未连接',
+      errorMessage: ''
+    })
+    if (loggedIn) {
+      this.loadProfile()
+    }
+  },
+
+  onPullDownRefresh: function () {
+    if (!app.hasLoginApproval()) {
+      wx.stopPullDownRefresh()
+      return
+    }
+    this.loadProfile().finally(function () {
+      wx.stopPullDownRefresh()
+    })
+  },
+
+  loadProfile: function () {
+    if (!app.hasLoginApproval() || this.data.loading) {
+      return Promise.resolve()
+    }
+    const self = this
+    this.setData({ loading: true, errorMessage: '', identityStatusText: '正在核对微信身份' })
+
+    return Promise.all([api.bootstrap(), api.callApi('accounts.list')])
+      .then(function (results) {
+        const categories = Array.isArray(results[0].categories) ? results[0].categories : []
+        const accounts = Array.isArray(results[1].accounts) ? results[1].accounts : []
+        app.globalData.categories = categories
+        self.setData({
+          connected: true,
+          identityStatusText: '微信身份已安全连接',
+          accountCount: accounts.filter(function (account) { return !account.archived }).length,
+          categoryCount: categories.length
+        })
+      })
+      .catch(function (error) {
+        self.setData({
+          connected: false,
+          identityStatusText: '微信身份暂未连接',
+          errorMessage: error.message || '身份状态加载失败'
+        })
+      })
+      .finally(function () {
+        self.setData({ loading: false })
+      })
+  },
+
+  openLedger: function () {
+    if (!app.hasLoginApproval()) {
+      this.promptWechatLogin(this.openLedger.bind(this))
+      return
+    }
+    wx.switchTab({ url: '/pages/ledger/index' })
+  },
+
+  openTheme: function () {
+    wx.navigateTo({ url: '/pages/theme/index' })
+  },
+
+  promptWechatLogin: function (afterLogin) {
+    const tabBar = this.getTabBar()
+    if (tabBar && typeof tabBar.requestLogin === 'function') {
+      tabBar.requestLogin({
+        afterLogin: typeof afterLogin === 'function'
+          ? afterLogin
+          : this.onWechatLoginSuccess.bind(this)
+      })
+    }
+  },
+
+  onWechatLoginSuccess: function () {
+    const profile = app.globalData.profile || {}
+    this.setData({
+      loggedIn: true,
+      nickname: profile.nickname || '',
+      avatarUrl: profile.avatarUrl || ''
+    })
+    this.loadProfile()
+  },
+
+  showPrivacy: function () {
+    wx.showModal({
+      title: '数据与隐私',
+      content: '只有你主动点击登录后，猫账才会创建并连接个人账本。头像和昵称由你自愿选择，仅保存在当前设备用于“我的”页面展示；服务端使用微信可信身份隔离账本，不在页面、响应或普通日志中展示 OpenID 和内部用户标识。',
+      showCancel: false,
+      confirmText: '知道了',
+      confirmColor: themeService.currentTokens().accent
+    })
+  },
+
+  showAbout: function () {
+    wx.showModal({
+      title: '关于猫账',
+      content: '猫账是一款以账单导入为主、手动记账为辅的个人财务小程序。当前为开发版，尚未上传审核。',
+      showCancel: false,
+      confirmText: '知道了',
+      confirmColor: themeService.currentTokens().accent
+    })
+  },
+
+  logoutAccount: function () {
+    const self = this
+    wx.showModal({
+      title: '退出登录？',
+      content: '只会清除本机登录状态和展示资料，不会删除云端账本。',
+      cancelText: '取消',
+      confirmText: '退出',
+      confirmColor: themeService.currentTokens().danger,
+      success: function (result) {
+        if (!result.confirm) {
+          return
+        }
+        app.logoutWechatAccount()
+        self.setData({
+          loggedIn: false,
+          loading: false,
+          connected: false,
+          nickname: '',
+          avatarUrl: '',
+          identityStatusText: '数据未连接',
+          errorMessage: '',
+          accountCount: 0,
+          categoryCount: 0
+        })
+        wx.showToast({ title: '已退出登录', icon: 'none' })
+      }
+    })
+  }
+})

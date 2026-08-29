@@ -1,10 +1,82 @@
 page {
   min-height: 100%;
-  color: #28241f;
-  background: #f4f0e8;
-  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #29231e;
+  background: #f8f3ea;
+  font-family: "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", sans-serif;
 }
 
 button::after {
   border: 0;
+}
+
+.serif-title {
+  font-family: "PingFang SC", "Source Han Sans SC", sans-serif;
+  letter-spacing: -1rpx;
+}
+
+.money-number {
+  font-family: "IBM Plex Sans Condensed", "DIN Alternate", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-canvas {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 28rpx 28rpx calc(152rpx + env(safe-area-inset-bottom));
+  color: var(--theme-ink, #29231e);
+  background: linear-gradient(180deg, var(--theme-canvas-top, #fbf7f0) 0%, var(--theme-canvas-mid, #f7f1e7) 58%, var(--theme-canvas-bottom, #f9f4ec) 100%);
+}
+
+.primary-button,
+.secondary-button,
+.danger-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 78rpx;
+  padding: 0 28rpx;
+  font-size: 25rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  border-radius: var(--theme-radius-medium, 24rpx);
+}
+
+.primary-button {
+  color: var(--theme-on-accent, #fffaf1);
+  background: var(--theme-accent, #cf7439);
+}
+
+.secondary-button {
+  color: var(--theme-secondary, #384438);
+  background: var(--theme-secondary-soft, #e8eadf);
+}
+
+.danger-button {
+  color: var(--theme-danger, #8a4534);
+  background: var(--theme-danger-soft, #f4e1d6);
+}
+
+.empty-ledger {
+  padding: 42rpx 34rpx;
+  color: var(--theme-text-muted, #746a60);
+  text-align: left;
+  background: var(--theme-surface, #fffdf9);
+  border: 2rpx solid var(--theme-border, rgba(111, 88, 65, 0.08));
+  border-radius: var(--theme-radius-large, 26rpx);
+  box-shadow: var(--theme-shadow-soft, 0 12rpx 30rpx rgba(91, 61, 35, 0.06));
+}
+
+.empty-ledger-title {
+  display: block;
+  color: var(--theme-ink, #29231e);
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.empty-ledger-copy {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 23rpx;
+  line-height: 1.6;
 }

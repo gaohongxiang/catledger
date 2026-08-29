@@ -3,21 +3,47 @@ const crypto = require('node:crypto')
 const IDENTITY_FIELDS = ['uid', 'openid', 'openId', 'OPENID']
 
 const ERROR_MESSAGES = Object.freeze({
+  ACCOUNT_INACTIVE: '账户已停用',
   AUTH_REQUIRED: '未取得可信微信身份',
+  CONFLICT: '数据已发生变化，请刷新后重试',
+  IDEMPOTENCY_CONFLICT: '重复请求与首次内容不一致',
+  INITIALIZATION_REQUIRED: '请先初始化猫账',
   INTERNAL_ERROR: '服务暂时不可用，请稍后重试',
   INVALID_REQUEST: '请求中不能包含用户身份',
+  NOT_FOUND: '未找到可用数据',
   SERVICE_NOT_CONFIGURED: '猫账数据库尚未配置',
+  UNSUPPORTED_CURRENCY: '当前只支持人民币账户',
+  VALIDATION_ERROR: '请检查填写内容',
   UNSUPPORTED_ACTION: '当前操作尚未开放'
 })
-const PUBLIC_ERROR_CODES = new Set(['SERVICE_NOT_CONFIGURED'])
+const PUBLIC_ERROR_CODES = new Set([
+  'ACCOUNT_INACTIVE',
+  'CONFLICT',
+  'IDEMPOTENCY_CONFLICT',
+  'INITIALIZATION_REQUIRED',
+  'NOT_FOUND',
+  'SERVICE_NOT_CONFIGURED',
+  'UNSUPPORTED_CURRENCY',
+  'VALIDATION_ERROR'
+])
 
 function hasClientIdentity(event) {
-  const candidates = [event, event && event.data]
-  return candidates.some((candidate) => (
-    candidate &&
-    typeof candidate === 'object' &&
-    IDENTITY_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(candidate, field))
-  ))
+  const visited = new Set()
+
+  function inspect(value) {
+    if (!value || typeof value !== 'object' || visited.has(value)) {
+      return false
+    }
+    visited.add(value)
+
+    if (IDENTITY_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(value, field))) {
+      return true
+    }
+
+    return Object.values(value).some(inspect)
+  }
+
+  return inspect(event)
 }
 
 function hashWechatSubject(openid) {
@@ -37,15 +63,22 @@ function failure(code) {
   }
 }
 
-function createHandler({ getWxContext, repository, logger = console }) {
+function createHandler({ getWxContext, repository, services = {}, logger = console }) {
   return async function handler(event = {}) {
     const action = event.action
+    const actionHandler = action === 'bootstrap'
+      ? repository && repository.bootstrap
+      : services[action]
 
-    if (action !== 'bootstrap') {
+    if (action !== 'bootstrap' && typeof actionHandler !== 'function') {
       return failure('UNSUPPORTED_ACTION')
     }
 
-    if (hasClientIdentity(event)) {
+    const publicData = event.data && typeof event.data === 'object'
+      ? event.data
+      : {}
+
+    if (hasClientIdentity(publicData)) {
       return failure('INVALID_REQUEST')
     }
 
@@ -55,19 +88,30 @@ function createHandler({ getWxContext, repository, logger = console }) {
         return failure('AUTH_REQUIRED')
       }
 
-      const result = await repository.bootstrap({
+      const identity = {
         provider: 'wechat-mini',
         subjectHash: hashWechatSubject(OPENID)
-      })
+      }
 
-      return {
-        ok: true,
-        data: {
-          initialized: true,
-          isNewUser: result.isNewUser,
-          categories: result.categories
+      if (action === 'bootstrap') {
+        const result = await actionHandler(identity)
+
+        return {
+          ok: true,
+          data: {
+            initialized: true,
+            isNewUser: result.isNewUser,
+            categories: result.categories
+          }
         }
       }
+
+      const result = await actionHandler({
+        ...identity,
+        data: publicData
+      })
+
+      return { ok: true, data: result }
     } catch (error) {
       const code = PUBLIC_ERROR_CODES.has(error.publicCode)
         ? error.publicCode

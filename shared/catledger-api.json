@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "catledger-api current development contract",
+  "requestEnvelope": {
+    "required": ["action"],
+    "shape": {
+      "action": "one of actions",
+      "data": "action-specific object"
+    }
+  },
+  "actions": {
+    "bootstrap": {
+      "kind": "read-idempotent",
+      "data": [],
+      "returns": ["initialized", "isNewUser", "categories"]
+    },
+    "dashboard.get": {
+      "kind": "read",
+      "data": ["month"],
+      "returns": ["month", "netWorthMinor", "summary", "cashFlowTrend", "accounts", "recentTransactions"]
+    },
+    "statistics.get": {
+      "kind": "read",
+      "data": ["month"],
+      "returns": ["month", "summary", "daily", "expenseCategories", "incomeCategories"]
+    },
+    "accounts.list": {
+      "kind": "read",
+      "data": [],
+      "returns": ["accounts"]
+    },
+    "accounts.create": {
+      "kind": "idempotent-mutation",
+      "data": ["requestId", "type", "name", "currency", "openingDisplayBalanceMinor", "occurredLocalAt", "timezoneOffsetMinutes"],
+      "returns": "account"
+    },
+    "accounts.update": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "accountId", "version", "name"],
+      "returns": "account"
+    },
+    "accounts.archive": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "accountId", "version"],
+      "returns": "account"
+    },
+    "accounts.correctBalance": {
+      "kind": "idempotent-mutation",
+      "data": ["requestId", "accountId", "displayBalanceMinor", "occurredLocalAt", "timezoneOffsetMinutes"],
+      "returns": "account"
+    },
+    "transactions.list": {
+      "kind": "read",
+      "data": ["month", "date?", "accountId?", "categoryId?", "search?", "pageSize?", "cursor?"],
+      "returns": ["month", "date?", "summary", "transactions", "nextCursor"]
+    },
+    "transactions.create": {
+      "kind": "idempotent-mutation",
+      "data": ["requestId", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
+      "returns": "transaction"
+    },
+    "transactions.update": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "transactionId", "version", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
+      "returns": "transaction"
+    },
+    "transactions.delete": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "transactionId", "version"],
+      "returns": ["transactionId", "deleted", "version"]
+    }
+  },
+  "rules": {
+    "identity": "uid and WeChat OpenID are server-only; identity-shaped client fields are rejected recursively",
+    "money": "minor-unit decimal strings only; JavaScript floating point is forbidden",
+    "time": "occurredLocalAt plus JavaScript getTimezoneOffset() minutes; optional date and month filters use local date",
+    "mutation": "requestId is UUID; same key and request replays, same key with different request conflicts",
+    "deletion": "accounts archive and manual transactions soft-delete; no physical business deletion"
+  },
+  "successEnvelope": {
+    "ok": true,
+    "data": "action-specific public result without uid or identity digest"
+  },
+  "failureCodes": [
+    "ACCOUNT_INACTIVE",
+    "AUTH_REQUIRED",
+    "CONFLICT",
+    "IDEMPOTENCY_CONFLICT",
+    "INITIALIZATION_REQUIRED",
+    "INTERNAL_ERROR",
+    "INVALID_REQUEST",
+    "NOT_FOUND",
+    "SERVICE_NOT_CONFIGURED",
+    "UNSUPPORTED_ACTION",
+    "UNSUPPORTED_CURRENCY",
+    "VALIDATION_ERROR"
+  ]
+}

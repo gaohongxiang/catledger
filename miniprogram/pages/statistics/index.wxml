@@ -1,0 +1,49 @@
+<view class="page-canvas statistics-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="month-switcher">
+    <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><view class="arrow-left"></view></view>
+    <text class="month-current money-number">{{monthLabel}}</text>
+    <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><view class="arrow-right"></view></view>
+  </view>
+
+  <view class="summary-strip">
+    <view class="summary-cell"><text class="summary-label">收入</text><text class="summary-value money-number income-color">{{incomeText}}</text></view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell"><text class="summary-label">支出</text><text class="summary-value money-number expense-color">{{expenseText}}</text></view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell"><text class="summary-label">结余</text><text class="summary-value money-number">{{netText}}</text></view>
+  </view>
+
+  <view class="section-heading">
+    <view><text class="section-kicker">DAILY</text><text class="section-title serif-title">每日支出</text></view>
+    <text class="section-note">按本地日期</text>
+  </view>
+  <scroll-view class="daily-scroll" scroll-x="true" enhanced="true" show-scrollbar="false">
+    <view class="daily-chart">
+      <view wx:for="{{daily}}" wx:key="date" class="daily-column">
+        <view class="daily-bar-wrap"><view class="daily-bar" style="height: {{item.barHeight}}rpx;"></view></view>
+        <text class="daily-day money-number">{{item.dayText}}</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="section-heading category-heading"><view><text class="section-kicker">EXPENSE</text><text class="section-title serif-title">支出分类</text></view></view>
+  <view wx:if="{{expenseCategories.length > 0}}" class="ranking-list">
+    <view wx:for="{{expenseCategories}}" wx:key="categoryId" class="ranking-row">
+      <view class="ranking-line"><text class="ranking-name">{{item.name}}</text><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
+      <view class="ranking-track"><view class="ranking-fill expense-fill" style="width: {{item.barWidth}};"></view></view>
+    </view>
+  </view>
+  <text wx:else class="empty-note">这个月还没有支出。</text>
+
+  <view class="section-heading category-heading"><view><text class="section-kicker">INCOME</text><text class="section-title serif-title">收入分类</text></view></view>
+  <view wx:if="{{incomeCategories.length > 0}}" class="ranking-list">
+    <view wx:for="{{incomeCategories}}" wx:key="categoryId" class="ranking-row">
+      <view class="ranking-line"><text class="ranking-name">{{item.name}}</text><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
+      <view class="ranking-track"><view class="ranking-fill income-fill" style="width: {{item.barWidth}};"></view></view>
+    </view>
+  </view>
+  <text wx:else class="empty-note">这个月还没有收入。</text>
+
+  <view wx:if="{{loading}}" class="statistics-status">正在汇总正式账目…</view>
+  <view wx:if="{{errorMessage}}" class="statistics-error" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
+</view>

@@ -1,0 +1,65 @@
+<view class="editor-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="editor-heading">
+    <text class="editor-kicker">{{mode === 'edit' ? 'EDIT ENTRY' : 'NEW ENTRY'}}</text>
+    <text class="editor-title serif-title">{{mode === 'edit' ? '把这一笔改准确。' : '今天，钱去了哪里？'}}</text>
+  </view>
+
+  <view class="type-switch">
+    <view
+      wx:for="{{typeOptions}}"
+      wx:key="value"
+      class="type-option {{typeIndex === index ? 'type-option-selected' : ''}}"
+      data-index="{{index}}"
+      bindtap="changeType"
+    >{{item.label}}</view>
+  </view>
+
+  <view class="amount-panel">
+    <text class="amount-caption">金额 · CNY</text>
+    <view class="amount-input-row">
+      <text class="amount-currency money-number">¥</text>
+      <input class="amount-input money-number" type="digit" value="{{amountYuan}}" placeholder="0.00" maxlength="18" bindinput="bindAmount" />
+    </view>
+  </view>
+
+  <view class="form-sheet">
+    <picker wx:if="{{typeOptions[typeIndex].value !== 'income'}}" mode="selector" range="{{accounts}}" range-key="name" value="{{sourceIndex}}" bindchange="changeSource">
+      <view class="form-row">
+        <text class="form-label">{{typeOptions[typeIndex].value === 'transfer' ? '转出账户' : '付款账户'}}</text>
+        <text class="form-value">{{accounts[sourceIndex].name || '请选择'}}</text>
+      </view>
+    </picker>
+
+    <picker wx:if="{{typeOptions[typeIndex].value !== 'expense'}}" mode="selector" range="{{accounts}}" range-key="name" value="{{destinationIndex}}" bindchange="changeDestination">
+      <view class="form-row">
+        <text class="form-label">{{typeOptions[typeIndex].value === 'transfer' ? '转入账户' : '收款账户'}}</text>
+        <text class="form-value">{{accounts[destinationIndex].name || '请选择'}}</text>
+      </view>
+    </picker>
+
+    <picker wx:if="{{typeOptions[typeIndex].value !== 'transfer'}}" mode="selector" range="{{categories}}" range-key="name" value="{{categoryIndex}}" bindchange="changeCategory">
+      <view class="form-row">
+        <text class="form-label">分类</text>
+        <text class="form-value">{{categories[categoryIndex].name || '请选择'}}</text>
+      </view>
+    </picker>
+
+    <view class="form-row form-row-pair">
+      <picker class="half-picker" mode="date" value="{{date}}" bindchange="changeDate">
+        <view><text class="form-label">日期</text><text class="form-value">{{date}}</text></view>
+      </picker>
+      <picker class="half-picker" mode="time" value="{{clock}}" bindchange="changeClock">
+        <view><text class="form-label">时间</text><text class="form-value">{{clock}}</text></view>
+      </picker>
+    </view>
+
+    <view class="note-row">
+      <text class="form-label">备注</text>
+      <textarea class="note-input" value="{{note}}" maxlength="200" placeholder="可选，写下这笔钱的来处" auto-height="true" bindinput="bindNote" />
+    </view>
+  </view>
+
+  <view wx:if="{{errorMessage}}" class="editor-error">{{errorMessage}}</view>
+  <button class="primary-button save-button" loading="{{saving}}" disabled="{{saving}}" bindtap="save">{{mode === 'edit' ? '保存修改' : '确认记账'}}</button>
+  <button wx:if="{{mode === 'edit'}}" class="danger-button delete-button" disabled="{{saving}}" bindtap="remove">删除这笔账</button>
+</view>

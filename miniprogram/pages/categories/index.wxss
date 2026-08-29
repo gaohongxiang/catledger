@@ -1,0 +1,18 @@
+.category-page { padding-top: 36rpx; }
+.category-heading, .kind-switch, .category-row { display: flex; }
+.category-heading { align-items: flex-start; justify-content: space-between; }
+.category-kicker { display: block; color: var(--theme-secondary, #64705d); font-family: "DIN Alternate", sans-serif; font-size: 19rpx; font-weight: 600; letter-spacing: 4rpx; }
+.category-title { display: block; margin-top: 10rpx; color: var(--theme-ink, #332e2a); font-size: 35rpx; font-weight: 650; }
+.category-total { margin-top: -8rpx; color: var(--theme-accent, #cf7439); font-size: 82rpx; font-weight: 650; line-height: 1; opacity: .18; }
+.category-intro { display: block; margin-top: 22rpx; color: var(--theme-text-muted, #746a60); font-size: 21rpx; line-height: 1.6; }
+.kind-switch { width: 100%; box-sizing: border-box; margin-top: 28rpx; padding: 5rpx; background: var(--theme-surface-muted, #eee8df); border-radius: var(--theme-radius-small, 18rpx); }
+.kind-option { flex: 1; min-height: 60rpx; color: var(--theme-text-muted, #746a60); font-size: 22rpx; line-height: 60rpx; text-align: center; border-radius: var(--theme-radius-small, 14rpx); }
+.kind-option-selected { color: var(--theme-accent-strong, #8f4b2d); font-weight: 600; background: var(--theme-surface, #fffdf9); box-shadow: var(--theme-shadow-soft, 0 4rpx 12rpx rgba(74, 50, 30, 0.07)); }
+.category-list { margin-top: 22rpx; border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, 0.09)); }
+.category-row { align-items: center; min-height: 94rpx; border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, 0.09)); }
+.category-mark { display: flex; width: 54rpx; height: 54rpx; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--theme-accent-strong, #9b522f); font-size: 21rpx; font-weight: 600; background: var(--theme-accent-soft, #f5dfd1); border-radius: var(--theme-radius-small, 17rpx); }
+.category-mark-income { color: var(--theme-income, #52604c); background: var(--theme-secondary-soft, #e4e8dc); }
+.category-name { flex: 1; margin-left: 18rpx; color: var(--theme-ink, #332e2a); font-size: 26rpx; font-weight: 550; }
+.category-order { color: var(--theme-text-subtle, #aaa096); font-size: 18rpx; letter-spacing: 2rpx; }
+.category-status, .category-error { margin-top: 24rpx; padding: 18rpx 0; color: var(--theme-secondary, #64705d); font-size: 21rpx; border-bottom: 2rpx solid rgba(100, 112, 93, 0.14); }
+.category-error { color: var(--theme-danger, #8a4534); border-bottom-color: rgba(138, 69, 52, 0.14); }

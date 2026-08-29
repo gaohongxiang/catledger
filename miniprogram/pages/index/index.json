@@ -1,3 +1,5 @@
 {
-  "navigationStyle": "default"
+  "navigationStyle": "default",
+  "navigationBarTitleText": "猫账",
+  "enablePullDownRefresh": false
 }

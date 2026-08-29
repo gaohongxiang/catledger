@@ -1,0 +1,5 @@
+{
+  "navigationBarTitleText": "账目明细",
+  "enablePullDownRefresh": true,
+  "onReachBottomDistance": 160
+}

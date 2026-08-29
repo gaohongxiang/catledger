@@ -1,0 +1,114 @@
+<view wx:if="{{loginOpen}}" class="login-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="closeLogin">
+  <view class="login-sheet" catchtap="keepEntryOpen">
+    <view class="login-accent"></view>
+    <text class="login-kicker">YOUR PRIVATE LEDGER</text>
+    <text class="login-title">登录后，连接你的猫账。</text>
+    <text class="login-copy">头像和昵称均为可选，不填写也可以登录。</text>
+
+    <view class="login-profile-row">
+      <button
+        class="login-avatar-button"
+        open-type="chooseAvatar"
+        disabled="{{loginSubmitting}}"
+        bindchooseavatar="chooseLoginAvatar"
+      >
+        <image wx:if="{{loginAvatarUrl}}" class="login-avatar-image" src="{{loginAvatarUrl}}" mode="aspectFill" />
+        <view wx:else class="login-avatar-empty">
+          <view class="login-avatar-head"></view>
+          <view class="login-avatar-body"></view>
+        </view>
+      </button>
+      <view class="login-nickname-field {{loginNicknameFocused ? 'login-nickname-field-focused' : ''}}" bindtap="focusLoginNickname">
+        <text class="login-field-label">昵称（可选）</text>
+        <input
+          class="login-nickname-input"
+          type="nickname"
+          value="{{loginNickname}}"
+          maxlength="24"
+          placeholder="点这里输入昵称"
+          confirm-type="done"
+          focus="{{loginNicknameFocused}}"
+          cursor-spacing="32"
+          disabled="{{loginSubmitting}}"
+          bindinput="bindLoginNickname"
+          bindblur="blurLoginNickname"
+        />
+      </view>
+    </view>
+    <text class="login-profile-hint">点击昵称输入框，微信昵称会显示在键盘上方，轻点即可使用。</text>
+
+    <text wx:if="{{loginError}}" class="login-error">{{loginError}}</text>
+    <button
+      class="login-primary {{loginSubmitting ? 'login-primary-disabled' : ''}}"
+      loading="{{loginSubmitting}}"
+      disabled="{{loginSubmitting}}"
+      bindtap="confirmWechatLogin"
+    >登录</button>
+    <text class="login-cancel" bindtap="closeLogin">暂不登录，继续看看</text>
+  </view>
+</view>
+
+<view wx:if="{{entryOpen}}" class="entry-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="closeEntry">
+  <view class="entry-sheet" catchtap="keepEntryOpen">
+    <view class="entry-heading">
+      <text class="entry-kicker">ADD TO LEDGER</text>
+      <text class="entry-title">怎么记这次账？</text>
+      <text class="entry-copy">导入账单更省事，手动记账用来补充少数遗漏。</text>
+    </view>
+    <view class="entry-option entry-option-primary" role="button" aria-label="导入账单，推荐" bindtap="chooseBill">
+      <view class="entry-option-copy">
+        <text class="entry-option-title">导入账单</text>
+        <text class="entry-option-note">支付宝、微信账单</text>
+      </view>
+      <text class="entry-badge">推荐</text>
+    </view>
+    <view class="entry-option entry-option-secondary" role="button" aria-label="手动记一笔" bindtap="openEditor">
+      <view class="entry-option-copy">
+        <text class="entry-option-title">手动记一笔</text>
+        <text class="entry-option-note">补充现金或遗漏交易</text>
+      </view>
+      <text class="entry-arrow">→</text>
+    </view>
+    <text class="entry-cancel" bindtap="closeEntry">取消</text>
+  </view>
+</view>
+
+<view wx:if="{{!hidden}}" class="tab-shell {{themeClass}}" style="{{themeStyle}}">
+  <view class="tab-side tab-side-left">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="pagePath"
+      wx:if="{{index < 2}}"
+      class="tab-item {{selected === index ? 'tab-item-selected' : ''}}"
+      data-index="{{index}}"
+      bindtap="switchTab"
+    >
+      <view class="tab-icon-wrap">
+        <image class="tab-icon" mode="aspectFit" src="{{selected === index ? item.selectedIconPath : item.iconPath}}" />
+      </view>
+      <text class="tab-label">{{item.text}}</text>
+    </view>
+  </view>
+
+  <view class="record-entry" role="button" aria-label="选择记账方式" bindtap="openEntry">
+    <view class="record-fab">
+      <image class="record-icon" mode="aspectFit" src="/assets/icons/tab-plus.svg" />
+    </view>
+  </view>
+
+  <view class="tab-side tab-side-right">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="pagePath"
+      wx:if="{{index >= 2}}"
+      class="tab-item {{selected === index ? 'tab-item-selected' : ''}}"
+      data-index="{{index}}"
+      bindtap="switchTab"
+    >
+      <view class="tab-icon-wrap">
+        <image class="tab-icon" mode="aspectFit" src="{{selected === index ? item.selectedIconPath : item.iconPath}}" />
+      </view>
+      <text class="tab-label">{{item.text}}</text>
+    </view>
+  </view>
+</view>

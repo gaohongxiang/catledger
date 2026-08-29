@@ -1,0 +1,79 @@
+<view class="page-canvas profile-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="profile-hero">
+    <image wx:if="{{loggedIn && avatarUrl}}" class="profile-logo" src="{{avatarUrl}}" mode="aspectFill" />
+    <view wx:else class="profile-avatar-empty">
+      <view class="profile-avatar-head"></view>
+      <view class="profile-avatar-body"></view>
+    </view>
+    <view class="profile-copy">
+      <text class="profile-kicker">MY PROFILE</text>
+      <text class="profile-title serif-title">{{loggedIn ? (nickname || '微信用户') : '尚未登录'}}</text>
+      <view class="identity-status">
+        <view class="status-dot {{connected ? 'status-dot-connected' : ''}}"></view>
+        <text>{{identityStatusText}}</text>
+      </view>
+    </view>
+    <button wx:if="{{!loggedIn}}" class="profile-login-button" bindtap="promptWechatLogin">登录</button>
+  </view>
+
+  <view class="profile-summary">
+    <view class="summary-cell">
+      <text class="summary-number money-number">{{loggedIn ? accountCount : '—'}}</text>
+      <text class="summary-label">活动账户</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell">
+      <text class="summary-number money-number">{{loggedIn ? categoryCount : '—'}}</text>
+      <text class="summary-label">收支分类</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-cell">
+      <text class="summary-number summary-cloud">{{loggedIn ? '云端' : '—'}}</text>
+      <text class="summary-label">数据位置</text>
+    </view>
+  </view>
+
+  <text class="profile-section-kicker">ACCOUNT & DATA</text>
+  <view class="profile-menu">
+    <view class="profile-row" role="button" aria-label="选择视觉主题" bindtap="openTheme">
+      <view class="row-copy">
+        <text class="row-title">主题</text>
+        <text class="row-note">{{themeName}}</text>
+      </view>
+      <view class="row-chevron"></view>
+    </view>
+    <view class="profile-row" role="button" aria-label="进入账本设置" bindtap="openLedger">
+      <view class="row-copy">
+        <text class="row-title">账本设置</text>
+        <text class="row-note">{{loggedIn ? '账户与分类' : '登录后管理'}}</text>
+      </view>
+      <view class="row-chevron"></view>
+    </view>
+    <view class="profile-row" role="button" aria-label="查看数据与隐私" bindtap="showPrivacy">
+      <view class="row-copy">
+        <text class="row-title">数据与隐私</text>
+        <text class="row-note">身份与账单文件说明</text>
+      </view>
+      <view class="row-chevron"></view>
+    </view>
+    <view class="profile-row" role="button" aria-label="查看关于猫账" bindtap="showAbout">
+      <view class="row-copy">
+        <text class="row-title">关于猫账</text>
+        <text class="row-note">开发版</text>
+      </view>
+      <view class="row-chevron"></view>
+    </view>
+    <view wx:if="{{loggedIn}}" class="profile-row profile-logout-row" role="button" aria-label="退出登录" bindtap="logoutAccount">
+      <view class="row-copy">
+        <text class="row-title profile-logout-title">退出登录</text>
+        <text class="row-note">只退出本机，不删除云端账本</text>
+      </view>
+      <view class="row-chevron profile-logout-chevron"></view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="profile-status">正在同步个人账本…</view>
+  <view wx:if="{{errorMessage}}" class="profile-error" bindtap="loadProfile">{{errorMessage}} · 点此重试</view>
+
+  <text class="profile-footnote">{{loggedIn ? '头像和昵称仅用于本机展示；猫账不会把 OpenID、内部用户标识或数据库配置展示在客户端。' : '你可以先浏览；导入、记账和管理个人数据时再登录。'}}</text>
+</view>
