@@ -52,6 +52,34 @@ test('bootstrap rejects identity fields supplied by the client', async () => {
   assert.equal(called, false)
 })
 
+test('bootstrap ignores request properties outside the public contract', async () => {
+  let input
+  const handler = createHandler({
+    getWxContext: () => ({ OPENID: 'trusted-openid' }),
+    repository: {
+      async bootstrap(value) {
+        input = value
+        return {
+          isNewUser: false,
+          categories: []
+        }
+      }
+    },
+    logger: createLogger()
+  })
+
+  const result = await handler({
+    action: 'bootstrap',
+    unexpected: true
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(input, {
+    provider: 'wechat-mini',
+    subjectHash: hashWechatSubject('trusted-openid')
+  })
+})
+
 test('bootstrap hashes the trusted subject and returns no server identity', async () => {
   const rawOpenid = 'sensitive-wechat-openid'
   let input
@@ -98,6 +126,28 @@ test('bootstrap requires trusted WeChat identity', async () => {
   const result = await handler({ action: 'bootstrap' })
   assert.equal(result.ok, false)
   assert.equal(result.error.code, 'AUTH_REQUIRED')
+})
+
+test('bootstrap sanitizes failures while reading the trusted context', async () => {
+  const logger = createLogger()
+  const handler = createHandler({
+    getWxContext() {
+      throw new Error('sensitive context failure')
+    },
+    repository: {},
+    logger
+  })
+
+  const result = await handler({ action: 'bootstrap' })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'INTERNAL_ERROR')
+  assert.deepEqual(logger.entries, [{
+    event: 'catledger-api-failure',
+    code: 'INTERNAL_ERROR',
+    databaseCode: undefined
+  }])
+  assert.doesNotMatch(JSON.stringify(result), /sensitive context failure/)
 })
 
 test('bootstrap logs only sanitized database diagnostics', async () => {

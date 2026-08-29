@@ -31,7 +31,7 @@
 4. 开通云开发环境和 MySQL 后，在 `catledger-api` 云函数中配置 `CATLEDGER_DB_HOST`、`CATLEDGER_DB_PORT`、`CATLEDGER_DB_USER`、`CATLEDGER_DB_PASSWORD`、`CATLEDGER_DB_NAME` 私有环境变量。
 5. 先执行 `migrations/` 中的显式迁移，再部署 `catledger-api` 云函数。
 
-当前开发版本已包含可信微信身份、用户初始化和默认分类的本地候选；尚未部署到正式云环境，也不包含账单导入实现。
+当前开发版本已部署首版 MySQL 迁移和 `catledger-api` 开发版，微信开发者工具已用真实微信身份跑通用户初始化与 16 个默认分类；尚未实现账单导入，也未上传、审核或正式发布小程序版本。
 
 云函数本地检查：
 

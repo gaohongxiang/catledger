@@ -1,11 +1,26 @@
-const { randomUUID } = require('node:crypto')
+const { randomInt, randomUUID } = require('node:crypto')
 
 const { DEFAULT_CATEGORIES } = require('./default-categories')
 
-const MAX_BOOTSTRAP_ATTEMPTS = 2
+const MAX_BOOTSTRAP_ATTEMPTS = 5
+const RETRYABLE_TRANSACTION_ERRORS = new Set([
+  'ER_DUP_ENTRY',
+  'ER_LOCK_DEADLOCK',
+  'ER_LOCK_WAIT_TIMEOUT'
+])
 
-function isIdentityRace(error) {
-  return error && error.code === 'ER_DUP_ENTRY'
+function isRetryableTransactionError(error) {
+  return error && RETRYABLE_TRANSACTION_ERRORS.has(error.code)
+}
+
+async function waitBeforeRetry(error, attempt) {
+  if (error.code === 'ER_DUP_ENTRY') {
+    return
+  }
+
+  const maximumDelayMs = Math.min(100, 10 * (2 ** attempt))
+  const delayMs = randomInt(1, maximumDelayMs + 1)
+  await new Promise((resolve) => setTimeout(resolve, delayMs))
 }
 
 async function findIdentity(connection, provider, subjectHash) {
@@ -97,7 +112,8 @@ function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES 
         } catch (error) {
           await connection.rollback()
 
-          if (isIdentityRace(error) && attempt + 1 < MAX_BOOTSTRAP_ATTEMPTS) {
+          if (isRetryableTransactionError(error) && attempt + 1 < MAX_BOOTSTRAP_ATTEMPTS) {
+            await waitBeforeRetry(error, attempt)
             continue
           }
 

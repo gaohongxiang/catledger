@@ -1,3 +1,5 @@
+const cloudbaseConfig = require('./config/cloudbase')
+
 App({
   globalData: {
     cloudAvailable: false
@@ -10,6 +12,7 @@ App({
     }
 
     wx.cloud.init({
+      env: cloudbaseConfig.envId,
       traceUser: true
     })
 

@@ -14,7 +14,10 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error(error && error.message ? error.message : 'Migration failed')
+    const code = error && typeof error.code === 'string'
+      ? ` (${error.code})`
+      : ''
+    console.error(`Catledger migration failed${code}`)
     process.exitCode = 1
   })
   .finally(closePool)

@@ -49,12 +49,12 @@ function createHandler({ getWxContext, repository, logger = console }) {
       return failure('INVALID_REQUEST')
     }
 
-    const { OPENID } = getWxContext()
-    if (!OPENID) {
-      return failure('AUTH_REQUIRED')
-    }
-
     try {
+      const { OPENID } = getWxContext() || {}
+      if (!OPENID) {
+        return failure('AUTH_REQUIRED')
+      }
+
       const result = await repository.bootstrap({
         provider: 'wechat-mini',
         subjectHash: hashWechatSubject(OPENID)
