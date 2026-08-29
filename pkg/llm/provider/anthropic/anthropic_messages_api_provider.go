@@ -3,9 +3,9 @@ package anthropic
 import (
 	"net/http"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/provider"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/llm/provider"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 // AnthropicOfficialMessagesAPIProvider defines the structure of Anthropic official messages API provider

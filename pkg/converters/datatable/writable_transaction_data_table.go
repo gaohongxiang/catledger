@@ -1,9 +1,9 @@
 package datatable
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/log"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/log"
+	"github.com/gaohongxiang/catledger/pkg/models"
 )
 
 // WritableTransactionDataTable defines the structure of writable transaction data table

@@ -6,10 +6,10 @@ import (
 
 	"xorm.io/xorm"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 const (

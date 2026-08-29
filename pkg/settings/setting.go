@@ -11,18 +11,18 @@ import (
 
 	"gopkg.in/ini.v1"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/locales"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/locales"
 )
 
 const (
-	ebkWorkDirEnvName                  = "EBK_WORK_DIR"
-	ebkConfigItemValueEnvNamePrefix    = "EBK"
-	ebkConfigItemFilePathEnvNamePrefix = "EBKCFP"
-	defaultConfigPath                  = "/conf/ezbookkeeping.ini"
-	defaultRootUrl                     = "%(protocol)s://%(domain)s:%(http_port)s/"
-	defaultStaticRootPath              = "public"
+	catledgerWorkDirEnvName                  = "CATLEDGER_WORK_DIR"
+	catledgerConfigItemValueEnvNamePrefix    = "CATLEDGER"
+	catledgerConfigItemFilePathEnvNamePrefix = "CATLEDGERCFP"
+	defaultConfigPath                        = "/conf/catledger.ini"
+	defaultRootUrl                           = "%(protocol)s://%(domain)s:%(http_port)s/"
+	defaultStaticRootPath                    = "public"
 )
 
 // SystemMode represents running mode of system
@@ -170,7 +170,7 @@ const (
 	defaultDomain   string = "localhost"
 
 	defaultDatabaseHost            string = "127.0.0.1:3306"
-	defaultDatabaseName            string = "ezbookkeeping"
+	defaultDatabaseName            string = "catledger"
 	defaultDatabaseMaxIdleConn     uint16 = 2
 	defaultDatabaseMaxOpenConn     uint16 = 0
 	defaultDatabaseConnMaxLifetime uint32 = 14400
@@ -189,7 +189,7 @@ const (
 	defaultInMemoryDuplicateCheckerCleanupInterval uint32 = 60  // 1 minutes
 	defaultDuplicateSubmissionsInterval            uint32 = 300 // 5 minutes
 
-	defaultSecretKey                     string = "ezbookkeeping"
+	defaultSecretKey                     string = "catledger"
 	defaultTrustedProxyIPs               string = "10.0.0.0/8,169.254.0.0/16,127.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 	defaultTokenExpiredTime              uint32 = 2592000 // 30 days
 	defaultTokenMinRefreshInterval       uint32 = 86400   // 1 day
@@ -1286,7 +1286,7 @@ func loadExchangeRatesConfiguration(config *Config, configFile *ini.File, sectio
 }
 
 func getWorkingPath() (string, error) {
-	workingPath := os.Getenv(ebkWorkDirEnvName)
+	workingPath := os.Getenv(catledgerWorkDirEnvName)
 
 	if workingPath != "" {
 		return workingPath, nil
@@ -1532,11 +1532,11 @@ func getConfigItemValueFromEnvironment(sectionName string, itemName string) stri
 }
 
 func getConfigItemFilePathEnvironmentKey(sectionName string, itemName string) string {
-	return fmt.Sprintf("%s_%s_%s", ebkConfigItemFilePathEnvNamePrefix, strings.ToUpper(sectionName), strings.ToUpper(itemName))
+	return fmt.Sprintf("%s_%s_%s", catledgerConfigItemFilePathEnvNamePrefix, strings.ToUpper(sectionName), strings.ToUpper(itemName))
 }
 
 func getConfigItemValueEnvironmentKey(sectionName string, itemName string) string {
-	return fmt.Sprintf("%s_%s_%s", ebkConfigItemValueEnvNamePrefix, strings.ToUpper(sectionName), strings.ToUpper(itemName))
+	return fmt.Sprintf("%s_%s_%s", catledgerConfigItemValueEnvNamePrefix, strings.ToUpper(sectionName), strings.ToUpper(itemName))
 }
 
 func getLogLevel(logLevelStr string) (Level, error) {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/errs"
 )
 
 const (

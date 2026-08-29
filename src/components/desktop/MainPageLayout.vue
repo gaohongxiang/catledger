@@ -140,10 +140,6 @@
                                                  :title="tt('Theme')"
                                                  @click="cycleTheme"></v-list-item>
                                     <v-divider class="my-1"/>
-                                    <v-list-item :prepend-icon="mdiInformationOutline"
-                                                 :title="tt('About')"
-                                                 @click="showAboutDialog = true"></v-list-item>
-                                    <v-divider class="my-1"/>
                                     <v-list-item :prepend-icon="mdiLockOutline"
                                                  :title="tt('Lock Application')"
                                                  v-if="isEnableApplicationLock"
@@ -172,14 +168,11 @@
         </v-overlay>
 
         <switch-to-mobile-dialog v-model:show="showMobileQrCode" />
-        <about-dialog v-model:show="showAboutDialog" />
-
         <snack-bar ref="snackbar" />
     </div>
 </template>
 
 <script setup lang="ts">
-import AboutDialog from '@/views/desktop/common/dialogs/AboutDialog.vue';
 import SnackBar from '@/components/desktop/SnackBar.vue';
 
 import { ref, computed, useTemplateRef } from 'vue';
@@ -219,7 +212,6 @@ import {
     mdiWeatherNight,
     mdiAccount,
     mdiCogOutline,
-    mdiInformationOutline,
     mdiLockOutline,
     mdiLogout
 } from '@mdi/js';
@@ -249,8 +241,6 @@ const logouting = ref<boolean>(false);
 const showVerticalOverlayMenu = ref<boolean>(false);
 const showLoading = ref<boolean>(false);
 const showMobileQrCode = ref<boolean>(false);
-const showAboutDialog = ref<boolean>(false);
-
 const currentNickName = computed<string>(() => userStore.currentUserNickname || tt('User'));
 const currentUserAvatar = computed<string | null>(() => userStore.currentUserAvatar);
 const currentUserAvatarStyle = computed<Record<string, string> | undefined>(() => currentUserAvatar.value ? {

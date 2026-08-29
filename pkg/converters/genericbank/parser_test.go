@@ -11,7 +11,7 @@ import (
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 func TestDescriptorSupportsAutomaticSelectionAndProbeRejectsBinary(t *testing.T) {

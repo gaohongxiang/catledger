@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/organizer"
 )
 
 func TestUndoEngineSQLiteInspectsAndReversesAtomically(t *testing.T) {

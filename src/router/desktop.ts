@@ -223,10 +223,6 @@ const router = createRouter({
             redirect: () => ({ path: '/app/settings/basic', replace: true })
         },
         {
-            path: '/about',
-            redirect: () => ({ path: '/', replace: true })
-        },
-        {
             path: '/login',
             component: LoginPage,
             beforeEnter: checkNotLogin

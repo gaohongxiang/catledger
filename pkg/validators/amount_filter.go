@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/utils"
 )
 
 // ValidAmountFilter returns whether the given amount filter is valid

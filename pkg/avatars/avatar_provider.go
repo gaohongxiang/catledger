@@ -1,6 +1,6 @@
 package avatars
 
-import "github.com/mayswind/ezbookkeeping/pkg/models"
+import "github.com/gaohongxiang/catledger/pkg/models"
 
 // AvatarProvider is user avatar provider interface
 type AvatarProvider interface {

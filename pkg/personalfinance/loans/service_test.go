@@ -13,10 +13,10 @@ import (
 
 	"xorm.io/xorm"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/migrations"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 func TestServiceCalculateFourMethodsAndReferenceGolden(t *testing.T) {

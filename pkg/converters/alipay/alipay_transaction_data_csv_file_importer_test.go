@@ -8,11 +8,11 @@ import (
 
 	"golang.org/x/text/encoding/simplifiedchinese"
 
-	"github.com/mayswind/ezbookkeeping/pkg/converters/converter"
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/converters/converter"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/utils"
 )
 
 func TestAlipayCsvFileImporterParseImportedData_MinimumValidData(t *testing.T) {

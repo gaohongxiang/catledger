@@ -10,7 +10,7 @@ data/
 log/
 storage/
 package/
-ezbookkeeping
+catledger
 *.db
 *.db-shm
 *.db-wal

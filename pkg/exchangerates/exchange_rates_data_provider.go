@@ -1,9 +1,9 @@
 package exchangerates
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 // ExchangeRatesDataProvider defines the structure of exchange rates data provider

@@ -1,10 +1,10 @@
 package fireflyIII
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/converters/datatable"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/converters/datatable"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/utils"
 )
 
 // fireflyIIITransactionDataRowParser defines the structure of firefly III transaction data row parser

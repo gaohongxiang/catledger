@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans"
 )
 
 const dashboardRepositoryPageSize = 100

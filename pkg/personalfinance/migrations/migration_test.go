@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/reconciliation"
 )
 
 func TestSchemaV001ChecksumGolden(t *testing.T) {

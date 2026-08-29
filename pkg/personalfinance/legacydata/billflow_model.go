@@ -1,6 +1,6 @@
 package legacydata
 
-import "github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+import "github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 
 // 以下结构只描述历史 billflow 表，供迁移校验和用户数据清理使用，不是运行时业务模型。
 type Task struct {

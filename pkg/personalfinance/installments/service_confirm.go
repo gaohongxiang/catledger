@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans"
 )
 
 // DiscardContractDrafts 清理由被放弃整理轮次暂存、但从未生效的合同表单。

@@ -5,9 +5,9 @@ import (
 
 	"xorm.io/xorm"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/models"
 )
 
 // CreateTransactionInSession 在调用方持有的事务中写入一个逻辑账本事件。

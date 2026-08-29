@@ -1,6 +1,6 @@
 package loans
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import "github.com/gaohongxiang/catledger/pkg/core"
 
 // UserDataModule 覆盖贷款用户表。
 func UserDataModule() core.UserDataModule {

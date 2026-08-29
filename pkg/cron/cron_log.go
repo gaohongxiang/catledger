@@ -5,8 +5,8 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"strings"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/log"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/log"
 )
 
 // GocronLoggerAdapter represents the logger adapter for gocron

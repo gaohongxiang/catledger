@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/errs"
 )
 
 const webContextRequestIdFieldKey = "REQUEST_ID"

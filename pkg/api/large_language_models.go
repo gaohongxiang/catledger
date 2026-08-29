@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/llm"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/data"
-	"github.com/mayswind/ezbookkeeping/pkg/log"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/services"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
-	"github.com/mayswind/ezbookkeeping/pkg/templates"
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/llm"
+	"github.com/gaohongxiang/catledger/pkg/llm/data"
+	"github.com/gaohongxiang/catledger/pkg/log"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/services"
+	"github.com/gaohongxiang/catledger/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/templates"
+	"github.com/gaohongxiang/catledger/pkg/utils"
 )
 
 // LargeLanguageModelsApi represents large language models api

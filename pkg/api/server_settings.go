@@ -4,20 +4,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/utils"
 )
 
-const ezbookkeepingServerSettingsGlobalVariableName = "EZBOOKKEEPING_SERVER_SETTINGS"
-const ezbookkeepingServerSettingsGlobalVariableFullName = "window." + ezbookkeepingServerSettingsGlobalVariableName
-const ezbookkeepingServerSettingsGlobalVariableAlias = "_"
-const ezbookkeepingServerSettingsJavascriptFileHeader = "(function () {\n" +
-	ezbookkeepingServerSettingsGlobalVariableFullName +
-	"=" + ezbookkeepingServerSettingsGlobalVariableFullName + "||{};\n" +
-	"const " + ezbookkeepingServerSettingsGlobalVariableAlias + "=" + ezbookkeepingServerSettingsGlobalVariableFullName + ";\n"
-const ezbookkeepingServerSettingsJavascriptFileFooter = "})();\n"
+const catledgerServerSettingsGlobalVariableName = "CATLEDGER_SERVER_SETTINGS"
+const catledgerServerSettingsGlobalVariableFullName = "window." + catledgerServerSettingsGlobalVariableName
+const catledgerServerSettingsGlobalVariableAlias = "_"
+const catledgerServerSettingsJavascriptFileHeader = "(function () {\n" +
+	catledgerServerSettingsGlobalVariableFullName +
+	"=" + catledgerServerSettingsGlobalVariableFullName + "||{};\n" +
+	"const " + catledgerServerSettingsGlobalVariableAlias + "=" + catledgerServerSettingsGlobalVariableFullName + ";\n"
+const catledgerServerSettingsJavascriptFileFooter = "})();\n"
 
 // ServerSettingsApi represents server settings api
 type ServerSettingsApi struct {
@@ -37,7 +37,7 @@ var (
 func (a *ServerSettingsApi) ServerSettingsJavascriptHandler(c *core.WebContext) ([]byte, string, *errs.Error) {
 	config := a.CurrentConfig()
 	builder := &strings.Builder{}
-	builder.WriteString(ezbookkeepingServerSettingsJavascriptFileHeader)
+	builder.WriteString(catledgerServerSettingsJavascriptFileHeader)
 
 	a.appendBooleanSetting(builder, "a", config.EnableInternalAuth)
 	a.appendBooleanSetting(builder, "o", config.EnableOAuth2Login)
@@ -142,13 +142,13 @@ func (a *ServerSettingsApi) ServerSettingsJavascriptHandler(c *core.WebContext) 
 		a.appendIntegerSetting(builder, "errt", int(config.ExchangeRatesRequestTimeout))
 	}
 
-	builder.WriteString(ezbookkeepingServerSettingsJavascriptFileFooter)
+	builder.WriteString(catledgerServerSettingsJavascriptFileFooter)
 
 	return []byte(builder.String()), "", nil
 }
 
 func (a *ServerSettingsApi) appendStringSetting(builder *strings.Builder, key string, value string) {
-	builder.WriteString(ezbookkeepingServerSettingsGlobalVariableAlias)
+	builder.WriteString(catledgerServerSettingsGlobalVariableAlias)
 	builder.WriteString("[")
 	a.appendEncodedString(builder, key)
 	builder.WriteString("]=")
@@ -159,7 +159,7 @@ func (a *ServerSettingsApi) appendStringSetting(builder *strings.Builder, key st
 }
 
 func (a *ServerSettingsApi) appendMultiLanguageTipSetting(builder *strings.Builder, key string, value settings.MultiLanguageContentConfig) {
-	builder.WriteString(ezbookkeepingServerSettingsGlobalVariableAlias)
+	builder.WriteString(catledgerServerSettingsGlobalVariableAlias)
 	builder.WriteString("[")
 	a.appendEncodedString(builder, key)
 	builder.WriteString("]={\n")
@@ -179,7 +179,7 @@ func (a *ServerSettingsApi) appendMultiLanguageTipSetting(builder *strings.Build
 }
 
 func (a *ServerSettingsApi) appendBooleanSetting(builder *strings.Builder, key string, value bool) {
-	builder.WriteString(ezbookkeepingServerSettingsGlobalVariableAlias)
+	builder.WriteString(catledgerServerSettingsGlobalVariableAlias)
 	builder.WriteString("[")
 	a.appendEncodedString(builder, key)
 	builder.WriteString("]=")
@@ -194,7 +194,7 @@ func (a *ServerSettingsApi) appendBooleanSetting(builder *strings.Builder, key s
 }
 
 func (a *ServerSettingsApi) appendIntegerSetting(builder *strings.Builder, key string, value int) {
-	builder.WriteString(ezbookkeepingServerSettingsGlobalVariableAlias)
+	builder.WriteString(catledgerServerSettingsGlobalVariableAlias)
 	builder.WriteString("[")
 	a.appendEncodedString(builder, key)
 	builder.WriteString("]=")

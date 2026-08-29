@@ -5,9 +5,9 @@ package importing_test
 import (
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/migrations"
 )
 
 func TestDedupServiceIntegrationConcurrentIdentityArbitration(t *testing.T) {

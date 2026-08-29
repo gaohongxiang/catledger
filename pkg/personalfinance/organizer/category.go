@@ -9,10 +9,10 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/uuid"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/uuid"
 )
 
 const CATEGORY_ALIAS_VERSION_V1 RuleVersion = "category-alias-v1"

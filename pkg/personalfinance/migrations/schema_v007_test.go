@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 func TestSchemaV007ChecksumGolden(t *testing.T) {

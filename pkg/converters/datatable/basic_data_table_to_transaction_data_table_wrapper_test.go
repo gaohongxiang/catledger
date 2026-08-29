@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/errs"
 )
 
 type testTransactionDataRowParser struct {

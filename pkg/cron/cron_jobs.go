@@ -1,8 +1,8 @@
 package cron
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/services"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/services"
 )
 
 // RemoveExpiredTokensJob represents the cron job which periodically remove expired user tokens from the database

@@ -3,7 +3,7 @@ package core
 import (
 	"net/http/httputil"
 
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/errs"
 )
 
 // CliHandlerFunc represents the cli handler function

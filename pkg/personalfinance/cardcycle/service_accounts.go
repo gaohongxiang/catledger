@@ -3,7 +3,7 @@ package cardcycle
 import (
 	"sort"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 func (s *Service) ListAccounts(c core.Context, uid int64, asOfDate string) (*AccountListResult, error) {

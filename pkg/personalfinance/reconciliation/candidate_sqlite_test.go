@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
-	"github.com/mayswind/ezbookkeeping/pkg/uuid"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/migrations"
+	"github.com/gaohongxiang/catledger/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/uuid"
 )
 
 func TestCandidateServiceSQLiteStableCasesIsolationFiltersAndNoLedgerEffects(t *testing.T) {

@@ -6,16 +6,16 @@ import (
 
 	"github.com/gin-gonic/gin/binding"
 
-	"github.com/mayswind/ezbookkeeping/pkg/avatars"
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/locales"
-	"github.com/mayswind/ezbookkeeping/pkg/log"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/services"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
-	"github.com/mayswind/ezbookkeeping/pkg/validators"
+	"github.com/gaohongxiang/catledger/pkg/avatars"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/locales"
+	"github.com/gaohongxiang/catledger/pkg/log"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/services"
+	"github.com/gaohongxiang/catledger/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/validators"
 )
 
 // UsersApi represents user api

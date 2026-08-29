@@ -7,7 +7,7 @@ REPOSITORY_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 COMPOSE_FILE="$REPOSITORY_ROOT/docker/compose.pf-test.yml"
 TARGET=${1:-all}
 PROJECT_RANDOM=$(LC_ALL=C od -An -N4 -tx1 /dev/urandom | tr -d '[:space:]')
-PROJECT_NAME="ezbk-pfqa-$(date '+%Y%m%d%H%M%S')-$$-$PROJECT_RANDOM"
+PROJECT_NAME="catledger-pfqa-$(date '+%Y%m%d%H%M%S')-$$-$PROJECT_RANDOM"
 CLEANUP_DONE=0
 
 show_help() {
@@ -35,7 +35,7 @@ compose() {
 
 validate_project_name() {
     case "$PROJECT_NAME" in
-        ezbk-pfqa-*)
+        catledger-pfqa-*)
             ;;
         *)
             fail "拒绝清理未识别的 Compose 项目 $PROJECT_NAME"
@@ -49,7 +49,7 @@ cleanup_best_effort() {
     fi
 
     case "$PROJECT_NAME" in
-        ezbk-pfqa-*)
+        catledger-pfqa-*)
             if ! compose down --volumes --remove-orphans --rmi local >/dev/null 2>&1; then
                 printf '警告：隔离测试资源自动清理失败，请检查 Compose 项目 %s\n' "$PROJECT_NAME" >&2
             fi
@@ -91,7 +91,7 @@ run_database_update() {
 
     printf '\n验证 %s：首次建表并重复执行...\n' "$database_type"
     compose run --rm --no-deps \
-        -e "EBK_DATABASE_TYPE=$database_type" \
+        -e "CATLEDGER_DATABASE_TYPE=$database_type" \
         "$@" \
         runner sh -ec '
             test ! -e /workspace/data
@@ -107,34 +107,34 @@ run_database_update() {
             PF_DB_INTEGRATION=1 go test -buildvcs=false -mod=readonly \
                 -tags=pf_organizer_db_integration -count=1 -timeout=10m \
                 ./pkg/personalfinance/organizer
-            go build -buildvcs=false -mod=readonly -o /testwork/ezbookkeeping ./ezbookkeeping.go
-            /testwork/ezbookkeeping --conf-path=/workspace/conf/ezbookkeeping.ini --no-boot-log database update
-            /testwork/ezbookkeeping --conf-path=/workspace/conf/ezbookkeeping.ini --no-boot-log database update
+            go build -buildvcs=false -mod=readonly -o /testwork/catledger ./catledger.go
+            /testwork/catledger --conf-path=/workspace/conf/catledger.ini --no-boot-log database update
+            /testwork/catledger --conf-path=/workspace/conf/catledger.ini --no-boot-log database update
         '
 }
 
 run_sqlite() {
     run_database_update sqlite3 \
-        -e EBK_DATABASE_DB_PATH=/testwork/data/ezbookkeeping.db
+        -e CATLEDGER_DATABASE_DB_PATH=/testwork/data/catledger.db
 }
 
 run_mysql() {
     compose up --detach --wait --wait-timeout 180 mysql
     run_database_update mysql \
-        -e EBK_DATABASE_HOST=mysql:3306 \
-        -e EBK_DATABASE_NAME=ezbookkeeping_pf_test \
-        -e EBK_DATABASE_USER=pf_test \
-        -e EBK_DATABASE_PASSWD=pf_test_password
+        -e CATLEDGER_DATABASE_HOST=mysql:3306 \
+        -e CATLEDGER_DATABASE_NAME=catledger_pf_test \
+        -e CATLEDGER_DATABASE_USER=pf_test \
+        -e CATLEDGER_DATABASE_PASSWD=pf_test_password
 }
 
 run_postgres() {
     compose up --detach --wait --wait-timeout 180 postgres
     run_database_update postgres \
-        -e EBK_DATABASE_HOST=postgres:5432 \
-        -e EBK_DATABASE_NAME=ezbookkeeping_pf_test \
-        -e EBK_DATABASE_USER=pf_test \
-        -e EBK_DATABASE_PASSWD=pf_test_password \
-        -e EBK_DATABASE_SSL_MODE=disable
+        -e CATLEDGER_DATABASE_HOST=postgres:5432 \
+        -e CATLEDGER_DATABASE_NAME=catledger_pf_test \
+        -e CATLEDGER_DATABASE_USER=pf_test \
+        -e CATLEDGER_DATABASE_PASSWD=pf_test_password \
+        -e CATLEDGER_DATABASE_SSL_MODE=disable
 }
 
 case "$TARGET" in

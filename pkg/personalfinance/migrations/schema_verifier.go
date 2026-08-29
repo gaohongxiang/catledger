@@ -9,8 +9,8 @@ import (
 
 	"xorm.io/xorm/schemas"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 type schemaVerificationMode uint8

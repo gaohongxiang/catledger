@@ -3,11 +3,11 @@ package services
 import (
 	"fmt"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/dashboard"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/dashboard"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/organizer"
 )
 
 // PersonalFinanceDashboardLedgerAdapter 通过 caller uid 所在分片的 privacy session

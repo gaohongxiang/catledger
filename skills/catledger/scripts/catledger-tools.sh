@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 
-# ezBookkeeping API Tools
-# A command-line tool for calling ezBookkeeping APIs
+# CatLedger API Tools
+# A command-line tool for calling CatLedger APIs
 
 # API Configuration Structure
 API_CONFIGS='[
@@ -518,7 +518,7 @@ API_CONFIGS='[
   },
   {
     "Name": "server-version",
-    "Description": "Retrieve ezBookkeeping server version information",
+    "Description": "Retrieve CatLedger server version information",
     "Method": "GET",
     "Path": "systems/version.json",
     "RequiresTimezone": false,
@@ -535,8 +535,8 @@ API_CONFIGS='[
   }
 ]'
 
-EBKTOOL_SERVER_BASEURL="${EBKTOOL_SERVER_BASEURL}"
-EBKTOOL_TOKEN="${EBKTOOL_TOKEN}"
+CATLEDGER_TOOL_SERVER_BASEURL="${CATLEDGER_TOOL_SERVER_BASEURL}"
+CATLEDGER_TOOL_TOKEN="${CATLEDGER_TOOL_TOKEN}"
 TIMEZONE_NAME=""
 TIMEZONE_OFFSET=""
 RAW_RESPONSE="false"
@@ -582,11 +582,11 @@ load_env_file() {
         value="$(echo "$value" | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//')"
 
         case "$key" in
-            EBKTOOL_SERVER_BASEURL)
-                EBKTOOL_SERVER_BASEURL="$value"
+            CATLEDGER_TOOL_SERVER_BASEURL)
+                CATLEDGER_TOOL_SERVER_BASEURL="$value"
                 ;;
-            EBKTOOL_TOKEN)
-                EBKTOOL_TOKEN="$value"
+            CATLEDGER_TOOL_TOKEN)
+                CATLEDGER_TOOL_TOKEN="$value"
                 ;;
         esac
     done < "$env_file"
@@ -595,7 +595,7 @@ load_env_file() {
 }
 
 load_env_from_paths() {
-    if [ -n "$EBKTOOL_SERVER_BASEURL" ] && [ -n "$EBKTOOL_TOKEN" ]; then
+    if [ -n "$CATLEDGER_TOOL_SERVER_BASEURL" ] && [ -n "$CATLEDGER_TOOL_TOKEN" ]; then
         return 0
     fi
 
@@ -603,25 +603,25 @@ load_env_from_paths() {
     parent_dir="$(dirname "$current_dir")"
     home_dir="$HOME"
 
-    if [ -z "$EBKTOOL_SERVER_BASEURL" ] || [ -z "$EBKTOOL_TOKEN" ]; then
+    if [ -z "$CATLEDGER_TOOL_SERVER_BASEURL" ] || [ -z "$CATLEDGER_TOOL_TOKEN" ]; then
         if load_env_file "$current_dir/.env"; then
-            if [ -n "$EBKTOOL_SERVER_BASEURL" ] && [ -n "$EBKTOOL_TOKEN" ]; then
+            if [ -n "$CATLEDGER_TOOL_SERVER_BASEURL" ] && [ -n "$CATLEDGER_TOOL_TOKEN" ]; then
                 return 0
             fi
         fi
     fi
 
-    if [ -z "$EBKTOOL_SERVER_BASEURL" ] || [ -z "$EBKTOOL_TOKEN" ]; then
+    if [ -z "$CATLEDGER_TOOL_SERVER_BASEURL" ] || [ -z "$CATLEDGER_TOOL_TOKEN" ]; then
         if load_env_file "$parent_dir/.env"; then
-            if [ -n "$EBKTOOL_SERVER_BASEURL" ] && [ -n "$EBKTOOL_TOKEN" ]; then
+            if [ -n "$CATLEDGER_TOOL_SERVER_BASEURL" ] && [ -n "$CATLEDGER_TOOL_TOKEN" ]; then
                 return 0
             fi
         fi
     fi
 
-    if [ -z "$EBKTOOL_SERVER_BASEURL" ] || [ -z "$EBKTOOL_TOKEN" ]; then
+    if [ -z "$CATLEDGER_TOOL_SERVER_BASEURL" ] || [ -z "$CATLEDGER_TOOL_TOKEN" ]; then
         if load_env_file "$home_dir/.env"; then
-            if [ -n "$EBKTOOL_SERVER_BASEURL" ] && [ -n "$EBKTOOL_TOKEN" ]; then
+            if [ -n "$CATLEDGER_TOOL_SERVER_BASEURL" ] && [ -n "$CATLEDGER_TOOL_TOKEN" ]; then
                 return 0
             fi
         fi
@@ -813,16 +813,16 @@ show_help() {
     example_timezone_offset="$(get_example_timezone_offset)"
 
     cat <<-EOF
-ezBookkeeping API Tools
+CatLedger API Tools
 
-A command-line tool for calling ezBookkeeping APIs
+A command-line tool for calling CatLedger APIs
 
 Usage:
-    ebktools.sh [--tz-name <name>] [--tz-offset <offset>] [--raw-response] <command> [command-options]
+    catledger-tools.sh [--tz-name <name>] [--tz-offset <offset>] [--raw-response] <command> [command-options]
 
 Environment Variables (Required):
-    EBKTOOL_SERVER_BASEURL      ezBookkeeping server base URL (e.g., http://localhost:8080)
-    EBKTOOL_TOKEN               ezBookkeeping API token
+    CATLEDGER_TOOL_SERVER_BASEURL      CatLedger server base URL (e.g., http://localhost:8080)
+    CATLEDGER_TOOL_TOKEN               CatLedger API token
 
     You can also set the above environment variables in a '.env' file located in the current directory, parent directory or home directory.
 
@@ -838,23 +838,23 @@ Commands:
 
 Examples:
     # Set environment variables
-    export EBKTOOL_SERVER_BASEURL="http://localhost:8080"
-    export EBKTOOL_TOKEN="YOUR_TOKEN"
+    export CATLEDGER_TOOL_SERVER_BASEURL="http://localhost:8080"
+    export CATLEDGER_TOOL_TOKEN="YOUR_TOKEN"
 
     # List all available commands
-    ebktools.sh list
+    catledger-tools.sh list
 
     # Show help for a specific command
-    ebktools.sh help server-version
+    catledger-tools.sh help server-version
 
     # Call server-version API
-    ebktools.sh server-version
+    catledger-tools.sh server-version
 
     # Call API with timezone name
-    ebktools.sh --tz-name ${example_timezone_name} transactions-list --count 10
+    catledger-tools.sh --tz-name ${example_timezone_name} transactions-list --count 10
 
     # Call API with timezone offset
-    ebktools.sh --tz-offset ${example_timezone_offset} transactions-list --count 10
+    catledger-tools.sh --tz-offset ${example_timezone_offset} transactions-list --count 10
 EOF
 }
 
@@ -867,7 +867,7 @@ list_commands() {
     done
 
     echo ""
-    echo "Use 'ebktools.sh help <api-command>' to see detailed information about an API command."
+    echo "Use 'catledger-tools.sh help <api-command>' to see detailed information about an API command."
 }
 
 show_command_help() {
@@ -877,7 +877,7 @@ show_command_help() {
     if [ -z "$config" ]; then
         echo_red "Error: Unknown command '$command_name'"
         echo ""
-        echo "Use 'ebktools.sh list' to see all available commands."
+        echo "Use 'catledger-tools.sh list' to see all available commands."
         exit 1
     fi
 
@@ -929,13 +929,13 @@ show_command_help() {
     current_tz_name="$(get_system_timezone_name)"
     current_tz_offset="$(get_system_timezone_offset)"
     if [ "$requires_timezone" = "true" ] && [ -n "$current_tz_name" ]; then
-        echo "  ebktools.sh --tz-name ${current_tz_name} $name"
+        echo "  catledger-tools.sh --tz-name ${current_tz_name} $name"
     elif [ "$requires_timezone" = "true" ] && [ -n "$current_tz_offset" ]; then
-        echo "  ebktools.sh --tz-offset ${current_tz_offset} $name"
+        echo "  catledger-tools.sh --tz-offset ${current_tz_offset} $name"
     elif [ "$requires_timezone" = "true" ]; then
-        echo "  ebktools.sh --tz-name <name> $name"
+        echo "  catledger-tools.sh --tz-name <name> $name"
     else
-        echo "  ebktools.sh $name"
+        echo "  catledger-tools.sh $name"
     fi
 }
 
@@ -948,21 +948,21 @@ call_api() {
     if [ -z "$config" ]; then
         echo_red "Error: Unknown command '$command_name'"
         echo ""
-        echo "Use 'ebktools.sh list' to see all available commands."
+        echo "Use 'catledger-tools.sh list' to see all available commands."
         exit 1
     fi
 
-    serverBaseUrl="$EBKTOOL_SERVER_BASEURL"
-    authToken="$EBKTOOL_TOKEN"
+    serverBaseUrl="$CATLEDGER_TOOL_SERVER_BASEURL"
+    authToken="$CATLEDGER_TOOL_TOKEN"
 
     if [ -z "$serverBaseUrl" ]; then
-        echo_red "Error: Environment variable 'EBKTOOL_SERVER_BASEURL' is not set."
-        echo "Please set it to your ezBookkeeping server base URL (e.g., http://localhost:8080)"
+        echo_red "Error: Environment variable 'CATLEDGER_TOOL_SERVER_BASEURL' is not set."
+        echo "Please set it to your CatLedger server base URL (e.g., http://localhost:8080)"
         exit 1
     fi
 
     if [ -z "$authToken" ]; then
-        echo_red "Error: Environment variable 'EBKTOOL_TOKEN' is not set."
+        echo_red "Error: Environment variable 'CATLEDGER_TOOL_TOKEN' is not set."
         echo "Please set it to your API token."
         exit 1
     fi
@@ -985,8 +985,8 @@ call_api() {
         echo "Please provide either '--tz-name' or '--tz-offset' parameter."
         echo ""
         echo "Examples:"
-        echo "  ebktools.sh --tz-name <name> $command_name ..."
-        echo "  ebktools.sh --tz-offset <offset> $command_name ..."
+        echo "  catledger-tools.sh --tz-name <name> $command_name ..."
+        echo "  catledger-tools.sh --tz-offset <offset> $command_name ..."
         exit 1
     fi
 

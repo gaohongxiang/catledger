@@ -32,19 +32,19 @@ runs:
     - name: Package windows-x64 package
       shell: pwsh
       run: |
-        New-Item -ItemType Directory -Path "ezbookkeeping"
-        New-Item -ItemType Directory -Path "ezbookkeeping\data"
-        New-Item -ItemType Directory -Path "ezbookkeeping\storage"
-        New-Item -ItemType Directory -Path "ezbookkeeping\log"
-        Copy-Item ${{ runner.temp }}\backend\ezbookkeeping.exe -Destination ezbookkeeping\
-        Copy-Item -Recurse -Force package\public -Destination ezbookkeeping\public
-        Copy-Item -Recurse -Force conf -Destination ezbookkeeping\conf
-        Copy-Item -Recurse -Force templates -Destination ezbookkeeping\templates
-        Copy-Item .\LICENSE -Destination ezbookkeeping\
-        Push-Location ezbookkeeping
+        New-Item -ItemType Directory -Path "catledger"
+        New-Item -ItemType Directory -Path "catledger\data"
+        New-Item -ItemType Directory -Path "catledger\storage"
+        New-Item -ItemType Directory -Path "catledger\log"
+        Copy-Item ${{ runner.temp }}\backend\catledger.exe -Destination catledger\
+        Copy-Item -Recurse -Force package\public -Destination catledger\public
+        Copy-Item -Recurse -Force conf -Destination catledger\conf
+        Copy-Item -Recurse -Force templates -Destination catledger\templates
+        Copy-Item .\LICENSE -Destination catledger\
+        Push-Location catledger
         7z a -r -tzip -mx9 ..\${{ inputs.package-file-name-prefix }}-windows-x64.zip *
         Pop-Location
-        Remove-Item -Recurse -Force ezbookkeeping
+        Remove-Item -Recurse -Force catledger
 
     - name: Upload windows artifact
       uses: actions/upload-artifact@v7

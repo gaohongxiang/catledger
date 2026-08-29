@@ -3,7 +3,7 @@ package loans
 import (
 	"sort"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 // GetSettlementUndoImpact 以原 apply action 为单位返回聚合影响；正式交易漂移只报告，关系撤销不会删除交易。

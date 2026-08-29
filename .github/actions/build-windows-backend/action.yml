@@ -75,5 +75,5 @@ runs:
       uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.backend-artifact-name-prefix }}-windows-x64
-        path: ezbookkeeping.exe
+        path: catledger.exe
         if-no-files-found: error

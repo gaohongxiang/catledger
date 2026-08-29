@@ -1,4 +1,4 @@
-module github.com/mayswind/ezbookkeeping
+module github.com/gaohongxiang/catledger
 
 go 1.26.0
 

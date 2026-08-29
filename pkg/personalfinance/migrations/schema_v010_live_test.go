@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 // TestSchemaV010LiveDatabaseUpgrade exercises the real datastore drivers and
@@ -28,9 +28,9 @@ func TestSchemaV010LiveDatabaseUpgrade(t *testing.T) {
 	config := &settings.DatabaseConfig{
 		DatabaseType:          databaseType,
 		DatabaseHost:          liveDatabaseHost(databaseType),
-		DatabaseName:          envOrDefault("PF_LIVE_DB_NAME", "ezbookkeeping_pf_test"),
+		DatabaseName:          envOrDefault("PF_LIVE_DB_NAME", "catledger_pf_test"),
 		DatabaseUser:          envOrDefault("PF_LIVE_DB_USER", defaultLiveDatabaseUser(databaseType)),
-		DatabasePassword:      envOrDefault("PF_LIVE_DB_PASSWORD", "ezbookkeeping"),
+		DatabasePassword:      envOrDefault("PF_LIVE_DB_PASSWORD", "catledger"),
 		DatabaseSSLMode:       envOrDefault("PF_LIVE_DB_SSL_MODE", "disable"),
 		MaxIdleConnection:     1,
 		MaxOpenConnection:     4,

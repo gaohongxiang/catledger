@@ -1,10 +1,10 @@
 function getServerSetting(key: string): string | number | boolean | Record<string, string> | undefined | null {
-    const settings = window.EZBOOKKEEPING_SERVER_SETTINGS || {};
+    const settings = window.CATLEDGER_SERVER_SETTINGS || {};
     return settings[key];
 }
 
 export function getStringifiedServerSetting(): string {
-    return JSON.stringify(window.EZBOOKKEEPING_SERVER_SETTINGS, null, 2);
+    return JSON.stringify(window.CATLEDGER_SERVER_SETTINGS, null, 2);
 }
 
 export function isInternalAuthEnabled(): boolean {

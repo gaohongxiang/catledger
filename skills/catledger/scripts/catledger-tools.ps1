@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 
-# ezBookkeeping API Tools
-# A command-line tool for calling ezBookkeeping APIs
+# CatLedger API Tools
+# A command-line tool for calling CatLedger APIs
 
 param(
     [Parameter(Position=0)]
@@ -20,8 +20,8 @@ param(
     [string[]]$CommandArgs
 )
 
-$script:EBKTOOL_SERVER_BASEURL = $env:EBKTOOL_SERVER_BASEURL
-$script:EBKTOOL_TOKEN = $env:EBKTOOL_TOKEN
+$script:CATLEDGER_TOOL_SERVER_BASEURL = $env:CATLEDGER_TOOL_SERVER_BASEURL
+$script:CATLEDGER_TOOL_TOKEN = $env:CATLEDGER_TOOL_TOKEN
 
 # API Configuration Structure
 $API_CONFIGS = @(
@@ -538,7 +538,7 @@ $API_CONFIGS = @(
     }
     @{
         Name = "server-version"
-        Description = "Retrieve ezBookkeeping server version information"
+        Description = "Retrieve CatLedger server version information"
         Method = "GET"
         Path = "systems/version.json"
         RequiresTimezone = $false
@@ -731,7 +731,7 @@ function Import-DotEnvFile {
                     $value = $matches[1]
                 }
 
-                if ($key -eq 'EBKTOOL_SERVER_BASEURL' -or $key -eq 'EBKTOOL_TOKEN') {
+                if ($key -eq 'CATLEDGER_TOOL_SERVER_BASEURL' -or $key -eq 'CATLEDGER_TOOL_TOKEN') {
                     Set-Variable -Name $key -Value $value -Scope Script -Force
                 }
             }
@@ -743,7 +743,7 @@ function Import-DotEnvFile {
 }
 
 function Initialize-EnvironmentVariables {
-    if ($script:EBKTOOL_SERVER_BASEURL -and $script:EBKTOOL_TOKEN) {
+    if ($script:CATLEDGER_TOOL_SERVER_BASEURL -and $script:CATLEDGER_TOOL_TOKEN) {
         return
     }
 
@@ -755,31 +755,31 @@ function Initialize-EnvironmentVariables {
         $env:HOME
     }
 
-    if (-not $script:EBKTOOL_SERVER_BASEURL -or -not $script:EBKTOOL_TOKEN) {
+    if (-not $script:CATLEDGER_TOOL_SERVER_BASEURL -or -not $script:CATLEDGER_TOOL_TOKEN) {
         $envPath = Join-Path -Path $currentDir -ChildPath '.env'
         if (Import-DotEnvFile -Path $envPath) {
-            if ($script:EBKTOOL_SERVER_BASEURL -and $script:EBKTOOL_TOKEN) {
+            if ($script:CATLEDGER_TOOL_SERVER_BASEURL -and $script:CATLEDGER_TOOL_TOKEN) {
                 return
             }
         }
     }
 
-    if (-not $script:EBKTOOL_SERVER_BASEURL -or -not $script:EBKTOOL_TOKEN) {
+    if (-not $script:CATLEDGER_TOOL_SERVER_BASEURL -or -not $script:CATLEDGER_TOOL_TOKEN) {
         if ($parentDir) {
             $envPath = Join-Path -Path $parentDir -ChildPath '.env'
             if (Import-DotEnvFile -Path $envPath) {
-                if ($script:EBKTOOL_SERVER_BASEURL -and $script:EBKTOOL_TOKEN) {
+                if ($script:CATLEDGER_TOOL_SERVER_BASEURL -and $script:CATLEDGER_TOOL_TOKEN) {
                     return
                 }
             }
         }
     }
 
-    if (-not $script:EBKTOOL_SERVER_BASEURL -or -not $script:EBKTOOL_TOKEN) {
+    if (-not $script:CATLEDGER_TOOL_SERVER_BASEURL -or -not $script:CATLEDGER_TOOL_TOKEN) {
         if ($homeDir) {
             $envPath = Join-Path -Path $homeDir -ChildPath '.env'
             if (Import-DotEnvFile -Path $envPath) {
-                if ($script:EBKTOOL_SERVER_BASEURL -and $script:EBKTOOL_TOKEN) {
+                if ($script:CATLEDGER_TOOL_SERVER_BASEURL -and $script:CATLEDGER_TOOL_TOKEN) {
                     return
                 }
             }
@@ -1162,16 +1162,16 @@ function Show-Help {
     $exampleTimezoneName = Get-ExampleTimezoneName
     $exampleTimezoneOffset = Get-ExampleTimezoneOffset
 
-    Write-Host "ezBookkeeping API Tools"
+    Write-Host "CatLedger API Tools"
     Write-Host ""
-    Write-Host "A command-line tool for calling ezBookkeeping APIs"
+    Write-Host "A command-line tool for calling CatLedger APIs"
     Write-Host ""
     Write-Host "Usage:"
-    Write-Host "    ebktools.ps1 [-tzName <name>] [-tzOffset <offset>] [-rawResponse] <command> [command-options]"
+    Write-Host "    catledger-tools.ps1 [-tzName <name>] [-tzOffset <offset>] [-rawResponse] <command> [command-options]"
     Write-Host ""
     Write-Host "Environment Variables (Required):"
-    Write-Host "    EBKTOOL_SERVER_BASEURL      ezBookkeeping server base URL (e.g., http://localhost:8080)"
-    Write-Host "    EBKTOOL_TOKEN               ezBookkeeping API token"
+    Write-Host "    CATLEDGER_TOOL_SERVER_BASEURL      CatLedger server base URL (e.g., http://localhost:8080)"
+    Write-Host "    CATLEDGER_TOOL_TOKEN               CatLedger API token"
     Write-Host ""
     Write-Host "    You can also set the above environment variables in a '.env' file located in the current directory, parent directory or home directory."
     Write-Host ""
@@ -1187,23 +1187,23 @@ function Show-Help {
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "    # Set environment variables"
-    Write-Host "    `$env:EBKTOOL_SERVER_BASEURL = 'http://localhost:8080'"
-    Write-Host "    `$env:EBKTOOL_TOKEN = 'YOUR_TOKEN'"
+    Write-Host "    `$env:CATLEDGER_TOOL_SERVER_BASEURL = 'http://localhost:8080'"
+    Write-Host "    `$env:CATLEDGER_TOOL_TOKEN = 'YOUR_TOKEN'"
     Write-Host ""
     Write-Host "    # List all available commands"
-    Write-Host "    ebktools.ps1 list"
+    Write-Host "    catledger-tools.ps1 list"
     Write-Host ""
     Write-Host "    # Show help for a specific command"
-    Write-Host "    ebktools.ps1 help server-version"
+    Write-Host "    catledger-tools.ps1 help server-version"
     Write-Host ""
     Write-Host "    # Call server-version API"
-    Write-Host "    ebktools.ps1 server-version"
+    Write-Host "    catledger-tools.ps1 server-version"
     Write-Host ""
     Write-Host "    # Call API with timezone name"
-    Write-Host "    ebktools.ps1 -tzName $exampleTimezoneName transactions-list -count 10"
+    Write-Host "    catledger-tools.ps1 -tzName $exampleTimezoneName transactions-list -count 10"
     Write-Host ""
     Write-Host "    # Call API with timezone offset"
-    Write-Host "    ebktools.ps1 -tzOffset $exampleTimezoneOffset transactions-list -count 10"
+    Write-Host "    catledger-tools.ps1 -tzOffset $exampleTimezoneOffset transactions-list -count 10"
 }
 
 function Show-CommandList {
@@ -1216,7 +1216,7 @@ function Show-CommandList {
     }
 
     Write-Host ""
-    Write-Host "Use 'ebktools.ps1 help <api-command>' to see detailed information about an API command."
+    Write-Host "Use 'catledger-tools.ps1 help <api-command>' to see detailed information about an API command."
 }
 
 function Show-CommandHelp {
@@ -1227,7 +1227,7 @@ function Show-CommandHelp {
     if (-not $config) {
         Write-Red "Error: Unknown command '$commandName'"
         Write-Host ""
-        Write-Host "Use 'ebktools.ps1 list' to see all available commands."
+        Write-Host "Use 'catledger-tools.ps1 list' to see all available commands."
         exit 1
     }
 
@@ -1268,13 +1268,13 @@ function Show-CommandHelp {
     $currentTzName = Get-SystemTimezoneName
     $currentTzOffset = Get-SystemTimezoneOffset
     if ($config.RequiresTimezone -and $null -ne $currentTzName) {
-        Write-Host "  ebktools.ps1 -tzName $currentTzName $($config.Name)"
+        Write-Host "  catledger-tools.ps1 -tzName $currentTzName $($config.Name)"
     } elseif ($config.RequiresTimezone -and $null -ne $currentTzOffset) {
-        Write-Host "  ebktools.ps1 -tzOffset $currentTzOffset $($config.Name)"
+        Write-Host "  catledger-tools.ps1 -tzOffset $currentTzOffset $($config.Name)"
     } elseif ($config.RequiresTimezone) {
-        Write-Host "  ebktools.ps1 -tzName <name> $($config.Name)"
+        Write-Host "  catledger-tools.ps1 -tzName <name> $($config.Name)"
     } else {
-        Write-Host "  ebktools.ps1 $($config.Name)"
+        Write-Host "  catledger-tools.ps1 $($config.Name)"
     }
 }
 
@@ -1370,21 +1370,21 @@ function Invoke-Api {
     if (-not $config) {
         Write-Red "Error: Unknown command '$commandName'"
         Write-Host ""
-        Write-Host "Use 'ebktools.ps1 list' to see all available commands."
+        Write-Host "Use 'catledger-tools.ps1 list' to see all available commands."
         exit 1
     }
 
-    $serverBaseUrl = $script:EBKTOOL_SERVER_BASEURL
-    $authToken = $script:EBKTOOL_TOKEN
+    $serverBaseUrl = $script:CATLEDGER_TOOL_SERVER_BASEURL
+    $authToken = $script:CATLEDGER_TOOL_TOKEN
 
     if (-not $serverBaseUrl) {
-        Write-Red "Error: Environment variable 'EBKTOOL_SERVER_BASEURL' is not set."
-        Write-Host "Please set it to your ezBookkeeping server base URL (e.g., http://localhost:8080)"
+        Write-Red "Error: Environment variable 'CATLEDGER_TOOL_SERVER_BASEURL' is not set."
+        Write-Host "Please set it to your CatLedger server base URL (e.g., http://localhost:8080)"
         exit 1
     }
 
     if (-not $authToken) {
-        Write-Red "Error: Environment variable 'EBKTOOL_TOKEN' is not set."
+        Write-Red "Error: Environment variable 'CATLEDGER_TOOL_TOKEN' is not set."
         Write-Host "Please set it to your API token."
         exit 1
     }
@@ -1406,8 +1406,8 @@ function Invoke-Api {
         Write-Host "Please provide either '-tzName' or '-tzOffset' parameter."
         Write-Host ""
         Write-Host "Examples:"
-        Write-Host "  ebktools.ps1 -tzName <name> $commandName ..."
-        Write-Host "  ebktools.ps1 -tzOffset <offset> $commandName ..."
+        Write-Host "  catledger-tools.ps1 -tzName <name> $commandName ..."
+        Write-Host "  catledger-tools.ps1 -tzOffset <offset> $commandName ..."
         exit 1
     }
 

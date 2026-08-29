@@ -16,7 +16,7 @@ import (
 	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/transform"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 var wechatEvidenceTestOptions = importing.ResolvedParseOptions{

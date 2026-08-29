@@ -1,6 +1,6 @@
 package installments
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import "github.com/gaohongxiang/catledger/pkg/core"
 
 // UserDataModule 覆盖分期候选用户表。
 func UserDataModule() core.UserDataModule {

@@ -5,15 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/legacydata"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/cardcycle"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/legacydata"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/migrations"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/reconciliation"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 func TestClearUserDataRemovesReconLoansAndV006WithoutCrossingUID(t *testing.T) {

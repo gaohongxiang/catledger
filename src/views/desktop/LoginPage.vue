@@ -23,8 +23,8 @@
                 <div class="d-flex align-center justify-center h-100">
                     <v-card variant="flat" class="w-100 mt-0 px-4 pt-12" max-width="500">
                         <v-card-text class="py-0">
-                            <div class="text-headline-small mb-2">{{ tt('Welcome to ezBookkeeping') }}</div>
-                            <div class="auth-message text-body-large mb-0" v-if="isInternalAuthEnabled()">{{ tt('Please log in with your ezBookkeeping account') }}</div>
+                            <div class="text-headline-small mb-2">{{ tt('Welcome to CatLedger') }}</div>
+                            <div class="auth-message text-body-large mb-0" v-if="isInternalAuthEnabled()">{{ tt('Please log in with your CatLedger account') }}</div>
                             <div class="auth-message text-body-large mt-1 mb-0" v-if="tips">{{ tips }}</div>
                         </v-card-text>
 
@@ -154,7 +154,7 @@
 
                             <div class="auth-powered-by text-center">
                                 <span>Powered by </span>
-                                <a href="https://github.com/mayswind/ezbookkeeping" target="_blank">ezBookkeeping</a>&nbsp;<span>{{ version }}</span>
+                                <a href="https://github.com/gaohongxiang/catledger" target="_blank">CatLedger</a>&nbsp;<span>{{ version }}</span>
                             </div>
                         </v-card-text>
                     </v-card>

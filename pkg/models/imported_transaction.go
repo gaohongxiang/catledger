@@ -1,6 +1,6 @@
 package models
 
-import "github.com/mayswind/ezbookkeeping/pkg/utils"
+import "github.com/gaohongxiang/catledger/pkg/utils"
 
 // ImportTransaction represents the imported transaction data
 type ImportTransaction struct {

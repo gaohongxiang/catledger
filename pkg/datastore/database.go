@@ -8,8 +8,8 @@ import (
 	"xorm.io/xorm"
 	"xorm.io/xorm/schemas"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 // Database represents a database instance
@@ -130,7 +130,7 @@ func (db *Database) NewSession(c core.Context) *xorm.Session {
 }
 
 // NewSessionWithContext starts a session with a standard cancellable context.
-// It is intended for infrastructure operations that do not have an ezBookkeeping request context.
+// It is intended for infrastructure operations that do not have a CatLedger request context.
 func (db *Database) NewSessionWithContext(c context.Context) *xorm.Session {
 	if c == nil {
 		c = context.Background()

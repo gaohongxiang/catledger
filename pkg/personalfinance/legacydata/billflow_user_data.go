@@ -1,6 +1,6 @@
 package legacydata
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import "github.com/gaohongxiang/catledger/pkg/core"
 
 // BillflowUserDataModule 只登记历史表，保证用户数据计数与删除不会遗漏。
 func BillflowUserDataModule() core.UserDataModule {

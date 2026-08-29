@@ -3,8 +3,8 @@ package cardcycle
 import (
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 func (s *Service) RecordCoverage(c core.Context, request RecordCoverageRequest) (*CoverageIntervalView, error) {

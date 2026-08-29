@@ -1,6 +1,6 @@
 package importing
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import "github.com/gaohongxiang/catledger/pkg/core"
 
 // UserDataModule 覆盖 importing 用户表；对象删除由装配点注入。
 func UserDataModule(deleteObjects func(c core.Context, uid int64) error) core.UserDataModule {

@@ -3,7 +3,7 @@ package organizer
 import (
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 func TestIndexPaymentAccountMappingsKeepsCreditCardFamilyAmbiguous(t *testing.T) {

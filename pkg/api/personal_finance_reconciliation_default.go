@@ -1,10 +1,10 @@
 package api
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
-	"github.com/mayswind/ezbookkeeping/pkg/services"
-	"github.com/mayswind/ezbookkeeping/pkg/uuid"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/reconciliation"
+	"github.com/gaohongxiang/catledger/pkg/services"
+	"github.com/gaohongxiang/catledger/pkg/uuid"
 )
 
 // PersonalFinanceReconciliation 是 Web 路由使用的默认对账 API 实例。

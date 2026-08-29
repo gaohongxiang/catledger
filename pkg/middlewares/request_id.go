@@ -1,9 +1,9 @@
 package middlewares
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/requestid"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/requestid"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 const requestIdHeader = "X-Request-ID"

@@ -3,7 +3,7 @@ package organizer
 import (
 	"fmt"
 
-	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/models"
 )
 
 func (tx *RepositoryTransaction) FindRelationById(relationId int64) (*EconomicEventRelation, error) {

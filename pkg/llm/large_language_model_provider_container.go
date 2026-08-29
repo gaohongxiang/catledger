@@ -1,16 +1,16 @@
 package llm
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/data"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/provider"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/provider/anthropic"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/provider/googleai"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/provider/lmstudio"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/provider/ollama"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/provider/openai"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/llm/data"
+	"github.com/gaohongxiang/catledger/pkg/llm/provider"
+	"github.com/gaohongxiang/catledger/pkg/llm/provider/anthropic"
+	"github.com/gaohongxiang/catledger/pkg/llm/provider/googleai"
+	"github.com/gaohongxiang/catledger/pkg/llm/provider/lmstudio"
+	"github.com/gaohongxiang/catledger/pkg/llm/provider/ollama"
+	"github.com/gaohongxiang/catledger/pkg/llm/provider/openai"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 // LargeLanguageModelProviderContainer contains the current large language model provider

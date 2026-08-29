@@ -6,7 +6,7 @@ import (
 
 	"xorm.io/xorm/log"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 func TestPrivacyXOrmContextDisablesSQLLogging(t *testing.T) {

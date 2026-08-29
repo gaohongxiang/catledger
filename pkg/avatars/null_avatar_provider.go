@@ -1,7 +1,7 @@
 package avatars
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/models"
 )
 
 // NullAvatarProvider represents the null avatar provider

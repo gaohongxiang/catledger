@@ -1,6 +1,6 @@
 package locales
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import "github.com/gaohongxiang/catledger/pkg/core"
 
 // GetLocaleTextItems returns the locale text items for the specified locale
 func GetLocaleTextItems(locale string) *LocaleTextItems {

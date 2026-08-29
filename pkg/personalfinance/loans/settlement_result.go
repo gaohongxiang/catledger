@@ -3,7 +3,7 @@ package loans
 import (
 	"sort"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 func (s *Service) preflightSettlementReplay(c core.Context, uid int64, contractId int64, expectedVersion int64, actionType ActionType,

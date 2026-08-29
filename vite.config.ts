@@ -1,4 +1,3 @@
-import fs from 'fs';
 import { resolve } from 'path';
 
 import { type UserConfig, type Plugin, defineConfig } from 'vite'
@@ -9,8 +8,6 @@ import Checker from 'vite-plugin-checker';
 import git from 'git-rev-sync';
 
 import packageFile from './package.json';
-import contributorsFile from './contributors.json';
-import thirdPartyLicenseFile from './third-party-dependencies.json';
 
 const SRC_DIR = resolve(__dirname, './src');
 const PUBLIC_DIR = resolve(__dirname, './public');
@@ -76,7 +73,6 @@ function injectFramework7CssFile({ htmlFileName, placeHolders }: { htmlFileName:
 }
 
 export default defineConfig(() => {
-    const licenseContent = fs.readFileSync('./LICENSE', { encoding: 'utf-8' });
     const buildUnixTime = process.env['buildUnixTime'] || '';
     const buildCommitHash = getBuildCommitHash();
 
@@ -85,13 +81,10 @@ export default defineConfig(() => {
         publicDir: PUBLIC_DIR,
         base: './',
         define: {
-            __EZBOOKKEEPING_IS_PRODUCTION__: process.env['NODE_ENV'] === 'production',
-            __EZBOOKKEEPING_VERSION__: JSON.stringify(packageFile.version),
-            __EZBOOKKEEPING_BUILD_UNIX_TIME__: JSON.stringify(buildUnixTime),
-            __EZBOOKKEEPING_BUILD_COMMIT_HASH__: JSON.stringify(buildCommitHash),
-            __EZBOOKKEEPING_CONTRIBUTORS__: JSON.stringify(contributorsFile),
-            __EZBOOKKEEPING_LICENSE__: JSON.stringify(licenseContent),
-            __EZBOOKKEEPING_THIRD_PARTY_LICENSES__: JSON.stringify(thirdPartyLicenseFile)
+            __CATLEDGER_IS_PRODUCTION__: process.env['NODE_ENV'] === 'production',
+            __CATLEDGER_VERSION__: JSON.stringify(packageFile.version),
+            __CATLEDGER_BUILD_UNIX_TIME__: JSON.stringify(buildUnixTime),
+            __CATLEDGER_BUILD_COMMIT_HASH__: JSON.stringify(buildCommitHash)
         },
         plugins: [
             vue({

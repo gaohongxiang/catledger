@@ -5,16 +5,16 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/mayswind/ezbookkeeping/pkg/auth/oauth2/data"
-	"github.com/mayswind/ezbookkeeping/pkg/auth/oauth2/provider"
-	"github.com/mayswind/ezbookkeeping/pkg/auth/oauth2/provider/gitea"
-	"github.com/mayswind/ezbookkeeping/pkg/auth/oauth2/provider/github"
-	"github.com/mayswind/ezbookkeeping/pkg/auth/oauth2/provider/nextcloud"
-	"github.com/mayswind/ezbookkeeping/pkg/auth/oauth2/provider/oidc"
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/httpclient"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/auth/oauth2/data"
+	"github.com/gaohongxiang/catledger/pkg/auth/oauth2/provider"
+	"github.com/gaohongxiang/catledger/pkg/auth/oauth2/provider/gitea"
+	"github.com/gaohongxiang/catledger/pkg/auth/oauth2/provider/github"
+	"github.com/gaohongxiang/catledger/pkg/auth/oauth2/provider/nextcloud"
+	"github.com/gaohongxiang/catledger/pkg/auth/oauth2/provider/oidc"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/httpclient"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 // OAuth2Container contains the current OAuth 2.0 authentication provider

@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans"
 )
 
 func (s *Service) deriveDebt(c core.Context, uid int64, asOfDate string, asOf time.Time) (*DebtSummary, int64, bool, error) {

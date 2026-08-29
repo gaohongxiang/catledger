@@ -3,8 +3,8 @@ package installments
 import (
 	"strconv"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 type ingestGroup struct {

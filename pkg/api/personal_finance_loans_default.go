@@ -3,10 +3,10 @@ package api
 import (
 	"errors"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
-	"github.com/mayswind/ezbookkeeping/pkg/services"
-	"github.com/mayswind/ezbookkeeping/pkg/uuid"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans"
+	"github.com/gaohongxiang/catledger/pkg/services"
+	"github.com/gaohongxiang/catledger/pkg/uuid"
 )
 
 // PersonalFinanceLoans 是 Web 路由使用的完整默认贷款 API；只允许在 Web 启动期构造一次。

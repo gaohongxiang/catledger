@@ -3,7 +3,7 @@ package converters
 import (
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 func TestSourceFundsProjectorDoesNotTurnAlipayIncomeIntoInternalTransfer(t *testing.T) {

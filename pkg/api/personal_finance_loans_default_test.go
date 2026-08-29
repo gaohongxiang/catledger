@@ -3,8 +3,8 @@ package api
 import (
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/services"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/services"
 )
 
 func TestNewPersonalFinanceLoansApiWiresRequiredProductionDependencies(t *testing.T) {

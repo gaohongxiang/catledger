@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/migrations"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 func TestRepositorySQLiteUIDIsolationPaginationCASAndAggregation(t *testing.T) {

@@ -3,7 +3,7 @@ package models
 import (
 	"encoding/json"
 
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/utils"
 )
 
 // LevelOneAccountParentId represents the parent id of level-one account

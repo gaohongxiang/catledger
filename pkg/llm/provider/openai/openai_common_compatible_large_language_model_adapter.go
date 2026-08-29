@@ -7,14 +7,14 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/llm/data"
+	"github.com/gaohongxiang/catledger/pkg/llm/provider"
+	"github.com/gaohongxiang/catledger/pkg/llm/provider/common"
+	"github.com/gaohongxiang/catledger/pkg/log"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 	"github.com/invopop/jsonschema"
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/data"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/provider"
-	"github.com/mayswind/ezbookkeeping/pkg/llm/provider/common"
-	"github.com/mayswind/ezbookkeeping/pkg/log"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
 )
 
 // OpenAIChatCompletionsAPIProvider defines the structure of OpenAI chat completions API provider

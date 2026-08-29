@@ -1,10 +1,10 @@
 package validators
 
 import (
+	"github.com/gaohongxiang/catledger/pkg/models"
 	"github.com/go-playground/validator/v10"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
 
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/utils"
 )
 
 // ValidTransactionAmount returns whether the textual amount is within the

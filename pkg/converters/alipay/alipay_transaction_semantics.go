@@ -3,7 +3,7 @@ package alipay
 import (
 	"strings"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 type alipayProductAction uint8

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 // ApplySettlement 原子建立正式账本事件与贷款关系。账本、binding、allocation、action 和 contract CAS

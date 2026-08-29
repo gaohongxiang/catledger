@@ -1,6 +1,6 @@
 package cardcycle
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import "github.com/gaohongxiang/catledger/pkg/core"
 
 // UserDataModule 覆盖信用卡周期与余额核对用户表。
 func UserDataModule() core.UserDataModule {

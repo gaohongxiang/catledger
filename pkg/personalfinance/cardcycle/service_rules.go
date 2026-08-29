@@ -1,7 +1,7 @@
 package cardcycle
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 func (s *Service) SaveRule(c core.Context, request SaveRuleRequest) (*RuleView, error) {

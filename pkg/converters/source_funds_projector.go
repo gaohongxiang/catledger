@@ -1,9 +1,9 @@
 package converters
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/converters/alipay"
-	"github.com/mayswind/ezbookkeeping/pkg/converters/wechat"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/converters/alipay"
+	"github.com/gaohongxiang/catledger/pkg/converters/wechat"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 // NewSourceFundsProjector 返回来源资金语义的统一注册入口。

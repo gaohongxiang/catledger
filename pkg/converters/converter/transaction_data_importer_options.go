@@ -3,7 +3,7 @@ package converter
 import (
 	"strings"
 
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 // TransactionDataImporterOptions defines the options for transaction data importer

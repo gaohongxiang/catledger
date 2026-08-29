@@ -1,6 +1,6 @@
 package installments
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import "github.com/gaohongxiang/catledger/pkg/core"
 
 func (s *Service) ListCandidates(c core.Context, uid int64, status CandidateStatus, cursor *CandidateCursor, limit int) (*CandidateListResult, error) {
 	if s == nil || s.repository == nil || uid < 1 || !isCandidateStatus(status) || !isValidPageLimit(limit) || !isValidCandidateCursor(cursor) {

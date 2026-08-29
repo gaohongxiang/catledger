@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/converters/alipay"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/converters/alipay"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 func TestDescriptorRequiresExplicitSelection(t *testing.T) {

@@ -14,8 +14,8 @@ import {
     DEFAULT_LOCALE_SETTINGS
 } from '@/core/setting.ts';
 
-const settingsLocalStorageKey: string = 'ebk_app_settings';
-const currentLanguageSessionStorageKey: string = 'ebk_current_language';
+const settingsLocalStorageKey: string = 'catledger_app_settings';
+const currentLanguageSessionStorageKey: string = 'catledger_current_language';
 
 function getStoredApplicationSettings(): BaseApplicationSetting {
     try {

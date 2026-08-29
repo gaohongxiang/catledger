@@ -3,7 +3,7 @@ package migrations
 import (
 	"context"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
 )
 
 func validateSchemaV012PreflightWithContext(c context.Context, db *datastore.Database) error {

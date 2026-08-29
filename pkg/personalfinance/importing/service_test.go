@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 func TestUploadImportFileIsDurableIdempotentAndIsolatedByUID(t *testing.T) {

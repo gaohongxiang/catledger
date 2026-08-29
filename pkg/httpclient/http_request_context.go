@@ -1,7 +1,7 @@
 package httpclient
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 const (

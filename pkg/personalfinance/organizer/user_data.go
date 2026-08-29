@@ -1,6 +1,6 @@
 package organizer
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import "github.com/gaohongxiang/catledger/pkg/core"
 
 // UserDataModule 覆盖新整理工作流的全部用户表。
 func UserDataModule() core.UserDataModule {

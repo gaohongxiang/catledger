@@ -3,7 +3,7 @@ package loans
 import (
 	"math"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 // ListDashboardAllocations 返回可信总览分类所需的最小活动分配事实。

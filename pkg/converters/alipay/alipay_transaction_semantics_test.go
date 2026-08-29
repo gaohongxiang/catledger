@@ -3,7 +3,7 @@ package alipay
 import (
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 func TestClassifyAlipayProductAction(t *testing.T) {

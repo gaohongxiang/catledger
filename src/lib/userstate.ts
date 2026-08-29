@@ -8,16 +8,16 @@ import { isString, isObject } from './common.ts';
 import { isEnableApplicationLock } from './settings.ts';
 import logger from './logger.ts';
 
-const appLockSecretBaseStringPrefix: string = 'EBK_LOCK_SECRET_';
+const appLockSecretBaseStringPrefix: string = 'CATLEDGER_LOCK_SECRET_';
 
-const tokenLocalStorageKey: string = 'ebk_user_token';
-const webauthnConfigLocalStorageKey: string = 'ebk_user_webauthn_config';
-const userInfoLocalStorageKey: string = 'ebk_user_info';
-const transactionDraftLocalStorageKey: string = 'ebk_user_draft_transaction';
+const tokenLocalStorageKey: string = 'catledger_user_token';
+const webauthnConfigLocalStorageKey: string = 'catledger_user_webauthn_config';
+const userInfoLocalStorageKey: string = 'catledger_user_info';
+const transactionDraftLocalStorageKey: string = 'catledger_user_draft_transaction';
 
-const tokenSessionStorageKey: string = 'ebk_user_session_token';
-const encryptedTokenSessionStorageKey: string = 'ebk_user_session_encrypted_token';
-const appLockStateSessionStorageKey: string = 'ebk_user_app_lock_state'; // { 'username': '', secret: '' }
+const tokenSessionStorageKey: string = 'catledger_user_session_token';
+const encryptedTokenSessionStorageKey: string = 'catledger_user_session_encrypted_token';
+const appLockStateSessionStorageKey: string = 'catledger_user_app_lock_state'; // { 'username': '', secret: '' }
 
 function getAppLockSecret(pinCode: string): string {
     const hashedPinCode = CryptoJS.SHA256(appLockSecretBaseStringPrefix + pinCode).toString();

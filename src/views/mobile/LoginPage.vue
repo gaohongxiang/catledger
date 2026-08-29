@@ -84,7 +84,7 @@
 
                 <div class="login-page-powered-by margin-top-half">
                     <span>Powered by</span>
-                    <f7-link @click="openExternalUrl('https://github.com/mayswind/ezbookkeeping')" target="_blank">ezBookkeeping</f7-link>
+                    <f7-link @click="openExternalUrl('https://github.com/gaohongxiang/catledger')" target="_blank">CatLedger</f7-link>
                     <span>{{ version }}</span>
                 </div>
             </f7-block-footer>
@@ -95,7 +95,7 @@
 
             <div class="login-page-powered-by margin-top-half">
                 <span>Powered by</span>
-                <f7-link @click="openExternalUrl('https://github.com/mayswind/ezbookkeeping')" target="_blank">ezBookkeeping</f7-link>
+                <f7-link @click="openExternalUrl('https://github.com/gaohongxiang/catledger')" target="_blank">CatLedger</f7-link>
                 <span>{{ version }}</span>
             </div>
         </f7-toolbar>

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"net"
 
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/errs"
 )
 
 // GetLocalIPAddressesString returns all local ip address, every ip split by comma

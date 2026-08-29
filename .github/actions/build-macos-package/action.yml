@@ -35,20 +35,20 @@ runs:
     - name: Package macOS-${{ inputs.architecture }} package
       shell: bash
       run: |
-        mkdir -p ezbookkeeping
-        mkdir -p ezbookkeeping/data
-        mkdir -p ezbookkeeping/storage
-        mkdir -p ezbookkeeping/log
-        cp ${{ runner.temp }}/backend/ezbookkeeping ezbookkeeping/
-        cp -R package/public ezbookkeeping/public
-        cp -R conf ezbookkeeping/conf
-        cp -R templates ezbookkeeping/templates
-        cp LICENSE ezbookkeeping/
-        cd ezbookkeeping
-        chmod +x ezbookkeeping
+        mkdir -p catledger
+        mkdir -p catledger/data
+        mkdir -p catledger/storage
+        mkdir -p catledger/log
+        cp ${{ runner.temp }}/backend/catledger catledger/
+        cp -R package/public catledger/public
+        cp -R conf catledger/conf
+        cp -R templates catledger/templates
+        cp LICENSE catledger/
+        cd catledger
+        chmod +x catledger
         tar -czf ${{ runner.temp }}/${{ inputs.package-file-name-prefix }}-macos-${{ inputs.architecture }}.tar.gz *
         cd ..
-        rm -rf ezbookkeeping
+        rm -rf catledger
 
     - name: Upload macOS-${{ inputs.architecture }} artifact
       uses: actions/upload-artifact@v7

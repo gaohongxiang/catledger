@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/organizer"
 )
 
 func TestCorrectionEngineSQLiteLearnsCategoryAliasesFromImmutableEvidence(t *testing.T) {

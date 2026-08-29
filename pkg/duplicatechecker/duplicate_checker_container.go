@@ -3,8 +3,8 @@ package duplicatechecker
 import (
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 // DuplicateCheckerContainer contains the current duplicate checker

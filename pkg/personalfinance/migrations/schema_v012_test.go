@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans"
 )
 
 func TestSchemaV012IdentityAndRuntimeModel(t *testing.T) {

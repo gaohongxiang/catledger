@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/dashboard"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/dashboard"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/organizer"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 func TestPersonalFinanceDashboardLedgerAdapterIsolatesUsersAndBoundsReads(t *testing.T) {

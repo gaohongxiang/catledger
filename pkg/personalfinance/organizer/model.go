@@ -1,6 +1,6 @@
 package organizer
 
-import "github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+import "github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 
 // FinanceUpdate 是用户一次多文件财务更新，也是默认核对和入账单位。
 type FinanceUpdate struct {

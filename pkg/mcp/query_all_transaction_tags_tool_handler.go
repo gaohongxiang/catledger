@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/log"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/log"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 // MCPAllQueryTransactionTagsResponse represents the response structure for querying transaction tags
@@ -26,7 +26,7 @@ func (h *mcpQueryAllTransactionTagsToolHandler) Name() string {
 
 // Description returns the description of the MCP tool
 func (h *mcpQueryAllTransactionTagsToolHandler) Description() string {
-	return "Query transaction tags for the current user in ezBookkeeping."
+	return "Query transaction tags for the current user in CatLedger."
 }
 
 // InputType returns the input type for the MCP tool request

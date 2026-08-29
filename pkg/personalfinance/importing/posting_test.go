@@ -3,7 +3,7 @@ package importing
 import (
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/models"
 )
 
 func TestNormalizePostingRequestDigestIgnoresCommandRowAndTagOrder(t *testing.T) {

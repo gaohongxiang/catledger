@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 func TestNewDefaultRequestIdGenerator_Http(t *testing.T) {
@@ -30,7 +30,7 @@ func TestNewDefaultRequestIdGenerator_Http(t *testing.T) {
 func TestNewDefaultRequestIdGenerator_UnixSocket(t *testing.T) {
 	generator, _ := NewDefaultRequestIdGenerator(core.NewNullContext(), &settings.Config{
 		HttpAddr:       "1.2.3.4",
-		UnixSocketPath: "/var/lib/ezbookkeeping/ezbookkeeping.sock",
+		UnixSocketPath: "/var/lib/catledger/catledger.sock",
 		Protocol:       "socket",
 		SecretKey:      "secretkey",
 	})
@@ -41,7 +41,7 @@ func TestNewDefaultRequestIdGenerator_UnixSocket(t *testing.T) {
 	actualServerUniqId := requestIdInfo.ServerUniqId
 	assert.Equal(t, expectedServerUniqId, actualServerUniqId)
 
-	expectedInstanceUniqId := uint16(0x2cc) // crc32("/var/lib/ezbookkeeping/ezbookkeeping.sock" + "_" + "secretkey") & 0xFFFF
+	expectedInstanceUniqId := uint16(0x2e96) // crc32("/var/lib/catledger/catledger.sock" + "_" + "secretkey") & 0xFFFF
 	actualInstanceUniqId := requestIdInfo.InstanceUniqId
 	assert.Equal(t, expectedInstanceUniqId, actualInstanceUniqId)
 }
@@ -49,7 +49,7 @@ func TestNewDefaultRequestIdGenerator_UnixSocket(t *testing.T) {
 func TestNewDefaultRequestIdGenerator_ClientIpv4(t *testing.T) {
 	generator, _ := NewDefaultRequestIdGenerator(core.NewNullContext(), &settings.Config{
 		HttpAddr:       "1.2.3.4",
-		UnixSocketPath: "/var/lib/ezbookkeeping/ezbookkeeping.sock",
+		UnixSocketPath: "/var/lib/catledger/catledger.sock",
 		Protocol:       "socket",
 		SecretKey:      "secretkey",
 	})
@@ -79,7 +79,7 @@ func TestNewDefaultRequestIdGenerator_ClientIpv4(t *testing.T) {
 func TestNewDefaultRequestIdGenerator_ClientIpv6(t *testing.T) {
 	generator, _ := NewDefaultRequestIdGenerator(core.NewNullContext(), &settings.Config{
 		HttpAddr:       "1.2.3.4",
-		UnixSocketPath: "/var/lib/ezbookkeeping/ezbookkeeping.sock",
+		UnixSocketPath: "/var/lib/catledger/catledger.sock",
 		Protocol:       "socket",
 		SecretKey:      "secretkey",
 	})
@@ -109,7 +109,7 @@ func TestNewDefaultRequestIdGenerator_ClientIpv6(t *testing.T) {
 func TestNewDefaultRequestIdGenerator_ClientPort(t *testing.T) {
 	generator, _ := NewDefaultRequestIdGenerator(core.NewNullContext(), &settings.Config{
 		HttpAddr:       "1.2.3.4",
-		UnixSocketPath: "/var/lib/ezbookkeeping/ezbookkeeping.sock",
+		UnixSocketPath: "/var/lib/catledger/catledger.sock",
 		Protocol:       "socket",
 		SecretKey:      "secretkey",
 	})

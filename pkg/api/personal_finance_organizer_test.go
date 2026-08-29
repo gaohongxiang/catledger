@@ -9,11 +9,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/errs"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/errs"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/installments"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/organizer"
 )
 
 func TestUniqueKnownInstallmentCandidateRequiresOneStableExistingRelation(t *testing.T) {

@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/migrations"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/organizer"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 func TestRepositorySQLiteUIDIsolationCASAndRollback(t *testing.T) {

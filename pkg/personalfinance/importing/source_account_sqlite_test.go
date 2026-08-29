@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 func TestSourceAccountServicePreservesIdentityAndClearsLedgerMapping(t *testing.T) {

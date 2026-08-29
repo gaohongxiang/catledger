@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/legacydata"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/reconciliation"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/cardcycle"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/installments"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/legacydata"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/organizer"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/reconciliation"
+	"github.com/gaohongxiang/catledger/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/utils"
 )
 
 var (
@@ -29,7 +29,7 @@ var (
 	integrationConfig   *settings.DatabaseConfig
 )
 
-const integrationDatabaseSentinel = "ezbookkeeping-pf-isolated-compose-v1"
+const integrationDatabaseSentinel = "catledger-pf-isolated-compose-v1"
 
 func TestMain(m *testing.M) {
 	if os.Getenv("PF_DB_INTEGRATION") != "1" {
@@ -1603,15 +1603,15 @@ func integrationDatabaseConfig() (*settings.DatabaseConfig, error) {
 		return nil, fmt.Errorf("isolated Compose sentinel is missing")
 	}
 
-	databaseType := os.Getenv("EBK_DATABASE_TYPE")
+	databaseType := os.Getenv("CATLEDGER_DATABASE_TYPE")
 	config := &settings.DatabaseConfig{
 		DatabaseType:          databaseType,
-		DatabaseHost:          os.Getenv("EBK_DATABASE_HOST"),
-		DatabaseName:          os.Getenv("EBK_DATABASE_NAME"),
-		DatabaseUser:          os.Getenv("EBK_DATABASE_USER"),
-		DatabasePassword:      os.Getenv("EBK_DATABASE_PASSWD"),
-		DatabaseSSLMode:       os.Getenv("EBK_DATABASE_SSL_MODE"),
-		DatabasePath:          os.Getenv("EBK_DATABASE_DB_PATH"),
+		DatabaseHost:          os.Getenv("CATLEDGER_DATABASE_HOST"),
+		DatabaseName:          os.Getenv("CATLEDGER_DATABASE_NAME"),
+		DatabaseUser:          os.Getenv("CATLEDGER_DATABASE_USER"),
+		DatabasePassword:      os.Getenv("CATLEDGER_DATABASE_PASSWD"),
+		DatabaseSSLMode:       os.Getenv("CATLEDGER_DATABASE_SSL_MODE"),
+		DatabasePath:          os.Getenv("CATLEDGER_DATABASE_DB_PATH"),
 		MaxIdleConnection:     2,
 		MaxOpenConnection:     8,
 		ConnectionMaxLifeTime: 60,
@@ -1627,16 +1627,16 @@ func integrationDatabaseConfig() (*settings.DatabaseConfig, error) {
 
 		config.DatabasePath = path
 	case settings.MySqlDbType:
-		if config.DatabaseName != "ezbookkeeping_pf_test" {
-			return nil, fmt.Errorf("database name must be ezbookkeeping_pf_test")
+		if config.DatabaseName != "catledger_pf_test" {
+			return nil, fmt.Errorf("database name must be catledger_pf_test")
 		}
 
 		if config.DatabaseHost != "mysql:3306" || config.DatabaseUser != "pf_test" || config.DatabasePassword != "pf_test_password" {
 			return nil, fmt.Errorf("MySQL must use the isolated Compose service and synthetic credentials")
 		}
 	case settings.PostgresDbType:
-		if config.DatabaseName != "ezbookkeeping_pf_test" {
-			return nil, fmt.Errorf("database name must be ezbookkeeping_pf_test")
+		if config.DatabaseName != "catledger_pf_test" {
+			return nil, fmt.Errorf("database name must be catledger_pf_test")
 		}
 
 		if config.DatabaseHost != "postgres:5432" || config.DatabaseUser != "pf_test" ||

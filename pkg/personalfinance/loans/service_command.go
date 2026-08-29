@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans/calculation"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans/calculation"
 )
 
 // Service 编排纯计算、合同生命周期、持久幂等和只读进度派生。

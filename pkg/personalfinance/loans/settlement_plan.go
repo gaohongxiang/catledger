@@ -3,7 +3,7 @@ package loans
 import (
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 type settlementPlanSelection struct {

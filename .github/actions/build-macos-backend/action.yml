@@ -51,5 +51,5 @@ runs:
       uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.backend-artifact-name-prefix }}-macos-${{ inputs.architecture }}
-        path: ezbookkeeping
+        path: catledger
         if-no-files-found: error

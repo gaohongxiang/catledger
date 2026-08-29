@@ -9,16 +9,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/converters"
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/models"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/migrations"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/converters"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/models"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/migrations"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/organizer"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
-const organizerIntegrationDatabaseSentinel = "ezbookkeeping-pf-isolated-compose-v1"
+const organizerIntegrationDatabaseSentinel = "catledger-pf-isolated-compose-v1"
 
 func TestEngineDatabaseIntegration(t *testing.T) {
 	config, err := organizerIntegrationDatabaseConfig()
@@ -98,11 +98,11 @@ func organizerIntegrationDatabaseConfig() (*settings.DatabaseConfig, error) {
 	if os.Getenv("PF_DB_INTEGRATION") != "1" || os.Getenv("PF_DB_TEST_SENTINEL") != organizerIntegrationDatabaseSentinel {
 		return nil, fmt.Errorf("isolated Compose sentinel is missing")
 	}
-	databaseType := os.Getenv("EBK_DATABASE_TYPE")
+	databaseType := os.Getenv("CATLEDGER_DATABASE_TYPE")
 	config := &settings.DatabaseConfig{
-		DatabaseType: databaseType, DatabaseHost: os.Getenv("EBK_DATABASE_HOST"), DatabaseName: os.Getenv("EBK_DATABASE_NAME"),
-		DatabaseUser: os.Getenv("EBK_DATABASE_USER"), DatabasePassword: os.Getenv("EBK_DATABASE_PASSWD"),
-		DatabaseSSLMode: os.Getenv("EBK_DATABASE_SSL_MODE"), DatabasePath: os.Getenv("EBK_DATABASE_DB_PATH"),
+		DatabaseType: databaseType, DatabaseHost: os.Getenv("CATLEDGER_DATABASE_HOST"), DatabaseName: os.Getenv("CATLEDGER_DATABASE_NAME"),
+		DatabaseUser: os.Getenv("CATLEDGER_DATABASE_USER"), DatabasePassword: os.Getenv("CATLEDGER_DATABASE_PASSWD"),
+		DatabaseSSLMode: os.Getenv("CATLEDGER_DATABASE_SSL_MODE"), DatabasePath: os.Getenv("CATLEDGER_DATABASE_DB_PATH"),
 		MaxIdleConnection: 2, MaxOpenConnection: 8, ConnectionMaxLifeTime: 60,
 	}
 	switch databaseType {
@@ -113,11 +113,11 @@ func organizerIntegrationDatabaseConfig() (*settings.DatabaseConfig, error) {
 		}
 		config.DatabasePath = databasePath
 	case settings.MySqlDbType:
-		if config.DatabaseHost != "mysql:3306" || config.DatabaseName != "ezbookkeeping_pf_test" || config.DatabaseUser != "pf_test" || config.DatabasePassword != "pf_test_password" {
+		if config.DatabaseHost != "mysql:3306" || config.DatabaseName != "catledger_pf_test" || config.DatabaseUser != "pf_test" || config.DatabasePassword != "pf_test_password" {
 			return nil, fmt.Errorf("MySQL target is not the isolated Compose service")
 		}
 	case settings.PostgresDbType:
-		if config.DatabaseHost != "postgres:5432" || config.DatabaseName != "ezbookkeeping_pf_test" || config.DatabaseUser != "pf_test" ||
+		if config.DatabaseHost != "postgres:5432" || config.DatabaseName != "catledger_pf_test" || config.DatabaseUser != "pf_test" ||
 			config.DatabasePassword != "pf_test_password" || config.DatabaseSSLMode != "disable" {
 			return nil, fmt.Errorf("PostgreSQL target is not the isolated Compose service")
 		}

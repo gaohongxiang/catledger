@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/organizer"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/organizer"
 )
 
 func TestCreateEngineSQLiteFreezesSourcesAndReplays(t *testing.T) {

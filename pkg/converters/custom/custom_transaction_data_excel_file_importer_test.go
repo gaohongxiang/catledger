@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 	"github.com/stretchr/testify/assert"
 )
 

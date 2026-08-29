@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
 )
 
 func TestCandidateCaseKeyUsesSortedStableMemberTokens(t *testing.T) {

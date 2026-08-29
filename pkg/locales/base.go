@@ -1,7 +1,7 @@
 package locales
 
 import (
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 // LocaleTextItems represents all text items need to be translated

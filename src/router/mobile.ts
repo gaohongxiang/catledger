@@ -28,7 +28,6 @@ import SettingsPage from '@/views/mobile/SettingsPage.vue';
 import ApplicationLockPage from '@/views/mobile/ApplicationLockPage.vue';
 import ExchangeRatesListPage from '@/views/mobile/exchangerates/ListPage.vue';
 import ExchangeRatesUpdatePage from '@/views/mobile/exchangerates/UpdatePage.vue';
-import AboutPage from '@/views/mobile/AboutPage.vue';
 
 import UserProfilePage from '@/views/mobile/users/UserProfilePage.vue';
 import DataManagementPage from '@/views/mobile/users/DataManagementPage.vue';
@@ -245,11 +244,6 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/exchange_rates/update',
         async: asyncResolve(ExchangeRatesUpdatePage),
-        beforeEnter: [checkLogin]
-    },
-    {
-        path: '/about',
-        async: asyncResolve(AboutPage),
         beforeEnter: [checkLogin]
     },
     {

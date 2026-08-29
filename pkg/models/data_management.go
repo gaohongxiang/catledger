@@ -1,6 +1,6 @@
 package models
 
-import "github.com/mayswind/ezbookkeeping/pkg/core"
+import "github.com/gaohongxiang/catledger/pkg/core"
 
 // ClearDataRequest represents all parameters of clear user data request
 type ClearDataRequest struct {

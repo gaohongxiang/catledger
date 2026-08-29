@@ -36,7 +36,6 @@
             <f7-list-item :title="tt('Exchange Rates Data')" link="/exchange_rates" v-if="showExchangeRates" />
             <f7-list-item link="#" no-chevron :title="tt('Switch to Desktop Version')"
                           @click="switchToDesktopVersion" />
-            <f7-list-item :title="tt('About')" link="/about" :after="version" />
         </f7-list>
     </f7-page>
 </template>
@@ -54,7 +53,7 @@ import { useUserStore } from '@/stores/user.ts';
 import { useAccountsStore } from '@/stores/account.ts';
 
 import { findNameByValue } from '@/lib/common.ts';
-import { getClientDisplayVersion, getDesktopVersionPath } from '@/lib/version.ts';
+import { getDesktopVersionPath } from '@/lib/version.ts';
 import { setExpenseAndIncomeAmountColor } from '@/lib/ui/common.ts';
 
 const props = defineProps<{ f7router: Router.Router }>();
@@ -67,7 +66,6 @@ const settingsStore = useSettingsStore();
 const userStore = useUserStore();
 const accountsStore = useAccountsStore();
 
-const version = getClientDisplayVersion();
 const logouting = ref<boolean>(false);
 const showThemePopup = ref<boolean>(false);
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans/calculation"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans/calculation"
 )
 
 func normalizeCalculationTerms(terms CalculationTerms) (CalculationTerms, calculation.Input, error) {

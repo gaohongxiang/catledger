@@ -8,8 +8,8 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/importing"
-	"github.com/mayswind/ezbookkeeping/pkg/utils"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/importing"
+	"github.com/gaohongxiang/catledger/pkg/utils"
 )
 
 type wechatEvidenceField string

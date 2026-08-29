@@ -3,8 +3,8 @@ package loans
 import (
 	"errors"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/loans/calculation"
+	"github.com/gaohongxiang/catledger/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/loans/calculation"
 )
 
 const (

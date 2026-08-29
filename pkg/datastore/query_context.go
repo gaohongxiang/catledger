@@ -7,7 +7,7 @@ import (
 
 	"xorm.io/xorm/log"
 
-	"github.com/mayswind/ezbookkeeping/pkg/core"
+	"github.com/gaohongxiang/catledger/pkg/core"
 )
 
 // XOrmContextAdapter represents the context adapter for xorm

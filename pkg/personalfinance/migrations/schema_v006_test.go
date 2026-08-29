@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mayswind/ezbookkeeping/pkg/datastore"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/cardcycle"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/installments"
-	"github.com/mayswind/ezbookkeeping/pkg/personalfinance/legacydata"
-	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/gaohongxiang/catledger/pkg/datastore"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/cardcycle"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/installments"
+	"github.com/gaohongxiang/catledger/pkg/personalfinance/legacydata"
+	"github.com/gaohongxiang/catledger/pkg/settings"
 )
 
 func TestSchemaV006ChecksumGolden(t *testing.T) {
