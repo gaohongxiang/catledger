@@ -1,9 +1,14 @@
 {
   "name": "catledger-api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "index.js",
+  "scripts": {
+    "migrate": "node scripts/migrate.js",
+    "test": "node --test test/*.test.js"
+  },
   "dependencies": {
+    "mysql2": "3.24.2",
     "wx-server-sdk": "4.0.2"
   }
 }

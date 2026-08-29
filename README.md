@@ -28,9 +28,25 @@
 1. 安装微信开发者工具。
 2. 导入仓库根目录，首次选择测试号或填写自己的小程序 AppID。
 3. 个人环境配置不要提交到仓库。
-4. 开通云开发环境后，在开发者工具中选择环境并部署所需云函数。
+4. 开通云开发环境和 MySQL 后，在 `catledger-api` 云函数中配置 `CATLEDGER_DB_HOST`、`CATLEDGER_DB_PORT`、`CATLEDGER_DB_USER`、`CATLEDGER_DB_PASSWORD`、`CATLEDGER_DB_NAME` 私有环境变量。
+5. 先执行 `migrations/` 中的显式迁移，再部署 `catledger-api` 云函数。
 
-当前基础版本不包含正式数据表和账单导入实现，功能会按实施计划中的纵向切片逐步加入。
+当前开发版本已包含可信微信身份、用户初始化和默认分类的本地候选；尚未部署到正式云环境，也不包含账单导入实现。
+
+云函数本地检查：
+
+```shell
+cd cloudfunctions/catledger-api
+npm install
+npm test
+```
+
+迁移命令只读取本机或云函数私有环境变量，不要把数据库凭据写进仓库：
+
+```shell
+cd cloudfunctions/catledger-api
+npm run migrate
+```
 
 ## Web 版
 

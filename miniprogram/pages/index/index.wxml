@@ -25,29 +25,33 @@
       <view class="card-heading">
         <text class="card-index">01</text>
         <view>
-          <text class="card-title">小程序基础已经就位</text>
-          <text class="card-caption">当前版本只验证项目和云开发连接，不写入账本数据。</text>
+          <text class="card-title">你的账本</text>
+          <text class="card-caption">首次打开会创建独立账本，并准备常用的收入与支出分类。</text>
         </view>
       </view>
 
       <view class="status-row">
-        <view class="status-mark {{cloudAvailable ? 'status-mark-ready' : ''}}"></view>
-        <text class="status-label">{{connectionState}}</text>
+        <view class="status-mark {{categoryCount > 0 ? 'status-mark-ready' : ''}}"></view>
+        <text class="status-label">{{initializationState}}</text>
       </view>
+
+      <text wx:if="{{categoryCount > 0}}" class="category-summary">
+        已准备 {{categoryCount}} 个常用分类
+      </text>
 
       <button
         class="connection-button"
-        disabled="{{!cloudAvailable || checking}}"
-        loading="{{checking}}"
-        bindtap="checkCloudConnection"
+        disabled="{{!cloudAvailable || initializing}}"
+        loading="{{initializing}}"
+        bindtap="initializeLedger"
       >
-        检查云开发连接
+        重新准备
       </button>
     </view>
 
     <view class="next-note">
       <text class="next-label">下一步</text>
-      <text class="next-copy">微信身份 · 默认分类 · 账户初始化</text>
+      <text class="next-copy">上传账单 · 自动整理 · 逐项确认</text>
     </view>
   </view>
 </view>

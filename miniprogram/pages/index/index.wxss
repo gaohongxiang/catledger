@@ -149,6 +149,13 @@
   font-size: 24rpx;
 }
 
+.category-summary {
+  display: block;
+  margin-top: 18rpx;
+  color: #737b70;
+  font-size: 23rpx;
+}
+
 .connection-button {
   height: 84rpx;
   margin-top: 30rpx;

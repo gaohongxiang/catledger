@@ -1,28 +1,19 @@
 const cloud = require('wx-server-sdk')
 
+const { getPool } = require('./src/database')
+const { createHandler } = require('./src/handler')
+const { createUserRepository } = require('./src/user-repository')
+
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV
 })
 
-exports.main = async (event = {}) => {
-  if (event.action !== 'health') {
-    return {
-      ok: false,
-      error: {
-        code: 'UNSUPPORTED_ACTION',
-        message: '当前操作尚未开放'
-      }
-    }
-  }
+const repository = createUserRepository({
+  getPool
+})
 
-  const { OPENID } = cloud.getWXContext()
-
-  return {
-    ok: true,
-    data: {
-      authenticated: Boolean(OPENID),
-      service: 'catledger-api',
-      version: '0.1.0'
-    }
-  }
-}
+exports.main = createHandler({
+  getWxContext: () => cloud.getWXContext(),
+  repository,
+  logger: console
+})
