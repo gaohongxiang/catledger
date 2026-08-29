@@ -1,0 +1,27 @@
+{
+  "appid": "",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "compileType": "miniprogram",
+  "condition": {},
+  "description": "猫账微信小程序",
+  "libVersion": "trial",
+  "miniprogramRoot": "miniprogram/",
+  "packOptions": {
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "docs"
+      }
+    ]
+  },
+  "projectname": "catledger",
+  "setting": {
+    "bigPackageSizeSupport": true,
+    "checkInvalidKey": true,
+    "compileHotReLoad": true,
+    "es6": true,
+    "minified": true,
+    "postcss": true,
+    "urlCheck": true
+  }
+}

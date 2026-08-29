@@ -1,0 +1,53 @@
+<view class="page-shell">
+  <view class="ledger-sheet">
+    <view class="brand-row">
+      <image
+        class="brand-logo"
+        mode="aspectFill"
+        src="/assets/catledger-logo.png"
+      />
+      <view class="brand-copy">
+        <text class="eyebrow">个人账单整理</text>
+        <text class="brand-name">猫账</text>
+      </view>
+    </view>
+
+    <view class="hero-copy">
+      <text class="hero-title">账单很多，核对要少。</text>
+      <text class="hero-description">
+        上传支付宝和微信账单，猫账负责整理；只有真正拿不准的地方，再交给你确认。
+      </text>
+    </view>
+
+    <view class="rule-line"></view>
+
+    <view class="foundation-card">
+      <view class="card-heading">
+        <text class="card-index">01</text>
+        <view>
+          <text class="card-title">小程序基础已经就位</text>
+          <text class="card-caption">当前版本只验证项目和云开发连接，不写入账本数据。</text>
+        </view>
+      </view>
+
+      <view class="status-row">
+        <view class="status-mark {{cloudAvailable ? 'status-mark-ready' : ''}}"></view>
+        <text class="status-label">{{connectionState}}</text>
+      </view>
+
+      <button
+        class="connection-button"
+        disabled="{{!cloudAvailable || checking}}"
+        loading="{{checking}}"
+        bindtap="checkCloudConnection"
+      >
+        检查云开发连接
+      </button>
+    </view>
+
+    <view class="next-note">
+      <text class="next-label">下一步</text>
+      <text class="next-copy">微信身份 · 默认分类 · 账户初始化</text>
+    </view>
+  </view>
+</view>
