@@ -153,7 +153,15 @@ dist/
 !.codex/config.toml
 .planning
 
-# Binary and build files
+# Mini Program / CloudBase
+miniprogram_npm/
+**/miniprogram_npm/
+.cloudbaserc.local.json
+project.private.config.json
+cloudfunctions/**/node_modules/
+cloudfunctions/**/.env
+
+# Legacy Web build files (kept for worktree compatibility)
 ezbookkeeping
 !**/ezbookkeeping/
 /package/
