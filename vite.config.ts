@@ -75,6 +75,8 @@ function injectFramework7CssFile({ htmlFileName, placeHolders }: { htmlFileName:
 export default defineConfig(() => {
     const buildUnixTime = process.env['buildUnixTime'] || '';
     const buildCommitHash = getBuildCommitHash();
+    const devServerPort = Number.parseInt(process.env['CATLEDGER_DEV_SERVER_PORT'] || '8082', 10);
+    const devApiTarget = process.env['CATLEDGER_DEV_API_TARGET'] || 'http://127.0.0.1:18082/';
 
     const options: UserConfig = {
         root: SRC_DIR,
@@ -291,51 +293,51 @@ export default defineConfig(() => {
         },
         server: {
             host: '0.0.0.0',
-            port: 8081,
+            port: devServerPort,
             strictPort: true,
             proxy: {
                 '/server_settings.js': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/mobile/server_settings.js': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/desktop/server_settings.js': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/oauth2': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/api': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/mcp': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/avatar': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/pictures': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/qrcode': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/proxy': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 },
                 '/_AMapService': {
-                    target: 'http://127.0.0.1:8080/',
+                    target: devApiTarget,
                     changeOrigin: true
                 }
             }
