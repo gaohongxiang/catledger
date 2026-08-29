@@ -6,117 +6,130 @@
 
 猫账是一款面向中国用户的轻量、自托管个人财务应用，重点解决日常记账、支付宝/微信/银行账单整理，以及贷款和分期管理。项目基于 [ezBookkeeping](https://github.com/mayswind/ezbookkeeping) 持续演进；应用包名、命令和运行目录统一使用 `catledger`，并继续兼容 ezBookkeeping 导入导出文件格式。
 
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![MIT 许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## Introduction
-CatLedger is a lightweight, self-hosted personal finance app designed primarily for users in China. It supports manual bookkeeping, statement organization for Alipay, WeChat Pay and banks, standard financial statistics, and loan or installment tracking. It is resource-efficient and runs on devices such as Raspberry Pi, NAS, and microservers.
+## 项目简介
 
-CatLedger offers tailored interfaces for both mobile and desktop devices. With support for PWA (Progressive Web Apps), you can even add it to your mobile home screen and use it like a native app.
+CatLedger 适合部署在个人服务器、NAS、树莓派或其他低功耗设备上。它同时提供桌面端和移动端界面，并支持 PWA，可添加到手机主屏幕后像普通应用一样使用。
 
-## Features
-- **Open Source & Self-Hosted**
-    - Your accounts, transactions and original statements remain under your control
-    - Multiple users with isolated data
-- **Lightweight & Fast**
-    - Minimal resource usage, runs smoothly even on low-resource devices
-- **Easy Installation**
-    - Docker support
-    - Supports SQLite, MySQL, PostgreSQL
-    - Cross-platform (Windows, macOS, Linux)
-    - Works on x86, amd64, ARM architectures
-- **User-Friendly Interface**
-    - UI optimized for both mobile and desktop
-    - PWA support for native-like mobile experience
-    - Dark mode
-- **AI-Powered Features**
-    - Receipt image recognition
-    - MCP (Model Context Protocol) support for AI integration
-    - CatLedger Agent Skill and command-line API tools
-- **Powerful Bookkeeping**
-    - Two-level accounts and categories
-    - Manual transaction entry and batch statement organization
-    - Alipay, WeChat Pay and structured bank statement support
-    - Transaction list, standard statistics and financial overview
-    - Loan, installment and repayment-plan tracking
-    - Image attachments for transactions
-    - Search and filtering
-- **Localization & Internationalization**
-    - Simplified Chinese and English interfaces
-    - Multiple exchange rate sources with automatic updates
-    - Multi-timezone support
-    - Custom formats for dates, numbers and currencies
-- **Security**
-    - Two-factor authentication (2FA)
-    - OIDC external authentication
-    - Login rate limiting
-    - Application lock (PIN code / WebAuthn)
-- **Data Import & Export**
-    - Supports CSV, OFX, QFX, QIF, IIF, Camt.052, Camt.053, MT940, GnuCash, Firefly III, Beancount and more
+本项目保留完整的多用户能力，每个用户的数据相互隔离，适合个人自建，也适合为家人或其他用户提供独立的记账服务。
 
-CatLedger intentionally removes some upstream functions to keep the main bookkeeping flow focused.
+## 功能特性
 
-## Installation
-### Run with Docker
+- **开源与自托管**
+  - 账户、交易和原始账单由你自己掌控
+  - 支持多用户及用户间数据隔离
+- **轻量部署**
+  - 资源占用较低，可运行在低配置设备上
+  - 支持 Docker
+  - 支持 SQLite、MySQL 和 PostgreSQL
+  - 支持 Windows、macOS、Linux，以及 x86、AMD64、ARM 等架构
+- **个人记账**
+  - 支持二级账户和二级分类
+  - 支持手动记一笔、批量账单整理、搜索和筛选
+  - 支持交易附件、标准统计和财务总览
+  - 支持贷款、分期和还款计划管理
+- **中国账单整理**
+  - 支持支付宝、微信支付及结构化银行账单
+  - 原始账单、整理结果和正式交易相互关联，方便核对与追溯
+  - 重复记录、账户映射和异常交易由统一整理流程处理
+- **移动端与桌面端**
+  - 针对不同屏幕尺寸优化界面
+  - 支持 PWA 和深色模式
+- **AI 扩展能力**
+  - 支持图片记账相关能力
+  - 支持 MCP（Model Context Protocol）集成
+  - 提供 CatLedger Agent Skill 和命令行 API 工具
+- **本地化与国际化**
+  - 内置简体中文和 English 界面，默认使用简体中文
+  - 支持多币种、多个汇率来源和自动更新
+  - 支持多时区及日期、数字、货币格式设置
+- **安全能力**
+  - 支持两步验证（2FA）和 OIDC 外部认证
+  - 支持登录限流
+  - 支持 PIN 码或 WebAuthn 应用锁
+- **数据导入与导出**
+  - 兼容 CSV、OFX、QFX、QIF、IIF、Camt.052、Camt.053、MT940、GnuCash、Firefly III、Beancount 等格式
 
-Build the local CatLedger image first, then start it:
+为了让个人记账主流程更清晰，CatLedger 有意精简了部分 ezBookkeeping 上游功能；具体以当前界面和[现行说明](docs/现行说明/)为准。
 
-    $ ./build.sh docker -t catledger:latest
-    $ docker run -p8080:8080 catledger:latest
+## 安装与运行
 
-### Install from Binary
-Build or download a CatLedger release package from this repository.
+### 使用 Docker
 
-**Linux / macOS**
+先在仓库根目录构建镜像，再启动容器：
 
-    $ ./catledger server run
+```shell
+./build.sh docker -t catledger:latest
+docker run --name catledger -p 8080:8080 catledger:latest
+```
 
-**Windows**
+启动后访问 `http://localhost:8080/`。如需持久化数据和用于正式环境，请按自己的部署方式挂载配置、数据、存储和日志目录。
 
-    > .\catledger.exe server run
+### 使用二进制包
 
-By default, CatLedger listens on port 8080. You can then visit `http://{YOUR_HOST_ADDRESS}:8080/` .
+从本仓库构建 CatLedger 发布包，解压后运行：
 
-### Build from Source
-Make sure you have [Golang](https://golang.org/), [GCC](https://gcc.gnu.org/), [Node.js](https://nodejs.org/) and [NPM](https://www.npmjs.com/) installed. Then download the source code, and follow these steps:
+Linux / macOS：
 
-**Linux / macOS**
+```shell
+./catledger server run
+```
 
-    $ ./build.sh package -o catledger.tar.gz
+Windows：
 
-All the files will be packaged in `catledger.tar.gz`.
+```powershell
+.\catledger.exe server run
+```
 
-**Windows**
+CatLedger 默认监听 `8080` 端口，可通过 `http://{服务器地址}:8080/` 访问。
 
-    > .\build.bat package -o catledger.zip
+### 从源代码构建
 
-or
+请先安装 [Go](https://go.dev/)、[GCC](https://gcc.gnu.org/)、[Node.js](https://nodejs.org/)、[npm](https://www.npmjs.com/) 以及项目构建所需的系统工具。
 
-    PS > .\build.ps1 package -Output catledger.zip
+Linux / macOS：
 
-All the files will be packaged in `catledger.zip`.
+```shell
+./build.sh package -o catledger.tar.gz
+```
 
-You can also build a Docker image. Make sure you have [Docker](https://www.docker.com/) installed, then follow these steps:
+构建产物为 `catledger.tar.gz`。
 
-**Linux**
+Windows 命令提示符：
 
-    $ ./build.sh docker
+```bat
+.\build.bat package -o catledger.zip
+```
 
-## Contributing
-We welcome contributions of all kinds.
+Windows PowerShell：
 
-If you find a bug, please [submit an issue](https://github.com/gaohongxiang/catledger/issues) on GitHub.
+```powershell
+.\build.ps1 package -Output catledger.zip
+```
 
-If you would like to contribute code, you can fork the repository and open a pull request.
+构建产物为 `catledger.zip`。
 
-Improvements to documentation, feature suggestions, and other forms of feedback are also appreciated.
+如需构建 Docker 镜像，请先安装 [Docker](https://www.docker.com/)，然后运行：
 
-CatLedger is derived from ezBookkeeping; upstream contributors are recorded in its [Contributor Graph](https://github.com/mayswind/ezbookkeeping/graphs/contributors).
+```shell
+./build.sh docker
+```
 
-## Translating
-CatLedger currently ships Simplified Chinese and English interfaces. UI changes must keep both locale files synchronized.
+## 参与贡献
 
-## Documentation
-当前产品行为与架构说明见 [`docs/现行说明`](docs/现行说明/)。
+欢迎提交错误报告、功能建议、文档改进和代码贡献。
 
-## License
-[MIT](LICENSE). Upstream copyright and attribution are retained in the license notices and repository history.
+- 发现问题时，请在 GitHub [提交 Issue](https://github.com/gaohongxiang/catledger/issues)。
+- 贡献代码时，请 Fork 本仓库并提交 Pull Request。
+- 修改用户界面文案时，需要同步维护 `zh_Hans` 和 `en` 两套语言资源。
+
+CatLedger 基于 ezBookkeeping 二次开发，上游贡献者可在 [ezBookkeeping Contributor Graph](https://github.com/mayswind/ezbookkeeping/graphs/contributors) 中查看。
+
+## 文档
+
+当前产品行为、数据流程和扩展方式见 [`docs/现行说明`](docs/现行说明/)，产品规划和工程状态见 [`docs/个人财务实施规划.md`](docs/个人财务实施规划.md)。
+
+## 开源许可
+
+本项目采用 [MIT License](LICENSE)。在保留版权和许可声明的前提下，可以修改、分发和用于商业用途；上游项目的版权与署名继续保留在许可证文件和 Git 历史中。
