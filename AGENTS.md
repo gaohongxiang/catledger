@@ -32,6 +32,7 @@
 ## 4. 分支、worktree 与发布
 
 - `origin/main` 是微信小程序产品主线；`origin/catledger-web` 与 `web-v2-final` 保存迁移前的 Web 版。不得把 `main` 重置为 Web 分支或上游。
+- 远端不设 `develop`、`mini` 等长期开发分支；除 `main` 与 `catledger-web` 外，历史节点使用标签，任务分支验收合入后清理。
 - 功能分支使用 `codex/<task-id>-<short-name>`；每个任务独占分支和 worktree。
 - 禁止 force push、`git reset --hard`、未经确认的 rebase 和其他会丢失工作的操作。
 - 合并前确认工作树洁净、提交范围单一、测试证据完整且契约一致。

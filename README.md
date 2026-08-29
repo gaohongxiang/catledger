@@ -42,6 +42,16 @@ git switch catledger-web
 
 `web-v2-final` 是本轮迁移前的不可变归档点。旧版的构建、Docker、8080/8082 预览和完整文档都保留在该分支中。
 
+## 分支约定
+
+- `main`：微信小程序稳定主线；
+- `catledger-web`：Web 最终归档，只做必要维护；
+- `codex/<task-id>-<short-name>`：本地任务分支，验收合入后删除；
+- `web-v2-final`：迁移前 Web 产品标签；
+- `archive/ezbookkeeping-sync-final`：旧上游同步分支的历史归档标签。
+
+仓库不设置 `develop` 或长期小程序开发分支，避免同一产品出现多条事实主线。
+
 ## 开源许可
 
 本项目采用 [MIT License](LICENSE)。在保留版权和许可声明的前提下，可以修改、分发和用于商业用途。原 ezBookkeeping 上游的版权与许可声明继续保留在许可证和 Git 历史中。
