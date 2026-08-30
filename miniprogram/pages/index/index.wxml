@@ -9,7 +9,7 @@
 
   <view wx:if="{{!cloudAvailable}}" class="empty-ledger">
     <text class="empty-ledger-title">当前基础库不支持云开发</text>
-    <text class="empty-ledger-copy">请升级微信开发者工具或小程序基础库后再打开猫账。</text>
+    <text class="empty-ledger-copy">请升级微信开发者工具或小程序基础库后再打开招财猫记账本。</text>
   </view>
 
   <block wx:else>

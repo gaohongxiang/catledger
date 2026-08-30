@@ -2,7 +2,7 @@
   <view class="login-sheet" catchtap="stopBubble">
     <view class="login-accent"></view>
     <text class="login-kicker">YOUR PRIVATE LEDGER</text>
-    <text class="login-title">登录后，连接你的猫账。</text>
+    <text class="login-title">登录后，连接招财猫记账本。</text>
     <text class="login-copy">头像和昵称均为可选，不填写也可以登录。</text>
     <view class="login-profile-row">
       <button class="login-avatar-button" open-type="chooseAvatar" disabled="{{submitting}}" bindchooseavatar="chooseAvatar">

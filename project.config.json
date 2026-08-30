@@ -3,7 +3,7 @@
   "cloudfunctionRoot": "cloudfunctions/",
   "compileType": "miniprogram",
   "condition": {},
-  "description": "猫账微信小程序",
+  "description": "招财猫记账本微信小程序",
   "libVersion": "trial",
   "miniprogramRoot": "miniprogram/",
   "packOptions": {

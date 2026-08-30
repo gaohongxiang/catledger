@@ -18,7 +18,7 @@
     "backgroundTextStyle": "dark",
     "navigationBarBackgroundColor": "#F8F3EA",
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "猫账"
+    "navigationBarTitleText": "招财猫记账本"
   },
   "tabBar": {
     "custom": true,

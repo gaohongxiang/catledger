@@ -1,10 +1,10 @@
-# 猫账 · CatLedger
+# 招财猫记账本 · CatLedger
 
 <p align="center">
-  <img src="docs/assets/brand/catledger-logo-master.png" alt="猫账 Logo" width="160">
+  <img src="assets/brand/catledger-logo-master.png" alt="招财猫记账本 Logo" width="160">
 </p>
 
-猫账是一款面向中国用户的微信小程序记账工具。它以支付宝、微信支付等账单的批量导入与整理为核心，同时支持手动记账、账户与分类、财务总览，以及后续的贷款和分期管理。
+招财猫记账本是一款面向中国用户的微信小程序记账工具。它以支付宝、微信支付等账单的批量导入与整理为核心，同时支持手动记账、账户与分类、财务总览，以及后续的贷款和分期管理。
 
 > 当前状态：小程序版正在从干净基线重新建设，`main` 是小程序主线。原 Web 版保存在 [`catledger-web`](https://github.com/gaohongxiang/catledger/tree/catledger-web) 分支和 `web-v2-final` 标签中。
 
@@ -21,6 +21,7 @@
 - `cloudfunctions/`：业务 API 与账单导入云函数
 - `shared/`：跨端共享契约
 - `migrations/`：MySQL 显式迁移
+- `assets/brand/`：项目级品牌母图和使用说明
 - `docs/`：需求、规则、架构、计划与现行说明
 
 ## 开始开发
@@ -31,7 +32,7 @@
 4. 开通云开发环境和 MySQL 后，在 `catledger-api` 云函数中配置 `CATLEDGER_DB_HOST`、`CATLEDGER_DB_PORT`、`CATLEDGER_DB_USER`、`CATLEDGER_DB_PASSWORD`、`CATLEDGER_DB_NAME` 私有环境变量。
 5. 先执行 `migrations/` 中的显式迁移，再部署 `catledger-api` 云函数。
 
-当前开发版本已部署首版 MySQL 迁移和 `catledger-api` 开发版，微信开发者工具已用真实微信身份跑通用户初始化与 16 个默认分类；尚未实现账单导入，也未上传、审核或正式发布小程序版本。
+当前开发版本已部署 `0001`～`0003` MySQL 迁移和 `catledger-api` 开发版，已用真实微信身份跑通用户初始化、账户、分类、手工支出/收入/转账/退款、余额校正、查询和基础统计；账单上传、解析、整理与批量入账尚未实现，也尚未上传审核或正式发布小程序版本。
 
 云函数本地检查：
 

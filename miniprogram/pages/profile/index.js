@@ -139,7 +139,7 @@ Page({
   showPrivacy: function () {
     wx.showModal({
       title: '数据与隐私',
-      content: '只有你主动点击登录后，猫账才会创建并连接个人账本。头像和昵称由你自愿选择，仅保存在当前设备用于“我的”页面展示；服务端使用微信可信身份隔离账本，不在页面、响应或普通日志中展示 OpenID 和内部用户标识。',
+      content: '只有你主动点击登录后，招财猫记账本才会创建并连接个人账本。头像和昵称由你自愿选择，仅保存在当前设备用于“我的”页面展示；服务端使用微信可信身份隔离账本，不在页面、响应或普通日志中展示 OpenID 和内部用户标识。',
       showCancel: false,
       confirmText: '知道了',
       confirmColor: themeService.currentTokens().accent
@@ -148,8 +148,8 @@ Page({
 
   showAbout: function () {
     wx.showModal({
-      title: '关于猫账',
-      content: '猫账是一款以账单导入为主、手动记账为辅的个人财务小程序。当前为开发版，尚未上传审核。',
+      title: '关于招财猫记账本',
+      content: '招财猫记账本是一款以账单导入为主、手动记账为辅的个人财务小程序。当前为开发版，尚未上传审核。',
       showCancel: false,
       confirmText: '知道了',
       confirmColor: themeService.currentTokens().accent

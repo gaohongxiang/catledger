@@ -46,9 +46,9 @@
       </view>
       <view class="row-chevron"></view>
     </view>
-    <view class="profile-row" role="button" aria-label="查看关于猫账" bindtap="showAbout">
+    <view class="profile-row" role="button" aria-label="查看关于招财猫记账本" bindtap="showAbout">
       <view class="row-copy">
-        <text class="row-title">关于猫账</text>
+        <text class="row-title">关于招财猫记账本</text>
         <text class="row-note">开发版</text>
       </view>
       <view class="row-chevron"></view>

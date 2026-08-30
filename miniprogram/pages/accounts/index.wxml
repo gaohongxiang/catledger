@@ -55,7 +55,7 @@
 
   <view wx:if="{{assets.length === 0 && liabilities.length === 0 && !loading}}" class="empty-ledger account-empty">
     <text class="empty-ledger-title">先创建第一个账户</text>
-    <text class="empty-ledger-copy">填写现在的余额，猫账会把它记成余额起点，不算作收入或支出。</text>
+    <text class="empty-ledger-copy">填写现在的余额，系统会把它记成余额起点，不算作收入或支出。</text>
     <button class="primary-button account-empty-action" bindtap="openCreate">创建账户</button>
   </view>
 
@@ -79,7 +79,7 @@
         <text>{{formMode === 'create' ? '当前余额' : '正确余额'}}</text>
         <input class="sheet-input money-number" type="digit" value="{{balanceYuan}}" placeholder="0.00" maxlength="18" bindinput="bindBalance" />
       </view>
-      <text wx:if="{{formMode === 'correct'}}" class="sheet-note">猫账会新增一笔差额调整，不改写旧交易，也不计入收支。</text>
+      <text wx:if="{{formMode === 'correct'}}" class="sheet-note">系统会新增一笔差额调整，不改写旧交易，也不计入收支。</text>
       <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
       <button class="primary-button sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveForm">保存</button>
       <button class="secondary-button sheet-cancel" disabled="{{saving}}" bindtap="closeForm">取消</button>
