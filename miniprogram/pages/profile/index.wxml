@@ -1,16 +1,13 @@
 <view class="page-canvas profile-page {{themeClass}}" style="{{themeStyle}}">
   <view class="profile-hero">
-    <image wx:if="{{loggedIn && avatarUrl}}" class="profile-logo" src="{{avatarUrl}}" mode="aspectFill" />
-    <view wx:else class="profile-avatar-empty">
-      <view class="profile-avatar-head"></view>
-      <view class="profile-avatar-body"></view>
-    </view>
+    <image class="profile-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
     <view class="profile-copy">
       <text class="profile-kicker">MY PROFILE</text>
       <text class="profile-title serif-title">{{loggedIn ? (nickname || '微信用户') : '尚未登录'}}</text>
-      <view class="identity-status">
+      <view class="identity-status {{syncActionText ? 'identity-status-retryable' : ''}}" bindtap="retryProfile">
         <view class="status-dot {{connected ? 'status-dot-connected' : ''}}"></view>
         <text>{{identityStatusText}}</text>
+        <text wx:if="{{syncActionText}}" class="identity-retry">{{syncActionText}}</text>
       </view>
     </view>
     <button wx:if="{{!loggedIn}}" class="profile-login-button" bindtap="promptWechatLogin">登录</button>
@@ -65,8 +62,4 @@
     </view>
   </view>
 
-  <view wx:if="{{loading}}" class="profile-status">正在同步个人账本…</view>
-  <view wx:if="{{errorMessage}}" class="profile-error" bindtap="loadProfile">{{errorMessage}} · 点此重试</view>
-
-  <text class="profile-footnote">{{loggedIn ? '头像和昵称仅用于本机展示；猫账不会把 OpenID、内部用户标识或数据库配置展示在客户端。' : '你可以先浏览；导入、记账和管理个人数据时再登录。'}}</text>
 </view>

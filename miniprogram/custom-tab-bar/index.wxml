@@ -46,6 +46,7 @@
     <view class="record-fab">
       <image class="record-icon" mode="aspectFit" src="/assets/icons/tab-plus.svg" />
     </view>
+    <text class="record-label">记账</text>
   </view>
 
   <view class="tab-side tab-side-right">

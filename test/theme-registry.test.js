@@ -4,6 +4,20 @@ const assert = require('node:assert/strict')
 const registry = require('../miniprogram/theme/registry')
 const themeServicePath = require.resolve('../miniprogram/theme/service')
 
+function relativeLuminance(hex) {
+  const channels = hex.match(/[a-f\d]{2}/gi).map(function (part) { return parseInt(part, 16) / 255 })
+  const linear = channels.map(function (value) {
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4)
+  })
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+}
+
+function contrastRatio(first, second) {
+  const firstLuminance = relativeLuminance(first)
+  const secondLuminance = relativeLuminance(second)
+  return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05)
+}
+
 function withThemeRuntime(options, run) {
   const storage = Object.assign({}, options && options.storage)
   const systemCalls = []
@@ -47,6 +61,24 @@ test('主题注册表提供六套唯一且完整的视觉方案', function () {
   })
 })
 
+test('六套主题共享收入绿与支出红的财务语义', function () {
+  registry.listThemes().forEach(function (item) {
+    const tokens = registry.getTheme(item.id).tokens
+    assert.equal(tokens.income, registry.FINANCIAL_SEMANTICS.income)
+    assert.equal(tokens.expense, registry.FINANCIAL_SEMANTICS.expense)
+  })
+
+  assert.equal(registry.FINANCIAL_SEMANTICS.income, '#477153')
+  assert.equal(registry.FINANCIAL_SEMANTICS.expense, '#B54738')
+})
+
+test('六套主题主卡大金额与卡面保持大字对比度', function () {
+  registry.listThemes().forEach(function (item) {
+    const tokens = registry.getTheme(item.id).tokens
+    assert.ok(contrastRatio(tokens.heroStart, tokens.heroValueInk) >= 3, item.id + ' 主卡大金额对比度不足')
+  })
+})
+
 test('无效主题安全回退到暖橘手账', function () {
   assert.equal(registry.normalizeThemeId('unknown-theme'), registry.DEFAULT_THEME_ID)
   assert.equal(registry.getTheme('unknown-theme').id, registry.DEFAULT_THEME_ID)
@@ -56,8 +88,8 @@ test('页面主题只输出受控的语义变量', function () {
   const presentation = registry.getThemePresentation('ticket-proof')
   assert.equal(presentation.themeId, 'ticket-proof')
   assert.equal(presentation.themeClass, 'theme-ticket-proof')
-  assert.match(presentation.themeStyle, /--theme-hero-start:#E3B84F;/)
-  assert.match(presentation.themeStyle, /--theme-shadow-soft:5rpx 5rpx 0/)
+  assert.match(presentation.themeStyle, /--theme-hero-start:#D9B45D;/)
+  assert.match(presentation.themeStyle, /--theme-shadow-soft:0 2rpx 10rpx/)
   assert.equal((presentation.themeStyle.match(/--theme-/g) || []).length, registry.TOKEN_NAMES.length)
 })
 

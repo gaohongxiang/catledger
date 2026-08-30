@@ -1,3 +1,7 @@
+const cloudCallPolicy = require('./cloud-call-policy')
+
+const CLOUD_RETRY_DELAY_MS = 300
+
 function loginRequiredError() {
   const error = new Error('请先使用微信登录')
   error.code = 'LOGIN_REQUIRED'
@@ -9,29 +13,51 @@ function hasLoginApproval() {
   return app && typeof app.hasLoginApproval === 'function' && app.hasLoginApproval()
 }
 
-function callApiInternal(action, data) {
-  return wx.cloud.callFunction({
-    name: 'catledger-api',
-    data: {
-      action: action,
-      data: data || {}
-    }
-  }).catch(function () {
-    const error = new Error('账本暂时没连接上')
-    error.code = 'CLOUD_CALL_FAILED'
+function waitBeforeRetry() {
+  return new Promise(function (resolve) {
+    setTimeout(resolve, CLOUD_RETRY_DELAY_MS)
+  })
+}
+
+function invokeCloudFunction(action, payload, attempt) {
+  return Promise.resolve()
+    .then(function () {
+      return wx.cloud.callFunction({
+        name: 'catledger-api',
+        data: payload
+      })
+    })
+    .catch(function (originalError) {
+      const failure = cloudCallPolicy.classifyCloudFailure(originalError)
+      if (cloudCallPolicy.shouldRetry(action, failure, attempt)) {
+        return waitBeforeRetry().then(function () {
+          return invokeCloudFunction(action, payload, attempt + 1)
+        })
+      }
+      throw cloudCallPolicy.toPublicError(failure)
+    })
+}
+
+function unwrapResponse(response, fallbackMessage) {
+  const result = response.result
+  if (!result || result.ok !== true) {
+    const error = new Error(
+      result && result.error && result.error.message
+        ? result.error.message
+        : fallbackMessage
+    )
+    error.code = result && result.error ? result.error.code : 'INTERNAL_ERROR'
     throw error
-  }).then(function (response) {
-    const result = response.result
-    if (!result || result.ok !== true) {
-      const error = new Error(
-        result && result.error && result.error.message
-          ? result.error.message
-          : '服务暂时不可用，请稍后重试'
-      )
-      error.code = result && result.error ? result.error.code : 'INTERNAL_ERROR'
-      throw error
-    }
-    return result.data
+  }
+  return result.data
+}
+
+function callApiInternal(action, data) {
+  return invokeCloudFunction(action, {
+    action: action,
+    data: data || {}
+  }, 0).then(function (response) {
+    return unwrapResponse(response, '服务暂时不可用，请稍后重试')
   })
 }
 
@@ -43,26 +69,10 @@ function callApi(action, data) {
 }
 
 function bootstrapInternal() {
-  return wx.cloud.callFunction({
-    name: 'catledger-api',
-    data: { action: 'bootstrap' }
-  }).catch(function () {
-    const error = new Error('账本暂时没连接上')
-    error.code = 'CLOUD_CALL_FAILED'
-    throw error
-  }).then(function (response) {
-    const result = response.result
-    if (!result || result.ok !== true) {
-      const error = new Error(
-        result && result.error && result.error.message
-          ? result.error.message
-          : '账本初始化失败'
-      )
-      error.code = result && result.error ? result.error.code : 'INTERNAL_ERROR'
-      throw error
-    }
-    return result.data
-  })
+  return invokeCloudFunction('bootstrap', { action: 'bootstrap' }, 0)
+    .then(function (response) {
+      return unwrapResponse(response, '账本初始化失败')
+    })
 }
 
 function bootstrap() {

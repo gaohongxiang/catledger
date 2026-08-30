@@ -1,5 +1,6 @@
 const app = getApp()
 const api = require('../../services/catledger-api')
+const profilePresentation = require('../../utils/profile-presentation')
 const themeService = require('../../theme/service')
 
 Page({
@@ -8,8 +9,9 @@ Page({
     loading: false,
     connected: false,
     nickname: '',
-    avatarUrl: '',
-    identityStatusText: '数据未连接',
+    displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
+    identityStatusText: '尚未登录',
+    syncActionText: '',
     errorMessage: '',
     accountCount: 0,
     categoryCount: 0
@@ -25,10 +27,13 @@ Page({
     this.setData({
       loggedIn: loggedIn,
       nickname: loggedIn ? profile.nickname : '',
-      avatarUrl: loggedIn ? profile.avatarUrl : '',
+      displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, profile),
       connected: false,
-      identityStatusText: loggedIn ? '正在核对微信身份' : '数据未连接',
-      errorMessage: ''
+      identityStatusText: loggedIn ? '正在连接个人账本' : '尚未登录',
+      syncActionText: '',
+      errorMessage: '',
+      accountCount: 0,
+      categoryCount: 0
     })
     if (loggedIn) {
       this.loadProfile()
@@ -45,35 +50,65 @@ Page({
     })
   },
 
-  loadProfile: function () {
+  loadProfile: function (options) {
     if (!app.hasLoginApproval() || this.data.loading) {
       return Promise.resolve()
     }
     const self = this
-    this.setData({ loading: true, errorMessage: '', identityStatusText: '正在核对微信身份' })
+    let identityConnected = Boolean(options && options.identityConfirmed)
+    this.setData({
+      loading: true,
+      errorMessage: '',
+      syncActionText: '',
+      connected: identityConnected,
+      identityStatusText: identityConnected ? '个人账本已连接' : '正在连接个人账本'
+    })
 
-    return Promise.all([api.bootstrap(), api.callApi('accounts.list')])
-      .then(function (results) {
-        const categories = Array.isArray(results[0].categories) ? results[0].categories : []
-        const accounts = Array.isArray(results[1].accounts) ? results[1].accounts : []
+    const bootstrapPromise = identityConnected
+      ? Promise.resolve({ categories: app.globalData.categories })
+      : api.bootstrap()
+
+    return bootstrapPromise
+      .then(function (result) {
+        const categories = Array.isArray(result.categories) ? result.categories : []
+        identityConnected = true
         app.globalData.categories = categories
         self.setData({
           connected: true,
-          identityStatusText: '微信身份已安全连接',
+          identityStatusText: '个人账本已连接',
+          categoryCount: categories.length,
+          syncActionText: '',
+          errorMessage: ''
+        })
+        return api.callApi('accounts.list')
+      })
+      .then(function (result) {
+        const accounts = Array.isArray(result.accounts) ? result.accounts : []
+        self.setData({
           accountCount: accounts.filter(function (account) { return !account.archived }).length,
-          categoryCount: categories.length
+          syncActionText: '',
+          errorMessage: ''
         })
       })
       .catch(function (error) {
         self.setData({
-          connected: false,
-          identityStatusText: '微信身份暂未连接',
-          errorMessage: error.message || '身份状态加载失败'
+          connected: identityConnected,
+          identityStatusText: identityConnected ? '个人账本已连接' : '个人账本暂未连接',
+          syncActionText: identityConnected ? '同步数据' : '重试',
+          errorMessage: identityConnected
+            ? '账户数据暂未同步'
+            : (error.message || '身份状态加载失败')
         })
       })
       .finally(function () {
         self.setData({ loading: false })
       })
+  },
+
+  retryProfile: function () {
+    if (this.data.errorMessage && !this.data.loading) {
+      this.loadProfile()
+    }
   },
 
   openTheme: function () {
@@ -96,9 +131,9 @@ Page({
     this.setData({
       loggedIn: true,
       nickname: profile.nickname || '',
-      avatarUrl: profile.avatarUrl || ''
+      displayAvatarUrl: profilePresentation.displayAvatarUrl(true, profile)
     })
-    this.loadProfile()
+    this.loadProfile({ identityConfirmed: true })
   },
 
   showPrivacy: function () {
@@ -139,8 +174,9 @@ Page({
           loading: false,
           connected: false,
           nickname: '',
-          avatarUrl: '',
-          identityStatusText: '数据未连接',
+          displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
+          identityStatusText: '尚未登录',
+          syncActionText: '',
           errorMessage: '',
           accountCount: 0,
           categoryCount: 0

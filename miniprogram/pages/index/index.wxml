@@ -1,10 +1,10 @@
 <view class="page-canvas home-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="home-header">
+  <view class="home-header home-content-line">
     <view>
       <text class="home-kicker">CAT LEDGER · {{monthLabel}}</text>
       <text class="home-title serif-title">把账，记得有温度。</text>
     </view>
-    <image class="home-logo" src="/assets/catledger-logo.png" mode="aspectFill" />
+    <image class="home-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
   </view>
 
   <view wx:if="{{!cloudAvailable}}" class="empty-ledger">
@@ -20,20 +20,21 @@
       <view class="cat-stamp"><text>CAT</text><text>LEDGER</text></view>
     </view>
 
+    <view class="home-flow">
     <view class="month-strip">
       <view class="month-stat month-stat-divider">
         <view class="month-stat-heading">
           <image class="month-stat-icon" src="/assets/icons/summary-income.svg" mode="aspectFit" />
           <text class="month-stat-label">收入</text>
         </view>
-        <text class="month-stat-value money-number">{{incomeText}}</text>
+        <text class="month-stat-value money-number amount-income">{{incomeText}}</text>
       </view>
       <view class="month-stat month-stat-divider">
         <view class="month-stat-heading">
           <image class="month-stat-icon" src="/assets/icons/summary-expense.svg" mode="aspectFit" />
           <text class="month-stat-label">支出</text>
         </view>
-        <text class="month-stat-value money-number">{{expenseText}}</text>
+        <text class="month-stat-value money-number amount-expense">{{expenseText}}</text>
       </view>
       <view class="month-stat">
         <view class="month-stat-heading">
@@ -143,6 +144,7 @@
     <view wx:else class="recent-empty recent-empty-pending">
       <text class="recent-empty-title">暂无最近账目</text>
       <text class="recent-empty-copy">导入或手动记录后，最新账目会出现在这里。</text>
+    </view>
     </view>
   </block>
 </view>

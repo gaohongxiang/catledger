@@ -4,7 +4,7 @@
       <text class="ledger-kicker">LEDGER STRUCTURE</text>
       <text class="ledger-title serif-title">钱放哪里，账归何处。</text>
     </view>
-    <text class="ledger-count money-number">{{loggedIn ? structureCount : '—'}}</text>
+    <text wx:if="{{loggedIn}}" class="ledger-count money-number">{{structureCount}}</text>
   </view>
 
   <view class="ledger-overview">

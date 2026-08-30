@@ -3,7 +3,10 @@ const api = require('../../services/catledger-api')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const viewModel = require('../../utils/view-model')
+const profilePresentation = require('../../utils/profile-presentation')
 const themeService = require('../../theme/service')
+
+const HOME_RECENT_LIMIT = 3
 
 const ACCOUNT_ICONS = {
   cash: '/assets/icons/account-cash.svg',
@@ -18,6 +21,7 @@ Page({
   data: {
     cloudAvailable: false,
     loggedIn: false,
+    displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
     loading: false,
     hasDashboard: false,
     errorMessage: '',
@@ -36,9 +40,11 @@ Page({
   onLoad: function () {
     themeService.bindPage(this)
     const month = time.currentMonth()
+    const loggedIn = app.hasLoginApproval()
     this.setData({
       cloudAvailable: app.globalData.cloudAvailable,
-      loggedIn: app.hasLoginApproval(),
+      loggedIn: loggedIn,
+      displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile),
       month: month,
       monthLabel: time.monthLabel(month)
     })
@@ -50,7 +56,10 @@ Page({
       this.getTabBar().setData({ selected: 0 })
     }
     const loggedIn = app.hasLoginApproval()
-    this.setData({ loggedIn: loggedIn })
+    this.setData({
+      loggedIn: loggedIn,
+      displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile)
+    })
     if (app.globalData.cloudAvailable && loggedIn) {
       this.loadDashboard()
       return
@@ -82,7 +91,10 @@ Page({
   },
 
   onWechatLoginSuccess: function () {
-    this.setData({ loggedIn: true })
+    this.setData({
+      loggedIn: true,
+      displayAvatarUrl: profilePresentation.displayAvatarUrl(true, app.globalData.profile)
+    })
     this.loadDashboard()
   },
 
@@ -133,7 +145,9 @@ Page({
               iconPath: ACCOUNT_ICONS[account.type] || ACCOUNT_ICONS.other_asset
             })
           }),
-          recentTransactions: dashboard.recentTransactions.map(viewModel.transactionView)
+          recentTransactions: dashboard.recentTransactions
+            .slice(0, HOME_RECENT_LIMIT)
+            .map(viewModel.transactionView)
         })
       })
       .catch(function () {
