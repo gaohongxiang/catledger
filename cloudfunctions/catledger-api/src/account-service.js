@@ -92,6 +92,11 @@ async function listAccountRows(connection, uid) {
   return rows
 }
 
+async function listAccountsForUser(connection, uid) {
+  const rows = await listAccountRows(connection, uid)
+  return rows.map(accountToPublic)
+}
+
 async function lockAccount(connection, uid, accountId) {
   if (typeof accountId !== 'string' || accountId.length > 64) {
     throw ledgerError('VALIDATION_ERROR')
@@ -176,8 +181,7 @@ function createAccountService({ getPool }) {
     const connection = await getPool().getConnection()
     try {
       const uid = await resolveUid(connection, provider, subjectHash)
-      const rows = await listAccountRows(connection, uid)
-      return { accounts: rows.map(accountToPublic) }
+      return { accounts: await listAccountsForUser(connection, uid) }
     } finally {
       connection.release()
     }
@@ -358,5 +362,6 @@ function createAccountService({ getPool }) {
 module.exports = {
   ACCOUNT_TYPES,
   accountToPublic,
-  createAccountService
+  createAccountService,
+  listAccountsForUser
 }

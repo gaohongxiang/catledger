@@ -46,7 +46,7 @@ before(async () => {
   repository = createUserRepository({ getPool: () => pool })
   accountService = createAccountService({ getPool: () => pool })
   categoryService = createCategoryService({ getPool: () => pool })
-  transactionService = createTransactionService({ getPool: () => pool, accountService })
+  transactionService = createTransactionService({ getPool: () => pool })
   await runMigrations({
     pool,
     migrationsDirectory: path.resolve(__dirname, '../../../migrations')

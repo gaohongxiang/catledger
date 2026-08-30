@@ -1,7 +1,26 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { buildManualTransaction, monthSequence, normalizeListFilters } = require('../src/transaction-service')
+const {
+  buildManualTransaction,
+  createTransactionService,
+  monthSequence,
+  normalizeListFilters
+} = require('../src/transaction-service')
+
+test('transaction service stays a thin compatible facade', () => {
+  const service = createTransactionService({ getPool: function unusedPool() {} })
+  assert.deepEqual(Object.keys(service).sort(), [
+    'create',
+    'dashboard',
+    'list',
+    'refundable',
+    'remove',
+    'statistics',
+    'update'
+  ])
+  assert.equal(Object.values(service).every((handler) => typeof handler === 'function'), true)
+})
 
 test('refund requires an original expense and credits one account', () => {
   const transaction = buildManualTransaction({
