@@ -1,17 +1,10 @@
 const app = getApp()
-const api = require('../services/catledger-api')
 const themeService = require('../theme/service')
 
 Component({
   data: {
     hidden: false,
     entryOpen: false,
-    loginOpen: false,
-    loginSubmitting: false,
-    loginError: '',
-    loginAvatarUrl: '',
-    loginNickname: '',
-    loginNicknameFocused: false,
     themeId: '',
     themeName: '',
     themeClass: '',
@@ -66,94 +59,9 @@ Component({
         }
         return
       }
-      this._afterLogin = options && options.afterLogin
-      const profile = app.globalData.profile || {}
-      this.setData({
-        entryOpen: false,
-        loginOpen: true,
-        loginSubmitting: false,
-        loginError: '',
-        loginAvatarUrl: profile.avatarUrl || '',
-        loginNickname: profile.nickname || '',
-        loginNicknameFocused: false
-      })
-    },
-
-    closeLogin: function () {
-      if (this.data.loginSubmitting) {
-        return
-      }
-      this._afterLogin = null
-      this.setData({ loginOpen: false, loginError: '' })
-    },
-
-    chooseLoginAvatar: function (event) {
-      const avatarUrl = event && event.detail && event.detail.avatarUrl
-      if (avatarUrl) {
-        this.setData({ loginAvatarUrl: avatarUrl, loginError: '' })
-      }
-    },
-
-    bindLoginNickname: function (event) {
-      this.setData({
-        loginNickname: String(event && event.detail && event.detail.value || '').slice(0, 24),
-        loginError: ''
-      })
-    },
-
-    focusLoginNickname: function () {
-      if (!this.data.loginSubmitting) {
-        this.setData({ loginNicknameFocused: true })
-      }
-    },
-
-    blurLoginNickname: function (event) {
-      this.setData({
-        loginNickname: String(event && event.detail && event.detail.value || '').slice(0, 24),
-        loginNicknameFocused: false,
-        loginError: ''
-      })
-    },
-
-    confirmWechatLogin: function () {
-      if (this.data.loginSubmitting) {
-        return
-      }
-
-      const self = this
-      const afterLogin = this._afterLogin
-      const selectedProfile = {
-        avatarUrl: this.data.loginAvatarUrl,
-        nickname: this.data.loginNickname
-      }
-      this.setData({ loginSubmitting: true, loginError: '' })
-      return api.bootstrapAfterConsent()
-        .then(function (result) {
-          return app.saveLocalProfile(selectedProfile)
-            .then(function () {
-              return app.completeWechatLogin(result.categories)
-            })
-        })
-        .then(function () {
-          self._afterLogin = null
-          self.setData({ loginOpen: false, loginSubmitting: false })
-          wx.showToast({ title: '登录成功', icon: 'success' })
-          if (typeof afterLogin === 'function') {
-            afterLogin()
-            return
-          }
-          const pages = getCurrentPages()
-          const page = pages[pages.length - 1]
-          if (page && typeof page.onWechatLoginSuccess === 'function') {
-            page.onWechatLoginSuccess()
-          }
-        })
-        .catch(function (error) {
-          self.setData({
-            loginSubmitting: false,
-            loginError: error.message || '登录暂时没有完成，请重试'
-          })
-        })
+      this.setData({ entryOpen: false })
+      const sheet = this.selectComponent('#loginSheet')
+      if (sheet && typeof sheet.show === 'function') sheet.show(options || {})
     },
 
     switchTab: function (event) {

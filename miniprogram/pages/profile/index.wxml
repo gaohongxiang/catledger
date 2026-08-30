@@ -42,13 +42,6 @@
       </view>
       <view class="row-chevron"></view>
     </view>
-    <view class="profile-row" role="button" aria-label="进入账本设置" bindtap="openLedger">
-      <view class="row-copy">
-        <text class="row-title">账本设置</text>
-        <text class="row-note">{{loggedIn ? '账户与分类' : '登录后管理'}}</text>
-      </view>
-      <view class="row-chevron"></view>
-    </view>
     <view class="profile-row" role="button" aria-label="查看数据与隐私" bindtap="showPrivacy">
       <view class="row-copy">
         <text class="row-title">数据与隐私</text>

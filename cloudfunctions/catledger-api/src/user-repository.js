@@ -1,6 +1,7 @@
 const { randomInt, randomUUID } = require('node:crypto')
 
 const { DEFAULT_CATEGORIES } = require('./default-categories')
+const { normalizeCategoryName } = require('./category-name')
 
 const MAX_BOOTSTRAP_ATTEMPTS = 5
 const RETRYABLE_TRANSACTION_ERRORS = new Set([
@@ -41,19 +42,20 @@ async function insertDefaultCategories(connection, uid, categories) {
     return
   }
 
-  const placeholders = categories.map(() => '(?, ?, ?, ?, ?, ?, 1)').join(', ')
+  const placeholders = categories.map(() => '(?, ?, ?, ?, ?, ?, ?, 1)').join(', ')
   const values = categories.flatMap((category) => [
     randomUUID(),
     uid,
     category.kind,
     category.systemKey,
     category.name,
+    normalizeCategoryName(category.name).normalizedName,
     category.sortOrder
   ])
 
   await connection.execute(
     `INSERT INTO catledger_categories
-       (category_id, uid, kind, system_key, name, sort_order, is_system_default)
+       (category_id, uid, kind, system_key, name, normalized_name, sort_order, is_system_default)
      VALUES ${placeholders}
      ON DUPLICATE KEY UPDATE category_id = category_id`,
     values
@@ -66,7 +68,8 @@ async function listCategories(connection, uid) {
             kind,
             system_key AS systemKey,
             name,
-            sort_order AS sortOrder
+            sort_order AS sortOrder,
+            version
        FROM catledger_categories
       WHERE uid = ? AND archived_at IS NULL
       ORDER BY kind, sort_order, category_id`,

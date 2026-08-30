@@ -1,5 +1,8 @@
 {
   "navigationBarTitleText": "统计分析",
   "enablePullDownRefresh": true,
-  "backgroundColor": "#F8F3EA"
+  "backgroundColor": "#F8F3EA",
+  "usingComponents": {
+    "login-sheet": "/components/login-sheet/index"
+  }
 }

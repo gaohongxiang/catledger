@@ -1,5 +1,6 @@
 const app = getApp()
 const api = require('../../services/catledger-api')
+const loginGuard = require('../../services/login-guard')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const themeService = require('../../theme/service')
@@ -7,7 +8,8 @@ const themeService = require('../../theme/service')
 const TYPE_OPTIONS = [
   { value: 'expense', label: '支出' },
   { value: 'income', label: '收入' },
-  { value: 'transfer', label: '转账' }
+  { value: 'transfer', label: '转账' },
+  { value: 'refund', label: '退款' }
 ]
 
 function findIndex(items, key, value) {
@@ -24,6 +26,8 @@ Page({
     typeIndex: 0,
     accounts: [],
     categories: [],
+    refundableTransactions: [],
+    originalIndex: 0,
     sourceIndex: 0,
     destinationIndex: 0,
     categoryIndex: 0,
@@ -39,7 +43,7 @@ Page({
   onLoad: function (options) {
     themeService.bindPage(this)
     this.setData({ mode: options && options.mode === 'edit' ? 'edit' : 'create' })
-    this.prepareForm()
+    loginGuard.run(this, this.prepareForm.bind(this))
   },
 
   onShow: function () {
@@ -53,7 +57,7 @@ Page({
       : api.bootstrap().then(function (result) {
           app.globalData.categories = Array.isArray(result.categories) ? result.categories : []
         })
-    Promise.all([bootstrapPromise, api.callApi('accounts.list')])
+    Promise.all([bootstrapPromise, api.callApi('accounts.list'), api.callApi('transactions.refundable', { limit: 60 })])
       .then(function (results) {
         const accounts = results[1].accounts.filter(function (account) { return !account.archived })
         if (accounts.length === 0) {
@@ -67,9 +71,26 @@ Page({
           })
           return
         }
-        self.setData({ accounts: accounts })
+        const refundables = (results[2].transactions || []).map(function (transaction) {
+          const category = transaction.category && transaction.category.name ? transaction.category.name : '支出'
+          const note = transaction.note ? ' · ' + transaction.note : ''
+          return Object.assign({}, transaction, {
+            pickerLabel: String(transaction.occurredLocalAt || '').slice(0, 10) + ' · ' + category + note + ' · 可退' + money.formatMinor(transaction.refundableMinor)
+          })
+        })
+        const editing = self.data.mode === 'edit' && app.globalData.editingTransaction
+          ? app.globalData.editingTransaction
+          : null
+        if (editing && editing.type === 'refund' && editing.originalTransaction &&
+            !refundables.some(function (item) { return item.transactionId === editing.originalTransaction.transactionId })) {
+          refundables.unshift({
+            transactionId: editing.originalTransaction.transactionId,
+            pickerLabel: String(editing.originalTransaction.occurredLocalAt || '').slice(0, 10) + ' · 原支出 · 当前退款'
+          })
+        }
+        self.setData({ accounts: accounts, refundableTransactions: refundables })
         if (self.data.mode === 'edit' && app.globalData.editingTransaction) {
-          self.fillEditingTransaction(app.globalData.editingTransaction, accounts)
+          self.fillEditingTransaction(app.globalData.editingTransaction, accounts, refundables)
         } else {
           self.refreshCategories('expense', null)
         }
@@ -89,7 +110,7 @@ Page({
     })
   },
 
-  fillEditingTransaction: function (transaction, accounts) {
+  fillEditingTransaction: function (transaction, accounts, refundables) {
     const relatedAccountIds = [transaction.sourceAccount, transaction.destinationAccount]
       .filter(Boolean)
       .map(function (account) { return account.accountId })
@@ -115,6 +136,9 @@ Page({
         : 0,
       destinationIndex: transaction.destinationAccount
         ? findIndex(accounts, 'accountId', transaction.destinationAccount.accountId)
+        : 0,
+      originalIndex: transaction.originalTransaction
+        ? findIndex(refundables, 'transactionId', transaction.originalTransaction.transactionId)
         : 0,
       amountYuan: money.minorToYuan(transaction.amountMinor),
       date: local.slice(0, 10),
@@ -142,6 +166,7 @@ Page({
   changeSource: function (event) { this.setData({ sourceIndex: Number(event.detail.value) }) },
   changeDestination: function (event) { this.setData({ destinationIndex: Number(event.detail.value) }) },
   changeCategory: function (event) { this.setData({ categoryIndex: Number(event.detail.value) }) },
+  changeOriginal: function (event) { this.setData({ originalIndex: Number(event.detail.value) }) },
 
   buildRequest: function () {
     const type = TYPE_OPTIONS[this.data.typeIndex].value
@@ -159,9 +184,14 @@ Page({
     } else if (type === 'income') {
       data.destinationAccountId = this.data.accounts[this.data.destinationIndex].accountId
       data.categoryId = this.data.categories[this.data.categoryIndex].id
-    } else {
+    } else if (type === 'transfer') {
       data.sourceAccountId = this.data.accounts[this.data.sourceIndex].accountId
       data.destinationAccountId = this.data.accounts[this.data.destinationIndex].accountId
+    } else {
+      const original = this.data.refundableTransactions[this.data.originalIndex]
+      if (!original) throw new Error('请选择原支出')
+      data.destinationAccountId = this.data.accounts[this.data.destinationIndex].accountId
+      data.originalTransactionId = original.transactionId
     }
     if (this.data.mode === 'edit') {
       data.transactionId = this.data.transactionId

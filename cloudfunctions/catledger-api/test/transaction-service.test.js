@@ -1,7 +1,22 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { monthSequence, normalizeListFilters } = require('../src/transaction-service')
+const { buildManualTransaction, monthSequence, normalizeListFilters } = require('../src/transaction-service')
+
+test('refund requires an original expense and credits one account', () => {
+  const transaction = buildManualTransaction({
+    type: 'refund',
+    destinationAccountId: 'account-1',
+    originalTransactionId: 'expense-1',
+    amountMinor: '120',
+    occurredLocalAt: '2026-08-30T10:00:00',
+    timezoneOffsetMinutes: -480
+  })
+  assert.equal(transaction.type, 'refund')
+  assert.equal(transaction.destinationAccountId, 'account-1')
+  assert.equal(transaction.originalTransactionId, 'expense-1')
+  assert.equal(transaction.categoryId, null)
+})
 
 test('dashboard month trend covers the trailing six months across a year boundary', () => {
   assert.deepEqual(monthSequence('2026-02'), [

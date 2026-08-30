@@ -20,6 +20,7 @@
 .summary-income, .amount-income { color: var(--theme-income, #64705d); }
 .summary-expense, .amount-expense { color: var(--theme-expense, #b25e36); }
 .amount-neutral { color: var(--theme-text-muted, #746a60); }
+.amount-refund { color: var(--theme-accent-strong, #9b522f); }
 .filter-toolbar { align-items: center; gap: 10rpx; margin-top: 14rpx; }
 .filter-picker { min-width: 0; flex: 1; overflow: hidden; color: var(--theme-secondary, #4f584a); font-size: 20rpx; background: var(--theme-secondary-soft, #e9ebe2); border-radius: var(--theme-radius-small, 17rpx); }
 .filter-content { height: 60rpx; align-items: center; justify-content: space-between; box-sizing: border-box; padding: 0 18rpx; }

@@ -1,0 +1,22 @@
+<view wx:if="{{open}}" class="login-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="close">
+  <view class="login-sheet" catchtap="stopBubble">
+    <view class="login-accent"></view>
+    <text class="login-kicker">YOUR PRIVATE LEDGER</text>
+    <text class="login-title">登录后，连接你的猫账。</text>
+    <text class="login-copy">头像和昵称均为可选，不填写也可以登录。</text>
+    <view class="login-profile-row">
+      <button class="login-avatar-button" open-type="chooseAvatar" disabled="{{submitting}}" bindchooseavatar="chooseAvatar">
+        <image wx:if="{{avatarUrl}}" class="login-avatar-image" src="{{avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="login-avatar-empty"><view class="login-avatar-head"></view><view class="login-avatar-body"></view></view>
+      </button>
+      <view class="login-nickname-field {{nicknameFocused ? 'login-nickname-field-focused' : ''}}" bindtap="focusNickname">
+        <text class="login-field-label">昵称（可选）</text>
+        <input class="login-nickname-input" type="nickname" value="{{nickname}}" maxlength="24" placeholder="点这里输入昵称" confirm-type="done" focus="{{nicknameFocused}}" cursor-spacing="32" disabled="{{submitting}}" bindinput="bindNickname" bindblur="blurNickname" />
+      </view>
+    </view>
+    <text class="login-profile-hint">点击昵称输入框，微信昵称会显示在键盘上方，轻点即可使用。</text>
+    <text wx:if="{{errorMessage}}" class="login-error">{{errorMessage}}</text>
+    <button class="login-primary {{submitting ? 'login-primary-disabled' : ''}}" loading="{{submitting}}" disabled="{{submitting}}" bindtap="confirm">登录</button>
+    <text class="login-cancel" bindtap="close">暂不登录，继续看看</text>
+  </view>
+</view>

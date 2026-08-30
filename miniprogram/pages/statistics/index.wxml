@@ -47,3 +47,4 @@
   <view wx:if="{{loading}}" class="statistics-status">正在汇总正式账目…</view>
   <view wx:if="{{errorMessage}}" class="statistics-error" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
 </view>
+<login-sheet id="page-login-sheet" />

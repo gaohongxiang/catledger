@@ -7,7 +7,7 @@ const { parseLocalDate, parseLocalDateTime, parseMonth } = require('./local-time
 const { minorUnitsToString, parseMinorUnits } = require('./money')
 const { digestRequest } = require('./request-digest')
 
-const MANUAL_TYPES = new Set(['expense', 'income', 'transfer'])
+const MANUAL_TYPES = new Set(['expense', 'income', 'transfer', 'refund'])
 
 function parseVersion(value) {
   if (!Number.isSafeInteger(value) || value < 1) {
@@ -50,6 +50,16 @@ function transactionToPublic(row) {
     category: row.categoryId == null
       ? null
       : { categoryId: row.categoryId, name: row.categoryName || null, kind: row.categoryKind || null },
+    originalTransaction: row.originalTransactionId == null
+      ? null
+      : {
+          transactionId: row.originalTransactionId,
+          amountMinor: row.originalAmountMinor == null ? null : minorUnitsToString(row.originalAmountMinor),
+          occurredLocalAt: row.originalOccurredLocalAt == null
+            ? null
+            : String(row.originalOccurredLocalAt).replace(' ', 'T'),
+          note: row.originalNote == null ? null : row.originalNote
+        },
     amountMinor: minorUnitsToString(row.amountMinor),
     occurredLocalAt: String(row.occurredLocalAt).replace(' ', 'T'),
     timezoneOffsetMinutes: Number(row.timezoneOffsetMinutes),
@@ -114,6 +124,7 @@ function buildManualTransaction(data) {
   let sourceAccountId = null
   let destinationAccountId = null
   let categoryId = null
+  let originalTransactionId = null
 
   if (data.type === 'expense') {
     sourceAccountId = validateId(data.sourceAccountId)
@@ -121,10 +132,16 @@ function buildManualTransaction(data) {
   } else if (data.type === 'income') {
     destinationAccountId = validateId(data.destinationAccountId)
     categoryId = validateId(data.categoryId)
-  } else {
+  } else if (data.type === 'transfer') {
     sourceAccountId = validateId(data.sourceAccountId)
     destinationAccountId = validateId(data.destinationAccountId)
     if (sourceAccountId === destinationAccountId || data.categoryId != null) {
+      throw ledgerError('VALIDATION_ERROR')
+    }
+  } else {
+    destinationAccountId = validateId(data.destinationAccountId)
+    originalTransactionId = validateId(data.originalTransactionId)
+    if (data.sourceAccountId != null || data.categoryId != null) {
       throw ledgerError('VALIDATION_ERROR')
     }
   }
@@ -134,6 +151,7 @@ function buildManualTransaction(data) {
     sourceAccountId,
     destinationAccountId,
     categoryId,
+    originalTransactionId,
     amountMinor: amount.toString(),
     note,
     ...time
@@ -147,9 +165,63 @@ async function validateTransactionRelations(connection, uid, transaction, extraA
     ...extraAccountIds
   ])
 
-  if (transaction.categoryId) {
+  if (transaction.categoryId && transaction.type !== 'refund') {
     await validateCategory(connection, uid, transaction.categoryId, transaction.type)
   }
+}
+
+async function lockOriginalExpense(connection, uid, transactionId) {
+  validateId(transactionId)
+  const [rows] = await connection.execute(
+    `SELECT transaction_id AS transactionId, category_id AS categoryId,
+            amount_minor AS amountMinor, occurred_local_at AS occurredLocalAt,
+            note
+       FROM catledger_transactions
+      WHERE uid = ? AND transaction_id = ? AND type = 'expense' AND deleted_at IS NULL
+      LIMIT 1 FOR UPDATE`,
+    [uid, transactionId]
+  )
+  if (!rows[0]) throw ledgerError('NOT_FOUND')
+  return rows[0]
+}
+
+async function sumRefunds(connection, uid, originalTransactionId, excludeTransactionId = null) {
+  const values = [uid, originalTransactionId]
+  let exclude = ''
+  if (excludeTransactionId) {
+    exclude = ' AND transaction_id <> ?'
+    values.push(excludeTransactionId)
+  }
+  const [[row]] = await connection.execute(
+    `SELECT COALESCE(SUM(amount_minor), 0) AS refundedMinor
+       FROM catledger_transactions
+      WHERE uid = ? AND original_transaction_id = ? AND type = 'refund'
+        AND deleted_at IS NULL${exclude}`,
+    values
+  )
+  return BigInt(minorUnitsToString(row.refundedMinor))
+}
+
+async function prepareRefund(connection, uid, transaction, currentTransactionId = null) {
+  if (transaction.type !== 'refund') return null
+  if (transaction.originalTransactionId === currentTransactionId) throw ledgerError('VALIDATION_ERROR')
+  const original = await lockOriginalExpense(connection, uid, transaction.originalTransactionId)
+  const alreadyRefunded = await sumRefunds(connection, uid, original.transactionId, currentTransactionId)
+  if (alreadyRefunded + BigInt(transaction.amountMinor) > BigInt(minorUnitsToString(original.amountMinor))) {
+    throw ledgerError('REFUND_EXCEEDS_ORIGINAL')
+  }
+  transaction.categoryId = original.categoryId
+  return original
+}
+
+async function protectRefundedExpense(connection, uid, current, transaction) {
+  if (current.type !== 'expense') return 0n
+  const refunded = await sumRefunds(connection, uid, current.transactionId)
+  if (refunded === 0n) return refunded
+  if (!transaction || transaction.type !== 'expense' || BigInt(transaction.amountMinor) < refunded) {
+    throw ledgerError('REFUNDED_TRANSACTION_LOCKED')
+  }
+  return refunded
 }
 
 async function selectTransaction(connection, uid, transactionId, { forUpdate = false } = {}) {
@@ -164,6 +236,10 @@ async function selectTransaction(connection, uid, transactionId, { forUpdate = f
             t.category_id AS categoryId,
             c.name AS categoryName,
             c.kind AS categoryKind,
+            t.original_transaction_id AS originalTransactionId,
+            original.amount_minor AS originalAmountMinor,
+            original.occurred_local_at AS originalOccurredLocalAt,
+            original.note AS originalNote,
             t.amount_minor AS amountMinor,
             t.occurred_local_at AS occurredLocalAt,
             t.timezone_offset_minutes AS timezoneOffsetMinutes,
@@ -178,6 +254,8 @@ async function selectTransaction(connection, uid, transactionId, { forUpdate = f
          ON da.uid = t.uid AND da.account_id = t.destination_account_id
        LEFT JOIN catledger_categories c
          ON c.uid = t.uid AND c.category_id = t.category_id
+       LEFT JOIN catledger_transactions original
+         ON original.uid = t.uid AND original.transaction_id = t.original_transaction_id
       WHERE t.uid = ? AND t.transaction_id = ?
       LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
     [uid, transactionId]
@@ -201,9 +279,9 @@ async function insertManualTransaction(connection, uid, transactionId, transacti
   await connection.execute(
     `INSERT INTO catledger_transactions
        (uid, transaction_id, type, source_account_id, destination_account_id,
-        category_id, amount_minor, occurred_local_date, occurred_local_at,
+        category_id, original_transaction_id, amount_minor, occurred_local_date, occurred_local_at,
         timezone_offset_minutes, occurred_at_utc, note, origin)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
     [
       uid,
       transactionId,
@@ -211,6 +289,7 @@ async function insertManualTransaction(connection, uid, transactionId, transacti
       transaction.sourceAccountId,
       transaction.destinationAccountId,
       transaction.categoryId,
+      transaction.originalTransactionId,
       transaction.amountMinor,
       transaction.localDate,
       transaction.localAt,
@@ -256,7 +335,10 @@ function normalizeListFilters(data) {
 async function queryMonthlySummary(connection, uid, range) {
   const [[row]] = await connection.execute(
     `SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS incomeMinor,
-            COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_minor ELSE 0 END), 0) AS expenseMinor
+            COALESCE(SUM(CASE
+              WHEN type = 'expense' THEN CAST(amount_minor AS DECIMAL(20, 0))
+              WHEN type = 'refund' THEN -CAST(amount_minor AS DECIMAL(20, 0))
+              ELSE 0 END), 0) AS expenseMinor
        FROM catledger_transactions
       WHERE uid = ?
         AND occurred_local_date >= ? AND occurred_local_date < ?
@@ -308,6 +390,10 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
             t.category_id AS categoryId,
             c.name AS categoryName,
             c.kind AS categoryKind,
+            t.original_transaction_id AS originalTransactionId,
+            original.amount_minor AS originalAmountMinor,
+            original.occurred_local_at AS originalOccurredLocalAt,
+            original.note AS originalNote,
             t.amount_minor AS amountMinor,
             t.occurred_local_at AS occurredLocalAt,
             t.timezone_offset_minutes AS timezoneOffsetMinutes,
@@ -317,6 +403,8 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
        LEFT JOIN catledger_accounts sa ON sa.uid = t.uid AND sa.account_id = t.source_account_id
        LEFT JOIN catledger_accounts da ON da.uid = t.uid AND da.account_id = t.destination_account_id
        LEFT JOIN catledger_categories c ON c.uid = t.uid AND c.category_id = t.category_id
+       LEFT JOIN catledger_transactions original
+         ON original.uid = t.uid AND original.transaction_id = t.original_transaction_id
       WHERE ${conditions.join('\n        AND ')}
       ORDER BY t.occurred_local_at DESC, t.transaction_id DESC
       LIMIT ?`,
@@ -334,18 +422,21 @@ function basisPoints(amount, total) {
 
 async function queryCategoryStatistics(connection, uid, range, summary) {
   const [rows] = await connection.execute(
-    `SELECT t.type,
+    `SELECT CASE WHEN t.type = 'refund' THEN 'expense' ELSE t.type END AS type,
             t.category_id AS categoryId,
             COALESCE(c.name, '未分类') AS categoryName,
-            SUM(t.amount_minor) AS amountMinor
+            SUM(CASE WHEN t.type = 'refund'
+              THEN -CAST(t.amount_minor AS DECIMAL(20, 0))
+              ELSE CAST(t.amount_minor AS DECIMAL(20, 0)) END) AS amountMinor
        FROM catledger_transactions t
        LEFT JOIN catledger_categories c ON c.uid = t.uid AND c.category_id = t.category_id
       WHERE t.uid = ?
         AND t.occurred_local_date >= ? AND t.occurred_local_date < ?
         AND t.deleted_at IS NULL
-        AND t.type IN ('expense', 'income')
-      GROUP BY t.type, t.category_id, c.name
-      ORDER BY t.type, amountMinor DESC, t.category_id`,
+        AND t.type IN ('expense', 'income', 'refund')
+      GROUP BY CASE WHEN t.type = 'refund' THEN 'expense' ELSE t.type END, t.category_id, c.name
+     HAVING amountMinor <> 0
+      ORDER BY type, amountMinor DESC, t.category_id`,
     [uid, range.startDate, range.endDate]
   )
   const totals = {
@@ -358,7 +449,7 @@ async function queryCategoryStatistics(connection, uid, range, summary) {
       categoryId: row.categoryId,
       name: row.categoryName,
       amountMinor: amount.toString(),
-      shareBasisPoints: basisPoints(amount, totals[row.type] || 0n)
+      shareBasisPoints: basisPoints(amount > 0n ? amount : 0n, totals[row.type] || 0n)
     }
   }
   return {
@@ -370,7 +461,10 @@ async function queryCategoryStatistics(connection, uid, range, summary) {
 async function queryDailyStatistics(connection, uid, range) {
   const [rows] = await connection.execute(
     `SELECT occurred_local_date AS localDate,
-            SUM(CASE WHEN type = 'expense' THEN amount_minor ELSE 0 END) AS expenseMinor,
+            SUM(CASE
+              WHEN type = 'expense' THEN CAST(amount_minor AS DECIMAL(20, 0))
+              WHEN type = 'refund' THEN -CAST(amount_minor AS DECIMAL(20, 0))
+              ELSE 0 END) AS expenseMinor,
             SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END) AS incomeMinor
        FROM catledger_transactions
       WHERE uid = ?
@@ -398,7 +492,7 @@ async function queryDailyStatistics(connection, uid, range) {
   }
   return values.map((row) => ({
     ...row,
-    expenseHeightPermille: maxExpense > 0n
+    expenseHeightPermille: maxExpense > 0n && BigInt(row.expenseMinor) > 0n
       ? Number((BigInt(row.expenseMinor) * 1000n) / maxExpense)
       : 0
   }))
@@ -421,12 +515,15 @@ async function queryMonthlyCashFlowTrend(connection, uid, month) {
   const [rows] = await connection.execute(
     `SELECT DATE_FORMAT(occurred_local_date, '%Y-%m') AS localMonth,
             SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END) AS incomeMinor,
-            SUM(CASE WHEN type = 'expense' THEN amount_minor ELSE 0 END) AS expenseMinor
+            SUM(CASE
+              WHEN type = 'expense' THEN CAST(amount_minor AS DECIMAL(20, 0))
+              WHEN type = 'refund' THEN -CAST(amount_minor AS DECIMAL(20, 0))
+              ELSE 0 END) AS expenseMinor
        FROM catledger_transactions
       WHERE uid = ?
         AND occurred_local_date >= ? AND occurred_local_date < ?
         AND deleted_at IS NULL
-        AND type IN ('income', 'expense')
+        AND type IN ('income', 'expense', 'refund')
       GROUP BY DATE_FORMAT(occurred_local_date, '%Y-%m')
       ORDER BY localMonth`,
     [uid, `${months[0]}-01`, endRange.endDate]
@@ -444,7 +541,41 @@ async function queryMonthlyCashFlowTrend(connection, uid, month) {
   return values.map((row) => ({
     ...row,
     incomeHeightPermille: maximum > 0n ? Number((BigInt(row.incomeMinor) * 1000n) / maximum) : 0,
-    expenseHeightPermille: maximum > 0n ? Number((BigInt(row.expenseMinor) * 1000n) / maximum) : 0
+    expenseHeightPermille: maximum > 0n && BigInt(row.expenseMinor) > 0n
+      ? Number((BigInt(row.expenseMinor) * 1000n) / maximum)
+      : 0
+  }))
+}
+
+async function listRefundableRows(connection, uid, limit) {
+  const [rows] = await connection.execute(
+    `SELECT t.transaction_id AS transactionId, t.type,
+            t.source_account_id AS sourceAccountId, sa.name AS sourceAccountName,
+            t.destination_account_id AS destinationAccountId, da.name AS destinationAccountName,
+            t.category_id AS categoryId, c.name AS categoryName, c.kind AS categoryKind,
+            t.amount_minor AS amountMinor, t.occurred_local_at AS occurredLocalAt,
+            t.timezone_offset_minutes AS timezoneOffsetMinutes, t.note, t.version,
+            COALESCE(refunds.refunded_minor, 0) AS refundedMinor
+       FROM catledger_transactions t
+       LEFT JOIN catledger_accounts sa ON sa.uid = t.uid AND sa.account_id = t.source_account_id
+       LEFT JOIN catledger_accounts da ON da.uid = t.uid AND da.account_id = t.destination_account_id
+       LEFT JOIN catledger_categories c ON c.uid = t.uid AND c.category_id = t.category_id
+       LEFT JOIN (
+         SELECT uid, original_transaction_id, SUM(amount_minor) AS refunded_minor
+           FROM catledger_transactions
+          WHERE uid = ? AND type = 'refund' AND deleted_at IS NULL
+          GROUP BY uid, original_transaction_id
+       ) refunds ON refunds.uid = t.uid AND refunds.original_transaction_id = t.transaction_id
+      WHERE t.uid = ? AND t.type = 'expense' AND t.deleted_at IS NULL
+        AND CAST(t.amount_minor AS DECIMAL(20, 0)) > COALESCE(refunds.refunded_minor, 0)
+      ORDER BY t.occurred_local_at DESC, t.transaction_id DESC
+      LIMIT ?`,
+    [uid, uid, limit]
+  )
+  return rows.map((row) => ({
+    ...transactionToPublic(row),
+    refundedMinor: minorUnitsToString(row.refundedMinor),
+    refundableMinor: (BigInt(minorUnitsToString(row.amountMinor)) - BigInt(minorUnitsToString(row.refundedMinor))).toString()
   }))
 }
 
@@ -456,12 +587,16 @@ function createTransactionService({ getPool, accountService }) {
       action: 'transactions.create',
       operation: async (connection, uid, data) => {
         const transaction = buildManualTransaction(data)
+        const original = await prepareRefund(connection, uid, transaction)
         await validateTransactionRelations(connection, uid, transaction)
         const transactionId = randomUUID()
         await insertManualTransaction(connection, uid, transactionId, transaction)
         return transactionToPublic({
           transactionId,
           ...transaction,
+          originalAmountMinor: original && original.amountMinor,
+          originalOccurredLocalAt: original && original.occurredLocalAt,
+          originalNote: original && original.note,
           occurredLocalAt: transaction.localAt,
           version: 1
         })
@@ -478,6 +613,8 @@ function createTransactionService({ getPool, accountService }) {
         const current = await selectTransaction(connection, uid, data.transactionId, { forUpdate: true })
         ensureEditable(current, data.version)
         const transaction = buildManualTransaction(data)
+        await protectRefundedExpense(connection, uid, current, transaction)
+        const original = await prepareRefund(connection, uid, transaction, current.transactionId)
         await validateTransactionRelations(connection, uid, transaction, [
           current.sourceAccountId,
           current.destinationAccountId
@@ -485,7 +622,7 @@ function createTransactionService({ getPool, accountService }) {
 
         await connection.execute(
           `UPDATE catledger_transactions
-              SET type = ?, source_account_id = ?, destination_account_id = ?, category_id = ?,
+              SET type = ?, source_account_id = ?, destination_account_id = ?, category_id = ?, original_transaction_id = ?,
                   amount_minor = ?, occurred_local_date = ?, occurred_local_at = ?,
                   timezone_offset_minutes = ?, occurred_at_utc = ?, note = ?, version = version + 1
             WHERE uid = ? AND transaction_id = ? AND version = ? AND deleted_at IS NULL`,
@@ -494,6 +631,7 @@ function createTransactionService({ getPool, accountService }) {
             transaction.sourceAccountId,
             transaction.destinationAccountId,
             transaction.categoryId,
+            transaction.originalTransactionId,
             transaction.amountMinor,
             transaction.localDate,
             transaction.localAt,
@@ -505,9 +643,20 @@ function createTransactionService({ getPool, accountService }) {
             data.version
           ]
         )
+        if (current.type === 'expense' && transaction.type === 'expense' && current.categoryId !== transaction.categoryId) {
+          await connection.execute(
+            `UPDATE catledger_transactions
+                SET category_id = ?, version = version + 1
+              WHERE uid = ? AND original_transaction_id = ? AND type = 'refund' AND deleted_at IS NULL`,
+            [transaction.categoryId, uid, current.transactionId]
+          )
+        }
         return transactionToPublic({
           transactionId: current.transactionId,
           ...transaction,
+          originalAmountMinor: original && original.amountMinor,
+          originalOccurredLocalAt: original && original.occurredLocalAt,
+          originalNote: original && original.note,
           occurredLocalAt: transaction.localAt,
           version: Number(current.version) + 1
         })
@@ -523,6 +672,9 @@ function createTransactionService({ getPool, accountService }) {
       operation: async (connection, uid, data) => {
         const current = await selectTransaction(connection, uid, data.transactionId, { forUpdate: true })
         ensureEditable(current, data.version)
+        if (current.type === 'expense') {
+          await protectRefundedExpense(connection, uid, current, null)
+        }
         await lockAccounts(connection, uid, [current.sourceAccountId, current.destinationAccountId])
         await connection.execute(
           `UPDATE catledger_transactions
@@ -581,6 +733,18 @@ function createTransactionService({ getPool, accountService }) {
         transactions: pageRows.map(transactionToPublic),
         nextCursor
       }
+    } finally {
+      connection.release()
+    }
+  }
+
+  async function refundable(context) {
+    const connection = await getPool().getConnection()
+    try {
+      const uid = await resolveUid(connection, context.provider, context.subjectHash)
+      const limit = context.data && context.data.limit == null ? 50 : context.data.limit
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw ledgerError('VALIDATION_ERROR')
+      return { transactions: await listRefundableRows(connection, uid, limit) }
     } finally {
       connection.release()
     }
@@ -648,6 +812,7 @@ function createTransactionService({ getPool, accountService }) {
     create,
     dashboard,
     list,
+    refundable,
     remove,
     statistics,
     update

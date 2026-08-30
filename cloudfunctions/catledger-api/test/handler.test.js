@@ -51,6 +51,19 @@ test('bootstrap rejects identity fields supplied by the client', async () => {
   assert.equal(called, false)
 })
 
+test('oversized nested public data is rejected without recursive stack growth', async () => {
+  let data = {}
+  for (let index = 0; index < 1100; index += 1) data = { child: data }
+  const handler = createHandler({
+    getWxContext: () => ({ OPENID: 'trusted-openid' }),
+    repository: { async bootstrap() { throw new Error('must not run') } },
+    logger: createLogger()
+  })
+  const result = await handler({ action: 'bootstrap', data })
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'VALIDATION_ERROR')
+})
+
 test('runtime identity fields outside public data do not look like client input', async () => {
   let called = false
   const handler = createHandler({

@@ -76,14 +76,6 @@ Page({
       })
   },
 
-  openLedger: function () {
-    if (!app.hasLoginApproval()) {
-      this.promptWechatLogin(this.openLedger.bind(this))
-      return
-    }
-    wx.switchTab({ url: '/pages/ledger/index' })
-  },
-
   openTheme: function () {
     wx.navigateTo({ url: '/pages/theme/index' })
   },

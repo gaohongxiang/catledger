@@ -13,6 +13,7 @@
 .form-row { display: flex; align-items: center; justify-content: space-between; min-height: 92rpx; padding: 0 28rpx; border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, 0.08)); }
 .form-label { display: block; color: var(--theme-text-muted, #746a60); font-size: 23rpx; }
 .form-value { display: block; margin-top: 8rpx; color: var(--theme-ink, #29231e); font-size: 26rpx; font-weight: 600; }
+.form-value-compact { max-width: 470rpx; overflow: hidden; font-size: 21rpx; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .form-row-pair { gap: 24rpx; align-items: stretch; }
 .half-picker { display: flex; flex: 1; align-items: center; padding: 22rpx 0; }
 .note-row { padding: 28rpx 32rpx 34rpx; }

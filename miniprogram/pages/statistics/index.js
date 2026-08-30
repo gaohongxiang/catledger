@@ -1,4 +1,5 @@
 const api = require('../../services/catledger-api')
+const loginGuard = require('../../services/login-guard')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const themeService = require('../../theme/service')
@@ -31,7 +32,7 @@ Page({
   onLoad: function () {
     themeService.bindPage(this)
     this.setData({ monthLabel: time.monthLabel(this.data.month) })
-    this.loadStatistics()
+    loginGuard.run(this, this.loadStatistics.bind(this))
   },
 
   onShow: function () {

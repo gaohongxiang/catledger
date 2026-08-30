@@ -6,6 +6,7 @@ const mysql = require('mysql2/promise')
 
 const { runMigrations } = require('../../../migrations/runner')
 const { createAccountService } = require('../src/account-service')
+const { createCategoryService } = require('../src/category-service')
 const { DEFAULT_CATEGORIES } = require('../src/default-categories')
 const { hashWechatSubject } = require('../src/handler')
 const { createTransactionService } = require('../src/transaction-service')
@@ -22,6 +23,7 @@ const hasDatabase = requiredEnvironment.every((key) => process.env[key])
 let pool
 let repository
 let accountService
+let categoryService
 let transactionService
 
 before(async () => {
@@ -43,6 +45,7 @@ before(async () => {
   })
   repository = createUserRepository({ getPool: () => pool })
   accountService = createAccountService({ getPool: () => pool })
+  categoryService = createCategoryService({ getPool: () => pool })
   transactionService = createTransactionService({ getPool: () => pool, accountService })
   await runMigrations({
     pool,
@@ -53,6 +56,7 @@ before(async () => {
 beforeEach(async () => {
   if (pool) {
     await pool.execute('DELETE FROM catledger_mutation_receipts')
+    await pool.execute("DELETE FROM catledger_transactions WHERE type = 'refund'")
     await pool.execute('DELETE FROM catledger_transactions')
     await pool.execute('DELETE FROM catledger_accounts')
     await pool.execute('DELETE FROM catledger_users')
@@ -73,11 +77,13 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 2)
+  assert.equal(rows.length, 3)
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
+  assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')
   assert.match(rows[0].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[1].checksum, /^[a-f0-9]{64}$/)
+  assert.match(rows[2].checksum, /^[a-f0-9]{64}$/)
 })
 
 test('ledger schema keeps account, transaction and idempotency keys inside uid scope', { skip: !hasDatabase }, async () => {
@@ -579,6 +585,115 @@ test('manual transaction update and soft delete recalculate balances and statist
   assert.equal(page.transactions.length, 0)
   const accounts = await accountService.list({ provider: 'wechat-mini', subjectHash })
   assert.equal(accounts.accounts.every((account) => account.bookBalanceMinor === '0'), true)
+})
+
+test('category management is isolated, versioned, reorderable and history-safe', { skip: !hasDatabase }, async () => {
+  const first = await bootstrapLedgerUser('integration-category-one')
+  const second = await bootstrapLedgerUser('integration-category-two')
+  const created = await categoryService.create({
+    provider: 'wechat-mini', subjectHash: first.subjectHash,
+    data: { requestId: randomTestUuid(), kind: 'expense', name: '宠物' }
+  })
+  assert.equal(created.name, '宠物')
+  await assert.rejects(categoryService.create({
+    provider: 'wechat-mini', subjectHash: first.subjectHash,
+    data: { requestId: randomTestUuid(), kind: 'expense', name: '  宠物 ' }
+  }), { publicCode: 'CONFLICT' })
+  const renamed = await categoryService.update({
+    provider: 'wechat-mini', subjectHash: first.subjectHash,
+    data: { requestId: randomTestUuid(), categoryId: created.id, version: created.version, name: '毛孩子' }
+  })
+  const listed = await categoryService.list({ provider: 'wechat-mini', subjectHash: first.subjectHash, data: {} })
+  const activeExpense = listed.categories.filter((item) => item.kind === 'expense' && !item.archived)
+  const reordered = await categoryService.reorder({
+    provider: 'wechat-mini', subjectHash: first.subjectHash,
+    data: {
+      requestId: randomTestUuid(), kind: 'expense',
+      items: [activeExpense.find((item) => item.id === renamed.id)]
+        .concat(activeExpense.filter((item) => item.id !== renamed.id))
+        .map((item) => ({ categoryId: item.id, version: item.version }))
+    }
+  })
+  assert.equal(reordered.categories[0].id, renamed.id)
+  const archived = await categoryService.archive({
+    provider: 'wechat-mini', subjectHash: first.subjectHash,
+    data: { requestId: randomTestUuid(), categoryId: renamed.id, version: reordered.categories[0].version }
+  })
+  assert.equal(archived.archived, true)
+  const restored = await categoryService.restore({
+    provider: 'wechat-mini', subjectHash: first.subjectHash,
+    data: { requestId: randomTestUuid(), categoryId: renamed.id, version: archived.version }
+  })
+  assert.equal(restored.archived, false)
+  await assert.rejects(categoryService.update({
+    provider: 'wechat-mini', subjectHash: second.subjectHash,
+    data: { requestId: randomTestUuid(), categoryId: renamed.id, version: restored.version, name: '越权' }
+  }), { publicCode: 'NOT_FOUND' })
+})
+
+test('refunds credit accounts and reduce expense statistics without becoming income', { skip: !hasDatabase }, async () => {
+  const { subjectHash, expenseCategory } = await bootstrapLedgerUser('integration-refund')
+  const account = await createTestAccount(subjectHash, {
+    name: '退款测试账户', openingDisplayBalanceMinor: '2000',
+    occurredLocalAt: '2026-08-01T08:00:00', timezoneOffsetMinutes: -480
+  })
+  const expense = await transactionService.create({
+    provider: 'wechat-mini', subjectHash,
+    data: {
+      requestId: randomTestUuid(), type: 'expense', sourceAccountId: account.accountId,
+      categoryId: expenseCategory.id, amountMinor: '1000',
+      occurredLocalAt: '2026-08-10T10:00:00', timezoneOffsetMinutes: -480, note: '原消费'
+    }
+  })
+  const refund = await transactionService.create({
+    provider: 'wechat-mini', subjectHash,
+    data: {
+      requestId: randomTestUuid(), type: 'refund', destinationAccountId: account.accountId,
+      originalTransactionId: expense.transactionId, amountMinor: '300',
+      occurredLocalAt: '2026-08-20T10:00:00', timezoneOffsetMinutes: -480, note: '部分退款'
+    }
+  })
+  assert.equal(refund.originalTransaction.transactionId, expense.transactionId)
+  const firstPage = await transactionService.list({ provider: 'wechat-mini', subjectHash, data: { month: '2026-08' } })
+  assert.deepEqual(firstPage.summary, { incomeMinor: '0', expenseMinor: '700', netIncomeMinor: '-700' })
+  const firstStats = await transactionService.statistics({ provider: 'wechat-mini', subjectHash, data: { month: '2026-08' } })
+  assert.equal(firstStats.expenseCategories[0].amountMinor, '700')
+  assert.equal((await accountService.list({ provider: 'wechat-mini', subjectHash })).accounts[0].bookBalanceMinor, '1300')
+  await assert.rejects(transactionService.create({
+    provider: 'wechat-mini', subjectHash,
+    data: {
+      requestId: randomTestUuid(), type: 'refund', destinationAccountId: account.accountId,
+      originalTransactionId: expense.transactionId, amountMinor: '701',
+      occurredLocalAt: '2026-08-21T10:00:00', timezoneOffsetMinutes: -480
+    }
+  }), { publicCode: 'REFUND_EXCEEDS_ORIGINAL' })
+  const updatedRefund = await transactionService.update({
+    provider: 'wechat-mini', subjectHash,
+    data: {
+      requestId: randomTestUuid(), transactionId: refund.transactionId, version: refund.version,
+      type: 'refund', destinationAccountId: account.accountId,
+      originalTransactionId: expense.transactionId, amountMinor: '200',
+      occurredLocalAt: '2026-08-20T10:00:00', timezoneOffsetMinutes: -480
+    }
+  })
+  await assert.rejects(transactionService.update({
+    provider: 'wechat-mini', subjectHash,
+    data: {
+      requestId: randomTestUuid(), transactionId: expense.transactionId, version: expense.version,
+      type: 'expense', sourceAccountId: account.accountId, categoryId: expenseCategory.id,
+      amountMinor: '100', occurredLocalAt: '2026-08-10T10:00:00', timezoneOffsetMinutes: -480
+    }
+  }), { publicCode: 'REFUNDED_TRANSACTION_LOCKED' })
+  await assert.rejects(transactionService.remove({
+    provider: 'wechat-mini', subjectHash,
+    data: { requestId: randomTestUuid(), transactionId: expense.transactionId, version: expense.version }
+  }), { publicCode: 'REFUNDED_TRANSACTION_LOCKED' })
+  await transactionService.remove({
+    provider: 'wechat-mini', subjectHash,
+    data: { requestId: randomTestUuid(), transactionId: refund.transactionId, version: updatedRefund.version }
+  })
+  const finalPage = await transactionService.list({ provider: 'wechat-mini', subjectHash, data: { month: '2026-08' } })
+  assert.equal(finalPage.summary.expenseMinor, '1000')
 })
 
 test('transaction validation rejects foreign, inactive and semantically invalid relations atomically', { skip: !hasDatabase }, async () => {

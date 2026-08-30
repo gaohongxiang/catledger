@@ -49,6 +49,36 @@
       "data": ["requestId", "accountId", "displayBalanceMinor", "occurredLocalAt", "timezoneOffsetMinutes"],
       "returns": "account"
     },
+    "categories.list": {
+      "kind": "read",
+      "data": [],
+      "returns": ["categories"]
+    },
+    "categories.create": {
+      "kind": "idempotent-mutation",
+      "data": ["requestId", "kind", "name"],
+      "returns": "category"
+    },
+    "categories.update": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "categoryId", "version", "name"],
+      "returns": "category"
+    },
+    "categories.archive": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "categoryId", "version"],
+      "returns": "category"
+    },
+    "categories.restore": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "categoryId", "version"],
+      "returns": "category"
+    },
+    "categories.reorder": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "kind", "items"],
+      "returns": ["categories"]
+    },
     "transactions.list": {
       "kind": "read",
       "data": ["month", "date?", "accountId?", "categoryId?", "search?", "pageSize?", "cursor?"],
@@ -56,13 +86,18 @@
     },
     "transactions.create": {
       "kind": "idempotent-mutation",
-      "data": ["requestId", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
+      "data": ["requestId", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "originalTransactionId?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
       "returns": "transaction"
     },
     "transactions.update": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "transactionId", "version", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
+      "data": ["requestId", "transactionId", "version", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "originalTransactionId?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
       "returns": "transaction"
+    },
+    "transactions.refundable": {
+      "kind": "read",
+      "data": ["limit?"],
+      "returns": ["transactions"]
     },
     "transactions.delete": {
       "kind": "idempotent-versioned-mutation",
@@ -75,7 +110,8 @@
     "money": "minor-unit decimal strings only; JavaScript floating point is forbidden",
     "time": "occurredLocalAt plus JavaScript getTimezoneOffset() minutes; optional date and month filters use local date",
     "mutation": "requestId is UUID; same key and request replays, same key with different request conflicts",
-    "deletion": "accounts archive and manual transactions soft-delete; no physical business deletion"
+    "deletion": "accounts and categories archive; manual transactions soft-delete; no physical business deletion",
+    "refund": "refund must reference one active original expense, may not exceed its remaining amount, credits one account and reduces expense statistics"
   },
   "successEnvelope": {
     "ok": true,
@@ -90,6 +126,8 @@
     "INTERNAL_ERROR",
     "INVALID_REQUEST",
     "NOT_FOUND",
+    "REFUND_EXCEEDS_ORIGINAL",
+    "REFUNDED_TRANSACTION_LOCKED",
     "SERVICE_NOT_CONFIGURED",
     "UNSUPPORTED_ACTION",
     "UNSUPPORTED_CURRENCY",

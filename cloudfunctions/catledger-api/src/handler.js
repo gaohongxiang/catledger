@@ -11,6 +11,8 @@ const ERROR_MESSAGES = Object.freeze({
   INTERNAL_ERROR: '服务暂时不可用，请稍后重试',
   INVALID_REQUEST: '请求中不能包含用户身份',
   NOT_FOUND: '未找到可用数据',
+  REFUND_EXCEEDS_ORIGINAL: '退款金额超过原支出剩余可退金额',
+  REFUNDED_TRANSACTION_LOCKED: '这笔支出已有退款，请先处理关联退款',
   SERVICE_NOT_CONFIGURED: '猫账数据库尚未配置',
   UNSUPPORTED_CURRENCY: '当前只支持人民币账户',
   VALIDATION_ERROR: '请检查填写内容',
@@ -22,28 +24,32 @@ const PUBLIC_ERROR_CODES = new Set([
   'IDEMPOTENCY_CONFLICT',
   'INITIALIZATION_REQUIRED',
   'NOT_FOUND',
+  'REFUND_EXCEEDS_ORIGINAL',
+  'REFUNDED_TRANSACTION_LOCKED',
   'SERVICE_NOT_CONFIGURED',
   'UNSUPPORTED_CURRENCY',
   'VALIDATION_ERROR'
 ])
 
-function hasClientIdentity(event) {
+function inspectClientData(event) {
+  const pending = [event]
   const visited = new Set()
-
-  function inspect(value) {
+  let inspected = 0
+  while (pending.length > 0) {
+    const value = pending.pop()
     if (!value || typeof value !== 'object' || visited.has(value)) {
-      return false
+      continue
     }
     visited.add(value)
+    inspected += 1
+    if (inspected > 1000) return 'too-complex'
 
     if (IDENTITY_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(value, field))) {
-      return true
+      return 'identity'
     }
-
-    return Object.values(value).some(inspect)
+    for (const child of Object.values(value)) pending.push(child)
   }
-
-  return inspect(event)
+  return null
 }
 
 function hashWechatSubject(openid) {
@@ -78,8 +84,9 @@ function createHandler({ getWxContext, repository, services = {}, logger = conso
       ? event.data
       : {}
 
-    if (hasClientIdentity(publicData)) {
-      return failure('INVALID_REQUEST')
+    const clientDataIssue = inspectClientData(publicData)
+    if (clientDataIssue) {
+      return failure(clientDataIssue === 'identity' ? 'INVALID_REQUEST' : 'VALIDATION_ERROR')
     }
 
     try {

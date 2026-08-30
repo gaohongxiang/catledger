@@ -1,4 +1,5 @@
 const api = require('../../services/catledger-api')
+const loginGuard = require('../../services/login-guard')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const themeService = require('../../theme/service')
@@ -37,7 +38,7 @@ Page({
 
   onShow: function () {
     themeService.bindPage(this)
-    this.loadAccounts()
+    loginGuard.run(this, this.loadAccounts.bind(this))
   },
 
   onHide: function () {

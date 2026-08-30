@@ -4,6 +4,7 @@ const TYPE_LABELS = {
   expense: '支出',
   income: '收入',
   transfer: '转账',
+  refund: '退款',
   balance_adjustment: '余额校正'
 }
 
@@ -21,7 +22,7 @@ function transactionView(transaction) {
   const label = transaction.category && transaction.category.name
     ? transaction.category.name
     : TYPE_LABELS[transaction.type] || '账目'
-  const prefix = transaction.type === 'expense' ? '-' : transaction.type === 'income' ? '+' : ''
+  const prefix = transaction.type === 'expense' ? '-' : (transaction.type === 'income' || transaction.type === 'refund') ? '+' : ''
   return Object.assign({}, transaction, {
     typeLabel: TYPE_LABELS[transaction.type] || '账目',
     label: label,
@@ -31,6 +32,8 @@ function transactionView(transaction) {
       ? 'amount-income'
       : transaction.type === 'expense'
         ? 'amount-expense'
+        : transaction.type === 'refund'
+          ? 'amount-refund'
         : 'amount-neutral',
     timeText: String(transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' '),
     editable: transaction.type !== 'balance_adjustment'

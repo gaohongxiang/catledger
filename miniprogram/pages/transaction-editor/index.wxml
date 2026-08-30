@@ -23,7 +23,7 @@
   </view>
 
   <view class="form-sheet">
-    <picker wx:if="{{typeOptions[typeIndex].value !== 'income'}}" mode="selector" range="{{accounts}}" range-key="name" value="{{sourceIndex}}" bindchange="changeSource">
+    <picker wx:if="{{typeOptions[typeIndex].value === 'expense' || typeOptions[typeIndex].value === 'transfer'}}" mode="selector" range="{{accounts}}" range-key="name" value="{{sourceIndex}}" bindchange="changeSource">
       <view class="form-row">
         <text class="form-label">{{typeOptions[typeIndex].value === 'transfer' ? '转出账户' : '付款账户'}}</text>
         <text class="form-value">{{accounts[sourceIndex].name || '请选择'}}</text>
@@ -32,15 +32,22 @@
 
     <picker wx:if="{{typeOptions[typeIndex].value !== 'expense'}}" mode="selector" range="{{accounts}}" range-key="name" value="{{destinationIndex}}" bindchange="changeDestination">
       <view class="form-row">
-        <text class="form-label">{{typeOptions[typeIndex].value === 'transfer' ? '转入账户' : '收款账户'}}</text>
+        <text class="form-label">{{typeOptions[typeIndex].value === 'transfer' ? '转入账户' : (typeOptions[typeIndex].value === 'refund' ? '退款到账' : '收款账户')}}</text>
         <text class="form-value">{{accounts[destinationIndex].name || '请选择'}}</text>
       </view>
     </picker>
 
-    <picker wx:if="{{typeOptions[typeIndex].value !== 'transfer'}}" mode="selector" range="{{categories}}" range-key="name" value="{{categoryIndex}}" bindchange="changeCategory">
+    <picker wx:if="{{typeOptions[typeIndex].value === 'expense' || typeOptions[typeIndex].value === 'income'}}" mode="selector" range="{{categories}}" range-key="name" value="{{categoryIndex}}" bindchange="changeCategory">
       <view class="form-row">
         <text class="form-label">分类</text>
         <text class="form-value">{{categories[categoryIndex].name || '请选择'}}</text>
+      </view>
+    </picker>
+
+    <picker wx:if="{{typeOptions[typeIndex].value === 'refund'}}" mode="selector" range="{{refundableTransactions}}" range-key="pickerLabel" value="{{originalIndex}}" bindchange="changeOriginal">
+      <view class="form-row">
+        <text class="form-label">原支出</text>
+        <text class="form-value form-value-compact">{{refundableTransactions[originalIndex].pickerLabel || '请选择可退款支出'}}</text>
       </view>
     </picker>
 
@@ -63,3 +70,4 @@
   <button class="primary-button save-button" loading="{{saving}}" disabled="{{saving}}" bindtap="save">{{mode === 'edit' ? '保存修改' : '确认记账'}}</button>
   <button wx:if="{{mode === 'edit'}}" class="danger-button delete-button" disabled="{{saving}}" bindtap="remove">删除这笔账</button>
 </view>
+<login-sheet id="page-login-sheet" />
