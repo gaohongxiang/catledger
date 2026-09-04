@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "catledger-import current development contract",
+  "requestEnvelope": {
+    "required": ["action"],
+    "shape": {
+      "action": "one of actions",
+      "data": "action-specific object"
+    }
+  },
+  "actions": {
+    "imports.prepareMany": {
+      "kind": "idempotent-mutation",
+      "data": ["requestId", "files[{fileName,size}]"],
+      "returns": ["files[{importId,cloudPath,fileName,version}]", "maxFiles"]
+    },
+    "imports.parseFile": {
+      "kind": "idempotent-file-mutation",
+      "data": ["requestId", "importId", "fileID", "timezoneOffsetMinutes"],
+      "returns": ["import", "batch?", "duplicateImportId?", "reusedImportId?", "replacedUpdateId?", "duplicateDisposition?"],
+      "isolation": "a failed file parse changes only that import file and never rolls back or mutates sibling files"
+    },
+    "imports.getFile": {
+      "kind": "read",
+      "data": ["importId", "pageSize?", "cursor?", "includeOptions?"],
+      "returns": ["import", "batch?", "rows", "nextCursor"]
+    },
+    "imports.discardFile": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "importId", "version"],
+      "returns": ["importId", "state", "contentState", "version"]
+    },
+    "financeUpdates.organize": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "updateId", "version"],
+      "returns": ["update", "sources", "events", "issues", "accounts", "categories"]
+    },
+    "financeUpdates.prepare": {
+      "kind": "idempotent-atomic-mutation",
+      "data": ["requestId", "batchIds"],
+      "returns": ["update", "sources", "events", "issues", "accounts", "categories"],
+      "atomic": true
+    },
+    "financeUpdates.get": {
+      "kind": "read",
+      "data": ["updateId", "includeEvents?", "includeOptions?"],
+      "returns": ["update", "sources", "events", "issues", "posting?", "accounts?", "categories?"]
+    },
+    "reviewIssues.list": {
+      "kind": "read",
+      "data": ["updateId", "status?"],
+      "returns": ["update", "issues"]
+    },
+    "reviewIssues.get": {
+      "kind": "read",
+      "data": ["issueId"],
+      "returns": ["update", "issue", "members", "accounts", "categories"]
+    },
+    "reviewIssues.resolve": {
+      "kind": "idempotent-double-versioned-mutation",
+      "data": ["requestId", "updateId", "issueId", "updateVersion", "issueVersion", "decision", "decision-specific fields", "apply_fields.fields.ledgerAccountDraft?", "apply_fields.fields.repaymentAllocations[{accountId,amountMinor}]?", "exclude_events.paymentRuleAction?"],
+      "decisions": ["apply_fields", "confirm_distinct", "confirm_same", "exclude_events", "confirm_installment_principal", "discard_evidence", "link_refund", "mark_refund_pending", "link_existing_transaction"],
+      "returns": ["update", "issue", "members", "accounts", "categories"]
+    },
+    "reviewIssues.resolveAccountMappings": {
+      "kind": "idempotent-batch-mutation",
+      "data": ["requestId", "updateId", "decisions[{issueId,operation=resolve|revise,decision=apply_fields|exclude_events,fields.mappingAccountId|fields.mappingAccountDraft?,paymentRuleAction?}]"],
+      "returns": ["update", "sources", "events", "issues", "accounts", "accountDrafts", "accountMappingDrafts", "categories"]
+    },
+    "financeUpdates.post": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "updateId", "version", "mode=all_ready"],
+      "returns": ["update", "sources", "events", "issues", "posting"],
+      "atomic": true
+    },
+    "financeUpdates.abandon": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "updateId", "version"],
+      "returns": ["updateId", "status", "version", "counts"]
+    },
+    "economicEvents.correctionImpact": {
+      "kind": "read",
+      "data": ["eventId"],
+      "returns": ["updateId", "eventId", "eventStatus", "eventVersion", "transactionIds", "reusedTransactionIds", "canCorrect"]
+    },
+    "economicEvents.evidence": {
+      "kind": "read",
+      "data": ["eventId"],
+      "returns": ["eventId", "updateId", "evidence[{evidenceRole,rowNumber,sourceLocator,sourceType,fileName,rawSnapshotVersion,parserVersion,rawFields}]"]
+    },
+    "economicEvents.correct": {
+      "kind": "idempotent-double-versioned-mutation",
+      "data": ["requestId", "updateId", "eventId", "updateVersion", "eventVersion", "fields"],
+      "returns": ["update", "sources", "events", "issues", "posting"]
+    },
+    "financeUpdates.undoImpact": {
+      "kind": "read",
+      "data": ["updateId"],
+      "returns": ["update", "createdTransactionCount", "reusedTransactionCount", "dependentTransactionCount", "canUndo"]
+    },
+    "financeUpdates.undo": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "updateId", "version"],
+      "returns": ["update", "sources", "events", "issues"]
+    }
+  },
+  "rules": {
+    "identity": "uid and WeChat OpenID are server-only; identity-shaped client fields are rejected recursively",
+    "upload": "the server issues an opaque user-scoped cloudPath and parse only accepts the exact registered object path",
+    "money": "source decimal text is converted to minor-unit decimal strings without JavaScript floating point",
+    "evidence": "files, per-file parse batches, FinanceUpdate, Evidence, EconomicEvent, Relation, ReviewIssue, FinanceAction and formal Transaction remain separate",
+    "organization": "same amount, nearby time or similar text creates candidates only; only a stable shared reference plus compatible core fields may auto-merge evidence",
+    "postability": "ready is server-derived after planning, every issue resolution and inside the posting transaction; clients cannot submit ready",
+    "posting": "one FinanceUpdate commits all ready formal transactions and evidence links in one MySQL transaction; one aggregate repayment EconomicEvent may project to multiple formal transfers only when positive unique liability-account allocations exactly conserve the event amount; any failure rolls the whole update back",
+    "cashBalance": "atomic posting may not create or deepen a negative cash balance; failure rolls back accounts, mappings, transactions, links and state together",
+    "prePostingWriteBarrier": "before financeUpdates.post, account creation and reusable mapping changes remain FinanceUpdate-scoped drafts; abandoning or a failed post leaves formal accounts, mappings, transactions, balances and reports unchanged",
+    "paymentRules": "recognized atomic payment methods may map to one account or be permanently ignored per user and source; an aggregate statement reference such as Alipay 花呗｜信用购 is never an account or reusable mapping and must be allocated to real liability accounts; temporary ignore never silently becomes a permanent rule",
+    "lifecycle": "each file uploads and parses independently, then selected ready batches form one FinanceUpdate; selecting the same unposted file abandons any prior draft/failed/review FinanceUpdate with audit and enters the current flow without confirmation; source files are temporary and cleanup failure never fabricates a failed ledger commit",
+    "publicWritePath": "the only public posting path is financeUpdates.post; legacy single-file commit and row-level post/skip actions are not registered"
+  },
+  "failureCodes": [
+    "AUTH_REQUIRED",
+    "CONFLICT",
+    "CSV_COLUMN_LIMIT_EXCEEDED",
+    "CSV_RECORD_LIMIT_EXCEEDED",
+    "FILE_ENCODING_INVALID",
+    "FILE_FORMAT_UNSUPPORTED",
+    "FILE_NOT_UPLOADED",
+    "FILE_SIZE_INVALID",
+    "IDEMPOTENCY_CONFLICT",
+    "IDENTITY_CONFLICT",
+    "INSUFFICIENT_CASH_BALANCE",
+    "INITIALIZATION_REQUIRED",
+    "INTERNAL_ERROR",
+    "INVALID_REQUEST",
+    "NOT_FOUND",
+    "SERVICE_NOT_CONFIGURED",
+    "SERVICE_TEMPORARY_UNAVAILABLE",
+    "UNRESOLVED_IMPORT",
+    "UNSUPPORTED_ACTION",
+    "VALIDATION_ERROR"
+  ]
+}

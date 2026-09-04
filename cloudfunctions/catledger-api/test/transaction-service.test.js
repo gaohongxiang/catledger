@@ -5,7 +5,8 @@ const {
   buildManualTransaction,
   createTransactionService,
   monthSequence,
-  normalizeListFilters
+  normalizeListFilters,
+  transactionToPublic
 } = require('../src/transaction-service')
 
 test('transaction service stays a thin compatible facade', () => {
@@ -13,6 +14,7 @@ test('transaction service stays a thin compatible facade', () => {
   assert.deepEqual(Object.keys(service).sort(), [
     'create',
     'dashboard',
+    'linkRefund',
     'list',
     'refundable',
     'remove',
@@ -35,6 +37,28 @@ test('refund requires an original expense and credits one account', () => {
   assert.equal(transaction.destinationAccountId, 'account-1')
   assert.equal(transaction.originalTransactionId, 'expense-1')
   assert.equal(transaction.categoryId, null)
+})
+
+test('交易投影明确区分已关联和待关联退款', () => {
+  const base = {
+    transactionId: 'refund-1', type: 'refund', sourceAccountId: null,
+    destinationAccountId: 'account-1', destinationAccountName: '支付宝账户余额',
+    categoryId: null, amountMinor: '466', occurredLocalAt: '2026-07-04 15:02:00.000',
+    timezoneOffsetMinutes: -480, note: '退款', version: 1
+  }
+  assert.equal(transactionToPublic({ ...base, originalTransactionId: null }).refundLinkStatus, 'pending')
+  assert.equal(transactionToPublic({
+    ...base, originalTransactionId: 'expense-1', originalAmountMinor: '466',
+    originalOccurredLocalAt: '2026-07-04 11:37:00.000', originalNote: '原消费'
+  }).refundLinkStatus, 'linked')
+  assert.equal(transactionToPublic({ ...base, type: 'income', originalTransactionId: null }).refundLinkStatus, null)
+})
+
+test('所有收支统计只让已关联退款冲减支出', () => {
+  const querySource = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/transaction-query-service.js'), 'utf8')
+  const reportingSource = require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/reporting-service.js'), 'utf8')
+  assert.match(querySource, /type = 'refund' AND original_transaction_id IS NOT NULL/)
+  assert.ok((reportingSource.match(/(?:t\.)?type = 'refund' AND (?:t\.)?original_transaction_id IS NOT NULL/g) || []).length >= 3)
 })
 
 test('dashboard month trend covers the trailing six months across a year boundary', () => {

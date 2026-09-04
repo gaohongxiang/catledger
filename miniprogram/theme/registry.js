@@ -49,8 +49,8 @@ const THEMES = [
     description: '暖橘与灰绿，像一本常翻常新的生活手账。',
     tokens: {
       page: '#F8F3EA', canvasTop: '#FBF7F0', canvasMid: '#F7F1E7', canvasBottom: '#F9F4EC',
-      surface: '#FFFDF9', surfaceMuted: '#F3EEE6', ink: '#29231E', textMuted: '#746A60', textSubtle: '#958B82',
-      accent: '#D97732', accentStrong: '#B85F2E', accentSoft: '#F6E5D8', onAccent: '#FFFAF1',
+      surface: '#FFFDF9', surfaceMuted: '#F8E8DC', ink: '#29231E', textMuted: '#746A60', textSubtle: '#958B82',
+      accent: '#D97732', accentStrong: '#B85F2E', accentSoft: '#F5DDCB', onAccent: '#FFFAF1',
       secondary: '#64705D', secondarySoft: '#E8EADF', line: 'rgba(41,35,30,.09)', border: 'rgba(111,88,65,.10)',
       heroStart: '#D97732', heroEnd: '#D97732', heroInk: '#29231E', heroValueInk: '#633921', heroMuted: 'rgba(41,35,30,.66)',
       income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A95132', dangerSoft: '#F4E1D6',

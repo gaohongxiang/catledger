@@ -1,16 +1,12 @@
-const { randomInt } = require('node:crypto')
-
 const { ledgerError } = require('./ledger-errors')
 const { digestIdempotencyKey, digestRequest } = require('./request-digest')
+const {
+  isRetryableDatabaseError,
+  safeRollback,
+  waitBeforeDatabaseRetry
+} = require('./database-errors')
 
 const MAX_ATTEMPTS = 4
-const RETRYABLE_ERRORS = new Set(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT'])
-
-async function waitBeforeRetry(attempt) {
-  const maximumDelayMs = Math.min(120, 12 * (2 ** attempt))
-  const delayMs = randomInt(1, maximumDelayMs + 1)
-  await new Promise((resolve) => setTimeout(resolve, delayMs))
-}
 
 async function resolveUid(connection, provider, subjectHash) {
   const [rows] = await connection.execute(
@@ -73,10 +69,11 @@ async function executeIdempotentMutation({
   const requestDigest = digestRequest(action, requestData)
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const connection = await getPool().getConnection()
+    let connection
     let transactionStarted = false
 
     try {
+      connection = await getPool().getConnection()
       await connection.beginTransaction()
       transactionStarted = true
       const uid = await resolveUid(connection, provider, subjectHash)
@@ -115,18 +112,16 @@ async function executeIdempotentMutation({
       transactionStarted = false
       return result
     } catch (error) {
-      if (transactionStarted) {
-        await connection.rollback()
-      }
+      if (transactionStarted) await safeRollback(connection)
 
-      if (RETRYABLE_ERRORS.has(error && error.code) && attempt + 1 < MAX_ATTEMPTS) {
-        await waitBeforeRetry(attempt)
+      if (isRetryableDatabaseError(error) && attempt + 1 < MAX_ATTEMPTS) {
+        await waitBeforeDatabaseRetry(attempt)
         continue
       }
 
       throw error
     } finally {
-      connection.release()
+      if (connection) connection.release()
     }
   }
 

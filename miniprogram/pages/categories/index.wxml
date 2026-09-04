@@ -1,37 +1,62 @@
 <view class="page-canvas category-page {{themeClass}}" style="{{themeStyle}}">
   <view class="category-heading">
-    <view><text class="category-kicker">CATEGORY BOOK</text><text class="category-title serif-title">分类管理</text></view>
-    <button class="category-add" bindtap="openCreate">＋ 新建</button>
+    <view><text class="category-kicker">CATEGORY BOOK</text><text class="category-title serif-title">分类总览</text></view>
   </view>
-  <text class="category-intro">分类用于账单导入、手动记账和统计；停用不会改变历史账目。</text>
+  <text class="category-intro">管理账目使用的收支分类；点开可改名或停用。</text>
+
   <view class="kind-switch">
-    <view class="kind-option {{selectedKind === 'expense' ? 'kind-option-selected' : ''}}" data-kind="expense" bindtap="selectKind">支出 {{expenseCategories.length}}</view>
-    <view class="kind-option {{selectedKind === 'income' ? 'kind-option-selected' : ''}}" data-kind="income" bindtap="selectKind">收入 {{incomeCategories.length}}</view>
+    <view class="kind-option {{selectedKind === 'expense' ? 'kind-option-selected' : ''}}" data-kind="expense" bindtap="selectKind" hover-class="kind-option-active" role="button" aria-label="查看支出分类"><text>支出</text><text class="kind-count money-number">{{expenseCategories.length}}</text></view>
+    <view class="kind-option {{selectedKind === 'income' ? 'kind-option-selected' : ''}}" data-kind="income" bindtap="selectKind" hover-class="kind-option-active" role="button" aria-label="查看收入分类"><text>收入</text><text class="kind-count money-number">{{incomeCategories.length}}</text></view>
   </view>
-  <view class="category-list">
-    <view wx:for="{{visibleCategories}}" wx:key="id" class="category-row">
-      <view class="category-mark {{selectedKind === 'income' ? 'category-mark-income' : ''}}">{{item.initial}}</view>
-      <view class="category-copy" data-id="{{item.id}}" bindtap="openEdit"><text class="category-name">{{item.name}}</text><text class="category-order money-number">{{item.orderText}}</text></view>
-      <view class="category-actions">
-        <text class="category-action {{item.canMoveUp ? '' : 'category-action-disabled'}}" data-index="{{index}}" data-delta="-1" bindtap="move">↑</text>
-        <text class="category-action {{item.canMoveDown ? '' : 'category-action-disabled'}}" data-index="{{index}}" data-delta="1" bindtap="move">↓</text>
-        <text class="category-action category-action-danger" data-id="{{item.id}}" bindtap="setArchived">停用</text>
+
+  <view class="category-toolbar">
+    <text class="category-sort-note">拖动右侧把手排序</text>
+    <button class="category-add" bindtap="openCreate" hover-class="category-action-active" aria-label="新建分类">＋ 新建分类</button>
+  </view>
+
+  <view wx:if="{{visibleCategories.length}}" class="category-list">
+    <view wx:for="{{visibleCategories}}" wx:key="id" class="category-row {{draggingCategoryId === item.id ? 'category-row-dragging' : ''}}" style="{{draggingCategoryId === item.id ? dragStyle : ''}}" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看分类 {{item.name}}">
+      <text class="category-order money-number">{{item.orderText}}</text>
+      <view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">{{selectedKind === 'expense' ? '支出分类' : '收入分类'}}</text></view>
+      <view class="category-drag-handle" data-index="{{item.positionIndex}}" data-id="{{item.id}}" catchtouchstart="startCategoryDrag" catchtouchmove="moveCategoryDrag" catchtouchend="endCategoryDrag" catchtouchcancel="cancelCategoryDrag" role="button" aria-label="拖动调整 {{item.name}} 的排序"><view class="category-drag-lines" aria-hidden="true"></view></view>
+    </view>
+  </view>
+  <view wx:if="{{!loading && !visibleCategories.length}}" class="category-empty"><text>还没有{{selectedKind === 'expense' ? '支出' : '收入'}}分类</text><text>新建后可在记账和导入时使用。</text></view>
+
+  <view wx:if="{{archivedCategories.length}}" class="archived-section">
+    <view class="archived-toggle" bindtap="toggleArchived" hover-class="category-row-active" role="button" aria-label="{{archivedExpanded ? '收起' : '展开'}}已停用分类">
+      <view><text class="archived-title">已停用分类</text><text class="archived-note">历史账目仍然保留</text></view>
+      <view class="archived-toggle-end"><text class="money-number">{{archivedCategories.length}}</text><view class="archived-chevron {{archivedExpanded ? 'archived-chevron-open' : ''}}" aria-hidden="true"></view></view>
+    </view>
+    <view wx:if="{{archivedExpanded}}" class="archived-list">
+      <view wx:for="{{archivedCategories}}" wx:key="id" class="category-row category-row-archived" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看已停用分类 {{item.name}}"><text class="category-order money-number">{{item.orderText}}</text><view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">已停用</text></view><view class="category-chevron" aria-hidden="true"></view></view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="category-status">正在整理分类…</view>
+  <view wx:if="{{errorMessage && !formOpen && !categoryDetail}}" class="category-error" bindtap="loadCategories">{{errorMessage}} · 点此重试</view>
+
+  <view wx:if="{{categoryDetail}}" class="sheet-backdrop" bindtap="closeCategoryDetail">
+    <view class="category-sheet category-detail-sheet" catchtap="stopBubble">
+      <view class="sheet-handle"></view>
+      <view class="sheet-topline"><text class="sheet-kicker">分类详情</text><button class="sheet-close-button" bindtap="closeCategoryDetail">关闭</button></view>
+      <text class="sheet-title serif-title">{{categoryDetail.name}}</text>
+      <view class="category-detail-meta"><text>{{categoryDetail.kind === 'expense' ? '支出分类' : '收入分类'}}</text><text>排序 {{categoryDetail.orderText}}</text></view>
+      <view class="category-detail-actions">
+        <view wx:if="{{!categoryDetail.archived}}" class="category-detail-action category-detail-action-primary" data-id="{{categoryDetail.id}}" bindtap="openEdit" hover-class="category-row-active" role="button" aria-label="修改分类名称"><view><text class="category-detail-action-name">修改名称</text><text class="category-detail-action-note">调整这个分类的显示名称</text></view><view class="category-detail-chevron" aria-hidden="true"></view></view>
+        <view class="category-detail-action {{categoryDetail.archived ? 'category-detail-action-primary' : 'category-detail-action-danger'}}" data-id="{{categoryDetail.id}}" bindtap="setArchived" hover-class="category-row-active" role="button" aria-label="{{categoryDetail.archived ? '恢复' : '停用'}}分类"><view><text class="category-detail-action-name">{{categoryDetail.archived ? '恢复分类' : '停用分类'}}</text><text class="category-detail-action-note">{{categoryDetail.archived ? '恢复后可继续用于新账' : '历史账目不会受到影响'}}</text></view></view>
       </view>
     </view>
   </view>
-  <view wx:if="{{archivedCategories.length}}" class="archived-section">
-    <text class="archived-title">已停用</text>
-    <view wx:for="{{archivedCategories}}" wx:key="id" class="archived-row"><text>{{item.name}}</text><text class="restore-action" data-id="{{item.id}}" bindtap="setArchived">恢复</text></view>
-  </view>
-  <view wx:if="{{loading}}" class="category-status">正在整理分类…</view>
-  <view wx:if="{{errorMessage && !formOpen}}" class="category-error" bindtap="loadCategories">{{errorMessage}} · 点此重试</view>
+
   <view wx:if="{{formOpen}}" class="sheet-backdrop" bindtap="closeForm">
     <view class="category-sheet" catchtap="stopBubble">
-      <text class="sheet-kicker">CATEGORY</text><text class="sheet-title">{{formTitle}}</text>
+      <view class="sheet-handle"></view>
+      <view class="sheet-topline"><text class="sheet-kicker">分类编辑</text><button class="sheet-close-button" disabled="{{saving}}" bindtap="closeForm">关闭</button></view>
+      <text class="sheet-title serif-title">{{formTitle}}</text>
       <input class="category-input" value="{{categoryName}}" maxlength="32" focus="{{formOpen}}" placeholder="例如：宠物、旅行" bindinput="bindCategoryName" />
       <text wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</text>
       <button class="primary-button sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveForm">保存</button>
-      <button class="secondary-button sheet-cancel" disabled="{{saving}}" bindtap="closeForm">取消</button>
     </view>
   </view>
 </view>

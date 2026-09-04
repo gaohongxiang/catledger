@@ -2,7 +2,8 @@ const { randomUUID } = require('node:crypto')
 
 const { normalizeAccountName } = require('./account-name')
 const { ledgerError } = require('./ledger-errors')
-const { executeIdempotentMutation, resolveUid } = require('./ledger-transaction')
+const { executeLedgerRead } = require('./ledger-read')
+const { executeIdempotentMutation } = require('./ledger-transaction')
 const { parseLocalDateTime } = require('./local-time')
 const { minorUnitsToString, parseMinorUnits } = require('./money')
 
@@ -14,6 +15,7 @@ const ACCOUNT_TYPES = Object.freeze({
   other_asset: 'asset',
   other_liability: 'liability'
 })
+const MAX_BATCH_ACCOUNTS = 20
 
 function parseVersion(value) {
   if (!Number.isSafeInteger(value) || value < 1) {
@@ -38,8 +40,9 @@ function validateCurrency(value = 'CNY') {
 
 function accountToPublic(row) {
   const bookBalance = BigInt(minorUnitsToString(row.bookBalance == null ? '0' : row.bookBalance))
-  const balanceDirection = bookBalance < 0n ? 'liability' : 'asset'
-  const displayBalance = bookBalance < 0n ? -bookBalance : bookBalance
+  const isLiabilityDue = row.nature === 'liability' && bookBalance < 0n
+  const balanceDirection = isLiabilityDue ? 'liability' : 'asset'
+  const displayBalance = isLiabilityDue ? -bookBalance : bookBalance
 
   return {
     accountId: row.accountId,
@@ -176,15 +179,61 @@ async function insertBalanceAdjustment(connection, {
   )
 }
 
+function prepareNewAccount(data) {
+  const type = validateAccountType(data && data.type)
+  const currency = validateCurrency(data && data.currency)
+  const { name, normalizedName } = normalizeAccountName(data && data.name)
+  return {
+    accountId: randomUUID(),
+    type,
+    nature: ACCOUNT_TYPES[type],
+    name,
+    normalizedName,
+    currency
+  }
+}
+
+async function insertAccounts(connection, uid, accounts) {
+  const placeholders = accounts.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ')
+  const values = accounts.flatMap((account) => [
+    uid,
+    account.accountId,
+    account.type,
+    account.nature,
+    account.name,
+    account.normalizedName,
+    account.currency
+  ])
+  try {
+    await connection.execute(
+      `INSERT INTO catledger_accounts
+         (uid, account_id, type, nature, name, normalized_name, currency)
+       VALUES ${placeholders}`,
+      values
+    )
+  } catch (error) {
+    if (error && error.code === 'ER_DUP_ENTRY') throw ledgerError('CONFLICT')
+    throw error
+  }
+}
+
+function zeroBalancePublicAccount(account) {
+  return accountToPublic({
+    ...account,
+    version: 1,
+    archivedAt: null,
+    bookBalance: '0'
+  })
+}
+
 function createAccountService({ getPool }) {
   async function list({ provider, subjectHash }) {
-    const connection = await getPool().getConnection()
-    try {
-      const uid = await resolveUid(connection, provider, subjectHash)
-      return { accounts: await listAccountsForUser(connection, uid) }
-    } finally {
-      connection.release()
-    }
+    return executeLedgerRead({
+      getPool,
+      provider,
+      subjectHash,
+      operation: async (connection, uid) => ({ accounts: await listAccountsForUser(connection, uid) })
+    })
   }
 
   async function create(context) {
@@ -193,37 +242,20 @@ function createAccountService({ getPool }) {
       ...context,
       action: 'accounts.create',
       operation: async (connection, uid, data) => {
-        const type = validateAccountType(data.type)
-        const nature = ACCOUNT_TYPES[type]
-        const currency = validateCurrency(data.currency)
-        const { name, normalizedName } = normalizeAccountName(data.name)
+        const account = prepareNewAccount(data)
         const openingDisplayBalance = parseMinorUnits(
           data.openingDisplayBalanceMinor == null ? '0' : data.openingDisplayBalanceMinor,
           { allowZero: true }
         )
-        const accountId = randomUUID()
+        await insertAccounts(connection, uid, [account])
 
-        try {
-          await connection.execute(
-            `INSERT INTO catledger_accounts
-               (uid, account_id, type, nature, name, normalized_name, currency)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [uid, accountId, type, nature, name, normalizedName, currency]
-          )
-        } catch (error) {
-          if (error && error.code === 'ER_DUP_ENTRY') {
-            throw ledgerError('CONFLICT')
-          }
-          throw error
-        }
-
-        const targetBookBalance = nature === 'liability'
+        const targetBookBalance = account.nature === 'liability'
           ? -openingDisplayBalance
           : openingDisplayBalance
         if (targetBookBalance !== 0n) {
           await insertBalanceAdjustment(connection, {
             uid,
-            accountId,
+            accountId: account.accountId,
             delta: targetBookBalance,
             occurredLocalAt: data.occurredLocalAt,
             timezoneOffsetMinutes: data.timezoneOffsetMinutes
@@ -231,15 +263,32 @@ function createAccountService({ getPool }) {
         }
 
         return accountToPublic({
-          accountId,
-          type,
-          nature,
-          name,
-          currency,
+          ...account,
           version: 1,
           archivedAt: null,
           bookBalance: targetBookBalance.toString()
         })
+      }
+    })
+  }
+
+  async function createBatch(context) {
+    return executeIdempotentMutation({
+      getPool,
+      ...context,
+      action: 'accounts.createBatch',
+      operation: async (connection, uid, data) => {
+        if (!data || !Array.isArray(data.accounts) || data.accounts.length < 1 || data.accounts.length > MAX_BATCH_ACCOUNTS) {
+          throw ledgerError('VALIDATION_ERROR')
+        }
+        const accounts = data.accounts.map(prepareNewAccount)
+        const normalizedNames = new Set()
+        for (const account of accounts) {
+          if (normalizedNames.has(account.normalizedName)) throw ledgerError('CONFLICT')
+          normalizedNames.add(account.normalizedName)
+        }
+        await insertAccounts(connection, uid, accounts)
+        return { accounts: accounts.map(zeroBalancePublicAccount) }
       }
     })
   }
@@ -354,6 +403,7 @@ function createAccountService({ getPool }) {
     archive,
     correctBalance,
     create,
+    createBatch,
     list,
     update
   }
@@ -361,6 +411,7 @@ function createAccountService({ getPool }) {
 
 module.exports = {
   ACCOUNT_TYPES,
+  MAX_BATCH_ACCOUNTS,
   accountToPublic,
   createAccountService,
   listAccountsForUser

@@ -10,7 +10,7 @@ function read(relativePath) {
 }
 
 test('protected subpages share the same login sheet component', () => {
-  for (const page of ['accounts', 'categories', 'transaction-editor', 'statistics']) {
+  for (const page of ['accounts', 'categories', 'transaction-editor', 'statistics', 'import-workbench']) {
     const config = JSON.parse(read(`miniprogram/pages/${page}/index.json`))
     assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
     assert.match(read(`miniprogram/pages/${page}/index.wxml`), /id="page-login-sheet"/)
@@ -37,4 +37,12 @@ test('public contract exposes category lifecycle and linked refunds', () => {
     assert.ok(contract.actions[action], action)
   }
   assert.match(contract.rules.refund, /original expense/)
+})
+
+test('home requests the dashboard directly and bootstraps only an uninitialized user', () => {
+  const source = read('miniprogram/pages/index/index.js')
+  assert.match(source, /api\.callApi\('dashboard\.get'/)
+  assert.match(source, /error\.code !== 'INITIALIZATION_REQUIRED'/)
+  assert.match(source, /return api\.bootstrap\(\)\.then/)
+  assert.doesNotMatch(source, /ensureBootstrap/)
 })

@@ -84,3 +84,28 @@ test('single-statement ledger reads avoid an unnecessary transaction', async () 
 
   assert.deepEqual(harness.calls.map((call) => call[0]), ['execute', 'release'])
 })
+
+test('transient connection failure retries once with a fresh connection', async () => {
+  const first = createHarness()
+  const second = createHarness()
+  const originalExecute = first.connection.execute
+  first.connection.execute = async function () {
+    const error = new Error('connection reset')
+    error.code = 'ECONNRESET'
+    throw error
+  }
+  const connections = [first.connection, second.connection]
+
+  const result = await executeLedgerRead({
+    getPool: () => ({ getConnection: async () => connections.shift() }),
+    provider: 'wechat-mini',
+    subjectHash: 'subject-1',
+    operation: async () => 'recovered'
+  })
+
+  first.connection.execute = originalExecute
+  assert.equal(result, 'recovered')
+  assert.equal(connections.length, 0)
+  assert.deepEqual(first.calls.map((call) => call[0]), ['release'])
+  assert.deepEqual(second.calls.map((call) => call[0]), ['execute', 'release'])
+})

@@ -4,6 +4,7 @@ const loginGuard = require('../../services/login-guard')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const themeService = require('../../theme/service')
+const { needsEditingTransaction } = require('./model')
 
 const TYPE_OPTIONS = [
   { value: 'expense', label: '支出' },
@@ -42,7 +43,8 @@ Page({
 
   onLoad: function (options) {
     themeService.bindPage(this)
-    this.setData({ mode: options && options.mode === 'edit' ? 'edit' : 'create' })
+    const requestedMode = options && options.mode
+    this.setData({ mode: requestedMode === 'link-refund' ? 'link-refund' : (requestedMode === 'edit' ? 'edit' : 'create') })
     loginGuard.run(this, this.prepareForm.bind(this))
   },
 
@@ -52,7 +54,7 @@ Page({
 
   prepareForm: function () {
     const self = this
-    const bootstrapPromise = app.globalData.categories.length > 0
+    const bootstrapPromise = self.data.mode === 'link-refund' || app.globalData.categories.length > 0
       ? Promise.resolve()
       : api.bootstrap().then(function (result) {
           app.globalData.categories = Array.isArray(result.categories) ? result.categories : []
@@ -78,9 +80,13 @@ Page({
             pickerLabel: String(transaction.occurredLocalAt || '').slice(0, 10) + ' · ' + category + note + ' · 可退' + money.formatMinor(transaction.refundableMinor)
           })
         })
-        const editing = self.data.mode === 'edit' && app.globalData.editingTransaction
+        const editing = needsEditingTransaction(self.data.mode) && app.globalData.editingTransaction
           ? app.globalData.editingTransaction
           : null
+        if (needsEditingTransaction(self.data.mode) && !editing) {
+          self.setData({ errorMessage: '当前交易已失效，请返回后重试' })
+          return
+        }
         if (editing && editing.type === 'refund' && editing.originalTransaction &&
             !refundables.some(function (item) { return item.transactionId === editing.originalTransaction.transactionId })) {
           refundables.unshift({
@@ -89,8 +95,8 @@ Page({
           })
         }
         self.setData({ accounts: accounts, refundableTransactions: refundables })
-        if (self.data.mode === 'edit' && app.globalData.editingTransaction) {
-          self.fillEditingTransaction(app.globalData.editingTransaction, accounts, refundables)
+        if (editing) {
+          self.fillEditingTransaction(editing, accounts, refundables)
         } else {
           self.refreshCategories('expense', null)
         }
@@ -206,7 +212,18 @@ Page({
     }
     let data
     try {
-      data = this.buildRequest()
+      if (this.data.mode === 'link-refund') {
+        const original = this.data.refundableTransactions[this.data.originalIndex]
+        if (!original) throw new Error('请选择原支出')
+        data = {
+          requestId: api.createRequestId(),
+          transactionId: this.data.transactionId,
+          version: this.data.version,
+          originalTransactionId: original.transactionId
+        }
+      } else {
+        data = this.buildRequest()
+      }
       if (data.type === 'transfer' && data.sourceAccountId === data.destinationAccountId) {
         throw new Error('转出和转入账户不能相同')
       }
@@ -220,10 +237,16 @@ Page({
 
     const self = this
     this.setData({ saving: true, errorMessage: '' })
-    api.callApi(this.data.mode === 'edit' ? 'transactions.update' : 'transactions.create', data)
+    const action = this.data.mode === 'link-refund'
+      ? 'transactions.linkRefund'
+      : (this.data.mode === 'edit' ? 'transactions.update' : 'transactions.create')
+    api.callApi(action, data)
       .then(function () {
         app.globalData.editingTransaction = null
-        wx.showToast({ title: self.data.mode === 'edit' ? '已更新' : '已记账', icon: 'success' })
+        wx.showToast({
+          title: self.data.mode === 'link-refund' ? '已关联' : (self.data.mode === 'edit' ? '已更新' : '已记账'),
+          icon: 'success'
+        })
         setTimeout(function () { wx.navigateBack() }, 350)
       })
       .catch(function (error) {

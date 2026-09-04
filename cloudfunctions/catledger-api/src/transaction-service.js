@@ -12,6 +12,7 @@ function createTransactionService({ getPool }) {
     create: commands.create,
     dashboard: reporting.dashboard,
     list: queries.list,
+    linkRefund: commands.linkRefund,
     refundable: queries.refundable,
     remove: commands.remove,
     statistics: reporting.statistics,

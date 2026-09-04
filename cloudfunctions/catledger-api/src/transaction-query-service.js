@@ -39,7 +39,8 @@ async function queryMonthlySummary(connection, uid, range) {
     `SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS incomeMinor,
             COALESCE(SUM(CASE
               WHEN type = 'expense' THEN CAST(amount_minor AS DECIMAL(20, 0))
-              WHEN type = 'refund' THEN -CAST(amount_minor AS DECIMAL(20, 0))
+              WHEN type = 'refund' AND original_transaction_id IS NOT NULL
+                THEN -CAST(amount_minor AS DECIMAL(20, 0))
               ELSE 0 END), 0) AS expenseMinor
        FROM catledger_transactions
       WHERE uid = ?
@@ -100,6 +101,7 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
             t.occurred_local_at AS occurredLocalAt,
             t.timezone_offset_minutes AS timezoneOffsetMinutes,
             t.note,
+            t.origin,
             t.version
        FROM catledger_transactions t
        LEFT JOIN catledger_accounts sa ON sa.uid = t.uid AND sa.account_id = t.source_account_id

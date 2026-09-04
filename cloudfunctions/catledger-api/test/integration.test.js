@@ -55,6 +55,29 @@ before(async () => {
 
 beforeEach(async () => {
   if (pool) {
+    await pool.execute('DELETE FROM catledger_review_issue_members')
+    await pool.execute('DELETE FROM catledger_review_issues')
+    await pool.execute('DELETE FROM catledger_economic_event_transactions')
+    await pool.execute('DELETE FROM catledger_economic_event_relations')
+    await pool.execute('DELETE FROM catledger_finance_update_postings')
+    await pool.execute('DELETE FROM catledger_finance_update_account_mapping_drafts')
+    await pool.execute('DELETE FROM catledger_finance_update_account_drafts')
+    await pool.execute('DELETE FROM catledger_finance_actions')
+    await pool.execute('DELETE FROM catledger_import_batch_issues')
+    await pool.execute('DELETE FROM catledger_import_transaction_links')
+    await pool.execute('DELETE FROM catledger_event_evidence')
+    await pool.execute('DELETE FROM catledger_import_decisions')
+    await pool.execute('DELETE FROM catledger_import_postings')
+    await pool.execute('DELETE FROM catledger_import_category_mappings')
+    await pool.execute('DELETE FROM catledger_import_account_mappings')
+    await pool.execute('DELETE FROM catledger_economic_events')
+    await pool.execute('DELETE FROM catledger_finance_update_sources')
+    await pool.execute('DELETE FROM catledger_finance_updates')
+    await pool.execute('DELETE FROM catledger_import_rows')
+    await pool.execute('DELETE FROM catledger_source_identities')
+    await pool.execute('DELETE FROM catledger_import_batches')
+    await pool.execute('DELETE FROM catledger_import_source_profiles')
+    await pool.execute('DELETE FROM catledger_import_files')
     await pool.execute('DELETE FROM catledger_mutation_receipts')
     await pool.execute("DELETE FROM catledger_transactions WHERE type = 'refund'")
     await pool.execute('DELETE FROM catledger_transactions')
@@ -77,13 +100,53 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 3)
+  assert.equal(rows.length, 8)
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
   assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')
+  assert.equal(rows[3].version, '0004_single_file_import.sql')
+  assert.equal(rows[4].version, '0005_import_payment_rules.sql')
+  assert.equal(rows[5].version, '0006_unified_finance_updates.sql')
+  assert.equal(rows[6].version, '0007_finance_update_write_barrier.sql')
+  assert.equal(rows[7].version, '0008_finance_update_payment_rules.sql')
   assert.match(rows[0].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[1].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[2].checksum, /^[a-f0-9]{64}$/)
+  assert.match(rows[3].checksum, /^[a-f0-9]{64}$/)
+  assert.match(rows[4].checksum, /^[a-f0-9]{64}$/)
+  assert.match(rows[5].checksum, /^[a-f0-9]{64}$/)
+  assert.match(rows[6].checksum, /^[a-f0-9]{64}$/)
+  assert.match(rows[7].checksum, /^[a-f0-9]{64}$/)
+})
+
+test('payment tool rule schema supports account mapping, permanent ignore and soft disable', { skip: !hasDatabase }, async () => {
+  const [columns] = await pool.execute(
+    `SELECT column_name AS columnName, is_nullable AS isNullable,
+            column_default AS columnDefault
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'catledger_import_account_mappings'
+        AND column_name IN ('account_id', 'mapping_action', 'disabled_at')
+      ORDER BY column_name`
+  )
+  assert.deepEqual(columns.map((row) => ({
+    columnName: row.columnName,
+    isNullable: row.isNullable,
+    columnDefault: row.columnDefault
+  })), [
+    { columnName: 'account_id', isNullable: 'YES', columnDefault: null },
+    { columnName: 'disabled_at', isNullable: 'YES', columnDefault: null },
+    { columnName: 'mapping_action', isNullable: 'NO', columnDefault: 'account' }
+  ])
+  const [[constraint]] = await pool.execute(
+    `SELECT COUNT(*) AS count
+       FROM information_schema.table_constraints
+      WHERE constraint_schema = DATABASE()
+        AND table_name = 'catledger_import_account_mappings'
+        AND constraint_name = 'chk_catledger_import_account_mapping_action'
+        AND constraint_type = 'CHECK'`
+  )
+  assert.equal(Number(constraint.count), 1)
 })
 
 test('ledger schema keeps account, transaction and idempotency keys inside uid scope', { skip: !hasDatabase }, async () => {
@@ -260,6 +323,67 @@ test('account creation is atomic, idempotent and uses signed liability balances'
     },
     { accounts: 2, adjustments: 2, receipts: 2 }
   )
+})
+
+test('account batch creation is atomic, zero-balance and idempotent', { skip: !hasDatabase }, async () => {
+  const subjectHash = hashWechatSubject('integration-account-batch-user')
+  await repository.bootstrap({ provider: 'wechat-mini', subjectHash })
+  const request = {
+    provider: 'wechat-mini',
+    subjectHash,
+    data: {
+      requestId: '5fbd3e89-7e4f-4504-9659-b8fe0bb7af94',
+      accounts: [
+        { type: 'bank', name: '工资卡', currency: 'CNY' },
+        { type: 'wallet', name: '支付宝余额', currency: 'CNY' },
+        { type: 'credit', name: '信用卡', currency: 'CNY' }
+      ]
+    }
+  }
+
+  const first = await accountService.createBatch(request)
+  const replay = await accountService.createBatch(request)
+  assert.deepEqual(replay, first)
+  assert.deepEqual(first.accounts.map((account) => account.bookBalanceMinor), ['0', '0', '0'])
+
+  const [[counts]] = await pool.execute(
+    `SELECT
+       (SELECT COUNT(*) FROM catledger_accounts) AS accounts,
+       (SELECT COUNT(*) FROM catledger_transactions) AS transactions,
+       (SELECT COUNT(*) FROM catledger_mutation_receipts) AS receipts`
+  )
+  assert.deepEqual({
+    accounts: Number(counts.accounts),
+    transactions: Number(counts.transactions),
+    receipts: Number(counts.receipts)
+  }, { accounts: 3, transactions: 0, receipts: 1 })
+})
+
+test('invalid account batch rolls back every account and its receipt', { skip: !hasDatabase }, async () => {
+  const subjectHash = hashWechatSubject('integration-account-batch-rollback')
+  await repository.bootstrap({ provider: 'wechat-mini', subjectHash })
+
+  await assert.rejects(accountService.createBatch({
+    provider: 'wechat-mini',
+    subjectHash,
+    data: {
+      requestId: 'f7550e7d-0b7d-460c-ad2d-606fb15c6666',
+      accounts: [
+        { type: 'bank', name: '同名账户', currency: 'CNY' },
+        { type: 'wallet', name: ' 同名账户 ', currency: 'CNY' }
+      ]
+    }
+  }), { publicCode: 'CONFLICT' })
+
+  const [[counts]] = await pool.execute(
+    `SELECT
+       (SELECT COUNT(*) FROM catledger_accounts) AS accounts,
+       (SELECT COUNT(*) FROM catledger_mutation_receipts) AS receipts`
+  )
+  assert.deepEqual({
+    accounts: Number(counts.accounts),
+    receipts: Number(counts.receipts)
+  }, { accounts: 0, receipts: 0 })
 })
 
 test('account names and idempotency conflicts are isolated per user', { skip: !hasDatabase }, async () => {
@@ -510,6 +634,70 @@ test('expense, income and one-row transfer update balances without double-counti
   assert.equal(Number(transferCount.count), 1)
 })
 
+test('cash balance guard rejects new deficits and deleting required inflows', { skip: !hasDatabase }, async () => {
+  const { subjectHash, expenseCategory, incomeCategory } = await bootstrapLedgerUser('integration-cash-balance-guard')
+  const cash = await createTestAccount(subjectHash, {
+    type: 'cash',
+    name: '现金余额约束',
+    openingDisplayBalanceMinor: '1000',
+    occurredLocalAt: '2026-08-01T08:00:00',
+    timezoneOffsetMinutes: -480
+  })
+
+  await assert.rejects(transactionService.create({
+    provider: 'wechat-mini',
+    subjectHash,
+    data: {
+      requestId: randomTestUuid(),
+      type: 'expense',
+      sourceAccountId: cash.accountId,
+      categoryId: expenseCategory.id,
+      amountMinor: '1001',
+      occurredLocalAt: '2026-08-20T12:00:00',
+      timezoneOffsetMinutes: -480
+    }
+  }), { publicCode: 'INSUFFICIENT_CASH_BALANCE' })
+
+  const income = await transactionService.create({
+    provider: 'wechat-mini',
+    subjectHash,
+    data: {
+      requestId: randomTestUuid(),
+      type: 'income',
+      destinationAccountId: cash.accountId,
+      categoryId: incomeCategory.id,
+      amountMinor: '500',
+      occurredLocalAt: '2026-08-21T12:00:00',
+      timezoneOffsetMinutes: -480
+    }
+  })
+  await transactionService.create({
+    provider: 'wechat-mini',
+    subjectHash,
+    data: {
+      requestId: randomTestUuid(),
+      type: 'expense',
+      sourceAccountId: cash.accountId,
+      categoryId: expenseCategory.id,
+      amountMinor: '1200',
+      occurredLocalAt: '2026-08-22T12:00:00',
+      timezoneOffsetMinutes: -480
+    }
+  })
+  await assert.rejects(transactionService.remove({
+    provider: 'wechat-mini',
+    subjectHash,
+    data: {
+      requestId: randomTestUuid(),
+      transactionId: income.transactionId,
+      version: income.version
+    }
+  }), { publicCode: 'INSUFFICIENT_CASH_BALANCE' })
+
+  const listed = await accountService.list({ provider: 'wechat-mini', subjectHash })
+  assert.equal(listed.accounts.find((account) => account.accountId === cash.accountId).bookBalanceMinor, '300')
+})
+
 test('manual transaction update and soft delete recalculate balances and statistics', { skip: !hasDatabase }, async () => {
   const { subjectHash, expenseCategory } = await bootstrapLedgerUser('integration-transaction-edit')
   const first = await createTestAccount(subjectHash, { name: '账户甲' })
@@ -629,6 +817,56 @@ test('category management is isolated, versioned, reorderable and history-safe',
     provider: 'wechat-mini', subjectHash: second.subjectHash,
     data: { requestId: randomTestUuid(), categoryId: renamed.id, version: restored.version, name: '越权' }
   }), { publicCode: 'NOT_FOUND' })
+})
+
+test('已入账未分类交易可按月原子补全且立即进入分类统计', { skip: !hasDatabase }, async () => {
+  const first = await bootstrapLedgerUser('integration-category-completion-one')
+  const second = await bootstrapLedgerUser('integration-category-completion-two')
+  const account = await createTestAccount(first.subjectHash, {
+    name: '待分类账户', openingDisplayBalanceMinor: '1000',
+    occurredLocalAt: '2026-08-01T08:00:00', timezoneOffsetMinutes: -480
+  })
+  const [[identity]] = await pool.execute(
+    'SELECT uid FROM catledger_user_identities WHERE provider = ? AND subject_hash = ?',
+    ['wechat-mini', first.subjectHash]
+  )
+  const transactionId = randomTestUuid()
+  await pool.execute(
+    `INSERT INTO catledger_transactions
+       (uid, transaction_id, type, source_account_id, destination_account_id,
+        category_id, amount_minor, occurred_local_date, occurred_local_at,
+        timezone_offset_minutes, occurred_at_utc, note, origin)
+     VALUES (?, ?, 'expense', ?, NULL, NULL, 250, '2026-08-18',
+             '2026-08-18 12:00:00.000', -480, '2026-08-18 04:00:00.000', '历史未分类', 'import')`,
+    [identity.uid, transactionId, account.accountId]
+  )
+
+  const snapshot = await categoryService.unclassified({
+    provider: 'wechat-mini', subjectHash: first.subjectHash, data: { month: '2026-08' }
+  })
+  assert.equal(snapshot.groups.length, 1)
+  assert.deepEqual(snapshot.groups[0].members, [{ transactionId, version: 1 }])
+  await assert.rejects(categoryService.assignTransactions({
+    provider: 'wechat-mini', subjectHash: first.subjectHash,
+    data: { requestId: randomTestUuid(), categoryId: second.expenseCategory.id, items: snapshot.groups[0].members }
+  }), { publicCode: 'NOT_FOUND' })
+
+  const request = {
+    provider: 'wechat-mini', subjectHash: first.subjectHash,
+    data: { requestId: randomTestUuid(), categoryId: first.expenseCategory.id, items: snapshot.groups[0].members }
+  }
+  assert.deepEqual(await categoryService.assignTransactions(request), { updatedCount: 1 })
+  assert.deepEqual(await categoryService.assignTransactions(request), { updatedCount: 1 })
+  const after = await categoryService.unclassified({
+    provider: 'wechat-mini', subjectHash: first.subjectHash, data: { month: '2026-08' }
+  })
+  assert.deepEqual(after.groups, [])
+  const statistics = await transactionService.statistics({
+    provider: 'wechat-mini', subjectHash: first.subjectHash, data: { month: '2026-08' }
+  })
+  assert.equal(statistics.uncategorized.transactionCount, 0)
+  assert.equal(statistics.expenseCategories[0].categoryId, first.expenseCategory.id)
+  assert.equal(statistics.expenseCategories[0].amountMinor, '250')
 })
 
 test('refunds credit accounts and reduce expense statistics without becoming income', { skip: !hasDatabase }, async () => {

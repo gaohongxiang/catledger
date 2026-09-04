@@ -5,6 +5,7 @@
     "pages/ledger/index",
     "pages/profile/index",
     "pages/transaction-editor/index",
+    "pages/import-workbench/index",
     "pages/accounts/index",
     "pages/categories/index",
     "pages/statistics/index",

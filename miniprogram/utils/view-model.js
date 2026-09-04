@@ -24,7 +24,9 @@ function transactionView(transaction) {
     : TYPE_LABELS[transaction.type] || '账目'
   const prefix = transaction.type === 'expense' ? '-' : (transaction.type === 'income' || transaction.type === 'refund') ? '+' : ''
   return Object.assign({}, transaction, {
-    typeLabel: TYPE_LABELS[transaction.type] || '账目',
+    typeLabel: transaction.refundLinkStatus === 'pending'
+      ? '待关联退款'
+      : TYPE_LABELS[transaction.type] || '账目',
     label: label,
     accountLine: accountLine,
     amountText: prefix + money.formatMinor(transaction.amountMinor),
@@ -36,7 +38,7 @@ function transactionView(transaction) {
           ? 'amount-refund'
         : 'amount-neutral',
     timeText: String(transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' '),
-    editable: transaction.type !== 'balance_adjustment'
+    editable: transaction.editable === true || transaction.canLinkRefund === true
   })
 }
 

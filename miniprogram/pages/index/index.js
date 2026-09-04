@@ -98,12 +98,13 @@ Page({
     this.loadDashboard()
   },
 
-  ensureBootstrap: function () {
-    if (app.globalData.categories.length > 0) {
-      return Promise.resolve()
-    }
-    return api.bootstrap().then(function (result) {
-      app.globalData.categories = Array.isArray(result.categories) ? result.categories : []
+  fetchDashboard: function (month) {
+    return api.callApi('dashboard.get', { month: month }).catch(function (error) {
+      if (!error || error.code !== 'INITIALIZATION_REQUIRED') throw error
+      return api.bootstrap().then(function (result) {
+        app.globalData.categories = Array.isArray(result.categories) ? result.categories : []
+        return api.callApi('dashboard.get', { month: month })
+      })
     })
   },
 
@@ -115,10 +116,7 @@ Page({
     const self = this
     this.setData({ loading: true, errorMessage: '', month: month, monthLabel: time.monthLabel(month) })
 
-    this.ensureBootstrap()
-      .then(function () {
-        return api.callApi('dashboard.get', { month: month })
-      })
+    this.fetchDashboard(month)
       .then(function (dashboard) {
         const cashFlowTrend = Array.isArray(dashboard.cashFlowTrend) ? dashboard.cashFlowTrend : []
         self.setData({

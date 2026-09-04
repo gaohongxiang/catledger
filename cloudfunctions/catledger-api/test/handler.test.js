@@ -9,6 +9,9 @@ function createLogger() {
     entries,
     error(entry) {
       entries.push(entry)
+    },
+    warn(entry) {
+      entries.push(entry)
     }
   }
 }
@@ -220,7 +223,8 @@ test('bootstrap sanitizes failures while reading the trusted context', async () 
       throw new Error('sensitive context failure')
     },
     repository: {},
-    logger
+    logger,
+    now: () => 100
   })
 
   const result = await handler({ action: 'bootstrap' })
@@ -229,8 +233,11 @@ test('bootstrap sanitizes failures while reading the trusted context', async () 
   assert.equal(result.error.code, 'INTERNAL_ERROR')
   assert.deepEqual(logger.entries, [{
     event: 'catledger-api-failure',
+    action: 'bootstrap',
+    traceId: 'unavailable',
     code: 'INTERNAL_ERROR',
-    databaseCode: undefined
+    databaseCode: undefined,
+    elapsedMs: 0
   }])
   assert.doesNotMatch(JSON.stringify(result), /sensitive context failure/)
 })
@@ -247,7 +254,8 @@ test('bootstrap logs only sanitized database diagnostics', async () => {
         throw error
       }
     },
-    logger
+    logger,
+    now: () => 100
   })
 
   const result = await handler({ action: 'bootstrap' })
@@ -255,8 +263,66 @@ test('bootstrap logs only sanitized database diagnostics', async () => {
   assert.equal(result.error.code, 'INTERNAL_ERROR')
   assert.deepEqual(logger.entries, [{
     event: 'catledger-api-failure',
+    action: 'bootstrap',
+    traceId: 'unavailable',
     code: 'INTERNAL_ERROR',
-    databaseCode: 'ER_ACCESS_DENIED_ERROR'
+    databaseCode: 'ER_ACCESS_DENIED_ERROR',
+    elapsedMs: 0
   }])
   assert.doesNotMatch(JSON.stringify(logger.entries), new RegExp(rawOpenid))
+})
+
+test('瞬时数据库错误返回可重试码且日志只包含诊断元数据', async () => {
+  const logger = createLogger()
+  const handler = createHandler({
+    getWxContext: () => ({ OPENID: 'never-log-openid' }),
+    repository: {},
+    services: {
+      'accounts.list': async () => {
+        const error = new Error('private SQL and bindings')
+        error.code = 'ECONNRESET'
+        throw error
+      }
+    },
+    logger,
+    now: () => 100
+  })
+
+  const result = await handler(
+    { action: 'accounts.list', data: { privateValue: 'never-log-data' } },
+    { request_id: 'trace-1' }
+  )
+
+  assert.equal(result.error.code, 'SERVICE_TEMPORARY_UNAVAILABLE')
+  assert.deepEqual(logger.entries, [{
+    event: 'catledger-api-failure',
+    action: 'accounts.list',
+    traceId: 'trace-1',
+    code: 'SERVICE_TEMPORARY_UNAVAILABLE',
+    databaseCode: 'ECONNRESET',
+    elapsedMs: 0
+  }])
+  assert.doesNotMatch(JSON.stringify(logger.entries), /never-log-openid|never-log-data|private SQL/)
+})
+
+test('慢请求日志包含动作、追踪号和耗时', async () => {
+  const logger = createLogger()
+  const clock = [10, 1510]
+  const handler = createHandler({
+    getWxContext: () => ({ OPENID: 'trusted-openid' }),
+    repository: {},
+    services: { 'accounts.list': async () => ({ accounts: [] }) },
+    logger,
+    now: () => clock.shift(),
+    slowThresholdMs: 1000
+  })
+
+  const result = await handler({ action: 'accounts.list' }, { requestId: 'trace-2' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(logger.entries, [{
+    event: 'catledger-api-slow',
+    action: 'accounts.list',
+    traceId: 'trace-2',
+    elapsedMs: 1500
+  }])
 })

@@ -230,7 +230,11 @@ Page({
       return
     }
     app.globalData.editingTransaction = transaction
-    wx.navigateTo({ url: '/pages/transaction-editor/index?mode=edit' })
+    wx.navigateTo({
+      url: transaction.canLinkRefund
+        ? '/pages/transaction-editor/index?mode=link-refund'
+        : '/pages/transaction-editor/index?mode=edit'
+    })
   },
 
   promptWechatLogin: function () {

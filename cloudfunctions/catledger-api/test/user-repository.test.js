@@ -46,7 +46,7 @@ function createConnection({ identity, identityInsertError }) {
   }
 }
 
-for (const code of ['ER_DUP_ENTRY', 'ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']) {
+for (const code of ['ER_DUP_ENTRY', 'ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT', 'ECONNRESET']) {
   test(`bootstrap retries the transaction after ${code}`, async () => {
     const error = new Error(code)
     error.code = code

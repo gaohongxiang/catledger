@@ -4,11 +4,17 @@
   "private": true,
   "main": "index.js",
   "scripts": {
+    "audit:prod": "npm audit --omit=dev --audit-level=moderate",
     "migrate": "node scripts/migrate.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "mysql2": "3.24.2",
     "wx-server-sdk": "4.0.2"
+  },
+  "overrides": {
+    "@cloudbase/database": "1.5.0",
+    "axios": "0.33.0",
+    "qs": "6.16.0"
   }
 }

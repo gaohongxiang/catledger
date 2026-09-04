@@ -22,7 +22,7 @@
     "statistics.get": {
       "kind": "read",
       "data": ["month"],
-      "returns": ["month", "summary", "daily", "expenseCategories", "incomeCategories"]
+      "returns": ["month", "summary", "daily", "cashFlowTrend", "metrics", "uncategorized", "expenseCategories", "incomeCategories"]
     },
     "accounts.list": {
       "kind": "read",
@@ -33,6 +33,11 @@
       "kind": "idempotent-mutation",
       "data": ["requestId", "type", "name", "currency", "openingDisplayBalanceMinor", "occurredLocalAt", "timezoneOffsetMinutes"],
       "returns": "account"
+    },
+    "accounts.createBatch": {
+      "kind": "idempotent-mutation",
+      "data": ["requestId", "accounts"],
+      "returns": ["accounts"]
     },
     "accounts.update": {
       "kind": "idempotent-versioned-mutation",
@@ -53,6 +58,16 @@
       "kind": "read",
       "data": [],
       "returns": ["categories"]
+    },
+    "categories.unclassified": {
+      "kind": "read",
+      "data": ["month"],
+      "returns": ["month", "groups", "categories"]
+    },
+    "categories.assignTransactions": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "categoryId", "items"],
+      "returns": ["updatedCount"]
     },
     "categories.create": {
       "kind": "idempotent-mutation",
@@ -99,6 +114,11 @@
       "data": ["limit?"],
       "returns": ["transactions"]
     },
+    "transactions.linkRefund": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "transactionId", "version", "originalTransactionId"],
+      "returns": "transaction"
+    },
     "transactions.delete": {
       "kind": "idempotent-versioned-mutation",
       "data": ["requestId", "transactionId", "version"],
@@ -111,7 +131,8 @@
     "time": "occurredLocalAt plus JavaScript getTimezoneOffset() minutes; optional date and month filters use local date",
     "mutation": "requestId is UUID; same key and request replays, same key with different request conflicts",
     "deletion": "accounts and categories archive; manual transactions soft-delete; no physical business deletion",
-    "refund": "refund must reference one active original expense, may not exceed its remaining amount, credits one account and reduces expense statistics"
+    "refund": "manual refunds must reference one active original expense; imported pending refunds credit one account without affecting income or expense statistics until linked",
+    "cashBalance": "a write may not create or deepen a negative cash balance; historical negative cash remains visible and only improving writes or an explicit balance correction are allowed"
   },
   "successEnvelope": {
     "ok": true,
@@ -122,6 +143,7 @@
     "AUTH_REQUIRED",
     "CONFLICT",
     "IDEMPOTENCY_CONFLICT",
+    "INSUFFICIENT_CASH_BALANCE",
     "INITIALIZATION_REQUIRED",
     "INTERNAL_ERROR",
     "INVALID_REQUEST",
@@ -129,6 +151,7 @@
     "REFUND_EXCEEDS_ORIGINAL",
     "REFUNDED_TRANSACTION_LOCKED",
     "SERVICE_NOT_CONFIGURED",
+    "SERVICE_TEMPORARY_UNAVAILABLE",
     "UNSUPPORTED_ACTION",
     "UNSUPPORTED_CURRENCY",
     "VALIDATION_ERROR"

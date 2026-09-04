@@ -99,6 +99,11 @@ function transactionToPublic(row) {
             : String(row.originalOccurredLocalAt).replace(' ', 'T'),
           note: row.originalNote == null ? null : row.originalNote
         },
+    refundLinkStatus: row.type === 'refund'
+      ? (row.originalTransactionId == null ? 'pending' : 'linked')
+      : null,
+    editable: row.origin == null || row.origin === 'manual',
+    canLinkRefund: row.type === 'refund' && row.originalTransactionId == null,
     amountMinor: minorUnitsToString(row.amountMinor),
     occurredLocalAt: String(row.occurredLocalAt).replace(' ', 'T'),
     timezoneOffsetMinutes: Number(row.timezoneOffsetMinutes),

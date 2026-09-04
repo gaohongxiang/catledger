@@ -1,0 +1,27 @@
+{
+  "name": "catledger-import",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "audit:prod": "npm audit --omit=dev --audit-level=moderate",
+    "check:db-permissions": "node scripts/check-runtime-permissions.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "csv-parse": "7.0.2",
+    "iconv-lite": "0.7.3",
+    "mysql2": "3.24.2",
+    "saxes": "6.0.0",
+    "wx-server-sdk": "4.0.2",
+    "yauzl": "3.4.0"
+  },
+  "devDependencies": {
+    "yazl": "^3.3.1"
+  },
+  "overrides": {
+    "@cloudbase/database": "1.5.0",
+    "axios": "0.33.0",
+    "qs": "6.16.0"
+  }
+}

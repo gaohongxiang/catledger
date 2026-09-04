@@ -3,6 +3,7 @@ const loginGuard = require('../../services/login-guard')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const themeService = require('../../theme/service')
+const { buildAccountsView } = require('./model')
 
 const TYPE_OPTIONS = [
   { value: 'cash', label: '现金' },
@@ -13,11 +14,6 @@ const TYPE_OPTIONS = [
   { value: 'other_liability', label: '其他负债' }
 ]
 
-function typeLabel(value) {
-  const option = TYPE_OPTIONS.find(function (item) { return item.value === value })
-  return option ? option.label : '账户'
-}
-
 Page({
   data: {
     loading: false,
@@ -26,6 +22,10 @@ Page({
     assets: [],
     liabilities: [],
     archivedAccounts: [],
+    assetCorrectionCount: 0,
+    archivedExpanded: false,
+    totals: { netWorthText: '¥0.00', assetsText: '¥0.00', liabilitiesText: '¥0.00' },
+    accountDetail: null,
     formOpen: false,
     formMode: 'create',
     formTitle: '创建账户',
@@ -41,104 +41,63 @@ Page({
     loginGuard.run(this, this.loadAccounts.bind(this))
   },
 
-  onHide: function () {
-    this.setTabBarHidden(false)
-  },
+  onHide: function () { this.setTabBarHidden(false) },
 
   setTabBarHidden: function (hidden) {
-    if (this.getTabBar()) {
-      this.getTabBar().setData({ hidden: hidden })
-    }
+    if (this.getTabBar()) this.getTabBar().setData({ hidden: hidden })
   },
 
   loadAccounts: function () {
-    if (this.data.loading) {
-      return
-    }
+    if (this.data.loading) return
     const self = this
     this.setData({ loading: true, errorMessage: '' })
     api.callApi('accounts.list')
       .then(function (result) {
-        const prepared = result.accounts.map(function (account) {
-          return Object.assign({}, account, {
-            typeLabel: typeLabel(account.type),
-            balanceText: money.formatMinor(account.displayBalanceMinor),
-            directionText: account.balanceDirection === 'liability' ? '待还' : '余额'
-          })
-        })
-        self.setData({
-          assets: prepared.filter(function (account) { return !account.archived && account.nature === 'asset' }),
-          liabilities: prepared.filter(function (account) { return !account.archived && account.nature === 'liability' }),
-          archivedAccounts: prepared.filter(function (account) { return account.archived })
-        })
+        self.setData(buildAccountsView(result.accounts))
       })
-      .catch(function (error) {
-        self.setData({ errorMessage: error.message || '账户加载失败' })
-      })
-      .finally(function () {
-        self.setData({ loading: false })
-      })
+      .catch(function (error) { self.setData({ errorMessage: error.message || '账户加载失败' }) })
+      .finally(function () { self.setData({ loading: false }) })
   },
 
   openCreate: function () {
     this.setTabBarHidden(true)
-    this.setData({
-      formOpen: true,
-      formMode: 'create',
-      formTitle: '创建账户',
-      selectedAccount: null,
-      typeIndex: 0,
-      name: '',
-      balanceYuan: '0.00',
-      errorMessage: ''
-    })
+    this.setData({ formOpen: true, formMode: 'create', formTitle: '创建账户', selectedAccount: null, accountDetail: null, typeIndex: 0, name: '', balanceYuan: '0.00', errorMessage: '' })
   },
+
+  openAccountDetail: function (event) {
+    const account = this.findAccount(event.currentTarget.dataset.id)
+    if (!account) return
+    this.setTabBarHidden(true)
+    this.setData({ accountDetail: account })
+  },
+
+  closeAccountDetail: function () {
+    if (!this.data.saving) {
+      this.setTabBarHidden(false)
+      this.setData({ accountDetail: null, errorMessage: '' })
+    }
+  },
+
+  toggleArchived: function () { this.setData({ archivedExpanded: !this.data.archivedExpanded }) },
 
   openRename: function (event) {
     const account = this.findAccount(event.currentTarget.dataset.id)
-    if (!account) {
-      return
-    }
-    this.setTabBarHidden(true)
-    this.setData({
-      formOpen: true,
-      formMode: 'rename',
-      formTitle: '修改账户名称',
-      selectedAccount: account,
-      name: account.name,
-      balanceYuan: money.minorToYuan(account.displayBalanceMinor),
-      errorMessage: ''
-    })
+    if (!account) return
+    this.setData({ formOpen: true, formMode: 'rename', formTitle: '修改账户名称', selectedAccount: account, accountDetail: null, name: account.name, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
   },
 
   openCorrection: function (event) {
     const account = this.findAccount(event.currentTarget.dataset.id)
-    if (!account) {
-      return
-    }
-    this.setTabBarHidden(true)
-    this.setData({
-      formOpen: true,
-      formMode: 'correct',
-      formTitle: '校正账户余额',
-      selectedAccount: account,
-      name: account.name,
-      balanceYuan: money.minorToYuan(account.displayBalanceMinor),
-      errorMessage: ''
-    })
+    if (!account) return
+    this.setData({ formOpen: true, formMode: 'correct', formTitle: '校正账户余额', selectedAccount: account, accountDetail: null, name: account.name, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
   },
 
   findAccount: function (accountId) {
-    return this.data.assets.concat(this.data.liabilities, this.data.archivedAccounts).find(function (account) {
-      return account.accountId === accountId
-    })
+    return this.data.assets.concat(this.data.liabilities, this.data.archivedAccounts).find(function (account) { return account.accountId === accountId })
   },
 
   closeForm: function () {
-    if (!this.data.saving) {
-      this.setTabBarHidden(false)
-      this.setData({ formOpen: false, errorMessage: '' })
-    }
+    if (!this.data.saving) { this.setTabBarHidden(false); this.setData({ formOpen: false, errorMessage: '' }) }
   },
 
   stopBubble: function () {},
@@ -147,87 +106,46 @@ Page({
   bindBalance: function (event) { this.setData({ balanceYuan: event.detail.value }) },
 
   saveForm: function () {
-    if (this.data.saving) {
-      return
-    }
+    if (this.data.saving) return
     let action
     let data
     try {
       if (this.data.formMode === 'create') {
         action = 'accounts.create'
-        data = {
-          requestId: api.createRequestId(),
-          type: TYPE_OPTIONS[this.data.typeIndex].value,
-          name: this.data.name,
-          currency: 'CNY',
-          openingDisplayBalanceMinor: money.yuanToMinor(this.data.balanceYuan, { allowZero: true }),
-          occurredLocalAt: time.today() + 'T' + time.currentClock() + ':00',
-          timezoneOffsetMinutes: new Date().getTimezoneOffset()
-        }
+        data = { requestId: api.createRequestId(), type: TYPE_OPTIONS[this.data.typeIndex].value, name: this.data.name, currency: 'CNY', openingDisplayBalanceMinor: money.yuanToMinor(this.data.balanceYuan, { allowZero: true }), occurredLocalAt: time.today() + 'T' + time.currentClock() + ':00', timezoneOffsetMinutes: new Date().getTimezoneOffset() }
       } else if (this.data.formMode === 'rename') {
         action = 'accounts.update'
-        data = {
-          requestId: api.createRequestId(),
-          accountId: this.data.selectedAccount.accountId,
-          version: this.data.selectedAccount.version,
-          name: this.data.name
-        }
+        data = { requestId: api.createRequestId(), accountId: this.data.selectedAccount.accountId, version: this.data.selectedAccount.version, name: this.data.name }
       } else {
         action = 'accounts.correctBalance'
-        data = {
-          requestId: api.createRequestId(),
-          accountId: this.data.selectedAccount.accountId,
-          displayBalanceMinor: money.yuanToMinor(this.data.balanceYuan, { allowZero: true }),
-          occurredLocalAt: time.today() + 'T' + time.currentClock() + ':00',
-          timezoneOffsetMinutes: new Date().getTimezoneOffset()
-        }
+        data = { requestId: api.createRequestId(), accountId: this.data.selectedAccount.accountId, displayBalanceMinor: money.yuanToMinor(this.data.balanceYuan, { allowZero: true }), occurredLocalAt: time.today() + 'T' + time.currentClock() + ':00', timezoneOffsetMinutes: new Date().getTimezoneOffset() }
       }
-    } catch (error) {
-      this.setData({ errorMessage: error.message })
-      return
-    }
+    } catch (error) { this.setData({ errorMessage: error.message }); return }
 
     const self = this
     this.setData({ saving: true, errorMessage: '' })
-    api.callApi(action, data)
-      .then(function () {
-        wx.showToast({ title: '已保存', icon: 'success' })
-        self.setTabBarHidden(false)
-        self.setData({ formOpen: false })
-        self.loadAccounts()
-      })
-      .catch(function (error) {
-        self.setData({ errorMessage: error.message || '保存失败' })
-      })
-      .finally(function () {
-        self.setData({ saving: false })
-      })
+    api.callApi(action, data).then(function () {
+      wx.showToast({ title: '已保存', icon: 'success' })
+      self.setTabBarHidden(false)
+      self.setData({ formOpen: false })
+      self.loadAccounts()
+    }).catch(function (error) { self.setData({ errorMessage: error.message || '保存失败' }) })
+      .finally(function () { self.setData({ saving: false }) })
   },
 
   archive: function (event) {
     const account = this.findAccount(event.currentTarget.dataset.id)
     const self = this
-    if (!account || account.archived) {
-      return
-    }
+    if (!account || account.archived) return
     wx.showModal({
       title: '停用“' + account.name + '”？',
       content: '历史账目和余额仍会保留，但这个账户不能再用于新交易。',
       confirmColor: themeService.currentTokens().danger,
       success: function (result) {
-        if (!result.confirm) {
-          return
-        }
-        api.callApi('accounts.archive', {
-          requestId: api.createRequestId(),
-          accountId: account.accountId,
-          version: account.version
-        }).then(function () {
-          wx.showToast({ title: '已停用', icon: 'success' })
-          self.loadAccounts()
-        }).catch(function (error) {
-          self.setData({ errorMessage: error.message || '停用失败' })
-        })
+        if (!result.confirm) return
+        api.callApi('accounts.archive', { requestId: api.createRequestId(), accountId: account.accountId, version: account.version })
+          .then(function () { wx.showToast({ title: '已停用', icon: 'success' }); self.setTabBarHidden(false); self.setData({ accountDetail: null }); self.loadAccounts() })
+          .catch(function (error) { self.setData({ errorMessage: error.message || '停用失败' }) })
       }
     })
   }

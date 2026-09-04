@@ -9,12 +9,26 @@
       "runtime": "Nodejs18.15",
       "handler": "index.main",
       "timeout": 20,
-      "memorySize": 256,
+      "memorySize": 512,
       "installDependency": false,
       "isWaitInstall": true,
       "ignore": [
         "test/**",
         "scripts/**",
+        ".DS_Store"
+      ]
+    },
+    {
+      "name": "catledger-import",
+      "type": "Event",
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "timeout": 60,
+      "memorySize": 512,
+      "installDependency": false,
+      "isWaitInstall": true,
+      "ignore": [
+        "test/**",
         ".DS_Store"
       ]
     }

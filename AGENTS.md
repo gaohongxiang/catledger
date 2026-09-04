@@ -39,6 +39,7 @@
 - 仅在提交进入目标分支且 worktree 洁净后，用 `git worktree remove <明确路径>` 和 `git branch -d <明确分支>` 清理；不得用 `rm -rf`。
 - 推送及其他远端写操作需要用户当前明确授权。完整阶段验收、合入 `main` 且工作树洁净后，可按用户已有授权安全快进推送 `origin/main`，禁止 force push。
 - 小程序用户可见改动优先在微信开发者工具和真机预览验证；未完成正式上传、审核和发布时，只能称为“开发版已验证”。
+- 本仓库通过 CloudBase `manageFunctions(action="updateFunctionCode")` 更新云函数时，固定传 `functionRootPath=<worktree>/cloudfunctions` 和 `functionName=<函数目录名>`。`functionRootPath` 必须是直接包含各函数目录的 `cloudfunctions/`，不得传项目根目录、具体函数目录，也不得用 `contentPath` 代替；发布后用 `queryFunctions(getFunctionDetail)` 核对 `Active / Available`、运行时、VPC、环境变量键和触发器。
 
 ## 5. 架构与数据硬约束
 

@@ -13,38 +13,75 @@
     <view class="summary-cell"><text class="summary-label">结余</text><text class="summary-value money-number">{{netText}}</text></view>
   </view>
 
+  <view class="metric-strip">
+    <view><text class="metric-value money-number">{{metrics.transactionCount || 0}}</text><text class="metric-label">交易笔数</text></view>
+    <view><text class="metric-value money-number">{{metrics.activeDayCount || 0}}</text><text class="metric-label">记账天数</text></view>
+    <view><text class="metric-value money-number">{{metrics.averageDailyExpenseText}}</text><text class="metric-label">日均支出</text></view>
+    <view><text class="metric-value money-number">{{metrics.largestExpenseText}}</text><text class="metric-label">单笔最高</text></view>
+  </view>
+
   <view class="section-heading">
-    <view><text class="section-kicker">DAILY</text><text class="section-title serif-title">每日支出</text></view>
+    <view><text class="section-kicker">CASH FLOW</text><text class="section-title serif-title">近六个月</text></view>
+    <view class="chart-legend"><text class="legend-income">收入</text><text class="legend-expense">支出</text></view>
+  </view>
+  <view class="trend-chart">
+    <view wx:for="{{cashFlowTrend}}" wx:key="month" class="trend-column">
+      <view class="trend-bars"><view class="trend-bar trend-income" style="height: {{item.incomeBarHeight}}rpx;"></view><view class="trend-bar trend-expense" style="height: {{item.expenseBarHeight}}rpx;"></view></view>
+      <text class="chart-axis-label money-number">{{item.monthText}}月</text>
+    </view>
+  </view>
+
+  <view class="section-heading">
+    <view><text class="section-kicker">DAILY</text><text class="section-title serif-title">每日收支</text></view>
     <text class="section-note">按本地日期</text>
   </view>
   <scroll-view class="daily-scroll" scroll-x="true" enhanced="true" show-scrollbar="false">
     <view class="daily-chart">
       <view wx:for="{{daily}}" wx:key="date" class="daily-column">
-        <view class="daily-bar-wrap"><view class="daily-bar" style="height: {{item.barHeight}}rpx;"></view></view>
-        <text class="daily-day money-number">{{item.dayText}}</text>
+        <view class="daily-bars"><view class="daily-bar income-bar" style="height: {{item.incomeBarHeight}}rpx;"></view><view class="daily-bar expense-bar" style="height: {{item.expenseBarHeight}}rpx;"></view></view>
+        <text class="chart-axis-label money-number">{{item.dayText}}</text>
       </view>
     </view>
   </scroll-view>
 
+  <button wx:if="{{uncategorized.transactionCount > 0}}" class="category-quality" bindtap="openCategoryCompletion">
+    <view><text class="category-quality-kicker">待分类</text><text class="category-quality-copy">补全后，分类统计才准确</text></view>
+    <view class="category-quality-value"><text class="money-number">{{uncategorized.transactionCount}} 笔</text><text class="money-number">{{uncategorized.amountText}}</text></view>
+  </button>
+
   <view class="section-heading category-heading"><view><text class="section-kicker">EXPENSE</text><text class="section-title serif-title">支出分类</text></view></view>
   <view wx:if="{{expenseCategories.length > 0}}" class="ranking-list">
-    <view wx:for="{{expenseCategories}}" wx:key="categoryId" class="ranking-row">
-      <view class="ranking-line"><text class="ranking-name">{{item.name}}</text><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
-      <view class="ranking-track"><view class="ranking-fill expense-fill" style="width: {{item.barWidth}};"></view></view>
-    </view>
+    <view wx:for="{{expenseCategories}}" wx:key="categoryId" class="ranking-row"><view class="ranking-line"><text class="ranking-name">{{item.name}}</text><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view><view class="ranking-track"><view class="ranking-fill expense-fill" style="width: {{item.barWidth}};"></view></view></view>
   </view>
   <text wx:else class="empty-note">这个月还没有支出。</text>
 
   <view class="section-heading category-heading"><view><text class="section-kicker">INCOME</text><text class="section-title serif-title">收入分类</text></view></view>
   <view wx:if="{{incomeCategories.length > 0}}" class="ranking-list">
-    <view wx:for="{{incomeCategories}}" wx:key="categoryId" class="ranking-row">
-      <view class="ranking-line"><text class="ranking-name">{{item.name}}</text><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
-      <view class="ranking-track"><view class="ranking-fill income-fill" style="width: {{item.barWidth}};"></view></view>
-    </view>
+    <view wx:for="{{incomeCategories}}" wx:key="categoryId" class="ranking-row"><view class="ranking-line"><text class="ranking-name">{{item.name}}</text><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view><view class="ranking-track"><view class="ranking-fill income-fill" style="width: {{item.barWidth}};"></view></view></view>
   </view>
   <text wx:else class="empty-note">这个月还没有收入。</text>
 
   <view wx:if="{{loading}}" class="statistics-status">正在汇总正式账目…</view>
-  <view wx:if="{{errorMessage}}" class="statistics-error" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
+  <view wx:if="{{errorMessage && !categorySheetOpen}}" class="statistics-error" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
+
+  <view wx:if="{{categorySheetOpen}}" class="sheet-layer" catchtouchmove="preventTouchMove">
+    <view class="sheet-scrim" bindtap="closeCategoryCompletion"></view>
+    <view class="category-sheet">
+      <view class="sheet-handle"></view>
+      <block wx:if="{{!selectedCategoryGroup}}">
+        <text class="sheet-kicker">CATEGORY CHECK</text><text class="sheet-title serif-title">补全待分类账目</text><text class="sheet-copy">相同来源和交易特征已归为一组，一次选择即可整组补全。</text>
+        <view wx:if="{{categorySheetLoading}}" class="sheet-status">正在整理待分类账目…</view>
+        <view wx:elif="{{categoryGroups.length}}" class="category-group-list">
+          <button wx:for="{{categoryGroups}}" wx:key="groupKey" class="category-group-row" data-key="{{item.groupKey}}" bindtap="selectCategoryGroup"><view class="category-group-copy"><text class="category-group-title">{{item.title}}</text><text class="category-group-meta">{{item.kindLabel}} · {{item.count}} 笔</text></view><text class="category-group-amount money-number">{{item.amountText}}</text><view class="row-chevron"></view></button>
+        </view>
+        <view wx:else class="sheet-empty">这个月的分类已经完整。</view>
+      </block>
+      <block wx:else>
+        <button class="sheet-back" bindtap="returnToCategoryGroups">返回待分类账目</button><text class="sheet-kicker">{{selectedCategoryGroup.kindLabel}}分类</text><text class="sheet-title serif-title">{{selectedCategoryGroup.title}}</text><text class="sheet-copy">本组 {{selectedCategoryGroup.count}} 笔，共 {{selectedCategoryGroup.amountText}}</text>
+        <view class="category-option-grid"><button wx:for="{{categoryOptions}}" wx:key="id" class="category-option {{selectedCategoryId === item.id ? 'category-option-selected' : ''}}" data-id="{{item.id}}" bindtap="selectCompletionCategory">{{item.name}}</button></view>
+        <button class="primary-button sheet-save" disabled="{{!selectedCategoryId || categorySaving}}" loading="{{categorySaving}}" bindtap="saveCategoryCompletion">保存分类</button>
+      </block>
+    </view>
+  </view>
 </view>
 <login-sheet id="page-login-sheet" />

@@ -19,9 +19,11 @@ const accountService = createAccountService({ getPool })
 const categoryService = createCategoryService({ getPool })
 const transactionService = createTransactionService({ getPool })
 
-exports.main = createHandler({
+const handler = createHandler({
   getWxContext: () => cloud.getWXContext(),
   repository,
   services: createActionHandlers({ accountService, categoryService, transactionService }),
   logger: console
 })
+
+exports.main = (event, context) => handler(event, context)

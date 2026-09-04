@@ -3,6 +3,7 @@ const { randomUUID } = require('node:crypto')
 const { ledgerError } = require('./ledger-errors')
 const { executeIdempotentMutation } = require('./ledger-transaction')
 const { minorUnitsToString } = require('./money')
+const { assertCashBalanceChanges } = require('./cash-balance-guard')
 const {
   MANUAL_TYPES,
   buildManualTransaction,
@@ -17,7 +18,7 @@ async function lockAccounts(connection, uid, accountIds) {
 
   const placeholders = ids.map(() => '?').join(', ')
   const [rows] = await connection.execute(
-    `SELECT account_id AS accountId, name, currency, archived_at AS archivedAt
+    `SELECT account_id AS accountId, type, name, currency, archived_at AS archivedAt
        FROM catledger_accounts
       WHERE uid = ? AND account_id IN (${placeholders})
       ORDER BY account_id
@@ -48,7 +49,7 @@ async function validateCategory(connection, uid, categoryId, expectedKind) {
 }
 
 async function validateTransactionRelations(connection, uid, transaction, extraAccountIds = []) {
-  await lockAccounts(connection, uid, [
+  const accounts = await lockAccounts(connection, uid, [
     transaction.sourceAccountId,
     transaction.destinationAccountId,
     ...extraAccountIds
@@ -57,6 +58,7 @@ async function validateTransactionRelations(connection, uid, transaction, extraA
   if (transaction.categoryId && transaction.type !== 'refund') {
     await validateCategory(connection, uid, transaction.categoryId, transaction.type)
   }
+  return accounts
 }
 
 async function lockOriginalExpense(connection, uid, transactionId) {
@@ -64,7 +66,8 @@ async function lockOriginalExpense(connection, uid, transactionId) {
   const [rows] = await connection.execute(
     `SELECT transaction_id AS transactionId, category_id AS categoryId,
             amount_minor AS amountMinor, occurred_local_at AS occurredLocalAt,
-            note
+            occurred_at_utc AS occurredAtUtc,
+            note, version
        FROM catledger_transactions
       WHERE uid = ? AND transaction_id = ? AND type = 'expense' AND deleted_at IS NULL
       LIMIT 1 FOR UPDATE`,
@@ -95,6 +98,10 @@ async function prepareRefund(connection, uid, transaction, currentTransactionId 
   if (transaction.type !== 'refund') return null
   if (transaction.originalTransactionId === currentTransactionId) throw ledgerError('VALIDATION_ERROR')
   const original = await lockOriginalExpense(connection, uid, transaction.originalTransactionId)
+  const refundOccurredAtUtc = transaction.occurredAtUtc
+  if (refundOccurredAtUtc && String(original.occurredAtUtc) > String(refundOccurredAtUtc)) {
+    throw ledgerError('VALIDATION_ERROR')
+  }
   const alreadyRefunded = await sumRefunds(connection, uid, original.transactionId, currentTransactionId)
   if (alreadyRefunded + BigInt(transaction.amountMinor) > BigInt(minorUnitsToString(original.amountMinor))) {
     throw ledgerError('REFUND_EXCEEDS_ORIGINAL')
@@ -131,6 +138,7 @@ async function selectTransaction(connection, uid, transactionId, { forUpdate = f
             original.note AS originalNote,
             t.amount_minor AS amountMinor,
             t.occurred_local_at AS occurredLocalAt,
+            t.occurred_at_utc AS occurredAtUtc,
             t.timezone_offset_minutes AS timezoneOffsetMinutes,
             t.note,
             t.origin,
@@ -185,6 +193,56 @@ async function insertManualTransaction(connection, uid, transactionId, transacti
   )
 }
 
+async function linkPendingRefund(connection, uid, data) {
+  const transactionId = validateId(data.transactionId)
+  const current = await selectTransaction(connection, uid, transactionId, { forUpdate: true })
+  if (current.deletedAt != null || current.type !== 'refund' || current.originalTransactionId != null) {
+    throw ledgerError('NOT_FOUND')
+  }
+  if (Number(current.version) !== parseVersion(data.version)) throw ledgerError('CONFLICT')
+  const transaction = {
+    type: 'refund',
+    originalTransactionId: validateId(data.originalTransactionId),
+    amountMinor: minorUnitsToString(current.amountMinor),
+    occurredAtUtc: current.occurredAtUtc
+  }
+  const original = await prepareRefund(connection, uid, transaction, current.transactionId)
+  const [updated] = await connection.execute(
+    `UPDATE catledger_transactions
+        SET category_id = ?, original_transaction_id = ?, version = version + 1
+      WHERE uid = ? AND transaction_id = ? AND version = ? AND deleted_at IS NULL
+        AND type = 'refund' AND original_transaction_id IS NULL`,
+    [original.categoryId, transaction.originalTransactionId, uid, current.transactionId, data.version]
+  )
+  if (updated.affectedRows !== 1) throw ledgerError('CONFLICT')
+  const [eventLinks] = await connection.execute(
+    `SELECT update_id AS updateId, event_id AS eventId
+       FROM catledger_economic_event_transactions
+      WHERE uid = ? AND transaction_id = ? AND role = 'refund_transaction'
+      LIMIT 1 FOR UPDATE`,
+    [uid, current.transactionId]
+  )
+  if (eventLinks[0]) {
+    await connection.execute(
+      `INSERT INTO catledger_economic_event_transactions
+         (uid, link_id, update_id, event_id, transaction_id, role,
+          creation_method, rule_version, transaction_version)
+       VALUES (?, ?, ?, ?, ?, 'refund_original', 'manual_link', 'refund-link-v1', ?)`,
+      [uid, randomUUID(), eventLinks[0].updateId, eventLinks[0].eventId,
+        transaction.originalTransactionId, Number(original.version)]
+    )
+  }
+  return transactionToPublic({
+    ...current,
+    categoryId: original.categoryId,
+    originalTransactionId: transaction.originalTransactionId,
+    originalAmountMinor: original.amountMinor,
+    originalOccurredLocalAt: original.occurredLocalAt,
+    originalNote: original.note,
+    version: Number(current.version) + 1
+  })
+}
+
 function createTransactionCommandService({ getPool }) {
   async function create(context) {
     return executeIdempotentMutation({
@@ -194,7 +252,8 @@ function createTransactionCommandService({ getPool }) {
       operation: async (connection, uid, data) => {
         const transaction = buildManualTransaction(data)
         const original = await prepareRefund(connection, uid, transaction)
-        await validateTransactionRelations(connection, uid, transaction)
+        const accounts = await validateTransactionRelations(connection, uid, transaction)
+        await assertCashBalanceChanges(connection, uid, accounts, [{ transaction }])
         const transactionId = randomUUID()
         await insertManualTransaction(connection, uid, transactionId, transaction)
         return transactionToPublic({
@@ -221,9 +280,13 @@ function createTransactionCommandService({ getPool }) {
         const transaction = buildManualTransaction(data)
         await protectRefundedExpense(connection, uid, current, transaction)
         const original = await prepareRefund(connection, uid, transaction, current.transactionId)
-        await validateTransactionRelations(connection, uid, transaction, [
+        const accounts = await validateTransactionRelations(connection, uid, transaction, [
           current.sourceAccountId,
           current.destinationAccountId
+        ])
+        await assertCashBalanceChanges(connection, uid, accounts, [
+          { transaction: current, multiplier: -1n },
+          { transaction }
         ])
 
         await connection.execute(
@@ -270,6 +333,15 @@ function createTransactionCommandService({ getPool }) {
     })
   }
 
+  async function linkRefund(context) {
+    return executeIdempotentMutation({
+      getPool,
+      ...context,
+      action: 'transactions.linkRefund',
+      operation: async (connection, uid, data) => linkPendingRefund(connection, uid, data)
+    })
+  }
+
   async function remove(context) {
     return executeIdempotentMutation({
       getPool,
@@ -281,7 +353,10 @@ function createTransactionCommandService({ getPool }) {
         if (current.type === 'expense') {
           await protectRefundedExpense(connection, uid, current, null)
         }
-        await lockAccounts(connection, uid, [current.sourceAccountId, current.destinationAccountId])
+        const accounts = await lockAccounts(connection, uid, [current.sourceAccountId, current.destinationAccountId])
+        await assertCashBalanceChanges(connection, uid, accounts, [
+          { transaction: current, multiplier: -1n }
+        ])
         await connection.execute(
           `UPDATE catledger_transactions
               SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1
@@ -297,7 +372,7 @@ function createTransactionCommandService({ getPool }) {
     })
   }
 
-  return { create, remove, update }
+  return { create, linkRefund, remove, update }
 }
 
-module.exports = { createTransactionCommandService }
+module.exports = { createTransactionCommandService, linkPendingRefund }

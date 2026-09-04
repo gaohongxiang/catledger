@@ -40,6 +40,7 @@ function getDatabaseConfig(env = process.env) {
     waitForConnections: true,
     connectionLimit: 4,
     queueLimit: 0,
+    connectTimeout: 3000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 0
   }
