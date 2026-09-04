@@ -607,7 +607,9 @@ Page({
             item.paymentMethodKey === issue.accountContext.paymentMethodKey
         })
         const resolvedAccountId = issue.status === 'resolved' && issue.accountContext && issue.accountContext.accountId
-        const resolvedMode = mappingDraft && mappingDraft.mappingAction === 'ignore'
+        const resolvedMode = defaultIgnored
+          ? 'ignore_future'
+          : mappingDraft && mappingDraft.mappingAction === 'ignore'
           ? 'ignore_future'
           : resolvedAccountId ? 'account' : issue.status === 'resolved' ? 'ignore' : ''
         const suggestedName = issue.accountContext && issue.accountContext.recognized

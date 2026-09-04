@@ -373,6 +373,19 @@ test('已排除交易按明确原因和具体账户分组并默认收起', funct
   assert.deepEqual(groups[0].events.map(function (event) { return event.eventId }), ['account-1', 'account-2', 'account-legacy'])
 })
 
+test('支付宝零元免押生命周期在已排除区明确显示为非资金记录', function () {
+  const groups = model.excludedEventGroups([{
+    eventId: 'non-financial-1', status: 'excluded', reasonCodes: ['source_non_financial'],
+    localAt: '2026-08-01 10:00:00.000', amountMinor: '0', flowDirection: 'neutral', economicNature: 'unknown',
+    primaryEvidence: { sourceType: 'alipay', paymentMethod: '', item: '自动解冻-合成设备' }
+  }])
+
+  assert.equal(groups.length, 1)
+  assert.equal(groups[0].label, '非资金记录')
+  assert.equal(groups[0].note, '只保留来源证据，不创建账户或正式账目。')
+  assert.equal(groups[0].events[0].eventId, 'non-financial-1')
+})
+
 test('可共享决定的一张 ReviewIssue 显示批量处理数量而不拆行', function () {
   const groups = model.reviewIssueGroups([{
     issueId: 'shared-1', issueType: 'shared_fields', memberCount: 12, candidateCount: 0,

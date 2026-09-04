@@ -2,7 +2,13 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const { buildPaymentMethodKey } = require('../src/identity')
-const { createMappingIndex, projectSourceFunds, reconcileProjectedAccounts, resolveSourceFunds } = require('../src/source-funds')
+const {
+  createMappingIndex,
+  ledgerAccountReferenceForRow,
+  projectSourceFunds,
+  reconcileProjectedAccounts,
+  resolveSourceFunds
+} = require('../src/source-funds')
 
 test('余额宝转出到账户余额直接投影为两个明确账户', () => {
   const projection = projectSourceFunds({
@@ -140,6 +146,28 @@ test('普通支付宝消费和普通微信转账不伪造成两个自有账户',
   assert.equal(projectSourceFunds({
     sourceType: 'wechat', rawTransactionType: '转账', item: '转给朋友', paymentMethod: '零钱'
   }), null)
+})
+
+test('微信收入转账按明确到账状态推导微信零钱账本端', () => {
+  const reference = ledgerAccountReferenceForRow({
+    sourceType: 'wechat', rawTransactionType: '转账', transactionType: 'transfer',
+    direction: 'income', paymentMethod: '/', rawStatus: '已存入零钱'
+  })
+  assert.equal(reference.label, '微信零钱')
+  assert.equal(reference.role, 'ledger_account')
+  assert.equal(reference.inferenceRule, 'wechat_income_deposited_to_change')
+  assert.equal(reference.paymentMethodKey, buildPaymentMethodKey('wechat', '零钱'))
+
+  for (const candidate of [
+    { direction: 'expense', rawStatus: '已存入零钱' },
+    { direction: 'income', rawStatus: '支付成功' },
+    { direction: 'income', rawStatus: '已存入零钱', rawTransactionType: '商户消费', transactionType: 'payment' }
+  ]) {
+    assert.equal(ledgerAccountReferenceForRow({
+      sourceType: 'wechat', rawTransactionType: '转账', transactionType: 'transfer',
+      direction: 'income', paymentMethod: '/', rawStatus: '已存入零钱', ...candidate
+    }), null)
+  }
 })
 
 test('本批新增映射会补齐缺失端，但不覆盖用户手工选择', () => {

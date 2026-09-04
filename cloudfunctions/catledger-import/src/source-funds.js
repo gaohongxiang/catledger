@@ -10,7 +10,7 @@ const {
 } = require('./payment-account')
 const { classifySourceAction } = require('./source-action')
 
-const SOURCE_FUNDS_VERSION = 'source-funds-v6'
+const SOURCE_FUNDS_VERSION = 'source-funds-v7'
 
 function clean(value) {
   return String(value || '').normalize('NFKC').trim()
@@ -182,6 +182,41 @@ function wechatProjection(row) {
   return null
 }
 
+// 普通收入/支出只有一个账本端。优先使用原始支付方式；微信收入转账的
+// 导出模板会把该列写成“/”，但“已存入零钱”状态已经明确给出到账端。
+// 推导结果只进入工作模型，原始字段仍由 Evidence 原样保存。
+function ledgerAccountReferenceForRow(row) {
+  const details = paymentAccountDetails(row.sourceType, row.paymentMethod)
+  // 规划行上的 paymentMethodKey 是该批证据已经固化的引用键。不能在这里
+  // 重新计算并替换它，否则旧批次、键版本迁移期及测试构造的稳定引用会
+  // 与对应映射失联。只有来源没有给出可识别账户时才派生新引用。
+  if (details.referenceKind === ACCOUNT_REFERENCE_KIND.ATOMIC && details.recognized) {
+    return {
+      role: 'ledger_account',
+      referenceKind: ACCOUNT_REFERENCE_KIND.ATOMIC,
+      sourceType: row.sourceType,
+      paymentMethodKey: row.paymentMethodKey || buildPaymentMethodKey(row.sourceType, row.paymentMethod),
+      label: details.displayName,
+      accountIdentityKey: accountGroupingKey(row.sourceType, row.paymentMethod),
+      aggregateFamilies: details.aggregateFamilies || []
+    }
+  }
+  const rawPaymentMethod = clean(row.paymentMethod)
+  const rawStatus = clean(row.rawStatus || row.status)
+  const action = classifySourceAction(row)
+  if (row.sourceType === 'wechat' && action.kind === 'external_transfer' &&
+      clean(row.direction) === 'income' && (!rawPaymentMethod || rawPaymentMethod === '/') &&
+      rawStatus.includes('已存入零钱')) {
+    const inferred = accountReference('wechat', '零钱', 'ledger_account')
+    return inferred ? {
+      ...inferred,
+      ruleVersion: SOURCE_FUNDS_VERSION,
+      inferenceRule: 'wechat_income_deposited_to_change'
+    } : null
+  }
+  return null
+}
+
 function projectSourceFunds(row) {
   if (row.sourceType === 'alipay') return alipayProjection(row)
   if (row.sourceType === 'wechat') return wechatProjection(row)
@@ -245,6 +280,7 @@ function reconcileProjectedAccounts(event, mappingIndex, { preserveFrom = false,
 module.exports = {
   SOURCE_FUNDS_VERSION,
   createMappingIndex,
+  ledgerAccountReferenceForRow,
   projectSourceFunds,
   reconcileProjectedAccounts,
   resolvePaymentMethod,

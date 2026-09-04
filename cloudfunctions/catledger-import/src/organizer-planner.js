@@ -17,11 +17,13 @@ const {
 } = require('./domain-versions')
 const {
   createMappingIndex,
+  ledgerAccountReferenceForRow,
   projectSourceFunds,
   resolvePaymentMethod,
   resolveSourceFunds,
   withAggregateCandidates
 } = require('./source-funds')
+const { isNonFinancialSourceRecord } = require('./source-action')
 const {
   ECONOMIC_NATURE,
   EVENT_STATUS,
@@ -75,8 +77,10 @@ function inferExactAccountMappings(rows, accounts) {
     else inferred.delete(key)
   }
   ;(rows || []).forEach((row) => {
-    const account = paymentAccountDetails(row.sourceType, row.paymentMethod)
-    if (account.recognized) consider(row.sourceType, row.paymentMethodKey, account.displayName)
+    const ledgerReference = ledgerAccountReferenceForRow(row)
+    if (ledgerReference) {
+      consider(ledgerReference.sourceType, ledgerReference.paymentMethodKey, ledgerReference.label)
+    }
     const projection = projectSourceFunds(row)
     if (projection) {
       consider(projection.from.sourceType, projection.from.paymentMethodKey, projection.from.label)
@@ -94,7 +98,8 @@ function mappingReferenceHints(rows) {
     if (!hints.has(key)) hints.set(key, label)
   }
   ;(rows || []).forEach((row) => {
-    add(row.sourceType, row.paymentMethodKey, row.paymentMethod)
+    const ledgerReference = ledgerAccountReferenceForRow(row)
+    if (ledgerReference) add(ledgerReference.sourceType, ledgerReference.paymentMethodKey, ledgerReference.label)
     const projection = projectSourceFunds(row)
     if (!projection) return
     add(projection.from.sourceType, projection.from.paymentMethodKey, projection.from.label)
@@ -111,16 +116,7 @@ function accountReferences(rows) {
     if (!references.has(key)) references.set(key, reference)
   }
   ;(rows || []).forEach((row) => {
-    const details = paymentAccountDetails(row.sourceType, row.paymentMethod)
-    if (details.referenceKind === 'atomic' && details.recognized) {
-      add({
-        sourceType: row.sourceType,
-        paymentMethodKey: row.paymentMethodKey,
-        label: details.displayName,
-        accountIdentityKey: accountGroupingKey(row.sourceType, row.paymentMethod),
-        aggregateFamilies: details.aggregateFamilies || []
-      })
-    }
+    add(ledgerAccountReferenceForRow(row))
     const projection = projectSourceFunds(row)
     if (!projection) return
     add(projection.from)
@@ -133,7 +129,7 @@ function compatibleHistoricalMappings(mappings, rows, accounts) {
   const hints = mappingReferenceHints(rows)
   const accountsById = new Map((accounts || []).map((account) => [account.accountId, account]))
   return (mappings || []).filter((mapping) => {
-    if (!mapping || mapping.mappingScope !== 'history' || mapping.mappingAction !== 'account') return true
+    if (!mapping || !['history', 'history_alias'].includes(mapping.mappingScope) || mapping.mappingAction !== 'account') return true
     const account = accountsById.get(mapping.accountId)
     if (!account) return true
     const hint = hints.get(paymentReferenceKey(mapping))
@@ -286,6 +282,7 @@ function groupEvidence(rows) {
 
 function representativeEvent(updateId, group, idFactory, mappingIndex, mappingResolution, references) {
   const primary = group[0]
+  const primaryLedgerReference = ledgerAccountReferenceForRow(primary)
   const identities = unique(group.map((row) => row.identityId))
   const existingTransactionIds = unique(group.map((row) => row.existingTransactionId))
   const projections = group.map(projectSourceFunds)
@@ -311,21 +308,24 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
   const accountIds = unique(group.map((row) => {
     // mappingIndex 已按“本批决定最后写入”汇总，不能再从原始 planning row
     // 直取旧永久映射，否则本批刚选的账户会被旧值反向覆盖。
-    const details = paymentAccountDetails(row.sourceType, row.paymentMethod)
-    return details.referenceKind === 'atomic' && details.recognized
-      ? resolvePaymentMethod(row.sourceType, row.paymentMethodKey, mappingIndex)
-      : null
+    const reference = ledgerAccountReferenceForRow(row)
+    return reference ? resolvePaymentMethod(reference.sourceType, reference.paymentMethodKey, mappingIndex) : null
   }))
   const accountConflict = accountIds.length > 1
   const coreConflict = group.some((row) => !compatibleCore(primary, row, STRONG_REFERENCE_WINDOW_MS))
   const identityConflict = group.some((row) => row.identityState === 'identity_conflict')
-  const ignoredBySavedRule = group.every((row) => row.mappingAction === 'ignore')
+  const ignoredBySavedRule = group.every((row) => {
+    const reference = ledgerAccountReferenceForRow(row)
+    return row.mappingAction === 'ignore' || Boolean(reference &&
+      mappingResolution.ignoredIdentityKeys.has(accountIdentityKeyForReference(reference)))
+  })
   const accountMappingConflict = group.some((row) => (
     mappingResolution.conflictIdentityKeys.has(accountGroupingKey(row.sourceType, row.paymentMethod))
   )) || [projection && projection.from, projection && projection.to].filter(Boolean).some((reference) => (
     mappingResolution.conflictIdentityKeys.has(accountIdentityKeyForReference(reference))
   ))
   const failedOrClosed = group.every((row) => ['failed', 'closed'].includes(row.economicEffect))
+  const nonFinancial = group.every(isNonFinancialSourceRecord)
   const reasons = []
   if (identityConflict) reasons.push('identity_conflict')
   if (accountMappingConflict) reasons.push('account_mapping_conflict')
@@ -349,9 +349,11 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     batchId: primary.batchId,
     eventKey,
     eventKeyVersion: EVENT_KEY_VERSION,
-    // “以后默认不计入”是可覆盖的账户归属偏好，不是静默过滤器。
-    // 后续批次仍进入账户步骤，默认显示不计入，用户可改选账户。
-    status: existingTransactionIds.length > 0 || failedOrClosed ? EVENT_STATUS.EXCLUDED : EVENT_STATUS.NEEDS_ACTION,
+    // “以后不计入”直接应用到后续匹配事件，同时保留一条可见、可修改的
+    // 已确认账户项；用户无需重复选择，也不会失去覆盖历史决定的入口。
+    status: existingTransactionIds.length > 0 || failedOrClosed || nonFinancial || ignoredBySavedRule
+      ? EVENT_STATUS.EXCLUDED
+      : EVENT_STATUS.NEEDS_ACTION,
     flowDirection,
     economicNature: nature,
     ledgerAccountId: resolvedFunds ? resolvedFunds.fromAccountId : accountConflict ? null : accountIds[0] || null,
@@ -369,20 +371,20 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     fieldSources: {
       primaryEvidenceId: null,
       rowIds: group.map((row) => row.rowId),
+      ledgerAccountReference: primaryLedgerReference,
       fundsProjection: resolvedFunds ? resolvedFunds.projection : projection && !projectionConflict ? projection : null
     },
     reasonCodes: unique([
       ...reasons,
       existingTransactionIds.length > 0 ? 'already_posted' : null,
       ignoredBySavedRule ? 'source_account_ignored_default' : null,
+      nonFinancial ? 'source_non_financial' : null,
       failedOrClosed ? primary.economicEffect === 'failed' ? 'transaction_failed' : 'transaction_closed' : null
     ]),
     version: 1,
     existingTransactionIds,
-    paymentMethodKey: paymentAccountDetails(primary.sourceType, primary.paymentMethod).recognized
-      ? primary.paymentMethodKey
-      : null,
-    accountGroupingKey: accountGroupingKey(primary.sourceType, primary.paymentMethod),
+    paymentMethodKey: primaryLedgerReference ? primaryLedgerReference.paymentMethodKey : null,
+    accountGroupingKey: primaryLedgerReference ? accountIdentityKeyForReference(primaryLedgerReference) : '',
     sourceType: primary.sourceType,
     display: {
       counterparty: primary.counterparty || '',
@@ -677,8 +679,8 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
   return { issues, members }
 }
 
-// 唯一同名账户被自动沿用时，业务结果已经可入账，但账户步骤仍要给用户
-// 一条可见、可修改的“已确认”记录，不能因为没有阻塞问题就从界面消失。
+// 自动沿用账户或命中长期忽略时，账户步骤仍保留一条非阻塞、可修改的
+// 已确认记录；历史决定直接生效，但不会变成不可见、不可覆盖的黑盒。
 function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFactory) {
   const confirmedKeys = new Map((effectiveMappings || []).filter((mapping) => (
     mapping.mappingAction === 'account' && mapping.accountId
@@ -692,7 +694,7 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
           { reference: projection.to, accountId: event.counterpartyLedgerAccountId, memberRole: 'mapping_to' }
         ]
       : [{
-          reference: {
+          reference: event.fieldSources && event.fieldSources.ledgerAccountReference || {
             sourceType: event.sourceType,
             paymentMethodKey: event.paymentMethodKey,
             accountIdentityKey: event.accountGroupingKey
@@ -702,14 +704,15 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
         }]
     candidates.forEach((candidate) => {
       const reference = candidate.reference
-      if (!reference || !reference.sourceType || !reference.paymentMethodKey || !candidate.accountId) return
+      if (!reference || !reference.sourceType || !reference.paymentMethodKey) return
+      const ignored = event.reasonCodes.includes('source_account_ignored_default') && !candidate.accountId
       const confirmedAccountId = confirmedKeys.get(paymentReferenceKey(reference))
-      if (!confirmedAccountId || confirmedAccountId !== candidate.accountId) return
+      if (!ignored && (!confirmedAccountId || confirmedAccountId !== candidate.accountId)) return
       const identityKey = accountIdentityKeyForReference(reference) || paymentReferenceKey(reference)
-      const key = `${identityKey}:${confirmedAccountId}`
-      const group = groups.get(key) || []
-      if (!group.some((item) => item.event.eventId === event.eventId && item.memberRole === candidate.memberRole)) {
-        group.push({ event, memberRole: candidate.memberRole })
+      const key = `${identityKey}:${ignored ? 'ignore' : confirmedAccountId}`
+      const group = groups.get(key) || { ignored, items: [] }
+      if (!group.items.some((item) => item.event.eventId === event.eventId && item.memberRole === candidate.memberRole)) {
+        group.items.push({ event, memberRole: candidate.memberRole })
       }
       groups.set(key, group)
     })
@@ -718,7 +721,7 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
   const members = []
   ;[...groups.entries()].sort((left, right) => left[0].localeCompare(right[0])).forEach(([groupKey, group]) => {
     const issueId = idFactory()
-    const projected = group.some((item) => item.memberRole !== 'subject')
+    const projected = group.items.some((item) => item.memberRole !== 'subject')
     issues.push({
       issueId,
       updateId,
@@ -728,13 +731,15 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
       status: 'resolved',
       version: 1,
       blocking: false,
-      primaryReasonCode: projected ? 'payment_reference_mapping_confirmed' : 'account_mapping_confirmed',
-      memberCount: group.length,
+      primaryReasonCode: group.ignored
+        ? 'payment_reference_ignored_by_history'
+        : projected ? 'payment_reference_mapping_confirmed' : 'account_mapping_confirmed',
+      memberCount: group.items.length,
       candidateCount: 0,
       ruleVersion: REVIEW_ISSUE_VERSION,
-      reasonCodes: ['account_mapping_confirmed']
+      reasonCodes: group.ignored ? ['source_account_ignored_default'] : ['account_mapping_confirmed']
     })
-    group.forEach(({ event, memberRole }, index) => members.push({
+    group.items.forEach(({ event, memberRole }, index) => members.push({
       memberId: idFactory(), updateId, issueId, objectType: 'event', objectId: event.eventId,
       objectVersion: event.version, memberRole, sortOrder: index
     }))

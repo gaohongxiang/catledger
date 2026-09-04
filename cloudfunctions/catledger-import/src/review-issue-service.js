@@ -357,7 +357,18 @@ function mappingReferenceForMember(event, memberRole) {
   const projection = event && event.fieldSources && event.fieldSources.fundsProjection
   if (memberRole === 'mapping_from') return projection && projection.from || null
   if (memberRole === 'mapping_to') return projection && projection.to || null
+  if (memberRole === 'subject') {
+    return event && event.fieldSources && event.fieldSources.ledgerAccountReference || null
+  }
   return null
+}
+
+function applyMappedAccount(event, memberRole, accountId, mappingIndex) {
+  if (memberRole === 'subject') return applyFields(event, { ledgerAccountId: accountId })
+  return reconcileProjectedAccounts(event, mappingIndex, {
+    preserveFrom: Boolean(event.manualFieldMask & FIELD_MASK.ledgerAccountId),
+    preserveTo: Boolean(event.manualFieldMask & FIELD_MASK.counterpartyLedgerAccountId)
+  }).event
 }
 
 function accountMappingEventMembers(members) {
@@ -756,10 +767,7 @@ async function resolveOpenAccountMapping(
         paymentReferenceKeys.push(await stagePaymentReferenceMapping(
           connection, uid, updateId, event.eventId, reference, accountId, actionId, 'account', mappingIndex
         ))
-        next = reconcileProjectedAccounts(event, mappingIndex, {
-          preserveFrom: Boolean(event.manualFieldMask & FIELD_MASK.ledgerAccountId),
-          preserveTo: Boolean(event.manualFieldMask & FIELD_MASK.counterpartyLedgerAccountId)
-        }).event
+        next = applyMappedAccount(event, member && member.memberRole, accountId, mappingIndex)
         next = { ...next, reasonCodes: resolvedReasons(issue.issueType, next.reasonCodes) }
       } else {
         next = applyFields({
@@ -885,10 +893,7 @@ async function reviseResolvedAccountMapping(
         paymentReferenceKeys.push(await stagePaymentReferenceMapping(
           connection, uid, updateId, event.eventId, reference, accountId, actionId, 'account', mappingIndex
         ))
-        next = reconcileProjectedAccounts(base, mappingIndex, {
-          preserveFrom: Boolean(base.manualFieldMask & FIELD_MASK.ledgerAccountId),
-          preserveTo: Boolean(base.manualFieldMask & FIELD_MASK.counterpartyLedgerAccountId)
-        }).event
+        next = applyMappedAccount(base, member && member.memberRole, accountId, mappingIndex)
       } else {
         next = applyFields(base, { ledgerAccountId: accountId })
         paymentReferenceKeys.push(...await stageAccountMappings(

@@ -1,4 +1,5 @@
-const SOURCE_ACTION_VERSION = 'source-action-v1'
+const SOURCE_ACTION_VERSION = 'source-action-v2'
+const ALIPAY_NON_FINANCIAL_STATES = new Set(['芝麻免押下单成功', '解冻成功'])
 
 function clean(value) {
   return String(value || '').normalize('NFKC').trim()
@@ -118,9 +119,16 @@ function classifySourceAction(row) {
   return result('unknown', clean(row.transactionType) || 'unknown', 'unsupported_source')
 }
 
+function isNonFinancialSourceRecord(row) {
+  return row && row.sourceType === 'alipay' && String(row.amountMinor) === '0' &&
+    clean(row.direction) === 'neutral' && clean(row.rawTransactionType || row.transactionType) === '信用借还' &&
+    ALIPAY_NON_FINANCIAL_STATES.has(clean(row.rawStatus || row.status))
+}
+
 module.exports = {
   SOURCE_ACTION_VERSION,
   classifyAlipayAction,
   classifySourceAction,
-  classifyWechatAction
+  classifyWechatAction,
+  isNonFinancialSourceRecord
 }

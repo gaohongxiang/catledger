@@ -309,11 +309,20 @@ async function selectPaymentMappings(connection, uid, updateId) {
       ORDER BY draft.created_at, draft.draft_mapping_id`,
     [uid, updateId]
   )
-  // 仓储只负责返回事实，不能在这里依赖查询/数组顺序提前裁决。
+  const history = saved.flatMap((mapping) => {
+    const canonicalKey = buildPaymentMethodKey(mapping.sourceType, mapping.paymentMethodHint)
+    if (!canonicalKey || canonicalKey === mapping.paymentMethodKey) return [mapping]
+    return [mapping, {
+      ...mapping,
+      paymentMethodKey: canonicalKey,
+      mappingScope: 'history_alias'
+    }]
+  })
+  // 仓储只负责返回事实和确定性的键版本兼容别名，不能在这里依赖查询/数组顺序提前裁决。
   // 历史、本批及同级冲突统一交给 account-mapping-policy；否则同一
   // PaymentReference 的旧值会在进入领域层前被静默覆盖，规划与重算
   // 也会得到不同答案。
-  return saved.concat(drafts)
+  return history.concat(drafts)
 }
 
 async function selectDraftPaymentMappings(connection, uid, updateId) {
@@ -606,14 +615,21 @@ function publicIssue(row) {
   const subjectDetails = row.subjectEventId
     ? paymentAccountDetails(row.subjectSourceType, row.subjectPaymentMethod)
     : null
-  const subjectAccount = subjectDetails ? {
-    sourceType: row.subjectSourceType || '',
-    paymentMethodKey: buildPaymentMethodKey(row.subjectSourceType, row.subjectPaymentMethod),
-    label: subjectDetails.displayName,
-    recognized: subjectDetails.recognized,
-    fundsSide: 'ordinary',
-    accountId: row.subjectLedgerAccountId || null
-  } : null
+  const ledgerAccountReference = subjectFieldSources.ledgerAccountReference || null
+  const subjectAccount = ledgerAccountReference
+    ? {
+        ...ledgerAccountReference,
+        fundsSide: 'ordinary',
+        accountId: row.subjectLedgerAccountId || null
+      }
+    : subjectDetails ? {
+        sourceType: row.subjectSourceType || '',
+        paymentMethodKey: buildPaymentMethodKey(row.subjectSourceType, row.subjectPaymentMethod),
+        label: subjectDetails.displayName,
+        recognized: subjectDetails.recognized,
+        fundsSide: 'ordinary',
+        accountId: row.subjectLedgerAccountId || null
+      } : null
   const mappingSide = row.subjectMemberRole === 'mapping_from'
     ? 'from'
     : row.subjectMemberRole === 'mapping_to' ? 'to' : ''

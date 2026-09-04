@@ -513,17 +513,113 @@ test('多笔退款仍保持逐笔问题，绝不批量套用同一原消费', ()
   assert.equal(refundIssues.every((issue) => issue.memberCount === 1), true)
 })
 
-test('以后默认不计入仍生成可编辑账户问题而不是静默排除', () => {
+test('以后不计入自动排除并生成非阻塞可修改账户项', () => {
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000014',
     idFactory: ids(),
     rows: [row({ mappingAction: 'ignore', mappedAccountId: null })]
   })
 
-  assert.equal(plan.events[0].status, 'needs_action')
+  assert.equal(plan.events[0].status, 'excluded')
   assert.ok(plan.events[0].reasonCodes.includes('source_account_ignored_default'))
   assert.equal(plan.issues.length, 1)
   assert.equal(plan.issues[0].issueType, 'account_mapping')
+  assert.equal(plan.issues[0].status, 'resolved')
+  assert.equal(plan.issues[0].blocking, false)
+})
+
+test('旧账户键兼容忽略可命中新规范键且精确规则优先', () => {
+  const label = '支付宝小荷包(合成小荷包)'
+  const currentKey = buildPaymentMethodKey('alipay', label)
+  const baseRow = row({
+    sourceType: 'alipay', paymentMethod: label, paymentMethodKey: currentKey,
+    mappingAction: null, mappedAccountId: null
+  })
+  const legacyIgnore = {
+    sourceType: 'alipay', paymentMethodKey: currentKey, paymentMethodHint: label,
+    mappingAction: 'ignore', accountId: null, mappingScope: 'history_alias'
+  }
+  const ignored = buildOrganizePlan({
+    updateId: '60000000-0000-4000-8000-000000000140', idFactory: ids(),
+    rows: [baseRow], paymentMappings: [legacyIgnore]
+  })
+  assert.equal(ignored.events[0].status, 'excluded')
+
+  const exactAccount = '50000000-0000-4000-8000-000000000140'
+  const overridden = buildOrganizePlan({
+    updateId: '60000000-0000-4000-8000-000000000141', idFactory: ids(),
+    rows: [baseRow],
+    paymentMappings: [legacyIgnore, {
+      sourceType: 'alipay', paymentMethodKey: currentKey, paymentMethodHint: label,
+      mappingAction: 'account', accountId: exactAccount, accountType: 'wallet', mappingScope: 'history'
+    }],
+    accounts: [{ accountId: exactAccount, name: label, type: 'wallet', currency: 'CNY' }]
+  })
+  assert.equal(overridden.events[0].ledgerAccountId, exactAccount)
+  assert.notEqual(overridden.events[0].status, 'excluded')
+})
+
+test('微信已存入零钱直接使用微信零钱映射而不生成斜杠账户问题', () => {
+  const changeKey = buildPaymentMethodKey('wechat', '零钱')
+  const changeAccount = '50000000-0000-4000-8000-000000000150'
+  const plan = buildOrganizePlan({
+    updateId: '60000000-0000-4000-8000-000000000150', idFactory: ids(),
+    rows: [row({
+      direction: 'income', transactionType: 'transfer', rawTransactionType: '转账',
+      rawStatus: '已存入零钱', paymentMethod: '/', paymentMethodKey: null,
+      mappingAction: null, mappedAccountId: null
+    })],
+    paymentMappings: [{
+      sourceType: 'wechat', paymentMethodKey: changeKey, paymentMethodHint: '微信零钱',
+      mappingAction: 'account', accountId: changeAccount, accountType: 'wallet', mappingScope: 'history'
+    }],
+    accounts: [{ accountId: changeAccount, name: '微信零钱', type: 'wallet', currency: 'CNY' }]
+  })
+  assert.equal(plan.events[0].ledgerAccountId, changeAccount)
+  assert.equal(plan.events[0].fieldSources.ledgerAccountReference.label, '微信零钱')
+  assert.equal(plan.issues.some((issue) => issue.status === 'open' && issue.issueType === 'account_mapping'), false)
+})
+
+test('支付宝零金额免押和解冻作为非资金证据自动排除', () => {
+  for (const [rawStatus, item] of [
+    ['芝麻免押下单成功', '合成设备免押下单'],
+    ['解冻成功', '自动解冻-合成设备']
+  ]) {
+    const plan = buildOrganizePlan({
+      updateId: '60000000-0000-4000-8000-000000000160', idFactory: ids(),
+      rows: [row({
+        sourceType: 'alipay', amountMinor: '0', direction: 'neutral',
+        transactionType: 'unknown', rawTransactionType: '信用借还', rawStatus,
+        paymentMethod: '', paymentMethodKey: null, mappingAction: null, mappedAccountId: null, item
+      })]
+    })
+    assert.equal(plan.events[0].status, 'excluded', rawStatus)
+    assert.ok(plan.events[0].reasonCodes.includes('source_non_financial'), rawStatus)
+    assert.equal(plan.issues.length, 0, rawStatus)
+  }
+})
+
+test('支付宝非资金规则必须同时满足零金额、中性方向、信用借还和精确状态', () => {
+  const variants = [
+    { amountMinor: '1' },
+    { direction: 'expense' },
+    { rawTransactionType: '商户消费' },
+    { rawStatus: '支付成功' }
+  ]
+  variants.forEach((variant, index) => {
+    const plan = buildOrganizePlan({
+      updateId: `60000000-0000-4000-8000-${String(170 + index).padStart(12, '0')}`,
+      idFactory: ids(),
+      rows: [row({
+        sourceType: 'alipay', amountMinor: '0', direction: 'neutral',
+        transactionType: 'unknown', rawTransactionType: '信用借还', rawStatus: '解冻成功',
+        paymentMethod: '', paymentMethodKey: null, mappingAction: null, mappedAccountId: null,
+        ...variant
+      })]
+    })
+    assert.equal(plan.events[0].reasonCodes.includes('source_non_financial'), false)
+    assert.notEqual(plan.events[0].status, 'excluded')
+  })
 })
 
 test('同一银行卡跨微信和支付宝只生成一个账户归属问题', () => {

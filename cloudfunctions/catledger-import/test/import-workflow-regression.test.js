@@ -128,7 +128,7 @@ test('整理卡明确区分交易摘要和冻结的原始记录', function () {
 
 test('旧版未入账批次由服务端声明是否需要重整，客户端不再复制规划版本', function () {
   const pageSource = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.js'), 'utf8')
-  assert.equal(organizerPlanner.PLAN_VERSION, 'organizer-plan-v22')
+  assert.equal(organizerPlanner.PLAN_VERSION, 'organizer-plan-v23')
   assert.doesNotMatch(pageSource, /CURRENT_PLAN_VERSION/)
   assert.match(pageSource, /view\.update\.requiresReorganization[\s\S]*financeUpdates\.organize/)
 })

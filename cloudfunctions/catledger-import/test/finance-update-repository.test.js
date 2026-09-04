@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
+const { digestParts } = require('../src/digest')
+const { buildPaymentMethodKey } = require('../src/identity')
+
 const {
   publicUpdate,
   publicIssue,
@@ -37,7 +40,34 @@ test('映射仓储返回全部候选，不按数据库结果顺序提前覆盖�
   }
 
   const mappings = await selectPaymentMappings(connection, 'user-1', 'update-1')
-  assert.deepEqual(mappings.map((mapping) => mapping.mappingScope), ['history', 'batch'])
+  assert.deepEqual(mappings.map((mapping) => mapping.mappingScope), ['history', 'history_alias', 'batch'])
+})
+
+test('旧原文支付键保留原事实并派生低优先级规范别名', async function () {
+  let call = 0
+  const label = '支付宝小荷包(合成小荷包)'
+  const legacyKey = digestParts('payment-method-v1', 'alipay', label)
+  const currentKey = buildPaymentMethodKey('alipay', label)
+  assert.notEqual(legacyKey, currentKey)
+  const connection = {
+    execute: async function () {
+      call += 1
+      return call === 1 ? [[{
+        sourceType: 'alipay', paymentMethodKey: legacyKey, paymentMethodHint: label,
+        mappingAction: 'ignore', accountId: null, accountType: null, mappingScope: 'history'
+      }]] : [[]]
+    }
+  }
+
+  const mappings = await selectPaymentMappings(connection, 'user-1', 'update-1')
+  assert.deepEqual(mappings.map((mapping) => ({
+    key: mapping.paymentMethodKey,
+    scope: mapping.mappingScope,
+    action: mapping.mappingAction
+  })), [
+    { key: legacyKey, scope: 'history', action: 'ignore' },
+    { key: currentKey, scope: 'history_alias', action: 'ignore' }
+  ])
 })
 
 test('账户问题列表返回安全且可读的支付账户标题', function () {
@@ -79,6 +109,27 @@ test('已保存的忽略规则公开为可覆盖的默认状态', function () {
     subjectItem: '消费', subjectCounterparty: '商户'
   })
   assert.equal(issue.accountContext.defaultIgnored, true)
+})
+
+test('派生单端引用覆盖原始斜杠账户展示', function () {
+  const paymentMethodKey = buildPaymentMethodKey('wechat', '零钱')
+  const issue = publicIssue({
+    issueId: 'issue-derived', issueType: 'account_mapping', status: 'resolved', version: 1,
+    blocking: 0, primaryReasonCode: 'account_mapping_confirmed', memberCount: 1,
+    candidateCount: 0, reasonCodes: '[]', subjectEventId: 'event-derived',
+    subjectMemberRole: 'subject', subjectEventStatus: 'ready', subjectFlowDirection: 'inflow',
+    subjectEconomicNature: 'income', subjectLedgerAccountId: 'account-change',
+    subjectFieldSources: JSON.stringify({ ledgerAccountReference: {
+      sourceType: 'wechat', paymentMethodKey, label: '微信零钱', recognized: true,
+      role: 'ledger_account', inferenceRule: 'wechat_income_deposited_to_change'
+    } }),
+    subjectLocalAt: '2026-08-01 12:00:00.000', subjectAmountMinor: '450', subjectCurrency: 'CNY',
+    subjectSourceType: 'wechat', subjectPaymentMethod: '/', subjectFileName: '微信账单.xlsx',
+    subjectItem: '转账', subjectCounterparty: '合成对方'
+  })
+  assert.equal(issue.accountContext.label, '微信零钱')
+  assert.equal(issue.accountContext.paymentMethodKey, paymentMethodKey)
+  assert.equal(issue.accountContext.recognized, true)
 })
 
 test('资金流转问题使用真正缺失端作为账户上下文', function () {

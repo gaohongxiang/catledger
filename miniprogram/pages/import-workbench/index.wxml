@@ -158,8 +158,9 @@
         <text wx:if="{{item.inline && item.choiceValue === 'create' && !item.draftNameValid}}" class="account-inline-note">填写账户名称，或点左侧改选已有账户 / 本次不计入账本。</text>
         <text wx:if="{{item.inline && item.suggestedExisting}}" class="account-state-note">已根据账户名称、银行和尾号推荐已有账户，请核对。</text>
         <text wx:if="{{item.inline && item.choiceValue === 'ignore'}}" class="account-state-note">保留来源证据，本次不创建账户或正式账目。</text>
-        <text wx:if="{{item.inline && item.choiceValue === 'ignore_future'}}" class="account-state-note">本次不计入并记住历史选择；下次仍会要求重新选择，不会自动跳过。</text>
-        <text wx:if="{{item.inline && item.status === 'resolved'}}" class="account-state-note account-state-confirmed">已确认；整批入账前仍可点上方选项修改。</text>
+        <text wx:if="{{item.inline && item.choiceValue === 'ignore_future' && item.status === 'open'}}" class="account-state-note">本次不计入；确认整批入账后，相同支付工具将按历史规则自动排除。</text>
+        <text wx:if="{{item.inline && item.choiceValue === 'ignore_future' && item.status === 'resolved'}}" class="account-state-note">已按历史规则自动排除，不需要再次确认；整批入账前仍可修改。</text>
+        <text wx:if="{{item.inline && item.status === 'resolved' && item.choiceValue !== 'ignore_future'}}" class="account-state-note account-state-confirmed">已确认；整批入账前仍可点上方选项修改。</text>
       </view>
     </view>
 
@@ -340,7 +341,7 @@
             <view class="account-choice-ignore-icon account-choice-ignore-future"></view>
             <view class="account-choice-ignore-content">
               <text class="account-choice-ignore-title">以后不计入</text>
-              <text class="account-choice-ignore-copy">下次仍重新选择，不会自动跳过</text>
+              <text class="account-choice-ignore-copy">后续自动排除；导入确认前仍可改选账户</text>
             </view>
           </button>
         </view>

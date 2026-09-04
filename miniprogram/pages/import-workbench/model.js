@@ -519,6 +519,9 @@ function eventView(event) {
 
 function excludedReason(event) {
   const reasons = new Set(event && event.reasonCodes || [])
+  if (reasons.has('source_non_financial')) {
+    return { key: 'source_non_financial', label: '非资金记录', note: '只保留来源证据，不创建账户或正式账目。', order: 5 }
+  }
   if (reasons.has('transaction_closed')) {
     return { key: 'transaction_closed', label: '交易已关闭', note: '账单状态明确为关闭，不会计入账本。', order: 20 }
   }

@@ -6,7 +6,9 @@ const test = require('node:test')
 
 const mysql = require('mysql2/promise')
 
+const { digestParts } = require('../src/digest')
 const { hashWechatSubject } = require('../src/handler')
+const { buildPaymentMethodKey } = require('../src/identity')
 const { createImportService } = require('../src/import-service')
 const { createAccountService } = require('../../catledger-api/src/account-service')
 const { createTransactionService } = require('../../catledger-api/src/transaction-service')
@@ -1051,7 +1053,7 @@ test('支付宝合并还款不创建第三账户并原子入账为多笔守恒�
   }
 })
 
-test('FinanceUpdate 永久忽略只在整批入账后提升并供后续导入复用', { skip: !hasDatabase, timeout: 30000 }, async () => {
+test('FinanceUpdate 永久忽略只在整批入账后提升并让后续匹配自动排除且可修改', { skip: !hasDatabase, timeout: 30000 }, async () => {
   const pool = mysql.createPool(databaseConfig())
   const objects = new Map()
   const storage = {
@@ -1119,6 +1121,16 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并供后续导入复
     )
     assert.deepEqual(formalAfterPost, { mappingAction: 'ignore', accountId: null, disabledAt: null })
 
+    // 模拟旧版本曾按带平台前缀的原文生成键。原事实必须保留，后续读取
+    // 应从稳定提示派生当前规范键别名，而不是要求用户再次确认。
+    const legacyKey = digestParts('payment-method-v1', 'wechat', '微信零钱')
+    await pool.execute(
+      `UPDATE catledger_import_account_mappings
+          SET payment_method_key = ?, payment_method_hint = '微信零钱'
+        WHERE uid = ?`,
+      [legacyKey, user.uid]
+    )
+
     const laterContent = fixtureWithSequence(601)
     const later = await service.prepare(context(user, {
       requestId: randomUUID(), fileName: '后续复用永久忽略.csv', size: laterContent.length
@@ -1134,14 +1146,20 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并供后续导入复
     const laterView = await service.financeUpdateOrganize(context(user, {
       requestId: randomUUID(), updateId: laterCreated.updateId, version: laterCreated.version
     }))
-    assert.equal(laterView.events.every((event) => event.status === 'needs_action'), true)
-    const laterIssue = laterView.issues.find((item) => item.status === 'open' && item.issueType === 'account_mapping')
+    assert.equal(laterView.events.every((event) => event.status === 'excluded'), true)
+    assert.equal(laterView.events.every((event) => event.reasonCodes.includes('source_account_ignored_default')), true)
+    const laterIssue = laterView.issues.find((item) => item.status === 'resolved' && item.issueType === 'account_mapping')
     assert.ok(laterIssue)
+    assert.equal(laterIssue.blocking, false)
     assert.equal(laterIssue.accountContext.defaultIgnored, true)
-    await service.reviewIssueResolve(context(user, {
-      requestId: randomUUID(), updateId: laterView.update.updateId, issueId: laterIssue.issueId,
-      updateVersion: laterView.update.version, issueVersion: laterIssue.version,
-      decision: 'apply_fields', fields: { ledgerAccountId: user.accountId }
+    await service.reviewIssueResolveAccountMappings(context(user, {
+      requestId: randomUUID(), updateId: laterView.update.updateId,
+      decisions: [{
+        issueId: laterIssue.issueId,
+        operation: 'revise',
+        decision: 'apply_fields',
+        fields: { ledgerAccountId: user.accountId }
+      }]
     }))
     const laterResolved = await service.financeUpdateGet(context(user, { updateId: laterView.update.updateId }))
     const categorizedLater = await resolveOpenCategoryIssues(service, user, laterResolved)
@@ -1150,12 +1168,20 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并供后续导入复
       requestId: randomUUID(), updateId: categorizedLater.update.updateId,
       version: categorizedLater.update.version, mode: 'all_ready'
     }))
-    const [[overriddenRule]] = await pool.execute(
-      `SELECT mapping_action AS mappingAction, account_id AS accountId
-         FROM catledger_import_account_mappings WHERE uid = ? LIMIT 1`,
+    const [rulesAfterOverride] = await pool.execute(
+      `SELECT payment_method_key AS paymentMethodKey, mapping_action AS mappingAction,
+              account_id AS accountId
+         FROM catledger_import_account_mappings WHERE uid = ? ORDER BY payment_method_key`,
       [user.uid]
     )
-    assert.deepEqual(overriddenRule, { mappingAction: 'account', accountId: user.accountId })
+    assert.equal(rulesAfterOverride.length, 2)
+    assert.deepEqual(rulesAfterOverride.find((rule) => rule.paymentMethodKey === legacyKey), {
+      paymentMethodKey: legacyKey, mappingAction: 'ignore', accountId: null
+    })
+    assert.deepEqual(rulesAfterOverride.find((rule) => rule.mappingAction === 'account'), {
+      paymentMethodKey: buildPaymentMethodKey('wechat', '零钱'),
+      mappingAction: 'account', accountId: user.accountId
+    })
   } finally {
     await pool.end()
   }
