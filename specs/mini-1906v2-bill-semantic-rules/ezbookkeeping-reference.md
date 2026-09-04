@@ -35,11 +35,11 @@ ezBookkeeping 使用三层导入方式：
 | 上游能力 | 本项目采用方式 |
 | --- | --- |
 | 每个来源一个 adapter | 建立版本化 ProfileManifest 和来源 adapter，禁止通用 planner 出现机构字符串 |
-| 统一 TransactionDataTable | 建立更早、更完整的 FieldObservation / SemanticClaim 中间层，再生成 EconomicEvent |
-| 自定义列和交易类型映射 | 建立用户范围、声明式、可版本化的 UserMappingProfile |
-| 日期和金额格式自动检测 | 只生成建议，用户确认或 profile 认证后生效 |
-| 映射 JSON 导入导出 | 支持可审计的配置迁移，并校验模板指纹和版本 |
-| 按原始名称批量替换 | 按账户引用、有限 token 和 SemanticSignature 聚类预览与批量处理 |
+| 统一 TransactionDataTable | 建立保留完整字段的 RawBillRow，再由唯一 Row Semantic Resolver 生成标准结果 |
+| 自定义列和交易类型映射 | 记录为后续能力，不进入本期微信、支付宝重构 |
+| 日期和金额格式自动检测 | 当前由 profile 明确声明；自动建议后续再做 |
+| 映射 JSON 导入导出 | 延后，不作为四个现有 profile 的前置 |
+| 按原始名称批量替换 | 只吸收批量处理体验；账户决定继续绑定稳定来源引用键 |
 | 导入前逐笔检查 | 保留预览，但默认聚合真正未知的组合，避免要求用户扫描每一行 |
 | 最终批量事务 | 延续 FinanceUpdate 整批 posting，并覆盖账户草稿、映射和关系副作用 |
 
@@ -54,18 +54,18 @@ ezBookkeeping 使用三层导入方式：
 - 不让解析器直接创建正式 Account、Category 或 Transaction；
 - 不把“选中交易均有效”描述成“整份账单已完整识别”。
 
-## 5. 对产品承诺的修正
+## 5. 本阶段采用范围
 
-本项目不再用一个模糊的“支持导入”覆盖所有能力。用户运行时分为两条通道，维护者 adapter 另走离线认证生命周期：
+本阶段只吸收 ezBookkeeping 的来源 adapter、中间行模型、预览和批量映射思路，用于收口微信与支付宝现有字符串判断。
 
-| 通道 | 用户得到的承诺 | 完整性口径 |
-| --- | --- | --- |
-| `CERTIFIED_STATEMENT` | 当前模板整份账单经过已认证规则自动整理 | 可以声明字段、枚举、行归宿、关键语义和来源控制闭合 |
-| `GUIDED_MAPPING` | 用户把长尾结构化文件转换并确认成一组可入账事件 | 只声明选中交易完整；未知、排除和未映射记录持续可见 |
+用户自定义列映射、JSON 映射配置和长尾银行导入延后处理，不阻塞四个现有 profile。维护者为新来源增加普通代码 profile 和测试，不建设运行时 adapter 平台。
 
-维护者 adapter 使用 `draft → tested → shadow → certified` 生命周期，通过认证后才进入 `CERTIFIED_STATEMENT`。这使“快速支持一家新银行”和“承诺该银行整份账单自动正确”成为两个不同阶段，避免用硬编码成功率冒充覆盖完整性。
+产品只需诚实区分：
 
-CatLedger 还必须分别表达语义解释范围和实际提交范围：整账已经正确识别但用户排除部分已识别事件时，可以是 `FULL_STATEMENT + SELECTED_EVENTS`；排除未知行则不能把 `SELECTED_SUBSET` 提升为 `FULL_STATEMENT`。
+- 当前认证模板的整份账单是否仍有未知或冲突；
+- 用户最终选择了哪些已经识别的事件入账。
+
+已识别后被用户排除的记录不等于未知；未知记录被排除后也不能被描述为整账完整。
 
 ## 6. 上游证据位置
 
