@@ -45,6 +45,8 @@
 
 用户明确选择“微信”或“支付宝”只能缩小候选范围，不能替代上述结构认证。
 
+以上字段应在逻辑上分为 `container`、`template`、`productSemantics` 和 `reconciliation` 四个区块；首期可以由一个 manifest 分区承载，不要求提前拆成四套注册系统。维护者 adapter 使用 `draft → tested → shadow → certified` 认证生命周期，不是用户运行时导入通道。
+
 ### 2.2 UserMappingProfile 字段契约
 
 长尾 CSV/XLSX 的用户映射至少包含：
@@ -54,7 +56,7 @@
 | `mappingProfileId` / `version` | 用户范围稳定 ID 与单调版本 |
 | `templateFingerprint` | 容器、表头及结构指纹；不得包含真实交易内容 |
 | `columnMapping` | 原始列到规范观测字段的声明 |
-| `typeTokenMapping` | 原始类型 token 到 SourceAction 候选的映射 |
+| `typeTokenMapping` | 原始类型 token 到受限 SourceAction 候选的映射；首版只允许普通收入、普通支出、明确双端转账和认证非资金 |
 | `directionConvention` | 独立收支列、有符号金额或借贷双列约定 |
 | `dateTimeFormat` | 日期、时间、时区与 Excel 数值日期约定 |
 | `amountFormat` | 小数点、分组符、单位、币种和精度约定 |
@@ -63,6 +65,71 @@
 | `allowedTransforms` | 仅限白名单声明式转换，不允许动态代码 |
 
 映射文件可导入导出，但导入时必须校验 schema 版本、用户作用域、模板指纹和字段冲突。它只能进入 `GUIDED_MAPPING`，不能自行晋升为认证 profile。
+
+首版 UserMappingProfile 不得形成退款关系、信用卡还款、聚合还款、贷款、分期或跨来源事件合并；也不得直接创建正式 Account、Category、Transaction 或永久全局规则。
+
+### 2.3 InterpretationRun 最小摘要
+
+需求阶段只冻结可重放契约，不预先要求每一项各建一张表：
+
+| 字段 | 含义 |
+| --- | --- |
+| `runId` / `parentRunId` | 当前运行及其不可变父运行引用 |
+| `uid` | 服务端认证上下文确定的用户范围，不接受客户端自报 |
+| `evidenceSetDigest` | 参与本次解释的不可变 Evidence 集摘要 |
+| `decoderVersion` | 容器解码版本 |
+| `profileManifestDigest` | 选中 profile 的规范摘要 |
+| `adapterVersion` | Observation adapter 版本 |
+| `ruleBundleDigest` | 规则包规范摘要 |
+| `semanticEngineVersion` | Claim/Resolver/EventAssembly 引擎版本 |
+| `decisionSnapshotDigest` | 本次采用的追加式用户决定集合摘要 |
+| `domainContextDigest` | 参与账户身份、历史映射和分类别名推导的状态摘要 |
+| `resultDigest` | 排除随机 ID、时间戳和展示顺序后的规范结果摘要 |
+| `authorityMode` | `legacy_authoritative`、`v2_shadow`、`v2_authoritative` 或 `disabled` |
+
+相同输入摘要重放必须得到相同 `resultDigest`。规则、决定或账户上下文发生变化时创建新 Run，不原地覆盖旧 Run。
+
+### 2.4 行解释、选择与门禁状态
+
+| 维度 | 规范值 | 只回答什么问题 |
+| --- | --- | --- |
+| `SemanticResolution` | `RESOLVED`、`NEEDS_USER`、`UNSUPPORTED`、`CONFLICT`、`INVALID` | 系统是否已经得到可使用语义 |
+| `RowRole` | `MONEY_PRIMARY`、`NON_FINANCIAL`、`SUPPORTING`、`DUPLICATE`、`UNDETERMINED` | 该来源记录在事件中的角色；未知或无效时不得猜测角色 |
+| `SelectionDisposition` | `SELECTED`、`USER_EXCLUDED`、`NOT_SELECTED` | 用户是否选择进入本次 posting |
+| `GateStatus` | `READY`、`BLOCKED`、`QUARANTINED`、`INVALID` | 当前是否允许继续 |
+
+例如已识别的小荷包记录可以是 `RESOLVED + MONEY_PRIMARY + USER_EXCLUDED + READY`：这表示系统认识它且尊重用户不入账决定，不表示该记录未知，也不表示它已经入账。`UNSUPPORTED` 记录即使被排除也不能提升为 `RESOLVED`。
+
+### 2.5 覆盖与提交范围
+
+| 字段 | 规范值 | 含义 |
+| --- | --- | --- |
+| `interpretationScope` | `FULL_STATEMENT` | 整份账单全部来源区域已观察，关键语义和财务门禁完整 |
+| `interpretationScope` | `SELECTED_SUBSET` | 只对明确选中的事件作正确性承诺 |
+| `postingScope` | `ALL_POSTABLE` | 提交全部可入账事件 |
+| `postingScope` | `SELECTED_EVENTS` | 只提交用户选择的可入账事件 |
+
+`FULL_STATEMENT + SELECTED_EVENTS` 是合法组合：整账已正确识别，但用户主动不把部分已识别记录纳入账本。
+
+### 2.6 事件最小完备集
+
+| EconomicNature | posting 前必须确定 |
+| --- | --- |
+| 普通支出 | 金额、币种、日期、支出性质、流出账户 |
+| 普通收入 | 金额、币种、日期、收入性质、流入账户 |
+| 本人转账 | 金额、币种、日期、两个不同的流出/流入账户 |
+| 退款 | 金额、币种、日期、到账账户、原支出或明确待关联状态 |
+| 信用还款 | 付款资产账户、目标负债账户、金额、日期 |
+| 聚合还款 | 付款账户、全部目标负债账户、逐项金额且合计守恒 |
+| 非资金生命周期 | 认证 profile 的严格联合规则证明无余额影响 |
+
+标准 `LedgerImpact` 至少包含 `accountRole`、`accountId | accountDraftId`、`deltaMinor`、`currency`、`cashFlowClass`、`reportingClass`、`relationRole` 和 provenance。它只用于预览、校验、差分和现有 posting，不是 JournalEntry / Posting。
+
+### 2.7 日期精度与控制结果
+
+只有日期的来源必须使用 `timePrecision = DATE`，不得补 `00:00:00` 后冒充秒级事实；可选精度为 `DATE`、`MINUTE`、`SECOND`，并分别保存本地日期、可选本地时间、时区和来源顺序。
+
+控制结果使用 `PASS`、`FAIL`、`NOT_PROVIDED`、`NOT_APPLICABLE`、`UNCOMPUTABLE` 或 `PARTIAL_COVERAGE`，并记录作用域、币种、公式版本、证据引用、期望值、实际值、差额和硬/软等级。
 
 ## 3. 通用规范观测
 
@@ -332,7 +399,9 @@
 {
   "importLane": "CERTIFIED_STATEMENT",
   "profileStatus": "certified",
-  "completenessClaim": "whole_statement",
+  "interpretationScope": "FULL_STATEMENT",
+  "postingScope": "ALL_POSTABLE",
+  "authorityMode": "v2_authoritative",
   "profileVersion": "wechat-xlsx@1",
   "adapterVersion": "observation@1",
   "policyVersion": "wechat-semantic@1"
@@ -345,11 +414,13 @@
 {
   "importLane": "GUIDED_MAPPING",
   "profileStatus": "compatible",
-  "completenessClaim": "selected_transactions_only"
+  "interpretationScope": "SELECTED_SUBSET",
+  "postingScope": "SELECTED_EVENTS",
+  "authorityMode": "v2_authoritative"
 }
 ```
 
-即使辅助通道的所有选中交易都已 ready，也不得把 `completenessClaim` 改为 `whole_statement`。
+即使辅助通道的所有选中交易都已 ready，也不得把 `interpretationScope` 改为 `FULL_STATEMENT`。认证整账中若所有行语义已解决、但用户明确排除部分已识别事件，则允许 `FULL_STATEMENT + SELECTED_EVENTS`，并必须展示排除数量和金额。
 
 ## 12. 待私有盘点清单
 
