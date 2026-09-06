@@ -1,0 +1,38 @@
+name: 账户同行反馈验证
+on:
+  push:
+    branches: [codex/mini-1906ui-import-refinement]
+    paths: [.github/workflows/ui-account-compact-review.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/codex/mini-1906ui-import-refinement'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: local-synthetic-ci-only
+          MYSQL_ROOT_HOST: '%'
+          MYSQL_DATABASE: catledger_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: 还原八个指定文件并检查源码树
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, subprocess, zlib
+          encoded = 'eNq1Wutz00i2/1dUmbqbhBvbelivDLC1e3du1X6Y3a2dW/cLzl1aUivR4teVZBIKUhV2Jy/Ii3eABEgGCMNMCMOwJNh5VN0/ZceS7U/8C/e0WrZlx07IDBs+ILW6+7x/5/RpX+7RkIN7Bntk1kCchpOigRWOVVRVxQqSZE2VJI2VVU0RVc3kTbVnoMe1MVmh6KaEMI9YCYvIRKJpIk3leE3jkS4ZiiyrspnkeQQr9BGUHcZOz+C5yz155I7AaiOnOwn/+sPq2/XK3HfVV6+rb5/7K997k8/goTZRqu7fqG699ZcX4hkDdtCwmbMJVVZMCixvsIooAF8GBlKizOqYF3hB1hRexio2WYWDNch0sQ1LNM3gkWmyusArMitziBdFTuFNESUlkeMlJKmmpCsCLMGG5RI2z4n8ADfQE2MIVzPb1YOHXvG598OdytMicx7peq6Qdb9ycf6rQiaD7EtxPZc1LTuDjYSbc1H6/IfdufLOfHnvoHL7RW1i1r/+rbf9pra3VHnwNXPexsi4dJ7xpm56k5MwXll7VX319KeJv3mlYvXVq58mrnr7k/XBq5EJV72FKW/xjb9ws3b/aXl/tTK54S08Zs47LnILTkIfyVk6/m+ULuCEUxgGhbvY+GLMclwrOwz0AvaBjH/3NVDy773znn5dWZry7773dhfJ7kvzlY3X3s25yg8l79F1b+WFtwRiTFTX5kCe2uqjxsJyad5f3ofd/Dtv4StVEpXzw+5Db/t5eX+jXJqk8yvX3vkTV6kuvB8man9/Ud4p1daXvd1i9fXfq7NvYPPK86vwlbD08FFtYqK8s+lPbFTXXtRW14leAsbKB6uVO/e9xa3K7l3iHfu3wFnI2oBbun/l7YY3fcN/Ml3Z3P+wO1M+WCNE59cS8FR9u/1hdxYWgM4qtx+HZrn/AgT27z2pPViprM/TlSGlV3MgXqiLgANY69/e955ueJv3vMVtwu7iFqgJ/NZ/sutNTfrz61RZ4Q7EOJqVNX5DPeZ3NrjkH1AGJ2hARIf/61IehnOZfBq79Q9fonw+MB2VFUxU3l32JmcqxQ1v8Zo/+97/fg0oeZvL1e0tb/9r0D14HdH6+qPq9Evv2gvqOf7MXX9xyZudr8x+683dBY2msj1DQ+MDx0bjK7D5XnXja2/mZlscGipiASYU1RQ4wVAwAIWhcxCVEH6aKKq6zEEYsmwkDnkhaRisYIoCrwmiLAKwKDJmdcAZTdRExMuqokmc3BKHIjvADvSksqnsZ/DH8HycU+JcGJflndna2HVna2l?'
+          PY
