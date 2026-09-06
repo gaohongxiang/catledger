@@ -46,16 +46,16 @@ const THEMES = [
     id: 'warm-ledger',
     name: '暖橘手账',
     eyebrow: 'WARM LEDGER',
-    description: '纸白、浅橘与暖灰，保留生活手账的温度。',
+    description: '暖白、陶橘与轻灰，清秀而有温度。',
     tokens: {
-      page: '#F7F6F3', canvasTop: '#FAF9F6', canvasMid: '#F7F6F3', canvasBottom: '#F7F6F3',
-      surface: '#FFFEFC', surfaceMuted: '#FAEDE3', ink: '#29231E', textMuted: '#726D66', textSubtle: '#817A72',
-      accent: '#D97732', accentStrong: '#A85B2E', accentSoft: '#FBE1CD', onAccent: '#29231E',
-      secondary: '#8D6B54', secondarySoft: '#F1EAE3', line: '#E5DFD7', border: '#D6CBBF',
-      heroStart: '#D97732', heroEnd: '#D97732', heroInk: '#29231E', heroValueInk: '#633921', heroMuted: '#392718',
+      page: '#FAF8F4', canvasTop: '#FAF8F4', canvasMid: '#FAF8F4', canvasBottom: '#FAF8F4',
+      surface: '#FFFEFD', surfaceMuted: '#F1EEE9', ink: '#2C2823', textMuted: '#70685F', textSubtle: '#79716A',
+      accent: '#BE5B24', accentStrong: '#A34D20', accentSoft: '#FCEEE3', onAccent: '#FFFFFF',
+      secondary: '#70685F', secondarySoft: '#F1EEE9', line: '#EAE4DC', border: '#D4CCC3',
+      heroStart: '#BE5B24', heroEnd: '#BE5B24', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#FFFFFF',
       income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A95132', dangerSoft: '#F4E1D6',
       shadowSoft: '0 3rpx 14rpx rgba(74,50,30,.035)', shadowLifted: '0 8rpx 22rpx rgba(145,87,36,.10)',
-      radiusLarge: '22rpx', radiusMedium: '16rpx', radiusSmall: '10rpx', navBackground: '#F7F6F3', navFront: '#000000'
+      radiusLarge: '22rpx', radiusMedium: '16rpx', radiusSmall: '10rpx', navBackground: '#FAF8F4', navFront: '#000000'
     }
   },
   {

@@ -2,42 +2,142 @@
 .profile-hero,
 .identity-status,
 .profile-summary,
-.profile-row { display: flex;}
-.profile-hero { min-height: 112rpx; align-items: center; }
-.profile-logo { width: 96rpx; height: 96rpx; flex: 0 0 auto; border-radius: 24rpx; }
+.profile-row { display: flex; }
+.profile-row {
+  min-height: 124rpx;
+  padding-top: 20rpx;
+  padding-bottom: 20rpx;
+  box-sizing: border-box;
+  border-bottom: 1rpx solid var(--theme-line);
+}
+.profile-hero {
+  min-height: 160rpx;
+  align-items: center;
+  padding-top: 20rpx;
+  padding-bottom: 20rpx;
+}
+.profile-logo {
+  width: 96rpx;
+  height: 96rpx;
+  flex: 0 0 auto;
+  border-radius: 24rpx;
+}
 .profile-logo { object-fit: cover; }
 .profile-copy { min-width: 0; margin-left: 18rpx; flex: 1; }
 .profile-kicker,
-.profile-section-kicker { display: block; color: var(--theme-secondary, #64705d); font-size: 20rpx; font-weight: 500; letter-spacing: 2rpx; }
-.profile-title { display: block; margin-top: 4rpx; overflow: hidden; font-size: 34rpx; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.identity-status { min-height: 28rpx; flex-wrap: nowrap; align-items: center; margin-top: 6rpx; color: var(--theme-text-muted, #746a60); font-size: 20rpx; }
+.profile-section-kicker {
+  display: block;
+  color: var(--theme-secondary, #64705d);
+  font-size: 26rpx;
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-top: 36rpx;
+}
+.profile-title {
+  display: block;
+  margin-top: 4rpx;
+  overflow: hidden;
+  font-size: 34rpx;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.identity-status {
+  min-height: 28rpx;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 6rpx;
+  color: var(--theme-text-muted, #746a60);
+  font-size: 24rpx;
+  row-gap: 6rpx;
+  line-height: 1.5;
+}
 .identity-status-retryable { transition: opacity 120ms ease; }
 .identity-status-retryable:active { opacity: .58; }
 .identity-retry { margin-left: 10rpx; color: var(--theme-accent-strong, #b85f2e); font-weight: 500; }
-.status-dot { width: 10rpx; height: 10rpx; margin-right: 8rpx; background: var(--theme-text-subtle, #958b82); border-radius: 50%; }
+.status-dot {
+  width: 10rpx;
+  height: 10rpx;
+  margin-right: 8rpx;
+  background: var(--theme-text-subtle, #958b82);
+  border-radius: 50%;
+}
 .status-dot-connected { background: var(--theme-secondary, #64705d); }
-.profile-login-button { display: flex; min-width: 112rpx; min-height: 72rpx; align-items: center; justify-content: center; margin-left: 12rpx; color: var(--theme-on-accent, #fffaf1); font-size: var(--font-body-small, 26rpx); font-weight: 600; background: var(--theme-accent, #d97732); border-radius: 16rpx; }
+.profile-login-button {
+  display: flex;
+  min-width: 112rpx;
+  min-height: 88rpx;
+  align-items: center;
+  justify-content: center;
+  margin-left: 12rpx;
+  color: var(--theme-on-accent, #fffaf1);
+  font-size: var(--font-body-small, 26rpx);
+  font-weight: 500;
+  background: var(--theme-accent, #d97732);
+  border-radius: 16rpx;
+  flex-shrink: 0;
+  padding: 14rpx 24rpx;
+}
 .profile-login-button:active { opacity: .74; }
 
-.profile-summary { align-items: center; margin-top: 20rpx; padding: 20rpx 12rpx; border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09));  background: var(--theme-surface-muted, #f8e8dc); border-radius: var(--theme-radius-medium, 16rpx); border: 1rpx solid var(--theme-line, rgba(41,35,30,.09));}
-.summary-cell { display: flex; flex: 1; min-width: 0; align-items: center; flex-direction: column; }
+.profile-summary {
+  align-items: center;
+  margin-top: 16rpx;
+  padding: 28rpx 12rpx;
+  border-top: 0;
+  border-bottom: 0;
+  background: var(--theme-surface);
+  border-radius: 24rpx;
+  border: 1rpx solid var(--theme-line);
+}
+.summary-cell {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  flex-direction: column;
+}
 .summary-divider { width: 2rpx; height: 42rpx; background: var(--theme-line, rgba(41, 35, 30, .09)); }
 .summary-number { font-size: 34rpx; font-weight: 500; }
 .summary-cloud { font-size: var(--font-body, 28rpx); line-height: 40rpx; }
 .summary-label { margin-top: 4rpx; color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
 
 .profile-section-kicker { margin-top: 40rpx; }
-.profile-menu { margin-top: 8rpx; border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
-.profile-row { min-height: 96rpx; align-items: center; border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); transition: opacity 120ms ease; }
+.profile-menu {
+  margin-top: 12rpx;
+  border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09));
+  background: var(--theme-surface);
+  border: 1rpx solid var(--theme-line);
+  border-radius: 24rpx;
+  overflow: hidden;
+  padding: 0 8rpx;
+}
+.profile-row {
+  min-height: 96rpx;
+  align-items: center;
+  border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09));
+  transition: opacity 120ms ease;
+}
 .profile-row:active { opacity: .65; }
 .row-copy { min-width: 0; flex: 1; }
 .row-title,
-.row-note { display: block; }
-.row-title { font-size: var(--font-body, 28rpx); font-weight: 500; }
-.row-note { margin-top: 4rpx; color: var(--theme-text-muted, #746a60); font-size: 20rpx; }
-.row-chevron { width: 14rpx; height: 14rpx; margin-left: 18rpx; border-top: 3rpx solid var(--theme-text-subtle, #958b82); border-right: 3rpx solid var(--theme-text-subtle, #958b82); transform: rotate(45deg); }
-.profile-logout-row { margin-top: 12rpx; }
+.row-note { display: block; line-height: 1.5; }
+.row-title { font-size: var(--font-body, 28rpx); font-weight: 400; line-height: 1.5; }
+.row-note { margin-top: 4rpx; color: var(--theme-text-muted, #746a60); font-size: 24rpx; }
+.row-chevron {
+  width: 14rpx;
+  height: 14rpx;
+  margin-left: 18rpx;
+  border-top: 3rpx solid var(--theme-text-subtle, #958b82);
+  border-right: 3rpx solid var(--theme-text-subtle, #958b82);
+  transform: rotate(45deg);
+}
+.profile-logout-row { margin-top: 0; }
 .profile-logout-title { color: var(--theme-danger, #a95132); }
 .profile-logout-chevron { border-color: var(--theme-danger, #a95132); opacity: .56; }
 
-.identity-status > text { white-space: nowrap; }
+.identity-status > text { white-space: normal; }
+
+.profile-row:last-child { border-bottom: 0; }

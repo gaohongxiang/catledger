@@ -1,29 +1,30 @@
 <view class="page-canvas ledger-page {{themeClass}}" style="{{themeStyle}}">
   <view class="ledger-heading content-inset">
     <view>
-      <text class="ledger-kicker">LEDGER STRUCTURE</text>
-      <view class="heading-with-sync"><text class="ledger-title serif-title">钱放哪里，账归何处。</text><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view>
+
+      <view class="heading-with-sync"><text class="ledger-title serif-title">我的账本</text><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view>
     </view>
-    <text wx:if="{{loggedIn}}" class="ledger-count money-number">{{structureCount}}</text>
+    <text wx:if="{{loggedIn && hasLoaded}}" class="ledger-count money-number" aria-label="账户与分类共{{structureCount}}项">{{structureCount}} 项</text>
   </view>
 
   <view class="ledger-overview">
     <view class="overview-item">
-      <text class="overview-value money-number">{{loggedIn ? accountCount : '—'}}</text>
+      <text class="overview-value money-number">{{loggedIn && hasLoaded ? accountCount : '—'}}</text>
       <text class="overview-label">活动账户</text>
     </view>
     <view class="overview-line"></view>
     <view class="overview-item">
-      <text class="overview-value money-number">{{loggedIn ? expenseCategoryCount : '—'}}</text>
+      <text class="overview-value money-number">{{loggedIn && hasLoaded ? expenseCategoryCount : '—'}}</text>
       <text class="overview-label">支出分类</text>
     </view>
     <view class="overview-line"></view>
     <view class="overview-item">
-      <text class="overview-value money-number">{{loggedIn ? incomeCategoryCount : '—'}}</text>
+      <text class="overview-value money-number">{{loggedIn && hasLoaded ? incomeCategoryCount : '—'}}</text>
       <text class="overview-label">收入分类</text>
     </view>
   </view>
 
+  <text wx:if="{{loading && !hasLoaded}}" class="ui-state-caption" aria-role="status">正在读取账户与分类…</text>
   <view class="management-list">
     <view class="management-row content-inset" role="button" aria-label="进入账户管理" bindtap="openAccounts">
       <view class="management-icon">
@@ -31,7 +32,7 @@
       </view>
       <view class="management-copy">
         <text class="management-title">账户管理</text>
-        <text class="management-note">{{accountSummaryText}}</text>
+        <text class="management-note">{{loggedIn && !hasLoaded ? '读取后显示账户数量' : accountSummaryText}}</text>
       </view>
       <view class="row-chevron"></view>
     </view>
@@ -41,7 +42,7 @@
       </view>
       <view class="management-copy">
         <text class="management-title">分类管理</text>
-        <text class="management-note">{{categorySummaryText}}</text>
+        <text class="management-note">{{loggedIn && !hasLoaded ? '读取后显示分类数量' : categorySummaryText}}</text>
       </view>
       <view class="row-chevron"></view>
     </view>

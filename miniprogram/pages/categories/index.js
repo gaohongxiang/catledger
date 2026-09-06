@@ -130,7 +130,7 @@ Page({
       index: index,
       target: index,
       startY: touch.clientY,
-      rowHeight: system.windowWidth * 104 / 750
+      rowHeight: system.windowWidth * 116 / 750
     }
     this.setData({ draggingCategoryId: this.categoryDrag.id, dragStyle: 'transform: translateY(0px); z-index: 3;' })
   },

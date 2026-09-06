@@ -16,9 +16,9 @@
   "style": "v2",
   "sitemapLocation": "sitemap.json",
   "window": {
-    "backgroundColor": "#F8F3EA",
+    "backgroundColor": "#FAF8F4",
     "backgroundTextStyle": "dark",
-    "navigationBarBackgroundColor": "#F8F3EA",
+    "navigationBarBackgroundColor": "#FAF8F4",
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "招财猫记账本"
   },
@@ -26,7 +26,7 @@
     "custom": true,
     "color": "#746A60",
     "selectedColor": "#CF7439",
-    "backgroundColor": "#FFFDF9",
+    "backgroundColor": "#FFFEFD",
     "list": [
       { "pagePath": "pages/index/index", "text": "首页" },
       { "pagePath": "pages/transactions/index", "text": "明细" },

@@ -2,7 +2,7 @@
   <view class="profile-hero content-inset">
     <image class="profile-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
     <view class="profile-copy">
-      <text class="profile-kicker">MY PROFILE</text>
+
       <text class="profile-title serif-title">{{loggedIn ? (nickname || '微信用户') : '尚未登录'}}</text>
       <view class="identity-status {{syncActionText ? 'identity-status-retryable' : ''}}" bindtap="retryProfile">
         <view class="status-dot {{connected ? 'status-dot-connected' : ''}}"></view>
@@ -16,12 +16,12 @@
 
   <view class="profile-summary">
     <view class="summary-cell">
-      <text class="summary-number money-number">{{loggedIn ? accountCount : '—'}}</text>
+      <text class="summary-number money-number">{{loggedIn && hasLoaded ? accountCount : '—'}}</text>
       <text class="summary-label">活动账户</text>
     </view>
     <view class="summary-divider"></view>
     <view class="summary-cell">
-      <text class="summary-number money-number">{{loggedIn ? categoryCount : '—'}}</text>
+      <text class="summary-number money-number">{{loggedIn && hasLoaded ? categoryCount : '—'}}</text>
       <text class="summary-label">收支分类</text>
     </view>
     <view class="summary-divider"></view>
@@ -31,7 +31,9 @@
     </view>
   </view>
 
-  <text class="profile-section-kicker content-inset">ACCOUNT & DATA</text>
+  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error" bindtap="retryProfile" aria-role="button">{{errorMessage}} · 点此重试</view>
+
+  <text class="profile-section-kicker content-inset">设置与资料</text>
   <view class="profile-menu">
     <view class="profile-row content-inset" role="button" aria-label="选择视觉主题" bindtap="openTheme">
       <view class="row-copy">

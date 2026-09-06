@@ -1,8 +1,8 @@
-<view class="page-canvas theme-page {{themeClass}}" style="{{themeStyle}}">
+<view class="page-canvas page-secondary theme-page {{themeClass}}" style="{{themeStyle}}">
   <view class="theme-heading content-inset">
-    <text class="theme-kicker">VISUAL THEMES</text>
-    <text class="theme-title serif-title">换一种方式，看同一本账。</text>
-    <text class="theme-intro">只改变颜色、留白与纸张气质，不改变任何账目和统计含义。</text>
+
+    <text class="theme-title serif-title">选择你喜欢的主题</text>
+    <text class="theme-intro">六种配色，同一本账。切换仅保存在当前设备。</text>
   </view>
 
   <view class="theme-list">
@@ -34,7 +34,7 @@
       </view>
 
       <view class="ledger-preview">
-        <view class="preview-topline"><text>本月收支</text><text>08</text></view>
+        <view class="preview-topline"><text>配色预览</text><text>示例</text></view>
         <text class="preview-balance money-number">¥ 4,286</text>
         <view class="preview-chart">
           <view class="preview-column"><view class="preview-income preview-bar-height-1"></view><view class="preview-expense preview-bar-height-2"></view></view>

@@ -15,10 +15,11 @@
   <block wx:else>
     <view class="net-worth-card">
       <text class="net-worth-label">人民币净值</text>
-      <text class="net-worth-number money-number">{{netWorthText}}</text>
+      <text class="net-worth-number money-number">{{loggedIn && hasDashboard ? netWorthText : '—'}}</text>
       <text class="net-worth-note">资产减去负债</text>
     </view>
 
+    <view wx:if="{{errorMessage && hasDashboard}}" class="ui-state ui-state-error" bindtap="loadDashboard" aria-role="button">刷新未成功，当前显示上次结果 · 重试</view>
     <view class="home-flow">
     <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 || netIncomeText.length > 12 ? 'month-strip-stacked' : ''}}">
       <view class="month-stat month-stat-divider">
@@ -26,21 +27,21 @@
           <image class="month-stat-icon" src="/assets/icons/summary-income.svg" mode="aspectFit" />
           <text class="month-stat-label">收入</text>
         </view>
-        <text class="month-stat-value money-number amount-income">{{incomeText}}</text>
+        <text class="month-stat-value money-number amount-income">{{loggedIn && hasDashboard ? incomeText : '—'}}</text>
       </view>
       <view class="month-stat month-stat-divider">
         <view class="month-stat-heading">
           <image class="month-stat-icon" src="/assets/icons/summary-expense.svg" mode="aspectFit" />
           <text class="month-stat-label">支出</text>
         </view>
-        <text class="month-stat-value money-number amount-expense">{{expenseText}}</text>
+        <text class="month-stat-value money-number amount-expense">{{loggedIn && hasDashboard ? expenseText : '—'}}</text>
       </view>
       <view class="month-stat">
         <view class="month-stat-heading">
           <image class="month-stat-icon" src="{{themeIconRoot}}/summary-balance.svg" mode="aspectFit" />
           <text class="month-stat-label">结余</text>
         </view>
-        <text class="month-stat-value money-number">{{netIncomeText}}</text>
+        <text class="month-stat-value money-number">{{loggedIn && hasDashboard ? netIncomeText : '—'}}</text>
       </view>
     </view>
 
@@ -108,7 +109,9 @@
           </view>
         </view>
     </view>
-    <view wx:else class="account-empty">暂无账户数据</view>
+    <view wx:elif="{{loading && !hasDashboard}}" class="account-empty" aria-role="status">正在读取账户…</view>
+    <view wx:elif="{{errorMessage && !hasDashboard}}" class="account-empty ui-state-error" bindtap="loadDashboard" aria-role="button">账户暂未读取，点此重试</view>
+    <view wx:else class="account-empty">{{loggedIn ? '还没有账户，添加后会显示在这里' : '登录后查看你的账户'}}</view>
 
     <view class="section-heading recent-heading">
       <view>
@@ -141,7 +144,7 @@
       </view>
     </block>
     <view wx:else class="recent-empty recent-empty-pending">
-      <text class="recent-empty-title">暂无最近账目</text>
+      <text class="recent-empty-title">{{loading ? '正在读取最近账目…' : (errorMessage ? '账目暂未读取' : '登录后查看最近账目')}}</text>
       <text class="recent-empty-copy">导入或手动记录后，最新账目会出现在这里。</text>
     </view>
     </view>

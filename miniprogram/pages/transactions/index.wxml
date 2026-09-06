@@ -1,7 +1,7 @@
 <view class="page-canvas detail-page {{themeClass}}" style="{{themeStyle}}">
   <view class="month-switcher">
     <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><view class="arrow-left"></view></view>
-    <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate">
+    <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate" disabled="{{loading || loadingMore}}">
       <view class="date-picker-content">
         <text class="month-current money-number">{{selectedDateLabel || monthLabel}}</text>
         <view class="date-picker-chevron"></view>
@@ -15,29 +15,29 @@
     <text class="date-clear" bindtap="clearDate">查看整月</text>
   </view>
 
-  <view class="summary-strip">
+  <view class="summary-strip {{incomeText.length > 12 || expenseText.length > 12 || netText.length > 12 ? 'summary-strip-stacked' : ''}}">
     <view class="inline-sync summary-sync {{loading || loadingMore ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading || loadingMore ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
     <view class="summary-cell">
       <text class="summary-label">收入</text>
-      <text class="money-number summary-value summary-income">{{incomeText}}</text>
+      <text class="money-number summary-value summary-income">{{loggedIn && hasLoaded ? incomeText : '—'}}</text>
     </view>
     <view class="summary-divider"></view>
     <view class="summary-cell">
       <text class="summary-label">支出</text>
-      <text class="money-number summary-value summary-expense">{{expenseText}}</text>
+      <text class="money-number summary-value summary-expense">{{loggedIn && hasLoaded ? expenseText : '—'}}</text>
     </view>
     <view class="summary-divider"></view>
     <view class="summary-cell">
       <text class="summary-label">结余</text>
-      <text class="money-number summary-value {{netClass}}">{{netText}}</text>
+      <text class="money-number summary-value {{netClass}}">{{loggedIn && hasLoaded ? netText : '—'}}</text>
     </view>
   </view>
 
   <view class="filter-toolbar">
-    <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter">
+    <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter" disabled="{{loading || loadingMore}}">
       <view class="filter-content"><text>{{accountFilters[accountFilterIndex].name}}</text><view class="filter-chevron"></view></view>
     </picker>
-    <picker class="filter-picker" mode="selector" range="{{categoryFilters}}" range-key="name" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter">
+    <picker class="filter-picker" mode="selector" range="{{categoryFilters}}" range-key="name" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter" disabled="{{loading || loadingMore}}">
       <view class="filter-content"><text>{{categoryFilters[categoryFilterIndex].name}}</text><view class="filter-chevron"></view></view>
     </picker>
     <view class="search-trigger {{searchOpen || search ? 'search-trigger-active' : ''}}" role="button" aria-label="搜索备注" bindtap="toggleSearch">
@@ -46,7 +46,7 @@
   </view>
 
   <view wx:if="{{searchOpen}}" class="search-strip">
-    <input class="search-input" value="{{search}}" placeholder="搜索备注" maxlength="40" confirm-type="search" bindinput="bindSearch" bindconfirm="applySearch" />
+    <input class="search-input" value="{{search}}" placeholder="搜索备注" maxlength="40" confirm-type="search" aria-label="搜索账目备注" cursor-spacing="32" bindinput="bindSearch" bindconfirm="applySearch" />
     <text class="search-action" bindtap="applySearch">查找</text>
     <text class="search-cancel" bindtap="cancelSearch">取消</text>
   </view>
@@ -61,7 +61,7 @@
     >
       <view class="detail-main">
         <view class="detail-copy">
-          <view class="detail-line">
+          <view class="detail-line {{item.amountText.length > 15 ? 'detail-line-long' : ''}}">
             <text class="detail-label">{{item.label}}</text>
             <text class="detail-amount money-number {{item.amountClass}}">{{item.amountText}}</text>
           </view>
@@ -72,10 +72,14 @@
     </view>
   </view>
 
-  <view wx:elif="{{hasLoaded || !loggedIn}}" class="empty-ledger detail-empty content-inset">
+  <view wx:elif="{{loggedIn && hasLoaded && !loading && !errorMessage}}" class="empty-ledger detail-empty content-inset">
     <text class="empty-ledger-title">这里暂时没有账目</text>
     <text class="empty-ledger-copy">换一个月份或筛选条件试试；新增账目请使用底部加号。</text>
   </view>
 
+  <view wx:if="{{!loggedIn}}" class="ui-state"><text class="ui-state-title">登录后查看账目</text><text>你的账户与账单只对你可见。</text></view>
+  <view wx:elif="{{loading && !hasLoaded}}" class="ui-state" aria-role="status">正在读取账目…</view>
+  <view wx:if="{{loadingMore}}" class="ui-state-caption" aria-role="status">正在读取更多账目…</view>
+  <text wx:elif="{{hasLoaded && transactions.length && !nextCursor}}" class="ui-state-caption">已显示当前筛选下的全部账目</text>
   <view wx:if="{{errorMessage}}" class="detail-error content-inset" bindtap="prepareAndLoad">{{errorMessage}} · 点此重试</view>
 </view>

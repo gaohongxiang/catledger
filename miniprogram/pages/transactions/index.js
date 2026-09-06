@@ -49,6 +49,7 @@ Page({
     }
     this.setData({
       loading: false,
+      hasLoaded: false,
       loadingMore: false,
       errorMessage: '',
       transactions: [],
@@ -163,6 +164,7 @@ Page({
   },
 
   changeMonth: function (delta) {
+    if (this.data.loading || this.data.loadingMore) return
     const month = time.shiftMonth(this.data.month, delta)
     this.setData({
       month: month,
@@ -170,12 +172,13 @@ Page({
       pickerDate: month + '-01',
       selectedDate: '',
       selectedDateLabel: '',
-      nextCursor: null
+      nextCursor: null, hasLoaded: false, transactions: []
     })
     this.loadTransactions(false)
   },
 
   changeDate: function (event) {
+    if (this.data.loading || this.data.loadingMore) return
     const date = event.detail.value
     const month = date.slice(0, 7)
     const parts = date.split('-')
@@ -185,13 +188,14 @@ Page({
       pickerDate: date,
       selectedDate: date,
       selectedDateLabel: parts[0] + '年' + Number(parts[1]) + '月' + Number(parts[2]) + '日',
-      nextCursor: null
+      nextCursor: null, hasLoaded: false, transactions: []
     })
     this.loadTransactions(false)
   },
 
   clearDate: function () {
-    this.setData({ selectedDate: '', selectedDateLabel: '', nextCursor: null })
+    if (this.data.loading || this.data.loadingMore) return
+    this.setData({ selectedDate: '', selectedDateLabel: '', nextCursor: null, hasLoaded: false, transactions: [] })
     this.loadTransactions(false)
   },
 
@@ -216,12 +220,14 @@ Page({
   },
 
   changeAccountFilter: function (event) {
-    this.setData({ accountFilterIndex: Number(event.detail.value) })
+    if (this.data.loading || this.data.loadingMore) return
+    this.setData({ accountFilterIndex: Number(event.detail.value), hasLoaded: false, transactions: [] })
     this.loadTransactions(false)
   },
 
   changeCategoryFilter: function (event) {
-    this.setData({ categoryFilterIndex: Number(event.detail.value) })
+    if (this.data.loading || this.data.loadingMore) return
+    this.setData({ categoryFilterIndex: Number(event.detail.value), hasLoaded: false, transactions: [] })
     this.loadTransactions(false)
   },
 

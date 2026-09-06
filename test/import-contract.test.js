@@ -71,7 +71,8 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   const source = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8')
   const modelSource = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/model.js'), 'utf8')
   const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxml'), 'utf8')
-  const styles = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxss'), 'utf8')
+  // 结构约束与 CSS 的换行排版无关。
+  const styles = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxss'), 'utf8').replace(/\s+/g, ' ')
   const repository = fs.readFileSync(path.join(__dirname, '../cloudfunctions/catledger-import/src/import-repository.js'), 'utf8')
   assert.match(source, /const MAX_FILES = 5/)
   assert.match(source, /maxFiles: MAX_FILES/)

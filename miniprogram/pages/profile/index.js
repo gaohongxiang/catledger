@@ -7,6 +7,7 @@ Page({
   data: {
     loggedIn: false,
     loading: false,
+    hasLoaded: false,
     connected: false,
     nickname: '',
     displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
@@ -35,7 +36,7 @@ Page({
       return this.loadProfile()
     }
     this.setData({
-      loading: false, connected: false, identityStatusText: '尚未登录',
+      loading: false, hasLoaded: false, connected: false, identityStatusText: '尚未登录',
       syncActionText: '', errorMessage: '', accountCount: 0, categoryCount: 0
     })
   },
@@ -86,6 +87,7 @@ Page({
       .then(function (result) {
         const accounts = Array.isArray(result.accounts) ? result.accounts : []
         self.setData({
+          hasLoaded: true,
           accountCount: accounts.filter(function (account) { return !account.archived }).length,
           syncActionText: '',
           errorMessage: ''

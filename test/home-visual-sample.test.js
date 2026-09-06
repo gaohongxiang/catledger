@@ -19,7 +19,7 @@ test('首页样板保留净值口径、五项金额绑定和用户头像', () =>
   assert.match(markup, /人民币净值/)
   assert.doesNotMatch(markup, /总资产/)
   for (const key of ['netWorthText', 'incomeText', 'expenseText', 'netIncomeText', 'displayAvatarUrl']) {
-    assert.ok(markup.includes('{{' + key + '}}'), key)
+    assert.ok(key === 'displayAvatarUrl' ? markup.includes('{{' + key + '}}') : markup.includes("{{loggedIn && hasDashboard ? " + key + " : '—'}}"), key)
   }
   assert.match(markup, /item\.balanceText/)
   assert.match(markup, /item\.amountText/)
@@ -93,13 +93,13 @@ test('首页不隐藏账户方向和来源时间', () => {
   assert.doesNotMatch(rule('.account-direction'), /display:\s*none/)
 })
 
-test('底栏样板仅随首页选中状态开启，保留主题和现有点击行为', () => {
-  assert.ok(tabMarkup.includes("selected === 0 ? 'home-visual-sample' : ''"))
+test('底栏轻量样式应用于全部主页面，保留主题和现有点击行为', () => {
+  assert.ok(tabMarkup.includes('class="tab-shell {{themeClass}} ui-refined"'))
   for (const handler of ['openEntry', 'switchTab', 'chooseBill', 'openEditor', 'closeEntry']) {
     assert.ok(tabMarkup.includes('bindtap="' + handler + '"'), handler)
   }
   assert.match(tabMarkup, /wx:if="{{!hidden}}"/)
-  assert.match(tabStyle, /\.tab-shell\.home-visual-sample/)
+  assert.match(tabStyle, /\.tab-shell\.ui-refined/)
 })
 
 test('账户/账目/主要入口保留触控空间和底部安全区', () => {

@@ -5,7 +5,7 @@ const time = require('../../utils/time')
 const themeService = require('../../theme/service')
 
 function chartHeight(permille) {
-  return permille === 0 ? 3 : Math.max(10, Math.round(permille * 0.12))
+  return Math.max(0, Math.round(Number(permille || 0) * 0.12))
 }
 
 function prepareCategories(rows) {
@@ -14,7 +14,7 @@ function prepareCategories(rows) {
     return Object.assign({}, row, {
       amountText: money.formatMinor(row.amountMinor),
       shareText: (percentage % 1 === 0 ? percentage.toFixed(0) : percentage.toFixed(1)) + '%',
-      barWidth: Math.max(3, percentage) + '%'
+      barWidth: Math.max(0, Math.min(100, percentage)) + '%'
     })
   })
 }
@@ -57,12 +57,15 @@ Page({
     month: time.currentMonth(),
     monthLabel: '',
     loading: false,
+    hasLoaded: false,
     errorMessage: '',
     incomeText: '¥0.00',
     expenseText: '¥0.00',
     netText: '¥0.00',
     cashFlowTrend: [],
     daily: [],
+    selectedTrend: null,
+    selectedDay: null,
     expenseCategories: [],
     incomeCategories: [],
     metrics: {},
@@ -103,6 +106,8 @@ Page({
         const metrics = result.metrics || {}
         const uncategorized = result.uncategorized || {}
         self.setData({
+          hasLoaded: true,
+          selectedTrend: null, selectedDay: null,
           incomeText: money.formatMinor(result.summary.incomeMinor),
           expenseText: money.formatMinor(result.summary.expenseMinor),
           netText: money.formatMinor(result.summary.netIncomeMinor),
@@ -134,9 +139,20 @@ Page({
   nextMonth: function () { this.changeMonth(1) },
 
   changeMonth: function (delta) {
+    if (this.data.loading || this.data.categorySaving) return
     const month = time.shiftMonth(this.data.month, delta)
-    this.setData({ month: month, monthLabel: time.monthLabel(month) })
+    this.setData({ month: month, monthLabel: time.monthLabel(month), hasLoaded: false })
     this.loadStatistics()
+  },
+
+  selectTrend: function (event) {
+    const row = this.data.cashFlowTrend[Number(event.currentTarget.dataset.index)]
+    if (row) this.setData({ selectedTrend: row })
+  },
+
+  selectDay: function (event) {
+    const row = this.data.daily[Number(event.currentTarget.dataset.index)]
+    if (row) this.setData({ selectedDay: row })
   },
 
   openCategoryCompletion: function () {

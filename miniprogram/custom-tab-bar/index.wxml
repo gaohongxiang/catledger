@@ -3,8 +3,8 @@
 <view wx:if="{{entryOpen}}" class="entry-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="closeEntry">
   <view class="entry-sheet" catchtap="keepEntryOpen">
     <view class="entry-heading">
-      <text class="entry-kicker">ADD TO LEDGER</text>
-      <text class="entry-title">怎么记这次账？</text>
+
+      <text class="entry-title">添加账目</text>
       <text class="entry-copy">导入账单更省事，手动记账用来补充少数遗漏。</text>
     </view>
     <view class="entry-option entry-option-primary" role="button" aria-label="导入账单，推荐" bindtap="chooseBill">
@@ -25,7 +25,7 @@
   </view>
 </view>
 
-<view wx:if="{{!hidden}}" class="tab-shell {{themeClass}} {{selected === 0 ? 'home-visual-sample' : ''}}" style="{{themeStyle}}">
+<view wx:if="{{!hidden}}" class="tab-shell {{themeClass}} ui-refined" style="{{themeStyle}}">
   <view class="tab-side tab-side-left">
     <view
       wx:for="{{tabs}}"

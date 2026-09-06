@@ -1,20 +1,22 @@
-<view class="page-canvas maintenance-page {{themeClass}}" style="{{themeStyle}}">
+<view class="page-canvas page-secondary maintenance-page {{themeClass}}" style="{{themeStyle}}">
   <text class="maintenance-title serif-title content-inset">更正与撤销</text>
   <text class="maintenance-copy content-inset">选择需要更正的记录，或撤销本批入账；确认前会列出账户变化。</text>
   <view wx:if="{{errorMessage}}" class="maintenance-error content-inset">{{errorMessage}}</view>
   <button class="refresh-button content-inset" bindtap="refresh" disabled="{{busy}}">刷新账单状态</button>
+  <view wx:if="{{busy && !update}}" class="ui-state" aria-role="status">正在读取已入账批次…</view>
+  <view wx:if="{{update && update.status !== 'posted' && !completed}}" class="ui-state"><text class="ui-state-title">当前批次尚不可维护</text><text>请返回整理页查看状态，未入账内容不会在这里更改。</text></view>
   <view wx:if="{{completed}}" class="maintenance-section"><text>本批入账已撤销，可返回重新整理。</text></view>
   <block wx:elif="{{update && update.status === 'posted'}}">
     <view wx:if="{{draft}}" class="maintenance-section">
       <text class="section-title content-inset">更正记录</text>
       <picker range="{{events}}" range-key="label" value="{{eventIndex}}" bindchange="selectEvent" disabled="{{busy}}"><view class="field-value">{{events[eventIndex].label}} ›</view></picker>
       <button class="refresh-button content-inset" bindtap="viewOriginalRecord" disabled="{{busy}}">查看这笔的完整原始记录</button>
-      <label class="field-label">金额（元）<input class="field-input money-number" value="{{draft.amountYuan}}" type="digit" data-field="amountYuan" bindinput="changeField" disabled="{{busy}}" /></label>
+      <label class="field-label">金额（元）<input class="field-input money-number" value="{{draft.amountYuan}}" type="digit" aria-label="更正后的金额（元）" cursor-spacing="32" data-field="amountYuan" bindinput="changeField" disabled="{{busy}}" /></label>
       <text class="field-label">{{draft.aggregate ? '还款来源账户' : '账本账户'}}</text>
       <picker range="{{accounts}}" range-key="name" value="{{draft.accountIndex}}" data-field="accountIndex" bindchange="changeField" disabled="{{busy}}"><view class="field-value">{{draft.accountIndex >= 0 ? accounts[draft.accountIndex].name : '请选择有效账户'}} ›</view></picker>
       <block wx:if="{{draft.dual}}"><text class="field-label">另一端账户</text><picker range="{{accounts}}" range-key="name" value="{{draft.otherIndex}}" data-field="otherIndex" bindchange="changeField" disabled="{{busy}}"><view class="field-value">{{draft.otherIndex >= 0 ? accounts[draft.otherIndex].name : '请选择有效账户'}} ›</view></picker></block>
       <block wx:if="{{draft.hasCategory}}"><text class="field-label">分类</text><picker range="{{categories}}" range-key="name" value="{{draft.categoryIndex}}" data-field="categoryIndex" bindchange="changeField" disabled="{{busy}}"><view class="field-value">{{categories[draft.categoryIndex].name}} ›</view></picker></block>
-      <block wx:if="{{draft.aggregate}}"><text class="maintenance-copy content-inset">请填写各账户的还款金额，总和须等于本次金额。未分配的账户留空。</text><label wx:for="{{draft.allocations}}" wx:key="accountId" class="field-label">{{item.name}}<input class="field-input money-number" value="{{item.amountYuan}}" type="digit" data-index="{{index}}" bindinput="changeAllocation" disabled="{{busy}}" /></label></block>
+      <block wx:if="{{draft.aggregate}}"><text class="maintenance-copy content-inset">请填写各账户的还款金额，总和须等于本次金额。未分配的账户留空。</text><label wx:for="{{draft.allocations}}" wx:key="accountId" class="field-label">{{item.name}}<input class="field-input money-number" value="{{item.amountYuan}}" type="digit" aria-label="{{item.name}}还款金额（元）" cursor-spacing="32" data-index="{{index}}" bindinput="changeAllocation" disabled="{{busy}}" /></label></block>
       <button class="secondary-button" bindtap="previewCorrection" disabled="{{busy}}">预览更正影响</button>
     </view>
     <view class="maintenance-section">

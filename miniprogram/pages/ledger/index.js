@@ -6,6 +6,7 @@ Page({
   data: {
     loggedIn: false,
     loading: false,
+    hasLoaded: false,
     errorMessage: '',
     accountCount: 0,
     assetCount: 0,
@@ -30,7 +31,7 @@ Page({
       this.loadLedger()
       return
     }
-    this.setData({ loading: false, errorMessage: '' })
+    this.setData({ loading: false, hasLoaded: false, errorMessage: '', accountSummaryText: '登录后创建和管理账户', categorySummaryText: '登录后管理收支分类' })
   },
 
   onPullDownRefresh: function () {
@@ -59,6 +60,7 @@ Page({
         const incomeCategoryCount = categories.filter(function (category) { return category.kind === 'income' }).length
         app.globalData.categories = categories
         self.setData({
+          hasLoaded: true,
           accountCount: activeAccounts.length,
           assetCount: activeAccounts.filter(function (account) { return account.nature === 'asset' }).length,
           liabilityCount: activeAccounts.filter(function (account) { return account.nature === 'liability' }).length,

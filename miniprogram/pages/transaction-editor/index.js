@@ -37,6 +37,8 @@ Page({
     clock: time.currentClock(),
     timezoneOffsetMinutes: new Date().getTimezoneOffset(),
     note: '',
+    preparing: false,
+    formReady: false,
     saving: false,
     errorMessage: ''
   },
@@ -53,13 +55,15 @@ Page({
   },
 
   prepareForm: function () {
+    if (this.data.preparing || this.data.saving) return Promise.resolve()
+    this.setData({ preparing: true, formReady: false, errorMessage: '' })
     const self = this
     const bootstrapPromise = self.data.mode === 'link-refund' || app.globalData.categories.length > 0
       ? Promise.resolve()
       : api.bootstrap().then(function (result) {
           app.globalData.categories = Array.isArray(result.categories) ? result.categories : []
         })
-    Promise.all([bootstrapPromise, api.callApi('accounts.list'), api.callApi('transactions.refundable', { limit: 60 })])
+    return Promise.all([bootstrapPromise, api.callApi('accounts.list'), api.callApi('transactions.refundable', { limit: 60 })])
       .then(function (results) {
         const accounts = results[1].accounts.filter(function (account) { return !account.archived })
         if (accounts.length === 0) {
@@ -96,14 +100,15 @@ Page({
         }
         self.setData({ accounts: accounts, refundableTransactions: refundables })
         if (editing) {
-          self.fillEditingTransaction(editing, accounts, refundables)
+          if (self.fillEditingTransaction(editing, accounts, refundables) === false) return
         } else {
           self.refreshCategories('expense', null)
         }
+        self.setData({ formReady: true })
       })
       .catch(function (error) {
         self.setData({ errorMessage: error.message || '表单准备失败' })
-      })
+      }).finally(function () { self.setData({ preparing: false }) })
   },
 
   refreshCategories: function (type, selectedCategoryId) {
@@ -122,13 +127,14 @@ Page({
       .map(function (account) { return account.accountId })
     const activeAccountIds = new Set(accounts.map(function (account) { return account.accountId }))
     if (relatedAccountIds.some(function (accountId) { return !activeAccountIds.has(accountId) })) {
+      this.setData({ errorMessage: '关联账户已停用，请返回查看原交易。' })
       wx.showModal({
         title: '关联账户已停用',
         content: '这笔历史账可以查看，但不能再修改。',
         showCancel: false,
         success: function () { wx.navigateBack() }
       })
-      return
+      return false
     }
 
     const typeIndex = findIndex(TYPE_OPTIONS, 'value', transaction.type)
