@@ -1,0 +1,143 @@
+name: UI 候选验证与提交
+on:
+  push:
+    branches: [codex/mini-1906ui-warm-refinement]
+    paths: [.github/workflows/ui-candidate-publish.yml]
+permissions:
+  contents: write
+concurrency:
+  group: catledger-ui-candidate-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'gaohongxiang/catledger' && github.ref == 'refs/heads/codex/mini-1906ui-warm-refinement'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: local-synthetic-ci-only
+          MYSQL_ROOT_HOST: '%'
+          MYSQL_DATABASE: catledger_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: 校验并应用已审核的界面差异
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, pathlib, subprocess
+          root = pathlib.Path.cwd()
+          expected_digest = '8c4b1a3ceb0fa6d3993eeb0a7bd6f067521394b77fb863748e41547b4fa30fdf'
+          expected_tree = '22ac0a3324c2834a92de88c27f14b5dc9d57d3d7'
+          base = '64f163a9d1d066e4513c10f36d72b45d0db844d2'
+          allowed = {
+              '.github/workflows/ui-workspace.yml',
+              'docs/招财猫记账本业务规则与验收.md',
+              'docs/招财猫记账本入账逻辑说明.md',
+              'docs/招财猫记账本实施规划.md',
+              'docs/招财猫记账本用户需求.md',
+              'docs/现行说明/小程序基础.md',
+              'docs/现行说明/暖橘界面与导入展示.md',
+              'miniprogram/custom-tab-bar/index.wxml',
+              'miniprogram/custom-tab-bar/index.wxss',
+              'miniprogram/pages/import-workbench/index.js',
+              'miniprogram/pages/import-workbench/index.wxml',
+              'miniprogram/pages/import-workbench/index.wxss',
+              'miniprogram/pages/index/index.wxml',
+              'miniprogram/pages/index/index.wxss',
+              'specs/mini-1906ui-home-sample/README.md',
+              'test/home-visual-sample.test.js',
+              'test/import-account-choice.test.js',
+              'test/import-contract.test.js',
+              'test/import-visual-refinement.test.js',
+              'test/ui-system.test.js',
+          }
+          parts = [root / f'.github/ui-transfer/part-{i}.txt' for i in range(7)]
+          encoded = b''.join(p.read_bytes() for p in parts)
+          assert len(encoded) == 26800, '传输长度不一致'
+          decoder = lzma.LZMADecompressor(memlimit=256 * 1024 * 1024)
+          raw = decoder.decompress(base64.b64decode(encoded, validate=True), max_length=2 * 1024 * 1024)
+          assert decoder.eof and not decoder.unused_data, '压缩内容不完整或超限'
+          assert len(raw) == 85321 and hashlib.sha256(raw).hexdigest() == expected_digest, '传输摘要不一致'
+          delta = json.loads(raw)
+          assert delta['base'] == base and delta['tree'] == expected_tree
+          assert len(delta['changes']) == len(allowed)
+          assert {item['path'] for item in delta['changes']} == allowed
+          subprocess.run(['git', 'merge-base', '--is-ancestor', base, 'HEAD'], check=True)
+          def blob(data):
+              return hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          for item in delta['changes']:
+              path = root / item['path']
+              assert not path.is_symlink(), '不允许符号链接'
+              if item['before'] is None:
+                  assert not path.exists(), '新增文件已存在'
+                  old = b''
+              else:
+                  old = path.read_bytes()
+                  assert blob(old) == item['before'], '文件基线改变: ' + item['path']
+              lines = old.decode('utf-8').splitlines(keepends=True)
+              for start, count, replacement in reversed(item['edits']):
+                  assert 0 <= start <= len(lines) and 0 <= count <= len(lines) - start
+                  lines[start:start + count] = replacement.splitlines(keepends=True)
+              new = ''.join(lines).encode('utf-8')
+              if item['after'] is None:
+                  assert not new
+                  path.unlink()
+              else:
+                  assert blob(new) == item['after'], '结果摘要不一致: ' + item['path']
+                  path.parent.mkdir(parents=True, exist_ok=True)
+                  path.write_bytes(new)
+              subprocess.run(['git', 'add', '--', item['path']], check=True)
+          for path in parts + [root / '.github/workflows/ui-candidate-publish.yml']:
+              path.unlink()
+          subprocess.run(['git', 'add', '-u', '--', '.github'], check=True)
+          actual_tree = subprocess.check_output(['git', 'write-tree'], text=True).strip()
+          assert actual_tree == expected_tree, '结果树与本地已验证候选不一致: ' + actual_tree
+          print('UI 候选已按原文件及结果双重摘要校验；临时传输文件全部移除。')
+          PY
+      - run: npm ci --prefix cloudfunctions/catledger-api
+      - run: npm ci --prefix cloudfunctions/catledger-import
+      - name: 语法与依赖边界检查
+        shell: bash
+        run: set -o pipefail; npm run check | tee "$RUNNER_TEMP/ui-check.log"
+      - name: Node 18 与 MySQL 8.4 全量回归
+        shell: bash
+        run: set -o pipefail; npm run test:db | tee "$RUNNER_TEMP/ui-tests.log"
+        env:
+          CATLEDGER_TEST_DB_HOST: 127.0.0.1
+          CATLEDGER_TEST_DB_PORT: 3306
+          CATLEDGER_TEST_DB_USER: root
+          CATLEDGER_TEST_DB_PASSWORD: local-synthetic-ci-only
+          CATLEDGER_TEST_DB_NAME: catledger_test
+      - run: npm run audit:prod --prefix cloudfunctions/catledger-api
+      - run: npm run audit:prod --prefix cloudfunctions/catledger-import
+      - name: 提交至任务分支，不合入或部署
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --check
+          test "$(git write-tree)" = '22ac0a3324c2834a92de88c27f14b5dc9d57d3d7'
+          git -c user.name='catledger UI review' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(ui): 落地清秀暖橘首页与导入流程'
+          git push origin HEAD:refs/heads/codex/mini-1906ui-warm-refinement
+          printf '### UI 候选已提交\n\n提交：`%s`\n\n仅更新任务分支；未合入 main、未部署。\n' "$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-validation-logs
+          path: ${{ runner.temp }}/ui-*.log
+          retention-days: 3
+          if-no-files-found: ignore
