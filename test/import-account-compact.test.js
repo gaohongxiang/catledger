@@ -1,0 +1,52 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
+const markup = read('miniprogram/pages/import-workbench/index.wxml')
+const style = read('miniprogram/pages/import-workbench/index.wxss')
+const start = markup.indexOf('<view wx:if="{{item.inline}}" class="account-decision-row')
+const end = markup.indexOf('<button wx:else class="account-decision-row account-transfer-control"', start)
+const row = markup.slice(start, end)
+
+test('新建账户沿用同一行的处理方式、名称、类型，不恢复纵向表单', () => {
+  assert.ok(start >= 0 && end > start)
+  assert.match(row, /account-mode-trigger/)
+  assert.match(row, /account-compact-name/)
+  assert.match(row, /account-compact-type/)
+  assert.equal((row.match(/class="account-decision-divider"/g) || []).length, 2)
+  assert.doesNotMatch(row, /account-create-fields|account-create-field|account-field-label/)
+  assert.match(style, /\.account-decision-create\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*nowrap;/)
+  assert.match(style, /\.account-decision-create \.account-compact-name\s*\{[^}]*min-width:\s*0;[^}]*flex:\s*1 1 0;/)
+})
+
+test('三项只改变排版，原账户选择、名称输入、类型及忙碌门禁不变', () => {
+  assert.match(row, /data-id="{{item.issueId}}" bindtap="openAccountChoice" disabled="{{accountStepBusy}}"/)
+  assert.match(row, /maxlength="32" value="{{item.draftName}}"/)
+  assert.match(row, /bindinput="bindAccountDraftName" disabled="{{accountStepBusy}}"/)
+  assert.match(row, /range="{{accountTypeOptions}}" range-key="label" value="{{item.draftTypeIndex}}"/)
+  assert.match(row, /bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}"/)
+  assert.match(row, /aria-label="{{item.label}}的新账户名称"/)
+  assert.match(row, /aria-label="{{item.label}}的账户类型/)
+  assert.match(markup, /已确认 {{accountStepSummary.confirmed}}/)
+  assert.match(markup, /建议 · 待确认/)
+})
+
+test('左侧仅在新建时强调，暖橘使用局部陶橘而非重新铺浅橘', () => {
+  const warm = style.match(/\.import-page\.theme-warm-ledger\s*\{([^}]+)\}/)[1]
+  assert.match(warm, /--ui-account-create-bg:\s*#b35f32;/i)
+  assert.match(warm, /--ui-account-create-ink:\s*#ffffff;/i)
+  assert.match(style, /--ui-account-create-bg:\s*var\(--ui-accent-soft\);/)
+  assert.match(style, /--ui-account-create-ink:\s*var\(--ui-accent-strong\);/)
+  assert.match(style, /\.account-decision-create \.account-mode-trigger-create\s*\{[^}]*background:\s*var\(--ui-account-create-bg\);/)
+  assert.match(style, /\.account-decision-create \.account-mode-trigger-create\[disabled\]\s*\{[^}]*background:\s*var\(--ui-surface-muted\);/)
+  assert.match(row, /item.choiceValue === 'create' \? '新建账户' : item.choiceName/)
+})
+
+test('类型仍完整可读，名称可编辑且不缩字，保留至少88rpx触控高度', () => {
+  assert.match(style, /\.account-decision-create \.account-mode-control,[\s\S]*?\.account-decision-create \.account-compact-type-control\s*\{[^}]*min-height:\s*88rpx;/)
+  assert.match(style, /\.account-decision-create \.account-compact-type-value\s*\{[^}]*white-space:\s*normal;/)
+  assert.match(row, /aria-label="{{item.label}}的账户类型，{{accountTypeOptions\[item.draftTypeIndex\].label}}"/)
+  assert.match(row, /value === 'credit' \? '信用卡\/信贷'/)
+  assert.doesNotMatch(row, /type="hidden"|hidden="true"/)
+})

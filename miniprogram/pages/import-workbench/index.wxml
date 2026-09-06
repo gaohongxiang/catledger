@@ -151,20 +151,18 @@
         <view wx:if="{{item.inline}}" class="account-decision-row {{item.choiceValue === 'create' ? 'account-decision-create' : ''}}">
           <button class="account-mode-trigger {{item.choiceValue === 'create' ? 'account-mode-trigger-create' : 'account-mode-trigger-wide'}} {{item.choiceValue === 'pending' ? 'account-mode-trigger-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountChoice" disabled="{{accountStepBusy}}" aria-label="选择{{item.label}}的处理方式">
             <view class="account-mode-control">
-              <text class="account-mode-value">{{item.choiceName}}</text>
+              <text class="account-mode-value">{{item.choiceValue === 'create' ? '新建账户' : item.choiceName}}</text>
               <view class="account-dropdown-chevron"></view>
             </view>
           </button>
-          <view wx:if="{{item.choiceValue === 'create'}}" class="account-create-fields">
-            <view class="account-create-field"><text class="account-field-label">账户名称</text>
-              <input class="account-compact-name" maxlength="32" value="{{item.draftName}}" placeholder="填写账户名称" data-id="{{item.issueId}}" bindinput="bindAccountDraftName" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的新账户名称" />
-            </view>
-            <view class="account-create-field"><text class="account-field-label">账户类型</text>
-              <picker class="account-compact-type" mode="selector" range="{{accountTypeOptions}}" range-key="label" value="{{item.draftTypeIndex}}" data-id="{{item.issueId}}" bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的账户类型">
-                <view class="account-compact-type-control"><text class="account-compact-type-value">{{accountTypeOptions[item.draftTypeIndex].label}}</text><view class="account-dropdown-chevron"></view></view>
-              </picker>
-            </view>
-          </view>
+          <block wx:if="{{item.choiceValue === 'create'}}">
+            <view class="account-decision-divider"></view>
+            <input class="account-compact-name" maxlength="32" value="{{item.draftName}}" placeholder="账户名称" data-id="{{item.issueId}}" bindinput="bindAccountDraftName" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的新账户名称" />
+            <view class="account-decision-divider"></view>
+            <picker class="account-compact-type" mode="selector" range="{{accountTypeOptions}}" range-key="label" value="{{item.draftTypeIndex}}" data-id="{{item.issueId}}" bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的账户类型，{{accountTypeOptions[item.draftTypeIndex].label}}">
+              <view class="account-compact-type-control"><text class="account-compact-type-value">{{accountTypeOptions[item.draftTypeIndex].value === 'credit' ? '信用卡/信贷' : accountTypeOptions[item.draftTypeIndex].label}}</text><view class="account-dropdown-chevron"></view></view>
+            </picker>
+          </block>
         </view>
         <button wx:else class="account-decision-row account-transfer-control" data-id="{{item.issueId}}" bindtap="openIssue">
           <text class="account-mode-value">确认转出与转入账户</text>

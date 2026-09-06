@@ -14,6 +14,8 @@
   --ui-border: var(--theme-border);
   --ui-secondary: var(--theme-secondary);
   --ui-secondary-soft: var(--theme-secondary-soft);
+  --ui-account-create-bg: var(--ui-accent-soft);
+  --ui-account-create-ink: var(--ui-accent-strong);
   --font-body: 28rpx;
   --font-body-small: 26rpx;
   --font-caption: 24rpx;
@@ -33,6 +35,8 @@
   --ui-on-accent: #ffffff;
   --ui-secondary: #70685f;
   --ui-secondary-soft: #f1eee9;
+  --ui-account-create-bg: #b35f32;
+  --ui-account-create-ink: #ffffff;
 }
 .import-page .serif-title { font-weight: 500; letter-spacing: 0; }
 .import-page .money-number { font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; }
@@ -183,8 +187,6 @@ button::after { border: 0; }
 .account-proof-meta { flex: 0 0 auto; color: var(--ui-subtle, #958b82); font-size: var(--font-caption, 24rpx); white-space: nowrap; }
 .account-decision-row { display: flex; min-height: 88rpx; align-items: stretch; margin-top: 12rpx; overflow: visible; background: var(--ui-surface); border: 1rpx solid var(--ui-line); border-radius: 16rpx; }
 .account-mode-trigger { min-width: 0; margin: 0; padding: 0; flex: 0 0 188rpx; color: var(--ui-ink, #29231e); text-align: left; line-height: normal; background: transparent; border-radius: 0; }
-.account-mode-trigger.account-mode-trigger-create,
-.account-mode-trigger.account-mode-trigger-create[disabled],
 .account-mode-trigger.account-mode-trigger-pending,
 .account-mode-trigger.account-mode-trigger-pending[disabled] { color: var(--ui-accent-strong, #b85f2e); background-color: var(--ui-accent-soft, #f6e5d8) !important; opacity: 1; }
 .account-proof-pending { color: var(--ui-accent-strong, #b85f2e); font-weight: 500; }
@@ -667,11 +669,70 @@ button::after { border: 0; }
 .file-name { overflow: visible; text-overflow: clip; }
 .account-proof-identity { min-width: 0; flex: 1; }
 .account-match-status { display: block; margin-top: 6rpx; font-size: 24rpx; color: var(--ui-muted); font-weight: 400; line-height: 1.5; }
-.account-decision-create { display: block; border: 0; background: transparent; }
-.account-decision-create .account-mode-trigger { width: 100%; border: 1rpx solid var(--ui-line); border-radius: 14rpx; }
-.account-create-fields { display: flex; flex-direction: column; gap: 18rpx; padding-top: 20rpx; }
-.account-field-label { display: block; margin-bottom: 8rpx; font-size: 24rpx; color: var(--ui-muted); }
-.account-create-field input, .account-create-field picker { display: block; box-sizing: border-box; border: 1rpx solid var(--ui-border); border-radius: 14rpx; background: var(--ui-surface); }
+/* 三项同一行：选择方式 | 可编辑名称 | 类型；不改变任何账户决定。 */
+.account-decision-create {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  overflow: hidden;
+  background: var(--ui-surface);
+  border: 1rpx solid var(--ui-line);
+  border-radius: 16rpx;
+}
+.account-decision-create .account-mode-trigger-create {
+  flex: 0 0 176rpx;
+  width: auto;
+  color: var(--ui-account-create-ink);
+  background: var(--ui-account-create-bg);
+  border: 0;
+  border-radius: 0;
+}
+.account-decision-create .account-mode-trigger-create[disabled] {
+  color: var(--ui-muted);
+  background: var(--ui-surface-muted);
+  opacity: .65;
+}
+.account-decision-create .account-mode-value,
+.account-decision-create .account-mode-trigger-create .account-dropdown-chevron {
+  color: inherit;
+}
+.account-decision-create .account-mode-control,
+.account-decision-create .account-compact-type-control {
+  min-height: 88rpx;
+  height: 100%;
+  padding: 12rpx;
+  gap: 8rpx;
+}
+.account-decision-create .account-mode-value { font-weight: 500; }
+.account-decision-create .account-compact-name {
+  min-width: 0;
+  flex: 1 1 0;
+  width: 0;
+  height: 88rpx;
+  padding: 0 16rpx;
+  align-self: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.account-decision-create .account-compact-name:focus {
+  box-shadow: inset 0 -2rpx 0 var(--ui-accent);
+}
+.account-decision-create .account-compact-type {
+  flex: 0 0 216rpx;
+  width: 216rpx;
+}
+.account-decision-create .account-compact-type-value {
+  white-space: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.account-decision-create .account-decision-divider {
+  width: 1rpx;
+  flex: 0 0 1rpx;
+  margin: 16rpx 0;
+}
+.account-decision-create .account-dropdown-chevron { flex: 0 0 auto; }
 .payment-entry-row { display: flex; align-items: stretch; gap: 14rpx; margin-top: 6rpx; }
 .payment-total { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; flex-wrap: wrap; padding: 6rpx 0 24rpx; }
 .payment-total-label { font-size: 26rpx; color: var(--ui-muted); }
