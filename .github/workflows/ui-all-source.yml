@@ -12,19 +12,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 512cd6f213e19f907d1510b8bd14f711d91afead
           persist-credentials: false
-      - name: 保存已确认界面基线
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: 保存两个候选和产品基线
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/ui-all-source"
-          git archive --format=tar HEAD > "$RUNNER_TEMP/ui-all-source/source.tar"
-          git cat-file commit HEAD > "$RUNNER_TEMP/ui-all-source/commit.txt"
-          git rev-parse HEAD > "$RUNNER_TEMP/ui-all-source/head.txt"
-          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/ui-all-source/tree.txt"
+          mkdir -p "$RUNNER_TEMP/ui-all-sources"
+          for item in main:1b37788ced1b3ca4cdf4f8a9275bc94db2ec6f62 pr7:3344cf42ef242fcd3e4dc525ae4100416000e9fe pr8:512cd6f213e19f907d1510b8bd14f711d91afead; do
+            label="${item%%:*}"; sha="${item#*:}"
+            git fetch --no-tags --depth=1 origin "$sha"
+            git archive --format=tar "$sha" > "$RUNNER_TEMP/ui-all-sources/$label.tar"
+            git cat-file commit "$sha" > "$RUNNER_TEMP/ui-all-sources/$label-commit.txt"
+          done
+          npm ci --prefix cloudfunctions/catledger-api
+          npm ci --prefix cloudfunctions/catledger-import
+          tar -czf "$RUNNER_TEMP/ui-all-sources/dependencies.tar.gz" cloudfunctions/catledger-api/node_modules cloudfunctions/catledger-import/node_modules
       - uses: actions/upload-artifact@v4
         with:
-          name: ui-all-source
-          path: ${{ runner.temp }}/ui-all-source/
+          name: ui-all-sources
+          path: ${{ runner.temp }}/ui-all-sources/
           retention-days: 1
           if-no-files-found: error
