@@ -25,7 +25,7 @@
   </view>
 </view>
 
-<view wx:if="{{!hidden}}" class="tab-shell {{themeClass}}" style="{{themeStyle}}">
+<view wx:if="{{!hidden}}" class="tab-shell {{themeClass}} {{selected === 0 ? 'home-visual-sample' : ''}}" style="{{themeStyle}}">
   <view class="tab-side tab-side-left">
     <view
       wx:for="{{tabs}}"

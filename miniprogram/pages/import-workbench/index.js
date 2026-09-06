@@ -125,6 +125,10 @@ Page({
     activeCategoryStatus: 'pending',
     categoryStatusTabs: model.organizerRecordState([], [], []).categoryStatusTabs,
     activeReviewTab: 'review',
+    recordSummaryExpanded: false,
+    issueSourceExpanded: false,
+    issueFieldsReason: '',
+    paymentValidationHint: '',
     duplicateReviewCandidates: [],
     duplicateReviewLoading: false,
     duplicateReviewLoaded: false,
@@ -668,6 +672,15 @@ Page({
       evidenceSheet: null
     })
     if (activeReviewTab === 'review' && activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
+  },
+
+  // 这些开关只控制当前页面的信息密度，不保存账户或账单决定。
+  toggleRecordSummary: function () {
+    this.setData({ recordSummaryExpanded: !this.data.recordSummaryExpanded })
+  },
+
+  toggleIssueSource: function () {
+    this.setData({ issueSourceExpanded: !this.data.issueSourceExpanded })
   },
 
   switchReviewTab: function (event) {
@@ -1237,6 +1250,9 @@ Page({
         issueEvidenceHasMore: this._issueEvidenceRecords.length > 20,
         update: details.update,
         currentIssue: currentIssue,
+        issueSourceExpanded: false,
+        issueFieldsReason: '',
+        paymentValidationHint: '',
         paymentRows: paymentDefaults.rows,
         paymentAccountChoices: [{ accountId: '', name: '请选择资金账户' }].concat(selectableAccounts),
         paymentTargetChoices: [{ accountId: '', name: '请选择被还款账户' }].concat(selectableAccounts.filter(function (a) { return ['credit', 'other_liability'].includes(a.type) })),
@@ -1319,7 +1335,7 @@ Page({
 
   refreshIssueFieldsDraft: function () {
     const state = model.buildIssueFieldsDraft(this.data)
-    this.setData({ issueFieldsCanSave: state.valid })
+    this.setData({ issueFieldsCanSave: state.valid, issueFieldsReason: state.valid ? '' : state.reason })
     return state
   },
 
@@ -1333,14 +1349,19 @@ Page({
     if (this.data.currentIssue && this.data.currentIssue.paymentAccountsOnly) {
       const rows = this.data.paymentRows
       const valid = rows.length >= 2 && rows.every(function (row) { return Boolean(row.accountId) }) && new Set(rows.map(function (row) { return row.accountId })).size === rows.length
-      this.setData({ paymentCanSave: valid })
+      this.setData({ paymentCanSave: valid, paymentValidationHint: valid ? '' : '请选择至少两个不同的付款账户' })
       return { valid: valid, accounts: rows.map(function (row) { return { componentIndex: row.componentIndex, accountId: row.accountId } }) }
     }
     const nature = ['', 'expense', 'repayment'][this.data.paymentNatureIndex]
     const target = this.data.paymentTargetChoices[this.data.paymentTargetIndex]
     const state = model.buildPaymentResolutionDraft(this.data.paymentRows, nature, target && target.accountId,
       this.data.paymentEvidenceNote, this.data.issueEvents[0] && this.data.issueEvents[0].amountMinor)
-    this.setData({ paymentCanSave: state.valid,
+    // 提示只解释已有校验结果，不能反过来决定是否可保存。
+    const hint = state.valid ? ''
+      : !String(this.data.paymentEvidenceNote || '').trim() && state.remainingMinor === '0'
+        ? '金额已分配，请补全交易性质、账户及核对说明'
+        : '请核对付款账户、分配金额、交易性质及必填说明'
+    this.setData({ paymentCanSave: state.valid, paymentValidationHint: hint,
       paymentDifferenceText: state.remainingMinor === '0' ? '已分配完成' :
         (String(state.remainingMinor).startsWith('-') ? '超出 ' : '还差 ') + model.amountText(String(state.remainingMinor).replace('-', '')) })
     return state

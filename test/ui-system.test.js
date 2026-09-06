@@ -9,7 +9,7 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8')
 }
 
-test('默认视觉使用暖橘纸面而不是黄色渐变', function () {
+test('全局暖橘 token 不变，只有首页样板允许局部渐变', function () {
   const registry = require('../miniprogram/theme/registry')
   const warm = registry.getTheme(registry.DEFAULT_THEME_ID)
   const homeStyle = read('miniprogram/pages/index/index.wxss')
@@ -21,7 +21,8 @@ test('默认视觉使用暖橘纸面而不是黄色渐变', function () {
   assert.equal(warm.tokens.heroEnd, '#D97732')
   assert.equal(warm.tokens.heroInk, '#29231E')
   assert.equal(warm.tokens.heroValueInk, '#633921')
-  assert.doesNotMatch(homeStyle, /linear-gradient/)
+  assert.match(homeStyle, /\.home-page\.theme-warm-ledger\s*\{[^}]*--home-hero-image:\s*linear-gradient/)
+  assert.equal((homeStyle.match(/linear-gradient\(/g) || []).length, 1)
 })
 
 test('底栏只保留导航和记账入口样式', function () {
@@ -51,10 +52,9 @@ test('一级页共享稳定的页面骨架与触控基线', function () {
   })
 })
 
-test('六套主题共享轻量层级且不恢复渐变和硬阴影', function () {
+test('非样板页面保留轻量主题，首页仅有暖橘局部渐变', function () {
   const registry = require('../miniprogram/theme/registry')
   const sharedStyles = [
-    'miniprogram/pages/index/index.wxss',
     'miniprogram/pages/transactions/index.wxss',
     'miniprogram/pages/ledger/index.wxss',
     'miniprogram/pages/profile/index.wxss',
@@ -71,6 +71,9 @@ test('六套主题共享轻量层级且不恢复渐变和硬阴影', function ()
 
   assert.doesNotMatch(sharedStyles, /font-weight:\s*650/)
   assert.doesNotMatch(sharedStyles, /linear-gradient|radial-gradient/)
+  const homeStyle = read('miniprogram/pages/index/index.wxss')
+  const outsideWarmScope = homeStyle.replace(/\.home-page\.theme-warm-ledger\s*\{[^}]*\}/g, '')
+  assert.doesNotMatch(outsideWarmScope, /linear-gradient|radial-gradient/)
 })
 
 test('退款与其他待整理问题复用同一卡片骨架', function () {
@@ -238,7 +241,7 @@ test('首页只保留三条最近账目以避免摘要页重心下坠', function
 
   assert.match(homeScript, /HOME_RECENT_LIMIT\s*=\s*3/)
   assert.match(homeScript, /\.slice\(0, HOME_RECENT_LIMIT\)/)
-  assert.match(homeStyle, /\.section-title[^}]*font-weight:\s*600/)
+  assert.match(homeStyle, /\.section-title[^}]*font-weight:\s*500/)
   assert.match(homeStyle, /\.timeline-label[^}]*font-weight:\s*400/)
   assert.match(homeStyle, /\.account-empty[^}]*font-size:\s*var\(--font-body-small, 26rpx\)/)
   assert.match(homeStyle, /\.recent-empty-title[^}]*font-size:\s*var\(--font-body-small, 26rpx\)[^}]*font-weight:\s*400/)
