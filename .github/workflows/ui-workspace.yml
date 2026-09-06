@@ -1,0 +1,36 @@
+name: UI 隔离工作区
+on:
+  push:
+    branches: [codex/mini-1906ui-warm-refinement]
+    paths: [.github/workflows/ui-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - run: npm ci --prefix cloudfunctions/catledger-api
+      - run: npm ci --prefix cloudfunctions/catledger-import
+      - name: 保存已跟踪源码及隔离测试依赖
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/ui-workspace"
+          git archive --format=tar HEAD > "$RUNNER_TEMP/ui-workspace/source.tar"
+          git cat-file commit HEAD > "$RUNNER_TEMP/ui-workspace/commit.txt"
+          git cat-file commit HEAD^ > "$RUNNER_TEMP/ui-workspace/base-commit.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/ui-workspace/head.txt"
+          tar -czf "$RUNNER_TEMP/ui-workspace/dependencies.tar.gz" cloudfunctions/catledger-api/node_modules cloudfunctions/catledger-import/node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-workspace
+          path: ${{ runner.temp }}/ui-workspace/
+          retention-days: 1
+          if-no-files-found: error
