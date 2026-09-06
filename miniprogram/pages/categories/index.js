@@ -6,7 +6,8 @@ const categoryModel = require('./model')
 
 Page({
   data: {
-    loading: false, saving: false, errorMessage: '', selectedKind: 'expense',
+    loading: false,
+    hasLoaded: false, saving: false, errorMessage: '', selectedKind: 'expense',
     allCategories: [], expenseCategories: [], incomeCategories: [],
     visibleCategories: [], archivedCategories: [], formOpen: false,
     archivedExpanded: false, categoryDetail: null,
@@ -29,6 +30,7 @@ Page({
     const income = categoryModel.prepare(rows, 'income', false)
     app.globalData.categories = rows.filter(function (item) { return !item.archived })
     this.setData({
+      hasLoaded: true,
       allCategories: rows,
       expenseCategories: expense,
       incomeCategories: income,

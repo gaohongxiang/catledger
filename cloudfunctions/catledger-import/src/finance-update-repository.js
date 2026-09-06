@@ -1,10 +1,14 @@
+const accountGroups = require('./payment-account-groups')
 const { randomUUID } = require('node:crypto')
 
+const { buildCoverageReport } = require('./coverage-report')
 const { digestParts } = require('./digest')
 const { PLAN_VERSION } = require('./domain-versions')
 const { importError } = require('./errors')
 const { buildPaymentMethodKey } = require('./identity')
 const { paymentAccountDetails, paymentReferenceKey } = require('./payment-account')
+const { getRowSemantic } = require('./row-semantic-resolver')
+const { evaluatePostability } = require('./organizer-model')
 
 const INSERT_CHUNK_SIZE = 100
 
@@ -53,7 +57,7 @@ function publicUpdate(row) {
 
 async function selectUpdate(connection, uid, updateId, { forUpdate = false } = {}) {
   const [rows] = await connection.execute(
-    `SELECT update_id AS updateId, status, version, plan_version AS planVersion,
+    `SELECT update_id AS updateId, status, version, plan_version AS planVersion, side_effects_json AS sideEffects,
             current_action_id AS currentActionId, source_count AS sourceCount,
             valid_evidence_count AS validEvidenceCount,
             duplicate_evidence_count AS duplicateEvidenceCount,
@@ -178,7 +182,7 @@ async function categoryIndexes(connection, uid) {
   const [mappings] = await connection.execute(
     `SELECT source_type AS sourceType, alias_key AS aliasKey, category_id AS categoryId
        FROM catledger_import_category_mappings
-      WHERE uid = ?`,
+      WHERE uid = ? AND disabled_at IS NULL`,
     [uid]
   )
   return {
@@ -204,12 +208,15 @@ async function selectPlanningRows(connection, uid, updateId) {
     `SELECT r.row_id AS rowId, r.batch_id AS batchId, s.import_id AS importId,
             s.source_order AS sourceOrder, s.source_type_snapshot AS sourceType,
             s.source_profile_id AS sourceProfileId,
+            s.source_format_snapshot AS sourceFormat,
             r.source_row_number AS rowNumber, r.parse_state AS parseState,
             r.identity_id AS identityId, r.identity_state AS identityState,
             r.source_transaction_id_raw AS sourceTransactionId,
             r.source_order_id_raw AS sourceOrderId,
             r.source_merchant_order_id_raw AS sourceMerchantOrderId,
             r.status_raw AS rawStatus, r.transaction_type_raw AS rawTransactionType,
+            r.semantic_json AS semantic,
+            r.issues_json AS issues,
             r.normalized_local_date AS localDate, r.normalized_local_at AS localAt,
             r.normalized_utc_at AS utcAt, r.timezone_offset_minutes AS timezoneOffsetMinutes,
             r.normalized_amount_minor AS amountMinor, r.currency,
@@ -271,6 +278,7 @@ async function selectPlanningRows(connection, uid, updateId) {
       rowNumber: Number(row.rowNumber),
       timezoneOffsetMinutes: row.timezoneOffsetMinutes == null ? null : Number(row.timezoneOffsetMinutes),
       amountMinor: row.amountMinor == null ? null : String(row.amountMinor),
+      semantic: parseJson(row.semantic, null),
       suggestedCategoryId: suggestedCategory(row, indexes)
     }
   })
@@ -309,11 +317,20 @@ async function selectPaymentMappings(connection, uid, updateId) {
       ORDER BY draft.created_at, draft.draft_mapping_id`,
     [uid, updateId]
   )
-  // 仓储只负责返回事实，不能在这里依赖查询/数组顺序提前裁决。
+  const history = saved.flatMap((mapping) => {
+    const canonicalKey = buildPaymentMethodKey(mapping.sourceType, mapping.paymentMethodHint)
+    if (!canonicalKey || canonicalKey === mapping.paymentMethodKey) return [mapping]
+    return [mapping, {
+      ...mapping,
+      paymentMethodKey: canonicalKey,
+      mappingScope: 'history_alias'
+    }]
+  })
+  // 仓储只负责返回事实和确定性的键版本兼容别名，不能在这里依赖查询/数组顺序提前裁决。
   // 历史、本批及同级冲突统一交给 account-mapping-policy；否则同一
   // PaymentReference 的旧值会在进入领域层前被静默覆盖，规划与重算
   // 也会得到不同答案。
-  return saved.concat(drafts)
+  return history.concat(drafts)
 }
 
 async function selectDraftPaymentMappings(connection, uid, updateId) {
@@ -453,6 +470,7 @@ function publicSource(row) {
     parserVersion: row.parserVersion,
     normalizationVersion: row.normalizationVersion,
     identityVersion: row.identityVersion,
+    analysis: parseJson(row.analysis, null),
     summary: {
       total: Number(row.totalRowCount),
       valid: Number(row.validRowCount),
@@ -468,7 +486,10 @@ async function selectSources(connection, uid, updateId) {
             source_format_snapshot AS sourceFormat, file_name_snapshot AS fileName,
             parser_version AS parserVersion, normalization_version AS normalizationVersion,
             identity_version AS identityVersion, total_row_count AS totalRowCount,
-            valid_row_count AS validRowCount, invalid_row_count AS invalidRowCount
+            valid_row_count AS validRowCount, invalid_row_count AS invalidRowCount,
+            (SELECT batch.analysis_json FROM catledger_import_batches batch
+              WHERE batch.uid = catledger_finance_update_sources.uid
+                AND batch.batch_id = catledger_finance_update_sources.batch_id) AS analysis
        FROM catledger_finance_update_sources
       WHERE uid = ? AND update_id = ? ORDER BY source_order`,
     [uid, updateId]
@@ -478,9 +499,14 @@ async function selectSources(connection, uid, updateId) {
 
 function publicEvent(row) {
   const fieldSources = parseJson(row.fieldSources, {})
+  const reasonCodes = parseJson(row.reasonCodes, [])
+  // 旧批次只缺分类时按当前规则展示，保留原始版本供写操作校验。
+  const status = row.status === 'needs_action' &&
+    ['income', 'expense', 'fee'].includes(row.economicNature) && reasonCodes.includes('category_required')
+    ? evaluatePostability({ ...row, reasonCodes, fieldSources }).status : row.status
   return {
     eventId: row.eventId,
-    status: row.status,
+    status,
     version: Number(row.version),
     flowDirection: row.flowDirection,
     economicNature: row.economicNature,
@@ -490,10 +516,14 @@ function publicEvent(row) {
     amountMinor: row.amountMinor == null ? null : String(row.amountMinor),
     currency: row.currency,
     categoryId: row.categoryId || null,
-    reasonCodes: parseJson(row.reasonCodes, []),
+    reasonCodes,
     fundsProjection: fieldSources.fundsProjection || null,
     repaymentAllocations: fieldSources.repaymentAllocations || [],
+    paymentComponents: fieldSources.paymentComponents || [],
+    paymentResolution: fieldSources.paymentResolution || null,
+    paymentAccounts: fieldSources.paymentAccounts || null,
     evidenceCount: Number(row.evidenceCount),
+    duplicateEvidenceCount: Number(row.duplicateEvidenceCount || 0),
     primaryEvidence: row.primaryRowId ? {
       rowId: row.primaryRowId,
       sourceType: row.sourceType,
@@ -513,10 +543,11 @@ async function selectEvents(connection, uid, updateId) {
             e.flow_direction AS flowDirection, e.economic_nature AS economicNature,
             e.ledger_account_id AS ledgerAccountId,
             e.counterparty_ledger_account_id AS counterpartyLedgerAccountId,
-            e.event_local_at AS localAt, e.amount_minor AS amountMinor, e.currency,
+            e.event_local_at AS localAt, e.event_utc_at AS utcAt, e.amount_minor AS amountMinor, e.currency,
             e.category_id AS categoryId, e.reason_codes_json AS reasonCodes,
             e.field_sources_json AS fieldSources,
             COUNT(all_evidence.row_id) AS evidenceCount,
+            COALESCE(SUM(all_evidence.evidence_role = 'duplicate'), 0) AS duplicateEvidenceCount,
             primary_evidence.row_id AS primaryRowId,
             r.source_row_number AS rowNumber, r.counterparty_raw AS counterparty,
             r.item_raw AS item, r.note_raw AS sourceNote,
@@ -535,7 +566,7 @@ async function selectEvents(connection, uid, updateId) {
          ON s.uid = r.uid AND s.update_id = e.update_id AND s.batch_id = r.batch_id
       WHERE e.uid = ? AND e.update_id = ?
       GROUP BY e.event_id, e.status, e.version, e.flow_direction, e.economic_nature,
-               e.ledger_account_id, e.counterparty_ledger_account_id, e.event_local_at,
+               e.ledger_account_id, e.counterparty_ledger_account_id, e.event_local_at, e.event_utc_at,
                e.amount_minor, e.currency, e.category_id, e.reason_codes_json,
                e.field_sources_json,
                primary_evidence.row_id, r.source_row_number, r.counterparty_raw,
@@ -606,14 +637,21 @@ function publicIssue(row) {
   const subjectDetails = row.subjectEventId
     ? paymentAccountDetails(row.subjectSourceType, row.subjectPaymentMethod)
     : null
-  const subjectAccount = subjectDetails ? {
-    sourceType: row.subjectSourceType || '',
-    paymentMethodKey: buildPaymentMethodKey(row.subjectSourceType, row.subjectPaymentMethod),
-    label: subjectDetails.displayName,
-    recognized: subjectDetails.recognized,
-    fundsSide: 'ordinary',
-    accountId: row.subjectLedgerAccountId || null
-  } : null
+  const ledgerAccountReference = subjectFieldSources.ledgerAccountReference || null
+  const subjectAccount = ledgerAccountReference
+    ? {
+        ...ledgerAccountReference,
+        fundsSide: 'ordinary',
+        accountId: row.subjectLedgerAccountId || null
+      }
+    : subjectDetails ? {
+        sourceType: row.subjectSourceType || '',
+        paymentMethodKey: buildPaymentMethodKey(row.subjectSourceType, row.subjectPaymentMethod),
+        label: subjectDetails.displayName,
+        recognized: subjectDetails.recognized,
+        fundsSide: 'ordinary',
+        accountId: row.subjectLedgerAccountId || null
+      } : null
   const mappingSide = row.subjectMemberRole === 'mapping_from'
     ? 'from'
     : row.subjectMemberRole === 'mapping_to' ? 'to' : ''
@@ -631,17 +669,21 @@ function publicIssue(row) {
     ? !row.subjectLedgerAccountId ? fundsProjection.from
       : !row.subjectCounterpartyLedgerAccountId ? fundsProjection.to : null
     : null
-  const account = mappingAccount || projectedAccount || subjectAccount
+  const groupedReference = (subjectFieldSources.paymentAccountReferences || []).find((ref) => ref.memberRole === row.subjectMemberRole)
+  const groupedAccount = groupedReference ? { ...groupedReference, fundsSide: groupedReference.memberRole,
+    accountId: accountGroups.mappedAccount({ fieldSources: subjectFieldSources, counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId }, groupedReference) } : null
+  const account = groupedAccount || mappingAccount || projectedAccount || subjectAccount
   const reasonCodes = parseJson(row.reasonCodes, [])
   return {
     issueId: row.issueId,
     issueType: row.issueType,
     status: row.status,
     version: Number(row.version),
-    blocking: Boolean(row.blocking),
+    blocking: row.issueType !== 'category_assignment' && Boolean(row.blocking),
     primaryReasonCode: row.primaryReasonCode,
     memberCount: Number(row.memberCount),
     candidateCount: Number(row.candidateCount),
+    subjectEventIds: [...new Set(parseJson(row.subjectEventIds, []))],
     reasonCodes,
     subject: row.subjectEventId ? {
       eventId: row.subjectEventId,
@@ -652,6 +694,9 @@ function publicIssue(row) {
       counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId || null,
       fundsProjection,
       repaymentAllocations: subjectFieldSources.repaymentAllocations || [],
+      paymentComponents: subjectFieldSources.paymentComponents || [],
+      paymentResolution: subjectFieldSources.paymentResolution || null,
+      paymentAccounts: subjectFieldSources.paymentAccounts || null,
       localAt: row.subjectLocalAt,
       amountMinor: row.subjectAmountMinor == null ? null : String(row.subjectAmountMinor),
       currency: row.subjectCurrency,
@@ -661,7 +706,8 @@ function publicIssue(row) {
         counterparty: safeIssueSummary(row.subjectCounterparty),
         item: safeIssueSummary(row.subjectItem),
         note: '',
-        paymentMethod: subjectDetails ? subjectDetails.displayName : ''
+        paymentMethod: safeIssueSummary(row.subjectPaymentMethod),
+        status: safeIssueSummary(row.subjectRawStatus)
       }
     } : null,
     accountContext: account ? {
@@ -690,6 +736,11 @@ async function selectIssues(connection, uid, updateId, { status = null } = {}) {
             issue.member_count AS memberCount,
             issue.candidate_count AS candidateCount,
             issue.reason_codes_json AS reasonCodes,
+            (SELECT JSON_ARRAYAGG(issue_member.object_id)
+               FROM catledger_review_issue_members issue_member
+              WHERE issue_member.uid = issue.uid AND issue_member.update_id = issue.update_id
+                AND issue_member.issue_id = issue.issue_id AND issue_member.object_type = 'event'
+                AND issue_member.member_role <> 'candidate') AS subjectEventIds,
             subject.object_id AS subjectEventId,
             subject.member_role AS subjectMemberRole,
             subject_event.status AS subjectEventStatus,
@@ -704,6 +755,7 @@ async function selectIssues(connection, uid, updateId, { status = null } = {}) {
             source.source_type_snapshot AS subjectSourceType,
             source.file_name_snapshot AS subjectFileName,
             source_row.payment_method_raw AS subjectPaymentMethod,
+            source_row.status_raw AS subjectRawStatus,
             source_row.item_raw AS subjectItem,
             source_row.counterparty_raw AS subjectCounterparty
        FROM catledger_review_issues issue
@@ -772,14 +824,32 @@ async function selectActiveAccounts(connection, uid) {
   return accounts
 }
 
+async function selectCoverageEvidence(connection, uid, updateId) {
+  const rows = await selectPlanningRows(connection, uid, updateId)
+  const [evidence] = await connection.execute(
+    `SELECT row_id AS rowId, event_id AS eventId, evidence_role AS evidenceRole
+       FROM catledger_event_evidence WHERE uid = ? AND update_id = ?`, [uid, updateId]
+  )
+  return {
+    rows: rows.map((row) => ({ ...row, semantic: getRowSemantic(row), issues: parseJson(row.issues, []) })),
+    evidence
+  }
+}
+
 async function getUpdateView(connection, uid, updateId, { includeEvents = true, includeOptions = true } = {}) {
   const update = publicUpdate(await selectUpdate(connection, uid, updateId))
+  const sources = await selectSources(connection, uid, updateId)
+  const issues = await selectIssues(connection, uid, updateId)
+  const events = includeEvents ? await selectEvents(connection, uid, updateId) : []
+  const coverageEvidence = includeEvents ? await selectCoverageEvidence(connection, uid, updateId) : null
   const result = {
     update,
-    sources: await selectSources(connection, uid, updateId),
-    issues: await selectIssues(connection, uid, updateId),
-    events: includeEvents ? await selectEvents(connection, uid, updateId) : []
+    sources,
+    issues,
+    events,
+    coverage: includeEvents ? buildCoverageReport({ sources, events, issues, ...coverageEvidence }) : null
   }
+  if (result.coverage && update.planVersion !== PLAN_VERSION) result.coverage.selectedEventsReadyToPost = false
   if (includeOptions) Object.assign(result, await listOptions(connection, uid, updateId))
   const [postings] = await connection.execute(
     `SELECT created_transaction_count AS createdTransactionCount,
@@ -807,6 +877,7 @@ module.exports = {
   publicIssue,
   publicUpdate,
   selectActiveAccounts,
+  selectCoverageEvidence,
   selectDraftPaymentMappings,
   selectEvents,
   selectEventEvidence,

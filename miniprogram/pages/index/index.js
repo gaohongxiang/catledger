@@ -9,12 +9,12 @@ const themeService = require('../../theme/service')
 const HOME_RECENT_LIMIT = 3
 
 const ACCOUNT_ICONS = {
-  cash: '/assets/icons/account-cash.svg',
-  bank: '/assets/icons/account-bank.svg',
-  wallet: '/assets/icons/account-wallet.svg',
-  credit: '/assets/icons/account-credit.svg',
-  other_asset: '/assets/icons/account-other.svg',
-  other_liability: '/assets/icons/account-other.svg'
+  cash: 'account-cash.svg',
+  bank: 'account-bank.svg',
+  wallet: 'account-wallet.svg',
+  credit: 'account-credit.svg',
+  other_asset: 'account-other.svg',
+  other_liability: 'account-other.svg'
 }
 
 Page({

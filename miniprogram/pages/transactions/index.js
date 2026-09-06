@@ -14,6 +14,7 @@ Page({
     selectedDate: '',
     selectedDateLabel: '',
     loading: false,
+    hasLoaded: false,
     loadingMore: false,
     errorMessage: '',
     search: '',
@@ -132,6 +133,7 @@ Page({
       .then(function (result) {
         const rows = result.transactions.map(viewModel.transactionView)
         self.setData({
+          hasLoaded: true,
           transactions: append ? self.data.transactions.concat(rows) : rows,
           nextCursor: result.nextCursor,
           incomeText: money.formatMinor(result.summary.incomeMinor),
@@ -226,6 +228,10 @@ Page({
   editTransaction: function (event) {
     const index = Number(event.currentTarget.dataset.index)
     const transaction = this.data.transactions[index]
+    if (transaction && transaction.importContext && !transaction.canLinkRefund) {
+      wx.navigateTo({ url: '/pages/import-maintenance/index?updateId=' + transaction.importContext.updateId + '&eventId=' + transaction.importContext.eventId })
+      return
+    }
     if (!transaction || !transaction.editable) {
       return
     }

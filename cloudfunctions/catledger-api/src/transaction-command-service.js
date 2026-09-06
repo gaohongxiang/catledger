@@ -247,6 +247,7 @@ function createTransactionCommandService({ getPool }) {
   async function create(context) {
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'transactions.create',
       operation: async (connection, uid, data) => {
@@ -272,6 +273,7 @@ function createTransactionCommandService({ getPool }) {
   async function update(context) {
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'transactions.update',
       operation: async (connection, uid, data) => {
@@ -336,6 +338,7 @@ function createTransactionCommandService({ getPool }) {
   async function linkRefund(context) {
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'transactions.linkRefund',
       operation: async (connection, uid, data) => linkPendingRefund(connection, uid, data)
@@ -345,6 +348,7 @@ function createTransactionCommandService({ getPool }) {
   async function remove(context) {
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'transactions.delete',
       operation: async (connection, uid, data) => {

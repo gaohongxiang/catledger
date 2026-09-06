@@ -61,7 +61,8 @@ async function executeIdempotentMutation({
   subjectHash,
   action,
   data,
-  operation
+  operation,
+  currentReads = false
 }) {
   const keyDigest = digestIdempotencyKey(data && data.requestId)
   const requestData = { ...data }
@@ -74,6 +75,7 @@ async function executeIdempotentMutation({
 
     try {
       connection = await getPool().getConnection()
+      if (currentReads) await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
       await connection.beginTransaction()
       transactionStarted = true
       const uid = await resolveUid(connection, provider, subjectHash)

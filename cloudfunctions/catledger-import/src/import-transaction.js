@@ -47,7 +47,7 @@ async function replayMutation({ getPool, provider, subjectHash, keyDigest, actio
   }
 }
 
-async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation }) {
+async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation, currentReads = false }) {
   const keyDigest = digestIdempotencyKey(data && data.requestId)
   const requestData = { ...data }
   delete requestData.requestId
@@ -58,6 +58,7 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
     let transactionStarted = false
     try {
       connection = await getPool().getConnection()
+      if (currentReads) await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
       await connection.beginTransaction()
       transactionStarted = true
       const uid = await resolveUid(connection, provider, subjectHash)
@@ -101,14 +102,18 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
   throw new Error('Import mutation attempts exhausted')
 }
 
-async function executeUserRead({ getPool, provider, subjectHash, operation }) {
+async function executeUserRead({ getPool, provider, subjectHash, operation, consistentSnapshot = false }) {
   for (let attempt = 0; attempt < MAX_READ_ATTEMPTS; attempt += 1) {
     let connection
     try {
       connection = await getPool().getConnection()
+      if (consistentSnapshot) await connection.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY')
       const uid = await resolveUid(connection, provider, subjectHash)
-      return await operation(connection, uid)
+      const result = await operation(connection, uid)
+      if (consistentSnapshot) await connection.commit()
+      return result
     } catch (error) {
+      if (consistentSnapshot && connection) await safeRollback(connection)
       if (isRetryableDatabaseError(error) && attempt + 1 < MAX_READ_ATTEMPTS) {
         await waitBeforeDatabaseRetry(attempt)
         continue

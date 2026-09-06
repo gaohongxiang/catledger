@@ -1,9 +1,14 @@
 page {
+  --font-caption: 22rpx;
+  --font-body-small: 24rpx;
+  --font-body: 26rpx;
+  --font-section: 30rpx;
+  --font-title: 34rpx;
   min-height: 100%;
   color: #29231e;
   background: #f8f3ea;
   font-family: "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", sans-serif;
-  font-size: 28rpx;
+  font-size: var(--font-body, 28rpx);
 }
 
 button { font-family: inherit; }
@@ -19,12 +24,14 @@ button::after { border: 0; }
   font-variant-numeric: tabular-nums;
 }
 
-.page-canvas {
+.page-canvas,
+.editor-page {
   --layout-page-gutter: 32rpx;
+  --layout-content-inset: 20rpx;
   --layout-touch-min: 88rpx;
-  --layout-radius-large: 24rpx;
-  --layout-radius-medium: 18rpx;
-  --layout-radius-small: 12rpx;
+  --layout-radius-large: var(--theme-radius-large, 24rpx);
+  --layout-radius-medium: var(--theme-radius-medium, 18rpx);
+  --layout-radius-small: var(--theme-radius-small, 12rpx);
   --layout-nav-height: 116rpx;
   --layout-motion-fast: 120ms;
   --layout-motion-normal: 180ms;
@@ -43,8 +50,11 @@ button::after { border: 0; }
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  padding: 0 28rpx;
-  font-size: 28rpx;
+  margin-left: 0;
+  margin-right: 0;
+  line-height: 1.4;
+  padding: 20rpx 28rpx;
+  font-size: var(--font-body, 28rpx);
   font-weight: 600;
   border-radius: var(--layout-radius-medium);
   transition: opacity var(--layout-motion-fast) ease;
@@ -67,5 +77,32 @@ button::after { border: 0; }
 
 .empty-ledger-title,
 .empty-ledger-copy { display: block; }
-.empty-ledger-title { color: var(--theme-ink, #29231e); font-size: 30rpx; font-weight: 600; }
-.empty-ledger-copy { margin-top: 10rpx; font-size: 24rpx; line-height: 1.6; }
+.empty-ledger-title { color: var(--theme-ink, #29231e); font-size: var(--font-section, 30rpx); font-weight: 600; }
+.empty-ledger-copy { margin-top: 10rpx; font-size: var(--font-body-small, 26rpx); line-height: 1.6; }
+
+/* 主题色表达状态，正文保持可读；小字号不再承担关键操作与业务解释。 */
+.primary-button[disabled], .secondary-button[disabled] {
+  color: var(--theme-text-muted, #746a60);
+  background: var(--theme-surface-muted, #f8e8dc);
+  opacity: .65;
+}
+@media (prefers-reduced-motion: reduce) {
+  view, button { transition: none !important; animation-duration: .01ms !important; }
+}
+
+/* 卡片外沿与文字分两条基线；页面文字统一内收，卡片保留外宽。 */
+.page-canvas .content-inset, .editor-page .content-inset {
+  box-sizing: border-box;
+  padding-left: var(--layout-content-inset, 20rpx);
+  padding-right: var(--layout-content-inset, 20rpx);
+}
+
+/* 刷新提示保留固定位置，只有图标透明度和旋转发生变化。 */
+.heading-with-sync { display: flex; min-width: 0; align-items: center; }
+.inline-sync { display: flex; box-sizing: border-box; width: 28rpx; height: 28rpx; flex: 0 0 28rpx; align-items: center; justify-content: center; margin-left: 12rpx; color: var(--theme-accent-strong, #af6125); opacity: 0; }
+.inline-sync-active { opacity: 1; }
+.inline-sync-icon { box-sizing: border-box; width: 20rpx; height: 20rpx; border: 2rpx solid currentColor; border-right-color: transparent; border-radius: 50%; }
+.inline-sync-active .inline-sync-icon { animation: inline-sync-spin .8s linear infinite; }
+.summary-strip { position: relative; }
+.summary-sync { position: absolute; top: 8rpx; right: 10rpx; margin: 0; }
+@keyframes inline-sync-spin { to { transform: rotate(360deg); } }

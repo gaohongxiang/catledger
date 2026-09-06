@@ -122,13 +122,13 @@ test('首次进入账户步骤只调用一个原子 prepare 动作', function ()
 test('整理卡明确区分交易摘要和冻结的原始记录', function () {
   const markup = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.wxml'), 'utf8')
   assert.doesNotMatch(markup, />交易摘要<\/text>/)
-  assert.match(markup, />原始交易 \{\{item\.evidenceCount\}\} ›<\/text>/)
+  assert.match(markup, /template is="record-source-fields"/)
   assert.doesNotMatch(markup, />账单记录<\/text>/)
 })
 
 test('旧版未入账批次由服务端声明是否需要重整，客户端不再复制规划版本', function () {
   const pageSource = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.js'), 'utf8')
-  assert.equal(organizerPlanner.PLAN_VERSION, 'organizer-plan-v22')
+  assert.equal(organizerPlanner.PLAN_VERSION, 'organizer-plan-v27')
   assert.doesNotMatch(pageSource, /CURRENT_PLAN_VERSION/)
   assert.match(pageSource, /view\.update\.requiresReorganization[\s\S]*financeUpdates\.organize/)
 })

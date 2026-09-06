@@ -27,6 +27,7 @@ Page({
   refreshTheme: function () {
     themeService.bindPage(this)
     const current = themeService.currentPresentation()
+    if (this.data.themes.some(function (theme) { return theme.selected && theme.id === current.themeId })) return
     this.setData({ themes: markCurrent(registry.listThemes(), current.themeId) })
   },
 

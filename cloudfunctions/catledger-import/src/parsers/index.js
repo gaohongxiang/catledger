@@ -32,7 +32,7 @@ async function parseEvidenceFile({ content, extension, timezoneOffsetMinutes }) 
       selected: choosePlatform(sheet.records, { xlsx: true })
     })).filter((candidate) => candidate.selected)
       .sort((left, right) => right.selected.confidence - left.selected.confidence)
-    if (!candidates[0] || candidates[0].selected.descriptor.sourceType !== 'wechat') {
+    if (candidates.length !== 1 || candidates[0].selected.descriptor.sourceType !== 'wechat') {
       throw importError('FILE_FORMAT_UNSUPPORTED')
     }
     return finish(parsePlatformRecords(

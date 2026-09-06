@@ -3,55 +3,17 @@ const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 
-const yazl = require('yazl')
-
 const { buildRowIdentity, buildSourceProfile } = require('../src/identity')
 const { parseEvidenceFile } = require('../src/parsers')
 const { readCsvRecords } = require('../src/parsers/csv')
 const { normalizeRow, parseLocalDateTime } = require('../src/parsers/normalize')
+const { DESCRIPTORS, inspectHeader } = require('../src/parsers/platform')
 
 function fixture(name) {
   return fs.readFileSync(path.join(__dirname, 'fixtures', name))
 }
 
-function xmlEscape(value) {
-  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-}
-
-function columnName(index) {
-  let result = ''
-  for (let value = index + 1; value > 0; value = Math.floor((value - 1) / 26)) {
-    result = String.fromCharCode(65 + ((value - 1) % 26)) + result
-  }
-  return result
-}
-
-function sheetXml(rows) {
-  const body = rows.map((values, rowIndex) => {
-    const cells = values.map((value, columnIndex) => (
-      `<c r="${columnName(columnIndex)}${rowIndex + 1}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`
-    )).join('')
-    return `<row r="${rowIndex + 1}">${cells}</row>`
-  }).join('')
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`
-}
-
-function buildSyntheticXlsx(rows) {
-  return new Promise((resolve, reject) => {
-    const zip = new yazl.ZipFile()
-    zip.addBuffer(Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="账单" sheetId="1" r:id="rId1"/></sheets></workbook>`), 'xl/workbook.xml')
-    zip.addBuffer(Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`), 'xl/_rels/workbook.xml.rels')
-    zip.addBuffer(Buffer.from(sheetXml(rows)), 'xl/worksheets/sheet1.xml')
-    const chunks = []
-    zip.outputStream.on('data', (chunk) => chunks.push(chunk))
-    zip.outputStream.once('error', reject)
-    zip.outputStream.once('end', () => resolve(Buffer.concat(chunks)))
-    zip.end()
-  })
-}
+const { buildSyntheticXlsx } = require('./helpers/xlsx')
 
 test('微信 CSV 保留同额同日的两条独立物理证据', async () => {
   const document = await parseEvidenceFile({
@@ -95,7 +57,7 @@ test('支付宝 App 与网页 CSV 投影到相同候选结构', async () => {
   assert.equal(app.rows[0].normalized.direction, 'expense')
   assert.equal(web.rows[0].normalized.direction, 'expense')
   assert.equal(app.rows[0].normalized.paymentMethod, '支付宝账户余额')
-  assert.equal(app.descriptor.normalizationVersion, 'alipay-normalization-v7')
+  assert.equal(app.descriptor.normalizationVersion, 'alipay-normalization-v10')
   assert.equal(app.rows[0].identifiers.transactionId, 'ALI-APP-001')
   assert.equal(web.rows[0].identifiers.transactionId, 'ALI-WEB-001')
 })
@@ -214,4 +176,68 @@ test('CSV 同时兼容 CRLF、LF 与 CR 混合换行', () => {
     ['E', 'F'],
     ['G', 'H']
   ])
+})
+
+test('Source Adapter 保留未知列且分隔线后真实交易不能静默消失', async () => {
+  const content = Buffer.from([
+    '微信支付账单明细,,,,,,,,,,,,',
+    '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注,新增来源列',
+    '2026-08-12 08:30:00,商户消费,合成商户,早餐,支出,12.34,零钱,支付成功,WX-001,ORDER-1,MERCHANT-1,,展示值',
+    '------------,,,,,,,,,,,,',
+    '2026-08-12 09:30:00,商户消费,合成商户,午餐,支出,23.45,零钱,支付成功,WX-002,ORDER-2,MERCHANT-2,,展示值'
+  ].join('\n'))
+
+  const document = await parseEvidenceFile({ content, extension: 'csv', timezoneOffsetMinutes: -480 })
+
+  assert.equal(document.rows.length, 2)
+  assert.equal(document.records.dataRows.length, 2)
+  assert.equal(document.records.decorativeRows.length, 1)
+  assert.deepEqual(document.diagnostics.unknownHeaders, ['新增来源列'])
+})
+
+test('Source Adapter 将重复页眉和控制信息排除在交易行守恒之外', async () => {
+  const content = Buffer.from([
+    '微信支付账单明细,,,,,,,,,,,',
+    '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注',
+    '2026-08-12 08:30:00,商户消费,合成商户,早餐,支出,12.34,零钱,支付成功,WX-001,ORDER-1,MERCHANT-1,',
+    '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注',
+    '共1笔记录,收入0.00元,支出12.34元,,,,,,,,,'
+  ].join('\n'))
+
+  const document = await parseEvidenceFile({ content, extension: 'csv', timezoneOffsetMinutes: -480 })
+
+  assert.equal(document.rows.length, 1)
+  assert.equal(document.records.dataRows.length, 1)
+  assert.equal(document.records.decorativeRows.length, 1)
+  assert.equal(document.records.controlFields.length, 1)
+})
+
+test('Profile 对缺失必需列和重复别名列明确拒绝', () => {
+  const descriptor = DESCRIPTORS.wechat
+  const missing = inspectHeader([
+    '交易时间', '交易类型', '交易对方', '商品', '收/支', '金额(元)', '支付方式', '当前状态'
+  ], descriptor)
+  assert.equal(missing.valid, false)
+  assert.deepEqual(missing.missingFields, ['transactionId'])
+
+  const duplicate = inspectHeader([
+    '交易时间', '交易类型', '交易对方', '商品', '收/支', '金额(元)',
+    '支付方式', '付款方式', '当前状态', '交易单号'
+  ], descriptor)
+  assert.equal(duplicate.valid, false)
+  assert.deepEqual(duplicate.duplicateFields, ['paymentMethod'])
+})
+
+test('RawBillRow 区分值、斜杠、空值、解析失败和未知 token', () => {
+  const parsed = normalizeRow('wechat', {
+    transactionTime: '不是日期', amount: '12.00', direction: '收入',
+    transactionType: '全新支付服务', counterparty: '', item: '测试',
+    paymentMethod: '/', status: '支付成功', note: ''
+  }, -480, [], 'wechat_csv')
+
+  assert.equal(parsed.observations.transactionTime.state, 'parse_failure')
+  assert.equal(parsed.observations.amount.state, 'value')
+  assert.equal(parsed.observations.transactionType.state, 'unknown_token')
+  assert.equal(parsed.observations.paymentMethod.state, 'explicit_slash')
+  assert.equal(parsed.observations.counterparty.state, 'explicit_blank')
 })

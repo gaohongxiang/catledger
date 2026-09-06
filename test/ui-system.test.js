@@ -15,8 +15,8 @@ test('默认视觉使用暖橘纸面而不是黄色渐变', function () {
   const homeStyle = read('miniprogram/pages/index/index.wxss')
 
   assert.equal(warm.tokens.accent, '#D97732')
-  assert.equal(warm.tokens.surfaceMuted, '#F8E8DC')
-  assert.equal(warm.tokens.accentSoft, '#F5DDCB')
+  assert.equal(warm.tokens.surfaceMuted, '#FAEDE3')
+  assert.equal(warm.tokens.accentSoft, '#FBE1CD')
   assert.equal(warm.tokens.heroStart, '#D97732')
   assert.equal(warm.tokens.heroEnd, '#D97732')
   assert.equal(warm.tokens.heroInk, '#29231E')
@@ -77,7 +77,7 @@ test('退款与其他待整理问题复用同一卡片骨架', function () {
   const template = read('miniprogram/pages/import-workbench/index.wxml')
   const style = read('miniprogram/pages/import-workbench/index.wxss')
   const pendingStart = template.indexOf('<block wx:if="{{activeReviewStatus === \'pending\'}}">')
-  const pendingEnd = template.indexOf('<block wx:elif="{{activeReviewStatus === \'excluded\'}}">')
+  const pendingEnd = template.indexOf('<block wx:elif="{{activeReviewStatus === \'completed\'}}">')
   const pendingMarkup = template.slice(pendingStart, pendingEnd)
 
   assert.ok(pendingStart >= 0 && pendingEnd > pendingStart)
@@ -90,8 +90,8 @@ test('退款与其他待整理问题复用同一卡片骨架', function () {
 test('已排除分类由整行展开收起且不保留原生按钮白边', function () {
   const template = read('miniprogram/pages/import-workbench/index.wxml')
   const style = read('miniprogram/pages/import-workbench/index.wxss')
-  const excludedStart = template.indexOf('<block wx:elif="{{activeReviewStatus === \'excluded\'}}">')
-  const excludedEnd = template.indexOf('<block wx:else>', excludedStart)
+  const excludedStart = template.indexOf('<block wx:if="{{activeReviewTab === \'review\' && activeReviewStatus === \'excluded\'}}">')
+  const excludedEnd = template.indexOf('<block wx:if="{{activeReviewTab === \'review\' && activeReviewStatus === \'duplicate\'}}">', excludedStart)
   const excludedMarkup = template.slice(excludedStart, excludedEnd)
 
   assert.ok(excludedStart >= 0 && excludedEnd > excludedStart)
@@ -101,16 +101,18 @@ test('已排除分类由整行展开收起且不保留原生按钮白边', funct
   assert.match(style, /\.excluded-group-toggle \{[^}]*width: 100%;[^}]*background: var\(--theme-surface-muted/)
 })
 
-test('问题交易摘要整卡查看原始记录且入口保持紧凑', function () {
+test('待整理同层展示原文，保留主记录选择并将确认与证据置于滚动区', function () {
   const template = read('miniprogram/pages/import-workbench/index.wxml')
-  const eventStart = template.indexOf('<view class="event-list">')
-  const eventEnd = template.indexOf('</view>\n\n      <view wx:if="{{currentIssue.issueType', eventStart)
-  const eventMarkup = template.slice(eventStart, eventEnd)
-
-  assert.ok(eventStart >= 0 && eventEnd > eventStart)
-  assert.match(eventMarkup, /class="event-row[^\"]*"[^>]*bindtap="openIssueEvent"[^>]*aria-role="button"/)
-  assert.doesNotMatch(eventMarkup, /交易摘要|查看 {{item\.evidenceCount}} 条原始记录/)
-  assert.match(eventMarkup, /原始交易 {{item\.evidenceCount}} ›/)
+  const start = template.indexOf('<scroll-view class="review-editor-body"')
+  const end = template.indexOf('<view class="sheet-actions">', start)
+  const content = template.slice(start, end)
+  assert.ok(start >= 0 && end > start)
+  assert.match(content, /template is="record-source-fields"/)
+  assert.match(content, /wx:if="[^"]*currentIssue\.issueType === 'category_assignment'[^"]*" class="mapping-fields"/)
+  assert.doesNotMatch(content, /bindtap="openEvidence"|bindtap="openIssueEvent"/)
+  assert.match(content, /bindtap="selectPrimaryEvent"/)
+  assert.ok(content.indexOf('class="mapping-fields"') < content.indexOf('class="review-source-section"'))
+  assert.match(content, /<\/scroll-view>/)
 })
 
 test('原始交易在当前弹层内下钻并由底部按钮返回处理', function () {
@@ -123,7 +125,7 @@ test('原始交易在当前弹层内下钻并由底部按钮返回处理', funct
   assert.ok(drilldownStart >= 0 && drilldownEnd > drilldownStart)
   assert.match(drilldownMarkup, /class="sheet-title serif-title">原始交易</)
   assert.doesNotMatch(drilldownMarkup, /evidence-sheet-heading[\s\S]*account-choice-cancel[\s\S]*返回处理/)
-  assert.match(drilldownMarkup.trim(), /class="evidence-return"[^>]*bindtap="closeEvidence">返回处理<\/button>\s*<\/view>$/)
+  assert.match(drilldownMarkup.trim(), /class="evidence-return"[^>]*bindtap="closeEvidence">\{\{currentIssue \? '返回处理' : '返回列表'\}\}<\/button>\s*<\/view>$/)
   assert.match(style, /\.evidence-return \{[^}]*width: 100%;/)
 })
 
@@ -132,20 +134,22 @@ test('问题处理操作区全宽对齐且超额还款时禁用保存', function
   const source = read('miniprogram/pages/import-workbench/index.js')
   const style = read('miniprogram/pages/import-workbench/index.wxss')
 
-  assert.match(template, /保存选择<\/button>/)
+  assert.match(template, /bankBatchSelectedCount[^\n]+保存选择/)
   assert.match(template, /disabled="{{[^"}]*\(currentIssue\.aggregateRepayment && !repaymentAllocationCanSave\)[^"}]*}}"/)
   assert.match(source, /repaymentAllocationCanSave/)
   assert.match(style, /\.sheet-actions \{[^}]*width: 100%;/)
   assert.match(style, /\.sheet-confirm-wide \{[^}]*width: 100%;[^}]*max-width: none;/)
 })
 
-test('最终入账先展示财务与分类质量并提供入账后的去向', function () {
+test('最终入账展示财务与相同记录拆分并提供入账后的去向', function () {
   const template = read('miniprogram/pages/import-workbench/index.wxml')
   const source = read('miniprogram/pages/import-workbench/index.js')
 
   assert.match(template, /本批支出/)
   assert.match(template, /本批收入/)
-  assert.match(template, /分类完成度/)
+  assert.doesNotMatch(template, /分类完成度|还剩 {{reviewIssues.length}} 项/)
+  assert.equal((template.match(/全部记录 {{recordSummary.totalCount}}/g) || []).length, 3)
+  assert.match(template, /disabled="{{busy \|\| openIssueCount \|\| !coverage.selectedEventsReadyToPost}}"/)
   assert.match(template, /新建账户/)
   assert.match(template, /查看明细/)
   assert.match(template, /查看统计/)
@@ -206,7 +210,7 @@ test('分类管理与账户详情共用整行查看和渐进式管理动作', fu
 
   assert.match(template, /分类总览/)
   assert.match(template, /bindtap="openCategoryDetail"/)
-  assert.match(template, /class="category-toolbar"/)
+  assert.match(template, /class="category-toolbar(?: content-inset)?"/)
   assert.match(template, /新建分类/)
   assert.match(template, /class="category-drag-handle"[^>]*catchtouchstart="startCategoryDrag"[^>]*catchtouchmove="moveCategoryDrag"[^>]*catchtouchend="endCategoryDrag"/)
   assert.match(template, /class="category-detail-actions"/)
@@ -234,13 +238,13 @@ test('首页只保留三条最近账目以避免摘要页重心下坠', function
 
   assert.match(homeScript, /HOME_RECENT_LIMIT\s*=\s*3/)
   assert.match(homeScript, /\.slice\(0, HOME_RECENT_LIMIT\)/)
-  assert.match(homeStyle, /\.section-title[^}]*font-weight:\s*500/)
+  assert.match(homeStyle, /\.section-title[^}]*font-weight:\s*600/)
   assert.match(homeStyle, /\.timeline-label[^}]*font-weight:\s*400/)
-  assert.match(homeStyle, /\.account-empty[^}]*font-size:\s*24rpx/)
-  assert.match(homeStyle, /\.recent-empty-title[^}]*font-size:\s*24rpx[^}]*font-weight:\s*400/)
+  assert.match(homeStyle, /\.account-empty[^}]*font-size:\s*var\(--font-body-small, 26rpx\)/)
+  assert.match(homeStyle, /\.recent-empty-title[^}]*font-size:\s*var\(--font-body-small, 26rpx\)[^}]*font-weight:\s*400/)
 })
 
-test('首页重色摘要与正文使用外框线和内内容线双基线', function () {
+test('首页卡片外沿与文字使用内收的双基线', function () {
   const template = read('miniprogram/pages/index/index.wxml')
   const style = read('miniprogram/pages/index/index.wxss')
 

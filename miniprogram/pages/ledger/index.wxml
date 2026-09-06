@@ -1,8 +1,8 @@
 <view class="page-canvas ledger-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="ledger-heading">
+  <view class="ledger-heading content-inset">
     <view>
       <text class="ledger-kicker">LEDGER STRUCTURE</text>
-      <text class="ledger-title serif-title">钱放哪里，账归何处。</text>
+      <view class="heading-with-sync"><text class="ledger-title serif-title">钱放哪里，账归何处。</text><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view>
     </view>
     <text wx:if="{{loggedIn}}" class="ledger-count money-number">{{structureCount}}</text>
   </view>
@@ -25,9 +25,9 @@
   </view>
 
   <view class="management-list">
-    <view class="management-row" role="button" aria-label="进入账户管理" bindtap="openAccounts">
+    <view class="management-row content-inset" role="button" aria-label="进入账户管理" bindtap="openAccounts">
       <view class="management-icon">
-        <image src="/assets/icons/tab-wallet.svg" mode="aspectFit" />
+        <image src="{{themeIconRoot}}/tab-wallet.svg" mode="aspectFit" />
       </view>
       <view class="management-copy">
         <text class="management-title">账户管理</text>
@@ -35,9 +35,9 @@
       </view>
       <view class="row-chevron"></view>
     </view>
-    <view class="management-row" role="button" aria-label="进入分类管理" bindtap="openCategories">
+    <view class="management-row content-inset" role="button" aria-label="进入分类管理" bindtap="openCategories">
       <view class="management-icon management-icon-category">
-        <image src="/assets/icons/category.svg" mode="aspectFit" />
+        <image src="{{themeIconRoot}}/category.svg" mode="aspectFit" />
       </view>
       <view class="management-copy">
         <text class="management-title">分类管理</text>
@@ -47,6 +47,5 @@
     </view>
   </view>
 
-  <view wx:if="{{loading}}" class="ledger-status">正在整理账本结构…</view>
-  <view wx:if="{{errorMessage}}" class="ledger-error" bindtap="loadLedger">{{errorMessage}} · 点此重试</view>
+  <view wx:if="{{errorMessage}}" class="ledger-error content-inset" bindtap="loadLedger">{{errorMessage}} · 点此重试</view>
 </view>

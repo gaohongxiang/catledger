@@ -1,0 +1,39 @@
+<view class="page-canvas maintenance-page {{themeClass}}" style="{{themeStyle}}">
+  <text class="maintenance-title serif-title content-inset">更正与撤销</text>
+  <text class="maintenance-copy content-inset">选择需要更正的记录，或撤销本批入账；确认前会列出账户变化。</text>
+  <view wx:if="{{errorMessage}}" class="maintenance-error content-inset">{{errorMessage}}</view>
+  <button class="refresh-button content-inset" bindtap="refresh" disabled="{{busy}}">刷新账单状态</button>
+  <view wx:if="{{completed}}" class="maintenance-section"><text>本批入账已撤销，可返回重新整理。</text></view>
+  <block wx:elif="{{update && update.status === 'posted'}}">
+    <view wx:if="{{draft}}" class="maintenance-section">
+      <text class="section-title content-inset">更正记录</text>
+      <picker range="{{events}}" range-key="label" value="{{eventIndex}}" bindchange="selectEvent" disabled="{{busy}}"><view class="field-value">{{events[eventIndex].label}} ›</view></picker>
+      <button class="refresh-button content-inset" bindtap="viewOriginalRecord" disabled="{{busy}}">查看这笔的完整原始记录</button>
+      <label class="field-label">金额（元）<input class="field-input money-number" value="{{draft.amountYuan}}" type="digit" data-field="amountYuan" bindinput="changeField" disabled="{{busy}}" /></label>
+      <text class="field-label">{{draft.aggregate ? '还款来源账户' : '账本账户'}}</text>
+      <picker range="{{accounts}}" range-key="name" value="{{draft.accountIndex}}" data-field="accountIndex" bindchange="changeField" disabled="{{busy}}"><view class="field-value">{{draft.accountIndex >= 0 ? accounts[draft.accountIndex].name : '请选择有效账户'}} ›</view></picker>
+      <block wx:if="{{draft.dual}}"><text class="field-label">另一端账户</text><picker range="{{accounts}}" range-key="name" value="{{draft.otherIndex}}" data-field="otherIndex" bindchange="changeField" disabled="{{busy}}"><view class="field-value">{{draft.otherIndex >= 0 ? accounts[draft.otherIndex].name : '请选择有效账户'}} ›</view></picker></block>
+      <block wx:if="{{draft.hasCategory}}"><text class="field-label">分类</text><picker range="{{categories}}" range-key="name" value="{{draft.categoryIndex}}" data-field="categoryIndex" bindchange="changeField" disabled="{{busy}}"><view class="field-value">{{categories[draft.categoryIndex].name}} ›</view></picker></block>
+      <block wx:if="{{draft.aggregate}}"><text class="maintenance-copy content-inset">请填写各账户的还款金额，总和须等于本次金额。未分配的账户留空。</text><label wx:for="{{draft.allocations}}" wx:key="accountId" class="field-label">{{item.name}}<input class="field-input money-number" value="{{item.amountYuan}}" type="digit" data-index="{{index}}" bindinput="changeAllocation" disabled="{{busy}}" /></label></block>
+      <button class="secondary-button" bindtap="previewCorrection" disabled="{{busy}}">预览更正影响</button>
+    </view>
+    <view class="maintenance-section">
+      <text class="section-title content-inset">撤销本批入账</text>
+      <text class="maintenance-copy content-inset">会撤回本批创建的交易；已被其他记录使用的账户和规则会保留。</text>
+      <button class="refresh-button content-inset" bindtap="togglePostedRecords">{{showPostedRecords ? '收起本批记录' : '查看本批 ' + events.length + ' 条入账记录'}}</button>
+      <block wx:if="{{showPostedRecords}}">
+        <view wx:for="{{events}}" wx:key="eventId" wx:if="{{visiblePostedRecords > index}}" class="impact-row content-inset"><text>{{item.label}}</text><button class="refresh-button content-inset" data-id="{{item.eventId}}" bindtap="viewOriginalRecord" disabled="{{busy}}">查看原始记录</button></view>
+        <button wx:if="{{events.length > visiblePostedRecords}}" class="refresh-button content-inset" bindtap="showMorePostedRecords">再显示 20 条</button>
+      </block>
+      <button class="danger-button" bindtap="previewUndo" disabled="{{busy}}">预览整批撤销影响</button>
+    </view>
+    <view wx:if="{{preview}}" class="maintenance-section impact-section">
+      <text class="section-title content-inset">{{previewKind === 'correct' ? '本次更正的影响' : '整批撤销的影响'}}</text>
+      <view wx:for="{{preview.changes}}" wx:key="accountId" class="impact-row content-inset"><text>{{item.name}}</text><text class="money-number">净变化 {{item.deltaText}}</text><text class="maintenance-copy content-inset">本批影响：{{item.oldText}} → {{item.newText}}</text></view>
+      <text wx:if="{{previewKind === 'undo'}}" class="maintenance-copy content-inset">撤回 {{preview.createdTransactionCount}} 笔，保留 {{preview.reusedTransactionCount}} 笔复用交易。停用 {{preview.sideEffects.archivedAccountIds.length}} 个账户，保留 {{preview.sideEffects.retainedAccountIds.length}} 个账户；撤回 {{preview.sideEffects.revertedMappingCount}} 条规则，保留 {{preview.sideEffects.retainedMappingCount}} 条规则。</text>
+      <text wx:if="{{preview.conflictsText}}" class="maintenance-error content-inset">{{preview.conflictsText}}</text>
+      <button class="{{previewKind === 'correct' ? 'primary-button' : 'danger-button'}}" bindtap="confirm" loading="{{busy}}" disabled="{{busy || (previewKind === 'correct' ? !preview.canCorrect : !preview.canUndo)}}">{{previewKind === 'correct' ? '确认更正' : '确认撤销本批入账'}}</button>
+    </view>
+  </block>
+  <login-sheet id="page-login-sheet" />
+</view>

@@ -14,6 +14,7 @@ const PUBLIC_ACTIONS = Object.freeze([
   'imports.parseFile',
   'imports.prepareMany',
   'reviewIssues.get',
+  'reviewIssues.refreshAccountGroups',
   'reviewIssues.list',
   'reviewIssues.resolveAccountMappings',
   'reviewIssues.resolve'
@@ -36,6 +37,7 @@ function createActionHandlers(service) {
     'imports.parseFile': service.parseFile,
     'imports.prepareMany': service.prepareMany,
     'reviewIssues.get': service.reviewIssueGet,
+    'reviewIssues.refreshAccountGroups': service.reviewIssueRefreshAccountGroups,
     'reviewIssues.list': service.reviewIssueList,
     'reviewIssues.resolveAccountMappings': service.reviewIssueResolveAccountMappings,
     'reviewIssues.resolve': service.reviewIssueResolve

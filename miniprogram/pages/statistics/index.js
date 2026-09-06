@@ -83,7 +83,12 @@ Page({
     loginGuard.run(this, this.loadStatistics.bind(this))
   },
 
-  onShow: function () { themeService.bindPage(this) },
+  onShow: function () {
+    themeService.bindPage(this)
+    const revision = getApp().globalData.ledgerRevision || 0
+    if (this._ledgerRevision != null && this._ledgerRevision !== revision) loginGuard.run(this, this.loadStatistics.bind(this))
+    this._ledgerRevision = revision
+  },
 
   onPullDownRefresh: function () {
     this.loadStatistics().finally(function () { wx.stopPullDownRefresh() })

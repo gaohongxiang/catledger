@@ -6,10 +6,15 @@ const test = require('node:test')
 
 const mysql = require('mysql2/promise')
 
+const { PLAN_VERSION } = require('../src/domain-versions')
+const { digestParts } = require('../src/digest')
 const { hashWechatSubject } = require('../src/handler')
+const { buildPaymentMethodKey } = require('../src/identity')
 const { createImportService } = require('../src/import-service')
 const { createAccountService } = require('../../catledger-api/src/account-service')
 const { createTransactionService } = require('../../catledger-api/src/transaction-service')
+const { createReportingService } = require('../../catledger-api/src/reporting-service')
+const { createCategoryService } = require('../../catledger-api/src/category-service')
 
 const DATABASE_ENV_KEYS = [
   'CATLEDGER_TEST_DB_HOST',
@@ -36,6 +41,192 @@ function databaseConfig() {
 function fixture() {
   return fs.readFileSync(path.join(__dirname, 'fixtures', 'wechat-pay.csv'))
 }
+
+test('语义升级保留旧批次决定和共享问题成员，支持隔离、事务回滚、并发重试及最终入账', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = mysql.createPool(databaseConfig()), objects = new Map()
+  const service = createImportService({ getPool: () => pool, storage: {
+    async downloadExact(fileID, objectKey) { return objects.get(objectKey) }, async remove() { return true }
+  } })
+  const json = value => typeof value === 'string' ? JSON.parse(value) : value
+  try {
+    const user = await createUserLedger(pool, 'semantic-upgrade'), other = await createUserLedger(pool, 'semantic-upgrade-other')
+    const content = Buffer.from([
+      '支付宝(中国)网络技术有限公司 电子客户回单,,,,,,,,,,,',
+      '交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,备注,交易订单号,订单号,商家订单号',
+      ...['6.00', '8.00', '10.00', '12.00'].map((amount, index) =>
+        `2026-09-06 10:0${index}:00,信用借还,合成免押服务,设备使用费,${amount},支出,账户余额,交易成功,,SYNTHETIC-UPGRADE-${index},,`)
+    ].join('\n'))
+    const prepared = await service.prepareMany(context(user, { requestId: randomUUID(), files: [{ fileName: '免押合成.csv', size: content.length }] }))
+    const file = prepared.files[0]; objects.set(file.cloudPath, content)
+    const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId,
+      fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 }))
+    let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
+    const updateId = view.update.updateId
+    const accountIssue = view.issues.find(issue => issue.status === 'open' && issue.issueType === 'account_mapping')
+    await service.reviewIssueResolve(context(user, { requestId: randomUUID(), updateId, issueId: accountIssue.issueId,
+      updateVersion: view.update.version, issueVersion: accountIssue.version, decision: 'apply_fields',
+      fields: { ledgerAccountDraft: { name: '合成免押付款账户', type: 'wallet', currency: 'CNY' } } }))
+    view = await resolveOpenCategoryIssues(service, user, await service.financeUpdateGet(context(user, { updateId })))
+    const [initial] = await pool.execute(`SELECT event_id AS eventId, field_sources_json AS sources FROM catledger_economic_events
+      WHERE uid = ? AND update_id = ? ORDER BY amount_minor`, [user.uid, updateId])
+    assert.equal(initial.length, 4)
+    const affectedIds = initial.slice(0, 2).map(event => event.eventId)
+    for (const event of initial.slice(0, 2)) {
+      const sources = json(event.sources)
+      sources.semanticBlockers = ['row_transaction_type_unknown']
+      await pool.execute(`UPDATE catledger_economic_events SET economic_nature = 'unknown', state = 'needs_action', status = 'needs_action',
+        field_sources_json = ?, reason_codes_json = ? WHERE uid = ? AND event_id = ?`,
+      [JSON.stringify(sources), JSON.stringify(['row_transaction_type_unknown', 'economic_nature_required']), user.uid, event.eventId])
+    }
+    await pool.execute(`UPDATE catledger_economic_events SET state = 'excluded', status = 'excluded', reason_codes_json = '["user_excluded"]'
+      WHERE uid = ? AND event_id = ?`, [user.uid, initial[2].eventId])
+    await pool.execute(`UPDATE catledger_economic_events SET state = 'needs_action', status = 'needs_action', reason_codes_json = '["core_fields_conflict"]'
+      WHERE uid = ? AND event_id = ?`, [user.uid, initial[3].eventId])
+    await pool.execute(`UPDATE catledger_finance_updates SET plan_version = 'organizer-plan-v26' WHERE uid = ? AND update_id = ?`, [user.uid, updateId])
+    const issueId = randomUUID()
+    await pool.execute(`INSERT INTO catledger_review_issues
+      (uid, issue_id, update_id, issue_key, issue_key_version, issue_type, status, version, blocking, primary_reason_code,
+       member_count, candidate_count, rule_version, reason_codes_json)
+      VALUES (?, ?, ?, ?, 'synthetic-v1', 'shared_fields', 'open', 1, 1, 'economic_nature_required', 3, 0, 'synthetic-v1', '["economic_nature_required"]')`,
+    [user.uid, issueId, updateId, digestParts('synthetic-upgrade-shared', updateId)])
+    for (const [index, eventId] of [...affectedIds, initial[3].eventId].entries()) {
+      const [[event]] = await pool.execute('SELECT version FROM catledger_economic_events WHERE uid = ? AND event_id = ?', [user.uid, eventId])
+      await pool.execute(`INSERT INTO catledger_review_issue_members
+        (uid, member_id, update_id, issue_id, object_type, object_id, object_version, member_role, sort_order)
+        VALUES (?, ?, ?, ?, 'event', ?, ?, 'subject', ?)`, [user.uid, randomUUID(), updateId, issueId, eventId, event.version, index])
+    }
+    const snapshot = async () => {
+      const result = {}
+      for (const table of ['catledger_economic_events', 'catledger_event_evidence', 'catledger_review_issues',
+        'catledger_review_issue_members', 'catledger_finance_update_account_drafts', 'catledger_finance_update_account_mapping_drafts', 'catledger_finance_actions']) {
+        const [rows] = await pool.execute(`SELECT * FROM ${table} WHERE uid = ? AND update_id = ?`, [user.uid, updateId])
+        result[table] = rows
+      }
+      return result
+    }
+    const before = await snapshot()
+    view = await service.financeUpdateGet(context(user, { updateId }))
+    assert.equal(view.update.requiresReorganization, true)
+    const data = { requestId: randomUUID(), updateId, version: view.update.version }
+    await assert.rejects(service.financeUpdateOrganize(context(other, data)), error => error.publicCode === 'NOT_FOUND')
+    const trigger = 'semantic_' + randomUUID().replaceAll('-', '')
+    await pool.query(`CREATE TRIGGER ${trigger} BEFORE UPDATE ON catledger_finance_updates FOR EACH ROW
+      BEGIN IF NEW.uid = '${user.uid}' AND NEW.plan_version = '${PLAN_VERSION}' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic rollback'; END IF; END`)
+    try {
+      await assert.rejects(service.financeUpdateOrganize(context(user, data)))
+      assert.deepEqual(await snapshot(), before)
+    } finally { await pool.query(`DROP TRIGGER IF EXISTS ${trigger}`) }
+    const [upgraded, replay] = await Promise.all([
+      service.financeUpdateOrganize(context(user, data)), service.financeUpdateOrganize(context(user, data))
+    ])
+    assert.deepEqual(replay, upgraded)
+    assert.equal(upgraded.update.requiresReorganization, false)
+    const after = await snapshot()
+    assert.equal(after.catledger_economic_events.length, before.catledger_economic_events.length)
+    for (const previous of before.catledger_economic_events) {
+      const next = after.catledger_economic_events.find(event => event.event_id === previous.event_id)
+      for (const key of ['event_id', 'ledger_account_id', 'counterparty_ledger_account_id', 'category_id', 'manual_field_mask', 'amount_minor', 'event_local_at']) assert.deepEqual(next[key], previous[key])
+      if (affectedIds.includes(next.event_id)) {
+        assert.equal(next.economic_nature, 'expense'); assert.equal(next.status, 'ready')
+        assert.equal(json(next.field_sources_json).lastUserActionId, json(previous.field_sources_json).lastUserActionId)
+        assert.ok(json(next.field_sources_json).lastSemanticActionId)
+      }
+      else assert.deepEqual(next, previous)
+    }
+    for (const table of ['catledger_event_evidence', 'catledger_finance_update_account_drafts', 'catledger_finance_update_account_mapping_drafts']) assert.deepEqual(after[table], before[table])
+    const priorIssue = after.catledger_review_issues.find(issue => issue.issue_id === issueId)
+    assert.equal(priorIssue.status, 'superseded')
+    const remaining = upgraded.issues.find(issue => issue.status === 'open' && issue.issueType === 'field_conflict')
+    assert.ok(remaining)
+    assert.ok(after.catledger_review_issue_members.some(member => member.issue_id === remaining.issueId && member.object_id === initial[3].eventId))
+    const noOp = await service.financeUpdateOrganize(context(user, { requestId: randomUUID(), updateId, version: upgraded.update.version }))
+    assert.equal(noOp.update.version, upgraded.update.version)
+    assert.equal(after.catledger_finance_actions.filter(action => action.action_type === 'semantic_upgrade').length, 1)
+    await service.reviewIssueResolve(context(user, { requestId: randomUUID(), updateId, issueId: remaining.issueId,
+      updateVersion: upgraded.update.version, issueVersion: remaining.version, decision: 'exclude_events' }))
+    const ready = await service.financeUpdateGet(context(user, { updateId }))
+    assert.equal(ready.coverage.selectedEventsReadyToPost, true)
+    const posted = await service.financeUpdatePost(context(user, { requestId: randomUUID(), updateId, version: ready.update.version, mode: 'all_ready' }))
+    assert.equal(posted.update.status, 'posted')
+    const [[totals]] = await pool.execute('SELECT COUNT(*) AS count, SUM(amount_minor) AS amount FROM catledger_transactions WHERE uid = ?', [user.uid])
+    assert.equal(Number(totals.count), 2)
+    assert.equal(String(totals.amount), '1400')
+  } finally { await pool.end() }
+})
+
+test('可跳过分类：旧批次、整批回滚、幂等入账与后补分类统计一致', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = mysql.createPool(databaseConfig())
+  const objects = new Map()
+  const service = createImportService({ getPool: () => pool, storage: {
+    async downloadExact(fileID, objectKey) { return objects.get(objectKey) }, async remove() { return true }
+  } })
+  const reporting = createReportingService({ getPool: () => pool })
+  const categories = createCategoryService({ getPool: () => pool })
+  try {
+    const user = await createUserLedger(pool, 'optional-category')
+    const other = await createUserLedger(pool, 'optional-category-other')
+    const prepared = await service.prepareMany(context(user, { requestId: randomUUID(),
+      files: [{ fileName: '可选分类合成.csv', size: fixture().length }] }))
+    const file = prepared.files[0]
+    objects.set(file.cloudPath, fixture())
+    const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId,
+      fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 }))
+    let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
+    const updateId = view.update.updateId
+    const accountIssue = view.issues.find(issue => issue.status === 'open' && issue.issueType === 'account_mapping')
+    await assert.rejects(service.financeUpdatePost(context(user, {
+      requestId: randomUUID(), updateId, version: view.update.version, mode: 'all_ready'
+    })), error => error.publicCode === 'UNRESOLVED_IMPORT')
+    await service.reviewIssueResolve(context(user, { requestId: randomUUID(), updateId,
+      issueId: accountIssue.issueId, issueVersion: accountIssue.version, updateVersion: view.update.version,
+      decision: 'apply_fields', fields: { ledgerAccountId: user.accountId } }))
+    view = await service.financeUpdateGet(context(user, { updateId }))
+    assert.equal(view.coverage.selectedEventsReadyToPost, true)
+    assert.ok(view.events.every(event => event.status === 'ready' && event.categoryId === null))
+    const suggestions = view.issues.filter(issue => issue.status === 'open' && issue.issueType === 'category_assignment')
+    assert.ok(suggestions.length > 0)
+    assert.ok(suggestions.every(issue => issue.blocking === false))
+
+    // 模拟已存在批次的旧持久化状态；读取和入账都必须兼容，且不重新整理。
+    await pool.execute("UPDATE catledger_economic_events SET status = 'needs_action', state = 'needs_action' WHERE uid = ? AND update_id = ?", [user.uid, updateId])
+    await pool.execute("UPDATE catledger_review_issues SET blocking = 1 WHERE uid = ? AND update_id = ? AND issue_type = 'category_assignment' AND status = 'open'", [user.uid, updateId])
+    view = await service.financeUpdateGet(context(user, { updateId }))
+    assert.equal(view.coverage.selectedEventsReadyToPost, true)
+    assert.ok(view.events.every(event => event.status === 'ready'))
+    const data = { requestId: randomUUID(), updateId, version: view.update.version, mode: 'all_ready' }
+    await assert.rejects(service.financeUpdatePost(context(other, data)), error => error.publicCode === 'NOT_FOUND')
+
+    const trigger = 'optional_' + randomUUID().replaceAll('-', '')
+    await pool.query(`CREATE TRIGGER ${trigger} BEFORE UPDATE ON catledger_finance_updates FOR EACH ROW
+      BEGIN IF NEW.uid = '${user.uid}' AND NEW.status = 'posted' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic rollback'; END IF; END`)
+    try {
+      await assert.rejects(service.financeUpdatePost(context(user, data)))
+      const [[transactions]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [user.uid])
+      assert.equal(Number(transactions.count), 0)
+      const [[open]] = await pool.execute("SELECT COUNT(*) AS count FROM catledger_review_issues WHERE uid = ? AND update_id = ? AND issue_type = 'category_assignment' AND status = 'open'", [user.uid, updateId])
+      assert.equal(Number(open.count), suggestions.length)
+    } finally { await pool.query(`DROP TRIGGER IF EXISTS ${trigger}`) }
+
+    const posted = await service.financeUpdatePost(context(user, data))
+    const replayed = await service.financeUpdatePost(context(user, data))
+    assert.equal(posted.update.status, 'posted')
+    assert.equal(replayed.update.version, posted.update.version)
+    assert.ok(posted.issues.filter(issue => issue.issueType === 'category_assignment').every(issue => issue.status === 'superseded'))
+    const [transactions] = await pool.execute('SELECT transaction_id AS transactionId, version, category_id AS categoryId FROM catledger_transactions WHERE uid = ?', [user.uid])
+    assert.equal(transactions.length, 2)
+    assert.ok(transactions.every(transaction => transaction.categoryId === null))
+    const before = await reporting.statistics(context(user, { month: '2026-08' }))
+    assert.equal(before.uncategorized.transactionCount, 2)
+    assert.equal(before.summary.expenseMinor, '2468')
+    await categories.assignTransactions(context(user, { requestId: randomUUID(), categoryId: user.categoryId,
+      items: transactions.map(transaction => ({ transactionId: transaction.transactionId, version: Number(transaction.version) })) }))
+    const after = await reporting.statistics(context(user, { month: '2026-08' }))
+    assert.equal(after.uncategorized.transactionCount, 0)
+    assert.equal(after.summary.expenseMinor, before.summary.expenseMinor)
+  } finally { await pool.end() }
+})
 
 function fixtureWithSequence(sequence) {
   const value = String(sequence).padStart(3, '0')
@@ -468,6 +659,14 @@ test('MySQL 多文件形成一个 FinanceUpdate 并整批原子入账', { skip: 
     assert.equal(view.sources.length, 2)
     assert.equal(view.events.length, 4)
     assert.equal(view.update.counts.validEvidence, 4)
+    assert.equal(view.coverage.statementFullyRecognized, true)
+    assert.equal(view.coverage.rowConservationPassed, true)
+    assert.equal(view.coverage.selectedEventsReadyToPost, false)
+    const [[snapshots]] = await pool.execute(
+      `SELECT COUNT(*) AS count FROM catledger_import_rows
+        WHERE uid = ? AND semantic_json IS NOT NULL AND observations_json IS NOT NULL`, [user.uid]
+    )
+    assert.equal(Number(snapshots.count), 4)
 
     const accountIssues = view.issues.filter((item) => item.status === 'open')
     for (const issue of accountIssues) {
@@ -514,12 +713,46 @@ test('MySQL 多文件形成一个 FinanceUpdate 并整批原子入账', { skip: 
     )
     assert.equal(Number(formalAccountsBeforePost.count), 1)
 
+    assert.equal(view.coverage.selectedEventsReadyToPost, true)
+    await pool.execute('UPDATE catledger_finance_updates SET plan_version = ? WHERE uid = ? AND update_id = ?',
+      ['organizer-plan-stale', user.uid, view.update.updateId])
+    await assert.rejects(service.financeUpdatePost(context(user, {
+      requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version
+    })), (error) => error.publicCode === 'CONFLICT')
+    const staleView = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+    assert.equal(staleView.coverage.selectedEventsReadyToPost, false)
+    await pool.execute('UPDATE catledger_finance_updates SET plan_version = ? WHERE uid = ? AND update_id = ?',
+      [PLAN_VERSION, user.uid, view.update.updateId])
+
+    const [[savedEvidence]] = await pool.execute(
+      'SELECT * FROM catledger_event_evidence WHERE uid = ? AND update_id = ? LIMIT 1',
+      [user.uid, view.update.updateId])
+    await pool.execute('DELETE FROM catledger_event_evidence WHERE uid = ? AND evidence_id = ?',
+      [user.uid, savedEvidence.evidence_id])
+    await assert.rejects(service.financeUpdatePost(context(user, {
+      requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version
+    })), (error) => error.publicCode === 'UNRESOLVED_IMPORT')
+    await pool.query('INSERT INTO catledger_event_evidence SET ?', savedEvidence)
+    const [[rejectedWrites]] = await pool.execute(
+      'SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [user.uid])
+    assert.equal(Number(rejectedWrites.count), 0)
+
+    const obsoleteDraftId = randomUUID()
+    await pool.execute(`INSERT INTO catledger_finance_update_account_drafts
+      (uid, draft_account_id, update_id, name, normalized_name, type, nature, currency, action_id)
+      SELECT uid, ?, update_id, '旧选择测试', '旧选择测试', type, nature, currency, action_id
+      FROM catledger_finance_update_account_drafts WHERE uid = ? AND update_id = ? LIMIT 1`,
+      [obsoleteDraftId, user.uid, view.update.updateId])
     const requestId = randomUUID()
     const posted = await service.financeUpdatePost(context(user, {
       requestId, updateId: view.update.updateId, version: view.update.version, mode: 'all_ready'
     }))
     assert.equal(posted.update.status, 'posted')
     assert.deepEqual(posted.posting, { createdTransactionCount: 4, reusedTransactionCount: 0 })
+    const listedImported = await createTransactionService({ getPool: () => pool }).list(context(user, { month: '2026-08', pageSize: 30 }))
+    assert.ok(listedImported.transactions.length > 0)
+    assert.ok(listedImported.transactions.every((row) => row.importContext && row.importContext.updateId === posted.update.updateId && row.editable === false))
+
     const replayed = await service.financeUpdatePost(context(user, {
       requestId, updateId: view.update.updateId, version: view.update.version, mode: 'all_ready'
     }))
@@ -539,11 +772,40 @@ test('MySQL 多文件形成一个 FinanceUpdate 并整批原子入账', { skip: 
       [user.uid]
     )
     assert.equal(Number(formalAccountsAfterPost.count), 2)
+    const [[obsolete]] = await pool.execute(`SELECT materialized_at AS materializedAt, superseded_at AS supersededAt
+      FROM catledger_finance_update_account_drafts WHERE uid = ? AND draft_account_id = ?`, [user.uid, obsoleteDraftId])
+    assert.equal(obsolete.materializedAt, null)
+    assert.ok(obsolete.supersededAt)
+
+    const target = posted.events.find((event) => event.economicNature === 'expense')
+    const correctionFields = { amountMinor: '50' }
+    const beforeCorrection = await service.economicEventCorrectionImpact(context(user, { eventId: target.eventId, fields: correctionFields }))
+    assert.equal(beforeCorrection.canCorrect, true)
+    await assert.rejects(service.economicEventCorrect(context(user, {
+      requestId: randomUUID(), updateId: posted.update.updateId, eventId: target.eventId,
+      updateVersion: posted.update.version, eventVersion: target.version, fields: correctionFields, previewToken: 'stale'
+    })), (error) => error.publicCode === 'CONFLICT')
+    const corrected = await service.economicEventCorrect(context(user, {
+      requestId: randomUUID(), updateId: posted.update.updateId, eventId: target.eventId,
+      updateVersion: posted.update.version, eventVersion: target.version, fields: correctionFields, previewToken: beforeCorrection.previewToken
+    }))
+    assert.equal(corrected.events.find((event) => event.eventId === target.eventId).status, 'corrected')
+    const cashId = randomUUID()
+    await pool.execute(`INSERT INTO catledger_accounts (uid, account_id, type, nature, name, normalized_name, currency)
+      VALUES (?, ?, 'cash', 'asset', '维护现金测试', '维护现金测试', 'CNY')`, [user.uid, cashId])
+    const cashImpact = await service.economicEventCorrectionImpact(context(user, { eventId: target.eventId, fields: { ledgerAccountId: cashId } }))
+    assert.equal(cashImpact.canCorrect, false)
+    assert.ok(cashImpact.conflicts.includes('INSUFFICIENT_CASH_BALANCE'))
+    await pool.execute('UPDATE catledger_transactions SET version = version + 1 WHERE uid = ? AND transaction_id = ?', [user.uid, beforeCorrection.transactionIds[0]])
+    const externalChange = await service.financeUpdateUndoImpact(context(user, { updateId: posted.update.updateId }))
+    assert.equal(externalChange.canUndo, false)
+    assert.ok(externalChange.conflicts.includes('TRANSACTION_SET_CHANGED'))
+    await pool.execute('UPDATE catledger_transactions SET version = version - 1 WHERE uid = ? AND transaction_id = ?', [user.uid, beforeCorrection.transactionIds[0]])
     const impact = await service.financeUpdateUndoImpact(context(user, { updateId: posted.update.updateId }))
     assert.equal(impact.canUndo, true)
     assert.equal(impact.createdTransactionCount, 4)
     const undone = await service.financeUpdateUndo(context(user, {
-      requestId: randomUUID(), updateId: posted.update.updateId, version: posted.update.version
+      requestId: randomUUID(), updateId: posted.update.updateId, version: corrected.update.version, previewToken: impact.previewToken
     }))
     assert.equal(undone.update.status, 'undone')
     const [[activeAfterUndo]] = await pool.execute(
@@ -551,6 +813,12 @@ test('MySQL 多文件形成一个 FinanceUpdate 并整批原子入账', { skip: 
       [user.uid]
     )
     assert.equal(Number(activeAfterUndo.count), 0)
+    assert.equal(impact.sideEffects.archivedAccountIds.length, 1)
+    const [[archivedDraft]] = await pool.execute('SELECT archived_at AS archivedAt FROM catledger_accounts WHERE uid = ? AND account_id = ?',
+      [user.uid, impact.sideEffects.archivedAccountIds[0]])
+    assert.ok(archivedDraft.archivedAt)
+    const [[activeMappings]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_import_account_mappings WHERE uid = ? AND disabled_at IS NULL', [user.uid])
+    assert.equal(Number(activeMappings.count), 0)
   } finally {
     await pool.end()
   }
@@ -969,19 +1237,12 @@ test('支付宝合并还款不创建第三账户并原子入账为多笔守恒�
       draftsByName.get('支付宝花呗'), draftsByName.get('江苏银行信用购')
     ].sort())
 
-    const unrelatedCreditAccountId = randomUUID()
-    await pool.execute(
-      `INSERT INTO catledger_accounts
-         (uid, account_id, type, nature, name, normalized_name, currency)
-       VALUES (?, ?, 'credit', 'liability', '光大银行信用卡(2690)', '光大银行信用卡(2690)', 'CNY')`,
-      [user.uid, unrelatedCreditAccountId]
-    )
     await assert.rejects(() => service.reviewIssueResolve(context(user, {
       requestId: randomUUID(), updateId: view.update.updateId, issueId: repaymentIssue.issueId,
       updateVersion: view.update.version, issueVersion: repaymentIssue.version,
       decision: 'apply_fields',
       fields: {
-        repaymentAllocations: [{ accountId: unrelatedCreditAccountId, amountMinor: '1036610' }]
+        repaymentAllocations: [{ accountId: user.accountId, amountMinor: '10000' }]
       }
     })), { publicCode: 'VALIDATION_ERROR' })
 
@@ -1046,12 +1307,50 @@ test('支付宝合并还款不创建第三账户并原子入账为多笔守恒�
         amountMinor: '6000', role: 'repayment_allocation'
       }
     ])
+    const fields = { repaymentAllocations: [
+      { accountId: draftsByName.get('支付宝花呗'), amountMinor: '7000' },
+      { accountId: draftsByName.get('江苏银行信用购'), amountMinor: '3000' }
+    ] }
+    const impact = await service.economicEventCorrectionImpact(context(user, { eventId: repaymentEvent.eventId, fields }))
+    assert.equal(impact.canCorrect, true)
+    assert.equal(impact.transactionSet.length, 2)
+    const correction = { requestId: randomUUID(), updateId: posted.update.updateId, eventId: repaymentEvent.eventId,
+      updateVersion: posted.update.version, eventVersion: impact.eventVersion, fields, previewToken: impact.previewToken }
+    const triggerName = 'a1_fail_' + randomUUID().replaceAll('-', '')
+    await pool.query(`CREATE TRIGGER ${triggerName} BEFORE INSERT ON catledger_transactions FOR EACH ROW
+      BEGIN IF NEW.uid = '${user.uid}' AND NEW.amount_minor = 3000 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic failure'; END IF; END`)
+    try {
+      await assert.rejects(service.economicEventCorrect(context(user, correction)))
+      const [[unchanged]] = await pool.execute(`SELECT COUNT(*) AS count FROM catledger_economic_event_transactions l
+        JOIN catledger_transactions t ON t.uid = l.uid AND t.transaction_id = l.transaction_id
+        WHERE l.uid = ? AND l.event_id = ? AND l.superseded_at IS NULL AND t.deleted_at IS NULL`, [user.uid, repaymentEvent.eventId])
+      assert.equal(Number(unchanged.count), 2)
+    } finally { await pool.query(`DROP TRIGGER ${triggerName}`) }
+    const corrected = await service.economicEventCorrect(context(user, correction))
+    assert.deepEqual(await service.economicEventCorrect(context(user, correction)), corrected)
+    const [active] = await pool.execute(`SELECT t.amount_minor AS amountMinor FROM catledger_transactions t
+      JOIN catledger_economic_event_transactions l ON l.uid = t.uid AND l.transaction_id = t.transaction_id
+      WHERE l.uid = ? AND l.event_id = ? AND l.superseded_at IS NULL AND t.deleted_at IS NULL ORDER BY t.amount_minor`, [user.uid, repaymentEvent.eventId])
+    assert.deepEqual(active.map((row) => String(row.amountMinor)), ['3000', '7000'])
+    const staleUndo = await service.financeUpdateUndoImpact(context(user, { updateId: posted.update.updateId }))
+    const [[mapping]] = await pool.execute('SELECT mapping_id AS mappingId FROM catledger_import_account_mappings WHERE uid = ? AND disabled_at IS NULL LIMIT 1', [user.uid])
+    await pool.execute('UPDATE catledger_import_account_mappings SET version = version + 1 WHERE uid = ? AND mapping_id = ?', [user.uid, mapping.mappingId])
+    await assert.rejects(service.financeUpdateUndo(context(user, { requestId: randomUUID(), updateId: posted.update.updateId,
+      version: corrected.update.version, previewToken: staleUndo.previewToken })), (error) => error.publicCode === 'CONFLICT')
+    const undo = await service.financeUpdateUndoImpact(context(user, { updateId: posted.update.updateId }))
+    assert.equal(undo.canUndo, true)
+    assert.ok(undo.sideEffects.retainedMappingCount > 0)
+    await service.financeUpdateUndo(context(user, { requestId: randomUUID(), updateId: posted.update.updateId,
+      version: corrected.update.version, previewToken: undo.previewToken }))
+    const [[remaining]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ? AND deleted_at IS NULL', [user.uid])
+    assert.equal(Number(remaining.count), 0)
+
   } finally {
     await pool.end()
   }
 })
 
-test('FinanceUpdate 永久忽略只在整批入账后提升并供后续导入复用', { skip: !hasDatabase, timeout: 30000 }, async () => {
+test('FinanceUpdate 永久忽略只在整批入账后提升并让后续匹配自动排除且可修改', { skip: !hasDatabase, timeout: 30000 }, async () => {
   const pool = mysql.createPool(databaseConfig())
   const objects = new Map()
   const storage = {
@@ -1119,6 +1418,16 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并供后续导入复
     )
     assert.deepEqual(formalAfterPost, { mappingAction: 'ignore', accountId: null, disabledAt: null })
 
+    // 模拟旧版本曾按带平台前缀的原文生成键。原事实必须保留，后续读取
+    // 应从稳定提示派生当前规范键别名，而不是要求用户再次确认。
+    const legacyKey = digestParts('payment-method-v1', 'wechat', '微信零钱')
+    await pool.execute(
+      `UPDATE catledger_import_account_mappings
+          SET payment_method_key = ?, payment_method_hint = '微信零钱'
+        WHERE uid = ?`,
+      [legacyKey, user.uid]
+    )
+
     const laterContent = fixtureWithSequence(601)
     const later = await service.prepare(context(user, {
       requestId: randomUUID(), fileName: '后续复用永久忽略.csv', size: laterContent.length
@@ -1134,14 +1443,29 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并供后续导入复
     const laterView = await service.financeUpdateOrganize(context(user, {
       requestId: randomUUID(), updateId: laterCreated.updateId, version: laterCreated.version
     }))
-    assert.equal(laterView.events.every((event) => event.status === 'needs_action'), true)
-    const laterIssue = laterView.issues.find((item) => item.status === 'open' && item.issueType === 'account_mapping')
+    assert.equal(laterView.events.every((event) => event.status === 'excluded'), true)
+    assert.equal(laterView.events.every((event) => event.reasonCodes.includes('source_account_ignored_default')), true)
+    const laterIssue = laterView.issues.find((item) => item.status === 'resolved' && item.issueType === 'account_mapping')
     assert.ok(laterIssue)
+    assert.equal(laterIssue.blocking, false)
     assert.equal(laterIssue.accountContext.defaultIgnored, true)
-    await service.reviewIssueResolve(context(user, {
-      requestId: randomUUID(), updateId: laterView.update.updateId, issueId: laterIssue.issueId,
-      updateVersion: laterView.update.version, issueVersion: laterIssue.version,
-      decision: 'apply_fields', fields: { ledgerAccountId: user.accountId }
+    // 恢复规范键后，验证自动复用规则的来源证据也能阻止规则被撤回。
+    await pool.execute('UPDATE catledger_import_account_mappings SET payment_method_key = ? WHERE uid = ?',
+      [buildPaymentMethodKey('wechat', '微信零钱'), user.uid])
+    const inheritedImpact = await service.financeUpdateUndoImpact(context(user, { updateId: posted.update.updateId }))
+    assert.equal(inheritedImpact.canUndo, true)
+    assert.equal(inheritedImpact.sideEffects.revertedMappingCount, 0)
+    assert.equal(inheritedImpact.sideEffects.retainedMappingCount, 1)
+    await pool.execute('UPDATE catledger_import_account_mappings SET payment_method_key = ? WHERE uid = ?', [legacyKey, user.uid])
+
+    await service.reviewIssueResolveAccountMappings(context(user, {
+      requestId: randomUUID(), updateId: laterView.update.updateId,
+      decisions: [{
+        issueId: laterIssue.issueId,
+        operation: 'revise',
+        decision: 'apply_fields',
+        fields: { ledgerAccountId: user.accountId }
+      }]
     }))
     const laterResolved = await service.financeUpdateGet(context(user, { updateId: laterView.update.updateId }))
     const categorizedLater = await resolveOpenCategoryIssues(service, user, laterResolved)
@@ -1150,12 +1474,20 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并供后续导入复
       requestId: randomUUID(), updateId: categorizedLater.update.updateId,
       version: categorizedLater.update.version, mode: 'all_ready'
     }))
-    const [[overriddenRule]] = await pool.execute(
-      `SELECT mapping_action AS mappingAction, account_id AS accountId
-         FROM catledger_import_account_mappings WHERE uid = ? LIMIT 1`,
+    const [rulesAfterOverride] = await pool.execute(
+      `SELECT payment_method_key AS paymentMethodKey, mapping_action AS mappingAction,
+              account_id AS accountId
+         FROM catledger_import_account_mappings WHERE uid = ? ORDER BY payment_method_key`,
       [user.uid]
     )
-    assert.deepEqual(overriddenRule, { mappingAction: 'account', accountId: user.accountId })
+    assert.equal(rulesAfterOverride.length, 2)
+    assert.deepEqual(rulesAfterOverride.find((rule) => rule.paymentMethodKey === legacyKey), {
+      paymentMethodKey: legacyKey, mappingAction: 'ignore', accountId: null
+    })
+    assert.deepEqual(rulesAfterOverride.find((rule) => rule.mappingAction === 'account'), {
+      paymentMethodKey: buildPaymentMethodKey('wechat', '零钱'),
+      mappingAction: 'account', accountId: user.accountId
+    })
   } finally {
     await pool.end()
   }
@@ -1224,6 +1556,85 @@ test('FinanceUpdate 入账不得产生现金负余额且失败时整批回滚', 
   } finally {
     await pool.end()
   }
+})
+
+test('MySQL 旧解析版本追加批次，覆盖统计重用当前语义且旧证据不改写', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = mysql.createPool(databaseConfig())
+  const objects = new Map()
+  const service = createImportService({ getPool: () => pool, storage: {
+    async downloadExact(fileID, objectKey) { return objects.get(objectKey) },
+    async remove() { return true }
+  } })
+  try {
+    const user = await createUserLedger(pool, 'parse-upgrade')
+    const content = fixtureWithSequence(781)
+    async function upload() {
+      const prepared = await service.prepareMany(context(user, {
+        requestId: randomUUID(), files: [{ fileName: '版本升级合成账单.csv', size: content.length }]
+      }))
+      const file = prepared.files[0]
+      objects.set(file.cloudPath, content)
+      return { requestId: randomUUID(), importId: file.importId,
+        fileID: `cloud://synthetic.bucket/${file.cloudPath}`, timezoneOffsetMinutes: -480 }
+    }
+    const parsed = await service.parseFile(context(user, await upload()))
+    const initial = await service.financeUpdatePrepare(context(user, {
+      requestId: randomUUID(), batchIds: [parsed.batch.batchId]
+    }))
+    assert.ok(initial.coverage.recognizedRows > 0)
+    await pool.execute('UPDATE catledger_import_batches SET parse_fingerprint = ?, analysis_json = NULL WHERE uid = ? AND batch_id = ?',
+      [digestParts('legacy-parser'), user.uid, parsed.batch.batchId])
+    await pool.execute('UPDATE catledger_import_rows SET semantic_json = NULL, observations_json = NULL WHERE uid = ? AND batch_id = ?',
+      [user.uid, parsed.batch.batchId])
+    const [legacyCores] = await pool.execute(`SELECT row_id, identity_id, normalized_amount_minor AS amountMinor,
+      currency, normalized_direction AS direction FROM catledger_import_rows WHERE uid = ? AND batch_id = ?`,
+    [user.uid, parsed.batch.batchId])
+    for (const row of legacyCores) {
+      const core = digestParts('source-core-v1', row.amountMinor, row.currency, row.direction, 'unknown')
+      await pool.execute('UPDATE catledger_source_identities SET core_digest = ? WHERE uid = ? AND identity_id = ?',
+        [core, user.uid, row.identity_id])
+      await pool.execute("UPDATE catledger_import_rows SET economic_effect = 'unknown', observed_core_digest = ? WHERE uid = ? AND row_id = ?",
+        [core, user.uid, row.row_id])
+    }
+    const legacy = await service.financeUpdateGet(context(user, { updateId: initial.update.updateId }))
+    assert.equal(legacy.coverage.recognizedRows, initial.coverage.recognizedRows)
+    assert.equal(legacy.coverage.fileObservationsPassed, false)
+    const request = await upload()
+    await pool.query(`CREATE TRIGGER catledger_test_upgrade_failure BEFORE INSERT ON catledger_import_batches
+      FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic upgrade failure'`)
+    try {
+      await assert.rejects(service.parseFile(context(user, request)))
+      const unchanged = await service.financeUpdateGet(context(user, { updateId: initial.update.updateId }))
+      assert.equal(unchanged.update.status, 'review')
+      assert.equal(unchanged.update.version, initial.update.version)
+    } finally { await pool.query('DROP TRIGGER catledger_test_upgrade_failure') }
+    const refreshed = await service.parseFile(context(user, request))
+    assert.equal(refreshed.reusedImportId, parsed.import.importId)
+    assert.notEqual(refreshed.batch.batchId, parsed.batch.batchId)
+    assert.deepEqual(await service.parseFile(context(user, request)), refreshed)
+    const [batches] = await pool.execute('SELECT batch_id, analysis_json FROM catledger_import_batches WHERE uid = ? AND import_id = ?',
+      [user.uid, parsed.import.importId])
+    assert.equal(batches.length, 2)
+    assert.equal(batches.find((batch) => batch.batch_id === parsed.batch.batchId).analysis_json, null)
+    assert.ok(batches.find((batch) => batch.batch_id === refreshed.batch.batchId).analysis_json)
+    const [oldRows] = await pool.execute('SELECT semantic_json FROM catledger_import_rows WHERE uid = ? AND batch_id = ?',
+      [user.uid, parsed.batch.batchId])
+    assert.ok(oldRows.every((row) => row.semantic_json === null))
+    const old = await service.financeUpdateGet(context(user, { updateId: initial.update.updateId }))
+    assert.equal(old.update.status, 'abandoned')
+    const current = await service.financeUpdatePrepare(context(user, {
+      requestId: randomUUID(), batchIds: [refreshed.batch.batchId]
+    }))
+    assert.equal(current.coverage.recognizedRows, initial.coverage.recognizedRows)
+    assert.equal(current.coverage.dataRows, initial.coverage.dataRows)
+    assert.equal(current.issues.filter((issue) => issue.issueType === 'identity_conflict').length, 0)
+    const [updatedInterpretations] = await pool.execute('SELECT identity_state, issues_json FROM catledger_import_rows WHERE uid = ? AND batch_id = ?',
+      [user.uid, refreshed.batch.batchId])
+    assert.ok(updatedInterpretations.every((row) => row.identity_state === 'exact_duplicate'))
+    assert.ok(updatedInterpretations.every((row) => JSON.stringify(row.issues_json).includes('source_interpretation_updated')))
+    const [[ledger]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [user.uid])
+    assert.equal(Number(ledger.count), 0)
+  } finally { await pool.end() }
 })
 
 test('MySQL 重新解析自动放弃旧 FinanceUpdate，不改变正式账本并可幂等重放', { skip: !hasDatabase, timeout: 30000 }, async () => {
@@ -1380,4 +1791,274 @@ test('MySQL 多文件解析失败彼此隔离，成功来源仍可建立更新',
   } finally {
     await pool.end()
   }
+})
+
+test('MySQL 人工组合支付覆盖隔离、守恒、原子回滚、重试和整批撤销', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = mysql.createPool(databaseConfig())
+  const objects = new Map()
+  const service = createImportService({ getPool: () => pool, storage: { async downloadExact(fileID, key) { return objects.get(key) }, async remove() { return true } } })
+  try {
+    for (const nature of ['expense', 'repayment']) for (const activeIndex of [null, 0, 1]) {
+      const user = await createUserLedger(pool, 'split-' + nature)
+      const other = await createUserLedger(pool, 'split-foreign')
+      const bankId = randomUUID(), debtId = randomUUID()
+      await pool.execute(`INSERT INTO catledger_accounts (uid, account_id, type, nature, name, normalized_name, currency)
+        VALUES (?, ?, 'bank', 'asset', '测试银行卡', '测试银行卡', 'CNY'), (?, ?, 'credit', 'liability', '测试欠款', '测试欠款', 'CNY')`,
+      [user.uid, bankId, user.uid, debtId])
+      const content = Buffer.from(['微信支付账单明细',
+        '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号',
+        '2026-09-01 12:00:00,商户消费,合成商户,合成商品,支出,10.00,零钱&招商银行储蓄卡(1234),支付成功,SYNTHETIC-SPLIT-' + randomUUID()
+      ].join('\n'))
+      const prepared = await service.prepareMany(context(user, { requestId: randomUUID(), files: [{ fileName: '合成组合支付.csv', size: content.length }] }))
+      const file = prepared.files[0]; objects.set(file.cloudPath, content)
+      const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId,
+        fileID: `cloud://synthetic.bucket/${file.cloudPath}`, timezoneOffsetMinutes: -480 }))
+      let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
+      let issue = view.issues.find(i => i.status === 'open')
+      if (nature === 'expense') {
+        await pool.execute("UPDATE catledger_economic_events SET field_sources_json = JSON_REMOVE(field_sources_json, '$.paymentComponents', '$.paymentSourceDirection') WHERE uid = ? AND update_id = ?", [user.uid, view.update.updateId])
+      }
+      const detail = await service.reviewIssueGet(context(user, { issueId: issue.issueId }))
+      assert.equal(detail.update.version, view.update.version)
+      const event = detail.members.find(m => m.event).event
+      assert.equal(event.paymentComponents.filter(x => x.componentKind === 'financial').length, 2)
+      const resolution = { version: 'payment-resolution-v1', nature, targetAccountId: nature === 'repayment' ? debtId : null,
+        confirmedFromDetails: true, evidenceNote: '已核对合成付款详情', allocations: [
+          { componentIndex: 0, accountId: user.accountId, amountMinor: '600' },
+          { componentIndex: 1, accountId: bankId, amountMinor: '400' }
+        ] }
+      if (activeIndex != null) {
+        resolution.version = 'payment-resolution-v2'
+        resolution.allocations.forEach((item, index) => { item.amountMinor = index === activeIndex ? '1000' : '0' })
+      }
+      const accountRequest = { requestId: randomUUID(), updateId: view.update.updateId, issueId: issue.issueId,
+        updateVersion: view.update.version, issueVersion: issue.version, decision: 'apply_fields',
+        fields: { paymentAccounts: resolution.allocations.map(({ componentIndex, accountId }) => ({ componentIndex, accountId })) } }
+      const foreignAccounts = JSON.parse(JSON.stringify(accountRequest)); foreignAccounts.requestId = randomUUID(); foreignAccounts.fields.paymentAccounts[1].accountId = other.accountId
+      await assert.rejects(service.reviewIssueResolve(context(user, foreignAccounts)), error => error.publicCode === 'VALIDATION_ERROR')
+      view = await service.reviewIssueResolve(context(user, accountRequest))
+      const accountRetry = await service.reviewIssueResolve(context(user, accountRequest))
+      assert.equal(accountRetry.update.version, view.update.version)
+      view = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+      issue = view.issues.find(i => i.status === 'open')
+      assert.equal(issue.issueType, 'shared_fields')
+      const afterAccounts = await service.reviewIssueGet(context(user, { issueId: issue.issueId }))
+      assert.equal(afterAccounts.members.find(m => m.event).event.paymentAccounts.length, 2)
+      assert.equal(view.events.find(e => e.eventId === event.eventId).status, 'needs_action')
+      const request = { requestId: randomUUID(), updateId: view.update.updateId, issueId: issue.issueId,
+        updateVersion: view.update.version, issueVersion: issue.version, decision: 'apply_fields', fields: { paymentResolution: resolution } }
+      const foreign = JSON.parse(JSON.stringify(request)); foreign.requestId = randomUUID(); foreign.fields.paymentResolution.allocations[activeIndex === 1 ? 0 : 1].accountId = other.accountId
+      await assert.rejects(service.reviewIssueResolve(context(user, foreign)), error => error.publicCode === 'VALIDATION_ERROR')
+      const mismatch = JSON.parse(JSON.stringify(request)); mismatch.requestId = randomUUID(); mismatch.fields.paymentResolution.allocations[1].amountMinor = '401'
+      await assert.rejects(service.reviewIssueResolve(context(user, mismatch)), error => error.publicCode === 'VALIDATION_ERROR')
+      const saved = await service.reviewIssueResolve(context(user, request))
+      assert.deepEqual(await service.reviewIssueResolve(context(user, request)), saved)
+      view = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+      view = await resolveOpenCategoryIssues(service, user, view)
+      assert.equal(view.events[0].status, 'ready', JSON.stringify({ reasons: view.events[0].reasonCodes, issues: view.issues.filter(i => i.status === 'open').map(i => ({ type: i.issueType, reasons: i.reasonCodes })) }))
+      const posting = { requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version }
+      const trigger = 'split_fail_' + randomUUID().replaceAll('-', '')
+      await pool.query(`CREATE TRIGGER ${trigger} BEFORE INSERT ON catledger_transactions FOR EACH ROW BEGIN
+        IF NEW.uid = '${user.uid}' AND NEW.amount_minor = ${activeIndex == null ? 400 : 1000} THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic failure'; END IF; END`)
+      try {
+        await assert.rejects(service.financeUpdatePost(context(user, posting)))
+        const [[count]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [user.uid])
+        assert.equal(Number(count.count), 0)
+      } finally { await pool.query(`DROP TRIGGER ${trigger}`) }
+      const posted = await service.financeUpdatePost(context(user, posting))
+      assert.deepEqual(await service.financeUpdatePost(context(user, posting)), posted)
+      const [rows] = await pool.execute('SELECT type, amount_minor AS amountMinor FROM catledger_transactions WHERE uid = ? AND deleted_at IS NULL ORDER BY amount_minor', [user.uid])
+      assert.deepEqual(rows.map(r => String(r.amountMinor)), activeIndex == null ? ['400', '600'] : ['1000'])
+      assert.ok(rows.every(r => r.type === (nature === 'expense' ? 'expense' : 'transfer')))
+      const impact = await service.economicEventCorrectionImpact(context(user, { eventId: event.eventId }))
+      assert.equal(impact.canCorrect, false)
+      const undo = await service.financeUpdateUndoImpact(context(user, { updateId: view.update.updateId }))
+      assert.equal(undo.canUndo, true)
+      assert.equal(undo.createdTransactionCount, activeIndex == null ? 2 : 1)
+      await service.financeUpdateUndo(context(user, { requestId: randomUUID(), updateId: view.update.updateId, version: posted.update.version, previewToken: undo.previewToken }))
+      const [[remaining]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ? AND deleted_at IS NULL', [user.uid])
+      assert.equal(Number(remaining.count), 0)
+    }
+  } finally { await pool.end() }
+})
+
+test('MySQL 账户归组允许同一组合事件属于多个账户，识别先采后付目标并保留独立事件', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = mysql.createPool(databaseConfig()), objects = new Map()
+  const service = createImportService({ getPool: () => pool, storage: { async downloadExact(id, key) { return objects.get(key) }, async remove() { return true } } })
+  try {
+    const user = await createUserLedger(pool, 'account-groups'), other = await createUserLedger(pool, 'groups-other')
+    const bankId = randomUUID(), debtId = randomUUID()
+    await pool.execute(`INSERT INTO catledger_accounts (uid, account_id, type, nature, name, normalized_name, currency)
+      VALUES (?, ?, 'bank', 'asset', '测试银行储蓄卡(1234)', '测试银行储蓄卡(1234)', 'CNY'),
+      (?, ?, 'credit', 'liability', '1688先采后付', '1688先采后付', 'CNY')`, [user.uid, bankId, user.uid, debtId])
+    const content = Buffer.from(['支付宝(中国)网络技术有限公司 电子客户回单',
+      '交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,备注,交易订单号,订单号,商家订单号',
+      '2026-09-01 12:00:00,信用借还,1688先采后付,先采后付账单付款,10.00,支出,测试银行储蓄卡(1234)&账户余额,交易成功,,GROUP-SPLIT,,,',
+      '2026-09-02 12:00:00,餐饮美食,合成餐馆,午餐,2.00,支出,账户余额,交易成功,,GROUP-BALANCE,,,',
+      '2026-09-03 12:00:00,餐饮美食,合成餐馆,晚餐,3.00,支出,测试银行储蓄卡(1234),交易成功,,GROUP-BANK,,,'
+    ].join('\n'))
+    const prepared = await service.prepareMany(context(user, { requestId: randomUUID(), files: [{ fileName: '合成账户分组.csv', size: content.length }] }))
+    const file = prepared.files[0]; objects.set(file.cloudPath, content)
+    const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId, fileID: `cloud://synthetic.bucket/${file.cloudPath}`, timezoneOffsetMinutes: -480 }))
+    let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
+    const before = view.events.length
+    const legacyIssue = view.issues.find(i => i.issueType === 'account_mapping' && (i.reasonCodes || []).includes('payment_components_ambiguous'))
+    await service.reviewIssueResolve(context(user, { requestId: randomUUID(), updateId: view.update.updateId,
+      issueId: legacyIssue.issueId, updateVersion: view.update.version, issueVersion: legacyIssue.version, decision: 'apply_fields',
+      fields: { paymentAccounts: [{ componentIndex: 0, accountId: bankId }, { componentIndex: 1, accountId: user.accountId }] } }))
+    view = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+    const request = { requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version }
+    await assert.rejects(service.reviewIssueRefreshAccountGroups(context(other, { ...request, requestId: randomUUID() })))
+    view = await service.reviewIssueRefreshAccountGroups(context(user, request))
+    assert.deepEqual(await service.reviewIssueRefreshAccountGroups(context(user, request)), view)
+    assert.equal(view.events.length, before)
+    const groups = view.issues.filter(i => i.issueType === 'account_mapping' && ['open', 'resolved'].includes(i.status))
+    assert.equal(groups.length, 3, JSON.stringify({ events: view.events.length, groups: view.issues.map(i => ({ label: i.accountContext?.label, status: i.status, count: i.memberCount })) }))
+    const wallet = groups.find(i => i.accountContext.label === '支付宝账户余额')
+    const bank = groups.find(i => i.accountContext.label === '测试银行储蓄卡(1234)')
+    const debt = groups.find(i => i.accountContext.label === '1688先采后付')
+    assert.equal(wallet.memberCount, 2); assert.equal(bank.memberCount, 2); assert.equal(debt.memberCount, 1)
+    const wd = await service.reviewIssueGet(context(user, { issueId: wallet.issueId }))
+    const bd = await service.reviewIssueGet(context(user, { issueId: bank.issueId }))
+    const overlap = wd.members.filter(m => m.event && bd.members.some(n => n.objectId === m.objectId))
+    assert.equal(overlap.length, 1)
+    const refreshed = await service.reviewIssueRefreshAccountGroups(context(user, { ...request, requestId: randomUUID(), version: view.update.version }))
+    assert.equal(refreshed.update.version, view.update.version)
+    view = await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId: view.update.updateId,
+      decisions: groups.filter(i => i.status === 'open').map(i => ({ issueId: i.issueId, operation: 'resolve', decision: 'apply_fields', fields: { ledgerAccountId: i === debt ? debtId : i === bank ? bankId : user.accountId } })) }))
+    view = await service.financeUpdateGet(context(user, { updateId: request.updateId }))
+    assert.equal(view.issues.filter(i => i.issueType === 'account_mapping' && i.status === 'open').length, 0)
+    const combined = view.events.find(e => e.eventId === overlap[0].objectId)
+    assert.equal(combined.paymentAccounts.length, 2)
+    assert.equal(combined.counterpartyLedgerAccountId, debtId)
+    assert.equal(combined.ledgerAccountId, null)
+    assert.equal(combined.status, 'needs_action')
+    for (const open of view.issues.filter(i => i.status === 'open')) {
+      const detail = await service.reviewIssueGet(context(user, { issueId: open.issueId }))
+      for (const member of detail.members.filter(m => m.event)) assert.equal(member.objectVersion, member.event.version)
+    }
+    const revisedGroup = view.issues.find(i => i.issueId === wallet.issueId)
+    await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId: request.updateId,
+      decisions: [{ issueId: revisedGroup.issueId, operation: 'revise', decision: 'apply_fields', fields: { ledgerAccountId: user.accountId } }] }))
+    const repeated = await service.financeUpdateGet(context(user, { updateId: request.updateId }))
+    assert.equal(repeated.events.find(e => e.eventId === combined.eventId).paymentAccounts.length, 2)
+    const [[count]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [user.uid])
+    assert.equal(Number(count.count), 0)
+  } finally { await pool.end() }
+})
+
+test('还款目标未在本批消费仍可补选或建草稿；资格、失败回滚、幂等和入账撤销贯通', { skip: !hasDatabase, timeout: 60000 }, async () => {
+  const pool = mysql.createPool(databaseConfig())
+  const objects = new Map()
+  const storage = { async downloadExact(_, key) { return objects.get(key) }, async remove() { return true } }
+  const service = createImportService({ getPool: () => pool, storage })
+  try {
+    for (const candidateCount of [0, 1]) {
+      const user = await createUserLedger(pool, 'allocation-coverage-' + candidateCount)
+      const other = await createUserLedger(pool, 'allocation-foreign')
+      await pool.execute("UPDATE catledger_accounts SET type = 'credit', nature = 'liability' WHERE uid = ? AND account_id = ?", [other.uid, other.accountId])
+      const historyId = randomUUID()
+      await pool.execute(`INSERT INTO catledger_accounts (uid, account_id, type, nature, name, normalized_name, currency)
+        VALUES (?, ?, 'credit', 'liability', '合成历史花呗', '合成历史花呗', 'CNY')`, [user.uid, historyId])
+      const content = Buffer.from(alipayAggregateRepaymentFixture().toString().split('\n').filter(line =>
+        !line.includes('ALI-HUABEI-001') && (candidateCount || !line.includes('ALI-CREDIT-001'))).join('\n'))
+      const prepared = await service.prepare(context(user, { requestId: randomUUID(), fileName: '合成候选缺席.csv', size: content.length }))
+      objects.set(prepared.cloudPath, content)
+      const parsed = await service.parse(context(user, { requestId: randomUUID(), importId: prepared.importId,
+        fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480 }))
+      let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
+      view = await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId: view.update.updateId,
+        decisions: view.issues.filter(x => x.issueType === 'account_mapping' && x.status === 'open').map(issue => ({
+          issueId: issue.issueId, operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountDraft: {
+            name: issue.accountContext.label, type: issue.accountContext.label.includes('储蓄卡') ? 'bank' : 'credit', currency: 'CNY'
+          } }
+        })) }))
+      const issue = view.issues.find(x => x.status === 'open' && x.subject?.fundsProjection?.to.referenceKind === 'aggregate')
+      assert.ok(issue)
+      assert.equal(issue.subject.fundsProjection.to.candidates.length, candidateCount)
+      const draftCount = view.accountDrafts.length
+      const command = allocations => ({ requestId: randomUUID(), updateId: view.update.updateId, issueId: issue.issueId,
+        updateVersion: view.update.version, issueVersion: issue.version, decision: 'apply_fields', fields: { repaymentAllocations: allocations } })
+      for (const id of [other.accountId, user.accountId, issue.subject.ledgerAccountId]) {
+        await assert.rejects(service.reviewIssueResolve(context(user, command([{ accountId: id, amountMinor: '10000' }]))), { publicCode: 'VALIDATION_ERROR' })
+      }
+      await assert.rejects(service.reviewIssueResolve(context(user, command([
+        { accountDraft: { name: '失败应回滚', type: 'credit', currency: 'CNY' }, amountMinor: '9999' }
+      ]))), { publicCode: 'VALIDATION_ERROR' })
+      const unchanged = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+      assert.equal(unchanged.update.version, view.update.version)
+      assert.equal(unchanged.accountDrafts.length, draftCount)
+      const payload = command([
+        candidateCount ? { accountDraft: { name: '合成历史花呗', type: 'credit', currency: 'CNY' }, amountMinor: '6000' } : { accountId: historyId, amountMinor: '6000' },
+        { accountDraft: { name: '合成未登记信用购', type: 'credit', currency: 'CNY' }, amountMinor: '4000' }
+      ])
+      await service.reviewIssueResolve(context(user, payload))
+      await service.reviewIssueResolve(context(user, payload))
+      view = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+      assert.equal(view.accountDrafts.length, draftCount + 1)
+      const targetId = view.accountDrafts.find(x => x.name === '合成未登记信用购').accountId
+      const [[before]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [user.uid])
+      assert.equal(Number(before.count), 0)
+      const [[formal]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_accounts WHERE uid = ? AND account_id = ?', [user.uid, targetId])
+      assert.equal(Number(formal.count), 0)
+      view = await resolveOpenCategoryIssues(service, user, view)
+      assert.equal(view.issues.filter(x => x.status === 'open').length, 0)
+      const trigger = 'allocation_fail_' + randomUUID().replaceAll('-', '')
+      await pool.query(`CREATE TRIGGER ${trigger} BEFORE INSERT ON catledger_transactions FOR EACH ROW
+        BEGIN IF NEW.uid = '${user.uid}' AND NEW.amount_minor = 4000 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic allocation rollback'; END IF; END`)
+      try {
+        await assert.rejects(service.financeUpdatePost(context(user, { requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version, mode: 'all_ready' })))
+        const [[empty]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [user.uid])
+        assert.equal(Number(empty.count), 0)
+      } finally { await pool.query(`DROP TRIGGER IF EXISTS ${trigger}`) }
+      const posted = await service.financeUpdatePost(context(user, { requestId: randomUUID(), updateId: view.update.updateId, version: view.update.version, mode: 'all_ready' }))
+      const [transfers] = await pool.execute("SELECT destination_account_id AS target, amount_minor AS amount FROM catledger_transactions WHERE uid = ? AND type = 'transfer'", [user.uid])
+      assert.deepEqual(transfers.map(x => x.target).sort(), [historyId, targetId].sort())
+      assert.equal(transfers.reduce((sum, x) => sum + BigInt(x.amount), 0n), 10000n)
+      const undo = await service.financeUpdateUndoImpact(context(user, { updateId: view.update.updateId }))
+      assert.equal(undo.canUndo, true)
+      await service.financeUpdateUndo(context(user, { requestId: randomUUID(), updateId: view.update.updateId, version: posted.update.version, previewToken: undo.previewToken }))
+      const [[remaining]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ? AND deleted_at IS NULL', [user.uid])
+      assert.equal(Number(remaining.count), 0)
+    }
+  } finally { await pool.end() }
+})
+test('MySQL 整理真实成员与重复来源数量守恒且隔离用户', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = mysql.createPool(databaseConfig())
+  const objects = new Map()
+  const service = createImportService({ getPool: () => pool, storage: {
+    async downloadExact(fileID, objectKey) { return objects.get(objectKey) }, async remove() { return true }
+  } })
+  try {
+    const user = await createUserLedger(pool, 'record-counts')
+    const other = await createUserLedger(pool, 'record-counts-other')
+    const contents = [fixtureWithSequence(701), Buffer.from(fixtureWithSequence(801).toString('utf8').replaceAll('801', '701'))]
+    const prepared = await service.prepareMany(context(user, { requestId: randomUUID(),
+      files: contents.map((content, i) => ({ fileName: '数量合成-' + i + '.csv', size: content.length })) }))
+    const batchIds = []
+    for (let i = 0; i < prepared.files.length; i += 1) {
+      const file = prepared.files[i]
+      objects.set(file.cloudPath, contents[i])
+      const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId,
+        fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 }))
+      batchIds.push(parsed.batch.batchId)
+    }
+    const view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds }))
+    assert.equal(view.coverage.dataRows, 4)
+    assert.equal(view.events.length, 3)
+    const duplicates = view.events.reduce((sum, event) => sum + event.duplicateEvidenceCount, 0)
+    assert.equal(duplicates, 1)
+    assert.equal(view.events.length + duplicates, 4)
+    const eventIds = new Set(view.events.map(event => event.eventId))
+    const members = new Set(view.issues.filter(issue => issue.status === 'open').flatMap(issue => issue.subjectEventIds))
+    assert.deepEqual([...members].sort(), [...eventIds].sort())
+    for (const issue of view.issues) {
+      assert.equal(issue.subjectEventIds.length, new Set(issue.subjectEventIds).size)
+      assert.ok(issue.subjectEventIds.every(id => eventIds.has(id)))
+    }
+    const duplicateEvent = view.events.find(event => event.duplicateEvidenceCount)
+    const evidence = await service.economicEventEvidence(context(user, { eventId: duplicateEvent.eventId }))
+    assert.equal(evidence.evidence.filter(row => row.evidenceRole === 'duplicate').length, 1)
+    await assert.rejects(service.financeUpdateGet(context(other, { updateId: view.update.updateId })), error => error.publicCode === 'NOT_FOUND')
+  } finally { await pool.end() }
 })

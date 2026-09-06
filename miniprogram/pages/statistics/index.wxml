@@ -6,6 +6,7 @@
   </view>
 
   <view class="summary-strip">
+    <view class="inline-sync summary-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
     <view class="summary-cell"><text class="summary-label">收入</text><text class="summary-value money-number income-color">{{incomeText}}</text></view>
     <view class="summary-divider"></view>
     <view class="summary-cell"><text class="summary-label">支出</text><text class="summary-value money-number expense-color">{{expenseText}}</text></view>
@@ -20,7 +21,7 @@
     <view><text class="metric-value money-number">{{metrics.largestExpenseText}}</text><text class="metric-label">单笔最高</text></view>
   </view>
 
-  <view class="section-heading">
+  <view class="section-heading content-inset">
     <view><text class="section-kicker">CASH FLOW</text><text class="section-title serif-title">近六个月</text></view>
     <view class="chart-legend"><text class="legend-income">收入</text><text class="legend-expense">支出</text></view>
   </view>
@@ -31,7 +32,7 @@
     </view>
   </view>
 
-  <view class="section-heading">
+  <view class="section-heading content-inset">
     <view><text class="section-kicker">DAILY</text><text class="section-title serif-title">每日收支</text></view>
     <text class="section-note">按本地日期</text>
   </view>
@@ -49,20 +50,19 @@
     <view class="category-quality-value"><text class="money-number">{{uncategorized.transactionCount}} 笔</text><text class="money-number">{{uncategorized.amountText}}</text></view>
   </button>
 
-  <view class="section-heading category-heading"><view><text class="section-kicker">EXPENSE</text><text class="section-title serif-title">支出分类</text></view></view>
+  <view class="section-heading category-heading content-inset"><view><text class="section-kicker">EXPENSE</text><text class="section-title serif-title">支出分类</text></view></view>
   <view wx:if="{{expenseCategories.length > 0}}" class="ranking-list">
     <view wx:for="{{expenseCategories}}" wx:key="categoryId" class="ranking-row"><view class="ranking-line"><text class="ranking-name">{{item.name}}</text><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view><view class="ranking-track"><view class="ranking-fill expense-fill" style="width: {{item.barWidth}};"></view></view></view>
   </view>
-  <text wx:else class="empty-note">这个月还没有支出。</text>
+  <text wx:else class="empty-note content-inset">这个月还没有支出。</text>
 
-  <view class="section-heading category-heading"><view><text class="section-kicker">INCOME</text><text class="section-title serif-title">收入分类</text></view></view>
+  <view class="section-heading category-heading content-inset"><view><text class="section-kicker">INCOME</text><text class="section-title serif-title">收入分类</text></view></view>
   <view wx:if="{{incomeCategories.length > 0}}" class="ranking-list">
     <view wx:for="{{incomeCategories}}" wx:key="categoryId" class="ranking-row"><view class="ranking-line"><text class="ranking-name">{{item.name}}</text><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view><view class="ranking-track"><view class="ranking-fill income-fill" style="width: {{item.barWidth}};"></view></view></view>
   </view>
-  <text wx:else class="empty-note">这个月还没有收入。</text>
+  <text wx:else class="empty-note content-inset">这个月还没有收入。</text>
 
-  <view wx:if="{{loading}}" class="statistics-status">正在汇总正式账目…</view>
-  <view wx:if="{{errorMessage && !categorySheetOpen}}" class="statistics-error" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
+  <view wx:if="{{errorMessage && !categorySheetOpen}}" class="statistics-error content-inset" bindtap="loadStatistics">{{errorMessage}} · 点此重试</view>
 
   <view wx:if="{{categorySheetOpen}}" class="sheet-layer" catchtouchmove="preventTouchMove">
     <view class="sheet-scrim" bindtap="closeCategoryCompletion"></view>

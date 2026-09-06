@@ -114,6 +114,18 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
       LIMIT ?`,
     values
   )
+  const importedIds = rows.filter((row) => row.origin === 'import').map((row) => row.transactionId)
+  if (importedIds.length) {
+    const [links] = await connection.execute(`SELECT l.transaction_id AS transactionId, l.update_id AS updateId, l.event_id AS eventId
+      FROM catledger_economic_event_transactions l JOIN catledger_finance_updates u ON u.uid = l.uid AND u.update_id = l.update_id
+      WHERE l.uid = ? AND l.transaction_id IN (${importedIds.map(() => '?').join(', ')})
+        AND l.creation_method = 'created' AND l.superseded_at IS NULL AND l.role <> 'refund_original' AND u.status = 'posted'`,
+    [uid, ...importedIds])
+    for (const row of rows) {
+      const matches = links.filter((link) => link.transactionId === row.transactionId)
+      if (matches.length === 1) row.importContext = { updateId: matches[0].updateId, eventId: matches[0].eventId }
+    }
+  }
   return rows
 }
 

@@ -1,5 +1,5 @@
 <view class="page-canvas theme-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="theme-heading">
+  <view class="theme-heading content-inset">
     <text class="theme-kicker">VISUAL THEMES</text>
     <text class="theme-title serif-title">换一种方式，看同一本账。</text>
     <text class="theme-intro">只改变颜色、留白与纸张气质，不改变任何账目和统计含义。</text>
@@ -46,5 +46,5 @@
     </view>
   </view>
 
-  <text class="theme-footnote">主题保存在当前设备，不需要登录，也不会同步或修改云端账本。</text>
+  <text class="theme-footnote content-inset">主题保存在当前设备，不需要登录，也不会同步或修改云端账本。</text>
 </view>

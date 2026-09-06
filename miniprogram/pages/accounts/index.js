@@ -17,6 +17,7 @@ const TYPE_OPTIONS = [
 Page({
   data: {
     loading: false,
+    hasLoaded: false,
     saving: false,
     errorMessage: '',
     assets: [],
@@ -36,6 +37,8 @@ Page({
     balanceYuan: '0.00'
   },
 
+  onLoad: function () { themeService.bindPage(this) },
+
   onShow: function () {
     themeService.bindPage(this)
     loginGuard.run(this, this.loadAccounts.bind(this))
@@ -53,7 +56,7 @@ Page({
     this.setData({ loading: true, errorMessage: '' })
     api.callApi('accounts.list')
       .then(function (result) {
-        self.setData(buildAccountsView(result.accounts))
+        self.setData(Object.assign({ hasLoaded: true }, buildAccountsView(result.accounts)))
       })
       .catch(function (error) { self.setData({ errorMessage: error.message || '账户加载失败' }) })
       .finally(function () { self.setData({ loading: false }) })

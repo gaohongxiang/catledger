@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
+const { digestParts } = require('../src/digest')
+const { buildPaymentMethodKey } = require('../src/identity')
+
 const {
   publicUpdate,
   publicIssue,
@@ -9,6 +12,30 @@ const {
   selectDraftPaymentMappings,
   selectEventEvidence
 } = require('../src/finance-update-repository')
+
+test('整理摘要返回去重的真实成员 ID，不用候选数推算主体', () => {
+  const issue = publicIssue({ issueId: 'group', issueType: 'refund_relation', status: 'open', version: 1,
+    memberCount: 8, candidateCount: 5, subjectEventIds: '["event-a","event-b","event-a"]' })
+  assert.deepEqual(issue.subjectEventIds, ['event-a', 'event-b'])
+})
+
+test('整理成员与重复数量查询限定用户和批次，辅助证据不冒充重复', async () => {
+  const { selectIssues, selectEvents } = require('../src/finance-update-repository')
+  const queries = []
+  const connection = { async execute(sql, values) {
+    queries.push({ sql, values })
+    return sql.includes('JSON_ARRAYAGG') ? [[{ issueId: 'group', subjectEventIds: '["event-a","event-b"]' }]]
+      : [[{ eventId: 'event-a', evidenceCount: 5, duplicateEvidenceCount: '2' }]]
+  } }
+  const issues = await selectIssues(connection, 'user-a', 'batch-a')
+  const events = await selectEvents(connection, 'user-a', 'batch-a')
+  assert.deepEqual(issues[0].subjectEventIds, ['event-a', 'event-b'])
+  assert.equal(events[0].duplicateEvidenceCount, 2)
+  assert.match(queries[0].sql, /issue_member.uid = issue.uid AND issue_member.update_id = issue.update_id/)
+  assert.match(queries[0].sql, /issue_member.object_type = 'event'[\s\S]*issue_member.member_role <> 'candidate'/)
+  assert.match(queries[1].sql, /SUM\(all_evidence.evidence_role = 'duplicate'\)/)
+  assert.deepEqual(queries.map(query => query.values), [['user-a', 'batch-a'], ['user-a', 'batch-a']])
+})
 
 test('服务端公开未入账计划是否过期，客户端无需知道规则版本', function () {
   const update = publicUpdate({
@@ -37,7 +64,34 @@ test('映射仓储返回全部候选，不按数据库结果顺序提前覆盖�
   }
 
   const mappings = await selectPaymentMappings(connection, 'user-1', 'update-1')
-  assert.deepEqual(mappings.map((mapping) => mapping.mappingScope), ['history', 'batch'])
+  assert.deepEqual(mappings.map((mapping) => mapping.mappingScope), ['history', 'history_alias', 'batch'])
+})
+
+test('旧原文支付键保留原事实并派生低优先级规范别名', async function () {
+  let call = 0
+  const label = '支付宝小荷包(合成小荷包)'
+  const legacyKey = digestParts('payment-method-v1', 'alipay', label)
+  const currentKey = buildPaymentMethodKey('alipay', label)
+  assert.notEqual(legacyKey, currentKey)
+  const connection = {
+    execute: async function () {
+      call += 1
+      return call === 1 ? [[{
+        sourceType: 'alipay', paymentMethodKey: legacyKey, paymentMethodHint: label,
+        mappingAction: 'ignore', accountId: null, accountType: null, mappingScope: 'history'
+      }]] : [[]]
+    }
+  }
+
+  const mappings = await selectPaymentMappings(connection, 'user-1', 'update-1')
+  assert.deepEqual(mappings.map((mapping) => ({
+    key: mapping.paymentMethodKey,
+    scope: mapping.mappingScope,
+    action: mapping.mappingAction
+  })), [
+    { key: legacyKey, scope: 'history', action: 'ignore' },
+    { key: currentKey, scope: 'history_alias', action: 'ignore' }
+  ])
 })
 
 test('账户问题列表返回安全且可读的支付账户标题', function () {
@@ -48,7 +102,7 @@ test('账户问题列表返回安全且可读的支付账户标题', function ()
     subjectEventStatus: 'needs_action', subjectFlowDirection: 'outflow',
     subjectEconomicNature: 'expense', subjectLedgerAccountId: 'account-1',
     subjectLocalAt: '2026-08-01 12:00:00.000', subjectAmountMinor: '1234', subjectCurrency: 'CNY',
-    subjectSourceType: 'wechat', subjectPaymentMethod: '招商银行储蓄卡(6225881234567890)',
+    subjectSourceType: 'wechat', subjectPaymentMethod: '招商银行储蓄卡(6225881234567890)', subjectRawStatus: '支付成功',
     subjectFileName: '微信账单.csv', subjectItem: '午餐', subjectCounterparty: '商户', subjectNote: '工作日午餐'
   })
   assert.equal(issue.accountContext.label, '招商银行储蓄卡(****7890)')
@@ -58,11 +112,11 @@ test('账户问题列表返回安全且可读的支付账户标题', function ()
   assert.deepEqual(issue.subject, {
     eventId: 'event-1', status: 'needs_action', flowDirection: 'outflow', economicNature: 'expense',
     ledgerAccountId: 'account-1', counterpartyLedgerAccountId: null, fundsProjection: null,
-    repaymentAllocations: [],
+    repaymentAllocations: [], paymentComponents: [], paymentResolution: null, paymentAccounts: null,
     localAt: '2026-08-01 12:00:00.000', amountMinor: '1234', currency: 'CNY',
     primaryEvidence: {
       sourceType: 'wechat', fileName: '微信账单.csv', counterparty: '商户', item: '午餐',
-      note: '', paymentMethod: '招商银行储蓄卡(****7890)'
+      note: '', paymentMethod: '招商银行储蓄卡(****7890)', status: '支付成功'
     }
   })
 })
@@ -79,6 +133,27 @@ test('已保存的忽略规则公开为可覆盖的默认状态', function () {
     subjectItem: '消费', subjectCounterparty: '商户'
   })
   assert.equal(issue.accountContext.defaultIgnored, true)
+})
+
+test('派生单端引用覆盖原始斜杠账户展示', function () {
+  const paymentMethodKey = buildPaymentMethodKey('wechat', '零钱')
+  const issue = publicIssue({
+    issueId: 'issue-derived', issueType: 'account_mapping', status: 'resolved', version: 1,
+    blocking: 0, primaryReasonCode: 'account_mapping_confirmed', memberCount: 1,
+    candidateCount: 0, reasonCodes: '[]', subjectEventId: 'event-derived',
+    subjectMemberRole: 'subject', subjectEventStatus: 'ready', subjectFlowDirection: 'inflow',
+    subjectEconomicNature: 'income', subjectLedgerAccountId: 'account-change',
+    subjectFieldSources: JSON.stringify({ ledgerAccountReference: {
+      sourceType: 'wechat', paymentMethodKey, label: '微信零钱', recognized: true,
+      role: 'ledger_account', inferenceRule: 'wechat_income_deposited_to_change'
+    } }),
+    subjectLocalAt: '2026-08-01 12:00:00.000', subjectAmountMinor: '450', subjectCurrency: 'CNY',
+    subjectSourceType: 'wechat', subjectPaymentMethod: '/', subjectFileName: '微信账单.xlsx',
+    subjectItem: '转账', subjectCounterparty: '合成对方'
+  })
+  assert.equal(issue.accountContext.label, '微信零钱')
+  assert.equal(issue.accountContext.paymentMethodKey, paymentMethodKey)
+  assert.equal(issue.accountContext.recognized, true)
 })
 
 test('资金流转问题使用真正缺失端作为账户上下文', function () {

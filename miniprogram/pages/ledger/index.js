@@ -17,6 +17,8 @@ Page({
     categorySummaryText: '登录后管理收支分类'
   },
 
+  onLoad: function () { themeService.bindPage(this) },
+
   onShow: function () {
     themeService.bindPage(this)
     if (this.getTabBar()) {

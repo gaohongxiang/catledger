@@ -1,16 +1,16 @@
 <view class="page-canvas account-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="account-heading">
-    <view><text class="account-kicker">ACCOUNT BOOK</text><text class="account-title serif-title">账户总览</text></view>
+  <view class="account-heading content-inset">
+    <view><text class="account-kicker">ACCOUNT BOOK</text><view class="heading-with-sync"><text class="account-title serif-title">账户总览</text><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view></view>
     <button class="create-account-button" bindtap="openCreate" hover-class="create-account-active" aria-label="新建账户"><view class="create-plus" aria-hidden="true"></view><text>新建</text></button>
   </view>
 
   <view class="wealth-summary">
-    <view class="wealth-primary"><text class="wealth-label">净资产</text><text class="wealth-value money-number {{totals.netWorthTone}}">{{totals.netWorthText}}</text><text class="wealth-caption">全部活动账户的账面合计</text></view>
-    <view class="wealth-breakdown"><view><text>资产合计</text><text class="money-number">{{totals.assetsText}}</text></view><view><text>待还负债</text><text class="money-number liability-balance">{{totals.liabilitiesText}}</text></view></view>
+    <view class="wealth-primary content-inset"><text class="wealth-label">净资产</text><text class="wealth-value money-number {{totals.netWorthTone}}">{{totals.netWorthText}}</text><text class="wealth-caption">全部活动账户的账面合计</text></view>
+    <view class="wealth-breakdown content-inset"><view><text>资产合计</text><text class="money-number">{{totals.assetsText}}</text></view><view><text>待还负债</text><text class="money-number liability-balance">{{totals.liabilitiesText}}</text></view></view>
   </view>
 
   <view wx:if="{{assets.length > 0}}" class="account-group">
-    <view class="group-heading"><view class="group-title-wrap"><view class="group-mark asset-mark" aria-hidden="true"></view><text class="group-title serif-title">资产账户</text><text class="group-count money-number">{{assets.length}}</text></view><text wx:if="{{assetCorrectionCount > 0}}" class="group-alert">{{assetCorrectionCount}} 个待校正</text></view>
+    <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark asset-mark" aria-hidden="true"></view><text class="group-title serif-title">资产账户</text><text class="group-count money-number">{{assets.length}}</text></view><text wx:if="{{assetCorrectionCount > 0}}" class="group-alert">{{assetCorrectionCount}} 个待校正</text></view>
     <view class="account-list">
       <view wx:for="{{assets}}" wx:key="accountId" class="account-row" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
@@ -21,7 +21,7 @@
   </view>
 
   <view wx:if="{{liabilities.length > 0}}" class="account-group liability-group">
-    <view class="group-heading"><view class="group-title-wrap"><view class="group-mark liability-mark" aria-hidden="true"></view><text class="group-title serif-title">负债账户</text><text class="group-count money-number">{{liabilities.length}}</text></view><text class="group-note">仅红色金额计入待还</text></view>
+    <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark liability-mark" aria-hidden="true"></view><text class="group-title serif-title">负债账户</text><text class="group-count money-number">{{liabilities.length}}</text></view><text class="group-note">仅红色金额计入待还</text></view>
     <view class="account-list">
       <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
@@ -31,15 +31,14 @@
   </view>
 
   <view wx:if="{{archivedAccounts.length > 0}}" class="account-group archived-group">
-    <view class="archived-toggle" bindtap="toggleArchived" hover-class="account-row-active" role="button" aria-label="{{archivedExpanded ? '收起' : '展开'}}已停用账户"><view><text class="group-title serif-title">已停用账户</text><text class="archived-note">历史账目仍然保留</text></view><view class="archived-toggle-end"><text class="money-number">{{archivedAccounts.length}}</text><view class="toggle-chevron {{archivedExpanded ? 'toggle-chevron-open' : ''}}" aria-hidden="true"></view></view></view>
+    <view class="archived-toggle content-inset" bindtap="toggleArchived" hover-class="account-row-active" role="button" aria-label="{{archivedExpanded ? '收起' : '展开'}}已停用账户"><view><text class="group-title serif-title">已停用账户</text><text class="archived-note">历史账目仍然保留</text></view><view class="archived-toggle-end"><text class="money-number">{{archivedAccounts.length}}</text><view class="toggle-chevron {{archivedExpanded ? 'toggle-chevron-open' : ''}}" aria-hidden="true"></view></view></view>
     <view wx:if="{{archivedExpanded}}" class="archived-list">
       <view wx:for="{{archivedAccounts}}" wx:key="accountId" class="account-row account-row-archived" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看已停用账户 {{item.name}}"><view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}} · 历史保留</text></view><text class="account-row-balance money-number">{{item.balanceText}}</text><view class="row-chevron" aria-hidden="true"></view></view>
     </view>
   </view>
 
-  <view wx:if="{{assets.length === 0 && liabilities.length === 0 && !loading}}" class="empty-ledger account-empty"><text class="empty-ledger-title">先创建第一个账户</text><text class="empty-ledger-copy">填写现在的余额，系统会把它记成余额起点，不算作收入或支出。</text><button class="primary-button account-empty-action" bindtap="openCreate">创建账户</button></view>
-  <view wx:if="{{loading}}" class="account-status">正在核对账户…</view>
-  <view wx:if="{{errorMessage && !formOpen && !accountDetail}}" class="account-error" bindtap="loadAccounts">{{errorMessage}} · 点此重试</view>
+  <view wx:if="{{assets.length === 0 && liabilities.length === 0 && hasLoaded}}" class="empty-ledger account-empty"><text class="empty-ledger-title">先创建第一个账户</text><text class="empty-ledger-copy">填写现在的余额，系统会把它记成余额起点，不算作收入或支出。</text><button class="primary-button account-empty-action" bindtap="openCreate">创建账户</button></view>
+  <view wx:if="{{errorMessage && !formOpen && !accountDetail}}" class="account-error content-inset" bindtap="loadAccounts">{{errorMessage}} · 点此重试</view>
 
   <view wx:if="{{accountDetail}}" class="sheet-mask" bindtap="closeAccountDetail">
     <view class="account-sheet detail-sheet" catchtap="stopBubble">

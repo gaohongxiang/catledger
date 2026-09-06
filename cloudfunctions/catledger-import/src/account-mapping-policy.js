@@ -6,6 +6,7 @@ const {
 
 const MAPPING_SCOPE_PRIORITY = Object.freeze({
   inferred: 10,
+  history_alias: 15,
   history: 20,
   batch: 30,
   event: 40
@@ -19,7 +20,7 @@ function compatibleMapping(mapping, reference, accountsById) {
   if (!mapping || !reference || !['account', 'ignore'].includes(mapping.mappingAction)) return false
   if (mapping.mappingAction === 'ignore') return !mapping.accountId
   if (!mapping.accountId) return false
-  if (mapping.mappingScope !== 'history') return true
+  if (!['history', 'history_alias'].includes(mapping.mappingScope)) return true
   const account = accountsById.get(mapping.accountId)
   const actualType = mapping.accountType || account && account.type || null
   const expectedType = expectedAccountType(mapping.sourceType, mapping.paymentMethodHint || reference.label)
@@ -41,7 +42,7 @@ function createMappingIndex(mappings = []) {
   for (const mapping of mappings) {
     if (!mapping || !mapping.sourceType || !mapping.paymentMethodKey ||
         !['account', 'ignore'].includes(mapping.mappingAction)) continue
-    if (mapping.mappingScope === 'history' && mapping.mappingAction === 'account') {
+    if (['history', 'history_alias'].includes(mapping.mappingScope) && mapping.mappingAction === 'account') {
       const expectedType = expectedAccountType(mapping.sourceType, mapping.paymentMethodHint)
       if (expectedType && mapping.accountType && mapping.accountType !== expectedType) continue
     }
@@ -107,7 +108,7 @@ function resolveAccountMappings({ references = [], mappings = [], accounts = [] 
       paymentReferenceKey(left).localeCompare(paymentReferenceKey(right)) ||
       String(left.accountId || '').localeCompare(String(right.accountId || ''))
     ))[0]
-    if (selected.mappingAction === 'ignore' && selected.mappingScope === 'history') {
+    if (selected.mappingAction === 'ignore' && ['history', 'history_alias'].includes(selected.mappingScope)) {
       ignoredIdentityKeys.add(identityKey)
       continue
     }

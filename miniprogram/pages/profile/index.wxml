@@ -1,5 +1,5 @@
 <view class="page-canvas profile-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="profile-hero">
+  <view class="profile-hero content-inset">
     <image class="profile-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
     <view class="profile-copy">
       <text class="profile-kicker">MY PROFILE</text>
@@ -7,6 +7,7 @@
       <view class="identity-status {{syncActionText ? 'identity-status-retryable' : ''}}" bindtap="retryProfile">
         <view class="status-dot {{connected ? 'status-dot-connected' : ''}}"></view>
         <text>{{identityStatusText}}</text>
+        <view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
         <text wx:if="{{syncActionText}}" class="identity-retry">{{syncActionText}}</text>
       </view>
     </view>
@@ -30,30 +31,30 @@
     </view>
   </view>
 
-  <text class="profile-section-kicker">ACCOUNT & DATA</text>
+  <text class="profile-section-kicker content-inset">ACCOUNT & DATA</text>
   <view class="profile-menu">
-    <view class="profile-row" role="button" aria-label="选择视觉主题" bindtap="openTheme">
+    <view class="profile-row content-inset" role="button" aria-label="选择视觉主题" bindtap="openTheme">
       <view class="row-copy">
         <text class="row-title">主题</text>
         <text class="row-note">{{themeName}}</text>
       </view>
       <view class="row-chevron"></view>
     </view>
-    <view class="profile-row" role="button" aria-label="查看数据与隐私" bindtap="showPrivacy">
+    <view class="profile-row content-inset" role="button" aria-label="查看数据与隐私" bindtap="showPrivacy">
       <view class="row-copy">
         <text class="row-title">数据与隐私</text>
         <text class="row-note">身份与账单文件说明</text>
       </view>
       <view class="row-chevron"></view>
     </view>
-    <view class="profile-row" role="button" aria-label="查看关于招财猫记账本" bindtap="showAbout">
+    <view class="profile-row content-inset" role="button" aria-label="查看关于招财猫记账本" bindtap="showAbout">
       <view class="row-copy">
         <text class="row-title">关于招财猫记账本</text>
         <text class="row-note">开发版</text>
       </view>
       <view class="row-chevron"></view>
     </view>
-    <view wx:if="{{loggedIn}}" class="profile-row profile-logout-row" role="button" aria-label="退出登录" bindtap="logoutAccount">
+    <view wx:if="{{loggedIn}}" class="profile-row profile-logout-row content-inset" role="button" aria-label="退出登录" bindtap="logoutAccount">
       <view class="row-copy">
         <text class="row-title profile-logout-title">退出登录</text>
         <text class="row-note">只退出本机，不删除云端账本</text>

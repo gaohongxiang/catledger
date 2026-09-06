@@ -1,15 +1,20 @@
+const { eventAllocation, allocationAccountsValid } = require('./funds-allocation')
+const accountGroups = require('./payment-account-groups')
+const { inspectPaymentAccounts, paymentEvidenceFields, inspectPaymentResolution, paymentResolutionForEvent } = require('./payment-resolution')
+const { synchronizeDraftReachability } = require('./account-draft')
 const { randomUUID } = require('node:crypto')
 
 const { digestParts } = require('./digest')
 const { REVIEW_ISSUE_VERSION } = require('./domain-versions')
 const { importError } = require('./errors')
-const { stageAccountDraft } = require('./account-draft')
+const { stageAccountDraft, stageRepaymentAllocationDrafts } = require('./account-draft')
 const {
   getUpdateView,
   insertAction,
   parseJson,
   publicIssue,
   selectIssues,
+  selectPlanningRows,
   selectPaymentMappings,
   selectUpdate
 } = require('./finance-update-repository')
@@ -24,6 +29,7 @@ const {
   REVIEW_DECISIONS,
   classifyReviewIssue,
   evaluatePostability,
+  needsCategory,
   unique
 } = require('./organizer-model')
 const { validateUuid, validateVersion } = require('./validation')
@@ -45,7 +51,9 @@ const FIELD_MASK = Object.freeze({
   amountMinor: 1 << 5,
   currency: 1 << 6,
   categoryId: 1 << 7,
-  repaymentAllocations: 1 << 8
+  repaymentAllocations: 1 << 8,
+  paymentResolution: 1 << 9,
+  paymentAccounts: 1 << 10
 })
 
 const ISSUE_RESOLVED_REASONS = Object.freeze({
@@ -140,7 +148,18 @@ async function selectDomainEvents(connection, uid, updateId, eventIds, { forUpda
       ORDER BY event_id${forUpdate ? ' FOR UPDATE' : ''}`,
     [uid, updateId, ...eventIds]
   )
-  return rows.map(domainEvent)
+  const events = rows.map(domainEvent)
+  const legacy = events.filter((event) => (event.fieldSources.semanticBlockers || []).includes('payment_components_ambiguous') &&
+    !Object.prototype.hasOwnProperty.call(event.fieldSources, 'paymentComponents'))
+  if (legacy.length) {
+    const [evidence] = await connection.execute(`SELECT e.event_id AS eventId, r.normalized_direction AS direction, r.semantic_json AS semantic
+      FROM catledger_event_evidence e JOIN catledger_import_rows r ON r.uid = e.uid AND r.row_id = e.row_id
+      WHERE e.uid = ? AND e.update_id = ? AND e.event_id IN (${legacy.map(() => '?').join(', ')}) AND e.evidence_role <> 'discarded'
+      ORDER BY e.event_id, r.row_id`, [uid, updateId, ...legacy.map((event) => event.eventId)])
+    for (const event of legacy) event.fieldSources = { ...event.fieldSources, ...paymentEvidenceFields(evidence.filter((row) => row.eventId === event.eventId)
+      .map((row) => ({ direction: row.direction, semantic: parseJson(row.semantic, {}) }))) }
+  }
+  return events
 }
 
 async function eventContext(connection, uid, updateId, eventId) {
@@ -163,6 +182,8 @@ async function eventContext(connection, uid, updateId, eventId) {
 
 async function validateEventReferences(connection, uid, event) {
   const fieldSources = event && event.fieldSources || {}
+  const plan = eventAllocation(event)
+  if (plan.kind === 'conflict') throw importError('VALIDATION_ERROR')
   const hasAllocationDraft = Object.prototype.hasOwnProperty.call(fieldSources, 'repaymentAllocationVersion') ||
     Object.prototype.hasOwnProperty.call(fieldSources, 'repaymentAllocations')
   const allocation = isAggregateRepayment(event) && hasAllocationDraft ? repaymentAllocationsForEvent(event) : null
@@ -170,7 +191,13 @@ async function validateEventReferences(connection, uid, event) {
   if (allocation && allocation.allocations.some((item) => item.accountId === event.ledgerAccountId)) {
     throw importError('VALIDATION_ERROR')
   }
+  const payment = event.fieldSources && event.fieldSources.paymentResolution ? paymentResolutionForEvent(event) : null
+  if (payment && !payment.valid) throw importError('VALIDATION_ERROR')
+  const paymentAccounts = fieldSources.paymentAccounts ? inspectPaymentAccounts(event, fieldSources.paymentAccounts, { partial: true }) : null
+  if (paymentAccounts && !paymentAccounts.valid) throw importError('VALIDATION_ERROR')
   const accountIds = unique([
+    ...(paymentAccounts ? paymentAccounts.accounts.map((item) => item.accountId) : []),
+    ...(payment ? payment.resolution.allocations.map((item) => item.accountId) : []),
     event.ledgerAccountId,
     event.counterpartyLedgerAccountId,
     ...(allocation ? allocation.allocations.map((item) => item.accountId) : [])
@@ -200,12 +227,10 @@ async function validateEventReferences(connection, uid, event) {
       }
       drafts.forEach((draft) => accounts.push(draft))
     }
-    if (allocation) {
-      const accountsById = new Map(accounts.map((account) => [account.accountId, account]))
-      if (allocation.allocations.some((item) => {
-        const account = accountsById.get(item.accountId)
-        return !account || !['credit', 'other_liability'].includes(account.type)
-      })) throw importError('VALIDATION_ERROR')
+    if (plan.valid && !allocationAccountsValid(event, plan, new Map(accounts.map((account) => [account.accountId, account])))) throw importError('VALIDATION_ERROR')
+    if (event.counterpartyLedgerAccountId && (fieldSources.paymentAccountReferences || []).some((ref) => ref.memberRole === 'payment_target')) {
+      const target = accounts.find((account) => account.accountId === event.counterpartyLedgerAccountId)
+      if (!target || !['credit', 'other_liability'].includes(target.type)) throw importError('VALIDATION_ERROR')
     }
   }
   if (event.categoryId) {
@@ -232,6 +257,24 @@ function validateOptionalUuid(value) {
 
 function applyFields(event, fields) {
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) throw importError('VALIDATION_ERROR')
+  if (Object.prototype.hasOwnProperty.call(fields, 'paymentAccounts')) {
+    const result = inspectPaymentAccounts(event, fields.paymentAccounts)
+    if (Object.keys(fields).length !== 1 || !result.valid || event.fieldSources.paymentResolution) throw importError('VALIDATION_ERROR')
+    return { ...event, fieldSources: { ...event.fieldSources, paymentAccounts: result.accounts },
+      manualFieldMask: (event.manualFieldMask || 0) | FIELD_MASK.paymentAccounts }
+  }
+  if (Object.prototype.hasOwnProperty.call(fields, 'paymentResolution')) {
+    if (Object.keys(fields).length !== 1) throw importError('VALIDATION_ERROR')
+    const result = inspectPaymentResolution(event, fields.paymentResolution)
+    if (!result.valid) throw importError('VALIDATION_ERROR')
+    const value = result.resolution
+    return { ...event, ledgerAccountId: result.allocations[0].accountId, counterpartyLedgerAccountId: value.targetAccountId,
+      economicNature: value.nature, flowDirection: value.nature === 'expense' ? 'outflow' : 'neutral',
+      categoryId: value.nature === 'expense' ? event.categoryId : null,
+      manualFieldMask: (event.manualFieldMask || 0) | FIELD_MASK.paymentResolution | FIELD_MASK.ledgerAccountId |
+        FIELD_MASK.counterpartyLedgerAccountId | FIELD_MASK.economicNature | FIELD_MASK.flowDirection,
+      fieldSources: { ...event.fieldSources, paymentResolution: value } }
+  }
   let mask = 0
   const next = { ...event }
   for (const key of Object.keys(fields)) {
@@ -283,14 +326,20 @@ function applyFields(event, fields) {
   return next
 }
 
-async function saveEvent(connection, uid, current, next, actionId) {
-  await validateEventReferences(connection, uid, next)
+async function saveEvent(connection, uid, current, next, actionId, { preserveReferences = false, actionSource = 'user' } = {}) {
+  if (preserveReferences) {
+    const sameReferences = ['ledgerAccountId', 'counterpartyLedgerAccountId', 'currency', 'categoryId'].every(key => current[key] === next[key]) &&
+      ['paymentAccounts', 'paymentResolution', 'repaymentAllocations'].every(key =>
+        JSON.stringify(current.fieldSources && current.fieldSources[key]) === JSON.stringify(next.fieldSources && next.fieldSources[key]))
+    if (!sameReferences) throw importError('CONFLICT')
+  } else await validateEventReferences(connection, uid, next)
   const context = await eventContext(connection, uid, next.updateId, next.eventId)
   const evaluated = evaluatePostability(next, context)
   next.status = evaluated.status
   next.reasonCodes = unique([...resolvedReasons(next.resolvingIssueType, next.reasonCodes), ...evaluated.reasonCodes])
   next.version = current.version + 1
-  next.fieldSources = { ...(next.fieldSources || {}), lastUserActionId: actionId }
+  next.fieldSources = { ...(next.fieldSources || {}),
+    [actionSource === 'semantic' ? 'lastSemanticActionId' : 'lastUserActionId']: actionId }
   const [result] = await connection.execute(
     `UPDATE catledger_economic_events
         SET state = ?, status = ?, flow_direction = ?, economic_nature = ?,
@@ -354,21 +403,43 @@ async function stageAccountMappings(
 }
 
 function mappingReferenceForMember(event, memberRole) {
+  const grouped = accountGroups.referenceForRole(event, memberRole)
+  if (grouped) return grouped
   const projection = event && event.fieldSources && event.fieldSources.fundsProjection
   if (memberRole === 'mapping_from') return projection && projection.from || null
   if (memberRole === 'mapping_to') return projection && projection.to || null
+  if (memberRole === 'subject') {
+    return event && event.fieldSources && event.fieldSources.ledgerAccountReference || null
+  }
   return null
+}
+
+function applyMappedAccount(event, memberRole, accountId, mappingIndex) {
+  const reference = accountGroups.referenceForRole(event, memberRole)
+  if (reference) {
+    if (memberRole === 'payment_target') return applyFields(event, { counterpartyLedgerAccountId: accountId })
+    const accounts = (event.fieldSources.paymentAccounts || []).filter((item) => item.componentIndex !== reference.componentIndex)
+    accounts.push({ componentIndex: reference.componentIndex, accountId })
+    return { ...event, manualFieldMask: event.manualFieldMask | FIELD_MASK.paymentAccounts,
+      fieldSources: { ...event.fieldSources, paymentAccounts: accounts.sort((a, b) => a.componentIndex - b.componentIndex) } }
+  }
+  if (memberRole === 'subject') return applyFields(event, { ledgerAccountId: accountId })
+  return reconcileProjectedAccounts(event, mappingIndex, {
+    preserveFrom: Boolean(event.manualFieldMask & FIELD_MASK.ledgerAccountId),
+    preserveTo: Boolean(event.manualFieldMask & FIELD_MASK.counterpartyLedgerAccountId)
+  }).event
 }
 
 function accountMappingEventMembers(members) {
   return members.filter((member) => member.objectType === 'event' &&
-    ['subject', 'mapping_from', 'mapping_to'].includes(member.memberRole))
+    (['subject', 'mapping_from', 'mapping_to', 'payment_target'].includes(member.memberRole) || /^payment_component_\d+$/.test(member.memberRole)))
 }
 
 async function stagePaymentReferenceMapping(
   connection, uid, updateId, eventId, reference, accountId, actionId,
   mappingAction = 'account', mappingIndex = null
 ) {
+  if (reference && reference.memberRole && !reference.paymentMethodKey) return ''
   if (!reference || !reference.sourceType || !reference.paymentMethodKey) throw importError('VALIDATION_ERROR')
   if (!['account', 'ignore'].includes(mappingAction)) throw importError('VALIDATION_ERROR')
   if ((mappingAction === 'account') !== Boolean(accountId)) throw importError('VALIDATION_ERROR')
@@ -390,6 +461,7 @@ async function stagePaymentReferenceMapping(
 }
 
 async function deletePaymentReferenceMapping(connection, uid, updateId, eventId, reference) {
+  if (reference && reference.memberRole && !reference.paymentMethodKey) return ''
   if (!reference || !reference.sourceType || !reference.paymentMethodKey) throw importError('VALIDATION_ERROR')
   await connection.execute(
     `DELETE FROM catledger_finance_update_account_mapping_drafts
@@ -406,9 +478,9 @@ async function updateAccountMappingMemberVersions(connection, uid, updateId, eve
          ON issue.uid = member.uid AND issue.issue_id = member.issue_id
         SET member.object_version = ?
       WHERE member.uid = ? AND issue.update_id = ? AND member.object_type = 'event'
-        AND member.object_id = ? AND issue.issue_type = 'account_mapping'
-        AND issue.status IN ('open', 'resolved')`,
-    [event.version, uid, updateId, event.eventId]
+        AND member.object_id = ? AND ((issue.issue_type = 'account_mapping'
+        AND issue.status IN ('open', 'resolved')) OR (? = 1 AND issue.status = 'open'))`,
+    [event.version, uid, updateId, event.eventId, Boolean(event.fieldSources && event.fieldSources.paymentAccountReferences)]
   )
 }
 
@@ -443,18 +515,20 @@ async function stageProjectedAccountMappings(connection, uid, updateId, events, 
 }
 
 async function createFollowUpIssue(connection, uid, updateId, event) {
-  if (event.status !== EVENT_STATUS.NEEDS_ACTION) return
+  if (event.status !== EVENT_STATUS.NEEDS_ACTION &&
+      !(event.status === EVENT_STATUS.READY && needsCategory(event))) return
+  const classification = classifyReviewIssue(event)
   const [[existing]] = await connection.execute(
     `SELECT COUNT(*) AS count
        FROM catledger_review_issues issue
        JOIN catledger_review_issue_members member
          ON member.uid = issue.uid AND member.issue_id = issue.issue_id
       WHERE issue.uid = ? AND issue.update_id = ? AND issue.status = 'open'
-        AND issue.blocking = 1 AND member.object_type = 'event' AND member.object_id = ?`,
-    [uid, updateId, event.eventId]
+        AND (issue.blocking = 1 OR issue.issue_type = ?)
+        AND member.object_type = 'event' AND member.object_id = ?`,
+    [uid, updateId, classification.issueType, event.eventId]
   )
   if (Number(existing.count) > 0) return
-  const classification = classifyReviewIssue(event)
   let candidateRelations = []
   if (classification.issueType === REVIEW_ISSUE_TYPE.REFUND_RELATION) {
     const [rows] = await connection.execute(
@@ -474,9 +548,10 @@ async function createFollowUpIssue(connection, uid, updateId, event) {
        (uid, issue_id, update_id, issue_key, issue_key_version, issue_type, status,
         version, blocking, primary_reason_code, member_count, candidate_count,
         rule_version, reason_codes_json)
-     VALUES (?, ?, ?, ?, ?, ?, 'open', 1, 1, ?, ?, ?,
+     VALUES (?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?,
              ?, ?)`,
     [uid, issueId, updateId, issueKey, REVIEW_ISSUE_VERSION, classification.issueType,
+      classification.issueType !== REVIEW_ISSUE_TYPE.CATEGORY_ASSIGNMENT,
       classification.primaryReason, 1 + candidateRelations.length, candidateRelations.length,
       REVIEW_ISSUE_VERSION, JSON.stringify(event.reasonCodes)]
   )
@@ -574,6 +649,7 @@ function effectiveProjectedEventsFromIndex(events, mappingIndex) {
 }
 
 async function recalculateUpdateCounts(connection, uid, updateId, nextVersion, actionId, expectedVersion, duplicateEvidenceDelta = 0) {
+  await synchronizeDraftReachability(connection, uid, updateId)
   const [[counts]] = await connection.execute(
     `SELECT COUNT(*) AS finalEventCount,
             SUM(status = 'ready') AS readyEventCount,
@@ -618,6 +694,9 @@ async function issueDetails(connection, uid, issueId) {
       ...current,
       ledgerAccountId: event.ledgerAccountId,
       counterpartyLedgerAccountId: event.counterpartyLedgerAccountId,
+      paymentComponents: event.fieldSources.paymentComponents || [],
+      paymentResolution: event.fieldSources.paymentResolution || null,
+      paymentAccounts: event.fieldSources.paymentAccounts || null,
       fundsProjection: event.fieldSources && event.fieldSources.fundsProjection || current.fundsProjection || null,
       repaymentAllocations: event.fieldSources && event.fieldSources.repaymentAllocations || current.repaymentAllocations || []
     })
@@ -646,6 +725,9 @@ async function issueDetails(connection, uid, issueId) {
       ledgerAccountId: subjectEvent.ledgerAccountId,
       counterpartyLedgerAccountId: subjectEvent.counterpartyLedgerAccountId,
       fundsProjection: subjectEvent.fundsProjection || issue.subject.fundsProjection || null,
+      paymentComponents: subjectEvent.paymentComponents || [],
+      paymentResolution: subjectEvent.paymentResolution || null,
+      paymentAccounts: subjectEvent.paymentAccounts || null,
       repaymentAllocations: subjectEvent.repaymentAllocations || issue.subject.repaymentAllocations || []
     }
     const projection = issue.subject.fundsProjection
@@ -756,10 +838,7 @@ async function resolveOpenAccountMapping(
         paymentReferenceKeys.push(await stagePaymentReferenceMapping(
           connection, uid, updateId, event.eventId, reference, accountId, actionId, 'account', mappingIndex
         ))
-        next = reconcileProjectedAccounts(event, mappingIndex, {
-          preserveFrom: Boolean(event.manualFieldMask & FIELD_MASK.ledgerAccountId),
-          preserveTo: Boolean(event.manualFieldMask & FIELD_MASK.counterpartyLedgerAccountId)
-        }).event
+        next = applyMappedAccount(event, member && member.memberRole, accountId, mappingIndex)
         next = { ...next, reasonCodes: resolvedReasons(issue.issueType, next.reasonCodes) }
       } else {
         next = applyFields({
@@ -885,10 +964,7 @@ async function reviseResolvedAccountMapping(
         paymentReferenceKeys.push(await stagePaymentReferenceMapping(
           connection, uid, updateId, event.eventId, reference, accountId, actionId, 'account', mappingIndex
         ))
-        next = reconcileProjectedAccounts(base, mappingIndex, {
-          preserveFrom: Boolean(base.manualFieldMask & FIELD_MASK.ledgerAccountId),
-          preserveTo: Boolean(base.manualFieldMask & FIELD_MASK.counterpartyLedgerAccountId)
-        }).event
+        next = applyMappedAccount(base, member && member.memberRole, accountId, mappingIndex)
       } else {
         next = applyFields(base, { ledgerAccountId: accountId })
         paymentReferenceKeys.push(...await stageAccountMappings(
@@ -975,6 +1051,109 @@ function createReviewIssueService({ getPool }) {
       getPool,
       ...context,
       operation: (connection, uid) => issueDetails(connection, uid, issueId)
+    })
+  }
+
+  async function refreshAccountGroups(context) {
+    const updateId = validateUuid(context.data.updateId)
+    validateUuid(context.data.requestId)
+    const version = validateVersion(context.data.version)
+    return executeIdempotentMutation({ getPool, ...context, action: 'reviewIssues.refreshAccountGroups',
+      operation: async (connection, uid, data, requestDigest) => {
+        const update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
+        if (update.status !== 'review' || Number(update.version) !== version) throw importError('CONFLICT')
+        const planningRows = new Map((await selectPlanningRows(connection, uid, updateId)).map(row => [row.rowId, row]))
+        const [rows] = await connection.execute(`SELECT e.event_id AS eventId, v.row_id AS rowId
+          FROM catledger_economic_events e JOIN catledger_event_evidence v ON v.uid = e.uid AND v.event_id = e.event_id
+          WHERE e.uid = ? AND e.update_id = ? AND e.status IN ('needs_action', 'ready')
+            AND v.evidence_role <> 'discarded'
+            AND JSON_EXTRACT(e.field_sources_json, '$.paymentAccountGroupsVersion') IS NULL
+            AND JSON_EXTRACT(e.field_sources_json, '$.paymentResolution') IS NULL
+          ORDER BY e.event_id, v.row_id`, [uid, updateId])
+        const byEvent = new Map()
+        for (const row of rows) {
+          if (!byEvent.has(row.eventId)) byEvent.set(row.eventId, [])
+          const evidence = planningRows.get(row.rowId)
+          if (evidence) byEvent.get(row.eventId).push(evidence)
+        }
+        const candidates = [...byEvent].map(([eventId, evidence]) => ({ eventId, references: accountGroups.referencesForRows(evidence) }))
+          .filter((item) => item.references.length)
+        if (!candidates.length) return getUpdateView(connection, uid, updateId)
+        const actionId = await insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,
+          actionType: 'refresh_account_groups', requestDigest, decision: { version: accountGroups.VERSION }, reasons: ['account_references_expanded'] })
+        const existingIssues = await selectIssues(connection, uid, updateId)
+        const groups = new Map()
+        for (const issue of existingIssues) {
+          if (issue.issueType !== 'account_mapping' || !['open', 'resolved'].includes(issue.status) || !issue.accountContext?.recognized) continue
+          const key = accountGroups.groupKey(issue.accountContext) + ':' + (issue.subject?.currency || 'CNY')
+          if (key && !groups.has(key)) groups.set(key, { issue, count: issue.memberCount, added: 0 })
+        }
+        const events = await selectDomainEvents(connection, uid, updateId, candidates.map((item) => item.eventId), { forUpdate: true })
+        const mappingIndex = createMappingIndex(await selectPaymentMappings(connection, uid, updateId))
+        const savedEvents = []
+        for (const event of events) {
+          const references = candidates.find((item) => item.eventId === event.eventId).references
+          const components = references.filter((ref) => ref.memberRole.startsWith('payment_component_'))
+          if (components.length) {
+            // 只替换旧组合账户问题；不撤销退款、分类等已确认决定。
+            await connection.execute(`UPDATE catledger_review_issues i JOIN catledger_review_issue_members m
+              ON m.uid = i.uid AND m.issue_id = i.issue_id SET i.status = 'superseded', i.blocking = 0,
+              i.version = i.version + 1, i.resolved_action_id = ?
+              WHERE i.uid = ? AND i.update_id = ? AND i.issue_type = 'account_mapping'
+                AND i.status IN ('open', 'resolved') AND m.object_type = 'event' AND m.object_id = ? AND m.member_role = 'subject'`,
+              [actionId, uid, updateId, event.eventId])
+          }
+          let next = { ...event, fieldSources: { ...event.fieldSources, paymentAccountReferences: references, paymentAccountGroupsVersion: accountGroups.VERSION } }
+          for (const reference of references) {
+            const key = (reference.paymentMethodKey ? accountGroups.groupKey(reference) : event.eventId + ':' + reference.memberRole) + ':' + event.currency
+            let group = groups.get(key)
+            if (!group) {
+              const issueId = randomUUID()
+              const issueKey = digestParts(accountGroups.VERSION, updateId, key)
+              await connection.execute(`INSERT INTO catledger_review_issues
+                (uid, issue_id, update_id, issue_key, issue_key_version, issue_type, status, version, blocking,
+                 primary_reason_code, member_count, candidate_count, rule_version, reason_codes_json)
+                VALUES (?, ?, ?, ?, ?, 'account_mapping', 'open', 1, 1, 'payment_reference_mapping_required', 0, 0, ?, ?)`,
+                [uid, issueId, updateId, issueKey, REVIEW_ISSUE_VERSION, REVIEW_ISSUE_VERSION, JSON.stringify(['payment_reference_mapping_required'])])
+              group = { issue: { issueId, status: 'open', version: 1 }, count: 0, added: 0, created: true, priorAccounts: [] }
+              groups.set(key, group)
+            }
+            const priorAccount = accountGroups.mappedAccount(next, reference)
+            if (priorAccount && group.issue.status === 'resolved' && group.issue.accountContext?.accountId && priorAccount !== group.issue.accountContext.accountId) {
+              await connection.execute("UPDATE catledger_review_issues SET status = 'open', blocking = 1 WHERE uid = ? AND issue_id = ?", [uid, group.issue.issueId])
+              group.issue.status = 'open'
+            }
+            const known = priorAccount || (group.issue.status === 'resolved' && group.issue.accountContext?.accountId)
+            if (group.created) group.priorAccounts.push(known || '')
+            if (known) {
+              next = applyMappedAccount(next, reference.memberRole, known, mappingIndex)
+              await stagePaymentReferenceMapping(connection, uid, updateId, event.eventId, reference, known, actionId, 'account', mappingIndex)
+            }
+            if (group.issue.status === 'resolved' && !known) {
+              await connection.execute("UPDATE catledger_review_issues SET status = 'open', blocking = 1 WHERE uid = ? AND issue_id = ?", [uid, group.issue.issueId])
+              group.issue.status = 'open'
+            }
+            await connection.execute(`INSERT INTO catledger_review_issue_members
+              (uid, member_id, update_id, issue_id, object_type, object_id, object_version, member_role, sort_order)
+              VALUES (?, ?, ?, ?, 'event', ?, ?, ?, ?)`,
+              [uid, randomUUID(), updateId, group.issue.issueId, event.eventId, event.version + 1, reference.memberRole, group.count + group.added])
+            group.added += 1
+          }
+          const saved = await saveEvent(connection, uid, event, next, actionId)
+          await updateAccountMappingMemberVersions(connection, uid, updateId, saved)
+          savedEvents.push(saved)
+        }
+        for (const group of groups.values()) if (group.added) {
+          const confirmed = group.created && group.priorAccounts.every(Boolean) && new Set(group.priorAccounts).size === 1
+          await connection.execute(`UPDATE catledger_review_issues
+            SET member_count = member_count + ?, version = version + 1,
+              status = IF(?, 'resolved', status), blocking = IF(?, 0, blocking) WHERE uid = ? AND issue_id = ?`,
+            [group.added, Boolean(confirmed), Boolean(confirmed), uid, group.issue.issueId])
+        }
+        for (const event of savedEvents) await createFollowUpIssue(connection, uid, updateId, event)
+        await recalculateUpdateCounts(connection, uid, updateId, version + 1, actionId, version)
+        return getUpdateView(connection, uid, updateId)
+      }
     })
   }
 
@@ -1175,6 +1354,10 @@ function createReviewIssueService({ getPool }) {
           }
         } else if (decision === 'apply_fields') {
           let fields = data.fields
+          if (fields && fields.repaymentAllocations) {
+            if (events.some((event) => !isAggregateRepayment(event))) throw importError('VALIDATION_ERROR')
+            fields = { ...fields, repaymentAllocations: await stageRepaymentAllocationDrafts(connection, uid, updateId, fields.repaymentAllocations, actionId) }
+          }
           if (fields && fields.ledgerAccountDraft) {
             const draftAccountId = await stageAccountDraft(
               connection,
@@ -1315,6 +1498,7 @@ function createReviewIssueService({ getPool }) {
             [uid, updateId, targetEventId]
           )
           const target = targets[0]
+          if (target && target.fieldSources && target.fieldSources.paymentResolution) throw importError('PAYMENT_REFUND_ALLOCATION_REQUIRED')
           if (!target || source.eventId === targetEventId || target.status === EVENT_STATUS.EXCLUDED ||
               ![ECONOMIC_NATURE.EXPENSE, ECONOMIC_NATURE.FEE].includes(target.economicNature) || target.currency !== source.currency ||
               BigInt(String(target.amountMinor)) < BigInt(source.amountMinor) ||
@@ -1527,10 +1711,11 @@ function createReviewIssueService({ getPool }) {
     })
   }
 
-  return { get, list, resolve, resolveAccountMappings, reviseAccountMapping }
+  return { get, list, resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups }
 }
 
 module.exports = {
+  selectDomainEvents, saveEvent, createFollowUpIssue, recalculateUpdateCounts,
   FIELD_MASK,
   applyFields,
   createReviewIssueService,

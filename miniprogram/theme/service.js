@@ -34,7 +34,7 @@ function applySystemChrome(themeId) {
   wx.setNavigationBarColor({
     frontColor: theme.tokens.navFront,
     backgroundColor: theme.tokens.navBackground,
-    animation: { duration: 180, timingFunc: 'easeIn' }
+    animation: { duration: 0, timingFunc: 'linear' }
   })
   if (typeof wx.setBackgroundColor === 'function') {
     wx.setBackgroundColor({
@@ -70,7 +70,14 @@ function bindTabBar(tabBar) {
   if (!tabBar || typeof tabBar.setData !== 'function') {
     return
   }
-  tabBar.setData(currentPresentation())
+  const presentation = currentPresentation()
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+  const currentPage = pages[pages.length - 1]
+  const tabs = tabBar.data && tabBar.data.tabs || []
+  const selected = currentPage ? tabs.findIndex(function (tab) { return tab.pagePath === '/' + currentPage.route }) : -1
+  const patch = tabBar.data && tabBar.data.themeStyle === presentation.themeStyle && tabBar.data.themeIconRoot === presentation.themeIconRoot ? {} : presentation
+  if (selected >= 0 && selected !== tabBar.data.selected) patch.selected = selected
+  if (Object.keys(patch).length) tabBar.setData(patch)
 }
 
 function bindPage(page) {
@@ -78,7 +85,9 @@ function bindPage(page) {
     return
   }
   const presentation = currentPresentation()
-  page.setData(presentation)
+  if (!page.data || page.data.themeStyle !== presentation.themeStyle || page.data.themeIconRoot !== presentation.themeIconRoot) {
+    page.setData(presentation)
+  }
   applySystemChrome(presentation.themeId)
   if (typeof page.getTabBar === 'function') {
     bindTabBar(page.getTabBar())

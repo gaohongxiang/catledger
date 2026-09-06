@@ -4,6 +4,13 @@ const loginGuard = require('../../services/login-guard')
 const themeService = require('../../theme/service')
 const model = require('./model')
 
+function additionalRepaymentOptions(catalog, rows) {
+  const selected = new Set(rows.map(function (row) { return row.accountId }))
+  return [{ name: '补充还款账户', isPlaceholder: true }].concat(catalog.filter(function (account) {
+    return !selected.has(account.accountId)
+  })).concat([{ name: '新建负债账户', isCreate: true }])
+}
+
 const MAX_FILES = 5
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const FILE_PIPELINE_CONCURRENCY = MAX_FILES
@@ -46,7 +53,7 @@ function publicError(error, fallback) {
 
 function suggestedAccountTypeIndex(label) {
   const value = String(label || '')
-  if (/信用|花呗|白条|贷/.test(value)) return 3
+  if (/信用|花呗|白条|贷|先采后付/.test(value)) return 3
   if (/银行|储蓄|借记|卡/.test(value)) return 1
   if (/现金/.test(value)) return 0
   if (/余额宝|基金|理财/.test(value)) return 4
@@ -104,15 +111,46 @@ Page({
     accountStepProgressText: '',
     reviewIssues: [],
     reviewGroups: [],
+    verificationIssues: [],
+    categoryIssues: [],
+    categoryCards: [],
+    categoryQuery: '',
+    categoryEventCount: 0,
+    categorizedEvents: [],
+    categorizedEventCount: 0,
+    recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
+    reviewedEvents: [],
+    categoryWaitingEvents: [],
+    noCategoryEvents: [],
+    activeCategoryStatus: 'pending',
+    categoryStatusTabs: model.organizerRecordState([], [], []).categoryStatusTabs,
+    activeReviewTab: 'review',
+    duplicateReviewCandidates: [],
+    duplicateReviewLoading: false,
+    duplicateReviewLoaded: false,
+    duplicateReviewError: '',
+
     reviewStatusTabs: [
-      { value: 'pending', label: '待整理', count: 0 },
+      { value: 'pending', label: '待核对', count: 0 },
+      { value: 'completed', label: '已核对', count: 0 },
       { value: 'excluded', label: '已排除', count: 0 },
-      { value: 'duplicate', label: '重复记录', count: 0 }
+      { value: 'duplicate', label: '重复', count: 0 }
     ],
     activeReviewStatus: 'pending',
     excludedReviewGroups: [],
     duplicateReviewEvents: [],
     openIssueCount: 0,
+    coverage: {
+      dataRows: 0,
+      recognizedRows: 0,
+      unrecognizedRows: 0,
+      selectedEvents: 0,
+      readySelectedEvents: 0,
+      pendingSelectedEvents: 0,
+      excludedEvents: 0,
+      statementFullyRecognized: false,
+      selectedEventsReadyToPost: false
+    },
     accounts: [],
     accountDrafts: [],
     accountMappingDrafts: [],
@@ -130,14 +168,31 @@ Page({
       categoryCoverageText: '无需分类', categoryComplete: true, newAccountCount: 0, affectedAccountCount: 0
     },
     errorMessage: '',
+    paymentRows: [], paymentNatureOptions: ['请选择交易性质', '本次消费支出', '偿还既有欠款'], paymentNatureIndex: 0,
+    paymentTargetIndex: 0, paymentEvidenceNote: '', paymentCanSave: false, paymentDifferenceText: '',
+    bankSuggestion: null,
+    bankBatchCandidates: [],
+    bankBatchRecords: [],
+    bankBatchExpanded: false,
+    bankBatchLoading: false,
+    bankBatchSelectedCount: 0,
     currentIssue: null,
+    issueFieldsCanSave: false,
     currentMembers: [],
     issueEvents: [],
+    issueVisibleEvents: [],
+    issueEvidenceLoading: false,
+    issueEvidenceHasMore: false,
+    issueEvidenceTotal: 0,
     issueRelations: [],
     repaymentAllocationChoices: [],
+    repaymentAccountOptions: [],
+    repaymentAdditionalOptions: [],
+    repaymentAdditionalIndex: 0,
     repaymentAllocationStatusText: '',
     repaymentAllocationCanSave: false,
     evidenceSheet: null,
+    accountRecordsSheet: null,
     issueDraft: {
       accountIndex: 0,
       counterpartyAccountIndex: 0,
@@ -159,11 +214,34 @@ Page({
     this._sourceFiles = new Map()
     this._accountUiDrafts = new Map()
     const updateId = options && options.updateId
-    loginGuard.run(this, updateId ? this.loadUpdate.bind(this, updateId) : function () {})
+    loginGuard.run(this, updateId ? async () => {
+      await this.loadUpdate(updateId)
+      const eventId = options && options.evidenceEventId
+      if (eventId && this.data.events.some(function (event) { return event.eventId === eventId })) {
+        await this.openEvidence({ currentTarget: { dataset: { id: eventId } } })
+      }
+    } : function () {})
+  },
+
+  onUnload: function () {
+    this._duplicateLoadToken = null
+    this._issueEvidenceToken = null
+    this._issueEvidenceRecords = []
+    this._accountEvidenceToken = null
+    this._accountRecordList = []
   },
 
   onShow: function () {
     themeService.bindPage(this)
+    const revision = getApp().globalData.ledgerRevision || 0
+    if (this._ledgerRevision != null && this._ledgerRevision !== revision && this.data.update) this.loadUpdate(this.data.update.updateId)
+    this._ledgerRevision = revision
+  },
+
+  openMaintenance: function () {
+    if (!this.data.busy && this.data.update && this.data.update.status === 'posted') {
+      wx.navigateTo({ url: '/pages/import-maintenance/index?updateId=' + this.data.update.updateId })
+    }
   },
 
   chooseFiles: function () {
@@ -446,13 +524,20 @@ Page({
     }
     this.setData({ phase: 'organizing', busy: true, errorMessage: '' })
     try {
-      const view = await importApi.callImport('financeUpdates.prepare', {
+      let view = await importApi.callImport('financeUpdates.prepare', {
         requestId: importApi.createRequestId(), batchIds: batchIds
       })
+      view = await this.refreshAccountGroups(view)
       this.applyUpdateView(view)
     } catch (error) {
       this.setData({ phase: 'files_ready', busy: false, errorMessage: publicError(error, '跨来源整理失败') })
     }
+  },
+
+  refreshAccountGroups: async function (view) {
+    if (view.update.status !== 'review') return view
+    return importApi.callImport('reviewIssues.refreshAccountGroups', { requestId: importApi.createRequestId(),
+      updateId: view.update.updateId, version: view.update.version })
   },
 
   loadUpdate: async function (updateId) {
@@ -464,6 +549,7 @@ Page({
           requestId: importApi.createRequestId(), updateId: updateId, version: view.update.version
         })
       }
+      view = await this.refreshAccountGroups(view)
       this.applyUpdateView(view)
     } catch (error) {
       this.setData({ phase: 'error', busy: false, errorMessage: publicError(error, '整理结果加载失败') })
@@ -472,7 +558,9 @@ Page({
 
   applyUpdateView: function (view) {
     const issues = (view.issues || []).map(model.issueView)
-    const openIssues = issues.filter(function (issue) { return issue.status === 'open' && issue.blocking })
+    const openIssues = issues.filter(function (issue) {
+      return issue.status === 'open' && (issue.blocking || issue.issueType === 'category_assignment')
+    })
     const issueGroups = model.partitionOpenIssues(openIssues)
     const workflow = model.workflowPosition(view.update.status, issueGroups)
     const events = (view.events || []).map(model.eventView)
@@ -485,7 +573,20 @@ Page({
       view.accountDrafts || [],
       view.accountMappingDrafts || []
     )
-    const reviewGroups = model.reviewIssueGroups(issueGroups.review)
+    const verificationIssues = issueGroups.review.filter(function (issue) { return issue.issueType !== 'category_assignment' })
+    const categoryIssues = issueGroups.review.filter(function (issue) { return issue.issueType === 'category_assignment' })
+    const categories = view.categories || this.data.categories
+    const recordState = model.organizerRecordState(events, issues, categories, this.data.categoryQuery)
+    const categoryCards = model.categoryIssueCards(recordState.categoryDecisionIssues, this.data.categoryQuery)
+    const activeCategoryStatus = ['pending', 'completed', 'none'].includes(this.data.activeCategoryStatus)
+      ? this.data.activeCategoryStatus : 'pending'
+    const stayInReview = view.update.status === 'review' && workflow.currentStep === 4 &&
+      this.data.update && this.data.update.updateId === view.update.updateId &&
+      this.data.currentStep === 3
+    const activeReviewTab = this.data.activeReviewTab === 'category' ? 'category' : 'review'
+    const reviewGroups = model.reviewIssueGroups(recordState.hydratedIssues.filter(function (issue) {
+      return issue.issueType !== 'category_assignment' && issue.subjectCount > 0
+    }))
     const reviewIssues = model.reviewIssueRows(issueGroups.review)
     const updateCounts = view.update.counts || {}
     const excludedReviewEvents = events.filter(function (event) {
@@ -495,22 +596,16 @@ Page({
       return group.expanded
     }).map(function (group) { return group.key })
     const excludedReviewGroups = model.excludedEventGroups(excludedReviewEvents, expandedExcludedKeys)
-    const duplicateReviewEvents = events.filter(function (event) {
-      return Number(event.evidenceCount || 0) > 1
-    }).map(function (event) {
-      return Object.assign({}, event, {
-        duplicateCount: Math.max(1, Number(event.evidenceCount || 0) - 1),
-        auditNote: '相同证据已合并为一笔经济事件，不会重复入账。'
-      })
-    })
-    const activeReviewStatus = ['pending', 'excluded', 'duplicate'].includes(this.data.activeReviewStatus)
+    const duplicateReviewCandidates = recordState.duplicateCandidates
+    this._duplicateLoadToken = null
+    const activeReviewStatus = ['pending', 'completed', 'excluded', 'duplicate'].includes(this.data.activeReviewStatus)
       ? this.data.activeReviewStatus
       : 'pending'
     this.setData({
       phase: view.update.status === 'posted'
         ? 'done'
         : view.update.status === 'undone' ? 'undone' : view.update.status === 'abandoned' ? 'abandoned' : 'review',
-      currentStep: workflow.currentStep,
+      currentStep: stayInReview ? 3 : workflow.currentStep,
       unlockedStep: workflow.unlockedStep,
       busy: false,
       update: view.update,
@@ -525,15 +620,39 @@ Page({
       accountStepProgressText: '',
       reviewIssues: reviewIssues,
       reviewGroups: reviewGroups,
-      reviewStatusTabs: [
-        { value: 'pending', label: '待整理', count: reviewIssues.length },
-        { value: 'excluded', label: '已排除', count: Number(updateCounts.excludedEvents || excludedReviewEvents.length) },
-        { value: 'duplicate', label: '重复记录', count: Number(updateCounts.duplicateEvidence || 0) }
-      ],
+      verificationIssues: verificationIssues,
+      categoryIssues: categoryIssues,
+      categoryCards: categoryCards,
+      recordSummary: recordState.summary,
+      reviewedEvents: recordState.reviewedEvents,
+      categoryWaitingEvents: recordState.categoryWaitingEvents,
+      noCategoryEvents: recordState.noCategoryEvents,
+      categoryEventCount: recordState.categoryEventCount,
+      categorizedEvents: recordState.categorizedEvents,
+      categorizedEventCount: recordState.categorizedEventCount,
+      activeCategoryStatus: activeCategoryStatus,
+      categoryStatusTabs: recordState.categoryStatusTabs,
+      activeReviewTab: activeReviewTab,
+      duplicateReviewCandidates: duplicateReviewCandidates,
+      duplicateReviewLoading: false,
+      duplicateReviewLoaded: false,
+      duplicateReviewError: '',
+      reviewStatusTabs: recordState.reviewStatusTabs,
       activeReviewStatus: activeReviewStatus,
       excludedReviewGroups: excludedReviewGroups,
-      duplicateReviewEvents: duplicateReviewEvents,
-      openIssueCount: openIssues.length,
+      duplicateReviewEvents: [],
+      openIssueCount: openIssues.filter(function (issue) { return issue.blocking && issue.issueType !== 'category_assignment' }).length,
+      coverage: view.coverage || {
+        dataRows: 0,
+        recognizedRows: 0,
+        unrecognizedRows: 0,
+        selectedEvents: Number(updateCounts.readyEvents || 0) + Number(updateCounts.needsActionEvents || 0),
+        readySelectedEvents: Number(updateCounts.readyEvents || 0),
+        pendingSelectedEvents: Number(updateCounts.needsActionEvents || 0),
+        excludedEvents: Number(updateCounts.excludedEvents || 0),
+        statementFullyRecognized: false,
+        selectedEventsReadyToPost: false
+      },
       accounts: view.accounts || this.data.accounts,
       accountDrafts: view.accountDrafts || this.data.accountDrafts,
       accountMappingDrafts: view.accountMappingDrafts || [],
@@ -548,6 +667,58 @@ Page({
       currentMembers: [],
       evidenceSheet: null
     })
+    if (activeReviewTab === 'review' && activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
+  },
+
+  switchReviewTab: function (event) {
+    const tab = event.currentTarget.dataset.tab
+    if (!['review', 'category'].includes(tab)) return
+    this.setData({ activeReviewTab: tab })
+    if (tab === 'review' && this.data.activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
+  },
+
+  switchCategoryStatus: function (event) {
+    const status = event.currentTarget.dataset.status
+    if (!['pending', 'completed', 'none'].includes(status)) return
+    this.setData({ activeCategoryStatus: status })
+  },
+
+  searchCategoryIssues: function (event) {
+    const query = event.detail.value
+    const recordState = model.organizerRecordState(this.data.events, this.data.issues, this.data.categories, query)
+    this.setData({
+      categoryQuery: query,
+      categoryCards: model.categoryIssueCards(recordState.categoryDecisionIssues, query),
+      categoryWaitingEvents: recordState.categoryWaitingEvents,
+      categorizedEvents: recordState.categorizedEvents,
+      noCategoryEvents: recordState.noCategoryEvents
+    })
+  },
+
+  reviewBeforeCategory: function (event) {
+    this.setData({ activeReviewTab: 'review', activeReviewStatus: 'pending' })
+    if (event.currentTarget.dataset.id) this.openIssue(event)
+  },
+
+  loadDuplicateRecords: async function () {
+    if (this.data.duplicateReviewLoading || this.data.duplicateReviewLoaded) return
+    const token = {}
+    this._duplicateLoadToken = token
+    this.setData({ duplicateReviewLoading: true, duplicateReviewError: '' })
+    try {
+      const rows = []
+      await model.runWithConcurrency(this.data.duplicateReviewCandidates, 4, async function (event, index) {
+        const result = await importApi.callImport('economicEvents.evidence', { eventId: event.eventId })
+        const duplicateCount = (result.evidence || []).filter(function (item) { return item.evidenceRole === 'duplicate' }).length
+        rows[index] = duplicateCount ? Object.assign({}, event, { duplicateCount: duplicateCount,
+          auditNote: '已保留一笔，点开对照主记录与重复来源。' }) : null
+      })
+      if (this._duplicateLoadToken !== token) return
+      this.setData({ duplicateReviewEvents: rows.filter(Boolean), duplicateReviewLoading: false, duplicateReviewLoaded: true })
+    } catch (error) {
+      if (this._duplicateLoadToken !== token) return
+      this.setData({ duplicateReviewLoading: false, duplicateReviewError: publicError(error, '重复记录读取失败，请重试') })
+    }
   },
 
   viewTransactions: function () {
@@ -568,8 +739,9 @@ Page({
 
   switchReviewStatus: function (event) {
     const status = String(event.currentTarget.dataset.status || '')
-    if (!['pending', 'excluded', 'duplicate'].includes(status) || status === this.data.activeReviewStatus) return
+    if (!['pending', 'completed', 'excluded', 'duplicate'].includes(status) || status === this.data.activeReviewStatus) return
     this.setData({ activeReviewStatus: status })
+    if (status === 'duplicate') this.loadDuplicateRecords()
   },
 
   toggleExcludedGroup: function (event) {
@@ -607,7 +779,9 @@ Page({
             item.paymentMethodKey === issue.accountContext.paymentMethodKey
         })
         const resolvedAccountId = issue.status === 'resolved' && issue.accountContext && issue.accountContext.accountId
-        const resolvedMode = mappingDraft && mappingDraft.mappingAction === 'ignore'
+        const resolvedMode = defaultIgnored
+          ? 'ignore_future'
+          : mappingDraft && mappingDraft.mappingAction === 'ignore'
           ? 'ignore_future'
           : resolvedAccountId ? 'account' : issue.status === 'resolved' ? 'ignore' : ''
         const suggestedName = issue.accountContext && issue.accountContext.recognized
@@ -615,7 +789,7 @@ Page({
           : ''
         const suggestedAccount = defaultIgnored ? null : model.suggestExistingAccount(issue.accountContext, accounts)
         draft = {
-          mode: resolvedMode || (suggestedAccount ? 'account' : 'create'),
+          mode: resolvedMode || (suggestedAccount ? 'account' : suggestedName ? 'create' : 'pending'),
           accountId: resolvedAccountId || (suggestedAccount ? suggestedAccount.accountId : ''),
           recommendedAccountId: suggestedAccount ? suggestedAccount.accountId : '',
           name: suggestedName,
@@ -627,22 +801,23 @@ Page({
       const choiceValue = draft.mode === 'account' ? 'account:' + draft.accountId : draft.mode
       let choiceIndex = choices.findIndex(function (choice) { return choice.value === choiceValue })
       if (choiceIndex < 0) {
-        draft.mode = 'create'
+        draft.mode = 'pending'
         draft.accountId = ''
         draft.recommendedAccountId = ''
         choiceIndex = 0
       }
-      const ready = draft.mode === 'create' ? validAccountName(draft.name) : true
+      const ready = draft.mode === 'create' ? validAccountName(draft.name) : draft.mode !== 'pending'
       if (ready) summary.ready += 1
       else summary.invalid += 1
       if (draft.mode === 'create') summary.create += 1
       if (draft.dirty) summary.dirty += 1
       return Object.assign({}, issue, {
         inline: true,
+        evidencePreview: issue.subject ? model.accountEvidenceView(issue.subject) : null,
         choiceOptions: choices,
         choiceIndex: choiceIndex,
         choiceValue: choices[choiceIndex].value,
-        choiceName: choices[choiceIndex].name,
+        choiceName: issue.paymentNeedsReview && issue.status === 'open' ? '确认付款账户' : choices[choiceIndex].name,
         suggestedExisting: Boolean(draft.recommendedAccountId && draft.mode === 'account' &&
           draft.accountId === draft.recommendedAccountId),
         recommendedAccountId: draft.recommendedAccountId,
@@ -672,6 +847,7 @@ Page({
     const mapping = this.data.accountMappings.find(function (item) { return item.issueId === issueId })
     const draft = issueId && this._accountUiDrafts.get(issueId)
     if (!mapping || !draft) return
+    if (mapping.paymentNeedsReview && mapping.status === 'open') return this.openIssue(event)
     const options = model.accountSelectorOptions(this.data.accounts, this.data.accountDrafts)
     const recommendedAccount = mapping.recommendedAccountId
       ? options.find(function (option) { return option.accountId === mapping.recommendedAccountId }) || null
@@ -745,6 +921,127 @@ Page({
 
   preventTouchMove: function () {},
 
+  openAccountRecords: async function (event) {
+    if (this.data.busy) return
+    const issueId = event.currentTarget.dataset.id
+    const mapping = this.data.accountMappings.find(function (item) { return item.issueId === issueId })
+    if (!mapping) return
+    const token = {}
+    this._accountEvidenceToken = token
+    this.setData({ busy: true, accountRecordsSheet: { issueId: issueId, label: mapping.label, loading: true, error: '', records: [] } })
+    try {
+      const details = await importApi.callImport('reviewIssues.get', { issueId: issueId })
+      if (this._accountEvidenceToken !== token) return
+      const list = model.accountRecordList(details.members)
+      this._accountRecordList = list.records.map(function (record) {
+        return Object.assign({}, record, { evidenceLoading: true, evidenceError: '', evidence: [] })
+      })
+      this.setData({ busy: false, accountRecordsSheet: {
+        issueId: issueId, label: mapping.label, loading: false, error: '',
+        count: list.records.length, dateRange: list.dateRange,
+        records: this._accountRecordList.slice(0, 20), hasMore: list.records.length > 20, sourcesLoading: true
+      } })
+      await this.loadAccountRecordEvidence(this._accountRecordList.slice(0, 20), token)
+    } catch (error) {
+      if (this._accountEvidenceToken !== token) return
+      this.setData({ busy: false, 'accountRecordsSheet.loading': false,
+        'accountRecordsSheet.error': publicError(error, '交易记录加载失败，请重试') })
+    }
+  },
+
+  loadRecordEvidence: async function (records, isCurrent, onRecord) {
+    for (let offset = 0; offset < records.length; offset += 4) {
+      if (!isCurrent()) return
+      await Promise.all(records.slice(offset, offset + 4).map(async (record) => {
+        try {
+          const result = await importApi.callImport('economicEvents.evidence', { eventId: record.eventId })
+          if (!isCurrent()) return
+          record.evidence = (result.evidence || []).map(function (source) {
+            return { evidenceId: source.evidenceId, fileName: source.fileName, rowNumber: source.rowNumber,
+              fields: model.evidenceFields(source.rawFields) }
+          })
+          record.evidenceError = ''
+        } catch (error) {
+          if (!isCurrent()) return
+          record.evidenceError = publicError(error, '原始记录加载失败，请重试')
+        }
+        record.evidenceLoading = false
+        onRecord()
+      }))
+    }
+  },
+
+  loadAccountRecordEvidence: async function (records, token) {
+    const isCurrent = () => this._accountEvidenceToken === token
+    await this.loadRecordEvidence(records, isCurrent, () => {
+      const count = this.data.accountRecordsSheet.records.length
+      this.setData({ 'accountRecordsSheet.records': this._accountRecordList.slice(0, count) })
+    })
+    if (isCurrent()) this.setData({ 'accountRecordsSheet.sourcesLoading': false })
+  },
+
+  loadIssueRecordEvidence: async function (records, token) {
+    const isCurrent = () => this._issueEvidenceToken === token && Boolean(this.data.currentIssue)
+    await this.loadRecordEvidence(records, isCurrent, () => {
+      this.setData({ issueVisibleEvents: this._issueEvidenceRecords.slice(0, this.data.issueVisibleEvents.length) })
+    })
+    if (isCurrent()) this.setData({ issueEvidenceLoading: false })
+  },
+
+  showMoreIssueRecords: function () {
+    if (this.data.issueEvidenceLoading || !this.data.currentIssue) return
+    const previousCount = this.data.issueVisibleEvents.length
+    const records = this._issueEvidenceRecords.slice(0, previousCount + 20)
+    this.setData({ issueVisibleEvents: records, issueEvidenceLoading: true,
+      issueEvidenceHasMore: records.length < this._issueEvidenceRecords.length })
+    return this.loadIssueRecordEvidence(records.slice(previousCount), this._issueEvidenceToken)
+  },
+
+  retryIssueRecordEvidence: function (event) {
+    if (this.data.issueEvidenceLoading || !this.data.currentIssue) return
+    const record = this._issueEvidenceRecords.find(function (item) { return item.eventId === event.currentTarget.dataset.id })
+    if (!record) return
+    record.evidenceLoading = true
+    record.evidenceError = ''
+    this.setData({ issueEvidenceLoading: true,
+      issueVisibleEvents: this._issueEvidenceRecords.slice(0, this.data.issueVisibleEvents.length) })
+    return this.loadIssueRecordEvidence([record], this._issueEvidenceToken)
+  },
+
+  retryAccountRecordEvidence: function (event) {
+    const sheet = this.data.accountRecordsSheet
+    if (!sheet || sheet.sourcesLoading) return
+    const record = this._accountRecordList.find(function (item) { return item.eventId === event.currentTarget.dataset.id })
+    if (!record) return
+    record.evidenceLoading = true
+    record.evidenceError = ''
+    this.setData({ 'accountRecordsSheet.sourcesLoading': true,
+      'accountRecordsSheet.records': this._accountRecordList.slice(0, sheet.records.length) })
+    return this.loadAccountRecordEvidence([record], this._accountEvidenceToken)
+  },
+
+  showMoreAccountRecords: function () {
+    const sheet = this.data.accountRecordsSheet
+    if (!sheet || this.data.busy || sheet.sourcesLoading) return
+    const previousCount = sheet.records.length
+    const records = (this._accountRecordList || []).slice(0, previousCount + 20)
+    this.setData({ 'accountRecordsSheet.records': records, 'accountRecordsSheet.sourcesLoading': true,
+      'accountRecordsSheet.hasMore': records.length < this._accountRecordList.length })
+    return this.loadAccountRecordEvidence(records.slice(previousCount), this._accountEvidenceToken)
+  },
+
+  closeAccountRecords: function () {
+    if (this.data.busy) return
+    this._accountEvidenceToken = null
+    this._accountRecordList = []
+    this.setData({ accountRecordsSheet: null })
+  },
+
+  closeReviewSheet: function () {
+    if (this.data.evidenceSheet) this.closeEvidence()
+    else this.closeIssue()
+  },
+
   bindAccountDraftName: function (event) {
     const draft = this._accountUiDrafts.get(event.currentTarget.dataset.id)
     if (!draft || this.data.accountStepBusy) return
@@ -767,7 +1064,7 @@ Page({
     if (this.data.accountStepBusy || !this.data.update) return
     const state = this.refreshAccountMappings()
     if (state.summary.invalid > 0) {
-      this.setData({ accountStepError: '请补全账户名称，或改选已有账户 / 本次不计入账本' })
+      this.setData({ accountStepError: '请选择账户归属；选择新建时，请补全账户名称' })
       return
     }
     const pending = state.mappings.filter(function (mapping) {
@@ -829,9 +1126,12 @@ Page({
   openIssue: async function (event) {
     if (this.data.busy) return
     const issueId = event.currentTarget.dataset.id
+    const token = {}
+    this._issueEvidenceToken = token
     this.setData({ busy: true, errorMessage: '' })
     try {
       const details = await importApi.callImport('reviewIssues.get', { issueId: issueId })
+      if (this._issueEvidenceToken !== token) return
       const eventMembers = details.members.filter(function (member) { return member.event })
       const relationMembers = details.members.filter(function (member) { return member.relation })
       const firstEvent = eventMembers[0] && eventMembers[0].event
@@ -880,6 +1180,14 @@ Page({
         accountContext: issueAccountContext,
         subject: details.issue.subject || summaryIssue && summaryIssue.subject || firstEvent || null
       }))
+      const bankSuggestion = isTransferIssue
+        ? model.bankAccountSuggestion(eventMembers.map(function (member) { return member.event }), selectableAccounts)
+        : null
+      const bankBatchCandidates = bankSuggestion ? this.data.issues.filter(function (issue) {
+        if (issue.issueId === issueId || issue.issueType !== 'transfer_accounts' || issue.status !== 'open') return false
+        const suggestion = model.bankAccountSuggestion(issue.subjects || (issue.subject ? [issue.subject] : []), selectableAccounts)
+        return suggestion && suggestion.key === bankSuggestion.key
+      }).map(function (issue) { return { issueId: issue.issueId } }) : []
       const accountNames = new Map(selectableAccounts.map(function (account) { return [account.accountId, account.name] }))
       if (currentIssue.fundsProjection && firstEvent) {
         currentIssue.fundsRoute = {
@@ -893,21 +1201,60 @@ Page({
       const existingAllocations = new Map((firstEvent && firstEvent.repaymentAllocations || []).map(function (item) {
         return [item.accountId, item.amountMinor]
       }))
-      const repaymentAllocationChoices = currentIssue.aggregateRepayment
-        ? model.repaymentAllocationOptions(details.accounts, draftChoices, currentIssue.fundsProjection).map(function (account) {
-            const amountMinor = existingAllocations.get(account.accountId)
-            return Object.assign({}, account, { amountInput: amountMinor ? minorToYuanInput(amountMinor) : '' })
-          })
-        : []
+      const repaymentAccountOptions = currentIssue.aggregateRepayment
+        ? model.repaymentAllocationOptions(details.accounts, draftChoices, currentIssue.fundsProjection, firstEvent) : []
+      const repaymentAllocationChoices = repaymentAccountOptions.filter(function (account) {
+        return account.recommended || existingAllocations.has(account.accountId)
+      }).map(function (account) {
+        const amountMinor = existingAllocations.get(account.accountId)
+        return Object.assign({}, account, { amountInput: amountMinor ? minorToYuanInput(amountMinor) : '' })
+      })
+      existingAllocations.forEach(function (amount, accountId) {
+        if (!repaymentAllocationChoices.some(function (row) { return row.accountId === accountId })) {
+          repaymentAllocationChoices.push({ accountId: accountId, name: '原账户已不可用', unavailable: true, amountInput: minorToYuanInput(amount) })
+        }
+      })
       const repaymentStatus = allocationStatus(repaymentAllocationChoices, firstEvent && firstEvent.amountMinor || '0')
+      const evidenceEvents = eventMembers.map(function (member) { return { event: member.event, role: '待处理记录' } })
+      const evidenceIds = new Set(evidenceEvents.map(function (item) { return item.event.eventId }))
+      relationMembers.forEach(function (member) {
+        const target = member.relation.targetEvent
+        if (target && target.eventId && !evidenceIds.has(target.eventId)) {
+          evidenceIds.add(target.eventId)
+          evidenceEvents.push({ event: target, role: '候选原消费' })
+        }
+      })
+      this._issueEvidenceRecords = evidenceEvents.map(function (item) {
+        return Object.assign({}, model.eventView(item.event), { recordRole: item.role,
+          evidenceLoading: true, evidenceError: '', evidence: [] })
+      })
+      const paymentDefaults = model.paymentResolutionDefaults(firstEvent, selectableAccounts)
       this.setData({
         busy: false,
+        issueVisibleEvents: this._issueEvidenceRecords.slice(0, 20),
+        issueEvidenceTotal: this._issueEvidenceRecords.length,
+        issueEvidenceLoading: true,
+        issueEvidenceHasMore: this._issueEvidenceRecords.length > 20,
         update: details.update,
         currentIssue: currentIssue,
+        paymentRows: paymentDefaults.rows,
+        paymentAccountChoices: [{ accountId: '', name: '请选择资金账户' }].concat(selectableAccounts),
+        paymentTargetChoices: [{ accountId: '', name: '请选择被还款账户' }].concat(selectableAccounts.filter(function (a) { return ['credit', 'other_liability'].includes(a.type) })),
+        paymentNatureIndex: paymentDefaults.natureIndex, paymentTargetIndex: Math.max(0, [{ accountId: '' }].concat(selectableAccounts.filter(function (a) { return ['credit', 'other_liability'].includes(a.type) })).findIndex(function (a) { return a.accountId === (firstEvent && firstEvent.counterpartyLedgerAccountId) })), paymentEvidenceNote: '', paymentCanSave: false,
+        paymentDifferenceText: '请逐项填写实际支付金额；合计须等于 ' + model.amountText(firstEvent && firstEvent.amountMinor),
+        bankSuggestion: bankSuggestion,
+        bankBatchCandidates: bankBatchCandidates,
+        bankBatchExpanded: false,
+        bankBatchLoading: false,
+        bankBatchRecords: [],
+        bankBatchSelectedCount: 0,
         currentMembers: details.members,
         issueEvents: eventMembers.map(function (member) { return model.eventView(member.event) }),
         issueRelations: relationChoices,
         repaymentAllocationChoices: repaymentAllocationChoices,
+        repaymentAccountOptions: repaymentAccountOptions,
+        repaymentAdditionalOptions: additionalRepaymentOptions(repaymentAccountOptions, repaymentAllocationChoices),
+        repaymentAdditionalIndex: 0,
         repaymentAllocationStatusText: currentIssue.aggregateRepayment ? repaymentStatus.text : '',
         repaymentAllocationCanSave: currentIssue.aggregateRepayment ? repaymentStatus.state.valid : true,
         accounts: selectableAccounts,
@@ -930,14 +1277,20 @@ Page({
           accountTypeIndex: 2
         }
       })
+      this.refreshIssueFieldsDraft()
+      if (currentIssue.paymentNeedsReview) this.refreshPaymentDraft()
+      await this.loadIssueRecordEvidence(this._issueEvidenceRecords.slice(0, 20), token)
     } catch (error) {
+      if (this._issueEvidenceToken !== token) return
       this.setData({ busy: false, errorMessage: publicError(error, '问题详情加载失败') })
     }
   },
 
   closeIssue: function () {
     if (!this.data.busy) {
-      this.setData({ currentIssue: null, currentMembers: [], evidenceSheet: null })
+      this._issueEvidenceToken = null
+      this._issueEvidenceRecords = []
+      this.setData({ currentIssue: null, currentMembers: [], evidenceSheet: null, issueVisibleEvents: [] })
     }
   },
 
@@ -964,52 +1317,219 @@ Page({
     if (!this.data.busy) this.setData({ evidenceSheet: null })
   },
 
-  changeIssueAccount: function (event) {
-    this.setData({ 'issueDraft.accountIndex': Number(event.detail.value) })
+  refreshIssueFieldsDraft: function () {
+    const state = model.buildIssueFieldsDraft(this.data)
+    this.setData({ issueFieldsCanSave: state.valid })
+    return state
   },
 
-  changeRepaymentAllocation: function (event) {
+  changeIssueAccount: function (event) {
+    this.setData({ 'issueDraft.accountIndex': Number(event.detail.value), bankBatchSelectedCount: 0,
+      bankBatchRecords: (this.data.bankBatchRecords || []).map(function (item) { return Object.assign({}, item, { selected: false }) }) })
+    this.refreshIssueFieldsDraft()
+  },
+
+  refreshPaymentDraft: function () {
+    if (this.data.currentIssue && this.data.currentIssue.paymentAccountsOnly) {
+      const rows = this.data.paymentRows
+      const valid = rows.length >= 2 && rows.every(function (row) { return Boolean(row.accountId) }) && new Set(rows.map(function (row) { return row.accountId })).size === rows.length
+      this.setData({ paymentCanSave: valid })
+      return { valid: valid, accounts: rows.map(function (row) { return { componentIndex: row.componentIndex, accountId: row.accountId } }) }
+    }
+    const nature = ['', 'expense', 'repayment'][this.data.paymentNatureIndex]
+    const target = this.data.paymentTargetChoices[this.data.paymentTargetIndex]
+    const state = model.buildPaymentResolutionDraft(this.data.paymentRows, nature, target && target.accountId,
+      this.data.paymentEvidenceNote, this.data.issueEvents[0] && this.data.issueEvents[0].amountMinor)
+    this.setData({ paymentCanSave: state.valid,
+      paymentDifferenceText: state.remainingMinor === '0' ? '已分配完成' :
+        (String(state.remainingMinor).startsWith('-') ? '超出 ' : '还差 ') + model.amountText(String(state.remainingMinor).replace('-', '')) })
+    return state
+  },
+  changePaymentRow: function (event) {
     const index = Number(event.currentTarget.dataset.index)
-    const choices = this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
-      return itemIndex === index ? Object.assign({}, item, { amountInput: event.detail.value }) : item
+    const field = event.currentTarget.dataset.field
+    if (this.data.busy) return
+    const rows = field === 'amount' ? model.updatePaymentAmounts(this.data.paymentRows, index, event.detail.value,
+      this.data.issueEvents[0] && this.data.issueEvents[0].amountMinor) : this.data.paymentRows.map(function (row, i) {
+      if (i !== index) return row
+      if (field === 'account') {
+        const accountIndex = Number(event.detail.value)
+        const account = this.data.paymentAccountChoices[accountIndex]
+        return Object.assign({}, row, { accountIndex: accountIndex, accountId: account && account.accountId || '' })
+      }
+      return Object.assign({}, row, { amountInput: event.detail.value })
+    }.bind(this))
+    this.setData({ paymentRows: rows }); this.refreshPaymentDraft()
+  },
+  fillPaymentAmount: function (event) {
+    if (this.data.busy) return
+    this.setData({ paymentRows: model.updatePaymentAmounts(this.data.paymentRows, Number(event.currentTarget.dataset.index), '',
+      this.data.issueEvents[0] && this.data.issueEvents[0].amountMinor, true) })
+    this.refreshPaymentDraft()
+  },
+  changePaymentNature: function (event) { this.setData({ paymentNatureIndex: Number(event.detail.value) }); this.refreshPaymentDraft() },
+  changePaymentTarget: function (event) { this.setData({ paymentTargetIndex: Number(event.detail.value) }); this.refreshPaymentDraft() },
+  changePaymentNote: function (event) { this.setData({ paymentEvidenceNote: event.detail.value }); this.refreshPaymentDraft() },
+
+  selectBankSuggestion: function (event) {
+    if (this.data.busy) return
+    const accountIndex = this.data.accountChoices.findIndex(function (account) {
+      return account.accountId === event.currentTarget.dataset.id
     })
+    if (accountIndex > 0) this.changeIssueAccount({ detail: { value: accountIndex } })
+  },
+
+  expandBankBatch: async function () {
+    if (this.data.busy || this.data.bankBatchLoading) return
+    if (this.data.bankBatchExpanded) {
+      this.setData({ bankBatchExpanded: false, bankBatchSelectedCount: 0,
+        bankBatchRecords: this.data.bankBatchRecords.map(function (item) { return Object.assign({}, item, { selected: false }) }) })
+      return
+    }
+    const token = this._issueEvidenceToken
+    const suggestion = this.data.bankSuggestion
+    this.setData({ bankBatchExpanded: true, bankBatchLoading: true, bankBatchRecords: [], errorMessage: '' })
+    try {
+      const rows = []
+      for (const candidate of this.data.bankBatchCandidates) {
+        const details = await importApi.callImport('reviewIssues.get', { issueId: candidate.issueId })
+        if (this._issueEvidenceToken !== token) return
+        const events = details.members.filter(function (member) { return member.event }).map(function (member) { return member.event })
+        const current = model.bankAccountSuggestion(events, details.accounts.concat(details.accountDrafts || []))
+        if (details.issue.status !== 'open' || details.issue.issueType !== 'transfer_accounts' ||
+            details.update.updateId !== this.data.update.updateId || !current || current.key !== suggestion.key) continue
+        // 一个问题可能包含多笔记录；同一决定覆盖的全部记录均展示后才允许勾选。
+        const records = events.map(function (event) {
+          return Object.assign({}, model.eventView(event), { evidenceLoading: true, evidenceError: '', evidence: [] })
+        })
+        await this.loadRecordEvidence(records, function () { return this._issueEvidenceToken === token }.bind(this), function () {})
+        if (this._issueEvidenceToken !== token) return
+        rows.push({ issueId: details.issue.issueId, version: details.issue.version, records: records,
+          candidateIds: current.candidates.map(function (account) { return account.accountId }),
+          selected: false, readable: records.length > 0 && records.every(function (record) { return !record.evidenceLoading && !record.evidenceError && record.evidence.length > 0 }) })
+        this.setData({ bankBatchRecords: rows.slice() })
+      }
+      this.setData({ bankBatchLoading: false })
+    } catch (error) {
+      if (this._issueEvidenceToken === token) this.setData({ bankBatchLoading: false, errorMessage: publicError(error, '批量记录读取失败，请收起后重试') })
+    }
+  },
+
+  toggleBankBatch: function (event) {
+    if (this.data.busy || this.data.bankBatchLoading) return
+    const account = this.data.accountChoices[this.data.issueDraft.accountIndex]
+    if (!account || !account.accountId) {
+      this.setData({ errorMessage: '请先选择要应用的账户' })
+      return
+    }
+    const rows = this.data.bankBatchRecords.map(function (row) {
+      if (row.issueId !== event.currentTarget.dataset.id || !row.readable) return row
+      if (!account || !row.candidateIds.includes(account.accountId)) return row
+      return Object.assign({}, row, { selected: !row.selected })
+    })
+    this.setData({ bankBatchRecords: rows, bankBatchSelectedCount: rows.filter(function (row) { return row.selected }).length })
+  },
+
+  resolveBankBatch: async function (fields) {
+    const issue = this.data.currentIssue
+    const suggestion = this.data.bankSuggestion
+    const field = suggestion.side === 'to' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
+    const accountId = fields[field]
+    const targets = [{ issueId: issue.issueId, version: issue.version }]
+      .concat(this.data.bankBatchRecords.filter(function (row) { return row.selected }))
+    const updateId = this.data.update.updateId
+    let completed = 0
+    this.setData({ busy: true, errorMessage: '' })
+    try {
+      // 先完整预检，再逐问题保存。服务端继续负责用户隔离、版本与原子性。
+      for (const target of targets) {
+        const details = await importApi.callImport('reviewIssues.get', { issueId: target.issueId })
+        const events = details.members.filter(function (member) { return member.event }).map(function (member) { return member.event })
+        const fresh = model.bankAccountSuggestion(events, details.accounts.concat(details.accountDrafts || []))
+        if (details.update.updateId !== updateId || details.update.status !== 'review' || details.issue.status !== 'open' ||
+            details.issue.issueType !== 'transfer_accounts' || details.issue.version !== target.version || !fresh ||
+            fresh.key !== suggestion.key || !fresh.candidates.some(function (account) { return account.accountId === accountId })) {
+          throw new Error('batch_changed')
+        }
+      }
+      let updateVersion = this.data.update.version
+      for (const target of targets) {
+        const result = await importApi.callImport('reviewIssues.resolve', {
+          requestId: importApi.createRequestId(), updateId: updateId, updateVersion: updateVersion,
+          issueId: target.issueId, issueVersion: target.version, decision: 'apply_fields', fields: { [field]: accountId }
+        })
+        completed += 1
+        updateVersion = result.update.version
+      }
+      await this.loadUpdate(updateId)
+    } catch (_) {
+      await this.loadUpdate(updateId)
+      this.setData({ busy: false, errorMessage: '本次已确认 ' + completed + ' 项。其余结果请以刷新后的状态为准，核对后继续。' })
+    }
+  },
+
+  refreshRepaymentChoices: function (choices) {
     const firstEvent = this.data.issueEvents[0]
     const status = allocationStatus(choices, firstEvent && firstEvent.amountMinor || '0')
     this.setData({
       repaymentAllocationChoices: choices,
+      repaymentAdditionalOptions: additionalRepaymentOptions(this.data.repaymentAccountOptions, choices),
+      repaymentAdditionalIndex: 0,
       repaymentAllocationStatusText: status.text,
       repaymentAllocationCanSave: status.state.valid,
       errorMessage: ''
     })
+  },
+
+  addRepaymentAccount: function (event) {
+    if (this.data.busy || this.data.repaymentAllocationChoices.length >= 20) return
+    const option = this.data.repaymentAdditionalOptions[Number(event.detail.value)]
+    if (!option || option.isPlaceholder) return
+    const row = option.isCreate ? { accountId: 'new-' + Date.now(), name: '', isNew: true, amountInput: '' } : option
+    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.concat([row]))
+  },
+
+  removeRepaymentAccount: function (event) {
+    if (this.data.busy) return
+    const index = Number(event.currentTarget.dataset.index)
+    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.filter(function (_, itemIndex) { return itemIndex !== index }))
+  },
+
+  changeRepaymentAccountName: function (event) {
+    const index = Number(event.currentTarget.dataset.index)
+    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
+      return itemIndex === index ? Object.assign({}, item, { name: event.detail.value }) : item
+    }))
+  },
+
+  changeRepaymentAllocation: function (event) {
+    const index = Number(event.currentTarget.dataset.index)
+    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
+      return itemIndex === index ? Object.assign({}, item, { amountInput: event.detail.value }) : item
+    }))
   },
 
   fillRepaymentAllocation: function (event) {
     const index = Number(event.currentTarget.dataset.index)
     const firstEvent = this.data.issueEvents[0]
-    const choices = this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
-      return Object.assign({}, item, {
-        amountInput: itemIndex === index ? minorToYuanInput(firstEvent && firstEvent.amountMinor || '0') : ''
-      })
-    })
-    const status = allocationStatus(choices, firstEvent && firstEvent.amountMinor || '0')
-    this.setData({
-      repaymentAllocationChoices: choices,
-      repaymentAllocationStatusText: status.text,
-      repaymentAllocationCanSave: status.state.valid,
-      errorMessage: ''
-    })
+    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
+      return Object.assign({}, item, { amountInput: itemIndex === index ? minorToYuanInput(firstEvent && firstEvent.amountMinor || '0') : '' })
+    }))
   },
 
   changeCounterpartyAccount: function (event) {
     this.setData({ 'issueDraft.counterpartyAccountIndex': Number(event.detail.value) })
+    this.refreshIssueFieldsDraft()
   },
 
   changeDraftAccountName: function (event) {
     this.setData({ 'issueDraft.newAccountName': event.detail.value })
+    this.refreshIssueFieldsDraft()
   },
 
   changeDraftAccountType: function (event) {
     this.setData({ 'issueDraft.accountTypeIndex': Number(event.detail.value) })
+    this.refreshIssueFieldsDraft()
   },
 
   changeIssueCategory: function (event) {
@@ -1019,6 +1539,7 @@ Page({
       'issueDraft.categoryIndex': categoryIndex,
       issueCategoryCanSave: Boolean(category && category.categoryId)
     })
+    this.refreshIssueFieldsDraft()
   },
 
   changeIssueNature: function (event) {
@@ -1031,19 +1552,13 @@ Page({
       issueCategories: [{ categoryId: '', name: '请选择分类', isPlaceholder: true }]
         .concat(model.categoriesForNature(this.data.categories, nature))
     })
+    this.refreshIssueFieldsDraft()
   },
 
   selectPrimaryEvent: function (event) {
     this.setData({ 'issueDraft.primaryEventId': event.currentTarget.dataset.id })
   },
 
-  openIssueEvent: function (event) {
-    if (this.data.currentIssue && this.data.currentIssue.issueType === 'same_event') {
-      this.selectPrimaryEvent(event)
-      return
-    }
-    this.openEvidence(event)
-  },
 
   selectTargetRelation: function (event) {
     this.setData({ 'issueDraft.targetEventId': event.currentTarget.dataset.id })
@@ -1051,12 +1566,12 @@ Page({
 
   resolveWithFields: function () {
     const issue = this.data.currentIssue
-    if (!issue) return
-    const accountChoice = this.data.accountChoices[this.data.issueDraft.accountIndex]
-    const counterparty = this.data.counterpartyAccountChoices[this.data.issueDraft.counterpartyAccountIndex]
-    const category = this.data.issueCategories[this.data.issueDraft.categoryIndex]
-    const nature = NATURE_OPTIONS[this.data.issueDraft.natureIndex]
-    const fields = {}
+    if (!issue || this.data.busy || this.data.bankBatchLoading) return
+    if (issue.paymentNeedsReview) {
+      const state = this.refreshPaymentDraft()
+      if (!state.valid) return
+      return this.resolveIssue('apply_fields', { fields: issue.paymentAccountsOnly ? { paymentAccounts: state.accounts } : { paymentResolution: state.resolution } })
+    }
     if (issue.aggregateRepayment) {
       const firstEvent = this.data.issueEvents[0]
       const allocation = model.buildRepaymentAllocationDraft(
@@ -1070,51 +1585,16 @@ Page({
       this.resolveIssue('apply_fields', { fields: { repaymentAllocations: allocation.allocations } })
       return
     }
-    const projectedMissingSide = issue.issueType === 'transfer_accounts' && issue.missingFundsSide && issue.missingFundsSide !== 'both'
-      ? issue.missingFundsSide
-      : ''
-    if (accountChoice && accountChoice.isPlaceholder) {
-      this.setData({ errorMessage: '请选择需要确认的账户' })
-      return
-    } else if (accountChoice && accountChoice.accountId) {
-      fields[projectedMissingSide === 'to' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'] = accountChoice.accountId
-    } else if (accountChoice && accountChoice.isCreate) {
-      const accountType = ACCOUNT_TYPE_OPTIONS[this.data.issueDraft.accountTypeIndex]
-      const name = String(this.data.issueDraft.newAccountName || '').trim()
-      if (!name || !accountType) {
-        this.setData({ errorMessage: '请填写新账户名称并选择类型' })
-        return
-      }
-      fields[projectedMissingSide === 'to' ? 'counterpartyLedgerAccountDraft' : 'ledgerAccountDraft'] = {
-        name: name, type: accountType.value, currency: 'CNY'
-      }
-    }
-    if (issue.issueType === 'transfer_accounts' && !projectedMissingSide) {
-      if (!counterparty || counterparty.isPlaceholder || !counterparty.accountId ||
-          (fields.ledgerAccountId && fields.ledgerAccountId === counterparty.accountId)) {
-        this.setData({ errorMessage: '请选择两个不同的转出和转入账户' })
-        return
-      }
-      fields.counterpartyLedgerAccountId = counterparty.accountId
-    }
-    if (category && ['category_assignment', 'shared_fields', 'field_conflict'].includes(issue.issueType)) fields.categoryId = category.categoryId
-    if (nature && ['shared_fields', 'field_conflict'].includes(issue.issueType)) {
-      fields.economicNature = nature.value
-      fields.flowDirection = nature.value === 'income' || nature.value === 'refund'
-        ? 'inflow'
-        : ['internal_transfer', 'repayment', 'borrow'].includes(nature.value) ? 'neutral' : 'outflow'
-    }
-    if (['category_assignment', 'shared_fields', 'field_conflict'].includes(issue.issueType) &&
-        this.data.issueCategories.length && !fields.categoryId) {
-      this.setData({ errorMessage: '请选择交易分类' })
+    const state = this.refreshIssueFieldsDraft()
+    if (!state.valid) {
+      this.setData({ errorMessage: state.reason })
       return
     }
-    if (!fields.categoryId && !fields.ledgerAccountId && !fields.ledgerAccountDraft &&
-        !fields.counterpartyLedgerAccountId && !fields.counterpartyLedgerAccountDraft) {
-      this.setData({ errorMessage: '请选择需要确认的账户' })
-      return
+    const fields = state.fields
+    if (this.data.bankBatchSelectedCount > 0 && this.data.bankSuggestion) {
+      return this.resolveBankBatch(fields)
     }
-    this.resolveIssue('apply_fields', { fields: fields })
+    return this.resolveIssue('apply_fields', { fields: fields })
   },
 
   confirmDistinct: function () {
@@ -1213,14 +1693,24 @@ Page({
 
   startAnother: function () {
     this._sourceFiles.clear()
+    this._duplicateLoadToken = null
     this.setData({
       phase: 'idle', currentStep: 1, unlockedStep: 1,
       files: [], update: null, sources: [], events: [], issues: [],
-      accountIssues: [], reviewIssues: [], reviewGroups: [], activeReviewStatus: 'pending', excludedReviewGroups: [], duplicateReviewEvents: [], openIssueCount: 0,
+      recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
+      reviewedEvents: [], categoryWaitingEvents: [], noCategoryEvents: [],
+      accountIssues: [], reviewIssues: [], reviewGroups: [], verificationIssues: [], categoryIssues: [], categoryCards: [], categoryQuery: '', categoryEventCount: 0, categorizedEvents: [], categorizedEventCount: 0, activeCategoryStatus: 'pending', categoryStatusTabs: model.organizerRecordState([], [], []).categoryStatusTabs, activeReviewTab: 'review', activeReviewStatus: 'pending', excludedReviewGroups: [], duplicateReviewEvents: [], openIssueCount: 0,
+      duplicateReviewCandidates: [], duplicateReviewLoading: false, duplicateReviewLoaded: false, duplicateReviewError: '',
+      coverage: {
+        dataRows: 0, recognizedRows: 0, unrecognizedRows: 0,
+        selectedEvents: 0, readySelectedEvents: 0, pendingSelectedEvents: 0, excludedEvents: 0,
+        statementFullyRecognized: false, selectedEventsReadyToPost: false
+      },
       reviewStatusTabs: [
-        { value: 'pending', label: '待整理', count: 0 },
+        { value: 'pending', label: '待核对', count: 0 },
+        { value: 'completed', label: '已核对', count: 0 },
         { value: 'excluded', label: '已排除', count: 0 },
-        { value: 'duplicate', label: '重复记录', count: 0 }
+        { value: 'duplicate', label: '重复', count: 0 }
       ],
       accountMappings: [], accountStepSummary: { total: 0, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0 },
       accountStepBusy: false, accountStepError: '', accountStepProgressText: '',
