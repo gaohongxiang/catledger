@@ -1,0 +1,30 @@
+name: 全页面源码快照
+on:
+  push:
+    branches: [codex/mini-1906ui-all-pages]
+    paths: [.github/workflows/ui-all-source.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 512cd6f213e19f907d1510b8bd14f711d91afead
+          persist-credentials: false
+      - name: 保存已确认界面基线
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/ui-all-source"
+          git archive --format=tar HEAD > "$RUNNER_TEMP/ui-all-source/source.tar"
+          git cat-file commit HEAD > "$RUNNER_TEMP/ui-all-source/commit.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/ui-all-source/head.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/ui-all-source/tree.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-all-source
+          path: ${{ runner.temp }}/ui-all-source/
+          retention-days: 1
+          if-no-files-found: error
