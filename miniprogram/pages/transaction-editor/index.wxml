@@ -1,5 +1,5 @@
 <view class="editor-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="editor-heading">
+  <view class="editor-heading content-inset">
     <text class="editor-kicker">{{mode === 'link-refund' ? 'REFUND LINK' : (mode === 'edit' ? 'EDIT ENTRY' : 'NEW ENTRY')}}</text>
     <text class="editor-title serif-title">{{mode === 'link-refund' ? '补上这笔退款的原消费。' : (mode === 'edit' ? '把这一笔改准确。' : '今天，钱去了哪里？')}}</text>
   </view>
@@ -25,34 +25,34 @@
 
   <view class="form-sheet">
     <picker wx:if="{{mode !== 'link-refund' && (typeOptions[typeIndex].value === 'expense' || typeOptions[typeIndex].value === 'transfer')}}" mode="selector" range="{{accounts}}" range-key="name" value="{{sourceIndex}}" bindchange="changeSource">
-      <view class="form-row">
+      <view class="form-row content-inset">
         <text class="form-label">{{typeOptions[typeIndex].value === 'transfer' ? '转出账户' : '付款账户'}}</text>
         <text class="form-value">{{accounts[sourceIndex].name || '请选择'}}</text>
       </view>
     </picker>
 
     <picker wx:if="{{mode !== 'link-refund' && typeOptions[typeIndex].value !== 'expense'}}" mode="selector" range="{{accounts}}" range-key="name" value="{{destinationIndex}}" bindchange="changeDestination">
-      <view class="form-row">
+      <view class="form-row content-inset">
         <text class="form-label">{{typeOptions[typeIndex].value === 'transfer' ? '转入账户' : (typeOptions[typeIndex].value === 'refund' ? '退款到账' : '收款账户')}}</text>
         <text class="form-value">{{accounts[destinationIndex].name || '请选择'}}</text>
       </view>
     </picker>
 
     <picker wx:if="{{mode !== 'link-refund' && (typeOptions[typeIndex].value === 'expense' || typeOptions[typeIndex].value === 'income')}}" mode="selector" range="{{categories}}" range-key="name" value="{{categoryIndex}}" bindchange="changeCategory">
-      <view class="form-row">
+      <view class="form-row content-inset">
         <text class="form-label">分类</text>
         <text class="form-value">{{categories[categoryIndex].name || '请选择'}}</text>
       </view>
     </picker>
 
     <picker wx:if="{{typeOptions[typeIndex].value === 'refund'}}" mode="selector" range="{{refundableTransactions}}" range-key="pickerLabel" value="{{originalIndex}}" bindchange="changeOriginal">
-      <view class="form-row">
+      <view class="form-row content-inset">
         <text class="form-label">原支出</text>
         <text class="form-value form-value-compact">{{refundableTransactions[originalIndex].pickerLabel || '请选择可退款支出'}}</text>
       </view>
     </picker>
 
-    <view wx:if="{{mode !== 'link-refund'}}" class="form-row form-row-pair">
+    <view wx:if="{{mode !== 'link-refund'}}" class="form-row form-row-pair content-inset">
       <picker class="half-picker" mode="date" value="{{date}}" bindchange="changeDate">
         <view><text class="form-label">日期</text><text class="form-value">{{date}}</text></view>
       </picker>
@@ -61,13 +61,13 @@
       </picker>
     </view>
 
-    <view wx:if="{{mode !== 'link-refund'}}" class="note-row">
+    <view wx:if="{{mode !== 'link-refund'}}" class="note-row content-inset">
       <text class="form-label">备注</text>
       <textarea class="note-input" value="{{note}}" maxlength="200" placeholder="可选，写下这笔钱的来处" auto-height="true" bindinput="bindNote" />
     </view>
   </view>
 
-  <view wx:if="{{errorMessage}}" class="editor-error">{{errorMessage}}</view>
+  <view wx:if="{{errorMessage}}" class="editor-error content-inset">{{errorMessage}}</view>
   <button class="primary-button save-button" loading="{{saving}}" disabled="{{saving}}" bindtap="save">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '保存修改' : '确认记账')}}</button>
   <button wx:if="{{mode === 'edit'}}" class="danger-button delete-button" disabled="{{saving}}" bindtap="remove">删除这笔账</button>
 </view>

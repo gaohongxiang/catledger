@@ -21,10 +21,22 @@ function normalizeText(value) {
   return String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ')
 }
 
-// 聚合支付导出会把主资金账户与优惠/组合成分写在同一列。
-// 当前产品口径固定以 & 前第一段作为账户，其余文本只留在原始证据。
+const CERTIFIED_DISCOUNT_COMPONENT = /(?:红包|优惠|立减|满减|折扣|抵扣|积分|消费券|代金券|优惠券|券)$/u
+
+function paymentComponents(raw) {
+  const value = normalizeText(raw)
+  if (!value || value === '/') return []
+  return value.split(/[&＆]/u).map(normalizeText).filter(Boolean).map((component) => ({
+    value: component,
+    kind: CERTIFIED_DISCOUNT_COMPONENT.test(component) ? 'certified_discount' : 'financial'
+  }))
+}
+
+// 组合支付只有在恰好存在一个资金成分时才有“主账户”。多个资金账户
+// 没有逐项金额时保持未知，绝不能用字符串顺序决定正式账户。
 function primaryInstrument(raw) {
-  return normalizeText(raw).split('&', 1)[0].trim()
+  const financial = paymentComponents(raw).filter((component) => component.kind === 'financial')
+  return financial.length === 1 ? financial[0].value : ''
 }
 
 function aggregateAccountFamily(sourceType, raw) {
@@ -88,6 +100,7 @@ function qualifiedDisplayName(sourceType, instrument) {
 
 function paymentAccountDetails(sourceType, raw) {
   const sourceLabel = SOURCE_LABELS[sourceType] || '账单'
+  const components = paymentComponents(raw)
   const instrument = primaryInstrument(raw)
   const aggregateFamily = aggregateAccountFamily(sourceType, instrument)
   if (aggregateFamily) {
@@ -97,17 +110,22 @@ function paymentAccountDetails(sourceType, raw) {
       aggregateFamilies: [],
       identityMaterial: '',
       displayName: aggregateFamilyDisplayName(aggregateFamily),
-      recognized: false
+      recognized: false,
+      ambiguous: false,
+      components
     }
   }
   if (!instrument) {
+    const ambiguous = components.filter((component) => component.kind === 'financial').length > 1
     return {
       referenceKind: ACCOUNT_REFERENCE_KIND.ATOMIC,
       aggregateFamily: null,
       aggregateFamilies: [],
       identityMaterial: '',
-      displayName: sourceLabel + '支付方式未标明',
-      recognized: false
+      displayName: ambiguous ? sourceLabel + '组合支付账户需确认' : sourceLabel + '支付方式未标明',
+      recognized: false,
+      ambiguous,
+      components
     }
   }
   const displayName = qualifiedDisplayName(sourceType, instrument)
@@ -122,7 +140,9 @@ function paymentAccountDetails(sourceType, raw) {
     aggregateFamilies,
     identityMaterial: recognized ? canonical : '',
     displayName: recognized ? displayName : sourceLabel + ' · ' + displayName + '（未识别具体账户）',
-    recognized
+    recognized,
+    ambiguous: false,
+    components
   }
 }
 
@@ -166,7 +186,7 @@ function expectedAccountType(sourceType, raw) {
   if (sourceType === 'alipay') {
     if (canonical === '余额' || canonical.startsWith('小荷包')) return 'wallet'
     if (canonical.startsWith('余额宝')) return 'other_asset'
-    if (/^(花呗|借呗|信用购|网商贷)/u.test(canonical)) return 'credit'
+    if (/^(花呗|借呗|信用购|网商贷|1688先采后付)/u.test(canonical)) return 'credit'
   }
   if (sourceType === 'wechat') {
     if (canonical === '余额' || canonical === '零钱' || canonical.startsWith('亲属卡')) return 'wallet'
@@ -190,6 +210,7 @@ module.exports = {
   expectedAccountType,
   hasStableAccountLocator,
   paymentAccountDetails,
+  paymentComponents,
   paymentReferenceKey,
   primaryInstrument
 }

@@ -45,17 +45,18 @@ function row(overrides = {}) {
   }
 }
 
-test('收入支出没有分类时生成独立分类问题并阻止入账', () => {
+test('收入支出没有分类时保留分类建议且允许入账', () => {
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000090',
     idFactory: ids(),
     rows: [row({ suggestedCategoryId: null })]
   })
 
-  assert.equal(plan.events[0].status, 'needs_action')
+  assert.equal(plan.events[0].status, 'ready')
   assert.ok(plan.events[0].reasonCodes.includes('category_required'))
   assert.equal(plan.issues.length, 1)
   assert.equal(plan.issues[0].issueType, 'category_assignment')
+  assert.equal(plan.issues[0].blocking, false)
 })
 
 test('同一分类证据的多笔交易合并成一个分类决定组', () => {

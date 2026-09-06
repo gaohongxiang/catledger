@@ -1,3 +1,5 @@
+const bankSuggestion = require('./bank-suggestion')
+
 const ISSUE_LABELS = Object.freeze({
   account_mapping: '确认账户归属',
   category_assignment: '交易分类待确认',
@@ -51,7 +53,7 @@ const ACCOUNT_TYPE_LABELS = Object.freeze({
 })
 
 function accountChoiceOptions(accounts, accountDrafts, allowPermanentIgnore) {
-  const options = [{ value: 'create', name: '创建新账户' }]
+  const options = [{ value: 'pending', name: '请选择账户归属' }, { value: 'create', name: '创建新账户' }]
     .concat((accounts || []).map(function (account) {
       return { value: 'account:' + account.accountId, name: account.name }
     }))
@@ -197,6 +199,31 @@ function suggestExistingAccount(context, accounts) {
   return best.account
 }
 
+// 只初始化本地核对表单；不把推荐结果当作已提交的人工决定。
+function paymentResolutionDefaults(event, accounts) {
+  const evidence = event && event.primaryEvidence || {}
+  const repayment = event && event.economicNature === 'repayment'
+  const natureIndex = repayment ? 2 : event && event.economicNature === 'expense' ? 1 : 0
+  const rows = (event && event.paymentComponents || []).map(function (part, index) {
+    const saved = (event.paymentAccounts || []).find(function (item) { return item.componentIndex === index })
+    const matched = saved ? accounts.find(function (account) { return account.accountId === saved.accountId }) : suggestExistingAccount({ recognized: true, label: part.label,
+      sourceType: evidence.sourceType, currency: event.currency || 'CNY' }, accounts)
+    return { componentIndex: index, componentKind: part.componentKind, label: part.label,
+      accountIndex: matched ? accounts.indexOf(matched) + 1 : 0,
+      accountId: matched ? matched.accountId : '', amountInput: '' }
+  }).filter(function (part) { return part.componentKind === 'financial' })
+  // 同一账户不能代表两个独立支付成分；重复命中交回人工核对。
+  rows.forEach(function (row) {
+    if (row.accountId && rows.filter(function (other) { return other.accountId === row.accountId }).length > 1) {
+      row.duplicateMatch = true
+    }
+  })
+  rows.forEach(function (row) {
+    if (row.duplicateMatch) { row.accountId = ''; row.accountIndex = 0; delete row.duplicateMatch }
+  })
+  return { rows: rows, natureIndex: natureIndex }
+}
+
 function formatFileSize(value) {
   const bytes = Number(value) || 0
   if (bytes < 1024) return bytes + ' B'
@@ -224,6 +251,16 @@ function evidenceValueText(value) {
   return String(value)
 }
 
+function evidenceFieldText(key, value) {
+  const text = evidenceValueText(value)
+  if (!/(?:日期|时间)$/.test(key) || !/^\d{5}(?:\.\d+)?$/.test(text)) return text
+  const serial = Number(text)
+  if (serial < 20000 || serial > 80000) return text
+  // Excel 的本地日期序号不带时区；用 UTC 算术避免设备时区改变原始钟面时间。
+  const date = new Date(Date.UTC(1899, 11, 30) + Math.round(serial * 86400) * 1000)
+  return date.toISOString().slice(0, 19).replace('T', ' ')
+}
+
 function evidenceFields(rawFields) {
   if (Array.isArray(rawFields)) {
     return rawFields.map(function (field, index) {
@@ -231,7 +268,7 @@ function evidenceFields(rawFields) {
           Object.prototype.hasOwnProperty.call(field, 'name')) {
         return {
           key: String(field.name || '字段 ' + (index + 1)),
-          value: evidenceValueText(field.value)
+          value: evidenceFieldText(String(field.name || ''), field.value)
         }
       }
       return { key: '字段 ' + (index + 1), value: evidenceValueText(field) }
@@ -239,7 +276,7 @@ function evidenceFields(rawFields) {
   }
   if (!rawFields || typeof rawFields !== 'object') return []
   return Object.keys(rawFields).map(function (key) {
-    return { key: key, value: evidenceValueText(rawFields[key]) }
+    return { key: key, value: evidenceFieldText(key, rawFields[key]) }
   })
 }
 
@@ -294,6 +331,63 @@ function uploadSummary(files) {
   }
 }
 
+function buildIssueFieldsDraft(state) {
+  const issue = state.currentIssue
+  const draft = state.issueDraft || {}
+  const invalid = function (reason) { return { valid: false, reason: reason, fields: {} } }
+  if (!issue) return invalid('请先打开待核对项目')
+  if (issue.issueType === 'category_assignment') {
+    const category = (state.issueCategories || [])[draft.categoryIndex]
+    return category && category.categoryId && !category.isPlaceholder
+      ? { valid: true, fields: { categoryId: category.categoryId } }
+      : invalid('请选择交易分类')
+  }
+  if (!['account_mapping', 'transfer_accounts', 'shared_fields', 'field_conflict'].includes(issue.issueType)) {
+    return invalid('请先完成当前确认')
+  }
+  const account = (state.accountChoices || [])[draft.accountIndex]
+  const missingSide = issue.issueType === 'transfer_accounts' && ['from', 'to'].includes(issue.missingFundsSide)
+    ? issue.missingFundsSide : ''
+  const fields = {}
+  const accountField = missingSide === 'to' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
+  if (!account || account.isPlaceholder) return invalid('请选择需要确认的账户')
+  if (account.accountId) {
+    if (account.archived || account.archivedAt || account.unavailable) return invalid('请选择可用账户')
+    fields[accountField] = account.accountId
+  } else if (account.isCreate) {
+    const type = (state.accountTypeOptions || [])[draft.accountTypeIndex]
+    const name = String(draft.newAccountName || '').normalize('NFKC').trim()
+    if (!type || !type.value || Array.from(name).length < 1 || Array.from(name).length > 32) {
+      return invalid('请填写 1～32 字的新账户名称并选择类型')
+    }
+    fields[missingSide === 'to' ? 'counterpartyLedgerAccountDraft' : 'ledgerAccountDraft'] = {
+      name: name, type: type.value, currency: 'CNY'
+    }
+  } else return invalid('请选择需要确认的账户')
+  if (issue.issueType === 'transfer_accounts') {
+    if (!missingSide) {
+      const target = (state.counterpartyAccountChoices || [])[draft.counterpartyAccountIndex]
+      if (!target || target.isPlaceholder || !target.accountId || target.archived || target.archivedAt || target.unavailable ||
+          fields.ledgerAccountId === target.accountId) return invalid('请选择两个不同的转出和转入账户')
+      fields.counterpartyLedgerAccountId = target.accountId
+    } else {
+      const otherField = missingSide === 'to' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'
+      const events = (state.issueEvents || []).concat(issue.subject ? [issue.subject] : [])
+      if (account.accountId && events.some(function (event) { return event[otherField] === account.accountId })) {
+        return invalid('请选择两个不同的转出和转入账户')
+      }
+    }
+  }
+  if (['shared_fields', 'field_conflict'].includes(issue.issueType)) {
+    const nature = (state.natureOptions || [])[draft.natureIndex]
+    if (!nature || !nature.value || nature.value === 'unknown') return invalid('请选择明确的收支性质')
+    fields.economicNature = nature.value
+    fields.flowDirection = nature.value === 'income' || nature.value === 'refund' ? 'inflow'
+      : ['internal_transfer', 'repayment', 'borrow'].includes(nature.value) ? 'neutral' : 'outflow'
+  }
+  return { valid: true, fields: fields }
+}
+
 function issueView(issue) {
   const context = issue.accountContext || {}
   const subject = issue.subject ? eventView(issue.subject) : null
@@ -315,8 +409,13 @@ function issueView(issue) {
   if (aggregateRepayment) label = '还款分配待确认'
   if (missingFundsSide === 'from') label = '转出账户待确认'
   if (missingFundsSide === 'to') label = '转入账户待确认'
+  const groupedAccount = issue.issueType === 'account_mapping' && /^payment_(component_\d+|target)$/.test(context.fundsSide || '')
+  const paymentNeedsReview = Boolean(!groupedAccount && subject && (issue.reasonCodes || []).concat(subject.reasonCodes || []).includes('payment_components_ambiguous') && !subject.paymentResolution)
+  if (paymentNeedsReview) label = '组合支付待核对'
   return Object.assign({}, issue, {
     label: label,
+    paymentNeedsReview: paymentNeedsReview,
+    paymentAccountsOnly: paymentNeedsReview && issue.issueType === 'account_mapping',
     aggregateRepayment: aggregateRepayment,
     missingFundsSide: missingFundsSide,
     fundsProjection: projected || null,
@@ -326,7 +425,9 @@ function issueView(issue) {
     subjectMeta: subject ? subject.displayMeta : '',
     subjectAmountText: subject ? subject.amountText : '',
     subjectDirectionClass: subject ? subject.directionClass : '',
-    decisionText: issue.issueType === 'refund_relation'
+    decisionText: paymentNeedsReview
+      ? issue.issueType === 'account_mapping' ? '确认这些付款方式对应的账本账户' : '核对各账户实际支付金额，并确认这笔是支出还是还款'
+      : issue.issueType === 'refund_relation'
       ? Number(issue.candidateCount) > 0
         ? Number(issue.candidateCount) + ' 笔候选待核对'
         : '未找到可确认的原消费'
@@ -340,23 +441,17 @@ function issueView(issue) {
   })
 }
 
-function repaymentAllocationOptions(accounts, accountDrafts, projection) {
+function repaymentAllocationOptions(accounts, accountDrafts, projection, context) {
   const eligible = (accounts || []).concat(accountDrafts || []).filter(function (account) {
-    return account && account.accountId && ['credit', 'other_liability'].includes(account.type)
+    return account && account.accountId && ['credit', 'other_liability'].includes(account.type) && account.archivedAt == null &&
+      (!context || ((!context.currency || account.currency === context.currency) && account.accountId !== context.ledgerAccountId))
   })
+  const recommended = new Set((projection && projection.to && projection.to.candidates || []).map(function (item) { return item.accountId }))
   const byId = new Map(eligible.map(function (account) { return [account.accountId, account] }))
-  const candidateIds = []
-  ;(projection && projection.to && projection.to.candidates || []).forEach(function (candidate) {
-    if (candidate.accountId && byId.has(candidate.accountId) && !candidateIds.includes(candidate.accountId)) {
-      candidateIds.push(candidate.accountId)
-    }
-  })
-  return candidateIds.map(function (accountId) {
-    const account = byId.get(accountId)
-    return Object.assign({}, account, {
-      recommended: true,
-      amountInput: ''
-    })
+  const ids = Array.from(recommended).filter(function (id) { return byId.has(id) })
+    .concat(Array.from(byId.keys()).filter(function (id) { return !recommended.has(id) }))
+  return ids.map(function (id) {
+    return Object.assign({}, byId.get(id), { recommended: recommended.has(id), amountInput: '' })
   })
 }
 
@@ -401,6 +496,40 @@ function subtractMinor(left, right) {
   return result.replace(/^0+(?=\d)/u, '')
 }
 
+function paymentAmountInput(amountMinor) {
+  const value = String(amountMinor).padStart(3, '0')
+  return value.slice(0, -2) + '.' + value.slice(-2)
+}
+
+function updatePaymentAmounts(rows, index, value, total, fillAll) {
+  if (!Number.isInteger(index) || index < 0 || index >= rows.length || !/^[1-9]\d{0,18}$/.test(String(total || ''))) return rows
+  if (fillAll) return rows.map(function (row, i) {
+    return Object.assign({}, row, { amountInput: paymentAmountInput(i === index ? total : '0') })
+  })
+  const input = String(value == null ? '' : value)
+  const minor = yuanInputToMinor(input)
+  const otherInput = input.trim() && minor != null && compareMinor(minor, total) <= 0
+    ? paymentAmountInput(subtractMinor(total, minor)) : ''
+  return rows.map(function (row, i) {
+    return i === index ? Object.assign({}, row, { amountInput: input })
+      : rows.length === 2 ? Object.assign({}, row, { amountInput: otherInput }) : row
+  })
+}
+
+function buildPaymentResolutionDraft(rows, nature, targetAccountId, evidenceNote, total) {
+  const state = buildRepaymentAllocationDraft(rows, total)
+  const valid = state.valid && rows.length > 1 && rows.every(function (row) { return row.accountId && String(row.amountInput == null ? '' : row.amountInput).trim() && yuanInputToMinor(row.amountInput) != null }) &&
+    new Set(rows.map(function (row) { return row.accountId })).size === rows.length &&
+    ['expense', 'repayment'].includes(nature) && String(evidenceNote || '').trim() &&
+    (nature === 'expense' || (targetAccountId && !rows.some(function (row) { return row.accountId === targetAccountId })))
+  return { valid: Boolean(valid), remainingMinor: state.remainingMinor, resolution: {
+    version: 'payment-resolution-v2', nature: nature,
+    targetAccountId: nature === 'repayment' ? targetAccountId : null,
+    allocations: rows.map(function (row) { return { componentIndex: row.componentIndex, accountId: row.accountId, amountMinor: yuanInputToMinor(row.amountInput) } }),
+    evidenceNote: String(evidenceNote || '').trim(), confirmedFromDetails: true
+  } }
+}
+
 function buildRepaymentAllocationDraft(options, totalAmountMinor) {
   if (!/^\d{1,19}$/.test(String(totalAmountMinor || ''))) {
     return { valid: false, reason: '金额不可用', remainingMinor: '0', allocations: [] }
@@ -413,12 +542,17 @@ function buildRepaymentAllocationDraft(options, totalAmountMinor) {
       return { valid: false, reason: '金额最多保留两位小数', remainingMinor: subtractMinor(totalAmountMinor, sum), allocations: [] }
     }
     if (amountMinor === '0') continue
-    allocations.push({ accountId: option.accountId, amountMinor: amountMinor })
+    if (option.unavailable || (option.isNew && !String(option.name || '').trim())) {
+      return { valid: false, reason: option.unavailable ? '请重新选择失效账户' : '请填写新账户名称', remainingMinor: subtractMinor(totalAmountMinor, sum), allocations: [] }
+    }
+    allocations.push(option.isNew
+      ? { accountDraft: { name: String(option.name).trim(), type: 'credit', currency: 'CNY' }, amountMinor: amountMinor }
+      : { accountId: option.accountId, amountMinor: amountMinor })
     sum = addMinor(sum, amountMinor)
   }
   const remaining = subtractMinor(totalAmountMinor, sum)
   return {
-    valid: allocations.length > 0 && remaining === '0',
+    valid: allocations.length > 0 && allocations.length <= 20 && remaining === '0',
     reason: allocations.length === 0
       ? '请填写还款金额'
       : remaining === '0'
@@ -484,6 +618,54 @@ function reviewIssueGroups(issues) {
   return groups
 }
 
+// 商户仅组织展示；每张卡片仍对应服务端冻结的一个问题组。
+function categoryIssueCards(issues, query) {
+  const keyword = String(query || '').trim().toLowerCase()
+  const completeSubjects = new Map((issues || []).map(function (issue) {
+    return [issue.issueId, (issue.subjects || (issue.subject ? [issue.subject] : [])).map(eventView)]
+  }))
+  return reviewIssueGroups((issues || []).filter(function (issue) {
+    return issue.issueType === 'category_assignment'
+  })).reduce(function (all, group) { return all.concat(group.issues) }, []).map(function (issue) {
+    const subject = issue.subject || issue.subjects[0] || {}
+    const evidence = subject.primaryEvidence || {}
+    const merchant = evidence.counterparty || evidence.item || '未提供商户'
+    const allSubjects = completeSubjects.get(issue.issueId) || issue.subjects
+    const matchingSubjects = keyword ? allSubjects.filter(function (event) {
+      return (event.displayTitle + ' ' + event.displayMeta).toLowerCase().includes(keyword)
+    }) : allSubjects
+    const previews = (matchingSubjects.length ? matchingSubjects : allSubjects).slice(0, 3)
+    return Object.assign({}, issue, {
+      subjects: previews,
+      hiddenSubjectCount: Math.max(0, issue.subjectCount - previews.length),
+      merchant: merchant + (issue.subjectCount > 1 ? '等 · 同类交易' : ''),
+      natureLabel: subject.economicNature === 'income' ? '收入' : '支出',
+      searchText: [merchant].concat(allSubjects.map(function (event) {
+        return event.displayTitle + ' ' + event.displayMeta
+      })).join(' ').toLowerCase()
+    })
+  }).filter(function (issue) { return !keyword || issue.searchText.includes(keyword) })
+    .sort(function (a, b) { return a.merchant.localeCompare(b.merchant) || a.issueId.localeCompare(b.issueId) })
+}
+
+function categorizedEventRows(events, categories, query) {
+  const keyword = String(query || '').trim().toLowerCase()
+  const names = new Map((categories || []).map(function (category) { return [category.categoryId, category.name] }))
+  return (events || []).filter(function (event) {
+    return event.categoryId && ['income', 'expense', 'fee'].includes(event.economicNature) &&
+      ['ready', 'needs_action', 'posted', 'corrected'].includes(event.status)
+  }).map(function (event) {
+    return Object.assign({}, eventView(event), {
+      categoryName: names.get(event.categoryId) || '分类已设置',
+      natureLabel: event.economicNature === 'income' ? '收入' : '支出'
+    })
+  }).filter(function (event) {
+    return !keyword || [event.displayTitle, event.displayMeta, event.categoryName].join(' ').toLowerCase().includes(keyword)
+  }).sort(function (a, b) {
+    return String(a.localAt || '').localeCompare(String(b.localAt || '')) || String(a.eventId).localeCompare(String(b.eventId))
+  })
+}
+
 function partitionOpenIssues(issues) {
   return issues.reduce(function (groups, issue) {
     const target = ACCOUNT_ISSUE_TYPES.includes(issue.issueType) ? groups.account : groups.review
@@ -492,16 +674,95 @@ function partitionOpenIssues(issues) {
   }, { account: [], review: [] })
 }
 
+// 两个整理视角共享事件集合。问题组和退款比对候选不能替代交易笔数。
+function organizerRecordState(events, issues, categories, query) {
+  const byId = new Map((events || []).map(function (event) { return [event.eventId, eventView(event)] }))
+  const rows = [...byId.values()]
+  const active = rows.filter(function (event) { return ['ready', 'needs_action', 'posted'].includes(event.status) })
+  const excluded = rows.filter(function (event) { return event.status === 'excluded' })
+  const activeIds = new Set(active.map(function (event) { return event.eventId }))
+  const open = reviewIssueRows((issues || []).filter(function (issue) {
+    return issue.status === 'open' && (issue.blocking || issue.issueType === 'category_assignment')
+  }))
+  const verificationById = new Map()
+  const categoryById = new Map()
+  const hydratedIssues = open.map(function (issue) {
+    const ids = issue.subjectEventIds && issue.subjectEventIds.length ? issue.subjectEventIds
+      : (issue.subjects || (issue.subject ? [issue.subject] : [])).map(function (event) { return event.eventId })
+    const subjectIds = [...new Set(ids)].filter(function (id) { return activeIds.has(id) })
+    const target = issue.issueType === 'category_assignment' ? categoryById : verificationById
+    subjectIds.forEach(function (id) { if (!target.has(id)) target.set(id, issue.issueId) })
+    return Object.assign({}, issue, { subjects: subjectIds.map(function (id) { return byId.get(id) }), subjectCount: subjectIds.length })
+  })
+  const keyword = String(query || '').trim().toLowerCase()
+  const matches = function (event) { return !keyword || [event.displayTitle, event.displayMeta, event.categoryName].join(' ').toLowerCase().includes(keyword) }
+  const categoryRequired = function (event) { return ['income', 'expense', 'fee', 'unknown'].includes(event.economicNature) || !event.economicNature }
+  const names = new Map((categories || []).map(function (category) { return [category.categoryId, category.name] }))
+  const annotated = active.map(function (event) {
+    const reviewIssueId = verificationById.get(event.eventId) || ''
+    const categoryIssueId = categoryById.get(event.eventId) || ''
+    const pendingReview = Boolean(reviewIssueId || (event.status === 'needs_action' && !categoryIssueId))
+    const needsCategory = categoryRequired(event) && (!event.categoryId || event.economicNature === 'unknown')
+    return Object.assign({}, event, { reviewIssueId: reviewIssueId, categoryIssueId: categoryIssueId,
+      pendingReview: pendingReview, needsCategory: needsCategory,
+      categoryName: names.get(event.categoryId) || '分类已设置',
+      natureLabel: { income: '收入', expense: '支出', fee: '手续费', repayment: '还款', internal_transfer: '内部转账',
+        refund: '退款', borrow: '借款', balance_adjustment: '余额调整', unknown: '性质待确认' }[event.economicNature] || '性质待确认'
+    })
+  })
+  const reviewPending = annotated.filter(function (event) { return event.pendingReview })
+  const reviewCompleted = annotated.filter(function (event) { return !event.pendingReview })
+  const categoryPending = annotated.filter(function (event) { return event.needsCategory })
+  const categoryCompleted = annotated.filter(function (event) { return !event.needsCategory && categoryRequired(event) })
+  const categoryNone = annotated.filter(function (event) { return !categoryRequired(event) })
+  const blockedCategoryIssues = new Set(annotated.filter(function (event) {
+    return event.categoryIssueId && event.pendingReview
+  }).map(function (event) { return event.categoryIssueId }))
+  const duplicateCandidates = rows.filter(function (event) { return event.duplicateEvidenceCount > 0 })
+  const duplicateCount = duplicateCandidates.reduce(function (sum, event) { return sum + Number(event.duplicateEvidenceCount) }, 0)
+  const summary = { activeCount: active.length, excludedCount: excluded.length, duplicateCount: duplicateCount,
+    totalCount: active.length + excluded.length + duplicateCount }
+  return {
+    summary: summary,
+    reviewPendingEvents: reviewPending,
+    reviewedEvents: reviewCompleted,
+    categoryWaitingEvents: categoryPending.filter(function (event) { return !event.categoryIssueId || blockedCategoryIssues.has(event.categoryIssueId) }).filter(matches),
+    categoryDecisionIssues: hydratedIssues.filter(function (issue) {
+      return issue.issueType === 'category_assignment' && issue.subjectCount > 0 && !blockedCategoryIssues.has(issue.issueId)
+    }),
+    categorizedEvents: categoryCompleted.filter(matches),
+    noCategoryEvents: categoryNone.filter(matches),
+    categoryEventCount: categoryPending.length,
+    categorizedEventCount: categoryCompleted.length,
+    duplicateCandidates: duplicateCandidates,
+    hydratedIssues: hydratedIssues,
+    reviewStatusTabs: [
+      { value: 'pending', label: '待核对', count: reviewPending.length },
+      { value: 'completed', label: '已核对', count: reviewCompleted.length },
+      { value: 'excluded', label: '已排除', count: excluded.length },
+      { value: 'duplicate', label: '重复', count: duplicateCount }
+    ],
+    categoryStatusTabs: [
+      { value: 'pending', label: '待分类', count: categoryPending.length },
+      { value: 'completed', label: '已分类', count: categoryCompleted.length },
+      { value: 'none', label: '无需分类', count: categoryNone.length }
+    ]
+  }
+}
+
 function workflowPosition(status, groups) {
   if (status === 'posted' || status === 'undone' || status === 'abandoned') return { currentStep: 4, unlockedStep: 4 }
   if (groups.account.length > 0) return { currentStep: 2, unlockedStep: 2 }
-  if (groups.review.length > 0) return { currentStep: 3, unlockedStep: 3 }
+  if (groups.review.length > 0) return { currentStep: 3,
+    unlockedStep: groups.review.some(function (issue) { return issue.issueType !== 'category_assignment' && issue.blocking !== false }) ? 3 : 4 }
   return { currentStep: 4, unlockedStep: 4 }
 }
 
 function eventView(event) {
   const evidence = event.primaryEvidence || {}
-  const displayTitle = evidence.item || evidence.counterparty || event.economicNature || '待确认事件'
+  const displayTitle = [evidence.item, evidence.counterparty].find(function (value) {
+    return value && !/^(?:[\s/／—-]+|不详|未知)$/.test(value)
+  }) || ({ repayment: '信用卡还款', internal_transfer: '账户转账', refund: '退款', expense: '支出', income: '收入' }[event.economicNature]) || '待确认事件'
   const localAt = String(event.localAt || '')
   const dateText = localAt.slice(0, 16).replace(/^\d{4}-/u, '').replace(' ', ' · ')
   const sourceText = { alipay: '支付宝', wechat: '微信', bank: '银行' }[evidence.sourceType] || ''
@@ -515,6 +776,30 @@ function eventView(event) {
     displayDetailMeta: [detailText, sourceText].filter(Boolean).join(' · '),
     directionClass: event.flowDirection === 'inflow' ? 'row-income' : event.flowDirection === 'outflow' ? 'row-expense' : ''
   })
+}
+
+function accountEvidenceView(event) {
+  const view = eventView(event)
+  const source = event.primaryEvidence || {}
+  return Object.assign({}, view, {
+    sourceTime: String(event.localAt || '').slice(0, 16) || '时间待核对',
+    sourceParty: source.counterparty || '交易对方未提供',
+    sourcePayment: source.paymentMethod || '未标明',
+    sourceStatus: source.status || '',
+    flowText: { inflow: '流入', outflow: '流出', neutral: '不计收支' }[event.flowDirection] || '方向待核对'
+  })
+}
+
+function accountRecordList(members) {
+  const byId = new Map()
+  ;(members || []).forEach(function (member) {
+    if (member.event && member.event.eventId) byId.set(member.event.eventId, accountEvidenceView(member.event))
+  })
+  const records = [...byId.values()].sort(function (a, b) {
+    return String(a.localAt || '').localeCompare(String(b.localAt || '')) || a.eventId.localeCompare(b.eventId)
+  })
+  const dates = records.map(function (record) { return String(record.localAt || '').slice(0, 10) }).filter(Boolean)
+  return { records: records, dateRange: dates.length ? dates[0] + (dates[0] === dates[dates.length - 1] ? '' : ' 至 ' + dates[dates.length - 1]) : '时间范围待核对' }
 }
 
 function excludedReason(event) {
@@ -616,6 +901,7 @@ function finalSummary(events, accountDrafts) {
   ready.forEach(function (event) {
     if (event.ledgerAccountId) accountIds.add(event.ledgerAccountId)
     if (event.counterpartyLedgerAccountId) accountIds.add(event.counterpartyLedgerAccountId)
+    ;((event.paymentResolution && event.paymentResolution.allocations) || []).forEach(function (item) { accountIds.add(item.accountId) })
     if (['expense', 'fee'].includes(event.economicNature)) expenseMinor = addMinor(expenseMinor, event.amountMinor)
     if (event.economicNature === 'income') incomeMinor = addMinor(incomeMinor, event.amountMinor)
     if (event.economicNature === 'refund') refundMinor = addMinor(refundMinor, event.amountMinor)
@@ -640,6 +926,15 @@ function finalSummary(events, accountDrafts) {
 }
 
 module.exports = {
+  buildIssueFieldsDraft,
+  organizerRecordState,
+  categoryIssueCards,
+  categorizedEventRows,
+  buildPaymentResolutionDraft,
+  updatePaymentAmounts,
+  bankAccountSuggestion: bankSuggestion.suggest,
+  accountEvidenceView,
+  accountRecordList,
   ISSUE_LABELS,
   accountChoiceOptions,
   accountSelectorOptions,
@@ -664,6 +959,7 @@ module.exports = {
   sameFileContent,
   sameFileMetadata,
   suggestExistingAccount,
+  paymentResolutionDefaults,
   updateFile,
   uploadSummary,
   workflowPosition,

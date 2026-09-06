@@ -1,4 +1,4 @@
-const REPAYMENT_ALLOCATION_VERSION = 'repayment-allocation-v1'
+const REPAYMENT_ALLOCATION_VERSION = 'repayment-allocation-v2'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const POSITIVE_MINOR_RE = /^[1-9]\d{0,18}$/
 
@@ -35,11 +35,14 @@ function inspectRepaymentAllocations(value, totalAmountMinor) {
 
 function repaymentAllocationsForEvent(event) {
   const fieldSources = event && event.fieldSources || {}
-  if (fieldSources.repaymentAllocationVersion !== REPAYMENT_ALLOCATION_VERSION) {
+  if (!['repayment-allocation-v1', REPAYMENT_ALLOCATION_VERSION].includes(fieldSources.repaymentAllocationVersion)) {
     return invalid('repayment_allocation_required')
   }
   const allocation = inspectRepaymentAllocations(fieldSources.repaymentAllocations, event && event.amountMinor)
   if (!allocation.valid || !isAggregateRepayment(event)) return allocation
+  // v2 人工选择的资格由可信账户目录校验；来源候选仅作为推荐。
+  // 已保存的 v1 决定保留原版本语义，不读时重写旧草稿。
+  if (fieldSources.repaymentAllocationVersion === REPAYMENT_ALLOCATION_VERSION) return allocation
   const allowedAccountIds = new Set((fieldSources.fundsProjection.to.candidates || [])
     .map((candidate) => candidate && candidate.accountId)
     .filter((accountId) => UUID_RE.test(String(accountId || ''))))

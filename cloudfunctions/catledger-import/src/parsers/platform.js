@@ -1,79 +1,12 @@
 const { normalizeText } = require('./text')
 const { normalizeRow } = require('./normalize')
-
-const FIELD_ALIASES = Object.freeze({
-  wechat: {
-    transactionTime: ['交易时间', '交易日期'],
-    transactionType: ['交易类型', '业务类型'],
-    counterparty: ['交易对方', '交易对象', '对方'],
-    item: ['商品', '商品说明', '商品名称'],
-    direction: ['收/支', '收支', '收支类型'],
-    amount: ['金额(元)', '交易金额(元)', '金额'],
-    paymentMethod: ['支付方式', '付款方式'],
-    status: ['当前状态', '交易状态', '状态'],
-    transactionId: ['交易单号', '微信交易单号'],
-    orderId: ['订单号'],
-    merchantOrderId: ['商户单号', '商家单号'],
-    note: ['备注', '交易备注']
-  },
-  alipay_app: {
-    transactionTime: ['交易时间'],
-    transactionType: ['交易分类', '交易类型'],
-    counterparty: ['交易对方'],
-    item: ['商品说明', '商品名称'],
-    direction: ['收/支'],
-    amount: ['金额'],
-    paymentMethod: ['收/付款方式', '付款方式', '资金渠道'],
-    status: ['交易状态'],
-    transactionId: ['交易订单号', '支付宝交易号', '交易号'],
-    orderId: ['订单号'],
-    merchantOrderId: ['商家订单号', '商户订单号'],
-    note: ['备注']
-  },
-  alipay_web: {
-    transactionTime: ['交易创建时间'],
-    transactionType: ['类型', '交易类型'],
-    counterparty: ['交易对方'],
-    item: ['商品名称', '商品说明'],
-    direction: ['收/支'],
-    amount: ['金额(元)', '金额(元)', '金额'],
-    paymentMethod: ['收/付款方式', '付款方式', '资金渠道'],
-    status: ['交易状态'],
-    transactionId: ['交易号', '支付宝交易号', '交易订单号'],
-    orderId: ['订单号'],
-    merchantOrderId: ['商户订单号', '商家订单号'],
-    note: ['备注']
-  }
-})
+const { classifyRecord, hasTransactionStructure, inspectControls } = require('./record-classifier')
+const { profileForFormat, profilesForContainer } = require('../profiles')
 
 const DESCRIPTORS = Object.freeze({
-  wechat: {
-    key: 'wechat',
-    sourceType: 'wechat',
-    sourceFormat: 'wechat_csv',
-    parserName: 'wechat-pay-csv-evidence',
-    parserVersion: 'wechat-csv-parser-v1',
-    normalizationVersion: 'wechat-normalization-v5',
-    markers: ['微信支付账单明细']
-  },
-  alipay_app: {
-    key: 'alipay_app',
-    sourceType: 'alipay',
-    sourceFormat: 'alipay_app_csv',
-    parserName: 'alipay-app-csv-evidence',
-    parserVersion: 'alipay-evidence-parser-v1',
-    normalizationVersion: 'alipay-normalization-v7',
-    markers: ['支付宝(中国)网络技术有限公司 电子客户回单', '支付宝支付科技有限公司 电子客户回单']
-  },
-  alipay_web: {
-    key: 'alipay_web',
-    sourceType: 'alipay',
-    sourceFormat: 'alipay_web_csv',
-    parserName: 'alipay-web-csv-evidence',
-    parserVersion: 'alipay-evidence-parser-v1',
-    normalizationVersion: 'alipay-normalization-v7',
-    markers: ['支付宝交易记录明细查询', '交易记录明细列表']
-  }
+  wechat: { ...profileForFormat('wechat_csv'), key: 'wechat' },
+  alipay_app: { ...profileForFormat('alipay_app_csv'), key: 'alipay_app' },
+  alipay_web: { ...profileForFormat('alipay_web_csv'), key: 'alipay_web' }
 })
 
 function canonicalHeader(value) {
@@ -81,23 +14,38 @@ function canonicalHeader(value) {
 }
 
 function inspectHeader(values, descriptor) {
-  const aliases = FIELD_ALIASES[descriptor.key]
+  const aliases = descriptor.fieldAliases
   const positions = {}
+  const duplicateFields = []
+  const knownIndexes = new Set()
   let knownCount = 0
   values.forEach((value, index) => {
     const header = canonicalHeader(value)
     for (const [field, names] of Object.entries(aliases)) {
-      if (positions[field] == null && names.map(canonicalHeader).includes(header)) {
-        positions[field] = index
-        knownCount += 1
+      if (names.map(canonicalHeader).includes(header)) {
+        knownIndexes.add(index)
+        if (positions[field] == null) {
+          positions[field] = index
+          knownCount += 1
+        } else {
+          duplicateFields.push(field)
+        }
         break
       }
     }
   })
+  const missingFields = descriptor.requiredFields.filter((field) => positions[field] == null)
+  const unknownHeaders = values.map((value, index) => ({ value: normalizeText(value, 128), index }))
+    .filter((entry) => entry.value && !knownIndexes.has(entry.index))
+    .map((entry) => entry.value)
   return {
     positions,
     knownCount,
-    hasCore: positions.transactionTime != null && positions.amount != null
+    duplicateFields,
+    missingFields,
+    unknownHeaders,
+    hasCore: positions.transactionTime != null && positions.amount != null,
+    valid: missingFields.length === 0 && duplicateFields.length === 0
   }
 }
 
@@ -125,30 +73,18 @@ function probePlatform(records, descriptor) {
   const header = findHeader(records, descriptor)
   if (!header) return { descriptor, confidence: 0, header: null }
   const marker = hasMarker(records, descriptor)
-  const uniqueHeaders = descriptor.key === 'wechat'
-    ? ['微信交易单号', '当前状态']
-    : descriptor.key === 'alipay_app'
-      ? ['交易分类', '支付宝交易号', '交易订单号']
-      : ['交易创建时间', '金额(元)']
   const normalizedHeaders = header.record.values.map(canonicalHeader)
-  const unique = uniqueHeaders.some((value) => normalizedHeaders.includes(canonicalHeader(value)))
+  const unique = descriptor.uniqueHeaders.some((value) => normalizedHeaders.includes(canonicalHeader(value)))
   const confidence = (marker ? 100 : 0) + (unique ? 30 : 0) + header.header.knownCount
   return { descriptor, confidence, header, marker }
 }
 
 function choosePlatform(records, { xlsx = false } = {}) {
-  const candidates = Object.values(DESCRIPTORS).map((descriptor) => probePlatform(records, descriptor))
-    .filter((candidate) => candidate.header && candidate.confidence >= 5)
-    .sort((left, right) => right.confidence - left.confidence)
-  if (!candidates[0] || (candidates[1] && candidates[0].confidence === candidates[1].confidence)) return null
-  const selected = { ...candidates[0], descriptor: { ...candidates[0].descriptor } }
-  if (xlsx) {
-    if (selected.descriptor.sourceType !== 'wechat') return null
-    selected.descriptor.sourceFormat = 'wechat_xlsx'
-    selected.descriptor.parserName = 'wechat-pay-xlsx-evidence'
-    selected.descriptor.parserVersion = 'wechat-xlsx-parser-v1'
-  }
-  return selected
+  const candidates = profilesForContainer(xlsx ? 'xlsx' : 'csv')
+    .map((profile) => probePlatform(records, profile))
+    .filter((candidate) => candidate.header && candidate.header.header.valid && candidate.confidence >= 5)
+  if (candidates.length !== 1) return null
+  return { ...candidates[0], descriptor: { ...candidates[0].descriptor } }
 }
 
 function valueAt(values, positions, field) {
@@ -156,13 +92,12 @@ function valueAt(values, positions, field) {
   return index == null || index >= values.length ? '' : String(values[index])
 }
 
-function isEmpty(values) {
-  return values.every((value) => normalizeText(value, 1024) === '')
+function sourceLocator(record) {
+  return record.sourceLocator || `CSV:${record.startLine}-${record.endLine}`
 }
 
-function isSeparator(values) {
-  if (!values[0] || values.slice(1).some((value) => normalizeText(value, 1024))) return false
-  return /^-{10,}$/.test(normalizeText(values[0], 1024))
+function classifiedRecord(record, kind) {
+  return { kind, sourceLocator: sourceLocator(record), values: record.values }
 }
 
 function parseStatementPeriod(records) {
@@ -191,10 +126,29 @@ function parsePlatformRecords(records, selected, timezoneOffsetMinutes) {
   const { descriptor, header } = selected
   const positions = header.header.positions
   const rows = []
-  for (const record of records.slice(header.index + 1)) {
-    if (isEmpty(record.values)) continue
-    if (isSeparator(record.values)) break
-    const repeated = inspectHeader(record.values, descriptor).hasCore
+  const controlFields = []
+  const metadataRows = []
+  const decorativeRows = []
+  for (const [index, record] of records.entries()) {
+    if (index === header.index) continue
+    const kind = classifyRecord(record, positions)
+    if (kind === 'decorative') {
+      decorativeRows.push(classifiedRecord(record, kind))
+      continue
+    }
+    const repeatedHeader = inspectHeader(record.values, descriptor)
+    if (repeatedHeader.valid) {
+      decorativeRows.push(classifiedRecord(record, 'repeated_header'))
+      continue
+    }
+    if (kind === 'control') {
+      controlFields.push(classifiedRecord(record, kind))
+      continue
+    }
+    if (kind === 'metadata' || index < header.index && !hasTransactionStructure(record, positions)) {
+      metadataRows.push(classifiedRecord(record, 'metadata'))
+      continue
+    }
     const raw = {
       transactionTime: valueAt(record.values, positions, 'transactionTime'),
       amount: valueAt(record.values, positions, 'amount'),
@@ -202,12 +156,18 @@ function parsePlatformRecords(records, selected, timezoneOffsetMinutes) {
       status: valueAt(record.values, positions, 'status'),
       transactionType: valueAt(record.values, positions, 'transactionType'),
       counterparty: valueAt(record.values, positions, 'counterparty'),
+      counterpartyAccount: valueAt(record.values, positions, 'counterpartyAccount'),
       item: valueAt(record.values, positions, 'item'),
       paymentMethod: valueAt(record.values, positions, 'paymentMethod'),
       note: valueAt(record.values, positions, 'note')
     }
     const structuralIssues = []
-    if (repeated) structuralIssues.push({ code: 'row_repeated_header', field: 'row', severity: 'error' })
+    if (record.values.slice(header.record.values.length).some((value) => normalizeText(value, 1024))) {
+      structuralIssues.push({ code: 'row_extra_columns', field: 'row', severity: 'warning' })
+    }
+    if (!normalizeText(raw.transactionTime, 128) && !normalizeText(raw.amount, 128)) {
+      structuralIssues.push({ code: 'row_structure_unknown', field: 'row', severity: 'error' })
+    }
     if (record.formulaColumns && record.formulaColumns.length > 0) {
       structuralIssues.push({ code: 'xlsx_formula_unsupported', field: 'row', severity: 'error' })
     }
@@ -215,13 +175,17 @@ function parsePlatformRecords(records, selected, timezoneOffsetMinutes) {
       descriptor.sourceType,
       raw,
       timezoneOffsetMinutes,
-      structuralIssues
+      structuralIssues,
+      descriptor.sourceFormat,
+      new Set(Object.keys(positions))
     )
     rows.push({
       rowNumber: rows.length + 1,
-      sourceLocator: record.sourceLocator || `CSV:${record.startLine}-${record.endLine}`,
+      sourceLocator: sourceLocator(record),
       raw,
-      rawFields: header.record.values.map((name, index) => ({ name, value: record.values[index] || '' })),
+      rawFields: Array.from({ length: Math.max(header.record.values.length, record.values.length) }, (_, index) => ({
+        name: header.record.values[index] || '', value: record.values[index] || '', column: index + 1
+      })),
       identifiers: {
         transactionId: valueAt(record.values, positions, 'transactionId'),
         orderId: valueAt(record.values, positions, 'orderId'),
@@ -231,15 +195,38 @@ function parsePlatformRecords(records, selected, timezoneOffsetMinutes) {
     })
   }
 
-  const period = parseStatementPeriod(records)
+  const period = parseStatementPeriod(metadataRows)
+  const controlAnalysis = inspectControls(controlFields, rows, descriptor)
   return {
     descriptor,
+    profile: {
+      profileId: descriptor.profileId,
+      profileVersion: descriptor.profileVersion,
+      adapterVersion: descriptor.adapterVersion,
+      policyVersion: descriptor.policyVersion
+    },
     metadata: {
-      sourceProfile: sourceProfileCandidate(records, descriptor.sourceType),
+      sourceProfile: sourceProfileCandidate(metadataRows, descriptor.sourceType),
       statementStartLocal: period.start,
       statementEndLocal: period.end
     },
-    issues: selected.marker ? [] : [{ code: 'file_preamble_missing', field: 'preamble', severity: 'warning' }],
+    controls: controlAnalysis.controls,
+    diagnostics: {
+      unknownHeaders: header.header.unknownHeaders,
+      missingFields: header.header.missingFields,
+      duplicateFields: header.header.duplicateFields
+    },
+    records: {
+      dataRows: rows,
+      controlFields,
+      metadataRows,
+      decorativeRows
+    },
+    issues: [
+      ...controlAnalysis.issues,
+      ...(selected.marker ? [] : [{ code: 'file_preamble_missing', field: 'preamble', severity: 'warning' }]),
+      ...header.header.unknownHeaders.map(() => ({ code: 'file_header_unknown', field: 'header', severity: 'warning' }))
+    ],
     rows
   }
 }

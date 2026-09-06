@@ -1,0 +1,42 @@
+name: 仓库验证
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: local-synthetic-ci-only
+          MYSQL_ROOT_HOST: '%'
+          MYSQL_DATABASE: catledger_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: cloudfunctions/*/package-lock.json
+      - run: npm ci --prefix cloudfunctions/catledger-api
+      - run: npm ci --prefix cloudfunctions/catledger-import
+      - run: npm run check
+      - run: npm run test:db
+        env:
+          CATLEDGER_TEST_DB_HOST: 127.0.0.1
+          CATLEDGER_TEST_DB_PORT: 3306
+          CATLEDGER_TEST_DB_USER: root
+          CATLEDGER_TEST_DB_PASSWORD: local-synthetic-ci-only
+          CATLEDGER_TEST_DB_NAME: catledger_test
+      - run: npm run audit:prod --prefix cloudfunctions/catledger-api
+      - run: npm run audit:prod --prefix cloudfunctions/catledger-import

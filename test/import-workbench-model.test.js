@@ -3,6 +3,20 @@ const test = require('node:test')
 
 const model = require('../miniprogram/pages/import-workbench/model')
 
+test('账户证据保留原支付方式，单笔摘要可定位原记录，多笔按时间排序且去重', () => {
+  const first = { eventId: 'one', localAt: '2026-08-01 12:30:00', amountMinor: '1250', flowDirection: 'outflow',
+    primaryEvidence: { item: '合成商品', counterparty: '合成商户', paymentMethod: '花呗&余额', status: '交易成功' } }
+  const last = { ...first, eventId: 'two', localAt: '2026-08-09 09:00:00' }
+  const view = model.accountEvidenceView(first)
+  assert.equal(view.sourcePayment, '花呗&余额')
+  assert.equal(view.sourceStatus, '交易成功')
+  assert.equal(view.sourceTime, '2026-08-01 12:30')
+  assert.equal(view.flowText, '流出')
+  const list = model.accountRecordList([{ event: last }, { event: first }, { event: first }, { relation: {} }])
+  assert.deepEqual(list.records.map((row) => row.eventId), ['one', 'two'])
+  assert.equal(list.dateRange, '2026-08-01 至 2026-08-09')
+})
+
 test('多文件摘要分别统计解析成功与失败，不把失败文件伪装成整批失败', function () {
   const files = [
     { clientId: 'a', state: 'ready' },
@@ -135,8 +149,8 @@ test('聚合还款只列出本事件候选集内的真实负债账户', function
   ], [
     { accountId: 'credit', name: '江苏银行信用购', type: 'credit' }
   ], issue.fundsProjection)
-  assert.deepEqual(options.map(function (item) { return item.accountId }), ['credit', 'huabei'])
-  assert.deepEqual(options.map(function (item) { return item.recommended }), [true, true])
+  assert.deepEqual(options.map(function (item) { return item.accountId }), ['credit', 'huabei', 'other'])
+  assert.deepEqual(options.map(function (item) { return item.recommended }), [true, true, false])
   assert.equal(model.yuanInputToMinor('61.2'), '6120')
   assert.equal(model.yuanInputToMinor('1.234'), null)
   assert.deepEqual(model.buildRepaymentAllocationDraft([
@@ -257,7 +271,7 @@ test('金额与文件大小使用展示字符串且不经过浮点金额计算',
 test('问题事件缺少主证据时仍安全展示，分类只匹配经济性质', function () {
   assert.deepEqual(model.eventView({ amountMinor: '500', economicNature: 'refund', primaryEvidence: null }), {
     amountMinor: '500', economicNature: 'refund', primaryEvidence: null,
-    amountText: '¥5.00', displayTitle: 'refund', displayMeta: '',
+    amountText: '¥5.00', displayTitle: '退款', displayMeta: '',
     displayDay: '', displayMonth: '', displayDetailMeta: '', directionClass: ''
   })
   const categories = [
@@ -438,4 +452,95 @@ test('最终入账摘要按经济性质统计且缺分类时关闭入账门禁',
     categoryCount: 3, categorizedCount: 2, categoryCoverageText: '2 / 3', categoryComplete: false,
     newAccountCount: 1, affectedAccountCount: 2
   })
+})
+
+
+test('还款可选范围不因本批候选缺席变化，排除资产、异币种、归档和付款方', () => {
+  const accounts = [
+    { accountId: 'history', name: '历史负债', type: 'credit', currency: 'CNY' },
+    { accountId: 'source', type: 'credit', currency: 'CNY' },
+    { accountId: 'foreign', type: 'credit', currency: 'USD' },
+    { accountId: 'archived', type: 'credit', currency: 'CNY', archivedAt: '2026-01-01' },
+    { accountId: 'wallet', type: 'wallet', currency: 'CNY' }
+  ]
+  const choices = model.repaymentAllocationOptions(accounts, [], { to: { candidates: [] } }, { currency: 'CNY', ledgerAccountId: 'source' })
+  assert.deepEqual(choices.map(x => x.accountId), ['history'])
+  assert.equal(choices[0].recommended, false)
+  assert.equal(choices[0].amountInput, '')
+  const draft = model.buildRepaymentAllocationDraft([{ isNew: true, accountId: 'local-only', name: '测试花呗', amountInput: '100' }], '10000')
+  assert.equal(draft.valid, true)
+  assert.deepEqual(draft.allocations, [{ accountDraft: { name: '测试花呗', type: 'credit', currency: 'CNY' }, amountMinor: '10000' }])
+  assert.equal(model.buildRepaymentAllocationDraft([{ isNew: true, name: '', amountInput: '100' }], '10000').valid, false)
+  assert.equal(model.buildRepaymentAllocationDraft([{ unavailable: true, accountId: 'old', amountInput: '100' }], '10000').valid, false)
+})
+
+
+test('已分类只含有效收支手续费，保留分类与日期并支持分类名搜索', () => {
+  const base = { status: 'ready', categoryId: 'expense-food', economicNature: 'expense', amountMinor: '2800',
+    localAt: '2026-09-05 10:00:00', primaryEvidence: { item: '布局样例', sourceType: 'alipay' } }
+  const events = [
+    { ...base, eventId: 'expense' },
+    { ...base, eventId: 'fee', economicNature: 'fee', localAt: '2026-09-04 10:00:00' },
+    { ...base, eventId: 'income', economicNature: 'income', categoryId: 'income-work' },
+    { ...base, eventId: 'reviewing', status: 'needs_action' },
+    { ...base, eventId: 'excluded', status: 'excluded' },
+    { ...base, eventId: 'pending', categoryId: null },
+    { ...base, eventId: 'repayment', economicNature: 'repayment' },
+    { ...base, eventId: 'transfer', economicNature: 'internal_transfer' }
+  ]
+  const categories = [{ categoryId: 'expense-food', name: '餐饮' }, { categoryId: 'income-work', name: '工资' }]
+  const rows = model.categorizedEventRows(events, categories)
+  assert.deepEqual(rows.map(row => row.eventId), ['fee', 'expense', 'income', 'reviewing'])
+  assert.equal(rows[0].displayDay, '04')
+  assert.equal(rows[0].categoryName, '餐饮')
+  assert.equal(rows[2].natureLabel, '收入')
+  assert.deepEqual(model.categorizedEventRows(events, categories, '工资').map(row => row.eventId), ['income'])
+})
+test('整理两个视角按唯一事件守恒，重复与辅助证据分开，排除不混入有效集合', () => {
+  const event = (eventId, economicNature, status = 'ready', extra = {}) => ({ eventId, economicNature, status, localAt: '2026-09-05 10:00:00', amountMinor: '100', ...extra })
+  const events = [event('a', 'expense', 'needs_action'), event('b', 'expense', 'needs_action'), event('c', 'repayment', 'needs_action'),
+    event('d', 'income', 'ready', { categoryId: 'salary' }), event('e', 'expense', 'ready', { categoryId: 'food', evidenceCount: 4, duplicateEvidenceCount: 1 }),
+    event('f', 'internal_transfer', 'ready', { evidenceCount: 3, duplicateEvidenceCount: 0 }), event('g', 'expense', 'excluded'), event('old', 'expense', 'corrected')]
+  const issue = (issueId, issueType, subjectEventIds, extra = {}) => ({ issueId, issueType, subjectEventIds, status: 'open', blocking: true, ...extra })
+  const issues = [issue('check-a', 'shared_fields', ['a']), issue('check-c', 'refund_relation', ['c'], { memberCount: 6, candidateCount: 5 }),
+    issue('overlap', 'field_conflict', ['a']), issue('category-b', 'category_assignment', ['b'])]
+  const state = model.organizerRecordState(events.concat(events[0]), issues, [{ categoryId: 'food', name: '餐饮' }])
+  assert.deepEqual(state.summary, { activeCount: 6, excludedCount: 1, duplicateCount: 1, totalCount: 8 })
+  assert.deepEqual(state.reviewStatusTabs.map(tab => tab.count), [2, 4, 1, 1])
+  assert.deepEqual(state.categoryStatusTabs.map(tab => tab.count), [2, 2, 2])
+  assert.equal(state.reviewStatusTabs.reduce((sum, tab) => sum + tab.count, 0), state.summary.totalCount)
+  assert.equal(state.categoryStatusTabs.reduce((sum, tab) => sum + tab.count, 0), state.summary.activeCount)
+  assert.deepEqual(state.categoryWaitingEvents.map(row => row.eventId), ['a'])
+  assert.deepEqual(state.duplicateCandidates.map(row => row.eventId), ['e'])
+  assert.equal(state.noCategoryEvents.find(row => row.eventId === 'c').pendingReview, true)
+  assert.equal(state.reviewedEvents.find(row => row.eventId === 'b').needsCategory, true)
+})
+
+test('多笔分类组使用全部真实成员计数，搜索末尾交易不会漏掉或扩大保存组', () => {
+  const events = Array.from({ length: 7 }, (_, i) => ({ eventId: 'item-' + i, status: 'needs_action', economicNature: 'expense',
+    localAt: '2026-09-05 10:00:00', amountMinor: '100', primaryEvidence: { item: '商户' + i } }))
+  const issue = { issueId: 'batch', issueType: 'category_assignment', status: 'open', blocking: true, memberCount: 7,
+    subject: events[0], subjectEventIds: events.map(event => event.eventId) }
+  const state = model.organizerRecordState(events, [issue], [], '商户6')
+  const cards = model.categoryIssueCards(state.categoryDecisionIssues, '商户6')
+  assert.equal(state.categoryEventCount, 7)
+  assert.equal(state.reviewStatusTabs[1].count, 7)
+  assert.equal(cards.length, 1)
+  assert.equal(cards[0].subjectCount, 7)
+  assert.equal(cards[0].subjects[0].eventId, 'item-6')
+  assert.equal(cards[0].issueId, 'batch')
+  assert.equal(cards[0].hiddenSubjectCount, 6)
+})
+
+test('性质未定与同笔多个阻塞不遗漏，不让分类视图绕过核对', () => {
+  const events = [{ eventId: 'unknown', status: 'needs_action', economicNature: 'unknown', categoryId: 'stale' },
+    { eventId: 'both', status: 'needs_action', economicNature: 'expense' }]
+  const issues = [{ issueId: 'review', issueType: 'shared_fields', status: 'open', blocking: true, subjectEventIds: ['unknown', 'both'] },
+    { issueId: 'category', issueType: 'category_assignment', status: 'open', blocking: true, subjectEventIds: ['both'] }]
+  const state = model.organizerRecordState(events, issues, [])
+  assert.equal(state.reviewPendingEvents.length, 2)
+  assert.equal(state.categoryEventCount, 2)
+  assert.equal(state.categoryWaitingEvents.length, 2)
+  assert.equal(state.categoryDecisionIssues.length, 0)
+  assert.equal(state.categorizedEvents.length, 0)
 })

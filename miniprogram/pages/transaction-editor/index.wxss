@@ -1,23 +1,23 @@
 .editor-page { box-sizing: border-box; min-height: 100vh; padding: 30rpx 32rpx calc(48rpx + env(safe-area-inset-bottom)); color: var(--theme-ink, #29231e); background: var(--theme-page, #f8f3ea); }
-.editor-kicker { display: block; color: var(--theme-secondary, #64705d); font-size: 18rpx; font-weight: 500; letter-spacing: 2rpx; }
-.editor-title { display: block; margin-top: 6rpx; font-size: 32rpx; font-weight: 600; }
-.type-switch { display: flex; gap: 4rpx; margin-top: 24rpx; padding: 4rpx; background: var(--theme-secondary-soft, #e8eadf); border-radius: 16rpx; }
-.type-option { flex: 1; min-height: 68rpx; color: var(--theme-secondary, #64705d); font-size: 23rpx; font-weight: 500; line-height: 68rpx; text-align: center; border-radius: 12rpx; }
+.editor-kicker { display: block; color: var(--theme-secondary, #64705d); font-size: 20rpx; font-weight: 500; letter-spacing: 2rpx; }
+.editor-title { display: block; margin-top: 6rpx; font-size: var(--font-title, 36rpx); font-weight: 600; }
+.type-switch { display: flex; gap: 8rpx; margin-top: 24rpx; padding: 4rpx; background: var(--theme-surface-muted, #f8e8dc); border-radius: 16rpx;  flex-wrap: nowrap;}
+.type-option { flex: 1; min-width: 0; min-height: 72rpx; color: var(--theme-secondary, #64705d); font-size: var(--font-caption, 24rpx); font-weight: 500; line-height: 72rpx; text-align: center; border-radius: 12rpx; }
 .type-option-selected { color: var(--theme-on-accent, #fffaf1); background: var(--theme-accent, #d97732); }
-.amount-panel { margin-top: 16rpx; padding: 20rpx 24rpx 16rpx; color: var(--theme-hero-ink, #29231e); background: var(--theme-hero-start, #d97732); border-radius: var(--theme-radius-large, 22rpx); }
-.amount-caption { display: block; color: var(--theme-hero-muted, rgba(41, 35, 30, .66)); font-size: 22rpx; letter-spacing: 2rpx; }
+.amount-panel { margin-top: 16rpx; padding: 20rpx 24rpx; color: var(--theme-hero-ink, #29231e); background: var(--theme-hero-start, #d97732); border-radius: var(--theme-radius-large, 22rpx); }
+.amount-caption { display: block; color: var(--theme-hero-muted, rgba(41, 35, 30, .66)); font-size: var(--font-caption, 24rpx); letter-spacing: 2rpx; }
 .amount-input-row { display: flex; align-items: baseline; margin-top: 6rpx; }
 .amount-currency { margin-right: 12rpx; font-size: 40rpx; }
-.amount-input { flex: 1; height: 72rpx; color: var(--theme-hero-ink, #29231e); font-size: 48rpx; font-weight: 600; }
+.amount-input { flex: 1; height: 88rpx; color: var(--theme-hero-ink, #29231e); font-size: 56rpx; font-weight: 600;  min-width: 0;}
 .form-sheet { margin-top: 18rpx; overflow: hidden; border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
 .form-row { display: flex; min-height: 92rpx; align-items: center; justify-content: space-between; padding: 0 4rpx; border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
-.form-label { display: block; color: var(--theme-text-muted, #746a60); font-size: 24rpx; }
-.form-value { display: block; margin-top: 6rpx; font-size: 25rpx; font-weight: 500; }
-.form-value-compact { max-width: 470rpx; overflow: hidden; font-size: 23rpx; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.form-label { display: block; color: var(--theme-text-muted, #746a60); font-size: var(--font-body-small, 26rpx); }
+.form-value { display: block; margin-top: 6rpx; font-size: var(--font-body-small, 26rpx); font-weight: 500; }
+.form-value-compact { max-width: 470rpx; overflow: hidden; font-size: var(--font-caption, 24rpx); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .form-row-pair { gap: 24rpx; align-items: stretch; }
 .half-picker { display: flex; min-height: 92rpx; align-items: center; flex: 1; }
 .note-row { padding: 24rpx 4rpx 28rpx; border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
-.note-input { box-sizing: border-box; width: 100%; min-height: 108rpx; margin-top: 14rpx; padding: 18rpx; font-size: 26rpx; line-height: 1.6; background: var(--theme-surface-muted, #f3eee6); border-radius: 16rpx; }
-.editor-error { margin-top: 18rpx; color: var(--theme-danger, #a95132); font-size: 24rpx; line-height: 1.5; }
-.save-button { margin-top: 28rpx; }
-.delete-button { margin-top: 14rpx; }
+.note-input { box-sizing: border-box; width: 100%; min-height: 108rpx; margin-top: 14rpx; padding: 18rpx; font-size: var(--font-body, 28rpx); line-height: 1.6; background: var(--theme-surface-muted, #f3eee6); border-radius: 16rpx; }
+.editor-error { margin-top: 18rpx; color: var(--theme-danger, #a95132); font-size: var(--font-body-small, 26rpx); line-height: 1.5; }
+.save-button { box-sizing: border-box; min-width: 100%; max-width: 100%; margin-top: 28rpx; }
+.delete-button { box-sizing: border-box; min-width: 100%; max-width: 100%; margin-top: 14rpx; }

@@ -35,20 +35,6 @@ function canonicalEvidenceText(value) {
     .slice(0, 160)
 }
 
-function canonicalItemText(value) {
-  const withoutBusinessPrefix = String(value || '').normalize('NFKC').toLowerCase().trim()
-    .replace(/^(?:(?:退款|全款交易|交易商品|商品)(?:成功|到账)?[\s:：\-—_|｜]*)+/u, '')
-  return canonicalEvidenceText(withoutBusinessPrefix)
-}
-
-function explicitRefundAmountFromStatus(value) {
-  const status = String(value || '').normalize('NFKC')
-  const match = status.match(/[¥￥]\s*(\d+(?:\.\d{1,2})?)/u)
-  if (!match) return null
-  const parts = match[1].split('.')
-  return BigInt(parts[0]) * 100n + BigInt((parts[1] || '').padEnd(2, '0'))
-}
-
 function accountsCompatibleForRelation(left, right) {
   if (left.ledgerAccountId && right.ledgerAccountId) return left.ledgerAccountId === right.ledgerAccountId
   return Boolean(left.accountGroupingKey && left.accountGroupingKey === right.accountGroupingKey)
@@ -56,6 +42,7 @@ function accountsCompatibleForRelation(left, right) {
 
 function baseCandidateEligible(refund, original) {
   if (!refund || !original || refund.eventId === original.eventId) return false
+  if (original.fieldSources && original.fieldSources.paymentResolution) return false
   if (!['expense', 'fee'].includes(original.economicNature) || original.status === 'excluded') return false
   if (original.currency !== refund.currency || original.amountMinor == null || refund.amountMinor == null) return false
   if (BigInt(original.amountMinor) < BigInt(refund.amountMinor)) return false
@@ -77,7 +64,7 @@ function explicitSourceRefundMatch(refund, original) {
   const originalRows = original.relationEvidence && original.relationEvidence.rows || []
   return originalRows.some((originalRow) => refundRows.some((refundRow) => {
     if (originalRow.sourceType !== refundRow.sourceType ||
-        originalRow.economicEffect !== 'refund' || refundRow.economicEffect !== 'refund' ||
+        !(originalRow.relationHints && originalRow.relationHints.originalRefunded) || refundRow.sourceAction !== 'refund_credit' ||
         originalRow.direction !== 'expense' || !['income', 'neutral'].includes(refundRow.direction) ||
         originalRow.amountMinor == null || refundRow.amountMinor == null ||
         originalRow.currency !== refundRow.currency) return false
@@ -85,7 +72,8 @@ function explicitSourceRefundMatch(refund, original) {
     const refundTime = timeValue(refundRow.utcAt)
     if (originalTime == null || refundTime == null || refundTime < originalTime ||
         refundTime - originalTime > STRONG_REFERENCE_WINDOW_MS) return false
-    const expectedRefund = explicitRefundAmountFromStatus(originalRow.rawStatus)
+    const refundAmount = originalRow.relationHints.explicitRefundAmountMinor
+    const expectedRefund = refundAmount == null ? null : BigInt(refundAmount)
     const originalMerchant = canonicalEvidenceText(originalRow.counterparty)
     const refundMerchant = canonicalEvidenceText(refundRow.counterparty)
     return expectedRefund != null && expectedRefund === BigInt(refundRow.amountMinor) &&
@@ -107,9 +95,9 @@ function itemEvidenceMatch(refund, original) {
   const originalTime = timeValue(original.utcAt)
   if (refundTime == null || originalTime == null || refundTime < originalTime ||
       refundTime - originalTime > ITEM_EVIDENCE_WINDOW_MS) return false
-  const refundItem = canonicalItemText(refund.display && refund.display.item)
-  const originalItem = canonicalItemText(original.display && original.display.item)
-  return refundItem.length >= 6 && refundItem === originalItem
+  const refundItems = (refund.relationEvidence && refund.relationEvidence.rows || []).map((row) => row.relationHints && row.relationHints.itemKey || '')
+  const originalItems = (original.relationEvidence && original.relationEvidence.rows || []).map((row) => row.relationHints && row.relationHints.itemKey || '')
+  return refundItems.some((item) => item.length >= 6 && originalItems.includes(item))
 }
 
 function matchKind(refund, original) {

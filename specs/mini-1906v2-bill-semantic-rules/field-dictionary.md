@@ -47,6 +47,19 @@
 
 首期 `ProfileManifest` 只是 profile 内受测试的 JavaScript 配置对象，不建设动态规则平台、远程规则包或独立配置数据库。
 
+### 2.2 文件记录分类
+
+Source Adapter 必须先给文件内容分类，不能把“解析到的每一行”都当成交易：
+
+| 类型 | 用途 |
+| --- | --- |
+| `dataRows` | 进入整行语义解析并参与交易数据行守恒 |
+| `controlFields` | 声明行数、收入/支出汇总、账期、期初期末或逐行余额 |
+| `metadataRows` | 来源账户、导出渠道、用户和文件信息 |
+| `decorativeRows` | 说明、空行、分隔线、重复页眉和页脚 |
+
+所有类别都保留来源位置；只有 `dataRows` 作为覆盖报告中的交易记录分母。
+
 ## 3. 通用规范观测
 
 ### 3.1 空值状态
@@ -81,6 +94,24 @@
 | 其他 | `UNKNOWN_TOKEN` | 目标规则 |
 
 方向观测不直接等同于最终资金影响。提现、充值、还款和本人转账可能在来源中显示中性或 `/`，但最终具有两个账户端点。
+
+### 3.4 来源动作与最终经济性质
+
+`SourceAction` 只解释来源行声称发生的动作：
+
+```text
+PURCHASE / RECEIPT / TRANSFER_SENT / TRANSFER_RECEIVED /
+REFUND_CREDIT / TOP_UP / WITHDRAWAL / REPAYMENT / BORROW / FEE / YIELD
+```
+
+关系解析完成后才确定 `EconomicNature`：
+
+```text
+EXPENSE / INCOME / INTERNAL_TRANSFER / REFUND /
+REPAYMENT / BORROW / FEE
+```
+
+收益来源动作映射为现有 `INCOME`。资金效果、解析状态和行归宿分别表达，不把 `unknown`、`non_financial`、失败、关闭或用户排除混入上述两套枚举。
 
 ## 4. 微信支付 CSV / XLSX 字段
 
@@ -179,7 +210,7 @@
 | `item` | `商品说明`、`商品名称` | `semantic`, `relation`, `display` | 必需 | 可为空 | 只有指定类型允许读取动作前缀 |
 | `direction` | `收/支` | `semantic` | 必需 | 必须归一或未知 | 中性动作需联合判断 |
 | `amount` | `金额` | `semantic`, `control` | 必需 | 必须精确解析 | 当前固定 CNY、非负金额 |
-| `paymentMethod` | `收/付款方式`、`付款方式`、`资金渠道` | `account`, `semantic` | 必需 | 允许空值 | 组合支付当前只取 `&` 前主要工具，其他成分仍须保留 Evidence |
+| `paymentMethod` | `收/付款方式`、`付款方式`、`资金渠道` | `account`, `semantic` | 必需 | 允许空值 | 组合支付必须解析全部成分；多个资金账户没有逐项金额时不得猜主账户 |
 | `status` | `交易状态` | `semantic`, `relation` | 必需 | 不得未知后自动入账 | “解冻成功”证明不能全局匹配“成功” |
 | `transactionId` | `交易订单号`、`支付宝交易号`、`交易号` | `identity`, `relation` | 必需 | 资金行原则上应存在 | 别名同时出现时须检查冲突 |
 | `orderId` | `订单号` | `identity`, `relation` | 可选 | 可为空 | 不得覆盖来源交易号 |
@@ -239,7 +270,9 @@
 | `<银行主体><储蓄卡/借记卡>(<稳定尾号>)` | `BANK_ASSET_REFERENCE` | `CODE` |
 | `<银行主体><信用卡/贷记卡>(<稳定尾号>)` | `BANK_CREDIT_REFERENCE` | `CODE` |
 | 银行或信用卡泛称且无稳定定位 | `GENERIC_REFERENCE` | `CODE` |
-| `主支付工具 & 优惠/组合成分` | `PRIMARY_REFERENCE + SUPPORTING_COMPONENTS` | `CODE`；当前主引用只取 `&` 前部分，全部原文保留 |
+| `资金账户 & 优惠成分` | `PRIMARY_REFERENCE + SUPPORTING_COMPONENTS` | 仅当其他成分已认证为非资金优惠时使用唯一资金账户 |
+| `多个资金账户 & ...` 且有逐项金额 | `SPLIT_FINANCIAL_REFERENCES` | 逐项影响必须与总金额守恒 |
+| `多个资金账户 & ...` 且无逐项金额 | `AMBIGUOUS_FINANCIAL_REFERENCES` | 阻断 ReviewIssue，不得取第一个账户 |
 | `/` | `EXPLICIT_SLASH` | 待私有盘点 |
 | 空值 | `EXPLICIT_BLANK` | `CODE` |
 
@@ -269,7 +302,7 @@
 | `source-action.js` | 主要按交易类型，部分读取商品和方向 | 接收完整行，在分阶段决策表中输出 SourceAction/MoneyEffect claims |
 | `source-funds.js` | 动作识别后再用支付方式、交易对方和少量状态补账户端 | 账户端点成为显式规则阶段，保存 reads、ruleId 和冲突 |
 | `payment-account.js` | 规范显示名、引用键、账户身份和类型候选 | 保留解析能力；稳定 ReferenceConcept 不能仅由显示字符串产生 |
-| `organizer-planner.js` | 仍会触碰来源引用和部分来源推导 | 只消费 SemanticClaims，不读取来源专属原始字符串 |
+| `organizer-planner.js` | 仍会触碰来源引用和部分来源推导 | 只消费已解析的行语义与关系结果，不读取来源专属原始字符串 |
 
 ## 11. 私有枚举盘点输出格式
 
@@ -319,6 +352,15 @@
 
 已识别后被用户排除的记录仍算语义已识别，但不算已经入账；未知记录被排除后仍然是未知，不能提高整账完整度。
 
+产品层只需要两个布尔结果：
+
+```text
+statementFullyRecognized
+selectedEventsReadyToPost
+```
+
+前者描述整份交易数据是否已理解，后者描述本次选中的事件是否可入账；二者不得合并成“完整导入”。
+
 ## 12. 待私有盘点清单
 
 - 微信 CSV 与 XLSX 的真实交易类型完整集合，以及两种容器是否完全一致；
@@ -331,3 +373,12 @@
 - 支付宝信用借还中还款、借款、免押、解冻、费用和失败状态的组合；
 - 四个 profile 的文件声明行数、收入/支出汇总、账期和来源账户信息能否形成控制字段；
 - 当前真实文件中所有未使用列、重复列、尾部附加列和空列模式。
+
+
+## 本轮用户样本补充（2026-09-05）
+
+此次样本仅来自微信 XLSX 与支付宝 App CSV，不扩大为所有格式认证。支付宝可选 `对方账号` 属于对方身份观测，只保留来源证据，不推导本人的账本账户；导出信息标题经 NFKC 规范化识别。
+
+已登记的新增组合见 `real-template-rules.test.js`：微信平台商户退款必须为收入且状态退款金额与行金额一致；扫二维码付款限定支出。支付宝小荷包不计收支消费要求 App 模板、已登记消费类型、单一可识别小荷包资金账户、明确支付成功状态和正金额。分类新增宠物、保险，转账红包仍必须有明确收支方向。未知信用借还动作和多资金账户缺分项继续保留阻断，不以成功状态兜底。
+
+控制行分别核对总笔数、收入/支出笔数及金额。金额校验沿用源收支方向并应用 profile 的明确关闭/失败状态排除域；不将经济性质重解释结果重新计入平台汇总。真实样本存在一项未对齐汇总，保持 mismatch 诊断。

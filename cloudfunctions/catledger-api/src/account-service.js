@@ -239,6 +239,7 @@ function createAccountService({ getPool }) {
   async function create(context) {
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'accounts.create',
       operation: async (connection, uid, data) => {
@@ -275,6 +276,7 @@ function createAccountService({ getPool }) {
   async function createBatch(context) {
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'accounts.createBatch',
       operation: async (connection, uid, data) => {
@@ -296,6 +298,7 @@ function createAccountService({ getPool }) {
   async function update(context) {
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'accounts.update',
       operation: async (connection, uid, data) => {
@@ -337,6 +340,7 @@ function createAccountService({ getPool }) {
   async function archive(context) {
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'accounts.archive',
       operation: async (connection, uid, data) => {
@@ -369,6 +373,7 @@ function createAccountService({ getPool }) {
   async function correctBalance(context) {
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'accounts.correctBalance',
       operation: async (connection, uid, data) => {

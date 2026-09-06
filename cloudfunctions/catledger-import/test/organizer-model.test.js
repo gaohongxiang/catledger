@@ -28,6 +28,18 @@ function event(patch = {}) {
   }
 }
 
+test('缺分类是建议，账户、方向和身份等核对仍阻止入账', () => {
+  const optional = evaluatePostability(event({ categoryId: null }))
+  assert.equal(optional.status, EVENT_STATUS.READY)
+  assert.deepEqual(optional.reasonCodes, ['category_required'])
+  for (const patch of [{ ledgerAccountId: null }, { flowDirection: 'inflow' },
+    { amountMinor: null }, { reasonCodes: ['identity_conflict'] }]) {
+    const blocked = evaluatePostability(event({ categoryId: null, ...patch }))
+    assert.equal(blocked.status, EVENT_STATUS.NEEDS_ACTION)
+    assert.notEqual(classifyReviewIssue({ ...event(patch), ...blocked }).issueType, 'category_assignment')
+  }
+})
+
 test('ready 只能由服务端根据完整经济字段推导', function () {
   assert.deepEqual(evaluatePostability(event()), { status: EVENT_STATUS.READY, reasonCodes: [] })
   const unresolved = evaluatePostability(event({ ledgerAccountId: null, status: EVENT_STATUS.READY }))

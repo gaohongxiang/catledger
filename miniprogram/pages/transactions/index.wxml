@@ -10,12 +10,13 @@
     <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><view class="arrow-right"></view></view>
   </view>
 
-  <view wx:if="{{selectedDate}}" class="date-filter-note">
+  <view wx:if="{{selectedDate}}" class="date-filter-note content-inset">
     <text>只看当天账目</text>
     <text class="date-clear" bindtap="clearDate">查看整月</text>
   </view>
 
   <view class="summary-strip">
+    <view class="inline-sync summary-sync {{loading || loadingMore ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading || loadingMore ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
     <view class="summary-cell">
       <text class="summary-label">收入</text>
       <text class="money-number summary-value summary-income">{{incomeText}}</text>
@@ -54,7 +55,7 @@
     <view
       wx:for="{{transactions}}"
       wx:key="transactionId"
-      class="detail-item"
+      class="detail-item content-inset"
       data-index="{{index}}"
       bindtap="editTransaction"
     >
@@ -71,11 +72,10 @@
     </view>
   </view>
 
-  <view wx:elif="{{!loading}}" class="empty-ledger detail-empty">
+  <view wx:elif="{{hasLoaded || !loggedIn}}" class="empty-ledger detail-empty content-inset">
     <text class="empty-ledger-title">这里暂时没有账目</text>
     <text class="empty-ledger-copy">换一个月份或筛选条件试试；新增账目请使用底部加号。</text>
   </view>
 
-  <view wx:if="{{loading || loadingMore}}" class="detail-status">正在整理账页…</view>
-  <view wx:if="{{errorMessage}}" class="detail-error" bindtap="prepareAndLoad">{{errorMessage}} · 点此重试</view>
+  <view wx:if="{{errorMessage}}" class="detail-error content-inset" bindtap="prepareAndLoad">{{errorMessage}} · 点此重试</view>
 </view>

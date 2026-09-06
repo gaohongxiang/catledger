@@ -103,9 +103,20 @@ test('ReviewIssue 只把合法分配写入事件来源快照并留下手工字�
     ]
   })
   assert.equal(result.counterpartyLedgerAccountId, null)
-  assert.equal(result.fieldSources.repaymentAllocationVersion, 'repayment-allocation-v1')
+  assert.equal(result.fieldSources.repaymentAllocationVersion, 'repayment-allocation-v2')
   assert.equal(Boolean(result.manualFieldMask & FIELD_MASK.repaymentAllocations), true)
   assert.throws(() => applyFields(event, {
     repaymentAllocations: [{ accountId: A, amountMinor: '9999' }]
   }), { publicCode: 'VALIDATION_ERROR' })
+})
+
+
+test('v2 人工分配不依赖候选覆盖，账户资格由服务端可信目录独立校验', () => {
+  for (const candidates of [[], [{ accountId: A }]]) {
+    const event = { economicNature: 'repayment', amountMinor: '10000', fieldSources: {
+      fundsProjection: { to: { referenceKind: 'aggregate', candidates } },
+      repaymentAllocationVersion: 'repayment-allocation-v2', repaymentAllocations: [{ accountId: C, amountMinor: '10000' }]
+    } }
+    assert.equal(repaymentAllocationsForEvent(event).valid, true)
+  }
 })

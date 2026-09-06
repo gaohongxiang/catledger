@@ -1,3 +1,6 @@
+const { upgradeSemanticPlan } = require('./semantic-plan-upgrade')
+const { PLAN_VERSION } = require('./domain-versions')
+const { synchronizeDraftReachability } = require('./account-draft')
 const { buildOrganizePlan } = require('./organizer-planner')
 const { importError } = require('./errors')
 const {
@@ -39,6 +42,10 @@ function createFinanceUpdateCore({ getPool }) {
       throw importError('CONFLICT')
     }
     const rows = await selectPlanningRows(connection, uid, updateId)
+    if (current.status === 'review' && ['organizer-plan-v26', PLAN_VERSION].includes(current.planVersion)) {
+      if (current.planVersion === PLAN_VERSION) return getUpdateView(connection, uid, updateId)
+      return upgradeSemanticPlan(connection, uid, current, rows, requestDigest)
+    }
     const paymentMappings = await selectPaymentMappings(connection, uid, updateId)
     const draftPaymentMappings = await selectDraftPaymentMappings(connection, uid, updateId)
     const accounts = await selectActiveAccounts(connection, uid)
@@ -174,6 +181,7 @@ function createFinanceUpdateCore({ getPool }) {
             WHERE uid = ? AND update_id = ? AND version = ?`,
           [appliedVersion, actionId, uid, updateId, version]
         )
+        await synchronizeDraftReachability(connection, uid, updateId, { abandoned: true })
         return publicUpdate(await selectUpdate(connection, uid, updateId))
       }
     })

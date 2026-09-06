@@ -17,6 +17,8 @@ Page({
     categoryCount: 0
   },
 
+  onLoad: function () { themeService.bindPage(this) },
+
   onShow: function () {
     themeService.bindPage(this)
     if (this.getTabBar()) {
@@ -27,17 +29,15 @@ Page({
     this.setData({
       loggedIn: loggedIn,
       nickname: loggedIn ? profile.nickname : '',
-      displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, profile),
-      connected: false,
-      identityStatusText: loggedIn ? '正在连接个人账本' : '尚未登录',
-      syncActionText: '',
-      errorMessage: '',
-      accountCount: 0,
-      categoryCount: 0
+      displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, profile)
     })
     if (loggedIn) {
-      this.loadProfile()
+      return this.loadProfile()
     }
+    this.setData({
+      loading: false, connected: false, identityStatusText: '尚未登录',
+      syncActionText: '', errorMessage: '', accountCount: 0, categoryCount: 0
+    })
   },
 
   onPullDownRefresh: function () {
@@ -56,12 +56,13 @@ Page({
     }
     const self = this
     let identityConnected = Boolean(options && options.identityConfirmed)
+    const preserveConnected = this.data.connected
     this.setData({
       loading: true,
       errorMessage: '',
       syncActionText: '',
-      connected: identityConnected,
-      identityStatusText: identityConnected ? '个人账本已连接' : '正在连接个人账本'
+      connected: identityConnected || preserveConnected,
+      identityStatusText: identityConnected || preserveConnected ? '个人账本已连接' : '正在连接个人账本'
     })
 
     const bootstrapPromise = identityConnected

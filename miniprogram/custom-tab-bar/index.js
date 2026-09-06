@@ -14,26 +14,26 @@ Component({
       {
         pagePath: '/pages/index/index',
         text: '首页',
-        iconPath: '/assets/icons/tab-home.svg',
-        selectedIconPath: '/assets/icons/tab-home-active.svg'
+        iconPath: 'tab-home.svg',
+        selectedIconPath: 'tab-home-active.svg'
       },
       {
         pagePath: '/pages/transactions/index',
         text: '明细',
-        iconPath: '/assets/icons/tab-list.svg',
-        selectedIconPath: '/assets/icons/tab-list-active.svg'
+        iconPath: 'tab-list.svg',
+        selectedIconPath: 'tab-list-active.svg'
       },
       {
         pagePath: '/pages/ledger/index',
         text: '账本',
-        iconPath: '/assets/icons/tab-book.svg',
-        selectedIconPath: '/assets/icons/tab-book-active.svg'
+        iconPath: 'tab-book.svg',
+        selectedIconPath: 'tab-book-active.svg'
       },
       {
         pagePath: '/pages/profile/index',
         text: '我的',
-        iconPath: '/assets/icons/tab-user.svg',
-        selectedIconPath: '/assets/icons/tab-user-active.svg'
+        iconPath: 'tab-user.svg',
+        selectedIconPath: 'tab-user-active.svg'
       }
     ]
   },

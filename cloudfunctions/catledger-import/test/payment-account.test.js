@@ -4,7 +4,7 @@ const test = require('node:test')
 const { buildPaymentMethodKey } = require('../src/identity')
 const { accountGroupingKey, paymentAccountDetails, primaryInstrument } = require('../src/payment-account')
 
-test('组合支付方式只用 & 前第一段建立账户候选', function () {
+test('一个资金账户加优惠成分时只建立唯一资金账户候选', function () {
   assert.equal(primaryInstrument('光大银行信用卡(2690)&两轮充电券'), '光大银行信用卡(2690)')
   const plain = paymentAccountDetails('alipay', '光大银行信用卡(2690)')
   const combined = paymentAccountDetails('alipay', '光大银行信用卡(2690)&两轮充电券')
@@ -16,8 +16,13 @@ test('组合支付方式只用 & 前第一段建立账户候选', function () {
   )
 })
 
-test('组合字段的后续成分不参与账户身份', function () {
-  assert.equal(paymentAccountDetails('alipay', '花呗&余额宝').displayName, '支付宝花呗')
+test('多个资金账户没有分项金额时不得默认使用第一个账户', function () {
+  const ambiguous = paymentAccountDetails('alipay', '花呗&余额宝')
+  assert.equal(primaryInstrument('花呗&余额宝'), '')
+  assert.equal(ambiguous.recognized, false)
+  assert.equal(ambiguous.identityMaterial, '')
+  assert.equal(ambiguous.ambiguous, true)
+  assert.equal(buildPaymentMethodKey('alipay', '花呗&余额宝'), null)
   assert.equal(paymentAccountDetails('alipay', '余额宝&红包').displayName, '支付宝余额宝')
 })
 

@@ -126,3 +126,25 @@ test('本机存储不可用或主题值失效时仍安全回退默认主题', fu
     assert.equal(service.install().themeId, registry.DEFAULT_THEME_ID)
   })
 })
+
+
+test('同一主题返回已加载页面时不重复替换页面和底栏主题数据', function () {
+  withThemeRuntime({}, function (service, runtime) {
+    let pageUpdates = 0
+    let tabUpdates = 0
+    const tabBar = { data: {}, setData: function (patch) { Object.assign(this.data, patch); tabUpdates += 1 } }
+    const page = { data: {}, getTabBar: function () { return tabBar }, setData: function (patch) { Object.assign(this.data, patch); pageUpdates += 1 } }
+    service.selectTheme('red-editorial')
+    service.bindPage(page)
+    service.bindPage(page)
+    assert.equal(pageUpdates, 1)
+    assert.equal(tabUpdates, 1)
+    assert.equal(page.data.themeIconRoot, '/assets/icons/themes/red-editorial')
+    assert.ok(runtime.systemCalls.filter(function (call) { return call[0] === 'navigation' }).every(function (call) { return call[1].animation.duration === 0 }))
+    service.selectTheme('warm-ledger')
+    service.bindPage(page)
+    assert.equal(pageUpdates, 2)
+    assert.equal(tabUpdates, 2)
+    assert.equal(page.data.themeIconRoot, '/assets/icons/themes/warm-ledger')
+  })
+})

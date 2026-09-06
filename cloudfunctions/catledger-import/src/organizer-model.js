@@ -1,4 +1,8 @@
-const { classifySourceAction } = require('./source-action')
+const { eventAllocation } = require('./funds-allocation')
+const { inspectPaymentAccounts, effectiveSemanticReasons, paymentResolutionForEvent } = require('./payment-resolution')
+const { SEMANTIC_HARD_BLOCKERS } = require('./semantic-policy')
+const { getRowSemantic } = require('./row-semantic-resolver')
+const { economicNatureForSemantic } = require('./economic-nature')
 const { isAggregateRepayment, repaymentAllocationsForEvent } = require('./repayment-allocation')
 
 const UPDATE_STATUS = Object.freeze({
@@ -92,6 +96,7 @@ function hasPendingRefundRelation(event) {
 }
 
 const HARD_BLOCKING_REASONS = new Set([
+  ...SEMANTIC_HARD_BLOCKERS,
   'account_mapping_conflict',
   'blocking_issue_open',
   'core_fields_conflict',
@@ -121,68 +126,27 @@ function flowDirectionForRow(row) {
   return FLOW_DIRECTION.NEUTRAL
 }
 
-function evidenceAction(row) {
-  const action = classifySourceAction(row)
-  if (action.kind !== 'unknown') return action
-  if (['alipay', 'wechat'].includes(row.sourceType) && row.transactionType === 'transfer') {
-    return { kind: 'external_transfer', normalizedTransactionType: 'transfer' }
-  }
-  return {
-    kind: row.transactionType || 'unknown',
-    normalizedTransactionType: row.transactionType || 'unknown'
-  }
+function economicNatureForRow(row) {
+  return economicNatureForSemantic(getRowSemantic(row))
 }
 
-function economicNatureForRow(row) {
-  const text = `${row.transactionType || ''} ${row.item || ''} ${row.counterparty || ''} ${row.sourceNote || ''}`
-  const action = evidenceAction(row)
-  const transactionType = action.normalizedTransactionType
-  // 支付平台会在原消费行上标记“已退款/退款成功”。这条证据仍是原支出，
-  // 只有退款入账方向的记录才是退款事件，不能把一买一退拆成两笔退款。
-  if (row.economicEffect === 'refund' && row.direction === 'expense') {
-    return ECONOMIC_NATURE.EXPENSE
-  }
-  if (row.economicEffect === 'refund' || action.kind === 'refund' ||
-      (!['alipay', 'wechat'].includes(row.sourceType) && (text.includes('退款') || text.includes('退税')))) {
-    return ECONOMIC_NATURE.REFUND
-  }
-  if (transactionType === 'fee') return ECONOMIC_NATURE.FEE
-  // Older immutable Alipay batches normalized Yu'e Bao yield rows as a neutral
-  // transfer. The transaction wording is authoritative enough to recover the
-  // real economic nature while rebuilding an unposted organizer plan.
-  if (action.kind === 'yield_income' ||
-      (!['alipay', 'wechat'].includes(row.sourceType) && ['收益发放', '收益结转', '利息发放'].some((token) => text.includes(token)))) {
-    return ECONOMIC_NATURE.INCOME
-  }
-  if (action.kind === 'repayment' ||
-      (!['alipay', 'wechat'].includes(row.sourceType) && text.includes('还款'))) return ECONOMIC_NATURE.REPAYMENT
-  if (action.kind === 'borrow' ||
-      (!['alipay', 'wechat'].includes(row.sourceType) && (text.includes('借款') || text.includes('借入')))) return ECONOMIC_NATURE.BORROW
-  // 微信“转账/红包/群收款”只说明与外部对手方收付，不能单凭这几个字
-  // 假定为用户两个自有账户之间的内部转账。明确的零钱充值/提现和还款
-  // 会先由 source-funds projector 覆盖成双端资金动作。
-  if (action.kind === 'external_transfer') {
-    if (row.direction === 'income') return ECONOMIC_NATURE.INCOME
-    if (row.direction === 'expense') return ECONOMIC_NATURE.EXPENSE
-  }
-  if (['savings_out', 'savings_in', 'withdrawal', 'top_up', 'internal_transfer'].includes(action.kind) ||
-      (!['alipay', 'wechat'].includes(row.sourceType) && ['transfer', 'top_up', 'withdrawal'].includes(transactionType))) {
-    return ECONOMIC_NATURE.INTERNAL_TRANSFER
-  }
-  if (transactionType === 'payment' && row.direction === 'income') return ECONOMIC_NATURE.INCOME
-  if (transactionType === 'payment' && row.direction === 'expense') return ECONOMIC_NATURE.EXPENSE
-  return ECONOMIC_NATURE.UNKNOWN
+function needsCategory(event) {
+  return [ECONOMIC_NATURE.INCOME, ECONOMIC_NATURE.EXPENSE, ECONOMIC_NATURE.FEE].includes(event.economicNature) && !event.categoryId
 }
 
 function requiredReasons(event, { relations = [], transactionLinks = [], openBlockingIssues = 0 } = {}) {
   if ([EVENT_STATUS.EXCLUDED, EVENT_STATUS.POSTED, EVENT_STATUS.CORRECTED].includes(event.status)) return []
-  const reasons = unique((event.reasonCodes || []).filter((reason) => HARD_BLOCKING_REASONS.has(reason)))
+  const reasons = unique(effectiveSemanticReasons(event, [...(event.reasonCodes || []),
+    ...(event.fieldSources && event.fieldSources.semanticBlockers || [])
+  ].filter((reason) => HARD_BLOCKING_REASONS.has(reason))))
+  if (event.fieldSources && event.fieldSources.paymentResolution && !paymentResolutionForEvent(event).valid) reasons.push('payment_components_ambiguous')
+  if (eventAllocation(event).kind === 'conflict') reasons.push('funds_allocation_conflict')
   if (openBlockingIssues > 0) reasons.push('blocking_issue_open')
   if (event.amountMinor == null || !event.localAt || !event.utcAt || !event.currency) {
     reasons.push('core_fields_missing')
   }
   if (!event.ledgerAccountId) reasons.push('ledger_account_required')
-  if ([ECONOMIC_NATURE.INCOME, ECONOMIC_NATURE.EXPENSE, ECONOMIC_NATURE.FEE].includes(event.economicNature) && !event.categoryId) {
+  if (needsCategory(event)) {
     reasons.push('category_required')
   }
 
@@ -246,13 +210,18 @@ function evaluatePostability(event, context) {
   }
   const reasonCodes = requiredReasons(event, context)
   return {
-    status: reasonCodes.length === 0 ? EVENT_STATUS.READY : EVENT_STATUS.NEEDS_ACTION,
+    status: reasonCodes.every((reason) => reason === 'category_required') ? EVENT_STATUS.READY : EVENT_STATUS.NEEDS_ACTION,
     reasonCodes
   }
 }
 
 function classifyReviewIssue(event) {
   const reasons = new Set(event.reasonCodes || [])
+  if (paymentResolutionForEvent(event).valid) {
+    reasons.delete('payment_components_ambiguous')
+    reasons.delete('row_transaction_type_unknown')
+    reasons.delete('ledger_account_required')
+  }
   const fundsProjection = event.fieldSources && event.fieldSources.fundsProjection
   if (reasons.has('identity_conflict') || reasons.has('identity_review_required')) {
     return { issueType: REVIEW_ISSUE_TYPE.IDENTITY_CONFLICT, primaryReason: reasons.has('identity_conflict') ? 'identity_conflict' : 'identity_review_required' }
@@ -263,10 +232,14 @@ function classifyReviewIssue(event) {
   if (reasons.has('core_fields_conflict')) {
     return { issueType: REVIEW_ISSUE_TYPE.FIELD_CONFLICT, primaryReason: 'core_fields_conflict' }
   }
+  if (reasons.has('payment_components_ambiguous') && !paymentResolutionForEvent(event).valid) {
+    return { issueType: inspectPaymentAccounts(event, event.fieldSources && event.fieldSources.paymentAccounts).valid
+      ? REVIEW_ISSUE_TYPE.SHARED_FIELDS : REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'payment_components_ambiguous' }
+  }
   if (reasons.has('ledger_account_required') && ACCOUNT_FIRST_NATURES.has(event.economicNature)) {
     return { issueType: REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'ledger_account_required' }
   }
-  if (reasons.has('category_required')) {
+  if ((event.status === EVENT_STATUS.READY || reasons.size === 1) && reasons.has('category_required')) {
     return { issueType: REVIEW_ISSUE_TYPE.CATEGORY_ASSIGNMENT, primaryReason: 'category_required' }
   }
   if (reasons.has('refund_relation_required') || reasons.has('refund_relation_ambiguous') ||
@@ -303,7 +276,7 @@ function classifyReviewIssue(event) {
   }
   return {
     issueType: REVIEW_ISSUE_TYPE.SHARED_FIELDS,
-    primaryReason: event.reasonCodes && event.reasonCodes[0] || 'core_fields_missing'
+    primaryReason: (event.reasonCodes || []).find((reason) => reason !== 'category_required') || 'core_fields_missing'
   }
 }
 
@@ -324,5 +297,6 @@ module.exports = {
   evaluatePostability,
   flowDirectionForRow,
   hasPendingRefundRelation,
+  needsCategory,
   unique
 }

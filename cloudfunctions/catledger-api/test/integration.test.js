@@ -4,7 +4,8 @@ const { after, before, beforeEach, test } = require('node:test')
 
 const mysql = require('mysql2/promise')
 
-const { runMigrations } = require('../../../migrations/runner')
+const { readFileSync } = require('node:fs')
+const { runMigrations, splitSqlStatements } = require('../../../migrations/runner')
 const { createAccountService } = require('../src/account-service')
 const { createCategoryService } = require('../src/category-service')
 const { DEFAULT_CATEGORIES } = require('../src/default-categories')
@@ -92,6 +93,38 @@ after(async () => {
   }
 })
 
+test('语义迁移在 DDL 已执行但记账中断时可重入，历史行字段保持可空', { skip: !hasDatabase }, async () => {
+  const connection = await pool.getConnection()
+  try {
+    const sql = readFileSync(path.resolve(__dirname, '../../../migrations/0009_bill_semantic_analysis.sql'), 'utf8')
+    for (const statement of splitSqlStatements(sql)) await connection.query(statement)
+    const [columns] = await connection.execute(
+      `SELECT COLUMN_NAME AS name, IS_NULLABLE AS nullable, DATA_TYPE AS type
+         FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND
+         ((TABLE_NAME = 'catledger_import_batches' AND COLUMN_NAME = 'analysis_json') OR
+          (TABLE_NAME = 'catledger_import_rows' AND COLUMN_NAME IN ('semantic_json', 'observations_json')))`)
+    assert.equal(columns.length, 3)
+    assert.ok(columns.every((column) => column.nullable === 'YES' && column.type === 'json'))
+  } finally {
+    connection.release()
+  }
+})
+
+test('维护审计迁移重复执行保持历史记录可空', { skip: !hasDatabase }, async () => {
+  const connection = await pool.getConnection()
+  try {
+    const sql = readFileSync(path.resolve(__dirname, '../../../migrations/0010_import_maintenance_audit.sql'), 'utf8')
+    for (const statement of splitSqlStatements(sql)) await connection.query(statement)
+    const [columns] = await connection.execute(`SELECT IS_NULLABLE AS nullable FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND ((TABLE_NAME = 'catledger_finance_updates' AND COLUMN_NAME = 'side_effects_json')
+      OR (TABLE_NAME = 'catledger_economic_event_transactions' AND COLUMN_NAME = 'superseded_at')
+      OR (TABLE_NAME = 'catledger_finance_update_account_drafts' AND COLUMN_NAME = 'superseded_at')
+      OR (TABLE_NAME = 'catledger_import_category_mappings' AND COLUMN_NAME = 'disabled_at'))`)
+    assert.equal(columns.length, 4)
+    assert.ok(columns.every((row) => row.nullable === 'YES'))
+  } finally { connection.release() }
+})
+
 test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, async () => {
   const migrationsDirectory = path.resolve(__dirname, '../../../migrations')
   const applied = await runMigrations({ pool, migrationsDirectory })
@@ -100,7 +133,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 8)
+  assert.equal(rows.length, 10)
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
   assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')
@@ -109,6 +142,8 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   assert.equal(rows[5].version, '0006_unified_finance_updates.sql')
   assert.equal(rows[6].version, '0007_finance_update_write_barrier.sql')
   assert.equal(rows[7].version, '0008_finance_update_payment_rules.sql')
+  assert.equal(rows[8].version, '0009_bill_semantic_analysis.sql')
+  assert.equal(rows[9].version, '0010_import_maintenance_audit.sql')
   assert.match(rows[0].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[1].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[2].checksum, /^[a-f0-9]{64}$/)
@@ -696,6 +731,13 @@ test('cash balance guard rejects new deficits and deleting required inflows', { 
 
   const listed = await accountService.list({ provider: 'wechat-mini', subjectHash })
   assert.equal(listed.accounts.find((account) => account.accountId === cash.accountId).bookBalanceMinor, '300')
+  const concurrent = await Promise.allSettled([1, 2].map(() => transactionService.create({
+    provider: 'wechat-mini', subjectHash, data: { requestId: randomTestUuid(), type: 'expense', sourceAccountId: cash.accountId,
+      categoryId: expenseCategory.id, amountMinor: '200', occurredLocalAt: '2026-08-23T12:00:00', timezoneOffsetMinutes: -480 }
+  })))
+  assert.equal(concurrent.filter((result) => result.status === 'fulfilled').length, 1)
+  assert.equal(concurrent.find((result) => result.status === 'rejected').reason.publicCode, 'INSUFFICIENT_CASH_BALANCE')
+
 })
 
 test('manual transaction update and soft delete recalculate balances and statistics', { skip: !hasDatabase }, async () => {

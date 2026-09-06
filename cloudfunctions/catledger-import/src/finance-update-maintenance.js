@@ -1,8 +1,13 @@
+const { eventAllocation, allocationAccountsValid } = require('./funds-allocation')
+const { correctionImpactResult, accountState, previewToken } = require('./maintenance-state')
+const { inspectSideEffects, revertSideEffects, publicSideEffects } = require('./maintenance-side-effects')
+const { isAggregateRepayment } = require('./repayment-allocation')
+const { MAINTENANCE_POLICY_VERSION } = require('./maintenance-policy')
 const { importError } = require('./errors')
 const { getUpdateView, insertAction, parseJson, selectUpdate } = require('./finance-update-repository')
-const { transactionDraft } = require('./finance-update-posting')
+const { createTransactions, linkEventTransaction, transactionDrafts, eventContext } = require('./finance-update-posting')
 const { executeIdempotentMutation, executeUserRead } = require('./import-transaction')
-const { EVENT_STATUS, unique } = require('./organizer-model')
+const { EVENT_STATUS, unique, evaluatePostability } = require('./organizer-model')
 const { applyFields } = require('./review-issue-service')
 const { validateUuid, validateVersion } = require('./validation')
 
@@ -47,24 +52,26 @@ async function linkedTransactions(connection, uid, updateId, eventId, { forUpdat
     `SELECT links.link_id AS linkId, links.transaction_id AS transactionId,
             links.role, links.creation_method AS creationMethod,
             t.type, t.original_transaction_id AS originalTransactionId,
-            t.version, t.deleted_at AS deletedAt
+            links.transaction_version AS linkedVersion, t.origin,
+            t.source_account_id AS sourceAccountId, t.destination_account_id AS destinationAccountId,
+            t.amount_minor AS amountMinor, t.version, t.deleted_at AS deletedAt
        FROM catledger_economic_event_transactions links
        JOIN catledger_transactions t
          ON t.uid = links.uid AND t.transaction_id = links.transaction_id
-      WHERE links.uid = ? AND links.update_id = ? AND links.event_id = ?
+      WHERE links.uid = ? AND links.update_id = ? AND links.event_id = ? AND links.superseded_at IS NULL
       ORDER BY links.created_at, links.link_id${forUpdate ? ' FOR UPDATE' : ''}`,
     [uid, updateId, eventId]
   )
-  return rows.map((row) => ({ ...row, version: Number(row.version) }))
+  return rows.map((row) => ({ ...row, version: Number(row.version), linkedVersion: Number(row.linkedVersion), amountMinor: String(row.amountMinor) }))
 }
 
-async function validateDraftReferences(connection, uid, event, draft) {
-  const accountIds = [...new Set([draft.sourceAccountId, draft.destinationAccountId].filter(Boolean))]
+async function validateDraftReferences(connection, uid, event, draft, forUpdate = false) {
+  const accountIds = [...new Set([draft.sourceAccountId, draft.destinationAccountId].filter(Boolean))].sort()
   if (accountIds.length > 0) {
     const [accounts] = await connection.execute(
       `SELECT account_id AS accountId, currency, archived_at AS archivedAt
          FROM catledger_accounts
-        WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(', ')}) FOR UPDATE`,
+        WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(', ')}) ORDER BY account_id${forUpdate ? ' FOR UPDATE' : ''}`,
       [uid, ...accountIds]
     )
     if (accounts.length !== accountIds.length || accounts.some((account) => account.archivedAt != null || account.currency !== event.currency)) {
@@ -74,14 +81,14 @@ async function validateDraftReferences(connection, uid, event, draft) {
   if (draft.categoryId) {
     const [categories] = await connection.execute(
       `SELECT kind FROM catledger_categories
-        WHERE uid = ? AND category_id = ? AND archived_at IS NULL LIMIT 1`,
+        WHERE uid = ? AND category_id = ? AND archived_at IS NULL LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
       [uid, draft.categoryId]
     )
     if (!categories[0] || categories[0].kind !== draft.type) throw importError('VALIDATION_ERROR')
   }
 }
 
-async function validateCorrectionRelations(connection, uid, transaction, draft, amountMinor) {
+async function validateCorrectionRelations(connection, uid, transaction, draft, amountMinor, forUpdate = false) {
   const [[dependent]] = await connection.execute(
     `SELECT COALESCE(SUM(amount_minor), 0) AS amountMinor
        FROM catledger_transactions
@@ -96,7 +103,7 @@ async function validateCorrectionRelations(connection, uid, transaction, draft, 
   const [originals] = await connection.execute(
     `SELECT amount_minor AS amountMinor FROM catledger_transactions
       WHERE uid = ? AND transaction_id = ? AND type = 'expense' AND deleted_at IS NULL
-      LIMIT 1 FOR UPDATE`,
+      LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
     [uid, draft.originalTransactionId]
   )
   if (!originals[0]) throw importError('VALIDATION_ERROR')
@@ -112,21 +119,67 @@ async function validateCorrectionRelations(connection, uid, transaction, draft, 
   }
 }
 
-function correctionImpactResult(event, transactions) {
-  const activeCreated = transactions.filter((transaction) => (
-    transaction.creationMethod === 'created' && transaction.deletedAt == null
-  ))
-  return {
-    updateId: event.updateId,
-    eventId: event.eventId,
-    eventStatus: event.status,
-    eventVersion: event.version,
-    transactionIds: transactions.map((transaction) => transaction.transactionId),
-    reusedTransactionIds: transactions.filter((transaction) => transaction.creationMethod === 'reused')
-      .map((transaction) => transaction.transactionId),
-    canCorrect: [EVENT_STATUS.POSTED, EVENT_STATUS.CORRECTED].includes(event.status) &&
-      activeCreated.length === 1
+async function prepareCorrection(connection, uid, update, event, transactions, fields, forUpdate = false) {
+  const impact = correctionImpactResult(event, transactions)
+  const created = transactions.filter((row) => row.creationMethod === 'created' && row.role !== 'refund_original')
+  const next = fields ? applyFields(event, fields) : event
+  // 聚合事件不能通过改性质退化为局部单笔编辑。
+  if (isAggregateRepayment(event) !== isAggregateRepayment(next)) throw importError('VALIDATION_ERROR')
+  let drafts = []
+  if (impact.canCorrect) {
+    const original = next.economicNature === 'refund' ? created[0].originalTransactionId : null
+    if (next.economicNature === 'refund' && !original) throw importError('VALIDATION_ERROR')
+    const evaluated = evaluatePostability({ ...next, status: 'needs_action' }, await eventContext(connection, uid, event.updateId, event.eventId))
+    if (evaluated.status !== 'ready') throw importError('UNRESOLVED_IMPORT')
+    drafts = transactionDrafts(next, original)
   }
+  const state = await accountState(connection, uid, created, drafts, { forUpdate })
+  for (const draft of drafts) {
+    await validateDraftReferences(connection, uid, next, draft, forUpdate)
+  }
+  if (drafts.length && !allocationAccountsValid(next, eventAllocation(next), new Map(state.accounts.map((row) => [row.accountId, row])))) throw importError('VALIDATION_ERROR')
+  if (created.length === 1 && drafts.length === 1) await validateCorrectionRelations(connection, uid, created[0], drafts[0], drafts[0].amountMinor, forUpdate)
+  if (state.deficits.length) impact.conflicts.push('INSUFFICIENT_CASH_BALANCE')
+  if (update.status !== 'posted') impact.conflicts.push('UPDATE_STATE_CHANGED')
+  impact.canCorrect = impact.conflicts.length === 0
+  return { next, drafts, created, impact: { ...impact, updateVersion: Number(update.version), accountImpacts: state.impacts,
+    previewToken: previewToken(uid, 'correct', { updateVersion: Number(update.version), event, transactions, fields: fields || null, state }) } }
+}
+
+async function prepareUndo(connection, uid, update, forUpdate = false) {
+  const updateId = update.updateId
+  const [linked] = await connection.execute(`SELECT l.transaction_id AS transactionId, l.transaction_version AS linkedVersion,
+    l.creation_method AS creationMethod, t.version, t.origin, t.deleted_at AS deletedAt,
+    t.source_account_id AS sourceAccountId, t.destination_account_id AS destinationAccountId, t.amount_minor AS amountMinor
+    FROM catledger_economic_event_transactions l JOIN catledger_transactions t
+      ON t.uid = l.uid AND t.transaction_id = l.transaction_id
+    WHERE l.uid = ? AND l.update_id = ? AND l.superseded_at IS NULL AND l.role <> 'refund_original'
+    ORDER BY l.transaction_id, l.link_id${forUpdate ? ' FOR UPDATE' : ''}`, [uid, updateId])
+  const transactions = linked.map((row) => ({ ...row, linkedVersion: Number(row.linkedVersion), version: Number(row.version), amountMinor: String(row.amountMinor) }))
+  const created = [...new Map(transactions.filter((row) => row.creationMethod === 'created').map((row) => [row.transactionId, row])).values()]
+  const ids = created.map((row) => row.transactionId)
+  const [dependents] = ids.length ? await connection.execute(`SELECT transaction_id AS transactionId, version
+    FROM catledger_transactions WHERE uid = ? AND original_transaction_id IN (${ids.map(() => '?').join(', ')})
+      AND deleted_at IS NULL AND transaction_id NOT IN (${ids.map(() => '?').join(', ')})
+    ORDER BY transaction_id${forUpdate ? ' FOR UPDATE' : ''}`, [uid, ...ids, ...ids]) : [[]]
+  const audit = parseJson(update.sideEffects, null)
+  const state = await accountState(connection, uid, created, [], { forUpdate,
+    additionalAccountIds: (audit && audit.accounts || []).map((row) => row.accountId) })
+  const effects = await inspectSideEffects(connection, uid, updateId, audit, { forUpdate })
+  const conflicts = []
+  if (update.status !== 'posted') conflicts.push('UPDATE_STATE_CHANGED')
+  if (created.some((row) => row.deletedAt != null || row.origin !== 'import' || row.version !== row.linkedVersion)) conflicts.push('TRANSACTION_SET_CHANGED')
+  if (dependents.length) conflicts.push('EXTERNAL_REFUND_DEPENDENCY')
+  if (!effects.verified) conflicts.push('LEGACY_SIDE_EFFECTS_UNVERIFIED')
+  if (state.deficits.length) conflicts.push('INSUFFICIENT_CASH_BALANCE')
+  return { ids, effects, impact: {
+    update: { updateId, status: update.status, version: Number(update.version) },
+    createdTransactionCount: created.length,
+    reusedTransactionCount: new Set(transactions.filter((row) => row.creationMethod === 'reused').map((row) => row.transactionId)).size,
+    dependentTransactionCount: dependents.length, accountImpacts: state.impacts, sideEffects: publicSideEffects(effects),
+    conflicts, canUndo: conflicts.length === 0, policyVersion: MAINTENANCE_POLICY_VERSION,
+    previewToken: previewToken(uid, 'undo', { updateId, updateVersion: Number(update.version), transactions, dependents, state, effects })
+  } }
 }
 
 function createFinanceUpdateMaintenance({ getPool }) {
@@ -135,9 +188,12 @@ function createFinanceUpdateMaintenance({ getPool }) {
     return executeUserRead({
       getPool,
       ...context,
+      consistentSnapshot: true,
       operation: async (connection, uid) => {
         const event = await selectCorrectableEvent(connection, uid, eventId)
-        return correctionImpactResult(event, await linkedTransactions(connection, uid, event.updateId, eventId))
+        const update = await selectUpdate(connection, uid, event.updateId)
+        const transactions = await linkedTransactions(connection, uid, event.updateId, eventId)
+        return (await prepareCorrection(connection, uid, update, event, transactions, context.data.fields)).impact
       }
     })
   }
@@ -149,6 +205,7 @@ function createFinanceUpdateMaintenance({ getPool }) {
     const eventVersion = validateVersion(context.data.eventVersion)
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'economicEvents.correct',
       operation: async (connection, uid, data, requestDigest) => {
@@ -159,14 +216,20 @@ function createFinanceUpdateMaintenance({ getPool }) {
           throw importError('CONFLICT')
         }
         const transactions = await linkedTransactions(connection, uid, updateId, eventId, { forUpdate: true })
-        const created = transactions.filter((transaction) => transaction.creationMethod === 'created' && transaction.deletedAt == null)
-        if (created.length !== 1) throw importError('CONFLICT')
-        const next = applyFields(event, data.fields)
-        const originalTransactionId = next.economicNature === 'refund' ? created[0].originalTransactionId : null
-        if (next.economicNature === 'refund' && !originalTransactionId) throw importError('VALIDATION_ERROR')
-        const draft = transactionDraft(next, originalTransactionId)
-        await validateDraftReferences(connection, uid, next, draft)
-        await validateCorrectionRelations(connection, uid, created[0], draft, next.amountMinor)
+        const { next, drafts, created, impact } = await prepareCorrection(connection, uid, update, event, transactions, data.fields, true)
+        if (!impact.canCorrect) throw importError(impact.conflicts.includes('INSUFFICIENT_CASH_BALANCE') ? 'INSUFFICIENT_CASH_BALANCE' : 'CONFLICT')
+        if (!data.previewToken || data.previewToken !== impact.previewToken) throw importError('CONFLICT')
+        const draft = drafts[0]
+        if (isAggregateRepayment(event)) {
+          const ids = created.map((row) => row.transactionId)
+          await connection.execute(`UPDATE catledger_transactions SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1
+            WHERE uid = ? AND transaction_id IN (${ids.map(() => '?').join(', ')})`, [uid, ...ids])
+          await connection.execute(`UPDATE catledger_economic_event_transactions SET superseded_at = CURRENT_TIMESTAMP(3)
+            WHERE uid = ? AND update_id = ? AND event_id = ? AND superseded_at IS NULL AND creation_method = 'created'`, [uid, updateId, eventId])
+          for (const replacement of await createTransactions(connection, uid, updateId, next)) {
+            await linkEventTransaction(connection, uid, updateId, next, replacement.transactionId, 'created', 1, replacement.role)
+          }
+        } else {
         const [transactionResult] = await connection.execute(
           `UPDATE catledger_transactions
               SET type = ?, source_account_id = ?, destination_account_id = ?, category_id = ?,
@@ -184,6 +247,7 @@ function createFinanceUpdateMaintenance({ getPool }) {
           ]
         )
         if (transactionResult.affectedRows !== 1) throw importError('CONFLICT')
+        }
         const appliedVersion = updateVersion + 1
         const actionId = await insertAction(connection, uid, {
           updateId,
@@ -214,7 +278,7 @@ function createFinanceUpdateMaintenance({ getPool }) {
           ]
         )
         if (eventResult.affectedRows !== 1) throw importError('CONFLICT')
-        await connection.execute(
+        if (!isAggregateRepayment(event)) await connection.execute(
           `UPDATE catledger_economic_event_transactions
               SET transaction_version = transaction_version + 1
             WHERE uid = ? AND update_id = ? AND event_id = ? AND transaction_id = ?`,
@@ -236,32 +300,10 @@ function createFinanceUpdateMaintenance({ getPool }) {
     return executeUserRead({
       getPool,
       ...context,
+      consistentSnapshot: true,
       operation: async (connection, uid) => {
         const update = await selectUpdate(connection, uid, updateId)
-        const [[counts]] = await connection.execute(
-          `SELECT COUNT(DISTINCT CASE WHEN links.creation_method = 'created' THEN links.transaction_id END) AS createdCount,
-                  COUNT(DISTINCT CASE WHEN links.creation_method = 'reused' THEN links.transaction_id END) AS reusedCount,
-                  COUNT(DISTINCT dependent.transaction_id) AS dependentCount
-             FROM catledger_economic_event_transactions links
-             LEFT JOIN catledger_transactions dependent
-               ON dependent.uid = links.uid AND dependent.original_transaction_id = links.transaction_id
-              AND dependent.deleted_at IS NULL
-              AND NOT EXISTS (
-                SELECT 1 FROM catledger_economic_event_transactions internal_link
-                 WHERE internal_link.uid = links.uid AND internal_link.update_id = links.update_id
-                   AND internal_link.transaction_id = dependent.transaction_id
-                   AND internal_link.creation_method = 'created'
-              )
-            WHERE links.uid = ? AND links.update_id = ?`,
-          [uid, updateId]
-        )
-        return {
-          update: { updateId: update.updateId, status: update.status, version: Number(update.version) },
-          createdTransactionCount: Number(counts.createdCount || 0),
-          reusedTransactionCount: Number(counts.reusedCount || 0),
-          dependentTransactionCount: Number(counts.dependentCount || 0),
-          canUndo: update.status === 'posted' && Number(counts.dependentCount || 0) === 0
-        }
+        return (await prepareUndo(connection, uid, update)).impact
       }
     })
   }
@@ -271,43 +313,27 @@ function createFinanceUpdateMaintenance({ getPool }) {
     const version = validateVersion(context.data.version)
     return executeIdempotentMutation({
       getPool,
+      currentReads: true,
       ...context,
       action: 'financeUpdates.undo',
       operation: async (connection, uid, data, requestDigest) => {
         const update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
         if (update.status === 'undone') return getUpdateView(connection, uid, updateId)
         if (update.status !== 'posted' || Number(update.version) !== version) throw importError('CONFLICT')
-        const [created] = await connection.execute(
-          `SELECT DISTINCT links.transaction_id AS transactionId
-             FROM catledger_economic_event_transactions links
-             JOIN catledger_transactions t
-               ON t.uid = links.uid AND t.transaction_id = links.transaction_id
-            WHERE links.uid = ? AND links.update_id = ? AND links.creation_method = 'created'
-              AND t.deleted_at IS NULL ORDER BY links.transaction_id FOR UPDATE`,
-          [uid, updateId]
-        )
-        const ids = created.map((row) => row.transactionId)
-        if (ids.length > 0) {
-          const [dependent] = await connection.execute(
-            `SELECT transaction_id FROM catledger_transactions
-              WHERE uid = ? AND original_transaction_id IN (${ids.map(() => '?').join(', ')})
-                AND deleted_at IS NULL AND transaction_id NOT IN (${ids.map(() => '?').join(', ')})
-              LIMIT 1 FOR UPDATE`,
-            [uid, ...ids, ...ids]
-          )
-          if (dependent[0]) throw importError('CONFLICT')
-          await connection.execute(
-            `UPDATE catledger_transactions SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1
-              WHERE uid = ? AND transaction_id IN (${ids.map(() => '?').join(', ')})
-                AND deleted_at IS NULL`,
-            [uid, ...ids]
-          )
+        const { ids, effects, impact } = await prepareUndo(connection, uid, update, true)
+        if (!impact.canUndo) throw importError(impact.conflicts.includes('INSUFFICIENT_CASH_BALANCE') ? 'INSUFFICIENT_CASH_BALANCE' : 'CONFLICT')
+        if (!data.previewToken || data.previewToken !== impact.previewToken) throw importError('CONFLICT')
+        if (ids.length) {
+          const [deleted] = await connection.execute(`UPDATE catledger_transactions SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1
+            WHERE uid = ? AND transaction_id IN (${ids.map(() => '?').join(', ')}) AND deleted_at IS NULL`, [uid, ...ids])
+          if (deleted.affectedRows !== ids.length) throw importError('CONFLICT')
         }
+        await revertSideEffects(connection, uid, effects)
         await connection.execute(
           `UPDATE catledger_economic_events
               SET state = 'corrected', status = 'corrected', version = version + 1,
                   reason_codes_json = JSON_ARRAY_APPEND(COALESCE(reason_codes_json, JSON_ARRAY()), '$', 'finance_update_undone')
-            WHERE uid = ? AND update_id = ? AND status = 'posted'`,
+            WHERE uid = ? AND update_id = ? AND status IN ('posted', 'corrected')`,
           [uid, updateId]
         )
         await connection.execute(

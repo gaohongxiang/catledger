@@ -16,8 +16,7 @@
     <view class="net-worth-card">
       <text class="net-worth-label">人民币净值</text>
       <text class="net-worth-number money-number">{{netWorthText}}</text>
-      <text class="net-worth-note">由所有正式账户与未删除交易汇总</text>
-      <view class="cat-stamp"><text>CAT</text><text>LEDGER</text></view>
+      <text class="net-worth-note">资产减去负债</text>
     </view>
 
     <view class="home-flow">
@@ -38,7 +37,7 @@
       </view>
       <view class="month-stat">
         <view class="month-stat-heading">
-          <image class="month-stat-icon" src="/assets/icons/summary-balance.svg" mode="aspectFit" />
+          <image class="month-stat-icon" src="{{themeIconRoot}}/summary-balance.svg" mode="aspectFit" />
           <text class="month-stat-label">结余</text>
         </view>
         <text class="month-stat-value money-number">{{netIncomeText}}</text>
@@ -58,7 +57,7 @@
     <view class="statistics-card" role="button" aria-label="查看全部统计" bindtap="openStatistics">
         <view class="statistics-card-heading">
           <view class="statistics-card-title">
-            <view class="statistics-icon"><image src="/assets/icons/statistics.svg" mode="aspectFit" /></view>
+            <view class="statistics-icon"><image src="{{themeIconRoot}}/statistics.svg" mode="aspectFit" /></view>
             <text>近半年收支趋势</text>
           </view>
           <view class="trend-legend">
@@ -72,8 +71,8 @@
           <view class="trend-columns">
             <view wx:for="{{cashFlowTrend}}" wx:key="month" class="trend-column">
               <view class="trend-bars">
-                <view class="trend-bar trend-bar-income" style="height: {{item.incomeHeight}}rpx;"></view>
-                <view class="trend-bar trend-bar-expense" style="height: {{item.expenseHeight}}rpx;"></view>
+                <view class="trend-bar trend-bar-income" style="height: {{item.incomeHeight}}%;"></view>
+                <view class="trend-bar trend-bar-expense" style="height: {{item.expenseHeight}}%;"></view>
               </view>
               <text class="trend-month money-number">{{item.showMonth ? item.monthText : ''}}</text>
             </view>
@@ -85,23 +84,23 @@
         <view wx:else class="statistics-card-empty">统计数据暂未连接</view>
     </view>
 
-    <view wx:if="{{errorMessage}}" class="sync-note" bindtap="loadDashboard">
-      <text>数据暂未同步</text>
-      <text class="sync-action">重试</text>
-    </view>
-    <view wx:elif="{{loading}}" class="sync-note sync-note-loading">正在更新…</view>
-
     <view class="section-heading">
         <view>
           <text class="section-kicker">ACCOUNTS</text>
-          <text class="section-title serif-title">账户余额</text>
+          <view class="account-heading-title">
+            <text class="section-title serif-title">账户余额</text>
+            <view wx:if="{{loggedIn}}" class="dashboard-refresh {{errorMessage ? 'dashboard-refresh-error' : ''}}" bindtap="loadDashboard" hover-class="none" aria-role="button" aria-label="{{loading ? '账户余额正在更新' : (errorMessage ? '数据同步失败，点击重试' : '刷新账户余额')}}">
+              <text wx:if="{{errorMessage}}" class="dashboard-refresh-label">重试</text>
+              <view wx:else class="dashboard-refresh-icon {{loading ? 'dashboard-refresh-spinning' : ''}}"></view>
+            </view>
+          </view>
         </view>
         <text class="section-link" bindtap="openAccounts">全部</text>
     </view>
 
     <view wx:if="{{accounts.length > 0}}" class="account-list">
         <view wx:for="{{accounts}}" wx:key="accountId" class="account-row" bindtap="openAccounts">
-          <view class="account-icon"><image src="{{item.iconPath}}" mode="aspectFit" /></view>
+          <view class="account-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
           <text class="account-name">{{item.name}}</text>
           <view class="account-value">
             <text class="account-direction">{{item.directionText}}</text>

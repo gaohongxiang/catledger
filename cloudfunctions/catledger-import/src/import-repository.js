@@ -1,3 +1,4 @@
+const { statementAnalysis } = require('./statement-analysis')
 const { randomUUID } = require('node:crypto')
 
 const { buildCategoryEvidence } = require('./category-mapping')
@@ -53,6 +54,7 @@ async function selectLatestBatch(connection, uid, importId) {
             normalization_version AS normalizationVersion,
             identity_version AS identityVersion,
             raw_snapshot_version AS rawSnapshotVersion,
+            parse_fingerprint AS parseFingerprint,
             statement_start_local AS statementStartLocal,
             statement_end_local AS statementEndLocal,
             timezone_offset_minutes AS timezoneOffsetMinutes,
@@ -238,6 +240,26 @@ async function resolveIdentities(connection, uid, sourceType, sourceProfile, fil
   )
   existing = await selectIdentities(connection, uid, sourceType, candidates.map((item) => item.candidate.identityKey))
 
+  // 同一原文件、同一物理行且金额/币种/方向未变，旧规则的资金效果变化
+  // 属于解释升级。锚点必须匹配最初身份摘要，不能拿已有冲突行互相作证。
+  const reinterpreted = new Set()
+  const mismatchedIds = candidates.filter(({ candidate }) => existing.get(candidate.identityKey).coreDigest !== candidate.coreDigest)
+    .map(({ candidate }) => existing.get(candidate.identityKey).identityId)
+  for (const part of chunks([...new Set(mismatchedIds)])) {
+    const [anchors] = await connection.execute(
+      `SELECT r.identity_id AS identityId, r.source_locator AS sourceLocator,
+              r.normalized_amount_minor AS amountMinor, r.currency, r.normalized_direction AS direction
+         FROM catledger_import_rows r
+         JOIN catledger_import_batches b ON b.uid = r.uid AND b.batch_id = r.batch_id
+         JOIN catledger_import_files f ON f.uid = b.uid AND f.import_id = b.import_id
+         JOIN catledger_source_identities i ON i.uid = r.uid AND i.identity_id = r.identity_id
+        WHERE r.uid = ? AND f.content_sha256 = ? AND r.identity_state <> 'identity_conflict'
+          AND r.observed_core_digest = i.core_digest AND r.identity_id IN (${part.map(() => '?').join(', ')})`,
+      [uid, fileSha256, ...part]
+    )
+    anchors.forEach((row) => reinterpreted.add(interpretationAnchor(row.identityId, row.sourceLocator, row)))
+  }
+
   const identityIds = [...existing.values()].map((item) => item.identityId)
   const linkedTransactions = new Map()
   for (const part of chunks(identityIds)) {
@@ -259,7 +281,9 @@ async function resolveIdentities(connection, uid, sourceType, sourceProfile, fil
   const byRow = new Map()
   candidates.forEach(({ row, candidate }) => {
     const identity = existing.get(candidate.identityKey)
-    const identityState = identity.coreDigest !== candidate.coreDigest
+    const interpretationChanged = identity.coreDigest !== candidate.coreDigest &&
+      reinterpreted.has(interpretationAnchor(identity.identityId, row.sourceLocator, row.normalized))
+    const identityState = identity.coreDigest !== candidate.coreDigest && !interpretationChanged
       ? 'identity_conflict'
       : attemptedNewKeys.has(candidate.identityKey)
         ? 'new'
@@ -268,10 +292,16 @@ async function resolveIdentities(connection, uid, sourceType, sourceProfile, fil
       ...candidate,
       identityId: identity.identityId,
       identityState,
+      interpretationChanged,
       linkedTransactionId: linkedTransactions.get(identity.identityId) || null
     })
   })
   return byRow
+}
+
+function interpretationAnchor(identityId, sourceLocator, normalized) {
+  return digestParts('same-source-interpretation-v1', identityId, sourceLocator,
+    normalized.amountMinor, normalized.currency, normalized.direction)
 }
 
 function eventType(row) {
@@ -324,6 +354,9 @@ async function persistDocumentRows(connection, uid, batchId, sourceProfile, file
     } else if (identity && identity.identityState === 'exact_duplicate') {
       issues.push({ code: 'source_identity_duplicate', field: 'identity', severity: 'info' })
     }
+    if (identity && identity.interpretationChanged) {
+      issues.push({ code: 'source_interpretation_updated', field: 'identity', severity: 'info' })
+    }
     if (identity && identity.kind === 'physical_record') {
       issues.push({ code: 'source_identity_physical_only', field: 'identity', severity: 'warning' })
     }
@@ -348,7 +381,7 @@ async function persistDocumentRows(connection, uid, batchId, sourceProfile, file
       identity && identity.identityKey, identity && identity.coreDigest,
       issues[0] ? issues[0].code : null, JSON.stringify(issues), JSON.stringify(row.rawFields),
       document.rawSnapshotVersion, document.descriptor.parserVersion,
-      document.descriptor.normalizationVersion
+      document.descriptor.normalizationVersion, JSON.stringify(row.semantic), JSON.stringify(row.observations)
     ])
 
     if (row.parseState === 'valid') {
@@ -378,7 +411,7 @@ async function persistDocumentRows(connection, uid, batchId, sourceProfile, file
      normalized_direction, normalized_transaction_type, economic_effect, payment_method_key,
      category_evidence_json,
      observed_identity_key, observed_core_digest, primary_issue_code, issues_json,
-     raw_fields_json, raw_snapshot_version, parser_version, normalization_version) VALUES`, rowInserts)
+     raw_fields_json, raw_snapshot_version, parser_version, normalization_version, semantic_json, observations_json) VALUES`, rowInserts)
   await insertRows(connection, `INSERT INTO catledger_economic_events
     (uid, event_id, batch_id, event_type, state, event_core_digest, rule_version) VALUES`, eventInserts)
   await insertRows(connection, `INSERT INTO catledger_event_evidence
@@ -429,9 +462,14 @@ async function persistParsedImport(connection, uid, {
           )
         }
         const reusableFile = await selectImportFile(connection, uid, duplicate.importId)
+        const refreshed = duplicateBatch.parseFingerprint === documentParseFingerprint(document, contentSha256, timezoneOffsetMinutes)
+          ? { import: publicImport(reusableFile, duplicateBatch), batch: publicBatch(duplicateBatch) }
+          : await persistParsedBatch(connection, uid, {
+            importId: duplicate.importId, fileID: reusableFile.fileID,
+            contentSha256, actualSize, timezoneOffsetMinutes, document
+          })
         return {
-          import: publicImport(reusableFile, duplicateBatch),
-          batch: publicBatch(duplicateBatch),
+          ...refreshed,
           reusedImportId: duplicate.importId,
           replacedUpdateId: replacedUpdateId || undefined,
           duplicateDisposition: replacedUpdateId ? 'replaced_unposted_update' : 'reused_unposted'
@@ -447,21 +485,35 @@ async function persistParsedImport(connection, uid, {
     }
   }
 
+  return persistParsedBatch(connection, uid, {
+    importId, fileID, contentSha256, actualSize, timezoneOffsetMinutes, document
+  })
+}
+
+function documentParseFingerprint(document, contentSha256, timezoneOffsetMinutes) {
+  return digestParts(
+    'parse-run-v2', contentSha256, document.descriptor.parserVersion,
+    document.descriptor.normalizationVersion, document.identityVersion, timezoneOffsetMinutes,
+    document.profile.profileVersion, document.profile.adapterVersion, document.profile.policyVersion
+  )
+}
+
+// 同字节文件只有解析版本相同才复用；版本升级追加批次，保留旧证据和旧更新。
+async function persistParsedBatch(connection, uid, {
+  importId, fileID, contentSha256, actualSize, timezoneOffsetMinutes, document
+}) {
   const sourceProfile = await upsertSourceProfile(
     connection, uid, document.descriptor.sourceType, document.metadata.sourceProfile
   )
   const batchId = randomUUID()
-  const parseFingerprint = digestParts(
-    'parse-run-v1', contentSha256, document.descriptor.parserVersion,
-    document.descriptor.normalizationVersion, document.identityVersion, timezoneOffsetMinutes
-  )
+  const parseFingerprint = documentParseFingerprint(document, contentSha256, timezoneOffsetMinutes)
   await connection.execute(
     `INSERT INTO catledger_import_batches
        (uid, batch_id, import_id, source_profile_id, state, source_type, source_format,
         parser_name, parser_version, normalization_version, identity_version,
         raw_snapshot_version, parse_fingerprint, statement_start_local,
-        statement_end_local, timezone_offset_minutes)
-     VALUES (?, ?, ?, ?, 'review_ready', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        statement_end_local, timezone_offset_minutes, analysis_json)
+     VALUES (?, ?, ?, ?, 'review_ready', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       uid, batchId, importId, sourceProfile.sourceProfileId,
       document.descriptor.sourceType, document.descriptor.sourceFormat,
@@ -469,7 +521,7 @@ async function persistParsedImport(connection, uid, {
       document.descriptor.normalizationVersion, document.identityVersion,
       document.rawSnapshotVersion, parseFingerprint,
       document.metadata.statementStartLocal, document.metadata.statementEndLocal,
-      timezoneOffsetMinutes
+      timezoneOffsetMinutes, JSON.stringify(statementAnalysis(document))
     ]
   )
   const counts = await persistDocumentRows(connection, uid, batchId, sourceProfile, contentSha256, document)

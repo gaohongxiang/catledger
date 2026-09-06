@@ -19,7 +19,7 @@ test('导入公共契约与事件云函数动作保持一致', function () {
     financeUpdateUndoImpact: handler, economicEventCorrect: handler,
     economicEventCorrectionImpact: handler, economicEventEvidence: handler, reviewIssueGet: handler,
     reviewIssueList: handler, reviewIssueResolve: handler, reviewIssueResolveAccountMappings: handler,
-    reviewIssueReviseAccountMapping: handler
+    reviewIssueRefreshAccountGroups: handler, reviewIssueReviseAccountMapping: handler
   })
   assert.deepEqual(Object.keys(handlers).sort(), names)
   assert.equal(Object.values(handlers).every(function (value) { return typeof value === 'function' }), true)
@@ -118,11 +118,11 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(markup, /最多 5 份并行处理/)
   assert.match(markup, /正在并行解析，请稍候/)
   assert.match(markup, /class="parse-button-spinner"/)
-  assert.match(markup, /原始交易 \{\{item\.evidenceCount\}\} ›/)
+  assert.match(markup, /template is="record-source-fields"/)
   assert.doesNotMatch(markup, /交易摘要|查看 \{\{item\.evidenceCount\}\} 条原始记录/)
   assert.match(markup, /class="funds-route-picker"/)
   assert.match(markup, /!\(currentIssue\.issueType === 'transfer_accounts' && currentIssue\.fundsRoute\)/)
-  assert.match(markup, /<view wx:if="\{\{phase === 'idle' \|\| phase === 'selected' \|\| phase === 'uploading' \|\| phase === 'files_ready' \|\| phase === 'organizing'\}\}" class="idle-stage">/)
+  assert.match(markup, /<view wx:if="\{\{phase === 'idle' \|\| phase === 'selected' \|\| phase === 'uploading' \|\| phase === 'files_ready' \|\| phase === 'organizing'\}\}" class="idle-stage(?: content-inset)?">/)
   assert.match(markup, /class="file-row-side"/)
   assert.match(markup, /class="file-progress \{\{item\.state === 'preparing'/)
   assert.match(styles, /\.file-row-side \{[^}]*flex: 0 0 136rpx;/)
@@ -189,9 +189,9 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(source, /refundChoices/)
   assert.match(markup, /class="review-status-tab \{\{activeReviewStatus/)
   assert.match(markup, /wx:for="\{\{reviewGroups\}\}"/)
-  assert.match(source, /label: '待整理'/)
+  assert.match(source, /label: '待核对'/)
   assert.match(source, /label: '已排除'/)
-  assert.match(source, /label: '重复记录'/)
+  assert.match(source, /label: '重复'/)
   assert.doesNotMatch(markup, /class="review-subtabs"/)
   assert.doesNotMatch(source, /switchReviewGroup|visibleReviewGroups|activeReviewGroupType/)
   assert.doesNotMatch(markup, /class="review-sequence-card"/)
@@ -213,8 +213,8 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(markup, />转入账户<\/text>/)
   assert.doesNotMatch(markup, />对方账户<\/text>/)
   assert.match(markup, /class="sheet-utility-actions"/)
-  assert.ok(markup.indexOf('sheet-utility-actions') < markup.indexOf('保存选择'))
-  assert.match(styles, /\.event-list \{[^}]*background: var\(--theme-accent-soft/)
+  assert.ok(markup.indexOf('保存选择') < markup.indexOf('sheet-utility-actions'))
+  assert.match(styles, /\.review-editor-sheet \{[^}]*overflow: hidden/)
   assert.match(styles, /\.sheet-secondary \{[^}]*background: var\(--theme-accent-soft/)
   assert.match(styles, /\.final-summary/)
 })

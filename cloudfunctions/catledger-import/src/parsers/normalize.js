@@ -1,6 +1,7 @@
 const { importError } = require('../errors')
+const { observeField } = require('../field-observation')
 const { paymentAccountDetails } = require('../payment-account')
-const { classifySourceAction } = require('../source-action')
+const { resolveRowSemantic } = require('../row-semantic-resolver')
 const { normalizeText } = require('./text')
 
 const MAX_MINOR_UNITS = 9223372036854775807n
@@ -97,64 +98,52 @@ function normalizeDirection(value) {
   }
 }
 
-function containsAny(value, candidates) {
-  return candidates.some((candidate) => value.includes(candidate))
-}
-
-function normalizeEconomicEffect(sourceType, transactionType, status) {
-  const type = normalizeText(transactionType, 128)
-  const state = normalizeText(status, 128)
-  if (containsAny(state, ['失败', '未支付', '未收款'])) return 'failed'
-  if (containsAny(state, ['关闭', '撤销', '取消'])) return 'closed'
-  if (containsAny(state, ['退款成功', '退款完成', '已退款', '已退还', '已全额退款', '已部分退款', '退税成功'])) return 'refund'
-  if (sourceType === 'wechat' && type.includes('退款') && containsAny(state, ['成功', '完成', '到账'])) return 'refund'
-  if (containsAny(state, [
-    '交易成功', '支付成功', '等待确认收货', '还款成功', '交易完成', '已完成', '收款成功',
-    '成功', '已收钱', '已到账', '已支付', '已存入', '已转账', '已领取'
-  ])) return 'normal'
-  return 'unknown'
-}
-
-function classifyWechatType(value) {
-  return classifySourceAction({ sourceType: 'wechat', rawTransactionType: value }).normalizedTransactionType
-}
-
-function classifyAlipayType(transactionType, item, direction) {
-  return classifySourceAction({
-    sourceType: 'alipay',
-    rawTransactionType: transactionType,
-    item,
-    direction
-  }).normalizedTransactionType
-}
-
-function normalizeRow(sourceType, raw, timezoneOffsetMinutes, rowIssues = []) {
+function normalizeRow(sourceType, raw, timezoneOffsetMinutes, rowIssues = [], sourceFormat = null, presentFields = null) {
   const issues = [...rowIssues]
   const time = parseLocalDateTime(raw.transactionTime, timezoneOffsetMinutes)
   const amountMinor = parseAmountMinor(raw.amount)
   const direction = normalizeDirection(raw.direction)
-  const transactionType = sourceType === 'wechat'
-    ? classifyWechatType(raw.transactionType)
-    : classifyAlipayType(raw.transactionType, raw.item, direction)
-  const economicEffect = normalizeEconomicEffect(sourceType, raw.transactionType, raw.status)
+  const semantic = resolveRowSemantic({
+    sourceType,
+    sourceFormat,
+    rawTransactionType: raw.transactionType,
+    transactionType: raw.transactionType,
+    rawDirection: raw.direction,
+    direction,
+    rawStatus: raw.status,
+    status: raw.status,
+    paymentMethod: raw.paymentMethod,
+    counterparty: raw.counterparty,
+    item: raw.item,
+    amountMinor,
+    currency: 'CNY'
+  })
+  const transactionType = semantic.legacy.transactionType
+  const economicEffect = semantic.legacy.economicEffect
   const paymentAccount = paymentAccountDetails(sourceType, raw.paymentMethod)
 
   if (!time) issues.push(issue('row_time_invalid', 'transaction_time', 'error'))
   if (amountMinor == null) issues.push(issue('row_amount_invalid', 'amount', 'error'))
   if (direction === 'unknown') issues.push(issue('row_direction_unknown', 'direction'))
-  if (transactionType === 'unknown') issues.push(issue('row_transaction_type_unknown', 'transaction_type'))
-  if (economicEffect === 'unknown') issues.push(issue('row_status_unknown', 'status'))
+  semantic.issues.forEach((semanticIssue) => {
+    if (!issues.some((existing) => existing.code === semanticIssue.code && existing.field === semanticIssue.field)) {
+      issues.push(semanticIssue)
+    }
+  })
 
   const hasError = issues.some((item) => item.severity === 'error')
   let eligibility = 'review_required'
   if (hasError || economicEffect === 'closed' || economicEffect === 'failed') {
     eligibility = 'non_postable'
-  } else if (economicEffect === 'normal' &&
+  } else if (semantic.resolutionStatus === 'resolved' && economicEffect === 'normal' &&
       (direction === 'income' || direction === 'expense') &&
       (transactionType === 'payment' || transactionType === 'fee')) {
     eligibility = 'postable'
   }
 
+  const observation = (field, options = {}) => observeField(raw[field], {
+    ...options, present: !presentFields || presentFields.has(field)
+  })
   return {
     normalized: {
       localDate: time && time.localDate,
@@ -171,7 +160,24 @@ function normalizeRow(sourceType, raw, timezoneOffsetMinutes, rowIssues = []) {
       paymentMethod: paymentAccount.recognized ? paymentAccount.displayName : '',
       note: normalizeText(raw.note, 1024)
     },
+    observations: {
+      transactionTime: observation('transactionTime', { parsed: Boolean(time) }),
+      amount: observation('amount', { parsed: amountMinor != null }),
+      direction: observation('direction', { known: direction !== 'unknown' }),
+      status: observation('status', {
+        known: !semantic.issues.some((item) => item.code === 'row_status_unknown')
+      }),
+      transactionType: observation('transactionType', {
+        known: !semantic.issues.some((item) => ['row_transaction_type_unknown', 'row_semantic_conflict'].includes(item.code))
+      }),
+      paymentMethod: observation('paymentMethod'),
+      counterparty: observation('counterparty'),
+      counterpartyAccount: observation('counterpartyAccount'),
+      item: observation('item'),
+      note: observation('note')
+    },
     issues,
+    semantic,
     parseState: hasError ? 'invalid' : 'valid',
     eligibility,
     processingState: eligibility === 'non_postable' ? 'ignored' : 'pending'
@@ -185,11 +191,8 @@ function ensureNormalizedForIdentity(row) {
 }
 
 module.exports = {
-  classifyAlipayType,
-  classifyWechatType,
   ensureNormalizedForIdentity,
   normalizeDirection,
-  normalizeEconomicEffect,
   normalizeRow,
   parseAmountMinor,
   parseLocalDateTime

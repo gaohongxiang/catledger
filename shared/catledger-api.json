@@ -97,7 +97,7 @@
     "transactions.list": {
       "kind": "read",
       "data": ["month", "date?", "accountId?", "categoryId?", "search?", "pageSize?", "cursor?"],
-      "returns": ["month", "date?", "summary", "transactions", "nextCursor"]
+      "returns": ["month", "date?", "summary", "transactions (importContext?={updateId,eventId})", "nextCursor"]
     },
     "transactions.create": {
       "kind": "idempotent-mutation",

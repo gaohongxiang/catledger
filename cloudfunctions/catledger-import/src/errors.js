@@ -16,6 +16,7 @@ const ERROR_MESSAGES = Object.freeze({
   NOT_FOUND: '未找到可用的导入任务',
   SERVICE_NOT_CONFIGURED: '招财猫记账本数据库尚未配置',
   SERVICE_TEMPORARY_UNAVAILABLE: '连接暂时中断，已解析账单不会丢失，请重试',
+  PAYMENT_REFUND_ALLOCATION_REQUIRED: '原消费由多个账户支付，需核对退款分项；可先暂记待关联退款',
   UNRESOLVED_IMPORT: '仍有账目需要处理后才能入账',
   UNSUPPORTED_ACTION: '导入服务版本过旧，请更新后重试',
   VALIDATION_ERROR: '请检查导入信息'

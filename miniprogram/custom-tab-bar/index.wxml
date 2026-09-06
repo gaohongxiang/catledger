@@ -36,7 +36,7 @@
       bindtap="switchTab"
     >
       <view class="tab-icon-wrap">
-        <image class="tab-icon" mode="aspectFit" src="{{selected === index ? item.selectedIconPath : item.iconPath}}" />
+        <image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{selected === index ? item.selectedIconPath : item.iconPath}}" />
       </view>
       <text class="tab-label">{{item.text}}</text>
     </view>
@@ -44,7 +44,7 @@
 
   <view class="record-entry" role="button" aria-label="选择记账方式" bindtap="openEntry">
     <view class="record-fab">
-      <image class="record-icon" mode="aspectFit" src="/assets/icons/tab-plus.svg" />
+      <image class="record-icon" mode="aspectFit" src="{{themeIconRoot}}/tab-plus.svg" />
     </view>
     <text class="record-label">记账</text>
   </view>
@@ -59,7 +59,7 @@
       bindtap="switchTab"
     >
       <view class="tab-icon-wrap">
-        <image class="tab-icon" mode="aspectFit" src="{{selected === index ? item.selectedIconPath : item.iconPath}}" />
+        <image class="tab-icon" mode="aspectFit" src="{{themeIconRoot}}/{{selected === index ? item.selectedIconPath : item.iconPath}}" />
       </view>
       <text class="tab-label">{{item.text}}</text>
     </view>
