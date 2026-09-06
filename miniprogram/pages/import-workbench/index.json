@@ -2,6 +2,7 @@
   "navigationBarTitleText": "导入账单",
   "enablePullDownRefresh": false,
   "usingComponents": {
-    "login-sheet": "/components/login-sheet/index"
+    "login-sheet": "/components/login-sheet/index",
+    "record-summary": "../../components/record-summary/index"
   }
 }
