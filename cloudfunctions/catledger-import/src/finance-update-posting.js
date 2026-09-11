@@ -4,6 +4,7 @@ const { queryCashBalances, assertCashBalancesNotWorsened } = require('./import-c
 const { readMapping } = require('./maintenance-side-effects')
 const { MAINTENANCE_POLICY_VERSION } = require('./maintenance-policy')
 const { PLAN_VERSION } = require('./domain-versions')
+const { assertIdentityIntegrity } = require('./evidence-integrity')
 const { randomUUID } = require('node:crypto')
 
 const { importError } = require('./errors')
@@ -486,6 +487,7 @@ function createFinanceUpdatePosting({ getPool }) {
         })
         if (!coverage.rowConservationPassed) throw importError('UNRESOLVED_IMPORT')
         const ready = events.filter((event) => [EVENT_STATUS.READY, EVENT_STATUS.NEEDS_ACTION].includes(event.status))
+        await assertIdentityIntegrity(connection, uid, updateId, ready.map(event => event.eventId))
         for (const event of ready) {
           const evaluated = evaluatePostability(event, await eventContext(connection, uid, updateId, event.eventId))
           if (evaluated.status !== EVENT_STATUS.READY) throw importError('UNRESOLVED_IMPORT')

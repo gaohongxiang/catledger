@@ -44,6 +44,103 @@ function fixture() {
   return fs.readFileSync(path.join(__dirname, 'fixtures', 'wechat-pay.csv'))
 }
 
+test('桥接强身份贯通人工合并、旧计划保留决定升级、回滚与最终 posting 屏障', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  const pool = mysql.createPool(databaseConfig()), objects = new Map()
+  const storage = { async downloadExact(fileID, key) { return objects.get(key) }, async remove() { return true } }
+  const service = createImportService({ getPool: () => pool, storage })
+  try {
+    const user = await createUserLedger(pool, 'bridge-invariant'), other = await createUserLedger(pool, 'bridge-other')
+    const contents = [Buffer.from([
+      '微信支付账单明细,,,,,,,,,,,',
+      '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注',
+      '2026-09-01 10:00:00,商户消费,合成商户,合成购买甲,支出,10.00,微信零钱,支付成功,WX-BRIDGE-A,,ORDER-BRIDGE-001,',
+      '2026-09-01 10:00:00,商户消费,合成商户,合成购买乙,支出,10.00,微信零钱,支付成功,WX-BRIDGE-B,,ORDER-BRIDGE-001,'
+    ].join('\n')), Buffer.from([
+      '支付宝(中国)网络技术有限公司 电子客户回单,,,,,,,,,,,',
+      '交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,备注,交易订单号,订单号,商家订单号',
+      '2026-09-01 10:00:00,日用百货,合成商户,另一来源记录,10.00,支出,账户余额,交易成功,,ALI-BRIDGE-C,,ORDER-BRIDGE-001'
+    ].join('\n'))]
+    const prepared = await service.prepareMany(context(user, { requestId: randomUUID(),
+      files: contents.map((buffer, index) => ({ fileName: `合成桥接${index}.csv`, size: buffer.length })) }))
+    const batchIds = []
+    for (const [index, file] of prepared.files.entries()) {
+      objects.set(file.cloudPath, contents[index])
+      const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId,
+        fileID: `cloud://synthetic.bucket/${file.cloudPath}`, timezoneOffsetMinutes: -480 }))
+      batchIds.push(parsed.batch.batchId)
+    }
+    let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds }))
+    const updateId = view.update.updateId
+    assert.equal(view.events.length, 3)
+    const issue = view.issues.find(issue => issue.primaryReasonCode === 'source_group_conflict')
+    assert.ok(issue)
+    await assert.rejects(service.reviewIssueResolve(context(user, { requestId: randomUUID(), updateId,
+      updateVersion: view.update.version, issueId: issue.issueId, issueVersion: issue.version,
+      decision: 'confirm_same', primaryEventId: view.events[0].eventId })), { publicCode: 'IDENTITY_CONFLICT' })
+
+    // 隔离库构造 v28 遗留图；保留原主记录人工金额/分类与动作标记。
+    const primary = view.events.find(event => event.primaryEvidence.sourceType === 'wechat')
+    const others = view.events.filter(event => event.eventId !== primary.eventId)
+    await pool.execute('DELETE FROM catledger_review_issue_members WHERE uid = ? AND update_id = ?', [user.uid, updateId])
+    await pool.execute('DELETE FROM catledger_review_issues WHERE uid = ? AND update_id = ?', [user.uid, updateId])
+    await pool.execute('DELETE FROM catledger_economic_event_relations WHERE uid = ? AND update_id = ?', [user.uid, updateId])
+    for (const event of others) {
+      await pool.execute(`UPDATE catledger_event_evidence SET event_id = ?, evidence_role = 'supporting'
+        WHERE uid = ? AND update_id = ? AND event_id = ?`, [primary.eventId, user.uid, updateId, event.eventId])
+      await pool.execute('DELETE FROM catledger_economic_events WHERE uid = ? AND event_id = ?', [user.uid, event.eventId])
+    }
+    await pool.execute(`UPDATE catledger_economic_events SET state = 'ready', status = 'ready', version = 7,
+      amount_minor = 1500, ledger_account_id = ?, category_id = ?, manual_field_mask = 161,
+      reason_codes_json = '[]', field_sources_json = JSON_SET(field_sources_json, '$.lastUserActionId', 'synthetic-choice')
+      WHERE uid = ? AND event_id = ?`, [user.accountId, user.categoryId, user.uid, primary.eventId])
+    await pool.execute(`UPDATE catledger_finance_updates SET plan_version = ?, final_event_count = 1,
+      ready_event_count = 1, needs_action_event_count = 0, duplicate_evidence_count = 2
+      WHERE uid = ? AND update_id = ?`, [PLAN_VERSION, user.uid, updateId])
+    await assert.rejects(service.financeUpdatePost(context(user, { requestId: randomUUID(), updateId,
+      version: view.update.version })), { publicCode: 'IDENTITY_CONFLICT' })
+    await pool.execute("UPDATE catledger_finance_updates SET plan_version = 'organizer-plan-v28' WHERE uid = ? AND update_id = ?", [user.uid, updateId])
+    await assert.rejects(service.financeUpdatePost(context(user, { requestId: randomUUID(), updateId,
+      version: view.update.version })), { publicCode: 'CONFLICT' })
+    const request = { requestId: randomUUID(), updateId, version: view.update.version }
+    const faulty = createImportService({ storage, getPool: () => ({ async getConnection() {
+      const connection = await pool.getConnection(), execute = connection.execute.bind(connection)
+      connection.execute = async (sql, values) => {
+        if (/UPDATE catledger_event_evidence SET event_id/.test(sql)) throw new Error('synthetic split rollback')
+        return execute(sql, values)
+      }
+      const release = connection.release.bind(connection)
+      connection.release = () => { connection.execute = execute; connection.release = release; release() }
+      return connection
+    } }) })
+    await assert.rejects(faulty.financeUpdateOrganize(context(user, request)), /synthetic split rollback/)
+    assert.equal((await service.financeUpdateGet(context(user, { updateId }))).events.length, 1)
+    await assert.rejects(service.financeUpdateOrganize(context(other, request)), { publicCode: 'NOT_FOUND' })
+    view = await service.financeUpdateOrganize(context(user, request))
+    assert.deepEqual(await service.financeUpdateOrganize(context(user, request)), view)
+    assert.equal(view.events.length, 3)
+    assert.equal(view.update.planVersion, PLAN_VERSION)
+    assert.equal(view.update.counts.duplicateEvidence, 0)
+    const kept = view.events.find(event => event.eventId === primary.eventId)
+    assert.equal(kept.amountMinor, '1500')
+    assert.equal(kept.categoryId, user.categoryId)
+    assert.equal(kept.primaryEvidence.rowId, primary.primaryEvidence.rowId)
+    assert.ok(view.events.filter(event => event.eventId !== kept.eventId).every(event => event.amountMinor === '1000'))
+    const [[stored]] = await pool.execute('SELECT field_sources_json AS sources, manual_field_mask AS mask FROM catledger_economic_events WHERE uid = ? AND event_id = ?', [user.uid, kept.eventId])
+    assert.equal(Number(stored.mask), 161)
+    assert.equal((typeof stored.sources === 'string' ? JSON.parse(stored.sources) : stored.sources).lastUserActionId, 'synthetic-choice')
+    const conflict = view.issues.find(issue => issue.status === 'open' && issue.primaryReasonCode === 'source_group_conflict')
+    assert.equal(conflict.memberCount, 3)
+    await service.reviewIssueResolve(context(user, { requestId: randomUUID(), updateId,
+      updateVersion: view.update.version, issueId: conflict.issueId, issueVersion: conflict.version, decision: 'confirm_distinct' }))
+    view = await service.financeUpdateGet(context(user, { updateId }))
+    const accounts = view.issues.filter(issue => issue.status === 'open' && issue.issueType === 'account_mapping')
+    if (accounts.length) view = await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId,
+      decisions: accounts.map(issue => ({ issueId: issue.issueId, operation: 'resolve', decision: 'apply_fields', fields: { ledgerAccountId: user.accountId } })) }))
+    const posted = await service.financeUpdatePost(context(user, { requestId: randomUUID(), updateId, version: view.update.version }))
+    assert.equal(posted.posting.createdTransactionCount, 3)
+  } finally { await pool.end() }
+})
+
 test('语义升级保留旧批次决定和共享问题成员，支持隔离、事务回滚、并发重试及最终入账', { skip: !hasDatabase, timeout: 30000 }, async () => {
   const pool = mysql.createPool(databaseConfig()), objects = new Map()
   const service = createImportService({ getPool: () => pool, storage: {

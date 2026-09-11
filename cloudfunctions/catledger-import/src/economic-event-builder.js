@@ -69,6 +69,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     reasons.push('source_account_endpoint_unknown')
   }
   if (group.length > 1) reasons.push('strong_same_event')
+  if (group.conflictKey) reasons.push('source_group_conflict')
   if (!primary.localAt || primary.amountMinor == null) reasons.push('core_fields_missing')
 
   const eventId = idFactory()
@@ -107,6 +108,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
       ...paymentEvidenceFields(group.map((row) => ({ direction: row.direction, semantic: getRowSemantic(row) }))),
       primaryEvidenceId: null,
       rowIds: group.map((row) => row.rowId),
+      ...(group.conflictKey ? { evidenceGroupConflictKey: group.conflictKey } : {}),
       ledgerAccountReference: primaryLedgerReference,
       fundsProjection: resolvedFunds ? resolvedFunds.projection : projection && !projectionConflict ? projection : null
     },

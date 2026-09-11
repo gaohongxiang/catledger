@@ -24,15 +24,25 @@ function refundRelation(updateId, refund, target, idFactory, status, reasonCode)
 }
 
 function sameEventCandidateGroups(events) {
+  const conflicts = new Map()
+  events.forEach(event => {
+    const key = event.fieldSources && event.fieldSources.evidenceGroupConflictKey
+    if (!key || event.status === EVENT_STATUS.EXCLUDED) return
+    if (!conflicts.has(key)) conflicts.set(key, [])
+    conflicts.get(key).push(event)
+  })
+  const result = [...conflicts].map(([candidateKey, events]) => {
+    events.forEach(event => { event.sameEventCandidateKey = candidateKey })
+    return { candidateKey, events }
+  })
   const buckets = new Map()
   events.forEach((event) => {
-    if (event.status === EVENT_STATUS.EXCLUDED) return
+    if (event.status === EVENT_STATUS.EXCLUDED || event.sameEventCandidateKey) return
     const key = `${event.amountMinor || ''}|${event.currency}|${event.flowDirection}`
     const bucket = buckets.get(key) || []
     bucket.push(event)
     buckets.set(key, bucket)
   })
-  const result = []
   buckets.forEach((bucket) => {
     const available = new Set(bucket.map((event) => event.eventId))
     for (const event of bucket) {

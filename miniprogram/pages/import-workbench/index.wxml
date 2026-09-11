@@ -710,7 +710,7 @@
           <text wx:if="{{currentIssue.issueType === 'refund_relation'}}" class="review-section-label">{{item.recordRole}}</text>
           <view class="event-record-primary"><text class="event-title">{{item.displayTitle}}</text><text class="event-amount money-number">{{item.amountText}}</text></view>
           <text class="event-meta">{{item.displayMeta}}</text>
-          <button wx:if="{{currentIssue.issueType === 'same_event'}}" size="mini" class="review-text-action" data-id="{{item.eventId}}" bindtap="selectPrimaryEvent">{{issueDraft.primaryEventId === item.eventId ? '已选为主记录' : '选为主记录'}}</button>
+          <button wx:if="{{currentIssue.issueType === 'same_event' && currentIssue.primaryReasonCode !== 'source_group_conflict'}}" size="mini" class="review-text-action" data-id="{{item.eventId}}" bindtap="selectPrimaryEvent">{{issueDraft.primaryEventId === item.eventId ? '已选为主记录' : '选为主记录'}}</button>
           <template is="record-source-fields" data="{{record: item}}" />
           <text wx:if="{{item.evidenceError}}" class="stage-action-error">{{item.evidenceError}}</text>
           <button wx:if="{{item.evidenceError}}" size="mini" class="review-text-action" data-id="{{item.eventId}}" bindtap="retryIssueRecordEvidence" disabled="{{issueEvidenceLoading}}">重新读取原始记录</button>
@@ -724,7 +724,7 @@
         <text wx:if="{{currentIssue.paymentNeedsReview && !paymentCanSave && !busy}}" class="sheet-save-hint">{{paymentValidationHint}}</text>
         <text wx:if="{{!currentIssue.paymentNeedsReview && !currentIssue.aggregateRepayment && !issueFieldsCanSave && issueFieldsReason && !busy}}" class="sheet-save-hint">{{issueFieldsReason}}</text>
         <button wx:if="{{currentIssue.issueType === 'account_mapping' || currentIssue.issueType === 'category_assignment' || currentIssue.issueType === 'shared_fields' || currentIssue.issueType === 'field_conflict' || currentIssue.issueType === 'transfer_accounts'}}" class="sheet-confirm sheet-confirm-wide" bindtap="resolveWithFields" loading="{{busy}}" disabled="{{busy || (currentIssue.paymentNeedsReview && !paymentCanSave) || bankBatchLoading || (currentIssue.aggregateRepayment && !repaymentAllocationCanSave) || (!currentIssue.paymentNeedsReview && !currentIssue.aggregateRepayment && !issueFieldsCanSave)}}">{{bankBatchSelectedCount ? '保存选择（共 ' + (bankBatchSelectedCount + 1) + ' 项）' : '保存选择'}}</button>
-        <button wx:if="{{currentIssue.issueType === 'same_event'}}" class="sheet-confirm sheet-confirm-wide" bindtap="confirmSame">是同一笔</button>
+        <button wx:if="{{currentIssue.issueType === 'same_event' && currentIssue.primaryReasonCode !== 'source_group_conflict'}}" class="sheet-confirm sheet-confirm-wide" bindtap="confirmSame">是同一笔</button>
         <button wx:if="{{currentIssue.issueType === 'same_event' || currentIssue.issueType === 'identity_conflict'}}" class="sheet-confirm sheet-confirm-wide" bindtap="confirmDistinct">是多笔独立记录</button>
         <button wx:if="{{currentIssue.issueType === 'refund_relation' && issueRelations.length}}" class="sheet-confirm sheet-confirm-wide" bindtap="linkRefund" loading="{{busy}}" disabled="{{busy || !issueDraft.targetEventId}}">确认退款关系</button>
         <button wx:if="{{currentIssue.issueType === 'refund_relation' && !issueRelations.length}}" class="sheet-confirm sheet-confirm-wide" bindtap="markRefundPending" loading="{{busy}}" disabled="{{busy}}">暂记待关联退款</button>

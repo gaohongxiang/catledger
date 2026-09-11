@@ -42,7 +42,7 @@ function createFinanceUpdateCore({ getPool }) {
       throw importError('CONFLICT')
     }
     const rows = await selectPlanningRows(connection, uid, updateId)
-    if (current.status === 'review' && ['organizer-plan-v26', 'organizer-plan-v27', PLAN_VERSION].includes(current.planVersion)) {
+    if (current.status === 'review' && ['organizer-plan-v26', 'organizer-plan-v27', 'organizer-plan-v28', PLAN_VERSION].includes(current.planVersion)) {
       if (current.planVersion === PLAN_VERSION) return getUpdateView(connection, uid, updateId)
       return upgradeSemanticPlan(connection, uid, current, rows, requestDigest)
     }

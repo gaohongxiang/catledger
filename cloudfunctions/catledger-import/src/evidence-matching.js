@@ -1,4 +1,5 @@
 const STRONG_REFERENCE_WINDOW_MS = 72 * 60 * 60 * 1000
+const { digestParts } = require('./digest')
 
 function timeValue(value) {
   if (!value) return null
@@ -56,6 +57,49 @@ function unionFind(size) {
   }
 }
 
+function compareEvidence(left, right) {
+  return left.sourceOrder - right.sourceOrder || left.rowNumber - right.rowNumber || left.rowId.localeCompare(right.rowId)
+}
+
+function strongIdentity(row) {
+  if (row.identityKind === 'physical_record') return null
+  const clean = value => typeof value === 'string' && value.trim() && !/[*＊•·xX]{2,}/.test(value)
+  if (row.identityKind || clean(row.sourceTransactionId) || clean(row.sourceOrderId) && clean(row.sourceMerchantOrderId)) {
+    return row.identityId || JSON.stringify([row.sourceProfileId || '', row.sourceTransactionId || '', row.sourceOrderId || '', row.sourceMerchantOrderId || ''])
+  }
+  return null
+}
+
+function hasSourceIdentityConflict(rows) {
+  const identities = new Map()
+  for (const row of rows) {
+    const identity = strongIdentity(row)
+    if (!identity) continue
+    const scope = row.sourceType || 'unknown'
+    if (identities.has(scope) && identities.get(scope) !== identity) return true
+    identities.set(scope, identity)
+  }
+  return false
+}
+
+function hasGroupConflict(rows) {
+  if (hasSourceIdentityConflict(rows)) return true
+  if (rows.length < 2) return false
+  const times = rows.map(row => timeValue(row.utcAt))
+  return rows.some(row => !compatibleCore(rows[0], row)) ||
+    Math.max(...times) - Math.min(...times) > STRONG_REFERENCE_WINDOW_MS
+}
+
+function identityGroups(rows) {
+  const groups = new Map()
+  for (const row of rows) {
+    const key = row.identityId && row.identityState !== 'identity_conflict' ? row.identityId : row.rowId
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(row)
+  }
+  return [...groups.values()].map(group => group.sort(compareEvidence)).sort((a, b) => compareEvidence(a[0], b[0]))
+}
+
 function groupEvidence(rows) {
   const groups = new Map()
   const union = unionFind(rows.length)
@@ -86,9 +130,14 @@ function groupEvidence(rows) {
     group.push(row)
     groups.set(root, group)
   })
-  return [...groups.values()].map((group) => group.sort((left, right) => (
-    left.sourceOrder - right.sourceOrder || left.rowNumber - right.rowNumber || left.rowId.localeCompare(right.rowId)
-  )))
+  // 先完成候选分量再整体裁决，不能贪心保留第一条边而把结果交给输入顺序。
+  return [...groups.values()].flatMap((rows) => {
+    const atomic = identityGroups(rows)
+    if (atomic.length < 2 || !hasGroupConflict(rows)) return [rows.sort(compareEvidence)]
+    const conflictKey = digestParts('evidence-group-conflict-v1', ...rows.map(row => row.identityId || row.rowId).sort())
+    return atomic.map(group => Object.assign(group, { conflictKey }))
+  }).sort((a, b) => compareEvidence(a[0], b[0]))
 }
 
-module.exports = { STRONG_REFERENCE_WINDOW_MS, timeValue, normalizedText, stableReferences, scopedStableReferences, compatibleCore, groupEvidence }
+module.exports = { STRONG_REFERENCE_WINDOW_MS, timeValue, normalizedText, stableReferences, scopedStableReferences,
+  compatibleCore, groupEvidence, hasSourceIdentityConflict, hasGroupConflict, identityGroups }

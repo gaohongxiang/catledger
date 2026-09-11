@@ -103,6 +103,7 @@ const HARD_BLOCKING_REASONS = new Set([
   'core_fields_conflict',
   'identity_conflict',
   'identity_review_required',
+  'source_group_conflict',
   'relation_ambiguous',
   'refund_amount_exceeded',
   'refund_relation_ambiguous',
@@ -219,6 +220,9 @@ function evaluatePostability(event, context) {
 
 function classifyReviewIssue(event) {
   const reasons = new Set(event.reasonCodes || [])
+  if (reasons.has('source_group_conflict')) {
+    return { issueType: REVIEW_ISSUE_TYPE.SAME_EVENT, primaryReason: 'source_group_conflict' }
+  }
   if (paymentResolutionForEvent(event).valid) {
     reasons.delete('payment_components_ambiguous')
     reasons.delete('row_transaction_type_unknown')

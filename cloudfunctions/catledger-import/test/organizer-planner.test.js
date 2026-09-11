@@ -45,6 +45,40 @@ function row(overrides = {}) {
   }
 }
 
+test('跨来源桥接不能折叠同来源强身份，全部顺序保留三事件和一次核对', () => {
+  const a = row({ sourceMerchantOrderId: 'ORDER-SHARED-001' })
+  const b = row({ rowId: 'row-b', identityId: 'identity-b', sourceTransactionId: 'WX-INDEPENDENT-B', sourceMerchantOrderId: 'ORDER-SHARED-001' })
+  const c = row({ rowId: 'row-c', sourceType: 'alipay', identityId: 'identity-c', sourceTransactionId: 'ALI-PAYMENT-C', sourceMerchantOrderId: 'ORDER-SHARED-001' })
+  assert.equal(buildOrganizePlan({ updateId: 'update', rows: [a, b], idFactory: ids() }).events.length, 2)
+  let expected
+  for (const rows of [[a, b, c], [a, c, b], [b, a, c], [b, c, a], [c, a, b], [c, b, a]]) {
+    const plan = buildOrganizePlan({ updateId: 'update', rows, idFactory: ids() })
+    assert.equal(plan.events.length, 3)
+    assert.equal(plan.evidence.length, 3)
+    assert.ok(plan.events.every(event => event.status === 'needs_action' && event.reasonCodes.includes('source_group_conflict')))
+    const issues = plan.issues.filter(issue => issue.issueType === 'same_event')
+    assert.equal(issues.length, 1)
+    assert.equal(issues[0].memberCount, 3)
+    const snapshot = plan.events.map(event => [event.eventKey, event.fieldSources.rowIds]).sort()
+    if (!expected) expected = snapshot
+    assert.deepEqual(snapshot, expected)
+  }
+})
+
+test('桥接分组保留同身份重叠证据，同时拒绝时间窗口传递扩大', () => {
+  const a = row({ sourceMerchantOrderId: 'ORDER-SHARED-001' })
+  const copy = row({ rowId: 'row-copy', sourceMerchantOrderId: 'ORDER-SHARED-001' })
+  const b = row({ rowId: 'row-b', identityId: 'identity-b', sourceTransactionId: 'WX-INDEPENDENT-B', sourceMerchantOrderId: 'ORDER-SHARED-001' })
+  const c = row({ rowId: 'row-c', sourceType: 'alipay', identityId: 'identity-c', sourceTransactionId: 'ALI-PAYMENT-C', sourceMerchantOrderId: 'ORDER-SHARED-001' })
+  const plan = buildOrganizePlan({ updateId: 'update', rows: [a, copy, b, c], idFactory: ids() })
+  assert.equal(plan.events.length, 3)
+  assert.equal(plan.evidence.length, 4)
+  assert.equal(plan.evidence.filter(e => e.evidenceRole === 'duplicate').length, 1)
+  const late = { ...b, sourceType: 'bank', utcAt: '2026-08-05 04:00:00.000' }
+  const middle = { ...c, utcAt: '2026-08-03 04:00:00.000' }
+  assert.equal(buildOrganizePlan({ updateId: 'update', rows: [a, middle, late], idFactory: ids() }).events.length, 3)
+})
+
 test('收入支出没有分类时保留分类建议且允许入账', () => {
   const plan = buildOrganizePlan({
     updateId: '60000000-0000-4000-8000-000000000090',

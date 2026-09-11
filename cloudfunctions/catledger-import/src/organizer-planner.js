@@ -412,6 +412,7 @@ module.exports = {
   RELATION_KEY_VERSION,
   REVIEW_ISSUE_VERSION,
   buildOrganizePlan,
+  buildReviewIssues,
   compatibleHistoricalMappings,
   compatibleCore,
   inferExactAccountMappings,

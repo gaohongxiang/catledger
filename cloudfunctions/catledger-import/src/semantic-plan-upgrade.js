@@ -1,4 +1,9 @@
 const repaymentOwnership = require('./repayment-ownership')
+const { randomUUID } = require('node:crypto')
+const { prepareEvidenceSplit } = require('./evidence-plan-upgrade')
+const { hasGroupConflict, identityGroups } = require('./evidence-matching')
+const { buildReviewIssues } = require('./organizer-planner')
+const { sameEventCandidateGroups } = require('./relation-resolver')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { SEMANTIC_HARD_BLOCKERS, semanticBlockers } = require('./semantic-policy')
 const { economicNatureForRow, unique } = require('./organizer-model')
@@ -6,7 +11,7 @@ const { ledgerAccountReferenceForRow, projectSourceFunds } = require('./source-f
 const { paymentEvidenceFields } = require('./payment-resolution')
 const { referencesForRows } = require('./payment-account-groups')
 const { FIELD_MASK, selectDomainEvents, saveEvent, createFollowUpIssue, recalculateUpdateCounts } = require('./review-issue-service')
-const { insertAction, getUpdateView } = require('./finance-update-repository')
+const { insertAction, getUpdateView, persistPlan, selectPaymentMappings, selectActiveAccounts } = require('./finance-update-repository')
 const { PLAN_VERSION } = require('./domain-versions')
 
 const SOURCE_REASONS = new Set([...SEMANTIC_HARD_BLOCKERS, 'economic_nature_required',
@@ -62,13 +67,33 @@ function refreshEventSemantic(current, evidenceRows) {
 
 async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest) {
   const updateId = current.updateId
-  const [links] = await connection.execute(`SELECT event_id AS eventId, row_id AS rowId, evidence_role AS role
+  const [links] = await connection.execute(`SELECT evidence_id AS evidenceId, event_id AS eventId, row_id AS rowId, evidence_role AS role
     FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role <> 'discarded'
     ORDER BY event_id, (evidence_role = 'primary') DESC, evidence_id`, [uid, updateId])
   const events = await selectDomainEvents(connection, uid, updateId, unique(links.map(link => link.eventId)), { forUpdate: true })
   const rowMap = new Map(rows.map(row => [row.rowId, row]))
-  const changes = events.map(event => ({ current: event, next: refreshEventSemantic(event,
-    links.filter(link => link.eventId === event.eventId).map(link => rowMap.get(link.rowId)).filter(Boolean)) }))
+  const linksByEvent = new Map()
+  links.forEach(link => {
+    if (!linksByEvent.has(link.eventId)) linksByEvent.set(link.eventId, [])
+    linksByEvent.get(link.eventId).push(link)
+  })
+  const eventRows = event => (linksByEvent.get(event.eventId) || []).map(link => rowMap.get(link.rowId)).filter(Boolean)
+  const needsSplit = events.some(event => ['ready', 'needs_action'].includes(event.status) &&
+    identityGroups(eventRows(event)).length > 1 && hasGroupConflict(eventRows(event)))
+  const paymentMappings = needsSplit ? await selectPaymentMappings(connection, uid, updateId) : []
+  const accounts = needsSplit ? await selectActiveAccounts(connection, uid) : []
+  const splits = []
+  const changes = events.map(event => {
+    const rows = eventRows(event)
+    const split = prepareEvidenceSplit({ current: event, rows, links: linksByEvent.get(event.eventId) || [], paymentMappings, accounts })
+    if (split) {
+      splits.push(split)
+      // 原事件人工字段完全保留，来源语义在该主证据组中继续原位升级。
+      split.next = refreshEventSemantic(split.next, rows.filter(row => split.next.fieldSources.rowIds.includes(row.rowId)))
+      return { current: event, next: split.next }
+    }
+    return { current: event, next: refreshEventSemantic(event, rows) }
+  })
     .map(pair => {
       if (!['ready', 'needs_action'].includes(pair.next.status)) return pair
       const reasons = repaymentOwnership.reasonsFor(pair.next)
@@ -81,13 +106,22 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
   const version = Number(current.version)
   const actionId = await insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,
     actionType: 'semantic_upgrade', requestDigest, reasons: ['source_semantics_upgraded'] })
+  for (const split of splits) {
+    await persistPlan(connection, uid, updateId, { planVersion: PLAN_VERSION, events: split.additions,
+      evidence: [], relations: [], issues: [], members: [] })
+    for (const assignment of split.assignments) await connection.execute(
+      `UPDATE catledger_event_evidence SET event_id = ?, evidence_role = ?
+        WHERE uid = ? AND update_id = ? AND evidence_id = ?`,
+      [assignment.eventId, assignment.role, uid, updateId, assignment.evidenceId]
+    )
+  }
   const followUpIds = new Set(changes.map(pair => pair.current.eventId))
   if (changes.length) {
     const ids = changes.map(pair => pair.current.eventId)
     const [issues] = await connection.execute(`SELECT DISTINCT i.issue_id AS issueId FROM catledger_review_issues i
       JOIN catledger_review_issue_members m ON m.uid = i.uid AND m.issue_id = i.issue_id
       WHERE i.uid = ? AND i.update_id = ? AND i.status = 'open'
-        AND i.issue_type IN ('shared_fields', 'field_conflict', 'transfer_accounts', 'category_assignment')
+        AND i.issue_type IN ('shared_fields', 'field_conflict', 'transfer_accounts', 'category_assignment', 'same_event', 'identity_conflict')
         AND m.object_type = 'event' AND m.object_id IN (${ids.map(() => '?').join(',')})`, [uid, updateId, ...ids])
     for (const issue of issues) {
       const [members] = await connection.execute(`SELECT object_id AS eventId FROM catledger_review_issue_members
@@ -113,10 +147,16 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
         WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'event' AND m.object_id = ? AND (i.status = 'open' OR (i.issue_type = 'account_mapping' AND i.status = 'resolved'))`,
       [pair.next.version, uid, updateId, pair.next.eventId])
     }
+    for (const split of splits) {
+      const conflictEvents = [changes.find(pair => pair.current.eventId === split.next.eventId).next, ...split.additions]
+      const review = buildReviewIssues(updateId, conflictEvents, [], sameEventCandidateGroups(conflictEvents), randomUUID)
+      await persistPlan(connection, uid, updateId, { planVersion: PLAN_VERSION, events: [], evidence: [], relations: [], ...review })
+    }
     const followUps = await selectDomainEvents(connection, uid, updateId, [...followUpIds])
     for (const event of followUps) await createFollowUpIssue(connection, uid, updateId, event)
   }
-  await recalculateUpdateCounts(connection, uid, updateId, version + 1, actionId, version)
+  await recalculateUpdateCounts(connection, uid, updateId, version + 1, actionId, version,
+    -splits.reduce((count, split) => count + split.additions.length, 0))
   await connection.execute(`UPDATE catledger_finance_updates SET plan_version = ?
     WHERE uid = ? AND update_id = ? AND version = ?`, [PLAN_VERSION, uid, updateId, version + 1])
   return getUpdateView(connection, uid, updateId)

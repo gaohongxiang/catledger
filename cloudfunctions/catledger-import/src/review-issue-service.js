@@ -1,4 +1,5 @@
 const repaymentOwnership = require('./repayment-ownership')
+const { assertIdentityIntegrity } = require('./evidence-integrity')
 const { eventAllocation, allocationAccountsValid } = require('./funds-allocation')
 const accountGroups = require('./payment-account-groups')
 const { inspectPaymentAccounts, paymentEvidenceFields, inspectPaymentResolution, paymentResolutionForEvent } = require('./payment-resolution')
@@ -65,7 +66,7 @@ const ISSUE_RESOLVED_REASONS = Object.freeze({
   ]),
   category_assignment: new Set(['category_required']),
   shared_fields: new Set(['core_fields_missing', 'economic_nature_required', 'postability_direction_conflict']),
-  same_event: new Set(['same_event_candidate', 'relation_ambiguous']),
+  same_event: new Set(['same_event_candidate', 'relation_ambiguous', 'source_group_conflict']),
   refund_relation: new Set(['refund_relation_required', 'refund_relation_ambiguous', 'refund_relation_invalid', 'refund_amount_exceeded', 'relation_ambiguous']),
   transfer_accounts: new Set([
     'repayment_ownership_required', 'repayment_other_treatment_required', 'repayment_ownership_invalid', 'economic_nature_required',
@@ -1325,6 +1326,7 @@ function createReviewIssueService({ getPool }) {
         if (decision === 'confirm_same') {
           const primaryEventId = validateUuid(data.primaryEventId)
           if (!eventIds.includes(primaryEventId) || eventIds.length < 2) throw importError('VALIDATION_ERROR')
+          await assertIdentityIntegrity(connection, uid, updateId, eventIds, { merge: true })
           for (const event of events) {
             if (event.eventId === primaryEventId) continue
             const [[linkCount]] = await connection.execute(
@@ -1357,6 +1359,7 @@ function createReviewIssueService({ getPool }) {
           const next = { ...primary, reasonCodes: resolvedReasons(issue.issueType, primary.reasonCodes), resolvingIssueType: issue.issueType }
           affected.push(await saveEvent(connection, uid, primary, next, actionId))
         } else if (decision === 'confirm_distinct') {
+          await assertIdentityIntegrity(connection, uid, updateId, eventIds)
           await connection.execute(
             `UPDATE catledger_economic_event_relations SET status = 'rejected', version = version + 1
               WHERE uid = ? AND update_id = ? AND status = 'proposed'
