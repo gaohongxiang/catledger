@@ -88,25 +88,26 @@ async function validateDraftReferences(connection, uid, event, draft, forUpdate 
   }
 }
 
-async function validateCorrectionRelations(connection, uid, transaction, draft, amountMinor, forUpdate = false) {
+async function validateCorrectionRelations(connection, uid, transaction, draft, amountMinor, utcAt, forUpdate = false) {
   const [[dependent]] = await connection.execute(
-    `SELECT COALESCE(SUM(amount_minor), 0) AS amountMinor
+    `SELECT COALESCE(SUM(amount_minor), 0) AS amountMinor, MIN(occurred_at_utc) AS earliestRefundAt
        FROM catledger_transactions
       WHERE uid = ? AND original_transaction_id = ? AND type = 'refund' AND deleted_at IS NULL`,
     [uid, transaction.transactionId]
   )
   const dependentAmount = BigInt(String(dependent.amountMinor))
-  if (dependentAmount > 0n && (draft.type !== 'expense' || dependentAmount > BigInt(amountMinor))) {
+  if (dependentAmount > 0n && (draft.type !== 'expense' || dependentAmount > BigInt(amountMinor) ||
+      String(utcAt) > String(dependent.earliestRefundAt))) {
     throw importError('VALIDATION_ERROR')
   }
   if (draft.type !== 'refund') return
   const [originals] = await connection.execute(
-    `SELECT amount_minor AS amountMinor FROM catledger_transactions
+    `SELECT amount_minor AS amountMinor, occurred_at_utc AS utcAt, category_id AS categoryId FROM catledger_transactions
       WHERE uid = ? AND transaction_id = ? AND type = 'expense' AND deleted_at IS NULL
       LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
     [uid, draft.originalTransactionId]
   )
-  if (!originals[0]) throw importError('VALIDATION_ERROR')
+  if (!originals[0] || String(originals[0].utcAt) > String(utcAt)) throw importError('VALIDATION_ERROR')
   const [[otherRefunds]] = await connection.execute(
     `SELECT COALESCE(SUM(amount_minor), 0) AS amountMinor
        FROM catledger_transactions
@@ -117,6 +118,7 @@ async function validateCorrectionRelations(connection, uid, transaction, draft, 
   if (BigInt(String(otherRefunds.amountMinor)) + BigInt(amountMinor) > BigInt(String(originals[0].amountMinor))) {
     throw importError('VALIDATION_ERROR')
   }
+  draft.categoryId = originals[0].categoryId
 }
 
 async function prepareCorrection(connection, uid, update, event, transactions, fields, forUpdate = false) {
@@ -138,7 +140,7 @@ async function prepareCorrection(connection, uid, update, event, transactions, f
     await validateDraftReferences(connection, uid, next, draft, forUpdate)
   }
   if (drafts.length && !allocationAccountsValid(next, eventAllocation(next), new Map(state.accounts.map((row) => [row.accountId, row])))) throw importError('VALIDATION_ERROR')
-  if (created.length === 1 && drafts.length === 1) await validateCorrectionRelations(connection, uid, created[0], drafts[0], drafts[0].amountMinor, forUpdate)
+  if (created.length === 1 && drafts.length === 1) await validateCorrectionRelations(connection, uid, created[0], drafts[0], drafts[0].amountMinor, next.utcAt, forUpdate)
   if (state.deficits.length) impact.conflicts.push('INSUFFICIENT_CASH_BALANCE')
   if (update.status !== 'posted') impact.conflicts.push('UPDATE_STATE_CHANGED')
   impact.canCorrect = impact.conflicts.length === 0
@@ -247,6 +249,12 @@ function createFinanceUpdateMaintenance({ getPool }) {
           ]
         )
         if (transactionResult.affectedRows !== 1) throw importError('CONFLICT')
+        if (created[0].type === 'expense' && draft.type === 'expense') await connection.execute(
+          `UPDATE catledger_transactions SET category_id = ?, version = version + 1
+            WHERE uid = ? AND original_transaction_id = ? AND type = 'refund' AND deleted_at IS NULL
+              AND NOT (category_id <=> ?)`,
+          [draft.categoryId, uid, created[0].transactionId, draft.categoryId]
+        )
         }
         const appliedVersion = updateVersion + 1
         const actionId = await insertAction(connection, uid, {

@@ -921,6 +921,50 @@ test('已入账未分类交易可按月原子补全且立即进入分类统计',
   assert.equal(statistics.expenseCategories[0].amountMinor, '250')
 })
 
+test('原消费后移与并发退款维持双向时间和累计金额约束', { skip: !hasDatabase }, async () => {
+  const { subjectHash, expenseCategory } = await bootstrapLedgerUser('refund-invariant')
+  const account = await createTestAccount(subjectHash, { name: '合成退款账户', openingDisplayBalanceMinor: '10000',
+    occurredLocalAt: '2026-09-01T00:00:00', timezoneOffsetMinutes: -480 })
+  const context = data => ({ provider: 'wechat-mini', subjectHash, data: { requestId: randomTestUuid(), ...data } })
+  const expenseData = { type: 'expense', sourceAccountId: account.accountId, categoryId: expenseCategory.id,
+    amountMinor: '1000', occurredLocalAt: '2026-09-01T10:00:00', timezoneOffsetMinutes: -480 }
+  const expense = await transactionService.create(context(expenseData))
+  const refundData = { type: 'refund', destinationAccountId: account.accountId,
+    originalTransactionId: expense.transactionId, amountMinor: '300',
+    occurredLocalAt: '2026-09-03T10:00:00', timezoneOffsetMinutes: -480 }
+  const refund = await transactionService.create(context(refundData))
+  await assert.rejects(transactionService.update(context({ ...expenseData, transactionId: expense.transactionId,
+    version: expense.version, occurredLocalAt: '2026-09-05T10:00:00' })), { publicCode: 'REFUNDED_TRANSACTION_LOCKED' })
+  await assert.rejects(transactionService.update(context({ ...refundData, transactionId: refund.transactionId,
+    version: refund.version, occurredLocalAt: '2026-08-30T10:00:00' })), { publicCode: 'VALIDATION_ERROR' })
+  const results = await Promise.allSettled([
+    transactionService.create(context({ ...refundData, amountMinor: '400' })),
+    transactionService.update(context({ ...expenseData, transactionId: expense.transactionId,
+      version: expense.version, amountMinor: '500' }))
+  ])
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
+  const rejected = results.find(result => result.status === 'rejected').reason
+  assert.ok(['REFUND_EXCEEDS_ORIGINAL', 'REFUNDED_TRANSACTION_LOCKED'].includes(rejected.publicCode))
+})
+
+test('并发原消费后移与首次退款只允许满足最终时间关系的一方成功', { skip: !hasDatabase }, async () => {
+  const { subjectHash, expenseCategory } = await bootstrapLedgerUser('refund-first-race')
+  const account = await createTestAccount(subjectHash, { name: '合成并发账户', openingDisplayBalanceMinor: '10000',
+    occurredLocalAt: '2026-09-01T00:00:00', timezoneOffsetMinutes: -480 })
+  const context = data => ({ provider: 'wechat-mini', subjectHash, data: { requestId: randomTestUuid(), ...data } })
+  const expenseData = { type: 'expense', sourceAccountId: account.accountId, categoryId: expenseCategory.id,
+    amountMinor: '1000', occurredLocalAt: '2026-09-01T10:00:00', timezoneOffsetMinutes: -480 }
+  const expense = await transactionService.create(context(expenseData))
+  const results = await Promise.allSettled([
+    transactionService.create(context({ type: 'refund', destinationAccountId: account.accountId,
+      originalTransactionId: expense.transactionId, amountMinor: '300',
+      occurredLocalAt: '2026-09-03T10:00:00', timezoneOffsetMinutes: -480 })),
+    transactionService.update(context({ ...expenseData, transactionId: expense.transactionId,
+      version: expense.version, occurredLocalAt: '2026-09-05T10:00:00' }))
+  ])
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
+})
+
 test('refunds credit accounts and reduce expense statistics without becoming income', { skip: !hasDatabase }, async () => {
   const { subjectHash, expenseCategory } = await bootstrapLedgerUser('integration-refund')
   const account = await createTestAccount(subjectHash, {

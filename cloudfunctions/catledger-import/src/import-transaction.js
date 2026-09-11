@@ -65,6 +65,10 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
       await connection.beginTransaction()
       transactionStarted = true
       const uid = await resolveUid(connection, provider, subjectHash)
+      // 与 API 正式账本 mutation 使用相同门禁；解析和只读请求不占此锁。
+      if (currentReads) await connection.execute(
+        'SELECT uid FROM catledger_users WHERE uid = ? AND status = \'active\' FOR UPDATE', [uid]
+      )
       try {
         await connection.execute(
           `INSERT INTO catledger_mutation_receipts

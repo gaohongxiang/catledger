@@ -354,14 +354,14 @@ async function originalTransactionIdForRefund(connection, uid, updateId, eventId
   return related[0] ? related[0].transactionId : null
 }
 
-async function validateRefundAmount(connection, uid, originalTransactionId, amountMinor) {
+async function validateRefundAmount(connection, uid, originalTransactionId, amountMinor, utcAt) {
   const [originals] = await connection.execute(
-    `SELECT amount_minor AS amountMinor FROM catledger_transactions
+    `SELECT amount_minor AS amountMinor, occurred_at_utc AS utcAt, category_id AS categoryId FROM catledger_transactions
       WHERE uid = ? AND transaction_id = ? AND type = 'expense' AND deleted_at IS NULL
       LIMIT 1 FOR UPDATE`,
     [uid, originalTransactionId]
   )
-  if (!originals[0]) throw importError('UNRESOLVED_IMPORT')
+  if (!originals[0] || String(originals[0].utcAt) > String(utcAt)) throw importError('UNRESOLVED_IMPORT')
   const [[refunds]] = await connection.execute(
     `SELECT COALESCE(SUM(amount_minor), 0) AS refundedMinor
        FROM catledger_transactions
@@ -371,6 +371,7 @@ async function validateRefundAmount(connection, uid, originalTransactionId, amou
   if (BigInt(String(refunds.refundedMinor)) + BigInt(amountMinor) > BigInt(String(originals[0].amountMinor))) {
     throw importError('UNRESOLVED_IMPORT')
   }
+  return originals[0]
 }
 
 function transactionDraft(event, originalTransactionId) {
@@ -416,13 +417,15 @@ function transactionDrafts(event, originalTransactionId) {
 
 async function createTransactions(connection, uid, updateId, event) {
   let originalTransactionId = null
+  let original = null
   if (event.economicNature === ECONOMIC_NATURE.REFUND) {
     originalTransactionId = await originalTransactionIdForRefund(connection, uid, updateId, event.eventId)
     if (!originalTransactionId && !hasPendingRefundRelation(event)) throw importError('UNRESOLVED_IMPORT')
-    if (originalTransactionId) await validateRefundAmount(connection, uid, originalTransactionId, event.amountMinor)
+    if (originalTransactionId) original = await validateRefundAmount(connection, uid, originalTransactionId, event.amountMinor, event.utcAt)
   }
   const created = []
   for (const draft of transactionDrafts(event, originalTransactionId)) {
+    if (original) draft.categoryId = original.categoryId
     const transactionId = randomUUID()
     await connection.execute(
       `INSERT INTO catledger_transactions

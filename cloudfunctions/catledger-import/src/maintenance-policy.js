@@ -1,4 +1,4 @@
-const MAINTENANCE_POLICY_VERSION = 'import-maintenance-v1'
+const MAINTENANCE_POLICY_VERSION = 'import-maintenance-v2'
 function accountImpacts(before, after) {
   const amounts = new Map()
   for (const [side, transactions] of [['oldMinor', before], ['newMinor', after]]) {

@@ -112,9 +112,16 @@ async function prepareRefund(connection, uid, transaction, currentTransactionId 
 
 async function protectRefundedExpense(connection, uid, current, transaction) {
   if (current.type !== 'expense') return 0n
-  const refunded = await sumRefunds(connection, uid, current.transactionId)
+  const [[summary]] = await connection.execute(
+    `SELECT COALESCE(SUM(amount_minor), 0) AS refundedMinor, MIN(occurred_at_utc) AS earliestRefundAt
+       FROM catledger_transactions
+      WHERE uid = ? AND original_transaction_id = ? AND type = 'refund' AND deleted_at IS NULL`,
+    [uid, current.transactionId]
+  )
+  const refunded = BigInt(minorUnitsToString(summary.refundedMinor))
   if (refunded === 0n) return refunded
-  if (!transaction || transaction.type !== 'expense' || BigInt(transaction.amountMinor) < refunded) {
+  if (!transaction || transaction.type !== 'expense' || BigInt(transaction.amountMinor) < refunded ||
+      String(transaction.occurredAtUtc) > String(summary.earliestRefundAt)) {
     throw ledgerError('REFUNDED_TRANSACTION_LOCKED')
   }
   return refunded

@@ -79,6 +79,10 @@ async function executeIdempotentMutation({
       await connection.beginTransaction()
       transactionStarted = true
       const uid = await resolveUid(connection, provider, subjectHash)
+      // 两支函数先锁同一用户，再锁交易/账户，避免退款与原消费反向加锁。
+      if (currentReads) await connection.execute(
+        'SELECT uid FROM catledger_users WHERE uid = ? AND status = \'active\' FOR UPDATE', [uid]
+      )
 
       try {
         await connection.execute(

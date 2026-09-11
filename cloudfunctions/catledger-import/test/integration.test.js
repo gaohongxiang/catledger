@@ -618,6 +618,37 @@ test('退款详情只返回冻结候选且服务端拒绝集合外原消费', { 
     assert.deepEqual(relationStates.map((row) => [row.status, Number(row.count)]), [
       ['confirmed', 1], ['rejected', 1]
     ])
+    const ready = await resolveOpenCategoryIssues(service, user, afterResolve)
+    const posted = await service.financeUpdatePost(context(user, {
+      requestId: randomUUID(), updateId: ready.update.updateId, version: ready.update.version
+    }))
+    const correction = async (eventId, fields) => service.economicEventCorrectionImpact(context(user, { eventId, fields }))
+    await assert.rejects(correction(selectedTargetId, { occurredLocalAt: '2026-07-05T10:00:00', timezoneOffsetMinutes: -480 }),
+      { publicCode: 'VALIDATION_ERROR' })
+    await assert.rejects(correction(refundEventId, { occurredLocalAt: '2026-06-01T10:00:00', timezoneOffsetMinutes: -480 }),
+      { publicCode: 'VALIDATION_ERROR' })
+    const expense = posted.events.find(event => event.eventId === selectedTargetId)
+    const fields = { amountMinor: String(Number(expense.amountMinor) + 1) }
+    const impact = await correction(selectedTargetId, fields)
+    assert.equal(impact.canCorrect, true)
+    const corrected = await service.economicEventCorrect(context(user, { requestId: randomUUID(), updateId: posted.update.updateId,
+      updateVersion: posted.update.version, eventId: selectedTargetId, eventVersion: expense.version,
+      fields, previewToken: impact.previewToken }))
+    const currentExpense = corrected.events.find(event => event.eventId === selectedTargetId)
+    const [[originalLink]] = await pool.execute(`SELECT transaction_id AS transactionId FROM catledger_economic_event_transactions
+      WHERE uid = ? AND event_id = ? AND role = 'primary' AND superseded_at IS NULL`, [user.uid, selectedTargetId])
+    const reduced = { amountMinor: '300' }
+    const reduceImpact = await correction(selectedTargetId, reduced)
+    const outcomes = await Promise.allSettled([
+      createTransactionService({ getPool: () => pool }).create(context(user, { requestId: randomUUID(), type: 'refund',
+        destinationAccountId: user.accountId, originalTransactionId: originalLink.transactionId, amountMinor: '100',
+        occurredLocalAt: '2026-07-04T10:00:00', timezoneOffsetMinutes: -480 })),
+      service.economicEventCorrect(context(user, { requestId: randomUUID(), updateId: corrected.update.updateId,
+        updateVersion: corrected.update.version, eventId: selectedTargetId, eventVersion: currentExpense.version,
+        fields: reduced, previewToken: reduceImpact.previewToken }))
+    ])
+    assert.equal(outcomes.filter(result => result.status === 'fulfilled').length, 1)
+    assert.ok(['VALIDATION_ERROR', 'CONFLICT', 'REFUND_EXCEEDS_ORIGINAL'].includes(outcomes.find(result => result.status === 'rejected').reason.publicCode))
   } finally {
     await pool.end()
   }
@@ -709,9 +740,16 @@ test('零候选退款可明确暂记并入账余额但不进入收支统计', { 
     const original = await transactionService.create(context(user, {
       requestId: randomUUID(), type: 'expense', sourceAccountId: user.accountId,
       categoryId: user.categoryId, amountMinor: '466',
-      occurredLocalAt: '2026-07-04T11:37:00', timezoneOffsetMinutes: -480,
+      occurredLocalAt: '2026-07-05T11:37:00', timezoneOffsetMinutes: -480,
       note: '手持小型缝纫机'
     }))
+    await assert.rejects(transactionService.linkRefund(context(user, {
+      requestId: randomUUID(), transactionId: page.transactions[0].transactionId,
+      version: page.transactions[0].version, originalTransactionId: original.transactionId
+    })), { publicCode: 'VALIDATION_ERROR' })
+    await transactionService.update(context(user, { requestId: randomUUID(), transactionId: original.transactionId,
+      version: original.version, type: 'expense', sourceAccountId: user.accountId, categoryId: user.categoryId,
+      amountMinor: '466', occurredLocalAt: '2026-07-04T11:37:00', timezoneOffsetMinutes: -480 }))
     const linked = await transactionService.linkRefund(context(user, {
       requestId: randomUUID(), transactionId: page.transactions[0].transactionId,
       version: page.transactions[0].version, originalTransactionId: original.transactionId
