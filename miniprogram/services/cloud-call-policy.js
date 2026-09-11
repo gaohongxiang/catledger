@@ -1,5 +1,6 @@
 const SAFE_READ_ACTIONS = Object.freeze({
   bootstrap: true,
+  'catalog.get': true,
   'accounts.list': true,
   'categories.list': true,
   'dashboard.get': true,

@@ -7,6 +7,7 @@ const mysql = require('mysql2/promise')
 const { readFileSync } = require('node:fs')
 const { runMigrations, splitSqlStatements } = require('../../../migrations/runner')
 const { createAccountService } = require('../src/account-service')
+const { createCatalogService } = require('../src/catalog-service')
 const { createCategoryService } = require('../src/category-service')
 const { DEFAULT_CATEGORIES } = require('../src/default-categories')
 const { hashWechatSubject } = require('../src/handler')
@@ -963,6 +964,40 @@ test('并发原消费后移与首次退款只允许满足最终时间关系的�
       version: expense.version, occurredLocalAt: '2026-09-05T10:00:00' }))
   ])
   assert.equal(results.filter(result => result.status === 'fulfilled').length, 1)
+})
+
+test('catalog.get在同一只读快照隔离用户并且不初始化缺失分类', { skip: !hasDatabase }, async () => {
+  const subjectHash = hashWechatSubject('catalog-snapshot-user')
+  const user = await repository.bootstrap({ provider: 'wechat-mini', subjectHash })
+  const other = await repository.bootstrap({ provider: 'wechat-mini', subjectHash: hashWechatSubject('catalog-other-user') })
+  const account = await createTestAccount(subjectHash, { name: '合成目录账户' })
+  const statements = []
+  const wrapped = { async getConnection() {
+    const connection = await pool.getConnection(), execute = connection.execute.bind(connection), release = connection.release.bind(connection)
+    connection.execute = async (sql, values) => {
+      statements.push(sql)
+      const result = await execute(sql, values)
+      if (sql.includes('FROM catledger_accounts')) await pool.execute(
+        'UPDATE catledger_categories SET archived_at = CURRENT_TIMESTAMP(3) WHERE uid = ? AND category_id = ?',
+        [user.uid, user.categories[0].id])
+      return result
+    }
+    connection.release = () => { connection.execute = execute; connection.release = release; release() }
+    return connection
+  } }
+  const context = { provider: 'wechat-mini', subjectHash, data: {} }
+  const snapshot = await createCatalogService({ getPool: () => wrapped }).get(context)
+  assert.equal(snapshot.uid, user.uid)
+  assert.equal(snapshot.accounts[0].accountId, account.accountId)
+  assert.equal(snapshot.categories.length, user.categories.length)
+  assert.ok(snapshot.categories.every(category => !other.categories.some(foreign => foreign.id === category.id)))
+  assert.doesNotMatch(statements.join('\n'), /catledger_transactions|INSERT|UPDATE|DELETE|SUM\(/)
+  const catalog = createCatalogService({ getPool: () => pool })
+  assert.equal((await catalog.get(context)).categories.length, user.categories.length - 1)
+  await pool.execute('DELETE FROM catledger_categories WHERE uid = ?', [user.uid])
+  assert.deepEqual((await catalog.get(context)).categories, [])
+  const [[count]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_categories WHERE uid = ?', [user.uid])
+  assert.equal(Number(count.count), 0)
 })
 
 test('refunds credit accounts and reduce expense statistics without becoming income', { skip: !hasDatabase }, async () => {

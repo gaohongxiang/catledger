@@ -35,10 +35,16 @@ function cacheToken(action, data) {
   return app && app.hasLoginApproval() ? cache.token(cache.stableKey(action, data)) : null
 }
 
+function peek(action, data) {
+  const app = getApp()
+  return app && app.hasLoginApproval() ? cache.peek(cache.stableKey(action, data)) : null
+}
+
 module.exports = {
   bootstrap,
   callApi,
   cacheToken,
+  peek,
   isFresh: (action, data) => cacheToken(action, data) !== null,
   createRequestId: cloudFunctionClient.createRequestId,
   bootstrapAfterConsent

@@ -25,7 +25,8 @@ function createReadCache(options) {
   }
   function fresh(key) {
     const entry = entries.get(key)
-    return entry && entry.expiresAt > now() ? entry : null
+    return entry && entry.expiresAt > now() &&
+      ![...writes].some(write => write.tags.some(tag => entry.tags.includes(tag))) ? entry : null
   }
   function put(key, policy, value, expiresAt) {
     entries.delete(key)
@@ -104,6 +105,7 @@ function createReadCache(options) {
     mutate,
     invalidate,
     token(key) { const entry = fresh(key); return entry ? entry.token : null },
+    peek(key) { const entry = fresh(key); return entry ? clone(entry.value) : null },
     seedFrom(sourceKey, key, policy, project) {
       const source = fresh(sourceKey)
       if (!source || fresh(key) || pending.has(key)) return

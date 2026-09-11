@@ -10,8 +10,8 @@ async function queryCatalog(connection, uid) {
       ORDER BY archived_at IS NOT NULL, nature, created_at, account_id`, [uid])
   const [categories] = await connection.execute(
     `SELECT category_id AS id, kind, system_key AS systemKey, name,
-            sort_order AS sortOrder, version, archived_at AS archivedAt
-       FROM catledger_categories WHERE uid = ?
+            sort_order AS sortOrder, version
+       FROM catledger_categories WHERE uid = ? AND archived_at IS NULL
       ORDER BY kind, sort_order, category_id`, [uid])
   return {
     uid,
@@ -22,8 +22,7 @@ async function queryCatalog(connection, uid) {
     })),
     categories: categories.map(row => ({
       id: row.id, kind: row.kind, systemKey: row.systemKey, name: row.name,
-      sortOrder: Number(row.sortOrder), version: Number(row.version),
-      archived: row.archivedAt != null
+      sortOrder: Number(row.sortOrder), version: Number(row.version)
     }))
   }
 }

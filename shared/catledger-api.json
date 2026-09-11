@@ -9,6 +9,14 @@
     }
   },
   "actions": {
+    "catalog.get": {
+      "kind": "read",
+      "data": [],
+      "returns": ["uid", "accounts", "categories"],
+      "accounts": ["accountId", "type", "nature", "name", "currency", "version", "archived"],
+      "categories": ["id", "kind", "systemKey", "name", "sortOrder", "version"],
+      "consistency": "single read-only snapshot; active categories; no balances or initialization writes"
+    },
     "bootstrap": {
       "kind": "read-idempotent",
       "data": [],

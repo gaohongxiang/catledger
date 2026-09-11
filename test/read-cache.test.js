@@ -1,8 +1,46 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createReadCache, stableKey } = require('../miniprogram/services/read-cache')
+const { READ_POLICIES, mutationTags } = require('../miniprogram/services/read-policy')
 const policy = { ttl: 100, tags: ['accounts'] }
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
+
+test('目录独立失效：普通交易和余额校正复用，结构与导入写入刷新', async () => {
+  const cache = createReadCache(), key = stableKey('catalog.get'), policy = READ_POLICIES['catalog.get']
+  const load = () => cache.read(key, policy, async () => ({ accounts: ['a'], categories: ['c'] }))
+  await load()
+  for (const action of ['transactions.create', 'transactions.update', 'transactions.delete', 'transactions.linkRefund', 'transactions.setCategory', 'accounts.correctBalance']) {
+    await cache.mutate(mutationTags(action), async () => {})
+    assert.ok(cache.peek(key), action)
+  }
+  for (const action of ['accounts.create', 'accounts.createBatch', 'accounts.update', 'accounts.archive', 'categories.create', 'categories.archive', 'categories.restore', 'categories.update', 'categories.reorder', 'financeUpdates.post', 'financeUpdates.undo', 'economicEvents.correct']) {
+    await load()
+    await cache.mutate(mutationTags(action), async () => {})
+    assert.equal(cache.peek(key), null, action)
+  }
+})
+
+test('目录peek在相关写入时不可用，过期和reset后不返回旧数据', async () => {
+  let now = 0
+  const cache = createReadCache({ now: () => now }), key = stableKey('catalog.get'), policy = READ_POLICIES['catalog.get']
+  await cache.read(key, policy, async () => ({ accounts: ['a'] }))
+  const copy = cache.peek(key); copy.accounts.push('local')
+  assert.deepEqual(cache.peek(key), { accounts: ['a'] })
+  const write = deferred()
+  const writing = cache.mutate(['accountDirectory'], () => write.promise)
+  assert.equal(cache.peek(key), null)
+  let loaded = false
+  const reading = cache.read(key, policy, async () => { loaded = true; return 'fresh' })
+  await Promise.resolve()
+  assert.equal(loaded, false)
+  write.resolve(); await writing; await reading
+  assert.equal(cache.peek(key), 'fresh')
+  now = 300000
+  assert.equal(cache.peek(key), null)
+  await cache.read(key, policy, async () => 'next')
+  cache.reset()
+  assert.equal(cache.peek(key), null)
+})
 
 test('相同参数合并并发读取，缓存命中不联网且调用方修改不污染缓存', async () => {
   const cache = createReadCache()
