@@ -243,6 +243,7 @@ Page({
   },
 
   onUnload: function () {
+    this._evidenceReadToken = null
     this._editingInput = ''
     this._pendingBackgroundView = null
     if (this._updateLoad) this._updateLoad.cancelled = true
@@ -640,6 +641,9 @@ Page({
         const session = this._draftSession
         this._unsubscribeDraft = session.subscribe(() => {
           if (this._draftSession !== session) return
+          setChangedData(this, { draftSync: session.status })
+          if (session.projectionRevision !== undefined && this._draftProjectionRevision === session.projectionRevision &&
+              this._draftSourceView === session.view) return
           this.applyUpdateView(session.view, true)
         })
       } else this._draftSession.accept(view)
@@ -768,10 +772,14 @@ Page({
     }
     // 保留编辑字段意味着不下发它们，而不是把整个表单再发送一次。
     if (background && view.update.status === 'review') Object.keys(keep).forEach(key => { delete patch[key] })
-    if (this._draftSession) patch.draftSync = this._draftSession.status
+    if (this._draftSession) {
+      patch.draftSync = this._draftSession.status
+      this._draftProjectionRevision = this._draftSession.projectionRevision
+      this._draftSourceView = this._draftSession.view
+    }
     setChangedData(this, patch)
     if (this._draftSession) this._draftSession.schedule()
-    if (!background && activeReviewTab === 'review' && activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
+    if (activeReviewTab === 'review' && activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
   },
 
   // 只展开来源，不保存或改变任何账单决定。
@@ -809,25 +817,14 @@ Page({
     if (event.currentTarget.dataset.id) this.openIssue(event)
   },
 
-  loadDuplicateRecords: async function () {
-    if (this.data.duplicateReviewLoading || this.data.duplicateReviewLoaded) return
-    const token = {}
-    this._duplicateLoadToken = token
-    this.setData({ duplicateReviewLoading: true, duplicateReviewError: '' })
-    try {
-      const rows = []
-      await model.runWithConcurrency(this.data.duplicateReviewCandidates, 4, async function (event, index) {
-        const result = await importApi.callImport('economicEvents.evidence', { eventId: event.eventId })
-        const duplicateCount = (result.evidence || []).filter(function (item) { return item.evidenceRole === 'duplicate' }).length
-        rows[index] = duplicateCount ? Object.assign({}, event, { duplicateCount: duplicateCount,
-          auditNote: '已保留一笔，点开对照主记录与重复来源。' }) : null
-      })
-      if (this._duplicateLoadToken !== token) return
-      this.setData({ duplicateReviewEvents: rows.filter(Boolean), duplicateReviewLoading: false, duplicateReviewLoaded: true })
-    } catch (error) {
-      if (this._duplicateLoadToken !== token) return
-      this.setData({ duplicateReviewLoading: false, duplicateReviewError: publicError(error, '重复记录读取失败，请重试') })
-    }
+  loadDuplicateRecords: function () {
+    if (this.data.duplicateReviewLoaded) return
+    // 汇总来自服务端明确的 duplicate 角色计数；原始证据仅在打开单条时读取。
+    const rows = this.data.duplicateReviewCandidates.filter(event => Number(event.duplicateEvidenceCount) > 0)
+      .map(event => Object.assign({}, event, { duplicateCount: Number(event.duplicateEvidenceCount),
+        auditNote: '已保留一笔，点开对照主记录与重复来源。' }))
+    this.setData({ duplicateReviewEvents: rows, duplicateReviewLoading: false,
+      duplicateReviewLoaded: true, duplicateReviewError: '' })
   },
 
   viewTransactions: function () {
@@ -1544,9 +1541,12 @@ Page({
   openEvidence: async function (event) {
     const eventId = event.currentTarget.dataset.id
     if (!eventId || this.data.busy) return
+    const token = {}
+    this._evidenceReadToken = token
     this.setData({ busy: true, errorMessage: '' })
     try {
       const result = await importApi.callImport('economicEvents.evidence', { eventId: eventId })
+      if (this._evidenceReadToken !== token) return
       const roleLabels = { primary: '主记录', supporting: '关联记录', duplicate: '重复记录', discarded: '已舍弃证据' }
       const evidence = (result.evidence || []).map(function (item) {
         return Object.assign({}, item, {
@@ -1556,12 +1556,14 @@ Page({
       })
       this.setData({ busy: false, evidenceSheet: { eventId: eventId, evidence: evidence } })
     } catch (error) {
+      if (this._evidenceReadToken !== token) return
       this.setData({ busy: false, errorMessage: publicError(error, '原始交易加载失败') })
     }
   },
 
   closeEvidence: function () {
-    if (!this.data.busy) this.setData({ evidenceSheet: null })
+    this._evidenceReadToken = null
+    this.setData({ busy: false, evidenceSheet: null })
   },
 
   beginInputEditing: function (event) {
@@ -2065,6 +2067,7 @@ Page({
   },
 
   startAnother: function () {
+    this._evidenceReadToken = null
     if (this._updateLoad) this._updateLoad.cancelled = true
     this._restoreAbandonRequest = null
     if (this._unsubscribeDraft) this._unsubscribeDraft()

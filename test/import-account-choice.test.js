@@ -476,32 +476,34 @@ test('分类单独展示且不阻止入账，核对数量不包含分类', () =>
   assert.equal(page.data.reviewStatusTabs[1].count, 2)
 })
 
-test('重复记录只展示明确 duplicate 证据，关联证据不误算重复', async () => {
-  const page = pageFor(unknownIssue(), [], { callImport: async (_, args) => ({ evidence: [
-    { evidenceRole: 'primary' }, { evidenceRole: args.eventId === 'dup' ? 'duplicate' : 'supporting' }
-  ] }) })
-  page.data.duplicateReviewCandidates = [{ eventId: 'dup' }, { eventId: 'support' }]
+test('重复摘要列表使用明确duplicate计数，进入tab不逐条请求证据', async () => {
+  let calls = 0
+  const page = pageFor(unknownIssue(), [], { callImport: async () => { calls++; return { evidence: [{ evidenceRole: 'duplicate' }] } } })
+  page.data.duplicateReviewCandidates = [{ eventId: 'dup', duplicateEvidenceCount: 2 }, { eventId: 'support', evidenceCount: 3, duplicateEvidenceCount: 0 }]
   await page.loadDuplicateRecords()
+  assert.equal(calls, 0)
   assert.equal(page.data.duplicateReviewEvents.length, 1)
-  assert.equal(page.data.duplicateReviewEvents[0].eventId, 'dup')
+  assert.equal(page.data.duplicateReviewEvents[0].duplicateCount, 2)
   assert.equal(page.data.duplicateReviewLoaded, true)
-  assert.equal(page.data.duplicateReviewLoading, false)
+  await page.openEvidence({ currentTarget: { dataset: { id: 'dup' } } })
+  assert.equal(calls, 1)
+  assert.equal(page.data.evidenceSheet.eventId, 'dup')
 })
 
-test('重复证据读取失败保留重试入口，重新加载视图后不接收旧请求', async () => {
-  let fail = true
+test('单条证据失败可再次打开重试，关闭后旧结果不得回填', async () => {
+  let fail = true, release
   const page = pageFor(unknownIssue(), [], { callImport: async () => {
     if (fail) throw new Error('合成读取失败')
-    page._duplicateLoadToken = null
-    return { evidence: [{ evidenceRole: 'duplicate' }] }
+    return new Promise(resolve => { release = resolve })
   } })
-  page.data.duplicateReviewCandidates = [{ eventId: 'synthetic' }]
-  await page.loadDuplicateRecords()
-  assert.match(page.data.duplicateReviewError, /读取失败/)
-  assert.equal(page.data.duplicateReviewLoaded, false)
+  const event = { currentTarget: { dataset: { id: 'synthetic' } } }
+  await page.openEvidence(event)
+  assert.match(page.data.errorMessage, /读取失败/)
   fail = false
-  await page.loadDuplicateRecords()
-  assert.equal(page.data.duplicateReviewEvents.length, 0)
+  const pending = page.openEvidence(event)
+  page.closeEvidence()
+  release({ evidence: [{ evidenceRole: 'duplicate' }] }); await pending
+  assert.equal(page.data.evidenceSheet, null)
 })
 
 
@@ -1035,4 +1037,24 @@ test('修改分配金额只更新对应字段，不能把另一行名称重新�
   assert.equal(page.data.repaymentAllocationChoices[1].amountInput, '50.')
   assert.ok(patches.some(patch => patch['repaymentAllocationChoices[1].amountInput'] === '50.'))
   assert.ok(patches.every(patch => !Object.keys(patch).some(key => key === 'repaymentAllocationChoices' || key.includes('[0].name'))))
+})
+
+test('仅草稿同步状态变化不重算事件、分类、核对或资金摘要', async () => {
+  const view = accountView([{ issueId: 'review', issueType: 'shared_fields', status: 'open', blocking: true, version: 1, subjectEventIds: ['event'] }])
+  view.events = [{ eventId: 'event', status: 'needs_action', economicNature: 'expense', amountMinor: '100' }]
+  const { page, session } = draftPage(view, async () => { throw Object.assign(new Error('合成网络失败'), { code: 'CLOUD_CALL_FAILED' }) })
+  session.enqueue([{ kind: 'review', issueId: 'review', issueVersion: 1, subjectIds: ['event'], issueType: 'shared_fields', decision: { decision: 'apply_fields', fields: {} } }])
+  const names = ['eventView', 'organizerRecordState', 'categoryIssueCards', 'reviewIssueGroups', 'finalSummary', 'fundsFlowSummary']
+  const original = Object.fromEntries(names.map(name => [name, model[name]]))
+  let calls = 0
+  names.forEach(name => { model[name] = (...args) => { calls++; return original[name](...args) } })
+  try {
+    const pending = session.flush()
+    assert.equal(page.data.draftSync.syncing, true)
+    await assert.rejects(pending)
+    assert.equal(page.data.draftSync.syncing, false)
+    assert.equal(page.data.draftSync.pending, 1)
+    assert.match(page.data.draftSync.error, /网络恢复/)
+    assert.equal(calls, 0)
+  } finally { names.forEach(name => { model[name] = original[name] }) }
 })

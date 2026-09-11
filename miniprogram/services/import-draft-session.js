@@ -14,14 +14,15 @@ function create(options) {
     ? stored : { schema: 1, updateId: options.view.update.updateId, entries: [], drafts: {}, flight: null, step: 2 }
   let view = options.view
   let version = Number(view.update.version)
+  let projectionRevision = 0
   let running = null
   let timer = null
   let retryCount = 0
   let errorMessage = ''
   let paused = false
   const listeners = new Set()
-  function persist(next) {
-    try { options.write(key, clone(next)); state = next }
+  function persist(next, affectsProjection = true) {
+    try { options.write(key, clone(next)); state = next; if (affectsProjection) projectionRevision++ }
     catch (error) { throw Object.assign(new Error('本机草稿未保存，请检查存储空间后重试'), { code: 'DRAFT_STORAGE_FAILED' }) }
   }
   function emit() { listeners.forEach(fn => fn()) }
@@ -31,7 +32,7 @@ function create(options) {
   }
   function accept(next) {
     if (next.update.updateId !== state.updateId) throw new Error('导入批次不一致')
-    if (Number(next.update.version) >= Number(view.update.version)) view = next
+    if (Number(next.update.version) >= Number(view.update.version) && next !== view) { view = next; projectionRevision++ }
     version = Math.max(version, Number(next.update.version))
   }
   async function refresh() {
@@ -75,7 +76,7 @@ function create(options) {
           const next = clone(state)
           next.flight = { ids: entries.map(e => e.issueId), action: first.kind === 'account' ? 'reviewIssues.resolveAccountMappings' : 'reviewIssues.resolve', payload }
           // 先落盘请求和幂等键，响应丢失或进程退出后原样重试。
-          persist(next)
+          persist(next, false)
         }
         const flight = state.flight
         const result = await options.call(flight.action, flight.payload)
@@ -87,7 +88,7 @@ function create(options) {
           if (entry.kind === 'account' && next.drafts[entry.issueId] && next.drafts[entry.issueId].revision === entry.revision) delete next.drafts[entry.issueId]
         }
         next.flight = null
-        persist(next)
+        persist(next, state.entries.some(entry => flight.ids.includes(entry.issueId) && entry.kind === 'account'))
         retryCount = 0
         if (result.events && result.issues) accept(result)
         emit()
@@ -115,10 +116,11 @@ function create(options) {
     if (timer) { clearTimeout(timer); timer = null }
     if (paused) return Promise.reject(new Error('当前导入正在结束'))
     running = work().finally(() => { running = null; emit() })
+    emit()
     return running
   }
   return {
-    get state() { return state }, get view() { return view },
+    get state() { return state }, get view() { return view }, get projectionRevision() { return projectionRevision },
     get status() { return { pending: state.entries.filter(e => e.status !== 'saved').length, syncing: Boolean(running), error: errorMessage, conflicts: state.entries.filter(e => e.error).length } },
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn) },
     accept, enqueue, flush, schedule,
@@ -129,10 +131,10 @@ function create(options) {
       persist(next)
     },
     async post() {
-      if (!state.postFlight) persist(Object.assign({}, state, { postFlight: { requestId: options.requestId(), updateId: state.updateId, version: version, mode: 'all_ready' } }))
+      if (!state.postFlight) persist(Object.assign({}, state, { postFlight: { requestId: options.requestId(), updateId: state.updateId, version: version, mode: 'all_ready' } }), false)
       try { return await options.call('financeUpdates.post', state.postFlight) }
       catch (error) {
-        if (!retryable(error)) persist(Object.assign({}, state, { postFlight: null }))
+        if (!retryable(error)) persist(Object.assign({}, state, { postFlight: null }), false)
         throw error
       }
     },
@@ -153,7 +155,7 @@ function create(options) {
     },
     async pause() { paused = true; if (timer) clearTimeout(timer); timer = null; if (running) await running.catch(() => {}) },
     resume() { paused = false; schedule() },
-    clear() { paused = true; if (timer) clearTimeout(timer); options.remove(key); state = Object.assign({}, state, { entries: [], drafts: {}, flight: null }); emit() }
+    clear() { paused = true; if (timer) clearTimeout(timer); options.remove(key); state = Object.assign({}, state, { entries: [], drafts: {}, flight: null }); projectionRevision++; emit() }
   }
 }
 
