@@ -1,0 +1,50 @@
+name: 优化工作区准备
+on:
+  push:
+    branches: [codex/mini-1906o2-catalog-loading]
+    paths: [.github/workflows/optimization-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - run: npm ci --prefix cloudfunctions/catledger-api
+      - run: npm ci --prefix cloudfunctions/catledger-import
+      - name: 导出不含认证配置的源码与依赖
+        run: |
+          mkdir -p "$RUNNER_TEMP/catledger-workspace"
+          git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/catledger-workspace/source.tar.gz"
+          git rev-parse HEAD > "$RUNNER_TEMP/catledger-workspace/commit.txt"
+          tar -czf "$RUNNER_TEMP/catledger-workspace/dependencies.tar.gz" cloudfunctions/catledger-api/node_modules cloudfunctions/catledger-import/node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catledger-workspace
+          path: ${{ runner.temp }}/catledger-workspace/
+          retention-days: 1
+  remove-empty-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: 仅清理无独有提交的 opt 分支
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='codex/opt-02-catalog-first-input'
+          expected='a4e3fab7333ce5a52aa05c6902155e4c69757d5e'
+          actual=$(gh api "repos/$REPO/git/ref/heads/$target" --jq '.object.sha')
+          test "$actual" = "$expected"
+          status=$(gh api "repos/$REPO/compare/$expected...${GITHUB_SHA}" --jq '.status')
+          test "$status" = 'ahead' -o "$status" = 'identical'
+          gh api --method DELETE "repos/$REPO/git/refs/heads/$target"
+          echo '已删除没有独有提交的 opt 分支；保留 mini、main 和 Web 归档。'
