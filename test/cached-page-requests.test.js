@@ -30,9 +30,9 @@ function runtime() {
       else if (action === 'categories.list') result = { categories }
       else if (action === 'accounts.list') result = { accounts: accounts() }
       else if (action === 'dashboard.get') result = { accounts: accounts(), summary, netWorthMinor: balance, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }], recentTransactions: [] }
-      else if (action === 'transactions.list') result = { transactions: [transaction(data.cursor ? 'row-2' : 'row-1')], nextCursor: data.cursor ? null : 'page-2', summary }
+      else if (action === 'transactions.list') result = { transactions: [transaction(data.search || (data.accountId ? data.accountId : data.cursor ? 'row-2' : 'row-1'))], nextCursor: data.cursor ? null : 'page-2', summary }
       else if (action === 'transactions.refundable') result = { transactions: [] }
-      else if (action === 'statistics.get') result = { month: data.month, summary, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }] }
+      else if (action === 'statistics.get') result = { month: data.month, summary, cashFlowTrend: [{ month: data.trendEndMonth || data.month, incomeMinor: '0', expenseMinor: '100' }] }
       else { balance = '10100'; result = { saved: true } }
       return { result: { ok: true, data: result } }
     } }
@@ -212,19 +212,19 @@ test('加载下一页期间发生写入时重读首屏，不把旧分页与新�
   assert.equal(page.data.nextCursor, 'page-2')
 })
 
- test('统计近六个月固定当前月份，历史月切换复用首页趋势且保留选中月份', async () => {
+ test('统计历史月使用显式当前趋势终点，单次请求并保留选中月份', async () => {
   const h = runtime()
   const page = h.page('statistics')
   const currentMonth = page.data.month
   await page.loadStatistics()
   assert.equal(page.data.cashFlowTrend[0].month, currentMonth)
-  await h.api.callApi('dashboard.get', { month: currentMonth })
   h.calls.length = 0
   await page.chooseMonth({ detail: { value: '2025-01' } })
   assert.equal(page.data.month, '2025-01')
   assert.equal(page.data.cashFlowTrend[0].month, currentMonth)
   assert.equal(page.data.selectedTrend.month, currentMonth)
   assert.deepEqual(h.calls.map(call => call.action), ['statistics.get'])
+  assert.equal(h.calls[0].data.trendEndMonth, currentMonth)
   await page.chooseMonth({ detail: { value: '2025-02' } })
   assert.equal(page.data.cashFlowTrend[0].month, currentMonth)
   assert.equal(page.data.selectedTrend.month, currentMonth)
@@ -497,4 +497,36 @@ test('中央入口仅登录后低优先级预取目录，失败不阻断导航�
   component.openEntry(); h.cache.reset(); h.app.approved = false
   await new Promise(resolve => setTimeout(resolve, 5))
   assert.equal(h.calls.length, 0)
+})
+
+test('连续搜索最后意图立即发出，旧条件无论成功或失败都不能覆盖新结果', async () => {
+  for (const oldFails of [false, true]) {
+    const h = runtime(), page = await visit(h, 'transactions')
+    const gates = {}
+    h.intercept = (action, data) => action === 'transactions.list' && data.search ? new Promise((resolve, reject) => { gates[data.search] = { resolve, reject } }) : undefined
+    page.bindSearch({ detail: { value: 'old' } }); const old = page.applySearch()
+    page.bindSearch({ detail: { value: 'latest' } }); const latest = page.applySearch()
+    await flush()
+    assert.ok(gates.old); assert.ok(gates.latest)
+    gates.latest.resolve(); await latest
+    assert.equal(page.data.transactions[0].transactionId, 'latest')
+    if (oldFails) gates.old.reject(new Error('旧搜索失败')); else gates.old.resolve()
+    await old
+    assert.equal(page.data.transactions[0].transactionId, 'latest')
+    assert.equal(page.data.errorMessage, '')
+    assert.equal(page.data.loading, false)
+  }
+})
+
+test('分页等待时改变账户筛选立即加载新首屏，不拼接旧分页也不吞最终筛选', async () => {
+  const h = runtime(), page = await visit(h, 'transactions')
+  let release
+  h.intercept = (action, data) => action === 'transactions.list' && data.cursor ? new Promise(resolve => { release = resolve }) : undefined
+  const pending = page.loadTransactions(true)
+  await flush()
+  await page.changeAccountFilter({ detail: { value: 1 } })
+  assert.equal(page.data.transactions[0].transactionId, 'account-a')
+  release(); await pending
+  assert.equal(page.data.transactions.length, 1)
+  assert.equal(page.data.transactions[0].transactionId, 'account-a')
 })

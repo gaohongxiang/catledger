@@ -26,12 +26,14 @@ Page({
       loginGuard.run(this, this.loadCategories.bind(this))
     }
   },
+  onUnload: function () { pageReadSession.end(this) },
   onPullDownRefresh: function () {
     const promise = app.hasLoginApproval() ? this.loadCategories({ force: true }) : Promise.resolve()
     promise.finally(function () { wx.stopPullDownRefresh() })
   },
 
   applyCategories: function (rows) {
+    rows = rows.slice().sort((a, b) => a.kind.localeCompare(b.kind) || Number(a.archived) - Number(b.archived) || a.sortOrder - b.sortOrder || a.id.localeCompare(b.id))
     const expense = categoryModel.prepare(rows, 'expense', false)
     const income = categoryModel.prepare(rows, 'income', false)
     app.globalData.categories = rows.filter(function (item) { return !item.archived })
@@ -46,7 +48,7 @@ Page({
   },
 
   loadCategories: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'errorMessage', 'allCategories', 'expenseCategories', 'incomeCategories', 'visibleCategories', 'archivedCategories', 'formOpen', 'categoryDetail', 'selectedCategory', 'categoryName'], ['_readLoad'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'saving', 'errorMessage', 'allCategories', 'expenseCategories', 'incomeCategories', 'visibleCategories', 'archivedCategories', 'formOpen', 'categoryDetail', 'selectedCategory', 'categoryName'], ['_readLoad'])
     if (this._readLoad) return this._readLoad
     const self = this
     const force = Boolean(options && options.force)
@@ -62,6 +64,33 @@ Page({
         if (!isCurrent()) return
         self.setData({ loading: false }); self._readLoad = null })
     return this._readLoad
+  },
+
+  applyMutation: function (result) {
+    const changed = result && (Array.isArray(result.categories) ? result.categories : [result])
+    if (!changed || !changed.length || changed.some(row => !row.id || !Number.isInteger(row.version) || !row.kind || !row.name)) {
+      return this.loadCategories({ force: true })
+    }
+    const rows = this.data.allCategories.slice()
+    for (const category of changed) {
+      const index = rows.findIndex(row => row.id === category.id)
+      if (index >= 0 && rows[index].version > category.version) return this.loadCategories({ force: true })
+      if (index < 0) rows.push(category)
+      else rows[index] = category
+    }
+    this.applyCategories(rows)
+    return Promise.resolve()
+  },
+
+  recoverMutation: function (error, fallback, isCurrent) {
+    if (!isCurrent()) return Promise.resolve()
+    this.applyCategories(this.data.allCategories)
+    return this.loadCategories({ force: true }).then(() => {
+      if (!isCurrent()) return
+      const selected = this.data.selectedCategory
+      this.setData({ selectedCategory: selected ? this.findCategory(selected.id) || null : null,
+        errorMessage: error.message || fallback })
+    })
   },
 
   selectKind: function (event) {
@@ -108,16 +137,19 @@ Page({
     if (isCreate) data.kind = this.data.selectedKind
     else Object.assign(data, { categoryId: this.data.selectedCategory.id, version: this.data.selectedCategory.version })
     const self = this
+    const isCurrent = pageReadSession.capture(this)
     this.setData({ saving: true, errorMessage: '' })
-    api.callApi(isCreate ? 'categories.create' : 'categories.update', data)
-      .then(function () { wx.showToast({ title: '已保存', icon: 'success' }); self.setData({ formOpen: false }); return self.loadCategories() })
-      .catch(function (error) { self.setData({ errorMessage: error.message || '保存失败' }) })
-      .finally(function () { self.setData({ saving: false }) })
+    return api.callApi(isCreate ? 'categories.create' : 'categories.update', data)
+      .then(function (result) { if (!isCurrent()) return; wx.showToast({ title: '已保存', icon: 'success' }); self.setData({ formOpen: false }); return self.applyMutation(result) })
+      .catch(function (error) { return self.recoverMutation(error, '保存失败', isCurrent) })
+      .finally(function () { if (isCurrent()) self.setData({ saving: false }) })
   },
 
   setArchived: function (event) {
     const category = this.findCategory(event.currentTarget.dataset.id)
     if (!category) return
+    const isCurrent = pageReadSession.capture(this)
+    if (!isCurrent() || this.data.saving) return
     const restoring = category.archived
     const self = this
     wx.showModal({
@@ -126,11 +158,13 @@ Page({
       confirmText: restoring ? '恢复' : '停用',
       confirmColor: restoring ? themeService.currentTokens().accent : themeService.currentTokens().danger,
       success: function (result) {
-        if (!result.confirm) return
+        if (!result.confirm || !isCurrent() || self.data.saving) return
+        self.setData({ saving: true })
         api.callApi(restoring ? 'categories.restore' : 'categories.archive', {
           requestId: api.createRequestId(), categoryId: category.id, version: category.version
-        }).then(function () { self.setData({ categoryDetail: null }); return self.loadCategories() })
-          .catch(function (error) { self.setData({ errorMessage: error.message || '操作失败' }) })
+        }).then(function (value) { if (!isCurrent()) return; self.setData({ categoryDetail: null }); return self.applyMutation(value) })
+          .catch(function (error) { return self.recoverMutation(error, '操作失败', isCurrent) })
+          .finally(function () { if (isCurrent()) self.setData({ saving: false }) })
       }
     })
   },
@@ -166,17 +200,15 @@ Page({
     this.categoryDrag = null
     this.setData({ draggingCategoryId: '', dragStyle: '' })
     if (!drag || drag.target === drag.index || this.data.saving) return
+    const isCurrent = pageReadSession.capture(this)
     const prepared = categoryModel.reorder(this.data.visibleCategories, drag.index, drag.target)
     const self = this
     this.setData({ visibleCategories: prepared, saving: true, errorMessage: '', categoryDetail: null })
-    api.callApi('categories.reorder', {
+    return api.callApi('categories.reorder', {
       requestId: api.createRequestId(), kind: this.data.selectedKind,
       items: prepared.map(function (item) { return { categoryId: item.id, version: item.version } })
-    }).then(function () { return self.loadCategories() })
-      .catch(function (error) {
-        self.applyCategories(self.data.allCategories)
-        self.setData({ errorMessage: error.message || '排序失败' })
-      })
-      .finally(function () { self.setData({ saving: false }) })
+    }).then(function (result) { if (isCurrent()) return self.applyMutation(result) })
+      .catch(function (error) { return self.recoverMutation(error, '排序失败', isCurrent) })
+      .finally(function () { if (isCurrent()) self.setData({ saving: false }) })
   }
 })

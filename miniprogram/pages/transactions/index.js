@@ -76,7 +76,7 @@ Page({
   },
 
   prepareAndLoad: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (this._prepareLoad) return this._prepareLoad
     const self = this
@@ -132,26 +132,33 @@ Page({
   },
 
   loadTransactions: function (append, options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken'])
-    if (!app.hasLoginApproval() || this._transactionsLoad) {
-      return this._transactionsLoad || Promise.resolve()
-    }
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
+    if (!app.hasLoginApproval()) return Promise.resolve()
+    const data = this.requestData(append ? this.data.nextCursor : null)
+    const requestKey = JSON.stringify(data)
+    if (this._transactionsLoad && this._transactionsKey === requestKey) return this._transactionsLoad
+    if (append && this._transactionsLoad) return this._transactionsLoad
+    const queryKey = JSON.stringify(this.requestData(null))
     const baseToken = api.cacheToken('transactions.list', this.requestData(null))
     if (append && (!baseToken || baseToken !== this._listCacheToken)) return this.loadTransactions(false, { force: true })
-    if (options && options.reuse && !options.force && this.data.hasLoaded && baseToken && baseToken === this._listCacheToken) return Promise.resolve()
+    if (options && options.reuse && !options.force && !this._transactionsLoad && this.data.hasLoaded && baseToken && baseToken === this._listCacheToken) return Promise.resolve()
+    const generation = (this._transactionsGeneration || 0) + 1
+    this._transactionsGeneration = generation
+    this._transactionsKey = requestKey
+    const isLatest = () => isCurrent() && this._transactionsGeneration === generation
     const self = this
-    const data = this.requestData(append ? this.data.nextCursor : null)
     const force = Boolean(options && options.force)
+    if (!append && queryKey !== this._listQueryKey) this.setData({ hasLoaded: false, transactions: [], nextCursor: null })
     const needsNetwork = force || !api.isFresh('transactions.list', data)
     this.setData(append ? { loadingMore: needsNetwork } : { loading: needsNetwork, errorMessage: '' })
     this._transactionsLoad = api.callApi('transactions.list', data, { force: force })
       .then(function (result) {
-        if (!isCurrent()) return
+        if (!isLatest()) return
         if (append && api.cacheToken('transactions.list', self.requestData(null)) !== baseToken) {
           self._transactionsLoad = null
           return self.loadTransactions(false, { force: true })
         }
-        if (!append) self._listCacheToken = api.cacheToken('transactions.list', data)
+        if (!append) { self._listCacheToken = api.cacheToken('transactions.list', data); self._listQueryKey = queryKey }
         const rows = result.transactions.map(viewModel.transactionView)
         self.setData({
           hasLoaded: true,
@@ -168,11 +175,11 @@ Page({
         })
       })
       .catch(function (error) {
-        if (!isCurrent()) return
+        if (!isLatest()) return
         self.setData({ errorMessage: error.message || '明细加载失败' })
       })
       .finally(function () {
-        if (!isCurrent()) return
+        if (!isLatest()) return
         self.setData({ loading: false, loadingMore: false })
         self._transactionsLoad = null
       })
@@ -188,7 +195,6 @@ Page({
   },
 
   changeMonth: function (delta) {
-    if (this.data.loading || this.data.loadingMore) return
     const month = time.shiftMonth(this.data.month, delta)
     this.setData({
       month: month,
@@ -198,11 +204,10 @@ Page({
       selectedDateLabel: '',
       nextCursor: null, hasLoaded: false, transactions: []
     })
-    this.loadTransactions(false)
+    return this.loadTransactions(false)
   },
 
   changeDate: function (event) {
-    if (this.data.loading || this.data.loadingMore) return
     const date = event.detail.value
     const month = date.slice(0, 7)
     const parts = date.split('-')
@@ -214,13 +219,12 @@ Page({
       selectedDateLabel: parts[0] + '年' + Number(parts[1]) + '月' + Number(parts[2]) + '日',
       nextCursor: null, hasLoaded: false, transactions: []
     })
-    this.loadTransactions(false)
+    return this.loadTransactions(false)
   },
 
   clearDate: function () {
-    if (this.data.loading || this.data.loadingMore) return
     this.setData({ selectedDate: '', selectedDateLabel: '', nextCursor: null, hasLoaded: false, transactions: [] })
-    this.loadTransactions(false)
+    return this.loadTransactions(false)
   },
 
   bindSearch: function (event) {
@@ -228,7 +232,7 @@ Page({
   },
 
   applySearch: function () {
-    this.loadTransactions(false)
+    return this.loadTransactions(false)
   },
 
   toggleSearch: function () {
@@ -239,20 +243,18 @@ Page({
     const hadSearch = this.data.search.trim().length > 0
     this.setData({ search: '', searchOpen: false })
     if (hadSearch) {
-      this.loadTransactions(false)
+      return this.loadTransactions(false)
     }
   },
 
   changeAccountFilter: function (event) {
-    if (this.data.loading || this.data.loadingMore) return
     this.setData({ accountFilterIndex: Number(event.detail.value), hasLoaded: false, transactions: [] })
-    this.loadTransactions(false)
+    return this.loadTransactions(false)
   },
 
   changeCategoryFilter: function (event) {
-    if (this.data.loading || this.data.loadingMore) return
     this.setData({ categoryFilterIndex: Number(event.detail.value), hasLoaded: false, transactions: [] })
-    this.loadTransactions(false)
+    return this.loadTransactions(false)
   },
 
   editTransaction: function (event) {

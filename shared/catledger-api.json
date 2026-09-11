@@ -29,8 +29,8 @@
     },
     "statistics.get": {
       "kind": "read",
-      "data": ["month"],
-      "returns": ["month", "summary", "daily", "cashFlowTrend", "metrics", "uncategorized", "expenseCategories", "incomeCategories"]
+      "data": ["month", "trendEndMonth? (YYYY-MM; defaults to month)"],
+      "returns": ["month", "trendEndMonth", "summary", "daily", "cashFlowTrend", "metrics", "uncategorized", "expenseCategories", "incomeCategories"]
     },
     "accounts.list": {
       "kind": "read",

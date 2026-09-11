@@ -266,3 +266,52 @@ test('编辑已停用账户的账目可见原值，但提交保持阻断', async
   assert.equal(request.uncategorized, true)
   assert.equal(request.categoryId, undefined)
 })
+
+test('分类维护采用服务器实体和版本更新，冲突回读保留用户草稿', async () => {
+  let reads = 0, conflict = false
+  const base = { id: 'category-a', kind: 'expense', name: '原分类', archived: false, sortOrder: 10, version: 1 }
+  let stored = { ...base }
+  const { page } = runtime('pages/categories/index', (action, data) => {
+    if (action === 'categories.list') { reads++; return Promise.resolve({ categories: [stored] }) }
+    assert.equal(data.version, page.data.selectedCategory.version)
+    if (conflict) { stored = { ...stored, name: '服务端更名', version: 3 }; return Promise.reject(new Error('版本冲突')) }
+    stored = { ...stored, name: data.name, version: stored.version + 1 }
+    return Promise.resolve(stored)
+  })
+  await page.loadCategories()
+  page.openEdit({ currentTarget: { dataset: { id: base.id } } })
+  page.bindCategoryName({ detail: { value: '新的分类' } })
+  await page.saveForm()
+  assert.equal(reads, 1)
+  assert.equal(page.data.allCategories[0].version, 2)
+  assert.equal(page.data.visibleCategories[0].name, '新的分类')
+  page.openEdit({ currentTarget: { dataset: { id: base.id } } })
+  page.bindCategoryName({ detail: { value: '保留草稿' } })
+  conflict = true
+  await page.saveForm()
+  assert.equal(reads, 2)
+  assert.equal(page.data.selectedCategory.version, 3)
+  assert.equal(page.data.categoryName, '保留草稿')
+  assert.equal(page.data.visibleCategories[0].name, '服务端更名')
+  assert.match(page.data.errorMessage, /冲突/)
+})
+
+test('分类排序采用整组服务器版本，失败强制回读权威顺序', async () => {
+  let reads = 0, fail = false
+  const rows = ['a', 'b'].map((id, index) => ({ id, kind: 'expense', name: '合成' + id, archived: false, sortOrder: (index + 1) * 10, version: 1 }))
+  const { page } = runtime('pages/categories/index', action => {
+    if (action === 'categories.list') { reads++; return Promise.resolve({ categories: rows }) }
+    return fail ? Promise.reject(new Error('合成排序冲突')) : Promise.resolve({ categories: rows.slice().reverse().map((row, index) => ({ ...row, sortOrder: (index + 1) * 10, version: 2 })) })
+  })
+  await page.loadCategories()
+  page.categoryDrag = { index: 0, target: 1 }
+  await page.endCategoryDrag()
+  assert.equal(reads, 1)
+  assert.deepEqual(Array.from(page.data.visibleCategories, row => row.id), ['b', 'a'])
+  assert.ok(page.data.visibleCategories.every(row => row.version === 2))
+  fail = true; page.categoryDrag = { index: 0, target: 1 }
+  await page.endCategoryDrag()
+  assert.equal(reads, 2)
+  assert.deepEqual(Array.from(page.data.visibleCategories, row => row.id), ['a', 'b'])
+  assert.equal(page.data.saving, false)
+})

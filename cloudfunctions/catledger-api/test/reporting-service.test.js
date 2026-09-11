@@ -101,3 +101,19 @@ test('退款分类统计通过原交易分类冲减而不是落入未分类', as
   assert.match(categorySql, /LEFT JOIN catledger_transactions original/)
   assert.match(categorySql, /COALESCE\(t\.category_id, original\.category_id\)/)
 })
+
+test('统计允许独立趋势终点，默认兼容原月份且拒绝无效终点', async () => {
+  const h = createReportingHarness()
+  const context = { provider: 'wechat-mini', subjectHash: 'synthetic', data: { month: '2025-01', trendEndMonth: '2026-09' } }
+  const result = await h.service.statistics(context)
+  assert.equal(result.month, '2025-01')
+  assert.equal(result.trendEndMonth, '2026-09')
+  assert.equal(result.daily[0].date, '2025-01-01')
+  assert.deepEqual(result.cashFlowTrend.map(row => row.month), ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'])
+  assert.equal(h.calls.filter(sql => sql === 'START TRANSACTION READ ONLY').length, 1)
+  assert.doesNotMatch(h.calls.join('\n'), /FROM catledger_accounts/)
+  assert.equal((await h.service.statistics({ ...context, data: { month: '2025-01' } })).trendEndMonth, '2025-01')
+  for (const trendEndMonth of ['2026-13', 'invalid', null]) {
+    await assert.rejects(h.service.statistics({ ...context, data: { month: '2025-01', trendEndMonth } }), { publicCode: 'VALIDATION_ERROR' })
+  }
+})

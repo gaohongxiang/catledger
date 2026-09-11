@@ -1307,3 +1307,41 @@ require('./helpers/short-user-id-migration').registerShortUserIdMigrationTests({
   getPool: () => pool,
   hasDatabase
 })
+
+test('独立趋势终点与历史月统计使用同一MySQL快照并隔离其他用户', { skip: !hasDatabase }, async () => {
+  const { subjectHash, incomeCategory } = await bootstrapLedgerUser('statistics-endpoint')
+  const account = await createTestAccount(subjectHash, { name: '合成趋势账户' })
+  const income = async amountMinor => transactionService.create({ provider: 'wechat-mini', subjectHash, data: {
+    requestId: randomTestUuid(), type: 'income', destinationAccountId: account.accountId,
+    categoryId: incomeCategory.id,
+    amountMinor, occurredLocalAt: '2026-09-01T12:00:00', timezoneOffsetMinutes: -480
+  } })
+  await income('100')
+  const foreign = await bootstrapLedgerUser('statistics-foreign')
+  const foreignAccount = await createTestAccount(foreign.subjectHash, { name: '其他用户合成账户' })
+  await transactionService.create({ provider: 'wechat-mini', subjectHash: foreign.subjectHash, data: {
+    requestId: randomTestUuid(), type: 'income', destinationAccountId: foreignAccount.accountId,
+    categoryId: foreign.incomeCategory.id, amountMinor: '50000', occurredLocalAt: '2026-09-01T12:00:00', timezoneOffsetMinutes: -480
+  } })
+  let injected = false
+  const statements = []
+  const wrapped = { async getConnection() {
+    const connection = await pool.getConnection(), execute = connection.execute.bind(connection), release = connection.release.bind(connection)
+    connection.execute = async (sql, values) => {
+      statements.push(sql)
+      const result = await execute(sql, values)
+      if (!injected && sql.includes('catledger_transactions')) { injected = true; await income('200') }
+      return result
+    }
+    connection.release = () => { connection.execute = execute; connection.release = release; release() }
+    return connection
+  } }
+  const context = { provider: 'wechat-mini', subjectHash, data: { month: '2025-01', trendEndMonth: '2026-09' } }
+  const result = await createTransactionService({ getPool: () => wrapped }).statistics(context)
+  assert.equal(result.summary.incomeMinor, '0')
+  assert.equal(result.cashFlowTrend.at(-1).incomeMinor, '100')
+  assert.equal(result.trendEndMonth, '2026-09')
+  assert.doesNotMatch(statements.join('\n'), /FROM catledger_accounts/)
+  const fresh = await transactionService.statistics(context)
+  assert.equal(fresh.cashFlowTrend.at(-1).incomeMinor, '300')
+})

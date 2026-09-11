@@ -1,7 +1,7 @@
 <view class="page-canvas detail-page {{themeClass}}" style="{{themeStyle}}">
   <view class="month-switcher">
     <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><view class="arrow-left"></view></view>
-    <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate" disabled="{{loading || loadingMore}}">
+    <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate">
       <view class="date-picker-content">
         <text class="month-current money-number">{{selectedDateLabel || monthLabel}}</text>
       </view>
@@ -33,10 +33,10 @@
   </view>
 
   <view class="filter-toolbar">
-    <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter" disabled="{{loading || loadingMore}}">
+    <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter">
       <view class="filter-content"><text>{{accountFilters[accountFilterIndex].name}}</text><view class="filter-chevron"></view></view>
     </picker>
-    <picker class="filter-picker" mode="selector" range="{{categoryFilters}}" range-key="name" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter" disabled="{{loading || loadingMore}}">
+    <picker class="filter-picker" mode="selector" range="{{categoryFilters}}" range-key="name" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter">
       <view class="filter-content"><text>{{categoryFilters[categoryFilterIndex].name}}</text><view class="filter-chevron"></view></view>
     </picker>
     <view class="search-trigger {{searchOpen || search ? 'search-trigger-active' : ''}}" role="button" aria-label="搜索备注" bindtap="toggleSearch">

@@ -115,7 +115,7 @@ Page({
         this.setData({ charts: charts, expenseCategories: prepareCategories(this._statisticsResult.expenseCategories, charts.expenseRing), incomeCategories: prepareCategories(this._statisticsResult.incomeCategories, charts.incomeRing) })
       }
     }
-    if (!this.data.hasLoaded || this.openCompletionAfterLoad || this._trendMonth !== time.currentMonth() || !api.isFresh('statistics.get', { month: this.data.month })) {
+    if (!this.data.hasLoaded || this.openCompletionAfterLoad || this._trendMonth !== time.currentMonth() || !api.isFresh('statistics.get', this.statisticsRequest())) {
       loginGuard.run(this, this.loadStatistics.bind(this))
     }
   },
@@ -133,6 +133,8 @@ Page({
 
   promptLogin: function () { loginGuard.run(this, this.loadStatistics.bind(this)) },
 
+  statisticsRequest: function () { return { month: this.data.month, trendEndMonth: time.currentMonth() } },
+
   loadStatistics: function (options) {
     const isCurrent = this.beginReadSession()
     this.setData({ loggedIn: app.hasLoginApproval() })
@@ -140,15 +142,11 @@ Page({
     if (this._statisticsLoad) return this._statisticsLoad
     const self = this
     const force = Boolean(options && options.force)
-    this.setData({ loading: force || !api.isFresh('statistics.get', { month: this.data.month }), errorMessage: '' })
+    this.setData({ loading: force || !api.isFresh('statistics.get', this.statisticsRequest()), errorMessage: '' })
     const trendMonth = time.currentMonth()
     const selectedTrendMonth = this.data.selectedTrend && this.data.selectedTrend.month
-    this._statisticsLoad = Promise.all([
-      api.callApi('statistics.get', { month: this.data.month }, { force: force }),
-      this.data.month === trendMonth ? Promise.resolve(null) : api.callApi('dashboard.get', { month: trendMonth }, { force: force })
-    ])
-      .then(function (results) {
-        const result = Object.assign({}, results[0], results[1] ? { cashFlowTrend: results[1].cashFlowTrend } : {})
+    this._statisticsLoad = api.callApi('statistics.get', this.statisticsRequest(), { force })
+      .then(function (result) {
         if (!isCurrent()) return
         self._trendMonth = trendMonth
         self._statisticsResult = result

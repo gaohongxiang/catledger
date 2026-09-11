@@ -232,14 +232,17 @@ function createReportingService({ getPool }) {
       consistentSnapshot: true,
       operation: async (connection, uid) => {
         const month = context.data && context.data.month
+        const trendEndMonth = context.data && context.data.trendEndMonth !== undefined ? context.data.trendEndMonth : month
+        parseMonth(trendEndMonth)
         const range = parseMonth(month)
         const summary = await queryMonthlySummary(connection, uid, range)
         const categories = await queryCategoryStatistics(connection, uid, range, summary)
         const daily = await queryDailyStatistics(connection, uid, range)
-        const cashFlowTrend = await queryMonthlyCashFlowTrend(connection, uid, month)
+        const cashFlowTrend = await queryMonthlyCashFlowTrend(connection, uid, trendEndMonth)
         const quality = await queryStatisticsMetrics(connection, uid, range)
         return {
           month,
+          trendEndMonth,
           summary,
           daily,
           cashFlowTrend,
