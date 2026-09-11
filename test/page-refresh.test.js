@@ -9,10 +9,10 @@ function profilePage() {
   const filename = path.join(__dirname, '../miniprogram/pages/profile/index.js')
   const localRequire = createRequire(filename)
   let definition
-  let resolveBootstrap
-  const bootstrap = new Promise(function (resolve) { resolveBootstrap = resolve })
+  let resolveCatalog
+  const catalog = new Promise(function (resolve) { resolveCatalog = resolve })
   const app = { globalData: { profile: { nickname: '测试用户' }, categories: [] }, hasLoginApproval: function () { return true } }
-  const api = { isFresh: () => false, cacheToken: () => null, bootstrap: function () { return bootstrap }, callApi: function () { return Promise.resolve({ accounts: [{}, {}] }) } }
+  const api = { isFresh: () => false, cacheToken: () => null, callApi: function () { return catalog } }
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
     getApp: function () { return app }, Page: function (page) { definition = page },
     require: function (name) {
@@ -26,7 +26,7 @@ function profilePage() {
     setData: function (patch) { Object.assign(this.data, patch) },
     getTabBar: function () { return null }
   })
-  return { page: page, app: app, resolveBootstrap: resolveBootstrap }
+  return { page: page, app: app, resolveCatalog: resolveCatalog }
 }
 
 test('返回个人页时，延迟刷新保留已连接状态和已有数量', async function () {
@@ -38,7 +38,7 @@ test('返回个人页时，延迟刷新保留已连接状态和已有数量', as
   assert.equal(page.data.accountCount, 8)
   assert.equal(page.data.categoryCount, 16)
   assert.equal(page.data.connected, true)
-  runtime.resolveBootstrap({ categories: [{ id: 'a' }] })
+  runtime.resolveCatalog({ accounts: [{}, {}], categories: [{ id: 'a' }] })
   await pending
   assert.equal(page.data.loading, false)
   assert.equal(page.data.accountCount, 2)

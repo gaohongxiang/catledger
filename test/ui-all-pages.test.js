@@ -14,7 +14,7 @@ function runtime(route, callApi) {
   let definition
   const calls = []
   const app = { hasLoginApproval: () => true, globalData: { categories: [], profile: {}, ledgerRevision: 0 } }
-  const api = { isFresh: () => false, cacheToken: () => null, createRequestId: () => 'synthetic-request', bootstrap: () => Promise.resolve({ categories: [] }), callApi: (name, data) => {
+  const api = { peek: () => null, isFresh: () => false, cacheToken: () => null, createRequestId: () => 'synthetic-request', bootstrap: () => Promise.resolve({ categories: [] }), callApi: (name, data) => {
     calls.push({ name, data }); return callApi ? callApi(name, data) : Promise.resolve({ accounts: [], categories: [] })
   }, callImport: () => { throw new Error('预览测试禁止真实导入写入') } }
   const chrome = { getWindowInfo: () => ({ windowWidth: 375 }), showModal() {}, showToast() {}, navigateTo() {}, redirectTo() {}, navigateBack() {}, nextTick: cb => cb(), stopPullDownRefresh() {} }
@@ -168,11 +168,11 @@ test('分类拖拽命中行高与最终布局相同，排序请求规则不变',
   assert.match(read('miniprogram/pages/categories/index.js'), /categoryModel.reorder\(this.data.visibleCategories, drag.index, drag.target\)/)
 })
 
-test('记账编辑读取失败有重试，不显示可编辑空表单；准备成功才呈现原功能', async () => {
+test('记账目录失败仍能编辑本地草稿，重试成功后允许选择账户', async () => {
   let fail = true
-  const { page } = runtime('pages/transaction-editor/index', name => fail ? Promise.reject(new Error('合成失败')) : Promise.resolve(name === 'accounts.list' ? { accounts: [{ accountId: 'a', name: '测试账户' }] } : { transactions: [] }))
+  const { page } = runtime('pages/transaction-editor/index', name => fail ? Promise.reject(new Error('合成失败')) : Promise.resolve(name === 'catalog.get' ? { accounts: [{ accountId: 'a', name: '测试账户' }] } : { transactions: [] }))
   await page.prepareForm()
-  assert.equal(page.data.preparing, false); assert.equal(page.data.formReady, false); assert.ok(page.data.errorMessage)
+  assert.equal(page.data.preparing, false); assert.equal(page.data.formReady, true); assert.equal(page.data.catalogReady, false); assert.ok(page.data.catalogError)
   fail = false; await page.prepareForm()
   assert.equal(page.data.formReady, true); assert.equal(page.data.preparing, false)
   assert.equal(page.data.accounts.length, 1)
@@ -192,13 +192,14 @@ test('各编辑弹层错误可见，金额/名称拥有标签，保存继续保�
 })
 
 
-test('编辑已停用账户的账目，不把被拒绝的表单标为准备完成', async () => {
-  const { page, app } = runtime('pages/transaction-editor/index', name => Promise.resolve(name === 'accounts.list' ? { accounts: [{ accountId: 'active', name: '可用测试账户' }] } : { transactions: [] }))
+test('编辑已停用账户的账目可见原值，但提交保持阻断', async () => {
+  const { page, app } = runtime('pages/transaction-editor/index', name => Promise.resolve(name === 'catalog.get' ? { accounts: [{ accountId: 'active', name: '可用测试账户' }] } : { transactions: [] }))
   page.data.mode = 'edit'
   app.globalData.editingTransaction = { type: 'expense', transactionId: 'old', sourceAccount: { accountId: 'archived' } }
   await page.prepareForm()
   assert.equal(page.data.preparing, false)
-  assert.equal(page.data.formReady, false)
+  assert.equal(page.data.formReady, true)
+  assert.equal(page.data.editingBlocked, true)
   assert.match(page.data.errorMessage, /停用/)
 })
 
@@ -234,7 +235,7 @@ test('编辑已停用账户的账目，不把被拒绝的表单标为准备完�
 
  test('导入账目不依赖可用账户读取，只提交所选交易的分类并保持失败重试请求号', async () => {
   let fail = true
-  const { page, app, api, calls } = runtime('pages/transaction-editor/index', () => fail ? Promise.reject(new Error('合成网络错误')) : Promise.resolve({ version: 3 }))
+  const { page, app, api, calls } = runtime('pages/transaction-editor/index', name => name === 'catalog.get' ? Promise.resolve({ categories: [{ id: 'new-category', name: '餐饮', kind: 'expense' }] }) : fail ? Promise.reject(new Error('合成网络错误')) : Promise.resolve({ version: 3 }))
   api.bootstrap = () => Promise.resolve({ categories: [{ id: 'new-category', name: '餐饮', kind: 'expense' }] })
   app.globalData.editingTransaction = { transactionId: 'clicked-entry', version: 2, origin: 'import', type: 'expense', amountMinor: '1596', occurredLocalAt: '2026-07-18T12:00:00', sourceAccount: { accountId: 'archived-a', name: '原账户' }, category: null, note: '合成说明' }
   page.setData({ mode: 'import', readonlyDetail: true })
@@ -242,7 +243,8 @@ test('编辑已停用账户的账目，不把被拒绝的表单标为准备完�
   assert.equal(page.data.formReady, true)
   assert.equal(page.data.transactionId, 'clicked-entry')
   assert.equal(page.data.detail.amountText, '¥15.96')
-  assert.equal(calls.length, 0)
+  assert.deepEqual(calls.map(call => call.name), ['catalog.get'])
+  calls.length = 0
   page.changeDetailCategory({ detail: { value: 1 } })
   await page.saveDetailCategory()
   assert.ok(page.data.errorMessage)

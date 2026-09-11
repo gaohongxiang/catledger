@@ -59,52 +59,20 @@ Page({
     }
     const self = this
     const force = Boolean(options && options.force)
-    let identityConnected = Boolean(options && options.identityConfirmed)
-    const preserveConnected = this.data.connected
-    this.setData({
-      loading: force || (!identityConnected && !api.isFresh('bootstrap')) || !api.isFresh('accounts.list'),
-      errorMessage: '',
-      connected: identityConnected || preserveConnected
-    })
-
-    const bootstrapPromise = identityConnected
-      ? Promise.resolve({ categories: app.globalData.categories, uid: app.globalData.uid })
-      : api.bootstrap({ force: force })
-
-    this._profileLoad = bootstrapPromise
+    const uid = options && options.identityConfirmed && typeof app.globalData.uid === 'string' ? app.globalData.uid : this.data.uid
+    this.setData({ loading: force || !api.isFresh('catalog.get'), errorMessage: '',
+      uid, displayUid: profilePresentation.displayUserId(uid), connected: this.data.connected || Boolean(uid) })
+    this._profileLoad = api.callApi('catalog.get', {}, { force })
       .then(function (result) {
         if (!isCurrent()) return
-        const categories = Array.isArray(result.categories) ? result.categories : []
-        identityConnected = true
+        const categories = result.categories || []
         const uid = typeof result.uid === 'string' ? result.uid : ''
         app.globalData.uid = uid
-        app.globalData.categories = categories
-        self.setData({
-          uid: uid,
-          displayUid: profilePresentation.displayUserId(uid),
-          connected: true,
-          categoryCount: categories.length,
-          errorMessage: ''
-        })
-        return api.callApi('accounts.list', {}, { force: force })
-      })
-      .then(function (result) {
-        if (!isCurrent()) return
-        const accounts = Array.isArray(result.accounts) ? result.accounts : []
-        self.setData({
-          hasLoaded: true,
-          accountCount: accounts.filter(function (account) { return !account.archived }).length,
-          errorMessage: ''
-        })
-      })
-      .catch(function (error) {
-        if (!isCurrent()) return
-        self.setData({
-          connected: identityConnected,
-          errorMessage: identityConnected
-            ? '账户数据暂未同步'
-            : (error.message || '身份状态加载失败')
-        })
+        self.setData({ uid, displayUid: profilePresentation.displayUserId(uid), connected: true,
+          hasLoaded: true, accountCount: (result.accounts || []).filter(account => !account.archived).length,
+          categoryCount: categories.length, errorMessage: '' })
+      }).catch(function (error) {
+        if (isCurrent()) self.setData({ errorMessage: error.message || '账户和分类暂未同步' })
       })
       .finally(function () {
         if (!isCurrent()) return

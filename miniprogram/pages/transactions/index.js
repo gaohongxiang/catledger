@@ -18,6 +18,7 @@ Page({
     hasLoaded: false,
     loadingMore: false,
     errorMessage: '',
+    catalogError: '',
     search: '',
     incomeText: '¥0.00',
     expenseText: '¥0.00',
@@ -75,44 +76,33 @@ Page({
   },
 
   prepareAndLoad: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken'])
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (this._prepareLoad) return this._prepareLoad
     const self = this
     const force = Boolean(options && options.force)
-    const selectedAccount = this.data.accountFilters[this.data.accountFilterIndex]
-    const selectedCategory = this.data.categoryFilters[this.data.categoryFilterIndex]
-    const requested = this.requestData(null)
-    // 筛选项与交易列表并行读取；重复切页复用整个已加载列表，包括后续分页。
-    this._prepareLoad = Promise.all([
-      api.bootstrap({ force: force }),
-      api.callApi('accounts.list', {}, { force: force }),
-      this.loadTransactions(false, { force: force, reuse: true })
-    ]).then(function (results) {
-        if (!isCurrent()) return
-      const accounts = results[1].accounts.filter(function (account) { return !account.archived })
-      const categories = (results[0].categories || []).map(function (category) {
-        return Object.assign({}, category, { categoryId: category.id })
-      })
-      app.globalData.categories = results[0].categories || []
-      const accountFilters = [{ accountId: '', name: '全部账户' }].concat(accounts)
-      const categoryFilters = [{ categoryId: '', name: '全部分类' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true }].concat(categories)
-      self.setData({
-        accountFilters: accountFilters,
-        categoryFilters: categoryFilters,
+    // 两个读模型独立完成；目录失败只影响筛选项，不清空已成功的列表。
+    const catalog = api.callApi('catalog.get', {}, { force }).then(function (result) {
+      if (!isCurrent()) return
+      const selectedAccount = self.data.accountFilters[self.data.accountFilterIndex]
+      const selectedCategory = self.data.categoryFilters[self.data.categoryFilterIndex]
+      const requested = self.requestData(null)
+      const accountFilters = [{ accountId: '', name: '全部账户' }].concat((result.accounts || []).filter(account => !account.archived))
+      const categoryFilters = [{ categoryId: '', name: '全部分类' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true }]
+        .concat((result.categories || []).map(category => Object.assign({}, category, { categoryId: category.id })))
+      self.setData({ accountFilters, categoryFilters,
         accountFilterIndex: Math.max(0, accountFilters.findIndex(item => selectedAccount && item.accountId === selectedAccount.accountId)),
-        categoryFilterIndex: Math.max(0, categoryFilters.findIndex(item => selectedCategory && item.categoryId === selectedCategory.categoryId))
-      })
+        categoryFilterIndex: Math.max(0, categoryFilters.findIndex(item => selectedCategory && item.categoryId === selectedCategory.categoryId)) })
       const current = self.requestData(null)
       if (requested.accountId !== current.accountId || requested.categoryId !== current.categoryId || requested.uncategorized !== current.uncategorized) {
         return self.loadTransactions(false)
       }
-    }).catch(function (error) {
-        if (!isCurrent()) return
-      self.setData({ errorMessage: error.message || '明细加载失败' })
-    }).finally(function () {
-        if (!isCurrent()) return
-        self._prepareLoad = null })
+    }).catch(function () {
+      if (isCurrent()) self.setData({ catalogError: '筛选项暂未同步，下拉可重试' })
+    })
+    this.setData({ catalogError: '' })
+    this._prepareLoad = Promise.all([catalog, this.loadTransactions(false, { force, reuse: true })])
+      .finally(function () { if (isCurrent()) self._prepareLoad = null })
     return this._prepareLoad
   },
 
@@ -142,7 +132,7 @@ Page({
   },
 
   loadTransactions: function (append, options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken'])
     if (!app.hasLoginApproval() || this._transactionsLoad) {
       return this._transactionsLoad || Promise.resolve()
     }

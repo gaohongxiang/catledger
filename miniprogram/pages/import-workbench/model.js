@@ -436,6 +436,7 @@ function issueView(issue) {
     missingFundsSide: missingFundsSide,
     fundsProjection: projected || null,
     missingAccountLabel: missingFundsSide === 'to' ? '转入账户' : '转出账户',
+    canConfirmSame: issue.issueType === 'same_event' && issue.primaryReasonCode !== 'source_group_conflict',
     reasonText: issue.primaryReasonCode === 'source_group_conflict'
       ? '共享参考号不能证明是同一笔，独立来源编号或时间存在歧义，请保留独立记录并核对'
       : ISSUE_HELP[issue.issueType] || '请核对相关记录后作出选择',

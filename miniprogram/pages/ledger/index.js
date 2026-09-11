@@ -52,17 +52,16 @@ Page({
     }
     const self = this
     const force = Boolean(options && options.force)
-    this.setData({ loading: force || !api.isFresh('bootstrap') || !api.isFresh('accounts.list'), errorMessage: '' })
+    this.setData({ loading: force || !api.isFresh('catalog.get'), errorMessage: '' })
 
-    this._ledgerLoad = Promise.all([api.bootstrap({ force: force }), api.callApi('accounts.list', {}, { force: force })])
-      .then(function (results) {
+    this._ledgerLoad = api.callApi('catalog.get', {}, { force: force })
+      .then(function (result) {
         if (!isCurrent()) return
-        const categories = Array.isArray(results[0].categories) ? results[0].categories : []
-        const accounts = Array.isArray(results[1].accounts) ? results[1].accounts : []
+        const categories = Array.isArray(result.categories) ? result.categories : []
+        const accounts = Array.isArray(result.accounts) ? result.accounts : []
         const activeAccounts = accounts.filter(function (account) { return !account.archived })
         const expenseCategoryCount = categories.filter(function (category) { return category.kind === 'expense' }).length
         const incomeCategoryCount = categories.filter(function (category) { return category.kind === 'income' }).length
-        app.globalData.categories = categories
         self.setData({
           hasLoaded: true,
           accountCount: activeAccounts.length,

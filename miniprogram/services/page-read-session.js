@@ -13,7 +13,17 @@ function begin(page, fields, pendingFields) {
     pendingFields.forEach(key => { page[key] = null })
     if (changed) page.setData(JSON.parse(JSON.stringify(page._readInitial)))
   }
-  return function isCurrent() { return page._readSession === session && cache.getSession() === session }
+  return capture(page)
 }
 
-module.exports = { begin, isCurrent: page => page._readSession === cache.getSession() }
+function isCurrent(page) { return !page._readClosed && page._readSession === cache.getSession() }
+function capture(page) {
+  const session = page._readSession
+  const lifetime = page._readLifetime || 0
+  return () => isCurrent(page) && page._readSession === session && (page._readLifetime || 0) === lifetime
+}
+function end(page) {
+  page._readClosed = true
+  page._readLifetime = (page._readLifetime || 0) + 1
+}
+module.exports = { begin, capture, end, isCurrent }

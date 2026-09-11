@@ -17,15 +17,16 @@ function runtime() {
   const summary = { incomeMinor: '0', expenseMinor: '100', netIncomeMinor: '-100' }
   const transaction = id => ({ transactionId: id, type: 'expense', amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', sourceAccount: accounts()[0] })
   const h = { app, calls, cache, now(value) { now = value }, intercept: null,
-    uid: '1234567890', clipboard: [], toasts: [], clipboardFails: false }
-  const wx = { nextTick: cb => cb(), showModal() {}, showToast(options) { h.toasts.push(options.title) },
-    setClipboardData(options) { h.clipboard.push(options.data); if (h.clipboardFails) options.fail(); else options.success() }, navigateBack() {}, redirectTo() {}, stopPullDownRefresh() {},
+    categories, accounts: null, navigation: [], modals: [], uid: '1234567890', clipboard: [], toasts: [], clipboardFails: false }
+  const wx = { nextTick: cb => cb(), showModal(options) { h.modals.push(options) }, showToast(options) { h.toasts.push(options.title) },
+    setClipboardData(options) { h.clipboard.push(options.data); if (h.clipboardFails) options.fail(); else options.success() }, navigateBack() { h.navigation.push('back') }, navigateTo(options) { h.navigation.push(options.url) }, redirectTo() {}, stopPullDownRefresh() {},
     cloud: { callFunction: async ({ name, data: envelope }) => {
       const { action, data } = envelope
       calls.push({ name, action, data })
-      if (h.intercept) await h.intercept(action)
+      if (h.intercept) await h.intercept(action, data)
       let result
-      if (action === 'bootstrap') result = { categories, uid: h.uid }
+      if (action === 'catalog.get') result = { categories: h.categories, accounts: h.accounts || accounts(), uid: h.uid }
+      else if (action === 'bootstrap') result = { categories, uid: h.uid }
       else if (action === 'categories.list') result = { categories }
       else if (action === 'accounts.list') result = { accounts: accounts() }
       else if (action === 'dashboard.get') result = { accounts: accounts(), summary, netWorthMinor: balance, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }], recentTransactions: [] }
@@ -38,12 +39,12 @@ function runtime() {
   }
   function load(filename) {
     if (filename.endsWith('/services/read-cache.js')) return cache
-    if (filename.includes('/theme/')) return { bindPage() {}, currentTokens: () => ({ accent: '#000' }) }
+    if (filename.includes('/theme/')) return { bindPage() {}, bindTabBar() {}, currentTokens: () => ({ accent: '#000' }) }
     if (modules.has(filename)) return modules.get(filename).exports
     const module = { exports: {} }; modules.set(filename, module)
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
       module, exports: module.exports, getApp: () => app, wx, console, setTimeout, clearTimeout,
-      Page: definition => { module.exports = definition },
+      Page: definition => { module.exports = definition }, Component: definition => { module.exports = definition },
       require: name => load(path.resolve(path.dirname(filename), name + (path.extname(name) ? '' : '.js')))
     }, { filename })
     return module.exports
@@ -59,6 +60,10 @@ function runtime() {
     pages.set(name, page)
     return page
   }
+  h.component = () => {
+    const definition = load(path.join(root, 'custom-tab-bar/index.js'))
+    return { ...definition.methods, data: JSON.parse(JSON.stringify(definition.data)), setData(patch) { Object.assign(this.data, patch) } }
+  }
   return h
 }
 
@@ -73,7 +78,7 @@ async function visit(h, name) {
 test('首页、明细、账本、我的首次一轮仅3次请求，后续切页0请求且无加载闪烁', async () => {
   const h = runtime()
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
-  assert.deepEqual(h.calls.map(call => call.action).sort(), ['bootstrap', 'dashboard.get', 'transactions.list'])
+  assert.deepEqual(h.calls.map(call => call.action).sort(), ['catalog.get', 'dashboard.get', 'transactions.list'])
   h.calls.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) h.page(name).loading.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
@@ -91,7 +96,7 @@ test('返回明细保留后续分页，显式刷新读取服务器并更新分�
   assert.equal(h.calls.length, 0)
   assert.equal(page.data.transactions.length, 2)
   await page.prepareAndLoad({ force: true })
-  assert.equal(h.calls.length, 3)
+  assert.equal(h.calls.length, 2)
   assert.equal(page.data.transactions.length, 1)
 })
 
@@ -140,7 +145,7 @@ test('普通记账不请求退款候选，切到退款才读取且反复切换�
 test('退出后旧个人页请求不能恢复已连接状态或数量', async () => {
   const h = runtime(), page = h.page('profile')
   let resolve
-  h.intercept = action => action === 'accounts.list' ? new Promise(done => { resolve = done }) : undefined
+  h.intercept = action => action === 'catalog.get' ? new Promise(done => { resolve = done }) : undefined
   const pending = page.loadProfile()
   await flush()
   h.cache.reset(); h.app.approved = false
@@ -154,7 +159,7 @@ test('退出后旧个人页请求不能恢复已连接状态或数量', async ()
 test('新登录会话在等待服务器期间清除旧页面数据，旧请求不会结束新请求加载态', async () => {
   const h = runtime(), page = await visit(h, 'profile')
   let completeOld, completeNew, order = 0
-  h.intercept = action => action === 'accounts.list' ? new Promise(resolve => { if (++order === 1) completeOld = resolve; else completeNew = resolve }) : undefined
+  h.intercept = action => action === 'catalog.get' ? new Promise(resolve => { if (++order === 1) completeOld = resolve; else completeNew = resolve }) : undefined
   const old = page.loadProfile({ force: true })
   await flush()
   h.cache.reset()
@@ -162,7 +167,7 @@ test('新登录会话在等待服务器期间清除旧页面数据，旧请求�
   const fresh = page.loadProfile()
   assert.equal(page.data.uid, '')
   await flush()
-  assert.equal(page.data.uid, h.uid)
+  assert.equal(page.data.uid, '')
   assert.equal(page.data.hasLoaded, false)
   assert.equal(page.data.accountCount, 0)
   assert.equal(page.data.loading, true)
@@ -284,10 +289,10 @@ test('个人页完整显示并复制同一10位 uid，复制失败可重试，�
   assert.equal(page.data.displayUid, '')
 })
 
-test('退出后未完成的 bootstrap 不得回填 ID；旧后端缺字段时隐藏 ID', async () => {
+test('退出后未完成的目录请求不得回填 ID；旧后端缺字段时隐藏 ID', async () => {
   const h = runtime(), page = h.page('profile')
   let resolve
-  h.intercept = action => action === 'bootstrap' ? new Promise(done => { resolve = done }) : undefined
+  h.intercept = action => action === 'catalog.get' ? new Promise(done => { resolve = done }) : undefined
   const pending = page.loadProfile()
   await flush()
   h.cache.reset(); h.app.approved = false; h.app.globalData.uid = ''
@@ -312,4 +317,184 @@ test('登录后直接复用已确认 uid，不多发 bootstrap', async () => {
   await page.loadProfile({ identityConfirmed: true })
   assert.equal(page.data.uid, h.uid)
   assert.equal(h.calls.some(call => call.action === 'bootstrap'), false)
+})
+
+test('慢目录和失败期间金额、备注、类型可编辑，重试不覆盖草稿', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  let fail
+  h.intercept = action => action === 'catalog.get' ? new Promise((resolve, reject) => { fail = reject }) : undefined
+  const pending = page.prepareForm()
+  assert.equal(page.data.formReady, true)
+  assert.equal(page.data.catalogReady, false)
+  page.bindAmount({ detail: { value: '23.45' } })
+  page.bindNote({ detail: { value: '合成草稿' } })
+  page.changeType({ currentTarget: { dataset: { index: 1 } } })
+  await page.save()
+  await flush()
+  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+  fail(new Error('合成目录失败'))
+  await pending
+  assert.equal(page.data.formReady, true)
+  assert.ok(page.data.catalogError)
+  h.intercept = null
+  h.categories.push({ id: 'income-a', kind: 'income', name: '合成收入' })
+  await page.prepareForm()
+  assert.equal(page.data.amountYuan, '23.45')
+  assert.equal(page.data.note, '合成草稿')
+  assert.equal(page.data.typeIndex, 1)
+  assert.equal(page.data.categories[page.data.categoryIndex].id, 'income-a')
+})
+
+test('新鲜目录同步回填；重排按ID保留，已选账户和分类消失后必须重新选择', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  h.accounts = [{ accountId: 'account-a' }, { accountId: 'account-b' }]
+  h.categories.push({ id: 'category-b', kind: 'expense', name: '合成分类B' })
+  await h.api.callApi('catalog.get')
+  const pending = page.prepareForm()
+  assert.equal(page.data.catalogReady, true)
+  await pending
+  page.bindAmount({ detail: { value: '1' } })
+  page.changeSource({ detail: { value: 1 } })
+  page.changeCategory({ detail: { value: 1 } })
+  h.accounts.reverse(); h.categories.reverse()
+  await page.prepareForm({ force: true })
+  assert.equal(page.data.sourceIndex, 0)
+  assert.equal(page.data.categoryIndex, 0)
+  h.accounts.shift(); h.categories.shift()
+  await page.prepareForm({ force: true })
+  assert.equal(page.data.sourceIndex, -1)
+  assert.equal(page.data.categoryIndex, -1)
+  await page.save()
+  assert.equal(h.calls.some(call => call.action === 'transactions.create'), false)
+  assert.match(page.data.errorMessage, /请选择/)
+})
+
+test('无账户时进入账户页，新增后返回刷新目录而保留金额备注', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  h.accounts = []
+  await page.prepareForm()
+  page.bindAmount({ detail: { value: '42' } }); page.bindNote({ detail: { value: '稍后继续' } })
+  page.openAccounts()
+  assert.deepEqual(h.navigation, ['/pages/accounts/index'])
+  h.accounts = [{ accountId: 'new-account', name: '合成账户' }]
+  await h.api.callApi('accounts.create', { requestId: 'synthetic' })
+  page.onShow()
+  await page.prepareForm()
+  assert.equal(page.data.accounts[0].accountId, 'new-account')
+  assert.equal(page.data.amountYuan, '42')
+  assert.equal(page.data.note, '稍后继续')
+})
+
+test('只读导入详情在分类目录晚到前显示，刷新保留尚未保存的分类ID', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  h.app.globalData.editingTransaction = { transactionId: 'synthetic-detail', version: 1, type: 'expense', amountMinor: '456', occurredLocalAt: '2026-09-01T12:00:00', note: '合成说明' }
+  page.setData({ mode: 'import', readonlyDetail: true })
+  let release
+  h.intercept = action => action === 'catalog.get' ? new Promise(resolve => { release = resolve }) : undefined
+  const pending = page.prepareForm()
+  assert.equal(page.data.formReady, true)
+  assert.equal(page.data.detail.amountText, '¥4.56')
+  assert.equal(page.data.catalogReady, false)
+  await flush(); release(); await pending
+  page.changeDetailCategory({ detail: { value: 1 } })
+  h.intercept = null
+  h.categories.unshift({ id: 'new-first', kind: 'expense', name: '合成新项' })
+  await page.prepareForm({ force: true })
+  assert.equal(page.data.categories[page.data.categoryIndex].id, 'category-a')
+  assert.equal(page.data.categoryDirty, true)
+})
+
+test('同一保存内容失败重试使用同一请求号，服务端成功后立即返回', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  await page.prepareForm(); page.bindAmount({ detail: { value: '1' } })
+  h.intercept = action => { if (action === 'transactions.create') throw new Error('合成失败') }
+  await page.save(); await page.save()
+  const writes = h.calls.filter(call => call.action === 'transactions.create')
+  assert.equal(writes.length, 2)
+  assert.equal(writes[0].data.requestId, writes[1].data.requestId)
+  page.bindNote({ detail: { value: '修改草稿' } })
+  await page.save()
+  assert.notEqual(h.calls.at(-1).data.requestId, writes[0].data.requestId)
+  h.intercept = null
+  await page.save()
+  assert.deepEqual(h.navigation, ['back'])
+})
+
+test('页面卸载或会话变更后，旧目录与保存响应不回填也不导航', async () => {
+  for (const boundary of ['unload', 'session']) {
+    for (const action of ['catalog.get', 'transactions.create', 'transactions.setCategory']) {
+      const h = runtime(), page = h.page('transaction-editor')
+      if (action === 'transactions.setCategory') {
+        h.app.globalData.editingTransaction = { transactionId: 'synthetic-detail', version: 1, type: 'expense', amountMinor: '100' }
+        page.setData({ mode: 'import', readonlyDetail: true })
+      }
+      if (action !== 'catalog.get') {
+        await page.prepareForm()
+        page.bindAmount({ detail: { value: '1' } })
+        if (action === 'transactions.setCategory') page.changeDetailCategory({ detail: { value: 1 } })
+      }
+      let release
+      h.intercept = candidate => candidate === action ? new Promise(resolve => { release = resolve }) : undefined
+      const pending = action === 'catalog.get' ? page.prepareForm() : action === 'transactions.create' ? page.save() : page.saveDetailCategory()
+      await flush()
+      if (boundary === 'unload') page.onUnload()
+      else { h.cache.reset(); h.app.approved = false }
+      const before = JSON.stringify(page.data)
+      release(); await pending
+      assert.equal(JSON.stringify(page.data), before, boundary + '/' + action)
+      assert.deepEqual(h.navigation, [])
+    }
+  }
+})
+
+test('删除确认和删除回包都遵守页面生命周期，成功删除直接返回', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  await page.prepareForm()
+  page.remove()
+  page.onUnload()
+  h.modals[0].success({ confirm: true })
+  assert.equal(h.calls.some(call => call.action === 'transactions.delete'), false)
+  for (const unload of [true, false]) {
+    const h = runtime(), page = h.page('transaction-editor')
+    await page.prepareForm()
+    let release
+    h.intercept = action => action === 'transactions.delete' ? new Promise(resolve => { release = resolve }) : undefined
+    page.remove(); h.modals[0].success({ confirm: true })
+    await flush()
+    if (unload) page.onUnload()
+    release(); await flush(); await flush()
+    assert.deepEqual(h.navigation, unload ? [] : ['back'])
+  }
+})
+
+test('目录失败时交易列表仍成功，个人页已确认的连接及数量不改成零', async () => {
+  const h = runtime(), profile = await visit(h, 'profile')
+  h.cache.invalidate(['accountDirectory'])
+  h.intercept = action => { if (action === 'catalog.get') throw new Error('合成离线') }
+  const page = await visit(h, 'transactions')
+  assert.equal(page.data.transactions.length, 1)
+  assert.equal(page.data.hasLoaded, true)
+  assert.ok(page.data.catalogError)
+  await profile.loadProfile()
+  assert.equal(profile.data.connected, true)
+  assert.equal(profile.data.accountCount, 1)
+  assert.ok(profile.data.errorMessage)
+})
+
+test('中央入口仅登录后低优先级预取目录，失败不阻断导航，退出后取消尚未开始的读取', async () => {
+  const h = runtime(), component = h.component()
+  h.app.approved = false
+  component.openEntry()
+  await new Promise(resolve => setTimeout(resolve, 5))
+  assert.equal(h.calls.length, 0)
+  h.app.approved = true
+  h.intercept = () => { throw new Error('合成离线') }
+  component.openEntry(); component.openEditor()
+  await new Promise(resolve => setTimeout(resolve, 5))
+  assert.deepEqual(h.navigation, ['/pages/transaction-editor/index'])
+  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+  h.calls.length = 0
+  component.openEntry(); h.cache.reset(); h.app.approved = false
+  await new Promise(resolve => setTimeout(resolve, 5))
+  assert.equal(h.calls.length, 0)
 })

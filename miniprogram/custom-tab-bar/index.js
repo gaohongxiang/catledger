@@ -1,4 +1,6 @@
 const app = getApp()
+const api = require('../services/catledger-api')
+const cache = require('../services/read-cache')
 const themeService = require('../theme/service')
 
 Component({
@@ -75,6 +77,11 @@ Component({
 
     openEntry: function () {
       this.setData({ entryOpen: true })
+      if (!this.isLoggedIn()) return
+      const session = cache.getSession()
+      setTimeout(() => {
+        if (this.isLoggedIn() && cache.getSession() === session) api.callApi('catalog.get').catch(() => {})
+      }, 0)
     },
 
     closeEntry: function () {

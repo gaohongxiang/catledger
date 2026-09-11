@@ -80,5 +80,6 @@
   <view wx:elif="{{loading && !hasLoaded}}" class="ui-state" aria-role="status">正在读取账目…</view>
   <view wx:if="{{loadingMore}}" class="ui-state-caption" aria-role="status">正在读取更多账目…</view>
   <text wx:elif="{{hasLoaded && transactions.length && !nextCursor}}" class="ui-state-caption">已显示当前筛选下的全部账目</text>
+  <view wx:if="{{catalogError}}" class="ui-state">{{catalogError}}</view>
   <view wx:if="{{errorMessage}}" class="detail-error content-inset" bindtap="prepareAndLoad">{{errorMessage}} · 点此重试</view>
 </view>
