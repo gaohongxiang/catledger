@@ -126,6 +126,7 @@ function createFinanceUpdateCore({ getPool }) {
     return executeUserRead({
       getPool,
       ...context,
+      consistentSnapshot: true,
       operation: (connection, uid) => getUpdateView(connection, uid, updateId, {
         includeEvents: context.data.includeEvents !== false,
         includeOptions: context.data.includeOptions !== false

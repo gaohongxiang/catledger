@@ -790,12 +790,12 @@ async function selectIssues(connection, uid, updateId, { status = null } = {}) {
 
 async function listOptions(connection, uid, updateId) {
   const [accounts] = await connection.execute(
-    `SELECT account_id AS accountId, name, type, nature, currency
+    `SELECT account_id AS accountId, name, type, nature, currency, version
        FROM catledger_accounts WHERE uid = ? AND archived_at IS NULL ORDER BY created_at, account_id`,
     [uid]
   )
   const [categories] = await connection.execute(
-    `SELECT category_id AS categoryId, kind, name, system_key AS systemKey
+    `SELECT category_id AS categoryId, kind, name, system_key AS systemKey, version, sort_order AS sortOrder
        FROM catledger_categories WHERE uid = ? AND archived_at IS NULL ORDER BY kind, sort_order, category_id`,
     [uid]
   )
@@ -870,6 +870,14 @@ async function getUpdateView(connection, uid, updateId, { includeEvents = true, 
     createdTransactionCount: Number(postings[0].createdTransactionCount),
     reusedTransactionCount: Number(postings[0].reusedTransactionCount)
   } : null
+  result.freshness = {
+    viewRevision: digestParts('finance-view-v1', uid, updateId, update.version, update.planVersion, PLAN_VERSION,
+      accountGroups.VERSION, includeEvents, includeOptions,
+      JSON.stringify([result.accounts || [], result.categories || [], result.accountDrafts || [], result.accountMappingDrafts || []])),
+    accountGroupsVersion: accountGroups.VERSION,
+    requiresAccountGroupRefresh: update.status !== 'review' ? false : includeEvents
+      ? accountGroups.needsExpansion(coverageEvents, coverageEvidence.rows, coverageEvidence.evidence) : null
+  }
   return result
 }
 

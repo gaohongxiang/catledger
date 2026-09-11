@@ -38,23 +38,23 @@
     "financeUpdates.organize": {
       "kind": "idempotent-versioned-mutation",
       "data": ["requestId", "updateId", "version"],
-      "returns": ["update", "sources", "events", "issues", "coverage", "accounts", "categories"]
+      "returns": ["update", "sources", "events", "issues", "coverage", "accounts", "categories", "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"]
     },
     "financeUpdates.prepare": {
       "kind": "idempotent-atomic-mutation",
       "data": ["requestId", "batchIds"],
-      "returns": ["update", "sources", "events", "issues", "coverage", "accounts", "categories"],
+      "returns": ["update", "sources", "events", "issues", "coverage", "accounts", "categories", "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"],
       "atomic": true
     },
     "financeUpdates.get": {
       "kind": "read",
       "data": ["updateId", "includeEvents?", "includeOptions?"],
-      "returns": ["update", "sources", "events", "issues", "coverage?", "posting?", "accounts?", "categories?"]
+      "returns": ["update", "sources", "events", "issues", "coverage?", "posting?", "accounts?", "categories?", "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"]
     },
     "reviewIssues.refreshAccountGroups": {
       "kind": "idempotent-versioned-mutation",
       "data": ["requestId", "updateId", "version"],
-      "returns": ["update", "sources", "events", "issues", "accounts", "categories"],
+      "returns": ["update", "sources", "events", "issues", "accounts", "categories", "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"],
       "atomic": true
     },
     "reviewIssues.list": {

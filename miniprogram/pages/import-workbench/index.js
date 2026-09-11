@@ -563,7 +563,7 @@ Page({
   },
 
   refreshAccountGroups: async function (view) {
-    if (view.update.status !== 'review') return view
+    if (view.update.status !== 'review' || view.freshness && view.freshness.requiresAccountGroupRefresh === false) return view
     return importApi.callImport('reviewIssues.refreshAccountGroups', { requestId: importApi.createRequestId(),
       updateId: view.update.updateId, version: view.update.version })
   },

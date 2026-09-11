@@ -114,7 +114,10 @@ async function executeUserRead({ getPool, provider, subjectHash, operation, cons
     let connection
     try {
       connection = await getPool().getConnection()
-      if (consistentSnapshot) await connection.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY')
+      if (consistentSnapshot) {
+        await connection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+        await connection.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY')
+      }
       const uid = await resolveUid(connection, provider, subjectHash)
       const result = await operation(connection, uid)
       if (consistentSnapshot) await connection.commit()

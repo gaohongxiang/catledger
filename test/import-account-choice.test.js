@@ -1058,3 +1058,14 @@ test('仅草稿同步状态变化不重算事件、分类、核对或资金摘�
     assert.equal(calls, 0)
   } finally { names.forEach(name => { model[name] = original[name] }) }
 })
+
+test('恢复只在服务端明确分组未就绪时补刷新，旧视图保持保守处理', async () => {
+  const calls = []
+  const page = pageFor(unknownIssue(), [], { createRequestId: () => 'request', callImport: async (action) => { calls.push(action); return {} } })
+  const view = { update: { updateId: 'batch', status: 'review', version: 1 }, freshness: { requiresAccountGroupRefresh: false } }
+  assert.equal(await page.refreshAccountGroups(view), view)
+  assert.equal(calls.length, 0)
+  await page.refreshAccountGroups({ ...view, freshness: { requiresAccountGroupRefresh: true } })
+  await page.refreshAccountGroups({ ...view, freshness: undefined })
+  assert.deepEqual(calls, ['reviewIssues.refreshAccountGroups', 'reviewIssues.refreshAccountGroups'])
+})

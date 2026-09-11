@@ -20,6 +20,19 @@ function referencesForRows(rows) {
   })
   return all.every((refs) => JSON.stringify(refs) === JSON.stringify(all[0])) ? all[0] : []
 }
+// 与刷新动作的候选条件一致，读取已有证据即可判断是否有分组待补，不写状态。
+function needsExpansion(events, rows, evidence) {
+  const byRow = new Map(rows.map(row => [row.rowId, row]))
+  const byEvent = new Map()
+  for (const item of evidence) {
+    if (item.evidenceRole === 'discarded' || !byRow.has(item.rowId)) continue
+    if (!byEvent.has(item.eventId)) byEvent.set(item.eventId, [])
+    byEvent.get(item.eventId).push(byRow.get(item.rowId))
+  }
+  return events.some(event => ['needs_action', 'ready'].includes(event.status) &&
+    !event.fieldSources?.paymentAccountGroupsVersion && !event.fieldSources?.paymentResolution &&
+    referencesForRows(byEvent.get(event.eventId) || []).length > 0)
+}
 function groupKey(reference) { return accountIdentityKeyForReference(reference) || paymentReferenceKey(reference) }
 function referenceForRole(event, role) {
   return (event.fieldSources && event.fieldSources.paymentAccountReferences || []).find((ref) => ref.memberRole === role) || null
@@ -28,4 +41,4 @@ function mappedAccount(event, reference) {
   if (reference.memberRole === 'payment_target') return event.counterpartyLedgerAccountId || null
   return (event.fieldSources.paymentAccounts || []).find((item) => item.componentIndex === reference.componentIndex)?.accountId || null
 }
-module.exports = { VERSION, referencesForRows, groupKey, referenceForRole, mappedAccount }
+module.exports = { VERSION, needsExpansion, referencesForRows, groupKey, referenceForRole, mappedAccount }

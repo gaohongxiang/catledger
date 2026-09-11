@@ -1758,6 +1758,7 @@ test('MySQL 账户归组允许同一组合事件属于多个账户，识别先�
     const file = prepared.files[0]; objects.set(file.cloudPath, content)
     const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId, fileID: `cloud://synthetic.bucket/${file.cloudPath}`, timezoneOffsetMinutes: -480 }))
     let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
+    assert.equal(view.freshness.requiresAccountGroupRefresh, true)
     const before = view.events.length
     const legacyIssue = view.issues.find(i => i.issueType === 'account_mapping' && (i.reasonCodes || []).includes('payment_components_ambiguous'))
     await service.reviewIssueResolve(context(user, { requestId: randomUUID(), updateId: view.update.updateId,
@@ -1781,6 +1782,17 @@ test('MySQL 账户归组允许同一组合事件属于多个账户，识别先�
     assert.equal(overlap.length, 1)
     const refreshed = await service.reviewIssueRefreshAccountGroups(context(user, { ...request, requestId: randomUUID(), version: view.update.version }))
     assert.equal(refreshed.update.version, view.update.version)
+    assert.equal(refreshed.freshness.requiresAccountGroupRefresh, false)
+    assert.equal(refreshed.freshness.viewRevision, view.freshness.viewRevision)
+    const restored = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+    assert.deepEqual(restored.freshness, refreshed.freshness)
+    await pool.execute('UPDATE catledger_accounts SET name = ?, version = version + 1 WHERE uid = ? AND account_id = ?', ['合成更名账户', user.uid, bankId])
+    const renamed = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
+    assert.notEqual(renamed.freshness.viewRevision, restored.freshness.viewRevision)
+    assert.equal(renamed.update.version, restored.update.version)
+    assert.equal(renamed.freshness.requiresAccountGroupRefresh, false)
+    const partial = await service.financeUpdateGet(context(user, { updateId: view.update.updateId, includeEvents: false }))
+    assert.equal(partial.freshness.requiresAccountGroupRefresh, null)
     view = await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId: view.update.updateId,
       decisions: groups.filter(i => i.status === 'open').map(i => ({ issueId: i.issueId, operation: 'resolve', decision: 'apply_fields', fields: { ledgerAccountId: i === debt ? debtId : i === bank ? bankId : user.accountId } })) }))
     view = await service.financeUpdateGet(context(user, { updateId: request.updateId }))
