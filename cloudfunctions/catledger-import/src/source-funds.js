@@ -1,3 +1,4 @@
+const { decisionFor: repaymentOwnershipFor } = require('./repayment-ownership')
 const { createMappingIndex } = require('./account-mapping-policy')
 const { ledgerAccountReference } = require('./account-reference')
 const {
@@ -93,6 +94,11 @@ function resolveSourceFunds(projection, mappingIndex) {
 function reconcileProjectedAccounts(event, mappingIndex, { preserveFrom = false, preserveTo = false } = {}) {
   const projection = event && event.fieldSources && event.fieldSources.fundsProjection
   if (!projection) return { event, changed: false }
+  const ownership = repaymentOwnershipFor(event)
+  // 他人还款保留原始银行线索作证据，不再把该目标映射进本人的账本。
+  if (ownership && ownership.owner === 'other') {
+    return { event: { ...event, counterpartyLedgerAccountId: null }, changed: Boolean(event.counterpartyLedgerAccountId) }
+  }
   const resolved = resolveSourceFunds(projection, mappingIndex)
   const next = {
     ...event,

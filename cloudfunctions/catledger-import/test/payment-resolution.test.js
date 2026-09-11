@@ -108,3 +108,66 @@ test('v2 零分项仍要求完整账户与索引，非法金额和总额继续�
     mutate(value); assert.equal(inspectPaymentResolution(fixture(), value).valid, false)
   }
 })
+
+function coverageFor(event, issues = []) {
+  return require('../src/coverage-report').buildCoverageReport({
+    sources: [{ summary: { total: 1 } }],
+    rows: [{ rowId: 'synthetic-row', parseState: 'valid', semantic: { resolutionStatus: 'unknown', moneyEffect: 'financial' } }],
+    events: [{ ...event, status: 'ready' }],
+    evidence: [{ rowId: 'synthetic-row', eventId: event.eventId, evidenceRole: 'primary' }], issues
+  })
+}
+
+test('已核对组合付款通过整批覆盖门禁，未分类与原始识别完整度不阻断入账', () => {
+  for (const version of ['payment-resolution-v1', 'payment-resolution-v2']) {
+    const value = { ...resolution(), version }
+    if (version === 'payment-resolution-v2') {
+      value.allocations[0].amountMinor = '1000'; value.allocations[1].amountMinor = '0'
+    }
+    const event = applyFields({ ...fixture(), categoryId: null }, { paymentResolution: value })
+    const report = coverageFor(event, [{ status: 'open', blocking: false, issueType: 'category_assignment' }])
+    assert.equal(report.selectedEventsReadyToPost, true)
+    assert.equal(report.readySelectedEvents, 1)
+    assert.equal(report.pendingSelectedEvents, 0)
+    assert.equal(report.statementFullyRecognized, false)
+    assert.ok(event.fieldSources.semanticBlockers.includes('payment_components_ambiguous'))
+  }
+})
+
+test('覆盖门禁仍拒绝失效的组合核对、其他语义阻断及开放必核对项', () => {
+  const event = applyFields(fixture(), { paymentResolution: resolution() })
+  for (const next of [fixture(), { ...event, amountMinor: '1001' }, { ...event, ledgerAccountId: c },
+    { ...event, fieldSources: { ...event.fieldSources, semanticBlockers: [...event.fieldSources.semanticBlockers, 'row_status_unknown'] } }]) {
+    assert.equal(coverageFor(next).selectedEventsReadyToPost, false)
+  }
+  assert.equal(coverageFor(event, [{ status: 'open', blocking: true }]).selectedEventsReadyToPost, false)
+})
+
+
+test('完整整理读取保留服务端覆盖计算依据，公开事件不泄露内部字段', async () => {
+  const { getUpdateView } = require('../src/finance-update-repository')
+  const { PLAN_VERSION } = require('../src/domain-versions')
+  const event = applyFields(fixture(), { paymentResolution: resolution() })
+  const replies = [
+    [{ updateId: 'synthetic-update', status: 'review', version: 1, planVersion: PLAN_VERSION }],
+    [{ totalRowCount: 1, validRowCount: 1, invalidRowCount: 0 }],
+    [{ issueId: 'category', issueType: 'category_assignment', status: 'open', blocking: 0 }],
+    [{ ...event, status: 'ready', reasonCodes: JSON.stringify(event.reasonCodes), fieldSources: JSON.stringify(event.fieldSources) }],
+    [{ rowId: 'synthetic-row', parseState: 'valid', issues: '[]' }],
+    [{ rowId: 'synthetic-row', eventId: event.eventId, evidenceRole: 'primary' }], []
+  ]
+  const connection = { async execute(sql, values) {
+    if (sql.includes('FROM catledger_categories') || sql.includes('FROM catledger_import_category_mappings')) {
+      assert.deepEqual(values, ['synthetic-user']); return [[]]
+    }
+    assert.deepEqual(values, ['synthetic-user', 'synthetic-update'])
+    assert.ok(replies.length, '不应新增额外查询')
+    return [replies.shift()]
+  } }
+  const view = await getUpdateView(connection, 'synthetic-user', 'synthetic-update', { includeOptions: false })
+  assert.equal(view.coverage.selectedEventsReadyToPost, true)
+  assert.equal(view.coverage.readySelectedEvents, 1)
+  assert.equal(Object.hasOwn(view.events[0], 'fieldSources'), false)
+  assert.ok(view.events[0].reasonCodes.includes('payment_components_ambiguous'))
+  assert.equal(replies.length, 0)
+})

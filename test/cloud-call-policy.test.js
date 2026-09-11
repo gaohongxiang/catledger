@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const policy = require('../miniprogram/services/cloud-call-policy')
 
 function loadApi(callFunction) {
+  require('../miniprogram/services/read-cache').reset()
   global.wx = { cloud: { callFunction: callFunction } }
   global.getApp = function () {
     return { hasLoginApproval: function () { return true } }

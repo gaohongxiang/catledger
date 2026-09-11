@@ -172,3 +172,9 @@ input, textarea { font-family: inherit; font-weight: 400; }
 input:focus, textarea:focus { border-color: var(--theme-accent); }
 button[disabled] { opacity: .65; }
 button[disabled].danger-button { color: var(--theme-text-muted); background: var(--theme-surface-muted); }
+
+/* 次级页登录空状态，与首页共享浅色胶囊的视觉比例。 */
+.page-canvas .guest-login-state { text-align: center; }
+.page-canvas .guest-login-state .guest-login-button { display: flex; align-items: center; justify-content: center; width: 112rpx; min-height: 88rpx; box-sizing: border-box; margin: 16rpx auto 0; padding: 0; background: transparent; border: 0; }
+.guest-login-label { display: flex; align-items: center; justify-content: center; width: 112rpx; height: 56rpx; border-radius: 999rpx; color: var(--theme-on-accent, #fffaf1); background: var(--theme-accent, #d97732); font-size: 28rpx; font-weight: 500; line-height: 1; }
+.guest-login-button:active { opacity: .78; }

@@ -11,7 +11,8 @@
 .month-switcher {
   min-height: 88rpx;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 8rpx;
   margin-bottom: 16rpx;
 }
 .month-arrow {
@@ -26,12 +27,12 @@
 .arrow-right {
   width: 15rpx;
   height: 15rpx;
-  border-top: 3rpx solid var(--theme-secondary, #64705d);
-  border-left: 3rpx solid var(--theme-secondary, #64705d);
+  border-top: 3rpx solid var(--theme-text-muted);
+  border-right: 3rpx solid var(--theme-text-muted);
 }
-.arrow-left { transform: rotate(-45deg); }
-.arrow-right { transform: rotate(135deg); }
-.date-picker { min-width: 0; flex: 1; }
+.arrow-left { transform: rotate(-135deg); }
+.arrow-right { transform: rotate(45deg); }
+.date-picker { min-width: 0; flex: 0 1 auto; }
 .date-picker-content { min-height: 72rpx; align-items: center; justify-content: center; }
 .month-current {
   color: var(--theme-ink, #29231e);
@@ -40,14 +41,6 @@
   text-align: center;
   min-width: 0;
   line-height: 1.4;
-}
-.date-picker-chevron {
-  width: 10rpx;
-  height: 10rpx;
-  margin-left: 12rpx;
-  border-right: 3rpx solid var(--theme-text-muted, #746a60);
-  border-bottom: 3rpx solid var(--theme-text-muted, #746a60);
-  transform: rotate(45deg) translateY(-3rpx);
 }
 .date-filter-note {
   align-items: center;

@@ -6,9 +6,10 @@ const {
   missingRuntimePermissions
 } = require('../src/runtime-permission-contract')
 
+const { DRAFT_TABLES } = require('../src/discarded-update')
 const BASE_GRANTS = [
+  ...DRAFT_TABLES.map(table => 'GRANT DELETE ON `catledger`.`'+table+'` TO `catledger_app`@`%`'),
   'GRANT SELECT, INSERT, UPDATE ON `catledger`.`catledger_finance_update_sources` TO `catledger_app`@`%`',
-  'GRANT SELECT, INSERT, UPDATE ON `catledger`.`catledger_import_transaction_links` TO `catledger_app`@`%`',
   'GRANT SELECT, INSERT, DELETE ON `catledger`.`catledger_review_issue_members` TO `catledger_app`@`%`'
 ]
 
@@ -37,7 +38,13 @@ test('补充最小列权限后同一权限检查通过', () => {
 
 test('已有整表 UPDATE 权限同样满足契约', () => {
   assert.doesNotThrow(() => assertRuntimePermissions([
-    ...BASE_GRANTS.slice(0, 2),
+    ...BASE_GRANTS,
     'GRANT SELECT, INSERT, UPDATE, DELETE ON `catledger`.`catledger_review_issue_members` TO `catledger_app`@`%`'
   ]))
+})
+
+test('废弃回收需要两张账户草稿表的DELETE权限', () => {
+  const grants = BASE_GRANTS.filter(line => !line.includes('account_drafts') && !line.includes('account_mapping_drafts'))
+  const missing = missingRuntimePermissions(grants).filter(item => item.privilege === 'DELETE')
+  assert.deepEqual(missing.map(item => item.table).sort(), ['catledger_finance_update_account_drafts', 'catledger_finance_update_account_mapping_drafts'].sort())
 })

@@ -6,7 +6,6 @@
     "pages/profile/index",
     "pages/transaction-editor/index",
     "pages/import-workbench/index",
-    "pages/import-maintenance/index",
     "pages/accounts/index",
     "pages/categories/index",
     "pages/statistics/index",
@@ -30,7 +29,7 @@
     "list": [
       { "pagePath": "pages/index/index", "text": "首页" },
       { "pagePath": "pages/transactions/index", "text": "明细" },
-      { "pagePath": "pages/ledger/index", "text": "账本" },
+      { "pagePath": "pages/statistics/index", "text": "统计" },
       { "pagePath": "pages/profile/index", "text": "我的" }
     ]
   }

@@ -21,6 +21,7 @@ const PUBLIC_ACTIONS = Object.freeze([
   'transactions.list',
   'transactions.linkRefund',
   'transactions.refundable',
+  'transactions.setCategory',
   'transactions.update'
 ])
 
@@ -47,6 +48,7 @@ function createActionHandlers({ accountService, categoryService, transactionServ
     'transactions.list': transactionService.list,
     'transactions.linkRefund': transactionService.linkRefund,
     'transactions.refundable': transactionService.refundable,
+    'transactions.setCategory': transactionService.setCategory,
     'transactions.update': transactionService.update
   }
 }

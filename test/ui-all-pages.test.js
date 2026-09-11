@@ -14,7 +14,7 @@ function runtime(route, callApi) {
   let definition
   const calls = []
   const app = { hasLoginApproval: () => true, globalData: { categories: [], profile: {}, ledgerRevision: 0 } }
-  const api = { createRequestId: () => 'synthetic-request', bootstrap: () => Promise.resolve({ categories: [] }), callApi: (name, data) => {
+  const api = { isFresh: () => false, cacheToken: () => null, createRequestId: () => 'synthetic-request', bootstrap: () => Promise.resolve({ categories: [] }), callApi: (name, data) => {
     calls.push({ name, data }); return callApi ? callApi(name, data) : Promise.resolve({ accounts: [], categories: [] })
   }, callImport: () => { throw new Error('预览测试禁止真实导入写入') } }
   const chrome = { getWindowInfo: () => ({ windowWidth: 375 }), showModal() {}, showToast() {}, navigateTo() {}, redirectTo() {}, navigateBack() {}, nextTick: cb => cb(), stopPullDownRefresh() {} }
@@ -34,7 +34,7 @@ function runtime(route, callApi) {
       for (const k of keys.slice(0, -1)) target = target[k] || (target[k] = {})
       target[keys.at(-1)] = value
     } } }
-  return { page, app, calls }
+  return { page, app, calls, api, chrome }
 }
 
 for (const route of routes) {
@@ -60,8 +60,8 @@ for (const route of routes) {
   })
 }
 
-test('全部11个现有路由都有交付记录，不改路由、不创建虚构功能页', () => {
-  assert.equal(routes.length, 11)
+test('现有路由有交付记录，单笔编辑不再注册整批维护页', () => {
+  assert.equal(routes.includes('pages/import-maintenance/index'), false)
   const inventory = read('specs/mini-1906ui-all-pages/README.md')
   for (const route of routes) assert.ok(inventory.includes(route.split('/')[1]), route)
 })
@@ -82,7 +82,10 @@ test('账本与个人页：初次读取失败不冒充成功零值，成功后�
     assert.equal(page.data.accountCount, 1)
     assert.equal(page.data.hasLoaded, true)
     assert.ok(page.data.errorMessage)
-    assert.match(read('miniprogram/pages/' + name + '/index.wxml'), /loggedIn && hasLoaded \? accountCount : '—'/)
+    const countPresentation = name === 'ledger'
+      ? /loggedIn && hasLoaded \? accountCount : '—'/
+      : /loggedIn && hasLoaded \? accountCount \+ ' 个活动账户' : '管理资产与负债账户'/
+    assert.match(read('miniprogram/pages/' + name + '/index.wxml'), countPresentation)
   }
 })
 
@@ -96,21 +99,30 @@ test('统计展示保留金额、比例与零值，点击仅选择已有读模�
   const { page, calls } = runtime('pages/statistics/index', () => Promise.resolve(statisticsResult()))
   await page.loadStatistics()
   assert.equal(page.data.hasLoaded, true)
-  assert.equal(page.data.cashFlowTrend[0].incomeBarHeight, 0)
-  assert.equal(page.data.cashFlowTrend[0].expenseBarHeight, 120)
+  const monthlySvg = decodeURIComponent(page.data.charts.monthlyChart.src.split(',').slice(1).join(','))
+  assert.equal((monthlySvg.match(/<rect /g) || []).length, 1)
+  assert.equal(page.data.charts.monthlyChart.maxText, '¥200.00')
+  assert.equal(page.data.charts.monthlyChart.minText, '¥0.00')
   assert.equal(page.data.expenseCategories[0].barWidth, '0%')
   page.selectTrend({ currentTarget: { dataset: { index: 0 } } })
   page.selectDay({ currentTarget: { dataset: { index: 0 } } })
   assert.equal(page.data.selectedTrend.expenseText, '¥200.00')
   assert.equal(page.data.selectedDay.incomeText, '¥0.00')
+  assert.equal(page.data.categoryKind, '')
+  page.selectCategoryKind({ currentTarget: { dataset: { kind: 'income' } } })
+  assert.equal(page.data.categoryKind, 'income')
+  page.selectCategoryKind({ currentTarget: { dataset: { kind: 'invalid' } } })
+  assert.equal(page.data.categoryKind, 'income')
+  page.selectCategoryKind({ currentTarget: { dataset: { kind: 'income' } } })
+  assert.equal(page.data.categoryKind, '')
   assert.equal(calls.length, 1)
 })
 test('统计读取中不能改月份，下一月读取失败不在新标题下显示上月图表', async () => {
   const { page } = runtime('pages/statistics/index', () => Promise.reject(new Error('合成错误')))
   page.data.month = '2026-08'; page.data.loading = true
-  page.nextMonth(); assert.equal(page.data.month, '2026-08')
+  page.chooseMonth({ detail: { value: '2026-09' } }); assert.equal(page.data.month, '2026-08')
   page.data.loading = false; page.data.hasLoaded = true
-  page.nextMonth(); assert.equal(page.data.hasLoaded, false)
+  page.chooseMonth({ detail: { value: '2026-09' } }); assert.equal(page.data.hasLoaded, false)
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(page.data.month, '2026-09'); assert.equal(page.data.hasLoaded, false)
 })
@@ -136,11 +148,11 @@ test('整合PR7：付款账户提示和来源展开不改变模型校验或保�
   assert.equal(calls.length, 0)
 })
 
-test('整合PR8：只保留record-summary展开权威及最新账户同行选择，不回退纵向表单', () => {
+test('整理数量公式常驻，保留最新账户同行选择', () => {
   const code = read('miniprogram/pages/import-workbench/index.js')
   const markup = read('miniprogram/pages/import-workbench/index.wxml')
   assert.doesNotMatch(code, /toggleRecordSummary:|recordSummaryExpanded:/)
-  assert.match(markup, /<record-summary/)
+  assert.match(markup, /final-count-formulas/)
   assert.match(markup, /account-decision-create/)
   assert.doesNotMatch(markup, /account-create-fields/)
   assert.match(markup, /issueFieldsReason/)
@@ -188,4 +200,67 @@ test('编辑已停用账户的账目，不把被拒绝的表单标为准备完�
   assert.equal(page.data.preparing, false)
   assert.equal(page.data.formReady, false)
   assert.match(page.data.errorMessage, /停用/)
+})
+
+ test('统计补全弹层覆盖底栏，关闭及离开恢复导航', () => {
+  const { page } = runtime('pages/statistics/index')
+  let hidden = false
+  page.getTabBar = () => ({ setData: patch => { hidden = patch.hidden } })
+  page.openCategoryCompletion()
+  assert.equal(hidden, true)
+  page.closeCategoryCompletion()
+  assert.equal(hidden, false)
+  page.setTabHidden(true)
+  page.onHide()
+  assert.equal(hidden, false)
+  assert.equal(page.data.categorySheetOpen, false)
+})
+
+ test('明细精确打开被点击账目，导入进入分类编辑，手动进入完整编辑', () => {
+  const { page, app, chrome } = runtime('pages/transactions/index')
+  const paths = []
+  chrome.navigateTo = options => paths.push(options.url)
+  page.data.transactions = [
+    { transactionId: 'manual-a', origin: 'manual', editable: true },
+    { transactionId: 'import-b', origin: 'import', editable: false, importContext: { updateId: 'batch-b', eventId: 'event-b' } }
+  ]
+  page.editTransaction({ currentTarget: { dataset: { index: 1 } } })
+  assert.equal(app.globalData.editingTransaction.transactionId, 'import-b')
+  assert.equal(paths[0], '/pages/transaction-editor/index?mode=import')
+  page.editTransaction({ currentTarget: { dataset: { index: 0 } } })
+  assert.equal(app.globalData.editingTransaction.transactionId, 'manual-a')
+  assert.equal(paths[1], '/pages/transaction-editor/index?mode=edit')
+})
+
+ test('导入账目不依赖可用账户读取，只提交所选交易的分类并保持失败重试请求号', async () => {
+  let fail = true
+  const { page, app, api, calls } = runtime('pages/transaction-editor/index', () => fail ? Promise.reject(new Error('合成网络错误')) : Promise.resolve({ version: 3 }))
+  api.bootstrap = () => Promise.resolve({ categories: [{ id: 'new-category', name: '餐饮', kind: 'expense' }] })
+  app.globalData.editingTransaction = { transactionId: 'clicked-entry', version: 2, origin: 'import', type: 'expense', amountMinor: '1596', occurredLocalAt: '2026-07-18T12:00:00', sourceAccount: { accountId: 'archived-a', name: '原账户' }, category: null, note: '合成说明' }
+  page.setData({ mode: 'import', readonlyDetail: true })
+  await page.prepareForm()
+  assert.equal(page.data.formReady, true)
+  assert.equal(page.data.transactionId, 'clicked-entry')
+  assert.equal(page.data.detail.amountText, '¥15.96')
+  assert.equal(calls.length, 0)
+  page.changeDetailCategory({ detail: { value: 1 } })
+  await page.saveDetailCategory()
+  assert.ok(page.data.errorMessage)
+  const first = calls[0]
+  assert.equal(first.name, 'transactions.setCategory')
+  assert.deepEqual(Object.keys(first.data).sort(), ['categoryId', 'requestId', 'transactionId', 'version'])
+  assert.equal(first.data.transactionId, 'clicked-entry')
+  fail = false
+  await page.saveDetailCategory()
+  assert.equal(calls[1].data.requestId, first.data.requestId)
+})
+
+ test('未分类紧跟全部分类，服务器筛选请求不会伪装成分类ID', async () => {
+  const { page } = runtime('pages/transactions/index')
+  assert.equal(page.data.categoryFilters[0].name, '全部分类')
+  assert.equal(page.data.categoryFilters[1].name, '未分类')
+  page.setData({ categoryFilterIndex: 1 })
+  const request = page.requestData(null)
+  assert.equal(request.uncategorized, true)
+  assert.equal(request.categoryId, undefined)
 })

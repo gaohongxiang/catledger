@@ -1,8 +1,11 @@
+const { setChangedData } = require('../../services/view-patch')
 const importApi = require('../../services/catledger-import')
 const cloudUpload = require('../../services/cloud-upload-policy')
 const loginGuard = require('../../services/login-guard')
 const themeService = require('../../theme/service')
 const model = require('./model')
+const { buildFinalDetail } = require('./final-detail')
+const draftSessions = require('../../services/import-draft-session')
 
 function additionalRepaymentOptions(catalog, rows) {
   const selected = new Set(rows.map(function (row) { return row.accountId }))
@@ -86,6 +89,8 @@ function allocationStatus(options, totalAmountMinor) {
 
 Page({
   data: {
+    restoreUpdateId: '',
+    abandoningRestore: false,
     phase: 'idle',
     maxFiles: MAX_FILES,
     currentStep: 1,
@@ -105,7 +110,8 @@ Page({
     issues: [],
     accountIssues: [],
     accountMappings: [],
-    accountStepSummary: { total: 0, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0 },
+    draftSync: { pending: 0, syncing: false, error: '', conflicts: 0 },
+    accountStepSummary: { total: 0, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0 },
     accountStepBusy: false,
     accountStepError: '',
     accountStepProgressText: '',
@@ -166,7 +172,11 @@ Page({
     categories: [],
     issueCategories: [],
     posting: null,
+    fundsFlowGroups: [],
+    finalDetailSheet: null,
+    finalDetailParent: null,
     finalSummary: {
+      expenseCount: 0, incomeCount: 0, refundCount: 0,
       expenseText: '¥0.00', incomeText: '¥0.00', refundText: '¥0.00', transferCount: 0,
       categoryCoverageText: '无需分类', categoryComplete: true, newAccountCount: 0, affectedAccountCount: 0
     },
@@ -212,13 +222,14 @@ Page({
   },
 
   onLoad: function (options) {
+    this._draftEnabled = true
     themeService.bindPage(this)
     this._requestIds = {}
     this._sourceFiles = new Map()
     this._accountUiDrafts = new Map()
-    const updateId = options && options.updateId
+    const updateId = options && options.updateId || draftSessions.lastUpdateId()
     loginGuard.run(this, updateId ? async () => {
-      await this.loadUpdate(updateId)
+      await this.loadUpdate(updateId, true)
       const eventId = options && options.evidenceEventId
       if (eventId && this.data.events.some(function (event) { return event.eventId === eventId })) {
         await this.openEvidence({ currentTarget: { dataset: { id: eventId } } })
@@ -226,7 +237,17 @@ Page({
     } : function () {})
   },
 
+  onHide: function () {
+    this.finishInputEditing()
+    this._returnToFirstStep = Boolean(this.data.update && ['draft', 'failed', 'review'].includes(this.data.update.status))
+  },
+
   onUnload: function () {
+    this._editingInput = ''
+    this._pendingBackgroundView = null
+    if (this._updateLoad) this._updateLoad.cancelled = true
+    if (this._unsubscribeDraft) this._unsubscribeDraft()
+    this._unsubscribeDraft = null
     this._duplicateLoadToken = null
     this._issueEvidenceToken = null
     this._issueEvidenceRecords = []
@@ -236,15 +257,18 @@ Page({
 
   onShow: function () {
     themeService.bindPage(this)
-    const revision = getApp().globalData.ledgerRevision || 0
-    if (this._ledgerRevision != null && this._ledgerRevision !== revision && this.data.update) this.loadUpdate(this.data.update.updateId)
-    this._ledgerRevision = revision
-  },
-
-  openMaintenance: function () {
-    if (!this.data.busy && this.data.update && this.data.update.status === 'posted') {
-      wx.navigateTo({ url: '/pages/import-maintenance/index?updateId=' + this.data.update.updateId })
+    if (this._returnToFirstStep) {
+      this._returnToFirstStep = false
+      if (this.data.update && ['draft', 'failed', 'review'].includes(this.data.update.status)) {
+        this.setData({ currentStep: 1, currentIssue: null, accountChoiceSheet: null, evidenceSheet: null, accountRecordsSheet: null })
+      }
     }
+    const revision = getApp().globalData.ledgerRevision || 0
+    if (this._ledgerRevision != null && this._ledgerRevision !== revision && this.data.update) {
+      if (this._draftSession) this._draftSession.flush().catch(function () {})
+      else this.loadUpdate(this.data.update.updateId)
+    }
+    this._ledgerRevision = revision
   },
 
   chooseFiles: function () {
@@ -543,23 +567,85 @@ Page({
       updateId: view.update.updateId, version: view.update.version })
   },
 
-  loadUpdate: async function (updateId) {
-    this.setData({ phase: 'loading', busy: true, errorMessage: '' })
+  loadUpdate: async function (updateId, restoreToFirstStep) {
+    const load = { updateId: updateId, cancelled: false, pending: null }
+    this._updateLoad = load
+    const active = () => this._updateLoad === load && !load.cancelled
+    this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false })
     try {
-      let view = await importApi.callImport('financeUpdates.get', { updateId: updateId })
+      load.pending = importApi.callImport('financeUpdates.get', { updateId: updateId })
+      let view = await load.pending
+      if (!active()) return
       if (view.update.status === 'review' && view.update.requiresReorganization) {
-        view = await importApi.callImport('financeUpdates.organize', {
+        load.pending = importApi.callImport('financeUpdates.organize', {
           requestId: importApi.createRequestId(), updateId: updateId, version: view.update.version
         })
+        view = await load.pending
+        if (!active()) return
       }
-      view = await this.refreshAccountGroups(view)
-      this.applyUpdateView(view)
+      load.pending = this.refreshAccountGroups(view)
+      view = await load.pending
+      if (!active()) return
+      this.setData({ restoreUpdateId: '' })
+      this.applyUpdateView(view, false, restoreToFirstStep)
     } catch (error) {
+      if (!active()) return
       this.setData({ phase: 'error', busy: false, errorMessage: publicError(error, '整理结果加载失败') })
     }
   },
 
-  applyUpdateView: function (view) {
+  abandonRestoringUpdate: async function () {
+    const updateId = this.data.restoreUpdateId
+    if (!updateId || this.data.abandoningRestore) return
+    const load = this._updateLoad
+    if (load) load.cancelled = true
+    this.setData({ abandoningRestore: true, busy: true, errorMessage: '' })
+    try {
+      await draftSessions.pauseUpdate(updateId)
+      // 已发送的整理事务必须落定；取消后不再发起下一段恢复。
+      if (load && load.pending) await load.pending.catch(function () {})
+      const view = await importApi.callImport('financeUpdates.get', { updateId: updateId })
+      if (view.update.status === 'posted') {
+        this.setData({ restoreUpdateId: '', abandoningRestore: false })
+        this.applyUpdateView(view)
+        return
+      }
+      if (view.update.status !== 'abandoned') {
+        if (!this._restoreAbandonRequest || this._restoreAbandonRequest.updateId !== updateId || this._restoreAbandonRequest.version !== view.update.version) {
+          this._restoreAbandonRequest = { requestId: importApi.createRequestId(), updateId: updateId, version: view.update.version }
+        }
+        await importApi.callImport('financeUpdates.abandon', this._restoreAbandonRequest)
+      }
+      draftSessions.clearUpdate(updateId)
+      this.startAnother()
+    } catch (error) {
+      this.setData({ busy: false, abandoningRestore: false, errorMessage: publicError(error, '放弃失败，上次导入已保留，请重试') })
+    }
+  },
+
+  applyUpdateView: function (view, background, restoreToFirstStep) {
+    if (background && this._editingInput && view.update.status === 'review') {
+      this._pendingBackgroundView = view
+      return
+    }
+    const keep = {}
+    if (background) Object.keys(this.data).forEach(key => {
+      if ((key !== 'issues' && /^(currentIssue|currentMembers|issue|payment|repayment|bank|evidenceSheet|accountChoice)/.test(key)) ||
+          ['busy', 'currentStep', 'accountStepBusy', 'accountStepProgressText', 'errorMessage'].includes(key)) keep[key] = this.data[key]
+    })
+    if (this._draftEnabled && view.update.status === 'review') {
+      if (!this._draftSession || this._draftSession.view.update.updateId !== view.update.updateId) {
+        if (this._unsubscribeDraft) this._unsubscribeDraft()
+        this._draftSession = draftSessions.open(view)
+        const session = this._draftSession
+        this._unsubscribeDraft = session.subscribe(() => {
+          if (this._draftSession !== session) return
+          this.applyUpdateView(session.view, true)
+        })
+      } else this._draftSession.accept(view)
+      this._accountUiDrafts = new Map(Object.entries(JSON.parse(JSON.stringify(this._draftSession.state.drafts))))
+      view = draftSessions.project(this._draftSession.view, this._draftSession.state.entries)
+    }
     const issues = (view.issues || []).map(model.issueView)
     const openIssues = issues.filter(function (issue) {
       return issue.status === 'open' && (issue.blocking || issue.issueType === 'category_assignment')
@@ -583,6 +669,8 @@ Page({
     const categoryCards = model.categoryIssueCards(recordState.categoryDecisionIssues, this.data.categoryQuery)
     const activeCategoryStatus = ['pending', 'completed', 'none'].includes(this.data.activeCategoryStatus)
       ? this.data.activeCategoryStatus : 'pending'
+    const stayInAccounts = view.update.status === 'review' && this.data.update &&
+      this.data.update.updateId === view.update.updateId && this.data.currentStep === 2
     const stayInReview = view.update.status === 'review' && workflow.currentStep === 4 &&
       this.data.update && this.data.update.updateId === view.update.updateId &&
       this.data.currentStep === 3
@@ -604,12 +692,19 @@ Page({
     const activeReviewStatus = ['pending', 'completed', 'excluded', 'duplicate'].includes(this.data.activeReviewStatus)
       ? this.data.activeReviewStatus
       : 'pending'
-    this.setData({
+    const sameDetailBatch = this.data.update && this.data.update.updateId === view.update.updateId
+    const detailSheet = sameDetailBatch && this.data.finalDetailSheet
+    const patch = {
+      finalDetailSheet: detailSheet ? buildFinalDetail(detailSheet.kind, { events, issues, categories,
+        accounts: view.accounts || this.data.accounts, accountDrafts: view.accountDrafts || this.data.accountDrafts }, detailSheet.accountId) : null,
+      finalDetailParent: sameDetailBatch ? this.data.finalDetailParent : null,
       phase: view.update.status === 'posted'
         ? 'done'
         : view.update.status === 'undone' ? 'undone' : view.update.status === 'abandoned' ? 'abandoned' : 'review',
-      currentStep: stayInReview ? 3 : workflow.currentStep,
-      unlockedStep: workflow.unlockedStep,
+      currentStep: restoreToFirstStep && ['draft', 'failed', 'review'].includes(view.update.status) ? 1
+        : stayInAccounts ? 2 : stayInReview ? 3 : workflow.currentStep,
+      unlockedStep: view.update.status === 'review' && accountState.summary.pending === 0
+        ? Math.max(workflow.unlockedStep, 3) : workflow.unlockedStep,
       busy: false,
       update: view.update,
       sources: view.sources || [],
@@ -661,6 +756,7 @@ Page({
       accountMappingDrafts: view.accountMappingDrafts || [],
       categories: view.categories || this.data.categories,
       finalSummary: model.finalSummary(events, view.accountDrafts || this.data.accountDrafts),
+      fundsFlowGroups: model.fundsFlowSummary(events, (view.accounts || this.data.accounts || []).concat(view.accountDrafts || this.data.accountDrafts || [])),
       posting: view.posting || null,
       errorMessage: '',
       accountChoiceSheet: null,
@@ -669,8 +765,13 @@ Page({
       currentIssue: null,
       currentMembers: [],
       evidenceSheet: null
-    })
-    if (activeReviewTab === 'review' && activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
+    }
+    // 保留编辑字段意味着不下发它们，而不是把整个表单再发送一次。
+    if (background && view.update.status === 'review') Object.keys(keep).forEach(key => { delete patch[key] })
+    if (this._draftSession) patch.draftSync = this._draftSession.status
+    setChangedData(this, patch)
+    if (this._draftSession) this._draftSession.schedule()
+    if (!background && activeReviewTab === 'review' && activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
   },
 
   // 只展开来源，不保存或改变任何账单决定。
@@ -734,11 +835,12 @@ Page({
   },
 
   viewStatistics: function () {
-    wx.navigateTo({ url: '/pages/statistics/index' })
+    wx.switchTab({ url: '/pages/statistics/index' })
   },
 
   completeCategories: function () {
-    wx.navigateTo({ url: '/pages/statistics/index?completeCategories=1' })
+    getApp().globalData.openStatisticsCompletion = true
+    wx.switchTab({ url: '/pages/statistics/index', fail: function () { getApp().globalData.openStatisticsCompletion = false } })
   },
 
   correctBalances: function () {
@@ -764,7 +866,7 @@ Page({
 
   buildAccountMappingState: function (issues, accounts, accountDrafts, accountMappingDrafts) {
     const self = this
-    const summary = { total: issues.length, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0 }
+    const summary = { total: issues.length, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0 }
     const mappings = issues.map(function (issue) {
       if (issue.issueType !== 'account_mapping') {
         summary.transfer += 1
@@ -772,7 +874,6 @@ Page({
       }
       summary.inline += 1
       if (issue.status === 'open') summary.open += 1
-      else summary.confirmed += 1
       const choices = model.accountChoiceOptions(
         accounts,
         accountDrafts,
@@ -802,7 +903,9 @@ Page({
           recommendedAccountId: suggestedAccount ? suggestedAccount.accountId : '',
           name: suggestedName,
           typeIndex: suggestedAccountTypeIndex(issue.accountContext && issue.accountContext.label),
-          dirty: false
+          dirty: false,
+          localConfirmed: false,
+          revision: 0
         }
         self._accountUiDrafts.set(issue.issueId, draft)
       }
@@ -810,17 +913,28 @@ Page({
       let choiceIndex = choices.findIndex(function (choice) { return choice.value === choiceValue })
       if (choiceIndex < 0) {
         draft.mode = 'pending'
+        draft.localConfirmed = false
+    draft.revision = (draft.revision || 0) + 1
         draft.accountId = ''
         draft.recommendedAccountId = ''
         choiceIndex = 0
       }
-      const ready = draft.mode === 'create' ? validAccountName(draft.name) : draft.mode !== 'pending'
+      const ready = draft.mode === 'create' ? validAccountName(draft.name) && Boolean(ACCOUNT_TYPE_OPTIONS[draft.typeIndex]) : draft.mode !== 'pending'
       if (ready) summary.ready += 1
       else summary.invalid += 1
       if (draft.mode === 'create') summary.create += 1
       if (draft.dirty) summary.dirty += 1
+      const needsConfirmation = !ready || ((issue.status === 'open' || draft.dirty) && !draft.localConfirmed)
+      if (needsConfirmation) summary.pending += 1
+      else summary.confirmed += 1
       return Object.assign({}, issue, {
         inline: true,
+        needsConfirmation: needsConfirmation,
+        canConfirm: ready,
+        dirty: draft.dirty,
+        summaryText: draft.mode === 'ignore' || draft.mode === 'ignore_future'
+          ? choices[choiceIndex].name
+          : '记入：' + (draft.mode === 'create' ? String(draft.name || '').trim() + '（' + (ACCOUNT_TYPE_OPTIONS[draft.typeIndex] || {}).label + '）' : choices[choiceIndex].name) + ' · 已确认',
         evidencePreview: issue.subject ? model.accountEvidenceView(issue.subject) : null,
         choiceOptions: choices,
         choiceIndex: choiceIndex,
@@ -845,13 +959,17 @@ Page({
       this.data.accountDrafts,
       this.data.accountMappingDrafts
     )
-    this.setData({ accountMappings: state.mappings, accountStepSummary: state.summary })
+    setChangedData(this, { accountMappings: state.mappings, accountStepSummary: state.summary,
+      unlockedStep: state.summary.pending === 0 ? Math.max(this.data.unlockedStep, 3) : this.data.unlockedStep })
     return state
   },
 
   openAccountChoice: function (event) {
     if (this.data.accountStepBusy) return
     const issueId = event.currentTarget.dataset.id
+    if (this._draftSession && this._draftSession.state.flight && this._draftSession.state.flight.ids.includes(issueId)) {
+      wx.showToast({ title: '此项正在同步，其他项可继续处理', icon: 'none' }); return
+    }
     const mapping = this.data.accountMappings.find(function (item) { return item.issueId === issueId })
     const draft = issueId && this._accountUiDrafts.get(issueId)
     if (!mapping || !draft) return
@@ -918,12 +1036,15 @@ Page({
       return
     }
     draft.dirty = true
+    draft.localConfirmed = false
+    draft.revision = (draft.revision || 0) + 1
     this.setData({
       accountStepError: '',
       accountChoiceSheet: null,
       accountChoiceQuery: '',
       accountChoiceResults: []
     })
+    this.persistAccountDrafts()
     this.refreshAccountMappings()
   },
 
@@ -1055,7 +1176,10 @@ Page({
     if (!draft || this.data.accountStepBusy) return
     draft.name = event.detail.value
     draft.dirty = true
+    draft.localConfirmed = false
+    draft.revision = (draft.revision || 0) + 1
     this.setData({ accountStepError: '' })
+    this.persistAccountDrafts()
     this.refreshAccountMappings()
   },
 
@@ -1064,71 +1188,158 @@ Page({
     if (!draft || this.data.accountStepBusy) return
     draft.typeIndex = Number(event.detail.value)
     draft.dirty = true
+    draft.localConfirmed = false
+    draft.revision = (draft.revision || 0) + 1
+    this.setData({ accountStepError: '' })
+    this.persistAccountDrafts()
+    this.refreshAccountMappings()
+  },
+
+  completeAccountMapping: function (event) {
+    if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
+    const issueId = event && event.currentTarget && event.currentTarget.dataset.id
+    const mapping = this.refreshAccountMappings().mappings.find(function (item) { return item.issueId === issueId })
+    if (!mapping || !mapping.inline || !mapping.canConfirm) {
+      this.setData({ accountStepError: '请选择账户归属；选择新建时，请补全账户名称' })
+      return
+    }
+    const draft = this._accountUiDrafts.get(issueId)
+    draft.localConfirmed = true
+    if (this._draftSession) {
+      try {
+        this._draftSession.enqueue([{ kind: 'account', issueId: issueId, revision: draft.revision || 0,
+          decision: this.accountMappingDecision(mapping) }], Object.fromEntries(this._accountUiDrafts))
+      } catch (error) {
+        draft.localConfirmed = false
+        this.setData({ accountStepError: publicError(error, '本机草稿未保存，请重试') })
+        this.refreshAccountMappings()
+        return
+      }
+    }
     this.setData({ accountStepError: '' })
     this.refreshAccountMappings()
   },
 
-  completeAccountMapping: async function () {
-    if (this.data.accountStepBusy || !this.data.update) return
-    const state = this.refreshAccountMappings()
-    if (state.summary.invalid > 0) {
-      this.setData({ accountStepError: '请选择账户归属；选择新建时，请补全账户名称' })
-      return
-    }
-    const pending = state.mappings.filter(function (mapping) {
-      const draft = this._accountUiDrafts.get(mapping.issueId)
-      return mapping.inline && (mapping.status === 'open' || draft && draft.dirty)
-    }, this)
-    if (!pending.length) {
-      wx.showToast({ title: '账户归属没有变化', icon: 'none' })
-      return
-    }
-    this.setData({ accountStepBusy: true, busy: true, accountStepError: '' })
-    try {
-      const decisions = pending.map(function (mapping) {
-        const draft = this._accountUiDrafts.get(mapping.issueId)
-        const decision = {
-          issueId: mapping.issueId,
-          operation: mapping.status === 'resolved' ? 'revise' : 'resolve'
-        }
-        if (draft.mode === 'ignore' || draft.mode === 'ignore_future') {
-          decision.decision = 'exclude_events'
-          if (draft.mode === 'ignore_future') decision.paymentRuleAction = 'ignore'
-        } else {
-          decision.decision = 'apply_fields'
-          if (draft.mode === 'account') {
-            decision.fields = { mappingAccountId: draft.accountId }
-          } else {
-            const type = ACCOUNT_TYPE_OPTIONS[draft.typeIndex]
-            const name = String(draft.name || '').normalize('NFKC').trim().replace(/\s+/g, ' ')
-            if (!type || !validAccountName(name)) throw new Error('账户信息不完整')
-            decision.fields = { mappingAccountDraft: { name: name, type: type.value, currency: 'CNY' } }
-          }
-        }
-        return decision
-      }, this)
-      this.setData({ accountStepProgressText: '正在保存账户归属…' })
-      const view = await importApi.callImport('reviewIssues.resolveAccountMappings', {
-        requestId: importApi.createRequestId(),
-        updateId: this.data.update.updateId,
-        decisions: decisions
-      })
-      for (const mapping of pending) {
-        this._accountUiDrafts.delete(mapping.issueId)
-      }
-      this.applyUpdateView(view)
-    } catch (error) {
-      const message = publicError(error, '账户归属保存失败，请重试')
-      await this.loadUpdate(this.data.update.updateId)
-      this.setData({ busy: false, accountStepBusy: false, accountStepProgressText: '', accountStepError: message })
+  persistAccountDrafts: function () {
+    if (!this._draftSession) return
+    try { this._draftSession.saveDrafts(Object.fromEntries(this._accountUiDrafts), this.data.currentStep) }
+    catch (error) {
+      this._accountUiDrafts = new Map(Object.entries(JSON.parse(JSON.stringify(this._draftSession.state.drafts))))
+      this.setData({ accountStepError: publicError(error, '本机草稿未保存，请检查存储空间后重试') })
     }
   },
 
-  goToStep: function (event) {
-    if (this.data.busy) return
+  accountMappingDecision: function (mapping) {
+    const draft = this._accountUiDrafts.get(mapping.issueId)
+    const decision = { issueId: mapping.issueId, operation: mapping.status === 'resolved' ? 'revise' : 'resolve' }
+    if (draft.mode === 'ignore' || draft.mode === 'ignore_future') {
+      decision.decision = 'exclude_events'
+      if (draft.mode === 'ignore_future') decision.paymentRuleAction = 'ignore'
+    } else {
+      decision.decision = 'apply_fields'
+      decision.fields = draft.mode === 'account' ? { mappingAccountId: draft.accountId } : {
+        mappingAccountDraft: { name: String(draft.name || '').normalize('NFKC').trim().replace(/\s+/g, ' '),
+          type: ACCOUNT_TYPE_OPTIONS[draft.typeIndex].value, currency: 'CNY' }
+      }
+    }
+    return decision
+  },
+
+  retryDraftSync: async function () {
+    if (!this._draftSession || this.data.busy) return
+    try { await this._draftSession.retry() } catch (error) { this.setData({ errorMessage: publicError(error, '同步未完成，选择已保留') }) }
+  },
+
+  finishDraftStep: async function (step) {
+    if (this.data.busy || !this._draftSession) return
+    if (this.data.accountStepSummary.pending > 0 || (step === 4 && this.data.reviewStatusTabs[0].count > 0)) return
+    this.setData({ busy: true, errorMessage: '' })
+    try {
+      const session = this._draftSession
+      await session.flush()
+      this.applyUpdateView(session.view, true)
+      if (this.data.accountStepSummary.pending > 0 || (step === 4 && (this.data.openIssueCount || !this.data.coverage.selectedEventsReadyToPost))) {
+        this.setData({ currentStep: this.data.accountStepSummary.pending ? 2 : 3,
+          errorMessage: '整理结果已更新，请完成剩余核对后继续' })
+        return
+      }
+      this.setData({ currentStep: step })
+      this.persistAccountDrafts()
+    } catch (error) { this.setData({ errorMessage: publicError(error, '自动保存未完成，选择已保留，请重试') }) }
+    finally { this.setData({ busy: false }) }
+  },
+
+  saveAccountMappings: async function () {
+    if (this._draftSession) { await this._draftSession.flush(); return true }
+    if (this.data.busy || this.data.accountStepBusy || !this.data.update) return false
+    let state = this.refreshAccountMappings()
+    if (state.summary.pending > 0) return false
+    this.setData({ accountStepBusy: true, busy: true, accountStepError: '', accountStepProgressText: '正在保存账户归属…' })
+    try {
+      while (true) {
+        const pending = state.mappings.filter(function (mapping) {
+          const draft = this._accountUiDrafts.get(mapping.issueId)
+          return mapping.inline && (mapping.status === 'open' || draft && draft.dirty)
+        }, this).slice(0, 50)
+        if (!pending.length) break
+        const decisions = pending.map(function (mapping) {
+          const draft = this._accountUiDrafts.get(mapping.issueId)
+          const decision = {
+            issueId: mapping.issueId,
+            operation: mapping.status === 'resolved' ? 'revise' : 'resolve'
+          }
+          if (draft.mode === 'ignore' || draft.mode === 'ignore_future') {
+            decision.decision = 'exclude_events'
+            if (draft.mode === 'ignore_future') decision.paymentRuleAction = 'ignore'
+          } else {
+            decision.decision = 'apply_fields'
+            if (draft.mode === 'account') {
+              decision.fields = { mappingAccountId: draft.accountId }
+            } else {
+              const type = ACCOUNT_TYPE_OPTIONS[draft.typeIndex]
+              const name = String(draft.name || '').normalize('NFKC').trim().replace(/\s+/g, ' ')
+              if (!type || !validAccountName(name)) throw new Error('账户信息不完整')
+              decision.fields = { mappingAccountDraft: { name: name, type: type.value, currency: 'CNY' } }
+            }
+          }
+          return decision
+        }, this)
+        const payload = { updateId: this.data.update.updateId, decisions: decisions }
+        const signature = JSON.stringify(payload)
+        if (!this._accountSubmission || this._accountSubmission.signature !== signature) {
+          this._accountSubmission = { signature: signature, requestId: importApi.createRequestId() }
+        }
+        const view = await importApi.callImport('reviewIssues.resolveAccountMappings', Object.assign({
+          requestId: this._accountSubmission.requestId
+        }, payload))
+        for (const mapping of pending) this._accountUiDrafts.delete(mapping.issueId)
+        this._accountSubmission = null
+        this.applyUpdateView(view)
+        state = this.refreshAccountMappings()
+        if (state.summary.pending > 0) return false
+        this.setData({ accountStepBusy: true, busy: true, accountStepProgressText: '正在保存账户归属…' })
+      }
+      return true
+    } catch (error) {
+      this.setData({ accountStepError: publicError(error, '账户归属保存失败，请重试') })
+      return false
+    } finally {
+      this.setData({ busy: false, accountStepBusy: false, accountStepProgressText: '' })
+    }
+  },
+
+  goToStep: async function (event) {
+    if (this.data.busy || this.data.accountStepBusy) return
     const step = Number(event.currentTarget.dataset.step)
     if (!Number.isInteger(step) || step < 1 || step > this.data.unlockedStep) return
+    if (step > 2 && this._draftSession) return this.finishDraftStep(step)
+    if (step > 2) {
+      if (this.data.accountStepSummary.pending > 0) return
+      if (!(await this.saveAccountMappings())) return
+      if (step > this.data.unlockedStep) return
+    }
     this.setData({ currentStep: step, errorMessage: '', accountChoiceSheet: null })
+    this.persistAccountDrafts()
   },
 
   openIssue: async function (event) {
@@ -1158,9 +1369,10 @@ Page({
       const selectorAccountId = (projectedMissingTo
         ? firstEvent.counterpartyLedgerAccountId
         : firstEvent && firstEvent.ledgerAccountId) || (!isTransferIssue && suggestedTransferAccount && suggestedTransferAccount.accountId)
+      const ownershipTarget = Boolean(isTransferIssue && firstEvent && firstEvent.repaymentOwnershipRequired)
       const accountChoices = isTransferIssue
         ? [{ accountId: '', name: '请选择账户', isPlaceholder: true }]
-          .concat(selectableAccounts)
+          .concat(ownershipTarget ? selectableAccounts.filter(function (account) { return ['credit', 'other_liability'].includes(account.type) }) : selectableAccounts)
           .concat([{ accountId: '', name: '新建账户', isCreate: true }])
         : [{ accountId: '', name: '新建账户', isCreate: true }].concat(selectableAccounts)
       const existingAccountIndex = accountChoices.findIndex(function (account) {
@@ -1191,7 +1403,7 @@ Page({
       const bankSuggestion = isTransferIssue
         ? model.bankAccountSuggestion(eventMembers.map(function (member) { return member.event }), selectableAccounts)
         : null
-      const bankBatchCandidates = bankSuggestion ? this.data.issues.filter(function (issue) {
+      const bankBatchCandidates = bankSuggestion && !currentIssue.repaymentOwnershipRequired ? this.data.issues.filter(function (issue) {
         if (issue.issueId === issueId || issue.issueType !== 'transfer_accounts' || issue.status !== 'open') return false
         const suggestion = model.bankAccountSuggestion(issue.subjects || (issue.subject ? [issue.subject] : []), selectableAccounts)
         return suggestion && suggestion.key === bankSuggestion.key
@@ -1285,9 +1497,12 @@ Page({
           newAccountName: summaryIssue && summaryIssue.accountContext && summaryIssue.accountContext.recognized
             ? Array.from(summaryIssue.accountContext.label.trim()).slice(0, 32).join('')
             : '',
-          accountTypeIndex: 2
+          accountTypeIndex: currentIssue.repaymentOwnershipRequired ? 3 : 2,
+          repaymentOwner: firstEvent && firstEvent.repaymentOwnership && firstEvent.repaymentOwnership.owner || '',
+          repaymentOtherTreatment: firstEvent && firstEvent.repaymentOwnership && firstEvent.repaymentOwnership.treatment || ''
         }
       })
+      this.restoreReviewDraft(issueId)
       this.refreshIssueFieldsDraft()
       if (currentIssue.paymentNeedsReview) this.refreshPaymentDraft()
       await this.loadIssueRecordEvidence(this._issueEvidenceRecords.slice(0, 20), token)
@@ -1299,11 +1514,32 @@ Page({
 
   closeIssue: function () {
     if (!this.data.busy) {
+      this.finishInputEditing()
       this._issueEvidenceToken = null
       this._issueEvidenceRecords = []
       this.setData({ currentIssue: null, currentMembers: [], evidenceSheet: null, issueVisibleEvents: [] })
     }
   },
+
+  openFinalDetail: function (event) {
+    const kind = event.currentTarget.dataset.kind
+    const sheet = buildFinalDetail(kind, this.data)
+    if (sheet) this.setData({ finalDetailSheet: sheet, finalDetailParent: null })
+  },
+
+  openFinalAccount: function (event) {
+    const parent = this.data.finalDetailSheet
+    const id = event.currentTarget.dataset.id
+    if (!parent || parent.mode !== 'accounts' || !parent.accounts.some(account => account.accountId === id)) return
+    this.setData({ finalDetailParent: parent.kind, finalDetailSheet: buildFinalDetail('account', this.data, id) })
+  },
+
+  backFinalDetail: function () {
+    if (this.data.finalDetailParent) this.setData({ finalDetailSheet: buildFinalDetail(this.data.finalDetailParent, this.data), finalDetailParent: null })
+    else this.closeFinalDetail()
+  },
+
+  closeFinalDetail: function () { this.setData({ finalDetailSheet: null, finalDetailParent: null }) },
 
   openEvidence: async function (event) {
     const eventId = event.currentTarget.dataset.id
@@ -1328,10 +1564,39 @@ Page({
     if (!this.data.busy) this.setData({ evidenceSheet: null })
   },
 
+  beginInputEditing: function (event) {
+    this._editingInput = event.currentTarget.dataset.inputKey
+  },
+
+  finishInputEditing: function () {
+    this._editingInput = ''
+    const pending = this._pendingBackgroundView
+    this._pendingBackgroundView = null
+    if (pending && this.data.update && pending.update.updateId === this.data.update.updateId) this.applyUpdateView(pending, true)
+  },
+
   refreshIssueFieldsDraft: function () {
     const state = model.buildIssueFieldsDraft(this.data)
-    this.setData({ issueFieldsCanSave: state.valid, issueFieldsReason: state.valid ? '' : state.reason })
+    setChangedData(this, { issueFieldsCanSave: state.valid, issueFieldsReason: state.valid ? '' : state.reason })
     return state
+  },
+
+  changeRepaymentOwner: function (event) {
+    if (this.data.busy) return
+    const owner = event.currentTarget.dataset.owner
+    if (!['self', 'other'].includes(owner) || owner === this.data.issueDraft.repaymentOwner) return
+    this.setData({ 'issueDraft.repaymentOwner': owner, 'issueDraft.repaymentOtherTreatment': '',
+      'issueDraft.accountIndex': 0, 'issueDraft.newAccountName': '', 'issueDraft.accountTypeIndex': 3,
+      bankBatchSelectedCount: 0, bankBatchExpanded: false, bankBatchRecords: [] })
+    this.refreshIssueFieldsDraft()
+  },
+
+  changeRepaymentOtherTreatment: function (event) {
+    if (this.data.busy || this.data.issueDraft.repaymentOwner !== 'other') return
+    const treatment = event.currentTarget.dataset.treatment
+    if (!['expense', 'pending'].includes(treatment)) return
+    this.setData({ 'issueDraft.repaymentOtherTreatment': treatment })
+    this.refreshIssueFieldsDraft()
   },
 
   changeIssueAccount: function (event) {
@@ -1348,7 +1613,7 @@ Page({
       return { valid: valid, accounts: rows.map(function (row) { return { componentIndex: row.componentIndex, accountId: row.accountId } }) }
     }
     const nature = ['', 'expense', 'repayment'][this.data.paymentNatureIndex]
-    const target = this.data.paymentTargetChoices[this.data.paymentTargetIndex]
+    const target = (this.data.paymentTargetChoices || [])[this.data.paymentTargetIndex]
     const state = model.buildPaymentResolutionDraft(this.data.paymentRows, nature, target && target.accountId,
       this.data.paymentEvidenceNote, this.data.issueEvents[0] && this.data.issueEvents[0].amountMinor)
     // 提示只解释已有校验结果，不能反过来决定是否可保存。
@@ -1375,7 +1640,7 @@ Page({
       }
       return Object.assign({}, row, { amountInput: event.detail.value })
     }.bind(this))
-    this.setData({ paymentRows: rows }); this.refreshPaymentDraft()
+    setChangedData(this, { paymentRows: rows }); this.refreshPaymentDraft()
   },
   fillPaymentAmount: function (event) {
     if (this.data.busy) return
@@ -1396,7 +1661,7 @@ Page({
   },
 
   expandBankBatch: async function () {
-    if (this.data.busy || this.data.bankBatchLoading) return
+    if (this.data.busy || this.data.bankBatchLoading || (this.data.currentIssue && this.data.currentIssue.repaymentOwnershipRequired)) return
     if (this.data.bankBatchExpanded) {
       this.setData({ bankBatchExpanded: false, bankBatchSelectedCount: 0,
         bankBatchRecords: this.data.bankBatchRecords.map(function (item) { return Object.assign({}, item, { selected: false }) }) })
@@ -1433,7 +1698,7 @@ Page({
 
   toggleBankBatch: function (event) {
     if (this.data.busy || this.data.bankBatchLoading) return
-    const account = this.data.accountChoices[this.data.issueDraft.accountIndex]
+    const account = (this.data.accountChoices || [])[this.data.issueDraft.accountIndex]
     if (!account || !account.accountId) {
       this.setData({ errorMessage: '请先选择要应用的账户' })
       return
@@ -1447,6 +1712,20 @@ Page({
   },
 
   resolveBankBatch: async function (fields) {
+    if (this._draftSession) {
+      const issue = this.data.currentIssue
+      const side = this.data.bankSuggestion.side === 'to' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
+      const entries = [this.reviewDraftEntry(issue, 'apply_fields', { fields: fields })]
+      for (const row of this.data.bankBatchRecords.filter(function (item) { return item.selected })) {
+        const source = this.data.issues.find(function (item) { return item.issueId === row.issueId })
+        if (!source || source.version !== row.version) { this.setData({ errorMessage: '部分交易已变化，请重新选择' }); return }
+        const selected = {}; selected[side] = fields[side]
+        entries.push(this.reviewDraftEntry(source, 'apply_fields', { fields: selected }))
+      }
+      try { this._draftSession.enqueue(entries); this.closeIssue() }
+      catch (error) { this.setData({ errorMessage: publicError(error, '选择未保存，请重试') }) }
+      return
+    }
     const issue = this.data.currentIssue
     const suggestion = this.data.bankSuggestion
     const field = suggestion.side === 'to' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
@@ -1470,9 +1749,11 @@ Page({
       }
       let updateVersion = this.data.update.version
       for (const target of targets) {
+        const resolutionFields = {}
+        resolutionFields[field] = accountId
         const result = await importApi.callImport('reviewIssues.resolve', {
           requestId: importApi.createRequestId(), updateId: updateId, updateVersion: updateVersion,
-          issueId: target.issueId, issueVersion: target.version, decision: 'apply_fields', fields: { [field]: accountId }
+          issueId: target.issueId, issueVersion: target.version, decision: 'apply_fields', fields: resolutionFields
         })
         completed += 1
         updateVersion = result.update.version
@@ -1487,7 +1768,7 @@ Page({
   refreshRepaymentChoices: function (choices) {
     const firstEvent = this.data.issueEvents[0]
     const status = allocationStatus(choices, firstEvent && firstEvent.amountMinor || '0')
-    this.setData({
+    setChangedData(this, {
       repaymentAllocationChoices: choices,
       repaymentAdditionalOptions: additionalRepaymentOptions(this.data.repaymentAccountOptions, choices),
       repaymentAdditionalIndex: 0,
@@ -1550,7 +1831,7 @@ Page({
 
   changeIssueCategory: function (event) {
     const categoryIndex = Number(event.detail.value)
-    const category = this.data.issueCategories[categoryIndex]
+    const category = (this.data.issueCategories || [])[categoryIndex]
     this.setData({
       'issueDraft.categoryIndex': categoryIndex,
       issueCategoryCanSave: Boolean(category && category.categoryId)
@@ -1607,7 +1888,7 @@ Page({
       return
     }
     const fields = state.fields
-    if (this.data.bankBatchSelectedCount > 0 && this.data.bankSuggestion) {
+    if (!issue.repaymentOwnershipRequired && this.data.bankBatchSelectedCount > 0 && this.data.bankSuggestion) {
       return this.resolveBankBatch(fields)
     }
     return this.resolveIssue('apply_fields', { fields: fields })
@@ -1641,7 +1922,51 @@ Page({
     this.resolveIssue('confirm_installment_principal', { installmentCandidateId: this.data.issueDraft.primaryEventId })
   },
 
+  reviewDraftEntry: function (issue, decision, extra) {
+    const data = this.data
+    const form = { issueDraft: data.issueDraft, paymentRows: data.paymentRows, paymentNatureIndex: data.paymentNatureIndex,
+      paymentEvidenceNote: data.paymentEvidenceNote, repaymentAllocationChoices: data.repaymentAllocationChoices,
+      accountId: ((data.accountChoices || [])[data.issueDraft.accountIndex] || {}).accountId,
+      counterpartyAccountId: ((data.counterpartyAccountChoices || [])[data.issueDraft.counterpartyAccountIndex] || {}).accountId,
+      categoryId: ((data.issueCategories || [])[data.issueDraft.categoryIndex] || {}).categoryId,
+      paymentTargetId: ((data.paymentTargetChoices || [])[data.paymentTargetIndex] || {}).accountId }
+    return { kind: 'review', issueId: issue.issueId, issueVersion: issue.version, issueType: issue.issueType,
+      subjectIds: issue.subjectEventIds || (this.data.issueEvents || []).map(function (event) { return event.eventId }),
+      decision: Object.assign({ decision: decision }, extra || {}), form: form }
+  },
+
+  restoreReviewDraft: function (issueId) {
+    if (!this._draftSession) return
+    const entry = this._draftSession.state.entries.concat(this._draftSession.state.conflictedChoices || []).find(function (item) { return item.issueId === issueId })
+    if (!entry || !entry.form) return
+    const form = entry.form
+    const indexOf = function (options, key, value) { return Math.max(0, (options || []).findIndex(function (item) { return value && item[key] === value })) }
+    this.setData({ issueDraft: Object.assign({}, form.issueDraft, {
+      accountIndex: indexOf(this.data.accountChoices, 'accountId', form.accountId),
+      counterpartyAccountIndex: indexOf(this.data.counterpartyAccountChoices, 'accountId', form.counterpartyAccountId),
+      categoryIndex: indexOf(this.data.issueCategories, 'categoryId', form.categoryId) }),
+      paymentRows: form.paymentRows || [], paymentNatureIndex: form.paymentNatureIndex || 0,
+      paymentTargetIndex: indexOf(this.data.paymentTargetChoices, 'accountId', form.paymentTargetId),
+      paymentEvidenceNote: form.paymentEvidenceNote || '', repaymentAllocationChoices: form.repaymentAllocationChoices || [] })
+  },
+
+  recheckDraftConflicts: function () {
+    if (!this._draftSession || this.data.busy) return
+    this._draftSession.discardConflicts()
+    this.setData({ currentStep: this.data.accountStepSummary.pending ? 2 : 3,
+      errorMessage: '已显示最新结果，原选择仍保留，请重新核对有变化的项目' })
+  },
+
   resolveIssue: async function (decision, extra) {
+    if (this._draftSession) {
+      const issue = this.data.currentIssue
+      if (!issue || this.data.busy) return
+      try {
+        this._draftSession.enqueue([this.reviewDraftEntry(issue, decision, extra)])
+        this.closeIssue()
+      } catch (error) { this.setData({ errorMessage: publicError(error, '选择未保存，请重试') }) }
+      return
+    }
     const issue = this.data.currentIssue
     if (!issue || this.data.busy) return
     this.setData({ busy: true, errorMessage: '' })
@@ -1661,15 +1986,41 @@ Page({
   },
 
   postUpdate: async function () {
-    if (this.data.busy || !this.data.update || this.data.openIssueCount > 0) return
+    if (this._draftSession) {
+      if (this.data.busy) return
+      this.setData({ busy: true, errorMessage: '' })
+      const session = this._draftSession
+      try {
+        if (!session.state.postFlight) {
+          await session.flush()
+          this.applyUpdateView(session.view)
+          if (this.data.update.status === 'posted') { session.clear(); draftSessions.forgetLast(); return }
+          if (this.data.openIssueCount || this.data.accountStepSummary.pending || !this.data.coverage.selectedEventsReadyToPost) {
+            this.setData({ currentStep: this.data.accountStepSummary.pending ? 2 : 3, errorMessage: '请完成剩余核对后再入账' }); return
+          }
+        }
+        this.setData({ busy: true })
+        const view = await session.post()
+        if (this._unsubscribeDraft) this._unsubscribeDraft()
+        session.clear(); draftSessions.forgetLast()
+        this._draftSession = null
+        this.applyUpdateView(view)
+      } catch (error) { this.setData({ errorMessage: publicError(error, '入账结果尚未确认，请重试查询，草稿已保留') }) }
+      finally { this.setData({ busy: false }) }
+      return
+    }
+    if (this.data.busy || !this.data.update || this.data.openIssueCount > 0 || this.data.accountStepSummary.pending > 0 ||
+      this.data.accountStepSummary.open > 0 || this.data.accountStepSummary.dirty > 0) return
     this.setData({ busy: true, errorMessage: '' })
     try {
       const view = await importApi.callImport('financeUpdates.post', {
-        requestId: importApi.createRequestId(),
+        requestId: this._postingRequestId || (this._postingRequestId = importApi.createRequestId()),
         updateId: this.data.update.updateId,
         version: this.data.update.version,
         mode: 'all_ready'
       })
+      if (this._draftSession) this._draftSession.clear()
+      draftSessions.forgetLast && draftSessions.forgetLast()
       this.applyUpdateView(view)
     } catch (error) {
       this.setData({ busy: false, errorMessage: publicError(error, '整批入账失败，所有交易均未写入') })
@@ -1695,6 +2046,11 @@ Page({
     if (this.data.busy || !this.data.update) return
     this.setData({ busy: true, errorMessage: '', currentIssue: null })
     try {
+      if (this._draftSession) {
+        await this._draftSession.pause()
+        const fresh = await importApi.callImport('financeUpdates.get', { updateId: this.data.update.updateId })
+        this.setData({ update: fresh.update })
+      }
       await importApi.callImport('financeUpdates.abandon', {
         requestId: importApi.createRequestId(),
         updateId: this.data.update.updateId,
@@ -1703,16 +2059,25 @@ Page({
       this.startAnother()
       wx.showToast({ title: '本批账单已放弃', icon: 'none' })
     } catch (error) {
+      if (this._draftSession) this._draftSession.resume()
       this.setData({ busy: false, errorMessage: publicError(error, '放弃失败，请重试') })
     }
   },
 
   startAnother: function () {
+    if (this._updateLoad) this._updateLoad.cancelled = true
+    this._restoreAbandonRequest = null
+    if (this._unsubscribeDraft) this._unsubscribeDraft()
+    if (this._draftSession) this._draftSession.clear()
+    this._draftSession = null
+    this._unsubscribeDraft = null
+    this._postingRequestId = null
+    if (draftSessions.forgetLast) draftSessions.forgetLast()
     this._sourceFiles.clear()
     this._duplicateLoadToken = null
     this.setData({
-      phase: 'idle', currentStep: 1, unlockedStep: 1,
-      files: [], update: null, sources: [], events: [], issues: [],
+      phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', abandoningRestore: false,
+      files: [], update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
       recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
       reviewedEvents: [], categoryWaitingEvents: [], noCategoryEvents: [],
       accountIssues: [], reviewIssues: [], reviewGroups: [], verificationIssues: [], categoryIssues: [], categoryCards: [], categoryQuery: '', categoryEventCount: 0, categorizedEvents: [], categorizedEventCount: 0, activeCategoryStatus: 'pending', categoryStatusTabs: model.organizerRecordState([], [], []).categoryStatusTabs, activeReviewTab: 'review', activeReviewStatus: 'pending', excludedReviewGroups: [], duplicateReviewEvents: [], openIssueCount: 0,
@@ -1728,7 +2093,7 @@ Page({
         { value: 'excluded', label: '已排除', count: 0 },
         { value: 'duplicate', label: '重复', count: 0 }
       ],
-      accountMappings: [], accountStepSummary: { total: 0, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0 },
+      accountMappings: [], accountStepSummary: { total: 0, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0 },
       accountStepBusy: false, accountStepError: '', accountStepProgressText: '',
       accounts: [], accountDrafts: [], accountMappingDrafts: [], accountChoices: [{ accountId: '', name: '新建账户' }],
       accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [], categories: [], issueCategories: [],

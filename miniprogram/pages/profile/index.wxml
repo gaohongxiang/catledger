@@ -4,34 +4,30 @@
     <view class="profile-copy">
 
       <text class="profile-title serif-title">{{loggedIn ? (nickname || '微信用户') : '尚未登录'}}</text>
-      <view class="identity-status {{syncActionText ? 'identity-status-retryable' : ''}}" bindtap="retryProfile">
-        <view class="status-dot {{connected ? 'status-dot-connected' : ''}}"></view>
-        <text>{{identityStatusText}}</text>
-        <view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view>
-        <text wx:if="{{syncActionText}}" class="identity-retry">{{syncActionText}}</text>
+      <button wx:if="{{loggedIn && uid}}" class="profile-id" aria-label="复制完整 ID" bindtap="copyId">
+        <text class="profile-id-label">ID</text>
+        <text class="profile-id-value">{{displayUid}}</text>
+        <text class="profile-id-copy">复制</text>
+      </button>
+      <view wx:elif="{{loggedIn}}" class="profile-id-pending">
+        <text>ID {{loading ? '读取中…' : '暂未获取'}}</text>
+        <text wx:if="{{!loading}}" class="profile-id-retry" bindtap="retryProfile" aria-role="button">重试</text>
       </view>
     </view>
-    <button wx:if="{{!loggedIn}}" class="profile-login-button" bindtap="promptWechatLogin">登录</button>
-  </view>
-
-  <view class="profile-summary">
-    <view class="summary-cell">
-      <text class="summary-number money-number">{{loggedIn && hasLoaded ? accountCount : '—'}}</text>
-      <text class="summary-label">活动账户</text>
-    </view>
-    <view class="summary-divider"></view>
-    <view class="summary-cell">
-      <text class="summary-number money-number">{{loggedIn && hasLoaded ? categoryCount : '—'}}</text>
-      <text class="summary-label">收支分类</text>
-    </view>
-    <view class="summary-divider"></view>
-    <view class="summary-cell">
-      <text class="summary-number summary-cloud">{{loggedIn ? '云端' : '—'}}</text>
-      <text class="summary-label">数据位置</text>
-    </view>
+    <button wx:if="{{!loggedIn}}" class="profile-login-button" size="mini" bindtap="promptWechatLogin"><text class="profile-login-label">登录</text></button>
   </view>
 
   <view wx:if="{{errorMessage}}" class="ui-state ui-state-error" bindtap="retryProfile" aria-role="button">{{errorMessage}} · 点此重试</view>
+
+  <text class="profile-section-kicker content-inset">账本管理</text>
+  <view class="profile-menu">
+    <view class="profile-row content-inset" role="button" aria-label="进入账户管理" bindtap="openAccounts">
+      <view class="row-copy"><text class="row-title">账户管理</text><text class="row-note">{{loggedIn && hasLoaded ? accountCount + ' 个活动账户' : '管理资产与负债账户'}}</text></view><view class="row-chevron"></view>
+    </view>
+    <view class="profile-row content-inset" role="button" aria-label="进入分类管理" bindtap="openCategories">
+      <view class="row-copy"><text class="row-title">分类管理</text><text class="row-note">{{loggedIn && hasLoaded ? categoryCount + ' 个收支分类' : '管理收入与支出分类'}}</text></view><view class="row-chevron"></view>
+    </view>
+  </view>
 
   <text class="profile-section-kicker content-inset">设置与资料</text>
   <view class="profile-menu">

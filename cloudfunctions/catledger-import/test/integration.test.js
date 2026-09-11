@@ -1,3 +1,5 @@
+const { createUpdate } = require('../src/finance-update-repository')
+const { executeIdempotentMutation } = require('../src/import-transaction')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -317,27 +319,19 @@ async function createUserLedger(pool, label) {
   return { uid, accountId, categoryId, subjectHash }
 }
 
+function createDraft(pool, request) {
+  return executeIdempotentMutation({ getPool: () => pool, ...request, action: 'synthetic.createDraft',
+    operation: (connection, uid, data, digest, key) => createUpdate(connection, uid, data.batchIds, digest, key) })
+}
+
+async function prepareSingle(service, request) {
+  const { fileName, size, ...data } = request.data
+  const result = await service.prepareMany({ ...request, data: { ...data, files: [{ fileName, size }] } })
+  return result.files[0]
+}
+
 function context(user, data) {
   return { provider: 'wechat-mini', subjectHash: user.subjectHash, data }
-}
-
-function decisions(view, user) {
-  return view.rows.filter((row) => row.eventId && row.processingState === 'pending').map((row) => ({
-    eventId: row.eventId,
-    disposition: 'post',
-    accountId: user.accountId,
-    categoryId: user.categoryId
-  }))
-}
-
-function ignoredDecisions(view, paymentRuleAction) {
-  return view.rows.filter((row) => row.eventId && row.processingState === 'pending').map((row) => ({
-    eventId: row.eventId,
-    disposition: 'skip',
-    accountId: null,
-    categoryId: null,
-    paymentRuleAction
-  }))
 }
 
 async function resolveOpenCategoryIssues(service, user, initialView) {
@@ -353,278 +347,6 @@ async function resolveOpenCategoryIssues(service, user, initialView) {
     view = await service.financeUpdateGet(context(user, { updateId: view.update.updateId }))
   }
 }
-
-test('MySQL 单文件导入覆盖隔离、重复、并发和回滚', { skip: !hasDatabase, timeout: 30000 }, async () => {
-  const pool = mysql.createPool(databaseConfig())
-  const objects = new Map()
-  const storage = {
-    async downloadExact(fileID, objectKey) {
-      assert.equal(fileID, `cloud://synthetic.bucket/${objectKey}`)
-      assert.ok(objects.has(objectKey))
-      return objects.get(objectKey)
-    },
-    async remove() {
-      return true
-    }
-  }
-  const service = createImportService({ getPool: () => pool, storage })
-
-  try {
-    const userA = await createUserLedger(pool, 'A')
-    const prepared = await service.prepare(context(userA, {
-      requestId: randomUUID(), fileName: '微信账单.csv', size: fixture().length
-    }))
-    objects.set(prepared.cloudPath, fixture())
-    const parsed = await service.parse(context(userA, {
-      requestId: randomUUID(), importId: prepared.importId,
-      fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480
-    }))
-    assert.equal(parsed.import.state, 'review_ready')
-    assert.deepEqual(parsed.batch.summary, { total: 2, valid: 2, invalid: 0, pending: 2, posted: 0 })
-    const view = await service.get(context(userA, { importId: prepared.importId }))
-    const commitRequestId = randomUUID()
-    const committed = await service.commit(context(userA, {
-      requestId: commitRequestId, importId: prepared.importId, version: view.import.version,
-      decisions: decisions(view, userA)
-    }))
-    assert.equal(committed.createdTransactionCount, 2)
-    assert.equal(committed.contentState, 'deleted')
-    const [[countA]] = await pool.execute(
-      `SELECT COUNT(*) AS count FROM catledger_transactions
-        WHERE uid = ? AND origin = 'import'`,
-      [userA.uid]
-    )
-    assert.equal(Number(countA.count), 2)
-    const replayedCommit = await service.commit(context(userA, {
-      requestId: commitRequestId, importId: prepared.importId, version: view.import.version,
-      decisions: decisions(view, userA)
-    }))
-    assert.equal(replayedCommit.contentState, 'deleted')
-    assert.equal(replayedCommit.createdTransactionCount, 2)
-
-    const learnedContent = Buffer.from(fixture().toString('utf8')
-      .replace('WX-SYNTH-001', 'WX-SYNTH-101')
-      .replace('WX-SYNTH-002', 'WX-SYNTH-102'))
-    const learned = await service.prepare(context(userA, {
-      requestId: randomUUID(), fileName: '分类复用.csv', size: learnedContent.length
-    }))
-    objects.set(learned.cloudPath, learnedContent)
-    await service.parse(context(userA, {
-      requestId: randomUUID(), importId: learned.importId,
-      fileID: `cloud://synthetic.bucket/${learned.cloudPath}`, timezoneOffsetMinutes: -480
-    }))
-    const learnedView = await service.get(context(userA, { importId: learned.importId }))
-    learnedView.rows.filter((row) => row.processingState === 'pending').forEach((row) => {
-      assert.equal(row.decision.accountId, userA.accountId)
-      assert.equal(row.decision.categoryId, userA.categoryId)
-    })
-    await service.discard(context(userA, {
-      requestId: randomUUID(), importId: learned.importId, version: learnedView.import.version
-    }))
-
-    const ignoredContent = fixtureWithSequence(201)
-    const ignored = await service.prepare(context(userA, {
-      requestId: randomUUID(), fileName: '永久忽略.csv', size: ignoredContent.length
-    }))
-    objects.set(ignored.cloudPath, ignoredContent)
-    await service.parse(context(userA, {
-      requestId: randomUUID(), importId: ignored.importId,
-      fileID: `cloud://synthetic.bucket/${ignored.cloudPath}`, timezoneOffsetMinutes: -480
-    }))
-    const ignoredView = await service.get(context(userA, { importId: ignored.importId }))
-    await service.commit(context(userA, {
-      requestId: randomUUID(), importId: ignored.importId, version: ignoredView.import.version,
-      decisions: ignoredDecisions(ignoredView, 'ignore')
-    }))
-    const [[ignoredRule]] = await pool.execute(
-      `SELECT mapping_action AS mappingAction, account_id AS accountId,
-              disabled_at AS disabledAt, version
-         FROM catledger_import_account_mappings
-        WHERE uid = ? AND source_type = 'wechat'`,
-      [userA.uid]
-    )
-    assert.equal(ignoredRule.mappingAction, 'ignore')
-    assert.equal(ignoredRule.accountId, null)
-    assert.equal(ignoredRule.disabledAt, null)
-
-    const repeatedIgnoreContent = fixtureWithSequence(251)
-    const repeatedIgnore = await service.prepare(context(userA, {
-      requestId: randomUUID(), fileName: '复用忽略规则.csv', size: repeatedIgnoreContent.length
-    }))
-    objects.set(repeatedIgnore.cloudPath, repeatedIgnoreContent)
-    await service.parse(context(userA, {
-      requestId: randomUUID(), importId: repeatedIgnore.importId,
-      fileID: `cloud://synthetic.bucket/${repeatedIgnore.cloudPath}`, timezoneOffsetMinutes: -480
-    }))
-    const repeatedIgnoreView = await service.get(context(userA, { importId: repeatedIgnore.importId }))
-    await service.commit(context(userA, {
-      requestId: randomUUID(), importId: repeatedIgnore.importId,
-      version: repeatedIgnoreView.import.version,
-      decisions: ignoredDecisions(repeatedIgnoreView, 'ignore')
-    }))
-    const [[repeatedRule]] = await pool.execute(
-      `SELECT version FROM catledger_import_account_mappings
-        WHERE uid = ? AND source_type = 'wechat'`,
-      [userA.uid]
-    )
-    assert.equal(String(repeatedRule.version), String(ignoredRule.version))
-
-    const futureContent = fixtureWithSequence(301)
-    const future = await service.prepare(context(userA, {
-      requestId: randomUUID(), fileName: '复用永久忽略.csv', size: futureContent.length
-    }))
-    objects.set(future.cloudPath, futureContent)
-    await service.parse(context(userA, {
-      requestId: randomUUID(), importId: future.importId,
-      fileID: `cloud://synthetic.bucket/${future.cloudPath}`, timezoneOffsetMinutes: -480
-    }))
-    const futureView = await service.get(context(userA, { importId: future.importId }))
-    futureView.rows.filter((row) => row.processingState === 'pending').forEach((row) => {
-      assert.equal(row.decision.paymentRuleAction, 'ignore')
-      assert.equal(row.decision.accountId, null)
-    })
-
-    const isolatedUser = await createUserLedger(pool, '规则隔离')
-    const isolated = await service.prepare(context(isolatedUser, {
-      requestId: randomUUID(), fileName: '规则隔离.csv', size: futureContent.length
-    }))
-    objects.set(isolated.cloudPath, futureContent)
-    await service.parse(context(isolatedUser, {
-      requestId: randomUUID(), importId: isolated.importId,
-      fileID: `cloud://synthetic.bucket/${isolated.cloudPath}`, timezoneOffsetMinutes: -480
-    }))
-    const isolatedView = await service.get(context(isolatedUser, { importId: isolated.importId }))
-    isolatedView.rows.filter((row) => row.processingState === 'pending').forEach((row) => {
-      assert.notEqual(row.decision.paymentRuleAction, 'ignore')
-    })
-    await service.discard(context(isolatedUser, {
-      requestId: randomUUID(), importId: isolated.importId, version: isolatedView.import.version
-    }))
-
-    await service.commit(context(userA, {
-      requestId: randomUUID(), importId: future.importId, version: futureView.import.version,
-      decisions: ignoredDecisions(futureView, 'forget')
-    }))
-    const [[forgottenRule]] = await pool.execute(
-      `SELECT mapping_action AS mappingAction, disabled_at AS disabledAt
-         FROM catledger_import_account_mappings
-        WHERE uid = ? AND source_type = 'wechat'`,
-      [userA.uid]
-    )
-    assert.equal(forgottenRule.mappingAction, 'ignore')
-    assert.ok(forgottenRule.disabledAt)
-
-    const remappedContent = fixtureWithSequence(401)
-    const remapped = await service.prepare(context(userA, {
-      requestId: randomUUID(), fileName: '恢复账户映射.csv', size: remappedContent.length
-    }))
-    objects.set(remapped.cloudPath, remappedContent)
-    await service.parse(context(userA, {
-      requestId: randomUUID(), importId: remapped.importId,
-      fileID: `cloud://synthetic.bucket/${remapped.cloudPath}`, timezoneOffsetMinutes: -480
-    }))
-    const remappedView = await service.get(context(userA, { importId: remapped.importId }))
-    await service.commit(context(userA, {
-      requestId: randomUUID(), importId: remapped.importId, version: remappedView.import.version,
-      decisions: decisions(remappedView, userA)
-    }))
-    const [[activeAccountRule]] = await pool.execute(
-      `SELECT mapping_action AS mappingAction, account_id AS accountId, disabled_at AS disabledAt
-         FROM catledger_import_account_mappings
-        WHERE uid = ? AND source_type = 'wechat'`,
-      [userA.uid]
-    )
-    assert.deepEqual(activeAccountRule, {
-      mappingAction: 'account', accountId: userA.accountId, disabledAt: null
-    })
-
-    const duplicate = await service.prepare(context(userA, {
-      requestId: randomUUID(), fileName: '再次上传.csv', size: fixture().length
-    }))
-    objects.set(duplicate.cloudPath, fixture())
-    const duplicateResult = await service.parse(context(userA, {
-      requestId: randomUUID(), importId: duplicate.importId,
-      fileID: `cloud://synthetic.bucket/${duplicate.cloudPath}`, timezoneOffsetMinutes: -480
-    }))
-    assert.equal(duplicateResult.import.state, 'duplicate')
-    assert.equal(duplicateResult.duplicateImportId, prepared.importId)
-
-    const userB = await createUserLedger(pool, 'B')
-    await assert.rejects(
-      service.get(context(userB, { importId: prepared.importId })),
-      { publicCode: 'NOT_FOUND' }
-    )
-
-    const concurrentImports = []
-    for (const ending of ['\n', '\r\n']) {
-      const content = Buffer.concat([fixture(), Buffer.from(ending)])
-      const item = await service.prepare(context(userB, {
-        requestId: randomUUID(), fileName: '并发账单.csv', size: content.length
-      }))
-      objects.set(item.cloudPath, content)
-      await service.parse(context(userB, {
-        requestId: randomUUID(), importId: item.importId,
-        fileID: `cloud://synthetic.bucket/${item.cloudPath}`, timezoneOffsetMinutes: -480
-      }))
-      const itemView = await service.get(context(userB, { importId: item.importId }))
-      concurrentImports.push({ item, view: itemView })
-    }
-    const concurrentResults = await Promise.all(concurrentImports.map(({ item, view }) => (
-      service.commit(context(userB, {
-        requestId: randomUUID(), importId: item.importId, version: view.import.version,
-        decisions: decisions(view, userB)
-      }))
-    )))
-    assert.equal(concurrentResults.reduce((sum, result) => sum + result.createdTransactionCount, 0), 2)
-    assert.equal(concurrentResults.reduce((sum, result) => sum + result.reusedTransactionCount, 0), 2)
-    const [[countB]] = await pool.execute(
-      `SELECT COUNT(*) AS count FROM catledger_transactions
-        WHERE uid = ? AND origin = 'import'`,
-      [userB.uid]
-    )
-    assert.equal(Number(countB.count), 2)
-
-    const userC = await createUserLedger(pool, 'C')
-    const rollbackContent = Buffer.from(fixture().toString('utf8').replace(
-      '12.34,零钱,支付成功,WX-SYNTH-002',
-      '12.35,零钱,支付成功,WX-SYNTH-002'
-    ))
-    const rollbackImport = await service.prepare(context(userC, {
-      requestId: randomUUID(), fileName: '回滚账单.csv', size: rollbackContent.length
-    }))
-    objects.set(rollbackImport.cloudPath, rollbackContent)
-    await service.parse(context(userC, {
-      requestId: randomUUID(), importId: rollbackImport.importId,
-      fileID: `cloud://synthetic.bucket/${rollbackImport.cloudPath}`, timezoneOffsetMinutes: -480
-    }))
-    const rollbackView = await service.get(context(userC, { importId: rollbackImport.importId }))
-    await pool.query(`CREATE TRIGGER catledger_test_reject_import_amount
-      BEFORE INSERT ON catledger_transactions FOR EACH ROW
-      BEGIN
-        IF NEW.origin = 'import' AND NEW.amount_minor = 1235 THEN
-          SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic rollback gate';
-        END IF;
-      END`)
-    try {
-      await assert.rejects(service.commit(context(userC, {
-        requestId: randomUUID(), importId: rollbackImport.importId,
-        version: rollbackView.import.version, decisions: decisions(rollbackView, userC)
-      })))
-    } finally {
-      await pool.query('DROP TRIGGER IF EXISTS catledger_test_reject_import_amount')
-    }
-    const [[rollbackCount]] = await pool.execute(
-      `SELECT COUNT(*) AS count FROM catledger_transactions
-        WHERE uid = ? AND origin = 'import'`,
-      [userC.uid]
-    )
-    assert.equal(Number(rollbackCount.count), 0)
-    const rollbackAfter = await service.get(context(userC, { importId: rollbackImport.importId }))
-    assert.equal(rollbackAfter.import.state, 'review_ready')
-  } finally {
-    await pool.end()
-  }
-})
 
 test('MySQL 多文件形成一个 FinanceUpdate 并整批原子入账', { skip: !hasDatabase, timeout: 30000 }, async () => {
   const pool = mysql.createPool(databaseConfig())
@@ -838,11 +560,11 @@ test('退款详情只返回冻结候选且服务端拒绝集合外原消费', { 
   try {
     const user = await createUserLedger(pool, 'refund-policy')
     const content = wechatRefundCandidatesFixture()
-    const prepared = await service.prepare(context(user, {
+    const prepared = await prepareSingle(service, context(user, {
       requestId: randomUUID(), fileName: '退款候选账单.csv', size: content.length
     }))
     objects.set(prepared.cloudPath, content)
-    const parsed = await service.parse(context(user, {
+    const parsed = await service.parseFile(context(user, {
       requestId: randomUUID(), importId: prepared.importId,
       fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480
     }))
@@ -917,11 +639,11 @@ test('零候选退款可明确暂记并入账余额但不进入收支统计', { 
   try {
     const user = await createUserLedger(pool, 'unlinked-refund')
     const content = wechatUnlinkedRefundFixture()
-    const prepared = await service.prepare(context(user, {
+    const prepared = await prepareSingle(service, context(user, {
       requestId: randomUUID(), fileName: '待关联退款.csv', size: content.length
     }))
     objects.set(prepared.cloudPath, content)
-    const parsed = await service.parse(context(user, {
+    const parsed = await service.parseFile(context(user, {
       requestId: randomUUID(), importId: prepared.importId,
       fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480
     }))
@@ -1073,11 +795,11 @@ test('微信零钱提现按资金端分别确认，账户归属后不再生成�
   try {
     const user = await createUserLedger(pool, 'wechat-withdrawal')
     const content = wechatWithdrawalFixture()
-    const prepared = await service.prepare(context(user, {
+    const prepared = await prepareSingle(service, context(user, {
       requestId: randomUUID(), fileName: '微信零钱提现.csv', size: content.length
     }))
     objects.set(prepared.cloudPath, content)
-    const parsed = await service.parse(context(user, {
+    const parsed = await service.parseFile(context(user, {
       requestId: randomUUID(), importId: prepared.importId,
       fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480
     }))
@@ -1135,11 +857,11 @@ test('余额宝转出到账户余额确认两端归属后直接完成整理', { 
   try {
     const user = await createUserLedger(pool, 'alipay-balance-transfer')
     const content = alipayBalanceTransferFixture()
-    const prepared = await service.prepare(context(user, {
+    const prepared = await prepareSingle(service, context(user, {
       requestId: randomUUID(), fileName: '支付宝余额宝转出.csv', size: content.length
     }))
     objects.set(prepared.cloudPath, content)
-    const parsed = await service.parse(context(user, {
+    const parsed = await service.parseFile(context(user, {
       requestId: randomUUID(), importId: prepared.importId,
       fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480
     }))
@@ -1195,11 +917,11 @@ test('支付宝合并还款不创建第三账户并原子入账为多笔守恒�
   try {
     const user = await createUserLedger(pool, 'alipay-aggregate-repayment')
     const content = alipayAggregateRepaymentFixture()
-    const prepared = await service.prepare(context(user, {
+    const prepared = await prepareSingle(service, context(user, {
       requestId: randomUUID(), fileName: '支付宝合并还款.csv', size: content.length
     }))
     objects.set(prepared.cloudPath, content)
-    const parsed = await service.parse(context(user, {
+    const parsed = await service.parseFile(context(user, {
       requestId: randomUUID(), importId: prepared.importId,
       fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480
     }))
@@ -1364,15 +1086,15 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并让后续匹配自
   try {
     const user = await createUserLedger(pool, 'finance-update-ignore')
     const content = fixtureWithSequence(501)
-    const prepared = await service.prepare(context(user, {
+    const prepared = await prepareSingle(service, context(user, {
       requestId: randomUUID(), fileName: '整批永久忽略.csv', size: content.length
     }))
     objects.set(prepared.cloudPath, content)
-    const parsed = await service.parse(context(user, {
+    const parsed = await service.parseFile(context(user, {
       requestId: randomUUID(), importId: prepared.importId,
       fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480
     }))
-    const created = await service.financeUpdateCreate(context(user, {
+    const created = await createDraft(pool, context(user, {
       requestId: randomUUID(), batchIds: [parsed.batch.batchId]
     }))
     let view = await service.financeUpdateOrganize(context(user, {
@@ -1429,15 +1151,15 @@ test('FinanceUpdate 永久忽略只在整批入账后提升并让后续匹配自
     )
 
     const laterContent = fixtureWithSequence(601)
-    const later = await service.prepare(context(user, {
+    const later = await prepareSingle(service, context(user, {
       requestId: randomUUID(), fileName: '后续复用永久忽略.csv', size: laterContent.length
     }))
     objects.set(later.cloudPath, laterContent)
-    const laterParsed = await service.parse(context(user, {
+    const laterParsed = await service.parseFile(context(user, {
       requestId: randomUUID(), importId: later.importId,
       fileID: `cloud://synthetic.bucket/${later.cloudPath}`, timezoneOffsetMinutes: -480
     }))
-    const laterCreated = await service.financeUpdateCreate(context(user, {
+    const laterCreated = await createDraft(pool, context(user, {
       requestId: randomUUID(), batchIds: [laterParsed.batch.batchId]
     }))
     const laterView = await service.financeUpdateOrganize(context(user, {
@@ -1516,7 +1238,7 @@ test('FinanceUpdate 入账不得产生现金负余额且失败时整批回滚', 
       requestId: randomUUID(), importId: prepared.files[0].importId,
       fileID: `cloud://synthetic.bucket/${prepared.files[0].cloudPath}`, timezoneOffsetMinutes: -480
     }))
-    const created = await service.financeUpdateCreate(context(user, {
+    const created = await createDraft(pool, context(user, {
       requestId: randomUUID(), batchIds: [parsed.batch.batchId]
     }))
     let view = await service.financeUpdateOrganize(context(user, {
@@ -1671,7 +1393,7 @@ test('MySQL 重新解析自动放弃旧 FinanceUpdate，不改变正式账本并
     assert.equal(reused.batch.batchId, parsed.batch.batchId)
     assert.equal(reused.duplicateImportId, undefined)
 
-    const created = await service.financeUpdateCreate(context(user, {
+    const created = await createDraft(pool, context(user, {
       requestId: randomUUID(), batchIds: [reused.batch.batchId]
     }))
     let view = await service.financeUpdateOrganize(context(user, {
@@ -1744,7 +1466,7 @@ test('MySQL 重新解析自动放弃旧 FinanceUpdate，不改变正式账本并
     )
     assert.deepEqual(after, before)
 
-    const restarted = await service.financeUpdateCreate(context(user, {
+    const restarted = await createDraft(pool, context(user, {
       requestId: randomUUID(), batchIds: [resumable.batch.batchId]
     }))
     assert.notEqual(restarted.updateId, view.update.updateId)
@@ -1780,7 +1502,7 @@ test('MySQL 多文件解析失败彼此隔离，成功来源仍可建立更新',
     }
     assert.equal(results[0].import.state, 'review_ready')
     assert.equal(results[1].import.state, 'failed')
-    const update = await service.financeUpdateCreate(context(user, {
+    const update = await createDraft(pool, context(user, {
       requestId: randomUUID(), batchIds: [results[0].batch.batchId]
     }))
     const view = await service.financeUpdateOrganize(context(user, {
@@ -1962,9 +1684,9 @@ test('还款目标未在本批消费仍可补选或建草稿；资格、失败�
         VALUES (?, ?, 'credit', 'liability', '合成历史花呗', '合成历史花呗', 'CNY')`, [user.uid, historyId])
       const content = Buffer.from(alipayAggregateRepaymentFixture().toString().split('\n').filter(line =>
         !line.includes('ALI-HUABEI-001') && (candidateCount || !line.includes('ALI-CREDIT-001'))).join('\n'))
-      const prepared = await service.prepare(context(user, { requestId: randomUUID(), fileName: '合成候选缺席.csv', size: content.length }))
+      const prepared = await prepareSingle(service, context(user, { requestId: randomUUID(), fileName: '合成候选缺席.csv', size: content.length }))
       objects.set(prepared.cloudPath, content)
-      const parsed = await service.parse(context(user, { requestId: randomUUID(), importId: prepared.importId,
+      const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: prepared.importId,
         fileID: `cloud://synthetic.bucket/${prepared.cloudPath}`, timezoneOffsetMinutes: -480 }))
       let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
       view = await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId: view.update.updateId,
@@ -2061,4 +1783,82 @@ test('MySQL 整理真实成员与重复来源数量守恒且隔离用户', { ski
     assert.equal(evidence.evidence.filter(row => row.evidenceRole === 'duplicate').length, 1)
     await assert.rejects(service.financeUpdateGet(context(other, { updateId: view.update.updateId })), error => error.publicCode === 'NOT_FOUND')
   } finally { await pool.end() }
+})
+
+
+test('归属证据不足的还款：本人、他人支出与代垫待核对，隔离/回滚/幂等贯通', { skip: !hasDatabase, timeout: 60000 }, async () => {
+  const pool = mysql.createPool(databaseConfig()), objects = new Map()
+  const service = createImportService({ getPool: () => pool, storage: {
+    async downloadExact(_, key) { return objects.get(key) }, async remove() { return true }
+  } })
+  try {
+    for (const treatment of ['self', 'expense', 'pending']) {
+      const user = await createUserLedger(pool, 'ownership-' + treatment)
+      const stranger = await createUserLedger(pool, 'ownership-stranger-' + treatment)
+      const content = Buffer.from([
+        '支付宝(中国)网络技术有限公司 电子客户回单,,,,,,,,,,,',
+        '支付宝账户: synth@example.invalid,,,,,,,,,,,',
+        '起始日期: [2026-07-01 00:00:00] 终止日期: [2026-07-31 23:59:59],,,,,,,,,,,',
+        '交易时间,交易分类,交易对方,商品说明,金额,收/支,收/付款方式,交易状态,备注,交易订单号,订单号,商家订单号',
+        '2026-07-20 09:00:00,信用借还,合成银行,信用卡还款,120.00,不计收支,账户余额,还款成功,,OWNERSHIP-001,,'
+      ].join('\n'))
+      const prepared = await service.prepareMany(context(user, { requestId: randomUUID(), files: [{ fileName: '合成还款.csv', size: content.length }] }))
+      const file = prepared.files[0]; objects.set(file.cloudPath, content)
+      const parsed = await service.parseFile(context(user, { requestId: randomUUID(), importId: file.importId,
+        fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 }))
+      let view = await service.financeUpdatePrepare(context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] }))
+      const updateId = view.update.updateId
+      const account = view.issues.find(issue => issue.status === 'open' && issue.issueType === 'account_mapping')
+      await service.reviewIssueResolveAccountMappings(context(user, { requestId: randomUUID(), updateId,
+        decisions: [{ issueId: account.issueId, operation: 'resolve', decision: 'apply_fields', fields: { ledgerAccountId: user.accountId } }] }))
+      view = await service.financeUpdateGet(context(user, { updateId }))
+      await pool.execute("UPDATE catledger_economic_events SET reason_codes_json = '[\"repayment_account_required\"]' WHERE uid = ? AND update_id = ?", [user.uid, updateId])
+      await pool.execute("UPDATE catledger_finance_updates SET plan_version = 'organizer-plan-v27' WHERE uid = ? AND update_id = ?", [user.uid, updateId])
+      view = await service.financeUpdateOrganize(context(user, { requestId: randomUUID(), updateId, version: view.update.version }))
+      const issue = view.issues.find(issue => issue.status === 'open' && issue.issueType === 'transfer_accounts')
+      assert.equal(issue.primaryReasonCode, 'repayment_ownership_required')
+      assert.ok(issue.subject.repaymentOwnershipRequired)
+      const command = fields => ({ requestId: randomUUID(), updateId, issueId: issue.issueId,
+        updateVersion: view.update.version, issueVersion: issue.version, decision: 'apply_fields', fields })
+      await assert.rejects(service.reviewIssueResolve(context(user, command({ repaymentOwnership: { owner: 'self' }, counterpartyLedgerAccountId: stranger.accountId }))), { publicCode: 'VALIDATION_ERROR' })
+      await assert.rejects(service.reviewIssueResolve(context(user, command({ repaymentOwnership: { owner: 'other', treatment: 'expense' },
+        counterpartyLedgerAccountDraft: { name: '不应保留的他人信用卡', type: 'credit', currency: 'CNY' } }))), { publicCode: 'VALIDATION_ERROR' })
+      const unchanged = await service.financeUpdateGet(context(user, { updateId }))
+      assert.equal(unchanged.update.version, view.update.version)
+      assert.equal(unchanged.accountDrafts.length, view.accountDrafts.length)
+      const fields = treatment === 'self' ? { repaymentOwnership: { owner: 'self' },
+        counterpartyLedgerAccountDraft: { name: '我的合成信用卡', type: 'credit', currency: 'CNY' } }
+        : { repaymentOwnership: { owner: 'other', treatment } }
+      const payload = command(fields)
+      await service.reviewIssueResolve(context(user, payload))
+      await service.reviewIssueResolve(context(user, payload))
+      view = await service.financeUpdateGet(context(user, { updateId }))
+      assert.equal(view.events[0].repaymentOwnership.owner, treatment === 'self' ? 'self' : 'other')
+      const confirmedOwnership = view.events[0].repaymentOwnership
+      await pool.execute("UPDATE catledger_finance_updates SET plan_version = 'organizer-plan-v27' WHERE uid = ? AND update_id = ?", [user.uid, updateId])
+      view = await service.financeUpdateOrganize(context(user, { requestId: randomUUID(), updateId, version: view.update.version }))
+      assert.deepEqual(view.events[0].repaymentOwnership, confirmedOwnership)
+      if (treatment === 'pending') {
+        assert.equal(view.events[0].economicNature, 'unknown')
+        assert.ok(view.issues.some(issue => issue.status === 'open' && issue.primaryReasonCode === 'repayment_other_treatment_required'))
+        await assert.rejects(service.financeUpdatePost(context(user, { requestId: randomUUID(), updateId, version: view.update.version, mode: 'all_ready' })))
+      } else {
+        assert.equal(view.accountDrafts.length, treatment === 'self' ? 1 : 0)
+        view = await resolveOpenCategoryIssues(service, user, view)
+        await service.financeUpdatePost(context(user, { requestId: randomUUID(), updateId, version: view.update.version, mode: 'all_ready' }))
+        const [transactions] = await pool.execute('SELECT type, source_account_id AS sourceId, destination_account_id AS targetId, amount_minor AS amount FROM catledger_transactions WHERE uid = ?', [user.uid])
+        assert.equal(transactions.length, 1)
+        assert.equal(transactions[0].type, treatment === 'self' ? 'transfer' : 'expense')
+        assert.equal(transactions[0].sourceId, user.accountId)
+        assert.equal(Boolean(transactions[0].targetId), treatment === 'self')
+        assert.equal(String(transactions[0].amount), '12000')
+      }
+      const [[foreign]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [stranger.uid])
+      assert.equal(Number(foreign.count), 0)
+    }
+  } finally { await pool.end() }
+})
+
+require('./helpers/storage-compaction').registerStorageCompactionTests({
+  hasDatabase, mysql, databaseConfig, createUserLedger, fixtureWithSequence, context, createImportService
 })

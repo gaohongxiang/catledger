@@ -1,5 +1,6 @@
 const app = getApp()
 const api = require('../../services/catledger-api')
+const pageReadSession = require('../../services/page-read-session')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const viewModel = require('../../utils/view-model')
@@ -28,7 +29,7 @@ Page({
     accountFilterIndex: 0,
     categoryFilterIndex: 0,
     accountFilters: [{ accountId: '', name: '全部账户' }],
-    categoryFilters: [{ categoryId: '', name: '全部分类' }]
+    categoryFilters: [{ categoryId: '', name: '全部分类' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true }]
   },
 
   onLoad: function () {
@@ -62,7 +63,7 @@ Page({
       wx.stopPullDownRefresh()
       return
     }
-    this.loadTransactions(false).finally(function () {
+    this.prepareAndLoad({ force: true }).finally(function () {
       wx.stopPullDownRefresh()
     })
   },
@@ -73,32 +74,46 @@ Page({
     }
   },
 
-  prepareAndLoad: function () {
-    if (!app.hasLoginApproval()) {
-      return Promise.resolve()
-    }
+  prepareAndLoad: function (options) {
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken'])
+    if (!app.hasLoginApproval()) return Promise.resolve()
+    if (this._prepareLoad) return this._prepareLoad
     const self = this
-    const bootstrapPromise = app.globalData.categories.length > 0
-      ? Promise.resolve()
-      : api.bootstrap().then(function (result) {
-          app.globalData.categories = Array.isArray(result.categories) ? result.categories : []
-        })
-
-    Promise.all([bootstrapPromise, api.callApi('accounts.list')])
-      .then(function (results) {
-        const accounts = results[1].accounts.filter(function (account) { return !account.archived })
-        const categories = app.globalData.categories.map(function (category) {
-          return Object.assign({}, category, { categoryId: category.id })
-        })
-        self.setData({
-          accountFilters: [{ accountId: '', name: '全部账户' }].concat(accounts),
-          categoryFilters: [{ categoryId: '', name: '全部分类' }].concat(categories)
-        })
+    const force = Boolean(options && options.force)
+    const selectedAccount = this.data.accountFilters[this.data.accountFilterIndex]
+    const selectedCategory = this.data.categoryFilters[this.data.categoryFilterIndex]
+    const requested = this.requestData(null)
+    // 筛选项与交易列表并行读取；重复切页复用整个已加载列表，包括后续分页。
+    this._prepareLoad = Promise.all([
+      api.bootstrap({ force: force }),
+      api.callApi('accounts.list', {}, { force: force }),
+      this.loadTransactions(false, { force: force, reuse: true })
+    ]).then(function (results) {
+        if (!isCurrent()) return
+      const accounts = results[1].accounts.filter(function (account) { return !account.archived })
+      const categories = (results[0].categories || []).map(function (category) {
+        return Object.assign({}, category, { categoryId: category.id })
+      })
+      app.globalData.categories = results[0].categories || []
+      const accountFilters = [{ accountId: '', name: '全部账户' }].concat(accounts)
+      const categoryFilters = [{ categoryId: '', name: '全部分类' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true }].concat(categories)
+      self.setData({
+        accountFilters: accountFilters,
+        categoryFilters: categoryFilters,
+        accountFilterIndex: Math.max(0, accountFilters.findIndex(item => selectedAccount && item.accountId === selectedAccount.accountId)),
+        categoryFilterIndex: Math.max(0, categoryFilters.findIndex(item => selectedCategory && item.categoryId === selectedCategory.categoryId))
+      })
+      const current = self.requestData(null)
+      if (requested.accountId !== current.accountId || requested.categoryId !== current.categoryId || requested.uncategorized !== current.uncategorized) {
         return self.loadTransactions(false)
-      })
-      .catch(function (error) {
-        self.setData({ errorMessage: error.message || '明细加载失败' })
-      })
+      }
+    }).catch(function (error) {
+        if (!isCurrent()) return
+      self.setData({ errorMessage: error.message || '明细加载失败' })
+    }).finally(function () {
+        if (!isCurrent()) return
+        self._prepareLoad = null })
+    return this._prepareLoad
   },
 
   requestData: function (cursor) {
@@ -115,7 +130,9 @@ Page({
     if (account && account.accountId) {
       data.accountId = account.accountId
     }
-    if (category && category.categoryId) {
+    if (category && category.uncategorized) {
+      data.uncategorized = true
+    } else if (category && category.categoryId) {
       data.categoryId = category.categoryId
     }
     if (cursor) {
@@ -124,14 +141,27 @@ Page({
     return data
   },
 
-  loadTransactions: function (append) {
-    if (!app.hasLoginApproval() || this.data.loading || this.data.loadingMore) {
-      return Promise.resolve()
+  loadTransactions: function (append, options) {
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken'])
+    if (!app.hasLoginApproval() || this._transactionsLoad) {
+      return this._transactionsLoad || Promise.resolve()
     }
+    const baseToken = api.cacheToken('transactions.list', this.requestData(null))
+    if (append && (!baseToken || baseToken !== this._listCacheToken)) return this.loadTransactions(false, { force: true })
+    if (options && options.reuse && !options.force && this.data.hasLoaded && baseToken && baseToken === this._listCacheToken) return Promise.resolve()
     const self = this
-    this.setData(append ? { loadingMore: true } : { loading: true, errorMessage: '' })
-    return api.callApi('transactions.list', this.requestData(append ? this.data.nextCursor : null))
+    const data = this.requestData(append ? this.data.nextCursor : null)
+    const force = Boolean(options && options.force)
+    const needsNetwork = force || !api.isFresh('transactions.list', data)
+    this.setData(append ? { loadingMore: needsNetwork } : { loading: needsNetwork, errorMessage: '' })
+    this._transactionsLoad = api.callApi('transactions.list', data, { force: force })
       .then(function (result) {
+        if (!isCurrent()) return
+        if (append && api.cacheToken('transactions.list', self.requestData(null)) !== baseToken) {
+          self._transactionsLoad = null
+          return self.loadTransactions(false, { force: true })
+        }
+        if (!append) self._listCacheToken = api.cacheToken('transactions.list', data)
         const rows = result.transactions.map(viewModel.transactionView)
         self.setData({
           hasLoaded: true,
@@ -148,11 +178,15 @@ Page({
         })
       })
       .catch(function (error) {
+        if (!isCurrent()) return
         self.setData({ errorMessage: error.message || '明细加载失败' })
       })
       .finally(function () {
+        if (!isCurrent()) return
         self.setData({ loading: false, loadingMore: false })
+        self._transactionsLoad = null
       })
+    return this._transactionsLoad
   },
 
   previousMonth: function () {
@@ -234,19 +268,11 @@ Page({
   editTransaction: function (event) {
     const index = Number(event.currentTarget.dataset.index)
     const transaction = this.data.transactions[index]
-    if (transaction && transaction.importContext && !transaction.canLinkRefund) {
-      wx.navigateTo({ url: '/pages/import-maintenance/index?updateId=' + transaction.importContext.updateId + '&eventId=' + transaction.importContext.eventId })
-      return
-    }
-    if (!transaction || !transaction.editable) {
-      return
-    }
+    if (!transaction) return
     app.globalData.editingTransaction = transaction
-    wx.navigateTo({
-      url: transaction.canLinkRefund
-        ? '/pages/transaction-editor/index?mode=link-refund'
-        : '/pages/transaction-editor/index?mode=edit'
-    })
+    const imported = transaction.origin === 'import' || Boolean(transaction.importContext)
+    const mode = imported ? 'import' : (transaction.editable ? 'edit' : 'view')
+    wx.navigateTo({ url: '/pages/transaction-editor/index?mode=' + mode })
   },
 
   promptWechatLogin: function () {

@@ -20,6 +20,9 @@ function normalizeListFilters(data) {
   const range = date == null ? monthRange : parseLocalDate(date)
   const accountId = data.accountId == null ? null : validateId(data.accountId)
   const categoryId = data.categoryId == null ? null : validateId(data.categoryId)
+  if (data.uncategorized != null && typeof data.uncategorized !== 'boolean') throw ledgerError('VALIDATION_ERROR')
+  const uncategorized = data.uncategorized === true
+  if (uncategorized && categoryId) throw ledgerError('VALIDATION_ERROR')
   let search = null
   if (data.search != null && data.search !== '') {
     if (typeof data.search !== 'string') throw ledgerError('VALIDATION_ERROR')
@@ -31,7 +34,7 @@ function normalizeListFilters(data) {
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
     throw ledgerError('VALIDATION_ERROR')
   }
-  return { month, date, range, accountId, categoryId, search, pageSize }
+  return { month, date, range, accountId, categoryId, uncategorized, search, pageSize }
 }
 
 async function queryMonthlySummary(connection, uid, range) {
@@ -73,6 +76,7 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
     conditions.push('t.category_id = ?')
     values.push(filters.categoryId)
   }
+  if (filters.uncategorized) conditions.push("t.category_id IS NULL AND t.type IN ('income', 'expense')")
   if (filters.search) {
     conditions.push("t.note LIKE ? ESCAPE '\\\\'")
     values.push(`%${escapeLike(filters.search)}%`)
@@ -174,6 +178,7 @@ function createTransactionQueryService({ getPool }) {
           date: filters.date,
           accountId: filters.accountId,
           categoryId: filters.categoryId,
+          ...(filters.uncategorized ? { uncategorized: true } : {}),
           search: filters.search
         })
         let cursor = null

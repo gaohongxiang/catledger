@@ -1,3 +1,4 @@
+const { discardUpdateGraph } = require('./discarded-update')
 const { statementAnalysis } = require('./statement-analysis')
 const { randomUUID } = require('node:crypto')
 
@@ -159,6 +160,7 @@ async function replaceUnpostedUpdate(connection, uid, update, requestDigest, ide
     [appliedVersion, actionId, uid, update.updateId, expectedVersion]
   )
   if (result.affectedRows !== 1) throw importError('CONFLICT')
+  await discardUpdateGraph(connection, uid, update.updateId)
   return update.updateId
 }
 
@@ -267,8 +269,13 @@ async function resolveIdentities(connection, uid, sourceType, sourceProfile, fil
     const [rows] = await connection.execute(
       `SELECT r.identity_id AS identityId, l.transaction_id AS transactionId
          FROM catledger_import_rows r
-         JOIN catledger_import_transaction_links l
-           ON l.uid = r.uid AND l.row_id = r.row_id
+         JOIN catledger_event_evidence ee
+           ON ee.uid = r.uid AND ee.row_id = r.row_id AND ee.evidence_role <> 'discarded'
+         JOIN catledger_economic_event_transactions l
+           ON l.uid = ee.uid AND l.event_id = ee.event_id AND l.superseded_at IS NULL
+          AND l.role IN ('primary', 'refund_transaction', 'repayment_allocation', 'payment_allocation', 'historical_primary')
+         JOIN catledger_transactions t
+           ON t.uid = l.uid AND t.transaction_id = l.transaction_id AND t.deleted_at IS NULL
         WHERE r.uid = ? AND r.identity_id IN (${part.map(() => '?').join(', ')})
         ORDER BY l.created_at, l.link_id`,
       [uid, ...part]
@@ -304,14 +311,6 @@ function interpretationAnchor(identityId, sourceLocator, normalized) {
     normalized.amountMinor, normalized.currency, normalized.direction)
 }
 
-function eventType(row) {
-  if ((row.normalized.transactionType === 'payment' || row.normalized.transactionType === 'fee') &&
-      (row.normalized.direction === 'income' || row.normalized.direction === 'expense')) {
-    return row.normalized.direction
-  }
-  return row.normalized.transactionType
-}
-
 function rowOutcome(row, identity) {
   if (row.parseState !== 'valid' || row.eligibility === 'non_postable') {
     return { state: 'ignored', disposition: 'skip', reason: 'not_postable', processingState: 'ignored' }
@@ -335,9 +334,6 @@ async function persistDocumentRows(connection, uid, batchId, sourceProfile, file
     connection, uid, document.descriptor.sourceType, sourceProfile, fileSha256, document.rows
   )
   const rowInserts = []
-  const eventInserts = []
-  const evidenceInserts = []
-  const decisionInserts = []
   let valid = 0
   let invalid = 0
   let pending = 0
@@ -384,21 +380,7 @@ async function persistDocumentRows(connection, uid, batchId, sourceProfile, file
       document.descriptor.normalizationVersion, JSON.stringify(row.semantic), JSON.stringify(row.observations)
     ])
 
-    if (row.parseState === 'valid') {
-      const eventId = randomUUID()
-      const decisionId = randomUUID()
-      const eventDigest = digestParts(
-        'economic-event-v1', identity.coreDigest, row.normalized.localAt, row.sourceLocator
-      )
-      eventInserts.push([
-        uid, eventId, batchId, eventType(row), outcome.state, eventDigest, 'economic-event-v1'
-      ])
-      evidenceInserts.push([uid, eventId, rowId, 'primary', 'event-evidence-v1'])
-      decisionInserts.push([
-        uid, decisionId, eventId, 1, outcome.disposition, 'system', outcome.reason,
-        null, null, digestParts('decision-v1', outcome.disposition, outcome.reason)
-      ])
-    }
+
   }
 
   await insertRows(connection, `INSERT INTO catledger_import_rows
@@ -412,13 +394,6 @@ async function persistDocumentRows(connection, uid, batchId, sourceProfile, file
      category_evidence_json,
      observed_identity_key, observed_core_digest, primary_issue_code, issues_json,
      raw_fields_json, raw_snapshot_version, parser_version, normalization_version, semantic_json, observations_json) VALUES`, rowInserts)
-  await insertRows(connection, `INSERT INTO catledger_economic_events
-    (uid, event_id, batch_id, event_type, state, event_core_digest, rule_version) VALUES`, eventInserts)
-  await insertRows(connection, `INSERT INTO catledger_event_evidence
-    (uid, event_id, row_id, evidence_role, relation_rule_version) VALUES`, evidenceInserts)
-  await insertRows(connection, `INSERT INTO catledger_import_decisions
-    (uid, decision_id, event_id, decision_version, disposition, decision_origin,
-     reason_code, account_id, category_id, decision_digest) VALUES`, decisionInserts)
   return { total: document.rows.length, valid, invalid, pending }
 }
 

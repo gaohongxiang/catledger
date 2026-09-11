@@ -17,7 +17,7 @@ function evaluate(id, key, data) {
   assert.ok(value && value.startsWith('{{'), id + ':' + key)
   return Boolean(vm.runInNewContext(value.slice(2, -2), data, { timeout: 200 }))
 }
-const state = (phase, queued, ready, failed = 0, busy = false) => ({ phase, busy, maxFiles: 5,
+const state = (phase, queued, ready, failed = 0, busy = false) => ({ phase, busy, restoreUpdateId: '', maxFiles: 5,
   files: Array(queued + ready + failed).fill({}), uploadSummary: { queued, ready, failed, attention: failed } })
 
 test('空文件只显示选择入口；不摆出不可用的开始解析', () => {
@@ -55,11 +55,12 @@ test('账户进度使用 confirmed，而不是把 ready 或建议冒充确认', 
     assert.ok(markup.includes('="' + handler + '"'), handler)
   }
 })
-test('分类与核对维度独立，数量明细仅通过本地展开显示', () => {
-  const disclosure = read('miniprogram/components/record-summary/index.wxml')
-  assert.match(disclosure, /bindtap="toggleCountDetails"/)
-  assert.match(disclosure, /wx:if="{{expanded}}"/)
-  assert.equal((markup.match(/<record-summary /g) || []).length, 3)
+test('分类与核对维度独立，整理、确认和完成页均常驻两条公式', () => {
+  assert.equal((markup.match(/class="record-count-equation"/g) || []).length, 6)
+  assert.doesNotMatch(markup, /<record-summary /)
+  const formulas = markup.slice(markup.indexOf('class="review-count-formulas"'), markup.indexOf('class="review-main-tabs"'))
+  assert.equal((formulas.match(/class="record-count-equation"/g) || []).length, 2)
+  assert.ok(!formulas.includes('wx:if'))
   assert.match(markup, /activeReviewTab === 'category'/)
   assert.match(markup, /categoryStatusTabs\[0\]\.count/)
   assert.match(markup, /recordSummary.excludedCount/)
@@ -72,7 +73,7 @@ test('付款总额保持模型金额；全部分配按钮不改成含义不同�
   assert.match(markup, /maxlength="300"/)
 })
 test('正式提交及全部分配/聚合校验条件保持完整', () => {
-  assert.ok(markup.includes('disabled="{{busy || openIssueCount || !coverage.selectedEventsReadyToPost}}"'))
+  assert.ok(markup.includes('disabled="{{busy || openIssueCount || accountStepSummary.pending > 0 || !coverage.selectedEventsReadyToPost}}"'))
   assert.ok(markup.includes('(currentIssue.paymentNeedsReview && !paymentCanSave)'))
   assert.ok(markup.includes('(currentIssue.aggregateRepayment && !repaymentAllocationCanSave)'))
   assert.match(markup, /bindtap="resolveWithFields"/)
@@ -88,24 +89,7 @@ test('暖橘局部令牌不改其他主题；标题正常字距与常规正文',
 })
 
 
-test('记录说明组件仅切换本地展开，不发送业务请求或更改计数', () => {
-  let definition
-  vm.runInNewContext(read('miniprogram/components/record-summary/index.js'), { Component: c => { definition = c } })
-  const panel = { data: { expanded: false, total: 314, active: 127, excluded: 187, duplicate: 0 }, setData(patch) { Object.assign(this.data, patch) } }
-  definition.methods.toggleCountDetails.call(panel)
-  assert.equal(panel.data.expanded, true)
-  assert.equal(panel.data.total, 314)
-  assert.equal(panel.data.excluded, 187)
-  definition.methods.toggleCountDetails.call(panel)
-  assert.equal(panel.data.expanded, false)
-  assert.doesNotMatch(read('miniprogram/components/record-summary/index.js'), /require|callImport|callApi|triggerEvent/)
-})
-
-test('记录说明在父页面注册，详情折叠后仍显示排除和重复计数', () => {
-  const config = JSON.parse(read('miniprogram/pages/import-workbench/index.json'))
-  assert.equal(config.usingComponents['record-summary'], '../../components/record-summary/index')
-  const template = read('miniprogram/components/record-summary/index.wxml')
-  const details = template.indexOf('wx:if="{{expanded}}"')
-  assert.ok(template.indexOf('已排除 {{excluded}}') < details)
-  assert.ok(template.indexOf('重复 {{duplicate}}') < details)
+test('恢复失败但仍可放弃时不同时显示新的选择文件入口', () => {
+  const s = state('error', 0, 0); s.restoreUpdateId = 'synthetic-batch'
+  assert.equal(evaluate('empty-picker', 'wx:if', s), false)
 })

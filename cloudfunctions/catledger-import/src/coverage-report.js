@@ -1,5 +1,6 @@
 const { analysisFullyObserved } = require('./statement-analysis')
 const { SEMANTIC_HARD_BLOCKERS } = require('./semantic-policy')
+const { effectiveSemanticReasons } = require('./payment-resolution')
 const { deriveRowDisposition, RELATION_BLOCKERS } = require('./row-disposition')
 
 function buildCoverageReport({ sources = [], events = [], issues = [], rows = [], evidence = [] } = {}) {
@@ -26,7 +27,7 @@ function buildCoverageReport({ sources = [], events = [], issues = [], rows = []
   ].map((kind) => [kind, dispositions.filter((row) => row.disposition === kind).length]))
   const selected = events.filter((event) => !['excluded', 'corrected'].includes(event.status))
   const ready = selected.filter((event) => ['ready', 'posted'].includes(event.status) &&
-    ![...(event.reasonCodes || []), ...(event.fieldSources && event.fieldSources.semanticBlockers || [])]
+    !effectiveSemanticReasons(event, [...(event.reasonCodes || []), ...(event.fieldSources && event.fieldSources.semanticBlockers || [])])
       .some((reason) => SEMANTIC_HARD_BLOCKERS.includes(reason)))
   const openBlockingIssues = issues.filter((issue) => issue.status === 'open' && issue.blocking).length
   const fileObservationsPassed = sources.length > 0 && sources.every((source) =>

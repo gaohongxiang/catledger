@@ -1,5 +1,6 @@
 const app = getApp()
 const api = require('../../services/catledger-api')
+const profilePresentation = require('../../utils/profile-presentation')
 const themeService = require('../../theme/service')
 
 Component({
@@ -27,7 +28,7 @@ Component({
         return
       }
       this._afterLogin = options && options.afterLogin
-      const profile = app.globalData.profile || {}
+      const profile = app.prepareLoginProfile()
       this.setData(Object.assign({}, themeService.currentPresentation(), {
         open: true,
         submitting: false,
@@ -58,6 +59,11 @@ Component({
       })
     },
 
+    shuffleNickname: function () {
+      if (this.data.submitting) return
+      this.setData({ nickname: profilePresentation.randomNickname(this.data.nickname), errorMessage: '' })
+    },
+
     focusNickname: function () {
       if (!this.data.submitting) this.setData({ nicknameFocused: true })
     },
@@ -79,7 +85,7 @@ Component({
       return api.bootstrapAfterConsent()
         .then(function (result) {
           return app.saveLocalProfile(profile).then(function () {
-            return app.completeWechatLogin(result.categories)
+            return app.completeWechatLogin(result.categories, result.uid)
           })
         })
         .then(function () {

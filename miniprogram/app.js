@@ -1,5 +1,7 @@
 const cloudbaseConfig = require('./config/cloudbase')
 const themeService = require('./theme/service')
+const profilePresentation = require('./utils/profile-presentation')
+const readCache = require('./services/read-cache')
 
 const LOGIN_APPROVAL_KEY = 'catledger_wechat_login_v1'
 const LOCAL_PROFILE_KEY = 'catledger_local_profile_v1'
@@ -19,9 +21,11 @@ App({
   globalData: {
     cloudAvailable: false,
     loginApproved: false,
+    uid: '',
     profile: { nickname: '', avatarUrl: '' },
     themeId: '',
     categories: [],
+    openStatisticsCompletion: false,
     editingTransaction: null
   },
 
@@ -43,6 +47,15 @@ App({
     this.globalData.cloudAvailable = true
   },
 
+  onHide: function () { this._readCacheWasHidden = true },
+
+  onShow: function () {
+    if (this._readCacheWasHidden) {
+      readCache.invalidate(['accounts', 'transactions', 'categories'])
+      this._readCacheWasHidden = false
+    }
+  },
+
   hasLoginApproval: function () {
     return this.globalData.loginApproved === true
   },
@@ -51,11 +64,19 @@ App({
     return themeService.selectTheme(themeId, this)
   },
 
+  prepareLoginProfile: function () {
+    const profile = profilePresentation.withDefaultProfile(this.globalData.profile)
+    wx.setStorageSync(LOCAL_PROFILE_KEY, profile)
+    this.globalData.profile = profile
+    return profile
+  },
+
   saveLocalProfile: function (profile) {
     const self = this
-    const nickname = String(profile && profile.nickname || '').trim().slice(0, 24)
-    const avatarUrl = String(profile && profile.avatarUrl || '')
-    const persistAvatar = avatarUrl && avatarUrl.indexOf('wxfile://usr/') !== 0
+    const resolvedProfile = profilePresentation.withDefaultProfile(profile, this.globalData.profile)
+    const nickname = resolvedProfile.nickname
+    const avatarUrl = resolvedProfile.avatarUrl
+    const persistAvatar = avatarUrl !== profilePresentation.DEFAULT_AVATAR_URL && avatarUrl.indexOf('wxfile://usr/') !== 0
       ? new Promise(function (resolve) {
           wx.saveFile({
             tempFilePath: avatarUrl,
@@ -73,7 +94,8 @@ App({
     })
   },
 
-  completeWechatLogin: function (categories) {
+  completeWechatLogin: function (categories, uid) {
+    this.globalData.uid = typeof uid === 'string' ? uid : ''
     this.globalData.loginApproved = true
     this.globalData.categories = Array.isArray(categories) ? categories : []
     wx.setStorageSync(LOGIN_APPROVAL_KEY, true)
@@ -81,6 +103,7 @@ App({
   },
 
   logoutWechatAccount: function () {
+    readCache.reset()
     const avatarUrl = this.globalData.profile && this.globalData.profile.avatarUrl
     if (avatarUrl && avatarUrl.indexOf('wxfile://usr/') === 0) {
       wx.removeSavedFile({
@@ -89,8 +112,10 @@ App({
       })
     }
     this.globalData.loginApproved = false
+    this.globalData.uid = ''
     this.globalData.profile = { nickname: '', avatarUrl: '' }
     this.globalData.categories = []
+    this.globalData.openStatisticsCompletion = false
     this.globalData.editingTransaction = null
     wx.removeStorageSync(LOGIN_APPROVAL_KEY)
     wx.removeStorageSync(LOCAL_PROFILE_KEY)

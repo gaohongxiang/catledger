@@ -1,5 +1,6 @@
 const app = getApp()
 const api = require('../../services/catledger-api')
+const pageReadSession = require('../../services/page-read-session')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const viewModel = require('../../utils/view-model')
@@ -98,26 +99,29 @@ Page({
     this.loadDashboard()
   },
 
-  fetchDashboard: function (month) {
-    return api.callApi('dashboard.get', { month: month }).catch(function (error) {
+  fetchDashboard: function (month, options) {
+    return api.callApi('dashboard.get', { month: month }, options).catch(function (error) {
       if (!error || error.code !== 'INITIALIZATION_REQUIRED') throw error
-      return api.bootstrap().then(function (result) {
+      return api.bootstrap({ force: true }).then(function (result) {
         app.globalData.categories = Array.isArray(result.categories) ? result.categories : []
-        return api.callApi('dashboard.get', { month: month })
+        return api.callApi('dashboard.get', { month: month }, options)
       })
     })
   },
 
-  loadDashboard: function () {
-    if (this.data.loading || !app.hasLoginApproval()) {
-      return
+  loadDashboard: function (options) {
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'netIncomeText', 'trendReady', 'cashFlowTrend', 'accounts', 'recentTransactions'], ['_dashboardLoad'])
+    if (this._dashboardLoad || !app.hasLoginApproval()) {
+      return this._dashboardLoad || Promise.resolve()
     }
     const month = time.currentMonth()
     const self = this
-    this.setData({ loading: true, errorMessage: '', month: month, monthLabel: time.monthLabel(month) })
+    const force = Boolean(options && (options.force || options.currentTarget))
+    this.setData({ loading: force || !api.isFresh('dashboard.get', { month: month }), errorMessage: '', month: month, monthLabel: time.monthLabel(month) })
 
-    this.fetchDashboard(month)
+    this._dashboardLoad = this.fetchDashboard(month, { force: force })
       .then(function (dashboard) {
+        if (!isCurrent()) return
         const cashFlowTrend = Array.isArray(dashboard.cashFlowTrend) ? dashboard.cashFlowTrend : []
         self.setData({
           netWorthText: money.formatMinor(dashboard.netWorthMinor),
@@ -149,21 +153,26 @@ Page({
         })
       })
       .catch(function () {
+        if (!isCurrent()) return
         self.setData({ errorMessage: '账本暂时没连接上' })
       })
       .finally(function () {
+        if (!isCurrent()) return
         self.setData({ loading: false })
+        self._dashboardLoad = null
       })
+    return this._dashboardLoad
   },
 
   editTransaction: function (event) {
     const index = Number(event.currentTarget.dataset.index)
     const transaction = this.data.recentTransactions[index]
-    if (!transaction || !transaction.editable) {
+    if (!transaction) {
       return
     }
     app.globalData.editingTransaction = transaction
-    wx.navigateTo({ url: '/pages/transaction-editor/index?mode=edit' })
+    const imported = transaction.origin === 'import' || Boolean(transaction.importContext)
+    wx.navigateTo({ url: '/pages/transaction-editor/index?mode=' + (imported ? 'import' : (transaction.editable ? 'edit' : 'view')) })
   },
 
   openAccounts: function () {
@@ -183,6 +192,6 @@ Page({
       this.promptWechatLogin(this.openStatistics.bind(this))
       return
     }
-    wx.navigateTo({ url: '/pages/statistics/index' })
+    wx.switchTab({ url: '/pages/statistics/index' })
   }
 })

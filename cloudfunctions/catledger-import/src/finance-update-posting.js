@@ -299,20 +299,7 @@ async function promoteCategoryMappings(connection, uid, updateId) {
 
 async function existingTransactionForEvent(connection, uid, updateId, eventId) {
   const [rows] = await connection.execute(
-    `(SELECT linked.transaction_id AS transactionId, t.version, linked.created_at AS createdAt
-        FROM catledger_event_evidence ee
-        JOIN catledger_import_rows source_row
-          ON source_row.uid = ee.uid AND source_row.row_id = ee.row_id
-        JOIN catledger_import_rows prior_row
-          ON prior_row.uid = source_row.uid AND prior_row.identity_id = source_row.identity_id
-        JOIN catledger_import_transaction_links linked
-          ON linked.uid = prior_row.uid AND linked.row_id = prior_row.row_id
-        JOIN catledger_transactions t
-          ON t.uid = linked.uid AND t.transaction_id = linked.transaction_id AND t.deleted_at IS NULL
-       WHERE ee.uid = ? AND ee.update_id = ? AND ee.event_id = ?
-         AND ee.evidence_role <> 'discarded' AND source_row.identity_id IS NOT NULL)
-     UNION ALL
-     (SELECT linked.transaction_id AS transactionId, t.version, linked.created_at AS createdAt
+    `SELECT linked.transaction_id AS transactionId, t.version, linked.created_at AS createdAt
         FROM catledger_event_evidence ee
         JOIN catledger_import_rows source_row
           ON source_row.uid = ee.uid AND source_row.row_id = ee.row_id
@@ -323,13 +310,14 @@ async function existingTransactionForEvent(connection, uid, updateId, eventId) {
          AND prior_evidence.evidence_role <> 'discarded'
         JOIN catledger_economic_event_transactions linked
           ON linked.uid = prior_evidence.uid AND linked.event_id = prior_evidence.event_id
+         AND linked.superseded_at IS NULL
          AND linked.role IN ('primary', 'refund_transaction', 'repayment_allocation', 'payment_allocation', 'historical_primary')
         JOIN catledger_transactions t
           ON t.uid = linked.uid AND t.transaction_id = linked.transaction_id AND t.deleted_at IS NULL
        WHERE ee.uid = ? AND ee.update_id = ? AND ee.event_id = ?
-         AND ee.evidence_role <> 'discarded' AND source_row.identity_id IS NOT NULL)
+         AND ee.evidence_role <> 'discarded' AND source_row.identity_id IS NOT NULL
      ORDER BY createdAt LIMIT 1 FOR UPDATE`,
-    [uid, updateId, eventId, uid, updateId, eventId]
+    [uid, updateId, eventId]
   )
   return rows[0] || null
 }

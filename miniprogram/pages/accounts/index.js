@@ -1,4 +1,5 @@
 const api = require('../../services/catledger-api')
+const pageReadSession = require('../../services/page-read-session')
 const loginGuard = require('../../services/login-guard')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
@@ -50,16 +51,24 @@ Page({
     if (this.getTabBar()) this.getTabBar().setData({ hidden: hidden })
   },
 
-  loadAccounts: function () {
-    if (this.data.loading) return
+  loadAccounts: function (options) {
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'errorMessage', 'assets', 'liabilities', 'archivedAccounts', 'totals', 'accountDetail', 'formOpen', 'selectedAccount', 'name', 'balanceYuan'], ['_readLoad'])
+    if (this._readLoad) return this._readLoad
     const self = this
-    this.setData({ loading: true, errorMessage: '' })
-    api.callApi('accounts.list')
+    const force = Boolean(options && options.force)
+    this.setData({ loading: force || !api.isFresh('accounts.list'), errorMessage: '' })
+    this._readLoad = api.callApi('accounts.list', {}, { force: force })
       .then(function (result) {
+        if (!isCurrent()) return
         self.setData(Object.assign({ hasLoaded: true }, buildAccountsView(result.accounts)))
       })
-      .catch(function (error) { self.setData({ errorMessage: error.message || '账户加载失败' }) })
-      .finally(function () { self.setData({ loading: false }) })
+      .catch(function (error) {
+        if (!isCurrent()) return
+        self.setData({ errorMessage: error.message || '账户加载失败' }) })
+      .finally(function () {
+        if (!isCurrent()) return
+        self.setData({ loading: false }); self._readLoad = null })
+    return this._readLoad
   },
 
   openCreate: function () {

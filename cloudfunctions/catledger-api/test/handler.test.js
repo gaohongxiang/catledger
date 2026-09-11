@@ -42,6 +42,8 @@ test('bootstrap rejects identity fields supplied by the client', async () => {
   })
 
   const variants = [
+    { action: 'bootstrap', data: { uid: 'another-user-uid' } },
+    { action: 'bootstrap', data: { nested: { uid: 'another-user-uid' } } },
     { action: 'bootstrap', data: { OPENID: 'client-openid' } },
     { action: 'bootstrap', data: { nested: { openId: 'client-openid' } } }
   ]
@@ -168,8 +170,9 @@ test('bootstrap ignores request properties outside the public contract', async (
   })
 })
 
-test('bootstrap hashes the trusted subject and returns no server identity', async () => {
+test('bootstrap returns its own uid without exposing OpenID or subject hash', async () => {
   const rawOpenid = 'sensitive-wechat-openid'
+  const uid = '00000000-0000-4000-8000-000000000001'
   let input
   const logger = createLogger()
   const handler = createHandler({
@@ -178,6 +181,7 @@ test('bootstrap hashes the trusted subject and returns no server identity', asyn
       async bootstrap(value) {
         input = value
         return {
+          uid,
           isNewUser: true,
           categories: [
             {
@@ -191,7 +195,8 @@ test('bootstrap hashes the trusted subject and returns no server identity', asyn
         }
       }
     },
-    logger
+    logger,
+    slowThresholdMs: 0
   })
 
   const result = await handler({ action: 'bootstrap' })
@@ -200,8 +205,10 @@ test('bootstrap hashes the trusted subject and returns no server identity', asyn
     subjectHash: hashWechatSubject(rawOpenid)
   })
   assert.equal(input.subjectHash.length, 64)
-  assert.doesNotMatch(JSON.stringify(result), /sensitive-wechat-openid|subjectHash|uid/)
-  assert.deepEqual(logger.entries, [])
+  assert.equal(result.data.uid, uid)
+  assert.doesNotMatch(JSON.stringify(result), /sensitive-wechat-openid|subjectHash/)
+  assert.equal(logger.entries.length, 1)
+  assert.doesNotMatch(JSON.stringify(logger.entries), /sensitive-wechat-openid|subjectHash|uid|00000000/)
 })
 
 test('bootstrap requires trusted WeChat identity', async () => {

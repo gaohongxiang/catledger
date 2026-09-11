@@ -147,6 +147,7 @@ const SHARED_DECISION_REASON_CODES = new Set([
 ])
 
 function sharedReviewDecisionSignature(event, classification) {
+  if (['repayment_ownership_required', 'repayment_other_treatment_required'].includes(classification.primaryReason)) return event.eventKey
   const projection = event.fieldSources && event.fieldSources.fundsProjection
   if (projection && projection.to && projection.to.referenceKind === 'aggregate') return event.eventKey
   const reasons = unique(event.reasonCodes || [])

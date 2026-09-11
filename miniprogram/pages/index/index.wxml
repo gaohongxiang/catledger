@@ -1,10 +1,10 @@
 <view class="page-canvas home-page {{themeClass}}" style="{{themeStyle}}">
   <view class="home-header home-content-line">
     <view class="home-intro">
-      <text class="home-kicker">{{monthLabel}} · 我的账本</text>
       <text class="home-title serif-title">把账，记得有温度。</text>
     </view>
-    <image class="home-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
+    <button wx:if="{{!loggedIn}}" class="home-login-button" size="mini" bindtap="promptWechatLogin"><text class="home-login-label">登录</text></button>
+    <image wx:else class="home-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
   </view>
 
   <view wx:if="{{!cloudAvailable}}" class="empty-ledger">
@@ -14,7 +14,10 @@
 
   <block wx:else>
     <view class="net-worth-card">
-      <text class="net-worth-label">人民币净值</text>
+      <view class="net-worth-heading">
+        <text class="net-worth-label">人民币净值</text>
+        <text class="net-worth-month">{{monthLabel}}</text>
+      </view>
       <text class="net-worth-number money-number">{{loggedIn && hasDashboard ? netWorthText : '—'}}</text>
       <text class="net-worth-note">资产减去负债</text>
     </view>
@@ -45,7 +48,6 @@
       </view>
     </view>
 
-    <button wx:if="{{!loggedIn}}" class="home-login-button" bindtap="promptWechatLogin">登录</button>
 
     <view class="section-heading statistics-heading">
         <view>

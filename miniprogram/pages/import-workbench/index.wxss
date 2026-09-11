@@ -119,8 +119,10 @@ button::after { border: 0; }
 }
 .import-copy {
   margin-top: 0;
-  color: var(--ui-muted, #746a60);
-  font-size: 26rpx;
+  color: var(--ui-ink, #29231e);
+  font-family: inherit;
+  font-size: 32rpx;
+  font-weight: 600;
   line-height: 1.5;
 }
 
@@ -2242,7 +2244,7 @@ button::after { border: 0; }
 .review-editor-sheet .funds-route-card {
   margin-top: 0;
   padding: 18rpx;
-  background: var(--ui-surface-muted);
+  background: var(--ui-accent-soft, #f6e5d8);
   border-radius: 18rpx;
 }
 .review-editor-sheet .funds-route-label { color: var(--ui-muted, #746a60); font-size: var(--font-caption, 24rpx); }
@@ -2448,6 +2450,12 @@ button::after { border: 0; }
 .review-editor-sheet .relation-empty { border-bottom: 0; }
 
 .parse-stage { margin-top: 28rpx; }
+.parse-stage .stage-action button.stage-primary {
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
 
 .account-mode-control {
   min-height: 88rpx;
@@ -2679,3 +2687,130 @@ button::after { border: 0; }
   line-height: 1.5;
 }
 .sheet-save-hint { padding: 10rpx 0; }
+
+/* 账户摘要与编辑共享列表边界，操作区域保持可点击尺寸。 */
+.account-proof-title-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4rpx 12rpx; min-width: 0; flex: 1; }
+.account-pending-label { flex: 0 0 auto; color: var(--ui-accent-strong); font-size: var(--font-caption); line-height: 1.5; }
+.account-summary-row { display: flex; align-items: center; gap: 16rpx; min-height: 64rpx; }
+.account-summary-text { flex: 1; min-width: 0; color: var(--ui-muted); font-size: var(--font-caption); line-height: 1.5; overflow-wrap: anywhere; }
+.account-proof-item .account-change { flex: 0 0 80rpx; width: 80rpx; max-width: 80rpx; min-width: 80rpx; min-height: 64rpx; margin: 0; padding: 0 4rpx; color: var(--ui-accent-strong); font-size: var(--font-caption); line-height: 64rpx; font-weight: 400; background: #fff; }
+.account-decision-row, .account-mode-trigger { background: #fff; }
+.account-mode-trigger-create .account-mode-value, .account-mode-trigger-pending .account-mode-value { color: var(--ui-ink); }
+.account-confirm-row { display: flex; justify-content: flex-end; margin-top: 12rpx; }
+.account-proof-item .account-confirm { flex: 0 0 auto; width: auto; min-width: 160rpx; min-height: 64rpx; margin: 0; padding: 0 20rpx; color: #fff; font-size: var(--font-caption); line-height: 64rpx; background: var(--ui-accent-strong); border-radius: 10rpx; }
+.account-proof-item .account-confirm[disabled] { color: var(--ui-muted); background: var(--ui-line); }
+.account-shared-note { display: block; padding: 16rpx 0; color: var(--ui-muted); font-size: var(--font-caption); line-height: 1.5; }
+.account-stage, .review-stage, .final-stage { padding-bottom: 160rpx; }
+.stage-navigation { position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); background: var(--ui-page); border-top: 1rpx solid var(--ui-line); }
+.stage-navigation-buttons { display: flex; align-items: stretch; gap: 16rpx; }
+.stage-navigation .stage-previous { flex: 0 0 160rpx; min-width: 0; margin: 0; padding: 0 12rpx; min-height: 88rpx; color: var(--ui-accent-strong); font-size: var(--font-body-small); line-height: 88rpx; background: #fff; border: 1rpx solid var(--ui-accent-strong); border-radius: 14rpx; }
+.stage-navigation .stage-primary { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; width: 0; min-height: 88rpx; margin: 0; padding: 12rpx; font-size: var(--font-body-small); line-height: 1.5; border-radius: 14rpx; }
+.stage-navigation .stage-previous[disabled] { opacity: .5; }
+
+/* 在现有统一视觉上收紧账户列表；保留其他步骤与兼容修复。 */
+.stage-track { position: relative; display: flex; align-items: flex-start; padding: 16rpx 0; }
+.stage-track .stage-item { flex: 1 1 25%; padding: 0; min-height: 88rpx; gap: 10rpx; }
+.stage-track .stage-number { width: 40rpx; height: 40rpx; flex: 0 0 40rpx; }
+.stage-connector { position: absolute; top: 36rpx; width: 24rpx; height: 2rpx; margin: 0; transform: translate(-50%, -50%); color: var(--ui-muted); background: currentColor; }
+.stage-connector:nth-child(2) { left: 25%; }
+.stage-connector:nth-child(4) { left: 50%; }
+.stage-connector:nth-child(6) { left: 75%; }
+.stage-connector::after { position: absolute; top: 50%; right: 0; width: 10rpx; height: 10rpx; content: ''; border-top: 2rpx solid currentColor; border-right: 2rpx solid currentColor; transform: translateY(-50%) rotate(45deg); }
+.account-proof-list { margin-top: 20rpx; overflow: hidden; border: 1rpx solid var(--ui-line); border-radius: 18rpx; background: #fff; }
+.account-proof-item { margin: 0; padding: 18rpx 20rpx; border: 0; border-bottom: 1rpx solid var(--ui-line); border-radius: 0; background: #fff; }
+.account-proof-head { align-items: baseline; }
+.account-proof-title { font-size: 28rpx; font-weight: 500; }
+.account-mode-trigger, .account-decision-create, .account-decision-create .account-mode-trigger-create,
+.account-mode-trigger.account-mode-trigger-pending, .account-decision-create .account-mode-trigger-create[disabled], .account-mode-trigger.account-mode-trigger-pending[disabled] { color: var(--ui-ink); background: #fff !important; }
+.account-decision-create .account-mode-trigger-create { flex-basis: 168rpx; }
+.account-decision-create .account-compact-type { flex-basis: 210rpx; width: 210rpx; }
+.account-decision-create .account-compact-name { padding: 0 12rpx; }
+.account-decision-create .account-mode-control, .account-decision-create .account-compact-type-control { gap: 6rpx; padding: 8rpx 12rpx; }
+.account-decision-create .account-mode-value, .account-decision-create .account-compact-type-value { font-size: 26rpx; white-space: nowrap; }
+.account-decision-create .account-dropdown-chevron { margin-left: 6rpx; }
+.account-summary-text { font-size: 26rpx; }
+.stage-navigation .stage-primary[disabled] { color: var(--ui-muted); background: var(--ui-surface-muted) !important; opacity: 1; }
+
+.review-count-formulas { margin: 12rpx 0 24rpx; color: var(--ui-muted); }
+.review-count-formulas .record-count-equation { font-size: 18rpx; line-height: 1.8; white-space: nowrap; }
+/* 四个步骤共用内容标题层级，低于顶部主标题。 */
+.import-page .stage-panel-title,
+.import-page .step-title,
+.import-page .review-title {
+  color: var(--ui-ink, #29231e);
+  font-family: inherit;
+  font-size: 28rpx;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.abandon-batch-actions { display: flex; gap: 16rpx; }
+.abandon-batch-actions button { flex: 1; width: 0; min-width: 0; margin: 0; padding: 0 12rpx; min-height: 88rpx; font-size: 26rpx; line-height: 88rpx; border-radius: 14rpx; }
+.abandon-batch-actions .abandon-batch-button { border: 1rpx solid currentColor; }
+
+.draft-sync-note { display: flex; align-items: center; gap: 16rpx; margin: 12rpx 0; color: var(--ui-muted); font-size: 24rpx; }
+.draft-sync-note text { flex: 1; }
+.draft-sync-note button { margin: 0; padding: 0 12rpx; font-size: 24rpx; }
+
+/* 导入各步骤及读取结果共用文字边界；卡片保留自身内边距。 */
+.import-page .import-heading,
+.import-page .file-stage-heading,
+.import-page .step-heading,
+.import-page .review-heading,
+.import-page .step-section > .stage-panel-kicker,
+.import-page .step-section > .step-title,
+.import-page .step-section > .step-copy,
+.import-page .step-section > .step-footnote,
+.import-page .review-count-formulas,
+.import-page .draft-sync-note {
+  box-sizing: border-box;
+  padding-left: var(--layout-content-inset, 20rpx);
+  padding-right: var(--layout-content-inset, 20rpx);
+}
+
+.repayment-ownership { margin-bottom: 20rpx; }
+.ownership-options { display: flex; gap: 16rpx; margin-top: 12rpx; }
+.ownership-option { box-sizing: border-box; width: 100%; margin: 0; padding: 18rpx 20rpx; border: 1rpx solid var(--ui-line); border-radius: 14rpx; background: var(--ui-surface, #fff); color: var(--ui-ink); font-size: 26rpx; font-weight: 500; line-height: 1.5; text-align: left; }
+.ownership-options .ownership-option { width: 0; flex: 1; text-align: center; }
+.ownership-option-selected { border-color: var(--ui-accent, #b85f2e); color: var(--ui-accent, #b85f2e); background: var(--ui-accent-soft, #fceee3); }
+.ownership-treatment { margin-top: 20rpx; }
+.ownership-treatment .ownership-option { margin-top: 12rpx; }
+
+.processing-stage .restore-abandon-button { margin: 28rpx auto 0; color: var(--ui-accent-strong, #b85f2e); }
+
+/* 处理方式采用整行选择项，覆盖通用弹层按钮的限宽。 */
+.review-editor-sheet .ownership-treatment button.ownership-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 24rpx;
+  width: 100%; max-width: none; min-height: 104rpx; margin: 12rpx 0 0; padding: 18rpx 22rpx;
+  text-align: left; white-space: normal;
+}
+.ownership-treatment-copy { flex: 1; min-width: 0; }
+.ownership-treatment-title { display: block; color: var(--ui-ink); font-size: 26rpx; font-weight: 500; line-height: 1.45; }
+.ownership-treatment-detail { display: block; margin-top: 4rpx; color: var(--ui-muted); font-size: 23rpx; font-weight: 400; line-height: 1.45; }
+.ownership-treatment-check { position: relative; flex-shrink: 0; width: 28rpx; height: 28rpx; border: 2rpx solid var(--ui-line-strong, #d8cec3); border-radius: 50%; }
+.ownership-option-selected .ownership-treatment-check { background: var(--ui-accent, #b85f2e); border-color: var(--ui-accent, #b85f2e); }
+.ownership-option-selected .ownership-treatment-check::after { content: ''; position: absolute; left: 8rpx; top: 4rpx; width: 8rpx; height: 14rpx; border: solid #fff; border-width: 0 3rpx 3rpx 0; transform: rotate(45deg); }
+
+/* 入账确认与完成页共用常驻公式，内容边缘与标题一致。 */
+.final-stage .final-summary {
+  margin-left: var(--layout-content-inset, 20rpx);
+  margin-right: var(--layout-content-inset, 20rpx);
+}
+.final-stage .final-money-row > view { text-align: left; }
+
+.final-category-note { display: block; padding-top: 16rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.6; }
+.final-category-heading { padding-top: 28rpx; color: var(--ui-ink); }
+
+.funds-flow-count { display: block; margin-top: 8rpx; color: var(--ui-muted); font-size: 22rpx; font-weight: 400; }
+.funds-flow-record { padding: 18rpx 0; }
+.funds-flow-record + .funds-flow-record { border-top: 1rpx solid var(--ui-line); }
+.funds-flow-record-head { display: flex; gap: 16rpx; justify-content: space-between; color: var(--ui-ink); font-size: 26rpx; }
+.funds-flow-record-title { flex: 1; min-width: 0; }
+.funds-flow-record-head .money-number { flex-shrink: 0; }
+.funds-flow-record-meta { display: block; margin-top: 6rpx; color: var(--ui-muted); font-size: 22rpx; line-height: 1.6; overflow-wrap: anywhere; }
+.final-detail-sheet { display: flex; flex-direction: column; height: 78vh; overflow: hidden; }
+.final-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 24rpx; }
+.final-detail-heading .sheet-title { flex: 1; min-width: 0; }
+.final-detail-close { flex: 0 0 auto; width: auto; margin: 0; padding: 8rpx 0 8rpx 20rpx; min-height: 64rpx; color: var(--ui-muted); font-size: 26rpx; line-height: 48rpx; background: transparent; }
+.final-detail-close::after { border: 0; }
+.final-detail-scroll { flex: 1; min-height: 0; margin-top: 16rpx; }

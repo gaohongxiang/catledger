@@ -125,6 +125,7 @@ function createHandler({ getWxContext, repository, services = {}, logger = conso
           ok: true,
           data: {
             initialized: true,
+            uid: result.uid,
             isNewUser: result.isNewUser,
             categories: result.categories
           }

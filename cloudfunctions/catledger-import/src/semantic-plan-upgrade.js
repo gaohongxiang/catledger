@@ -1,3 +1,4 @@
+const repaymentOwnership = require('./repayment-ownership')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { SEMANTIC_HARD_BLOCKERS, semanticBlockers } = require('./semantic-policy')
 const { economicNatureForRow, unique } = require('./organizer-model')
@@ -68,6 +69,14 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
   const rowMap = new Map(rows.map(row => [row.rowId, row]))
   const changes = events.map(event => ({ current: event, next: refreshEventSemantic(event,
     links.filter(link => link.eventId === event.eventId).map(link => rowMap.get(link.rowId)).filter(Boolean)) }))
+    .map(pair => {
+      if (!['ready', 'needs_action'].includes(pair.next.status)) return pair
+      const reasons = repaymentOwnership.reasonsFor(pair.next)
+      if (reasons.some(reason => !(pair.next.reasonCodes || []).includes(reason))) {
+        return { current: pair.current, next: { ...pair.next, reasonCodes: unique([...(pair.next.reasonCodes || []), ...reasons]) } }
+      }
+      return pair
+    })
     .filter(pair => pair.next !== pair.current)
   const version = Number(current.version)
   const actionId = await insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,

@@ -103,6 +103,7 @@ function transactionToPublic(row) {
       ? (row.originalTransactionId == null ? 'pending' : 'linked')
       : null,
     ...(row.importContext ? { importContext: row.importContext } : {}),
+    origin: row.origin || 'manual',
     editable: row.origin == null || row.origin === 'manual',
     canLinkRefund: row.type === 'refund' && row.originalTransactionId == null,
     amountMinor: minorUnitsToString(row.amountMinor),

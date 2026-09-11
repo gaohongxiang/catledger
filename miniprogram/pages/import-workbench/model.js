@@ -345,6 +345,13 @@ function buildIssueFieldsDraft(state) {
   if (!['account_mapping', 'transfer_accounts', 'shared_fields', 'field_conflict'].includes(issue.issueType)) {
     return invalid('请先完成当前确认')
   }
+  if (issue.repaymentOwnershipRequired) {
+    if (!['self', 'other'].includes(draft.repaymentOwner)) return invalid('请先确认是自己的账户还是替他人还款')
+    if (draft.repaymentOwner === 'other') {
+      if (!['expense', 'pending'].includes(draft.repaymentOtherTreatment)) return invalid('请选择这笔代还款如何处理')
+      return { valid: true, fields: { repaymentOwnership: { owner: 'other', treatment: draft.repaymentOtherTreatment } } }
+    }
+  }
   const account = (state.accountChoices || [])[draft.accountIndex]
   const missingSide = issue.issueType === 'transfer_accounts' && ['from', 'to'].includes(issue.missingFundsSide)
     ? issue.missingFundsSide : ''
@@ -364,6 +371,11 @@ function buildIssueFieldsDraft(state) {
       name: name, type: type.value, currency: 'CNY'
     }
   } else return invalid('请选择需要确认的账户')
+  if (issue.repaymentOwnershipRequired && draft.repaymentOwner === 'self') {
+    const type = account.accountId ? account.type : ((state.accountTypeOptions || [])[draft.accountTypeIndex] || {}).value
+    if (!['credit', 'other_liability'].includes(type)) return invalid('请选择自己的信用卡或其他负债账户')
+    fields.repaymentOwnership = { owner: 'self' }
+  }
   if (issue.issueType === 'transfer_accounts') {
     if (!missingSide) {
       const target = (state.counterpartyAccountChoices || [])[draft.counterpartyAccountIndex]
@@ -412,8 +424,12 @@ function issueView(issue) {
   const groupedAccount = issue.issueType === 'account_mapping' && /^payment_(component_\d+|target)$/.test(context.fundsSide || '')
   const paymentNeedsReview = Boolean(!groupedAccount && subject && (issue.reasonCodes || []).concat(subject.reasonCodes || []).includes('payment_components_ambiguous') && !subject.paymentResolution)
   if (paymentNeedsReview) label = '组合支付待核对'
+  const repaymentOwnershipRequired = Boolean(issue.issueType === 'transfer_accounts' && !paymentNeedsReview && subject && subject.repaymentOwnershipRequired)
+  if (repaymentOwnershipRequired) label = subject.repaymentOwnership && subject.repaymentOwnership.owner === 'other'
+    ? '代他人还款待核对' : '还款账户归属待确认'
   return Object.assign({}, issue, {
     label: label,
+    repaymentOwnershipRequired: repaymentOwnershipRequired,
     paymentNeedsReview: paymentNeedsReview,
     paymentAccountsOnly: paymentNeedsReview && issue.issueType === 'account_mapping',
     aggregateRepayment: aggregateRepayment,
@@ -425,7 +441,9 @@ function issueView(issue) {
     subjectMeta: subject ? subject.displayMeta : '',
     subjectAmountText: subject ? subject.amountText : '',
     subjectDirectionClass: subject ? subject.directionClass : '',
-    decisionText: paymentNeedsReview
+    decisionText: repaymentOwnershipRequired
+      ? '银行名称不能确认账户归属，请核对这笔钱是替谁还的'
+      : paymentNeedsReview
       ? issue.issueType === 'account_mapping' ? '确认这些付款方式对应的账本账户' : '核对各账户实际支付金额，并确认这笔是支出还是还款'
       : issue.issueType === 'refund_relation'
       ? Number(issue.candidateCount) > 0
@@ -701,7 +719,7 @@ function organizerRecordState(events, issues, categories, query) {
   const annotated = active.map(function (event) {
     const reviewIssueId = verificationById.get(event.eventId) || ''
     const categoryIssueId = categoryById.get(event.eventId) || ''
-    const pendingReview = Boolean(reviewIssueId || (event.status === 'needs_action' && !categoryIssueId))
+    const pendingReview = Boolean(reviewIssueId || (event.status === 'needs_action' && !categoryIssueId && !event.localReviewConfirmed))
     const needsCategory = categoryRequired(event) && (!event.categoryId || event.economicNature === 'unknown')
     return Object.assign({}, event, { reviewIssueId: reviewIssueId, categoryIssueId: categoryIssueId,
       pendingReview: pendingReview, needsCategory: needsCategory,
@@ -889,6 +907,12 @@ function categoriesForNature(categories, nature) {
   return kind ? categories.filter(function (category) { return category.kind === kind }) : []
 }
 
+function eventAccountIds(event) {
+  return [...new Set([event.ledgerAccountId, event.counterpartyLedgerAccountId,
+    ...((event.paymentResolution && event.paymentResolution.allocations) || []).map(part => part.accountId),
+    ...(event.repaymentAllocations || []).map(part => part.accountId)].filter(Boolean))]
+}
+
 function finalSummary(events, accountDrafts) {
   const ready = (events || []).filter(function (event) { return event.status === 'ready' })
   let expenseMinor = '0'
@@ -899,9 +923,7 @@ function finalSummary(events, accountDrafts) {
   let transferCount = 0
   const accountIds = new Set()
   ready.forEach(function (event) {
-    if (event.ledgerAccountId) accountIds.add(event.ledgerAccountId)
-    if (event.counterpartyLedgerAccountId) accountIds.add(event.counterpartyLedgerAccountId)
-    ;((event.paymentResolution && event.paymentResolution.allocations) || []).forEach(function (item) { accountIds.add(item.accountId) })
+    eventAccountIds(event).forEach(id => accountIds.add(id))
     if (['expense', 'fee'].includes(event.economicNature)) expenseMinor = addMinor(expenseMinor, event.amountMinor)
     if (event.economicNature === 'income') incomeMinor = addMinor(incomeMinor, event.amountMinor)
     if (event.economicNature === 'refund') refundMinor = addMinor(refundMinor, event.amountMinor)
@@ -912,6 +934,9 @@ function finalSummary(events, accountDrafts) {
     }
   })
   return {
+    expenseCount: ready.filter(event => ['expense', 'fee'].includes(event.economicNature)).length,
+    incomeCount: ready.filter(event => event.economicNature === 'income').length,
+    refundCount: ready.filter(event => event.economicNature === 'refund').length,
     expenseText: amountText(expenseMinor),
     incomeText: amountText(incomeMinor),
     refundText: amountText(refundMinor),
@@ -925,7 +950,30 @@ function finalSummary(events, accountDrafts) {
   }
 }
 
+
+function fundsFlowSummary(events, accounts) {
+  const accountNames = new Map((accounts || []).map(account => [account.accountId, account.name]))
+  return [
+    { nature: 'internal_transfer', label: '内部转账' },
+    { nature: 'borrow', label: '借款' },
+    { nature: 'repayment', label: '还款' }
+  ].map(group => {
+    let totalMinor = '0'
+    const records = (events || []).filter(event => event.status === 'ready' && event.economicNature === group.nature)
+      .map(event => {
+        totalMinor = addMinor(totalMinor, event.amountMinor)
+        const ids = eventAccountIds(event)
+        return Object.assign({}, eventView(event), {
+          accountText: [...ids].map(id => accountNames.get(id) || '未命名账户').join('、')
+        })
+      }).sort((a, b) => String(a.localAt || '').localeCompare(String(b.localAt || '')) || String(a.eventId).localeCompare(String(b.eventId)))
+    return Object.assign({}, group, { amountText: amountText(totalMinor), count: records.length, records })
+  })
+}
+
 module.exports = {
+  eventAccountIds,
+  fundsFlowSummary,
   buildIssueFieldsDraft,
   organizerRecordState,
   categoryIssueCards,

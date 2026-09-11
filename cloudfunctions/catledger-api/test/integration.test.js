@@ -64,11 +64,7 @@ beforeEach(async () => {
     await pool.execute('DELETE FROM catledger_finance_update_account_mapping_drafts')
     await pool.execute('DELETE FROM catledger_finance_update_account_drafts')
     await pool.execute('DELETE FROM catledger_finance_actions')
-    await pool.execute('DELETE FROM catledger_import_batch_issues')
-    await pool.execute('DELETE FROM catledger_import_transaction_links')
     await pool.execute('DELETE FROM catledger_event_evidence')
-    await pool.execute('DELETE FROM catledger_import_decisions')
-    await pool.execute('DELETE FROM catledger_import_postings')
     await pool.execute('DELETE FROM catledger_import_category_mappings')
     await pool.execute('DELETE FROM catledger_import_account_mappings')
     await pool.execute('DELETE FROM catledger_economic_events')
@@ -133,7 +129,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 10)
+  assert.equal(rows.length, 12)
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
   assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')
@@ -144,6 +140,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   assert.equal(rows[7].version, '0008_finance_update_payment_rules.sql')
   assert.equal(rows[8].version, '0009_bill_semantic_analysis.sql')
   assert.equal(rows[9].version, '0010_import_maintenance_audit.sql')
+  assert.equal(rows[10].version, '0011_short_user_ids.sql')
   assert.match(rows[0].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[1].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[2].checksum, /^[a-f0-9]{64}$/)
@@ -225,6 +222,13 @@ test('same identity bootstraps once and remains idempotent', { skip: !hasDatabas
 
   assert.equal(first.isNewUser, true)
   assert.equal(second.isNewUser, false)
+  assert.match(first.uid, /^[1-9][0-9]{9}$/)
+  assert.equal(first.uid, second.uid)
+  const [[storedIdentity]] = await pool.execute(
+    'SELECT uid FROM catledger_user_identities WHERE provider = ? AND subject_hash = ?',
+    ['wechat-mini', subjectHash]
+  )
+  assert.equal(first.uid, storedIdentity.uid)
   assert.equal(first.categories.length, DEFAULT_CATEGORIES.length)
   assert.equal(second.categories.length, DEFAULT_CATEGORIES.length)
 
@@ -247,6 +251,8 @@ test('concurrent bootstrap is resolved by the identity unique constraint', { ski
   )
 
   assert.equal(results.filter((result) => result.isNewUser).length, 1)
+  assert.equal(new Set(results.map((result) => result.uid)).size, 1)
+  assert.ok(results.every((result) => result.uid))
   const [[counts]] = await pool.query(`
     SELECT
       (SELECT COUNT(*) FROM catledger_users) AS users,
@@ -260,7 +266,7 @@ test('concurrent bootstrap is resolved by the identity unique constraint', { ski
 
 test('different identities stay isolated and raw OpenID is never stored', { skip: !hasDatabase }, async () => {
   const subjects = ['raw-openid-alpha', 'raw-openid-beta']
-  await Promise.all(subjects.map((openid) => repository.bootstrap({
+  const results = await Promise.all(subjects.map((openid) => repository.bootstrap({
     provider: 'wechat-mini',
     subjectHash: hashWechatSubject(openid)
   })))
@@ -275,6 +281,10 @@ test('different identities stay isolated and raw OpenID is never stored', { skip
   `)
 
   assert.equal(identities.length, 2)
+  assert.notEqual(results[0].uid, results[1].uid)
+  results.forEach((result, index) => {
+    assert.equal(result.uid, identities.find((identity) => identity.subjectHash === hashWechatSubject(subjects[index])).uid)
+  })
   assert.notEqual(identities[0].uid, identities[1].uid)
   assert.equal(Number(counts.users), 2)
   assert.equal(Number(counts.categories), DEFAULT_CATEGORIES.length * 2)
@@ -1165,4 +1175,56 @@ test('dashboard returns net worth, month summary, cash-flow trend and recent for
   assert.equal(statistics.incomeCategories[0].shareBasisPoints, 10000)
   assert.equal(statistics.daily.length, 31)
   assert.equal(statistics.daily[28].incomeMinor, '100')
+})
+
+ test('单笔分类编辑与未分类分页：真实MySQL隔离、幂等、并发和余额不变', { skip: !hasDatabase }, async () => {
+  const user = await bootstrapLedgerUser('category-edit-043-user')
+  const other = await bootstrapLedgerUser('category-edit-043-other')
+  const account = await createTestAccount(user.subjectHash)
+  const destination = await createTestAccount(user.subjectHash)
+  const ctx = data => ({ provider: 'wechat-mini', subjectHash: user.subjectHash, data })
+  const entries = []
+  for (const type of ['expense', 'expense', 'income']) {
+    const entry = await transactionService.create(ctx({ requestId: randomTestUuid(), type,
+      ...(type === 'expense' ? { sourceAccountId: account.accountId } : { destinationAccountId: account.accountId }),
+      categoryId: type === 'expense' ? user.expenseCategory.id : user.incomeCategory.id,
+      amountMinor: '100', occurredLocalAt: '2026-07-18T12:00:00', timezoneOffsetMinutes: -480, note: '分类测试' }))
+    await pool.execute("UPDATE catledger_transactions SET origin = 'import' WHERE transaction_id = ?", [entry.transactionId])
+    const result = await transactionService.setCategory(ctx({ requestId: randomTestUuid(), transactionId: entry.transactionId, version: entry.version, categoryId: null }))
+    entries.push({ ...entry, version: result.version })
+  }
+  await transactionService.create(ctx({ requestId: randomTestUuid(), type: 'transfer', sourceAccountId: account.accountId,
+    destinationAccountId: destination.accountId, amountMinor: '50', occurredLocalAt: '2026-07-18T12:00:00', timezoneOffsetMinutes: -480 }))
+  const found = []
+  let cursor
+  do {
+    const page = await transactionService.list(ctx({ month: '2026-07', uncategorized: true, pageSize: 1, ...(cursor ? { cursor } : {}) }))
+    found.push(...page.transactions.map(row => row.transactionId))
+    cursor = page.nextCursor
+  } while (cursor)
+  assert.deepEqual(found.sort(), entries.map(row => row.transactionId).sort())
+  const before = await accountService.list(ctx({}))
+  const entry = entries[0]
+  await assert.rejects(transactionService.setCategory({ provider: 'wechat-mini', subjectHash: other.subjectHash,
+    data: { requestId: randomTestUuid(), transactionId: entry.transactionId, version: entry.version, categoryId: other.expenseCategory.id } }), { publicCode: 'NOT_FOUND' })
+  await assert.rejects(transactionService.setCategory(ctx({ requestId: randomTestUuid(), transactionId: entry.transactionId,
+    version: entry.version, categoryId: other.expenseCategory.id })), { publicCode: 'NOT_FOUND' })
+  const requests = [1, 2].map(() => ({ requestId: randomTestUuid(), transactionId: entry.transactionId, version: entry.version, categoryId: user.expenseCategory.id }))
+  const results = await Promise.allSettled(requests.map(body => transactionService.setCategory(ctx(body))))
+  assert.equal(results.filter(row => row.status === 'fulfilled').length, 1)
+  assert.equal(results.find(row => row.status === 'rejected').reason.publicCode, 'CONFLICT')
+  const winner = results.findIndex(row => row.status === 'fulfilled')
+  assert.deepEqual(await transactionService.setCategory(ctx(requests[winner])), results[winner].value)
+  const after = await accountService.list(ctx({}))
+  assert.deepEqual(after.accounts.map(row => row.bookBalanceMinor), before.accounts.map(row => row.bookBalanceMinor))
+  const remaining = await transactionService.list(ctx({ month: '2026-07', uncategorized: true }))
+  assert.equal(remaining.transactions.length, 2)
+  assert.equal(remaining.transactions.some(row => row.transactionId === entry.transactionId), false)
+  const filtered = await transactionService.list(ctx({ month: '2026-07', uncategorized: true, accountId: account.accountId, date: '2026-07-18', search: '分类测试' }))
+  assert.equal(filtered.transactions.length, 2)
+})
+
+require('./helpers/short-user-id-migration').registerShortUserIdMigrationTests({
+  getPool: () => pool,
+  hasDatabase
 })

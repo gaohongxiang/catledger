@@ -20,7 +20,7 @@ test('公开错误不回显请求、OpenID 或异常正文', async () => {
   const handler = createHandler({
     getWxContext: () => ({ OPENID: 'private-openid' }),
     services: {
-      'imports.get': async () => {
+      'imports.getFile': async () => {
         const error = new Error('raw bill row and SQL bindings')
         error.code = 'ER_PARSE_ERROR'
         throw error
@@ -28,7 +28,7 @@ test('公开错误不回显请求、OpenID 或异常正文', async () => {
     },
     logger: { error: (entry) => logs.push(entry) }
   })
-  const result = await handler({ action: 'imports.get', data: { importId: 'private-import' } })
+  const result = await handler({ action: 'imports.getFile', data: { importId: 'private-import' } })
   assert.deepEqual(result, {
     ok: false,
     error: { code: 'INTERNAL_ERROR', message: '这一步暂时没完成，已解析账单不会丢失，请重试' }
@@ -44,7 +44,7 @@ test('瞬时数据库故障返回稳定重试码并记录非敏感追踪信息',
   const handler = createHandler({
     getWxContext: () => ({ OPENID: 'private-openid' }),
     services: {
-      'imports.get': async () => {
+      'imports.getFile': async () => {
         const error = new Error('private SQL and row')
         error.code = 'ETIMEDOUT'
         throw error
@@ -55,14 +55,14 @@ test('瞬时数据库故障返回稳定重试码并记录非敏感追踪信息',
   })
 
   const result = await handler(
-    { action: 'imports.get', data: { importId: 'private-import' } },
+    { action: 'imports.getFile', data: { importId: 'private-import' } },
     { request_id: 'trace-import-1' }
   )
 
   assert.equal(result.error.code, 'SERVICE_TEMPORARY_UNAVAILABLE')
   assert.deepEqual(logs, [{
     event: 'catledger-import-failure',
-    action: 'imports.get',
+    action: 'imports.getFile',
     traceId: 'trace-import-1',
     code: 'SERVICE_TEMPORARY_UNAVAILABLE',
     databaseCode: 'ETIMEDOUT',

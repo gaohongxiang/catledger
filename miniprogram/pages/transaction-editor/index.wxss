@@ -133,3 +133,15 @@
   background: var(--theme-surface);
   border: 1rpx solid var(--theme-line);
 }
+
+.readonly-amount { padding: 38rpx 20rpx 44rpx; text-align: center; }
+.readonly-source { display: block; color: var(--theme-text-muted); font-size: 24rpx; }
+.readonly-money { display: block; margin-top: 14rpx; font-size: 56rpx; font-weight: 500; overflow-wrap: anywhere; }
+.detail-expense { color: var(--theme-expense); }
+.detail-income { color: var(--theme-income); }
+.readonly-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 32rpx; min-height: 96rpx; box-sizing: border-box; padding-top: 24rpx; padding-bottom: 24rpx; border-bottom: 1rpx solid var(--theme-line); font-size: 28rpx; line-height: 1.6; }
+.readonly-row .form-label { flex: 0 0 auto; min-width: 112rpx; }
+.readonly-value { min-width: 0; text-align: right; overflow-wrap: anywhere; }
+.readonly-category { align-items: center; }
+.readonly-category-value { display: flex; align-items: center; gap: 18rpx; color: var(--theme-accent-strong); }
+.readonly-chevron { width: 12rpx; height: 12rpx; flex: 0 0 auto; border-top: 2rpx solid currentColor; border-right: 2rpx solid currentColor; transform: rotate(45deg); }

@@ -13,54 +13,58 @@ function splitSqlStatements(contents) {
   const statements = []
   let current = ''
   let quote = null
-  let escaped = false
+  let delimiter = ';'
+  let index = 0
 
-  for (const character of contents) {
-    if (escaped) {
-      current += character
-      escaped = false
-      continue
-    }
-
-    if (character === '\\' && quote) {
-      current += character
-      escaped = true
-      continue
-    }
-
+  while (index < contents.length) {
+    const character = contents[index]
     if (quote) {
       current += character
-      if (character === quote) {
-        quote = null
+      index += 1
+      if (character === '\\') {
+        if (index < contents.length) current += contents[index++]
+      } else if (character === quote) {
+        if (contents[index] === quote) current += contents[index++]
+        else quote = null
       }
       continue
     }
 
+    if ((index === 0 || contents[index - 1] === '\n') && !current.trim()) {
+      const directive = contents.slice(index).match(/^[ \t]*DELIMITER[ \t]+(\S+)[ \t]*(?:\r?\n|$)/i)
+      if (directive) {
+        delimiter = directive[1]
+        index += directive[0].length
+        continue
+      }
+    }
+    if ((contents.startsWith('--', index) && /\s/.test(contents[index + 2] || '\n')) || character === '#') {
+      const end = contents.indexOf('\n', index)
+      current += '\n'
+      index = end < 0 ? contents.length : end + 1
+      continue
+    }
+    if (contents.startsWith('/*', index)) {
+      const end = contents.indexOf('*/', index + 2)
+      if (end < 0) throw new Error('Migration contains an unterminated comment')
+      current += ' '
+      index = end + 2
+      continue
+    }
     if (character === "'" || character === '"' || character === '`') {
-      current += character
       quote = character
-      continue
-    }
-
-    if (character === ';') {
-      if (current.trim()) {
-        statements.push(current.trim())
-      }
+    } else if (contents.startsWith(delimiter, index)) {
+      if (current.trim()) statements.push(current.trim())
       current = ''
+      index += delimiter.length
       continue
     }
-
     current += character
+    index += 1
   }
 
-  if (quote) {
-    throw new Error('Migration contains an unterminated quoted value')
-  }
-
-  if (current.trim()) {
-    statements.push(current.trim())
-  }
-
+  if (quote) throw new Error('Migration contains an unterminated quoted value')
+  if (current.trim()) statements.push(current.trim())
   return statements
 }
 

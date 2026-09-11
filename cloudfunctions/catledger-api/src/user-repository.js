@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto')
 
 const { DEFAULT_CATEGORIES } = require('./default-categories')
+const { createUserId } = require('./user-id')
 const { normalizeCategoryName } = require('./category-name')
 const {
   isRetryableDatabaseError,
@@ -72,7 +73,7 @@ async function listCategories(connection, uid) {
   return rows
 }
 
-function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES }) {
+function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES, generateUid = createUserId }) {
   return {
     async bootstrap({ provider, subjectHash }) {
       for (let attempt = 0; attempt < MAX_BOOTSTRAP_ATTEMPTS; attempt += 1) {
@@ -85,7 +86,7 @@ function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES 
           transactionStarted = true
 
           const identity = await findIdentity(connection, provider, subjectHash)
-          const uid = identity ? identity.uid : randomUUID()
+          const uid = identity ? identity.uid : generateUid()
 
           if (!identity) {
             await connection.execute(
@@ -106,6 +107,7 @@ function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES 
           await connection.commit()
           transactionStarted = false
           return {
+            uid,
             isNewUser: !identity,
             categories
           }

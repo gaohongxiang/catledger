@@ -1,6 +1,6 @@
+const { discardUpdateGraph } = require('./discarded-update')
 const { upgradeSemanticPlan } = require('./semantic-plan-upgrade')
 const { PLAN_VERSION } = require('./domain-versions')
-const { synchronizeDraftReachability } = require('./account-draft')
 const { buildOrganizePlan } = require('./organizer-planner')
 const { importError } = require('./errors')
 const {
@@ -42,7 +42,7 @@ function createFinanceUpdateCore({ getPool }) {
       throw importError('CONFLICT')
     }
     const rows = await selectPlanningRows(connection, uid, updateId)
-    if (current.status === 'review' && ['organizer-plan-v26', PLAN_VERSION].includes(current.planVersion)) {
+    if (current.status === 'review' && ['organizer-plan-v26', 'organizer-plan-v27', PLAN_VERSION].includes(current.planVersion)) {
       if (current.planVersion === PLAN_VERSION) return getUpdateView(connection, uid, updateId)
       return upgradeSemanticPlan(connection, uid, current, rows, requestDigest)
     }
@@ -86,17 +86,6 @@ function createFinanceUpdateCore({ getPool }) {
     )
     if (result.affectedRows !== 1) throw importError('CONFLICT')
     return getUpdateView(connection, uid, updateId)
-  }
-
-  async function create(context) {
-    return executeIdempotentMutation({
-      getPool,
-      ...context,
-      action: 'financeUpdates.create',
-      operation: (connection, uid, data, requestDigest, keyDigest) => createUpdate(
-        connection, uid, validateBatchIds(data.batchIds), requestDigest, keyDigest
-      )
-    })
   }
 
   async function prepare(context) {
@@ -162,7 +151,10 @@ function createFinanceUpdateCore({ getPool }) {
       action: 'financeUpdates.abandon',
       operation: async (connection, uid, data, requestDigest) => {
         const current = await selectUpdate(connection, uid, updateId, { forUpdate: true })
-        if (current.status === 'abandoned') return publicUpdate(current)
+        if (current.status === 'abandoned') {
+          await discardUpdateGraph(connection, uid, updateId)
+          return publicUpdate(current)
+        }
         if (!['draft', 'failed', 'review'].includes(current.status) || Number(current.version) !== version) {
           throw importError('CONFLICT')
         }
@@ -181,13 +173,13 @@ function createFinanceUpdateCore({ getPool }) {
             WHERE uid = ? AND update_id = ? AND version = ?`,
           [appliedVersion, actionId, uid, updateId, version]
         )
-        await synchronizeDraftReachability(connection, uid, updateId, { abandoned: true })
+        await discardUpdateGraph(connection, uid, updateId)
         return publicUpdate(await selectUpdate(connection, uid, updateId))
       }
     })
   }
 
-  return { abandon, create, evidence, get, organize, prepare }
+  return { abandon, evidence, get, organize, prepare }
 }
 
 module.exports = {

@@ -1,3 +1,4 @@
+const repaymentOwnership = require('./repayment-ownership')
 const { eventAllocation, allocationAccountsValid } = require('./funds-allocation')
 const accountGroups = require('./payment-account-groups')
 const { inspectPaymentAccounts, paymentEvidenceFields, inspectPaymentResolution, paymentResolutionForEvent } = require('./payment-resolution')
@@ -53,7 +54,8 @@ const FIELD_MASK = Object.freeze({
   categoryId: 1 << 7,
   repaymentAllocations: 1 << 8,
   paymentResolution: 1 << 9,
-  paymentAccounts: 1 << 10
+  paymentAccounts: 1 << 10,
+  repaymentOwnership: 1 << 11
 })
 
 const ISSUE_RESOLVED_REASONS = Object.freeze({
@@ -66,6 +68,7 @@ const ISSUE_RESOLVED_REASONS = Object.freeze({
   same_event: new Set(['same_event_candidate', 'relation_ambiguous']),
   refund_relation: new Set(['refund_relation_required', 'refund_relation_ambiguous', 'refund_relation_invalid', 'refund_amount_exceeded', 'relation_ambiguous']),
   transfer_accounts: new Set([
+    'repayment_ownership_required', 'repayment_other_treatment_required', 'repayment_ownership_invalid', 'economic_nature_required',
     'transfer_account_required', 'repayment_account_required', 'borrow_account_required', 'relation_ambiguous',
     'repayment_allocation_required', 'repayment_allocation_invalid',
     'repayment_allocation_amount_mismatch', 'repayment_allocation_account_duplicate',
@@ -228,7 +231,7 @@ async function validateEventReferences(connection, uid, event) {
       drafts.forEach((draft) => accounts.push(draft))
     }
     if (plan.valid && !allocationAccountsValid(event, plan, new Map(accounts.map((account) => [account.accountId, account])))) throw importError('VALIDATION_ERROR')
-    if (event.counterpartyLedgerAccountId && (fieldSources.paymentAccountReferences || []).some((ref) => ref.memberRole === 'payment_target')) {
+    if (event.counterpartyLedgerAccountId && ((fieldSources.paymentAccountReferences || []).some((ref) => ref.memberRole === 'payment_target') || repaymentOwnership.decisionFor(event)?.owner === 'self')) {
       const target = accounts.find((account) => account.accountId === event.counterpartyLedgerAccountId)
       if (!target || !['credit', 'other_liability'].includes(target.type)) throw importError('VALIDATION_ERROR')
     }
@@ -275,8 +278,14 @@ function applyFields(event, fields) {
         FIELD_MASK.counterpartyLedgerAccountId | FIELD_MASK.economicNature | FIELD_MASK.flowDirection,
       fieldSources: { ...event.fieldSources, paymentResolution: value } }
   }
+  const ownership = fields.repaymentOwnership
+  if (Object.prototype.hasOwnProperty.call(fields, 'repaymentOwnership')) {
+    const allowed = ownership && ownership.owner === 'self'
+      ? ['repaymentOwnership', 'ledgerAccountId', 'counterpartyLedgerAccountId'] : ['repaymentOwnership']
+    if (!repaymentOwnership.bankRepayment(event) || Object.keys(fields).some(key => !allowed.includes(key))) throw importError('VALIDATION_ERROR')
+  }
   let mask = 0
-  const next = { ...event }
+  let next = { ...event }
   for (const key of Object.keys(fields)) {
     if (key === 'timezoneOffsetMinutes') continue
     if (!Object.prototype.hasOwnProperty.call(FIELD_MASK, key)) throw importError('VALIDATION_ERROR')
@@ -322,6 +331,13 @@ function applyFields(event, fields) {
     }
   }
   if (mask === 0) throw importError('VALIDATION_ERROR')
+  if (Object.prototype.hasOwnProperty.call(fields, 'repaymentOwnership')) {
+    next = repaymentOwnership.applyDecision(next, ownership)
+    mask |= FIELD_MASK.counterpartyLedgerAccountId | FIELD_MASK.economicNature | FIELD_MASK.flowDirection | FIELD_MASK.categoryId
+  }
+  const priorOwnership = repaymentOwnership.decisionFor(event)
+  if (priorOwnership && priorOwnership.owner === 'other' && !ownership &&
+      (next.counterpartyLedgerAccountId || !['expense', 'unknown'].includes(next.economicNature))) throw importError('VALIDATION_ERROR')
   next.manualFieldMask |= mask
   return next
 }
@@ -1058,7 +1074,7 @@ function createReviewIssueService({ getPool }) {
     const updateId = validateUuid(context.data.updateId)
     validateUuid(context.data.requestId)
     const version = validateVersion(context.data.version)
-    return executeIdempotentMutation({ getPool, ...context, action: 'reviewIssues.refreshAccountGroups',
+    return executeIdempotentMutation({ readIssue: issueDetails, getPool, ...context, action: 'reviewIssues.refreshAccountGroups',
       operation: async (connection, uid, data, requestDigest) => {
         const update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
         if (update.status !== 'review' || Number(update.version) !== version) throw importError('CONFLICT')
@@ -1181,7 +1197,7 @@ function createReviewIssueService({ getPool }) {
       throw importError('VALIDATION_ERROR')
     }
 
-    return executeIdempotentMutation({
+    return executeIdempotentMutation({ readIssue: issueDetails,
       getPool,
       ...context,
       action: 'reviewIssues.resolveAccountMappings',
@@ -1265,7 +1281,7 @@ function createReviewIssueService({ getPool }) {
     const updateVersion = validateVersion(context.data.updateVersion)
     const issueVersion = validateVersion(context.data.issueVersion)
     const decision = validateDecision(context.data.decision)
-    return executeIdempotentMutation({
+    return executeIdempotentMutation({ readIssue: issueDetails,
       getPool,
       ...context,
       action: 'reviewIssues.resolve',
@@ -1583,7 +1599,7 @@ function createReviewIssueService({ getPool }) {
     const issueVersion = validateVersion(context.data.issueVersion)
     const decision = context.data.decision
     if (!['apply_fields', 'exclude_events'].includes(decision)) throw importError('VALIDATION_ERROR')
-    return executeIdempotentMutation({
+    return executeIdempotentMutation({ readIssue: issueDetails,
       getPool,
       ...context,
       action: 'reviewIssues.reviseAccountMapping',

@@ -12,7 +12,7 @@
     "bootstrap": {
       "kind": "read-idempotent",
       "data": [],
-      "returns": ["initialized", "isNewUser", "categories"]
+      "returns": ["initialized", "uid", "isNewUser", "categories"]
     },
     "dashboard.get": {
       "kind": "read",
@@ -96,8 +96,8 @@
     },
     "transactions.list": {
       "kind": "read",
-      "data": ["month", "date?", "accountId?", "categoryId?", "search?", "pageSize?", "cursor?"],
-      "returns": ["month", "date?", "summary", "transactions (importContext?={updateId,eventId})", "nextCursor"]
+      "data": ["month", "date?", "accountId?", "categoryId?", "uncategorized? (boolean; exclusive with categoryId)", "search?", "pageSize?", "cursor?"],
+      "returns": ["month", "date?", "summary", "transactions (origin; importContext?={updateId,eventId})", "nextCursor"]
     },
     "transactions.create": {
       "kind": "idempotent-mutation",
@@ -119,6 +119,11 @@
       "data": ["requestId", "transactionId", "version", "originalTransactionId"],
       "returns": "transaction"
     },
+    "transactions.setCategory": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "transactionId", "version", "categoryId (nullable)"],
+      "returns": ["transactionId", "version", "categoryId"]
+    },
     "transactions.delete": {
       "kind": "idempotent-versioned-mutation",
       "data": ["requestId", "transactionId", "version"],
@@ -126,7 +131,8 @@
     }
   },
   "rules": {
-    "identity": "uid and WeChat OpenID are server-only; identity-shaped client fields are rejected recursively",
+    "identity": "identity is resolved only from trusted WeChat context; identity-shaped client fields are rejected recursively; bootstrap returns the current user uid for display only",
+    "uid": "one immutable 10-digit decimal string per user, first digit nonzero; displayed and copied unchanged; existing UUID ownership is migrated by 0011; other entity and request IDs remain UUIDs",
     "money": "minor-unit decimal strings only; JavaScript floating point is forbidden",
     "time": "occurredLocalAt plus JavaScript getTimezoneOffset() minutes; optional date and month filters use local date",
     "mutation": "requestId is UUID; same key and request replays, same key with different request conflicts",
@@ -136,7 +142,7 @@
   },
   "successEnvelope": {
     "ok": true,
-    "data": "action-specific public result without uid or identity digest"
+    "data": "action-specific public result; bootstrap includes uid; WeChat OpenID and identity digests are never returned"
   },
   "failureCodes": [
     "ACCOUNT_INACTIVE",

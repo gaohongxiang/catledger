@@ -1,11 +1,11 @@
 <view class="editor-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="editor-heading content-inset">
+  <view wx:if="{{!readonlyDetail}}" class="editor-heading content-inset">
 
-    <text class="editor-title serif-title">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '编辑账目' : '记一笔')}}</text>
+    <text class="editor-title serif-title">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '编辑账单' : '记一笔')}}</text>
   </view>
 
   <view wx:if="{{!formReady && !errorMessage}}" class="ui-state" aria-role="status">{{preparing ? '正在准备账户和分类…' : '登录后开始记账'}}</view>
-  <block wx:if="{{formReady}}">
+  <block wx:if="{{formReady && !readonlyDetail}}">
   <view wx:if="{{mode !== 'link-refund'}}" class="type-switch">
     <view
       wx:for="{{typeOptions}}"
@@ -47,10 +47,10 @@
       </view>
     </picker>
 
-    <picker wx:if="{{typeOptions[typeIndex].value === 'refund'}}" mode="selector" range="{{refundableTransactions}}" range-key="pickerLabel" value="{{originalIndex}}" bindchange="changeOriginal" disabled="{{saving}}">
+    <picker wx:if="{{typeOptions[typeIndex].value === 'refund'}}" mode="selector" range="{{refundableTransactions}}" range-key="pickerLabel" value="{{originalIndex}}" bindchange="changeOriginal" disabled="{{saving || !refundablesReady}}">
       <view class="form-row content-inset">
         <text class="form-label">原支出</text>
-        <text class="form-value form-value-compact">{{refundableTransactions[originalIndex].pickerLabel || '请选择可退款支出'}}</text>
+        <text class="form-value form-value-compact">{{refundablesLoading ? '正在读取原支出…' : (refundableTransactions[originalIndex].pickerLabel || '请选择可退款支出')}}</text>
       </view>
     </picker>
 
@@ -70,9 +70,24 @@
   </view>
 
   </block>
+  <block wx:if="{{formReady && readonlyDetail}}">
+    <view class="readonly-amount">
+      <text class="readonly-source">{{detail.sourceLabel}}</text>
+      <text class="readonly-money money-number {{detail.typeClass}}">{{detail.amountText}}</text>
+    </view>
+    <view class="form-sheet readonly-sheet">
+      <view wx:for="{{detail.rows}}" wx:key="label" class="readonly-row content-inset"><text class="form-label">{{item.label}}</text><text class="readonly-value">{{item.value}}</text></view>
+      <picker wx:if="{{detail.canEditCategory}}" mode="selector" range="{{categories}}" range-key="name" value="{{categoryIndex < 0 ? 0 : categoryIndex}}" bindchange="changeDetailCategory" disabled="{{saving}}">
+        <view class="readonly-row readonly-category content-inset" aria-label="修改分类"><text class="form-label">分类</text><view class="readonly-category-value"><text>{{categoryIndex < 0 ? detail.categoryName : categories[categoryIndex].name}}</text><view class="readonly-chevron"></view></view></view>
+      </picker>
+      <view wx:elif="{{detail.categoryName !== '未分类'}}" class="readonly-row content-inset"><text class="form-label">分类</text><text class="readonly-value">{{detail.categoryName}}</text></view>
+    </view>
+    <button wx:if="{{detail.canEditCategory && categoryDirty}}" class="primary-button save-button" loading="{{saving}}" disabled="{{saving}}" bindtap="saveDetailCategory">保存分类</button>
+  </block>
   <view wx:if="{{errorMessage}}" class="editor-error content-inset">{{errorMessage}}</view>
   <button wx:if="{{!formReady && errorMessage}}" class="secondary-button save-button" loading="{{preparing}}" disabled="{{preparing}}" bindtap="prepareForm">重新读取</button>
-  <button wx:if="{{formReady}}" class="primary-button save-button" loading="{{saving}}" disabled="{{saving}}" bindtap="save">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '保存修改' : '确认记账')}}</button>
+  <button wx:if="{{formReady && errorMessage && typeOptions[typeIndex].value === 'refund' && !refundablesReady}}" class="secondary-button save-button" loading="{{refundablesLoading}}" disabled="{{refundablesLoading}}" bindtap="loadRefundables">重新读取原支出</button>
+  <button wx:if="{{formReady && !readonlyDetail}}" class="primary-button save-button" loading="{{saving}}" disabled="{{saving || (typeOptions[typeIndex].value === 'refund' && !refundablesReady)}}" bindtap="save">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '保存修改' : '确认记账')}}</button>
   <button wx:if="{{formReady && mode === 'edit'}}" class="danger-button delete-button" disabled="{{saving}}" bindtap="remove">删除这笔账</button>
 </view>
 <login-sheet id="page-login-sheet" />

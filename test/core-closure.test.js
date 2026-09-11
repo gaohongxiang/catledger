@@ -43,6 +43,6 @@ test('home requests the dashboard directly and bootstraps only an uninitialized 
   const source = read('miniprogram/pages/index/index.js')
   assert.match(source, /api\.callApi\('dashboard\.get'/)
   assert.match(source, /error\.code !== 'INITIALIZATION_REQUIRED'/)
-  assert.match(source, /return api\.bootstrap\(\)\.then/)
+  assert.match(source, /return api\.bootstrap\(\{ force: true \}\)\.then/)
   assert.doesNotMatch(source, /ensureBootstrap/)
 })

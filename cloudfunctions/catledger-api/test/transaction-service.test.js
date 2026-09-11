@@ -18,6 +18,7 @@ test('transaction service stays a thin compatible facade', () => {
     'list',
     'refundable',
     'remove',
+    'setCategory',
     'statistics',
     'update'
   ])

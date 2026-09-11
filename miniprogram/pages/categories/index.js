@@ -1,5 +1,6 @@
 const app = getApp()
 const api = require('../../services/catledger-api')
+const pageReadSession = require('../../services/page-read-session')
 const loginGuard = require('../../services/login-guard')
 const themeService = require('../../theme/service')
 const categoryModel = require('./model')
@@ -19,9 +20,14 @@ Page({
     themeService.bindPage(this)
     loginGuard.run(this, this.loadCategories.bind(this))
   },
-  onShow: function () { themeService.bindPage(this) },
+  onShow: function () {
+    themeService.bindPage(this)
+    if (this.data.hasLoaded && (!pageReadSession.isCurrent(this) || !api.isFresh('categories.list'))) {
+      loginGuard.run(this, this.loadCategories.bind(this))
+    }
+  },
   onPullDownRefresh: function () {
-    const promise = app.hasLoginApproval() ? this.loadCategories() : Promise.resolve()
+    const promise = app.hasLoginApproval() ? this.loadCategories({ force: true }) : Promise.resolve()
     promise.finally(function () { wx.stopPullDownRefresh() })
   },
 
@@ -39,14 +45,23 @@ Page({
     })
   },
 
-  loadCategories: function () {
-    if (this.data.loading) return Promise.resolve()
+  loadCategories: function (options) {
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'errorMessage', 'allCategories', 'expenseCategories', 'incomeCategories', 'visibleCategories', 'archivedCategories', 'formOpen', 'categoryDetail', 'selectedCategory', 'categoryName'], ['_readLoad'])
+    if (this._readLoad) return this._readLoad
     const self = this
-    this.setData({ loading: true, errorMessage: '' })
-    return api.callApi('categories.list')
-      .then(function (result) { self.applyCategories(Array.isArray(result.categories) ? result.categories : []) })
-      .catch(function (error) { self.setData({ errorMessage: error.message || '分类加载失败' }) })
-      .finally(function () { self.setData({ loading: false }) })
+    const force = Boolean(options && options.force)
+    this.setData({ loading: force || !api.isFresh('categories.list'), errorMessage: '' })
+    this._readLoad = api.callApi('categories.list', {}, { force: force })
+      .then(function (result) {
+        if (!isCurrent()) return
+        self.applyCategories(Array.isArray(result.categories) ? result.categories : []) })
+      .catch(function (error) {
+        if (!isCurrent()) return
+        self.setData({ errorMessage: error.message || '分类加载失败' }) })
+      .finally(function () {
+        if (!isCurrent()) return
+        self.setData({ loading: false }); self._readLoad = null })
+    return this._readLoad
   },
 
   selectKind: function (event) {

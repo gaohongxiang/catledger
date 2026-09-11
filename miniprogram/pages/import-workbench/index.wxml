@@ -10,8 +10,8 @@
 </template>
 
 <view class="page-canvas import-page {{themeClass}}" style="{{themeStyle}}">
-  <view wx:if="{{!update}}" class="import-heading content-inset">
-    <text class="import-copy">支付宝与微信账单，整理到一起。</text>
+  <view class="import-heading content-inset">
+    <text class="import-copy">把不同渠道的账单，整理成一本账。</text>
   </view>
 
   <view class="stage-track" aria-label="账单导入进度">
@@ -25,12 +25,12 @@
       <view class="stage-copy"><text class="stage-title">确认账户</text></view>
     </button>
     <view class="stage-connector {{unlockedStep > 2 ? 'stage-connector-done' : ''}}"></view>
-    <button class="stage-item {{currentStep === 3 ? 'stage-current' : (unlockedStep >= 3 ? 'stage-done' : 'stage-locked')}}" data-step="3" bindtap="goToStep" disabled="{{busy || unlockedStep < 3}}" hover-class="none">
+    <button class="stage-item {{currentStep === 3 ? 'stage-current' : (unlockedStep >= 3 ? 'stage-done' : 'stage-locked')}}" data-step="3" bindtap="goToStep" disabled="{{busy || unlockedStep < 3 || accountStepSummary.pending > 0}}" hover-class="none">
       <text class="stage-number money-number">3</text>
       <view class="stage-copy"><text class="stage-title">整理账目</text></view>
     </button>
     <view class="stage-connector {{unlockedStep > 3 ? 'stage-connector-done' : ''}}"></view>
-    <button class="stage-item {{currentStep === 4 ? 'stage-current' : (unlockedStep >= 4 ? 'stage-done' : 'stage-locked')}}" data-step="4" bindtap="goToStep" disabled="{{busy || unlockedStep < 4}}" hover-class="none">
+    <button class="stage-item {{currentStep === 4 ? 'stage-current' : (unlockedStep >= 4 ? 'stage-done' : 'stage-locked')}}" data-step="4" bindtap="goToStep" disabled="{{busy || unlockedStep < 4 || accountStepSummary.pending > 0}}" hover-class="none">
       <text class="stage-number money-number">4</text>
       <view class="stage-copy"><text class="stage-title">确认入账</text></view>
     </button>
@@ -39,7 +39,7 @@
   <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
 
   <block wx:if="{{currentStep === 1 && !update}}">
-    <view wx:if="{{!files.length && phase !== 'loading'}}" data-ui="empty-picker" class="file-picker-empty">
+    <view wx:if="{{!files.length && phase !== 'loading' && !restoreUpdateId}}" data-ui="empty-picker" class="file-picker-empty">
       <view class="file-picker-symbol" aria-hidden="true"><view class="file-picker-paper"></view><text>＋</text></view>
       <text class="stage-panel-title">选择账单文件</text>
       <text class="stage-panel-copy">选择支付宝或微信导出的 CSV、XLSX 账单。</text>
@@ -89,10 +89,11 @@
       </view>
     </view>
 
-    <view wx:if="{{phase === 'loading'}}" class="processing-stage">
+    <view wx:if="{{phase === 'loading' || restoreUpdateId}}" class="processing-stage">
       <view class="processing-mark"><view class="processing-ring"></view><text class="processing-value money-number">01</text></view>
-      <text class="processing-title">正在读取导入进度</text>
-      <text class="processing-copy">正在恢复这批账单的处理状态。</text>
+      <text class="processing-title">{{abandoningRestore ? '正在放弃上次导入' : restoreUpdateId ? '正在恢复上次导入' : '正在读取导入进度'}}</text>
+      <text class="processing-copy">{{abandoningRestore ? '恢复已停止，正在清理本批导入。' : restoreUpdateId ? '上次有尚未入账的导入，正在恢复处理进度。' : '正在恢复这批账单的处理状态。'}}</text>
+      <button wx:if="{{restoreUpdateId}}" class="text-action restore-abandon-button" bindtap="abandonRestoringUpdate" disabled="{{abandoningRestore}}">{{abandoningRestore ? '正在放弃…' : '放弃上次导入'}}</button>
     </view>
 
     <view data-ui="parse-result" wx:if="{{phase === 'files_ready' || phase === 'organizing' || (phase === 'selected' && !uploadSummary.queued && files.length > 0)}}" class="step-section parse-stage">
@@ -113,12 +114,12 @@
 
   <view wx:if="{{currentStep === 1 && update}}" class="step-section parse-stage">
     <text class="stage-panel-kicker">解析摘要 · STEP 01</text>
-    <text class="step-title serif-title">{{coverage.statementFullyRecognized ? '整份账单已识别。' : (coverage.unrecognizedRows ? '账单里仍有 ' + coverage.unrecognizedRows + ' 条未完整识别。' : '记录已识别，文件汇总仍需核对。')}}</text>
-    <text class="step-copy">{{coverage.statementFullyRecognized ? '来源文件和原始记录会继续保留；账户确认和本次排除不会改写账单证据。' : '未知或冲突记录会保留证据并停在整理阶段，不会静默进入正式账本。'}}</text>
+    <text class="step-title serif-title">{{accountStepSummary.pending > 0 ? '账单已读取，请确认账户。' : (reviewStatusTabs[0].count ? '还有 ' + reviewStatusTabs[0].count + ' 笔交易待核对。' : (coverage.selectedEventsReadyToPost ? '本批账单已核对完成。' : '账单已读取。'))}}</text>
+    <text class="step-copy">{{accountStepSummary.pending > 0 ? '还有 ' + accountStepSummary.pending + ' 项账户待确认。' : (reviewStatusTabs[0].count ? '继续整理剩余交易，已核对和已排除的结果会保留。' : (coverage.selectedEventsReadyToPost ? '可以继续确认入账，待分类不影响入账。' : '请继续查看当前整理结果。'))}}</text>
     <view class="parse-summary">
       <view class="parse-summary-item"><text class="parse-summary-value money-number">{{update.counts.sources}}</text><text class="parse-summary-label">账单来源</text></view>
-      <view class="parse-summary-item"><text class="parse-summary-value money-number">{{coverage.recognizedRows}}</text><text class="parse-summary-label">已识别记录</text></view>
-      <view class="parse-summary-item"><text class="parse-summary-value money-number">{{coverage.unrecognizedRows}}</text><text class="parse-summary-label">未完整识别</text></view>
+      <view class="parse-summary-item"><text class="parse-summary-value money-number">{{recordSummary.totalCount}}</text><text class="parse-summary-label">全部记录</text></view>
+      <view class="parse-summary-item"><text class="parse-summary-value money-number">{{reviewStatusTabs[0].count}}</text><text class="parse-summary-label">待核对交易</text></view>
     </view>
     <view class="file-batch parsed-sources">
       <view class="file-batch-head content-inset"><text class="file-batch-title">来源文件</text><text class="file-batch-count money-number">{{sources.length}} 份</text></view>
@@ -129,25 +130,30 @@
         </view>
       </view>
     </view>
-    <text class="step-footnote content-inset">点击上方已开放的步骤，可以返回查看。</text>
   </view>
 
+  <view wx:if="{{update && phase === 'review' && (currentStep === 2 || currentStep === 3) && draftSync.error}}" class="draft-sync-note">
+    <text>{{draftSync.error || (draftSync.syncing ? '正在自动保存，其他项目可继续处理…' : '选择已保存在本机，即将自动保存…')}}</text>
+    <button wx:if="{{draftSync.conflicts}}" class="text-action" bindtap="recheckDraftConflicts" disabled="{{busy}}">重新核对</button>
+    <button wx:if="{{draftSync.error && !draftSync.conflicts}}" class="text-action" bindtap="retryDraftSync" disabled="{{busy || draftSync.syncing}}">重试</button>
+  </view>
   <view wx:if="{{currentStep === 2 && update}}" class="step-section account-stage">
-    <view class="step-heading">
-      <view><text class="stage-panel-kicker">账户归属 · STEP 02</text><text class="step-title serif-title">确认账单对应的账户</text></view>
+    <view class="step-heading content-inset">
+      <view><text class="step-title serif-title">确认账单对应的账户</text></view>
       <text class="step-count money-number">已确认 {{accountStepSummary.confirmed}} / {{accountStepSummary.total}}</text>
     </view>
-    <text class="step-copy">先核对系统的建议。不合适可更改；新建账户在整批入账后生效。</text>
+    <text class="step-copy content-inset">先核对系统的建议，不合适可更改。</text>
 
     <view wx:if="{{accountMappings.length}}" class="account-proof-list">
       <view wx:for="{{accountMappings}}" wx:key="issueId" class="account-proof-item">
         <view class="account-proof-head">
-          <view class="account-proof-identity"><text class="account-proof-title">{{item.label}}</text>
-            <text class="account-match-status">{{item.status === 'resolved' ? ((item.choiceValue === 'ignore' || item.choiceValue === 'ignore_future') ? '按你的选择不计入' : '已确认') : (item.suggestedExisting ? '建议 · 待确认' : '待确认')}}</text></view>
-          <text wx:if="{{item.inline && item.evidencePreview}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易">{{item.choiceValue === 'pending' ? '待确认 · ' : ''}}查看 {{item.memberCount}} 笔 ›</text>
+          <view class="account-proof-title-line"><text class="account-proof-title">{{item.label}}</text><text wx:if="{{item.needsConfirmation}}" class="account-pending-label">{{item.dirty && item.status === 'resolved' ? '待确认' : (item.suggestedExisting ? '建议 · 待确认' : '待确认')}}</text></view>
+          <text wx:if="{{item.inline && item.evidencePreview}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易">{{item.memberCount}} 笔 ›</text>
           <text wx:else class="account-proof-meta">{{item.memberCount}} 条记录</text>
         </view>
 
+        <view wx:if="{{item.inline && !item.needsConfirmation}}" class="account-summary-row"><text class="account-summary-text">{{item.summaryText}}</text><button class="account-change" data-id="{{item.issueId}}" bindtap="openAccountChoice" disabled="{{busy}}">更改</button></view>
+        <block wx:else>
         <view wx:if="{{item.inline}}" class="account-decision-row {{item.choiceValue === 'create' ? 'account-decision-create' : ''}}">
           <button class="account-mode-trigger {{item.choiceValue === 'create' ? 'account-mode-trigger-create' : 'account-mode-trigger-wide'}} {{item.choiceValue === 'pending' ? 'account-mode-trigger-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountChoice" disabled="{{accountStepBusy}}" aria-label="选择{{item.label}}的处理方式">
             <view class="account-mode-control">
@@ -157,10 +163,13 @@
           </button>
           <block wx:if="{{item.choiceValue === 'create'}}">
             <view class="account-decision-divider"></view>
-            <input class="account-compact-name" maxlength="32" value="{{item.draftName}}" placeholder="账户名称" data-id="{{item.issueId}}" bindinput="bindAccountDraftName" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的新账户名称" />
+            <input class="account-compact-name" maxlength="32" value="{{item.draftName}}" placeholder="账户名称" data-id="{{item.issueId}}" bindinput="bindAccountDraftName" data-input-key="bindAccountDraftName-{{index}}" bindfocus="beginInputEditing" bindblur="finishInputEditing" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的新账户名称" />
             <view class="account-decision-divider"></view>
             <picker class="account-compact-type" mode="selector" range="{{accountTypeOptions}}" range-key="label" value="{{item.draftTypeIndex}}" data-id="{{item.issueId}}" bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}" aria-label="{{item.label}}的账户类型，{{accountTypeOptions[item.draftTypeIndex].label}}">
-              <view class="account-compact-type-control"><text class="account-compact-type-value">{{accountTypeOptions[item.draftTypeIndex].value === 'credit' ? '信用卡/信贷' : accountTypeOptions[item.draftTypeIndex].label}}</text><view class="account-dropdown-chevron"></view></view>
+              <view class="account-compact-type-control">
+                <text class="account-compact-type-value">{{accountTypeOptions[item.draftTypeIndex].value === 'credit' ? '信用卡/信贷' : accountTypeOptions[item.draftTypeIndex].label}}</text>
+                <view class="account-dropdown-chevron"></view>
+              </view>
             </picker>
           </block>
         </view>
@@ -169,40 +178,38 @@
           <view class="account-dropdown-chevron"></view>
         </button>
         <text wx:if="{{item.inline && item.choiceValue === 'pending'}}" class="account-inline-note">{{item.paymentNeedsReview ? '多个资金账户共同支付，请核对各自金额及交易性质。' : '请选择这笔记录归属的账户。账单信息不足时，需要你核对后确认。'}}</text>
-        <text wx:if="{{item.inline && item.choiceValue === 'create' && item.draftNameValid}}" class="account-inline-note">确认入账后创建，当前不会改动账户余额。</text>
-        <text wx:if="{{item.inline && item.choiceValue === 'create' && !item.draftNameValid}}" class="account-inline-note">请补全名称，也可改选已有账户或本次不计入。</text>
-        <text wx:if="{{item.inline && item.choiceValue === 'ignore'}}" class="account-state-note">本次不计入，原始账单仍可查看。</text>
-        <text wx:if="{{item.inline && item.choiceValue === 'ignore_future' && item.status === 'open'}}" class="account-state-note">本次不计入，确认入账后记住此选择。</text>
+        <text wx:if="{{item.inline && item.choiceValue === 'create' && !item.draftNameValid}}" class="account-inline-note">填写账户名称，或点左侧改选已有账户 / 本次不计入账本。</text>
+        <text wx:if="{{item.inline && item.suggestedExisting}}" class="account-state-note">已根据账户名称、银行和尾号推荐已有账户，请核对。</text>
+        <text wx:if="{{item.inline && item.choiceValue === 'ignore'}}" class="account-state-note">保留来源证据，本次不创建账户或正式账目。</text>
+        <text wx:if="{{item.inline && item.choiceValue === 'ignore_future' && item.status === 'open'}}" class="account-state-note">本次不计入；确认整批入账后，相同支付工具将按历史规则自动排除。</text>
         <text wx:if="{{item.inline && item.choiceValue === 'ignore_future' && item.status === 'resolved'}}" class="account-state-note">已按你的规则不计入，入账前仍可修改。</text>
+        <view wx:if="{{item.inline}}" class="account-confirm-row"><button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || !item.canConfirm}}">{{item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button></view>
+        </block>
       </view>
     </view>
 
-    <view wx:if="{{accountMappings.length && accountStepSummary.inline}}" class="stage-action">
+    <text class="account-shared-note">新建账户在整批入账后生效；确认整批入账前不会创建或修改正式账户。</text>
+    <view class="stage-action stage-navigation">
       <text wx:if="{{accountStepError}}" class="stage-action-error">{{accountStepError}}</text>
       <text wx:elif="{{accountStepProgressText}}" class="stage-action-progress">{{accountStepProgressText}}</text>
-      <text wx:else class="stage-action-summary content-inset">{{accountStepSummary.invalid ? '还有 ' + accountStepSummary.invalid + ' 项需要补全' : (accountStepSummary.open ? '确认后继续处理其他整理问题' : (accountStepSummary.dirty ? '将重新计算受影响的未入账记录' : '账户归属已确认，点任一项可修改'))}}</text>
-      <button class="primary-button stage-primary" loading="{{accountStepBusy}}" disabled="{{accountStepBusy || accountStepSummary.invalid > 0 || (!accountStepSummary.open && !accountStepSummary.dirty)}}" bindtap="completeAccountMapping">{{accountStepSummary.open ? '确认账户归属' : '保存修改'}}</button>
-    </view>
-
-    <view wx:if="{{!accountMappings.length}}" class="stage-action">
-      <text class="stage-action-summary content-inset">账户归属已经确认</text>
-      <button class="primary-button stage-primary" data-step="3" bindtap="goToStep">开始整理</button>
+      <view class="stage-navigation-buttons">
+        <button class="stage-previous" data-step="1" bindtap="goToStep" disabled="{{busy}}">上一步</button>
+        <button class="primary-button stage-primary" data-step="3" bindtap="goToStep" disabled="{{busy || accountStepSummary.pending > 0 || unlockedStep < 3}}">下一步：整理账目{{accountStepSummary.pending ? '（还需确认 ' + accountStepSummary.pending + ' 项）' : ''}}</button>
+      </view>
     </view>
   </view>
 
   <view wx:if="{{currentStep === 3 && update}}" class="review-stage">
-    <view class="step-heading">
+    <view class="step-heading content-inset">
       <view>
         <text class="stage-panel-kicker">账单整理 · STEP 03</text>
-        <text class="step-title serif-title review-slogan">{{activeReviewTab === 'category' ? (categoryStatusTabs[0].count ? '还有 ' + categoryStatusTabs[0].count + ' 笔待分类' : '分类已整理') : (reviewStatusTabs[0].count ? '还有 ' + reviewStatusTabs[0].count + ' 笔待核对' : '交易核对已完成')}}</text>
+        <text class="step-title serif-title review-slogan">核对每笔交易，按需补全分类，让收支更清晰。</text>
       </view>
     </view>
-    <record-summary total="{{recordSummary.totalCount}}" active="{{recordSummary.activeCount}}" excluded="{{recordSummary.excludedCount}}" duplicate="{{recordSummary.duplicateCount}}">
-      <view class="record-count-breakdown">
+    <view class="review-count-formulas">
       <text class="record-count-equation">有效交易 {{recordSummary.activeCount}} ＋ 已排除交易 {{recordSummary.excludedCount}} ＋ 重复交易 {{recordSummary.duplicateCount}} ＝ 全部记录 {{recordSummary.totalCount}}</text>
       <text class="record-count-equation">有效交易 {{recordSummary.activeCount}} ＝ 待核对 {{reviewStatusTabs[0].count}} ＋ 已核对 {{reviewStatusTabs[1].count}} ＝ 待分类 {{categoryStatusTabs[0].count}} ＋ 已分类 {{categoryStatusTabs[1].count}} ＋ 无需分类 {{categoryStatusTabs[2].count}}</text>
     </view>
-    </record-summary>
     <view class="review-main-tabs" aria-role="tablist">
       <button class="review-main-tab {{activeReviewTab === 'review' ? 'review-main-tab-active' : ''}}" data-tab="review" bindtap="switchReviewTab" aria-role="tab" aria-selected="{{activeReviewTab === 'review'}}">交易核对</button>
       <button class="review-main-tab {{activeReviewTab === 'category' ? 'review-main-tab-active' : ''}}" data-tab="category" bindtap="switchReviewTab" aria-role="tab" aria-selected="{{activeReviewTab === 'category'}}">分类</button>
@@ -255,7 +262,7 @@
           <text class="review-status-tab-label">{{item.label}}</text><text class="review-status-tab-count money-number">{{item.count}}</text>
         </button>
       </view>
-      <input wx:if="{{recordSummary.activeCount}}" class="category-search" value="{{categoryQuery}}" placeholder="搜索商户、交易或分类" bindinput="searchCategoryIssues" aria-label="搜索当前分类列表" />
+      <input wx:if="{{recordSummary.activeCount}}" class="category-search" value="{{categoryQuery}}" placeholder="搜索商户、交易或分类" bindinput="searchCategoryIssues" data-input-key="searchCategoryIssues" bindfocus="beginInputEditing" bindblur="finishInputEditing" aria-label="搜索当前分类列表" />
       <block wx:if="{{activeCategoryStatus === 'pending'}}">
         <view wx:for="{{categoryCards}}" wx:key="issueId" class="review-decision-card category-decision-card" data-id="{{item.issueId}}" bindtap="openIssue" aria-role="button" aria-label="{{item.natureLabel}}待分类，{{item.subjectCount}}笔">
           <view class="review-decision-heading">
@@ -322,45 +329,57 @@
       </view>
       <view wx:else class="tab-empty"><text class="tab-empty-title">没有重复记录</text></view>
     </block>
-    <view class="stage-action">
-      <button class="primary-button stage-primary" data-step="4" bindtap="goToStep" disabled="{{busy || openIssueCount || !coverage.selectedEventsReadyToPost}}">下一步：确认入账</button>
-    </view>
+    <view class="stage-action stage-navigation"><view class="stage-navigation-buttons">
+      <button class="stage-previous" data-step="2" bindtap="goToStep" disabled="{{busy}}">上一步</button>
+      <button class="primary-button stage-primary" data-step="4" bindtap="goToStep" disabled="{{busy || reviewStatusTabs[0].count || accountStepSummary.pending > 0}}">下一步：确认入账{{reviewStatusTabs[0].count ? '（还需核对 ' + reviewStatusTabs[0].count + ' 笔）' : ''}}</button>
+    </view></view>
   </view>
 
 
   <view wx:if="{{currentStep === 4 && update && phase === 'review'}}" class="step-section final-stage">
-    <view class="review-heading"><text class="review-title">确认入账</text></view>
-    <record-summary total="{{recordSummary.totalCount}}" active="{{recordSummary.activeCount}}" excluded="{{recordSummary.excludedCount}}" duplicate="{{recordSummary.duplicateCount}}">
-      <view class="record-count-breakdown">
+    <view class="review-heading content-inset"><text class="review-title">确认入账</text></view>
+    <view class="review-count-formulas final-count-formulas">
       <text class="record-count-equation">有效交易 {{recordSummary.activeCount}} ＋ 已排除交易 {{recordSummary.excludedCount}} ＋ 重复交易 {{recordSummary.duplicateCount}} ＝ 全部记录 {{recordSummary.totalCount}}</text>
       <text class="record-count-equation">有效交易 {{recordSummary.activeCount}} ＝ 待核对 {{reviewStatusTabs[0].count}} ＋ 已核对 {{reviewStatusTabs[1].count}} ＝ 待分类 {{categoryStatusTabs[0].count}} ＋ 已分类 {{categoryStatusTabs[1].count}} ＋ 无需分类 {{categoryStatusTabs[2].count}}</text>
     </view>
-    </record-summary>
-    <text class="step-copy">正式余额、明细和统计会一起更新；若有一笔失败，本次所有账单都会回滚。</text>
     <view class="final-summary">
       <view class="final-money-row">
-        <view><text class="final-money-label">本批支出</text><text class="final-money-value money-number expense-color">{{finalSummary.expenseText}}</text></view>
-        <view><text class="final-money-label">本批收入</text><text class="final-money-value money-number income-color">{{finalSummary.incomeText}}</text></view>
-        <view><text class="final-money-label">本批退款</text><text class="final-money-value money-number income-color">{{finalSummary.refundText}}</text></view>
+        <view data-kind="expense" bindtap="openFinalDetail" aria-role="button" aria-label="查看本批支出"><text class="final-money-label">本批支出</text><text class="final-money-value money-number expense-color">{{finalSummary.expenseText}}</text><text class="funds-flow-count">{{finalSummary.expenseCount}} 笔 ›</text></view>
+        <view data-kind="income" bindtap="openFinalDetail" aria-role="button" aria-label="查看本批收入"><text class="final-money-label">本批收入</text><text class="final-money-value money-number income-color">{{finalSummary.incomeText}}</text><text class="funds-flow-count">{{finalSummary.incomeCount}} 笔 ›</text></view>
+        <view data-kind="refund" bindtap="openFinalDetail" aria-role="button" aria-label="查看本批退款"><text class="final-money-label">本批退款</text><text class="final-money-value money-number income-color">{{finalSummary.refundText}}</text><text class="funds-flow-count">{{finalSummary.refundCount}} 笔 ›</text></view>
       </view>
-      <view class="final-summary-row"><text>内部资金流转</text><text class="money-number">{{finalSummary.transferCount}} 笔</text></view>
-      <view class="final-summary-row"><text>新建账户</text><text class="money-number">{{finalSummary.newAccountCount}} 个</text></view>
-      <view class="final-summary-row"><text>受影响账户</text><text class="money-number">{{finalSummary.affectedAccountCount}} 个</text></view>
-      <view class="final-summary-row"><text>本次入账</text><text class="money-number">{{recordSummary.activeCount}} 笔有效交易</text></view>
+      <view class="final-category-heading"><text class="review-title">资金流转</text></view>
+      <view class="final-money-row funds-flow-grid">
+        <view wx:for="{{fundsFlowGroups}}" wx:key="nature" class="funds-flow-cell" data-kind="{{item.nature}}" bindtap="openFinalDetail" aria-role="button" aria-label="{{item.label}}，{{item.count}}笔，查看记录">
+          <text class="final-money-label">{{item.label}}</text><text class="final-money-value money-number">{{item.amountText}}</text>
+          <text class="funds-flow-count">{{item.count}} 笔 ›</text>
+        </view>
+      </view>
+
+      <view class="final-summary-row" data-kind="new_accounts" bindtap="openFinalDetail" aria-role="button" aria-label="查看新建账户"><text>新建账户</text><text class="money-number">{{finalSummary.newAccountCount}} 个 ›</text></view>
+      <view class="final-summary-row" data-kind="affected_accounts" bindtap="openFinalDetail" aria-role="button" aria-label="查看受影响账户"><text>受影响账户</text><text class="money-number">{{finalSummary.affectedAccountCount}} 个 ›</text></view>
+      <view class="final-summary-row" data-kind="all" bindtap="openFinalDetail" aria-role="button" aria-label="查看本次入账"><text>本次入账</text><text class="money-number">{{recordSummary.activeCount}} 笔有效交易 ›</text></view>
+      <view class="final-category-heading"><text class="review-title">交易分类</text></view>
+      <view class="final-money-row">
+        <view data-kind="categorized" bindtap="openFinalDetail" aria-role="button" aria-label="查看已分类"><text class="final-money-label">已分类</text><text class="funds-flow-count">{{categoryStatusTabs[1].count}} 笔 ›</text></view>
+        <view data-kind="uncategorized" bindtap="openFinalDetail" aria-role="button" aria-label="查看未分类"><text class="final-money-label">未分类</text><text class="funds-flow-count">{{categoryStatusTabs[0].count}} 笔 ›</text></view>
+        <view data-kind="no_category" bindtap="openFinalDetail" aria-role="button" aria-label="查看无需分类"><text class="final-money-label">无需分类</text><text class="funds-flow-count">{{categoryStatusTabs[2].count}} 笔 ›</text></view>
+      </view>
+      <text class="final-category-note">未分类可以入账后再补，不影响本次入账。</text>
     </view>
-    <button class="primary-button final-primary" bindtap="postUpdate" loading="{{busy}}" disabled="{{busy || openIssueCount || !coverage.selectedEventsReadyToPost}}">确认整批入账</button>
-    <button class="text-action final-back" data-step="3" bindtap="goToStep">返回整理检查</button>
+    <view class="stage-action stage-navigation"><view class="stage-navigation-buttons">
+      <button class="stage-previous" data-step="3" bindtap="goToStep" disabled="{{busy}}">上一步</button>
+      <button class="primary-button stage-primary" bindtap="postUpdate" loading="{{busy}}" disabled="{{busy || openIssueCount || accountStepSummary.pending > 0 || !coverage.selectedEventsReadyToPost}}">确认整批入账</button>
+    </view></view>
   </view>
 
   <view wx:if="{{currentStep === 4 && phase === 'done'}}" class="done-section">
     <view class="done-mark"><view class="done-check"></view></view>
     <text class="done-title serif-title">这批账单已经入账。</text>
-    <record-summary total="{{recordSummary.totalCount}}" active="{{recordSummary.activeCount}}" excluded="{{recordSummary.excludedCount}}" duplicate="{{recordSummary.duplicateCount}}">
-      <view class="record-count-breakdown">
+    <view class="review-count-formulas final-count-formulas">
       <text class="record-count-equation">有效交易 {{recordSummary.activeCount}} ＋ 已排除交易 {{recordSummary.excludedCount}} ＋ 重复交易 {{recordSummary.duplicateCount}} ＝ 全部记录 {{recordSummary.totalCount}}</text>
       <text class="record-count-equation">有效交易 {{recordSummary.activeCount}} ＝ 待核对 {{reviewStatusTabs[0].count}} ＋ 已核对 {{reviewStatusTabs[1].count}} ＝ 待分类 {{categoryStatusTabs[0].count}} ＋ 已分类 {{categoryStatusTabs[1].count}} ＋ 无需分类 {{categoryStatusTabs[2].count}}</text>
     </view>
-    </record-summary>
     <text class="done-copy">新建 {{posting.createdTransactionCount}} 笔{{posting.reusedTransactionCount ? '，复用已有 ' + posting.reusedTransactionCount + ' 笔' : ''}}。正式账目已经进入余额、明细和统计。</text>
     <view class="done-actions">
       <button class="primary-button done-button" bindtap="viewTransactions">查看明细</button>
@@ -368,7 +387,6 @@
         <button class="secondary-button" bindtap="completeCategories">补全分类</button>
         <button class="secondary-button" bindtap="correctBalances">校正余额</button>
       </view>
-      <button class="text-action" bindtap="openMaintenance">更正或撤销本批入账</button>
       <button class="text-action" bindtap="viewStatistics">查看统计</button>
       <button class="text-action" bindtap="startAnother">继续导入</button>
     </view>
@@ -388,7 +406,10 @@
   </view>
 
   <view wx:if="{{update && phase === 'review' && currentStep === 1}}" class="abandon-batch">
-    <button class="text-action abandon-batch-button" bindtap="abandonUpdate" disabled="{{busy}}">放弃本批账单</button>
+    <view class="abandon-batch-actions">
+      <button class="text-action abandon-batch-button" bindtap="abandonUpdate" disabled="{{busy}}">放弃本批账单</button>
+      <button class="primary-button" data-step="2" bindtap="goToStep" disabled="{{busy || unlockedStep < 2}}">下一步：确认账户</button>
+    </view>
     <text class="abandon-batch-copy">放弃后可重新选择；正式账户和账本不会改变。</text>
   </view>
 
@@ -437,7 +458,7 @@
         <text class="account-choice-section-title">其他账户</text>
         <view class="account-choice-search">
           <view class="account-choice-search-icon"></view>
-          <input class="account-choice-search-input" value="{{accountChoiceQuery}}" bindinput="bindAccountChoiceSearch" placeholder="搜索账户名称" confirm-type="search" aria-label="搜索账户名称" />
+          <input class="account-choice-search-input" value="{{accountChoiceQuery}}" bindinput="bindAccountChoiceSearch" data-input-key="bindAccountChoiceSearch" bindfocus="beginInputEditing" bindblur="finishInputEditing" placeholder="搜索账户名称" confirm-type="search" aria-label="搜索账户名称" />
         </view>
         <scroll-view class="account-choice-scroll" scroll-y enhanced show-scrollbar="{{false}}">
           <button wx:for="{{accountChoiceResults}}" wx:key="accountId" class="account-choice-account-row {{accountChoiceSheet.selectedValue === item.value ? 'account-choice-selected' : ''}}" data-value="{{item.value}}" bindtap="selectAccountChoice" aria-role="radio" aria-checked="{{accountChoiceSheet.selectedValue === item.value}}">
@@ -476,6 +497,28 @@
       </scroll-view>
       <button wx:if="{{accountRecordsSheet.error}}" class="evidence-return" data-id="{{accountRecordsSheet.issueId}}" bindtap="openAccountRecords">重新读取</button>
       <button size="mini" class="account-records-return" bindtap="closeAccountRecords" disabled="{{busy}}">返回账户列表</button>
+    </view>
+  </view>
+
+  <view wx:if="{{finalDetailSheet}}" class="sheet-layer final-detail-layer" catchtouchmove="preventTouchMove">
+    <view class="sheet-scrim" bindtap="closeFinalDetail"></view>
+    <view class="workflow-sheet editor-sheet final-detail-sheet">
+      <view class="sheet-handle"></view>
+      <view class="final-detail-heading"><text class="sheet-title">{{finalDetailSheet.title}}</text><button class="final-detail-close" bindtap="closeFinalDetail" aria-label="关闭明细">关闭</button></view>
+      <text class="sheet-copy">共 {{finalDetailSheet.count}} {{finalDetailSheet.mode === 'accounts' ? '个账户' : '笔交易'}}</text>
+      <scroll-view class="final-detail-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+        <view wx:for="{{finalDetailSheet.accounts}}" wx:key="accountId" class="funds-flow-record" data-id="{{item.accountId}}" bindtap="openFinalAccount" aria-role="button" aria-label="查看账户关联交易">
+          <view class="funds-flow-record-head"><text class="funds-flow-record-title">{{item.name}}</text><text>{{item.count}} 笔 ›</text></view>
+          <text class="funds-flow-record-meta">{{item.typeLabel}}{{item.isDraft ? ' · 本批新建' : ''}}</text>
+        </view>
+        <view wx:for="{{finalDetailSheet.records}}" wx:key="eventId" class="funds-flow-record">
+          <view class="funds-flow-record-head"><text class="funds-flow-record-title">{{item.displayTitle}}</text><text class="money-number">{{item.amountText}}</text></view>
+          <text class="funds-flow-record-meta">{{item.displayMeta}}</text>
+          <text wx:if="{{item.accountText}}" class="funds-flow-record-meta">关联账户：{{item.accountText}}</text>
+        </view>
+        <text wx:if="{{!finalDetailSheet.count}}" class="funds-flow-record-meta">本批暂无相关{{finalDetailSheet.mode === 'accounts' ? '账户' : '交易'}}。</text>
+      </scroll-view>
+      <button wx:if="{{finalDetailParent}}" class="evidence-return" bindtap="backFinalDetail">返回账户列表</button>
     </view>
   </view>
 
@@ -527,16 +570,29 @@
         <view wx:for="{{paymentRows}}" wx:key="componentIndex" class="payment-component">
           <picker class="payment-account-picker" mode="selector" range="{{paymentAccountChoices}}" range-key="name" value="{{item.accountIndex}}" data-index="{{index}}" data-field="account" bindchange="changePaymentRow" disabled="{{busy}}"><view class="payment-account-trigger"><text class="payment-account-name">{{item.accountId ? paymentAccountChoices[item.accountIndex].name : item.label + ' · 请选择'}}</text><view class="account-dropdown-chevron" /></view></picker>
           <view wx:if="{{!currentIssue.paymentAccountsOnly}}" class="payment-entry-row">
-          <view class="payment-amount-field"><text class="payment-currency">¥</text><input class="payment-amount-input" type="digit" cursor-spacing="100" value="{{item.amountInput}}" placeholder="0.00" disabled="{{busy}}" aria-label="{{item.label + '支付金额（元）'}}" data-index="{{index}}" data-field="amount" bindinput="changePaymentRow" /></view>
+          <view class="payment-amount-field"><text class="payment-currency">¥</text><input class="payment-amount-input" type="digit" cursor-spacing="100" value="{{item.amountInput}}" placeholder="0.00" disabled="{{busy}}" aria-label="{{item.label + '支付金额（元）'}}" data-index="{{index}}" data-field="amount" bindinput="changePaymentRow" data-input-key="changePaymentRow-{{index}}" bindfocus="beginInputEditing" bindblur="finishInputEditing" /></view>
           <button wx:if="{{!currentIssue.paymentAccountsOnly}}" size="mini" class="payment-amount-all" data-index="{{index}}" bindtap="fillPaymentAmount" disabled="{{busy}}" aria-label="{{item.label + '支付全部金额'}}">全部分配</button>
           </view>
         </view>
         </view>
-        <view wx:if="{{!currentIssue.paymentAccountsOnly}}" class="mapping-field payment-note-field"><text class="mapping-label">核对说明 · 必填</text><textarea class="payment-note-input" auto-height="true" cursor-spacing="100" disabled="{{busy}}" maxlength="300" value="{{paymentEvidenceNote}}" placeholder="如：支付详情（必填）" aria-label="付款核对说明，必填" bindinput="changePaymentNote" /></view>
+        <view wx:if="{{!currentIssue.paymentAccountsOnly}}" class="mapping-field payment-note-field"><text class="mapping-label">核对说明 · 必填</text><textarea class="payment-note-input" auto-height="true" cursor-spacing="100" disabled="{{busy}}" maxlength="300" value="{{paymentEvidenceNote}}" placeholder="如：支付详情（必填）" aria-label="付款核对说明，必填" bindinput="changePaymentNote" data-input-key="changePaymentNote" bindfocus="beginInputEditing" bindblur="finishInputEditing" /></view>
         <text wx:if="{{paymentRows.length === 0}}" class="stage-action-error">来源成分尚不完整，暂不能手工确认。</text>
         <text wx:if="{{errorMessage}}" class="stage-action-error">{{errorMessage}}</text>
       </view>
       <view wx:if="{{!currentIssue.paymentNeedsReview && (currentIssue.issueType === 'account_mapping' || currentIssue.issueType === 'category_assignment' || currentIssue.issueType === 'shared_fields' || currentIssue.issueType === 'field_conflict' || currentIssue.issueType === 'transfer_accounts')}}" class="mapping-fields">
+        <view wx:if="{{currentIssue.repaymentOwnershipRequired}}" class="repayment-ownership">
+          <text class="mapping-label">这笔钱是替谁还的？</text>
+          <view class="ownership-options">
+            <button class="ownership-option {{issueDraft.repaymentOwner === 'self' ? 'ownership-option-selected' : ''}}" data-owner="self" bindtap="changeRepaymentOwner" disabled="{{busy}}" aria-pressed="{{issueDraft.repaymentOwner === 'self'}}">自己的账户</button>
+            <button class="ownership-option {{issueDraft.repaymentOwner === 'other' ? 'ownership-option-selected' : ''}}" data-owner="other" bindtap="changeRepaymentOwner" disabled="{{busy}}" aria-pressed="{{issueDraft.repaymentOwner === 'other'}}">替他人还款</button>
+          </view>
+          <view wx:if="{{issueDraft.repaymentOwner === 'other'}}" class="ownership-treatment">
+            <text class="mapping-label">这笔钱是否需要收回？</text>
+            <button class="ownership-option {{issueDraft.repaymentOtherTreatment === 'expense' ? 'ownership-option-selected' : ''}}" data-treatment="expense" bindtap="changeRepaymentOtherTreatment" disabled="{{busy}}" aria-pressed="{{issueDraft.repaymentOtherTreatment === 'expense'}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">无需收回</text><text class="ownership-treatment-detail">记为支出</text></view><view class="ownership-treatment-check" aria-hidden="true"></view></button>
+            <button class="ownership-option {{issueDraft.repaymentOtherTreatment === 'pending' ? 'ownership-option-selected' : ''}}" data-treatment="pending" bindtap="changeRepaymentOtherTreatment" disabled="{{busy}}" aria-pressed="{{issueDraft.repaymentOtherTreatment === 'pending'}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">需要收回或暂不确定</text><text class="ownership-treatment-detail">保留待核对，暂不入账</text></view><view class="ownership-treatment-check" aria-hidden="true"></view></button>
+            <text wx:if="{{issueDraft.repaymentOtherTreatment === 'pending'}}" class="draft-account-note">先保存账户归属，后续明确记账方式；这笔仍需核对才能整批入账。</text>
+          </view>
+        </view>
         <view wx:if="{{currentIssue.aggregateRepayment && currentIssue.fundsRoute}}" class="funds-route-card aggregate-route-card">
           <view class="funds-route-point funds-route-known">
             <text class="funds-route-label">还款来源</text><text class="funds-route-name">{{currentIssue.fundsRoute.fromName}}</text>
@@ -551,10 +607,10 @@
           <text class="repayment-allocation-help">按实际还款分配；下方可补充其他账户。</text>
           <view wx:for="{{repaymentAllocationChoices}}" wx:key="accountId" class="repayment-allocation-row">
             <view class="repayment-allocation-account">
-              <input wx:if="{{item.isNew}}" value="{{item.name}}" placeholder="新负债账户名称" maxlength="32" data-index="{{index}}" bindinput="changeRepaymentAccountName" disabled="{{busy}}" />
+              <input wx:if="{{item.isNew}}" value="{{item.name}}" placeholder="新负债账户名称" maxlength="32" data-index="{{index}}" bindinput="changeRepaymentAccountName" data-input-key="changeRepaymentAccountName-{{index}}" bindfocus="beginInputEditing" bindblur="finishInputEditing" disabled="{{busy}}" />
               <text wx:else>{{item.name}}</text>
             </view>
-            <view class="repayment-allocation-input"><text>¥</text><input type="digit" value="{{item.amountInput}}" placeholder="0.00" data-index="{{index}}" bindinput="changeRepaymentAllocation" disabled="{{busy}}" /></view>
+            <view class="repayment-allocation-input"><text>¥</text><input type="digit" value="{{item.amountInput}}" placeholder="0.00" data-index="{{index}}" bindinput="changeRepaymentAllocation" data-input-key="changeRepaymentAllocation-{{index}}" bindfocus="beginInputEditing" bindblur="finishInputEditing" disabled="{{busy}}" /></view>
             <button size="mini" class="repayment-allocation-all" data-index="{{index}}" bindtap="fillRepaymentAllocation" disabled="{{busy}}">全部</button>
             <button size="mini" class="repayment-allocation-remove" data-index="{{index}}" bindtap="removeRepaymentAccount" disabled="{{busy}}" aria-label="移除该还款账户">×</button>
           </view>
@@ -562,7 +618,7 @@
             <view class="repayment-allocation-add">＋ 补充还款账户</view>
           </picker>
         </view>
-        <view wx:elif="{{currentIssue.fundsRoute}}" class="funds-route-card">
+        <view wx:elif="{{currentIssue.fundsRoute && (!currentIssue.repaymentOwnershipRequired || issueDraft.repaymentOwner === 'self')}}" class="funds-route-card">
           <picker wx:if="{{currentIssue.missingFundsSide === 'from' || currentIssue.missingFundsSide === 'both'}}" class="funds-route-picker" mode="selector" range="{{accountChoices}}" range-key="name" value="{{issueDraft.accountIndex}}" bindchange="changeIssueAccount">
             <view class="funds-route-point funds-route-missing">
               <text class="funds-route-label">转出</text><text class="funds-route-name">{{accountChoices[issueDraft.accountIndex].name}}</text>
@@ -588,7 +644,7 @@
           <view class="mapping-field"><text class="mapping-label">{{currentIssue.missingAccountLabel}}</text><text class="mapping-value {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{accountChoices[issueDraft.accountIndex].name}}</text><view class="field-chevron"></view></view>
         </picker>
         <text wx:if="{{bankSuggestion && errorMessage}}" class="stage-action-error">{{errorMessage}}</text>
-        <view wx:if="{{bankSuggestion}}" class="bank-suggestion">
+        <view wx:if="{{bankSuggestion && (!currentIssue.repaymentOwnershipRequired || issueDraft.repaymentOwner === 'self')}}" class="bank-suggestion">
           <text class="draft-account-note">{{bankSuggestion.reason}}</text>
           <view wx:if="{{bankSuggestion.candidates.length}}" class="bank-candidate-list">
             <button wx:for="{{bankSuggestion.candidates}}" wx:key="accountId" size="mini" class="bank-candidate" data-id="{{item.accountId}}" bindtap="selectBankSuggestion" disabled="{{busy}}">
@@ -597,7 +653,7 @@
             </button>
           </view>
           <text wx:else class="draft-account-note">暂无同银行同类型账户，可选择其他账户或新建。</text>
-          <button wx:if="{{bankBatchCandidates.length && bankSuggestion.candidates.length}}" size="mini" class="review-text-action" bindtap="expandBankBatch" disabled="{{busy || bankBatchLoading}}">{{bankBatchLoading ? '正在读取其他记录…' : bankBatchExpanded ? '收起其他记录' : '核对同银行的其他记录（' + bankBatchCandidates.length + ' 项）'}}</button>
+          <button wx:if="{{!currentIssue.repaymentOwnershipRequired && bankBatchCandidates.length && bankSuggestion.candidates.length}}" size="mini" class="review-text-action" bindtap="expandBankBatch" disabled="{{busy || bankBatchLoading}}">{{bankBatchLoading ? '正在读取其他记录…' : bankBatchExpanded ? '收起其他记录' : '核对同银行的其他记录（' + bankBatchCandidates.length + ' 项）'}}</button>
           <view wx:if="{{bankBatchExpanded}}" class="bank-batch-list">
             <text class="draft-account-note">先选定上方账户，再勾选要一起应用的记录。</text>
             <view wx:for="{{bankBatchRecords}}" wx:for-item="batch" wx:key="issueId" class="bank-batch-row">
@@ -613,8 +669,8 @@
           </view>
         </view>
         <text wx:if="{{currentIssue.suggestedExisting}}" class="draft-account-note">已按账户名称、银行和尾号推荐已有账户，请核对。</text>
-        <view wx:if="{{accountChoices[issueDraft.accountIndex].isCreate}}" class="draft-account-fields">
-          <view class="mapping-field"><text class="mapping-label">账户名称</text><input class="mapping-input" maxlength="32" value="{{issueDraft.newAccountName}}" bindinput="changeDraftAccountName" placeholder="例如：微信余额" /></view>
+        <view wx:if="{{accountChoices[issueDraft.accountIndex].isCreate && (!currentIssue.repaymentOwnershipRequired || issueDraft.repaymentOwner === 'self')}}" class="draft-account-fields">
+          <view class="mapping-field"><text class="mapping-label">账户名称</text><input class="mapping-input" maxlength="32" value="{{issueDraft.newAccountName}}" bindinput="changeDraftAccountName" data-input-key="changeDraftAccountName" bindfocus="beginInputEditing" bindblur="finishInputEditing" placeholder="例如：微信余额" /></view>
           <picker class="mapping-picker" mode="selector" range="{{accountTypeOptions}}" range-key="label" value="{{issueDraft.accountTypeIndex}}" bindchange="changeDraftAccountType">
             <view class="mapping-field"><text class="mapping-label">账户类型</text><text class="mapping-value">{{accountTypeOptions[issueDraft.accountTypeIndex].label}}</text><view class="field-chevron"></view></view>
           </picker>

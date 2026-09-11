@@ -27,7 +27,8 @@
     "imports.getFile": {
       "kind": "read",
       "data": ["importId", "pageSize?", "cursor?", "includeOptions?"],
-      "returns": ["import", "batch?", "rows", "nextCursor"]
+      "returns": ["import", "batch?", "rows", "nextCursor"],
+      "rowPolicy": "Each source row appears once in cursor order; parsed rows do not create draft events or old per-row decisions."
     },
     "imports.discardFile": {
       "kind": "idempotent-versioned-mutation",
@@ -70,7 +71,7 @@
       "kind": "idempotent-double-versioned-mutation",
       "data": ["requestId", "updateId", "issueId", "updateVersion", "issueVersion", "decision", "decision-specific fields", "apply_fields.fields.ledgerAccountDraft?", "apply_fields.fields.paymentAccounts[{componentIndex,accountId}]?", "apply_fields.fields.paymentResolution{version,nature,allocations[{componentIndex,accountId,amountMinor}],targetAccountId,evidenceNote,confirmedFromDetails}?", "apply_fields.fields.repaymentAllocations[{accountId|accountDraft{name,type=credit|other_liability,currency},amountMinor}]?", "exclude_events.paymentRuleAction?"],
       "decisions": ["apply_fields", "confirm_distinct", "confirm_same", "exclude_events", "confirm_installment_principal", "discard_evidence", "link_refund", "mark_refund_pending", "link_existing_transaction"],
-      "returns": ["update", "issue", "members", "accounts", "categories"]
+      "returns": ["update", "issue?", "members", "accounts", "categories"]
     },
     "reviewIssues.resolveAccountMappings": {
       "kind": "idempotent-batch-mutation",
@@ -127,29 +128,9 @@
     "cashBalance": "atomic posting may not create or deepen a negative cash balance; failure rolls back accounts, mappings, transactions, links and state together",
     "prePostingWriteBarrier": "before financeUpdates.post, account creation and reusable mapping changes remain FinanceUpdate-scoped drafts; abandoning or a failed post leaves formal accounts, mappings, transactions, balances and reports unchanged",
     "paymentRules": "recognized atomic payment methods may map to one account or be permanently ignored per user and source; an aggregate statement reference such as Alipay 花呗｜信用购 is never an account or reusable mapping and must be allocated to real liability accounts; temporary ignore never silently becomes a permanent rule",
-    "lifecycle": "each file uploads and parses independently, then selected ready batches form one FinanceUpdate; selecting the same unposted file abandons any prior draft/failed/review FinanceUpdate with audit and enters the current flow without confirmation; source files are temporary and cleanup failure never fabricates a failed ledger commit",
-    "publicWritePath": "the only public posting path is financeUpdates.post; legacy single-file commit and row-level post/skip actions are not registered"
+    "lifecycle": "Files and parse batches preserve source evidence. Replacing or abandoning an unposted FinanceUpdate atomically removes its derived events, evidence links, relations, review issues/members and account/mapping drafts, while retaining update/source summaries and action audit. Formal accounts, transactions, reusable mappings and source identities are unchanged. Storage-object cleanup remains best-effort.",
+    "publicWritePath": "The only posting implementation is financeUpdates.post. Legacy single-file services and their decision/posting/link tables are removed by migration 0012.",
+    "idempotentReplay": "Mutation keys and request digests remain durable. Receipts store small values or current FinanceUpdate/ReviewIssue references; duplicate requests never rerun the action. View replay returns current committed state. A retired issue returns issue=null and empty members; an abandoned update returns empty events/issues and coverage=null."
   },
-  "failureCodes": [
-    "AUTH_REQUIRED",
-    "CONFLICT",
-    "CSV_COLUMN_LIMIT_EXCEEDED",
-    "CSV_RECORD_LIMIT_EXCEEDED",
-    "FILE_ENCODING_INVALID",
-    "FILE_FORMAT_UNSUPPORTED",
-    "FILE_NOT_UPLOADED",
-    "FILE_SIZE_INVALID",
-    "IDEMPOTENCY_CONFLICT",
-    "IDENTITY_CONFLICT",
-    "INSUFFICIENT_CASH_BALANCE",
-    "INITIALIZATION_REQUIRED",
-    "INTERNAL_ERROR",
-    "INVALID_REQUEST",
-    "NOT_FOUND",
-    "SERVICE_NOT_CONFIGURED",
-    "SERVICE_TEMPORARY_UNAVAILABLE",
-    "UNRESOLVED_IMPORT",
-    "UNSUPPORTED_ACTION",
-    "VALIDATION_ERROR"
-  ]
+  "failureCodes": ["AUTH_REQUIRED", "CONFLICT", "CSV_COLUMN_LIMIT_EXCEEDED", "CSV_RECORD_LIMIT_EXCEEDED", "FILE_ENCODING_INVALID", "FILE_FORMAT_UNSUPPORTED", "FILE_NOT_UPLOADED", "FILE_SIZE_INVALID", "IDEMPOTENCY_CONFLICT", "IDENTITY_CONFLICT", "INSUFFICIENT_CASH_BALANCE", "INITIALIZATION_REQUIRED", "INTERNAL_ERROR", "INVALID_REQUEST", "NOT_FOUND", "SERVICE_NOT_CONFIGURED", "SERVICE_TEMPORARY_UNAVAILABLE", "UNRESOLVED_IMPORT", "UNSUPPORTED_ACTION", "VALIDATION_ERROR"]
 }

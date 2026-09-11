@@ -24,10 +24,10 @@ Component({
         selectedIconPath: 'tab-list-active.svg'
       },
       {
-        pagePath: '/pages/ledger/index',
-        text: '账本',
-        iconPath: 'tab-book.svg',
-        selectedIconPath: 'tab-book-active.svg'
+        pagePath: '/pages/statistics/index',
+        text: '统计',
+        iconPath: 'statistics.svg',
+        selectedIconPath: 'statistics-active.svg'
       },
       {
         pagePath: '/pages/profile/index',

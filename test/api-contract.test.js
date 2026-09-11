@@ -31,7 +31,7 @@ test('shared contract and server action registry stay in exact sync', () => {
   const handlers = createActionHandlers({
     accountService: serviceStub(['archive', 'correctBalance', 'create', 'createBatch', 'list', 'update']),
     categoryService: serviceStub(['archive', 'assignTransactions', 'create', 'list', 'reorder', 'restore', 'unclassified', 'update']),
-    transactionService: serviceStub(['create', 'dashboard', 'linkRefund', 'list', 'refundable', 'remove', 'statistics', 'update'])
+    transactionService: serviceStub(['create', 'dashboard', 'linkRefund', 'list', 'refundable', 'remove', 'setCategory', 'statistics', 'update'])
   })
   assert.deepEqual(Object.keys(handlers).sort(), contractActions.filter((action) => action !== 'bootstrap'))
   assert.equal(Object.values(handlers).every((handler) => typeof handler === 'function'), true)

@@ -1,5 +1,6 @@
 const app = getApp()
 const api = require('../../services/catledger-api')
+const pageReadSession = require('../../services/page-read-session')
 const profilePresentation = require('../../utils/profile-presentation')
 const themeService = require('../../theme/service')
 
@@ -10,9 +11,9 @@ Page({
     hasLoaded: false,
     connected: false,
     nickname: '',
+    uid: '',
+    displayUid: '',
     displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
-    identityStatusText: '尚未登录',
-    syncActionText: '',
     errorMessage: '',
     accountCount: 0,
     categoryCount: 0
@@ -36,8 +37,8 @@ Page({
       return this.loadProfile()
     }
     this.setData({
-      loading: false, hasLoaded: false, connected: false, identityStatusText: '尚未登录',
-      syncActionText: '', errorMessage: '', accountCount: 0, categoryCount: 0
+      loading: false, hasLoaded: false, connected: false, uid: '', displayUid: '',
+      errorMessage: '', accountCount: 0, categoryCount: 0
     })
   },
 
@@ -46,72 +47,93 @@ Page({
       wx.stopPullDownRefresh()
       return
     }
-    this.loadProfile().finally(function () {
+    this.loadProfile({ force: true }).finally(function () {
       wx.stopPullDownRefresh()
     })
   },
 
   loadProfile: function (options) {
-    if (!app.hasLoginApproval() || this.data.loading) {
-      return Promise.resolve()
+    const isCurrent = pageReadSession.begin(this, ['uid', 'displayUid', 'loading', 'hasLoaded', 'connected', 'errorMessage', 'accountCount', 'categoryCount'], ['_profileLoad'])
+    if (!app.hasLoginApproval() || this._profileLoad) {
+      return this._profileLoad || Promise.resolve()
     }
     const self = this
+    const force = Boolean(options && options.force)
     let identityConnected = Boolean(options && options.identityConfirmed)
     const preserveConnected = this.data.connected
     this.setData({
-      loading: true,
+      loading: force || (!identityConnected && !api.isFresh('bootstrap')) || !api.isFresh('accounts.list'),
       errorMessage: '',
-      syncActionText: '',
-      connected: identityConnected || preserveConnected,
-      identityStatusText: identityConnected || preserveConnected ? '个人账本已连接' : '正在连接个人账本'
+      connected: identityConnected || preserveConnected
     })
 
     const bootstrapPromise = identityConnected
-      ? Promise.resolve({ categories: app.globalData.categories })
-      : api.bootstrap()
+      ? Promise.resolve({ categories: app.globalData.categories, uid: app.globalData.uid })
+      : api.bootstrap({ force: force })
 
-    return bootstrapPromise
+    this._profileLoad = bootstrapPromise
       .then(function (result) {
+        if (!isCurrent()) return
         const categories = Array.isArray(result.categories) ? result.categories : []
         identityConnected = true
+        const uid = typeof result.uid === 'string' ? result.uid : ''
+        app.globalData.uid = uid
         app.globalData.categories = categories
         self.setData({
+          uid: uid,
+          displayUid: profilePresentation.displayUserId(uid),
           connected: true,
-          identityStatusText: '个人账本已连接',
           categoryCount: categories.length,
-          syncActionText: '',
           errorMessage: ''
         })
-        return api.callApi('accounts.list')
+        return api.callApi('accounts.list', {}, { force: force })
       })
       .then(function (result) {
+        if (!isCurrent()) return
         const accounts = Array.isArray(result.accounts) ? result.accounts : []
         self.setData({
           hasLoaded: true,
           accountCount: accounts.filter(function (account) { return !account.archived }).length,
-          syncActionText: '',
           errorMessage: ''
         })
       })
       .catch(function (error) {
+        if (!isCurrent()) return
         self.setData({
           connected: identityConnected,
-          identityStatusText: identityConnected ? '个人账本已连接' : '个人账本暂未连接',
-          syncActionText: identityConnected ? '同步数据' : '重试',
           errorMessage: identityConnected
             ? '账户数据暂未同步'
             : (error.message || '身份状态加载失败')
         })
       })
       .finally(function () {
+        if (!isCurrent()) return
         self.setData({ loading: false })
+        self._profileLoad = null
       })
+    return this._profileLoad
   },
 
   retryProfile: function () {
-    if (this.data.errorMessage && !this.data.loading) {
-      this.loadProfile()
+    if (!this.data.loading && (this.data.errorMessage || !this.data.uid)) {
+      return this.loadProfile({ force: true })
     }
+  },
+
+  openAccounts: function () {
+    if (!app.hasLoginApproval()) {
+      this.promptWechatLogin(this.openAccounts.bind(this))
+      return
+    }
+    wx.navigateTo({ url: '/pages/accounts/index' })
+  },
+
+  openCategories: function () {
+    if (!app.hasLoginApproval()) {
+      this.promptWechatLogin(this.openCategories.bind(this))
+      return
+    }
+    wx.navigateTo({ url: '/pages/categories/index' })
   },
 
   openTheme: function () {
@@ -139,10 +161,19 @@ Page({
     this.loadProfile({ identityConfirmed: true })
   },
 
+  copyId: function () {
+    if (!app.hasLoginApproval() || !pageReadSession.isCurrent(this) || !this.data.uid) return
+    wx.setClipboardData({
+      data: this.data.uid,
+      success: function () { wx.showToast({ title: 'ID 已复制', icon: 'success' }) },
+      fail: function () { wx.showToast({ title: '复制失败，请重试', icon: 'none' }) }
+    })
+  },
+
   showPrivacy: function () {
     wx.showModal({
       title: '数据与隐私',
-      content: '只有你主动点击登录后，招财猫记账本才会创建并连接个人账本。头像和昵称由你自愿选择，仅保存在当前设备用于“我的”页面展示；服务端使用微信可信身份隔离账本，不在页面、响应或普通日志中展示 OpenID 和内部用户标识。',
+      content: '只有你主动点击登录后，招财猫记账本才会创建并连接个人账本。头像和昵称由你自愿选择，仅保存在当前设备用于“我的”页面展示；服务端使用微信可信身份隔离账本。页面 ID 是你的账号标识，可复制给客服定位问题，不是登录凭证。微信 OpenID 与身份摘要不对外展示，普通日志不记录身份信息。',
       showCancel: false,
       confirmText: '知道了',
       confirmColor: themeService.currentTokens().accent
@@ -177,9 +208,10 @@ Page({
           loading: false,
           connected: false,
           nickname: '',
+          uid: '',
+          displayUid: '',
+          hasLoaded: false,
           displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
-          identityStatusText: '尚未登录',
-          syncActionText: '',
           errorMessage: '',
           accountCount: 0,
           categoryCount: 0

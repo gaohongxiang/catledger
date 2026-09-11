@@ -13,7 +13,6 @@ const {
   selectImportFile
 } = require('./import-repository')
 const { executeIdempotentMutation, executeUserRead } = require('./import-transaction')
-const { commitImport } = require('./ledger-writer')
 const { parseEvidenceFile } = require('./parsers')
 const { createReviewIssueService } = require('./review-issue-service')
 const {
@@ -93,15 +92,6 @@ function createImportService({ getPool, storage }) {
       maxBytes: MAX_FILE_BYTES,
       version: 1
     }
-  }
-
-  async function prepare(context) {
-    return executeIdempotentMutation({
-      getPool,
-      ...context,
-      action: 'imports.prepare',
-      operation: (connection, uid, data) => insertPreparedFile(connection, uid, data)
-    })
   }
 
   async function prepareMany(context) {
@@ -198,15 +188,11 @@ function createImportService({ getPool, storage }) {
     return result
   }
 
-  async function parse(context) {
-    return parseWithAction(context, 'imports.parse')
-  }
-
   async function parseFile(context) {
     return parseWithAction(context, 'imports.parseFile')
   }
 
-  async function get(context) {
+  async function getFile(context) {
     const importId = validateUuid(context.data.importId)
     if (context.data.includeOptions != null && typeof context.data.includeOptions !== 'boolean') {
       throw importError('VALIDATION_ERROR')
@@ -223,10 +209,6 @@ function createImportService({ getPool, storage }) {
     })
   }
 
-  async function getFile(context) {
-    return get(context)
-  }
-
   async function cleanup(context, importId, fileID, result) {
     if (result.contentState === 'deleted') return result
     if (!fileID || !await storage.remove(fileID)) {
@@ -236,28 +218,6 @@ function createImportService({ getPool, storage }) {
     await markContentDeleted(getPool, context.provider, context.subjectHash, importId, fileID)
     result.contentState = 'deleted'
     return result
-  }
-
-  async function commit(context) {
-    const importId = validateUuid(context.data.importId)
-    const version = validateVersion(context.data.version)
-    const file = await executeUserRead({
-      getPool,
-      ...context,
-      operation: (connection, uid) => selectImportFile(connection, uid, importId)
-    })
-    const result = await executeIdempotentMutation({
-      getPool,
-      ...context,
-      action: 'imports.commit',
-      operation: (connection, uid, data, requestDigest) => commitImport(
-        connection,
-        uid,
-        { importId, version, decisions: data.decisions },
-        requestDigest
-      )
-    })
-    return cleanup(context, importId, file.fileID, result)
   }
 
   async function discardWithAction(context, action) {
@@ -286,10 +246,6 @@ function createImportService({ getPool, storage }) {
     const fileID = result.fileID
     delete result.fileID
     return cleanup(context, importId, fileID, result)
-  }
-
-  async function discard(context) {
-    return discardWithAction(context, 'imports.discard')
   }
 
   async function discardFile(context) {
@@ -331,17 +287,11 @@ function createImportService({ getPool, storage }) {
   }
 
   return {
-    commit,
-    discard,
     discardFile,
-    get,
     getFile,
-    parse,
     parseFile,
-    prepare,
     prepareMany,
     financeUpdateAbandon: abandonFinanceUpdate,
-    financeUpdateCreate: financeUpdates.create,
     financeUpdateGet: financeUpdates.get,
     financeUpdateOrganize: financeUpdates.organize,
     financeUpdatePrepare: financeUpdates.prepare,

@@ -23,7 +23,7 @@ test('新建账户沿用同一行的处理方式、名称、类型，不恢复�
 test('三项只改变排版，原账户选择、名称输入、类型及忙碌门禁不变', () => {
   assert.match(row, /data-id="{{item.issueId}}" bindtap="openAccountChoice" disabled="{{accountStepBusy}}"/)
   assert.match(row, /maxlength="32" value="{{item.draftName}}"/)
-  assert.match(row, /bindinput="bindAccountDraftName" disabled="{{accountStepBusy}}"/)
+  assert.match(row, /bindinput="bindAccountDraftName"[^>]*disabled="{{accountStepBusy}}"/)
   assert.match(row, /range="{{accountTypeOptions}}" range-key="label" value="{{item.draftTypeIndex}}"/)
   assert.match(row, /bindchange="changeAccountDraftType" disabled="{{accountStepBusy}}"/)
   assert.match(row, /aria-label="{{item.label}}的新账户名称"/)
@@ -32,15 +32,13 @@ test('三项只改变排版，原账户选择、名称输入、类型及忙碌�
   assert.match(markup, /建议 · 待确认/)
 })
 
-test('左侧仅在新建时强调，暖橘使用局部陶橘而非重新铺浅橘', () => {
-  const warm = style.match(/\.import-page\.theme-warm-ledger\s*\{([^}]+)\}/)[1]
-  assert.match(warm, /--ui-account-create-bg:\s*#b35f32;/i)
-  assert.match(warm, /--ui-account-create-ink:\s*#ffffff;/i)
-  assert.match(style, /--ui-account-create-bg:\s*var\(--ui-accent-soft\);/)
-  assert.match(style, /--ui-account-create-ink:\s*var\(--ui-accent-strong\);/)
-  assert.match(style, /\.account-decision-create \.account-mode-trigger-create\s*\{[^}]*background:\s*var\(--ui-account-create-bg\);/)
-  assert.match(style, /\.account-decision-create \.account-mode-trigger-create\[disabled\]\s*\{[^}]*background:\s*var\(--ui-surface-muted\);/)
-  assert.match(row, /item.choiceValue === 'create' \? '新建账户' : item.choiceName/)
+test('新建编辑行统一白底，确认按钮独立，已确认项可更改', () => {
+  assert.match(style, /\.account-mode-trigger\.account-mode-trigger-pending\[disabled\]\s*\{[^}]*background:\s*#fff !important;/)
+  assert.match(markup, /account-confirm-row/)
+  assert.match(markup, /!item.needsConfirmation/)
+  assert.match(markup, /account-summary-text/)
+  assert.match(markup, /class="account-change"/)
+  assert.match(markup, /还需确认/)
 })
 
 test('类型仍完整可读，名称可编辑且不缩字，保留至少88rpx触控高度', () => {

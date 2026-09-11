@@ -1,3 +1,4 @@
+const { encodeReceipt, readReceipt } = require('./import-receipt')
 const { digestIdempotencyKey, digestRequest } = require('./digest')
 const { importError } = require('./errors')
 const {
@@ -22,13 +23,10 @@ async function resolveUid(connection, provider, subjectHash) {
   return rows[0].uid
 }
 
-function parseStoredResult(value) {
-  return typeof value === 'string' ? JSON.parse(value) : value
-}
-
-async function replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest }) {
+async function replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest, readIssue }) {
   const connection = await getPool().getConnection()
   try {
+    await connection.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY')
     const uid = await resolveUid(connection, provider, subjectHash)
     const [rows] = await connection.execute(
       `SELECT action, request_digest AS requestDigest, result_json AS result
@@ -41,13 +39,18 @@ async function replayMutation({ getPool, provider, subjectHash, keyDigest, actio
     if (!receipt || receipt.action !== action || receipt.requestDigest !== requestDigest || receipt.result == null) {
       throw importError('IDEMPOTENCY_CONFLICT')
     }
-    return parseStoredResult(receipt.result)
+    const result = await readReceipt(connection, uid, receipt.result, readIssue)
+    await connection.commit()
+    return result
+  } catch (error) {
+    await safeRollback(connection)
+    throw error
   } finally {
     connection.release()
   }
 }
 
-async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation, currentReads = false }) {
+async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation, currentReads = false, readIssue }) {
   const keyDigest = digestIdempotencyKey(data && data.requestId)
   const requestData = { ...data }
   delete requestData.requestId
@@ -73,7 +76,7 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
         if (error && error.code === 'ER_DUP_ENTRY') {
           await connection.rollback()
           transactionStarted = false
-          return replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest })
+          return replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest, readIssue })
         }
         throw error
       }
@@ -83,7 +86,7 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
         `UPDATE catledger_mutation_receipts
             SET result_json = ?
           WHERE uid = ? AND idempotency_key_digest = ?`,
-        [JSON.stringify(result), uid, keyDigest]
+        [JSON.stringify(encodeReceipt(result)), uid, keyDigest]
       )
       await connection.commit()
       transactionStarted = false

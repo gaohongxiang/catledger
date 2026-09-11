@@ -1,5 +1,6 @@
 const app = getApp()
 const api = require('../../services/catledger-api')
+const pageReadSession = require('../../services/page-read-session')
 const themeService = require('../../theme/service')
 
 Page({
@@ -39,20 +40,23 @@ Page({
       wx.stopPullDownRefresh()
       return
     }
-    this.loadLedger().finally(function () {
+    this.loadLedger({ force: true }).finally(function () {
       wx.stopPullDownRefresh()
     })
   },
 
-  loadLedger: function () {
-    if (!app.hasLoginApproval() || this.data.loading) {
-      return Promise.resolve()
+  loadLedger: function (options) {
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'errorMessage', 'accountCount', 'assetCount', 'liabilityCount', 'expenseCategoryCount', 'incomeCategoryCount', 'structureCount', 'accountSummaryText', 'categorySummaryText'], ['_ledgerLoad'])
+    if (!app.hasLoginApproval() || this._ledgerLoad) {
+      return this._ledgerLoad || Promise.resolve()
     }
     const self = this
-    this.setData({ loading: true, errorMessage: '' })
+    const force = Boolean(options && options.force)
+    this.setData({ loading: force || !api.isFresh('bootstrap') || !api.isFresh('accounts.list'), errorMessage: '' })
 
-    return Promise.all([api.bootstrap(), api.callApi('accounts.list')])
+    this._ledgerLoad = Promise.all([api.bootstrap({ force: force }), api.callApi('accounts.list', {}, { force: force })])
       .then(function (results) {
+        if (!isCurrent()) return
         const categories = Array.isArray(results[0].categories) ? results[0].categories : []
         const accounts = Array.isArray(results[1].accounts) ? results[1].accounts : []
         const activeAccounts = accounts.filter(function (account) { return !account.archived })
@@ -73,11 +77,15 @@ Page({
         })
       })
       .catch(function (error) {
+        if (!isCurrent()) return
         self.setData({ errorMessage: error.message || '账本结构加载失败' })
       })
       .finally(function () {
+        if (!isCurrent()) return
         self.setData({ loading: false })
+        self._ledgerLoad = null
       })
+    return this._ledgerLoad
   },
 
   openAccounts: function () {

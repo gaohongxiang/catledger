@@ -5,10 +5,11 @@ const vm = require('node:vm')
 const test = require('node:test')
 const model = require('../miniprogram/pages/import-workbench/model')
 
-function pageFor(issue, accounts = [], importApi = {}) {
+function pageFor(issue, accounts = [], importApi = {}, draftService = {}) {
   let definition
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8'), {
-    require: (name) => name === './model' ? model : name === '../../services/catledger-import' ? importApi : {},
+    require: (name) => name === '../../services/view-patch' ? require('../miniprogram/services/view-patch') : name === './final-detail' ? require('../miniprogram/pages/import-workbench/final-detail') : name === './model' ? model : name === '../../services/catledger-import' ? importApi : name === '../../services/import-draft-session' ? draftService : { bindPage() {} },
+    getApp: () => ({ globalData: {} }),
     Page: (page) => { definition = page }
   })
   return Object.assign({}, definition, {
@@ -18,7 +19,7 @@ function pageFor(issue, accounts = [], importApi = {}) {
     }),
     setData(patch) {
       for (const [key, value] of Object.entries(patch)) {
-        const parts = key.split('.')
+        const parts = key.replace(/\[(\d+)\]/g, '.$1').split('.')
         let target = this.data
         for (const part of parts.slice(0, -1)) target = target[part]
         target[parts[parts.length - 1]] = value
@@ -642,4 +643,396 @@ test('组合金额使用整数差额，多账户仅全部动作分配，空白�
   const all = model.updatePaymentAmounts(many, 2, '', '30', true)
   assert.deepEqual(all.map(row => row.amountInput), ['0.00', '0.00', '0.30'])
   assert.equal(model.buildPaymentResolutionDraft(all, 'expense', null, '核对', '30').valid, true)
+})
+
+function accountView(issues, accounts = []) {
+  return { update: { updateId: 'synthetic-update', status: 'review', counts: {} },
+    issues, accounts, events: [], sources: [], categories: [], accountDrafts: [] }
+}
+const accountTap = (id) => ({ currentTarget: { dataset: { id } } })
+const stepTap = (step) => ({ currentTarget: { dataset: { step } } })
+
+test('单项确认零请求，不受其他未填写项阻止，立即显示真实名称摘要', async () => {
+  const target = { ...unknownIssue(), issueId: 'ready', blocking: true,
+    accountContext: { recognized: true, label: '测试信用账户', sourceType: 'alipay' } }
+  const other = { ...unknownIssue(), issueId: 'other', blocking: true }
+  let calls = 0
+  const page = pageFor(target, [], { async callImport() { calls += 1 } })
+  page.setData({ currentStep: 2, accountIssues: [target, other] })
+  page.refreshAccountMappings()
+  page.completeAccountMapping(accountTap('ready'))
+  assert.equal(calls, 0)
+  assert.equal(page.data.busy, false)
+  assert.equal(page.data.accountMappings[0].needsConfirmation, false)
+  assert.match(page.data.accountMappings[0].summaryText, /测试信用账户/)
+  assert.equal(page.data.accountStepSummary.pending, 1)
+  assert.equal(page.data.accountStepSummary.confirmed, 1)
+  await page.goToStep(stepTap(3))
+  assert.equal(calls, 0)
+  assert.equal(page.data.currentStep, 2)
+})
+
+test('全部本地确认后，下一步一个请求提交新增、改选与忽略，成功才进入整理', async () => {
+  const issues = [
+    { ...unknownIssue(), issueId: 'create', blocking: true, accountContext: { recognized: true, label: '测试钱包' } },
+    { ...unknownIssue(), issueId: 'revise', status: 'resolved', accountContext: { recognized: true, accountId: 'wallet', label: '既有钱包' } },
+    { ...unknownIssue(), issueId: 'ignore', blocking: true },
+    { ...unknownIssue(), issueId: 'saved', status: 'resolved', accountContext: { accountId: 'wallet' } }
+  ]
+  const accounts = [{ accountId: 'wallet', name: '既有钱包', type: 'wallet' }]
+  const calls = []
+  const page = pageFor(issues[0], accounts, { createRequestId: () => 'request', async callImport(action, input) {
+    calls.push({ action, input })
+    assert.equal(page.data.currentStep, 2)
+    assert.equal(page.data.busy, true)
+    return accountView(issues.map(issue => ({ ...issue, status: 'resolved', accountContext: { ...issue.accountContext, accountId: 'wallet' } })), accounts)
+  } })
+  page.setData({ currentStep: 2, unlockedStep: 2, accountIssues: issues })
+  page.refreshAccountMappings()
+  page.openAccountChoice(accountTap('revise'))
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'ignore_future' } } })
+  page.openAccountChoice(accountTap('ignore'))
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'ignore' } } })
+  for (const id of ['create', 'revise', 'ignore']) page.completeAccountMapping(accountTap(id))
+  assert.equal(calls.length, 0)
+  assert.equal(page.data.accountStepSummary.pending, 0)
+  assert.equal(page.data.currentStep, 2)
+  await page.goToStep(stepTap(3))
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].action, 'reviewIssues.resolveAccountMappings')
+  const decisions = calls[0].input.decisions
+  assert.equal(decisions.length, 3)
+  assert.equal(decisions[0].fields.mappingAccountDraft.name, '测试钱包')
+  assert.equal(decisions[1].operation, 'revise')
+  assert.equal(decisions[1].paymentRuleAction, 'ignore')
+  assert.equal(decisions[2].decision, 'exclude_events')
+  assert.equal(page.data.currentStep, 3)
+  assert.equal(page.data.busy, false)
+  await page.goToStep(stepTap(2))
+  await page.goToStep(stepTap(3))
+  assert.equal(calls.length, 1)
+})
+
+test('改选、名称和类型变化撤销本地确认，返回与服务端重读保留当前草稿确认', async () => {
+  const issue = { ...unknownIssue(), status: 'resolved', accountContext: { recognized: true, accountId: 'wallet', label: '测试钱包' } }
+  const accounts = [{ accountId: 'wallet', name: '测试钱包', type: 'wallet' }]
+  const page = pageFor(issue, accounts)
+  page.setData({ currentStep: 2, unlockedStep: 4 })
+  page.refreshAccountMappings()
+  page.openAccountChoice(accountTap(issue.issueId))
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'create' } } })
+  assert.equal(page.data.accountStepSummary.pending, 1)
+  page.completeAccountMapping(accountTap(issue.issueId))
+  page.bindAccountDraftName({ ...accountTap(issue.issueId), detail: { value: '修改后的钱包' } })
+  assert.equal(page.data.accountStepSummary.pending, 1)
+  page.completeAccountMapping(accountTap(issue.issueId))
+  page.changeAccountDraftType({ ...accountTap(issue.issueId), detail: { value: '1' } })
+  assert.equal(page.data.accountStepSummary.pending, 1)
+  page.completeAccountMapping(accountTap(issue.issueId))
+  await page.goToStep(stepTap(1))
+  await page.goToStep(stepTap(2))
+  page.applyUpdateView(accountView([issue], accounts))
+  assert.equal(page.data.accountMappings[0].draftName, '修改后的钱包')
+  assert.equal(page.data.accountMappings[0].needsConfirmation, false)
+  assert.equal(page.data.accountStepSummary.dirty, 1)
+  await page.postUpdate()
+  assert.equal(page.data.busy, false)
+  page.changeAccountDraftType({ ...accountTap(issue.issueId), detail: { value: '999' } })
+  assert.equal(page.data.accountStepSummary.pending, 1)
+  page.completeAccountMapping(accountTap(issue.issueId))
+  assert.match(page.data.accountStepError, /补全账户名称/)
+  await page.goToStep(stepTap(4))
+  assert.equal(page.data.currentStep, 2)
+})
+
+test('下一步失败保留本地确认并复用幂等请求，编辑后生成新请求', async () => {
+  const issue = { ...unknownIssue(), blocking: true, accountContext: { recognized: true, label: '测试钱包' } }
+  const payloads = []; let request = 0
+  const page = pageFor(issue, [], { createRequestId: () => 'request-' + (++request), async callImport(action, input) {
+    payloads.push(input)
+    throw new Error('模拟保存失败')
+  } })
+  page.setData({ currentStep: 2 })
+  page.refreshAccountMappings()
+  page.bindAccountDraftName({ ...accountTap(issue.issueId), detail: { value: '保留输入' } })
+  page.completeAccountMapping(accountTap(issue.issueId))
+  await page.goToStep(stepTap(3))
+  assert.match(page.data.accountStepError, /模拟保存失败/)
+  assert.equal(page.data.accountMappings[0].draftName, '保留输入')
+  assert.equal(page.data.accountStepSummary.pending, 0)
+  assert.equal(page.data.accountMappings[0].needsConfirmation, false)
+  assert.equal(page.data.currentStep, 2)
+  await page.goToStep(stepTap(3))
+  assert.equal(payloads.length, 2)
+  assert.equal(payloads[0].requestId, payloads[1].requestId)
+  page.bindAccountDraftName({ ...accountTap(issue.issueId), detail: { value: '修改输入' } })
+  await page.goToStep(stepTap(3))
+  assert.equal(payloads.length, 2)
+  page.completeAccountMapping(accountTap(issue.issueId))
+  await page.goToStep(stepTap(3))
+  assert.notEqual(payloads[2].requestId, payloads[1].requestId)
+})
+
+test('下一步请求期间重复点击与编辑均不改变正在提交的决定', async () => {
+  const issue = { ...unknownIssue(), blocking: true, accountContext: { recognized: true, label: '测试钱包' } }
+  let finish; let calls = 0
+  const page = pageFor(issue, [], { createRequestId: () => 'request', callImport() {
+    calls += 1
+    return new Promise(resolve => { finish = resolve })
+  } })
+  page.setData({ currentStep: 2 })
+  page.completeAccountMapping(accountTap(issue.issueId))
+  const save = page.goToStep(stepTap(3))
+  assert.equal(page.data.accountStepBusy, true)
+  await page.goToStep(stepTap(3))
+  await page.goToStep(stepTap(1))
+  page.bindAccountDraftName({ ...accountTap(issue.issueId), detail: { value: '不得改变' } })
+  assert.equal(page.data.accountMappings[0].draftName, '测试钱包')
+  assert.equal(calls, 1)
+  finish(accountView([{ ...issue, status: 'resolved', accountContext: { ...issue.accountContext, accountId: 'wallet' } }],
+    [{ accountId: 'wallet', name: '测试钱包', type: 'wallet' }]))
+  await save
+  assert.equal(page.data.currentStep, 3)
+})
+
+test('超过50项在下一步顺序处理，后批失败保留前批结果且只重试剩余部分', async () => {
+  let issues = Array.from({ length: 51 }, (_, i) => ({ ...unknownIssue(), issueId: 'issue-' + i, blocking: true,
+    accountContext: { recognized: true, label: '测试账户' + i } }))
+  const accounts = [{ accountId: 'wallet', name: '测试钱包', type: 'wallet' }]
+  const payloads = []; let fail = true; let request = 0
+  const page = pageFor(issues[0], [], { createRequestId: () => 'request-' + (++request), async callImport(action, input) {
+    payloads.push(input)
+    if (payloads.length === 2 && fail) throw new Error('后批失败')
+    const ids = new Set(input.decisions.map(item => item.issueId))
+    issues = issues.map(issue => ids.has(issue.issueId) ? { ...issue, status: 'resolved', accountContext: { ...issue.accountContext, accountId: 'wallet' } } : issue)
+    return accountView(issues, accounts)
+  } })
+  page.setData({ currentStep: 2, accountIssues: issues })
+  for (const issue of issues) page.completeAccountMapping(accountTap(issue.issueId))
+  await page.goToStep(stepTap(3))
+  assert.equal(payloads.length, 2)
+  assert.equal(payloads[0].decisions.length, 50)
+  assert.equal(payloads[1].decisions.length, 1)
+  assert.equal(page.data.currentStep, 2)
+  assert.equal(page.data.accountStepSummary.open, 1)
+  assert.equal(page.data.accountStepSummary.pending, 0)
+  assert.equal(page.data.accountMappings[50].needsConfirmation, false)
+  fail = false
+  await page.goToStep(stepTap(3))
+  assert.equal(payloads[2].decisions.length, 1)
+  assert.equal(payloads[2].requestId, payloads[1].requestId)
+  assert.equal(page.data.currentStep, 3)
+})
+
+function draftPage(view, call) {
+  const service = require('../miniprogram/services/import-draft-session')
+  const storage = new Map()
+  const session = service.create({ scope: 'page-test', view, autoSync: false,
+    read: () => null, write: (key, data) => storage.set(key, data), remove: key => storage.delete(key),
+    requestId: () => 'request', call })
+  const page = pageFor(view.issues[0], view.accounts, {}, { open: () => session, project: service.project })
+  page._draftEnabled = true
+  page.applyUpdateView(view)
+  return { page, session }
+}
+
+test('真实Page接入队列：账户确认即时收起，后台返回不覆盖另一项编辑', async () => {
+  const a = { ...unknownIssue(), issueId: 'a', blocking: true, accountContext: { recognized: true, label: '账户甲' } }
+  const b = { ...unknownIssue(), issueId: 'b', blocking: true, accountContext: { recognized: true, label: '账户乙' } }
+  const initial = accountView([a, b]); initial.update.version = 1
+  const saved = accountView([{ ...a, status: 'resolved', accountContext: { ...a.accountContext, accountId: 'wallet' } }, b], [{ accountId: 'wallet', name: '账户甲', type: 'wallet' }]); saved.update.version = 2
+  let calls = 0
+  const { page, session } = draftPage(initial, async action => { calls += 1; return saved })
+  page.completeAccountMapping(accountTap('a'))
+  assert.equal(calls, 0)
+  assert.equal(page.data.accountMappings[0].needsConfirmation, false)
+  page.bindAccountDraftName({ ...accountTap('b'), detail: { value: '继续输入的账户乙' } })
+  await session.flush()
+  assert.equal(page.data.accountMappings[1].draftName, '继续输入的账户乙')
+  assert.equal(page.data.accountMappings[0].status, 'resolved')
+  assert.equal(page.data.issues[0].status, 'resolved')
+})
+
+test('真实Page接入队列：核对即时更新数量，下一步等待服务端权威结果', async () => {
+  const issue = { issueId: 'review', issueType: 'shared_fields', status: 'open', blocking: true, version: 1, subjectEventIds: ['event'] }
+  const initial = accountView([issue]); initial.update.version = 1
+  initial.events = [{ eventId: 'event', status: 'needs_action', economicNature: 'expense', amountMinor: '100' }]
+  initial.coverage = { selectedEventsReadyToPost: false }
+  let finish
+  const saved = { ...initial, update: { ...initial.update, version: 2 }, issues: [{ ...issue, status: 'resolved', blocking: false }],
+    events: [{ ...initial.events[0], status: 'ready' }], coverage: { selectedEventsReadyToPost: true } }
+  const { page } = draftPage(initial, (action) => action === 'financeUpdates.get' ? Promise.resolve(saved) : new Promise(resolve => { finish = resolve }))
+  page.setData({ currentStep: 3, currentIssue: issue, issueEvents: initial.events })
+  await page.resolveIssue('apply_fields', { fields: { ledgerAccountId: 'wallet' } })
+  assert.equal(page.data.currentIssue, null)
+  assert.equal(page.data.busy, false)
+  assert.equal(page.data.reviewStatusTabs[0].count, 0)
+  assert.equal(page.data.coverage.selectedEventsReadyToPost, false)
+  const next = page.finishDraftStep(4)
+  assert.equal(page.data.currentStep, 3)
+  finish({ update: saved.update }); await next
+  assert.equal(page.data.currentStep, 4)
+  assert.equal(page.data.coverage.selectedEventsReadyToPost, true)
+})
+
+test('真实Page接入队列：后台重读不关闭另一个正在填写的核对弹层', async () => {
+  const issue = { issueId: 'a', issueType: 'shared_fields', status: 'open', blocking: true, version: 1, subjectEventIds: ['a-event'] }
+  const other = { ...issue, issueId: 'b', subjectEventIds: ['b-event'] }
+  const view = accountView([issue, other]); view.update.version = 1
+  const saved = { ...view, update: { ...view.update, version: 2 }, issues: [{ ...issue, status: 'resolved', blocking: false }, other] }
+  const { page, session } = draftPage(view, async action => action === 'financeUpdates.get' ? saved : { update: saved.update })
+  page.setData({ currentStep: 3, currentIssue: issue, issueEvents: [] })
+  await page.resolveIssue('apply_fields', { fields: { ledgerAccountId: 'wallet' } })
+  page.setData({ currentIssue: other, 'issueDraft.newAccountName': '正在填写的名称' })
+  await session.flush()
+  assert.equal(page.data.currentIssue.issueId, 'b')
+  assert.equal(page.data.issueDraft.newAccountName, '正在填写的名称')
+  assert.equal(page.data.issues[0].status, 'resolved')
+})
+
+
+test('第二步到第三步：同步期间不提前解锁按钮或渲染其他步骤', async () => {
+  const issue = { ...unknownIssue(), issueId: 'a', blocking: true, accountContext: { recognized: true, label: '账户甲' } }
+  const initial = accountView([issue]); initial.update.version = 1
+  const saved = accountView([{ ...issue, status: 'resolved', accountContext: { ...issue.accountContext, accountId: 'wallet' } }], [{ accountId: 'wallet', name: '账户甲', type: 'wallet' }])
+  saved.update.version = 2
+  const { page } = draftPage(initial, async () => saved)
+  page.completeAccountMapping(accountTap('a'))
+  const frames = []
+  const setData = page.setData
+  page.setData = function (patch) {
+    setData.call(this, patch)
+    frames.push({ step: this.data.currentStep, busy: this.data.busy })
+  }
+  await page.goToStep({ currentTarget: { dataset: { step: 3 } } })
+  assert.equal(page.data.currentStep, 3)
+  assert.equal(page.data.busy, false)
+  assert.ok(frames.length > 1)
+  assert.ok(frames.slice(0, -1).every(frame => frame.busy), '请求完成并切换之前按钮始终保持忙碌')
+  const transitions = frames.map(frame => frame.step).filter((step, index, steps) => !index || step !== steps[index - 1])
+  assert.deepEqual(transitions, [2, 3], '只从账户切到整理，不出现中间步骤')
+})
+
+
+test('重入自动恢复全部内容但首帧落在第一步，后台同步不跳走', () => {
+  const issue = { ...unknownIssue(), issueId: 'restore', blocking: true }
+  const view = accountView([issue]); view.sources = [{ sourceId: 's', fileName: '合成.csv' }]
+  const { page, session } = draftPage(view, async () => view)
+  const frames = [], setData = page.setData
+  page.setData = function (patch) { setData.call(this, patch); frames.push(this.data.currentStep) }
+  page.applyUpdateView(view, false, true)
+  assert.deepEqual(frames, [1])
+  assert.equal(page.data.sources[0].fileName, '合成.csv')
+  assert.equal(page.data.accountIssues[0].issueId, 'restore')
+  assert.equal(page._draftSession, session)
+  page.applyUpdateView(view, true)
+  assert.equal(page.data.currentStep, 1)
+  assert.ok(page.data.unlockedStep >= 2)
+})
+
+test('返回已有导入页面自动回第一步，不暂停会话或清除已选内容', () => {
+  const view = accountView([unknownIssue()]); const { page, session } = draftPage(view, async () => view)
+  page.setData({ currentStep: 3, currentIssue: { issueId: 'open' } })
+  page.onHide(); page.onShow()
+  assert.equal(page.data.currentStep, 1); assert.equal(page.data.currentIssue, null)
+  assert.equal(page._draftSession, session); assert.equal(page.data.accountIssues.length, 1)
+})
+
+test('已入账结果不因重入标记退回第一步', () => {
+  const view = accountView([]); view.update.status = 'posted'
+  const page = pageFor(unknownIssue()); page.applyUpdateView(view, false, true)
+  assert.equal(page.data.currentStep, 4)
+})
+
+
+test('恢复读取中可以放弃，不再整理或应用迟到视图', async () => {
+  const calls = [], cleared = []; let release
+  const view = accountView([unknownIssue()]); view.update.version = 3; view.update.requiresReorganization = true
+  const page = pageFor(unknownIssue(), [], { createRequestId: () => 'abandon-request', callImport(action) {
+    calls.push(action)
+    if (calls.length === 1) return new Promise(resolve => { release = resolve })
+    return Promise.resolve(view)
+  } }, { async pauseUpdate() {}, clearUpdate(id) { cleared.push(id) }, forgetLast() {} })
+  page._sourceFiles = new Map()
+  const loading = page.loadUpdate(view.update.updateId, true)
+  assert.equal(page.data.busy, true)
+  const abandoning = page.abandonRestoringUpdate()
+  assert.equal(page.data.abandoningRestore, true)
+  release(view); await Promise.all([loading, abandoning])
+  assert.deepEqual(calls, ['financeUpdates.get', 'financeUpdates.get', 'financeUpdates.abandon'])
+  assert.equal(page.data.currentStep, 1); assert.equal(page.data.phase, 'idle'); assert.equal(page.data.update, null)
+  assert.deepEqual(cleared, [view.update.updateId])
+})
+
+test('恢复整理已在途时等待该请求落定，后续刷新不执行，放弃失败可重试', async () => {
+  const calls = []; let release, fail = true
+  const view = accountView([unknownIssue()]); view.update.version = 1; view.update.requiresReorganization = true
+  const cleared = []
+  const page = pageFor(unknownIssue(), [], { createRequestId: () => 'request', callImport(action) {
+    calls.push(action)
+    if (action === 'financeUpdates.organize') return new Promise(resolve => { release = resolve })
+    if (action === 'financeUpdates.abandon' && fail) return Promise.reject(new Error('offline'))
+    return Promise.resolve(view)
+  } }, { async pauseUpdate() {}, clearUpdate(id) { cleared.push(id) }, forgetLast() {} })
+  page._sourceFiles = new Map()
+  const loading = page.loadUpdate(view.update.updateId, true)
+  await new Promise(resolve => setImmediate(resolve))
+  const abandoning = page.abandonRestoringUpdate()
+  view.update.version = 2; release(view); await Promise.all([loading, abandoning])
+  assert.equal(calls.includes('reviewIssues.refreshAccountGroups'), false)
+  assert.deepEqual(cleared, []); assert.equal(page.data.abandoningRestore, false)
+  assert.equal(page.data.restoreUpdateId, view.update.updateId)
+  fail = false; await page.abandonRestoringUpdate()
+  assert.equal(page.data.phase, 'idle'); assert.deepEqual(cleared, [view.update.updateId])
+})
+
+
+test('输入名称、备注和分配金额时后台完成不能向编辑表单回写，失焦后保留最新输入', () => {
+  const view = accountView([unknownIssue()]); const { page } = draftPage(view, async () => view)
+  page.data.currentIssue = { issueId: 'editing', issueType: 'transfer_accounts' }
+  page.data.issueDraft = { newAccountName: '', repaymentOwner: 'self' }
+  page.data.paymentRows = [{ componentIndex: 0, amountInput: '2.' }]
+  page.data.paymentEvidenceNote = '正在输入的说明'
+  page.data.repaymentAllocationChoices = [{ accountId: 'new', isNew: true, name: '新增信用卡', amountInput: '3.' }]
+  const patches = [], original = page.setData
+  page.setData = function (patch) { patches.push(JSON.parse(JSON.stringify(patch))); original.call(this, patch) }
+  page.beginInputEditing({ currentTarget: { dataset: { inputKey: 'changeDraftAccountName' } } })
+  for (const name of ['中', '中文', '中文账户', '中文账户0022']) {
+    page.changeDraftAccountName({ detail: { value: name } })
+    patches.length = 0
+    page.applyUpdateView({ ...view, update: { ...view.update, version: 2 } }, true)
+    assert.deepEqual(patches, [])
+    assert.equal(page.data.issueDraft.newAccountName, name)
+  }
+  page.finishInputEditing()
+  assert.equal(page.data.issueDraft.newAccountName, '中文账户0022')
+  assert.equal(page.data.paymentRows[0].amountInput, '2.')
+  assert.equal(page.data.paymentEvidenceNote, '正在输入的说明')
+  assert.equal(page.data.repaymentAllocationChoices[0].name, '新增信用卡')
+  assert.equal(page.data.repaymentAllocationChoices[0].amountInput, '3.')
+  assert.ok(patches.every(patch => Object.keys(patch).every(key => !/^(issueDraft|paymentRows|paymentEvidenceNote|repaymentAllocationChoices)(\.|\[|$)/.test(key))))
+})
+
+test('后台不重新发送未改动的表单对象，即使输入框暂时失焦', () => {
+  const view = accountView([unknownIssue()]); const { page } = draftPage(view, async () => view)
+  page.data.currentIssue = { issueId: 'editing' }; page.data.issueDraft.newAccountName = '未提交名称'
+  const patches = [], original = page.setData
+  page.setData = function (patch) { patches.push(patch); original.call(this, patch) }
+  page.applyUpdateView(view, true)
+  assert.equal(page.data.currentIssue.issueId, 'editing')
+  assert.ok(patches.every(patch => !Object.keys(patch).some(key => /^(issueDraft|currentIssue|paymentRows|repaymentAllocationChoices)(\.|\[|$)/.test(key))))
+})
+
+test('修改分配金额只更新对应字段，不能把另一行名称重新下发', () => {
+  const page = pageFor(unknownIssue()); page.data.issueEvents = [{ amountMinor: '10000' }]
+  page.data.repaymentAllocationChoices = [
+    { accountId: 'new-a', isNew: true, name: '正在编写的账户', amountInput: '' },
+    { accountId: 'b', name: '已有账户', amountInput: '' }
+  ]
+  const patches = [], original = page.setData
+  page.setData = function (patch) { patches.push(patch); original.call(this, patch) }
+  page.changeRepaymentAllocation({ currentTarget: { dataset: { index: 1 } }, detail: { value: '50.' } })
+  assert.equal(page.data.repaymentAllocationChoices[1].amountInput, '50.')
+  assert.ok(patches.some(patch => patch['repaymentAllocationChoices[1].amountInput'] === '50.'))
+  assert.ok(patches.every(patch => !Object.keys(patch).some(key => key === 'repaymentAllocationChoices' || key.includes('[0].name'))))
 })

@@ -1,4 +1,6 @@
 const cloudFunctionClient = require('./cloud-function-client')
+const cache = require('./read-cache')
+const { mutationTags } = require('./read-policy')
 
 const client = cloudFunctionClient.createCloudFunctionClient({
   functionName: 'catledger-import',
@@ -6,7 +8,8 @@ const client = cloudFunctionClient.createCloudFunctionClient({
 })
 
 function callImport(action, data) {
-  return client.call(action, data)
+  const tags = mutationTags(action)
+  return tags.length ? cache.mutate(tags, () => client.call(action, data)) : cache.guard(() => client.call(action, data))
 }
 
 module.exports = {

@@ -1,5 +1,0 @@
-<view class="record-summary">
-  <view class="summary-counts"><text>全部 {{total}}</text><text>有效 {{active}}</text><text>已排除 {{excluded}}</text><text>重复 {{duplicate}}</text></view>
-  <button class="summary-toggle" bindtap="toggleCountDetails" aria-expanded="{{expanded}}">{{expanded ? '收起数量说明' : '查看数量说明'}} {{expanded ? '−' : '＋'}}</button>
-  <view wx:if="{{expanded}}" class="summary-details"><slot /></view>
-</view>

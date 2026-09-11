@@ -33,6 +33,7 @@ const IDEMPOTENT_MUTATION_ACTIONS = Object.freeze({
   'transactions.create': true,
   'transactions.delete': true,
   'transactions.linkRefund': true,
+  'transactions.setCategory': true,
   'transactions.update': true
 })
 

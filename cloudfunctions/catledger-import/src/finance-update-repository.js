@@ -1,3 +1,4 @@
+const repaymentOwnership = require('./repayment-ownership')
 const accountGroups = require('./payment-account-groups')
 const { randomUUID } = require('node:crypto')
 
@@ -226,19 +227,13 @@ async function selectPlanningRows(connection, uid, updateId) {
             r.payment_method_raw AS paymentMethod,
             r.category_evidence_json AS categoryEvidence,
             r.counterparty_raw AS counterparty, r.item_raw AS item, r.note_raw AS sourceNote,
-            m.mapping_action AS mappingAction, m.account_id AS mappedAccountId,
-            legacy.transaction_id AS existingTransactionId,
-            t.version AS existingTransactionVersion
+            m.mapping_action AS mappingAction, m.account_id AS mappedAccountId
        FROM catledger_finance_update_sources s
        JOIN catledger_import_rows r
          ON r.uid = s.uid AND r.batch_id = s.batch_id
        LEFT JOIN catledger_import_account_mappings m
          ON m.uid = r.uid AND m.source_type = s.source_type_snapshot
         AND m.payment_method_key = r.payment_method_key AND m.disabled_at IS NULL
-       LEFT JOIN catledger_import_transaction_links legacy
-         ON legacy.uid = r.uid AND legacy.row_id = r.row_id
-       LEFT JOIN catledger_transactions t
-         ON t.uid = legacy.uid AND t.transaction_id = legacy.transaction_id AND t.deleted_at IS NULL
       WHERE s.uid = ? AND s.update_id = ?
       ORDER BY s.source_order, r.source_row_number, r.row_id`,
     [uid, updateId]
@@ -255,7 +250,8 @@ async function selectPlanningRows(connection, uid, updateId) {
           AND evidence.evidence_role <> 'discarded'
          JOIN catledger_economic_event_transactions linked
            ON linked.uid = evidence.uid AND linked.event_id = evidence.event_id
-          AND linked.role IN ('primary', 'refund_transaction', 'repayment_allocation', 'historical_primary')
+          AND linked.superseded_at IS NULL
+          AND linked.role IN ('primary', 'refund_transaction', 'repayment_allocation', 'payment_allocation', 'historical_primary')
          JOIN catledger_transactions t
            ON t.uid = linked.uid AND t.transaction_id = linked.transaction_id
           AND t.deleted_at IS NULL
@@ -272,8 +268,8 @@ async function selectPlanningRows(connection, uid, updateId) {
     const linked = linkedByIdentity.get(row.identityId)
     return {
       ...row,
-      existingTransactionId: row.existingTransactionId || linked && linked.transactionId || null,
-      existingTransactionVersion: row.existingTransactionVersion || linked && linked.transactionVersion || null,
+      existingTransactionId: linked && linked.transactionId || null,
+      existingTransactionVersion: linked && linked.transactionVersion || null,
       sourceOrder: Number(row.sourceOrder),
       rowNumber: Number(row.rowNumber),
       timezoneOffsetMinutes: row.timezoneOffsetMinutes == null ? null : Number(row.timezoneOffsetMinutes),
@@ -518,6 +514,10 @@ function publicEvent(row) {
     categoryId: row.categoryId || null,
     reasonCodes,
     fundsProjection: fieldSources.fundsProjection || null,
+    ...(repaymentOwnership.bankRepayment({ fieldSources }) ? {
+      repaymentOwnership: fieldSources.repaymentOwnership || null,
+      repaymentOwnershipRequired: repaymentOwnership.requiresDecision({ fieldSources, counterpartyLedgerAccountId: row.counterpartyLedgerAccountId })
+    } : {}),
     repaymentAllocations: fieldSources.repaymentAllocations || [],
     paymentComponents: fieldSources.paymentComponents || [],
     paymentResolution: fieldSources.paymentResolution || null,
@@ -537,7 +537,7 @@ function publicEvent(row) {
   }
 }
 
-async function selectEvents(connection, uid, updateId) {
+async function selectEvents(connection, uid, updateId, { includeFieldSources = false } = {}) {
   const [rows] = await connection.execute(
     `SELECT e.event_id AS eventId, e.status, e.version,
             e.flow_direction AS flowDirection, e.economic_nature AS economicNature,
@@ -575,7 +575,8 @@ async function selectEvents(connection, uid, updateId) {
       ORDER BY e.event_local_at, e.event_id`,
     [uid, updateId]
   )
-  return rows.map(publicEvent)
+  return rows.map(row => includeFieldSources
+    ? { ...publicEvent(row), fieldSources: parseJson(row.fieldSources, {}) } : publicEvent(row))
 }
 
 async function selectEventEvidence(connection, uid, eventId) {
@@ -693,6 +694,10 @@ function publicIssue(row) {
       ledgerAccountId: row.subjectLedgerAccountId || null,
       counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId || null,
       fundsProjection,
+      ...(repaymentOwnership.bankRepayment({ fieldSources: subjectFieldSources }) ? {
+        repaymentOwnership: subjectFieldSources.repaymentOwnership || null,
+        repaymentOwnershipRequired: repaymentOwnership.requiresDecision({ fieldSources: subjectFieldSources, counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId })
+      } : {}),
       repaymentAllocations: subjectFieldSources.repaymentAllocations || [],
       paymentComponents: subjectFieldSources.paymentComponents || [],
       paymentResolution: subjectFieldSources.paymentResolution || null,
@@ -839,15 +844,17 @@ async function selectCoverageEvidence(connection, uid, updateId) {
 async function getUpdateView(connection, uid, updateId, { includeEvents = true, includeOptions = true } = {}) {
   const update = publicUpdate(await selectUpdate(connection, uid, updateId))
   const sources = await selectSources(connection, uid, updateId)
+  if (update.status === 'abandoned') return { update, sources, issues: [], events: [], coverage: null, posting: null }
   const issues = await selectIssues(connection, uid, updateId)
-  const events = includeEvents ? await selectEvents(connection, uid, updateId) : []
+  const coverageEvents = includeEvents ? await selectEvents(connection, uid, updateId, { includeFieldSources: true }) : []
+  const events = coverageEvents.map(({ fieldSources, ...event }) => event)
   const coverageEvidence = includeEvents ? await selectCoverageEvidence(connection, uid, updateId) : null
   const result = {
     update,
     sources,
     issues,
     events,
-    coverage: includeEvents ? buildCoverageReport({ sources, events, issues, ...coverageEvidence }) : null
+    coverage: includeEvents ? buildCoverageReport({ sources, events: coverageEvents, issues, ...coverageEvidence }) : null
   }
   if (result.coverage && update.planVersion !== PLAN_VERSION) result.coverage.selectedEventsReadyToPost = false
   if (includeOptions) Object.assign(result, await listOptions(connection, uid, updateId))

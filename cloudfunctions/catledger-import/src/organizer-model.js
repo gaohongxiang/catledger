@@ -1,3 +1,4 @@
+const repaymentOwnership = require('./repayment-ownership')
 const { eventAllocation } = require('./funds-allocation')
 const { inspectPaymentAccounts, effectiveSemanticReasons, paymentResolutionForEvent } = require('./payment-resolution')
 const { SEMANTIC_HARD_BLOCKERS } = require('./semantic-policy')
@@ -146,6 +147,7 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
     reasons.push('core_fields_missing')
   }
   if (!event.ledgerAccountId) reasons.push('ledger_account_required')
+  reasons.push(...repaymentOwnership.reasonsFor(event))
   if (needsCategory(event)) {
     reasons.push('category_required')
   }
@@ -238,6 +240,11 @@ function classifyReviewIssue(event) {
   }
   if (reasons.has('ledger_account_required') && ACCOUNT_FIRST_NATURES.has(event.economicNature)) {
     return { issueType: REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'ledger_account_required' }
+  }
+  if (reasons.has('repayment_other_treatment_required') || reasons.has('repayment_ownership_invalid') ||
+      (reasons.has('repayment_ownership_required') && event.ledgerAccountId)) {
+    return { issueType: REVIEW_ISSUE_TYPE.TRANSFER_ACCOUNTS, primaryReason: reasons.has('repayment_other_treatment_required')
+      ? 'repayment_other_treatment_required' : 'repayment_ownership_required' }
   }
   if ((event.status === EVENT_STATUS.READY || reasons.size === 1) && reasons.has('category_required')) {
     return { issueType: REVIEW_ISSUE_TYPE.CATEGORY_ASSIGNMENT, primaryReason: 'category_required' }

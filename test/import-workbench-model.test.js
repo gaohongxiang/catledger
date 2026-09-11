@@ -448,6 +448,7 @@ test('最终入账摘要按经济性质统计且缺分类时关闭入账门禁',
   ], [{ accountId: 'wallet' }])
 
   assert.deepEqual(summary, {
+    expenseCount: 2, incomeCount: 1, refundCount: 1,
     expenseText: '¥12.01', incomeText: '¥50.00', refundText: '¥2.00', transferCount: 1,
     categoryCount: 3, categorizedCount: 2, categoryCoverageText: '2 / 3', categoryComplete: false,
     newAccountCount: 1, affectedAccountCount: 2
@@ -543,4 +544,29 @@ test('性质未定与同笔多个阻塞不遗漏，不让分类视图绕过核�
   assert.equal(state.categoryWaitingEvents.length, 2)
   assert.equal(state.categoryDecisionIssues.length, 0)
   assert.equal(state.categorizedEvents.length, 0)
+})
+
+
+test('资金流转按性质独立汇总，排除支出和已排除事件，分项不重复计总额', () => {
+  const groups = model.fundsFlowSummary([
+    { eventId: 't', status: 'ready', economicNature: 'internal_transfer', amountMinor: '101', ledgerAccountId: 'cash', counterpartyLedgerAccountId: 'bank' },
+    { eventId: 'r', status: 'ready', economicNature: 'repayment', amountMinor: '1000', ledgerAccountId: 'cash', counterpartyLedgerAccountId: 'credit',
+      paymentResolution: { allocations: [{ accountId: 'cash', amountMinor: '600' }, { accountId: 'bank', amountMinor: '400' }] } },
+    { eventId: 'x', status: 'excluded', economicNature: 'borrow', amountMinor: '999' },
+    { eventId: 'e', status: 'ready', economicNature: 'expense', amountMinor: '500' }
+  ], [{ accountId: 'cash', name: '现金' }, { accountId: 'bank', name: '银行卡' }, { accountId: 'credit', name: '信用卡' }])
+  assert.deepEqual(groups.map(g => [g.nature, g.amountText, g.count]), [
+    ['internal_transfer', '¥1.01', 1], ['borrow', '¥0.00', 0], ['repayment', '¥10.00', 1]
+  ])
+  assert.equal(groups[2].records[0].accountText, '现金、信用卡、银行卡')
+  assert.equal(groups[0].records[0].eventId, 't')
+})
+
+test('资金流转随最新状态重新生成，金额精确累加且不改原事件', () => {
+  const events = [{ eventId: 'b', status: 'ready', economicNature: 'borrow', amountMinor: '9007199254740993' },
+    { eventId: 'c', status: 'ready', economicNature: 'borrow', amountMinor: '7' }]
+  const before = JSON.stringify(events)
+  assert.equal(model.fundsFlowSummary(events, [])[1].amountText, '¥90071992547410.00')
+  assert.equal(JSON.stringify(events), before)
+  assert.equal(model.fundsFlowSummary(events.map(e => ({ ...e, status: 'excluded' })), [])[1].count, 0)
 })
