@@ -373,6 +373,7 @@ test('无账户时进入账户页，新增后返回刷新目录而保留金额�
   const h = runtime(), page = h.page('transaction-editor')
   h.accounts = []
   await page.prepareForm()
+  assert.equal(page.data.hasAccounts, false)
   page.bindAmount({ detail: { value: '42' } }); page.bindNote({ detail: { value: '稍后继续' } })
   page.openAccounts()
   assert.deepEqual(h.navigation, ['/pages/accounts/index'])
@@ -381,6 +382,7 @@ test('无账户时进入账户页，新增后返回刷新目录而保留金额�
   page.onShow()
   await page.prepareForm()
   assert.equal(page.data.accounts[0].accountId, 'new-account')
+  assert.equal(page.data.hasAccounts, true)
   assert.equal(page.data.amountYuan, '42')
   assert.equal(page.data.note, '稍后继续')
 })

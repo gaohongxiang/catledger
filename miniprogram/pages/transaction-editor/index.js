@@ -46,6 +46,7 @@ Page({
     typeOptions: TYPE_OPTIONS,
     typeIndex: 0,
     accounts: [],
+    hasAccounts: false,
     categories: [],
     refundableTransactions: [],
     refundablesReady: false,
@@ -163,7 +164,7 @@ Page({
     const editing = this._editingTransaction
     const editingBlocked = Boolean(editing && [editing.sourceAccount, editing.destinationAccount].filter(Boolean)
       .some(account => !accounts.some(row => row.accountId === account.accountId)))
-    this.setData({ accounts, sourceAccountId: sourceId, destinationAccountId: destinationId,
+    this.setData({ accounts, hasAccounts: accounts.length > 0, sourceAccountId: sourceId, destinationAccountId: destinationId,
       sourceIndex: findIndex(accounts, 'accountId', sourceId), destinationIndex: findIndex(accounts, 'accountId', destinationId),
       catalogReady: true, catalogError: '', editingBlocked,
       errorMessage: editingBlocked ? '关联账户已停用，请返回查看原交易。' : this.data.errorMessage })

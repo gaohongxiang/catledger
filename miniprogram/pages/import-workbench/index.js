@@ -176,6 +176,7 @@ Page({
     posting: null,
     fundsFlowGroups: [],
     finalDetailSheet: null,
+    finalDetailScrollTop: 0,
     finalDetailParent: null,
     finalSummary: {
       expenseCount: 0, incomeCount: 0, refundCount: 0,
@@ -1555,7 +1556,7 @@ Page({
     const page = this.data.finalDetailSheet && this.data.finalDetailSheet.page
     const next = page && page.index + Number(event.currentTarget.dataset.direction)
     if (!page || !Number.isInteger(next) || next < 0 || next >= page.pages) return
-    this.setData({ finalDetailSheet: presentation.detailWindow(this._finalDetail, next), finalDetailScrollTop: 0 })
+    this.setData({ finalDetailSheet: presentation.detailWindow(this._finalDetail, next), finalDetailScrollTop: this.data.finalDetailScrollTop === 0 ? 1 : 0 })
   },
 
   closeFinalDetail: function () { this._finalDetail = null; this.setData({ finalDetailSheet: null, finalDetailParent: null }) },

@@ -2732,7 +2732,7 @@ button::after { border: 0; }
 .stage-navigation .stage-primary[disabled] { color: var(--ui-muted); background: var(--ui-surface-muted) !important; opacity: 1; }
 
 .review-count-formulas { margin: 12rpx 0 24rpx; color: var(--ui-muted); }
-.review-count-formulas .record-count-equation { font-size: 18rpx; line-height: 1.8; white-space: nowrap; }
+.review-count-formulas .record-count-equation { font-size: 18rpx; line-height: 1.8; white-space: normal; overflow-wrap: anywhere; }
 /* 四个步骤共用内容标题层级，低于顶部主标题。 */
 .import-page .stage-panel-title,
 .import-page .step-title,
@@ -2816,5 +2816,5 @@ button::after { border: 0; }
 .final-detail-scroll { flex: 1; min-height: 0; margin-top: 16rpx; }
 
 /* 分页保持每次渲染规模固定，完整账单留在逻辑层。 */
-.list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin: 24rpx 32rpx; font-size: 24rpx; color: var(--text-secondary); }
+.list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin: 24rpx 32rpx; font-size: 24rpx; color: var(--ui-muted); }
 .list-pagination button { width: auto; margin: 0; }
