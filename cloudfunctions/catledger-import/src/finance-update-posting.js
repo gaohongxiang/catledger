@@ -300,7 +300,8 @@ async function promoteCategoryMappings(connection, uid, updateId) {
 
 async function existingTransactionForEvent(connection, uid, updateId, eventId) {
   const [rows] = await connection.execute(
-    `SELECT linked.transaction_id AS transactionId, t.version, linked.created_at AS createdAt
+    // 从本事件的少量证据开始；避免优化器从历史交易倒扫，令整批入账退化为平方扫描。
+    `SELECT STRAIGHT_JOIN linked.transaction_id AS transactionId, t.version, linked.created_at AS createdAt
         FROM catledger_event_evidence ee
         JOIN catledger_import_rows source_row
           ON source_row.uid = ee.uid AND source_row.row_id = ee.row_id

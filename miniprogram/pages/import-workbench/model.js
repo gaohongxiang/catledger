@@ -704,9 +704,10 @@ function organizerRecordState(events, issues, categories, query, options) {
   const active = rows.filter(function (event) { return ['ready', 'needs_action', 'posted'].includes(event.status) })
   const excluded = rows.filter(function (event) { return event.status === 'excluded' })
   const activeIds = new Set(active.map(function (event) { return event.eventId }))
-  const open = reviewIssueRows((issues || []).filter(function (issue) {
+  const openSource = (issues || []).filter(function (issue) {
     return issue.status === 'open' && (issue.blocking || issue.issueType === 'category_assignment')
-  }))
+  })
+  const open = summaryOnly ? openSource : reviewIssueRows(openSource)
   const verificationById = new Map()
   const categoryById = new Map()
   const hydratedIssues = open.map(function (issue) {
@@ -726,7 +727,7 @@ function organizerRecordState(events, issues, categories, query, options) {
     const categoryIssueId = categoryById.get(event.eventId) || ''
     const pendingReview = Boolean(reviewIssueId || (event.status === 'needs_action' && !categoryIssueId && !event.localReviewConfirmed))
     const needsCategory = categoryRequired(event) && (!event.categoryId || event.economicNature === 'unknown')
-    return Object.assign({}, event, { reviewIssueId: reviewIssueId, categoryIssueId: categoryIssueId,
+    return Object.assign({}, summaryOnly ? { eventId: event.eventId, economicNature: event.economicNature } : event, { reviewIssueId: reviewIssueId, categoryIssueId: categoryIssueId,
       pendingReview: pendingReview, needsCategory: needsCategory,
       categoryName: names.get(event.categoryId) || '分类已设置',
       natureLabel: { income: '收入', expense: '支出', fee: '手续费', repayment: '还款', internal_transfer: '内部转账',

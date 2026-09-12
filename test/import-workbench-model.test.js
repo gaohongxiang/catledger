@@ -570,3 +570,16 @@ test('资金流转随最新状态重新生成，金额精确累加且不改原�
   assert.equal(JSON.stringify(events), before)
   assert.equal(model.fundsFlowSummary(events.map(e => ({ ...e, status: 'excluded' })), [])[1].count, 0)
 })
+
+test('轻量摘要与完整投影在核对、分类、排除和重复计数上保持一致', () => {
+  const events = ['expense', 'income', 'refund', 'repayment', 'internal_transfer', 'unknown'].flatMap((nature, i) =>
+    ['ready', 'needs_action', 'excluded', 'posted'].map((status, j) => ({ eventId: `${i}-${j}`, economicNature: nature,
+      status, amountMinor: '100', categoryId: i % 2 ? 'category' : null, duplicateEvidenceCount: j === 2 ? 2 : 0 })))
+  const issues = [{ issueId: 'verify', issueType: 'shared_fields', status: 'open', blocking: true, subjectEventIds: ['0-0', '1-1'] },
+    { issueId: 'category', issueType: 'category_assignment', status: 'open', blocking: false, subjectEventIds: ['0-1', '2-0'] }]
+  const full = model.organizerRecordState(events, issues, [])
+  const summary = model.organizerRecordState(events, issues, [], '', { summaryOnly: true })
+  for (const field of ['summary', 'reviewStatusTabs', 'categoryStatusTabs', 'categoryEventCount', 'categorizedEventCount']) {
+    assert.deepEqual(summary[field], full[field])
+  }
+})

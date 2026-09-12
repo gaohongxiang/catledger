@@ -652,7 +652,7 @@ Page({
       this._accountUiDrafts = new Map(Object.entries(JSON.parse(JSON.stringify(this._draftSession.state.drafts))))
       view = draftSessions.project(this._draftSession.view, this._draftSession.state.entries)
     }
-    const issues = (view.issues || []).map(model.issueView)
+    const issues = view.issues || []
     const openIssues = issues.filter(function (issue) {
       return issue.status === 'open' && (issue.blocking || issue.issueType === 'category_assignment')
     })
@@ -661,7 +661,7 @@ Page({
     const events = view.events || []
     const accountIssues = issues.filter(function (issue) {
       return issue.issueType === 'account_mapping' && ['open', 'resolved'].includes(issue.status)
-    })
+    }).map(model.issueView)
     const accountState = this.buildAccountMappingState(
       accountIssues,
       view.accounts || [],
