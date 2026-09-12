@@ -286,7 +286,7 @@
             <text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text>
           </view></view>
         </view>
-        <view wx:if="{{!categoryCards.length && !categoryWaitingEvents.length}}" class="tab-empty"><text class="tab-empty-title">{{categoryEventCount ? '没有匹配的交易' : '当前分类已完成'}}</text><text class="tab-empty-copy">{{categoryEventCount ? '试试其他商户或交易关键词。' : (verificationIssues.length ? '待核对交易确定为收支后，可能还需要补充分类。' : '所有需要分类的收支都已整理好。')}}</text></view>
+        <view wx:if="{{!categoryCards.length && !categoryWaitingEvents.length}}" class="tab-empty"><text class="tab-empty-title">{{categoryEventCount ? '没有匹配的交易' : '当前分类已完成'}}</text><text class="tab-empty-copy">{{categoryEventCount ? '试试其他商户或交易关键词。' : (verificationIssueCount ? '待核对交易确定为收支后，可能还需要补充分类。' : '所有需要分类的收支都已整理好。')}}</text></view>
       </block>
       <block wx:elif="{{activeCategoryStatus === 'completed' || activeCategoryStatus === 'none'}}">
         <view wx:for="{{activeCategoryStatus === 'completed' ? categorizedEvents : noCategoryEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看交易证据">
@@ -329,6 +329,11 @@
       </view>
       <view wx:else class="tab-empty"><text class="tab-empty-title">没有重复记录</text></view>
     </block>
+    <view wx:if="{{reviewPage.pages > 1}}" class="list-pagination">
+      <button class="stage-previous" data-direction="-1" bindtap="changeReviewPage" disabled="{{reviewPage.index === 0}}">上一页</button>
+      <text>{{reviewPage.index + 1}} / {{reviewPage.pages}} 页</text>
+      <button class="stage-previous" data-direction="1" bindtap="changeReviewPage" disabled="{{reviewPage.index + 1 >= reviewPage.pages}}">下一页</button>
+    </view>
     <view class="stage-action stage-navigation"><view class="stage-navigation-buttons">
       <button class="stage-previous" data-step="2" bindtap="goToStep" disabled="{{busy}}">上一步</button>
       <button class="primary-button stage-primary" data-step="4" bindtap="goToStep" disabled="{{busy || reviewStatusTabs[0].count || accountStepSummary.pending > 0}}">下一步：确认入账{{reviewStatusTabs[0].count ? '（还需核对 ' + reviewStatusTabs[0].count + ' 笔）' : ''}}</button>
@@ -506,7 +511,12 @@
       <view class="sheet-handle"></view>
       <view class="final-detail-heading"><text class="sheet-title">{{finalDetailSheet.title}}</text><button class="final-detail-close" bindtap="closeFinalDetail" aria-label="关闭明细">关闭</button></view>
       <text class="sheet-copy">共 {{finalDetailSheet.count}} {{finalDetailSheet.mode === 'accounts' ? '个账户' : '笔交易'}}</text>
-      <scroll-view class="final-detail-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+      <view wx:if="{{finalDetailSheet.page.pages > 1}}" class="list-pagination">
+        <button class="stage-previous" data-direction="-1" bindtap="changeFinalPage" disabled="{{finalDetailSheet.page.index === 0}}">上一页</button>
+        <text>{{finalDetailSheet.page.index + 1}} / {{finalDetailSheet.page.pages}} 页</text>
+        <button class="stage-previous" data-direction="1" bindtap="changeFinalPage" disabled="{{finalDetailSheet.page.index + 1 >= finalDetailSheet.page.pages}}">下一页</button>
+      </view>
+      <scroll-view class="final-detail-scroll" scroll-top="{{finalDetailScrollTop}}" scroll-y enhanced show-scrollbar="{{false}}">
         <view wx:for="{{finalDetailSheet.accounts}}" wx:key="accountId" class="funds-flow-record" data-id="{{item.accountId}}" bindtap="openFinalAccount" aria-role="button" aria-label="查看账户关联交易">
           <view class="funds-flow-record-head"><text class="funds-flow-record-title">{{item.name}}</text><text>{{item.count}} 笔 ›</text></view>
           <text class="funds-flow-record-meta">{{item.typeLabel}}{{item.isDraft ? ' · 本批新建' : ''}}</text>

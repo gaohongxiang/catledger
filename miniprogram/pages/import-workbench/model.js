@@ -696,8 +696,10 @@ function partitionOpenIssues(issues) {
 }
 
 // 两个整理视角共享事件集合。问题组和退款比对候选不能替代交易笔数。
-function organizerRecordState(events, issues, categories, query) {
-  const byId = new Map((events || []).map(function (event) { return [event.eventId, eventView(event)] }))
+function organizerRecordState(events, issues, categories, query, options) {
+  const summaryOnly = Boolean(options && options.summaryOnly)
+  const decorate = !summaryOnly && (!options || options.decorate !== false || query)
+  const byId = new Map((events || []).map(function (event) { return [event.eventId, decorate ? eventView(event) : event] }))
   const rows = [...byId.values()]
   const active = rows.filter(function (event) { return ['ready', 'needs_action', 'posted'].includes(event.status) })
   const excluded = rows.filter(function (event) { return event.status === 'excluded' })
@@ -713,7 +715,7 @@ function organizerRecordState(events, issues, categories, query) {
     const subjectIds = [...new Set(ids)].filter(function (id) { return activeIds.has(id) })
     const target = issue.issueType === 'category_assignment' ? categoryById : verificationById
     subjectIds.forEach(function (id) { if (!target.has(id)) target.set(id, issue.issueId) })
-    return Object.assign({}, issue, { subjects: subjectIds.map(function (id) { return byId.get(id) }), subjectCount: subjectIds.length })
+    return Object.assign({}, issue, { subjects: summaryOnly ? [] : subjectIds.map(function (id) { return byId.get(id) }), subjectCount: subjectIds.length })
   })
   const keyword = String(query || '').trim().toLowerCase()
   const matches = function (event) { return !keyword || [event.displayTitle, event.displayMeta, event.categoryName].join(' ').toLowerCase().includes(keyword) }

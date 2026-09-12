@@ -45,6 +45,8 @@ Page({
     loginGuard.run(this, this.loadAccounts.bind(this))
   },
 
+  onUnload: function () { pageReadSession.end(this) },
+
   onHide: function () { this.setTabBarHidden(false) },
 
   setTabBarHidden: function (hidden) {
@@ -69,6 +71,17 @@ Page({
         if (!isCurrent()) return
         self.setData({ loading: false }); self._readLoad = null })
     return this._readLoad
+  },
+
+  recoverMutation: async function (error, fallback, isCurrent) {
+    if (!isCurrent()) return
+    if (this._readLoad) await this._readLoad
+    if (!isCurrent()) return
+    await this.loadAccounts({ force: true })
+    if (!isCurrent()) return
+    const selected = this.data.selectedAccount
+    this.setData({ selectedAccount: selected ? this.findAccount(selected.accountId) || selected : null,
+      errorMessage: error.message || fallback })
   },
 
   openCreate: function () {
@@ -135,29 +148,32 @@ Page({
     } catch (error) { this.setData({ errorMessage: error.message }); return }
 
     const self = this
+    const isCurrent = pageReadSession.capture(this)
     this.setData({ saving: true, errorMessage: '' })
-    api.callApi(action, data).then(function () {
+    return api.callApi(action, data).then(function () {
+      if (!isCurrent()) return
       wx.showToast({ title: '已保存', icon: 'success' })
       self.setTabBarHidden(false)
       self.setData({ formOpen: false })
       self.loadAccounts()
-    }).catch(function (error) { self.setData({ errorMessage: error.message || '保存失败' }) })
-      .finally(function () { self.setData({ saving: false }) })
+    }).catch(function (error) { return self.recoverMutation(error, '保存失败', isCurrent) })
+      .finally(function () { if (isCurrent()) self.setData({ saving: false }) })
   },
 
   archive: function (event) {
     const account = this.findAccount(event.currentTarget.dataset.id)
     const self = this
+    const isCurrent = pageReadSession.capture(this)
     if (!account || account.archived) return
     wx.showModal({
       title: '停用“' + account.name + '”？',
       content: '历史账目和余额仍会保留，但这个账户不能再用于新交易。',
       confirmColor: themeService.currentTokens().danger,
       success: function (result) {
-        if (!result.confirm) return
+        if (!result.confirm || !isCurrent()) return
         api.callApi('accounts.archive', { requestId: api.createRequestId(), accountId: account.accountId, version: account.version })
-          .then(function () { wx.showToast({ title: '已停用', icon: 'success' }); self.setTabBarHidden(false); self.setData({ accountDetail: null }); self.loadAccounts() })
-          .catch(function (error) { self.setData({ errorMessage: error.message || '停用失败' }) })
+          .then(function () { if (!isCurrent()) return; wx.showToast({ title: '已停用', icon: 'success' }); self.setTabBarHidden(false); self.setData({ accountDetail: null }); self.loadAccounts() })
+          .catch(function (error) { return self.recoverMutation(error, '停用失败', isCurrent) })
       }
     })
   }

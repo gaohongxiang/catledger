@@ -28,7 +28,7 @@ function runtime() {
       if (action === 'catalog.get') result = { categories: h.categories, accounts: h.accounts || accounts(), uid: h.uid }
       else if (action === 'bootstrap') result = { categories, uid: h.uid }
       else if (action === 'categories.list') result = { categories }
-      else if (action === 'accounts.list') result = { accounts: accounts() }
+      else if (action === 'accounts.list') result = { accounts: h.accounts || accounts() }
       else if (action === 'dashboard.get') result = { accounts: accounts(), summary, netWorthMinor: balance, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }], recentTransactions: [] }
       else if (action === 'transactions.list') result = { transactions: [transaction(data.search || (data.accountId ? data.accountId : data.cursor ? 'row-2' : 'row-1'))], nextCursor: data.cursor ? null : 'page-2', summary }
       else if (action === 'transactions.refundable') result = { transactions: [] }
@@ -529,4 +529,30 @@ test('分页等待时改变账户筛选立即加载新首屏，不拼接旧分�
   release(); await pending
   assert.equal(page.data.transactions.length, 1)
   assert.equal(page.data.transactions[0].transactionId, 'account-a')
+})
+
+
+test('账户保存冲突回读最新版本并保留名称输入，卸载后不回填', async () => {
+  const h = runtime(), page = h.page('accounts')
+  h.accounts = [{ accountId: 'account-a', name: '原名称', type: 'bank', nature: 'asset', version: 1, displayBalanceMinor: '0' }]
+  await page.loadAccounts()
+  page.openRename({ currentTarget: { dataset: { id: 'account-a' } } })
+  page.bindName({ detail: { value: '我的输入' } })
+  h.intercept = async action => {
+    if (action === 'accounts.update') {
+      h.accounts = [{ ...h.accounts[0], name: '其他设备已更名', version: 2 }]
+      throw new Error('合成版本冲突')
+    }
+  }
+  await page.saveForm()
+  assert.equal(page.data.name, '我的输入')
+  assert.equal(page.data.selectedAccount.version, 2)
+  assert.equal(page.data.assets[0].name, '其他设备已更名')
+  assert.match(page.data.errorMessage, /暂时不可用/)
+  let release
+  h.intercept = action => action === 'accounts.update' ? new Promise(resolve => { release = resolve }) : undefined
+  const pending = page.saveForm()
+  await flush(); page.onUnload(); release(); await pending
+  assert.equal(page.data.formOpen, true)
+  assert.equal(h.toasts.length, 0)
 })

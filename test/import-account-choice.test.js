@@ -8,7 +8,7 @@ const model = require('../miniprogram/pages/import-workbench/model')
 function pageFor(issue, accounts = [], importApi = {}, draftService = {}) {
   let definition
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8'), {
-    require: (name) => name === '../../services/view-patch' ? require('../miniprogram/services/view-patch') : name === './final-detail' ? require('../miniprogram/pages/import-workbench/final-detail') : name === './model' ? model : name === '../../services/catledger-import' ? importApi : name === '../../services/import-draft-session' ? draftService : { bindPage() {} },
+    require: (name) => name === '../../services/view-patch' ? require('../miniprogram/services/view-patch') : name === './final-detail' ? require('../miniprogram/pages/import-workbench/final-detail') : name === './presentation' ? require('../miniprogram/pages/import-workbench/presentation') : name === './model' ? model : name === '../../services/catledger-import' ? importApi : name === '../../services/import-draft-session' ? draftService : { bindPage() {} },
     getApp: () => ({ globalData: {} }),
     Page: (page) => { definition = page }
   })
@@ -466,7 +466,7 @@ test('分类单独展示且不阻止入账，核对数量不包含分类', () =>
     issues: [{ issueId: 'cat', issueType: 'category_assignment', status: 'open', blocking: true,
       subjectEventIds: ['a', 'b'], subject: events[0] }], events })
   assert.equal(page.data.categoryEventCount, 2)
-  assert.equal(page.data.reviewIssues.length, 1)
+  assert.equal(page.businessData().issues.length, 1)
   assert.equal(page.data.verificationIssues.length, 0)
   assert.equal(page.data.openIssueCount, 0)
   assert.equal(page.data.currentStep, 3)
@@ -522,11 +522,13 @@ test('分类重读后从未分类移入已分类，搜索不改计数，最后�
     events: [{ ...event, status: 'ready', categoryId: 'food' }], categories })
   assert.equal(page.data.categoryEventCount, 0)
   assert.equal(page.data.categorizedEventCount, 1)
-  assert.equal(page.data.categorizedEvents[0].categoryName, '餐饮')
+  assert.equal(page.data.categorizedEvents.length, 0)
   assert.equal(page.data.currentStep, 3)
   assert.equal(page.data.unlockedStep, 4)
   assert.equal(page.data.openIssueCount, 0)
+  page.switchReviewTab({ currentTarget: { dataset: { tab: 'category' } } })
   page.switchCategoryStatus({ currentTarget: { dataset: { status: 'completed' } } })
+  assert.equal(page.data.categorizedEvents[0].categoryName, '餐饮')
   assert.equal(page.data.activeCategoryStatus, 'completed')
   page.searchCategoryIssues({ detail: { value: '不存在' } })
   assert.equal(page.data.categorizedEvents.length, 0)
@@ -852,7 +854,7 @@ test('真实Page接入队列：账户确认即时收起，后台返回不覆盖�
   await session.flush()
   assert.equal(page.data.accountMappings[1].draftName, '继续输入的账户乙')
   assert.equal(page.data.accountMappings[0].status, 'resolved')
-  assert.equal(page.data.issues[0].status, 'resolved')
+  assert.equal(page.businessData().issues[0].status, 'resolved')
 })
 
 test('真实Page接入队列：核对即时更新数量，下一步等待服务端权威结果', async () => {
@@ -889,7 +891,7 @@ test('真实Page接入队列：后台重读不关闭另一个正在填写的核�
   await session.flush()
   assert.equal(page.data.currentIssue.issueId, 'b')
   assert.equal(page.data.issueDraft.newAccountName, '正在填写的名称')
-  assert.equal(page.data.issues[0].status, 'resolved')
+  assert.equal(page.businessData().issues[0].status, 'resolved')
 })
 
 
@@ -925,7 +927,7 @@ test('重入自动恢复全部内容但首帧落在第一步，后台同步不�
   page.applyUpdateView(view, false, true)
   assert.deepEqual(frames, [1])
   assert.equal(page.data.sources[0].fileName, '合成.csv')
-  assert.equal(page.data.accountIssues[0].issueId, 'restore')
+  assert.equal(page.businessData().accountIssues[0].issueId, 'restore')
   assert.equal(page._draftSession, session)
   page.applyUpdateView(view, true)
   assert.equal(page.data.currentStep, 1)
@@ -937,7 +939,7 @@ test('返回已有导入页面自动回第一步，不暂停会话或清除已�
   page.setData({ currentStep: 3, currentIssue: { issueId: 'open' } })
   page.onHide(); page.onShow()
   assert.equal(page.data.currentStep, 1); assert.equal(page.data.currentIssue, null)
-  assert.equal(page._draftSession, session); assert.equal(page.data.accountIssues.length, 1)
+  assert.equal(page._draftSession, session); assert.equal(page.businessData().accountIssues.length, 1)
 })
 
 test('已入账结果不因重入标记退回第一步', () => {
@@ -1068,4 +1070,56 @@ test('恢复只在服务端明确分组未就绪时补刷新，旧视图保持�
   await page.refreshAccountGroups({ ...view, freshness: { requiresAccountGroupRefresh: true } })
   await page.refreshAccountGroups({ ...view, freshness: undefined })
   assert.deepEqual(calls, ['reviewIssues.refreshAccountGroups', 'reviewIssues.refreshAccountGroups'])
+})
+
+
+test('上限账单按活动步骤和分页渲染，完整事件仍可汇总和查看末页', () => {
+  const { syntheticView } = require('../scripts/benchmark-import')
+  const view = syntheticView(24990), page = pageFor(unknownIssue())
+  const sizes = [], setData = page.setData
+  page.setData = function (patch) { sizes.push(Buffer.byteLength(JSON.stringify(patch))); setData.call(this, patch) }
+  const oldFinal = model.finalSummary, oldFunds = model.fundsFlowSummary
+  let derived = 0
+  model.finalSummary = (...args) => { derived++; return oldFinal(...args) }
+  model.fundsFlowSummary = (...args) => { derived++; return oldFunds(...args) }
+  try {
+    page.applyUpdateView(view, false, true)
+    assert.equal(derived, 0)
+    assert.equal(page.data.events.length, 0)
+    assert.equal(page.businessData().events.length, 24990)
+    assert.equal(page.data.recordSummary.activeCount, 24990)
+    page.setStep({ currentStep: 3 })
+    page.switchReviewStatus({ currentTarget: { dataset: { status: 'completed' } } })
+    assert.equal(page.data.reviewedEvents.length, 40)
+    assert.equal(page.data.reviewPage.pages, 625)
+    page._reviewPage = 624; page.renderReview(false)
+    assert.equal(page.data.reviewedEvents.length, 30)
+    assert.equal(page.data.reviewedEvents.at(-1).eventId, 'synthetic-event-24989')
+    page.setStep({ currentStep: 4 })
+    assert.equal(page.data.reviewedEvents.length, 0)
+    assert.equal(page.data.finalSummary.expenseCount, 24990)
+    page.openFinalDetail({ currentTarget: { dataset: { kind: 'expense' } } })
+    assert.equal(page.data.finalDetailSheet.count, 24990)
+    assert.equal(page.data.finalDetailSheet.records.length, 40)
+    page.closeFinalDetail()
+    page.setStep({ currentStep: 1 })
+    assert.ok(sizes.every(bytes => bytes < 100000))
+  } finally { model.finalSummary = oldFinal; model.fundsFlowSummary = oldFunds }
+})
+
+test('分类搜索命中大组后部成员，预览最多三条且决定保留完整成员', () => {
+  const { syntheticView } = require('../scripts/benchmark-import')
+  const view = syntheticView(1000), page = pageFor(unknownIssue())
+  view.events.forEach(event => { event.categoryId = null })
+  view.events[999].primaryEvidence = { item: '仅最后一条匹配' }
+  view.issues = [{ issueId: 'category', issueType: 'category_assignment', status: 'open', blocking: false,
+    subjectEventIds: view.events.map(event => event.eventId) }]
+  page.applyUpdateView(view)
+  page.switchReviewTab({ currentTarget: { dataset: { tab: 'category' } } })
+  page.searchCategoryIssues({ detail: { value: '仅最后' } })
+  assert.equal(page.data.categoryCards.length, 1)
+  assert.equal(page.data.categoryCards[0].subjects[0].eventId, 'synthetic-event-999')
+  assert.equal(page.data.categoryCards[0].subjectCount, 1000)
+  assert.equal(page.businessData().issues[0].subjectEventIds.length, 1000)
+  assert.equal(page.data.categoryCards[0].subjectEventIds, undefined)
 })
