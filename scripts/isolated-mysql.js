@@ -4,6 +4,16 @@ const { randomBytes } = require('node:crypto')
 const { runMigrations } = require('../migrations/runner')
 const mysql = require('../cloudfunctions/catledger-import/node_modules/mysql2/promise')
 
+const UPDATE_COLUMNS = new Set(['object_version','row_id','state','status','version','economic_nature','flow_direction',
+  'ledger_account_id','counterparty_ledger_account_id','category_id','manual_field_mask','field_sources_json',
+  'reason_codes_json','superseded_at','transaction_version','current_action_id'])
+function validRuntimePrivileges(value) {
+  if (typeof value !== 'string') return false
+  const tokens = value.match(/SELECT|INSERT|DELETE|UPDATE(?:\([a-z_,]+\))?/g) || []
+  return tokens.join(', ') === value && tokens.every(token => !token.startsWith('UPDATE(') ||
+    token.slice(7,-1).split(',').every(column => UPDATE_COLUMNS.has(column)))
+}
+
 function testConfig(env = process.env) {
   if (!['127.0.0.1', 'localhost'].includes(env.CATLEDGER_TEST_DB_HOST) || !/^[a-zA-Z0-9_]+_test$/.test(env.CATLEDGER_TEST_DB_NAME || '')) {
     throw new Error('仅允许本机、名称以 _test 结尾的一次性测试库')
@@ -39,7 +49,7 @@ async function isolatedMysql() {
       await admin.query('CREATE USER ' + mysql.escape(user) + "@'%' IDENTIFIED BY " + mysql.escape(password))
       users.push(user)
       for (const [table, privileges] of Object.entries(grants)) {
-        if (!/^catledger_[a-z_]+$/.test(table) || !/^(SELECT|INSERT|UPDATE(?:\((?:object_version|row_id)\))?|DELETE)(, (SELECT|INSERT|UPDATE(?:\((?:object_version|row_id)\))?|DELETE))*$/.test(privileges)) throw new Error('Invalid runtime grant')
+        if (!/^catledger_[a-z_]+$/.test(table) || !validRuntimePrivileges(privileges)) throw new Error('Invalid runtime grant')
         await admin.query('GRANT ' + privileges + ' ON `' + database + '`.`' + table + '` TO ' + mysql.escape(user) + "@'%'")
       }
       const pool = mysql.createPool({ ...config, database, user, password }); pools.push(pool)
@@ -49,4 +59,4 @@ async function isolatedMysql() {
   } catch (error) { await close(); throw error }
 }
 
-module.exports = { isolatedMysql, testConfig }
+module.exports = { isolatedMysql, testConfig, validRuntimePrivileges }

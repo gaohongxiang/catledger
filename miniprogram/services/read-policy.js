@@ -15,7 +15,7 @@ const READ_POLICIES = Object.freeze({
 })
 
 function mutationTags(action) {
-  if (/^loans\.(record|reverse)$/.test(action)) return ['loans', 'accounts', 'transactions']
+  if (/^loans\.(record|correct|reverse)$/.test(action)) return ['loans', 'accounts', 'transactions']
   if (/^loans\.(create|update)$/.test(action)) return ['loans']
   if (action === 'accounts.create') return ['accounts', 'transactions', 'accountDirectory']
   if (action === 'accounts.correctBalance') return ['accounts', 'transactions']

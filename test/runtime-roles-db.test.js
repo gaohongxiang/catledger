@@ -8,13 +8,13 @@ test('API/import separate runtime roles: V2 paging, atomic chunks, replay, balan
   const { isolatedMysql } = require('../scripts/isolated-mysql'), grants = require('../scripts/runtime-role-grants')
   const db = await isolatedMysql()
   try {
-    assert.equal(db.migrations, 14)
+    assert.equal(db.migrations, 15)
     const apiPool = await db.role('api', grants.api), importPool = await db.role('import', grants.importer)
     for (const pool of [apiPool, importPool]) {
       await assert.rejects(pool.query('CREATE TABLE forbidden_probe (id INT)'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
       await assert.rejects(pool.query('DELETE FROM catledger_transactions WHERE 1 = 0'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
     }
-    await assert.rejects(apiPool.query('UPDATE catledger_finance_updates SET version = version WHERE 1 = 0'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
+    await assert.rejects(apiPool.query('UPDATE catledger_finance_updates SET status = status WHERE 1 = 0'), { code: 'ER_COLUMNACCESS_DENIED_ERROR' })
     await assert.rejects(importPool.query('UPDATE catledger_review_issue_members SET object_id = object_id WHERE 1 = 0'), { code: 'ER_COLUMNACCESS_DENIED_ERROR' })
     await assert.rejects(importPool.query('UPDATE catledger_import_rows SET raw_fields_json = raw_fields_json WHERE 1 = 0'), { code: 'ER_COLUMNACCESS_DENIED_ERROR' })
     const [grantRows] = await importPool.query('SHOW GRANTS')

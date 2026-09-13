@@ -4,7 +4,7 @@ const { parseLocalDateTime } = require('./local-time')
 const { validateId, parseVersion, buildManualTransaction } = require('./transaction-domain')
 const MAX_ALLOCATIONS = 20
 function paymentInput(data) {
-  if (data.confirmed !== true || !['drawdown','repayment'].includes(data.kind) || !['new'].includes(data.mode)) throw ledgerError('VALIDATION_ERROR')
+  if (data.confirmed !== true || !['drawdown','repayment'].includes(data.kind) || !['new','associate','correctExisting'].includes(data.mode)) throw ledgerError('VALIDATION_ERROR')
   if (!Array.isArray(data.allocations) || !data.allocations.length || data.allocations.length > MAX_ALLOCATIONS) throw ledgerError('VALIDATION_ERROR')
   const totalMinor = parseMinorUnits(data.totalMinor).toString(), ids = new Set()
   const allocations = data.allocations.map(item => {

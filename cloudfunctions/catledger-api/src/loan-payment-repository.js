@@ -26,8 +26,8 @@ async function assertPrincipalTimeline(connection, uid, loans) {
     if (row.firstAt && String(row.firstAt).slice(0,10) < loan.baselineDate) throw ledgerError('VALIDATION_ERROR')
   }
 }
-async function lockLoanVersions(connection, uid, allocations, selectLoan) {
-  if (!Array.isArray(allocations) || !allocations.length || allocations.length > MAX_ALLOCATIONS) throw ledgerError('VALIDATION_ERROR')
+async function lockLoanVersions(connection, uid, allocations, selectLoan, limit = MAX_ALLOCATIONS) {
+  if (!Array.isArray(allocations) || !allocations.length || allocations.length > limit) throw ledgerError('VALIDATION_ERROR')
   const ids = allocations.map(a => validateId(a.loanId))
   if (new Set(ids).size !== ids.length) throw ledgerError('VALIDATION_ERROR')
   const loans = new Map()

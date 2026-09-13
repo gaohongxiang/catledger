@@ -30,6 +30,12 @@ function runtime(route, callApi) {
         requestId: api.createRequestId, call: (_, action, data) => api.callApi(action, data) })
       if (name.includes('/services/login-guard')) return { run: (p, cb) => { if (app.hasLoginApproval()) return cb() } }
       if (name.includes('/theme/service')) return { bindPage() {}, currentTokens: () => ({ accent: '#BE5B24' }) }
+      if (name === './source' && route === 'pages/loan-payment/index') {
+        const source = { exports: {} }
+        vm.runInNewContext(req('node:fs').readFileSync(req.resolve('./source'), 'utf8'), { module: source,
+          require: dep => dep.includes('/services/catledger-api') ? api : req(dep) })
+        return source.exports
+      }
       return req(name)
     }
   }, { filename })
@@ -421,4 +427,44 @@ test('分类排序采用整组服务器版本，失败强制回读权威顺序',
   assert.equal(reads, 2)
   assert.deepEqual(Array.from(page.data.visibleCategories, row => row.id), ['a', 'b'])
   assert.equal(page.data.saving, false)
+})
+
+test('贷款来源选择保留秒与时区、整组展开和有界分页，关闭后不回填', async () => {
+  const account={accountId:'asset',name:'合成付款',type:'bank'},category={id:'cat',kind:'expense'}
+  const tx=id=>({transactionId:id,type:'expense',amountMinor:'50',sourceAccount:account,occurredLocalAt:'2026-09-02T12:30:45.123',timezoneOffsetMinutes:-480})
+  let resolveLate
+  const {page,calls}=runtime('pages/loan-payment/index',(action,data)=>{
+    if(action==='catalog.get') return Promise.resolve({uid:'1234567890',accounts:[account],categories:[category]})
+    if(action==='transactions.list') return Promise.resolve({transactions:[tx(data.cursor||'first')],nextCursor:'next'})
+    if(action==='loans.source') return resolveLate ? new Promise(done=>{resolveLate=done}) : Promise.resolve({source:{transactionIds:['first','second'],fingerprint:'signed'},transactions:[tx('first'),tx('second')]})
+    throw new Error(action)
+  })
+  page.onLoad({});await page.load();page.chooseMode({detail:{value:'2'}})
+  await page.loadSources();page.selectSources({detail:{value:['first']}});await page.loadSources({currentTarget:{dataset:{next:true}}})
+  assert.equal(page.data.sourceRows.length,1);assert.equal(page.data.sourceSelectedCount,1)
+  await page.inspectSource();assert.equal(page.data.sourceTransactions.length,2);assert.equal(page.data.accountIndex,0)
+  Object.assign(page.data,{confirmed:true,allocations:[{loanId:'loan',version:1,principalYuan:'0.80',interestYuan:'0.18',feeYuan:'0.02',interestIndex:0,feeIndex:0,interestCategoryIndex:0,feeCategoryIndex:0}]})
+  const payload=require('../miniprogram/pages/loan-payment/model').payload(page.data)
+  assert.equal(payload.occurredLocalAt,'2026-09-02T12:30:45.123');assert.equal(payload.timezoneOffsetMinutes,-480)
+  assert.equal(payload.source.fingerprint,'signed');assert.equal(calls.filter(c=>c.name==='transactions.list').at(-1).data.pageSize,40)
+  resolveLate=true;const late=page.inspectSource();await new Promise(done=>setImmediate(done));page.onUnload()
+  resolveLate({source:{fingerprint:'late'},transactions:[tx('late')]});await late
+  assert.equal(page.data.source.fingerprint,'signed')
+})
+
+test('贷款更正明确进入编辑后才能提交，读取失败不重复更正', async () => {
+  const account={accountId:'asset',name:'合成付款',type:'bank'},category={id:'cat',kind:'expense'}
+  const existing={payment:{paymentId:'old',version:1,status:'active',kind:'repayment',mode:'new',assetAccountId:'asset',totalMinor:'100',occurredLocalAt:'2026-09-02 12:30:45',timezoneOffsetMinutes:-480},
+    allocations:[{loanId:'loan',loanName:'合成贷款',version:2,principalMinor:'80',interestMinor:'18',feeMinor:'2',interestTreatment:'expense',feeTreatment:'expense',interestCategoryId:'cat',feeCategoryId:'cat'}],transactions:[]}
+  const {page,calls}=runtime('pages/loan-payment/index',(action,data)=>{
+    if(action==='catalog.get') return Promise.resolve({uid:'1234567890',accounts:[account],categories:[category]})
+    if(action==='loans.payment') return data.paymentId==='old'?Promise.resolve(existing):Promise.reject(new Error('合成读取失败'))
+    if(action==='loans.correct') return Promise.resolve({paymentId:'new',version:1})
+    throw new Error(action)
+  })
+  page.onLoad({paymentId:'old'});await page.load();await page.save();assert.equal(calls.filter(c=>c.name==='loans.correct').length,0)
+  page.editPayment();assert.equal(page.data.editingPayment.paymentId,'old');page.data.confirmed=true
+  await page.save();assert.equal(page.data.hasPayment,true);assert.equal(page.data.editingPayment,null)
+  await page.save();assert.equal(calls.filter(c=>c.name==='loans.correct').length,1)
+  assert.equal(calls.find(c=>c.name==='loans.correct').data.loans[0].version,2)
 })

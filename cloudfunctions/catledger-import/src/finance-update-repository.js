@@ -1,6 +1,7 @@
 const repaymentOwnership = require('./repayment-ownership')
 const accountGroups = require('./payment-account-groups')
 const { randomUUID } = require('node:crypto')
+const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 
 const { buildCoverageReport } = require('./coverage-report')
 const { digestParts } = require('./digest')
@@ -433,6 +434,7 @@ async function persistPlan(connection, uid, updateId, plan) {
 
   const existingIds = new Set()
   for (const event of plan.events) for (const id of event.existingTransactionIds) existingIds.add(id)
+  await assertNoLoanTransactions(connection, uid, [...existingIds])
   const versions = new Map()
   for (const part of chunks([...existingIds].sort().map(id => [id]))) {
     const [transactions] = await connection.execute(

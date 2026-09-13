@@ -1,5 +1,10 @@
 // 本机/CI 验证契约；不会修改云端授权。表级 DML，无库级权限、DDL 或 GRANT OPTION。
 const api = {
+  catledger_loan_payment_sources: 'SELECT, INSERT, UPDATE',
+  catledger_loan_replaced_transactions: 'SELECT, INSERT',
+  catledger_loan_payment_corrections: 'SELECT, INSERT',
+  catledger_finance_actions: 'SELECT, INSERT',
+  catledger_economic_events: 'SELECT, UPDATE(state,status,version,economic_nature,flow_direction,ledger_account_id,counterparty_ledger_account_id,category_id,manual_field_mask,field_sources_json,reason_codes_json)',
   catledger_loan_payments: 'SELECT, INSERT, UPDATE',
   catledger_loan_payment_allocations: 'SELECT, INSERT',
   catledger_loan_payment_transactions: 'SELECT, INSERT, UPDATE',
@@ -11,10 +16,10 @@ const api = {
   catledger_transactions: 'SELECT, INSERT, UPDATE',
   catledger_mutation_receipts: 'SELECT, INSERT, UPDATE',
   catledger_import_category_mappings: 'SELECT, INSERT, UPDATE',
-  catledger_economic_event_transactions: 'SELECT, INSERT',
+  catledger_economic_event_transactions: 'SELECT, INSERT, UPDATE(superseded_at,transaction_version)',
   catledger_event_evidence: 'SELECT',
   catledger_finance_update_sources: 'SELECT',
-  catledger_finance_updates: 'SELECT',
+  catledger_finance_updates: 'SELECT, UPDATE(version,current_action_id)',
   catledger_import_rows: 'SELECT'
 }
 const importer = {

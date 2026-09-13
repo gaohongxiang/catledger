@@ -16,13 +16,29 @@
     <text class="section-title">对应账目</text>
     <view wx:for="{{transactions}}" wx:key="transactionId" class="detail-row"><view><text>{{item.flowText}} · {{item.sourceAccount.name}}</text><text class="detail-muted">{{item.destinationAccount ? '转入 ' + item.destinationAccount.name : item.category.name}}</text></view><text class="money-number">{{item.amountText}}</text></view>
     <button wx:if="{{payment.status === 'active' && !hasPending}}" class="secondary-button" disabled="{{saving || loading}}" loading="{{saving}}" bindtap="reverse">撤销整组借还</button>
+    <button wx:if="{{payment.status === 'active' && !hasPending}}" class="detail-link" disabled="{{saving || loading}}" bindtap="editPayment">更正本息费与贷款分配</button>
+    <button wx:if="{{payment.status === 'active' && payment.mode === 'new' && payment.kind === 'repayment' && !hasPending}}" class="detail-link" disabled="{{saving || loading}}" bindtap="reconcileImport">与后来导入的同笔还款核对</button>
   </view>
   <view wx:if="{{!hasPayment}}" class="content-inset loan-form">
-    <text class="form-note">只登记尚未记入账本的实际资金变化。先填写已确认的本息费，明确没有的分项填写 0。</text>
-    <picker class="form-field" range="{{kinds}}" value="{{kindIndex}}" bindchange="chooseKind" disabled="{{saving}}"><text>实际类型</text><view class="picker-value">{{kinds[kindIndex]}}</view></picker>
-    <picker class="form-field" range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="chooseAccount" disabled="{{saving}}"><text>{{kindIndex === 1 ? '到账账户' : '付款账户'}}</text><view class="picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择资产账户'}}</view></picker>
-    <label class="form-field"><text>实际总额（元）</text><input type="digit" value="{{totalYuan}}" maxlength="22" data-field="totalYuan" bindinput="input" disabled="{{saving}}" placeholder="以实际到账或扣款为准" /></label>
-    <view class="time-fields"><picker class="form-field" mode="date" value="{{date}}" data-field="date" bindchange="input" disabled="{{saving}}"><text>发生日期</text><view class="picker-value">{{date || '请选择日期'}}</view></picker><picker class="form-field" mode="time" value="{{time}}" data-field="time" bindchange="input" disabled="{{saving}}"><text>时间</text><view class="picker-value">{{time}}</view></picker></view>
+    <text class="form-note">先填写已确认的本息费，明确没有的分项填写 0。已有账目请先关联或更正。</text>
+    <button wx:if="{{editingPayment || replacePayment}}" class="detail-link" bindtap="cancelEdit" disabled="{{saving || hasPending}}">返回原借还记录</button>
+    <text wx:if="{{editingPayment}}" class="form-note">更正整组构成，保留原记录供核对。实际账户、时间和总额保持本次事实。</text>
+    <text wx:if="{{replacePayment}}" class="form-note">请明确选择后来导入的同一笔还款。确认后撤销重复的手工付款，将来源账目更正为一次完整还款；相同金额或日期不会自动合并。</text>
+    <picker wx:if="{{!editingPayment && !replacePayment}}" class="form-field" range="{{modes}}" value="{{modeIndex}}" bindchange="chooseMode" disabled="{{saving}}"><text>入账方式</text><view class="picker-value">{{modes[modeIndex]}}</view></picker>
+    <picker class="form-field" range="{{kinds}}" value="{{kindIndex}}" bindchange="chooseKind" disabled="{{saving || sourceTiming || replacePayment}}"><text>实际类型</text><view class="picker-value">{{kinds[kindIndex]}}</view></picker>
+    <view wx:if="{{modeIndex > 0 && !editingPayment}}" class="allocation-panel">
+      <text class="section-title">已有账目</text>
+      <picker class="form-field" mode="date" fields="month" value="{{sourceMonth}}" bindchange="sourceMonth" disabled="{{saving}}"><text>查询月份</text><view class="picker-value">{{sourceMonth || '选择账目所在月份'}}</view></picker>
+      <button class="secondary-button" bindtap="loadSources" disabled="{{saving || loading}}">挑选已有账目</button>
+      <checkbox-group bindchange="selectSources"><label wx:for="{{sourceRows}}" wx:key="transactionId" class="source-option"><checkbox value="{{item.transactionId}}" checked="{{item.selected}}" disabled="{{saving}}" /><view><text>{{item.typeText}} · {{item.amountText}}</text><text class="detail-muted">{{item.occurredLocalAt}} · {{item.accountText}}</text></view></label></checkbox-group>
+      <button wx:if="{{nextSourceCursor}}" class="detail-link" data-next="true" bindtap="loadSources" disabled="{{saving || loading}}">下一页账目</button>
+      <button wx:if="{{sourceRows.length}}" class="secondary-button" bindtap="inspectSource" disabled="{{saving || loading}}">核对所选 {{sourceSelectedCount}} 笔账目的完整来源</button>
+      <text wx:if="{{source}}" class="form-note">已核对 {{sourceTransactions.length}} 笔账目{{source.event ? '，包含该导入来源的全部分项' : ''}}。</text>
+      <view wx:for="{{sourceTransactions}}" wx:key="transactionId" class="detail-row"><view><text>{{item.typeText}} · {{item.accountText}}</text><text class="detail-muted">{{item.occurredLocalAt}}</text></view><text class="money-number">{{item.amountText}}</text></view>
+    </view>
+    <picker class="form-field" range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="chooseAccount" disabled="{{saving || sourceTiming}}"><text>{{kindIndex === 1 ? '到账账户' : '付款账户'}}</text><view class="picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择资产账户'}}</view></picker>
+    <label class="form-field"><text>实际总额（元）</text><input type="digit" value="{{totalYuan}}" maxlength="22" data-field="totalYuan" bindinput="input" disabled="{{saving || sourceTiming}}" placeholder="以实际到账或扣款为准" /></label>
+    <view class="time-fields"><picker class="form-field" mode="date" value="{{date}}" data-field="date" bindchange="input" disabled="{{saving || sourceTiming}}"><text>发生日期</text><view class="picker-value">{{date || '请选择日期'}}</view></picker><picker class="form-field" mode="time" value="{{time}}" data-field="time" bindchange="input" disabled="{{saving || sourceTiming}}"><text>时间</text><view class="picker-value">{{time}}</view></picker></view>
     <view wx:for="{{allocations}}" wx:for-item="a" wx:for-index="i" wx:key="loanId" class="allocation-panel">
       <view class="allocation-heading"><text class="allocation-name">{{a.loanName}}</text><button wx:if="{{allocations.length > 1}}" class="detail-link" data-id="{{a.loanId}}" bindtap="removeLoan" disabled="{{saving}}">移除此项</button></view>
       <label class="form-field"><text>本金（元）</text><input type="digit" maxlength="22" value="{{a.principalYuan}}" data-index="{{i}}" data-field="principalYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="请填写已确认本金" /></label>
@@ -37,9 +53,9 @@
     </view>
     <button class="detail-link" bindtap="moreLoans" disabled="{{saving || loading}}">分配给另一笔贷款</button>
     <view wx:if="{{choices.length}}" class="loan-choices"><button wx:for="{{choices}}" wx:key="loanId" class="detail-link" data-id="{{item.loanId}}" bindtap="addLoan" disabled="{{saving}}">{{item.name}} · {{item.accountName}}</button><button wx:if="{{nextLoanCursor}}" class="secondary-button" data-next="true" bindtap="moreLoans" disabled="{{saving || loading}}">下一页贷款</button></view>
-    <view class="payment-review"><text class="section-title">核对本次影响</text><text class="form-note">{{reviewText}}</text><text class="form-note">{{kindIndex === 1 ? '资产和贷款本金增加，不计收入。' : '付款账户扣除总额，本金分项冲减贷款；尚未入账的利息与费用计为支出，已计负债的分项只清偿。'}}</text></view>
+    <view class="payment-review"><text class="section-title">核对本次影响</text><text class="form-note">{{reviewText}}</text><text class="form-note">{{replacePayment ? '消除已选的重复付款，保留一次实际扣款。' : editingPayment || modeIndex === 2 ? '整组替换已有账目，调整本金与费用构成，资金账户不再次扣款。' : modeIndex === 1 ? '账目构成必须与分配一致，只建立贷款关联，不新增付款或支出。' : kindIndex === 1 ? '资产和贷款本金增加，不计收入。' : '付款账户扣除总额，本金分项冲减贷款；尚未入账的利息与费用计为支出，已计负债的分项只清偿。'}}</text></view>
     <checkbox-group bindchange="confirm"><label class="confirm-label"><checkbox value="confirmed" checked="{{confirmed}}" disabled="{{saving}}" />我已核对总额、各笔贷款的本息费及入账情况</label></checkbox-group>
-    <button class="primary-button" disabled="{{saving || loading || hasPending}}" loading="{{saving}}" bindtap="save">确认并登记实际{{kindIndex === 1 ? '放款' : '还款'}}</button>
+    <button class="primary-button" disabled="{{saving || loading || hasPending}}" loading="{{saving}}" bindtap="save">{{editingPayment || replacePayment || modeIndex === 2 ? '确认整组更正' : modeIndex === 1 ? '确认关联已有账目' : kindIndex === 1 ? '确认登记实际放款' : '确认登记实际还款'}}</button>
   </view>
   <login-sheet id="page-login-sheet" />
 </view>

@@ -1,0 +1,2140 @@
+{
+  "scope": "A2b affected history path only; one local synthetic sample, not P95 or cloud capacity",
+  "environment": "Node 24.14.1, MySQL 8.4, independent roles, max-old-space-size=256",
+  "sourceSha256": {
+    "cloudfunctions/catledger-import/src/finance-update-repository.js": "b21635f799b2c0c7b413e33423a9f2e2eb51ba7bf465ce88df58a854de660baa",
+    "cloudfunctions/catledger-import/src/finance-update-posting.js": "84bc3e4581ac676f877b56d4602e6ebf422f45320946ddcacb83b6dfc53c0067",
+    "cloudfunctions/catledger-import/src/loan-transaction-guard.js": "4041d76e0272b23681588a6125c74cbe43f12ede83a2b9bd8d45ade255548192"
+  },
+  "observations": [
+    {
+      "stage": "environment",
+      "head": "b6bbf4c8938ad6bb14444ad773fe1f39d14ec9f3",
+      "node": "v24.14.1",
+      "mysql": "8.4 loopback isolated roles",
+      "sourceFilesSha256": "d81ce2f6bdd8d53387c190e22e0659cf9ae43994104282c236e5a015c1cb821f",
+      "rows": 24990,
+      "runs": 1,
+      "memory": "process max RSS is process lifetime high-water; action heap before/after is not peak",
+      "seed": "synthetic only"
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "prepare",
+      "ms": 6653,
+      "sqlCount": 1031,
+      "sqlMs": 5590.306997000007,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "ea48b074908c732f",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 1909.4957859999977,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "dea1e7707b36b011",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 1850.6780010000039,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "c8b47845546222b3",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 844.5892909999893,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "5518061fe1b8c8e4",
+          "callsite": "catledger-import/src/finance-update-repository.js:202",
+          "count": 1,
+          "ms": 724.5448340000003,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "a0f7cd972a4ad96e",
+          "callsite": "catledger-import/src/finance-update-repository.js:238",
+          "count": 250,
+          "ms": 162.88712600001236,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-import/src/import-transaction.js:108",
+          "count": 1,
+          "ms": 51.759125000000495,
+          "rows": 0
+        },
+        {
+          "fingerprint": "018b4a59643b0723",
+          "callsite": "catledger-import/src/finance-update-core.js:72",
+          "count": 1,
+          "ms": 7.301542000001064,
+          "rows": 1
+        },
+        {
+          "fingerprint": "074f9809c3084edc",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 6.916250000000218,
+          "rows": 90
+        },
+        {
+          "fingerprint": "2876f478027a894b",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 4.4504999999990105,
+          "rows": 90
+        },
+        {
+          "fingerprint": "65925b63ece82290",
+          "callsite": "catledger-import/src/finance-update-repository.js:378",
+          "count": 1,
+          "ms": 3.142459000000599,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9d882f5f71025f5d",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 3.0991250000006403,
+          "rows": 90
+        },
+        {
+          "fingerprint": "5a8a77aba0aeb8dc",
+          "callsite": "catledger-import/src/finance-update-repository.js:121",
+          "count": 2,
+          "ms": 2.5594160000018746,
+          "rows": 2
+        },
+        {
+          "fingerprint": "69c688d4a1a2080d",
+          "callsite": "catledger-import/src/finance-update-repository.js:383",
+          "count": 1,
+          "ms": 1.697374999999738,
+          "rows": 0
+        },
+        {
+          "fingerprint": "770a936b050f2b31",
+          "callsite": "catledger-import/src/finance-update-repository.js:74",
+          "count": 1,
+          "ms": 1.3305420000015147,
+          "rows": 5
+        },
+        {
+          "fingerprint": "8cdb32fdaf6df353",
+          "callsite": "catledger-import/src/finance-update-repository.js:379",
+          "count": 1,
+          "ms": 1.248541999999361,
+          "rows": 0
+        },
+        {
+          "fingerprint": "32e7c1374360a509",
+          "callsite": "catledger-import/src/finance-update-repository.js:380",
+          "count": 1,
+          "ms": 1.2354169999998703,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f4af46d738c45f9b",
+          "callsite": "catledger-import/src/finance-update-repository.js:278",
+          "count": 1,
+          "ms": 1.2338330000002316,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3d3ce9e557a8ceb2",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 2,
+          "ms": 1.147291999999652,
+          "rows": 2
+        },
+        {
+          "fingerprint": "af67434a5a069627",
+          "callsite": "catledger-import/src/command-result.js:7",
+          "count": 1,
+          "ms": 1.0766249999978754,
+          "rows": 0
+        },
+        {
+          "fingerprint": "0eaede903bb3a0f0",
+          "callsite": "catledger-import/src/finance-update-repository.js:101",
+          "count": 1,
+          "ms": 1.0361659999998665,
+          "rows": 0
+        },
+        {
+          "fingerprint": "2aebb34d77d61d0b",
+          "callsite": "catledger-import/src/finance-update-repository.js:292",
+          "count": 1,
+          "ms": 0.9601249999996071,
+          "rows": 0
+        },
+        {
+          "fingerprint": "7c393e2a8981939d",
+          "callsite": "catledger-import/src/finance-update-repository.js:170",
+          "count": 1,
+          "ms": 0.8240000000005239,
+          "rows": 16
+        },
+        {
+          "fingerprint": "5b92562251caf7fc",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 0.765333000003011,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f95b53228ec86187",
+          "callsite": "catledger-import/src/finance-update-repository.js:381",
+          "count": 1,
+          "ms": 0.741041999999652,
+          "rows": 0
+        },
+        {
+          "fingerprint": "1b5485a868983cef",
+          "callsite": "catledger-import/src/finance-update-repository.js:752",
+          "count": 1,
+          "ms": 0.6515409999992698,
+          "rows": 4
+        },
+        {
+          "fingerprint": "a5d74a419cb86111",
+          "callsite": "catledger-import/src/finance-update-repository.js:382",
+          "count": 1,
+          "ms": 0.6072920000005979,
+          "rows": 0
+        },
+        {
+          "fingerprint": "83bb69de731406d9",
+          "callsite": "catledger-import/src/finance-update-repository.js:176",
+          "count": 1,
+          "ms": 0.6045839999987948,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9e300afcf72835c6",
+          "callsite": "catledger-import/src/finance-update-repository.js:327",
+          "count": 1,
+          "ms": 0.5511249999999563,
+          "rows": 0
+        },
+        {
+          "fingerprint": "cad515c4254a9418",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 0.5330410000005941,
+          "rows": 5
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-import/src/import-transaction.js:19",
+          "count": 1,
+          "ms": 0.4819999999999709,
+          "rows": 1
+        },
+        {
+          "fingerprint": "b90a4d143c101a26",
+          "callsite": "catledger-import/src/import-transaction.js:102",
+          "count": 1,
+          "ms": 0.4259170000004815,
+          "rows": 1
+        },
+        {
+          "fingerprint": "dbb4afce268b3496",
+          "callsite": "catledger-import/src/finance-update-repository.js:161",
+          "count": 1,
+          "ms": 0.41854199999943376,
+          "rows": 1
+        },
+        {
+          "fingerprint": "613c34c3b6b41e23",
+          "callsite": "catledger-import/src/import-transaction.js:84",
+          "count": 1,
+          "ms": 0.3392500000009022,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-import/src/import-transaction.js:76",
+          "count": 1,
+          "ms": 0.331040999999459,
+          "rows": 0
+        },
+        {
+          "fingerprint": "de79373a409fe48b",
+          "callsite": "catledger-import/src/finance-update-repository.js:140",
+          "count": 1,
+          "ms": 0.3299169999991136,
+          "rows": 1
+        },
+        {
+          "fingerprint": "1cedfa00b0cd2059",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.31300000000010186,
+          "rows": 1
+        }
+      ],
+      "responseBytes": 975,
+      "heapBefore": 105566712,
+      "heapAfter": 167430664,
+      "rssAfter": 470450176,
+      "processMaxRssKiB": 464816,
+      "cpuMicros": {
+        "user": 22907215,
+        "system": 734889
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "summaryBefore",
+      "ms": 1498,
+      "sqlCount": 267,
+      "sqlMs": 1207.4287529999601,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "5518061fe1b8c8e4",
+          "callsite": "catledger-import/src/finance-update-repository.js:202",
+          "count": 1,
+          "ms": 621.289708999997,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "a0f7cd972a4ad96e",
+          "callsite": "catledger-import/src/finance-update-repository.js:238",
+          "count": 250,
+          "ms": 347.5195869999661,
+          "rows": 0
+        },
+        {
+          "fingerprint": "93b0121d51cd132f",
+          "callsite": "catledger-import/src/finance-update-read.js:97",
+          "count": 1,
+          "ms": 134.35866600000008,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "ca28fa35ba6c9285",
+          "callsite": "catledger-import/src/finance-update-read.js:102",
+          "count": 1,
+          "ms": 59.103125000001455,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "6f60da287be51b51",
+          "callsite": "catledger-import/src/finance-update-repository.js:764",
+          "count": 1,
+          "ms": 23.817541000000347,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "ee3dd3da85a54df4",
+          "callsite": "catledger-import/src/finance-update-read.js:106",
+          "count": 1,
+          "ms": 8.41924999999901,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-import/src/import-transaction.js:133",
+          "count": 1,
+          "ms": 5.088791999998648,
+          "rows": 0
+        },
+        {
+          "fingerprint": "49f0429f0a032494",
+          "callsite": "catledger-import/src/finance-update-read.js:19",
+          "count": 1,
+          "ms": 1.5552080000015849,
+          "rows": 3
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-import/src/import-transaction.js:138",
+          "count": 1,
+          "ms": 1.1893749999981083,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ff5189f482e23c12",
+          "callsite": "catledger-import/src/finance-update-repository.js:479",
+          "count": 1,
+          "ms": 0.9167080000006536,
+          "rows": 5
+        },
+        {
+          "fingerprint": "af67434a5a069627",
+          "callsite": "catledger-import/src/finance-update-read.js:122",
+          "count": 1,
+          "ms": 0.851582999999664,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f5b98d98dc22cd21",
+          "callsite": "catledger-import/src/finance-update-read.js:107",
+          "count": 1,
+          "ms": 0.7253749999981665,
+          "rows": 1
+        },
+        {
+          "fingerprint": "95b7349e60b37183",
+          "callsite": "catledger-import/src/finance-update-read.js:108",
+          "count": 1,
+          "ms": 0.7207500000004075,
+          "rows": 1
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-import/src/import-transaction.js:19",
+          "count": 1,
+          "ms": 0.4856249999975262,
+          "rows": 1
+        },
+        {
+          "fingerprint": "fd6cf95809a034eb",
+          "callsite": "catledger-import/src/import-transaction.js:134",
+          "count": 1,
+          "ms": 0.4657919999990554,
+          "rows": 0
+        },
+        {
+          "fingerprint": "7c393e2a8981939d",
+          "callsite": "catledger-import/src/finance-update-repository.js:170",
+          "count": 1,
+          "ms": 0.3617500000000291,
+          "rows": 16
+        },
+        {
+          "fingerprint": "83bb69de731406d9",
+          "callsite": "catledger-import/src/finance-update-repository.js:176",
+          "count": 1,
+          "ms": 0.31320899999991525,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3d3ce9e557a8ceb2",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.24670800000239979,
+          "rows": 1
+        }
+      ],
+      "responseBytes": 4991,
+      "heapBefore": 167478016,
+      "heapAfter": 207468032,
+      "rssAfter": 497303552,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 3244049,
+        "system": 62010
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "resolveAccounts",
+      "ms": 6521,
+      "sqlCount": 1775,
+      "sqlMs": 5672.156010000086,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "e5c50cfa44755ef0",
+          "callsite": "catledger-import/src/sql-batch.js:33",
+          "count": 249,
+          "ms": 1818.311871000049,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "9306baa1e6d4dd49",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 900.0347129999864,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "3ca76457a144ab5d",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 817.2500419999888,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "c8b47845546222b3",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 672.916370000039,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "254d67dc709f5d9e",
+          "callsite": "catledger-import/src/review-issue-service.js:145",
+          "count": 500,
+          "ms": 672.8758580000431,
+          "rows": 49980
+        },
+        {
+          "fingerprint": "b691fdbc8f890a51",
+          "callsite": "catledger-import/src/review-issue-service.js:429",
+          "count": 249,
+          "ms": 306.10257299998557,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-import/src/import-transaction.js:108",
+          "count": 1,
+          "ms": 130.74004100000093,
+          "rows": 0
+        },
+        {
+          "fingerprint": "08cb1a02e03a1f04",
+          "callsite": "catledger-import/src/account-draft.js:116",
+          "count": 1,
+          "ms": 100.5499579999996,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "d6d3bd8b23c775d7",
+          "callsite": "catledger-import/src/review-issue-service.js:670",
+          "count": 1,
+          "ms": 93.22270900000149,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "53d2675eff0d0daf",
+          "callsite": "catledger-import/src/review-issue-service.js:420",
+          "count": 1,
+          "ms": 49.58741699999882,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "a79acc92a4137368",
+          "callsite": "catledger-import/src/review-issue-service.js:106",
+          "count": 1,
+          "ms": 41.28612499999872,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "32e5ff5febb23c26",
+          "callsite": "catledger-import/src/account-draft.js:107",
+          "count": 1,
+          "ms": 18.66608300000007,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "cd2a50cf3147c2a0",
+          "callsite": "catledger-import/src/review-issue-service.js:730",
+          "count": 1,
+          "ms": 17.570749999998952,
+          "rows": 1
+        },
+        {
+          "fingerprint": "436700ff3cd25851",
+          "callsite": "catledger-import/src/sql-batch.js:33",
+          "count": 1,
+          "ms": 9.579334000001836,
+          "rows": 90
+        },
+        {
+          "fingerprint": "3f22f4c08b42088b",
+          "callsite": "catledger-import/src/review-issue-service.js:623",
+          "count": 1,
+          "ms": 4.1779590000005555,
+          "rows": 0
+        },
+        {
+          "fingerprint": "0e45ee3e2b396d04",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 4.132790999999997,
+          "rows": 90
+        },
+        {
+          "fingerprint": "6b175d8e96807582",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 2.9076659999991534,
+          "rows": 90
+        },
+        {
+          "fingerprint": "9d882f5f71025f5d",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 2.6875829999989946,
+          "rows": 90
+        },
+        {
+          "fingerprint": "b03ad8def954c82d",
+          "callsite": "catledger-import/src/review-issue-service.js:429",
+          "count": 1,
+          "ms": 1.2976669999989099,
+          "rows": 90
+        },
+        {
+          "fingerprint": "80666572af03e75b",
+          "callsite": "catledger-import/src/account-draft.js:127",
+          "count": 1,
+          "ms": 1.2707080000000133,
+          "rows": 0
+        },
+        {
+          "fingerprint": "5f84c947c0df91d2",
+          "callsite": "catledger-import/src/review-issue-service.js:378",
+          "count": 1,
+          "ms": 1.00433300000077,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f53dce3877cef7e4",
+          "callsite": "catledger-import/src/review-issue-service.js:739",
+          "count": 1,
+          "ms": 0.962415999998484,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec9880c50381cc44",
+          "callsite": "catledger-import/src/sql-batch.js:39",
+          "count": 1,
+          "ms": 0.67333299999882,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e5650da9d46f785d",
+          "callsite": "catledger-import/src/sql-batch.js:42",
+          "count": 1,
+          "ms": 0.49245800000062445,
+          "rows": 0
+        },
+        {
+          "fingerprint": "2aebb34d77d61d0b",
+          "callsite": "catledger-import/src/finance-update-repository.js:292",
+          "count": 1,
+          "ms": 0.4497080000001006,
+          "rows": 0
+        },
+        {
+          "fingerprint": "6ac0b830e67d3d1b",
+          "callsite": "catledger-import/src/review-issue-service.js:91",
+          "count": 1,
+          "ms": 0.44500000000334694,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3d3ce9e557a8ceb2",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.42224999999962165,
+          "rows": 1
+        },
+        {
+          "fingerprint": "b90a4d143c101a26",
+          "callsite": "catledger-import/src/import-transaction.js:102",
+          "count": 1,
+          "ms": 0.39975000000049477,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9fa6c9b7f4008117",
+          "callsite": "catledger-import/src/review-issue-service.js:872",
+          "count": 1,
+          "ms": 0.3930419999996957,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f4af46d738c45f9b",
+          "callsite": "catledger-import/src/finance-update-repository.js:278",
+          "count": 1,
+          "ms": 0.34879199999704724,
+          "rows": 0
+        },
+        {
+          "fingerprint": "5a8a77aba0aeb8dc",
+          "callsite": "catledger-import/src/finance-update-repository.js:121",
+          "count": 1,
+          "ms": 0.31616699999722186,
+          "rows": 1
+        },
+        {
+          "fingerprint": "af67434a5a069627",
+          "callsite": "catledger-import/src/command-result.js:7",
+          "count": 1,
+          "ms": 0.3086669999975129,
+          "rows": 0
+        },
+        {
+          "fingerprint": "613c34c3b6b41e23",
+          "callsite": "catledger-import/src/import-transaction.js:84",
+          "count": 1,
+          "ms": 0.2510419999998703,
+          "rows": 1
+        },
+        {
+          "fingerprint": "1cedfa00b0cd2059",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.19379200000184937,
+          "rows": 1
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-import/src/import-transaction.js:19",
+          "count": 1,
+          "ms": 0.1827499999999418,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-import/src/import-transaction.js:76",
+          "count": 1,
+          "ms": 0.14429200000085984,
+          "rows": 0
+        }
+      ],
+      "responseBytes": 988,
+      "heapBefore": 21995280,
+      "heapAfter": 89657808,
+      "rssAfter": 465747968,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 3006325,
+        "system": 175719
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "summary",
+      "ms": 1734,
+      "sqlCount": 267,
+      "sqlMs": 1346.1834109999472,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "5518061fe1b8c8e4",
+          "callsite": "catledger-import/src/finance-update-repository.js:202",
+          "count": 1,
+          "ms": 632.312582999999,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "a0f7cd972a4ad96e",
+          "callsite": "catledger-import/src/finance-update-repository.js:238",
+          "count": 250,
+          "ms": 346.24103399995147,
+          "rows": 0
+        },
+        {
+          "fingerprint": "93b0121d51cd132f",
+          "callsite": "catledger-import/src/finance-update-read.js:97",
+          "count": 1,
+          "ms": 140.01995800000077,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "ca28fa35ba6c9285",
+          "callsite": "catledger-import/src/finance-update-read.js:102",
+          "count": 1,
+          "ms": 121.16437500000029,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "6f60da287be51b51",
+          "callsite": "catledger-import/src/finance-update-repository.js:764",
+          "count": 1,
+          "ms": 40.37037500000224,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "af67434a5a069627",
+          "callsite": "catledger-import/src/finance-update-read.js:122",
+          "count": 1,
+          "ms": 38.913791999999376,
+          "rows": 0
+        },
+        {
+          "fingerprint": "95b7349e60b37183",
+          "callsite": "catledger-import/src/finance-update-read.js:108",
+          "count": 1,
+          "ms": 13.311792000000423,
+          "rows": 2
+        },
+        {
+          "fingerprint": "ee3dd3da85a54df4",
+          "callsite": "catledger-import/src/finance-update-read.js:106",
+          "count": 1,
+          "ms": 8.638958999999886,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-import/src/import-transaction.js:138",
+          "count": 1,
+          "ms": 1.0296249999992142,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ff5189f482e23c12",
+          "callsite": "catledger-import/src/finance-update-repository.js:479",
+          "count": 1,
+          "ms": 0.649874999999156,
+          "rows": 5
+        },
+        {
+          "fingerprint": "49f0429f0a032494",
+          "callsite": "catledger-import/src/finance-update-read.js:19",
+          "count": 1,
+          "ms": 0.6418339999981981,
+          "rows": 3
+        },
+        {
+          "fingerprint": "83bb69de731406d9",
+          "callsite": "catledger-import/src/finance-update-repository.js:176",
+          "count": 1,
+          "ms": 0.5840000000025611,
+          "rows": 0
+        },
+        {
+          "fingerprint": "7c393e2a8981939d",
+          "callsite": "catledger-import/src/finance-update-repository.js:170",
+          "count": 1,
+          "ms": 0.5082499999989523,
+          "rows": 16
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-import/src/import-transaction.js:19",
+          "count": 1,
+          "ms": 0.44637499999953434,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-import/src/import-transaction.js:133",
+          "count": 1,
+          "ms": 0.42000000000189175,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3d3ce9e557a8ceb2",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.3576669999965816,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f5b98d98dc22cd21",
+          "callsite": "catledger-import/src/finance-update-read.js:107",
+          "count": 1,
+          "ms": 0.33874999999898137,
+          "rows": 1
+        },
+        {
+          "fingerprint": "fd6cf95809a034eb",
+          "callsite": "catledger-import/src/import-transaction.js:134",
+          "count": 1,
+          "ms": 0.23416699999870616,
+          "rows": 0
+        }
+      ],
+      "responseBytes": 5081,
+      "heapBefore": 89702944,
+      "heapAfter": 186975392,
+      "rssAfter": 475791360,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 3508599,
+        "system": 86432
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "firstPage",
+      "ms": 73,
+      "sqlCount": 9,
+      "sqlMs": 68.99750099999801,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "0fc528c55a041c0f",
+          "callsite": "catledger-import/src/finance-update-read.js:167",
+          "count": 1,
+          "ms": 37.975750000001426,
+          "rows": 41
+        },
+        {
+          "fingerprint": "c24baf24953c5f0e",
+          "callsite": "catledger-import/src/finance-update-read.js:166",
+          "count": 1,
+          "ms": 20.355666999999812,
+          "rows": 1
+        },
+        {
+          "fingerprint": "61e6112b46e16054",
+          "callsite": "catledger-import/src/finance-update-repository.js:547",
+          "count": 1,
+          "ms": 3.936541999999463,
+          "rows": 41
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-import/src/import-transaction.js:19",
+          "count": 1,
+          "ms": 2.602375000002212,
+          "rows": 1
+        },
+        {
+          "fingerprint": "49f0429f0a032494",
+          "callsite": "catledger-import/src/finance-update-read.js:19",
+          "count": 1,
+          "ms": 1.6281659999986005,
+          "rows": 3
+        },
+        {
+          "fingerprint": "3d3ce9e557a8ceb2",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 1.115125000000262,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-import/src/import-transaction.js:133",
+          "count": 1,
+          "ms": 0.5702089999977034,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-import/src/import-transaction.js:138",
+          "count": 1,
+          "ms": 0.5037090000005264,
+          "rows": 0
+        },
+        {
+          "fingerprint": "fd6cf95809a034eb",
+          "callsite": "catledger-import/src/import-transaction.js:134",
+          "count": 1,
+          "ms": 0.3099579999980051,
+          "rows": 0
+        }
+      ],
+      "responseBytes": 33686,
+      "heapBefore": 187015760,
+      "heapAfter": 27916712,
+      "rssAfter": 468631552,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 22189,
+        "system": 904
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "otherUserWrite",
+      "ms": 20,
+      "sqlCount": 10,
+      "sqlMs": 8.538833999999042,
+      "userLockHoldMs": 7.866833000000042,
+      "userLockWaitMs": 0.4218330000003334,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-transaction.js:120",
+          "count": 1,
+          "ms": 4.082332999998471,
+          "rows": 0
+        },
+        {
+          "fingerprint": "5645f535cab92315",
+          "callsite": "catledger-api/src/transaction-command-service.js:21",
+          "count": 1,
+          "ms": 0.6413749999992433,
+          "rows": 1
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-api/src/ledger-transaction.js:12",
+          "count": 1,
+          "ms": 0.632792000000336,
+          "rows": 1
+        },
+        {
+          "fingerprint": "821fe3e7bc74fb95",
+          "callsite": "catledger-api/src/transaction-command-service.js:181",
+          "count": 1,
+          "ms": 0.6043750000026193,
+          "rows": 1
+        },
+        {
+          "fingerprint": "613c34c3b6b41e23",
+          "callsite": "catledger-api/src/ledger-transaction.js:88",
+          "count": 1,
+          "ms": 0.5906670000003942,
+          "rows": 1
+        },
+        {
+          "fingerprint": "b5a798872d0f4453",
+          "callsite": "catledger-api/src/transaction-command-service.js:41",
+          "count": 1,
+          "ms": 0.5487079999984417,
+          "rows": 1
+        },
+        {
+          "fingerprint": "b90a4d143c101a26",
+          "callsite": "catledger-api/src/ledger-transaction.js:114",
+          "count": 1,
+          "ms": 0.501416999999492,
+          "rows": 1
+        },
+        {
+          "fingerprint": "5d2dec499d71b020",
+          "callsite": "catledger-api/src/ledger-transaction.js:83",
+          "count": 1,
+          "ms": 0.4226249999992433,
+          "rows": 1
+        },
+        {
+          "fingerprint": "bcd2639091d097d5",
+          "callsite": "catledger-api/src/ledger-transaction.js:78",
+          "count": 1,
+          "ms": 0.29741700000158744,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/ledger-transaction.js:79",
+          "count": 1,
+          "ms": 0.2171249999992142,
+          "rows": 0
+        }
+      ],
+      "responseBytes": 491,
+      "heapBefore": 28073528,
+      "heapAfter": 29366912,
+      "rssAfter": 466993152,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 5537,
+        "system": 593
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "sameUserWrite",
+      "ms": 7787,
+      "sqlCount": 10,
+      "sqlMs": 7780.847207999992,
+      "userLockHoldMs": 23.73979099999997,
+      "userLockWaitMs": 7752.782916999997,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "5d2dec499d71b020",
+          "callsite": "catledger-api/src/ledger-transaction.js:83",
+          "count": 1,
+          "ms": 7752.783666999996,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-transaction.js:120",
+          "count": 1,
+          "ms": 14.918207999995502,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/ledger-transaction.js:79",
+          "count": 1,
+          "ms": 3.9904590000005555,
+          "rows": 0
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-api/src/ledger-transaction.js:12",
+          "count": 1,
+          "ms": 3.110624999997526,
+          "rows": 1
+        },
+        {
+          "fingerprint": "bcd2639091d097d5",
+          "callsite": "catledger-api/src/ledger-transaction.js:78",
+          "count": 1,
+          "ms": 1.3977909999994154,
+          "rows": 0
+        },
+        {
+          "fingerprint": "821fe3e7bc74fb95",
+          "callsite": "catledger-api/src/transaction-command-service.js:181",
+          "count": 1,
+          "ms": 1.2901670000064769,
+          "rows": 1
+        },
+        {
+          "fingerprint": "b90a4d143c101a26",
+          "callsite": "catledger-api/src/ledger-transaction.js:114",
+          "count": 1,
+          "ms": 0.9605410000003758,
+          "rows": 1
+        },
+        {
+          "fingerprint": "613c34c3b6b41e23",
+          "callsite": "catledger-api/src/ledger-transaction.js:88",
+          "count": 1,
+          "ms": 0.8412919999973383,
+          "rows": 1
+        },
+        {
+          "fingerprint": "5645f535cab92315",
+          "callsite": "catledger-api/src/transaction-command-service.js:21",
+          "count": 1,
+          "ms": 0.826708000000508,
+          "rows": 1
+        },
+        {
+          "fingerprint": "b5a798872d0f4453",
+          "callsite": "catledger-api/src/transaction-command-service.js:41",
+          "count": 1,
+          "ms": 0.7277499999981956,
+          "rows": 1
+        }
+      ],
+      "responseBytes": 491,
+      "heapBefore": 28055568,
+      "heapAfter": 145379752,
+      "rssAfter": 455999488,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 11156421,
+        "system": 228324
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "post",
+      "ms": 7848,
+      "sqlCount": 1561,
+      "sqlMs": 7139.769188999839,
+      "userLockHoldMs": 7778.676125000002,
+      "userLockWaitMs": 0.38870800000222516,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "a14c8665728d5cfb",
+          "callsite": "catledger-import/src/evidence-integrity.js:9",
+          "count": 250,
+          "ms": 1126.2430380000296,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "ef65c478b7794b39",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 940.4957059999651,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "3bda577c8bbb68eb",
+          "callsite": "catledger-import/src/sql-batch.js:33",
+          "count": 249,
+          "ms": 889.9291189999858,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "68c8d29879b0a789",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 844.4149949998609,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "5518061fe1b8c8e4",
+          "callsite": "catledger-import/src/finance-update-repository.js:202",
+          "count": 1,
+          "ms": 638.1212080000005,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "640b2706a7955733",
+          "callsite": "catledger-import/src/finance-update-posting.js:311",
+          "count": 1,
+          "ms": 438.9580829999977,
+          "rows": 0
+        },
+        {
+          "fingerprint": "83ef526b52219f0d",
+          "callsite": "catledger-import/src/finance-update-posting.js:89",
+          "count": 1,
+          "ms": 367.3142909999988,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "a10030b08b91ce87",
+          "callsite": "catledger-import/src/finance-update-posting.js:604",
+          "count": 1,
+          "ms": 337.18695899999875,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "a0f7cd972a4ad96e",
+          "callsite": "catledger-import/src/finance-update-repository.js:238",
+          "count": 250,
+          "ms": 313.71700299999065,
+          "rows": 0
+        },
+        {
+          "fingerprint": "53accaa0d81da830",
+          "callsite": "catledger-import/src/finance-update-posting.js:188",
+          "count": 1,
+          "ms": 242.7641250000015,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "c3b584ec448c4254",
+          "callsite": "catledger-import/src/finance-update-posting.js:198",
+          "count": 250,
+          "ms": 237.12029000000985,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "51f2f2bc149fa2fb",
+          "callsite": "catledger-import/src/finance-update-posting.js:276",
+          "count": 1,
+          "ms": 174.3145829999994,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-import/src/import-transaction.js:108",
+          "count": 1,
+          "ms": 133.52891600000294,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9a90c81e523d986c",
+          "callsite": "catledger-import/src/finance-update-posting.js:215",
+          "count": 1,
+          "ms": 114.00433299999713,
+          "rows": 1
+        },
+        {
+          "fingerprint": "5a8a77aba0aeb8dc",
+          "callsite": "catledger-import/src/finance-update-repository.js:121",
+          "count": 1,
+          "ms": 67.50091699999757,
+          "rows": 1
+        },
+        {
+          "fingerprint": "32e5ff5febb23c26",
+          "callsite": "catledger-import/src/account-draft.js:107",
+          "count": 1,
+          "ms": 66.19904200000019,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "f8c6d012d12831cd",
+          "callsite": "catledger-import/src/finance-update-posting.js:522",
+          "count": 1,
+          "ms": 56.657750000002125,
+          "rows": 1
+        },
+        {
+          "fingerprint": "68fbfdfb46260a80",
+          "callsite": "catledger-import/src/import-service.js:62",
+          "count": 5,
+          "ms": 55.38658299999952,
+          "rows": 5
+        },
+        {
+          "fingerprint": "6f60da287be51b51",
+          "callsite": "catledger-import/src/finance-update-repository.js:764",
+          "count": 1,
+          "ms": 23.357583000000886,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "73cd8807bd262d69",
+          "callsite": "catledger-import/src/finance-update-posting.js:537",
+          "count": 1,
+          "ms": 10.95866599999863,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec9880c50381cc44",
+          "callsite": "catledger-import/src/sql-batch.js:39",
+          "count": 1,
+          "ms": 7.6646249999976135,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e5650da9d46f785d",
+          "callsite": "catledger-import/src/sql-batch.js:42",
+          "count": 1,
+          "ms": 7.615458000000217,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ff5189f482e23c12",
+          "callsite": "catledger-import/src/finance-update-repository.js:479",
+          "count": 2,
+          "ms": 6.152750000004744,
+          "rows": 10
+        },
+        {
+          "fingerprint": "730473eb03849edf",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 5.464875000005122,
+          "rows": 90
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-import/src/import-transaction.js:19",
+          "count": 12,
+          "ms": 4.762793999983842,
+          "rows": 12
+        },
+        {
+          "fingerprint": "5041a7eb76a61846",
+          "callsite": "catledger-import/src/sql-batch.js:33",
+          "count": 1,
+          "ms": 4.76091599999927,
+          "rows": 90
+        },
+        {
+          "fingerprint": "d410d2aad022e3ce",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 3.7755830000023707,
+          "rows": 90
+        },
+        {
+          "fingerprint": "7c8c17b8d1168329",
+          "callsite": "catledger-import/src/finance-update-posting.js:488",
+          "count": 1,
+          "ms": 2.881083000000217,
+          "rows": 1
+        },
+        {
+          "fingerprint": "242ccffaba21fe14",
+          "callsite": "catledger-import/src/import-repository.js:33",
+          "count": 5,
+          "ms": 2.1699579999913112,
+          "rows": 5
+        },
+        {
+          "fingerprint": "5d2dec499d71b020",
+          "callsite": "catledger-import/src/import-transaction.js:80",
+          "count": 1,
+          "ms": 1.8220000000001164,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9ac2c99d0a1e0b52",
+          "callsite": "catledger-import/src/finance-update-posting.js:627",
+          "count": 1,
+          "ms": 1.6767499999987194,
+          "rows": 5
+        },
+        {
+          "fingerprint": "ba7b12fedc7a3987",
+          "callsite": "catledger-import/src/maintenance-side-effects.js:13",
+          "count": 2,
+          "ms": 1.4902489999949466,
+          "rows": 1
+        },
+        {
+          "fingerprint": "7a233632928187b6",
+          "callsite": "catledger-import/src/account-draft.js:77",
+          "count": 1,
+          "ms": 1.449625000001106,
+          "rows": 0
+        },
+        {
+          "fingerprint": "5f84c947c0df91d2",
+          "callsite": "catledger-import/src/finance-update-posting.js:147",
+          "count": 1,
+          "ms": 1.2179160000014235,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3eaa6425c110495c",
+          "callsite": "catledger-import/src/finance-update-posting.js:616",
+          "count": 1,
+          "ms": 1.100417000001471,
+          "rows": 1
+        },
+        {
+          "fingerprint": "1cedfa00b0cd2059",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.965291000000434,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ae0432c91acbcad8",
+          "callsite": "catledger-import/src/account-draft.js:99",
+          "count": 1,
+          "ms": 0.8355420000007143,
+          "rows": 0
+        },
+        {
+          "fingerprint": "88b3930de39b274b",
+          "callsite": "catledger-import/src/finance-update-posting.js:637",
+          "count": 1,
+          "ms": 0.8298330000034184,
+          "rows": 5
+        },
+        {
+          "fingerprint": "66d9873a2a5dd3d8",
+          "callsite": "catledger-import/src/finance-update-posting.js:243",
+          "count": 1,
+          "ms": 0.7057080000013229,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9291371dacddf650",
+          "callsite": "catledger-import/src/finance-update-posting.js:620",
+          "count": 1,
+          "ms": 0.6124590000035823,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3d3ce9e557a8ceb2",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.5491670000046724,
+          "rows": 1
+        },
+        {
+          "fingerprint": "613c34c3b6b41e23",
+          "callsite": "catledger-import/src/import-transaction.js:84",
+          "count": 1,
+          "ms": 0.4857499999998254,
+          "rows": 1
+        },
+        {
+          "fingerprint": "7c393e2a8981939d",
+          "callsite": "catledger-import/src/finance-update-repository.js:170",
+          "count": 1,
+          "ms": 0.4785410000004049,
+          "rows": 16
+        },
+        {
+          "fingerprint": "0674c1b464fdce6e",
+          "callsite": "catledger-import/src/finance-update-posting.js:645",
+          "count": 1,
+          "ms": 0.473375000001397,
+          "rows": 1
+        },
+        {
+          "fingerprint": "b90a4d143c101a26",
+          "callsite": "catledger-import/src/import-transaction.js:102",
+          "count": 1,
+          "ms": 0.4512089999989257,
+          "rows": 1
+        },
+        {
+          "fingerprint": "af67434a5a069627",
+          "callsite": "catledger-import/src/command-result.js:7",
+          "count": 1,
+          "ms": 0.41895900000235997,
+          "rows": 1
+        },
+        {
+          "fingerprint": "83bb69de731406d9",
+          "callsite": "catledger-import/src/finance-update-repository.js:176",
+          "count": 1,
+          "ms": 0.37150000000110595,
+          "rows": 0
+        },
+        {
+          "fingerprint": "bcd2639091d097d5",
+          "callsite": "catledger-import/src/import-transaction.js:75",
+          "count": 1,
+          "ms": 0.23325000000113505,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-import/src/import-transaction.js:76",
+          "count": 1,
+          "ms": 0.18041599999924074,
+          "rows": 0
+        }
+      ],
+      "responseBytes": 1028,
+      "heapBefore": 27944944,
+      "heapAfter": 145919552,
+      "rssAfter": 456015872,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 11161650,
+        "system": 229520
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "historyPrepare",
+      "ms": 9365,
+      "sqlCount": 1781,
+      "sqlMs": 7838.677467999747,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "ea48b074908c732f",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 1937.7352920000412,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "dea1e7707b36b011",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 1741.5541300000332,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "ad6a76b24e4b1fee",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 1483.0838249999942,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "5518061fe1b8c8e4",
+          "callsite": "catledger-import/src/finance-update-repository.js:202",
+          "count": 1,
+          "ms": 1194.7308750000084,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "c8b47845546222b3",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 249,
+          "ms": 644.0133399998886,
+          "rows": 24900
+        },
+        {
+          "fingerprint": "a0f7cd972a4ad96e",
+          "callsite": "catledger-import/src/finance-update-repository.js:238",
+          "count": 250,
+          "ms": 487.3959619998641,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "343bd5b16067536d",
+          "callsite": "catledger-import/src/finance-update-repository.js:440",
+          "count": 250,
+          "ms": 135.02812900005665,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-import/src/import-transaction.js:108",
+          "count": 1,
+          "ms": 88.87062499999593,
+          "rows": 0
+        },
+        {
+          "fingerprint": "fc45cbb63d13861d",
+          "callsite": "catledger-import/src/loan-transaction-guard.js:7",
+          "count": 250,
+          "ms": 72.71112599982007,
+          "rows": 0
+        },
+        {
+          "fingerprint": "6f986d9f26b9f83c",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 10.373374999995576,
+          "rows": 90
+        },
+        {
+          "fingerprint": "2876f478027a894b",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 6.648291000004974,
+          "rows": 90
+        },
+        {
+          "fingerprint": "f4af46d738c45f9b",
+          "callsite": "catledger-import/src/finance-update-repository.js:278",
+          "count": 1,
+          "ms": 4.8298329999961425,
+          "rows": 1
+        },
+        {
+          "fingerprint": "074f9809c3084edc",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 4.713957999992999,
+          "rows": 90
+        },
+        {
+          "fingerprint": "2aebb34d77d61d0b",
+          "callsite": "catledger-import/src/finance-update-repository.js:292",
+          "count": 1,
+          "ms": 4.49466699999175,
+          "rows": 0
+        },
+        {
+          "fingerprint": "65925b63ece82290",
+          "callsite": "catledger-import/src/finance-update-repository.js:378",
+          "count": 1,
+          "ms": 3.3328330000076676,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9d882f5f71025f5d",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 2.989666000008583,
+          "rows": 90
+        },
+        {
+          "fingerprint": "8cdb32fdaf6df353",
+          "callsite": "catledger-import/src/finance-update-repository.js:379",
+          "count": 1,
+          "ms": 1.740458000000217,
+          "rows": 0
+        },
+        {
+          "fingerprint": "32e7c1374360a509",
+          "callsite": "catledger-import/src/finance-update-repository.js:380",
+          "count": 1,
+          "ms": 1.7330420000071172,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3d3ce9e557a8ceb2",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 2,
+          "ms": 1.0280000000057044,
+          "rows": 2
+        },
+        {
+          "fingerprint": "5a8a77aba0aeb8dc",
+          "callsite": "catledger-import/src/finance-update-repository.js:121",
+          "count": 2,
+          "ms": 0.8816250000090804,
+          "rows": 2
+        },
+        {
+          "fingerprint": "69c688d4a1a2080d",
+          "callsite": "catledger-import/src/finance-update-repository.js:383",
+          "count": 1,
+          "ms": 0.822041999999783,
+          "rows": 0
+        },
+        {
+          "fingerprint": "dbb4afce268b3496",
+          "callsite": "catledger-import/src/finance-update-repository.js:161",
+          "count": 1,
+          "ms": 0.7898330000025453,
+          "rows": 1
+        },
+        {
+          "fingerprint": "018b4a59643b0723",
+          "callsite": "catledger-import/src/finance-update-core.js:72",
+          "count": 1,
+          "ms": 0.7821669999975711,
+          "rows": 1
+        },
+        {
+          "fingerprint": "0eaede903bb3a0f0",
+          "callsite": "catledger-import/src/finance-update-repository.js:101",
+          "count": 1,
+          "ms": 0.7264169999980368,
+          "rows": 0
+        },
+        {
+          "fingerprint": "7c393e2a8981939d",
+          "callsite": "catledger-import/src/finance-update-repository.js:170",
+          "count": 1,
+          "ms": 0.6864169999898877,
+          "rows": 16
+        },
+        {
+          "fingerprint": "770a936b050f2b31",
+          "callsite": "catledger-import/src/finance-update-repository.js:74",
+          "count": 1,
+          "ms": 0.6602090000087628,
+          "rows": 5
+        },
+        {
+          "fingerprint": "af67434a5a069627",
+          "callsite": "catledger-import/src/command-result.js:7",
+          "count": 1,
+          "ms": 0.5929580000083661,
+          "rows": 0
+        },
+        {
+          "fingerprint": "a5d74a419cb86111",
+          "callsite": "catledger-import/src/finance-update-repository.js:382",
+          "count": 1,
+          "ms": 0.5824589999974705,
+          "rows": 0
+        },
+        {
+          "fingerprint": "b90a4d143c101a26",
+          "callsite": "catledger-import/src/import-transaction.js:102",
+          "count": 1,
+          "ms": 0.5792500000097789,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f95b53228ec86187",
+          "callsite": "catledger-import/src/finance-update-repository.js:381",
+          "count": 1,
+          "ms": 0.5713329999998678,
+          "rows": 0
+        },
+        {
+          "fingerprint": "5b92562251caf7fc",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 0.5308749999967404,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9e300afcf72835c6",
+          "callsite": "catledger-import/src/finance-update-repository.js:327",
+          "count": 1,
+          "ms": 0.48104099999181926,
+          "rows": 0
+        },
+        {
+          "fingerprint": "83bb69de731406d9",
+          "callsite": "catledger-import/src/finance-update-repository.js:176",
+          "count": 1,
+          "ms": 0.47704199999861885,
+          "rows": 0
+        },
+        {
+          "fingerprint": "cad515c4254a9418",
+          "callsite": "catledger-import/src/sql-batch.js:20",
+          "count": 1,
+          "ms": 0.4411660000041593,
+          "rows": 5
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-import/src/import-transaction.js:19",
+          "count": 1,
+          "ms": 0.43529100000159815,
+          "rows": 1
+        },
+        {
+          "fingerprint": "613c34c3b6b41e23",
+          "callsite": "catledger-import/src/import-transaction.js:84",
+          "count": 1,
+          "ms": 0.3992080000025453,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-import/src/import-transaction.js:76",
+          "count": 1,
+          "ms": 0.39391700000851415,
+          "rows": 0
+        },
+        {
+          "fingerprint": "1b5485a868983cef",
+          "callsite": "catledger-import/src/finance-update-repository.js:752",
+          "count": 1,
+          "ms": 0.3801670000102604,
+          "rows": 4
+        },
+        {
+          "fingerprint": "1cedfa00b0cd2059",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.24320799999986775,
+          "rows": 1
+        },
+        {
+          "fingerprint": "de79373a409fe48b",
+          "callsite": "catledger-import/src/finance-update-repository.js:140",
+          "count": 1,
+          "ms": 0.21341599999868777,
+          "rows": 1
+        }
+      ],
+      "responseBytes": 975,
+      "heapBefore": 109418168,
+      "heapAfter": 210193048,
+      "rssAfter": 377569280,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 6352920,
+        "system": 289975
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "historyPost",
+      "ms": 5075,
+      "sqlCount": 807,
+      "sqlMs": 4831.36696600022,
+      "userLockHoldMs": 5042.8475000000035,
+      "userLockWaitMs": 0.34520799999882,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "640b2706a7955733",
+          "callsite": "catledger-import/src/finance-update-posting.js:311",
+          "count": 1,
+          "ms": 1395.1243749999994,
+          "rows": 49980
+        },
+        {
+          "fingerprint": "5518061fe1b8c8e4",
+          "callsite": "catledger-import/src/finance-update-repository.js:202",
+          "count": 1,
+          "ms": 1245.7139999999927,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "a0f7cd972a4ad96e",
+          "callsite": "catledger-import/src/finance-update-repository.js:238",
+          "count": 250,
+          "ms": 942.8933329999854,
+          "rows": 49980
+        },
+        {
+          "fingerprint": "83ef526b52219f0d",
+          "callsite": "catledger-import/src/finance-update-posting.js:89",
+          "count": 1,
+          "ms": 455.44004100000893,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "53accaa0d81da830",
+          "callsite": "catledger-import/src/finance-update-posting.js:188",
+          "count": 1,
+          "ms": 307.2639160000108,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "c3b584ec448c4254",
+          "callsite": "catledger-import/src/finance-update-posting.js:198",
+          "count": 250,
+          "ms": 197.20458399994823,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "fc45cbb63d13861d",
+          "callsite": "catledger-import/src/loan-transaction-guard.js:7",
+          "count": 250,
+          "ms": 136.2170510002179,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ec9880c50381cc44",
+          "callsite": "catledger-import/src/sql-batch.js:39",
+          "count": 1,
+          "ms": 25.49862500000745,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e5650da9d46f785d",
+          "callsite": "catledger-import/src/sql-batch.js:42",
+          "count": 1,
+          "ms": 24.67591700000048,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "6f60da287be51b51",
+          "callsite": "catledger-import/src/finance-update-repository.js:764",
+          "count": 1,
+          "ms": 23.775166999999783,
+          "rows": 24990
+        },
+        {
+          "fingerprint": "68fbfdfb46260a80",
+          "callsite": "catledger-import/src/import-service.js:62",
+          "count": 5,
+          "ms": 12.785541000004741,
+          "rows": 5
+        },
+        {
+          "fingerprint": "bcd2639091d097d5",
+          "callsite": "catledger-import/src/import-transaction.js:75",
+          "count": 1,
+          "ms": 12.592499999998836,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-import/src/import-transaction.js:108",
+          "count": 1,
+          "ms": 11.802541000011843,
+          "rows": 0
+        },
+        {
+          "fingerprint": "7a233632928187b6",
+          "callsite": "catledger-import/src/account-draft.js:77",
+          "count": 1,
+          "ms": 8.978208999993512,
+          "rows": 0
+        },
+        {
+          "fingerprint": "32e5ff5febb23c26",
+          "callsite": "catledger-import/src/account-draft.js:107",
+          "count": 1,
+          "ms": 7.984542000005604,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ff5189f482e23c12",
+          "callsite": "catledger-import/src/finance-update-repository.js:479",
+          "count": 2,
+          "ms": 6.243458999990253,
+          "rows": 10
+        },
+        {
+          "fingerprint": "8e6ab8fa3e3a2053",
+          "callsite": "catledger-import/src/import-transaction.js:19",
+          "count": 12,
+          "ms": 2.950209000016912,
+          "rows": 12
+        },
+        {
+          "fingerprint": "9a90c81e523d986c",
+          "callsite": "catledger-import/src/finance-update-posting.js:215",
+          "count": 1,
+          "ms": 1.8069589999940945,
+          "rows": 0
+        },
+        {
+          "fingerprint": "242ccffaba21fe14",
+          "callsite": "catledger-import/src/import-repository.js:33",
+          "count": 5,
+          "ms": 1.112583000009181,
+          "rows": 5
+        },
+        {
+          "fingerprint": "51f2f2bc149fa2fb",
+          "callsite": "catledger-import/src/finance-update-posting.js:276",
+          "count": 1,
+          "ms": 1.1091250000026776,
+          "rows": 0
+        },
+        {
+          "fingerprint": "a10030b08b91ce87",
+          "callsite": "catledger-import/src/finance-update-posting.js:604",
+          "count": 1,
+          "ms": 0.8436660000006668,
+          "rows": 0
+        },
+        {
+          "fingerprint": "88b3930de39b274b",
+          "callsite": "catledger-import/src/finance-update-posting.js:637",
+          "count": 1,
+          "ms": 0.7986670000100276,
+          "rows": 5
+        },
+        {
+          "fingerprint": "9ac2c99d0a1e0b52",
+          "callsite": "catledger-import/src/finance-update-posting.js:627",
+          "count": 1,
+          "ms": 0.7423749999870779,
+          "rows": 5
+        },
+        {
+          "fingerprint": "f8c6d012d12831cd",
+          "callsite": "catledger-import/src/finance-update-posting.js:522",
+          "count": 1,
+          "ms": 0.6940000000031432,
+          "rows": 1
+        },
+        {
+          "fingerprint": "5a8a77aba0aeb8dc",
+          "callsite": "catledger-import/src/finance-update-repository.js:121",
+          "count": 1,
+          "ms": 0.6414579999982379,
+          "rows": 1
+        },
+        {
+          "fingerprint": "7c8c17b8d1168329",
+          "callsite": "catledger-import/src/finance-update-posting.js:488",
+          "count": 1,
+          "ms": 0.6316250000090804,
+          "rows": 1
+        },
+        {
+          "fingerprint": "7c393e2a8981939d",
+          "callsite": "catledger-import/src/finance-update-repository.js:170",
+          "count": 1,
+          "ms": 0.60587499999383,
+          "rows": 16
+        },
+        {
+          "fingerprint": "ae0432c91acbcad8",
+          "callsite": "catledger-import/src/account-draft.js:99",
+          "count": 1,
+          "ms": 0.5882500000006985,
+          "rows": 0
+        },
+        {
+          "fingerprint": "73cd8807bd262d69",
+          "callsite": "catledger-import/src/finance-update-posting.js:537",
+          "count": 1,
+          "ms": 0.5302079999964917,
+          "rows": 1
+        },
+        {
+          "fingerprint": "613c34c3b6b41e23",
+          "callsite": "catledger-import/src/import-transaction.js:84",
+          "count": 1,
+          "ms": 0.5115829999995185,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-import/src/import-transaction.js:76",
+          "count": 1,
+          "ms": 0.46587499999441206,
+          "rows": 0
+        },
+        {
+          "fingerprint": "1cedfa00b0cd2059",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.4647079999995185,
+          "rows": 1
+        },
+        {
+          "fingerprint": "5d2dec499d71b020",
+          "callsite": "catledger-import/src/import-transaction.js:80",
+          "count": 1,
+          "ms": 0.40391599999566097,
+          "rows": 1
+        },
+        {
+          "fingerprint": "83bb69de731406d9",
+          "callsite": "catledger-import/src/finance-update-repository.js:176",
+          "count": 1,
+          "ms": 0.3897910000086995,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3d3ce9e557a8ceb2",
+          "callsite": "catledger-import/src/finance-update-repository.js:53",
+          "count": 1,
+          "ms": 0.359375,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3eaa6425c110495c",
+          "callsite": "catledger-import/src/finance-update-posting.js:616",
+          "count": 1,
+          "ms": 0.35312500000873115,
+          "rows": 1
+        },
+        {
+          "fingerprint": "b90a4d143c101a26",
+          "callsite": "catledger-import/src/import-transaction.js:102",
+          "count": 1,
+          "ms": 0.33037500000500586,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9291371dacddf650",
+          "callsite": "catledger-import/src/finance-update-posting.js:620",
+          "count": 1,
+          "ms": 0.31466699999873526,
+          "rows": 1
+        },
+        {
+          "fingerprint": "0674c1b464fdce6e",
+          "callsite": "catledger-import/src/finance-update-posting.js:645",
+          "count": 1,
+          "ms": 0.2647500000020955,
+          "rows": 1
+        },
+        {
+          "fingerprint": "af67434a5a069627",
+          "callsite": "catledger-import/src/command-result.js:7",
+          "count": 1,
+          "ms": 0.2600000000093132,
+          "rows": 1
+        }
+      ],
+      "responseBytes": 1024,
+      "heapBefore": 180636720,
+      "heapAfter": 212984744,
+      "rssAfter": 329596928,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 8671766,
+        "system": 194849
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "historyLookup",
+      "ms": 1365,
+      "sqlCount": 1,
+      "sqlMs": 1352.4060000000027,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "640b2706a7955733",
+          "callsite": "catledger-import/src/finance-update-posting.js:311",
+          "count": 1,
+          "ms": 1352.4060000000027,
+          "rows": 49980
+        }
+      ],
+      "responseBytes": 17,
+      "heapBefore": 213029744,
+      "heapAfter": 240096888,
+      "rssAfter": 361807872,
+      "processMaxRssKiB": 494720,
+      "cpuMicros": {
+        "user": 128825,
+        "system": 8724
+      }
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "historyPolicy",
+      "created": 0,
+      "reused": 0,
+      "matches": 24990,
+      "excluded": 24990
+    },
+    {
+      "scenario": "history",
+      "rows": 24990,
+      "stage": "verified",
+      "relations": 0,
+      "transactions": 24990,
+      "amountMinor": "2499000",
+      "preparation": "public commands only (upgrade has a seeded old plan version)"
+    }
+  ]
+}

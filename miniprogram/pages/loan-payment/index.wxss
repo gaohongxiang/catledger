@@ -1,4 +1,6 @@
 @import '../loan-detail/index.wxss';
+.source-option { display: flex; align-items: center; gap: 16rpx; padding: 22rpx 0; border-bottom: 1rpx solid var(--theme-line); }
+.source-option > view { flex: 1; min-width: 0; }
 .loan-payment { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
 .allocation-panel { border-top: 1rpx solid var(--theme-line); padding: 28rpx 0 12rpx; margin-top: 28rpx; }
 .allocation-name, .section-title { display: block; font-size: 30rpx; font-weight: 500; overflow-wrap: anywhere; }

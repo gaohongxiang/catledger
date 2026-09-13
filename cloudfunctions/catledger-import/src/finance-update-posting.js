@@ -515,6 +515,8 @@ function createFinanceUpdatePosting({ getPool }) {
         const cashBalancesBeforePost = await queryCashBalances(connection, uid, lockedAccounts)
         const identities = await lockEvidenceIdentities(connection, uid, updateId)
         const history = await existingTransactionsForUpdate(connection, uid, updateId)
+        // 已纳入贷款整组的来源不能再被另一批次只复用其中一项，否则更正/撤销会留下外部半组依赖。
+        await assertNoLoanTransactions(connection, uid, [...history.values()].map(row => row.transactionId))
 
         const postingId = randomUUID()
         await connection.execute(

@@ -4,9 +4,11 @@ const session = require('../../services/page-read-session')
 const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
 const model = require('./model')
-Page({
+Page(Object.assign({}, require('./source'), {
   data: { loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
     accounts: [], accountIndex: -1, categories: [], choices: [], nextLoanCursor: null, kindIndex: 0, kinds: ['实际还款','新放款到账'],
+    modes: ['登记尚未入账的借还','关联已有账目，保持原构成','更正已有账目的本息费'], modeIndex: 0, source: null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
+    sourceMonth: '', nextSourceCursor: null, sourceSelectedCount: 0, editingPayment: null, replacePayment: null,
     treatments: ['尚未入账，本次记支出','已计入负债，本次只清偿'], reviewText: '请填写总额与已确认本息费，未知分项不能提交。', totalYuan: '', date: '', time: '12:00', confirmed: false },
   onLoad(query) { this._loanId = query && query.loanId; this._paymentId = query && query.paymentId; theme.bindPage(this); this.setData({ hasPayment: Boolean(this._paymentId) }) },
   onShow() { return loginGuard.run(this, () => this.load()) },
@@ -43,8 +45,14 @@ Page({
         const value = await api.callApi('loans.get', { loanId: this._loanId }, { force: true })
         if (current()) this.setData({ allocations: [model.allocation(value.loan)], confirmed: false })
       } else {
-        const selected = await Promise.all(this.data.allocations.map(a => api.callApi('loans.get', { loanId: a.loanId }, { force: true })))
-        if (current()) this.setData({ allocations: this.data.allocations.map((a, i) => Object.assign({}, a, { version: selected[i].loan.version, loanName: selected[i].loan.name, kind: selected[i].loan.kind })), confirmed: false })
+        const previous = this.data.editingPayment || this.data.replacePayment
+        const ids = [...new Set(this.data.allocations.map(a => a.loanId).concat(previous ? previous.loans.map(l => l.loanId) : []))]
+        const selected = new Map((await Promise.all(ids.map(loanId => api.callApi('loans.get', { loanId }, { force: true })))).map(value => [value.loan.loanId, value.loan]))
+        if (current()) {
+          const patch = { allocations: this.data.allocations.map(a => Object.assign({}, a, { version: selected.get(a.loanId).version, loanName: selected.get(a.loanId).name, kind: selected.get(a.loanId).kind })), confirmed: false }
+          if (previous) patch[this.data.editingPayment ? 'editingPayment' : 'replacePayment'] = Object.assign({}, previous, { loans: previous.loans.map(l => ({ loanId:l.loanId,version:selected.get(l.loanId).version })) })
+          this.setData(patch)
+        }
       }
     }).catch(error => { if (current()) this.setData({ errorMessage: error.message || '借还记录暂未读取' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
@@ -82,7 +90,7 @@ Page({
   removeLoan(event) { if (this.data.allocations.length > 1) this.setData({ allocations: this.data.allocations.filter(a => a.loanId !== event.currentTarget.dataset.id), confirmed: false }); this.review() },
   accept(outcome) {
     this.setData({ hasPending: false, savedMessage: outcome.recovered ? '上次操作已确认成功' : '操作已完成' })
-    if (/^loans\.(record|reverse)$/.test(outcome.action)) { this._paymentId = outcome.result.paymentId; this.setData({ hasPayment: true }) }
+    if (/^loans\.(record|correct|reverse)$/.test(outcome.action)) { this._paymentId = outcome.result.paymentId; this.setData({ hasPayment: true, editingPayment: null, replacePayment: null }) }
   },
   async save() {
     if (this.data.loading || this.data.saving || (this._paymentId && !pending.pending())) return
@@ -90,7 +98,7 @@ Page({
     this.setData({ saving: true, errorMessage: '', savedMessage: '' })
     try {
       const data = pending.pending() ? {} : model.payload(this.data)
-      const outcome = await pending.send('api', 'loans.record', data)
+      const outcome = await pending.send('api', this.data.editingPayment ? 'loans.correct' : 'loans.record', data)
       if (current()) this.accept(outcome)
     } catch (error) { if (current()) this.setData({ errorMessage: error.message, hasPending: Boolean(pending.pending()) }) }
     finally { if (current()) this.setData({ saving: false }) }
@@ -98,7 +106,7 @@ Page({
   },
   reverse() {
     if (this.data.loading || this.data.saving || !this.data.payment) return
-    wx.showModal({ title: '撤销整组借还', content: '本次新增的全部账目将一起撤销，贷款本金同步恢复。请先确认没有需要保留的后续关联。',
+    wx.showModal({ title: '撤销整组借还', content: this.data.payment.mode === 'associate' ? '只解除贷款关联，保留原有账目，贷款本金同步恢复。' : this.data.payment.mode === 'correctExisting' ? '撤销本次拆分并恢复更正前的来源账目，贷款本金同步恢复。已经消除的重复手工付款不再恢复。' : '本次新增的全部账目将一起撤销，贷款本金同步恢复。请先确认没有需要保留的后续关联。',
       confirmText: '确认撤销', success: result => { if (result.confirm && session.isCurrent(this)) this.confirmReverse() } })
   },
   async confirmReverse() {
@@ -113,4 +121,4 @@ Page({
     finally { if (current()) this.setData({ saving: false }) }
     if (current() && this.data.savedMessage) return this.load()
   }
-})
+}))
