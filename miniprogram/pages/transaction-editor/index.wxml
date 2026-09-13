@@ -1,7 +1,7 @@
 <view class="editor-page {{themeClass}}" style="{{themeStyle}}">
   <view wx:if="{{!readonlyDetail}}" class="editor-heading content-inset">
-
     <text class="editor-title serif-title">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '编辑账单' : '记一笔')}}</text>
+    <button wx:if="{{mode === 'create' && formReady}}" class="editor-import" disabled="{{saving || openingImport}}" bindtap="openImport">导入账单</button>
   </view>
 
   <view wx:if="{{!formReady && !errorMessage}}" class="ui-state" aria-role="status">登录后开始记账</view>

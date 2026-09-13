@@ -93,11 +93,12 @@ test('首页不隐藏账户方向和来源时间', () => {
   assert.doesNotMatch(rule('.account-direction'), /display:\s*none/)
 })
 
-test('底栏轻量样式应用于全部主页面，保留主题和现有点击行为', () => {
+test('底栏轻量样式应用于全部主页面，保留主题并直接进入记一笔', () => {
   assert.ok(tabMarkup.includes('class="tab-shell {{themeClass}} ui-refined"'))
-  for (const handler of ['openEntry', 'switchTab', 'chooseBill', 'openEditor', 'closeEntry']) {
+  for (const handler of ['switchTab', 'openEditor']) {
     assert.ok(tabMarkup.includes('bindtap="' + handler + '"'), handler)
   }
+  assert.doesNotMatch(tabMarkup, /entryOpen|添加账目|选择记账方式/)
   assert.match(tabMarkup, /wx:if="{{!hidden}}"/)
   assert.match(tabStyle, /\.tab-shell\.ui-refined/)
 })

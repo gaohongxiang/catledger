@@ -19,7 +19,14 @@ function runtime() {
   const h = { app, calls, cache, now(value) { now = value }, intercept: null,
     categories, accounts: null, navigation: [], modals: [], uid: '1234567890', clipboard: [], toasts: [], clipboardFails: false }
   const wx = { nextTick: cb => cb(), showModal(options) { h.modals.push(options) }, showToast(options) { h.toasts.push(options.title) },
-    setClipboardData(options) { h.clipboard.push(options.data); if (h.clipboardFails) options.fail(); else options.success() }, navigateBack() { h.navigation.push('back') }, navigateTo(options) { h.navigation.push(options.url) }, redirectTo() {}, stopPullDownRefresh() {},
+    setClipboardData(options) { h.clipboard.push(options.data); if (h.clipboardFails) options.fail(); else options.success() }, navigateBack() { h.navigation.push('back') },
+    navigateTo(options) {
+      h.navigation.push(options.url)
+      h.lastNavigation = options
+      if (h.deferNavigation) return
+      if (h.failNavigation && options.fail) options.fail()
+      if (options.complete) options.complete()
+    }, redirectTo() {}, stopPullDownRefresh() {},
     cloud: { callFunction: async ({ name, data: envelope }) => {
       const { action, data } = envelope
       calls.push({ name, action, data })
@@ -62,7 +69,9 @@ function runtime() {
   }
   h.component = () => {
     const definition = load(path.join(root, 'custom-tab-bar/index.js'))
-    return { ...definition.methods, data: JSON.parse(JSON.stringify(definition.data)), setData(patch) { Object.assign(this.data, patch) } }
+    return { ...definition.methods, data: JSON.parse(JSON.stringify(definition.data)),
+      selectComponent: () => ({ show: options => { h.loginOptions = options } }),
+      setData(patch) { Object.assign(this.data, patch) } }
   }
   return h
 }
@@ -483,22 +492,86 @@ test('目录失败时交易列表仍成功，个人页已确认的连接及数�
   assert.ok(profile.data.errorMessage)
 })
 
-test('中央入口仅登录后低优先级预取目录，失败不阻断导航，退出后取消尚未开始的读取', async () => {
+test('中央记账直达新增页，游客须登录后继续，入口自身不读取目录', async () => {
   const h = runtime(), component = h.component()
   h.app.approved = false
-  component.openEntry()
-  await new Promise(resolve => setTimeout(resolve, 5))
+  component.openEditor()
   assert.equal(h.calls.length, 0)
+  assert.deepEqual(h.navigation, [])
+  assert.equal(typeof h.loginOptions.afterLogin, 'function')
+  // 取消或失败没有成功回调，仍留在原页；成功后才继续原操作。
   h.app.approved = true
-  h.intercept = () => { throw new Error('合成离线') }
-  component.openEntry(); component.openEditor()
-  await new Promise(resolve => setTimeout(resolve, 5))
+  h.loginOptions.afterLogin()
   assert.deepEqual(h.navigation, ['/pages/transaction-editor/index'])
-  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
-  h.calls.length = 0
-  component.openEntry(); h.cache.reset(); h.app.approved = false
-  await new Promise(resolve => setTimeout(resolve, 5))
   assert.equal(h.calls.length, 0)
+  await h.page('transaction-editor').prepareForm()
+  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+})
+
+test('中央记账不重复叠加页面，导航失败后允许重试', () => {
+  const h = runtime(), component = h.component()
+  h.deferNavigation = true
+  component.openEditor(); component.openEditor()
+  assert.equal(h.navigation.length, 1)
+  h.lastNavigation.complete()
+  h.deferNavigation = false; h.failNavigation = true
+  component.openEditor()
+  assert.match(h.toasts[0], /重试/)
+  h.failNavigation = false
+  component.openEditor()
+  assert.equal(h.navigation.length, 3)
+})
+
+test('进入导入再返回保留完整手记草稿，目录失效按ID刷新且不自动入账', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  h.accounts = [{ accountId: 'account-a', name: '合成账户A' }, { accountId: 'account-b', name: '合成账户B' }]
+  await page.prepareForm()
+  page.bindAmount({ detail: { value: '28.50' } })
+  page.bindNote({ detail: { value: '返回后继续填写' } })
+  page.changeSource({ detail: { value: 1 } })
+  page.changeDate({ detail: { value: '2026-09-01' } })
+  page.changeClock({ detail: { value: '12:34' } })
+  const fields = ['amountYuan', 'note', 'date', 'clock', 'typeIndex', 'sourceAccountId', 'selectedCategoryId']
+  const draft = () => fields.map(key => page.data[key])
+  const before = draft()
+  page.openImport()
+  assert.deepEqual(h.navigation, ['/pages/import-workbench/index'])
+  h.accounts.reverse(); h.cache.invalidate(['accountDirectory'])
+  page.onShow(); await page.prepareForm()
+  assert.deepEqual(draft(), before)
+  assert.equal(page.data.sourceIndex, 0)
+  assert.equal(page.data.openingImport, false)
+  assert.ok(h.calls.every(call => call.action === 'catalog.get'))
+})
+
+test('导入导航失败可重试，重复点击及卸载后的响应不会破坏草稿', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  await page.prepareForm()
+  page.bindAmount({ detail: { value: '19.60' } })
+  h.failNavigation = true
+  page.openImport()
+  assert.equal(page.data.amountYuan, '19.60')
+  assert.equal(page.data.openingImport, false)
+  assert.match(h.toasts[0], /重试/)
+  h.failNavigation = false; h.deferNavigation = true
+  page.openImport(); page.openImport()
+  assert.equal(h.navigation.length, 2)
+  page.onUnload()
+  const before = JSON.stringify(page.data), toastCount = h.toasts.length
+  h.lastNavigation.fail(); h.lastNavigation.complete()
+  assert.equal(JSON.stringify(page.data), before)
+  assert.equal(h.toasts.length, toastCount)
+})
+
+test('已有交易模式、保存中及过期会话不能从记账页进入导入', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  await page.prepareForm()
+  for (const mode of ['edit', 'view', 'import', 'link-refund']) {
+    page.setData({ mode }); page.openImport()
+  }
+  page.setData({ mode: 'create', saving: true }); page.openImport()
+  page.setData({ saving: false }); h.cache.reset(); page.openImport()
+  assert.deepEqual(h.navigation, [])
 })
 
 test('连续搜索最后意图立即发出，旧条件无论成功或失败都不能覆盖新结果', async () => {

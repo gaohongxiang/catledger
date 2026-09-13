@@ -1,12 +1,9 @@
 const app = getApp()
-const api = require('../services/catledger-api')
-const cache = require('../services/read-cache')
 const themeService = require('../theme/service')
 
 Component({
   data: {
     hidden: false,
-    entryOpen: false,
     themeId: '',
     themeName: '',
     themeClass: '',
@@ -61,7 +58,6 @@ Component({
         }
         return
       }
-      this.setData({ entryOpen: false })
       const sheet = this.selectComponent('#loginSheet')
       if (sheet && typeof sheet.show === 'function') sheet.show(options || {})
     },
@@ -75,37 +71,18 @@ Component({
       wx.switchTab({ url: tab.pagePath })
     },
 
-    openEntry: function () {
-      this.setData({ entryOpen: true })
-      if (!this.isLoggedIn()) return
-      const session = cache.getSession()
-      setTimeout(() => {
-        if (this.isLoggedIn() && cache.getSession() === session) api.callApi('catalog.get').catch(() => {})
-      }, 0)
-    },
-
-    closeEntry: function () {
-      this.setData({ entryOpen: false })
-    },
-
-    keepEntryOpen: function () {},
-
-    chooseBill: function () {
-      this.closeEntry()
-      if (!this.isLoggedIn()) {
-        this.requestLogin({ afterLogin: this.chooseBill.bind(this) })
-        return
-      }
-      wx.navigateTo({ url: '/pages/import-workbench/index' })
-    },
-
     openEditor: function () {
-      this.closeEntry()
+      if (this._openingEditor) return
       if (!this.isLoggedIn()) {
         this.requestLogin({ afterLogin: this.openEditor.bind(this) })
         return
       }
-      wx.navigateTo({ url: '/pages/transaction-editor/index' })
+      this._openingEditor = true
+      wx.navigateTo({
+        url: '/pages/transaction-editor/index',
+        fail: () => wx.showToast({ title: '暂时无法打开记账，请重试', icon: 'none' }),
+        complete: () => { this._openingEditor = false }
+      })
     }
   }
 })

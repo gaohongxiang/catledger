@@ -1,30 +1,5 @@
 <login-sheet id="loginSheet" />
 
-<view wx:if="{{entryOpen}}" class="entry-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="closeEntry">
-  <view class="entry-sheet" catchtap="keepEntryOpen">
-    <view class="entry-heading">
-
-      <text class="entry-title">添加账目</text>
-      <text class="entry-copy">导入账单更省事，手动记账用来补充少数遗漏。</text>
-    </view>
-    <view class="entry-option entry-option-primary" role="button" aria-label="导入账单，推荐" bindtap="chooseBill">
-      <view class="entry-option-copy">
-        <text class="entry-option-title">导入账单</text>
-        <text class="entry-option-note">支付宝、微信账单</text>
-      </view>
-      <text class="entry-badge">推荐</text>
-    </view>
-    <view class="entry-option entry-option-secondary" role="button" aria-label="手动记一笔" bindtap="openEditor">
-      <view class="entry-option-copy">
-        <text class="entry-option-title">手动记一笔</text>
-        <text class="entry-option-note">补充现金或遗漏交易</text>
-      </view>
-      <text class="entry-arrow">→</text>
-    </view>
-    <text class="entry-cancel" bindtap="closeEntry">取消</text>
-  </view>
-</view>
-
 <view wx:if="{{!hidden}}" class="tab-shell {{themeClass}} ui-refined" style="{{themeStyle}}">
   <view class="tab-side tab-side-left">
     <view
@@ -42,7 +17,7 @@
     </view>
   </view>
 
-  <view class="record-entry" role="button" aria-label="选择记账方式" bindtap="openEntry">
+  <view class="record-entry" role="button" aria-label="记一笔" bindtap="openEditor">
     <view class="record-fab">
       <image class="record-icon" mode="aspectFit" src="{{themeIconRoot}}/tab-plus.svg" />
     </view>

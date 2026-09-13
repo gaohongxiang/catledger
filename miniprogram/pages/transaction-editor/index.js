@@ -70,6 +70,7 @@ Page({
     preparing: false,
     formReady: false,
     saving: false,
+    openingImport: false,
     errorMessage: ''
   },
 
@@ -91,6 +92,20 @@ Page({
   },
 
   onUnload: function () { pageReadSession.end(this) },
+
+  openImport: function () {
+    if (this.data.mode !== 'create' || !this.data.formReady || this.data.saving ||
+        this.data.openingImport || !app.hasLoginApproval() || !pageReadSession.isCurrent(this)) return
+    const isCurrent = pageReadSession.capture(this)
+    this.setData({ openingImport: true })
+    wx.navigateTo({
+      url: '/pages/import-workbench/index',
+      fail: () => {
+        if (isCurrent()) wx.showToast({ title: '暂时无法打开导入，请重试', icon: 'none' })
+      },
+      complete: () => { if (isCurrent()) this.setData({ openingImport: false }) }
+    })
+  },
 
   beginRead: function () {
     return pageReadSession.begin(this,
