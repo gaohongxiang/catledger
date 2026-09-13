@@ -31,6 +31,10 @@ function runtime() {
       const { action, data } = envelope
       calls.push({ name, action, data })
       if (h.intercept) await h.intercept(action, data)
+      if (h.respond) {
+        const response = await h.respond(action, data)
+        if (response !== undefined) return { result: response }
+      }
       let result
       if (action === 'catalog.get') result = { categories: h.categories, accounts: h.accounts || accounts(), uid: h.uid }
       else if (action === 'bootstrap') result = { categories, uid: h.uid }
@@ -83,6 +87,130 @@ async function visit(h, name) {
   await page[method]()
   return page
 }
+
+const unsupportedCatalog = action => action === 'catalog.get'
+  ? { ok: false, error: { code: 'UNSUPPORTED_ACTION', message: '当前操作尚未开放' } } : undefined
+
+test('旧服务不支持目录时自动读取账户分类，草稿保留且我的复用完整结果', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  h.respond = unsupportedCatalog
+  const pending = page.prepareForm()
+  page.bindAmount({ detail: { value: '26.80' } })
+  page.bindNote({ detail: { value: '合成兼容草稿' } })
+  await pending
+  assert.equal(page.data.catalogReady, true)
+  assert.equal(page.data.hasAccounts, true)
+  assert.equal(page.data.catalogError, '')
+  assert.equal(page.data.amountYuan, '26.80')
+  assert.equal(page.data.note, '合成兼容草稿')
+  assert.equal(page.data.accounts[page.data.sourceIndex].accountId, 'account-a')
+  assert.equal(page.data.categories[page.data.categoryIndex].id, 'category-a')
+  assert.deepEqual(h.calls.map(call => call.action).sort(), ['accounts.list', 'bootstrap', 'catalog.get', 'categories.list'])
+  const catalog = h.api.peek('catalog.get')
+  assert.equal(Object.hasOwn(catalog.accounts[0], 'displayBalanceMinor'), false)
+  assert.equal(Object.hasOwn(catalog.accounts[0], 'bookBalanceMinor'), false)
+  const profile = await visit(h, 'profile')
+  assert.equal(profile.data.uid, h.uid)
+  assert.equal(profile.data.accountCount, 1)
+  assert.equal(h.calls.length, 4)
+})
+
+test('旧服务目录到期或结构变更后读取最新选项，已确认身份复用会话缓存', async () => {
+  const h = runtime()
+  h.respond = unsupportedCatalog
+  await h.api.bootstrapAfterConsent()
+  await h.api.callApi('catalog.get')
+  h.calls.length = 0
+  h.now(5 * 60 * 1000 + 1)
+  h.accounts = [{ accountId: 'account-b', name: '更新后的合成账户' }]
+  const next = await h.api.callApi('catalog.get')
+  assert.equal(next.accounts[0].accountId, 'account-b')
+  assert.deepEqual(h.calls.map(call => call.action).sort(), ['accounts.list', 'catalog.get', 'categories.list'])
+  await h.api.callApi('categories.update', { categoryId: 'category-a' })
+  h.categories[0].name = '更新后的合成分类'
+  const updated = await h.api.callApi('catalog.get')
+  assert.equal(updated.categories[0].name, '更新后的合成分类')
+})
+
+test('目录的权限错误和非法参数不触发旧版兼容，也不产生空目录缓存', async () => {
+  for (const code of ['AUTH_REQUIRED', 'INVALID_REQUEST']) {
+    const h = runtime()
+    h.respond = () => ({ ok: false, error: { code, message: '合成拒绝' } })
+    await assert.rejects(h.api.callApi('catalog.get'), error => error.code === code)
+    assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+    assert.equal(h.api.peek('catalog.get'), null)
+  }
+  const h = runtime()
+  h.respond = unsupportedCatalog
+  await assert.rejects(h.api.callApi('catalog.get', { unexpected: true }), error => error.code === 'UNSUPPORTED_ACTION')
+  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+})
+
+test('旧版目录部分读取失败保留草稿且禁止保存，重试完成后才启用', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  h.respond = action => action === 'categories.list'
+    ? { ok: false, error: { code: 'NOT_FOUND', message: '合成内部错误说明' } } : unsupportedCatalog(action)
+  const pending = page.prepareForm()
+  page.bindAmount({ detail: { value: '7.80' } })
+  await pending
+  assert.equal(page.data.catalogReady, false)
+  assert.equal(page.data.catalogError, '暂时无法加载账户和分类')
+  assert.equal(page.data.amountYuan, '7.80')
+  assert.equal(h.api.peek('catalog.get'), null)
+  await page.save()
+  assert.equal(h.calls.some(call => call.action === 'transactions.create'), false)
+  h.respond = unsupportedCatalog
+  await page.retryCatalog()
+  assert.equal(page.data.catalogReady, true)
+  assert.equal(page.data.catalogError, '')
+  assert.equal(page.data.amountYuan, '7.80')
+})
+
+test('旧版目录响应缺字段不能当成空账户或已就绪', async () => {
+  for (const missing of ['accounts.list', 'categories.list', 'bootstrap']) {
+    const h = runtime()
+    h.respond = action => action === missing ? { ok: true, data: {} } : unsupportedCatalog(action)
+    await assert.rejects(h.api.callApi('catalog.get'), error => error.code === 'INVALID_RESPONSE')
+    assert.equal(h.api.peek('catalog.get'), null)
+    h.respond = unsupportedCatalog
+    const recovered = await h.api.callApi('catalog.get', {}, { force: true })
+    assert.equal(recovered.uid, h.uid)
+    assert.equal(recovered.accounts.length, 1)
+    assert.equal(recovered.categories.length, 1)
+  }
+})
+
+test('已有目录刷新失败后，点击重试仍读取服务端，不以旧缓存掩盖错误', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  await page.prepareForm()
+  h.respond = () => ({ ok: false, error: { code: 'NOT_FOUND', message: '合成失败' } })
+  await page.prepareForm({ force: true })
+  assert.equal(page.data.catalogReady, false)
+  assert.ok(page.data.catalogError)
+  const before = h.calls.length
+  await page.retryCatalog()
+  assert.equal(h.calls.length, before + 1)
+  assert.equal(page.data.catalogReady, false)
+  h.respond = null
+  await page.retryCatalog()
+  assert.equal(page.data.catalogReady, true)
+})
+
+test('切换会话后旧目录失败不启动兼容请求，已发出的兼容结果也不回填', async () => {
+  for (const waitingAction of ['catalog.get', 'categories.list']) {
+    const h = runtime()
+    let release
+    h.respond = action => action === waitingAction ? new Promise(resolve => { release = resolve }) : unsupportedCatalog(action)
+    const pending = h.api.callApi('catalog.get')
+    await flush(); await flush()
+    assert.equal(typeof release, 'function')
+    h.cache.reset()
+    release(waitingAction === 'catalog.get' ? unsupportedCatalog('catalog.get') : { ok: true, data: { categories: h.categories } })
+    await assert.rejects(pending, error => error.code === 'SESSION_CHANGED')
+    assert.equal(h.api.peek('catalog.get'), null)
+    if (waitingAction === 'catalog.get') assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+  }
+})
 
 test('首页、明细、账本、我的首次一轮仅3次请求，后续切页0请求且无加载闪烁', async () => {
   const h = runtime()

@@ -154,14 +154,18 @@ Page({
         if (!isCurrent()) return
         self.applyCatalog(result)
         self._catalogToken = api.cacheToken('catalog.get')
-      }).catch(function (error) {
-        if (isCurrent()) self.setData({ catalogError: error.message || '账户和分类读取失败，请重试' })
+      }).catch(function () {
+        if (isCurrent()) self.setData({ catalogError: '暂时无法加载账户和分类' })
       }).finally(function () {
         if (!isCurrent()) return
         self.setData({ preparing: false })
         self._catalogLoad = null
       })
     return Promise.all([this._catalogLoad, refundLoad])
+  },
+
+  retryCatalog: function () {
+    return this.prepareForm({ force: true })
   },
 
   applyCatalog: function (result) {

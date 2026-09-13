@@ -159,6 +159,21 @@
   font-size: 26rpx;
   line-height: 1.6;
 }
+.catalog-retry { display: flex; align-items: center; gap: 16rpx; margin-top: 12rpx; color: var(--theme-text-muted); font-size: 24rpx; }
+.catalog-retry-message { flex: 1; min-width: 0; }
+.editor-page .catalog-retry-button {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 88rpx;
+  margin: 0;
+  padding: 0 12rpx;
+  border: 0;
+  background: transparent;
+  color: var(--theme-accent-strong);
+  font-size: 26rpx;
+  line-height: 88rpx;
+}
+.catalog-retry-button:active { opacity: .7; }
 .save-button { width: 100%; margin-top: 28rpx; }
 .delete-button {
   width: 100%;
