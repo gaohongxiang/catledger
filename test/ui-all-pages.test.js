@@ -85,6 +85,65 @@ test('贷款分页只保留当前页和五个返回游标，退出后迟到响�
   assert.equal(present({ remainingPrincipalMinor: '0', status: 'settled' }).principalText, '¥0.00')
 })
 
+test('贷款实际借还丢失响应后保留原金额；成功后刷新失败不重复写入', async () => {
+  const loan = { loanId: 'loan', name: '合成贷款', kind: 'borrowing', version: 1 }
+  let attempts = 0, created = null
+  const { page, calls } = runtime('pages/loan-payment/index', (action, data) => {
+    if (action === 'catalog.get') return Promise.resolve({ uid: '1234567890', accounts: [{ accountId: 'bank', name: '合成银行', type: 'bank' }], categories: [] })
+    if (action === 'loans.get') return Promise.resolve({ loan })
+    if (action === 'loans.record') {
+      attempts++; created = created || data
+      return attempts === 1 ? Promise.reject(Object.assign(new Error('合成丢失'), { code: 'CLOUD_CALL_FAILED' })) : Promise.resolve({ paymentId: 'payment', version: 1 })
+    }
+    if (action === 'loans.payment') return Promise.reject(new Error('合成读取失败'))
+    throw new Error('unexpected action')
+  })
+  page.onLoad({ loanId: 'loan' }); await page.load()
+  Object.assign(page.data, { accountIndex: 0, totalYuan: '10', date: '2026-09-02', confirmed: true })
+  Object.assign(page.data.allocations[0], { principalYuan: '10', interestYuan: '0', feeYuan: '0' })
+  await page.save(); assert.equal(page.data.hasPending, true)
+  page.data.totalYuan = '99'; await page.save()
+  const writes = calls.filter(x => x.name === 'loans.record')
+  assert.equal(writes.length, 2); assert.deepEqual(writes[0].data, writes[1].data)
+  assert.equal(created.totalMinor, '1000'); assert.equal(page.data.hasPending, false)
+  assert.equal(page._paymentId, 'payment'); assert.match(page.data.savedMessage, /完成/)
+  assert.match(page.data.errorMessage, /读取失败/)
+  await page.save(); assert.equal(calls.filter(x => x.name === 'loans.record').length, 2)
+})
+
+test('借还表单刷新目录按身份保留选项，关闭后晚到响应不回填', async () => {
+  let reversed = false
+  const catalog = { uid: '1234567890', accounts: [{ accountId: 'a', type: 'bank' }, { accountId: 'b', type: 'bank' }], categories: [{ id: 'c', kind: 'expense' }, { id: 'd', kind: 'expense' }] }
+  const { page } = runtime('pages/loan-payment/index', action => {
+    if (action === 'catalog.get') return Promise.resolve({ ...catalog, accounts: reversed ? catalog.accounts.slice().reverse() : catalog.accounts, categories: reversed ? catalog.categories.slice().reverse() : catalog.categories })
+    return Promise.resolve({ loan: { loanId: 'loan', name: '合成贷款', kind: 'borrowing', version: 1 } })
+  })
+  page.onLoad({ loanId: 'loan' }); await page.load()
+  page.data.accountIndex = 1; page.data.allocations[0].interestCategoryIndex = 1
+  page.data.allocations[0].principalYuan = '800'; page.data.confirmed = true
+  reversed = true; await page.load()
+  assert.equal(page.data.accounts[page.data.accountIndex].accountId, 'b')
+  assert.equal(page.data.categories[page.data.allocations[0].interestCategoryIndex].id, 'd')
+  assert.equal(page.data.allocations[0].principalYuan, '800'); assert.equal(page.data.confirmed, false)
+  let resolve
+  const late = runtime('pages/loan-payment/index', () => new Promise(done => { resolve = done }))
+  late.page.onLoad({ loanId: 'loan' }); const loading = late.page.load(); late.page.onUnload()
+  resolve(catalog); await loading; assert.equal(late.page.data.accounts.length, 0)
+})
+
+test('实际借还表单必须明确零和构成，整数守恒支持大额而不经过浮点', () => {
+  assert.ok(routes.includes('pages/loan-payment/index'))
+  const model = require('../miniprogram/pages/loan-payment/model')
+  const data = { accountIndex: 0, accounts: [{ accountId: 'bank' }], categories: [{ id: 'expense' }], confirmed: true, kindIndex: 0,
+    totalYuan: '1000', date: '2026-09-02', time: '10:00', allocations: [{ loanId: 'loan', version: 1, principalYuan: '800', interestYuan: '180', feeYuan: '20', interestIndex: 0, feeIndex: 0, interestCategoryIndex: 0, feeCategoryIndex: 0 }] }
+  assert.equal(model.payload(data).totalMinor, '100000')
+  assert.match(model.review(data), /¥200.00/)
+  assert.throws(() => model.payload({ ...data, allocations: [{ ...data.allocations[0], feeYuan: '' }] }), /金额/)
+  assert.throws(() => model.payload({ ...data, totalYuan: '999' }), /之和/)
+  assert.throws(() => model.payload({ ...data, confirmed: false }), /核对/)
+  assert.equal(model.payload({ ...data, totalYuan: '90071992547409.93', allocations: [{ ...data.allocations[0], principalYuan: '90071992547409.91', interestYuan: '0.01', feeYuan: '0.01' }] }).totalMinor, '9007199254740993')
+})
+
 for (const route of routes) {
   test(route + '：页面、主题和全部声明事件完整，WXML 标签配对', () => {
     const markup = read('miniprogram/' + route + '.wxml')

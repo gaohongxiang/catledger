@@ -39,4 +39,4 @@
 以路由清单为分母，逐页和弹层运行合成状态回归；同时运行既有根目录、两函数、MySQL 测试。浏览器映射截图只作可复现视觉检查，不冒充微信原生和真机验收。检查结果与未运行项写入 validation.md。
 
 
-后续新增贷款页面：`pages/loans/index`、`pages/loan-detail/index` 由 MINI-1908A 管理，沿用现有主题和原生控件；当批原生验证见主看板。
+后续新增贷款页面：`pages/loans/index`、`pages/loan-detail/index`、`pages/loan-payment/index` 由 MINI-1908A 管理，沿用现有主题和原生控件；当批原生验证见主看板。

@@ -11,7 +11,8 @@
     "pages/statistics/index",
     "pages/theme/index",
     "pages/loans/index",
-    "pages/loan-detail/index"
+    "pages/loan-detail/index",
+    "pages/loan-payment/index"
   ],
   "lazyCodeLoading": "requiredComponents",
   "style": "v2",

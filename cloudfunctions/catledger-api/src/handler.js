@@ -4,6 +4,10 @@ const { databaseErrorCode, isRetryableDatabaseError } = require('./database-erro
 const IDENTITY_FIELDS = ['uid', 'openid', 'openId', 'OPENID']
 
 const ERROR_MESSAGES = Object.freeze({
+  LOAN_PRINCIPAL_EXCEEDED: '该操作会使某个历史时点的本金不足，请核对构成与后续还款',
+  LOAN_PRINCIPAL_UNCONFIRMED: '请先补充本金基准及日期',
+  LOAN_BASELINE_LOCKED: '已有实际借还记录，请先在贷款管理处理关联后再修改本金基准或账户',
+  LOAN_TRANSACTION_LOCKED: '这组交易已关联贷款，请前往贷款管理整组处理',
   OPERATION_UNCONFIRMED: '上次操作结果仍待核实，请恢复原请求',
   ACCOUNT_INACTIVE: '账户已停用',
   AUTH_REQUIRED: '未取得可信微信身份',
@@ -23,6 +27,10 @@ const ERROR_MESSAGES = Object.freeze({
   UNSUPPORTED_ACTION: '当前操作尚未开放'
 })
 const PUBLIC_ERROR_CODES = new Set([
+  'LOAN_PRINCIPAL_EXCEEDED',
+  'LOAN_PRINCIPAL_UNCONFIRMED',
+  'LOAN_BASELINE_LOCKED',
+  'LOAN_TRANSACTION_LOCKED',
   'OPERATION_UNCONFIRMED',
   'ACCOUNT_INACTIVE',
   'CONFLICT',

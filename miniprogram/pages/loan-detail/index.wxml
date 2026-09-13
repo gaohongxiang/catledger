@@ -13,7 +13,15 @@
     <view class="detail-row"><text>机构</text><text>{{loan.institution || '未填写'}}</text></view>
     <view class="detail-row"><text>起止日期</text><text>{{loan.startDate || '未填写'}} 至 {{loan.endDate || '未填写'}}</text></view>
     <view class="detail-row"><text>还款方式</text><text>{{loan.repaymentMethod || '未填写'}}</text></view>
+    <button class="primary-button" bindtap="recordPayment" disabled="{{saving || loading}}">登记实际借还</button>
     <button class="secondary-button" bindtap="edit" disabled="{{saving}}">编辑资料</button>
+  </view>
+  <view wx:if="{{loan && !formOpen}}" class="content-inset loan-history">
+    <button class="detail-link" bindtap="loadHistory" disabled="{{historyLoading}}">{{historyLoaded ? '刷新实际记录（第一页）' : '查看实际借还记录'}}</button>
+    <text wx:if="{{historyError}}" class="ui-state ui-state-error">{{historyError}}</text>
+    <text wx:if="{{historyLoaded && !history.length}}" class="form-note">还没有实际借还记录</text>
+    <button wx:for="{{history}}" wx:key="paymentId" class="history-row" data-id="{{item.paymentId}}" bindtap="openPayment"><view><text>{{item.kindText}} · {{item.status === 'active' ? '已登记' : '已撤销'}}</text><text class="detail-muted">{{item.occurredLocalAt}}</text></view><text class="money-number">{{item.totalText}}</text></button>
+    <button wx:if="{{historyNext}}" class="secondary-button" data-next="true" bindtap="loadHistory" disabled="{{historyLoading}}">下一页记录</button>
   </view>
   <view wx:if="{{formOpen}}" class="loan-form content-inset">
     <text class="form-note">只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。</text>
@@ -25,7 +33,9 @@
     <label class="form-field"><text>已确认本金（元）</text><input type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="不清楚可留空" /></label>
     <picker class="form-field" mode="date" value="{{baselineDate}}" data-field="baselineDate" bindchange="input"><text>本金基准日期（日初）</text><view class="picker-value">{{baselineDate || '有本金时必填'}}</view></picker>
     <picker class="form-field" mode="date" value="{{startDate}}" data-field="startDate" bindchange="input"><text>开始日期（选填）</text><view class="picker-value">{{startDate || '未填写'}}</view></picker>
+    <button wx:if="{{startDate}}" class="detail-link" data-field="startDate" bindtap="clearDate">清除开始日期</button>
     <picker class="form-field" mode="date" value="{{endDate}}" data-field="endDate" bindchange="input"><text>结束日期（选填）</text><view class="picker-value">{{endDate || '未填写'}}</view></picker>
+    <button wx:if="{{endDate}}" class="detail-link" data-field="endDate" bindtap="clearDate">清除结束日期</button>
     <label class="form-field"><text>还款方式（选填）</text><input value="{{repaymentMethod}}" data-field="repaymentMethod" bindinput="input" maxlength="80" placeholder="以已确认约定为准" /></label>
     <text wx:if="{{hasPending}}" class="form-note">上次保存结果待核实，再次提交会沿用原请求和原内容。</text>
     <button class="primary-button" loading="{{saving}}" disabled="{{saving || loading}}" bindtap="save">{{hasPending ? '重试上次保存' : '保存贷款资料'}}</button>

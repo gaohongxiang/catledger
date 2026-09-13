@@ -1,3 +1,4 @@
+const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks } = require('./sql-batch')
 const { commandResult } = require('./command-result')
 const { eventAllocation, allocationAccountsValid } = require('./funds-allocation')
@@ -124,6 +125,7 @@ async function validateCorrectionRelations(connection, uid, transaction, draft, 
 }
 
 async function prepareCorrection(connection, uid, update, event, transactions, fields, forUpdate = false) {
+  await assertNoLoanTransactions(connection, uid, transactions.map(row => row.transactionId))
   const impact = correctionImpactResult(event, transactions)
   const created = transactions.filter((row) => row.creationMethod === 'created' && row.role !== 'refund_original')
   const next = fields ? applyFields(event, fields) : event
@@ -159,6 +161,7 @@ async function prepareUndo(connection, uid, update, forUpdate = false) {
       ON t.uid = l.uid AND t.transaction_id = l.transaction_id
     WHERE l.uid = ? AND l.update_id = ? AND l.superseded_at IS NULL AND l.role <> 'refund_original'
     ORDER BY l.transaction_id, l.link_id${forUpdate ? ' FOR UPDATE' : ''}`, [uid, updateId])
+  await assertNoLoanTransactions(connection, uid, linked.map(row => row.transactionId))
   const transactions = linked.map((row) => ({ ...row, linkedVersion: Number(row.linkedVersion), version: Number(row.version), amountMinor: String(row.amountMinor) }))
   const created = [...new Map(transactions.filter((row) => row.creationMethod === 'created').map((row) => [row.transactionId, row])).values()]
   const ids = created.map((row) => row.transactionId)

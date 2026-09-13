@@ -14,3 +14,7 @@
 .form-field input, .picker-value { min-height: 88rpx; box-sizing: border-box; padding: 22rpx 20rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-small); font-size: 28rpx; }
 .loan-form .primary-button { margin-top: 28rpx; }
 .detail-link { min-height: 88rpx; color: var(--theme-accent-strong); background: transparent; font-size: 26rpx; }
+
+.loan-history { padding-top: 28rpx; }
+.history-row { display: flex; justify-content: space-between; gap: 24rpx; text-align: left; padding: 24rpx 0; background: transparent; border-bottom: 1rpx solid var(--theme-line); font-size: 26rpx; line-height: 1.7; }
+.history-row .money-number { overflow-wrap: anywhere; text-align: right; }

@@ -14,6 +14,10 @@
     "loans.get": {"kind": "read", "data": ["loanId"], "returns": "{loan: Loan}"},
     "loans.create": {"kind": "mutation", "data": ["requestId", "name", "institution?", "kind", "accountId", "baselinePrincipalMinor", "baselineDate", "startDate?", "endDate?", "repaymentMethod?"], "returns": "{loanId,version}; metadata only, no Transaction or balance mutation"},
     "loans.update": {"kind": "versioned-mutation", "data": ["requestId", "loanId", "version", "name", "institution?", "kind", "accountId", "baselinePrincipalMinor", "baselineDate", "startDate?", "endDate?", "repaymentMethod?"], "returns": "{loanId,version}"},
+    "loans.record": {"kind": "idempotent-mutation", "data": ["requestId", "mode", "kind", "assetAccountId", "totalMinor", "occurredLocalAt", "timezoneOffsetMinutes", "confirmed", "allocations"], "returns": "{paymentId,version,transactionCount,loans:[{loanId,version}]}; mode=new; max 20 unique versioned loan allocations with explicit principalMinor/interestMinor/feeMinor and expense/accrued treatment; exact sum; atomic Transaction writes"},
+    "loans.reverse": {"kind": "idempotent-versioned-mutation", "data": ["requestId", "paymentId", "version", "loans", "confirmed"], "returns": "{paymentId,version,reversed,loans}; current versions for every allocated loan; reverse whole group or reject without partial changes"},
+    "loans.payment": {"kind": "read", "data": ["paymentId"], "returns": "{payment,allocations,transactions}; max 20 loans / 60 transactions, current loan versions plus frozen confirmedLoanVersion"},
+    "loans.payments": {"kind": "read", "data": ["loanId", "pageSize?", "cursor?"], "returns": "{items,nextCursor}; pageSize 1..40, signed user/loan scope, includes reversal history"},
     "transactions.commandResult": { "kind": "read", "data": ["requestId", "commandAction"], "returns": ["action", "receiptId", "result"], "scope": "current user frozen transaction or loan write receipt; missing or mismatched action remains OPERATION_UNCONFIRMED" },
     "catalog.get": {
       "kind": "read",
@@ -159,6 +163,10 @@
     "data": "action-specific public result; bootstrap includes uid; WeChat OpenID and identity digests are never returned"
   },
   "failureCodes": [
+    "LOAN_TRANSACTION_LOCKED",
+    "LOAN_BASELINE_LOCKED",
+    "LOAN_PRINCIPAL_UNCONFIRMED",
+    "LOAN_PRINCIPAL_EXCEEDED",
     "ACCOUNT_INACTIVE",
     "AUTH_REQUIRED",
     "CONFLICT",

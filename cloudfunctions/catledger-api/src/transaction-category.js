@@ -1,3 +1,4 @@
+const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { ledgerError } = require('./ledger-errors')
 const { executeIdempotentMutation } = require('./ledger-transaction')
 const { validateId, parseVersion } = require('./transaction-domain')
@@ -15,6 +16,7 @@ async function setTransactionCategory(connection, uid, data) {
       WHERE uid = ? AND transaction_id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`, [uid, transactionId])
   const row = rows[0]
   if (!row) throw ledgerError('NOT_FOUND')
+  await assertNoLoanTransactions(connection, uid, [transactionId])
   if (!['income', 'expense'].includes(row.type)) throw ledgerError('VALIDATION_ERROR')
   if (Number(row.version) !== version) throw ledgerError('CONFLICT')
   if (categoryId !== null) {
@@ -40,7 +42,7 @@ async function setTransactionCategory(connection, uid, data) {
 }
 
 function createTransactionCategoryService({ getPool }) {
-  return context => executeIdempotentMutation({ getPool, ...context,
+  return context => executeIdempotentMutation({ getPool, ...context, currentReads: true,
     action: 'transactions.setCategory', operation: setTransactionCategory })
 }
 module.exports = { createTransactionCategoryService, setTransactionCategory }

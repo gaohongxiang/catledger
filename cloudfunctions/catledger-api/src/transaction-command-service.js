@@ -1,3 +1,4 @@
+const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { randomUUID } = require('node:crypto')
 
 const { ledgerError } = require('./ledger-errors')
@@ -97,6 +98,7 @@ async function sumRefunds(connection, uid, originalTransactionId, excludeTransac
 async function prepareRefund(connection, uid, transaction, currentTransactionId = null) {
   if (transaction.type !== 'refund') return null
   if (transaction.originalTransactionId === currentTransactionId) throw ledgerError('VALIDATION_ERROR')
+  await assertNoLoanTransactions(connection, uid, [transaction.originalTransactionId])
   const original = await lockOriginalExpense(connection, uid, transaction.originalTransactionId)
   const refundOccurredAtUtc = transaction.occurredAtUtc
   if (refundOccurredAtUtc && String(original.occurredAtUtc) > String(refundOccurredAtUtc)) {
@@ -285,6 +287,7 @@ function createTransactionCommandService({ getPool }) {
       action: 'transactions.update',
       operation: async (connection, uid, data) => {
         const current = await selectTransaction(connection, uid, data.transactionId, { forUpdate: true })
+        await assertNoLoanTransactions(connection, uid, [current.transactionId])
         ensureEditable(current, data.version)
         const transaction = buildManualTransaction(data)
         await protectRefundedExpense(connection, uid, current, transaction)
@@ -360,6 +363,7 @@ function createTransactionCommandService({ getPool }) {
       action: 'transactions.delete',
       operation: async (connection, uid, data) => {
         const current = await selectTransaction(connection, uid, data.transactionId, { forUpdate: true })
+        await assertNoLoanTransactions(connection, uid, [current.transactionId])
         ensureEditable(current, data.version)
         if (current.type === 'expense') {
           await protectRefundedExpense(connection, uid, current, null)
@@ -386,4 +390,4 @@ function createTransactionCommandService({ getPool }) {
   return { create, linkRefund, remove, update }
 }
 
-module.exports = { createTransactionCommandService, linkPendingRefund }
+module.exports = { createTransactionCommandService, linkPendingRefund, lockAccounts, validateCategory, insertManualTransaction, selectTransaction, protectRefundedExpense }

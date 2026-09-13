@@ -1,4 +1,5 @@
 const ERROR_MESSAGES = Object.freeze({
+  LOAN_TRANSACTION_LOCKED: '这组交易已关联贷款，请前往贷款管理整组处理',
   INSTALLMENT_CONFIRMATION_UNAVAILABLE: '分期本金尚无已确认原消费关系，请保留待核对并从贷款管理登记',
   OPERATION_UNCONFIRMED: '原操作结果尚未确认，请保留草稿并核对原请求',
   RECEIPT_RECONCILIATION_REQUIRED: '历史操作事实需核对，请保留原请求和草稿',

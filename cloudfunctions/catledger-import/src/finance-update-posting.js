@@ -1,3 +1,4 @@
+const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
 const { loadRefundPostingContext } = require('./refund-posting-context')
 const { commandResult } = require('./command-result')
@@ -367,6 +368,7 @@ async function originalTransactionIdForRefund(connection, uid, updateId, eventId
 }
 
 async function validateRefundAmount(connection, uid, originalTransactionId, amountMinor, utcAt) {
+  await assertNoLoanTransactions(connection, uid, [originalTransactionId])
   const [originals] = await connection.execute(
     `SELECT amount_minor AS amountMinor, occurred_at_utc AS utcAt, category_id AS categoryId FROM catledger_transactions
       WHERE uid = ? AND transaction_id = ? AND type = 'expense' AND deleted_at IS NULL

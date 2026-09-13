@@ -4,7 +4,7 @@ const importApi = require('./catledger-import')
 const config = require('../config/cloudbase')
 const clone = value => JSON.parse(JSON.stringify(value))
 const rejected = new Set(['VALIDATION_ERROR', 'CONFLICT', 'NOT_FOUND', 'ACCOUNT_INACTIVE', 'INSUFFICIENT_CASH_BALANCE',
-  'REFUND_EXCEEDS_ORIGINAL', 'REFUNDED_TRANSACTION_LOCKED', 'UNSUPPORTED_CURRENCY', 'UNRESOLVED_IMPORT', 'LOAN_TRANSACTION_LOCKED'])
+  'REFUND_EXCEEDS_ORIGINAL', 'REFUNDED_TRANSACTION_LOCKED', 'UNSUPPORTED_CURRENCY', 'UNRESOLVED_IMPORT', 'LOAN_TRANSACTION_LOCKED', 'LOAN_BASELINE_LOCKED', 'LOAN_PRINCIPAL_UNCONFIRMED', 'LOAN_PRINCIPAL_EXCEEDED'])
 function createPendingWrite(options) {
   const key = () => {
     const scope = options.scope()

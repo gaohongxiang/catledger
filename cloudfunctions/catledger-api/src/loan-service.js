@@ -1,3 +1,5 @@
+const { createLoanPaymentService } = require('./loan-payment-service')
+const { populatePrincipal } = require('./loan-payment-repository')
 const { randomUUID } = require('node:crypto')
 const { executeIdempotentMutation } = require('./ledger-transaction')
 const { executeLedgerRead } = require('./ledger-read')
@@ -39,11 +41,11 @@ function createLoanService({ getPool }) {
       const [rows] = await connection.execute(LOAN_SELECT + ` WHERE l.uid=?${cursor ? ' AND (l.created_at < ? OR (l.created_at=? AND l.loan_id < ?))' : ''}
         ORDER BY l.created_at DESC, l.loan_id DESC LIMIT ?`, [uid, ...(cursor ? [cursor.at,cursor.at,cursor.id] : []), pageSize + 1])
       const items = rows.slice(0, pageSize), last = items.at(-1)
-      return { items: items.map(publicLoan), nextCursor: rows.length > pageSize ? encodeCursor(context.subjectHash,
+      return { items: (await populatePrincipal(connection, uid, items)).map(publicLoan), nextCursor: rows.length > pageSize ? encodeCursor(context.subjectHash,
         { action: 'loans.list', uid, at: String(last.createdAt), id: last.loanId }) : null }
     })
   }
-  async function get(context) { return read(context, async (connection, uid) => ({ loan: publicLoan(await selectLoan(connection, uid, context.data.loanId)) })) }
+  async function get(context) { return read(context, async (connection, uid) => ({ loan: publicLoan((await populatePrincipal(connection, uid, [await selectLoan(connection, uid, context.data.loanId)]))[0]) })) }
   async function create(context) {
     return write(context, 'loans.create', async (connection, uid, data) => {
       const value = loanMetadata(data), loanId = randomUUID()
@@ -60,6 +62,12 @@ function createLoanService({ getPool }) {
       const current = await selectLoan(connection, uid, data.loanId, true)
       if (Number(current.version) !== parseVersion(data.version)) throw ledgerError('CONFLICT')
       const value = loanMetadata(data)
+      if (value.accountId !== current.accountId || value.kind !== current.kind || value.baselinePrincipalMinor !== (current.baselinePrincipalMinor == null ? null : String(current.baselinePrincipalMinor)) || value.baselineDate !== current.baselineDate) {
+        const [[active]] = await connection.execute(`SELECT a.payment_id FROM catledger_loan_payment_allocations a
+          JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id
+          WHERE a.uid=? AND a.loan_id=? AND p.status='active' LIMIT 1`, [uid,current.loanId])
+        if (active) throw ledgerError('LOAN_BASELINE_LOCKED')
+      }
       await validateLiability(connection, uid, value.accountId)
       const [result] = await connection.execute(`UPDATE catledger_loans SET account_id=?,name=?,institution=?,kind=?,baseline_principal_minor=?,
         baseline_date=?,start_date=?,end_date=?,repayment_method=?,version=version+1 WHERE uid=? AND loan_id=? AND version=?`,
@@ -69,6 +77,6 @@ function createLoanService({ getPool }) {
       return { loanId: current.loanId, version: data.version + 1 }
     })
   }
-  return { list, get, create, update }
+  return { list, get, create, update, ...createLoanPaymentService({ getPool, selectLoan }) }
 }
 module.exports = { createLoanService, selectLoan, validateLiability }

@@ -1,3 +1,4 @@
+const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
 const { commandResult } = require('./command-result')
 const repaymentOwnership = require('./repayment-ownership')
@@ -1409,6 +1410,7 @@ function createReviewIssueService({ getPool }) {
           affected.push(await saveEvent(connection, uid, source, next, actionId))
         } else if (decision === 'link_existing_transaction') {
           const transactionId = validateUuid(data.transactionId)
+          await assertNoLoanTransactions(connection, uid, [transactionId])
           const primaryEventId = data.primaryEventId ? validateUuid(data.primaryEventId) : eventIds[0]
           const event = events.find((item) => item.eventId === primaryEventId)
           const [transactions] = await connection.execute(

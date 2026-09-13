@@ -14,6 +14,8 @@ function fixture(options = {}) {
     async execute(sql, values) {
       h.sql.push(sql)
       if (sql.includes('catledger_user_identities')) return [[{ uid: options.uid || 'user-a' }]]
+      if (sql.includes('FROM catledger_users')) return [[{ uid: options.uid || 'user-a' }]]
+      if (sql.includes('FROM catledger_loan_payment_transactions')) return [options.loanLinked ? [{ payment_id: 'loan-payment' }] : []]
       if (sql.includes('INSERT INTO catledger_mutation_receipts')) {
         const [uid,key,action,requestDigest] = values
         if (state.receipts[key]) throw Object.assign(new Error('duplicate'), { code: 'ER_DUP_ENTRY' })
@@ -61,6 +63,7 @@ test('单笔分类更新包含已分类交易，同步关联退款且不改变�
   assert.deepEqual(await h.run(context(data)), first)
   assert.equal(h.state().row.version, 3)
   assert.equal(h.writes.length, 2)
+  assert.ok(h.sql.findIndex(sql => sql.includes('FROM catledger_users')) < h.sql.findIndex(sql => sql.includes('SELECT transaction_id')))
 })
 
 test('分类更新拒绝跨用户、失效分类、类型冲突、旧版本和额外资金字段', async () => {
@@ -68,7 +71,7 @@ test('分类更新拒绝跨用户、失效分类、类型冲突、旧版本和�
     [{ uid: 'user-b' }, data, 'NOT_FOUND'], [{ noCategory: true }, data, 'NOT_FOUND'],
     [{ kind: 'income' }, data, 'VALIDATION_ERROR'], [{ type: 'transfer' }, data, 'VALIDATION_ERROR'],
     [{}, { ...data, version: 1 }, 'CONFLICT'], [{}, { ...data, amountMinor: '9999' }, 'VALIDATION_ERROR'],
-    [{ staleWrite: true }, data, 'CONFLICT']
+    [{ staleWrite: true }, data, 'CONFLICT'], [{ loanLinked: true }, data, 'LOAN_TRANSACTION_LOCKED']
   ]) {
     const h = fixture(options)
     await assert.rejects(h.run(context(body)), { publicCode: code })

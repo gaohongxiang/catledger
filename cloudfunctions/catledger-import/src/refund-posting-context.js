@@ -1,3 +1,4 @@
+const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks } = require('./sql-batch')
 const { importError } = require('./errors')
 const { hasPendingRefundRelation } = require('./organizer-model')
@@ -19,6 +20,7 @@ async function loadRefundPostingContext(connection, uid, updateId, eventIds) {
   }
   const originals = new Map(), amounts = new Map()
   const ids = [...new Set([...direct.values(), ...related.values()])].sort()
+  await assertNoLoanTransactions(connection, uid, ids)
   for (const part of chunks(ids.map(id => [id]))) {
     const placeholders = part.map(() => '?').join(','), values = [uid, ...part.flat()]
     const [rows] = await connection.execute(`SELECT transaction_id AS transactionId,amount_minor AS amountMinor,

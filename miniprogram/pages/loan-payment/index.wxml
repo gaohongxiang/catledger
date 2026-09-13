@@ -1,0 +1,45 @@
+<view class="page-canvas loan-payment {{themeClass}}" style="{{themeStyle}}">
+  <view class="content-inset payment-heading"><text class="detail-kicker">贷款管理 / 实际借还</text><text class="detail-title">{{payment ? payment.kindText + '记录' : '登记实际借还'}}</text></view>
+  <view wx:if="{{savedMessage}}" class="ui-state">{{savedMessage}}</view>
+  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error">{{errorMessage}}</view>
+  <button wx:if="{{errorMessage}}" class="detail-link" disabled="{{saving || loading}}" bindtap="load">重新读取与核实</button>
+  <view wx:if="{{hasPending}}" class="content-inset"><text class="form-note">上次操作结果待核实。重试沿用已保存的原请求。</text><button class="primary-button" loading="{{saving}}" disabled="{{loading || saving}}" bindtap="save">重试上次操作</button></view>
+  <view wx:if="{{loading}}" class="ui-state">正在读取…</view>
+  <view wx:if="{{payment}}" class="content-inset">
+    <text class="principal-value money-number">{{payment.totalText}}</text><text class="form-note">{{payment.occurredLocalAt}} · {{payment.statusText}}</text>
+    <view wx:for="{{allocations}}" wx:key="loanId" class="allocation-panel">
+      <text class="allocation-name">{{item.loanName}}</text>
+      <view class="detail-row"><text>本金</text><text class="money-number">{{item.principalText}}</text></view>
+      <view class="detail-row"><text>利息 · {{item.interestTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.interestText}}</text></view>
+      <view class="detail-row"><text>费用 · {{item.feeTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.feeText}}</text></view>
+    </view>
+    <text class="section-title">对应账目</text>
+    <view wx:for="{{transactions}}" wx:key="transactionId" class="detail-row"><view><text>{{item.flowText}} · {{item.sourceAccount.name}}</text><text class="detail-muted">{{item.destinationAccount ? '转入 ' + item.destinationAccount.name : item.category.name}}</text></view><text class="money-number">{{item.amountText}}</text></view>
+    <button wx:if="{{payment.status === 'active' && !hasPending}}" class="secondary-button" disabled="{{saving || loading}}" loading="{{saving}}" bindtap="reverse">撤销整组借还</button>
+  </view>
+  <view wx:if="{{!hasPayment}}" class="content-inset loan-form">
+    <text class="form-note">只登记尚未记入账本的实际资金变化。先填写已确认的本息费，明确没有的分项填写 0。</text>
+    <picker class="form-field" range="{{kinds}}" value="{{kindIndex}}" bindchange="chooseKind" disabled="{{saving}}"><text>实际类型</text><view class="picker-value">{{kinds[kindIndex]}}</view></picker>
+    <picker class="form-field" range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="chooseAccount" disabled="{{saving}}"><text>{{kindIndex === 1 ? '到账账户' : '付款账户'}}</text><view class="picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择资产账户'}}</view></picker>
+    <label class="form-field"><text>实际总额（元）</text><input type="digit" value="{{totalYuan}}" maxlength="22" data-field="totalYuan" bindinput="input" disabled="{{saving}}" placeholder="以实际到账或扣款为准" /></label>
+    <view class="time-fields"><picker class="form-field" mode="date" value="{{date}}" data-field="date" bindchange="input" disabled="{{saving}}"><text>发生日期</text><view class="picker-value">{{date || '请选择日期'}}</view></picker><picker class="form-field" mode="time" value="{{time}}" data-field="time" bindchange="input" disabled="{{saving}}"><text>时间</text><view class="picker-value">{{time}}</view></picker></view>
+    <view wx:for="{{allocations}}" wx:for-item="a" wx:for-index="i" wx:key="loanId" class="allocation-panel">
+      <view class="allocation-heading"><text class="allocation-name">{{a.loanName}}</text><button wx:if="{{allocations.length > 1}}" class="detail-link" data-id="{{a.loanId}}" bindtap="removeLoan" disabled="{{saving}}">移除此项</button></view>
+      <label class="form-field"><text>本金（元）</text><input type="digit" maxlength="22" value="{{a.principalYuan}}" data-index="{{i}}" data-field="principalYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="请填写已确认本金" /></label>
+      <block wx:if="{{kindIndex === 0}}">
+        <label class="form-field"><text>利息（元）</text><input type="digit" maxlength="22" value="{{a.interestYuan}}" data-index="{{i}}" data-field="interestYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="明确没有请填 0" /></label>
+        <picker class="form-field" range="{{treatments}}" value="{{a.interestIndex}}" data-index="{{i}}" data-field="interestIndex" bindchange="editAllocation" disabled="{{saving}}"><text>利息处理</text><view class="picker-value">{{treatments[a.interestIndex]}}</view></picker>
+        <picker wx:if="{{a.interestIndex === 0}}" class="form-field" range="{{categories}}" range-key="name" value="{{a.interestCategoryIndex < 0 ? 0 : a.interestCategoryIndex}}" data-index="{{i}}" data-field="interestCategoryIndex" bindchange="editAllocation" disabled="{{saving}}"><text>利息支出分类</text><view class="picker-value">{{a.interestCategoryIndex >= 0 ? categories[a.interestCategoryIndex].name : '非零利息需选择'}}</view></picker>
+        <label class="form-field"><text>费用（元）</text><input type="digit" maxlength="22" value="{{a.feeYuan}}" data-index="{{i}}" data-field="feeYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="明确没有请填 0" /></label>
+        <picker class="form-field" range="{{treatments}}" value="{{a.feeIndex}}" data-index="{{i}}" data-field="feeIndex" bindchange="editAllocation" disabled="{{saving}}"><text>费用处理</text><view class="picker-value">{{treatments[a.feeIndex]}}</view></picker>
+        <picker wx:if="{{a.feeIndex === 0}}" class="form-field" range="{{categories}}" range-key="name" value="{{a.feeCategoryIndex < 0 ? 0 : a.feeCategoryIndex}}" data-index="{{i}}" data-field="feeCategoryIndex" bindchange="editAllocation" disabled="{{saving}}"><text>费用支出分类</text><view class="picker-value">{{a.feeCategoryIndex >= 0 ? categories[a.feeCategoryIndex].name : '非零费用需选择'}}</view></picker>
+      </block>
+    </view>
+    <button class="detail-link" bindtap="moreLoans" disabled="{{saving || loading}}">分配给另一笔贷款</button>
+    <view wx:if="{{choices.length}}" class="loan-choices"><button wx:for="{{choices}}" wx:key="loanId" class="detail-link" data-id="{{item.loanId}}" bindtap="addLoan" disabled="{{saving}}">{{item.name}} · {{item.accountName}}</button><button wx:if="{{nextLoanCursor}}" class="secondary-button" data-next="true" bindtap="moreLoans" disabled="{{saving || loading}}">下一页贷款</button></view>
+    <view class="payment-review"><text class="section-title">核对本次影响</text><text class="form-note">{{reviewText}}</text><text class="form-note">{{kindIndex === 1 ? '资产和贷款本金增加，不计收入。' : '付款账户扣除总额，本金分项冲减贷款；尚未入账的利息与费用计为支出，已计负债的分项只清偿。'}}</text></view>
+    <checkbox-group bindchange="confirm"><label class="confirm-label"><checkbox value="confirmed" checked="{{confirmed}}" disabled="{{saving}}" />我已核对总额、各笔贷款的本息费及入账情况</label></checkbox-group>
+    <button class="primary-button" disabled="{{saving || loading || hasPending}}" loading="{{saving}}" bindtap="save">确认并登记实际{{kindIndex === 1 ? '放款' : '还款'}}</button>
+  </view>
+  <login-sheet id="page-login-sheet" />
+</view>

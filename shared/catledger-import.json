@@ -607,6 +607,7 @@
     "idempotentReplay": "导入命令固定小型首次回执；幂等键/请求摘要持久保留。重复请求不重做，摘要另读。旧在途请求只核实原键，历史事实不足明确待核对；一次性离线转换不构成在线旧协议适配。"
   },
   "failureCodes": [
+    "LOAN_TRANSACTION_LOCKED",
     "REQUEST_TOO_LARGE",
     "PAGINATION_REQUIRED",
     "INVALID_CURSOR",

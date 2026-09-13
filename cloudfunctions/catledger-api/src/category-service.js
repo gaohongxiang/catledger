@@ -1,3 +1,4 @@
+const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { randomUUID } = require('node:crypto')
 
 const { normalizeCategoryName } = require('./category-name')
@@ -169,6 +170,7 @@ function createCategoryService({ getPool }) {
       getPool,
       ...context,
       action: 'categories.assignTransactions',
+      currentReads: true,
       operation: async function (connection, uid, data) {
         const category = await lockCategory(connection, uid, data.categoryId)
         if (category.archivedAt != null) throw ledgerError('NOT_FOUND')
@@ -191,6 +193,7 @@ function createCategoryService({ getPool }) {
               AND deleted_at IS NULL FOR UPDATE`,
           [uid].concat(items.map(function (item) { return item.transactionId }))
         )
+        await assertNoLoanTransactions(connection, uid, items.map(item => item.transactionId))
         const requested = new Map(items.map(function (item) { return [item.transactionId, item] }))
         if (transactions.length !== items.length || transactions.some(function (transaction) {
           const item = requested.get(transaction.transactionId)
