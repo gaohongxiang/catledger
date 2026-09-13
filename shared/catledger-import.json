@@ -5,6 +5,35 @@
     "issues[].subjectEventIds?": "当前 uid/update 下非 candidate 的真实事件成员 ID，去重；只读展示，不能作为写入授权",
     "events[].duplicateEvidenceCount?": "当前 uid/update/event 下 evidenceRole=duplicate 的来源记录数；不包含 supporting/discarded"
   },
+  "performanceV2": {
+    "protocolVersion": 2,
+    "status": "PERF-0 frozen; actions wired by PERF-1",
+    "budgetsBytes": {
+      "request": 65536,
+      "receipt": 32768,
+      "summary": 65536,
+      "page": 262144,
+      "legacy": 262144
+    },
+    "pageSize": {
+      "default": 40,
+      "max": 100
+    },
+    "resultMode": "receipt",
+    "cursorScope": [
+      "server subjectHash HMAC-SHA256",
+      "uid",
+      "updateId",
+      "update.version",
+      "planVersion",
+      "active domain version",
+      "normalized filter",
+      "order",
+      "last key"
+    ],
+    "receiptPolicy": "immutable operation outcome persisted in the mutation transaction; same request returns identical result after later changes",
+    "spec": "specs/mini-1906o-consolidated-optimization/PERFORMANCE-V2-CONTRACT.md"
+  },
   "requestEnvelope": {
     "required": ["action"],
     "shape": {

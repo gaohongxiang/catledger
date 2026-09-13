@@ -67,37 +67,21 @@ async function databaseMetrics(rowsPerFile) {
   const pool = mysql.createPool({ host: env.CATLEDGER_TEST_DB_HOST, port: Number(env.CATLEDGER_TEST_DB_PORT || 3306),
     user: env.CATLEDGER_TEST_DB_USER, password: env.CATLEDGER_TEST_DB_PASSWORD, database: env.CATLEDGER_TEST_DB_NAME,
     dateStrings: true, supportBigNumbers: true, bigNumberStrings: true, connectionLimit: 4 })
-  let metrics = {}
-  const observed = { async getConnection() {
-    const connection = await pool.getConnection()
-    let acquired = null
-    return new Proxy(connection, { get(target, key) {
-      if (['execute', 'query', 'beginTransaction', 'commit', 'rollback'].includes(key)) return async (...args) => {
-        const start = performance.now()
-        metrics.sqlCount++
-        try {
-          const result = await target[key](...args)
-          if (typeof args[0] === 'string' && /SELECT uid FROM catledger_users[\s\S]*FOR UPDATE/i.test(args[0])) acquired = performance.now()
-          return result
-        } finally {
-          metrics.sqlMs += performance.now() - start
-          if (['commit', 'rollback'].includes(key) && acquired !== null) { metrics.userLockHoldMs += performance.now() - acquired; acquired = null }
-        }
-      }
-      return typeof target[key] === 'function' ? target[key].bind(target) : target[key]
-    } })
-  } }
+  const observer = require('./performance-observer').createObserver(pool)
+  const observed = observer.pool
   const objects = new Map()
   const service = createImportService({ getPool: () => observed, storage: {
     async downloadExact(_, key) { return objects.get(key) }, async remove() { return true } } })
   const user = { uid: randomUUID(), accountId: randomUUID(), subjectHash: hashWechatSubject('synthetic-benchmark-' + randomUUID()) }
   const context = data => ({ provider: 'wechat-mini', subjectHash: user.subjectHash, data })
   async function measure(stage, operation) {
-    metrics = { sqlCount: 0, sqlMs: 0, userLockHoldMs: 0 }
+    observer.reset()
+    const cpuStart = process.cpuUsage()
+    const heapBefore = process.memoryUsage().heapUsed
     const start = performance.now()
     const result = await operation()
     process.stdout.write(JSON.stringify({ kind: 'server', rows: rowsPerFile * 5, stage, ms: Math.round(performance.now() - start),
-      ...metrics, responseBytes: Buffer.byteLength(JSON.stringify(result)) }) + '\n')
+      ...observer.snapshot(), cpuMicros: process.cpuUsage(cpuStart), heapBefore, heapAfter: process.memoryUsage().heapUsed, responseBytes: Buffer.byteLength(JSON.stringify(result)) }) + '\n')
     return result
   }
   try {
@@ -136,7 +120,9 @@ async function databaseMetrics(rowsPerFile) {
 async function main() {
   const args = process.argv.slice(2)
   const baseline = args.includes('--baseline-ref') ? args[args.indexOf('--baseline-ref') + 1] : null
-  const sizes = args.includes('--small') ? [1000] : [1000, 4998]
+  const selectedRows = args.includes('--rows') ? Number(args[args.indexOf('--rows') + 1]) : null
+  if (selectedRows !== null && ![1000, 5000, 24990].includes(selectedRows)) throw new Error('invalid benchmark size')
+  const sizes = selectedRows ? [selectedRows / 5] : args.includes('--small') ? [1000] : [200, 1000, 4998]
   process.stdout.write(JSON.stringify({ kind: 'environment', node: process.version, platform: process.platform,
     database: 'local isolated MySQL 8.4', files: 5, state: 'first-call then same-process warm; no device/network timing' }) + '\n')
   for (const size of sizes) {
