@@ -50,3 +50,14 @@ PERF-1选择字段：`exclude_events.selection={mode:all|include|all_except,even
 同环境1000条、无CPU profile：prepare 311ms/62 SQL/969字节；summary首读43ms/15 SQL/3731字节；账户归属2286ms/9022 SQL/982字节；事件首屏8ms/9 SQL/33590字节；post1553ms/6061 SQL/用户锁1535ms/1021字节。正式交易数1000完整保留。该批只解决传输和返回路径，逐笔SQL仍待PERF-2；不代表上限或云端验收。
 
 本批全量634项（根300/API97/import237）全部通过，无失败/跳过；静态526文件/104运行模块，两函数生产依赖审计0。121成员反例验证分页无遗漏、部分排除后余下120成员仍阻塞、跨筛选/过期游标拒绝、长原文分段重建和后续入账后首次回执不变。
+
+
+## PERF-2 执行证据
+
+同一隔离MySQL8.4、五文件/24990条普通合成账单，2026-09-13单次无CPU profile：prepareUpdate 9411ms/1031 SQL/975字节；resolveAccounts 6998ms/1775 SQL/988字节；post 7127ms/1561 SQL/锁7096ms/1028字节。三个动作CPU分别6899/3288/2473ms；SQL等待4142/5859/6353ms；堆前后85→306、355→90、92→274MB（十进制，非峰值）。最终三次分布由PERF-5重新测量，不把此单次当最终门禁。
+
+历史复用初版集合查询仍退化：EXPLAIN显示prior_evidence和linked选择PRIMARY且仅使用uid，24990测试在执行超过123秒时主动中止、整批回滚。修复后使用已有idx_catledger_event_evidence_update_event(uid,update_id)、idx_catledger_import_rows_identity(uid,identity_id)、idx_catledger_event_evidence_row(uid,row_id)、uk_catledger_event_transaction_role(uid,event_id)，保留STRAIGHT_JOIN规定起点。成员版本更新由反复扫描问题组改成一次读取成员后按主键分块，整理从14154ms降至6998ms。证据数量只GROUP BY event_id，不再GROUP BY大JSON。无需新增索引或迁移；EXPLAIN的估算基数不冒充实际行数。
+
+复现：`node scripts/benchmark-import.js --database --rows 24990 --inspect-plan`。脚本强制本机*_test库，输出仅指纹/调用点/访问路径/计数；SQL正文、参数、原始账单不输出。核心SQL约为4C+31、7C+25、6C+61，均低于冻结上限；新增块字节与占位符门禁、第二块中断回滚及原请求重试断言。
+
+PERF-2最终全量635项（根301/API97/import237）通过，0失败/跳过；静态528文件/105运行模块通过，两函数生产依赖审计0。

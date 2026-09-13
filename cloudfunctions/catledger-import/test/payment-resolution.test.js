@@ -160,7 +160,8 @@ test('完整整理读取保留服务端覆盖计算依据，公开事件不泄�
     if (sql.includes('FROM catledger_categories') || sql.includes('FROM catledger_import_category_mappings')) {
       assert.deepEqual(values, ['synthetic-user']); return [[]]
     }
-    assert.deepEqual(values, ['synthetic-user', 'synthetic-update'])
+    assert.deepEqual(values, sql.includes('evidence_counts')
+      ? ['synthetic-user', 'synthetic-update', 'synthetic-user', 'synthetic-update'] : ['synthetic-user', 'synthetic-update'])
     assert.ok(replies.length, '不应新增额外查询')
     return [replies.shift()]
   } }

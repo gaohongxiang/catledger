@@ -11,7 +11,7 @@ const { paymentAccountDetails, paymentReferenceKey } = require('./payment-accoun
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { evaluatePostability } = require('./organizer-model')
 
-const INSERT_CHUNK_SIZE = 100
+const { insertMany, chunks } = require('./sql-batch')
 
 function parseJson(value, fallback) {
   if (value == null) return fallback
@@ -20,14 +20,6 @@ function parseJson(value, fallback) {
     return JSON.parse(value)
   } catch (error) {
     return fallback
-  }
-}
-
-async function insertMany(connection, prefix, rows) {
-  for (let index = 0; index < rows.length; index += INSERT_CHUNK_SIZE) {
-    const part = rows.slice(index, index + INSERT_CHUNK_SIZE)
-    const placeholders = part.map((row) => `(${row.map(() => '?').join(', ')})`).join(', ')
-    await connection.execute(`${prefix} ${placeholders}`, part.flat())
   }
 }
 
@@ -241,7 +233,7 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
   )
   const identityIds = [...new Set(rows.map((row) => row.identityId).filter(Boolean))]
   const linkedByIdentity = new Map()
-  if (identityIds.length > 0) {
+  for (const part of chunks(identityIds.sort().map(id => [id]))) {
     const [links] = await connection.execute(
       `SELECT r.identity_id AS identityId, linked.transaction_id AS transactionId,
               t.version AS transactionVersion
@@ -256,9 +248,9 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
          JOIN catledger_transactions t
            ON t.uid = linked.uid AND t.transaction_id = linked.transaction_id
           AND t.deleted_at IS NULL
-        WHERE r.uid = ? AND r.identity_id IN (${identityIds.map(() => '?').join(', ')})
+        WHERE r.uid = ? AND r.identity_id IN (${part.map(() => '?').join(', ')})
         ORDER BY linked.created_at, linked.link_id`,
-      [uid, ...identityIds]
+      [uid, ...part.flat()]
     )
     links.forEach((link) => {
       if (!linkedByIdentity.has(link.identityId)) linkedByIdentity.set(link.identityId, link)
@@ -540,6 +532,11 @@ function publicEvent(row) {
 
 async function selectEvents(connection, uid, updateId, { includeFieldSources = false, eventIds = null } = {}) {
   if (eventIds && !eventIds.length) return []
+  if (eventIds && eventIds.length > 100) {
+    const result = []
+    for (const part of chunks([...new Set(eventIds)].map(id => [id]))) result.push(...await selectEvents(connection, uid, updateId, { includeFieldSources, eventIds: part.flat() }))
+    return result.sort((a, b) => String(a.localAt).localeCompare(String(b.localAt)) || a.eventId.localeCompare(b.eventId))
+  }
   const [rows] = await connection.execute(
     `SELECT e.event_id AS eventId, e.status, e.version,
             e.flow_direction AS flowDirection, e.economic_nature AS economicNature,
@@ -548,17 +545,18 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
             e.event_local_at AS localAt, e.event_utc_at AS utcAt, e.amount_minor AS amountMinor, e.currency,
             e.category_id AS categoryId, e.reason_codes_json AS reasonCodes,
             e.field_sources_json AS fieldSources,
-            COUNT(all_evidence.row_id) AS evidenceCount,
-            COALESCE(SUM(all_evidence.evidence_role = 'duplicate'), 0) AS duplicateEvidenceCount,
+            COALESCE(evidence_counts.evidenceCount, 0) AS evidenceCount,
+            COALESCE(evidence_counts.duplicateEvidenceCount, 0) AS duplicateEvidenceCount,
             primary_evidence.row_id AS primaryRowId,
             r.source_row_number AS rowNumber, r.counterparty_raw AS counterparty,
             r.item_raw AS item, r.note_raw AS sourceNote,
             r.payment_method_raw AS paymentMethod,
             s.source_type_snapshot AS sourceType, s.file_name_snapshot AS fileName
        FROM catledger_economic_events e
-       LEFT JOIN catledger_event_evidence all_evidence
-         ON all_evidence.uid = e.uid AND all_evidence.update_id = e.update_id
-        AND all_evidence.event_id = e.event_id AND all_evidence.evidence_role <> 'discarded'
+       LEFT JOIN (SELECT event_id, COUNT(*) AS evidenceCount, SUM(evidence_role = 'duplicate') AS duplicateEvidenceCount
+         FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role <> 'discarded'
+         ${eventIds ? ` AND event_id IN (${eventIds.map(() => '?').join(',')})` : ''}
+         GROUP BY event_id) evidence_counts ON evidence_counts.event_id = e.event_id
        LEFT JOIN catledger_event_evidence primary_evidence
          ON primary_evidence.uid = e.uid AND primary_evidence.update_id = e.update_id
         AND primary_evidence.event_id = e.event_id AND primary_evidence.evidence_role = 'primary'
@@ -567,15 +565,8 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
        LEFT JOIN catledger_finance_update_sources s
          ON s.uid = r.uid AND s.update_id = e.update_id AND s.batch_id = r.batch_id
       WHERE e.uid = ? AND e.update_id = ?${eventIds ? ` AND e.event_id IN (${eventIds.map(() => '?').join(',')})` : ''}
-      GROUP BY e.event_id, e.status, e.version, e.flow_direction, e.economic_nature,
-               e.ledger_account_id, e.counterparty_ledger_account_id, e.event_local_at, e.event_utc_at,
-               e.amount_minor, e.currency, e.category_id, e.reason_codes_json,
-               e.field_sources_json,
-               primary_evidence.row_id, r.source_row_number, r.counterparty_raw,
-               r.item_raw, r.note_raw, r.payment_method_raw,
-               s.source_type_snapshot, s.file_name_snapshot
       ORDER BY e.event_local_at, e.event_id`,
-    [uid, updateId, ...(eventIds || [])]
+    [uid, updateId, ...(eventIds || []), uid, updateId, ...(eventIds || [])]
   )
   return rows.map(row => includeFieldSources
     ? { ...publicEvent(row), fieldSources: parseJson(row.fieldSources, {}) } : publicEvent(row))

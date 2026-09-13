@@ -1,3 +1,4 @@
+const { chunks, insertMany } = require('./sql-batch')
 const { randomUUID } = require('node:crypto')
 
 const { importError } = require('./errors')
@@ -81,27 +82,19 @@ async function materializeAccountDrafts(connection, uid, updateId, reachableDraf
     [uid, updateId]
   )
   const reachable = drafts.filter((draft) => reachableDraftIds.has(draft.accountId))
-  for (const draft of reachable) {
-    try {
-      await connection.execute(
-        `INSERT INTO catledger_accounts
-           (uid, account_id, type, nature, name, normalized_name, currency)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [uid, draft.accountId, draft.type, draft.nature, draft.name, draft.normalizedName, draft.currency]
-      )
-    } catch (error) {
-      if (error && error.code === 'ER_DUP_ENTRY') throw importError('CONFLICT')
-      throw error
-    }
+  try {
+    await insertMany(connection, `INSERT INTO catledger_accounts
+      (uid, account_id, type, nature, name, normalized_name, currency) VALUES`,
+      reachable.map(draft => [uid, draft.accountId, draft.type, draft.nature, draft.name, draft.normalizedName, draft.currency]))
+  } catch (error) {
+    if (error && error.code === 'ER_DUP_ENTRY') throw importError('CONFLICT')
+    throw error
   }
-  if (reachable.length > 0) {
-    await connection.execute(
-      `UPDATE catledger_finance_update_account_drafts
-          SET materialized_at = CURRENT_TIMESTAMP(3), superseded_at = NULL
-        WHERE uid = ? AND update_id = ? AND materialized_at IS NULL
-          AND draft_account_id IN (${reachable.map(() => '?').join(', ')})`,
-      [uid, updateId, ...reachable.map((draft) => draft.accountId)]
-    )
+  for (const part of chunks(reachable.map(draft => [draft.accountId]))) {
+    await connection.execute(`UPDATE catledger_finance_update_account_drafts
+      SET materialized_at = CURRENT_TIMESTAMP(3), superseded_at = NULL
+      WHERE uid = ? AND update_id = ? AND materialized_at IS NULL
+        AND draft_account_id IN (${part.map(() => '?').join(',')})`, [uid, updateId, ...part.flat()])
   }
   await connection.execute(`UPDATE catledger_finance_update_account_drafts
     SET superseded_at = COALESCE(superseded_at, CURRENT_TIMESTAMP(3))
@@ -125,9 +118,20 @@ async function synchronizeDraftReachability(connection, uid, updateId, { abandon
             field_sources_json AS fieldSources FROM catledger_economic_events
       WHERE uid = ? AND update_id = ? AND status IN ('ready', 'needs_action')`, [uid, updateId])
   const reachable = abandoned ? new Set() : await reachableDraftIds(connection, uid, updateId, events)
-  await connection.execute(`UPDATE catledger_finance_update_account_drafts
-    SET superseded_at = ${reachable.size ? `IF(draft_account_id IN (${[...reachable].map(() => '?').join(', ')}), NULL, COALESCE(superseded_at, CURRENT_TIMESTAMP(3)))` : 'COALESCE(superseded_at, CURRENT_TIMESTAMP(3))'}
-    WHERE uid = ? AND update_id = ? AND materialized_at IS NULL`, [...reachable, uid, updateId])
+  if (!reachable.size) {
+    await connection.execute(`UPDATE catledger_finance_update_account_drafts
+      SET superseded_at = COALESCE(superseded_at, CURRENT_TIMESTAMP(3))
+      WHERE uid = ? AND update_id = ? AND materialized_at IS NULL`, [uid, updateId])
+    return
+  }
+  const [drafts] = await connection.execute(`SELECT draft_account_id AS accountId FROM catledger_finance_update_account_drafts
+    WHERE uid = ? AND update_id = ? AND materialized_at IS NULL ORDER BY draft_account_id`, [uid, updateId])
+  for (const part of chunks(drafts.map(draft => [draft.accountId, reachable.has(draft.accountId) ? 1 : 0]), { parametersPerRow: 3, fixedParameters: 2 })) {
+    await connection.execute(`UPDATE catledger_finance_update_account_drafts SET superseded_at = CASE draft_account_id
+      ${part.map(() => 'WHEN ? THEN IF(?, NULL, COALESCE(superseded_at, CURRENT_TIMESTAMP(3)))').join(' ')} END
+      WHERE uid = ? AND update_id = ? AND materialized_at IS NULL AND draft_account_id IN (${part.map(() => '?').join(',')})`,
+    [...part.flat(), uid, updateId, ...part.map(row => row[0])])
+  }
 }
 
 function reachableAccountIds(events) {

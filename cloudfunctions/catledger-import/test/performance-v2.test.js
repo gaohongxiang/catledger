@@ -2,7 +2,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
 const { encodeCursor, decodeCursor } = require('../src/view-cursor')
-const { BUDGET, jsonBytes } = require('../src/performance-contract')
+const { BUDGET, jsonBytes, ordinarySqlBudget } = require('../src/performance-contract')
 const { createImportService } = require('../src/import-service')
 const { hashWechatSubject } = require('../src/handler')
 const { createObserver } = require('../../../scripts/performance-observer')
@@ -23,7 +23,18 @@ test('V2 pages conserve hidden members; receipts stay immutable after posting; o
     user: env.CATLEDGER_TEST_DB_USER, password: env.CATLEDGER_TEST_DB_PASSWORD, database: env.CATLEDGER_TEST_DB_NAME,
     dateStrings: true, supportBigNumbers: true, bigNumberStrings: true, connectionLimit: 4 })
   const observer = createObserver(pool), objects = new Map()
-  const service = createImportService({ getPool: () => observer.pool, storage: { async downloadExact(_, key) { return objects.get(key) }, async remove() { return true } } })
+  let failLinkChunk = false, linkChunks = 0
+  const faultPool = { async getConnection() {
+    const connection = await observer.pool.getConnection()
+    return new Proxy(connection, { get(target, key) {
+      if (key === 'execute') return async (sql, values) => {
+        if (failLinkChunk && /INSERT INTO catledger_economic_event_transactions/.test(sql) && ++linkChunks === 2) throw new Error('synthetic chunk interruption')
+        return target.execute(sql, values)
+      }
+      return typeof target[key] === 'function' ? target[key].bind(target) : target[key]
+    } })
+  } }
+  const service = createImportService({ getPool: () => faultPool, storage: { async downloadExact(_, key) { return objects.get(key) }, async remove() { return true } } })
   const uid = randomUUID(), accountId = randomUUID(), subjectHash = hashWechatSubject('synthetic-v2-' + uid)
   const context = data => ({ provider: 'wechat-mini', subjectHash, data })
   try {
@@ -36,7 +47,9 @@ test('V2 pages conserve hidden members; receipts stay immutable after posting; o
     const file = prepared.files[0]; objects.set(file.cloudPath, content)
     const parsed = await service.parseFile(context({ requestId: randomUUID(), importId: file.importId, fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 }))
     const request = { requestId: randomUUID(), resultMode: 'receipt', batchIds: [parsed.batch.batchId] }
+    observer.reset()
     const receipt = await service.financeUpdatePrepare(context(request))
+    assert.ok(observer.snapshot().sqlCount <= ordinarySqlBudget('prepareUpdate', 121))
     assert.equal(receipt.kind, 'operation-receipt')
     assert.ok(jsonBytes(receipt) < BUDGET.receipt)
     const updateId = receipt.updateId
@@ -72,8 +85,10 @@ test('V2 pages conserve hidden members; receipts stay immutable after posting; o
     const remaining = await service.reviewIssueGet(context({ protocolVersion: 2, issueId: issue.issueId }))
     assert.equal(remaining.issue.status, 'open'); assert.equal(remaining.total, 120)
     await assert.rejects(service.financeUpdatePost(context({ resultMode: 'receipt', requestId: randomUUID(), updateId, version: partial.appliedVersion })), { publicCode: 'UNRESOLVED_IMPORT' })
+    observer.reset()
     const mapped = await service.reviewIssueResolveAccountMappings(context({ requestId: randomUUID(), resultMode: 'receipt', updateId, updateVersion: partial.appliedVersion,
       decisions: [{ issueId: issue.issueId, issueVersion: remaining.issue.version, operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountId: accountId } }] }))
+    assert.ok(observer.snapshot().sqlCount <= ordinarySqlBudget('resolveAccounts', 120))
     await assert.rejects(service.economicEventList(context({ updateId, cursor: first.nextCursor })), { publicCode: 'STALE_VIEW' })
     const mappedSummary = await service.financeUpdateSummary(context({ updateId }))
     assert.equal(mappedSummary.coverage.readySelectedEvents, 120)
@@ -89,7 +104,14 @@ test('V2 pages conserve hidden members; receipts stay immutable after posting; o
     } while (detailCursor)
     assert.deepEqual(JSON.parse(reconstructed), raw)
     const postRequest = { resultMode: 'receipt', requestId: randomUUID(), updateId, version: mapped.appliedVersion }
+    failLinkChunk = true
+    await assert.rejects(service.financeUpdatePost(context(postRequest)), /synthetic chunk interruption/)
+    const [[rolledBack]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [uid])
+    assert.equal(Number(rolledBack.count), 0)
+    assert.equal((await service.financeUpdateSummary(context({ updateId }))).update.version, mapped.appliedVersion)
+    failLinkChunk = false; observer.reset()
     const posted = await service.financeUpdatePost(context(postRequest))
+    assert.ok(observer.snapshot().sqlCount <= ordinarySqlBudget('post', 120))
     assert.equal(posted.posting.createdTransactionCount, 120)
     assert.deepEqual(await service.financeUpdatePrepare(context(request)), receipt)
     assert.deepEqual(await service.financeUpdatePost(context(postRequest)), posted)

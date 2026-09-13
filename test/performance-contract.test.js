@@ -23,3 +23,17 @@ test('SQL observer reports counts and rows without SQL literals or binding value
   observer.reset()
   assert.equal(observer.snapshot().sqlCount, 0)
 })
+
+
+test('SQL chunks respect UTF-8 bytes, placeholder and row limits before writes', () => {
+  const { chunks } = require('../cloudfunctions/catledger-import/src/sql-batch')
+  const input = Array.from({ length: 201 }, () => ['合成'.repeat(6000), 1])
+  const parts = [...chunks(input)]
+  assert.equal(parts.flat().length, 201)
+  for (const part of parts) {
+    assert.ok(part.length <= 100)
+    assert.ok(4096 + part.reduce((sum, row) => sum + Buffer.byteLength(JSON.stringify(row)) + 64, 0) <= BUDGET.sqlBytes)
+  }
+  assert.throws(() => [...chunks([['猫'.repeat(BUDGET.sqlBytes)]])], { publicCode: 'REQUEST_TOO_LARGE' })
+  assert.equal([...chunks(Array.from({ length: 100 }, () => [1]), { parametersPerRow: 100, fixedParameters: 1 })][0].length, 59)
+})

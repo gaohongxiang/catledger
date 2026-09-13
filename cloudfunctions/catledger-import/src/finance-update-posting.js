@@ -1,3 +1,4 @@
+const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
 const { commandResult } = require('./command-result')
 const { eventAllocation, allocationAccountsValid, allocationTransactionDrafts } = require('./funds-allocation')
 const { paymentResolutionForEvent } = require('./payment-resolution')
@@ -141,28 +142,28 @@ async function lockAccountsAndCategories(connection, uid, events) {
     ]
   }).filter(Boolean))].sort()
   const accounts = new Map()
-  if (accountIds.length > 0) {
+  for (const part of chunks(accountIds.map(id => [id]))) {
     const [rows] = await connection.execute(
       `SELECT account_id AS accountId, type, currency, archived_at AS archivedAt
          FROM catledger_accounts
-        WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(', ')})
+        WHERE uid = ? AND account_id IN (${part.map(() => '?').join(', ')})
         ORDER BY account_id FOR UPDATE`,
-      [uid, ...accountIds]
+      [uid, ...part.flat()]
     )
-    if (rows.length !== accountIds.length || rows.some((row) => row.archivedAt != null)) throw importError('UNRESOLVED_IMPORT')
+    if (rows.length !== part.length || rows.some((row) => row.archivedAt != null)) throw importError('UNRESOLVED_IMPORT')
     rows.forEach((row) => accounts.set(row.accountId, row))
   }
   const categoryIds = [...new Set(events.map((event) => event.categoryId).filter(Boolean))].sort()
   const categories = new Map()
-  if (categoryIds.length > 0) {
+  for (const part of chunks(categoryIds.map(id => [id]))) {
     const [rows] = await connection.execute(
       `SELECT category_id AS categoryId, kind, archived_at AS archivedAt
          FROM catledger_categories
-        WHERE uid = ? AND category_id IN (${categoryIds.map(() => '?').join(', ')})
+        WHERE uid = ? AND category_id IN (${part.map(() => '?').join(', ')})
         ORDER BY category_id FOR UPDATE`,
-      [uid, ...categoryIds]
+      [uid, ...part.flat()]
     )
-    if (rows.length !== categoryIds.length || rows.some((row) => row.archivedAt != null)) throw importError('UNRESOLVED_IMPORT')
+    if (rows.length !== part.length || rows.some((row) => row.archivedAt != null)) throw importError('UNRESOLVED_IMPORT')
     rows.forEach((row) => categories.set(row.categoryId, row))
   }
   for (const event of events) {
@@ -184,23 +185,29 @@ async function lockAccountsAndCategories(connection, uid, events) {
 
 async function lockEvidenceIdentities(connection, uid, updateId) {
   const [rows] = await connection.execute(
-    `SELECT DISTINCT r.identity_id AS identityId
+    `SELECT DISTINCT ee.event_id AS eventId, r.identity_id AS identityId
        FROM catledger_event_evidence ee
        JOIN catledger_import_rows r ON r.uid = ee.uid AND r.row_id = ee.row_id
       WHERE ee.uid = ? AND ee.update_id = ? AND ee.evidence_role <> 'discarded'
         AND r.identity_id IS NOT NULL ORDER BY r.identity_id`,
     [uid, updateId]
   )
-  const ids = rows.map((row) => row.identityId)
-  if (ids.length > 0) {
+  const ids = [...new Set(rows.map(row => row.identityId))].sort()
+  for (const part of chunks(ids.map(id => [id]))) {
     const [locked] = await connection.execute(
       `SELECT identity_id FROM catledger_source_identities
-        WHERE uid = ? AND identity_id IN (${ids.map(() => '?').join(', ')})
+        WHERE uid = ? AND identity_id IN (${part.map(() => '?').join(', ')})
         ORDER BY identity_id FOR UPDATE`,
-      [uid, ...ids]
+      [uid, ...part.flat()]
     )
-    if (locked.length !== ids.length) throw importError('IDENTITY_CONFLICT')
+    if (locked.length !== part.length) throw importError('IDENTITY_CONFLICT')
   }
+  const identities = new Map()
+  for (const row of rows) {
+    if (!identities.has(row.eventId)) identities.set(row.eventId, [])
+    identities.get(row.eventId).push(row.identityId)
+  }
+  return identities
 }
 
 async function promoteAccountMappings(connection, uid, updateId) {
@@ -299,30 +306,32 @@ async function promoteCategoryMappings(connection, uid, updateId) {
   return audit
 }
 
-async function existingTransactionForEvent(connection, uid, updateId, eventId) {
+async function existingTransactionsForUpdate(connection, uid, updateId) {
   const [rows] = await connection.execute(
-    // 从本事件的少量证据开始；避免优化器从历史交易倒扫，令整批入账退化为平方扫描。
-    `SELECT STRAIGHT_JOIN linked.transaction_id AS transactionId, t.version, linked.created_at AS createdAt
-        FROM catledger_event_evidence ee
+    // 从当前批次证据经身份索引查询历史链接，一次读取后按事件保留最早有效链接。
+    `SELECT STRAIGHT_JOIN ee.event_id AS eventId, linked.transaction_id AS transactionId, t.version, linked.created_at AS createdAt
+        FROM catledger_event_evidence ee FORCE INDEX (idx_catledger_event_evidence_update_event)
         JOIN catledger_import_rows source_row
           ON source_row.uid = ee.uid AND source_row.row_id = ee.row_id
-        JOIN catledger_import_rows prior_row
+        JOIN catledger_import_rows prior_row FORCE INDEX (idx_catledger_import_rows_identity)
           ON prior_row.uid = source_row.uid AND prior_row.identity_id = source_row.identity_id
-        JOIN catledger_event_evidence prior_evidence
+        JOIN catledger_event_evidence prior_evidence FORCE INDEX (idx_catledger_event_evidence_row)
           ON prior_evidence.uid = prior_row.uid AND prior_evidence.row_id = prior_row.row_id
          AND prior_evidence.evidence_role <> 'discarded'
-        JOIN catledger_economic_event_transactions linked
+        JOIN catledger_economic_event_transactions linked FORCE INDEX (uk_catledger_event_transaction_role)
           ON linked.uid = prior_evidence.uid AND linked.event_id = prior_evidence.event_id
          AND linked.superseded_at IS NULL
          AND linked.role IN ('primary', 'refund_transaction', 'repayment_allocation', 'payment_allocation', 'historical_primary')
         JOIN catledger_transactions t
           ON t.uid = linked.uid AND t.transaction_id = linked.transaction_id AND t.deleted_at IS NULL
-       WHERE ee.uid = ? AND ee.update_id = ? AND ee.event_id = ?
+       WHERE ee.uid = ? AND ee.update_id = ?
          AND ee.evidence_role <> 'discarded' AND source_row.identity_id IS NOT NULL
-     ORDER BY createdAt LIMIT 1 FOR UPDATE`,
-    [uid, updateId, eventId]
+     ORDER BY createdAt, linked.link_id FOR UPDATE`,
+    [uid, updateId]
   )
-  return rows[0] || null
+  const existing = new Map()
+  for (const row of rows) if (!existing.has(row.eventId)) existing.set(row.eventId, row)
+  return existing
 }
 
 function noteForEvent(event) {
@@ -490,8 +499,9 @@ function createFinanceUpdatePosting({ getPool }) {
         if (!coverage.rowConservationPassed) throw importError('UNRESOLVED_IMPORT')
         const ready = events.filter((event) => [EVENT_STATUS.READY, EVENT_STATUS.NEEDS_ACTION].includes(event.status))
         await assertIdentityIntegrity(connection, uid, updateId, ready.map(event => event.eventId))
+        const contexts = await loadEventContexts(connection, uid, updateId)
         for (const event of ready) {
-          const evaluated = evaluatePostability(event, await eventContext(connection, uid, updateId, event.eventId))
+          const evaluated = evaluatePostability(event, contexts.get(event.eventId))
           if (evaluated.status !== EVENT_STATUS.READY) throw importError('UNRESOLVED_IMPORT')
         }
         // Draft accounts are assigned stable future IDs during review, but the
@@ -501,7 +511,8 @@ function createFinanceUpdatePosting({ getPool }) {
         const newAccounts = await materializeAccountDrafts(connection, uid, updateId, await reachableDraftIds(connection, uid, updateId, ready))
         const lockedAccounts = await lockAccountsAndCategories(connection, uid, ready)
         const cashBalancesBeforePost = await queryCashBalances(connection, uid, lockedAccounts)
-        await lockEvidenceIdentities(connection, uid, updateId)
+        const identities = await lockEvidenceIdentities(connection, uid, updateId)
+        const history = await existingTransactionsForUpdate(connection, uid, updateId)
 
         const postingId = randomUUID()
         await connection.execute(
@@ -527,45 +538,49 @@ function createFinanceUpdatePosting({ getPool }) {
         )
         if (postingState.affectedRows !== 1) throw importError('CONFLICT')
 
-        let created = 0
-        let reused = 0
+        let created = 0, reused = 0
+        const transactionRows = [], linkRows = [], newByIdentity = new Map()
+        async function flush() {
+          await insertMany(connection, `INSERT INTO catledger_transactions
+            (uid, transaction_id, type, source_account_id, destination_account_id, category_id, original_transaction_id,
+             amount_minor, occurred_local_date, occurred_local_at, timezone_offset_minutes, occurred_at_utc, note, origin) VALUES`, transactionRows)
+          await insertMany(connection, `INSERT INTO catledger_economic_event_transactions
+            (uid, link_id, update_id, event_id, transaction_id, role, creation_method, rule_version, transaction_version) VALUES`, linkRows)
+          transactionRows.length = 0; linkRows.length = 0
+        }
         for (const event of ready) {
           event.postingId = postingId
-          const existing = await existingTransactionForEvent(connection, uid, updateId, event.eventId)
-          if (isAggregateRepayment(event) || paymentResolutionForEvent(event).valid) {
-            if (existing) throw importError('IDENTITY_CONFLICT')
-            const transactions = await createTransactions(connection, uid, updateId, event)
+          const eventIdentities = identities.get(event.eventId) || []
+          const inBatch = eventIdentities.map(id => newByIdentity.get(id)).filter(Boolean).sort((a, b) => a.order - b.order)[0]
+          const existing = history.get(event.eventId) || inBatch
+          const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid
+          if (allocation && existing) throw importError('IDENTITY_CONFLICT')
+          let transactions
+          if (existing) { transactions = [{ transactionId: existing.transactionId, role: event.economicNature === ECONOMIC_NATURE.REFUND ? 'refund_transaction' : 'primary' }]; reused += 1 }
+          else if (event.economicNature === ECONOMIC_NATURE.REFUND) {
+            // 原消费先落在同一事务中，随后逐个原消费累计退款；任何失败仍回滚整批。
+            await flush()
+            transactions = await createTransactions(connection, uid, updateId, event)
             created += transactions.length
-            for (const transaction of transactions) {
-              await linkEventTransaction(
-                connection, uid, updateId, event, transaction.transactionId, 'created', 1, transaction.role
-              )
-            }
           } else {
-            let transactionId
-            let creationMethod
-            let transactionVersion = 1
-            if (existing) {
-              transactionId = existing.transactionId
-              transactionVersion = Number(existing.version)
-              creationMethod = 'reused'
-              reused += 1
-            } else {
-              const transactions = await createTransactions(connection, uid, updateId, event)
-              transactionId = transactions[0].transactionId
-              creationMethod = 'created'
-              created += 1
-            }
-            await linkEventTransaction(connection, uid, updateId, event, transactionId, creationMethod, transactionVersion)
+            transactions = transactionDrafts(event, null).map(draft => {
+              const transactionId = randomUUID()
+              transactionRows.push([uid, transactionId, draft.type, draft.sourceAccountId, draft.destinationAccountId,
+                draft.categoryId, draft.originalTransactionId, draft.amountMinor, event.localDate, event.localAt,
+                event.timezoneOffsetMinutes, event.utcAt, noteForEvent(event), 'import'])
+              return { transactionId, role: draft.role }
+            })
+            created += transactions.length
           }
-          const [eventUpdate] = await connection.execute(
-            `UPDATE catledger_economic_events
-                SET state = 'posted', status = 'posted', version = version + 1
-              WHERE uid = ? AND update_id = ? AND event_id = ? AND version = ? AND status IN ('ready', 'needs_action')`,
-            [uid, updateId, event.eventId, event.version]
-          )
-          if (eventUpdate.affectedRows !== 1) throw importError('CONFLICT')
+          for (const transaction of transactions) linkRows.push([uid, randomUUID(), updateId, event.eventId,
+            transaction.transactionId, transaction.role, existing ? 'reused' : 'created', 'event-transaction-link-v2', existing ? Number(existing.version) : 1])
+          // 同批后续证据仍可复用刚创建/已复用的交易，与逐笔查询语义一致。
+          const first = { transactionId: transactions[0].transactionId, version: existing ? Number(existing.version) : 1, order: newByIdentity.size }
+          for (const id of eventIdentities) if (!newByIdentity.has(id)) newByIdentity.set(id, first)
         }
+        await flush()
+        await updateEvents(connection, uid, updateId, ['state', 'status', 'version'],
+          ready.map(event => [event.eventId, event.version, 'posted', 'posted', event.version + 1]))
 
         // Imported transactions, newly materialized accounts and every state
         // transition still belong to this transaction. A cash deficit aborts
@@ -631,6 +646,7 @@ function createFinanceUpdatePosting({ getPool }) {
 }
 
 module.exports = {
+  existingTransactionsForUpdate,
   createTransactions,
   linkEventTransaction,
   lockAccountsAndCategories,

@@ -80,8 +80,10 @@ async function databaseMetrics(rowsPerFile) {
     const heapBefore = process.memoryUsage().heapUsed
     const start = performance.now()
     const result = await operation()
+    const stats = observer.snapshot()
+    if (['prepareUpdate', 'resolveAccounts', 'post'].includes(stage) && stats.sqlCount > require('../cloudfunctions/catledger-import/src/performance-contract').ordinarySqlBudget(stage, rowsPerFile * 5)) throw new Error('SQL budget exceeded: ' + stage)
     process.stdout.write(JSON.stringify({ kind: 'server', rows: rowsPerFile * 5, stage, ms: Math.round(performance.now() - start),
-      ...observer.snapshot(), cpuMicros: process.cpuUsage(cpuStart), heapBefore, heapAfter: process.memoryUsage().heapUsed, responseBytes: Buffer.byteLength(JSON.stringify(result)) }) + '\n')
+      ...stats, cpuMicros: process.cpuUsage(cpuStart), heapBefore, heapAfter: process.memoryUsage().heapUsed, responseBytes: Buffer.byteLength(JSON.stringify(result)) }) + '\n')
     return result
   }
   try {
@@ -114,6 +116,15 @@ async function databaseMetrics(rowsPerFile) {
       .map(issue => ({ issueId: issue.issueId, issueVersion: issue.version, operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountId: user.accountId } }))
     if (decisions.length) view = await measure('resolveAccounts', () => service.reviewIssueResolveAccountMappings(context({ requestId: randomUUID(), resultMode: 'receipt', updateId, updateVersion: view.update.version, decisions })))
     await measure('firstEventPage', () => service.economicEventList(context({ updateId })))
+    if (process.argv.includes('--inspect-plan')) {
+      const { inspectSelect } = require('./performance-query-plans')
+      const { existingTransactionsForUpdate } = require('../cloudfunctions/catledger-import/src/finance-update-posting')
+      const { selectEvents } = require('../cloudfunctions/catledger-import/src/finance-update-repository')
+      for (const [query, operation] of [['history', connection => existingTransactionsForUpdate(connection, user.uid, updateId)],
+        ['evidenceCounts', connection => selectEvents(connection, user.uid, updateId)]]) {
+        process.stdout.write(JSON.stringify({ kind: 'plan', rows: rowsPerFile * 5, query, plans: await inspectSelect(pool, operation) }) + '\n')
+      }
+    }
     const posted = await measure('post', () => service.financeUpdatePost(context({ requestId: randomUUID(), resultMode: 'receipt', updateId, version: view.update.version })))
     if (posted.posting.createdTransactionCount !== rowsPerFile * 5) throw new Error('合成账单入账数量不一致')
   } finally { await pool.end() }

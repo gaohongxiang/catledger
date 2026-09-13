@@ -44,17 +44,26 @@ function sameEventCandidateGroups(events) {
     buckets.set(key, bucket)
   })
   buckets.forEach((bucket) => {
+    // 同来源记录本来就不参与相似候选比较；按来源索引避免同额普通账单的平方扫描。
+    const bySource = new Map()
+    for (const candidate of bucket) {
+      if (!bySource.has(candidate.sourceType)) bySource.set(candidate.sourceType, [])
+      bySource.get(candidate.sourceType).push(candidate)
+    }
+    if (bySource.size < 2) return
+    const alternatives = new Map([...bySource.keys()].map(source => [source, bucket.filter(event => event.sourceType !== source)]))
+    const facts = new Map(bucket.map(event => [event.eventId, { text: normalizedText(event.display), time: timeValue(event.utcAt) }]))
     const available = new Set(bucket.map((event) => event.eventId))
     for (const event of bucket) {
       if (!available.has(event.eventId)) continue
-      const text = normalizedText(event.display)
-      const currentTime = timeValue(event.utcAt)
-      const candidates = bucket.filter((candidate) => {
+      const text = facts.get(event.eventId).text
+      const currentTime = facts.get(event.eventId).time
+      const candidates = alternatives.get(event.sourceType).filter((candidate) => {
         if (!available.has(candidate.eventId) || candidate.eventId === event.eventId) return false
         if (candidate.sourceType === event.sourceType) return false
-        const candidateTime = timeValue(candidate.utcAt)
+        const candidateTime = facts.get(candidate.eventId).time
         if (currentTime == null || candidateTime == null || Math.abs(currentTime - candidateTime) > SAME_EVENT_CANDIDATE_WINDOW_MS) return false
-        const candidateText = normalizedText(candidate.display)
+        const candidateText = facts.get(candidate.eventId).text
         return text.length >= 2 && candidateText.length >= 2 &&
           (text === candidateText || text.includes(candidateText) || candidateText.includes(text))
       })

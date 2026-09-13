@@ -1,3 +1,4 @@
+const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
 const { commandResult } = require('./command-result')
 const repaymentOwnership = require('./repayment-ownership')
 const { assertIdentityIntegrity } = require('./evidence-integrity')
@@ -139,7 +140,9 @@ function domainEvent(row) {
 
 async function selectDomainEvents(connection, uid, updateId, eventIds, { forUpdate = false } = {}) {
   if (eventIds.length === 0) return []
-  const [rows] = await connection.execute(
+  const rows = []
+  for (const part of chunks([...new Set(eventIds)].sort().map(id => [id]))) {
+  const [found] = await connection.execute(
     `SELECT event_id AS eventId, update_id AS updateId, status, version,
             flow_direction AS flowDirection, economic_nature AS economicNature,
             ledger_account_id AS ledgerAccountId,
@@ -149,18 +152,24 @@ async function selectDomainEvents(connection, uid, updateId, eventIds, { forUpda
             currency, category_id AS categoryId, manual_field_mask AS manualFieldMask,
             field_sources_json AS fieldSources, reason_codes_json AS reasonCodes
        FROM catledger_economic_events
-      WHERE uid = ? AND update_id = ? AND event_id IN (${eventIds.map(() => '?').join(', ')})
+      WHERE uid = ? AND update_id = ? AND event_id IN (${part.map(() => '?').join(', ')})
       ORDER BY event_id${forUpdate ? ' FOR UPDATE' : ''}`,
-    [uid, updateId, ...eventIds]
+    [uid, updateId, ...part.flat()]
   )
+  rows.push(...found)
+  }
   const events = rows.map(domainEvent)
   const legacy = events.filter((event) => (event.fieldSources.semanticBlockers || []).includes('payment_components_ambiguous') &&
     !Object.prototype.hasOwnProperty.call(event.fieldSources, 'paymentComponents'))
   if (legacy.length) {
-    const [evidence] = await connection.execute(`SELECT e.event_id AS eventId, r.normalized_direction AS direction, r.semantic_json AS semantic
+    const evidence = []
+    for (const part of chunks(legacy.map(event => [event.eventId]))) {
+    const [found] = await connection.execute(`SELECT e.event_id AS eventId, r.normalized_direction AS direction, r.semantic_json AS semantic
       FROM catledger_event_evidence e JOIN catledger_import_rows r ON r.uid = e.uid AND r.row_id = e.row_id
-      WHERE e.uid = ? AND e.update_id = ? AND e.event_id IN (${legacy.map(() => '?').join(', ')}) AND e.evidence_role <> 'discarded'
-      ORDER BY e.event_id, r.row_id`, [uid, updateId, ...legacy.map((event) => event.eventId)])
+      WHERE e.uid = ? AND e.update_id = ? AND e.event_id IN (${part.map(() => '?').join(', ')}) AND e.evidence_role <> 'discarded'
+      ORDER BY e.event_id, r.row_id`, [uid, updateId, ...part.flat()])
+    evidence.push(...found)
+    }
     for (const event of legacy) event.fieldSources = { ...event.fieldSources, ...paymentEvidenceFields(evidence.filter((row) => row.eventId === event.eventId)
       .map((row) => ({ direction: row.direction, semantic: parseJson(row.semantic, {}) }))) }
   }
@@ -185,7 +194,7 @@ async function eventContext(connection, uid, updateId, eventId) {
   return { relations, transactionLinks }
 }
 
-async function validateEventReferences(connection, uid, event) {
+async function validateEventReferences(connection, uid, event, catalog = null) {
   const fieldSources = event && event.fieldSources || {}
   const plan = eventAllocation(event)
   if (plan.kind === 'conflict') throw importError('VALIDATION_ERROR')
@@ -208,7 +217,7 @@ async function validateEventReferences(connection, uid, event) {
     ...(allocation ? allocation.allocations.map((item) => item.accountId) : [])
   ])
   if (accountIds.length > 0) {
-    const [accounts] = await connection.execute(
+    const [accounts] = catalog ? [accountIds.map(id => catalog.accounts.get(id)).filter(Boolean)] : await connection.execute(
       `SELECT account_id AS accountId, type, currency, archived_at AS archivedAt
          FROM catledger_accounts
         WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(', ')}) FOR UPDATE`,
@@ -220,7 +229,7 @@ async function validateEventReferences(connection, uid, event) {
     const existingIds = new Set(accounts.map((account) => account.accountId))
     const draftIds = accountIds.filter((accountId) => !existingIds.has(accountId))
     if (draftIds.length > 0) {
-      const [drafts] = await connection.execute(
+      const [drafts] = catalog ? [draftIds.map(id => catalog.drafts.get(id)).filter(Boolean)] : await connection.execute(
         `SELECT draft_account_id AS accountId, type, currency
            FROM catledger_finance_update_account_drafts
           WHERE uid = ? AND update_id = ?
@@ -239,7 +248,7 @@ async function validateEventReferences(connection, uid, event) {
     }
   }
   if (event.categoryId) {
-    const [categories] = await connection.execute(
+    const [categories] = catalog ? [[catalog.categories.get(event.categoryId)].filter(Boolean)] : await connection.execute(
       `SELECT kind FROM catledger_categories
         WHERE uid = ? AND category_id = ? AND archived_at IS NULL LIMIT 1`,
       [uid, event.categoryId]
@@ -344,6 +353,85 @@ function applyFields(event, fields) {
   return next
 }
 
+function finalizeSavedEvent(current, next, actionId, context, actionSource = 'user') {
+  const evaluated = evaluatePostability(next, context)
+  next.status = evaluated.status
+  next.reasonCodes = unique([...resolvedReasons(next.resolvingIssueType, next.reasonCodes), ...evaluated.reasonCodes])
+  next.version = current.version + 1
+  next.fieldSources = { ...(next.fieldSources || {}),
+    [actionSource === 'semantic' ? 'lastSemanticActionId' : 'lastUserActionId']: actionId }
+  return next
+}
+
+async function loadReferenceCatalog(connection, uid, updateId, events) {
+  const accountIds = unique(events.flatMap(event => {
+    const fields = event.fieldSources || {}
+    return [event.ledgerAccountId, event.counterpartyLedgerAccountId,
+      ...(fields.repaymentAllocations || []).map(item => item.accountId),
+      ...(fields.paymentAccounts || []).map(item => item.accountId),
+      ...(fields.paymentResolution && fields.paymentResolution.allocations || []).map(item => item.accountId)]
+  })).sort()
+  const categoryIds = unique(events.map(event => event.categoryId)).sort()
+  const catalog = { accounts: new Map(), drafts: new Map(), categories: new Map() }
+  for (const ids of chunks(accountIds.map(id => [id]))) {
+    const values = ids.flat()
+    const [accounts] = await connection.execute(`SELECT account_id AS accountId, type, currency, archived_at AS archivedAt
+      FROM catledger_accounts WHERE uid = ? AND account_id IN (${values.map(() => '?').join(',')}) ORDER BY account_id FOR UPDATE`, [uid, ...values])
+    accounts.forEach(row => catalog.accounts.set(row.accountId, row))
+    const missing = values.filter(id => !catalog.accounts.has(id))
+    if (missing.length) {
+      const [drafts] = await connection.execute(`SELECT draft_account_id AS accountId, type, currency FROM catledger_finance_update_account_drafts
+        WHERE uid = ? AND update_id = ? AND draft_account_id IN (${missing.map(() => '?').join(',')}) ORDER BY draft_account_id FOR UPDATE`, [uid, updateId, ...missing])
+      drafts.forEach(row => catalog.drafts.set(row.accountId, row))
+    }
+  }
+  for (const ids of chunks(categoryIds.map(id => [id]))) {
+    const values = ids.flat()
+    const [categories] = await connection.execute(`SELECT category_id AS categoryId, kind FROM catledger_categories
+      WHERE uid = ? AND category_id IN (${values.map(() => '?').join(',')}) AND archived_at IS NULL ORDER BY category_id FOR UPDATE`, [uid, ...values])
+    categories.forEach(row => catalog.categories.set(row.categoryId, row))
+  }
+  return catalog
+}
+
+async function saveEvents(connection, uid, updateId, pairs, actionId) {
+  if (!pairs.length) return []
+  const catalog = await loadReferenceCatalog(connection, uid, updateId, pairs.map(pair => pair.next))
+  const contexts = await loadEventContexts(connection, uid, updateId)
+  const rows = []
+  for (const { current, next } of pairs) {
+    await validateEventReferences(connection, uid, next, catalog)
+    finalizeSavedEvent(current, next, actionId, contexts.get(next.eventId))
+    rows.push([current.eventId, current.version, next.status, next.status, next.flowDirection, next.economicNature,
+      next.ledgerAccountId, next.counterpartyLedgerAccountId, next.localDate, next.localAt, next.utcAt,
+      next.timezoneOffsetMinutes, next.amountMinor, next.currency, next.categoryId, next.manualFieldMask,
+      JSON.stringify(next.fieldSources), JSON.stringify(next.reasonCodes), next.version])
+  }
+  await updateEvents(connection, uid, updateId, ['state', 'status', 'flow_direction', 'economic_nature', 'ledger_account_id',
+    'counterparty_ledger_account_id', 'event_local_date', 'event_local_at', 'event_utc_at', 'timezone_offset_minutes',
+    'amount_minor', 'currency', 'category_id', 'manual_field_mask', 'field_sources_json', 'reason_codes_json', 'version'], rows)
+  return pairs.map(pair => pair.next)
+}
+
+async function updateMappingMemberVersions(connection, uid, updateId, events, otherOpenOnly = false) {
+  if (!events.length) return
+  const byId = new Map(events.map(event => [event.eventId, event]))
+  const [members] = await connection.execute(`SELECT member.member_id AS memberId, member.object_id AS eventId, issue.issue_type AS issueType
+    FROM catledger_review_issue_members member JOIN catledger_review_issues issue ON issue.uid = member.uid AND issue.issue_id = member.issue_id
+    WHERE member.uid = ? AND member.update_id = ? AND member.object_type = 'event'
+      AND ${otherOpenOnly ? "issue.status = 'open' AND issue.issue_type <> 'account_mapping'" : "(issue.status = 'open' OR (issue.issue_type = 'account_mapping' AND issue.status = 'resolved'))"}`, [uid, updateId])
+  const rows = members.filter(member => {
+    const event = byId.get(member.eventId)
+    return event && (otherOpenOnly || member.issueType === 'account_mapping' || event.fieldSources.paymentAccountReferences != null)
+  }).map(member => [member.memberId, byId.get(member.eventId).version]).sort((a, b) => a[0].localeCompare(b[0]))
+  for (const part of chunks(rows, { parametersPerRow: 3, fixedParameters: 2 })) {
+    const [result] = await connection.execute(`UPDATE catledger_review_issue_members SET object_version = CASE member_id
+      ${part.map(() => 'WHEN ? THEN ?').join(' ')} END
+      WHERE uid = ? AND update_id = ? AND member_id IN (${part.map(() => '?').join(',')})`, [...part.flat(), uid, updateId, ...part.map(row => row[0])])
+    if (result.affectedRows !== part.length) throw importError('CONFLICT')
+  }
+}
+
 async function saveEvent(connection, uid, current, next, actionId, { preserveReferences = false, actionSource = 'user' } = {}) {
   if (preserveReferences) {
     const sameReferences = ['ledgerAccountId', 'counterpartyLedgerAccountId', 'currency', 'categoryId'].every(key => current[key] === next[key]) &&
@@ -352,12 +440,7 @@ async function saveEvent(connection, uid, current, next, actionId, { preserveRef
     if (!sameReferences) throw importError('CONFLICT')
   } else await validateEventReferences(connection, uid, next)
   const context = await eventContext(connection, uid, next.updateId, next.eventId)
-  const evaluated = evaluatePostability(next, context)
-  next.status = evaluated.status
-  next.reasonCodes = unique([...resolvedReasons(next.resolvingIssueType, next.reasonCodes), ...evaluated.reasonCodes])
-  next.version = current.version + 1
-  next.fieldSources = { ...(next.fieldSources || {}),
-    [actionSource === 'semantic' ? 'lastSemanticActionId' : 'lastUserActionId']: actionId }
+  finalizeSavedEvent(current, next, actionId, context, actionSource)
   const [result] = await connection.execute(
     `UPDATE catledger_economic_events
         SET state = ?, status = ?, flow_direction = ?, economic_nature = ?,
@@ -385,7 +468,9 @@ async function stageAccountMappings(
   if (eventIds.length === 0) return []
   if (!['account', 'ignore'].includes(mappingAction)) throw importError('VALIDATION_ERROR')
   if ((mappingAction === 'account') !== Boolean(accountId)) throw importError('VALIDATION_ERROR')
-  const [rows] = await connection.execute(
+  const rows = []
+  for (const part of chunks([...new Set(eventIds)].sort().map(id => [id]))) {
+  const [found] = await connection.execute(
     `SELECT DISTINCT ee.event_id AS eventId,
             s.source_type_snapshot AS sourceType,
             r.payment_method_key AS paymentMethodKey,
@@ -395,24 +480,19 @@ async function stageAccountMappings(
        JOIN catledger_finance_update_sources s
          ON s.uid = ee.uid AND s.update_id = ee.update_id AND s.batch_id = r.batch_id
       WHERE ee.uid = ? AND ee.update_id = ?
-        AND ee.event_id IN (${eventIds.map(() => '?').join(', ')})
+        AND ee.event_id IN (${part.map(() => '?').join(', ')})
         AND ee.evidence_role <> 'discarded' AND r.payment_method_key IS NOT NULL`,
-    [uid, updateId, ...eventIds]
+    [uid, updateId, ...part.flat()]
   )
-  if (mappingAction === 'ignore' && rows.length === 0) throw importError('VALIDATION_ERROR')
-  for (const row of rows) {
-    await connection.execute(
-      `INSERT INTO catledger_finance_update_account_mapping_drafts
-         (uid, draft_mapping_id, update_id, event_id, source_type,
-          payment_method_key, payment_method_hint, mapping_action, account_id, action_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint),
-         mapping_action = VALUES(mapping_action), account_id = VALUES(account_id),
-         action_id = VALUES(action_id)`,
-      [uid, randomUUID(), updateId, row.eventId, row.sourceType, row.paymentMethodKey,
-        String(row.paymentMethod || '').slice(0, 128), mappingAction, accountId, actionId]
-    )
+  rows.push(...found)
   }
+  if (mappingAction === 'ignore' && rows.length === 0) throw importError('VALIDATION_ERROR')
+  await insertMany(connection, `INSERT INTO catledger_finance_update_account_mapping_drafts
+    (uid, draft_mapping_id, update_id, event_id, source_type, payment_method_key, payment_method_hint, mapping_action, account_id, action_id) VALUES`,
+  rows.map(row => [uid, randomUUID(), updateId, row.eventId, row.sourceType, row.paymentMethodKey,
+    String(row.paymentMethod || '').slice(0, 128), mappingAction, accountId, actionId]),
+  ` ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint), mapping_action = VALUES(mapping_action),
+    account_id = VALUES(account_id), action_id = VALUES(action_id)`)
   const paymentReferenceKeys = unique(rows.map(paymentReferenceKey))
   if (mappingIndex) {
     for (const key of paymentReferenceKeys) mappingIndex.set(key, mappingAction === 'account' ? accountId : null)
@@ -533,63 +613,40 @@ async function stageProjectedAccountMappings(connection, uid, updateId, events, 
 }
 
 async function createFollowUpIssue(connection, uid, updateId, event) {
-  if (event.status !== EVENT_STATUS.NEEDS_ACTION &&
-      !(event.status === EVENT_STATUS.READY && needsCategory(event))) return
-  const classification = classifyReviewIssue(event)
-  const [[existing]] = await connection.execute(
-    `SELECT COUNT(*) AS count
-       FROM catledger_review_issues issue
-       JOIN catledger_review_issue_members member
-         ON member.uid = issue.uid AND member.issue_id = issue.issue_id
-      WHERE issue.uid = ? AND issue.update_id = ? AND issue.status = 'open'
-        AND (issue.blocking = 1 OR issue.issue_type = ?)
-        AND member.object_type = 'event' AND member.object_id = ?`,
-    [uid, updateId, classification.issueType, event.eventId]
-  )
-  if (Number(existing.count) > 0) return
-  let candidateRelations = []
-  if (classification.issueType === REVIEW_ISSUE_TYPE.REFUND_RELATION) {
-    const [rows] = await connection.execute(
-      `SELECT relation_id AS relationId, version
-         FROM catledger_economic_event_relations
-        WHERE uid = ? AND update_id = ? AND source_event_id = ?
-          AND relation_type = 'refund_of' AND status = 'proposed'
-        ORDER BY relation_id`,
-      [uid, updateId, event.eventId]
-    )
-    candidateRelations = rows.map((row) => ({ ...row, version: Number(row.version) }))
+  return createFollowUpIssues(connection, uid, updateId, [event])
+}
+async function createFollowUpIssues(connection, uid, updateId, events) {
+  const candidates = events.filter(event => event.status === EVENT_STATUS.NEEDS_ACTION || (event.status === EVENT_STATUS.READY && needsCategory(event)))
+  if (!candidates.length) return
+  const [existing] = await connection.execute(`SELECT member.object_id AS eventId, issue.issue_type AS issueType, issue.blocking
+    FROM catledger_review_issues issue JOIN catledger_review_issue_members member ON member.uid = issue.uid AND member.issue_id = issue.issue_id
+    WHERE issue.uid = ? AND issue.update_id = ? AND issue.status = 'open' AND member.object_type = 'event'`, [uid, updateId])
+  const occupied = new Map()
+  for (const row of existing) {
+    if (!occupied.has(row.eventId)) occupied.set(row.eventId, new Set())
+    occupied.get(row.eventId).add(row.blocking ? '*' : row.issueType)
   }
-  const issueId = randomUUID()
-  const issueKey = digestParts('review-follow-up-v2', updateId, event.eventId, event.version, classification.issueType)
-  await connection.execute(
-    `INSERT INTO catledger_review_issues
-       (uid, issue_id, update_id, issue_key, issue_key_version, issue_type, status,
-        version, blocking, primary_reason_code, member_count, candidate_count,
-        rule_version, reason_codes_json)
-     VALUES (?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?,
-             ?, ?)`,
-    [uid, issueId, updateId, issueKey, REVIEW_ISSUE_VERSION, classification.issueType,
-      classification.issueType !== REVIEW_ISSUE_TYPE.CATEGORY_ASSIGNMENT,
-      classification.primaryReason, 1 + candidateRelations.length, candidateRelations.length,
-      REVIEW_ISSUE_VERSION, JSON.stringify(event.reasonCodes)]
-  )
-  await connection.execute(
-    `INSERT INTO catledger_review_issue_members
-       (uid, member_id, update_id, issue_id, object_type, object_id,
-        object_version, member_role, sort_order)
-     VALUES (?, ?, ?, ?, 'event', ?, ?, 'subject', 0)`,
-    [uid, randomUUID(), updateId, issueId, event.eventId, event.version]
-  )
-  for (let index = 0; index < candidateRelations.length; index += 1) {
-    const relation = candidateRelations[index]
-    await connection.execute(
-      `INSERT INTO catledger_review_issue_members
-         (uid, member_id, update_id, issue_id, object_type, object_id,
-          object_version, member_role, sort_order)
-       VALUES (?, ?, ?, ?, 'relation', ?, ?, 'candidate', ?)`,
-      [uid, randomUUID(), updateId, issueId, relation.relationId, relation.version, index + 1]
-    )
+  const contexts = candidates.some(event => classifyReviewIssue(event).issueType === REVIEW_ISSUE_TYPE.REFUND_RELATION)
+    ? await loadEventContexts(connection, uid, updateId) : null
+  const issues = [], members = []
+  for (const event of candidates) {
+    const classification = classifyReviewIssue(event), prior = occupied.get(event.eventId)
+    if (prior && (prior.has('*') || prior.has(classification.issueType))) continue
+    const relations = classification.issueType === REVIEW_ISSUE_TYPE.REFUND_RELATION ? contexts.get(event.eventId).relations
+      .filter(row => row.sourceEventId === event.eventId && row.relationType === 'refund_of' && row.status === 'proposed')
+      .sort((a, b) => a.relationId.localeCompare(b.relationId)) : []
+    const issueId = randomUUID()
+    issues.push([uid, issueId, updateId, digestParts('review-follow-up-v2', updateId, event.eventId, event.version, classification.issueType),
+      REVIEW_ISSUE_VERSION, classification.issueType, 'open', 1, classification.issueType !== REVIEW_ISSUE_TYPE.CATEGORY_ASSIGNMENT,
+      classification.primaryReason, 1 + relations.length, relations.length, REVIEW_ISSUE_VERSION, JSON.stringify(event.reasonCodes)])
+    members.push([uid, randomUUID(), updateId, issueId, 'event', event.eventId, event.version, 'subject', 0])
+    relations.forEach((relation, index) => members.push([uid, randomUUID(), updateId, issueId, 'relation', relation.relationId, Number(relation.version), 'candidate', index + 1]))
+    occupied.set(event.eventId, new Set([classification.issueType]))
   }
+  await insertMany(connection, `INSERT INTO catledger_review_issues (uid, issue_id, update_id, issue_key, issue_key_version, issue_type,
+    status, version, blocking, primary_reason_code, member_count, candidate_count, rule_version, reason_codes_json) VALUES`, issues)
+  await insertMany(connection, `INSERT INTO catledger_review_issue_members (uid, member_id, update_id, issue_id, object_type, object_id,
+    object_version, member_role, sort_order) VALUES`, members)
 }
 
 function projectedPaymentReferenceKeys(fieldSources) {
@@ -823,6 +880,56 @@ async function materializeAccountMappingChoice(connection, uid, updateId, fields
   return validateUuid(accountId)
 }
 
+async function applyAccountMappingEvents(connection, uid, updateId, events, eventMembers, decision, actionId, mappingIndex, revision = false) {
+  const membersById = new Map(eventMembers.map(member => [member.objectId, member]))
+  const references = new Map(events.map(event => [event.eventId, mappingReferenceForMember(event, membersById.get(event.eventId).memberRole)]))
+  if (revision) {
+    const exact = [], whole = []
+    for (const event of events) {
+      const ref = references.get(event.eventId)
+      if (ref && ref.paymentMethodKey) exact.push([event.eventId, ref.sourceType, ref.paymentMethodKey])
+      else if (!ref) whole.push([event.eventId])
+    }
+    for (const part of chunks(exact)) await connection.execute(`DELETE FROM catledger_finance_update_account_mapping_drafts
+      WHERE uid = ? AND update_id = ? AND (event_id, source_type, payment_method_key) IN (${part.map(() => '(?,?,?)').join(',')})`, [uid, updateId, ...part.flat()])
+    for (const part of chunks(whole)) await connection.execute(`DELETE FROM catledger_finance_update_account_mapping_drafts
+      WHERE uid = ? AND update_id = ? AND event_id IN (${part.map(() => '?').join(',')})`, [uid, updateId, ...part.flat()])
+  }
+  const accountId = decision.decision === 'apply_fields' ? await materializeAccountMappingChoice(connection, uid, updateId, decision.fields, actionId) : null
+  const mappingAction = accountId ? 'account' : decision.paymentRuleAction === 'ignore' ? 'ignore' : null
+  const mappingRows = [], ordinary = [], paymentReferenceKeys = []
+  if (mappingAction) for (const event of events) {
+    const ref = references.get(event.eventId)
+    if (!ref) { ordinary.push(event.eventId); continue }
+    if (ref.memberRole && !ref.paymentMethodKey) continue
+    if (!ref.sourceType || !ref.paymentMethodKey) throw importError('VALIDATION_ERROR')
+    mappingRows.push([uid, randomUUID(), updateId, event.eventId, ref.sourceType, ref.paymentMethodKey,
+      String(ref.label || '').slice(0, 128), mappingAction, accountId, actionId])
+    const key = paymentReferenceKey(ref)
+    paymentReferenceKeys.push(key)
+    if (mappingIndex) mappingIndex.set(key, accountId)
+  }
+  await insertMany(connection, `INSERT INTO catledger_finance_update_account_mapping_drafts
+    (uid, draft_mapping_id, update_id, event_id, source_type, payment_method_key, payment_method_hint, mapping_action, account_id, action_id) VALUES`, mappingRows,
+  ` ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint), mapping_action = VALUES(mapping_action), account_id = VALUES(account_id), action_id = VALUES(action_id)`)
+  if (ordinary.length) paymentReferenceKeys.push(...await stageAccountMappings(connection, uid, updateId, ordinary, accountId, actionId, mappingAction, mappingIndex))
+  const pairs = events.map(event => {
+    let next
+    if (decision.decision === 'apply_fields') {
+      const base = revision ? { ...event, status: EVENT_STATUS.NEEDS_ACTION,
+        reasonCodes: unique(event.reasonCodes.filter(reason => !['manual_exclusion', 'account_mapping_excluded', 'source_account_ignored_default'].includes(reason))) } : event
+      next = references.get(event.eventId) ? applyMappedAccount(base, membersById.get(event.eventId).memberRole, accountId, mappingIndex) : applyFields(base, { ledgerAccountId: accountId })
+      if (!revision) next = { ...next, reasonCodes: resolvedReasons('account_mapping', next.reasonCodes) }
+    } else next = { ...event, status: EVENT_STATUS.EXCLUDED,
+      reasonCodes: unique([...(revision ? event.reasonCodes.filter(reason => reason !== 'source_account_ignored_default') : resolvedReasons('account_mapping', event.reasonCodes)), 'manual_exclusion', 'account_mapping_excluded']) }
+    next.resolvingIssueType = 'account_mapping'
+    return { current: event, next }
+  })
+  const affected = await saveEvents(connection, uid, updateId, pairs, actionId)
+  await updateMappingMemberVersions(connection, uid, updateId, affected)
+  return { events: affected, paymentReferenceKeys: unique(paymentReferenceKeys) }
+}
+
 async function resolveOpenAccountMapping(
   connection, uid, updateId, issue, decision, actionId, mappingIndex = null
 ) {
@@ -833,81 +940,17 @@ async function resolveOpenAccountMapping(
   const members = await selectMembers(connection, uid, issue.issueId)
   const eventMembers = accountMappingEventMembers(members)
   const eventIds = eventMembers.map((member) => member.objectId)
+  const membersById = new Map(eventMembers.map(member => [member.objectId, member]))
   const storedEvents = await selectDomainEvents(connection, uid, updateId, eventIds, { forUpdate: true })
   if (storedEvents.length !== eventIds.length || storedEvents.some((event) => {
-    const member = eventMembers.find((item) => item.objectId === event.eventId)
+    const member = membersById.get(event.eventId)
     return !member || member.objectVersion !== event.version || ['posted', 'corrected'].includes(event.status)
   })) throw importError('CONFLICT')
   const events = mappingIndex
     ? effectiveProjectedEventsFromIndex(storedEvents, mappingIndex)
     : await effectiveProjectedEvents(connection, uid, updateId, storedEvents)
-  const affected = []
-  const paymentReferenceKeys = []
-
-  if (decision.decision === 'apply_fields') {
-    const accountId = await materializeAccountMappingChoice(
-      connection, uid, updateId, decision.fields, actionId
-    )
-    for (const event of events) {
-      const member = eventMembers.find((item) => item.objectId === event.eventId)
-      const reference = mappingReferenceForMember(event, member && member.memberRole)
-      let next
-      if (reference) {
-        paymentReferenceKeys.push(await stagePaymentReferenceMapping(
-          connection, uid, updateId, event.eventId, reference, accountId, actionId, 'account', mappingIndex
-        ))
-        next = applyMappedAccount(event, member && member.memberRole, accountId, mappingIndex)
-        next = { ...next, reasonCodes: resolvedReasons(issue.issueType, next.reasonCodes) }
-      } else {
-        next = applyFields({
-          ...event,
-          reasonCodes: resolvedReasons(issue.issueType, event.reasonCodes)
-        }, { ledgerAccountId: accountId })
-        paymentReferenceKeys.push(...await stageAccountMappings(
-          connection, uid, updateId, [event.eventId], accountId, actionId, 'account', mappingIndex
-        ))
-      }
-      next.resolvingIssueType = issue.issueType
-      const saved = await saveEvent(connection, uid, event, next, actionId)
-      affected.push(saved)
-      await updateAccountMappingMemberVersions(connection, uid, updateId, saved)
-    }
-  } else {
-    for (const event of events) {
-      const member = eventMembers.find((item) => item.objectId === event.eventId)
-      const reference = mappingReferenceForMember(event, member && member.memberRole)
-      const next = {
-        ...event,
-        status: EVENT_STATUS.EXCLUDED,
-        reasonCodes: unique([
-          ...resolvedReasons(issue.issueType, event.reasonCodes),
-          'manual_exclusion',
-          'account_mapping_excluded'
-        ]),
-        resolvingIssueType: issue.issueType
-      }
-      const saved = await saveEvent(connection, uid, event, next, actionId)
-      affected.push(saved)
-      await updateAccountMappingMemberVersions(connection, uid, updateId, saved)
-      if (decision.paymentRuleAction === 'ignore' && reference) {
-        paymentReferenceKeys.push(await stagePaymentReferenceMapping(
-          connection, uid, updateId, event.eventId, reference, null, actionId, 'ignore', mappingIndex
-        ))
-      }
-    }
-    if (decision.paymentRuleAction === 'ignore') {
-      const ordinaryEventIds = events.filter((event) => {
-        const member = eventMembers.find((item) => item.objectId === event.eventId)
-        return !mappingReferenceForMember(event, member && member.memberRole)
-      }).map((event) => event.eventId)
-      if (ordinaryEventIds.length) {
-        paymentReferenceKeys.push(...await stageAccountMappings(
-          connection, uid, updateId, ordinaryEventIds, null, actionId, 'ignore', mappingIndex
-        ))
-      }
-    }
-  }
-
+  const applied = await applyAccountMappingEvents(connection, uid, updateId, events, eventMembers, decision, actionId, mappingIndex)
+  const affected = applied.events
   const [resolved] = await connection.execute(
     `UPDATE catledger_review_issues
         SET status = 'resolved', version = version + 1, blocking = 0,
@@ -916,8 +959,8 @@ async function resolveOpenAccountMapping(
     [actionId, uid, issue.issueId, Number(issue.version)]
   )
   if (resolved.affectedRows !== 1) throw importError('CONFLICT')
-  for (const event of affected) await createFollowUpIssue(connection, uid, updateId, event)
-  return { events: affected, paymentReferenceKeys: unique(paymentReferenceKeys) }
+  await createFollowUpIssues(connection, uid, updateId, affected)
+  return applied
 }
 
 async function reviseResolvedAccountMapping(
@@ -935,6 +978,7 @@ async function reviseResolvedAccountMapping(
   if (events.length !== eventIds.length || events.some((event) => ['posted', 'corrected'].includes(event.status))) {
     throw importError('CONFLICT')
   }
+  for (const part of chunks(eventIds.map(id => [id]))) {
   const [[laterResolved]] = await connection.execute(
     `SELECT COUNT(DISTINCT later.issue_id) AS count
        FROM catledger_review_issues later
@@ -943,88 +987,14 @@ async function reviseResolvedAccountMapping(
       WHERE later.uid = ? AND later.update_id = ? AND later.issue_id <> ?
         AND later.status = 'resolved' AND later.issue_type <> 'account_mapping'
         AND member.object_type = 'event'
-        AND member.object_id IN (${eventIds.map(() => '?').join(', ')})`,
-    [uid, updateId, issue.issueId, ...eventIds]
+        AND member.object_id IN (${part.map(() => '?').join(', ')})`,
+    [uid, updateId, issue.issueId, ...part.flat()]
   )
   if (Number(laterResolved.count) > 0) throw importError('CONFLICT')
-
-  for (const event of events) {
-    const member = eventMembers.find((item) => item.objectId === event.eventId)
-    const reference = mappingReferenceForMember(event, member && member.memberRole)
-    if (reference) await deletePaymentReferenceMapping(connection, uid, updateId, event.eventId, reference)
-    else {
-      await connection.execute(
-        `DELETE FROM catledger_finance_update_account_mapping_drafts
-          WHERE uid = ? AND update_id = ? AND event_id = ?`,
-        [uid, updateId, event.eventId]
-      )
-    }
   }
 
-  const accountId = decision.decision === 'apply_fields'
-    ? await materializeAccountMappingChoice(connection, uid, updateId, decision.fields, actionId)
-    : null
-  const affected = []
-  const paymentReferenceKeys = []
-  for (const event of events) {
-    const member = eventMembers.find((item) => item.objectId === event.eventId)
-    const reference = mappingReferenceForMember(event, member && member.memberRole)
-    if (decision.decision === 'apply_fields') {
-      const base = {
-        ...event,
-        status: EVENT_STATUS.NEEDS_ACTION,
-        reasonCodes: unique(event.reasonCodes.filter((reason) => ![
-          'manual_exclusion', 'account_mapping_excluded', 'source_account_ignored_default'
-          ].includes(reason)))
-      }
-      let next
-      if (reference) {
-        paymentReferenceKeys.push(await stagePaymentReferenceMapping(
-          connection, uid, updateId, event.eventId, reference, accountId, actionId, 'account', mappingIndex
-        ))
-        next = applyMappedAccount(base, member && member.memberRole, accountId, mappingIndex)
-      } else {
-        next = applyFields(base, { ledgerAccountId: accountId })
-        paymentReferenceKeys.push(...await stageAccountMappings(
-          connection, uid, updateId, [event.eventId], accountId, actionId, 'account', mappingIndex
-        ))
-      }
-      next.resolvingIssueType = 'account_mapping'
-      const saved = await saveEvent(connection, uid, event, next, actionId)
-      affected.push(saved)
-      await updateAccountMappingMemberVersions(connection, uid, updateId, saved)
-    } else {
-      const next = {
-        ...event,
-        status: EVENT_STATUS.EXCLUDED,
-        reasonCodes: unique([
-          ...event.reasonCodes.filter((reason) => reason !== 'source_account_ignored_default'),
-          'manual_exclusion',
-          'account_mapping_excluded'
-        ]),
-        resolvingIssueType: 'account_mapping'
-      }
-      const saved = await saveEvent(connection, uid, event, next, actionId)
-      affected.push(saved)
-      await updateAccountMappingMemberVersions(connection, uid, updateId, saved)
-      if (decision.paymentRuleAction === 'ignore' && reference) {
-        paymentReferenceKeys.push(await stagePaymentReferenceMapping(
-          connection, uid, updateId, event.eventId, reference, null, actionId, 'ignore', mappingIndex
-        ))
-      }
-    }
-  }
-  if (decision.decision !== 'apply_fields' && decision.paymentRuleAction === 'ignore') {
-    const ordinaryEventIds = events.filter((event) => {
-      const member = eventMembers.find((item) => item.objectId === event.eventId)
-      return !mappingReferenceForMember(event, member && member.memberRole)
-    }).map((event) => event.eventId)
-    if (ordinaryEventIds.length) {
-      paymentReferenceKeys.push(...await stageAccountMappings(
-        connection, uid, updateId, ordinaryEventIds, null, actionId, 'ignore', mappingIndex
-      ))
-    }
-  }
+  const applied = await applyAccountMappingEvents(connection, uid, updateId, events, eventMembers, decision, actionId, mappingIndex, true)
+  const affected = applied.events
   const [revised] = await connection.execute(
     `UPDATE catledger_review_issues
         SET version = version + 1, resolved_action_id = ?
@@ -1032,20 +1002,9 @@ async function reviseResolvedAccountMapping(
     [actionId, uid, issue.issueId, Number(issue.version)]
   )
   if (revised.affectedRows !== 1) throw importError('CONFLICT')
-  for (const event of affected) await createFollowUpIssue(connection, uid, updateId, event)
-  for (const event of affected) {
-    await connection.execute(
-      `UPDATE catledger_review_issue_members member
-         JOIN catledger_review_issues issue
-           ON issue.uid = member.uid AND issue.issue_id = member.issue_id
-          SET member.object_version = ?
-        WHERE member.uid = ? AND issue.update_id = ? AND member.object_type = 'event'
-          AND member.object_id = ? AND issue.status = 'open'
-          AND issue.issue_type <> 'account_mapping'`,
-      [event.version, uid, updateId, event.eventId]
-    )
-  }
-  return { events: affected, paymentReferenceKeys: unique(paymentReferenceKeys) }
+  await createFollowUpIssues(connection, uid, updateId, affected)
+  await updateMappingMemberVersions(connection, uid, updateId, affected, true)
+  return applied
 }
 
 function createReviewIssueService({ getPool }) {
@@ -1364,17 +1323,15 @@ function createReviewIssueService({ getPool }) {
           affected.push(await saveEvent(connection, uid, primary, next, actionId))
         } else if (decision === 'confirm_distinct') {
           await assertIdentityIntegrity(connection, uid, updateId, eventIds)
-          await connection.execute(
+          for (const part of chunks(eventIds.map(id => [id]))) await connection.execute(
             `UPDATE catledger_economic_event_relations SET status = 'rejected', version = version + 1
               WHERE uid = ? AND update_id = ? AND status = 'proposed'
-                AND (source_event_id IN (${eventIds.map(() => '?').join(', ')})
-                  OR target_event_id IN (${eventIds.map(() => '?').join(', ')}))`,
-            [uid, updateId, ...eventIds, ...eventIds]
+                AND (source_event_id IN (${part.map(() => '?').join(', ')})
+                  OR target_event_id IN (${part.map(() => '?').join(', ')}))`,
+            [uid, updateId, ...part.flat(), ...part.flat()]
           )
-          for (const event of events) {
-            const next = { ...event, reasonCodes: resolvedReasons(issue.issueType, event.reasonCodes), resolvingIssueType: issue.issueType }
-            affected.push(await saveEvent(connection, uid, event, next, actionId))
-          }
+          affected.push(...await saveEvents(connection, uid, updateId, events.map(event => ({ current: event,
+            next: { ...event, reasonCodes: resolvedReasons(issue.issueType, event.reasonCodes), resolvingIssueType: issue.issueType } })), actionId))
         } else if (decision === 'apply_fields') {
           let fields = data.fields
           if (fields && fields.repaymentAllocations) {
@@ -1403,11 +1360,8 @@ function createReviewIssueService({ getPool }) {
             fields = { ...fields, counterpartyLedgerAccountId: draftAccountId }
             delete fields.counterpartyLedgerAccountDraft
           }
-          for (const event of events) {
-            const next = applyFields({ ...event, reasonCodes: resolvedReasons(issue.issueType, event.reasonCodes) }, fields)
-            next.resolvingIssueType = issue.issueType
-            affected.push(await saveEvent(connection, uid, event, next, actionId))
-          }
+          affected.push(...await saveEvents(connection, uid, updateId, events.map(event => ({ current: event,
+            next: { ...applyFields({ ...event, reasonCodes: resolvedReasons(issue.issueType, event.reasonCodes) }, fields), resolvingIssueType: issue.issueType } })), actionId))
           if (fields && fields.ledgerAccountId) {
             const ordinaryEventIds = affected.filter((event) => !event.fieldSources.fundsProjection).map((event) => event.eventId)
             if (ordinaryEventIds.length) {
@@ -1438,7 +1392,7 @@ function createReviewIssueService({ getPool }) {
             ? new Set(data.eventIds.map(validateUuid))
             : new Set(eventIds)
           if ([...selected].some((eventId) => !eventIds.includes(eventId))) throw importError('VALIDATION_ERROR')
-          for (const event of events.filter((item) => selected.has(item.eventId))) {
+          const pairs = events.filter(item => selected.has(item.eventId)).map(event => {
             const exclusionReasons = issue.issueType === 'account_mapping'
               ? ['manual_exclusion', 'account_mapping_excluded']
               : ['manual_exclusion']
@@ -1451,8 +1405,9 @@ function createReviewIssueService({ getPool }) {
                   : exclusionReasons)]),
               resolvingIssueType: issue.issueType
             }
-            affected.push(await saveEvent(connection, uid, event, next, actionId))
-          }
+            return { current: event, next }
+          })
+          affected.push(...await saveEvents(connection, uid, updateId, pairs, actionId))
           if (paymentRuleAction === 'ignore') {
             await stageAccountMappings(
               connection,
@@ -1466,17 +1421,16 @@ function createReviewIssueService({ getPool }) {
           }
         } else if (decision === 'discard_evidence') {
           const evidenceId = validateUuid(data.evidenceId)
+          const [evidenceRows] = await connection.execute('SELECT event_id AS eventId FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_id = ? FOR UPDATE', [uid, updateId, evidenceId])
+          if (!evidenceRows[0] || !eventIds.includes(evidenceRows[0].eventId)) throw importError('NOT_FOUND')
           const [result] = await connection.execute(
             `UPDATE catledger_event_evidence SET evidence_role = 'discarded'
-              WHERE uid = ? AND update_id = ? AND evidence_id = ?
-                AND event_id IN (${eventIds.map(() => '?').join(', ')})`,
-            [uid, updateId, evidenceId, ...eventIds]
+              WHERE uid = ? AND update_id = ? AND evidence_id = ?`,
+            [uid, updateId, evidenceId]
           )
           if (result.affectedRows !== 1) throw importError('NOT_FOUND')
-          for (const event of events) {
-            const next = { ...event, reasonCodes: resolvedReasons(issue.issueType, event.reasonCodes), resolvingIssueType: issue.issueType }
-            affected.push(await saveEvent(connection, uid, event, next, actionId))
-          }
+          affected.push(...await saveEvents(connection, uid, updateId, events.map(event => ({ current: event,
+            next: { ...event, reasonCodes: resolvedReasons(issue.issueType, event.reasonCodes), resolvingIssueType: issue.issueType } })), actionId))
         } else if (decision === 'mark_refund_pending') {
           if (events.length !== 1 || Number(issue.candidateCount) !== 0) throw importError('VALIDATION_ERROR')
           const source = events[0]
@@ -1611,7 +1565,7 @@ function createReviewIssueService({ getPool }) {
           partialExclusion ? [uid, issueId, uid, issueId, issueVersion] : [actionId, uid, issueId, issueVersion]
         )
         if (resolved.affectedRows !== 1) throw importError('CONFLICT')
-        for (const event of affected) await createFollowUpIssue(connection, uid, updateId, event)
+        await createFollowUpIssues(connection, uid, updateId, affected)
         await refreshProjectedEvents(connection, uid, updateId, actionId)
         await recalculateUpdateCounts(connection, uid, updateId, appliedVersion, actionId, updateVersion, duplicateEvidenceDelta)
         return data.resultMode === 'receipt' ? commandResult(connection, uid, updateId, data) : issueDetails(connection, uid, issueId)
@@ -1734,7 +1688,7 @@ function createReviewIssueService({ getPool }) {
             WHERE uid = ? AND issue_id = ? AND version = ? AND status = 'resolved'`,
           [actionId, uid, issueId, issueVersion]
         )
-        for (const event of affected) await createFollowUpIssue(connection, uid, updateId, event)
+        await createFollowUpIssues(connection, uid, updateId, affected)
         for (const event of affected) {
           await connection.execute(
             `UPDATE catledger_review_issue_members member
