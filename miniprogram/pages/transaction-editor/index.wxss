@@ -3,6 +3,7 @@
 .editor-page .editor-heading .editor-import {
   flex: 0 0 auto;
   box-sizing: border-box;
+  width: auto;
   min-height: 72rpx;
   margin: 0;
   padding: 14rpx 20rpx;
