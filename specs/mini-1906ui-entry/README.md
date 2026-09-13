@@ -1,3 +1,5 @@
+> 2026-09-13 分支整合：本任务52127eb2全部代码已快进纳入 `codex/mini-1906o2-catalog-loading`；不再在旧入口分支开发。下文分支/worktree为历史证据，本机未提交工作另行核对，不能自动删除。后续见[性能收口计划](../mini-1906o-consolidated-optimization/PERFORMANCE-CLOSURE-PLAN.md)。
+
 # MINI-1906UI-ENTRY：记账直达与昵称内嵌操作
 
 状态：待验收（本地与真实旧版服务读取已验证，待集成及真机验收）。负责人：当前Codex App主会话。
