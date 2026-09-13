@@ -23,6 +23,30 @@ function fixture(overrides = {}, store = new Map()) {
 }
 const review = (id = 'a') => ({ kind: 'review', issueId: id, issueVersion: 1, issueType: 'shared_fields', subjectIds: ['event'], decision: { decision: 'apply_fields', fields: { ledgerAccountId: 'wallet' } } })
 
+test('V2账户决定携带两级版本，小回执后的刷新失败不重发已保存决定', async () => {
+  const calls = []
+  let fail = true
+  const view = { protocolVersion: 2, viewVersion: 'v1', update: { updateId: 'batch', version: 4, status: 'review' }, workbench: {} }
+  const f = fixture({ view, async call(action, payload) {
+    calls.push({ action, payload: copy(payload) })
+    if (action === 'financeUpdates.summary') {
+      if (fail) throw Object.assign(new Error('synthetic read timeout'), { code: 'CLOUD_TEMPORARY_UNAVAILABLE' })
+      return { ...view, viewVersion: 'v2', update: { ...view.update, version: 5 } }
+    }
+    return { kind: 'operation-receipt', update: { ...view.update, version: 5 } }
+  } })
+  f.session.enqueue([{ kind: 'account', issueId: 'a', issueVersion: 7, decision: { issueId: 'a', decision: 'exclude_events' } }])
+  await assert.rejects(f.session.flush())
+  assert.equal(calls[0].payload.resultMode, 'receipt')
+  assert.equal(calls[0].payload.updateVersion, 4)
+  assert.equal(calls[0].payload.decisions[0].issueVersion, 7)
+  assert.equal(f.session.status.error, '选择已同步，明细待刷新')
+  fail = false
+  await f.session.flush()
+  assert.equal(calls.filter(call => call.action === 'reviewIssues.resolveAccountMappings').length, 1)
+  assert.equal(f.session.state.entries.length, 0)
+})
+
 test('确认先持久化，零同步等待，队列完成只读取一次完整视图', async () => {
   const f = fixture(); f.session.enqueue([review()])
   assert.equal(f.calls.length, 0)

@@ -16,7 +16,7 @@ function pageRuntime(ref) {
   vm.runInNewContext(source(modelPath), { module, require: createRequire(modelPath) })
   let definition
   vm.runInNewContext(source(indexPath), { Page: value => { definition = value }, getApp: () => ({ globalData: {} }),
-    require: name => name === './model' ? module.exports : ['./presentation', './final-detail', '../../services/view-patch'].includes(name) ? createRequire(indexPath)(name) : {} })
+    require: name => name === './paged' ? { enhance: value => value } : name === './model' ? module.exports : ['./presentation', './final-detail', '../../services/view-patch'].includes(name) ? createRequire(indexPath)(name) : {} })
   return Object.assign({}, definition, { _accountUiDrafts: new Map(), data: JSON.parse(JSON.stringify(definition.data)), bytes: 0,
     setData(patch) {
       this.bytes += Buffer.byteLength(JSON.stringify(patch))
@@ -40,7 +40,7 @@ function syntheticView(count) {
     accountDrafts: [], accountMappingDrafts: [], coverage: { selectedEventsReadyToPost: true } }
 }
 
-function clientMetrics(view, ref) {
+function legacyClientMetrics(view, ref) {
   const page = pageRuntime(ref), samples = []
   for (const step of [1, 2, 3, 4]) {
     page.data.currentStep = step
@@ -53,6 +53,30 @@ function clientMetrics(view, ref) {
         pageDataBytes: Buffer.byteLength(JSON.stringify(page.data)) })
     }
   }
+  return samples
+}
+
+async function clientMetrics(view, ref) {
+  if (ref) return legacyClientMetrics(view, ref)
+  const { runtime, fixture } = require('../test/helpers/paged-workbench')
+  const h = runtime(fixture(view.events.length)), samples = [], page = h.page
+  page.data.activeReviewStatus = 'completed'
+  for (const step of [1, 2, 3, 4]) {
+    for (let iteration = 0; iteration < 3; iteration++) {
+      h.patches.length = 0
+      const calls = h.calls.length, derives = Object.values(h.derives).reduce((sum, count) => sum + count, 0), start = performance.now()
+      if (iteration === 0) await page.setStep({ currentStep: step })
+      else page.applyUpdateView(h.summary, true)
+      const sample = { step, iteration, ms: Math.round(performance.now() - start),
+        setDataBytes: h.patches.reduce((sum, value) => sum + value, 0), maxSetDataBytes: Math.max(0, ...h.patches),
+        pageDataBytes: Buffer.byteLength(JSON.stringify(page.data)), cachedPages: page._viewSession.pageCount,
+        cachedItems: page._viewSession.cachedItems, businessEvents: page.businessData().events.length, reads: h.calls.length - calls,
+        derives: Object.values(h.derives).reduce((sum, count) => sum + count, 0) - derives }
+      if (sample.maxSetDataBytes > 65536 || sample.pageDataBytes > 262144 || sample.cachedPages > 3 || sample.businessEvents > 40) throw new Error('client budget exceeded')
+      samples.push(sample)
+    }
+  }
+  page.onUnload()
   return samples
 }
 
@@ -140,7 +164,7 @@ async function main() {
     database: 'local isolated MySQL 8.4', files: 5, state: 'first-call then same-process warm; no device/network timing' }) + '\n')
   for (const size of sizes) {
     const view = syntheticView(size * 5)
-    process.stdout.write(JSON.stringify({ kind: 'client', rows: size * 5, baseline: baseline || 'working-tree', samples: clientMetrics(view, baseline) }) + '\n')
+    process.stdout.write(JSON.stringify({ kind: 'client', rows: size * 5, baseline: baseline || 'working-tree', samples: await clientMetrics(view, baseline) }) + '\n')
     if (args.includes('--database')) await databaseMetrics(size)
   }
 }

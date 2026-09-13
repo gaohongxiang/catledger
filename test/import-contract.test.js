@@ -11,6 +11,7 @@ test('导入公共契约与事件云函数动作保持一致', function () {
   assert.deepEqual([...PUBLIC_ACTIONS].sort(), names)
   const handler = function () {}
   const handlers = createActionHandlers({
+    capabilities: handler,
     commit: handler, discard: handler, discardFile: handler, get: handler, getFile: handler,
     parse: handler, parseFile: handler, prepare: handler, prepareMany: handler,
     financeUpdateRows: handler, financeUpdateSummary: handler, financeUpdateOptions: handler, economicEventList: handler, economicEventDetail: handler, reviewIssueMembers: handler,
@@ -40,7 +41,7 @@ test('统一 FinanceUpdate 上线后不再公开旧单文件写链路', function
 
 test('小程序导入调用只使用已登记动作，记账页进入独立工作台', function () {
   const page = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8')
-  const actions = [...page.matchAll(/callImport\(\s*['"]([^'"]+)['"]/g)].map(function (match) { return match[1] })
+  const actions = [...page.matchAll(/(?:callImport|request)\(\s*['"]([^'"]+)['"]/g)].map(function (match) { return match[1] })
   assert.ok(actions.length > 0)
   actions.forEach(function (action) { assert.ok(contract.actions[action], action) })
   const tab = fs.readFileSync(path.join(__dirname, '../miniprogram/custom-tab-bar/index.js'), 'utf8')
@@ -84,21 +85,21 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(source, /self\.data\.files\.concat\(files\)/)
   assert.match(source, /sameFileContent/)
   assert.match(source, /phase: this\.data\.files\.length \? 'files_ready' : 'idle'/)
-  assert.match(source, /callImport\('imports\.prepareMany'/)
-  assert.match(source, /callImport\('imports\.parseFile'/)
+  assert.match(source, /request\('imports\.prepareMany'/)
+  assert.match(source, /request\('imports\.parseFile'/)
   assert.match(source, /const FILE_PIPELINE_CONCURRENCY = MAX_FILES/)
   assert.match(source, /model\.runWithConcurrency\([\s\S]*preparedFiles,[\s\S]*FILE_PIPELINE_CONCURRENCY/)
   assert.match(source, /state: 'failed', stateText: '上传失败'/)
   assert.match(source, /phase: 'uploading', busy: true, errorMessage: ''/)
   assert.match(markup, /请重试失败文件或继续添加/)
-  assert.match(source, /callImport\('financeUpdates\.prepare'/)
-  assert.match(source, /callImport\('financeUpdates\.organize'/)
-  assert.match(source, /callImport\('reviewIssues\.get'/)
-  assert.match(source, /callImport\('reviewIssues\.resolve'/)
-  assert.match(source, /callImport\('economicEvents\.evidence'/)
-  assert.match(source, /callImport\('reviewIssues\.resolveAccountMappings'/)
-  assert.match(source, /callImport\('financeUpdates\.post'/)
-  assert.match(source, /callImport\('financeUpdates\.abandon'/)
+  assert.match(source, /request\('financeUpdates\.prepare'/)
+  assert.match(source, /request\('financeUpdates\.organize'/)
+  assert.match(source, /request\('reviewIssues\.get'/)
+  assert.match(source, /request\('reviewIssues\.resolve'/)
+  assert.match(source, /request\('economicEvents\.evidence'/)
+  assert.match(source, /request\('reviewIssues\.resolveAccountMappings'/)
+  assert.match(source, /request\('financeUpdates\.post'/)
+  assert.match(source, /request\('financeUpdates\.abandon'/)
   assert.match(markup, /class="review-status-tabs"/)
   assert.match(source, /switchReviewStatus/)
   assert.doesNotMatch(source, /imports\.commit|disposition|canPost/)

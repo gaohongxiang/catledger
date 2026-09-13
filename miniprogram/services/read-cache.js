@@ -102,6 +102,7 @@ function createReadCache(options) {
         .then(result => { checkSession(expectedSession); return result })
     },
     getSession: () => session,
+    now,
     mutate,
     invalidate,
     token(key) { const entry = fresh(key); return entry ? entry.token : null },

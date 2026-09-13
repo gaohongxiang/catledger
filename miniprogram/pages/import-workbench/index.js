@@ -88,7 +88,8 @@ function allocationStatus(options, totalAmountMinor) {
   }
 }
 
-Page({
+Page(require('./paged').enhance({
+  request: function (action, data) { return importApi.callImport(action, data) },
   data: {
     restoreUpdateId: '',
     abandoningRestore: false,
@@ -234,7 +235,7 @@ Page({
     loginGuard.run(this, updateId ? async () => {
       await this.loadUpdate(updateId, true)
       const eventId = options && options.evidenceEventId
-      if (eventId && this.businessData().events.some(function (event) { return event.eventId === eventId })) {
+      if (eventId && (this.data.pagedProtocol || this.businessData().events.some(function (event) { return event.eventId === eventId }))) {
         await this.openEvidence({ currentTarget: { dataset: { id: eventId } } })
       }
     } : function () {})
@@ -374,7 +375,7 @@ Page({
     const requestId = importApi.createRequestId()
     this._requestIds.prepareMany = requestId
     try {
-      const prepared = await importApi.callImport('imports.prepareMany', {
+      const prepared = await this.request('imports.prepareMany', {
         requestId: requestId,
         files: queuedFiles.map(function (file) { return { fileName: file.name, size: file.size } })
       })
@@ -451,7 +452,7 @@ Page({
     if (!file) return
     this.setFileState(clientId, { state: 'parsing', stateText: model.fileStateText('parsing'), errorMessage: '' })
     try {
-      const result = await importApi.callImport('imports.parseFile', {
+      const result = await this.request('imports.parseFile', {
         requestId: importApi.createRequestId(),
         importId: file.importId,
         fileID: fileID,
@@ -522,7 +523,7 @@ Page({
     this.setData({ busy: true })
     try {
       if (file.importId) {
-        await importApi.callImport('imports.discardFile', {
+        await this.request('imports.discardFile', {
           requestId: importApi.createRequestId(),
           importId: file.importId,
           version: file.importVersion || 1
@@ -555,7 +556,7 @@ Page({
     }
     this.setData({ phase: 'organizing', busy: true, errorMessage: '' })
     try {
-      let view = await importApi.callImport('financeUpdates.prepare', {
+      let view = await this.request('financeUpdates.prepare', {
         requestId: importApi.createRequestId(), batchIds: batchIds
       })
       view = await this.refreshAccountGroups(view)
@@ -567,7 +568,7 @@ Page({
 
   refreshAccountGroups: async function (view) {
     if (view.update.status !== 'review' || view.freshness && view.freshness.requiresAccountGroupRefresh === false) return view
-    return importApi.callImport('reviewIssues.refreshAccountGroups', { requestId: importApi.createRequestId(),
+    return this.request('reviewIssues.refreshAccountGroups', { requestId: importApi.createRequestId(),
       updateId: view.update.updateId, version: view.update.version })
   },
 
@@ -577,11 +578,11 @@ Page({
     const active = () => this._updateLoad === load && !load.cancelled
     this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false })
     try {
-      load.pending = importApi.callImport('financeUpdates.get', { updateId: updateId })
+      load.pending = this.request('financeUpdates.get', { updateId: updateId })
       let view = await load.pending
       if (!active()) return
       if (view.update.status === 'review' && view.update.requiresReorganization) {
-        load.pending = importApi.callImport('financeUpdates.organize', {
+        load.pending = this.request('financeUpdates.organize', {
           requestId: importApi.createRequestId(), updateId: updateId, version: view.update.version
         })
         view = await load.pending
@@ -608,7 +609,7 @@ Page({
       await draftSessions.pauseUpdate(updateId)
       // 已发送的整理事务必须落定；取消后不再发起下一段恢复。
       if (load && load.pending) await load.pending.catch(function () {})
-      const view = await importApi.callImport('financeUpdates.get', { updateId: updateId })
+      const view = await this.request('financeUpdates.get', { updateId: updateId })
       if (view.update.status === 'posted') {
         this.setData({ restoreUpdateId: '', abandoningRestore: false })
         this.applyUpdateView(view)
@@ -618,7 +619,7 @@ Page({
         if (!this._restoreAbandonRequest || this._restoreAbandonRequest.updateId !== updateId || this._restoreAbandonRequest.version !== view.update.version) {
           this._restoreAbandonRequest = { requestId: importApi.createRequestId(), updateId: updateId, version: view.update.version }
         }
-        await importApi.callImport('financeUpdates.abandon', this._restoreAbandonRequest)
+        await this.request('financeUpdates.abandon', this._restoreAbandonRequest)
       }
       draftSessions.clearUpdate(updateId)
       this.startAnother()
@@ -919,6 +920,9 @@ Page({
       }
       const choiceValue = draft.mode === 'account' ? 'account:' + draft.accountId : draft.mode
       let choiceIndex = choices.findIndex(function (choice) { return choice.value === choiceValue })
+      if (choiceIndex < 0 && self.data.pagedProtocol && draft.accountId) {
+        choices.push({ value: 'account:' + draft.accountId, name: draft.accountName || '已选择账户（可重新选择）' }); choiceIndex = choices.length - 1
+      }
       if (choiceIndex < 0) {
         draft.mode = 'pending'
         draft.localConfirmed = false
@@ -1067,7 +1071,7 @@ Page({
     this._accountEvidenceToken = token
     this.setData({ busy: true, accountRecordsSheet: { issueId: issueId, label: mapping.label, loading: true, error: '', records: [] } })
     try {
-      const details = await importApi.callImport('reviewIssues.get', { issueId: issueId })
+      const details = await this.request('reviewIssues.get', { issueId: issueId })
       if (this._accountEvidenceToken !== token) return
       const list = model.accountRecordList(details.members)
       this._accountRecordList = list.records.map(function (record) {
@@ -1091,7 +1095,7 @@ Page({
       if (!isCurrent()) return
       await Promise.all(records.slice(offset, offset + 4).map(async (record) => {
         try {
-          const result = await importApi.callImport('economicEvents.evidence', { eventId: record.eventId })
+          const result = await this.request('economicEvents.evidence', { eventId: record.eventId })
           if (!isCurrent()) return
           record.evidence = (result.evidence || []).map(function (source) {
             return { evidenceId: source.evidenceId, fileName: source.fileName, rowNumber: source.rowNumber,
@@ -1215,7 +1219,7 @@ Page({
     draft.localConfirmed = true
     if (this._draftSession) {
       try {
-        this._draftSession.enqueue([{ kind: 'account', issueId: issueId, revision: draft.revision || 0,
+        this._draftSession.enqueue([{ kind: 'account', issueId: issueId, issueVersion: mapping.version, revision: draft.revision || 0,
           decision: this.accountMappingDecision(mapping) }], Object.fromEntries(this._accountUiDrafts))
       } catch (error) {
         draft.localConfirmed = false
@@ -1239,7 +1243,7 @@ Page({
 
   accountMappingDecision: function (mapping) {
     const draft = this._accountUiDrafts.get(mapping.issueId)
-    const decision = { issueId: mapping.issueId, operation: mapping.status === 'resolved' ? 'revise' : 'resolve' }
+    const decision = { issueId: mapping.issueId, issueVersion: mapping.version, operation: mapping.status === 'resolved' ? 'revise' : 'resolve' }
     if (draft.mode === 'ignore' || draft.mode === 'ignore_future') {
       decision.decision = 'exclude_events'
       if (draft.mode === 'ignore_future') decision.paymentRuleAction = 'ignore'
@@ -1317,7 +1321,7 @@ Page({
         if (!this._accountSubmission || this._accountSubmission.signature !== signature) {
           this._accountSubmission = { signature: signature, requestId: importApi.createRequestId() }
         }
-        const view = await importApi.callImport('reviewIssues.resolveAccountMappings', Object.assign({
+        const view = await this.request('reviewIssues.resolveAccountMappings', Object.assign({
           requestId: this._accountSubmission.requestId
         }, payload))
         for (const mapping of pending) this._accountUiDrafts.delete(mapping.issueId)
@@ -1357,7 +1361,7 @@ Page({
     this._issueEvidenceToken = token
     this.setData({ busy: true, errorMessage: '' })
     try {
-      const details = await importApi.callImport('reviewIssues.get', { issueId: issueId })
+      const details = await this.request('reviewIssues.get', { issueId: issueId })
       if (this._issueEvidenceToken !== token) return
       const eventMembers = details.members.filter(function (member) { return member.event })
       const relationMembers = details.members.filter(function (member) { return member.relation })
@@ -1568,7 +1572,7 @@ Page({
     this._evidenceReadToken = token
     this.setData({ busy: true, errorMessage: '' })
     try {
-      const result = await importApi.callImport('economicEvents.evidence', { eventId: eventId })
+      const result = await this.request('economicEvents.evidence', { eventId: eventId })
       if (this._evidenceReadToken !== token) return
       const roleLabels = { primary: '主记录', supporting: '关联记录', duplicate: '重复记录', discarded: '已舍弃证据' }
       const evidence = (result.evidence || []).map(function (item) {
@@ -1698,7 +1702,7 @@ Page({
     try {
       const rows = []
       for (const candidate of this.data.bankBatchCandidates) {
-        const details = await importApi.callImport('reviewIssues.get', { issueId: candidate.issueId })
+        const details = await this.request('reviewIssues.get', { issueId: candidate.issueId })
         if (this._issueEvidenceToken !== token) return
         const events = details.members.filter(function (member) { return member.event }).map(function (member) { return member.event })
         const current = model.bankAccountSuggestion(events, details.accounts.concat(details.accountDrafts || []))
@@ -1763,7 +1767,7 @@ Page({
     try {
       // 先完整预检，再逐问题保存。服务端继续负责用户隔离、版本与原子性。
       for (const target of targets) {
-        const details = await importApi.callImport('reviewIssues.get', { issueId: target.issueId })
+        const details = await this.request('reviewIssues.get', { issueId: target.issueId })
         const events = details.members.filter(function (member) { return member.event }).map(function (member) { return member.event })
         const fresh = model.bankAccountSuggestion(events, details.accounts.concat(details.accountDrafts || []))
         if (details.update.updateId !== updateId || details.update.status !== 'review' || details.issue.status !== 'open' ||
@@ -1776,7 +1780,7 @@ Page({
       for (const target of targets) {
         const resolutionFields = {}
         resolutionFields[field] = accountId
-        const result = await importApi.callImport('reviewIssues.resolve', {
+        const result = await this.request('reviewIssues.resolve', {
           requestId: importApi.createRequestId(), updateId: updateId, updateVersion: updateVersion,
           issueId: target.issueId, issueVersion: target.version, decision: 'apply_fields', fields: resolutionFields
         })
@@ -1996,7 +2000,7 @@ Page({
     if (!issue || this.data.busy) return
     this.setData({ busy: true, errorMessage: '' })
     try {
-      await importApi.callImport('reviewIssues.resolve', Object.assign({
+      await this.request('reviewIssues.resolve', Object.assign({
         requestId: importApi.createRequestId(),
         updateId: this.data.update.updateId,
         issueId: issue.issueId,
@@ -2038,7 +2042,7 @@ Page({
       this.data.accountStepSummary.open > 0 || this.data.accountStepSummary.dirty > 0) return
     this.setData({ busy: true, errorMessage: '' })
     try {
-      const view = await importApi.callImport('financeUpdates.post', {
+      const view = await this.request('financeUpdates.post', {
         requestId: this._postingRequestId || (this._postingRequestId = importApi.createRequestId()),
         updateId: this.data.update.updateId,
         version: this.data.update.version,
@@ -2073,10 +2077,10 @@ Page({
     try {
       if (this._draftSession) {
         await this._draftSession.pause()
-        const fresh = await importApi.callImport('financeUpdates.get', { updateId: this.data.update.updateId })
+        const fresh = await this.request('financeUpdates.get', { updateId: this.data.update.updateId })
         this.setData({ update: fresh.update })
       }
-      await importApi.callImport('financeUpdates.abandon', {
+      await this.request('financeUpdates.abandon', {
         requestId: importApi.createRequestId(),
         updateId: this.data.update.updateId,
         version: this.data.update.version
@@ -2133,4 +2137,4 @@ Page({
     })
     this._accountUiDrafts.clear()
   }
-})
+}))

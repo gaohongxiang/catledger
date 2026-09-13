@@ -1,4 +1,5 @@
 const PUBLIC_ACTIONS = Object.freeze([
+  'imports.capabilities',
   'financeUpdates.rows',
   'reviewIssues.members',
   'financeUpdates.options',
@@ -28,6 +29,7 @@ const PUBLIC_ACTIONS = Object.freeze([
 
 function createActionHandlers(service) {
   return {
+    'imports.capabilities': service.capabilities,
     'financeUpdates.rows': service.financeUpdateRows,
     'reviewIssues.members': service.reviewIssueMembers,
     'financeUpdates.options': service.financeUpdateOptions,

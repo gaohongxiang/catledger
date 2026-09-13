@@ -2818,3 +2818,6 @@ button::after { border: 0; }
 /* 分页保持每次渲染规模固定，完整账单留在逻辑层。 */
 .list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin: 24rpx 32rpx; font-size: 24rpx; color: var(--ui-muted); }
 .list-pagination button { width: auto; margin: 0; }
+
+.directory-layer { z-index: 160; }
+.evidence-fields .evidence-value { white-space: pre-wrap; word-break: break-all; }

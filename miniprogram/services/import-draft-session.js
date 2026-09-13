@@ -1,6 +1,8 @@
 const api = require('./catledger-import')
 const config = require('../config/cloudbase')
+const readCache = require('./read-cache')
 const sessions = new Map()
+let sessionScope = readCache.getSession()
 let networkListenerInstalled = false
 const PREFIX = 'catledger_import_draft_v1:'
 const clone = value => JSON.parse(JSON.stringify(value))
@@ -22,6 +24,7 @@ function create(options) {
   let paused = false
   const listeners = new Set()
   function persist(next, affectsProjection = true) {
+    if (unescape(encodeURIComponent(JSON.stringify(next))).length > 192 * 1024) throw Object.assign(new Error('待同步选择较多，请完成同步后继续'), { code: 'DRAFT_LIMIT_REACHED' })
     try { options.write(key, clone(next)); state = next; if (affectsProjection) projectionRevision++ }
     catch (error) { throw Object.assign(new Error('本机草稿未保存，请检查存储空间后重试'), { code: 'DRAFT_STORAGE_FAILED' }) }
   }
@@ -36,7 +39,7 @@ function create(options) {
     version = Math.max(version, Number(next.update.version))
   }
   async function refresh() {
-    const fresh = await options.call('financeUpdates.get', { updateId: state.updateId })
+    const fresh = await options.call(view.protocolVersion === 2 ? 'financeUpdates.summary' : 'financeUpdates.get', { updateId: state.updateId })
     accept(fresh)
     const next = clone(state)
     next.entries = next.entries.filter(e => e.status !== 'saved')
@@ -73,6 +76,12 @@ function create(options) {
             ? { updateId: state.updateId, decisions: entries.map(e => e.decision) }
             : Object.assign({ updateId: state.updateId, updateVersion: version, issueId: first.issueId, issueVersion: first.issueVersion }, first.decision)
           payload.requestId = options.requestId()
+          if (view.protocolVersion === 2) {
+            payload.resultMode = 'receipt'
+            payload.updateVersion = version
+            if (first.kind === 'account') payload.decisions = entries.map(e => Object.assign({}, e.decision, { issueVersion: e.issueVersion || e.decision.issueVersion }))
+          }
+          if (unescape(encodeURIComponent(JSON.stringify(payload))).length > 64 * 1024) throw Object.assign(new Error('本次选择内容过多，请减少批量项目后重试'), { code: 'REQUEST_TOO_LARGE' })
           const next = clone(state)
           next.flight = { ids: entries.map(e => e.issueId), action: first.kind === 'account' ? 'reviewIssues.resolveAccountMappings' : 'reviewIssues.resolve', payload }
           // 先落盘请求和幂等键，响应丢失或进程退出后原样重试。
@@ -98,7 +107,8 @@ function create(options) {
       if (state.entries.some(e => e.error)) throw Object.assign(new Error('部分选择需要重新核对，已保留原选择'), { code: 'DRAFT_CONFLICT' })
       errorMessage = ''
     } catch (error) {
-      errorMessage = retryable(error) ? '选择已保存在本机，网络恢复后自动同步' : (error.message || '同步未完成，请重试')
+      const committed = !state.flight && state.entries.some(e => e.status === 'saved')
+      errorMessage = committed ? '选择已同步，明细待刷新' : retryable(error) ? '选择已保存在本机，网络恢复后自动同步' : (error.message || '同步未完成，请重试')
       if (state.flight && !retryable(error) && error.code !== 'DRAFT_STORAGE_FAILED') {
         const next = clone(state)
         for (const entry of next.entries) if (next.flight.ids.includes(entry.issueId)) entry.error = errorMessage
@@ -131,7 +141,7 @@ function create(options) {
       persist(next)
     },
     async post() {
-      if (!state.postFlight) persist(Object.assign({}, state, { postFlight: { requestId: options.requestId(), updateId: state.updateId, version: version, mode: 'all_ready' } }), false)
+      if (!state.postFlight) persist(Object.assign({}, state, { postFlight: Object.assign({ requestId: options.requestId(), updateId: state.updateId, version: version, mode: 'all_ready' }, view.protocolVersion === 2 ? { resultMode: 'receipt' } : {}) }), false)
       try { return await options.call('financeUpdates.post', state.postFlight) }
       catch (error) {
         if (!retryable(error)) persist(Object.assign({}, state, { postFlight: null }), false)
@@ -148,7 +158,9 @@ function create(options) {
       const fresh = await refresh()
       const next = clone(state)
       for (const entry of next.entries) {
-        const issue = fresh.issues.find(i => i.issueId === entry.issueId)
+        const issue = fresh.protocolVersion === 2 && entry.error
+          ? (await options.call('reviewIssues.get', { protocolVersion: 2, updateId: state.updateId, issueId: entry.issueId, pageSize: 1 })).issue
+          : (fresh.issues || []).find(i => i.issueId === entry.issueId)
         if (entry.error && issue && issue.status === 'open' && issue.version === entry.issueVersion) entry.error = ''
       }
       persist(next); return flush()
@@ -160,11 +172,16 @@ function create(options) {
 }
 
 function open(view) {
+  if (sessionScope !== readCache.getSession()) {
+    sessions.forEach(session => { session.pause() })
+    sessions.clear(); sessionScope = readCache.getSession()
+  }
   if (!networkListenerInstalled && typeof wx.onNetworkStatusChange === 'function') {
     wx.onNetworkStatusChange(function (result) { if (result.isConnected) sessions.forEach(function (session) { session.schedule(0) }) })
     networkListenerInstalled = true
   }
   const id = config.envId + ':' + view.update.updateId
+  for (const [key, prior] of sessions) if (key !== id) { prior.pause(); sessions.delete(key) }
   if (!sessions.has(id)) sessions.set(id, create({ scope: config.envId, view,
     read: key => wx.getStorageSync(key), write: (key, value) => wx.setStorageSync(key, value), remove: key => wx.removeStorageSync(key),
     call: api.callImport, requestId: api.createRequestId }))
@@ -194,8 +211,8 @@ function project(view, entries) {
     !(e.decision && e.decision.fields && e.decision.fields.repaymentOwnership &&
       e.decision.fields.repaymentOwnership.owner === 'other' && e.decision.fields.repaymentOwnership.treatment === 'pending'))
   const ids = new Set(pending.map(e => e.issueId))
-  const issues = view.issues.map(i => ids.has(i.issueId) ? Object.assign({}, i, { status: 'resolved', blocking: false }) : i)
-  const events = view.events.map(event => {
+  const issues = (view.issues || []).map(i => ids.has(i.issueId) ? Object.assign({}, i, { status: 'resolved', blocking: false }) : i)
+  const events = (view.events || []).map(event => {
     const chosen = pending.filter(e => (e.subjectIds || []).includes(event.eventId))
     if (!chosen.length) return event
     const category = chosen.find(e => e.issueType === 'category_assignment' && e.decision.fields && e.decision.fields.categoryId)

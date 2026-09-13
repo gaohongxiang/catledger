@@ -7,7 +7,7 @@
   },
   "performanceV2": {
     "protocolVersion": 2,
-    "status": "PERF-3 bounded writes and recovery",
+    "status": "PERF-4 bounded native workbench",
     "budgetsBytes": {
       "request": 65536,
       "receipt": 32768,
@@ -33,17 +33,40 @@
     ],
     "legacyCompatibility": "At most40 events/evidence plus conservative128KiB source/catalog estimate; full view after commit only. Read failure returns committed operation receipt with refreshRequired=true, never a failed mutation.",
     "receiptPolicy": "immutable operation outcome persisted in the mutation transaction; same request returns identical result after later changes",
-    "spec": "specs/mini-1906o-consolidated-optimization/PERFORMANCE-V2-CONTRACT.md"
+    "spec": "specs/mini-1906o-consolidated-optimization/PERFORMANCE-V2-CONTRACT.md",
+    "clientState": {
+      "maxCachedPages": 3,
+      "maxCursorHistory": 8,
+      "summary": "Server-authoritative counts and posting gates; current page never supplies batch totals.",
+      "selection": "Group actions send selection.mode=all with issueVersion, independent of visible members."
+    }
   },
   "requestEnvelope": {
-    "required": ["action"],
+    "required": [
+      "action"
+    ],
     "shape": {
       "action": "one of actions",
       "data": "action-specific object"
     }
   },
   "actions": {
-    "financeUpdates.rows": { "kind": "read", "data": ["updateId", "viewVersion?", "cursor?", "pageSize?"], "returns": ["protocolVersion=2", "viewVersion", "items[{rowId,disposition,recognized,conflict,rowNumber,sourceType,sourceOrder}]", "nextCursor", "total"] },
+    "financeUpdates.rows": {
+      "kind": "read",
+      "data": [
+        "updateId",
+        "viewVersion?",
+        "cursor?",
+        "pageSize?"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "viewVersion",
+        "items[{rowId,disposition,recognized,conflict,rowNumber,sourceType,sourceOrder}]",
+        "nextCursor",
+        "total"
+      ]
+    },
     "economicEvents.detail": {
       "kind": "read",
       "data": [
@@ -68,7 +91,8 @@
         "issueId",
         "viewVersion?",
         "cursor?",
-        "pageSize?"
+        "pageSize?",
+        "memberKind?"
       ],
       "returns": [
         "protocolVersion=2",
@@ -87,7 +111,10 @@
         "pageSize?",
         "status?",
         "issueId?",
-        "economicNature?"
+        "economicNature?",
+        "view?",
+        "query?",
+        "accountId?"
       ],
       "returns": [
         "protocolVersion=2",
@@ -104,7 +131,10 @@
         "kind",
         "viewVersion?",
         "cursor?",
-        "pageSize?"
+        "pageSize?",
+        "query?",
+        "id?",
+        "ids? (1..100)"
       ],
       "returns": [
         "protocolVersion=2",
@@ -129,25 +159,62 @@
     },
     "imports.prepareMany": {
       "kind": "idempotent-mutation",
-      "data": ["requestId", "files[{fileName,size}]"],
-      "returns": ["files[{importId,cloudPath,fileName,version}]", "maxFiles"]
+      "data": [
+        "requestId",
+        "files[{fileName,size}]"
+      ],
+      "returns": [
+        "files[{importId,cloudPath,fileName,version}]",
+        "maxFiles"
+      ]
     },
     "imports.parseFile": {
       "kind": "idempotent-file-mutation",
-      "data": ["requestId", "importId", "fileID", "timezoneOffsetMinutes"],
-      "returns": ["import", "batch?", "duplicateImportId?", "reusedImportId?", "replacedUpdateId?", "duplicateDisposition?"],
+      "data": [
+        "requestId",
+        "importId",
+        "fileID",
+        "timezoneOffsetMinutes"
+      ],
+      "returns": [
+        "import",
+        "batch?",
+        "duplicateImportId?",
+        "reusedImportId?",
+        "replacedUpdateId?",
+        "duplicateDisposition?"
+      ],
       "isolation": "a failed file parse changes only that import file and never rolls back or mutates sibling files"
     },
     "imports.getFile": {
       "kind": "read",
-      "data": ["importId", "pageSize?", "cursor?", "includeOptions?"],
-      "returns": ["import", "batch?", "rows", "nextCursor"],
+      "data": [
+        "importId",
+        "pageSize?",
+        "cursor?",
+        "includeOptions?"
+      ],
+      "returns": [
+        "import",
+        "batch?",
+        "rows",
+        "nextCursor"
+      ],
       "rowPolicy": "Each source row appears once in cursor order; parsed rows do not create draft events or old per-row decisions."
     },
     "imports.discardFile": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "importId", "version"],
-      "returns": ["importId", "state", "contentState", "version"]
+      "data": [
+        "requestId",
+        "importId",
+        "version"
+      ],
+      "returns": [
+        "importId",
+        "state",
+        "contentState",
+        "version"
+      ]
     },
     "financeUpdates.organize": {
       "kind": "idempotent-versioned-mutation",
@@ -191,8 +258,22 @@
     },
     "financeUpdates.get": {
       "kind": "read",
-      "data": ["updateId", "includeEvents?", "includeOptions?"],
-      "returns": ["update", "sources", "events", "issues", "coverage?", "posting?", "accounts?", "categories?", "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"]
+      "data": [
+        "updateId",
+        "includeEvents?",
+        "includeOptions?"
+      ],
+      "returns": [
+        "update",
+        "sources",
+        "events",
+        "issues",
+        "coverage?",
+        "posting?",
+        "accounts?",
+        "categories?",
+        "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"
+      ]
     },
     "reviewIssues.refreshAccountGroups": {
       "kind": "idempotent-versioned-mutation",
@@ -222,7 +303,9 @@
         "protocolVersion?=2",
         "viewVersion?",
         "cursor?",
-        "pageSize?"
+        "pageSize?",
+        "group?",
+        "query?"
       ],
       "returns": [
         "update",
@@ -232,8 +315,17 @@
     },
     "reviewIssues.get": {
       "kind": "read",
-      "data": ["issueId"],
-      "returns": ["update", "issue", "members", "accounts", "categories"]
+      "data": [
+        "issueId",
+        "memberKind?"
+      ],
+      "returns": [
+        "update",
+        "issue",
+        "members",
+        "accounts",
+        "categories"
+      ]
     },
     "reviewIssues.resolve": {
       "kind": "idempotent-double-versioned-mutation",
@@ -332,8 +424,25 @@
     },
     "economicEvents.correctionImpact": {
       "kind": "read",
-      "data": ["eventId", "fields?"],
-      "returns": ["updateVersion", "transactionSet", "accountImpacts", "conflicts", "policyVersion", "previewToken", "updateId", "eventId", "eventStatus", "eventVersion", "transactionIds", "reusedTransactionIds", "canCorrect"]
+      "data": [
+        "eventId",
+        "fields?"
+      ],
+      "returns": [
+        "updateVersion",
+        "transactionSet",
+        "accountImpacts",
+        "conflicts",
+        "policyVersion",
+        "previewToken",
+        "updateId",
+        "eventId",
+        "eventStatus",
+        "eventVersion",
+        "transactionIds",
+        "reusedTransactionIds",
+        "canCorrect"
+      ]
     },
     "economicEvents.evidence": {
       "kind": "read",
@@ -375,8 +484,21 @@
     },
     "financeUpdates.undoImpact": {
       "kind": "read",
-      "data": ["updateId"],
-      "returns": ["update", "createdTransactionCount", "reusedTransactionCount", "dependentTransactionCount", "canUndo", "accountImpacts", "sideEffects", "conflicts", "policyVersion", "previewToken"]
+      "data": [
+        "updateId"
+      ],
+      "returns": [
+        "update",
+        "createdTransactionCount",
+        "reusedTransactionCount",
+        "dependentTransactionCount",
+        "canUndo",
+        "accountImpacts",
+        "sideEffects",
+        "conflicts",
+        "policyVersion",
+        "previewToken"
+      ]
     },
     "financeUpdates.undo": {
       "kind": "idempotent-versioned-mutation",
@@ -395,6 +517,16 @@
         "coverage"
       ],
       "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
+    },
+    "imports.capabilities": {
+      "kind": "read",
+      "data": [],
+      "returns": [
+        "protocolVersion=2",
+        "workbenchVersion=1",
+        "pageSize",
+        "resultMode=receipt"
+      ]
     }
   },
   "rules": {
@@ -413,5 +545,30 @@
     "publicWritePath": "The only posting implementation is financeUpdates.post. Legacy single-file services and their decision/posting/link tables are removed by migration 0012.",
     "idempotentReplay": "V2 receipts preserve the immutable operation outcome. New legacy view references also retain a compact appliedResult for post-commit refresh failures. Mutation keys and request digests remain durable. Receipts store small values or current FinanceUpdate/ReviewIssue references; duplicate requests never rerun the action. View replay returns current committed state. A retired issue returns issue=null and empty members; an abandoned update returns empty events/issues and coverage=null."
   },
-  "failureCodes": ["REQUEST_TOO_LARGE", "PAGINATION_REQUIRED", "INVALID_CURSOR", "STALE_VIEW", "AUTH_REQUIRED", "CONFLICT", "CSV_COLUMN_LIMIT_EXCEEDED", "CSV_RECORD_LIMIT_EXCEEDED", "FILE_ENCODING_INVALID", "FILE_FORMAT_UNSUPPORTED", "FILE_NOT_UPLOADED", "FILE_SIZE_INVALID", "IDEMPOTENCY_CONFLICT", "IDENTITY_CONFLICT", "INSUFFICIENT_CASH_BALANCE", "INITIALIZATION_REQUIRED", "INTERNAL_ERROR", "INVALID_REQUEST", "NOT_FOUND", "SERVICE_NOT_CONFIGURED", "SERVICE_TEMPORARY_UNAVAILABLE", "UNRESOLVED_IMPORT", "UNSUPPORTED_ACTION", "VALIDATION_ERROR"]
+  "failureCodes": [
+    "REQUEST_TOO_LARGE",
+    "PAGINATION_REQUIRED",
+    "INVALID_CURSOR",
+    "STALE_VIEW",
+    "AUTH_REQUIRED",
+    "CONFLICT",
+    "CSV_COLUMN_LIMIT_EXCEEDED",
+    "CSV_RECORD_LIMIT_EXCEEDED",
+    "FILE_ENCODING_INVALID",
+    "FILE_FORMAT_UNSUPPORTED",
+    "FILE_NOT_UPLOADED",
+    "FILE_SIZE_INVALID",
+    "IDEMPOTENCY_CONFLICT",
+    "IDENTITY_CONFLICT",
+    "INSUFFICIENT_CASH_BALANCE",
+    "INITIALIZATION_REQUIRED",
+    "INTERNAL_ERROR",
+    "INVALID_REQUEST",
+    "NOT_FOUND",
+    "SERVICE_NOT_CONFIGURED",
+    "SERVICE_TEMPORARY_UNAVAILABLE",
+    "UNRESOLVED_IMPORT",
+    "UNSUPPORTED_ACTION",
+    "VALIDATION_ERROR"
+  ]
 }

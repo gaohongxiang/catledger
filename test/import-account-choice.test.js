@@ -8,7 +8,8 @@ const model = require('../miniprogram/pages/import-workbench/model')
 function pageFor(issue, accounts = [], importApi = {}, draftService = {}) {
   let definition
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8'), {
-    require: (name) => name === '../../services/view-patch' ? require('../miniprogram/services/view-patch') : name === './final-detail' ? require('../miniprogram/pages/import-workbench/final-detail') : name === './presentation' ? require('../miniprogram/pages/import-workbench/presentation') : name === './model' ? model : name === '../../services/catledger-import' ? importApi : name === '../../services/import-draft-session' ? draftService : { bindPage() {} },
+    // 本文件验证共享编辑控件；V2 编排与服务端分页由 import-paged-workbench.test.js 覆盖。
+    require: (name) => name === './paged' ? { enhance: value => value } : name === '../../services/view-patch' ? require('../miniprogram/services/view-patch') : name === './final-detail' ? require('../miniprogram/pages/import-workbench/final-detail') : name === './presentation' ? require('../miniprogram/pages/import-workbench/presentation') : name === './model' ? model : name === '../../services/catledger-import' ? importApi : name === '../../services/import-draft-session' ? draftService : { bindPage() {} },
     getApp: () => ({ globalData: {} }),
     Page: (page) => { definition = page }
   })

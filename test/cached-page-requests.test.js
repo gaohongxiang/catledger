@@ -130,6 +130,26 @@ test('旧服务目录到期或结构变更后读取最新选项，已确认身�
   h.categories[0].name = '更新后的合成分类'
   const updated = await h.api.callApi('catalog.get')
   assert.equal(updated.categories[0].name, '更新后的合成分类')
+  assert.equal(updated.catalogPath, 'legacy')
+  assert.equal(h.calls.filter(call => call.action === 'catalog.get').length, 1)
+  h.respond = undefined
+  const fresh = await h.api.callApi('catalog.get', {}, { force: true })
+  assert.equal(fresh.catalogPath, 'current')
+  assert.equal(h.calls.filter(call => call.action === 'catalog.get').length, 2)
+})
+
+test('旧统计忽略趋势终点时补读指定月份，保持所选月汇总并拒绝错误终点', async () => {
+  const h = runtime()
+  h.respond = (action, data) => action === 'statistics.get' ? { ok: true, data: { month: data.month,
+    summary: { incomeMinor: data.month === '2026-01' ? '1234' : '9999', expenseMinor: '0', netIncomeMinor: '1234' },
+    cashFlowTrend: [{ month: data.month, incomeMinor: '1234', expenseMinor: '0' }] } } : undefined
+  const value = await h.api.callApi('statistics.get', { month: '2026-01', trendEndMonth: '2026-09' })
+  assert.equal(value.summary.incomeMinor, '1234')
+  assert.equal(value.cashFlowTrend[0].month, '2026-09')
+  assert.equal(value.trendPath, 'legacy')
+  assert.deepEqual(h.calls.map(call => call.data.month), ['2026-01', '2026-09'])
+  h.respond = action => action === 'statistics.get' ? { ok: true, data: { cashFlowTrend: [{ month: '2025-01' }] } } : undefined
+  await assert.rejects(h.api.callApi('statistics.get', { month: '2026-01', trendEndMonth: '2026-09' }, { force: true }), { code: 'INVALID_RESPONSE' })
 })
 
 test('目录的权限错误和非法参数不触发旧版兼容，也不产生空目录缓存', async () => {

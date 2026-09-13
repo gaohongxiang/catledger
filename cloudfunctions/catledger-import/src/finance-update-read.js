@@ -11,6 +11,7 @@ const { getRowSemantic } = require('./row-semantic-resolver')
 const { buildCoverageReport } = require('./coverage-report')
 const { analysisFullyObserved } = require('./statement-analysis')
 const accountGroups = require('./payment-account-groups')
+const { workbenchSummary } = require('./workbench-summary')
 
 async function readVersion(connection, uid, updateId) {
   const update = publicUpdate(await selectUpdate(connection, uid, updateId))
@@ -35,6 +36,12 @@ function preparePage(context, state, uid, kind, filter) {
 }
 function boundedItem(item, key, kind) {
   if (jsonBytes(item) <= 16 * 1024) return item
+  if (kind === 'event' && item.primaryEvidence) {
+    const preview = Object.fromEntries(Object.entries(item.primaryEvidence).map(([name, value]) => [name,
+      typeof value === 'string' && value.length > 120 ? value.slice(0, 120) + '…' : value]))
+    const projected = { ...item, primaryEvidence: preview, detailRequired: true, detailKind: 'event' }
+    if (jsonBytes(projected) <= 16 * 1024) return projected
+  }
   // 明确引用完整详情；原字段仍留库并可通过分段接口取得。
   const result = { [key]: item[key], detailRequired: true, detailKind: kind }
   for (const name of ['version', 'status', 'issueType', 'blocking', 'memberCount', 'candidateCount', 'economicNature',
@@ -64,6 +71,23 @@ function optionalEnum(value, allowed) {
   if (!allowed.includes(value)) throw importError('VALIDATION_ERROR')
   return value
 }
+function searchText(value) {
+  if (value == null) return ''
+  if (typeof value !== 'string' || value.length > 80) throw importError('VALIDATION_ERROR')
+  return value.trim()
+}
+const activeSql = "e.status IN ('ready','needs_action','posted')"
+const needsCategorySql = "e.economic_nature IN ('income','expense','fee','unknown') AND (e.category_id IS NULL OR e.economic_nature = 'unknown')"
+const requiredCategorySql = "e.economic_nature IN ('income','expense','fee','unknown')"
+const reviewSql = `EXISTS (SELECT 1 FROM catledger_review_issue_members m JOIN catledger_review_issues i
+  ON i.uid = m.uid AND i.update_id = m.update_id AND i.issue_id = m.issue_id
+  WHERE m.uid = e.uid AND m.update_id = e.update_id AND m.object_id = e.event_id AND m.object_type = 'event'
+    AND m.member_role <> 'candidate' AND i.status = 'open' AND i.blocking = 1 AND i.issue_type <> 'category_assignment')`
+const categoryIssueSql = `EXISTS (SELECT 1 FROM catledger_review_issue_members m JOIN catledger_review_issues i
+  ON i.uid = m.uid AND i.update_id = m.update_id AND i.issue_id = m.issue_id
+  WHERE m.uid = e.uid AND m.update_id = e.update_id AND m.object_id = e.event_id AND m.object_type = 'event'
+    AND m.member_role <> 'candidate' AND i.status = 'open' AND i.issue_type = 'category_assignment')`
+const pendingReviewSql = `(${reviewSql} OR (e.status = 'needs_action' AND NOT ${categoryIssueSql}))`
 
 async function summary(connection, uid, updateId) {
   const state = await readVersion(connection, uid, updateId)
@@ -72,8 +96,14 @@ async function summary(connection, uid, updateId) {
   const [rows] = await connection.execute(`SELECT event_id AS eventId, status, economic_nature AS economicNature,
     flow_direction AS flowDirection, amount_minor AS amountMinor, ledger_account_id AS ledgerAccountId,
     counterparty_ledger_account_id AS counterpartyLedgerAccountId, field_sources_json AS fieldSources,
-    reason_codes_json AS reasonCodes FROM catledger_economic_events WHERE uid = ? AND update_id = ?`, [uid, updateId])
+    category_id AS categoryId, reason_codes_json AS reasonCodes FROM catledger_economic_events WHERE uid = ? AND update_id = ?`, [uid, updateId])
   const events = rows.map(row => ({ ...row, reasonCodes: parseJson(row.reasonCodes, []), fieldSources: parseJson(row.fieldSources, {}) }))
+  const [pending] = await connection.execute(`SELECT m.object_id AS eventId,
+    MAX(i.issue_type <> 'category_assignment' AND i.blocking = 1) AS review, MAX(i.issue_type = 'category_assignment') AS category
+    FROM catledger_review_issues i JOIN catledger_review_issue_members m ON m.uid = i.uid AND m.update_id = i.update_id AND m.issue_id = i.issue_id
+    WHERE i.uid = ? AND i.update_id = ? AND i.status = 'open' AND m.object_type = 'event' AND m.member_role <> 'candidate' GROUP BY m.object_id`, [uid, updateId])
+  const [[duplicates]] = await connection.execute("SELECT COUNT(*) AS count FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role = 'duplicate'", [uid, updateId])
+  const [[drafts]] = await connection.execute('SELECT COUNT(*) AS count FROM catledger_finance_update_account_drafts WHERE uid = ? AND update_id = ? AND materialized_at IS NULL', [uid, updateId])
   const [issueCounts] = await connection.execute(`SELECT issue_type AS issueType, status,
     COUNT(*) AS count, SUM(blocking = 1 AND issue_type <> 'category_assignment') AS blockingCount
     FROM catledger_review_issues WHERE uid = ? AND update_id = ? GROUP BY issue_type, status`, [uid, updateId])
@@ -92,6 +122,7 @@ async function summary(connection, uid, updateId) {
     reused_transaction_count AS reusedTransactionCount FROM catledger_finance_update_postings
     WHERE uid = ? AND update_id = ? AND state = 'completed' ORDER BY completed_at DESC LIMIT 1`, [uid, updateId])
   return assertBudget({ protocolVersion: 2, ...state,
+    workbench: workbenchSummary(events, pending, issueCounts, Number(duplicates.count), Number(drafts.count)),
     sources: sources.map(({ analysis, ...source }) => ({ ...source, observationsPassed: analysisFullyObserved(analysis) })),
     coverage, totals: Object.values(totals), issueCounts: issueCounts.map(row => ({ ...row, count: Number(row.count), blockingCount: Number(row.blockingCount) })),
     posting: posting ? { createdTransactionCount: Number(posting.createdTransactionCount), reusedTransactionCount: Number(posting.reusedTransactionCount) } : null,
@@ -105,12 +136,28 @@ async function eventPage(connection, uid, context, state) {
   const status = optionalEnum(data.status, ['ready', 'needs_action', 'excluded', 'posted', 'corrected', 'duplicate'])
   const issueId = data.issueId == null ? null : validateUuid(data.issueId)
   const nature = optionalEnum(data.economicNature, ['income', 'expense', 'refund', 'fee', 'internal_transfer', 'repayment', 'unknown', 'borrow', 'balance_adjustment'])
-  const page = preparePage(context, state, uid, 'events', { status, issueId, nature })
+  const view = optionalEnum(data.view, ['active', 'review_pending', 'review_completed', 'category_pending', 'category_completed', 'category_none', 'expense'])
+  const accountId = data.accountId == null ? null : validateUuid(data.accountId)
+  const query = searchText(data.query)
+  const page = preparePage(context, state, uid, 'events', { status, issueId, nature, view, accountId, query })
   let where = 'e.uid = ? AND e.update_id = ?'
   const values = [uid, state.update.updateId]
   if (status === 'duplicate') where += " AND EXISTS (SELECT 1 FROM catledger_event_evidence v WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND v.evidence_role = 'duplicate')"
   else if (status) { where += ' AND e.status = ?'; values.push(status) }
   if (nature) { where += ' AND e.economic_nature = ?'; values.push(nature) }
+  if (view === 'expense') where += " AND e.economic_nature IN ('expense','fee')"
+  else if (view) {
+    where += ' AND ' + activeSql
+    if (view === 'review_pending') where += ' AND ' + pendingReviewSql
+    if (view === 'review_completed') where += ' AND NOT ' + pendingReviewSql
+    if (view === 'category_pending') where += ' AND (' + needsCategorySql + ')'
+    if (view === 'category_completed') where += ' AND (' + requiredCategorySql + ') AND NOT (' + needsCategorySql + ')'
+    if (view === 'category_none') where += ' AND NOT (' + requiredCategorySql + ')'
+  }
+  if (accountId) { where += ` AND (e.ledger_account_id = ? OR e.counterparty_ledger_account_id = ? OR JSON_SEARCH(e.field_sources_json, 'one', ?, NULL,
+    '$.repaymentAllocations[*].accountId', '$.paymentResolution.allocations[*].accountId') IS NOT NULL)`; values.push(accountId, accountId, accountId) }
+  if (query) { where += ` AND EXISTS (SELECT 1 FROM catledger_event_evidence v JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
+    WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND (LOCATE(?, r.item_raw) > 0 OR LOCATE(?, r.counterparty_raw) > 0))`; values.push(query, query) }
   if (issueId) { where += " AND EXISTS (SELECT 1 FROM catledger_review_issue_members m WHERE m.uid = e.uid AND m.update_id = e.update_id AND m.object_type = 'event' AND m.object_id = e.event_id AND m.issue_id = ?)"; values.push(issueId) }
   const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM catledger_economic_events e WHERE ${where}`, values)
   const [ids] = await connection.execute(`SELECT e.event_id AS eventId FROM catledger_economic_events e WHERE ${where} AND e.event_id > ? ORDER BY e.event_id LIMIT ?`, [...values, page.last, page.size + 1])
@@ -123,11 +170,23 @@ async function issuePage(connection, uid, context, state) {
   const status = optionalEnum(context.data.status, ['open', 'resolved', 'superseded'])
   const issueType = context.data.issueType == null ? null : context.data.issueType
   if (issueType && (typeof issueType !== 'string' || !/^[a-z_]{1,64}$/.test(issueType))) throw importError('VALIDATION_ERROR')
-  const page = preparePage(context, state, uid, 'issues', { status, issueType })
+  const group = optionalEnum(context.data.group, ['accounts', 'review', 'category'])
+  const query = searchText(context.data.query)
+  const page = preparePage(context, state, uid, 'issues', { status, issueType, group, query })
   const values = [uid, state.update.updateId]
   let where = 'uid = ? AND update_id = ?'
   if (status) { where += ' AND status = ?'; values.push(status) }
   if (issueType) { where += ' AND issue_type = ?'; values.push(issueType) }
+  if (group === 'accounts') where += " AND issue_type = 'account_mapping' AND status IN ('open','resolved')"
+  if (group === 'review') where += " AND issue_type NOT IN ('account_mapping','category_assignment') AND blocking = 1"
+  if (group === 'category') where += " AND issue_type = 'category_assignment'"
+  if (query) {
+    where += ` AND issue_id IN (SELECT m.issue_id FROM catledger_review_issue_members m
+      JOIN catledger_event_evidence v ON v.uid = m.uid AND v.update_id = m.update_id AND v.event_id = m.object_id
+      JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
+      WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'event' AND (LOCATE(?, r.item_raw) > 0 OR LOCATE(?, r.counterparty_raw) > 0))`
+    values.push(uid, state.update.updateId, query, query)
+  }
   const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM catledger_review_issues WHERE ${where}`, values)
   const [ids] = await connection.execute(`SELECT issue_id AS issueId FROM catledger_review_issues WHERE ${where} AND issue_id > ? ORDER BY issue_id LIMIT ?`, [...values, page.last, page.size + 1])
   const items = ids.length ? await selectIssues(connection, uid, state.update.updateId, { issueIds: ids.map(row => row.issueId), includeMembers: false }) : []
@@ -137,13 +196,16 @@ async function issuePage(connection, uid, context, state) {
 
 async function memberPage(connection, uid, context, state) {
   const issueId = validateUuid(context.data.issueId)
-  const page = preparePage(context, state, uid, 'members', { issueId })
+  const memberKind = optionalEnum(context.data.memberKind, ['event', 'relation'])
+  const page = preparePage(context, state, uid, 'members', { issueId, memberKind })
+  const condition = memberKind ? ' AND object_type = ?' : ''
+  const values = [uid, state.update.updateId, issueId, ...(memberKind ? [memberKind] : [])]
   const [[issue]] = await connection.execute('SELECT version FROM catledger_review_issues WHERE uid = ? AND update_id = ? AND issue_id = ?', [uid, state.update.updateId, issueId])
   if (!issue) throw importError('NOT_FOUND')
-  const [[count]] = await connection.execute('SELECT COUNT(*) AS total FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND issue_id = ?', [uid, state.update.updateId, issueId])
+  const [[count]] = await connection.execute('SELECT COUNT(*) AS total FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND issue_id = ?' + condition, values)
   const [rows] = await connection.execute(`SELECT member_id AS memberId, object_type AS objectType, object_id AS objectId,
     object_version AS objectVersion, member_role AS memberRole, sort_order AS sortOrder FROM catledger_review_issue_members
-    WHERE uid = ? AND update_id = ? AND issue_id = ? AND member_id > ? ORDER BY member_id LIMIT ?`, [uid, state.update.updateId, issueId, page.last, page.size + 1])
+    WHERE uid = ? AND update_id = ? AND issue_id = ?${condition} AND member_id > ? ORDER BY member_id LIMIT ?`, [...values, page.last, page.size + 1])
   const relationIds = rows.filter(row => row.objectType === 'relation').map(row => row.objectId)
   const relations = relationIds.length ? (await connection.execute(`SELECT relation_id AS relationId, relation_type AS relationType,
     status, version, source_event_id AS sourceEventId, target_event_id AS targetEventId, amount_minor AS amountMinor, currency
@@ -178,14 +240,40 @@ const OPTIONS = Object.freeze({
 })
 async function optionPage(connection, uid, context, state) {
   const kind = context.data.kind
+  if (['new_accounts', 'affected_accounts'].includes(kind)) return affectedAccountPage(connection, uid, context, state)
   if (!Object.hasOwn(OPTIONS, kind)) throw importError('VALIDATION_ERROR')
   const option = OPTIONS[kind]
-  const page = preparePage(context, state, uid, 'options', { kind })
+  const query = searchText(context.data.query)
+  const id = context.data.id == null ? null : validateUuid(context.data.id)
+  const ids = context.data.ids == null ? null : context.data.ids
+  if (ids && (!Array.isArray(ids) || ids.length > 100 || !ids.length)) throw importError('VALIDATION_ERROR')
+  const selectedIds = ids ? [...new Set(ids.map(validateUuid))].sort() : null
+  const page = preparePage(context, state, uid, 'options', { kind, query, id, ids: selectedIds })
   const values = kind === 'accountDrafts' ? [uid, state.update.updateId] : [uid]
+  let condition = option.condition
+  if (query) { condition += ' AND LOCATE(?, name) > 0'; values.push(query) }
+  if (id) { condition += ` AND ${option.key} = ?`; values.push(id) }
+  if (selectedIds) { condition += ` AND ${option.key} IN (${selectedIds.map(() => '?').join(',')})`; values.push(...selectedIds) }
   const key = kind === 'categories' ? 'categoryId' : 'accountId'
-  const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM ${option.table} WHERE uid = ? AND ${option.condition}`, values)
-  const [rows] = await connection.execute(`SELECT ${option.key} AS ${key}, ${option.fields} FROM ${option.table} WHERE uid = ? AND ${option.condition} AND ${option.key} > ? ORDER BY ${option.key} LIMIT ?`, [...values, page.last, page.size + 1])
+  const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM ${option.table} WHERE uid = ? AND ${condition}`, values)
+  const [rows] = await connection.execute(`SELECT ${option.key} AS ${key}, ${option.fields} FROM ${option.table} WHERE uid = ? AND ${condition} AND ${option.key} > ? ORDER BY ${option.key} LIMIT ?`, [...values, page.last, page.size + 1])
   return finishPage(context, state, page, rows, count.total, key, kind)
+}
+
+async function affectedAccountPage(connection, uid, context, state) {
+  const kind = context.data.kind
+  const page = preparePage(context, state, uid, 'options', { kind })
+  const catalog = `(SELECT account_id AS accountId, name, type, 0 AS isDraft FROM catledger_accounts WHERE uid = ?
+    UNION ALL SELECT draft_account_id, name, type, 1 FROM catledger_finance_update_account_drafts WHERE uid = ? AND update_id = ? AND materialized_at IS NULL) a`
+  const membership = `e.uid = ? AND e.update_id = ? AND e.status = 'ready' AND (e.ledger_account_id = a.accountId OR e.counterparty_ledger_account_id = a.accountId
+    OR JSON_SEARCH(e.field_sources_json, 'one', a.accountId, NULL, '$.repaymentAllocations[*].accountId', '$.paymentResolution.allocations[*].accountId') IS NOT NULL)`
+  const where = kind === 'new_accounts' ? 'a.isDraft = 1' : `EXISTS (SELECT 1 FROM catledger_economic_events e WHERE ${membership})`
+  const base = [uid, uid, state.update.updateId], args = [uid, state.update.updateId]
+  const values = [...base, ...(kind === 'new_accounts' ? [] : args)]
+  const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM ${catalog} WHERE ${where}`, values)
+  const [rows] = await connection.execute(`SELECT a.*, (SELECT COUNT(*) FROM catledger_economic_events e WHERE ${membership}) AS count
+    FROM ${catalog} WHERE ${where} AND a.accountId > ? ORDER BY a.accountId LIMIT ?`, [...args, ...values, page.last, page.size + 1])
+  return finishPage(context, state, page, rows.map(row => ({ ...row, count: Number(row.count), isDraft: Boolean(row.isDraft) })), count.total, 'accountId', kind)
 }
 
 async function detail(connection, uid, context, state) {
@@ -238,8 +326,10 @@ async function issueDetail(connection, uid, context, state) {
   const issues = await selectIssues(connection, uid, state.update.updateId, { issueIds: [issueId], includeMembers: false })
   if (!issues[0]) throw importError('NOT_FOUND')
   const page = await memberPage(connection, uid, context, state)
+  const subject = issues[0].subject && (await selectEvents(connection, uid, state.update.updateId, { eventIds: [issues[0].subject.eventId] }))[0]
   return assertBudget({ protocolVersion: 2, viewVersion: state.viewVersion, update: state.update,
-    issue: boundedItem(issues[0], 'issueId', 'issue'), members: page.items, total: page.total, nextCursor: page.nextCursor }, 'page')
+    issue: boundedItem(issues[0], 'issueId', 'issue'), subject: subject ? boundedItem(subject, 'eventId', 'event') : null,
+    members: page.items, total: page.total, nextCursor: page.nextCursor }, 'page')
 }
 
 function createFinanceUpdateRead({ getPool }) {
@@ -260,7 +350,8 @@ function createFinanceUpdateRead({ getPool }) {
       if (kind === 'summary') return summary(connection, uid, updateId)
       return operation(connection, uid, context, await readVersion(connection, uid, updateId))
     } }) }
-  return { rows: read(rowPage), issue: read(issueDetail, 'issue'), summary: read(summary, 'summary'), events: read(eventPage), issues: read(issuePage), members: read(memberPage),
+  return { capabilities: context => executeUserRead({ getPool, ...context, operation: async () => ({ protocolVersion: 2, workbenchVersion: 1, pageSize: BUDGET.defaultPageSize, resultMode: 'receipt' }) }),
+    rows: read(rowPage), issue: read(issueDetail, 'issue'), summary: read(summary, 'summary'), events: read(eventPage), issues: read(issuePage), members: read(memberPage),
     evidence: read(evidencePage, 'evidence'), options: read(optionPage), detail: read(detail, 'detail') }
 }
 module.exports = { createFinanceUpdateRead, readVersion, finishPage, summary }

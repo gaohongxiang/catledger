@@ -12,7 +12,10 @@ function record(event) {
   const view = model.eventView(event), result = {}
   ;['eventId', 'displayTitle', 'displayMeta', 'displayDay', 'displayMonth', 'displayDetailMeta',
     'amountText', 'directionClass', 'needsCategory', 'reviewIssueId', 'categoryName', 'natureLabel',
-    'accountText', 'duplicateCount', 'auditNote'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
+    'accountText', 'duplicateCount', 'auditNote', 'detailRequired'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
+  for (const key of ['displayTitle', 'displayMeta', 'displayDetailMeta', 'accountText']) if (typeof result[key] === 'string' && result[key].length > 160) {
+    result[key] = result[key].slice(0, 160) + '…'; result.detailRequired = true
+  }
   return result
 }
 
@@ -79,4 +82,4 @@ function accountMapping(mapping) {
   return visible
 }
 
-module.exports = { accountMapping, emptyLists, reviewLists, detailWindow, PAGE_SIZE }
+module.exports = { accountMapping, emptyLists, reviewLists, detailWindow, record, card, PAGE_SIZE }

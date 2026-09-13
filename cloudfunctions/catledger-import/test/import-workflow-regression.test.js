@@ -104,7 +104,7 @@ test('账户页只向服务端提交一个批量动作，解析页已有更新�
   const source = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.js'), 'utf8')
   const contract = require(path.join(projectRoot, 'shared/catledger-import.json'))
   assert.ok(contract.actions['reviewIssues.resolveAccountMappings'])
-  assert.match(source, /callImport\('reviewIssues\.resolveAccountMappings'/)
+  assert.match(source, /request\('reviewIssues\.resolveAccountMappings'/)
   assert.match(source, /if \(this\.data\.update && this\.data\.update\.updateId\)[\s\S]*loadUpdate\(this\.data\.update\.updateId\)/)
 })
 
@@ -115,8 +115,8 @@ test('首次进入账户步骤只调用一个原子 prepare 动作', function ()
   const end = source.indexOf('\n  loadUpdate:', start)
   const method = source.slice(start, end)
   assert.ok(contract.actions['financeUpdates.prepare'])
-  assert.match(method, /callImport\('financeUpdates\.prepare'/)
-  assert.doesNotMatch(method, /callImport\('financeUpdates\.(?:create|organize)'/)
+  assert.match(method, /request\('financeUpdates\.prepare'/)
+  assert.doesNotMatch(method, /request\('financeUpdates\.(?:create|organize)'/)
 })
 
 test('整理卡明确区分交易摘要和冻结的原始记录', function () {

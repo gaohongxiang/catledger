@@ -70,3 +70,23 @@ V2账务校验不减，完整展示不进入写事务。旧协议最大40事件/
 PERF-3全量636项（根301/API97/import238）通过，无失败/跳过；静态528文件/105运行模块。新增故障验证使用真实隔离MySQL、connectionLimit=1，commit成功后模拟响应丢失并重放，三个并发相同post均返回首次回执；undo后无活动交易且原post回执不变。旧协议展示超时返回已保存状态，原请求恢复后可读完整小视图。
 
 同环境1000条：prepare220ms/71 SQL/969字节，organize无变化4ms/8 SQL/970字节，resolve256ms/95 SQL/982字节，post237ms/121 SQL/锁216ms/1021字节。
+
+
+## PERF-4 原生工作台读取契约
+
+`imports.capabilities` 为经服务端身份校验的只读动作，返回 `protocolVersion:2/workbenchVersion:1/pageSize:40/resultMode:receipt`。新版首次 prepare 前探测；不支持时明确提示升级导入服务，不下载旧协议全集。恢复直接读取 summary，并保留旧计划 organize/账户归组 refresh 的显式版本检查。
+
+summary 增加 `workbench`：账户步骤摘要、核对/分类标签计数、重复证据数、最终收支整数分汇总和受影响/新建账户数。成员与事件仍在服务端完整参与 coverage、ready 与阻塞判断，当前页不参与整批门禁计算。汇总从轻事件、开放问题成员 ID 与聚合查询生成，不调用 getUpdateView。
+
+- `economicEvents.list` 增加 `view=active|review_pending|review_completed|category_pending|category_completed|category_none|expense`、`accountId`、`query`；与 status/nature/issueId 同时作用。账户过滤覆盖主/对手账户与付款、还款分配。
+- `reviewIssues.list` 增加 `group=accounts|review|category` 与 query；账户包含 open/resolved，核对组排除账户/分类组。搜索在服务端匹配该组成员来源标题/交易对方。
+- `reviewIssues.members/get` 增加 `memberKind=event|relation`；get 单独给出主体，候选翻页不会替换正在编辑的对象。
+- `financeUpdates.options` 增加名称 query、单个 id、最多100个精确 ids；kind 扩展 new_accounts/affected_accounts，后者返回整批就绪事件关联数量。上述筛选全部规范化并绑定签名游标。
+
+工作台实际入口为 `index.js` 的共享编辑控件加 `paged.enhance`：prepare/organize/整理使用小回执后读摘要；post 首先显示提交事实，明细读取失败显示“已入账，明细待刷新”。草稿在发送前保存 resultMode、requestId、updateVersion 和 issueVersion，恢复按原请求重放。已保存决定的摘要刷新失败不重新发送决定。普通待同步草稿显式限192KiB，请求限64KiB；达到上限提示先同步，绝不丢弃用户选择。
+
+`import-view-session` 每个工作台最多缓存3个响应页，同查询合并、最多8个并行读取，每条分页历史最多8个游标；更早历史可回首页。主列表40项，成员/候选/证据8项，目录可搜索与分页并按ID保留选择，完整原文每段2048字符且不累计拼接进页面。超长预览显示省略标记，完整原始内容仍可分段读取。批量“不计入”显式 `selection:{mode:all}` 指向被冻结的问题组，不发送可见页ID；同银行批量辅助只列当前问题页，展示整组笔数并由服务器重验完整成员。
+
+版本变化清除响应页；同步提示独立更新。同批次旧响应、关弹层、onHide/onUnload 和会话变化均设回填屏障。客户端不保存完整业务批次到 `_businessData`、草稿view、最终明细或证据私有数组。
+
+PERF-4 本地验证：644/644（根309/API97/import238），无失败/跳过；静态533文件/106运行模块；两份生产依赖审计0漏洞。24990条工作台VM测量：主列表最大单次setData 13,410字节，page.data最大17,783字节；同版本重复同步0读取/0业务派生，当前页40事件、3页LRU。长字段、大组、末页、目录搜索、组决定与提交后刷新失败单独回归通过。数据为合成输入，VM数值不是原生设备/真实网络指标，原生检查和三轮服务器基准在PERF-5完成。
