@@ -5,6 +5,7 @@ function localServices({ apiPool, importPool, objects = new Map(), subject = 'sy
   const getPool = () => apiPool
   const repository = moduleFor('api', 'user-repository').createUserRepository({ getPool })
   const apiServices = moduleFor('api', 'action-registry').createActionHandlers({
+    loanService: moduleFor('api', 'loan-service').createLoanService({ getPool }),
     accountService: moduleFor('api', 'account-service').createAccountService({ getPool }),
     categoryService: moduleFor('api', 'category-service').createCategoryService({ getPool }),
     catalogService: moduleFor('api', 'catalog-service').createCatalogService({ getPool }),

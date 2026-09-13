@@ -123,10 +123,13 @@ function registerStorageCompactionTests({ hasDatabase, mysql, databaseConfig, cr
     } finally { await pool.end() }
   })
 
-  test('0012迁移保留旧已入账交易和来源，压缩历史回执，清理后中断可重入至25张表', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  test('0012迁移保留旧已入账交易和来源，压缩历史回执，可重入清理旧表且保留后续表', { skip: !hasDatabase, timeout: 30000 }, async () => {
     const { pool, service, user, upload } = await setup(9101)
     let connection
     try {
+      const tableSql = "SELECT table_name AS name FROM information_schema.columns WHERE table_schema=DATABASE() AND LEFT(table_name,10)='catledger_' AND column_name='uid' ORDER BY table_name"
+      const [currentTables] = await pool.query(tableSql)
+      assert.ok(currentTables.every(row => !retired.includes(row.name)))
       await historicalSchema(pool)
       const parsed = await upload()
       const [rows] = await pool.execute('SELECT row_id AS rowId, normalized_amount_minor AS amount FROM catledger_import_rows WHERE uid=? AND batch_id=? ORDER BY source_row_number', [user.uid, parsed.batch.batchId])
@@ -170,8 +173,8 @@ function registerStorageCompactionTests({ hasDatabase, mysql, databaseConfig, cr
       assert.equal(Number(updates.count),2,'只给旧入账文件补批次，不重建现代批次')
       const [[afterRows]]=await pool.execute('SELECT COUNT(*) AS count FROM catledger_import_rows WHERE uid=?',[user.uid])
       assert.equal(Number(afterRows.count),Number(beforeRows.count))
-      const [[tableCount]]=await pool.query("SELECT COUNT(*) AS count FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name LIKE 'catledger_%' AND column_name='uid'")
-      assert.equal(Number(tableCount.count),25)
+      const [afterTables] = await pool.query(tableSql)
+      assert.deepEqual(afterTables, currentTables)
       assert.ok(Object.values(await counts(pool,user.uid,abandoned.update.updateId)).every(count=>count===0))
       const [[receipt]]=await pool.execute('SELECT result_json AS result FROM catledger_mutation_receipts WHERE uid=? AND idempotency_key_digest=?',[user.uid,digestIdempotencyKey(request.data.requestId)])
       assert.equal(receipt.result.kind,'finance-update-view'); assert.ok(JSON.stringify(receipt.result).length<160)

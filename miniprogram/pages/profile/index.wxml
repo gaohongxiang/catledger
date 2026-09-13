@@ -30,6 +30,7 @@
     <view class="profile-row content-inset" role="button" aria-label="进入分类管理" bindtap="openCategories">
       <view class="row-copy"><text class="row-title">分类管理</text><text class="row-note">{{loggedIn && hasLoaded ? categoryCount + ' 个收支分类' : '管理收入与支出分类'}}</text></view><view class="row-chevron"></view>
     </view>
+    <view class="profile-row content-inset" role="button" aria-label="进入贷款管理" bindtap="openLoans"><view class="row-copy"><text class="row-title">贷款管理</text><text class="row-note">借款与分期，核对本金和实际还款</text></view><view class="row-chevron"></view></view>
   </view>
 
   <text class="profile-section-kicker content-inset">设置与资料</text>

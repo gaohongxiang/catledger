@@ -1,0 +1,1 @@
+{ "navigationBarTitleText": "贷款管理", "enablePullDownRefresh": true, "usingComponents": { "login-sheet": "/components/login-sheet/index" } }

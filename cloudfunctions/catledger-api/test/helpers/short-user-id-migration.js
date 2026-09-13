@@ -20,6 +20,19 @@ const context = (user, data) => ({ provider: 'wechat-mini', subjectHash: user.su
 
 
 const historicalTables = ['catledger_import_transaction_links', 'catledger_import_decisions', 'catledger_import_postings', 'catledger_import_batch_issues']
+// 0011 只验证当时的 29 张 uid 表。后续新增的空表不属于这份历史夹具，
+// 不扩大已冻结迁移的运行范围，也不降低完整表数和逐表非空断言。
+const migrationsDirectory = path.resolve(__dirname, '../../../../migrations')
+const laterTables = fs.readdirSync(migrationsDirectory).filter(name => /^\d{4}_.*\.sql$/.test(name) && Number(name.slice(0, 4)) > 12).sort()
+  .flatMap(name => splitSqlStatements(fs.readFileSync(path.join(migrationsDirectory, name), 'utf8')))
+  .map(sql => ({ sql, name: (sql.match(/^CREATE TABLE IF NOT EXISTS (catledger_\w+)/) || [])[1] })).filter(item => item.name)
+async function removeLaterEmptyTables(pool) {
+  for (const item of laterTables.slice().reverse()) {
+    const [[row]] = await pool.query('SELECT COUNT(*) AS count FROM ' + item.name)
+    assert.equal(Number(row.count), 0, 'historical fixture must not discard later data')
+    await pool.query('DROP TABLE ' + item.name)
+  }
+}
 async function ensureHistoricalTables(pool) {
   for (const filename of ['0004_single_file_import.sql', '0006_unified_finance_updates.sql']) {
     const source = fs.readFileSync(path.resolve(__dirname, '../../../../migrations', filename), 'utf8')
@@ -155,8 +168,11 @@ async function seedImports(pool, user) {
 
 function registerShortUserIdMigrationTests({ getPool, hasDatabase }) {
   test.describe('0011历史schema回归', () => {
-    test.beforeEach(async () => { if (hasDatabase) await ensureHistoricalTables(getPool()) })
-    test.afterEach(async () => { if (hasDatabase) for (const table of historicalTables) await getPool().query('DROP TABLE IF EXISTS ' + table) })
+    test.beforeEach(async () => { if (hasDatabase) { await removeLaterEmptyTables(getPool()); await ensureHistoricalTables(getPool()) } })
+    test.afterEach(async () => { if (hasDatabase) {
+      for (const table of historicalTables) await getPool().query('DROP TABLE IF EXISTS ' + table)
+      for (const item of laterTables) await getPool().query(item.sql)
+    } })
   test('0011迁移完整用户账本，保留29张表数据、时间、对象路径和幂等重放', { skip: !hasDatabase, timeout: 30000 }, async () => {
     const pool = getPool()
     const user = await seedUser(pool), other = await seedUser(pool), existingShort = await seedUser(pool, '1234567890')

@@ -1,6 +1,10 @@
 const PUBLIC_ACTIONS = Object.freeze([
   'bootstrap',
   'catalog.get',
+  'loans.list',
+  'loans.get',
+  'loans.create',
+  'loans.update',
   'accounts.archive',
   'accounts.correctBalance',
   'accounts.create',
@@ -27,9 +31,13 @@ const PUBLIC_ACTIONS = Object.freeze([
   'transactions.update'
 ])
 
-function createActionHandlers({ accountService, categoryService, catalogService, transactionService }) {
+function createActionHandlers({ accountService, categoryService, catalogService, transactionService, loanService }) {
   return {
     'catalog.get': catalogService.get,
+    'loans.list': loanService.list,
+    'loans.get': loanService.get,
+    'loans.create': loanService.create,
+    'loans.update': loanService.update,
     'accounts.archive': accountService.archive,
     'accounts.correctBalance': accountService.correctBalance,
     'accounts.create': accountService.create,

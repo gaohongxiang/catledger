@@ -1,0 +1,18 @@
+<view class="page-canvas loan-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="loan-heading content-inset"><view><text class="loan-kicker">借款与分期</text><text class="loan-title">贷款管理</text></view><button class="loan-create" bindtap="createLoan">新增贷款</button></view>
+  <text class="loan-note content-inset">每笔贷款单独核对本金，账户余额仍以账本为准。</text>
+  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error" bindtap="firstPage" aria-role="button">{{errorMessage}} · 重试</view>
+  <view wx:if="{{loading && !hasLoaded}}" class="ui-state">正在读取贷款…</view>
+  <view wx:if="{{hasLoaded && !items.length}}" class="empty-ledger content-inset"><text class="empty-ledger-title">还没有贷款资料</text><text class="empty-ledger-copy">先关联一个负债账户，再填写已确认的本金。新增资料不会重复记一笔借款。</text></view>
+  <view class="loan-list">
+    <view wx:for="{{items}}" wx:key="loanId" class="loan-row content-inset" data-id="{{item.loanId}}" bindtap="openLoan" aria-role="button" aria-label="查看{{item.name}}">
+      <view class="loan-row-top"><text class="loan-name">{{item.name}}</text><text class="loan-state">{{item.statusText}}</text></view>
+      <text class="loan-note">{{item.kindText}} · {{item.accountName}}</text>
+      <text class="loan-principal money-number">{{item.principalText}}</text>
+      <text class="loan-note">{{item.baselineDate ? '本金基准：' + item.baselineDate + ' 日初' : '尚未提供本金基准'}}</text>
+    </view>
+  </view>
+  <view wx:if="{{canPrevious || nextCursor}}" class="loan-paging"><button class="secondary-button" disabled="{{loading || !canPrevious}}" bindtap="previousPage">上一页</button><button class="secondary-button" disabled="{{loading || !nextCursor}}" bindtap="nextPage">下一页</button></view>
+  <button wx:if="{{canPrevious}}" class="loan-link" disabled="{{loading}}" bindtap="firstPage">回到第一页</button>
+  <login-sheet id="page-login-sheet" />
+</view>

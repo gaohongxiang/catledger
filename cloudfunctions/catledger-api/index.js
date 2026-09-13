@@ -1,5 +1,7 @@
 const cloud = require('wx-server-sdk')
 
+const { createLoanService } = require('./src/loan-service')
+
 const { createAccountService } = require('./src/account-service')
 const { createActionHandlers } = require('./src/action-registry')
 const { createCategoryService } = require('./src/category-service')
@@ -16,6 +18,7 @@ cloud.init({
 const repository = createUserRepository({
   getPool
 })
+const loanService = createLoanService({ getPool })
 const accountService = createAccountService({ getPool })
 const categoryService = createCategoryService({ getPool })
 const catalogService = createCatalogService({ getPool })
@@ -24,7 +27,7 @@ const transactionService = createTransactionService({ getPool })
 const handler = createHandler({
   getWxContext: () => cloud.getWXContext(),
   repository,
-  services: createActionHandlers({ accountService, categoryService, catalogService, transactionService }),
+  services: createActionHandlers({ accountService, categoryService, catalogService, transactionService, loanService }),
   logger: console
 })
 

@@ -1,0 +1,13 @@
+.loan-page { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
+.loan-heading, .loan-row-top, .loan-paging { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
+.loan-kicker, .loan-title, .loan-note, .loan-principal { display: block; }
+.loan-kicker, .loan-note { color: var(--theme-text-muted); font-size: var(--font-caption); }
+.loan-title { font-size: 36rpx; font-weight: 500; margin: 6rpx 0 16rpx; }
+.loan-create, .loan-link { color: var(--theme-accent-strong); background: transparent; font-size: 26rpx; padding: 20rpx; margin: 0; min-height: 88rpx; }
+.loan-list { margin-top: 30rpx; }
+.loan-row { padding-top: 26rpx; padding-bottom: 26rpx; border-top: 1rpx solid var(--theme-line); }
+.loan-name { font-size: 30rpx; font-weight: 500; overflow-wrap: anywhere; }
+.loan-state { color: var(--theme-secondary); font-size: 24rpx; flex-shrink: 0; }
+.loan-principal { margin: 16rpx 0 8rpx; font-size: 42rpx; overflow-wrap: anywhere; }
+.loan-paging { margin-top: 28rpx; }
+.loan-paging button { flex: 1; }

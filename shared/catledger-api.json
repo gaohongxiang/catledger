@@ -8,8 +8,13 @@
       "data": "action-specific object"
     }
   },
+  "loanMetadata": {"currency": "CNY", "kind": ["borrowing", "installment"], "unknownPrincipal": null, "knownZeroPrincipal": "0", "baseline": "confirmed principal at the start of baselineDate; never the entire account balance", "owner": "trusted server identity, uid-scoped loan/account FK", "status": ["unknown", "active", "settled"], "writeRecovery": "transactions.commandResult + original persisted requestId"},
   "actions": {
-    "transactions.commandResult": { "kind": "read", "data": ["requestId", "commandAction"], "returns": ["action", "receiptId", "result"], "scope": "current user frozen transaction write receipt; missing or mismatched action remains OPERATION_UNCONFIRMED" },
+    "loans.list": {"kind": "read", "data": ["pageSize?", "cursor?"], "returns": "{items: Loan[], nextCursor: string|null}; pageSize 1..40; signed user-scoped cursor"},
+    "loans.get": {"kind": "read", "data": ["loanId"], "returns": "{loan: Loan}"},
+    "loans.create": {"kind": "mutation", "data": ["requestId", "name", "institution?", "kind", "accountId", "baselinePrincipalMinor", "baselineDate", "startDate?", "endDate?", "repaymentMethod?"], "returns": "{loanId,version}; metadata only, no Transaction or balance mutation"},
+    "loans.update": {"kind": "versioned-mutation", "data": ["requestId", "loanId", "version", "name", "institution?", "kind", "accountId", "baselinePrincipalMinor", "baselineDate", "startDate?", "endDate?", "repaymentMethod?"], "returns": "{loanId,version}"},
+    "transactions.commandResult": { "kind": "read", "data": ["requestId", "commandAction"], "returns": ["action", "receiptId", "result"], "scope": "current user frozen transaction or loan write receipt; missing or mismatched action remains OPERATION_UNCONFIRMED" },
     "catalog.get": {
       "kind": "read",
       "data": [],

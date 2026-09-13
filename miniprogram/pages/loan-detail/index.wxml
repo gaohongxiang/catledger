@@ -1,0 +1,35 @@
+<view class="page-canvas loan-detail {{themeClass}}" style="{{themeStyle}}">
+  <view class="detail-heading content-inset"><text class="detail-kicker">贷款资料</text><text class="detail-title">{{loan ? loan.name : '新增贷款'}}</text></view>
+  <view wx:if="{{savedMessage}}" class="ui-state">{{savedMessage}}</view>
+  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error">{{errorMessage}}</view>
+  <button wx:if="{{errorMessage && !saving}}" class="detail-link" bindtap="load">重新读取与核实</button>
+  <button wx:if="{{hasPending && !formOpen}}" class="primary-button" disabled="{{saving || loading}}" loading="{{saving}}" bindtap="save">重试上次操作</button>
+  <view wx:if="{{loading && !loan}}" class="ui-state">正在读取资料…</view>
+  <view wx:if="{{loan && !formOpen}}" class="principal-panel content-inset">
+    <text class="detail-muted">已确认剩余本金</text><text class="principal-value money-number">{{loan.principalText}}</text>
+    <text class="detail-muted">{{loan.statusText}} · {{loan.accountName}}{{loan.accountArchived ? '（已停用）' : ''}}</text>
+    <view class="detail-row"><text>本金基准</text><text>{{loan.baselineDate ? loan.baselineDate + ' 日初' : '待补充'}}</text></view>
+    <view class="detail-row"><text>类型</text><text>{{loan.kindText}}</text></view>
+    <view class="detail-row"><text>机构</text><text>{{loan.institution || '未填写'}}</text></view>
+    <view class="detail-row"><text>起止日期</text><text>{{loan.startDate || '未填写'}} 至 {{loan.endDate || '未填写'}}</text></view>
+    <view class="detail-row"><text>还款方式</text><text>{{loan.repaymentMethod || '未填写'}}</text></view>
+    <button class="secondary-button" bindtap="edit" disabled="{{saving}}">编辑资料</button>
+  </view>
+  <view wx:if="{{formOpen}}" class="loan-form content-inset">
+    <text class="form-note">只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。</text>
+    <label class="form-field"><text>贷款名称</text><input value="{{name}}" data-field="name" bindinput="input" maxlength="80" placeholder="例如：住房贷款" /></label>
+    <label class="form-field"><text>机构（选填）</text><input value="{{institution}}" data-field="institution" bindinput="input" maxlength="80" placeholder="无需填写合同号" /></label>
+    <picker class="form-field" range="{{kinds}}" value="{{kindIndex}}" bindchange="selectKind"><text>贷款类型</text><view class="picker-value">{{kinds[kindIndex]}}</view></picker>
+    <picker wx:if="{{accounts.length}}" class="form-field" range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="selectAccount"><text>关联负债账户</text><view class="picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择负债账户'}}</view></picker>
+    <button wx:else class="secondary-button" bindtap="openAccounts">先创建或启用负债账户</button>
+    <label class="form-field"><text>已确认本金（元）</text><input type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="不清楚可留空" /></label>
+    <picker class="form-field" mode="date" value="{{baselineDate}}" data-field="baselineDate" bindchange="input"><text>本金基准日期（日初）</text><view class="picker-value">{{baselineDate || '有本金时必填'}}</view></picker>
+    <picker class="form-field" mode="date" value="{{startDate}}" data-field="startDate" bindchange="input"><text>开始日期（选填）</text><view class="picker-value">{{startDate || '未填写'}}</view></picker>
+    <picker class="form-field" mode="date" value="{{endDate}}" data-field="endDate" bindchange="input"><text>结束日期（选填）</text><view class="picker-value">{{endDate || '未填写'}}</view></picker>
+    <label class="form-field"><text>还款方式（选填）</text><input value="{{repaymentMethod}}" data-field="repaymentMethod" bindinput="input" maxlength="80" placeholder="以已确认约定为准" /></label>
+    <text wx:if="{{hasPending}}" class="form-note">上次保存结果待核实，再次提交会沿用原请求和原内容。</text>
+    <button class="primary-button" loading="{{saving}}" disabled="{{saving || loading}}" bindtap="save">{{hasPending ? '重试上次保存' : '保存贷款资料'}}</button>
+    <button class="detail-link" disabled="{{saving}}" bindtap="cancelEdit">取消</button>
+  </view>
+  <login-sheet id="page-login-sheet" />
+</view>

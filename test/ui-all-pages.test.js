@@ -42,6 +42,49 @@ function runtime(route, callApi) {
   return { page, app, calls, api, chrome }
 }
 
+test('贷款资料响应丢失后修改表单仍恢复原请求，保存后显示权威资料', async () => {
+  const account = { accountId: 'debt', name: '合成负债', type: 'credit', archived: false }
+  let stored = null, attempts = 0
+  const { page, calls } = runtime('pages/loan-detail/index', (action, data) => {
+    if (action === 'catalog.get') return Promise.resolve({ uid: '1234567890', accounts: [account] })
+    if (action === 'loans.create') {
+      attempts++
+      if (!stored) stored = { ...data, loanId: 'loan', accountName: account.name, version: 1, status: 'active', remainingPrincipalMinor: data.baselinePrincipalMinor }
+      return attempts === 1 ? Promise.reject(Object.assign(new Error('合成响应丢失'), { code: 'CLOUD_CALL_FAILED' })) : Promise.resolve({ loanId: 'loan', version: 1 })
+    }
+    if (action === 'loans.get') return Promise.resolve({ loan: stored })
+    throw new Error('unexpected action')
+  })
+  page.onLoad({}); await page.load()
+  Object.assign(page.data, { name: '合成借款', principalYuan: '1.00', baselineDate: '2026-09-01' })
+  await page.save(); assert.equal(page.data.hasPending, true)
+  page.data.principalYuan = '999.00'
+  await page.save()
+  const writes = calls.filter(x => x.name === 'loans.create')
+  assert.equal(writes.length, 2); assert.deepEqual(writes[1].data, writes[0].data)
+  assert.equal(stored.baselinePrincipalMinor, '100')
+  assert.equal(page.data.loan.principalText, '¥1.00')
+  assert.equal(page.data.hasPending, false); assert.equal(page.data.formOpen, false)
+  assert.match(page.data.savedMessage, /已保存/)
+})
+
+test('贷款分页只保留当前页和五个返回游标，退出后迟到响应不回填', async () => {
+  const { page } = runtime('pages/loans/index', (_, data) => Promise.resolve({
+    items: [{ loanId: data.cursor || 'first', remainingPrincipalMinor: null, status: 'unknown' }], nextCursor: 'next-' + (data.cursor || 'first')
+  }))
+  page.onLoad(); await page.loadLoans()
+  assert.equal(page.data.items[0].principalText, '待补充')
+  for (let i = 0; i < 10; i++) await page.nextPage()
+  assert.equal(page.data.items.length, 1); assert.equal(page._previous.length, 5)
+  let resolve
+  const late = runtime('pages/loans/index', () => new Promise(done => { resolve = done }))
+  late.page.onLoad(); const loading = late.page.loadLoans(); late.page.onUnload()
+  resolve({ items: [{ loanId: 'private-old', remainingPrincipalMinor: '0', status: 'settled' }], nextCursor: null })
+  await loading; assert.equal(late.page.data.items.length, 0)
+  const { present } = require('../miniprogram/pages/loans/model')
+  assert.equal(present({ remainingPrincipalMinor: '0', status: 'settled' }).principalText, '¥0.00')
+})
+
 for (const route of routes) {
   test(route + '：页面、主题和全部声明事件完整，WXML 标签配对', () => {
     const markup = read('miniprogram/' + route + '.wxml')

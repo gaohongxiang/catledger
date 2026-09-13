@@ -1,5 +1,7 @@
 // 连续前台使用期间复用；本机写入、重新进入前台及手动刷新控制重读。
 const READ_POLICIES = Object.freeze({
+  'loans.list': { ttl: Infinity, tags: ['loans', 'accountDirectory'] },
+  'loans.get': { ttl: Infinity, tags: ['loans', 'accountDirectory'] },
   'catalog.get': { ttl: 5 * 60 * 1000, tags: ['accountDirectory', 'categoryDirectory'] },
   bootstrap: { ttl: Infinity, tags: ['categories'] },
   'categories.list': { ttl: Infinity, tags: ['categories'] },
@@ -11,6 +13,7 @@ const READ_POLICIES = Object.freeze({
 })
 
 function mutationTags(action) {
+  if (/^loans\.(create|update)$/.test(action)) return ['loans']
   if (action === 'accounts.create') return ['accounts', 'transactions', 'accountDirectory']
   if (action === 'accounts.correctBalance') return ['accounts', 'transactions']
   if (/^accounts\.(createBatch|update|archive)$/.test(action)) return ['accounts', 'accountDirectory']
