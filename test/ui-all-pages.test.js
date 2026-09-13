@@ -12,10 +12,12 @@ function runtime(route, callApi) {
   const filename = path.join(root, 'miniprogram', route + '.js')
   const req = createRequire(filename)
   let definition
-  const calls = []
-  const app = { hasLoginApproval: () => true, globalData: { categories: [], profile: {}, ledgerRevision: 0 } }
+  const calls = [], storage = new Map()
+  const app = { hasLoginApproval: () => true, globalData: { categories: [], profile: {}, ledgerRevision: 0, uid: '1234567890' } }
   const api = { peek: () => null, isFresh: () => false, cacheToken: () => null, createRequestId: () => 'synthetic-request', bootstrap: () => Promise.resolve({ categories: [] }), callApi: (name, data) => {
-    calls.push({ name, data }); return callApi ? callApi(name, data) : Promise.resolve({ accounts: [], categories: [] })
+    calls.push({ name, data });
+    if (name === 'transactions.commandResult') return Promise.reject(Object.assign(new Error('未确认'), { code: 'OPERATION_UNCONFIRMED' }))
+    return callApi ? callApi(name, data) : Promise.resolve({ accounts: [], categories: [] })
   }, callImport: () => { throw new Error('预览测试禁止真实导入写入') } }
   const chrome = { getWindowInfo: () => ({ windowWidth: 375 }), showModal() {}, showToast() {}, navigateTo() {}, redirectTo() {}, navigateBack() {}, nextTick: cb => cb(), stopPullDownRefresh() {} }
   vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
@@ -23,6 +25,9 @@ function runtime(route, callApi) {
     getCurrentPages: () => [], console,
     require: name => {
       if (name.includes('/services/catledger-api') || name.includes('/services/catledger-import')) return api
+      if (name.includes('/services/pending-ledger-write')) return req(name).createPendingWrite({ scope: () => app.globalData.uid,
+        read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key),
+        requestId: api.createRequestId, call: (_, action, data) => api.callApi(action, data) })
       if (name.includes('/services/login-guard')) return { run: (p, cb) => { if (app.hasLoginApproval()) return cb() } }
       if (name.includes('/theme/service')) return { bindPage() {}, currentTokens: () => ({ accent: '#BE5B24' }) }
       return req(name)

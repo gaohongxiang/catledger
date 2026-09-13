@@ -9,6 +9,7 @@
     }
   },
   "actions": {
+    "transactions.commandResult": { "kind": "read", "data": ["requestId", "commandAction"], "returns": ["action", "receiptId", "result"], "scope": "current user frozen transaction write receipt; missing or mismatched action remains OPERATION_UNCONFIRMED" },
     "catalog.get": {
       "kind": "read",
       "data": [],

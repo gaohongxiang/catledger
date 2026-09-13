@@ -32,7 +32,7 @@ test('shared contract and server action registry stay in exact sync', () => {
     catalogService: serviceStub(['get']),
     accountService: serviceStub(['archive', 'correctBalance', 'create', 'createBatch', 'list', 'update']),
     categoryService: serviceStub(['archive', 'assignTransactions', 'create', 'list', 'reorder', 'restore', 'unclassified', 'update']),
-    transactionService: serviceStub(['create', 'dashboard', 'linkRefund', 'list', 'refundable', 'remove', 'setCategory', 'statistics', 'update'])
+    transactionService: serviceStub(['commandResult', 'create', 'dashboard', 'linkRefund', 'list', 'refundable', 'remove', 'setCategory', 'statistics', 'update'])
   })
   assert.deepEqual(Object.keys(handlers).sort(), contractActions.filter((action) => action !== 'bootstrap'))
   assert.equal(Object.values(handlers).every((handler) => typeof handler === 'function'), true)
@@ -61,6 +61,8 @@ test('mutation contracts expose idempotency and version requirements consistentl
     const fields = Array.isArray(definition.data) ? definition.data : []
     if (definition.kind.includes('mutation')) {
       assert.ok(fields.includes('requestId'), `${action} 缺少 requestId`)
+    } else if (action === 'transactions.commandResult') {
+      assert.ok(fields.includes('requestId') && fields.includes('commandAction'))
     } else {
       assert.equal(fields.includes('requestId'), false, `${action} 只读契约不应包含 requestId`)
     }

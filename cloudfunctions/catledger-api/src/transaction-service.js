@@ -1,3 +1,4 @@
+const { createCommandResult } = require('./transaction-command-result')
 const { createTransactionCategoryService } = require('./transaction-category')
 const { createReportingService, monthSequence } = require('./reporting-service')
 const { createTransactionCommandService } = require('./transaction-command-service')
@@ -10,6 +11,7 @@ function createTransactionService({ getPool }) {
   const reporting = createReportingService({ getPool })
 
   return {
+    commandResult: createCommandResult({ getPool }),
     setCategory: createTransactionCategoryService({ getPool }),
     create: commands.create,
     dashboard: reporting.dashboard,

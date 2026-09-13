@@ -6,19 +6,19 @@ const vm = require('node:vm')
 const { createReadCache, stableKey } = require('../miniprogram/services/read-cache')
 const root = path.join(__dirname, '..', 'miniprogram')
 const flush = () => new Promise(resolve => setImmediate(resolve))
-function runtime() {
+function runtime(savedStorage) {
   let now = 0, balance = '10000'
   const cache = Object.assign(createReadCache({ now: () => now }), { stableKey })
-  const modules = new Map(), calls = [], pages = new Map()
-  const app = { globalData: { cloudAvailable: true, categories: [], profile: {} }, approved: true,
+  const modules = new Map(), calls = [], pages = new Map(), storage = savedStorage || new Map()
+  const app = { globalData: { cloudAvailable: true, categories: [], profile: {}, uid: '1234567890' }, approved: true,
     hasLoginApproval() { return this.approved } }
   const categories = [{ id: 'category-a', kind: 'expense', name: '合成分类' }]
   const accounts = () => [{ accountId: 'account-a', name: '合成账户', type: 'bank', nature: 'asset', archived: false, displayBalanceMinor: balance, bookBalanceMinor: balance }]
   const summary = { incomeMinor: '0', expenseMinor: '100', netIncomeMinor: '-100' }
   const transaction = id => ({ transactionId: id, type: 'expense', amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', sourceAccount: accounts()[0] })
-  const h = { app, calls, cache, now(value) { now = value }, intercept: null,
+  const h = { app, calls, cache, storage, now(value) { now = value }, intercept: null,
     categories, accounts: null, navigation: [], modals: [], uid: '1234567890', clipboard: [], toasts: [], clipboardFails: false }
-  const wx = { nextTick: cb => cb(), showModal(options) { h.modals.push(options) }, showToast(options) { h.toasts.push(options.title) },
+  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key), nextTick: cb => cb(), showModal(options) { h.modals.push(options) }, showToast(options) { h.toasts.push(options.title) },
     setClipboardData(options) { h.clipboard.push(options.data); if (h.clipboardFails) options.fail(); else options.success() }, navigateBack() { h.navigation.push('back') },
     navigateTo(options) {
       h.navigation.push(options.url)
@@ -36,6 +36,7 @@ function runtime() {
         if (response !== undefined) return { result: response }
       }
       let result
+      if (action === 'transactions.commandResult') return { result: { ok: false, error: { code: 'OPERATION_UNCONFIRMED', message: '未确认' } } }
       if (action === 'catalog.get') result = { categories: h.categories, accounts: h.accounts || accounts(), uid: h.uid }
       else if (action === 'bootstrap') result = { categories, uid: h.uid }
       else if (action === 'categories.list') result = { categories }
@@ -509,7 +510,8 @@ test('同一保存内容失败重试使用同一请求号，服务端成功后�
   assert.equal(writes[0].data.requestId, writes[1].data.requestId)
   page.bindNote({ detail: { value: '修改草稿' } })
   await page.save()
-  assert.notEqual(h.calls.at(-1).data.requestId, writes[0].data.requestId)
+  assert.equal(h.calls.at(-1).data.requestId, writes[0].data.requestId)
+  assert.equal(h.calls.at(-1).data.note, writes[0].data.note)
   h.intercept = null
   await page.save()
   assert.deepEqual(h.navigation, ['back'])
@@ -770,4 +772,38 @@ test('已入账维护用当前摘要与分页定位远端记录，下一页替�
   assert.equal(page.data.events[0].eventId, 'event-40')
   assert.equal(page.data.eventCount, 121)
   assert.ok(h.calls.every(c => ['catalog.get', 'financeUpdates.summary', 'economicEvents.list'].includes(c.action)))
+})
+
+test('记账响应丢失后修改金额仍先查询原请求，不能新增第二笔', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  await page.prepareForm()
+  page.bindAmount({ detail: { value: '1.00' } })
+  let packet
+  h.respond = (action, data) => {
+    if (action === 'transactions.create') { packet = data; return { ok: false, error: { code: 'CLOUD_CALL_FAILED', message: '响应丢失' } } }
+    if (action === 'transactions.commandResult') return { ok: true, data: { action: 'transactions.create', receiptId: 'confirmed', result: { saved: true } } }
+  }
+  await page.save()
+  page.bindAmount({ detail: { value: '9.99' } })
+  await page.save()
+  const writes = h.calls.filter(c => c.action === 'transactions.create')
+  assert.ok(packet)
+  assert.ok(writes.every(c => c.data.amountMinor === '100'))
+  assert.equal(h.calls.filter(c => c.action === 'transactions.commandResult').at(-1).data.requestId, packet.requestId)
+  assert.deepEqual(h.navigation, ['back'])
+})
+
+test('进程重启后进入记账页只核实持久化原操作，迟到确认只返回一次', async () => {
+  const first = runtime(), page = first.page('transaction-editor')
+  await page.prepareForm(); page.bindAmount({ detail: { value: '1' } })
+  first.intercept = action => { if (action === 'transactions.create') throw new Error('响应丢失') }
+  await page.save(); page.onUnload()
+  const restarted = runtime(first.storage)
+  restarted.respond = action => action === 'transactions.commandResult' ? { ok: true, data: {
+    action: 'transactions.create', receiptId: 'confirmed', result: { saved: true } } } : undefined
+  const restored = restarted.page('transaction-editor')
+  await restored.prepareForm(); await flush()
+  assert.deepEqual(restarted.navigation, ['back'])
+  assert.equal(restarted.calls.filter(c => c.action === 'transactions.create').length, 0)
+  assert.equal(restarted.storage.size, 0)
 })

@@ -1,5 +1,7 @@
 const catalogApi = require('../../services/catledger-api')
 const api = require('../../services/catledger-import')
+const pendingWrites = require('../../services/pending-ledger-write')
+const pageReadSession = require('../../services/page-read-session')
 const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
 const money = require('../../utils/money')
@@ -16,6 +18,7 @@ Page({
     loginGuard.run(this, this.load.bind(this))
   },
   onShow: function () { theme.bindPage(this) },
+  onUnload: function () { pageReadSession.end(this) },
   viewOriginalRecord: function (event) {
     if (this.data.busy) return
     const selected = this.data.events[this.data.eventIndex]
@@ -48,9 +51,15 @@ Page({
     }), eventCount: page.total, hasMoreEvents: Boolean(page.nextCursor), visiblePostedRecords: 20 })
   },
   load: async function () {
+    const isCurrent = pageReadSession.begin(this, ['update', 'events', 'accounts', 'categories', 'draft', 'preview'], [])
     if (!this._updateId) return this.setData({ errorMessage: '请从已入账账单打开维护页' })
     this.setData({ busy: true, errorMessage: '' })
     try {
+      let recoveryError = ''
+      try {
+        const recovered = await pendingWrites.verify()
+        if (recovered && isCurrent()) wx.showToast({ title: '上次操作已完成', icon: 'success' })
+      } catch (error) { recoveryError = '上次操作尚待核实；再次确认将恢复原请求' }
       const values = await Promise.all([
         api.readSummary(this._updateId), catalogApi.callApi('catalog.get'),
         api.readPage('economicEvents.list', { updateId: this._updateId, view: 'posted', pageSize: 40 })
@@ -61,14 +70,16 @@ Page({
         const selected = await api.readPage('economicEvents.list', { updateId: this._updateId, view: 'posted', eventId: this._eventId, pageSize: 1, viewVersion: view.viewVersion })
         page.items = selected.items.concat(page.items)
       }
+      if (!isCurrent()) return
       this._categories = catalog.categories
       this.setData({ update: view.update, accounts: catalog.accounts.filter(function (row) { return !row.archived }),
         completed: view.update.status === 'undone', preview: null })
       this.acceptEvents(page)
       const selected = this._eventId ? indexOf(this.data.events, 'eventId', this._eventId) : this.data.eventIndex
       this.selectEvent({ detail: { value: Math.min(Math.max(0, selected), Math.max(0, this.data.events.length - 1)) } })
-    } catch (error) { this.setData({ errorMessage: error.message }) }
-    finally { this.setData({ busy: false }) }
+      if (recoveryError) this.setData({ errorMessage: recoveryError })
+    } catch (error) { if (isCurrent()) this.setData({ errorMessage: error.message }) }
+    finally { if (isCurrent()) this.setData({ busy: false }) }
   },
   selectEvent: function (event) {
     const index = Number(event.detail.value)
@@ -129,6 +140,8 @@ Page({
     finally { this.setData({ busy: false }) }
   },
   confirm: async function () {
+    const isCurrent = pageReadSession.capture(this)
+    if (!isCurrent()) return
     const preview = this.data.preview
     const correct = this.data.previewKind === 'correct'
     if (this.data.busy || !preview || !(correct ? preview.canCorrect : preview.canUndo)) return
@@ -139,12 +152,13 @@ Page({
     } : { requestId: api.createRequestId(), updateId: this._updateId, version: preview.update.version, previewToken: preview.previewToken }
     this.setData({ busy: true, errorMessage: '' })
     try {
-      await api.callImport(correct ? 'economicEvents.correct' : 'financeUpdates.undo', this._request)
+      const result = await pendingWrites.send('import', correct ? 'economicEvents.correct' : 'financeUpdates.undo', this._request)
+      if (!isCurrent()) return
       getApp().globalData.ledgerRevision = (getApp().globalData.ledgerRevision || 0) + 1
-      wx.showToast({ title: correct ? '账单已更正' : '本批入账已撤销', icon: 'success' })
+      wx.showToast({ title: result.action === 'economicEvents.correct' ? '账单已更正' : '上次操作已完成', icon: 'success' })
       await this.load()
-    } catch (error) { this.setData({ errorMessage: error.message }) }
-    finally { this.setData({ busy: false }) }
+    } catch (error) { if (isCurrent()) this.setData({ errorMessage: error.message }) }
+    finally { if (isCurrent()) this.setData({ busy: false }) }
   },
   refresh: function () { if (!this.data.busy) return this.load() }
 })

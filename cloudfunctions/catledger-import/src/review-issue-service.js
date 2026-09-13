@@ -754,7 +754,7 @@ function assertDecisionMatchesIssue(issue, decision) {
   if (decision === 'confirm_distinct' && !['same_event', 'identity_conflict'].includes(issue.issueType)) throw importError('VALIDATION_ERROR')
   if (decision === 'link_refund' && issue.issueType !== 'refund_relation') throw importError('VALIDATION_ERROR')
   if (decision === 'mark_refund_pending' && issue.issueType !== 'refund_relation') throw importError('VALIDATION_ERROR')
-  if (decision === 'confirm_installment_principal' && issue.issueType !== 'installment_origin') throw importError('VALIDATION_ERROR')
+  if (decision === 'confirm_installment_principal') throw importError('INSTALLMENT_CONFIRMATION_UNAVAILABLE')
 }
 
 async function runAccountMappingBatch({ decisions, begin, applyDecision, finalize }) {
@@ -1144,7 +1144,7 @@ function createReviewIssueService({ getPool }) {
         if (issue.updateId !== updateId || update.status !== 'review' || Number(update.version) !== updateVersion ||
             issue.status !== 'open' || Number(issue.version) !== issueVersion) throw importError('CONFLICT')
         assertDecisionMatchesIssue(issue, decision)
-        if (data.selection != null && !['exclude_events', 'confirm_installment_principal'].includes(decision)) throw importError('VALIDATION_ERROR')
+        if (data.selection != null && !['exclude_events'].includes(decision)) throw importError('VALIDATION_ERROR')
         const paymentRuleAction = data.paymentRuleAction == null ? null : data.paymentRuleAction
         if (paymentRuleAction != null &&
             (paymentRuleAction !== 'ignore' || decision !== 'exclude_events' || issue.issueType !== 'account_mapping')) {
@@ -1266,8 +1266,7 @@ function createReviewIssueService({ getPool }) {
             }
           }
           await stageProjectedAccountMappings(connection, uid, updateId, affected, actionId)
-        } else if (decision === 'exclude_events' || decision === 'confirm_installment_principal') {
-          if (decision === 'confirm_installment_principal') validateUuid(data.installmentCandidateId)
+        } else if (decision === 'exclude_events') {
           let selected
           {
             const selection = data.selection || (data.eventIds == null ? { mode: 'all' } : { mode: 'include', eventIds: data.eventIds })
@@ -1288,9 +1287,7 @@ function createReviewIssueService({ getPool }) {
               ...event,
               status: EVENT_STATUS.EXCLUDED,
               reasonCodes: unique([...resolvedReasons(issue.issueType, event.reasonCodes),
-                ...(decision === 'confirm_installment_principal'
-                  ? ['installment_principal_confirmed']
-                  : exclusionReasons)]),
+                ...exclusionReasons]),
               resolvingIssueType: issue.issueType
             }
             return { current: event, next }
@@ -1435,7 +1432,7 @@ function createReviewIssueService({ getPool }) {
           affected.push(await saveEvent(connection, uid, event, next, actionId))
         }
 
-        const partialExclusion = ['exclude_events', 'confirm_installment_principal'].includes(decision) && affected.length < events.length
+        const partialExclusion = ['exclude_events'].includes(decision) && affected.length < events.length
         if (partialExclusion) {
           // 只移出本次已明确排除的成员，余下成员保留原阻塞问题和新版本。
           for (let offset = 0; offset < affected.length; offset += 100) {

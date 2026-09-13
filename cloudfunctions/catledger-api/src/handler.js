@@ -4,6 +4,7 @@ const { databaseErrorCode, isRetryableDatabaseError } = require('./database-erro
 const IDENTITY_FIELDS = ['uid', 'openid', 'openId', 'OPENID']
 
 const ERROR_MESSAGES = Object.freeze({
+  OPERATION_UNCONFIRMED: '上次操作结果仍待核实，请恢复原请求',
   ACCOUNT_INACTIVE: '账户已停用',
   AUTH_REQUIRED: '未取得可信微信身份',
   CONFLICT: '数据已发生变化，请刷新后重试',
@@ -22,6 +23,7 @@ const ERROR_MESSAGES = Object.freeze({
   UNSUPPORTED_ACTION: '当前操作尚未开放'
 })
 const PUBLIC_ERROR_CODES = new Set([
+  'OPERATION_UNCONFIRMED',
   'ACCOUNT_INACTIVE',
   'CONFLICT',
   'IDEMPOTENCY_CONFLICT',

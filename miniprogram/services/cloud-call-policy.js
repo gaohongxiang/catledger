@@ -12,6 +12,7 @@ const SAFE_READ_ACTIONS = Object.freeze({
   'financeUpdates.rows': true,
   'financeUpdates.options': true,
   'imports.commandResult': true,
+  'transactions.commandResult': true,
   'reviewIssues.members': true,
   'financeUpdates.undoImpact': true,
   'imports.getFile': true,

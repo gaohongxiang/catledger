@@ -1,5 +1,6 @@
 const app = getApp()
 const api = require('../../services/catledger-api')
+const pendingWrites = require('../../services/pending-ledger-write')
 const pageReadSession = require('../../services/page-read-session')
 const loginGuard = require('../../services/login-guard')
 const money = require('../../utils/money')
@@ -110,8 +111,8 @@ Page({
   beginRead: function () {
     return pageReadSession.begin(this,
       Object.keys(this.data).filter(key => !['mode', 'readonlyDetail'].includes(key) && !key.startsWith('theme')),
-      ['_initialized', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
-        '_categoryRequest', '_saveRequest', '_deleteRequest', '_detailTransaction', '_editingTransaction', '_catalogCategories'])
+      ['_initialized', '_writeFinished', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
+        '_detailTransaction', '_editingTransaction', '_catalogCategories'])
   },
 
   prepareForm: function (options) {
@@ -125,6 +126,7 @@ Page({
       }
       this._editingTransaction = editing
       this._initialized = true
+      this.verifyPendingWrite()
       if (this.data.readonlyDetail) {
         this._detailTransaction = editing
         const detail = buildReadonlyDetail(editing, [], this.data.mode === 'import' && ['income', 'expense'].includes(editing.type))
@@ -200,7 +202,6 @@ Page({
     const index = Number(event.detail.value)
     const category = this.data.categories[index]
     if (!category) return
-    this._categoryRequest = null
     const previousId = this._detailTransaction.category && this._detailTransaction.category.categoryId || null
     this.setData({ categoryIndex: index, selectedCategoryId: category.id, categoryDirty: category.id !== previousId, errorMessage: '' })
   },
@@ -209,19 +210,8 @@ Page({
     if (!pageReadSession.isCurrent(this) || this.data.saving || !this.data.catalogReady || !this.data.categoryDirty || !this.data.detail || !this.data.detail.canEditCategory) return Promise.resolve()
     const category = this.data.categories[this.data.categoryIndex]
     if (!category) return Promise.resolve()
-    if (!this._categoryRequest) this._categoryRequest = { requestId: api.createRequestId(),
-      transactionId: this.data.transactionId, version: this.data.version, categoryId: category.id }
-    const self = this
-    const isCurrent = pageReadSession.capture(this)
-    this.setData({ saving: true, errorMessage: '' })
-    return api.callApi('transactions.setCategory', this._categoryRequest).then(function () {
-      if (!isCurrent()) return
-      app.globalData.editingTransaction = null
-      wx.showToast({ title: '分类已保存', icon: 'success' })
-      wx.navigateBack()
-    }).catch(function (error) {
-      if (isCurrent()) self.setData({ errorMessage: error.message || '分类保存失败，请重试' })
-    }).finally(function () { if (isCurrent()) self.setData({ saving: false }) })
+    return this.sendLedgerWrite('transactions.setCategory', {
+      transactionId: this.data.transactionId, version: this.data.version, categoryId: category.id })
   },
 
   loadRefundables: function () {
@@ -291,10 +281,31 @@ Page({
     if (!this.data.saving && rows[index]) this.setData({ [indexKey]: index, [idKey]: rows[index][idField] })
   },
 
-  retryRequest: function (field, action, data) {
-    const key = JSON.stringify([action, data])
-    if (!this[field] || this[field].key !== key) this[field] = { key, data: Object.assign({ requestId: api.createRequestId() }, data) }
-    return this[field].data
+  writeSucceeded: function (action) {
+    if (this._writeFinished) return
+    this._writeFinished = true
+    app.globalData.editingTransaction = null
+    const titles = { 'transactions.create': '已记账', 'transactions.update': '已更新', 'transactions.delete': '已删除',
+      'transactions.linkRefund': '已关联', 'transactions.setCategory': '分类已保存' }
+    wx.showToast({ title: titles[action] || '上次操作已完成', icon: 'success' })
+    wx.navigateBack()
+  },
+  verifyPendingWrite: async function () {
+    const isCurrent = pageReadSession.capture(this)
+    try {
+      const result = await pendingWrites.verify()
+      if (result && isCurrent()) this.writeSucceeded(result.action)
+    } catch (error) { if (isCurrent()) this.setData({ errorMessage: '上次操作尚待核实；再次保存将恢复原请求' }) }
+  },
+  sendLedgerWrite: async function (action, data) {
+    const isCurrent = pageReadSession.capture(this)
+    if (!isCurrent() || this.data.saving) return
+    this.setData({ saving: true, errorMessage: '' })
+    try {
+      const result = await pendingWrites.send('api', action, data)
+      if (isCurrent()) this.writeSucceeded(result.action)
+    } catch (error) { if (isCurrent()) this.setData({ errorMessage: error.message || '上次操作结果待核实，再次保存将恢复原请求' }) }
+    finally { if (isCurrent()) this.setData({ saving: false }) }
   },
 
   buildRequest: function () {
@@ -329,6 +340,9 @@ Page({
   },
 
   save: function () {
+    if (!pageReadSession.isCurrent(this) || this.data.saving) return
+    try { if (pendingWrites.pending()) return this.sendLedgerWrite('transactions.create', {}) }
+    catch (error) { this.setData({ errorMessage: error.message }); return }
     if (!pageReadSession.isCurrent(this) || this.data.saving || !this.data.catalogReady || this.data.editingBlocked || this.data.accounts.length === 0 ||
         (TYPE_OPTIONS[this.data.typeIndex].value === 'refund' && !this.data.refundablesReady)) {
       return
@@ -360,30 +374,9 @@ Page({
       return
     }
 
-    const self = this
-    this.setData({ saving: true, errorMessage: '' })
-    const action = this.data.mode === 'link-refund'
-      ? 'transactions.linkRefund'
+    const action = this.data.mode === 'link-refund' ? 'transactions.linkRefund'
       : (this.data.mode === 'edit' ? 'transactions.update' : 'transactions.create')
-    const isCurrent = pageReadSession.capture(this)
-    return api.callApi(action, this.retryRequest('_saveRequest', action, data))
-      .then(function () {
-        if (!isCurrent()) return
-        app.globalData.editingTransaction = null
-        wx.showToast({
-          title: self.data.mode === 'link-refund' ? '已关联' : (self.data.mode === 'edit' ? '已更新' : '已记账'),
-          icon: 'success'
-        })
-        wx.navigateBack()
-      })
-      .catch(function (error) {
-        if (!isCurrent()) return
-        self.setData({ errorMessage: error.message || '保存失败，请稍后重试' })
-      })
-      .finally(function () {
-        if (!isCurrent()) return
-        self.setData({ saving: false })
-      })
+    return this.sendLedgerWrite(action, data)
   },
 
   remove: function () {
@@ -398,22 +391,7 @@ Page({
         if (!isCurrent() || !result.confirm || self.data.saving) {
           return
         }
-        self.setData({ saving: true, errorMessage: '' })
-        api.callApi('transactions.delete', self.retryRequest('_deleteRequest', 'transactions.delete', {
-          transactionId: self.data.transactionId,
-          version: self.data.version
-        })).then(function () {
-          if (!isCurrent()) return
-          app.globalData.editingTransaction = null
-          wx.showToast({ title: '已删除', icon: 'success' })
-          wx.navigateBack()
-        }).catch(function (error) {
-          if (!isCurrent()) return
-          self.setData({ errorMessage: error.message || '删除失败' })
-        }).finally(function () {
-          if (!isCurrent()) return
-          self.setData({ saving: false })
-        })
+        return self.sendLedgerWrite('transactions.delete', { transactionId: self.data.transactionId, version: self.data.version })
       }
     })
   }

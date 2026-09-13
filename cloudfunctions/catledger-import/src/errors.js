@@ -1,4 +1,5 @@
 const ERROR_MESSAGES = Object.freeze({
+  INSTALLMENT_CONFIRMATION_UNAVAILABLE: '分期本金尚无已确认原消费关系，请保留待核对并从贷款管理登记',
   OPERATION_UNCONFIRMED: '原操作结果尚未确认，请保留草稿并核对原请求',
   RECEIPT_RECONCILIATION_REQUIRED: '历史操作事实需核对，请保留原请求和草稿',
   REQUEST_TOO_LARGE: '本次选择过多，请分批保存草稿',

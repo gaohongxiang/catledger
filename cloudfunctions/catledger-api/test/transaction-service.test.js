@@ -9,9 +9,10 @@ const {
   transactionToPublic
 } = require('../src/transaction-service')
 
-test('transaction service stays a thin compatible facade', () => {
+test('transaction service stays a thin current facade', () => {
   const service = createTransactionService({ getPool: function unusedPool() {} })
   assert.deepEqual(Object.keys(service).sort(), [
+    'commandResult',
     'create',
     'dashboard',
     'linkRefund',

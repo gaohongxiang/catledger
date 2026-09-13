@@ -95,6 +95,9 @@ async function executeIdempotentMutation({
         if (error && error.code === 'ER_DUP_ENTRY') {
           await connection.rollback()
           transactionStarted = false
+          // 回放也需要连接；先归还写连接，单连接池才能恢复原请求。
+          connection.release()
+          connection = null
           return replayMutation({
             getPool,
             provider,

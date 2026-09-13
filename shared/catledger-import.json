@@ -365,7 +365,10 @@
         "posting",
         "invalidates"
       ],
-      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。",
+      "disabledDecisions": {
+        "confirm_installment_principal": "INSTALLMENT_CONFIRMATION_UNAVAILABLE: no confirmed original consumption relationship; preserve pending event"
+      }
     },
     "reviewIssues.resolveAccountMappings": {
       "kind": "idempotent-batch-mutation",
