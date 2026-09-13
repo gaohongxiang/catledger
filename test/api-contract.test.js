@@ -29,7 +29,7 @@ test('shared contract and server action registry stay in exact sync', () => {
   assert.deepEqual(publicActions, contractActions)
 
   const handlers = createActionHandlers({
-    loanService: serviceStub(['list','get','create','update','record','correct','source','reverse','payment','payments']),
+    loanService: serviceStub(['list','get','create','update','record','correct','source','reverse','payment','payments','periods','savePeriod','allocatePeriods','planAllocation','periodHistory']),
     catalogService: serviceStub(['get']),
     accountService: serviceStub(['archive', 'correctBalance', 'create', 'createBatch', 'list', 'update']),
     categoryService: serviceStub(['archive', 'assignTransactions', 'create', 'list', 'reorder', 'restore', 'unclassified', 'update']),

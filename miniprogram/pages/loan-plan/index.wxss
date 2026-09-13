@@ -1,0 +1,5 @@
+@import '../loan-payment/index.wxss';
+.plan-page { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
+.period-actions { display: flex; gap: 16rpx; flex-wrap: wrap; }
+.period-actions .detail-link { margin-left: 0; margin-right: 0; }
+.period-title { display: flex; justify-content: space-between; gap: 20rpx; }

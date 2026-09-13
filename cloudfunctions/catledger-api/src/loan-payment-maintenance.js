@@ -38,6 +38,7 @@ async function inspectPayment(connection, uid, paymentId, version) {
   return {payment,allocations,links,transactions,source,originalSource,originals}
 }
 async function deactivatePayment(connection,uid,paymentId) {
+  await require('./loan-period-repository').deactivatePaymentPeriods(connection,uid,paymentId)
   await connection.execute("UPDATE catledger_loan_payments SET status='reversed',version=version+1 WHERE uid=? AND payment_id=?",[uid,paymentId])
   await connection.execute('UPDATE catledger_loan_payment_transactions SET active=0 WHERE uid=? AND payment_id=?',[uid,paymentId])
   await connection.execute('UPDATE catledger_loan_payment_sources SET active=0 WHERE uid=? AND payment_id=?',[uid,paymentId])

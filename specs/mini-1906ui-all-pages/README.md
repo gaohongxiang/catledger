@@ -40,3 +40,5 @@
 
 
 后续新增贷款页面：`pages/loans/index`、`pages/loan-detail/index`、`pages/loan-payment/index` 由 MINI-1908A 管理，沿用现有主题和原生控件；当批原生验证见主看板。
+
+MINI-1908B 新增 `loan-plan` 原生页面：从 loan-detail 查看计划，从 loan-payment 按所属贷款进入实际期次分配。沿用贷款主题令牌与行式布局；当前页和选择均有限，计划编辑不产生 Transaction。自动化与数据库证据见主规划 19.6；最终原生工具检查在本轮本地候选稳定后进行，未宣称真机或部署验收。

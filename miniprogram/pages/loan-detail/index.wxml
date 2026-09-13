@@ -14,6 +14,7 @@
     <view class="detail-row"><text>起止日期</text><text>{{loan.startDate || '未填写'}} 至 {{loan.endDate || '未填写'}}</text></view>
     <view class="detail-row"><text>还款方式</text><text>{{loan.repaymentMethod || '未填写'}}</text></view>
     <button class="primary-button" bindtap="recordPayment" disabled="{{saving || loading}}">登记实际借还</button>
+    <button class="secondary-button" bindtap="openPlan" disabled="{{saving || loading}}">还款计划与对账</button>
     <button class="secondary-button" bindtap="edit" disabled="{{saving}}">编辑资料</button>
   </view>
   <view wx:if="{{loan && !formOpen}}" class="content-inset loan-history">

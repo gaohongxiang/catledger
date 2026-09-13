@@ -68,6 +68,7 @@ Page(Object.assign({}, require('./source'), {
     this.setData({ ['allocations[' + index + '].' + field]: value, confirmed: false }); this.review()
   },
   review() { this.setData({ reviewText: model.review(this.data) }) },
+  allocatePlan(event) { if(this.data.payment) wx.navigateTo({ url: '/pages/loan-plan/index?loanId=' + encodeURIComponent(event.currentTarget.dataset.id) + '&paymentId=' + encodeURIComponent(this.data.payment.paymentId) }) },
   confirm(event) { this.setData({ confirmed: event.detail.value.includes('confirmed') }) },
   async moreLoans(event) {
     if (this.data.loading || this.data.saving) return

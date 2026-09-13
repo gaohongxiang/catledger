@@ -5,6 +5,7 @@ const IDENTITY_FIELDS = ['uid', 'openid', 'openId', 'OPENID']
 
 const ERROR_MESSAGES = Object.freeze({
   LOAN_SOURCE_MISMATCH: '原交易组与确认的金额、账户或本息费不符，请核对完整付款',
+  LOAN_PLAN_OVERALLOCATED: '期次本金、利息或费用超过可分配金额，已付款也不能被计划改小或取消',
   LOAN_SOURCE_TOO_LARGE: '来源组超过单次处理范围，请保留原账目核对',
   LOAN_PRINCIPAL_EXCEEDED: '该操作会使某个历史时点的本金不足，请核对构成与后续还款',
   LOAN_PRINCIPAL_UNCONFIRMED: '请先补充本金基准及日期',
@@ -30,6 +31,7 @@ const ERROR_MESSAGES = Object.freeze({
 })
 const PUBLIC_ERROR_CODES = new Set([
   'LOAN_SOURCE_MISMATCH',
+  'LOAN_PLAN_OVERALLOCATED',
   'LOAN_SOURCE_TOO_LARGE',
   'LOAN_PRINCIPAL_EXCEEDED',
   'LOAN_PRINCIPAL_UNCONFIRMED',

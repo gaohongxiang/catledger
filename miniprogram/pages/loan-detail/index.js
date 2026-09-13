@@ -46,6 +46,7 @@ Page({
     return this._load
   },
   recordPayment() { wx.navigateTo({ url: '/pages/loan-payment/index?loanId=' + encodeURIComponent(this._loanId) }) },
+  openPlan() { wx.navigateTo({ url: '/pages/loan-plan/index?loanId=' + encodeURIComponent(this._loanId) }) },
   openPayment(event) { wx.navigateTo({ url: '/pages/loan-payment/index?paymentId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },
   async loadHistory(event) {
     if (this.data.historyLoading || !this._loanId) return

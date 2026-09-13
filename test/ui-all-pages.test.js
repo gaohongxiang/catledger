@@ -468,3 +468,29 @@ test('贷款更正明确进入编辑后才能提交，读取失败不重复更�
   await page.save();assert.equal(calls.filter(c=>c.name==='loans.correct').length,1)
   assert.equal(calls.find(c=>c.name==='loans.correct').data.loans[0].version,2)
 })
+
+test('期次计划保存响应丢失后沿用原请求，已确认后读取失败不会再次新增',async()=>{
+ const summary={unpaidPrincipalMinor:'100',unpaidInterestMinor:'0',unpaidFeeMinor:'0',remainingPrincipalMinor:'100',principalGapMinor:'0',nextDueDate:'2026-09-20'}
+ let attempts=0
+ const {page,calls}=runtime('pages/loan-plan/index',(action)=>{
+  if(action==='loans.periods')return attempts>=2?Promise.reject(new Error('合成读取失败')):Promise.resolve({loanName:'合成贷款',loanVersion:1,items:[],nextCursor:null,summary})
+  if(action==='loans.savePeriod'){attempts++;return attempts===1?Promise.reject(Object.assign(new Error('合成响应丢失'),{code:'CLOUD_CALL_FAILED'})):Promise.resolve({periodId:'period',version:1})}
+  throw new Error(action)
+ })
+ page.onLoad({loanId:'loan'});await page.load();page.newPeriod()
+ Object.assign(page.data.form,{periodNumber:'1',dueDate:'2026-09-20',principalYuan:'1.00',interestYuan:'0',feeYuan:'0'})
+ await page.savePeriod();assert.equal(page.data.hasPending,true);page.data.form.principalYuan='999'
+ await page.retry();const writes=calls.filter(c=>c.name==='loans.savePeriod');assert.equal(writes.length,2);assert.deepEqual(writes[0].data,writes[1].data)
+ assert.equal(page.data.formOpen,false);assert.equal(page.data.savedMessage,'操作已完成');await page.savePeriod();assert.equal(calls.filter(c=>c.name==='loans.savePeriod').length,2)
+})
+
+test('期次选择保持当前页和 40 项上限，费用分项不足不能借用本金补齐',()=>{
+ const {page}=runtime('pages/loan-plan/index');page.onLoad({loanId:'loan',paymentId:'payment'})
+ page.data.items=Array.from({length:41},(_,n)=>({periodId:'p'+n,version:1,periodNumber:n+1}))
+ for(const item of page.data.items)page.addPeriod({currentTarget:{dataset:{id:item.periodId}}})
+ assert.equal(page.data.allocationItems.length,40);assert.match(page.data.errorMessage,/40/)
+ const model=require('../miniprogram/pages/loan-plan/model')
+ const data={loanId:'loan',loanVersion:1,paymentId:'payment',paymentVersion:1,confirmed:true,paymentShare:{principalMinor:'100',interestMinor:'0',feeMinor:'0'},allocationItems:[{periodId:'p',version:1,principalYuan:'0.99',interestYuan:'0.01',feeYuan:'0'}]}
+ assert.throws(()=>model.allocationPayload(data),/超过/)
+ data.allocationItems[0].interestYuan='0';assert.match(model.allocationReview(data),/本金未分配 ¥0.01/)
+})

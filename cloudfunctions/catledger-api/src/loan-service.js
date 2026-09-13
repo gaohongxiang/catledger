@@ -77,6 +77,6 @@ function createLoanService({ getPool }) {
       return { loanId: current.loanId, version: data.version + 1 }
     })
   }
-  return { list, get, create, update, ...createLoanPaymentService({ getPool, selectLoan }) }
+  return { list, get, create, update, ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }) }
 }
 module.exports = { createLoanService, selectLoan, validateLiability }

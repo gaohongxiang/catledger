@@ -12,6 +12,7 @@
       <view class="detail-row"><text>本金</text><text class="money-number">{{item.principalText}}</text></view>
       <view class="detail-row"><text>利息 · {{item.interestTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.interestText}}</text></view>
       <view class="detail-row"><text>费用 · {{item.feeTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.feeText}}</text></view>
+      <button wx:if="{{payment.kind === 'repayment'}}" class="detail-link" data-id="{{item.loanId}}" bindtap="allocatePlan" disabled="{{saving || loading}}">对账到还款期次</button>
     </view>
     <text class="section-title">对应账目</text>
     <view wx:for="{{transactions}}" wx:key="transactionId" class="detail-row"><view><text>{{item.flowText}} · {{item.sourceAccount.name}}</text><text class="detail-muted">{{item.destinationAccount ? '转入 ' + item.destinationAccount.name : item.category.name}}</text></view><text class="money-number">{{item.amountText}}</text></view>

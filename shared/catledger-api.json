@@ -10,6 +10,11 @@
   },
   "loanMetadata": {"currency": "CNY", "kind": ["borrowing", "installment"], "unknownPrincipal": null, "knownZeroPrincipal": "0", "baseline": "confirmed principal at the start of baselineDate; never the entire account balance", "owner": "trusted server identity, uid-scoped loan/account FK", "status": ["unknown", "active", "settled"], "writeRecovery": "transactions.commandResult + original persisted requestId"},
   "actions": {
+    "loans.periods":{"kind":"read","data":["loanId","pageSize?","cursor?","periodIds?"],"returns":"{loanId,loanName,loanVersion,summary,items,nextCursor}; page 1..40; optional at most 40 selected IDs, same loan only; signed cursor includes loan version. Summary includes unpaid principal/interest/fee, next due date, remaining principal and explicit gap; never mark paid by date"},
+    "loans.savePeriod":{"kind":"idempotent-mutation","data":["requestId","loanId","loanVersion","periodId?","version?","periodNumber","dueDate","principalMinor","interestMinor","feeMinor","cancelled?"],"returns":"{loanId,loanVersion,periodId,version}; period number 1..9999 unique per loan, explicit nonnegative components with positive total. Revision preserves original plan; cannot reduce below paid components or cancel paid period; no Transaction writes"},
+    "loans.allocatePeriods":{"kind":"idempotent-versioned-mutation","data":["requestId","loanId","loanVersion","paymentId","version","items","confirmed"],"returns":"{paymentId,version,loanId,loanVersion,allocatedPeriods}; replace this active repayment's allocations for one loan, 0..40 unique versioned periods with explicit principal/interest/fee. Preserve old rows; each component bounded by payment share and period remainder; unallocated remainder remains explicit"},
+    "loans.planAllocation":{"kind":"read","data":["loanId","paymentId"],"returns":"{loanVersion,payment,share,items,unallocated}; max 40 active period allocations for current loan; actual allocated+unallocated components equal repayment share"},
+    "loans.periodHistory":{"kind":"read","data":["periodId","kind","pageSize?","cursor?"],"returns":"{periodId,kind,items,nextCursor}; kind=plan|payment; page 1..40, user/period/kind signed cursor; preserve plan revisions and replaced/reversed actual allocation facts"},
     "loans.list": {"kind": "read", "data": ["pageSize?", "cursor?"], "returns": "{items: Loan[], nextCursor: string|null}; pageSize 1..40; signed user-scoped cursor"},
     "loans.get": {"kind": "read", "data": ["loanId"], "returns": "{loan: Loan}"},
     "loans.create": {"kind": "mutation", "data": ["requestId", "name", "institution?", "kind", "accountId", "baselinePrincipalMinor", "baselineDate", "startDate?", "endDate?", "repaymentMethod?"], "returns": "{loanId,version}; metadata only, no Transaction or balance mutation"},
@@ -165,6 +170,7 @@
     "data": "action-specific public result; bootstrap includes uid; WeChat OpenID and identity digests are never returned"
   },
   "failureCodes": [
+    "LOAN_PLAN_OVERALLOCATED",
     "LOAN_SOURCE_MISMATCH",
     "LOAN_SOURCE_TOO_LARGE",
     "LOAN_TRANSACTION_LOCKED",
