@@ -397,18 +397,19 @@ async function saveEvents(connection, uid, updateId, pairs, actionId) {
   if (!pairs.length) return []
   const catalog = await loadReferenceCatalog(connection, uid, updateId, pairs.map(pair => pair.next))
   const contexts = await loadEventContexts(connection, uid, updateId)
-  const rows = []
   for (const { current, next } of pairs) {
     await validateEventReferences(connection, uid, next, catalog)
     finalizeSavedEvent(current, next, actionId, contexts.get(next.eventId))
-    rows.push([current.eventId, current.version, next.status, next.status, next.flowDirection, next.economicNature,
+  }
+  function* rows() {
+    for (const { current, next } of pairs) yield [current.eventId, current.version, next.status, next.status, next.flowDirection, next.economicNature,
       next.ledgerAccountId, next.counterpartyLedgerAccountId, next.localDate, next.localAt, next.utcAt,
       next.timezoneOffsetMinutes, next.amountMinor, next.currency, next.categoryId, next.manualFieldMask,
-      JSON.stringify(next.fieldSources), JSON.stringify(next.reasonCodes), next.version])
+      JSON.stringify(next.fieldSources), JSON.stringify(next.reasonCodes), next.version]
   }
   await updateEvents(connection, uid, updateId, ['state', 'status', 'flow_direction', 'economic_nature', 'ledger_account_id',
     'counterparty_ledger_account_id', 'event_local_date', 'event_local_at', 'event_utc_at', 'timezone_offset_minutes',
-    'amount_minor', 'currency', 'category_id', 'manual_field_mask', 'field_sources_json', 'reason_codes_json', 'version'], rows)
+    'amount_minor', 'currency', 'category_id', 'manual_field_mask', 'field_sources_json', 'reason_codes_json', 'version'], rows())
   return pairs.map(pair => pair.next)
 }
 
@@ -534,13 +535,16 @@ function accountMappingEventMembers(members) {
 
 async function stagePaymentReferenceMapping(
   connection, uid, updateId, eventId, reference, accountId, actionId,
-  mappingAction = 'account', mappingIndex = null
+  mappingAction = 'account', mappingIndex = null, pendingRows = null
 ) {
   if (reference && reference.memberRole && !reference.paymentMethodKey) return ''
   if (!reference || !reference.sourceType || !reference.paymentMethodKey) throw importError('VALIDATION_ERROR')
   if (!['account', 'ignore'].includes(mappingAction)) throw importError('VALIDATION_ERROR')
   if ((mappingAction === 'account') !== Boolean(accountId)) throw importError('VALIDATION_ERROR')
-  await connection.execute(
+  const row = [uid, randomUUID(), updateId, eventId, reference.sourceType,
+    reference.paymentMethodKey, String(reference.label || '').slice(0, 128), mappingAction, accountId, actionId]
+  if (pendingRows) pendingRows.push(row)
+  else await connection.execute(
     `INSERT INTO catledger_finance_update_account_mapping_drafts
        (uid, draft_mapping_id, update_id, event_id, source_type,
         payment_method_key, payment_method_hint, mapping_action, account_id, action_id)
@@ -548,9 +552,7 @@ async function stagePaymentReferenceMapping(
      ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint),
        mapping_action = VALUES(mapping_action), account_id = VALUES(account_id),
        action_id = VALUES(action_id)`,
-    [uid, randomUUID(), updateId, eventId, reference.sourceType,
-      reference.paymentMethodKey, String(reference.label || '').slice(0, 128),
-      mappingAction, accountId, actionId]
+    row
   )
   const key = paymentReferenceKey(reference)
   if (mappingIndex) mappingIndex.set(key, mappingAction === 'account' ? accountId : null)
@@ -950,7 +952,7 @@ function createReviewIssueService({ getPool }) {
         if (!candidates.length) return commandResult(connection, uid, updateId, context.data)
         const actionId = await insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,
           actionType: 'refresh_account_groups', requestDigest, decision: { version: accountGroups.VERSION }, reasons: ['account_references_expanded'] })
-        const existingIssues = await selectIssues(connection, uid, updateId)
+        const existingIssues = await selectIssues(connection, uid, updateId, { includeMembers: false })
         const groups = new Map()
         for (const issue of existingIssues) {
           if (issue.issueType !== 'account_mapping' || !['open', 'resolved'].includes(issue.status) || !issue.accountContext?.recognized) continue
@@ -959,19 +961,16 @@ function createReviewIssueService({ getPool }) {
         }
         const events = await selectDomainEvents(connection, uid, updateId, candidates.map((item) => item.eventId), { forUpdate: true })
         const mappingIndex = createMappingIndex(await selectPaymentMappings(connection, uid, updateId))
-        const savedEvents = []
+        const referencesById = new Map(candidates.map(item => [item.eventId, item.references]))
+        const componentIds = candidates.filter(item => item.references.some(ref => ref.memberRole.startsWith('payment_component_'))).map(item => item.eventId)
+        // 同一旧问题在一个块内只升版一次，后续块见 superseded 后不再改写。
+        for (const ids of chunks(componentIds.map(id => [id]))) await connection.execute(`UPDATE catledger_review_issues i JOIN catledger_review_issue_members m
+          ON m.uid=i.uid AND m.issue_id=i.issue_id SET i.status='superseded',i.blocking=0,i.version=i.version+1,i.resolved_action_id=?
+          WHERE i.uid=? AND i.update_id=? AND i.issue_type='account_mapping' AND i.status IN ('open','resolved')
+            AND m.object_type='event' AND m.member_role='subject' AND m.object_id IN (${ids.map(() => '?').join(',')})`, [actionId,uid,updateId,...ids.flat()])
+        const pairs = [], issueRows = [], memberRows = [], mappingRows = []
         for (const event of events) {
-          const references = candidates.find((item) => item.eventId === event.eventId).references
-          const components = references.filter((ref) => ref.memberRole.startsWith('payment_component_'))
-          if (components.length) {
-            // 只替换旧组合账户问题；不撤销退款、分类等已确认决定。
-            await connection.execute(`UPDATE catledger_review_issues i JOIN catledger_review_issue_members m
-              ON m.uid = i.uid AND m.issue_id = i.issue_id SET i.status = 'superseded', i.blocking = 0,
-              i.version = i.version + 1, i.resolved_action_id = ?
-              WHERE i.uid = ? AND i.update_id = ? AND i.issue_type = 'account_mapping'
-                AND i.status IN ('open', 'resolved') AND m.object_type = 'event' AND m.object_id = ? AND m.member_role = 'subject'`,
-              [actionId, uid, updateId, event.eventId])
-          }
+          const references = referencesById.get(event.eventId)
           let next = { ...event, fieldSources: { ...event.fieldSources, paymentAccountReferences: references, paymentAccountGroupsVersion: accountGroups.VERSION } }
           for (const reference of references) {
             const key = (reference.paymentMethodKey ? accountGroups.groupKey(reference) : event.eventId + ':' + reference.memberRole) + ':' + event.currency
@@ -979,11 +978,8 @@ function createReviewIssueService({ getPool }) {
             if (!group) {
               const issueId = randomUUID()
               const issueKey = digestParts(accountGroups.VERSION, updateId, key)
-              await connection.execute(`INSERT INTO catledger_review_issues
-                (uid, issue_id, update_id, issue_key, issue_key_version, issue_type, status, version, blocking,
-                 primary_reason_code, member_count, candidate_count, rule_version, reason_codes_json)
-                VALUES (?, ?, ?, ?, ?, 'account_mapping', 'open', 1, 1, 'payment_reference_mapping_required', 0, 0, ?, ?)`,
-                [uid, issueId, updateId, issueKey, REVIEW_ISSUE_VERSION, REVIEW_ISSUE_VERSION, JSON.stringify(['payment_reference_mapping_required'])])
+              issueRows.push([uid, issueId, updateId, issueKey, REVIEW_ISSUE_VERSION, 'account_mapping', 'open', 1, 1,
+                'payment_reference_mapping_required', 0, 0, REVIEW_ISSUE_VERSION, JSON.stringify(['payment_reference_mapping_required'])])
               group = { issue: { issueId, status: 'open', version: 1 }, count: 0, added: 0, created: true, priorAccounts: [] }
               groups.set(key, group)
             }
@@ -996,22 +992,28 @@ function createReviewIssueService({ getPool }) {
             if (group.created) group.priorAccounts.push(known || '')
             if (known) {
               next = applyMappedAccount(next, reference.memberRole, known, mappingIndex)
-              await stagePaymentReferenceMapping(connection, uid, updateId, event.eventId, reference, known, actionId, 'account', mappingIndex)
+              await stagePaymentReferenceMapping(connection, uid, updateId, event.eventId, reference, known, actionId, 'account', mappingIndex, mappingRows)
             }
             if (group.issue.status === 'resolved' && !known) {
               await connection.execute("UPDATE catledger_review_issues SET status = 'open', blocking = 1 WHERE uid = ? AND issue_id = ?", [uid, group.issue.issueId])
               group.issue.status = 'open'
             }
-            await connection.execute(`INSERT INTO catledger_review_issue_members
-              (uid, member_id, update_id, issue_id, object_type, object_id, object_version, member_role, sort_order)
-              VALUES (?, ?, ?, ?, 'event', ?, ?, ?, ?)`,
-              [uid, randomUUID(), updateId, group.issue.issueId, event.eventId, event.version + 1, reference.memberRole, group.count + group.added])
+            memberRows.push([uid, randomUUID(), updateId, group.issue.issueId, 'event', event.eventId,
+              event.version + 1, reference.memberRole, group.count + group.added])
             group.added += 1
           }
-          const saved = await saveEvent(connection, uid, event, next, actionId)
-          await updateAccountMappingMemberVersions(connection, uid, updateId, saved)
-          savedEvents.push(saved)
+          pairs.push({ current: event, next })
         }
+        await insertMany(connection, `INSERT INTO catledger_review_issues
+          (uid,issue_id,update_id,issue_key,issue_key_version,issue_type,status,version,blocking,primary_reason_code,
+           member_count,candidate_count,rule_version,reason_codes_json) VALUES`, issueRows)
+        await insertMany(connection, `INSERT INTO catledger_review_issue_members
+          (uid,member_id,update_id,issue_id,object_type,object_id,object_version,member_role,sort_order) VALUES`, memberRows)
+        await insertMany(connection, `INSERT INTO catledger_finance_update_account_mapping_drafts
+          (uid,draft_mapping_id,update_id,event_id,source_type,payment_method_key,payment_method_hint,mapping_action,account_id,action_id) VALUES`, mappingRows,
+          'ON DUPLICATE KEY UPDATE payment_method_hint=VALUES(payment_method_hint),mapping_action=VALUES(mapping_action),account_id=VALUES(account_id),action_id=VALUES(action_id)')
+        const savedEvents = await saveEvents(connection, uid, updateId, pairs, actionId)
+        await updateMappingMemberVersions(connection, uid, updateId, savedEvents)
         for (const group of groups.values()) if (group.added) {
           const confirmed = group.created && group.priorAccounts.every(Boolean) && new Set(group.priorAccounts).size === 1
           await connection.execute(`UPDATE catledger_review_issues
@@ -1019,7 +1021,7 @@ function createReviewIssueService({ getPool }) {
               status = IF(?, 'resolved', status), blocking = IF(?, 0, blocking) WHERE uid = ? AND issue_id = ?`,
             [group.added, Boolean(confirmed), Boolean(confirmed), uid, group.issue.issueId])
         }
-        for (const event of savedEvents) await createFollowUpIssue(connection, uid, updateId, event)
+        await createFollowUpIssues(connection, uid, updateId, savedEvents)
         await recalculateUpdateCounts(connection, uid, updateId, version + 1, actionId, version)
         return commandResult(connection, uid, updateId, context.data)
       }
@@ -1596,7 +1598,7 @@ function createReviewIssueService({ getPool }) {
 }
 
 module.exports = {
-  selectDomainEvents, effectiveProjectedEvents, saveEvent, createFollowUpIssue, recalculateUpdateCounts,
+  selectDomainEvents, effectiveProjectedEvents, saveEvent, saveEvents, createFollowUpIssue, recalculateUpdateCounts,
   FIELD_MASK,
   applyFields,
   createReviewIssueService,

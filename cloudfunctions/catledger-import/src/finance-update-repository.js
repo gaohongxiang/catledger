@@ -237,15 +237,15 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
     const [links] = await connection.execute(
       `SELECT r.identity_id AS identityId, linked.transaction_id AS transactionId,
               t.version AS transactionVersion
-         FROM catledger_import_rows r
-         JOIN catledger_event_evidence evidence
+         FROM catledger_import_rows r FORCE INDEX (idx_catledger_import_rows_identity)
+         STRAIGHT_JOIN catledger_event_evidence evidence FORCE INDEX (idx_catledger_event_evidence_row)
            ON evidence.uid = r.uid AND evidence.row_id = r.row_id
           AND evidence.evidence_role <> 'discarded'
-         JOIN catledger_economic_event_transactions linked
+         STRAIGHT_JOIN catledger_economic_event_transactions linked FORCE INDEX (uk_catledger_event_transaction_role)
            ON linked.uid = evidence.uid AND linked.event_id = evidence.event_id
           AND linked.superseded_at IS NULL
           AND linked.role IN ('primary', 'refund_transaction', 'repayment_allocation', 'payment_allocation', 'historical_primary')
-         JOIN catledger_transactions t
+         STRAIGHT_JOIN catledger_transactions t
            ON t.uid = linked.uid AND t.transaction_id = linked.transaction_id
           AND t.deleted_at IS NULL
         WHERE r.uid = ? AND r.identity_id IN (${part.map(() => '?').join(', ')})
@@ -345,33 +345,32 @@ async function restoreDraftPaymentMappings(connection, uid, updateId, events, ma
     paymentReferenceKey(mapping),
     mapping
   ]))
-  for (const event of events) {
-    const projection = event.fieldSources && event.fieldSources.fundsProjection
-    const references = [
-      { sourceType: event.sourceType, paymentMethodKey: event.paymentMethodKey, label: '' },
-      projection && projection.from,
-      projection && projection.to
-    ].filter(Boolean)
-    const restoredKeys = new Set()
-    for (const reference of references) {
-      if (!reference.sourceType || !reference.paymentMethodKey) continue
-      const key = paymentReferenceKey(reference)
-      if (restoredKeys.has(key)) continue
-      const mapping = byKey.get(key)
-      if (!mapping) continue
-      restoredKeys.add(key)
-      await connection.execute(
-        `INSERT INTO catledger_finance_update_account_mapping_drafts
-           (uid, draft_mapping_id, update_id, event_id, source_type,
-            payment_method_key, payment_method_hint, mapping_action, account_id, action_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uid, randomUUID(), updateId, event.eventId, mapping.sourceType,
-          mapping.paymentMethodKey,
-          String(mapping.paymentMethodHint || reference.label || '').slice(0, 128),
-          mapping.mappingAction, mapping.accountId || null, actionId]
-      )
+  function* mappingRows() {
+    for (const event of events) {
+      const projection = event.fieldSources && event.fieldSources.fundsProjection
+      const references = [
+        { sourceType: event.sourceType, paymentMethodKey: event.paymentMethodKey, label: '' },
+        projection && projection.from,
+        projection && projection.to
+      ].filter(Boolean)
+      const restoredKeys = new Set()
+      for (const reference of references) {
+        if (!reference.sourceType || !reference.paymentMethodKey) continue
+        const key = paymentReferenceKey(reference)
+        if (restoredKeys.has(key)) continue
+        const mapping = byKey.get(key)
+        if (!mapping) continue
+        restoredKeys.add(key)
+        yield [uid, randomUUID(), updateId, event.eventId, mapping.sourceType,
+            mapping.paymentMethodKey,
+            String(mapping.paymentMethodHint || reference.label || '').slice(0, 128),
+            mapping.mappingAction, mapping.accountId || null, actionId]
+      }
     }
   }
+  await insertMany(connection, `INSERT INTO catledger_finance_update_account_mapping_drafts
+    (uid, draft_mapping_id, update_id, event_id, source_type,
+     payment_method_key, payment_method_hint, mapping_action, account_id, action_id) VALUES`, mappingRows())
 }
 
 async function deleteDraftPlan(connection, uid, updateId) {
@@ -383,6 +382,10 @@ async function deleteDraftPlan(connection, uid, updateId) {
   await connection.execute('DELETE FROM catledger_economic_events WHERE uid = ? AND update_id = ?', [uid, updateId])
 }
 
+function* mappedPlanRows(items, project) {
+  for (const item of items) yield project(item)
+}
+
 async function persistPlan(connection, uid, updateId, plan) {
   await insertMany(connection, `INSERT INTO catledger_economic_events
     (uid, event_id, batch_id, update_id, event_key, event_key_version, event_type,
@@ -390,7 +393,7 @@ async function persistPlan(connection, uid, updateId, plan) {
      counterparty_ledger_account_id, event_local_date, event_local_at, event_utc_at,
      timezone_offset_minutes, amount_minor, currency, category_id, manual_field_mask,
      field_sources_json, reason_codes_json, event_core_digest, rule_version, version) VALUES`,
-  plan.events.map((event) => [
+  mappedPlanRows(plan.events, (event) => [
     uid, event.eventId, event.batchId, updateId, event.eventKey, event.eventKeyVersion,
     event.economicNature, event.status, event.status, event.flowDirection, event.economicNature,
     event.ledgerAccountId, event.counterpartyLedgerAccountId, event.localDate, event.localAt,
@@ -400,14 +403,14 @@ async function persistPlan(connection, uid, updateId, plan) {
   ]))
   await insertMany(connection, `INSERT INTO catledger_event_evidence
     (uid, evidence_id, update_id, event_id, row_id, evidence_role, field_mask,
-     relation_rule_version) VALUES`, plan.evidence.map((evidence) => [
+     relation_rule_version) VALUES`, mappedPlanRows(plan.evidence, (evidence) => [
     uid, evidence.evidenceId, updateId, evidence.eventId, evidence.rowId,
     evidence.evidenceRole, evidence.fieldMask, plan.planVersion
   ]))
   await insertMany(connection, `INSERT INTO catledger_economic_event_relations
     (uid, relation_id, update_id, relation_key, relation_key_version, relation_type,
      status, version, source_event_id, target_event_id, amount_minor, currency,
-     manual, rule_version, reason_codes_json) VALUES`, plan.relations.map((relation) => [
+     manual, rule_version, reason_codes_json) VALUES`, mappedPlanRows(plan.relations, (relation) => [
     uid, relation.relationId, updateId, relation.relationKey, relation.relationKeyVersion,
     relation.relationType, relation.status, relation.version, relation.sourceEventId,
     relation.targetEventId, relation.amountMinor, relation.currency, relation.manual ? 1 : 0,
@@ -416,35 +419,37 @@ async function persistPlan(connection, uid, updateId, plan) {
   await insertMany(connection, `INSERT INTO catledger_review_issues
     (uid, issue_id, update_id, issue_key, issue_key_version, issue_type, status,
      version, blocking, primary_reason_code, member_count, candidate_count,
-     rule_version, reason_codes_json) VALUES`, plan.issues.map((issue) => [
+     rule_version, reason_codes_json) VALUES`, mappedPlanRows(plan.issues, (issue) => [
     uid, issue.issueId, updateId, issue.issueKey, issue.issueKeyVersion, issue.issueType,
     issue.status, issue.version, issue.blocking ? 1 : 0, issue.primaryReasonCode,
     issue.memberCount, issue.candidateCount, issue.ruleVersion, JSON.stringify(issue.reasonCodes)
   ]))
   await insertMany(connection, `INSERT INTO catledger_review_issue_members
     (uid, member_id, update_id, issue_id, object_type, object_id, object_version,
-     member_role, sort_order) VALUES`, plan.members.map((member) => [
+     member_role, sort_order) VALUES`, mappedPlanRows(plan.members, (member) => [
     uid, member.memberId, updateId, member.issueId, member.objectType, member.objectId,
     member.objectVersion, member.memberRole, member.sortOrder
   ]))
 
-  for (const event of plan.events) {
-    for (const transactionId of event.existingTransactionIds) {
-      const [[transaction]] = await connection.execute(
-        `SELECT version FROM catledger_transactions
-          WHERE uid = ? AND transaction_id = ? AND deleted_at IS NULL LIMIT 1`,
-        [uid, transactionId]
-      )
-      if (!transaction) continue
-      await connection.execute(
-        `INSERT IGNORE INTO catledger_economic_event_transactions
-           (uid, link_id, update_id, event_id, transaction_id, role,
-            creation_method, rule_version, transaction_version)
-         VALUES (?, ?, ?, ?, ?, 'historical_primary', 'reused', ?, ?)`,
-        [uid, randomUUID(), updateId, event.eventId, transactionId, plan.planVersion, Number(transaction.version)]
-      )
+  const existingIds = new Set()
+  for (const event of plan.events) for (const id of event.existingTransactionIds) existingIds.add(id)
+  const versions = new Map()
+  for (const part of chunks([...existingIds].sort().map(id => [id]))) {
+    const [transactions] = await connection.execute(
+      `SELECT transaction_id AS transactionId, version FROM catledger_transactions
+        WHERE uid = ? AND transaction_id IN (${part.map(() => '?').join(',')}) AND deleted_at IS NULL`,
+      [uid, ...part.flat()])
+    for (const transaction of transactions) versions.set(transaction.transactionId, Number(transaction.version))
+  }
+  function* historicalLinks() {
+    for (const event of plan.events) for (const transactionId of event.existingTransactionIds) {
+      if (versions.has(transactionId)) yield [uid, randomUUID(), updateId, event.eventId, transactionId,
+        'historical_primary', 'reused', plan.planVersion, versions.get(transactionId)]
     }
   }
+  await insertMany(connection, `INSERT IGNORE INTO catledger_economic_event_transactions
+    (uid, link_id, update_id, event_id, transaction_id, role,
+     creation_method, rule_version, transaction_version) VALUES`, historicalLinks())
 }
 
 function publicSource(row) {
@@ -717,8 +722,8 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
             source_row.item_raw AS subjectItem,
             source_row.counterparty_raw AS subjectCounterparty
        FROM catledger_review_issues issue
-       LEFT JOIN catledger_review_issue_members subject
-         ON subject.uid = issue.uid AND subject.issue_id = issue.issue_id
+       LEFT JOIN catledger_review_issue_members subject FORCE INDEX (idx_catledger_review_issue_members_issue)
+         ON subject.uid = issue.uid AND subject.update_id = issue.update_id AND subject.issue_id = issue.issue_id
        AND subject.object_type = 'event' AND subject.sort_order = 0
        LEFT JOIN catledger_economic_events subject_event
          ON subject_event.uid = subject.uid AND subject_event.update_id = issue.update_id

@@ -263,3 +263,63 @@ test('旧规划重建后把本批映射重新绑定到新事件', async function
     'update-1', 'event-new', 'wechat', 'change', '零钱', 'account', 'wechat-account', 'action-1'
   ])
 })
+
+test('准备计划在首次 SQL 前只序列化有界事件块，不建立全量 JSON 副本', async () => {
+  const { persistPlan } = require('../src/finance-update-repository')
+  let serialized = 0, inserted = 0
+  const events = Array.from({ length: 1000 }, (_, n) => ({ eventId: 'event-' + n,
+    fieldSources: { toJSON() { serialized++; return { synthetic: 'memory boundary' } } }, reasonCodes: [], existingTransactionIds: [] }))
+  const connection = { async execute(sql, values) {
+    if (sql.includes('INSERT INTO catledger_economic_events')) {
+      assert.ok(serialized - inserted <= 101, 'serialization window: ' + (serialized - inserted))
+      inserted += values.length / 26
+    }
+    return [{ affectedRows: 1 }]
+  } }
+  await persistPlan(connection, 'synthetic-user', 'synthetic-update', { events, evidence: [], relations: [], issues: [], members: [] })
+  assert.equal(inserted, 1000)
+})
+
+test('历史关联分块读取真实版本，跳过已删除交易并保留事件归属', async () => {
+  const { persistPlan } = require('../src/finance-update-repository')
+  let reads = 0, writes = 0
+  const links = []
+  const events = Array.from({ length: 1000 }, (_, n) => ({ eventId: 'event-' + n,
+    fieldSources: {}, reasonCodes: [], existingTransactionIds: ['tx-' + n, 'missing'] }))
+  const connection = { async execute(sql, values) {
+    if (sql.includes('FROM catledger_transactions')) {
+      reads++
+      assert.equal(values[0], 'synthetic-user')
+      assert.ok(values.length <= 101)
+      assert.match(sql, /deleted_at IS NULL/)
+      return [values.slice(1).filter(id => id !== 'missing').map(transactionId => ({ transactionId, version: 7 }))]
+    }
+    if (sql.includes('INSERT IGNORE INTO catledger_economic_event_transactions')) {
+      writes++
+      for (let i = 0; i < values.length; i += 9) links.push(values.slice(i, i + 9))
+    }
+    return [{ affectedRows: 1 }]
+  } }
+  await persistPlan(connection, 'synthetic-user', 'synthetic-update', { events, evidence: [], relations: [], issues: [], members: [], planVersion: 'synthetic-plan' })
+  assert.ok(reads <= 11, 'history reads: ' + reads)
+  assert.ok(writes <= 10, 'history writes: ' + writes)
+  assert.equal(links.length, 1000)
+  links.forEach((row, n) => assert.deepEqual([row[0], ...row.slice(2)],
+    ['synthetic-user', 'synthetic-update', 'event-' + n, 'tx-' + n, 'historical_primary', 'reused', 'synthetic-plan', 7]))
+})
+
+test('升级恢复映射以有界 SQL 分块，重复支付引用每个事件只恢复一次', async () => {
+  let calls = 0, rows = 0
+  const events = Array.from({ length: 1000 }, (_, n) => ({ eventId: 'event-' + n,
+    sourceType: 'wechat', paymentMethodKey: 'wallet', fieldSources: {
+      fundsProjection: { from: { sourceType: 'wechat', paymentMethodKey: 'wallet' } }
+    } }))
+  await restoreDraftPaymentMappings({ async execute(sql, values) {
+    calls++; rows += values.length / 10
+    assert.ok(values.length <= 1000)
+    return [{ affectedRows: values.length / 10 }]
+  } }, 'synthetic-user', 'synthetic-update', events,
+  [{ sourceType: 'wechat', paymentMethodKey: 'wallet', mappingAction: 'ignore' }], 'synthetic-action')
+  assert.equal(rows, 1000)
+  assert.ok(calls <= 10, 'mapping writes: ' + calls)
+})

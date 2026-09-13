@@ -179,7 +179,13 @@ function sharedReviewDecisionSignature(event, classification) {
 function buildReviewIssues(updateId, events, relations, candidateGroups, idFactory) {
   const candidateByEvent = new Map()
   candidateGroups.forEach((group) => group.events.forEach((event) => candidateByEvent.set(event.eventId, group.candidateKey)))
-  const buckets = new Map()
+  const buckets = new Map(), relationsByEvent = new Map()
+  for (const relation of relations) {
+    for (const eventId of new Set([relation.sourceEventId, relation.targetEventId])) {
+      if (!relationsByEvent.has(eventId)) relationsByEvent.set(eventId, [])
+      relationsByEvent.get(eventId).push(relation)
+    }
+  }
   events.filter((event) => event.status === EVENT_STATUS.NEEDS_ACTION ||
     event.status === EVENT_STATUS.READY && needsCategory(event)).forEach((event) => {
     const classification = classifyReviewIssue(event)
@@ -215,19 +221,22 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
         signature = sharedReviewDecisionSignature(event, currentClassification)
       }
       const key = digestParts(REVIEW_ISSUE_VERSION, updateId, currentClassification.issueType, signature)
-      const bucket = buckets.get(key) || { key, classification: currentClassification, subjects: [], relations: [] }
-      if (!bucket.subjects.some((item) => item.event.eventId === event.eventId && item.memberRole === descriptor.memberRole)) {
+      const bucket = buckets.get(key) || { key, classification: currentClassification, subjects: [], relations: [], subjectKeys: new Set(), relationIds: new Set() }
+      const subjectKey = event.eventId + ':' + descriptor.memberRole
+      if (!bucket.subjectKeys.has(subjectKey)) {
+        bucket.subjectKeys.add(subjectKey)
         bucket.subjects.push({ event, memberRole: descriptor.memberRole })
       }
-      relations.filter((relation) => (
-        relation.sourceEventId === event.eventId || relation.targetEventId === event.eventId
-      ) && (
+      ;(relationsByEvent.get(event.eventId) || []).filter((relation) => (
         currentClassification.issueType === 'refund_relation'
           ? relation.relationType === RELATION_TYPE.REFUND_OF && ![RELATION_STATUS.REJECTED, RELATION_STATUS.UNDONE].includes(relation.status)
           : ['same_event', 'transfer_accounts'].includes(currentClassification.issueType) && relation.status === RELATION_STATUS.PROPOSED
       ))
         .forEach((relation) => {
-          if (!bucket.relations.some((item) => item.relationId === relation.relationId)) bucket.relations.push(relation)
+          if (!bucket.relationIds.has(relation.relationId)) {
+            bucket.relationIds.add(relation.relationId)
+            bucket.relations.push(relation)
+          }
         })
       buckets.set(key, bucket)
     })
@@ -300,8 +309,10 @@ function buildConfirmedAccountIssues(updateId, events, effectiveMappings, idFact
       if (!ignored && (!confirmedAccountId || confirmedAccountId !== candidate.accountId)) return
       const identityKey = accountIdentityKeyForReference(reference) || paymentReferenceKey(reference)
       const key = `${identityKey}:${ignored ? 'ignore' : confirmedAccountId}`
-      const group = groups.get(key) || { ignored, items: [] }
-      if (!group.items.some((item) => item.event.eventId === event.eventId && item.memberRole === candidate.memberRole)) {
+      const group = groups.get(key) || { ignored, items: [], memberKeys: new Set() }
+      const memberKey = `${event.eventId}:${candidate.memberRole}`
+      if (!group.memberKeys.has(memberKey)) {
+        group.memberKeys.add(memberKey)
         group.items.push({ event, memberRole: candidate.memberRole })
       }
       groups.set(key, group)
@@ -412,6 +423,7 @@ module.exports = {
   RELATION_KEY_VERSION,
   REVIEW_ISSUE_VERSION,
   buildOrganizePlan,
+  buildConfirmedAccountIssues,
   buildReviewIssues,
   compatibleHistoricalMappings,
   compatibleCore,

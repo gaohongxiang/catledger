@@ -127,6 +127,32 @@ function selectRefundCandidates(refund, events) {
   }
 }
 
+function createRefundCandidateIndex() {
+  const expenses = [], byReference = new Map()
+  return {
+    add(event) {
+      if (!['expense', 'fee'].includes(event.economicNature) || event.status === 'excluded') return
+      expenses.push(event)
+      for (const ref of event.relationEvidence && event.relationEvidence.scopedStableReferences || []) {
+        if (!byReference.has(ref)) byReference.set(ref, new Set())
+        byReference.get(ref).add(event)
+      }
+    },
+    select(refund) {
+      const exact = new Set()
+      for (const ref of refund.relationEvidence && refund.relationEvidence.scopedStableReferences || []) {
+        for (const event of byReference.get(ref) || []) exact.add(event)
+      }
+      if (exact.size) {
+        const selected = selectRefundCandidates(refund, [...exact])
+        if (selected.matchKind === REFUND_MATCH_KIND.EXACT_REFERENCE) return selected
+      }
+      // 没有合格强引用仍执行原弱证据判断；索引不能把排除/超额/时间不符变成自动确认。
+      return selectRefundCandidates(refund, expenses)
+    }
+  }
+}
+
 function candidateReasonCode(kind) {
   if (kind === REFUND_MATCH_KIND.EXACT_REFERENCE) return 'refund_exact_reference_candidate'
   if (kind === REFUND_MATCH_KIND.EXPLICIT_EVIDENCE) return 'refund_explicit_evidence_candidate'
@@ -140,6 +166,7 @@ function autoReasonCode(kind) {
 }
 
 module.exports = {
+  createRefundCandidateIndex,
   REFUND_MATCH_KIND,
   autoReasonCode,
   baseCandidateEligible,

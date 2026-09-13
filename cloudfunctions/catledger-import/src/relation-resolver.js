@@ -2,7 +2,7 @@ const { digestParts } = require('./digest')
 const { RELATION_KEY_VERSION } = require('./domain-versions')
 const { ECONOMIC_NATURE, EVENT_STATUS, RELATION_TYPE, RELATION_STATUS, unique, evaluatePostability } = require('./organizer-model')
 const { timeValue, normalizedText, STRONG_REFERENCE_WINDOW_MS } = require('./evidence-matching')
-const { autoReasonCode, candidateReasonCode, selectRefundCandidates } = require('./refund-relation-policy')
+const { autoReasonCode, candidateReasonCode, createRefundCandidateIndex } = require('./refund-relation-policy')
 const SAME_EVENT_CANDIDATE_WINDOW_MS = 48 * 60 * 60 * 1000
 
 function refundRelation(updateId, refund, target, idFactory, status, reasonCode) {
@@ -86,10 +86,11 @@ function buildRelations(updateId, events, idFactory) {
   const relations = []
   const chronological = [...events].sort((left, right) => (timeValue(left.utcAt) || 0) - (timeValue(right.utcAt) || 0))
   const uniqueRefundMatches = []
-  chronological.forEach((event, index) => {
+  const refundIndex = chronological.some(event => event.economicNature === ECONOMIC_NATURE.REFUND) ? createRefundCandidateIndex() : null
+  chronological.forEach((event) => {
     if (event.status === EVENT_STATUS.EXCLUDED) return
     if (event.economicNature === ECONOMIC_NATURE.REFUND) {
-      const selection = selectRefundCandidates(event, chronological.slice(0, index))
+      const selection = refundIndex.select(event)
       const candidates = selection.candidates
       if (candidates.length === 0) {
         event.status = EVENT_STATUS.NEEDS_ACTION
@@ -106,6 +107,7 @@ function buildRelations(updateId, events, idFactory) {
           candidates.length > 1 ? 'refund_relation_ambiguous' : 'refund_relation_required'])
       }
     }
+    if (refundIndex) refundIndex.add(event)
   })
 
   const refundsByOriginal = new Map()
@@ -141,13 +143,18 @@ function buildRelations(updateId, events, idFactory) {
     [ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(event.economicNature) &&
     event.status !== EVENT_STATUS.EXCLUDED
   ))
-  movementEvents.forEach((event, index) => {
-    const eventTime = timeValue(event.utcAt)
-    const candidate = movementEvents.slice(index + 1).find((target) => {
-      const targetTime = timeValue(target.utcAt)
-      return target.currency === event.currency && String(target.amountMinor) === String(event.amountMinor) &&
-        eventTime != null && targetTime != null && Math.abs(eventTime - targetTime) <= STRONG_REFERENCE_WINDOW_MS
-    })
+  const nextByAmount = new Map(), movementCandidates = new Map()
+  // 已按时间排序；同币种/金额的首个后续有效时间即原 find 的候选，超窗后更晚记录也不合格。
+  for (let index = movementEvents.length - 1; index >= 0; index--) {
+    const event = movementEvents[index], time = timeValue(event.utcAt)
+    if (time == null) continue
+    const key = JSON.stringify([event.currency, String(event.amountMinor)])
+    const next = nextByAmount.get(key)
+    if (next && Math.abs(time - next.time) <= STRONG_REFERENCE_WINDOW_MS) movementCandidates.set(event, next.event)
+    nextByAmount.set(key, { event, time })
+  }
+  movementEvents.forEach((event) => {
+    const candidate = movementCandidates.get(event)
     if (!candidate) return
     const relationType = event.economicNature === ECONOMIC_NATURE.REPAYMENT || candidate.economicNature === ECONOMIC_NATURE.REPAYMENT
       ? RELATION_TYPE.REPAYMENT_OF

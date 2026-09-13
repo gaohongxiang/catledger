@@ -37,6 +37,27 @@
       "maxCursorHistory": 8,
       "summary": "Server-authoritative counts and posting gates; current page never supplies batch totals.",
       "selection": "Group actions send selection.mode=all with issueVersion, independent of visible members."
+    },
+    "complexBenchmark": {
+      "environment": "isolated local MySQL 8.4, Node 24, 256 MiB V8; synthetic only; not cloud or device timing",
+      "rows": [
+        1000,
+        5000,
+        24990
+      ],
+      "maxTransactionsPerRow": 2,
+      "maxActionMsAtUpper": 20000,
+      "maxUserLockHoldMsAtUpper": 20000,
+      "postSqlBudget": "120 + 12 * ceil(rows / 100)",
+      "scenarios": [
+        "refund_pair",
+        "refund_many",
+        "combo",
+        "repayment",
+        "history",
+        "upgrade"
+      ],
+      "correctness": "same transaction cumulative refund check; original links and evidence preserved; full mapping groups retain decisions/versions; same-user writes serialize and other users remain independent"
     }
   },
   "requestEnvelope": {

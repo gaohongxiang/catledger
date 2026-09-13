@@ -1,4 +1,5 @@
 const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
+const { loadRefundPostingContext } = require('./refund-posting-context')
 const { commandResult } = require('./command-result')
 const { eventAllocation, allocationAccountsValid, allocationTransactionDrafts } = require('./funds-allocation')
 const { paymentResolutionForEvent } = require('./payment-resolution')
@@ -537,7 +538,7 @@ function createFinanceUpdatePosting({ getPool }) {
         )
         if (postingState.affectedRows !== 1) throw importError('CONFLICT')
 
-        let created = 0, reused = 0
+        let created = 0, reused = 0, refundContext = null
         const transactionRows = [], linkRows = [], newByIdentity = new Map()
         async function flush() {
           await insertMany(connection, `INSERT INTO catledger_transactions
@@ -557,9 +558,19 @@ function createFinanceUpdatePosting({ getPool }) {
           let transactions
           if (existing) { transactions = [{ transactionId: existing.transactionId, role: event.economicNature === ECONOMIC_NATURE.REFUND ? 'refund_transaction' : 'primary' }]; reused += 1 }
           else if (event.economicNature === ECONOMIC_NATURE.REFUND) {
-            // 原消费先落在同一事务中，随后逐个原消费累计退款；任何失败仍回滚整批。
-            await flush()
-            transactions = await createTransactions(connection, uid, updateId, event)
+            if (!refundContext) {
+              await flush()
+              refundContext = await loadRefundPostingContext(connection, uid, updateId,
+                ready.filter(item => item.economicNature === ECONOMIC_NATURE.REFUND).map(item => item.eventId))
+            }
+            const original = refundContext.take(event)
+            transactions = transactionDrafts(event, original && original.transactionId).map(draft => {
+              const transactionId = randomUUID()
+              transactionRows.push([uid, transactionId, draft.type, draft.sourceAccountId, draft.destinationAccountId,
+                original ? original.categoryId : draft.categoryId, draft.originalTransactionId, draft.amountMinor, event.localDate,
+                event.localAt, event.timezoneOffsetMinutes, event.utcAt, noteForEvent(event), 'import'])
+              return { transactionId, role: draft.role }
+            })
             created += transactions.length
           } else {
             transactions = transactionDrafts(event, null).map(draft => {

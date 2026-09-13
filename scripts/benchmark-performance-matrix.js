@@ -56,4 +56,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch(error => { process.stderr.write('Performance matrix failed: ' + (error.publicCode || error.code || error.message) + '\n'); process.exitCode = 1 })
-module.exports = { distribution }
+module.exports = { distribution, sourceDigest }
