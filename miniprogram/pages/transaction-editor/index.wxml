@@ -1,11 +1,17 @@
 <view class="editor-page {{themeClass}}" style="{{themeStyle}}">
   <view wx:if="{{!readonlyDetail}}" class="editor-heading content-inset">
     <text class="editor-title serif-title">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '编辑账单' : '记一笔')}}</text>
-    <button wx:if="{{mode === 'create' && formReady}}" class="editor-import" disabled="{{saving || openingImport}}" bindtap="openImport">导入账单</button>
   </view>
 
   <view wx:if="{{!formReady && !errorMessage}}" class="ui-state" aria-role="status">登录后开始记账</view>
   <block wx:if="{{formReady && !readonlyDetail}}">
+  <button wx:if="{{mode === 'create'}}" class="editor-import" disabled="{{saving || openingImport}}" bindtap="openImport" aria-label="导入支付宝、微信账单">
+    <view class="editor-import-copy">
+      <text class="editor-import-title">导入账单</text>
+      <text class="editor-import-note">支付宝、微信账单，批量整理入账</text>
+    </view>
+    <view class="editor-import-chevron"></view>
+  </button>
   <view wx:if="{{mode !== 'link-refund'}}" class="type-switch">
     <view
       wx:for="{{typeOptions}}"

@@ -522,6 +522,38 @@ test('中央记账不重复叠加页面，导航失败后允许重试', () => {
   assert.equal(h.navigation.length, 3)
 })
 
+test('我的导入入口等待游客登录成功后继续，入口自身不读取或写入账本', () => {
+  const h = runtime(), page = h.page('profile'), tabBar = h.component()
+  page.getTabBar = () => tabBar
+  h.app.approved = false
+  page.openImport()
+  assert.equal(h.calls.length, 0)
+  assert.deepEqual(h.navigation, [])
+  assert.equal(typeof h.loginOptions.afterLogin, 'function')
+  // 取消或失败不会触发成功回调；回调执行时仍须确认登录许可。
+  h.loginOptions.afterLogin()
+  assert.deepEqual(h.navigation, [])
+  h.app.approved = true
+  h.loginOptions.afterLogin()
+  assert.deepEqual(h.navigation, ['/pages/import-workbench/index'])
+  assert.equal(h.calls.length, 0)
+})
+
+test('我的导入入口防止重复导航，失败后提示且可再次进入', () => {
+  const h = runtime(), page = h.page('profile')
+  h.deferNavigation = true
+  page.openImport(); page.openImport()
+  assert.equal(h.navigation.length, 1)
+  h.lastNavigation.complete()
+  h.deferNavigation = false; h.failNavigation = true
+  page.openImport()
+  assert.match(h.toasts[0], /重试/)
+  h.failNavigation = false
+  page.openImport()
+  assert.deepEqual(h.navigation, Array(3).fill('/pages/import-workbench/index'))
+  assert.equal(h.calls.length, 0)
+})
+
 test('进入导入再返回保留完整手记草稿，目录失效按ID刷新且不自动入账', async () => {
   const h = runtime(), page = h.page('transaction-editor')
   h.accounts = [{ accountId: 'account-a', name: '合成账户A' }, { accountId: 'account-b', name: '合成账户B' }]

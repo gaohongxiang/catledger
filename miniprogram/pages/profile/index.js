@@ -88,6 +88,20 @@ Page({
     }
   },
 
+  openImport: function () {
+    if (this._openingImport) return
+    if (!app.hasLoginApproval()) {
+      this.promptWechatLogin(this.openImport.bind(this))
+      return
+    }
+    this._openingImport = true
+    wx.navigateTo({
+      url: '/pages/import-workbench/index',
+      fail: () => wx.showToast({ title: '暂时无法打开导入，请重试', icon: 'none' }),
+      complete: () => { this._openingImport = false }
+    })
+  },
+
   openAccounts: function () {
     if (!app.hasLoginApproval()) {
       this.promptWechatLogin(this.openAccounts.bind(this))

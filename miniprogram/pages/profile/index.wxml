@@ -21,6 +21,9 @@
 
   <text class="profile-section-kicker content-inset">账本管理</text>
   <view class="profile-menu">
+    <view class="profile-row profile-import content-inset" role="button" aria-label="进入导入账单" bindtap="openImport">
+      <view class="row-copy"><text class="row-title">导入账单</text><text class="row-note">支付宝、微信账单，批量整理入账</text></view><view class="row-chevron"></view>
+    </view>
     <view class="profile-row content-inset" role="button" aria-label="进入账户管理" bindtap="openAccounts">
       <view class="row-copy"><text class="row-title">账户管理</text><text class="row-note">{{loggedIn && hasLoaded ? accountCount + ' 个活动账户' : '管理资产与负债账户'}}</text></view><view class="row-chevron"></view>
     </view>

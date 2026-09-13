@@ -1,19 +1,33 @@
 .editor-page { padding: 28rpx 32rpx calc(48rpx + env(safe-area-inset-bottom)); }
-.editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
-.editor-page .editor-heading .editor-import {
-  flex: 0 0 auto;
+.editor-page .editor-import {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
   box-sizing: border-box;
-  width: auto;
-  min-height: 72rpx;
-  margin: 0;
-  padding: 14rpx 20rpx;
-  border: 1rpx solid var(--theme-accent-strong);
-  border-radius: 14rpx;
+  width: 100%;
+  max-width: none;
+  min-height: 112rpx;
+  margin: 20rpx 0 0;
+  padding: 20rpx 24rpx;
+  border: 1rpx solid var(--theme-accent-soft);
+  border-radius: 18rpx;
   color: var(--theme-accent-strong);
-  background: transparent;
-  font-size: 24rpx;
+  background: var(--theme-accent-soft);
+  text-align: left;
   font-weight: 400;
   line-height: 1.5;
+}
+.editor-import-copy { flex: 1; min-width: 0; }
+.editor-import-title { display: block; font-size: 28rpx; font-weight: 500; }
+.editor-import-note { display: block; margin-top: 4rpx; color: var(--theme-text-muted); font-size: 24rpx; }
+.editor-import-chevron {
+  flex: 0 0 auto;
+  width: 14rpx;
+  height: 14rpx;
+  border-top: 3rpx solid var(--theme-accent-strong);
+  border-right: 3rpx solid var(--theme-accent-strong);
+  transform: rotate(45deg);
 }
 .editor-import::after { border: 0; }
 .editor-import:active { opacity: .7; }
