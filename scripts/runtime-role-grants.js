@@ -1,0 +1,43 @@
+// 本机/CI 验证契约；不会修改云端授权。表级 DML，无库级权限、DDL 或 GRANT OPTION。
+const api = {
+  catledger_users: 'SELECT, INSERT, UPDATE',
+  catledger_user_identities: 'SELECT, INSERT, UPDATE',
+  catledger_accounts: 'SELECT, INSERT, UPDATE',
+  catledger_categories: 'SELECT, INSERT, UPDATE',
+  catledger_transactions: 'SELECT, INSERT, UPDATE',
+  catledger_mutation_receipts: 'SELECT, INSERT, UPDATE',
+  catledger_import_category_mappings: 'SELECT, INSERT, UPDATE',
+  catledger_economic_event_transactions: 'SELECT, INSERT',
+  catledger_event_evidence: 'SELECT',
+  catledger_finance_update_sources: 'SELECT',
+  catledger_finance_updates: 'SELECT',
+  catledger_import_rows: 'SELECT'
+}
+const importer = {
+  catledger_users: 'SELECT, UPDATE',
+  catledger_user_identities: 'SELECT',
+  catledger_accounts: 'SELECT, INSERT, UPDATE',
+  catledger_categories: 'SELECT, UPDATE',
+  catledger_transactions: 'SELECT, INSERT, UPDATE',
+  catledger_mutation_receipts: 'SELECT, INSERT, UPDATE',
+  catledger_import_files: 'SELECT, INSERT, UPDATE',
+  catledger_import_source_profiles: 'SELECT, INSERT, UPDATE',
+  catledger_import_batches: 'SELECT, INSERT, UPDATE',
+  catledger_source_identities: 'SELECT, INSERT, UPDATE',
+  catledger_import_rows: 'SELECT, INSERT, UPDATE(row_id)',
+  catledger_import_account_mappings: 'SELECT, INSERT, UPDATE',
+  catledger_import_category_mappings: 'SELECT, INSERT, UPDATE',
+  catledger_finance_updates: 'SELECT, INSERT, UPDATE',
+  catledger_finance_update_sources: 'SELECT, INSERT, UPDATE',
+  catledger_finance_actions: 'SELECT, INSERT',
+  catledger_finance_update_postings: 'SELECT, INSERT, UPDATE',
+  catledger_economic_events: 'SELECT, INSERT, UPDATE, DELETE',
+  catledger_event_evidence: 'SELECT, INSERT, UPDATE, DELETE',
+  catledger_economic_event_relations: 'SELECT, INSERT, UPDATE, DELETE',
+  catledger_economic_event_transactions: 'SELECT, INSERT, UPDATE, DELETE',
+  catledger_review_issues: 'SELECT, INSERT, UPDATE, DELETE',
+  catledger_review_issue_members: 'SELECT, INSERT, UPDATE(object_version), DELETE',
+  catledger_finance_update_account_drafts: 'SELECT, INSERT, UPDATE, DELETE',
+  catledger_finance_update_account_mapping_drafts: 'SELECT, INSERT, UPDATE, DELETE'
+}
+module.exports = { api: Object.freeze(api), importer: Object.freeze(importer) }

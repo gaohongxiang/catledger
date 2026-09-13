@@ -3,6 +3,12 @@ const { DRAFT_TABLES } = require('./discarded-update')
 const RUNTIME_PERMISSION_REQUIREMENTS = Object.freeze([
   ...DRAFT_TABLES.map(table => Object.freeze({ table, privilege: 'DELETE', columns: Object.freeze([]), reason: '废弃批次回收派生整理数据' })),
   Object.freeze({
+    table: 'catledger_import_rows',
+    privilege: 'UPDATE',
+    columns: Object.freeze(['row_id']),
+    reason: '入账 SELECT ... FOR UPDATE 锁定原始证据；列权限不允许改写账单原文'
+  }),
+  Object.freeze({
     table: 'catledger_finance_update_sources',
     privilege: 'UPDATE',
     columns: Object.freeze([]),

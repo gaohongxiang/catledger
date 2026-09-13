@@ -433,7 +433,8 @@ function enhance(definition) {
       try {
         const response = await pager.load(direction(event))
         if (pager !== this._detailPager || !this.data.evidenceSheet) return
-        this.setData({ 'evidenceSheet.part': response.part, 'evidenceSheet.partPage': response.page })
+        this.setData({ 'evidenceSheet.part': response.part, 'evidenceSheet.partPage': response.page,
+          'evidenceSheet.partFields': presentation.evidencePartFields(response.part, response.page) })
       } catch (error) { if (pager === this._detailPager) this.setData({ errorMessage: errorText(error) }) }
     },
     async openFinalDetail(event) {

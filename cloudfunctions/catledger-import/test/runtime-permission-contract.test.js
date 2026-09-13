@@ -9,9 +9,16 @@ const {
 const { DRAFT_TABLES } = require('../src/discarded-update')
 const BASE_GRANTS = [
   ...DRAFT_TABLES.map(table => 'GRANT DELETE ON `catledger`.`'+table+'` TO `catledger_app`@`%`'),
+  'GRANT SELECT, INSERT, UPDATE (`row_id`) ON `catledger`.`catledger_import_rows` TO `catledger_app`@`%`',
   'GRANT SELECT, INSERT, UPDATE ON `catledger`.`catledger_finance_update_sources` TO `catledger_app`@`%`',
   'GRANT SELECT, INSERT, DELETE ON `catledger`.`catledger_review_issue_members` TO `catledger_app`@`%`'
 ]
+
+test('入账锁定来源行需要最小 row_id 列权限，其他原文列权限不能替代', () => {
+  const grants = BASE_GRANTS.filter(line => !line.includes('catledger_import_rows'))
+  grants.push('GRANT SELECT, INSERT, UPDATE (`raw_fields_json`) ON `catledger`.`catledger_import_rows` TO `catledger_app`@`%`')
+  assert.ok(missingRuntimePermissions(grants).some(item => item.table === 'catledger_import_rows' && item.columns[0] === 'row_id'))
+})
 
 test('账户归属批处理会在旧权限清单上复现 object_version 更新权限缺失', () => {
   const missing = missingRuntimePermissions(BASE_GRANTS)

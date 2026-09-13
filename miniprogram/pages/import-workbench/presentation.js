@@ -82,4 +82,13 @@ function accountMapping(mapping) {
   return visible
 }
 
-module.exports = { accountMapping, emptyLists, reviewLists, detailWindow, record, card, PAGE_SIZE }
+function evidencePartFields(part, page) {
+  if (!page || page.index !== 0 || page.hasNext) return []
+  try {
+    const fields = JSON.parse(part)
+    if (!Array.isArray(fields) || !fields.every(field => field && typeof field.name === 'string' && Object.prototype.hasOwnProperty.call(field, 'value'))) return []
+    return fields.map((field, index) => ({ key: index, name: field.name, value: String(field.value == null ? '' : field.value) }))
+  } catch (_) { return [] }
+}
+
+module.exports = { accountMapping, emptyLists, reviewLists, detailWindow, record, card, evidencePartFields, PAGE_SIZE }

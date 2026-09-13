@@ -80,7 +80,7 @@ async function clientMetrics(view, ref) {
   return samples
 }
 
-async function databaseMetrics(rowsPerFile) {
+async function databaseMetrics(rowsPerFile, options = {}) {
   const env = process.env
   if (!['127.0.0.1', 'localhost'].includes(env.CATLEDGER_TEST_DB_HOST) || !/_test$/.test(env.CATLEDGER_TEST_DB_NAME || '')) {
     throw new Error('仅允许本机、名称以 _test 结尾的一次性测试库')
@@ -88,7 +88,7 @@ async function databaseMetrics(rowsPerFile) {
   const mysql = require('../cloudfunctions/catledger-import/node_modules/mysql2/promise')
   const { hashWechatSubject } = require('../cloudfunctions/catledger-import/src/handler')
   const { createImportService } = require('../cloudfunctions/catledger-import/src/import-service')
-  const pool = mysql.createPool({ host: env.CATLEDGER_TEST_DB_HOST, port: Number(env.CATLEDGER_TEST_DB_PORT || 3306),
+  const pool = options.pool || mysql.createPool({ host: env.CATLEDGER_TEST_DB_HOST, port: Number(env.CATLEDGER_TEST_DB_PORT || 3306),
     user: env.CATLEDGER_TEST_DB_USER, password: env.CATLEDGER_TEST_DB_PASSWORD, database: env.CATLEDGER_TEST_DB_NAME,
     dateStrings: true, supportBigNumbers: true, bigNumberStrings: true, connectionLimit: 4 })
   const observer = require('./performance-observer').createObserver(pool)
@@ -106,14 +106,19 @@ async function databaseMetrics(rowsPerFile) {
     const result = await operation()
     const stats = observer.snapshot()
     if (['prepareUpdate', 'resolveAccounts', 'post'].includes(stage) && stats.sqlCount > require('../cloudfunctions/catledger-import/src/performance-contract').ordinarySqlBudget(stage, rowsPerFile * 5)) throw new Error('SQL budget exceeded: ' + stage)
-    process.stdout.write(JSON.stringify({ kind: 'server', rows: rowsPerFile * 5, stage, ms: Math.round(performance.now() - start),
-      ...stats, cpuMicros: process.cpuUsage(cpuStart), heapBefore, heapAfter: process.memoryUsage().heapUsed, responseBytes: Buffer.byteLength(JSON.stringify(result)) }) + '\n')
+    const sample = { kind: 'server', rows: rowsPerFile * 5, stage, ms: Math.round(performance.now() - start),
+      ...stats, cpuMicros: process.cpuUsage(cpuStart), heapBefore, heapAfter: process.memoryUsage().heapUsed,
+      rssAfter: process.memoryUsage().rss, externalAfter: process.memoryUsage().external,
+      processMaxRssKiB: process.resourceUsage().maxRSS, responseBytes: Buffer.byteLength(JSON.stringify(result)) }
+    if (options.sample) options.sample(sample)
+    else process.stdout.write(JSON.stringify(sample) + '\n')
     return result
   }
   try {
-    await pool.execute("INSERT INTO catledger_users (uid, status) VALUES (?, 'active')", [user.uid])
-    await pool.execute("INSERT INTO catledger_user_identities (uid, provider, subject_hash) VALUES (?, 'wechat-mini', ?)", [user.uid, user.subjectHash])
-    await pool.execute("INSERT INTO catledger_accounts (uid, account_id, type, nature, name, normalized_name, currency) VALUES (?, ?, 'wallet', 'asset', '合成账户', '合成账户', 'CNY')", [user.uid, user.accountId])
+    const seedPool = options.seedPool || pool
+    await seedPool.execute("INSERT INTO catledger_users (uid, status) VALUES (?, 'active')", [user.uid])
+    await seedPool.execute("INSERT INTO catledger_user_identities (uid, provider, subject_hash) VALUES (?, 'wechat-mini', ?)", [user.uid, user.subjectHash])
+    await seedPool.execute("INSERT INTO catledger_accounts (uid, account_id, type, nature, name, normalized_name, currency) VALUES (?, ?, 'wallet', 'asset', '合成账户', '合成账户', 'CNY')", [user.uid, user.accountId])
     const contents = Array.from({ length: 5 }, (_, file) => Buffer.from([
       '微信支付账单明细,,,,,,,,,,,',
       '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注',
@@ -151,7 +156,13 @@ async function databaseMetrics(rowsPerFile) {
     }
     const posted = await measure('post', () => service.financeUpdatePost(context({ requestId: randomUUID(), resultMode: 'receipt', updateId, version: view.update.version })))
     if (posted.posting.createdTransactionCount !== rowsPerFile * 5) throw new Error('合成账单入账数量不一致')
-  } finally { await pool.end() }
+    // 不计入动作耗时：核对正式账本、链接和证据总量，避免只凭回执计数验收。
+    const [[ledger]] = await pool.execute('SELECT COUNT(*) AS count, SUM(amount_minor) AS amount FROM catledger_transactions WHERE uid = ? AND deleted_at IS NULL', [user.uid])
+    const [[links]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_economic_event_transactions WHERE uid = ? AND superseded_at IS NULL', [user.uid])
+    const [[evidence]] = await pool.execute("SELECT COUNT(*) AS count FROM catledger_event_evidence WHERE uid = ? AND evidence_role <> 'discarded'", [user.uid])
+    const count = rowsPerFile * 5
+    if (Number(ledger.count) !== count || String(ledger.amount) !== String(count * 100) || Number(links.count) !== count || Number(evidence.count) !== count) throw new Error('合成账本金额、链接或证据不守恒')
+  } finally { if (!options.pool) await pool.end() }
 }
 
 async function main() {
@@ -169,4 +180,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch(error => { process.stderr.write('合成性能验证失败：' + (error.publicCode || error.code || error.name) + '\n'); process.exitCode = 1 })
-module.exports = { syntheticView, pageRuntime, clientMetrics }
+module.exports = { syntheticView, pageRuntime, clientMetrics, databaseMetrics }

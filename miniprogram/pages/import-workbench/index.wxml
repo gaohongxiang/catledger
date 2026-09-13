@@ -573,6 +573,10 @@
             </view>
           </view>
           <view wx:if="{{!evidenceSheet.evidence.length}}" class="relation-empty">没有可显示的原始交易。</view>
+          <view wx:if="{{evidenceSheet.partFields.length}}" class="evidence-fields">
+            <view wx:for="{{evidenceSheet.partFields}}" wx:key="key" class="evidence-field"><text class="evidence-key">{{item.name}}</text><text selectable class="evidence-value">{{item.value || '—'}}</text></view>
+          </view>
+          <view wx:elif="{{evidenceSheet.part}}" class="evidence-fields"><text class="evidence-source">原文片段</text><text selectable class="evidence-value">{{evidenceSheet.part}}</text></view>
         </scroll-view>
 <view wx:if="{{evidenceSheet.page}}" class="list-pagination">
         <button class="stage-previous" data-direction="first" bindtap="changeEvidencePage" disabled="{{!evidenceSheet.page.canFirst}}">首页</button>
@@ -580,7 +584,6 @@
         <text>{{evidenceSheet.page.start}}–{{evidenceSheet.page.end}} / {{evidenceSheet.page.count}} 项</text>
         <button class="stage-previous" data-direction="1" bindtap="changeEvidencePage" disabled="{{!evidenceSheet.page.hasNext}}">下一页</button>
       </view>
-        <view wx:if="{{evidenceSheet.part}}" class="evidence-fields"><text selectable class="evidence-value">{{evidenceSheet.part}}</text></view>
         <view wx:if="{{evidenceSheet.partPage}}" class="list-pagination">
           <button class="stage-previous" data-direction="first" bindtap="changeEvidencePart">首段</button>
           <button class="stage-previous" data-direction="-1" bindtap="changeEvidencePart" disabled="{{!evidenceSheet.partPage.hasPrevious}}">上一段</button>

@@ -13,12 +13,17 @@
 迁移账号与云函数运行账号必须分离。`catledger_app` 仍按实际 SQL 授予最小权限，不授予库级管理员权限。除直接写入的表外，下列能力也必须显式纳入运行权限契约：
 
 - `catledger_finance_update_sources`：表级 `SELECT, INSERT, UPDATE`；
+- `catledger_import_rows`：`SELECT, INSERT`，以及最小列级 `UPDATE(row_id)`，供入账的 `SELECT ... FOR UPDATE` 锁读取；不授予原文字段改写权限。已有表级UPDATE的账号也满足锁读取契约，本轮不自动改变云授权；
 - `catledger_review_issue_members`：既有 `SELECT, INSERT, DELETE`，并仅对 `object_version` 增加列级 `UPDATE`；
 - `discarded-update.js`的8张派生/草稿表：表级`DELETE`，用于回收abandoned批次。
 
 来源表的UPDATE用于MySQL的`SELECT ... FOR UPDATE`锁定读取；应用代码仍不得改写既有来源。ReviewIssueMember的列级UPDATE用于账户归属批处理保存事件后同步乐观并发版本，缺少时resolveAccountMappings整体回滚并返回ER_COLUMNACCESS_DENIED_ERROR。部署或迁移后必须执行运行权限检查：可在VPC可连接环境以应用账号运行`npm run check:db-permissions`，或由管理SQL读取`SHOW GRANTS FOR 'catledger_app'@'%'`，将原始授权行交给同一`assertRuntimePermissions`检查；随后用真实微信会话核对云函数读取。0012后撤回退出旧表的授权，不得只验证表存在和函数Active。
 
+PERF-5新增 `test/runtime-roles-db.test.js`：每轮独立库、12个迁移及重跑，API/import两个表/列级DML账号运行真实handler，覆盖121条跨块失败回滚、并发回执、身份隔离、余额统计、退款、撤销和废弃清理。DDL、正式交易物理DELETE、成员身份及原文列UPDATE的反向拒绝同步验证。清单在 `scripts/runtime-role-grants.js`；默认进入 `npm run test:db`。云端现有账号只读授权检查通过；本机成功不代表已部署新版。
+
 ## 0011 用户UID缩短
+
+
 
 `0011_short_user_ids.sql` 在原29张用户业务表上完成一次UID值迁移，列仍保留CHAR(36)容量，主键、唯一键、外键及运行账号权限不变。先部署使用`crypto.randomInt`生成10位UID的catledger-api，再用迁移账号执行。执行器支持标准`DELIMITER`指令，`CREATE PROCEDURE`和`CALL`各作为完整语句发送；临时过程使用SQL SECURITY INVOKER，运行时云函数账号不增加迁移权限。
 

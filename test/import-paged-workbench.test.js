@@ -4,6 +4,17 @@ const { create, MAX_PAGES, MAX_HISTORY } = require('../miniprogram/services/impo
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
 const event = (direction, id) => ({ currentTarget: { dataset: { direction, id } } })
 
+test('原文整段按源字段展示，重复列与空值不丢；不拼接或解析跨页片段', () => {
+  const { evidencePartFields } = require('../miniprogram/pages/import-workbench/presentation')
+  const part = JSON.stringify([{ name: '备注', value: '', column: 1 }, { name: '备注', value: '第二列原文', column: 2 }, { name: '金额', value: '0', column: 3 }])
+  const fields = evidencePartFields(part, { index: 0, hasNext: false })
+  assert.deepEqual(fields.map(field => field.value), ['', '第二列原文', '0'])
+  assert.equal(new Set(fields.map(field => field.key)).size, 3)
+  assert.deepEqual(evidencePartFields(part, { index: 0, hasNext: true }), [])
+  assert.deepEqual(evidencePartFields(part, { index: 1, hasNext: false }), [])
+  assert.deepEqual(evidencePartFields('{', { index: 0, hasNext: false }), [])
+})
+
 test('24990条：先摘要、按页读取，活动状态与缓存不保留批次全集', async () => {
   const h = runtime(fixture(24990)), page = h.page
   assert.equal(h.calls.length, 0)
