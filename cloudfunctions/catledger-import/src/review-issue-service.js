@@ -1568,7 +1568,7 @@ function createReviewIssueService({ getPool }) {
         await createFollowUpIssues(connection, uid, updateId, affected)
         await refreshProjectedEvents(connection, uid, updateId, actionId)
         await recalculateUpdateCounts(connection, uid, updateId, appliedVersion, actionId, updateVersion, duplicateEvidenceDelta)
-        return data.resultMode === 'receipt' ? commandResult(connection, uid, updateId, data) : issueDetails(connection, uid, issueId)
+        return commandResult(connection, uid, updateId, data, issueId)
       }
     })
   }

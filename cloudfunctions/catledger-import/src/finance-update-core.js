@@ -42,9 +42,9 @@ function createFinanceUpdateCore({ getPool }) {
     if (!['draft', 'failed', 'review'].includes(current.status) || Number(current.version) !== version) {
       throw importError('CONFLICT')
     }
+    if (current.status === 'review' && current.planVersion === PLAN_VERSION) return commandResult(connection, uid, updateId, data)
     const rows = await selectPlanningRows(connection, uid, updateId)
     if (current.status === 'review' && ['organizer-plan-v26', 'organizer-plan-v27', 'organizer-plan-v28', PLAN_VERSION].includes(current.planVersion)) {
-      if (current.planVersion === PLAN_VERSION) return commandResult(connection, uid, updateId, data)
       return upgradeSemanticPlan(connection, uid, current, rows, requestDigest, data)
     }
     const paymentMappings = await selectPaymentMappings(connection, uid, updateId)

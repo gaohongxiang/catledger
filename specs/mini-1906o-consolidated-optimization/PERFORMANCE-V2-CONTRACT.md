@@ -61,3 +61,12 @@ PERF-1选择字段：`exclude_events.selection={mode:all|include|all_except,even
 复现：`node scripts/benchmark-import.js --database --rows 24990 --inspect-plan`。脚本强制本机*_test库，输出仅指纹/调用点/访问路径/计数；SQL正文、参数、原始账单不输出。核心SQL约为4C+31、7C+25、6C+61，均低于冻结上限；新增块字节与占位符门禁、第二块中断回滚及原请求重试断言。
 
 PERF-2最终全量635项（根301/API97/import237）通过，0失败/跳过；静态528文件/105运行模块通过，两函数生产依赖审计0。
+
+
+## PERF-3 提交与恢复契约
+
+V2账务校验不减，完整展示不进入写事务。旧协议最大40事件/有效证据，事务中128KiB来源/目录保守检查；仅保存视图引用+appliedResult，提交后释放连接再读展示。最终旧响应仍限256KiB。提交后读取失败返回appliedResult并加refreshRequired=true/refreshError=REFRESH_REQUIRED，明确操作已成功；未升级的历史引用仍按旧语义读取。相同requestId内容不同仍冲突，V2回执在撤销后重放不变化。
+
+PERF-3全量636项（根301/API97/import238）通过，无失败/跳过；静态528文件/105运行模块。新增故障验证使用真实隔离MySQL、connectionLimit=1，commit成功后模拟响应丢失并重放，三个并发相同post均返回首次回执；undo后无活动交易且原post回执不变。旧协议展示超时返回已保存状态，原请求恢复后可读完整小视图。
+
+同环境1000条：prepare220ms/71 SQL/969字节，organize无变化4ms/8 SQL/970字节，resolve256ms/95 SQL/982字节，post237ms/121 SQL/锁216ms/1021字节。

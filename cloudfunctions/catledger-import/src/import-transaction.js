@@ -11,6 +11,9 @@ const {
 
 const MAX_ATTEMPTS = 4
 const MAX_READ_ATTEMPTS = 2
+const RECEIPT_ACTIONS = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.abandon',
+  'financeUpdates.post', 'financeUpdates.undo', 'economicEvents.correct', 'reviewIssues.resolve',
+  'reviewIssues.resolveAccountMappings', 'reviewIssues.refreshAccountGroups', 'reviewIssues.reviseAccountMapping'])
 
 async function resolveUid(connection, provider, subjectHash) {
   const [rows] = await connection.execute(
@@ -27,6 +30,7 @@ async function resolveUid(connection, provider, subjectHash) {
 
 async function replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest, readIssue }) {
   const connection = await getPool().getConnection()
+  let appliedResult = null
   try {
     await connection.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY')
     const uid = await resolveUid(connection, provider, subjectHash)
@@ -41,11 +45,15 @@ async function replayMutation({ getPool, provider, subjectHash, keyDigest, actio
     if (!receipt || receipt.action !== action || receipt.requestDigest !== requestDigest || receipt.result == null) {
       throw importError('IDEMPOTENCY_CONFLICT')
     }
+    const stored = typeof receipt.result === 'string' ? JSON.parse(receipt.result) : receipt.result
+    appliedResult = stored.appliedResult || null
     const result = await readReceipt(connection, uid, receipt.result, readIssue)
+    assertBudget(result, result && result.protocolVersion === 2 ? 'receipt' : 'legacy')
     await connection.commit()
     return result
   } catch (error) {
     await safeRollback(connection)
+    if (appliedResult) return { ...appliedResult, refreshRequired: true, refreshError: 'REFRESH_REQUIRED' }
     throw error
   } finally {
     connection.release()
@@ -54,6 +62,7 @@ async function replayMutation({ getPool, provider, subjectHash, keyDigest, actio
 
 async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation, currentReads = false, readIssue }) {
   if (data && data.resultMode != null && data.resultMode !== 'receipt') throw importError('VALIDATION_ERROR')
+  if (data && data.resultMode === 'receipt' && !RECEIPT_ACTIONS.has(action)) throw importError('VALIDATION_ERROR')
   if (data && data.resultMode === 'receipt') assertBudget(data, 'request')
   const keyDigest = digestIdempotencyKey(data && data.requestId)
   const requestData = { ...data }
@@ -63,6 +72,10 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     let connection
     let transactionStarted = false
+    // 此闭包仅管理当前mutation作用域的let变量；replayMutation的const连接独立释放。
+    function releaseMutationConnection() {
+      if (connection) { connection.release(); connection = undefined }
+    }
     try {
       connection = await getPool().getConnection()
       if (currentReads) await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
@@ -84,13 +97,16 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
         if (error && error.code === 'ER_DUP_ENTRY') {
           await connection.rollback()
           transactionStarted = false
+          releaseMutationConnection()
           return replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest, readIssue })
         }
         throw error
       }
 
       const rawResult = await operation(connection, uid, requestData, requestDigest, keyDigest)
-      const result = data.resultMode === 'receipt' ? operationReceipt(rawResult, action, keyDigest) : assertBudget(rawResult, 'legacy')
+      const deferredView = rawResult && rawResult.__legacyView
+      const result = data.resultMode === 'receipt' ? operationReceipt(rawResult, action, keyDigest)
+        : deferredView ? { ...rawResult, appliedResult: operationReceipt(rawResult, action, keyDigest) } : assertBudget(rawResult, 'legacy')
       await connection.execute(
         `UPDATE catledger_mutation_receipts
             SET result_json = ?
@@ -99,16 +115,19 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
       )
       await connection.commit()
       transactionStarted = false
+      releaseMutationConnection()
+      if (deferredView) return replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest, readIssue })
       return result
     } catch (error) {
       if (transactionStarted) await safeRollback(connection)
+      releaseMutationConnection()
       if (isRetryableDatabaseError(error) && attempt + 1 < MAX_ATTEMPTS) {
         await waitBeforeDatabaseRetry(attempt)
         continue
       }
       throw error
     } finally {
-      if (connection) connection.release()
+      releaseMutationConnection()
     }
   }
   throw new Error('Import mutation attempts exhausted')

@@ -45,7 +45,7 @@ function registerStorageCompactionTests({ hasDatabase, mysql, databaseConfig, cr
     return { pool, service, user, storage, upload }
   }
 
-  test('精简回执只存引用，解析不生成旧事件，废弃回收隔离且旧请求不复活草稿', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  test('精简回执保存引用与小型操作事实，解析不生成旧事件，废弃回收隔离且旧请求不复活草稿', { skip: !hasDatabase, timeout: 30000 }, async () => {
     const { pool, service, user, upload } = await setup(8901)
     try {
       const parsed = await upload()
@@ -59,8 +59,12 @@ function registerStorageCompactionTests({ hasDatabase, mysql, databaseConfig, cr
       const request = context(user, { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })
       const view = await service.financeUpdatePrepare(request)
       const [[receipt]] = await pool.execute('SELECT result_json AS result FROM catledger_mutation_receipts WHERE uid=? AND idempotency_key_digest=?', [user.uid, digestIdempotencyKey(request.data.requestId)])
-      assert.deepEqual(receipt.result, { receiptVersion: 1, kind: 'finance-update-view', updateId: view.update.updateId })
-      assert.ok(Buffer.byteLength(JSON.stringify(receipt.result)) < 160)
+      assert.equal(receipt.result.receiptVersion, 1)
+      assert.equal(receipt.result.kind, 'finance-update-view')
+      assert.equal(receipt.result.updateId, view.update.updateId)
+      assert.equal(receipt.result.appliedResult.appliedVersion, view.update.version)
+      assert.equal(receipt.result.appliedResult.events, undefined)
+      assert.ok(Buffer.byteLength(JSON.stringify(receipt.result)) < 2048)
       const before = await counts(pool, user.uid, view.update.updateId)
       assert.ok(before.catledger_economic_events > 0 && before.catledger_review_issue_members > 0)
       const other = await createUserLedger(pool, 'compaction-other')
@@ -72,7 +76,7 @@ function registerStorageCompactionTests({ hasDatabase, mysql, databaseConfig, cr
       const resolved = await service.reviewIssueResolve(resolveRequest)
       const [[issueReceipt]] = await pool.execute('SELECT result_json AS result FROM catledger_mutation_receipts WHERE uid=? AND idempotency_key_digest=?', [user.uid, digestIdempotencyKey(resolveRequest.data.requestId)])
       assert.equal(issueReceipt.result.kind, 'review-issue-view')
-      assert.ok(Buffer.byteLength(JSON.stringify(issueReceipt.result)) < 220)
+      assert.ok(Buffer.byteLength(JSON.stringify(issueReceipt.result)) < 2048)
       const replay = await service.financeUpdatePrepare(request)
       assert.equal(replay.update.version, resolved.update.version)
       await assert.rejects(service.financeUpdatePrepare({ ...request, data: { ...request.data, batchIds: [randomUUID()] } }), { publicCode: 'IDEMPOTENCY_CONFLICT' })

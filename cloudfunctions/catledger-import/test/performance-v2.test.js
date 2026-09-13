@@ -21,15 +21,20 @@ test('V2 pages conserve hidden members; receipts stay immutable after posting; o
   const mysql = require('mysql2/promise'), env = process.env
   const pool = mysql.createPool({ host: env.CATLEDGER_TEST_DB_HOST, port: Number(env.CATLEDGER_TEST_DB_PORT || 3306),
     user: env.CATLEDGER_TEST_DB_USER, password: env.CATLEDGER_TEST_DB_PASSWORD, database: env.CATLEDGER_TEST_DB_NAME,
-    dateStrings: true, supportBigNumbers: true, bigNumberStrings: true, connectionLimit: 4 })
+    dateStrings: true, supportBigNumbers: true, bigNumberStrings: true, connectionLimit: 1 })
   const observer = createObserver(pool), objects = new Map()
-  let failLinkChunk = false, linkChunks = 0
+  let failLinkChunk = false, linkChunks = 0, loseCommitResponse = false, failLegacyRead = false
   const faultPool = { async getConnection() {
     const connection = await observer.pool.getConnection()
     return new Proxy(connection, { get(target, key) {
       if (key === 'execute') return async (sql, values) => {
         if (failLinkChunk && /INSERT INTO catledger_economic_event_transactions/.test(sql) && ++linkChunks === 2) throw new Error('synthetic chunk interruption')
+        if (failLegacyRead && /FROM catledger_economic_events e\s/.test(sql)) throw Object.assign(new Error('synthetic read timeout'), { code: 'ETIMEDOUT' })
         return target.execute(sql, values)
+      }
+      if (key === 'commit') return async () => {
+        await target.commit()
+        if (loseCommitResponse) { loseCommitResponse = false; throw Object.assign(new Error('synthetic committed response lost'), { code: 'ECONNRESET' }) }
       }
       return typeof target[key] === 'function' ? target[key].bind(target) : target[key]
     } })
@@ -109,13 +114,36 @@ test('V2 pages conserve hidden members; receipts stay immutable after posting; o
     const [[rolledBack]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [uid])
     assert.equal(Number(rolledBack.count), 0)
     assert.equal((await service.financeUpdateSummary(context({ updateId }))).update.version, mapped.appliedVersion)
-    failLinkChunk = false; observer.reset()
+    failLinkChunk = false; loseCommitResponse = true; observer.reset()
     const posted = await service.financeUpdatePost(context(postRequest))
     assert.ok(observer.snapshot().sqlCount <= ordinarySqlBudget('post', 120))
     assert.equal(posted.posting.createdTransactionCount, 120)
     assert.deepEqual(await service.financeUpdatePrepare(context(request)), receipt)
-    assert.deepEqual(await service.financeUpdatePost(context(postRequest)), posted)
+    const concurrent = await Promise.all(Array.from({ length: 3 }, () => service.financeUpdatePost(context(postRequest))))
+    assert.ok(concurrent.every(result => JSON.stringify(result) === JSON.stringify(posted)))
     const [[transactions]] = await pool.execute('SELECT COUNT(*) AS count, SUM(amount_minor) AS amount FROM catledger_transactions WHERE uid = ? AND deleted_at IS NULL', [uid])
     assert.equal(Number(transactions.count), 120); assert.equal(String(transactions.amount), '12000')
+    const undoImpact = await service.financeUpdateUndoImpact(context({ updateId }))
+    const undoRequest = { resultMode: 'receipt', requestId: randomUUID(), updateId, version: posted.appliedVersion, previewToken: undoImpact.previewToken }
+    const undone = await service.financeUpdateUndo(context(undoRequest))
+    assert.equal(undone.status, 'undone')
+    assert.deepEqual(await service.financeUpdatePost(context(postRequest)), posted)
+    assert.deepEqual(await service.financeUpdateUndo(context(undoRequest)), undone)
+    const [[afterUndo]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ? AND deleted_at IS NULL', [uid])
+    assert.equal(Number(afterUndo.count), 0)
+
+    // 旧小规模客户端提交后展示超时：返回已保存事实，原请求可恢复展示。
+    const small = Buffer.from(content.toString().split('\n').slice(0, 4).join('\n').replaceAll('SYNTHETIC-PAGE', 'SYNTHETIC-LEGACY'))
+    const smallFiles = await service.prepareMany(context({ requestId: randomUUID(), files: [{ fileName: '合成恢复.csv', size: small.length }] }))
+    const smallFile = smallFiles.files[0]; objects.set(smallFile.cloudPath, small)
+    const smallParsed = await service.parseFile(context({ requestId: randomUUID(), importId: smallFile.importId, fileID: 'cloud://synthetic.bucket/' + smallFile.cloudPath, timezoneOffsetMinutes: -480 }))
+    const legacyRequest = { requestId: randomUUID(), batchIds: [smallParsed.batch.batchId] }
+    failLegacyRead = true
+    const saved = await service.financeUpdatePrepare(context(legacyRequest))
+    assert.equal(saved.kind, 'operation-receipt'); assert.equal(saved.refreshRequired, true); assert.equal(saved.status, 'review')
+    failLegacyRead = false
+    const recovered = await service.financeUpdatePrepare(context(legacyRequest))
+    assert.equal(recovered.update.updateId, saved.updateId); assert.equal(recovered.events.length, 2)
+
   } finally { await pool.end() }
 })

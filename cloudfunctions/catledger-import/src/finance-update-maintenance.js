@@ -1,3 +1,4 @@
+const { chunks } = require('./sql-batch')
 const { commandResult } = require('./command-result')
 const { eventAllocation, allocationAccountsValid } = require('./funds-allocation')
 const { correctionImpactResult, accountState, previewToken } = require('./maintenance-state')
@@ -161,10 +162,13 @@ async function prepareUndo(connection, uid, update, forUpdate = false) {
   const transactions = linked.map((row) => ({ ...row, linkedVersion: Number(row.linkedVersion), version: Number(row.version), amountMinor: String(row.amountMinor) }))
   const created = [...new Map(transactions.filter((row) => row.creationMethod === 'created').map((row) => [row.transactionId, row])).values()]
   const ids = created.map((row) => row.transactionId)
-  const [dependents] = ids.length ? await connection.execute(`SELECT transaction_id AS transactionId, version
-    FROM catledger_transactions WHERE uid = ? AND original_transaction_id IN (${ids.map(() => '?').join(', ')})
-      AND deleted_at IS NULL AND transaction_id NOT IN (${ids.map(() => '?').join(', ')})
-    ORDER BY transaction_id${forUpdate ? ' FOR UPDATE' : ''}`, [uid, ...ids, ...ids]) : [[]]
+  const dependents = [], createdIds = new Set(ids)
+  for (const part of chunks(ids.map(id => [id]))) {
+    const [rows] = await connection.execute(`SELECT transaction_id AS transactionId, version
+      FROM catledger_transactions WHERE uid = ? AND original_transaction_id IN (${part.map(() => '?').join(',')})
+        AND deleted_at IS NULL ORDER BY transaction_id${forUpdate ? ' FOR UPDATE' : ''}`, [uid, ...part.flat()])
+    dependents.push(...rows.filter(row => !createdIds.has(row.transactionId)))
+  }
   const audit = parseJson(update.sideEffects, null)
   const state = await accountState(connection, uid, created, [], { forUpdate,
     additionalAccountIds: (audit && audit.accounts || []).map((row) => row.accountId) })
@@ -332,10 +336,10 @@ function createFinanceUpdateMaintenance({ getPool }) {
         const { ids, effects, impact } = await prepareUndo(connection, uid, update, true)
         if (!impact.canUndo) throw importError(impact.conflicts.includes('INSUFFICIENT_CASH_BALANCE') ? 'INSUFFICIENT_CASH_BALANCE' : 'CONFLICT')
         if (!data.previewToken || data.previewToken !== impact.previewToken) throw importError('CONFLICT')
-        if (ids.length) {
+        for (const part of chunks(ids.map(id => [id]))) {
           const [deleted] = await connection.execute(`UPDATE catledger_transactions SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1
-            WHERE uid = ? AND transaction_id IN (${ids.map(() => '?').join(', ')}) AND deleted_at IS NULL`, [uid, ...ids])
-          if (deleted.affectedRows !== ids.length) throw importError('CONFLICT')
+            WHERE uid = ? AND transaction_id IN (${part.map(() => '?').join(', ')}) AND deleted_at IS NULL`, [uid, ...part.flat()])
+          if (deleted.affectedRows !== part.length) throw importError('CONFLICT')
         }
         await revertSideEffects(connection, uid, effects)
         await connection.execute(

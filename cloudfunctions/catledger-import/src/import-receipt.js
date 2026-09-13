@@ -1,6 +1,9 @@
 const { importError } = require('./errors')
 
 function encodeReceipt(result) {
+  if (result && result.__legacyView) return { receiptVersion: 1,
+    kind: result.__legacyView.issueId ? 'review-issue-view' : 'finance-update-view',
+    ...result.__legacyView, appliedResult: result.appliedResult }
   if (result && result.update && result.issue && typeof result.issue.issueId === 'string' && Array.isArray(result.members)) {
     return { receiptVersion: 1, kind: 'review-issue-view', updateId: result.update.updateId, issueId: result.issue.issueId }
   }
