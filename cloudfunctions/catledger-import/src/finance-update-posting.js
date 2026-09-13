@@ -12,7 +12,6 @@ const { randomUUID } = require('node:crypto')
 const { importError } = require('./errors')
 const { materializeAccountDrafts, reachableDraftIds } = require('./account-draft')
 const {
-  getUpdateView,
   insertAction,
   parseJson,
   selectUpdate,

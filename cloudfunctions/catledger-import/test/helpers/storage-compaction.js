@@ -45,7 +45,7 @@ function registerStorageCompactionTests({ hasDatabase, mysql, databaseConfig, cr
     return { pool, service, user, storage, upload }
   }
 
-  test('精简回执保存引用与小型操作事实，解析不生成旧事件，废弃回收隔离且旧请求不复活草稿', { skip: !hasDatabase, timeout: 30000 }, async () => {
+  test('精简回执只保存小型首次操作事实，解析不生成旧事件，废弃回收隔离且旧请求不复活草稿', { skip: !hasDatabase, timeout: 30000 }, async () => {
     const { pool, service, user, upload } = await setup(8901)
     try {
       const parsed = await upload()
@@ -60,10 +60,10 @@ function registerStorageCompactionTests({ hasDatabase, mysql, databaseConfig, cr
       const view = await service.financeUpdatePrepare(request)
       const [[receipt]] = await pool.execute('SELECT result_json AS result FROM catledger_mutation_receipts WHERE uid=? AND idempotency_key_digest=?', [user.uid, digestIdempotencyKey(request.data.requestId)])
       assert.equal(receipt.result.receiptVersion, 1)
-      assert.equal(receipt.result.kind, 'finance-update-view')
-      assert.equal(receipt.result.updateId, view.update.updateId)
-      assert.equal(receipt.result.appliedResult.appliedVersion, view.update.version)
-      assert.equal(receipt.result.appliedResult.events, undefined)
+      assert.equal(receipt.result.kind, 'value')
+      assert.equal(receipt.result.value.updateId, view.update.updateId)
+      assert.equal(receipt.result.value.appliedVersion, view.update.version)
+      assert.equal(receipt.result.value.events, undefined)
       assert.ok(Buffer.byteLength(JSON.stringify(receipt.result)) < 2048)
       const before = await counts(pool, user.uid, view.update.updateId)
       assert.ok(before.catledger_economic_events > 0 && before.catledger_review_issue_members > 0)
@@ -75,7 +75,7 @@ function registerStorageCompactionTests({ hasDatabase, mysql, databaseConfig, cr
         issueVersion: issue.version, updateVersion: view.update.version, decision: 'exclude_events' })
       const resolved = await service.reviewIssueResolve(resolveRequest)
       const [[issueReceipt]] = await pool.execute('SELECT result_json AS result FROM catledger_mutation_receipts WHERE uid=? AND idempotency_key_digest=?', [user.uid, digestIdempotencyKey(resolveRequest.data.requestId)])
-      assert.equal(issueReceipt.result.kind, 'review-issue-view')
+      assert.equal(issueReceipt.result.kind, 'value')
       assert.ok(Buffer.byteLength(JSON.stringify(issueReceipt.result)) < 2048)
       const replay = await service.financeUpdatePrepare(request)
       assert.equal(replay.update.version, resolved.update.version)
@@ -175,7 +175,7 @@ function registerStorageCompactionTests({ hasDatabase, mysql, databaseConfig, cr
       assert.ok(Object.values(await counts(pool,user.uid,abandoned.update.updateId)).every(count=>count===0))
       const [[receipt]]=await pool.execute('SELECT result_json AS result FROM catledger_mutation_receipts WHERE uid=? AND idempotency_key_digest=?',[user.uid,digestIdempotencyKey(request.data.requestId)])
       assert.equal(receipt.result.kind,'finance-update-view'); assert.ok(JSON.stringify(receipt.result).length<160)
-      assert.equal((await service.financeUpdatePrepare(request)).update.status,'abandoned')
+      await assert.rejects(service.financeUpdatePrepare(request), { publicCode: 'RECEIPT_RECONCILIATION_REQUIRED' })
       for(const statement of statements) await connection.query(statement)
       assert.deepEqual((await pool.execute('SELECT * FROM catledger_transactions WHERE uid=?',[user.uid]))[0],before)
     } finally {

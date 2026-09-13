@@ -2,7 +2,7 @@ const { importError } = require('./errors')
 
 const PROTOCOL_VERSION = 2
 const BUDGET = Object.freeze({ request: 64 * 1024, receipt: 32 * 1024, summary: 64 * 1024,
-  page: 256 * 1024, legacy: 256 * 1024, defaultPageSize: 40, maxPageSize: 100,
+  page: 256 * 1024, defaultPageSize: 40, maxPageSize: 100,
   sqlRows: 100, sqlParameters: 6000, sqlBytes: 512 * 1024, detailChunk: 16 * 1024 })
 
 function jsonBytes(value) { return Buffer.byteLength(JSON.stringify(value), 'utf8') }

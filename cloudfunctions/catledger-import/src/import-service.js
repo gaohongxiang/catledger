@@ -1,3 +1,4 @@
+const { readCommandResult } = require('./import-transaction')
 const { selectSources } = require('./finance-update-repository')
 const { createFinanceUpdateRead } = require('./finance-update-read')
 const { randomUUID } = require('node:crypto')
@@ -274,12 +275,10 @@ function createImportService({ getPool, storage }) {
 
   async function postFinanceUpdate(context) {
     const result = await posting.post(context)
-    if (result.protocolVersion === 2) {
-      try {
-        const sources = await executeUserRead({ getPool, ...context, operation: (connection, uid) => selectSources(connection, uid, result.updateId) })
-        await cleanupUpdateSources(context, sources)
-      } catch (_) { /* 账务已提交；来源清理保留后续重试。 */ }
-    } else await cleanupUpdateSources(context, result.sources)
+    try {
+      const sources = await executeUserRead({ getPool, ...context, operation: (connection, uid) => selectSources(connection, uid, result.updateId) })
+      await cleanupUpdateSources(context, sources)
+    } catch (_) { /* 账务已提交；来源清理保留后续重试。 */ }
     return result
   }
 
@@ -302,12 +301,11 @@ function createImportService({ getPool, storage }) {
     financeUpdateAbandon: abandonFinanceUpdate,
     financeUpdateRows: reads.rows,
     financeUpdateSummary: reads.summary,
-    capabilities: reads.capabilities,
+    commandResult: context => readCommandResult({ getPool, ...context }),
     financeUpdateOptions: reads.options,
     economicEventList: reads.events,
     economicEventDetail: reads.detail,
     reviewIssueMembers: reads.members,
-    financeUpdateGet: financeUpdates.get,
     financeUpdateOrganize: financeUpdates.organize,
     financeUpdatePrepare: financeUpdates.prepare,
     financeUpdatePost: postFinanceUpdate,
@@ -315,10 +313,10 @@ function createImportService({ getPool, storage }) {
     financeUpdateUndoImpact: maintenance.undoImpact,
     economicEventCorrect: maintenance.correct,
     economicEventCorrectionImpact: maintenance.correctionImpact,
-    economicEventEvidence: context => context.data.protocolVersion === 2 ? reads.evidence(context) : financeUpdates.evidence(context),
-    reviewIssueGet: context => context.data.protocolVersion === 2 ? reads.issue(context) : reviewIssues.get(context),
+    economicEventEvidence: reads.evidence,
+    reviewIssueGet: reads.issue,
     reviewIssueRefreshAccountGroups: reviewIssues.refreshAccountGroups,
-    reviewIssueList: context => context.data.protocolVersion === 2 ? reads.issues(context) : reviewIssues.list(context),
+    reviewIssueList: reads.issues,
     reviewIssueResolveAccountMappings: reviewIssues.resolveAccountMappings,
     reviewIssueReviseAccountMapping: reviewIssues.reviseAccountMapping,
     reviewIssueResolve: reviewIssues.resolve

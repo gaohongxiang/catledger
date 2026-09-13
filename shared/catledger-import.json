@@ -19,7 +19,6 @@
       "default": 40,
       "max": 100
     },
-    "resultMode": "receipt",
     "cursorScope": [
       "server subjectHash HMAC-SHA256",
       "uid",
@@ -31,8 +30,7 @@
       "order",
       "last key"
     ],
-    "legacyCompatibility": "At most40 events/evidence plus conservative128KiB source/catalog estimate; full view after commit only. Read failure returns committed operation receipt with refreshRequired=true, never a failed mutation.",
-    "receiptPolicy": "immutable operation outcome persisted in the mutation transaction; same request returns identical result after later changes",
+    "receiptPolicy": "所有导入命令固定小回执，首次事实同事务冻结，摘要独立读取；旧请求身份只读核实。",
     "spec": "specs/mini-1906o-consolidated-optimization/PERFORMANCE-V2-CONTRACT.md",
     "clientState": {
       "maxCachedPages": 3,
@@ -114,7 +112,8 @@
         "economicNature?",
         "view?",
         "query?",
-        "accountId?"
+        "accountId?",
+        "eventId?"
       ],
       "returns": [
         "protocolVersion=2",
@@ -221,79 +220,67 @@
       "data": [
         "requestId",
         "updateId",
-        "version",
-        "resultMode?='receipt'"
+        "version"
       ],
       "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
         "update",
-        "sources",
-        "events",
-        "issues",
-        "coverage",
-        "accounts",
-        "categories",
-        "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"
+        "posting",
+        "invalidates"
       ],
-      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
     "financeUpdates.prepare": {
       "kind": "idempotent-atomic-mutation",
       "data": [
         "requestId",
-        "batchIds",
-        "resultMode?='receipt'"
+        "batchIds"
       ],
       "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
         "update",
-        "sources",
-        "events",
-        "issues",
-        "coverage",
-        "accounts",
-        "categories",
-        "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"
+        "posting",
+        "invalidates"
       ],
       "atomic": true,
-      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
-    },
-    "financeUpdates.get": {
-      "kind": "read",
-      "data": [
-        "updateId",
-        "includeEvents?",
-        "includeOptions?"
-      ],
-      "returns": [
-        "update",
-        "sources",
-        "events",
-        "issues",
-        "coverage?",
-        "posting?",
-        "accounts?",
-        "categories?",
-        "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"
-      ]
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
     "reviewIssues.refreshAccountGroups": {
       "kind": "idempotent-versioned-mutation",
       "data": [
         "requestId",
         "updateId",
-        "version",
-        "resultMode?='receipt'"
+        "version"
       ],
       "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
         "update",
-        "sources",
-        "events",
-        "issues",
-        "accounts",
-        "categories",
-        "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"
+        "posting",
+        "invalidates"
       ],
       "atomic": true,
-      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
     "reviewIssues.list": {
       "kind": "read",
@@ -308,8 +295,12 @@
         "query?"
       ],
       "returns": [
+        "protocolVersion=2",
+        "viewVersion",
         "update",
-        "issues"
+        "items",
+        "total",
+        "nextCursor"
       ],
       "pageV2": "protocolVersion, viewVersion, items, nextCursor, total; no unbounded nested fields"
     },
@@ -317,14 +308,21 @@
       "kind": "read",
       "data": [
         "issueId",
+        "updateId?",
+        "viewVersion?",
+        "cursor?",
+        "pageSize?",
         "memberKind?"
       ],
       "returns": [
+        "protocolVersion=2",
+        "viewVersion",
         "update",
         "issue",
+        "subject",
         "members",
-        "accounts",
-        "categories"
+        "total",
+        "nextCursor"
       ]
     },
     "reviewIssues.resolve": {
@@ -341,8 +339,7 @@
         "apply_fields.fields.paymentAccounts[{componentIndex,accountId}]?",
         "apply_fields.fields.paymentResolution{version,nature,allocations[{componentIndex,accountId,amountMinor}],targetAccountId,evidenceNote,confirmedFromDetails}?",
         "apply_fields.fields.repaymentAllocations[{accountId|accountDraft{name,type=credit|other_liability,currency},amountMinor}]?",
-        "exclude_events.paymentRuleAction?",
-        "resultMode?='receipt'"
+        "exclude_events.paymentRuleAction?"
       ],
       "decisions": [
         "apply_fields",
@@ -356,34 +353,42 @@
         "link_existing_transaction"
       ],
       "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
         "update",
-        "issue?",
-        "members",
-        "accounts",
-        "categories"
+        "posting",
+        "invalidates"
       ],
-      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
     "reviewIssues.resolveAccountMappings": {
       "kind": "idempotent-batch-mutation",
       "data": [
         "requestId",
         "updateId",
-        "decisions[{issueId,operation=resolve|revise,decision=apply_fields|exclude_events,fields.mappingAccountId|fields.mappingAccountDraft?,paymentRuleAction?}]",
-        "resultMode?='receipt'"
+        "decisions[{issueId,issueVersion,operation=resolve|revise,decision=apply_fields|exclude_events,fields.mappingAccountId|fields.mappingAccountDraft?,paymentRuleAction?}]",
+        "updateVersion"
       ],
       "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
         "update",
-        "sources",
-        "events",
-        "issues",
-        "coverage",
-        "accounts",
-        "accountDrafts",
-        "accountMappingDrafts",
-        "categories"
+        "posting",
+        "invalidates"
       ],
-      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
     "financeUpdates.post": {
       "kind": "idempotent-versioned-mutation",
@@ -391,36 +396,46 @@
         "requestId",
         "updateId",
         "version",
-        "mode=all_ready",
-        "resultMode?='receipt'"
+        "mode=all_ready"
       ],
       "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
         "update",
-        "sources",
-        "events",
-        "issues",
-        "coverage",
-        "posting"
+        "posting",
+        "invalidates"
       ],
       "atomic": true,
       "categoryPolicy": "category_assignment 为可选建议；缺分类不阻止整批入账，其他核对和服务端完整性校验仍必须通过。正式 category_id 保留 NULL。",
-      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
     "financeUpdates.abandon": {
       "kind": "idempotent-versioned-mutation",
       "data": [
         "requestId",
         "updateId",
-        "version",
-        "resultMode?='receipt'"
+        "version"
       ],
       "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
         "updateId",
+        "appliedVersion",
         "status",
-        "version",
-        "counts"
+        "counts",
+        "update",
+        "posting",
+        "invalidates"
       ],
-      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
     "economicEvents.correctionImpact": {
       "kind": "read",
@@ -454,9 +469,12 @@
         "pageSize?"
       ],
       "returns": [
-        "eventId",
-        "updateId",
-        "evidence[{evidenceRole,rowNumber,sourceLocator,sourceType,fileName,rawSnapshotVersion,parserVersion,rawFields}]"
+        "protocolVersion=2",
+        "viewVersion",
+        "update",
+        "items",
+        "total",
+        "nextCursor"
       ],
       "pageV2": "protocolVersion, viewVersion, items, nextCursor, total; no unbounded nested fields"
     },
@@ -469,18 +487,22 @@
         "updateVersion",
         "eventVersion",
         "fields",
-        "previewToken",
-        "resultMode?='receipt'"
+        "previewToken"
       ],
       "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
         "update",
-        "sources",
-        "events",
-        "issues",
-        "coverage",
-        "posting"
+        "posting",
+        "invalidates"
       ],
-      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
     "financeUpdates.undoImpact": {
       "kind": "read",
@@ -506,26 +528,41 @@
         "requestId",
         "updateId",
         "version",
-        "previewToken",
-        "resultMode?='receipt'"
+        "previewToken"
       ],
-      "returns": [
-        "update",
-        "sources",
-        "events",
-        "issues",
-        "coverage"
-      ],
-      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
-    },
-    "imports.capabilities": {
-      "kind": "read",
-      "data": [],
       "returns": [
         "protocolVersion=2",
-        "workbenchVersion=1",
-        "pageSize",
-        "resultMode=receipt"
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
+        "update",
+        "posting",
+        "invalidates"
+      ],
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
+    },
+    "imports.commandResult": {
+      "kind": "read",
+      "data": [
+        "requestId",
+        "commandAction"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
+        "update",
+        "posting",
+        "invalidates"
       ]
     }
   },
@@ -543,7 +580,7 @@
     "paymentRules": "recognized atomic payment methods may map to one account or be permanently ignored per user and source; an aggregate statement reference such as Alipay 花呗｜信用购 is never an account or reusable mapping and must be allocated to real liability accounts; temporary ignore never silently becomes a permanent rule",
     "lifecycle": "Files and parse batches preserve source evidence. Replacing or abandoning an unposted FinanceUpdate atomically removes its derived events, evidence links, relations, review issues/members and account/mapping drafts, while retaining update/source summaries and action audit. Formal accounts, transactions, reusable mappings and source identities are unchanged. Storage-object cleanup remains best-effort.",
     "publicWritePath": "The only posting implementation is financeUpdates.post. Legacy single-file services and their decision/posting/link tables are removed by migration 0012.",
-    "idempotentReplay": "V2 receipts preserve the immutable operation outcome. New legacy view references also retain a compact appliedResult for post-commit refresh failures. Mutation keys and request digests remain durable. Receipts store small values or current FinanceUpdate/ReviewIssue references; duplicate requests never rerun the action. View replay returns current committed state. A retired issue returns issue=null and empty members; an abandoned update returns empty events/issues and coverage=null."
+    "idempotentReplay": "导入命令固定小型首次回执；幂等键/请求摘要持久保留。重复请求不重做，摘要另读。旧在途请求只核实原键，历史事实不足明确待核对；一次性离线转换不构成在线旧协议适配。"
   },
   "failureCodes": [
     "REQUEST_TOO_LARGE",
@@ -569,6 +606,8 @@
     "SERVICE_TEMPORARY_UNAVAILABLE",
     "UNRESOLVED_IMPORT",
     "UNSUPPORTED_ACTION",
-    "VALIDATION_ERROR"
+    "VALIDATION_ERROR",
+    "OPERATION_UNCONFIRMED",
+    "RECEIPT_RECONCILIATION_REQUIRED"
   ]
 }

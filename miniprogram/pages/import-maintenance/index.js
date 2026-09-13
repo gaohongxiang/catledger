@@ -1,3 +1,4 @@
+const catalogApi = require('../../services/catledger-api')
 const api = require('../../services/catledger-import')
 const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
@@ -7,7 +8,7 @@ const indexOf = function (rows, key, value) { return rows.findIndex(function (ro
 Page({
   data: { busy: false, errorMessage: '', update: null, events: [], accounts: [], categories: [],
     eventIndex: 0, draft: null, preview: null, previewKind: '', completed: false, themeClass: '', themeStyle: '',
-    showPostedRecords: false, visiblePostedRecords: 20 },
+    showPostedRecords: false, visiblePostedRecords: 20, eventCount: 0, hasMoreEvents: false },
   onLoad: function (options) {
     theme.bindPage(this)
     this._updateId = options && options.updateId
@@ -23,18 +24,47 @@ Page({
     wx.navigateTo({ url: '/pages/import-workbench/index?updateId=' + this._updateId + '&evidenceEventId=' + eventId })
   },
   togglePostedRecords: function () { this.setData({ showPostedRecords: !this.data.showPostedRecords }) },
-  showMorePostedRecords: function () { this.setData({ visiblePostedRecords: this.data.visiblePostedRecords + 20 }) },
+  showMorePostedRecords: async function () {
+    if (this.data.busy) return
+    if (this.data.visiblePostedRecords < this.data.events.length) {
+      this.setData({ visiblePostedRecords: this.data.visiblePostedRecords + 20 }); return
+    }
+    if (!this._eventCursor) return
+    this.setData({ busy: true, errorMessage: '' })
+    try {
+      const page = await api.readPage('economicEvents.list', { updateId: this._updateId, view: 'posted', pageSize: 40,
+        cursor: this._eventCursor, viewVersion: this._viewVersion })
+      this.acceptEvents(page)
+      this.selectEvent({ detail: { value: 0 } })
+    } catch (error) { this.setData({ errorMessage: error.message }) }
+    finally { this.setData({ busy: false }) }
+  },
+  acceptEvents: function (page) {
+    this._eventCursor = page.nextCursor
+    this._viewVersion = page.viewVersion
+    this.setData({ events: page.items.map(function (row) {
+      const evidence = row.primaryEvidence || {}
+      return Object.assign({}, row, { label: String(row.localAt || '').slice(0, 10) + ' · ' + (evidence.item || evidence.counterparty || '账单记录') + ' · ' + money.formatMinor(row.amountMinor) })
+    }), eventCount: page.total, hasMoreEvents: Boolean(page.nextCursor), visiblePostedRecords: 20 })
+  },
   load: async function () {
     if (!this._updateId) return this.setData({ errorMessage: '请从已入账账单打开维护页' })
     this.setData({ busy: true, errorMessage: '' })
     try {
-      const view = await api.callImport('financeUpdates.get', { updateId: this._updateId })
-      this._categories = view.categories || []
-      this.setData({ update: view.update, accounts: (view.accounts || []).filter(function (row) { return !row.archivedAt && !row.archived }),
-        events: (view.events || []).filter(function (row) { return row.status === 'posted' || row.status === 'corrected' }).map(function (row) {
-          const evidence = row.primaryEvidence || {}
-          return Object.assign({}, row, { label: String(row.localAt || '').slice(0, 10) + ' · ' + (evidence.item || evidence.counterparty || '账单记录') + ' · ' + money.formatMinor(row.amountMinor) })
-        }), completed: view.update.status === 'undone', preview: null })
+      const values = await Promise.all([
+        api.readSummary(this._updateId), catalogApi.callApi('catalog.get'),
+        api.readPage('economicEvents.list', { updateId: this._updateId, view: 'posted', pageSize: 40 })
+      ])
+      const view = values[0], catalog = values[1], page = values[2]
+      if (view.viewVersion !== page.viewVersion) throw new Error('账目已更新，请刷新后重试')
+      if (this._eventId && !page.items.some(row => row.eventId === this._eventId)) {
+        const selected = await api.readPage('economicEvents.list', { updateId: this._updateId, view: 'posted', eventId: this._eventId, pageSize: 1, viewVersion: view.viewVersion })
+        page.items = selected.items.concat(page.items)
+      }
+      this._categories = catalog.categories
+      this.setData({ update: view.update, accounts: catalog.accounts.filter(function (row) { return !row.archived }),
+        completed: view.update.status === 'undone', preview: null })
+      this.acceptEvents(page)
       const selected = this._eventId ? indexOf(this.data.events, 'eventId', this._eventId) : this.data.eventIndex
       this.selectEvent({ detail: { value: Math.min(Math.max(0, selected), Math.max(0, this.data.events.length - 1)) } })
     } catch (error) { this.setData({ errorMessage: error.message }) }

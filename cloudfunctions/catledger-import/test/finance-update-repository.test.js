@@ -9,8 +9,7 @@ const {
   publicIssue,
   restoreDraftPaymentMappings,
   selectPaymentMappings,
-  selectDraftPaymentMappings,
-  selectEventEvidence
+  selectDraftPaymentMappings
 } = require('../src/finance-update-repository')
 
 test('整理摘要返回去重的真实成员 ID，不用候选数推算主体', () => {
@@ -224,26 +223,6 @@ test('账户步骤按成员资金端展示映射引用，不按原始支付方�
   assert.equal(issue.accountContext.paymentMethodKey, 'change-key')
   assert.equal(issue.accountContext.fundsSide, 'from')
   assert.equal(issue.accountContext.accountId, null)
-})
-
-test('原始证据读取先校验用户事件归属并返回不可变字段', async function () {
-  const calls = []
-  const connection = {
-    execute: async function (sql, values) {
-      calls.push({ sql, values })
-      if (calls.length === 1) return [[{ eventId: 'event-1', updateId: 'update-1' }]]
-      return [[{
-        evidenceId: 'evidence-1', evidenceRole: 'primary', rowId: 'row-1', rowNumber: 7,
-        sourceLocator: 'csv:7', rawFields: '{"交易类型":"提现","金额":"498.57"}',
-        rawSnapshotVersion: 'raw-v1', parserVersion: 'alipay-v1', sourceType: 'alipay', fileName: '支付宝.csv'
-      }]]
-    }
-  }
-  const result = await selectEventEvidence(connection, 'user-1', 'event-1')
-  assert.equal(result.updateId, 'update-1')
-  assert.deepEqual(result.evidence[0].rawFields, { 交易类型: '提现', 金额: '498.57' })
-  assert.deepEqual(calls[0].values, ['user-1', 'event-1'])
-  assert.deepEqual(calls[1].values, ['user-1', 'update-1', 'event-1'])
 })
 
 test('旧规划重建前冻结每个支付工具最新的本批映射决定', async function () {

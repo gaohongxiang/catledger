@@ -142,33 +142,3 @@ test('覆盖门禁仍拒绝失效的组合核对、其他语义阻断及开放�
   }
   assert.equal(coverageFor(event, [{ status: 'open', blocking: true }]).selectedEventsReadyToPost, false)
 })
-
-
-test('完整整理读取保留服务端覆盖计算依据，公开事件不泄露内部字段', async () => {
-  const { getUpdateView } = require('../src/finance-update-repository')
-  const { PLAN_VERSION } = require('../src/domain-versions')
-  const event = applyFields(fixture(), { paymentResolution: resolution() })
-  const replies = [
-    [{ updateId: 'synthetic-update', status: 'review', version: 1, planVersion: PLAN_VERSION }],
-    [{ totalRowCount: 1, validRowCount: 1, invalidRowCount: 0 }],
-    [{ issueId: 'category', issueType: 'category_assignment', status: 'open', blocking: 0 }],
-    [{ ...event, status: 'ready', reasonCodes: JSON.stringify(event.reasonCodes), fieldSources: JSON.stringify(event.fieldSources) }],
-    [{ rowId: 'synthetic-row', parseState: 'valid', issues: '[]' }],
-    [{ rowId: 'synthetic-row', eventId: event.eventId, evidenceRole: 'primary' }], []
-  ]
-  const connection = { async execute(sql, values) {
-    if (sql.includes('FROM catledger_categories') || sql.includes('FROM catledger_import_category_mappings')) {
-      assert.deepEqual(values, ['synthetic-user']); return [[]]
-    }
-    assert.deepEqual(values, sql.includes('evidence_counts')
-      ? ['synthetic-user', 'synthetic-update', 'synthetic-user', 'synthetic-update'] : ['synthetic-user', 'synthetic-update'])
-    assert.ok(replies.length, '不应新增额外查询')
-    return [replies.shift()]
-  } }
-  const view = await getUpdateView(connection, 'synthetic-user', 'synthetic-update', { includeOptions: false })
-  assert.equal(view.coverage.selectedEventsReadyToPost, true)
-  assert.equal(view.coverage.readySelectedEvents, 1)
-  assert.equal(Object.hasOwn(view.events[0], 'fieldSources'), false)
-  assert.ok(view.events[0].reasonCodes.includes('payment_components_ambiguous'))
-  assert.equal(replies.length, 0)
-})

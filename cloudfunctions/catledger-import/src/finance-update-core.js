@@ -7,7 +7,6 @@ const { importError } = require('./errors')
 const {
   createUpdate,
   deleteDraftPlan,
-  getUpdateView,
   insertAction,
   persistPlan,
   publicUpdate,
@@ -15,7 +14,6 @@ const {
   selectDraftPaymentMappings,
   selectPlanningRows,
   selectPaymentMappings,
-  selectEventEvidence,
   selectUpdate,
   restoreDraftPaymentMappings
 } = require('./finance-update-repository')
@@ -116,34 +114,6 @@ function createFinanceUpdateCore({ getPool }) {
     })
   }
 
-  async function get(context) {
-    const updateId = validateUuid(context.data.updateId)
-    if (context.data.includeEvents != null && typeof context.data.includeEvents !== 'boolean') {
-      throw importError('VALIDATION_ERROR')
-    }
-    if (context.data.includeOptions != null && typeof context.data.includeOptions !== 'boolean') {
-      throw importError('VALIDATION_ERROR')
-    }
-    return executeUserRead({
-      getPool,
-      ...context,
-      consistentSnapshot: true,
-      operation: (connection, uid) => getUpdateView(connection, uid, updateId, {
-        includeEvents: context.data.includeEvents !== false,
-        includeOptions: context.data.includeOptions !== false
-      })
-    })
-  }
-
-  async function evidence(context) {
-    const eventId = validateUuid(context.data.eventId)
-    return executeUserRead({
-      getPool,
-      ...context,
-      operation: (connection, uid) => selectEventEvidence(connection, uid, eventId)
-    })
-  }
-
   async function abandon(context) {
     const updateId = validateUuid(context.data.updateId)
     const version = validateVersion(context.data.version)
@@ -181,7 +151,7 @@ function createFinanceUpdateCore({ getPool }) {
     })
   }
 
-  return { abandon, evidence, get, organize, prepare }
+  return { abandon, organize, prepare }
 }
 
 module.exports = {

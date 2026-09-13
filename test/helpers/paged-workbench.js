@@ -26,7 +26,6 @@ function runtime(data = fixture()) {
     calls.push({ action, input: JSON.parse(JSON.stringify(input)) })
     if (h.intercept) { const value = await h.intercept(action, input); if (value !== undefined) return value }
     if (action === 'financeUpdates.summary') return h.summary
-    if (action === 'imports.capabilities') return { protocolVersion: 2, workbenchVersion: 1 }
     let rows = [], extra = {}
     if (action === 'economicEvents.list') rows = h.events.filter(event => (!input.status || event.status === input.status) &&
       (!input.economicNature || event.economicNature === input.economicNature))
@@ -49,7 +48,7 @@ function runtime(data = fixture()) {
     return result
   }
   const api = { callImport: call, readSummary: updateId => call('financeUpdates.summary', { updateId }),
-    command: (action, input) => call(action, { ...input, resultMode: 'receipt' }), createRequestId: () => 'synthetic-request-' + calls.length }
+    command: (action, input) => call(action, { ...input }), createRequestId: () => 'synthetic-request-' + calls.length }
   const draftService = { lastUpdateId: () => '', forgetLast() {}, clearUpdate() {}, pauseUpdate() {}, project: (view) => view,
     open(view) { if (!session) session = createDraft({ scope: 'synthetic', view, autoSync: false, call,
       read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key), requestId: api.createRequestId }); return session } }

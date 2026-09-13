@@ -10,7 +10,7 @@ const { createAccountService } = require('../../src/account-service')
 const { createTransactionService } = require('../../src/transaction-service')
 const { executeIdempotentMutation } = require('../../src/ledger-transaction')
 const { hashWechatSubject } = require('../../src/handler')
-const { createImportService } = require('../../../catledger-import/src/import-service')
+const { createScenarioService: createImportService } = require('../../../catledger-import/test/helpers/paged-service')
 const { objectKeyFromFileId } = require('../../../catledger-import/src/storage-gateway')
 const { digestParts } = require('../../../catledger-import/src/digest')
 

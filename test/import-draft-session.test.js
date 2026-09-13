@@ -14,7 +14,7 @@ function fixture(overrides = {}, store = new Map()) {
     requestId: () => 'request-' + (++number),
     async call(action, data) {
       calls.push({ action, data: copy(data) })
-      if (action === 'financeUpdates.get') return copy(view)
+      if (action === 'financeUpdates.summary') return copy(view)
       view.update.version += 1
       if (action === 'reviewIssues.resolve') { view.issues[0].status = 'resolved'; view.events[0].status = 'ready' }
       return { update: copy(view.update) }
@@ -37,7 +37,7 @@ test('V2账户决定携带两级版本，小回执后的刷新失败不重发已
   } })
   f.session.enqueue([{ kind: 'account', issueId: 'a', issueVersion: 7, decision: { issueId: 'a', decision: 'exclude_events' } }])
   await assert.rejects(f.session.flush())
-  assert.equal(calls[0].payload.resultMode, 'receipt')
+  assert.equal(Object.hasOwn(calls[0].payload, 'resultMode'), false)
   assert.equal(calls[0].payload.updateVersion, 4)
   assert.equal(calls[0].payload.decisions[0].issueVersion, 7)
   assert.equal(f.session.status.error, '选择已同步，明细待刷新')
@@ -47,12 +47,12 @@ test('V2账户决定携带两级版本，小回执后的刷新失败不重发已
   assert.equal(f.session.state.entries.length, 0)
 })
 
-test('确认先持久化，零同步等待，队列完成只读取一次完整视图', async () => {
+test('确认先持久化，零同步等待，队列完成只读取一次摘要', async () => {
   const f = fixture(); f.session.enqueue([review()])
   assert.equal(f.calls.length, 0)
   assert.equal([...f.store.values()][0].entries.length, 1)
   await f.session.flush()
-  assert.deepEqual(f.calls.map(c => c.action), ['reviewIssues.resolve', 'financeUpdates.get'])
+  assert.deepEqual(f.calls.map(c => c.action), ['reviewIssues.resolve', 'financeUpdates.summary'])
   assert.equal(f.session.state.entries.length, 0)
 })
 
@@ -62,7 +62,7 @@ test('断网及进程恢复复用发送前持久化的完整幂等请求', async
   const payload = copy(f.session.state.flight.payload)
   const sent = []
   const restored = create({ ...f.options, view: { ...f.view, update: { ...f.view.update, version: 3 } }, async call(action, data) {
-    sent.push({ action, data: copy(data) }); return action === 'financeUpdates.get' ? { ...f.view, update: { ...f.view.update, version: 3 } } : { update: { version: 2 } }
+    sent.push({ action, data: copy(data) }); return action === 'financeUpdates.summary' ? { ...f.view, update: { ...f.view.update, version: 3 } } : { update: { version: 2 } }
   } })
   await restored.flush()
   assert.deepEqual(sent[0].data, payload)
@@ -84,7 +84,7 @@ test('账户确认合并为一个请求，未发送前修改会撤回旧确认',
 
 test('在途请求不可改写，其他项可继续确认，多次flush不重复提交', async () => {
   let release
-  const f = fixture({ call: (action) => action === 'financeUpdates.get' ? Promise.resolve(copy(f.view)) : new Promise(resolve => { release = resolve }) })
+  const f = fixture({ call: (action) => action === 'financeUpdates.summary' ? Promise.resolve(copy(f.view)) : new Promise(resolve => { release = resolve }) })
   f.session.enqueue([review()]); const first = f.session.flush(); const second = f.session.flush()
   assert.equal(first, second)
   assert.throws(() => f.session.enqueue([review()]), /正在同步/)
@@ -94,7 +94,7 @@ test('在途请求不可改写，其他项可继续确认，多次flush不重复
 })
 
 test('失败不丢后续选择，冲突不自动覆盖问题版本，重新核对保留原输入', async () => {
-  const f = fixture({ async call(action) { if (action === 'financeUpdates.get') return copy(f.view); throw Object.assign(new Error('版本冲突'), { code: 'CONFLICT' }) } })
+  const f = fixture({ async call(action) { if (action === 'financeUpdates.summary') return copy(f.view); throw Object.assign(new Error('版本冲突'), { code: 'CONFLICT' }) } })
   f.session.enqueue([review(), review('b')]); await assert.rejects(f.session.flush())
   assert.equal(f.session.state.entries.length, 2)
   assert.equal(f.session.status.conflicts, 1)
@@ -126,7 +126,7 @@ test('入账响应丢失后跨进程复用原请求，正式写入仍只经过po
   const saved = copy(f.session.state.postFlight)
   let received
   const restored = create({ ...f.options, async call(action, data) { assert.equal(action, 'financeUpdates.post'); received = data; return { update: { status: 'posted' } } } })
-  await restored.post(); assert.deepEqual(received, saved)
+  await restored.post(); assert.deepEqual(received, saved.payload)
 })
 
 test('本地投影只改变选择展示，金额和正式就绪状态不在客户端重算', () => {
@@ -151,10 +151,10 @@ test('放弃屏障等待在途完成并停止后续发送', async () => {
 })
 
 
-test('完整视图读取期间加入的新决定仍在同一flush屏障内处理完', async () => {
+test('摘要读取期间加入的新决定仍在同一flush屏障内处理完', async () => {
   let release; let reads = 0; const writes = []
   const f = fixture({ call(action, data) {
-    if (action === 'financeUpdates.get') {
+    if (action === 'financeUpdates.summary') {
       reads += 1
       return reads === 1 ? new Promise(resolve => { release = resolve }) : Promise.resolve(copy(f.view))
     }
@@ -166,4 +166,35 @@ test('完整视图读取期间加入的新决定仍在同一flush屏障内处理
   f.session.enqueue([review('b')]); release(copy(f.view)); await sending
   assert.deepEqual(writes, ['a', 'b'])
   assert.equal(f.session.state.entries.length, 0)
+})
+
+
+test('旧在途请求只核实原键；不改摘要重发，事实不足保留原草稿', async () => {
+  for (const recoverable of [false, true]) {
+    const store = new Map()
+    const original = { schema: 1, updateId: 'batch', entries: [review()], drafts: {},
+      flight: { ids: ['a'], action: 'reviewIssues.resolve', payload: { requestId: 'original-key', resultMode: 'receipt', updateVersion: 1 } } }
+    store.set('catledger_import_draft_v1:env:batch', copy(original))
+    const sent = []
+    const f = fixture({ async call(action, data) {
+      sent.push({ action, data })
+      if (action === 'financeUpdates.summary') return copy(f.view)
+      assert.equal(action, 'imports.commandResult')
+      assert.deepEqual(data, { requestId: 'original-key', commandAction: 'reviewIssues.resolve' })
+      if (!recoverable) throw Object.assign(new Error('需核对'), { code: 'RECEIPT_RECONCILIATION_REQUIRED' })
+      return { protocolVersion: 2, kind: 'operation-receipt', update: { version: 2 } }
+    } }, store)
+    if (recoverable) { await f.session.flush(); assert.equal(f.session.state.flight, null) }
+    else { await assert.rejects(f.session.flush()); assert.deepEqual(f.session.state.flight.payload, original.flight.payload) }
+    assert.equal(sent.some(call => call.action === 'reviewIssues.resolve'), false)
+  }
+})
+
+test('未同步组有界：第九组拒绝且保留此前原键和选择', async () => {
+  const f = fixture()
+  f.session.enqueue(Array.from({ length: 8 }, (_, i) => review('group-' + i)))
+  const before = copy(f.session.state)
+  assert.throws(() => f.session.enqueue([review('ninth')]), { code: 'DRAFT_LIMIT_REACHED' })
+  assert.deepEqual(f.session.state, before)
+  assert.equal(f.calls.length, 0)
 })

@@ -60,9 +60,9 @@ test('导入读取不会重放非瞬时数据库错误', async () => {
 })
 
 
-test('receipt模式只接受已定义操作，不能用于文件或读取动作', async () => {
+test('退出的resultMode字段在访问数据库前拒绝', async () => {
   const { executeIdempotentMutation } = require('../src/import-transaction')
-  for (const action of ['imports.prepareMany', 'financeUpdates.get']) {
+  for (const action of ['imports.prepareMany', 'financeUpdates.prepare', 'financeUpdates.post']) {
     await assert.rejects(executeIdempotentMutation({ action, data: { resultMode: 'receipt' },
       getPool() { throw new Error('must reject before database access') } }), { publicCode: 'VALIDATION_ERROR' })
   }

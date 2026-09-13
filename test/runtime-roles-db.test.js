@@ -46,9 +46,9 @@ test('API/import separate runtime roles: V2 paging, atomic chunks, replay, balan
     await call(other.api, 'bootstrap')
     assert.equal((await other.import({ action: 'economicEvents.list', data: { updateId, cursor: first.nextCursor } })).error.code, 'NOT_FOUND')
     const issuePage = await imp('reviewIssues.list', { protocolVersion: 2, updateId, group: 'accounts' }), issue = issuePage.items[0]
-    const mapped = await imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), resultMode: 'receipt', updateId, updateVersion: update.appliedVersion,
+    const mapped = await imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId, updateVersion: update.appliedVersion,
       decisions: [{ issueId: issue.issueId, issueVersion: issue.version, operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountId: account.accountId } }] })
-    const request = { requestId: randomUUID(), resultMode: 'receipt', updateId, version: mapped.appliedVersion }
+    const request = { requestId: randomUUID(), updateId, version: mapped.appliedVersion }
     failChunk = true
     assert.equal((await services.import({ action: 'financeUpdates.post', data: request })).error.code, 'INTERNAL_ERROR')
     assert.equal((await api('accounts.list')).accounts[0].bookBalanceMinor, '20000')
@@ -63,7 +63,7 @@ test('API/import separate runtime roles: V2 paging, atomic chunks, replay, balan
     const evidence = await imp('economicEvents.evidence', { protocolVersion: 2, eventId: postedPage.items[0].eventId })
     assert.equal(evidence.total, 1)
     const impact = await imp('financeUpdates.undoImpact', { updateId })
-    const undo = { requestId: randomUUID(), resultMode: 'receipt', updateId, version: results[0].appliedVersion, previewToken: impact.previewToken }
+    const undo = { requestId: randomUUID(), updateId, version: results[0].appliedVersion, previewToken: impact.previewToken }
     const undone = await imp('financeUpdates.undo', undo)
     assert.deepEqual(await imp('financeUpdates.undo', undo), undone)
     assert.deepEqual(await imp('financeUpdates.post', request), results[0])
@@ -76,7 +76,7 @@ test('API/import separate runtime roles: V2 paging, atomic chunks, replay, balan
     assert.equal((await api('accounts.list')).accounts[0].bookBalanceMinor, '19500')
     assert.equal((await api('statistics.get', { month: '2026-09' })).summary.expenseMinor, '500')
     const abandoned = await prepareSyntheticUpdate(services, 2, 'SYNTHETIC-ABANDON')
-    await imp('financeUpdates.abandon', { requestId: randomUUID(), resultMode: 'receipt', updateId: abandoned.updateId, version: abandoned.appliedVersion })
+    await imp('financeUpdates.abandon', { requestId: randomUUID(), updateId: abandoned.updateId, version: abandoned.appliedVersion })
     const [[graph]] = await importPool.execute('SELECT COUNT(*) AS count FROM catledger_economic_events WHERE update_id = ?', [abandoned.updateId])
     assert.equal(Number(graph.count), 0)
     const [[sources]] = await importPool.execute('SELECT COUNT(*) AS count FROM catledger_import_rows')

@@ -11,7 +11,7 @@ test('导入公共契约与事件云函数动作保持一致', function () {
   assert.deepEqual([...PUBLIC_ACTIONS].sort(), names)
   const handler = function () {}
   const handlers = createActionHandlers({
-    capabilities: handler,
+    commandResult: handler,
     commit: handler, discard: handler, discardFile: handler, get: handler, getFile: handler,
     parse: handler, parseFile: handler, prepare: handler, prepareMany: handler,
     financeUpdateRows: handler, financeUpdateSummary: handler, financeUpdateOptions: handler, economicEventList: handler, economicEventDetail: handler, reviewIssueMembers: handler,
@@ -40,7 +40,7 @@ test('统一 FinanceUpdate 上线后不再公开旧单文件写链路', function
 })
 
 test('小程序导入调用只使用已登记动作，记账页进入独立工作台', function () {
-  const page = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8')
+  const page = ['index.js', 'paged.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const actions = [...page.matchAll(/(?:callImport|request)\(\s*['"]([^'"]+)['"]/g)].map(function (match) { return match[1] })
   assert.ok(actions.length > 0)
   actions.forEach(function (action) { assert.ok(contract.actions[action], action) })
@@ -52,7 +52,7 @@ test('小程序导入调用只使用已登记动作，记账页进入独立工�
 })
 
 test('旧版云函数动作错误显示为版本过旧而不是尚未开放', function () {
-  const page = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8')
+  const page = ['index.js', 'paged.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const serverErrors = fs.readFileSync(path.join(__dirname, '../cloudfunctions/catledger-import/src/errors.js'), 'utf8')
   assert.match(page, /UNSUPPORTED_ACTION:\s*'导入服务版本过旧，请更新云函数后重试'/)
   assert.match(page, /ERROR_MESSAGES\[error && error\.code\]/)
@@ -62,7 +62,7 @@ test('旧版云函数动作错误显示为版本过旧而不是尚未开放', fu
 
 test('导入工作台沿用按需登录与主题组件', function () {
   const config = require('../miniprogram/pages/import-workbench/index.json')
-  const source = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8')
+  const source = ['index.js', 'paged.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxml'), 'utf8')
   assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
   assert.match(source, /loginGuard\.run/)
@@ -72,7 +72,7 @@ test('导入工作台沿用按需登录与主题组件', function () {
 })
 
 test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 post/skip', function () {
-  const source = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8')
+  const source = ['index.js', 'paged.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const modelSource = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/model.js'), 'utf8')
   const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxml'), 'utf8')
   // 结构约束与 CSS 的换行排版无关。
@@ -95,10 +95,10 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(source, /request\('financeUpdates\.prepare'/)
   assert.match(source, /request\('financeUpdates\.organize'/)
   assert.match(source, /request\('reviewIssues\.get'/)
-  assert.match(source, /request\('reviewIssues\.resolve'/)
-  assert.match(source, /request\('economicEvents\.evidence'/)
-  assert.match(source, /request\('reviewIssues\.resolveAccountMappings'/)
-  assert.match(source, /request\('financeUpdates\.post'/)
+  assert.match(source, /this\._draftSession\.enqueue/)
+  assert.match(source, /(?:request|pager)\('economicEvents\.evidence'/)
+  assert.match(source, /reviewIssues\.resolveAccountMappings/)
+  assert.match(source, /session\.post\(\)/)
   assert.match(source, /request\('financeUpdates\.abandon'/)
   assert.match(markup, /class="review-status-tabs"/)
   assert.match(source, /switchReviewStatus/)
@@ -190,7 +190,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(markup, /建议 · 待确认/)
   assert.match(markup, /确认整批入账前不会创建或修改正式账户/)
   assert.doesNotMatch(markup, /class="account-issue-label">选择账户归属/)
-  assert.match(source, /this\.stepPatch\(currentStep\)/)
+  assert.match(source, /this\.stepPatch\(step\)/)
   const presentation = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/presentation.js'), 'utf8')
   assert.match(presentation, /model\.reviewIssueRows\(state\.hydratedIssues/)
   assert.doesNotMatch(source, /refundChoices/)

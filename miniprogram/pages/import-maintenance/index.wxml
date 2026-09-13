@@ -22,10 +22,10 @@
     <view class="maintenance-section">
       <text class="section-title content-inset">撤销本批入账</text>
       <text class="maintenance-copy content-inset">会撤回本批创建的交易；已被其他记录使用的账户和规则会保留。</text>
-      <button class="refresh-button content-inset" bindtap="togglePostedRecords">{{showPostedRecords ? '收起本批记录' : '查看本批 ' + events.length + ' 条入账记录'}}</button>
+      <button class="refresh-button content-inset" bindtap="togglePostedRecords">{{showPostedRecords ? '收起本批记录' : '查看本批 ' + eventCount + ' 条入账记录'}}</button>
       <block wx:if="{{showPostedRecords}}">
         <view wx:for="{{events}}" wx:key="eventId" wx:if="{{visiblePostedRecords > index}}" class="impact-row content-inset"><text>{{item.label}}</text><button class="refresh-button content-inset" data-id="{{item.eventId}}" bindtap="viewOriginalRecord" disabled="{{busy}}">查看原始记录</button></view>
-        <button wx:if="{{events.length > visiblePostedRecords}}" class="refresh-button content-inset" bindtap="showMorePostedRecords">再显示 20 条</button>
+        <button wx:if="{{events.length > visiblePostedRecords || hasMoreEvents}}" class="refresh-button content-inset" bindtap="showMorePostedRecords">再显示 20 条</button>
       </block>
       <button class="danger-button" bindtap="previewUndo" disabled="{{busy}}">预览整批撤销影响</button>
     </view>

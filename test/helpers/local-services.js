@@ -36,6 +36,6 @@ async function prepareSyntheticUpdate(services, rows, prefix) {
   const file = files.files[0]; services.objects.set(file.cloudPath, content)
   const parsed = await call(services.import, 'imports.parseFile', { requestId: randomUUID(), importId: file.importId,
     fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 })
-  return call(services.import, 'financeUpdates.prepare', { requestId: randomUUID(), resultMode: 'receipt', batchIds: [parsed.batch.batchId] })
+  return call(services.import, 'financeUpdates.prepare', { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })
 }
 module.exports = { localServices, syntheticBill, call, prepareSyntheticUpdate }

@@ -32,8 +32,8 @@ async function installNative(state) {
     require('services/read-cache.js').reset()
     delete app.__nativeHarness
   } }
-  var probe = await wx.cloud.callFunction({ name: 'catledger-import', data: { action: 'imports.capabilities', data: {} } })
-  if (!probe.result || !probe.result.ok) throw new Error('Local capability probe failed')
+  var probe = await wx.cloud.callFunction({ name: 'catledger-import', data: { action: 'financeUpdates.summary', data: { updateId: state.updateId } } })
+  if (!probe.result || !probe.result.ok) throw new Error('Local summary read failed')
   await new Promise(function(resolve, reject) { wx.reLaunch({ url: '/pages/import-workbench/index?updateId=' + state.updateId, success: resolve, fail: reject }) })
-  return { localSynthetic: true, rows: 121, workbenchVersion: probe.result.data.workbenchVersion }
+  return { localSynthetic: true, rows: 121, protocolVersion: probe.result.data.protocolVersion }
 }

@@ -1,3 +1,4 @@
+const { selectDomainEvents, effectiveProjectedEvents } = require('./review-issue-service')
 const { digestParts } = require('./digest')
 const { PLAN_VERSION } = require('./domain-versions')
 const { importError } = require('./errors')
@@ -5,7 +6,7 @@ const { executeUserRead } = require('./import-transaction')
 const { validateUuid } = require('./validation')
 const { BUDGET, assertBudget, jsonBytes, pageSize } = require('./performance-contract')
 const { encodeCursor, decodeCursor } = require('./view-cursor')
-const { selectUpdate, publicUpdate, selectSources, selectEvents, selectIssues, selectCoverageEvidence, selectPlanningRows, parseJson } = require('./finance-update-repository')
+const { selectUpdate, publicUpdate, publicEvent, selectSources, selectEvents, selectIssues, selectCoverageEvidence, selectPlanningRows, parseJson } = require('./finance-update-repository')
 const { deriveRowDisposition } = require('./row-disposition')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { buildCoverageReport } = require('./coverage-report')
@@ -92,12 +93,12 @@ const pendingReviewSql = `(${reviewSql} OR (e.status = 'needs_action' AND NOT ${
 async function summary(connection, uid, updateId) {
   const state = await readVersion(connection, uid, updateId)
   const sources = await selectSources(connection, uid, updateId)
-  // 汇总读取不调用完整getUpdateView，不读取问题成员和原始展示字段。
+  // 汇总仅扫描必要字段；问题成员和原始展示字段独立分页。
   const [rows] = await connection.execute(`SELECT event_id AS eventId, status, economic_nature AS economicNature,
     flow_direction AS flowDirection, amount_minor AS amountMinor, ledger_account_id AS ledgerAccountId,
     counterparty_ledger_account_id AS counterpartyLedgerAccountId, field_sources_json AS fieldSources,
-    category_id AS categoryId, reason_codes_json AS reasonCodes FROM catledger_economic_events WHERE uid = ? AND update_id = ?`, [uid, updateId])
-  const events = rows.map(row => ({ ...row, reasonCodes: parseJson(row.reasonCodes, []), fieldSources: parseJson(row.fieldSources, {}) }))
+    category_id AS categoryId, event_local_at AS localAt, event_utc_at AS utcAt, currency, reason_codes_json AS reasonCodes FROM catledger_economic_events WHERE uid = ? AND update_id = ?`, [uid, updateId])
+  const events = rows.map(row => ({ ...row, status: publicEvent(row).status, reasonCodes: parseJson(row.reasonCodes, []), fieldSources: parseJson(row.fieldSources, {}) }))
   const [pending] = await connection.execute(`SELECT m.object_id AS eventId,
     MAX(i.issue_type <> 'category_assignment' AND i.blocking = 1) AS review, MAX(i.issue_type = 'category_assignment') AS category
     FROM catledger_review_issues i JOIN catledger_review_issue_members m ON m.uid = i.uid AND m.update_id = i.update_id AND m.issue_id = i.issue_id
@@ -134,18 +135,21 @@ async function summary(connection, uid, updateId) {
 async function eventPage(connection, uid, context, state) {
   const data = context.data
   const status = optionalEnum(data.status, ['ready', 'needs_action', 'excluded', 'posted', 'corrected', 'duplicate'])
+  const eventId = data.eventId == null ? null : validateUuid(data.eventId)
   const issueId = data.issueId == null ? null : validateUuid(data.issueId)
   const nature = optionalEnum(data.economicNature, ['income', 'expense', 'refund', 'fee', 'internal_transfer', 'repayment', 'unknown', 'borrow', 'balance_adjustment'])
-  const view = optionalEnum(data.view, ['active', 'review_pending', 'review_completed', 'category_pending', 'category_completed', 'category_none', 'expense'])
+  const view = optionalEnum(data.view, ['active', 'review_pending', 'review_completed', 'category_pending', 'category_completed', 'category_none', 'expense', 'posted'])
   const accountId = data.accountId == null ? null : validateUuid(data.accountId)
   const query = searchText(data.query)
-  const page = preparePage(context, state, uid, 'events', { status, issueId, nature, view, accountId, query })
+  const page = preparePage(context, state, uid, 'events', { status, eventId, issueId, nature, view, accountId, query })
   let where = 'e.uid = ? AND e.update_id = ?'
   const values = [uid, state.update.updateId]
+  if (eventId) { where += ' AND e.event_id = ?'; values.push(eventId) }
   if (status === 'duplicate') where += " AND EXISTS (SELECT 1 FROM catledger_event_evidence v WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND v.evidence_role = 'duplicate')"
   else if (status) { where += ' AND e.status = ?'; values.push(status) }
   if (nature) { where += ' AND e.economic_nature = ?'; values.push(nature) }
   if (view === 'expense') where += " AND e.economic_nature IN ('expense','fee')"
+  else if (view === 'posted') where += " AND e.status IN ('posted', 'corrected')"
   else if (view) {
     where += ' AND ' + activeSql
     if (view === 'review_pending') where += ' AND ' + pendingReviewSql
@@ -194,6 +198,22 @@ async function issuePage(connection, uid, context, state) {
   return finishPage(context, state, page, ids.map(row => byId.get(row.issueId)), count.total, 'issueId', 'issue')
 }
 
+async function presentationEvents(connection, uid, updateId, ids) {
+  if (!ids.length) return []
+  const visible = await selectEvents(connection, uid, updateId, { eventIds: ids })
+  const projected = await effectiveProjectedEvents(connection, uid, updateId,
+    await selectDomainEvents(connection, uid, updateId, ids))
+  const byId = new Map(projected.map(event => [event.eventId, event]))
+  return visible.map(event => {
+    const resolved = byId.get(event.eventId)
+    const fields = resolved.fieldSources
+    return { ...event, ledgerAccountId: resolved.ledgerAccountId, counterpartyLedgerAccountId: resolved.counterpartyLedgerAccountId,
+      paymentComponents: fields.paymentComponents || [], paymentResolution: fields.paymentResolution || null,
+      paymentAccounts: fields.paymentAccounts || null, fundsProjection: fields.fundsProjection || event.fundsProjection,
+      repaymentAllocations: fields.repaymentAllocations || [] }
+  })
+}
+
 async function memberPage(connection, uid, context, state) {
   const issueId = validateUuid(context.data.issueId)
   const memberKind = optionalEnum(context.data.memberKind, ['event', 'relation'])
@@ -212,7 +232,7 @@ async function memberPage(connection, uid, context, state) {
     FROM catledger_economic_event_relations WHERE uid = ? AND update_id = ? AND relation_id IN (${relationIds.map(() => '?').join(',')})`,
   [uid, state.update.updateId, ...relationIds]))[0] : []
   const ids = [...new Set(rows.filter(row => row.objectType === 'event').map(row => row.objectId).concat(relations.map(row => row.targetEventId)).filter(Boolean))]
-  const events = ids.length ? await selectEvents(connection, uid, state.update.updateId, { eventIds: ids }) : []
+  const events = ids.length ? await presentationEvents(connection, uid, state.update.updateId, ids) : []
   const byId = new Map(events.map(event => [event.eventId, boundedItem(event, 'eventId', 'event')]))
   const byRelation = new Map(relations.map(row => [row.relationId, { ...row, version: Number(row.version), targetEvent: byId.get(row.targetEventId) || null }]))
   const result = finishPage(context, state, page, rows.map(row => ({ ...row, objectVersion: Number(row.objectVersion), event: byId.get(row.objectId) || null, relation: byRelation.get(row.objectId) || null })), count.total, 'memberId', 'member')
@@ -326,7 +346,7 @@ async function issueDetail(connection, uid, context, state) {
   const issues = await selectIssues(connection, uid, state.update.updateId, { issueIds: [issueId], includeMembers: false })
   if (!issues[0]) throw importError('NOT_FOUND')
   const page = await memberPage(connection, uid, context, state)
-  const subject = issues[0].subject && (await selectEvents(connection, uid, state.update.updateId, { eventIds: [issues[0].subject.eventId] }))[0]
+  const subject = issues[0].subject && (await presentationEvents(connection, uid, state.update.updateId, [issues[0].subject.eventId]))[0]
   return assertBudget({ protocolVersion: 2, viewVersion: state.viewVersion, update: state.update,
     issue: boundedItem(issues[0], 'issueId', 'issue'), subject: subject ? boundedItem(subject, 'eventId', 'event') : null,
     members: page.items, total: page.total, nextCursor: page.nextCursor }, 'page')
@@ -350,7 +370,7 @@ function createFinanceUpdateRead({ getPool }) {
       if (kind === 'summary') return summary(connection, uid, updateId)
       return operation(connection, uid, context, await readVersion(connection, uid, updateId))
     } }) }
-  return { capabilities: context => executeUserRead({ getPool, ...context, operation: async () => ({ protocolVersion: 2, workbenchVersion: 1, pageSize: BUDGET.defaultPageSize, resultMode: 'receipt' }) }),
+  return {
     rows: read(rowPage), issue: read(issueDetail, 'issue'), summary: read(summary, 'summary'), events: read(eventPage), issues: read(issuePage), members: read(memberPage),
     evidence: read(evidencePage, 'evidence'), options: read(optionPage), detail: read(detail, 'detail') }
 }

@@ -34,7 +34,7 @@ function enhance(definition) {
       boundedSetData(this)
       this._viewEpoch = 0
       this._viewActive = true
-      this.setData({ pagedProtocol: true, pageLoading: false, pageError: '', directoryPage: null })
+      this.setData({ pageLoading: false, pageError: '', directoryPage: null })
       return original.onLoad.call(this, options)
     },
     onShow() {
@@ -43,7 +43,7 @@ function enhance(definition) {
         if (this._viewSession) this._viewSession.close()
         if (this._unsubscribeDraft) this._unsubscribeDraft()
         this._viewSession = null; this._businessData = null; this._draftSession = null
-        this.setData(Object.assign({}, JSON.parse(JSON.stringify(original.data)), { pagedProtocol: true }))
+        this.setData(JSON.parse(JSON.stringify(original.data)))
         return
       }
       const returning = this._viewActive === false
@@ -74,12 +74,8 @@ function enhance(definition) {
       this._issueEvidenceRecords = []; this._accountRecordList = []; this._finalDetail = null
     },
     async request(action, data) {
-      if (action === 'financeUpdates.get') return api.readSummary(data.updateId)
+      if (action === 'financeUpdates.summary') return api.readSummary(data.updateId)
       if (commandActions.has(action)) {
-        if (action === 'financeUpdates.prepare') {
-          const capability = await api.callImport('imports.capabilities', {})
-          if (capability.workbenchVersion !== 1) throw Object.assign(new Error('导入服务需更新'), { code: 'UNSUPPORTED_ACTION' })
-        }
         const input = Object.assign({}, data)
         if (action === 'reviewIssues.resolveAccountMappings') {
           input.updateVersion = this.data.update.version
@@ -112,7 +108,7 @@ function enhance(definition) {
       const workbench = view.workbench
       const open = view.coverage.openBlockingIssues
       const workflow = view.update.status !== 'review' ? 4 : workbench.accountStepSummary.pending ? 2 : workbench.reviewStatusTabs[0].count ? 3 : 4
-      const step = restoreToFirstStep ? 1 : background || same && [2, 3].includes(this.data.currentStep) ? this.data.currentStep : workflow
+      const step = view.update.status !== 'review' ? 4 : restoreToFirstStep ? 1 : background || same && [2, 3].includes(this.data.currentStep) ? this.data.currentStep : workflow
       const patch = Object.assign({}, workbench, { update: view.update, sources: view.sources.map(source => ({ sourceId: source.sourceId,
         fileName: source.fileName, sourceType: source.sourceType, summary: source.summary })), coverage: view.coverage, posting: view.posting,
         phase: { posted: 'done', undone: 'undone', abandoned: 'abandoned' }[view.update.status] || 'review',
@@ -135,8 +131,6 @@ function enhance(definition) {
       }
       if (changed || this._loadedStep !== step) this.loadActivePage(true)
     },
-    businessData() { return this._businessData || { events: [], issues: [], accountIssues: [], accounts: this.data.accounts || [],
-      categories: this.data.categories || [], accountDrafts: this.data.accountDrafts || [], accountMappingDrafts: [] } },
     stepPatch(step) {
       const patch = presentation.emptyLists()
       if (step === 4 && this._viewSession) Object.assign(patch, { finalSummary: this._viewSession.summary.workbench.finalSummary,
@@ -212,12 +206,6 @@ function enhance(definition) {
         return [kind, response.items.concat(extra)]
       }))
       return Object.fromEntries(pairs)
-    },
-    mappingState() { const data = this.businessData(); return original.buildAccountMappingState.call(this, data.accountIssues, data.accounts, data.accountDrafts, []) },
-    refreshAccountMappings() {
-      const state = this.mappingState()
-      setChangedData(this, { accountMappings: state.mappings.map(compactMapping) })
-      return state
     },
     async readIssue(issueId) {
       const session = this._viewSession
@@ -384,11 +372,6 @@ function enhance(definition) {
         if (pager !== this._relationPager || !this.data.currentIssue) return
         this.setData({ issueRelations: response.items.filter(member => member.relation).map(member => model.relationChoiceView(editorPreview(member.relation.targetEvent), member.relation)), relationPage: response.page })
       } catch (error) { if (pager === this._relationPager) this.setData({ errorMessage: errorText(error) }) }
-    },
-    async loadRecordEvidence(records, isCurrent, onRecord) {
-      if (!isCurrent()) return
-      records.forEach(record => { record.evidenceLoading = false; record.evidence = []; record.evidenceError = '' })
-      onRecord()
     },
     async openAccountRecords(event) {
       const issueId = event.currentTarget.dataset.id

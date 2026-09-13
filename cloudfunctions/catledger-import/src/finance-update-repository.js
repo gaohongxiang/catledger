@@ -572,49 +572,6 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
     ? { ...publicEvent(row), fieldSources: parseJson(row.fieldSources, {}) } : publicEvent(row))
 }
 
-async function selectEventEvidence(connection, uid, eventId) {
-  const [events] = await connection.execute(
-    `SELECT event_id AS eventId, update_id AS updateId
-       FROM catledger_economic_events
-      WHERE uid = ? AND event_id = ? LIMIT 1`,
-    [uid, eventId]
-  )
-  if (!events[0]) throw importError('NOT_FOUND')
-  const [rows] = await connection.execute(
-    `SELECT evidence.evidence_id AS evidenceId, evidence.evidence_role AS evidenceRole,
-            import_row.row_id AS rowId, import_row.source_row_number AS rowNumber,
-            import_row.source_locator AS sourceLocator, import_row.raw_fields_json AS rawFields,
-            import_row.raw_snapshot_version AS rawSnapshotVersion, import_row.parser_version AS parserVersion,
-            source.source_type_snapshot AS sourceType,
-            source.file_name_snapshot AS fileName
-       FROM catledger_event_evidence evidence
-       JOIN catledger_import_rows import_row
-         ON import_row.uid = evidence.uid AND import_row.row_id = evidence.row_id
-       JOIN catledger_finance_update_sources source
-         ON source.uid = evidence.uid AND source.update_id = evidence.update_id
-        AND source.batch_id = import_row.batch_id
-      WHERE evidence.uid = ? AND evidence.update_id = ? AND evidence.event_id = ?
-      ORDER BY FIELD(evidence.evidence_role, 'primary', 'supporting', 'duplicate', 'discarded'),
-               import_row.source_row_number, evidence.evidence_id`,
-    [uid, events[0].updateId, eventId]
-  )
-  return {
-    eventId,
-    updateId: events[0].updateId,
-    evidence: rows.map((row) => ({
-      evidenceId: row.evidenceId,
-      evidenceRole: row.evidenceRole,
-      rowId: row.rowId,
-      rowNumber: Number(row.rowNumber),
-      sourceLocator: row.sourceLocator,
-      sourceType: row.sourceType,
-      fileName: row.fileName,
-      rawSnapshotVersion: row.rawSnapshotVersion,
-      parserVersion: row.parserVersion,
-      rawFields: parseJson(row.rawFields, {})
-    }))
-  }
-}
 
 function safeIssueSummary(value) {
   return String(value || '')
@@ -784,36 +741,6 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
   return rows.map(publicIssue)
 }
 
-async function listOptions(connection, uid, updateId) {
-  const [accounts] = await connection.execute(
-    `SELECT account_id AS accountId, name, type, nature, currency, version
-       FROM catledger_accounts WHERE uid = ? AND archived_at IS NULL ORDER BY created_at, account_id`,
-    [uid]
-  )
-  const [categories] = await connection.execute(
-    `SELECT category_id AS categoryId, kind, name, system_key AS systemKey, version, sort_order AS sortOrder
-       FROM catledger_categories WHERE uid = ? AND archived_at IS NULL ORDER BY kind, sort_order, category_id`,
-    [uid]
-  )
-  const [accountDrafts] = await connection.execute(
-    `SELECT draft_account_id AS accountId, name, type, nature, currency
-       FROM catledger_finance_update_account_drafts
-      WHERE uid = ? AND update_id = ? AND materialized_at IS NULL
-      ORDER BY created_at, draft_account_id`,
-    [uid, updateId]
-  )
-  const [accountMappingDrafts] = await connection.execute(
-    `SELECT event_id AS eventId, source_type AS sourceType,
-            payment_method_key AS paymentMethodKey, payment_method_hint AS paymentMethodHint,
-            mapping_action AS mappingAction, account_id AS accountId
-       FROM catledger_finance_update_account_mapping_drafts
-      WHERE uid = ? AND update_id = ?
-      ORDER BY created_at, draft_mapping_id`,
-    [uid, updateId]
-  )
-  return { accounts, accountDrafts, accountMappingDrafts, categories }
-}
-
 async function selectActiveAccounts(connection, uid) {
   const [accounts] = await connection.execute(
     `SELECT account_id AS accountId, name, type, nature, currency
@@ -837,62 +764,20 @@ async function selectCoverageEvidence(connection, uid, updateId) {
   }
 }
 
-async function getUpdateView(connection, uid, updateId, { includeEvents = true, includeOptions = true } = {}) {
-  const update = publicUpdate(await selectUpdate(connection, uid, updateId))
-  const sources = await selectSources(connection, uid, updateId)
-  if (update.status === 'abandoned') return { update, sources, issues: [], events: [], coverage: null, posting: null }
-  const issues = await selectIssues(connection, uid, updateId)
-  const coverageEvents = includeEvents ? await selectEvents(connection, uid, updateId, { includeFieldSources: true }) : []
-  const events = coverageEvents.map(({ fieldSources, ...event }) => event)
-  const coverageEvidence = includeEvents ? await selectCoverageEvidence(connection, uid, updateId) : null
-  const result = {
-    update,
-    sources,
-    issues,
-    events,
-    coverage: includeEvents ? buildCoverageReport({ sources, events: coverageEvents, issues, ...coverageEvidence }) : null
-  }
-  if (result.coverage && update.planVersion !== PLAN_VERSION) result.coverage.selectedEventsReadyToPost = false
-  if (includeOptions) Object.assign(result, await listOptions(connection, uid, updateId))
-  const [postings] = await connection.execute(
-    `SELECT created_transaction_count AS createdTransactionCount,
-            reused_transaction_count AS reusedTransactionCount
-       FROM catledger_finance_update_postings
-      WHERE uid = ? AND update_id = ? AND state = 'completed'
-      ORDER BY completed_at DESC LIMIT 1`,
-    [uid, updateId]
-  )
-  result.posting = postings[0] ? {
-    createdTransactionCount: Number(postings[0].createdTransactionCount),
-    reusedTransactionCount: Number(postings[0].reusedTransactionCount)
-  } : null
-  result.freshness = {
-    viewRevision: digestParts('finance-view-v1', uid, updateId, update.version, update.planVersion, PLAN_VERSION,
-      accountGroups.VERSION, includeEvents, includeOptions,
-      JSON.stringify([result.accounts || [], result.categories || [], result.accountDrafts || [], result.accountMappingDrafts || []])),
-    accountGroupsVersion: accountGroups.VERSION,
-    requiresAccountGroupRefresh: update.status !== 'review' ? false : includeEvents
-      ? accountGroups.needsExpansion(coverageEvents, coverageEvidence.rows, coverageEvidence.evidence) : null
-  }
-  return result
-}
-
 module.exports = {
   createUpdate,
   deleteDraftPlan,
-  getUpdateView,
   insertAction,
   insertMany,
-  listOptions,
   parseJson,
   persistPlan,
+  publicEvent,
   publicIssue,
   publicUpdate,
   selectActiveAccounts,
   selectCoverageEvidence,
   selectDraftPaymentMappings,
   selectEvents,
-  selectEventEvidence,
   selectIssues,
   selectPaymentMappings,
   selectPlanningRows,

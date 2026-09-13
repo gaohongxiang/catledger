@@ -12,7 +12,7 @@ const { ledgerAccountReferenceForRow, projectSourceFunds } = require('./source-f
 const { paymentEvidenceFields } = require('./payment-resolution')
 const { referencesForRows } = require('./payment-account-groups')
 const { FIELD_MASK, selectDomainEvents, saveEvent, createFollowUpIssue, recalculateUpdateCounts } = require('./review-issue-service')
-const { insertAction, getUpdateView, persistPlan, selectPaymentMappings, selectActiveAccounts } = require('./finance-update-repository')
+const { insertAction, persistPlan, selectPaymentMappings, selectActiveAccounts } = require('./finance-update-repository')
 const { PLAN_VERSION } = require('./domain-versions')
 
 const SOURCE_REASONS = new Set([...SEMANTIC_HARD_BLOCKERS, 'economic_nature_required',

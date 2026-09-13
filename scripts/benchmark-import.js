@@ -133,17 +133,17 @@ async function databaseMetrics(rowsPerFile, options = {}) {
         importId: file.importId, fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 })))
       batches.push(result.batch.batchId)
     }
-    let view = await measure('prepareUpdate', () => service.financeUpdatePrepare(context({ requestId: randomUUID(), resultMode: 'receipt', batchIds: batches })))
+    let view = await measure('prepareUpdate', () => service.financeUpdatePrepare(context({ requestId: randomUUID(), batchIds: batches })))
     const updateId = view.update.updateId
-    view = await measure('organize', () => service.financeUpdateOrganize(context({ requestId: randomUUID(), resultMode: 'receipt', updateId, version: view.update.version })))
+    view = await measure('organize', () => service.financeUpdateOrganize(context({ requestId: randomUUID(), updateId, version: view.update.version })))
     view = await measure('getCold', () => service.financeUpdateSummary(context({ updateId })))
     await measure('getWarm', () => service.financeUpdateSummary(context({ updateId })))
-    if (view.freshness.requiresAccountGroupRefresh) view = await measure('refreshGroups', () => service.reviewIssueRefreshAccountGroups(context({ requestId: randomUUID(), resultMode: 'receipt', updateId, version: view.update.version })))
+    if (view.freshness.requiresAccountGroupRefresh) view = await measure('refreshGroups', () => service.reviewIssueRefreshAccountGroups(context({ requestId: randomUUID(), updateId, version: view.update.version })))
     const issuePage = await service.reviewIssueList(context({ protocolVersion: 2, updateId, issueType: 'account_mapping', status: 'open', pageSize: 100 }))
     if (issuePage.nextCursor) throw new Error('ordinary benchmark account groups exceed one page')
     const decisions = issuePage.items.filter(issue => issue.issueType === 'account_mapping' && issue.status === 'open')
       .map(issue => ({ issueId: issue.issueId, issueVersion: issue.version, operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountId: user.accountId } }))
-    if (decisions.length) view = await measure('resolveAccounts', () => service.reviewIssueResolveAccountMappings(context({ requestId: randomUUID(), resultMode: 'receipt', updateId, updateVersion: view.update.version, decisions })))
+    if (decisions.length) view = await measure('resolveAccounts', () => service.reviewIssueResolveAccountMappings(context({ requestId: randomUUID(), updateId, updateVersion: view.update.version, decisions })))
     await measure('firstEventPage', () => service.economicEventList(context({ updateId })))
     if (process.argv.includes('--inspect-plan')) {
       const { inspectSelect } = require('./performance-query-plans')
@@ -154,7 +154,7 @@ async function databaseMetrics(rowsPerFile, options = {}) {
         process.stdout.write(JSON.stringify({ kind: 'plan', rows: rowsPerFile * 5, query, plans: await inspectSelect(pool, operation) }) + '\n')
       }
     }
-    const posted = await measure('post', () => service.financeUpdatePost(context({ requestId: randomUUID(), resultMode: 'receipt', updateId, version: view.update.version })))
+    const posted = await measure('post', () => service.financeUpdatePost(context({ requestId: randomUUID(), updateId, version: view.update.version })))
     if (posted.posting.createdTransactionCount !== rowsPerFile * 5) throw new Error('合成账单入账数量不一致')
     // 不计入动作耗时：核对正式账本、链接和证据总量，避免只凭回执计数验收。
     const [[ledger]] = await pool.execute('SELECT COUNT(*) AS count, SUM(amount_minor) AS amount FROM catledger_transactions WHERE uid = ? AND deleted_at IS NULL', [user.uid])

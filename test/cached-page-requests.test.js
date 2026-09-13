@@ -91,68 +91,35 @@ async function visit(h, name) {
 const unsupportedCatalog = action => action === 'catalog.get'
   ? { ok: false, error: { code: 'UNSUPPORTED_ACTION', message: '当前操作尚未开放' } } : undefined
 
-test('旧服务不支持目录时自动读取账户分类，草稿保留且我的复用完整结果', async () => {
+test('目录版本不匹配只请求当前服务，保留输入并可重试恢复', async () => {
   const h = runtime(), page = h.page('transaction-editor')
   h.respond = unsupportedCatalog
   const pending = page.prepareForm()
   page.bindAmount({ detail: { value: '26.80' } })
-  page.bindNote({ detail: { value: '合成兼容草稿' } })
+  page.bindNote({ detail: { value: '合成草稿' } })
   await pending
-  assert.equal(page.data.catalogReady, true)
-  assert.equal(page.data.hasAccounts, true)
-  assert.equal(page.data.catalogError, '')
+  assert.equal(page.data.catalogReady, false)
   assert.equal(page.data.amountYuan, '26.80')
-  assert.equal(page.data.note, '合成兼容草稿')
-  assert.equal(page.data.accounts[page.data.sourceIndex].accountId, 'account-a')
-  assert.equal(page.data.categories[page.data.categoryIndex].id, 'category-a')
-  assert.deepEqual(h.calls.map(call => call.action).sort(), ['accounts.list', 'bootstrap', 'catalog.get', 'categories.list'])
-  const catalog = h.api.peek('catalog.get')
-  assert.equal(Object.hasOwn(catalog.accounts[0], 'displayBalanceMinor'), false)
-  assert.equal(Object.hasOwn(catalog.accounts[0], 'bookBalanceMinor'), false)
-  const profile = await visit(h, 'profile')
-  assert.equal(profile.data.uid, h.uid)
-  assert.equal(profile.data.accountCount, 1)
-  assert.equal(h.calls.length, 4)
+  assert.equal(page.data.note, '合成草稿')
+  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+  assert.equal(h.api.peek('catalog.get'), null)
+  await page.save()
+  assert.equal(h.calls.some(call => call.action === 'transactions.create'), false)
+  h.respond = null
+  await page.retryCatalog()
+  assert.equal(page.data.catalogReady, true)
+  assert.equal(page.data.amountYuan, '26.80')
 })
 
-test('旧服务目录到期或结构变更后读取最新选项，已确认身份复用会话缓存', async () => {
-  const h = runtime()
-  h.respond = unsupportedCatalog
-  await h.api.bootstrapAfterConsent()
-  await h.api.callApi('catalog.get')
-  h.calls.length = 0
-  h.now(5 * 60 * 1000 + 1)
-  h.accounts = [{ accountId: 'account-b', name: '更新后的合成账户' }]
-  const next = await h.api.callApi('catalog.get')
-  assert.equal(next.accounts[0].accountId, 'account-b')
-  assert.deepEqual(h.calls.map(call => call.action).sort(), ['accounts.list', 'catalog.get', 'categories.list'])
-  await h.api.callApi('categories.update', { categoryId: 'category-a' })
-  h.categories[0].name = '更新后的合成分类'
-  const updated = await h.api.callApi('catalog.get')
-  assert.equal(updated.categories[0].name, '更新后的合成分类')
-  assert.equal(updated.catalogPath, 'legacy')
-  assert.equal(h.calls.filter(call => call.action === 'catalog.get').length, 1)
-  h.respond = undefined
-  const fresh = await h.api.callApi('catalog.get', {}, { force: true })
-  assert.equal(fresh.catalogPath, 'current')
-  assert.equal(h.calls.filter(call => call.action === 'catalog.get').length, 2)
-})
-
-test('旧统计忽略趋势终点时补读指定月份，保持所选月汇总并拒绝错误终点', async () => {
+test('统计独立趋势终点不符明确失败且不补读其他月份', async () => {
   const h = runtime()
   h.respond = (action, data) => action === 'statistics.get' ? { ok: true, data: { month: data.month,
-    summary: { incomeMinor: data.month === '2026-01' ? '1234' : '9999', expenseMinor: '0', netIncomeMinor: '1234' },
     cashFlowTrend: [{ month: data.month, incomeMinor: '1234', expenseMinor: '0' }] } } : undefined
-  const value = await h.api.callApi('statistics.get', { month: '2026-01', trendEndMonth: '2026-09' })
-  assert.equal(value.summary.incomeMinor, '1234')
-  assert.equal(value.cashFlowTrend[0].month, '2026-09')
-  assert.equal(value.trendPath, 'legacy')
-  assert.deepEqual(h.calls.map(call => call.data.month), ['2026-01', '2026-09'])
-  h.respond = action => action === 'statistics.get' ? { ok: true, data: { cashFlowTrend: [{ month: '2025-01' }] } } : undefined
-  await assert.rejects(h.api.callApi('statistics.get', { month: '2026-01', trendEndMonth: '2026-09' }, { force: true }), { code: 'INVALID_RESPONSE' })
+  await assert.rejects(h.api.callApi('statistics.get', { month: '2026-01', trendEndMonth: '2026-09' }), { code: 'INVALID_RESPONSE' })
+  assert.deepEqual(h.calls.map(call => call.data.month), ['2026-01'])
 })
 
-test('目录的权限错误和非法参数不触发旧版兼容，也不产生空目录缓存', async () => {
+test('目录权限/参数错误及缺字段响应不缓存，不启动其他读取', async () => {
   for (const code of ['AUTH_REQUIRED', 'INVALID_REQUEST']) {
     const h = runtime()
     h.respond = () => ({ ok: false, error: { code, message: '合成拒绝' } })
@@ -160,43 +127,15 @@ test('目录的权限错误和非法参数不触发旧版兼容，也不产生�
     assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
     assert.equal(h.api.peek('catalog.get'), null)
   }
-  const h = runtime()
-  h.respond = unsupportedCatalog
-  await assert.rejects(h.api.callApi('catalog.get', { unexpected: true }), error => error.code === 'UNSUPPORTED_ACTION')
-  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
-})
-
-test('旧版目录部分读取失败保留草稿且禁止保存，重试完成后才启用', async () => {
-  const h = runtime(), page = h.page('transaction-editor')
-  h.respond = action => action === 'categories.list'
-    ? { ok: false, error: { code: 'NOT_FOUND', message: '合成内部错误说明' } } : unsupportedCatalog(action)
-  const pending = page.prepareForm()
-  page.bindAmount({ detail: { value: '7.80' } })
-  await pending
-  assert.equal(page.data.catalogReady, false)
-  assert.equal(page.data.catalogError, '暂时无法加载账户和分类')
-  assert.equal(page.data.amountYuan, '7.80')
-  assert.equal(h.api.peek('catalog.get'), null)
-  await page.save()
-  assert.equal(h.calls.some(call => call.action === 'transactions.create'), false)
-  h.respond = unsupportedCatalog
-  await page.retryCatalog()
-  assert.equal(page.data.catalogReady, true)
-  assert.equal(page.data.catalogError, '')
-  assert.equal(page.data.amountYuan, '7.80')
-})
-
-test('旧版目录响应缺字段不能当成空账户或已就绪', async () => {
-  for (const missing of ['accounts.list', 'categories.list', 'bootstrap']) {
+  for (const field of ['uid', 'accounts', 'categories']) {
     const h = runtime()
-    h.respond = action => action === missing ? { ok: true, data: {} } : unsupportedCatalog(action)
-    await assert.rejects(h.api.callApi('catalog.get'), error => error.code === 'INVALID_RESPONSE')
+    h.respond = action => {
+      if (action !== 'catalog.get') return undefined
+      const data = { uid: h.uid, accounts: h.accounts, categories: h.categories }; delete data[field]
+      return { ok: true, data }
+    }
+    await assert.rejects(h.api.callApi('catalog.get'), { code: 'INVALID_RESPONSE' })
     assert.equal(h.api.peek('catalog.get'), null)
-    h.respond = unsupportedCatalog
-    const recovered = await h.api.callApi('catalog.get', {}, { force: true })
-    assert.equal(recovered.uid, h.uid)
-    assert.equal(recovered.accounts.length, 1)
-    assert.equal(recovered.categories.length, 1)
   }
 })
 
@@ -216,20 +155,17 @@ test('已有目录刷新失败后，点击重试仍读取服务端，不以旧�
   assert.equal(page.data.catalogReady, true)
 })
 
-test('切换会话后旧目录失败不启动兼容请求，已发出的兼容结果也不回填', async () => {
-  for (const waitingAction of ['catalog.get', 'categories.list']) {
-    const h = runtime()
-    let release
-    h.respond = action => action === waitingAction ? new Promise(resolve => { release = resolve }) : unsupportedCatalog(action)
-    const pending = h.api.callApi('catalog.get')
-    await flush(); await flush()
-    assert.equal(typeof release, 'function')
-    h.cache.reset()
-    release(waitingAction === 'catalog.get' ? unsupportedCatalog('catalog.get') : { ok: true, data: { categories: h.categories } })
-    await assert.rejects(pending, error => error.code === 'SESSION_CHANGED')
-    assert.equal(h.api.peek('catalog.get'), null)
-    if (waitingAction === 'catalog.get') assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
-  }
+test('切换会话后迟到目录结果不回填', async () => {
+  const h = runtime()
+  let release
+  h.respond = () => new Promise(resolve => { release = resolve })
+  const pending = h.api.callApi('catalog.get')
+  await flush()
+  h.cache.reset()
+  release({ ok: true, data: { uid: h.uid, accounts: h.accounts, categories: h.categories } })
+  await assert.rejects(pending, { code: 'SESSION_CHANGED' })
+  assert.equal(h.api.peek('catalog.get'), null)
+  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
 })
 
 test('首页、明细、账本、我的首次一轮仅3次请求，后续切页0请求且无加载闪烁', async () => {
@@ -266,7 +202,7 @@ test('正式交易和导入入账均刷新相关缓存，普通草稿读取不�
   assert.equal(h.api.isFresh('bootstrap'), true)
   await visit(h, 'index')
   assert.equal(h.page('index').data.netWorthText, '¥101.00')
-  await h.importApi.callImport('financeUpdates.get', { updateId: 'synthetic' })
+  await h.importApi.callImport('financeUpdates.summary', { updateId: 'synthetic' })
   assert.equal(h.api.isFresh('dashboard.get', { month: h.page('index').data.month }), true)
   await h.importApi.callImport('financeUpdates.post', { updateId: 'synthetic' })
   assert.equal(h.api.isFresh('dashboard.get', { month: h.page('index').data.month }), false)
@@ -320,7 +256,7 @@ test('新登录会话在等待服务器期间清除旧页面数据，旧请求�
   const old = page.loadProfile({ force: true })
   await flush()
   h.cache.reset()
-  h.uid = '00000000-0000-4000-8000-000000000002'
+  h.uid = '2000000002'
   const fresh = page.loadProfile()
   assert.equal(page.data.uid, '')
   await flush()
@@ -446,7 +382,7 @@ test('个人页完整显示并复制同一10位 uid，复制失败可重试，�
   assert.equal(page.data.displayUid, '')
 })
 
-test('退出后未完成的目录请求不得回填 ID；旧后端缺字段时隐藏 ID', async () => {
+test('退出后未完成的目录请求不得回填 ID；缺字段响应不回填 ID', async () => {
   const h = runtime(), page = h.page('profile')
   let resolve
   h.intercept = action => action === 'catalog.get' ? new Promise(done => { resolve = done }) : undefined
@@ -463,7 +399,7 @@ test('退出后未完成的目录请求不得回填 ID；旧后端缺字段时�
   assert.equal(page.data.uid, '')
   page.copyId()
   assert.deepEqual(h.clipboard, [])
-  h.uid = '00000000-0000-4000-8000-000000000002'
+  h.uid = '2000000002'
   await page.retryProfile()
   assert.equal(page.data.uid, h.uid, '缺字段重试必须跳过旧缓存读取真实 ID')
 })
@@ -810,4 +746,28 @@ test('账户保存冲突回读最新版本并保留名称输入，卸载后不�
   await flush(); page.onUnload(); release(); await pending
   assert.equal(page.data.formOpen, true)
   assert.equal(h.toasts.length, 0)
+})
+
+test('已入账维护用当前摘要与分页定位远端记录，下一页替换而不积累全集', async () => {
+  const h = runtime(), page = h.page('import-maintenance')
+  const events = Array.from({ length: 121 }, (_, n) => ({ eventId: 'event-' + n, version: 1, status: 'posted',
+    localAt: '2026-09-01', economicNature: 'expense', amountMinor: '100', ledgerAccountId: 'account-a' }))
+  h.respond = (action, data) => {
+    if (action === 'financeUpdates.summary') return { ok: true, data: { protocolVersion: 2, viewVersion: 'v1', update: { updateId: 'update', status: 'posted' } } }
+    if (action === 'economicEvents.list') {
+      const offset = Number(data.cursor || 0)
+      return { ok: true, data: { protocolVersion: 2, viewVersion: 'v1', total: data.eventId ? 1 : 121,
+        items: data.eventId ? events.filter(e => e.eventId === data.eventId) : events.slice(offset, offset + 40), nextCursor: data.eventId || offset + 40 >= 121 ? null : String(offset + 40) } }
+    }
+  }
+  page._updateId = 'update'; page._eventId = 'event-100'
+  await page.load()
+  assert.equal(page.data.events.length, 41)
+  assert.equal(page.data.events[page.data.eventIndex].eventId, 'event-100')
+  assert.equal(page.data.eventCount, 121)
+  await page.showMorePostedRecords(); await page.showMorePostedRecords(); await page.showMorePostedRecords()
+  assert.equal(page.data.events.length, 40)
+  assert.equal(page.data.events[0].eventId, 'event-40')
+  assert.equal(page.data.eventCount, 121)
+  assert.ok(h.calls.every(c => ['catalog.get', 'financeUpdates.summary', 'economicEvents.list'].includes(c.action)))
 })

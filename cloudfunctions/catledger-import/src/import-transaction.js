@@ -28,9 +28,8 @@ async function resolveUid(connection, provider, subjectHash) {
   return rows[0].uid
 }
 
-async function replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest, readIssue }) {
+async function replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest }) {
   const connection = await getPool().getConnection()
-  let appliedResult = null
   try {
     await connection.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY')
     const uid = await resolveUid(connection, provider, subjectHash)
@@ -45,25 +44,20 @@ async function replayMutation({ getPool, provider, subjectHash, keyDigest, actio
     if (!receipt || receipt.action !== action || receipt.requestDigest !== requestDigest || receipt.result == null) {
       throw importError('IDEMPOTENCY_CONFLICT')
     }
-    const stored = typeof receipt.result === 'string' ? JSON.parse(receipt.result) : receipt.result
-    appliedResult = stored.appliedResult || null
-    const result = await readReceipt(connection, uid, receipt.result, readIssue)
-    assertBudget(result, result && result.protocolVersion === 2 ? 'receipt' : 'legacy')
+    const result = assertBudget(readReceipt(receipt.result), 'receipt')
     await connection.commit()
     return result
   } catch (error) {
     await safeRollback(connection)
-    if (appliedResult) return { ...appliedResult, refreshRequired: true, refreshError: 'REFRESH_REQUIRED' }
     throw error
   } finally {
     connection.release()
   }
 }
 
-async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation, currentReads = false, readIssue }) {
-  if (data && data.resultMode != null && data.resultMode !== 'receipt') throw importError('VALIDATION_ERROR')
-  if (data && data.resultMode === 'receipt' && !RECEIPT_ACTIONS.has(action)) throw importError('VALIDATION_ERROR')
-  if (data && data.resultMode === 'receipt') assertBudget(data, 'request')
+async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation, currentReads = false }) {
+  if (data && Object.hasOwn(data, 'resultMode')) throw importError('VALIDATION_ERROR')
+  assertBudget(data, 'request')
   const keyDigest = digestIdempotencyKey(data && data.requestId)
   const requestData = { ...data }
   delete requestData.requestId
@@ -98,15 +92,13 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
           await connection.rollback()
           transactionStarted = false
           releaseMutationConnection()
-          return replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest, readIssue })
+          return replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest })
         }
         throw error
       }
 
       const rawResult = await operation(connection, uid, requestData, requestDigest, keyDigest)
-      const deferredView = rawResult && rawResult.__legacyView
-      const result = data.resultMode === 'receipt' ? operationReceipt(rawResult, action, keyDigest)
-        : deferredView ? { ...rawResult, appliedResult: operationReceipt(rawResult, action, keyDigest) } : assertBudget(rawResult, 'legacy')
+      const result = RECEIPT_ACTIONS.has(action) ? operationReceipt(rawResult, action, keyDigest) : assertBudget(rawResult, 'receipt')
       await connection.execute(
         `UPDATE catledger_mutation_receipts
             SET result_json = ?
@@ -116,7 +108,6 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
       await connection.commit()
       transactionStarted = false
       releaseMutationConnection()
-      if (deferredView) return replayMutation({ getPool, provider, subjectHash, keyDigest, action, requestDigest, readIssue })
       return result
     } catch (error) {
       if (transactionStarted) await safeRollback(connection)
@@ -144,7 +135,6 @@ async function executeUserRead({ getPool, provider, subjectHash, operation, cons
       }
       const uid = await resolveUid(connection, provider, subjectHash)
       const result = await operation(connection, uid)
-      if (result && result.update && result.protocolVersion !== 2) assertBudget(result, 'legacy')
       if (consistentSnapshot) await connection.commit()
       return result
     } catch (error) {
@@ -161,8 +151,20 @@ async function executeUserRead({ getPool, provider, subjectHash, operation, cons
   throw new Error('Import read attempts exhausted')
 }
 
-module.exports = {
-  executeIdempotentMutation,
-  executeUserRead,
-  resolveUid
+async function readCommandResult(context) {
+  const { requestId, commandAction } = context.data
+  if (!RECEIPT_ACTIONS.has(commandAction)) throw importError('VALIDATION_ERROR')
+  const keyDigest = digestIdempotencyKey(requestId)
+  return executeUserRead({ ...context, consistentSnapshot: true, operation: async (connection, uid) => {
+    const [[row]] = await connection.execute(`SELECT action, result_json AS result FROM catledger_mutation_receipts
+      WHERE uid = ? AND idempotency_key_digest = ?`, [uid, keyDigest])
+    if (!row || row.action !== commandAction || row.result == null) throw importError('OPERATION_UNCONFIRMED')
+    const value = readReceipt(row.result)
+    if (value.protocolVersion !== 2 || value.kind !== 'operation-receipt' || value.action !== commandAction || value.receiptId !== keyDigest) {
+      throw importError('RECEIPT_RECONCILIATION_REQUIRED')
+    }
+    return assertBudget(value, 'receipt')
+  } })
 }
+
+module.exports = { executeIdempotentMutation, executeUserRead, resolveUid, readCommandResult }

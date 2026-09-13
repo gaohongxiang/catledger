@@ -97,3 +97,7 @@ PERF-4 本地验证：644/644（根309/API97/import238），无失败/跳过；�
 V2传输字段、签名游标和2048字符分段保持不变。原生单段完整JSON是源列数组时，以列名/值显示；重复列有独立显示键，空值保持原文，跨段不解析或累计。原文与来源在同一滚动区，分页按钮在窄屏保持单行。实现 presentation.evidencePartFields/paged.changeEvidencePart，回归 import-paged-workbench.test。
 
 入账原有FOR UPDATE权限契约补齐 import_rows 的最小 UPDATE(row_id)，不开放原文字段UPDATE；独立API/import角色实际执行121条跨块故障、并发、重放、撤销、余额/退款/统计和隔离反例。云端现有权限已只读核对满足。647项全量回归、三规模各三次、原生十页与实际合成入账结果见 [PERF5-ACCEPTANCE.md](PERF5-ACCEPTANCE.md)；真实云新版尚未部署，真机样本未完成。
+
+## MINI-1906S 当前协议覆盖
+
+下一轮实施计划撤销本文旧客户端兼容要求：当前写动作固定返回操作回执，公开接口不再提供 `financeUpdates.get`、`imports.capabilities` 或 `resultMode`。既有分页、字节、锁、SQL 与缓存预算仍有效。原请求核实仅使用 `imports.commandResult`，不会重放缺失历史事实的请求；一次性开发整理入口为 `scripts/reconcile-import-receipts.js`，只验证本机隔离数据。详细当前契约以 `shared/catledger-import.json` 与实施规划 19.1 为准。

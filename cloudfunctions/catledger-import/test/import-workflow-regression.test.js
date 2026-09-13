@@ -3,7 +3,6 @@ const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 
-const repository = require('../src/finance-update-repository')
 const reviewIssues = require('../src/review-issue-service')
 const organizerPlanner = require('../src/organizer-planner')
 
@@ -77,34 +76,11 @@ test('账户批量确认只重算直接受影响或引用同一支付方式的�
   assert.equal(reviewIssues.isEventInProjectionRefreshScope(unrelated, scope), false)
 })
 
-test('原始证据查询不使用 MySQL 8 保留字 row 作为表别名', async function () {
-  const connection = {
-    execute: async function (sql) {
-      if (/catledger_import_rows\s+row\b/i.test(sql)) {
-        const error = new Error('You have an error in your SQL syntax near row')
-        error.code = 'ER_PARSE_ERROR'
-        throw error
-      }
-      if (/FROM catledger_economic_events/.test(sql)) {
-        return [[{ eventId: 'event-1', updateId: 'update-1' }]]
-      }
-      return [[{
-        evidenceId: 'evidence-1', evidenceRole: 'primary', rowId: 'row-1', rowNumber: 7,
-        sourceLocator: 'csv:7', rawFields: '{"交易类型":"提现"}', rawSnapshotVersion: 'raw-v1',
-        parserVersion: 'alipay-v1', sourceType: 'alipay', fileName: '支付宝.csv'
-      }]]
-    }
-  }
-
-  const result = await repository.selectEventEvidence(connection, 'user-1', 'event-1')
-  assert.equal(result.evidence[0].rawFields.交易类型, '提现')
-})
-
 test('账户页只向服务端提交一个批量动作，解析页已有更新时直接恢复', function () {
   const source = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.js'), 'utf8')
   const contract = require(path.join(projectRoot, 'shared/catledger-import.json'))
   assert.ok(contract.actions['reviewIssues.resolveAccountMappings'])
-  assert.match(source, /request\('reviewIssues\.resolveAccountMappings'/)
+  assert.match(fs.readFileSync(path.join(projectRoot, 'miniprogram/services/import-draft-session.js'), 'utf8'), /reviewIssues\.resolveAccountMappings/)
   assert.match(source, /if \(this\.data\.update && this\.data\.update\.updateId\)[\s\S]*loadUpdate\(this\.data\.update\.updateId\)/)
 })
 

@@ -13,7 +13,6 @@ const { REVIEW_ISSUE_VERSION } = require('./domain-versions')
 const { importError } = require('./errors')
 const { stageAccountDraft, stageRepaymentAllocationDrafts } = require('./account-draft')
 const {
-  getUpdateView,
   insertAction,
   parseJson,
   publicIssue,
@@ -750,90 +749,6 @@ async function recalculateUpdateCounts(connection, uid, updateId, nextVersion, a
   if (result.affectedRows !== 1) throw importError('CONFLICT')
 }
 
-async function issueDetails(connection, uid, issueId) {
-  const issueRow = await selectIssue(connection, uid, issueId)
-  const issue = publicIssue(issueRow)
-  const members = await selectMembers(connection, uid, issueId)
-  const view = await getUpdateView(connection, uid, issueRow.updateId, { includeOptions: true })
-  const events = new Map(view.events.map((event) => [event.eventId, event]))
-  const memberEventIds = members.filter((member) => member.objectType === 'event').map((member) => member.objectId)
-  const effectiveEvents = await effectiveProjectedEvents(
-    connection,
-    uid,
-    issueRow.updateId,
-    await selectDomainEvents(connection, uid, issueRow.updateId, memberEventIds)
-  )
-  effectiveEvents.forEach((event) => {
-    const current = events.get(event.eventId) || {}
-    events.set(event.eventId, {
-      ...current,
-      ledgerAccountId: event.ledgerAccountId,
-      counterpartyLedgerAccountId: event.counterpartyLedgerAccountId,
-      paymentComponents: event.fieldSources.paymentComponents || [],
-      paymentResolution: event.fieldSources.paymentResolution || null,
-      paymentAccounts: event.fieldSources.paymentAccounts || null,
-      fundsProjection: event.fieldSources && event.fieldSources.fundsProjection || current.fundsProjection || null,
-      repaymentAllocations: event.fieldSources && event.fieldSources.repaymentAllocations || current.repaymentAllocations || []
-    })
-  })
-  const [relations] = await connection.execute(
-    `SELECT relation_id AS relationId, relation_type AS relationType, status, version,
-            source_event_id AS sourceEventId, target_event_id AS targetEventId,
-            amount_minor AS amountMinor, currency, reason_codes_json AS reasonCodes
-       FROM catledger_economic_event_relations
-      WHERE uid = ? AND update_id = ?`,
-    [uid, issueRow.updateId]
-  )
-  const relationMap = new Map(relations.map((relation) => [relation.relationId, {
-    ...relation,
-    version: Number(relation.version),
-    amountMinor: relation.amountMinor == null ? null : String(relation.amountMinor),
-    reasonCodes: parseJson(relation.reasonCodes, []),
-    targetEvent: events.get(relation.targetEventId) || null
-  }]))
-  const subjectMember = members.find((member) => member.objectType === 'event' && member.memberRole === 'subject') ||
-    members.find((member) => member.objectType === 'event')
-  const subjectEvent = subjectMember ? events.get(subjectMember.objectId) : null
-  if (issue.subject && subjectEvent) {
-    issue.subject = {
-      ...issue.subject,
-      ledgerAccountId: subjectEvent.ledgerAccountId,
-      counterpartyLedgerAccountId: subjectEvent.counterpartyLedgerAccountId,
-      fundsProjection: subjectEvent.fundsProjection || issue.subject.fundsProjection || null,
-      paymentComponents: subjectEvent.paymentComponents || [],
-      paymentResolution: subjectEvent.paymentResolution || null,
-      paymentAccounts: subjectEvent.paymentAccounts || null,
-      repaymentAllocations: subjectEvent.repaymentAllocations || issue.subject.repaymentAllocations || []
-    }
-    const projection = issue.subject.fundsProjection
-    const missingReference = issue.issueType === 'transfer_accounts' && projection
-      ? !issue.subject.ledgerAccountId ? projection.from
-        : !issue.subject.counterpartyLedgerAccountId ? projection.to : null
-      : null
-    if (missingReference) {
-      issue.accountContext = {
-        ...(issue.accountContext || {}),
-        label: missingReference.label,
-        recognized: Boolean(missingReference.paymentMethodKey),
-        sourceType: missingReference.sourceType || '',
-        unresolvedReason: missingReference.unresolvedReason || ''
-      }
-    }
-  }
-  return {
-    update: view.update,
-    issue,
-    members: members.map((member) => ({
-      ...member,
-      event: member.objectType === 'event' ? events.get(member.objectId) || null : null,
-      relation: member.objectType === 'relation' ? relationMap.get(member.objectId) || null : null
-    })),
-    accounts: view.accounts,
-    accountDrafts: view.accountDrafts,
-    categories: view.categories
-  }
-}
-
 function assertDecisionMatchesIssue(issue, decision) {
   if (decision === 'confirm_same' && issue.issueType !== 'same_event') throw importError('VALIDATION_ERROR')
   if (decision === 'confirm_distinct' && !['same_event', 'identity_conflict'].includes(issue.issueType)) throw importError('VALIDATION_ERROR')
@@ -1008,34 +923,11 @@ async function reviseResolvedAccountMapping(
 }
 
 function createReviewIssueService({ getPool }) {
-  async function list(context) {
-    const updateId = validateUuid(context.data.updateId)
-    const status = context.data.status == null ? null : context.data.status
-    if (status != null && !['open', 'resolved', 'superseded'].includes(status)) throw importError('VALIDATION_ERROR')
-    return executeUserRead({
-      getPool,
-      ...context,
-      operation: async (connection, uid) => ({
-        update: (await getUpdateView(connection, uid, updateId, { includeEvents: false, includeOptions: false })).update,
-        issues: await selectIssues(connection, uid, updateId, { status })
-      })
-    })
-  }
-
-  async function get(context) {
-    const issueId = validateUuid(context.data.issueId)
-    return executeUserRead({
-      getPool,
-      ...context,
-      operation: (connection, uid) => issueDetails(connection, uid, issueId)
-    })
-  }
-
   async function refreshAccountGroups(context) {
     const updateId = validateUuid(context.data.updateId)
     validateUuid(context.data.requestId)
     const version = validateVersion(context.data.version)
-    return executeIdempotentMutation({ readIssue: issueDetails, getPool, ...context, action: 'reviewIssues.refreshAccountGroups',
+    return executeIdempotentMutation({ getPool, ...context, action: 'reviewIssues.refreshAccountGroups',
       operation: async (connection, uid, data, requestDigest) => {
         const update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
         if (update.status !== 'review' || Number(update.version) !== version) throw importError('CONFLICT')
@@ -1148,7 +1040,7 @@ function createReviewIssueService({ getPool }) {
       if (!['apply_fields', 'exclude_events'].includes(decision)) throw importError('VALIDATION_ERROR')
       return {
         issueId: validateUuid(item.issueId),
-        ...(context.data.resultMode === 'receipt' ? { issueVersion: validateVersion(item.issueVersion) } : {}),
+        issueVersion: validateVersion(item.issueVersion),
         operation,
         decision,
         fields: item.fields,
@@ -1159,15 +1051,14 @@ function createReviewIssueService({ getPool }) {
       throw importError('VALIDATION_ERROR')
     }
 
-    return executeIdempotentMutation({ readIssue: issueDetails,
-      getPool,
+    return executeIdempotentMutation({       getPool,
       ...context,
       action: 'reviewIssues.resolveAccountMappings',
       operation: (connection, uid, data, requestDigest) => runAccountMappingBatch({
         decisions,
         begin: async function (items) {
           const update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
-          if (update.status !== 'review' || (context.data.resultMode === 'receipt' && Number(update.version) !== validateVersion(context.data.updateVersion))) throw importError('CONFLICT')
+          if (update.status !== 'review' || (Number(update.version) !== validateVersion(context.data.updateVersion))) throw importError('CONFLICT')
           const issues = new Map()
           const sortedIssueIds = items.map((item) => item.issueId).sort()
           for (const issueId of sortedIssueIds) {
@@ -1175,7 +1066,7 @@ function createReviewIssueService({ getPool }) {
             if (issue.updateId !== updateId || issue.issueType !== 'account_mapping') {
               throw importError('VALIDATION_ERROR')
             }
-            if (context.data.resultMode === 'receipt' && Number(issue.version) !== items.find(item => item.issueId === issueId).issueVersion) throw importError('CONFLICT')
+            if (Number(issue.version) !== items.find(item => item.issueId === issueId).issueVersion) throw importError('CONFLICT')
             issues.set(issueId, issue)
           }
           const actionable = items.filter((item) => {
@@ -1244,8 +1135,7 @@ function createReviewIssueService({ getPool }) {
     const updateVersion = validateVersion(context.data.updateVersion)
     const issueVersion = validateVersion(context.data.issueVersion)
     const decision = validateDecision(context.data.decision)
-    return executeIdempotentMutation({ readIssue: issueDetails,
-      getPool,
+    return executeIdempotentMutation({       getPool,
       ...context,
       action: 'reviewIssues.resolve',
       operation: async (connection, uid, data, requestDigest) => {
@@ -1379,7 +1269,7 @@ function createReviewIssueService({ getPool }) {
         } else if (decision === 'exclude_events' || decision === 'confirm_installment_principal') {
           if (decision === 'confirm_installment_principal') validateUuid(data.installmentCandidateId)
           let selected
-          if (data.resultMode === 'receipt') {
+          {
             const selection = data.selection || (data.eventIds == null ? { mode: 'all' } : { mode: 'include', eventIds: data.eventIds })
             if (!['all', 'include', 'all_except'].includes(selection.mode)) throw importError('VALIDATION_ERROR')
             const ids = selection.eventIds == null ? [] : selection.eventIds
@@ -1388,9 +1278,7 @@ function createReviewIssueService({ getPool }) {
             if (explicit.size !== ids.length || [...explicit].some(id => !eventIds.includes(id))) throw importError('VALIDATION_ERROR')
             selected = selection.mode === 'all' ? new Set(eventIds) : selection.mode === 'include' ? explicit : new Set(eventIds.filter(id => !explicit.has(id)))
             if (!selected.size) throw importError('VALIDATION_ERROR')
-          } else selected = Array.isArray(data.eventIds) && data.eventIds.length > 0
-            ? new Set(data.eventIds.map(validateUuid))
-            : new Set(eventIds)
+          }
           if ([...selected].some((eventId) => !eventIds.includes(eventId))) throw importError('VALIDATION_ERROR')
           const pairs = events.filter(item => selected.has(item.eventId)).map(event => {
             const exclusionReasons = issue.issueType === 'account_mapping'
@@ -1547,7 +1435,7 @@ function createReviewIssueService({ getPool }) {
           affected.push(await saveEvent(connection, uid, event, next, actionId))
         }
 
-        const partialExclusion = data.resultMode === 'receipt' && ['exclude_events', 'confirm_installment_principal'].includes(decision) && affected.length < events.length
+        const partialExclusion = ['exclude_events', 'confirm_installment_principal'].includes(decision) && affected.length < events.length
         if (partialExclusion) {
           // 只移出本次已明确排除的成员，余下成员保留原阻塞问题和新版本。
           for (let offset = 0; offset < affected.length; offset += 100) {
@@ -1580,8 +1468,7 @@ function createReviewIssueService({ getPool }) {
     const issueVersion = validateVersion(context.data.issueVersion)
     const decision = context.data.decision
     if (!['apply_fields', 'exclude_events'].includes(decision)) throw importError('VALIDATION_ERROR')
-    return executeIdempotentMutation({ readIssue: issueDetails,
-      getPool,
+    return executeIdempotentMutation({       getPool,
       ...context,
       action: 'reviewIssues.reviseAccountMapping',
       operation: async (connection, uid, data, requestDigest) => {
@@ -1708,11 +1595,11 @@ function createReviewIssueService({ getPool }) {
     })
   }
 
-  return { get, list, resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups }
+  return { resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups }
 }
 
 module.exports = {
-  selectDomainEvents, saveEvent, createFollowUpIssue, recalculateUpdateCounts,
+  selectDomainEvents, effectiveProjectedEvents, saveEvent, createFollowUpIssue, recalculateUpdateCounts,
   FIELD_MASK,
   applyFields,
   createReviewIssueService,

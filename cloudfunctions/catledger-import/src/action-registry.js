@@ -1,5 +1,5 @@
 const PUBLIC_ACTIONS = Object.freeze([
-  'imports.capabilities',
+  'imports.commandResult',
   'financeUpdates.rows',
   'reviewIssues.members',
   'financeUpdates.options',
@@ -10,7 +10,6 @@ const PUBLIC_ACTIONS = Object.freeze([
   'economicEvents.correctionImpact',
   'economicEvents.evidence',
   'financeUpdates.abandon',
-  'financeUpdates.get',
   'financeUpdates.organize',
   'financeUpdates.prepare',
   'financeUpdates.post',
@@ -29,7 +28,7 @@ const PUBLIC_ACTIONS = Object.freeze([
 
 function createActionHandlers(service) {
   return {
-    'imports.capabilities': service.capabilities,
+    'imports.commandResult': service.commandResult,
     'financeUpdates.rows': service.financeUpdateRows,
     'reviewIssues.members': service.reviewIssueMembers,
     'financeUpdates.options': service.financeUpdateOptions,
@@ -40,7 +39,6 @@ function createActionHandlers(service) {
     'economicEvents.correctionImpact': service.economicEventCorrectionImpact,
     'economicEvents.evidence': service.economicEventEvidence,
     'financeUpdates.abandon': service.financeUpdateAbandon,
-    'financeUpdates.get': service.financeUpdateGet,
     'financeUpdates.organize': service.financeUpdateOrganize,
     'financeUpdates.prepare': service.financeUpdatePrepare,
     'financeUpdates.post': service.financeUpdatePost,

@@ -1,4 +1,6 @@
 const ERROR_MESSAGES = Object.freeze({
+  OPERATION_UNCONFIRMED: '原操作结果尚未确认，请保留草稿并核对原请求',
+  RECEIPT_RECONCILIATION_REQUIRED: '历史操作事实需核对，请保留原请求和草稿',
   REQUEST_TOO_LARGE: '本次选择过多，请分批保存草稿',
   PAGINATION_REQUIRED: '此批次需要新版分页读取，请更新后重试',
   INVALID_CURSOR: '分页位置无效，请重新读取',

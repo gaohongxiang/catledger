@@ -1,3 +1,4 @@
+const { switchDraft } = require('./import-draft-switch')
 const api = require('./catledger-import')
 const config = require('../config/cloudbase')
 const readCache = require('./read-cache')
@@ -8,12 +9,12 @@ const PREFIX = 'catledger_import_draft_v1:'
 const clone = value => JSON.parse(JSON.stringify(value))
 const retryable = error => ['CLOUD_TEMPORARY_UNAVAILABLE', 'SERVICE_TEMPORARY_UNAVAILABLE', 'CLOUD_CALL_FAILED', 'INTERNAL_ERROR'].includes(error && error.code)
 
-// 仅在 financeUpdates.get/prepare 已验证批次归属后创建；不保存账单原文。
+// 仅在 financeUpdates.summary 已验证批次归属后创建；不保存账单原文。
 function create(options) {
   const key = PREFIX + options.scope + ':' + options.view.update.updateId
-  const stored = options.read(key)
-  let state = stored && stored.schema === 1 && Array.isArray(stored.entries) && stored.drafts && stored.updateId === options.view.update.updateId
-    ? stored : { schema: 1, updateId: options.view.update.updateId, entries: [], drafts: {}, flight: null, step: 2 }
+  const stored = switchDraft(options.read(key))
+  let state = stored && stored.schema === 2 && Array.isArray(stored.entries) && stored.drafts && stored.updateId === options.view.update.updateId
+    ? stored : { schema: 2, updateId: options.view.update.updateId, entries: [], drafts: {}, flight: null, step: 2 }
   let view = options.view
   let version = Number(view.update.version)
   let projectionRevision = 0
@@ -39,11 +40,11 @@ function create(options) {
     version = Math.max(version, Number(next.update.version))
   }
   async function refresh() {
-    const fresh = await options.call(view.protocolVersion === 2 ? 'financeUpdates.summary' : 'financeUpdates.get', { updateId: state.updateId })
+    const fresh = await options.call('financeUpdates.summary', { updateId: state.updateId })
     accept(fresh)
     const next = clone(state)
     next.entries = next.entries.filter(e => e.status !== 'saved')
-    if (fresh.update.status !== 'review') { next.entries = []; next.drafts = {}; next.flight = null }
+    if (fresh.update.status !== 'review' && !next.flight) { next.entries = []; next.drafts = {} }
     persist(next)
     emit()
     return fresh
@@ -58,6 +59,7 @@ function create(options) {
       next.entries = next.entries.filter(e => e.issueId !== entry.issueId)
       next.entries.push(Object.assign({}, clone(entry), { status: 'queued', error: '' }))
     }
+    if (next.entries.filter(entry => entry.status !== 'saved').length > 8) throw Object.assign(new Error('请等待当前选择同步后继续'), { code: 'DRAFT_LIMIT_REACHED' })
     persist(next)
     errorMessage = ''
     emit()
@@ -76,11 +78,8 @@ function create(options) {
             ? { updateId: state.updateId, decisions: entries.map(e => e.decision) }
             : Object.assign({ updateId: state.updateId, updateVersion: version, issueId: first.issueId, issueVersion: first.issueVersion }, first.decision)
           payload.requestId = options.requestId()
-          if (view.protocolVersion === 2) {
-            payload.resultMode = 'receipt'
-            payload.updateVersion = version
-            if (first.kind === 'account') payload.decisions = entries.map(e => Object.assign({}, e.decision, { issueVersion: e.issueVersion || e.decision.issueVersion }))
-          }
+          payload.updateVersion = version
+          if (first.kind === 'account') payload.decisions = entries.map(e => Object.assign({}, e.decision, { issueVersion: e.issueVersion || e.decision.issueVersion }))
           if (unescape(encodeURIComponent(JSON.stringify(payload))).length > 64 * 1024) throw Object.assign(new Error('本次选择内容过多，请减少批量项目后重试'), { code: 'REQUEST_TOO_LARGE' })
           const next = clone(state)
           next.flight = { ids: entries.map(e => e.issueId), action: first.kind === 'account' ? 'reviewIssues.resolveAccountMappings' : 'reviewIssues.resolve', payload }
@@ -88,7 +87,7 @@ function create(options) {
           persist(next, false)
         }
         const flight = state.flight
-        const result = await options.call(flight.action, flight.payload)
+        const result = await send(flight)
         version = Math.max(version, Number(result.update.version))
         const next = clone(state)
         for (const entry of next.entries) {
@@ -99,7 +98,6 @@ function create(options) {
         next.flight = null
         persist(next, state.entries.some(entry => flight.ids.includes(entry.issueId) && entry.kind === 'account'))
         retryCount = 0
-        if (result.events && result.issues) accept(result)
         emit()
       }
       if (!paused) await refresh()
@@ -109,7 +107,7 @@ function create(options) {
     } catch (error) {
       const committed = !state.flight && state.entries.some(e => e.status === 'saved')
       errorMessage = committed ? '选择已同步，明细待刷新' : retryable(error) ? '选择已保存在本机，网络恢复后自动同步' : (error.message || '同步未完成，请重试')
-      if (state.flight && !retryable(error) && error.code !== 'DRAFT_STORAGE_FAILED') {
+      if (state.flight && !state.flight.reconcile && !retryable(error) && error.code !== 'DRAFT_STORAGE_FAILED') {
         const next = clone(state)
         for (const entry of next.entries) if (next.flight.ids.includes(entry.issueId)) entry.error = errorMessage
         next.flight = null
@@ -120,6 +118,11 @@ function create(options) {
       if (retryable(error) && retryCount < 3) schedule([2000, 5000, 15000][retryCount++])
       throw error
     } finally { emit() }
+  }
+  function send(flight) {
+    return flight.reconcile
+      ? options.call('imports.commandResult', { requestId: flight.payload.requestId, commandAction: flight.action })
+      : options.call(flight.action, flight.payload)
   }
   function flush() {
     if (running) return running
@@ -141,10 +144,11 @@ function create(options) {
       persist(next)
     },
     async post() {
-      if (!state.postFlight) persist(Object.assign({}, state, { postFlight: Object.assign({ requestId: options.requestId(), updateId: state.updateId, version: version, mode: 'all_ready' }, view.protocolVersion === 2 ? { resultMode: 'receipt' } : {}) }), false)
-      try { return await options.call('financeUpdates.post', state.postFlight) }
+      if (!state.postFlight) persist(Object.assign({}, state, { postFlight: { action: 'financeUpdates.post',
+        payload: { requestId: options.requestId(), updateId: state.updateId, version: version, mode: 'all_ready' } } }), false)
+      try { return await send(state.postFlight) }
       catch (error) {
-        if (!retryable(error)) persist(Object.assign({}, state, { postFlight: null }), false)
+        if (!state.postFlight.reconcile && !retryable(error)) persist(Object.assign({}, state, { postFlight: null }), false)
         throw error
       }
     },
@@ -158,7 +162,7 @@ function create(options) {
       const fresh = await refresh()
       const next = clone(state)
       for (const entry of next.entries) {
-        const issue = fresh.protocolVersion === 2 && entry.error
+        const issue = entry.error
           ? (await options.call('reviewIssues.get', { protocolVersion: 2, updateId: state.updateId, issueId: entry.issueId, pageSize: 1 })).issue
           : (fresh.issues || []).find(i => i.issueId === entry.issueId)
         if (entry.error && issue && issue.status === 'open' && issue.version === entry.issueVersion) entry.error = ''
