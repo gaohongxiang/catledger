@@ -204,7 +204,8 @@ function suggestedCategory(row, indexes) {
   return indexes.bySystemKey.get(`${row.direction}:${evidence.deterministicSystemKey}`) || null
 }
 
-async function selectPlanningRows(connection, uid, updateId) {
+async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
+  if (rowIds && !rowIds.length) return []
   const [rows] = await connection.execute(
     `SELECT r.row_id AS rowId, r.batch_id AS batchId, s.import_id AS importId,
             s.source_order AS sourceOrder, s.source_type_snapshot AS sourceType,
@@ -234,9 +235,9 @@ async function selectPlanningRows(connection, uid, updateId) {
        LEFT JOIN catledger_import_account_mappings m
          ON m.uid = r.uid AND m.source_type = s.source_type_snapshot
         AND m.payment_method_key = r.payment_method_key AND m.disabled_at IS NULL
-      WHERE s.uid = ? AND s.update_id = ?
+      WHERE s.uid = ? AND s.update_id = ?${rowIds ? ` AND r.row_id IN (${rowIds.map(() => '?').join(',')})` : ''}
       ORDER BY s.source_order, r.source_row_number, r.row_id`,
-    [uid, updateId]
+    [uid, updateId, ...(rowIds || [])]
   )
   const identityIds = [...new Set(rows.map((row) => row.identityId).filter(Boolean))]
   const linkedByIdentity = new Map()
@@ -537,7 +538,8 @@ function publicEvent(row) {
   }
 }
 
-async function selectEvents(connection, uid, updateId, { includeFieldSources = false } = {}) {
+async function selectEvents(connection, uid, updateId, { includeFieldSources = false, eventIds = null } = {}) {
+  if (eventIds && !eventIds.length) return []
   const [rows] = await connection.execute(
     `SELECT e.event_id AS eventId, e.status, e.version,
             e.flow_direction AS flowDirection, e.economic_nature AS economicNature,
@@ -564,7 +566,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
          ON r.uid = primary_evidence.uid AND r.row_id = primary_evidence.row_id
        LEFT JOIN catledger_finance_update_sources s
          ON s.uid = r.uid AND s.update_id = e.update_id AND s.batch_id = r.batch_id
-      WHERE e.uid = ? AND e.update_id = ?
+      WHERE e.uid = ? AND e.update_id = ?${eventIds ? ` AND e.event_id IN (${eventIds.map(() => '?').join(',')})` : ''}
       GROUP BY e.event_id, e.status, e.version, e.flow_direction, e.economic_nature,
                e.ledger_account_id, e.counterparty_ledger_account_id, e.event_local_at, e.event_utc_at,
                e.amount_minor, e.currency, e.category_id, e.reason_codes_json,
@@ -573,7 +575,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
                r.item_raw, r.note_raw, r.payment_method_raw,
                s.source_type_snapshot, s.file_name_snapshot
       ORDER BY e.event_local_at, e.event_id`,
-    [uid, updateId]
+    [uid, updateId, ...(eventIds || [])]
   )
   return rows.map(row => includeFieldSources
     ? { ...publicEvent(row), fieldSources: parseJson(row.fieldSources, {}) } : publicEvent(row))
@@ -730,10 +732,13 @@ function publicIssue(row) {
   }
 }
 
-async function selectIssues(connection, uid, updateId, { status = null } = {}) {
+async function selectIssues(connection, uid, updateId, { status = null, issueIds = null, includeMembers = true } = {}) {
+  if (issueIds && !issueIds.length) return []
   const values = [uid, updateId]
   const statusSql = status ? ' AND issue.status = ?' : ''
   if (status) values.push(status)
+  const idsSql = issueIds ? ` AND issue.issue_id IN (${issueIds.map(() => '?').join(',')})` : ''
+  if (issueIds) values.push(...issueIds)
   const [rows] = await connection.execute(
     `SELECT issue.issue_id AS issueId, issue.issue_type AS issueType,
             issue.status, issue.version, issue.blocking,
@@ -741,11 +746,11 @@ async function selectIssues(connection, uid, updateId, { status = null } = {}) {
             issue.member_count AS memberCount,
             issue.candidate_count AS candidateCount,
             issue.reason_codes_json AS reasonCodes,
-            (SELECT JSON_ARRAYAGG(issue_member.object_id)
+            ${includeMembers ? `(SELECT JSON_ARRAYAGG(issue_member.object_id)
                FROM catledger_review_issue_members issue_member
               WHERE issue_member.uid = issue.uid AND issue_member.update_id = issue.update_id
                 AND issue_member.issue_id = issue.issue_id AND issue_member.object_type = 'event'
-                AND issue_member.member_role <> 'candidate') AS subjectEventIds,
+                AND issue_member.member_role <> 'candidate')` : 'NULL'} AS subjectEventIds,
             subject.object_id AS subjectEventId,
             subject.member_role AS subjectMemberRole,
             subject_event.status AS subjectEventStatus,
@@ -781,7 +786,7 @@ async function selectIssues(connection, uid, updateId, { status = null } = {}) {
        LEFT JOIN catledger_finance_update_sources source
          ON source.uid = source_row.uid AND source.update_id = issue.update_id
         AND source.batch_id = source_row.batch_id
-      WHERE issue.uid = ? AND issue.update_id = ?${statusSql}
+      WHERE issue.uid = ? AND issue.update_id = ?${statusSql}${idsSql}
       ORDER BY issue.status = 'open' DESC, issue.created_at, issue.issue_id`,
     values
   )
@@ -887,6 +892,7 @@ module.exports = {
   getUpdateView,
   insertAction,
   insertMany,
+  listOptions,
   parseJson,
   persistPlan,
   publicIssue,

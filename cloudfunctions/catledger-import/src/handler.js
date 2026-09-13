@@ -1,3 +1,4 @@
+const { BUDGET, jsonBytes, assertBudget } = require('./performance-contract')
 const crypto = require('node:crypto')
 
 const { PUBLIC_ERROR_CODES, failure } = require('./errors')
@@ -51,6 +52,7 @@ function createHandler({ getWxContext, services, logger = console, now = Date.no
     const actionHandler = services[action]
     if (typeof actionHandler !== 'function') return failure('UNSUPPORTED_ACTION')
     const publicData = event.data && typeof event.data === 'object' ? event.data : {}
+    try { if (jsonBytes(publicData) > BUDGET.request) return failure('REQUEST_TOO_LARGE') } catch (_) { return failure('VALIDATION_ERROR') }
     const clientDataIssue = inspectClientData(publicData)
     if (clientDataIssue) return failure(clientDataIssue === 'identity' ? 'INVALID_REQUEST' : 'VALIDATION_ERROR')
 
@@ -71,7 +73,7 @@ function createHandler({ getWxContext, services, logger = console, now = Date.no
           elapsedMs
         })
       }
-      return { ok: true, data: result }
+      return assertBudget({ ok: true, data: result }, 'page')
     } catch (error) {
       const code = PUBLIC_ERROR_CODES.has(error.publicCode)
         ? error.publicCode

@@ -1,3 +1,5 @@
+const { assertBudget } = require('./performance-contract')
+const { operationReceipt } = require('./command-result')
 const { encodeReceipt, readReceipt } = require('./import-receipt')
 const { digestIdempotencyKey, digestRequest } = require('./digest')
 const { importError } = require('./errors')
@@ -51,6 +53,8 @@ async function replayMutation({ getPool, provider, subjectHash, keyDigest, actio
 }
 
 async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation, currentReads = false, readIssue }) {
+  if (data && data.resultMode != null && data.resultMode !== 'receipt') throw importError('VALIDATION_ERROR')
+  if (data && data.resultMode === 'receipt') assertBudget(data, 'request')
   const keyDigest = digestIdempotencyKey(data && data.requestId)
   const requestData = { ...data }
   delete requestData.requestId
@@ -85,7 +89,8 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
         throw error
       }
 
-      const result = await operation(connection, uid, requestData, requestDigest, keyDigest)
+      const rawResult = await operation(connection, uid, requestData, requestDigest, keyDigest)
+      const result = data.resultMode === 'receipt' ? operationReceipt(rawResult, action, keyDigest) : assertBudget(rawResult, 'legacy')
       await connection.execute(
         `UPDATE catledger_mutation_receipts
             SET result_json = ?
@@ -120,6 +125,7 @@ async function executeUserRead({ getPool, provider, subjectHash, operation, cons
       }
       const uid = await resolveUid(connection, provider, subjectHash)
       const result = await operation(connection, uid)
+      if (result && result.update && result.protocolVersion !== 2) assertBudget(result, 'legacy')
       if (consistentSnapshot) await connection.commit()
       return result
     } catch (error) {

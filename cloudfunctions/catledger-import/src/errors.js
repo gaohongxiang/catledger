@@ -1,4 +1,8 @@
 const ERROR_MESSAGES = Object.freeze({
+  REQUEST_TOO_LARGE: '本次选择过多，请分批保存草稿',
+  PAGINATION_REQUIRED: '此批次需要新版分页读取，请更新后重试',
+  INVALID_CURSOR: '分页位置无效，请重新读取',
+  STALE_VIEW: '账目已更新，请刷新当前列表',
   AUTH_REQUIRED: '未取得可信微信身份',
   CONFLICT: '导入状态已发生变化，请刷新后重试',
   CSV_COLUMN_LIMIT_EXCEEDED: '账单列结构超出支持范围',

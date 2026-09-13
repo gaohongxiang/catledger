@@ -42,3 +42,11 @@ SQL观测只输出指纹摘要、源码调用位置、调用数/返回行数/耗
 | post | 3047 | 6071 | 2803 | 3032 | 2448735 |
 
 resolveAccounts热点为review-issue-service.createFollowUpIssue的存在性检查1000次/828ms；post热点为existingTransactionForEvent历史复用1000次/1386ms。CPU profile显示relation-resolver的候选比较值得在上限复核，不能将小规模采样外推为上限结论。观测器堆栈采集自身也有成本，耗时不直接替代无profile的历史基线。复现：`node scripts/benchmark-import.js --database --rows 1000`，环境保护不变；输出保存在本机临时日志，不提交原始数据。
+
+PERF-1选择字段：`exclude_events.selection={mode:all|include|all_except,eventIds?:最多100个}`绑定issueVersion与updateVersion。未给selection表示完整问题组；旧eventIds在V2表示include且不能为空。部分排除只移出已排除成员并提升问题版本，余下成员仍保留阻塞问题；完整来源证据及事件均保留。其它决定作用于锁定问题的全部成员，不接受selection字段。账户归属批量命令V2必传updateVersion与每项issueVersion。
+
+## PERF-1 本机证据
+
+同环境1000条、无CPU profile：prepare 311ms/62 SQL/969字节；summary首读43ms/15 SQL/3731字节；账户归属2286ms/9022 SQL/982字节；事件首屏8ms/9 SQL/33590字节；post1553ms/6061 SQL/用户锁1535ms/1021字节。正式交易数1000完整保留。该批只解决传输和返回路径，逐笔SQL仍待PERF-2；不代表上限或云端验收。
+
+本批全量634项（根300/API97/import237）全部通过，无失败/跳过；静态526文件/104运行模块，两函数生产依赖审计0。121成员反例验证分页无遗漏、部分排除后余下120成员仍阻塞、跨筛选/过期游标拒绝、长原文分段重建和后续入账后首次回执不变。

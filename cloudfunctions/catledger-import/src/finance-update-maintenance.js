@@ -1,3 +1,4 @@
+const { commandResult } = require('./command-result')
 const { eventAllocation, allocationAccountsValid } = require('./funds-allocation')
 const { correctionImpactResult, accountState, previewToken } = require('./maintenance-state')
 const { inspectSideEffects, revertSideEffects, publicSideEffects } = require('./maintenance-side-effects')
@@ -298,7 +299,7 @@ function createFinanceUpdateMaintenance({ getPool }) {
           [appliedVersion, actionId, uid, updateId, updateVersion]
         )
         if (updateResult.affectedRows !== 1) throw importError('CONFLICT')
-        return getUpdateView(connection, uid, updateId)
+        return commandResult(connection, uid, updateId, context.data)
       }
     })
   }
@@ -326,7 +327,7 @@ function createFinanceUpdateMaintenance({ getPool }) {
       action: 'financeUpdates.undo',
       operation: async (connection, uid, data, requestDigest) => {
         const update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
-        if (update.status === 'undone') return getUpdateView(connection, uid, updateId)
+        if (update.status === 'undone') return commandResult(connection, uid, updateId, context.data)
         if (update.status !== 'posted' || Number(update.version) !== version) throw importError('CONFLICT')
         const { ids, effects, impact } = await prepareUndo(connection, uid, update, true)
         if (!impact.canUndo) throw importError(impact.conflicts.includes('INSUFFICIENT_CASH_BALANCE') ? 'INSUFFICIENT_CASH_BALANCE' : 'CONFLICT')
@@ -369,7 +370,7 @@ function createFinanceUpdateMaintenance({ getPool }) {
           [appliedVersion, actionId, uid, updateId, version]
         )
         if (result.affectedRows !== 1) throw importError('CONFLICT')
-        return getUpdateView(connection, uid, updateId)
+        return commandResult(connection, uid, updateId, context.data)
       }
     })
   }

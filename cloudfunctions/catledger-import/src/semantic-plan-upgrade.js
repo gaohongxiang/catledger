@@ -1,3 +1,4 @@
+const { commandResult } = require('./command-result')
 const repaymentOwnership = require('./repayment-ownership')
 const { randomUUID } = require('node:crypto')
 const { prepareEvidenceSplit } = require('./evidence-plan-upgrade')
@@ -65,7 +66,7 @@ function refreshEventSemantic(current, evidenceRows) {
   return sourceView(next) === sourceView(current) ? current : next
 }
 
-async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest) {
+async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest, data = {}) {
   const updateId = current.updateId
   const [links] = await connection.execute(`SELECT evidence_id AS evidenceId, event_id AS eventId, row_id AS rowId, evidence_role AS role
     FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role <> 'discarded'
@@ -159,6 +160,6 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
     -splits.reduce((count, split) => count + split.additions.length, 0))
   await connection.execute(`UPDATE catledger_finance_updates SET plan_version = ?
     WHERE uid = ? AND update_id = ? AND version = ?`, [PLAN_VERSION, uid, updateId, version + 1])
-  return getUpdateView(connection, uid, updateId)
+  return commandResult(connection, uid, updateId, data)
 }
 module.exports = { refreshEventSemantic, upgradeSemanticPlan }

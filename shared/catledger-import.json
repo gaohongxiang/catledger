@@ -7,7 +7,7 @@
   },
   "performanceV2": {
     "protocolVersion": 2,
-    "status": "PERF-0 frozen; actions wired by PERF-1",
+    "status": "PERF-1 server reads and explicit receipt mode",
     "budgetsBytes": {
       "request": 65536,
       "receipt": 32768,
@@ -42,6 +42,90 @@
     }
   },
   "actions": {
+    "financeUpdates.rows": { "kind": "read", "data": ["updateId", "viewVersion?", "cursor?", "pageSize?"], "returns": ["protocolVersion=2", "viewVersion", "items[{rowId,disposition,recognized,conflict,rowNumber,sourceType,sourceOrder}]", "nextCursor", "total"] },
+    "economicEvents.detail": {
+      "kind": "read",
+      "data": [
+        "updateId",
+        "eventId",
+        "evidenceId?",
+        "viewVersion?",
+        "cursor?"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "viewVersion",
+        "items/part",
+        "nextCursor?"
+      ],
+      "contract": "PERFORMANCE-V2-CONTRACT.md"
+    },
+    "reviewIssues.members": {
+      "kind": "read",
+      "data": [
+        "updateId",
+        "issueId",
+        "viewVersion?",
+        "cursor?",
+        "pageSize?"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "viewVersion",
+        "items/part",
+        "nextCursor?"
+      ],
+      "contract": "PERFORMANCE-V2-CONTRACT.md"
+    },
+    "economicEvents.list": {
+      "kind": "read",
+      "data": [
+        "updateId",
+        "viewVersion?",
+        "cursor?",
+        "pageSize?",
+        "status?",
+        "issueId?",
+        "economicNature?"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "viewVersion",
+        "items/part",
+        "nextCursor?"
+      ],
+      "contract": "PERFORMANCE-V2-CONTRACT.md"
+    },
+    "financeUpdates.options": {
+      "kind": "read",
+      "data": [
+        "updateId",
+        "kind",
+        "viewVersion?",
+        "cursor?",
+        "pageSize?"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "viewVersion",
+        "items/part",
+        "nextCursor?"
+      ],
+      "contract": "PERFORMANCE-V2-CONTRACT.md"
+    },
+    "financeUpdates.summary": {
+      "kind": "read",
+      "data": [
+        "updateId"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "viewVersion",
+        "summary fields",
+        "nextCursor?"
+      ],
+      "contract": "PERFORMANCE-V2-CONTRACT.md"
+    },
     "imports.prepareMany": {
       "kind": "idempotent-mutation",
       "data": ["requestId", "files[{fileName,size}]"],
@@ -66,14 +150,43 @@
     },
     "financeUpdates.organize": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "updateId", "version"],
-      "returns": ["update", "sources", "events", "issues", "coverage", "accounts", "categories", "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"]
+      "data": [
+        "requestId",
+        "updateId",
+        "version",
+        "resultMode?='receipt'"
+      ],
+      "returns": [
+        "update",
+        "sources",
+        "events",
+        "issues",
+        "coverage",
+        "accounts",
+        "categories",
+        "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"
+      ],
+      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
     },
     "financeUpdates.prepare": {
       "kind": "idempotent-atomic-mutation",
-      "data": ["requestId", "batchIds"],
-      "returns": ["update", "sources", "events", "issues", "coverage", "accounts", "categories", "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"],
-      "atomic": true
+      "data": [
+        "requestId",
+        "batchIds",
+        "resultMode?='receipt'"
+      ],
+      "returns": [
+        "update",
+        "sources",
+        "events",
+        "issues",
+        "coverage",
+        "accounts",
+        "categories",
+        "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"
+      ],
+      "atomic": true,
+      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
     },
     "financeUpdates.get": {
       "kind": "read",
@@ -82,14 +195,39 @@
     },
     "reviewIssues.refreshAccountGroups": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "updateId", "version"],
-      "returns": ["update", "sources", "events", "issues", "accounts", "categories", "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"],
-      "atomic": true
+      "data": [
+        "requestId",
+        "updateId",
+        "version",
+        "resultMode?='receipt'"
+      ],
+      "returns": [
+        "update",
+        "sources",
+        "events",
+        "issues",
+        "accounts",
+        "categories",
+        "freshness?={viewRevision,accountGroupsVersion,requiresAccountGroupRefresh}"
+      ],
+      "atomic": true,
+      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
     },
     "reviewIssues.list": {
       "kind": "read",
-      "data": ["updateId", "status?"],
-      "returns": ["update", "issues"]
+      "data": [
+        "updateId",
+        "status?",
+        "protocolVersion?=2",
+        "viewVersion?",
+        "cursor?",
+        "pageSize?"
+      ],
+      "returns": [
+        "update",
+        "issues"
+      ],
+      "pageV2": "protocolVersion, viewVersion, items, nextCursor, total; no unbounded nested fields"
     },
     "reviewIssues.get": {
       "kind": "read",
@@ -98,26 +236,98 @@
     },
     "reviewIssues.resolve": {
       "kind": "idempotent-double-versioned-mutation",
-      "data": ["requestId", "updateId", "issueId", "updateVersion", "issueVersion", "decision", "decision-specific fields", "apply_fields.fields.ledgerAccountDraft?", "apply_fields.fields.paymentAccounts[{componentIndex,accountId}]?", "apply_fields.fields.paymentResolution{version,nature,allocations[{componentIndex,accountId,amountMinor}],targetAccountId,evidenceNote,confirmedFromDetails}?", "apply_fields.fields.repaymentAllocations[{accountId|accountDraft{name,type=credit|other_liability,currency},amountMinor}]?", "exclude_events.paymentRuleAction?"],
-      "decisions": ["apply_fields", "confirm_distinct", "confirm_same", "exclude_events", "confirm_installment_principal", "discard_evidence", "link_refund", "mark_refund_pending", "link_existing_transaction"],
-      "returns": ["update", "issue?", "members", "accounts", "categories"]
+      "data": [
+        "requestId",
+        "updateId",
+        "issueId",
+        "updateVersion",
+        "issueVersion",
+        "decision",
+        "decision-specific fields",
+        "apply_fields.fields.ledgerAccountDraft?",
+        "apply_fields.fields.paymentAccounts[{componentIndex,accountId}]?",
+        "apply_fields.fields.paymentResolution{version,nature,allocations[{componentIndex,accountId,amountMinor}],targetAccountId,evidenceNote,confirmedFromDetails}?",
+        "apply_fields.fields.repaymentAllocations[{accountId|accountDraft{name,type=credit|other_liability,currency},amountMinor}]?",
+        "exclude_events.paymentRuleAction?",
+        "resultMode?='receipt'"
+      ],
+      "decisions": [
+        "apply_fields",
+        "confirm_distinct",
+        "confirm_same",
+        "exclude_events",
+        "confirm_installment_principal",
+        "discard_evidence",
+        "link_refund",
+        "mark_refund_pending",
+        "link_existing_transaction"
+      ],
+      "returns": [
+        "update",
+        "issue?",
+        "members",
+        "accounts",
+        "categories"
+      ],
+      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
     },
     "reviewIssues.resolveAccountMappings": {
       "kind": "idempotent-batch-mutation",
-      "data": ["requestId", "updateId", "decisions[{issueId,operation=resolve|revise,decision=apply_fields|exclude_events,fields.mappingAccountId|fields.mappingAccountDraft?,paymentRuleAction?}]"],
-      "returns": ["update", "sources", "events", "issues", "coverage", "accounts", "accountDrafts", "accountMappingDrafts", "categories"]
+      "data": [
+        "requestId",
+        "updateId",
+        "decisions[{issueId,operation=resolve|revise,decision=apply_fields|exclude_events,fields.mappingAccountId|fields.mappingAccountDraft?,paymentRuleAction?}]",
+        "resultMode?='receipt'"
+      ],
+      "returns": [
+        "update",
+        "sources",
+        "events",
+        "issues",
+        "coverage",
+        "accounts",
+        "accountDrafts",
+        "accountMappingDrafts",
+        "categories"
+      ],
+      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
     },
     "financeUpdates.post": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "updateId", "version", "mode=all_ready"],
-      "returns": ["update", "sources", "events", "issues", "coverage", "posting"],
+      "data": [
+        "requestId",
+        "updateId",
+        "version",
+        "mode=all_ready",
+        "resultMode?='receipt'"
+      ],
+      "returns": [
+        "update",
+        "sources",
+        "events",
+        "issues",
+        "coverage",
+        "posting"
+      ],
       "atomic": true,
-      "categoryPolicy": "category_assignment 为可选建议；缺分类不阻止整批入账，其他核对和服务端完整性校验仍必须通过。正式 category_id 保留 NULL。"
+      "categoryPolicy": "category_assignment 为可选建议；缺分类不阻止整批入账，其他核对和服务端完整性校验仍必须通过。正式 category_id 保留 NULL。",
+      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
     },
     "financeUpdates.abandon": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "updateId", "version"],
-      "returns": ["updateId", "status", "version", "counts"]
+      "data": [
+        "requestId",
+        "updateId",
+        "version",
+        "resultMode?='receipt'"
+      ],
+      "returns": [
+        "updateId",
+        "status",
+        "version",
+        "counts"
+      ],
+      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
     },
     "economicEvents.correctionImpact": {
       "kind": "read",
@@ -126,13 +336,41 @@
     },
     "economicEvents.evidence": {
       "kind": "read",
-      "data": ["eventId"],
-      "returns": ["eventId", "updateId", "evidence[{evidenceRole,rowNumber,sourceLocator,sourceType,fileName,rawSnapshotVersion,parserVersion,rawFields}]"]
+      "data": [
+        "eventId",
+        "protocolVersion?=2",
+        "viewVersion?",
+        "cursor?",
+        "pageSize?"
+      ],
+      "returns": [
+        "eventId",
+        "updateId",
+        "evidence[{evidenceRole,rowNumber,sourceLocator,sourceType,fileName,rawSnapshotVersion,parserVersion,rawFields}]"
+      ],
+      "pageV2": "protocolVersion, viewVersion, items, nextCursor, total; no unbounded nested fields"
     },
     "economicEvents.correct": {
       "kind": "idempotent-double-versioned-mutation",
-      "data": ["requestId", "updateId", "eventId", "updateVersion", "eventVersion", "fields", "previewToken"],
-      "returns": ["update", "sources", "events", "issues", "coverage", "posting"]
+      "data": [
+        "requestId",
+        "updateId",
+        "eventId",
+        "updateVersion",
+        "eventVersion",
+        "fields",
+        "previewToken",
+        "resultMode?='receipt'"
+      ],
+      "returns": [
+        "update",
+        "sources",
+        "events",
+        "issues",
+        "coverage",
+        "posting"
+      ],
+      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
     },
     "financeUpdates.undoImpact": {
       "kind": "read",
@@ -141,8 +379,21 @@
     },
     "financeUpdates.undo": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "updateId", "version", "previewToken"],
-      "returns": ["update", "sources", "events", "issues", "coverage"]
+      "data": [
+        "requestId",
+        "updateId",
+        "version",
+        "previewToken",
+        "resultMode?='receipt'"
+      ],
+      "returns": [
+        "update",
+        "sources",
+        "events",
+        "issues",
+        "coverage"
+      ],
+      "receiptV2": "Immutable operation result saved in the same transaction; <=32KiB; see performanceV2"
     }
   },
   "rules": {

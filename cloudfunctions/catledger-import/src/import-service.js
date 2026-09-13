@@ -1,3 +1,5 @@
+const { selectSources } = require('./finance-update-repository')
+const { createFinanceUpdateRead } = require('./finance-update-read')
 const { randomUUID } = require('node:crypto')
 
 const { digestParts, sha256 } = require('./digest')
@@ -67,6 +69,7 @@ async function markContentDeleted(getPool, provider, subjectHash, importId, file
 }
 
 function createImportService({ getPool, storage }) {
+  const reads = createFinanceUpdateRead({ getPool })
   const financeUpdates = createFinanceUpdateCore({ getPool })
   const maintenance = createFinanceUpdateMaintenance({ getPool })
   const reviewIssues = createReviewIssueService({ getPool })
@@ -271,15 +274,20 @@ function createImportService({ getPool, storage }) {
 
   async function postFinanceUpdate(context) {
     const result = await posting.post(context)
-    await cleanupUpdateSources(context, result.sources)
+    if (result.protocolVersion === 2) {
+      try {
+        const sources = await executeUserRead({ getPool, ...context, operation: (connection, uid) => selectSources(connection, uid, result.updateId) })
+        await cleanupUpdateSources(context, sources)
+      } catch (_) { /* 账务已提交；来源清理保留后续重试。 */ }
+    } else await cleanupUpdateSources(context, result.sources)
     return result
   }
 
   async function abandonFinanceUpdate(context) {
     const result = await financeUpdates.abandon(context)
     try {
-      const view = await financeUpdates.get({ ...context, data: { updateId: result.updateId } })
-      await cleanupUpdateSources(context, view.sources)
+      const sources = await executeUserRead({ getPool, ...context, operation: (connection, uid) => selectSources(connection, uid, result.updateId) })
+      await cleanupUpdateSources(context, sources)
     } catch (error) {
       // Abandon is already durable; cleanup failure remains recoverable lifecycle work.
     }
@@ -292,6 +300,12 @@ function createImportService({ getPool, storage }) {
     parseFile,
     prepareMany,
     financeUpdateAbandon: abandonFinanceUpdate,
+    financeUpdateRows: reads.rows,
+    financeUpdateSummary: reads.summary,
+    financeUpdateOptions: reads.options,
+    economicEventList: reads.events,
+    economicEventDetail: reads.detail,
+    reviewIssueMembers: reads.members,
     financeUpdateGet: financeUpdates.get,
     financeUpdateOrganize: financeUpdates.organize,
     financeUpdatePrepare: financeUpdates.prepare,
@@ -300,10 +314,10 @@ function createImportService({ getPool, storage }) {
     financeUpdateUndoImpact: maintenance.undoImpact,
     economicEventCorrect: maintenance.correct,
     economicEventCorrectionImpact: maintenance.correctionImpact,
-    economicEventEvidence: financeUpdates.evidence,
-    reviewIssueGet: reviewIssues.get,
+    economicEventEvidence: context => context.data.protocolVersion === 2 ? reads.evidence(context) : financeUpdates.evidence(context),
+    reviewIssueGet: context => context.data.protocolVersion === 2 ? reads.issue(context) : reviewIssues.get(context),
     reviewIssueRefreshAccountGroups: reviewIssues.refreshAccountGroups,
-    reviewIssueList: reviewIssues.list,
+    reviewIssueList: context => context.data.protocolVersion === 2 ? reads.issues(context) : reviewIssues.list(context),
     reviewIssueResolveAccountMappings: reviewIssues.resolveAccountMappings,
     reviewIssueReviseAccountMapping: reviewIssues.reviseAccountMapping,
     reviewIssueResolve: reviewIssues.resolve

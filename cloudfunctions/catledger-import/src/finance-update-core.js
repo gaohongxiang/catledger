@@ -1,3 +1,4 @@
+const { commandResult } = require('./command-result')
 const { discardUpdateGraph } = require('./discarded-update')
 const { upgradeSemanticPlan } = require('./semantic-plan-upgrade')
 const { PLAN_VERSION } = require('./domain-versions')
@@ -33,7 +34,7 @@ function validateBatchIds(value) {
 }
 
 function createFinanceUpdateCore({ getPool }) {
-  async function organizeUpdate(connection, uid, updateId, version, requestDigest) {
+  async function organizeUpdate(connection, uid, updateId, version, requestDigest, data = {}) {
     const current = await selectUpdate(connection, uid, updateId, { forUpdate: true })
     // 未入账旧计划可按新规则原地重建。旧映射草稿引用旧事件，
     // 删除事件时会按外键级联删除，因此必须先冻结决定，重建后再
@@ -43,8 +44,8 @@ function createFinanceUpdateCore({ getPool }) {
     }
     const rows = await selectPlanningRows(connection, uid, updateId)
     if (current.status === 'review' && ['organizer-plan-v26', 'organizer-plan-v27', 'organizer-plan-v28', PLAN_VERSION].includes(current.planVersion)) {
-      if (current.planVersion === PLAN_VERSION) return getUpdateView(connection, uid, updateId)
-      return upgradeSemanticPlan(connection, uid, current, rows, requestDigest)
+      if (current.planVersion === PLAN_VERSION) return commandResult(connection, uid, updateId, data)
+      return upgradeSemanticPlan(connection, uid, current, rows, requestDigest, data)
     }
     const paymentMappings = await selectPaymentMappings(connection, uid, updateId)
     const draftPaymentMappings = await selectDraftPaymentMappings(connection, uid, updateId)
@@ -85,7 +86,7 @@ function createFinanceUpdateCore({ getPool }) {
       ]
     )
     if (result.affectedRows !== 1) throw importError('CONFLICT')
-    return getUpdateView(connection, uid, updateId)
+    return commandResult(connection, uid, updateId, data)
   }
 
   async function prepare(context) {
@@ -97,7 +98,7 @@ function createFinanceUpdateCore({ getPool }) {
         const update = await createUpdate(
           connection, uid, validateBatchIds(data.batchIds), requestDigest, keyDigest
         )
-        return organizeUpdate(connection, uid, update.updateId, update.version, requestDigest)
+        return organizeUpdate(connection, uid, update.updateId, update.version, requestDigest, data)
       }
     })
   }
@@ -110,7 +111,7 @@ function createFinanceUpdateCore({ getPool }) {
       ...context,
       action: 'financeUpdates.organize',
       operation: (connection, uid, data, requestDigest) => organizeUpdate(
-        connection, uid, updateId, version, requestDigest
+        connection, uid, updateId, version, requestDigest, data
       )
     })
   }

@@ -1,3 +1,4 @@
+const { commandResult } = require('./command-result')
 const repaymentOwnership = require('./repayment-ownership')
 const { assertIdentityIntegrity } = require('./evidence-integrity')
 const { eventAllocation, allocationAccountsValid } = require('./funds-allocation')
@@ -1095,7 +1096,7 @@ function createReviewIssueService({ getPool }) {
         }
         const candidates = [...byEvent].map(([eventId, evidence]) => ({ eventId, references: accountGroups.referencesForRows(evidence) }))
           .filter((item) => item.references.length)
-        if (!candidates.length) return getUpdateView(connection, uid, updateId)
+        if (!candidates.length) return commandResult(connection, uid, updateId, context.data)
         const actionId = await insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,
           actionType: 'refresh_account_groups', requestDigest, decision: { version: accountGroups.VERSION }, reasons: ['account_references_expanded'] })
         const existingIssues = await selectIssues(connection, uid, updateId)
@@ -1169,7 +1170,7 @@ function createReviewIssueService({ getPool }) {
         }
         for (const event of savedEvents) await createFollowUpIssue(connection, uid, updateId, event)
         await recalculateUpdateCounts(connection, uid, updateId, version + 1, actionId, version)
-        return getUpdateView(connection, uid, updateId)
+        return commandResult(connection, uid, updateId, context.data)
       }
     })
   }
@@ -1188,6 +1189,7 @@ function createReviewIssueService({ getPool }) {
       if (!['apply_fields', 'exclude_events'].includes(decision)) throw importError('VALIDATION_ERROR')
       return {
         issueId: validateUuid(item.issueId),
+        ...(context.data.resultMode === 'receipt' ? { issueVersion: validateVersion(item.issueVersion) } : {}),
         operation,
         decision,
         fields: item.fields,
@@ -1206,7 +1208,7 @@ function createReviewIssueService({ getPool }) {
         decisions,
         begin: async function (items) {
           const update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
-          if (update.status !== 'review') throw importError('CONFLICT')
+          if (update.status !== 'review' || (context.data.resultMode === 'receipt' && Number(update.version) !== validateVersion(context.data.updateVersion))) throw importError('CONFLICT')
           const issues = new Map()
           const sortedIssueIds = items.map((item) => item.issueId).sort()
           for (const issueId of sortedIssueIds) {
@@ -1214,6 +1216,7 @@ function createReviewIssueService({ getPool }) {
             if (issue.updateId !== updateId || issue.issueType !== 'account_mapping') {
               throw importError('VALIDATION_ERROR')
             }
+            if (context.data.resultMode === 'receipt' && Number(issue.version) !== items.find(item => item.issueId === issueId).issueVersion) throw importError('CONFLICT')
             issues.set(issueId, issue)
           }
           const actionable = items.filter((item) => {
@@ -1270,7 +1273,7 @@ function createReviewIssueService({ getPool }) {
               batch.actionId, batch.updateVersion
             )
           }
-          return getUpdateView(connection, uid, updateId)
+          return commandResult(connection, uid, updateId, context.data)
         }
       })
     })
@@ -1292,6 +1295,7 @@ function createReviewIssueService({ getPool }) {
         if (issue.updateId !== updateId || update.status !== 'review' || Number(update.version) !== updateVersion ||
             issue.status !== 'open' || Number(issue.version) !== issueVersion) throw importError('CONFLICT')
         assertDecisionMatchesIssue(issue, decision)
+        if (data.selection != null && !['exclude_events', 'confirm_installment_principal'].includes(decision)) throw importError('VALIDATION_ERROR')
         const paymentRuleAction = data.paymentRuleAction == null ? null : data.paymentRuleAction
         if (paymentRuleAction != null &&
             (paymentRuleAction !== 'ignore' || decision !== 'exclude_events' || issue.issueType !== 'account_mapping')) {
@@ -1420,7 +1424,17 @@ function createReviewIssueService({ getPool }) {
           await stageProjectedAccountMappings(connection, uid, updateId, affected, actionId)
         } else if (decision === 'exclude_events' || decision === 'confirm_installment_principal') {
           if (decision === 'confirm_installment_principal') validateUuid(data.installmentCandidateId)
-          const selected = Array.isArray(data.eventIds) && data.eventIds.length > 0
+          let selected
+          if (data.resultMode === 'receipt') {
+            const selection = data.selection || (data.eventIds == null ? { mode: 'all' } : { mode: 'include', eventIds: data.eventIds })
+            if (!['all', 'include', 'all_except'].includes(selection.mode)) throw importError('VALIDATION_ERROR')
+            const ids = selection.eventIds == null ? [] : selection.eventIds
+            if (!Array.isArray(ids) || ids.length > 100 || (selection.mode === 'include' && !ids.length) || (selection.mode === 'all' && ids.length)) throw importError('VALIDATION_ERROR')
+            const explicit = new Set(ids.map(validateUuid))
+            if (explicit.size !== ids.length || [...explicit].some(id => !eventIds.includes(id))) throw importError('VALIDATION_ERROR')
+            selected = selection.mode === 'all' ? new Set(eventIds) : selection.mode === 'include' ? explicit : new Set(eventIds.filter(id => !explicit.has(id)))
+            if (!selected.size) throw importError('VALIDATION_ERROR')
+          } else selected = Array.isArray(data.eventIds) && data.eventIds.length > 0
             ? new Set(data.eventIds.map(validateUuid))
             : new Set(eventIds)
           if ([...selected].some((eventId) => !eventIds.includes(eventId))) throw importError('VALIDATION_ERROR')
@@ -1579,18 +1593,28 @@ function createReviewIssueService({ getPool }) {
           affected.push(await saveEvent(connection, uid, event, next, actionId))
         }
 
+        const partialExclusion = data.resultMode === 'receipt' && ['exclude_events', 'confirm_installment_principal'].includes(decision) && affected.length < events.length
+        if (partialExclusion) {
+          // 只移出本次已明确排除的成员，余下成员保留原阻塞问题和新版本。
+          for (let offset = 0; offset < affected.length; offset += 100) {
+            const ids = affected.slice(offset, offset + 100).map(event => event.eventId)
+            await connection.execute(`DELETE FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND issue_id = ?
+              AND object_type = 'event' AND object_id IN (${ids.map(() => '?').join(',')})`, [uid, updateId, issueId, ...ids])
+          }
+        }
         const [resolved] = await connection.execute(
-          `UPDATE catledger_review_issues
-              SET status = 'resolved', version = version + 1, blocking = 0,
-                  resolved_action_id = ?
-            WHERE uid = ? AND issue_id = ? AND version = ? AND status = 'open'`,
-          [actionId, uid, issueId, issueVersion]
+          partialExclusion ? `UPDATE catledger_review_issues SET version = version + 1,
+            member_count = (SELECT COUNT(*) FROM catledger_review_issue_members WHERE uid = ? AND issue_id = ?)
+            WHERE uid = ? AND issue_id = ? AND version = ? AND status = 'open'`
+            : `UPDATE catledger_review_issues SET status = 'resolved', version = version + 1, blocking = 0,
+              resolved_action_id = ? WHERE uid = ? AND issue_id = ? AND version = ? AND status = 'open'`,
+          partialExclusion ? [uid, issueId, uid, issueId, issueVersion] : [actionId, uid, issueId, issueVersion]
         )
         if (resolved.affectedRows !== 1) throw importError('CONFLICT')
         for (const event of affected) await createFollowUpIssue(connection, uid, updateId, event)
         await refreshProjectedEvents(connection, uid, updateId, actionId)
         await recalculateUpdateCounts(connection, uid, updateId, appliedVersion, actionId, updateVersion, duplicateEvidenceDelta)
-        return issueDetails(connection, uid, issueId)
+        return data.resultMode === 'receipt' ? commandResult(connection, uid, updateId, data) : issueDetails(connection, uid, issueId)
       }
     })
   }
@@ -1725,7 +1749,7 @@ function createReviewIssueService({ getPool }) {
         }
         await refreshProjectedEvents(connection, uid, updateId, actionId)
         await recalculateUpdateCounts(connection, uid, updateId, appliedVersion, actionId, updateVersion)
-        return getUpdateView(connection, uid, updateId)
+        return commandResult(connection, uid, updateId, context.data)
       }
     })
   }

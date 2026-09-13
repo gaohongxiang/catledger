@@ -1,3 +1,4 @@
+const { commandResult } = require('./command-result')
 const { eventAllocation, allocationAccountsValid, allocationTransactionDrafts } = require('./funds-allocation')
 const { paymentResolutionForEvent } = require('./payment-resolution')
 const { queryCashBalances, assertCashBalancesNotWorsened } = require('./import-cash-guard')
@@ -469,7 +470,7 @@ function createFinanceUpdatePosting({ getPool }) {
       action: 'financeUpdates.post',
       operation: async (connection, uid, data, requestDigest) => {
         const update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
-        if (update.status === 'posted') return getUpdateView(connection, uid, updateId)
+        if (update.status === 'posted') return commandResult(connection, uid, updateId, context.data)
         if (update.status !== 'review' || Number(update.version) !== version || update.planVersion !== PLAN_VERSION) {
           throw importError('CONFLICT')
         }
@@ -621,7 +622,7 @@ function createFinanceUpdatePosting({ getPool }) {
           [appliedVersion, ready.length, actionId, uid, updateId, version]
         )
         if (completed.affectedRows !== 1) throw importError('CONFLICT')
-        return getUpdateView(connection, uid, updateId)
+        return commandResult(connection, uid, updateId, context.data)
       }
     })
   }

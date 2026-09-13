@@ -13,6 +13,9 @@ function callImport(action, data) {
 }
 
 module.exports = {
+  readSummary: function (updateId) { return callImport('financeUpdates.summary', { updateId: updateId }) },
+  readPage: function (action, data) { return callImport(action, Object.assign({}, data, { protocolVersion: 2 })) },
+  command: function (action, data) { return callImport(action, Object.assign({}, data, { resultMode: 'receipt' })) },
   callImport: callImport,
   createRequestId: cloudFunctionClient.createRequestId
 }

@@ -1,4 +1,10 @@
 const PUBLIC_ACTIONS = Object.freeze([
+  'financeUpdates.rows',
+  'reviewIssues.members',
+  'financeUpdates.options',
+  'financeUpdates.summary',
+  'economicEvents.detail',
+  'economicEvents.list',
   'economicEvents.correct',
   'economicEvents.correctionImpact',
   'economicEvents.evidence',
@@ -22,6 +28,12 @@ const PUBLIC_ACTIONS = Object.freeze([
 
 function createActionHandlers(service) {
   return {
+    'financeUpdates.rows': service.financeUpdateRows,
+    'reviewIssues.members': service.reviewIssueMembers,
+    'financeUpdates.options': service.financeUpdateOptions,
+    'financeUpdates.summary': service.financeUpdateSummary,
+    'economicEvents.detail': service.economicEventDetail,
+    'economicEvents.list': service.economicEventList,
     'economicEvents.correct': service.economicEventCorrect,
     'economicEvents.correctionImpact': service.economicEventCorrectionImpact,
     'economicEvents.evidence': service.economicEventEvidence,
