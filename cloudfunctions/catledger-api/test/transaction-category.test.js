@@ -15,6 +15,7 @@ function fixture(options = {}) {
       h.sql.push(sql)
       if (sql.includes('catledger_user_identities')) return [[{ uid: options.uid || 'user-a' }]]
       if (sql.includes('FROM catledger_users')) return [[{ uid: options.uid || 'user-a' }]]
+      if (sql.includes('UPDATE catledger_users SET data_revision')) return [{ affectedRows: 1 }]
       if (sql.includes('FROM catledger_loan_payment_transactions')) return [options.loanLinked ? [{ payment_id: 'loan-payment' }] : []]
       if (sql.includes('INSERT INTO catledger_mutation_receipts')) {
         const [uid,key,action,requestDigest] = values

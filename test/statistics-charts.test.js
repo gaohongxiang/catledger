@@ -54,7 +54,7 @@ test('缓存连续使用超过原TTL仍复用；回前台失效一次，保留�
   let app
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../miniprogram/app.js'), 'utf8'), {
     App: definition => { app = definition },
-    require: name => name === './services/read-cache' ? cache : {},
+    require: name => name === './services/read-cache' ? cache : name === './services/export-files' ? require('../miniprogram/services/export-files') : {},
     wx: {}, console
   })
   const session = cache.getSession()

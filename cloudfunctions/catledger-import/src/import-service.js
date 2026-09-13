@@ -54,10 +54,12 @@ function createObjectKey(uid, importId, extension) {
 }
 
 async function markContentDeleted(getPool, provider, subjectHash, importId, fileID) {
-  return executeUserRead({
+  return executeIdempotentMutation({
     getPool,
     provider,
     subjectHash,
+    action: 'imports.cleanupFile',
+    data: { requestId: randomUUID(), importId, fileID },
     operation: async (connection, uid) => {
       await connection.execute(
         `UPDATE catledger_import_files
@@ -65,6 +67,7 @@ async function markContentDeleted(getPool, provider, subjectHash, importId, file
           WHERE uid = ? AND import_id = ? AND cloud_file_id = ?`,
         [uid, importId, fileID]
       )
+      return { cleaned: true }
     }
   })
 }

@@ -30,6 +30,7 @@ App({
   },
 
   onLaunch() {
+    require('./services/export-files').cleanup(false)
     themeService.install(this)
     this.globalData.loginApproved = wx.getStorageSync(LOGIN_APPROVAL_KEY) === true
     this.globalData.profile = readStoredProfile()
@@ -50,6 +51,7 @@ App({
   onHide: function () { this._readCacheWasHidden = true },
 
   onShow: function () {
+    require('./services/export-files').cleanup(false)
     if (this._readCacheWasHidden) {
       readCache.invalidate(['accounts', 'transactions', 'categories'])
       this._readCacheWasHidden = false
@@ -103,6 +105,7 @@ App({
   },
 
   logoutWechatAccount: function () {
+    require('./services/export-files').cleanup(true)
     readCache.reset()
     const avatarUrl = this.globalData.profile && this.globalData.profile.avatarUrl
     if (avatarUrl && avatarUrl.indexOf('wxfile://usr/') === 0) {

@@ -38,12 +38,12 @@ async function main() {
       try {
         const seedPool = await db.role('api', grants.api), pool = await db.role('import', grants.importer)
         await databaseMetrics(rows / 5, { pool, seedPool, sample(sample) {
+          samples.push({ ...sample, run }); emit({ ...sample, run })
           const limit = ['prepareUpdate', 'organize', 'resolveAccounts', 'post'].includes(sample.stage) ? BUDGET.receipt
             : ['getCold', 'getWarm'].includes(sample.stage) ? BUDGET.summary : BUDGET.page
           if (sample.responseBytes > limit) throw new Error('response budget exceeded: ' + sample.stage)
           if (rows === 24990 && ['prepareUpdate', 'resolveAccounts', 'post'].includes(sample.stage) && sample.ms > 20000) throw new Error('20s action budget exceeded: ' + sample.stage)
           if (rows === 24990 && sample.stage === 'post' && sample.userLockHoldMs > 10000) throw new Error('10s user lock budget exceeded')
-          samples.push({ ...sample, run }); emit({ ...sample, run })
         } })
       } finally { await db.close() }
     }

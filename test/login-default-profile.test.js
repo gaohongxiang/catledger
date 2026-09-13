@@ -9,6 +9,7 @@ function loadApp(storage) {
   let saves = 0
   vm.runInNewContext(fs.readFileSync(require.resolve('../miniprogram/app.js'), 'utf8'), {
     require: function (name) {
+      if (name === './services/export-files') return require('../miniprogram/services/export-files')
       if (name === './utils/profile-presentation') return profilePresentation
       if (name === './services/read-cache') return { reset: function () {} }
       if (name === './theme/service') return { install: function () {} }

@@ -57,3 +57,10 @@ MINI-1904F 当前执行契约修订：受0.5核实例的内存限制，云端旧
 
 
 `0014_loan_payments.sql`：实际借还、逐贷款构成和 Transaction 关系。每用户活动正式交易唯一关联；保留已撤销批次和冻结贷款版本。原子金额/总账/本金校验在贷款服务，迁移仅建表，不推导既有真实交易或改余额。仅在本机隔离库验证；本机最小角色 DML 见 scripts/runtime-role-grants.js，不代表云权限已变更。
+
+
+## 0015～0017 贷款来源、期次与导出
+
+`0015_loan_source_maintenance.sql` 增加来源占用、被替换交易审计和付款更正关系；`0016_loan_periods.sql` 增加期次、计划修订和实际付款分配。仅建新表，不推导真实贷款或改写既有账务。
+
+`0017_data_exports.sql` 增加用户 `data_revision`（初值 0）和每用户至多一个导出任务；修订随业务事务递增，临时任务不递增。云管理 SQL 若不保持会话，先查询 information_schema，再以等价单条 ALTER 执行缺失列，随后执行 CREATE TABLE；不得把 PREPARE 的会话变量拆到独立连接。全部结构核对成功后才登记原迁移文件 checksum。权限清单以 `scripts/runtime-role-grants.js` 为准，新增表只补必要 DML。用户已于 2026-09-14 授权本轮 0013～0017 云迁移和部署，执行证据另见实施规划 C1 收口记录。

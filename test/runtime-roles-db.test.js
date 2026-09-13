@@ -8,7 +8,7 @@ test('API/import separate runtime roles: V2 paging, atomic chunks, replay, balan
   const { isolatedMysql } = require('../scripts/isolated-mysql'), grants = require('../scripts/runtime-role-grants')
   const db = await isolatedMysql()
   try {
-    assert.equal(db.migrations, 16)
+    assert.equal(db.migrations, 17)
     const apiPool = await db.role('api', grants.api), importPool = await db.role('import', grants.importer)
     for (const pool of [apiPool, importPool]) {
       await assert.rejects(pool.query('CREATE TABLE forbidden_probe (id INT)'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })

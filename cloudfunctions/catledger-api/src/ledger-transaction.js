@@ -61,8 +61,7 @@ async function executeIdempotentMutation({
   subjectHash,
   action,
   data,
-  operation,
-  currentReads = false
+  operation
 }) {
   const keyDigest = digestIdempotencyKey(data && data.requestId)
   const requestData = { ...data }
@@ -75,14 +74,15 @@ async function executeIdempotentMutation({
 
     try {
       connection = await getPool().getConnection()
-      if (currentReads) await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
+      await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
       await connection.beginTransaction()
       transactionStarted = true
       const uid = await resolveUid(connection, provider, subjectHash)
       // 两支函数先锁同一用户，再锁交易/账户，避免退款与原消费反向加锁。
-      if (currentReads) await connection.execute(
+      const [activeUsers] = await connection.execute(
         'SELECT uid FROM catledger_users WHERE uid = ? AND status = \'active\' FOR UPDATE', [uid]
       )
+      if (!activeUsers[0]) throw ledgerError('INITIALIZATION_REQUIRED')
 
       try {
         await connection.execute(
@@ -111,6 +111,7 @@ async function executeIdempotentMutation({
       }
 
       const result = await operation(connection, uid, requestData)
+      await connection.execute('UPDATE catledger_users SET data_revision=data_revision+1 WHERE uid=?', [uid])
       await connection.execute(
         `UPDATE catledger_mutation_receipts
             SET result_json = ?

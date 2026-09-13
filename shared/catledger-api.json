@@ -10,6 +10,9 @@
   },
   "loanMetadata": {"currency": "CNY", "kind": ["borrowing", "installment"], "unknownPrincipal": null, "knownZeroPrincipal": "0", "baseline": "confirmed principal at the start of baselineDate; never the entire account balance", "owner": "trusted server identity, uid-scoped loan/account FK", "status": ["unknown", "active", "settled"], "writeRecovery": "transactions.commandResult + original persisted requestId"},
   "actions": {
+    "dataExports.start": {"kind":"mutation","data":["requestId"],"returns":["exportId","format","schemaVersion","startedAt","expiresAt","tables","maxRows","maxBytes"],"rules":["One private job per authenticated user; one hour expiry; start/replay does not change business revision."]},
+    "dataExports.page": {"kind":"read","data":["exportId","cursor?"],"returns":["text","bytes","rows","totalRows","nextCursor","completeToken"],"rules":["Signed keyset/UTF-8 fragment cursor; 50 completed rows and 65536 UTF-8 text bytes maximum; unchanged business revision required."]},
+    "dataExports.finish": {"kind":"command","data":["exportId","completeToken"],"returns":["exportId","complete","rows","format","startedAt"],"rules":["Only signed terminal token; active user lock checks revision; immutable completed result can be replayed."]},
     "loans.periods":{"kind":"read","data":["loanId","pageSize?","cursor?","periodIds?"],"returns":"{loanId,loanName,loanVersion,summary,items,nextCursor}; page 1..40; optional at most 40 selected IDs, same loan only; signed cursor includes loan version. Summary includes unpaid principal/interest/fee, next due date, remaining principal and explicit gap; never mark paid by date"},
     "loans.savePeriod":{"kind":"idempotent-mutation","data":["requestId","loanId","loanVersion","periodId?","version?","periodNumber","dueDate","principalMinor","interestMinor","feeMinor","cancelled?"],"returns":"{loanId,loanVersion,periodId,version}; period number 1..9999 unique per loan, explicit nonnegative components with positive total. Revision preserves original plan; cannot reduce below paid components or cancel paid period; no Transaction writes"},
     "loans.allocatePeriods":{"kind":"idempotent-versioned-mutation","data":["requestId","loanId","loanVersion","paymentId","version","items","confirmed"],"returns":"{paymentId,version,loanId,loanVersion,allocatedPeriods}; replace this active repayment's allocations for one loan, 0..40 unique versioned periods with explicit principal/interest/fee. Preserve old rows; each component bounded by payment share and period remainder; unallocated remainder remains explicit"},
@@ -170,6 +173,8 @@
     "data": "action-specific public result; bootstrap includes uid; WeChat OpenID and identity digests are never returned"
   },
   "failureCodes": [
+    "EXPORT_CHANGED",
+    "EXPORT_EXPIRED",
     "LOAN_PLAN_OVERALLOCATED",
     "LOAN_SOURCE_MISMATCH",
     "LOAN_SOURCE_TOO_LARGE",

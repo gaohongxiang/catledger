@@ -158,13 +158,7 @@ Page({
   },
 
   showPrivacy: function () {
-    wx.showModal({
-      title: '数据与隐私',
-      content: '只有你主动点击登录后，招财猫记账本才会创建并连接个人账本。头像和昵称由你自愿选择，仅保存在当前设备用于“我的”页面展示；服务端使用微信可信身份隔离账本。页面 ID 是你的账号标识，可复制给客服定位问题，不是登录凭证。微信 OpenID 与身份摘要不对外展示，普通日志不记录身份信息。',
-      showCancel: false,
-      confirmText: '知道了',
-      confirmColor: themeService.currentTokens().accent
-    })
+    wx.navigateTo({ url: '/pages/data-privacy/index' })
   },
 
   showAbout: function () {

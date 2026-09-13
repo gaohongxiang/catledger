@@ -55,7 +55,7 @@ async function replayMutation({ getPool, provider, subjectHash, keyDigest, actio
   }
 }
 
-async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation, currentReads = false }) {
+async function executeIdempotentMutation({ getPool, provider, subjectHash, action, data, operation }) {
   if (data && Object.hasOwn(data, 'resultMode')) throw importError('VALIDATION_ERROR')
   assertBudget(data, 'request')
   const keyDigest = digestIdempotencyKey(data && data.requestId)
@@ -72,14 +72,15 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
     }
     try {
       connection = await getPool().getConnection()
-      if (currentReads) await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
+      await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')
       await connection.beginTransaction()
       transactionStarted = true
       const uid = await resolveUid(connection, provider, subjectHash)
-      // 与 API 正式账本 mutation 使用相同门禁；解析和只读请求不占此锁。
-      if (currentReads) await connection.execute(
+      // 解析 CPU 留在事务外；所有持久化与 API 共用用户门禁及导出修订。
+      const [activeUsers] = await connection.execute(
         'SELECT uid FROM catledger_users WHERE uid = ? AND status = \'active\' FOR UPDATE', [uid]
       )
+      if (!activeUsers[0]) throw importError('INITIALIZATION_REQUIRED')
       try {
         await connection.execute(
           `INSERT INTO catledger_mutation_receipts
@@ -98,6 +99,7 @@ async function executeIdempotentMutation({ getPool, provider, subjectHash, actio
       }
 
       const rawResult = await operation(connection, uid, requestData, requestDigest, keyDigest)
+      await connection.execute('UPDATE catledger_users SET data_revision=data_revision+1 WHERE uid=?', [uid])
       const result = RECEIPT_ACTIONS.has(action) ? operationReceipt(rawResult, action, keyDigest) : assertBudget(rawResult, 'receipt')
       await connection.execute(
         `UPDATE catledger_mutation_receipts

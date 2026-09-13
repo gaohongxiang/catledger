@@ -3,6 +3,7 @@ const { randomUUID } = require('node:crypto')
 const { DEFAULT_CATEGORIES } = require('./default-categories')
 const { createUserId } = require('./user-id')
 const { normalizeCategoryName } = require('./category-name')
+const { ledgerError } = require('./ledger-errors')
 const {
   isRetryableDatabaseError,
   safeRollback,
@@ -100,8 +101,13 @@ function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES,
               [uid, provider, subjectHash]
             )
           }
-
-          await insertDefaultCategories(connection, uid, defaultCategories)
+          const [[active]] = await connection.execute("SELECT uid FROM catledger_users WHERE uid=? AND status='active' FOR UPDATE", [uid])
+          if (!active) throw ledgerError('INITIALIZATION_REQUIRED')
+          const [existing] = await connection.execute('SELECT system_key AS systemKey FROM catledger_categories WHERE uid=? AND system_key IS NOT NULL', [uid])
+          const keys = new Set(existing.map(row => row.systemKey))
+          const missing = defaultCategories.filter(category => !keys.has(category.systemKey))
+          await insertDefaultCategories(connection, uid, missing)
+          if (missing.length) await connection.execute('UPDATE catledger_users SET data_revision=data_revision+1 WHERE uid=?', [uid])
           const categories = await listCategories(connection, uid)
 
           await connection.commit()

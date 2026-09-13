@@ -1,0 +1,742 @@
+[
+  {
+    "name": "catledger_accounts",
+    "keys": [
+      "account_id"
+    ],
+    "columns": [
+      "account_id",
+      "type",
+      "nature",
+      "name",
+      "normalized_name",
+      "archived_at",
+      "currency",
+      "version",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_categories",
+    "keys": [
+      "category_id"
+    ],
+    "columns": [
+      "category_id",
+      "kind",
+      "system_key",
+      "name",
+      "normalized_name",
+      "sort_order",
+      "is_system_default",
+      "version",
+      "archived_at",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_finance_updates",
+    "keys": [
+      "update_id"
+    ],
+    "columns": [
+      "update_id",
+      "status",
+      "version",
+      "plan_version",
+      "current_action_id",
+      "source_count",
+      "valid_evidence_count",
+      "duplicate_evidence_count",
+      "final_event_count",
+      "posted_event_count",
+      "ready_event_count",
+      "needs_action_event_count",
+      "excluded_event_count",
+      "error_code",
+      "created_at",
+      "updated_at",
+      "side_effects_json"
+    ],
+    "json": [
+      "side_effects_json"
+    ]
+  },
+  {
+    "name": "catledger_import_account_mappings",
+    "keys": [
+      "mapping_id"
+    ],
+    "columns": [
+      "mapping_id",
+      "source_type",
+      "payment_method_key",
+      "payment_method_hint",
+      "mapping_action",
+      "account_id",
+      "version",
+      "disabled_at",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_import_category_mappings",
+    "keys": [
+      "mapping_id"
+    ],
+    "columns": [
+      "mapping_id",
+      "source_type",
+      "alias_key",
+      "alias_key_version",
+      "category_id",
+      "version",
+      "created_at",
+      "updated_at",
+      "disabled_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_import_files",
+    "keys": [
+      "import_id"
+    ],
+    "columns": [
+      "import_id",
+      "state",
+      "original_file_name",
+      "declared_size",
+      "actual_size",
+      "file_extension",
+      "mime_type",
+      "content_sha256",
+      "storage_object_key",
+      "cloud_file_id",
+      "error_code",
+      "version",
+      "content_deleted_at",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_import_source_profiles",
+    "keys": [
+      "source_profile_id"
+    ],
+    "columns": [
+      "source_profile_id",
+      "source_type",
+      "profile_key",
+      "key_version",
+      "masked_display_name",
+      "first_seen_at",
+      "last_seen_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_payments",
+    "keys": [
+      "payment_id"
+    ],
+    "columns": [
+      "payment_id",
+      "kind",
+      "origin_mode",
+      "status",
+      "asset_account_id",
+      "total_minor",
+      "occurred_local_at",
+      "occurred_at_utc",
+      "timezone_offset_minutes",
+      "version",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loans",
+    "keys": [
+      "loan_id"
+    ],
+    "columns": [
+      "loan_id",
+      "account_id",
+      "name",
+      "institution",
+      "kind",
+      "baseline_principal_minor",
+      "baseline_date",
+      "start_date",
+      "end_date",
+      "repayment_method",
+      "version",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_mutation_receipts",
+    "keys": [
+      "idempotency_key_digest"
+    ],
+    "columns": [
+      "idempotency_key_digest",
+      "action",
+      "request_digest",
+      "result_json",
+      "created_at",
+      "updated_at"
+    ],
+    "json": [
+      "result_json"
+    ]
+  },
+  {
+    "name": "catledger_source_identities",
+    "keys": [
+      "identity_id"
+    ],
+    "columns": [
+      "identity_id",
+      "source_profile_id",
+      "source_type",
+      "identity_kind",
+      "identity_key",
+      "core_digest",
+      "identity_version",
+      "core_digest_version",
+      "first_seen_at",
+      "last_seen_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_transactions",
+    "keys": [
+      "transaction_id"
+    ],
+    "columns": [
+      "transaction_id",
+      "type",
+      "source_account_id",
+      "destination_account_id",
+      "category_id",
+      "original_transaction_id",
+      "amount_minor",
+      "occurred_local_date",
+      "occurred_local_at",
+      "timezone_offset_minutes",
+      "occurred_at_utc",
+      "note",
+      "origin",
+      "version",
+      "deleted_at",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_finance_actions",
+    "keys": [
+      "action_id"
+    ],
+    "columns": [
+      "action_id",
+      "update_id",
+      "expected_update_version",
+      "applied_update_version",
+      "action_type",
+      "idempotency_key_digest",
+      "request_digest",
+      "status",
+      "decision_json",
+      "reason_codes_json",
+      "error_code",
+      "started_at",
+      "completed_at",
+      "failed_at",
+      "created_at",
+      "updated_at"
+    ],
+    "json": [
+      "decision_json",
+      "reason_codes_json"
+    ]
+  },
+  {
+    "name": "catledger_finance_update_account_drafts",
+    "keys": [
+      "draft_account_id"
+    ],
+    "columns": [
+      "draft_account_id",
+      "update_id",
+      "name",
+      "normalized_name",
+      "type",
+      "nature",
+      "currency",
+      "action_id",
+      "materialized_at",
+      "created_at",
+      "updated_at",
+      "superseded_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_finance_update_postings",
+    "keys": [
+      "posting_id"
+    ],
+    "columns": [
+      "posting_id",
+      "update_id",
+      "request_digest",
+      "state",
+      "selected_event_count",
+      "created_transaction_count",
+      "reused_transaction_count",
+      "error_code",
+      "created_at",
+      "completed_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_import_batches",
+    "keys": [
+      "batch_id"
+    ],
+    "columns": [
+      "batch_id",
+      "import_id",
+      "source_profile_id",
+      "state",
+      "source_type",
+      "source_format",
+      "parser_name",
+      "parser_version",
+      "normalization_version",
+      "identity_version",
+      "raw_snapshot_version",
+      "parse_fingerprint",
+      "statement_start_local",
+      "statement_end_local",
+      "timezone_offset_minutes",
+      "total_row_count",
+      "valid_row_count",
+      "invalid_row_count",
+      "pending_row_count",
+      "posted_row_count",
+      "error_code",
+      "created_at",
+      "completed_at",
+      "updated_at",
+      "analysis_json"
+    ],
+    "json": [
+      "analysis_json"
+    ]
+  },
+  {
+    "name": "catledger_import_rows",
+    "keys": [
+      "row_id"
+    ],
+    "columns": [
+      "row_id",
+      "batch_id",
+      "identity_id",
+      "source_row_number",
+      "source_locator",
+      "parse_state",
+      "identity_state",
+      "processing_state",
+      "transaction_time_raw",
+      "amount_raw",
+      "direction_raw",
+      "status_raw",
+      "transaction_type_raw",
+      "counterparty_raw",
+      "item_raw",
+      "payment_method_raw",
+      "note_raw",
+      "source_transaction_id_raw",
+      "source_order_id_raw",
+      "source_merchant_order_id_raw",
+      "normalized_local_date",
+      "normalized_local_at",
+      "normalized_utc_at",
+      "timezone_offset_minutes",
+      "normalized_amount_minor",
+      "currency",
+      "normalized_direction",
+      "normalized_transaction_type",
+      "economic_effect",
+      "payment_method_key",
+      "category_evidence_json",
+      "observed_identity_key",
+      "observed_core_digest",
+      "primary_issue_code",
+      "issues_json",
+      "raw_fields_json",
+      "raw_snapshot_version",
+      "parser_version",
+      "normalization_version",
+      "created_at",
+      "semantic_json",
+      "observations_json"
+    ],
+    "json": [
+      "category_evidence_json",
+      "issues_json",
+      "raw_fields_json",
+      "semantic_json",
+      "observations_json"
+    ]
+  },
+  {
+    "name": "catledger_loan_payment_allocations",
+    "keys": [
+      "payment_id",
+      "loan_id"
+    ],
+    "columns": [
+      "payment_id",
+      "loan_id",
+      "principal_minor",
+      "interest_minor",
+      "fee_minor",
+      "interest_treatment",
+      "fee_treatment",
+      "interest_category_id",
+      "fee_category_id",
+      "confirmed_loan_version"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_payment_corrections",
+    "keys": [
+      "payment_id"
+    ],
+    "columns": [
+      "payment_id",
+      "previous_payment_id"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_payment_transactions",
+    "keys": [
+      "payment_id",
+      "transaction_id"
+    ],
+    "columns": [
+      "payment_id",
+      "transaction_id",
+      "transaction_version",
+      "created_by_payment",
+      "active"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_periods",
+    "keys": [
+      "period_id"
+    ],
+    "columns": [
+      "period_id",
+      "loan_id",
+      "period_number",
+      "due_date",
+      "principal_minor",
+      "interest_minor",
+      "fee_minor",
+      "cancelled",
+      "version",
+      "created_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_replaced_transactions",
+    "keys": [
+      "payment_id",
+      "transaction_id"
+    ],
+    "columns": [
+      "payment_id",
+      "transaction_id",
+      "deleted_version"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_review_issues",
+    "keys": [
+      "issue_id"
+    ],
+    "columns": [
+      "issue_id",
+      "update_id",
+      "issue_key",
+      "issue_key_version",
+      "issue_type",
+      "status",
+      "version",
+      "blocking",
+      "primary_reason_code",
+      "member_count",
+      "candidate_count",
+      "rule_version",
+      "reason_codes_json",
+      "resolved_action_id",
+      "created_at",
+      "updated_at"
+    ],
+    "json": [
+      "reason_codes_json"
+    ]
+  },
+  {
+    "name": "catledger_economic_events",
+    "keys": [
+      "event_id"
+    ],
+    "columns": [
+      "event_id",
+      "batch_id",
+      "update_id",
+      "event_key",
+      "event_key_version",
+      "event_type",
+      "state",
+      "status",
+      "flow_direction",
+      "economic_nature",
+      "ledger_account_id",
+      "counterparty_ledger_account_id",
+      "event_local_date",
+      "event_local_at",
+      "event_utc_at",
+      "timezone_offset_minutes",
+      "amount_minor",
+      "currency",
+      "category_id",
+      "manual_field_mask",
+      "field_sources_json",
+      "reason_codes_json",
+      "event_core_digest",
+      "rule_version",
+      "version",
+      "created_at",
+      "updated_at"
+    ],
+    "json": [
+      "field_sources_json",
+      "reason_codes_json"
+    ]
+  },
+  {
+    "name": "catledger_event_evidence",
+    "keys": [
+      "event_id",
+      "row_id",
+      "evidence_role"
+    ],
+    "columns": [
+      "evidence_id",
+      "update_id",
+      "event_id",
+      "row_id",
+      "evidence_role",
+      "field_mask",
+      "relation_rule_version",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_finance_update_account_mapping_drafts",
+    "keys": [
+      "draft_mapping_id"
+    ],
+    "columns": [
+      "draft_mapping_id",
+      "update_id",
+      "event_id",
+      "source_type",
+      "payment_method_key",
+      "payment_method_hint",
+      "mapping_action",
+      "account_id",
+      "action_id",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_finance_update_sources",
+    "keys": [
+      "source_id"
+    ],
+    "columns": [
+      "source_id",
+      "update_id",
+      "source_order",
+      "import_id",
+      "batch_id",
+      "source_profile_id",
+      "source_type_snapshot",
+      "source_format_snapshot",
+      "parser_version",
+      "normalization_version",
+      "identity_version",
+      "file_name_snapshot",
+      "file_content_sha256",
+      "total_row_count",
+      "valid_row_count",
+      "invalid_row_count",
+      "created_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_payment_sources",
+    "keys": [
+      "payment_id"
+    ],
+    "columns": [
+      "payment_id",
+      "update_id",
+      "event_id",
+      "original_event_json",
+      "original_links_json",
+      "applied_event_version",
+      "active"
+    ],
+    "json": [
+      "original_event_json",
+      "original_links_json"
+    ]
+  },
+  {
+    "name": "catledger_loan_period_allocations",
+    "keys": [
+      "allocation_id"
+    ],
+    "columns": [
+      "allocation_id",
+      "payment_id",
+      "loan_id",
+      "period_id",
+      "principal_minor",
+      "interest_minor",
+      "fee_minor",
+      "confirmed_period_version",
+      "confirmed_payment_version",
+      "active",
+      "created_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_period_revisions",
+    "keys": [
+      "period_id",
+      "version"
+    ],
+    "columns": [
+      "period_id",
+      "version",
+      "snapshot_json",
+      "created_at"
+    ],
+    "json": [
+      "snapshot_json"
+    ]
+  },
+  {
+    "name": "catledger_review_issue_members",
+    "keys": [
+      "member_id"
+    ],
+    "columns": [
+      "member_id",
+      "update_id",
+      "issue_id",
+      "object_type",
+      "object_id",
+      "object_version",
+      "member_role",
+      "sort_order",
+      "created_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_economic_event_relations",
+    "keys": [
+      "relation_id"
+    ],
+    "columns": [
+      "relation_id",
+      "update_id",
+      "relation_key",
+      "relation_key_version",
+      "relation_type",
+      "status",
+      "version",
+      "source_event_id",
+      "target_event_id",
+      "amount_minor",
+      "currency",
+      "manual",
+      "rule_version",
+      "reason_codes_json",
+      "created_at",
+      "updated_at"
+    ],
+    "json": [
+      "reason_codes_json"
+    ]
+  },
+  {
+    "name": "catledger_economic_event_transactions",
+    "keys": [
+      "link_id"
+    ],
+    "columns": [
+      "link_id",
+      "update_id",
+      "event_id",
+      "transaction_id",
+      "role",
+      "creation_method",
+      "rule_version",
+      "transaction_version",
+      "created_at",
+      "superseded_at"
+    ],
+    "json": []
+  }
+]

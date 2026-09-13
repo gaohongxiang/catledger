@@ -13,7 +13,8 @@
     "pages/loans/index",
     "pages/loan-detail/index",
     "pages/loan-payment/index",
-    "pages/loan-plan/index"
+    "pages/loan-plan/index",
+    "pages/data-privacy/index"
   ],
   "lazyCodeLoading": "requiredComponents",
   "style": "v2",

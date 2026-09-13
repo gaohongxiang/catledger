@@ -4,6 +4,8 @@ const { databaseErrorCode, isRetryableDatabaseError } = require('./database-erro
 const IDENTITY_FIELDS = ['uid', 'openid', 'openId', 'OPENID']
 
 const ERROR_MESSAGES = Object.freeze({
+  EXPORT_CHANGED: '导出期间账本发生变化，请重新生成完整导出',
+  EXPORT_EXPIRED: '导出已过期，请重新生成',
   LOAN_SOURCE_MISMATCH: '原交易组与确认的金额、账户或本息费不符，请核对完整付款',
   LOAN_PLAN_OVERALLOCATED: '期次本金、利息或费用超过可分配金额，已付款也不能被计划改小或取消',
   LOAN_SOURCE_TOO_LARGE: '来源组超过单次处理范围，请保留原账目核对',
@@ -30,6 +32,8 @@ const ERROR_MESSAGES = Object.freeze({
   UNSUPPORTED_ACTION: '当前操作尚未开放'
 })
 const PUBLIC_ERROR_CODES = new Set([
+  'EXPORT_CHANGED',
+  'EXPORT_EXPIRED',
   'LOAN_SOURCE_MISMATCH',
   'LOAN_PLAN_OVERALLOCATED',
   'LOAN_SOURCE_TOO_LARGE',
