@@ -1,0 +1,181 @@
+{
+  "date": "2026-09-14",
+  "codeCommit": "a4cd49972d15d0aa2486887d2021e41162dcb02a",
+  "ci": "https://github.com/gaohongxiang/catledger/actions/runs/34776620060",
+  "environment": "cloud1-d6gqxki3s97cc4ee9",
+  "database": {
+    "tables": 37,
+    "foreignKeys": 81,
+    "migrations": [
+      {
+        "checksum": "5ae16c8afab28ae5f9a2f8801b355881273b71ca33220bf233e86aeaefdb3eb3",
+        "version": "0001_identity_and_categories.sql"
+      },
+      {
+        "checksum": "cb33a58955a1ddcb3326a2ffdf53ac7140b6bcecbb334a0f65c23af4b5bfbedd",
+        "version": "0002_accounts_and_transactions.sql"
+      },
+      {
+        "checksum": "9d763bd2f8b40500f29648e823110af368b7b50afcb3e961e6e97311b7cf9b7e",
+        "version": "0003_category_management_and_refunds.sql"
+      },
+      {
+        "checksum": "a06235d97211313a8b2a63ec0aed717f3a79b9628e19cea712a4e42495ee70af",
+        "version": "0004_single_file_import.sql"
+      },
+      {
+        "checksum": "620bb92f97a468f67c7cf6084955a91c4a5102273645d0f48c2ec79698a0a8ec",
+        "version": "0005_import_payment_rules.sql"
+      },
+      {
+        "checksum": "1ffa51c60d6ad71ace8f80c4bca0cd60f6763b690b98b79cb3a5f5e4483648ae",
+        "version": "0006_unified_finance_updates.sql"
+      },
+      {
+        "checksum": "ffff7770d0160ad56be2e72720bc9bd1c5d39eb84700095f9935533352b6ed4f",
+        "version": "0007_finance_update_write_barrier.sql"
+      },
+      {
+        "checksum": "38f321bc6736df8665087985b6f79f4ad9adb9e95d20ccc2bca2d57f7fd845de",
+        "version": "0008_finance_update_payment_rules.sql"
+      },
+      {
+        "checksum": "a6baed22d1c87afa7b4ff722e2dba47cfe514a92cec30a43c6b15c88d6fa147a",
+        "version": "0009_bill_semantic_analysis.sql"
+      },
+      {
+        "checksum": "f4f068427982f6d6a7f1e23c0ec793b8072f3ed5db000d705b68f1731504752a",
+        "version": "0010_import_maintenance_audit.sql"
+      },
+      {
+        "checksum": "3e9e80a7f5c048b8b02df62d48c17bc0f12022fb98c3e80284345d269c1c50fa",
+        "version": "0011_short_user_ids.sql"
+      },
+      {
+        "checksum": "24a8c3aa9c771acfbc8dfb2de50a1778f9c508ba7e456fa151d1081489c498a8",
+        "version": "0012_compact_import_storage.sql"
+      },
+      {
+        "checksum": "23709b88a2ecffa47091814022a34c04cfd3090633b915408b21e87af5526d36",
+        "version": "0013_loan_metadata.sql"
+      },
+      {
+        "checksum": "0fd11818b3471304c1953d0b95a2ee11dc41e99ba877c35b26c38d01f221e4b7",
+        "version": "0014_loan_payments.sql"
+      },
+      {
+        "checksum": "4b55122a7007aa8015b493d4fa15dbafe2cec4dcb54cf746b07829e83a143d0a",
+        "version": "0015_loan_source_maintenance.sql"
+      },
+      {
+        "checksum": "08fbaa2318758dc49525fb407ed9ae41f34c28991cda41f3c92ec248f50a3169",
+        "version": "0016_loan_periods.sql"
+      },
+      {
+        "checksum": "586be69d7c7a0312209bdd87bf02defec665fe7850e4f7a144f7346e895dfc2c",
+        "version": "0017_data_exports.sql"
+      }
+    ],
+    "runtimeRequirementsChecked": 152,
+    "missingGrants": 0,
+    "businessFingerprintTables": 5,
+    "unchangedBeforeAfterMigrationAndDeployment": true
+  },
+  "functions": [
+    {
+      "name": "catledger-api",
+      "status": "Active",
+      "availability": "Available",
+      "runtime": "Nodejs18.15",
+      "memoryMB": 512,
+      "timeoutSeconds": 20,
+      "initTimeoutSeconds": 65,
+      "handler": "index.main",
+      "installDependency": "TRUE",
+      "modifiedAtAsReported": "2026-09-14 03:11:32",
+      "codeSizeBytes": 8070991,
+      "vpcId": "vpc-r51qxjpm",
+      "subnetId": "subnet-be64bten",
+      "environmentKeys": [
+        "CATLEDGER_DB_HOST",
+        "CATLEDGER_DB_NAME",
+        "CATLEDGER_DB_PASSWORD",
+        "CATLEDGER_DB_PORT",
+        "CATLEDGER_DB_USER"
+      ],
+      "triggers": [],
+      "publicNetwork": {
+        "PublicNetStatus": "DISABLE",
+        "EipConfig": {
+          "EipStatus": "DISABLE",
+          "EipAddress": []
+        }
+      }
+    },
+    {
+      "name": "catledger-import",
+      "status": "Active",
+      "availability": "Available",
+      "runtime": "Nodejs18.15",
+      "memoryMB": 512,
+      "timeoutSeconds": 60,
+      "initTimeoutSeconds": 65,
+      "handler": "index.main",
+      "installDependency": "TRUE",
+      "modifiedAtAsReported": "2026-09-14 03:12:09",
+      "codeSizeBytes": 8713866,
+      "vpcId": "vpc-r51qxjpm",
+      "subnetId": "subnet-be64bten",
+      "environmentKeys": [
+        "CATLEDGER_DB_HOST",
+        "CATLEDGER_DB_NAME",
+        "CATLEDGER_DB_PASSWORD",
+        "CATLEDGER_DB_PORT",
+        "CATLEDGER_DB_USER"
+      ],
+      "triggers": [],
+      "publicNetwork": {
+        "PublicNetStatus": "ENABLE",
+        "EipConfig": {
+          "EipStatus": "DISABLE",
+          "EipAddress": []
+        }
+      }
+    }
+  ],
+  "native": {
+    "localSynthetic": true,
+    "export": {
+      "stage": "finalExport",
+      "rows": 670,
+      "tables": 33,
+      "loanTablesIncluded": true,
+      "jsonlBytes": 916399,
+      "csvBytes": 747,
+      "expiredFilesRemoved": true
+    },
+    "callCount": 64,
+    "failedCalls": 0,
+    "actions": [
+      "financeUpdates.summary",
+      "dataExports.start",
+      "dataExports.page",
+      "dataExports.finish",
+      "catalog.get",
+      "loans.create",
+      "loans.get",
+      "loans.periods",
+      "loans.savePeriod",
+      "loans.record",
+      "loans.payment",
+      "loans.planAllocation",
+      "loans.allocatePeriods"
+    ],
+    "temporaryExports": 0
+  },
+  "limitations": [
+    "Cloud business probes rejected by automatic approval; not executed. No authenticated cloud functional acceptance.",
+    "Single local performance sample per case, not P95 or cloud capacity.",
+    "Physical device, mini-program upload/release, C2 and C3 not completed."
+  ]
+}
