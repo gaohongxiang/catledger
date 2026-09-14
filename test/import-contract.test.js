@@ -39,14 +39,15 @@ test('统一 FinanceUpdate 上线后不再公开旧单文件写链路', function
   })
 })
 
-test('小程序导入调用只使用已登记动作，记账页进入独立工作台', function () {
+test('小程序导入调用只使用已登记动作，各导入入口复用独立工作台', function () {
   const page = ['index.js', 'paged.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const actions = [...page.matchAll(/(?:callImport|request)\(\s*['"]([^'"]+)['"]/g)].map(function (match) { return match[1] })
   assert.ok(actions.length > 0)
   actions.forEach(function (action) { assert.ok(contract.actions[action], action) })
   const tab = fs.readFileSync(path.join(__dirname, '../miniprogram/custom-tab-bar/index.js'), 'utf8')
   const editor = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/transaction-editor/index.js'), 'utf8')
-  assert.match(tab, /url: '\/pages\/transaction-editor\/index'/)
+  assert.match(tab, /'\/pages\/transaction-editor\/index'/)
+  assert.match(tab, /'\/pages\/import-workbench\/index'/)
   assert.match(editor, /url: '\/pages\/import-workbench\/index'/)
   assert.doesNotMatch(tab + editor, /chooseMessageFile/)
 })

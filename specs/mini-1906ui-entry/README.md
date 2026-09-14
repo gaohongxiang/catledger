@@ -5,6 +5,7 @@
 本批在 `codex/mini-1906o2-catalog-loading`、基线 `058858e0` 实施，当前状态只查主看板19.10。下方旧直达、旧服务兼容、旧分支及部署限制均为历史记录；当前服务已于C1部署，旧兼容由MINI-1906S移除。本次不改数据协议、云函数或迁移。
 
 - 本地定向回归76/76（cached-page-requests、home-visual-sample、ui-system、login-default-profile），0失败、0跳过；仓库检查625文件/121模块通过，git diff --check通过。
+- CI发现的旧直达路由静态断言已同步为双入口；补跑全部根测试315通过、0失败，9项MySQL用例本机跳过，由同分支CI执行。
 - 原生工具使用内存合成响应及catledger存储替身，不写真实账本。检查菜单显示、取消、登录后继续、两条路径及原导入卡片往返；菜单截图见[恢复的选择菜单](RESTORED-CHOOSER.jpg)，记一笔原入口见[保留的导入卡片](EDITOR-IMPORT-PRESERVED.jpg)。详细实际结果见主看板19.10；手机与真实云端业务验收仍属19.9待办。
 
 ---
