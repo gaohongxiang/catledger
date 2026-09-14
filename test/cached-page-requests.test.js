@@ -578,34 +578,48 @@ test('目录失败时交易列表仍成功，个人页已确认的连接及数�
   assert.ok(profile.data.errorMessage)
 })
 
-test('中央记账直达新增页，游客须登录后继续，入口自身不读取目录', async () => {
-  const h = runtime(), component = h.component()
-  h.app.approved = false
-  component.openEditor()
-  assert.equal(h.calls.length, 0)
-  assert.deepEqual(h.navigation, [])
-  assert.equal(typeof h.loginOptions.afterLogin, 'function')
-  // 取消或失败没有成功回调，仍留在原页；成功后才继续原操作。
-  h.app.approved = true
-  h.loginOptions.afterLogin()
-  assert.deepEqual(h.navigation, ['/pages/transaction-editor/index'])
-  assert.equal(h.calls.length, 0)
-  await h.page('transaction-editor').prepareForm()
-  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+test('中央记账先选择方式，游客登录后继续原选择，菜单不读取目录', async () => {
+  for (const [method, route] of [['openEditor', '/pages/transaction-editor/index'], ['chooseBill', '/pages/import-workbench/index']]) {
+    const h = runtime(), component = h.component()
+    h.app.approved = false
+    component.openEntry()
+    assert.equal(component.data.entryOpen, true)
+    assert.equal(h.loginOptions, undefined)
+    assert.deepEqual(h.navigation, [])
+    component.closeEntry()
+    assert.equal(component.data.entryOpen, false)
+    component.openEntry(); component[method]()
+    assert.equal(component.data.entryOpen, false)
+    assert.equal(h.calls.length, 0)
+    assert.deepEqual(h.navigation, [])
+    assert.equal(typeof h.loginOptions.afterLogin, 'function')
+    // 取消或失败没有成功回调；登录成功继续用户选择的那一路。
+    h.app.approved = true
+    h.loginOptions.afterLogin()
+    assert.deepEqual(h.navigation, [route])
+    assert.equal(h.calls.length, 0)
+    if (method === 'openEditor') {
+      await h.page('transaction-editor').prepareForm()
+      assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+    }
+  }
 })
 
-test('中央记账不重复叠加页面，导航失败后允许重试', () => {
-  const h = runtime(), component = h.component()
-  h.deferNavigation = true
-  component.openEditor(); component.openEditor()
-  assert.equal(h.navigation.length, 1)
-  h.lastNavigation.complete()
-  h.deferNavigation = false; h.failNavigation = true
-  component.openEditor()
-  assert.match(h.toasts[0], /重试/)
-  h.failNavigation = false
-  component.openEditor()
-  assert.equal(h.navigation.length, 3)
+test('两种记账入口共用导航保护，连续切换不会叠页，失败后允许重试', () => {
+  for (const method of ['openEditor', 'chooseBill']) {
+    const h = runtime(), component = h.component()
+    h.deferNavigation = true
+    component.openEntry(); component[method](); component.openEditor(); component.chooseBill(); component.openEntry()
+    assert.equal(component.data.entryOpen, false)
+    assert.equal(h.navigation.length, 1)
+    h.lastNavigation.complete()
+    h.deferNavigation = false; h.failNavigation = true
+    component.openEntry(); component[method]()
+    assert.match(h.toasts[0], /重试/)
+    h.failNavigation = false
+    component.openEntry(); component[method]()
+    assert.equal(h.navigation.length, 3)
+  }
 })
 
 test('我的导入入口等待游客登录成功后继续，入口自身不读取或写入账本', () => {

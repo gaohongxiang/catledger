@@ -4,6 +4,7 @@ const themeService = require('../theme/service')
 Component({
   data: {
     hidden: false,
+    entryOpen: false,
     themeId: '',
     themeName: '',
     themeClass: '',
@@ -43,6 +44,10 @@ Component({
     }
   },
 
+  pageLifetimes: {
+    hide: function () { this.closeEntry() }
+  },
+
   methods: {
     syncTheme: function () {
       themeService.bindTabBar(this)
@@ -58,6 +63,7 @@ Component({
         }
         return
       }
+      this.closeEntry()
       const sheet = this.selectComponent('#loginSheet')
       if (sheet && typeof sheet.show === 'function') sheet.show(options || {})
     },
@@ -71,17 +77,36 @@ Component({
       wx.switchTab({ url: tab.pagePath })
     },
 
+    openEntry: function () {
+      if (!this._openingPage) this.setData({ entryOpen: true })
+    },
+
+    closeEntry: function () {
+      this.setData({ entryOpen: false })
+    },
+
+    keepEntryOpen: function () {},
+
+    chooseBill: function () {
+      this.openEntryPage('/pages/import-workbench/index', '暂时无法打开导入，请重试')
+    },
+
     openEditor: function () {
-      if (this._openingEditor) return
+      this.openEntryPage('/pages/transaction-editor/index', '暂时无法打开记账，请重试')
+    },
+
+    openEntryPage: function (url, failureMessage) {
+      if (this._openingPage) return
+      this.closeEntry()
       if (!this.isLoggedIn()) {
-        this.requestLogin({ afterLogin: this.openEditor.bind(this) })
+        this.requestLogin({ afterLogin: () => this.openEntryPage(url, failureMessage) })
         return
       }
-      this._openingEditor = true
+      this._openingPage = true
       wx.navigateTo({
-        url: '/pages/transaction-editor/index',
-        fail: () => wx.showToast({ title: '暂时无法打开记账，请重试', icon: 'none' }),
-        complete: () => { this._openingEditor = false }
+        url,
+        fail: () => wx.showToast({ title: failureMessage, icon: 'none' }),
+        complete: () => { this._openingPage = false }
       })
     }
   }
