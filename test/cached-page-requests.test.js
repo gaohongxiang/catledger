@@ -1011,7 +1011,7 @@ test('明细多选支持手动和导入有效类型，限制100笔，换筛选�
   const h = runtime(), page = await visit(h, 'transactions')
   page.data.transactions = managementRows(102).concat([{ transactionId: 'import', origin: 'import', editable: true, type: 'expense' },
     { transactionId: 'adjustment', origin: 'manual', editable: true, type: 'balance_adjustment' }])
-  page.toggleSelection(); page.selectLoaded()
+  page.toggleSelection(); await page.selectAll()
   assert.equal(page.data.selectedCount, 100)
   assert.equal(page.data.transactions.filter(row => row.selected).length, 100)
   page.selectTransaction(103); assert.equal(page.data.selectedCount, 100)
@@ -1077,7 +1077,7 @@ test('导入历史只读查看账目，跳转统一明细跨月筛选；手动�
   assert.equal(h.calls.some(row => /undo|commandResult/.test(row.action)), false)
   await detail.clearImportFilter(); assert.ok(detail.requestData().month)
   detail.data.transactions = managementRows(1).concat([{ transactionId: 'import', version: 1, origin: 'import', editable: false, type: 'expense' }])
-  detail.toggleSelection(); detail.selectLoaded(); assert.equal(detail.data.selectedCount, 2)
+  detail.toggleSelection(); await detail.selectAll(); assert.equal(detail.data.selectedCount, 2)
   h.cache.reset(); detail.onShow(); await detail.prepareAndLoad(); assert.equal(detail.data.importFilter, null)
   page.importAgain(); assert.equal(h.navigation.at(-1), '/pages/import-workbench/index?fresh=1')
 })
@@ -1101,4 +1101,23 @@ test('导入历史换登录会话立即清空旧列表，迟到响应不能回�
   late.app.approved = false; late.cache.reset(); oldPage.onShow()
   release({ ok: true, data: { items: [{ updateId: 'old', files: ['合成迟到.csv'], createdAt: '2026-09-01 01:00:00', sourceCount: 1 }], nextCursor: null } })
   await loading; assert.equal(oldPage.data.items.length, 0)
+})
+
+
+test('全选自动读取当前筛选后续页，最多100笔，再次点击取消；读取失败可以重试', async () => {
+  const h = runtime()
+  let fail = true
+  h.respond = (action, data) => {
+    if (action !== 'transactions.list') return
+    if (data.cursor && fail) return { ok: false, error: { code: 'CLOUD_CALL_FAILED', message: '合成读取失败' } }
+    const offset = Number(data.cursor || 0)
+    const rows = managementRows(30).map((row, i) => ({ ...row, transactionId: 'selected-' + (offset + i), origin: i % 2 ? 'import' : 'manual', occurredLocalAt: '2026-09-01T12:00:00' }))
+    return { ok: true, data: { transactions: rows, nextCursor: offset < 90 ? String(offset + 30) : null, summary: { incomeMinor: '0', expenseMinor: '100', netIncomeMinor: '-100' } } }
+  }
+  const page = await visit(h, 'transactions'); page.toggleSelection()
+  await page.selectAll(); assert.equal(page.data.selectedCount, 30); assert.equal(page.data.allSelected, false)
+  fail = false; await page.selectAll()
+  assert.equal(page.data.selectedCount, 100); assert.equal(page.data.allSelected, true); assert.equal(page.data.errorMessage, '')
+  assert.equal(page.data.transactions.filter(row => row.selected && row.origin === 'import').length, 50)
+  await page.selectAll(); assert.equal(page.data.selectedCount, 0); assert.equal(page.data.allSelected, false)
 })

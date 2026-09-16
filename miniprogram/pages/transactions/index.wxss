@@ -292,3 +292,5 @@
 
 .import-filter-title { display: block; font-size: 30rpx; overflow-wrap: anywhere; }
 .import-filter .detail-manage-link { margin-left: 0; }
+
+.detail-manage { justify-content: flex-end; }

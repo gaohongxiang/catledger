@@ -12,7 +12,7 @@ Page(Object.assign({
   data: {
     loggedIn: false,
     importFilter: null,
-    selectionMode: false, selectedCount: 0, deleting: false, deleteRetryCount: 0,
+    selectionMode: false, selectedCount: 0, allSelected: false, selectingAll: false, deleting: false, deleteRetryCount: 0,
     month: time.currentMonth(),
     monthLabel: '',
     pickerDate: time.today(),
@@ -75,7 +75,7 @@ Page(Object.assign({
   },
 
   onPullDownRefresh: function () {
-    if (this.data.deleting) { wx.stopPullDownRefresh(); return }
+    if (this.data.deleting || this.data.selectingAll) { wx.stopPullDownRefresh(); return }
     if (!app.hasLoginApproval()) {
       wx.stopPullDownRefresh()
       return
@@ -86,7 +86,7 @@ Page(Object.assign({
   },
 
   onReachBottom: function () {
-    if (app.hasLoginApproval() && this.data.nextCursor) {
+    if (!this.data.selectingAll && app.hasLoginApproval() && this.data.nextCursor) {
       this.loadTransactions(true)
     }
   },
@@ -94,8 +94,8 @@ Page(Object.assign({
   onUnload: function () { pageReadSession.end(this) },
 
   prepareAndLoad: function (options) {
-    if (this.data.deleting) return Promise.resolve()
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
+    if (this.data.deleting || this.data.selectingAll) return Promise.resolve()
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (this._prepareLoad) return this._prepareLoad
     const self = this
@@ -158,7 +158,7 @@ Page(Object.assign({
   },
 
   loadTransactions: function (append, options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (!append) this.resetSelection()
     const data = this.requestData(append ? this.data.nextCursor : null)
@@ -214,7 +214,7 @@ Page(Object.assign({
   },
 
   clearImportFilter: function () {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     this.setData({ importFilter: null, sourceFilterIndex: 0, hasLoaded: false, transactions: [], nextCursor: null })
     return this.loadTransactions(false)
   },
@@ -228,7 +228,7 @@ Page(Object.assign({
   },
 
   changeMonth: function (delta) {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     const month = time.shiftMonth(this.data.month, delta)
     this.setData({
       month: month,
@@ -242,7 +242,7 @@ Page(Object.assign({
   },
 
   changeDate: function (event) {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     const date = event.detail.value
     const month = date.slice(0, 7)
     const parts = date.split('-')
@@ -258,24 +258,24 @@ Page(Object.assign({
   },
 
   clearDate: function () {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     this.setData({ selectedDate: '', selectedDateLabel: '', nextCursor: null, hasLoaded: false, transactions: [] })
     return this.loadTransactions(false)
   },
 
   bindSearch: function (event) {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     this.setData({ search: event.detail.value })
   },
 
   applySearch: function () {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     this.setData({ appliedSearch: this.data.search.trim() })
     return this.loadTransactions(false)
   },
 
   clearSearch: function () {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     const hadSearch = Boolean(this.data.appliedSearch)
     this.setData({ search: '', appliedSearch: '' })
     if (hadSearch) {
@@ -284,25 +284,25 @@ Page(Object.assign({
   },
 
   changeAccountFilter: function (event) {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     this.setData({ accountFilterIndex: Number(event.detail.value), hasLoaded: false, transactions: [] })
     return this.loadTransactions(false)
   },
 
   changeCategoryFilter: function (event) {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     this.setData({ categoryFilterIndex: Number(event.detail.value), hasLoaded: false, transactions: [] })
     return this.loadTransactions(false)
   },
 
   changeSourceFilter: function (event) {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     this.setData({ sourceFilterIndex: Number(event.detail.value) })
     return this.loadTransactions(false)
   },
 
   editTransaction: function (event) {
-    if (this.data.deleting) return
+    if (this.data.deleting || this.data.selectingAll) return
     if (this.data.selectionMode) return this.selectTransaction(Number(event.currentTarget.dataset.index))
     const index = Number(event.currentTarget.dataset.index)
     const transaction = this.data.transactions[index]

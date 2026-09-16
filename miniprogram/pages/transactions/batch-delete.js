@@ -8,33 +8,47 @@ function selectable(row) {
 module.exports = {
   canSelect: selectable,
   resetSelection: function () {
-    this.setData({ selectedCount: 0, transactions: this.data.transactions.map(row => Object.assign({}, row, { selected: false })) })
+    this._selectionEpoch = (this._selectionEpoch || 0) + 1
+    this.setData({ selectedCount: 0, allSelected: false, selectingAll: false, transactions: this.data.transactions.map(row => Object.assign({}, row, { selected: false })) })
   },
   toggleSelection: function () {
-    if (this.data.deleting || this.data.deleteRetryCount) return
+    if (this.data.deleting || this.data.selectingAll || this.data.deleteRetryCount) return
     this.resetSelection()
     this.setData({ selectionMode: !this.data.selectionMode })
   },
   selectTransaction: function (index) {
-    if (this.data.deleting || this.data.deleteRetryCount) return
+    if (this.data.deleting || this.data.selectingAll || this.data.deleteRetryCount) return
     const row = this.data.transactions[index]
     if (!row || !selectable(row)) return
     if (!row.selected && this.data.selectedCount >= 100) return wx.showToast({ title: '一次最多选择 100 笔', icon: 'none' })
-    const patch = { selectedCount: this.data.selectedCount + (row.selected ? -1 : 1) }
+    const count = this.data.selectedCount + (row.selected ? -1 : 1)
+    const patch = { selectedCount: count, allSelected: count > 0 && (count === 100 || (!this.data.nextCursor && count === this.data.transactions.filter(selectable).length)) }
     patch['transactions[' + index + '].selected'] = !row.selected
     this.setData(patch)
   },
-  selectLoaded: function () {
-    if (this.data.deleting || this.data.deleteRetryCount) return
-    const rows = this.data.transactions, eligible = rows.filter(selectable)
-    const clear = this.data.selectedCount === Math.min(eligible.length, 100)
-    let count = 0
-    this.setData({ transactions: rows.map(row => {
-      const selected = !clear && selectable(row) && count < 100
-      if (selected) count++
-      return Object.assign({}, row, { selected })
-    }), selectedCount: clear ? 0 : Math.min(eligible.length, 100) })
-    if (!clear && eligible.length > 100) wx.showToast({ title: '已选择前 100 笔', icon: 'none' })
+  selectAll: async function () {
+    if (this.data.deleting || this.data.selectingAll || this.data.loading || this.data.loadingMore || this.data.deleteRetryCount) return
+    if (this.data.allSelected) return this.resetSelection()
+    const isCurrent = pageReadSession.capture(this), epoch = this._selectionEpoch
+    const current = () => isCurrent() && this._selectionEpoch === epoch
+    this.setData({ selectingAll: true, errorMessage: '' })
+    try {
+      while (current() && this.data.transactions.filter(selectable).length < 100 && this.data.nextCursor) {
+        const cursor = this.data.nextCursor
+        await this.loadTransactions(true)
+        if (!current()) return
+        if (cursor === this.data.nextCursor) break
+      }
+      if (!current()) return
+      let count = 0
+      const transactions = this.data.transactions.map(row => {
+        const selected = selectable(row) && count < 100
+        if (selected) count++
+        return Object.assign({}, row, { selected })
+      })
+      this.setData({ transactions, selectedCount: count, allSelected: count > 0 && (count === 100 || !this.data.nextCursor) })
+      if (count === 100 && (this.data.nextCursor || this.data.transactions.filter(selectable).length > 100)) wx.showToast({ title: '已选择前 100 笔', icon: 'none' })
+    } finally { if (current()) this.setData({ selectingAll: false }) }
   },
   recoverBatchDelete: async function () {
     const isCurrent = pageReadSession.capture(this)
@@ -53,7 +67,7 @@ module.exports = {
     }
   },
   deleteSelected: async function () {
-    if (this.data.deleting || this.data.loading) return
+    if (this.data.deleting || this.data.selectingAll || this.data.loading) return
     const isCurrent = pageReadSession.capture(this)
     const request = this.data.deleteRetryCount ? this._batchRequest : {
       items: this.data.transactions.filter(row => row.selected && selectable(row))
@@ -85,6 +99,5 @@ module.exports = {
       this.setData({ errorMessage: error.code === 'REFUNDED_TRANSACTION_LOCKED' ? '选中的消费还有退款，请把对应退款一起选中后删除。'
         : error.code === 'CONFLICT' ? '部分账目已被修改，请刷新后重新选择。此次未删除任何账目。' : error.message || '删除未完成，请重试' })
     } finally { if (isCurrent()) this.setData({ deleting: false }) }
-  },
-  openImportHistory: function () { if (!this.data.deleting) wx.navigateTo({ url: '/pages/import-history/index' }) }
+  }
 }
