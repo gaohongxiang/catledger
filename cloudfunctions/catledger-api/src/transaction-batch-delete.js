@@ -26,7 +26,7 @@ function createBatchDelete({ getPool }) {
         source_account_id AS sourceAccountId, destination_account_id AS destinationAccountId, amount_minor AS amountMinor
         FROM catledger_transactions WHERE uid = ? AND transaction_id IN (${slots}) AND deleted_at IS NULL
         ORDER BY transaction_id FOR UPDATE`, [uid, ...ids])
-      if (rows.length !== ids.length || rows.some(row => row.origin !== 'manual' || !MANUAL_TYPES.has(row.type))) throw ledgerError('NOT_FOUND')
+      if (rows.length !== ids.length || rows.some(row => !['manual', 'import'].includes(row.origin) || !MANUAL_TYPES.has(row.type))) throw ledgerError('NOT_FOUND')
       if (rows.some(row => Number(row.version) !== versions.get(row.transactionId))) throw ledgerError('CONFLICT')
       await assertNoLoanTransactions(connection, uid, ids)
       // 按整组判断：退款与原消费可以一起删除，组外退款不能失去原消费。

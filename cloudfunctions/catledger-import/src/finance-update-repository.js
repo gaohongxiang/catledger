@@ -104,7 +104,7 @@ async function assertBatchesAvailable(connection, uid, batchIds) {
        JOIN catledger_finance_updates u
          ON u.uid = s.uid AND u.update_id = s.update_id
       WHERE s.uid = ? AND s.batch_id IN (${batchIds.map(() => '?').join(', ')})
-        AND u.status NOT IN ('abandoned', 'undone')
+        AND u.status IN ('draft', 'failed', 'review', 'posting')
       LIMIT 1 FOR UPDATE`,
     [uid, ...batchIds]
   )

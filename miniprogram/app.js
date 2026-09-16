@@ -119,6 +119,7 @@ App({
     this.globalData.profile = { nickname: '', avatarUrl: '' }
     this.globalData.categories = []
     this.globalData.openStatisticsCompletion = false
+    this.globalData.transactionsImportFilter = null
     this.globalData.editingTransaction = null
     wx.removeStorageSync(LOGIN_APPROVAL_KEY)
     wx.removeStorageSync(LOCAL_PROFILE_KEY)

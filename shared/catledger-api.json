@@ -10,7 +10,7 @@
   },
   "loanMetadata": {"currency": "CNY", "kind": ["borrowing", "installment"], "unknownPrincipal": null, "knownZeroPrincipal": "0", "baseline": "confirmed principal at the start of baselineDate; never the entire account balance", "owner": "trusted server identity, uid-scoped loan/account FK", "status": ["unknown", "active", "settled"], "writeRecovery": "transactions.commandResult + original persisted requestId"},
   "actions": {
-    "transactions.deleteMany": {"kind": "idempotent-mutation", "data": ["requestId", "items[{transactionId,version}]"], "returns": ["deleted", "deletedCount", "transactionIds"], "rules": ["1..100 unique current-user manual transactions; all-or-nothing; versions, loan associations, final cash balance and refunds outside selection validated; archived accounts allowed; selected original and refunds can be removed together; frozen receipt recoverable via transactions.commandResult."]},
+    "transactions.deleteMany": {"kind": "idempotent-mutation", "data": ["requestId", "items[{transactionId,version}]"], "returns": ["deleted", "deletedCount", "transactionIds"], "rules": ["1..100 unique current-user manual/import transactions; all-or-nothing; versions, loan associations, final cash balance and refunds outside selection validated; archived accounts allowed; selected original and refunds can be removed together; frozen receipt recoverable via transactions.commandResult."]},
     "dataExports.start": {"kind":"mutation","data":["requestId"],"returns":["exportId","format","schemaVersion","startedAt","expiresAt","tables","maxRows","maxBytes"],"rules":["One private job per authenticated user; one hour expiry; start/replay does not change business revision."]},
     "dataExports.page": {"kind":"read","data":["exportId","cursor?"],"returns":["text","bytes","rows","totalRows","nextCursor","completeToken"],"rules":["Signed keyset/UTF-8 fragment cursor; 50 completed rows and 65536 UTF-8 text bytes maximum; unchanged business revision required."]},
     "dataExports.finish": {"kind":"command","data":["exportId","completeToken"],"returns":["exportId","complete","rows","format","startedAt"],"rules":["Only signed terminal token; active user lock checks revision; immutable completed result can be replayed."]},
@@ -125,8 +125,8 @@
     },
     "transactions.list": {
       "kind": "read",
-      "data": ["month", "date?", "accountId?", "categoryId?", "uncategorized? (boolean; exclusive with categoryId)", "source? (manual|import)", "search?", "pageSize?", "cursor?"],
-      "returns": ["month", "date?", "source (null|manual|import; applied filter)", "summary", "transactions (origin; importContext?={updateId,eventId})", "nextCursor"],
+      "data": ["month? (required without importUpdateId)", "importUpdateId?", "date?", "accountId?", "categoryId?", "uncategorized? (boolean; exclusive with categoryId)", "source? (manual|import)", "search?", "pageSize?", "cursor?"],
+      "returns": ["importUpdateId (applied filter or null)", "month", "date?", "source (null|manual|import; applied filter)", "summary", "transactions (origin; importContext?={updateId,eventId})", "nextCursor"],
       "rules": ["source omitted: all sources; manual: origin=manual excluding transactions created by loan payments; import: origin=import", "Source combines with other filters before pagination and is bound into the cursor; summary retains the selected period totals", "A requested source must match the response source before the client caches or displays results; missing or mismatched confirmation is INVALID_RESPONSE"]
     },
     "transactions.create": {

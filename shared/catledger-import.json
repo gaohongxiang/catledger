@@ -70,7 +70,7 @@
     }
   },
   "actions": {
-    "financeUpdates.list": {"kind": "read", "data": ["pageSize?", "cursor?"], "returns": ["items[{updateId,status,version,sourceCount,createdAt,files}]", "nextCursor"], "rules": ["Current user only; posted and undone history; createdAt UTC descending plus updateId; signed user-scoped keyset cursor; pageSize 1..40 (default 20); no raw bill rows."]},
+    "financeUpdates.list": {"kind": "read", "data": ["pageSize?", "cursor?"], "returns": ["items[{updateId,status,version,sourceCount,createdAt,files,transactionCount,deletedTransactionCount}]", "nextCursor"], "rules": ["Current user only; posted and undone history; createdAt UTC descending plus updateId; signed user-scoped keyset cursor; pageSize 1..40 (default 20); no raw bill rows."]},
     "financeUpdates.rows": {
       "kind": "read",
       "data": [

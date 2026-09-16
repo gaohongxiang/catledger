@@ -11,8 +11,9 @@ function escapeLike(value) {
 }
 
 function normalizeListFilters(data) {
-  const month = data.month
-  const monthRange = parseMonth(month)
+  const importUpdateId = data.importUpdateId == null ? null : validateId(data.importUpdateId)
+  const month = importUpdateId && data.month == null ? null : data.month
+  const monthRange = month == null && importUpdateId ? null : parseMonth(month)
   const date = data.date == null || data.date === '' ? null : data.date
   if (date != null && (typeof date !== 'string' || date.slice(0, 7) !== month)) {
     throw ledgerError('VALIDATION_ERROR')
@@ -36,10 +37,14 @@ function normalizeListFilters(data) {
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
     throw ledgerError('VALIDATION_ERROR')
   }
-  return { month, date, range, accountId, categoryId, uncategorized, source, search, pageSize }
+  return { month, date, range, accountId, categoryId, uncategorized, source, search, pageSize, importUpdateId }
 }
 
-async function queryMonthlySummary(connection, uid, range) {
+const importCondition = `EXISTS (SELECT 1 FROM catledger_economic_event_transactions import_link
+  WHERE import_link.uid = t.uid AND import_link.transaction_id = t.transaction_id
+    AND import_link.update_id = ? AND import_link.superseded_at IS NULL AND import_link.role <> 'refund_original')`
+
+async function queryMonthlySummary(connection, uid, range, importUpdateId = null) {
   const [[row]] = await connection.execute(
     `SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS incomeMinor,
             COALESCE(SUM(CASE
@@ -47,11 +52,12 @@ async function queryMonthlySummary(connection, uid, range) {
               WHEN type = 'refund' AND original_transaction_id IS NOT NULL
                 THEN -CAST(amount_minor AS DECIMAL(20, 0))
               ELSE 0 END), 0) AS expenseMinor
-       FROM catledger_transactions
+       FROM catledger_transactions t
       WHERE uid = ?
-        AND occurred_local_date >= ? AND occurred_local_date < ?
+        ${range ? 'AND occurred_local_date >= ? AND occurred_local_date < ?' : ''}
+        ${importUpdateId ? 'AND ' + importCondition : ''}
         AND deleted_at IS NULL`,
-    [uid, range.startDate, range.endDate]
+    [uid, ...(range ? [range.startDate, range.endDate] : []), ...(importUpdateId ? [importUpdateId] : [])]
   )
   const income = BigInt(minorUnitsToString(row.incomeMinor))
   const expense = BigInt(minorUnitsToString(row.expenseMinor))
@@ -65,11 +71,17 @@ async function queryMonthlySummary(connection, uid, range) {
 async function queryTransactionPage(connection, uid, filters, cursor) {
   const conditions = [
     't.uid = ?',
-    't.occurred_local_date >= ?',
-    't.occurred_local_date < ?',
     't.deleted_at IS NULL'
   ]
-  const values = [uid, filters.range.startDate, filters.range.endDate]
+  const values = [uid]
+  if (filters.range) {
+    conditions.push('t.occurred_local_date >= ?', 't.occurred_local_date < ?')
+    values.push(filters.range.startDate, filters.range.endDate)
+  }
+  if (filters.importUpdateId) {
+    conditions.push(importCondition)
+    values.push(filters.importUpdateId)
+  }
   if (filters.accountId) {
     conditions.push('(t.source_account_id = ? OR t.destination_account_id = ?)')
     values.push(filters.accountId, filters.accountId)
@@ -184,6 +196,11 @@ function createTransactionQueryService({ getPool }) {
       consistentSnapshot: true,
       operation: async (connection, uid) => {
         const filters = normalizeListFilters(context.data || {})
+        if (filters.importUpdateId) {
+          const [[update]] = await connection.execute(`SELECT update_id FROM catledger_finance_updates
+            WHERE uid = ? AND update_id = ? AND status IN ('posted', 'undone')`, [uid, filters.importUpdateId])
+          if (!update) throw ledgerError('NOT_FOUND')
+        }
         const filterDigest = digestRequest('transactions.list', {
           month: filters.month,
           date: filters.date,
@@ -191,6 +208,7 @@ function createTransactionQueryService({ getPool }) {
           categoryId: filters.categoryId,
           ...(filters.uncategorized ? { uncategorized: true } : {}),
           source: filters.source,
+          ...(filters.importUpdateId ? { importUpdateId: filters.importUpdateId } : {}),
           search: filters.search
         })
         let cursor = null
@@ -202,7 +220,7 @@ function createTransactionQueryService({ getPool }) {
           }
         }
 
-        const summary = await queryMonthlySummary(connection, uid, filters.range)
+        const summary = await queryMonthlySummary(connection, uid, filters.range, filters.importUpdateId)
         const rows = await queryTransactionPage(connection, uid, filters, cursor)
         const hasMore = rows.length > filters.pageSize
         const pageRows = hasMore ? rows.slice(0, filters.pageSize) : rows
@@ -218,6 +236,7 @@ function createTransactionQueryService({ getPool }) {
           month: filters.month,
           date: filters.date,
           source: filters.source,
+          importUpdateId: filters.importUpdateId,
           summary,
           transactions: pageRows.map(transactionToPublic),
           nextCursor

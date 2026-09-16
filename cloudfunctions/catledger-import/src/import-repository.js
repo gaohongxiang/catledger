@@ -131,7 +131,7 @@ async function selectActiveUpdateForImport(connection, uid, importId) {
        JOIN catledger_finance_updates u
          ON u.uid = s.uid AND u.update_id = s.update_id
       WHERE s.uid = ? AND s.import_id = ?
-        AND u.status NOT IN ('abandoned', 'undone')
+        AND u.status IN ('draft', 'failed', 'review', 'posting')
       ORDER BY u.created_at DESC, u.update_id DESC
       LIMIT 1 FOR UPDATE`,
     [uid, importId]
@@ -418,14 +418,10 @@ async function persistParsedImport(connection, uid, {
       [fileID, actualSize, uid, importId]
     )
     const current = await selectImportFile(connection, uid, importId)
-    if (duplicate.state === 'committed' && !await selectActiveUpdateForImport(connection, uid, duplicate.importId)) {
-      const [[undone]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_finance_update_sources s
-        JOIN catledger_finance_updates u ON u.uid = s.uid AND u.update_id = s.update_id
-        WHERE s.uid = ? AND s.import_id = ? AND u.status = 'undone'`, [uid, duplicate.importId])
-      if (Number(undone.count) > 0) {
-        // 同字节文件保留唯一身份和原始行；新的 FinanceUpdate 独立记录本次整理。
-        const previousBatch = await selectLatestBatch(connection, uid, duplicate.importId)
-        if (!previousBatch) throw importError('CONFLICT')
+    if (duplicate.state === 'committed') {
+      const previousBatch = await selectLatestBatch(connection, uid, duplicate.importId)
+      if (previousBatch && await batchHasRemovedTransactions(connection, uid, previousBatch.batchId)) {
+        // 保留同文件的唯一解析证据，新的 FinanceUpdate 记录重导；旧导入历史不变。
         await connection.execute(`UPDATE catledger_import_batches SET state = 'review_ready',
           pending_row_count = valid_row_count, posted_row_count = 0 WHERE uid = ? AND batch_id = ?`, [uid, previousBatch.batchId])
         await connection.execute("UPDATE catledger_import_files SET state = 'review_ready', version = version + 1 WHERE uid = ? AND import_id = ?", [uid, duplicate.importId])
@@ -477,6 +473,26 @@ async function persistParsedImport(connection, uid, {
   return persistParsedBatch(connection, uid, {
     importId, fileID, contentSha256, actualSize, timezoneOffsetMinutes, document
   })
+}
+
+async function batchHasRemovedTransactions(connection, uid, batchId) {
+  const [[latest]] = await connection.execute(`SELECT u.update_id AS updateId, u.status FROM catledger_finance_update_sources s
+    JOIN catledger_finance_updates u ON u.uid = s.uid AND u.update_id = s.update_id
+    WHERE s.uid = ? AND s.batch_id = ? AND u.status IN ('posted', 'undone')
+    ORDER BY u.created_at DESC, u.update_id DESC LIMIT 1`, [uid, batchId])
+  if (!latest) return false
+  if (latest.status === 'undone') return true
+  const [[removed]] = await connection.execute(`SELECT u.update_id FROM catledger_finance_update_sources s
+    JOIN catledger_finance_updates u ON u.uid = s.uid AND u.update_id = s.update_id
+    WHERE s.uid = ? AND s.batch_id = ? AND u.update_id = ? AND EXISTS (
+      SELECT 1 FROM catledger_economic_event_transactions l
+      JOIN catledger_transactions t ON t.uid = l.uid AND t.transaction_id = l.transaction_id
+      JOIN catledger_event_evidence ee ON ee.uid = l.uid AND ee.event_id = l.event_id AND ee.evidence_role <> 'discarded'
+      JOIN catledger_import_rows r ON r.uid = ee.uid AND r.row_id = ee.row_id AND r.batch_id = s.batch_id
+      WHERE l.uid = u.uid AND l.update_id = u.update_id AND l.superseded_at IS NULL
+        AND l.role <> 'refund_original' AND t.deleted_at IS NOT NULL
+    ) LIMIT 1`, [uid, batchId, latest.updateId])
+  return Boolean(removed)
 }
 
 function documentParseFingerprint(document, contentSha256, timezoneOffsetMinutes) {

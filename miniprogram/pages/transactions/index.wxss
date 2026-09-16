@@ -289,3 +289,6 @@
 .detail-check { flex: 0 0 38rpx; width: 38rpx; height: 38rpx; margin-right: 20rpx; border: 2rpx solid var(--theme-muted, #746a60); border-radius: 50%; text-align: center; line-height: 38rpx; }
 .detail-check-selected { background: var(--theme-accent, #d97732); border-color: var(--theme-accent, #d97732); color: #fff; }
 .detail-check-disabled { opacity: .2; }
+
+.import-filter-title { display: block; font-size: 30rpx; overflow-wrap: anywhere; }
+.import-filter .detail-manage-link { margin-left: 0; }

@@ -3,7 +3,7 @@ const pendingWrites = require('../../services/pending-ledger-write')
 const pageReadSession = require('../../services/page-read-session')
 
 function selectable(row) {
-  return row.origin === 'manual' && row.editable && ['income', 'expense', 'transfer', 'refund'].indexOf(row.type) >= 0
+  return ['manual', 'import'].indexOf(row.origin) >= 0 && ['income', 'expense', 'transfer', 'refund'].indexOf(row.type) >= 0
 }
 module.exports = {
   canSelect: selectable,
@@ -63,7 +63,7 @@ module.exports = {
     this.setData({ deleting: true, errorMessage: '' })
     try {
       const choice = await new Promise((resolve, reject) => wx.showModal({ title: '删除 ' + request.items.length + ' 笔账目？',
-        content: '将删除选中的手动账目，并重新计算余额和统计。删除后无法恢复。', confirmText: '确认删除', confirmColor: '#a95132', success: resolve, fail: reject }))
+        content: '将删除选中的账目，并重新计算余额和统计。删除后无法直接恢复。', confirmText: '确认删除', confirmColor: '#a95132', success: resolve, fail: reject }))
       if (!choice.confirm || !isCurrent()) return
       await api.callApi('catalog.get')
       if (!isCurrent()) return

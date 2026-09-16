@@ -1,5 +1,5 @@
 <view class="page-canvas detail-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="month-switcher">
+  <view wx:if="{{!importFilter}}" class="month-switcher">
     <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><view class="arrow-left"></view></view>
     <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate">
       <view class="date-picker-content">
@@ -9,7 +9,9 @@
     <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><view class="arrow-right"></view></view>
   </view>
 
-  <view wx:if="{{selectedDate}}" class="date-filter-note content-inset">
+  <view wx:if="{{importFilter}}" class="import-filter content-inset"><text class="detail-meta">本次导入 · 全部日期</text><text class="import-filter-title">{{importFilter.title}}</text><button class="detail-manage-link" bindtap="clearImportFilter" disabled="{{deleting}}">返回全部明细</button></view>
+
+  <view wx:if="{{selectedDate && !importFilter}}" class="date-filter-note content-inset">
     <text>只看当天账目</text>
     <text class="date-clear" bindtap="clearDate">查看整月</text>
   </view>
@@ -39,7 +41,7 @@
     <picker class="filter-picker" mode="selector" range="{{categoryFilters}}" range-key="name" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter">
       <view class="filter-content"><text class="filter-label">{{categoryFilters[categoryFilterIndex].name}}</text><view class="filter-chevron"></view></view>
     </picker>
-    <picker class="filter-picker source-picker" mode="selector" range="{{sourceFilters}}" range-key="name" value="{{sourceFilterIndex}}" bindchange="changeSourceFilter">
+    <picker wx:if="{{!importFilter}}" class="filter-picker source-picker" mode="selector" range="{{sourceFilters}}" range-key="name" value="{{sourceFilterIndex}}" bindchange="changeSourceFilter">
       <view class="filter-content"><text class="filter-label">{{sourceFilters[sourceFilterIndex].name}}</text><view class="filter-chevron"></view></view>
     </picker>
   </view>
@@ -59,7 +61,7 @@
         <text>已选 {{selectedCount}} 笔</text>
         <button class="detail-manage-link" bindtap="selectLoaded" disabled="{{deleting || loading || deleteRetryCount}}">选择已加载账目</button>
       </view>
-      <text class="detail-selection-copy">仅选择手动账目，每次最多 100 笔。导入账目请到“导入记录”整批撤销。</text>
+      <text class="detail-selection-copy">手动记账和导入账目都可选择，每次最多 100 笔。</text>
       <button class="danger-button" bindtap="deleteSelected" loading="{{deleting}}" disabled="{{deleting || loading || (!selectedCount && !deleteRetryCount)}}">{{deleteRetryCount ? '继续删除 ' + deleteRetryCount + ' 笔' : '删除选中的 ' + selectedCount + ' 笔'}}</button>
     </view>
   <view wx:if="{{transactions.length > 0}}" class="detail-timeline">

@@ -1,3 +1,4 @@
+const readCache = require('../../services/read-cache')
 const batchDelete = require('./batch-delete')
 const app = getApp()
 const api = require('../../services/catledger-api')
@@ -10,6 +11,7 @@ const themeService = require('../../theme/service')
 Page(Object.assign({
   data: {
     loggedIn: false,
+    importFilter: null,
     selectionMode: false, selectedCount: 0, deleting: false, deleteRetryCount: 0,
     month: time.currentMonth(),
     monthLabel: '',
@@ -43,6 +45,12 @@ Page(Object.assign({
   },
 
   onShow: function () {
+    if (this._readSession !== undefined && !pageReadSession.isCurrent(this)) this.setData({ importFilter: null })
+    const incoming = app.globalData.transactionsImportFilter
+    app.globalData.transactionsImportFilter = null
+    if (incoming && incoming.session === readCache.getSession() && app.hasLoginApproval()) {
+      this.setData({ importFilter: incoming, accountFilterIndex: 0, categoryFilterIndex: 0, sourceFilterIndex: 0, search: '', appliedSearch: '', selectedDate: '', selectedDateLabel: '', transactions: [], nextCursor: null, hasLoaded: false })
+    }
     this.resetSelection()
     this.setData({ selectionMode: false, deleteRetryCount: 0 })
     this._batchRequest = null
@@ -126,7 +134,11 @@ Page(Object.assign({
       pageSize: 30,
       search: this.data.appliedSearch
     }
-    if (this.data.selectedDate) {
+    if (this.data.importFilter) {
+      delete data.month
+      data.importUpdateId = this.data.importFilter.updateId
+    }
+    if (this.data.selectedDate && !this.data.importFilter) {
       data.date = this.data.selectedDate
     }
     if (account && account.accountId) {
@@ -199,6 +211,12 @@ Page(Object.assign({
         self._transactionsLoad = null
       })
     return this._transactionsLoad
+  },
+
+  clearImportFilter: function () {
+    if (this.data.deleting) return
+    this.setData({ importFilter: null, sourceFilterIndex: 0, hasLoaded: false, transactions: [], nextCursor: null })
+    return this.loadTransactions(false)
   },
 
   previousMonth: function () {

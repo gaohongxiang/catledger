@@ -41,6 +41,9 @@ async function loadTransactions(data) {
   if (data && data.source && (!result || result.source !== data.source)) {
     throw Object.assign(new Error('来源筛选暂不可用，请稍后重试'), { code: 'INVALID_RESPONSE' })
   }
+  if (data && data.importUpdateId && (!result || result.importUpdateId !== data.importUpdateId)) {
+    throw Object.assign(new Error('本次导入的账目暂时无法加载，请稍后重试'), { code: 'INVALID_RESPONSE' })
+  }
   return result
 }
 
