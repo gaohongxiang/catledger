@@ -49,3 +49,26 @@ test('只读恢复不会重发；用户隔离和存储失败均不丢原在途�
   await assert.rejects(broken.send('api', 'transactions.create', { amountMinor: '100' }), { code: 'DRAFT_STORAGE_FAILED' })
   assert.equal(h.calls.filter(c => c.action === 'transactions.create').length, 1)
 })
+
+test('批量删除 exact 模式不把别的未完成操作当成当前选择重发', async () => {
+  const h = harness()
+  await assert.rejects(h.client.send('api', 'transactions.update', { transactionId: 'old', amountMinor: '100' }))
+  h.committed = null; h.lost = false
+  await assert.rejects(h.client.send('api', 'transactions.deleteMany', { items: [{ transactionId: 'new', version: 1 }] }, { exact: true }), { code: 'PENDING_OPERATION_EXISTS' })
+  assert.deepEqual(h.calls.map(row => row.action), ['transactions.update', 'transactions.commandResult'])
+  assert.equal(h.client.pending().action, 'transactions.update')
+})
+
+test('exact 确认旧回执后执行当前选择；同一删除恢复仍只查询回执', async () => {
+  const h = harness()
+  await assert.rejects(h.client.send('api', 'transactions.update', { amountMinor: '100' }))
+  h.lost = false
+  const data = { items: [{ transactionId: 'chosen', version: 1 }] }
+  await h.client.send('api', 'transactions.deleteMany', data, { exact: true })
+  assert.deepEqual(h.calls.map(row => row.action), ['transactions.update', 'transactions.commandResult', 'transactions.deleteMany'])
+  assert.deepEqual(h.calls[2].data.items, data.items)
+  h.lost = true
+  await assert.rejects(h.client.send('api', 'transactions.deleteMany', data, { exact: true }))
+  assert.equal((await h.client.send('api', 'transactions.deleteMany', data, { exact: true })).recovered, true)
+  assert.equal(h.calls.filter(row => row.action === 'transactions.deleteMany').length, 2)
+})

@@ -12,6 +12,7 @@
 <view class="page-canvas import-page {{themeClass}}" style="{{themeStyle}}">
   <view class="import-heading content-inset">
     <text class="import-copy">把不同渠道的账单，整理成一本账。</text>
+    <button class="account-source-link" bindtap="openImportHistory" disabled="{{busy}}">导入记录</button>
   </view>
 
   <text wx:if="{{pageLoading}}" class="sheet-copy">正在刷新当前页…</text>

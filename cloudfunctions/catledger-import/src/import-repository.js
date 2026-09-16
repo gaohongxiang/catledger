@@ -418,6 +418,20 @@ async function persistParsedImport(connection, uid, {
       [fileID, actualSize, uid, importId]
     )
     const current = await selectImportFile(connection, uid, importId)
+    if (duplicate.state === 'committed' && !await selectActiveUpdateForImport(connection, uid, duplicate.importId)) {
+      const [[undone]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_finance_update_sources s
+        JOIN catledger_finance_updates u ON u.uid = s.uid AND u.update_id = s.update_id
+        WHERE s.uid = ? AND s.import_id = ? AND u.status = 'undone'`, [uid, duplicate.importId])
+      if (Number(undone.count) > 0) {
+        // 同字节文件保留唯一身份和原始行；新的 FinanceUpdate 独立记录本次整理。
+        const previousBatch = await selectLatestBatch(connection, uid, duplicate.importId)
+        if (!previousBatch) throw importError('CONFLICT')
+        await connection.execute(`UPDATE catledger_import_batches SET state = 'review_ready',
+          pending_row_count = valid_row_count, posted_row_count = 0 WHERE uid = ? AND batch_id = ?`, [uid, previousBatch.batchId])
+        await connection.execute("UPDATE catledger_import_files SET state = 'review_ready', version = version + 1 WHERE uid = ? AND import_id = ?", [uid, duplicate.importId])
+        duplicate.state = 'review_ready'
+      }
+    }
     if (duplicate.state !== 'committed') {
       const duplicateBatch = await selectLatestBatch(connection, uid, duplicate.importId)
       if (duplicateBatch && duplicateBatch.state === 'review_ready' &&

@@ -281,3 +281,11 @@
 .detail-line-long .detail-amount { margin-left: 0; text-align: left; }
 
 .detail-error { line-height: 1.6; padding-top: 16rpx; padding-bottom: 16rpx; }
+
+.detail-manage, .detail-selection-top { display: flex; align-items: center; justify-content: space-between; }
+.detail-manage-link { min-height: 88rpx; margin: 0; padding: 20rpx; color: var(--theme-accent, #d97732); background: transparent; font-size: 26rpx; line-height: 48rpx; }
+.detail-selection { position: sticky; top: 0; z-index: 5; padding: 8rpx 20rpx 20rpx; border: 1rpx solid var(--theme-line, #e5ded4); border-radius: 24rpx; background: var(--theme-surface, #fff); }
+.detail-selection-copy { display: block; margin-bottom: 20rpx; font-size: 24rpx; color: var(--theme-muted, #746a60); }
+.detail-check { flex: 0 0 38rpx; width: 38rpx; height: 38rpx; margin-right: 20rpx; border: 2rpx solid var(--theme-muted, #746a60); border-radius: 50%; text-align: center; line-height: 38rpx; }
+.detail-check-selected { background: var(--theme-accent, #d97732); border-color: var(--theme-accent, #d97732); color: #fff; }
+.detail-check-disabled { opacity: .2; }

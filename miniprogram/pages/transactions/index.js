@@ -1,3 +1,4 @@
+const batchDelete = require('./batch-delete')
 const app = getApp()
 const api = require('../../services/catledger-api')
 const pageReadSession = require('../../services/page-read-session')
@@ -6,9 +7,10 @@ const time = require('../../utils/time')
 const viewModel = require('../../utils/view-model')
 const themeService = require('../../theme/service')
 
-Page({
+Page(Object.assign({
   data: {
     loggedIn: false,
+    selectionMode: false, selectedCount: 0, deleting: false, deleteRetryCount: 0,
     month: time.currentMonth(),
     monthLabel: '',
     pickerDate: time.today(),
@@ -41,6 +43,9 @@ Page({
   },
 
   onShow: function () {
+    this.resetSelection()
+    this.setData({ selectionMode: false, deleteRetryCount: 0 })
+    this._batchRequest = null
     themeService.bindPage(this)
     if (this.getTabBar()) {
       this.getTabBar().setData({ selected: 1 })
@@ -62,6 +67,7 @@ Page({
   },
 
   onPullDownRefresh: function () {
+    if (this.data.deleting) { wx.stopPullDownRefresh(); return }
     if (!app.hasLoginApproval()) {
       wx.stopPullDownRefresh()
       return
@@ -77,8 +83,11 @@ Page({
     }
   },
 
+  onUnload: function () { pageReadSession.end(this) },
+
   prepareAndLoad: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
+    if (this.data.deleting) return Promise.resolve()
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (this._prepareLoad) return this._prepareLoad
     const self = this
@@ -95,6 +104,7 @@ Page({
       self.setData({ accountFilters, categoryFilters,
         accountFilterIndex: Math.max(0, accountFilters.findIndex(item => selectedAccount && item.accountId === selectedAccount.accountId)),
         categoryFilterIndex: Math.max(0, categoryFilters.findIndex(item => selectedCategory && item.categoryId === selectedCategory.categoryId)) })
+      self.recoverBatchDelete().catch(function (error) { if (isCurrent()) self.setData({ errorMessage: error.message }) })
       const current = self.requestData(null)
       if (requested.accountId !== current.accountId || requested.categoryId !== current.categoryId || requested.uncategorized !== current.uncategorized) {
         return self.loadTransactions(false)
@@ -136,8 +146,9 @@ Page({
   },
 
   loadTransactions: function (append, options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
     if (!app.hasLoginApproval()) return Promise.resolve()
+    if (!append) this.resetSelection()
     const data = this.requestData(append ? this.data.nextCursor : null)
     const requestKey = JSON.stringify(data)
     if (this._transactionsLoad && this._transactionsKey === requestKey) return this._transactionsLoad
@@ -163,7 +174,7 @@ Page({
           return self.loadTransactions(false, { force: true })
         }
         if (!append) { self._listCacheToken = api.cacheToken('transactions.list', data); self._listQueryKey = queryKey }
-        const rows = result.transactions.map(viewModel.transactionView)
+        const rows = result.transactions.map(viewModel.transactionView).map(row => Object.assign({}, row, { deletable: batchDelete.canSelect(row) }))
         self.setData({
           hasLoaded: true,
           transactions: append ? self.data.transactions.concat(rows) : rows,
@@ -199,6 +210,7 @@ Page({
   },
 
   changeMonth: function (delta) {
+    if (this.data.deleting) return
     const month = time.shiftMonth(this.data.month, delta)
     this.setData({
       month: month,
@@ -212,6 +224,7 @@ Page({
   },
 
   changeDate: function (event) {
+    if (this.data.deleting) return
     const date = event.detail.value
     const month = date.slice(0, 7)
     const parts = date.split('-')
@@ -227,20 +240,24 @@ Page({
   },
 
   clearDate: function () {
+    if (this.data.deleting) return
     this.setData({ selectedDate: '', selectedDateLabel: '', nextCursor: null, hasLoaded: false, transactions: [] })
     return this.loadTransactions(false)
   },
 
   bindSearch: function (event) {
+    if (this.data.deleting) return
     this.setData({ search: event.detail.value })
   },
 
   applySearch: function () {
+    if (this.data.deleting) return
     this.setData({ appliedSearch: this.data.search.trim() })
     return this.loadTransactions(false)
   },
 
   clearSearch: function () {
+    if (this.data.deleting) return
     const hadSearch = Boolean(this.data.appliedSearch)
     this.setData({ search: '', appliedSearch: '' })
     if (hadSearch) {
@@ -249,21 +266,26 @@ Page({
   },
 
   changeAccountFilter: function (event) {
+    if (this.data.deleting) return
     this.setData({ accountFilterIndex: Number(event.detail.value), hasLoaded: false, transactions: [] })
     return this.loadTransactions(false)
   },
 
   changeCategoryFilter: function (event) {
+    if (this.data.deleting) return
     this.setData({ categoryFilterIndex: Number(event.detail.value), hasLoaded: false, transactions: [] })
     return this.loadTransactions(false)
   },
 
   changeSourceFilter: function (event) {
+    if (this.data.deleting) return
     this.setData({ sourceFilterIndex: Number(event.detail.value) })
     return this.loadTransactions(false)
   },
 
   editTransaction: function (event) {
+    if (this.data.deleting) return
+    if (this.data.selectionMode) return this.selectTransaction(Number(event.currentTarget.dataset.index))
     const index = Number(event.currentTarget.dataset.index)
     const transaction = this.data.transactions[index]
     if (!transaction) return
@@ -284,4 +306,4 @@ Page({
     this.setData({ loggedIn: true })
     this.prepareAndLoad()
   }
-})
+}, batchDelete))

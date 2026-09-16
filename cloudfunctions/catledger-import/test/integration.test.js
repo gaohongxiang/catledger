@@ -617,10 +617,12 @@ test('MySQL 多文件形成一个 FinanceUpdate 并整批原子入账', { skip: 
     assert.ok(cashImpact.conflicts.includes('INSUFFICIENT_CASH_BALANCE'))
     await pool.execute('UPDATE catledger_transactions SET version = version + 1 WHERE uid = ? AND transaction_id = ?', [user.uid, beforeCorrection.transactionIds[0]])
     const externalChange = await service.financeUpdateUndoImpact(context(user, { updateId: posted.update.updateId }))
-    assert.equal(externalChange.canUndo, false)
-    assert.ok(externalChange.conflicts.includes('TRANSACTION_SET_CHANGED'))
+    assert.equal(externalChange.canUndo, true)
     await pool.execute('UPDATE catledger_transactions SET version = version - 1 WHERE uid = ? AND transaction_id = ?', [user.uid, beforeCorrection.transactionIds[0]])
     const impact = await service.financeUpdateUndoImpact(context(user, { updateId: posted.update.updateId }))
+    await assert.rejects(service.financeUpdateUndo(context(user, {
+      requestId: randomUUID(), updateId: posted.update.updateId, version: corrected.update.version, previewToken: externalChange.previewToken
+    })), { publicCode: 'CONFLICT' })
     assert.equal(impact.canUndo, true)
     assert.equal(impact.createdTransactionCount, 4)
     const undone = await service.financeUpdateUndo(context(user, {

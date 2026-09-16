@@ -14,7 +14,7 @@ test('导入公共契约与事件云函数动作保持一致', function () {
     commandResult: handler,
     commit: handler, discard: handler, discardFile: handler, get: handler, getFile: handler,
     parse: handler, parseFile: handler, prepare: handler, prepareMany: handler,
-    financeUpdateRows: handler, financeUpdateSummary: handler, financeUpdateOptions: handler, economicEventList: handler, economicEventDetail: handler, reviewIssueMembers: handler,
+    financeUpdateList: handler, financeUpdateRows: handler, financeUpdateSummary: handler, financeUpdateOptions: handler, economicEventList: handler, economicEventDetail: handler, reviewIssueMembers: handler,
     financeUpdateAbandon: handler, financeUpdateCreate: handler, financeUpdateGet: handler,
     financeUpdatePrepare: handler,
     financeUpdateOrganize: handler, financeUpdatePost: handler, financeUpdateUndo: handler,

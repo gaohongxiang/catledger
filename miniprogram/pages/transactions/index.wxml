@@ -50,14 +50,28 @@
     <view wx:if="{{search}}" class="search-clear" role="button" aria-label="清空搜索" bindtap="clearSearch"><view class="clear-icon"></view></view>
   </view>
 
+    <view wx:if="{{loggedIn}}" class="detail-manage">
+      <button class="detail-manage-link" bindtap="openImportHistory" disabled="{{deleting}}">导入记录</button>
+      <button id="batch-delete-toggle" class="detail-manage-link" bindtap="toggleSelection" disabled="{{deleting || loading || deleteRetryCount}}">{{selectionMode ? '取消选择' : '批量删除'}}</button>
+    </view>
+    <view wx:if="{{selectionMode || deleteRetryCount}}" class="detail-selection">
+      <view wx:if="{{selectionMode}}" class="detail-selection-top">
+        <text>已选 {{selectedCount}} 笔</text>
+        <button class="detail-manage-link" bindtap="selectLoaded" disabled="{{deleting || loading || deleteRetryCount}}">选择已加载账目</button>
+      </view>
+      <text class="detail-selection-copy">仅选择手动账目，每次最多 100 笔。导入账目请到“导入记录”整批撤销。</text>
+      <button class="danger-button" bindtap="deleteSelected" loading="{{deleting}}" disabled="{{deleting || loading || (!selectedCount && !deleteRetryCount)}}">{{deleteRetryCount ? '继续删除 ' + deleteRetryCount + ' 笔' : '删除选中的 ' + selectedCount + ' 笔'}}</button>
+    </view>
   <view wx:if="{{transactions.length > 0}}" class="detail-timeline">
     <view
       wx:for="{{transactions}}"
       wx:key="transactionId"
+      id="transaction-row-{{index}}"
       class="detail-item content-inset"
       data-index="{{index}}"
       bindtap="editTransaction"
     >
+      <view wx:if="{{selectionMode}}" class="detail-check {{item.selected ? 'detail-check-selected' : ''}} {{!item.deletable ? 'detail-check-disabled' : ''}}" aria-role="checkbox" aria-label="{{item.label}}" aria-checked="{{item.selected ? 'true' : 'false'}}">{{item.selected ? '✓' : ''}}</view>
       <view class="detail-main">
         <view class="detail-copy">
           <view class="detail-line {{item.amountText.length > 15 ? 'detail-line-long' : ''}}">

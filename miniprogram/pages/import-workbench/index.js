@@ -249,7 +249,7 @@ Page(require('./paged').enhance({
     this._requestIds = {}
     this._sourceFiles = new Map()
     this._accountUiDrafts = new Map()
-    const updateId = options && options.updateId || draftSessions.lastUpdateId()
+    const updateId = options && options.fresh === '1' ? null : options && options.updateId || draftSessions.lastUpdateId()
     loginGuard.run(this, updateId ? async () => {
       await this.loadUpdate(updateId, true)
       const eventId = options && options.evidenceEventId
@@ -1610,6 +1610,8 @@ Page(require('./paged').enhance({
       this.setData({ busy: false, errorMessage: publicError(error, '放弃失败，请重试') })
     }
   },
+
+  openImportHistory: function () { if (!this.data.busy) wx.navigateTo({ url: '/pages/import-history/index' }) },
 
   startAnother: function () {
     this._businessData = null

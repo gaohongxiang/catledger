@@ -32,9 +32,21 @@ function createPendingWrite(options) {
   return {
     pending,
     async verify() { const storageKey = key(), packet = pending(); return packet ? verifyPacket(storageKey, packet) : null },
-    async send(target, action, data) {
+    async send(target, action, data, settings) {
       const storageKey = key()
       let packet = pending()
+      if (packet && settings && settings.exact) {
+        const content = value => { const copy = clone(value); delete copy.requestId; return JSON.stringify(copy) }
+        if (packet.target !== target || packet.action !== action || content(packet.payload) !== content(data)) {
+          try { await verifyPacket(storageKey, packet) }
+          catch (error) {
+            if (error.code !== 'OPERATION_UNCONFIRMED') throw error
+            throw Object.assign(new Error('另一次操作还未完成，请先返回原页面继续处理'), { code: 'PENDING_OPERATION_EXISTS' })
+          }
+          if (key() !== storageKey) throw Object.assign(new Error('登录状态已变化，请重新打开页面'), { code: 'LOGIN_REQUIRED' })
+          packet = null
+        }
+      }
       if (packet) {
         try { return await verifyPacket(storageKey, packet) }
         catch (error) { if (error.code !== 'OPERATION_UNCONFIRMED') throw error }

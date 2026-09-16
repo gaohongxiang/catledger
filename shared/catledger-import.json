@@ -70,6 +70,7 @@
     }
   },
   "actions": {
+    "financeUpdates.list": {"kind": "read", "data": ["pageSize?", "cursor?"], "returns": ["items[{updateId,status,version,sourceCount,createdAt,files}]", "nextCursor"], "rules": ["Current user only; posted and undone history; createdAt UTC descending plus updateId; signed user-scoped keyset cursor; pageSize 1..40 (default 20); no raw bill rows."]},
     "financeUpdates.rows": {
       "kind": "read",
       "data": [
@@ -530,6 +531,7 @@
     },
     "financeUpdates.undoImpact": {
       "kind": "read",
+      "rules": ["Preview uses current active created import transactions, including category edits; previewToken freezes current versions. Undo rechecks token, origin, dependencies, balances and audited side effects; reused transactions are retained."],
       "data": [
         "updateId"
       ],

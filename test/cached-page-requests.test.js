@@ -26,7 +26,7 @@ function runtime(savedStorage) {
       if (h.deferNavigation) return
       if (h.failNavigation && options.fail) options.fail()
       if (options.complete) options.complete()
-    }, redirectTo() {}, stopPullDownRefresh() {},
+    }, redirectTo(options) { h.navigation.push(options.url) }, pageScrollTo() {}, stopPullDownRefresh() {},
     cloud: { callFunction: async ({ name, data: envelope }) => {
       const { action, data } = envelope
       calls.push({ name, action, data })
@@ -68,7 +68,13 @@ function runtime(savedStorage) {
     const definition = load(path.join(root, 'pages', name, 'index.js'))
     const loading = []
     const page = { ...definition, data: JSON.parse(JSON.stringify(definition.data)), getTabBar: () => null,
-      setData(patch) { if (Object.hasOwn(patch, 'loading')) loading.push(patch.loading); Object.assign(this.data, patch) }, loading }
+      setData(patch) { if (Object.hasOwn(patch, 'loading')) loading.push(patch.loading)
+        for (const [key, value] of Object.entries(patch)) {
+          const keys = key.replace(/\[(\d+)\]/g, '.$1').split('.'); let target = this.data
+          for (const k of keys.slice(0, -1)) target = target[k] || (target[k] = {})
+          target[keys.at(-1)] = value
+        }
+      }, loading }
     pages.set(name, page)
     return page
   }
@@ -996,4 +1002,100 @@ test('确有旧提交时，核实接口错误保留真实原因而不统一改�
   assert.equal(restored.data.catalogError, '')
   assert.equal(restarted.storage.size, 1)
   assert.deepEqual(restarted.navigation, [])
+})
+
+const managementRows = count => Array.from({ length: count }, (_, index) => ({ transactionId: 'manual-' + index, version: 1,
+  origin: 'manual', editable: true, type: 'expense', amountMinor: '100', label: '合成支出' }))
+
+test('明细多选只选手动有效类型，限制100笔，换筛选清空选择，取消不发送', async () => {
+  const h = runtime(), page = await visit(h, 'transactions')
+  page.data.transactions = managementRows(102).concat([{ transactionId: 'import', origin: 'import', editable: true, type: 'expense' },
+    { transactionId: 'adjustment', origin: 'manual', editable: true, type: 'balance_adjustment' }])
+  page.toggleSelection(); page.selectLoaded()
+  assert.equal(page.data.selectedCount, 100)
+  assert.equal(page.data.transactions.filter(row => row.selected).length, 100)
+  page.selectTransaction(103); assert.equal(page.data.selectedCount, 100)
+  const deleting = page.deleteSelected(); await flush()
+  assert.equal(h.modals.length, 1)
+  h.modals[0].success({ confirm: false }); await deleting
+  assert.equal(h.calls.some(row => row.action === 'transactions.deleteMany'), false)
+  page.changeSourceFilter({ detail: { value: 1 } }); await flush()
+  assert.equal(page.data.selectedCount, 0)
+})
+
+test('删除确认冻结所选ID，双击一次提交，刷新账户/交易缓存，退出会话不提交', async () => {
+  for (const exit of [false, true]) {
+    const h = runtime(), page = await visit(h, 'transactions')
+    await h.api.callApi('accounts.list')
+    h.respond = (action, data) => action === 'transactions.deleteMany' ? { ok: true, data: { deleted: true, deletedCount: data.items.length } } : undefined
+    page.data.transactions = managementRows(3); page.toggleSelection(); page.selectTransaction(1)
+    const deleting = page.deleteSelected(); await page.deleteSelected(); await flush()
+    assert.equal(h.modals.length, 1)
+    page.selectTransaction(2); assert.equal(page.data.selectedCount, 1)
+    if (exit) h.cache.reset()
+    h.modals[0].success({ confirm: true }); await deleting
+    const writes = h.calls.filter(row => row.action === 'transactions.deleteMany')
+    assert.equal(writes.length, exit ? 0 : 1)
+    if (!exit) {
+      assert.equal(writes[0].data.items[0].transactionId, 'manual-1')
+      assert.equal(page.data.selectionMode, false); assert.equal(page.data.selectedCount, 0)
+      assert.equal(h.api.isFresh('accounts.list'), false)
+      assert.equal(h.toasts.at(-1), '已删除 1 笔')
+    }
+  }
+})
+
+test('批量删除响应丢失后锁定旧选择；重进页面自动查回执，不误删新选择', async () => {
+  const h = runtime(), page = await visit(h, 'transactions')
+  let stored
+  h.respond = (action, data) => {
+    if (action === 'transactions.deleteMany') { stored = data; return { ok: false, error: { code: 'CLOUD_CALL_FAILED', message: '合成响应丢失' } } }
+    if (action === 'transactions.commandResult') return { ok: true, data: { action: 'transactions.deleteMany', result: { deletedCount: stored.items.length } } }
+  }
+  page.data.transactions = managementRows(2); page.toggleSelection(); page.selectTransaction(0)
+  const deleting = page.deleteSelected(); await flush(); h.modals.at(-1).success({ confirm: true }); await deleting
+  assert.equal(page.data.deleteRetryCount, 1)
+  page.selectTransaction(1); assert.equal(page.data.selectedCount, 1)
+  page.onShow(); await page.prepareAndLoad(); await flush()
+  assert.equal(page.data.deleteRetryCount, 0)
+  assert.equal(h.calls.filter(row => row.action === 'transactions.deleteMany').length, 1)
+  assert.equal(h.storage.size, 0)
+})
+
+test('导入历史正常打开无恢复提示，只有确认所选批次才撤销并刷新', async () => {
+  const h = runtime(), page = h.page('import-history')
+  h.app.globalData.uid = ''
+  const item = { updateId: 'batch-a', status: 'posted', version: 4, sourceCount: 1, files: ['合成账单.csv'], createdAt: '2026-09-01 01:00:00.000' }
+  let undone = false
+  h.respond = (action, data) => {
+    if (action === 'financeUpdates.list') return { ok: true, data: { items: [{ ...item, status: undone ? 'undone' : 'posted' }], nextCursor: null } }
+    if (action === 'financeUpdates.undoImpact') return { ok: true, data: { update: { updateId: data.updateId, version: 4 }, canUndo: true,
+      createdTransactionCount: 2, reusedTransactionCount: 1, previewToken: 'preview', conflicts: [], accountImpacts: [] } }
+    if (action === 'financeUpdates.undo') { undone = true; return { ok: true, data: { action, updateId: data.updateId, status: 'undone' } } }
+  }
+  await page.load(); assert.equal(page.data.errorMessage, ''); assert.equal(page.data.items.length, 1)
+  assert.equal(h.calls.some(row => /commandResult/.test(row.action)), false)
+  await page.previewUndo({ currentTarget: { dataset: { id: item.updateId } } })
+  assert.equal(page.data.preview.createdTransactionCount, 2)
+  let confirming = page.confirmUndo(); await flush(); h.modals.at(-1).success({ confirm: false }); await confirming
+  assert.equal(undone, false)
+  confirming = page.confirmUndo(); await flush(); h.modals.at(-1).success({ confirm: true }); await confirming
+  assert.equal(h.calls.filter(row => row.action === 'financeUpdates.undo').length, 1)
+  assert.equal(page.data.items[0].status, 'undone'); assert.equal(page.data.selected, null)
+  page.importAgain(); assert.equal(h.navigation.at(-1), '/pages/import-workbench/index?fresh=1')
+})
+
+test('导入历史换登录会话立即清空旧列表，迟到响应不能回填', async () => {
+  const h = runtime(), page = h.page('import-history')
+  h.respond = action => action === 'financeUpdates.list' ? { ok: true, data: { items: [{ updateId: 'old', files: ['合成旧会话.csv'], createdAt: '2026-09-01 01:00:00', sourceCount: 1 }], nextCursor: null } } : undefined
+  await page.load(); assert.equal(page.data.items.length, 1)
+  h.app.approved = false; h.cache.reset(); page.onShow()
+  assert.equal(page.data.items.length, 0); assert.equal(page.data.selected, null)
+  const calls = h.calls.length; await page.load(); assert.equal(h.calls.length, calls)
+  const late = runtime(), oldPage = late.page('import-history'); let release
+  late.respond = action => action === 'financeUpdates.list' ? new Promise(resolve => { release = resolve }) : undefined
+  const loading = oldPage.load(); await flush()
+  late.app.approved = false; late.cache.reset(); oldPage.onShow()
+  release({ ok: true, data: { items: [{ updateId: 'old', files: ['合成迟到.csv'], createdAt: '2026-09-01 01:00:00', sourceCount: 1 }], nextCursor: null } })
+  await loading; assert.equal(oldPage.data.items.length, 0)
 })

@@ -1,4 +1,5 @@
 const { readCommandResult } = require('./import-transaction')
+const { createFinanceUpdateHistory } = require('./finance-update-history')
 const { selectSources } = require('./finance-update-repository')
 const { createFinanceUpdateRead } = require('./finance-update-read')
 const { randomUUID } = require('node:crypto')
@@ -304,6 +305,7 @@ function createImportService({ getPool, storage }) {
     financeUpdateAbandon: abandonFinanceUpdate,
     financeUpdateRows: reads.rows,
     financeUpdateSummary: reads.summary,
+    financeUpdateList: createFinanceUpdateHistory({ getPool }),
     commandResult: context => readCommandResult({ getPool, ...context }),
     financeUpdateOptions: reads.options,
     economicEventList: reads.events,

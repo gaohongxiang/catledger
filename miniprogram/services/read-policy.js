@@ -23,7 +23,7 @@ function mutationTags(action) {
   if (/^accounts\.(createBatch|update|archive)$/.test(action)) return ['accounts', 'accountDirectory']
   if (/^categories\.(create|update|archive|restore|reorder)$/.test(action)) return ['categories', 'categoryDirectory']
   if (action === 'categories.assignTransactions' || action === 'transactions.setCategory') return ['transactions']
-  if (/^transactions\.(create|update|delete|linkRefund)$/.test(action)) return ['transactions', 'accounts']
+  if (/^transactions\.(create|update|delete|deleteMany|linkRefund)$/.test(action)) return ['transactions', 'accounts']
   if (/^financeUpdates\.(post|undo)$/.test(action) || action === 'economicEvents.correct') return ['accounts', 'transactions', 'categories', 'accountDirectory', 'categoryDirectory']
   return []
 }

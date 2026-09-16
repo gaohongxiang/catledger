@@ -178,7 +178,9 @@ async function prepareUndo(connection, uid, update, forUpdate = false) {
   const effects = await inspectSideEffects(connection, uid, updateId, audit, { forUpdate })
   const conflicts = []
   if (update.status !== 'posted') conflicts.push('UPDATE_STATE_CHANGED')
-  if (created.some((row) => row.deletedAt != null || row.origin !== 'import' || row.version !== row.linkedVersion)) conflicts.push('TRANSACTION_SET_CHANGED')
+  // 整批撤销以用户刚预览的当前交易为准；改过分类的账目也可撤销。
+  // 当前版本包含在 previewToken 中，预览后再发生修改仍会拒绝提交。
+  if (created.some((row) => row.deletedAt != null || row.origin !== 'import')) conflicts.push('TRANSACTION_SET_CHANGED')
   if (dependents.length) conflicts.push('EXTERNAL_REFUND_DEPENDENCY')
   if (!effects.verified) conflicts.push('LEGACY_SIDE_EFFECTS_UNVERIFIED')
   if (state.deficits.length) conflicts.push('INSUFFICIENT_CASH_BALANCE')

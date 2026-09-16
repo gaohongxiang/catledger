@@ -1,4 +1,5 @@
 const { createCommandResult } = require('./transaction-command-result')
+const { createBatchDelete } = require('./transaction-batch-delete')
 const { createTransactionCategoryService } = require('./transaction-category')
 const { createReportingService, monthSequence } = require('./reporting-service')
 const { createTransactionCommandService } = require('./transaction-command-service')
@@ -19,6 +20,7 @@ function createTransactionService({ getPool }) {
     linkRefund: commands.linkRefund,
     refundable: queries.refundable,
     remove: commands.remove,
+    removeMany: createBatchDelete({ getPool }),
     statistics: reporting.statistics,
     update: commands.update
   }

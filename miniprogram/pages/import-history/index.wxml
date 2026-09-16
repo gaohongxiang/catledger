@@ -1,0 +1,36 @@
+<view class="page-canvas page-secondary history-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="history-heading content-inset"><text class="history-title">导入记录</text><button class="history-link" bindtap="importAgain" disabled="{{busy}}">导入账单</button></view>
+  <text class="history-copy content-inset">按每次导入管理账目；撤销后可重新导入。</text>
+  <view wx:if="{{errorMessage}}" class="history-error content-inset">{{errorMessage}}</view>
+  <button wx:if="{{retryUndo && !selected}}" class="secondary-button" bindtap="resumeUndo" disabled="{{busy}}">继续确认上次撤销</button>
+  <block wx:if="{{selected}}">
+    <button class="history-link" bindtap="backToList" disabled="{{busy}}">‹ 返回导入记录</button>
+    <view class="history-entry">
+      <text class="history-file">{{selected.title}}</text><text class="history-copy">{{selected.timeText}} · {{selected.sourceCount}} 个文件</text>
+      <text wx:for="{{selected.files}}" wx:key="*this" wx:if="{{index > 0}}" class="history-copy history-file">{{item}}</text>
+      <block wx:if="{{preview}}">
+        <text class="history-impact-title">将删除 {{preview.createdTransactionCount}} 笔账目</text>
+        <text wx:if="{{preview.reusedTransactionCount}}" class="history-copy">保留 {{preview.reusedTransactionCount}} 笔已有账目，本次导入仅复用了这些记录。</text>
+        <text wx:else class="history-copy">删除后会同步更新余额和统计。</text>
+        <view wx:for="{{preview.changes}}" wx:key="accountId" class="history-impact"><text>{{item.name}}</text><text class="money-number">{{item.deltaText}}</text></view>
+        <text wx:if="{{preview.changes.length}}" class="history-copy">以上为各账户余额变化。</text>
+        <text class="history-copy">本次新增且未被后续账目使用的账户会停用；本次建立的账户对应关系会一并撤回。</text>
+        <text wx:if="{{preview.conflictsText}}" class="history-error">{{preview.conflictsText}}</text>
+        <button class="danger-button" bindtap="confirmUndo" loading="{{busy}}" disabled="{{busy || !preview.canUndo}}">撤销这次导入</button>
+      </block>
+    </view>
+  </block>
+  <block wx:else>
+    <view wx:for="{{items}}" wx:key="updateId" class="history-entry">
+      <view class="history-entry-heading"><text class="history-file">{{item.title}}</text><text class="history-status">{{item.status === 'undone' ? '已撤销' : '已入账'}}</text></view>
+      <text class="history-copy">{{item.timeText}} · {{item.sourceCount}} 个文件</text>
+      <button wx:if="{{item.status === 'posted'}}" class="history-link history-delete" data-id="{{item.updateId}}" bindtap="previewUndo" disabled="{{busy}}">撤销这次导入</button>
+      <button wx:else class="history-link" bindtap="importAgain" disabled="{{busy}}">重新导入</button>
+    </view>
+    <view wx:if="{{loaded && !items.length && !busy}}" class="ui-state"><text>暂无已入账的导入记录</text></view>
+    <button wx:if="{{nextCursor}}" class="history-link" bindtap="onReachBottom" disabled="{{busy}}">加载更多</button>
+    <button wx:if="{{errorMessage && !retryUndo}}" class="history-link" bindtap="refresh" disabled="{{busy}}">重新加载</button>
+  </block>
+  <text wx:if="{{busy}}" class="history-copy content-inset" aria-role="status">正在处理…</text>
+  <login-sheet id="page-login-sheet" />
+</view>

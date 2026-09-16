@@ -18,7 +18,7 @@ test('transaction service stays a thin current facade', () => {
     'linkRefund',
     'list',
     'refundable',
-    'remove',
+    'remove', 'removeMany',
     'setCategory',
     'statistics',
     'update'

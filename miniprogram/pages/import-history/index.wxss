@@ -1,0 +1,12 @@
+.history-heading, .history-entry-heading, .history-impact { display: flex; justify-content: space-between; align-items: center; gap: 20rpx; }
+.history-title { font-size: 40rpx; font-weight: 600; }
+.history-copy { display: block; font-size: 24rpx; color: var(--theme-muted, #746a60); line-height: 1.7; }
+.history-entry { margin-top: 24rpx; padding: 24rpx 20rpx; border: 1rpx solid var(--theme-line, #e5ded4); border-radius: 24rpx; background: var(--theme-surface, #fff); }
+.history-file { display: block; flex: 1; min-width: 0; overflow-wrap: anywhere; word-break: break-all; }
+.history-status { flex-shrink: 0; color: var(--theme-muted, #746a60); font-size: 24rpx; }
+.history-link { display: inline-flex; align-items: center; min-height: 88rpx; margin: 0; padding: 16rpx 0; background: transparent; color: var(--theme-accent, #d97732); font-size: 26rpx; line-height: 1.5; text-align: left; }
+.history-delete, .history-error { color: var(--theme-danger, #a95132); }
+.history-error { display: block; margin: 20rpx 0; font-size: 26rpx; }
+.history-impact-title { display: block; font-size: 32rpx; font-weight: 500; margin: 32rpx 0 12rpx; }
+.history-impact { padding: 20rpx 0; border-bottom: 1rpx solid var(--theme-line, #e5ded4); font-size: 26rpx; }
+.history-entry .danger-button { margin-top: 28rpx; }
