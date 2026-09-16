@@ -92,6 +92,103 @@ async function visit(h, name) {
 const unsupportedCatalog = action => action === 'catalog.get'
   ? { ok: false, error: { code: 'UNSUPPORTED_ACTION', message: '当前操作尚未开放' } } : undefined
 
+test('重启后未加载用户编号且没有旧提交：新建、编辑和删除均正常', async t => {
+  for (const action of ['transactions.create', 'transactions.update', 'transactions.delete']) {
+    await t.test(action, async () => {
+      const h = runtime(), page = h.page('transaction-editor')
+      h.app.globalData.uid = ''
+      if (action !== 'transactions.create') {
+        page.data.mode = 'edit'
+        h.app.globalData.editingTransaction = { transactionId: 'synthetic-edit', version: 2, type: 'expense',
+          amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', timezoneOffsetMinutes: -480,
+          sourceAccount: { accountId: 'account-a' }, category: { categoryId: 'category-a' }, note: '' }
+      }
+      let release
+      h.intercept = name => name === 'catalog.get' ? new Promise(resolve => { release = resolve }) : undefined
+      const preparing = page.prepareForm()
+      await flush()
+      assert.equal(page.data.errorMessage, '')
+      assert.equal(h.storage.size, 0)
+      await page.save()
+      assert.equal(page.data.errorMessage, '', '目录尚未就绪不应误报身份或旧操作异常')
+      page.bindAmount({ detail: { value: '2.34' } })
+      page.bindNote({ detail: { value: '合成当前修改' } })
+      release(); await preparing
+      assert.equal(h.app.globalData.uid, h.uid)
+      assert.equal(page.data.errorMessage, '')
+      assert.equal(page.data.amountYuan, '2.34')
+      assert.equal(page.data.note, '合成当前修改')
+      assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+      if (action === 'transactions.delete') {
+        page.remove()
+        await h.modals[0].success({ confirm: true })
+      } else await page.save()
+      const writes = h.calls.filter(call => call.action === action)
+      assert.equal(writes.length, 1)
+      if (action !== 'transactions.delete') {
+        assert.equal(writes[0].data.amountMinor, '234')
+        assert.equal(writes[0].data.note, '合成当前修改')
+      }
+      if (action !== 'transactions.create') assert.equal(writes[0].data.transactionId, 'synthetic-edit')
+      assert.equal(h.storage.size, 0)
+      assert.equal(h.calls.some(call => call.action === 'transactions.commandResult'), false)
+      assert.deepEqual(h.navigation, ['back'])
+    })
+  }
+})
+
+test('缓存目录也能补齐当前用户编号，无需额外初始化请求', async () => {
+  const h = runtime()
+  await h.api.callApi('catalog.get')
+  h.app.globalData.uid = ''
+  const page = h.page('transaction-editor')
+  await page.prepareForm()
+  assert.equal(h.app.globalData.uid, h.uid)
+  assert.equal(page.data.errorMessage, '')
+  assert.equal(page.data.catalogReady, true)
+  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+})
+
+test('目录尚未返回就确认删除，共用读取并等待当前会话的用户编号', async () => {
+  for (const unload of [false, true]) {
+    const h = runtime(), page = h.page('transaction-editor')
+    h.app.globalData.uid = ''
+    page.data.mode = 'edit'
+    h.app.globalData.editingTransaction = { transactionId: 'synthetic-delete', version: 1, type: 'expense',
+      amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', sourceAccount: { accountId: 'account-a' } }
+    let release
+    h.intercept = action => action === 'catalog.get' ? new Promise(resolve => { release = resolve }) : undefined
+    const preparing = page.prepareForm()
+    await flush()
+    page.remove()
+    const deleting = h.modals[0].success({ confirm: true })
+    await flush()
+    assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+    if (unload) page.onUnload()
+    release(); await Promise.all([preparing, deleting])
+    assert.equal(h.calls.filter(call => call.action === 'transactions.delete').length, unload ? 0 : 1)
+    assert.equal(page.data.errorMessage, '')
+    assert.deepEqual(h.navigation, unload ? [] : ['back'])
+  }
+})
+
+test('目录失败只提示目录加载失败，不虚构上次操作或确认用户编号', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  h.app.globalData.uid = ''
+  h.respond = unsupportedCatalog
+  await page.prepareForm()
+  assert.equal(h.app.globalData.uid, '')
+  assert.equal(page.data.errorMessage, '')
+  assert.ok(page.data.catalogError)
+  assert.equal(h.storage.size, 0)
+  assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+  h.respond = null
+  await page.retryCatalog()
+  assert.equal(h.app.globalData.uid, h.uid)
+  assert.equal(page.data.errorMessage, '')
+  assert.equal(page.data.catalogError, '')
+})
+
 test('目录版本不匹配只请求当前服务，保留输入并可重试恢复', async () => {
   const h = runtime(), page = h.page('transaction-editor')
   h.respond = unsupportedCatalog
@@ -158,6 +255,7 @@ test('已有目录刷新失败后，点击重试仍读取服务端，不以旧�
 
 test('切换会话后迟到目录结果不回填', async () => {
   const h = runtime()
+  h.app.globalData.uid = ''
   let release
   h.respond = () => new Promise(resolve => { release = resolve })
   const pending = h.api.callApi('catalog.get')
@@ -167,6 +265,7 @@ test('切换会话后迟到目录结果不回填', async () => {
   await assert.rejects(pending, { code: 'SESSION_CHANGED' })
   assert.equal(h.api.peek('catalog.get'), null)
   assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+  assert.equal(h.app.globalData.uid, '')
 })
 
 test('首页、明细、账本、我的首次一轮仅3次请求，后续切页0请求且无加载闪烁', async () => {
@@ -870,6 +969,7 @@ test('进程重启后进入记账页只核实持久化原操作，迟到确认�
   first.intercept = action => { if (action === 'transactions.create') throw new Error('响应丢失') }
   await page.save(); page.onUnload()
   const restarted = runtime(first.storage)
+  restarted.app.globalData.uid = ''
   restarted.respond = action => action === 'transactions.commandResult' ? { ok: true, data: {
     action: 'transactions.create', receiptId: 'confirmed', result: { saved: true } } } : undefined
   const restored = restarted.page('transaction-editor')
@@ -877,4 +977,23 @@ test('进程重启后进入记账页只核实持久化原操作，迟到确认�
   assert.deepEqual(restarted.navigation, ['back'])
   assert.equal(restarted.calls.filter(c => c.action === 'transactions.create').length, 0)
   assert.equal(restarted.storage.size, 0)
+  assert.equal(restarted.app.globalData.uid, restarted.uid)
+  assert.deepEqual(restarted.calls.map(c => c.action), ['catalog.get', 'transactions.commandResult'])
+})
+
+test('确有旧提交时，核实接口错误保留真实原因而不统一改成操作未确认', async () => {
+  const first = runtime(), page = first.page('transaction-editor')
+  await page.prepareForm(); page.bindAmount({ detail: { value: '1' } })
+  first.intercept = action => { if (action === 'transactions.create') throw new Error('合成响应丢失') }
+  await page.save(); page.onUnload()
+  const restarted = runtime(first.storage)
+  restarted.app.globalData.uid = ''
+  restarted.respond = action => action === 'transactions.commandResult'
+    ? { ok: false, error: { code: 'UNSUPPORTED_ACTION', message: '合成：当前核实接口不可用' } } : undefined
+  const restored = restarted.page('transaction-editor')
+  await restored.prepareForm()
+  assert.equal(restored.data.errorMessage, '合成：当前核实接口不可用')
+  assert.equal(restored.data.catalogError, '')
+  assert.equal(restarted.storage.size, 1)
+  assert.deepEqual(restarted.navigation, [])
 })

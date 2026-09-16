@@ -47,7 +47,16 @@ async function loadTransactions(data) {
 function callApi(action, data, options) {
   const app = getApp()
   if (!app || !app.hasLoginApproval()) return client.call(action, data)
-  if (action === 'catalog.get') return read(action, data, options, () => loadCatalog(data, options))
+  if (action === 'catalog.get') {
+    const session = cache.getSession()
+    return read(action, data, options, () => loadCatalog(data)).then(result => {
+      if (cache.getSession() !== session || !app.hasLoginApproval()) {
+        throw Object.assign(new Error('登录状态已改变，请重新打开页面'), { code: 'SESSION_CHANGED' })
+      }
+      app.globalData.uid = result.uid
+      return result
+    })
+  }
   if (action === 'statistics.get') return read(action, data, options, () => loadStatistics(data))
   if (action === 'transactions.list') return read(action, data, options, () => loadTransactions(data))
   if (READ_POLICIES[action]) return read(action, data, options, () => client.call(action, data))

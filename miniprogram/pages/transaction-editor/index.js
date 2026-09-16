@@ -111,7 +111,7 @@ Page({
   beginRead: function () {
     return pageReadSession.begin(this,
       Object.keys(this.data).filter(key => !['mode', 'readonlyDetail'].includes(key) && !key.startsWith('theme')),
-      ['_initialized', '_writeFinished', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
+      ['_initialized', '_writeFinished', '_pendingWriteChecked', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
         '_detailTransaction', '_editingTransaction', '_catalogCategories'])
   },
 
@@ -126,7 +126,6 @@ Page({
       }
       this._editingTransaction = editing
       this._initialized = true
-      this.verifyPendingWrite()
       if (this.data.readonlyDetail) {
         this._detailTransaction = editing
         const detail = buildReadonlyDetail(editing, [], this.data.mode === 'import' && ['income', 'expense'].includes(editing.type))
@@ -145,10 +144,10 @@ Page({
     if (this._catalogLoad) return Promise.all([this._catalogLoad, refundLoad])
     const force = Boolean(options && options.force)
     const cached = !force && api.peek('catalog.get')
-    if (cached) {
+    if (cached && app.globalData.uid) {
       this.applyCatalog(cached)
       this._catalogToken = api.cacheToken('catalog.get')
-      return refundLoad
+      return Promise.all([refundLoad, this.verifyPendingWrite()])
     }
     this.setData({ preparing: true, catalogReady: false, catalogError: '' })
     this._catalogLoad = api.callApi('catalog.get', {}, { force })
@@ -156,6 +155,7 @@ Page({
         if (!isCurrent()) return
         self.applyCatalog(result)
         self._catalogToken = api.cacheToken('catalog.get')
+        return self.verifyPendingWrite()
       }).catch(function () {
         if (isCurrent()) self.setData({ catalogError: '暂时无法加载账户和分类' })
       }).finally(function () {
@@ -292,16 +292,24 @@ Page({
   },
   verifyPendingWrite: async function () {
     const isCurrent = pageReadSession.capture(this)
+    if (!isCurrent() || !app.globalData.uid || this._pendingWriteChecked) return
+    this._pendingWriteChecked = true
     try {
+      if (!pendingWrites.pending()) return
       const result = await pendingWrites.verify()
       if (result && isCurrent()) this.writeSucceeded(result.action)
-    } catch (error) { if (isCurrent()) this.setData({ errorMessage: '上次操作尚待核实；再次保存将恢复原请求' }) }
+    } catch (error) {
+      if (isCurrent()) this.setData({ errorMessage: error.code === 'OPERATION_UNCONFIRMED'
+        ? '上次提交的结果尚未确认，请重试' : (error.message || '暂时无法确认提交结果，请重试') })
+    }
   },
   sendLedgerWrite: async function (action, data) {
     const isCurrent = pageReadSession.capture(this)
     if (!isCurrent() || this.data.saving) return
     this.setData({ saving: true, errorMessage: '' })
     try {
+      if (!app.globalData.uid) await api.callApi('catalog.get')
+      if (!isCurrent()) return
       const result = await pendingWrites.send('api', action, data)
       if (isCurrent()) this.writeSucceeded(result.action)
     } catch (error) { if (isCurrent()) this.setData({ errorMessage: error.message || '上次操作结果待核实，再次保存将恢复原请求' }) }
@@ -340,7 +348,7 @@ Page({
   },
 
   save: function () {
-    if (!pageReadSession.isCurrent(this) || this.data.saving) return
+    if (!pageReadSession.isCurrent(this) || this.data.saving || !this.data.catalogReady) return
     try { if (pendingWrites.pending()) return this.sendLedgerWrite('transactions.create', {}) }
     catch (error) { this.setData({ errorMessage: error.message }); return }
     if (!pageReadSession.isCurrent(this) || this.data.saving || !this.data.catalogReady || this.data.editingBlocked || this.data.accounts.length === 0 ||
