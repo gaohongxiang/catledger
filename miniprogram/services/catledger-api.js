@@ -36,11 +36,20 @@ async function loadStatistics(data) {
   return result
 }
 
+async function loadTransactions(data) {
+  const result = await client.call('transactions.list', data)
+  if (data && data.source && (!result || result.source !== data.source)) {
+    throw Object.assign(new Error('来源筛选暂不可用，请稍后重试'), { code: 'INVALID_RESPONSE' })
+  }
+  return result
+}
+
 function callApi(action, data, options) {
   const app = getApp()
   if (!app || !app.hasLoginApproval()) return client.call(action, data)
   if (action === 'catalog.get') return read(action, data, options, () => loadCatalog(data, options))
   if (action === 'statistics.get') return read(action, data, options, () => loadStatistics(data))
+  if (action === 'transactions.list') return read(action, data, options, () => loadTransactions(data))
   if (READ_POLICIES[action]) return read(action, data, options, () => client.call(action, data))
   const tags = mutationTags(action)
   return tags.length ? cache.mutate(tags, () => client.call(action, data)) : cache.guard(() => client.call(action, data))

@@ -13,7 +13,7 @@ const {
   validateId
 } = require('./transaction-domain')
 
-async function lockAccounts(connection, uid, accountIds) {
+async function lockAccounts(connection, uid, accountIds, { allowArchived = false } = {}) {
   const ids = [...new Set(accountIds.filter(Boolean).map(validateId))].sort()
   if (ids.length === 0) return new Map()
 
@@ -30,7 +30,7 @@ async function lockAccounts(connection, uid, accountIds) {
 
   const accounts = new Map(rows.map((row) => [row.accountId, row]))
   for (const account of accounts.values()) {
-    if (account.archivedAt != null) throw ledgerError('ACCOUNT_INACTIVE')
+    if (!allowArchived && account.archivedAt != null) throw ledgerError('ACCOUNT_INACTIVE')
     if (account.currency !== 'CNY') throw ledgerError('UNSUPPORTED_CURRENCY')
   }
   return accounts
@@ -368,7 +368,8 @@ function createTransactionCommandService({ getPool }) {
         if (current.type === 'expense') {
           await protectRefundedExpense(connection, uid, current, null)
         }
-        const accounts = await lockAccounts(connection, uid, [current.sourceAccountId, current.destinationAccountId])
+        // 停用阻止新增/编辑，不阻止删除历史手工账目；仍锁账户并检查现金余额。
+        const accounts = await lockAccounts(connection, uid, [current.sourceAccountId, current.destinationAccountId], { allowArchived: true })
         await assertCashBalanceChanges(connection, uid, accounts, [
           { transaction: current, multiplier: -1n }
         ])

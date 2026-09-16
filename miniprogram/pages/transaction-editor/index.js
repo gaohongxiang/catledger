@@ -188,7 +188,7 @@ Page({
     this.setData({ accounts, hasAccounts: accounts.length > 0, sourceAccountId: sourceId, destinationAccountId: destinationId,
       sourceIndex: findIndex(accounts, 'accountId', sourceId), destinationIndex: findIndex(accounts, 'accountId', destinationId),
       catalogReady: true, catalogError: '', editingBlocked,
-      errorMessage: editingBlocked ? '关联账户已停用，请返回查看原交易。' : this.data.errorMessage })
+      errorMessage: editingBlocked ? '关联账户已停用，不能修改；仍可删除这笔账。' : this.data.errorMessage })
     this.refreshCategories(TYPE_OPTIONS[this.data.typeIndex].value, first && !this.data.selectedCategoryId)
     this._catalogApplied = true
   },

@@ -23,6 +23,8 @@ function normalizeListFilters(data) {
   if (data.uncategorized != null && typeof data.uncategorized !== 'boolean') throw ledgerError('VALIDATION_ERROR')
   const uncategorized = data.uncategorized === true
   if (uncategorized && categoryId) throw ledgerError('VALIDATION_ERROR')
+  const source = data.source == null ? null : data.source
+  if (source !== null && source !== 'manual' && source !== 'import') throw ledgerError('VALIDATION_ERROR')
   let search = null
   if (data.search != null && data.search !== '') {
     if (typeof data.search !== 'string') throw ledgerError('VALIDATION_ERROR')
@@ -34,7 +36,7 @@ function normalizeListFilters(data) {
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
     throw ledgerError('VALIDATION_ERROR')
   }
-  return { month, date, range, accountId, categoryId, uncategorized, search, pageSize }
+  return { month, date, range, accountId, categoryId, uncategorized, source, search, pageSize }
 }
 
 async function queryMonthlySummary(connection, uid, range) {
@@ -77,6 +79,15 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
     values.push(filters.categoryId)
   }
   if (filters.uncategorized) conditions.push("t.category_id IS NULL AND t.type IN ('income', 'expense')")
+  if (filters.source) {
+    conditions.push('t.origin = ?')
+    values.push(filters.source)
+    // 贷款自行生成的交易也使用 manual 来源；关联已有记一笔的记录仍保留原来源。
+    if (filters.source === 'manual') conditions.push(`NOT EXISTS (
+      SELECT 1 FROM catledger_loan_payment_transactions lpt
+      WHERE lpt.uid = t.uid AND lpt.transaction_id = t.transaction_id AND lpt.created_by_payment = 1
+    )`)
+  }
   if (filters.search) {
     conditions.push("t.note LIKE ? ESCAPE '\\\\'")
     values.push(`%${escapeLike(filters.search)}%`)
@@ -179,6 +190,7 @@ function createTransactionQueryService({ getPool }) {
           accountId: filters.accountId,
           categoryId: filters.categoryId,
           ...(filters.uncategorized ? { uncategorized: true } : {}),
+          source: filters.source,
           search: filters.search
         })
         let cursor = null
@@ -205,6 +217,7 @@ function createTransactionQueryService({ getPool }) {
         return {
           month: filters.month,
           date: filters.date,
+          source: filters.source,
           summary,
           transactions: pageRows.map(transactionToPublic),
           nextCursor

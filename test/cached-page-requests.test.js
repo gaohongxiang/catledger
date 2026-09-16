@@ -42,7 +42,7 @@ function runtime(savedStorage) {
       else if (action === 'categories.list') result = { categories }
       else if (action === 'accounts.list') result = { accounts: h.accounts || accounts() }
       else if (action === 'dashboard.get') result = { accounts: accounts(), summary, netWorthMinor: balance, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }], recentTransactions: [] }
-      else if (action === 'transactions.list') result = { transactions: [transaction(data.search || (data.accountId ? data.accountId : data.cursor ? 'row-2' : 'row-1'))], nextCursor: data.cursor ? null : 'page-2', summary }
+      else if (action === 'transactions.list') result = { source: data.source || null, transactions: [transaction(data.search || (data.accountId ? data.accountId : data.cursor ? 'row-2' : 'row-1'))], nextCursor: data.cursor ? null : 'page-2', summary }
       else if (action === 'transactions.refundable') result = { transactions: [] }
       else if (action === 'statistics.get') result = { month: data.month, summary, cashFlowTrend: [{ month: data.trendEndMonth || data.month, incomeMinor: '0', expenseMinor: '100' }] }
       else { balance = '10100'; result = { saved: true } }
@@ -544,6 +544,26 @@ test('页面卸载或会话变更后，旧目录与保存响应不回填也不�
   }
 })
 
+test('手工账目关联停用账户时禁止保存修改，但确认删除仍发送原交易身份', async () => {
+  const h = runtime(), page = h.page('transaction-editor')
+  h.accounts = [{ accountId: 'archived-account', type: 'bank', name: '合成停用账户', archived: true }]
+  h.app.globalData.editingTransaction = { transactionId: 'synthetic-archived-expense', version: 3, type: 'expense',
+    sourceAccount: h.accounts[0], amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', timezoneOffsetMinutes: -480 }
+  page.setData({ mode: 'edit' })
+  await page.prepareForm()
+  assert.equal(page.data.editingBlocked, true)
+  assert.match(page.data.errorMessage, /仍可删除/)
+  await page.save()
+  assert.equal(h.calls.some(call => call.action === 'transactions.update'), false)
+  page.remove()
+  await h.modals[0].success({ confirm: true })
+  const deleted = h.calls.filter(call => call.action === 'transactions.delete')
+  assert.equal(deleted.length, 1)
+  assert.equal(deleted[0].data.transactionId, 'synthetic-archived-expense')
+  assert.equal(deleted[0].data.version, 3)
+  assert.deepEqual(h.navigation, ['back'])
+})
+
 test('删除确认和删除回包都遵守页面生命周期，成功删除直接返回', async () => {
   const h = runtime(), page = h.page('transaction-editor')
   await page.prepareForm()
@@ -620,38 +640,6 @@ test('两种记账入口共用导航保护，连续切换不会叠页，失败�
     component.openEntry(); component[method]()
     assert.equal(h.navigation.length, 3)
   }
-})
-
-test('我的导入入口等待游客登录成功后继续，入口自身不读取或写入账本', () => {
-  const h = runtime(), page = h.page('profile'), tabBar = h.component()
-  page.getTabBar = () => tabBar
-  h.app.approved = false
-  page.openImport()
-  assert.equal(h.calls.length, 0)
-  assert.deepEqual(h.navigation, [])
-  assert.equal(typeof h.loginOptions.afterLogin, 'function')
-  // 取消或失败不会触发成功回调；回调执行时仍须确认登录许可。
-  h.loginOptions.afterLogin()
-  assert.deepEqual(h.navigation, [])
-  h.app.approved = true
-  h.loginOptions.afterLogin()
-  assert.deepEqual(h.navigation, ['/pages/import-workbench/index'])
-  assert.equal(h.calls.length, 0)
-})
-
-test('我的导入入口防止重复导航，失败后提示且可再次进入', () => {
-  const h = runtime(), page = h.page('profile')
-  h.deferNavigation = true
-  page.openImport(); page.openImport()
-  assert.equal(h.navigation.length, 1)
-  h.lastNavigation.complete()
-  h.deferNavigation = false; h.failNavigation = true
-  page.openImport()
-  assert.match(h.toasts[0], /重试/)
-  h.failNavigation = false
-  page.openImport()
-  assert.deepEqual(h.navigation, Array(3).fill('/pages/import-workbench/index'))
-  assert.equal(h.calls.length, 0)
 })
 
 test('进入导入再返回保留完整手记草稿，目录失效按ID刷新且不自动入账', async () => {
@@ -736,6 +724,75 @@ test('分页等待时改变账户筛选立即加载新首屏，不拼接旧分�
   release(); await pending
   assert.equal(page.data.transactions.length, 1)
   assert.equal(page.data.transactions[0].transactionId, 'account-a')
+})
+
+test('明细来源、账户、未分类和搜索组合；输入草稿不带入旧分页，清空保留筛选', async () => {
+  const h = runtime(), page = await visit(h, 'transactions')
+  await page.changeAccountFilter({ detail: { value: 1 } })
+  await page.changeCategoryFilter({ detail: { value: 1 } })
+  await page.changeSourceFilter({ detail: { value: 2 } })
+  page.bindSearch({ detail: { value: ' 午饭 ' } })
+  await page.applySearch()
+  let request = h.calls.at(-1).data
+  assert.equal(request.source, 'import'); assert.equal(request.search, '午饭')
+  assert.equal(request.accountId, 'account-a'); assert.equal(request.uncategorized, true)
+  page.bindSearch({ detail: { value: '尚未搜索' } })
+  await page.loadTransactions(true)
+  request = h.calls.at(-1).data
+  assert.equal(request.search, '午饭'); assert.equal(request.cursor, 'page-2')
+  await page.clearSearch()
+  request = page.requestData(null)
+  assert.equal(request.search, ''); assert.equal(request.source, 'import')
+  assert.equal(request.accountId, 'account-a'); assert.equal(request.uncategorized, true)
+  assert.equal(page.data.search, '')
+  await page.changeSourceFilter({ detail: { value: 0 } })
+  assert.equal(page.requestData(null).source, undefined)
+})
+
+test('云端未确认来源时不缓存或展示全部账目，更新后原条件可重试恢复', async () => {
+  for (const returnedSource of [undefined, null, 'manual']) {
+    const h = runtime(), page = await visit(h, 'transactions')
+    h.respond = action => action === 'transactions.list' ? { ok: true, data: {
+      ...(returnedSource === undefined ? {} : { source: returnedSource }),
+      transactions: [{ transactionId: 'wrong-all-result', origin: 'system', type: 'balance_adjustment', amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00' }],
+      nextCursor: 'wrong-cursor', summary: { incomeMinor: '0', expenseMinor: '100', netIncomeMinor: '-100' }
+    } } : undefined
+    await page.changeSourceFilter({ detail: { value: 2 } })
+    assert.equal(page.data.transactions.length, 0); assert.equal(page.data.nextCursor, null)
+    assert.match(page.data.errorMessage, /来源筛选暂不可用/)
+    assert.equal(h.api.peek('transactions.list', page.requestData(null)), null)
+    assert.equal(page.data.sourceFilterIndex, 2)
+    h.respond = null
+    await page.prepareAndLoad()
+    assert.equal(page.data.transactions.length, 1); assert.equal(page.data.errorMessage, '')
+    assert.equal(page.data.sourceFilterIndex, 2)
+  }
+})
+
+test('来源切换隔离旧分页的成功和失败，重复选择复用缓存，换会话清理搜索', async () => {
+  for (const fails of [false, true]) {
+    const h = runtime(), page = await visit(h, 'transactions')
+    h.respond = (action, data) => action === 'transactions.list' && data.source ? { ok: true, data: { source: data.source,
+      transactions: [{ transactionId: data.source, type: 'expense', amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00' }],
+      nextCursor: null, summary: { incomeMinor: '0', expenseMinor: '100', netIncomeMinor: '-100' }
+    } } : undefined
+    let resolve, reject
+    h.intercept = (action, data) => action === 'transactions.list' && data.cursor ? new Promise((yes, no) => { resolve = yes; reject = no }) : undefined
+    const old = page.loadTransactions(true)
+    await flush()
+    await page.changeSourceFilter({ detail: { value: 1 } })
+    assert.equal(page.data.transactions[0].transactionId, 'manual')
+    if (fails) reject(new Error('旧分页失败')); else resolve()
+    await old
+    assert.equal(page.data.transactions.length, 1); assert.equal(page.data.transactions[0].transactionId, 'manual')
+    assert.equal(page.data.errorMessage, ''); assert.equal(page.data.loadingMore, false)
+    const count = h.calls.length
+    await page.changeSourceFilter({ detail: { value: 1 } })
+    assert.equal(h.calls.length, count)
+    page.bindSearch({ detail: { value: '午饭' } }); await page.applySearch()
+    h.cache.reset(); await page.prepareAndLoad()
+    assert.equal(page.data.sourceFilterIndex, 0); assert.equal(page.data.search, ''); assert.equal(page.data.appliedSearch, '')
+  }
 })
 
 

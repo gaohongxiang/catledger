@@ -124,8 +124,9 @@
     },
     "transactions.list": {
       "kind": "read",
-      "data": ["month", "date?", "accountId?", "categoryId?", "uncategorized? (boolean; exclusive with categoryId)", "search?", "pageSize?", "cursor?"],
-      "returns": ["month", "date?", "summary", "transactions (origin; importContext?={updateId,eventId})", "nextCursor"]
+      "data": ["month", "date?", "accountId?", "categoryId?", "uncategorized? (boolean; exclusive with categoryId)", "source? (manual|import)", "search?", "pageSize?", "cursor?"],
+      "returns": ["month", "date?", "source (null|manual|import; applied filter)", "summary", "transactions (origin; importContext?={updateId,eventId})", "nextCursor"],
+      "rules": ["source omitted: all sources; manual: origin=manual excluding transactions created by loan payments; import: origin=import", "Source combines with other filters before pagination and is bound into the cursor; summary retains the selected period totals", "A requested source must match the response source before the client caches or displays results; missing or mismatched confirmation is INVALID_RESPONSE"]
     },
     "transactions.create": {
       "kind": "idempotent-mutation",
@@ -155,7 +156,8 @@
     "transactions.delete": {
       "kind": "idempotent-versioned-mutation",
       "data": ["requestId", "transactionId", "version"],
-      "returns": ["transactionId", "deleted", "version"]
+      "returns": ["transactionId", "deleted", "version"],
+      "rules": ["仅软删除当前用户的手工交易，校验交易版本并保留幂等回执", "关联账户停用不阻止删除，账户维持停用；新增与编辑仍要求活动账户", "保留现金余额、退款依赖及贷款关联保护"]
     }
   },
   "rules": {

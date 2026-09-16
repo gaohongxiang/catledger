@@ -20,15 +20,17 @@ Page({
     errorMessage: '',
     catalogError: '',
     search: '',
+    appliedSearch: '',
     incomeText: '¥0.00',
     expenseText: '¥0.00',
     netText: '¥0.00',
     netClass: 'amount-neutral',
-    searchOpen: false,
     transactions: [],
     nextCursor: null,
     accountFilterIndex: 0,
     categoryFilterIndex: 0,
+    sourceFilterIndex: 0,
+    sourceFilters: [{ value: '', name: '全部来源' }, { value: 'manual', name: '记一笔' }, { value: 'import', name: '账单导入' }],
     accountFilters: [{ accountId: '', name: '全部账户' }],
     categoryFilters: [{ categoryId: '', name: '全部分类' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true }]
   },
@@ -76,7 +78,7 @@ Page({
   },
 
   prepareAndLoad: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (this._prepareLoad) return this._prepareLoad
     const self = this
@@ -112,7 +114,7 @@ Page({
     const data = {
       month: this.data.month,
       pageSize: 30,
-      search: this.data.search.trim()
+      search: this.data.appliedSearch
     }
     if (this.data.selectedDate) {
       data.date = this.data.selectedDate
@@ -125,6 +127,8 @@ Page({
     } else if (category && category.categoryId) {
       data.categoryId = category.categoryId
     }
+    const source = this.data.sourceFilters[this.data.sourceFilterIndex]
+    if (source && source.value) data.source = source.value
     if (cursor) {
       data.cursor = cursor
     }
@@ -132,7 +136,7 @@ Page({
   },
 
   loadTransactions: function (append, options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
     if (!app.hasLoginApproval()) return Promise.resolve()
     const data = this.requestData(append ? this.data.nextCursor : null)
     const requestKey = JSON.stringify(data)
@@ -232,16 +236,13 @@ Page({
   },
 
   applySearch: function () {
+    this.setData({ appliedSearch: this.data.search.trim() })
     return this.loadTransactions(false)
   },
 
-  toggleSearch: function () {
-    this.setData({ searchOpen: !this.data.searchOpen })
-  },
-
-  cancelSearch: function () {
-    const hadSearch = this.data.search.trim().length > 0
-    this.setData({ search: '', searchOpen: false })
+  clearSearch: function () {
+    const hadSearch = Boolean(this.data.appliedSearch)
+    this.setData({ search: '', appliedSearch: '' })
     if (hadSearch) {
       return this.loadTransactions(false)
     }
@@ -254,6 +255,11 @@ Page({
 
   changeCategoryFilter: function (event) {
     this.setData({ categoryFilterIndex: Number(event.detail.value), hasLoaded: false, transactions: [] })
+    return this.loadTransactions(false)
+  },
+
+  changeSourceFilter: function (event) {
+    this.setData({ sourceFilterIndex: Number(event.detail.value) })
     return this.loadTransactions(false)
   },
 

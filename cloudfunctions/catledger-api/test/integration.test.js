@@ -597,6 +597,100 @@ function randomTestUuid() {
   return `10000000-0000-4000-8000-${suffix}`
 }
 
+test('停用账户历史手工账目可删除且保持隔离、版本、幂等与账户状态', { skip: !hasDatabase }, async () => {
+  const foreign = await bootstrapLedgerUser('archived-delete-foreign')
+  for (const type of ['expense', 'income', 'transfer', 'refund']) {
+    const { subjectHash, expenseCategory, incomeCategory } = await bootstrapLedgerUser('archived-delete-' + type)
+    const context = { provider: 'wechat-mini', subjectHash }
+    const source = await createTestAccount(subjectHash)
+    const destination = await createTestAccount(subjectHash)
+    const fields = { type, amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', timezoneOffsetMinutes: -480 }
+    if (type === 'expense' || type === 'transfer') fields.sourceAccountId = source.accountId
+    if (type !== 'expense') fields.destinationAccountId = destination.accountId
+    if (type === 'expense') fields.categoryId = expenseCategory.id
+    if (type === 'income') fields.categoryId = incomeCategory.id
+    if (type === 'refund') {
+      const original = await transactionService.create({ ...context, data: { ...fields, type: 'expense', amountMinor: '500',
+        destinationAccountId: undefined, sourceAccountId: source.accountId, categoryId: expenseCategory.id,
+        requestId: randomTestUuid() } })
+      fields.originalTransactionId = original.transactionId
+    }
+    const created = await transactionService.create({ ...context, data: { ...fields, requestId: randomTestUuid() } })
+    for (const account of [source, destination]) {
+      await accountService.archive({ ...context, data: { requestId: randomTestUuid(), accountId: account.accountId, version: account.version } })
+    }
+    const before = await accountService.list(context)
+    const deletion = { ...context, data: { requestId: randomTestUuid(), transactionId: created.transactionId, version: created.version } }
+    await assert.rejects(transactionService.remove({ ...deletion, subjectHash: foreign.subjectHash }), { publicCode: 'NOT_FOUND' })
+    await assert.rejects(transactionService.remove({ ...deletion, data: { ...deletion.data, version: created.version + 1 } }), { publicCode: 'CONFLICT' })
+    await assert.rejects(transactionService.create({ ...context, data: { ...fields, requestId: randomTestUuid() } }), { publicCode: 'ACCOUNT_INACTIVE' })
+    await assert.rejects(transactionService.update({ ...context, data: { ...fields, ...deletion.data, requestId: randomTestUuid() } }), { publicCode: 'ACCOUNT_INACTIVE' })
+    const removed = await transactionService.remove(deletion)
+    assert.equal(removed.deleted, true)
+    assert.deepEqual(await transactionService.remove(deletion), removed)
+    const after = await accountService.list(context)
+    for (const account of after.accounts) {
+      const old = before.accounts.find(row => row.accountId === account.accountId)
+      const reversal = (fields.sourceAccountId === account.accountId ? 100n : 0n) - (fields.destinationAccountId === account.accountId ? 100n : 0n)
+      assert.equal(account.bookBalanceMinor, String(BigInt(old.bookBalanceMinor) + reversal))
+      assert.equal(account.archived, true)
+      assert.equal(account.version, old.version)
+    }
+    const listed = await transactionService.list({ ...context, data: { month: '2026-09' } })
+    assert.equal(listed.transactions.some(row => row.transactionId === created.transactionId), false)
+    const [[stored]] = await pool.execute('SELECT deleted_at, version FROM catledger_transactions WHERE transaction_id = ?', [created.transactionId])
+    assert.ok(stored.deleted_at)
+    assert.equal(Number(stored.version), created.version + 1)
+  }
+})
+
+test('停用现金账户删除收入或转入仍不能透支，失败不留下删除或回执', { skip: !hasDatabase }, async () => {
+  for (const type of ['income', 'transfer']) {
+    const { subjectHash, expenseCategory, incomeCategory } = await bootstrapLedgerUser('archived-cash-delete-' + type)
+    const context = { provider: 'wechat-mini', subjectHash }
+    const cash = await createTestAccount(subjectHash, { type: 'cash' })
+    const bank = await createTestAccount(subjectHash)
+    const common = { occurredLocalAt: '2026-09-01T12:00:00', timezoneOffsetMinutes: -480 }
+    const incoming = await transactionService.create({ ...context, data: { ...common, requestId: randomTestUuid(), type,
+      amountMinor: '500', destinationAccountId: cash.accountId,
+      ...(type === 'transfer' ? { sourceAccountId: bank.accountId } : { categoryId: incomeCategory.id }) } })
+    const expense = await transactionService.create({ ...context, data: { ...common, requestId: randomTestUuid(), type: 'expense',
+      amountMinor: '400', sourceAccountId: cash.accountId, categoryId: expenseCategory.id } })
+    await accountService.archive({ ...context, data: { requestId: randomTestUuid(), accountId: cash.accountId, version: cash.version } })
+    const deletion = { ...context, data: { requestId: randomTestUuid(), transactionId: incoming.transactionId, version: incoming.version } }
+    const [[before]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_mutation_receipts')
+    await assert.rejects(transactionService.remove(deletion), { publicCode: 'INSUFFICIENT_CASH_BALANCE' })
+    const [[after]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_mutation_receipts')
+    assert.equal(Number(after.count), Number(before.count))
+    const [[stored]] = await pool.execute('SELECT deleted_at, version FROM catledger_transactions WHERE transaction_id = ?', [incoming.transactionId])
+    assert.equal(stored.deleted_at, null)
+    assert.equal(Number(stored.version), incoming.version)
+    await transactionService.remove({ ...context, data: { requestId: randomTestUuid(), transactionId: expense.transactionId, version: expense.version } })
+    await transactionService.remove(deletion)
+    const listed = await accountService.list(context)
+    assert.equal(listed.accounts.find(row => row.accountId === cash.accountId).bookBalanceMinor, '0')
+  }
+})
+
+test('停用账户原支出仍受退款保护，删除退款后才能删除原支出', { skip: !hasDatabase }, async () => {
+  const { subjectHash, expenseCategory } = await bootstrapLedgerUser('archived-refund-delete')
+  const context = { provider: 'wechat-mini', subjectHash }
+  const account = await createTestAccount(subjectHash)
+  const common = { amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', timezoneOffsetMinutes: -480 }
+  const expense = await transactionService.create({ ...context, data: { ...common, requestId: randomTestUuid(), type: 'expense',
+    sourceAccountId: account.accountId, categoryId: expenseCategory.id } })
+  const refund = await transactionService.create({ ...context, data: { ...common, requestId: randomTestUuid(), type: 'refund',
+    destinationAccountId: account.accountId, originalTransactionId: expense.transactionId } })
+  await accountService.archive({ ...context, data: { requestId: randomTestUuid(), accountId: account.accountId, version: account.version } })
+  const deletion = { ...context, data: { requestId: randomTestUuid(), transactionId: expense.transactionId, version: expense.version } }
+  await assert.rejects(transactionService.remove(deletion), { publicCode: 'REFUNDED_TRANSACTION_LOCKED' })
+  await transactionService.remove({ ...context, data: { requestId: randomTestUuid(), transactionId: refund.transactionId, version: refund.version } })
+  await transactionService.remove(deletion)
+  const listed = await accountService.list(context)
+  assert.equal(listed.accounts[0].bookBalanceMinor, '0')
+  assert.equal(listed.accounts[0].archived, true)
+})
+
 test('expense, income and one-row transfer update balances without double-counting cashflow', { skip: !hasDatabase }, async () => {
   const { subjectHash, expenseCategory, incomeCategory } = await bootstrapLedgerUser('integration-transactions')
   const bank = await createTestAccount(subjectHash, {

@@ -34,20 +34,20 @@
 
   <view class="filter-toolbar">
     <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter">
-      <view class="filter-content"><text>{{accountFilters[accountFilterIndex].name}}</text><view class="filter-chevron"></view></view>
+      <view class="filter-content"><text class="filter-label">{{accountFilters[accountFilterIndex].name}}</text><view class="filter-chevron"></view></view>
     </picker>
     <picker class="filter-picker" mode="selector" range="{{categoryFilters}}" range-key="name" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter">
-      <view class="filter-content"><text>{{categoryFilters[categoryFilterIndex].name}}</text><view class="filter-chevron"></view></view>
+      <view class="filter-content"><text class="filter-label">{{categoryFilters[categoryFilterIndex].name}}</text><view class="filter-chevron"></view></view>
     </picker>
-    <view class="search-trigger {{searchOpen || search ? 'search-trigger-active' : ''}}" role="button" aria-label="搜索备注" bindtap="toggleSearch">
-      <view class="search-icon"></view>
-    </view>
+    <picker class="filter-picker source-picker" mode="selector" range="{{sourceFilters}}" range-key="name" value="{{sourceFilterIndex}}" bindchange="changeSourceFilter">
+      <view class="filter-content"><text class="filter-label">{{sourceFilters[sourceFilterIndex].name}}</text><view class="filter-chevron"></view></view>
+    </picker>
   </view>
 
-  <view wx:if="{{searchOpen}}" class="search-strip">
+  <view class="search-field">
+    <view class="search-submit" role="button" aria-label="搜索备注" bindtap="applySearch"><view class="search-icon"></view></view>
     <input class="search-input" value="{{search}}" placeholder="搜索备注" maxlength="40" confirm-type="search" aria-label="搜索账目备注" cursor-spacing="32" bindinput="bindSearch" bindconfirm="applySearch" />
-    <text class="search-action" bindtap="applySearch">查找</text>
-    <text class="search-cancel" bindtap="cancelSearch">取消</text>
+    <view wx:if="{{search}}" class="search-clear" role="button" aria-label="清空搜索" bindtap="clearSearch"><view class="clear-icon"></view></view>
   </view>
 
   <view wx:if="{{transactions.length > 0}}" class="detail-timeline">
