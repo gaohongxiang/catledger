@@ -1,0 +1,31 @@
+name: MINI-1908C temporary workspace
+on:
+  push:
+    branches: [codex/mini-1908c-repayment-link]
+    paths: [.github/workflows/mini-1908c-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - run: npm ci --prefix cloudfunctions/catledger-api
+      - run: npm ci --prefix cloudfunctions/catledger-import
+      - name: Export tracked source and locked test dependencies only
+        shell: bash
+        run: |
+          mkdir -p /tmp/mini-1908c
+          git archive --format=tar HEAD | gzip > /tmp/mini-1908c/source.tar.gz
+          tar -czf /tmp/mini-1908c/dependencies.tar.gz cloudfunctions/catledger-api/node_modules cloudfunctions/catledger-import/node_modules
+          git rev-parse HEAD > /tmp/mini-1908c/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mini-1908c-workspace
+          path: /tmp/mini-1908c/
+          retention-days: 1
