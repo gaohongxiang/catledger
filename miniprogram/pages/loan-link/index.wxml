@@ -1,0 +1,48 @@
+<view class="page-canvas loan-link-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="content-inset"><text class="detail-kicker">贷款管理</text><text class="detail-title">{{transactionId ? '关联这笔还款' : '待关联还款'}}</text>
+    <text class="form-note">这里只核对已有账目，不会再次扣款。普通信用卡还款不一定是分期，无需强制建立贷款资料。</text></view>
+  <view wx:if="{{!transactionId}}" class="content-inset">
+    <picker class="form-field" mode="date" fields="month" value="{{month}}" bindchange="changeMonth"><text>查询月份</text><view class="picker-value">{{month || '全部月份'}}</view></picker>
+    <button wx:if="{{month}}" class="detail-link" bindtap="clearMonth">查看全部月份</button>
+    <picker class="form-field" range="{{accounts}}" range-key="name" value="{{accountIndex}}" bindchange="changeAccount"><text>负债账户</text><view class="picker-value">{{accounts[accountIndex].name || '全部负债账户'}}</view></picker>
+  </view>
+  <view wx:if="{{loading}}" class="ui-state">正在核对还款与关联…</view>
+  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error">{{errorMessage}}</view>
+  <button wx:if="{{errorMessage}}" class="secondary-button" bindtap="load" disabled="{{loading}}">重新读取，不修改账目</button>
+  <block wx:if="{{!transactionId && !errorMessage}}">
+    <text wx:if="{{hasLoaded && !loading && !items.length}}" class="ui-state">当前筛选没有可关联的还款。已经关联的记录请在贷款详情中查看。</text>
+    <button wx:for="{{items}}" wx:key="transactionId" class="candidate-row content-inset" data-id="{{item.transactionId}}" bindtap="selectTransaction" disabled="{{loading}}">
+      <view class="candidate-top"><text>{{item.businessText}}</text><text class="money-number">{{item.amountText}}</text></view>
+      <text class="form-note">{{item.accountText}}</text><text class="form-note">{{item.occurredLocalAt}}</text>
+      <text wx:if="{{item.inactive}}" class="form-note">关联账户已停用，请核对账户状态</text>
+    </button>
+  </block>
+  <view wx:if="{{context && !errorMessage}}" class="content-inset">
+    <text class="principal-value money-number">{{context.amountText}}</text><text class="form-note">{{context.transaction.occurredLocalAt}} · {{context.accountText}}</text>
+    <text class="form-note">{{context.businessText}}</text>
+    <block wx:if="{{context.state === 'candidate'}}">
+      <text class="form-note">本金、利息、费用和期次均需确认。不能直接把扣款总额当本金；混有普通账单的扣款不能全部摊给某笔分期。</text>
+      <text wx:if="{{context.targetAccount.inactive}}" class="ui-state">付款或负债账户已停用，请在账户管理核对状态；当前不能建立关联。</text>
+      <block wx:else>
+        <button class="primary-button" bindtap="createLoan" disabled="{{loading}}">新建分期资料并继续关联</button>
+        <text class="section-title">选择 {{context.targetAccount.name}} 下的贷款</text>
+        <text wx:if="{{!loading && !loans.length}}" class="form-note">还没有对应贷款资料。创建资料不会重复生成消费或借款。</text>
+        <button wx:for="{{loans}}" wx:key="loanId" class="candidate-row" data-id="{{item.loanId}}" bindtap="selectLoan" disabled="{{loading}}">
+          <text>{{item.name}} · {{item.kindText}}</text><text class="form-note">剩余本金 {{item.principalText}}</text>
+          <text class="link-text">{{item.canLink ? '关联这笔还款' : item.issue + ' · 补全资料'}}</text>
+        </button>
+      </block>
+    </block>
+    <button wx:elif="{{context.linked}}" class="primary-button" bindtap="openPayment" disabled="{{loading}}">{{context.state === 'replaced' ? '原账目已更正，查看当前借还记录' : '已有关联，查看实际借还'}}</button>
+    <text wx:else class="form-note">这笔账目不是资产转入负债的还款候选。请从贷款详情核对其他已有来源，不要重复登记。</text>
+    <view wx:if="{{context.evidence.items.length}}" class="source-evidence">
+      <text class="section-title">导入来源提供的信息 · 待核对</text>
+      <view wx:for="{{context.evidence.items}}" wx:key="index" wx:for-item="evidence"><text class="form-note">{{evidence.description}}</text>
+        <view wx:for="{{evidence.fields}}" wx:key="index" class="detail-row"><text>{{item.label}}</text><text>{{item.value}}</text></view></view>
+      <text class="form-note">这些是来源原文，不代表本息费或已付期次已经确认。未提供的字段保持待补充。</text>
+      <text wx:if="{{context.evidence.hasMore}}" class="form-note">这里只展示部分来源信息，原始证据保持不变。</text>
+    </view>
+  </view>
+  <view wx:if="{{!errorMessage && (canPrevious || nextCursor)}}" class="content-inset loan-paging"><button class="secondary-button" bindtap="previousPage" disabled="{{loading || !canPrevious}}">上一页</button><button class="secondary-button" bindtap="nextPage" disabled="{{loading || !nextCursor}}">下一页</button></view>
+  <login-sheet id="page-login-sheet" />
+</view>

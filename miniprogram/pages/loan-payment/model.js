@@ -11,6 +11,7 @@ function payload(data) {
   const drawdown = data.kindIndex === 1
   const mode = ['new','associate','correctExisting'][data.modeIndex || 0]
   if (mode !== 'new' && !data.source && !data.editingPayment) throw new Error('请先选择并核对完整来源账目')
+  if (data.sourceLocked && !data.editingPayment && (mode === 'new' || drawdown)) throw new Error('已有还款只能关联或更正，不能重复登记新付款')
   const result = { mode, kind: drawdown ? 'drawdown' : 'repayment', assetAccountId: asset.accountId,
     totalMinor: money.yuanToMinor(data.totalYuan), occurredLocalAt: data.date + 'T' + data.time + ':00', timezoneOffsetMinutes: new Date().getTimezoneOffset(), confirmed: true,
     allocations: data.allocations.map(a => {

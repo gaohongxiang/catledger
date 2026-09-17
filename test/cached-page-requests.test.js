@@ -124,7 +124,7 @@ test('重启后未加载用户编号且没有旧提交：新建、编辑和删�
       assert.equal(page.data.errorMessage, '')
       assert.equal(page.data.amountYuan, '2.34')
       assert.equal(page.data.note, '合成当前修改')
-      assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+      assert.deepEqual(h.calls.map(call => call.action), action === 'transactions.create' ? ['catalog.get'] : ['loans.transaction', 'catalog.get'])
       if (action === 'transactions.delete') {
         page.remove()
         await h.modals[0].success({ confirm: true })
@@ -169,7 +169,7 @@ test('目录尚未返回就确认删除，共用读取并等待当前会话的�
     page.remove()
     const deleting = h.modals[0].success({ confirm: true })
     await flush()
-    assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
+    assert.deepEqual(h.calls.map(call => call.action), ['loans.transaction', 'catalog.get'])
     if (unload) page.onUnload()
     release(); await Promise.all([preparing, deleting])
     assert.equal(h.calls.filter(call => call.action === 'transactions.delete').length, unload ? 0 : 1)

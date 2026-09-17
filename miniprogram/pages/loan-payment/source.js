@@ -8,7 +8,8 @@ function rows(items) { return items.map(t => Object.assign({}, t, { amountText: 
   typeText: {expense:'支出',income:'收入',transfer:'转账'}[t.type] || t.type })) }
 module.exports = {
   chooseMode(event) {
-    if (this.data.saving) return
+    if (this.data.saving || ![0,1,2].includes(Number(event.detail.value)) || (this.data.sourceLocked && Number(event.detail.value) === 0)) return
+    if (this.data.sourceLocked) { this.setData({ modeIndex: Number(event.detail.value), confirmed: false }); this.review(); return }
     this._selectedSources = new Map()
     this.setData({ modeIndex: Number(event.detail.value), source: null, sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0, sourceTiming: null, confirmed: false })
     this.review()
@@ -43,16 +44,35 @@ module.exports = {
     try {
       const result = await api.callApi('loans.source', { transactionIds: ids }, { force: true })
       if (!current()) return
-      const transactions = result.transactions, first = transactions[0], drawdown = this.data.kindIndex === 1
-      const account = drawdown ? first.destinationAccount : first.sourceAccount
-      const accountId = account && account.accountId
-      this.setData({ source: result.source, sourceTransactions: rows(transactions), sourceRows: [], nextSourceCursor: null,
-        sourceTiming: { occurredLocalAt: first.occurredLocalAt.replace(' ','T'), timezoneOffsetMinutes: first.timezoneOffsetMinutes },
-        accountIndex: this.data.accounts.findIndex(a => a.accountId === accountId), date: first.occurredLocalAt.slice(0,10), time: first.occurredLocalAt.slice(11,16),
-        totalYuan: money.minorToYuan(transactions.reduce((sum,t) => addMinor(sum,t.amountMinor), '0')), confirmed: false })
-      this.review()
+      this.applySourceResult(result)
     } catch (error) { if (current()) this.setData({ errorMessage: error.message }) }
     finally { if (current()) this.setData({ loading: false }) }
+  },
+  applySourceResult(result) {
+    const transactions = result.transactions
+    if (!result.source || !Array.isArray(transactions) || !transactions.length) throw new Error('来源账目不完整，请重新核对')
+    const first = transactions[0], drawdown = this.data.kindIndex === 1
+    const account = drawdown ? first.destinationAccount : first.sourceAccount
+    if (!account || typeof first.occurredLocalAt !== 'string') throw new Error('来源账户或时间不完整，请重新核对')
+    this.setData({ source: result.source, sourceTransactions: rows(transactions), sourceRows: [], nextSourceCursor: null,
+      sourceEvidence: result.evidence || { items: [], hasMore: false },
+      sourceTiming: { occurredLocalAt: first.occurredLocalAt.replace(' ','T'), timezoneOffsetMinutes: first.timezoneOffsetMinutes },
+      accountIndex: this.data.accounts.findIndex(a => a.accountId === account.accountId),
+      date: first.occurredLocalAt.slice(0,10), time: first.occurredLocalAt.slice(11,16),
+      totalYuan: money.minorToYuan(transactions.reduce((sum,t) => addMinor(sum,t.amountMinor), '0')), confirmed: false })
+    this.review()
+  },
+  async loadEntrySource(current) {
+    if (!this._sourceTransactionId || this._paymentId || this.data.editingPayment || this.data.replacePayment || this.data.hasPending) return
+    this.setData({ source: null, sourceTiming: null, sourceTransactions: [], sourceEvidence: { items: [], hasMore: false }, confirmed: false })
+    const result = await api.callApi('loans.source', { transactionIds: [this._sourceTransactionId] }, { force: true })
+    if (!current()) return
+    this.setData({ sourceLocked: true, kindIndex: 0, modeIndex: this.data.modeIndex === 2 ? 2 : 1, sourceSelectedCount: 1 })
+    this.applySourceResult(result)
+  },
+  chooseEntryMode(event) {
+    if (this.data.saving || ![0,1].includes(Number(event.detail.value))) return
+    this.setData({ modeIndex: Number(event.detail.value) + 1, confirmed: false, errorMessage: '' }); this.review()
   },
   editPayment() { this.beginEdit(false) },
   reconcileImport() { this.beginEdit(true) },

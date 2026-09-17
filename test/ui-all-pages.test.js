@@ -356,7 +356,7 @@ test('编辑已停用账户的账目可见原值，但提交保持阻断', async
   assert.equal(page.data.formReady, true)
   assert.equal(page.data.transactionId, 'clicked-entry')
   assert.equal(page.data.detail.amountText, '¥15.96')
-  assert.deepEqual(calls.map(call => call.name), ['catalog.get'])
+  assert.deepEqual(calls.map(call => call.name), ['loans.transaction', 'catalog.get'])
   calls.length = 0
   page.changeDetailCategory({ detail: { value: 1 } })
   await page.saveDetailCategory()

@@ -36,8 +36,9 @@ function refundableViews(transactions, editing) {
   return rows
 }
 
-Page({
+Page(Object.assign({}, require('./loan-context').createLoanContext({ api, session: pageReadSession, navigate: options => wx.navigateTo(options) }), {
   data: {
+    loanContext: null, loanContextLoading: false, loanContextError: '', loanManaged: false,
     mode: 'create',
     readonlyDetail: false,
     detail: null,
@@ -89,7 +90,7 @@ Page({
     if (!pageReadSession.isCurrent(this) || !this.data.catalogReady ||
         this._catalogToken !== api.cacheToken('catalog.get')) {
       loginGuard.run(this, this.prepareForm.bind(this))
-    }
+    } else { this.loadLoanContext() }
   },
 
   onUnload: function () { pageReadSession.end(this) },
@@ -111,7 +112,7 @@ Page({
   beginRead: function () {
     return pageReadSession.begin(this,
       Object.keys(this.data).filter(key => !['mode', 'readonlyDetail'].includes(key) && !key.startsWith('theme')),
-      ['_initialized', '_writeFinished', '_pendingWriteChecked', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
+      ['_loanLoad', '_initialized', '_writeFinished', '_pendingWriteChecked', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
         '_detailTransaction', '_editingTransaction', '_catalogCategories'])
   },
 
@@ -137,17 +138,18 @@ Page({
       // 本地字段不等待目录；已有交易也先展示，再准备可编辑的分类。
       this.setData({ formReady: true })
     }
-    if (this.data.readonlyDetail && !this.data.detail.canEditCategory) return Promise.resolve()
+    const loanLoad = this.loadLoanContext()
+    if (this.data.readonlyDetail && !this.data.detail.canEditCategory) return loanLoad
     const self = this
     const needsRefund = !this.data.readonlyDetail && TYPE_OPTIONS[this.data.typeIndex].value === 'refund'
     const refundLoad = needsRefund ? this.loadRefundables() : Promise.resolve()
-    if (this._catalogLoad) return Promise.all([this._catalogLoad, refundLoad])
+    if (this._catalogLoad) return Promise.all([this._catalogLoad, refundLoad, loanLoad])
     const force = Boolean(options && options.force)
     const cached = !force && api.peek('catalog.get')
     if (cached && app.globalData.uid) {
       this.applyCatalog(cached)
       this._catalogToken = api.cacheToken('catalog.get')
-      return Promise.all([refundLoad, this.verifyPendingWrite()])
+      return Promise.all([refundLoad, this.verifyPendingWrite(), loanLoad])
     }
     this.setData({ preparing: true, catalogReady: false, catalogError: '' })
     this._catalogLoad = api.callApi('catalog.get', {}, { force })
@@ -163,7 +165,7 @@ Page({
         self.setData({ preparing: false })
         self._catalogLoad = null
       })
-    return Promise.all([this._catalogLoad, refundLoad])
+    return Promise.all([this._catalogLoad, refundLoad, loanLoad])
   },
 
   retryCatalog: function () {
@@ -173,7 +175,7 @@ Page({
   applyCatalog: function (result) {
     this._catalogCategories = result.categories || []
     if (this.data.readonlyDetail) {
-      const detail = buildReadonlyDetail(this._detailTransaction, this._catalogCategories, true)
+      const detail = buildReadonlyDetail(this._detailTransaction, this._catalogCategories, !this.data.loanManaged && this.data.mode === 'import' && ['income','expense'].includes(this._detailTransaction.type))
       this.setData({ detail, categories: detail.categories,
         categoryIndex: findIndex(detail.categories, 'id', this.data.selectedCategoryId), catalogReady: true, catalogError: '' })
       return
@@ -198,6 +200,7 @@ Page({
   },
 
   changeDetailCategory: function (event) {
+    if (this.data.loanManaged) return
     if (this.data.saving || !this.data.catalogReady || !this.data.detail || !this.data.detail.canEditCategory) return
     const index = Number(event.detail.value)
     const category = this.data.categories[index]
@@ -207,6 +210,7 @@ Page({
   },
 
   saveDetailCategory: function () {
+    if (this.data.loanManaged) return Promise.resolve()
     if (!pageReadSession.isCurrent(this) || this.data.saving || !this.data.catalogReady || !this.data.categoryDirty || !this.data.detail || !this.data.detail.canEditCategory) return Promise.resolve()
     const category = this.data.categories[this.data.categoryIndex]
     if (!category) return Promise.resolve()
@@ -348,6 +352,7 @@ Page({
   },
 
   save: function () {
+    if (this.data.loanManaged) { this.setData({ errorMessage: '此账目由贷款管理维护，请查看实际借还记录' }); return Promise.resolve() }
     if (!pageReadSession.isCurrent(this) || this.data.saving || !this.data.catalogReady) return
     try { if (pendingWrites.pending()) return this.sendLedgerWrite('transactions.create', {}) }
     catch (error) { this.setData({ errorMessage: error.message }); return }
@@ -388,6 +393,7 @@ Page({
   },
 
   remove: function () {
+    if (this.data.loanManaged) { this.setData({ errorMessage: '此账目由贷款管理维护，请查看实际借还记录' }); return Promise.resolve() }
     const self = this
     const isCurrent = pageReadSession.capture(this)
     if (!isCurrent()) return
@@ -403,4 +409,4 @@ Page({
       }
     })
   }
-})
+}))

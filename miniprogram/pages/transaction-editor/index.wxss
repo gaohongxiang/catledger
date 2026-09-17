@@ -193,3 +193,11 @@
 .readonly-category { align-items: center; }
 .readonly-category-value { display: flex; align-items: center; gap: 18rpx; color: var(--theme-accent-strong); }
 .readonly-chevron { width: 12rpx; height: 12rpx; flex: 0 0 auto; border-top: 2rpx solid currentColor; border-right: 2rpx solid currentColor; transform: rotate(45deg); }
+
+.loan-context { margin-top: 32rpx; padding-top: 28rpx; padding-bottom: 24rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-small); }
+.loan-context-title, .loan-context-name, .loan-context-note { display: block; overflow-wrap: anywhere; }
+.loan-context-title { font-size: 30rpx; font-weight: 500; }
+.loan-context-name { font-size: 28rpx; }
+.loan-context-note { color: var(--theme-text-muted); font-size: 25rpx; line-height: 1.8; margin: 12rpx 0; }
+.loan-context-allocation { padding: 20rpx 0; border-top: 1rpx solid var(--theme-line); margin-top: 20rpx; }
+.loan-context-link { color: var(--theme-accent-strong); background: transparent; min-height: 88rpx; font-size: 26rpx; text-align: left; }
