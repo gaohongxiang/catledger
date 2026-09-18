@@ -1,0 +1,5 @@
+{
+  "navigationBarTitleText": "关联贷款与分期",
+  "enablePullDownRefresh": true,
+  "usingComponents": { "login-sheet": "/components/login-sheet/index" }
+}

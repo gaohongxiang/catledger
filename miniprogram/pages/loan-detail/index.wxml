@@ -1,5 +1,6 @@
 <view class="page-canvas loan-detail {{themeClass}}" style="{{themeStyle}}">
   <view class="detail-heading content-inset"><text class="detail-kicker">贷款资料</text><text class="detail-title">{{loan ? loan.name : '新增贷款'}}</text></view>
+  <view wx:if="{{sourceTransactionId}}" class="content-inset"><text class="form-note">已保留原还款。这里只创建或补充贷款资料，保存后继续关联，不会重新登记付款。</text><text wx:if="{{sourceContext}}" class="form-note">还款发生于 {{sourceContext.transaction.occurredLocalAt}}；关联前须确认该日初或更早的本金基准，不是本次扣款金额。</text></view>
   <view wx:if="{{savedMessage}}" class="ui-state">{{savedMessage}}</view>
   <view wx:if="{{errorMessage}}" class="ui-state ui-state-error">{{errorMessage}}</view>
   <button wx:if="{{errorMessage && !saving}}" class="detail-link" bindtap="load">重新读取与核实</button>
@@ -13,7 +14,7 @@
     <view class="detail-row"><text>机构</text><text>{{loan.institution || '未填写'}}</text></view>
     <view class="detail-row"><text>起止日期</text><text>{{loan.startDate || '未填写'}} 至 {{loan.endDate || '未填写'}}</text></view>
     <view class="detail-row"><text>还款方式</text><text>{{loan.repaymentMethod || '未填写'}}</text></view>
-    <button class="primary-button" bindtap="recordPayment" disabled="{{saving || loading}}">登记实际借还</button>
+    <button class="primary-button" bindtap="recordPayment" disabled="{{saving || loading}}">{{sourceTransactionId ? '继续关联原还款（不重复扣款）' : '登记实际借还'}}</button>
     <button class="secondary-button" bindtap="openPlan" disabled="{{saving || loading}}">还款计划与对账</button>
     <button class="secondary-button" bindtap="edit" disabled="{{saving}}">编辑资料</button>
   </view>

@@ -1,5 +1,7 @@
 // 连续前台使用期间复用；本机写入、重新进入前台及手动刷新控制重读。
 const READ_POLICIES = Object.freeze({
+  'loans.transaction': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
+  'loans.unassigned': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
   'loans.payment': { ttl: Infinity, tags: ['loans', 'transactions'] },
   'loans.payments': { ttl: Infinity, tags: ['loans', 'transactions'] },
   'loans.list': { ttl: Infinity, tags: ['loans', 'accountDirectory'] },

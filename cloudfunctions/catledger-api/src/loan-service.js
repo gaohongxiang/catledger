@@ -30,19 +30,19 @@ function createLoanService({ getPool }) {
   const read = (context, operation) => executeLedgerRead({ getPool, ...context, consistentSnapshot: true, operation })
   const write = (context, action, operation) => executeIdempotentMutation({ getPool, ...context, currentReads: true, action, operation })
   async function list(context) {
-    const data = context.data || {}, pageSize = data.pageSize == null ? 20 : data.pageSize
+    const data = context.data || {}, accountId = data.accountId == null ? null : validateId(data.accountId), pageSize = data.pageSize == null ? 20 : data.pageSize
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 40) throw ledgerError('VALIDATION_ERROR')
     return read(context, async (connection, uid) => {
       let cursor = null
       if (data.cursor) {
         cursor = decodeCursor(context.subjectHash, data.cursor)
-        if (cursor.action !== 'loans.list' || cursor.uid !== uid || typeof cursor.at !== 'string' || typeof cursor.id !== 'string') throw ledgerError('VALIDATION_ERROR')
+        if (cursor.action !== 'loans.list' || cursor.uid !== uid || (cursor.accountId || null) !== accountId || typeof cursor.at !== 'string' || typeof cursor.id !== 'string') throw ledgerError('VALIDATION_ERROR')
       }
-      const [rows] = await connection.execute(LOAN_SELECT + ` WHERE l.uid=?${cursor ? ' AND (l.created_at < ? OR (l.created_at=? AND l.loan_id < ?))' : ''}
-        ORDER BY l.created_at DESC, l.loan_id DESC LIMIT ?`, [uid, ...(cursor ? [cursor.at,cursor.at,cursor.id] : []), pageSize + 1])
+      const [rows] = await connection.execute(LOAN_SELECT + ` WHERE l.uid=?${accountId ? ' AND l.account_id=?' : ''}${cursor ? ' AND (l.created_at < ? OR (l.created_at=? AND l.loan_id < ?))' : ''}
+        ORDER BY l.created_at DESC, l.loan_id DESC LIMIT ?`, [uid, ...(accountId ? [accountId] : []), ...(cursor ? [cursor.at,cursor.at,cursor.id] : []), pageSize + 1])
       const items = rows.slice(0, pageSize), last = items.at(-1)
       return { items: (await populatePrincipal(connection, uid, items)).map(publicLoan), nextCursor: rows.length > pageSize ? encodeCursor(context.subjectHash,
-        { action: 'loans.list', uid, at: String(last.createdAt), id: last.loanId }) : null }
+        { action: 'loans.list', uid, accountId, at: String(last.createdAt), id: last.loanId }) : null }
     })
   }
   async function get(context) { return read(context, async (connection, uid) => ({ loan: publicLoan((await populatePrincipal(connection, uid, [await selectLoan(connection, uid, context.data.loanId)]))[0]) })) }
@@ -77,6 +77,6 @@ function createLoanService({ getPool }) {
       return { loanId: current.loanId, version: data.version + 1 }
     })
   }
-  return { list, get, create, update, ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }) }
+  return { list, get, create, update, ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }) }
 }
 module.exports = { createLoanService, selectLoan, validateLiability }

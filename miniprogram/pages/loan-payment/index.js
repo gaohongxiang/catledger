@@ -5,18 +5,19 @@ const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
 const model = require('./model')
 Page(Object.assign({}, require('./source'), {
-  data: { loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
+  data: { sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['关联已有账目，保持原构成','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
     accounts: [], accountIndex: -1, categories: [], choices: [], nextLoanCursor: null, kindIndex: 0, kinds: ['实际还款','新放款到账'],
     modes: ['登记尚未入账的借还','关联已有账目，保持原构成','更正已有账目的本息费'], modeIndex: 0, source: null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
     sourceMonth: '', nextSourceCursor: null, sourceSelectedCount: 0, editingPayment: null, replacePayment: null,
     treatments: ['尚未入账，本次记支出','已计入负债，本次只清偿'], reviewText: '请填写总额与已确认本息费，未知分项不能提交。', totalYuan: '', date: '', time: '12:00', confirmed: false },
-  onLoad(query) { this._loanId = query && query.loanId; this._paymentId = query && query.paymentId; theme.bindPage(this); this.setData({ hasPayment: Boolean(this._paymentId) }) },
+  onLoad(query) { this._loanId = query && query.loanId; this._paymentId = query && query.paymentId; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ hasPayment: Boolean(this._paymentId), sourceLocked: Boolean(this._sourceTransactionId), sourceTransactionId: this._sourceTransactionId, modeIndex: this._sourceTransactionId ? 1 : 0 }) },
   onShow() { return loginGuard.run(this, () => this.load()) },
   onUnload() { session.end(this) },
   load() {
     const current = session.begin(this, Object.keys(this.data), ['_load'])
     if (this._load) return this._load
     this.setData({ loading: true, errorMessage: '' })
+    if (this._sourceTransactionId && !this._paymentId && !this.data.editingPayment && !this.data.replacePayment) this.setData({ source: null, sourceTiming: null, sourceTransactions: [], sourceEvidence: { items: [], hasMore: false }, confirmed: false })
     this._load = api.callApi('catalog.get').then(async catalog => {
       if (!current()) return
       getApp().globalData.uid = catalog.uid
@@ -54,6 +55,7 @@ Page(Object.assign({}, require('./source'), {
           this.setData(patch)
         }
       }
+      if (current()) await this.loadEntrySource(current)
     }).catch(error => { if (current()) this.setData({ errorMessage: error.message || '借还记录暂未读取' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
     return this._load

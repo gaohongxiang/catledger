@@ -47,3 +47,9 @@ MINI-1907-0 新增 `data-privacy` 原生页面，复用 profile 已有“数据�
 
 
 2026-09-16 后续任务 MINI-1906TX-MANAGE 新增 `import-history`（导入记录/整批撤销/重新导入），不重新开放旧更正页；交付规格见 `../mini-1906tx-manage/README.md`。
+
+
+### 后续新增路由（MINI-1908C）
+
+`pages/loan-link/index`：待关联还款候选与单笔关联，沿用现有贷款详情/实际借还/期次页。
+本次验证和状态见 `docs/招财猫记账本实施规划.md` 19.13，不计入本规格历史真机验收。
