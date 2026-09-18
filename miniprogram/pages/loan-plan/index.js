@@ -8,7 +8,8 @@ const model=require('./model')
 Page({
  data:{loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,loanId:'',loanName:'',loanVersion:0,items:[],nextCursor:null,summary:null,
   formOpen:false,form:model.blank(),paymentId:null,paymentVersion:0,paymentActive:false,paymentShare:null,allocationItems:[],allocationReview:'',confirmed:false,
-  history:[],historyKind:'',historyPeriodId:null,historyNext:null},
+  history:[],historyKind:'',historyPeriodId:null,historyNext:null,
+  canGeneratePlan:false,previewOpen:false,preview:null,previewLoading:false,previewError:'',generateConfirmed:false},
  onLoad(query){theme.bindPage(this);this.setData({loanId:query.loanId,paymentId:query.paymentId||null})},
  onShow(){return loginGuard.run(this,()=>this.load())},
  onUnload(){session.end(this)},
@@ -22,6 +23,11 @@ Page({
    const view=await api.callApi('loans.periods',{loanId:this.data.loanId,pageSize:20,...(cursor?{cursor}:{})},{force:true})
    if(!current())return
    this.setData({loanName:view.loanName,loanVersion:view.loanVersion,items:view.items.map(model.period),nextCursor:view.nextCursor,summary:model.summary(view.summary),confirmed:false})
+   if(!view.items.length&&!cursor){
+    const detail=await api.callApi('loans.get',{loanId:this.data.loanId},{force:true})
+    if(!current())return
+    this.setData({canGeneratePlan:model.canGenerate(detail.loan),loanVersion:detail.loan.version})
+   }else if(view.items.length)this.setData({canGeneratePlan:false,previewOpen:false,preview:null,generateConfirmed:false})
    if(this.data.formOpen&&this.data.form.periodId){
     const fresh=await api.callApi('loans.periods',{loanId:this.data.loanId,periodIds:[this.data.form.periodId],pageSize:40},{force:true})
     if(!current())return
@@ -59,14 +65,25 @@ Page({
  removePeriod(event){this._allocationDirty=true;this.setData({allocationItems:this.data.allocationItems.filter(a=>a.periodId!==event.currentTarget.dataset.id),confirmed:false});this.review()},
  allocationInput(event){const {index,field}=event.currentTarget.dataset;if(!this.data.allocationItems[index]||!['principalYuan','interestYuan','feeYuan'].includes(field))return;this._allocationDirty=true;this.setData({['allocationItems['+index+'].'+field]:event.detail.value,confirmed:false});this.review()},
  review(){this.setData({allocationReview:model.allocationReview(this.data)})},
- accept(outcome){this._allocationDirty=false;this.setData({hasPending:false,savedMessage:outcome.recovered?'上次操作已确认成功':'操作已完成',formOpen:false,confirmed:false})},
+ accept(outcome){this._allocationDirty=false;this.setData({hasPending:false,savedMessage:outcome.recovered?'上次操作已确认成功':'操作已完成',formOpen:false,confirmed:false,previewOpen:false,preview:null,previewError:'',generateConfirmed:false})},
+ async openPreview(){
+  if(this.data.saving||this.data.previewLoading||!this.data.canGeneratePlan)return
+  const current=session.capture(this)
+  this.setData({previewOpen:true,previewLoading:true,previewError:'',preview:null,generateConfirmed:false})
+  try{const result=await api.callApi('loans.previewPlan',{loanId:this.data.loanId},{force:true});if(current())this.setData({preview:model.previewView(result)})}
+  catch(error){if(current())this.setData({previewError:error.message||'试算暂未成功，可重试'})}
+  finally{if(current())this.setData({previewLoading:false})}
+ },
+ closePreview(){if(!this.data.saving)this.setData({previewOpen:false,preview:null,previewError:'',generateConfirmed:false})},
+ confirmGenerate(event){this.setData({generateConfirmed:event.detail.value.includes('confirmed')})},
+ generatePlan(){return this.save('loans.generatePlan')},
  savePeriod(){if(this.data.formOpen||pending.pending())return this.save('loans.savePeriod')},
  saveAllocation(){return this.save('loans.allocatePeriods')},
  retry(){return this.save('loans.savePeriod')},
  async save(action){
   if(this.data.saving||this.data.loading)return
   const current=session.capture(this);this.setData({saving:true,errorMessage:'',savedMessage:''})
-  try{const payload=pending.pending()?{}:action==='loans.savePeriod'?model.periodPayload(this.data):model.allocationPayload(this.data);const outcome=await pending.send('api',action,payload);if(current())this.accept(outcome)}
+  try{const payload=pending.pending()?{}:action==='loans.savePeriod'?model.periodPayload(this.data):action==='loans.generatePlan'?model.generatePayload(this.data):model.allocationPayload(this.data);const outcome=await pending.send('api',action,payload);if(current())this.accept(outcome)}
   catch(error){if(current())this.setData({errorMessage:error.message,hasPending:Boolean(pending.pending())})}
   finally{if(current())this.setData({saving:false})}
   if(current()&&this.data.savedMessage)return this.load()

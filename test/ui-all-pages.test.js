@@ -474,6 +474,7 @@ test('期次计划保存响应丢失后沿用原请求，已确认后读取失�
  let attempts=0
  const {page,calls}=runtime('pages/loan-plan/index',(action)=>{
   if(action==='loans.periods')return attempts>=2?Promise.reject(new Error('合成读取失败')):Promise.resolve({loanName:'合成贷款',loanVersion:1,items:[],nextCursor:null,summary})
+  if(action==='loans.get')return Promise.resolve({loan:{loanId:'loan',version:1}})
   if(action==='loans.savePeriod'){attempts++;return attempts===1?Promise.reject(Object.assign(new Error('合成响应丢失'),{code:'CLOUD_CALL_FAILED'})):Promise.resolve({periodId:'period',version:1})}
   throw new Error(action)
  })
@@ -482,6 +483,33 @@ test('期次计划保存响应丢失后沿用原请求，已确认后读取失�
  await page.savePeriod();assert.equal(page.data.hasPending,true);page.data.form.principalYuan='999'
  await page.retry();const writes=calls.filter(c=>c.name==='loans.savePeriod');assert.equal(writes.length,2);assert.deepEqual(writes[0].data,writes[1].data)
  assert.equal(page.data.formOpen,false);assert.equal(page.data.savedMessage,'操作已完成');await page.savePeriod();assert.equal(calls.filter(c=>c.name==='loans.savePeriod').length,2)
+})
+
+test('空计划且参数齐备时可试算并生成计划，试算失败可重试，生成后入口隐去',async()=>{
+ const summary={unpaidPrincipalMinor:'0',unpaidInterestMinor:'0',unpaidFeeMinor:'0',remainingPrincipalMinor:'0',principalGapMinor:'0',nextDueDate:null}
+ const loan={loanId:'loan',version:3,scheduleMethod:'flat',scheduleTerms:2,measurementKind:'rate',quoteType:'annual',ratePpm:'120000'}
+ const preview={periods:[{periodNumber:1,dueDate:'2026-10-01',principalMinor:'5000',interestMinor:'500',feeMinor:'0'},{periodNumber:2,dueDate:'2026-11-01',principalMinor:'5000',interestMinor:'500',feeMinor:'0'}],summary:{totalPaymentMinor:'11000',totalInterestMinor:'1000',totalFeeMinor:'0'}}
+ const generatedPeriod={periodId:'p1',version:1,periodNumber:1,dueDate:'2026-10-01',status:'unpaid',principalMinor:'5000',interestMinor:'500',feeMinor:'0',unpaidPrincipalMinor:'5000',unpaidInterestMinor:'500',unpaidFeeMinor:'0'}
+ let previewFails=true,generated=false
+ const {page,calls}=runtime('pages/loan-plan/index',(action)=>{
+  if(action==='loans.periods')return Promise.resolve({loanName:'合成贷款',loanVersion:3,items:generated?[generatedPeriod]:[],nextCursor:null,summary})
+  if(action==='loans.get')return Promise.resolve({loan})
+  if(action==='loans.previewPlan')return previewFails?Promise.reject(new Error('合成试算失败')):Promise.resolve(preview)
+  if(action==='loans.generatePlan'){generated=true;return Promise.resolve({loanId:'loan',loanVersion:4,generated:2})}
+  throw new Error(action)
+ })
+ page.onLoad({loanId:'loan'});await page.load()
+ assert.equal(page.data.canGeneratePlan,true)
+ await page.openPreview();assert.match(page.data.previewError,/试算失败/);assert.equal(page.data.preview,null)
+ previewFails=false;await page.openPreview()
+ assert.equal(page.data.preview.periodCount,2);assert.equal(page.data.preview.rows.length,2)
+ assert.throws(()=>require('../miniprogram/pages/loan-plan/model').generatePayload(page.data),/确认/)
+ page.confirmGenerate({detail:{value:['confirmed']}})
+ await page.generatePlan()
+ const writes=calls.filter(c=>c.name==='loans.generatePlan')
+ assert.equal(writes.length,1);assert.deepEqual(writes[0].data,{loanId:'loan',version:3,confirmed:true,requestId:'synthetic-request'})
+ assert.equal(page.data.savedMessage,'操作已完成')
+ assert.equal(page.data.items.length,1);assert.equal(page.data.canGeneratePlan,false)
 })
 
 test('期次选择保持当前页和 40 项上限，费用分项不足不能借用本金补齐',()=>{

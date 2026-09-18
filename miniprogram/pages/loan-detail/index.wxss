@@ -13,6 +13,8 @@
 .form-field > text { color: var(--theme-text-muted); margin-bottom: 12rpx; font-size: 26rpx; }
 .form-field input, .picker-value { min-height: 88rpx; box-sizing: border-box; padding: 22rpx 20rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-small); font-size: 28rpx; }
 .loan-form .primary-button { margin-top: 28rpx; }
+.schedule-section { margin-top: 16rpx; padding-top: 8rpx; border-top: 1rpx solid var(--theme-line); }
+.schedule-section .section-title { display: block; margin: 20rpx 0 8rpx; font-size: 28rpx; font-weight: 500; }
 .detail-link { min-height: 88rpx; color: var(--theme-accent-strong); background: transparent; font-size: 26rpx; }
 
 .loan-history { padding-top: 28rpx; }

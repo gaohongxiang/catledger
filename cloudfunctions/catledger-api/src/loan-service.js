@@ -10,7 +10,10 @@ const { decodeCursor, encodeCursor } = require('./cursor')
 const LOAN_SELECT = `SELECT l.loan_id AS loanId, l.account_id AS accountId, l.name, l.institution, l.kind,
   l.baseline_principal_minor AS baselinePrincipalMinor, l.baseline_principal_minor AS remainingPrincipalMinor,
   l.baseline_date AS baselineDate, l.start_date AS startDate, l.end_date AS endDate,
-  l.repayment_method AS repaymentMethod, l.version, l.created_at AS createdAt,
+  l.repayment_method AS repaymentMethod, l.schedule_method AS scheduleMethod, l.schedule_terms AS scheduleTerms,
+  l.measurement_kind AS measurementKind, l.quote_type AS quoteType, l.rate_ppm AS ratePpm, l.repayment_minor AS repaymentMinor,
+  l.fee_per_term_minor AS feePerTermMinor, l.fee_upfront_minor AS feeUpfrontMinor, l.first_payment_date AS firstPaymentDate,
+  l.version, l.created_at AS createdAt,
   a.name AS accountName, a.archived_at AS accountArchived FROM catledger_loans l
   JOIN catledger_accounts a ON a.uid=l.uid AND a.account_id=l.account_id`
 async function selectLoan(connection, uid, loanId, forUpdate = false) {
@@ -51,9 +54,12 @@ function createLoanService({ getPool }) {
       const value = loanMetadata(data), loanId = randomUUID()
       await validateLiability(connection, uid, value.accountId)
       await connection.execute(`INSERT INTO catledger_loans
-        (uid,loan_id,account_id,name,institution,kind,baseline_principal_minor,baseline_date,start_date,end_date,repayment_method)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)`, [uid,loanId,value.accountId,value.name,value.institution,value.kind,value.baselinePrincipalMinor,
-        value.baselineDate,value.startDate,value.endDate,value.repaymentMethod])
+        (uid,loan_id,account_id,name,institution,kind,baseline_principal_minor,baseline_date,start_date,end_date,repayment_method,
+        schedule_method,schedule_terms,measurement_kind,quote_type,rate_ppm,repayment_minor,fee_per_term_minor,fee_upfront_minor,first_payment_date)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [uid,loanId,value.accountId,value.name,value.institution,value.kind,value.baselinePrincipalMinor,
+        value.baselineDate,value.startDate,value.endDate,value.repaymentMethod,
+        value.scheduleMethod,value.scheduleTerms,value.measurementKind,value.quoteType,value.ratePpm,value.repaymentMinor,
+        value.feePerTermMinor,value.feeUpfrontMinor,value.firstPaymentDate])
       return { loanId, version: 1 }
     })
   }
@@ -70,13 +76,15 @@ function createLoanService({ getPool }) {
       }
       await validateLiability(connection, uid, value.accountId)
       const [result] = await connection.execute(`UPDATE catledger_loans SET account_id=?,name=?,institution=?,kind=?,baseline_principal_minor=?,
-        baseline_date=?,start_date=?,end_date=?,repayment_method=?,version=version+1 WHERE uid=? AND loan_id=? AND version=?`,
+        baseline_date=?,start_date=?,end_date=?,repayment_method=?,schedule_method=?,schedule_terms=?,measurement_kind=?,quote_type=?,rate_ppm=?,
+        repayment_minor=?,fee_per_term_minor=?,fee_upfront_minor=?,first_payment_date=?,version=version+1 WHERE uid=? AND loan_id=? AND version=?`,
       [value.accountId,value.name,value.institution,value.kind,value.baselinePrincipalMinor,value.baselineDate,value.startDate,value.endDate,
-        value.repaymentMethod,uid,current.loanId,data.version])
+        value.repaymentMethod,value.scheduleMethod,value.scheduleTerms,value.measurementKind,value.quoteType,value.ratePpm,value.repaymentMinor,
+        value.feePerTermMinor,value.feeUpfrontMinor,value.firstPaymentDate,uid,current.loanId,data.version])
       if (result.affectedRows !== 1) throw ledgerError('CONFLICT')
       return { loanId: current.loanId, version: data.version + 1 }
     })
   }
-  return { list, get, create, update, ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }) }
+  return { list, get, create, update, ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
 }
 module.exports = { createLoanService, selectLoan, validateLiability }

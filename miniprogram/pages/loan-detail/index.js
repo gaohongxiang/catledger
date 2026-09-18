@@ -5,15 +5,17 @@ const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
 const money = require('../../utils/money')
 const { present, form } = require('../loans/model')
+const scheduleForm = require('./schedule-form')
 Page({
   data: { sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', savedMessage: '', formOpen: false, hasPending: false,
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
-    principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '' },
+    principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
+    schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
   onLoad(query) { this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: !this._loanId, sourceTransactionId: this._sourceTransactionId, kindIndex: !this._loanId && query && query.kind === 'installment' ? 1 : 0 }) },
   onShow() { theme.bindPage(this); return loginGuard.run(this, () => this.load()) },
   onUnload() { pageReadSession.end(this) },
   load() {
-    const current = pageReadSession.begin(this, ['sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex'], ['_load','_sourceInitialized'])
+    const current = pageReadSession.begin(this, ['sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule'], ['_load','_sourceInitialized'])
     if (this._load) return this._load
     this.setData({ loading: true, errorMessage: '', sourceContext: null })
     this._load = Promise.all([api.callApi('catalog.get'), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { force: true }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { force: true }) : Promise.resolve(null)])
@@ -76,15 +78,20 @@ Page({
     finally { if (current()) this.setData({ historyLoading: false }) }
   },
   clearDate(event) { const field = event.currentTarget.dataset.field; if (['startDate','endDate'].includes(field)) this.setData({ [field]: '' }) },
-  fillForm(loan) { this.setData(Object.assign(form(loan), { accountIndex: this.data.accounts.findIndex(a => a.accountId === loan.accountId) })) },
+  fillForm(loan) { this.setData(Object.assign(form(loan), { accountIndex: this.data.accounts.findIndex(a => a.accountId === loan.accountId), schedule: scheduleForm.fromLoan(loan) })) },
   edit() { if (!this.data.loan || this.data.saving) return; this.fillForm(this.data.loan); this.setData({ formOpen: true, savedMessage: '' }) },
   cancelEdit() { if (this.data.saving) return; if (this._loanId) this.setData({ formOpen: false }); else wx.navigateBack() },
   input(event) { const field = event.currentTarget.dataset.field; if (['name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod'].includes(field)) this.setData({ [field]: event.detail.value }) },
+  scheduleInput(event) { const field = event.currentTarget.dataset.field; if (['terms','ratePercent','repaymentYuan','feePerTermYuan','feeUpfrontYuan','firstPaymentDate'].includes(field)) this.setData({ ['schedule.' + field]: event.detail.value }) },
+  selectScheduleMethod(event) { this.setData({ schedule: scheduleForm.selectMethod(this.data.schedule, event.detail.value) }) },
+  selectScheduleMeasurement(event) { this.setData({ 'schedule.measurementIndex': Number(event.detail.value) }) },
+  selectScheduleQuote(event) { this.setData({ schedule: scheduleForm.selectQuote(this.data.schedule, event.detail.value) }) },
   selectAccount(event) { this.setData({ accountIndex: Number(event.detail.value) }) },
   selectKind(event) { this.setData({ kindIndex: Number(event.detail.value) }) },
   openAccounts() { wx.navigateTo({ url: '/pages/accounts/index' }) },
   showSaved(outcome) {
-    this.setData({ hasPending: false, savedMessage: outcome.recovered ? '上次操作已确认成功' : '贷款资料已保存' })
+    this.setData({ hasPending: false, savedMessage: (outcome.recovered ? '上次操作已确认成功' : '贷款资料已保存') + (this._savedWithSchedule ? '；可到「还款计划与对账」按参数生成期次' : '') })
+    this._savedWithSchedule = false
     if (/^loans\.(create|update)$/.test(outcome.action)) {
       this._loanId = outcome.result.loanId
       this.setData({ formOpen: false })
@@ -106,6 +113,9 @@ Page({
           accountId: account.accountId, baselinePrincipalMinor: known ? money.yuanToMinor(this.data.principalYuan, { allowZero: true }) : null,
           baselineDate: known ? this.data.baselineDate : null, startDate: this.data.startDate || null, endDate: this.data.endDate || null,
           repaymentMethod: this.data.repaymentMethod || null }
+        const schedule = scheduleForm.payload(this.data.schedule, this.data.principalYuan)
+        this._savedWithSchedule = Boolean(schedule)
+        if (schedule) Object.assign(data, schedule)
         if (this._loanId) Object.assign(data, { loanId: this._loanId, version: this.data.loan.version })
       }
       const outcome = await pending.send('api', this._loanId ? 'loans.update' : 'loans.create', data)

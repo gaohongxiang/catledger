@@ -182,7 +182,16 @@
       "repayment_method",
       "version",
       "created_at",
-      "updated_at"
+      "updated_at",
+      "schedule_method",
+      "schedule_terms",
+      "measurement_kind",
+      "quote_type",
+      "rate_ppm",
+      "repayment_minor",
+      "fee_per_term_minor",
+      "fee_upfront_minor",
+      "first_payment_date"
     ],
     "json": []
   },
