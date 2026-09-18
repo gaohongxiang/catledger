@@ -14,6 +14,7 @@
     <view class="detail-row"><text>机构</text><text>{{loan.institution || '未填写'}}</text></view>
     <view class="detail-row"><text>起止日期</text><text>{{loan.startDate || '未填写'}} 至 {{loan.endDate || '未填写'}}</text></view>
     <view class="detail-row"><text>还款方式</text><text>{{loan.repaymentMethod || '未填写'}}</text></view>
+    <view wx:if="{{loan.scheduleText}}" class="detail-row"><text>分期参数</text><text>{{loan.scheduleText}}</text></view>
     <button class="primary-button" bindtap="recordPayment" disabled="{{saving || loading}}">{{sourceTransactionId ? '继续关联原还款（不重复扣款）' : '登记实际借还'}}</button>
     <button class="secondary-button" bindtap="openPlan" disabled="{{saving || loading}}">还款计划与对账</button>
     <button class="secondary-button" bindtap="edit" disabled="{{saving}}">编辑资料</button>
@@ -39,6 +40,21 @@
     <picker class="form-field" mode="date" value="{{endDate}}" data-field="endDate" bindchange="input"><text>结束日期（选填）</text><view class="picker-value">{{endDate || '未填写'}}</view></picker>
     <button wx:if="{{endDate}}" class="detail-link" data-field="endDate" bindtap="clearDate">清除结束日期</button>
     <label class="form-field"><text>还款方式（选填）</text><input value="{{repaymentMethod}}" data-field="repaymentMethod" bindinput="input" maxlength="80" placeholder="以已确认约定为准" /></label>
+    <view class="schedule-section">
+      <text class="section-title">分期参数（选填）</text>
+      <text class="form-note">整区留空则只登记贷款资料。填写后保存，可到「还款计划与对账」按参数试算并生成期次；生成前不产生任何账目。</text>
+      <label class="form-field"><text>分期期数</text><input type="number" value="{{schedule.terms}}" data-field="terms" bindinput="scheduleInput" maxlength="3" placeholder="1 到 600 的整数" /></label>
+      <picker class="form-field" range="{{scheduleMethods}}" range-key="label" value="{{schedule.methodIndex}}" bindchange="selectScheduleMethod"><text>还款方式</text><view class="picker-value">{{scheduleMethods[schedule.methodIndex].label}}</view></picker>
+      <picker class="form-field" range="{{scheduleMeasurements}}" range-key="label" value="{{schedule.measurementIndex}}" bindchange="selectScheduleMeasurement"><text>测算依据</text><view class="picker-value">{{scheduleMeasurements[schedule.measurementIndex].label}}</view></picker>
+      <block wx:if="{{schedule.measurementIndex === 0}}">
+        <picker class="form-field" range="{{scheduleQuotes}}" range-key="label" value="{{schedule.quoteIndex}}" bindchange="selectScheduleQuote"><text>利率口径</text><view class="picker-value">{{scheduleQuotes[schedule.quoteIndex].label}}</view></picker>
+        <label class="form-field"><text>{{scheduleQuotes[schedule.quoteIndex].label}}（%）</text><input type="digit" value="{{schedule.ratePercent}}" data-field="ratePercent" bindinput="scheduleInput" maxlength="12" placeholder="例如 12.5 表示 12.5%" /></label>
+      </block>
+      <label wx:else class="form-field"><text>{{schedule.measurementIndex === 1 && schedule.methodIndex === 3 ? '每期利息（元）' : schedule.methodIndex === 2 ? '首期应还（元）' : '每期应还（元）'}}</text><input type="digit" value="{{schedule.repaymentYuan}}" data-field="repaymentYuan" bindinput="scheduleInput" maxlength="22" placeholder="按合同或账单填写" /></label>
+      <label class="form-field"><text>每期费用（元，选填）</text><input type="digit" value="{{schedule.feePerTermYuan}}" data-field="feePerTermYuan" bindinput="scheduleInput" maxlength="22" placeholder="没有可留空" /></label>
+      <label class="form-field"><text>一次性费用（元，选填）</text><input type="digit" value="{{schedule.feeUpfrontYuan}}" data-field="feeUpfrontYuan" bindinput="scheduleInput" maxlength="22" placeholder="没有可留空；只作资料与试算汇总" /></label>
+      <picker class="form-field" mode="date" value="{{schedule.firstPaymentDate}}" data-field="firstPaymentDate" bindchange="scheduleInput"><text>首次还款日</text><view class="picker-value">{{schedule.firstPaymentDate || '按还款额测算时必选'}}</view></picker>
+    </view>
     <text wx:if="{{hasPending}}" class="form-note">上次保存结果待核实，再次提交会沿用原请求和原内容。</text>
     <button class="primary-button" loading="{{saving}}" disabled="{{saving || loading}}" bindtap="save">{{hasPending ? '重试上次保存' : '保存贷款资料'}}</button>
     <button class="detail-link" disabled="{{saving}}" bindtap="cancelEdit">取消</button>

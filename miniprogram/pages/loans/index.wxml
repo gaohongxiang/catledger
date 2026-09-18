@@ -11,6 +11,7 @@
       <text class="loan-note">{{item.kindText}} · {{item.accountName}}</text>
       <text class="loan-principal money-number">{{item.principalText}}</text>
       <text class="loan-note">{{item.baselineDate ? '本金基准：' + item.baselineDate + ' 日初' : '尚未提供本金基准'}}</text>
+      <text wx:if="{{item.scheduleText}}" class="loan-note">分期参数：{{item.scheduleText}}</text>
     </view>
   </view>
   <view wx:if="{{canPrevious || nextCursor}}" class="loan-paging"><button class="secondary-button" disabled="{{loading || !canPrevious}}" bindtap="previousPage">上一页</button><button class="secondary-button" disabled="{{loading || !nextCursor}}" bindtap="nextPage">下一页</button></view>

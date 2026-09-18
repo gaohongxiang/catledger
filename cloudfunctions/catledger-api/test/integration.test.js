@@ -130,7 +130,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 17)
+  assert.equal(rows.length, 18)
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
   assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')
@@ -142,6 +142,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   assert.equal(rows[8].version, '0009_bill_semantic_analysis.sql')
   assert.equal(rows[9].version, '0010_import_maintenance_audit.sql')
   assert.equal(rows[10].version, '0011_short_user_ids.sql')
+  assert.equal(rows[17].version, '0018_loan_schedule_params.sql')
   assert.match(rows[0].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[1].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[2].checksum, /^[a-f0-9]{64}$/)

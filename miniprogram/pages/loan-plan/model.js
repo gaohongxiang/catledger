@@ -19,4 +19,19 @@ function allocationPayload(data){
  return {loanId:data.loanId,loanVersion:data.loanVersion,paymentId:data.paymentId,version:data.paymentVersion,confirmed:true,items}
 }
 function allocationReview(data){try{const value=allocationPayload(Object.assign({},data,{confirmed:true}));return fields.map((f,i)=>['本金','利息','费用'][i]+'未分配 '+money.formatMinor(addMinor(data.paymentShare[f+'Minor'],'-'+value.items.reduce((s,a)=>addMinor(s,a[f+'Minor']),'0')))).join('；')}catch(error){return error.message}}
-module.exports={fields,period,summary,draft,blank,periodPayload,allocationPayload,allocationReview}
+function canGenerate(loan){
+ if(!loan||loan.scheduleMethod==null||loan.scheduleTerms==null||loan.measurementKind==null)return false
+ if(loan.measurementKind==='rate')return loan.quoteType!=null&&loan.ratePpm!=null
+ return loan.measurementKind==='repayment'&&loan.repaymentMinor!=null
+}
+function previewView(result){
+ const rows=result.periods.map(p=>({periodNumber:p.periodNumber,dueDate:p.dueDate,
+  totalText:money.formatMinor(fields.reduce((s,f)=>addMinor(s,p[f+'Minor']),'0'))}))
+ return {periodCount:result.periods.length,rows:rows.slice(0,24),truncated:result.periods.length>24,
+  summaryText:'合计应还 '+money.formatMinor(result.summary.totalPaymentMinor)+'（利息 '+money.formatMinor(result.summary.totalInterestMinor)+'、费用 '+money.formatMinor(result.summary.totalFeeMinor)+'）'}
+}
+function generatePayload(data){
+ if(!data.preview||!data.generateConfirmed)throw new Error('请先试算并核对预览，勾选确认后再生成')
+ return {loanId:data.loanId,version:data.loanVersion,confirmed:true}
+}
+module.exports={fields,period,summary,draft,blank,periodPayload,allocationPayload,allocationReview,canGenerate,previewView,generatePayload}
