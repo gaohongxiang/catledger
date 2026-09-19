@@ -4,6 +4,7 @@ const money = require('../../utils/money')
 const { addMinor } = require('../../utils/minor-arithmetic')
 const model = require('./model')
 function rows(items) { return items.map(t => Object.assign({}, t, { amountText: money.formatMinor(t.amountMinor),
+  occurredText: String(t.occurredLocalAt || '').slice(5, 16).replace('T', ' '),
   accountText: (t.sourceAccount && t.sourceAccount.name || '') + (t.destinationAccount ? ' → ' + t.destinationAccount.name : ''),
   typeText: {expense:'支出',income:'收入',transfer:'转账'}[t.type] || t.type })) }
 module.exports = {

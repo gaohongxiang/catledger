@@ -11,17 +11,17 @@
   <button wx:if="{{errorMessage}}" class="secondary-button ll-action" bindtap="load" disabled="{{loading}}">重新读取，不修改账目</button>
   <block wx:if="{{!transactionId && !errorMessage}}">
     <ui-state wx:if="{{hasLoaded && !loading && !items.length}}" description="当前筛选没有可关联的还款。已经关联的记录请在贷款详情中查看。" />
-    <button wx:for="{{items}}" wx:key="transactionId" class="ll-candidate" data-id="{{item.transactionId}}" bindtap="selectTransaction" disabled="{{loading}}">
+    <view wx:for="{{items}}" wx:key="transactionId" class="ll-candidate" hover-class="ll-candidate-hover" data-id="{{item.transactionId}}" bindtap="selectTransaction" aria-role="button" aria-label="{{item.businessText}} {{item.amountText}}">
       <view class="ll-candidate-top"><text class="ll-candidate-title">{{item.businessText}}</text><text class="ll-candidate-amount money-number">{{item.amountText}}</text></view>
       <text class="ll-note">{{item.accountText}}</text>
-      <text class="ll-note">{{item.occurredLocalAt}}</text>
+      <text class="ll-note">{{item.occurredText}}</text>
       <text wx:if="{{item.inactive}}" class="ll-note ll-warning">关联账户已停用，请核对账户状态</text>
-    </button>
+    </view>
   </block>
   <block wx:if="{{context && !errorMessage}}">
     <view class="ll-summary">
       <text class="ll-principal money-number">{{context.amountText}}</text>
-      <text class="ll-note">{{context.transaction.occurredLocalAt}} · {{context.accountText}}</text>
+      <text class="ll-note">{{context.occurredText}} · {{context.accountText}}</text>
       <text class="ll-note">{{context.businessText}}</text>
     </view>
     <block wx:if="{{context.state === 'candidate'}}">
@@ -31,10 +31,10 @@
         <button class="primary-button ll-action" bindtap="createLoan" disabled="{{loading}}">新建分期资料并继续关联</button>
         <text class="ll-section-title">选择 {{context.targetAccount.name}} 下的贷款</text>
         <text wx:if="{{!loading && !loans.length}}" class="ll-note">还没有对应贷款资料。创建资料不会重复生成消费或借款。</text>
-        <button wx:for="{{loans}}" wx:key="loanId" class="ll-candidate" data-id="{{item.loanId}}" bindtap="selectLoan" disabled="{{loading}}">
+        <view wx:for="{{loans}}" wx:key="loanId" class="ll-candidate" hover-class="ll-candidate-hover" data-id="{{item.loanId}}" bindtap="selectLoan" aria-role="button" aria-label="{{item.name}} {{item.kindText}}">
           <view class="ll-candidate-top"><text class="ll-candidate-title">{{item.name}} · {{item.kindText}}</text><text class="ll-note">剩余本金 {{item.principalText}}</text></view>
           <text class="ll-action-text">{{item.canLink ? '关联这笔还款' : item.issue + ' · 补全资料'}}</text>
-        </button>
+        </view>
       </block>
     </block>
     <button wx:elif="{{context.linked}}" class="primary-button ll-action" bindtap="openPayment" disabled="{{loading}}">{{context.state === 'replaced' ? '原账目已更正，查看当前借还记录' : '已有关联，查看实际借还'}}</button>

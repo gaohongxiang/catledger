@@ -43,6 +43,7 @@ function review(data) {
 }
 function paymentView(result) {
   return { payment: Object.assign({}, result.payment, { totalText: money.formatMinor(result.payment.totalMinor),
+    occurredText: String(result.payment.occurredLocalAt || '').slice(5, 16).replace('T', ' '),
     kindText: result.payment.kind === 'drawdown' ? '放款' : '还款', statusText: result.payment.status === 'active' ? '已登记' : '已撤销' }),
   allocations: result.allocations.map(a => Object.assign({}, a, { principalText: money.formatMinor(a.principalMinor),
     interestText: money.formatMinor(a.interestMinor), feeText: money.formatMinor(a.feeMinor) })),

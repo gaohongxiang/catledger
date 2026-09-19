@@ -21,6 +21,7 @@ Page({
     this._load = Promise.all([api.callApi('catalog.get'), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { force: true }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { force: true }) : Promise.resolve(null)])
       .then(async ([catalog, result, sourceContext]) => {
         if (!current()) return
+        if (sourceContext && sourceContext.transaction) sourceContext = Object.assign({}, sourceContext, { occurredText: String(sourceContext.transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' ') })
         getApp().globalData.uid = catalog.uid
         const accounts = catalog.accounts.filter(a => ['credit','other_liability'].includes(a.type) && !a.archived)
         const selected = this.data.accounts[this.data.accountIndex]
@@ -73,7 +74,7 @@ Page({
     this.setData({ historyLoading: true, historyError: '' })
     try {
       const result = await api.callApi('loans.payments', { loanId: this._loanId, pageSize: 20, cursor }, { force: true })
-      if (current()) this.setData({ history: result.items.map(p => Object.assign({}, p, { totalText: money.formatMinor(p.totalMinor), kindText: p.kind === 'drawdown' ? '放款' : '还款' })), historyNext: result.nextCursor, historyLoaded: true })
+      if (current()) this.setData({ history: result.items.map(p => Object.assign({}, p, { totalText: money.formatMinor(p.totalMinor), kindText: p.kind === 'drawdown' ? '放款' : '还款', occurredText: String(p.occurredLocalAt || '').slice(5, 16).replace('T', ' ') })), historyNext: result.nextCursor, historyLoaded: true })
     } catch (error) { if (current()) this.setData({ historyError: error.message }) }
     finally { if (current()) this.setData({ historyLoading: false }) }
   },

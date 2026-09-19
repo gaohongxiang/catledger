@@ -2,7 +2,11 @@
 .loan-heading { display: block; box-sizing: border-box; padding-left: var(--layout-content-inset, 20rpx); padding-right: var(--layout-content-inset, 20rpx); }
 .loan-create, .loan-first { margin: 0; padding: 20rpx; min-height: 88rpx; background: transparent; color: var(--theme-accent-strong); font-size: var(--font-caption); }
 .loan-note { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.6; }
-.loan-unassigned { margin-top: 24rpx; }
+.loan-entry { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; box-sizing: border-box; width: 100%; min-height: 96rpx; margin-top: 24rpx; padding: 24rpx 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); transition: opacity var(--layout-motion-fast) ease; }
+.loan-entry-hover { opacity: .72; }
+.loan-entry-main { display: flex; flex-direction: column; gap: 4rpx; min-width: 0; }
+.loan-entry-title { font-size: var(--font-body); font-weight: 500; }
+.loan-entry-note { color: var(--theme-text-muted); font-size: var(--font-caption); }
 .loan-list { margin-top: 30rpx; }
 .loan-row { display: block; margin-bottom: 20rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); }
 .loan-row-top { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-bottom: 8rpx; }

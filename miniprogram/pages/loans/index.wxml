@@ -1,7 +1,10 @@
 <view class="page-canvas loan-page {{themeClass}}" style="{{themeStyle}}">
   <section-header class="loan-heading" eyebrow="借款与分期" title="贷款"><button class="loan-create" bindtap="createLoan">新增贷款</button></section-header>
   <text class="loan-note content-inset">每笔贷款单独核对本金，账户余额仍以账本为准。</text>
-  <button class="secondary-button loan-unassigned" bindtap="openUnassigned">待关联还款 · 从已有账目选择</button>
+  <view class="loan-entry" bindtap="openUnassigned" hover-class="loan-entry-hover" aria-role="button" aria-label="待关联还款，从已有账目选择">
+    <view class="loan-entry-main"><text class="loan-entry-title">待关联还款</text><text class="loan-entry-note">从已有账目选择</text></view>
+    <chevron-icon size="{{24}}" />
+  </view>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}} · 重试" bindtap="firstPage" />
   <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取贷款…" />
   <empty-state wx:if="{{hasLoaded && !items.length}}" title="还没有贷款资料" description="先关联一个负债账户，再填写已确认的本金。新增资料不会重复记一笔借款。" />

@@ -8,7 +8,7 @@
   <block wx:if="{{payment}}">
     <view class="lp-summary">
       <text class="lp-principal money-number">{{payment.totalText}}</text>
-      <text class="lp-note">{{payment.occurredLocalAt}} · {{payment.statusText}}</text>
+      <text class="lp-note">{{payment.occurredText}} · {{payment.statusText}}</text>
     </view>
     <view wx:for="{{allocations}}" wx:key="loanId" class="lp-panel">
       <text class="lp-panel-name">{{item.loanName}}</text>
@@ -41,11 +41,11 @@
       <text class="lp-section-title">已有账目</text>
       <picker wx:if="{{!sourceLocked}}" class="lp-field" mode="date" fields="month" value="{{sourceMonth}}" bindchange="sourceMonth" disabled="{{saving}}"><text>查询月份</text><view class="lp-picker"><text class="lp-picker-value">{{sourceMonth || '选择账目所在月份'}}</text><chevron-icon size="{{24}}" /></view></picker>
       <button wx:if="{{!sourceLocked}}" class="secondary-button lp-action" bindtap="loadSources" disabled="{{saving || loading}}">挑选已有账目</button>
-      <checkbox-group bindchange="selectSources"><label wx:for="{{sourceRows}}" wx:key="transactionId" class="lp-source"><checkbox value="{{item.transactionId}}" checked="{{item.selected}}" disabled="{{saving}}" /><view class="lp-source-main"><text>{{item.typeText}} · {{item.amountText}}</text><text class="lp-muted">{{item.occurredLocalAt}} · {{item.accountText}}</text></view></label></checkbox-group>
+      <checkbox-group bindchange="selectSources"><label wx:for="{{sourceRows}}" wx:key="transactionId" class="lp-source"><checkbox value="{{item.transactionId}}" checked="{{item.selected}}" disabled="{{saving}}" /><view class="lp-source-main"><text>{{item.typeText}} · {{item.amountText}}</text><text class="lp-muted">{{item.occurredText}} · {{item.accountText}}</text></view></label></checkbox-group>
       <button wx:if="{{nextSourceCursor}}" class="lp-link" data-next="true" bindtap="loadSources" disabled="{{saving || loading}}">下一页账目</button>
       <button wx:if="{{sourceRows.length}}" class="secondary-button lp-action" bindtap="inspectSource" disabled="{{saving || loading}}">核对所选 {{sourceSelectedCount}} 笔账目的完整来源</button>
       <text wx:if="{{source}}" class="lp-note lp-source-note">已核对 {{sourceTransactions.length}} 笔账目{{source.event ? '，包含该导入来源的全部分项' : ''}}。</text>
-      <view wx:for="{{sourceTransactions}}" wx:key="transactionId" class="lp-row"><view class="lp-row-main"><text>{{item.typeText}} · {{item.accountText}}</text><text class="lp-muted">{{item.occurredLocalAt}}</text></view><text class="money-number">{{item.amountText}}</text></view>
+      <view wx:for="{{sourceTransactions}}" wx:key="transactionId" class="lp-row"><view class="lp-row-main"><text>{{item.typeText}} · {{item.accountText}}</text><text class="lp-muted">{{item.occurredText}}</text></view><text class="money-number">{{item.amountText}}</text></view>
     </view>
     <view wx:if="{{sourceEvidence.items.length}}" class="lp-panel">
       <text class="lp-section-title">导入来源信息 · 待核对</text>
