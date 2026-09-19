@@ -33,7 +33,7 @@ test('三项只改变排版，原账户选择、名称输入、类型及忙碌�
 })
 
 test('新建编辑行统一白底，确认按钮独立，已确认项可更改', () => {
-  assert.match(style, /\.account-mode-trigger\.account-mode-trigger-pending\[disabled\]\s*\{[^}]*background:\s*#fff !important;/)
+  assert.match(style, /\.account-mode-trigger\.account-mode-trigger-pending\[disabled\]\s*\{[^}]*background:\s*var\(--ui-surface\) !important;/)
   assert.match(markup, /account-confirm-row/)
   assert.match(markup, /!item.needsConfirmation/)
   assert.match(markup, /account-summary-text/)
