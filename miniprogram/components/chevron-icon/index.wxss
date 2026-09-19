@@ -1,0 +1,8 @@
+.chev {
+  display: block;
+  flex: 0 0 auto;
+  transition: transform var(--layout-motion-fast, 120ms) ease;
+}
+.chev-left { transform: rotate(180deg); }
+.chev-down { transform: rotate(90deg); }
+.chev-up { transform: rotate(-90deg); }

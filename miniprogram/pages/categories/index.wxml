@@ -4,7 +4,7 @@
   </view>
   <text class="category-intro content-inset">管理账目使用的收支分类；点开可改名或停用。</text>
 
-  <view wx:if="{{loading && !hasLoaded}}" class="ui-state" aria-role="status">正在读取分类…</view>
+  <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取分类…" />
   <view class="kind-switch">
     <view class="kind-option {{selectedKind === 'expense' ? 'kind-option-selected' : ''}}" data-kind="expense" bindtap="selectKind" hover-class="kind-option-active" role="button" aria-label="查看支出分类"><text>支出</text><text class="kind-count money-number">{{hasLoaded ? expenseCategories.length : '—'}}</text></view>
     <view class="kind-option {{selectedKind === 'income' ? 'kind-option-selected' : ''}}" data-kind="income" bindtap="selectKind" hover-class="kind-option-active" role="button" aria-label="查看收入分类"><text>收入</text><text class="kind-count money-number">{{hasLoaded ? incomeCategories.length : '—'}}</text></view>
@@ -12,7 +12,7 @@
 
   <view class="category-toolbar content-inset">
     <text class="category-sort-note">拖动右侧把手排序</text>
-    <button class="category-add" bindtap="openCreate" hover-class="category-action-active" aria-label="新建分类">＋ 新建分类</button>
+    <button class="category-add" bindtap="openCreate" hover-class="category-action-active" aria-label="新建分类"><image class="category-add-icon" src="{{themeIconRoot}}/plus.svg" mode="aspectFit" /><text>新建分类</text></button>
   </view>
 
   <view wx:if="{{visibleCategories.length}}" class="category-list">
@@ -22,15 +22,15 @@
       <view class="category-drag-handle" data-index="{{item.positionIndex}}" data-id="{{item.id}}" catchtouchstart="startCategoryDrag" catchtouchmove="moveCategoryDrag" catchtouchend="endCategoryDrag" catchtouchcancel="cancelCategoryDrag" role="button" aria-label="拖动调整 {{item.name}} 的排序"><view class="category-drag-lines" aria-hidden="true"></view></view>
     </view>
   </view>
-  <view wx:if="{{hasLoaded && !loading && !errorMessage && !visibleCategories.length}}" class="category-empty"><text>还没有{{selectedKind === 'expense' ? '支出' : '收入'}}分类</text><text>新建后可在记账和导入时使用。</text></view>
+  <empty-state wx:if="{{hasLoaded && !loading && !errorMessage && !visibleCategories.length}}" title="还没有{{selectedKind === 'expense' ? '支出' : '收入'}}分类" description="新建后可在记账和导入时使用。" />
 
   <view wx:if="{{archivedCategories.length}}" class="archived-section">
     <view class="archived-toggle content-inset" bindtap="toggleArchived" hover-class="category-row-active" role="button" aria-label="{{archivedExpanded ? '收起' : '展开'}}已停用分类">
       <view><text class="archived-title">已停用分类</text><text class="archived-note">历史账目仍然保留</text></view>
-      <view class="archived-toggle-end"><text class="money-number">{{archivedCategories.length}}</text><view class="archived-chevron {{archivedExpanded ? 'archived-chevron-open' : ''}}" aria-hidden="true"></view></view>
+      <view class="archived-toggle-end"><text class="money-number">{{archivedCategories.length}}</text><chevron-icon direction="{{archivedExpanded ? 'down' : 'right'}}" size="{{24}}" /></view>
     </view>
     <view wx:if="{{archivedExpanded}}" class="archived-list">
-      <view wx:for="{{archivedCategories}}" wx:key="id" class="category-row category-row-archived" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看已停用分类 {{item.name}}"><text class="category-order money-number">{{item.orderText}}</text><view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">已停用</text></view><view class="category-chevron" aria-hidden="true"></view></view>
+      <view wx:for="{{archivedCategories}}" wx:key="id" class="category-row category-row-archived" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看已停用分类 {{item.name}}"><text class="category-order money-number">{{item.orderText}}</text><view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">已停用</text></view><chevron-icon size="{{26}}" /></view>
     </view>
   </view>
 
@@ -44,8 +44,8 @@
       <view class="category-detail-meta"><text>{{categoryDetail.kind === 'expense' ? '支出分类' : '收入分类'}}</text><text>排序 {{categoryDetail.orderText}}</text></view>
       <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
       <view class="category-detail-actions">
-        <view wx:if="{{!categoryDetail.archived}}" class="category-detail-action category-detail-action-primary" data-id="{{categoryDetail.id}}" bindtap="openEdit" hover-class="category-row-active" role="button" aria-label="修改分类名称"><view><text class="category-detail-action-name">修改名称</text><text class="category-detail-action-note">调整这个分类的显示名称</text></view><view class="category-detail-chevron" aria-hidden="true"></view></view>
-        <view class="category-detail-action {{categoryDetail.archived ? 'category-detail-action-primary' : 'category-detail-action-danger'}}" data-id="{{categoryDetail.id}}" bindtap="setArchived" hover-class="category-row-active" role="button" aria-label="{{categoryDetail.archived ? '恢复' : '停用'}}分类"><view><text class="category-detail-action-name">{{categoryDetail.archived ? '恢复分类' : '停用分类'}}</text><text class="category-detail-action-note">{{categoryDetail.archived ? '恢复后可继续用于新账' : '历史账目不会受到影响'}}</text></view></view>
+        <list-row wx:if="{{!categoryDetail.archived}}" title="修改名称" note="调整这个分类的显示名称" tone="primary" aria-label="修改分类名称" data-id="{{categoryDetail.id}}" bindtap="openEdit" />
+        <list-row title="{{categoryDetail.archived ? '恢复分类' : '停用分类'}}" note="{{categoryDetail.archived ? '恢复后可继续用于新账' : '历史账目不会受到影响'}}" tone="{{categoryDetail.archived ? 'primary' : 'danger'}}" chevron="{{false}}" divider="{{false}}" aria-label="{{categoryDetail.archived ? '恢复' : '停用'}}分类" data-id="{{categoryDetail.id}}" bindtap="setArchived" />
       </view>
     </view>
   </view>

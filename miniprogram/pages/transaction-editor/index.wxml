@@ -3,14 +3,14 @@
     <text class="editor-title serif-title">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '编辑账单' : '记一笔')}}</text>
   </view>
 
-  <view wx:if="{{!formReady && !errorMessage}}" class="ui-state" aria-role="status">登录后开始记账</view>
+  <ui-state wx:if="{{!formReady && !errorMessage}}" description="登录后开始记账" />
   <block wx:if="{{formReady && !readonlyDetail}}">
   <button wx:if="{{mode === 'create'}}" class="editor-import" disabled="{{saving || openingImport}}" bindtap="openImport" aria-label="导入支付宝、微信账单">
     <view class="editor-import-copy">
       <text class="editor-import-title">导入账单</text>
       <text class="editor-import-note">支付宝、微信账单，批量整理入账</text>
     </view>
-    <view class="editor-import-chevron"></view>
+    <chevron-icon size="{{26}}" />
   </button>
   <view wx:if="{{mode !== 'link-refund'}}" class="type-switch">
     <view
@@ -84,13 +84,13 @@
     <view class="form-sheet readonly-sheet">
       <view wx:for="{{detail.rows}}" wx:key="label" class="readonly-row content-inset"><text class="form-label">{{item.label}}</text><text class="readonly-value">{{item.value}}</text></view>
       <picker wx:if="{{detail.canEditCategory}}" mode="selector" range="{{categories}}" range-key="name" value="{{categoryIndex < 0 ? 0 : categoryIndex}}" bindchange="changeDetailCategory" disabled="{{saving || !catalogReady}}">
-        <view class="readonly-row readonly-category content-inset" aria-label="修改分类"><text class="form-label">分类</text><view class="readonly-category-value"><text>{{categoryIndex < 0 ? (categoryDirty ? '请选择' : detail.categoryName) : categories[categoryIndex].name}}</text><view class="readonly-chevron"></view></view></view>
+        <view class="readonly-row readonly-category content-inset" aria-label="修改分类"><text class="form-label">分类</text><view class="readonly-category-value"><text>{{categoryIndex < 0 ? (categoryDirty ? '请选择' : detail.categoryName) : categories[categoryIndex].name}}</text><chevron-icon size="{{24}}" /></view></view>
       </picker>
       <view wx:elif="{{detail.categoryName !== '未分类'}}" class="readonly-row content-inset"><text class="form-label">分类</text><text class="readonly-value">{{detail.categoryName}}</text></view>
     </view>
     <button wx:if="{{detail.canEditCategory && categoryDirty}}" class="primary-button save-button" loading="{{saving}}" disabled="{{saving || !catalogReady || categoryIndex < 0}}" bindtap="saveDetailCategory">保存分类</button>
   </block>
-  <view wx:if="{{transactionId && loanContextLoading}}" class="ui-state">正在核对贷款与分期关联…</view>
+  <ui-state wx:if="{{transactionId && loanContextLoading}}" description="正在核对贷款与分期关联…" />
   <view wx:if="{{transactionId && loanContextError}}" class="catalog-retry content-inset"><text class="catalog-retry-message">{{loanContextError}}</text><button class="catalog-retry-button" bindtap="loadLoanContext" disabled="{{loanContextLoading}}">重试关联信息</button></view>
   <view wx:if="{{loanContext && loanContext.state !== 'none'}}" class="loan-context content-inset">
     <text class="loan-context-title">{{loanContext.businessText}}</text>
@@ -116,7 +116,7 @@
       <text class="loan-context-note">来源文字不自动认定已付期次或本息费；缺失字段保持待补充。</text><text wx:if="{{loanContext.evidence.hasMore}}" class="loan-context-note">这里只展示部分来源，原始证据保持不变。</text>
     </view>
   </view>
-  <view wx:if="{{formReady && preparing}}" class="ui-state" aria-role="status">{{readonlyDetail ? '正在读取可选分类…' : '正在读取账户和分类，可先填写金额和备注'}}</view>
+  <ui-state wx:if="{{formReady && preparing}}" description="{{readonlyDetail ? '正在读取可选分类…' : '正在读取账户和分类，可先填写金额和备注'}}" />
   <view wx:if="{{catalogError}}" class="catalog-retry content-inset" aria-role="status">
     <text class="catalog-retry-message">{{catalogError}}</text>
     <button wx:if="{{formReady}}" class="catalog-retry-button" disabled="{{preparing}}" bindtap="retryCatalog">重试</button>

@@ -26,26 +26,16 @@
 
   <text wx:if="{{loading && !hasLoaded}}" class="ui-state-caption" aria-role="status">正在读取账户与分类…</text>
   <view class="management-list">
-    <view class="management-row content-inset" role="button" aria-label="进入账户管理" bindtap="openAccounts">
-      <view class="management-icon">
+    <list-row title="账户管理" note="{{loggedIn && !hasLoaded ? '读取后显示账户数量' : accountSummaryText}}" aria-label="进入账户管理" bindtap="openAccounts">
+      <view slot="icon" class="management-icon">
         <image src="{{themeIconRoot}}/tab-wallet.svg" mode="aspectFit" />
       </view>
-      <view class="management-copy">
-        <text class="management-title">账户管理</text>
-        <text class="management-note">{{loggedIn && !hasLoaded ? '读取后显示账户数量' : accountSummaryText}}</text>
-      </view>
-      <view class="row-chevron"></view>
-    </view>
-    <view class="management-row content-inset" role="button" aria-label="进入分类管理" bindtap="openCategories">
-      <view class="management-icon management-icon-category">
+    </list-row>
+    <list-row title="分类管理" note="{{loggedIn && !hasLoaded ? '读取后显示分类数量' : categorySummaryText}}" aria-label="进入分类管理" bindtap="openCategories" divider="{{false}}">
+      <view slot="icon" class="management-icon management-icon-category">
         <image src="{{themeIconRoot}}/category.svg" mode="aspectFit" />
       </view>
-      <view class="management-copy">
-        <text class="management-title">分类管理</text>
-        <text class="management-note">{{loggedIn && !hasLoaded ? '读取后显示分类数量' : categorySummaryText}}</text>
-      </view>
-      <view class="row-chevron"></view>
-    </view>
+    </list-row>
   </view>
 
   <view wx:if="{{errorMessage}}" class="ledger-error content-inset" bindtap="loadLedger">{{errorMessage}} · 点此重试</view>

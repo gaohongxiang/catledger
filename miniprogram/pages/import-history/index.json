@@ -1,1 +1,1 @@
-{"navigationBarTitleText":"导入记录","enablePullDownRefresh":true,"usingComponents":{"login-sheet":"/components/login-sheet/index"}}
+{"navigationBarTitleText":"导入记录","enablePullDownRefresh":true,"usingComponents":{"login-sheet":"/components/login-sheet/index","section-header":"/components/section-header/index","ui-state":"/components/ui-state/index"}}

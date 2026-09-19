@@ -1,10 +1,10 @@
 <view class="page-canvas page-secondary account-page {{themeClass}}" style="{{themeStyle}}">
   <view class="account-heading content-inset">
     <view><view class="heading-with-sync"><text class="account-title serif-title">账户总览</text><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view></view>
-    <button class="create-account-button" bindtap="openCreate" hover-class="create-account-active" aria-label="新建账户"><view class="create-plus" aria-hidden="true"></view><text>新建</text></button>
+    <button class="create-account-button" bindtap="openCreate" hover-class="create-account-active" aria-label="新建账户"><image class="create-plus-icon" src="{{themeIconRoot}}/plus.svg" mode="aspectFit" /><text>新建</text></button>
   </view>
 
-  <view wx:if="{{loading && !hasLoaded}}" class="ui-state" aria-role="status">正在读取账户…</view>
+  <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取账户…" />
   <view class="wealth-summary">
     <view class="wealth-primary content-inset"><text class="wealth-label">净资产</text><text class="wealth-value money-number {{totals.netWorthTone}}">{{hasLoaded ? totals.netWorthText : '—'}}</text><text class="wealth-caption">全部活动账户的账面合计</text></view>
     <view class="wealth-breakdown content-inset"><view><text>资产合计</text><text class="money-number">{{hasLoaded ? totals.assetsText : '—'}}</text></view><view><text>待还负债</text><text class="money-number liability-balance">{{hasLoaded ? totals.liabilitiesText : '—'}}</text></view></view>
@@ -16,7 +16,7 @@
       <view wx:for="{{assets}}" wx:key="accountId" class="account-row" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
         <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view>
-        <view class="row-chevron" aria-hidden="true"></view>
+        <chevron-icon size="{{26}}" />
       </view>
     </view>
   </view>
@@ -26,19 +26,19 @@
     <view class="account-list">
       <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
-        <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view><view class="row-chevron" aria-hidden="true"></view>
+        <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view><chevron-icon size="{{26}}" />
       </view>
     </view>
   </view>
 
   <view wx:if="{{archivedAccounts.length > 0}}" class="account-group archived-group">
-    <view class="archived-toggle content-inset" bindtap="toggleArchived" hover-class="account-row-active" role="button" aria-label="{{archivedExpanded ? '收起' : '展开'}}已停用账户"><view><text class="group-title serif-title">已停用账户</text><text class="archived-note">历史账目仍然保留</text></view><view class="archived-toggle-end"><text class="money-number">{{archivedAccounts.length}}</text><view class="toggle-chevron {{archivedExpanded ? 'toggle-chevron-open' : ''}}" aria-hidden="true"></view></view></view>
+    <view class="archived-toggle content-inset" bindtap="toggleArchived" hover-class="account-row-active" role="button" aria-label="{{archivedExpanded ? '收起' : '展开'}}已停用账户"><view><text class="group-title serif-title">已停用账户</text><text class="archived-note">历史账目仍然保留</text></view><view class="archived-toggle-end"><text class="money-number">{{archivedAccounts.length}}</text><chevron-icon direction="{{archivedExpanded ? 'down' : 'right'}}" size="{{24}}" /></view></view>
     <view wx:if="{{archivedExpanded}}" class="archived-list">
-      <view wx:for="{{archivedAccounts}}" wx:key="accountId" class="account-row account-row-archived" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看已停用账户 {{item.name}}"><view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}} · 历史保留</text></view><text class="account-row-balance money-number">{{item.balanceText}}</text><view class="row-chevron" aria-hidden="true"></view></view>
+      <view wx:for="{{archivedAccounts}}" wx:key="accountId" class="account-row account-row-archived" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看已停用账户 {{item.name}}"><view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}} · 历史保留</text></view><text class="account-row-balance money-number">{{item.balanceText}}</text><chevron-icon size="{{26}}" /></view>
     </view>
   </view>
 
-  <view wx:if="{{assets.length === 0 && liabilities.length === 0 && hasLoaded && !loading && !errorMessage}}" class="empty-ledger account-empty"><text class="empty-ledger-title">先创建第一个账户</text><text class="empty-ledger-copy">填写现在的余额，系统会把它记成余额起点，不算作收入或支出。</text><button class="primary-button account-empty-action" bindtap="openCreate">创建账户</button></view>
+  <empty-state wx:if="{{assets.length === 0 && liabilities.length === 0 && hasLoaded && !loading && !errorMessage}}" title="先创建第一个账户" description="填写现在的余额，系统会把它记成余额起点，不算作收入或支出。"><button class="primary-button account-empty-action" bindtap="openCreate">创建账户</button></empty-state>
   <view wx:if="{{errorMessage && !formOpen && !accountDetail}}" class="account-error content-inset" bindtap="loadAccounts">{{errorMessage}} · 点此重试</view>
 
   <view wx:if="{{accountDetail}}" class="sheet-mask" bindtap="closeAccountDetail">
@@ -51,9 +51,9 @@
       <view wx:if="{{accountDetail.needsCorrection}}" class="correction-callout"><text>待校正</text><text>资产账户出现负数，通常表示期初余额或漏记交易需要核对。</text></view>
       <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
       <view wx:if="{{!accountDetail.archived}}" class="detail-action-list">
-        <view class="detail-action-row detail-action-primary" data-id="{{accountDetail.accountId}}" bindtap="openCorrection" hover-class="detail-action-active" role="button" aria-label="校正账户余额"><view><text class="detail-action-name">校正余额</text><text class="detail-action-note">按实际余额补记差额</text></view><view class="detail-action-chevron" aria-hidden="true"></view></view>
-        <view class="detail-action-row" data-id="{{accountDetail.accountId}}" bindtap="openRename" hover-class="detail-action-active" role="button" aria-label="修改账户名称"><view><text class="detail-action-name">修改名称</text><text class="detail-action-note">只修改账户显示名称</text></view><view class="detail-action-chevron" aria-hidden="true"></view></view>
-        <view class="detail-action-row detail-action-danger" data-id="{{accountDetail.accountId}}" bindtap="archive" hover-class="detail-action-active" role="button" aria-label="停用账户"><view><text class="detail-action-name">停用账户</text><text class="detail-action-note">历史账目和余额仍会保留</text></view></view>
+        <list-row title="校正余额" note="按实际余额补记差额" tone="primary" aria-label="校正账户余额" data-id="{{accountDetail.accountId}}" bindtap="openCorrection" />
+        <list-row title="修改名称" note="只修改账户显示名称" aria-label="修改账户名称" data-id="{{accountDetail.accountId}}" bindtap="openRename" />
+        <list-row title="停用账户" note="历史账目和余额仍会保留" tone="danger" aria-label="停用账户" chevron="{{false}}" divider="{{false}}" data-id="{{accountDetail.accountId}}" bindtap="archive" />
       </view>
     </view>
   </view>

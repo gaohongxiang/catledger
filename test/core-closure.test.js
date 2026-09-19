@@ -23,8 +23,8 @@ test('protected subpages share the same login sheet component', () => {
 test('profile keeps personal settings and does not duplicate ledger settings', () => {
   const profile = read('miniprogram/pages/profile/index.wxml')
   assert.doesNotMatch(profile, /账本设置|openLedger/)
-  assert.match(profile, />主题</)
-  assert.match(profile, />数据与隐私</)
+  assert.match(profile, /title="主题"/)
+  assert.match(profile, /title="数据与隐私"/)
 })
 
 test('public contract exposes category lifecycle and linked refunds', () => {

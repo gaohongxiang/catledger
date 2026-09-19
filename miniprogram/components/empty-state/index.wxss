@@ -1,0 +1,26 @@
+.es {
+  display: block;
+  box-sizing: border-box;
+  padding: 32rpx 0;
+  color: var(--theme-text-muted, #70685f);
+  text-align: left;
+  border-top: 1rpx solid var(--theme-line, #eae4dc);
+  border-bottom: 1rpx solid var(--theme-line, #eae4dc);
+}
+
+.es-title {
+  display: block;
+  color: var(--theme-ink, #2c2823);
+  font-size: var(--font-section, 32rpx);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.es-copy {
+  display: block;
+  margin-top: 10rpx;
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+

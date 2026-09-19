@@ -28,7 +28,7 @@ test('首页样板保留净值口径、五项金额绑定和用户头像', () =>
 test('标题使用中等字重和自然字距，不缩小正文来伪造清秀', () => {
   assert.match(rule('.home-title'), /font-weight:\s*500/)
   assert.match(rule('.home-title'), /letter-spacing:\s*0/)
-  assert.match(rule('.account-name'), /font-size:\s*28rpx/)
+  assert.match(rule('.account-name'), /font-size:\s*var\(--font-body, 28rpx\)/)
   assert.match(rule('.account-name'), /font-weight:\s*400/)
 })
 

@@ -1,11 +1,11 @@
 @import "../loan-detail/index.wxss";
 .loan-link-page { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.candidate-row { display: block; width: 100%; text-align: left; background: transparent; padding-top: 24rpx; padding-bottom: 24rpx; border-bottom: 1rpx solid var(--theme-line); font-size: 28rpx; line-height: 1.7; overflow-wrap: anywhere; }
+.candidate-row { display: block; width: 100%; text-align: left; background: transparent; padding-top: 24rpx; padding-bottom: 24rpx; border-bottom: 1rpx solid var(--theme-line); font-size: var(--font-body); line-height: 1.7; overflow-wrap: anywhere; }
 .candidate-row .form-note { margin: 10rpx 0 0; }
 .candidate-top, .loan-paging { display: flex; justify-content: space-between; gap: 24rpx; align-items: flex-start; }
 .candidate-top .money-number { text-align: right; flex-shrink: 0; }
 .loan-paging { margin-top: 24rpx; }
 .loan-paging button { flex: 1; }
-.section-title { display: block; margin: 32rpx 0 16rpx; font-size: 28rpx; font-weight: 500; }
+.section-title { display: block; margin: 32rpx 0 16rpx; font-size: var(--font-body); font-weight: 500; }
 .link-text { display: block; color: var(--theme-accent-strong); }
 .source-evidence { margin-top: 24rpx; border-top: 1rpx solid var(--theme-line); }

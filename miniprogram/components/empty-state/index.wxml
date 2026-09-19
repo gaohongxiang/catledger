@@ -1,0 +1,6 @@
+<view class="es">
+  <slot name="icon"></slot>
+  <text class="es-title">{{title}}</text>
+  <text wx:if="{{description}}" class="es-copy">{{description}}</text>
+  <slot></slot>
+</view>

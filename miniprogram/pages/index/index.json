@@ -1,5 +1,10 @@
 {
   "navigationStyle": "default",
   "navigationBarTitleText": "招财猫记账本",
-  "enablePullDownRefresh": false
+  "enablePullDownRefresh": false,
+  "usingComponents": {
+    "section-header": "/components/section-header/index",
+    "empty-state": "/components/empty-state/index",
+    "ui-state": "/components/ui-state/index"
+  }
 }

@@ -1,10 +1,10 @@
 <view class="page-canvas loan-payment {{themeClass}}" style="{{themeStyle}}">
   <view class="content-inset payment-heading"><text class="detail-kicker">贷款管理 / 实际借还</text><text class="detail-title">{{payment ? payment.kindText + '记录' : '登记实际借还'}}</text></view>
-  <view wx:if="{{savedMessage}}" class="ui-state">{{savedMessage}}</view>
-  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error">{{errorMessage}}</view>
+  <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
+  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <button wx:if="{{errorMessage}}" class="detail-link" disabled="{{saving || loading}}" bindtap="load">重新读取与核实</button>
   <view wx:if="{{hasPending}}" class="content-inset"><text class="form-note">上次操作结果待核实。重试沿用已保存的原请求。</text><button class="primary-button" loading="{{saving}}" disabled="{{loading || saving}}" bindtap="save">重试上次操作</button></view>
-  <view wx:if="{{loading}}" class="ui-state">正在读取…</view>
+  <ui-state wx:if="{{loading}}" description="正在读取…" />
   <view wx:if="{{payment}}" class="content-inset">
     <text class="principal-value money-number">{{payment.totalText}}</text><text class="form-note">{{payment.occurredLocalAt}} · {{payment.statusText}}</text>
     <view wx:for="{{allocations}}" wx:key="loanId" class="allocation-panel">

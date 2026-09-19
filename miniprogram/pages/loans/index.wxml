@@ -1,10 +1,10 @@
 <view class="page-canvas loan-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="loan-heading content-inset"><view><text class="loan-kicker">借款与分期</text><text class="loan-title">贷款管理</text></view><button class="loan-create" bindtap="createLoan">新增贷款</button></view>
+  <section-header class="loan-heading" eyebrow="借款与分期" title="贷款管理"><button class="loan-create" bindtap="createLoan">新增贷款</button></section-header>
   <text class="loan-note content-inset">每笔贷款单独核对本金，账户余额仍以账本为准。</text>
   <button class="secondary-button" bindtap="openUnassigned">待关联还款 · 从已有账目选择</button>
-  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error" bindtap="firstPage" aria-role="button">{{errorMessage}} · 重试</view>
-  <view wx:if="{{loading && !hasLoaded}}" class="ui-state">正在读取贷款…</view>
-  <view wx:if="{{hasLoaded && !items.length}}" class="empty-ledger content-inset"><text class="empty-ledger-title">还没有贷款资料</text><text class="empty-ledger-copy">先关联一个负债账户，再填写已确认的本金。新增资料不会重复记一笔借款。</text></view>
+  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}} · 重试" bindtap="firstPage" />
+  <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取贷款…" />
+  <empty-state wx:if="{{hasLoaded && !items.length}}" title="还没有贷款资料" description="先关联一个负债账户，再填写已确认的本金。新增资料不会重复记一笔借款。" />
   <view class="loan-list">
     <view wx:for="{{items}}" wx:key="loanId" class="loan-row content-inset" data-id="{{item.loanId}}" bindtap="openLoan" aria-role="button" aria-label="查看{{item.name}}">
       <view class="loan-row-top"><text class="loan-name">{{item.name}}</text><text class="loan-state">{{item.statusText}}</text></view>

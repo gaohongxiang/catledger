@@ -1,12 +1,12 @@
 <view class="page-canvas detail-page {{themeClass}}" style="{{themeStyle}}">
   <view wx:if="{{!importFilter}}" class="month-switcher">
-    <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><view class="arrow-left"></view></view>
+    <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><chevron-icon direction="left" size="{{30}}" /></view>
     <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate">
       <view class="date-picker-content">
         <text class="month-current money-number">{{selectedDateLabel || monthLabel}}</text>
       </view>
     </picker>
-    <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><view class="arrow-right"></view></view>
+    <view class="month-arrow" role="button" aria-label="下一个月" bindtap="nextMonth"><chevron-icon size="{{30}}" /></view>
   </view>
 
   <view wx:if="{{importFilter}}" class="import-filter content-inset"><text class="detail-meta">本次导入 · 全部日期</text><text class="import-filter-title">{{importFilter.title}}</text><button class="detail-manage-link" bindtap="clearImportFilter" disabled="{{deleting}}">返回全部明细</button></view>
@@ -36,20 +36,20 @@
 
   <view class="filter-toolbar">
     <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter">
-      <view class="filter-content"><text class="filter-label">{{accountFilters[accountFilterIndex].name}}</text><view class="filter-chevron"></view></view>
+      <view class="filter-content"><text class="filter-label">{{accountFilters[accountFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
     </picker>
     <picker class="filter-picker" mode="selector" range="{{categoryFilters}}" range-key="name" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter">
-      <view class="filter-content"><text class="filter-label">{{categoryFilters[categoryFilterIndex].name}}</text><view class="filter-chevron"></view></view>
+      <view class="filter-content"><text class="filter-label">{{categoryFilters[categoryFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
     </picker>
     <picker wx:if="{{!importFilter}}" class="filter-picker source-picker" mode="selector" range="{{sourceFilters}}" range-key="name" value="{{sourceFilterIndex}}" bindchange="changeSourceFilter">
-      <view class="filter-content"><text class="filter-label">{{sourceFilters[sourceFilterIndex].name}}</text><view class="filter-chevron"></view></view>
+      <view class="filter-content"><text class="filter-label">{{sourceFilters[sourceFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
     </picker>
   </view>
 
   <view class="search-field">
-    <view class="search-submit" role="button" aria-label="搜索备注" bindtap="applySearch"><view class="search-icon"></view></view>
+    <view class="search-submit" role="button" aria-label="搜索备注" bindtap="applySearch"><image class="search-icon-img" src="/assets/icons/search.svg" mode="aspectFit" /></view>
     <input class="search-input" value="{{search}}" placeholder="搜索备注" maxlength="40" confirm-type="search" aria-label="搜索账目备注" cursor-spacing="32" bindinput="bindSearch" bindconfirm="applySearch" />
-    <view wx:if="{{search}}" class="search-clear" role="button" aria-label="清空搜索" bindtap="clearSearch"><view class="clear-icon"></view></view>
+    <view wx:if="{{search}}" class="search-clear" role="button" aria-label="清空搜索" bindtap="clearSearch"><image class="clear-icon-img" src="/assets/icons/close.svg" mode="aspectFit" /></view>
   </view>
 
     <view wx:if="{{loggedIn}}" class="detail-manage">
@@ -72,7 +72,7 @@
       data-index="{{index}}"
       bindtap="editTransaction"
     >
-      <view wx:if="{{selectionMode}}" class="detail-check {{item.selected ? 'detail-check-selected' : ''}} {{!item.deletable ? 'detail-check-disabled' : ''}}" aria-role="checkbox" aria-label="{{item.label}}" aria-checked="{{item.selected ? 'true' : 'false'}}">{{item.selected ? '✓' : ''}}</view>
+      <view wx:if="{{selectionMode}}" class="detail-check {{item.selected ? 'detail-check-selected' : ''}} {{!item.deletable ? 'detail-check-disabled' : ''}}" aria-role="checkbox" aria-label="{{item.label}}" aria-checked="{{item.selected ? 'true' : 'false'}}"><image wx:if="{{item.selected}}" class="detail-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
       <view class="detail-main">
         <view class="detail-copy">
           <view class="detail-line {{item.amountText.length > 15 ? 'detail-line-long' : ''}}">
@@ -86,15 +86,12 @@
     </view>
   </view>
 
-  <view wx:elif="{{loggedIn && hasLoaded && !loading && !errorMessage}}" class="empty-ledger detail-empty content-inset">
-    <text class="empty-ledger-title">这里暂时没有账目</text>
-    <text class="empty-ledger-copy">换一个月份或筛选条件试试；新增账目请使用底部加号。</text>
-  </view>
+  <empty-state wx:elif="{{loggedIn && hasLoaded && !loading && !errorMessage}}" class="detail-empty" title="这里暂时没有账目" description="换一个月份或筛选条件试试；新增账目请使用底部加号。" />
 
-  <view wx:if="{{!loggedIn}}" class="ui-state guest-login-state"><text class="ui-state-title">登录后查看账目</text><text>你的账户与账单只对你可见。</text><button class="guest-login-button" size="mini" bindtap="promptWechatLogin"><text class="guest-login-label">登录</text></button></view>
-  <view wx:elif="{{loading && !hasLoaded}}" class="ui-state" aria-role="status">正在读取账目…</view>
+  <ui-state wx:if="{{!loggedIn}}" centered title="登录后查看账目" description="你的账户与账单只对你可见。"><button class="guest-login-button" size="mini" bindtap="promptWechatLogin"><text class="guest-login-label">登录</text></button></ui-state>
+  <ui-state wx:elif="{{loading && !hasLoaded}}" description="正在读取账目…" />
   <view wx:if="{{loadingMore}}" class="ui-state-caption" aria-role="status">正在读取更多账目…</view>
   <text wx:elif="{{hasLoaded && transactions.length && !nextCursor}}" class="ui-state-caption">已显示当前筛选下的全部账目</text>
-  <view wx:if="{{catalogError}}" class="ui-state">{{catalogError}}</view>
+  <ui-state wx:if="{{catalogError}}" description="{{catalogError}}" />
   <view wx:if="{{errorMessage}}" class="detail-error content-inset" bindtap="prepareAndLoad">{{errorMessage}} · 点此重试</view>
 </view>

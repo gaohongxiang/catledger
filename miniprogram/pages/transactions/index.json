@@ -1,5 +1,10 @@
 {
   "navigationBarTitleText": "账目明细",
   "enablePullDownRefresh": true,
-  "onReachBottomDistance": 160
+  "onReachBottomDistance": 160,
+  "usingComponents": {
+    "empty-state": "/components/empty-state/index",
+    "ui-state": "/components/ui-state/index",
+    "chevron-icon": "/components/chevron-icon/index"
+  }
 }
