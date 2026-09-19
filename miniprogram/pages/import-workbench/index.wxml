@@ -152,7 +152,7 @@
       <view wx:for="{{accountMappings}}" wx:key="issueId" class="account-proof-item">
         <view class="account-proof-head">
           <view class="account-proof-title-line"><text class="account-proof-title">{{item.label}}</text><text wx:if="{{item.needsConfirmation}}" class="account-pending-label">{{item.dirty && item.status === 'resolved' ? '待确认' : (item.suggestedExisting ? '建议 · 待确认' : '待确认')}}</text></view>
-          <text wx:if="{{item.inline && item.evidencePreview}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易">{{item.memberCount}} 笔 ›</text>
+          <view wx:if="{{item.inline && item.evidencePreview}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易"><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
           <text wx:else class="account-proof-meta">{{item.memberCount}} 条记录</text>
         </view>
 
@@ -237,7 +237,7 @@
             <button wx:for="{{item.issues}}" wx:for-item="issue" wx:key="issueId" class="review-decision-card" data-id="{{issue.issueId}}" bindtap="openIssue" aria-label="{{issue.batchDecision}} {{issue.label}}">
               <view class="review-decision-heading">
                 <view class="review-decision-copy"><text class="review-decision-title">{{issue.label}}</text><text class="review-decision-note">{{issue.decisionText}}</text></view>
-                <view class="review-decision-action"><text wx:if="{{issue.subjectCount > 1}}" class="review-action-count money-number">{{issue.subjectCount}} 笔</text><text class="review-action-button">{{issue.subjectCount > 1 ? '批量处理' : '处理'}} ›</text></view>
+                <view class="review-decision-action"><text wx:if="{{issue.subjectCount > 1}}" class="review-action-count money-number">{{issue.subjectCount}} 笔</text><text class="review-action-button">{{issue.subjectCount > 1 ? '批量处理' : '处理'}}</text><chevron-icon size="{{22}}" /></view>
               </view>
               <view class="review-preview-list review-decision-previews">
                 <view wx:for="{{issue.subjects}}" wx:for-item="preview" wx:key="eventId" class="review-preview-row">
@@ -255,7 +255,7 @@
       <block wx:elif="{{activeReviewStatus === 'completed'}}">
         <text class="record-list-note content-inset">包含自动通过和已确认的交易。</text>
         <view wx:for="{{reviewedEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看已核对交易">
-          <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">已核对{{item.needsCategory ? ' · 待分类' : ''}}</text><text class="review-action-button">查看 ›</text></view>
+          <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">已核对{{item.needsCategory ? ' · 待分类' : ''}}</text><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view></view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
             <view wx:if="{{item.displayDay}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDay}}</text><text class="review-preview-month">{{item.displayMonth}}</text></view>
             <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
@@ -277,7 +277,7 @@
         <view wx:for="{{categoryCards}}" wx:key="issueId" class="review-decision-card category-decision-card" data-id="{{item.issueId}}" bindtap="openIssue" aria-role="button" aria-label="{{item.natureLabel}}待分类，{{item.subjectCount}}笔">
           <view class="review-decision-heading">
             <view class="review-decision-copy"><text class="review-decision-title">{{item.natureLabel}}待分类</text></view>
-            <view class="review-decision-action"><text wx:if="{{item.subjectCount > 1}}" class="review-action-count money-number">{{item.subjectCount}} 笔</text><text class="review-action-button">{{item.subjectCount > 1 ? '批量分类' : '分类'}} ›</text></view>
+            <view class="review-decision-action"><text wx:if="{{item.subjectCount > 1}}" class="review-action-count money-number">{{item.subjectCount}} 笔</text><text class="review-action-button">{{item.subjectCount > 1 ? '批量分类' : '分类'}}</text><chevron-icon size="{{22}}" /></view>
           </view>
           <view class="review-preview-list review-decision-previews">
             <view wx:for="{{item.subjects}}" wx:for-item="record" wx:key="eventId" class="review-preview-row" data-id="{{record.eventId}}" catchtap="openEvidence" aria-role="button" aria-label="查看交易证据">
@@ -289,7 +289,7 @@
           </view>
         </view>
         <view wx:for="{{categoryWaitingEvents}}" wx:key="eventId" class="review-decision-card category-decision-card">
-          <view class="review-decision-heading"><text class="review-decision-title">待分类 · 先核对交易</text><button class="review-inline-action" data-id="{{item.reviewIssueId}}" bindtap="reviewBeforeCategory">去核对 ›</button></view>
+          <view class="review-decision-heading"><text class="review-decision-title">待分类 · 先核对交易</text><button class="review-inline-action" data-id="{{item.reviewIssueId}}" bindtap="reviewBeforeCategory">去核对<chevron-icon size="{{22}}" /></button></view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看交易证据">
             <view wx:if="{{item.displayDay}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDay}}</text><text class="review-preview-month">{{item.displayMonth}}</text></view>
             <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
@@ -301,7 +301,7 @@
       <block wx:elif="{{activeCategoryStatus === 'completed' || activeCategoryStatus === 'none'}}">
         <view wx:for="{{activeCategoryStatus === 'completed' ? categorizedEvents : noCategoryEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看交易证据">
           <view class="review-decision-heading review-completed-heading">
-            <view class="review-decision-copy"><text class="review-decision-title category-completed-title">{{activeCategoryStatus === 'completed' ? item.natureLabel + ' · ' + item.categoryName : '无需分类 · ' + item.natureLabel}}{{item.pendingReview ? ' · 待核对' : ''}}</text></view><text class="review-action-button">查看 ›</text>
+            <view class="review-decision-copy"><text class="review-decision-title category-completed-title">{{activeCategoryStatus === 'completed' ? item.natureLabel + ' · ' + item.categoryName : '无需分类 · ' + item.natureLabel}}{{item.pendingReview ? ' · 待核对' : ''}}</text></view><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view>
           </view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
             <view wx:if="{{item.displayDay}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDay}}</text><text class="review-preview-month">{{item.displayMonth}}</text></view>
@@ -360,26 +360,26 @@
     </view>
     <view class="final-summary">
       <view class="final-money-row">
-        <view data-kind="expense" bindtap="openFinalDetail" aria-role="button" aria-label="查看本批支出"><text class="final-money-label">本批支出</text><text class="final-money-value money-number expense-color">{{finalSummary.expenseText}}</text><text class="funds-flow-count">{{finalSummary.expenseCount}} 笔 ›</text></view>
-        <view data-kind="income" bindtap="openFinalDetail" aria-role="button" aria-label="查看本批收入"><text class="final-money-label">本批收入</text><text class="final-money-value money-number income-color">{{finalSummary.incomeText}}</text><text class="funds-flow-count">{{finalSummary.incomeCount}} 笔 ›</text></view>
-        <view data-kind="refund" bindtap="openFinalDetail" aria-role="button" aria-label="查看本批退款"><text class="final-money-label">本批退款</text><text class="final-money-value money-number income-color">{{finalSummary.refundText}}</text><text class="funds-flow-count">{{finalSummary.refundCount}} 笔 ›</text></view>
+        <view data-kind="expense" bindtap="openFinalDetail" aria-role="button" aria-label="查看本批支出"><text class="final-money-label">本批支出</text><text class="final-money-value money-number expense-color">{{finalSummary.expenseText}}</text><view class="funds-flow-count"><text class="money-number">{{finalSummary.expenseCount}} 笔</text><chevron-icon size="{{20}}" /></view></view>
+        <view data-kind="income" bindtap="openFinalDetail" aria-role="button" aria-label="查看本批收入"><text class="final-money-label">本批收入</text><text class="final-money-value money-number income-color">{{finalSummary.incomeText}}</text><view class="funds-flow-count"><text class="money-number">{{finalSummary.incomeCount}} 笔</text><chevron-icon size="{{20}}" /></view></view>
+        <view data-kind="refund" bindtap="openFinalDetail" aria-role="button" aria-label="查看本批退款"><text class="final-money-label">本批退款</text><text class="final-money-value money-number income-color">{{finalSummary.refundText}}</text><view class="funds-flow-count"><text class="money-number">{{finalSummary.refundCount}} 笔</text><chevron-icon size="{{20}}" /></view></view>
       </view>
       <view class="final-category-heading"><text class="review-title">资金流转</text></view>
       <view class="final-money-row funds-flow-grid">
         <view wx:for="{{fundsFlowGroups}}" wx:key="nature" class="funds-flow-cell" data-kind="{{item.nature}}" bindtap="openFinalDetail" aria-role="button" aria-label="{{item.label}}，{{item.count}}笔，查看记录">
           <text class="final-money-label">{{item.label}}</text><text class="final-money-value money-number">{{item.amountText}}</text>
-          <text class="funds-flow-count">{{item.count}} 笔 ›</text>
+          <view class="funds-flow-count"><text class="money-number">{{item.count}} 笔</text><chevron-icon size="{{20}}" /></view>
         </view>
       </view>
 
-      <view class="final-summary-row" data-kind="new_accounts" bindtap="openFinalDetail" aria-role="button" aria-label="查看新建账户"><text>新建账户</text><text class="money-number">{{finalSummary.newAccountCount}} 个 ›</text></view>
-      <view class="final-summary-row" data-kind="affected_accounts" bindtap="openFinalDetail" aria-role="button" aria-label="查看受影响账户"><text>受影响账户</text><text class="money-number">{{finalSummary.affectedAccountCount}} 个 ›</text></view>
-      <view class="final-summary-row" data-kind="all" bindtap="openFinalDetail" aria-role="button" aria-label="查看本次入账"><text>本次入账</text><text class="money-number">{{recordSummary.activeCount}} 笔有效交易 ›</text></view>
+      <view class="final-summary-row" data-kind="new_accounts" bindtap="openFinalDetail" aria-role="button" aria-label="查看新建账户"><text>新建账户</text><view class="final-summary-side"><text class="money-number">{{finalSummary.newAccountCount}} 个</text><chevron-icon size="{{22}}" /></view></view>
+      <view class="final-summary-row" data-kind="affected_accounts" bindtap="openFinalDetail" aria-role="button" aria-label="查看受影响账户"><text>受影响账户</text><view class="final-summary-side"><text class="money-number">{{finalSummary.affectedAccountCount}} 个</text><chevron-icon size="{{22}}" /></view></view>
+      <view class="final-summary-row" data-kind="all" bindtap="openFinalDetail" aria-role="button" aria-label="查看本次入账"><text>本次入账</text><view class="final-summary-side"><text class="money-number">{{recordSummary.activeCount}} 笔有效交易</text><chevron-icon size="{{22}}" /></view></view>
       <view class="final-category-heading"><text class="review-title">交易分类</text></view>
       <view class="final-money-row">
-        <view data-kind="categorized" bindtap="openFinalDetail" aria-role="button" aria-label="查看已分类"><text class="final-money-label">已分类</text><text class="funds-flow-count">{{categoryStatusTabs[1].count}} 笔 ›</text></view>
-        <view data-kind="uncategorized" bindtap="openFinalDetail" aria-role="button" aria-label="查看未分类"><text class="final-money-label">未分类</text><text class="funds-flow-count">{{categoryStatusTabs[0].count}} 笔 ›</text></view>
-        <view data-kind="no_category" bindtap="openFinalDetail" aria-role="button" aria-label="查看无需分类"><text class="final-money-label">无需分类</text><text class="funds-flow-count">{{categoryStatusTabs[2].count}} 笔 ›</text></view>
+        <view data-kind="categorized" bindtap="openFinalDetail" aria-role="button" aria-label="查看已分类"><text class="final-money-label">已分类</text><view class="funds-flow-count"><text class="money-number">{{categoryStatusTabs[1].count}} 笔</text><chevron-icon size="{{20}}" /></view></view>
+        <view data-kind="uncategorized" bindtap="openFinalDetail" aria-role="button" aria-label="查看未分类"><text class="final-money-label">未分类</text><view class="funds-flow-count"><text class="money-number">{{categoryStatusTabs[0].count}} 笔</text><chevron-icon size="{{20}}" /></view></view>
+        <view data-kind="no_category" bindtap="openFinalDetail" aria-role="button" aria-label="查看无需分类"><text class="final-money-label">无需分类</text><view class="funds-flow-count"><text class="money-number">{{categoryStatusTabs[2].count}} 笔</text><chevron-icon size="{{20}}" /></view></view>
       </view>
       <text class="final-category-note">未分类可以入账后再补，不影响本次入账。</text>
     </view>
@@ -473,7 +473,7 @@
       <view class="account-choice-section account-choice-other-section">
         <text class="account-choice-section-title">其他账户</text>
         <view class="account-choice-search">
-          <view class="account-choice-search-icon"></view>
+          <image class="account-choice-search-icon" src="/assets/icons/search.svg" mode="aspectFit" />
           <input class="account-choice-search-input" value="{{accountChoiceQuery}}" bindinput="bindAccountChoiceSearch" data-input-key="bindAccountChoiceSearch" bindfocus="beginInputEditing" bindblur="finishInputEditing" placeholder="搜索账户名称" confirm-type="search" aria-label="搜索账户名称" />
         </view>
         <scroll-view class="account-choice-scroll" scroll-y enhanced show-scrollbar="{{false}}">
@@ -543,7 +543,7 @@
       </view>
       <scroll-view class="final-detail-scroll" scroll-top="{{finalDetailScrollTop}}" scroll-y enhanced show-scrollbar="{{false}}">
         <view wx:for="{{finalDetailSheet.accounts}}" wx:key="accountId" class="funds-flow-record" data-id="{{item.accountId}}" bindtap="openFinalAccount" aria-role="button" aria-label="查看账户关联交易">
-          <view class="funds-flow-record-head"><text class="funds-flow-record-title">{{item.name}}</text><text>{{item.count}} 笔 ›</text></view>
+          <view class="funds-flow-record-head"><text class="funds-flow-record-title">{{item.name}}</text><view class="funds-flow-record-side"><text class="money-number">{{item.count}} 笔</text><chevron-icon size="{{20}}" /></view></view>
           <text class="funds-flow-record-meta">{{item.typeLabel}}{{item.isDraft ? ' · 本批新建' : ''}}</text>
         </view>
         <view wx:for="{{finalDetailSheet.records}}" wx:key="eventId" class="funds-flow-record">
@@ -602,7 +602,7 @@
         <button wx:if="{{currentIssue.paymentNeedsReview}}" class="stage-previous" data-target="paymentTarget" bindtap="openDirectory">选择被还款账户</button>
         <button wx:if="{{currentIssue.aggregateRepayment}}" class="stage-previous" data-target="repayment" bindtap="openDirectory">补充分配账户</button>
       </view>
-      <view class="review-sheet-heading"><text class="sheet-title serif-title">{{currentIssue.paymentNeedsReview ? (currentIssue.paymentAccountsOnly ? '确认付款账户' : '分配付款金额') : currentIssue.label}}</text><button class="review-sheet-close" bindtap="closeIssue" disabled="{{busy}}" aria-label="关闭核对，暂不保存">×</button></view>
+      <view class="review-sheet-heading"><text class="sheet-title serif-title">{{currentIssue.paymentNeedsReview ? (currentIssue.paymentAccountsOnly ? '确认付款账户' : '分配付款金额') : currentIssue.label}}</text><button class="review-sheet-close" bindtap="closeIssue" disabled="{{busy}}" aria-label="关闭核对，暂不保存"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
       <text wx:if="{{!currentIssue.paymentNeedsReview || currentIssue.paymentAccountsOnly}}" class="sheet-copy">{{currentIssue.decisionText}}</text>
 
       <scroll-view class="review-editor-body" scroll-y enhanced show-scrollbar="{{false}}">
@@ -672,7 +672,7 @@
             </view>
             <view class="repayment-allocation-input"><text>¥</text><input type="digit" value="{{item.amountInput}}" placeholder="0.00" data-index="{{index}}" bindinput="changeRepaymentAllocation" data-input-key="changeRepaymentAllocation-{{index}}" bindfocus="beginInputEditing" bindblur="finishInputEditing" disabled="{{busy}}" /></view>
             <button size="mini" class="repayment-allocation-all" data-index="{{index}}" bindtap="fillRepaymentAllocation" disabled="{{busy}}">全部</button>
-            <button size="mini" class="repayment-allocation-remove" data-index="{{index}}" bindtap="removeRepaymentAccount" disabled="{{busy}}" aria-label="移除该还款账户">×</button>
+            <button size="mini" class="repayment-allocation-remove" data-index="{{index}}" bindtap="removeRepaymentAccount" disabled="{{busy}}" aria-label="移除该还款账户"><image class="repayment-remove-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button>
           </view>
           <picker mode="selector" range="{{repaymentAdditionalOptions}}" range-key="name" value="{{repaymentAdditionalIndex}}" bindchange="addRepaymentAccount" disabled="{{busy || repaymentAllocationChoices.length >= 20}}">
             <view class="repayment-allocation-add">＋ 补充还款账户</view>
