@@ -1,9 +1,12 @@
-.history-entry-heading, .history-actions { display: flex; justify-content: space-between; align-items: center; gap: 20rpx; }
-.history-heading { display: block; padding-left: var(--layout-content-inset, 20rpx); padding-right: var(--layout-content-inset, 20rpx); box-sizing: border-box; }
-.history-copy { display: block; font-size: var(--font-caption, 24rpx); color: var(--theme-muted, #746a60); line-height: 1.7; }
-.history-entry { margin-top: 24rpx; padding: 24rpx 20rpx; border: 1rpx solid var(--theme-line, #e5ded4); border-radius: var(--theme-radius-large, 24rpx); background: var(--theme-surface, #fffefd); }
-.history-file { display: block; flex: 1; min-width: 0; overflow-wrap: anywhere; word-break: break-all; }
-.history-status { flex-shrink: 0; color: var(--theme-muted, #746a60); font-size: var(--font-caption, 24rpx); }
-.history-link { display: inline-flex; align-items: center; min-height: 88rpx; margin: 0; padding: 16rpx 0; background: transparent; color: var(--theme-accent, #be5b24); font-size: var(--font-caption, 24rpx); line-height: 1.5; text-align: left; }
-.history-error { color: var(--theme-danger, #a95132); }
-.history-error { display: block; margin: 20rpx 0; font-size: var(--font-caption, 24rpx); }
+.history-heading { display: block; box-sizing: border-box; padding-left: var(--layout-content-inset, 20rpx); padding-right: var(--layout-content-inset, 20rpx); }
+.history-copy { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.7; }
+.history-entry { margin-top: 24rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); }
+.history-entry-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20rpx; }
+.history-entry .history-copy { margin-top: 8rpx; }
+.history-file { display: block; flex: 1; min-width: 0; font-weight: 500; color: var(--theme-ink); overflow-wrap: anywhere; word-break: break-all; }
+.history-entry .history-file.history-copy { font-weight: 400; color: var(--theme-text-muted); }
+.history-status { flex-shrink: 0; font-size: var(--font-caption); }
+.history-status-ok { color: var(--theme-income); }
+.history-status-muted { color: var(--theme-text-muted); }
+.history-actions { display: flex; justify-content: flex-start; gap: 32rpx; margin-top: 12rpx; border-top: 1rpx solid var(--theme-line); }
+.history-link { display: inline-flex; align-items: center; min-height: 88rpx; margin: 0; padding: 16rpx 0; background: transparent; color: var(--theme-accent-strong); font-size: var(--font-caption); line-height: 1.5; text-align: left; }

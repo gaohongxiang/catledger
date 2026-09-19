@@ -1,13 +1,16 @@
 .loan-page { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.loan-row-top, .loan-paging { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
-.loan-heading { display: block; padding-left: var(--layout-content-inset, 20rpx); padding-right: var(--layout-content-inset, 20rpx); box-sizing: border-box; }
-.loan-note, .loan-principal { display: block; }
-.loan-note { color: var(--theme-text-muted); font-size: var(--font-caption); }
-.loan-create, .loan-link { color: var(--theme-accent-strong); background: transparent; font-size: var(--font-caption); padding: 20rpx; margin: 0; min-height: 88rpx; }
+.loan-heading { display: block; box-sizing: border-box; padding-left: var(--layout-content-inset, 20rpx); padding-right: var(--layout-content-inset, 20rpx); }
+.loan-create, .loan-first { margin: 0; padding: 20rpx; min-height: 88rpx; background: transparent; color: var(--theme-accent-strong); font-size: var(--font-caption); }
+.loan-note { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.6; }
+.loan-unassigned { margin-top: 24rpx; }
 .loan-list { margin-top: 30rpx; }
-.loan-row { padding-top: 26rpx; padding-bottom: 26rpx; border-top: 1rpx solid var(--theme-line); }
+.loan-row { display: block; margin-bottom: 20rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); }
+.loan-row-top { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-bottom: 8rpx; }
 .loan-name { font-size: var(--font-section); font-weight: 500; overflow-wrap: anywhere; }
-.loan-state { color: var(--theme-secondary); font-size: var(--font-caption); flex-shrink: 0; }
-.loan-principal { margin: 16rpx 0 8rpx; font-size: var(--font-title); overflow-wrap: anywhere; }
-.loan-paging { margin-top: 28rpx; }
-.loan-paging button { flex: 1; }
+.loan-state { flex-shrink: 0; color: var(--theme-secondary); font-size: var(--font-caption); }
+.loan-principal { display: block; margin: 16rpx 0 12rpx; font-size: var(--font-display); font-weight: 500; line-height: 1.2; overflow-wrap: anywhere; }
+.loan-row .loan-note { margin-top: 6rpx; }
+.loan-paging { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-top: 28rpx; }
+.loan-page-button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8rpx; min-height: 88rpx; margin: 0; padding: 16rpx 20rpx; background: transparent; color: var(--theme-accent-strong); font-size: var(--font-body); font-weight: 500; }
+.loan-page-button[disabled] { background: transparent; color: var(--theme-text-muted); }
+.loan-first { display: flex; align-items: center; justify-content: center; width: 100%; }

@@ -1,9 +1,9 @@
 <view class="page-canvas page-secondary history-page {{themeClass}}" style="{{themeStyle}}">
-  <section-header class="history-heading" title="导入记录"><button class="history-link" bindtap="importAgain" disabled="{{busy}}">导入账单</button></section-header>
+  <section-header class="history-heading" eyebrow="账单导入" title="导入记录"><button class="history-link" bindtap="importAgain" disabled="{{busy}}">导入账单</button></section-header>
   <text class="history-copy content-inset">查看某次导入的账目，可在明细中选择删除。</text>
-  <view wx:if="{{errorMessage}}" class="history-error content-inset">{{errorMessage}}</view>
+  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <view wx:for="{{items}}" wx:key="updateId" class="history-entry">
-    <view class="history-entry-heading"><text class="history-file">{{item.title}}</text><text class="history-status">{{item.transactionCount ? item.transactionCount + ' 笔账目' : item.deletedTransactionCount ? '账目已删除' : '无账目'}}</text></view>
+    <view class="history-entry-heading"><text class="history-file">{{item.title}}</text><text class="history-status {{item.transactionCount ? 'history-status-ok' : 'history-status-muted'}}">{{item.transactionCount ? item.transactionCount + ' 笔账目' : item.deletedTransactionCount ? '账目已删除' : '无账目'}}</text></view>
     <text class="history-copy">{{item.timeText}} · {{item.sourceCount}} 个文件</text>
     <text wx:for="{{item.files}}" wx:for-item="file" wx:key="*this" wx:if="{{index > 0}}" class="history-copy history-file">{{file}}</text>
     <view class="history-actions">

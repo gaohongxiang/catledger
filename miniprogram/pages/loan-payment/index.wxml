@@ -1,70 +1,78 @@
 <view class="page-canvas loan-payment {{themeClass}}" style="{{themeStyle}}">
-  <view class="content-inset payment-heading"><text class="detail-kicker">贷款管理 / 实际借还</text><text class="detail-title">{{payment ? payment.kindText + '记录' : '登记实际借还'}}</text></view>
+  <section-header class="lp-heading" eyebrow="贷款管理 / 实际借还" title="{{payment ? payment.kindText + '记录' : '登记实际借还'}}" />
   <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
-  <button wx:if="{{errorMessage}}" class="detail-link" disabled="{{saving || loading}}" bindtap="load">重新读取与核实</button>
-  <view wx:if="{{hasPending}}" class="content-inset"><text class="form-note">上次操作结果待核实。重试沿用已保存的原请求。</text><button class="primary-button" loading="{{saving}}" disabled="{{loading || saving}}" bindtap="save">重试上次操作</button></view>
+  <button wx:if="{{errorMessage}}" class="lp-link" disabled="{{saving || loading}}" bindtap="load">重新读取与核实</button>
+  <view wx:if="{{hasPending}}" class="lp-note-card"><text class="lp-note">上次操作结果待核实。重试沿用已保存的原请求。</text><button class="primary-button lp-action" loading="{{saving}}" disabled="{{loading || saving}}" bindtap="save">重试上次操作</button></view>
   <ui-state wx:if="{{loading}}" description="正在读取…" />
-  <view wx:if="{{payment}}" class="content-inset">
-    <text class="principal-value money-number">{{payment.totalText}}</text><text class="form-note">{{payment.occurredLocalAt}} · {{payment.statusText}}</text>
-    <view wx:for="{{allocations}}" wx:key="loanId" class="allocation-panel">
-      <text class="allocation-name">{{item.loanName}}</text>
-      <view class="detail-row"><text>本金</text><text class="money-number">{{item.principalText}}</text></view>
-      <view class="detail-row"><text>利息 · {{item.interestTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.interestText}}</text></view>
-      <view class="detail-row"><text>费用 · {{item.feeTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.feeText}}</text></view>
-      <button wx:if="{{payment.kind === 'repayment'}}" class="detail-link" data-id="{{item.loanId}}" bindtap="allocatePlan" disabled="{{saving || loading}}">对账到还款期次</button>
+  <block wx:if="{{payment}}">
+    <view class="lp-summary">
+      <text class="lp-principal money-number">{{payment.totalText}}</text>
+      <text class="lp-note">{{payment.occurredLocalAt}} · {{payment.statusText}}</text>
     </view>
-    <text class="section-title">对应账目</text>
-    <view wx:for="{{transactions}}" wx:key="transactionId" class="detail-row"><view><text>{{item.flowText}} · {{item.sourceAccount.name}}</text><text class="detail-muted">{{item.destinationAccount ? '转入 ' + item.destinationAccount.name : item.category.name}}</text></view><text class="money-number">{{item.amountText}}</text></view>
-    <button wx:if="{{payment.status === 'active' && !hasPending}}" class="secondary-button" disabled="{{saving || loading}}" loading="{{saving}}" bindtap="reverse">撤销整组借还</button>
-    <button wx:if="{{payment.status === 'active' && !hasPending}}" class="detail-link" disabled="{{saving || loading}}" bindtap="editPayment">更正本息费与贷款分配</button>
-    <button wx:if="{{payment.status === 'active' && payment.mode === 'new' && payment.kind === 'repayment' && !hasPending}}" class="detail-link" disabled="{{saving || loading}}" bindtap="reconcileImport">与后来导入的同笔还款核对</button>
-  </view>
-  <view wx:if="{{!hasPayment}}" class="content-inset loan-form">
-    <text class="form-note">先填写已确认的本息费，明确没有的分项填写 0。已有账目请先关联或更正。</text>
-    <button wx:if="{{editingPayment || replacePayment}}" class="detail-link" bindtap="cancelEdit" disabled="{{saving || hasPending}}">返回原借还记录</button>
-    <text wx:if="{{editingPayment}}" class="form-note">更正整组构成，保留原记录供核对。实际账户、时间和总额保持本次事实。</text>
-    <text wx:if="{{replacePayment}}" class="form-note">请明确选择后来导入的同一笔还款。确认后撤销重复的手工付款，将来源账目更正为一次完整还款；相同金额或日期不会自动合并。</text>
-    <picker wx:if="{{!sourceLocked && !editingPayment && !replacePayment}}" class="form-field" range="{{modes}}" value="{{modeIndex}}" bindchange="chooseMode" disabled="{{saving}}"><text>入账方式</text><view class="picker-value">{{modes[modeIndex]}}</view></picker>
-    <block wx:if="{{sourceLocked && !editingPayment && !replacePayment}}"><text class="form-note">已从原账目进入。总额与原始时间重新核对，不会再次扣款；不能切换到新登记。缺少本息费时请查机构账单，不要把总额直接当本金。</text>
-      <picker class="form-field" range="{{entryModes}}" value="{{modeIndex - 1}}" bindchange="chooseEntryMode" disabled="{{saving || loading}}"><text>处理已有还款</text><view class="picker-value">{{entryModes[modeIndex - 1]}}</view></picker>
-      <button class="secondary-button" bindtap="load" disabled="{{saving || loading}}">重新核对这笔还款的完整来源</button>
+    <view wx:for="{{allocations}}" wx:key="loanId" class="lp-panel">
+      <text class="lp-panel-name">{{item.loanName}}</text>
+      <view class="lp-row"><text>本金</text><text class="money-number">{{item.principalText}}</text></view>
+      <view class="lp-row"><text>利息 · {{item.interestTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.interestText}}</text></view>
+      <view class="lp-row"><text>费用 · {{item.feeTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.feeText}}</text></view>
+      <button wx:if="{{payment.kind === 'repayment'}}" class="lp-link" data-id="{{item.loanId}}" bindtap="allocatePlan" disabled="{{saving || loading}}">对账到还款期次</button>
+    </view>
+    <view class="lp-panel">
+      <text class="lp-section-title">对应账目</text>
+      <view wx:for="{{transactions}}" wx:key="transactionId" class="lp-row"><view class="lp-row-main"><text>{{item.flowText}} · {{item.sourceAccount.name}}</text><text class="lp-muted">{{item.destinationAccount ? '转入 ' + item.destinationAccount.name : item.category.name}}</text></view><text class="money-number">{{item.amountText}}</text></view>
+    </view>
+    <button wx:if="{{payment.status === 'active' && !hasPending}}" class="secondary-button lp-action" disabled="{{saving || loading}}" loading="{{saving}}" bindtap="reverse">撤销整组借还</button>
+    <button wx:if="{{payment.status === 'active' && !hasPending}}" class="lp-link" disabled="{{saving || loading}}" bindtap="editPayment">更正本息费与贷款分配</button>
+    <button wx:if="{{payment.status === 'active' && payment.mode === 'new' && payment.kind === 'repayment' && !hasPending}}" class="lp-link" disabled="{{saving || loading}}" bindtap="reconcileImport">与后来导入的同笔还款核对</button>
+  </block>
+  <view wx:if="{{!hasPayment}}" class="lp-form">
+    <view class="lp-note-card"><text class="lp-note">先填写已确认的本息费，明确没有的分项填写 0。已有账目请先关联或更正。</text></view>
+    <button wx:if="{{editingPayment || replacePayment}}" class="lp-link" bindtap="cancelEdit" disabled="{{saving || hasPending}}">返回原借还记录</button>
+    <view wx:if="{{editingPayment}}" class="lp-note-card"><text class="lp-note">更正整组构成，保留原记录供核对。实际账户、时间和总额保持本次事实。</text></view>
+    <view wx:if="{{replacePayment}}" class="lp-note-card"><text class="lp-note">请明确选择后来导入的同一笔还款。确认后撤销重复的手工付款，将来源账目更正为一次完整还款；相同金额或日期不会自动合并。</text></view>
+    <picker wx:if="{{!sourceLocked && !editingPayment && !replacePayment}}" class="lp-field" range="{{modes}}" value="{{modeIndex}}" bindchange="chooseMode" disabled="{{saving}}"><text>入账方式</text><view class="lp-picker"><text class="lp-picker-value">{{modes[modeIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <block wx:if="{{sourceLocked && !editingPayment && !replacePayment}}">
+      <view class="lp-note-card"><text class="lp-note">已从原账目进入。总额与原始时间重新核对，不会再次扣款；不能切换到新登记。缺少本息费时请查机构账单，不要把总额直接当本金。</text></view>
+      <picker class="lp-field" range="{{entryModes}}" value="{{modeIndex - 1}}" bindchange="chooseEntryMode" disabled="{{saving || loading}}"><text>处理已有还款</text><view class="lp-picker"><text class="lp-picker-value">{{entryModes[modeIndex - 1]}}</text><chevron-icon size="{{24}}" /></view></picker>
+      <button class="secondary-button lp-action" bindtap="load" disabled="{{saving || loading}}">重新核对这笔还款的完整来源</button>
     </block>
-    <picker class="form-field" range="{{kinds}}" value="{{kindIndex}}" bindchange="chooseKind" disabled="{{saving || sourceLocked || sourceTiming || replacePayment}}"><text>实际类型</text><view class="picker-value">{{kinds[kindIndex]}}</view></picker>
-    <view wx:if="{{modeIndex > 0 && !editingPayment}}" class="allocation-panel">
-      <text class="section-title">已有账目</text>
-      <picker wx:if="{{!sourceLocked}}" class="form-field" mode="date" fields="month" value="{{sourceMonth}}" bindchange="sourceMonth" disabled="{{saving}}"><text>查询月份</text><view class="picker-value">{{sourceMonth || '选择账目所在月份'}}</view></picker>
-      <button wx:if="{{!sourceLocked}}" class="secondary-button" bindtap="loadSources" disabled="{{saving || loading}}">挑选已有账目</button>
-      <checkbox-group bindchange="selectSources"><label wx:for="{{sourceRows}}" wx:key="transactionId" class="source-option"><checkbox value="{{item.transactionId}}" checked="{{item.selected}}" disabled="{{saving}}" /><view><text>{{item.typeText}} · {{item.amountText}}</text><text class="detail-muted">{{item.occurredLocalAt}} · {{item.accountText}}</text></view></label></checkbox-group>
-      <button wx:if="{{nextSourceCursor}}" class="detail-link" data-next="true" bindtap="loadSources" disabled="{{saving || loading}}">下一页账目</button>
-      <button wx:if="{{sourceRows.length}}" class="secondary-button" bindtap="inspectSource" disabled="{{saving || loading}}">核对所选 {{sourceSelectedCount}} 笔账目的完整来源</button>
-      <text wx:if="{{source}}" class="form-note">已核对 {{sourceTransactions.length}} 笔账目{{source.event ? '，包含该导入来源的全部分项' : ''}}。</text>
-      <view wx:for="{{sourceTransactions}}" wx:key="transactionId" class="detail-row"><view><text>{{item.typeText}} · {{item.accountText}}</text><text class="detail-muted">{{item.occurredLocalAt}}</text></view><text class="money-number">{{item.amountText}}</text></view>
+    <picker class="lp-field" range="{{kinds}}" value="{{kindIndex}}" bindchange="chooseKind" disabled="{{saving || sourceLocked || sourceTiming || replacePayment}}"><text>实际类型</text><view class="lp-picker"><text class="lp-picker-value">{{kinds[kindIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <view wx:if="{{modeIndex > 0 && !editingPayment}}" class="lp-panel">
+      <text class="lp-section-title">已有账目</text>
+      <picker wx:if="{{!sourceLocked}}" class="lp-field" mode="date" fields="month" value="{{sourceMonth}}" bindchange="sourceMonth" disabled="{{saving}}"><text>查询月份</text><view class="lp-picker"><text class="lp-picker-value">{{sourceMonth || '选择账目所在月份'}}</text><chevron-icon size="{{24}}" /></view></picker>
+      <button wx:if="{{!sourceLocked}}" class="secondary-button lp-action" bindtap="loadSources" disabled="{{saving || loading}}">挑选已有账目</button>
+      <checkbox-group bindchange="selectSources"><label wx:for="{{sourceRows}}" wx:key="transactionId" class="lp-source"><checkbox value="{{item.transactionId}}" checked="{{item.selected}}" disabled="{{saving}}" /><view class="lp-source-main"><text>{{item.typeText}} · {{item.amountText}}</text><text class="lp-muted">{{item.occurredLocalAt}} · {{item.accountText}}</text></view></label></checkbox-group>
+      <button wx:if="{{nextSourceCursor}}" class="lp-link" data-next="true" bindtap="loadSources" disabled="{{saving || loading}}">下一页账目</button>
+      <button wx:if="{{sourceRows.length}}" class="secondary-button lp-action" bindtap="inspectSource" disabled="{{saving || loading}}">核对所选 {{sourceSelectedCount}} 笔账目的完整来源</button>
+      <text wx:if="{{source}}" class="lp-note lp-source-note">已核对 {{sourceTransactions.length}} 笔账目{{source.event ? '，包含该导入来源的全部分项' : ''}}。</text>
+      <view wx:for="{{sourceTransactions}}" wx:key="transactionId" class="lp-row"><view class="lp-row-main"><text>{{item.typeText}} · {{item.accountText}}</text><text class="lp-muted">{{item.occurredLocalAt}}</text></view><text class="money-number">{{item.amountText}}</text></view>
     </view>
-    <view wx:if="{{sourceEvidence.items.length}}" class="allocation-panel"><text class="section-title">导入来源信息 · 待核对</text>
-      <view wx:for="{{sourceEvidence.items}}" wx:for-item="evidence" wx:key="index"><text class="form-note">{{evidence.description}}</text><view wx:for="{{evidence.fields}}" wx:key="index" class="detail-row"><text>{{item.label}}</text><text>{{item.value}}</text></view></view>
-      <text class="form-note">请与下方本息费逐项核对；来源没有提供的字段保持待补充，不会默认填 0 或自动生成期次。</text><text wx:if="{{sourceEvidence.hasMore}}" class="form-note">这里只展示部分来源信息，原始证据保持不变。</text>
+    <view wx:if="{{sourceEvidence.items.length}}" class="lp-panel">
+      <text class="lp-section-title">导入来源信息 · 待核对</text>
+      <view wx:for="{{sourceEvidence.items}}" wx:for-item="evidence" wx:key="index"><text class="lp-note">{{evidence.description}}</text><view wx:for="{{evidence.fields}}" wx:key="index" class="lp-row"><text>{{item.label}}</text><text>{{item.value}}</text></view></view>
+      <text class="lp-note">请与下方本息费逐项核对；来源没有提供的字段保持待补充，不会默认填 0 或自动生成期次。</text>
+      <text wx:if="{{sourceEvidence.hasMore}}" class="lp-note">这里只展示部分来源信息，原始证据保持不变。</text>
     </view>
-    <picker class="form-field" range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="chooseAccount" disabled="{{saving || sourceTiming}}"><text>{{kindIndex === 1 ? '到账账户' : '付款账户'}}</text><view class="picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择资产账户'}}</view></picker>
-    <label class="form-field"><text>实际总额（元）</text><input type="digit" value="{{totalYuan}}" maxlength="22" data-field="totalYuan" bindinput="input" disabled="{{saving || sourceTiming}}" placeholder="以实际到账或扣款为准" /></label>
-    <view class="time-fields"><picker class="form-field" mode="date" value="{{date}}" data-field="date" bindchange="input" disabled="{{saving || sourceTiming}}"><text>发生日期</text><view class="picker-value">{{date || '请选择日期'}}</view></picker><picker class="form-field" mode="time" value="{{time}}" data-field="time" bindchange="input" disabled="{{saving || sourceTiming}}"><text>时间</text><view class="picker-value">{{time}}</view></picker></view>
-    <view wx:for="{{allocations}}" wx:for-item="a" wx:for-index="i" wx:key="loanId" class="allocation-panel">
-      <view class="allocation-heading"><text class="allocation-name">{{a.loanName}}</text><button wx:if="{{allocations.length > 1}}" class="detail-link" data-id="{{a.loanId}}" bindtap="removeLoan" disabled="{{saving}}">移除此项</button></view>
-      <label class="form-field"><text>本金（元）</text><input type="digit" maxlength="22" value="{{a.principalYuan}}" data-index="{{i}}" data-field="principalYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="请填写已确认本金" /></label>
+    <picker class="lp-field" range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="chooseAccount" disabled="{{saving || sourceTiming}}"><text>{{kindIndex === 1 ? '到账账户' : '付款账户'}}</text><view class="lp-picker"><text class="lp-picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择资产账户'}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <label class="lp-field"><text>实际总额（元）</text><input class="lp-input money-number" type="digit" value="{{totalYuan}}" maxlength="22" data-field="totalYuan" bindinput="input" disabled="{{saving || sourceTiming}}" placeholder="以实际到账或扣款为准" /></label>
+    <view class="lp-time"><picker class="lp-field" mode="date" value="{{date}}" data-field="date" bindchange="input" disabled="{{saving || sourceTiming}}"><text>发生日期</text><view class="lp-picker"><text class="lp-picker-value">{{date || '请选择日期'}}</text><chevron-icon size="{{24}}" /></view></picker><picker class="lp-field" mode="time" value="{{time}}" data-field="time" bindchange="input" disabled="{{saving || sourceTiming}}"><text>时间</text><view class="lp-picker"><text class="lp-picker-value">{{time}}</text><chevron-icon size="{{24}}" /></view></picker></view>
+    <view wx:for="{{allocations}}" wx:for-item="a" wx:for-index="i" wx:key="loanId" class="lp-panel">
+      <view class="lp-panel-heading"><text class="lp-panel-name">{{a.loanName}}</text><button wx:if="{{allocations.length > 1}}" class="lp-link lp-link-compact" data-id="{{a.loanId}}" bindtap="removeLoan" disabled="{{saving}}">移除此项</button></view>
+      <label class="lp-field"><text>本金（元）</text><input class="lp-input money-number" type="digit" maxlength="22" value="{{a.principalYuan}}" data-index="{{i}}" data-field="principalYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="请填写已确认本金" /></label>
       <block wx:if="{{kindIndex === 0}}">
-        <label class="form-field"><text>利息（元）</text><input type="digit" maxlength="22" value="{{a.interestYuan}}" data-index="{{i}}" data-field="interestYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="明确没有请填 0" /></label>
-        <picker class="form-field" range="{{treatments}}" value="{{a.interestIndex}}" data-index="{{i}}" data-field="interestIndex" bindchange="editAllocation" disabled="{{saving}}"><text>利息处理</text><view class="picker-value">{{treatments[a.interestIndex]}}</view></picker>
-        <picker wx:if="{{a.interestIndex === 0}}" class="form-field" range="{{categories}}" range-key="name" value="{{a.interestCategoryIndex < 0 ? 0 : a.interestCategoryIndex}}" data-index="{{i}}" data-field="interestCategoryIndex" bindchange="editAllocation" disabled="{{saving}}"><text>利息支出分类</text><view class="picker-value">{{a.interestCategoryIndex >= 0 ? categories[a.interestCategoryIndex].name : '非零利息需选择'}}</view></picker>
-        <label class="form-field"><text>费用（元）</text><input type="digit" maxlength="22" value="{{a.feeYuan}}" data-index="{{i}}" data-field="feeYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="明确没有请填 0" /></label>
-        <picker class="form-field" range="{{treatments}}" value="{{a.feeIndex}}" data-index="{{i}}" data-field="feeIndex" bindchange="editAllocation" disabled="{{saving}}"><text>费用处理</text><view class="picker-value">{{treatments[a.feeIndex]}}</view></picker>
-        <picker wx:if="{{a.feeIndex === 0}}" class="form-field" range="{{categories}}" range-key="name" value="{{a.feeCategoryIndex < 0 ? 0 : a.feeCategoryIndex}}" data-index="{{i}}" data-field="feeCategoryIndex" bindchange="editAllocation" disabled="{{saving}}"><text>费用支出分类</text><view class="picker-value">{{a.feeCategoryIndex >= 0 ? categories[a.feeCategoryIndex].name : '非零费用需选择'}}</view></picker>
+        <label class="lp-field"><text>利息（元）</text><input class="lp-input money-number" type="digit" maxlength="22" value="{{a.interestYuan}}" data-index="{{i}}" data-field="interestYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="明确没有请填 0" /></label>
+        <picker class="lp-field" range="{{treatments}}" value="{{a.interestIndex}}" data-index="{{i}}" data-field="interestIndex" bindchange="editAllocation" disabled="{{saving}}"><text>利息处理</text><view class="lp-picker"><text class="lp-picker-value">{{treatments[a.interestIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
+        <picker wx:if="{{a.interestIndex === 0}}" class="lp-field" range="{{categories}}" range-key="name" value="{{a.interestCategoryIndex < 0 ? 0 : a.interestCategoryIndex}}" data-index="{{i}}" data-field="interestCategoryIndex" bindchange="editAllocation" disabled="{{saving}}"><text>利息支出分类</text><view class="lp-picker"><text class="lp-picker-value">{{a.interestCategoryIndex >= 0 ? categories[a.interestCategoryIndex].name : '非零利息需选择'}}</text><chevron-icon size="{{24}}" /></view></picker>
+        <label class="lp-field"><text>费用（元）</text><input class="lp-input money-number" type="digit" maxlength="22" value="{{a.feeYuan}}" data-index="{{i}}" data-field="feeYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="明确没有请填 0" /></label>
+        <picker class="lp-field" range="{{treatments}}" value="{{a.feeIndex}}" data-index="{{i}}" data-field="feeIndex" bindchange="editAllocation" disabled="{{saving}}"><text>费用处理</text><view class="lp-picker"><text class="lp-picker-value">{{treatments[a.feeIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
+        <picker wx:if="{{a.feeIndex === 0}}" class="lp-field" range="{{categories}}" range-key="name" value="{{a.feeCategoryIndex < 0 ? 0 : a.feeCategoryIndex}}" data-index="{{i}}" data-field="feeCategoryIndex" bindchange="editAllocation" disabled="{{saving}}"><text>费用支出分类</text><view class="lp-picker"><text class="lp-picker-value">{{a.feeCategoryIndex >= 0 ? categories[a.feeCategoryIndex].name : '非零费用需选择'}}</text><chevron-icon size="{{24}}" /></view></picker>
       </block>
     </view>
-    <button class="detail-link" bindtap="moreLoans" disabled="{{saving || loading}}">分配给另一笔贷款</button>
-    <view wx:if="{{choices.length}}" class="loan-choices"><button wx:for="{{choices}}" wx:key="loanId" class="detail-link" data-id="{{item.loanId}}" bindtap="addLoan" disabled="{{saving}}">{{item.name}} · {{item.accountName}}</button><button wx:if="{{nextLoanCursor}}" class="secondary-button" data-next="true" bindtap="moreLoans" disabled="{{saving || loading}}">下一页贷款</button></view>
-    <view class="payment-review"><text class="section-title">核对本次影响</text><text class="form-note">{{reviewText}}</text><text class="form-note">{{replacePayment ? '消除已选的重复付款，保留一次实际扣款。' : editingPayment || modeIndex === 2 ? '整组替换已有账目，调整本金与费用构成，资金账户不再次扣款。' : modeIndex === 1 ? '账目构成必须与分配一致，只建立贷款关联，不新增付款或支出。' : kindIndex === 1 ? '资产和贷款本金增加，不计收入。' : '付款账户扣除总额，本金分项冲减贷款；尚未入账的利息与费用计为支出，已计负债的分项只清偿。'}}</text></view>
-    <checkbox-group bindchange="confirm"><label class="confirm-label"><checkbox value="confirmed" checked="{{confirmed}}" disabled="{{saving}}" />我已核对总额、各笔贷款的本息费及入账情况</label></checkbox-group>
-    <button class="primary-button" disabled="{{saving || loading || hasPending || (sourceLocked && !editingPayment && !source)}}" loading="{{saving}}" bindtap="save">{{editingPayment || replacePayment || modeIndex === 2 ? '确认整组更正' : modeIndex === 1 ? '确认关联已有账目' : kindIndex === 1 ? '确认登记实际放款' : '确认登记实际还款'}}</button>
+    <button class="lp-link" bindtap="moreLoans" disabled="{{saving || loading}}">分配给另一笔贷款</button>
+    <view wx:if="{{choices.length}}" class="lp-choices"><button wx:for="{{choices}}" wx:key="loanId" class="lp-choice" data-id="{{item.loanId}}" bindtap="addLoan" disabled="{{saving}}">{{item.name}} · {{item.accountName}}</button><button wx:if="{{nextLoanCursor}}" class="secondary-button lp-action" data-next="true" bindtap="moreLoans" disabled="{{saving || loading}}">下一页贷款</button></view>
+    <view class="lp-review"><text class="lp-section-title">核对本次影响</text><text class="lp-note">{{reviewText}}</text><text class="lp-note">{{replacePayment ? '消除已选的重复付款，保留一次实际扣款。' : editingPayment || modeIndex === 2 ? '整组替换已有账目，调整本金与费用构成，资金账户不再次扣款。' : modeIndex === 1 ? '账目构成必须与分配一致，只建立贷款关联，不新增付款或支出。' : kindIndex === 1 ? '资产和贷款本金增加，不计收入。' : '付款账户扣除总额，本金分项冲减贷款；尚未入账的利息与费用计为支出，已计负债的分项只清偿。'}}</text></view>
+    <checkbox-group bindchange="confirm"><label class="lp-confirm"><checkbox value="confirmed" checked="{{confirmed}}" disabled="{{saving}}" />我已核对总额、各笔贷款的本息费及入账情况</label></checkbox-group>
+    <button class="primary-button lp-action" disabled="{{saving || loading || hasPending || (sourceLocked && !editingPayment && !source)}}" loading="{{saving}}" bindtap="save">{{editingPayment || replacePayment || modeIndex === 2 ? '确认整组更正' : modeIndex === 1 ? '确认关联已有账目' : kindIndex === 1 ? '确认登记实际放款' : '确认登记实际还款'}}</button>
   </view>
   <login-sheet id="page-login-sheet" />
 </view>
