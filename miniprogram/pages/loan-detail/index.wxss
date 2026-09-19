@@ -1,5 +1,9 @@
 .loan-detail { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.ld-heading { display: block; box-sizing: border-box; padding-left: var(--layout-content-inset, 20rpx); padding-right: var(--layout-content-inset, 20rpx); }
+.ld-head { padding: 12rpx var(--layout-content-inset, 20rpx) 8rpx; }
+.ld-badge { display: inline-flex; align-items: center; gap: 10rpx; padding: 8rpx 18rpx; border-radius: 999rpx; background: var(--theme-accent-soft); color: var(--theme-accent-strong); font-size: var(--font-caption); font-weight: 500; }
+.ld-badge-dot { width: 10rpx; height: 10rpx; border-radius: 50%; background: var(--theme-accent); }
+.ld-head-title { display: block; margin-top: 20rpx; font-size: var(--font-title); font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.ld-head-copy { display: block; margin-top: 12rpx; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.7; }
 .ld-note-card { display: block; margin: 24rpx 0; padding: 24rpx; background: var(--theme-surface-muted); border-radius: var(--layout-radius-medium); }
 .ld-note { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.7; }
 .ld-note + .ld-note { margin-top: 12rpx; }
@@ -19,9 +23,10 @@
 .ld-card-title { display: block; margin-top: 4rpx; font-size: var(--font-section); font-weight: 600; }
 .ld-card-note { flex-shrink: 0; color: var(--theme-text-subtle, #79716a); font-size: var(--font-caption); }
 .ld-grid { display: flex; gap: 16rpx; margin-top: 20rpx; }
-.ld-cell { display: block; flex: 1; min-width: 0; box-sizing: border-box; padding: 18rpx 20rpx; background: var(--theme-surface-muted); border-radius: var(--layout-radius-medium); }
+.ld-cell { display: block; flex: 1; min-width: 0; box-sizing: border-box; min-height: 112rpx; padding: 20rpx 24rpx 24rpx; background: var(--theme-surface-muted); border-radius: var(--layout-radius-medium); }
 .ld-cell-full { margin-top: 20rpx; }
 .ld-cell-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12rpx; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.5; }
+.ld-cell-label text:first-child { white-space: nowrap; }
 .ld-cell-label text:last-child { flex-shrink: 0; color: var(--theme-text-subtle, #79716a); }
 .ld-cell-input { display: block; width: 100%; min-height: 52rpx; margin-top: 6rpx; padding: 0; font-size: var(--font-body); font-weight: 500; }
 .ld-cell-amount { display: flex; align-items: center; gap: 8rpx; margin-top: 6rpx; }

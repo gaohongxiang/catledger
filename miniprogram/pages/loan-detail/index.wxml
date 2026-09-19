@@ -1,5 +1,9 @@
 <view class="page-canvas loan-detail {{themeClass}}" style="{{themeStyle}}">
-  <section-header class="ld-heading" eyebrow="贷款资料" title="{{loan ? loan.name : '新增贷款'}}" />
+  <view class="ld-head">
+    <view class="ld-badge"><view class="ld-badge-dot"></view><text>贷款资料</text></view>
+    <text class="ld-head-title serif-title">{{loan ? loan.name : '新增贷款'}}</text>
+    <text class="ld-head-copy">只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。</text>
+  </view>
   <view wx:if="{{sourceTransactionId}}" class="ld-note-card">
     <text class="ld-note">已保留原还款。这里只创建或补充贷款资料，保存后继续关联，不会重新登记付款。</text>
     <text wx:if="{{sourceContext}}" class="ld-note">还款发生于 {{sourceContext.occurredText}}；关联前须确认该日初或更早的本金基准，不是本次扣款金额。</text>
@@ -38,7 +42,6 @@
         <view><text class="ld-card-kicker">LOAN</text><text class="ld-card-title">基本信息</text></view>
         <text class="ld-card-note">填写并保存</text>
       </view>
-      <view class="ld-note-card ld-note-in"><text class="ld-note">只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。</text></view>
       <view class="ld-block">
         <view class="ld-block-label"><text>贷款类型</text></view>
         <view class="ld-segment">
@@ -55,10 +58,10 @@
       <view class="ld-grid">
         <label class="ld-cell">
           <view class="ld-cell-label"><text>已确认本金</text><text>不清楚可留空</text></view>
-          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="0.00" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
+          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
         </label>
         <picker class="ld-cell" mode="date" value="{{baselineDate}}" data-field="baselineDate" bindchange="input">
-          <view class="ld-cell-label"><text>本金基准日期</text><text>日初，有本金必填</text></view>
+          <view class="ld-cell-label"><text>本金基准（日初）</text><text>有本金必填</text></view>
           <view class="ld-cell-value"><text class="{{baselineDate ? '' : 'ld-placeholder'}}">{{baselineDate || '选择日期'}}</text><chevron-icon size="{{22}}" /></view>
         </picker>
       </view>
@@ -113,21 +116,21 @@
         </view>
         <label class="ld-cell ld-cell-full">
           <view class="ld-cell-label"><text>{{scheduleQuotes[schedule.quoteIndex].label}}（%）</text><text>例如 12.5 表示 12.5%</text></view>
-          <input class="ld-cell-input money-number" type="digit" value="{{schedule.ratePercent}}" data-field="ratePercent" bindinput="scheduleInput" maxlength="12" placeholder="0.00" placeholder-class="ld-placeholder" />
+          <input class="ld-cell-input money-number" type="digit" value="{{schedule.ratePercent}}" data-field="ratePercent" bindinput="scheduleInput" maxlength="12" placeholder="" placeholder-class="ld-placeholder" />
         </label>
       </block>
       <label wx:else class="ld-cell ld-cell-full">
         <view class="ld-cell-label"><text>{{schedule.measurementIndex === 1 && schedule.methodIndex === 3 ? '每期利息' : schedule.methodIndex === 2 ? '首期应还' : '每期应还'}}</text><text>按合同或账单填写</text></view>
-        <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.repaymentYuan}}" data-field="repaymentYuan" bindinput="scheduleInput" maxlength="22" placeholder="0.00" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
+        <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.repaymentYuan}}" data-field="repaymentYuan" bindinput="scheduleInput" maxlength="22" placeholder="" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
       </label>
       <view class="ld-grid">
         <label class="ld-cell">
           <view class="ld-cell-label"><text>每期费用</text><text>选填</text></view>
-          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.feePerTermYuan}}" data-field="feePerTermYuan" bindinput="scheduleInput" maxlength="22" placeholder="0.00" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
+          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.feePerTermYuan}}" data-field="feePerTermYuan" bindinput="scheduleInput" maxlength="22" placeholder="" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
         </label>
         <label class="ld-cell">
           <view class="ld-cell-label"><text>一次性费用</text><text>选填</text></view>
-          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.feeUpfrontYuan}}" data-field="feeUpfrontYuan" bindinput="scheduleInput" maxlength="22" placeholder="0.00" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
+          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.feeUpfrontYuan}}" data-field="feeUpfrontYuan" bindinput="scheduleInput" maxlength="22" placeholder="" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
         </label>
       </view>
     </block>
