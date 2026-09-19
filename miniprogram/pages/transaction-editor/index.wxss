@@ -185,7 +185,7 @@
 .readonly-category { align-items: center; }
 .readonly-category-value { display: flex; align-items: center; gap: 18rpx; color: var(--theme-accent-strong); }
 
-.loan-context { margin-top: 32rpx; padding-top: 28rpx; padding-bottom: 24rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-small); }
+.loan-context { margin-top: 32rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large, 24rpx); }
 .loan-context-title, .loan-context-name, .loan-context-note { display: block; overflow-wrap: anywhere; }
 .loan-context-title { font-size: var(--font-section, 32rpx); font-weight: 500; }
 .loan-context-name { font-size: var(--font-body, 28rpx); }

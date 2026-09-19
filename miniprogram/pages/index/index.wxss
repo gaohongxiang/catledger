@@ -17,8 +17,6 @@
   --home-muted: #70685f;
   --home-line: #eae4dc;
   --home-hero-image: linear-gradient(112deg, var(--theme-hero-start, #be5b24), var(--theme-hero-end, #be5b24));
-  --home-hero-ink: #291e16;
-  --home-hero-value: #ffffff;
   --home-shadow: 0 4rpx 16rpx rgba(61, 44, 28, .035);
 }
 
@@ -55,7 +53,7 @@
   box-sizing: border-box;
   min-height: 224rpx;
   padding: 30rpx 32rpx;
-  color: var(--home-hero-ink, var(--theme-hero-ink, #29231e));
+  color: var(--theme-hero-ink, #29231e);
   background-color: var(--theme-hero-start, #be5b24);
   background-image: var(--home-hero-image, none);
   border: 1rpx solid rgba(0, 0, 0, .035);
@@ -64,7 +62,7 @@
 }
 .net-worth-label {
   display: block;
-  color: var(--home-hero-ink, var(--theme-hero-muted, #392718));
+  color: var(--theme-hero-muted, #392718);
   font-size: var(--font-caption, 24rpx);
   font-weight: 400;
   line-height: 1.4;
@@ -72,7 +70,7 @@
 .net-worth-number {
   display: block;
   margin-top: 14rpx;
-  color: var(--home-hero-value, var(--theme-hero-value-ink, #633921));
+  color: var(--theme-hero-value-ink, #633921);
   font-size: var(--font-display, 56rpx);
   font-weight: 500;
   line-height: 1.22;
@@ -84,7 +82,7 @@
 .net-worth-note {
   display: block;
   margin-top: 14rpx;
-  color: var(--home-hero-ink, var(--theme-hero-muted, #392718));
+  color: var(--theme-hero-muted, #392718);
   font-size: var(--font-caption, 24rpx);
   font-weight: 400;
   line-height: 1.4;
@@ -433,7 +431,7 @@
 }
 
 .net-worth-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
-.net-worth-month { flex-shrink: 0; color: var(--home-hero-ink, var(--theme-hero-ink, #392718)); font-size: var(--font-caption, 24rpx); font-weight: 400; line-height: 1.4; }
+.net-worth-month { flex-shrink: 0; color: var(--theme-hero-muted, #392718); font-size: var(--font-caption, 24rpx); font-weight: 400; line-height: 1.4; }
 
 .home-login-label {
   display: flex;

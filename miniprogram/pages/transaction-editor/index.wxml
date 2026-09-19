@@ -92,7 +92,7 @@
   </block>
   <ui-state wx:if="{{transactionId && loanContextLoading}}" description="正在核对贷款与分期关联…" />
   <view wx:if="{{transactionId && loanContextError}}" class="catalog-retry content-inset"><text class="catalog-retry-message">{{loanContextError}}</text><button class="catalog-retry-button" bindtap="loadLoanContext" disabled="{{loanContextLoading}}">重试关联信息</button></view>
-  <view wx:if="{{loanContext && loanContext.state !== 'none'}}" class="loan-context content-inset">
+  <view wx:if="{{loanContext && loanContext.state !== 'none'}}" class="loan-context">
     <text class="loan-context-title">{{loanContext.businessText}}</text>
     <block wx:if="{{loanContext.state === 'candidate'}}">
       <text class="loan-context-note">分期、本金、利息、费用及期次尚待确认。这里只识别到还款方向，不会自动把整笔金额当本金。</text>

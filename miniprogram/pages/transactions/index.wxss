@@ -48,27 +48,25 @@
 }
 
 .summary-strip {
-  align-items: stretch;
-  margin-top: 8rpx;
-  padding: 0;
+  position: relative;
+  align-items: baseline;
+  margin-top: 2rpx;
+  padding: 0 var(--layout-content-inset, 20rpx);
   border-top: 0;
   border-bottom: 0;
   background: transparent;
-  border-radius: var(--theme-radius-medium, 18rpx);
   border: 0;
-  gap: 12rpx;
+  gap: 28rpx;
+  flex-wrap: wrap;
 }
 .summary-cell {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
-  align-items: center;
-  flex-direction: column;
+  align-items: baseline;
   box-sizing: border-box;
-  padding: 22rpx 12rpx;
-  background: var(--theme-surface);
-  border: 1rpx solid var(--theme-line);
-  border-radius: var(--theme-radius-medium, 18rpx);
+  gap: 8rpx;
+  padding: 0;
 }
 .summary-divider {
   width: 2rpx;
@@ -78,9 +76,9 @@
 }
 .summary-label { color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
 .summary-value {
-  margin-top: 4rpx;
+  margin-top: 0;
   overflow: visible;
-  font-size: var(--font-body, 28rpx);
+  font-size: var(--font-caption, 24rpx);
   font-weight: 500;
   text-overflow: clip;
   white-space: normal;
@@ -91,6 +89,21 @@
 .summary-expense { color: var(--theme-expense, #b54738); }
 
 .filter-toolbar { align-items: center; gap: 12rpx; margin-top: 16rpx; }
+.filter-search-toggle {
+  display: flex;
+  width: 88rpx;
+  height: 88rpx;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--theme-text-muted);
+  background: var(--theme-surface);
+  border: 1rpx solid var(--theme-line);
+  border-radius: var(--theme-radius-medium, 18rpx);
+}
+.filter-search-toggle:active { opacity: .55; }
+.filter-search-toggle-active { color: var(--theme-accent-strong); border-color: var(--theme-accent); }
+.filter-search-toggle image { width: 32rpx; height: 32rpx; }
 .filter-picker {
   min-width: 0;
   flex: 1;
@@ -213,8 +226,8 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 20rpx;
-  margin-bottom: 10rpx;
-  padding: 20rpx 24rpx;
+  margin-bottom: 6rpx;
+  padding: 0;
 }
 
 .summary-strip-stacked .summary-value { min-width: 0; text-align: right; margin-top: 0; }

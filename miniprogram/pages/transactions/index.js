@@ -25,6 +25,7 @@ Page(Object.assign({
     catalogError: '',
     search: '',
     appliedSearch: '',
+    searchOpen: false,
     incomeText: '¥0.00',
     expenseText: '¥0.00',
     netText: '¥0.00',
@@ -49,7 +50,7 @@ Page(Object.assign({
     const incoming = app.globalData.transactionsImportFilter
     app.globalData.transactionsImportFilter = null
     if (incoming && incoming.session === readCache.getSession() && app.hasLoginApproval()) {
-      this.setData({ importFilter: incoming, accountFilterIndex: 0, categoryFilterIndex: 0, sourceFilterIndex: 0, search: '', appliedSearch: '', selectedDate: '', selectedDateLabel: '', transactions: [], nextCursor: null, hasLoaded: false })
+      this.setData({ importFilter: incoming, accountFilterIndex: 0, categoryFilterIndex: 0, sourceFilterIndex: 0, search: '', appliedSearch: '', searchOpen: false, selectedDate: '', selectedDateLabel: '', transactions: [], nextCursor: null, hasLoaded: false })
     }
     this.resetSelection()
     this.setData({ selectionMode: false, deleteRetryCount: 0 })
@@ -266,6 +267,11 @@ Page(Object.assign({
   bindSearch: function (event) {
     if (this.data.deleting || this.data.selectingAll) return
     this.setData({ search: event.detail.value })
+  },
+
+  toggleSearch: function () {
+    if (this.data.deleting || this.data.selectingAll) return
+    this.setData({ searchOpen: !this.data.searchOpen })
   },
 
   applySearch: function () {

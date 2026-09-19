@@ -35,6 +35,7 @@
   </view>
 
   <view class="filter-toolbar">
+    <view class="filter-search-toggle {{searchOpen || search ? 'filter-search-toggle-active' : ''}}" role="button" aria-label="{{searchOpen ? '收起搜索' : '搜索备注'}}" bindtap="toggleSearch"><image src="/assets/icons/search.svg" mode="aspectFit" /></view>
     <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter">
       <view class="filter-content"><text class="filter-label">{{accountFilters[accountFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
     </picker>
@@ -46,7 +47,7 @@
     </picker>
   </view>
 
-  <view class="search-field">
+  <view wx:if="{{searchOpen || search}}" class="search-field">
     <view class="search-submit" role="button" aria-label="搜索备注" bindtap="applySearch"><image class="search-icon-img" src="/assets/icons/search.svg" mode="aspectFit" /></view>
     <input class="search-input" value="{{search}}" placeholder="搜索备注" maxlength="40" confirm-type="search" aria-label="搜索账目备注" cursor-spacing="32" bindinput="bindSearch" bindconfirm="applySearch" />
     <view wx:if="{{search}}" class="search-clear" role="button" aria-label="清空搜索" bindtap="clearSearch"><image class="clear-icon-img" src="/assets/icons/close.svg" mode="aspectFit" /></view>

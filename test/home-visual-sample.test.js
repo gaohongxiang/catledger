@@ -119,6 +119,15 @@ test('系统减少动态效果时刷新不旋转，但状态仍可见', () => {
 })
 
 
+test('净值卡文字颜色全部走主题 hero 令牌，不再保留页面级覆盖', () => {
+  assert.doesNotMatch(style, /--home-hero-ink|--home-hero-value/)
+  assert.match(rule('.net-worth-card'), /color:\s*var\(--theme-hero-ink/)
+  assert.match(rule('.net-worth-number'), /color:\s*var\(--theme-hero-value-ink/)
+  assert.match(rule('.net-worth-label'), /color:\s*var\(--theme-hero-muted/)
+  assert.match(rule('.net-worth-note'), /color:\s*var\(--theme-hero-muted/)
+  assert.match(rule('.net-worth-month'), /color:\s*var\(--theme-hero-muted/)
+})
+
 test('月度长金额改为纵向摘要，保持原始金额字符串和负号', () => {
   assert.match(markup, /incomeText\.length > 12 \|\| expenseText\.length > 12 \|\| netIncomeText\.length > 12/)
   assert.match(markup, /month-strip-stacked/)
