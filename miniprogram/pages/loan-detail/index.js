@@ -84,11 +84,11 @@ Page({
   cancelEdit() { if (this.data.saving) return; if (this._loanId) this.setData({ formOpen: false }); else wx.navigateBack() },
   input(event) { const field = event.currentTarget.dataset.field; if (['name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod'].includes(field)) this.setData({ [field]: event.detail.value }) },
   scheduleInput(event) { const field = event.currentTarget.dataset.field; if (['terms','ratePercent','repaymentYuan','feePerTermYuan','feeUpfrontYuan','firstPaymentDate'].includes(field)) this.setData({ ['schedule.' + field]: event.detail.value }) },
-  selectScheduleMethod(event) { this.setData({ schedule: scheduleForm.selectMethod(this.data.schedule, event.detail.value) }) },
-  selectScheduleMeasurement(event) { this.setData({ 'schedule.measurementIndex': Number(event.detail.value) }) },
-  selectScheduleQuote(event) { this.setData({ schedule: scheduleForm.selectQuote(this.data.schedule, event.detail.value) }) },
+  selectScheduleMethod(event) { this.setData({ schedule: scheduleForm.selectMethod(this.data.schedule, event.currentTarget.dataset.index) }) },
+  selectScheduleMeasurement(event) { this.setData({ 'schedule.measurementIndex': Number(event.currentTarget.dataset.index) }) },
+  selectScheduleQuote(event) { this.setData({ schedule: scheduleForm.selectQuote(this.data.schedule, event.currentTarget.dataset.index) }) },
   selectAccount(event) { this.setData({ accountIndex: Number(event.detail.value) }) },
-  selectKind(event) { this.setData({ kindIndex: Number(event.detail.value) }) },
+  selectKind(event) { this.setData({ kindIndex: Number(event.currentTarget.dataset.index) }) },
   openAccounts() { wx.navigateTo({ url: '/pages/accounts/index' }) },
   showSaved(outcome) {
     this.setData({ hasPending: false, savedMessage: (outcome.recovered ? '上次操作已确认成功' : '贷款资料已保存') + (this._savedWithSchedule ? '；可到「还款计划与对账」按参数生成期次' : '') })

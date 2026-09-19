@@ -33,33 +33,114 @@
     <button wx:if="{{historyNext}}" class="secondary-button ld-action" data-next="true" bindtap="loadHistory" disabled="{{historyLoading}}">下一页记录</button>
   </view>
   <view wx:if="{{formOpen}}" class="ld-form">
-    <view class="ld-note-card"><text class="ld-note">只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。</text></view>
-    <label class="ld-field"><text>贷款名称</text><input class="ld-input" value="{{name}}" data-field="name" bindinput="input" maxlength="80" placeholder="例如：住房贷款" /></label>
-    <label class="ld-field"><text>机构（选填）</text><input class="ld-input" value="{{institution}}" data-field="institution" bindinput="input" maxlength="80" placeholder="无需填写合同号" /></label>
-    <picker class="ld-field" range="{{kinds}}" value="{{kindIndex}}" bindchange="selectKind"><text>贷款类型</text><view class="ld-picker"><text class="ld-picker-value">{{kinds[kindIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
-    <picker wx:if="{{accounts.length}}" class="ld-field" range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="selectAccount"><text>关联负债账户</text><view class="ld-picker"><text class="ld-picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择负债账户'}}</text><chevron-icon size="{{24}}" /></view></picker>
-    <button wx:else class="secondary-button ld-action" bindtap="openAccounts">先创建或启用负债账户</button>
-    <label class="ld-field"><text>已确认本金（元）</text><input class="ld-input money-number" type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="不清楚可留空" /></label>
-    <picker class="ld-field" mode="date" value="{{baselineDate}}" data-field="baselineDate" bindchange="input"><text>本金基准日期（日初）</text><view class="ld-picker"><text class="ld-picker-value">{{baselineDate || '有本金时必填'}}</text><chevron-icon size="{{24}}" /></view></picker>
-    <picker class="ld-field" mode="date" value="{{startDate}}" data-field="startDate" bindchange="input"><text>开始日期（选填）</text><view class="ld-picker"><text class="ld-picker-value">{{startDate || '未填写'}}</text><chevron-icon size="{{24}}" /></view></picker>
-    <button wx:if="{{startDate}}" class="ld-link" data-field="startDate" bindtap="clearDate">清除开始日期</button>
-    <picker class="ld-field" mode="date" value="{{endDate}}" data-field="endDate" bindchange="input"><text>结束日期（选填）</text><view class="ld-picker"><text class="ld-picker-value">{{endDate || '未填写'}}</text><chevron-icon size="{{24}}" /></view></picker>
-    <button wx:if="{{endDate}}" class="ld-link" data-field="endDate" bindtap="clearDate">清除结束日期</button>
-    <label class="ld-field"><text>还款方式（选填）</text><input class="ld-input" value="{{repaymentMethod}}" data-field="repaymentMethod" bindinput="input" maxlength="80" placeholder="以已确认约定为准" /></label>
-    <view class="ld-schedule">
-      <text class="ld-section-title">分期参数（选填）</text>
-      <view class="ld-note-card"><text class="ld-note">整区留空则只登记贷款资料。填写后保存，可到「还款计划与对账」按参数试算并生成期次；生成前不产生任何账目。</text></view>
-      <label class="ld-field"><text>分期期数</text><input class="ld-input money-number" type="number" value="{{schedule.terms}}" data-field="terms" bindinput="scheduleInput" maxlength="3" placeholder="1 到 600 的整数" /></label>
-      <picker class="ld-field" range="{{scheduleMethods}}" range-key="label" value="{{schedule.methodIndex}}" bindchange="selectScheduleMethod"><text>还款方式</text><view class="ld-picker"><text class="ld-picker-value">{{scheduleMethods[schedule.methodIndex].label}}</text><chevron-icon size="{{24}}" /></view></picker>
-      <picker class="ld-field" range="{{scheduleMeasurements}}" range-key="label" value="{{schedule.measurementIndex}}" bindchange="selectScheduleMeasurement"><text>测算依据</text><view class="ld-picker"><text class="ld-picker-value">{{scheduleMeasurements[schedule.measurementIndex].label}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <view class="ld-form-card">
+      <view class="ld-card-head">
+        <view><text class="ld-card-kicker">LOAN</text><text class="ld-card-title">基本信息</text></view>
+        <text class="ld-card-note">填写并保存</text>
+      </view>
+      <view class="ld-note-card ld-note-in"><text class="ld-note">只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。</text></view>
+      <view class="ld-grid">
+        <label class="ld-cell">
+          <view class="ld-cell-label"><text>贷款名称</text><text>方便区分</text></view>
+          <input class="ld-cell-input" value="{{name}}" data-field="name" bindinput="input" maxlength="80" placeholder="例如：住房贷款" placeholder-class="ld-placeholder" />
+        </label>
+        <label class="ld-cell">
+          <view class="ld-cell-label"><text>机构</text><text>选填</text></view>
+          <input class="ld-cell-input" value="{{institution}}" data-field="institution" bindinput="input" maxlength="80" placeholder="无需合同号" placeholder-class="ld-placeholder" />
+        </label>
+      </view>
+      <view class="ld-block">
+        <view class="ld-block-label"><text>贷款类型</text></view>
+        <view class="ld-segment">
+          <view wx:for="{{kinds}}" wx:key="*this" class="ld-segment-option {{kindIndex === index ? 'ld-segment-on' : ''}}" data-index="{{index}}" bindtap="selectKind">{{item}}</view>
+        </view>
+      </view>
+      <view wx:if="{{accounts.length}}" class="ld-block">
+        <view class="ld-block-label"><text>关联负债账户</text><text>必选</text></view>
+        <picker range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="selectAccount">
+          <view class="ld-picker"><text class="ld-picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择负债账户'}}</text><chevron-icon size="{{24}}" /></view>
+        </picker>
+      </view>
+      <button wx:else class="secondary-button ld-action" bindtap="openAccounts">先创建或启用负债账户</button>
+      <view class="ld-grid">
+        <label class="ld-cell">
+          <view class="ld-cell-label"><text>已确认本金</text><text>不清楚可留空</text></view>
+          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="0.00" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
+        </label>
+        <picker class="ld-cell" mode="date" value="{{baselineDate}}" data-field="baselineDate" bindchange="input">
+          <view class="ld-cell-label"><text>本金基准日期</text><text>日初，有本金必填</text></view>
+          <view class="ld-cell-value"><text class="{{baselineDate ? '' : 'ld-placeholder'}}">{{baselineDate || '选择日期'}}</text><chevron-icon size="{{22}}" /></view>
+        </picker>
+      </view>
+      <view class="ld-grid">
+        <picker class="ld-cell" mode="date" value="{{startDate}}" data-field="startDate" bindchange="input">
+          <view class="ld-cell-label"><text>开始日期</text><text wx:if="{{startDate}}" catchtap="clearDate" data-field="startDate">清除</text><text wx:else>选填</text></view>
+          <view class="ld-cell-value"><text class="{{startDate ? '' : 'ld-placeholder'}}">{{startDate || '未填写'}}</text><chevron-icon size="{{22}}" /></view>
+        </picker>
+        <picker class="ld-cell" mode="date" value="{{endDate}}" data-field="endDate" bindchange="input">
+          <view class="ld-cell-label"><text>结束日期</text><text wx:if="{{endDate}}" catchtap="clearDate" data-field="endDate">清除</text><text wx:else>选填</text></view>
+          <view class="ld-cell-value"><text class="{{endDate ? '' : 'ld-placeholder'}}">{{endDate || '未填写'}}</text><chevron-icon size="{{22}}" /></view>
+        </picker>
+      </view>
+      <label class="ld-cell ld-cell-full">
+        <view class="ld-cell-label"><text>还款方式</text><text>选填，以已确认约定为准</text></view>
+        <input class="ld-cell-input" value="{{repaymentMethod}}" data-field="repaymentMethod" bindinput="input" maxlength="80" placeholder="例如：等额本息" placeholder-class="ld-placeholder" />
+      </label>
+    </view>
+    <view class="ld-form-card">
+      <view class="ld-card-head">
+        <view><text class="ld-card-kicker">SCHEDULE</text><text class="ld-card-title">分期参数</text></view>
+        <text class="ld-card-note">选填</text>
+      </view>
+      <view class="ld-note-card ld-note-in"><text class="ld-note">整区留空则只登记贷款资料。填写后保存，可到「还款计划与对账」按参数试算并生成期次；生成前不产生任何账目。</text></view>
+      <view class="ld-grid">
+        <label class="ld-cell">
+          <view class="ld-cell-label"><text>分期期数</text><text>1–600</text></view>
+          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="number" value="{{schedule.terms}}" data-field="terms" bindinput="scheduleInput" maxlength="3" placeholder="期数" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">期</text></view>
+        </label>
+        <picker class="ld-cell" mode="date" value="{{schedule.firstPaymentDate}}" data-field="firstPaymentDate" bindchange="scheduleInput">
+          <view class="ld-cell-label"><text>首次还款日</text><text>按还款额测算时必选</text></view>
+          <view class="ld-cell-value"><text class="{{schedule.firstPaymentDate ? '' : 'ld-placeholder'}}">{{schedule.firstPaymentDate || '选择日期'}}</text><chevron-icon size="{{22}}" /></view>
+        </picker>
+      </view>
+      <view class="ld-block">
+        <view class="ld-block-label"><text>还款方式</text></view>
+        <view class="ld-segment">
+          <view wx:for="{{scheduleMethods}}" wx:key="value" class="ld-segment-option {{schedule.methodIndex === index ? 'ld-segment-on' : ''}}" data-index="{{index}}" bindtap="selectScheduleMethod">{{item.label}}</view>
+        </view>
+      </view>
+      <view class="ld-block">
+        <view class="ld-block-label"><text>测算依据</text></view>
+        <view class="ld-segment">
+          <view wx:for="{{scheduleMeasurements}}" wx:key="value" class="ld-segment-option {{schedule.measurementIndex === index ? 'ld-segment-on' : ''}}" data-index="{{index}}" bindtap="selectScheduleMeasurement">{{item.label}}</view>
+        </view>
+      </view>
       <block wx:if="{{schedule.measurementIndex === 0}}">
-        <picker class="ld-field" range="{{scheduleQuotes}}" range-key="label" value="{{schedule.quoteIndex}}" bindchange="selectScheduleQuote"><text>利率口径</text><view class="ld-picker"><text class="ld-picker-value">{{scheduleQuotes[schedule.quoteIndex].label}}</text><chevron-icon size="{{24}}" /></view></picker>
-        <label class="ld-field"><text>{{scheduleQuotes[schedule.quoteIndex].label}}（%）</text><input class="ld-input money-number" type="digit" value="{{schedule.ratePercent}}" data-field="ratePercent" bindinput="scheduleInput" maxlength="12" placeholder="例如 12.5 表示 12.5%" /></label>
+        <view class="ld-block">
+          <view class="ld-block-label"><text>利率口径</text></view>
+          <view class="ld-segment">
+            <view wx:for="{{scheduleQuotes}}" wx:key="value" class="ld-segment-option {{schedule.quoteIndex === index ? 'ld-segment-on' : ''}}" data-index="{{index}}" bindtap="selectScheduleQuote">{{item.label}}</view>
+          </view>
+        </view>
+        <label class="ld-cell ld-cell-full">
+          <view class="ld-cell-label"><text>{{scheduleQuotes[schedule.quoteIndex].label}}（%）</text><text>例如 12.5 表示 12.5%</text></view>
+          <input class="ld-cell-input money-number" type="digit" value="{{schedule.ratePercent}}" data-field="ratePercent" bindinput="scheduleInput" maxlength="12" placeholder="0.00" placeholder-class="ld-placeholder" />
+        </label>
       </block>
-      <label wx:else class="ld-field"><text>{{schedule.measurementIndex === 1 && schedule.methodIndex === 3 ? '每期利息（元）' : schedule.methodIndex === 2 ? '首期应还（元）' : '每期应还（元）'}}</text><input class="ld-input money-number" type="digit" value="{{schedule.repaymentYuan}}" data-field="repaymentYuan" bindinput="scheduleInput" maxlength="22" placeholder="按合同或账单填写" /></label>
-      <label class="ld-field"><text>每期费用（元，选填）</text><input class="ld-input money-number" type="digit" value="{{schedule.feePerTermYuan}}" data-field="feePerTermYuan" bindinput="scheduleInput" maxlength="22" placeholder="没有可留空" /></label>
-      <label class="ld-field"><text>一次性费用（元，选填）</text><input class="ld-input money-number" type="digit" value="{{schedule.feeUpfrontYuan}}" data-field="feeUpfrontYuan" bindinput="scheduleInput" maxlength="22" placeholder="没有可留空；只作资料与试算汇总" /></label>
-      <picker class="ld-field" mode="date" value="{{schedule.firstPaymentDate}}" data-field="firstPaymentDate" bindchange="scheduleInput"><text>首次还款日</text><view class="ld-picker"><text class="ld-picker-value">{{schedule.firstPaymentDate || '按还款额测算时必选'}}</text><chevron-icon size="{{24}}" /></view></picker>
+      <label wx:else class="ld-cell ld-cell-full">
+        <view class="ld-cell-label"><text>{{schedule.measurementIndex === 1 && schedule.methodIndex === 3 ? '每期利息' : schedule.methodIndex === 2 ? '首期应还' : '每期应还'}}</text><text>按合同或账单填写</text></view>
+        <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.repaymentYuan}}" data-field="repaymentYuan" bindinput="scheduleInput" maxlength="22" placeholder="0.00" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
+      </label>
+      <view class="ld-grid">
+        <label class="ld-cell">
+          <view class="ld-cell-label"><text>每期费用</text><text>选填</text></view>
+          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.feePerTermYuan}}" data-field="feePerTermYuan" bindinput="scheduleInput" maxlength="22" placeholder="0.00" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
+        </label>
+        <label class="ld-cell">
+          <view class="ld-cell-label"><text>一次性费用</text><text>选填</text></view>
+          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.feeUpfrontYuan}}" data-field="feeUpfrontYuan" bindinput="scheduleInput" maxlength="22" placeholder="0.00" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
+        </label>
+      </view>
     </view>
     <text wx:if="{{hasPending}}" class="ld-note">上次保存结果待核实，再次提交会沿用原请求和原内容。</text>
     <button class="primary-button ld-action" loading="{{saving}}" disabled="{{saving || loading}}" bindtap="save">{{hasPending ? '重试上次保存' : '保存贷款资料'}}</button>
