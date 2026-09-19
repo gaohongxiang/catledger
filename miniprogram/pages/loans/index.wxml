@@ -1,12 +1,15 @@
 <view class="page-canvas loan-page {{themeClass}}" style="{{themeStyle}}">
-  <section-header class="loan-heading" eyebrow="借款与分期" title="贷款管理"><button class="loan-create" bindtap="createLoan">新增贷款</button></section-header>
+  <section-header class="loan-heading" eyebrow="借款与分期" title="贷款"><button class="loan-create" bindtap="createLoan">新增贷款</button></section-header>
   <text class="loan-note content-inset">每笔贷款单独核对本金，账户余额仍以账本为准。</text>
-  <button class="secondary-button" bindtap="openUnassigned">待关联还款 · 从已有账目选择</button>
+  <view class="loan-entry" bindtap="openUnassigned" hover-class="loan-entry-hover" aria-role="button" aria-label="待关联还款，从已有账目选择">
+    <view class="loan-entry-main"><text class="loan-entry-title">待关联还款</text><text class="loan-entry-note">从已有账目选择</text></view>
+    <chevron-icon size="{{24}}" />
+  </view>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}} · 重试" bindtap="firstPage" />
   <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取贷款…" />
   <empty-state wx:if="{{hasLoaded && !items.length}}" title="还没有贷款资料" description="先关联一个负债账户，再填写已确认的本金。新增资料不会重复记一笔借款。" />
   <view class="loan-list">
-    <view wx:for="{{items}}" wx:key="loanId" class="loan-row content-inset" data-id="{{item.loanId}}" bindtap="openLoan" aria-role="button" aria-label="查看{{item.name}}">
+    <view wx:for="{{items}}" wx:key="loanId" class="loan-row" data-id="{{item.loanId}}" bindtap="openLoan" aria-role="button" aria-label="查看{{item.name}}">
       <view class="loan-row-top"><text class="loan-name">{{item.name}}</text><text class="loan-state">{{item.statusText}}</text></view>
       <text class="loan-note">{{item.kindText}} · {{item.accountName}}</text>
       <text class="loan-principal money-number">{{item.principalText}}</text>
@@ -14,7 +17,10 @@
       <text wx:if="{{item.scheduleText}}" class="loan-note">分期参数：{{item.scheduleText}}</text>
     </view>
   </view>
-  <view wx:if="{{canPrevious || nextCursor}}" class="loan-paging"><button class="secondary-button" disabled="{{loading || !canPrevious}}" bindtap="previousPage">上一页</button><button class="secondary-button" disabled="{{loading || !nextCursor}}" bindtap="nextPage">下一页</button></view>
-  <button wx:if="{{canPrevious}}" class="loan-link" disabled="{{loading}}" bindtap="firstPage">回到第一页</button>
+  <view wx:if="{{canPrevious || nextCursor}}" class="loan-paging">
+    <button class="loan-page-button" disabled="{{loading || !canPrevious}}" bindtap="previousPage" aria-label="上一页"><chevron-icon direction="left" size="{{24}}" /><text>上一页</text></button>
+    <button class="loan-page-button" disabled="{{loading || !nextCursor}}" bindtap="nextPage" aria-label="下一页"><text>下一页</text><chevron-icon size="{{24}}" /></button>
+  </view>
+  <button wx:if="{{canPrevious}}" class="loan-first" disabled="{{loading}}" bindtap="firstPage">回到第一页</button>
   <login-sheet id="page-login-sheet" />
 </view>

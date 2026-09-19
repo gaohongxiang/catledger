@@ -10,7 +10,7 @@ Page({
   data: { sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', savedMessage: '', formOpen: false, hasPending: false,
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
     principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
-    schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
+    scheduleOpen: false, schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
   onLoad(query) { this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: !this._loanId, sourceTransactionId: this._sourceTransactionId, kindIndex: !this._loanId && query && query.kind === 'installment' ? 1 : 0 }) },
   onShow() { theme.bindPage(this); return loginGuard.run(this, () => this.load()) },
   onUnload() { pageReadSession.end(this) },
@@ -21,6 +21,7 @@ Page({
     this._load = Promise.all([api.callApi('catalog.get'), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { force: true }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { force: true }) : Promise.resolve(null)])
       .then(async ([catalog, result, sourceContext]) => {
         if (!current()) return
+        if (sourceContext && sourceContext.transaction) sourceContext = Object.assign({}, sourceContext, { occurredText: String(sourceContext.transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' ') })
         getApp().globalData.uid = catalog.uid
         const accounts = catalog.accounts.filter(a => ['credit','other_liability'].includes(a.type) && !a.archived)
         const selected = this.data.accounts[this.data.accountIndex]
@@ -73,21 +74,22 @@ Page({
     this.setData({ historyLoading: true, historyError: '' })
     try {
       const result = await api.callApi('loans.payments', { loanId: this._loanId, pageSize: 20, cursor }, { force: true })
-      if (current()) this.setData({ history: result.items.map(p => Object.assign({}, p, { totalText: money.formatMinor(p.totalMinor), kindText: p.kind === 'drawdown' ? '放款' : '还款' })), historyNext: result.nextCursor, historyLoaded: true })
+      if (current()) this.setData({ history: result.items.map(p => Object.assign({}, p, { totalText: money.formatMinor(p.totalMinor), kindText: p.kind === 'drawdown' ? '放款' : '还款', occurredText: String(p.occurredLocalAt || '').slice(5, 16).replace('T', ' ') })), historyNext: result.nextCursor, historyLoaded: true })
     } catch (error) { if (current()) this.setData({ historyError: error.message }) }
     finally { if (current()) this.setData({ historyLoading: false }) }
   },
   clearDate(event) { const field = event.currentTarget.dataset.field; if (['startDate','endDate'].includes(field)) this.setData({ [field]: '' }) },
-  fillForm(loan) { this.setData(Object.assign(form(loan), { accountIndex: this.data.accounts.findIndex(a => a.accountId === loan.accountId), schedule: scheduleForm.fromLoan(loan) })) },
+  fillForm(loan) { const schedule = scheduleForm.fromLoan(loan); this.setData(Object.assign(form(loan), { accountIndex: this.data.accounts.findIndex(a => a.accountId === loan.accountId), schedule, scheduleOpen: scheduleForm.touched(schedule) })) },
   edit() { if (!this.data.loan || this.data.saving) return; this.fillForm(this.data.loan); this.setData({ formOpen: true, savedMessage: '' }) },
   cancelEdit() { if (this.data.saving) return; if (this._loanId) this.setData({ formOpen: false }); else wx.navigateBack() },
   input(event) { const field = event.currentTarget.dataset.field; if (['name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod'].includes(field)) this.setData({ [field]: event.detail.value }) },
   scheduleInput(event) { const field = event.currentTarget.dataset.field; if (['terms','ratePercent','repaymentYuan','feePerTermYuan','feeUpfrontYuan','firstPaymentDate'].includes(field)) this.setData({ ['schedule.' + field]: event.detail.value }) },
-  selectScheduleMethod(event) { this.setData({ schedule: scheduleForm.selectMethod(this.data.schedule, event.detail.value) }) },
-  selectScheduleMeasurement(event) { this.setData({ 'schedule.measurementIndex': Number(event.detail.value) }) },
-  selectScheduleQuote(event) { this.setData({ schedule: scheduleForm.selectQuote(this.data.schedule, event.detail.value) }) },
+  selectScheduleMethod(event) { this.setData({ schedule: scheduleForm.selectMethod(this.data.schedule, event.currentTarget.dataset.index) }) },
+  selectScheduleMeasurement(event) { this.setData({ 'schedule.measurementIndex': Number(event.currentTarget.dataset.index) }) },
+  selectScheduleQuote(event) { this.setData({ schedule: scheduleForm.selectQuote(this.data.schedule, event.currentTarget.dataset.index) }) },
   selectAccount(event) { this.setData({ accountIndex: Number(event.detail.value) }) },
-  selectKind(event) { this.setData({ kindIndex: Number(event.detail.value) }) },
+  selectKind(event) { this.setData({ kindIndex: Number(event.currentTarget.dataset.index) }) },
+  toggleSchedule() { this.setData({ scheduleOpen: !this.data.scheduleOpen }) },
   openAccounts() { wx.navigateTo({ url: '/pages/accounts/index' }) },
   showSaved(outcome) {
     this.setData({ hasPending: false, savedMessage: (outcome.recovered ? '上次操作已确认成功' : '贷款资料已保存') + (this._savedWithSchedule ? '；可到「还款计划与对账」按参数生成期次' : '') })

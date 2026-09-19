@@ -133,5 +133,5 @@ function selectMethod(state, index) {
 
 module.exports = {
   METHOD_OPTIONS, QUOTE_OPTIONS, MEASUREMENT_OPTIONS, METHOD_LABELS, MAX_TERMS,
-  blank, fromLoan, payload, selectQuote, selectMethod, percentToPpm, ppmToPercent, repaymentLabel
+  blank, fromLoan, payload, selectQuote, selectMethod, percentToPpm, ppmToPercent, repaymentLabel, touched
 }
