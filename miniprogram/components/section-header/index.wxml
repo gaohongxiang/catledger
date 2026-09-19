@@ -1,0 +1,10 @@
+<view class="sh {{compact ? 'sh-compact' : 'sh-editorial'}}">
+  <view wx:if="{{eyebrow}}" class="sh-top">
+    <text class="sh-eyebrow">{{eyebrow}}</text>
+    <view wx:if="{{hairline && !compact}}" class="sh-rule"></view>
+  </view>
+  <view class="sh-main">
+    <text class="sh-title serif-title">{{title}}</text>
+    <view class="sh-side"><slot></slot></view>
+  </view>
+</view>

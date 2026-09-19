@@ -1,0 +1,51 @@
+.sh { display: block; }
+
+.sh-top {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.sh-eyebrow {
+  flex: 0 0 auto;
+  color: var(--theme-text-muted, #70685f);
+  font-size: var(--font-caption, 24rpx);
+  font-weight: 500;
+  letter-spacing: 4rpx;
+}
+
+.sh-rule {
+  flex: 1 1 auto;
+  height: 1rpx;
+  background: var(--theme-line, #eae4dc);
+}
+
+.sh-main {
+  display: flex;
+  min-height: 88rpx;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.sh-title {
+  display: block;
+  min-width: 0;
+  font-size: var(--font-title, 40rpx);
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.sh-side {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.sh-editorial .sh-main { margin-top: 8rpx; }
+
+.sh-compact .sh-top { margin-bottom: 2rpx; }
+.sh-compact .sh-title { font-size: var(--font-section, 32rpx); }
+.sh-compact .sh-main { min-height: 64rpx; }

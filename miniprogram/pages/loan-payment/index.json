@@ -1,1 +1,7 @@
-{ "navigationBarTitleText": "实际借还", "usingComponents": { "login-sheet": "/components/login-sheet/index" } }
+{
+  "navigationBarTitleText": "实际借还",
+  "usingComponents": {
+    "login-sheet": "/components/login-sheet/index",
+    "ui-state": "/components/ui-state/index"
+  }
+}

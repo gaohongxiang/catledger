@@ -1,15 +1,15 @@
 <view class="page-canvas plan-page {{themeClass}}" style="{{themeStyle}}">
  <view class="content-inset payment-heading"><text class="detail-kicker">贷款管理 / {{loanName}}</text><text class="detail-title">{{paymentId ? '分配实际还款' : '还款计划'}}</text></view>
- <view wx:if="{{savedMessage}}" class="ui-state">{{savedMessage}}</view>
- <view wx:if="{{errorMessage}}" class="ui-state ui-state-error">{{errorMessage}}</view>
+ <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
+ <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
  <button wx:if="{{errorMessage}}" class="detail-link" bindtap="load" disabled="{{loading || saving}}">重新读取与核实</button>
  <view wx:if="{{hasPending}}" class="content-inset"><text class="form-note">上次操作结果待核实，重试沿用原请求。</text><button class="secondary-button" bindtap="retry" disabled="{{loading || saving}}">核实并重试</button></view>
- <view wx:if="{{loading}}" class="ui-state">正在读取…</view>
+ <ui-state wx:if="{{loading}}" description="正在读取…" />
  <view wx:if="{{summary}}" class="content-inset">
   <text class="detail-muted">下一到期日 · {{summary.nextDueDate || '无未付期次'}}</text><text class="principal-value money-number">{{summary.unpaidText}}</text><text class="form-note">确认计划的未结清金额，到期不会自动标记已还。</text>
   <view class="detail-row"><text>其中未付本金</text><text>{{summary.principalText}}</text></view><text class="form-note">计划未付本金减已确认剩余本金：{{summary.gapText}}。差额需核对未分配付款或计划，不能据此自动改账。</text>
   <button class="secondary-button" bindtap="newPeriod" disabled="{{loading || saving || hasPending}}">新增确认期次</button>
-  <view wx:if="{{!items.length}}" class="ui-state">当前没有计划。可按机构账单或明确约定逐期录入；计划不会生成借款或付款。</view>
+  <ui-state wx:if="{{!items.length}}" description="当前没有计划。可按机构账单或明确约定逐期录入；计划不会生成借款或付款。" />
   <button wx:if="{{!items.length && canGeneratePlan && !previewOpen}}" class="primary-button" bindtap="openPreview" disabled="{{loading || saving || hasPending || previewLoading}}">按参数生成还款计划</button>
   <view wx:for="{{items}}" wx:key="periodId" class="allocation-panel"><view class="period-title"><text class="allocation-name">第 {{item.periodNumber}} 期 · {{item.dueDate}}</text><text>{{item.statusText}}</text></view>
    <view class="detail-row"><text>应还 {{item.totalText}}</text><text>未付 {{item.unpaidText}}</text></view>
@@ -19,8 +19,8 @@
   <button wx:if="{{nextCursor}}" class="secondary-button" data-next="true" bindtap="load" disabled="{{loading || saving}}">下一页期次</button><button class="detail-link" bindtap="load" disabled="{{loading || saving}}">刷新第一页</button>
  </view>
  <view wx:if="{{previewOpen}}" class="content-inset allocation-panel"><text class="section-title">按参数生成还款计划</text><text class="form-note">试算不落库、不动账；确认生成后写入确认期次，生成不产生借款或付款。</text>
-  <view wx:if="{{previewLoading}}" class="ui-state">正在试算…</view>
-  <text wx:if="{{previewError}}" class="ui-state ui-state-error">{{previewError}}</text>
+  <ui-state wx:if="{{previewLoading}}" description="正在试算…" />
+  <ui-state wx:if="{{previewError}}" error description="{{previewError}}" />
   <button wx:if="{{previewError && !previewLoading}}" class="secondary-button" bindtap="openPreview" disabled="{{saving || loading}}">重试试算</button>
   <block wx:if="{{preview}}">
    <text class="form-note">共 {{preview.periodCount}} 期；{{preview.summaryText}}。</text>
@@ -41,7 +41,7 @@
   <button class="primary-button" bindtap="savePeriod" disabled="{{saving || loading || hasPending}}" loading="{{saving}}">保存确认计划</button><button class="detail-link" bindtap="closeForm" disabled="{{saving || hasPending}}">收起计划编辑</button>
  </view>
  <view wx:if="{{paymentShare}}" class="content-inset allocation-panel"><text class="section-title">本次实际还款的期次分配</text><text class="form-note">每笔付款的本金、利息、费用分别核对；未分配部分保留待对账，不会自动清偿其他贷款。</text>
-  <text wx:if="{{!paymentActive}}" class="ui-state">该付款已撤销，仅查看历史。</text>
+  <ui-state wx:if="{{!paymentActive}}" description="该付款已撤销，仅查看历史。" />
   <view wx:for="{{allocationItems}}" wx:for-index="i" wx:key="periodId" class="allocation-panel"><text class="allocation-name">第 {{item.periodNumber}} 期 · {{item.dueDate}}</text>
    <label class="form-field"><text>本次分配本金（元）</text><input type="digit" maxlength="22" value="{{item.principalYuan}}" data-index="{{i}}" data-field="principalYuan" bindinput="allocationInput" disabled="{{saving || !paymentActive}}" /></label>
    <label class="form-field"><text>本次分配利息（元）</text><input type="digit" maxlength="22" value="{{item.interestYuan}}" data-index="{{i}}" data-field="interestYuan" bindinput="allocationInput" disabled="{{saving || !paymentActive}}" /></label>

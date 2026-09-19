@@ -7,10 +7,7 @@
     <image wx:else class="home-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
   </view>
 
-  <view wx:if="{{!cloudAvailable}}" class="empty-ledger">
-    <text class="empty-ledger-title">当前基础库不支持云开发</text>
-    <text class="empty-ledger-copy">请升级微信开发者工具或小程序基础库后再打开招财猫记账本。</text>
-  </view>
+  <empty-state wx:if="{{!cloudAvailable}}" title="当前基础库不支持云开发" description="请升级微信开发者工具或小程序基础库后再打开招财猫记账本。" />
 
   <block wx:else>
     <view class="net-worth-card">
@@ -22,7 +19,7 @@
       <text class="net-worth-note">资产减去负债</text>
     </view>
 
-    <view wx:if="{{errorMessage && hasDashboard}}" class="ui-state ui-state-error" bindtap="loadDashboard" aria-role="button">刷新未成功，当前显示上次结果 · 重试</view>
+    <ui-state wx:if="{{errorMessage && hasDashboard}}" error description="刷新未成功，当前显示上次结果 · 重试" bindtap="loadDashboard" />
     <view class="home-flow">
     <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 || netIncomeText.length > 12 ? 'month-strip-stacked' : ''}}">
       <view class="month-stat month-stat-divider">
@@ -49,13 +46,9 @@
     </view>
 
 
-    <view class="section-heading statistics-heading">
-        <view>
-          <text class="section-kicker">INSIGHTS</text>
-          <text class="section-title serif-title">统计分析</text>
-        </view>
+    <section-header class="section-heading statistics-heading" compact title="统计分析">
         <text class="section-link" bindtap="openStatistics">全部</text>
-    </view>
+    </section-header>
 
     <view class="statistics-card" role="button" aria-label="查看全部统计" bindtap="openStatistics">
         <view class="statistics-card-heading">
@@ -87,19 +80,13 @@
         <view wx:else class="statistics-card-empty">统计数据暂未连接</view>
     </view>
 
-    <view class="section-heading">
-        <view>
-          <text class="section-kicker">ACCOUNTS</text>
-          <view class="account-heading-title">
-            <text class="section-title serif-title">账户余额</text>
-            <view wx:if="{{loggedIn}}" class="dashboard-refresh {{errorMessage ? 'dashboard-refresh-error' : ''}}" bindtap="loadDashboard" hover-class="none" aria-role="button" aria-label="{{loading ? '账户余额正在更新' : (errorMessage ? '数据同步失败，点击重试' : '刷新账户余额')}}">
-              <text wx:if="{{errorMessage}}" class="dashboard-refresh-label">重试</text>
-              <view wx:else class="dashboard-refresh-icon {{loading ? 'dashboard-refresh-spinning' : ''}}"></view>
-            </view>
-          </view>
+    <section-header class="section-heading" compact title="账户余额">
+        <view wx:if="{{loggedIn}}" class="dashboard-refresh {{errorMessage ? 'dashboard-refresh-error' : ''}}" bindtap="loadDashboard" hover-class="none" aria-role="button" aria-label="{{loading ? '账户余额正在更新' : (errorMessage ? '数据同步失败，点击重试' : '刷新账户余额')}}">
+          <text wx:if="{{errorMessage}}" class="dashboard-refresh-label">重试</text>
+          <view wx:else class="dashboard-refresh-icon {{loading ? 'dashboard-refresh-spinning' : ''}}"></view>
         </view>
         <text class="section-link" bindtap="openAccounts">全部</text>
-    </view>
+    </section-header>
 
     <view wx:if="{{accounts.length > 0}}" class="account-list">
         <view wx:for="{{accounts}}" wx:key="accountId" class="account-row" bindtap="openAccounts">
@@ -115,13 +102,9 @@
     <view wx:elif="{{errorMessage && !hasDashboard}}" class="account-empty ui-state-error" bindtap="loadDashboard" aria-role="button">账户暂未读取，点此重试</view>
     <view wx:else class="account-empty">{{loggedIn ? '还没有账户，添加后会显示在这里' : '登录后查看你的账户'}}</view>
 
-    <view class="section-heading recent-heading">
-      <view>
-        <text class="section-kicker">RECENT</text>
-        <text class="section-title serif-title">最近账目</text>
-      </view>
+    <section-header class="section-heading recent-heading" compact title="最近账目">
         <text wx:if="{{hasDashboard}}" class="section-link" bindtap="openTransactions">全部</text>
-    </view>
+    </section-header>
 
     <block wx:if="{{hasDashboard}}">
       <view wx:if="{{recentTransactions.length > 0}}" class="timeline">

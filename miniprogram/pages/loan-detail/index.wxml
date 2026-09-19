@@ -1,11 +1,11 @@
 <view class="page-canvas loan-detail {{themeClass}}" style="{{themeStyle}}">
   <view class="detail-heading content-inset"><text class="detail-kicker">贷款资料</text><text class="detail-title">{{loan ? loan.name : '新增贷款'}}</text></view>
   <view wx:if="{{sourceTransactionId}}" class="content-inset"><text class="form-note">已保留原还款。这里只创建或补充贷款资料，保存后继续关联，不会重新登记付款。</text><text wx:if="{{sourceContext}}" class="form-note">还款发生于 {{sourceContext.transaction.occurredLocalAt}}；关联前须确认该日初或更早的本金基准，不是本次扣款金额。</text></view>
-  <view wx:if="{{savedMessage}}" class="ui-state">{{savedMessage}}</view>
-  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error">{{errorMessage}}</view>
+  <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
+  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <button wx:if="{{errorMessage && !saving}}" class="detail-link" bindtap="load">重新读取与核实</button>
   <button wx:if="{{hasPending && !formOpen}}" class="primary-button" disabled="{{saving || loading}}" loading="{{saving}}" bindtap="save">重试上次操作</button>
-  <view wx:if="{{loading && !loan}}" class="ui-state">正在读取资料…</view>
+  <ui-state wx:if="{{loading && !loan}}" description="正在读取资料…" />
   <view wx:if="{{loan && !formOpen}}" class="principal-panel content-inset">
     <text class="detail-muted">已确认剩余本金</text><text class="principal-value money-number">{{loan.principalText}}</text>
     <text class="detail-muted">{{loan.statusText}} · {{loan.accountName}}{{loan.accountArchived ? '（已停用）' : ''}}</text>
@@ -21,7 +21,7 @@
   </view>
   <view wx:if="{{loan && !formOpen}}" class="content-inset loan-history">
     <button class="detail-link" bindtap="loadHistory" disabled="{{historyLoading}}">{{historyLoaded ? '刷新实际记录（第一页）' : '查看实际借还记录'}}</button>
-    <text wx:if="{{historyError}}" class="ui-state ui-state-error">{{historyError}}</text>
+    <ui-state wx:if="{{historyError}}" error description="{{historyError}}" />
     <text wx:if="{{historyLoaded && !history.length}}" class="form-note">还没有实际借还记录</text>
     <button wx:for="{{history}}" wx:key="paymentId" class="history-row" data-id="{{item.paymentId}}" bindtap="openPayment"><view><text>{{item.kindText}} · {{item.status === 'active' ? '已登记' : '已撤销'}}</text><text class="detail-muted">{{item.occurredLocalAt}}</text></view><text class="money-number">{{item.totalText}}</text></button>
     <button wx:if="{{historyNext}}" class="secondary-button" data-next="true" bindtap="loadHistory" disabled="{{historyLoading}}">下一页记录</button>

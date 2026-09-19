@@ -6,7 +6,7 @@
     <text class="privacy-copy">完整数据包含账户、交易、原始账单字段、整理与来源关联、贷款及还款期次。JSONL 用于完整核对，CSV 便于查看交易。导出期间请暂停记账；有新变化时需要重新生成。</text>
     <button class="primary-button" disabled="{{busy}}" loading="{{busy}}" bindtap="generate">{{busy ? '正在导出 ' + rows + ' 条' : '生成完整导出'}}</button>
     <text wx:if="{{statusText}}" class="privacy-status">{{statusText}}</text>
-    <view wx:if="{{errorMessage}}" class="ui-state ui-state-error">{{errorMessage}}</view>
+    <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
     <view wx:if="{{complete}}"><text class="privacy-copy">共 {{rows}} 条。分享后的副本由你保存和管理。</text>
       <button class="secondary-button" data-kind="jsonl" bindtap="share">分享完整 JSONL</button><button class="secondary-button" data-kind="csv" bindtap="share">分享交易 CSV</button>
       <button class="privacy-link" bindtap="clearExport">清除本机导出文件</button>

@@ -6,11 +6,11 @@
     <button wx:if="{{month}}" class="detail-link" bindtap="clearMonth">查看全部月份</button>
     <picker class="form-field" range="{{accounts}}" range-key="name" value="{{accountIndex}}" bindchange="changeAccount"><text>负债账户</text><view class="picker-value">{{accounts[accountIndex].name || '全部负债账户'}}</view></picker>
   </view>
-  <view wx:if="{{loading}}" class="ui-state">正在核对还款与关联…</view>
-  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error">{{errorMessage}}</view>
+  <ui-state wx:if="{{loading}}" description="正在核对还款与关联…" />
+  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <button wx:if="{{errorMessage}}" class="secondary-button" bindtap="load" disabled="{{loading}}">重新读取，不修改账目</button>
   <block wx:if="{{!transactionId && !errorMessage}}">
-    <text wx:if="{{hasLoaded && !loading && !items.length}}" class="ui-state">当前筛选没有可关联的还款。已经关联的记录请在贷款详情中查看。</text>
+    <ui-state wx:if="{{hasLoaded && !loading && !items.length}}" description="当前筛选没有可关联的还款。已经关联的记录请在贷款详情中查看。" />
     <button wx:for="{{items}}" wx:key="transactionId" class="candidate-row content-inset" data-id="{{item.transactionId}}" bindtap="selectTransaction" disabled="{{loading}}">
       <view class="candidate-top"><text>{{item.businessText}}</text><text class="money-number">{{item.amountText}}</text></view>
       <text class="form-note">{{item.accountText}}</text><text class="form-note">{{item.occurredLocalAt}}</text>
@@ -22,7 +22,7 @@
     <text class="form-note">{{context.businessText}}</text>
     <block wx:if="{{context.state === 'candidate'}}">
       <text class="form-note">本金、利息、费用和期次均需确认。不能直接把扣款总额当本金；混有普通账单的扣款不能全部摊给某笔分期。</text>
-      <text wx:if="{{context.targetAccount.inactive}}" class="ui-state">付款或负债账户已停用，请在账户管理核对状态；当前不能建立关联。</text>
+      <ui-state wx:if="{{context.targetAccount.inactive}}" description="付款或负债账户已停用，请在账户管理核对状态；当前不能建立关联。" />
       <block wx:else>
         <button class="primary-button" bindtap="createLoan" disabled="{{loading}}">新建分期资料并继续关联</button>
         <text class="section-title">选择 {{context.targetAccount.name}} 下的贷款</text>

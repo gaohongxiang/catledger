@@ -3,6 +3,10 @@
   "enablePullDownRefresh": true,
   "backgroundColor": "#F8F3EA",
   "usingComponents": {
-    "login-sheet": "/components/login-sheet/index"
+    "login-sheet": "/components/login-sheet/index",
+    "section-header": "/components/section-header/index",
+    "list-row": "/components/list-row/index",
+    "ui-state": "/components/ui-state/index",
+    "chevron-icon": "/components/chevron-icon/index"
   }
 }

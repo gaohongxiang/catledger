@@ -1,6 +1,10 @@
 {
   "navigationBarTitleText": "账户管理",
   "usingComponents": {
-    "login-sheet": "/components/login-sheet/index"
+    "login-sheet": "/components/login-sheet/index",
+    "list-row": "/components/list-row/index",
+    "empty-state": "/components/empty-state/index",
+    "ui-state": "/components/ui-state/index",
+    "chevron-icon": "/components/chevron-icon/index"
   }
 }

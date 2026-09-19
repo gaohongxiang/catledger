@@ -55,7 +55,7 @@ const THEMES = [
       heroStart: '#BE5B24', heroEnd: '#BE5B24', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#FFFFFF',
       income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A95132', dangerSoft: '#F4E1D6',
       shadowSoft: '0 3rpx 14rpx rgba(74,50,30,.035)', shadowLifted: '0 8rpx 22rpx rgba(145,87,36,.10)',
-      radiusLarge: '22rpx', radiusMedium: '16rpx', radiusSmall: '10rpx', navBackground: '#FAF8F4', navFront: '#000000'
+      radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#FAF8F4', navFront: '#000000'
     }
   },
   {
@@ -71,7 +71,7 @@ const THEMES = [
       heroStart: '#197858', heroEnd: '#197858', heroInk: '#F8FFFC', heroValueInk: '#EAF6EF', heroMuted: '#E5F3EC',
       income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A94739', dangerSoft: '#F6E3DE',
       shadowSoft: '0 3rpx 14rpx rgba(20,78,58,.035)', shadowLifted: '0 8rpx 22rpx rgba(11,143,104,.10)',
-      radiusLarge: '21rpx', radiusMedium: '16rpx', radiusSmall: '10rpx', navBackground: '#F2F7F3', navFront: '#000000'
+      radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F2F7F3', navFront: '#000000'
     }
   },
   {
@@ -87,7 +87,7 @@ const THEMES = [
       heroStart: '#AD493E', heroEnd: '#AD493E', heroInk: '#FFFDFC', heroValueInk: '#FBEAE4', heroMuted: '#FAEBE7',
       income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A93830', dangerSoft: '#F8E1DC',
       shadowSoft: '0 3rpx 13rpx rgba(92,49,43,.035)', shadowLifted: '0 8rpx 20rpx rgba(159,65,55,.09)',
-      radiusLarge: '20rpx', radiusMedium: '15rpx', radiusSmall: '9rpx', navBackground: '#F9F4F1', navFront: '#000000'
+      radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F9F4F1', navFront: '#000000'
     }
   },
   {
@@ -103,7 +103,7 @@ const THEMES = [
       heroStart: '#626269', heroEnd: '#626269', heroInk: '#FFFFFF', heroValueInk: '#F0EFED', heroMuted: '#F0F0F3',
       income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#9C4236', dangerSoft: '#F3E1DC',
       shadowSoft: '0 2rpx 10rpx rgba(39,39,42,.03)', shadowLifted: '0 7rpx 18rpx rgba(39,39,42,.08)',
-      radiusLarge: '18rpx', radiusMedium: '14rpx', radiusSmall: '8rpx', navBackground: '#F4F4F2', navFront: '#000000'
+      radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F4F4F2', navFront: '#000000'
     }
   },
   {
@@ -119,7 +119,7 @@ const THEMES = [
       heroStart: '#526B55', heroEnd: '#526B55', heroInk: '#FCFFFC', heroValueInk: '#EEF3EF', heroMuted: '#EDF3E9',
       income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#934E3D', dangerSoft: '#F1E3DE',
       shadowSoft: '0 2rpx 12rpx rgba(50,68,57,.03)', shadowLifted: '0 7rpx 18rpx rgba(50,68,57,.07)',
-      radiusLarge: '22rpx', radiusMedium: '16rpx', radiusSmall: '10rpx', navBackground: '#F4F7F3', navFront: '#000000'
+      radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F4F7F3', navFront: '#000000'
     }
   },
   {
@@ -135,7 +135,7 @@ const THEMES = [
       heroStart: '#D9B45D', heroEnd: '#D9B45D', heroInk: '#1A1A18', heroValueInk: '#3C311B', heroMuted: '#574425',
       income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#984532', dangerSoft: '#F2DED3',
       shadowSoft: '0 2rpx 10rpx rgba(26,26,24,.035)', shadowLifted: '0 7rpx 18rpx rgba(26,26,24,.08)',
-      radiusLarge: '18rpx', radiusMedium: '14rpx', radiusSmall: '8rpx', navBackground: '#F4F0E4', navFront: '#000000'
+      radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F4F0E4', navFront: '#000000'
     }
   }
 ]

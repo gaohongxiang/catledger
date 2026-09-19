@@ -1,0 +1,9 @@
+<view class="lr {{tone ? 'lr-' + tone : ''}} {{divider ? 'lr-divider' : ''}}" role="button" aria-label="{{ariaLabel || title}}" hover-class="lr-active">
+  <slot name="icon"></slot>
+  <view class="lr-main">
+    <text class="lr-title">{{title}}</text>
+    <text wx:if="{{note}}" class="lr-note">{{note}}</text>
+  </view>
+  <slot></slot>
+  <chevron-icon wx:if="{{chevron}}" size="{{26}}" />
+</view>

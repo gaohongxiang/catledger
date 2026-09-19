@@ -17,49 +17,21 @@
     <button wx:if="{{!loggedIn}}" class="profile-login-button" size="mini" bindtap="promptWechatLogin"><text class="profile-login-label">登录</text></button>
   </view>
 
-  <view wx:if="{{errorMessage}}" class="ui-state ui-state-error" bindtap="retryProfile" aria-role="button">{{errorMessage}} · 点此重试</view>
+  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}} · 点此重试" bindtap="retryProfile" />
 
   <text class="profile-section-kicker content-inset">账本管理</text>
   <view class="profile-menu">
-    <view class="profile-row content-inset" role="button" aria-label="进入账户管理" bindtap="openAccounts">
-      <view class="row-copy"><text class="row-title">账户管理</text><text class="row-note">{{loggedIn && hasLoaded ? accountCount + ' 个活动账户' : '管理资产与负债账户'}}</text></view><view class="row-chevron"></view>
-    </view>
-    <view class="profile-row content-inset" role="button" aria-label="进入分类管理" bindtap="openCategories">
-      <view class="row-copy"><text class="row-title">分类管理</text><text class="row-note">{{loggedIn && hasLoaded ? categoryCount + ' 个收支分类' : '管理收入与支出分类'}}</text></view><view class="row-chevron"></view>
-    </view>
-    <view class="profile-row content-inset" role="button" aria-label="进入贷款管理" bindtap="openLoans"><view class="row-copy"><text class="row-title">贷款管理</text><text class="row-note">借款与分期，核对本金和实际还款</text></view><view class="row-chevron"></view></view>
+    <list-row title="账户管理" note="{{loggedIn && hasLoaded ? accountCount + ' 个活动账户' : '管理资产与负债账户'}}" aria-label="进入账户管理" bindtap="openAccounts" />
+    <list-row title="分类管理" note="{{loggedIn && hasLoaded ? categoryCount + ' 个收支分类' : '管理收入与支出分类'}}" aria-label="进入分类管理" bindtap="openCategories" />
+    <list-row title="贷款管理" note="借款与分期，核对本金和实际还款" aria-label="进入贷款管理" bindtap="openLoans" divider="{{false}}" />
   </view>
 
   <text class="profile-section-kicker content-inset">设置与资料</text>
   <view class="profile-menu">
-    <view class="profile-row content-inset" role="button" aria-label="选择视觉主题" bindtap="openTheme">
-      <view class="row-copy">
-        <text class="row-title">主题</text>
-        <text class="row-note">{{themeName}}</text>
-      </view>
-      <view class="row-chevron"></view>
-    </view>
-    <view class="profile-row content-inset" role="button" aria-label="查看数据与隐私" bindtap="showPrivacy">
-      <view class="row-copy">
-        <text class="row-title">数据与隐私</text>
-        <text class="row-note">身份与账单文件说明</text>
-      </view>
-      <view class="row-chevron"></view>
-    </view>
-    <view class="profile-row content-inset" role="button" aria-label="查看关于招财猫记账本" bindtap="showAbout">
-      <view class="row-copy">
-        <text class="row-title">关于招财猫记账本</text>
-        <text class="row-note">开发版</text>
-      </view>
-      <view class="row-chevron"></view>
-    </view>
-    <view wx:if="{{loggedIn}}" class="profile-row profile-logout-row content-inset" role="button" aria-label="退出登录" bindtap="logoutAccount">
-      <view class="row-copy">
-        <text class="row-title profile-logout-title">退出登录</text>
-        <text class="row-note">只退出本机，不删除云端账本</text>
-      </view>
-      <view class="row-chevron profile-logout-chevron"></view>
-    </view>
+    <list-row title="主题" note="{{themeName}}" aria-label="选择视觉主题" bindtap="openTheme" />
+    <list-row title="数据与隐私" note="身份与账单文件说明" aria-label="查看数据与隐私" bindtap="showPrivacy" />
+    <list-row title="关于招财猫记账本" note="开发版" aria-label="查看关于招财猫记账本" bindtap="showAbout" />
+    <list-row wx:if="{{loggedIn}}" title="退出登录" note="只退出本机，不删除云端账本" tone="danger" aria-label="退出登录" bindtap="logoutAccount" divider="{{false}}" />
   </view>
 
 </view>

@@ -1,11 +1,11 @@
 page {
   --font-caption: 24rpx;
-  --font-body-small: 26rpx;
   --font-body: 28rpx;
   --font-section: 32rpx;
-  --font-title: 36rpx;
+  --font-title: 40rpx;
+  --font-display: 56rpx;
   min-height: 100%;
-  color: #29231e;
+  color: #2c2823;
   background: #faf8f4;
   font-family: "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", sans-serif;
   font-size: var(--font-body, 28rpx);
@@ -16,7 +16,7 @@ page {
 button { font-family: inherit; }
 button::after { border: 0; }
 
-.serif-title { font-family: "PingFang SC", "Source Han Sans SC", sans-serif; letter-spacing: 0; }
+.serif-title { font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif; letter-spacing: 0; }
 
 .money-number { font-family: "PingFang SC", "Source Han Sans SC", "Noto Sans CJK SC", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
@@ -31,11 +31,12 @@ button::after { border: 0; }
   --layout-nav-height: 116rpx;
   --layout-motion-fast: 120ms;
   --layout-motion-normal: 180ms;
+  --layout-motion-slow: 240ms;
   box-sizing: border-box;
   min-height: 100vh;
   padding: 32rpx var(--layout-page-gutter) calc(148rpx + env(safe-area-inset-bottom));
-  color: var(--theme-ink, #29231e);
-  background: var(--theme-page, #f8f3ea);
+  color: var(--theme-ink, #2c2823);
+  background: var(--theme-page, #faf8f4);
 }
 
 .primary-button,
@@ -56,8 +57,8 @@ button::after { border: 0; }
   transition: opacity var(--layout-motion-fast) ease;
 }
 
-.primary-button { color: var(--theme-on-accent, #fffaf1); background: var(--theme-accent, #d97732); }
-.secondary-button { color: var(--theme-secondary, #64705d); background: var(--theme-secondary-soft, #e8eadf); }
+.primary-button { color: var(--theme-on-accent, #ffffff); background: var(--theme-accent, #be5b24); }
+.secondary-button { color: var(--theme-secondary, #70685f); background: var(--theme-secondary-soft, #f1eee9); }
 .danger-button { color: var(--theme-danger, #a95132); background: var(--theme-danger-soft, #f4e1d6); }
 .primary-button:active,
 .secondary-button:active,
@@ -65,19 +66,19 @@ button::after { border: 0; }
 
 .empty-ledger {
   padding: 32rpx 0;
-  color: var(--theme-text-muted, #746a60);
+  color: var(--theme-text-muted, #70685f);
   text-align: left;
-  border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09));
-  border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09));
+  border-top: 2rpx solid var(--theme-line, #eae4dc);
+  border-bottom: 2rpx solid var(--theme-line, #eae4dc);
 }
 
 .empty-ledger-title,
 .empty-ledger-copy { display: block; }
-.empty-ledger-title { color: var(--theme-ink, #29231e); font-size: var(--font-section, 30rpx); font-weight: 500; }
-.empty-ledger-copy { margin-top: 10rpx; font-size: var(--font-body-small, 26rpx); line-height: 1.6; }
+.empty-ledger-title { color: var(--theme-ink, #2c2823); font-size: var(--font-section, 32rpx); font-weight: 500; }
+.empty-ledger-copy { margin-top: 10rpx; font-size: var(--font-caption, 24rpx); line-height: 1.6; }
 
 /* 主题色表达状态，正文保持可读；小字号不再承担关键操作与业务解释。 */
-.primary-button[disabled], .secondary-button[disabled] { color: var(--theme-text-muted, #746a60); background: var(--theme-surface-muted, #f8e8dc); opacity: .65; }
+.primary-button[disabled], .secondary-button[disabled] { color: var(--theme-text-muted, #70685f); background: var(--theme-surface-muted, #f1eee9); opacity: .65; }
 @media (prefers-reduced-motion: reduce) {
   view, button { transition: none !important; animation-duration: .01ms !important; }
 }
@@ -96,7 +97,7 @@ button::after { border: 0; }
   align-items: center;
   justify-content: center;
   margin-left: 12rpx;
-  color: var(--theme-accent-strong, #af6125);
+  color: var(--theme-accent-strong, #a34d20);
   opacity: 0;
 }
 .inline-sync-active { opacity: 1; }
@@ -123,7 +124,7 @@ button::after { border: 0; }
 .ui-page-heading {
   display: block;
   margin: 4rpx 0 24rpx;
-  font-size: 36rpx;
+  font-size: var(--font-title, 40rpx);
   font-weight: 500;
   line-height: 1.35;
 }
@@ -131,22 +132,22 @@ button::after { border: 0; }
   box-sizing: border-box;
   padding: 28rpx;
   margin: 20rpx 0;
-  color: var(--theme-text-muted);
-  background: var(--theme-surface);
-  border: 1rpx solid var(--theme-line);
-  border-radius: 22rpx;
+  color: var(--theme-text-muted, #70685f);
+  background: var(--theme-surface, #fffefd);
+  border: 1rpx solid var(--theme-line, #eae4dc);
+  border-radius: var(--layout-radius-large, 24rpx);
   line-height: 1.6;
-  font-size: 26rpx;
+  font-size: var(--font-body, 28rpx);
   overflow-wrap: anywhere;
 }
 .ui-state-title {
   display: block;
-  color: var(--theme-ink);
-  font-size: 30rpx;
+  color: var(--theme-ink, #2c2823);
+  font-size: var(--font-section, 32rpx);
   font-weight: 500;
   margin-bottom: 8rpx;
 }
-.ui-state-error { color: var(--theme-danger); }
+.ui-state-error { color: var(--theme-danger, #a95132); }
 .ui-state-action {
   box-sizing: border-box;
   display: flex;
@@ -155,18 +156,18 @@ button::after { border: 0; }
   justify-content: center;
   padding: 16rpx 24rpx;
   margin: 16rpx 0 0;
-  border: 1rpx solid var(--theme-line);
-  border-radius: 16rpx;
-  color: var(--theme-accent-strong);
-  background: var(--theme-surface);
-  font-size: 28rpx;
+  border: 1rpx solid var(--theme-line, #eae4dc);
+  border-radius: var(--layout-radius-medium, 18rpx);
+  color: var(--theme-accent-strong, #a34d20);
+  background: var(--theme-surface, #fffefd);
+  font-size: var(--font-body, 28rpx);
   line-height: 1.4;
 }
 .ui-state-caption {
   display: block;
   margin-top: 8rpx;
-  font-size: 24rpx;
-  color: var(--theme-text-muted);
+  font-size: var(--font-caption, 24rpx);
+  color: var(--theme-text-muted, #70685f);
 }
 input, textarea { font-family: inherit; font-weight: 400; }
 input:focus, textarea:focus { border-color: var(--theme-accent); }
@@ -174,7 +175,6 @@ button[disabled] { opacity: .65; }
 button[disabled].danger-button { color: var(--theme-text-muted); background: var(--theme-surface-muted); }
 
 /* 次级页登录空状态，与首页共享浅色胶囊的视觉比例。 */
-.page-canvas .guest-login-state { text-align: center; }
-.page-canvas .guest-login-state .guest-login-button { display: flex; align-items: center; justify-content: center; width: 112rpx; min-height: 88rpx; box-sizing: border-box; margin: 16rpx auto 0; padding: 0; background: transparent; border: 0; }
-.guest-login-label { display: flex; align-items: center; justify-content: center; width: 112rpx; height: 56rpx; border-radius: 999rpx; color: var(--theme-on-accent, #fffaf1); background: var(--theme-accent, #d97732); font-size: 28rpx; font-weight: 500; line-height: 1; }
+.page-canvas .guest-login-button { display: flex; align-items: center; justify-content: center; width: 112rpx; min-height: 88rpx; box-sizing: border-box; margin: 16rpx auto 0; padding: 0; background: transparent; border: 0; }
+.guest-login-label { display: flex; align-items: center; justify-content: center; width: 112rpx; height: 56rpx; border-radius: 999rpx; color: var(--theme-on-accent, #ffffff); background: var(--theme-accent, #be5b24); font-size: var(--font-body, 28rpx); font-weight: 500; line-height: 1; }
 .guest-login-button:active { opacity: .78; }

@@ -1,0 +1,5 @@
+<view class="us {{error ? 'us-error' : ''}} {{centered ? 'us-centered' : ''}}" aria-role="{{error ? 'alert' : 'status'}}">
+  <text wx:if="{{title}}" class="us-title">{{title}}</text>
+  <text wx:if="{{description}}" class="us-desc">{{description}}</text>
+  <slot></slot>
+</view>
