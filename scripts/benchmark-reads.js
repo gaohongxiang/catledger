@@ -92,10 +92,10 @@ async function databaseSamples() {
       const services=localServices({apiPool:observer.pool,importPool:db.owner}), uid=await seed(db,services,count)
       for(let sample=0;sample<3;sample++) {
         let page
-        for(const action of ['bootstrap','catalog.get','dashboard.get','statistics.get','transactions.list','transactions.page2']) {
+        for(const action of ['bootstrap','catalog.get','dashboard.get','statistics.get','transactions.list','transactions.page2','reads.validate']) {
           observer.reset()
           const started=performance.now(), name=action==='transactions.page2'?'transactions.list':action
-          const data=['bootstrap','catalog.get'].includes(action)?{}:{month:'2026-09',pageSize:30,...(action==='transactions.page2'&&page.nextCursor?{cursor:page.nextCursor}:{})}
+          const data=['bootstrap','catalog.get','reads.validate'].includes(action)?{}:{month:'2026-09',pageSize:30,...(action==='transactions.page2'&&page.nextCursor?{cursor:page.nextCursor}:{})}
           const value=await call(services.api,name,data), handlerMs=performance.now()-started
           if(action==='transactions.list')page=value
           const serializationStart=performance.now(), serialized=JSON.stringify(value), serializationMs=performance.now()-serializationStart

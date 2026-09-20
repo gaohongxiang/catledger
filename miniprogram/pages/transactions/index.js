@@ -181,16 +181,16 @@ Page(Object.assign({
     this.setData(append ? { loadingMore: needsNetwork } : { loading: needsNetwork, errorMessage: '' })
     const applyTransactions = function (result, snapshot) {
         if (!isLatest()) return
-        if (snapshot && self.data.hasLoaded && self._listQueryKey === queryKey) return
+        if (snapshot && self.data.hasLoaded && self._listQueryKey === queryKey) { self.setData({ errorMessage: '正在更新，当前显示上次结果' }); return }
         if (!append && !snapshot && options && options.reuse && !force && self.data.hasLoaded &&
-            self._listQueryKey === queryKey && api.cacheToken('transactions.list', data) === self._listCacheToken) return
+            self._listQueryKey === queryKey && api.cacheToken('transactions.list', data) === self._listCacheToken) { self.setData({ errorMessage: '' }); return }
         if (!snapshot && append && (api.cacheToken('transactions.list', self.requestData(null)) !== baseToken || result.dataRevision !== self._listRevision)) {
           self._transactionsLoad = null
           return self.loadTransactions(false, { force: true })
         }
         if (!append && !snapshot) { self._listCacheToken = api.cacheToken('transactions.list', data); self._listQueryKey = queryKey; self._listRevision = result.dataRevision }
         const rows = result.transactions.map(viewModel.transactionView).map(row => Object.assign({}, row, { deletable: batchDelete.canSelect(row) }))
-        const patch = { hasLoaded: true, nextCursor: result.nextCursor }
+        const patch = { hasLoaded: true, nextCursor: result.nextCursor, errorMessage: snapshot ? '正在更新，当前显示上次结果' : '' }
         if (append) rows.forEach((row, index) => { patch['transactions[' + (self.data.transactions.length + index) + ']'] = row })
         else {
           patch.transactions = rows

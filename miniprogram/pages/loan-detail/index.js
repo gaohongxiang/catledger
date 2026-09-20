@@ -18,10 +18,15 @@ Page({
     const current = pageReadSession.begin(this, ['sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule'], ['_load','_sourceInitialized'])
     if (this._load) return this._load
     this.setData({ loading: true, errorMessage: '' })
-    const showLoan = result => { if (current() && result) this.setData({ loan: present(result.loan) }) }
+    const showLoan = (result, snapshot) => { if (current() && result) this.setData({ loan: present(result.loan), errorMessage: snapshot ? '正在更新，当前显示上次结果' : '' }) }
     const showSource = result => { if (current()) this.setData({ sourceContext: result && result.transaction ? Object.assign({}, result, { occurredText: String(result.transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' ') }) : result }) }
-    this._load = Promise.all([api.callApi('catalog.get'), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { onSnapshot: showLoan }).then(result => { showLoan(result); return result }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { onSnapshot: showSource }).then(result => { showSource(result); return result }) : Promise.resolve(null)])
+    this._load = Promise.all([api.callApi('catalog.get'), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { onSnapshot: result => showLoan(result, true) }).then(result => { showLoan(result); return result }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { onSnapshot: showSource }).then(result => { showSource(result); return result }) : Promise.resolve(null)])
       .then(async ([catalog, result, sourceContext]) => {
+        if (!current()) return
+        // 并行读取中观察到新全局修订时，补齐先返回的旧目录/来源，避免保存门禁停在旧快照。
+        if (!api.isFresh('catalog.get')) catalog = await api.callApi('catalog.get')
+        if (this._sourceTransactionId && !api.isFresh('loans.transaction', { transactionId: this._sourceTransactionId })) sourceContext = await api.callApi('loans.transaction', { transactionId: this._sourceTransactionId })
+        if (this._loanId && !api.isFresh('loans.get', { loanId: this._loanId })) result = await api.callApi('loans.get', { loanId: this._loanId })
         if (!current()) return
         if (sourceContext && sourceContext.transaction) sourceContext = Object.assign({}, sourceContext, { occurredText: String(sourceContext.transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' ') })
         getApp().globalData.uid = catalog.uid

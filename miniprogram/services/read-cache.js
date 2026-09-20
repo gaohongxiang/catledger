@@ -16,7 +16,7 @@ function createReadCache(options) {
   const now = options && options.now || Date.now
   const maxEntries = options && options.maxEntries || 48
   const entries = new Map(), pending = new Map(), revisions = new Map(), writes = new Set()
-  let session = 0, sequence = 0, scope = null, latestRevision = null, validation = null
+  let session = 0, sequence = 0, scope = null, latestRevision = null, validation = null, persistQueued = null
   const disk = createSnapshotStore(options && options.storage, now)
   const persistent = !(options && options.persistence === false)
   const clone = value => value === undefined ? value : JSON.parse(JSON.stringify(value))
@@ -33,7 +33,13 @@ function createReadCache(options) {
       ![...writes].some(write => write.tags.some(tag => entry.tags.includes(tag))) ? entry : null
   }
   function persist() {
-    if (persistent && scope) disk.write(scope, [...entries].map(([key, entry]) => ({ key, value: entry.value, updatedAt: entry.updatedAt })))
+    if (!persistent || !scope || persistQueued) return
+    const ticket = { session, scope }; persistQueued = ticket
+    Promise.resolve().then(() => {
+      if (persistQueued !== ticket || ticket.session !== session || ticket.scope !== scope) return
+      persistQueued = null
+      disk.write(scope, [...entries].map(([key, entry]) => ({ key, value: entry.value, updatedAt: entry.updatedAt })))
+    })
   }
   function observe(value) {
     if (!validMetadata(value)) return
@@ -127,7 +133,7 @@ function createReadCache(options) {
       if (typeof env !== 'string' || !env || !/^[1-9]\d{9}$/.test(uid)) return
       if (scope && scope.env === env && scope.uid === uid) return
       if (scope) { session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear(); validation = null }
-      scope = { env, uid }; latestRevision = null
+      scope = { env, uid }; latestRevision = null; persistQueued = null
       if (persistent) for (const item of disk.read(scope)) {
         if (entries.has(item.key)) continue
         entries.set(item.key, { value: clone(item.value), tags: item.policy.tags, ttl: item.policy.ttl,
@@ -166,7 +172,7 @@ function createReadCache(options) {
       if (!source || fresh(key) || pending.has(key)) return
       put(key, policy, project(clone(source.value)), Math.min(source.expiresAt, now() + policy.ttl))
     },
-    reset() { session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear(); scope = null; latestRevision = null; validation = null; disk.clear() }
+    reset() { session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear(); scope = null; latestRevision = null; validation = null; persistQueued = null; disk.clear() }
   }
 }
 

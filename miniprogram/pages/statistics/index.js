@@ -159,6 +159,7 @@ Page({
           charts: charts,
           selectedCumulative: null,
           hasLoaded: true,
+          errorMessage: snapshot ? '正在更新，当前显示上次结果' : '',
           selectedTrend: trend.find(row => row.month === selectedTrendMonth) || trend[trend.length - 1] || null, selectedDay: null,
           incomeText: money.formatMinor(result.summary.incomeMinor),
           expenseText: money.formatMinor(result.summary.expenseMinor),

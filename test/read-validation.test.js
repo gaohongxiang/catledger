@@ -153,3 +153,33 @@ test('前台轻量读取瞬时失败重试一次，最终失败不承诺最新',
   assert.equal(h.calls.filter(c => c.action === 'reads.validate').length, 2)
   assert.equal(h.api.isFresh('dashboard.get'), false)
 })
+
+test('快照恢复先标更新中，确认新鲜才清提示；排队持久化不能穿越退出', async () => {
+  const h = runtime(), home = h.page('index'); await home.loadDashboard()
+  h.cache.invalidate(['accounts'])
+  let release
+  h.intercept = () => new Promise(resolve => { release = resolve })
+  const pending = home.loadDashboard()
+  assert.match(home.data.errorMessage, /正在更新.*上次结果/)
+  await flush(); release(); await pending
+  assert.equal(home.data.errorMessage, '')
+  // 同步派生多个缓存的写盘合并到下一微任务；退出作废队列。
+  let writes = 0
+  const cache = createReadCache({ storage: { get() {}, set() { writes++ }, remove() {} } })
+  cache.bindScope(envId, '1234567890')
+  await cache.read('accounts.list:{}', READ_POLICIES['accounts.list'], async () => meta({ accounts: [] }))
+  const before = writes
+  cache.seedFrom('accounts.list:{}', 'accounts.list:{"one":1}', READ_POLICIES['accounts.list'], x => x)
+  cache.seedFrom('accounts.list:{}', 'accounts.list:{"two":2}', READ_POLICIES['accounts.list'], x => x)
+  cache.reset(); await flush()
+  assert.equal(writes, before)
+})
+
+test('贷款写后返回补齐并行读取中失效的旧目录，不要求用户再手动重读', async () => {
+  const h = runtime(), page = h.page('loan-detail'); page._loanId = 'synthetic-loan'
+  h.respond = action => action === 'loans.get' ? { ok: true, data: { loan: { loanId: page._loanId, accountId: 'account-a', name: '合成贷款', baselineDate: '2026-09-01', baselinePrincipalMinor: '0', remainingPrincipalMinor: '0', status: 'settled' } } } : undefined
+  await page.load(); assert.equal(page.contextFresh(), true)
+  await h.api.callApi('loans.update', { requestId: 'synthetic' })
+  await page.load(); assert.equal(page.contextFresh(), true); assert.equal(page.data.errorMessage, '')
+  const count = h.calls.length; await page.load(); assert.equal(h.calls.length, count)
+})
