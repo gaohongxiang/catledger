@@ -364,7 +364,7 @@ test('我的页资料区：头像即按钮、昵称与 ID 使用图标按钮，�
   assert.doesNotMatch(markup, />取消<|>保存<|profile-avatar-label|profile-id-copy/)
   assert.match(markup, /aria-label="修改昵称"[^>]*bindtap="startEditNickname"/)
   assert.match(markup, /aria-label="取消修改昵称"[^>]*bindtap="cancelEditNickname"/)
-  assert.match(markup, /aria-label="保存昵称"[^>]*form-type="submit"/)
+  assert.match(markup, /aria-label="保存昵称"[^>]*bindtap="saveNickname"/)
   assert.match(markup, /aria-label="复制完整 ID"[^>]*bindtap="copyId"/)
   assert.match(markup, /\/assets\/icons\/pencil\.svg/)
   assert.match(markup, /\/assets\/icons\/copy\.svg/)

@@ -10,11 +10,11 @@
           <text class="profile-title serif-title">{{nickname || '微信用户'}}</text>
           <button class="profile-icon-button" aria-label="修改昵称" disabled="{{savingAvatar}}" bindtap="startEditNickname"><image class="profile-icon-image" src="/assets/icons/pencil.svg" mode="aspectFit" /></button>
         </view>
-        <form wx:elif="{{loggedIn}}" class="profile-name-form" bindsubmit="saveNickname">
+        <view wx:elif="{{loggedIn}}" class="profile-name-form">
           <input class="profile-name-input" name="nickname" aria-label="昵称" type="nickname" value="{{nicknameDraft}}" maxlength="24" placeholder="输入昵称" disabled="{{savingNickname}}" bindinput="bindNicknameDraft" bindblur="bindNicknameDraft" />
-          <button class="profile-icon-button" aria-label="取消修改昵称" disabled="{{savingNickname}}" bindtap="cancelEditNickname"><image class="profile-icon-image" src="/assets/icons/close.svg" mode="aspectFit" /></button>
-          <button class="profile-icon-button" aria-label="保存昵称" loading="{{savingNickname}}" disabled="{{savingNickname}}" form-type="submit"><view wx:if="{{!savingNickname}}" class="profile-icon-confirm"><image class="profile-icon-image" src="/assets/icons/check.svg" mode="aspectFit" /></view></button>
-        </form>
+          <view class="profile-icon-button" hover-class="profile-icon-hover" aria-role="button" aria-label="取消修改昵称" bindtap="cancelEditNickname"><image class="profile-icon-image" src="/assets/icons/close.svg" mode="aspectFit" /></view>
+          <view class="profile-icon-button" hover-class="profile-icon-hover" aria-role="button" aria-label="保存昵称" bindtap="saveNickname"><view wx:if="{{!savingNickname}}" class="profile-icon-confirm"><image class="profile-icon-image" src="/assets/icons/check.svg" mode="aspectFit" /></view></view>
+        </view>
         <view wx:else class="profile-name-line">
           <text class="profile-title serif-title">尚未登录</text>
           <button class="profile-login-button" size="mini" bindtap="promptWechatLogin"><text class="profile-login-label">登录</text></button>

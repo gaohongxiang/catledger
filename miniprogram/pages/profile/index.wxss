@@ -78,6 +78,7 @@
 }
 .profile-icon-button::after { border: 0; }
 .profile-icon-button:active { opacity: .6; }
+.profile-icon-hover { opacity: .6; }
 .profile-icon-image { width: 32rpx; height: 32rpx; }
 .profile-icon-confirm {
   display: flex;
