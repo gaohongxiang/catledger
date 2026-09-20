@@ -74,7 +74,7 @@ test('分期录入真实 MySQL：原子计划、历史本金、幂等、回滚�
       view=(await api('loans.get',{loanId:created.loanId})).loan
       assert.deepEqual(view.installmentSetup,setup());assert.equal(view.remainingPrincipalMinor,'900000')
       const after=await counts();assert.equal(Number(after.loans)-Number(before.loans),1);assert.equal(Number(after.periods)-Number(before.periods),9);assert.equal(after.transactions,before.transactions)
-      assert.deepEqual(await api('accounts.list'),balances)
+      assert.deepEqual((await api('accounts.list')).accounts,balances.accounts)
       const periods=await api('loans.periods',{loanId:created.loanId,pageSize:40})
       assert.equal(periods.items[0].periodNumber,4);assert.equal(periods.summary.historicalPaidTerms,3);assert.equal(periods.summary.principalGapMinor,'0')
       assert.equal(periods.items.every(p=>p.status==='unpaid'),true)

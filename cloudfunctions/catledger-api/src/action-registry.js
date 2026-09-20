@@ -1,4 +1,5 @@
 const PUBLIC_ACTIONS = Object.freeze([
+  'reads.validate',
   'bootstrap',
   'profile.get',
   'profile.update',
@@ -57,6 +58,7 @@ const PUBLIC_ACTIONS = Object.freeze([
 
 function createActionHandlers({ accountService, categoryService, catalogService, profileService, transactionService, loanService, dataExportService }) {
   return {
+    'reads.validate': catalogService.validate,
     'profile.get': profileService.get,
     'profile.update': profileService.update,
     'dataExports.start': dataExportService.start,

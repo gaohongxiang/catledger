@@ -72,7 +72,12 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
    for(const values of refunds)await target.owner.execute('UPDATE catledger_transactions SET original_transaction_id=?,updated_at=updated_at WHERE uid=? AND transaction_id=?',values)
    for(const table of manifest){const [rows]=await target.owner.execute(`SELECT ${table.columns.join(',')} FROM ${table.name} WHERE uid=? ORDER BY ${table.keys.join(',')}`,[newUid]);assert.deepEqual(rows.map(r=>({...r})),records.filter(r=>r.table===table.name).map(r=>r.row))}
    const restored=localServices({apiPool:target.owner,importPool:target.owner,subject}),read=(a,d)=>call(restored.api,a,d)
-   for(const [action,data]of [['accounts.list',{}],['statistics.get',{month:'2026-09'}],['loans.get',{loanId}],['loans.periods',{loanId}],['loans.planAllocation',{loanId,paymentId:payment.paymentId}]])assert.deepEqual(await read(action,data),await api(action,data))
+   for(const [action,data]of [['accounts.list',{}],['statistics.get',{month:'2026-09'}],['loans.get',{loanId}],['loans.periods',{loanId}],['loans.planAllocation',{loanId,paymentId:payment.paymentId}]]){
+    const actual=await read(action,data),expected=await api(action,data)
+    const business=({readVersion,uid,dataRevision,unchanged,...value})=>value
+    if(actual.readVersion){assert.equal(actual.uid,newUid);assert.equal(actual.readVersion,1);assert.equal(actual.unchanged,false)}
+    assert.deepEqual(business(actual),business(expected))
+   }
   })
   await t.test('导出中发生任一函数写入即失效，重放不升修订；过期拒绝',async()=>{
    const draft=await api('dataExports.start',{requestId:randomUUID()}),first=await api('dataExports.page',{exportId:draft.exportId})

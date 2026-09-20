@@ -55,12 +55,15 @@ function createObjectKey(uid, importId, extension) {
 }
 
 async function markContentDeleted(getPool, provider, subjectHash, importId, fileID) {
+  // 同一个已清理对象的提交后重试沿用同一请求；post/abandon重放不重复推进账本修订。
+  const digest = digestParts('cleanup-file-v1', importId, fileID)
+  const requestId = digest.slice(0, 8) + '-' + digest.slice(8, 12) + '-4' + digest.slice(13, 16) + '-8' + digest.slice(17, 20) + '-' + digest.slice(20, 32)
   return executeIdempotentMutation({
     getPool,
     provider,
     subjectHash,
     action: 'imports.cleanupFile',
-    data: { requestId: randomUUID(), importId, fileID },
+    data: { requestId, importId, fileID },
     operation: async (connection, uid) => {
       await connection.execute(
         `UPDATE catledger_import_files

@@ -27,7 +27,7 @@ function createConnection({ identity, identityInsertError, userInsertError, nick
       state.released += 1
     },
     async execute(sql, values) {
-      if (sql.includes('SELECT uid, nickname FROM catledger_users')) return [[{uid:identity?.uid || 'synthetic-new', nickname}]]
+      if (sql.includes('SELECT uid, nickname, CAST(data_revision')) return [[{uid:identity?.uid || 'synthetic-new', nickname,dataRevision:'0'}]]
       if (sql.includes('SELECT system_key')) return [[]]
       if (sql.includes('INSERT INTO catledger_users')) {
         this.attemptedUids.push(values[0])
