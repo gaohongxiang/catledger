@@ -11,7 +11,8 @@ function loadApp(storage, saveFile) {
     require: function (name) {
       if (name === './services/export-files') return require('../miniprogram/services/export-files')
       if (name === './utils/profile-presentation') return profilePresentation
-      if (name === './services/read-cache') return { reset: function () {}, invalidate: function () {} }
+      if (name === './services/read-cache') return { reset() {}, bindScope() {} }
+      if (name === './services/catledger-api') return { revalidateForeground: () => Promise.resolve() }
       if (name === './theme/service') return { install: function () {} }
       return {}
     },

@@ -10,7 +10,7 @@
 | profile.update | profile-service → API ledger-transaction；资料与修订同事务，同键返回原昵称结果 |
 | loans.create/update | loan-service → API ledger-transaction；资料和分期初始计划同事务 |
 | loans.record/correct/reverse | loan-payment-service / loan-payment-maintenance → API ledger-transaction；付款、分配、正式交易、计划恢复同事务 |
-| loans.bookRepayment/assignRepayment/releaseRepayment | repayment-booking-service / explicit-repayment-service → API ledger-transaction；本息费、关系、事务回滚沿用原实现 |
+| loans.bookRepayment/assignRepayment/releaseRepayment | repayment-booking / explicit-repayment-service → API ledger-transaction；本息费、关系、事务回滚沿用原实现 |
 | loans.savePeriod/allocatePeriods/generatePlan | loan-period-service / loan-schedule-service → API ledger-transaction；计划虽不改总账也推进修订 |
 | imports.prepareMany/parseFile/discardFile | import-service → import-transaction；文件持久化、解析成功/失败、来源重开同事务；已review_ready/committed只读返回不推进 |
 | financeUpdates.prepare/organize/abandon/setRepayment | finance-update-core / review-issue-service → import-transaction；整理和版本同事务 |

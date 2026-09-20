@@ -1,3 +1,5 @@
+const { createSnapshotStore } = require('./read-snapshot-store')
+const { validMetadata, compare } = require('./read-metadata')
 // 展示快照与新鲜读取分开；普通失效不删画面，正式读取仍受写屏障保护。
 function stableKey(action, data) {
   function ordered(value) {
@@ -14,7 +16,9 @@ function createReadCache(options) {
   const now = options && options.now || Date.now
   const maxEntries = options && options.maxEntries || 48
   const entries = new Map(), pending = new Map(), revisions = new Map(), writes = new Set()
-  let session = 0, sequence = 0
+  let session = 0, sequence = 0, scope = null, latestRevision = null, validation = null
+  const disk = createSnapshotStore(options && options.storage, now)
+  const persistent = !(options && options.persistence === false)
   const clone = value => value === undefined ? value : JSON.parse(JSON.stringify(value))
   const stamp = tags => tags.map(tag => tag + ':' + (revisions.get(tag) || 0)).join('|')
   function checkSession(expected) {
@@ -25,13 +29,26 @@ function createReadCache(options) {
   }
   function fresh(key) {
     const entry = entries.get(key)
-    return entry && !entry.dirty && entry.expiresAt > now() &&
+    return entry && !validation && !entry.dirty && entry.expiresAt > now() &&
       ![...writes].some(write => write.tags.some(tag => entry.tags.includes(tag))) ? entry : null
   }
+  function persist() {
+    if (persistent && scope) disk.write(scope, [...entries].map(([key, entry]) => ({ key, value: entry.value, updatedAt: entry.updatedAt })))
+  }
+  function observe(value) {
+    if (!validMetadata(value)) return
+    if (latestRevision !== null && compare(value.dataRevision, latestRevision) < 0) {
+      throw Object.assign(new Error('数据版本已变化，请重试'), { code: 'STALE_READ' })
+    }
+    latestRevision = value.dataRevision
+    for (const entry of entries.values()) if (!entry.value || entry.value.dataRevision !== latestRevision) entry.dirty = true
+  }
   function put(key, policy, value, expiresAt) {
+    observe(value)
     entries.delete(key)
-    entries.set(key, { value: clone(value), tags: policy.tags, expiresAt, updatedAt: now(), dirty: false, token: ++sequence })
+    entries.set(key, { value: clone(value), tags: policy.tags, expiresAt, updatedAt: now(), source: 'memory', dirty: false, ttl: policy.ttl, token: ++sequence })
     while (entries.size > maxEntries) entries.delete(entries.keys().next().value)
+    persist()
   }
   function invalidate(tags) {
     tags.forEach(tag => revisions.set(tag, (revisions.get(tag) || 0) + 1))
@@ -62,6 +79,10 @@ function createReadCache(options) {
       if (stamp(policy.tags) !== currentStamp) {
         release()
         return read(key, policy, loader)
+      }
+      if (validMetadata(value) && latestRevision !== null && compare(value.dataRevision, latestRevision) < 0) {
+        release()
+        return read(key, policy, loader, { force: true })
       }
       put(key, policy, value, now() + policy.ttl)
       return value
@@ -102,6 +123,33 @@ function createReadCache(options) {
         .then(result => { checkSession(expectedSession); return result })
     },
     getSession: () => session,
+    bindScope(env, uid) {
+      if (typeof env !== 'string' || !env || !/^[1-9]\d{9}$/.test(uid)) return
+      if (scope && scope.env === env && scope.uid === uid) return
+      if (scope) { session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear(); validation = null }
+      scope = { env, uid }; latestRevision = null
+      if (persistent) for (const item of disk.read(scope)) {
+        if (entries.has(item.key)) continue
+        entries.set(item.key, { value: clone(item.value), tags: item.policy.tags, ttl: item.policy.ttl,
+          updatedAt: item.updatedAt, expiresAt: 0, dirty: true, token: ++sequence, source: 'storage' })
+      }
+    },
+    validate(tags, operation) {
+      if (validation) return validation
+      const expectedSession = session
+      invalidate(tags)
+      const work = Promise.resolve().then(operation).then(value => {
+        checkSession(expectedSession)
+        observe(value)
+        for (const entry of entries.values()) if (entry.value && entry.value.dataRevision === value.dataRevision && entry.value.uid === value.uid) {
+          entry.dirty = false; entry.expiresAt = now() + entry.ttl
+        }
+        return value
+      }).finally(() => { if (validation === work) validation = null })
+      validation = work
+      return work
+    },
+    waitForValidation: () => validation || Promise.resolve(),
     now,
     mutate,
     invalidate,
@@ -111,15 +159,15 @@ function createReadCache(options) {
       const entry = entries.get(key)
       if (!entry) return null
       entries.delete(key); entries.set(key, entry)
-      return { value: clone(entry.value), fresh: Boolean(fresh(key)), updatedAt: entry.updatedAt, source: 'memory' }
+      return { value: clone(entry.value), fresh: Boolean(fresh(key)), updatedAt: entry.updatedAt, source: entry.source }
     },
     seedFrom(sourceKey, key, policy, project) {
       const source = fresh(sourceKey)
       if (!source || fresh(key) || pending.has(key)) return
       put(key, policy, project(clone(source.value)), Math.min(source.expiresAt, now() + policy.ttl))
     },
-    reset() { session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear() }
+    reset() { session++; entries.clear(); pending.clear(); revisions.clear(); writes.clear(); scope = null; latestRevision = null; validation = null; disk.clear() }
   }
 }
 
-module.exports = Object.assign(createReadCache(), { createReadCache, stableKey })
+module.exports = Object.assign(createReadCache({ persistence: require('../config/read-strategy').persistentSnapshots }), { createReadCache, stableKey })

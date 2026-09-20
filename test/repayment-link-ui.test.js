@@ -24,7 +24,7 @@ function runtime(route, responder) {
   const calls = [], routes = [], storage = new Map()
   let definition, request = 0
   const app = { hasLoginApproval: () => true, globalData: { uid: '1234567890', categories: [] } }
-  const api = { peek: () => null, cacheToken: () => '', createRequestId: () => 'synthetic-request-' + ++request,
+  const api = { isFresh: () => true, peek: () => null, cacheToken: () => '', createRequestId: () => 'synthetic-request-' + ++request,
     callApi(name, data, options) { calls.push({ name, data, options }); return Promise.resolve().then(() => responder(name, data)) } }
   const chrome = { redirectTo:options=>routes.push(options.url),switchTab:options=>routes.push(options.url),navigateTo: options => routes.push(options.url), navigateBack() {}, showToast() {}, stopPullDownRefresh() {}, showModal() {} }
   function deps(name) {

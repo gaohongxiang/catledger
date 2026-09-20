@@ -35,7 +35,7 @@ test('重启后未加载用户编号且没有旧提交：新建、编辑和删�
       const preparing = page.prepareForm()
       await flush()
       assert.equal(page.data.errorMessage, '')
-      assert.equal(h.storage.size, 0)
+      assert.equal([...h.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
       await page.save()
       assert.equal(page.data.errorMessage, '', '目录尚未就绪不应误报身份或旧操作异常')
       page.bindAmount({ detail: { value: '2.34' } })
@@ -57,7 +57,7 @@ test('重启后未加载用户编号且没有旧提交：新建、编辑和删�
         assert.equal(writes[0].data.note, '合成当前修改')
       }
       if (action !== 'transactions.create') assert.equal(writes[0].data.transactionId, 'synthetic-edit')
-      assert.equal(h.storage.size, 0)
+      assert.equal([...h.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
       assert.equal(h.calls.some(call => call.action === 'transactions.commandResult'), false)
       assert.deepEqual(h.navigation, ['back'])
     })
@@ -107,7 +107,7 @@ test('目录失败只提示目录加载失败，不虚构上次操作或确认�
   assert.equal(h.app.globalData.uid, '')
   assert.equal(page.data.errorMessage, '')
   assert.ok(page.data.catalogError)
-  assert.equal(h.storage.size, 0)
+  assert.equal([...h.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
   assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
   h.respond = null
   await page.retryCatalog()
@@ -283,7 +283,7 @@ test('新登录会话在等待服务器期间清除旧页面数据，旧请求�
   const old = page.loadProfile({ force: true })
   await flush()
   h.cache.reset()
-  h.uid = '2000000002'
+  h.uid = '2000000002'; h.app.globalData.uid = h.uid
   const fresh = page.loadProfile()
   assert.equal(page.data.uid, '')
   await flush()
@@ -426,7 +426,7 @@ test('退出后未完成的目录请求不得回填 ID；缺字段响应不回�
   assert.equal(page.data.uid, '')
   page.copyId()
   assert.deepEqual(h.clipboard, [])
-  h.uid = '2000000002'
+  h.uid = '2000000002'; h.app.globalData.uid = h.uid
   await page.retryProfile()
   assert.equal(page.data.uid, h.uid, '缺字段重试必须跳过旧缓存读取真实 ID')
 })
@@ -682,7 +682,7 @@ test('进入导入再返回保留完整手记草稿，目录失效按ID刷新且
   const before = draft()
   page.openImport()
   assert.deepEqual(h.navigation, ['/pages/import-workbench/index'])
-  h.accounts.reverse(); h.cache.invalidate(['accountDirectory'])
+  h.accounts.reverse(); h.revision = '2'; h.cache.invalidate(['accountDirectory'])
   page.onShow(); await page.prepareForm()
   assert.deepEqual(draft(), before)
   assert.equal(page.data.sourceIndex, 0)
@@ -903,7 +903,7 @@ test('进程重启后进入记账页只核实持久化原操作，迟到确认�
   await restored.prepareForm(); await flush()
   assert.deepEqual(restarted.navigation, ['back'])
   assert.equal(restarted.calls.filter(c => c.action === 'transactions.create').length, 0)
-  assert.equal(restarted.storage.size, 0)
+  assert.equal([...restarted.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
   assert.equal(restarted.app.globalData.uid, restarted.uid)
   assert.deepEqual(restarted.calls.map(c => c.action), ['catalog.get', 'transactions.commandResult'])
 })
@@ -921,7 +921,7 @@ test('确有旧提交时，核实接口错误保留真实原因而不统一改�
   await restored.prepareForm()
   assert.equal(restored.data.errorMessage, '合成：当前核实接口不可用')
   assert.equal(restored.data.catalogError, '')
-  assert.equal(restarted.storage.size, 1)
+  assert.equal([...restarted.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 1)
   assert.deepEqual(restarted.navigation, [])
 })
 
@@ -980,7 +980,7 @@ test('批量删除响应丢失后锁定旧选择；重进页面自动查回执�
   page.onShow(); await page.prepareAndLoad(); await flush()
   assert.equal(page.data.deleteRetryCount, 0)
   assert.equal(h.calls.filter(row => row.action === 'transactions.deleteMany').length, 1)
-  assert.equal(h.storage.size, 0)
+  assert.equal([...h.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
 })
 
 test('导入历史只读查看账目，跳转统一明细跨月筛选；手动和导入可混选', async () => {

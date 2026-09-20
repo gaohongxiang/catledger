@@ -7,7 +7,7 @@ function loadApi(callFunction) {
   require('../miniprogram/services/read-cache').reset()
   global.wx = { cloud: { callFunction: callFunction } }
   global.getApp = function () {
-    return { hasLoginApproval: function () { return true } }
+    return { globalData: { uid: '1234567890' }, hasLoginApproval: function () { return true } }
   }
   const modulePath = require.resolve('../miniprogram/services/catledger-api')
   delete require.cache[modulePath]
@@ -68,11 +68,12 @@ test('只读请求遇到瞬时网络错误自动重试一次', async function ()
     if (calls === 1) {
       return Promise.reject({ errMsg: 'request:fail timeout' })
     }
-    return Promise.resolve({ result: { ok: true, data: { accounts: [] } } })
+    return Promise.resolve({ result: { ok: true, data: { accounts: [], uid: '1234567890', readVersion: 1, dataRevision: '1', unchanged: false } } })
   })
 
   const result = await api.callApi('accounts.list')
-  assert.deepEqual(result, { accounts: [] })
+  assert.deepEqual(result.accounts, [])
+  assert.equal(result.dataRevision, '1')
   assert.equal(calls, 2)
 })
 

@@ -48,13 +48,13 @@ function createCloudFunctionClient(options) {
   const functionName = options.functionName
   const fallbackMessage = options.fallbackMessage || '服务暂时不可用，请稍后重试'
 
-  function invoke(action, data, attempt, message) {
+  function invoke(action, data, attempt, message, requestOptions) {
     const startedAt = Date.now()
     return Promise.resolve()
       .then(function () {
         return wx.cloud.callFunction({
           name: functionName,
-          data: { action: action, data: data || {} }
+          data: Object.assign({ action: action, data: data || {} }, requestOptions && requestOptions.knownRevision !== undefined ? { knownRevision: requestOptions.knownRevision } : {})
         })
       })
       .then(function (response) {
@@ -62,7 +62,7 @@ function createCloudFunctionClient(options) {
           ms: Date.now() - startedAt, bytes: observer.bytes(response), ok: Boolean(response && response.result && response.result.ok) })
         if (!response || !response.result || typeof response.result !== 'object') {
           return handleTransportFailure(response, action, data, attempt, function (retryAction, retryData, retryAttempt) {
-            return invoke(retryAction, retryData, retryAttempt, message)
+            return invoke(retryAction, retryData, retryAttempt, message, requestOptions)
           })
         }
         try {
@@ -71,7 +71,7 @@ function createCloudFunctionClient(options) {
           const failure = cloudCallPolicy.classifyServiceFailure(error)
           if (cloudCallPolicy.shouldRetry(action, data, failure, attempt)) {
             return waitBeforeRetry().then(function () {
-              return invoke(action, data, attempt + 1, message)
+              return invoke(action, data, attempt + 1, message, requestOptions)
             })
           }
           throw error
@@ -79,18 +79,18 @@ function createCloudFunctionClient(options) {
       }, function (originalError) {
         observer.record('request', { action, source: 'network', attempt: attempt + 1, ms: Date.now() - startedAt, ok: false })
         return handleTransportFailure(originalError, action, data, attempt, function (retryAction, retryData, retryAttempt) {
-          return invoke(retryAction, retryData, retryAttempt, message)
+          return invoke(retryAction, retryData, retryAttempt, message, requestOptions)
         })
       })
   }
 
-  function callInternal(action, data, message) {
-    return invoke(action, data, 0, message)
+  function callInternal(action, data, message, requestOptions) {
+    return invoke(action, data, 0, message, requestOptions)
   }
 
-  function call(action, data) {
+  function call(action, data, requestOptions) {
     if (!hasLoginApproval()) return Promise.reject(loginRequiredError())
-    return callInternal(action, data)
+    return callInternal(action, data, undefined, requestOptions)
   }
 
   return {

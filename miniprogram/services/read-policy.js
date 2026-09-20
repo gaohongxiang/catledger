@@ -1,5 +1,7 @@
 // 连续前台使用期间复用；本机写入、重新进入前台及手动刷新控制重读。
+const ALL_TAGS = ['accounts', 'transactions', 'categories', 'profile', 'loans', 'accountDirectory', 'categoryDirectory']
 const READ_POLICIES = Object.freeze({
+  'reads.validate': { ttl: 0, tags: ALL_TAGS },
   'loans.transaction': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
   'loans.unassigned': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
   'loans.payment': { ttl: Infinity, tags: ['loans', 'transactions'] },
@@ -31,4 +33,4 @@ function mutationTags(action) {
   if (/^financeUpdates\.(post|undo)$/.test(action) || action === 'economicEvents.correct') return ['loans', 'accounts', 'transactions', 'categories', 'accountDirectory', 'categoryDirectory']
   return []
 }
-module.exports = { READ_POLICIES, mutationTags }
+module.exports = { READ_POLICIES, mutationTags, ALL_TAGS }

@@ -44,8 +44,8 @@ test('空月保持零图表并提示历史月份，未分类也有环图，零�
   assert.equal(refund.cumulativeEndText, '¥1.00')
 })
 
-test('缓存连续使用超过原TTL仍复用；回前台失效一次，保留登录会话并重新读取', async () => {
-  let now = 0, calls = 0
+test('缓存连续使用超过原TTL仍复用；回前台仅启动一次校验，保留登录会话', async () => {
+  let now = 0, calls = 0, validations = 0
   const cache = createReadCache({ now: () => now })
   const load = async () => ++calls
   await cache.read('statistics', READ_POLICIES['statistics.get'], load)
@@ -54,7 +54,7 @@ test('缓存连续使用超过原TTL仍复用；回前台失效一次，保留�
   let app
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../miniprogram/app.js'), 'utf8'), {
     App: definition => { app = definition },
-    require: name => name === './services/read-cache' ? cache : name === './services/export-files' ? require('../miniprogram/services/export-files') : {},
+    require: name => name === './services/catledger-api' ? { revalidateForeground() { validations++; cache.invalidate(['transactions']); return Promise.resolve() } } : name === './services/read-cache' ? cache : name === './services/export-files' ? require('../miniprogram/services/export-files') : {},
     wx: {}, console
   })
   const session = cache.getSession()
@@ -64,6 +64,7 @@ test('缓存连续使用超过原TTL仍复用；回前台失效一次，保留�
   app.onShow()
   assert.equal(cache.token('statistics'), null)
   assert.equal(cache.getSession(), session)
+  assert.equal(validations, 1)
   assert.equal(await cache.read('statistics', READ_POLICIES['statistics.get'], load), 2)
   app.onShow()
   assert.ok(cache.token('statistics'))
