@@ -9,6 +9,14 @@ const themeService = require('../../theme/service')
 
 const HOME_RECENT_LIMIT = 3
 
+function greetingText(loggedIn, profile) {
+  if (!loggedIn) return '你好'
+  const hour = new Date().getHours()
+  const period = hour >= 6 && hour < 11 ? '早上好' : (hour >= 11 && hour < 18 ? '下午好' : '晚上好')
+  const nickname = profile && profile.nickname ? String(profile.nickname).trim().slice(0, 24) : ''
+  return nickname ? period + '，' + nickname : period
+}
+
 const ACCOUNT_ICONS = {
   cash: 'account-cash.svg',
   bank: 'account-bank.svg',
@@ -22,6 +30,7 @@ Page({
   data: {
     cloudAvailable: false,
     loggedIn: false,
+    greeting: '你好',
     displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
     loading: false,
     hasDashboard: false,
@@ -45,6 +54,7 @@ Page({
     this.setData({
       cloudAvailable: app.globalData.cloudAvailable,
       loggedIn: loggedIn,
+      greeting: greetingText(loggedIn, app.globalData.profile),
       displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile),
       month: month,
       monthLabel: time.monthLabel(month)
@@ -59,6 +69,7 @@ Page({
     const loggedIn = app.hasLoginApproval()
     this.setData({
       loggedIn: loggedIn,
+      greeting: greetingText(loggedIn, app.globalData.profile),
       displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile)
     })
     if (app.globalData.cloudAvailable && loggedIn) {
@@ -94,6 +105,7 @@ Page({
   onWechatLoginSuccess: function () {
     this.setData({
       loggedIn: true,
+      greeting: greetingText(true, app.globalData.profile),
       displayAvatarUrl: profilePresentation.displayAvatarUrl(true, app.globalData.profile)
     })
     this.loadDashboard()

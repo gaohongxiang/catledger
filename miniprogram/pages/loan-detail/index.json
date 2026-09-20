@@ -2,6 +2,7 @@
   "navigationBarTitleText": "贷款资料",
   "usingComponents": {
     "login-sheet": "/components/login-sheet/index",
+    "page-head": "/components/page-head/index",
     "ui-state": "/components/ui-state/index",
     "chevron-icon": "/components/chevron-icon/index"
   }

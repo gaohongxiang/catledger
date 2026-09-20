@@ -167,6 +167,7 @@
   box-sizing: border-box;
 }
 .detail-item:active { opacity: .68; }
+.detail-tile { flex: 0 0 auto; margin-right: 16rpx; }
 .detail-main,
 .detail-copy { min-width: 0; flex: 1; }
 .detail-line { align-items: baseline; justify-content: space-between; }

@@ -1,6 +1,5 @@
 <view class="page-canvas page-secondary history-page {{themeClass}}" style="{{themeStyle}}">
-  <section-header class="history-heading" eyebrow="账单导入" title="导入记录"><button class="history-link" bindtap="importAgain" disabled="{{busy}}">导入账单</button></section-header>
-  <text class="history-copy content-inset">查看某次导入的账目，可在明细中选择删除。</text>
+  <page-head class="content-inset" badge="账单导入" title="导入记录" copy="查看某次导入的账目，可在明细中选择删除。"><button class="history-link" bindtap="importAgain" disabled="{{busy}}">导入账单</button></page-head>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <view wx:for="{{items}}" wx:key="updateId" class="history-entry">
     <view class="history-entry-heading"><text class="history-file">{{item.title}}</text><text class="history-status {{item.transactionCount ? 'history-status-ok' : 'history-status-muted'}}">{{item.transactionCount ? item.transactionCount + ' 笔账目' : item.deletedTransactionCount ? '账目已删除' : '无账目'}}</text></view>
@@ -11,7 +10,7 @@
       <button wx:if="{{item.deletedTransactionCount || item.status === 'undone'}}" class="history-link" bindtap="importAgain" disabled="{{busy}}">重新导入</button>
     </view>
   </view>
-  <ui-state wx:if="{{loaded && !items.length && !busy}}" description="暂无已入账的导入记录" />
+  <empty-cat wx:if="{{loaded && !items.length && !busy}}" title="暂无已入账的导入记录" description="导入账单后，可以在这里回看每次入账。" />
   <button wx:if="{{nextCursor}}" class="history-link" bindtap="onReachBottom" disabled="{{busy}}">加载更多</button>
   <button wx:if="{{errorMessage}}" class="history-link" bindtap="refresh" disabled="{{busy}}">重新加载</button>
   <text wx:if="{{busy}}" class="history-copy content-inset" aria-role="status">正在读取…</text>

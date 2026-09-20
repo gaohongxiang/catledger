@@ -5,6 +5,7 @@
   "usingComponents": {
     "section-header": "/components/section-header/index",
     "empty-state": "/components/empty-state/index",
+    "empty-cat": "/components/empty-cat/index",
     "ui-state": "/components/ui-state/index"
   }
 }

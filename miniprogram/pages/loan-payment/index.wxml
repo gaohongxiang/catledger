@@ -1,9 +1,9 @@
 <view class="page-canvas loan-payment {{themeClass}}" style="{{themeStyle}}">
-  <section-header class="lp-heading" eyebrow="贷款管理 / 实际借还" title="{{payment ? payment.kindText + '记录' : '登记实际借还'}}" />
+  <page-head class="content-inset" badge="实际借还" title="{{payment ? payment.kindText + '记录' : '登记实际借还'}}" copy="总额须等于本金、利息、费用之和；提交前逐项核对。" />
   <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <button wx:if="{{errorMessage}}" class="lp-link" disabled="{{saving || loading}}" bindtap="load">重新读取与核实</button>
-  <view wx:if="{{hasPending}}" class="lp-note-card"><text class="lp-note">上次操作结果待核实。重试沿用已保存的原请求。</text><button class="primary-button lp-action" loading="{{saving}}" disabled="{{loading || saving}}" bindtap="save">重试上次操作</button></view>
+  <view wx:if="{{hasPending}}" class="lp-note-card"><text class="lp-note">上次操作结果待核实。重试沿用已保存的原请求。</text><button class="primary-button primary-button-medium lp-action" loading="{{saving}}" disabled="{{loading || saving}}" bindtap="save">重试上次操作</button></view>
   <ui-state wx:if="{{loading}}" description="正在读取…" />
   <block wx:if="{{payment}}">
     <view class="lp-summary">

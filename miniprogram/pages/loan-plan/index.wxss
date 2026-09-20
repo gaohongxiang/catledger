@@ -1,5 +1,4 @@
 .plan-page { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.plan-heading { display: block; box-sizing: border-box; padding-left: var(--layout-content-inset, 20rpx); padding-right: var(--layout-content-inset, 20rpx); }
 .plan-note-card { display: block; margin: 24rpx 0; padding: 24rpx; background: var(--theme-surface-muted); border-radius: var(--layout-radius-medium); }
 .plan-note { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.7; }
 .plan-note + .plan-note { margin-top: 12rpx; }

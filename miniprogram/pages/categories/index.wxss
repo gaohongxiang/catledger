@@ -1,18 +1,11 @@
 .category-page { padding-top: 30rpx; }
-.category-heading, .category-toolbar, .kind-switch, .kind-option, .category-row, .category-copy, .category-drag-handle, .archived-toggle, .archived-toggle-end, .sheet-topline, .category-detail-meta { display: flex; }
-.category-heading { align-items: flex-end; justify-content: space-between; }
-.category-kicker, .category-title, .category-intro, .category-name, .category-kind-label, .archived-title, .archived-note, .sheet-kicker, .sheet-title, .sheet-error { display: block; }
+.category-toolbar, .kind-switch, .kind-option, .category-row, .category-copy, .category-drag-handle, .archived-toggle, .archived-toggle-end, .sheet-topline, .category-detail-meta { display: flex; }
+.category-kicker, .category-name, .category-kind-label, .archived-title, .archived-note, .sheet-kicker, .sheet-title, .sheet-error { display: block; }
 .category-kicker, .sheet-kicker {
   color: var(--theme-secondary, #64705d);
   font-size: var(--font-caption, 24rpx);
   font-weight: 500;
   letter-spacing: 2rpx;
-}
-.category-title {
-  margin-top: 4rpx;
-  font-size: var(--font-title, 40rpx);
-  font-weight: 500;
-  line-height: 1.2;
 }
 .category-toolbar {
   min-height: 72rpx;
@@ -42,13 +35,6 @@
 }
 .category-add-icon { width: 22rpx; height: 22rpx; flex: 0 0 auto; }
 .category-action-active { opacity: .58; }
-.category-intro {
-  max-width: 600rpx;
-  margin-top: 12rpx;
-  color: var(--theme-text-muted, #746a60);
-  font-size: var(--font-caption, 24rpx);
-  line-height: 1.55;
-}
 .kind-switch {
   position: relative;
   margin-top: 22rpx;
@@ -126,6 +112,7 @@
   font-size: var(--font-caption, 24rpx);
 }
 .category-copy { min-width: 0; flex: 1; flex-direction: column; }
+.category-row category-tile { flex: 0 0 auto; }
 .category-name {
   overflow: hidden;
   color: var(--theme-ink, #29231e);
@@ -194,7 +181,7 @@
   flex-shrink: 0;
   padding: 16rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));
   background: var(--theme-surface, #fffdf9);
-  border-radius: var(--theme-radius-large, 24rpx) var(--theme-radius-large, 24rpx) 0 0;
+  border-radius: var(--theme-radius-xl, 32rpx) var(--theme-radius-xl, 32rpx) 0 0;
 }
 .sheet-handle {
   width: 72rpx;

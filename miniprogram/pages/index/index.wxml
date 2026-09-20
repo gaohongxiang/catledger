@@ -11,39 +11,38 @@
 
   <block wx:else>
     <view class="net-worth-card">
+      <image class="net-worth-watermark" src="/assets/catledger-logo.png" mode="aspectFit" aria-hidden="true" />
+      <text class="net-worth-greeting">{{greeting}}</text>
       <view class="net-worth-heading">
         <text class="net-worth-label">人民币净值</text>
         <text class="net-worth-month">{{monthLabel}}</text>
       </view>
       <text class="net-worth-number money-number">{{loggedIn && hasDashboard ? netWorthText : '—'}}</text>
       <text class="net-worth-note">资产减去负债</text>
+      <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 || netIncomeText.length > 12 ? 'month-strip-stacked' : ''}}">
+        <view class="month-stat">
+          <view class="month-stat-heading">
+            <text class="month-stat-label">收入</text>
+          </view>
+          <text class="month-stat-value money-number amount-income">{{loggedIn && hasDashboard ? incomeText : '—'}}</text>
+        </view>
+        <view class="month-stat">
+          <view class="month-stat-heading">
+            <text class="month-stat-label">支出</text>
+          </view>
+          <text class="month-stat-value money-number amount-expense">{{loggedIn && hasDashboard ? expenseText : '—'}}</text>
+        </view>
+        <view class="month-stat">
+          <view class="month-stat-heading">
+            <text class="month-stat-label">结余</text>
+          </view>
+          <text class="month-stat-value money-number">{{loggedIn && hasDashboard ? netIncomeText : '—'}}</text>
+        </view>
+      </view>
     </view>
 
     <ui-state wx:if="{{errorMessage && hasDashboard}}" error description="刷新未成功，当前显示上次结果 · 重试" bindtap="loadDashboard" />
     <view class="home-flow">
-    <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 || netIncomeText.length > 12 ? 'month-strip-stacked' : ''}}">
-      <view class="month-stat month-stat-divider">
-        <view class="month-stat-heading">
-          <image class="month-stat-icon" src="/assets/icons/summary-income.svg" mode="aspectFit" />
-          <text class="month-stat-label">收入</text>
-        </view>
-        <text class="month-stat-value money-number amount-income">{{loggedIn && hasDashboard ? incomeText : '—'}}</text>
-      </view>
-      <view class="month-stat month-stat-divider">
-        <view class="month-stat-heading">
-          <image class="month-stat-icon" src="/assets/icons/summary-expense.svg" mode="aspectFit" />
-          <text class="month-stat-label">支出</text>
-        </view>
-        <text class="month-stat-value money-number amount-expense">{{loggedIn && hasDashboard ? expenseText : '—'}}</text>
-      </view>
-      <view class="month-stat">
-        <view class="month-stat-heading">
-          <image class="month-stat-icon" src="{{themeIconRoot}}/summary-balance.svg" mode="aspectFit" />
-          <text class="month-stat-label">结余</text>
-        </view>
-        <text class="month-stat-value money-number">{{loggedIn && hasDashboard ? netIncomeText : '—'}}</text>
-      </view>
-    </view>
 
 
     <section-header class="section-heading statistics-heading" compact title="统计分析">
@@ -123,15 +122,9 @@
           <text class="timeline-amount money-number {{item.amountClass}}">{{item.amountText}}</text>
         </view>
       </view>
-      <view wx:else class="recent-empty">
-        <text class="recent-empty-title">这个月还没有账</text>
-        <text class="recent-empty-copy">导入或手动记录后，最新账目会出现在这里。</text>
-      </view>
+      <empty-cat wx:else title="这个月还没有账" description="导入或手动记录后，最新账目会出现在这里。" />
     </block>
-    <view wx:else class="recent-empty recent-empty-pending">
-      <text class="recent-empty-title">{{loading ? '正在读取最近账目…' : (errorMessage ? '账目暂未读取' : '登录后查看最近账目')}}</text>
-      <text class="recent-empty-copy">导入或手动记录后，最新账目会出现在这里。</text>
-    </view>
+    <empty-cat wx:else title="{{loading ? '正在读取最近账目…' : (errorMessage ? '账目暂未读取' : '登录后查看最近账目')}}" description="导入或手动记录后，最新账目会出现在这里。" />
     </view>
   </block>
 </view>

@@ -257,7 +257,7 @@ test('首页只保留三条最近账目以避免摘要页重心下坠', function
   assert.match(sectionHeaderStyle, /\.sh-title[^}]*font-weight:\s*500/)
   assert.match(homeStyle, /\.timeline-label[^}]*font-weight:\s*400/)
   assert.match(homeStyle, /\.account-empty[^}]*font-size:\s*var\(--font-caption, 24rpx\)/)
-  assert.match(homeStyle, /\.recent-empty-title[^}]*font-size:\s*var\(--font-caption, 24rpx\)[^}]*font-weight:\s*400/)
+  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="这个月还没有账"/)
 })
 
 test('首页卡片外沿与文字使用内收的双基线', function () {
@@ -292,4 +292,82 @@ test('首页与我的共用同一个头像展示字段', function () {
   assert.match(home, /class="home-logo" src="\{\{displayAvatarUrl\}\}"/)
   assert.match(profile, /class="profile-logo" src="\{\{displayAvatarUrl\}\}"/)
   assert.doesNotMatch(profile, /profile-avatar-empty/)
+})
+
+test('分类瓷贴接入明细、统计、分类管理与记一笔，账户行首使用主题账户图标', function () {
+  assert.match(read('miniprogram/pages/transactions/index.wxml'), /<category-tile[^>]*size="small" hide-name name="\{\{item\.label\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<category-tile[^>]*size="small" hide-name name="\{\{item\.categoryId \? item\.name : ''\}\}"/)
+  assert.match(read('miniprogram/pages/categories/index.wxml'), /<category-tile[^>]*size="small" hide-name name="\{\{item\.name\}\}"/)
+  assert.match(read('miniprogram/pages/transaction-editor/index.wxml'), /<category-tile[^>]*hide-name name="\{\{categories\[categoryIndex\]\.name\}\}"/)
+  assert.doesNotMatch(read('miniprogram/pages/statistics/index.wxml'), /ring-dot/)
+
+  const accountsMarkup = read('miniprogram/pages/accounts/index.wxml')
+  assert.equal((accountsMarkup.match(/account-type-icon/g) || []).length, 3)
+  assert.match(accountsMarkup, /src="\{\{themeIconRoot\}\}\/\{\{item\.iconPath\}\}"/)
+  assert.match(read('miniprogram/pages/accounts/model.js'), /iconPath: TYPE_ICONS\[account\.type\]/)
+})
+
+test('分类瓷贴默认色映射覆盖八个内置分类并回退灰色', function () {
+  const tileSource = read('miniprogram/components/category-tile/index.js')
+  const pairs = [['餐饮', 'orange'], ['交通', 'blue'], ['购物', 'purple'], ['住房', 'teal'], ['医疗', 'red'], ['教育', 'yellow'], ['娱乐', 'green']]
+  pairs.forEach(function (pair) {
+    assert.match(tileSource, new RegExp("'" + pair[0] + "': '" + pair[1] + "'"))
+  })
+  assert.match(tileSource, /\|\| 'grey'/)
+  assert.match(read('miniprogram/components/category-tile/index.wxss'), /\.ct-grey \.ct-box/)
+})
+
+test('page-head 统一全部页面页头，section-header 只留 compact 页内小节', function () {
+  const pages = ['loans', 'import-history', 'data-privacy', 'ledger', 'accounts', 'categories', 'theme', 'profile', 'loan-payment', 'loan-plan', 'loan-link', 'loan-detail', 'import-workbench']
+  pages.forEach(function (page) {
+    const markup = read('miniprogram/pages/' + page + '/index.wxml')
+    const config = read('miniprogram/pages/' + page + '/index.json')
+    assert.match(markup, /<page-head[^>]*badge="/, page + ' 缺少 page-head')
+    assert.match(config, /"page-head":\s*"\/components\/page-head\/index"/, page + ' 未注册 page-head')
+  })
+  ;['index', 'statistics', 'data-privacy'].forEach(function (page) {
+    const markup = read('miniprogram/pages/' + page + '/index.wxml')
+    const headers = markup.match(/<section-header[^>]*>/g) || []
+    assert.ok(headers.length > 0, page + ' 应保留页内小节')
+    headers.forEach(function (tag) { assert.match(tag, /compact/, page + ' section-header 仅允许 compact：' + tag) })
+  })
+  assert.doesNotMatch(read('miniprogram/pages/loans/index.wxml'), /section-header/)
+})
+
+test('empty-cat 接管主场景空态，empty-state 保留次级场景', function () {
+  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="这个月还没有账"/)
+  assert.match(read('miniprogram/pages/transactions/index.wxml'), /<empty-cat wx:elif[^>]*title="这里暂时没有账目"/)
+  assert.match(read('miniprogram/pages/loans/index.wxml'), /<empty-cat[^>]*title="还没有贷款资料"/)
+  assert.match(read('miniprogram/pages/import-history/index.wxml'), /<empty-cat[^>]*title="暂无已入账的导入记录"/)
+  assert.match(read('miniprogram/components/empty-cat/index.wxml'), /\/assets\/catledger-logo\.png/)
+  assert.match(read('miniprogram/components/empty-cat/index.wxss'), /opacity:\s*\.32/)
+  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-state[^>]*title="当前基础库不支持云开发"/)
+})
+
+test('大卡与弹层圆角升 xl，列表行卡保持 large', function () {
+  assert.match(read('miniprogram/pages/statistics/index.wxss'), /\.graph-surface \{[^}]*border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
+  assert.match(read('miniprogram/pages/statistics/index.wxss'), /\.composition-card \{[^}]*border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
+  const sheetFiles = ['miniprogram/pages/statistics/index.wxss', 'miniprogram/pages/categories/index.wxss', 'miniprogram/pages/accounts/index.wxss', 'miniprogram/components/login-sheet/index.wxss', 'miniprogram/pages/import-workbench/index.wxss']
+  sheetFiles.forEach(function (file) {
+    assert.match(read(file), /border-radius:\s*var\(--theme-radius-xl, 32rpx\) var\(--theme-radius-xl, 32rpx\) 0 0/, file)
+  })
+  assert.match(read('miniprogram/pages/loan-payment/index.wxss'), /\.lp-summary \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
+  assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.ld-form-card \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
+  assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.ld-panel \{[^}]*var\(--layout-radius-large\)/)
+})
+
+test('我的页资料区：头像即按钮、昵称与 ID 使用图标按钮，编辑逻辑不变', function () {
+  const markup = read('miniprogram/pages/profile/index.wxml')
+  const style = read('miniprogram/pages/profile/index.wxss')
+  assert.match(markup, /class="profile-avatar-button[^"]*"[^>]*open-type="chooseAvatar"[^>]*bindchooseavatar="chooseAvatar"/)
+  assert.doesNotMatch(markup, />取消<|>保存<|profile-avatar-label|profile-id-copy/)
+  assert.match(markup, /aria-label="修改昵称"[^>]*bindtap="startEditNickname"/)
+  assert.match(markup, /aria-label="取消修改昵称"[^>]*bindtap="cancelEditNickname"/)
+  assert.match(markup, /aria-label="保存昵称"[^>]*form-type="submit"/)
+  assert.match(markup, /aria-label="复制完整 ID"[^>]*bindtap="copyId"/)
+  assert.match(markup, /\/assets\/icons\/pencil\.svg/)
+  assert.match(markup, /\/assets\/icons\/copy\.svg/)
+  assert.match(style, /\.profile-card \{[^}]*var\(--theme-radius-xl, 32rpx\)[^}]*box-shadow:\s*var\(--theme-shadow-soft\)/)
+  assert.match(style, /\.profile-icon-button \{[^}]*min-height:\s*88rpx/)
+  assert.match(style, /\.profile-avatar-button:active \{\s*opacity:/)
 })
