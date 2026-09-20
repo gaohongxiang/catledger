@@ -16,8 +16,8 @@ function rule(selector) {
 }
 
 test('首页样板保留净值口径、五项金额绑定和用户头像', () => {
-  assert.match(markup, /人民币净值/)
-  assert.doesNotMatch(markup, /总资产/)
+  assert.match(markup, /净资产/)
+  assert.doesNotMatch(markup, /总资产|人民币净值|资产减去负债/)
   for (const key of ['netWorthText', 'incomeText', 'expenseText', 'netIncomeText', 'displayAvatarUrl']) {
     assert.ok(key === 'displayAvatarUrl' ? markup.includes('{{' + key + '}}') : markup.includes("{{loggedIn && hasDashboard ? " + key + " : '—'}}"), key)
   }
@@ -124,7 +124,6 @@ test('净值卡文字颜色全部走主题 hero 令牌，不再保留页面级�
   assert.match(rule('.net-worth-card'), /color:\s*var\(--theme-hero-ink/)
   assert.match(rule('.net-worth-number'), /color:\s*var\(--theme-hero-value-ink/)
   assert.match(rule('.net-worth-label'), /color:\s*var\(--theme-hero-muted/)
-  assert.match(rule('.net-worth-note'), /color:\s*var\(--theme-hero-muted/)
   assert.match(rule('.net-worth-month'), /color:\s*var\(--theme-hero-muted/)
 })
 
@@ -135,18 +134,20 @@ test('月度长金额改为纵向摘要，保持原始金额字符串和负号',
   assert.match(rule('.month-strip-stacked .month-stat'), /justify-content:\s*space-between/)
 })
 
-test('首页 hero 升级大圆角与柔影，猫水印不抢戏也不拦截触控', () => {
+test('首页 hero 保留大圆角与柔影，不再放置猫水印遮挡内容', () => {
   assert.match(rule('.net-worth-card'), /border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
   assert.match(rule('.net-worth-card'), /box-shadow:\s*var\(--theme-shadow-soft\)/)
   assert.doesNotMatch(style, /--home-shadow\s*:/)
-  assert.match(markup, /class="net-worth-watermark" src="\/assets\/catledger-logo\.png"/)
-  assert.match(rule('.net-worth-watermark'), /opacity:\s*\.09/)
-  assert.match(rule('.net-worth-watermark'), /pointer-events:\s*none/)
+  assert.doesNotMatch(markup, /net-worth-watermark/)
+  assert.doesNotMatch(style, /\.net-worth-watermark/)
 })
 
-test('时段问候进入 hero，月度收支结余小字条并入 hero 底部', () => {
+test('时段问候移到页头标题之上，月度收支结余小字条留在 hero 底部', () => {
   const source = read('miniprogram/pages/index/index.js')
-  assert.match(markup, /class="net-worth-greeting">\{\{greeting\}\}/)
+  assert.match(markup, /class="home-greeting">\{\{greeting\}\}/)
+  assert.doesNotMatch(markup, /net-worth-greeting/)
+  assert.ok(markup.indexOf('class="home-greeting"') < markup.indexOf('class="home-title'), '问候应在主标题之前')
+  assert.ok(markup.indexOf('class="home-greeting"') < markup.indexOf('class="net-worth-card"'), '问候不属于净值卡')
   assert.match(source, /if \(!loggedIn\) return '你好'/)
   assert.match(source, /hour >= 6 && hour < 11 \? '早上好'/)
   assert.match(source, /hour >= 11 && hour < 18 \? '下午好'/)

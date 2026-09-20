@@ -1,5 +1,5 @@
 <view class="ec">
-  <image class="ec-art" src="/assets/catledger-logo.png" mode="aspectFit" aria-hidden="true" />
+  <image wx:if="{{!hideArt}}" class="ec-art" src="/assets/catledger-logo.png" mode="aspectFit" aria-hidden="true" />
   <text class="ec-title">{{title}}</text>
   <text wx:if="{{description}}" class="ec-copy">{{description}}</text>
   <view class="ec-actions"><slot></slot></view>

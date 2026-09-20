@@ -1,6 +1,7 @@
 <view class="page-canvas home-page {{themeClass}}" style="{{themeStyle}}">
   <view class="home-header home-content-line">
     <view class="home-intro">
+      <text class="home-greeting">{{greeting}}</text>
       <text class="home-title serif-title">把账，记得有温度。</text>
     </view>
     <button wx:if="{{!loggedIn}}" class="home-login-button" size="mini" bindtap="promptWechatLogin"><text class="home-login-label">登录</text></button>
@@ -11,14 +12,11 @@
 
   <block wx:else>
     <view class="net-worth-card">
-      <image class="net-worth-watermark" src="/assets/catledger-logo.png" mode="aspectFit" aria-hidden="true" />
-      <text class="net-worth-greeting">{{greeting}}</text>
       <view class="net-worth-heading">
-        <text class="net-worth-label">人民币净值</text>
+        <text class="net-worth-label">净资产</text>
         <text class="net-worth-month">{{monthLabel}}</text>
       </view>
       <text class="net-worth-number money-number">{{loggedIn && hasDashboard ? netWorthText : '—'}}</text>
-      <text class="net-worth-note">资产减去负债</text>
       <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 || netIncomeText.length > 12 ? 'month-strip-stacked' : ''}}">
         <view class="month-stat">
           <view class="month-stat-heading">

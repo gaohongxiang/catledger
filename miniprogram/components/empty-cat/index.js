@@ -7,6 +7,10 @@ Component({
     description: {
       type: String,
       value: ''
+    },
+    hideArt: {
+      type: Boolean,
+      value: false
     }
   },
   options: {

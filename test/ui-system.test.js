@@ -338,7 +338,7 @@ test('page-head 统一全部页面页头，section-header 只留 compact 页内�
 test('empty-cat 接管主场景空态，empty-state 保留次级场景', function () {
   assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="这个月还没有账"/)
   assert.match(read('miniprogram/pages/transactions/index.wxml'), /<empty-cat wx:elif[^>]*title="这里暂时没有账目"/)
-  assert.match(read('miniprogram/pages/loans/index.wxml'), /<empty-cat[^>]*title="还没有贷款资料"/)
+  assert.match(read('miniprogram/pages/loans/index.wxml'), /<empty-cat[^>]*hide-art[^>]*title="还没有贷款资料"/)
   assert.match(read('miniprogram/pages/import-history/index.wxml'), /<empty-cat[^>]*title="暂无已入账的导入记录"/)
   assert.match(read('miniprogram/components/empty-cat/index.wxml'), /\/assets\/catledger-logo\.png/)
   assert.match(read('miniprogram/components/empty-cat/index.wxss'), /opacity:\s*\.32/)
