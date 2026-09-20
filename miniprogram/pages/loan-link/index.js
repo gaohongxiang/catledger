@@ -31,7 +31,7 @@ Page({
           api.callApi('loans.unassigned', { month: month || null, accountId, pageSize: 20, cursor }, { force: true }), api.callApi('catalog.get')])
         if (!valid()) return
         if (result.month !== (month || null) || result.accountId !== accountId || !Array.isArray(result.items)) throw new Error('还款筛选结果不完整，请重试')
-        const accounts = [{ accountId: null, name: '全部负债账户' }].concat(catalog.accounts.filter(a => ['credit','other_liability'].includes(a.type)))
+        const accounts = [{ accountId: null, name: '全部借款账户' }].concat(catalog.accounts.filter(a => a.type === 'other_liability'))
         this.setData({ accounts, accountIndex: Math.max(0,accounts.findIndex(a => a.accountId === accountId)), items: result.items.map(candidateView),
           nextCursor: result.nextCursor, hasLoaded: true })
       }

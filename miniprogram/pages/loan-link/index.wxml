@@ -1,15 +1,17 @@
 <view class="page-canvas loan-link-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="贷款管理" title="{{transactionId ? '关联这笔还款' : '待关联还款'}}" copy="只核对已有账目，不会再次扣款；普通信用卡还款不一定是分期，无需强制建立贷款资料。" />
+  <page-head class="content-inset" badge="贷款管理" title="{{transactionId ? (context.state === 'none' ? '账目关联' : '关联这笔还款') : '待关联还款'}}" copy="信用卡整单还款按转账记账，无需关联贷款。这里核对其他借款还款及已有贷款关联。" />
   <block wx:if="{{!transactionId}}">
     <picker class="ll-field" mode="date" fields="month" value="{{month}}" bindchange="changeMonth"><text>查询月份</text><view class="ll-picker"><text class="ll-picker-value">{{month || '全部月份'}}</text><chevron-icon size="{{24}}" /></view></picker>
     <button wx:if="{{month}}" class="ll-link" bindtap="clearMonth">查看全部月份</button>
-    <picker class="ll-field" range="{{accounts}}" range-key="name" value="{{accountIndex}}" bindchange="changeAccount"><text>负债账户</text><view class="ll-picker"><text class="ll-picker-value">{{accounts[accountIndex].name || '全部负债账户'}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <picker class="ll-field" range="{{accounts}}" range-key="name" value="{{accountIndex}}" bindchange="changeAccount"><text>借款账户</text><view class="ll-picker"><text class="ll-picker-value">{{accounts[accountIndex].name || '全部借款账户'}}</text><chevron-icon size="{{24}}" /></view></picker>
   </block>
   <ui-state wx:if="{{loading}}" description="正在核对还款与关联…" />
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <button wx:if="{{errorMessage}}" class="secondary-button ll-action" bindtap="load" disabled="{{loading}}">重新读取，不修改账目</button>
   <block wx:if="{{!transactionId && !errorMessage}}">
-    <ui-state wx:if="{{hasLoaded && !loading && !items.length}}" description="当前筛选没有可关联的还款。已经关联的记录请在贷款详情中查看。" />
+    <block wx:if="{{hasLoaded && !loading && items.length === 0}}">
+      <ui-state description="当前筛选没有可关联的还款。已经关联的记录请在贷款详情中查看。" />
+    </block>
     <view wx:for="{{items}}" wx:key="transactionId" class="ll-candidate" hover-class="ll-candidate-hover" data-id="{{item.transactionId}}" bindtap="selectTransaction" aria-role="button" aria-label="{{item.businessText}} {{item.amountText}}">
       <view class="ll-candidate-top"><text class="ll-candidate-title">{{item.businessText}}</text><text class="ll-candidate-amount money-number">{{item.amountText}}</text></view>
       <text class="ll-note">{{item.accountText}}</text>
@@ -37,7 +39,7 @@
       </block>
     </block>
     <button wx:elif="{{context.linked}}" class="primary-button ll-action" bindtap="openPayment" disabled="{{loading}}">{{context.state === 'replaced' ? '原账目已更正，查看当前借还记录' : '已有关联，查看实际借还'}}</button>
-    <view wx:else class="ll-note-card"><text class="ll-note">这笔账目不是资产转入负债的还款候选。请从贷款详情核对其他已有来源，不要重复登记。</text></view>
+    <view wx:else class="ll-note-card"><text class="ll-note">这笔账目无需处理贷款关联，原账目已保留。</text></view>
     <view wx:if="{{context.evidence.items.length}}" class="ll-evidence">
       <text class="ll-section-title">导入来源提供的信息 · 待核对</text>
       <view wx:for="{{context.evidence.items}}" wx:key="index" wx:for-item="evidence"><text class="ll-note">{{evidence.description}}</text>

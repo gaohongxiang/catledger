@@ -10,10 +10,12 @@ const { createLoanContext } = require('../miniprogram/pages/transaction-editor/l
 const { READ_POLICIES, mutationTags } = require('../miniprogram/services/read-policy')
 const transaction = { transactionId: 'synthetic-tx', type: 'transfer', amountMinor: '1000', version: 1, origin: 'import',
   occurredLocalAt: '2026-08-02T18:15:15.123', timezoneOffsetMinutes: -480,
-  sourceAccount: { accountId: 'wallet', name: '合成余额' }, destinationAccount: { accountId: 'credit', name: '合成信用账户' } }
-const context = { state: 'candidate', transaction, targetAccount: { accountId: 'credit', type: 'credit', name: '合成信用账户', inactive: false }, payment: null, allocations: [], evidence: { items: [], hasMore: false } }
-const loan = { loanId: 'loan', name: '合成分期', kind: 'installment', accountId: 'credit', accountName: '合成信用账户', baselinePrincipalMinor: '10000', remainingPrincipalMinor: '10000', baselineDate: '2026-08-01', version: 1, status: 'active' }
-const catalog = { uid: '1234567890', accounts: [{ accountId: 'wallet', name: '合成余额', type: 'wallet' }, { accountId: 'other', name: '另一信用账户', type: 'credit' }, { accountId: 'credit', name: '合成信用账户', type: 'credit' }], categories: [] }
+  sourceAccount: { accountId: 'wallet', name: '合成余额' }, destinationAccount: { accountId: 'debt', name: '合成借款账户' } }
+const context = { state: 'candidate', transaction, targetAccount: { accountId: 'debt', type: 'other_liability', name: '合成借款账户', inactive: false }, payment: null, allocations: [], evidence: { items: [], hasMore: false } }
+const creditTransaction = { ...transaction, destinationAccount: { accountId: 'credit', name: '合成信用账户' } }
+const ordinaryContext = { ...context, state: 'none', transaction: creditTransaction, targetAccount: null }
+const loan = { loanId: 'loan', name: '合成分期', kind: 'installment', accountId: 'debt', accountName: '合成借款账户', baselinePrincipalMinor: '10000', remainingPrincipalMinor: '10000', baselineDate: '2026-08-01', version: 1, status: 'active' }
+const catalog = { uid: '1234567890', accounts: [{ accountId: 'wallet', name: '合成余额', type: 'wallet' }, { accountId: 'credit', name: '合成信用账户', type: 'credit' }, { accountId: 'debt', name: '合成借款账户', type: 'other_liability' }], categories: [] }
 const sourceResult = { source: { transactionIds: [transaction.transactionId], fingerprint: 'synthetic-fingerprint', event: null }, transactions: [transaction], evidence: { items: [{ fields: [{ label: '期次', value: '2/12' }], description: '合成来源' }], hasMore: false } }
 const copy = value => JSON.parse(JSON.stringify(value))
 const flush = () => new Promise(resolve => setImmediate(resolve))
@@ -50,7 +52,7 @@ function runtime(route, responder) {
   return { page, calls, routes, app, api }
 }
 function linkedContext() {
-  return { ...context, state: 'linked', targetAccount: null,
+  return { ...context, state: 'linked', transaction: creditTransaction, targetAccount: null,
     payment: { paymentId: 'payment', kind: 'repayment', totalMinor: '1000', version: 1, status: 'active' },
     allocations: [{ loanId: 'loan', loanName: '合成分期', kind: 'installment', principalMinor: '800', interestMinor: '200', feeMinor: '0',
       interestTreatment: 'accrued', feeTreatment: 'expense', periodCount: 4,
@@ -58,10 +60,12 @@ function linkedContext() {
       unallocated: { principalMinor: '100', interestMinor: '0', feeMinor: '0' } }] }
 }
 
-test('展示区分普通信用卡还款候选、已关联分期与未知本金，期次截断明确告知', () => {
+test('展示区分借款候选、信用卡普通转账与已有分期关联，未知本金和期次截断明确告知', () => {
   const candidate = model.contextView(context)
-  assert.equal(candidate.linked, false); assert.match(candidate.businessText, /尚未确认是否分期/)
+  assert.equal(candidate.linked, false); assert.match(candidate.businessText, /借款还款 · 尚未关联贷款/)
   assert.equal(candidate.allocations.length, 0)
+  const ordinary = model.contextView(ordinaryContext)
+  assert.equal(ordinary.state, 'none'); assert.equal(ordinary.linked, false); assert.equal(ordinary.businessText, '普通账目')
   const linked = model.contextView(linkedContext())
   assert.equal(linked.businessText, '已关联分期还款'); assert.equal(linked.totalText, '¥10.00')
   assert.match(linked.allocations[0].periodText, /共4期/); assert.match(linked.allocations[0].unallocatedText, /¥1.00/)
@@ -76,25 +80,26 @@ test('待关联页默认全部月份，切换筛选绑定最新意图并限制�
   const h = runtime('loan-link', (name, data) => {
     if (name === 'catalog.get') return catalog
     if (data.month === '2026-07') return new Promise(resolve => { late = resolve })
-    return { month: data.month, accountId: data.accountId, items: [{ ...transaction, targetType: 'credit' }], nextCursor: 'next-' + (data.cursor || 'first') }
+    return { month: data.month, accountId: data.accountId, items: [{ ...transaction, targetType: 'other_liability' }], nextCursor: 'next-' + (data.cursor || 'first') }
   })
   h.page.onLoad({}); await h.page.firstPage()
   assert.equal(h.calls.find(c => c.name === 'loans.unassigned').data.month, null)
+  assert.deepEqual(Array.from(h.page.data.accounts, account => account.accountId), [null, 'debt'])
   const old = h.page.changeMonth({ detail: { value: '2026-07' } }); await flush()
   await h.page.changeMonth({ detail: { value: '2026-08' } })
   late({ month: '2026-07', accountId: null, items: [], nextCursor: null }); await old
   assert.equal(h.page.data.month, '2026-08'); assert.equal(h.page.data.items.length, 1)
   for (let i = 0; i < 7; i++) await h.page.nextPage()
   assert.equal(h.page._previous.length, 5); assert.equal(h.page.data.items.length, 1)
-  await h.page.changeAccount({ detail: { value: 2 } })
-  assert.equal(h.calls.filter(c => c.name === 'loans.unassigned').at(-1).data.accountId, 'credit')
+  await h.page.changeAccount({ detail: { value: 1 } })
+  assert.equal(h.calls.filter(c => c.name === 'loans.unassigned').at(-1).data.accountId, 'debt')
   assert.equal(h.page.data.canPrevious, false)
 })
 
-test('从账单关联按目标信用账户查贷款，缺基准先补资料并保留原交易ID', async () => {
+test('从账单关联按目标借款账户查贷款，缺基准先补资料并保留原交易ID', async () => {
   const h = runtime('loan-link', (name, data) => name === 'loans.transaction' ? context : { items: [loan, { ...loan, loanId: 'unknown', baselinePrincipalMinor: null }], nextCursor: null })
   h.page.onLoad({ transactionId: transaction.transactionId }); await h.page.firstPage()
-  assert.equal(h.calls.find(c => c.name === 'loans.list').data.accountId, 'credit')
+  assert.equal(h.calls.find(c => c.name === 'loans.list').data.accountId, 'debt')
   h.page.selectLoan({ currentTarget: { dataset: { id: 'loan' } } })
   assert.equal(h.routes[0], '/pages/loan-payment/index?loanId=loan&sourceTransactionId=synthetic-tx')
   h.page.selectLoan({ currentTarget: { dataset: { id: 'unknown' } } })
@@ -103,7 +108,18 @@ test('从账单关联按目标信用账户查贷款，缺基准先补资料并�
   assert.equal(h.calls.some(c => /record|create/.test(c.name)), false)
 })
 
-test('再次打开已关联/更正原账直接查看当前付款，读取失败不能开放新建入口', async () => {
+test('信用卡普通转账打开旧关联链接也不查询贷款、不允许新建或选择贷款', async () => {
+  const h = runtime('loan-link', name => {
+    assert.equal(name, 'loans.transaction')
+    return ordinaryContext
+  })
+  h.page.onLoad({ transactionId: transaction.transactionId }); await h.page.firstPage()
+  assert.equal(h.page.data.context.state, 'none'); assert.equal(h.page.data.loans.length, 0)
+  h.page.createLoan(); h.page.selectLoan({ currentTarget: { dataset: { id: 'loan' } } }); h.page.openPayment()
+  assert.equal(h.routes.length, 0); assert.equal(h.calls.length, 1)
+})
+
+test('再次打开信用账户已关联/更正原账直接查看当前付款，读取失败不能开放新建入口', async () => {
   let fail = false
   const h = runtime('loan-link', () => { if (fail) throw new Error('合成读取失败'); return { ...linkedContext(), state: 'replaced' } })
   h.page.onLoad({ transactionId: transaction.transactionId }); await h.page.firstPage(); h.page.openPayment()
@@ -113,7 +129,7 @@ test('再次打开已关联/更正原账直接查看当前付款，读取失败�
   assert.match(h.page.data.errorMessage, /读取失败/); assert.equal(h.routes.length, 1)
 })
 
-test('新建分期资料预选原卡，目录重排不串账户，保存资料不生成付款且可接续原账', async () => {
+test('新建分期资料预选原借款账户，目录重排不串账户，保存资料不生成付款且可接续原账', async () => {
   let stored, reorder = false, fail = false
   const h = runtime('loan-detail', (name, data) => {
     if (name === 'catalog.get') return { ...catalog, accounts: reorder ? catalog.accounts.slice().reverse() : catalog.accounts }
@@ -123,8 +139,8 @@ test('新建分期资料预选原卡，目录重排不串账户，保存资料�
     throw new Error('unexpected ' + name)
   })
   h.page.onLoad({ kind: 'installment', sourceTransactionId: transaction.transactionId }); await h.page.load()
-  assert.equal(h.page.data.accounts[h.page.data.accountIndex].accountId, 'credit'); assert.equal(h.page.data.principalYuan, '')
-  reorder = true; await h.page.load(); assert.equal(h.page.data.accounts[h.page.data.accountIndex].accountId, 'credit')
+  assert.equal(h.page.data.accounts[h.page.data.accountIndex].accountId, 'debt'); assert.equal(h.page.data.principalYuan, '')
+  reorder = true; await h.page.load(); assert.equal(h.page.data.accounts[h.page.data.accountIndex].accountId, 'debt')
   Object.assign(h.page.data, { name: '合成分期', principalYuan: '100', baselineDate: '2026-08-01' })
   await h.page.save(); assert.equal(stored.kind, 'installment'); assert.equal(stored.baselinePrincipalMinor, '10000')
   assert.equal(h.calls.filter(c => c.name === 'loans.record').length, 0)
@@ -165,7 +181,7 @@ test('来源/目录重读失败清空可提交来源，卸载后迟到信息不�
   late.page.onUnload(); resolve(sourceResult); await pending; assert.equal(late.page.data.source, null)
 })
 
-test('账单详情补全本息期次，迟到关联不能开放分类草稿；撤销重读恢复候选', async () => {
+test('账单详情保留已有关联；普通信用卡转账不开放贷款入口，其他借款仍可关联', async () => {
   let result = linkedContext(), live = true, fail = false
   const routes = [], calls = []
   const session = { isCurrent: () => live, capture: () => () => live }
@@ -177,11 +193,14 @@ test('账单详情补全本息期次，迟到关联不能开放分类草稿；�
   assert.equal(page.data.loanManaged, true); assert.equal(page.data.detail.canEditCategory, false)
   page.openLinkedLoan({ currentTarget: { dataset: { id: 'loan', plan: 'yes' } } })
   assert.equal(routes[0], '/pages/loan-plan/index?loanId=loan&paymentId=payment')
+  result = ordinaryContext; await page.loadLoanContext()
+  assert.equal(page.data.loanManaged, false); assert.equal(page.data.loanContext.state, 'none')
+  page.openLoanLink(); assert.equal(routes.length, 1)
   result = context; await page.loadLoanContext(); assert.equal(page.data.loanManaged, false)
   page.openLoanLink(); assert.match(routes[1], /transactionId=synthetic-tx/)
   fail = true; await page.loadLoanContext(); assert.equal(page.data.loanContext, null); assert.match(page.data.loanContextError, /读取失败/)
   page.openLoanLink(); assert.equal(routes.length, 2)
-  live = false; await page.loadLoanContext(); assert.equal(calls.length, 3)
+  live = false; await page.loadLoanContext(); assert.equal(calls.length, 4)
 })
 
 test('贷款/账目/期次更改使衔接查询缓存失效，原普通记账不受来源锁影响', () => {

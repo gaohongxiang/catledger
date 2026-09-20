@@ -12,7 +12,8 @@ const FIELDS = ['principal','interest','fee']
 function candidate(row, accounts) {
   const source = accounts.find(a => a.accountId === row.sourceAccountId)
   const target = accounts.find(a => a.accountId === row.destinationAccountId)
-  if (row.type !== 'transfer' || !source || !target || !ASSETS.includes(source.type) || !LIABILITIES.includes(target.type)) return null
+  // 信用账户整单还款只是转账；分期不能从这笔总额支付推断。
+  if (row.type !== 'transfer' || !source || !target || !ASSETS.includes(source.type) || target.type !== 'other_liability') return null
   return { accountId: target.accountId, name: target.name, type: target.type,
     inactive: source.archivedAt != null || target.archivedAt != null }
 }
@@ -97,7 +98,7 @@ function createRepaymentQueryService({ getPool }) {
         FROM catledger_transactions t JOIN catledger_accounts sa ON sa.uid=t.uid AND sa.account_id=t.source_account_id
         JOIN catledger_accounts da ON da.uid=t.uid AND da.account_id=t.destination_account_id
         WHERE t.uid=? AND t.deleted_at IS NULL AND t.type='transfer'
-          AND sa.type IN ('cash','bank','wallet','other_asset') AND da.type IN ('credit','other_liability')
+          AND sa.type IN ('cash','bank','wallet','other_asset') AND da.type='other_liability'
           AND NOT EXISTS (SELECT 1 FROM catledger_loan_payment_transactions bound WHERE bound.uid=t.uid AND bound.active_transaction_id=t.transaction_id)
           AND NOT EXISTS (SELECT 1 FROM catledger_economic_event_transactions e JOIN catledger_loan_payment_sources s
             ON s.uid=e.uid AND s.active_event_id=e.event_id WHERE e.uid=t.uid AND e.transaction_id=t.transaction_id AND e.superseded_at IS NULL)
