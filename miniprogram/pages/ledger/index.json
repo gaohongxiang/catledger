@@ -3,6 +3,7 @@
   "enablePullDownRefresh": true,
   "backgroundColor": "#F8F3EA",
   "usingComponents": {
-    "list-row": "/components/list-row/index"
+    "list-row": "/components/list-row/index",
+    "page-head": "/components/page-head/index"
   }
 }

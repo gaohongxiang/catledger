@@ -3,6 +3,7 @@
   "enablePullDownRefresh": false,
   "usingComponents": {
     "login-sheet": "/components/login-sheet/index",
+    "page-head": "/components/page-head/index",
     "chevron-icon": "/components/chevron-icon/index"
   }
 }

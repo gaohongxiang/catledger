@@ -1,4 +1,3 @@
-.history-heading { display: block; box-sizing: border-box; padding-left: var(--layout-content-inset, 20rpx); padding-right: var(--layout-content-inset, 20rpx); }
 .history-copy { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.7; }
 .history-entry { margin-top: 24rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); }
 .history-entry-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20rpx; }

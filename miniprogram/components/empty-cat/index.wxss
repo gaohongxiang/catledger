@@ -1,0 +1,42 @@
+.ec {
+  display: flex;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  padding: 64rpx 32rpx;
+  text-align: center;
+}
+
+.ec-art {
+  width: 180rpx;
+  height: 180rpx;
+  opacity: .32;
+}
+
+.ec-title {
+  display: block;
+  margin-top: 24rpx;
+  color: var(--theme-ink, #2c2823);
+  font-size: var(--font-section, 32rpx);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.ec-copy {
+  display: block;
+  margin-top: 10rpx;
+  color: var(--theme-text-muted, #70685f);
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.ec-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.ec-actions:empty { display: none; }

@@ -3,7 +3,7 @@ const test = require('node:test')
 
 const { createUserRepository } = require('../src/user-repository')
 
-function createConnection({ identity, identityInsertError, userInsertError }) {
+function createConnection({ identity, identityInsertError, userInsertError, nickname = null }) {
   const state = {
     began: 0,
     committed: 0,
@@ -27,7 +27,7 @@ function createConnection({ identity, identityInsertError, userInsertError }) {
       state.released += 1
     },
     async execute(sql, values) {
-      if (sql.includes('SELECT uid FROM catledger_users')) return [[{uid:identity?.uid || 'synthetic-new'}]]
+      if (sql.includes('SELECT uid, nickname FROM catledger_users')) return [[{uid:identity?.uid || 'synthetic-new', nickname}]]
       if (sql.includes('SELECT system_key')) return [[]]
       if (sql.includes('INSERT INTO catledger_users')) {
         this.attemptedUids.push(values[0])
@@ -161,7 +161,7 @@ test('连续短UID冲突超过重试上限时失败，所有尝试均回滚', as
 })
 
 test('重复登录读取已存ID，不重新生成编号', async () => {
-  const connection = createConnection({ identity: { uid: '3456789012' } })
+  const connection = createConnection({ identity: { uid: '3456789012' }, nickname: '原有昵称' })
   const repository = createUserRepository({
     getPool: () => ({ async getConnection() { return connection } }),
     generateUid: () => { throw new Error('must not regenerate an existing UID') }
@@ -169,4 +169,5 @@ test('重复登录读取已存ID，不重新生成编号', async () => {
   const result = await repository.bootstrap({ provider: 'wechat-mini', subjectHash: 'synthetic-subject' })
   assert.equal(result.uid, '3456789012')
   assert.equal(result.isNewUser, false)
+  assert.equal(result.nickname, '原有昵称')
 })

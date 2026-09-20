@@ -49,7 +49,7 @@
     <picker wx:if="{{mode !== 'link-refund' && (typeOptions[typeIndex].value === 'expense' || typeOptions[typeIndex].value === 'income')}}" mode="selector" range="{{categories}}" range-key="name" value="{{categoryIndex < 0 ? 0 : categoryIndex}}" bindchange="changeCategory" disabled="{{saving || !catalogReady}}">
       <view class="form-row content-inset">
         <text class="form-label">分类</text>
-        <text class="form-value">{{categories[categoryIndex].name || '请选择'}}</text>
+        <view class="form-value form-value-tile"><category-tile wx:if="{{categories[categoryIndex] && categories[categoryIndex].name}}" hide-name name="{{categories[categoryIndex].name}}" /><text>{{categories[categoryIndex].name || '请选择'}}</text></view>
       </view>
     </picker>
 

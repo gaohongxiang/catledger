@@ -134,3 +134,25 @@ test('月度长金额改为纵向摘要，保持原始金额字符串和负号',
   assert.match(rule('.month-strip-stacked'), /display:\s*block/)
   assert.match(rule('.month-strip-stacked .month-stat'), /justify-content:\s*space-between/)
 })
+
+test('首页 hero 升级大圆角与柔影，猫水印不抢戏也不拦截触控', () => {
+  assert.match(rule('.net-worth-card'), /border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
+  assert.match(rule('.net-worth-card'), /box-shadow:\s*var\(--theme-shadow-soft\)/)
+  assert.doesNotMatch(style, /--home-shadow\s*:/)
+  assert.match(markup, /class="net-worth-watermark" src="\/assets\/catledger-logo\.png"/)
+  assert.match(rule('.net-worth-watermark'), /opacity:\s*\.09/)
+  assert.match(rule('.net-worth-watermark'), /pointer-events:\s*none/)
+})
+
+test('时段问候进入 hero，月度收支结余小字条并入 hero 底部', () => {
+  const source = read('miniprogram/pages/index/index.js')
+  assert.match(markup, /class="net-worth-greeting">\{\{greeting\}\}/)
+  assert.match(source, /if \(!loggedIn\) return '你好'/)
+  assert.match(source, /hour >= 6 && hour < 11 \? '早上好'/)
+  assert.match(source, /hour >= 11 && hour < 18 \? '下午好'/)
+  assert.match(source, /'晚上好'/)
+  assert.ok(markup.indexOf('class="net-worth-card"') < markup.indexOf('month-strip'), '统计条应位于 hero 卡内')
+  assert.ok(markup.indexOf('month-strip') < markup.indexOf('class="home-flow"'), '统计条应在 home-flow 之前')
+  assert.match(rule('.net-worth-card .month-stat'), /background:\s*transparent/)
+  assert.match(rule('.net-worth-card .month-stat-value'), /color:\s*var\(--theme-hero-value-ink/)
+})

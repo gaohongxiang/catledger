@@ -68,8 +68,14 @@ function callApi(action, data, options) {
 }
 
 function bootstrap(options) { return callApi('bootstrap', {}, options) }
-function bootstrapAfterConsent() {
+function identifyWechatAccount() {
   return read('bootstrap', {}, { force: true }, () => client.callInternal('bootstrap', {}, '账本初始化失败'))
+}
+function initializeProfileAfterConsent(data) {
+  // 首次资料保存成功前不开放其他业务接口；服务端以可信身份和空旧昵称裁决首次设置。
+  return cache.mutate(mutationTags('profile.update'), () => client.callInternal('profile.update', {
+    requestId: data.requestId, nickname: data.nickname, previousNickname: ''
+  }, '资料保存失败，请重试'))
 }
 function cacheToken(action, data) {
   const app = getApp()
@@ -88,5 +94,6 @@ module.exports = {
   peek,
   isFresh: (action, data) => cacheToken(action, data) !== null,
   createRequestId: cloudFunctionClient.createRequestId,
-  bootstrapAfterConsent
+  identifyWechatAccount,
+  initializeProfileAfterConsent
 }

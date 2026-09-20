@@ -10,6 +10,7 @@ function localServices({ apiPool, importPool, objects = new Map(), subject = 'sy
     accountService: moduleFor('api', 'account-service').createAccountService({ getPool }),
     categoryService: moduleFor('api', 'category-service').createCategoryService({ getPool }),
     catalogService: moduleFor('api', 'catalog-service').createCatalogService({ getPool }),
+    profileService: moduleFor('api', 'profile-service').createProfileService({ getPool }),
     transactionService: moduleFor('api', 'transaction-service').createTransactionService({ getPool })
   })
   const importer = moduleFor('import', 'import-service').createImportService({ getPool: () => importPool,

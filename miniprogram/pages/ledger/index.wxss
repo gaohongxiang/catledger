@@ -1,25 +1,5 @@
 .ledger-page { padding-top: 32rpx; }
-.ledger-heading,
 .ledger-overview { display: flex; }
-.ledger-heading {
-  align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
-  margin-bottom: 24rpx;
-}
-.ledger-kicker {
-  display: block;
-  color: var(--theme-secondary, #64705d);
-  font-size: var(--font-caption, 24rpx);
-  font-weight: 500;
-  letter-spacing: 2rpx;
-}
-.ledger-title {
-  display: block;
-  margin-top: 6rpx;
-  font-size: var(--font-title, 40rpx);
-  font-weight: 500;
-}
 .ledger-count {
   margin-top: -4rpx;
   color: var(--theme-text-muted);

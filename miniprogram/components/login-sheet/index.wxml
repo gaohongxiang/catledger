@@ -1,9 +1,13 @@
-<view wx:if="{{open}}" class="login-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="close">
+<view wx:if="{{open && automatic && stage === 'loading'}}" class="login-startup {{themeClass}}" style="{{themeStyle}}" catchtouchmove="stopBubble">
+  <text>正在打开账本…</text>
+</view>
+<view wx:elif="{{open}}" class="login-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="close" catchtouchmove="stopBubble">
   <view class="login-sheet" catchtap="stopBubble">
     <view class="login-accent"></view>
 
-    <text class="login-title">连接你的个人账本</text>
-    <text class="login-copy">可以直接登录，也可以更换头像和昵称。</text>
+    <text class="login-title">{{stage === 'setup' ? '欢迎来到招财猫' : (stage === 'loading' ? '正在进入账本' : '暂时未能进入账本')}}</text>
+    <text class="login-copy">{{stage === 'setup' ? '选好头像和昵称，以后可以在“我的”修改。' : (stage === 'loading' ? '正在识别微信账号…' : '请检查网络后重试，你的账本不会改变。')}}</text>
+    <form wx:if="{{stage === 'setup'}}" bindsubmit="confirm">
     <view class="login-profile-row">
       <view class="login-avatar-column">
         <image class="login-avatar-image" src="{{avatarUrl}}" mode="aspectFill" />
@@ -12,14 +16,19 @@
       <view class="login-nickname-column">
         <text class="login-field-label">昵称</text>
         <view class="login-nickname-field {{nicknameFocused ? 'login-nickname-field-focused' : ''}}" bindtap="focusNickname">
-          <input class="login-nickname-input" aria-label="昵称" type="nickname" value="{{nickname}}" maxlength="24" placeholder="输入昵称" confirm-type="done" focus="{{nicknameFocused}}" cursor-spacing="32" disabled="{{submitting}}" bindinput="bindNickname" bindblur="blurNickname" />
+          <input class="login-nickname-input" name="nickname" aria-label="昵称" type="nickname" value="{{nickname}}" maxlength="24" placeholder="输入昵称" confirm-type="done" focus="{{nicknameFocused}}" cursor-spacing="32" disabled="{{submitting}}" bindinput="bindNickname" bindblur="blurNickname" />
           <button class="login-shuffle" size="mini" aria-label="换一个随机昵称" disabled="{{submitting}}" catchtap="shuffleNickname">换一个</button>
         </view>
         <button class="login-profile-action" size="mini" disabled="{{submitting}}" bindtap="focusNickname">使用微信昵称</button>
       </view>
     </view>
     <text wx:if="{{errorMessage}}" class="login-error">{{errorMessage}}</text>
-    <button class="login-primary {{submitting ? 'login-primary-disabled' : ''}}" loading="{{submitting}}" disabled="{{submitting}}" bindtap="confirm">登录</button>
-    <text class="login-cancel" bindtap="close">暂不登录，继续看看</text>
+    <button class="login-primary {{submitting ? 'login-primary-disabled' : ''}}" loading="{{submitting}}" disabled="{{submitting}}" form-type="submit">开始记账</button>
+    </form>
+    <block wx:if="{{stage === 'error'}}">
+      <text class="login-error">{{errorMessage}}</text>
+      <button class="login-primary" bindtap="confirm">重新连接</button>
+    </block>
+    <text wx:if="{{!submitting || stage === 'loading'}}" class="login-cancel" bindtap="close">{{stage === 'loading' ? '取消' : '暂不进入'}}</text>
   </view>
 </view>

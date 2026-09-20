@@ -74,6 +74,7 @@
       bindtap="editTransaction"
     >
       <view wx:if="{{selectionMode}}" class="detail-check {{item.selected ? 'detail-check-selected' : ''}} {{!item.deletable ? 'detail-check-disabled' : ''}}" aria-role="checkbox" aria-label="{{item.label}}" aria-checked="{{item.selected ? 'true' : 'false'}}"><image wx:if="{{item.selected}}" class="detail-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
+      <category-tile class="detail-tile" size="small" hide-name name="{{item.label}}" />
       <view class="detail-main">
         <view class="detail-copy">
           <view class="detail-line {{item.amountText.length > 15 ? 'detail-line-long' : ''}}">
@@ -87,7 +88,7 @@
     </view>
   </view>
 
-  <empty-state wx:elif="{{loggedIn && hasLoaded && !loading && !errorMessage}}" class="detail-empty" title="这里暂时没有账目" description="换一个月份或筛选条件试试；新增账目请使用底部加号。" />
+  <empty-cat wx:elif="{{loggedIn && hasLoaded && !loading && !errorMessage}}" class="detail-empty" title="这里暂时没有账目" description="换一个月份或筛选条件试试；新增账目请使用底部加号。" />
 
   <ui-state wx:if="{{!loggedIn}}" centered title="登录后查看账目" description="你的账户与账单只对你可见。"><button class="guest-login-button" size="mini" bindtap="promptWechatLogin"><text class="guest-login-label">登录</text></button></ui-state>
   <ui-state wx:elif="{{loading && !hasLoaded}}" description="正在读取账目…" />

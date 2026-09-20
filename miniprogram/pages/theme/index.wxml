@@ -1,9 +1,5 @@
 <view class="page-canvas page-secondary theme-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="theme-heading content-inset">
-
-    <text class="theme-title serif-title">选择你喜欢的主题</text>
-    <text class="theme-intro">六种配色，同一本账。切换仅保存在当前设备。</text>
-  </view>
+  <page-head class="content-inset" badge="外观" title="选择你喜欢的主题" copy="六种配色，同一本账。切换仅保存在当前设备。" />
 
   <view class="theme-list">
     <view

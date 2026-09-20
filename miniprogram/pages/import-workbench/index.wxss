@@ -47,8 +47,6 @@
 }
 button::after { border: 0; }
 .import-kicker,
-.import-title,
-.import-copy,
 .stage-number,
 .stage-title,
 .stage-state,
@@ -99,7 +97,6 @@ button::after { border: 0; }
 .readonly-title,
 .readonly-copy { display: block; }
 
-.import-heading { padding-bottom: 16rpx; }
 .import-kicker,
 .stage-panel-kicker,
 .sheet-kicker {
@@ -107,20 +104,6 @@ button::after { border: 0; }
   font-size: var(--font-caption, 24rpx);
   font-weight: 500;
   letter-spacing: 3rpx;
-}
-.import-title {
-  margin-top: 7rpx;
-  color: var(--ui-ink);
-  font-size: var(--font-title, 40rpx);
-  font-weight: 500;
-}
-.import-copy {
-  margin-top: 0;
-  color: var(--ui-ink);
-  font-family: inherit;
-  font-size: var(--font-section, 32rpx);
-  font-weight: 600;
-  line-height: 1.5;
 }
 
 .stage-track {
@@ -1318,7 +1301,7 @@ button::after { border: 0; }
   overflow-y: auto;
   padding: 16rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));
   background: var(--ui-surface);
-  border-radius: var(--theme-radius-large, 24rpx) var(--theme-radius-large, 24rpx) 0 0;
+  border-radius: var(--theme-radius-xl, 32rpx) var(--theme-radius-xl, 32rpx) 0 0;
   animation: sheet-enter var(--layout-motion-normal, 180ms) ease-out both;
 }
 .sheet-handle {
@@ -1346,7 +1329,7 @@ button::after { border: 0; }
   overflow: hidden;
   flex-direction: column;
   padding: 16rpx 30rpx calc(24rpx + env(safe-area-inset-bottom));
-  border-radius: var(--theme-radius-large, 24rpx) var(--theme-radius-large, 24rpx) 0 0;
+  border-radius: var(--theme-radius-xl, 32rpx) var(--theme-radius-xl, 32rpx) 0 0;
 }
 .account-choice-sheet .sheet-handle { width: 64rpx; height: 7rpx; margin-bottom: 20rpx; }
 .account-choice-header {
@@ -2741,7 +2724,6 @@ button::after { border: 0; }
 .draft-sync-note button { margin: 0; padding: 0 12rpx; font-size: var(--font-caption, 24rpx); }
 
 /* 导入各步骤及读取结果共用文字边界；卡片保留自身内边距。 */
-.import-page .import-heading,
 .import-page .file-stage-heading,
 .import-page .step-heading,
 .import-page .review-heading,

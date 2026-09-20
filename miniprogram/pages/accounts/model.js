@@ -9,6 +9,15 @@ const TYPE_LABELS = Object.freeze({
   other_liability: '其他负债'
 })
 
+const TYPE_ICONS = Object.freeze({
+  cash: 'account-cash.svg',
+  bank: 'account-bank.svg',
+  wallet: 'account-wallet.svg',
+  credit: 'account-credit.svg',
+  other_asset: 'account-other.svg',
+  other_liability: 'account-other.svg'
+})
+
 const { addMinor } = require('../../utils/minor-arithmetic')
 
 function sumMinor(rows, selector) {
@@ -21,6 +30,7 @@ function decorateAccount(account) {
   const liabilityCredit = account.nature === 'liability' && !liabilityDue
   return Object.assign({}, account, {
     typeLabel: TYPE_LABELS[account.type] || '账户',
+    iconPath: TYPE_ICONS[account.type] || TYPE_ICONS.other_asset,
     balanceText: money.formatMinor(account.displayBalanceMinor),
     needsCorrection: needsCorrection,
     stateText: needsCorrection ? '待校正' : (liabilityDue ? '待还' : (liabilityCredit ? '溢缴余额' : '可用余额')),

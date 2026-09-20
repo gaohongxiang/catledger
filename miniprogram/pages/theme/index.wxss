@@ -1,25 +1,8 @@
 .theme-page { padding-top: 30rpx; }
-.theme-kicker,
-.theme-title,
-.theme-intro,
 .theme-card-kicker,
 .theme-card-name,
 .theme-card-description,
 .theme-footnote { display: block; }
-.theme-kicker {
-  color: var(--theme-secondary, #64705d);
-  font-size: var(--font-caption, 24rpx);
-  font-weight: 500;
-  letter-spacing: 2rpx;
-}
-.theme-title { margin-top: 6rpx; font-size: var(--font-title, 40rpx); font-weight: 500; }
-.theme-intro {
-  max-width: 620rpx;
-  margin-top: 8rpx;
-  color: var(--theme-text-muted, #746a60);
-  font-size: var(--font-caption, 24rpx);
-  line-height: 1.55;
-}
 .theme-list { margin-top: 28rpx; }
 .theme-card {
   display: flex;

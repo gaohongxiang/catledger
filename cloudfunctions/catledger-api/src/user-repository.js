@@ -101,7 +101,7 @@ function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES,
               [uid, provider, subjectHash]
             )
           }
-          const [[active]] = await connection.execute("SELECT uid FROM catledger_users WHERE uid=? AND status='active' FOR UPDATE", [uid])
+          const [[active]] = await connection.execute("SELECT uid, nickname FROM catledger_users WHERE uid=? AND status='active' FOR UPDATE", [uid])
           if (!active) throw ledgerError('INITIALIZATION_REQUIRED')
           const [existing] = await connection.execute('SELECT system_key AS systemKey FROM catledger_categories WHERE uid=? AND system_key IS NOT NULL', [uid])
           const keys = new Set(existing.map(row => row.systemKey))
@@ -115,6 +115,7 @@ function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES,
           return {
             uid,
             isNewUser: !identity,
+            nickname: active.nickname || '',
             categories
           }
         } catch (error) {

@@ -6,6 +6,7 @@
     "login-sheet": "/components/login-sheet/index",
     "section-header": "/components/section-header/index",
     "list-row": "/components/list-row/index",
+    "category-tile": "/components/category-tile/index",
     "ui-state": "/components/ui-state/index",
     "chevron-icon": "/components/chevron-icon/index"
   }

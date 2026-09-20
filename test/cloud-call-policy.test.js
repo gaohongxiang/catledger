@@ -19,6 +19,24 @@ test.afterEach(function () {
   delete global.getApp
 })
 
+test('首次设置可以在正式登录前保存昵称，其他业务仍被登录门禁拒绝', async function () {
+  const calls = []
+  const api = loadApi(function (options) {
+    calls.push(options.data)
+    return Promise.resolve({ result: { ok: true, data: { nickname: options.data.data.nickname } } })
+  })
+  global.getApp = () => ({ hasLoginApproval: () => false })
+  await assert.rejects(api.callApi('accounts.list'), error => error.code === 'LOGIN_REQUIRED')
+  await assert.rejects(api.callApi('profile.update', { nickname: '不能绕过' }), error => error.code === 'LOGIN_REQUIRED')
+  const result = await api.initializeProfileAfterConsent({
+    requestId: '00000000-0000-4000-8000-000000000101', nickname: '首次昵称', previousNickname: '不能指定旧昵称', uid: '不能指定用户'
+  })
+  assert.deepEqual(result, { nickname: '首次昵称' })
+  assert.deepEqual(calls, [{ action: 'profile.update', data: {
+    requestId: '00000000-0000-4000-8000-000000000101', nickname: '首次昵称', previousNickname: ''
+  } }])
+})
+
 test('AppID 上下文缺失返回可诊断错误且不允许重试', function () {
   const failure = policy.classifyCloudFailure({
     errCode: 41002,
@@ -140,7 +158,7 @@ test('AppID 上下文错误不会被通用文案吞掉', async function () {
   })
 
   await assert.rejects(
-    api.bootstrapAfterConsent(),
+    api.identifyWechatAccount(),
     function (error) {
       return error.code === 'APP_CONTEXT_MISSING' && /重新打开项目/.test(error.message)
     }
@@ -159,7 +177,7 @@ test('成功回调外壳缺少 result 时仍按传输错误诊断', async functi
   })
 
   await assert.rejects(
-    api.bootstrapAfterConsent(),
+    api.identifyWechatAccount(),
     function (error) {
       return error.code === 'APP_CONTEXT_MISSING' && /安全保留/.test(error.message)
     }

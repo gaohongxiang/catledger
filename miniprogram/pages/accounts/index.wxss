@@ -1,19 +1,11 @@
 .account-page { padding-top: 30rpx; padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.account-heading, .group-heading, .group-title-wrap, .account-row, .archived-toggle, .wealth-primary, .wealth-breakdown, .create-account-button, .sheet-field, .detail-balance, .detail-meta, .sheet-topline { display: flex; }
-.account-heading { align-items: center; justify-content: space-between; gap: 16rpx; }
+.group-heading, .group-title-wrap, .account-row, .archived-toggle, .wealth-primary, .wealth-breakdown, .create-account-button, .sheet-field, .detail-balance, .detail-meta, .sheet-topline { display: flex; }
 .account-kicker, .sheet-kicker {
   display: block;
   color: var(--theme-secondary, #64705d);
   font-size: var(--font-caption, 24rpx);
   font-weight: 500;
   letter-spacing: 2rpx;
-}
-.account-title {
-  display: block;
-  margin-top: 4rpx;
-  font-size: var(--font-title, 40rpx);
-  font-weight: 500;
-  line-height: 1.2;
 }
 .create-account-button {
   box-sizing: border-box;
@@ -128,6 +120,17 @@
 }
 .account-row:last-child { border-bottom: 0; }
 .account-row-active { background: var(--theme-accent-soft, #fceee3); }
+.account-type-icon {
+  display: flex;
+  width: 64rpx;
+  height: 64rpx;
+  flex: 0 0 64rpx;
+  align-items: center;
+  justify-content: center;
+  background: var(--theme-secondary-soft, #f1eee9);
+  border-radius: var(--theme-radius-large, 24rpx);
+}
+.account-type-icon image { width: 36rpx; height: 36rpx; }
 .account-row-main {
   display: flex;
   min-width: 0;
@@ -225,7 +228,7 @@
   flex-shrink: 0;
   padding: 16rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
   background: var(--theme-surface, #fffdf9);
-  border-radius: var(--theme-radius-large, 24rpx) var(--theme-radius-large, 24rpx) 0 0;
+  border-radius: var(--theme-radius-xl, 32rpx) var(--theme-radius-xl, 32rpx) 0 0;
 }
 .sheet-handle {
   width: 72rpx;

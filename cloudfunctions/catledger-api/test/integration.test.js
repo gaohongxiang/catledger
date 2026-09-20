@@ -9,6 +9,7 @@ const { runMigrations, splitSqlStatements } = require('../../../migrations/runne
 const { createAccountService } = require('../src/account-service')
 const { createCatalogService } = require('../src/catalog-service')
 const { createCategoryService } = require('../src/category-service')
+const { createProfileService } = require('../src/profile-service')
 const { DEFAULT_CATEGORIES } = require('../src/default-categories')
 const { hashWechatSubject } = require('../src/handler')
 const { createTransactionService } = require('../src/transaction-service')
@@ -26,6 +27,7 @@ let pool
 let repository
 let accountService
 let categoryService
+let profileService
 let transactionService
 
 before(async () => {
@@ -48,6 +50,7 @@ before(async () => {
   repository = createUserRepository({ getPool: () => pool })
   accountService = createAccountService({ getPool: () => pool })
   categoryService = createCategoryService({ getPool: () => pool })
+  profileService = createProfileService({ getPool: () => pool })
   transactionService = createTransactionService({ getPool: () => pool })
   await runMigrations({
     pool,
@@ -130,7 +133,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 18)
+  assert.equal(rows.length, 19)
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
   assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')
@@ -143,6 +146,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   assert.equal(rows[9].version, '0010_import_maintenance_audit.sql')
   assert.equal(rows[10].version, '0011_short_user_ids.sql')
   assert.equal(rows[17].version, '0018_loan_schedule_params.sql')
+  assert.equal(rows[18].version, '0019_user_nickname.sql')
   assert.match(rows[0].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[1].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[2].checksum, /^[a-f0-9]{64}$/)
@@ -151,6 +155,21 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   assert.match(rows[5].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[6].checksum, /^[a-f0-9]{64}$/)
   assert.match(rows[7].checksum, /^[a-f0-9]{64}$/)
+})
+
+test('账号昵称迁移在字段已存在时可重跑且保留昵称', { skip: !hasDatabase }, async () => {
+  const identity = { provider: 'wechat-mini', subjectHash: hashWechatSubject('profile-migration-repeat') }
+  const user = await repository.bootstrap(identity)
+  await profileService.update({ ...identity, data: {
+    requestId: '00000000-0000-4000-8000-000000000194', nickname: '保留昵称', previousNickname: ''
+  } })
+  const connection = await pool.getConnection()
+  try {
+    const sql = readFileSync(path.resolve(__dirname, '../../../migrations/0019_user_nickname.sql'), 'utf8')
+    for (const statement of splitSqlStatements(sql)) await connection.query(statement)
+    const [[row]] = await connection.execute('SELECT nickname FROM catledger_users WHERE uid=?', [user.uid])
+    assert.equal(row.nickname, '保留昵称')
+  } finally { connection.release() }
 })
 
 test('payment tool rule schema supports account mapping, permanent ignore and soft disable', { skip: !hasDatabase }, async () => {
@@ -244,6 +263,27 @@ test('same identity bootstraps once and remains idempotent', { skip: !hasDatabas
     { users: Number(counts.users), identities: Number(counts.identities), categories: Number(counts.categories) },
     { users: 1, identities: 1, categories: DEFAULT_CATEGORIES.length }
   )
+})
+
+test('昵称首次保存后重登沿用，跨用户隔离并拒绝过期修改', { skip: !hasDatabase }, async () => {
+  const firstIdentity = { provider: 'wechat-mini', subjectHash: hashWechatSubject('profile-owner') }
+  const otherIdentity = { provider: 'wechat-mini', subjectHash: hashWechatSubject('profile-other') }
+  const first = await repository.bootstrap(firstIdentity)
+  await repository.bootstrap(otherIdentity)
+  assert.equal(first.nickname, '')
+  const requestId = '00000000-0000-4000-8000-000000000191'
+  const data = { requestId, nickname: '  老用户昵称  ', previousNickname: '' }
+  assert.deepEqual(await profileService.update({ ...firstIdentity, data }), { nickname: '老用户昵称' })
+  assert.deepEqual(await profileService.update({ ...firstIdentity, data }), { nickname: '老用户昵称' })
+  assert.equal((await repository.bootstrap(firstIdentity)).nickname, '老用户昵称')
+  assert.deepEqual(await profileService.get({ ...otherIdentity, data: {} }), { nickname: '' })
+  await assert.rejects(profileService.update({ ...firstIdentity, data: {
+    requestId: '00000000-0000-4000-8000-000000000192', nickname: '过期修改', previousNickname: ''
+  } }), error => error.publicCode === 'CONFLICT')
+  assert.equal((await profileService.get({ ...firstIdentity, data: {} })).nickname, '老用户昵称')
+  await assert.rejects(profileService.update({ ...firstIdentity, data: {
+    requestId: '00000000-0000-4000-8000-000000000193', nickname: '  ', previousNickname: '老用户昵称'
+  } }), error => error.publicCode === 'VALIDATION_ERROR')
 })
 
 test('concurrent bootstrap is resolved by the identity unique constraint', { skip: !hasDatabase }, async () => {

@@ -25,6 +25,7 @@ button::after { border: 0; }
   --layout-page-gutter: 32rpx;
   --layout-content-inset: 20rpx;
   --layout-touch-min: 88rpx;
+  --layout-radius-xl: var(--theme-radius-xl, 32rpx);
   --layout-radius-large: var(--theme-radius-large, 24rpx);
   --layout-radius-medium: var(--theme-radius-medium, 18rpx);
   --layout-radius-small: var(--theme-radius-small, 12rpx);
@@ -57,7 +58,8 @@ button::after { border: 0; }
   transition: opacity var(--layout-motion-fast) ease;
 }
 
-.primary-button { color: var(--theme-on-accent, #ffffff); background: var(--theme-accent, #be5b24); }
+.primary-button { border-radius: 999rpx; color: var(--theme-on-accent, #ffffff); background: var(--theme-accent, #be5b24); }
+.primary-button-medium { border-radius: var(--layout-radius-medium, 18rpx); }
 .secondary-button { color: var(--theme-secondary, #70685f); background: var(--theme-secondary-soft, #f1eee9); }
 .danger-button { color: var(--theme-danger, #a95132); background: var(--theme-danger-soft, #f4e1d6); }
 .primary-button:active,

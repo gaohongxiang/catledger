@@ -1,6 +1,5 @@
 <view class="page-canvas loan-link-page {{themeClass}}" style="{{themeStyle}}">
-  <section-header class="ll-heading" eyebrow="贷款管理" title="{{transactionId ? '关联这笔还款' : '待关联还款'}}" />
-  <view class="ll-note-card"><text class="ll-note">这里只核对已有账目，不会再次扣款。普通信用卡还款不一定是分期，无需强制建立贷款资料。</text></view>
+  <page-head class="content-inset" badge="贷款管理" title="{{transactionId ? '关联这笔还款' : '待关联还款'}}" copy="只核对已有账目，不会再次扣款；普通信用卡还款不一定是分期，无需强制建立贷款资料。" />
   <block wx:if="{{!transactionId}}">
     <picker class="ll-field" mode="date" fields="month" value="{{month}}" bindchange="changeMonth"><text>查询月份</text><view class="ll-picker"><text class="ll-picker-value">{{month || '全部月份'}}</text><chevron-icon size="{{24}}" /></view></picker>
     <button wx:if="{{month}}" class="ll-link" bindtap="clearMonth">查看全部月份</button>
