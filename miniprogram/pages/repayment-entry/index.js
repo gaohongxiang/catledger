@@ -89,7 +89,10 @@ Page({
   moreLoans() { return this.loadLoans(true) },
   createLoan() {
     const selected = this.data.loans[this.data.loanIndex]
-    wx.navigateTo({ url:'/pages/loan-detail/index' + (selected ? '?loanId=' + encodeURIComponent(selected.loanId) : '') })
+    const debt=this.data.debts[this.data.debtIndex]
+    const occurred=(this.data.payment || this.data.event || {}).occurredLocalAt || this.data.date
+    wx.navigateTo({ url:selected ? '/pages/loan-detail/index?loanId=' + encodeURIComponent(selected.loanId) : '/pages/loan-form/index' +
+      (debt ? '?accountId='+encodeURIComponent(debt.accountId)+(occurred?'&baselineDate='+encodeURIComponent(occurred.slice(0,10)):'') : '') })
   },
   async submit(action, data, service) {
     if (this.data.saving) return

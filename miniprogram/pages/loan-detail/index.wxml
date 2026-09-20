@@ -1,5 +1,5 @@
 <view class="page-canvas loan-detail {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="贷款资料" title="{{loan ? loan.name : '新增贷款'}}" copy="只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。" />
+  <page-head class="content-inset" badge="贷款资料" title="{{loan ? loan.name : '贷款'}}" copy="{{loan.installmentSetup ? '计划与实际还款分别核对，账户余额仍以账本为准。' : '只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。'}}" />
   <view wx:if="{{sourceTransactionId}}" class="ld-note-card">
     <text class="ld-note">已保留原还款。这里只创建或补充贷款资料，保存后继续关联，不会重新登记付款。</text>
     <text wx:if="{{sourceContext}}" class="ld-note">还款发生于 {{sourceContext.occurredText}}；关联前须确认该日初或更早的本金基准，不是本次扣款金额。</text>
@@ -16,12 +16,14 @@
     <view class="ld-rows">
       <view class="ld-row"><text>本金基准</text><text>{{loan.baselineDate ? loan.baselineDate + ' 日初' : '待补充'}}</text></view>
       <view class="ld-row"><text>类型</text><text>{{loan.kindText}}</text></view>
-      <view class="ld-row"><text>机构</text><text>{{loan.institution || '未填写'}}</text></view>
-      <view class="ld-row"><text>起止日期</text><text>{{loan.startDate || '未填写'}} 至 {{loan.endDate || '未填写'}}</text></view>
+      <view wx:if="{{loan.installmentSetup}}" class="ld-row"><text>原借款金额</text><text>{{loan.originalPrincipalText}}</text></view>
+      <view wx:if="{{loan.installmentSetup}}" class="ld-row"><text>接入前历史进度</text><text>已还 {{loan.installmentSetup.historicalPaidTerms}} / {{loan.scheduleTerms}} 期</text></view>
+      <view wx:if="{{!loan.installmentSetup}}" class="ld-row"><text>机构</text><text>{{loan.institution || '未填写'}}</text></view>
+      <view wx:if="{{!loan.installmentSetup}}" class="ld-row"><text>起止日期</text><text>{{loan.startDate || '未填写'}} 至 {{loan.endDate || '未填写'}}</text></view>
       <view class="ld-row"><text>还款方式</text><text>{{loan.repaymentMethod || '未填写'}}</text></view>
       <view wx:if="{{loan.scheduleText}}" class="ld-row"><text>分期参数</text><text>{{loan.scheduleText}}</text></view>
     </view>
-    <button class="primary-button ld-action" bindtap="recordPayment" disabled="{{saving || loading}}">{{sourceTransactionId ? '继续关联原还款（不重复扣款）' : '登记实际借还'}}</button>
+    <button class="primary-button ld-action" bindtap="recordPayment" disabled="{{saving || loading}}">{{sourceTransactionId ? '继续关联原还款（不重复扣款）' : loan.installmentSetup ? '登记实际还款' : '登记实际借还'}}</button>
     <button class="secondary-button ld-action" bindtap="openPlan" disabled="{{saving || loading}}">还款计划与对账</button>
     <button class="secondary-button ld-action" bindtap="edit" disabled="{{saving}}">编辑资料</button>
   </view>

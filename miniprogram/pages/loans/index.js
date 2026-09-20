@@ -24,5 +24,5 @@ Page({
   previousPage() { if (this.data.loading || !this._previous || !this._previous.length) return; this._cursor = this._previous.pop(); return this.loadLoans() },
   openLoan(event) { wx.navigateTo({ url: '/pages/loan-detail/index?loanId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },
   openUnassigned() { return loginGuard.run(this, () => wx.navigateTo({ url: '/pages/loan-link/index' })) },
-  createLoan() { return loginGuard.run(this, () => wx.navigateTo({ url: '/pages/loan-detail/index' })) }
+  createLoan() { return loginGuard.run(this, () => wx.navigateTo({ url: '/pages/loan-form/index' })) }
 })

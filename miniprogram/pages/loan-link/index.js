@@ -55,7 +55,7 @@ Page({
   },
   createLoan() {
     if (this.data.loading || this.data.errorMessage || !this.data.context || this.data.context.state !== 'candidate' || this.data.context.targetAccount.inactive) return
-    wx.navigateTo({ url: '/pages/loan-detail/index?kind=borrowing&sourceTransactionId=' + encodeURIComponent(this._transactionId) })
+    wx.navigateTo({ url: '/pages/loan-form/index?sourceTransactionId=' + encodeURIComponent(this._transactionId) + '&accountId=' + encodeURIComponent(this.data.context.targetAccount.accountId) + '&baselineDate=' + encodeURIComponent(this.data.context.transaction.occurredLocalAt.slice(0,10)) })
   },
   managePending() { if (this.data.context && this.data.context.payment) wx.navigateTo({ url:'/pages/repayment-entry/index?paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) }) },
   openPayment() { if (this.data.context && this.data.context.linked) wx.navigateTo({ url: '/pages/loan-payment/index?paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) }) }

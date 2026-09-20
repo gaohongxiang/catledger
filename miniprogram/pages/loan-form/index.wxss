@@ -1,0 +1,17 @@
+@import '../loan-detail/index.wxss';
+.loan-form { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
+.loan-form .ld-cell-label { flex-wrap: wrap; gap: 0 8rpx; }
+.loan-form .ld-cell-input { font-size: var(--font-body); }
+.name-field { flex: 1.4; }
+.type-field { flex: 1; }
+.identity-grid .ld-cell { padding-left: 20rpx; padding-right: 20rpx; }
+.measurement-row { display: flex; align-items: center; gap: 12rpx; min-height: 92rpx; margin-top: 16rpx; padding: 0 22rpx; border-radius: var(--layout-radius-medium); background: var(--theme-surface-muted); }
+.measurement-label { display: flex; align-items: center; justify-content: space-between; gap: 8rpx; width: 200rpx; font-size: var(--font-caption); }
+.measurement-row input { flex: 1; min-width: 0; text-align: right; font-size: var(--font-body); }
+.form-hint { margin-top: 14rpx; }
+.choice-disabled { opacity: .45; }
+.remaining-principal { display: block; margin: 12rpx 0 24rpx; font-size: var(--font-display); color: var(--theme-ink); }
+.plan-row { display: flex; justify-content: space-between; gap: 12rpx; padding: 16rpx 0; border-bottom: 1rpx solid var(--theme-line); font-size: var(--font-caption); }
+.confirm-row { display: flex; align-items: flex-start; margin-top: 24rpx; gap: 12rpx; font-size: var(--font-caption); line-height: 1.6; }
+.confirm-row checkbox { flex-shrink: 0; }
+.local-note { margin: 24rpx 8rpx 0; }

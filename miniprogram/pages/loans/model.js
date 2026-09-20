@@ -6,7 +6,8 @@ function scheduleText(loan) {
 function present(loan) {
   return Object.assign({}, loan, { principalText: loan.remainingPrincipalMinor == null ? '待补充' : money.formatMinor(loan.remainingPrincipalMinor),
     statusText: { unknown: '待补充本金', active: '还款中', settled: '已结清' }[loan.status],
-    kindText: loan.kind === 'installment' ? '消费分期' : '普通借款',
+    kindText: loan.installmentSetup ? ({credit_card:'信用卡分期',bank_loan:'银行借款',online_loan:'网络借款',other:loan.installmentSetup.customRecordType || '其他分期'}[loan.installmentSetup.recordType] || '分期贷款') : loan.kind === 'installment' ? '分期贷款' : '借款资料',
+    originalPrincipalText:loan.installmentSetup ? money.formatMinor(loan.installmentSetup.originalPrincipalMinor) : '',
     scheduleText: scheduleText(loan) })
 }
 function form(loan) {

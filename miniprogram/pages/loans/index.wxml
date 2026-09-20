@@ -6,7 +6,7 @@
   </view>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}} · 重试" bindtap="firstPage" />
   <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取贷款…" />
-  <empty-cat wx:if="{{hasLoaded && !items.length}}" hide-art title="还没有贷款资料" description="先关联一个负债账户，再填写已确认的本金。新增资料不会重复记一笔借款。" />
+  <empty-cat wx:if="{{hasLoaded && !items.length}}" hide-art title="还没有贷款资料" description="选择负债账户，填写分期参数和历史进度，核对后保存计划。不会重复记一笔借款。" />
   <view class="loan-list">
     <view wx:for="{{items}}" wx:key="loanId" class="loan-row" data-id="{{item.loanId}}" bindtap="openLoan" aria-role="button" aria-label="查看{{item.name}}">
       <view class="loan-row-top"><text class="loan-name">{{item.name}}</text><text class="loan-state">{{item.statusText}}</text></view>

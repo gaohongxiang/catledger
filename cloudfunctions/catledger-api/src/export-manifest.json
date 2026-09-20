@@ -191,9 +191,12 @@
       "repayment_minor",
       "fee_per_term_minor",
       "fee_upfront_minor",
-      "first_payment_date"
+      "first_payment_date",
+      "installment_setup_json"
     ],
-    "json": []
+    "json": [
+      "installment_setup_json"
+    ]
   },
   {
     "name": "catledger_mutation_receipts",

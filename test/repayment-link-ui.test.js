@@ -26,7 +26,7 @@ function runtime(route, responder) {
   const app = { hasLoginApproval: () => true, globalData: { uid: '1234567890', categories: [] } }
   const api = { peek: () => null, cacheToken: () => '', createRequestId: () => 'synthetic-request-' + ++request,
     callApi(name, data, options) { calls.push({ name, data, options }); return Promise.resolve().then(() => responder(name, data)) } }
-  const chrome = { switchTab:options=>routes.push(options.url),navigateTo: options => routes.push(options.url), navigateBack() {}, showToast() {}, stopPullDownRefresh() {}, showModal() {} }
+  const chrome = { redirectTo:options=>routes.push(options.url),switchTab:options=>routes.push(options.url),navigateTo: options => routes.push(options.url), navigateBack() {}, showToast() {}, stopPullDownRefresh() {}, showModal() {} }
   function deps(name) {
     if (name.includes('/services/catledger-api')) return api
     if (name.includes('/services/catledger-import')) return { readPage:(name,data)=>api.callApi(name,data) }
@@ -105,7 +105,7 @@ test('从账单关联按目标借款账户查贷款，缺基准先补资料并�
   assert.equal(h.routes[0], '/pages/repayment-entry/index?loanId=loan&paymentId=pending-payment')
   h.page.selectLoan({ currentTarget: { dataset: { id: 'unknown' } } })
   assert.match(h.routes[1], /loan-detail\/index\?loanId=unknown&sourceTransactionId=synthetic-tx/)
-  h.page.createLoan(); assert.match(h.routes[2], /kind=borrowing&sourceTransactionId=synthetic-tx/)
+  h.page.createLoan(); assert.match(h.routes[2], /loan-form\/index\?sourceTransactionId=synthetic-tx&accountId=debt/)
   assert.equal(h.calls.some(c => /record|create/.test(c.name)), false)
 })
 
@@ -132,22 +132,38 @@ test('再次打开信用账户已关联/更正原账直接查看当前付款，�
 
 test('新建分期资料预选原借款账户，目录重排不串账户，保存资料不生成付款且可接续原账', async () => {
   let stored, reorder = false, fail = false
-  const h = runtime('loan-detail', (name, data) => {
+  const h = runtime('loan-form', (name, data) => {
     if (name === 'catalog.get') return { ...catalog, accounts: reorder ? catalog.accounts.slice().reverse() : catalog.accounts }
     if (name === 'loans.transaction') { if (fail) throw new Error('合成来源读取失败'); return context }
+    if (name === 'loans.previewPlan') return {periods:[],summary:{totalPaymentMinor:'10000',totalInterestMinor:'0',totalFeeMinor:'0',remainingPrincipalMinor:'10000'}}
     if (name === 'loans.create') { stored = { ...loan, ...data }; return { loanId: loan.loanId, version: 1 } }
     if (name === 'loans.get') return { loan: stored }
     throw new Error('unexpected ' + name)
   })
-  h.page.onLoad({ kind: 'installment', sourceTransactionId: transaction.transactionId }); await h.page.load()
+  h.page.onLoad({ sourceTransactionId: transaction.transactionId }); await h.page.load()
   assert.equal(h.page.data.accounts[h.page.data.accountIndex].accountId, 'debt'); assert.equal(h.page.data.principalYuan, '')
   reorder = true; await h.page.load(); assert.equal(h.page.data.accounts[h.page.data.accountIndex].accountId, 'debt')
   Object.assign(h.page.data, { name: '合成分期', principalYuan: '100', baselineDate: '2026-08-01' })
+  Object.assign(h.page.data.schedule,{terms:'1',repaymentYuan:'100',firstPaymentDate:'2026-08-02'})
+  await h.page.preview();h.page.data.confirmed=true
   await h.page.save(); assert.equal(stored.kind, 'installment'); assert.equal(stored.baselinePrincipalMinor, '10000')
+  assert.equal(stored.generatePlan,true)
   assert.equal(h.calls.filter(c => c.name === 'loans.record').length, 0)
-  h.page.recordPayment(); assert.match(h.routes[0], /repayment-entry\/index\?paymentId=pending-payment/)
-  fail = true; await h.page.load(); h.page.recordPayment()
-  assert.equal(h.page.data.sourceContext, null); assert.equal(h.routes.length, 1)
+  assert.match(h.routes[0], /loan-detail\/index\?loanId=loan&sourceTransactionId=synthetic-tx/)
+  fail = true; await h.page.load(); await h.page.save()
+  assert.equal(h.page.data.sourceReady, false); assert.equal(h.routes.length, 1)
+})
+
+test('新分期的编辑跳转保留正在关联的还款；从手动/导入还款新增沿用实际日期',()=>{
+  const detail=runtime('loan-detail',()=>{throw Error('不应读取')})
+  detail.page.onLoad({loanId:'loan',sourceTransactionId:'synthetic-tx'})
+  detail.page.setData({loan:{...loan,installmentSetup:{historicalPaidTerms:3}}});detail.page.edit()
+  assert.equal(detail.routes[0],'/pages/loan-form/index?loanId=loan&sourceTransactionId=synthetic-tx')
+  const entry=runtime('repayment-entry',()=>{throw Error('不应读取')})
+  entry.page.onLoad({});entry.page.setData({debts:[{accountId:'debt'}],debtIndex:0,date:'2026-04-02'})
+  entry.page.createLoan();assert.match(entry.routes[0],/accountId=debt&baselineDate=2026-04-02$/)
+  entry.page.setData({event:{occurredLocalAt:'2026-03-03T12:00:00'}});entry.page.createLoan()
+  assert.match(entry.routes[1],/accountId=debt&baselineDate=2026-03-03$/)
 })
 
 test('原还款已有账目模式锁定，完整来源总额/秒毫秒和原时区保留，不默认本金', async () => {

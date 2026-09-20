@@ -36,8 +36,11 @@ function parseScheduleParams(data, { requirePrincipal = true } = {}) {
   if (principalMinor != null && feeUpfrontMinor >= principalMinor) throw ledgerError('VALIDATION_ERROR')
   const firstPaymentDate = source.firstPaymentDate == null || source.firstPaymentDate === '' ? null : source.firstPaymentDate
   if (firstPaymentDate != null && !isDate(firstPaymentDate)) throw ledgerError('VALIDATION_ERROR')
+  const discountKind = source.discountKind || null, discountValue = minor(source.discountValue)
+  if ((discountKind === null) !== (discountValue === null) || (discountKind && !['interest_rate','per_period','total'].includes(discountKind)) ||
+    (discountKind && !(discountValue > 0)) || (discountKind === 'interest_rate' && discountValue > 1000000)) throw ledgerError('VALIDATION_ERROR')
   const params = { principalMinor, terms: source.scheduleTerms, method: source.scheduleMethod,
-    measurement: { kind, quoteType, ratePpm, repaymentMinor }, feePerTermMinor, feeUpfrontMinor, firstPaymentDate }
+    measurement: { kind, quoteType, ratePpm, repaymentMinor }, feePerTermMinor, feeUpfrontMinor, firstPaymentDate, discountKind, discountValue }
   validateRepaymentMeasurement(params)
   return params
 }

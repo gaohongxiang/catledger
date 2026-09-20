@@ -168,7 +168,10 @@ test('parameter pairing and semantic violations are rejected', () => {
     repaymentInput('equal_principal', 80000)
   ]
   for (const input of invalid) assert.throws(() => buildSchedule(input), { publicCode: 'VALIDATION_ERROR' }, JSON.stringify(input))
-  assert.throws(() => buildSchedule(repaymentInput('interest_only', 0)), { publicCode: 'VALIDATION_ERROR' })
+  const interestFree=buildSchedule(repaymentInput('interest_only',0))
+  assert.equal(interestFree.periods.slice(0,-1).every(row=>row.paymentMinor===0),true)
+  assert.equal(interestFree.periods.at(-1).paymentMinor,1000000)
+  assert.equal(interestFree.summary.totalInterestMinor,0)
 })
 
 test('periodicRate converts ppm quotes and infers repayment rates', () => {

@@ -10,6 +10,7 @@
       <text class="plan-muted">下一到期日 · {{summary.nextDueDate || '无未付期次'}}</text>
       <text class="plan-principal money-number">{{summary.unpaidText}}</text>
       <text class="plan-note">确认计划的未结清金额，到期不会自动标记已还。</text>
+      <text wx:if="{{summary.totalTerms}}" class="plan-note">接入前已还 {{summary.historicalPaidTerms}} / {{summary.totalTerms}} 期；接入后按实际还款已结清 {{summary.paidPeriods}} 期。</text>
       <view class="plan-row"><text>其中未付本金</text><text class="money-number">{{summary.principalText}}</text></view>
       <text class="plan-note">计划未付本金减已确认剩余本金：{{summary.gapText}}。差额需核对未分配付款或计划，不能据此自动改账。</text>
       <button class="secondary-button plan-action" bindtap="newPeriod" disabled="{{loading || saving || hasPending}}">新增确认期次</button>

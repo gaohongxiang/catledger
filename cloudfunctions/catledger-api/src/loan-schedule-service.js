@@ -3,17 +3,8 @@ const { executeIdempotentMutation } = require('./ledger-transaction')
 const { executeLedgerRead } = require('./ledger-read')
 const { ledgerError } = require('./ledger-errors')
 const { parseVersion } = require('./transaction-domain')
-const { buildSchedule } = require('./loan-schedule/schedule-engine')
+const { storedScheduleInput,remainingSchedule } = require('./loan-installment')
 const { advanceLoans } = require('./loan-payment-repository')
-function storedScheduleInput(loan) {
-  if (loan.scheduleMethod == null) throw ledgerError('VALIDATION_ERROR')
-  if (loan.baselinePrincipalMinor == null || BigInt(loan.baselinePrincipalMinor) <= 0n) throw ledgerError('LOAN_PRINCIPAL_UNCONFIRMED')
-  return { principalMinor: String(loan.baselinePrincipalMinor), scheduleMethod: loan.scheduleMethod,
-    scheduleTerms: Number(loan.scheduleTerms), measurementKind: loan.measurementKind, quoteType: loan.quoteType,
-    ratePpm: loan.ratePpm == null ? null : String(loan.ratePpm), repaymentMinor: loan.repaymentMinor == null ? null : String(loan.repaymentMinor),
-    feePerTermMinor: loan.feePerTermMinor == null ? null : String(loan.feePerTermMinor),
-    feeUpfrontMinor: loan.feeUpfrontMinor == null ? null : String(loan.feeUpfrontMinor), firstPaymentDate: loan.firstPaymentDate }
-}
 function anchorOf(loan) {
   return { baselineDate: loan.baselineDate, startDate: loan.startDate, createdDate: String(loan.createdAt).slice(0, 10) }
 }
@@ -21,7 +12,19 @@ function publicPreview(periods, summary) {
   return { periods: periods.map(row => ({ periodNumber: row.periodNumber, dueDate: row.dueDate,
       principalMinor: String(row.principalMinor), interestMinor: String(row.interestMinor), feeMinor: String(row.feeMinor) })),
     summary: { totalPaymentMinor: String(summary.totalPaymentMinor), totalInterestMinor: String(summary.totalInterestMinor),
-      totalFeeMinor: String(summary.totalFeeMinor), ...(summary.derivedRatePpm == null ? {} : { derivedRatePpm: String(summary.derivedRatePpm) }) } }
+      totalFeeMinor: String(summary.totalFeeMinor), ...(summary.derivedRatePpm == null ? {} : { derivedRatePpm: String(summary.derivedRatePpm) }),
+      ...(summary.remainingPrincipalMinor == null ? {} : { remainingPrincipalMinor:summary.remainingPrincipalMinor,historicalPaidTerms:summary.historicalPaidTerms,totalTerms:summary.totalTerms,upfrontFeeMinor:summary.upfrontFeeMinor }) } }
+}
+async function insertSchedulePeriods(connection, uid, loanId, periods) {
+  for (let at = 0; at < periods.length; at += 100) {
+    const part = periods.slice(at, at + 100).map(row => ({ ...row, periodId: randomUUID() }))
+    await connection.execute(`INSERT INTO catledger_loan_periods (uid,period_id,loan_id,period_number,due_date,principal_minor,interest_minor,fee_minor,cancelled)
+      VALUES ${part.map(() => '(?,?,?,?,?,?,?,?,0)').join(',')}`,
+    part.flatMap(row => [uid,row.periodId,loanId,row.periodNumber,row.dueDate,row.principalMinor,row.interestMinor,row.feeMinor]))
+    await connection.execute(`INSERT INTO catledger_loan_period_revisions (uid,period_id,version,snapshot_json) VALUES ${part.map(() => '(?,?,1,?)').join(',')}`,
+    part.flatMap(row => [uid,row.periodId,JSON.stringify({ periodNumber:row.periodNumber,dueDate:row.dueDate,
+      principalMinor:String(row.principalMinor),interestMinor:String(row.interestMinor),feeMinor:String(row.feeMinor),cancelled:false })]))
+  }
 }
 function createLoanScheduleService({ getPool, selectLoan }) {
   const read = (context, operation) => executeLedgerRead({ getPool, ...context, consistentSnapshot: true, operation })
@@ -35,7 +38,7 @@ function createLoanScheduleService({ getPool, selectLoan }) {
         input = storedScheduleInput(loan)
         options = anchorOf(loan)
       }
-      const { periods, summary } = buildSchedule(input, options)
+      const { periods, summary } = remainingSchedule(input, options)
       return publicPreview(periods, summary)
     })
   }
@@ -48,20 +51,13 @@ function createLoanScheduleService({ getPool, selectLoan }) {
       const input = storedScheduleInput(loan)
       const [[existing]] = await connection.execute('SELECT period_id FROM catledger_loan_periods WHERE uid=? AND loan_id=? LIMIT 1', [uid, loan.loanId])
       if (existing) throw ledgerError('LOAN_PLAN_EXISTS')
-      const { periods } = buildSchedule(input, anchorOf(loan))
-      for (let at = 0; at < periods.length; at += 100) {
-        const part = periods.slice(at, at + 100).map(row => ({ ...row, periodId: randomUUID() }))
-        await connection.execute(`INSERT INTO catledger_loan_periods (uid,period_id,loan_id,period_number,due_date,principal_minor,interest_minor,fee_minor,cancelled)
-          VALUES ${part.map(() => '(?,?,?,?,?,?,?,?,0)').join(',')}`,
-        part.flatMap(row => [uid, row.periodId, loan.loanId, row.periodNumber, row.dueDate, row.principalMinor, row.interestMinor, row.feeMinor]))
-        await connection.execute(`INSERT INTO catledger_loan_period_revisions (uid,period_id,version,snapshot_json) VALUES ${part.map(() => '(?,?,1,?)').join(',')}`,
-        part.flatMap(row => [uid, row.periodId, JSON.stringify({ periodNumber: row.periodNumber, dueDate: row.dueDate,
-          principalMinor: String(row.principalMinor), interestMinor: String(row.interestMinor), feeMinor: String(row.feeMinor), cancelled: false })]))
-      }
+      const { periods } = remainingSchedule(input, anchorOf(loan))
+      if (!periods.length) throw ledgerError('VALIDATION_ERROR')
+      await insertSchedulePeriods(connection,uid,loan.loanId,periods)
       await advanceLoans(connection, uid, new Map([[loan.loanId, loan]]))
       return { loanId: loan.loanId, loanVersion: loan.version + 1, generatedPeriods: periods.length }
     })
   }
   return { previewPlan, generatePlan }
 }
-module.exports = { createLoanScheduleService }
+module.exports = { createLoanScheduleService,insertSchedulePeriods }
