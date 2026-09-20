@@ -1,8 +1,4 @@
 <view class="page-canvas profile-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="我的" title="个人资料" copy="头像只保存在本机；账号 ID 用于定位问题，不是登录凭证。">
-    <button wx:if="{{!loggedIn}}" class="profile-login-button" size="mini" bindtap="promptWechatLogin"><text class="profile-login-label">登录</text></button>
-  </page-head>
-
   <view class="profile-card">
     <view class="profile-hero">
       <button wx:if="{{loggedIn}}" class="profile-avatar-button {{savingAvatar ? 'profile-avatar-saving' : ''}}" aria-label="修改头像" open-type="chooseAvatar" disabled="{{savingAvatar || savingNickname}}" bindchooseavatar="chooseAvatar">
@@ -19,7 +15,10 @@
           <button class="profile-icon-button" aria-label="取消修改昵称" disabled="{{savingNickname}}" bindtap="cancelEditNickname"><image class="profile-icon-image" src="/assets/icons/close.svg" mode="aspectFit" /></button>
           <button class="profile-icon-button" aria-label="保存昵称" loading="{{savingNickname}}" disabled="{{savingNickname}}" form-type="submit"><view wx:if="{{!savingNickname}}" class="profile-icon-confirm"><image class="profile-icon-image" src="/assets/icons/check.svg" mode="aspectFit" /></view></button>
         </form>
-        <text wx:else class="profile-title serif-title">尚未登录</text>
+        <view wx:else class="profile-name-line">
+          <text class="profile-title serif-title">尚未登录</text>
+          <button class="profile-login-button" size="mini" bindtap="promptWechatLogin"><text class="profile-login-label">登录</text></button>
+        </view>
         <text wx:if="{{nicknameError}}" class="profile-name-error">{{nicknameError}}</text>
         <text wx:if="{{avatarError}}" class="profile-name-error">{{avatarError}}</text>
       </view>

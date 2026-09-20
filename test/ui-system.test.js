@@ -318,7 +318,8 @@ test('分类瓷贴默认色映射覆盖八个内置分类并回退灰色', funct
 })
 
 test('page-head 统一全部页面页头，section-header 只留 compact 页内小节', function () {
-  const pages = ['loans', 'import-history', 'data-privacy', 'ledger', 'accounts', 'categories', 'theme', 'profile', 'loan-payment', 'loan-plan', 'loan-link', 'loan-detail', 'import-workbench']
+  // profile 页头按用户要求移除（导航标题「我的」即页头），不加 page-head
+  const pages = ['loans', 'import-history', 'data-privacy', 'ledger', 'accounts', 'categories', 'theme', 'loan-payment', 'loan-plan', 'loan-link', 'loan-detail', 'import-workbench']
   pages.forEach(function (page) {
     const markup = read('miniprogram/pages/' + page + '/index.wxml')
     const config = read('miniprogram/pages/' + page + '/index.json')

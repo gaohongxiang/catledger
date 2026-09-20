@@ -89,7 +89,7 @@
   border-radius: 50%;
 }
 .profile-icon-confirm .profile-icon-image { width: 28rpx; height: 28rpx; }
-.profile-name-form { display: flex; align-items: center; min-width: 0; }
+.profile-name-form { display: flex; align-items: center; flex-wrap: nowrap; gap: 12rpx; min-width: 0; }
 .profile-name-input {
   flex: 1; min-width: 0; height: 72rpx; padding: 0 16rpx;
   border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-small, 12rpx);
