@@ -139,8 +139,8 @@
     "transactions.list": {
       "kind": "read",
       "data": ["month? (required without importUpdateId)", "importUpdateId?", "date?", "accountId?", "categoryId?", "uncategorized? (boolean; exclusive with categoryId)", "source? (manual|import)", "search?", "pageSize?", "cursor?"],
-      "returns": ["importUpdateId (applied filter or null)", "month", "date?", "source (null|manual|import; applied filter)", "summary", "transactions (origin; importContext?={updateId,eventId})", "nextCursor"],
-      "rules": ["source omitted: all sources; manual: origin=manual excluding transactions created by loan payments; import: origin=import", "Source combines with other filters before pagination and is bound into the cursor; summary retains the selected period totals", "A requested source must match the response source before the client caches or displays results; missing or mismatched confirmation is INVALID_RESPONSE"]
+      "returns": ["importUpdateId (applied filter or null)", "month", "date?", "source (null|manual|import; applied filter)", "summary? (first page only)", "transactions (origin; importContext?={updateId,eventId})", "nextCursor"],
+      "rules": ["Signed cursor binds uid, normalized filters and dataRevision; changed revision returns READ_SNAPSHOT_CHANGED and requires a new first page", "Pages after the first omit summary and never run the monthly summary query; summary retains the selected period totals regardless of row filters", "source omitted: all sources; manual: origin=manual excluding transactions created by loan payments; import: origin=import", "Source combines with other filters before pagination and is bound into the cursor; summary retains the selected period totals", "A requested source must match the response source before the client caches or displays results; missing or mismatched confirmation is INVALID_RESPONSE"]
     },
     "transactions.create": {
       "kind": "idempotent-mutation",

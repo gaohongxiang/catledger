@@ -48,7 +48,7 @@ async function clientSamples() {
   h.respond = (action, data) => action !== 'transactions.list' ? oldRespond(action, data) : { ok: true, data: {
     uid: h.uid, readVersion: 1, dataRevision: revision, unchanged: false, source: null,
     transactions: Array.from({ length: 30 }, (_,i) => ({ transactionId: 'synthetic-' + (Number(data.cursor || 0)+i), type: 'expense', origin: 'manual', version: 1, amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', sourceAccount: { accountId: 'account-a', name: '合成账户' } })),
-    summary: { incomeMinor: '0', expenseMinor: '1000', netIncomeMinor: '-1000' }, nextCursor: String(Number(data.cursor || 0)+30)
+    ...(data.cursor ? {} : { summary: { incomeMinor: '0', expenseMinor: '1000', netIncomeMinor: '-1000' } }), nextCursor: String(Number(data.cursor || 0)+30)
   } }
   await list.prepareAndLoad()
   for (let page = 2; page <= 10; page++) await measure('transactions-page-' + page, () => list.loadTransactions(true))

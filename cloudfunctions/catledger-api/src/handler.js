@@ -5,6 +5,7 @@ const { databaseErrorCode, isRetryableDatabaseError } = require('./database-erro
 const IDENTITY_FIELDS = ['uid', 'openid', 'openId', 'OPENID']
 
 const ERROR_MESSAGES = Object.freeze({
+  READ_SNAPSHOT_CHANGED: '账本已变化，正在重新读取第一页',
   EXPORT_CHANGED: '导出期间账本发生变化，请重新生成完整导出',
   EXPORT_EXPIRED: '导出已过期，请重新生成',
   LOAN_SOURCE_MISMATCH: '原交易组与确认的金额、账户或本息费不符，请核对完整付款',
@@ -34,6 +35,7 @@ const ERROR_MESSAGES = Object.freeze({
   UNSUPPORTED_ACTION: '当前操作尚未开放'
 })
 const PUBLIC_ERROR_CODES = new Set([
+  'READ_SNAPSHOT_CHANGED',
   'EXPORT_CHANGED',
   'EXPORT_EXPIRED',
   'LOAN_SOURCE_MISMATCH',

@@ -96,7 +96,7 @@ Page(Object.assign({
 
   prepareAndLoad: function (options) {
     if (this.data.deleting || this.data.selectingAll) return Promise.resolve()
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey', '_listRevision'])
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (this._prepareLoad) return this._prepareLoad
     const self = this
@@ -159,7 +159,7 @@ Page(Object.assign({
   },
 
   loadTransactions: function (append, options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey', '_listRevision'])
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (!append) this.resetSelection()
     const data = this.requestData(append ? this.data.nextCursor : null)
@@ -181,30 +181,35 @@ Page(Object.assign({
     this.setData(append ? { loadingMore: needsNetwork } : { loading: needsNetwork, errorMessage: '' })
     const applyTransactions = function (result, snapshot) {
         if (!isLatest()) return
-        if (!snapshot && append && api.cacheToken('transactions.list', self.requestData(null)) !== baseToken) {
+        if (snapshot && self.data.hasLoaded && self._listQueryKey === queryKey) return
+        if (!append && !snapshot && options && options.reuse && !force && self.data.hasLoaded &&
+            self._listQueryKey === queryKey && api.cacheToken('transactions.list', data) === self._listCacheToken) return
+        if (!snapshot && append && (api.cacheToken('transactions.list', self.requestData(null)) !== baseToken || result.dataRevision !== self._listRevision)) {
           self._transactionsLoad = null
           return self.loadTransactions(false, { force: true })
         }
-        if (!append && !snapshot) { self._listCacheToken = api.cacheToken('transactions.list', data); self._listQueryKey = queryKey }
+        if (!append && !snapshot) { self._listCacheToken = api.cacheToken('transactions.list', data); self._listQueryKey = queryKey; self._listRevision = result.dataRevision }
         const rows = result.transactions.map(viewModel.transactionView).map(row => Object.assign({}, row, { deletable: batchDelete.canSelect(row) }))
-        self.setData({
-          hasLoaded: true,
-          transactions: append ? self.data.transactions.concat(rows) : rows,
-          nextCursor: result.nextCursor,
-          incomeText: money.formatMinor(result.summary.incomeMinor),
-          expenseText: money.formatMinor(result.summary.expenseMinor),
-          netText: money.formatMinor(result.summary.netIncomeMinor),
-          netClass: String(result.summary.netIncomeMinor).charAt(0) === '-'
-            ? 'amount-expense'
-            : String(result.summary.netIncomeMinor) === '0'
-              ? 'amount-neutral'
-              : 'amount-income'
-        })
+        const patch = { hasLoaded: true, nextCursor: result.nextCursor }
+        if (append) rows.forEach((row, index) => { patch['transactions[' + (self.data.transactions.length + index) + ']'] = row })
+        else {
+          patch.transactions = rows
+          patch.incomeText = money.formatMinor(result.summary.incomeMinor)
+          patch.expenseText = money.formatMinor(result.summary.expenseMinor)
+          patch.netText = money.formatMinor(result.summary.netIncomeMinor)
+          patch.netClass = String(result.summary.netIncomeMinor).charAt(0) === '-' ? 'amount-expense'
+            : String(result.summary.netIncomeMinor) === '0' ? 'amount-neutral' : 'amount-income'
+        }
+        self.setData(patch)
     }
     this._transactionsLoad = api.callApi('transactions.list', data, { force, onSnapshot: append ? null : result => applyTransactions(result, true) })
       .then(result => applyTransactions(result, false))
       .catch(function (error) {
         if (!isLatest()) return
+        if (append && error.code === 'READ_SNAPSHOT_CHANGED') {
+          self._transactionsLoad = null
+          return self.loadTransactions(false, { force: true })
+        }
         self.setData({ errorMessage: self.data.hasLoaded ? '更新未成功，当前显示上次结果' : error.message || '明细加载失败' })
       })
       .finally(function () {

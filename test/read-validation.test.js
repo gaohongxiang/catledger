@@ -145,3 +145,11 @@ test('贷款返回复用当前版本；目录慢载时资料独立恢复，失�
   assert.match(page.data.errorMessage, /上次结果/)
   page.edit(); assert.equal(page.data.formOpen, false)
 })
+
+test('前台轻量读取瞬时失败重试一次，最终失败不承诺最新', async () => {
+  const h = runtime(); await h.api.callApi('dashboard.get')
+  h.intercept = action => { if (action === 'reads.validate') throw { errMsg: 'request:fail timeout' } }
+  await assert.rejects(h.api.revalidateForeground(), { code: 'CLOUD_TEMPORARY_UNAVAILABLE' })
+  assert.equal(h.calls.filter(c => c.action === 'reads.validate').length, 2)
+  assert.equal(h.api.isFresh('dashboard.get'), false)
+})

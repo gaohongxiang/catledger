@@ -108,7 +108,7 @@ test('未分类在SQL中筛选且绑定游标范围，账户/日期/搜索条件
   const connection = { query: async () => {}, commit: async () => {}, rollback: async () => {}, release() {},
     execute: async (sql, values) => {
       queries.push({ sql, values })
-      if (sql.includes('catledger_user_identities')) return [[{ uid: 'user-a' }]]
+      if (sql.includes('catledger_user_identities')) return [[{ uid: 'user-a', dataRevision: '1' }]]
       if (sql.includes('AS incomeMinor')) return [[{ incomeMinor: '0', expenseMinor: '0' }]]
       return [[1, 2].map(i => ({ transactionId: 't' + i, type: 'expense', origin: 'manual', amountMinor: '100', occurredLocalAt: '2026-07-01T10:00:00', version: 1, timezoneOffsetMinutes: -480 }))]
     } }
@@ -120,6 +120,9 @@ test('未分类在SQL中筛选且绑定游标范围，账户/日期/搜索条件
   assert.match(query.sql, /t.source_account_id = \? OR t.destination_account_id = \?/)
   assert.equal(query.values[0], 'user-a')
   assert.ok(first.nextCursor)
-  await service.list(context({ ...input, cursor: first.nextCursor }))
+  queries.length = 0
+  const second = await service.list(context({ ...input, cursor: first.nextCursor }))
+  assert.equal(Object.hasOwn(second, 'summary'), false)
+  assert.equal(queries.some(row => row.sql.includes('AS incomeMinor')), false)
   await assert.rejects(service.list(context({ ...input, uncategorized: false, cursor: first.nextCursor })), { publicCode: 'VALIDATION_ERROR' })
 })

@@ -167,7 +167,7 @@ Page({
       .then(applyDashboard)
       .catch(function () {
         if (!isCurrent()) return
-        self.setData({ errorMessage: '账本暂时没连接上' })
+        self.setData({ errorMessage: self.data.hasDashboard ? '更新未成功，当前显示上次结果' : '账本暂时没连接上' })
       })
       .finally(function () {
         if (!isCurrent()) return
