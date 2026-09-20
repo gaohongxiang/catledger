@@ -183,6 +183,23 @@ test('统计页保留半年趋势与日历，收支同卡且无重复每日柱�
   assert.match(source, /openCategoryCompletion/)
 })
 
+test('收支构成以彩色分段带为主视觉，环形图退场，当日格子主橙高亮', function () {
+  const template = read('miniprogram/pages/statistics/index.wxml')
+  const style = read('miniprogram/pages/statistics/index.wxss')
+  const source = read('miniprogram/pages/statistics/index.js')
+  const model = read('miniprogram/pages/statistics/model.js')
+
+  assert.match(template, /wx:for="{{expenseCategories}}"[^>]*class="band-segment" style="width: {{item\.barWidth}}; background: {{item\.bandColor}};/)
+  assert.match(template, /wx:for="{{incomeCategories}}"[^>]*class="band-segment"/)
+  assert.doesNotMatch(template, /ring-image|ring-wrap|charts\.expenseRing\.src|charts\.incomeRing\.src/)
+  assert.match(style, /\.band \{[^}]*border-radius:\s*999rpx/)
+  assert.doesNotMatch(style, /\.ring-image|\.ring-wrap/)
+  assert.match(source, /bandColor: bandColorFor\(row\.name\)/)
+  assert.match(template, /calendar-cell-today/)
+  assert.match(style, /\.calendar-cell-today \{[^}]*var\(--theme-accent/)
+  assert.match(model, /today: row\.date === time\.today\(\)/)
+})
+
 test('账户页以净资产和异常余额为主，管理动作收进账户详情', function () {
   const template = read('miniprogram/pages/accounts/index.wxml')
   const style = read('miniprogram/pages/accounts/index.wxss')
@@ -311,13 +328,19 @@ test('分类瓷贴接入明细、统计、分类管理与记一笔，账户行�
 })
 
 test('分类瓷贴默认色映射覆盖八个内置分类并回退灰色', function () {
-  const tileSource = read('miniprogram/components/category-tile/index.js')
+  const palette = require('../miniprogram/utils/category-palette')
   const pairs = [['餐饮', 'orange'], ['交通', 'blue'], ['购物', 'purple'], ['住房', 'teal'], ['医疗', 'red'], ['教育', 'yellow'], ['娱乐', 'green']]
   pairs.forEach(function (pair) {
-    assert.match(tileSource, new RegExp("'" + pair[0] + "': '" + pair[1] + "'"))
+    assert.equal(palette.COLOR_BY_NAME[pair[0]], pair[1])
+    assert.match(palette.bandColorFor(pair[0]), /^#[0-9a-f]{6}$/i)
   })
-  assert.match(tileSource, /\|\| 'grey'/)
+  assert.equal(palette.colorNameFor('不存在的分类'), 'grey')
+  assert.equal(palette.bandColorFor('不存在的分类'), palette.TILE_COLORS.grey.solid)
   assert.match(read('miniprogram/components/category-tile/index.wxss'), /\.ct-grey \.ct-box/)
+  Object.keys(palette.TILE_COLORS).forEach(function (name) {
+    assert.match(read('miniprogram/components/category-tile/index.wxss'), new RegExp('\\.ct-' + name + ' \\.ct-box'), '瓷贴缺少 ' + name + ' 配色')
+    assert.equal(palette.bandColorFor(''), palette.TILE_COLORS.grey.solid)
+  })
 })
 
 test('page-head 统一全部页面页头，section-header 只留 compact 页内小节', function () {
@@ -346,6 +369,18 @@ test('empty-cat 接管主场景空态，empty-state 保留次级场景', functio
   assert.match(read('miniprogram/components/empty-cat/index.wxml'), /\/assets\/catledger-logo\.png/)
   assert.match(read('miniprogram/components/empty-cat/index.wxss'), /opacity:\s*\.32/)
   assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-state[^>]*title="当前基础库不支持云开发"/)
+})
+
+test('empty-cat 升级场景卡：径向光圈、星点与 hide-art 无图变体', function () {
+  const markup = read('miniprogram/components/empty-cat/index.wxml')
+  const style = read('miniprogram/components/empty-cat/index.wxss')
+  assert.match(markup, /<view wx:if="{{!hideArt}}" class="ec-scene"/)
+  assert.match(markup, /class="ec-glow"/)
+  assert.ok((markup.match(/ec-star/g) || []).length >= 3, '需要星点装饰')
+  assert.match(style, /\.ec-glow \{[^}]*radial-gradient\(circle, var\(--theme-accent-soft/)
+  assert.match(style, /\.ec-star \{[^}]*var\(--theme-accent/)
+  assert.match(markup, /ec-plain/)
+  assert.match(style, /\.ec-plain \.ec-title/)
 })
 
 test('大卡与弹层圆角升 xl，列表行卡保持 large', function () {

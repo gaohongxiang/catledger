@@ -134,12 +134,24 @@ test('月度长金额改为纵向摘要，保持原始金额字符串和负号',
   assert.match(rule('.month-strip-stacked .month-stat'), /justify-content:\s*space-between/)
 })
 
-test('首页 hero 保留大圆角与柔影，不再放置猫水印遮挡内容', () => {
+test('首页 hero 大圆角抬升柔影，猫水印回归右下且不拦截触控', () => {
   assert.match(rule('.net-worth-card'), /border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
-  assert.match(rule('.net-worth-card'), /box-shadow:\s*var\(--theme-shadow-soft\)/)
+  assert.match(rule('.net-worth-card'), /box-shadow:\s*var\(--theme-shadow-lifted\)/)
   assert.doesNotMatch(style, /--home-shadow\s*:/)
-  assert.doesNotMatch(markup, /net-worth-watermark/)
-  assert.doesNotMatch(style, /\.net-worth-watermark/)
+  assert.match(markup, /class="net-worth-watermark" src="\/assets\/catledger-logo\.png"/)
+  assert.match(rule('.net-worth-watermark'), /opacity:\s*\.12/)
+  assert.match(rule('.net-worth-watermark'), /pointer-events:\s*none/)
+})
+
+test('hero 卡内迷你趋势复用 cashFlowTrend，不新增数据查询', () => {
+  const source = read('miniprogram/pages/index/index.js')
+  assert.match(markup, /wx:if="\{\{loggedIn && hasDashboard && cashFlowTrend\.length > 0\}\}" class="hero-trend"/)
+  assert.match(markup, /<view wx:for="\{\{cashFlowTrend\}\}" wx:key="month" class="hero-trend-column">/)
+  assert.match(markup, /hero-trend-income" style="height: \{\{item\.incomeHeight\}\}%/)
+  assert.match(markup, /hero-trend-expense" style="height: \{\{item\.expenseHeight\}\}%/)
+  assert.match(rule('.hero-trend-income'), /opacity:\s*\.92/)
+  assert.match(rule('.hero-trend-expense'), /opacity:\s*\.45/)
+  assert.equal((source.match(/callApi\(/g) || []).length, 2, '不允许新增查询')
 })
 
 test('时段问候移到页头标题之上，月度收支结余小字条留在 hero 底部', () => {

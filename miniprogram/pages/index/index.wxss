@@ -16,7 +16,7 @@
   --home-ink: #2c2823;
   --home-muted: #70685f;
   --home-line: #eae4dc;
-  --home-hero-image: linear-gradient(112deg, var(--theme-hero-start, #be5b24), var(--theme-hero-end, #be5b24));
+  --home-hero-image: linear-gradient(135deg, rgba(255, 255, 255, .14) 0%, var(--theme-hero-start, #be5b24) 36%, var(--theme-hero-end, #be5b24) 100%);
 }
 
 .home-page .money-number { font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: 0; }
@@ -56,15 +56,26 @@
 }
 
 .net-worth-card {
+  position: relative;
   box-sizing: border-box;
   min-height: 224rpx;
   padding: 30rpx 32rpx;
+  overflow: hidden;
   color: var(--theme-hero-ink, #29231e);
   background-color: var(--theme-hero-start, #be5b24);
   background-image: var(--home-hero-image, none);
   border: 1rpx solid rgba(0, 0, 0, .035);
   border-radius: var(--theme-radius-xl, 32rpx);
-  box-shadow: var(--theme-shadow-soft);
+  box-shadow: var(--theme-shadow-lifted);
+}
+.net-worth-watermark {
+  position: absolute;
+  right: -14rpx;
+  bottom: -18rpx;
+  width: 220rpx;
+  height: 220rpx;
+  opacity: .12;
+  pointer-events: none;
 }
 .net-worth-label {
   display: block;
@@ -85,6 +96,35 @@
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+.net-worth-main {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+.net-worth-main .net-worth-number { flex: 1; min-width: 0; }
+.hero-trend {
+  display: flex;
+  height: 96rpx;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 8rpx;
+  padding-bottom: 8rpx;
+}
+.hero-trend-column {
+  display: flex;
+  height: 100%;
+  align-items: flex-end;
+  gap: 3rpx;
+}
+.hero-trend-bar {
+  width: 9rpx;
+  min-height: 6rpx;
+  background: #ffffff;
+  border-radius: 999rpx;
+}
+.hero-trend-income { opacity: .92; }
+.hero-trend-expense { opacity: .45; }
 /* 三个摘要不再共用一排表格边线；长金额换行，不省略。 */
 .month-strip { display: flex; align-items: stretch; margin: 18rpx -20rpx 0; }
 .net-worth-card .month-strip { margin: 24rpx 0 0; padding-top: 20rpx; }

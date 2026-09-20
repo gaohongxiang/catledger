@@ -1,12 +1,4 @@
-const COLOR_BY_NAME = {
-  '餐饮': 'orange',
-  '交通': 'blue',
-  '购物': 'purple',
-  '住房': 'teal',
-  '医疗': 'red',
-  '教育': 'yellow',
-  '娱乐': 'green'
-}
+const colorNameFor = require('../../utils/category-palette').colorNameFor
 
 Component({
   properties: {
@@ -34,7 +26,7 @@ Component({
   observers: {
     'name, color': function (name, color) {
       this.setData({
-        resolvedColor: color || COLOR_BY_NAME[name] || 'grey',
+        resolvedColor: color || colorNameFor(name),
         initial: name ? name.slice(0, 1) : ''
       })
     }

@@ -22,14 +22,16 @@
     <view class="composition-pair">
       <view class="composition-column">
       <button class="composition-choice {{categoryKind === 'expense' ? 'composition-selected' : ''}}" data-kind="expense" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'expense' ? '收起支出分类' : '展开支出分类'}}">
-        <view class="ring-wrap"><image class="ring-image" src="{{charts.expenseRing.src}}" mode="aspectFit"/><view class="ring-center"><text>支出</text><text>{{charts.expenseRing.legend.length ? '分类构成' : '暂无数据'}}</text></view></view>
+        <text class="band-label">支出</text>
+        <view class="band" aria-hidden="true"><view wx:for="{{expenseCategories}}" wx:key="categoryId" wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></view>
         <text class="composition-amount expense-color money-number">{{expenseText}}</text>
         <text class="composition-toggle">{{categoryKind === 'expense' ? '收起分类' : '展开分类'}}</text>
       </button>
       </view>
       <view class="composition-column">
       <button class="composition-choice {{categoryKind === 'income' ? 'composition-selected' : ''}}" data-kind="income" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'income' ? '收起收入分类' : '展开收入分类'}}">
-        <view class="ring-wrap"><image class="ring-image" src="{{charts.incomeRing.src}}" mode="aspectFit"/><view class="ring-center"><text>收入</text><text>{{charts.incomeRing.legend.length ? '分类构成' : '暂无数据'}}</text></view></view>
+        <text class="band-label">收入</text>
+        <view class="band" aria-hidden="true"><view wx:for="{{incomeCategories}}" wx:key="categoryId" wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></view>
         <text class="composition-amount income-color money-number">{{incomeText}}</text>
         <text class="composition-toggle">{{categoryKind === 'income' ? '收起分类' : '展开分类'}}</text>
       </button>
@@ -63,7 +65,7 @@
   <section-header class="stats-section" compact title="支出日历"><text class="section-note">颜色越深，净支出越多</text></section-header>
   <view class="graph-surface calendar-surface">
     <view class="calendar-grid"><text wx:for="{{weekdays}}" wx:key="*this" class="calendar-weekday">{{item}}</text></view>
-    <view class="calendar-grid"><view wx:for="{{charts.calendar}}" wx:key="key" class="calendar-cell {{item.blank ? 'calendar-blank' : 'heat-' + item.level}}" bindtap="selectDay" data-index="{{item.index}}" aria-role="button" aria-label="{{item.blank ? '' : item.date + '净支出' + item.expenseText}}"><text>{{item.dayText}}</text></view></view>
+    <view class="calendar-grid"><view wx:for="{{charts.calendar}}" wx:key="key" class="calendar-cell {{item.blank ? 'calendar-blank' : 'heat-' + item.level}} {{item.today ? 'calendar-cell-today' : ''}}" bindtap="selectDay" data-index="{{item.index}}" aria-role="button" aria-label="{{item.blank ? '' : item.date + '净支出' + item.expenseText}}"><text>{{item.dayText}}</text></view></view>
     <view class="chart-detail"><text wx:if="{{selectedDay}}">{{selectedDay.date}} · 净支出 {{selectedDay.expenseText}}</text><text wx:else>点击日期查看金额；绿色表示当天退款抵减后净支出为负。</text></view>
   </view>
 
