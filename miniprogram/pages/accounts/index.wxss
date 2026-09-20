@@ -1,5 +1,5 @@
 .account-page { padding-top: 30rpx; padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.group-heading, .group-title-wrap, .account-row, .archived-toggle, .wealth-primary, .wealth-breakdown, .create-account-button, .sheet-field, .detail-balance, .detail-meta, .sheet-topline { display: flex; }
+.group-heading, .group-title-wrap, .account-row, .archived-toggle, .wealth-primary, .wealth-breakdown, .sheet-field, .detail-balance, .detail-meta, .sheet-topline { display: flex; }
 .account-kicker, .sheet-kicker {
   display: block;
   color: var(--theme-secondary, #64705d);
@@ -7,28 +7,6 @@
   font-weight: 500;
   letter-spacing: 2rpx;
 }
-.create-account-button {
-  box-sizing: border-box;
-  width: auto;
-  min-width: 128rpx;
-  height: auto;
-  min-height: 88rpx;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10rpx;
-  margin: 0;
-  padding: 16rpx 20rpx;
-  color: var(--theme-accent-strong, #a34d20);
-  font-size: var(--font-caption, 24rpx);
-  font-weight: 500;
-  line-height: 1;
-  background: transparent;
-  border: 1rpx solid var(--theme-line);
-  border-radius: var(--theme-radius-medium, 18rpx);
-}
-.create-account-active { opacity: .58; }
-.create-plus-icon { width: 22rpx; height: 22rpx; flex: 0 0 auto; }
 .wealth-summary {
   margin-top: 24rpx;
   padding: 28rpx 12rpx 24rpx;

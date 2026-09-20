@@ -1,7 +1,7 @@
 <view class="page-canvas page-secondary account-page {{themeClass}}" style="{{themeStyle}}">
   <page-head class="content-inset" badge="账户" title="账户总览" copy="资产和负债分开核对；点开账户可校正余额或停用。">
     <view class="heading-with-sync"><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view>
-    <button class="create-account-button" bindtap="openCreate" hover-class="create-account-active" aria-label="新建账户"><image class="create-plus-icon" src="{{themeIconRoot}}/plus.svg" mode="aspectFit" /><text>新建</text></button>
+    <button class="head-cta" bindtap="openCreate" aria-label="新建账户"><image src="/assets/icons/plus-on-accent.svg" mode="aspectFit" /><text>新建账户</text></button>
   </page-head>
 
   <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取账户…" />

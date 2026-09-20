@@ -1,5 +1,5 @@
 <view class="page-canvas loan-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="借款与分期" title="贷款" copy="每笔贷款单独核对本金，账户余额仍以账本为准。"><button class="loan-create" bindtap="createLoan">新增贷款</button></page-head>
+  <page-head class="content-inset" badge="借款与分期" title="贷款" copy="每笔贷款单独核对本金，账户余额仍以账本为准。"><button class="head-cta" bindtap="createLoan" aria-label="新增贷款"><image src="/assets/icons/plus-on-accent.svg" mode="aspectFit" /><text>新增贷款</text></button></page-head>
   <view class="loan-entry" bindtap="openUnassigned" hover-class="loan-entry-hover" aria-role="button" aria-label="待关联还款，从已有账目选择">
     <view class="loan-entry-main"><text class="loan-entry-title">待关联还款</text><text class="loan-entry-note">从已有账目选择</text></view>
     <chevron-icon size="{{24}}" />
