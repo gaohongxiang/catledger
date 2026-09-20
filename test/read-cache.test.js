@@ -122,3 +122,20 @@ test('缓存有数量上限，首页账户复用不延长原结果有效期', as
   await cache.read('c', policy, async () => 3)
   assert.equal(cache.token('a'), null)
 })
+
+test('普通失效保留独立可展示快照，但新鲜读取、写屏障与会话门禁不变', async () => {
+  const cache=createReadCache(), key='same-query'
+  await cache.read(key,policy,async()=>({value:'old'}))
+  cache.invalidate(['accounts'])
+  assert.equal(cache.peek(key),null);assert.equal(cache.token(key),null)
+  assert.equal(cache.snapshot(key).value.value,'old');assert.equal(cache.snapshot(key).fresh,false)
+  const writing=deferred(), saving=cache.mutate(['accounts'],()=>writing.promise)
+  let reads=0
+  const loading=cache.read(key,policy,async()=>{reads++;throw new Error('synthetic offline')})
+  await Promise.resolve();assert.equal(reads,0)
+  cache.snapshot(key).value.value='edited'
+  writing.resolve();await saving;await assert.rejects(loading)
+  assert.equal(cache.snapshot(key).value.value,'old')
+  assert.equal(cache.snapshot('other-query'),null)
+  cache.reset();assert.equal(cache.snapshot(key),null)
+})

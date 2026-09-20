@@ -1,4 +1,4 @@
-// 只保留当前登录会话的短期读取结果；不写本地存储，不参与业务写入重放。
+// 展示快照与新鲜读取分开；普通失效不删画面，正式读取仍受写屏障保护。
 function stableKey(action, data) {
   function ordered(value) {
     if (Array.isArray(value)) return value.map(ordered)
@@ -25,18 +25,18 @@ function createReadCache(options) {
   }
   function fresh(key) {
     const entry = entries.get(key)
-    return entry && entry.expiresAt > now() &&
+    return entry && !entry.dirty && entry.expiresAt > now() &&
       ![...writes].some(write => write.tags.some(tag => entry.tags.includes(tag))) ? entry : null
   }
   function put(key, policy, value, expiresAt) {
     entries.delete(key)
-    entries.set(key, { value: clone(value), tags: policy.tags, expiresAt, token: ++sequence })
+    entries.set(key, { value: clone(value), tags: policy.tags, expiresAt, updatedAt: now(), dirty: false, token: ++sequence })
     while (entries.size > maxEntries) entries.delete(entries.keys().next().value)
   }
   function invalidate(tags) {
     tags.forEach(tag => revisions.set(tag, (revisions.get(tag) || 0) + 1))
     for (const [key, entry] of entries) {
-      if (entry.tags.some(tag => tags.includes(tag))) entries.delete(key)
+      if (entry.tags.some(tag => tags.includes(tag))) entry.dirty = true
     }
   }
   function read(key, policy, loader, requestOptions) {
@@ -107,6 +107,12 @@ function createReadCache(options) {
     invalidate,
     token(key) { const entry = fresh(key); return entry ? entry.token : null },
     peek(key) { const entry = fresh(key); return entry ? clone(entry.value) : null },
+    snapshot(key) {
+      const entry = entries.get(key)
+      if (!entry) return null
+      entries.delete(key); entries.set(key, entry)
+      return { value: clone(entry.value), fresh: Boolean(fresh(key)), updatedAt: entry.updatedAt, source: 'memory' }
+    },
     seedFrom(sourceKey, key, policy, project) {
       const source = fresh(sourceKey)
       if (!source || fresh(key) || pending.has(key)) return

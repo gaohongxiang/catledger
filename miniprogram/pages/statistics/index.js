@@ -145,8 +145,7 @@ Page({
     this.setData({ loading: force || !api.isFresh('statistics.get', this.statisticsRequest()), errorMessage: '' })
     const trendMonth = time.currentMonth()
     const selectedTrendMonth = this.data.selectedTrend && this.data.selectedTrend.month
-    this._statisticsLoad = api.callApi('statistics.get', this.statisticsRequest(), { force })
-      .then(function (result) {
+    const applyStatistics = function (result, snapshot) {
         if (!isCurrent()) return
         self._trendMonth = trendMonth
         self._statisticsResult = result
@@ -179,14 +178,16 @@ Page({
           expenseCategories: prepareCategories(result.expenseCategories, charts.expenseRing),
           incomeCategories: prepareCategories(result.incomeCategories, charts.incomeRing)
         })
-        if (self.openCompletionAfterLoad) {
+        if (!snapshot && self.openCompletionAfterLoad) {
           self.openCompletionAfterLoad = false
           self.openCategoryCompletion()
         }
-      })
+    }
+    this._statisticsLoad = api.callApi('statistics.get', this.statisticsRequest(), { force, onSnapshot: result => applyStatistics(result, true) })
+      .then(result => applyStatistics(result, false))
       .catch(function (error) {
         if (!isCurrent()) return
-        self.setData({ errorMessage: error.message || '统计加载失败' }) })
+        self.setData({ errorMessage: self.data.hasLoaded ? '更新未成功，当前显示上次结果' : error.message || '统计加载失败' }) })
       .finally(function () {
         if (!isCurrent()) return
         self.setData({ loading: false }); self._statisticsLoad = null })

@@ -12,6 +12,14 @@ function read(action, data, options, loader) {
   const hit = !(options && options.force) && cache.token(key) !== null
   const startedAt = Date.now()
   require('./read-observer').record('cache', { action, source: hit ? 'memory' : 'network', hit })
+  const app = getApp()
+  if (!hit && options && options.onSnapshot && app && app.hasLoginApproval() && app.globalData.uid) {
+    const snapshot = cache.snapshot(key)
+    if (snapshot) {
+      options.onSnapshot(snapshot.value)
+      require('./read-observer').record('snapshot', { action, source: snapshot.source, ms: Date.now() - startedAt })
+    }
+  }
   return cache.read(key, READ_POLICIES[action], loader, options).then(result => {
     require('./read-observer').record('fresh', { action, source: hit ? 'memory' : 'network', ms: Date.now() - startedAt })
     // 首页与账户列表使用同一个服务端账户投影；只复用完整账户集合。

@@ -131,8 +131,7 @@ Page({
     const force = Boolean(options && (options.force || options.currentTarget))
     this.setData({ loading: force || !api.isFresh('dashboard.get', { month: month }), errorMessage: '', month: month, monthLabel: time.monthLabel(month) })
 
-    this._dashboardLoad = this.fetchDashboard(month, { force: force })
-      .then(function (dashboard) {
+    const applyDashboard = function (dashboard) {
         if (!isCurrent()) return
         const cashFlowTrend = Array.isArray(dashboard.cashFlowTrend) ? dashboard.cashFlowTrend : []
         self.setData({
@@ -163,7 +162,9 @@ Page({
             .slice(0, HOME_RECENT_LIMIT)
             .map(viewModel.transactionView)
         })
-      })
+    }
+    this._dashboardLoad = this.fetchDashboard(month, { force, onSnapshot: applyDashboard })
+      .then(applyDashboard)
       .catch(function () {
         if (!isCurrent()) return
         self.setData({ errorMessage: '账本暂时没连接上' })

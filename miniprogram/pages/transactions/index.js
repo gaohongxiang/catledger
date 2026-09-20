@@ -179,14 +179,13 @@ Page(Object.assign({
     if (!append && queryKey !== this._listQueryKey) this.setData({ hasLoaded: false, transactions: [], nextCursor: null })
     const needsNetwork = force || !api.isFresh('transactions.list', data)
     this.setData(append ? { loadingMore: needsNetwork } : { loading: needsNetwork, errorMessage: '' })
-    this._transactionsLoad = api.callApi('transactions.list', data, { force: force })
-      .then(function (result) {
+    const applyTransactions = function (result, snapshot) {
         if (!isLatest()) return
-        if (append && api.cacheToken('transactions.list', self.requestData(null)) !== baseToken) {
+        if (!snapshot && append && api.cacheToken('transactions.list', self.requestData(null)) !== baseToken) {
           self._transactionsLoad = null
           return self.loadTransactions(false, { force: true })
         }
-        if (!append) { self._listCacheToken = api.cacheToken('transactions.list', data); self._listQueryKey = queryKey }
+        if (!append && !snapshot) { self._listCacheToken = api.cacheToken('transactions.list', data); self._listQueryKey = queryKey }
         const rows = result.transactions.map(viewModel.transactionView).map(row => Object.assign({}, row, { deletable: batchDelete.canSelect(row) }))
         self.setData({
           hasLoaded: true,
@@ -201,10 +200,12 @@ Page(Object.assign({
               ? 'amount-neutral'
               : 'amount-income'
         })
-      })
+    }
+    this._transactionsLoad = api.callApi('transactions.list', data, { force, onSnapshot: append ? null : result => applyTransactions(result, true) })
+      .then(result => applyTransactions(result, false))
       .catch(function (error) {
         if (!isLatest()) return
-        self.setData({ errorMessage: error.message || '明细加载失败' })
+        self.setData({ errorMessage: self.data.hasLoaded ? '更新未成功，当前显示上次结果' : error.message || '明细加载失败' })
       })
       .finally(function () {
         if (!isLatest()) return
