@@ -1,8 +1,8 @@
 <view class="page-canvas page-secondary category-page {{themeClass}}" style="{{themeStyle}}">
-  <view class="category-heading content-inset">
-    <view><view class="heading-with-sync"><text class="category-title serif-title">分类总览</text><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view></view>
-  </view>
-  <text class="category-intro content-inset">管理账目使用的收支分类；点开可改名或停用。</text>
+  <page-head class="content-inset" badge="分类" title="分类总览" copy="管理账目使用的收支分类；点开可改名或停用。">
+    <view class="heading-with-sync"><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view>
+    <button class="category-add" bindtap="openCreate" hover-class="category-action-active" aria-label="新建分类"><image class="category-add-icon" src="{{themeIconRoot}}/plus.svg" mode="aspectFit" /><text>新建分类</text></button>
+  </page-head>
 
   <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取分类…" />
   <view class="kind-switch">
@@ -12,12 +12,12 @@
 
   <view class="category-toolbar content-inset">
     <text class="category-sort-note">拖动右侧把手排序</text>
-    <button class="category-add" bindtap="openCreate" hover-class="category-action-active" aria-label="新建分类"><image class="category-add-icon" src="{{themeIconRoot}}/plus.svg" mode="aspectFit" /><text>新建分类</text></button>
   </view>
 
   <view wx:if="{{visibleCategories.length}}" class="category-list">
     <view wx:for="{{visibleCategories}}" wx:key="id" class="category-row {{draggingCategoryId === item.id ? 'category-row-dragging' : ''}}" style="{{draggingCategoryId === item.id ? dragStyle : ''}}" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看分类 {{item.name}}">
       <text class="category-order money-number">{{item.orderText}}</text>
+      <category-tile size="small" hide-name name="{{item.name}}" />
       <view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">{{selectedKind === 'expense' ? '支出分类' : '收入分类'}}</text></view>
       <view class="category-drag-handle" data-index="{{item.positionIndex}}" data-id="{{item.id}}" catchtouchstart="startCategoryDrag" catchtouchmove="moveCategoryDrag" catchtouchend="endCategoryDrag" catchtouchcancel="cancelCategoryDrag" role="button" aria-label="拖动调整 {{item.name}} 的排序"><view class="category-drag-lines" aria-hidden="true"></view></view>
     </view>
@@ -30,7 +30,7 @@
       <view class="archived-toggle-end"><text class="money-number">{{archivedCategories.length}}</text><chevron-icon direction="{{archivedExpanded ? 'down' : 'right'}}" size="{{24}}" /></view>
     </view>
     <view wx:if="{{archivedExpanded}}" class="archived-list">
-      <view wx:for="{{archivedCategories}}" wx:key="id" class="category-row category-row-archived" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看已停用分类 {{item.name}}"><text class="category-order money-number">{{item.orderText}}</text><view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">已停用</text></view><chevron-icon size="{{26}}" /></view>
+      <view wx:for="{{archivedCategories}}" wx:key="id" class="category-row category-row-archived" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看已停用分类 {{item.name}}"><text class="category-order money-number">{{item.orderText}}</text><category-tile size="small" hide-name name="{{item.name}}" /><view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">已停用</text></view><chevron-icon size="{{26}}" /></view>
     </view>
   </view>
 
@@ -57,7 +57,7 @@
       <text class="sheet-title serif-title">{{formTitle}}</text>
       <input class="category-input" value="{{categoryName}}" maxlength="32" focus="{{formOpen}}" placeholder="例如：宠物、旅行" aria-label="分类名称" cursor-spacing="32" disabled="{{saving}}" bindinput="bindCategoryName" />
       <text wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</text>
-      <button class="primary-button sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveForm">保存</button>
+      <button class="primary-button primary-button-medium sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveForm">保存</button>
     </view>
   </view>
 </view>

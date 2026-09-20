@@ -1,0 +1,53 @@
+.ph { display: block; padding: 12rpx 0 8rpx; }
+
+.ph-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  color: var(--theme-accent-strong, #a34d20);
+  background: var(--theme-accent-soft, #fceee3);
+  font-size: var(--font-caption, 24rpx);
+  font-weight: 500;
+}
+
+.ph-badge-dot {
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: var(--theme-accent, #be5b24);
+}
+
+.ph-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-top: 20rpx;
+}
+
+.ph-title {
+  display: block;
+  min-width: 0;
+  font-size: var(--font-title, 40rpx);
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.ph-side {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.ph-copy {
+  display: block;
+  margin-top: 12rpx;
+  color: var(--theme-text-muted, #70685f);
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}

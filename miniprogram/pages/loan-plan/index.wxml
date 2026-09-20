@@ -1,5 +1,5 @@
 <view class="page-canvas plan-page {{themeClass}}" style="{{themeStyle}}">
-  <section-header class="plan-heading" eyebrow="贷款管理 / {{loanName}}" title="{{paymentId ? '分配实际还款' : '还款计划'}}" />
+  <page-head class="content-inset" badge="{{loanName || '贷款管理'}}" title="{{paymentId ? '分配实际还款' : '还款计划'}}" copy="计划只用于对账，不会自动生成借款或扣款。" />
   <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <button wx:if="{{errorMessage}}" class="plan-link" bindtap="load" disabled="{{loading || saving}}">重新读取与核实</button>

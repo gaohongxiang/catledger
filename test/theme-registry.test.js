@@ -58,6 +58,8 @@ test('主题注册表提供六套唯一且完整的视觉方案', function () {
     assert.match(theme.previewStyle, /--preview-accent:/)
     assert.match(theme.previewStyle, /--preview-surface:/)
     assert.match(theme.previewStyle, /--preview-radius-large:/)
+    assert.match(theme.previewStyle, /--preview-radius-xl:32rpx/)
+    assert.equal(registry.getTheme(theme.id).tokens.radiusXl, '32rpx')
   })
 })
 
@@ -89,7 +91,8 @@ test('页面主题只输出受控的语义变量', function () {
   assert.equal(presentation.themeId, 'ticket-proof')
   assert.equal(presentation.themeClass, 'theme-ticket-proof')
   assert.match(presentation.themeStyle, /--theme-hero-start:#D9B45D;/)
-  assert.match(presentation.themeStyle, /--theme-shadow-soft:0 2rpx 10rpx/)
+  assert.match(presentation.themeStyle, /--theme-shadow-soft:0 8rpx 28rpx/)
+  assert.match(presentation.themeStyle, /--theme-radius-xl:32rpx;/)
   assert.equal((presentation.themeStyle.match(/--theme-/g) || []).length, registry.TOKEN_NAMES.length)
 })
 

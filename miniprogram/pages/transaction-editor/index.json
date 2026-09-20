@@ -2,6 +2,7 @@
   "navigationBarTitleText": "记一笔",
   "usingComponents": {
     "login-sheet": "/components/login-sheet/index",
+    "category-tile": "/components/category-tile/index",
     "ui-state": "/components/ui-state/index",
     "chevron-icon": "/components/chevron-icon/index"
   }

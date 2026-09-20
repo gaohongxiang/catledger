@@ -3,7 +3,8 @@
   "enablePullDownRefresh": true,
   "onReachBottomDistance": 160,
   "usingComponents": {
-    "empty-state": "/components/empty-state/index",
+    "category-tile": "/components/category-tile/index",
+    "empty-cat": "/components/empty-cat/index",
     "ui-state": "/components/ui-state/index",
     "chevron-icon": "/components/chevron-icon/index"
   }

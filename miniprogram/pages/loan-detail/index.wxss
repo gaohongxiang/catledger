@@ -1,9 +1,4 @@
 .loan-detail { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.ld-head { padding: 12rpx var(--layout-content-inset, 20rpx) 8rpx; }
-.ld-badge { display: inline-flex; align-items: center; gap: 10rpx; padding: 8rpx 18rpx; border-radius: 999rpx; background: var(--theme-accent-soft); color: var(--theme-accent-strong); font-size: var(--font-caption); font-weight: 500; }
-.ld-badge-dot { width: 10rpx; height: 10rpx; border-radius: 50%; background: var(--theme-accent); }
-.ld-head-title { display: block; margin-top: 20rpx; font-size: var(--font-title); font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
-.ld-head-copy { display: block; margin-top: 12rpx; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.7; }
 .ld-note-card { display: block; margin: 24rpx 0; padding: 24rpx; background: var(--theme-surface-muted); border-radius: var(--layout-radius-medium); }
 .ld-note { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.7; }
 .ld-note + .ld-note { margin-top: 12rpx; }
@@ -17,7 +12,7 @@
 .ld-row text:last-child { text-align: right; overflow-wrap: anywhere; }
 .ld-action { margin-top: 20rpx; }
 .ld-form { margin-top: 8rpx; }
-.ld-form-card { margin-top: 24rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); }
+.ld-form-card { margin-top: 24rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-xl, 32rpx); }
 .ld-card-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20rpx; margin-bottom: 8rpx; }
 .ld-card-kicker { display: block; color: var(--theme-accent-strong); font-size: var(--font-caption); font-weight: 500; letter-spacing: 4rpx; }
 .ld-card-title { display: block; margin-top: 4rpx; font-size: var(--font-section); font-weight: 600; }

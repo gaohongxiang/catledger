@@ -1,4 +1,7 @@
 {
   "navigationBarTitleText": "主题",
-  "enablePullDownRefresh": false
+  "enablePullDownRefresh": false,
+  "usingComponents": {
+    "page-head": "/components/page-head/index"
+  }
 }

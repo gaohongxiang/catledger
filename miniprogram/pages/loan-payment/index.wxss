@@ -1,10 +1,9 @@
 .loan-payment { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.lp-heading { display: block; box-sizing: border-box; padding-left: var(--layout-content-inset, 20rpx); padding-right: var(--layout-content-inset, 20rpx); }
 .lp-note-card { display: block; margin: 24rpx 0; padding: 24rpx; background: var(--theme-surface-muted); border-radius: var(--layout-radius-medium); }
 .lp-note { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.7; }
 .lp-note + .lp-note { margin-top: 12rpx; }
 .lp-muted { display: block; margin-top: 4rpx; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.6; }
-.lp-summary { margin-top: 24rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); }
+.lp-summary { margin-top: 24rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-xl, 32rpx); }
 .lp-principal { display: block; margin-bottom: 8rpx; font-size: var(--font-display); font-weight: 500; line-height: 1.2; overflow-wrap: anywhere; }
 .lp-panel { margin-top: 24rpx; padding: 24rpx 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); }
 .lp-panel-name { display: block; font-size: var(--font-section); font-weight: 500; overflow-wrap: anywhere; }
