@@ -9,7 +9,11 @@ const client = cloudFunctionClient.createCloudFunctionClient({
 
 function read(action, data, options, loader) {
   const key = cache.stableKey(action, data)
+  const hit = !(options && options.force) && cache.token(key) !== null
+  const startedAt = Date.now()
+  require('./read-observer').record('cache', { action, source: hit ? 'memory' : 'network', hit })
   return cache.read(key, READ_POLICIES[action], loader, options).then(result => {
+    require('./read-observer').record('fresh', { action, source: hit ? 'memory' : 'network', ms: Date.now() - startedAt })
     // 首页与账户列表使用同一个服务端账户投影；只复用完整账户集合。
     if (action === 'dashboard.get' && Array.isArray(result.accounts)) {
       cache.seedFrom(key, cache.stableKey('accounts.list'), READ_POLICIES['accounts.list'], view => ({ accounts: view.accounts }))

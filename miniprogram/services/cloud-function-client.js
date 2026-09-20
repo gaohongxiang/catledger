@@ -1,4 +1,5 @@
 const cloudCallPolicy = require('./cloud-call-policy')
+const observer = require('./read-observer')
 
 const CLOUD_RETRY_DELAY_MS = 300
 
@@ -48,6 +49,7 @@ function createCloudFunctionClient(options) {
   const fallbackMessage = options.fallbackMessage || '服务暂时不可用，请稍后重试'
 
   function invoke(action, data, attempt, message) {
+    const startedAt = Date.now()
     return Promise.resolve()
       .then(function () {
         return wx.cloud.callFunction({
@@ -56,6 +58,8 @@ function createCloudFunctionClient(options) {
         })
       })
       .then(function (response) {
+        if (observer.active()) observer.record('request', { action, source: 'network', attempt: attempt + 1,
+          ms: Date.now() - startedAt, bytes: observer.bytes(response), ok: Boolean(response && response.result && response.result.ok) })
         if (!response || !response.result || typeof response.result !== 'object') {
           return handleTransportFailure(response, action, data, attempt, function (retryAction, retryData, retryAttempt) {
             return invoke(retryAction, retryData, retryAttempt, message)
@@ -73,6 +77,7 @@ function createCloudFunctionClient(options) {
           throw error
         }
       }, function (originalError) {
+        observer.record('request', { action, source: 'network', attempt: attempt + 1, ms: Date.now() - startedAt, ok: false })
         return handleTransportFailure(originalError, action, data, attempt, function (retryAction, retryData, retryAttempt) {
           return invoke(retryAction, retryData, retryAttempt, message)
         })
