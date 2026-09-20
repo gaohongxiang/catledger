@@ -8,6 +8,7 @@ Component({
   data: {
     open: false, automatic: false, submitting: false, errorMessage: '',
     avatarUrl: '', nickname: '', nicknameFocused: false,
+    nicknameMaxLength: profilePresentation.NICKNAME_MAX_LENGTH,
     stage: 'loading', themeClass: '', themeStyle: ''
   },
 
@@ -88,7 +89,8 @@ Component({
         this._bootstrapResult = result
         const profile = profilePresentation.withDefaultProfile(app.globalData.profile)
         this.setData({ stage: 'setup', submitting: false,
-          nickname: profile.nickname, avatarUrl: profile.avatarUrl })
+          nickname: Array.from(profile.nickname).slice(0, profilePresentation.NICKNAME_MAX_LENGTH).join(''),
+          avatarUrl: profile.avatarUrl })
       }).catch(error => {
         if (isCurrent()) this.setData({ stage: 'error', submitting: false,
           errorMessage: error.message || '暂时无法连接账本，请重试' })
@@ -158,8 +160,8 @@ Component({
       const form = event && event.detail && event.detail.value
       if (form && typeof form.nickname === 'string') this.bindNickname({ detail: { value: form.nickname } })
       const nickname = String(this.data.nickname || '').trim()
-      if (!nickname || Array.from(nickname).length > 24) {
-        this.setData({ errorMessage: '昵称需填写 1～24 个字' })
+      if (!nickname || Array.from(nickname).length > profilePresentation.NICKNAME_MAX_LENGTH) {
+        this.setData({ errorMessage: '昵称需填写 1～6 个字' })
         return
       }
       const isCurrent = this.captureAttempt()

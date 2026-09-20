@@ -16,7 +16,7 @@
       <view class="login-nickname-column">
         <text class="login-field-label">昵称</text>
         <view class="login-nickname-field {{nicknameFocused ? 'login-nickname-field-focused' : ''}}" bindtap="focusNickname">
-          <input class="login-nickname-input" name="nickname" aria-label="昵称" type="nickname" value="{{nickname}}" maxlength="24" placeholder="输入昵称" confirm-type="done" focus="{{nicknameFocused}}" cursor-spacing="32" disabled="{{submitting}}" bindinput="bindNickname" bindblur="blurNickname" />
+          <input class="login-nickname-input" name="nickname" aria-label="昵称" type="nickname" value="{{nickname}}" maxlength="{{nicknameMaxLength}}" placeholder="1～6 个字" confirm-type="done" focus="{{nicknameFocused}}" cursor-spacing="32" disabled="{{submitting}}" bindinput="bindNickname" bindblur="blurNickname" />
           <button class="login-shuffle" size="mini" aria-label="换一个随机昵称" disabled="{{submitting}}" catchtap="shuffleNickname">换一个</button>
         </view>
         <button class="login-profile-action" size="mini" disabled="{{submitting}}" bindtap="focusNickname">使用微信昵称</button>

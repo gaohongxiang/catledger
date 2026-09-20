@@ -49,7 +49,7 @@
       "rules": ["nickname is the saved account display name or an empty string before the first selection; uid and ownership remain unchanged"]
     },
     "profile.get": {"kind": "read", "data": [], "returns": ["nickname"], "rules": ["Current trusted WeChat identity only; an empty string means no saved nickname"]},
-    "profile.update": {"kind": "idempotent-mutation", "data": ["requestId", "nickname", "previousNickname"], "returns": ["nickname"], "rules": ["Trim and save 1..24 characters on the current user's account; previousNickname is the last server value and stale edits conflict; nickname is never an identity or unique key"]},
+    "profile.update": {"kind": "idempotent-mutation", "data": ["requestId", "nickname", "previousNickname"], "returns": ["nickname"], "rules": ["Trim and save 1..6 Unicode characters on the current user's account; previousNickname is the last server value and stale edits conflict; nickname is never an identity or unique key"]},
     "dashboard.get": {
       "kind": "read",
       "data": ["month"],

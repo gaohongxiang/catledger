@@ -5,7 +5,7 @@ const { ledgerError } = require('./ledger-errors')
 function normalizeNickname(value) {
   if (typeof value !== 'string') throw ledgerError('VALIDATION_ERROR')
   const nickname = value.trim()
-  if (!nickname || Array.from(nickname).length > 24 || /[\u0000-\u001f\u007f]/.test(nickname)) {
+  if (!nickname || Array.from(nickname).length > 6 || /[\u0000-\u001f\u007f]/.test(nickname)) {
     throw ledgerError('VALIDATION_ERROR')
   }
   return nickname

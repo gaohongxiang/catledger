@@ -54,12 +54,11 @@
   font-size: var(--font-section, 32rpx);
   font-weight: 500;
   text-overflow: ellipsis;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
   line-height: 1.4;
 }
 .profile-name-line { display: flex; align-items: center; gap: 8rpx; min-width: 0; }
-.profile-name-line .profile-title { flex: 0 1 auto; min-width: 0; }
+.profile-name-line .profile-title { flex: 1; min-width: 0; }
 .profile-page .profile-icon-button {
   display: flex;
   width: 88rpx;
@@ -127,7 +126,7 @@
   display: flex;
   min-height: 88rpx;
   align-items: center;
-  gap: 10rpx;
+  gap: 8rpx;
   margin-top: 16rpx;
   padding-top: 12rpx;
   border-top: 1rpx solid var(--theme-line, #eae4dc);
@@ -135,8 +134,14 @@
   font-size: var(--font-caption, 24rpx);
 }
 .profile-id-label { flex: 0 0 auto; }
+.profile-id-text {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex: 1;
+  min-width: 0;
+}
 .profile-id-value { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
-.profile-id-line .profile-icon-button { flex: 0 0 88rpx; margin-right: -20rpx; }
 
 .profile-id-pending { display: flex; align-items: center; min-height: 88rpx; margin-top: 16rpx; padding-top: 12rpx; border-top: 1rpx solid var(--theme-line, #eae4dc); color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
 .profile-id-retry { display: flex; align-items: center; min-height: 88rpx; margin-left: 12rpx; padding: 0 8rpx; color: var(--theme-accent-strong, #a34d20); }

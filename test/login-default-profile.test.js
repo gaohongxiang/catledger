@@ -35,7 +35,7 @@ test('启动不生成昵称，成功保存的默认资料跨重启稳定且退�
   assert.equal(storage.size, 0)
   const profile = profilePresentation.withDefaultProfile({})
   assert.equal(profile.avatarUrl, profilePresentation.DEFAULT_AVATAR_URL)
-  assert.ok(profile.nickname.length > 0 && profile.nickname.length <= 24)
+  assert.ok(Array.from(profile.nickname).length > 0 && Array.from(profile.nickname).length <= 6)
   assert.doesNotMatch(profile.nickname, /[0-9]/)
   assert.notEqual(profilePresentation.randomNickname(profile.nickname), profile.nickname)
   await first.app.saveLocalProfile(profile)
@@ -190,6 +190,46 @@ test('冷启动只有未设置账号昵称才显示一次资料设置，保存�
   assert.equal(app.globalData.profile.nickname, '首次自选昵称')
   assert.equal(app.hasLoginApproval(), true)
   assert.equal(ui.sheet.data.open, false)
+})
+
+test('首次设置只接受一至六字，旧本机长昵称仅裁成待确认草稿', async () => {
+  const legacy = '以前保存的完整长昵称'
+  const storage = new Map([['catledger_local_profile_v1', { nickname: legacy }]])
+  const { app } = loadApp(storage)
+  let updates = 0
+  const ui = loadLoginSheet(app, {
+    identifyWechatAccount: async () => ({ uid: '1234567890', nickname: '', categories: [] }),
+    createRequestId: () => '00000000-0000-4000-8000-000000000002',
+    initializeProfileAfterConsent: async ({ nickname }) => { updates++; return { nickname } }
+  })
+  await ui.ready()
+  assert.equal(ui.sheet.data.nickname, '以前保存的完')
+  assert.equal(storage.get('catledger_local_profile_v1').nickname, legacy)
+  for (const nickname of [' ', '一二三四五六七']) {
+    await ui.sheet.confirm({ detail: { value: { nickname } } })
+    assert.equal(ui.sheet.data.errorMessage, '昵称需填写 1～6 个字')
+    assert.equal(updates, 0)
+    assert.equal(app.hasLoginApproval(), false)
+  }
+  await ui.sheet.confirm({ detail: { value: { nickname: ' 一二三四五🐱 ' } } })
+  assert.equal(updates, 1)
+  assert.equal(app.globalData.profile.nickname, '一二三四五🐱')
+  assert.equal(app.hasLoginApproval(), true)
+})
+
+test('已有长昵称直接登录，更换头像与重启也不会截短账号昵称', async () => {
+  const legacy = '以前保存的完整长昵称'
+  const storage = new Map()
+  const { app } = loadApp(storage)
+  const ui = loadLoginSheet(app, {
+    identifyWechatAccount: async () => ({ uid: '1234567890', nickname: legacy, categories: [] })
+  })
+  await ui.ready()
+  assert.equal(app.hasLoginApproval(), true)
+  assert.equal(ui.sheet.data.open, false)
+  await app.saveLocalProfile({ nickname: legacy, avatarUrl: 'wxfile://tmp/new.png' }, { avatarOnly: true })
+  assert.equal(app.globalData.profile.nickname, legacy)
+  assert.equal(loadApp(storage).app.globalData.profile.nickname, legacy)
 })
 
 test('自动识别失败不沿用旧许可，重试恢复原昵称；退出和取消后本次会话不自动重登', async () => {

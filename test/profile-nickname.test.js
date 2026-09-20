@@ -67,6 +67,38 @@ test('我的读取账号昵称并以当前值保存修改', async () => {
   assert.deepEqual(h.toasts, ['昵称已保存'])
 })
 
+test('昵称修改拒绝空值或七字，六字可保存且按 Unicode 字符计数', async () => {
+  const h = runtime(() => ({ nickname: '原昵称' }))
+  await h.page.onShow()
+  h.page.startEditNickname()
+  for (const nickname of ['   ', '一二三四五六七']) {
+    h.page.bindNicknameDraft({ detail: { value: nickname } })
+    await h.page.saveNickname()
+    assert.equal(h.page.data.nicknameError, '昵称需填写 1～6 个字')
+    assert.equal(h.calls.filter(call => call.action === 'profile.update').length, 0)
+  }
+  h.page.bindNicknameDraft({ detail: { value: ' 一二三四五🐱 ' } })
+  await h.page.saveNickname()
+  assert.equal(h.page.data.nickname, '一二三四五🐱')
+  assert.equal(h.calls.filter(call => call.action === 'profile.update').length, 1)
+})
+
+test('旧长昵称读取和取消编辑不改写，主动改名保留完整旧值用于冲突校验', async () => {
+  const legacy = '以前保存的完整长昵称'
+  const h = runtime(() => ({ nickname: legacy }))
+  await h.page.onShow()
+  h.page.startEditNickname()
+  assert.equal(h.page.data.nicknameDraft, legacy)
+  h.page.cancelEditNickname()
+  assert.equal(h.page.data.nickname, legacy)
+  assert.equal(h.app.globalData.profile.nickname, legacy)
+  assert.equal(h.calls.filter(call => call.action === 'profile.update').length, 0)
+  h.page.startEditNickname()
+  h.page.bindNicknameDraft({ detail: { value: '新昵称' } })
+  await h.page.saveNickname()
+  assert.equal(h.calls.find(call => call.action === 'profile.update').data.previousNickname, legacy)
+})
+
 test('我的可更换头像，保存失败保留原图并可再次选择', async () => {
   const h = runtime(() => ({ nickname: '账号昵称' }))
   await h.page.onShow()

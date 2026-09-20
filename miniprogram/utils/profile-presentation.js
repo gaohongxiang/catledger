@@ -1,4 +1,5 @@
 const DEFAULT_AVATAR_URL = '/assets/catledger-logo.png'
+const NICKNAME_MAX_LENGTH = 6
 const DEFAULT_NICKNAMES = [
   '晒太阳的小猫', '橘子汽水', '听雨的阿橘', '慢悠悠的小猫',
   '月亮小鱼干', '抱着云朵', '奶油小饼干', '午后猫薄荷',
@@ -16,8 +17,9 @@ function randomNickname(current) {
 function withDefaultProfile(profile, fallback) {
   profile = profile || {}
   fallback = fallback || {}
-  const nickname = String(profile.nickname || '').trim().slice(0, 24)
-    || String(fallback.nickname || '').trim().slice(0, 24)
+  // 已存昵称只复用，不在展示或更换头像时截短旧值。
+  const nickname = String(profile.nickname || '').trim()
+    || String(fallback.nickname || '').trim()
     || randomNickname()
   return {
     nickname: nickname,
@@ -37,6 +39,7 @@ function displayAvatarUrl(loggedIn, profile) {
 }
 
 module.exports = {
+  NICKNAME_MAX_LENGTH: NICKNAME_MAX_LENGTH,
   displayUserId: displayUserId,
   randomNickname: randomNickname,
   withDefaultProfile: withDefaultProfile,

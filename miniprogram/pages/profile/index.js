@@ -15,6 +15,7 @@ Page({
     profileLoaded: false,
     editingNickname: false,
     nicknameDraft: '',
+    nicknameMaxLength: profilePresentation.NICKNAME_MAX_LENGTH,
     savingNickname: false,
     savingAvatar: false,
     avatarError: '',
@@ -147,8 +148,8 @@ Page({
     const form = event && event.detail && event.detail.value
     if (form && typeof form.nickname === 'string') this.bindNicknameDraft({ detail: { value: form.nickname } })
     const nickname = String(this.data.nicknameDraft || '').trim()
-    if (!nickname || Array.from(nickname).length > 24) {
-      this.setData({ nicknameError: '昵称需填写 1～24 个字' })
+    if (!nickname || Array.from(nickname).length > profilePresentation.NICKNAME_MAX_LENGTH) {
+      this.setData({ nicknameError: '昵称需填写 1～6 个字' })
       return
     }
     if (nickname === this.data.serverNickname) {
