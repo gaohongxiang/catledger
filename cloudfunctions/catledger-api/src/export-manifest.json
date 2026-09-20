@@ -747,5 +747,23 @@
       "superseded_at"
     ],
     "json": []
+  },
+  {
+    "name": "catledger_loan_repayment_details",
+    "keys": [
+      "payment_id"
+    ],
+    "columns": [
+      "payment_id",
+      "liability_account_id",
+      "principal_minor",
+      "interest_minor",
+      "fee_minor",
+      "interest_treatment",
+      "fee_treatment",
+      "interest_category_id",
+      "fee_category_id"
+    ],
+    "json": []
   }
 ]

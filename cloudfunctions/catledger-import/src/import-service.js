@@ -324,6 +324,7 @@ function createImportService({ getPool, storage }) {
     reviewIssueList: reads.issues,
     reviewIssueResolveAccountMappings: reviewIssues.resolveAccountMappings,
     reviewIssueReviseAccountMapping: reviewIssues.reviseAccountMapping,
+    financeUpdateSetRepayment: reviewIssues.setRepayment,
     reviewIssueResolve: reviewIssues.resolve
   }
 }

@@ -63,6 +63,7 @@ Page({
     if (this._sourceTransactionId && (!this.data.loan || this.data.loan.baselinePrincipalMinor == null || this.data.loan.baselineDate > source.transaction.occurredLocalAt.slice(0,10))) {
       this.edit(); this.setData({ errorMessage: '请先确认还款日期日初或更早的本金基准，不能把本次扣款当贷款本金' }); return
     }
+    if (this._sourceTransactionId && source.payment) { wx.navigateTo({ url:'/pages/repayment-entry/index?paymentId=' + encodeURIComponent(source.payment.paymentId) + '&loanId=' + encodeURIComponent(this._loanId) }); return }
     wx.navigateTo({ url: '/pages/loan-payment/index?loanId=' + encodeURIComponent(this._loanId) + (this._sourceTransactionId ? '&sourceTransactionId=' + encodeURIComponent(this._sourceTransactionId) : '') })
   },
   openPlan() { wx.navigateTo({ url: '/pages/loan-plan/index?loanId=' + encodeURIComponent(this._loanId) }) },

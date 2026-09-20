@@ -148,7 +148,9 @@ async function eventPage(connection, uid, context, state) {
   if (status === 'duplicate') where += " AND EXISTS (SELECT 1 FROM catledger_event_evidence v WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND v.evidence_role = 'duplicate')"
   else if (status) { where += ' AND e.status = ?'; values.push(status) }
   if (nature) { where += ' AND e.economic_nature = ?'; values.push(nature) }
-  if (view === 'expense') where += " AND e.economic_nature IN ('expense','fee')"
+  if (view === 'expense') where += ` AND (e.economic_nature IN ('expense','fee') OR (JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.confirmed')=TRUE AND (
+    (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestMinor')) AS UNSIGNED)>0) OR
+    (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeMinor')) AS UNSIGNED)>0))))`
   else if (view === 'posted') where += " AND e.status IN ('posted', 'corrected')"
   else if (view) {
     where += ' AND ' + activeSql
@@ -166,6 +168,9 @@ async function eventPage(connection, uid, context, state) {
   const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM catledger_economic_events e WHERE ${where}`, values)
   const [ids] = await connection.execute(`SELECT e.event_id AS eventId FROM catledger_economic_events e WHERE ${where} AND e.event_id > ? ORDER BY e.event_id LIMIT ?`, [...values, page.last, page.size + 1])
   const items = ids.length ? await selectEvents(connection, uid, state.update.updateId, { eventIds: ids.map(row => row.eventId) }) : []
+  if (view === 'expense') for (const item of items) {
+    if (item.loanRepayment && item.loanRepayment.confirmed) item.summaryExpenseMinor = String(require('./workbench-summary').repaymentExpense(item))
+  }
   const byId = new Map(items.map(item => [item.eventId, item]))
   return finishPage(context, state, page, ids.map(row => byId.get(row.eventId)), count.total, 'eventId', 'event')
 }

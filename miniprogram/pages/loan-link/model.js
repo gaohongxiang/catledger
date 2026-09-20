@@ -2,9 +2,9 @@ const money = require('../../utils/money')
 const { addMinor } = require('../../utils/minor-arithmetic')
 function timeText(value) { return String(value || '').slice(5, 16).replace('T', ' ') }
 function candidateView(t) {
-  return Object.assign({}, t, { amountText: money.formatMinor(t.amountMinor), occurredText: timeText(t.occurredLocalAt),
+  return Object.assign({}, t, { amountText: money.formatMinor(t.repaymentTotalMinor || t.amountMinor), occurredText: timeText(t.occurredLocalAt),
     accountText: (t.sourceAccount && t.sourceAccount.name || '付款账户') + ' → ' + (t.destinationAccount && t.destinationAccount.name || '负债账户'),
-    businessText: '借款还款候选' })
+    businessText: '已确认还款 · 待关联' })
 }
 function contextView(value) {
   if (!value || !['none','candidate','linked','replaced'].includes(value.state) || !value.transaction || !Array.isArray(value.allocations)) {
@@ -14,11 +14,11 @@ function contextView(value) {
   if (value.state === 'candidate' && (!value.targetAccount || !value.targetAccount.accountId)) throw new Error('还款目标账户不完整，请重新读取')
   if (linked && (!value.payment || !value.allocations.length)) throw new Error('贷款关联信息不完整，请重新读取')
   const hasInstallment = value.allocations.some(a => a.kind === 'installment')
-  return Object.assign({}, value, { linked, amountText: money.formatMinor(value.transaction.amountMinor), occurredText: timeText(value.transaction.occurredLocalAt),
+  return Object.assign({}, value, { linked, amountText: money.formatMinor(value.payment ? value.payment.totalMinor : value.transaction.amountMinor), occurredText: timeText(value.transaction.occurredLocalAt),
     accountText: candidateView(value.transaction).accountText,
     businessText: linked ? (value.payment.kind === 'drawdown' ? '贷款放款' : hasInstallment ? '已关联分期还款' : '已关联贷款还款') :
       value.state === 'none' ? '普通账目' : '借款还款 · 尚未关联贷款',
-    totalText: linked ? money.formatMinor(value.payment.totalMinor) : '',
+    totalText: value.payment ? money.formatMinor(value.payment.totalMinor) : '',
     evidence: value.evidence || { items: [], hasMore: false },
     allocations: value.allocations.map(a => {
       const periods = a.periods || []

@@ -142,6 +142,9 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
     ...(event.fieldSources && event.fieldSources.semanticBlockers || [])
   ].filter((reason) => HARD_BLOCKING_REASONS.has(reason))))
   if (event.fieldSources && event.fieldSources.paymentResolution && !paymentResolutionForEvent(event).valid) reasons.push('payment_components_ambiguous')
+  if (event.fieldSources && event.fieldSources.loanRepayment) {
+    try { require('./explicit-repayment').inputForEvent(event) } catch (_) { reasons.push('loan_repayment_required') }
+  }
   if (eventAllocation(event).kind === 'conflict') reasons.push('funds_allocation_conflict')
   if (openBlockingIssues > 0) reasons.push('blocking_issue_open')
   if (event.amountMinor == null || !event.localAt || !event.utcAt || !event.currency) {
@@ -220,6 +223,7 @@ function evaluatePostability(event, context) {
 
 function classifyReviewIssue(event) {
   const reasons = new Set(event.reasonCodes || [])
+  if (reasons.has('loan_repayment_required')) return { issueType: REVIEW_ISSUE_TYPE.SHARED_FIELDS, primaryReason: 'loan_repayment_required' }
   if (reasons.has('source_group_conflict')) {
     return { issueType: REVIEW_ISSUE_TYPE.SAME_EVENT, primaryReason: 'source_group_conflict' }
   }

@@ -53,3 +53,5 @@ MINI-1907-0 新增 `data-privacy` 原生页面，复用 profile 已有“数据�
 
 `pages/loan-link/index`：待关联还款候选与单笔关联，沿用现有贷款详情/实际借还/期次页。
 本次验证和状态见 `docs/招财猫记账本实施规划.md` 19.13，不计入本规格历史真机验收。
+
+- `repayment-entry`：MINI-1908E 明确实际还款、本息费与立即/暂缓关联；见 `specs/mini-1908e-explicit-repayment/`。

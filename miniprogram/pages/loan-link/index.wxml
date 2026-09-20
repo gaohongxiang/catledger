@@ -1,5 +1,5 @@
 <view class="page-canvas loan-link-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="贷款管理" title="{{transactionId ? (context.state === 'none' ? '账目关联' : '关联这笔还款') : '待关联还款'}}" copy="信用卡整单还款按转账记账，无需关联贷款。这里核对其他借款还款及已有贷款关联。" />
+  <page-head class="content-inset" badge="贷款管理" title="{{transactionId ? (context.state === 'none' ? '账目关联' : '关联这笔还款') : '待关联还款'}}" copy="信用卡整单还款按转账记账，无需关联贷款。这里只列出入账时明确选择暂不关联的实际还款。" />
   <block wx:if="{{!transactionId}}">
     <picker class="ll-field" mode="date" fields="month" value="{{month}}" bindchange="changeMonth"><text>查询月份</text><view class="ll-picker"><text class="ll-picker-value">{{month || '全部月份'}}</text><chevron-icon size="{{24}}" /></view></picker>
     <button wx:if="{{month}}" class="ll-link" bindtap="clearMonth">查看全部月份</button>
@@ -10,7 +10,7 @@
   <button wx:if="{{errorMessage}}" class="secondary-button ll-action" bindtap="load" disabled="{{loading}}">重新读取，不修改账目</button>
   <block wx:if="{{!transactionId && !errorMessage}}">
     <block wx:if="{{hasLoaded && !loading && items.length === 0}}">
-      <ui-state description="当前筛选没有可关联的还款。已经关联的记录请在贷款详情中查看。" />
+      <ui-state description="当前筛选没有待关联还款。已经关联的记录请在贷款详情中查看。" />
     </block>
     <view wx:for="{{items}}" wx:key="transactionId" class="ll-candidate" hover-class="ll-candidate-hover" data-id="{{item.transactionId}}" bindtap="selectTransaction" aria-role="button" aria-label="{{item.businessText}} {{item.amountText}}">
       <view class="ll-candidate-top"><text class="ll-candidate-title">{{item.businessText}}</text><text class="ll-candidate-amount money-number">{{item.amountText}}</text></view>
@@ -26,10 +26,11 @@
       <text class="ll-note">{{context.businessText}}</text>
     </view>
     <block wx:if="{{context.state === 'candidate'}}">
-      <view class="ll-note-card"><text class="ll-note">本金、利息、费用和期次均需确认。不能直接把扣款总额当本金；混有普通账单的扣款不能全部摊给某笔分期。</text></view>
+      <view class="ll-note-card"><text class="ll-note">本息费已确认并入账；现在只补充贷款关系，不重复生成流水。</text></view>
       <ui-state wx:if="{{context.targetAccount.inactive}}" description="付款或负债账户已停用，请在账户管理核对状态；当前不能建立关联。" />
       <block wx:else>
-        <button class="primary-button ll-action" bindtap="createLoan" disabled="{{loading}}">新建分期资料并继续关联</button>
+        <button class="primary-button ll-action" bindtap="createLoan" disabled="{{loading}}">补充贷款资料并继续关联</button>
+        <button class="secondary-button ll-action" bindtap="managePending">核对本息费与关联方式</button>
         <text class="ll-section-title">选择 {{context.targetAccount.name}} 下的贷款</text>
         <text wx:if="{{!loading && !loans.length}}" class="ll-note">还没有对应贷款资料。创建资料不会重复生成消费或借款。</text>
         <view wx:for="{{loans}}" wx:key="loanId" class="ll-candidate" hover-class="ll-candidate-hover" data-id="{{item.loanId}}" bindtap="selectLoan" aria-role="button" aria-label="{{item.name}} {{item.kindText}}">

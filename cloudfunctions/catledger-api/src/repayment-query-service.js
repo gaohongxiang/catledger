@@ -9,11 +9,13 @@ const { repaymentEvidence } = require('./repayment-evidence')
 const ASSETS = ['cash','bank','wallet','other_asset']
 const LIABILITIES = ['credit','other_liability']
 const FIELDS = ['principal','interest','fee']
-function candidate(row, accounts) {
+const booking = require('./repayment-booking').createRepaymentBooking(ledgerError)
+function candidate(row, accounts, repayment = null) {
+  if (!repayment) return null
   const source = accounts.find(a => a.accountId === row.sourceAccountId)
-  const target = accounts.find(a => a.accountId === row.destinationAccountId)
+  const target = accounts.find(a => a.accountId === repayment.liabilityAccountId)
   // 信用账户整单还款只是转账；分期不能从这笔总额支付推断。
-  if (row.type !== 'transfer' || !source || !target || !ASSETS.includes(source.type) || target.type !== 'other_liability') return null
+  if (!['transfer','expense'].includes(row.type) || !source || !target || !ASSETS.includes(source.type) || target.type !== 'other_liability') return null
   return { accountId: target.accountId, name: target.name, type: target.type,
     inactive: source.archivedAt != null || target.archivedAt != null }
 }
@@ -62,17 +64,21 @@ async function transactionContext(connection, uid, transactionId) {
     WHERE uid=? AND transaction_id=? AND superseded_at IS NULL AND role<>'refund_original' ORDER BY event_id LIMIT 2`, [uid,transactionId])
   let eventId = links.length === 1 ? links[0].eventId : null
   if (paymentId) {
+    const repayment = await booking.detail(connection, uid, paymentId)
+    const allocations = await selectAllocations(connection, uid, paymentId)
+    if (repayment && !allocations.length) {
+      const payment = await selectPayment(connection, uid, paymentId)
+      const [accounts] = await connection.execute('SELECT account_id AS accountId,name,type,archived_at AS archivedAt FROM catledger_accounts WHERE uid=? AND account_id IN (?,?)', [uid,payment.assetAccountId,repayment.liabilityAccountId])
+      const targetAccount = candidate(row, accounts, repayment)
+      if (!targetAccount) throw ledgerError('CONFLICT')
+      return { state:'candidate',transaction:transactionToPublic(row),targetAccount,payment,repayment,allocations:[],evidence:await repaymentEvidence(connection,uid,eventId) }
+    }
     const [[source]] = await connection.execute('SELECT event_id AS eventId FROM catledger_loan_payment_sources WHERE uid=? AND payment_id=? AND active=1', [uid,paymentId])
     eventId = source && source.eventId || eventId
     return { state: row.deletedAt != null ? 'replaced' : 'linked', transaction: transactionToPublic(row),
       targetAccount: null, ...await paymentSummary(connection, uid, paymentId), evidence: await repaymentEvidence(connection, uid, eventId) }
   }
-  const ids = [...new Set([row.sourceAccountId,row.destinationAccountId].filter(Boolean))]
-  const [accounts] = ids.length ? await connection.execute(`SELECT account_id AS accountId,name,type,archived_at AS archivedAt FROM catledger_accounts
-    WHERE uid=? AND account_id IN (${ids.map(() => '?').join(',')})`, [uid,...ids]) : [[]]
-  const targetAccount = candidate(row, accounts)
-  return { state: targetAccount ? 'candidate' : 'none', transaction: transactionToPublic(row), targetAccount,
-    payment: null, allocations: [], evidence: targetAccount ? await repaymentEvidence(connection, uid, eventId) : { items: [], hasMore: false } }
+  return { state:'none',transaction:transactionToPublic(row),targetAccount:null,payment:null,allocations:[],evidence:{ items:[],hasMore:false } }
 }
 function createRepaymentQueryService({ getPool }) {
   const read = (context, operation) => executeLedgerRead({ getPool, ...context, consistentSnapshot: true, operation })
@@ -91,27 +97,31 @@ function createRepaymentQueryService({ getPool }) {
         if (cursor.action !== 'loans.unassigned' || cursor.uid !== uid || cursor.month !== filters.month || cursor.accountId !== filters.accountId ||
             typeof cursor.at !== 'string' || typeof cursor.id !== 'string') throw ledgerError('VALIDATION_ERROR')
       }
-      const [rows] = await connection.execute(`SELECT t.transaction_id AS transactionId,t.type,t.source_account_id AS sourceAccountId,sa.name AS sourceAccountName,
-        t.destination_account_id AS destinationAccountId,da.name AS destinationAccountName,t.amount_minor AS amountMinor,
-        t.occurred_local_at AS occurredLocalAt,t.timezone_offset_minutes AS timezoneOffsetMinutes,t.note,t.origin,t.version,
-        da.type AS targetType,sa.archived_at AS sourceArchived,da.archived_at AS targetArchived
-        FROM catledger_transactions t JOIN catledger_accounts sa ON sa.uid=t.uid AND sa.account_id=t.source_account_id
-        JOIN catledger_accounts da ON da.uid=t.uid AND da.account_id=t.destination_account_id
-        WHERE t.uid=? AND t.deleted_at IS NULL AND t.type='transfer'
-          AND sa.type IN ('cash','bank','wallet','other_asset') AND da.type='other_liability'
-          AND NOT EXISTS (SELECT 1 FROM catledger_loan_payment_transactions bound WHERE bound.uid=t.uid AND bound.active_transaction_id=t.transaction_id)
-          AND NOT EXISTS (SELECT 1 FROM catledger_economic_event_transactions e JOIN catledger_loan_payment_sources s
-            ON s.uid=e.uid AND s.active_event_id=e.event_id WHERE e.uid=t.uid AND e.transaction_id=t.transaction_id AND e.superseded_at IS NULL)
-          ${filters.range ? 'AND t.occurred_local_date>=? AND t.occurred_local_date<?' : ''}
-          ${filters.accountId ? 'AND t.destination_account_id=?' : ''}
-          ${cursor ? 'AND (t.occurred_local_at<? OR (t.occurred_local_at=? AND t.transaction_id<?))' : ''}
-        ORDER BY t.occurred_local_at DESC,t.transaction_id DESC LIMIT ?`, [uid,
-      ...(filters.range ? [filters.range.startDate,filters.range.endDate] : []), ...(filters.accountId ? [filters.accountId] : []),
-      ...(cursor ? [cursor.at,cursor.at,cursor.id] : []),filters.pageSize+1])
-      const page = rows.slice(0,filters.pageSize), last = page.at(-1)
-      return { month:filters.month,accountId:filters.accountId,items:page.map(row => ({ ...transactionToPublic(row),targetType:row.targetType,
-        inactive:row.sourceArchived != null || row.targetArchived != null })), nextCursor: rows.length > filters.pageSize ? encodeCursor(context.subjectHash,
-        { action:'loans.unassigned',uid,month:filters.month,accountId:filters.accountId,at:String(last.occurredLocalAt),id:last.transactionId }) : null }
+      const from = `FROM catledger_loan_payments p
+        JOIN catledger_loan_repayment_details d ON d.uid=p.uid AND d.payment_id=p.payment_id
+        JOIN catledger_accounts sa ON sa.uid=p.uid AND sa.account_id=p.asset_account_id
+        JOIN catledger_accounts da ON da.uid=d.uid AND da.account_id=d.liability_account_id
+        WHERE p.uid=? AND p.status='active'
+          AND NOT EXISTS (SELECT 1 FROM catledger_loan_payment_allocations a WHERE a.uid=p.uid AND a.payment_id=p.payment_id)
+          AND NOT EXISTS (SELECT 1 FROM catledger_loan_payment_transactions m JOIN catledger_transactions t ON t.uid=m.uid AND t.transaction_id=m.transaction_id
+            WHERE m.uid=p.uid AND m.payment_id=p.payment_id AND (m.active<>1 OR t.deleted_at IS NOT NULL OR t.version<>m.transaction_version))
+          ${filters.range ? 'AND p.occurred_local_at>=? AND p.occurred_local_at<?' : ''}
+          ${filters.accountId ? 'AND d.liability_account_id=?' : ''}`
+      const values = [uid,...(filters.range ? [filters.range.startDate,filters.range.endDate] : []),...(filters.accountId ? [filters.accountId] : [])]
+      const [[count]] = await connection.execute('SELECT COUNT(*) AS total ' + from, values)
+      const [rows] = await connection.execute(`SELECT p.payment_id AS paymentId,p.total_minor AS repaymentTotalMinor,
+        p.occurred_local_at AS occurredLocalAt,da.type AS targetType,sa.archived_at AS sourceArchived,da.archived_at AS targetArchived,
+        (SELECT m.transaction_id FROM catledger_loan_payment_transactions m JOIN catledger_transactions t ON t.uid=m.uid AND t.transaction_id=m.transaction_id
+          WHERE m.uid=p.uid AND m.payment_id=p.payment_id AND m.active=1 ORDER BY (t.type='transfer') DESC,m.transaction_id LIMIT 1) AS transactionId
+        ${from} ${cursor ? 'AND (p.occurred_local_at<? OR (p.occurred_local_at=? AND p.payment_id<?))' : ''}
+        ORDER BY p.occurred_local_at DESC,p.payment_id DESC LIMIT ?`,
+        [...values,...(cursor ? [cursor.at,cursor.at,cursor.id] : []),filters.pageSize+1])
+      const page = rows.slice(0,filters.pageSize), last = page.at(-1), items = []
+      for (const row of page) items.push({ ...transactionToPublic(await selectTransaction(connection,uid,row.transactionId)),
+        paymentId:row.paymentId,repaymentTotalMinor:String(row.repaymentTotalMinor),targetType:row.targetType,
+        inactive:row.sourceArchived != null || row.targetArchived != null })
+      return { month:filters.month,accountId:filters.accountId,total:Number(count.total),items,nextCursor:rows.length > filters.pageSize ? encodeCursor(context.subjectHash,
+        { action:'loans.unassigned',uid,month:filters.month,accountId:filters.accountId,at:String(last.occurredLocalAt),id:last.paymentId }) : null }
     })
   }
   return { transaction, unassigned }

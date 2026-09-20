@@ -428,7 +428,7 @@ function issueView(issue) {
   if (repaymentOwnershipRequired) label = subject.repaymentOwnership && subject.repaymentOwnership.owner === 'other'
     ? '代他人还款待核对' : '还款账户归属待确认'
   return Object.assign({}, issue, {
-    label: label,
+    label: issue.primaryReasonCode === 'loan_repayment_required' ? '借款还款本息费待核对' : label,
     repaymentOwnershipRequired: repaymentOwnershipRequired,
     paymentNeedsReview: paymentNeedsReview,
     paymentAccountsOnly: paymentNeedsReview && issue.issueType === 'account_mapping',
@@ -437,7 +437,7 @@ function issueView(issue) {
     fundsProjection: projected || null,
     missingAccountLabel: missingFundsSide === 'to' ? '转入账户' : '转出账户',
     canConfirmSame: issue.issueType === 'same_event' && issue.primaryReasonCode !== 'source_group_conflict',
-    reasonText: issue.primaryReasonCode === 'source_group_conflict'
+    reasonText: issue.primaryReasonCode === 'loan_repayment_required' ? '本金、利息、费用未确认，补齐后才能入账；暂不关联只推迟贷款关系。' : issue.primaryReasonCode === 'source_group_conflict'
       ? '共享参考号不能证明是同一笔，独立来源编号或时间存在歧义，请保留独立记录并核对'
       : ISSUE_HELP[issue.issueType] || '请核对相关记录后作出选择',
     subjectTitle: subject ? subject.displayTitle : label,
@@ -792,8 +792,8 @@ function eventView(event) {
   const sourceText = { alipay: '支付宝', wechat: '微信', bank: '银行' }[evidence.sourceType] || ''
   const detailText = evidence.counterparty && evidence.counterparty !== displayTitle ? evidence.counterparty : ''
   return Object.assign({}, event, {
-    amountText: amountText(event.amountMinor),
-    displayTitle: displayTitle,
+    amountText: amountText(event.summaryExpenseMinor == null ? event.amountMinor : event.summaryExpenseMinor),
+    displayTitle: event.summaryExpenseMinor == null ? displayTitle : '还款利息及费用',
     displayMeta: [dateText, detailText, sourceText].filter(Boolean).join(' · '),
     displayDay: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(8, 10) : '',
     displayMonth: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? Number(localAt.slice(5, 7)) + '月' : '',

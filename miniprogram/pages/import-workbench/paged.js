@@ -8,7 +8,7 @@ const { buildFinalDetail } = require('./final-detail')
 const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).length
 const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务版本过旧，请更新云函数后重试'
   : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
-const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon',
+const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon', 'financeUpdates.setRepayment',
   'reviewIssues.refreshAccountGroups', 'reviewIssues.resolveAccountMappings', 'reviewIssues.resolve'])
 
 function boundedSetData(page) {
@@ -231,6 +231,10 @@ function enhance(definition) {
       this._relationPager = this._viewSession.pager('reviewIssues.members', { issueId, memberKind: 'relation', pageSize: 8 })
       await this.changeIssueMembers({ currentTarget: { dataset: {} } })
       await this.changeIssueRelations({ currentTarget: { dataset: {} } })
+      if (this.data.currentIssue && this.data.currentIssue.primaryReasonCode === 'loan_repayment_required') {
+        const row = this.data.issueEvents[0]
+        if (row) this.editLoanRepayment({ currentTarget:{ dataset:{ id:row.eventId } } })
+      }
     },
     excludeIssueEvents() { return this.resolveIssue('exclude_events', { selection: { mode: 'all' } }) },
     selectPrimaryMember(event) { this.setData({ 'issueDraft.primaryEventId': event.currentTarget.dataset.id }) },
@@ -392,11 +396,26 @@ function enhance(definition) {
           count: response.total, loading: false, hasMore: false, page: response.page }) })
       } catch (error) { if (pager === this._accountPager) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': errorText(error) }) }
     },
+    editLoanRepayment(event) {
+      const eventId = event.currentTarget.dataset.id || this.data.evidenceSheet && this.data.evidenceSheet.eventId
+      if (eventId && this.data.update && this.data.update.status === 'review') wx.navigateTo({ url:'/pages/repayment-entry/index?updateId=' + encodeURIComponent(this.data.update.updateId) + '&eventId=' + encodeURIComponent(eventId) })
+    },
     async openEvidence(event) {
       const eventId = event.currentTarget.dataset.id
       this._evidencePager = this._viewSession.pager('economicEvents.evidence', { eventId, pageSize: 8 })
-      this.setData({ evidenceSheet: { eventId, evidence: [], loading: true, part: '' } })
-      return this.changeEvidencePage(event)
+      const row = (this.businessData().events || []).find(e=>e.eventId === eventId)
+      this._repaymentEditable = Boolean(row && ['repayment','internal_transfer'].includes(row.economicNature) && this.data.update.status === 'review')
+      this.setData({ evidenceSheet: { eventId,repaymentEditable:this._repaymentEditable,evidence: [], loading: true, part: '' } })
+      const pager = this._evidencePager
+      await this.changeEvidencePage(event)
+      if (!row && this.data.update.status === 'review') {
+        try {
+          const detail = await api.readPage('economicEvents.list',{ updateId:this.data.update.updateId,eventId,pageSize:1 })
+          if (pager !== this._evidencePager || !this.data.evidenceSheet) return
+          this._repaymentEditable = Boolean(detail.items[0] && ['repayment','internal_transfer'].includes(detail.items[0].economicNature))
+          this.setData({ 'evidenceSheet.repaymentEditable':this._repaymentEditable })
+        } catch(error) { if (pager === this._evidencePager) this.setData({ errorMessage:errorText(error) }) }
+      }
     },
     async changeEvidencePage(event) {
       const pager = this._evidencePager
@@ -404,7 +423,7 @@ function enhance(definition) {
         const response = await pager.load(direction(event))
         if (pager !== this._evidencePager || !this.data.evidenceSheet) return
         this._detailPager = null
-        this.setData({ evidenceSheet: { eventId: this.data.evidenceSheet.eventId, evidence: response.items, page: response.page, loading: false, part: '' } })
+        this.setData({ evidenceSheet: { eventId: this.data.evidenceSheet.eventId,repaymentEditable:this._repaymentEditable,evidence: response.items, page: response.page, loading: false, part: '' } })
       } catch (error) { if (pager === this._evidencePager) this.setData({ errorMessage: errorText(error) }) }
     },
     async openEvidencePart(event) {

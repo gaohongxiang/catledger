@@ -11,7 +11,7 @@ const { READ_POLICIES, mutationTags } = require('../miniprogram/services/read-po
 const transaction = { transactionId: 'synthetic-tx', type: 'transfer', amountMinor: '1000', version: 1, origin: 'import',
   occurredLocalAt: '2026-08-02T18:15:15.123', timezoneOffsetMinutes: -480,
   sourceAccount: { accountId: 'wallet', name: '合成余额' }, destinationAccount: { accountId: 'debt', name: '合成借款账户' } }
-const context = { state: 'candidate', transaction, targetAccount: { accountId: 'debt', type: 'other_liability', name: '合成借款账户', inactive: false }, payment: null, allocations: [], evidence: { items: [], hasMore: false } }
+const context = { state: 'candidate', transaction, targetAccount: { accountId: 'debt', type: 'other_liability', name: '合成借款账户', inactive: false }, payment: { paymentId:'pending-payment',totalMinor:'1000',version:1 },repayment:{ principalMinor:'800',interestMinor:'200',feeMinor:'0' },allocations: [], evidence: { items: [], hasMore: false } }
 const creditTransaction = { ...transaction, destinationAccount: { accountId: 'credit', name: '合成信用账户' } }
 const ordinaryContext = { ...context, state: 'none', transaction: creditTransaction, targetAccount: null }
 const loan = { loanId: 'loan', name: '合成分期', kind: 'installment', accountId: 'debt', accountName: '合成借款账户', baselinePrincipalMinor: '10000', remainingPrincipalMinor: '10000', baselineDate: '2026-08-01', version: 1, status: 'active' }
@@ -26,9 +26,10 @@ function runtime(route, responder) {
   const app = { hasLoginApproval: () => true, globalData: { uid: '1234567890', categories: [] } }
   const api = { peek: () => null, cacheToken: () => '', createRequestId: () => 'synthetic-request-' + ++request,
     callApi(name, data, options) { calls.push({ name, data, options }); return Promise.resolve().then(() => responder(name, data)) } }
-  const chrome = { navigateTo: options => routes.push(options.url), navigateBack() {}, showToast() {}, stopPullDownRefresh() {}, showModal() {} }
+  const chrome = { switchTab:options=>routes.push(options.url),navigateTo: options => routes.push(options.url), navigateBack() {}, showToast() {}, stopPullDownRefresh() {}, showModal() {} }
   function deps(name) {
     if (name.includes('/services/catledger-api')) return api
+    if (name.includes('/services/catledger-import')) return { readPage:(name,data)=>api.callApi(name,data) }
     if (name.includes('/services/login-guard')) return { run: (_, fn) => app.hasLoginApproval() ? fn() : undefined }
     if (name.includes('/theme/service')) return { bindPage() {} }
     if (name.includes('/services/pending-ledger-write')) return req(name).createPendingWrite({ scope: () => app.globalData.uid,
@@ -101,10 +102,10 @@ test('从账单关联按目标借款账户查贷款，缺基准先补资料并�
   h.page.onLoad({ transactionId: transaction.transactionId }); await h.page.firstPage()
   assert.equal(h.calls.find(c => c.name === 'loans.list').data.accountId, 'debt')
   h.page.selectLoan({ currentTarget: { dataset: { id: 'loan' } } })
-  assert.equal(h.routes[0], '/pages/loan-payment/index?loanId=loan&sourceTransactionId=synthetic-tx')
+  assert.equal(h.routes[0], '/pages/repayment-entry/index?loanId=loan&paymentId=pending-payment')
   h.page.selectLoan({ currentTarget: { dataset: { id: 'unknown' } } })
   assert.match(h.routes[1], /loan-detail\/index\?loanId=unknown&sourceTransactionId=synthetic-tx/)
-  h.page.createLoan(); assert.match(h.routes[2], /kind=installment&sourceTransactionId=synthetic-tx/)
+  h.page.createLoan(); assert.match(h.routes[2], /kind=borrowing&sourceTransactionId=synthetic-tx/)
   assert.equal(h.calls.some(c => /record|create/.test(c.name)), false)
 })
 
@@ -144,7 +145,7 @@ test('新建分期资料预选原借款账户，目录重排不串账户，保�
   Object.assign(h.page.data, { name: '合成分期', principalYuan: '100', baselineDate: '2026-08-01' })
   await h.page.save(); assert.equal(stored.kind, 'installment'); assert.equal(stored.baselinePrincipalMinor, '10000')
   assert.equal(h.calls.filter(c => c.name === 'loans.record').length, 0)
-  h.page.recordPayment(); assert.match(h.routes[0], /sourceTransactionId=synthetic-tx/)
+  h.page.recordPayment(); assert.match(h.routes[0], /repayment-entry\/index\?paymentId=pending-payment/)
   fail = true; await h.page.load(); h.page.recordPayment()
   assert.equal(h.page.data.sourceContext, null); assert.equal(h.routes.length, 1)
 })
@@ -196,7 +197,7 @@ test('账单详情保留已有关联；普通信用卡转账不开放贷款入�
   result = ordinaryContext; await page.loadLoanContext()
   assert.equal(page.data.loanManaged, false); assert.equal(page.data.loanContext.state, 'none')
   page.openLoanLink(); assert.equal(routes.length, 1)
-  result = context; await page.loadLoanContext(); assert.equal(page.data.loanManaged, false)
+  result = context; await page.loadLoanContext(); assert.equal(page.data.loanManaged, true)
   page.openLoanLink(); assert.match(routes[1], /transactionId=synthetic-tx/)
   fail = true; await page.loadLoanContext(); assert.equal(page.data.loanContext, null); assert.match(page.data.loanContextError, /读取失败/)
   page.openLoanLink(); assert.equal(routes.length, 2)
@@ -211,4 +212,45 @@ test('贷款/账目/期次更改使衔接查询缓存失效，原普通记账不
     allocations: [{ ...paymentModel.allocation(loan), principalYuan: '10', interestYuan: '0', feeYuan: '0' }] }
   assert.equal(paymentModel.payload(data).mode, 'new')
   assert.throws(() => paymentModel.payload({ ...data, sourceLocked: true }), /不能重复/)
+})
+
+
+test('贷款首页真实待办数量来自服务端；零时入口隐藏',async()=>{
+  let count=0
+  const h=runtime('loans',()=>({ items:[],nextCursor:null,pendingRepaymentCount:count }))
+  h.page.onLoad();await h.page.loadLoans();assert.equal(h.page.data.pendingRepaymentCount,0)
+  count=2;await h.page.loadLoans(true);assert.equal(h.page.data.pendingRepaymentCount,2)
+  assert.match(fs.readFileSync(path.join(__dirname,'../miniprogram/pages/loans/index.wxml'),'utf8'),/wx:if="{{pendingRepaymentCount > 0}}"/)
+})
+
+test('手动借款还款显式确认全部分项；成功离开旧记账表单，避免再记普通转账',async()=>{
+  const h=runtime('repayment-entry',(action)=> action==='catalog.get' ? catalog : action==='loans.list' ? { items:[loan],nextCursor:null } : { paymentId:'new',pending:true })
+  h.app.globalData.repaymentDraft={ type:'transfer',sourceAccountId:'wallet',destinationAccountId:'debt',amountMinor:'1000',occurredLocalAt:'2026-08-02T12:00:00',timezoneOffsetMinutes:-480 }
+  h.page.onLoad({});await h.page.load()
+  h.page.setData({ principalYuan:'10',interestYuan:'',feeYuan:'0',confirmed:true })
+  await h.page.save();assert.match(h.page.data.errorMessage,/都需要确认/)
+  assert.equal(h.calls.some(c=>c.name==='loans.bookRepayment'),false)
+  h.page.setData({ interestYuan:'0',confirmed:true });await h.page.save()
+  const write=h.calls.find(c=>c.name==='loans.bookRepayment')
+  assert.equal(write.data.repayment.mode,'defer');assert.equal(write.data.repayment.principalMinor,'1000')
+  assert.equal(h.routes[0],'/pages/transactions/index')
+})
+
+test('导入普通转账默认不关联；未知借款构成保存待核对而非全本金',async()=>{
+  const row={ eventId:'event',version:3,economicNature:'repayment',ledgerAccountId:'wallet',counterpartyLedgerAccountId:'debt',amountMinor:'1000' }
+  const h=runtime('repayment-entry',action=>action==='catalog.get' ? catalog : action==='economicEvents.list' ? { items:[row],update:{ updateId:'update',version:7,status:'review' } } : action==='financeUpdates.options' ? { items:[],nextCursor:null } : action==='loans.list' ? { items:[loan],nextCursor:null } : { update:{ status:'review' } })
+  h.page.onLoad({ updateId:'update',eventId:'event' });await h.page.load()
+  assert.equal(h.page.data.classification,0)
+  h.page.setData({ classification:1 });await h.page.keepReview()
+  const write=h.calls.find(c=>c.name==='financeUpdates.setRepayment')
+  assert.equal(write.data.repayment.mode,'review');assert.equal(write.data.updateVersion,7);assert.equal(write.data.eventVersion,3)
+  assert.equal(h.calls.some(c=>c.name==='loans.bookRepayment'),false)
+})
+
+test('延期还款关联只发送付款与贷款版本，金额分项来自已确认记录',async()=>{
+  const h=runtime('repayment-entry',action=>action==='catalog.get' ? catalog : action==='loans.payment' ? { payment:{ paymentId:'pending',version:2,status:'active',assetAccountId:'wallet',totalMinor:'1000' },repayment:{ liabilityAccountId:'debt',principalMinor:'1000',interestMinor:'0',feeMinor:'0',interestTreatment:'expense',feeTreatment:'expense' },allocations:[] } : action==='loans.list' ? { items:[loan],nextCursor:null } : { paymentId:'pending' })
+  h.page.onLoad({ paymentId:'pending',loanId:'loan' });await h.page.load();h.page.setData({ confirmed:true });await h.page.save()
+  const write=h.calls.find(c=>c.name==='loans.assignRepayment')
+  assert.equal(write.data.version,2);assert.equal(write.data.loanVersion,1);assert.equal(write.data.totalMinor,undefined)
+  assert.equal(h.calls.some(c=>c.name==='transactions.create'),false)
 })

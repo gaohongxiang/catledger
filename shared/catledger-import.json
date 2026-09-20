@@ -415,6 +415,7 @@
       ],
       "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
+    "financeUpdates.setRepayment": {"kind": "idempotent-versioned-mutation", "data": ["requestId", "updateId", "updateVersion", "eventId", "eventVersion", "repayment"], "rules": ["review event only; repayment=null restores ordinary transfer; mode=review blocks posting; confirmed defer|associate stores explicit components and account/loan choice. All formal writes occur atomically during financeUpdates.post."]},
     "financeUpdates.post": {
       "kind": "idempotent-versioned-mutation",
       "data": [

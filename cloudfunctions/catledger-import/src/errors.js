@@ -1,4 +1,6 @@
 const ERROR_MESSAGES = Object.freeze({
+  LOAN_PRINCIPAL_UNCONFIRMED: '请先确认贷款本金基线，再关联还款',
+  LOAN_PRINCIPAL_EXCEEDED: '还款本金超过该时点的贷款余额，请核对',
   LOAN_TRANSACTION_LOCKED: '这组交易已关联贷款，请前往贷款管理整组处理',
   INSTALLMENT_CONFIRMATION_UNAVAILABLE: '分期本金尚无已确认原消费关系，请保留待核对并从贷款管理登记',
   OPERATION_UNCONFIRMED: '原操作结果尚未确认，请保留草稿并核对原请求',

@@ -13,6 +13,7 @@
     "pages/theme/index",
     "pages/loans/index",
     "pages/loan-link/index",
+    "pages/repayment-entry/index",
     "pages/loan-detail/index",
     "pages/loan-payment/index",
     "pages/loan-plan/index",

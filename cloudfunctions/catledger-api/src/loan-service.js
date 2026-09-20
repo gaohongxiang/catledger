@@ -44,7 +44,9 @@ function createLoanService({ getPool }) {
       const [rows] = await connection.execute(LOAN_SELECT + ` WHERE l.uid=?${accountId ? ' AND l.account_id=?' : ''}${cursor ? ' AND (l.created_at < ? OR (l.created_at=? AND l.loan_id < ?))' : ''}
         ORDER BY l.created_at DESC, l.loan_id DESC LIMIT ?`, [uid, ...(accountId ? [accountId] : []), ...(cursor ? [cursor.at,cursor.at,cursor.id] : []), pageSize + 1])
       const items = rows.slice(0, pageSize), last = items.at(-1)
-      return { items: (await populatePrincipal(connection, uid, items)).map(publicLoan), nextCursor: rows.length > pageSize ? encodeCursor(context.subjectHash,
+      const [[pending]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_loan_payments p JOIN catledger_loan_repayment_details d ON d.uid=p.uid AND d.payment_id=p.payment_id
+        WHERE p.uid=? AND p.status='active' AND NOT EXISTS (SELECT 1 FROM catledger_loan_payment_allocations a WHERE a.uid=p.uid AND a.payment_id=p.payment_id)`,[uid])
+      return { pendingRepaymentCount:Number(pending.count),items: (await populatePrincipal(connection, uid, items)).map(publicLoan), nextCursor: rows.length > pageSize ? encodeCursor(context.subjectHash,
         { action: 'loans.list', uid, accountId, at: String(last.createdAt), id: last.loanId }) : null }
     })
   }
@@ -85,6 +87,6 @@ function createLoanService({ getPool }) {
       return { loanId: current.loanId, version: data.version + 1 }
     })
   }
-  return { list, get, create, update, ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
+  return { list, get, create, update, ...require('./explicit-repayment-service').createExplicitRepaymentService({ getPool }), ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
 }
 module.exports = { createLoanService, selectLoan, validateLiability }
