@@ -12,7 +12,7 @@ module.exports = {
     this.setData({ selectedCount: 0, allSelected: false, selectingAll: false, transactions: this.data.transactions.map(row => Object.assign({}, row, { selected: false })) })
   },
   toggleSelection: function () {
-    if (this.data.deleting || this.data.selectingAll || this.data.deleteRetryCount) return
+    if (this.data.deleting || this.data.selectingAll || this.data.loading || this.data.deleteRetryCount) return
     this.resetSelection()
     this.setData({ selectionMode: !this.data.selectionMode })
   },
