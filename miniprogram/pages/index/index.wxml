@@ -12,20 +12,11 @@
 
   <block wx:else>
     <view class="net-worth-card">
-      <image class="net-worth-watermark" src="/assets/catledger-logo.png" mode="aspectFit" aria-hidden="true" />
       <view class="net-worth-heading">
         <text class="net-worth-label">净资产</text>
         <text class="net-worth-month">{{monthLabel}}</text>
       </view>
-      <view class="net-worth-main">
-        <text class="net-worth-number money-number">{{loggedIn && hasDashboard ? netWorthText : '—'}}</text>
-        <view wx:if="{{loggedIn && hasDashboard && cashFlowTrend.length > 0}}" class="hero-trend" aria-hidden="true">
-          <view wx:for="{{cashFlowTrend}}" wx:key="month" class="hero-trend-column">
-            <view class="hero-trend-bar hero-trend-income" style="height: {{item.incomeHeight}}%;"></view>
-            <view class="hero-trend-bar hero-trend-expense" style="height: {{item.expenseHeight}}%;"></view>
-          </view>
-        </view>
-      </view>
+      <text class="net-worth-number money-number">{{loggedIn && hasDashboard ? netWorthText : '—'}}</text>
       <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 || netIncomeText.length > 12 ? 'month-strip-stacked' : ''}}">
         <view class="month-stat">
           <view class="month-stat-heading">
