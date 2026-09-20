@@ -79,7 +79,7 @@ test('较早一致性快照迟到时重读，不覆盖已观察到的大版本',
 })
 
 test('重启仅在当前身份确认后恢复完整快照，校验前仍为脏；用户及环境隔离', async () => {
-  const first = runtime(); await first.api.callApi('dashboard.get')
+  const first = runtime(); await first.api.callApi('dashboard.get'); await first.cache.settleStorage()
   assert.ok(first.storage.get(KEY))
   const h = runtime(first.storage); h.app.approved = false; h.app.globalData.uid = ''
   let shown = 0
@@ -105,6 +105,7 @@ test('缓存只淘汰展示快照，容量/24小时/损坏/schema与退出都不
   for (let i = 0; i < 20; i++) await cache.read(stableKey('accounts.list', { i }), READ_POLICIES['accounts.list'], async () => meta({ accounts: [{ note: '合'.repeat(18000) }] }))
   for (let i = 0; i < 6; i++) await cache.read(stableKey('transactions.list', { cursor: i }), READ_POLICIES['transactions.list'], async () => meta({ transactions: [], nextCursor: null }))
   await cache.read(stableKey('accounts.list', { huge: true }), READ_POLICIES['accounts.list'], async () => meta({ accounts: [{ note: 'x'.repeat(MAX_ENTRY_BYTES) }] }))
+  await cache.settleStorage()
   const raw = storage.get(KEY), disk = JSON.parse(raw)
   assert.ok(bytes(disk) <= MAX_BYTES); assert.ok(disk.entries.length <= MAX_ENTRIES)
   assert.equal(disk.entries.filter(e => e.key.startsWith('transactions.list')).length, 3)
@@ -163,15 +164,16 @@ test('快照恢复先标更新中，确认新鲜才清提示；排队持久化�
   assert.match(home.data.errorMessage, /正在更新.*上次结果/)
   await flush(); release(); await pending
   assert.equal(home.data.errorMessage, '')
-  // 同步派生多个缓存的写盘合并到下一微任务；退出作废队列。
+  // 同步派生多个缓存的写盘合并到下一任务；退出作废队列。
   let writes = 0
   const cache = createReadCache({ storage: { get() {}, set() { writes++ }, remove() {} } })
   cache.bindScope(envId, '1234567890')
   await cache.read('accounts.list:{}', READ_POLICIES['accounts.list'], async () => meta({ accounts: [] }))
+  await cache.settleStorage()
   const before = writes
   cache.seedFrom('accounts.list:{}', 'accounts.list:{"one":1}', READ_POLICIES['accounts.list'], x => x)
   cache.seedFrom('accounts.list:{}', 'accounts.list:{"two":2}', READ_POLICIES['accounts.list'], x => x)
-  cache.reset(); await flush()
+  const queued = cache.settleStorage(); cache.reset(); await queued
   assert.equal(writes, before)
 })
 

@@ -35,10 +35,15 @@ function createReadCache(options) {
   function persist() {
     if (!persistent || !scope || persistQueued) return
     const ticket = { session, scope }; persistQueued = ticket
-    Promise.resolve().then(() => {
-      if (persistQueued !== ticket || ticket.session !== session || ticket.scope !== scope) return
-      persistQueued = null
-      disk.write(scope, [...entries].map(([key, entry]) => ({ key, value: entry.value, updatedAt: entry.updatedAt })))
+    ticket.done = new Promise(resolve => {
+      // 先交付新鲜数据和setData，再在下一任务合并有界存储；不阻塞read的Promise链。
+      setTimeout(() => {
+        if (persistQueued === ticket && ticket.session === session && ticket.scope === scope) {
+          persistQueued = null
+          disk.write(scope, [...entries].map(([key, entry]) => ({ key, value: entry.value, updatedAt: entry.updatedAt })))
+        }
+        resolve()
+      }, 0)
     })
   }
   function observe(value) {
@@ -156,6 +161,7 @@ function createReadCache(options) {
       return work
     },
     waitForValidation: () => validation || Promise.resolve(),
+    settleStorage: () => persistQueued ? persistQueued.done : Promise.resolve(),
     now,
     mutate,
     invalidate,
