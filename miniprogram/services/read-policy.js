@@ -7,7 +7,8 @@ const READ_POLICIES = Object.freeze({
   'loans.list': { ttl: Infinity, tags: ['loans', 'accountDirectory'] },
   'loans.get': { ttl: Infinity, tags: ['loans', 'accountDirectory'] },
   'catalog.get': { ttl: 5 * 60 * 1000, tags: ['accountDirectory', 'categoryDirectory'] },
-  bootstrap: { ttl: Infinity, tags: ['categories'] },
+  'profile.get': { ttl: 5 * 60 * 1000, tags: ['profile'] },
+  bootstrap: { ttl: Infinity, tags: ['categories', 'profile'] },
   'categories.list': { ttl: Infinity, tags: ['categories'] },
   'accounts.list': { ttl: Infinity, tags: ['accounts'] },
   'dashboard.get': { ttl: Infinity, tags: ['accounts', 'transactions', 'categories'] },
@@ -17,6 +18,7 @@ const READ_POLICIES = Object.freeze({
 })
 
 function mutationTags(action) {
+  if (action === 'profile.update') return ['profile']
   if (/^loans\.(savePeriod|allocatePeriods|generatePlan)$/.test(action)) return ['loans']
   if (/^loans\.(record|correct|reverse)$/.test(action)) return ['loans', 'accounts', 'transactions']
   if (/^loans\.(create|update)$/.test(action)) return ['loans']

@@ -45,8 +45,11 @@
     "bootstrap": {
       "kind": "read-idempotent",
       "data": [],
-      "returns": ["initialized", "uid", "isNewUser", "categories"]
+      "returns": ["initialized", "uid", "isNewUser", "nickname", "categories"],
+      "rules": ["nickname is the saved account display name or an empty string before the first selection; uid and ownership remain unchanged"]
     },
+    "profile.get": {"kind": "read", "data": [], "returns": ["nickname"], "rules": ["Current trusted WeChat identity only; an empty string means no saved nickname"]},
+    "profile.update": {"kind": "idempotent-mutation", "data": ["requestId", "nickname", "previousNickname"], "returns": ["nickname"], "rules": ["Trim and save 1..24 characters on the current user's account; previousNickname is the last server value and stale edits conflict; nickname is never an identity or unique key"]},
     "dashboard.get": {
       "kind": "read",
       "data": ["month"],
@@ -166,7 +169,7 @@
     }
   },
   "rules": {
-    "identity": "identity is resolved only from trusted WeChat context; identity-shaped client fields are rejected recursively; bootstrap returns the current user uid for display only",
+    "identity": "identity is resolved only from trusted WeChat context; identity-shaped client fields are rejected recursively; bootstrap returns the current user uid for display and saved nickname for presentation only",
     "uid": "one immutable 10-digit decimal string per user, first digit nonzero; displayed and copied unchanged; existing UUID ownership is migrated by 0011; other entity and request IDs remain UUIDs",
     "money": "minor-unit decimal strings only; JavaScript floating point is forbidden",
     "time": "occurredLocalAt plus JavaScript getTimezoneOffset() minutes; optional date and month filters use local date",
@@ -177,7 +180,7 @@
   },
   "successEnvelope": {
     "ok": true,
-    "data": "action-specific public result; bootstrap includes uid; WeChat OpenID and identity digests are never returned"
+    "data": "action-specific public result; bootstrap includes uid and saved nickname; WeChat OpenID and identity digests are never returned"
   },
   "failureCodes": [
     "EXPORT_CHANGED",

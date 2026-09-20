@@ -7,6 +7,7 @@ const { createAccountService } = require('./src/account-service')
 const { createActionHandlers } = require('./src/action-registry')
 const { createCategoryService } = require('./src/category-service')
 const { createCatalogService } = require('./src/catalog-service')
+const { createProfileService } = require('./src/profile-service')
 const { getPool } = require('./src/database')
 const { createHandler } = require('./src/handler')
 const { createUserRepository } = require('./src/user-repository')
@@ -24,12 +25,13 @@ const dataExportService = createDataExportService({ getPool })
 const accountService = createAccountService({ getPool })
 const categoryService = createCategoryService({ getPool })
 const catalogService = createCatalogService({ getPool })
+const profileService = createProfileService({ getPool })
 const transactionService = createTransactionService({ getPool })
 
 const handler = createHandler({
   getWxContext: () => cloud.getWXContext(),
   repository,
-  services: createActionHandlers({ accountService, categoryService, catalogService, transactionService, loanService, dataExportService }),
+  services: createActionHandlers({ accountService, categoryService, catalogService, profileService, transactionService, loanService, dataExportService }),
   logger: console
 })
 

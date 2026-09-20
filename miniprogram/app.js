@@ -3,7 +3,6 @@ const themeService = require('./theme/service')
 const profilePresentation = require('./utils/profile-presentation')
 const readCache = require('./services/read-cache')
 
-const LOGIN_APPROVAL_KEY = 'catledger_wechat_login_v1'
 const LOCAL_PROFILE_KEY = 'catledger_local_profile_v1'
 
 function readStoredProfile() {
@@ -21,6 +20,7 @@ App({
   globalData: {
     cloudAvailable: false,
     loginApproved: false,
+    loginStartupPending: false,
     uid: '',
     profile: { nickname: '', avatarUrl: '' },
     themeId: '',
@@ -32,7 +32,10 @@ App({
   onLaunch() {
     require('./services/export-files').cleanup(false)
     themeService.install(this)
-    this.globalData.loginApproved = wx.getStorageSync(LOGIN_APPROVAL_KEY) === true
+    // 每次启动重新确认当前微信身份，本机旧登录标记不能代替账号识别。
+    this.globalData.loginApproved = false
+    this.globalData.loginStartupPending = true
+    wx.removeStorageSync('catledger_wechat_login_v1')
     this.globalData.profile = readStoredProfile()
 
     if (!wx.cloud) {
@@ -53,7 +56,7 @@ App({
   onShow: function () {
     require('./services/export-files').cleanup(false)
     if (this._readCacheWasHidden) {
-      readCache.invalidate(['accounts', 'transactions', 'categories'])
+      readCache.invalidate(['accounts', 'transactions', 'categories', 'profile'])
       this._readCacheWasHidden = false
     }
   },
@@ -66,62 +69,60 @@ App({
     return themeService.selectTheme(themeId, this)
   },
 
-  prepareLoginProfile: function () {
-    const profile = profilePresentation.withDefaultProfile(this.globalData.profile)
-    wx.setStorageSync(LOCAL_PROFILE_KEY, profile)
-    this.globalData.profile = profile
-    return profile
-  },
-
-  saveLocalProfile: function (profile) {
+  saveLocalProfile: function (profile, options) {
     const self = this
     const resolvedProfile = profilePresentation.withDefaultProfile(profile, this.globalData.profile)
     const nickname = resolvedProfile.nickname
     const avatarUrl = resolvedProfile.avatarUrl
-    const persistAvatar = avatarUrl !== profilePresentation.DEFAULT_AVATAR_URL && avatarUrl.indexOf('wxfile://usr/') !== 0
-      ? new Promise(function (resolve) {
+    const savedAvatar = /^(?:wxfile|https?):\/\/usr\//.test(avatarUrl) ||
+      Boolean(wx.env && wx.env.USER_DATA_PATH && avatarUrl.indexOf(wx.env.USER_DATA_PATH + '/') === 0)
+    const persistAvatar = avatarUrl !== profilePresentation.DEFAULT_AVATAR_URL && !savedAvatar
+      ? new Promise(function (resolve, reject) {
           wx.saveFile({
             tempFilePath: avatarUrl,
             success: function (result) { resolve(result.savedFilePath || avatarUrl) },
-            fail: function () { resolve(avatarUrl) }
+            fail: function () { reject(new Error('头像保存失败，请重新选择')) }
           })
         })
       : Promise.resolve(avatarUrl)
 
     return persistAvatar.then(function (savedAvatarUrl) {
-      const savedProfile = { nickname: nickname, avatarUrl: savedAvatarUrl }
+      if (options && options.isCurrent && !options.isCurrent()) return
+      const savedProfile = { nickname: options && options.avatarOnly ? self.globalData.profile.nickname : nickname,
+        avatarUrl: savedAvatarUrl }
       self.globalData.profile = savedProfile
       wx.setStorageSync(LOCAL_PROFILE_KEY, savedProfile)
       return savedProfile
     })
   },
 
+  setLocalNickname: function (nickname) {
+    const savedProfile = {
+      nickname: String(nickname || ''),
+      avatarUrl: this.globalData.profile && this.globalData.profile.avatarUrl || ''
+    }
+    this.globalData.profile = savedProfile
+    wx.setStorageSync(LOCAL_PROFILE_KEY, savedProfile)
+    return savedProfile
+  },
+
   completeWechatLogin: function (categories, uid) {
     this.globalData.uid = typeof uid === 'string' ? uid : ''
     this.globalData.loginApproved = true
+    this.globalData.loginStartupPending = false
     this.globalData.categories = Array.isArray(categories) ? categories : []
-    wx.setStorageSync(LOGIN_APPROVAL_KEY, true)
     return Promise.resolve(this.globalData.profile)
   },
 
   logoutWechatAccount: function () {
     require('./services/export-files').cleanup(true)
     readCache.reset()
-    const avatarUrl = this.globalData.profile && this.globalData.profile.avatarUrl
-    if (avatarUrl && avatarUrl.indexOf('wxfile://usr/') === 0) {
-      wx.removeSavedFile({
-        filePath: avatarUrl,
-        fail: function () {}
-      })
-    }
     this.globalData.loginApproved = false
+    this.globalData.loginStartupPending = false
     this.globalData.uid = ''
-    this.globalData.profile = { nickname: '', avatarUrl: '' }
     this.globalData.categories = []
     this.globalData.openStatisticsCompletion = false
     this.globalData.transactionsImportFilter = null
     this.globalData.editingTransaction = null
-    wx.removeStorageSync(LOGIN_APPROVAL_KEY)
-    wx.removeStorageSync(LOCAL_PROFILE_KEY)
   }
 })

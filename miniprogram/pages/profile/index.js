@@ -11,6 +11,14 @@ Page({
     hasLoaded: false,
     connected: false,
     nickname: '',
+    serverNickname: '',
+    profileLoaded: false,
+    editingNickname: false,
+    nicknameDraft: '',
+    savingNickname: false,
+    savingAvatar: false,
+    avatarError: '',
+    nicknameError: '',
     uid: '',
     displayUid: '',
     displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
@@ -22,6 +30,7 @@ Page({
   onLoad: function () { themeService.bindPage(this) },
 
   onShow: function () {
+    this._nicknameRequestId = null
     themeService.bindPage(this)
     if (this.getTabBar()) {
       this.getTabBar().setData({ selected: 3, hidden: false })
@@ -30,15 +39,20 @@ Page({
     const profile = app.globalData.profile || {}
     this.setData({
       loggedIn: loggedIn,
-      nickname: loggedIn ? profile.nickname : '',
+      nickname: loggedIn ? profile.nickname || '' : '',
+      editingNickname: false,
+      nicknameDraft: '',
+      nicknameError: '',
       displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, profile)
     })
     if (loggedIn) {
-      return this.loadProfile()
+      const catalog = this.loadProfile()
+      return Promise.all([catalog, this.loadNickname()])
     }
     this.setData({
       loading: false, hasLoaded: false, connected: false, uid: '', displayUid: '',
-      errorMessage: '', accountCount: 0, categoryCount: 0
+      errorMessage: '', accountCount: 0, categoryCount: 0,
+      serverNickname: '', profileLoaded: false, savingNickname: false, savingAvatar: false, avatarError: ''
     })
   },
 
@@ -47,13 +61,17 @@ Page({
       wx.stopPullDownRefresh()
       return
     }
-    this.loadProfile({ force: true }).finally(function () {
+    Promise.all([this.loadProfile({ force: true }), this.loadNickname({ force: true })]).finally(function () {
       wx.stopPullDownRefresh()
     })
   },
 
   loadProfile: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['uid', 'displayUid', 'loading', 'hasLoaded', 'connected', 'errorMessage', 'accountCount', 'categoryCount'], ['_profileLoad'])
+    const isCurrent = pageReadSession.begin(this, [
+      'uid', 'displayUid', 'loading', 'hasLoaded', 'connected', 'errorMessage', 'accountCount', 'categoryCount',
+      'nickname', 'serverNickname', 'profileLoaded', 'editingNickname', 'nicknameDraft', 'savingNickname', 'nicknameError',
+      'savingAvatar', 'avatarError'
+    ], ['_profileLoad', '_nicknameLoad'])
     if (!app.hasLoginApproval() || this._profileLoad) {
       return this._profileLoad || Promise.resolve()
     }
@@ -80,6 +98,101 @@ Page({
         self._profileLoad = null
       })
     return this._profileLoad
+  },
+
+  loadNickname: function (options) {
+    if (!app.hasLoginApproval() || this._nicknameLoad) return this._nicknameLoad || Promise.resolve()
+    const self = this
+    const isCurrent = pageReadSession.capture(this)
+    this._nicknameLoad = api.callApi('profile.get', {}, options).then(function (result) {
+      if (!isCurrent()) return
+      const nickname = typeof result.nickname === 'string' ? result.nickname : ''
+      if (nickname && typeof app.setLocalNickname === 'function') app.setLocalNickname(nickname)
+      self.setData({
+        nickname: nickname || (app.globalData.profile && app.globalData.profile.nickname || ''),
+        serverNickname: nickname, profileLoaded: true, nicknameError: ''
+      })
+    }).catch(function (error) {
+      if (isCurrent()) self.setData({ nicknameError: error.message || '昵称暂时无法同步' })
+    }).finally(function () {
+      if (isCurrent()) self._nicknameLoad = null
+    })
+    return this._nicknameLoad
+  },
+
+  startEditNickname: function () {
+    if (!app.hasLoginApproval()) return
+    if (!this.data.profileLoaded) {
+      this.loadNickname({ force: true })
+      return
+    }
+    this.setData({ editingNickname: true, nicknameDraft: this.data.nickname, nicknameError: '' })
+  },
+
+  bindNicknameDraft: function (event) {
+    if (this.data.savingNickname) return
+    const nicknameDraft = String(event && event.detail && event.detail.value || '')
+    if (nicknameDraft.trim() !== this.data.nicknameDraft.trim()) this._nicknameRequestId = null
+    this.setData({ nicknameDraft, nicknameError: '' })
+  },
+
+  cancelEditNickname: function () {
+    if (this.data.savingNickname) return
+    this._nicknameRequestId = null
+    this.setData({ editingNickname: false, nicknameDraft: '', nicknameError: '' })
+  },
+
+  saveNickname: function (event) {
+    if (!app.hasLoginApproval() || !this.data.profileLoaded || this.data.savingNickname) return
+    const form = event && event.detail && event.detail.value
+    if (form && typeof form.nickname === 'string') this.bindNicknameDraft({ detail: { value: form.nickname } })
+    const nickname = String(this.data.nicknameDraft || '').trim()
+    if (!nickname || Array.from(nickname).length > 24) {
+      this.setData({ nicknameError: '昵称需填写 1～24 个字' })
+      return
+    }
+    if (nickname === this.data.serverNickname) {
+      this.cancelEditNickname()
+      return
+    }
+    const self = this
+    const isCurrent = pageReadSession.capture(this)
+    this._nicknameRequestId = this._nicknameRequestId || api.createRequestId()
+    this.setData({ savingNickname: true, nicknameError: '' })
+    return api.callApi('profile.update', {
+      requestId: this._nicknameRequestId, nickname, previousNickname: this.data.serverNickname
+    }).then(function (result) {
+      if (!isCurrent() || !app.hasLoginApproval()) return
+      const savedNickname = result && result.nickname || nickname
+      app.setLocalNickname(savedNickname)
+      self._nicknameRequestId = null
+      self.setData({ nickname: savedNickname, serverNickname: savedNickname,
+        editingNickname: false, nicknameDraft: '', nicknameError: '' })
+      wx.showToast({ title: '昵称已保存', icon: 'success' })
+    }).catch(function (error) {
+      if (!isCurrent()) return
+      if (error.code === 'CONFLICT') self._nicknameRequestId = null
+      self.setData({ nicknameError: error.code === 'CONFLICT'
+        ? '昵称已在其他设备更新，请刷新后重试' : error.message || '昵称保存失败，请重试' })
+    }).finally(function () {
+      if (isCurrent()) self.setData({ savingNickname: false })
+    })
+  },
+
+  chooseAvatar: function (event) {
+    const avatarUrl = event && event.detail && event.detail.avatarUrl
+    if (!app.hasLoginApproval() || !avatarUrl || this.data.savingAvatar) return
+    const isCurrent = pageReadSession.capture(this)
+    this.setData({ savingAvatar: true, avatarError: '' })
+    return app.saveLocalProfile({ avatarUrl, nickname: this.data.nickname }, { isCurrent, avatarOnly: true }).then(profile => {
+      if (!isCurrent() || !app.hasLoginApproval()) return
+      this.setData({ displayAvatarUrl: profile.avatarUrl })
+      wx.showToast({ title: '头像已保存', icon: 'success' })
+    }).catch(error => {
+      if (isCurrent()) this.setData({ avatarError: error.message || '头像保存失败，请重试' })
+    }).finally(() => {
+      if (isCurrent()) this.setData({ savingAvatar: false })
+    })
   },
 
   retryProfile: function () {
@@ -132,6 +245,7 @@ Page({
       displayAvatarUrl: profilePresentation.displayAvatarUrl(true, profile)
     })
     this.loadProfile({ identityConfirmed: true })
+    this.loadNickname({ force: true })
   },
 
   copyId: function () {
@@ -161,7 +275,7 @@ Page({
     const self = this
     wx.showModal({
       title: '退出登录？',
-      content: '只会清除本机登录状态和展示资料，不会删除云端账本。',
+      content: '会清除本机登录状态，昵称和头像留待下次登录使用；不会删除云端账本。',
       cancelText: '取消',
       confirmText: '退出',
       confirmColor: themeService.currentTokens().danger,
@@ -170,11 +284,20 @@ Page({
           return
         }
         app.logoutWechatAccount()
+        self._nicknameRequestId = null
         self.setData({
           loggedIn: false,
           loading: false,
           connected: false,
           nickname: '',
+          serverNickname: '',
+          profileLoaded: false,
+          editingNickname: false,
+          nicknameDraft: '',
+          savingNickname: false,
+          savingAvatar: false,
+          avatarError: '',
+          nicknameError: '',
           uid: '',
           displayUid: '',
           hasLoaded: false,

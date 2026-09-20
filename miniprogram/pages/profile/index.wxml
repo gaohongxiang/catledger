@@ -1,9 +1,24 @@
 <view class="page-canvas profile-page {{themeClass}}" style="{{themeStyle}}">
   <view class="profile-hero content-inset">
-    <image class="profile-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
+    <button wx:if="{{loggedIn}}" class="profile-avatar-edit" aria-label="修改头像" open-type="chooseAvatar" disabled="{{savingAvatar || savingNickname}}" bindchooseavatar="chooseAvatar">
+      <image class="profile-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
+      <text class="profile-avatar-label">{{savingAvatar ? '保存中' : '修改头像'}}</text>
+    </button>
+    <image wx:else class="profile-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
     <view class="profile-copy">
 
-      <text class="profile-title serif-title">{{loggedIn ? (nickname || '微信用户') : '尚未登录'}}</text>
+      <view wx:if="{{loggedIn && !editingNickname}}" class="profile-name-line">
+        <text class="profile-title serif-title">{{nickname || '微信用户'}}</text>
+        <button class="profile-name-edit" aria-label="修改昵称" disabled="{{savingAvatar}}" bindtap="startEditNickname">修改</button>
+      </view>
+      <form wx:elif="{{loggedIn}}" class="profile-name-form" bindsubmit="saveNickname">
+        <input class="profile-name-input" name="nickname" aria-label="昵称" type="nickname" value="{{nicknameDraft}}" maxlength="24" placeholder="输入昵称" disabled="{{savingNickname}}" bindinput="bindNicknameDraft" bindblur="bindNicknameDraft" />
+        <button class="profile-name-action" disabled="{{savingNickname}}" bindtap="cancelEditNickname">取消</button>
+        <button class="profile-name-action profile-name-save" loading="{{savingNickname}}" disabled="{{savingNickname}}" form-type="submit">保存</button>
+      </form>
+      <text wx:else class="profile-title serif-title">尚未登录</text>
+      <text wx:if="{{nicknameError}}" class="profile-name-error">{{nicknameError}}</text>
+      <text wx:if="{{avatarError}}" class="profile-name-error">{{avatarError}}</text>
       <button wx:if="{{loggedIn && uid}}" class="profile-id" aria-label="复制完整 ID" bindtap="copyId">
         <text class="profile-id-label">ID</text>
         <text class="profile-id-value">{{displayUid}}</text>

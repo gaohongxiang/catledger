@@ -32,6 +32,7 @@ test('shared contract and server action registry stay in exact sync', () => {
     dataExportService: serviceStub(['start','page','finish']),
     loanService: serviceStub(['transaction','unassigned','list','get','create','update','record','correct','source','reverse','payment','payments','periods','savePeriod','allocatePeriods','planAllocation','periodHistory','previewPlan','generatePlan']),
     catalogService: serviceStub(['get']),
+    profileService: serviceStub(['get', 'update']),
     accountService: serviceStub(['archive', 'correctBalance', 'create', 'createBatch', 'list', 'update']),
     categoryService: serviceStub(['archive', 'assignTransactions', 'create', 'list', 'reorder', 'restore', 'unclassified', 'update']),
     transactionService: serviceStub(['commandResult', 'create', 'dashboard', 'linkRefund', 'list', 'refundable', 'remove', 'removeMany', 'setCategory', 'statistics', 'update'])

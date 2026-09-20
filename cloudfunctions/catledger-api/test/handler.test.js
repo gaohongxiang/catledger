@@ -183,6 +183,7 @@ test('bootstrap returns its own uid without exposing OpenID or subject hash', as
         return {
           uid,
           isNewUser: true,
+          nickname: '已保存昵称',
           categories: [
             {
               id: 'category-1',
@@ -206,6 +207,7 @@ test('bootstrap returns its own uid without exposing OpenID or subject hash', as
   })
   assert.equal(input.subjectHash.length, 64)
   assert.equal(result.data.uid, uid)
+  assert.equal(result.data.nickname, '已保存昵称')
   assert.doesNotMatch(JSON.stringify(result), /sensitive-wechat-openid|subjectHash/)
   assert.equal(logger.entries.length, 1)
   assert.doesNotMatch(JSON.stringify(logger.entries), /sensitive-wechat-openid|subjectHash|uid|00000000/)

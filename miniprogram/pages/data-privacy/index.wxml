@@ -1,6 +1,6 @@
 <view class="page-canvas privacy-page {{themeClass}}" style="{{themeStyle}}">
   <section-header class="privacy-heading" eyebrow="你的账本，由你管理" title="数据与隐私" />
-  <text class="privacy-copy content-inset">只有你主动同意登录后才创建个人账本。服务端使用可信微信身份隔离数据；头像和昵称由你自愿填写，仅用于本机展示。账号 ID 用于定位问题，不是登录凭证。</text>
+  <text class="privacy-copy content-inset">打开小程序时自动识别当前微信账号并连接个人账本。首次使用可设置头像和昵称，之后可在“我的”修改。服务端使用可信微信身份隔离数据；昵称保存到账号，头像只保存在本机。账号 ID 用于定位问题，不是登录凭证。</text>
   <view class="privacy-section">
     <section-header compact title="导出个人账本" />
     <text class="privacy-copy">完整数据包含账户、交易、原始账单字段、整理与来源关联、贷款及还款期次。JSONL 用于完整核对，CSV 便于查看交易。导出期间请暂停记账；有新变化时需要重新生成。</text>
@@ -16,7 +16,7 @@
   <view class="privacy-section">
     <section-header compact title="数据存储与用途" />
     <text class="privacy-copy">账户、交易、账单原始字段与贷款信息用于记账、核对和统计，存于云端数据库。上传的原始文件用于解析和短期追溯；入账后尝试回收，失败会保留待清理状态。普通日志不记录账单原文、账户详情或身份摘要。</text>
-    <text class="privacy-copy">退出登录只清除本机登录与展示资料，不删除云端账本。导出临时文件会在过期、退出、离开本页或主动清理时回收。</text>
+    <text class="privacy-copy">退出登录会清除当前登录状态与个人数据视图，保留头像和昵称候选供再次登录；下次重新启动会自动识别微信账号。云端账本和账号昵称不会删除。账本导出不包含账号昵称。导出临时文件会在过期、退出、离开本页或主动清理时回收。</text>
   </view>
   <login-sheet id="page-login-sheet" />
 </view>

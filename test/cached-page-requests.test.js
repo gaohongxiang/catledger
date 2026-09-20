@@ -39,6 +39,7 @@ function runtime(savedStorage) {
       if (action === 'transactions.commandResult') return { result: { ok: false, error: { code: 'OPERATION_UNCONFIRMED', message: '未确认' } } }
       if (action === 'catalog.get') result = { categories: h.categories, accounts: h.accounts || accounts(), uid: h.uid }
       else if (action === 'bootstrap') result = { categories, uid: h.uid }
+      else if (action === 'profile.get') result = { nickname: '测试用户' }
       else if (action === 'categories.list') result = { categories }
       else if (action === 'accounts.list') result = { accounts: h.accounts || accounts() }
       else if (action === 'dashboard.get') result = { accounts: accounts(), summary, netWorthMinor: balance, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }], recentTransactions: [] }
@@ -274,10 +275,10 @@ test('切换会话后迟到目录结果不回填', async () => {
   assert.equal(h.app.globalData.uid, '')
 })
 
-test('首页、明细、账本、我的首次一轮仅3次请求，后续切页0请求且无加载闪烁', async () => {
+test('首页、明细、账本、我的首次一轮仅4次请求，后续切页0请求且无加载闪烁', async () => {
   const h = runtime()
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
-  assert.deepEqual(h.calls.map(call => call.action).sort(), ['catalog.get', 'dashboard.get', 'transactions.list'])
+  assert.deepEqual(h.calls.map(call => call.action).sort(), ['catalog.get', 'dashboard.get', 'profile.get', 'transactions.list'])
   h.calls.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) h.page(name).loading.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
