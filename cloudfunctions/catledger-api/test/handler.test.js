@@ -76,7 +76,7 @@ test('runtime identity fields outside public data do not look like client input'
     repository: {
       async bootstrap() {
         called = true
-        return { isNewUser: false, categories: [] }
+        return { isNewUser: false, dataRevision: '1', categories: [] }
       }
     },
     logger: createLogger()
@@ -112,6 +112,7 @@ test('ledger actions receive only trusted identity and public data', async () =>
   assert.deepEqual(result.data, { accounts: [] })
   assert.deepEqual(input, {
     provider: 'wechat-mini',
+    read: { knownRevision: undefined },
     subjectHash: hashWechatSubject('trusted-ledger-user'),
     data: { includeArchived: true }
   })
@@ -150,7 +151,7 @@ test('bootstrap ignores request properties outside the public contract', async (
       async bootstrap(value) {
         input = value
         return {
-          isNewUser: false,
+          isNewUser: false, dataRevision: '1',
           categories: []
         }
       }
@@ -182,7 +183,7 @@ test('bootstrap returns its own uid without exposing OpenID or subject hash', as
         input = value
         return {
           uid,
-          isNewUser: true,
+          isNewUser: true, dataRevision: '1',
           nickname: '已保存昵称',
           categories: [
             {

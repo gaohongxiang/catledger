@@ -29,14 +29,18 @@ async function queryCatalog(connection, uid) {
 
 function createCatalogService({ getPool }) {
   return {
-    async get({ provider, subjectHash, data = {} }) {
+    async get({ provider, subjectHash, data = {}, read }) {
       if (!data || Array.isArray(data) || typeof data !== 'object' || Object.keys(data).length) {
         throw ledgerError('VALIDATION_ERROR')
       }
       return executeLedgerRead({
-        getPool, provider, subjectHash, consistentSnapshot: true,
+        getPool, provider, subjectHash, read, consistentSnapshot: true,
         operation: queryCatalog
       })
+    },
+    async validate({ provider, subjectHash, data = {}, read }) {
+      if (!data || Array.isArray(data) || Object.keys(data).length) throw ledgerError('VALIDATION_ERROR')
+      return executeLedgerRead({ getPool, provider, subjectHash, read: read || {}, operation: async () => ({}) })
     }
   }
 }

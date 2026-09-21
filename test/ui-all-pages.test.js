@@ -48,10 +48,10 @@ function runtime(route, callApi) {
   return { page, app, calls, api, chrome }
 }
 
-test('贷款资料响应丢失后修改表单仍恢复原请求，保存后显示权威资料', async () => {
+test('分期资料与计划响应丢失后修改表单仍恢复原请求，保存后进入权威资料', async () => {
   const account = { accountId: 'debt', name: '合成负债', type: 'credit', archived: false }
   let stored = null, attempts = 0
-  const { page, calls } = runtime('pages/loan-detail/index', (action, data) => {
+  const { page, calls, chrome } = runtime('pages/loan-form/index', (action, data) => {
     if (action === 'catalog.get') return Promise.resolve({ uid: '1234567890', accounts: [account] })
     if (action === 'loans.create') {
       attempts++
@@ -59,19 +59,53 @@ test('贷款资料响应丢失后修改表单仍恢复原请求，保存后显�
       return attempts === 1 ? Promise.reject(Object.assign(new Error('合成响应丢失'), { code: 'CLOUD_CALL_FAILED' })) : Promise.resolve({ loanId: 'loan', version: 1 })
     }
     if (action === 'loans.get') return Promise.resolve({ loan: stored })
+    if (action === 'loans.previewPlan') return Promise.resolve(require('../cloudfunctions/catledger-api/src/loan-installment').remainingSchedule(data))
     throw new Error('unexpected action')
   })
   page.onLoad({}); await page.load()
-  Object.assign(page.data, { name: '合成借款', principalYuan: '1.00', baselineDate: '2026-09-01' })
+  Object.assign(page.data, { name: '合成借款',accountIndex:0, principalYuan: '12000', baselineDate: '2026-09-01',paidTerms:'3',schedule:{...page.data.schedule,terms:'12',repaymentYuan:'1100',firstPaymentDate:'2026-01-31'} })
+  let target;chrome.redirectTo=options=>{target=options.url}
+  await page.save();assert.equal(calls.filter(x=>x.name==='loans.create').length,0)
+  page.confirm({detail:{value:['confirmed']}})
   await page.save(); assert.equal(page.data.hasPending, true)
   page.data.principalYuan = '999.00'
   await page.save()
   const writes = calls.filter(x => x.name === 'loans.create')
   assert.equal(writes.length, 2); assert.deepEqual(writes[1].data, writes[0].data)
-  assert.equal(stored.baselinePrincipalMinor, '100')
-  assert.equal(page.data.loan.principalText, '¥1.00')
-  assert.equal(page.data.hasPending, false); assert.equal(page.data.formOpen, false)
+  assert.equal(stored.baselinePrincipalMinor, '900000');assert.equal(stored.installmentSetup.originalPrincipalMinor,'1200000')
+  assert.equal(stored.generatePlan,true);assert.match(target,/loan-detail\/index\?loanId=loan$/)
+  assert.equal(page.data.hasPending, false)
   assert.match(page.data.savedMessage, /已保存/)
+})
+
+test('分期首次日期不推断历史已还；旧试算响应和退出后的响应不得覆盖新输入',async()=>{
+  let resolve
+  const {page}=runtime('pages/loan-form/index',action=>action==='catalog.get'?Promise.resolve({uid:'1234567890',accounts:[]}):new Promise(done=>{resolve=done}))
+  page.onLoad({});await page.load()
+  Object.assign(page.data,{principalYuan:'12000',schedule:{...page.data.schedule,terms:'12',repaymentYuan:'1100'}})
+  page.scheduleInput({currentTarget:{dataset:{field:'firstPaymentDate'}},detail:{value:'2020-01-31'}})
+  assert.equal(page.data.paidTerms,'0')
+  const waiting=page.preview()
+  page.input({currentTarget:{dataset:{field:'paidTerms'}},detail:{value:'3'}})
+  resolve({summary:{remainingPrincipalMinor:'1200000'}});await waiting
+  assert.equal(page.data.preview,null);assert.equal(page._preview,null)
+  const closing=page.preview();page.onUnload();resolve({summary:{remainingPrincipalMinor:'900000'}});await closing
+  assert.equal(page.data.preview,null)
+})
+
+test('新分期编辑固定原本金与历史参数；读取失败不能误建新贷款',async()=>{
+  const data={name:'合成',principalYuan:'12000',paidTerms:'3',typeIndex:0,discountIndex:0,discountValue:'',schedule:{terms:'12',methodIndex:0,measurementIndex:1,repaymentYuan:'1100',firstPaymentDate:'2026-01-31'}}
+  const value=require('../miniprogram/pages/loan-form/model').previewInput(data)
+  const loan={...value,loanId:'loan',name:'合成',kind:'installment',baselinePrincipalMinor:'900000',baselineDate:'2026-04-01',version:1,accountId:'debt'}
+  const {page}=runtime('pages/loan-form/index',action=>Promise.resolve(action==='catalog.get'?{uid:'1234567890',accounts:[{accountId:'debt',type:'credit'}]}:{loan}))
+  page.onLoad({loanId:'loan',sourceTransactionId:'synthetic-linked'});await page.load()
+  assert.equal(page.data.loan.loanId,'loan');assert.equal(page.data.sourceReady,true)
+  page.input({currentTarget:{dataset:{field:'paidTerms'}},detail:{value:'12'}})
+  page.scheduleInput({currentTarget:{dataset:{field:'terms'}},detail:{value:'36'}})
+  assert.equal(page.data.paidTerms,'3');assert.equal(page.data.schedule.terms,'12')
+  const failed=runtime('pages/loan-form/index',()=>Promise.reject(new Error('合成读取失败')))
+  failed.page.onLoad({loanId:'loan'});await failed.page.load();await failed.page.save()
+  assert.equal(failed.calls.some(c=>c.name==='loans.create'||c.name==='loans.previewPlan'),false)
 })
 
 test('贷款分页只保留当前页和五个返回游标，退出后迟到响应不回填', async () => {

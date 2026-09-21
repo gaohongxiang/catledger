@@ -13,7 +13,9 @@
     "pages/theme/index",
     "pages/loans/index",
     "pages/loan-link/index",
+    "pages/repayment-entry/index",
     "pages/loan-detail/index",
+    "pages/loan-form/index",
     "pages/loan-payment/index",
     "pages/loan-plan/index",
     "pages/data-privacy/index"

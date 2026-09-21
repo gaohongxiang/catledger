@@ -3,16 +3,19 @@ const { performance } = require('node:perf_hooks')
 
 function createObserver(pool, options = {}) {
   let current
-  function reset() { current = { sqlCount: 0, sqlMs: 0, userLockHoldMs: 0, userLockWaitMs: 0, calls: new Map() } }
+  function reset() { current = { sqlCount: 0, sqlMs: 0, connectionMs: 0, identityMs: 0, summaryCount: 0, userLockHoldMs: 0, userLockWaitMs: 0, calls: new Map() } }
   reset()
   return {
     reset,
     snapshot() {
-      return { sqlCount: current.sqlCount, sqlMs: current.sqlMs, userLockHoldMs: current.userLockHoldMs, userLockWaitMs: current.userLockWaitMs,
+      return { sqlCount: current.sqlCount, sqlMs: current.sqlMs, connectionMs: current.connectionMs, identityMs: current.identityMs, summaryCount: current.summaryCount,
+        businessSqlMs: current.sqlMs - current.identityMs, userLockHoldMs: current.userLockHoldMs, userLockWaitMs: current.userLockWaitMs,
         sqlFingerprints: [...current.calls.values()].sort((a, b) => b.ms - a.ms) }
     },
     pool: { async getConnection() {
+      const start = performance.now()
       const connection = await pool.getConnection()
+      current.connectionMs += performance.now() - start
       let acquired = null
       return new Proxy(connection, { get(target, key) {
         if (!['execute', 'query', 'beginTransaction', 'commit', 'rollback'].includes(key)) {
@@ -26,6 +29,7 @@ function createObserver(pool, options = {}) {
           const record = current.calls.get(id) || { fingerprint, callsite, count: 0, ms: 0, rows: 0 }
           current.calls.set(id, record)
           current.sqlCount++; record.count++
+          if (/SELECT COALESCE\(SUM\(CASE WHEN type = 'income'/.test(sql)) current.summaryCount++
           const start = performance.now()
           try {
             const result = await target[key](...args)
@@ -38,6 +42,7 @@ function createObserver(pool, options = {}) {
           } finally {
             const elapsed = performance.now() - start
             current.sqlMs += elapsed; record.ms += elapsed
+            if (/FROM catledger_user_identities/.test(sql)) current.identityMs += elapsed
             if (['commit', 'rollback'].includes(key) && acquired !== null) { current.userLockHoldMs += performance.now() - acquired; acquired = null }
           }
         }

@@ -227,11 +227,12 @@ function zeroBalancePublicAccount(account) {
 }
 
 function createAccountService({ getPool }) {
-  async function list({ provider, subjectHash }) {
+  async function list({ provider, subjectHash, read }) {
     return executeLedgerRead({
       getPool,
       provider,
       subjectHash,
+      read,
       operation: async (connection, uid) => ({ accounts: await listAccountsForUser(connection, uid) })
     })
   }

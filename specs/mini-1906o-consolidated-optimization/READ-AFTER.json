@@ -1,0 +1,6356 @@
+{
+  "sha": "706b02fa3db86ed6c232f44893eb114b039845db",
+  "dirty": true,
+  "environment": {
+    "node": "v24.14.1",
+    "os": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M2 Max",
+    "mysql": "8.4 isolated container",
+    "network": "loopback TCP; client VM adds 40ms per attempt",
+    "samples": 3
+  },
+  "limits": "Local instrumentation and VM data-bridge proxies only; cold function initialization, radio/network and visible/interactive frame require device acceptance. Three samples are not p95.",
+  "server": [
+    {
+      "rows": 0,
+      "sample": 0,
+      "action": "bootstrap",
+      "handlerMs": 0.9627920000002632,
+      "serializationMs": 0.008041999999932159,
+      "responseBytes": 2257,
+      "sqlCount": 6,
+      "sqlMs": 0.8081680000000233,
+      "connectionMs": 0.01187500000014552,
+      "identityMs": 0.13162499999998545,
+      "summaryCount": 0,
+      "businessSqlMs": 0.6765430000000379,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.22358299999996234,
+          "rows": 16
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.15829200000007404,
+          "rows": 16
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.13162499999998545,
+          "rows": 1
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.12379199999986668,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.09070900000006077,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.08016700000007404,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.14274900000009438
+    },
+    {
+      "rows": 0,
+      "sample": 0,
+      "action": "catalog.get",
+      "handlerMs": 0.871208999999908,
+      "serializationMs": 0.00874999999996362,
+      "responseBytes": 2814,
+      "sqlCount": 6,
+      "sqlMs": 0.7349589999998898,
+      "connectionMs": 0.01062499999989086,
+      "identityMs": 0.11941699999988487,
+      "summaryCount": 0,
+      "businessSqlMs": 0.6155420000000049,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.1862500000002001,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.15212500000006912,
+          "rows": 4
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.11941699999988487,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10183400000005349,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.09204099999988102,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.08329199999980119,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.12562500000012733
+    },
+    {
+      "rows": 0,
+      "sample": 0,
+      "action": "dashboard.get",
+      "handlerMs": 2.9016249999999673,
+      "serializationMs": 0.007166999999753898,
+      "responseBytes": 1815,
+      "sqlCount": 7,
+      "sqlMs": 2.2408329999998386,
+      "connectionMs": 0.011290999999800988,
+      "identityMs": 0.10904200000004494,
+      "summaryCount": 0,
+      "businessSqlMs": 2.1317909999997937,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 0.8906660000002375,
+          "rows": 4
+        },
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.5680409999999938,
+          "rows": 0
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.36637500000006185,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.10904200000004494,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10837499999979627,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.1036669999998594,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.09466699999984485,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.6495010000003276
+    },
+    {
+      "rows": 0,
+      "sample": 0,
+      "action": "statistics.get",
+      "handlerMs": 3.820416000000023,
+      "serializationMs": 0.00820800000019517,
+      "responseBytes": 4374,
+      "sqlCount": 9,
+      "sqlMs": 1.9849600000002283,
+      "connectionMs": 0.007583000000067841,
+      "identityMs": 0.13533400000005713,
+      "summaryCount": 1,
+      "businessSqlMs": 1.8496260000001712,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 0.443416999999954,
+          "rows": 0
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 0.36120900000014444,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.31608300000016243,
+          "rows": 1
+        },
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 0.30254100000001927,
+          "rows": 0
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.15704200000027413,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.13533400000005713,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.11266699999987395,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.08654200000000856,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.07012499999973443,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.8278729999997267
+    },
+    {
+      "rows": 0,
+      "sample": 0,
+      "action": "transactions.list",
+      "handlerMs": 1.0640410000000884,
+      "serializationMs": 0.0019170000000485743,
+      "responseBytes": 245,
+      "sqlCount": 6,
+      "sqlMs": 0.7086670000003323,
+      "connectionMs": 0.008041999999932159,
+      "identityMs": 0.10929199999964112,
+      "summaryCount": 1,
+      "businessSqlMs": 0.5993750000006912,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.22416700000030687,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.1252079999999296,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.10929199999964112,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.08775000000014188,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.08562500000016371,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.07662500000014916,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.3473319999998239
+    },
+    {
+      "rows": 0,
+      "sample": 0,
+      "action": "transactions.page2",
+      "handlerMs": 0.8660420000001068,
+      "serializationMs": 0.0015840000000935106,
+      "responseBytes": 245,
+      "sqlCount": 6,
+      "sqlMs": 0.703708000000006,
+      "connectionMs": 0.006499999999959982,
+      "identityMs": 0.1220829999997477,
+      "summaryCount": 1,
+      "businessSqlMs": 0.5816250000002583,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.20537500000000364,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.12620800000013332,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1220829999997477,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.08770800000002055,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.08441700000003038,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.0779170000000704,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.1558340000001408
+    },
+    {
+      "rows": 0,
+      "sample": 0,
+      "action": "reads.validate",
+      "handlerMs": 0.45029199999999037,
+      "serializationMs": 0.0009999999997489795,
+      "responseBytes": 73,
+      "sqlCount": 4,
+      "sqlMs": 0.33550000000013824,
+      "connectionMs": 0.008000000000265572,
+      "identityMs": 0.10670799999979863,
+      "summaryCount": 0,
+      "businessSqlMs": 0.2287920000003396,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.10670799999979863,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.07837500000005093,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.07725000000027649,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.0731670000000122,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.10679199999958655
+    },
+    {
+      "rows": 0,
+      "sample": 1,
+      "action": "bootstrap",
+      "handlerMs": 0.8673749999998108,
+      "serializationMs": 0.009000000000014552,
+      "responseBytes": 2257,
+      "sqlCount": 6,
+      "sqlMs": 0.7355440000001181,
+      "connectionMs": 0.004332999999860476,
+      "identityMs": 0.11408400000027541,
+      "summaryCount": 0,
+      "businessSqlMs": 0.6214599999998427,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.21320799999966766,
+          "rows": 16
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.12829199999987395,
+          "rows": 16
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.11408400000027541,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.10029200000008132,
+          "rows": 0
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.09383400000024267,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.0858339999999771,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.12749799999983225
+    },
+    {
+      "rows": 0,
+      "sample": 1,
+      "action": "catalog.get",
+      "handlerMs": 1.1595420000003287,
+      "serializationMs": 0.008792000000084954,
+      "responseBytes": 2814,
+      "sqlCount": 6,
+      "sqlMs": 1.015043000001242,
+      "connectionMs": 0.006624999999985448,
+      "identityMs": 0.12904200000002675,
+      "summaryCount": 0,
+      "businessSqlMs": 0.8860010000012153,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.2785830000002534,
+          "rows": 16
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.19991700000036872,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.17470900000034817,
+          "rows": 4
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.12904200000002675,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.11879200000021228,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.11400000000003274,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.13787399999910122
+    },
+    {
+      "rows": 0,
+      "sample": 1,
+      "action": "dashboard.get",
+      "handlerMs": 1.334957999999915,
+      "serializationMs": 0.006750000000010914,
+      "responseBytes": 1815,
+      "sqlCount": 7,
+      "sqlMs": 1.1022920000009435,
+      "connectionMs": 0.0069590000002790475,
+      "identityMs": 0.13833300000032978,
+      "summaryCount": 0,
+      "businessSqlMs": 0.9639590000006137,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 0.2456250000000182,
+          "rows": 4
+        },
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.21487500000012005,
+          "rows": 0
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.16245800000024246,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.14045900000019174,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.13833300000032978,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10229200000003402,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.09825000000000728,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.22570699999869248
+    },
+    {
+      "rows": 0,
+      "sample": 1,
+      "action": "statistics.get",
+      "handlerMs": 1.5921250000001237,
+      "serializationMs": 0.00904099999979735,
+      "responseBytes": 4374,
+      "sqlCount": 9,
+      "sqlMs": 1.2830820000003769,
+      "connectionMs": 0.006292000000030384,
+      "identityMs": 0.11520800000016607,
+      "summaryCount": 1,
+      "businessSqlMs": 1.1678740000002108,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 0.18962499999997817,
+          "rows": 1
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 0.18899999999985084,
+          "rows": 0
+        },
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 0.17891700000018318,
+          "rows": 0
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.17783300000019153,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.13520799999969313,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.11520800000016607,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.1123330000000351,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.09495800000013332,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.09000000000014552,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.30275099999971644
+    },
+    {
+      "rows": 0,
+      "sample": 1,
+      "action": "transactions.list",
+      "handlerMs": 1.685707999999977,
+      "serializationMs": 0.002292000000124972,
+      "responseBytes": 245,
+      "sqlCount": 6,
+      "sqlMs": 1.4866670000005797,
+      "connectionMs": 0.006665999999768246,
+      "identityMs": 0.1584170000000995,
+      "summaryCount": 1,
+      "businessSqlMs": 1.3282500000004802,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.5719169999997575,
+          "rows": 0
+        },
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.28775000000041473,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.18400000000019645,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1584170000000995,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.15104199999996126,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.13354100000015023,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.19237499999962893
+    },
+    {
+      "rows": 0,
+      "sample": 1,
+      "action": "transactions.page2",
+      "handlerMs": 1.1207500000000437,
+      "serializationMs": 0.002250000000003638,
+      "responseBytes": 245,
+      "sqlCount": 6,
+      "sqlMs": 0.9518750000002001,
+      "connectionMs": 0.00954100000035396,
+      "identityMs": 0.15483400000039182,
+      "summaryCount": 1,
+      "businessSqlMs": 0.7970409999998083,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.248833999999988,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.1867499999998472,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.15483400000039182,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.12866600000006656,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.11662500000011278,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.11616599999979371,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.1593339999994896
+    },
+    {
+      "rows": 0,
+      "sample": 1,
+      "action": "reads.validate",
+      "handlerMs": 0.6610829999999623,
+      "serializationMs": 0.0012499999997999112,
+      "responseBytes": 73,
+      "sqlCount": 4,
+      "sqlMs": 0.5610420000002705,
+      "connectionMs": 0.00841599999967002,
+      "identityMs": 0.17362500000035652,
+      "summaryCount": 0,
+      "businessSqlMs": 0.38741699999991397,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.17362500000035652,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.13741699999991397,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.12550000000010186,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.12449999999989814,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.09162500000002183
+    },
+    {
+      "rows": 0,
+      "sample": 2,
+      "action": "bootstrap",
+      "handlerMs": 1.0755409999997028,
+      "serializationMs": 0.00920799999994415,
+      "responseBytes": 2257,
+      "sqlCount": 6,
+      "sqlMs": 0.937460000000101,
+      "connectionMs": 0.008083000000169704,
+      "identityMs": 0.1374590000000353,
+      "summaryCount": 0,
+      "businessSqlMs": 0.8000010000000657,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.2590839999998025,
+          "rows": 16
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.1510840000000826,
+          "rows": 16
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.1428329999998823,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.1374590000000353,
+          "rows": 1
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.1356250000003456,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.1113749999999527,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.12999799999943207
+    },
+    {
+      "rows": 0,
+      "sample": 2,
+      "action": "catalog.get",
+      "handlerMs": 2.134457999999995,
+      "serializationMs": 0.009209000000282686,
+      "responseBytes": 2814,
+      "sqlCount": 6,
+      "sqlMs": 2.00262500000008,
+      "connectionMs": 0.007499999999708962,
+      "identityMs": 0.1667499999998654,
+      "summaryCount": 0,
+      "businessSqlMs": 1.8358750000002146,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 1.2383340000001226,
+          "rows": 0
+        },
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.19229100000029575,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.18425000000024738,
+          "rows": 4
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1667499999998654,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.11358299999983501,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10741699999971388,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.12433300000020608
+    },
+    {
+      "rows": 0,
+      "sample": 2,
+      "action": "dashboard.get",
+      "handlerMs": 1.1907499999997526,
+      "serializationMs": 0.00741699999980483,
+      "responseBytes": 1815,
+      "sqlCount": 7,
+      "sqlMs": 1.0035829999997077,
+      "connectionMs": 0.005708000000140601,
+      "identityMs": 0.10337499999968713,
+      "summaryCount": 0,
+      "businessSqlMs": 0.9002080000000205,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 0.22916699999996126,
+          "rows": 4
+        },
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.22179099999993923,
+          "rows": 0
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.16108299999996234,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.11679100000037579,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.10337499999968713,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.09504199999992125,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.07633399999986068,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.18145899999990434
+    },
+    {
+      "rows": 0,
+      "sample": 2,
+      "action": "statistics.get",
+      "handlerMs": 1.4895830000000387,
+      "serializationMs": 0.008542000000034022,
+      "responseBytes": 4374,
+      "sqlCount": 9,
+      "sqlMs": 1.2201250000002801,
+      "connectionMs": 0.004167000000052212,
+      "identityMs": 0.13887500000009823,
+      "summaryCount": 1,
+      "businessSqlMs": 1.081250000000182,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 0.1737079999998059,
+          "rows": 0
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 0.16658300000017334,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.1574590000000171,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.13887500000009823,
+          "rows": 1
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.13095799999973678,
+          "rows": 0
+        },
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 0.12525000000005093,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.11679200000025958,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.10891700000001947,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10158300000011877,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.2652909999997064
+    },
+    {
+      "rows": 0,
+      "sample": 2,
+      "action": "transactions.list",
+      "handlerMs": 0.9942500000001928,
+      "serializationMs": 0.002124999999978172,
+      "responseBytes": 245,
+      "sqlCount": 6,
+      "sqlMs": 0.8378750000001673,
+      "connectionMs": 0.004249999999956344,
+      "identityMs": 0.15033299999959127,
+      "summaryCount": 1,
+      "businessSqlMs": 0.6875420000005761,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.204291000000012,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.15399999999999636,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.15033299999959127,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.12841700000035416,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.10891700000001947,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.0919170000001941,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.15212500000006912
+    },
+    {
+      "rows": 0,
+      "sample": 2,
+      "action": "transactions.page2",
+      "handlerMs": 0.983625000000302,
+      "serializationMs": 0.001750000000356522,
+      "responseBytes": 245,
+      "sqlCount": 6,
+      "sqlMs": 0.8155849999993734,
+      "connectionMs": 0.005042000000230473,
+      "identityMs": 0.1279589999999189,
+      "summaryCount": 1,
+      "businessSqlMs": 0.6876259999994545,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.20970800000031886,
+          "rows": 0
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.15241699999978664,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1279589999999189,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.11354199999959746,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.11200000000008004,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.0999589999996715,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.16299800000069808
+    },
+    {
+      "rows": 0,
+      "sample": 2,
+      "action": "reads.validate",
+      "handlerMs": 0.5150829999997768,
+      "serializationMs": 0.000792000000274129,
+      "responseBytes": 73,
+      "sqlCount": 4,
+      "sqlMs": 0.42929000000003725,
+      "connectionMs": 0.006457999999838648,
+      "identityMs": 0.1309160000000702,
+      "summaryCount": 0,
+      "businessSqlMs": 0.29837399999996705,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1309160000000702,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.11008300000003146,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10162499999978536,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.08666600000015023,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.0793349999999009
+    },
+    {
+      "rows": 0,
+      "action": "account-plan",
+      "plans": [
+        [
+          {
+            "table": "a",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 4,
+            "rowsProduced": 4
+          },
+          {
+            "table": "b",
+            "access": "ref",
+            "key": "<auto_key0>",
+            "keyParts": [
+              "uid",
+              "account_id"
+            ],
+            "rowsPerScan": 2,
+            "rowsProduced": 8
+          },
+          {
+            "table": "entries",
+            "access": "ALL",
+            "rowsPerScan": 4,
+            "rowsProduced": 4
+          },
+          {
+            "table": "catledger_transactions",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 1,
+            "rowsProduced": 1
+          },
+          {
+            "table": "catledger_transactions",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 1,
+            "rowsProduced": 1
+          }
+        ]
+      ]
+    },
+    {
+      "rows": 1000,
+      "sample": 0,
+      "action": "bootstrap",
+      "handlerMs": 1.169875000000502,
+      "serializationMs": 0.007874999999330612,
+      "responseBytes": 2258,
+      "sqlCount": 6,
+      "sqlMs": 0.9798760000012408,
+      "connectionMs": 0.007749999999759893,
+      "identityMs": 0.1424170000000231,
+      "summaryCount": 0,
+      "businessSqlMs": 0.8374590000012176,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.2528339999998934,
+          "rows": 16
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.1970420000006925,
+          "rows": 16
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.14425000000028376,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.1424170000000231,
+          "rows": 1
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.1352500000002692,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.10808300000007875,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.1822489999995014
+    },
+    {
+      "rows": 1000,
+      "sample": 0,
+      "action": "catalog.get",
+      "handlerMs": 1.0298750000001746,
+      "serializationMs": 0.009165999999822816,
+      "responseBytes": 2815,
+      "sqlCount": 6,
+      "sqlMs": 0.8520839999991949,
+      "connectionMs": 0.006292000000030384,
+      "identityMs": 0.11279199999989942,
+      "summaryCount": 0,
+      "businessSqlMs": 0.7392919999992955,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.2150419999998121,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.20558299999993324,
+          "rows": 4
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.1257500000001528,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.11279199999989942,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.10491699999965931,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.08799999999973807,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.1714990000009493
+    },
+    {
+      "rows": 1000,
+      "sample": 0,
+      "action": "dashboard.get",
+      "handlerMs": 4.489875000000211,
+      "serializationMs": 0.01708299999972951,
+      "responseBytes": 4425,
+      "sqlCount": 7,
+      "sqlMs": 4.150624999999309,
+      "connectionMs": 0.005707999999685853,
+      "identityMs": 0.1398749999998472,
+      "summaryCount": 0,
+      "businessSqlMs": 4.010749999999462,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 1.4072089999999662,
+          "rows": 4
+        },
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 1.1589579999999842,
+          "rows": 6
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 1.1061659999995754,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1398749999998472,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.1327499999997599,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.10337499999968713,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.10229200000048877,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.33354200000121637
+    },
+    {
+      "rows": 1000,
+      "sample": 0,
+      "action": "statistics.get",
+      "handlerMs": 6.206374999999753,
+      "serializationMs": 0.013084000000162632,
+      "responseBytes": 4908,
+      "sqlCount": 9,
+      "sqlMs": 5.758958999999777,
+      "connectionMs": 0.00724999999965803,
+      "identityMs": 0.1552080000001297,
+      "summaryCount": 1,
+      "businessSqlMs": 5.603750999999647,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 1.446208999999726,
+          "rows": 28
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 1.4377919999997175,
+          "rows": 2
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.939792000000125,
+          "rows": 1
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.7028330000002825,
+          "rows": 1
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 0.6875,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1552080000001297,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.13495899999998073,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.13324999999986176,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.12141599999995378,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.4401660000003176
+    },
+    {
+      "rows": 1000,
+      "sample": 0,
+      "action": "transactions.list",
+      "handlerMs": 2.6698749999995925,
+      "serializationMs": 0.03358300000036252,
+      "responseBytes": 16096,
+      "sqlCount": 6,
+      "sqlMs": 2.2109580000005735,
+      "connectionMs": 0.007375000000138243,
+      "identityMs": 0.1287080000001879,
+      "summaryCount": 1,
+      "businessSqlMs": 2.0822500000003856,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.9358750000001237,
+          "rows": 31
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.8771249999999782,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1287080000001879,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.09795800000028976,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.09441700000024866,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.07687499999974534,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.4515419999988808
+    },
+    {
+      "rows": 1000,
+      "sample": 0,
+      "action": "transactions.page2",
+      "handlerMs": 1.784791000000041,
+      "serializationMs": 0.03112500000042928,
+      "responseBytes": 16021,
+      "sqlCount": 5,
+      "sqlMs": 1.5201669999987644,
+      "connectionMs": 0.00650000000041473,
+      "identityMs": 0.15508299999964947,
+      "summaryCount": 0,
+      "businessSqlMs": 1.365083999999115,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c65160f391ccc668",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 1.0422090000001845,
+          "rows": 31
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.15508299999964947,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.11895799999911105,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10679200000049605,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.09712499999932334,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.258124000000862
+    },
+    {
+      "rows": 1000,
+      "sample": 0,
+      "action": "reads.validate",
+      "handlerMs": 0.5562090000003082,
+      "serializationMs": 0.0007079999995767139,
+      "responseBytes": 74,
+      "sqlCount": 4,
+      "sqlMs": 0.4577080000008209,
+      "connectionMs": 0.005291999999826658,
+      "identityMs": 0.15295900000000984,
+      "summaryCount": 0,
+      "businessSqlMs": 0.30474900000081107,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.15295900000000984,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.11045800000010786,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.104750000000422,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.0895410000002812,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.09320899999966059
+    },
+    {
+      "rows": 1000,
+      "sample": 1,
+      "action": "bootstrap",
+      "handlerMs": 0.909708000000137,
+      "serializationMs": 0.007541999999375548,
+      "responseBytes": 2258,
+      "sqlCount": 6,
+      "sqlMs": 0.7851259999988542,
+      "connectionMs": 0.0069590000002790475,
+      "identityMs": 0.12058400000023539,
+      "summaryCount": 0,
+      "businessSqlMs": 0.6645419999986188,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.1812499999996362,
+          "rows": 16
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.15204199999971024,
+          "rows": 16
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.15049999999973807,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.12058400000023539,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.10233299999981682,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.07841699999971752,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.11762300000100367
+    },
+    {
+      "rows": 1000,
+      "sample": 1,
+      "action": "catalog.get",
+      "handlerMs": 0.9490829999995185,
+      "serializationMs": 0.008916999999200925,
+      "responseBytes": 2815,
+      "sqlCount": 6,
+      "sqlMs": 0.8259580000012647,
+      "connectionMs": 0.0055840000004536705,
+      "identityMs": 0.14304200000060519,
+      "summaryCount": 0,
+      "businessSqlMs": 0.6829160000006596,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.20704200000000128,
+          "rows": 4
+        },
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.193000000000211,
+          "rows": 16
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.14304200000060519,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.09825000000000728,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.09354100000018661,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.09108300000025338,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.1175409999978001
+    },
+    {
+      "rows": 1000,
+      "sample": 1,
+      "action": "dashboard.get",
+      "handlerMs": 3.171082999999271,
+      "serializationMs": 0.016458999999485968,
+      "responseBytes": 4425,
+      "sqlCount": 7,
+      "sqlMs": 2.9699579999996786,
+      "connectionMs": 0.006041999999979453,
+      "identityMs": 0.13537499999983993,
+      "summaryCount": 0,
+      "businessSqlMs": 2.8345829999998386,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 0.9952909999992698,
+          "rows": 4
+        },
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.817417000000205,
+          "rows": 6
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.7699170000005324,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.13537499999983993,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.09724999999980355,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.08379100000001927,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.07091700000000856,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.1950829999996131
+    },
+    {
+      "rows": 1000,
+      "sample": 1,
+      "action": "statistics.get",
+      "handlerMs": 4.718665999999757,
+      "serializationMs": 0.012999999999919964,
+      "responseBytes": 4908,
+      "sqlCount": 9,
+      "sqlMs": 4.416626000001088,
+      "connectionMs": 0.006750000000465661,
+      "identityMs": 0.11441700000068522,
+      "summaryCount": 1,
+      "businessSqlMs": 4.302209000000403,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 1.1460000000006403,
+          "rows": 28
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 1.1444999999994252,
+          "rows": 2
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.6866250000002765,
+          "rows": 1
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 0.5629589999998643,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.48575000000073487,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.11441700000068522,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.0961250000000291,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.09387499999957072,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.08637499999986176,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.2952899999982037
+    },
+    {
+      "rows": 1000,
+      "sample": 1,
+      "action": "transactions.list",
+      "handlerMs": 2.051749999999629,
+      "serializationMs": 0.03620799999953306,
+      "responseBytes": 16096,
+      "sqlCount": 6,
+      "sqlMs": 1.8132489999998143,
+      "connectionMs": 0.00654099999974278,
+      "identityMs": 0.14129099999991013,
+      "summaryCount": 1,
+      "businessSqlMs": 1.6719579999999041,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.9228750000002037,
+          "rows": 31
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.42445800000041345,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.14129099999991013,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.13650000000052387,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.09695799999917654,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.09116699999958655,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.2319600000000719
+    },
+    {
+      "rows": 1000,
+      "sample": 1,
+      "action": "transactions.page2",
+      "handlerMs": 1.5732920000000377,
+      "serializationMs": 0.04399999999986903,
+      "responseBytes": 16021,
+      "sqlCount": 5,
+      "sqlMs": 1.3437500000009095,
+      "connectionMs": 0.005583000000115135,
+      "identityMs": 0.1172500000002401,
+      "summaryCount": 0,
+      "businessSqlMs": 1.2265000000006694,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c65160f391ccc668",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.8782920000003287,
+          "rows": 31
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.14387499999975262,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1172500000002401,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10337500000059663,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.10095799999999144,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.22395899999901303
+    },
+    {
+      "rows": 1000,
+      "sample": 1,
+      "action": "reads.validate",
+      "handlerMs": 0.574666999999863,
+      "serializationMs": 0.0009999999992942321,
+      "responseBytes": 74,
+      "sqlCount": 4,
+      "sqlMs": 0.48408500000005006,
+      "connectionMs": 0.005165999999917403,
+      "identityMs": 0.1644589999996242,
+      "summaryCount": 0,
+      "businessSqlMs": 0.31962600000042585,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1644589999996242,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.11466700000073615,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10337499999968713,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.10158400000000256,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.08541599999989558
+    },
+    {
+      "rows": 1000,
+      "sample": 2,
+      "action": "bootstrap",
+      "handlerMs": 1.0611669999998412,
+      "serializationMs": 0.00837500000034197,
+      "responseBytes": 2258,
+      "sqlCount": 6,
+      "sqlMs": 0.9135009999999966,
+      "connectionMs": 0.005583000000115135,
+      "identityMs": 0.1552080000001297,
+      "summaryCount": 0,
+      "businessSqlMs": 0.7582929999998669,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.18716700000004494,
+          "rows": 16
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.16437500000029104,
+          "rows": 16
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.1588339999998425,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.1552080000001297,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.12491700000009587,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.12299999999959255,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.1420829999997295
+    },
+    {
+      "rows": 1000,
+      "sample": 2,
+      "action": "catalog.get",
+      "handlerMs": 1.0658750000002328,
+      "serializationMs": 0.008249999999861757,
+      "responseBytes": 2815,
+      "sqlCount": 6,
+      "sqlMs": 0.9270010000000184,
+      "connectionMs": 0.005083000000013271,
+      "identityMs": 0.1383750000004511,
+      "summaryCount": 0,
+      "businessSqlMs": 0.7886259999995673,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.20045899999968242,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.1914999999999054,
+          "rows": 4
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.14787499999965803,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1383750000004511,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.13491700000031415,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.11387500000000728,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.13379100000020117
+    },
+    {
+      "rows": 1000,
+      "sample": 2,
+      "action": "dashboard.get",
+      "handlerMs": 3.9096669999998994,
+      "serializationMs": 0.019874999999956344,
+      "responseBytes": 4425,
+      "sqlCount": 7,
+      "sqlMs": 3.680083000000195,
+      "connectionMs": 0.006166999999550171,
+      "identityMs": 0.2258750000000873,
+      "summaryCount": 0,
+      "businessSqlMs": 3.454208000000108,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 1.2587499999999636,
+          "rows": 4
+        },
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.8709999999991851,
+          "rows": 6
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.8681660000002012,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.2258750000000873,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.17970900000000256,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.13870800000040617,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.13787500000034925,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.22341700000015408
+    },
+    {
+      "rows": 1000,
+      "sample": 2,
+      "action": "statistics.get",
+      "handlerMs": 5.318083000000115,
+      "serializationMs": 0.013082999999824096,
+      "responseBytes": 4908,
+      "sqlCount": 9,
+      "sqlMs": 4.983251999999084,
+      "connectionMs": 0.006000000000312866,
+      "identityMs": 0.16837499999928696,
+      "summaryCount": 1,
+      "businessSqlMs": 4.814876999999797,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 1.303874999999607,
+          "rows": 28
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 1.147208999999748,
+          "rows": 2
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 0.7672919999995429,
+          "rows": 1
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 0.6641669999999067,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.5177920000005543,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.16837499999928696,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.1474579999994603,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.14120900000034453,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.125875000000633,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.32883100000071863
+    },
+    {
+      "rows": 1000,
+      "sample": 2,
+      "action": "transactions.list",
+      "handlerMs": 2.2858329999999114,
+      "serializationMs": 0.04158399999960238,
+      "responseBytes": 16096,
+      "sqlCount": 6,
+      "sqlMs": 2.0370819999998275,
+      "connectionMs": 0.004666999999244581,
+      "identityMs": 0.18558300000040617,
+      "summaryCount": 1,
+      "businessSqlMs": 1.8514989999994214,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.9173330000003261,
+          "rows": 31
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 0.5045409999993353,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.18558300000040617,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.1610419999997248,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.1509169999999358,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.1176660000000993,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.2440840000008393
+    },
+    {
+      "rows": 1000,
+      "sample": 2,
+      "action": "transactions.page2",
+      "handlerMs": 1.5660840000000462,
+      "serializationMs": 0.0314170000001468,
+      "responseBytes": 16021,
+      "sqlCount": 5,
+      "sqlMs": 1.3364169999995283,
+      "connectionMs": 0.005791999999928521,
+      "identityMs": 0.13120799999978772,
+      "summaryCount": 0,
+      "businessSqlMs": 1.2052089999997406,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c65160f391ccc668",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 0.8273749999998472,
+          "rows": 31
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.13491700000031415,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.13120799999978772,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.12854199999947014,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.11437500000010914,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.22387500000058935
+    },
+    {
+      "rows": 1000,
+      "sample": 2,
+      "action": "reads.validate",
+      "handlerMs": 0.5928329999997004,
+      "serializationMs": 0.0008339999994859681,
+      "responseBytes": 74,
+      "sqlCount": 4,
+      "sqlMs": 0.5000419999996666,
+      "connectionMs": 0.004291999999622931,
+      "identityMs": 0.15050000000064756,
+      "summaryCount": 0,
+      "businessSqlMs": 0.349541999999019,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.15050000000064756,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.12674999999944703,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.11916699999983393,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.10362499999973807,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.08849900000041089
+    },
+    {
+      "rows": 1000,
+      "action": "account-plan",
+      "plans": [
+        [
+          {
+            "table": "a",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 4,
+            "rowsProduced": 4
+          },
+          {
+            "table": "b",
+            "access": "ref",
+            "key": "<auto_key0>",
+            "keyParts": [
+              "uid",
+              "account_id"
+            ],
+            "rowsPerScan": 9,
+            "rowsProduced": 36
+          },
+          {
+            "table": "entries",
+            "access": "ALL",
+            "rowsPerScan": 90,
+            "rowsProduced": 90
+          },
+          {
+            "table": "catledger_transactions",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 501,
+            "rowsProduced": 45
+          },
+          {
+            "table": "catledger_transactions",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 501,
+            "rowsProduced": 45
+          }
+        ]
+      ]
+    },
+    {
+      "rows": 10000,
+      "sample": 0,
+      "action": "bootstrap",
+      "handlerMs": 1.0724169999994047,
+      "serializationMs": 0.007666000001336215,
+      "responseBytes": 2258,
+      "sqlCount": 6,
+      "sqlMs": 0.8424169999998412,
+      "connectionMs": 0.012125000001105946,
+      "identityMs": 0.1126669999994192,
+      "summaryCount": 0,
+      "businessSqlMs": 0.729750000000422,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.2585000000017317,
+          "rows": 16
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.14020800000071176,
+          "rows": 16
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.11895799999911105,
+          "rows": 1
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.1126669999994192,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.11091699999997218,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.10116699999889534,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.2178749999984575
+    },
+    {
+      "rows": 10000,
+      "sample": 0,
+      "action": "catalog.get",
+      "handlerMs": 0.8103339999997843,
+      "serializationMs": 0.007958000000144239,
+      "responseBytes": 2815,
+      "sqlCount": 6,
+      "sqlMs": 0.6378739999981917,
+      "connectionMs": 0.006957999999940512,
+      "identityMs": 0.10795799999868905,
+      "summaryCount": 0,
+      "businessSqlMs": 0.5299159999995027,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.13979199999994307,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.13979099999960454,
+          "rows": 4
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.10795799999868905,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.09475000000020373,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.08370800000011513,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.0718749999996362,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.16550200000165205
+    },
+    {
+      "rows": 10000,
+      "sample": 0,
+      "action": "dashboard.get",
+      "handlerMs": 25.9710840000007,
+      "serializationMs": 0.05012499999975262,
+      "responseBytes": 4449,
+      "sqlCount": 7,
+      "sqlMs": 25.39128999999957,
+      "connectionMs": 0.005083000000013271,
+      "identityMs": 0.14220799999930023,
+      "summaryCount": 0,
+      "businessSqlMs": 25.24908200000027,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 11.481165999999575,
+          "rows": 6
+        },
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 7.286582999999155,
+          "rows": 4
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 5.784208000000945,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.5514579999999114,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.14220799999930023,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.0757499999999709,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.06991700000071432,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.5747110000011162
+    },
+    {
+      "rows": 10000,
+      "sample": 0,
+      "action": "statistics.get",
+      "handlerMs": 37.05279200000041,
+      "serializationMs": 0.03566599999976461,
+      "responseBytes": 4981,
+      "sqlCount": 9,
+      "sqlMs": 35.66095900000255,
+      "connectionMs": 0.02087499999834108,
+      "identityMs": 0.2382080000006681,
+      "summaryCount": 1,
+      "businessSqlMs": 35.42275100000188,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 12.210832999999184,
+          "rows": 28
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 8.701250000000073,
+          "rows": 2
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 5.922834000000876,
+          "rows": 1
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 4.604875000000902,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 3.3213340000002063,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.24899999999979627,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.2382080000006681,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.21687500000007276,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.19575000000077125,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.3709579999995185
+    },
+    {
+      "rows": 10000,
+      "sample": 0,
+      "action": "transactions.list",
+      "handlerMs": 14.119041999998444,
+      "serializationMs": 0.08170799999970768,
+      "responseBytes": 16193,
+      "sqlCount": 6,
+      "sqlMs": 13.28062399999908,
+      "connectionMs": 0.021917000000030384,
+      "identityMs": 0.23924999999871943,
+      "summaryCount": 1,
+      "businessSqlMs": 13.04137400000036,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 9.1909169999999,
+          "rows": 31
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 3.2462909999994736,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.28179199999976845,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.23924999999871943,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.17620800000076997,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.14616600000044855,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.8165009999993345
+    },
+    {
+      "rows": 10000,
+      "sample": 0,
+      "action": "transactions.page2",
+      "handlerMs": 11.112417000000278,
+      "serializationMs": 0.07362500000090222,
+      "responseBytes": 16022,
+      "sqlCount": 5,
+      "sqlMs": 10.439916999997877,
+      "connectionMs": 0.02804200000173296,
+      "identityMs": 0.22954199999912817,
+      "summaryCount": 0,
+      "businessSqlMs": 10.210374999998749,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c65160f391ccc668",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 7.982249999999112,
+          "rows": 31
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 1.8782499999997526,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.22954199999912817,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.19916600000033213,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.15070899999955145,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.6444580000006681
+    },
+    {
+      "rows": 10000,
+      "sample": 0,
+      "action": "reads.validate",
+      "handlerMs": 1.0921670000006998,
+      "serializationMs": 0.0020000000004074536,
+      "responseBytes": 74,
+      "sqlCount": 4,
+      "sqlMs": 0.673291999997673,
+      "connectionMs": 0.15262500000062573,
+      "identityMs": 0.1796249999988504,
+      "summaryCount": 0,
+      "businessSqlMs": 0.4936669999988226,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.2277909999993426,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.1796249999988504,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.14291699999921548,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.1229590000002645,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.26625000000240107
+    },
+    {
+      "rows": 10000,
+      "sample": 1,
+      "action": "bootstrap",
+      "handlerMs": 1.7634159999997792,
+      "serializationMs": 0.01808300000084273,
+      "responseBytes": 2258,
+      "sqlCount": 6,
+      "sqlMs": 1.3994989999991958,
+      "connectionMs": 0.011624999999185093,
+      "identityMs": 0.40658299999995506,
+      "summaryCount": 0,
+      "businessSqlMs": 0.9929159999992407,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.40658299999995506,
+          "rows": 1
+        },
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.2696249999989959,
+          "rows": 16
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.2345000000004802,
+          "rows": 16
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.20449999999982538,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.15562499999941792,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.1286660000005213,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.35229200000139826
+    },
+    {
+      "rows": 10000,
+      "sample": 1,
+      "action": "catalog.get",
+      "handlerMs": 1.6567089999989548,
+      "serializationMs": 0.01883300000008603,
+      "responseBytes": 2815,
+      "sqlCount": 6,
+      "sqlMs": 1.3453329999993002,
+      "connectionMs": 0.01429199999984121,
+      "identityMs": 0.2940409999991971,
+      "summaryCount": 0,
+      "businessSqlMs": 1.0512920000001031,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.3943749999998545,
+          "rows": 4
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.2940409999991971,
+          "rows": 1
+        },
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.25320800000008603,
+          "rows": 16
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.1446670000004815,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.13850000000093132,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.12054199999874982,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.2970839999998134
+    },
+    {
+      "rows": 10000,
+      "sample": 1,
+      "action": "dashboard.get",
+      "handlerMs": 21.1807919999992,
+      "serializationMs": 0.04516699999840057,
+      "responseBytes": 4449,
+      "sqlCount": 7,
+      "sqlMs": 20.476166999998895,
+      "connectionMs": 0.012375000000247383,
+      "identityMs": 0.15912500000013097,
+      "summaryCount": 0,
+      "businessSqlMs": 20.317041999998764,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 7.329541999999492,
+          "rows": 4
+        },
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 7.223667000000205,
+          "rows": 6
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 5.260749999999462,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.2437499999996362,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.15912500000013097,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.1380829999998241,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.12125000000014552,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.6922500000000582
+    },
+    {
+      "rows": 10000,
+      "sample": 1,
+      "action": "statistics.get",
+      "handlerMs": 34.661708000001454,
+      "serializationMs": 0.06129099999998289,
+      "responseBytes": 4981,
+      "sqlCount": 9,
+      "sqlMs": 33.39374900000075,
+      "connectionMs": 0.01824999999917054,
+      "identityMs": 0.22104199999921548,
+      "summaryCount": 1,
+      "businessSqlMs": 33.17270700000154,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 11.663833000000523,
+          "rows": 28
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 8.502375000000029,
+          "rows": 2
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 5.402625000000626,
+          "rows": 1
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 4.075084000000061,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 2.9293330000000424,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.23758300000008603,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.22104199999921548,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.1928329999991547,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.16904100000101607,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.2497090000015305
+    },
+    {
+      "rows": 10000,
+      "sample": 1,
+      "action": "transactions.list",
+      "handlerMs": 13.626458000000639,
+      "serializationMs": 0.09783299999980954,
+      "responseBytes": 16193,
+      "sqlCount": 6,
+      "sqlMs": 12.850624000000607,
+      "connectionMs": 0.021124999999301508,
+      "identityMs": 0.19545800000014424,
+      "summaryCount": 1,
+      "businessSqlMs": 12.655166000000463,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 9.149750000000495,
+          "rows": 31
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 2.9428329999991547,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.24220799999966403,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.19545800000014424,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.17966700000033597,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.14070800000081363,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.7547090000007302
+    },
+    {
+      "rows": 10000,
+      "sample": 1,
+      "action": "transactions.page2",
+      "handlerMs": 11.747042000000874,
+      "serializationMs": 0.13191699999879347,
+      "responseBytes": 16022,
+      "sqlCount": 5,
+      "sqlMs": 10.724708999998256,
+      "connectionMs": 0.01958300000114832,
+      "identityMs": 0.20754199999828415,
+      "summaryCount": 0,
+      "businessSqlMs": 10.517166999999972,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c65160f391ccc668",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 9.899792000000161,
+          "rows": 31
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.2441660000004049,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.20754199999828415,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.19562500000029104,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.1775839999991149,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.0027500000014697
+    },
+    {
+      "rows": 10000,
+      "sample": 1,
+      "action": "reads.validate",
+      "handlerMs": 1.1594159999986005,
+      "serializationMs": 0.0031249999992724042,
+      "responseBytes": 74,
+      "sqlCount": 4,
+      "sqlMs": 0.8033329999998386,
+      "connectionMs": 0.024833000001308392,
+      "identityMs": 0.24608299999999872,
+      "summaryCount": 0,
+      "businessSqlMs": 0.5572499999998399,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.24608299999999872,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.20412500000020373,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.18866700000035053,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.16445799999928568,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.3312499999974534
+    },
+    {
+      "rows": 10000,
+      "sample": 2,
+      "action": "bootstrap",
+      "handlerMs": 1.8283749999991414,
+      "serializationMs": 0.01825000000098953,
+      "responseBytes": 2258,
+      "sqlCount": 6,
+      "sqlMs": 1.3991240000032121,
+      "connectionMs": 0.01791599999887694,
+      "identityMs": 0.20791599999938626,
+      "summaryCount": 0,
+      "businessSqlMs": 1.1912080000038259,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.3038329999999405,
+          "rows": 16
+        },
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.2914580000015121,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.24675000000024738,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.20791599999938626,
+          "rows": 1
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.20591700000113633,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.14325000000098953,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.41133499999705236
+    },
+    {
+      "rows": 10000,
+      "sample": 2,
+      "action": "catalog.get",
+      "handlerMs": 1.8537089999990712,
+      "serializationMs": 0.020749999999679858,
+      "responseBytes": 2815,
+      "sqlCount": 6,
+      "sqlMs": 1.4701250000016444,
+      "connectionMs": 0.012709000000540982,
+      "identityMs": 0.16049999999995634,
+      "summaryCount": 0,
+      "businessSqlMs": 1.309625000001688,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.6321250000000873,
+          "rows": 16
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.20287500000085856,
+          "rows": 0
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.18766599999980826,
+          "rows": 4
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.16049999999995634,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.15316700000039418,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.1337920000005397,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.3708749999968859
+    },
+    {
+      "rows": 10000,
+      "sample": 2,
+      "action": "dashboard.get",
+      "handlerMs": 22.926792000000205,
+      "serializationMs": 0.04254200000104902,
+      "responseBytes": 4449,
+      "sqlCount": 7,
+      "sqlMs": 21.993375000000015,
+      "connectionMs": 0.01670900000135589,
+      "identityMs": 0.17529199999989942,
+      "summaryCount": 0,
+      "businessSqlMs": 21.818083000000115,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 9.250083000000814,
+          "rows": 6
+        },
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 6.7366669999992155,
+          "rows": 4
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 5.325042000000394,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.22875000000021828,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.17529199999989942,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.15099999999983993,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.12654099999963364,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.9167079999988346
+    },
+    {
+      "rows": 10000,
+      "sample": 2,
+      "action": "statistics.get",
+      "handlerMs": 33.82979200000045,
+      "serializationMs": 0.17799999999988358,
+      "responseBytes": 4981,
+      "sqlCount": 9,
+      "sqlMs": 32.365208999997776,
+      "connectionMs": 0.02750000000014552,
+      "identityMs": 0.22362500000053842,
+      "summaryCount": 1,
+      "businessSqlMs": 32.14158399999724,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 10.500624999998763,
+          "rows": 28
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 8.494208000000071,
+          "rows": 2
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 5.328207999998995,
+          "rows": 1
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 4.183708000000479,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 2.9402920000011363,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.2722089999988384,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.24429199999940465,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.22362500000053842,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.17804199999955017,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.4370830000025308
+    },
+    {
+      "rows": 10000,
+      "sample": 2,
+      "action": "transactions.list",
+      "handlerMs": 12.787916000001132,
+      "serializationMs": 0.07912500000020373,
+      "responseBytes": 16193,
+      "sqlCount": 6,
+      "sqlMs": 11.941790000002584,
+      "connectionMs": 0.02804199999991397,
+      "identityMs": 0.23620800000026065,
+      "summaryCount": 1,
+      "businessSqlMs": 11.705582000002323,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 8.068457999999737,
+          "rows": 31
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 2.9739580000004935,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.26050000000032014,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.23620800000026065,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.22850000000107684,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.17416600000069593,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.8180839999986347
+    },
+    {
+      "rows": 10000,
+      "sample": 2,
+      "action": "transactions.page2",
+      "handlerMs": 9.03387499999917,
+      "serializationMs": 0.08483299999898009,
+      "responseBytes": 16022,
+      "sqlCount": 5,
+      "sqlMs": 8.444166999999652,
+      "connectionMs": 0.015165999999226187,
+      "identityMs": 0.20554099999935715,
+      "summaryCount": 0,
+      "businessSqlMs": 8.238626000000295,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c65160f391ccc668",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 7.643959000000905,
+          "rows": 31
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.25262499999917054,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.20554099999935715,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.1806670000005397,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.16137499999967986,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.5745420000002923
+    },
+    {
+      "rows": 10000,
+      "sample": 2,
+      "action": "reads.validate",
+      "handlerMs": 0.9003749999992579,
+      "serializationMs": 0.0020000000004074536,
+      "responseBytes": 74,
+      "sqlCount": 4,
+      "sqlMs": 0.6616659999999683,
+      "connectionMs": 0.01991700000144192,
+      "identityMs": 0.19591600000057952,
+      "summaryCount": 0,
+      "businessSqlMs": 0.4657499999993888,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.19591600000057952,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.17479099999945902,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.1503339999999298,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.140625,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.2187919999978476
+    },
+    {
+      "rows": 10000,
+      "action": "account-plan",
+      "plans": [
+        [
+          {
+            "table": "a",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 4,
+            "rowsProduced": 4
+          },
+          {
+            "table": "b",
+            "access": "ref",
+            "key": "<auto_key0>",
+            "keyParts": [
+              "uid",
+              "account_id"
+            ],
+            "rowsPerScan": 10,
+            "rowsProduced": 40
+          },
+          {
+            "table": "entries",
+            "access": "ALL",
+            "rowsPerScan": 900,
+            "rowsProduced": 900
+          },
+          {
+            "table": "catledger_transactions",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 5001,
+            "rowsProduced": 450
+          },
+          {
+            "table": "catledger_transactions",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 5001,
+            "rowsProduced": 450
+          }
+        ]
+      ]
+    },
+    {
+      "rows": 50000,
+      "sample": 0,
+      "action": "bootstrap",
+      "handlerMs": 1.163249999999607,
+      "serializationMs": 0.007583000000522588,
+      "responseBytes": 2258,
+      "sqlCount": 6,
+      "sqlMs": 0.9627490000002581,
+      "connectionMs": 0.012000000000625732,
+      "identityMs": 0.14291700000103447,
+      "summaryCount": 0,
+      "businessSqlMs": 0.8198319999992236,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.20229099999960454,
+          "rows": 16
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.17854199999965203,
+          "rows": 1
+        },
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.1711249999989377,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.15166599999975006,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.14291700000103447,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.11620800000127929,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.18850099999872327
+    },
+    {
+      "rows": 50000,
+      "sample": 0,
+      "action": "catalog.get",
+      "handlerMs": 0.7775410000012926,
+      "serializationMs": 0.007750000000669388,
+      "responseBytes": 2815,
+      "sqlCount": 6,
+      "sqlMs": 0.6385819999959494,
+      "connectionMs": 0.006000000001222361,
+      "identityMs": 0.11591699999917182,
+      "summaryCount": 0,
+      "businessSqlMs": 0.5226649999967776,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.13933299999916926,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.12658299999930023,
+          "rows": 4
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.11591699999917182,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.10154099999999744,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.07820799999899464,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.07699999999931606,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.13295900000412075
+    },
+    {
+      "rows": 50000,
+      "sample": 0,
+      "action": "dashboard.get",
+      "handlerMs": 125.44287500000064,
+      "serializationMs": 0.08816699999988487,
+      "responseBytes": 4454,
+      "sqlCount": 7,
+      "sqlMs": 124.11079199999767,
+      "connectionMs": 0.004124999999476131,
+      "identityMs": 0.11787499999991269,
+      "summaryCount": 0,
+      "businessSqlMs": 123.99291699999776,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 62.30687500000022,
+          "rows": 6
+        },
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 33.98741700000028,
+          "rows": 4
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 26.858666999998604,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.6358749999999418,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.11787499999991269,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.10574999999880674,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.09833299999991141,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.3279580000034912
+    },
+    {
+      "rows": 50000,
+      "sample": 0,
+      "action": "statistics.get",
+      "handlerMs": 163.80104100000062,
+      "serializationMs": 0.04916699999921548,
+      "responseBytes": 4995,
+      "sqlCount": 9,
+      "sqlMs": 162.00670900000114,
+      "connectionMs": 0.04233400000157417,
+      "identityMs": 0.31529200000113633,
+      "summaryCount": 1,
+      "businessSqlMs": 161.691417,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 63.61741600000096,
+          "rows": 28
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 39.62158400000044,
+          "rows": 2
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 25.024790999999823,
+          "rows": 1
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 18.71900000000096,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 13.64191700000083,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.43249999999898137,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.35199999999895226,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.31529200000113633,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.2822089999990567,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.7519979999979114
+    },
+    {
+      "rows": 50000,
+      "sample": 0,
+      "action": "transactions.list",
+      "handlerMs": 54.984042000000045,
+      "serializationMs": 0.10795800000050804,
+      "responseBytes": 16195,
+      "sqlCount": 6,
+      "sqlMs": 53.55654300000242,
+      "connectionMs": 0.029708000000027823,
+      "identityMs": 0.3186249999998836,
+      "summaryCount": 1,
+      "businessSqlMs": 53.23791800000254,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 38.810959000000366,
+          "rows": 31
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 13.395375000000058,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.4617500000003929,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.33908400000109395,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.3186249999998836,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.23075000000062573,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.3977909999975964
+    },
+    {
+      "rows": 50000,
+      "sample": 0,
+      "action": "transactions.page2",
+      "handlerMs": 38.74695799999972,
+      "serializationMs": 0.1382499999999709,
+      "responseBytes": 16022,
+      "sqlCount": 5,
+      "sqlMs": 37.80220900000131,
+      "connectionMs": 0.024957999999969616,
+      "identityMs": 0.2626670000008744,
+      "summaryCount": 0,
+      "businessSqlMs": 37.53954200000044,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c65160f391ccc668",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 36.80041600000004,
+          "rows": 31
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.33954199999971024,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.2626670000008744,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.21574999999938882,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.18383400000129768,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.9197909999984404
+    },
+    {
+      "rows": 50000,
+      "sample": 0,
+      "action": "reads.validate",
+      "handlerMs": 1.8407920000008744,
+      "serializationMs": 0.002958000000944594,
+      "responseBytes": 74,
+      "sqlCount": 4,
+      "sqlMs": 1.2266669999989972,
+      "connectionMs": 0.033250000000407454,
+      "identityMs": 0.36674999999922875,
+      "summaryCount": 0,
+      "businessSqlMs": 0.8599169999997684,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.36674999999922875,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.3198339999999007,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.29874999999992724,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.2413329999999405,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.5808750000014697
+    },
+    {
+      "rows": 50000,
+      "sample": 1,
+      "action": "bootstrap",
+      "handlerMs": 2.059583999998722,
+      "serializationMs": 0.018167000000175904,
+      "responseBytes": 2258,
+      "sqlCount": 6,
+      "sqlMs": 1.5790019999985816,
+      "connectionMs": 0.01637500000106229,
+      "identityMs": 0.3024999999997817,
+      "summaryCount": 0,
+      "businessSqlMs": 1.2765019999987999,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.38537499999983993,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.3024999999997817,
+          "rows": 1
+        },
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.2778340000004391,
+          "rows": 16
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.23004199999923003,
+          "rows": 1
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.2267919999994774,
+          "rows": 16
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.1564589999998134,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.4642069999990781
+    },
+    {
+      "rows": 50000,
+      "sample": 1,
+      "action": "catalog.get",
+      "handlerMs": 1.8018749999991996,
+      "serializationMs": 0.02412499999991269,
+      "responseBytes": 2815,
+      "sqlCount": 6,
+      "sqlMs": 1.5030009999991307,
+      "connectionMs": 0.015124999999898137,
+      "identityMs": 0.17779199999858974,
+      "summaryCount": 0,
+      "businessSqlMs": 1.325209000000541,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.6144590000003518,
+          "rows": 0
+        },
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.2235000000000582,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.21029100000123435,
+          "rows": 4
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.17779199999858974,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.1492500000003929,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.1277089999985037,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.2837490000001708
+    },
+    {
+      "rows": 50000,
+      "sample": 1,
+      "action": "dashboard.get",
+      "handlerMs": 108.90666700000111,
+      "serializationMs": 0.03804199999831326,
+      "responseBytes": 4454,
+      "sqlCount": 7,
+      "sqlMs": 107.88000099999954,
+      "connectionMs": 0.0167089999995369,
+      "identityMs": 0.2082090000003518,
+      "summaryCount": 0,
+      "businessSqlMs": 107.67179199999919,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 48.49329100000068,
+          "rows": 6
+        },
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 30.524332999999388,
+          "rows": 4
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 27.934166999999434,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.3080420000005688,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.2323340000002645,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.2082090000003518,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.1796249999988504,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.0099570000020321
+    },
+    {
+      "rows": 50000,
+      "sample": 1,
+      "action": "statistics.get",
+      "handlerMs": 165.68941600000107,
+      "serializationMs": 0.042666000001190696,
+      "responseBytes": 4995,
+      "sqlCount": 9,
+      "sqlMs": 163.6538330000003,
+      "connectionMs": 0.02183300000069721,
+      "identityMs": 0.2523750000000291,
+      "summaryCount": 1,
+      "businessSqlMs": 163.40145800000028,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 62.716583999999784,
+          "rows": 28
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 39.52591600000051,
+          "rows": 2
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 25.596457999999984,
+          "rows": 1
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 20.314125000000786,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 14.13945799999965,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.7570830000004207,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.2523750000000291,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.18787499999962165,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.16395899999952235,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 2.0137500000000728
+    },
+    {
+      "rows": 50000,
+      "sample": 1,
+      "action": "transactions.list",
+      "handlerMs": 64.02341700000034,
+      "serializationMs": 0.6202499999999418,
+      "responseBytes": 16195,
+      "sqlCount": 6,
+      "sqlMs": 62.781457999999475,
+      "connectionMs": 0.02566599999954633,
+      "identityMs": 0.2750419999993028,
+      "summaryCount": 1,
+      "businessSqlMs": 62.50641600000017,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 48.36320800000067,
+          "rows": 31
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 13.11199999999917,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.5426250000000437,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.2750419999993028,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.2584999999999127,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.23008300000037707,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.2162930000013148
+    },
+    {
+      "rows": 50000,
+      "sample": 1,
+      "action": "transactions.page2",
+      "handlerMs": 47.36958400000003,
+      "serializationMs": 0.6888330000001588,
+      "responseBytes": 16022,
+      "sqlCount": 5,
+      "sqlMs": 46.033832999999504,
+      "connectionMs": 0.03525000000081491,
+      "identityMs": 0.3010840000006283,
+      "summaryCount": 0,
+      "businessSqlMs": 45.732748999998876,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c65160f391ccc668",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 42.923541000000114,
+          "rows": 31
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 2.2877079999998386,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.3147499999995489,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.3010840000006283,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.20674999999937427,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.3005009999997128
+    },
+    {
+      "rows": 50000,
+      "sample": 1,
+      "action": "reads.validate",
+      "handlerMs": 1.8166249999994761,
+      "serializationMs": 0.004166999999142718,
+      "responseBytes": 74,
+      "sqlCount": 4,
+      "sqlMs": 1.2742080000025453,
+      "connectionMs": 0.04674999999951979,
+      "identityMs": 0.39412500000071304,
+      "summaryCount": 0,
+      "businessSqlMs": 0.8800830000018323,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.39412500000071304,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.3427910000009433,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.2962500000012369,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.24104199999965203,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.49566699999741104
+    },
+    {
+      "rows": 50000,
+      "sample": 2,
+      "action": "bootstrap",
+      "handlerMs": 2.392250000000786,
+      "serializationMs": 0.023041999998895335,
+      "responseBytes": 2258,
+      "sqlCount": 6,
+      "sqlMs": 1.8615000000027067,
+      "connectionMs": 0.022458999999798834,
+      "identityMs": 0.3964169999999285,
+      "summaryCount": 0,
+      "businessSqlMs": 1.4650830000027781,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/user-repository.js:61",
+          "count": 1,
+          "ms": 0.4199160000007396,
+          "rows": 16
+        },
+        {
+          "fingerprint": "3b9286986ae04556",
+          "callsite": "catledger-api/src/user-repository.js:23",
+          "count": 1,
+          "ms": 0.3964169999999285,
+          "rows": 1
+        },
+        {
+          "fingerprint": "93f07bd3674eb9bf",
+          "callsite": "catledger-api/src/user-repository.js:106",
+          "count": 1,
+          "ms": 0.30154200000106357,
+          "rows": 16
+        },
+        {
+          "fingerprint": "4167d8488cb4b1e6",
+          "callsite": "catledger-api/src/user-repository.js:104",
+          "count": 1,
+          "ms": 0.25829200000043784,
+          "rows": 1
+        },
+        {
+          "fingerprint": "f369d5f96f829703",
+          "callsite": "catledger-api/src/user-repository.js:86",
+          "count": 1,
+          "ms": 0.2571669999997539,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/user-repository.js:113",
+          "count": 1,
+          "ms": 0.22816600000078324,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.5082909999982803
+    },
+    {
+      "rows": 50000,
+      "sample": 2,
+      "action": "catalog.get",
+      "handlerMs": 1.6702080000013666,
+      "serializationMs": 0.020042000000103144,
+      "responseBytes": 2815,
+      "sqlCount": 6,
+      "sqlMs": 1.2902090000006865,
+      "connectionMs": 0.018708000001424807,
+      "identityMs": 0.23345900000094844,
+      "summaryCount": 0,
+      "businessSqlMs": 1.056749999999738,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c366600a764877b7",
+          "callsite": "catledger-api/src/catalog-service.js:11",
+          "count": 1,
+          "ms": 0.25287500000013097,
+          "rows": 16
+        },
+        {
+          "fingerprint": "f9f3130ee0e0cf77",
+          "callsite": "catledger-api/src/catalog-service.js:6",
+          "count": 1,
+          "ms": 0.24437500000021828,
+          "rows": 4
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.23345900000094844,
+          "rows": 1
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.20083299999896553,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.1917090000006283,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.166957999999795,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.3612909999992553
+    },
+    {
+      "rows": 50000,
+      "sample": 2,
+      "action": "dashboard.get",
+      "handlerMs": 97.61083399999916,
+      "serializationMs": 0.08366700000078708,
+      "responseBytes": 4454,
+      "sqlCount": 7,
+      "sqlMs": 96.53304300000491,
+      "connectionMs": 0.013417000000117696,
+      "identityMs": 0.2064170000012382,
+      "summaryCount": 0,
+      "businessSqlMs": 96.32662600000367,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 39.155917000000045,
+          "rows": 6
+        },
+        {
+          "fingerprint": "6d3348ec2a6a2d29",
+          "callsite": "catledger-api/src/account-service.js:62",
+          "count": 1,
+          "ms": 30.70575000000099,
+          "rows": 4
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 25.710375000000568,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.4063750000004802,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.2064170000012382,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.18475000000034925,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.16345900000123947,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.0643739999941317
+    },
+    {
+      "rows": 50000,
+      "sample": 2,
+      "action": "statistics.get",
+      "handlerMs": 163.91816599999947,
+      "serializationMs": 0.08304200000020501,
+      "responseBytes": 4995,
+      "sqlCount": 9,
+      "sqlMs": 161.48254199999792,
+      "connectionMs": 0.03712500000074215,
+      "identityMs": 0.38562499999898137,
+      "summaryCount": 1,
+      "businessSqlMs": 161.09691699999894,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "bca4a68aa44c5840",
+          "callsite": "catledger-api/src/reporting-service.js:58",
+          "count": 1,
+          "ms": 61.790374999998676,
+          "rows": 28
+        },
+        {
+          "fingerprint": "adb3c029dd0638c0",
+          "callsite": "catledger-api/src/reporting-service.js:14",
+          "count": 1,
+          "ms": 39.94487499999923,
+          "rows": 2
+        },
+        {
+          "fingerprint": "0c23e2ea18c88da2",
+          "callsite": "catledger-api/src/reporting-service.js:157",
+          "count": 1,
+          "ms": 25.52679100000023,
+          "rows": 1
+        },
+        {
+          "fingerprint": "31002988a0ff86cc",
+          "callsite": "catledger-api/src/reporting-service.js:101",
+          "count": 1,
+          "ms": 18.71062499999971,
+          "rows": 1
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 13.36487500000112,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 1.0895839999993768,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.38562499999898137,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.34841700000106357,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.32137499999953434,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 2.398499000000811
+    },
+    {
+      "rows": 50000,
+      "sample": 2,
+      "action": "transactions.list",
+      "handlerMs": 55.10895799999889,
+      "serializationMs": 0.24158300000090094,
+      "responseBytes": 16195,
+      "sqlCount": 6,
+      "sqlMs": 53.6420020000005,
+      "connectionMs": 0.03870900000038091,
+      "identityMs": 0.331583999999566,
+      "summaryCount": 1,
+      "businessSqlMs": 53.310418000000936,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "14132db84b741590",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 38.90558400000009,
+          "rows": 31
+        },
+        {
+          "fingerprint": "ec038e754eb982b3",
+          "callsite": "catledger-api/src/transaction-query-service.js:48",
+          "count": 1,
+          "ms": 13.228417000000263,
+          "rows": 1
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.44499999999970896,
+          "rows": 0
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.37941700000010314,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.35200000000077125,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.331583999999566,
+          "rows": 1
+        }
+      ],
+      "mappingAndOtherMs": 1.4282469999980094
+    },
+    {
+      "rows": 50000,
+      "sample": 2,
+      "action": "transactions.page2",
+      "handlerMs": 39.443999999999505,
+      "serializationMs": 0.18829200000072888,
+      "responseBytes": 16022,
+      "sqlCount": 5,
+      "sqlMs": 38.17745900000227,
+      "connectionMs": 0.047416000001248904,
+      "identityMs": 0.3012090000011085,
+      "summaryCount": 0,
+      "businessSqlMs": 37.876250000001164,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "c65160f391ccc668",
+          "callsite": "catledger-api/src/transaction-query-service.js:113",
+          "count": 1,
+          "ms": 36.905665999998746,
+          "rows": 31
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.4213340000005701,
+          "rows": 0
+        },
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.3012090000011085,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.2937500000007276,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.2555000000011205,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 1.2191249999959837
+    },
+    {
+      "rows": 50000,
+      "sample": 2,
+      "action": "reads.validate",
+      "handlerMs": 1.8426670000008016,
+      "serializationMs": 0.002749999999650754,
+      "responseBytes": 74,
+      "sqlCount": 4,
+      "sqlMs": 1.2275829999998678,
+      "connectionMs": 0.0941659999989497,
+      "identityMs": 0.4085830000003625,
+      "summaryCount": 0,
+      "businessSqlMs": 0.8189999999995052,
+      "userLockHoldMs": 0,
+      "userLockWaitMs": 0,
+      "sqlFingerprints": [
+        {
+          "fingerprint": "3fb68dea04e5b165",
+          "callsite": "catledger-api/src/ledger-read.js:33",
+          "count": 1,
+          "ms": 0.4085830000003625,
+          "rows": 1
+        },
+        {
+          "fingerprint": "e67fda05dacea7a0",
+          "callsite": "catledger-api/src/ledger-read.js:26",
+          "count": 1,
+          "ms": 0.31062500000007276,
+          "rows": 0
+        },
+        {
+          "fingerprint": "18fdb1cb19249d81",
+          "callsite": "catledger-api/src/ledger-read.js:27",
+          "count": 1,
+          "ms": 0.29175000000032014,
+          "rows": 0
+        },
+        {
+          "fingerprint": "9505cacb7c710ed1",
+          "callsite": "catledger-api/src/ledger-read.js:44",
+          "count": 1,
+          "ms": 0.21662499999911233,
+          "rows": 0
+        }
+      ],
+      "mappingAndOtherMs": 0.5209180000019842
+    },
+    {
+      "rows": 50000,
+      "action": "account-plan",
+      "plans": [
+        [
+          {
+            "table": "a",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 4,
+            "rowsProduced": 4
+          },
+          {
+            "table": "b",
+            "access": "ref",
+            "key": "<auto_key0>",
+            "keyParts": [
+              "uid",
+              "account_id"
+            ],
+            "rowsPerScan": 45,
+            "rowsProduced": 180
+          },
+          {
+            "table": "entries",
+            "access": "ALL",
+            "rowsPerScan": 4500,
+            "rowsProduced": 4500
+          },
+          {
+            "table": "catledger_transactions",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 25001,
+            "rowsProduced": 2250
+          },
+          {
+            "table": "catledger_transactions",
+            "access": "ref",
+            "key": "PRIMARY",
+            "keyParts": [
+              "uid"
+            ],
+            "rowsPerScan": 25001,
+            "rowsProduced": 2250
+          }
+        ]
+      ]
+    }
+  ],
+  "client": [
+    {
+      "scenario": "cold-home",
+      "elapsedMs": 88.77600000000166,
+      "requests": 2,
+      "snapshotMs": [],
+      "latestDataMs": [
+        44,
+        43
+      ],
+      "setDataBytes": 671,
+      "maxSetDataBytes": 575,
+      "metrics": [
+        {
+          "event": "cache",
+          "action": "bootstrap",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "bootstrap",
+          "source": "network",
+          "ms": 42,
+          "bytes": 177,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "bootstrap",
+          "source": "network",
+          "ms": 44
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 79
+        },
+        {
+          "event": "cache",
+          "action": "dashboard.get",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "dashboard.get",
+          "source": "network",
+          "ms": 43,
+          "bytes": 469,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "dashboard.get",
+          "source": "network",
+          "ms": 43
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 575
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 17
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "same-session-home",
+      "elapsedMs": 0.478041000002122,
+      "requests": 0,
+      "snapshotMs": [],
+      "latestDataMs": [
+        0
+      ],
+      "setDataBytes": 672,
+      "maxSetDataBytes": 575,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 80
+        },
+        {
+          "event": "cache",
+          "action": "dashboard.get",
+          "source": "memory",
+          "hit": true
+        },
+        {
+          "event": "fresh",
+          "action": "dashboard.get",
+          "source": "memory",
+          "ms": 0
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 575
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 17
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "background-home",
+      "elapsedMs": 43.804583000001,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        0
+      ],
+      "setDataBytes": 672,
+      "maxSetDataBytes": 575,
+      "metrics": [
+        {
+          "event": "request",
+          "action": "reads.validate",
+          "source": "network",
+          "ms": 42,
+          "bytes": 103,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 80
+        },
+        {
+          "event": "cache",
+          "action": "dashboard.get",
+          "source": "memory",
+          "hit": true
+        },
+        {
+          "event": "fresh",
+          "action": "dashboard.get",
+          "source": "memory",
+          "ms": 0
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 575
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 17
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "loan-return",
+      "elapsedMs": 0.42770799999925657,
+      "requests": 0,
+      "snapshotMs": [],
+      "latestDataMs": [
+        0,
+        0
+      ],
+      "setDataBytes": 1210,
+      "maxSetDataBytes": 369,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/loan-detail/index",
+          "ms": 0,
+          "bytes": 34
+        },
+        {
+          "event": "cache",
+          "action": "catalog.get",
+          "source": "memory",
+          "hit": true
+        },
+        {
+          "event": "cache",
+          "action": "loans.get",
+          "source": "memory",
+          "hit": true
+        },
+        {
+          "event": "fresh",
+          "action": "catalog.get",
+          "source": "memory",
+          "ms": 0
+        },
+        {
+          "event": "fresh",
+          "action": "loans.get",
+          "source": "memory",
+          "ms": 0
+        },
+        {
+          "event": "setData",
+          "page": "pages/loan-detail/index",
+          "ms": 0,
+          "bytes": 367
+        },
+        {
+          "event": "setData",
+          "page": "pages/loan-detail/index",
+          "ms": 0,
+          "bytes": 54
+        },
+        {
+          "event": "setData",
+          "page": "pages/loan-detail/index",
+          "ms": 0,
+          "bytes": 349
+        },
+        {
+          "event": "setData",
+          "page": "pages/loan-detail/index",
+          "ms": 0,
+          "bytes": 369
+        },
+        {
+          "event": "setData",
+          "page": "pages/loan-detail/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "setData",
+          "page": "pages/loan-detail/index",
+          "ms": 0,
+          "bytes": 17
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "write-return",
+      "elapsedMs": 84.06512500000099,
+      "requests": 2,
+      "snapshotMs": [
+        0
+      ],
+      "latestDataMs": [
+        43
+      ],
+      "setDataBytes": 1285,
+      "maxSetDataBytes": 614,
+      "metrics": [
+        {
+          "event": "request",
+          "action": "transactions.create",
+          "source": "network",
+          "ms": 40,
+          "bytes": 44,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 79
+        },
+        {
+          "event": "cache",
+          "action": "dashboard.get",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 614
+        },
+        {
+          "event": "snapshot",
+          "action": "dashboard.get",
+          "source": "memory",
+          "ms": 0
+        },
+        {
+          "event": "request",
+          "action": "dashboard.get",
+          "source": "network",
+          "ms": 42,
+          "bytes": 469,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "dashboard.get",
+          "source": "network",
+          "ms": 43
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 575
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 17
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "transactions-page-2",
+      "elapsedMs": 45.154207999999926,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        43
+      ],
+      "setDataBytes": 12291,
+      "maxSetDataBytes": 12234,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "cache",
+          "action": "transactions.list",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42,
+          "bytes": 6272,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 43
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 1,
+          "bytes": 12234
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 37
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "transactions-page-3",
+      "elapsedMs": 44.73079100000177,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        43
+      ],
+      "setDataBytes": 12291,
+      "maxSetDataBytes": 12234,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "cache",
+          "action": "transactions.list",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42,
+          "bytes": 6272,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 43
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 1,
+          "bytes": 12234
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 37
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "transactions-page-4",
+      "elapsedMs": 43.46524999999747,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        43
+      ],
+      "setDataBytes": 12332,
+      "maxSetDataBytes": 12275,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "cache",
+          "action": "transactions.list",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42,
+          "bytes": 6293,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 43
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 12275
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 37
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "transactions-page-5",
+      "elapsedMs": 43.386500000000524,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        42
+      ],
+      "setDataBytes": 12352,
+      "maxSetDataBytes": 12295,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "cache",
+          "action": "transactions.list",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 41,
+          "bytes": 6303,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 1,
+          "bytes": 12295
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 37
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "transactions-page-6",
+      "elapsedMs": 44.37154200000077,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        43
+      ],
+      "setDataBytes": 12352,
+      "maxSetDataBytes": 12295,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "cache",
+          "action": "transactions.list",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42,
+          "bytes": 6303,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 43
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 12295
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 37
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "transactions-page-7",
+      "elapsedMs": 42.9163750000007,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        42
+      ],
+      "setDataBytes": 12352,
+      "maxSetDataBytes": 12295,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "cache",
+          "action": "transactions.list",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42,
+          "bytes": 6303,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 1,
+          "bytes": 12295
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 37
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "transactions-page-8",
+      "elapsedMs": 43.33233300000211,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        42
+      ],
+      "setDataBytes": 12352,
+      "maxSetDataBytes": 12295,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "cache",
+          "action": "transactions.list",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42,
+          "bytes": 6303,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 12295
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 37
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "transactions-page-9",
+      "elapsedMs": 44.07537499999671,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        43
+      ],
+      "setDataBytes": 12352,
+      "maxSetDataBytes": 12295,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "cache",
+          "action": "transactions.list",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 42,
+          "bytes": 6303,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 43
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 12295
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 37
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "transactions-page-10",
+      "elapsedMs": 44.89204199999949,
+      "requests": 1,
+      "snapshotMs": [],
+      "latestDataMs": [
+        44
+      ],
+      "setDataBytes": 12352,
+      "maxSetDataBytes": 12295,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 20
+        },
+        {
+          "event": "cache",
+          "action": "transactions.list",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "request",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 43,
+          "bytes": 6303,
+          "attempt": 1,
+          "ok": true
+        },
+        {
+          "event": "fresh",
+          "action": "transactions.list",
+          "source": "network",
+          "ms": 44
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 12295
+        },
+        {
+          "event": "setData",
+          "page": "pages/transactions/index",
+          "ms": 0,
+          "bytes": 37
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    },
+    {
+      "scenario": "weak-network-home",
+      "elapsedMs": 387.5677080000023,
+      "requests": 2,
+      "snapshotMs": [
+        1
+      ],
+      "latestDataMs": [],
+      "setDataBytes": 771,
+      "maxSetDataBytes": 614,
+      "metrics": [
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 79
+        },
+        {
+          "event": "cache",
+          "action": "dashboard.get",
+          "source": "network",
+          "hit": false
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 1,
+          "bytes": 614
+        },
+        {
+          "event": "snapshot",
+          "action": "dashboard.get",
+          "source": "memory",
+          "ms": 1
+        },
+        {
+          "event": "request",
+          "action": "dashboard.get",
+          "source": "network",
+          "ms": 41,
+          "bytes": 103,
+          "attempt": 1,
+          "ok": false
+        },
+        {
+          "event": "request",
+          "action": "dashboard.get",
+          "source": "network",
+          "ms": 41,
+          "bytes": 103,
+          "attempt": 2,
+          "ok": false
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 61
+        },
+        {
+          "event": "setData",
+          "page": "pages/index/index",
+          "ms": 0,
+          "bytes": 17
+        }
+      ],
+      "interactiveMs": null,
+      "visibleFrameMs": null
+    }
+  ]
+}

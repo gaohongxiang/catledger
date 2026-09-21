@@ -69,6 +69,7 @@
       </picker>
     </view>
 
+    <button wx:if="{{mode === 'create' && typeOptions[typeIndex].value === 'transfer' && accounts[destinationIndex].type === 'other_liability'}}" class="secondary-button" bindtap="openRepaymentEntry">这是借款还款，确认本息费</button>
     <view wx:if="{{mode !== 'link-refund'}}" class="note-row content-inset">
       <text class="form-label">备注</text>
       <textarea class="note-input" value="{{note}}" maxlength="200" placeholder="可选，写下这笔钱的来处" auto-height="true" bindinput="bindNote" aria-label="交易备注" cursor-spacing="32" disabled="{{saving}}" />
@@ -95,7 +96,7 @@
   <view wx:if="{{loanContext && loanContext.state !== 'none'}}" class="loan-context">
     <text class="loan-context-title">{{loanContext.businessText}}</text>
     <block wx:if="{{loanContext.state === 'candidate'}}">
-      <text class="loan-context-note">分期、本金、利息、费用及期次尚待确认。这里只识别到还款方向，不会自动把整笔金额当本金。</text>
+      <text class="loan-context-note">已确认本息费并入账，入账时选择了暂不关联；补充贷款关系不会再记一次钱。</text>
       <button class="secondary-button" bindtap="openLoanLink" disabled="{{saving || loanContextLoading}}">关联贷款／分期，或新建分期资料</button>
     </block>
     <block wx:if="{{loanContext.linked}}">

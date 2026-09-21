@@ -220,7 +220,7 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
             r.economic_effect AS economicEffect, r.payment_method_key AS paymentMethodKey,
             r.payment_method_raw AS paymentMethod,
             r.category_evidence_json AS categoryEvidence,
-            r.counterparty_raw AS counterparty, r.item_raw AS item, r.note_raw AS sourceNote,
+            r.counterparty_raw AS counterparty, r.item_raw AS item, r.note_raw AS sourceNote, r.normalized_direction AS sourceDirection,
             m.mapping_action AS mappingAction, m.account_id AS mappedAccountId
        FROM catledger_finance_update_sources s
        JOIN catledger_import_rows r
@@ -513,6 +513,8 @@ function publicEvent(row) {
     currency: row.currency,
     categoryId: row.categoryId || null,
     reasonCodes,
+    loanRepayment: fieldSources.loanRepayment || null,
+    sourceDirection: row.sourceDirection || null,
     fundsProjection: fieldSources.fundsProjection || null,
     ...(repaymentOwnership.bankRepayment({ fieldSources }) ? {
       repaymentOwnership: fieldSources.repaymentOwnership || null,
@@ -556,7 +558,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
             COALESCE(evidence_counts.duplicateEvidenceCount, 0) AS duplicateEvidenceCount,
             primary_evidence.row_id AS primaryRowId,
             r.source_row_number AS rowNumber, r.counterparty_raw AS counterparty,
-            r.item_raw AS item, r.note_raw AS sourceNote,
+            r.item_raw AS item, r.note_raw AS sourceNote, r.normalized_direction AS sourceDirection,
             r.payment_method_raw AS paymentMethod,
             s.source_type_snapshot AS sourceType, s.file_name_snapshot AS fileName
        FROM catledger_economic_events e

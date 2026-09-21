@@ -56,7 +56,8 @@ App({
   onShow: function () {
     require('./services/export-files').cleanup(false)
     if (this._readCacheWasHidden) {
-      readCache.invalidate(['accounts', 'transactions', 'categories', 'profile'])
+      // 所有页面共用一次轻量版本校验；失败保留旧画面和脏标记。
+      require('./services/catledger-api').revalidateForeground().catch(() => {})
       this._readCacheWasHidden = false
     }
   },
@@ -108,6 +109,7 @@ App({
 
   completeWechatLogin: function (categories, uid) {
     this.globalData.uid = typeof uid === 'string' ? uid : ''
+    readCache.bindScope(cloudbaseConfig.envId, this.globalData.uid)
     this.globalData.loginApproved = true
     this.globalData.loginStartupPending = false
     this.globalData.categories = Array.isArray(categories) ? categories : []

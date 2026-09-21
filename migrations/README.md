@@ -68,3 +68,7 @@ MINI-1904F 当前执行契约修订：受0.5核实例的内存限制，云端旧
 `0018_loan_schedule_params.sql`（MINI-1908D）在 `catledger_loans` 增加 9 个结构化分期参数列（schedule_method/schedule_terms/measurement_kind/quote_type/rate_ppm/repayment_minor/fee_per_term_minor/fee_upfront_minor/first_payment_date）和 `ck_catledger_loans_schedule` CHECK（参数组同空同有、测算依据配对、installment 仅限 flat、一次性费用小于本金基准）。利率存 ppm 整数、金额存整数分，不推导或改写既有贷款、期次与账务。每列和约束均以 information_schema 守卫，可重入；沿用 0017 的 PREPARE 单连接执行约定。应用账号对 `catledger_loans` 为表级 DML，新列不扩权。已于2026-09-19在开发云执行并登记 checksum，见实施规划 MINI-1908D 记录。
 
 `0019_user_nickname.sql` 为 `catledger_users` 增加可空 `nickname`，已有用户初始仍为空，由用户下次登录时确认一次；此后登录直接读取账号昵称，“我的”可修改。昵称不参与身份、唯一约束或账本归属。迁移以 information_schema 守卫，可在同一连接重跑；应用账号对用户表已有表级 `SELECT, UPDATE`，无需扩大权限。发布顺序为迁移、`catledger-api`、小程序客户端；前两项已于2026-09-20在开发云完成，小程序开发版按用户要求暂不上传，证据见实施规划。
+
+`0020_explicit_repayment.sql`：增加实际还款确认明细；不回填或修改历史转账。复用现有付款及交易关系；待办由 active 且无贷款分配确定。API/import 最小权限与导出清单同步。云执行和部署状态以 MINI-1908E 任务证据为准。
+
+`0021_installment_setup.sql`：贷款表增加可空 JSON installment_setup_json（原始本金、历史已还、分类、优惠）；先加 schedule_v2 CHECK 再删旧 schedule CHECK，保留旧参数约束，新增 JSON 结构/历史范围约束，一次性费用与原本金比较（旧 NULL setup 仍与本金基准比较）。information_schema 守卫保证可重入；已有资料、计划、实际交易不回填。部署顺序迁移→API→客户端；云管理 SQL 不保持连接时用核验后的等价单条 ALTER，全部校验后登记原文件 SHA-256。已有贷款表级权限覆盖新列，不扩权。验证见 installment-entry.test.js、runtime-roles-db.test.js；状态见 MINI-1908F。

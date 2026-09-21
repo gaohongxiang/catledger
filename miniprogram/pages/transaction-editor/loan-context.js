@@ -10,15 +10,15 @@ function createLoanContext({ api, session, navigate }) {
       this._loanLoad = api.callApi('loans.transaction', { transactionId }, { force: true }).then(result => {
         if (!current() || this.data.transactionId !== transactionId) return
         const context = contextView(result)
-        const patch = { loanContext: context, loanManaged: context.linked }
+        const patch = { loanContext: context, loanManaged: context.linked || context.state === 'candidate' }
         // 已有编辑草稿不能让迟到的分类目录重新开放整组贷款成员。
-        if (context.linked && this.data.detail) patch.detail = Object.assign({}, this.data.detail, { canEditCategory: false })
+        if ((context.linked || context.state === 'candidate') && this.data.detail) patch.detail = Object.assign({}, this.data.detail, { canEditCategory: false })
         if (this.data.readonlyDetail && !this.data.categoryDirty) {
           this._detailTransaction = result.transaction
           patch.version = result.transaction.version
           patch.selectedCategoryId = result.transaction.category && result.transaction.category.categoryId || null
           patch.detail = buildReadonlyDetail(result.transaction, this._catalogCategories || [],
-            !context.linked && this.data.mode === 'import' && ['income','expense'].includes(result.transaction.type))
+            !context.linked && context.state !== 'candidate' && this.data.mode === 'import' && ['income','expense'].includes(result.transaction.type))
         }
         this.setData(patch)
       }).catch(error => {

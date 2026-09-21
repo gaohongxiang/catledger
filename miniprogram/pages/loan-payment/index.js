@@ -40,15 +40,15 @@ Page(Object.assign({}, require('./source'), {
       }
       if (!current()) return
       if (this._paymentId) {
-        const value = await api.callApi('loans.payment', { paymentId: this._paymentId }, { force: true })
+        const value = await api.callApi('loans.payment', { paymentId: this._paymentId })
         if (current()) this.setData(model.paymentView(value))
       } else if (!this.data.allocations.length && this._loanId) {
-        const value = await api.callApi('loans.get', { loanId: this._loanId }, { force: true })
+        const value = await api.callApi('loans.get', { loanId: this._loanId })
         if (current()) this.setData({ allocations: [model.allocation(value.loan)], confirmed: false })
       } else {
         const previous = this.data.editingPayment || this.data.replacePayment
         const ids = [...new Set(this.data.allocations.map(a => a.loanId).concat(previous ? previous.loans.map(l => l.loanId) : []))]
-        const selected = new Map((await Promise.all(ids.map(loanId => api.callApi('loans.get', { loanId }, { force: true })))).map(value => [value.loan.loanId, value.loan]))
+        const selected = new Map((await Promise.all(ids.map(loanId => api.callApi('loans.get', { loanId })))).map(value => [value.loan.loanId, value.loan]))
         if (current()) {
           const patch = { allocations: this.data.allocations.map(a => Object.assign({}, a, { version: selected.get(a.loanId).version, loanName: selected.get(a.loanId).name, kind: selected.get(a.loanId).kind })), confirmed: false }
           if (previous) patch[this.data.editingPayment ? 'editingPayment' : 'replacePayment'] = Object.assign({}, previous, { loans: previous.loans.map(l => ({ loanId:l.loanId,version:selected.get(l.loanId).version })) })

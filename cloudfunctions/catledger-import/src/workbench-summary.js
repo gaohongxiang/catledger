@@ -8,6 +8,11 @@ function accountIds(event) {
     .concat((fields.paymentResolution && fields.paymentResolution.allocations || []).map(row => row.accountId)).filter(Boolean))]
 }
 const money = value => { const n = String(value || '0').padStart(3, '0'); return '¥' + n.slice(0, -2) + '.' + n.slice(-2) }
+function repaymentExpense(event) {
+  const value = event.loanRepayment || event.fieldSources && event.fieldSources.loanRepayment
+  if (!value || !value.confirmed) return 0n
+  return ['interest','fee'].reduce((sum,field)=>sum + (value[field+'Treatment'] === 'expense' ? BigInt(value[field+'Minor'] || '0') : 0n),0n)
+}
 function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCount) {
   const reviewIds = new Set(pending.filter(row => Number(row.review)).map(row => row.eventId))
   const categoryIds = new Set(pending.filter(row => Number(row.category)).map(row => row.eventId))
@@ -30,8 +35,8 @@ function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCou
     categoryStatusTabs: [{ value: 'pending', label: '待分类', count: categoryPending }, { value: 'completed', label: '已分类', count: categoryComplete },
       { value: 'none', label: '无需分类', count: rows.filter(row => !categoryRequired(row)).length }],
     categoryEventCount: categoryPending, categorizedEventCount: categoryComplete,
-    finalSummary: { expenseCount: count(['expense', 'fee']), incomeCount: count(['income']), refundCount: count(['refund']),
-      expenseText: money(sum(['expense', 'fee'])), incomeText: money(sum(['income'])), refundText: money(sum(['refund'])),
+    finalSummary: { expenseCount: count(['expense', 'fee']) + ready.filter(e=>repaymentExpense(e)>0n).length, incomeCount: count(['income']), refundCount: count(['refund']),
+      expenseText: money(sum(['expense', 'fee']) + ready.reduce((sum,e)=>sum+repaymentExpense(e),0n)), incomeText: money(sum(['income'])), refundText: money(sum(['refund'])),
       transferCount: count(['internal_transfer', 'repayment', 'borrow']), categoryCount, categorizedCount,
       categoryCoverageText: categoryCount ? categorizedCount + ' / ' + categoryCount : '无需分类', categoryComplete: categoryCount === categorizedCount,
       newAccountCount: draftCount, affectedAccountCount: new Set(ready.flatMap(accountIds)).size },
@@ -39,4 +44,4 @@ function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCou
       ({ nature, label, count: count([nature]), amountText: money(sum([nature])), records: [] }))
   }
 }
-module.exports = { workbenchSummary, accountIds }
+module.exports = { workbenchSummary, accountIds, repaymentExpense }

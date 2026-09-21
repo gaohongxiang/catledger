@@ -194,7 +194,8 @@ function createTransactionQueryService({ getPool }) {
       getPool,
       ...context,
       consistentSnapshot: true,
-      operation: async (connection, uid) => {
+      read: context.read || {},
+      operation: async (connection, uid, dataRevision) => {
         const filters = normalizeListFilters(context.data || {})
         if (filters.importUpdateId) {
           const [[update]] = await connection.execute(`SELECT update_id FROM catledger_finance_updates
@@ -214,20 +215,21 @@ function createTransactionQueryService({ getPool }) {
         let cursor = null
         if (context.data && context.data.cursor) {
           cursor = decodeCursor(context.subjectHash, context.data.cursor)
-          if (cursor.filterDigest !== filterDigest || typeof cursor.occurredLocalAt !== 'string' ||
+          if (cursor.uid !== uid || cursor.filterDigest !== filterDigest || typeof cursor.occurredLocalAt !== 'string' ||
               typeof cursor.transactionId !== 'string') {
             throw ledgerError('VALIDATION_ERROR')
           }
         }
 
-        const summary = await queryMonthlySummary(connection, uid, filters.range, filters.importUpdateId)
+        if (cursor && cursor.dataRevision !== dataRevision) throw ledgerError('READ_SNAPSHOT_CHANGED')
+        const summary = cursor ? null : await queryMonthlySummary(connection, uid, filters.range, filters.importUpdateId)
         const rows = await queryTransactionPage(connection, uid, filters, cursor)
         const hasMore = rows.length > filters.pageSize
         const pageRows = hasMore ? rows.slice(0, filters.pageSize) : rows
         const last = pageRows[pageRows.length - 1]
         const nextCursor = hasMore && last
           ? encodeCursor(context.subjectHash, {
-              filterDigest,
+              uid, dataRevision, filterDigest,
               occurredLocalAt: String(last.occurredLocalAt),
               transactionId: last.transactionId
             })
@@ -237,7 +239,7 @@ function createTransactionQueryService({ getPool }) {
           date: filters.date,
           source: filters.source,
           importUpdateId: filters.importUpdateId,
-          summary,
+          ...(summary ? { summary } : {}),
           transactions: pageRows.map(transactionToPublic),
           nextCursor
         }

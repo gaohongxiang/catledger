@@ -14,11 +14,12 @@ if (!database) {
   for (const key of Object.keys(env)) if (key.startsWith('CATLEDGER_TEST_DB_')) delete env[key]
   process.stdout.write('运行本地单元测试；数据库集成请使用 npm run test:db。\n')
 }
-// API 套件先应用迁移并清空测试数据；两个函数的数据库套件不能并行。
+// 数据库套件共用 MySQL 迁移锁；按文件串行运行，避免隔离库间争抢同名锁。
+const testArgs = database ? ['--test', '--test-concurrency=1'] : ['--test']
 for (const directory of ['test', 'cloudfunctions/catledger-api/test', 'cloudfunctions/catledger-import/test']) {
   const files = fs.readdirSync(path.join(root, directory)).filter((name) => name.endsWith('.test.js'))
     .sort().map((name) => path.join(directory, name))
-  const result = spawnSync(process.execPath, ['--test', ...files], { cwd: root, env, stdio: 'inherit' })
+  const result = spawnSync(process.execPath, [...testArgs, ...files], { cwd: root, env, stdio: 'inherit' })
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status || 1)
 }

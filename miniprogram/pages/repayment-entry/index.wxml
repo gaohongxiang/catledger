@@ -1,0 +1,30 @@
+<view class="page-canvas repayment-page {{themeClass}}" style="{{themeStyle}}">
+  <page-head class="content-inset" badge="实际付款" title="{{mode === 'pending' ? '关联还款' : '确认借款还款'}}" copy="{{mode === 'pending' ? '本息费已入账，本次只关联贷款，不重复记账。' : '信用卡整单还款记普通转账。借款还款需要确认实际本息费。'}}" />
+  <ui-state wx:if="{{loading}}" description="正在读取还款资料…" />
+  <view wx:if="{{!loading}}" class="form-card">
+    <picker wx:if="{{mode === 'import'}}" range="{{classificationOptions}}" value="{{classification}}" data-field="classification" bindchange="select"><view class="form-row"><text>这笔付款</text><text>{{classificationOptions[classification]}}</text><chevron-icon size="{{22}}" /></view></picker>
+    <view class="form-row"><text>实际付款总额</text><input wx:if="{{mode === 'new'}}" class="money-number" type="digit" value="{{totalYuan}}" data-field="totalYuan" bindinput="input" placeholder="0.00" /><text wx:else class="money-number">¥{{totalYuan}}</text></view>
+    <block wx:if="{{mode !== 'import' || classification === 1}}">
+      <picker range="{{assets}}" range-key="name" value="{{assetIndex}}" data-field="assetIndex" bindchange="select" disabled="{{mode !== 'new'}}"><view class="form-row"><text>付款账户</text><text>{{assets[assetIndex].name || '请选择'}}</text><chevron-icon wx:if="{{mode === 'new'}}" size="{{22}}" /></view></picker>
+      <picker range="{{debts}}" range-key="name" value="{{debtIndex}}" data-field="debtIndex" bindchange="select" disabled="{{mode !== 'new'}}"><view class="form-row"><text>借款账户</text><text>{{debts[debtIndex].name || '请先在账户步骤确认借款账户'}}</text><chevron-icon wx:if="{{mode === 'new'}}" size="{{22}}" /></view></picker>
+      <view wx:if="{{mode === 'new'}}" class="form-row"><text>付款时间</text><picker mode="date" value="{{date}}" data-field="date" bindchange="input">{{date}}</picker><picker mode="time" value="{{time}}" data-field="time" bindchange="input">{{time}}</picker></view>
+      <text class="form-note">{{mode === 'pending' ? '以下构成已确认并入账。' : '填写实际本金、利息和费用。没有的填 0；未知的先核对，不要把总额全记本金。'}}</text>
+      <view class="form-row"><text>本金</text><input type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="确认金额" disabled="{{mode === 'pending'}}" /></view>
+      <view class="form-row"><text>利息</text><input type="digit" value="{{interestYuan}}" data-field="interestYuan" bindinput="input" placeholder="没有请填 0" disabled="{{mode === 'pending'}}" /></view>
+      <picker range="{{treatments}}" value="{{interestIndex}}" data-field="interestIndex" bindchange="select" disabled="{{mode === 'pending'}}"><view class="form-row sub-row"><text>利息处理</text><text>{{treatments[interestIndex]}}</text></view></picker>
+      <picker wx:if="{{interestIndex === 0 && interestYuan && interestYuan != '0' && interestYuan != '0.00'}}" range="{{categories}}" range-key="name" value="{{interestCategoryIndex}}" data-field="interestCategoryIndex" bindchange="select" disabled="{{mode === 'pending'}}"><view class="form-row sub-row"><text>利息分类</text><text>{{categories[interestCategoryIndex].name || '请选择支出分类'}}</text></view></picker>
+      <view class="form-row"><text>费用</text><input type="digit" value="{{feeYuan}}" data-field="feeYuan" bindinput="input" placeholder="没有请填 0" disabled="{{mode === 'pending'}}" /></view>
+      <picker range="{{treatments}}" value="{{feeIndex}}" data-field="feeIndex" bindchange="select" disabled="{{mode === 'pending'}}"><view class="form-row sub-row"><text>费用处理</text><text>{{treatments[feeIndex]}}</text></view></picker>
+      <picker wx:if="{{feeIndex === 0 && feeYuan && feeYuan != '0' && feeYuan != '0.00'}}" range="{{categories}}" range-key="name" value="{{feeCategoryIndex}}" data-field="feeCategoryIndex" bindchange="select" disabled="{{mode === 'pending'}}"><view class="form-row sub-row"><text>费用分类</text><text>{{categories[feeCategoryIndex].name || '请选择支出分类'}}</text></view></picker>
+      <picker wx:if="{{mode !== 'pending'}}" range="{{linkOptions}}" value="{{linkIndex}}" data-field="linkIndex" bindchange="select"><view class="form-row"><text>贷款关联</text><text>{{linkOptions[linkIndex]}}</text></view></picker>
+      <block wx:if="{{linkIndex === 1}}"><picker range="{{loans}}" range-key="name" value="{{loanIndex}}" data-field="loanIndex" bindchange="select"><view class="form-row"><text>关联贷款</text><text>{{loans[loanIndex].name || '请选择已有贷款'}}</text><chevron-icon size="{{22}}" /></view></picker><button wx:if="{{nextLoanCursor}}" class="secondary-button" bindtap="moreLoans">加载更多贷款</button><button class="text-button" bindtap="createLoan">补充贷款资料</button></block>
+      <checkbox-group bindchange="confirm"><label class="confirm-row"><checkbox value="confirmed" checked="{{confirmed}}" color="#BE5B24" /><text>{{mode === 'pending' ? '确认关联这笔已入账还款，不再新增流水' : '确认实际已付，且本息费及其处理方式无误'}}</text></label></checkbox-group>
+    </block>
+    <text wx:if="{{mode === 'import' && classification === 0}}" class="form-note">按已确认的转出、转入账户记转账，不生成贷款关联待办。</text>
+  </view>
+  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" /><button wx:if="{{errorMessage}}" class="text-button" bindtap="load" disabled="{{loading || saving}}">刷新资料</button><ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
+  <button class="primary-button" bindtap="save" loading="{{saving}}" disabled="{{loading || saving}}">{{mode === 'pending' ? '确认关联' : mode === 'import' ? '保存入账方式' : '确认入账'}}</button>
+  <button wx:if="{{mode === 'import' && classification === 1}}" class="secondary-button" bindtap="keepReview" disabled="{{loading || saving}}">本息费待核对，暂不入账</button>
+  <button wx:if="{{mode === 'pending'}}" class="text-button" bindtap="release" disabled="{{loading || saving}}">不再关联贷款</button>
+  <login-sheet />
+</view>

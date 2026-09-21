@@ -1,3 +1,4 @@
+const { booking:repaymentBooking,inputForEvent:repaymentInput } = require('./explicit-repayment')
 const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
 const { loadRefundPostingContext } = require('./refund-posting-context')
@@ -65,6 +66,7 @@ function postingEvent(row) {
     updateId: row.updateId,
     status: row.status,
     version: Number(row.version),
+    manualFieldMask: Number(row.manualFieldMask || 0),
     flowDirection: row.flowDirection,
     economicNature: row.economicNature,
     ledgerAccountId: row.ledgerAccountId || null,
@@ -87,7 +89,7 @@ function postingEvent(row) {
 
 async function selectPostingEvents(connection, uid, updateId) {
   const [rows] = await connection.execute(
-    `SELECT e.event_id AS eventId, e.update_id AS updateId, e.status, e.version,
+    `SELECT e.event_id AS eventId, e.update_id AS updateId, e.status, e.version, e.manual_field_mask AS manualFieldMask,
             e.flow_direction AS flowDirection, e.economic_nature AS economicNature,
             e.ledger_account_id AS ledgerAccountId,
             e.counterparty_ledger_account_id AS counterpartyLedgerAccountId,
@@ -419,6 +421,8 @@ function transactionDraft(event, originalTransactionId) {
 }
 
 function transactionDrafts(event, originalTransactionId) {
+  const repayment = repaymentInput(event)
+  if (repayment) return repaymentBooking.drafts(repayment)
   const plan = eventAllocation(event)
   if (!plan.valid) throw importError('UNRESOLVED_IMPORT')
   if (plan.kind !== 'none') return allocationTransactionDrafts(event, plan)
@@ -543,7 +547,7 @@ function createFinanceUpdatePosting({ getPool }) {
         if (postingState.affectedRows !== 1) throw importError('CONFLICT')
 
         let created = 0, reused = 0, refundContext = null
-        const transactionRows = [], linkRows = [], newByIdentity = new Map()
+        const transactionRows = [], linkRows = [], newByIdentity = new Map(), bookedRepayments = []
         async function flush() {
           await insertMany(connection, `INSERT INTO catledger_transactions
             (uid, transaction_id, type, source_account_id, destination_account_id, category_id, original_transaction_id,
@@ -557,7 +561,7 @@ function createFinanceUpdatePosting({ getPool }) {
           const eventIdentities = identities.get(event.eventId) || []
           const inBatch = eventIdentities.map(id => newByIdentity.get(id)).filter(Boolean).sort((a, b) => a.order - b.order)[0]
           const existing = history.get(event.eventId) || inBatch
-          const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid
+          const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid || Boolean(event.fieldSources.loanRepayment)
           if (allocation && existing) throw importError('IDENTITY_CONFLICT')
           let transactions
           if (existing) { transactions = [{ transactionId: existing.transactionId, role: event.economicNature === ECONOMIC_NATURE.REFUND ? 'refund_transaction' : 'primary' }]; reused += 1 }
@@ -588,6 +592,7 @@ function createFinanceUpdatePosting({ getPool }) {
           }
           for (const transaction of transactions) linkRows.push([uid, randomUUID(), updateId, event.eventId,
             transaction.transactionId, transaction.role, existing ? 'reused' : 'created', 'event-transaction-link-v2', existing ? Number(existing.version) : 1])
+          if (event.fieldSources.loanRepayment) bookedRepayments.push({ event,transactions })
           // 同批后续证据仍可复用刚创建/已复用的交易，与逐笔查询语义一致。
           const first = { transactionId: transactions[0].transactionId, version: existing ? Number(existing.version) : 1, order: newByIdentity.size }
           for (const id of eventIdentities) if (!newByIdentity.has(id)) newByIdentity.set(id, first)
@@ -651,6 +656,24 @@ function createFinanceUpdatePosting({ getPool }) {
           [appliedVersion, ready.length, actionId, uid, updateId, version]
         )
         if (completed.affectedRows !== 1) throw importError('CONFLICT')
+        const loanVersions = new Map()
+        for (const { event,transactions } of bookedRepayments) {
+          const input = repaymentInput(event)
+          if (input.mode === 'associate') {
+            const previous = loanVersions.get(input.loanId)
+            if (previous && previous.base !== input.loanVersion) throw importError('CONFLICT')
+            loanVersions.set(input.loanId,{ base:input.loanVersion,count:(previous ? previous.count : 0) + 1 })
+            input.loanVersion += previous ? previous.count : 0
+          }
+          const [links] = await connection.execute(`SELECT link_id AS linkId,transaction_id AS transactionId,transaction_version AS transactionVersion,
+            role,creation_method AS creationMethod FROM catledger_economic_event_transactions WHERE uid=? AND event_id=? AND superseded_at IS NULL`,[uid,event.eventId])
+          const sourceEvent = { eventId:event.eventId,updateId,version:event.version+1,state:'posted',status:'posted',economicNature:event.economicNature,
+            flowDirection:event.flowDirection,ledgerAccountId:event.ledgerAccountId,counterpartyLedgerAccountId:event.counterpartyLedgerAccountId,
+            categoryId:event.categoryId,manualFieldMask:event.manualFieldMask,fieldSources:event.fieldSources,reasonCodes:event.reasonCodes,
+            updateVersion:appliedVersion,updateStatus:'posted' }
+          await repaymentBooking.persist(connection,uid,input,{ totalMinor:event.amountMinor,localAt:event.localAt,utcAt:event.utcAt,
+            timezoneOffsetMinutes:event.timezoneOffsetMinutes,transactions,source:{ event:sourceEvent,links } })
+        }
         return commandResult(connection, uid, updateId, context.data)
       }
     })

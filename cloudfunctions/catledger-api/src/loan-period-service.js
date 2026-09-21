@@ -6,6 +6,7 @@ const { validateId,parseVersion } = require('./transaction-domain')
 const { encodeCursor,decodeCursor } = require('./cursor')
 const { populatePrincipal,selectPayment,selectAllocations,advanceLoans } = require('./loan-payment-repository')
 const { FIELDS,PERIOD_SQL,capital,parse,amounts,periodValues,publicPeriod,period,allocations,advancePeriods } = require('./loan-period-repository')
+const { parseSetup } = require('./loan-installment')
 function createLoanPeriodService({getPool,selectLoan}) {
   const read=(context,operation)=>executeLedgerRead({getPool,...context,consistentSnapshot:true,operation})
   const write=(context,action,operation)=>executeIdempotentMutation({getPool,...context,currentReads:true,action,operation})
@@ -26,9 +27,11 @@ function createLoanPeriodService({getPool,selectLoan}) {
       if(ids && rows.length!==ids.length)throw ledgerError('NOT_FOUND')
       const base=PERIOD_SQL+' WHERE p.uid=? AND p.loan_id=? AND p.cancelled=0 GROUP BY p.uid,p.period_id'
       const [[totals]]=await c.execute(`SELECT ${FIELDS.map(f=>`COALESCE(SUM(${f}Minor-paid${capital(f)}Minor),0) AS unpaid${capital(f)}Minor`).join(',')},
+        COALESCE(SUM(principalMinor=paidPrincipalMinor AND interestMinor=paidInterestMinor AND feeMinor=paidFeeMinor),0) AS paidPeriods,
         MIN(CASE WHEN principalMinor>paidPrincipalMinor OR interestMinor>paidInterestMinor OR feeMinor>paidFeeMinor THEN dueDate END) AS nextDueDate
         FROM (${base}) confirmed`,[uid,loan.loanId])
-      const summary={...totals,...Object.fromEntries(FIELDS.map(f=>['unpaid'+capital(f)+'Minor',String(totals['unpaid'+capital(f)+'Minor'])])),
+      const setup=parseSetup(loan.installmentSetup)
+      const summary={...totals,paidPeriods:Number(totals.paidPeriods),...(setup?{historicalPaidTerms:setup.historicalPaidTerms,totalTerms:Number(loan.scheduleTerms)}:{}),...Object.fromEntries(FIELDS.map(f=>['unpaid'+capital(f)+'Minor',String(totals['unpaid'+capital(f)+'Minor'])])),
         remainingPrincipalMinor:loan.remainingPrincipalMinor,principalGapMinor:loan.remainingPrincipalMinor==null?null:String(BigInt(totals.unpaidPrincipalMinor)-BigInt(loan.remainingPrincipalMinor))}
       const items=rows.slice(0,size).map(publicPeriod),last=items.at(-1)
       return {loanId:loan.loanId,loanName:loan.name,loanVersion:loan.version,summary,items,nextCursor:rows.length>size?encodeCursor(context.subjectHash,{action:'loans.periods',uid,loanId:loan.loanId,version:loan.version,date:last.dueDate,id:last.periodId}):null}
@@ -37,6 +40,8 @@ function createLoanPeriodService({getPool,selectLoan}) {
   async function savePeriod(context) {
     return write(context,'loans.savePeriod',async(c,uid,data)=>{
       const loan=await currentLoan(c,uid,data),value=periodValues(data),id=data.periodId?validateId(data.periodId):randomUUID()
+      const setup=parseSetup(loan.installmentSetup)
+      if(setup && value.periodNumber<=setup.historicalPaidTerms)throw ledgerError('VALIDATION_ERROR')
       const [[duplicate]]=await c.execute('SELECT period_id FROM catledger_loan_periods WHERE uid=? AND loan_id=? AND period_number=? AND period_id<>?',[uid,loan.loanId,value.periodNumber,id])
       if(duplicate)throw ledgerError('CONFLICT')
       let version=1

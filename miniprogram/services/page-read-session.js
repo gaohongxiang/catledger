@@ -2,6 +2,7 @@ const cache = require('./read-cache')
 
 // 视图和请求结果属于同一次本机登录会话；换会话先清屏，再允许新查询。
 function begin(page, fields, pendingFields) {
+  require('./read-observer').attach(page)
   const session = cache.getSession()
   if (!page._readInitial) {
     page._readInitial = {}

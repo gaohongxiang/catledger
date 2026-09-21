@@ -191,9 +191,12 @@
       "repayment_minor",
       "fee_per_term_minor",
       "fee_upfront_minor",
-      "first_payment_date"
+      "first_payment_date",
+      "installment_setup_json"
     ],
-    "json": []
+    "json": [
+      "installment_setup_json"
+    ]
   },
   {
     "name": "catledger_mutation_receipts",
@@ -745,6 +748,24 @@
       "transaction_version",
       "created_at",
       "superseded_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_repayment_details",
+    "keys": [
+      "payment_id"
+    ],
+    "columns": [
+      "payment_id",
+      "liability_account_id",
+      "principal_minor",
+      "interest_minor",
+      "fee_minor",
+      "interest_treatment",
+      "fee_treatment",
+      "interest_category_id",
+      "fee_category_id"
     ],
     "json": []
   }

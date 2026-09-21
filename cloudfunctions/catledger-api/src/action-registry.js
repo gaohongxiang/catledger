@@ -1,4 +1,5 @@
 const PUBLIC_ACTIONS = Object.freeze([
+  'reads.validate',
   'bootstrap',
   'profile.get',
   'profile.update',
@@ -6,6 +7,9 @@ const PUBLIC_ACTIONS = Object.freeze([
   'dataExports.page',
   'dataExports.finish',
   'catalog.get',
+  'loans.bookRepayment',
+  'loans.assignRepayment',
+  'loans.releaseRepayment',
   'loans.transaction',
   'loans.unassigned',
   'loans.list',
@@ -54,12 +58,16 @@ const PUBLIC_ACTIONS = Object.freeze([
 
 function createActionHandlers({ accountService, categoryService, catalogService, profileService, transactionService, loanService, dataExportService }) {
   return {
+    'reads.validate': catalogService.validate,
     'profile.get': profileService.get,
     'profile.update': profileService.update,
     'dataExports.start': dataExportService.start,
     'dataExports.page': dataExportService.page,
     'dataExports.finish': dataExportService.finish,
     'catalog.get': catalogService.get,
+    'loans.bookRepayment': loanService.bookRepayment,
+    'loans.assignRepayment': loanService.assignRepayment,
+    'loans.releaseRepayment': loanService.releaseRepayment,
     'loans.transaction': loanService.transaction,
     'loans.unassigned': loanService.unassigned,
     'loans.list': loanService.list,

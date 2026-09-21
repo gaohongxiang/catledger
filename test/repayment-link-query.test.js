@@ -7,18 +7,19 @@ const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
 const { localServices, call, syntheticBill } = require('./helpers/local-services')
 
-test('信用账户整单还款不成为贷款候选，即使备注包含分期；其他借款仍按方向核对', () => {
+test('信用账户整单还款不成为贷款候选，即使备注包含分期；其他借款也必须明确确认', () => {
   const accounts = [{ accountId: 'asset', type: 'wallet' }, { accountId: 'debt', type: 'other_liability', name: '合成借款账户' }]
   const row = { type: 'transfer', sourceAccountId: 'asset', destinationAccountId: 'debt', note: '分期 第3期 本金未知' }
   for (const type of ['cash', 'bank', 'wallet', 'other_asset']) {
     assert.equal(candidate(row, [{ ...accounts[0], type }, { ...accounts[1], type: 'credit' }]), null)
   }
-  assert.equal(candidate(row, accounts).type, 'other_liability')
+  assert.equal(candidate(row, accounts), null)
+  assert.equal(candidate(row, accounts, { liabilityAccountId:'debt' }).type, 'other_liability')
   assert.equal(candidate({ ...row, type: 'expense' }, accounts), null)
   assert.equal(candidate({ ...row, sourceAccountId: 'debt', destinationAccountId: 'asset' }, accounts), null)
   assert.equal(candidate(row, [{ ...accounts[0], type: 'credit' }, accounts[1]]), null)
-  assert.equal(candidate(row, [accounts[0], { ...accounts[1], archivedAt: '2026-09-02' }]).inactive, true)
-  assert.equal(Object.hasOwn(candidate(row, accounts), 'periodNumber'), false)
+  assert.equal(candidate(row, [accounts[0], { ...accounts[1], archivedAt: '2026-09-02' }], { liabilityAccountId:'debt' }).inactive, true)
+  assert.equal(Object.hasOwn(candidate(row, accounts, { liabilityAccountId:'debt' }), 'periodNumber'), false)
 })
 test('候选过滤拒绝无效月份/账户/页长，允许明确全部月份', () => {
   assert.equal(candidateFilters().month, null)
@@ -79,18 +80,10 @@ test('还款衔接只读查询：真实MySQL权限、候选分页、整组更正
       assert.deepEqual(ordinary.allocations, []); assert.deepEqual(ordinary.evidence, { items: [], hasMore: false })
       assert.equal((await read(second.transactionId)).state, 'none')
       const all = await api('loans.unassigned', { pageSize: 40 })
-      assert.equal(all.items.length, 3)
-      assert.ok(all.items.every(item => item.targetType === 'other_liability'))
-      const recent = await api('loans.unassigned', { pageSize: 1 })
-      assert.equal(recent.items[0].transactionId, september.transactionId); assert.ok(recent.nextCursor)
+      assert.equal(all.items.length, 0)
+      for (const transaction of [september,candidateOne,candidateTwo]) assert.equal((await read(transaction.transactionId)).state,'none')
       const legacyFilter = await api('loans.unassigned', { accountId: debt, pageSize: 1 })
       assert.deepEqual(legacyFilter.items, []); assert.equal(legacyFilter.nextCursor, null)
-      const first = await api('loans.unassigned', { month: '2026-08', accountId: otherDebt, pageSize: 1 })
-      const next = await api('loans.unassigned', { month: '2026-08', accountId: otherDebt, pageSize: 1, cursor: first.nextCursor })
-      assert.ok(first.nextCursor); assert.equal(next.nextCursor, null)
-      assert.deepEqual(new Set([first.items[0].transactionId, next.items[0].transactionId]), new Set([candidateOne.transactionId, candidateTwo.transactionId]))
-      await assert.rejects(api('loans.unassigned', { month: '2026-09', accountId: otherDebt, cursor: first.nextCursor }), { publicCode: 'VALIDATION_ERROR' })
-      await assert.rejects(api('loans.unassigned', { month: '2026-08', accountId: debt, cursor: first.nextCursor }), { publicCode: 'VALIDATION_ERROR' })
       assert.equal((await api('loans.list')).items.length, 0)
       assert.deepEqual(await balances(), before)
       assert.equal(await expense('2026-08'), beforeExpense)
@@ -155,16 +148,16 @@ test('还款衔接只读查询：真实MySQL权限、候选分页、整组更正
       assert.deepEqual(await balances(), before)
       assert.equal(await expense('2026-08'), beforeExpense)
     })
-    await t.test('其他借款关联后退出候选，撤销后恢复候选，全程不二次扣款', async () => {
+    await t.test('历史显式关联保留；解除后普通转账不自动进入待办', async () => {
       const l = await createLoan(otherDebt), before = await balances()
-      assert.equal((await read(candidateOne.transactionId)).state, 'candidate')
+      assert.equal((await read(candidateOne.transactionId)).state, 'none')
       const result = await payment(candidateOne.transactionId, [share(l.loanId)])
       assert.equal((await read(candidateOne.transactionId)).state, 'linked')
       const candidates = await api('loans.unassigned', { month: '2026-08', accountId: otherDebt })
-      assert.deepEqual(candidates.items.map(item => item.transactionId), [candidateTwo.transactionId])
+      assert.deepEqual(candidates.items, [])
       await api('loans.reverse', { requestId: randomUUID(), paymentId: result.paymentId, version: 1, confirmed: true, loans: result.loans })
-      assert.equal((await read(candidateOne.transactionId)).state, 'candidate')
-      assert.equal((await api('loans.unassigned', { month: '2026-08', accountId: otherDebt })).items.length, 2)
+      assert.equal((await read(candidateOne.transactionId)).state, 'none')
+      assert.equal((await api('loans.unassigned', { month: '2026-08', accountId: otherDebt })).items.length, 0)
       assert.deepEqual(await balances(), before)
     })
     await t.test('来源显式字段跨整组更正保留，权限角色能读取而不复制原始卡号列', async () => {
@@ -200,8 +193,8 @@ test('还款衔接只读查询：真实MySQL权限、候选分页、整组更正
       const expense = await api('transactions.create', { requestId: randomUUID(), type: 'expense', sourceAccountId: asset, categoryId, amountMinor: '100', occurredLocalAt: '2026-08-02T12:00:00', timezoneOffsetMinutes: -480 })
       assert.equal((await read(expense.transactionId)).state, 'none')
       await api('accounts.archive', { requestId: randomUUID(), accountId: otherDebt, version: 1 })
-      assert.equal((await read(september.transactionId)).targetAccount.inactive, true)
-      assert.equal((await api('loans.unassigned', { accountId: otherDebt })).items[0].inactive, true)
+      assert.equal((await read(september.transactionId)).state, 'none')
+      assert.equal((await api('loans.unassigned', { accountId: otherDebt })).total, 0)
     })
   } finally { await lab.close() }
 })

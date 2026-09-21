@@ -13,12 +13,12 @@ function normalizeNickname(value) {
 
 function createProfileService({ getPool }) {
   return {
-    async get({ provider, subjectHash, data = {} }) {
+    async get({ provider, subjectHash, data = {}, read }) {
       if (!data || Array.isArray(data) || typeof data !== 'object' || Object.keys(data).length) {
         throw ledgerError('VALIDATION_ERROR')
       }
       return executeLedgerRead({
-        getPool, provider, subjectHash,
+        getPool, provider, subjectHash, read,
         operation: async (connection, uid) => {
           const [[user]] = await connection.execute(
             "SELECT nickname FROM catledger_users WHERE uid=? AND status='active'", [uid]

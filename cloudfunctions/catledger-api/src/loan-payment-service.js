@@ -31,7 +31,7 @@ function createLoanPaymentService({ getPool, selectLoan }) {
       const value = await selectPayment(connection, uid, context.data.paymentId)
       const links = await paymentLinks(connection, uid, value.paymentId), transactions = []
       for (const link of links) transactions.push(transactionToPublic(await selectTransaction(connection, uid, link.transactionId)))
-      return { payment: value, allocations: await selectAllocations(connection, uid, value.paymentId), transactions }
+      return { payment: value, repayment: await require('./repayment-booking').createRepaymentBooking(ledgerError).detail(connection, uid, value.paymentId), allocations: await selectAllocations(connection, uid, value.paymentId), transactions }
     })
   }
   async function payments(context) {

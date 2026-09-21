@@ -41,6 +41,8 @@
 
 后续新增贷款页面：`pages/loans/index`、`pages/loan-detail/index`、`pages/loan-payment/index` 由 MINI-1908A 管理，沿用现有主题和原生控件；当批原生验证见主看板。
 
+MINI-1908F 新增 `pages/loan-form/index`：按 loan-cost-calculator 录入分期，关联负债账户，核对历史进度与剩余本金后一次保存后续计划。
+
 MINI-1908B 新增 `loan-plan` 原生页面：从 loan-detail 查看计划，从 loan-payment 按所属贷款进入实际期次分配。沿用贷款主题令牌与行式布局；当前页和选择均有限，计划编辑不产生 Transaction。自动化与数据库证据见主规划 19.6；最终原生工具检查在本轮本地候选稳定后进行，未宣称真机或部署验收。
 
 MINI-1907-0 新增 `data-privacy` 原生页面，复用 profile 已有“数据与隐私”位置，提供完整分页导出、私有临时文件和主动分享。未移动记一笔、导入或其他原菜单。
@@ -53,3 +55,5 @@ MINI-1907-0 新增 `data-privacy` 原生页面，复用 profile 已有“数据�
 
 `pages/loan-link/index`：待关联还款候选与单笔关联，沿用现有贷款详情/实际借还/期次页。
 本次验证和状态见 `docs/招财猫记账本实施规划.md` 19.13，不计入本规格历史真机验收。
+
+- `repayment-entry`：MINI-1908E 明确实际还款、本息费与立即/暂缓关联；见 `specs/mini-1908e-explicit-repayment/`。

@@ -561,6 +561,7 @@
     <view class="workflow-sheet editor-sheet {{currentIssue && !evidenceSheet ? 'review-editor-sheet' : ''}}">
       <view class="sheet-handle"></view>
       <view wx:if="{{evidenceSheet}}" class="evidence-drilldown">
+        <button wx:if="{{evidenceSheet.repaymentEditable}}" class="secondary-button" bindtap="editLoanRepayment">设置普通转账 / 借款还款</button>
         <view class="evidence-sheet-heading">
           <view><text class="sheet-kicker">来源证据</text><text class="sheet-title serif-title">原始交易</text></view>
         </view>

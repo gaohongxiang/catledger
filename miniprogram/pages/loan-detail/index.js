@@ -20,15 +20,22 @@ Page({
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
     principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
     scheduleOpen: false, schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
-  onLoad(query) { this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: !this._loanId, sourceTransactionId: this._sourceTransactionId, kindIndex: !this._loanId && query && query.kind === 'installment' ? 1 : 0 }) },
-  onShow() { theme.bindPage(this); return loginGuard.run(this, () => this.load()) },
+  onLoad(query) { this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId){this._redirecting=true;wx.redirectTo({url:'/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
+  onShow() { if(this._redirecting)return;theme.bindPage(this); return loginGuard.run(this, () => this.load()) },
   onUnload() { pageReadSession.end(this) },
   load() {
     const current = pageReadSession.begin(this, ['sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule'], ['_load','_sourceInitialized'])
     if (this._load) return this._load
-    this.setData({ loading: true, errorMessage: '', sourceContext: null })
-    this._load = Promise.all([api.callApi('catalog.get'), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { force: true }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { force: true }) : Promise.resolve(null)])
+    this.setData({ loading: true, errorMessage: '' })
+    const showLoan = (result, snapshot) => { if (current() && result) this.setData({ loan: present(result.loan), errorMessage: snapshot ? '正在更新，当前显示上次结果' : '' }) }
+    const showSource = result => { if (current()) this.setData({ sourceContext: result && result.transaction ? Object.assign({}, result, { occurredText: String(result.transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' ') }) : result }) }
+    this._load = Promise.all([api.callApi('catalog.get'), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { onSnapshot: result => showLoan(result, true) }).then(result => { showLoan(result); return result }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { onSnapshot: showSource }).then(result => { showSource(result); return result }) : Promise.resolve(null)])
       .then(async ([catalog, result, sourceContext]) => {
+        if (!current()) return
+        // 并行读取中观察到新全局修订时，补齐先返回的旧目录/来源，避免保存门禁停在旧快照。
+        if (!api.isFresh('catalog.get')) catalog = await api.callApi('catalog.get')
+        if (this._sourceTransactionId && !api.isFresh('loans.transaction', { transactionId: this._sourceTransactionId })) sourceContext = await api.callApi('loans.transaction', { transactionId: this._sourceTransactionId })
+        if (this._loanId && !api.isFresh('loans.get', { loanId: this._loanId })) result = await api.callApi('loans.get', { loanId: this._loanId })
         if (!current()) return
         if (sourceContext && sourceContext.transaction) sourceContext = Object.assign({}, sourceContext, { occurredText: String(sourceContext.transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' ') })
         getApp().globalData.uid = catalog.uid
@@ -61,17 +68,19 @@ Page({
           catch (error) { if (current()) this.setData({ errorMessage: error.message || '上次操作仍待核实', hasPending: Boolean(pending.pending()) }) }
         }
       })
-      .catch(error => { if (current()) this.setData({ errorMessage: error.message || '贷款资料暂未加载' }) })
+      .catch(error => { if (current()) this.setData({ errorMessage: this.data.loan ? '更新未成功，当前显示上次结果；' + (error.message || '请重试') : error.message || '贷款资料暂未加载' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
     return this._load
   },
   recordPayment() {
     if (this.data.loading || this.data.saving || !this._loanId) return
+    if (!this.contextFresh()) { this.setData({ errorMessage: '请先重新读取与核实最新资料' }); return }
     const source = this.data.sourceContext
     if (this._sourceTransactionId && (!source || source.state !== 'candidate' || source.targetAccount.inactive || !this.data.loan || this.data.loan.accountId !== source.targetAccount.accountId)) { this.setData({ errorMessage: '原还款状态已改变，请返回重新核对' }); return }
     if (this._sourceTransactionId && (!this.data.loan || this.data.loan.baselinePrincipalMinor == null || this.data.loan.baselineDate > source.transaction.occurredLocalAt.slice(0,10))) {
       this.edit(); this.setData({ errorMessage: '请先确认还款日期日初或更早的本金基准，不能把本次扣款当贷款本金' }); return
     }
+    if (this._sourceTransactionId && source.payment) { wx.navigateTo({ url:'/pages/repayment-entry/index?paymentId=' + encodeURIComponent(source.payment.paymentId) + '&loanId=' + encodeURIComponent(this._loanId) }); return }
     wx.navigateTo({ url: '/pages/loan-payment/index?loanId=' + encodeURIComponent(this._loanId) + (this._sourceTransactionId ? '&sourceTransactionId=' + encodeURIComponent(this._sourceTransactionId) : '') })
   },
   openPlan() { wx.navigateTo({ url: '/pages/loan-plan/index?loanId=' + encodeURIComponent(this._loanId) }) },
@@ -89,7 +98,8 @@ Page({
   },
   clearDate(event) { const field = event.currentTarget.dataset.field; if (['startDate','endDate'].includes(field)) this.setData({ [field]: '' }) },
   fillForm(loan) { const schedule = scheduleForm.fromLoan(loan); this.setData(Object.assign(form(loan), { accountIndex: this.data.accounts.findIndex(a => a.accountId === loan.accountId), schedule, scheduleOpen: scheduleForm.touched(schedule) })) },
-  edit() { if (!this.data.loan || this.data.saving) return; this.fillForm(this.data.loan); this.setData({ formOpen: true, savedMessage: '' }) },
+  contextFresh() { return api.isFresh('loans.get', { loanId: this._loanId }) && api.isFresh('catalog.get') && (!this._sourceTransactionId || api.isFresh('loans.transaction', { transactionId: this._sourceTransactionId })) },
+  edit() { if (!this.data.loan || this.data.saving || this.data.loading) return; if(!this.contextFresh()){this.setData({errorMessage:'请先重新读取与核实最新资料'});return} if(this.data.loan.installmentSetup){wx.navigateTo({url:'/pages/loan-form/index?loanId='+encodeURIComponent(this._loanId)+(this._sourceTransactionId?'&sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')});return} this.fillForm(this.data.loan); this.setData({ formOpen: true, savedMessage: '' }) },
   cancelEdit() { if (this.data.saving) return; if (this._loanId) this.setData({ formOpen: false }); else wx.navigateBack() },
   input(event) { const field = event.currentTarget.dataset.field; if (['name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod'].includes(field)) this.setData({ [field]: event.detail.value, ...(this.data.fieldError === 'principal' ? { fieldError: '' } : {}) }) },
   scheduleInput(event) { const field = event.currentTarget.dataset.field; if (['terms','ratePercent','repaymentYuan','feePerTermYuan','feeUpfrontYuan','firstPaymentDate'].includes(field)) this.setData({ ['schedule.' + field]: event.detail.value, ...(this.data.fieldError === 'schedule' ? { fieldError: '' } : {}) }) },
@@ -115,6 +125,7 @@ Page({
     try {
       let data = {}
       if (!pending.pending()) {
+        if (this._loanId && !this.contextFresh()) throw new Error('请先重新读取与核实最新资料')
         if (this._sourceTransactionId && (!this.data.sourceContext || this.data.sourceContext.state !== 'candidate')) throw new Error('原还款已关联或不可用，请返回重新核对')
         const account = this.data.accounts[this.data.accountIndex]
         if (!account) throw new Error('请选择负债账户')

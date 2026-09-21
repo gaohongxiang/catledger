@@ -351,6 +351,16 @@ Page(Object.assign({}, require('./loan-context').createLoanContext({ api, sessio
     return data
   },
 
+  openRepaymentEntry() {
+    if (this.data.saving || !this.data.catalogReady) return
+    try {
+      const draft = this.buildRequest()
+      if (draft.type !== 'transfer') return
+      getApp().globalData.repaymentDraft = draft
+      wx.navigateTo({ url:'/pages/repayment-entry/index' })
+    } catch(error) { this.setData({ errorMessage:error.message }) }
+  },
+
   save: function () {
     if (this.data.loanManaged) { this.setData({ errorMessage: '此账目由贷款管理维护，请查看实际借还记录' }); return Promise.resolve() }
     if (!pageReadSession.isCurrent(this) || this.data.saving || !this.data.catalogReady) return

@@ -6,87 +6,7 @@ const vm = require('node:vm')
 const { createReadCache, stableKey } = require('../miniprogram/services/read-cache')
 const root = path.join(__dirname, '..', 'miniprogram')
 const flush = () => new Promise(resolve => setImmediate(resolve))
-function runtime(savedStorage) {
-  let now = 0, balance = '10000'
-  const cache = Object.assign(createReadCache({ now: () => now }), { stableKey })
-  const modules = new Map(), calls = [], pages = new Map(), storage = savedStorage || new Map()
-  const app = { globalData: { cloudAvailable: true, categories: [], profile: {}, uid: '1234567890' }, approved: true,
-    hasLoginApproval() { return this.approved } }
-  const categories = [{ id: 'category-a', kind: 'expense', name: '合成分类' }]
-  const accounts = () => [{ accountId: 'account-a', name: '合成账户', type: 'bank', nature: 'asset', archived: false, displayBalanceMinor: balance, bookBalanceMinor: balance }]
-  const summary = { incomeMinor: '0', expenseMinor: '100', netIncomeMinor: '-100' }
-  const transaction = id => ({ transactionId: id, type: 'expense', amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', sourceAccount: accounts()[0] })
-  const h = { app, calls, cache, storage, now(value) { now = value }, intercept: null,
-    categories, accounts: null, navigation: [], modals: [], uid: '1234567890', clipboard: [], toasts: [], clipboardFails: false }
-  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key), nextTick: cb => cb(), showModal(options) { h.modals.push(options) }, showToast(options) { h.toasts.push(options.title) },
-    setClipboardData(options) { h.clipboard.push(options.data); if (h.clipboardFails) options.fail(); else options.success() }, navigateBack() { h.navigation.push('back') },
-    navigateTo(options) {
-      h.navigation.push(options.url)
-      h.lastNavigation = options
-      if (h.deferNavigation) return
-      if (h.failNavigation && options.fail) options.fail()
-      if (options.complete) options.complete()
-    }, switchTab(options) { h.navigation.push(options.url) }, redirectTo(options) { h.navigation.push(options.url) }, pageScrollTo() {}, stopPullDownRefresh() {},
-    cloud: { callFunction: async ({ name, data: envelope }) => {
-      const { action, data } = envelope
-      calls.push({ name, action, data })
-      if (h.intercept) await h.intercept(action, data)
-      if (h.respond) {
-        const response = await h.respond(action, data)
-        if (response !== undefined) return { result: response }
-      }
-      let result
-      if (action === 'transactions.commandResult') return { result: { ok: false, error: { code: 'OPERATION_UNCONFIRMED', message: '未确认' } } }
-      if (action === 'catalog.get') result = { categories: h.categories, accounts: h.accounts || accounts(), uid: h.uid }
-      else if (action === 'bootstrap') result = { categories, uid: h.uid }
-      else if (action === 'profile.get') result = { nickname: '测试用户' }
-      else if (action === 'categories.list') result = { categories }
-      else if (action === 'accounts.list') result = { accounts: h.accounts || accounts() }
-      else if (action === 'dashboard.get') result = { accounts: accounts(), summary, netWorthMinor: balance, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }], recentTransactions: [] }
-      else if (action === 'transactions.list') result = { source: data.source || null, transactions: [transaction(data.search || (data.accountId ? data.accountId : data.cursor ? 'row-2' : 'row-1'))], nextCursor: data.cursor ? null : 'page-2', summary }
-      else if (action === 'transactions.refundable') result = { transactions: [] }
-      else if (action === 'statistics.get') result = { month: data.month, summary, cashFlowTrend: [{ month: data.trendEndMonth || data.month, incomeMinor: '0', expenseMinor: '100' }] }
-      else { balance = '10100'; result = { saved: true } }
-      return { result: { ok: true, data: result } }
-    } }
-  }
-  function load(filename) {
-    if (filename.endsWith('/services/read-cache.js')) return cache
-    if (filename.includes('/theme/')) return { bindPage() {}, bindTabBar() {}, currentTokens: () => ({ accent: '#000' }) }
-    if (modules.has(filename)) return modules.get(filename).exports
-    const module = { exports: {} }; modules.set(filename, module)
-    vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
-      module, exports: module.exports, getApp: () => app, wx, console, setTimeout, clearTimeout,
-      Page: definition => { module.exports = definition }, Component: definition => { module.exports = definition },
-      require: name => load(path.resolve(path.dirname(filename), name + (path.extname(name) ? '' : '.js')))
-    }, { filename })
-    return module.exports
-  }
-  h.api = load(path.join(root, 'services/catledger-api.js'))
-  h.importApi = load(path.join(root, 'services/catledger-import.js'))
-  h.page = name => {
-    if (pages.has(name)) return pages.get(name)
-    const definition = load(path.join(root, 'pages', name, 'index.js'))
-    const loading = []
-    const page = { ...definition, data: JSON.parse(JSON.stringify(definition.data)), getTabBar: () => null,
-      setData(patch) { if (Object.hasOwn(patch, 'loading')) loading.push(patch.loading)
-        for (const [key, value] of Object.entries(patch)) {
-          const keys = key.replace(/\[(\d+)\]/g, '.$1').split('.'); let target = this.data
-          for (const k of keys.slice(0, -1)) target = target[k] || (target[k] = {})
-          target[keys.at(-1)] = value
-        }
-      }, loading }
-    pages.set(name, page)
-    return page
-  }
-  h.component = () => {
-    const definition = load(path.join(root, 'custom-tab-bar/index.js'))
-    return { ...definition.methods, data: JSON.parse(JSON.stringify(definition.data)),
-      selectComponent: () => ({ show: options => { h.loginOptions = options } }),
-      setData(patch) { Object.assign(this.data, patch) } }
-  }
-  return h
-}
+const { runtime } = require('./helpers/read-runtime')
 
 async function visit(h, name) {
   const page = h.page(name)
@@ -115,7 +35,7 @@ test('重启后未加载用户编号且没有旧提交：新建、编辑和删�
       const preparing = page.prepareForm()
       await flush()
       assert.equal(page.data.errorMessage, '')
-      assert.equal(h.storage.size, 0)
+      assert.equal([...h.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
       await page.save()
       assert.equal(page.data.errorMessage, '', '目录尚未就绪不应误报身份或旧操作异常')
       page.bindAmount({ detail: { value: '2.34' } })
@@ -137,7 +57,7 @@ test('重启后未加载用户编号且没有旧提交：新建、编辑和删�
         assert.equal(writes[0].data.note, '合成当前修改')
       }
       if (action !== 'transactions.create') assert.equal(writes[0].data.transactionId, 'synthetic-edit')
-      assert.equal(h.storage.size, 0)
+      assert.equal([...h.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
       assert.equal(h.calls.some(call => call.action === 'transactions.commandResult'), false)
       assert.deepEqual(h.navigation, ['back'])
     })
@@ -187,7 +107,7 @@ test('目录失败只提示目录加载失败，不虚构上次操作或确认�
   assert.equal(h.app.globalData.uid, '')
   assert.equal(page.data.errorMessage, '')
   assert.ok(page.data.catalogError)
-  assert.equal(h.storage.size, 0)
+  assert.equal([...h.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
   assert.deepEqual(h.calls.map(call => call.action), ['catalog.get'])
   h.respond = null
   await page.retryCatalog()
@@ -363,7 +283,7 @@ test('新登录会话在等待服务器期间清除旧页面数据，旧请求�
   const old = page.loadProfile({ force: true })
   await flush()
   h.cache.reset()
-  h.uid = '2000000002'
+  h.uid = '2000000002'; h.app.globalData.uid = h.uid
   const fresh = page.loadProfile()
   assert.equal(page.data.uid, '')
   await flush()
@@ -506,7 +426,7 @@ test('退出后未完成的目录请求不得回填 ID；缺字段响应不回�
   assert.equal(page.data.uid, '')
   page.copyId()
   assert.deepEqual(h.clipboard, [])
-  h.uid = '2000000002'
+  h.uid = '2000000002'; h.app.globalData.uid = h.uid
   await page.retryProfile()
   assert.equal(page.data.uid, h.uid, '缺字段重试必须跳过旧缓存读取真实 ID')
 })
@@ -762,7 +682,7 @@ test('进入导入再返回保留完整手记草稿，目录失效按ID刷新且
   const before = draft()
   page.openImport()
   assert.deepEqual(h.navigation, ['/pages/import-workbench/index'])
-  h.accounts.reverse(); h.cache.invalidate(['accountDirectory'])
+  h.accounts.reverse(); h.revision = '2'; h.cache.invalidate(['accountDirectory'])
   page.onShow(); await page.prepareForm()
   assert.deepEqual(draft(), before)
   assert.equal(page.data.sourceIndex, 0)
@@ -983,7 +903,7 @@ test('进程重启后进入记账页只核实持久化原操作，迟到确认�
   await restored.prepareForm(); await flush()
   assert.deepEqual(restarted.navigation, ['back'])
   assert.equal(restarted.calls.filter(c => c.action === 'transactions.create').length, 0)
-  assert.equal(restarted.storage.size, 0)
+  assert.equal([...restarted.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
   assert.equal(restarted.app.globalData.uid, restarted.uid)
   assert.deepEqual(restarted.calls.map(c => c.action), ['catalog.get', 'transactions.commandResult'])
 })
@@ -1001,7 +921,7 @@ test('确有旧提交时，核实接口错误保留真实原因而不统一改�
   await restored.prepareForm()
   assert.equal(restored.data.errorMessage, '合成：当前核实接口不可用')
   assert.equal(restored.data.catalogError, '')
-  assert.equal(restarted.storage.size, 1)
+  assert.equal([...restarted.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 1)
   assert.deepEqual(restarted.navigation, [])
 })
 
@@ -1060,7 +980,7 @@ test('批量删除响应丢失后锁定旧选择；重进页面自动查回执�
   page.onShow(); await page.prepareAndLoad(); await flush()
   assert.equal(page.data.deleteRetryCount, 0)
   assert.equal(h.calls.filter(row => row.action === 'transactions.deleteMany').length, 1)
-  assert.equal(h.storage.size, 0)
+  assert.equal([...h.storage.keys()].filter(k => k.startsWith('catledger_pending_ledger_v1:')).length, 0)
 })
 
 test('导入历史只读查看账目，跳转统一明细跨月筛选；手动和导入可混选', async () => {

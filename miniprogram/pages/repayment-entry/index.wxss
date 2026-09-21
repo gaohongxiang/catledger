@@ -1,0 +1,13 @@
+.repayment-page { padding: 32rpx 28rpx 64rpx; }
+.form-card { margin: 28rpx 0; padding: 0 24rpx; border-radius: 24rpx; background: var(--theme-surface); }
+.form-row { display: flex; align-items: center; gap: 16rpx; min-height: 92rpx; border-bottom: 1rpx solid var(--theme-line); }
+.form-row > text:first-child { flex-shrink: 0; }
+.form-row > text:nth-child(2) { margin-left: auto; text-align: right; }
+.form-row input { flex: 1; min-width: 0; text-align: right; }
+.form-row picker { margin-left: auto; }
+.form-note { display: block; padding: 24rpx 0; font-size: 25rpx; line-height: 1.6; color: var(--theme-text-muted); }
+.sub-row { font-size: 25rpx; color: var(--theme-text-muted); }
+.confirm-row { display: flex; align-items: flex-start; gap: 12rpx; padding: 28rpx 0; font-size: 26rpx; line-height: 1.6; }
+.primary-button, .secondary-button { margin-top: 24rpx; }
+.text-button { background: transparent; color: var(--theme-accent); font-size: 26rpx; margin: 20rpx 0; }
+.text-button::after { border: none; }

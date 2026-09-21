@@ -1,0 +1,706 @@
+{
+  "measuredDate": "2026-09-21",
+  "environment": {
+    "tool": "wechatide 0.3.11",
+    "devtools": "2.02.2609182",
+    "host": "Apple M2 Max / macOS arm64 / Node 24.14.1 / MySQL 8.4",
+    "runtime": {
+      "brand": "devtools",
+      "model": "iPhone 12/13 (Pro)",
+      "system": "iOS 10.0.1",
+      "platform": "devtools",
+      "version": "8.0.5",
+      "SDKVersion": "3.17.3"
+    },
+    "transport": "loopback, synthetic 40ms per attempt",
+    "storage": "isolated in-memory wx storage substitute; physical flash latency not measured",
+    "data": "305 synthetic expenses, 2 opening transactions, 2 accounts, 1 loan; both runs began after one prior synthetic write; final write adds one (308 to 309 rows)",
+    "samplesPerScenario": 1
+  },
+  "limitations": [
+    "No device, real cloud transport, visible frame or true TTI claim.",
+    "renderAckMs is the final setData callback acknowledgement, not visible painting or interaction readiness.",
+    "Earlier long automation calls timed out; these complete asynchronous measurements replaced them.",
+    "Business source in copied candidate was byte-compared before measurement; server source unchanged since 87cdf33f."
+  ],
+  "before": {
+    "sourceSha": "0bd7c8f54a7c6f1dd4289c3c88de909467ab0692",
+    "sourceHash": "dc9fed1bc63f1fba2459e7ac221b644dab0bcba6d7c1a19dc9cbad987ab4ff22",
+    "scope": "WeChat DevTools native runtime; synthetic local MySQL; fixed 40ms transport delay; no phone/cloud claim",
+    "samples": [
+      {
+        "scenario": "cold-home",
+        "operationMs": 303,
+        "latestReadyMs": 298,
+        "snapshotReadyMs": null,
+        "renderAckMs": 407,
+        "interactiveMs": null,
+        "requests": 2,
+        "calls": [
+          {
+            "action": "bootstrap",
+            "ms": 66,
+            "ok": true
+          },
+          {
+            "action": "dashboard.get",
+            "ms": 54,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 3976,
+        "setDataBytes": 4074
+      },
+      {
+        "scenario": "same-session-home",
+        "operationMs": 3,
+        "latestReadyMs": 2,
+        "snapshotReadyMs": null,
+        "renderAckMs": 6,
+        "interactiveMs": null,
+        "requests": 0,
+        "calls": [],
+        "snapshotMs": [],
+        "maxSetDataBytes": 3976,
+        "setDataBytes": 4075
+      },
+      {
+        "scenario": "background-home",
+        "operationMs": 87,
+        "latestReadyMs": 82,
+        "snapshotReadyMs": null,
+        "renderAckMs": 92,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "dashboard.get",
+            "ms": 69,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 3976,
+        "setDataBytes": 4074
+      },
+      {
+        "scenario": "loan-return",
+        "operationMs": 62,
+        "latestReadyMs": 58,
+        "snapshotReadyMs": null,
+        "renderAckMs": 64,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "loans.get",
+            "ms": 49,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 762,
+        "setDataBytes": 1449
+      },
+      {
+        "scenario": "write-return",
+        "operationMs": 340,
+        "latestReadyMs": 175,
+        "snapshotReadyMs": null,
+        "renderAckMs": 345,
+        "interactiveMs": null,
+        "requests": 2,
+        "calls": [
+          {
+            "action": "transactions.create",
+            "ms": 99,
+            "ok": true
+          },
+          {
+            "action": "dashboard.get",
+            "ms": 54,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 3976,
+        "setDataBytes": 4177
+      },
+      {
+        "scenario": "transactions-page-2",
+        "operationMs": 79,
+        "latestReadyMs": 66,
+        "snapshotReadyMs": null,
+        "renderAckMs": 99,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 63,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 42940,
+        "setDataBytes": 42999
+      },
+      {
+        "scenario": "transactions-page-3",
+        "operationMs": 107,
+        "latestReadyMs": 77,
+        "snapshotReadyMs": null,
+        "renderAckMs": 134,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 62,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 63940,
+        "setDataBytes": 63999
+      },
+      {
+        "scenario": "transactions-page-4",
+        "operationMs": 112,
+        "latestReadyMs": 75,
+        "snapshotReadyMs": null,
+        "renderAckMs": 139,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 54,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 84940,
+        "setDataBytes": 84999
+      },
+      {
+        "scenario": "transactions-page-5",
+        "operationMs": 114,
+        "latestReadyMs": 74,
+        "snapshotReadyMs": null,
+        "renderAckMs": 147,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 55,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 105940,
+        "setDataBytes": 105999
+      },
+      {
+        "scenario": "transactions-page-6",
+        "operationMs": 127,
+        "latestReadyMs": 77,
+        "snapshotReadyMs": null,
+        "renderAckMs": 159,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 56,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 126940,
+        "setDataBytes": 126999
+      },
+      {
+        "scenario": "transactions-page-7",
+        "operationMs": 135,
+        "latestReadyMs": 82,
+        "snapshotReadyMs": null,
+        "renderAckMs": 169,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 52,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 147940,
+        "setDataBytes": 147999
+      },
+      {
+        "scenario": "transactions-page-8",
+        "operationMs": 150,
+        "latestReadyMs": 93,
+        "snapshotReadyMs": null,
+        "renderAckMs": 186,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 59,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 168940,
+        "setDataBytes": 168999
+      },
+      {
+        "scenario": "transactions-page-9",
+        "operationMs": 147,
+        "latestReadyMs": 83,
+        "snapshotReadyMs": null,
+        "renderAckMs": 189,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 57,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 189940,
+        "setDataBytes": 189999
+      },
+      {
+        "scenario": "transactions-page-10",
+        "operationMs": 158,
+        "latestReadyMs": 90,
+        "snapshotReadyMs": null,
+        "renderAckMs": 202,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 53,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 210940,
+        "setDataBytes": 210999
+      },
+      {
+        "scenario": "selection",
+        "operationMs": 213,
+        "latestReadyMs": null,
+        "snapshotReadyMs": null,
+        "renderAckMs": 353,
+        "interactiveMs": null,
+        "requests": 0,
+        "calls": [],
+        "snapshotMs": [],
+        "maxSetDataBytes": 215177,
+        "setDataBytes": 645496
+      },
+      {
+        "scenario": "weak-network-home",
+        "operationMs": 409,
+        "latestReadyMs": null,
+        "snapshotReadyMs": null,
+        "renderAckMs": 415,
+        "interactiveMs": null,
+        "requests": 2,
+        "calls": [
+          {
+            "action": "dashboard.get",
+            "ms": 42,
+            "ok": false
+          },
+          {
+            "action": "dashboard.get",
+            "ms": 41,
+            "ok": false
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 79,
+        "setDataBytes": 141
+      }
+    ],
+    "writePhases": [
+      {
+        "phase": "confirmed",
+        "ms": 103
+      },
+      {
+        "phase": "navigation",
+        "ms": 328
+      },
+      {
+        "phase": "latest",
+        "ms": 340
+      }
+    ],
+    "navigationSettlingMs": 350,
+    "loadedRows": 300,
+    "weakFailureRetained": true,
+    "interactiveLimit": "setData callback is a render acknowledgement; user input readiness needs separate real-device evidence"
+  },
+  "after": {
+    "sourceSha": "706b02fa3db86ed6c232f44893eb114b039845db",
+    "sourceHash": "85800c176759f9ab8cd0095e741a72409fc4a527e4083cdf88a5bb6cd083f33d",
+    "scope": "WeChat DevTools native runtime; synthetic local MySQL; fixed 40ms transport delay; no phone/cloud claim",
+    "samples": [
+      {
+        "scenario": "cold-home",
+        "operationMs": 296,
+        "latestReadyMs": 293,
+        "snapshotReadyMs": null,
+        "renderAckMs": 301,
+        "interactiveMs": null,
+        "requests": 2,
+        "calls": [
+          {
+            "action": "bootstrap",
+            "ms": 56,
+            "ok": true
+          },
+          {
+            "action": "dashboard.get",
+            "ms": 58,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 3994,
+        "setDataBytes": 4092
+      },
+      {
+        "scenario": "same-session-home",
+        "operationMs": 3,
+        "latestReadyMs": 1,
+        "snapshotReadyMs": null,
+        "renderAckMs": 5,
+        "interactiveMs": null,
+        "requests": 0,
+        "calls": [],
+        "snapshotMs": [],
+        "maxSetDataBytes": 3994,
+        "setDataBytes": 4093
+      },
+      {
+        "scenario": "background-home",
+        "operationMs": 73,
+        "latestReadyMs": 70,
+        "snapshotReadyMs": 14,
+        "renderAckMs": 79,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "reads.validate",
+            "ms": 54,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [
+          3
+        ],
+        "maxSetDataBytes": 4033,
+        "setDataBytes": 8125
+      },
+      {
+        "scenario": "loan-return",
+        "operationMs": 25,
+        "latestReadyMs": 8,
+        "snapshotReadyMs": null,
+        "renderAckMs": 27,
+        "interactiveMs": null,
+        "requests": 0,
+        "calls": [],
+        "snapshotMs": [],
+        "maxSetDataBytes": 780,
+        "setDataBytes": 2208
+      },
+      {
+        "scenario": "write-return",
+        "operationMs": 328,
+        "latestReadyMs": 176,
+        "snapshotReadyMs": 119,
+        "renderAckMs": 330,
+        "interactiveMs": null,
+        "requests": 2,
+        "calls": [
+          {
+            "action": "transactions.create",
+            "ms": 93,
+            "ok": true
+          },
+          {
+            "action": "dashboard.get",
+            "ms": 55,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [
+          1
+        ],
+        "maxSetDataBytes": 4033,
+        "setDataBytes": 8228
+      },
+      {
+        "scenario": "transactions-page-2",
+        "operationMs": 72,
+        "latestReadyMs": 60,
+        "snapshotReadyMs": null,
+        "renderAckMs": 90,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 56,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 21957,
+        "setDataBytes": 22016
+      },
+      {
+        "scenario": "transactions-page-3",
+        "operationMs": 89,
+        "latestReadyMs": 69,
+        "snapshotReadyMs": null,
+        "renderAckMs": 103,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 53,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 21957,
+        "setDataBytes": 22016
+      },
+      {
+        "scenario": "transactions-page-4",
+        "operationMs": 106,
+        "latestReadyMs": 77,
+        "snapshotReadyMs": null,
+        "renderAckMs": 124,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 57,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 21977,
+        "setDataBytes": 22036
+      },
+      {
+        "scenario": "transactions-page-5",
+        "operationMs": 85,
+        "latestReadyMs": 63,
+        "snapshotReadyMs": null,
+        "renderAckMs": 101,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 51,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 21987,
+        "setDataBytes": 22046
+      },
+      {
+        "scenario": "transactions-page-6",
+        "operationMs": 118,
+        "latestReadyMs": 80,
+        "snapshotReadyMs": null,
+        "renderAckMs": 138,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 55,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 21987,
+        "setDataBytes": 22046
+      },
+      {
+        "scenario": "transactions-page-7",
+        "operationMs": 116,
+        "latestReadyMs": 74,
+        "snapshotReadyMs": null,
+        "renderAckMs": 139,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 51,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 21987,
+        "setDataBytes": 22046
+      },
+      {
+        "scenario": "transactions-page-8",
+        "operationMs": 127,
+        "latestReadyMs": 88,
+        "snapshotReadyMs": null,
+        "renderAckMs": 153,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 54,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 21987,
+        "setDataBytes": 22046
+      },
+      {
+        "scenario": "transactions-page-9",
+        "operationMs": 134,
+        "latestReadyMs": 89,
+        "snapshotReadyMs": null,
+        "renderAckMs": 164,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 54,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 21987,
+        "setDataBytes": 22046
+      },
+      {
+        "scenario": "transactions-page-10",
+        "operationMs": 136,
+        "latestReadyMs": 88,
+        "snapshotReadyMs": null,
+        "renderAckMs": 165,
+        "interactiveMs": null,
+        "requests": 1,
+        "calls": [
+          {
+            "action": "transactions.list",
+            "ms": 54,
+            "ok": true
+          }
+        ],
+        "snapshotMs": [],
+        "maxSetDataBytes": 21987,
+        "setDataBytes": 22046
+      },
+      {
+        "scenario": "selection",
+        "operationMs": 143,
+        "latestReadyMs": null,
+        "snapshotReadyMs": null,
+        "renderAckMs": 242,
+        "interactiveMs": null,
+        "requests": 0,
+        "calls": [],
+        "snapshotMs": [],
+        "maxSetDataBytes": 3450,
+        "setDataBytes": 6925
+      },
+      {
+        "scenario": "weak-network-home",
+        "operationMs": 411,
+        "latestReadyMs": null,
+        "snapshotReadyMs": 15,
+        "renderAckMs": 415,
+        "interactiveMs": null,
+        "requests": 2,
+        "calls": [
+          {
+            "action": "reads.validate",
+            "ms": 42,
+            "ok": false
+          },
+          {
+            "action": "reads.validate",
+            "ms": 41,
+            "ok": false
+          }
+        ],
+        "snapshotMs": [
+          2
+        ],
+        "maxSetDataBytes": 4033,
+        "setDataBytes": 4192
+      }
+    ],
+    "writePhases": [
+      {
+        "phase": "confirmed",
+        "ms": 96
+      },
+      {
+        "phase": "navigation",
+        "ms": 316
+      },
+      {
+        "phase": "latest",
+        "ms": 328
+      }
+    ],
+    "navigationSettlingMs": 350,
+    "loadedRows": 300,
+    "weakFailureRetained": true,
+    "interactiveLimit": "setData callback is a render acknowledgement; user input readiness needs separate real-device evidence"
+  },
+  "functional": {
+    "scroll": {
+      "before": 600,
+      "after": 600,
+      "rows": {
+        "before": 300,
+        "after": 309,
+        "error": false
+      }
+    },
+    "tap": {
+      "action": "tap #batch-delete-toggle",
+      "success": true,
+      "selectionMode": true
+    }
+  }
+}

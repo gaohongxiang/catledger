@@ -20,6 +20,7 @@ function allocationPayload(data){
 }
 function allocationReview(data){try{const value=allocationPayload(Object.assign({},data,{confirmed:true}));return fields.map((f,i)=>['本金','利息','费用'][i]+'未分配 '+money.formatMinor(addMinor(data.paymentShare[f+'Minor'],'-'+value.items.reduce((s,a)=>addMinor(s,a[f+'Minor']),'0')))).join('；')}catch(error){return error.message}}
 function canGenerate(loan){
+ if(loan&&loan.installmentSetup&&loan.installmentSetup.historicalPaidTerms===loan.scheduleTerms)return false
  if(!loan||loan.scheduleMethod==null||loan.scheduleTerms==null||loan.measurementKind==null)return false
  if(loan.measurementKind==='rate')return loan.quoteType!=null&&loan.ratePpm!=null
  return loan.measurementKind==='repayment'&&loan.repaymentMinor!=null

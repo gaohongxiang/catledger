@@ -1,5 +1,7 @@
 // 连续前台使用期间复用；本机写入、重新进入前台及手动刷新控制重读。
+const ALL_TAGS = ['accounts', 'transactions', 'categories', 'profile', 'loans', 'accountDirectory', 'categoryDirectory']
 const READ_POLICIES = Object.freeze({
+  'reads.validate': { ttl: 0, tags: ALL_TAGS },
   'loans.transaction': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
   'loans.unassigned': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
   'loans.payment': { ttl: Infinity, tags: ['loans', 'transactions'] },
@@ -20,7 +22,7 @@ const READ_POLICIES = Object.freeze({
 function mutationTags(action) {
   if (action === 'profile.update') return ['profile']
   if (/^loans\.(savePeriod|allocatePeriods|generatePlan)$/.test(action)) return ['loans']
-  if (/^loans\.(record|correct|reverse)$/.test(action)) return ['loans', 'accounts', 'transactions']
+  if (/^loans\.(record|correct|reverse|bookRepayment|assignRepayment|releaseRepayment)$/.test(action)) return ['loans', 'accounts', 'transactions']
   if (/^loans\.(create|update)$/.test(action)) return ['loans']
   if (action === 'accounts.create') return ['accounts', 'transactions', 'accountDirectory']
   if (action === 'accounts.correctBalance') return ['accounts', 'transactions']
@@ -28,7 +30,7 @@ function mutationTags(action) {
   if (/^categories\.(create|update|archive|restore|reorder)$/.test(action)) return ['categories', 'categoryDirectory']
   if (action === 'categories.assignTransactions' || action === 'transactions.setCategory') return ['transactions']
   if (/^transactions\.(create|update|delete|deleteMany|linkRefund)$/.test(action)) return ['transactions', 'accounts']
-  if (/^financeUpdates\.(post|undo)$/.test(action) || action === 'economicEvents.correct') return ['accounts', 'transactions', 'categories', 'accountDirectory', 'categoryDirectory']
+  if (/^financeUpdates\.(post|undo)$/.test(action) || action === 'economicEvents.correct') return ['loans', 'accounts', 'transactions', 'categories', 'accountDirectory', 'categoryDirectory']
   return []
 }
-module.exports = { READ_POLICIES, mutationTags }
+module.exports = { READ_POLICIES, mutationTags, ALL_TAGS }

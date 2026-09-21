@@ -9,7 +9,9 @@ module.exports = {
   canSelect: selectable,
   resetSelection: function () {
     this._selectionEpoch = (this._selectionEpoch || 0) + 1
-    this.setData({ selectedCount: 0, allSelected: false, selectingAll: false, transactions: this.data.transactions.map(row => Object.assign({}, row, { selected: false })) })
+    const patch = { selectedCount: 0, allSelected: false, selectingAll: false }
+    this.data.transactions.forEach((row, index) => { if (row.selected) patch['transactions[' + index + '].selected'] = false })
+    this.setData(patch)
   },
   toggleSelection: function () {
     if (this.data.deleting || this.data.selectingAll || this.data.loading || this.data.deleteRetryCount) return
@@ -41,12 +43,13 @@ module.exports = {
       }
       if (!current()) return
       let count = 0
-      const transactions = this.data.transactions.map(row => {
+      const patch = {}
+      this.data.transactions.forEach((row, index) => {
         const selected = selectable(row) && count < 100
         if (selected) count++
-        return Object.assign({}, row, { selected })
+        if (Boolean(row.selected) !== selected) patch['transactions[' + index + '].selected'] = selected
       })
-      this.setData({ transactions, selectedCount: count, allSelected: count > 0 && (count === 100 || !this.data.nextCursor) })
+      this.setData(Object.assign(patch, { selectedCount: count, allSelected: count > 0 && (count === 100 || !this.data.nextCursor) }))
       if (count === 100 && (this.data.nextCursor || this.data.transactions.filter(selectable).length > 100)) wx.showToast({ title: '已选择前 100 笔', icon: 'none' })
     } finally { if (current()) this.setData({ selectingAll: false }) }
   },
@@ -61,6 +64,7 @@ module.exports = {
       this._batchRequest = null
       this.setData({ deleteRetryCount: 0 })
       await this.loadTransactions(false, { force: true })
+      if (isCurrent() && this.data.errorMessage) this.setData({ errorMessage: '已删除，列表待刷新；请重新读取最新结果' })
     } catch (error) {
       if (isCurrent()) this.setData({ deleteRetryCount: packet.payload.items.length,
         errorMessage: error.code === 'OPERATION_UNCONFIRMED' ? '上次删除未收到结果，可点击“继续删除”确认。' : error.message })
@@ -88,6 +92,7 @@ module.exports = {
       getApp().globalData.ledgerRevision = (getApp().globalData.ledgerRevision || 0) + 1
       wx.showToast({ title: '已删除 ' + result.result.deletedCount + ' 笔', icon: 'success' })
       await this.loadTransactions(false, { force: true })
+      if (isCurrent() && this.data.errorMessage) this.setData({ errorMessage: '已删除，列表待刷新；请重新读取最新结果' })
     } catch (error) {
       if (!isCurrent()) return
       let packet
