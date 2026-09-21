@@ -7,6 +7,7 @@
     "empty-cat": "/components/empty-cat/index",
     "skeleton-rows": "/components/skeleton-rows/index",
     "ui-state": "/components/ui-state/index",
-    "chevron-icon": "/components/chevron-icon/index"
+    "chevron-icon": "/components/chevron-icon/index",
+    "category-picker": "/components/category-picker/index"
   }
 }

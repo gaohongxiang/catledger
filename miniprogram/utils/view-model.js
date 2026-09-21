@@ -20,7 +20,7 @@ function transactionView(transaction) {
   }
 
   const label = transaction.category && transaction.category.name
-    ? transaction.category.name
+    ? (transaction.category.parentName ? transaction.category.parentName + ' / ' : '') + transaction.category.name
     : ['income', 'expense'].includes(transaction.type) ? '未分类' : TYPE_LABELS[transaction.type] || '账目'
   const prefix = transaction.type === 'expense' ? '-' : (transaction.type === 'income' || transaction.type === 'refund') ? '+' : ''
   return Object.assign({}, transaction, {

@@ -307,12 +307,14 @@ test('整理数量公式常驻，保留最新账户同行选择', () => {
   assert.match(markup, /!currentIssue.paymentNeedsReview \|\| issueSourceExpanded/)
 })
 
-test('分类拖拽命中行高与最终布局相同，排序请求规则不变', () => {
+test('分类拖拽命中行高与最终布局相同，排序限定同级', () => {
   const { page } = runtime('pages/categories/index')
+  page.applyCategories([{id:'a',kind:'expense',name:'合成大类',archived:false,sortOrder:10}, {id:'b',kind:'expense',name:'合成子类',parentId:'a',archived:false,sortOrder:10}])
   page.startCategoryDrag({ currentTarget: { dataset: { index: 0, id: 'a' } }, touches: [{ clientY: 20 }] })
   assert.equal(page.categoryDrag.rowHeight, 58)
+  assert.deepEqual(page.categoryDrag.siblings.map(row => row.id), ['a'])
   assert.match(read('miniprogram/pages/categories/index.wxss'), /height:\s*116rpx;\s*min-height:\s*116rpx/)
-  assert.match(read('miniprogram/pages/categories/index.js'), /categoryModel.reorder\(this.data.visibleCategories, drag.index, drag.target\)/)
+  assert.match(read('miniprogram/pages/categories/index.js'), /categoryModel.reorder\(drag.siblings, drag.index, drag.target\)/)
 })
 
 test('记账目录失败仍能编辑本地草稿，重试成功后允许选择账户', async () => {

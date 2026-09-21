@@ -1,0 +1,23 @@
+<view class="category-picker-trigger" bindtap="show" aria-role="button" aria-label="{{title}}" aria-disabled="{{disabled}}">
+  <slot></slot><text wx:if="{{parentCaption}}" class="category-parent-caption">大类：{{parentCaption}}</text>
+</view>
+<view wx:if="{{open}}" class="cp-layer" catchtouchmove="stop">
+  <view class="cp-scrim" catchtap="close"></view>
+  <view class="cp-sheet" catchtap="stop">
+    <view class="cp-heading"><text class="cp-title">{{title}}</text><button size="mini" class="cp-close" bindtap="close">关闭</button></view>
+    <input class="cp-search" value="{{query}}" bindinput="search" placeholder="搜索大类或子类" aria-label="搜索分类" />
+    <text class="cp-hint">点名称选大类，点箭头展开子类</text>
+    <scroll-view scroll-y class="cp-list">
+      <view wx:for="{{groups}}" wx:key="key" class="cp-group">
+        <view class="cp-row {{value === item.optionIndex ? 'cp-selected' : ''}}">
+          <view class="cp-choice" data-index="{{item.optionIndex}}" bindtap="choose" aria-role="button" aria-label="{{item.displayName}}"><category-tile name="{{item.name}}" system-key="{{item.systemKey}}" size="small" hide-name /><text>{{item.displayName}}</text><text wx:if="{{value === item.optionIndex}}" class="cp-check">已选</text></view>
+          <view wx:if="{{item.hasChildren}}" class="cp-expand" data-key="{{item.key}}" bindtap="toggle" aria-role="button" aria-label="{{item.expanded ? '收起' : '展开'}}{{item.name}}子类"><chevron-icon direction="{{item.expanded ? 'down' : 'right'}}" size="{{24}}" /></view>
+        </view>
+        <view wx:if="{{item.expanded}}" class="cp-children">
+          <view wx:for="{{item.children}}" wx:for-item="child" wx:key="key" class="cp-row cp-child {{value === child.optionIndex ? 'cp-selected' : ''}}" data-index="{{child.optionIndex}}" bindtap="choose" aria-role="button" aria-label="{{child.displayName}}"><category-tile name="{{child.name}}" system-key="{{child.systemKey}}" size="small" hide-name /><text>{{child.name}}</text><text wx:if="{{value === child.optionIndex}}" class="cp-check">已选</text></view>
+        </view>
+      </view>
+      <view wx:if="{{!groups.length}}" class="cp-empty">没有匹配的分类</view>
+    </scroll-view>
+  </view>
+</view>

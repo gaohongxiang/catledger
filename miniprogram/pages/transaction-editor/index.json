@@ -4,6 +4,7 @@
     "login-sheet": "/components/login-sheet/index",
     "category-tile": "/components/category-tile/index",
     "ui-state": "/components/ui-state/index",
-    "chevron-icon": "/components/chevron-icon/index"
+    "chevron-icon": "/components/chevron-icon/index",
+    "category-picker": "/components/category-picker/index"
   }
 }

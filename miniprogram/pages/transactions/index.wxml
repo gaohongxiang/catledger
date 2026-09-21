@@ -39,9 +39,9 @@
     <picker class="filter-picker" mode="selector" range="{{accountFilters}}" range-key="name" value="{{accountFilterIndex}}" bindchange="changeAccountFilter">
       <view class="filter-content"><text class="filter-label">{{accountFilters[accountFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
     </picker>
-    <picker class="filter-picker" mode="selector" range="{{categoryFilters}}" range-key="name" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter">
+    <category-picker class="category-picker-control filter-picker" range="{{categoryFilters}}" value="{{categoryFilterIndex}}" bindchange="changeCategoryFilter">
       <view class="filter-content"><text class="filter-label">{{categoryFilters[categoryFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
-    </picker>
+    </category-picker>
     <picker wx:if="{{!importFilter}}" class="filter-picker source-picker" mode="selector" range="{{sourceFilters}}" range-key="name" value="{{sourceFilterIndex}}" bindchange="changeSourceFilter">
       <view class="filter-content"><text class="filter-label">{{sourceFilters[sourceFilterIndex].name}}</text><chevron-icon direction="down" size="{{20}}" /></view>
     </picker>
@@ -68,7 +68,7 @@
       bindtap="editTransaction"
     >
       <view wx:if="{{selectionMode}}" class="detail-check {{item.selected ? 'detail-check-selected' : ''}} {{!item.deletable ? 'detail-check-disabled' : ''}}" aria-role="checkbox" aria-label="{{item.label}}" aria-checked="{{item.selected ? 'true' : 'false'}}"><image wx:if="{{item.selected}}" class="detail-check-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view>
-      <category-tile class="detail-tile" size="small" hide-name name="{{item.label}}" />
+      <category-tile class="detail-tile" size="small" hide-name name="{{item.label}}" system-key="{{item.category.systemKey}}" />
       <view class="detail-main">
         <view class="detail-copy">
           <view class="detail-line {{item.amountText.length > 15 ? 'detail-line-long' : ''}}">

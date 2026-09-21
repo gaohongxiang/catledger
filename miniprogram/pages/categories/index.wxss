@@ -232,3 +232,10 @@
   text-overflow: ellipsis;
 }
 .category-detail-sheet .sheet-title { overflow-wrap: anywhere; white-space: normal; }
+
+.category-expand { display: flex; align-items: center; justify-content: center; width: 72rpx; align-self: stretch; flex-shrink: 0; }
+.category-child { padding-left: 132rpx; background: var(--theme-surface-muted); }
+.category-parent-field { display: flex; align-items: center; gap: 14rpx; padding: 24rpx 0; font-size: 28rpx; color: var(--theme-text-muted); }
+.category-parent-field text:nth-child(2) { margin-left: auto; color: var(--theme-ink); }
+
+.category-name { white-space: nowrap; text-overflow: ellipsis; }

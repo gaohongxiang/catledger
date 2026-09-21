@@ -742,9 +742,9 @@
         <picker wx:if="{{currentIssue.issueType === 'shared_fields' || currentIssue.issueType === 'field_conflict'}}" class="mapping-picker" mode="selector" range="{{natureOptions}}" range-key="label" value="{{issueDraft.natureIndex}}" bindchange="changeIssueNature">
           <view class="mapping-field"><text class="mapping-label">收支性质</text><text class="mapping-value">{{natureOptions[issueDraft.natureIndex].label}}</text><view class="field-chevron"></view></view>
         </picker>
-        <picker wx:if="{{currentIssue.issueType === 'category_assignment' && issueCategories.length}}" class="mapping-picker" mode="selector" range="{{issueCategories}}" range-key="name" value="{{issueDraft.categoryIndex}}" bindchange="changeIssueCategory">
+        <category-picker wx:if="{{currentIssue.issueType === 'category_assignment' && issueCategories.length}}" class="category-picker-control mapping-picker" remote data-target="category" bindbrowse="openDirectory" range="{{issueCategories}}" value="{{issueDraft.categoryIndex}}" bindchange="changeIssueCategory">
           <view class="mapping-field"><text class="mapping-label">交易分类</text><text class="mapping-value {{issueCategories[issueDraft.categoryIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{issueCategories[issueDraft.categoryIndex].name}}</text><view class="field-chevron"></view></view>
-        </picker>
+        </category-picker>
       </view>
 
       <view wx:if="{{currentIssue.issueType === 'refund_relation'}}" class="relation-list">
@@ -818,7 +818,7 @@
       <view wx:if="{{directorySheet.target !== 'category'}}" class="list-pagination"><button class="stage-previous" data-kind="accounts" bindtap="changeDirectoryKind">已有账户</button><button class="stage-previous" data-kind="accountDrafts" bindtap="changeDirectoryKind">本批新建</button></view>
       <input class="account-choice-search" value="{{directorySheet.query}}" maxlength="80" placeholder="输入名称查找" bindinput="searchDirectory" />
       <scroll-view class="account-records-scroll" scroll-y>
-        <button wx:for="{{directorySheet.items}}" wx:key="index" class="account-choice-account-row" data-index="{{index}}" bindtap="selectDirectory">{{item.name}}</button>
+        <button wx:for="{{directorySheet.items}}" wx:key="index" class="account-choice-account-row" data-index="{{index}}" bindtap="selectDirectory">{{item.parentName ? item.parentName + ' / ' : ''}}{{item.name}}</button>
       </scroll-view>
 <view wx:if="{{directorySheet.page}}" class="list-pagination">
         <button class="stage-previous" data-direction="first" bindtap="changeDirectoryPage" disabled="{{!directorySheet.page.canFirst}}">首页</button>

@@ -11,7 +11,7 @@ function buildReadonlyDetail(transaction, categories, canEditCategory) {
   if (transaction.note) rows.push({ label: '备注', value: transaction.note })
   if (transaction.type === 'refund' && transaction.originalTransaction) rows.push({ label: '原支出', value: String(transaction.originalTransaction.occurredLocalAt || '').slice(0, 10) + ' · ' + money.formatMinor(transaction.originalTransaction.amountMinor) })
   return { amountText: money.formatMinor(transaction.amountMinor), rows, categories: options, categoryIndex,
-    categoryName: transaction.category && transaction.category.name || '未分类', canEditCategory: Boolean(canEditCategory),
+    categoryName: transaction.category && transaction.category.name ? (transaction.category.parentName ? transaction.category.parentName + ' / ' : '') + transaction.category.name : '未分类', canEditCategory: Boolean(canEditCategory),
     typeClass: transaction.type === 'expense' ? 'detail-expense' : (transaction.type === 'income' || transaction.type === 'refund') ? 'detail-income' : '',
     sourceLabel: transaction.origin === 'import' || transaction.importContext ? '账单导入' : '账单记录' }
 }

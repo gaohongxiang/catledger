@@ -397,3 +397,7 @@
   background: transparent;
 }
 .category-sheet > .sheet-handle { margin-bottom: 44rpx; }
+
+.category-breakdown { margin: 12rpx 0 0 82rpx; border-left: 2rpx solid var(--theme-line); padding-left: 20rpx; }
+.breakdown-row { display: flex; justify-content: space-between; gap: 16rpx; padding: 16rpx 0; font-size: 25rpx; color: var(--theme-text-muted); }
+.completion-category-trigger { display: flex; align-items: center; justify-content: space-between; padding: 24rpx 0; font-size: 28rpx; }

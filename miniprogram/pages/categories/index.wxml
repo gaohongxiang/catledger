@@ -1,5 +1,5 @@
 <view class="page-canvas page-secondary category-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head has-actions class="content-inset" title="分类总览" copy="管理账目使用的收支分类；点开可改名或停用。">
+  <page-head has-actions class="content-inset" title="分类总览" copy="直接选大类就能记账，需要时再细分。">
     <view class="heading-with-sync"><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view>
     <button size="mini" class="head-cta" bindtap="openCreate" aria-label="新建分类"><view class="head-cta-label"><image src="/assets/icons/plus-on-accent.svg" mode="aspectFit" /><text>新建分类</text></view></button>
   </page-head>
@@ -11,16 +11,23 @@
   </view>
 
   <view class="category-toolbar content-inset">
-    <text class="category-sort-note">拖动右侧把手排序</text>
+    <text class="category-sort-note">点箭头展开子类，拖动把手调整同级排序</text>
   </view>
 
   <view wx:if="{{visibleCategories.length}}" class="category-list">
-    <view wx:for="{{visibleCategories}}" wx:key="id" class="category-row {{draggingCategoryId === item.id ? 'category-row-dragging' : ''}}" style="{{draggingCategoryId === item.id ? dragStyle : ''}}" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看分类 {{item.name}}">
+    <block wx:for="{{visibleCategories}}" wx:key="id"><view class="category-row {{draggingCategoryId === item.id ? 'category-row-dragging' : ''}}" style="{{draggingCategoryId === item.id ? dragStyle : ''}}" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看分类 {{item.name}}">
       <text class="category-order money-number">{{item.orderText}}</text>
-      <category-tile size="small" hide-name name="{{item.name}}" />
-      <view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">{{selectedKind === 'expense' ? '支出分类' : '收入分类'}}</text></view>
+      <category-tile size="small" hide-name name="{{item.name}}" system-key="{{item.systemKey}}" />
+      <view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">{{item.children.length ? item.children.length + ' 个子类' : '可直接记账'}}</text></view>
+      <view wx:if="{{item.children.length}}" class="category-expand" data-id="{{item.id}}" catchtap="toggleChildren" aria-role="button" aria-label="展开或收起子类"><chevron-icon direction="{{expandedCategories[item.id] ? 'down' : 'right'}}" size="{{24}}" /></view>
       <view class="category-drag-handle" data-index="{{item.positionIndex}}" data-id="{{item.id}}" catchtouchstart="startCategoryDrag" catchtouchmove="moveCategoryDrag" catchtouchend="endCategoryDrag" catchtouchcancel="cancelCategoryDrag" role="button" aria-label="拖动调整 {{item.name}} 的排序"><view class="category-drag-lines" aria-hidden="true"></view></view>
     </view>
+    <view wx:if="{{expandedCategories[item.id]}}" class="category-children">
+      <view wx:for="{{item.children}}" wx:for-item="child" wx:key="id" class="category-row category-child {{draggingCategoryId === child.id ? 'category-row-dragging' : ''}}" style="{{draggingCategoryId === child.id ? dragStyle : ''}}" data-id="{{child.id}}" bindtap="openCategoryDetail">
+        <category-tile size="small" hide-name name="{{child.name}}" system-key="{{child.systemKey}}" /><view class="category-copy"><text class="category-name">{{child.name}}</text><text class="category-kind-label">{{item.name}}</text></view>
+        <view class="category-drag-handle" data-index="{{child.positionIndex}}" data-id="{{child.id}}" catchtouchstart="startCategoryDrag" catchtouchmove="moveCategoryDrag" catchtouchend="endCategoryDrag" catchtouchcancel="cancelCategoryDrag" aria-role="button" aria-label="拖动调整子类排序"><view class="category-drag-lines"></view></view>
+      </view>
+    </view></block>
   </view>
   <empty-state wx:if="{{hasLoaded && !loading && !errorMessage && !visibleCategories.length}}" title="还没有{{selectedKind === 'expense' ? '支出' : '收入'}}分类" description="新建后可在记账和导入时使用。" />
 
@@ -30,7 +37,7 @@
       <view class="archived-toggle-end"><text class="money-number">{{archivedCategories.length}}</text><chevron-icon direction="{{archivedExpanded ? 'down' : 'right'}}" size="{{24}}" /></view>
     </view>
     <view wx:if="{{archivedExpanded}}" class="archived-list">
-      <view wx:for="{{archivedCategories}}" wx:key="id" class="category-row category-row-archived" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看已停用分类 {{item.name}}"><text class="category-order money-number">{{item.orderText}}</text><category-tile size="small" hide-name name="{{item.name}}" /><view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">已停用</text></view><chevron-icon size="{{26}}" /></view>
+      <view wx:for="{{archivedCategories}}" wx:key="id" class="category-row category-row-archived" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看已停用分类 {{item.name}}"><text class="category-order money-number">{{item.orderText}}</text><category-tile size="small" hide-name name="{{item.name}}" system-key="{{item.systemKey}}" /><view class="category-copy"><text class="category-name">{{item.displayName}}</text><text class="category-kind-label">已停用</text></view><chevron-icon size="{{26}}" /></view>
     </view>
   </view>
 
@@ -44,6 +51,7 @@
       <view class="category-detail-meta"><text>{{categoryDetail.kind === 'expense' ? '支出分类' : '收入分类'}}</text><text>排序 {{categoryDetail.orderText}}</text></view>
       <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
       <view class="category-detail-actions">
+        <list-row wx:if="{{!categoryDetail.archived && !categoryDetail.parentId}}" title="添加子类" note="可选细分，不影响已有账目" data-parent-id="{{categoryDetail.id}}" bindtap="openCreate" />
         <list-row wx:if="{{!categoryDetail.archived}}" title="修改名称" note="调整这个分类的显示名称" tone="primary" aria-label="修改分类名称" data-id="{{categoryDetail.id}}" bindtap="openEdit" />
         <list-row title="{{categoryDetail.archived ? '恢复分类' : '停用分类'}}" note="{{categoryDetail.archived ? '恢复后可继续用于新账' : '历史账目不会受到影响'}}" tone="{{categoryDetail.archived ? 'primary' : 'danger'}}" chevron="{{false}}" divider="{{false}}" aria-label="{{categoryDetail.archived ? '恢复' : '停用'}}分类" data-id="{{categoryDetail.id}}" bindtap="setArchived" />
       </view>
@@ -55,6 +63,7 @@
       <view class="sheet-handle"></view>
       <view class="sheet-topline"><text class="sheet-kicker">分类编辑</text><button class="sheet-close-button" disabled="{{saving}}" bindtap="closeForm">关闭</button></view>
       <text class="sheet-title serif-title">{{formTitle}}</text>
+      <picker wx:if="{{formMode === 'create'}}" range="{{parentOptions}}" range-key="name" value="{{parentIndex}}" bindchange="changeParent" disabled="{{saving}}"><view class="category-parent-field"><text>归属</text><text>{{parentOptions[parentIndex].name}}</text><chevron-icon direction="down" size="{{24}}" /></view></picker>
       <input class="category-input" value="{{categoryName}}" maxlength="32" focus="{{formOpen}}" placeholder="例如：宠物、旅行" aria-label="分类名称" cursor-spacing="32" disabled="{{saving}}" bindinput="bindCategoryName" />
       <text wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</text>
       <button class="primary-button primary-button-medium sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveForm">保存</button>

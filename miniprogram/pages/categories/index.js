@@ -13,6 +13,7 @@ Page({
     visibleCategories: [], archivedCategories: [], formOpen: false,
     archivedExpanded: false, categoryDetail: null,
     draggingCategoryId: '', dragStyle: '',
+    expandedCategories: {}, parentOptions: [], parentIndex: 0,
     formMode: 'create', formTitle: '新建支出分类', categoryName: '', selectedCategory: null
   },
 
@@ -43,12 +44,13 @@ Page({
       expenseCategories: expense,
       incomeCategories: income,
       visibleCategories: this.data.selectedKind === 'expense' ? expense : income,
-      archivedCategories: categoryModel.prepare(rows, this.data.selectedKind, true)
+      archivedCategories: categoryModel.prepare(rows, this.data.selectedKind, true),
+      parentOptions: [{ id: null, name: '一级分类' }].concat((this.data.selectedKind === 'expense' ? expense : income).map(item => ({ id: item.id, name: item.name })))
     })
   },
 
   loadCategories: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'saving', 'errorMessage', 'allCategories', 'expenseCategories', 'incomeCategories', 'visibleCategories', 'archivedCategories', 'formOpen', 'categoryDetail', 'selectedCategory', 'categoryName'], ['_readLoad'])
+    const isCurrent = pageReadSession.begin(this, ['expandedCategories', 'parentOptions', 'parentIndex', 'loading', 'hasLoaded', 'saving', 'errorMessage', 'allCategories', 'expenseCategories', 'incomeCategories', 'visibleCategories', 'archivedCategories', 'formOpen', 'categoryDetail', 'selectedCategory', 'categoryName'], ['_readLoad'])
     if (this._readLoad) return this._readLoad
     const self = this
     const force = Boolean(options && options.force)
@@ -105,7 +107,7 @@ Page({
     return this.data.allCategories.find(function (item) { return item.id === id })
   },
   findPreparedCategory: function (id) {
-    return this.data.visibleCategories.concat(this.data.archivedCategories).find(function (item) { return item.id === id })
+    return this.data.visibleCategories.flatMap(item => [item].concat(item.children || [])).concat(this.data.archivedCategories).find(function (item) { return item.id === id })
   },
   openCategoryDetail: function (event) {
     const category = this.findPreparedCategory(event.currentTarget.dataset.id)
@@ -115,8 +117,16 @@ Page({
     if (!this.data.saving) this.setData({ categoryDetail: null, errorMessage: '' })
   },
   toggleArchived: function () { this.setData({ archivedExpanded: !this.data.archivedExpanded }) },
-  openCreate: function () {
+  toggleChildren: function (event) {
+    const id = event.currentTarget.dataset.id
+    this.setData({ ['expandedCategories.' + id]: !this.data.expandedCategories[id] })
+  },
+  changeParent: function (event) { this.setData({ parentIndex: Number(event.detail.value) }) },
+  openCreate: function (event) {
+    this._categoryRequest = null
+    const parentId = event && event.currentTarget.dataset.parentId
     this.setData({
+      parentIndex: Math.max(0, this.data.parentOptions.findIndex(item => item.id === parentId)),
       formOpen: true, formMode: 'create', selectedCategory: null, categoryDetail: null, categoryName: '', errorMessage: '',
       formTitle: this.data.selectedKind === 'expense' ? '新建支出分类' : '新建收入分类'
     })
@@ -133,9 +143,12 @@ Page({
   saveForm: function () {
     if (this.data.saving) return
     const isCreate = this.data.formMode === 'create'
-    const data = { requestId: api.createRequestId(), name: this.data.categoryName }
-    if (isCreate) data.kind = this.data.selectedKind
+    const data = { name: this.data.categoryName }
+    if (isCreate) { data.kind = this.data.selectedKind; data.parentId = (this.data.parentOptions[this.data.parentIndex] || {}).id || null }
     else Object.assign(data, { categoryId: this.data.selectedCategory.id, version: this.data.selectedCategory.version })
+    const payload = JSON.stringify(data)
+    if (!this._categoryRequest || this._categoryRequest.payload !== payload) this._categoryRequest = { payload, requestId: api.createRequestId() }
+    data.requestId = this._categoryRequest.requestId
     const self = this
     const isCurrent = pageReadSession.capture(this)
     this.setData({ saving: true, errorMessage: '' })
@@ -154,7 +167,7 @@ Page({
     const self = this
     wx.showModal({
       title: (restoring ? '恢复“' : '停用“') + category.name + '”？',
-      content: restoring ? '恢复后可继续用于导入和手动记账。' : '历史账目仍会保留，新账不再使用这个分类。',
+      content: restoring ? '恢复后可继续用于导入和手动记账。' : (!category.parentId ? '这个大类及其子类一起停用，历史账目仍会保留。恢复大类后，子类需分别恢复。' : '历史账目仍会保留，新账不再使用这个分类。'),
       confirmText: restoring ? '恢复' : '停用',
       confirmColor: restoring ? themeService.currentTokens().accent : themeService.currentTokens().danger,
       success: function (result) {
@@ -174,7 +187,12 @@ Page({
     const touch = event.touches && event.touches[0]
     if (!touch || !Number.isInteger(index) || this.data.saving) return
     const system = typeof wx.getWindowInfo === 'function' ? wx.getWindowInfo() : wx.getSystemInfoSync()
+    const category = this.findCategory(event.currentTarget.dataset.id)
+    if (!category) return
+    const siblings = this.data.allCategories.filter(row => row.kind === category.kind && !row.archived && (row.parentId || null) === (category.parentId || null))
+    if (!category.parentId) this.setData({ expandedCategories: {} })
     this.categoryDrag = {
+      parentId: category.parentId || null, siblings,
       id: event.currentTarget.dataset.id,
       index: index,
       target: index,
@@ -187,7 +205,7 @@ Page({
     const drag = this.categoryDrag
     const touch = event.touches && event.touches[0]
     if (!drag || !touch) return
-    const position = categoryModel.resolveDrag(drag.index, drag.startY, touch.clientY, drag.rowHeight, this.data.visibleCategories.length)
+    const position = categoryModel.resolveDrag(drag.index, drag.startY, touch.clientY, drag.rowHeight, drag.siblings.length)
     drag.target = position.target
     this.setData({ dragStyle: 'transform: translateY(' + position.offset + 'px); z-index: 3;' })
   },
@@ -201,11 +219,11 @@ Page({
     this.setData({ draggingCategoryId: '', dragStyle: '' })
     if (!drag || drag.target === drag.index || this.data.saving) return
     const isCurrent = pageReadSession.capture(this)
-    const prepared = categoryModel.reorder(this.data.visibleCategories, drag.index, drag.target)
+    const prepared = categoryModel.reorder(drag.siblings, drag.index, drag.target)
     const self = this
-    this.setData({ visibleCategories: prepared, saving: true, errorMessage: '', categoryDetail: null })
+    this.setData({ saving: true, errorMessage: '', categoryDetail: null })
     return api.callApi('categories.reorder', {
-      requestId: api.createRequestId(), kind: this.data.selectedKind,
+      requestId: api.createRequestId(), kind: this.data.selectedKind, parentId: drag.parentId,
       items: prepared.map(function (item) { return { categoryId: item.id, version: item.version } })
     }).then(function (result) { if (isCurrent()) return self.applyMutation(result) })
       .catch(function (error) { return self.recoverMutation(error, '排序失败', isCurrent) })

@@ -1,11 +1,11 @@
+const { labelRows } = require('../../utils/category-tree')
 function prepare(rows, kind, archived) {
-  const filtered = rows.filter(function (item) { return item.kind === kind && item.archived === archived })
-  return filtered.map(function (item, index) {
-    return Object.assign({}, item, {
-      orderText: String(index + 1).padStart(2, '0'),
-      positionIndex: index
-    })
-  })
+  const filtered = labelRows(rows).filter(item => item.kind === kind && Boolean(item.archived) === archived)
+  const numbered = items => items.map((item, index) => Object.assign({}, item, { orderText: String(index + 1).padStart(2, '0'), positionIndex: index }))
+  if (archived) return numbered(filtered)
+  return numbered(filtered.filter(item => !item.parentId)).map(item => Object.assign({}, item, {
+    children: numbered(filtered.filter(child => child.parentId === item.id))
+  }))
 }
 
 function resolveDrag(index, startY, currentY, rowHeight, total) {
