@@ -15,7 +15,7 @@
   </view>
 
   <ui-state wx:if="{{!loggedIn}}" centered title="登录后查看收支统计"><button class="guest-login-button" size="mini" bindtap="promptLogin"><text class="guest-login-label">登录</text></button></ui-state>
-  <ui-state wx:elif="{{!hasLoaded && !errorMessage}}" description="正在汇总收支…" />
+  <skeleton-rows wx:elif="{{!hasLoaded && !errorMessage}}" rows="{{4}}" />
   <block wx:if="{{hasLoaded}}">
   <section-header class="stats-section" compact title="收支构成" />
   <view class="composition-card">
@@ -24,7 +24,7 @@
       <button class="composition-choice {{categoryKind === 'expense' ? 'composition-selected' : ''}}" data-kind="expense" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'expense' ? '收起支出分类' : '展开支出分类'}}">
         <text class="band-label">支出</text>
         <view class="band" aria-hidden="true"><view wx:for="{{expenseCategories}}" wx:key="categoryId" wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></view>
-        <text class="composition-amount expense-color money-number">{{expenseText}}</text>
+        <ticker-number class="composition-amount expense-color money-number" value="{{expenseText}}" />
         <text class="composition-toggle">{{categoryKind === 'expense' ? '收起分类' : '展开分类'}}</text>
       </button>
       </view>
@@ -32,7 +32,7 @@
       <button class="composition-choice {{categoryKind === 'income' ? 'composition-selected' : ''}}" data-kind="income" bindtap="selectCategoryKind" aria-label="{{categoryKind === 'income' ? '收起收入分类' : '展开收入分类'}}">
         <text class="band-label">收入</text>
         <view class="band" aria-hidden="true"><view wx:for="{{incomeCategories}}" wx:key="categoryId" wx:if="{{item.barWidth !== '0%'}}" class="band-segment" style="width: {{item.barWidth}}; background: {{item.bandColor}};"></view></view>
-        <text class="composition-amount income-color money-number">{{incomeText}}</text>
+        <ticker-number class="composition-amount income-color money-number" value="{{incomeText}}" />
         <text class="composition-toggle">{{categoryKind === 'income' ? '收起分类' : '展开分类'}}</text>
       </button>
       </view>
@@ -40,7 +40,7 @@
     <view wx:if="{{categoryKind}}" class="composition-details">
       <text class="composition-detail-title">{{categoryKind === 'expense' ? '支出分类' : '收入分类'}}</text>
       <block wx:if="{{categoryKind === 'expense' ? expenseCategories.length : incomeCategories.length}}">
-        <view wx:for="{{categoryKind === 'expense' ? expenseCategories : incomeCategories}}" wx:key="categoryId" class="ranking-row {{!item.categoryId ? 'ranking-unclassified' : ''}}" data-unclassified="{{!item.categoryId}}" bindtap="openUnclassifiedCategory" aria-role="{{!item.categoryId ? 'button' : 'text'}}">
+        <view wx:for="{{categoryKind === 'expense' ? expenseCategories : incomeCategories}}" wx:key="categoryId" class="ranking-row row-enter {{!item.categoryId ? 'ranking-unclassified' : ''}}" style="animation-delay: {{index * 70}}ms" data-unclassified="{{!item.categoryId}}" bindtap="openUnclassifiedCategory" aria-role="{{!item.categoryId ? 'button' : 'text'}}">
           <view class="ranking-line"><view class="composition-category"><category-tile size="small" hide-name name="{{item.categoryId ? item.name : ''}}" /><text class="ranking-name">{{!item.categoryId ? '待分类 ' + uncategorized.transactionCount + '笔' : item.name}}</text><chevron-icon wx:if="{{!item.categoryId}}" size="{{22}}" /></view><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
         </view>
       </block>

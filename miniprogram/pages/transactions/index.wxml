@@ -59,7 +59,8 @@
       wx:for="{{transactions}}"
       wx:key="transactionId"
       id="transaction-row-{{index}}"
-      class="detail-item content-inset"
+      class="detail-item content-inset row-enter"
+      style="animation-delay: {{index * 70}}ms"
       data-index="{{index}}"
       bindtap="editTransaction"
     >
@@ -81,7 +82,7 @@
   <empty-cat wx:elif="{{loggedIn && hasLoaded && !loading && !errorMessage}}" class="detail-empty" title="这里暂时没有账目" description="换一个月份或筛选条件试试；新增账目请使用底部加号。" />
 
   <ui-state wx:if="{{!loggedIn}}" centered title="登录后查看账目" description="你的账户与账单只对你可见。"><button class="guest-login-button" size="mini" bindtap="promptWechatLogin"><text class="guest-login-label">登录</text></button></ui-state>
-  <ui-state wx:elif="{{loading && !hasLoaded}}" description="正在读取账目…" />
+  <skeleton-rows wx:elif="{{loading && !hasLoaded}}" rows="{{4}}" />
   <view wx:if="{{loadingMore}}" class="ui-state-caption" aria-role="status">正在读取更多账目…</view>
   <text wx:elif="{{hasLoaded && transactions.length && !nextCursor}}" class="ui-state-caption">已显示当前筛选下的全部账目</text>
   <ui-state wx:if="{{catalogError}}" description="{{catalogError}}" />

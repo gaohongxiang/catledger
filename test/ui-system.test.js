@@ -410,3 +410,74 @@ test('我的页资料区：头像即按钮、昵称与 ID 使用图标按钮，�
   assert.match(style, /\.profile-icon-button \{[^}]*min-height:\s*88rpx/)
   assert.match(style, /\.profile-avatar-button:active \{\s*opacity:/)
 })
+
+test('ticker-number 逐位滚动接入首页净值与统计总额', function () {
+  const comp = read('miniprogram/components/ticker-number/index.js')
+  const markup = read('miniprogram/components/ticker-number/index.wxml')
+  const style = read('miniprogram/components/ticker-number/index.wxss')
+  assert.match(comp, /observers:[\s\S]*value: function/)
+  assert.match(markup, /item\.digit/)
+  assert.match(markup, /translateY\(\{\{item\.top\}\}\)/)
+  assert.match(style, /transition:\s*transform 600ms var\(--motion-ticker-timing/)
+  assert.match(style, /prefers-reduced-motion:\s*reduce/)
+  assert.match(read('miniprogram/pages/index/index.wxml'), /<ticker-number class="net-worth-number money-number" value="\{\{loggedIn && hasDashboard \? netWorthText : '—'\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<ticker-number class="composition-amount expense-color money-number" value="\{\{expenseText\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<ticker-number class="composition-amount income-color money-number" value="\{\{incomeText\}\}"/)
+})
+
+test('skeleton-rows 骨架屏替换四处读取中状态', function () {
+  const style = read('miniprogram/components/skeleton-rows/index.wxss')
+  assert.match(style, /animation:\s*sk-sweep var\(--layout-motion-shimmer, 1400ms\)/)
+  assert.match(style, /prefers-reduced-motion:\s*reduce/)
+  assert.match(read('miniprogram/pages/transactions/index.wxml'), /<skeleton-rows wx:elif="\{\{loading && !hasLoaded\}\}" rows="\{\{4\}\}"/)
+  assert.doesNotMatch(read('miniprogram/pages/transactions/index.wxml'), /正在读取账目…/)
+  assert.match(read('miniprogram/pages/accounts/index.wxml'), /<skeleton-rows wx:if="\{\{loading && !hasLoaded\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<skeleton-rows wx:elif="\{\{!hasLoaded && !errorMessage\}\}"/)
+  assert.match(read('miniprogram/pages/index/index.wxml'), /<skeleton-rows wx:elif="\{\{loading\}\}" rows="\{\{3\}\}"/)
+  assert.doesNotMatch(read('miniprogram/pages/index/index.wxml'), /正在读取最近账目…/)
+})
+
+test('按压回弹：按钮体系与可点卡片统一 scale 回弹', function () {
+  const appStyle = read('miniprogram/app.wxss')
+  assert.match(appStyle, /--motion-press-scale:\s*\.965/)
+  assert.match(appStyle, /--motion-press-timing:\s*cubic-bezier\(\.34, 1\.56, \.64, 1\)/)
+  assert.match(appStyle, /\.primary-button:active,[\s\S]*?transform:\s*scale\(var\(--motion-press-scale/)
+  assert.match(appStyle, /\.primary-button\[disabled\][\s\S]*?opacity:\s*\.65/)
+  assert.match(read('miniprogram/components/list-row/index.wxss'), /\.lr-active \{\s*transform:\s*scale\(var\(--motion-press-scale/)
+  assert.match(read('miniprogram/pages/loan-link/index.wxss'), /\.ll-candidate-hover \{\s*transform:\s*scale/)
+  assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.ld-history-hover \{\s*transform:\s*scale/)
+})
+
+test('校验抖动：login-sheet、profile、loan-detail 三处接入', function () {
+  const appStyle = read('miniprogram/app.wxss')
+  assert.match(appStyle, /@keyframes field-error-shake/)
+  assert.match(appStyle, /\.field-error-shake \{\s*animation:\s*field-error-shake 360ms/)
+  assert.match(appStyle, /\.field-error-inline/)
+  assert.match(read('miniprogram/pages/profile/index.wxml'), /profile-name-input \{\{nicknameError \? 'field-error-shake'/)
+  assert.match(read('miniprogram/components/login-sheet/index.wxml'), /nicknameShake \? 'login-nickname-shake'/)
+  assert.match(read('miniprogram/components/login-sheet/index.wxss'), /@keyframes login-nickname-shake/)
+  const loanDetailMarkup = read('miniprogram/pages/loan-detail/index.wxml')
+  assert.match(loanDetailMarkup, /fieldError === 'account' \? 'field-error-shake'/)
+  assert.match(loanDetailMarkup, /fieldError === 'principal' \? 'field-error-shake'/)
+  assert.match(loanDetailMarkup, /fieldError === 'schedule' \? 'field-error-shake'/)
+  assert.match(loanDetailMarkup, /errorMessage && !fieldError/)
+  assert.match(read('miniprogram/pages/loan-detail/index.js'), /fieldError: fieldErrorFor\(error\.message\)/)
+})
+
+test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔', function () {
+  const appStyle = read('miniprogram/app.wxss')
+  assert.match(appStyle, /@keyframes row-fade-up/)
+  assert.match(appStyle, /\.row-enter \{\s*animation:\s*row-fade-up var\(--layout-motion-enter, 380ms\) ease backwards/)
+  assert.match(appStyle, /--layout-motion-enter:\s*380ms/)
+  const files = [
+    'miniprogram/pages/transactions/index.wxml',
+    'miniprogram/pages/accounts/index.wxml',
+    'miniprogram/pages/statistics/index.wxml',
+    'miniprogram/pages/index/index.wxml'
+  ]
+  files.forEach(function (file) {
+    const markup = read(file)
+    assert.match(markup, /row-enter/, file)
+    assert.match(markup, /animation-delay: \{\{index \* 70\}\}ms/, file)
+  })
+})

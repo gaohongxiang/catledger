@@ -1,0 +1,28 @@
+.tn { display: inline-flex; align-items: baseline; overflow: hidden; vertical-align: baseline; }
+
+.tn-digit {
+  display: inline-block;
+  height: 1.1em;
+  overflow: hidden;
+  line-height: 1.1;
+}
+
+.tn-col {
+  display: flex;
+  flex-direction: column;
+  transition: transform 600ms var(--motion-ticker-timing, cubic-bezier(.22, 1, .36, 1));
+  will-change: transform;
+}
+
+.tn-num {
+  display: block;
+  height: 1.1em;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.tn-static { line-height: 1.1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tn-col { transition: none !important; }
+}

@@ -16,7 +16,7 @@
         <text class="net-worth-label">净资产</text>
         <text class="net-worth-month">{{monthLabel}}</text>
       </view>
-      <text class="net-worth-number money-number">{{loggedIn && hasDashboard ? netWorthText : '—'}}</text>
+      <ticker-number class="net-worth-number money-number" value="{{loggedIn && hasDashboard ? netWorthText : '—'}}" />
       <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 || netIncomeText.length > 12 ? 'month-strip-stacked' : ''}}">
         <view class="month-stat">
           <view class="month-stat-heading">
@@ -108,7 +108,8 @@
         <view
           wx:for="{{recentTransactions}}"
           wx:key="transactionId"
-          class="timeline-item"
+          class="timeline-item row-enter"
+          style="animation-delay: {{index * 70}}ms"
           data-index="{{index}}"
           bindtap="editTransaction"
         >
@@ -122,7 +123,8 @@
       </view>
       <empty-cat wx:else title="这个月还没有账" description="导入或手动记录后，最新账目会出现在这里。" />
     </block>
-    <empty-cat wx:else title="{{loading ? '正在读取最近账目…' : (errorMessage ? '账目暂未读取' : '登录后查看最近账目')}}" description="导入或手动记录后，最新账目会出现在这里。" />
+    <skeleton-rows wx:elif="{{loading}}" rows="{{3}}" />
+    <empty-cat wx:else title="{{errorMessage ? '账目暂未读取' : '登录后查看最近账目'}}" description="导入或手动记录后，最新账目会出现在这里。" />
     </view>
   </block>
 </view>

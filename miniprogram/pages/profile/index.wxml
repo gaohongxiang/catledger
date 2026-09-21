@@ -11,7 +11,7 @@
           <button class="profile-icon-button" aria-label="修改昵称" disabled="{{savingAvatar}}" bindtap="startEditNickname"><image class="profile-icon-image" src="/assets/icons/pencil.svg" mode="aspectFit" /></button>
         </view>
         <view wx:elif="{{loggedIn}}" class="profile-name-form">
-          <input class="profile-name-input" name="nickname" aria-label="昵称" type="nickname" value="{{nicknameDraft}}" maxlength="{{nicknameMaxLength}}" placeholder="1～6 个字" disabled="{{savingNickname}}" bindinput="bindNicknameDraft" bindblur="bindNicknameDraft" />
+          <input class="profile-name-input {{nicknameError ? 'field-error-shake' : ''}}" name="nickname" aria-label="昵称" type="nickname" value="{{nicknameDraft}}" maxlength="{{nicknameMaxLength}}" placeholder="1～6 个字" disabled="{{savingNickname}}" bindinput="bindNicknameDraft" bindblur="bindNicknameDraft" />
           <view class="profile-icon-button" hover-class="profile-icon-hover" aria-role="button" aria-label="取消修改昵称" bindtap="cancelEditNickname"><image class="profile-icon-image" src="/assets/icons/close.svg" mode="aspectFit" /></view>
           <view class="profile-icon-button" hover-class="profile-icon-hover" aria-role="button" aria-label="保存昵称" bindtap="saveNickname"><view wx:if="{{!savingNickname}}" class="profile-icon-confirm"><image class="profile-icon-image" src="/assets/icons/check.svg" mode="aspectFit" /></view></view>
         </view>

@@ -5,8 +5,8 @@
     <text wx:if="{{sourceContext}}" class="ld-note">还款发生于 {{sourceContext.occurredText}}；关联前须确认该日初或更早的本金基准，不是本次扣款金额。</text>
   </view>
   <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
-  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
-  <button wx:if="{{errorMessage && !saving}}" class="ld-link" bindtap="load">重新读取与核实</button>
+  <ui-state wx:if="{{errorMessage && !fieldError}}" error description="{{errorMessage}}" />
+  <button wx:if="{{errorMessage && !fieldError && !saving}}" class="ld-link" bindtap="load">重新读取与核实</button>
   <button wx:if="{{hasPending && !formOpen}}" class="primary-button ld-retry" disabled="{{saving || loading}}" loading="{{saving}}" bindtap="save">重试上次操作</button>
   <ui-state wx:if="{{loading && !loan}}" description="正在读取资料…" />
   <view wx:if="{{loan && !formOpen}}" class="ld-panel">
@@ -47,14 +47,16 @@
       <view wx:if="{{accounts.length}}" class="ld-block">
         <view class="ld-block-label"><text>关联负债账户</text><text>必选</text></view>
         <picker range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="selectAccount">
-          <view class="ld-picker"><text class="ld-picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择负债账户'}}</text><chevron-icon size="{{24}}" /></view>
+          <view class="ld-picker {{fieldError === 'account' ? 'field-error-shake' : ''}}"><text class="ld-picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择负债账户'}}</text><chevron-icon size="{{24}}" /></view>
         </picker>
+        <text wx:if="{{fieldError === 'account'}}" class="field-error-inline">{{errorMessage}}</text>
       </view>
       <button wx:else class="secondary-button ld-action" bindtap="openAccounts">先创建或启用负债账户</button>
       <view class="ld-grid">
-        <label class="ld-cell">
+        <label class="ld-cell {{fieldError === 'principal' ? 'field-error-shake' : ''}}">
           <view class="ld-cell-label"><text>已确认本金</text><text>不清楚可留空</text></view>
-          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
+          <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{principalYuan}}" data-field="principalYuan" bindinput="input" placeholder="" placeholder-class="ld-placeholder" focus="{{fieldError === 'principal'}}" /><text class="ld-cell-unit">元</text></view>
+          <text wx:if="{{fieldError === 'principal'}}" class="field-error-inline">{{errorMessage}}</text>
         </label>
         <picker class="ld-cell" mode="date" value="{{baselineDate}}" data-field="baselineDate" bindchange="input">
           <view class="ld-cell-label"><text>本金基准（日初）</text><text>有本金必填</text></view>
@@ -80,6 +82,8 @@
       <text class="ld-advanced-symbol">{{scheduleOpen ? '收起' : '展开'}}</text>
     </view>
     <block wx:if="{{scheduleOpen}}">
+      <view class="{{fieldError === 'schedule' ? 'field-error-shake' : ''}}">
+      <text wx:if="{{fieldError === 'schedule'}}" class="field-error-inline">{{errorMessage}}</text>
       <view class="ld-note-card ld-note-in"><text class="ld-note">整区留空则只登记贷款资料；生成期次前不产生任何账目。</text></view>
       <view class="ld-grid">
         <label class="ld-cell">
@@ -128,6 +132,7 @@
           <view class="ld-cell-label"><text>一次性费用</text><text>选填</text></view>
           <view class="ld-cell-amount"><input class="ld-cell-input money-number" type="digit" value="{{schedule.feeUpfrontYuan}}" data-field="feeUpfrontYuan" bindinput="scheduleInput" maxlength="22" placeholder="" placeholder-class="ld-placeholder" /><text class="ld-cell-unit">元</text></view>
         </label>
+      </view>
       </view>
     </block>
     </view>

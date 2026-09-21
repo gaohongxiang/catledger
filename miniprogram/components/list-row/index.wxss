@@ -5,10 +5,10 @@
   box-sizing: border-box;
   padding: 16rpx 20rpx;
   gap: 18rpx;
-  transition: opacity var(--layout-motion-fast, 120ms) ease;
+  transition: transform var(--layout-motion-fast, 120ms) var(--motion-press-timing, cubic-bezier(.34, 1.56, .64, 1)), opacity var(--layout-motion-fast, 120ms) ease;
 }
 
-.lr-active { opacity: .65; }
+.lr-active { transform: scale(var(--motion-press-scale, .965)); opacity: .8; }
 
 .lr-divider { border-bottom: 1rpx solid var(--theme-line, #eae4dc); }
 

@@ -33,6 +33,11 @@ button::after { border: 0; }
   --layout-motion-fast: 120ms;
   --layout-motion-normal: 180ms;
   --layout-motion-slow: 240ms;
+  --layout-motion-enter: 380ms;
+  --layout-motion-shimmer: 1400ms;
+  --motion-press-scale: .965;
+  --motion-press-timing: cubic-bezier(.34, 1.56, .64, 1);
+  --motion-ticker-timing: cubic-bezier(.22, 1, .36, 1);
   box-sizing: border-box;
   min-height: 100vh;
   padding: 32rpx var(--layout-page-gutter) calc(148rpx + env(safe-area-inset-bottom));
@@ -55,7 +60,7 @@ button::after { border: 0; }
   font-size: var(--font-body, 28rpx);
   font-weight: 500;
   border-radius: var(--layout-radius-medium);
-  transition: opacity var(--layout-motion-fast) ease;
+  transition: transform var(--layout-motion-fast) var(--motion-press-timing), opacity var(--layout-motion-fast) ease;
 }
 
 .primary-button { border-radius: 999rpx; color: var(--theme-on-accent, #ffffff); background: var(--theme-accent, #be5b24); }
@@ -64,7 +69,7 @@ button::after { border: 0; }
 .danger-button { color: var(--theme-danger, #a95132); background: var(--theme-danger-soft, #f4e1d6); }
 .primary-button:active,
 .secondary-button:active,
-.danger-button:active { opacity: .76; }
+.danger-button:active { transform: scale(var(--motion-press-scale, .965)); opacity: .9; }
 
 /* 页头主操作：实色胶囊 CTA，替代各页自造的纯文本/描边按钮。 */
 .head-cta {
@@ -103,6 +108,20 @@ button::after { border: 0; }
 
 /* 主题色表达状态，正文保持可读；小字号不再承担关键操作与业务解释。 */
 .primary-button[disabled], .secondary-button[disabled] { color: var(--theme-text-muted, #70685f); background: var(--theme-surface-muted, #f1eee9); opacity: .65; }
+
+/* 列表行错峰入场与校验抖动；reduced-motion 由下方全局媒体查询统一收敛。 */
+@keyframes row-fade-up { from { opacity: 0; transform: translateY(14rpx); } to { opacity: 1; transform: none; } }
+.row-enter { animation: row-fade-up var(--layout-motion-enter, 380ms) ease backwards; }
+@keyframes field-error-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+.field-error-shake { animation: field-error-shake 360ms ease; }
+.field-error-inline { display: block; margin-top: 8rpx; color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+
 @media (prefers-reduced-motion: reduce) {
   view, button { transition: none !important; animation-duration: .01ms !important; }
 }
