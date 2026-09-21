@@ -139,7 +139,7 @@ async function selectTransaction(connection, uid, transactionId, { forUpdate = f
             t.destination_account_id AS destinationAccountId,
             da.name AS destinationAccountName,
             t.category_id AS categoryId,
-            c.name AS categoryName,
+            c.name AS categoryName, c.system_key AS categorySystemKey, c.parent_id AS categoryParentId, cp.name AS categoryParentName,
             c.kind AS categoryKind,
             t.original_transaction_id AS originalTransactionId,
             original.amount_minor AS originalAmountMinor,
@@ -160,6 +160,7 @@ async function selectTransaction(connection, uid, transactionId, { forUpdate = f
          ON da.uid = t.uid AND da.account_id = t.destination_account_id
        LEFT JOIN catledger_categories c
          ON c.uid = t.uid AND c.category_id = t.category_id
+       LEFT JOIN catledger_categories cp ON cp.uid = c.uid AND cp.category_id = c.parent_id
        LEFT JOIN catledger_transactions original
          ON original.uid = t.uid AND original.transaction_id = t.original_transaction_id
       WHERE t.uid = ? AND t.transaction_id = ?

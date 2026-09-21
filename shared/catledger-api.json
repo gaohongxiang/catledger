@@ -45,7 +45,7 @@
       "data": [],
       "returns": ["uid", "accounts", "categories"],
       "accounts": ["accountId", "type", "nature", "name", "currency", "version", "archived"],
-      "categories": ["id", "kind", "systemKey", "name", "sortOrder", "version"],
+      "categories": ["id", "kind", "systemKey", "parentId (nullable)", "name", "sortOrder", "version"],
       "consistency": "single read-only snapshot; active categories; no balances or initialization writes"
     },
     "bootstrap": {
@@ -113,7 +113,7 @@
     },
     "categories.create": {
       "kind": "idempotent-mutation",
-      "data": ["requestId", "kind", "name"],
+      "data": ["requestId", "kind", "name", "parentId? (null or an active same-user same-kind root)"],
       "returns": "category"
     },
     "categories.update": {
@@ -133,7 +133,7 @@
     },
     "categories.reorder": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "kind", "items"],
+      "data": ["requestId", "kind", "items", "parentId? (sibling scope; null means roots)"],
       "returns": ["categories"]
     },
     "transactions.list": {
@@ -173,6 +173,16 @@
       "returns": ["transactionId", "deleted", "version"],
       "rules": ["仅软删除当前用户的手工交易，校验交易版本并保留幂等回执", "关联账户停用不阻止删除，账户维持停用；新增与编辑仍要求活动账户", "保留现金余额、退款依赖及贷款关联保护"]
     }
+  },
+  "categoryHierarchy": {
+    "depth": 2,
+    "selection": "A transaction stores one categoryId; roots and children are both selectable. Uncategorized import remains allowed.",
+    "identity": "parentId is nullable and immutable after creation; parent must belong to the same trusted uid and kind. Active names are unique among siblings.",
+    "archive": "Archiving a root atomically archives active children; response retains root fields and adds categories[] with changed rows. Restoring a root does not restore children; restoring a child requires an active parent.",
+    "directories": "bootstrap, catalog, categories and import options include parentId. Paged import options also return parentName and search both parent and child names.",
+    "transactions": "category adds parentId, parentName and systemKey. categoryId filtering matches the selected category and its immediate children in the same read snapshot; existing revision-bound pagination remains mandatory.",
+    "statistics": "expenseCategories/incomeCategories roll up by root, retaining net refund accounting. children[] contains each child and an optional direct=true bucket named 未细分. Uncategorized stays a separate null-ID group. No amount is counted twice.",
+    "presets": "Bootstrap adds missing roots/children under the existing user lock; preserves custom names, archived rows and all IDs; same-name custom categories are not adopted. Revision advances only when rows are actually inserted."
   },
   "rules": {
     "identity": "identity is resolved only from trusted WeChat context; identity-shaped client fields are rejected recursively; bootstrap returns the current user uid for display and saved nickname for presentation only",

@@ -32,42 +32,44 @@ async function findIdentity(connection, provider, subjectHash) {
   return rows[0] || null
 }
 
-async function insertDefaultCategories(connection, uid, categories) {
-  if (categories.length === 0) {
-    return
+async function insertDefaultCategories(connection, uid, categories, existing) {
+  let inserted = 0
+  // Parents first; the caller holds the user lock for this entire bootstrap transaction.
+  for (const childLevel of [false, true]) {
+    const additions = []
+    for (const category of categories.filter(row => Boolean(row.parentSystemKey) === childLevel)) {
+      if (existing.some(row => row.systemKey === category.systemKey)) continue
+      const parent = childLevel && existing.find(row => row.systemKey === category.parentSystemKey && row.kind === category.kind && row.archivedAt == null && !row.parentId)
+      if (childLevel && !parent) continue
+      const parentId = parent ? parent.id : null
+      const normalizedName = normalizeCategoryName(category.name).normalizedName
+      // A user's own same-name category is never adopted, renamed or duplicated.
+      if (existing.some(row => row.kind === category.kind && (row.parentId || null) === parentId && row.archivedAt == null && row.normalizedName === normalizedName)) continue
+      const row = { ...category, id: randomUUID(), parentId, normalizedName, archivedAt: null }
+      additions.push(row); existing.push(row)
+    }
+    if (!additions.length) continue
+    await connection.execute(
+      `INSERT INTO catledger_categories
+         (category_id, uid, kind, system_key, parent_id, name, normalized_name, sort_order, is_system_default)
+       VALUES ${additions.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, 1)').join(', ')}`,
+      additions.flatMap(row => [row.id, uid, row.kind, row.systemKey, row.parentId, row.name, row.normalizedName, row.sortOrder]))
+    inserted += additions.length
   }
-
-  const placeholders = categories.map(() => '(?, ?, ?, ?, ?, ?, ?, 1)').join(', ')
-  const values = categories.flatMap((category) => [
-    randomUUID(),
-    uid,
-    category.kind,
-    category.systemKey,
-    category.name,
-    normalizeCategoryName(category.name).normalizedName,
-    category.sortOrder
-  ])
-
-  await connection.execute(
-    `INSERT INTO catledger_categories
-       (category_id, uid, kind, system_key, name, normalized_name, sort_order, is_system_default)
-     VALUES ${placeholders}
-     ON DUPLICATE KEY UPDATE category_id = category_id`,
-    values
-  )
+  return inserted
 }
 
 async function listCategories(connection, uid) {
   const [rows] = await connection.execute(
     `SELECT category_id AS id,
             kind,
-            system_key AS systemKey,
+            system_key AS systemKey, parent_id AS parentId,
             name,
             sort_order AS sortOrder,
             version
        FROM catledger_categories
       WHERE uid = ? AND archived_at IS NULL
-      ORDER BY kind, sort_order, category_id`,
+      ORDER BY kind, parent_id IS NOT NULL, sort_order, category_id`,
     [uid]
   )
 
@@ -103,11 +105,9 @@ function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES,
           }
           const [[active]] = await connection.execute("SELECT uid, nickname, CAST(data_revision AS CHAR) AS dataRevision FROM catledger_users WHERE uid=? AND status='active' FOR UPDATE", [uid])
           if (!active) throw ledgerError('INITIALIZATION_REQUIRED')
-          const [existing] = await connection.execute('SELECT system_key AS systemKey FROM catledger_categories WHERE uid=? AND system_key IS NOT NULL', [uid])
-          const keys = new Set(existing.map(row => row.systemKey))
-          const missing = defaultCategories.filter(category => !keys.has(category.systemKey))
-          await insertDefaultCategories(connection, uid, missing)
-          if (missing.length) await connection.execute('UPDATE catledger_users SET data_revision=data_revision+1 WHERE uid=?', [uid])
+          const [existing] = await connection.execute('SELECT system_key AS systemKey, category_id AS id, kind, parent_id AS parentId, normalized_name AS normalizedName, archived_at AS archivedAt FROM catledger_categories WHERE uid=?', [uid])
+          const inserted = await insertDefaultCategories(connection, uid, defaultCategories, existing)
+          if (inserted) await connection.execute('UPDATE catledger_users SET data_revision=data_revision+1 WHERE uid=?', [uid])
           const categories = await listCategories(connection, uid)
 
           await connection.commit()
@@ -116,7 +116,7 @@ function createUserRepository({ getPool, defaultCategories = DEFAULT_CATEGORIES,
             uid,
             isNewUser: !identity,
             nickname: active.nickname || '',
-            dataRevision: (BigInt(active.dataRevision) + (missing.length ? 1n : 0n)).toString(),
+            dataRevision: (BigInt(active.dataRevision) + (inserted ? 1n : 0n)).toString(),
             categories
           }
         } catch (error) {

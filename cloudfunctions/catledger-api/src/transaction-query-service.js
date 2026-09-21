@@ -87,8 +87,8 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
     values.push(filters.accountId, filters.accountId)
   }
   if (filters.categoryId) {
-    conditions.push('t.category_id = ?')
-    values.push(filters.categoryId)
+    conditions.push('(t.category_id = ? OR c.parent_id = ?)')
+    values.push(filters.categoryId, filters.categoryId)
   }
   if (filters.uncategorized) conditions.push("t.category_id IS NULL AND t.type IN ('income', 'expense')")
   if (filters.source) {
@@ -118,7 +118,7 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
             t.destination_account_id AS destinationAccountId,
             da.name AS destinationAccountName,
             t.category_id AS categoryId,
-            c.name AS categoryName,
+            c.name AS categoryName, c.system_key AS categorySystemKey, c.parent_id AS categoryParentId, cp.name AS categoryParentName,
             c.kind AS categoryKind,
             t.original_transaction_id AS originalTransactionId,
             original.amount_minor AS originalAmountMinor,
@@ -134,6 +134,7 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
        LEFT JOIN catledger_accounts sa ON sa.uid = t.uid AND sa.account_id = t.source_account_id
        LEFT JOIN catledger_accounts da ON da.uid = t.uid AND da.account_id = t.destination_account_id
        LEFT JOIN catledger_categories c ON c.uid = t.uid AND c.category_id = t.category_id
+       LEFT JOIN catledger_categories cp ON cp.uid = c.uid AND cp.category_id = c.parent_id
        LEFT JOIN catledger_transactions original
          ON original.uid = t.uid AND original.transaction_id = t.original_transaction_id
       WHERE ${conditions.join('\n        AND ')}
@@ -161,7 +162,7 @@ async function listRefundableRows(connection, uid, limit) {
     `SELECT t.transaction_id AS transactionId, t.type,
             t.source_account_id AS sourceAccountId, sa.name AS sourceAccountName,
             t.destination_account_id AS destinationAccountId, da.name AS destinationAccountName,
-            t.category_id AS categoryId, c.name AS categoryName, c.kind AS categoryKind,
+            t.category_id AS categoryId, c.name AS categoryName, c.system_key AS categorySystemKey, c.parent_id AS categoryParentId, cp.name AS categoryParentName, c.kind AS categoryKind,
             t.amount_minor AS amountMinor, t.occurred_local_at AS occurredLocalAt,
             t.timezone_offset_minutes AS timezoneOffsetMinutes, t.note, t.version,
             COALESCE(refunds.refunded_minor, 0) AS refundedMinor
@@ -169,6 +170,7 @@ async function listRefundableRows(connection, uid, limit) {
        LEFT JOIN catledger_accounts sa ON sa.uid = t.uid AND sa.account_id = t.source_account_id
        LEFT JOIN catledger_accounts da ON da.uid = t.uid AND da.account_id = t.destination_account_id
        LEFT JOIN catledger_categories c ON c.uid = t.uid AND c.category_id = t.category_id
+       LEFT JOIN catledger_categories cp ON cp.uid = c.uid AND cp.category_id = c.parent_id
        LEFT JOIN (
          SELECT uid, original_transaction_id, SUM(amount_minor) AS refunded_minor
            FROM catledger_transactions

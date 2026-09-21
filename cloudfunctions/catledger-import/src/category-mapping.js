@@ -1,6 +1,7 @@
 const { digestParts } = require('./digest')
 
 const CATEGORY_ALIAS_VERSION = 'category-alias-v1'
+const CATEGORY_RULE_VERSION = 'category-rules-v2'
 
 const FORBIDDEN_NAMES = new Set([
   '商户消费', '扫二维码付款', '充值', '提现', '转账', '红包', '微信红包',
@@ -10,16 +11,16 @@ const FORBIDDEN_NAMES = new Set([
 const ALIPAY_SYSTEM_KEYS = Object.freeze({
   餐饮美食: 'food',
   交通出行: 'transport',
-  爱车养车: 'transport',
+  爱车养车: 'transport__car',
   服饰装扮: 'shopping',
-  日用百货: 'shopping',
+  日用百货: 'shopping__houseware',
   家居家装: 'shopping',
-  数码电器: 'shopping',
-  美容美发: 'shopping',
-  宠物: 'shopping',
+  数码电器: 'shopping__electronics',
+  美容美发: 'shopping__beauty',
+  宠物: 'entertainment__pets',
   教育培训: 'education',
   医疗健康: 'medical',
-  保险: 'utilities',
+  保险: 'finance__insurance',
   投资理财: 'investment'
 })
 
@@ -55,9 +56,8 @@ function deterministicSystemKey(sourceType, row) {
   }
   const evidence = canonicalName(`${row.raw.counterparty || ''} ${row.raw.item || ''}`)
   if (sourceType === 'wechat') {
-    if (evidence.includes('美团')) return 'food'
-    if (evidence.includes('寄件') || evidence.includes('快递')) return 'shopping'
-    if (evidence.includes('保险') || evidence.includes('保费')) return 'utilities'
+    if (evidence.includes('寄件') || evidence.includes('快递')) return 'communication__postage'
+    if (evidence.includes('保险') || evidence.includes('保费')) return 'finance__insurance'
   }
   return null
 }
@@ -65,6 +65,7 @@ function deterministicSystemKey(sourceType, row) {
 function buildCategoryEvidence(sourceType, row) {
   return {
     version: CATEGORY_ALIAS_VERSION,
+    ruleVersion: CATEGORY_RULE_VERSION,
     aliasKeys: aliasKeys(sourceType, row),
     deterministicSystemKey: deterministicSystemKey(sourceType, row)
   }

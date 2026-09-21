@@ -146,6 +146,7 @@
       "contract": "PERFORMANCE-V2-CONTRACT.md"
     },
     "financeUpdates.options": {
+      "categoryHierarchy": "Category options include parentId and parentName; query matches both parent and child names. Paging remains version-bound and user-scoped. Both levels can be selected; client opens this full directory instead of searching only the loaded candidate subset.",
       "kind": "read",
       "data": [
         "updateId",

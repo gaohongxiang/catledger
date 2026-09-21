@@ -9,10 +9,10 @@ async function queryCatalog(connection, uid) {
        FROM catledger_accounts WHERE uid = ?
       ORDER BY archived_at IS NOT NULL, nature, created_at, account_id`, [uid])
   const [categories] = await connection.execute(
-    `SELECT category_id AS id, kind, system_key AS systemKey, name,
+    `SELECT category_id AS id, kind, system_key AS systemKey, parent_id AS parentId, name,
             sort_order AS sortOrder, version
        FROM catledger_categories WHERE uid = ? AND archived_at IS NULL
-      ORDER BY kind, sort_order, category_id`, [uid])
+      ORDER BY kind, parent_id IS NOT NULL, sort_order, category_id`, [uid])
   return {
     uid,
     accounts: accounts.map(row => ({
@@ -21,7 +21,7 @@ async function queryCatalog(connection, uid) {
       archived: row.archivedAt != null
     })),
     categories: categories.map(row => ({
-      id: row.id, kind: row.kind, systemKey: row.systemKey, name: row.name,
+      id: row.id, parentId: row.parentId || null, kind: row.kind, systemKey: row.systemKey, name: row.name,
       sortOrder: Number(row.sortOrder), version: Number(row.version)
     }))
   }

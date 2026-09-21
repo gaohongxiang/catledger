@@ -83,6 +83,7 @@ beforeEach(async () => {
     await pool.execute("DELETE FROM catledger_transactions WHERE type = 'refund'")
     await pool.execute('DELETE FROM catledger_transactions')
     await pool.execute('DELETE FROM catledger_accounts')
+    await pool.execute('DELETE FROM catledger_categories WHERE parent_id IS NOT NULL')
     await pool.execute('DELETE FROM catledger_users')
   }
 })
@@ -133,7 +134,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 21)
+  assert.equal(rows.length, 22)
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
   assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')
@@ -980,7 +981,7 @@ test('category management is isolated, versioned, reorderable and history-safe',
     data: { requestId: randomTestUuid(), categoryId: created.id, version: created.version, name: '毛孩子' }
   })
   const listed = await categoryService.list({ provider: 'wechat-mini', subjectHash: first.subjectHash, data: {} })
-  const activeExpense = listed.categories.filter((item) => item.kind === 'expense' && !item.archived)
+  const activeExpense = listed.categories.filter((item) => item.kind === 'expense' && !item.archived && !item.parentId)
   const reordered = await categoryService.reorder({
     provider: 'wechat-mini', subjectHash: first.subjectHash,
     data: {
@@ -1129,6 +1130,7 @@ test('catalog.get在同一只读快照隔离用户并且不初始化缺失分类
   assert.doesNotMatch(statements.join('\n'), /catledger_transactions|INSERT|UPDATE|DELETE|SUM\(/)
   const catalog = createCatalogService({ getPool: () => pool })
   assert.equal((await catalog.get(context)).categories.length, user.categories.length - 1)
+  await pool.execute('DELETE FROM catledger_categories WHERE uid = ? AND parent_id IS NOT NULL', [user.uid])
   await pool.execute('DELETE FROM catledger_categories WHERE uid = ?', [user.uid])
   assert.deepEqual((await catalog.get(context)).categories, [])
   const [[count]] = await pool.execute('SELECT COUNT(*) AS count FROM catledger_categories WHERE uid = ?', [user.uid])
