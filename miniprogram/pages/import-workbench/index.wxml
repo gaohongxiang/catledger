@@ -10,7 +10,7 @@
 </template>
 
 <view class="page-canvas import-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="账单导入" title="导入账单" copy="把不同渠道的账单，整理成一本账。">
+  <page-head class="content-inset" title="导入账单" copy="把不同渠道的账单，整理成一本账。">
     <button class="account-source-link" bindtap="openImportHistory" disabled="{{busy}}">导入记录</button>
   </page-head>
 

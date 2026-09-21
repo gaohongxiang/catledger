@@ -330,8 +330,8 @@
 .account-list {
   padding: 0 20rpx;
   margin: 0 -20rpx;
-  background: var(--home-surface, var(--theme-surface, #fffefd));
-  border: 1rpx solid var(--home-line, var(--theme-line, #e5dfd7));
+  background: var(--home-surface-muted, var(--theme-surface-muted, #f4eee3));
+  border: 0;
   border-radius: var(--theme-radius-large, 24rpx);
   box-shadow: var(--home-shadow, var(--theme-shadow-soft));
 }
@@ -351,7 +351,7 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 44rpx;
-  background: var(--home-surface-muted, var(--theme-secondary-soft, #f4eee3));
+  background: var(--home-surface, var(--theme-surface, #fffefd));
   border-radius: var(--theme-radius-small, 12rpx);
 }
 .account-icon image { width: 28rpx; height: 28rpx; }
@@ -401,10 +401,12 @@
 .timeline {
   margin: 0 -20rpx;
   padding: 0 20rpx;
-  background: var(--home-surface, var(--theme-surface, #fffefd));
-  border: 1rpx solid var(--home-line, var(--theme-line, #e5dfd7));
-  border-radius: var(--theme-radius-large, 24rpx);
-  box-shadow: var(--home-shadow, var(--theme-shadow-soft));
+  background: transparent;
+  border: 0;
+  border-top: 1rpx solid var(--home-line, var(--theme-line, #e5dfd7));
+  border-bottom: 1rpx solid var(--home-line, var(--theme-line, #e5dfd7));
+  border-radius: 0;
+  box-shadow: none;
 }
 .timeline-item {
   display: flex;

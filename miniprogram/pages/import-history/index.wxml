@@ -1,5 +1,5 @@
 <view class="page-canvas page-secondary history-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="账单导入" title="导入记录" copy="查看某次导入的账目，可在明细中选择删除。"><button class="history-link" bindtap="importAgain" disabled="{{busy}}">导入账单</button></page-head>
+  <page-head class="content-inset" title="导入记录" copy="查看某次导入的账目，可在明细中选择删除。"><button class="history-link" bindtap="importAgain" disabled="{{busy}}">导入账单</button></page-head>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <view wx:for="{{items}}" wx:key="updateId" class="history-entry">
     <view class="history-entry-heading"><text class="history-file">{{item.title}}</text><text class="history-status {{item.transactionCount ? 'history-status-ok' : 'history-status-muted'}}">{{item.transactionCount ? item.transactionCount + ' 笔账目' : item.deletedTransactionCount ? '账目已删除' : '无账目'}}</text></view>

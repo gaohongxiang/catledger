@@ -156,6 +156,15 @@
   border-radius: var(--theme-radius-large, 24rpx);
   padding: 0 8rpx;
 }
+.detail-group {
+  display: block;
+  padding: 26rpx 4rpx 8rpx;
+  color: var(--theme-text-muted);
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.4;
+  text-align: left;
+}
+.detail-group:first-child { padding-top: 12rpx; }
 .detail-item {
   min-height: 124rpx;
   align-items: center;

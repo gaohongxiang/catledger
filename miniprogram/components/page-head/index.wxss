@@ -44,6 +44,9 @@
   gap: 16rpx;
 }
 
+.ph-plain .ph-top { min-height: 0; }
+.ph-plain .ph-side:empty { display: none; }
+
 .ph-copy {
   display: block;
   margin-top: 12rpx;

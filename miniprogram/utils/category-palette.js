@@ -19,6 +19,17 @@ const COLOR_BY_NAME = Object.freeze({
   '娱乐': 'green'
 })
 
+const ICON_BY_NAME = Object.freeze({
+  '餐饮': 'dining',
+  '交通': 'transport',
+  '购物': 'shopping',
+  '住房': 'housing',
+  '医疗': 'medical',
+  '教育': 'education',
+  '娱乐': 'entertainment',
+  '其他': 'other'
+})
+
 function colorNameFor(name) {
   return COLOR_BY_NAME[name] || 'grey'
 }
@@ -27,9 +38,16 @@ function bandColorFor(name) {
   return TILE_COLORS[colorNameFor(name)].solid
 }
 
+function iconFor(name) {
+  const stem = ICON_BY_NAME[name]
+  return stem ? '/assets/icons/categories/' + stem + '.svg' : ''
+}
+
 module.exports = {
   TILE_COLORS: TILE_COLORS,
   COLOR_BY_NAME: COLOR_BY_NAME,
+  ICON_BY_NAME: ICON_BY_NAME,
   colorNameFor: colorNameFor,
-  bandColorFor: bandColorFor
+  bandColorFor: bandColorFor,
+  iconFor: iconFor
 }

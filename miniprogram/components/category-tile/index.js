@@ -1,4 +1,4 @@
-const colorNameFor = require('../../utils/category-palette').colorNameFor
+const palette = require('../../utils/category-palette')
 
 Component({
   properties: {
@@ -21,13 +21,15 @@ Component({
   },
   data: {
     resolvedColor: 'grey',
-    initial: ''
+    initial: '',
+    icon: ''
   },
   observers: {
     'name, color': function (name, color) {
       this.setData({
-        resolvedColor: color || colorNameFor(name),
-        initial: name ? name.slice(0, 1) : ''
+        resolvedColor: color || palette.colorNameFor(name),
+        initial: name ? name.slice(0, 1) : '',
+        icon: palette.iconFor(name)
       })
     }
   },

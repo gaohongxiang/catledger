@@ -1,5 +1,5 @@
 <view class="page-canvas loan-form {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="分期计划" title="{{loan ? '编辑贷款' : '新增贷款'}}" copy="按合同利率或实际还款账单建立分期计划。" />
+  <page-head class="content-inset" title="{{loan ? '编辑贷款' : '新增贷款'}}" copy="按合同利率或实际还款账单建立分期计划。" />
   <ui-state wx:if="{{loading}}" description="正在读取账户与资料…" />
   <view wx:if="{{!loading}}" class="ld-form-card">
     <view class="ld-card-head"><text class="ld-card-title">基本信息</text><text class="ld-card-note">填写并核对</text></view>

@@ -1,5 +1,5 @@
 <view class="page-canvas loan-detail {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="贷款资料" title="{{loan ? loan.name : '贷款'}}" copy="{{loan.installmentSetup ? '计划与实际还款分别核对，账户余额仍以账本为准。' : '只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。'}}" />
+  <page-head class="content-inset" title="{{loan ? loan.name : '贷款'}}" copy="{{loan.installmentSetup ? '计划与实际还款分别核对，账户余额仍以账本为准。' : '只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。'}}" />
   <view wx:if="{{sourceTransactionId}}" class="ld-note-card">
     <text class="ld-note">已保留原还款。这里只创建或补充贷款资料，保存后继续关联，不会重新登记付款。</text>
     <text wx:if="{{sourceContext}}" class="ld-note">还款发生于 {{sourceContext.occurredText}}；关联前须确认该日初或更早的本金基准，不是本次扣款金额。</text>

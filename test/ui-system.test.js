@@ -343,15 +343,26 @@ test('分类瓷贴默认色映射覆盖八个内置分类并回退灰色', funct
   })
 })
 
-test('page-head 统一全部页面页头，section-header 只留 compact 页内小节', function () {
+test('page-head 统一全部页面页头，徽章按需只留真实业务上下文', function () {
   // profile 页头按用户要求移除（导航标题「我的」即页头），不加 page-head
   const pages = ['loans', 'import-history', 'data-privacy', 'ledger', 'accounts', 'categories', 'theme', 'loan-payment', 'loan-plan', 'loan-link', 'loan-detail', 'import-workbench']
   pages.forEach(function (page) {
     const markup = read('miniprogram/pages/' + page + '/index.wxml')
     const config = read('miniprogram/pages/' + page + '/index.json')
-    assert.match(markup, /<page-head[^>]*badge="/, page + ' 缺少 page-head')
+    assert.match(markup, /<page-head[\s>]/, page + ' 缺少 page-head')
     assert.match(config, /"page-head":\s*"\/components\/page-head\/index"/, page + ' 未注册 page-head')
   })
+  const badged = ['loan-link', 'loan-plan']
+  badged.forEach(function (page) {
+    assert.match(read('miniprogram/pages/' + page + '/index.wxml'), /<page-head[^>]*badge="/, page + ' 应保留业务徽章')
+  })
+  pages.filter(function (page) { return badged.indexOf(page) < 0 }).forEach(function (page) {
+    assert.doesNotMatch(read('miniprogram/pages/' + page + '/index.wxml'), /<page-head[^>]*badge=/, page + ' 不应再带徽章')
+  })
+  const about = read('miniprogram/pages/about/index.wxml')
+  assert.doesNotMatch(about, /<page-head[^>]*badge=/, 'about 不应再带徽章')
+  assert.match(read('miniprogram/components/page-head/index.wxml'), /wx:if="\{\{badge\}\}"/)
+  assert.match(read('miniprogram/components/page-head/index.wxss'), /\.ph-plain \.ph-top/)
   ;['index', 'statistics', 'data-privacy'].forEach(function (page) {
     const markup = read('miniprogram/pages/' + page + '/index.wxml')
     const headers = markup.match(/<section-header[^>]*>/g) || []
@@ -484,4 +495,37 @@ test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔，封顶且翻
   assert.match(read('miniprogram/pages/transactions/index.wxml'), /\{\{staggerOn \? 'row-enter' : ''\}\}/, '明细翻页追加不入场')
   const reduced = appStyle.slice(appStyle.indexOf('prefers-reduced-motion'))
   assert.match(reduced, /animation-delay:\s*0ms !important/, '减少动态效果须同时取消延迟')
+})
+
+test('瓷贴默认分类渲染线条图标，自定义分类保持首字', function () {
+  const palette = require('../miniprogram/utils/category-palette')
+  const pairs = [['餐饮', 'dining'], ['交通', 'transport'], ['购物', 'shopping'], ['住房', 'housing'], ['医疗', 'medical'], ['教育', 'education'], ['娱乐', 'entertainment'], ['其他', 'other']]
+  pairs.forEach(function (pair) {
+    const file = 'miniprogram/assets/icons/categories/' + pair[1] + '.svg'
+    assert.equal(palette.iconFor(pair[0]), '/assets/icons/categories/' + pair[1] + '.svg')
+    assert.ok(fs.existsSync(path.join(root, file)), file + ' 缺失')
+    const svg = read(file)
+    assert.match(svg, /stroke="#[0-9A-Fa-f]{6}"|fill="#[0-9A-Fa-f]{6}"/, pair[0] + ' 图标未烘焙 ink 色')
+    if (pair[1] !== 'other') assert.match(svg, /stroke-width="1\.8"/, pair[0] + ' 线宽不符合规范')
+  })
+  assert.equal(palette.iconFor('宠物'), '', '未匹配分类不得出图标')
+  const markup = read('miniprogram/components/category-tile/index.wxml')
+  assert.match(markup, /wx:if="\{\{icon\}\}" class="ct-icon"/)
+  assert.match(markup, /wx:else class="ct-letter"/)
+  const style = read('miniprogram/components/category-tile/index.wxss')
+  assert.match(style, /\.ct-icon \{/)
+  assert.match(style, /\.ct-small \.ct-icon \{/)
+})
+
+test('明细按天分组：组头标签与分页同日合并', function () {
+  const markup = read('miniprogram/pages/transactions/index.wxml')
+  const source = read('miniprogram/pages/transactions/index.js')
+  assert.match(markup, /<text wx:if="\{\{item\.dayLabel\}\}" class="detail-group content-inset">\{\{item\.dayLabel\}\}<\/text>/)
+  assert.match(source, /function attachDayLabels\(rows, previousDay\)/)
+  assert.match(source, /return '今天'/)
+  assert.match(source, /return '昨天'/)
+  assert.match(source, /'年' \+ monthDay/)
+  assert.match(source, /occurredLocalAt \|\| ''\)\.slice\(0, 10\)/)
+  assert.match(source, /attachDayLabels\(rows, lastDay\)/, '分页追加须传入已有末日避免重复组头')
+  assert.match(read('miniprogram/pages/transactions/index.wxss'), /\.detail-group \{[^}]*font-size:\s*var\(--font-caption/)
 })

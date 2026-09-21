@@ -1,5 +1,5 @@
 <view class="page-canvas page-secondary category-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="分类" title="分类总览" copy="管理账目使用的收支分类；点开可改名或停用。">
+  <page-head class="content-inset" title="分类总览" copy="管理账目使用的收支分类；点开可改名或停用。">
     <view class="heading-with-sync"><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view>
     <button class="head-cta" bindtap="openCreate" aria-label="新建分类"><image src="/assets/icons/plus-on-accent.svg" mode="aspectFit" /><text>新建分类</text></button>
   </page-head>
