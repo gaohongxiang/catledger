@@ -78,7 +78,7 @@ test('图表依然直接使用服务端转换后的比例，不写死示例柱�
   assert.match(markup, /cashFlowTrend.length > 0/)
   const chart = markup.slice(markup.indexOf('class="trend-chart"'), markup.indexOf('trend-guide'))
   assert.doesNotMatch(chart, /style="height:\s*\d+(?:rpx|px|%)/, '真实趋势图不写死柱高')
-  assert.match(markup, /trend-guide-ghost-bar/, '稀疏引导保留幽灵占位柱（纯装饰）')
+  assert.doesNotMatch(markup, /trend-guide-ghost/, '稀疏引导不放装饰柱')
 })
 
 test('未登录/空数据/更新/失败分支继续存在', () => {

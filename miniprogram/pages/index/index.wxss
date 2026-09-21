@@ -275,28 +275,6 @@
   padding: 8rpx 0 8rpx;
   text-align: center;
 }
-.trend-guide-ghost {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 28rpx;
-  height: 140rpx;
-  padding: 0 24rpx 16rpx;
-  border-bottom: 1rpx solid var(--theme-line, #eae4dc);
-  opacity: .5;
-}
-.trend-guide-ghost-bars {
-  display: flex;
-  height: 100%;
-  align-items: flex-end;
-  gap: 6rpx;
-}
-.trend-guide-ghost-bar {
-  width: 12rpx;
-  border-radius: 12rpx 12rpx 0 0;
-  background: var(--theme-line, #eae4dc);
-}
-.trend-guide-copy { margin-top: 20rpx; }
 .trend-guide-copy {
   display: block;
   color: var(--home-muted, var(--theme-text-muted, #726d66));
@@ -343,6 +321,11 @@
   background: var(--theme-secondary-soft, #f1eee9);
 }
 .trend-guide-btn:active { opacity: .76; }
+.trend-guide-label-soft {
+  border-color: transparent;
+  color: var(--theme-accent-strong, #a34d20);
+  background: var(--theme-accent-soft, #fceee3);
+}
 
 .account-list {
   padding: 0 20rpx;
