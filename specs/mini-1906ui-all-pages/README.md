@@ -57,3 +57,4 @@ MINI-1907-0 新增 `data-privacy` 原生页面，复用 profile 已有“数据�
 本次验证和状态见 `docs/招财猫记账本实施规划.md` 19.13，不计入本规格历史真机验收。
 
 - `repayment-entry`：MINI-1908E 明确实际还款、本息费与立即/暂缓关联；见 `specs/mini-1908e-explicit-repayment/`。
+- `about`：应用信息与版本说明，承接品牌口号「把账，记得有温度。」；`loan-form`：MINI-1908F 分期录入。

@@ -143,7 +143,7 @@ test('首页 hero 大圆角抬升柔影，无水印无卡内趋势', () => {
 
 test('时段问候移到页头标题之上，月度收支结余小字条留在 hero 底部', () => {
   const source = read('miniprogram/pages/index/index.js')
-  assert.match(markup, /class="home-greeting">\{\{greeting\}\}/)
+  assert.match(markup, /class="home-greeting">\{\{todayLabel\}\}/)
   assert.doesNotMatch(markup, /net-worth-greeting/)
   assert.ok(markup.indexOf('class="home-greeting"') < markup.indexOf('class="home-title'), '问候应在主标题之前')
   assert.ok(markup.indexOf('class="home-greeting"') < markup.indexOf('class="net-worth-card"'), '问候不属于净值卡')

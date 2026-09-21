@@ -28,10 +28,17 @@ function monthLabel(month) {
   return parts[0] + '年' + Number(parts[1]) + '月'
 }
 
+function todayLabel() {
+  const now = new Date()
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return (now.getMonth() + 1) + '月' + now.getDate() + '日 · ' + weekdays[now.getDay()]
+}
+
 module.exports = {
   currentClock: currentClock,
   currentMonth: currentMonth,
   monthLabel: monthLabel,
   shiftMonth: shiftMonth,
-  today: today
+  today: today,
+  todayLabel: todayLabel
 }

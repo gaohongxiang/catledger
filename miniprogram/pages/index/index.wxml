@@ -1,8 +1,8 @@
 <view class="page-canvas home-page {{themeClass}}" style="{{themeStyle}}">
   <view class="home-header home-content-line">
     <view class="home-intro">
-      <text class="home-greeting">{{greeting}}</text>
-      <text class="home-title serif-title">把账，记得有温度。</text>
+      <text class="home-greeting">{{todayLabel}}</text>
+      <text class="home-title serif-title">{{greeting}}</text>
     </view>
     <button wx:if="{{!loggedIn}}" class="home-login-button" size="mini" bindtap="promptWechatLogin"><text class="home-login-label">登录</text></button>
     <image wx:else class="home-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
@@ -58,7 +58,7 @@
             <view class="trend-legend-item"><view class="trend-dot trend-dot-expense"></view><text>支出</text></view>
           </view>
         </view>
-        <view wx:if="{{cashFlowTrend.length > 0}}" class="trend-chart">
+        <view wx:if="{{cashFlowTrend.length > 0 && !trendSparse}}" class="trend-chart">
           <view class="trend-grid trend-grid-top"></view>
           <view class="trend-grid trend-grid-middle"></view>
           <view class="trend-columns">
@@ -69,6 +69,13 @@
               </view>
               <text class="trend-month money-number">{{item.showMonth ? item.monthText : ''}}</text>
             </view>
+          </view>
+        </view>
+        <view wx:elif="{{cashFlowTrend.length > 0 && trendSparse}}" class="trend-guide">
+          <text class="trend-guide-copy">记几笔之后，这里会长出趋势。</text>
+          <view class="trend-guide-actions">
+            <button class="trend-guide-btn" bindtap="createTransaction">记一笔</button>
+            <button class="trend-guide-link" bindtap="openImport">导入账单</button>
           </view>
         </view>
         <view wx:elif="{{!loggedIn}}" class="statistics-card-empty">暂无收支数据</view>

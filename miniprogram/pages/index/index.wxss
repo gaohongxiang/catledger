@@ -271,6 +271,51 @@
   text-align: center;
 }
 
+.trend-guide {
+  padding: 24rpx 0 8rpx;
+  text-align: center;
+}
+.trend-guide-copy {
+  display: block;
+  color: var(--home-muted, var(--theme-text-muted, #726d66));
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.7;
+}
+.trend-guide-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+.trend-guide-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64rpx;
+  margin: 0;
+  padding: 10rpx 32rpx;
+  border-radius: 999rpx;
+  color: var(--theme-on-accent, #ffffff);
+  background: var(--theme-accent, #be5b24);
+  font-size: var(--font-caption, 24rpx);
+  font-weight: 500;
+  line-height: 1.4;
+}
+.trend-guide-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64rpx;
+  margin: 0;
+  padding: 10rpx 20rpx;
+  background: transparent;
+  color: var(--theme-accent-strong, #a34d20);
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.4;
+}
+.trend-guide-btn:active, .trend-guide-link:active { opacity: .76; }
+
 .account-list {
   padding: 0 20rpx;
   margin: 0 -20rpx;

@@ -31,6 +31,7 @@ Page({
     cloudAvailable: false,
     loggedIn: false,
     greeting: '你好',
+    todayLabel: '',
     displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
     loading: false,
     hasDashboard: false,
@@ -42,6 +43,7 @@ Page({
     expenseText: '—',
     netIncomeText: '—',
     trendReady: false,
+    trendSparse: false,
     cashFlowTrend: [],
     accounts: [],
     recentTransactions: []
@@ -57,7 +59,8 @@ Page({
       greeting: greetingText(loggedIn, app.globalData.profile),
       displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile),
       month: month,
-      monthLabel: time.monthLabel(month)
+      monthLabel: time.monthLabel(month),
+      todayLabel: time.todayLabel()
     })
   },
 
@@ -70,6 +73,7 @@ Page({
     this.setData({
       loggedIn: loggedIn,
       greeting: greetingText(loggedIn, app.globalData.profile),
+      todayLabel: time.todayLabel(),
       displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile)
     })
     if (app.globalData.cloudAvailable && loggedIn) {
@@ -85,6 +89,7 @@ Page({
       expenseText: '—',
       netIncomeText: '—',
       trendReady: false,
+      trendSparse: false,
       cashFlowTrend: [],
       accounts: [],
       recentTransactions: []
@@ -106,6 +111,7 @@ Page({
     this.setData({
       loggedIn: true,
       greeting: greetingText(true, app.globalData.profile),
+      todayLabel: time.todayLabel(),
       displayAvatarUrl: profilePresentation.displayAvatarUrl(true, app.globalData.profile)
     })
     this.loadDashboard()
@@ -142,6 +148,9 @@ Page({
           hasDashboard: true,
           errorMessage: snapshot ? '正在更新，当前显示上次结果' : '',
           trendReady: Array.isArray(dashboard.cashFlowTrend),
+          trendSparse: cashFlowTrend.filter(function (row) {
+            return row.incomeHeightPermille > 0 || row.expenseHeightPermille > 0
+          }).length < 2,
           cashFlowTrend: cashFlowTrend.map(function (row) {
             return Object.assign({}, row, {
               monthText: String(Number(row.month.slice(5))),
@@ -199,6 +208,14 @@ Page({
 
   openTransactions: function () {
     wx.switchTab({ url: '/pages/transactions/index' })
+  },
+
+  createTransaction: function () {
+    wx.navigateTo({ url: '/pages/transaction-editor/index' })
+  },
+
+  openImport: function () {
+    wx.navigateTo({ url: '/pages/import-workbench/index' })
   },
 
   openStatistics: function () {

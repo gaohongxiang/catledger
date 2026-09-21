@@ -1,0 +1,10 @@
+<view class="page-canvas about-page {{themeClass}}" style="{{themeStyle}}">
+  <view class="content-inset">
+    <page-head badge="应用信息" title="招财猫记账本" copy="把账，记得有温度。以账单导入为主、手动记账为辅。" />
+  </view>
+
+  <view class="about-section content-inset">
+    <section-header compact title="版本说明" />
+    <text class="about-copy">当前为开发版。</text>
+  </view>
+</view>
