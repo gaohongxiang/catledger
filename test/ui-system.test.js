@@ -183,6 +183,23 @@ test('统计页保留半年趋势与日历，收支同卡且无重复每日柱�
   assert.match(source, /openCategoryCompletion/)
 })
 
+test('收支构成以彩色分段带为主视觉，环形图退场，当日格子主橙高亮', function () {
+  const template = read('miniprogram/pages/statistics/index.wxml')
+  const style = read('miniprogram/pages/statistics/index.wxss')
+  const source = read('miniprogram/pages/statistics/index.js')
+  const model = read('miniprogram/pages/statistics/model.js')
+
+  assert.match(template, /wx:for="{{expenseCategories}}"[^>]*class="band-segment" style="width: {{item\.barWidth}}; background: {{item\.bandColor}};/)
+  assert.match(template, /wx:for="{{incomeCategories}}"[^>]*class="band-segment"/)
+  assert.doesNotMatch(template, /ring-image|ring-wrap|charts\.expenseRing\.src|charts\.incomeRing\.src/)
+  assert.match(style, /\.band \{[^}]*border-radius:\s*999rpx/)
+  assert.doesNotMatch(style, /\.ring-image|\.ring-wrap/)
+  assert.match(source, /bandColor: bandColorFor\(row\.name\)/)
+  assert.match(template, /calendar-cell-today/)
+  assert.match(style, /\.calendar-cell-today \{[^}]*var\(--theme-accent/)
+  assert.match(model, /today: row\.date === time\.today\(\)/)
+})
+
 test('账户页以净资产和异常余额为主，管理动作收进账户详情', function () {
   const template = read('miniprogram/pages/accounts/index.wxml')
   const style = read('miniprogram/pages/accounts/index.wxss')
@@ -311,13 +328,19 @@ test('分类瓷贴接入明细、统计、分类管理与记一笔，账户行�
 })
 
 test('分类瓷贴默认色映射覆盖八个内置分类并回退灰色', function () {
-  const tileSource = read('miniprogram/components/category-tile/index.js')
+  const palette = require('../miniprogram/utils/category-palette')
   const pairs = [['餐饮', 'orange'], ['交通', 'blue'], ['购物', 'purple'], ['住房', 'teal'], ['医疗', 'red'], ['教育', 'yellow'], ['娱乐', 'green']]
   pairs.forEach(function (pair) {
-    assert.match(tileSource, new RegExp("'" + pair[0] + "': '" + pair[1] + "'"))
+    assert.equal(palette.COLOR_BY_NAME[pair[0]], pair[1])
+    assert.match(palette.bandColorFor(pair[0]), /^#[0-9a-f]{6}$/i)
   })
-  assert.match(tileSource, /\|\| 'grey'/)
+  assert.equal(palette.colorNameFor('不存在的分类'), 'grey')
+  assert.equal(palette.bandColorFor('不存在的分类'), palette.TILE_COLORS.grey.solid)
   assert.match(read('miniprogram/components/category-tile/index.wxss'), /\.ct-grey \.ct-box/)
+  Object.keys(palette.TILE_COLORS).forEach(function (name) {
+    assert.match(read('miniprogram/components/category-tile/index.wxss'), new RegExp('\\.ct-' + name + ' \\.ct-box'), '瓷贴缺少 ' + name + ' 配色')
+    assert.equal(palette.bandColorFor(''), palette.TILE_COLORS.grey.solid)
+  })
 })
 
 test('page-head 统一全部页面页头，section-header 只留 compact 页内小节', function () {
@@ -348,6 +371,18 @@ test('empty-cat 接管主场景空态，empty-state 保留次级场景', functio
   assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-state[^>]*title="当前基础库不支持云开发"/)
 })
 
+test('empty-cat 升级场景卡：径向光圈、星点与 hide-art 无图变体', function () {
+  const markup = read('miniprogram/components/empty-cat/index.wxml')
+  const style = read('miniprogram/components/empty-cat/index.wxss')
+  assert.match(markup, /<view wx:if="{{!hideArt}}" class="ec-scene"/)
+  assert.match(markup, /class="ec-glow"/)
+  assert.ok((markup.match(/ec-star/g) || []).length >= 3, '需要星点装饰')
+  assert.match(style, /\.ec-glow \{[^}]*radial-gradient\(circle, var\(--theme-accent-soft/)
+  assert.match(style, /\.ec-star \{[^}]*var\(--theme-accent/)
+  assert.match(markup, /ec-plain/)
+  assert.match(style, /\.ec-plain \.ec-title/)
+})
+
 test('大卡与弹层圆角升 xl，列表行卡保持 large', function () {
   assert.match(read('miniprogram/pages/statistics/index.wxss'), /\.graph-surface \{[^}]*border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
   assert.match(read('miniprogram/pages/statistics/index.wxss'), /\.composition-card \{[^}]*border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
@@ -374,4 +409,75 @@ test('我的页资料区：头像即按钮、昵称与 ID 使用图标按钮，�
   assert.match(style, /\.profile-card \{[^}]*var\(--theme-radius-xl, 32rpx\)[^}]*box-shadow:\s*var\(--theme-shadow-soft\)/)
   assert.match(style, /\.profile-icon-button \{[^}]*min-height:\s*88rpx/)
   assert.match(style, /\.profile-avatar-button:active \{\s*opacity:/)
+})
+
+test('ticker-number 逐位滚动接入首页净值与统计总额', function () {
+  const comp = read('miniprogram/components/ticker-number/index.js')
+  const markup = read('miniprogram/components/ticker-number/index.wxml')
+  const style = read('miniprogram/components/ticker-number/index.wxss')
+  assert.match(comp, /observers:[\s\S]*value: function/)
+  assert.match(markup, /item\.digit/)
+  assert.match(markup, /translateY\(\{\{item\.top\}\}\)/)
+  assert.match(style, /transition:\s*transform 600ms var\(--motion-ticker-timing/)
+  assert.match(style, /prefers-reduced-motion:\s*reduce/)
+  assert.match(read('miniprogram/pages/index/index.wxml'), /<ticker-number class="net-worth-number money-number" value="\{\{loggedIn && hasDashboard \? netWorthText : '—'\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<ticker-number class="composition-amount expense-color money-number" value="\{\{expenseText\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<ticker-number class="composition-amount income-color money-number" value="\{\{incomeText\}\}"/)
+})
+
+test('skeleton-rows 骨架屏替换四处读取中状态', function () {
+  const style = read('miniprogram/components/skeleton-rows/index.wxss')
+  assert.match(style, /animation:\s*sk-sweep var\(--layout-motion-shimmer, 1400ms\)/)
+  assert.match(style, /prefers-reduced-motion:\s*reduce/)
+  assert.match(read('miniprogram/pages/transactions/index.wxml'), /<skeleton-rows wx:elif="\{\{loading && !hasLoaded\}\}" rows="\{\{4\}\}"/)
+  assert.doesNotMatch(read('miniprogram/pages/transactions/index.wxml'), /正在读取账目…/)
+  assert.match(read('miniprogram/pages/accounts/index.wxml'), /<skeleton-rows wx:if="\{\{loading && !hasLoaded\}\}"/)
+  assert.match(read('miniprogram/pages/statistics/index.wxml'), /<skeleton-rows wx:elif="\{\{!hasLoaded && !errorMessage\}\}"/)
+  assert.match(read('miniprogram/pages/index/index.wxml'), /<skeleton-rows wx:elif="\{\{loading\}\}" rows="\{\{3\}\}"/)
+  assert.doesNotMatch(read('miniprogram/pages/index/index.wxml'), /正在读取最近账目…/)
+})
+
+test('按压回弹：按钮体系与可点卡片统一 scale 回弹', function () {
+  const appStyle = read('miniprogram/app.wxss')
+  assert.match(appStyle, /--motion-press-scale:\s*\.965/)
+  assert.match(appStyle, /--motion-press-timing:\s*cubic-bezier\(\.34, 1\.56, \.64, 1\)/)
+  assert.match(appStyle, /\.primary-button:active,[\s\S]*?transform:\s*scale\(var\(--motion-press-scale/)
+  assert.match(appStyle, /\.primary-button\[disabled\][\s\S]*?opacity:\s*\.65/)
+  assert.match(read('miniprogram/components/list-row/index.wxss'), /\.lr-active \{\s*transform:\s*scale\(var\(--motion-press-scale/)
+  assert.match(read('miniprogram/pages/loan-link/index.wxss'), /\.ll-candidate-hover \{\s*transform:\s*scale/)
+  assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.ld-history-hover \{\s*transform:\s*scale/)
+})
+
+test('校验抖动：login-sheet、profile、loan-detail 三处接入', function () {
+  const appStyle = read('miniprogram/app.wxss')
+  assert.match(appStyle, /@keyframes field-error-shake/)
+  assert.match(appStyle, /\.field-error-shake \{\s*animation:\s*field-error-shake 360ms/)
+  assert.match(appStyle, /\.field-error-inline/)
+  assert.match(read('miniprogram/pages/profile/index.wxml'), /profile-name-input \{\{nicknameError \? 'field-error-shake'/)
+  assert.match(read('miniprogram/components/login-sheet/index.wxml'), /nicknameShake \? 'login-nickname-shake'/)
+  assert.match(read('miniprogram/components/login-sheet/index.wxss'), /@keyframes login-nickname-shake/)
+  const loanDetailMarkup = read('miniprogram/pages/loan-detail/index.wxml')
+  assert.match(loanDetailMarkup, /fieldError === 'account' \? 'field-error-shake'/)
+  assert.match(loanDetailMarkup, /fieldError === 'principal' \? 'field-error-shake'/)
+  assert.match(loanDetailMarkup, /fieldError === 'schedule' \? 'field-error-shake'/)
+  assert.match(loanDetailMarkup, /errorMessage && !fieldError/)
+  assert.match(read('miniprogram/pages/loan-detail/index.js'), /fieldError: fieldErrorFor\(error\.message\)/)
+})
+
+test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔', function () {
+  const appStyle = read('miniprogram/app.wxss')
+  assert.match(appStyle, /@keyframes row-fade-up/)
+  assert.match(appStyle, /\.row-enter \{\s*animation:\s*row-fade-up var\(--layout-motion-enter, 380ms\) ease backwards/)
+  assert.match(appStyle, /--layout-motion-enter:\s*380ms/)
+  const files = [
+    'miniprogram/pages/transactions/index.wxml',
+    'miniprogram/pages/accounts/index.wxml',
+    'miniprogram/pages/statistics/index.wxml',
+    'miniprogram/pages/index/index.wxml'
+  ]
+  files.forEach(function (file) {
+    const markup = read(file)
+    assert.match(markup, /row-enter/, file)
+    assert.match(markup, /animation-delay: \{\{index \* 70\}\}ms/, file)
+  })
 })

@@ -5,6 +5,7 @@ const pageReadSession = require('../../services/page-read-session')
 const loginGuard = require('../../services/login-guard')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
+const { bandColorFor } = require('../../utils/category-palette')
 const themeService = require('../../theme/service')
 
 function prepareCategories(rows, ring) {
@@ -14,6 +15,7 @@ function prepareCategories(rows, ring) {
     const legend = ring.legend.find(item => item.name === row.name) || ring.legend[ring.legend.length - 1]
     return Object.assign({}, row, {
       color: positive && legend ? legend.color : '#958b82',
+      bandColor: bandColorFor(row.name),
       amountText: money.formatMinor(row.amountMinor),
       shareText: Number(row.amountMinor) < 0 ? '退款抵减' : (percentage % 1 === 0 ? percentage.toFixed(0) : percentage.toFixed(1)) + '%',
       barWidth: Math.max(0, Math.min(100, percentage)) + '%'

@@ -1,0 +1,10 @@
+<view class="sk" aria-hidden="true">
+  <view wx:for="{{items}}" wx:key="*this" class="sk-row">
+    <view class="sk-tile sk-shimmer"></view>
+    <view class="sk-main">
+      <view class="sk-line sk-shimmer"></view>
+      <view class="sk-line sk-line-short sk-shimmer"></view>
+    </view>
+    <view class="sk-amount sk-shimmer"></view>
+  </view>
+</view>

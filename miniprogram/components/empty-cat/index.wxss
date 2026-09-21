@@ -7,10 +7,45 @@
   text-align: center;
 }
 
+.ec-scene {
+  position: relative;
+  display: flex;
+  width: 280rpx;
+  height: 240rpx;
+  align-items: center;
+  justify-content: center;
+}
+
+.ec-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, var(--theme-accent-soft, #fceee3) 0%, transparent 68%);
+}
+
 .ec-art {
-  width: 180rpx;
-  height: 180rpx;
-  opacity: .32;
+  position: relative;
+  width: 168rpx;
+  height: 168rpx;
+}
+
+.ec-star {
+  position: absolute;
+  background: var(--theme-accent, #be5b24);
+  border-radius: 50%;
+  opacity: .45;
+}
+
+.ec-star-a { top: 28rpx; right: 44rpx; width: 12rpx; height: 12rpx; }
+.ec-star-b { bottom: 40rpx; left: 36rpx; width: 8rpx; height: 8rpx; opacity: .32; }
+
+.ec-star-c {
+  top: 52rpx;
+  left: 52rpx;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 2rpx;
+  opacity: .28;
+  transform: rotate(45deg);
 }
 
 .ec-title {
@@ -21,6 +56,8 @@
   font-weight: 500;
   overflow-wrap: anywhere;
 }
+
+.ec-plain .ec-title { margin-top: 0; }
 
 .ec-copy {
   display: block;

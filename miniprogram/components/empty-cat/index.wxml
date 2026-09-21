@@ -1,5 +1,11 @@
-<view class="ec">
-  <image wx:if="{{!hideArt}}" class="ec-art" src="/assets/catledger-logo.png" mode="aspectFit" aria-hidden="true" />
+<view class="ec {{hideArt ? 'ec-plain' : ''}}">
+  <view wx:if="{{!hideArt}}" class="ec-scene" aria-hidden="true">
+    <view class="ec-glow"></view>
+    <image class="ec-art" src="/assets/catledger-logo.png" mode="aspectFit" />
+    <view class="ec-star ec-star-a"></view>
+    <view class="ec-star ec-star-b"></view>
+    <view class="ec-star ec-star-c"></view>
+  </view>
   <text class="ec-title">{{title}}</text>
   <text wx:if="{{description}}" class="ec-copy">{{description}}</text>
   <view class="ec-actions"><slot></slot></view>

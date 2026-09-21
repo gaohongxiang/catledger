@@ -1,4 +1,6 @@
 const money = require('../../utils/money')
+const time = require('../../utils/time')
+const { bandColorFor } = require('../../utils/category-palette')
 const { addMinor } = require('../../utils/minor-arithmetic')
 const negate = value => String(value || '0').charAt(0) === '-' ? String(value).slice(1) : '-' + String(value || '0')
 const amount = value => Number(value || 0) // 只用于绘图坐标；金额累加与展示使用十进制字符串。
@@ -62,6 +64,7 @@ function buildStatisticsView(result, tokens) {
     for (let index = 0; index < (weekday + 6) % 7; index++) cells.push({ key: 'blank-' + index, blank: true })
   }
   daily.forEach((row, index) => cells.push({ key: row.date, index, date: row.date, dayText: row.dayText,
+    today: row.date === time.today(),
     level: amount(row.expenseMinor) < 0 ? 'refund' : (!amount(row.expenseMinor) ? '0' : String(Math.max(1, Math.ceil(amount(row.expenseMinor) / maxExpense * 4)))),
     expenseText: money.formatMinor(row.expenseMinor), cumulativeText: row.cumulativeText }))
   const trend = result.cashFlowTrend || []

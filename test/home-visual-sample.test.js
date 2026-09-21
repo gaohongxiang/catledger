@@ -134,12 +134,11 @@ test('月度长金额改为纵向摘要，保持原始金额字符串和负号',
   assert.match(rule('.month-strip-stacked .month-stat'), /justify-content:\s*space-between/)
 })
 
-test('首页 hero 保留大圆角与柔影，不再放置猫水印遮挡内容', () => {
+test('首页 hero 大圆角抬升柔影，无水印无卡内趋势', () => {
   assert.match(rule('.net-worth-card'), /border-radius:\s*var\(--theme-radius-xl, 32rpx\)/)
-  assert.match(rule('.net-worth-card'), /box-shadow:\s*var\(--theme-shadow-soft\)/)
+  assert.match(rule('.net-worth-card'), /box-shadow:\s*var\(--theme-shadow-lifted\)/)
   assert.doesNotMatch(style, /--home-shadow\s*:/)
-  assert.doesNotMatch(markup, /net-worth-watermark/)
-  assert.doesNotMatch(style, /\.net-worth-watermark/)
+  assert.doesNotMatch(markup, /net-worth-watermark|hero-trend/)
 })
 
 test('时段问候移到页头标题之上，月度收支结余小字条留在 hero 底部', () => {

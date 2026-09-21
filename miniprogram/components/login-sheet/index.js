@@ -7,7 +7,7 @@ const themeService = require('../../theme/service')
 Component({
   data: {
     open: false, automatic: false, submitting: false, errorMessage: '',
-    avatarUrl: '', nickname: '', nicknameFocused: false,
+    avatarUrl: '', nickname: '', nicknameFocused: false, nicknameShake: false,
     nicknameMaxLength: profilePresentation.NICKNAME_MAX_LENGTH,
     stage: 'loading', themeClass: '', themeStyle: ''
   },
@@ -135,7 +135,7 @@ Component({
       if (this.data.submitting || this.data.stage !== 'setup') return
       const nickname = String(event && event.detail && event.detail.value || '')
       if (nickname.trim() !== this.data.nickname.trim()) this._profileRequestId = null
-      this.setData({ nickname, errorMessage: '' })
+      this.setData({ nickname, errorMessage: '', nicknameShake: false })
     },
 
     shuffleNickname: function () {
@@ -161,7 +161,7 @@ Component({
       if (form && typeof form.nickname === 'string') this.bindNickname({ detail: { value: form.nickname } })
       const nickname = String(this.data.nickname || '').trim()
       if (!nickname || Array.from(nickname).length > profilePresentation.NICKNAME_MAX_LENGTH) {
-        this.setData({ errorMessage: '昵称需填写 1～6 个字' })
+        this.setData({ errorMessage: '昵称需填写 1～6 个字', nicknameShake: true })
         return
       }
       const isCurrent = this.captureAttempt()

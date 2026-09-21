@@ -1,0 +1,58 @@
+.sk { display: block; padding: 8rpx 0; }
+
+.sk-row {
+  display: flex;
+  min-height: 96rpx;
+  align-items: center;
+  gap: 16rpx;
+  box-sizing: border-box;
+  padding: 16rpx 20rpx;
+}
+
+.sk-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--theme-surface-muted, #f1eee9);
+  border-radius: var(--theme-radius-small, 12rpx);
+}
+
+.sk-shimmer::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .55), transparent);
+  transform: translateX(-100%);
+  animation: sk-sweep var(--layout-motion-shimmer, 1400ms) ease-in-out infinite;
+  content: '';
+}
+
+.sk-tile {
+  width: 64rpx;
+  height: 64rpx;
+  flex: 0 0 64rpx;
+  border-radius: var(--theme-radius-large, 24rpx);
+}
+
+.sk-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.sk-line { width: 62%; height: 24rpx; }
+.sk-line-short { width: 42%; height: 20rpx; }
+
+.sk-amount {
+  width: 96rpx;
+  height: 28rpx;
+  flex: 0 0 auto;
+}
+
+@keyframes sk-sweep {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-shimmer::after { animation: none !important; }
+}

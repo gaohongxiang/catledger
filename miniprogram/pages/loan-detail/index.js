@@ -6,8 +6,17 @@ const theme = require('../../theme/service')
 const money = require('../../utils/money')
 const { present, form } = require('../loans/model')
 const scheduleForm = require('./schedule-form')
+
+function fieldErrorFor(message) {
+  const text = String(message || '')
+  if (/利率|费率|期数|费用|每期|首期|还款日/.test(text)) return 'schedule'
+  if (/账户/.test(text)) return 'account'
+  if (/金额|本金/.test(text)) return 'principal'
+  return ''
+}
+
 Page({
-  data: { sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', savedMessage: '', formOpen: false, hasPending: false,
+  data: { sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
     principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
     scheduleOpen: false, schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
@@ -92,12 +101,12 @@ Page({
   contextFresh() { return api.isFresh('loans.get', { loanId: this._loanId }) && api.isFresh('catalog.get') && (!this._sourceTransactionId || api.isFresh('loans.transaction', { transactionId: this._sourceTransactionId })) },
   edit() { if (!this.data.loan || this.data.saving || this.data.loading) return; if(!this.contextFresh()){this.setData({errorMessage:'请先重新读取与核实最新资料'});return} if(this.data.loan.installmentSetup){wx.navigateTo({url:'/pages/loan-form/index?loanId='+encodeURIComponent(this._loanId)+(this._sourceTransactionId?'&sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')});return} this.fillForm(this.data.loan); this.setData({ formOpen: true, savedMessage: '' }) },
   cancelEdit() { if (this.data.saving) return; if (this._loanId) this.setData({ formOpen: false }); else wx.navigateBack() },
-  input(event) { const field = event.currentTarget.dataset.field; if (['name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod'].includes(field)) this.setData({ [field]: event.detail.value }) },
-  scheduleInput(event) { const field = event.currentTarget.dataset.field; if (['terms','ratePercent','repaymentYuan','feePerTermYuan','feeUpfrontYuan','firstPaymentDate'].includes(field)) this.setData({ ['schedule.' + field]: event.detail.value }) },
+  input(event) { const field = event.currentTarget.dataset.field; if (['name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod'].includes(field)) this.setData({ [field]: event.detail.value, ...(this.data.fieldError === 'principal' ? { fieldError: '' } : {}) }) },
+  scheduleInput(event) { const field = event.currentTarget.dataset.field; if (['terms','ratePercent','repaymentYuan','feePerTermYuan','feeUpfrontYuan','firstPaymentDate'].includes(field)) this.setData({ ['schedule.' + field]: event.detail.value, ...(this.data.fieldError === 'schedule' ? { fieldError: '' } : {}) }) },
   selectScheduleMethod(event) { this.setData({ schedule: scheduleForm.selectMethod(this.data.schedule, event.currentTarget.dataset.index) }) },
   selectScheduleMeasurement(event) { this.setData({ 'schedule.measurementIndex': Number(event.currentTarget.dataset.index) }) },
   selectScheduleQuote(event) { this.setData({ schedule: scheduleForm.selectQuote(this.data.schedule, event.currentTarget.dataset.index) }) },
-  selectAccount(event) { this.setData({ accountIndex: Number(event.detail.value) }) },
+  selectAccount(event) { this.setData({ accountIndex: Number(event.detail.value), ...(this.data.fieldError === 'account' ? { fieldError: '' } : {}) }) },
   selectKind(event) { this.setData({ kindIndex: Number(event.currentTarget.dataset.index) }) },
   toggleSchedule() { this.setData({ scheduleOpen: !this.data.scheduleOpen }) },
   openAccounts() { wx.navigateTo({ url: '/pages/accounts/index' }) },
@@ -112,7 +121,7 @@ Page({
   async save() {
     if (this.data.saving || this.data.loading) return
     const current = pageReadSession.capture(this)
-    this.setData({ saving: true, errorMessage: '', savedMessage: '' })
+    this.setData({ saving: true, errorMessage: '', fieldError: '', savedMessage: '' })
     try {
       let data = {}
       if (!pending.pending()) {
@@ -134,7 +143,7 @@ Page({
       const outcome = await pending.send('api', this._loanId ? 'loans.update' : 'loans.create', data)
       if (!current()) return
       this.showSaved(outcome)
-    } catch (error) { if (current()) this.setData({ errorMessage: error.message, hasPending: Boolean(pending.pending()) }) }
+    } catch (error) { if (current()) this.setData({ errorMessage: error.message, fieldError: fieldErrorFor(error.message), hasPending: Boolean(pending.pending()) }) }
     finally { if (current()) this.setData({ saving: false }) }
     if (current() && this.data.savedMessage) return this.load()
   }

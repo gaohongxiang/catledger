@@ -6,6 +6,8 @@
     "section-header": "/components/section-header/index",
     "empty-state": "/components/empty-state/index",
     "empty-cat": "/components/empty-cat/index",
+    "ticker-number": "/components/ticker-number/index",
+    "skeleton-rows": "/components/skeleton-rows/index",
     "ui-state": "/components/ui-state/index"
   }
 }

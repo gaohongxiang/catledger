@@ -1,0 +1,1 @@
+<view class="tn"><block wx:for="{{parts}}" wx:key="key"><view wx:if="{{item.digit}}" class="tn-digit"><view class="tn-col" style="transform: translateY({{item.top}});"><text class="tn-num" wx:for="{{[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]}}" wx:for-item="num" wx:key="*this">{{num}}</text></view></view><text wx:else class="tn-static">{{item.ch}}</text></block></view>
