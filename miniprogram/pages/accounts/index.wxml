@@ -13,7 +13,7 @@
   <view wx:if="{{assets.length > 0}}" class="account-group">
     <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark asset-mark" aria-hidden="true"></view><text class="group-title serif-title">资产账户</text><text class="group-count money-number">{{assets.length}}</text></view><text wx:if="{{assetCorrectionCount > 0}}" class="group-alert">{{assetCorrectionCount}} 个待校正</text></view>
     <view class="account-list">
-      <view wx:for="{{assets}}" wx:key="accountId" class="account-row row-enter" style="animation-delay: {{index * 70}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
+      <view wx:for="{{assets}}" wx:key="accountId" class="account-row row-enter" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
         <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view>
@@ -25,7 +25,7 @@
   <view wx:if="{{liabilities.length > 0}}" class="account-group liability-group">
     <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark liability-mark" aria-hidden="true"></view><text class="group-title serif-title">负债账户</text><text class="group-count money-number">{{liabilities.length}}</text></view><text class="group-note">按待还金额汇总负债</text></view>
     <view class="account-list">
-      <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row row-enter" style="animation-delay: {{index * 70}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
+      <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row row-enter" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
         <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view><chevron-icon size="{{26}}" />
@@ -36,7 +36,7 @@
   <view wx:if="{{archivedAccounts.length > 0}}" class="account-group archived-group">
     <view class="archived-toggle content-inset" bindtap="toggleArchived" hover-class="account-row-active" role="button" aria-label="{{archivedExpanded ? '收起' : '展开'}}已停用账户"><view><text class="group-title serif-title">已停用账户</text><text class="archived-note">历史账目仍然保留</text></view><view class="archived-toggle-end"><text class="money-number">{{archivedAccounts.length}}</text><chevron-icon direction="{{archivedExpanded ? 'down' : 'right'}}" size="{{24}}" /></view></view>
     <view wx:if="{{archivedExpanded}}" class="archived-list">
-      <view wx:for="{{archivedAccounts}}" wx:key="accountId" class="account-row account-row-archived row-enter" style="animation-delay: {{index * 70}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看已停用账户 {{item.name}}"><view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view><view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}} · 历史保留</text></view><text class="account-row-balance money-number">{{item.balanceText}}</text><chevron-icon size="{{26}}" /></view>
+      <view wx:for="{{archivedAccounts}}" wx:key="accountId" class="account-row account-row-archived row-enter" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看已停用账户 {{item.name}}"><view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view><view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}} · 历史保留</text></view><text class="account-row-balance money-number">{{item.balanceText}}</text><chevron-icon size="{{26}}" /></view>
     </view>
   </view>
 

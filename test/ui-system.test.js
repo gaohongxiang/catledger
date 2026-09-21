@@ -464,11 +464,12 @@ test('校验抖动：login-sheet、profile、loan-detail 三处接入', function
   assert.match(read('miniprogram/pages/loan-detail/index.js'), /fieldError: fieldErrorFor\(error\.message\)/)
 })
 
-test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔', function () {
+test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔，封顶且翻页不入场', function () {
   const appStyle = read('miniprogram/app.wxss')
   assert.match(appStyle, /@keyframes row-fade-up/)
   assert.match(appStyle, /\.row-enter \{\s*animation:\s*row-fade-up var\(--layout-motion-enter, 380ms\) ease backwards/)
   assert.match(appStyle, /--layout-motion-enter:\s*380ms/)
+  const capped = /animation-delay: \{\{index < 10 \? index \* 70 : 700\}\}ms/
   const files = [
     'miniprogram/pages/transactions/index.wxml',
     'miniprogram/pages/accounts/index.wxml',
@@ -478,6 +479,9 @@ test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔', function () 
   files.forEach(function (file) {
     const markup = read(file)
     assert.match(markup, /row-enter/, file)
-    assert.match(markup, /animation-delay: \{\{index \* 70\}\}ms/, file)
+    assert.match(markup, capped, file + ' 延迟应封顶')
   })
+  assert.match(read('miniprogram/pages/transactions/index.wxml'), /\{\{staggerOn \? 'row-enter' : ''\}\}/, '明细翻页追加不入场')
+  const reduced = appStyle.slice(appStyle.indexOf('prefers-reduced-motion'))
+  assert.match(reduced, /animation-delay:\s*0ms !important/, '减少动态效果须同时取消延迟')
 })

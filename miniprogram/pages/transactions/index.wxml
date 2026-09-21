@@ -59,8 +59,8 @@
       wx:for="{{transactions}}"
       wx:key="transactionId"
       id="transaction-row-{{index}}"
-      class="detail-item content-inset row-enter"
-      style="animation-delay: {{index * 70}}ms"
+      class="detail-item content-inset {{staggerOn ? 'row-enter' : ''}}"
+      style="animation-delay: {{index < 10 ? index * 70 : 700}}ms"
       data-index="{{index}}"
       bindtap="editTransaction"
     >

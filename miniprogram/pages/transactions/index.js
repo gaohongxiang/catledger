@@ -31,6 +31,7 @@ Page(Object.assign({
     netText: '¥0.00',
     netClass: 'amount-neutral',
     transactions: [],
+    staggerOn: true,
     nextCursor: null,
     accountFilterIndex: 0,
     categoryFilterIndex: 0,
@@ -190,7 +191,7 @@ Page(Object.assign({
         }
         if (!append && !snapshot) { self._listCacheToken = api.cacheToken('transactions.list', data); self._listQueryKey = queryKey; self._listRevision = result.dataRevision }
         const rows = result.transactions.map(viewModel.transactionView).map(row => Object.assign({}, row, { deletable: batchDelete.canSelect(row) }))
-        const patch = { hasLoaded: true, nextCursor: result.nextCursor, errorMessage: snapshot ? '正在更新，当前显示上次结果' : '' }
+        const patch = { hasLoaded: true, nextCursor: result.nextCursor, errorMessage: snapshot ? '正在更新，当前显示上次结果' : '', staggerOn: !append }
         if (append) rows.forEach((row, index) => { patch['transactions[' + (self.data.transactions.length + index) + ']'] = row })
         else {
           patch.transactions = rows

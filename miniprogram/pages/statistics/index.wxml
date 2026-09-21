@@ -40,7 +40,7 @@
     <view wx:if="{{categoryKind}}" class="composition-details">
       <text class="composition-detail-title">{{categoryKind === 'expense' ? '支出分类' : '收入分类'}}</text>
       <block wx:if="{{categoryKind === 'expense' ? expenseCategories.length : incomeCategories.length}}">
-        <view wx:for="{{categoryKind === 'expense' ? expenseCategories : incomeCategories}}" wx:key="categoryId" class="ranking-row row-enter {{!item.categoryId ? 'ranking-unclassified' : ''}}" style="animation-delay: {{index * 70}}ms" data-unclassified="{{!item.categoryId}}" bindtap="openUnclassifiedCategory" aria-role="{{!item.categoryId ? 'button' : 'text'}}">
+        <view wx:for="{{categoryKind === 'expense' ? expenseCategories : incomeCategories}}" wx:key="categoryId" class="ranking-row row-enter {{!item.categoryId ? 'ranking-unclassified' : ''}}" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-unclassified="{{!item.categoryId}}" bindtap="openUnclassifiedCategory" aria-role="{{!item.categoryId ? 'button' : 'text'}}">
           <view class="ranking-line"><view class="composition-category"><category-tile size="small" hide-name name="{{item.categoryId ? item.name : ''}}" /><text class="ranking-name">{{!item.categoryId ? '待分类 ' + uncategorized.transactionCount + '笔' : item.name}}</text><chevron-icon wx:if="{{!item.categoryId}}" size="{{22}}" /></view><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
         </view>
       </block>

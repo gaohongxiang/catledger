@@ -116,7 +116,7 @@
           wx:for="{{recentTransactions}}"
           wx:key="transactionId"
           class="timeline-item row-enter"
-          style="animation-delay: {{index * 70}}ms"
+          style="animation-delay: {{index < 10 ? index * 70 : 700}}ms"
           data-index="{{index}}"
           bindtap="editTransaction"
         >

@@ -123,7 +123,7 @@ button::after { border: 0; }
 .field-error-inline { display: block; margin-top: 8rpx; color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
 
 @media (prefers-reduced-motion: reduce) {
-  view, button { transition: none !important; animation-duration: .01ms !important; }
+  view, button { transition: none !important; animation-duration: .01ms !important; animation-delay: 0ms !important; transition-delay: 0ms !important; }
 }
 
 /* 卡片外沿与文字分两条基线；页面文字统一内收，卡片保留外宽。 */
