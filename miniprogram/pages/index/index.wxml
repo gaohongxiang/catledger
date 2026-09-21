@@ -74,8 +74,8 @@
         <view wx:elif="{{cashFlowTrend.length > 0 && trendSparse}}" class="trend-guide">
           <text class="trend-guide-copy">记几笔之后，这里会长出趋势。</text>
           <view class="trend-guide-actions">
-            <button id="trend-manual-entry" class="trend-guide-btn" catchtap="createTransaction"><text class="trend-guide-label trend-guide-label-dark">记一笔</text></button>
-            <button id="trend-import-entry" class="trend-guide-btn" catchtap="openImport"><text class="trend-guide-label trend-guide-label-light">导入账单</text></button>
+            <button id="trend-manual-entry" class="trend-guide-btn" catchtap="createTransaction"><text class="trend-guide-label trend-guide-label-soft">记一笔</text></button>
+            <button id="trend-import-entry" class="trend-guide-btn" catchtap="openImport"><text class="trend-guide-label trend-guide-label-soft">导入账单</text></button>
           </view>
         </view>
         <view wx:elif="{{!loggedIn}}" class="statistics-card-empty">暂无收支数据</view>

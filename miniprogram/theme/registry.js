@@ -51,7 +51,7 @@ const THEMES = [
     tokens: {
       page: '#FAF8F4', canvasTop: '#FAF8F4', canvasMid: '#FAF8F4', canvasBottom: '#FAF8F4',
       surface: '#FFFEFD', surfaceMuted: '#F1EEE9', ink: '#2C2823', textMuted: '#70685F', textSubtle: '#79716A',
-      accent: '#BE5B24', accentStrong: '#A34D20', accentSoft: '#FCEEE3', onAccent: '#FFFFFF',
+      accent: '#BE5B24', accentStrong: '#A34D20', accentSoft: '#F0E2CE', onAccent: '#FFFFFF',
       secondary: '#70685F', secondarySoft: '#F1EEE9', line: '#EAE4DC', border: '#D4CCC3',
       heroStart: '#BE5B24', heroEnd: '#BE5B24', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#FFFFFF',
       income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A95132', dangerSoft: '#F4E1D6',

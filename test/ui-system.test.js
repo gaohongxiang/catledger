@@ -16,7 +16,7 @@ test('全页面暖橘表面与强调色分离，仅首页保留局部渐变', fu
 
   assert.equal(warm.tokens.accent, '#BE5B24')
   assert.equal(warm.tokens.surfaceMuted, '#F1EEE9')
-  assert.equal(warm.tokens.accentSoft, '#FCEEE3')
+  assert.equal(warm.tokens.accentSoft, '#F0E2CE')
   assert.equal(warm.tokens.heroStart, '#BE5B24')
   assert.equal(warm.tokens.heroEnd, '#BE5B24')
   assert.equal(warm.tokens.heroInk, '#FFFFFF')
