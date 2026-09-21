@@ -35,7 +35,7 @@
   justify-content: center;
   border-radius: var(--theme-radius-medium, 18rpx);
 }
-.tab-item-selected .tab-icon-wrap { background: var(--theme-accent-soft, #fceee3); }
+.tab-item-selected .tab-icon-wrap { background: var(--theme-accent-soft, #f0e2ce); }
 .tab-icon { width: 32rpx; height: 32rpx; }
 .tab-label {
   margin-top: 2rpx;

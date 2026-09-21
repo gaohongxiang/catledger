@@ -1,0 +1,3 @@
+.about-page { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
+.about-section { margin-top: 40rpx; }
+.about-copy { display: block; color: var(--theme-text-muted); font-size: var(--font-body); line-height: 1.75; }

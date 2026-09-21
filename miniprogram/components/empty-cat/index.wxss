@@ -19,7 +19,7 @@
 .ec-glow {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle, var(--theme-accent-soft, #fceee3) 0%, transparent 68%);
+  background: radial-gradient(circle, var(--theme-accent-soft, #f0e2ce) 0%, transparent 68%);
 }
 
 .ec-art {

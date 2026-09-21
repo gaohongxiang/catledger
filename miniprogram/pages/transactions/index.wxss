@@ -272,7 +272,7 @@
   border-radius: var(--theme-radius-medium, 18rpx);
 }
 .filter-select-toggle:active { opacity: .55; }
-.filter-select-toggle-active { color: var(--theme-accent-strong); border-color: var(--theme-accent); background: var(--theme-accent-soft, #fceee3); }
+.filter-select-toggle-active { color: var(--theme-accent-strong); border-color: var(--theme-accent); background: var(--theme-accent-soft, #f0e2ce); }
 .filter-select-toggle image { width: 32rpx; height: 32rpx; }
 
 .selection-bar {

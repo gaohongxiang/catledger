@@ -262,14 +262,8 @@ Page({
     wx.navigateTo({ url: '/pages/data-privacy/index' })
   },
 
-  showAbout: function () {
-    wx.showModal({
-      title: '关于招财猫记账本',
-      content: '招财猫记账本是一款以账单导入为主、手动记账为辅的个人财务小程序。当前为开发版，尚未上传审核。',
-      showCancel: false,
-      confirmText: '知道了',
-      confirmColor: themeService.currentTokens().accent
-    })
+  openAbout: function () {
+    wx.navigateTo({ url: '/pages/about/index' })
   },
 
   logoutAccount: function () {

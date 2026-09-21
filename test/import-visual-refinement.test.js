@@ -83,7 +83,7 @@ test('正式提交及全部分配/聚合校验条件保持完整', () => {
 })
 test('暖橘局部令牌不改其他主题；标题正常字距与常规正文', () => {
   assert.match(style, /\.import-page\.theme-warm-ledger/)
-  assert.match(style, /--ui-surface-muted:\s*#f1eee9/i)
+  assert.match(style, /--ui-surface-muted:\s*#f4eee3/i)
   assert.match(style, /\.import-page \.serif-title[^}]*letter-spacing:\s*0/)
   assert.doesNotMatch(style, /@font-face|https?:\/\//)
 })

@@ -82,7 +82,7 @@
   transition: transform 120ms ease, opacity 120ms ease;
 }
 .category-row:last-child { border-bottom: 0; }
-.category-row-active { background: var(--theme-accent-soft, #fceee3); }
+.category-row-active { background: var(--theme-accent-soft, #f0e2ce); }
 .category-row-dragging { opacity: .92; box-shadow: 0 8rpx 22rpx rgba(41, 35, 30, .12); transition: none; }
 .category-order {
   width: 44rpx;

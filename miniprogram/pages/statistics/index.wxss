@@ -278,7 +278,7 @@
   border: 1rpx solid var(--theme-line);
   border-radius: var(--theme-radius-small, 12rpx);
 }
-.category-option-selected { color: var(--theme-accent-strong, #a34d20); background: var(--theme-accent-soft, #fceee3); border-color: var(--theme-accent, #be5b24); }
+.category-option-selected { color: var(--theme-accent-strong, #a34d20); background: var(--theme-accent-soft, #f0e2ce); border-color: var(--theme-accent, #be5b24); }
 .sheet-save { width: 100%; margin-top: 24rpx; }
 
 .summary-strip-stacked { display: block; }

@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "关于",
+  "usingComponents": {
+    "page-head": "/components/page-head/index",
+    "section-header": "/components/section-header/index"
+  }
+}

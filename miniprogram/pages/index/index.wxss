@@ -12,7 +12,7 @@
 .home-page.theme-warm-ledger {
   --home-page: #faf8f4;
   --home-surface: #fffefd;
-  --home-surface-muted: #f1eee9;
+  --home-surface-muted: #f4eee3;
   --home-ink: #2c2823;
   --home-muted: #70685f;
   --home-line: #eae4dc;
@@ -318,7 +318,7 @@
   padding: 10rpx 20rpx;
   border: 1rpx solid var(--theme-line, #eae4dc);
   border-radius: 999rpx;
-  background: var(--theme-secondary-soft, #f1eee9);
+  background: var(--theme-secondary-soft, #f4eee3);
 }
 .trend-guide-btn:active { opacity: .76; }
 .trend-guide-label-soft {
@@ -351,7 +351,7 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 44rpx;
-  background: var(--home-surface-muted, var(--theme-secondary-soft, #f1eee9));
+  background: var(--home-surface-muted, var(--theme-secondary-soft, #f4eee3));
   border-radius: var(--theme-radius-small, 12rpx);
 }
 .account-icon image { width: 28rpx; height: 28rpx; }

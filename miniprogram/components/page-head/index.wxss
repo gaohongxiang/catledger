@@ -7,7 +7,7 @@
   padding: 8rpx 18rpx;
   border-radius: 999rpx;
   color: var(--theme-accent-strong, #a34d20);
-  background: var(--theme-accent-soft, #fceee3);
+  background: var(--theme-accent-soft, #f0e2ce);
   font-size: var(--font-caption, 24rpx);
   font-weight: 500;
 }

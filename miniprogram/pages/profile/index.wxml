@@ -49,7 +49,7 @@
   <view class="profile-menu">
     <list-row title="主题" note="{{themeName}}" aria-label="选择视觉主题" bindtap="openTheme" />
     <list-row title="数据与隐私" note="身份与账单文件说明" aria-label="查看数据与隐私" bindtap="showPrivacy" />
-    <list-row title="关于招财猫记账本" note="开发版" aria-label="查看关于招财猫记账本" bindtap="showAbout" />
+    <list-row id="about-entry" title="关于" note="开发版" aria-label="查看关于" bindtap="openAbout" />
     <list-row wx:if="{{loggedIn}}" title="退出登录" note="只退出本机，不删除云端账本" tone="danger" aria-label="退出登录" bindtap="logoutAccount" divider="{{false}}" />
   </view>
 

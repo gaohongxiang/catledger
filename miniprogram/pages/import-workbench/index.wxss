@@ -20,7 +20,7 @@
 .import-page.theme-warm-ledger {
   --ui-page: #faf8f4;
   --ui-surface: #fffefd;
-  --ui-surface-muted: #f1eee9;
+  --ui-surface-muted: #f4eee3;
   --ui-ink: #2c2823;
   --ui-muted: #70685f;
   --ui-subtle: #79716a;
@@ -28,10 +28,10 @@
   --ui-border: #d4ccc3;
   --ui-accent: #be5b24;
   --ui-accent-strong: #a34d20;
-  --ui-accent-soft: #fceee3;
+  --ui-accent-soft: #f0e2ce;
   --ui-on-accent: #ffffff;
   --ui-secondary: #70685f;
-  --ui-secondary-soft: #f1eee9;
+  --ui-secondary-soft: #f4eee3;
   --ui-account-create-bg: #b35f32;
   --ui-account-create-ink: #ffffff;
 }
@@ -1875,7 +1875,7 @@ button::after { border: 0; }
   border-left: 5rpx solid var(--theme-expense, #b54738);
 }
 .file-mark-ready { color: var(--theme-income, #477153); background: var(--ui-secondary-soft); }
-.file-mark-failed { color: var(--theme-expense, #b54738); background: var(--theme-danger-soft, #f4e1d6); }
+.file-mark-failed { color: var(--theme-expense, #b54738); background: var(--theme-danger-soft, #f6e4d4); }
 .file-mark-duplicate { color: var(--ui-muted); background: var(--ui-surface-muted); }
 .file-error {
   display: block;

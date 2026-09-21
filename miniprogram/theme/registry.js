@@ -50,11 +50,11 @@ const THEMES = [
     description: '暖白、陶橘与轻灰，清秀而有温度。',
     tokens: {
       page: '#FAF8F4', canvasTop: '#FAF8F4', canvasMid: '#FAF8F4', canvasBottom: '#FAF8F4',
-      surface: '#FFFEFD', surfaceMuted: '#F1EEE9', ink: '#2C2823', textMuted: '#70685F', textSubtle: '#79716A',
+      surface: '#FFFEFD', surfaceMuted: '#F4EEE3', ink: '#2C2823', textMuted: '#70685F', textSubtle: '#79716A',
       accent: '#BE5B24', accentStrong: '#A34D20', accentSoft: '#F0E2CE', onAccent: '#FFFFFF',
-      secondary: '#70685F', secondarySoft: '#F1EEE9', line: '#EAE4DC', border: '#D4CCC3',
+      secondary: '#70685F', secondarySoft: '#F4EEE3', line: '#EAE4DC', border: '#D4CCC3',
       heroStart: '#BE5B24', heroEnd: '#BE5B24', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#FFFFFF',
-      income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A95132', dangerSoft: '#F4E1D6',
+      income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A95132', dangerSoft: '#F6E4D4',
       shadowSoft: '0 8rpx 28rpx rgba(190,91,36,.07)', shadowLifted: '0 8rpx 22rpx rgba(145,87,36,.10)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#FAF8F4', navFront: '#000000'
     }

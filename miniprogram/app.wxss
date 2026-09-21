@@ -65,8 +65,8 @@ button::after { border: 0; }
 
 .primary-button { border-radius: 999rpx; color: var(--theme-on-accent, #ffffff); background: var(--theme-accent, #be5b24); }
 .primary-button-medium { border-radius: var(--layout-radius-medium, 18rpx); }
-.secondary-button { color: var(--theme-secondary, #70685f); background: var(--theme-secondary-soft, #f1eee9); }
-.danger-button { color: var(--theme-danger, #a95132); background: var(--theme-danger-soft, #f4e1d6); }
+.secondary-button { color: var(--theme-secondary, #70685f); background: var(--theme-secondary-soft, #f4eee3); }
+.danger-button { color: var(--theme-danger, #a95132); background: var(--theme-danger-soft, #f6e4d4); }
 .primary-button:active,
 .secondary-button:active,
 .danger-button:active { transform: scale(var(--motion-press-scale, .965)); opacity: .9; }
@@ -107,7 +107,7 @@ button::after { border: 0; }
 .empty-ledger-copy { margin-top: 10rpx; font-size: var(--font-caption, 24rpx); line-height: 1.6; }
 
 /* 主题色表达状态，正文保持可读；小字号不再承担关键操作与业务解释。 */
-.primary-button[disabled], .secondary-button[disabled] { color: var(--theme-text-muted, #70685f); background: var(--theme-surface-muted, #f1eee9); opacity: .65; }
+.primary-button[disabled], .secondary-button[disabled] { color: var(--theme-text-muted, #70685f); background: var(--theme-surface-muted, #f4eee3); opacity: .65; }
 
 /* 列表行错峰入场与校验抖动；reduced-motion 由下方全局媒体查询统一收敛。 */
 @keyframes row-fade-up { from { opacity: 0; transform: translateY(14rpx); } to { opacity: 1; transform: none; } }
