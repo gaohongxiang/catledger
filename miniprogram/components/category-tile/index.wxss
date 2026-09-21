@@ -29,6 +29,10 @@
 
 .ct-small .ct-letter { font-size: var(--font-caption, 24rpx); }
 
+.ct-icon { width: 44rpx; height: 44rpx; }
+
+.ct-small .ct-icon { width: 34rpx; height: 34rpx; }
+
 .ct-name {
   min-width: 0;
   color: var(--theme-ink, #2c2823);

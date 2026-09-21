@@ -57,11 +57,20 @@ test('暖橘渐变限定在首页主题变量，不污染其他主题和页面',
 })
 
 test('普通卡片使用 surface，不用浅橘填满所有内容', () => {
-  for (const selector of ['.month-stat', '.account-list', '.timeline']) {
+  for (const selector of ['.month-stat']) {
     const declarations = rule(selector)
     assert.match(declarations, /--home-surface/)
     assert.doesNotMatch(declarations, /accent-soft|surface-muted/)
   }
+})
+
+test('首页卡片节奏：账户卡浅驼底无边框，最近账目为发丝线列表', () => {
+  assert.match(rule('.account-list'), /background:\s*var\(--home-surface-muted/)
+  assert.match(rule('.account-list'), /border:\s*0/)
+  assert.match(rule('.timeline'), /background:\s*transparent/)
+  assert.match(rule('.timeline'), /border-top:\s*1rpx solid var\(--home-line/)
+  assert.match(rule('.timeline'), /border-bottom:\s*1rpx solid var\(--home-line/)
+  assert.match(rule('.timeline'), /box-shadow:\s*none/)
 })
 
 test('入口保留原事件，查看统计/账户/明细与原交易编辑可达', () => {

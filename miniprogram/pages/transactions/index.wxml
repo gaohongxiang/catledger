@@ -55,9 +55,12 @@
   </view>
 
   <view wx:if="{{transactions.length > 0}}" class="detail-timeline">
-    <view
+    <block
       wx:for="{{transactions}}"
       wx:key="transactionId"
+    >
+    <text wx:if="{{item.dayLabel}}" class="detail-group content-inset">{{item.dayLabel}}</text>
+    <view
       id="transaction-row-{{index}}"
       class="detail-item content-inset {{staggerOn ? 'row-enter' : ''}}"
       style="animation-delay: {{index < 10 ? index * 70 : 700}}ms"
@@ -77,6 +80,7 @@
         </view>
       </view>
     </view>
+    </block>
   </view>
 
   <empty-cat wx:elif="{{loggedIn && hasLoaded && !loading && !errorMessage}}" class="detail-empty" title="这里暂时没有账目" description="换一个月份或筛选条件试试；新增账目请使用底部加号。" />

@@ -1,4 +1,4 @@
-<view class="ph">
+<view class="ph {{badge ? '' : 'ph-plain'}}">
   <view class="ph-top">
     <view wx:if="{{badge}}" class="ph-badge"><view class="ph-badge-dot"></view><text>{{badge}}</text></view>
     <view class="ph-side"><slot></slot></view>

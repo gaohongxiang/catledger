@@ -1,5 +1,5 @@
 <view class="page-canvas privacy-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="个人数据" title="数据与隐私" copy="打开小程序时自动识别当前微信账号并连接个人账本；服务端使用可信微信身份隔离数据。" />
+  <page-head class="content-inset" title="数据与隐私" copy="打开小程序时自动识别当前微信账号并连接个人账本；服务端使用可信微信身份隔离数据。" />
   <text class="privacy-copy content-inset">首次使用可设置头像和昵称，之后可在“我的”修改；昵称保存到账号，头像只保存在本机。账号 ID 用于定位问题，不是登录凭证。</text>
   <view class="privacy-section">
     <section-header compact title="导出个人账本" />

@@ -1,5 +1,5 @@
 <view class="page-canvas repayment-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="实际付款" title="{{mode === 'pending' ? '关联还款' : '确认借款还款'}}" copy="{{mode === 'pending' ? '本息费已入账，本次只关联贷款，不重复记账。' : '信用卡整单还款记普通转账。借款还款需要确认实际本息费。'}}" />
+  <page-head class="content-inset" title="{{mode === 'pending' ? '关联还款' : '确认借款还款'}}" copy="{{mode === 'pending' ? '本息费已入账，本次只关联贷款，不重复记账。' : '信用卡整单还款记普通转账。借款还款需要确认实际本息费。'}}" />
   <ui-state wx:if="{{loading}}" description="正在读取还款资料…" />
   <view wx:if="{{!loading}}" class="form-card">
     <picker wx:if="{{mode === 'import'}}" range="{{classificationOptions}}" value="{{classification}}" data-field="classification" bindchange="select"><view class="form-row"><text>这笔付款</text><text>{{classificationOptions[classification]}}</text><chevron-icon size="{{22}}" /></view></picker>

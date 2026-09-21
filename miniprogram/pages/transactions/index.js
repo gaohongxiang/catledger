@@ -8,6 +8,32 @@ const time = require('../../utils/time')
 const viewModel = require('../../utils/view-model')
 const themeService = require('../../theme/service')
 
+function shiftDay(date, delta) {
+  const parts = date.split('-').map(Number)
+  const next = new Date(parts[0], parts[1] - 1, parts[2] + delta)
+  return next.getFullYear() + '-' + String(next.getMonth() + 1).padStart(2, '0') + '-' + String(next.getDate()).padStart(2, '0')
+}
+
+function dayLabel(day, today, yesterday) {
+  if (day === today) return '今天'
+  if (day === yesterday) return '昨天'
+  const sameYear = day.slice(0, 4) === today.slice(0, 4)
+  const monthDay = Number(day.slice(5, 7)) + '月' + Number(day.slice(8, 10)) + '日'
+  return sameYear ? monthDay : day.slice(0, 4) + '年' + monthDay
+}
+
+function attachDayLabels(rows, previousDay) {
+  const today = time.today()
+  const yesterday = shiftDay(today, -1)
+  let prev = previousDay || null
+  return rows.map(function (row) {
+    const day = String(row.occurredLocalAt || '').slice(0, 10)
+    const label = day && day !== prev ? dayLabel(day, today, yesterday) : ''
+    if (day) prev = day
+    return Object.assign({}, row, { dayLabel: label })
+  })
+}
+
 Page(Object.assign({
   data: {
     loggedIn: false,
@@ -191,10 +217,14 @@ Page(Object.assign({
         }
         if (!append && !snapshot) { self._listCacheToken = api.cacheToken('transactions.list', data); self._listQueryKey = queryKey; self._listRevision = result.dataRevision }
         const rows = result.transactions.map(viewModel.transactionView).map(row => Object.assign({}, row, { deletable: batchDelete.canSelect(row) }))
+        const lastDay = append && self.data.transactions.length
+          ? String(self.data.transactions[self.data.transactions.length - 1].occurredLocalAt || '').slice(0, 10)
+          : null
+        const labeled = attachDayLabels(rows, lastDay)
         const patch = { hasLoaded: true, nextCursor: result.nextCursor, errorMessage: snapshot ? '正在更新，当前显示上次结果' : '', staggerOn: !append }
-        if (append) rows.forEach((row, index) => { patch['transactions[' + (self.data.transactions.length + index) + ']'] = row })
+        if (append) labeled.forEach((row, index) => { patch['transactions[' + (self.data.transactions.length + index) + ']'] = row })
         else {
-          patch.transactions = rows
+          patch.transactions = labeled
           patch.incomeText = money.formatMinor(result.summary.incomeMinor)
           patch.expenseText = money.formatMinor(result.summary.expenseMinor)
           patch.netText = money.formatMinor(result.summary.netIncomeMinor)
