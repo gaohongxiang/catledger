@@ -72,10 +72,18 @@
           </view>
         </view>
         <view wx:elif="{{cashFlowTrend.length > 0 && trendSparse}}" class="trend-guide">
+          <view class="trend-guide-ghost" aria-hidden="true">
+            <view class="trend-guide-ghost-bars"><view class="trend-guide-ghost-bar" style="height: 26%;"></view><view class="trend-guide-ghost-bar" style="height: 18%;"></view></view>
+            <view class="trend-guide-ghost-bars"><view class="trend-guide-ghost-bar" style="height: 42%;"></view><view class="trend-guide-ghost-bar" style="height: 30%;"></view></view>
+            <view class="trend-guide-ghost-bars"><view class="trend-guide-ghost-bar" style="height: 34%;"></view><view class="trend-guide-ghost-bar" style="height: 48%;"></view></view>
+            <view class="trend-guide-ghost-bars"><view class="trend-guide-ghost-bar" style="height: 56%;"></view><view class="trend-guide-ghost-bar" style="height: 38%;"></view></view>
+            <view class="trend-guide-ghost-bars"><view class="trend-guide-ghost-bar" style="height: 44%;"></view><view class="trend-guide-ghost-bar" style="height: 62%;"></view></view>
+            <view class="trend-guide-ghost-bars"><view class="trend-guide-ghost-bar" style="height: 68%;"></view><view class="trend-guide-ghost-bar" style="height: 52%;"></view></view>
+          </view>
           <text class="trend-guide-copy">记几笔之后，这里会长出趋势。</text>
           <view class="trend-guide-actions">
-            <button class="trend-guide-btn" bindtap="createTransaction">记一笔</button>
-            <button class="trend-guide-link" bindtap="openImport">导入账单</button>
+            <button id="trend-manual-entry" class="trend-guide-btn" catchtap="createTransaction"><text class="trend-guide-label">记一笔</text></button>
+            <button id="trend-import-entry" class="trend-guide-btn" catchtap="openImport"><text class="trend-guide-label">导入账单</text></button>
           </view>
         </view>
         <view wx:elif="{{!loggedIn}}" class="statistics-card-empty">暂无收支数据</view>
