@@ -19,16 +19,17 @@
   background: var(--theme-accent, #be5b24);
 }
 
-.ph-main {
+.ph-top {
   display: flex;
+  min-height: 56rpx;
   align-items: center;
   justify-content: space-between;
   gap: 20rpx;
-  margin-top: 20rpx;
 }
 
 .ph-title {
   display: block;
+  margin-top: 20rpx;
   min-width: 0;
   font-size: var(--font-title, 40rpx);
   font-weight: 600;
