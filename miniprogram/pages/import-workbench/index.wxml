@@ -10,8 +10,8 @@
 </template>
 
 <view class="page-canvas import-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" title="导入账单" copy="把不同渠道的账单，整理成一本账。">
-    <button class="account-source-link" bindtap="openImportHistory" disabled="{{busy}}">导入记录</button>
+  <page-head has-actions class="content-inset" title="导入账单" copy="把不同渠道的账单，整理成一本账。">
+    <button size="mini" class="page-head-link" bindtap="openImportHistory" disabled="{{busy}}">导入记录</button>
   </page-head>
 
   <text wx:if="{{pageLoading}}" class="sheet-copy">正在刷新当前页…</text>

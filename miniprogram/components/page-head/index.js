@@ -1,5 +1,9 @@
 Component({
   properties: {
+    hasActions: {
+      type: Boolean,
+      value: false
+    },
     badge: {
       type: String,
       value: ''

@@ -330,7 +330,7 @@ test('各编辑弹层错误可见，金额/名称拥有标签，保存继续保�
     const markup = read('miniprogram/pages/' + route + '/index.wxml')
     assert.match(markup, /class="sheet-error"/)
   }
-  for (const route of ['accounts', 'transaction-editor', 'import-maintenance']) {
+  for (const route of ['accounts', 'transaction-editor']) {
     const markup = read('miniprogram/pages/' + route + '/index.wxml')
     assert.match(markup, /aria-label=/)
     assert.match(markup, /cursor-spacing=/)

@@ -21,7 +21,8 @@
 
 .ph-top {
   display: flex;
-  min-height: 56rpx;
+  min-width: 0;
+  margin-top: 16rpx;
   align-items: center;
   justify-content: space-between;
   gap: 20rpx;
@@ -29,7 +30,7 @@
 
 .ph-title {
   display: block;
-  margin-top: 20rpx;
+  flex: 1;
   min-width: 0;
   font-size: var(--font-title, 40rpx);
   font-weight: 600;
@@ -44,8 +45,7 @@
   gap: 16rpx;
 }
 
-.ph-plain .ph-top { min-height: 0; }
-.ph-plain .ph-side:empty { display: none; }
+.ph-plain .ph-top { margin-top: 0; }
 
 .ph-copy {
   display: block;

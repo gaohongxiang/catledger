@@ -226,7 +226,7 @@ test('账户页以净资产和异常余额为主，管理动作收进账户详�
   assert.doesNotMatch(template, /class="account-actions"/)
   assert.doesNotMatch(template, /class="detail-secondary"/)
   assert.doesNotMatch(style, /\.create-account-button/)
-  assert.match(read('miniprogram/app.wxss'), /\.head-cta\s*\{[^}]*background:\s*var\(--theme-accent/)
+  assert.match(read('miniprogram/app.wxss'), /\.head-cta-label\s*\{[^}]*background:\s*var\(--theme-accent/)
   assert.match(style, /\.wealth-summary\s*\{[^}]*background:\s*var\(--theme-surface\)/)
   assert.match(style, /\.wealth-summary\s*\{[^}]*border-radius:\s*var\(--theme-radius-large, 24rpx\)/)
   assert.match(style, /\.wealth-primary\s*\{[^}]*display:\s*block/)

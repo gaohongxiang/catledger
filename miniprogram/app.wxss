@@ -71,27 +71,58 @@ button::after { border: 0; }
 .secondary-button:active,
 .danger-button:active { transform: scale(var(--motion-press-scale, .965)); opacity: .9; }
 
-/* 页头主操作：实色胶囊 CTA，替代各页自造的纯文本/描边按钮。 */
-.head-cta {
+/* 原生 mini 按钮只承接触控；内层胶囊单独控制可见高度和内容居中。 */
+.page-canvas .head-cta {
+  display: flex;
+  width: auto;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 88rpx;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  line-height: 1;
+  box-shadow: none;
+  transition: opacity var(--layout-motion-fast) ease;
+}
+.head-cta-label {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8rpx;
   box-sizing: border-box;
-  min-height: 64rpx;
-  margin: 0;
-  padding: 12rpx 28rpx;
+  height: 60rpx;
+  padding: 0 20rpx;
+  white-space: nowrap;
   color: var(--theme-on-accent, #ffffff);
   background: var(--theme-accent, #be5b24);
   font-size: var(--font-caption, 24rpx);
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1;
   border-radius: 999rpx;
-  box-shadow: var(--theme-shadow-soft);
-  transition: opacity var(--layout-motion-fast) ease;
+}
+.page-canvas .page-head-link {
+  display: flex;
+  width: auto;
+  min-height: 88rpx;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  color: var(--theme-accent-strong, #a34d20);
+  background: transparent;
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1;
+  white-space: nowrap;
 }
 .head-cta:active { opacity: .76; }
 .head-cta image { width: 22rpx; height: 22rpx; flex: 0 0 auto; }
+.head-cta-label text { display: block; line-height: 1; }
 
 .empty-ledger {
   padding: 32rpx 0;

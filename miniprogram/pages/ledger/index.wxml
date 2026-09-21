@@ -1,5 +1,5 @@
 <view class="page-canvas ledger-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" title="我的账本" copy="活动账户与收支分类的总览，数量实时同步。">
+  <page-head has-actions class="content-inset" title="我的账本" copy="活动账户与收支分类的总览，数量实时同步。">
     <view class="heading-with-sync"><view class="inline-sync {{loading ? 'inline-sync-active' : ''}}" aria-role="status" aria-label="{{loading ? '正在更新' : ''}}"><view class="inline-sync-icon"></view></view></view>
     <text wx:if="{{loggedIn && hasLoaded}}" class="ledger-count money-number" aria-label="账户与分类共{{structureCount}}项">{{structureCount}} 项</text>
   </page-head>

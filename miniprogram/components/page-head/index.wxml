@@ -1,8 +1,8 @@
 <view class="ph {{badge ? '' : 'ph-plain'}}">
+  <view wx:if="{{badge}}" class="ph-badge"><view class="ph-badge-dot"></view><text>{{badge}}</text></view>
   <view class="ph-top">
-    <view wx:if="{{badge}}" class="ph-badge"><view class="ph-badge-dot"></view><text>{{badge}}</text></view>
-    <view class="ph-side"><slot></slot></view>
+    <text class="ph-title serif-title">{{title}}</text>
+    <view wx:if="{{hasActions}}" class="ph-side"><slot></slot></view>
   </view>
-  <text class="ph-title serif-title">{{title}}</text>
   <text wx:if="{{copy}}" class="ph-copy">{{copy}}</text>
 </view>

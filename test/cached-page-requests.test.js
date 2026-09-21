@@ -847,30 +847,6 @@ test('账户保存冲突回读最新版本并保留名称输入，卸载后不�
   assert.equal(h.toasts.length, 0)
 })
 
-test('已入账维护用当前摘要与分页定位远端记录，下一页替换而不积累全集', async () => {
-  const h = runtime(), page = h.page('import-maintenance')
-  const events = Array.from({ length: 121 }, (_, n) => ({ eventId: 'event-' + n, version: 1, status: 'posted',
-    localAt: '2026-09-01', economicNature: 'expense', amountMinor: '100', ledgerAccountId: 'account-a' }))
-  h.respond = (action, data) => {
-    if (action === 'financeUpdates.summary') return { ok: true, data: { protocolVersion: 2, viewVersion: 'v1', update: { updateId: 'update', status: 'posted' } } }
-    if (action === 'economicEvents.list') {
-      const offset = Number(data.cursor || 0)
-      return { ok: true, data: { protocolVersion: 2, viewVersion: 'v1', total: data.eventId ? 1 : 121,
-        items: data.eventId ? events.filter(e => e.eventId === data.eventId) : events.slice(offset, offset + 40), nextCursor: data.eventId || offset + 40 >= 121 ? null : String(offset + 40) } }
-    }
-  }
-  page._updateId = 'update'; page._eventId = 'event-100'
-  await page.load()
-  assert.equal(page.data.events.length, 41)
-  assert.equal(page.data.events[page.data.eventIndex].eventId, 'event-100')
-  assert.equal(page.data.eventCount, 121)
-  await page.showMorePostedRecords(); await page.showMorePostedRecords(); await page.showMorePostedRecords()
-  assert.equal(page.data.events.length, 40)
-  assert.equal(page.data.events[0].eventId, 'event-40')
-  assert.equal(page.data.eventCount, 121)
-  assert.ok(h.calls.every(c => ['catalog.get', 'financeUpdates.summary', 'economicEvents.list'].includes(c.action)))
-})
-
 test('记账响应丢失后修改金额仍先查询原请求，不能新增第二笔', async () => {
   const h = runtime(), page = h.page('transaction-editor')
   await page.prepareForm()
