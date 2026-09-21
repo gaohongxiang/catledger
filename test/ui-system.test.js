@@ -512,6 +512,7 @@ test('瓷贴默认分类渲染线条图标，自定义分类保持首字', funct
   const markup = read('miniprogram/components/category-tile/index.wxml')
   assert.match(markup, /wx:if="\{\{icon\}\}" class="ct-icon"/)
   assert.match(markup, /wx:else class="ct-letter"/)
+  assert.doesNotMatch(markup, /<slot\b/, '原生插槽默认内容不渲染，图标与首字须作为组件自身节点')
   const style = read('miniprogram/components/category-tile/index.wxss')
   assert.match(style, /\.ct-icon \{/)
   assert.match(style, /\.ct-small \.ct-icon \{/)

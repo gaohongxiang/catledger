@@ -1,6 +1,7 @@
 <view class="ct ct-{{resolvedColor}} {{size === 'small' ? 'ct-small' : ''}}">
   <view class="ct-box">
-    <slot><image wx:if="{{icon}}" class="ct-icon" src="{{icon}}" mode="aspectFit" /><text wx:else class="ct-letter">{{initial}}</text></slot>
+    <image wx:if="{{icon}}" class="ct-icon" src="{{icon}}" mode="aspectFit" />
+    <text wx:else class="ct-letter">{{initial}}</text>
   </view>
   <text wx:if="{{name && !hideName}}" class="ct-name">{{name}}</text>
 </view>

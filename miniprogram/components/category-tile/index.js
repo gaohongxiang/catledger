@@ -32,8 +32,5 @@ Component({
         icon: palette.iconFor(name)
       })
     }
-  },
-  options: {
-    multipleSlots: true
   }
 })
