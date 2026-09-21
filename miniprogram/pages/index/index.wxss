@@ -321,10 +321,14 @@
   background: var(--theme-secondary-soft, #f1eee9);
 }
 .trend-guide-btn:active { opacity: .76; }
-.trend-guide-label-soft {
+.trend-guide-label-dark {
   border-color: transparent;
-  color: var(--theme-accent-strong, #a34d20);
-  background: var(--theme-accent-soft, #fceee3);
+  color: var(--theme-on-accent, #ffffff);
+  background: var(--theme-ink, #2c2823);
+}
+.trend-guide-label-light {
+  color: var(--theme-ink, #2c2823);
+  background: var(--theme-surface, #fffefd);
 }
 
 .account-list {
