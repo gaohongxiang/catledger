@@ -11,20 +11,20 @@
   </view>
 
   <view class="category-toolbar content-inset">
-    <text class="category-sort-note">点箭头展开子类，拖动把手调整同级排序</text>
+    <text class="category-sort-note">点分类展开子类，铅笔编辑；拖动把手调整同级排序</text>
   </view>
 
   <view wx:if="{{visibleCategories.length}}" class="category-list">
-    <block wx:for="{{visibleCategories}}" wx:key="id"><view class="category-row {{draggingCategoryId === item.id ? 'category-row-dragging' : ''}}" style="{{draggingCategoryId === item.id ? dragStyle : ''}}" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看分类 {{item.name}}">
-      <text class="category-order money-number">{{item.orderText}}</text>
+    <block wx:for="{{visibleCategories}}" wx:key="id"><view class="category-row {{draggingCategoryId === item.id ? 'category-row-dragging' : ''}}" style="{{draggingCategoryId === item.id ? dragStyle : ''}}" data-id="{{item.id}}" bindtap="tapCategory" hover-class="category-row-active" role="button" aria-label="{{item.name}}">
       <category-tile size="small" hide-name name="{{item.name}}" system-key="{{item.systemKey}}" />
       <view class="category-copy"><text class="category-name">{{item.name}}</text><text class="category-kind-label">{{item.children.length ? item.children.length + ' 个子类' : '可直接记账'}}</text></view>
-      <view wx:if="{{item.children.length}}" class="category-expand" data-id="{{item.id}}" catchtap="toggleChildren" aria-role="button" aria-label="展开或收起子类"><chevron-icon direction="{{expandedCategories[item.id] ? 'down' : 'right'}}" size="{{24}}" /></view>
+      <view class="category-edit" data-id="{{item.id}}" catchtap="openCategoryDetail" aria-role="button" aria-label="编辑 {{item.name}}"><image class="category-edit-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view>
+      <view wx:if="{{item.children.length}}" class="category-expand" aria-hidden="true"><chevron-icon direction="{{expandedCategories[item.id] ? 'down' : 'right'}}" size="{{24}}" /></view>
       <view class="category-drag-handle" data-index="{{item.positionIndex}}" data-id="{{item.id}}" catchtouchstart="startCategoryDrag" catchtouchmove="moveCategoryDrag" catchtouchend="endCategoryDrag" catchtouchcancel="cancelCategoryDrag" role="button" aria-label="拖动调整 {{item.name}} 的排序"><view class="category-drag-lines" aria-hidden="true"></view></view>
     </view>
     <view wx:if="{{expandedCategories[item.id]}}" class="category-children">
       <view wx:for="{{item.children}}" wx:for-item="child" wx:key="id" class="category-row category-child {{draggingCategoryId === child.id ? 'category-row-dragging' : ''}}" style="{{draggingCategoryId === child.id ? dragStyle : ''}}" data-id="{{child.id}}" bindtap="openCategoryDetail">
-        <category-tile size="small" hide-name name="{{child.name}}" system-key="{{child.systemKey}}" /><view class="category-copy"><text class="category-name">{{child.name}}</text><text class="category-kind-label">{{item.name}}</text></view>
+        <category-tile size="small" hide-name name="{{child.name}}" system-key="{{child.systemKey}}" /><view class="category-copy"><text class="category-name">{{child.name}}</text></view>
         <view class="category-drag-handle" data-index="{{child.positionIndex}}" data-id="{{child.id}}" catchtouchstart="startCategoryDrag" catchtouchmove="moveCategoryDrag" catchtouchend="endCategoryDrag" catchtouchcancel="cancelCategoryDrag" aria-role="button" aria-label="拖动调整子类排序"><view class="category-drag-lines"></view></view>
       </view>
     </view></block>
@@ -37,7 +37,7 @@
       <view class="archived-toggle-end"><text class="money-number">{{archivedCategories.length}}</text><chevron-icon direction="{{archivedExpanded ? 'down' : 'right'}}" size="{{24}}" /></view>
     </view>
     <view wx:if="{{archivedExpanded}}" class="archived-list">
-      <view wx:for="{{archivedCategories}}" wx:key="id" class="category-row category-row-archived" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看已停用分类 {{item.name}}"><text class="category-order money-number">{{item.orderText}}</text><category-tile size="small" hide-name name="{{item.name}}" system-key="{{item.systemKey}}" /><view class="category-copy"><text class="category-name">{{item.displayName}}</text><text class="category-kind-label">已停用</text></view><chevron-icon size="{{26}}" /></view>
+      <view wx:for="{{archivedCategories}}" wx:key="id" class="category-row category-row-archived" data-id="{{item.id}}" bindtap="openCategoryDetail" hover-class="category-row-active" role="button" aria-label="查看已停用分类 {{item.name}}"><category-tile size="small" hide-name name="{{item.name}}" system-key="{{item.systemKey}}" /><view class="category-copy"><text class="category-name">{{item.displayName}}</text><text class="category-kind-label">已停用</text></view><chevron-icon size="{{26}}" /></view>
     </view>
   </view>
 

@@ -243,7 +243,9 @@ test('分类管理与账户详情共用整行查看和渐进式管理动作', fu
   const source = read('miniprogram/pages/categories/index.js')
 
   assert.match(template, /分类总览/)
-  assert.match(template, /bindtap="openCategoryDetail"/)
+  assert.match(template, /bindtap="tapCategory"/)
+  assert.match(template, /catchtap="openCategoryDetail"/)
+  assert.match(source, /tapCategory/)
   assert.match(template, /class="category-toolbar(?: content-inset)?"/)
   assert.match(template, /新建分类/)
   assert.match(template, /class="category-drag-handle"[^>]*catchtouchstart="startCategoryDrag"[^>]*catchtouchmove="moveCategoryDrag"[^>]*catchtouchend="endCategoryDrag"/)

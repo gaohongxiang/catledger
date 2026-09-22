@@ -109,6 +109,12 @@ Page({
   findPreparedCategory: function (id) {
     return this.data.visibleCategories.flatMap(item => [item].concat(item.children || [])).concat(this.data.archivedCategories).find(function (item) { return item.id === id })
   },
+  tapCategory: function (event) {
+    const id = event.currentTarget.dataset.id
+    const item = this.data.visibleCategories.find(function (c) { return c.id === id })
+    if (item && item.children && item.children.length) this.toggleChildren(event)
+    else this.openCategoryDetail(event)
+  },
   openCategoryDetail: function (event) {
     const category = this.findPreparedCategory(event.currentTarget.dataset.id)
     if (category) this.setData({ categoryDetail: category, errorMessage: '' })
