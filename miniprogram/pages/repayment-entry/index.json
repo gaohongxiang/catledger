@@ -1,1 +1,10 @@
-{"navigationBarTitleText":"借款还款","usingComponents":{"login-sheet":"/components/login-sheet/index","ui-state":"/components/ui-state/index","page-head":"/components/page-head/index","chevron-icon":"/components/chevron-icon/index"}}
+{
+  "navigationBarTitleText": "借款还款",
+  "usingComponents": {
+    "login-sheet": "/components/login-sheet/index",
+    "ui-state": "/components/ui-state/index",
+    "page-head": "/components/page-head/index",
+    "chevron-icon": "/components/chevron-icon/index",
+    "category-picker": "/components/category-picker/index"
+  }
+}

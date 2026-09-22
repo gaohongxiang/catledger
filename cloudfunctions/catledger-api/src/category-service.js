@@ -30,6 +30,7 @@ function toPublic(row) {
   return {
     id: row.id,
     kind: row.kind,
+    parentId: row.parentId || null,
     systemKey: row.systemKey == null ? null : row.systemKey,
     name: row.name,
     sortOrder: Number(row.sortOrder),
@@ -80,7 +81,7 @@ function groupUnclassifiedRows(rows) {
 
 async function listRows(connection, uid, { forUpdate = false } = {}) {
   const [rows] = await connection.execute(
-    `SELECT category_id AS id, kind, system_key AS systemKey, name,
+    `SELECT category_id AS id, kind, system_key AS systemKey, parent_id AS parentId, name,
             sort_order AS sortOrder, version, archived_at AS archivedAt,
             is_system_default AS isSystemDefault
        FROM catledger_categories
@@ -94,7 +95,7 @@ async function listRows(connection, uid, { forUpdate = false } = {}) {
 async function lockCategory(connection, uid, categoryId) {
   validateId(categoryId)
   const [rows] = await connection.execute(
-    `SELECT category_id AS id, kind, system_key AS systemKey, name,
+    `SELECT category_id AS id, kind, system_key AS systemKey, parent_id AS parentId, name,
             normalized_name AS normalizedName, sort_order AS sortOrder,
             version, archived_at AS archivedAt, is_system_default AS isSystemDefault
        FROM catledger_categories
@@ -252,13 +253,18 @@ function createCategoryService({ getPool }) {
       getPool, ...context, action: 'categories.create',
       operation: async (connection, uid, data) => {
         const kind = validateKind(data.kind)
+        const parentId = data.parentId == null ? null : validateId(data.parentId)
+        if (parentId) {
+          const parent = await lockCategory(connection, uid, parentId)
+          if (parent.archivedAt != null || parent.kind !== kind || parent.parentId) throw ledgerError('VALIDATION_ERROR')
+        }
         const { name, normalizedName } = normalizeCategoryName(data.name)
         const [positions] = await connection.execute(
           `SELECT sort_order AS sortOrder
              FROM catledger_categories
-            WHERE uid = ? AND kind = ? AND archived_at IS NULL
+            WHERE uid = ? AND kind = ? AND parent_id <=> ? AND archived_at IS NULL
             ORDER BY sort_order, category_id FOR UPDATE`,
-          [uid, kind]
+          [uid, kind, parentId]
         )
         const sortOrder = positions.reduce(function (maximum, row) {
           return Math.max(maximum, Number(row.sortOrder))
@@ -267,13 +273,13 @@ function createCategoryService({ getPool }) {
         try {
           await connection.execute(
             `INSERT INTO catledger_categories
-               (category_id, uid, kind, system_key, name, normalized_name,
+               (category_id, uid, kind, system_key, parent_id, name, normalized_name,
                 sort_order, is_system_default, version)
-             VALUES (?, ?, ?, NULL, ?, ?, ?, 0, 1)`,
-            [id, uid, kind, name, normalizedName, sortOrder]
+             VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 0, 1)`,
+            [id, uid, kind, parentId, name, normalizedName, sortOrder]
           )
         } catch (error) { translateDuplicate(error) }
-        return toPublic({ id, kind, systemKey: null, name, sortOrder, version: 1, archivedAt: null, isSystemDefault: 0 })
+        return toPublic({ id, kind, parentId, systemKey: null, name, sortOrder, version: 1, archivedAt: null, isSystemDefault: 0 })
       }
     })
   }
@@ -282,6 +288,7 @@ function createCategoryService({ getPool }) {
     return executeIdempotentMutation({
       getPool, ...context, action: 'categories.update',
       operation: async (connection, uid, data) => {
+        if (Object.hasOwn(data, 'parentId') || Object.hasOwn(data, 'kind') || Object.hasOwn(data, 'systemKey')) throw ledgerError('VALIDATION_ERROR')
         const current = await lockCategory(connection, uid, data.categoryId)
         if (current.archivedAt != null || Number(current.version) !== validateVersion(data.version)) {
           throw ledgerError(current.archivedAt != null ? 'NOT_FOUND' : 'CONFLICT')
@@ -308,7 +315,13 @@ function createCategoryService({ getPool }) {
         const current = await lockCategory(connection, uid, data.categoryId)
         if (Number(current.version) !== validateVersion(data.version)) throw ledgerError('CONFLICT')
         if ((current.archivedAt != null) === archived) return toPublic(current)
+        if (!archived && current.parentId) {
+          const parent = await lockCategory(connection, uid, current.parentId)
+          if (parent.archivedAt != null) throw ledgerError('CONFLICT')
+        }
         try {
+          if (archived && !current.parentId) await connection.execute(
+            'UPDATE catledger_categories SET archived_at = CURRENT_TIMESTAMP(3), version = version + 1 WHERE uid = ? AND parent_id = ? AND archived_at IS NULL', [uid, current.id])
           await connection.execute(
             `UPDATE catledger_categories
                 SET archived_at = ${archived ? 'CURRENT_TIMESTAMP(3)' : 'NULL'}, version = version + 1
@@ -316,7 +329,8 @@ function createCategoryService({ getPool }) {
             [uid, current.id, data.version]
           )
         } catch (error) { translateDuplicate(error) }
-        return toPublic({ ...current, archivedAt: archived ? new Date().toISOString() : null, version: Number(current.version) + 1 })
+        const value = toPublic({ ...current, archivedAt: archived ? new Date().toISOString() : null, version: Number(current.version) + 1 })
+        return archived && !current.parentId ? { ...value, categories: (await listRows(connection, uid)).filter(row => row.id === current.id || row.parentId === current.id).map(toPublic) } : value
       }
     })
   }
@@ -326,11 +340,16 @@ function createCategoryService({ getPool }) {
       getPool, ...context, action: 'categories.reorder',
       operation: async (connection, uid, data) => {
         const kind = validateKind(data.kind)
+        const parentId = data.parentId == null ? null : validateId(data.parentId)
+        if (parentId) {
+          const parent = await lockCategory(connection, uid, parentId)
+          if (parent.kind !== kind || parent.parentId || parent.archivedAt != null) throw ledgerError('VALIDATION_ERROR')
+        }
         if (!Array.isArray(data.items) || data.items.length < 1 || data.items.length > 100) {
           throw ledgerError('VALIDATION_ERROR')
         }
         const rows = (await listRows(connection, uid, { forUpdate: true }))
-          .filter((row) => row.kind === kind && row.archivedAt == null)
+          .filter((row) => row.kind === kind && row.archivedAt == null && (row.parentId || null) === parentId)
         const requested = data.items.map((item) => ({
           id: validateId(item && item.categoryId),
           version: validateVersion(item && item.version)
@@ -349,7 +368,7 @@ function createCategoryService({ getPool }) {
             [(index + 1) * 10, uid, requested[index].id, requested[index].version]
           )
         }
-        return { categories: (await listRows(connection, uid)).filter((row) => row.kind === kind && row.archivedAt == null).map(toPublic) }
+        return { categories: (await listRows(connection, uid)).filter((row) => row.kind === kind && row.archivedAt == null && (row.parentId || null) === parentId).map(toPublic) }
       }
     })
   }

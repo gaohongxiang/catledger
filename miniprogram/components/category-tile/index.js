@@ -2,6 +2,7 @@ const palette = require('../../utils/category-palette')
 
 Component({
   properties: {
+    systemKey: { type: String, value: '' },
     name: {
       type: String,
       value: ''
@@ -25,11 +26,11 @@ Component({
     icon: ''
   },
   observers: {
-    'name, color': function (name, color) {
+    'name, color, systemKey': function (name, color, systemKey) {
       this.setData({
-        resolvedColor: color || palette.colorNameFor(name),
+        resolvedColor: color || palette.colorNameFor(name, systemKey),
         initial: name ? name.slice(0, 1) : '',
-        icon: palette.iconFor(name)
+        icon: palette.iconFor(name, systemKey)
       })
     }
   }

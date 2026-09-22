@@ -46,12 +46,12 @@
       </view>
     </picker>
 
-    <picker wx:if="{{mode !== 'link-refund' && (typeOptions[typeIndex].value === 'expense' || typeOptions[typeIndex].value === 'income')}}" mode="selector" range="{{categories}}" range-key="name" value="{{categoryIndex < 0 ? 0 : categoryIndex}}" bindchange="changeCategory" disabled="{{saving || !catalogReady}}">
+    <category-picker class="category-picker-control" wx:if="{{mode !== 'link-refund' && (typeOptions[typeIndex].value === 'expense' || typeOptions[typeIndex].value === 'income')}}" range="{{categories}}" value="{{categoryIndex}}" bindchange="changeCategory" disabled="{{saving || !catalogReady}}">
       <view class="form-row content-inset">
         <text class="form-label">分类</text>
-        <view class="form-value form-value-tile"><category-tile wx:if="{{categories[categoryIndex] && categories[categoryIndex].name}}" hide-name name="{{categories[categoryIndex].name}}" /><text>{{categories[categoryIndex].name || '请选择'}}</text></view>
+        <view class="form-value form-value-tile"><category-tile wx:if="{{categories[categoryIndex] && categories[categoryIndex].name}}" hide-name name="{{categories[categoryIndex].name}}" system-key="{{categories[categoryIndex].systemKey}}" /><text>{{categories[categoryIndex].name || '请选择'}}</text></view>
       </view>
-    </picker>
+    </category-picker>
 
     <picker wx:if="{{typeOptions[typeIndex].value === 'refund'}}" mode="selector" range="{{refundableTransactions}}" range-key="pickerLabel" value="{{originalIndex < 0 ? 0 : originalIndex}}" bindchange="changeOriginal" disabled="{{saving || !refundablesReady}}">
       <view class="form-row content-inset">
@@ -84,9 +84,9 @@
     </view>
     <view class="form-sheet readonly-sheet">
       <view wx:for="{{detail.rows}}" wx:key="label" class="readonly-row content-inset"><text class="form-label">{{item.label}}</text><text class="readonly-value">{{item.value}}</text></view>
-      <picker wx:if="{{detail.canEditCategory}}" mode="selector" range="{{categories}}" range-key="name" value="{{categoryIndex < 0 ? 0 : categoryIndex}}" bindchange="changeDetailCategory" disabled="{{saving || !catalogReady}}">
+      <category-picker class="category-picker-control" wx:if="{{detail.canEditCategory}}" range="{{categories}}" value="{{categoryIndex}}" bindchange="changeDetailCategory" disabled="{{saving || !catalogReady}}">
         <view class="readonly-row readonly-category content-inset" aria-label="修改分类"><text class="form-label">分类</text><view class="readonly-category-value"><text>{{categoryIndex < 0 ? (categoryDirty ? '请选择' : detail.categoryName) : categories[categoryIndex].name}}</text><chevron-icon size="{{24}}" /></view></view>
-      </picker>
+      </category-picker>
       <view wx:elif="{{detail.categoryName !== '未分类'}}" class="readonly-row content-inset"><text class="form-label">分类</text><text class="readonly-value">{{detail.categoryName}}</text></view>
     </view>
     <button wx:if="{{detail.canEditCategory && categoryDirty}}" class="primary-button save-button" loading="{{saving}}" disabled="{{saving || !catalogReady || categoryIndex < 0}}" bindtap="saveDetailCategory">保存分类</button>

@@ -13,7 +13,7 @@ const COLOR_BY_NAME = Object.freeze({
   '餐饮': 'orange',
   '交通': 'blue',
   '购物': 'purple',
-  '住房': 'teal',
+  '住房': 'teal', '居住': 'teal', '生活缴费': 'yellow', '人情': 'red', '工资': 'teal', '奖金': 'yellow', '兼职': 'blue', '理财收益': 'green', '礼金': 'red', '通讯': 'blue', '金融保险': 'teal',
   '医疗': 'red',
   '教育': 'yellow',
   '娱乐': 'green'
@@ -23,31 +23,29 @@ const ICON_BY_NAME = Object.freeze({
   '餐饮': 'dining',
   '交通': 'transport',
   '购物': 'shopping',
-  '住房': 'housing',
+  '住房': 'housing', '居住': 'housing', '生活缴费': 'utilities', '人情': 'social', '工资': 'salary', '奖金': 'bonus', '兼职': 'part-time', '理财收益': 'investment', '礼金': 'gift', '通讯': 'communication', '金融保险': 'finance', '其他支出': 'other', '其他收入': 'other',
   '医疗': 'medical',
   '教育': 'education',
   '娱乐': 'entertainment',
   '其他': 'other'
 })
 
-function colorNameFor(name) {
-  return COLOR_BY_NAME[name] || 'grey'
+const STYLE_BY_KEY = Object.freeze({
+  food: ['dining', 'orange'], transport: ['transport', 'blue'], shopping: ['shopping', 'purple'],
+  housing: ['housing', 'teal'], utilities: ['utilities', 'yellow'], medical: ['medical', 'red'],
+  education: ['education', 'yellow'], entertainment: ['entertainment', 'green'], social: ['social', 'red'],
+  communication: ['communication', 'blue'], finance: ['finance', 'teal'], other_expense: ['other', 'grey'],
+  salary: ['salary', 'teal'], bonus: ['bonus', 'yellow'], part_time: ['part-time', 'blue'],
+  investment: ['investment', 'green'], gift: ['gift', 'red'], other_income: ['other', 'grey']
+})
+function styleFor(systemKey) { return STYLE_BY_KEY[String(systemKey || '').split('__')[0]] }
+function colorNameFor(name, systemKey) {
+  const style = styleFor(systemKey)
+  return style ? style[1] : COLOR_BY_NAME[name] || 'grey'
 }
-
-function bandColorFor(name) {
-  return TILE_COLORS[colorNameFor(name)].solid
+function bandColorFor(name, systemKey) { return TILE_COLORS[colorNameFor(name, systemKey)].solid }
+function iconFor(name, systemKey) {
+  const style = styleFor(systemKey), stem = style ? style[0] : ICON_BY_NAME[name] || 'other'
+  return '/assets/icons/categories/' + stem + '.svg'
 }
-
-function iconFor(name) {
-  const stem = ICON_BY_NAME[name]
-  return stem ? '/assets/icons/categories/' + stem + '.svg' : ''
-}
-
-module.exports = {
-  TILE_COLORS: TILE_COLORS,
-  COLOR_BY_NAME: COLOR_BY_NAME,
-  ICON_BY_NAME: ICON_BY_NAME,
-  colorNameFor: colorNameFor,
-  bandColorFor: bandColorFor,
-  iconFor: iconFor
-}
+module.exports = { TILE_COLORS, COLOR_BY_NAME, ICON_BY_NAME, STYLE_BY_KEY, colorNameFor, bandColorFor, iconFor }

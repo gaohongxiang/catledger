@@ -15,6 +15,8 @@ async function queryCategoryStatistics(connection, uid, range, summary) {
     `SELECT CASE WHEN t.type = 'refund' THEN 'expense' ELSE t.type END AS type,
             COALESCE(t.category_id, original.category_id) AS categoryId,
             COALESCE(c.name, '未分类') AS categoryName,
+            c.system_key AS systemKey, c.parent_id AS parentId, p.name AS parentName, p.system_key AS parentSystemKey,
+            MAX(c.parent_id IS NOT NULL OR EXISTS(SELECT 1 FROM catledger_categories child WHERE child.uid = c.uid AND child.parent_id = c.category_id)) AS hasChildren,
             SUM(CASE WHEN t.type = 'refund' AND t.original_transaction_id IS NOT NULL
               THEN -CAST(t.amount_minor AS DECIMAL(20, 0))
               WHEN t.type = 'refund' THEN 0
@@ -25,12 +27,13 @@ async function queryCategoryStatistics(connection, uid, range, summary) {
         AND original.deleted_at IS NULL
        LEFT JOIN catledger_categories c ON c.uid = t.uid
         AND c.category_id = COALESCE(t.category_id, original.category_id)
+       LEFT JOIN catledger_categories p ON p.uid = c.uid AND p.category_id = c.parent_id
       WHERE t.uid = ?
         AND t.occurred_local_date >= ? AND t.occurred_local_date < ?
         AND t.deleted_at IS NULL
         AND t.type IN ('expense', 'income', 'refund')
       GROUP BY CASE WHEN t.type = 'refund' THEN 'expense' ELSE t.type END,
-               COALESCE(t.category_id, original.category_id), c.name
+               COALESCE(t.category_id, original.category_id), c.name, c.system_key, c.parent_id, p.name, p.system_key
      HAVING amountMinor <> 0
       ORDER BY type, amountMinor DESC, categoryId`,
     [uid, range.startDate, range.endDate]
@@ -39,19 +42,31 @@ async function queryCategoryStatistics(connection, uid, range, summary) {
     expense: BigInt(summary.expenseMinor),
     income: BigInt(summary.incomeMinor)
   }
-  function prepareCategory(row) {
-    const amount = BigInt(minorUnitsToString(row.amountMinor))
-    return {
-      categoryId: row.categoryId,
-      name: row.categoryName,
-      amountMinor: amount.toString(),
-      shareBasisPoints: basisPoints(amount > 0n ? amount : 0n, totals[row.type] || 0n)
-    }
-  }
   return {
-    expenseCategories: rows.filter((row) => row.type === 'expense').map(prepareCategory),
-    incomeCategories: rows.filter((row) => row.type === 'income').map(prepareCategory)
+    expenseCategories: rollupCategories(rows.filter(row => row.type === 'expense'), totals.expense),
+    incomeCategories: rollupCategories(rows.filter(row => row.type === 'income'), totals.income)
   }
+}
+
+function rollupCategories(rows, total) {
+  const groups = new Map()
+  for (const row of rows) {
+    const id = row.parentId || row.categoryId || null
+    const amount = BigInt(minorUnitsToString(row.amountMinor))
+    const group = groups.get(id) || { categoryId: id, name: row.parentId ? row.parentName : row.categoryName,
+      systemKey: row.parentId ? row.parentSystemKey : row.systemKey, amountMinor: '0', children: [], hasChildren: false }
+    group.amountMinor = (BigInt(group.amountMinor) + amount).toString()
+    group.hasChildren = group.hasChildren || Number(row.hasChildren) === 1 || Boolean(row.parentId)
+    group.children.push({ categoryId: row.categoryId, systemKey: row.systemKey || null,
+      name: row.parentId ? row.categoryName : '未细分', direct: !row.parentId, amountMinor: amount.toString() })
+    groups.set(id, group)
+  }
+  const compare = (a, b) => BigInt(a.amountMinor) === BigInt(b.amountMinor) ? String(a.categoryId).localeCompare(String(b.categoryId)) : BigInt(a.amountMinor) > BigInt(b.amountMinor) ? -1 : 1
+  return [...groups.values()].sort(compare).map(group => ({
+    categoryId: group.categoryId, name: group.name, systemKey: group.systemKey || null, amountMinor: group.amountMinor,
+    shareBasisPoints: basisPoints(BigInt(group.amountMinor) > 0n ? BigInt(group.amountMinor) : 0n, total),
+    children: group.hasChildren ? group.children.sort(compare) : []
+  }))
 }
 
 async function queryDailyStatistics(connection, uid, range) {
@@ -264,3 +279,5 @@ function createReportingService({ getPool }) {
 }
 
 module.exports = { createReportingService, monthSequence, summaryFromTrend }
+
+module.exports.rollupCategories = rollupCategories

@@ -27,6 +27,7 @@
       "category_id",
       "kind",
       "system_key",
+      "parent_id",
       "name",
       "normalized_name",
       "sort_order",

@@ -40,8 +40,9 @@
     <view wx:if="{{categoryKind}}" class="composition-details">
       <text class="composition-detail-title">{{categoryKind === 'expense' ? '支出分类' : '收入分类'}}</text>
       <block wx:if="{{categoryKind === 'expense' ? expenseCategories.length : incomeCategories.length}}">
-        <view wx:for="{{categoryKind === 'expense' ? expenseCategories : incomeCategories}}" wx:key="categoryId" class="ranking-row row-enter {{!item.categoryId ? 'ranking-unclassified' : ''}}" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-unclassified="{{!item.categoryId}}" bindtap="openUnclassifiedCategory" aria-role="{{!item.categoryId ? 'button' : 'text'}}">
-          <view class="ranking-line"><view class="composition-category"><category-tile size="small" hide-name name="{{item.categoryId ? item.name : ''}}" /><text class="ranking-name">{{!item.categoryId ? '待分类 ' + uncategorized.transactionCount + '笔' : item.name}}</text><chevron-icon wx:if="{{!item.categoryId}}" size="{{22}}" /></view><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
+        <view wx:for="{{categoryKind === 'expense' ? expenseCategories : incomeCategories}}" wx:key="categoryId" class="ranking-row row-enter {{!item.categoryId ? 'ranking-unclassified' : ''}}" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-unclassified="{{!item.categoryId}}" data-id="{{item.categoryId}}" bindtap="openUnclassifiedCategory" aria-role="button">
+          <view class="ranking-line"><view class="composition-category"><category-tile size="small" hide-name name="{{item.categoryId ? item.name : ''}}" system-key="{{item.systemKey}}" /><text class="ranking-name">{{!item.categoryId ? '待分类 ' + uncategorized.transactionCount + '笔' : item.name}}</text><chevron-icon wx:if="{{!item.categoryId || item.children.length}}" direction="{{expandedCategoryId === item.categoryId ? 'down' : 'right'}}" size="{{22}}" /></view><text class="ranking-amount money-number">{{item.amountText}} · {{item.shareText}}</text></view>
+          <view wx:if="{{expandedCategoryId === item.categoryId && item.children.length}}" class="category-breakdown"><view wx:for="{{item.children}}" wx:for-item="child" wx:key="categoryId" class="breakdown-row"><text>{{child.name}}</text><text class="money-number">{{child.amountText}}</text></view></view>
         </view>
       </block>
       <text wx:else class="composition-empty">这个月还没有{{categoryKind === 'expense' ? '支出' : '收入'}}。</text>
@@ -91,7 +92,7 @@
       </block>
       <block wx:else>
         <button class="sheet-back" disabled="{{categorySaving}}" bindtap="returnToCategoryGroups">返回待分类账目</button><text class="sheet-kicker">{{selectedCategoryGroup.kindLabel}}分类</text><text class="sheet-title serif-title">{{selectedCategoryGroup.title}}</text><text class="sheet-copy">本组 {{selectedCategoryGroup.count}} 笔，共 {{selectedCategoryGroup.amountText}}</text>
-        <view class="category-option-grid"><button wx:for="{{categoryOptions}}" wx:key="id" class="category-option {{selectedCategoryId === item.id ? 'category-option-selected' : ''}}" data-id="{{item.id}}" bindtap="selectCompletionCategory" disabled="{{categorySaving}}">{{item.name}}</button></view>
+        <category-picker class="category-picker-control" range="{{categoryOptions}}" value="{{completionCategoryIndex}}" bindchange="selectCompletionCategory" disabled="{{categorySaving}}"><view class="completion-category-trigger">{{completionCategoryIndex >= 0 ? categoryOptions[completionCategoryIndex].name : '选择大类或子类'}}<chevron-icon direction="down" size="{{24}}" /></view></category-picker>
         <button class="primary-button primary-button-medium sheet-save" disabled="{{!selectedCategoryId || categorySaving}}" loading="{{categorySaving}}" bindtap="saveCategoryCompletion">保存分类</button>
       </block>
     </view>

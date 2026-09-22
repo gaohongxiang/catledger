@@ -194,7 +194,7 @@ test('收支构成以彩色分段带为主视觉，环形图退场，当日格�
   assert.doesNotMatch(template, /ring-image|ring-wrap|charts\.expenseRing\.src|charts\.incomeRing\.src/)
   assert.match(style, /\.band \{[^}]*border-radius:\s*999rpx/)
   assert.doesNotMatch(style, /\.ring-image|\.ring-wrap/)
-  assert.match(source, /bandColor: bandColorFor\(row\.name\)/)
+  assert.match(source, /bandColor: bandColorFor\(row\.name, row\.systemKey\)/)
   assert.match(template, /calendar-cell-today/)
   assert.match(style, /\.calendar-cell-today \{[^}]*var\(--theme-accent/)
   assert.match(model, /today: row\.date === time\.today\(\)/)
@@ -497,7 +497,7 @@ test('列表错峰入场：四类行逐行 fadeUp 带 70ms 间隔，封顶且翻
   assert.match(reduced, /animation-delay:\s*0ms !important/, '减少动态效果须同时取消延迟')
 })
 
-test('瓷贴默认分类渲染线条图标，自定义分类保持首字', function () {
+test('瓷贴默认分类与自定义分类均有图标，原生渲染不依赖插槽', function () {
   const palette = require('../miniprogram/utils/category-palette')
   const pairs = [['餐饮', 'dining'], ['交通', 'transport'], ['购物', 'shopping'], ['住房', 'housing'], ['医疗', 'medical'], ['教育', 'education'], ['娱乐', 'entertainment'], ['其他', 'other']]
   pairs.forEach(function (pair) {
@@ -508,7 +508,7 @@ test('瓷贴默认分类渲染线条图标，自定义分类保持首字', funct
     assert.match(svg, /stroke="#[0-9A-Fa-f]{6}"|fill="#[0-9A-Fa-f]{6}"/, pair[0] + ' 图标未烘焙 ink 色')
     if (pair[1] !== 'other') assert.match(svg, /stroke-width="1\.8"/, pair[0] + ' 线宽不符合规范')
   })
-  assert.equal(palette.iconFor('宠物'), '', '未匹配分类不得出图标')
+  assert.equal(palette.iconFor('自定义'), '/assets/icons/categories/other.svg', '自定义分类使用通用图标')
   const markup = read('miniprogram/components/category-tile/index.wxml')
   assert.match(markup, /wx:if="\{\{icon\}\}" class="ct-icon"/)
   assert.match(markup, /wx:else class="ct-letter"/)

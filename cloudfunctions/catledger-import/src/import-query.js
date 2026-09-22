@@ -105,10 +105,10 @@ async function listMappingOptions(connection, uid, includeAccounts) {
     ))[0]
     : []
   const [categories] = await connection.execute(
-    `SELECT category_id AS id, kind, system_key AS systemKey, name, sort_order AS sortOrder
+    `SELECT category_id AS id, kind, system_key AS systemKey, parent_id AS parentId, name, sort_order AS sortOrder
        FROM catledger_categories
       WHERE uid = ? AND archived_at IS NULL
-      ORDER BY kind, sort_order, category_id`,
+      ORDER BY kind, parent_id IS NOT NULL, sort_order, category_id`,
     [uid]
   )
   return { accounts, categories }

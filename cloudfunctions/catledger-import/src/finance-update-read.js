@@ -260,7 +260,7 @@ async function evidencePage(connection, uid, context, state) {
 
 const OPTIONS = Object.freeze({
   accounts: { table: 'catledger_accounts', key: 'account_id', fields: 'name, type, nature, currency, version', condition: 'archived_at IS NULL' },
-  categories: { table: 'catledger_categories', key: 'category_id', fields: 'name, kind, system_key AS systemKey, sort_order AS sortOrder, version', condition: 'archived_at IS NULL' },
+  categories: { table: 'catledger_categories', key: 'category_id', fields: 'name, kind, system_key AS systemKey, parent_id AS parentId, (SELECT p.name FROM catledger_categories p WHERE p.uid = catledger_categories.uid AND p.category_id = catledger_categories.parent_id) AS parentName, sort_order AS sortOrder, version', condition: 'archived_at IS NULL' },
   accountDrafts: { table: 'catledger_finance_update_account_drafts', key: 'draft_account_id', fields: 'name, type, nature, currency', condition: 'update_id = ? AND materialized_at IS NULL' }
 })
 async function optionPage(connection, uid, context, state) {
@@ -276,7 +276,10 @@ async function optionPage(connection, uid, context, state) {
   const page = preparePage(context, state, uid, 'options', { kind, query, id, ids: selectedIds })
   const values = kind === 'accountDrafts' ? [uid, state.update.updateId] : [uid]
   let condition = option.condition
-  if (query) { condition += ' AND LOCATE(?, name) > 0'; values.push(query) }
+  if (query) {
+    condition += kind === 'categories' ? ` AND LOCATE(?, CONCAT_WS(' ', name, (SELECT p.name FROM catledger_categories p WHERE p.uid = catledger_categories.uid AND p.category_id = catledger_categories.parent_id))) > 0` : ' AND LOCATE(?, name) > 0'
+    values.push(query)
+  }
   if (id) { condition += ` AND ${option.key} = ?`; values.push(id) }
   if (selectedIds) { condition += ` AND ${option.key} IN (${selectedIds.map(() => '?').join(',')})`; values.push(...selectedIds) }
   const key = kind === 'categories' ? 'categoryId' : 'accountId'

@@ -88,7 +88,7 @@ function transactionToPublic(row) {
       : { accountId: row.destinationAccountId, name: row.destinationAccountName || null },
     category: row.categoryId == null
       ? null
-      : { categoryId: row.categoryId, name: row.categoryName || null, kind: row.categoryKind || null },
+      : { categoryId: row.categoryId, name: row.categoryName || null, kind: row.categoryKind || null, systemKey: row.categorySystemKey || null, parentId: row.categoryParentId || null, parentName: row.categoryParentName || null },
     originalTransaction: row.originalTransactionId == null
       ? null
       : {

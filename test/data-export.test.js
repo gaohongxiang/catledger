@@ -65,7 +65,8 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
    await target.owner.execute("INSERT INTO catledger_users(uid,status) VALUES(?,'active')",[newUid])
    await target.owner.execute("INSERT INTO catledger_user_identities(uid,provider,subject_hash) VALUES(?,'wechat-mini',?)",[newUid,hashWechatSubject(subject)])
    const refunds=[]
-   for(const entry of records){const table=manifest.find(t=>t.name===entry.table),row={...entry.row}
+   const restoreRows = records.slice().sort((a,b) => a.table === 'catledger_categories' && b.table === 'catledger_categories' ? Number(Boolean(a.row.parent_id)) - Number(Boolean(b.row.parent_id)) : 0)
+   for(const entry of restoreRows){const table=manifest.find(t=>t.name===entry.table),row={...entry.row}
     if(table.name==='catledger_transactions'&&row.original_transaction_id){refunds.push([row.original_transaction_id,newUid,row.transaction_id]);row.original_transaction_id=null}
     await target.owner.execute(`INSERT INTO ${table.name}(uid,${table.columns.join(',')}) VALUES(${['uid',...table.columns].map(()=>'?').join(',')})`,[newUid,...table.columns.map(k=>table.json.includes(k)&&row[k]!=null?JSON.stringify(row[k]):row[k])])
    }

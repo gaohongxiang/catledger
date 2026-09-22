@@ -14,8 +14,9 @@ function prepareCategories(rows, ring) {
     const percentage = positive && Number(ring.totalMinor) > 0 ? Number(row.amountMinor) / Number(ring.totalMinor) * 100 : 0
     const legend = ring.legend.find(item => item.name === row.name) || ring.legend[ring.legend.length - 1]
     return Object.assign({}, row, {
+      children: (row.children || []).map(child => Object.assign({}, child, { amountText: money.formatMinor(child.amountMinor) })),
       color: positive && legend ? legend.color : '#958b82',
-      bandColor: bandColorFor(row.name),
+      bandColor: bandColorFor(row.name, row.systemKey),
       amountText: money.formatMinor(row.amountMinor),
       shareText: Number(row.amountMinor) < 0 ? '退款抵减' : (percentage % 1 === 0 ? percentage.toFixed(0) : percentage.toFixed(1)) + '%',
       barWidth: Math.max(0, Math.min(100, percentage)) + '%'
@@ -56,7 +57,7 @@ function prepareCategoryGroups(groups) {
 Page({
   data: {
     loggedIn: false,
-    categoryKind: '',
+    categoryKind: '', expandedCategoryId: '', completionCategoryIndex: -1,
     charts: null,
     selectedCumulative: null,
     weekdays: ['一', '二', '三', '四', '五', '六', '日'],
@@ -130,7 +131,7 @@ Page({
   },
 
   beginReadSession: function () {
-    return pageReadSession.begin(this, ['categoryKind', 'charts', 'selectedCumulative', 'loading', 'hasLoaded', 'errorMessage', 'incomeText', 'expenseText', 'netText', 'cashFlowTrend', 'daily', 'selectedTrend', 'selectedDay', 'expenseCategories', 'incomeCategories', 'metrics', 'uncategorized', 'categorySheetOpen', 'categorySheetLoading', 'categorySaving', 'selectedCategoryId', 'categoryGroups', 'categoryOptions', 'selectedCategoryGroup'], ['_statisticsLoad', '_statisticsResult', 'allCategoryOptions'])
+    return pageReadSession.begin(this, ['expandedCategoryId', 'completionCategoryIndex', 'categoryKind', 'charts', 'selectedCumulative', 'loading', 'hasLoaded', 'errorMessage', 'incomeText', 'expenseText', 'netText', 'cashFlowTrend', 'daily', 'selectedTrend', 'selectedDay', 'expenseCategories', 'incomeCategories', 'metrics', 'uncategorized', 'categorySheetOpen', 'categorySheetLoading', 'categorySaving', 'selectedCategoryId', 'categoryGroups', 'categoryOptions', 'selectedCategoryGroup'], ['_statisticsLoad', '_statisticsResult', 'allCategoryOptions'])
   },
 
   promptLogin: function () { loginGuard.run(this, this.loadStatistics.bind(this)) },
@@ -224,6 +225,8 @@ Page({
 
   openUnclassifiedCategory: function (event) {
     if (event.currentTarget.dataset.unclassified) return this.openCategoryCompletion()
+    const id = event.currentTarget.dataset.id
+    this.setData({ expandedCategoryId: this.data.expandedCategoryId === id ? '' : id })
   },
 
   setTabHidden: function (hidden) {
@@ -269,7 +272,7 @@ Page({
     if (!group) return
     this.setData({
       selectedCategoryGroup: group,
-      selectedCategoryId: '',
+      selectedCategoryId: '', completionCategoryIndex: -1,
       categoryOptions: (this.allCategoryOptions || []).filter(function (category) { return category.kind === group.kind })
     })
   },
@@ -279,7 +282,8 @@ Page({
   },
 
   selectCompletionCategory: function (event) {
-    this.setData({ selectedCategoryId: event.currentTarget.dataset.id })
+    const index = Number(event.detail.value), row = this.data.categoryOptions[index]
+    if (row) this.setData({ selectedCategoryId: row.id, completionCategoryIndex: index })
   },
 
   saveCategoryCompletion: function () {

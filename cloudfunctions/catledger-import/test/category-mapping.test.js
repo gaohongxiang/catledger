@@ -23,7 +23,11 @@ test('分类别名稳定摘要且排除宽泛交易类型', function () {
   assert.equal(canonicalName(' 餐饮 - 美食 '), '餐饮美食')
 })
 
-test('微信只对旧规则已经验证的证据做建议', function () {
-  assert.equal(buildCategoryEvidence('wechat', row('商户消费', '美团平台商户', '')).deterministicSystemKey, 'food')
+test('平台名称不猜细分类，明确保费和邮寄证据建议对应子类', function () {
+  assert.equal(buildCategoryEvidence('wechat', row('商户消费', '美团平台商户', '')).deterministicSystemKey, null)
   assert.equal(buildCategoryEvidence('wechat', row('商户消费', '普通合成商户', '')).deterministicSystemKey, null)
+  assert.equal(buildCategoryEvidence('wechat', row('商户消费', '合成商户', '保费')).deterministicSystemKey, 'finance__insurance')
+  assert.equal(buildCategoryEvidence('wechat', row('商户消费', '合成商户', '寄件')).deterministicSystemKey, 'communication__postage')
+  assert.equal(buildCategoryEvidence('alipay', row('宠物', '', '')).deterministicSystemKey, 'entertainment__pets')
+  assert.equal(buildCategoryEvidence('alipay', row('保险', '', '')).ruleVersion, 'category-rules-v2')
 })
