@@ -224,6 +224,18 @@
 .category-edit-icon { width: 30rpx; height: 30rpx; opacity: .62; }
 .category-edit:active .category-edit-icon { opacity: 1; }
 .category-parent-field { display: flex; align-items: center; gap: 14rpx; padding: 24rpx 0; font-size: 28rpx; color: var(--theme-text-muted); }
+.sheet-kind-switch { margin-top: 12rpx; }
+.category-create-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  min-height: 96rpx;
+  color: var(--theme-text-muted, #70685f);
+  font-size: var(--font-body, 28rpx);
+}
+.category-create-icon { width: 26rpx; height: 26rpx; opacity: .7; }
+.category-create-row:active { opacity: .7; }
 .category-parent-field text:nth-child(2) { margin-left: auto; color: var(--theme-ink); }
 
 .category-name { white-space: nowrap; text-overflow: ellipsis; }

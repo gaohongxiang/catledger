@@ -30,6 +30,7 @@
         <view class="category-drag-handle" data-index="{{child.positionIndex}}" data-id="{{child.id}}" catchtouchstart="startCategoryDrag" catchtouchmove="moveCategoryDrag" catchtouchend="endCategoryDrag" catchtouchcancel="cancelCategoryDrag" aria-role="button" aria-label="拖动调整子类排序"><view class="category-drag-lines"></view></view>
       </view>
     </view></block>
+    <view class="category-create-row" bindtap="openCreate" hover-class="category-row-active" role="button" aria-label="新建分类"><image class="category-create-icon" src="/assets/icons/plus.svg" mode="aspectFit" /><text>新建分类</text></view>
   </view>
   <empty-state wx:if="{{hasLoaded && !loading && !errorMessage && !visibleCategories.length}}" title="还没有{{selectedKind === 'expense' ? '支出' : '收入'}}分类" description="新建后可在记账和导入时使用。" />
 
@@ -50,6 +51,10 @@
       <view class="sheet-handle"></view>
       <view class="sheet-topline"><text class="sheet-kicker">分类编辑</text><button class="sheet-close-button" disabled="{{saving}}" bindtap="closeForm">关闭</button></view>
       <text class="sheet-title serif-title">{{formTitle}}</text>
+      <view wx:if="{{formMode === 'create'}}" class="kind-switch sheet-kind-switch">
+        <view class="kind-option {{formKind === 'expense' ? 'kind-option-selected' : ''}}" data-kind="expense" bindtap="selectFormKind" role="button" aria-label="新建支出分类"><text>支出</text></view>
+        <view class="kind-option {{formKind === 'income' ? 'kind-option-selected' : ''}}" data-kind="income" bindtap="selectFormKind" role="button" aria-label="新建收入分类"><text>收入</text></view>
+      </view>
       <picker wx:if="{{formMode === 'create'}}" range="{{parentOptions}}" range-key="name" value="{{parentIndex}}" bindchange="changeParent" disabled="{{saving}}"><view class="category-parent-field"><text>归属</text><text>{{parentOptions[parentIndex].name}}</text><chevron-icon direction="down" size="{{24}}" /></view></picker>
       <input class="category-input" value="{{categoryName}}" maxlength="32" focus="{{formOpen}}" placeholder="例如：宠物、旅行" aria-label="分类名称" cursor-spacing="32" disabled="{{saving}}" bindinput="bindCategoryName" />
       <text wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</text>
