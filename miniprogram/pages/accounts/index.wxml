@@ -22,9 +22,10 @@
     </view>
   </view>
 
-  <view wx:if="{{liabilities.length > 0}}" class="account-group liability-group">
+  <view wx:if="{{hasLoaded}}" class="account-group liability-group">
     <view class="group-heading content-inset"><view class="group-title-wrap"><view class="group-mark liability-mark" aria-hidden="true"></view><text class="group-title serif-title">负债账户</text><text class="group-count money-number">{{liabilities.length}}</text></view><text class="group-note">按待还金额汇总负债</text></view>
     <view class="account-list">
+      <list-row title="全部贷款与还款" note="跨账户查看贷款和待关联还款" bindtap="openAllLoans" divider="{{liabilities.length > 0}}" aria-label="全部贷款与还款" />
       <view wx:for="{{liabilities}}" wx:key="accountId" class="account-row row-enter" style="animation-delay: {{index < 10 ? index * 70 : 700}}ms" data-id="{{item.accountId}}" bindtap="openAccountDetail" hover-class="account-row-active" role="button" aria-label="查看账户 {{item.name}}">
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
@@ -46,10 +47,19 @@
   <view wx:if="{{accountDetail}}" class="sheet-mask" bindtap="closeAccountDetail">
     <view class="account-sheet detail-sheet" catchtap="stopBubble">
       <view class="sheet-handle"></view>
-      <view class="sheet-topline"><text class="sheet-kicker">账户详情</text><button class="sheet-close-button" bindtap="closeAccountDetail">关闭</button></view>
+      <view class="sheet-topline"><text class="sheet-kicker">账户详情</text><button size="mini" class="sheet-close-button" bindtap="closeAccountDetail">关闭</button></view>
       <text class="sheet-title serif-title">{{accountDetail.name}}</text>
       <view class="detail-balance"><text>{{accountDetail.balanceLabel}}</text><text class="money-number {{accountDetail.amountTone}}">{{accountDetail.balanceText}}</text></view>
       <view class="detail-meta"><text>{{accountDetail.typeLabel}}</text><text>{{accountDetail.archived ? '已停用' : accountDetail.stateText}}</text></view>
+      <list-row title="账户流水" note="查看该账户本月收支与转账" bindtap="openAccountTransactions" aria-label="查看当前账户流水" />
+      <view wx:if="{{accountDetail.nature === 'liability'}}" class="account-loans">
+        <view class="account-loans-heading"><text class="account-loans-title">贷款与分期</text><button wx:if="{{!accountDetail.archived}}" size="mini" class="account-loans-add" bindtap="createAccountLoan" aria-label="为当前账户新增贷款">＋ 新增</button></view>
+        <text wx:if="{{accountLoansLoading && !accountLoansLoaded}}" class="account-loans-note">正在读取贷款…</text>
+        <text wx:if="{{accountLoansLoaded && !accountLoans.length && !accountLoansError}}" class="account-loans-note">{{accountDetail.archived ? '此账户没有贷款资料' : '还没有贷款或分期，需要时再添加。'}}普通欠款可直接按账户记账。</text>
+        <view wx:for="{{accountLoans}}" wx:key="loanId" class="account-loan-row" data-id="{{item.loanId}}" bindtap="openAccountLoan" hover-class="account-row-active" role="button" aria-label="查看贷款 {{item.name}}"><view class="account-loan-copy"><text>{{item.name}}</text><text class="account-loans-note">{{item.scheduleText || item.kindText}} · {{item.statusText}}</text></view><view class="account-loan-amount"><text class="account-loans-note">剩余本金</text><text class="money-number">{{item.principalText}}</text></view><chevron-icon size="{{24}}" /></view>
+        <view wx:if="{{accountLoansError}}" class="account-loans-error" bindtap="loadAccountLoans" role="button">{{accountLoansError}} · 重试</view>
+        <list-row wx:if="{{accountLoansMore || accountPendingCount > 0}}" title="查看本账户全部贷款与还款" note="{{accountPendingCount > 0 ? accountPendingCount + ' 笔待关联还款' : '查看更多贷款'}}" bindtap="openAccountLoans" divider="{{false}}" />
+      </view>
       <view wx:if="{{accountDetail.needsCorrection}}" class="correction-callout"><text>待校正</text><text>资产账户出现负数，通常表示期初余额或漏记交易需要核对。</text></view>
       <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
       <view wx:if="{{!accountDetail.archived}}" class="detail-action-list">

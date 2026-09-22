@@ -3,7 +3,7 @@
   <block wx:if="{{!transactionId}}">
     <picker class="ll-field" mode="date" fields="month" value="{{month}}" bindchange="changeMonth"><text>查询月份</text><view class="ll-picker"><text class="ll-picker-value">{{month || '全部月份'}}</text><chevron-icon size="{{24}}" /></view></picker>
     <button wx:if="{{month}}" class="ll-link" bindtap="clearMonth">查看全部月份</button>
-    <picker class="ll-field" range="{{accounts}}" range-key="name" value="{{accountIndex}}" bindchange="changeAccount"><text>借款账户</text><view class="ll-picker"><text class="ll-picker-value">{{accounts[accountIndex].name || '全部借款账户'}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <picker disabled="{{accountLocked}}" class="ll-field" range="{{accounts}}" range-key="name" value="{{accountIndex}}" bindchange="changeAccount"><text>借款账户</text><view class="ll-picker"><text class="ll-picker-value">{{accounts[accountIndex].name || (accountLocked ? '当前账户' : '全部借款账户')}}</text><chevron-icon size="{{24}}" /></view></picker>
   </block>
   <ui-state wx:if="{{loading}}" description="正在核对还款与关联…" />
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />

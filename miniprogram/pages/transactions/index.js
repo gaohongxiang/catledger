@@ -8,6 +8,10 @@ const time = require('../../utils/time')
 const viewModel = require('../../utils/view-model')
 const themeService = require('../../theme/service')
 
+function beginRead(page) {
+  return pageReadSession.begin(page, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey', '_listRevision'])
+}
+
 function shiftDay(date, delta) {
   const parts = date.split('-').map(Number)
   const next = new Date(parts[0], parts[1] - 1, parts[2] + delta)
@@ -74,6 +78,18 @@ Page(Object.assign({
 
   onShow: function () {
     if (this._readSession !== undefined && !pageReadSession.isCurrent(this)) this.setData({ importFilter: null })
+    beginRead(this)
+    const accountEntry = app.globalData.transactionsAccountFilter
+    app.globalData.transactionsAccountFilter = null
+    if (accountEntry && accountEntry.session === readCache.getSession() && app.hasLoginApproval()) {
+      this._prepareLoad = null
+      this._transactionsLoad = null
+      this._transactionsKey = null
+      this._transactionsGeneration = (this._transactionsGeneration || 0) + 1
+      const month = time.currentMonth()
+      this.setData({ importFilter: null, month, monthLabel: time.monthLabel(month), pickerDate: time.today(), accountFilters: [{ accountId: '', name: '全部账户' }, accountEntry], accountFilterIndex: 1, categoryFilterIndex: 0, sourceFilterIndex: 0, search: '', appliedSearch: '', searchOpen: false, selectedDate: '', selectedDateLabel: '', transactions: [], nextCursor: null, hasLoaded: false })
+      app.globalData.transactionsImportFilter = null
+    }
     const incoming = app.globalData.transactionsImportFilter
     app.globalData.transactionsImportFilter = null
     if (incoming && incoming.session === readCache.getSession() && app.hasLoginApproval()) {
@@ -123,7 +139,7 @@ Page(Object.assign({
 
   prepareAndLoad: function (options) {
     if (this.data.deleting || this.data.selectingAll) return Promise.resolve()
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey', '_listRevision'])
+    const isCurrent = beginRead(this)
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (this._prepareLoad) return this._prepareLoad
     const self = this
@@ -134,7 +150,9 @@ Page(Object.assign({
       const selectedAccount = self.data.accountFilters[self.data.accountFilterIndex]
       const selectedCategory = self.data.categoryFilters[self.data.categoryFilterIndex]
       const requested = self.requestData(null)
-      const accountFilters = [{ accountId: '', name: '全部账户' }].concat((result.accounts || []).filter(account => !account.archived))
+      const accountFilters = [{ accountId: '', name: '全部账户' }].concat((result.accounts || []).filter(account => !account.archived || selectedAccount && account.accountId === selectedAccount.accountId))
+      // An account entry must never silently widen to all accounts if the directory is stale or unavailable.
+      if (selectedAccount && selectedAccount.accountId && !accountFilters.some(account => account.accountId === selectedAccount.accountId)) accountFilters.push(selectedAccount)
       const categoryFilters = [{ categoryId: '', name: '全部分类' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true }]
         .concat((result.categories || []).map(category => Object.assign({}, category, { categoryId: category.id })))
       self.setData({ accountFilters, categoryFilters,
@@ -186,7 +204,7 @@ Page(Object.assign({
   },
 
   loadTransactions: function (append, options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey', '_listRevision'])
+    const isCurrent = beginRead(this)
     if (!app.hasLoginApproval()) return Promise.resolve()
     if (!append) this.resetSelection()
     const data = this.requestData(append ? this.data.nextCursor : null)

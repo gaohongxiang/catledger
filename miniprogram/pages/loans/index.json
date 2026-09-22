@@ -1,1 +1,11 @@
-{ "navigationBarTitleText": "贷款管理", "enablePullDownRefresh": true, "usingComponents": { "login-sheet": "/components/login-sheet/index", "page-head": "/components/page-head/index", "empty-cat": "/components/empty-cat/index", "ui-state": "/components/ui-state/index", "chevron-icon": "/components/chevron-icon/index" } }
+{
+  "navigationBarTitleText": "贷款与还款",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "login-sheet": "/components/login-sheet/index",
+    "page-head": "/components/page-head/index",
+    "empty-cat": "/components/empty-cat/index",
+    "ui-state": "/components/ui-state/index",
+    "chevron-icon": "/components/chevron-icon/index"
+  }
+}

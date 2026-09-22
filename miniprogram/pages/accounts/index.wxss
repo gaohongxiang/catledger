@@ -216,7 +216,9 @@
   border-radius: var(--theme-radius-small, 12rpx);
 }
 .sheet-topline { min-height: 56rpx; align-items: center; justify-content: space-between; }
-.sheet-close-button {
+.account-sheet .sheet-close-button {
+  width: auto;
+  flex: none;
   min-width: 88rpx;
   min-height: 88rpx;
   margin: 0 -14rpx 0 0;
@@ -319,3 +321,13 @@
 .correction-callout text { display: block; font-size: var(--font-caption, 24rpx); line-height: 1.5; }
 .correction-callout text:first-child { font-weight: 500; }
 .detail-action-list { margin-top: 18rpx; border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
+
+.account-loans { margin: 20rpx 0; padding: 12rpx 0; border-bottom: 1rpx solid var(--theme-line); }
+.account-loans-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
+.account-loans-title { font-size: var(--font-section); font-weight: 500; }
+.account-loans-heading .account-loans-add { display: flex; flex: none; align-items: center; justify-content: center; width: auto; min-height: 88rpx; margin: 0; padding: 0 12rpx; background: transparent; color: var(--theme-accent-strong); font-size: var(--font-body); line-height: 1.2; }
+.account-loans-note { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.6; }
+.account-loan-row { display: flex; align-items: center; gap: 16rpx; min-height: 104rpx; padding: 16rpx 0; border-bottom: 1rpx solid var(--theme-line); }
+.account-loan-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.account-loan-amount { text-align: right; overflow-wrap: anywhere; max-width: 45%; }
+.account-loans-error { padding: 20rpx 0; color: var(--theme-danger); font-size: var(--font-caption); }

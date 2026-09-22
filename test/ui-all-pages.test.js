@@ -62,7 +62,8 @@ test('分期资料与计划响应丢失后修改表单仍恢复原请求，保�
     if (action === 'loans.previewPlan') return Promise.resolve(require('../cloudfunctions/catledger-api/src/loan-installment').remainingSchedule(data))
     throw new Error('unexpected action')
   })
-  page.onLoad({}); await page.load()
+  page.onLoad({ accountId: 'debt' }); await page.load()
+  assert.equal(page.data.accountLocked, true)
   Object.assign(page.data, { name: '合成借款',accountIndex:0, principalYuan: '12000', baselineDate: '2026-09-01',paidTerms:'3',schedule:{...page.data.schedule,terms:'12',repaymentYuan:'1100',firstPaymentDate:'2026-01-31'} })
   let target;chrome.redirectTo=options=>{target=options.url}
   await page.save();assert.equal(calls.filter(x=>x.name==='loans.create').length,0)

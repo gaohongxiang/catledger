@@ -47,7 +47,7 @@ function createLoanService({ getPool }) {
         ORDER BY l.created_at DESC, l.loan_id DESC LIMIT ?`, [uid, ...(accountId ? [accountId] : []), ...(cursor ? [cursor.at,cursor.at,cursor.id] : []), pageSize + 1])
       const items = rows.slice(0, pageSize), last = items.at(-1)
       const [[pending]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_loan_payments p JOIN catledger_loan_repayment_details d ON d.uid=p.uid AND d.payment_id=p.payment_id
-        WHERE p.uid=? AND p.status='active' AND NOT EXISTS (SELECT 1 FROM catledger_loan_payment_allocations a WHERE a.uid=p.uid AND a.payment_id=p.payment_id)`,[uid])
+        WHERE p.uid=? ${accountId ? 'AND d.liability_account_id=?' : ''} AND p.status='active' AND NOT EXISTS (SELECT 1 FROM catledger_loan_payment_allocations a WHERE a.uid=p.uid AND a.payment_id=p.payment_id)`,[uid,...(accountId ? [accountId] : [])])
       return { pendingRepaymentCount:Number(pending.count),items: (await populatePrincipal(connection, uid, items)).map(publicLoan), nextCursor: rows.length > pageSize ? encodeCursor(context.subjectHash,
         { action: 'loans.list', uid, accountId, at: String(last.createdAt), id: last.loanId }) : null }
     })
