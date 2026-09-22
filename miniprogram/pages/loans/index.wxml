@@ -1,12 +1,12 @@
 <view class="page-canvas loan-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head has-actions class="content-inset" title="贷款" copy="每笔贷款单独核对本金，账户余额仍以账本为准。"><button size="mini" class="head-cta" bindtap="createLoan" aria-label="新增贷款"><view class="head-cta-label"><image src="/assets/icons/plus-on-accent.svg" mode="aspectFit" /><text>新增贷款</text></view></button></page-head>
+  <page-head has-actions class="content-inset" title="{{scopeAccount ? scopeAccount.name : scoped ? '账户贷款' : '全部贷款与还款'}}" copy="{{scoped ? '本账户的贷款与分期，每笔单独核对还款。' : '跨账户查看贷款、分期和待关联还款。'}}"><button wx:if="{{!scoped || (scopeAccount && !scopeAccount.archived)}}" disabled="{{loading}}" size="mini" class="head-cta" bindtap="createLoan" aria-label="新增贷款"><view class="head-cta-label"><image src="/assets/icons/plus-on-accent.svg" mode="aspectFit" /><text>新增贷款</text></view></button></page-head>
   <view wx:if="{{pendingRepaymentCount > 0}}" class="loan-entry" bindtap="openUnassigned" hover-class="loan-entry-hover" aria-role="button" aria-label="待关联还款，{{pendingRepaymentCount}}笔">
     <view class="loan-entry-main"><text class="loan-entry-title">待关联还款 · {{pendingRepaymentCount}} 笔</text><text class="loan-entry-note">已入账，待补充贷款关联</text></view>
     <chevron-icon size="{{24}}" />
   </view>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}} · 重试" bindtap="firstPage" />
   <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取贷款…" />
-  <empty-cat wx:if="{{hasLoaded && !items.length}}" hide-art title="还没有贷款资料" description="选择负债账户，填写分期参数和历史进度，核对后保存计划。不会重复记一笔借款。" />
+  <empty-cat wx:if="{{hasLoaded && !items.length}}" hide-art title="还没有贷款资料" description="{{scoped ? '此账户尚未添加贷款资料。普通欠款可直接按账户记账，需要分期计划时再添加。' : '从负债账户添加贷款，也可在这里选择账户后建立分期计划。'}}" />
   <view class="loan-list">
     <view wx:for="{{items}}" wx:key="loanId" class="loan-row" data-id="{{item.loanId}}" bindtap="openLoan" aria-role="button" aria-label="查看{{item.name}}">
       <view class="loan-row-top"><text class="loan-name">{{item.name}}</text><text class="loan-state">{{item.statusText}}</text></view>

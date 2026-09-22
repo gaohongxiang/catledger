@@ -41,8 +41,7 @@
   <text class="profile-section-kicker content-inset">账本管理</text>
   <view class="profile-menu">
     <list-row title="账户管理" note="{{loggedIn && hasLoaded ? accountCount + ' 个活动账户' : '管理资产与负债账户'}}" aria-label="进入账户管理" bindtap="openAccounts" />
-    <list-row title="分类管理" note="{{loggedIn && hasLoaded ? categoryCount + ' 个收支分类' : '管理收入与支出分类'}}" aria-label="进入分类管理" bindtap="openCategories" />
-    <list-row title="贷款管理" note="借款与分期，核对本金和实际还款" aria-label="进入贷款管理" bindtap="openLoans" divider="{{false}}" />
+    <list-row divider="{{false}}" title="分类管理" note="{{loggedIn && hasLoaded ? categoryCount + ' 个收支分类' : '管理收入与支出分类'}}" aria-label="进入分类管理" bindtap="openCategories" />
   </view>
 
   <text class="profile-section-kicker content-inset">设置与资料</text>

@@ -218,11 +218,6 @@ Page({
     wx.navigateTo({ url: '/pages/categories/index' })
   },
 
-  openLoans: function () {
-    if (!app.hasLoginApproval()) { this.promptWechatLogin(this.openLoans.bind(this)); return }
-    wx.navigateTo({ url: '/pages/loans/index' })
-  },
-
   openTheme: function () {
     wx.navigateTo({ url: '/pages/theme/index' })
   },

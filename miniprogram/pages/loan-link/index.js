@@ -4,16 +4,16 @@ const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
 const { candidateView, contextView, choiceView } = require('./model')
 Page({
-  data: { transactionId: '', context: null, items: [], loans: [], accounts: [], accountIndex: 0, month: '',
+  data: { accountLocked: false, transactionId: '', context: null, items: [], loans: [], accounts: [], accountIndex: 0, month: '',
     loading: false, hasLoaded: false, errorMessage: '', nextCursor: null, canPrevious: false },
-  onLoad(query) { this._transactionId = query && query.transactionId || ''; this.setData({ transactionId: this._transactionId }); theme.bindPage(this) },
+  onLoad(query) { this._accountId = query && query.accountId || ''; this.setData({ accountLocked: Boolean(this._accountId) }); this._transactionId = query && query.transactionId || ''; this.setData({ transactionId: this._transactionId }); theme.bindPage(this) },
   onShow() { theme.bindPage(this); return loginGuard.run(this, () => this.firstPage()) },
   onUnload() { session.end(this) },
   onPullDownRefresh() { return this.firstPage().finally(() => wx.stopPullDownRefresh()) },
   async load() {
     const current = session.begin(this, Object.keys(this.data), ['_cursor','_previous','_query'])
     const token = this._query = {}, month = this.data.month
-    const selected = this.data.accounts[this.data.accountIndex], accountId = selected && selected.accountId || null
+    const selected = this.data.accounts[this.data.accountIndex], accountId = this._accountId || selected && selected.accountId || null
     const cursor = this._cursor || null
     this.setData({ loading: true, errorMessage: '' })
     const valid = () => current() && this._query === token
@@ -31,7 +31,9 @@ Page({
           api.callApi('loans.unassigned', { month: month || null, accountId, pageSize: 20, cursor }, { force: true }), api.callApi('catalog.get')])
         if (!valid()) return
         if (result.month !== (month || null) || result.accountId !== accountId || !Array.isArray(result.items)) throw new Error('还款筛选结果不完整，请重试')
-        const accounts = [{ accountId: null, name: '全部借款账户' }].concat(catalog.accounts.filter(a => a.type === 'other_liability'))
+        const target = this._accountId && catalog.accounts.find(a => a.accountId === this._accountId && ['credit', 'other_liability'].includes(a.type))
+        if (this._accountId && !target) throw new Error('此负债账户不可用，请返回账户管理')
+        const accounts = target ? [target] : [{ accountId: null, name: '全部借款账户' }].concat(catalog.accounts.filter(a => a.type === 'other_liability'))
         this.setData({ accounts, accountIndex: Math.max(0,accounts.findIndex(a => a.accountId === accountId)), items: result.items.map(candidateView),
           nextCursor: result.nextCursor, hasLoaded: true })
       }
@@ -44,7 +46,7 @@ Page({
   previousPage() { if (this.data.loading || !this._previous || !this._previous.length) return; this._cursor = this._previous.pop(); return this.load() },
   changeMonth(event) { this.setData({ month: event.detail.value, items: [], hasLoaded: false }); return this.firstPage() },
   clearMonth() { this.setData({ month: '', items: [], hasLoaded: false }); return this.firstPage() },
-  changeAccount(event) { this.setData({ accountIndex: Number(event.detail.value), items: [], hasLoaded: false }); return this.firstPage() },
+  changeAccount(event) { if (this.data.accountLocked) return; this.setData({ accountIndex: Number(event.detail.value), items: [], hasLoaded: false }); return this.firstPage() },
   selectTransaction(event) { if (!this.data.loading) wx.navigateTo({ url: '/pages/loan-link/index?transactionId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },
   selectLoan(event) {
     if (this.data.loading || this.data.errorMessage || !this.data.context || this.data.context.state !== 'candidate') return
