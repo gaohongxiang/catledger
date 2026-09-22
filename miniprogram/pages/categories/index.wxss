@@ -1,6 +1,5 @@
 .category-page { padding-top: 30rpx; }
-.category-toolbar, .kind-switch, .kind-option, .category-row, .category-copy, .category-drag-handle, .archived-toggle, .archived-toggle-end, .sheet-topline, .category-detail-meta { display: flex; }
-.category-kicker, .category-name, .category-kind-label, .archived-title, .archived-note, .sheet-kicker, .sheet-title, .sheet-error { display: block; }
+.category-toolbar, .kind-switch, .kind-option, .category-row, .category-copy, .category-drag-handle, .archived-toggle, .archived-toggle-end, .sheet-topline, .category-kicker, .category-name, .category-kind-label, .archived-title, .archived-note, .sheet-kicker, .sheet-title, .sheet-error { display: block; }
 .category-kicker, .sheet-kicker {
   color: var(--theme-secondary, #64705d);
   font-size: var(--font-caption, 24rpx);
@@ -200,16 +199,6 @@
 }
 .sheet-error { margin-top: 14rpx; font-size: var(--font-caption, 24rpx); }
 .sheet-save { width: 100%; margin-top: 24rpx; }
-.category-detail-meta {
-  min-height: 76rpx;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--theme-text-muted, #746a60);
-  font-size: var(--font-caption, 24rpx);
-  border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09));
-  border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09));
-}
-.category-detail-actions { margin-top: 18rpx; border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); border-bottom: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
 
 /* 列表固定行高与拖动命中区一致；完整名称可在详情查看。 */
 .category-row {
@@ -225,9 +214,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.category-detail-sheet .sheet-title { overflow-wrap: anywhere; white-space: normal; }
 
-.category-expand { display: flex; align-items: center; justify-content: center; width: 72rpx; align-self: stretch; flex-shrink: 0; }
+.category-name-line { display: flex; align-items: center; gap: 8rpx; min-width: 0; }
+.category-expand { display: flex; align-items: center; flex: 0 0 auto; }
 .category-children { margin-left: 56rpx; border-left: 1rpx solid var(--theme-line, #eae4dc); }
 .category-child { padding-left: 72rpx; background: transparent; }
 .category-edit { display: flex; align-items: center; justify-content: center; align-self: center; width: 72rpx; height: 88rpx; flex-shrink: 0; }

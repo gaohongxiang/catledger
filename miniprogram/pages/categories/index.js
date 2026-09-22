@@ -115,13 +115,6 @@ Page({
     if (item && item.children && item.children.length) this.toggleChildren(event)
     else this.openCategoryDetail(event)
   },
-  openCategoryDetail: function (event) {
-    const category = this.findPreparedCategory(event.currentTarget.dataset.id)
-    if (category) this.setData({ categoryDetail: category, errorMessage: '' })
-  },
-  closeCategoryDetail: function () {
-    if (!this.data.saving) this.setData({ categoryDetail: null, errorMessage: '' })
-  },
   toggleArchived: function () { this.setData({ archivedExpanded: !this.data.archivedExpanded }) },
   toggleChildren: function (event) {
     const id = event.currentTarget.dataset.id
