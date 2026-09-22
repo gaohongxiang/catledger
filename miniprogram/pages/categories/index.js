@@ -14,7 +14,7 @@ Page({
     archivedExpanded: false, categoryDetail: null,
     draggingCategoryId: '', dragStyle: '',
     expandedCategories: {}, parentOptions: [], parentIndex: 0,
-    formMode: 'create', formTitle: '新建支出分类', categoryName: '', selectedCategory: null
+    formMode: 'create', formTitle: '新建分类', categoryName: '', selectedCategory: null, formKind: 'expense'
   },
 
   onLoad: function () {
@@ -45,7 +45,7 @@ Page({
       incomeCategories: income,
       visibleCategories: this.data.selectedKind === 'expense' ? expense : income,
       archivedCategories: categoryModel.prepare(rows, this.data.selectedKind, true),
-      parentOptions: [{ id: null, name: '一级分类' }].concat((this.data.selectedKind === 'expense' ? expense : income).map(item => ({ id: item.id, name: item.name })))
+      parentOptions: this.buildParentOptions(this.data.formKind, expense, income)
     })
   },
 
@@ -109,26 +109,37 @@ Page({
   findPreparedCategory: function (id) {
     return this.data.visibleCategories.flatMap(item => [item].concat(item.children || [])).concat(this.data.archivedCategories).find(function (item) { return item.id === id })
   },
-  openCategoryDetail: function (event) {
-    const category = this.findPreparedCategory(event.currentTarget.dataset.id)
-    if (category) this.setData({ categoryDetail: category, errorMessage: '' })
-  },
-  closeCategoryDetail: function () {
-    if (!this.data.saving) this.setData({ categoryDetail: null, errorMessage: '' })
+  tapCategory: function (event) {
+    const id = event.currentTarget.dataset.id
+    const item = this.data.visibleCategories.find(function (c) { return c.id === id })
+    if (item && item.children && item.children.length) this.toggleChildren(event)
+    else this.openCategoryDetail(event)
   },
   toggleArchived: function () { this.setData({ archivedExpanded: !this.data.archivedExpanded }) },
   toggleChildren: function (event) {
     const id = event.currentTarget.dataset.id
     this.setData({ ['expandedCategories.' + id]: !this.data.expandedCategories[id] })
   },
+  buildParentOptions: function (kind, expense, income) {
+    const list = kind === 'income' ? (income || this.data.incomeCategories) : (expense || this.data.expenseCategories)
+    return [{ id: null, name: '作为一级分类' }].concat(list.map(item => ({ id: item.id, name: item.name })))
+  },
+  selectFormKind: function (event) {
+    const kind = event.currentTarget.dataset.kind
+    if (kind === this.data.formKind || this.data.saving) return
+    this.setData({ formKind: kind, parentOptions: this.buildParentOptions(kind), parentIndex: 0 })
+  },
   changeParent: function (event) { this.setData({ parentIndex: Number(event.detail.value) }) },
   openCreate: function (event) {
     this._categoryRequest = null
     const parentId = event && event.currentTarget.dataset.parentId
+    const formKind = this.data.selectedKind
+    const parentOptions = this.buildParentOptions(formKind)
     this.setData({
-      parentIndex: Math.max(0, this.data.parentOptions.findIndex(item => item.id === parentId)),
+      formKind: formKind, parentOptions: parentOptions,
+      parentIndex: Math.max(0, parentOptions.findIndex(item => item.id === parentId)),
       formOpen: true, formMode: 'create', selectedCategory: null, categoryDetail: null, categoryName: '', errorMessage: '',
-      formTitle: this.data.selectedKind === 'expense' ? '新建支出分类' : '新建收入分类'
+      formTitle: '新建分类'
     })
   },
   openEdit: function (event) {
@@ -144,7 +155,7 @@ Page({
     if (this.data.saving) return
     const isCreate = this.data.formMode === 'create'
     const data = { name: this.data.categoryName }
-    if (isCreate) { data.kind = this.data.selectedKind; data.parentId = (this.data.parentOptions[this.data.parentIndex] || {}).id || null }
+    if (isCreate) { data.kind = this.data.formKind; data.parentId = (this.data.parentOptions[this.data.parentIndex] || {}).id || null }
     else Object.assign(data, { categoryId: this.data.selectedCategory.id, version: this.data.selectedCategory.version })
     const payload = JSON.stringify(data)
     if (!this._categoryRequest || this._categoryRequest.payload !== payload) this._categoryRequest = { payload, requestId: api.createRequestId() }
