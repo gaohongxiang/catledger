@@ -1,5 +1,6 @@
 .category-page { padding-top: 30rpx; }
-.category-toolbar, .kind-switch, .kind-option, .category-row, .category-copy, .category-drag-handle, .archived-toggle, .archived-toggle-end, .sheet-topline, .category-kicker, .category-name, .category-kind-label, .archived-title, .archived-note, .sheet-kicker, .sheet-title, .sheet-error { display: block; }
+.category-toolbar, .kind-switch, .kind-option, .category-row, .category-copy, .category-drag-handle, .archived-toggle, .archived-toggle-end, .sheet-topline { display: flex; }
+.category-kicker, .category-name, .category-kind-label, .archived-title, .archived-note, .sheet-kicker, .sheet-title, .sheet-error { display: block; }
 .category-kicker, .sheet-kicker {
   color: var(--theme-secondary, #64705d);
   font-size: var(--font-caption, 24rpx);
