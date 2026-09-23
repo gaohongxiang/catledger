@@ -17,20 +17,21 @@
   <skeleton-rows wx:if="{{loading && !account}}" rows="{{3}}" />
   <block wx:if="{{account}}">
     <view class="ad-card">
-      <text class="ad-balance-label">{{account.balanceLabel}}</text>
+      <view class="ad-card-top"><text class="ad-balance-label">{{account.balanceLabel}}</text><view class="ad-card-link" bindtap="openAccountTransactions" hover-class="account-row-active" role="button" aria-label="查看当前账户明细"><text>查看明细</text><chevron-icon size="{{22}}" /></view></view>
       <text class="ad-balance-value money-number {{account.amountTone}}">{{account.balanceText}}</text>
-      <view class="ad-card-link" bindtap="openAccountTransactions" hover-class="account-row-active" role="button" aria-label="查看当前账户明细">
-        <text>查看明细</text><chevron-icon size="{{24}}" />
-      </view>
       <block wx:if="{{account.nature === 'liability' && !account.archived}}">
-        <view class="ad-billing-row" bindtap="openBilling" hover-class="account-row-active" role="button" aria-label="编辑账单日"><text>账单日</text><view class="ad-billing-value"><text>{{account.statementDayText}}</text><image class="ad-billing-edit-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view></view>
-        <view class="ad-billing-row" bindtap="openBilling" hover-class="account-row-active" role="button" aria-label="编辑还款日"><text>还款日</text><view class="ad-billing-value"><text>{{account.repaymentDayText}}</text><image class="ad-billing-edit-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view></view>
-        <view class="ad-billing-row" bindtap="openBilling" hover-class="account-row-active" role="button" aria-label="编辑信用额度"><text>信用额度</text><view class="ad-billing-value"><text class="money-number">{{account.creditLimitText}}</text><image class="ad-billing-edit-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view></view>
+        <view class="ad-billing-line" bindtap="openBilling" hover-class="account-row-active" role="button" aria-label="编辑账单设置">
+          <view class="ad-billing-cell"><text class="ad-billing-name">账单日</text><text class="ad-billing-val">{{account.statementDayText}}</text></view>
+          <view class="ad-billing-cell"><text class="ad-billing-name">还款日</text><text class="ad-billing-val">{{account.repaymentDayText}}</text></view>
+          <view class="ad-billing-cell"><text class="ad-billing-name">信用额度</text><text class="ad-billing-val money-number">{{account.creditLimitText}}</text></view>
+        </view>
       </block>
       <block wx:elif="{{account.nature === 'liability'}}">
-        <view class="ad-billing-row"><text>账单日</text><view class="ad-billing-value"><text>{{account.statementDayText}}</text></view></view>
-        <view class="ad-billing-row"><text>还款日</text><view class="ad-billing-value"><text>{{account.repaymentDayText}}</text></view></view>
-        <view class="ad-billing-row"><text>信用额度</text><view class="ad-billing-value"><text class="money-number">{{account.creditLimitText}}</text></view></view>
+        <view class="ad-billing-line">
+          <view class="ad-billing-cell"><text class="ad-billing-name">账单日</text><text class="ad-billing-val">{{account.statementDayText}}</text></view>
+          <view class="ad-billing-cell"><text class="ad-billing-name">还款日</text><text class="ad-billing-val">{{account.repaymentDayText}}</text></view>
+          <view class="ad-billing-cell"><text class="ad-billing-name">信用额度</text><text class="ad-billing-val money-number">{{account.creditLimitText}}</text></view>
+        </view>
       </block>
     </view>
 

@@ -79,23 +79,14 @@
   word-break: break-word;
 }
 
-.ad-card-link {
-  display: flex;
-  width: 100%;
-  min-height: 88rpx;
-  box-sizing: border-box;
-  margin-top: 24rpx;
-  padding-top: 16rpx;
-  align-items: center;
-  justify-content: space-between;
-  border-top: 1rpx solid var(--theme-line, rgba(41, 35, 30, .09));
-  color: var(--theme-accent, #be5b24);
-  font-size: var(--font-body, 28rpx);
-}
+.ad-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
+.ad-card-link { display: flex; flex: 0 0 auto; align-items: center; gap: 4rpx; min-height: 56rpx; color: var(--theme-accent-strong, #a34d20); font-size: var(--font-caption, 24rpx); }
+.ad-card-link:active { opacity: .72; }
 
-.ad-billing-value { display: flex; align-items: center; gap: 10rpx; color: var(--theme-ink, #29231e); }
-.ad-billing-edit-icon { width: 26rpx; height: 26rpx; opacity: .55; }
-.ad-billing-row { display: flex; min-height: 76rpx; align-items: center; justify-content: space-between; gap: 24rpx; border-top: 1rpx solid var(--theme-line); color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
+.ad-billing-line { display: flex; align-items: flex-start; gap: 16rpx; padding-top: 20rpx; border-top: 1rpx solid var(--theme-line); }
+.ad-billing-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4rpx; }
+.ad-billing-name { color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
+.ad-billing-val { color: var(--theme-ink, #29231e); font-size: var(--font-caption, 24rpx); overflow-wrap: anywhere; }
 
 .ad-actions {
   margin-top: 20rpx;
