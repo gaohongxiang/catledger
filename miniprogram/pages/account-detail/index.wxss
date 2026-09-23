@@ -92,7 +92,7 @@
 .ad-billing-edit-icon { width: 24rpx; height: 24rpx; opacity: .55; }
 .ad-billing-edit:active .ad-billing-edit-icon { opacity: 1; }
 .ad-billing-edit-row { display: flex; align-items: center; gap: 6rpx; min-width: 0; }
-.ad-billing-input { flex: 1; min-width: 0; height: 56rpx; padding: 0 10rpx; border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-small, 12rpx); color: var(--theme-ink); font-size: var(--font-caption, 24rpx); }
+.ad-billing-input { flex: 1; min-width: 0; height: 40rpx; padding: 0 2rpx; border: 0; border-bottom: 1rpx solid var(--theme-accent, #be5b24); border-radius: 0; background: transparent; color: var(--theme-ink); font-size: var(--font-caption, 24rpx); }
 .ad-billing-mini { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 40rpx; height: 40rpx; }
 .ad-billing-mini-icon { width: 24rpx; height: 24rpx; opacity: .6; }
 .ad-billing-mini-confirm { display: flex; width: 40rpx; height: 40rpx; align-items: center; justify-content: center; background: var(--theme-accent, #be5b24); border-radius: 50%; }
