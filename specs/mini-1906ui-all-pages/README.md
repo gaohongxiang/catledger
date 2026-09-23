@@ -58,3 +58,4 @@ MINI-1907-0 新增 `data-privacy` 原生页面，复用 profile 已有“数据�
 
 - `repayment-entry`：MINI-1908E 明确实际还款、本息费与立即/暂缓关联；见 `specs/mini-1908e-explicit-repayment/`。
 - `about`：应用信息与版本说明，承接品牌口号「把账，记得有温度。」；`loan-form`：MINI-1908F 分期录入。
+- `account-detail`：账户详情独立页面（余额大卡、账户流水入口、负债贷款区、校正/改名/停用），承接原 accounts 页详情弹层。

@@ -8,6 +8,7 @@
     "pages/import-workbench/index",
     "pages/import-history/index",
     "pages/accounts/index",
+    "pages/account-detail/index",
     "pages/categories/index",
     "pages/statistics/index",
     "pages/theme/index",
