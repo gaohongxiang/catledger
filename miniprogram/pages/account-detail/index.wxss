@@ -93,9 +93,8 @@
   font-size: var(--font-body, 28rpx);
 }
 
-.ad-billing { margin-top: 20rpx; padding: 12rpx 24rpx; background: var(--theme-surface, #fffdf9); border-radius: var(--theme-radius-large, 24rpx); box-shadow: var(--theme-shadow-soft); }
-.ad-billing-heading { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
-.ad-billing-edit { width: auto; min-width: 88rpx; min-height: 88rpx; margin: 0 -14rpx 0 auto; padding: 0 14rpx; background: transparent; color: var(--theme-accent, #be5b24); font-size: var(--font-caption, 24rpx); }
+.ad-billing-heading { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; padding-top: 20rpx; }
+.ad-billing-title { color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
 .ad-billing-row { display: flex; min-height: 76rpx; align-items: center; justify-content: space-between; gap: 24rpx; border-top: 1rpx solid var(--theme-line); color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
 .ad-billing-row text:last-child { color: var(--theme-ink, #29231e); text-align: right; overflow-wrap: anywhere; }
 

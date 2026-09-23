@@ -1,3 +1,4 @@
+<import src="../../templates/account-billing.wxml" />
 <view class="page-canvas page-secondary account-detail-page {{themeClass}}" style="{{themeStyle}}">
   <view class="ad-head content-inset">
     <view wx:if="{{!editingName}}" class="ad-title-line">
@@ -18,10 +19,15 @@
     <view class="ad-card">
       <text class="ad-balance-label">{{account.balanceLabel}}</text>
       <text class="ad-balance-value money-number {{account.amountTone}}">{{account.balanceText}}</text>
-    </view>
-
-    <view class="ad-list">
-      <list-row title="账户流水" note="查看该账户本月收支与转账" bindtap="openAccountTransactions" aria-label="查看当前账户流水" divider="{{false}}" />
+      <view class="ad-card-link" bindtap="openAccountTransactions" hover-class="account-row-active" role="button" aria-label="查看当前账户明细">
+        <text>查看明细</text><chevron-icon size="{{24}}" />
+      </view>
+      <block wx:if="{{account.nature === 'liability'}}">
+        <view class="ad-billing-heading"><text class="ad-billing-title">账单设置</text><view wx:if="{{!account.archived}}" class="ad-icon-button" bindtap="openBilling" aria-role="button" aria-label="编辑账单设置"><image class="ad-icon-image" src="/assets/icons/pencil.svg" mode="aspectFit" /></view></view>
+        <view class="ad-billing-row"><text>账单日</text><text>{{account.statementDayText}}</text></view>
+        <view class="ad-billing-row"><text>还款日</text><text>{{account.repaymentDayText}}</text></view>
+        <view class="ad-billing-row"><text>信用额度</text><text class="money-number">{{account.creditLimitText}}</text></view>
+      </block>
     </view>
 
     <view wx:if="{{account.nature === 'liability'}}" class="account-loans">
@@ -36,7 +42,7 @@
     <view wx:if="{{account.needsCorrection}}" class="correction-callout"><text>待校正</text><text>资产账户出现负数，通常表示期初余额或漏记交易需要核对。</text></view>
     <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
     <view wx:if="{{!account.archived}}" class="ad-actions">
-      <list-row title="校正余额" note="按实际余额补记差额" tone="primary" aria-label="校正账户余额" bindtap="openCorrection" />
+      <list-row wx:if="{{account.nature === 'asset'}}" title="校正余额" note="按实际余额补记差额" tone="primary" aria-label="校正账户余额" bindtap="openCorrection" />
       <list-row title="停用账户" note="历史账目和余额仍会保留" tone="danger" aria-label="停用账户" chevron="{{false}}" divider="{{false}}" bindtap="archive" />
     </view>
   </block>
@@ -48,6 +54,16 @@
       <view class="sheet-field"><text>正确余额</text><input class="sheet-input money-number" type="digit" value="{{balanceYuan}}" placeholder="0.00" maxlength="18" bindinput="bindBalance" aria-label="账户余额（元）" cursor-spacing="32" disabled="{{saving}}" /></view>
       <text class="sheet-note">系统会新增一笔差额调整，不改写旧交易，也不计入收支。</text>
       <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view><button class="primary-button primary-button-medium sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveCorrection">保存</button><button class="secondary-button sheet-cancel" disabled="{{saving}}" bindtap="closeForm">取消</button>
+    </view>
+  </view>
+  <view wx:if="{{billingOpen}}" class="sheet-mask" bindtap="closeBilling">
+    <view class="account-sheet" catchtap="stopBubble">
+      <view class="sheet-handle"></view><text class="sheet-kicker">负债账户</text><text class="sheet-title serif-title">编辑账单设置</text>
+      <template is="account-billing-fields" data="{{billingDays:billingDays,billingDraft:billingDraft,saving:saving}}" />
+      <text class="sheet-note">未填写的项目显示「未设置」。信用额度不计入欠款或余额。</text>
+      <view wx:if="{{billingError}}" class="sheet-error">{{billingError}}</view>
+      <button class="primary-button primary-button-medium sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveBilling">保存</button>
+      <button class="secondary-button sheet-cancel" disabled="{{saving}}" bindtap="closeBilling">取消</button>
     </view>
   </view>
 </view>
