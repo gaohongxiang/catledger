@@ -1,0 +1,45 @@
+<view class="page-canvas page-secondary account-detail-page {{themeClass}}" style="{{themeStyle}}">
+  <page-head class="content-inset" title="{{account ? account.name : '账户详情'}}" copy="{{account ? account.typeLabel + ' · ' + (account.archived ? '已停用' : account.stateText) : '正在读取账户…'}}" />
+
+  <skeleton-rows wx:if="{{loading && !account}}" rows="{{3}}" />
+  <block wx:if="{{account}}">
+    <view class="ad-card">
+      <text class="ad-balance-label">{{account.balanceLabel}}</text>
+      <text class="ad-balance-value money-number {{account.amountTone}}">{{account.balanceText}}</text>
+      <text class="ad-balance-state {{account.stateTone}}">{{account.archived ? '已停用' : account.stateText}}</text>
+    </view>
+
+    <view class="ad-list">
+      <list-row title="账户流水" note="查看该账户本月收支与转账" bindtap="openAccountTransactions" aria-label="查看当前账户流水" divider="{{false}}" />
+    </view>
+
+    <view wx:if="{{account.nature === 'liability'}}" class="account-loans">
+      <view class="account-loans-heading"><text class="account-loans-title">贷款与分期</text><button wx:if="{{!account.archived}}" size="mini" class="account-loans-add" bindtap="createAccountLoan" aria-label="为当前账户新增贷款"><image src="/assets/icons/plus-on-accent.svg" mode="aspectFit" /></button></view>
+      <text wx:if="{{accountLoansLoading && !accountLoansLoaded}}" class="account-loans-note">正在读取贷款…</text>
+      <text wx:if="{{accountLoansLoaded && !accountLoans.length && !accountLoansError}}" class="account-loans-note">{{account.archived ? '此账户没有贷款资料' : '还没有贷款或分期，需要时再添加。'}}普通欠款可直接按账户记账。</text>
+      <view wx:for="{{accountLoans}}" wx:key="loanId" class="account-loan-row" data-id="{{item.loanId}}" bindtap="openAccountLoan" hover-class="account-row-active" role="button" aria-label="查看贷款 {{item.name}}"><view class="account-loan-copy"><text>{{item.name}}</text><text class="account-loans-note">{{item.scheduleText || item.kindText}} · {{item.statusText}}</text></view><view class="account-loan-amount"><text class="account-loans-note">剩余本金</text><text class="money-number">{{item.principalText}}</text></view><chevron-icon size="{{24}}" /></view>
+      <view wx:if="{{accountLoansError}}" class="account-loans-error" bindtap="loadAccountLoans" role="button">{{accountLoansError}} · 重试</view>
+      <list-row wx:if="{{accountLoansMore || accountPendingCount > 0}}" title="查看本账户全部贷款与还款" note="{{accountPendingCount > 0 ? accountPendingCount + ' 笔待关联还款' : '查看更多贷款'}}" bindtap="openAccountLoans" divider="{{false}}" />
+    </view>
+
+    <view wx:if="{{account.needsCorrection}}" class="correction-callout"><text>待校正</text><text>资产账户出现负数，通常表示期初余额或漏记交易需要核对。</text></view>
+    <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
+    <view wx:if="{{!account.archived}}" class="detail-action-list">
+      <list-row title="校正余额" note="按实际余额补记差额" tone="primary" aria-label="校正账户余额" bindtap="openCorrection" />
+      <list-row title="修改名称" note="只修改账户显示名称" aria-label="修改账户名称" bindtap="openRename" />
+      <list-row title="停用账户" note="历史账目和余额仍会保留" tone="danger" aria-label="停用账户" chevron="{{false}}" divider="{{false}}" bindtap="archive" />
+    </view>
+  </block>
+  <view wx:if="{{errorMessage && !account && !loading}}" class="account-error content-inset" bindtap="loadAccount">{{errorMessage}} · 点此重试</view>
+
+  <view wx:if="{{formOpen}}" class="sheet-mask" bindtap="closeForm">
+    <view class="account-sheet" catchtap="stopBubble">
+      <view class="sheet-handle"></view><text class="sheet-kicker">账户编辑</text><text class="sheet-title serif-title">{{formTitle}}</text>
+      <view wx:if="{{formMode === 'rename'}}" class="sheet-field"><text>账户名称</text><input class="sheet-input" value="{{name}}" maxlength="32" placeholder="例如：日常银行卡" bindinput="bindName" aria-label="账户名称" cursor-spacing="32" disabled="{{saving}}" /></view>
+      <view wx:if="{{formMode === 'correct'}}" class="sheet-field"><text>正确余额</text><input class="sheet-input money-number" type="digit" value="{{balanceYuan}}" placeholder="0.00" maxlength="18" bindinput="bindBalance" aria-label="账户余额（元）" cursor-spacing="32" disabled="{{saving}}" /></view>
+      <text wx:if="{{formMode === 'correct'}}" class="sheet-note">系统会新增一笔差额调整，不改写旧交易，也不计入收支。</text>
+      <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view><button class="primary-button primary-button-medium sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveForm">保存</button><button class="secondary-button sheet-cancel" disabled="{{saving}}" bindtap="closeForm">取消</button>
+    </view>
+  </view>
+</view>
+<login-sheet id="page-login-sheet" />

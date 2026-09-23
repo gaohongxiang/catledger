@@ -5,8 +5,6 @@ const money = require('../../utils/money')
 const time = require('../../utils/time')
 const themeService = require('../../theme/service')
 const { buildAccountsView } = require('./model')
-const { present: presentLoan } = require('../loans/model')
-const readCache = require('../../services/read-cache')
 
 const TYPE_OPTIONS = [
   { value: 'cash', label: '现金' },
@@ -29,8 +27,6 @@ Page({
     assetCorrectionCount: 0,
     archivedExpanded: false,
     totals: { netWorthText: '¥0.00', assetsText: '¥0.00', liabilitiesText: '¥0.00' },
-    accountDetail: null,
-    accountLoans: [], accountLoansLoading: false, accountLoansLoaded: false, accountLoansError: '', accountLoansMore: false, accountPendingCount: 0,
     formOpen: false,
     formMode: 'create',
     formTitle: '创建账户',
@@ -57,7 +53,7 @@ Page({
   },
 
   loadAccounts: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'errorMessage', 'assets', 'liabilities', 'archivedAccounts', 'totals', 'accountDetail', 'formOpen', 'selectedAccount', 'name', 'balanceYuan', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount'], ['_readLoad', '_accountLoansToken', '_loanAccountId'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'errorMessage', 'assets', 'liabilities', 'archivedAccounts', 'totals', 'formOpen', 'selectedAccount', 'name', 'balanceYuan'], ['_readLoad'])
     if (this._readLoad) return this._readLoad
     const self = this
     const force = Boolean(options && options.force)
@@ -66,10 +62,6 @@ Page({
       .then(function (result) {
         if (!isCurrent()) return
         self.setData(Object.assign({ hasLoaded: true }, buildAccountsView(result.accounts)))
-        if (self.data.accountDetail) {
-          self.setData({ accountDetail: self.findAccount(self.data.accountDetail.accountId) || null })
-          return self.loadAccountLoans()
-        }
       })
       .catch(function (error) {
         if (!isCurrent()) return
@@ -93,69 +85,17 @@ Page({
 
   openCreate: function () {
     this.setTabBarHidden(true)
-    this.setData({ formOpen: true, formMode: 'create', formTitle: '创建账户', selectedAccount: null, accountDetail: null, typeIndex: 0, name: '', balanceYuan: '0.00', errorMessage: '' })
+    this.setData({ formOpen: true, formMode: 'create', formTitle: '创建账户', selectedAccount: null, typeIndex: 0, name: '', balanceYuan: '0.00', errorMessage: '' })
   },
 
   openAccountDetail: function (event) {
-    const account = this.findAccount(event.currentTarget.dataset.id)
-    if (!account) return
-    this.setTabBarHidden(true)
-    this.setData({ accountDetail: account })
-    return this.loadAccountLoans()
-  },
-
-  loadAccountLoans: function () {
-    const account = this.data.accountDetail
-    const token = this._accountLoansToken = {}
-    if (!account || account.nature !== 'liability') return Promise.resolve()
-    const current = pageReadSession.capture(this), accountId = account.accountId
-    const sameAccount = this._loanAccountId === accountId
-    this._loanAccountId = accountId
-    this.setData(Object.assign({ accountLoansLoading: true, accountLoansError: '' }, sameAccount ? {} :
-      { accountLoans: [], accountLoansLoaded: false, accountLoansMore: false, accountPendingCount: 0 }))
-    const valid = () => current() && this._accountLoansToken === token && this.data.accountDetail && this.data.accountDetail.accountId === accountId
-    return api.callApi('loans.list', { accountId, pageSize: 3, cursor: null }).then(result => {
-      if (!valid()) return
-      if (!Array.isArray(result.items) || result.items.some(loan => loan.accountId !== accountId)) throw new Error('贷款所属账户不一致，请重试')
-      this.setData({ accountLoans: result.items.map(presentLoan), accountLoansLoaded: true,
-        accountLoansMore: Boolean(result.nextCursor), accountPendingCount: Number(result.pendingRepaymentCount || 0) })
-    }).catch(error => { if (valid()) this.setData({ accountLoansError: error.message || '贷款暂未读取，请重试' }) })
-      .finally(() => { if (valid()) this.setData({ accountLoansLoading: false }) })
+    const accountId = event.currentTarget.dataset.id
+    if (!accountId) return
+    wx.navigateTo({ url: '/pages/account-detail/index?accountId=' + encodeURIComponent(accountId) })
   },
 
   openAllLoans: function () {
     return loginGuard.run(this, () => wx.navigateTo({ url: '/pages/loans/index' }))
-  },
-
-  openAccountLoans: function () {
-    const account = this.data.accountDetail
-    if (account && account.nature === 'liability' && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/pages/loans/index?accountId=' + encodeURIComponent(account.accountId) })
-  },
-
-  openAccountLoan: function (event) {
-    const account = this.data.accountDetail
-    const loan = this.data.accountLoans.find(item => item.loanId === event.currentTarget.dataset.id)
-    if (account && loan && loan.accountId === account.accountId && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/pages/loan-detail/index?loanId=' + encodeURIComponent(loan.loanId) })
-  },
-
-  createAccountLoan: function () {
-    const account = this.data.accountDetail
-    if (account && account.nature === 'liability' && !account.archived && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/pages/loan-form/index?accountId=' + encodeURIComponent(account.accountId) })
-  },
-
-  openAccountTransactions: function () {
-    const account = this.data.accountDetail
-    if (!account || !pageReadSession.isCurrent(this)) return
-    getApp().globalData.transactionsAccountFilter = { accountId: account.accountId, name: account.name, session: readCache.getSession() }
-    this.closeAccountDetail()
-    wx.switchTab({ url: '/pages/transactions/index' })
-  },
-
-  closeAccountDetail: function () {
-    if (!this.data.saving) {
-      this.setTabBarHidden(false)
-      this.setData({ accountDetail: null, errorMessage: '' })
-    }
   },
 
   toggleArchived: function () { this.setData({ archivedExpanded: !this.data.archivedExpanded }) },
@@ -163,13 +103,13 @@ Page({
   openRename: function (event) {
     const account = this.findAccount(event.currentTarget.dataset.id)
     if (!account) return
-    this.setData({ formOpen: true, formMode: 'rename', formTitle: '修改账户名称', selectedAccount: account, accountDetail: null, name: account.name, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
+    this.setData({ formOpen: true, formMode: 'rename', formTitle: '修改账户名称', selectedAccount: account, name: account.name, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
   },
 
   openCorrection: function (event) {
     const account = this.findAccount(event.currentTarget.dataset.id)
     if (!account) return
-    this.setData({ formOpen: true, formMode: 'correct', formTitle: '校正账户余额', selectedAccount: account, accountDetail: null, name: account.name, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
+    this.setData({ formOpen: true, formMode: 'correct', formTitle: '校正账户余额', selectedAccount: account, name: account.name, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
   },
 
   findAccount: function (accountId) {
@@ -227,7 +167,7 @@ Page({
       success: function (result) {
         if (!result.confirm || !isCurrent()) return
         api.callApi('accounts.archive', { requestId: api.createRequestId(), accountId: account.accountId, version: account.version })
-          .then(function () { if (!isCurrent()) return; wx.showToast({ title: '已停用', icon: 'success' }); self.setTabBarHidden(false); self.setData({ accountDetail: null }); self.loadAccounts() })
+          .then(function () { if (!isCurrent()) return; wx.showToast({ title: '已停用', icon: 'success' }); self.loadAccounts() })
           .catch(function (error) { return self.recoverMutation(error, '停用失败', isCurrent) })
       }
     })
