@@ -93,10 +93,9 @@
   font-size: var(--font-body, 28rpx);
 }
 
-.ad-billing-heading { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; padding-top: 20rpx; }
-.ad-billing-title { color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
+.ad-billing-value { display: flex; align-items: center; gap: 10rpx; color: var(--theme-ink, #29231e); }
+.ad-billing-edit-icon { width: 26rpx; height: 26rpx; opacity: .55; }
 .ad-billing-row { display: flex; min-height: 76rpx; align-items: center; justify-content: space-between; gap: 24rpx; border-top: 1rpx solid var(--theme-line); color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
-.ad-billing-row text:last-child { color: var(--theme-ink, #29231e); text-align: right; overflow-wrap: anywhere; }
 
 .ad-actions {
   margin-top: 20rpx;
