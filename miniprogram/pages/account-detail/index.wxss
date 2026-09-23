@@ -91,8 +91,12 @@
 .ad-billing-edit { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 40rpx; height: 40rpx; }
 .ad-billing-edit-icon { width: 24rpx; height: 24rpx; opacity: .55; }
 .ad-billing-edit:active .ad-billing-edit-icon { opacity: 1; }
-.ad-billing-form { display: flex; align-self: stretch; align-items: center; gap: 12rpx; padding-top: 20rpx; border-top: 1rpx solid var(--theme-line); }
-.ad-billing-input { flex: 1; min-width: 0; height: 64rpx; padding: 0 16rpx; border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-small, 12rpx); color: var(--theme-ink); font-size: var(--font-body, 28rpx); }
+.ad-billing-edit-row { display: flex; align-items: center; gap: 6rpx; min-width: 0; }
+.ad-billing-input { flex: 1; min-width: 0; height: 56rpx; padding: 0 10rpx; border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-small, 12rpx); color: var(--theme-ink); font-size: var(--font-caption, 24rpx); }
+.ad-billing-mini { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 40rpx; height: 40rpx; }
+.ad-billing-mini-icon { width: 24rpx; height: 24rpx; opacity: .6; }
+.ad-billing-mini-confirm { display: flex; width: 40rpx; height: 40rpx; align-items: center; justify-content: center; background: var(--theme-accent, #be5b24); border-radius: 50%; }
+.ad-billing-mini-confirm .ad-billing-mini-icon { width: 22rpx; height: 22rpx; opacity: 1; }
 
 .ad-actions {
   margin-top: 20rpx;
