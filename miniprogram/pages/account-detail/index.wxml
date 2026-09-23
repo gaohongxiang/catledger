@@ -1,4 +1,3 @@
-<import src="../../templates/account-billing.wxml" />
 <view class="page-canvas page-secondary account-detail-page {{themeClass}}" style="{{themeStyle}}">
   <view class="ad-head content-inset">
     <view wx:if="{{!editingName}}" class="ad-title-line">
@@ -19,19 +18,19 @@
     <view class="ad-card">
       <view class="ad-card-top"><text class="ad-balance-label">{{account.balanceLabel}}</text><view class="ad-card-link" bindtap="openAccountTransactions" hover-class="account-row-active" role="button" aria-label="查看当前账户明细"><text>查看明细</text><chevron-icon size="{{22}}" /></view></view>
       <text class="ad-balance-value money-number {{account.amountTone}}">{{account.balanceText}}</text>
-      <block wx:if="{{account.nature === 'liability' && !account.archived}}">
-        <view class="ad-billing-line" bindtap="openBilling" hover-class="account-row-active" role="button" aria-label="编辑账单设置">
-          <view class="ad-billing-cell"><text class="ad-billing-name">账单日</text><text class="ad-billing-val">{{account.statementDayText}}</text></view>
-          <view class="ad-billing-cell"><text class="ad-billing-name">还款日</text><text class="ad-billing-val">{{account.repaymentDayText}}</text></view>
-          <view class="ad-billing-cell"><text class="ad-billing-name">信用额度</text><text class="ad-billing-val money-number">{{account.creditLimitText}}</text></view>
+      <block wx:if="{{account.nature === 'liability'}}">
+        <view wx:if="{{!editingBilling}}" class="ad-billing-line">
+          <view class="ad-billing-cell"><text class="ad-billing-name">账单日</text><view class="ad-billing-val-row"><text class="ad-billing-val">{{account.statementDayText}}</text><view wx:if="{{!account.archived}}" class="ad-billing-edit" data-field="statementDay" catchtap="startEditBilling" aria-role="button" aria-label="编辑账单日"><image class="ad-billing-edit-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view></view></view>
+          <view class="ad-billing-cell"><text class="ad-billing-name">还款日</text><view class="ad-billing-val-row"><text class="ad-billing-val">{{account.repaymentDayText}}</text><view wx:if="{{!account.archived}}" class="ad-billing-edit" data-field="repaymentDay" catchtap="startEditBilling" aria-role="button" aria-label="编辑还款日"><image class="ad-billing-edit-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view></view></view>
+          <view class="ad-billing-cell"><text class="ad-billing-name">信用额度</text><view class="ad-billing-val-row"><text class="ad-billing-val money-number">{{account.creditLimitText}}</text><view wx:if="{{!account.archived}}" class="ad-billing-edit" data-field="creditLimit" catchtap="startEditBilling" aria-role="button" aria-label="编辑信用额度"><image class="ad-billing-edit-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view></view></view>
         </view>
-      </block>
-      <block wx:elif="{{account.nature === 'liability'}}">
-        <view class="ad-billing-line">
-          <view class="ad-billing-cell"><text class="ad-billing-name">账单日</text><text class="ad-billing-val">{{account.statementDayText}}</text></view>
-          <view class="ad-billing-cell"><text class="ad-billing-name">还款日</text><text class="ad-billing-val">{{account.repaymentDayText}}</text></view>
-          <view class="ad-billing-cell"><text class="ad-billing-name">信用额度</text><text class="ad-billing-val money-number">{{account.creditLimitText}}</text></view>
+        <view wx:else class="ad-billing-form">
+          <text class="ad-billing-name">{{editingBillingLabel}}</text>
+          <input class="ad-billing-input {{billingFieldError ? 'field-error-shake' : ''}}" type="{{editingBilling === 'creditLimit' ? 'digit' : 'number'}}" value="{{billingFieldDraft}}" maxlength="{{editingBilling === 'creditLimit' ? 18 : 2}}" placeholder="{{editingBilling === 'creditLimit' ? '未设置' : '1–31，0 未设置'}}" disabled="{{saving}}" bindinput="bindBillingField" cursor-spacing="32" aria-label="{{editingBillingLabel}}" />
+          <view class="ad-icon-button" bindtap="cancelEditBilling" aria-role="button" aria-label="取消"><image class="ad-icon-image" src="/assets/icons/close.svg" mode="aspectFit" /></view>
+          <view class="ad-icon-button" bindtap="saveBillingField" aria-role="button" aria-label="保存"><view wx:if="{{!saving}}" class="ad-icon-confirm"><image class="ad-icon-image" src="/assets/icons/check.svg" mode="aspectFit" /></view></view>
         </view>
+        <text wx:if="{{billingFieldError}}" class="field-error-inline">{{billingFieldError}}</text>
       </block>
     </view>
 
@@ -59,16 +58,6 @@
       <view class="sheet-field"><text>正确余额</text><input class="sheet-input money-number" type="digit" value="{{balanceYuan}}" placeholder="0.00" maxlength="18" bindinput="bindBalance" aria-label="账户余额（元）" cursor-spacing="32" disabled="{{saving}}" /></view>
       <text class="sheet-note">系统会新增一笔差额调整，不改写旧交易，也不计入收支。</text>
       <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view><button class="primary-button primary-button-medium sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveCorrection">保存</button><button class="secondary-button sheet-cancel" disabled="{{saving}}" bindtap="closeForm">取消</button>
-    </view>
-  </view>
-  <view wx:if="{{billingOpen}}" class="sheet-mask" bindtap="closeBilling">
-    <view class="account-sheet" catchtap="stopBubble">
-      <view class="sheet-handle"></view><text class="sheet-kicker">负债账户</text><text class="sheet-title serif-title">编辑账单设置</text>
-      <template is="account-billing-fields" data="{{billingDays:billingDays,billingDraft:billingDraft,saving:saving}}" />
-      <text class="sheet-note">未填写的项目显示「未设置」。信用额度不计入欠款或余额。</text>
-      <view wx:if="{{billingError}}" class="sheet-error">{{billingError}}</view>
-      <button class="primary-button primary-button-medium sheet-save" loading="{{saving}}" disabled="{{saving}}" bindtap="saveBilling">保存</button>
-      <button class="secondary-button sheet-cancel" disabled="{{saving}}" bindtap="closeBilling">取消</button>
     </view>
   </view>
 </view>

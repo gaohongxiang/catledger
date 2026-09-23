@@ -6,7 +6,7 @@ const time = require('../../utils/time')
 const themeService = require('../../theme/service')
 const { decorateAccount } = require('../accounts/model')
 const { present: presentLoan } = require('../loans/model')
-const readCache = require('../../services/read-cache')
+const billing = require('../../utils/account-billing')
 
 Page({
   data: {
@@ -20,7 +20,12 @@ Page({
     nameDraft: '',
     nameError: '',
     formOpen: false,
-    balanceYuan: '0.00'
+    balanceYuan: '0.00',
+    billingSupported: false,
+    editingBilling: '',
+    editingBillingLabel: '',
+    billingFieldDraft: '',
+    billingFieldError: ''
   },
 
   onLoad: function (query) {
@@ -36,7 +41,7 @@ Page({
   onUnload: function () { pageReadSession.end(this) },
 
   loadAccount: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'errorMessage', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'formOpen', 'balanceYuan'], ['_readLoad', '_accountLoansToken'])
+    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'saving', 'errorMessage', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'formOpen', 'balanceYuan', 'billingSupported', 'editingBilling', 'billingFieldDraft', 'billingFieldError'], ['_readLoad', '_accountLoansToken'])
     if (this._readLoad) return this._readLoad
     const self = this
     const force = Boolean(options && options.force)
@@ -45,7 +50,7 @@ Page({
       .then(function (result) {
         if (!isCurrent()) return
         const account = (result.accounts || []).map(decorateAccount).find(function (item) { return item.accountId === self.data.accountId }) || null
-        self.setData(Object.assign({ account: account, errorMessage: account ? '' : '账户不存在或已删除' }, account ? {} :
+        self.setData(Object.assign({ account: account, billingSupported: result.liabilitySettingsVersion === 1, errorMessage: account ? '' : '账户不存在或已删除' }, account ? {} :
           { accountLoans: [], accountLoansLoaded: false, accountLoansMore: false, accountPendingCount: 0 }))
         if (account) return self.loadAccountLoans()
       })
@@ -89,8 +94,7 @@ Page({
   openAccountTransactions: function () {
     const account = this.data.account
     if (!account || !pageReadSession.isCurrent(this)) return
-    getApp().globalData.transactionsAccountFilter = { accountId: account.accountId, name: account.name, session: readCache.getSession() }
-    wx.switchTab({ url: '/pages/transactions/index' })
+    wx.navigateTo({ url: '/pages/account-transactions/index?accountId=' + encodeURIComponent(account.accountId) })
   },
 
   openAccountLoans: function () {
@@ -162,7 +166,7 @@ Page({
 
   openCorrection: function () {
     const account = this.data.account
-    if (!account || account.archived) return
+    if (!account || account.archived || account.nature !== 'asset') return
     this.setData({ formOpen: true, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
   },
 
@@ -174,7 +178,7 @@ Page({
   bindBalance: function (event) { this.setData({ balanceYuan: event.detail.value }) },
 
   saveCorrection: function () {
-    if (this.data.saving || !this.data.account) return
+    if (this.data.saving || !this.data.account || this.data.account.nature !== 'asset') return
     let data
     try {
       data = { requestId: api.createRequestId(), accountId: this.data.account.accountId, displayBalanceMinor: money.yuanToMinor(this.data.balanceYuan, { allowZero: true }), occurredLocalAt: time.today() + 'T' + time.currentClock() + ':00', timezoneOffsetMinutes: new Date().getTimezoneOffset() }
@@ -190,6 +194,44 @@ Page({
       self.loadAccount()
     }).catch(function (error) { return self.recoverMutation(error, '保存失败', isCurrent) })
       .finally(function () { if (isCurrent()) self.setData({ saving: false }) })
+  },
+
+  startEditBilling: function (event) {
+    const account = this.data.account, field = event.currentTarget.dataset.field
+    if (!account || account.archived || account.nature !== 'liability' || this.data.saving || !['statementDay', 'repaymentDay', 'creditLimit'].includes(field)) return
+    if (!this.data.billingSupported) { this.setData({ errorMessage: billing.UNAVAILABLE }); return }
+    const draft = billing.draft(account)
+    const value = field === 'creditLimit' ? draft.creditLimitYuan : (draft[field] ? String(draft[field]) : '')
+    this.setData({ editingBilling: field, editingBillingLabel: { statementDay: '账单日', repaymentDay: '还款日', creditLimit: '信用额度' }[field], billingFieldDraft: value, billingFieldError: '', errorMessage: '' })
+  },
+
+  cancelEditBilling: function () { if (!this.data.saving) this.setData({ editingBilling: '', billingFieldError: '' }) },
+
+  bindBillingField: function (event) { this.setData({ billingFieldDraft: event.detail.value, billingFieldError: '' }) },
+
+  saveBillingField: function () {
+    const account = this.data.account, field = this.data.editingBilling
+    if (this.data.saving || !field || !account || account.archived) return
+    const draft = billing.draft(account)
+    if (field === 'creditLimit') draft.creditLimitYuan = this.data.billingFieldDraft
+    else {
+      const raw = String(this.data.billingFieldDraft).trim()
+      if (raw && !/^\d{1,2}$/.test(raw)) { this.setData({ billingFieldError: '请选择每月 1 至 31 日，或未设置' }); return }
+      draft[field] = raw ? Number(raw) : 0
+    }
+    let fields
+    try { fields = billing.payload(draft) } catch (error) { this.setData({ billingFieldError: error.message }); return }
+    const isCurrent = pageReadSession.capture(this)
+    this.setData({ saving: true, billingFieldError: '' })
+    return api.callApi('accounts.update', { requestId: api.createRequestId(), accountId: account.accountId, version: account.version, ...fields })
+      .then(result => {
+        if (!isCurrent()) return
+        billing.assertSaved(result, fields)
+        this.setData({ editingBilling: '' })
+        wx.showToast({ title: '已保存', icon: 'success' })
+        return this.loadAccount({ force: true })
+      }).catch(error => { if (isCurrent()) this.setData({ billingFieldError: error.message || '保存失败，请重试' }) })
+      .finally(() => { if (isCurrent()) this.setData({ saving: false }) })
   },
 
   archive: function () {
