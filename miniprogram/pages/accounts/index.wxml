@@ -17,8 +17,7 @@
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
         <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view>
-        <view class="account-row-edit" data-id="{{item.accountId}}" catchtap="openRename" aria-role="button" aria-label="修改 {{item.name}} 名称"><image class="account-row-edit-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view>
-        <view class="account-row-edit" data-id="{{item.accountId}}" catchtap="archive" aria-role="button" aria-label="停用 {{item.name}}"><image class="account-row-edit-icon" src="/assets/icons/trash.svg" mode="aspectFit" /></view>
+        <chevron-icon size="{{26}}" />
       </view>
     </view>
   </view>
@@ -31,8 +30,7 @@
         <view class="account-type-icon"><image src="{{themeIconRoot}}/{{item.iconPath}}" mode="aspectFit" /></view>
         <view class="account-row-main"><text class="account-row-name">{{item.name}}</text><text class="account-row-type">{{item.typeLabel}}</text></view>
         <view class="account-row-end"><text class="account-row-balance money-number {{item.amountTone}}">{{item.balanceText}}</text><text class="account-row-state {{item.stateTone}}">{{item.stateText}}</text></view>
-        <view class="account-row-edit" data-id="{{item.accountId}}" catchtap="openRename" aria-role="button" aria-label="修改 {{item.name}} 名称"><image class="account-row-edit-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view>
-        <view class="account-row-edit" data-id="{{item.accountId}}" catchtap="archive" aria-role="button" aria-label="停用 {{item.name}}"><image class="account-row-edit-icon" src="/assets/icons/trash.svg" mode="aspectFit" /></view>
+        <chevron-icon size="{{26}}" />
       </view>
     </view>
   </view>

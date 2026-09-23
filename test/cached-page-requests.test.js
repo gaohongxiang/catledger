@@ -823,27 +823,29 @@ test('来源切换隔离旧分页的成功和失败，重复选择复用缓存�
 
 
 test('账户保存冲突回读最新版本并保留名称输入，卸载后不回填', async () => {
-  const h = runtime(), page = h.page('accounts')
+  const h = runtime(), page = h.page('account-detail')
   h.accounts = [{ accountId: 'account-a', name: '原名称', type: 'bank', nature: 'asset', version: 1, displayBalanceMinor: '0' }]
-  await page.loadAccounts()
-  page.openRename({ currentTarget: { dataset: { id: 'account-a' } } })
-  page.bindName({ detail: { value: '我的输入' } })
+  page.onLoad({ accountId: 'account-a' })
+  await page.loadAccount()
+  page.startEditName()
+  page.bindNameDraft({ detail: { value: '我的输入' } })
   h.intercept = async action => {
     if (action === 'accounts.update') {
       h.accounts = [{ ...h.accounts[0], name: '其他设备已更名', version: 2 }]
       throw new Error('合成版本冲突')
     }
   }
-  await page.saveForm()
-  assert.equal(page.data.name, '我的输入')
-  assert.equal(page.data.selectedAccount.version, 2)
-  assert.equal(page.data.assets[0].name, '其他设备已更名')
-  assert.match(page.data.errorMessage, /暂时不可用/)
+  await page.saveName()
+  assert.equal(page.data.nameDraft, '我的输入')
+  assert.equal(page.data.account.version, 2)
+  assert.equal(page.data.account.name, '其他设备已更名')
+  assert.match(page.data.nameError, /暂时不可用/)
+  page.bindNameDraft({ detail: { value: '再次修改' } })
   let release
   h.intercept = action => action === 'accounts.update' ? new Promise(resolve => { release = resolve }) : undefined
-  const pending = page.saveForm()
+  const pending = page.saveName()
   await flush(); page.onUnload(); release(); await pending
-  assert.equal(page.data.formOpen, true)
+  assert.equal(page.data.editingName, true)
   assert.equal(h.toasts.length, 0)
 })
 

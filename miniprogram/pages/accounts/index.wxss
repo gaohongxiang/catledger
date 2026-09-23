@@ -129,19 +129,6 @@
   flex: 0 0 auto;
   max-width: 48%;
 }
-.account-row-edit {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-  width: 64rpx;
-  height: 88rpx;
-  flex-shrink: 0;
-  margin-right: -12rpx;
-}
-.account-row-edit + .account-row-edit { margin-left: -8rpx; }
-.account-row-edit-icon { width: 30rpx; height: 30rpx; opacity: .62; }
-.account-row-edit:active .account-row-edit-icon { opacity: 1; }
 .account-row-balance {
   font-size: var(--font-body, 28rpx);
   font-weight: 500;

@@ -16,10 +16,10 @@ Page({
     saving: false,
     errorMessage: '',
     accountLoans: [], accountLoansLoading: false, accountLoansLoaded: false, accountLoansError: '', accountLoansMore: false, accountPendingCount: 0,
+    editingName: false,
+    nameDraft: '',
+    nameError: '',
     formOpen: false,
-    formMode: 'rename',
-    formTitle: '修改账户名称',
-    name: '',
     balanceYuan: '0.00'
   },
 
@@ -36,7 +36,7 @@ Page({
   onUnload: function () { pageReadSession.end(this) },
 
   loadAccount: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'errorMessage', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'formOpen', 'name', 'balanceYuan'], ['_readLoad', '_accountLoansToken'])
+    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'errorMessage', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'formOpen', 'balanceYuan'], ['_readLoad', '_accountLoansToken'])
     if (this._readLoad) return this._readLoad
     const self = this
     const force = Boolean(options && options.force)
@@ -109,16 +109,61 @@ Page({
     if (account && account.nature === 'liability' && !account.archived && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/pages/loan-form/index?accountId=' + encodeURIComponent(account.accountId) })
   },
 
-  openRename: function () {
+  startEditName: function () {
     const account = this.data.account
-    if (!account || account.archived) return
-    this.setData({ formOpen: true, formMode: 'rename', formTitle: '修改账户名称', name: account.name, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
+    if (!account || account.archived || this.data.saving) return
+    this.setData({ editingName: true, nameDraft: account.name, nameError: '' })
+  },
+
+  cancelEditName: function () {
+    if (this.data.saving) return
+    this.setData({ editingName: false, nameDraft: '', nameError: '' })
+  },
+
+  bindNameDraft: function (event) {
+    if (this.data.saving) return
+    this.setData({ nameDraft: String(event && event.detail && event.detail.value || ''), nameError: '' })
+  },
+
+  saveName: function () {
+    const account = this.data.account
+    if (this.data.saving || !account || account.archived || !this.data.editingName) return
+    const name = String(this.data.nameDraft || '').trim()
+    if (!name) {
+      this.setData({ nameError: '名称不能为空' })
+      return
+    }
+    if (name === account.name) {
+      this.cancelEditName()
+      return
+    }
+    const self = this
+    const isCurrent = pageReadSession.capture(this)
+    this.setData({ saving: true, nameError: '' })
+    return api.callApi('accounts.update', { requestId: api.createRequestId(), accountId: account.accountId, version: account.version, name: name })
+      .then(function () {
+        if (!isCurrent()) return
+        wx.showToast({ title: '已保存', icon: 'success' })
+        self.setData({ editingName: false, nameDraft: '' })
+        self.loadAccount()
+      })
+      .catch(function (error) { return self.recoverName(error, isCurrent) })
+      .finally(function () { if (isCurrent()) self.setData({ saving: false }) })
+  },
+
+  recoverName: async function (error, isCurrent) {
+    if (!isCurrent()) return
+    if (this._readLoad) await this._readLoad
+    if (!isCurrent()) return
+    await this.loadAccount({ force: true })
+    if (!isCurrent()) return
+    this.setData({ nameError: error.message || '保存失败' })
   },
 
   openCorrection: function () {
     const account = this.data.account
     if (!account || account.archived) return
-    this.setData({ formOpen: true, formMode: 'correct', formTitle: '校正账户余额', name: account.name, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
+    this.setData({ formOpen: true, balanceYuan: money.minorToYuan(account.displayBalanceMinor), errorMessage: '' })
   },
 
   closeForm: function () {
@@ -126,27 +171,19 @@ Page({
   },
 
   stopBubble: function () {},
-  bindName: function (event) { this.setData({ name: event.detail.value }) },
   bindBalance: function (event) { this.setData({ balanceYuan: event.detail.value }) },
 
-  saveForm: function () {
+  saveCorrection: function () {
     if (this.data.saving || !this.data.account) return
-    let action
     let data
     try {
-      if (this.data.formMode === 'rename') {
-        action = 'accounts.update'
-        data = { requestId: api.createRequestId(), accountId: this.data.account.accountId, version: this.data.account.version, name: this.data.name }
-      } else {
-        action = 'accounts.correctBalance'
-        data = { requestId: api.createRequestId(), accountId: this.data.account.accountId, displayBalanceMinor: money.yuanToMinor(this.data.balanceYuan, { allowZero: true }), occurredLocalAt: time.today() + 'T' + time.currentClock() + ':00', timezoneOffsetMinutes: new Date().getTimezoneOffset() }
-      }
+      data = { requestId: api.createRequestId(), accountId: this.data.account.accountId, displayBalanceMinor: money.yuanToMinor(this.data.balanceYuan, { allowZero: true }), occurredLocalAt: time.today() + 'T' + time.currentClock() + ':00', timezoneOffsetMinutes: new Date().getTimezoneOffset() }
     } catch (error) { this.setData({ errorMessage: error.message }); return }
 
     const self = this
     const isCurrent = pageReadSession.capture(this)
     this.setData({ saving: true, errorMessage: '' })
-    return api.callApi(action, data).then(function () {
+    return api.callApi('accounts.correctBalance', data).then(function () {
       if (!isCurrent()) return
       wx.showToast({ title: '已保存', icon: 'success' })
       self.setData({ formOpen: false })
