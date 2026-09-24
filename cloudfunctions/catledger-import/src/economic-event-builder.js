@@ -6,7 +6,8 @@ const { semanticBlockers } = require('./semantic-policy')
 const { isNonFinancialSourceRecord } = require('./source-action')
 const { accountGroupingKey, accountIdentityKeyForReference } = require('./payment-account')
 const { ledgerAccountReferenceForRow, projectSourceFunds, withAggregateCandidates, resolveSourceFunds, resolvePaymentMethod } = require('./source-funds')
-const { ECONOMIC_NATURE, EVENT_STATUS, EVIDENCE_ROLE, FLOW_DIRECTION, economicNatureForRow, evaluatePostability, flowDirectionForRow, unique } = require('./organizer-model')
+const { EVENT_STATUS, EVIDENCE_ROLE, economicNatureForRow, evaluatePostability, flowDirectionForRow } = require('./organizer-model')
+const { ECONOMIC_NATURE, FLOW_DIRECTION, unique } = require('./organizer-values')
 const { compatibleCore, STRONG_REFERENCE_WINDOW_MS, stableReferences, scopedStableReferences } = require('./evidence-matching')
 
 function representativeEvent(updateId, group, idFactory, mappingIndex, mappingResolution, references) {

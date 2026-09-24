@@ -23,12 +23,8 @@ const {
 } = require('./finance-update-repository')
 const { buildCoverageReport } = require('./coverage-report')
 const { executeIdempotentMutation } = require('./import-transaction')
-const {
-  ECONOMIC_NATURE,
-  EVENT_STATUS,
-  evaluatePostability,
-  hasPendingRefundRelation
-} = require('./organizer-model')
+const { EVENT_STATUS, evaluatePostability, hasPendingRefundRelation } = require('./organizer-model')
+const { ECONOMIC_NATURE } = require('./organizer-values')
 const { isAggregateRepayment, repaymentAllocationsForEvent } = require('./repayment-allocation')
 const { validateUuid, validateVersion } = require('./validation')
 const { CATEGORY_ALIAS_VERSION } = require('./category-mapping')

@@ -62,6 +62,19 @@ function visit(file, stack = []) {
   visited.add(file)
 }
 for (const file of runtime) visit(file)
+for (const file of ['finance-update-core', 'finance-update-read', 'finance-update-maintenance', 'semantic-plan-upgrade']) {
+  const dependencies = graph.get(`cloudfunctions/catledger-import/src/${file}.js`)
+  assert.ok(!dependencies.includes('cloudfunctions/catledger-import/src/review-issue-service.js'), `${file} 不得反向依赖核对总入口`)
+}
+const ruleDependencies = new Set()
+function inspectRule(file) {
+  if (ruleDependencies.has(file)) return
+  ruleDependencies.add(file)
+  const source = fs.readFileSync(path.join(root, file), 'utf8')
+  assert.ok(!/\.(?:execute|query)\s*\(|\bgetPool\b|\bexecuteIdempotentMutation\b/.test(source), `纯核对规则混入存取/事务: ${file}`)
+  for (const dependency of graph.get(file) || []) inspectRule(dependency)
+}
+inspectRule('cloudfunctions/catledger-import/src/review/policy.js')
 for (const name of ['economic-nature', 'economic-event-builder', 'organizer-planner', 'relation-resolver', 'refund-relation-policy']) {
   const contents = fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src', `${name}.js`), 'utf8')
   assert.ok(!/\braw(?:Status|TransactionType)\b|['"](?:wechat|alipay)['"]/.test(contents), `${name} 不得重新解释平台 token`)

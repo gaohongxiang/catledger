@@ -52,19 +52,6 @@ async function updateMappingMemberVersions(connection, uid, updateId, events, ot
   }
 }
 
-async function updateAccountMappingMemberVersions(connection, uid, updateId, event) {
-  await connection.execute(
-    `UPDATE catledger_review_issue_members member
-       JOIN catledger_review_issues issue
-         ON issue.uid = member.uid AND issue.issue_id = member.issue_id
-        SET member.object_version = ?
-      WHERE member.uid = ? AND issue.update_id = ? AND member.object_type = 'event'
-        AND member.object_id = ? AND ((issue.issue_type = 'account_mapping'
-        AND issue.status IN ('open', 'resolved')) OR (? = 1 AND issue.status = 'open'))`,
-    [event.version, uid, updateId, event.eventId, Boolean(event.fieldSources && event.fieldSources.paymentAccountReferences)]
-  )
-}
-
 async function createFollowUpIssue(connection, uid, updateId, event) {
   return createFollowUpIssues(connection, uid, updateId, [event])
 }

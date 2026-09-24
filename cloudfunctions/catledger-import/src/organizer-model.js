@@ -1,3 +1,4 @@
+const { ECONOMIC_NATURE, FLOW_DIRECTION, unique } = require('./organizer-values')
 const repaymentOwnership = require('./repayment-ownership')
 const { eventAllocation } = require('./funds-allocation')
 const { inspectPaymentAccounts, effectiveSemanticReasons, paymentResolutionForEvent } = require('./payment-resolution')
@@ -23,24 +24,6 @@ const EVENT_STATUS = Object.freeze({
   EXCLUDED: 'excluded',
   POSTED: 'posted',
   CORRECTED: 'corrected'
-})
-
-const ECONOMIC_NATURE = Object.freeze({
-  INCOME: 'income',
-  EXPENSE: 'expense',
-  INTERNAL_TRANSFER: 'internal_transfer',
-  BORROW: 'borrow',
-  REPAYMENT: 'repayment',
-  REFUND: 'refund',
-  FEE: 'fee',
-  BALANCE_ADJUSTMENT: 'balance_adjustment',
-  UNKNOWN: 'unknown'
-})
-
-const FLOW_DIRECTION = Object.freeze({
-  INFLOW: 'inflow',
-  OUTFLOW: 'outflow',
-  NEUTRAL: 'neutral'
 })
 
 const EVIDENCE_ROLE = Object.freeze({
@@ -76,18 +59,6 @@ const REVIEW_ISSUE_TYPE = Object.freeze({
   INSTALLMENT_ORIGIN: 'installment_origin'
 })
 
-const REVIEW_DECISIONS = new Set([
-  'apply_fields',
-  'confirm_distinct',
-  'confirm_same',
-  'exclude_events',
-  'confirm_installment_principal',
-  'discard_evidence',
-  'link_refund',
-  'mark_refund_pending',
-  'link_existing_transaction'
-])
-
 const REFUND_RELATION_STATE_VERSION = 'refund-relation-state-v1'
 
 function hasPendingRefundRelation(event) {
@@ -117,10 +88,6 @@ const ACCOUNT_FIRST_NATURES = new Set([
   ECONOMIC_NATURE.FEE,
   ECONOMIC_NATURE.REFUND
 ])
-
-function unique(values) {
-  return [...new Set(values.filter(Boolean))]
-}
 
 function flowDirectionForRow(row) {
   if (row.direction === 'income') return FLOW_DIRECTION.INFLOW
@@ -297,15 +264,12 @@ function classifyReviewIssue(event) {
 }
 
 module.exports = {
-  ECONOMIC_NATURE,
   EVENT_STATUS,
   EVIDENCE_ROLE,
-  FLOW_DIRECTION,
   HARD_BLOCKING_REASONS,
   REFUND_RELATION_STATE_VERSION,
   RELATION_STATUS,
   RELATION_TYPE,
-  REVIEW_DECISIONS,
   REVIEW_ISSUE_TYPE,
   UPDATE_STATUS,
   classifyReviewIssue,
@@ -313,6 +277,5 @@ module.exports = {
   evaluatePostability,
   flowDirectionForRow,
   hasPendingRefundRelation,
-  needsCategory,
-  unique
+  needsCategory
 }

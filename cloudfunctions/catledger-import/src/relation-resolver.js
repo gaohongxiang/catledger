@@ -1,6 +1,7 @@
 const { digestParts } = require('./digest')
 const { RELATION_KEY_VERSION } = require('./domain-versions')
-const { ECONOMIC_NATURE, EVENT_STATUS, RELATION_TYPE, RELATION_STATUS, unique, evaluatePostability } = require('./organizer-model')
+const { EVENT_STATUS, RELATION_TYPE, RELATION_STATUS, evaluatePostability } = require('./organizer-model')
+const { ECONOMIC_NATURE, unique } = require('./organizer-values')
 const { timeValue, normalizedText, STRONG_REFERENCE_WINDOW_MS } = require('./evidence-matching')
 const { autoReasonCode, candidateReasonCode, createRefundCandidateIndex } = require('./refund-relation-policy')
 const SAME_EVENT_CANDIDATE_WINDOW_MS = 48 * 60 * 60 * 1000

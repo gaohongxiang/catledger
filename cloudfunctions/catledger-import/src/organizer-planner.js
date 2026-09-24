@@ -19,14 +19,8 @@ const {
   projectSourceFunds
 } = require('./source-funds')
 const { getRowSemantic } = require('./row-semantic-resolver')
-const {
-  EVENT_STATUS,
-  RELATION_STATUS,
-  RELATION_TYPE,
-  classifyReviewIssue,
-  needsCategory,
-  unique
-} = require('./organizer-model')
+const { EVENT_STATUS, RELATION_STATUS, RELATION_TYPE, classifyReviewIssue, needsCategory } = require('./organizer-model')
+const { unique } = require('./organizer-values')
 
 const { representativeEvent } = require('./economic-event-builder')
 const { sameEventCandidateGroups, buildRelations } = require('./relation-resolver')

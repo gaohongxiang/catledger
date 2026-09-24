@@ -1,14 +1,8 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const {
-  ECONOMIC_NATURE,
-  EVENT_STATUS,
-  FLOW_DIRECTION,
-  classifyReviewIssue,
-  economicNatureForRow,
-  evaluatePostability
-} = require('../src/organizer-model')
+const { EVENT_STATUS, classifyReviewIssue, economicNatureForRow, evaluatePostability } = require('../src/organizer-model')
+const { ECONOMIC_NATURE, FLOW_DIRECTION } = require('../src/organizer-values')
 
 function event(patch = {}) {
   return {

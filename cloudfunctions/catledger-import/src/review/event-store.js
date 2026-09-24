@@ -4,7 +4,8 @@ const { eventAllocation, allocationAccountsValid } = require('../funds-allocatio
 const { inspectPaymentAccounts, paymentEvidenceFields, paymentResolutionForEvent } = require('../payment-resolution')
 const { importError } = require('../errors')
 const { parseJson } = require('../finance-update-repository')
-const { ECONOMIC_NATURE, evaluatePostability, unique } = require('../organizer-model')
+const { evaluatePostability } = require('../organizer-model')
+const { ECONOMIC_NATURE, unique } = require('../organizer-values')
 const { isAggregateRepayment, repaymentAllocationsForEvent } = require('../repayment-allocation')
 const { resolvedReasons } = require('./policy')
 

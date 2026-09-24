@@ -12,7 +12,8 @@ const accountGroups = require('../payment-account-groups')
 const { randomUUID } = require('node:crypto')
 const { importError } = require('../errors')
 const { stageAccountDraft } = require('../account-draft')
-const { EVENT_STATUS, unique } = require('../organizer-model')
+const { EVENT_STATUS } = require('../organizer-model')
+const { unique } = require('../organizer-values')
 const { paymentReferenceKey } = require('../payment-account')
 const { FIELD_MASK, resolvedReasons, applyFields } = require('./policy')
 
@@ -114,17 +115,6 @@ async function stagePaymentReferenceMapping(
   return key
 }
 
-async function deletePaymentReferenceMapping(connection, uid, updateId, eventId, reference) {
-  if (reference && reference.memberRole && !reference.paymentMethodKey) return ''
-  if (!reference || !reference.sourceType || !reference.paymentMethodKey) throw importError('VALIDATION_ERROR')
-  await connection.execute(
-    `DELETE FROM catledger_finance_update_account_mapping_drafts
-      WHERE uid = ? AND update_id = ? AND event_id = ?
-        AND source_type = ? AND payment_method_key = ?`,
-    [uid, updateId, eventId, reference.sourceType, reference.paymentMethodKey]
-  )
-}
-
 async function stageProjectedAccountMappings(connection, uid, updateId, events, actionId, mappingIndex = null) {
   const paymentReferences = []
   for (const event of events) {
@@ -161,27 +151,6 @@ async function runAccountMappingBatch({ decisions, begin, applyDecision, finaliz
     await applyDecision(decision, batch)
   }
   return finalize(batch)
-}
-
-async function materializeAccountMappingFields(connection, uid, updateId, fields, actionId, revision = false) {
-  let resolved = fields
-  if (resolved && resolved.ledgerAccountDraft) {
-    const draftAccountId = await stageAccountDraft(
-      connection, uid, updateId, resolved.ledgerAccountDraft, actionId
-    )
-    resolved = revision
-      ? { ledgerAccountId: draftAccountId }
-      : { ...resolved, ledgerAccountId: draftAccountId }
-    delete resolved.ledgerAccountDraft
-  }
-  if (!revision && resolved && resolved.counterpartyLedgerAccountDraft) {
-    const draftAccountId = await stageAccountDraft(
-      connection, uid, updateId, resolved.counterpartyLedgerAccountDraft, actionId
-    )
-    resolved = { ...resolved, counterpartyLedgerAccountId: draftAccountId }
-    delete resolved.counterpartyLedgerAccountDraft
-  }
-  return resolved
 }
 
 async function materializeAccountMappingChoice(connection, uid, updateId, fields, actionId) {
@@ -657,4 +626,4 @@ if (fields && fields.ledgerAccountId) {
           await stageProjectedAccountMappings(connection, uid, updateId, affected, actionId)
 }
 
-module.exports = { stageDecisionAccountFields, stageDecisionAccountMappings, stageAccountMappings, applyMappedAccount, stagePaymentReferenceMapping, stageProjectedAccountMappings, runAccountMappingBatch, resolveOpenAccountMapping, reviseResolvedAccountMapping, refreshAccountGroups, resolveAccountMappings, reviseAccountMapping }
+module.exports = { stageDecisionAccountFields, stageDecisionAccountMappings, stageAccountMappings, runAccountMappingBatch, refreshAccountGroups, resolveAccountMappings, reviseAccountMapping }
