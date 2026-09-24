@@ -613,4 +613,48 @@ async function reviseAccountMapping(connection, uid, data, requestDigest, { upda
         return commandResult(connection, uid, updateId, input)
       }
 
-module.exports = { stageAccountMappings, applyMappedAccount, stagePaymentReferenceMapping, stageProjectedAccountMappings, runAccountMappingBatch, resolveOpenAccountMapping, reviseResolvedAccountMapping, refreshAccountGroups, resolveAccountMappings, reviseAccountMapping }
+
+async function stageDecisionAccountFields(connection, uid, updateId, fields, actionId) {
+if (fields && fields.ledgerAccountDraft) {
+            const draftAccountId = await stageAccountDraft(
+              connection,
+              uid,
+              updateId,
+              fields.ledgerAccountDraft,
+              actionId
+            )
+            fields = { ...fields, ledgerAccountId: draftAccountId }
+            delete fields.ledgerAccountDraft
+          }
+          if (fields && fields.counterpartyLedgerAccountDraft) {
+            const draftAccountId = await stageAccountDraft(
+              connection,
+              uid,
+              updateId,
+              fields.counterpartyLedgerAccountDraft,
+              actionId
+            )
+            fields = { ...fields, counterpartyLedgerAccountId: draftAccountId }
+            delete fields.counterpartyLedgerAccountDraft
+          }
+  return fields
+}
+
+async function stageDecisionAccountMappings(connection, uid, updateId, affected, fields, actionId) {
+if (fields && fields.ledgerAccountId) {
+            const ordinaryEventIds = affected.filter((event) => !event.fieldSources.fundsProjection).map((event) => event.eventId)
+            if (ordinaryEventIds.length) {
+              await stageAccountMappings(
+                connection,
+                uid,
+                updateId,
+                ordinaryEventIds,
+                validateUuid(fields.ledgerAccountId),
+                actionId
+              )
+            }
+          }
+          await stageProjectedAccountMappings(connection, uid, updateId, affected, actionId)
+}
+
+module.exports = { stageDecisionAccountFields, stageDecisionAccountMappings, stageAccountMappings, applyMappedAccount, stagePaymentReferenceMapping, stageProjectedAccountMappings, runAccountMappingBatch, resolveOpenAccountMapping, reviseResolvedAccountMapping, refreshAccountGroups, resolveAccountMappings, reviseAccountMapping }

@@ -44,7 +44,7 @@ test('账户批量确认只建立一次批次上下文并只收口一次', async
 })
 
 test('账户归属排除写入独立原因码供审计视图分组', function () {
-  const source = fs.readFileSync(path.join(projectRoot, 'cloudfunctions/catledger-import/src/review-issue-service.js'), 'utf8')
+  const source = fs.readFileSync(path.join(projectRoot, 'cloudfunctions/catledger-import/src/review/event-decisions.js'), 'utf8')
   assert.match(source, /account_mapping_excluded/)
 })
 
