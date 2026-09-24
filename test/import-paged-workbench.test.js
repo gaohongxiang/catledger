@@ -340,3 +340,65 @@ test('活动工作台重入回第一步，已入账结果保持完成页', async
     page.onUnload()
   }
 })
+
+test('每个页面独立拥有草稿UI与分页器，重复显示不叠加订阅，分片回调只完成一次且保留this', async () => {
+  const h = runtime(), first = h.page, second = h.createPage()
+  const setData = first.setData
+  first.onShow(); first.onShow()
+  assert.equal(first.setData, setData)
+  assert.equal(h.activeSubscriptions, 2)
+  assert.notEqual(first._accountUiDrafts, second._accountUiDrafts)
+  assert.notEqual(first._viewSession, second._viewSession)
+  first._accountUiDrafts.set('local', { name: '第一页面输入' })
+  assert.equal(second._accountUiDrafts.has('local'), false)
+  let completed = 0, owner
+  const before = h.patches.length
+  first.setData({ one: 'a'.repeat(40000), two: 'b'.repeat(40000) }, function () { completed++; owner = this })
+  assert.equal(h.patches.length - before, 2)
+  assert.equal(completed, 1)
+  assert.equal(owner, first)
+  first.onUnload()
+  assert.equal(h.activeSubscriptions, 1)
+  assert.ok(second._viewSession)
+  second.onUnload()
+  assert.equal(h.activeSubscriptions, 0)
+})
+
+test('退出登录后迟到摘要不能重新整理或恢复旧用户视图', async () => {
+  const h = runtime(), page = h.page
+  let release
+  h.intercept = action => action === 'financeUpdates.summary' ? new Promise(resolve => { release = resolve }) : undefined
+  const pending = page.loadUpdate(h.summary.update.updateId)
+  await flush()
+  h.app.approved = false
+  page.onShow()
+  const patches = h.patches.length
+  release(h.summary)
+  await pending
+  assert.equal(h.calls.filter(row => row.action === 'financeUpdates.organize').length, 0)
+  assert.equal(h.patches.length, patches)
+  assert.equal(page.data.update, null)
+  assert.equal(h.activeSubscriptions, 0)
+  page.onUnload()
+})
+
+test('刷新旧请求的catch和finally不覆盖新视图的加载状态', async () => {
+  const h = runtime(), page = h.page
+  let reject
+  h.intercept = action => action === 'financeUpdates.summary' ? new Promise((_, no) => { reject = no }) : undefined
+  const previous = page.retryPagedView()
+  await flush()
+  let release
+  h.intercept = action => action === 'economicEvents.list' ? new Promise(resolve => { release = resolve }) : undefined
+  page.data.activeReviewStatus = 'completed'
+  const next = page.setStep({ currentStep: 3 })
+  await flush()
+  reject(new Error('合成旧请求失败'))
+  await previous
+  assert.equal(page.data.pageLoading, true)
+  assert.equal(page.data.pageError, '')
+  release({ protocolVersion: 2, viewVersion: 'v1', items: h.events.slice(0, 40), total: h.events.length })
+  await next
+  assert.equal(page.data.pageLoading, false)
+  page.onUnload()
+})

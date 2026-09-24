@@ -44,9 +44,11 @@ onLoad(options) {
     },
 onShow(initialData) {
       if (!getApp().hasLoginApproval()) {
+        this._viewActive = false; this._viewEpoch++
         this.cancelPagedReads()
         if (this._viewSession) this._viewSession.close()
         if (this._unsubscribeDraft) this._unsubscribeDraft()
+        this._unsubscribeDraft = null
         this._viewSession = null; this._businessData = null; this._draftSession = null
         this.setData(JSON.parse(JSON.stringify(initialData)))
         return

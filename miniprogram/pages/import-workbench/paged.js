@@ -129,8 +129,8 @@ async retryPagedView() {
       const epoch = this._viewEpoch
       this.setData({ pageLoading: true })
       try { const summary = await api.readSummary(this.data.update.updateId); if (this._viewActive && epoch === this._viewEpoch) { this._mainPager = null; this.applyUpdateView(summary, true); await this.loadActivePage(true) } }
-      catch (error) { if (this._viewActive) this.setData({ pageError: errorText(error) }) }
-      finally { if (this._viewActive) this.setData({ pageLoading: false }) }
+      catch (error) { if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageError: errorText(error) }) }
+      finally { if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageLoading: false }) }
     },
 async loadDirectories(events = [], extraIds = []) {
       const pairs = await Promise.all(['accounts', 'categories', 'accountDrafts'].map(async kind => {

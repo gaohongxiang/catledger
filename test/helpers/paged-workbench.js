@@ -21,7 +21,8 @@ function fixture(count = 121, blocking = false) {
 function runtime(data = fixture()) {
   const cache = Object.assign(createReadCache(), { stableKey }), storage = new Map(), calls = [], patches = [], modules = new Map()
   let session, definition
-  const h = { ...data, calls, patches, cache, intercept: null, maxDataBytes: 0, derives: {} }
+  const h = { ...data, calls, patches, cache, intercept: null, maxDataBytes: 0, derives: {}, activeSubscriptions: 0 }
+  h.app = { approved: true, hasLoginApproval() { return this.approved }, globalData: {} }
   const call = async (action, input = {}) => {
     calls.push({ action, input: JSON.parse(JSON.stringify(input)) })
     if (h.intercept) { const value = await h.intercept(action, input); if (value !== undefined) return value }
@@ -50,8 +51,14 @@ function runtime(data = fixture()) {
   const api = { callImport: call, readSummary: updateId => call('financeUpdates.summary', { updateId }),
     command: (action, input) => call(action, { ...input }), createRequestId: () => 'synthetic-request-' + calls.length }
   const draftService = { lastUpdateId: () => '', forgetLast() {}, clearUpdate() {}, pauseUpdate() {}, project: (view) => view,
-    open(view) { if (!session) session = createDraft({ scope: 'synthetic', view, autoSync: false, call,
-      read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key), requestId: api.createRequestId }); return session } }
+    open(view) { if (!session) { session = createDraft({ scope: 'synthetic', view, autoSync: false, call,
+      read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key), requestId: api.createRequestId });
+      const subscribe = session.subscribe
+      session.subscribe = listener => {
+        h.activeSubscriptions++; const off = subscribe(listener); let active = true
+        return () => { if (active) { active = false; h.activeSubscriptions--; off() } }
+      }
+    } return session } }
   const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), showToast() {}, pageScrollTo() {} }
   h.wx = wx
   const root = path.join(__dirname, '../../miniprogram')
@@ -64,7 +71,7 @@ function runtime(data = fixture()) {
     if (modules.has(filename)) return modules.get(filename).exports
     const module = { exports: {} }; modules.set(filename, module)
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports, Page: value => { definition = value },
-      wx, getApp: () => ({ hasLoginApproval: () => true, globalData: {} }), setTimeout, clearTimeout,
+      wx, getApp: () => h.app, setTimeout, clearTimeout,
       require: name => load(path.resolve(path.dirname(filename), name) + '.js') }, { filename })
     if (filename.endsWith('/import-workbench/model.js')) for (const [name, fn] of Object.entries(module.exports)) if (typeof fn === 'function') {
       module.exports[name] = (...args) => { h.derives[name] = (h.derives[name] || 0) + 1; return fn(...args) }
@@ -72,7 +79,8 @@ function runtime(data = fixture()) {
     return module.exports
   }
   load(path.join(root, 'pages/import-workbench/index.js'))
-  h.page = Object.assign({}, definition, { data: JSON.parse(JSON.stringify(definition.data)), setData(patch) {
+  h.createPage = () => {
+    const page = Object.assign({}, definition, { data: JSON.parse(JSON.stringify(definition.data)), setData(patch, callback) {
     patches.push(Buffer.byteLength(JSON.stringify(patch)))
     for (const [key, value] of Object.entries(patch)) {
       const keys = key.replace(/\[(\d+)\]/g, '.$1').split('.'); let target = this.data
@@ -80,9 +88,13 @@ function runtime(data = fixture()) {
       target[keys.at(-1)] = value
     }
     h.maxDataBytes = Math.max(h.maxDataBytes, Buffer.byteLength(JSON.stringify(this.data)))
+    if (callback) callback.call(this)
   } })
-  h.page.onLoad({})
-  h.page.applyUpdateView(h.summary)
+    page.onLoad({})
+    page.applyUpdateView(h.summary)
+    return page
+  }
+  h.page = h.createPage()
   h.flush = flush
   return h
 }
