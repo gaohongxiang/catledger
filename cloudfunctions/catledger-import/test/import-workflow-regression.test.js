@@ -3,7 +3,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 
-const reviewIssues = require('../src/review-issue-service')
+const { runAccountMappingBatch } = require('../src/review/account-mapping')
 const { isEventInProjectionRefreshScope } = require('../src/review/reconciliation')
 const organizerPlanner = require('../src/organizer-planner')
 
@@ -11,12 +11,12 @@ const projectRoot = path.resolve(__dirname, '../../..')
 const workbenchModel = require(path.join(projectRoot, 'miniprogram/pages/import-workbench/model'))
 
 test('账户批量确认只建立一次批次上下文并只收口一次', async function () {
-  assert.equal(typeof reviewIssues.runAccountMappingBatch, 'function')
+  assert.equal(typeof runAccountMappingBatch, 'function')
   let beginCount = 0
   let finalizeCount = 0
   const applied = []
 
-  const result = await reviewIssues.runAccountMappingBatch({
+  const result = await runAccountMappingBatch({
     decisions: [
       { issueId: 'issue-a', operation: 'resolve' },
       { issueId: 'issue-b', operation: 'resolve' }
