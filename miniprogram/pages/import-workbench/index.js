@@ -1,3 +1,4 @@
+const runtime = require('./runtime')
 const { setChangedData } = require('../../services/view-patch')
 const importApi = require('../../services/catledger-import')
 const cloudUpload = require('../../services/cloud-upload-policy')
@@ -92,8 +93,7 @@ function allocationStatus(options, totalAmountMinor) {
   }
 }
 
-Page(require('./paged').enhance({
-  data: {
+const initialData = {
     restoreUpdateId: '',
     abandoningRestore: false,
     phase: 'idle',
@@ -229,14 +229,19 @@ Page(require('./paged').enhance({
     natureOptions: NATURE_OPTIONS,
     themeClass: '',
     themeStyle: ''
-  },
+  }
 
-  businessData: function () { return this._businessData || this.data },
-  mappingState: function () {
+Page(require('./paged').enhance({
+data: initialData,
+
+businessData: function () { return this._businessData || this.data },
+
+mappingState: function () {
     const data = this.businessData()
     return this.buildAccountMappingState(data.accountIssues || [], data.accounts || [], data.accountDrafts || [], [])
   },
-  refreshAccountMappings: function () {
+
+refreshAccountMappings: function () {
     const state = this.mappingState()
     setChangedData(this, { accountMappings: state.mappings.map(function (mapping) {
       const visible = presentation.accountMapping(mapping)
@@ -246,60 +251,20 @@ Page(require('./paged').enhance({
     }) })
     return state
   },
-  onLoad: function (options) {
-    themeService.bindPage(this)
-    this._requestIds = {}
-    this._sourceFiles = new Map()
-    this._accountUiDrafts = new Map()
-    const updateId = options && options.fresh === '1' ? null : options && options.updateId || draftSessions.lastUpdateId()
-    loginGuard.run(this, updateId ? async () => {
-      await this.loadUpdate(updateId, true)
-      const eventId = options && options.evidenceEventId
-      if (eventId) {
-        await this.openEvidence({ currentTarget: { dataset: { id: eventId } } })
-      }
-    } : function () {})
-  },
 
-  onHide: function () {
-    this.finishInputEditing()
-  },
+onLoad: runtime.onLoad,
 
-  onUnload: function () {
-    this._evidenceReadToken = null
-    this._editingInput = ''
-    this._pendingBackgroundView = null
-    if (this._updateLoad) this._updateLoad.cancelled = true
-    if (this._unsubscribeDraft) this._unsubscribeDraft()
-    this._unsubscribeDraft = null
-    this._duplicateLoadToken = null
-    this._issueEvidenceToken = null
-    this._issueEvidenceRecords = []
-    this._accountEvidenceToken = null
-    this._accountRecordList = []
-    this.clearFileProgressThrottle()
-    if (this._accountDraftTimer) {
-      clearTimeout(this._accountDraftTimer)
-      this._accountDraftTimer = null
-      this.persistAccountDrafts()
-    }
-  },
+onHide: runtime.onHide,
 
-  onShow: function () {
-    themeService.bindPage(this)
-    const revision = getApp().globalData.ledgerRevision || 0
-    if (this._ledgerRevision != null && this._ledgerRevision !== revision && this.data.update) {
-      if (this._draftSession) this._draftSession.flush().catch(function () {})
-      else this.loadUpdate(this.data.update.updateId)
-    }
-    this._ledgerRevision = revision
-  },
+onUnload: runtime.onUnload,
 
-  chooseFiles: function () {
+onShow() { return runtime.onShow.call(this, initialData) },
+
+chooseFiles: function () {
     loginGuard.run(this, this.openFilePicker.bind(this))
   },
 
-  openFilePicker: function () {
+openFilePicker: function () {
     const self = this
     const remaining = MAX_FILES - this.data.files.length
     if (remaining <= 0) return
@@ -362,13 +327,13 @@ Page(require('./paged').enhance({
     })
   },
 
-  readLocalFile: function (filePath) {
+readLocalFile: function (filePath) {
     return new Promise(function (resolve, reject) {
       wx.getFileSystemManager().readFile({ filePath: filePath, success: function (result) { resolve(result.data) }, fail: reject })
     })
   },
 
-  isDuplicateLocalFile: async function (candidate, accepted) {
+isDuplicateLocalFile: async function (candidate, accepted) {
     const sources = this.data.files.map(function (file) { return this._sourceFiles.get(file.clientId) }, this)
       .concat(accepted)
     for (const source of sources) {
@@ -387,7 +352,7 @@ Page(require('./paged').enhance({
     return false
   },
 
-  startUpload: async function () {
+startUpload: async function () {
     const queuedFiles = this.data.files.filter(function (file) { return file.state === 'queued' })
     if (this.data.busy || queuedFiles.length === 0 || this.data.files.length > MAX_FILES) return
     this.setData({ phase: 'uploading', busy: true, errorMessage: '' })
@@ -428,7 +393,7 @@ Page(require('./paged').enhance({
     }
   },
 
-  uploadAndParseFile: async function (file) {
+uploadAndParseFile: async function (file) {
     const source = this._sourceFiles.get(file.clientId)
     if (!source || !source.path) {
       this.setFileState(file.clientId, {
@@ -451,7 +416,7 @@ Page(require('./paged').enhance({
     }
   },
 
-  uploadObject: function (file, filePath) {
+uploadObject: function (file, filePath) {
     const self = this
     return cloudUpload.uploadWithRetry({
       cloudPath: file.cloudPath,
@@ -468,7 +433,7 @@ Page(require('./paged').enhance({
     })
   },
 
-  setFileProgress: function (clientId, progress) {
+setFileProgress: function (clientId, progress) {
     if (!this._fileProgressPending) {
       this._fileProgressPending = new Map()
       this._fileProgressTimers = new Map()
@@ -490,7 +455,7 @@ Page(require('./paged').enhance({
     }, 100))
   },
 
-  clearFileProgressThrottle: function (clientId) {
+clearFileProgressThrottle: function (clientId) {
     if (!this._fileProgressTimers) return
     for (const [id, timer] of this._fileProgressTimers) {
       if (clientId && id !== clientId) continue
@@ -500,7 +465,7 @@ Page(require('./paged').enhance({
     }
   },
 
-  parsePreparedFile: async function (clientId, fileID, options) {
+parsePreparedFile: async function (clientId, fileID, options) {
     const file = this.data.files.find(function (item) { return item.clientId === clientId })
     if (!file) return
     this.setFileState(clientId, { state: 'parsing', stateText: model.fileStateText('parsing'), errorMessage: '', errorCode: '' })
@@ -559,7 +524,7 @@ Page(require('./paged').enhance({
     }
   },
 
-  openBankMapping: async function (event) {
+openBankMapping: async function (event) {
     if (this.data.busy) return
     const id = event.currentTarget.dataset.id
     let file = this.data.files.find(item => item.clientId === id)
@@ -577,13 +542,13 @@ Page(require('./paged').enhance({
     else this.showFileFailure(file)
   },
 
-  showFileFailure: function (file) {
+showFileFailure: function (file) {
     this.setData({ fileAttentionSheet: { clientId: file.clientId, name: file.name,
       reason: file.errorMessage || '未能读取账单预览，请重新读取这份文件。',
       hasBankMapping: Boolean(file.hasBankMapping && this._bankPreviews && this._bankPreviews.has(file.clientId)) } })
   },
 
-  openFileAttention: function (event) {
+openFileAttention: function (event) {
     if (this.data.busy) return
     const data = event.currentTarget.dataset
     const file = this.data.files.find(item => data.id ? item.clientId === data.id : item.state === data.state)
@@ -592,15 +557,15 @@ Page(require('./paged').enhance({
     this.showFileFailure(file)
   },
 
-  tapFileRow: function (event) {
+tapFileRow: function (event) {
     const file = this.data.files.find(item => item.clientId === event.currentTarget.dataset.id)
     if (!file || (file.state !== 'mapping' && file.state !== 'failed')) return
     this.openFileAttention(event)
   },
 
-  closeFileAttention: function () { if (!this.data.busy) this.setData({ fileAttentionSheet: null }) },
+closeFileAttention: function () { if (!this.data.busy) this.setData({ fileAttentionSheet: null }) },
 
-  retryFileAttention: async function () {
+retryFileAttention: async function () {
     if (this.data.busy || !this.data.fileAttentionSheet) return
     const sheet = this.data.fileAttentionSheet
     const event = { currentTarget: { dataset: { id: sheet.clientId } } }
@@ -611,9 +576,9 @@ Page(require('./paged').enhance({
     if (file && file.state === 'failed') this.showFileFailure(file)
   },
 
-  closeBankMapping: function () { if (!this.data.busy) this.setData({ bankMappingSheet: null }) },
+closeBankMapping: function () { if (!this.data.busy) this.setData({ bankMappingSheet: null }) },
 
-  changeBankMapping: function (event) {
+changeBankMapping: function (event) {
     if (this.data.busy || !this.data.bankMappingSheet) return
     const sheet = this.data.bankMappingSheet
     const key = event.currentTarget.dataset.key, value = Number(event.detail.value)
@@ -628,10 +593,11 @@ Page(require('./paged').enhance({
     this.setData({ bankMappingSheet: next })
   },
 
-  toggleBankColumns: function () { this.setData({ 'bankMappingSheet.advanced': !this.data.bankMappingSheet.advanced }) },
-  inputBankHeader: function (event) { this.setData({ 'bankMappingSheet.headerRowInput': event.detail.value }) },
+toggleBankColumns: function () { this.setData({ 'bankMappingSheet.advanced': !this.data.bankMappingSheet.advanced }) },
 
-  refreshBankPreview: async function (event) {
+inputBankHeader: function (event) { this.setData({ 'bankMappingSheet.headerRowInput': event.detail.value }) },
+
+refreshBankPreview: async function (event) {
     if (this.data.busy || !this.data.bankMappingSheet) return
     const sheet = this.data.bankMappingSheet
     const changingSheet = event && event.currentTarget.dataset.key === 'sheet'
@@ -649,7 +615,7 @@ Page(require('./paged').enhance({
     this.setData({ busy: false, 'bankMappingSheet.error': updated.errorMessage || '' })
   },
 
-  confirmBankMapping: async function () {
+confirmBankMapping: async function () {
     if (this.data.busy || !this.data.bankMappingSheet) return
     const sheet = this.data.bankMappingSheet, result = bankMapping.payload(sheet)
     if (result.error) { this.setData({ 'bankMappingSheet.error': result.error }); return }
@@ -664,16 +630,16 @@ Page(require('./paged').enhance({
       ? null : Object.assign({}, sheet, { error: updated.errorMessage || '未完成解析，请检查列选择后重试' }) })
   },
 
-  setFileState: function (clientId, patch) {
+setFileState: function (clientId, patch) {
     if (patch.state || patch.fileID || patch.progress === 100) this.clearFileProgressThrottle(clientId)
     this.setData({ files: model.updateFile(this.data.files, clientId, patch) })
   },
 
-  syncUploadSummary: function () {
+syncUploadSummary: function () {
     this.setData({ uploadSummary: model.uploadSummary(this.data.files) })
   },
 
-  retryFile: async function (event) {
+retryFile: async function (event) {
     if (this.data.busy) return
     const clientId = event.currentTarget.dataset.id
     const file = this.data.files.find(function (item) { return item.clientId === clientId })
@@ -686,7 +652,7 @@ Page(require('./paged').enhance({
     if (this.data.files.find(item => item.clientId === clientId && item.state === 'mapping')) await this.openBankMapping(event)
   },
 
-  removeFile: async function (event) {
+removeFile: async function (event) {
     if (this.data.busy) return
     const clientId = event.currentTarget.dataset.id
     const file = this.data.files.find(function (item) { return item.clientId === clientId })
@@ -715,7 +681,7 @@ Page(require('./paged').enhance({
     this.setData({ busy: false })
   },
 
-  createFinanceUpdate: async function () {
+createFinanceUpdate: async function () {
     if (this.data.busy) return
     if (this.data.update && this.data.update.updateId) {
       await this.loadUpdate(this.data.update.updateId)
@@ -739,13 +705,13 @@ Page(require('./paged').enhance({
     }
   },
 
-  refreshAccountGroups: async function (view) {
+refreshAccountGroups: async function (view) {
     if (view.update.status !== 'review' || view.freshness && view.freshness.requiresAccountGroupRefresh === false) return view
     return this.request('reviewIssues.refreshAccountGroups', { requestId: importApi.createRequestId(),
       updateId: view.update.updateId, version: view.update.version })
   },
 
-  loadUpdate: async function (updateId, restoreToFirstStep) {
+loadUpdate: async function (updateId, restoreToFirstStep) {
     const load = { updateId: updateId, cancelled: false, pending: null }
     this._updateLoad = load
     const epoch = this._viewEpoch
@@ -773,7 +739,7 @@ Page(require('./paged').enhance({
     }
   },
 
-  abandonRestoringUpdate: async function () {
+abandonRestoringUpdate: async function () {
     const updateId = this.data.restoreUpdateId
     if (!updateId || this.data.abandoningRestore) return
     const load = this._updateLoad
@@ -802,11 +768,11 @@ Page(require('./paged').enhance({
     }
   },
 
-  toggleIssueSource: function () {
+toggleIssueSource: function () {
     this.setData({ issueSourceExpanded: !this.data.issueSourceExpanded })
   },
 
-  switchReviewTab: function (event) {
+switchReviewTab: function (event) {
     const tab = event.currentTarget.dataset.tab
     if (!['review', 'category'].includes(tab)) return
     this.setData({ activeReviewTab: tab })
@@ -814,48 +780,48 @@ Page(require('./paged').enhance({
     if (tab === 'review' && this.data.activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
   },
 
-  switchCategoryStatus: function (event) {
+switchCategoryStatus: function (event) {
     const status = event.currentTarget.dataset.status
     if (!['pending', 'completed', 'none'].includes(status)) return
     this.setData({ activeCategoryStatus: status })
     this.renderReview(true)
   },
 
-  searchCategoryIssues: function (event) {
+searchCategoryIssues: function (event) {
     const query = event.detail.value
     this.setData({ categoryQuery: query })
     this._reviewProjection = null
     this.renderReview(true)
   },
 
-  reviewBeforeCategory: function (event) {
+reviewBeforeCategory: function (event) {
     this.setData({ activeReviewTab: 'review', activeReviewStatus: 'pending' })
     this.renderReview(true)
     if (event.currentTarget.dataset.id) this.openIssue(event)
   },
 
-  viewTransactions: function () {
+viewTransactions: function () {
     wx.switchTab({ url: '/pages/transactions/index' })
   },
 
-  viewStatistics: function () {
+viewStatistics: function () {
     wx.switchTab({ url: '/pages/statistics/index' })
   },
 
-  completeCategories: function () {
+completeCategories: function () {
     getApp().globalData.openStatisticsCompletion = true
     wx.switchTab({ url: '/pages/statistics/index', fail: function () { getApp().globalData.openStatisticsCompletion = false } })
   },
 
-  correctBalances: function () {
+correctBalances: function () {
     wx.navigateTo({ url: '/pages/accounts/index' })
   },
 
-  openInstallmentSources: function () {
+openInstallmentSources: function () {
     wx.navigateTo({ url: '/pages/installment-sources/index' })
   },
 
-  switchReviewStatus: function (event) {
+switchReviewStatus: function (event) {
     const status = String(event.currentTarget.dataset.status || '')
     if (!['pending', 'completed', 'excluded', 'duplicate'].includes(status) || status === this.data.activeReviewStatus) return
     this.setData({ activeReviewStatus: status })
@@ -863,7 +829,7 @@ Page(require('./paged').enhance({
     if (status === 'duplicate') this.loadDuplicateRecords()
   },
 
-  toggleExcludedGroup: function (event) {
+toggleExcludedGroup: function (event) {
     const key = String(event.currentTarget.dataset.key || '')
     if (!key) return
     this.setData({
@@ -874,7 +840,7 @@ Page(require('./paged').enhance({
     this.renderReview(false)
   },
 
-  buildAccountMappingState: function (issues, accounts, accountDrafts, accountMappingDrafts) {
+buildAccountMappingState: function (issues, accounts, accountDrafts, accountMappingDrafts) {
     const self = this
     const summary = { total: issues.length, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0 }
     const mappings = issues.map(function (issue) {
@@ -965,7 +931,7 @@ Page(require('./paged').enhance({
     return { mappings: mappings, summary: summary }
   },
 
-  openAccountChoice: function (event) {
+openAccountChoice: function (event) {
     if (this.data.accountStepBusy) return
     const issueId = event.currentTarget.dataset.id
     if (this._draftSession && this._draftSession.state.flight && this._draftSession.state.flight.ids.includes(issueId)) {
@@ -998,11 +964,11 @@ Page(require('./paged').enhance({
     })
   },
 
-  closeAccountChoice: function () {
+closeAccountChoice: function () {
     this.setData({ accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [], choiceLoading: false })
   },
 
-  selectAccountChoice: function (event) {
+selectAccountChoice: function (event) {
     if (this.data.accountStepBusy) return
     const sheet = this.data.accountChoiceSheet
     const value = String(event.currentTarget.dataset.value || '')
@@ -1034,21 +1000,21 @@ Page(require('./paged').enhance({
     this.refreshAccountMappings()
   },
 
-  preventTouchMove: function () {},
+preventTouchMove: function () {},
 
-  closeAccountRecords: function () {
+closeAccountRecords: function () {
     if (this.data.busy) return
     this._accountEvidenceToken = null
     this._accountRecordList = []
     this.setData({ accountRecordsSheet: null })
   },
 
-  closeReviewSheet: function () {
+closeReviewSheet: function () {
     if (this.data.evidenceSheet) this.closeEvidence()
     else this.closeIssue()
   },
 
-  bindAccountDraftName: function (event) {
+bindAccountDraftName: function (event) {
     const draft = this._accountUiDrafts.get(event.currentTarget.dataset.id)
     if (!draft || this.data.accountStepBusy) return
     draft.name = event.detail.value
@@ -1059,7 +1025,7 @@ Page(require('./paged').enhance({
     this.scheduleAccountDraftSync()
   },
 
-  scheduleAccountDraftSync: function () {
+scheduleAccountDraftSync: function () {
     if (typeof setTimeout !== 'function') {
       this.persistAccountDrafts()
       this.refreshAccountMappings()
@@ -1074,7 +1040,7 @@ Page(require('./paged').enhance({
     }, 300)
   },
 
-  flushAccountDraftSync: function () {
+flushAccountDraftSync: function () {
     if (!this._accountDraftTimer) return
     clearTimeout(this._accountDraftTimer)
     this._accountDraftTimer = null
@@ -1082,7 +1048,7 @@ Page(require('./paged').enhance({
     this.refreshAccountMappings()
   },
 
-  changeAccountDraftType: function (event) {
+changeAccountDraftType: function (event) {
     const draft = this._accountUiDrafts.get(event.currentTarget.dataset.id)
     if (!draft || this.data.accountStepBusy) return
     draft.typeIndex = Number(event.detail.value)
@@ -1094,7 +1060,7 @@ Page(require('./paged').enhance({
     this.refreshAccountMappings()
   },
 
-  completeAccountMapping: function (event) {
+completeAccountMapping: function (event) {
     if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
     this.flushAccountDraftSync()
     const issueId = event && event.currentTarget && event.currentTarget.dataset.id
@@ -1120,7 +1086,7 @@ Page(require('./paged').enhance({
     this.refreshAccountMappings()
   },
 
-  persistAccountDrafts: function () {
+persistAccountDrafts: function () {
     if (!this._draftSession) return
     try { this._draftSession.saveDrafts(Object.fromEntries(this._accountUiDrafts), this.data.currentStep) }
     catch (error) {
@@ -1129,7 +1095,7 @@ Page(require('./paged').enhance({
     }
   },
 
-  accountMappingDecision: function (mapping) {
+accountMappingDecision: function (mapping) {
     const draft = this._accountUiDrafts.get(mapping.issueId)
     const decision = { issueId: mapping.issueId, issueVersion: mapping.version, operation: mapping.status === 'resolved' ? 'revise' : 'resolve' }
     if (draft.mode === 'ignore' || draft.mode === 'ignore_future') {
@@ -1145,12 +1111,12 @@ Page(require('./paged').enhance({
     return decision
   },
 
-  retryDraftSync: async function () {
+retryDraftSync: async function () {
     if (!this._draftSession || this.data.busy) return
     try { await this._draftSession.retry() } catch (error) { this.setData({ errorMessage: publicError(error, '同步未完成，选择已保留') }) }
   },
 
-  finishDraftStep: async function (step) {
+finishDraftStep: async function (step) {
     if (this.data.busy || !this._draftSession) return
     if (this.data.accountStepSummary.pending > 0 || (step === 4 && this.data.reviewStatusTabs[0].count > 0)) return
     this.setData({ busy: true, errorMessage: '' })
@@ -1171,7 +1137,7 @@ Page(require('./paged').enhance({
     finally { this.setData({ busy: false }) }
   },
 
-  goToStep: async function (event) {
+goToStep: async function (event) {
     if (this.data.busy || this.data.accountStepBusy) return
     const step = Number(event.currentTarget.dataset.step)
     if (!Number.isInteger(step) || step < 1 || step > this.data.unlockedStep) return
@@ -1180,7 +1146,7 @@ Page(require('./paged').enhance({
     this.persistAccountDrafts()
   },
 
-  openIssue: async function (event) {
+openIssue: async function (event) {
     if (this.data.busy) return
     const issueId = event.currentTarget.dataset.id
     const token = {}
@@ -1349,7 +1315,7 @@ Page(require('./paged').enhance({
     }
   },
 
-  closeIssue: function () {
+closeIssue: function () {
     if (!this.data.busy) {
       this.finishInputEditing()
       this._issueEvidenceToken = null
@@ -1358,28 +1324,28 @@ Page(require('./paged').enhance({
     }
   },
 
-  backFinalDetail: function () {
+backFinalDetail: function () {
     if (this.data.finalDetailParent) this.setData({ finalDetailSheet: this.prepareFinalDetail(this.data.finalDetailParent), finalDetailParent: null })
     else this.closeFinalDetail()
   },
 
-  prepareFinalDetail: function (kind, accountId, index) {
+prepareFinalDetail: function (kind, accountId, index) {
     this._finalDetail = buildFinalDetail(kind, this.businessData(), accountId)
     return presentation.detailWindow(this._finalDetail, index)
   },
 
-  closeFinalDetail: function () { this._finalDetail = null; this.setData({ finalDetailSheet: null, finalDetailParent: null }) },
+closeFinalDetail: function () { this._finalDetail = null; this.setData({ finalDetailSheet: null, finalDetailParent: null }) },
 
-  closeEvidence: function () {
+closeEvidence: function () {
     this._evidenceReadToken = null
     this.setData({ busy: false, evidenceSheet: null })
   },
 
-  beginInputEditing: function (event) {
+beginInputEditing: function (event) {
     this._editingInput = event.currentTarget.dataset.inputKey
   },
 
-  finishInputEditing: function () {
+finishInputEditing: function () {
     this._editingInput = ''
     this.flushAccountDraftSync()
     const pending = this._pendingBackgroundView
@@ -1387,13 +1353,13 @@ Page(require('./paged').enhance({
     if (pending && this.data.update && pending.update.updateId === this.data.update.updateId) this.applyUpdateView(pending, true)
   },
 
-  refreshIssueFieldsDraft: function () {
+refreshIssueFieldsDraft: function () {
     const state = model.buildIssueFieldsDraft(this.data)
     setChangedData(this, { issueFieldsCanSave: state.valid, issueFieldsReason: state.valid ? '' : state.reason })
     return state
   },
 
-  changeRepaymentOwner: function (event) {
+changeRepaymentOwner: function (event) {
     if (this.data.busy) return
     const owner = event.currentTarget.dataset.owner
     if (!['self', 'other'].includes(owner) || owner === this.data.issueDraft.repaymentOwner) return
@@ -1403,7 +1369,7 @@ Page(require('./paged').enhance({
     this.refreshIssueFieldsDraft()
   },
 
-  changeRepaymentOtherTreatment: function (event) {
+changeRepaymentOtherTreatment: function (event) {
     if (this.data.busy || this.data.issueDraft.repaymentOwner !== 'other') return
     const treatment = event.currentTarget.dataset.treatment
     if (!['expense', 'pending'].includes(treatment)) return
@@ -1411,13 +1377,13 @@ Page(require('./paged').enhance({
     this.refreshIssueFieldsDraft()
   },
 
-  changeIssueAccount: function (event) {
+changeIssueAccount: function (event) {
     this.setData({ 'issueDraft.accountIndex': Number(event.detail.value), bankBatchSelectedCount: 0,
       bankBatchRecords: (this.data.bankBatchRecords || []).map(function (item) { return Object.assign({}, item, { selected: false }) }) })
     this.refreshIssueFieldsDraft()
   },
 
-  refreshPaymentDraft: function () {
+refreshPaymentDraft: function () {
     if (this.data.currentIssue && this.data.currentIssue.paymentAccountsOnly) {
       const rows = this.data.paymentRows
       const valid = rows.length >= 2 && rows.every(function (row) { return Boolean(row.accountId) }) && new Set(rows.map(function (row) { return row.accountId })).size === rows.length
@@ -1438,7 +1404,8 @@ Page(require('./paged').enhance({
         (String(state.remainingMinor).startsWith('-') ? '超出 ' : '还差 ') + model.amountText(String(state.remainingMinor).replace('-', '')) })
     return state
   },
-  changePaymentRow: function (event) {
+
+changePaymentRow: function (event) {
     const index = Number(event.currentTarget.dataset.index)
     const field = event.currentTarget.dataset.field
     if (this.data.busy) return
@@ -1454,17 +1421,21 @@ Page(require('./paged').enhance({
     }.bind(this))
     setChangedData(this, { paymentRows: rows }); this.refreshPaymentDraft()
   },
-  fillPaymentAmount: function (event) {
+
+fillPaymentAmount: function (event) {
     if (this.data.busy) return
     this.setData({ paymentRows: model.updatePaymentAmounts(this.data.paymentRows, Number(event.currentTarget.dataset.index), '',
       this.data.issueEvents[0] && this.data.issueEvents[0].amountMinor, true) })
     this.refreshPaymentDraft()
   },
-  changePaymentNature: function (event) { this.setData({ paymentNatureIndex: Number(event.detail.value) }); this.refreshPaymentDraft() },
-  changePaymentTarget: function (event) { this.setData({ paymentTargetIndex: Number(event.detail.value) }); this.refreshPaymentDraft() },
-  changePaymentNote: function (event) { this.setData({ paymentEvidenceNote: event.detail.value }); this.refreshPaymentDraft() },
 
-  selectBankSuggestion: function (event) {
+changePaymentNature: function (event) { this.setData({ paymentNatureIndex: Number(event.detail.value) }); this.refreshPaymentDraft() },
+
+changePaymentTarget: function (event) { this.setData({ paymentTargetIndex: Number(event.detail.value) }); this.refreshPaymentDraft() },
+
+changePaymentNote: function (event) { this.setData({ paymentEvidenceNote: event.detail.value }); this.refreshPaymentDraft() },
+
+selectBankSuggestion: function (event) {
     if (this.data.busy) return
     const accountIndex = this.data.accountChoices.findIndex(function (account) {
       return account.accountId === event.currentTarget.dataset.id
@@ -1472,7 +1443,7 @@ Page(require('./paged').enhance({
     if (accountIndex > 0) this.changeIssueAccount({ detail: { value: accountIndex } })
   },
 
-  toggleBankBatch: function (event) {
+toggleBankBatch: function (event) {
     if (this.data.busy || this.data.bankBatchLoading) return
     const account = (this.data.accountChoices || [])[this.data.issueDraft.accountIndex]
     if (!account || !account.accountId) {
@@ -1487,7 +1458,7 @@ Page(require('./paged').enhance({
     this.setData({ bankBatchRecords: rows, bankBatchSelectedCount: rows.filter(function (row) { return row.selected }).length })
   },
 
-  resolveBankBatch: async function (fields) {
+resolveBankBatch: async function (fields) {
     if (!this._draftSession) return
     const issue = this.data.currentIssue
     const side = this.data.bankSuggestion.side === 'to' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
@@ -1502,7 +1473,7 @@ Page(require('./paged').enhance({
     catch (error) { this.setData({ errorMessage: publicError(error, '选择未保存，请重试') }) }
   },
 
-  refreshRepaymentChoices: function (choices) {
+refreshRepaymentChoices: function (choices) {
     const firstEvent = this.data.issueEvents[0]
     const status = allocationStatus(choices, firstEvent && firstEvent.amountMinor || '0')
     setChangedData(this, {
@@ -1515,7 +1486,7 @@ Page(require('./paged').enhance({
     })
   },
 
-  addRepaymentAccount: function (event) {
+addRepaymentAccount: function (event) {
     if (this.data.busy || this.data.repaymentAllocationChoices.length >= 20) return
     const option = this.data.repaymentAdditionalOptions[Number(event.detail.value)]
     if (!option || option.isPlaceholder) return
@@ -1523,27 +1494,27 @@ Page(require('./paged').enhance({
     this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.concat([row]))
   },
 
-  removeRepaymentAccount: function (event) {
+removeRepaymentAccount: function (event) {
     if (this.data.busy) return
     const index = Number(event.currentTarget.dataset.index)
     this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.filter(function (_, itemIndex) { return itemIndex !== index }))
   },
 
-  changeRepaymentAccountName: function (event) {
+changeRepaymentAccountName: function (event) {
     const index = Number(event.currentTarget.dataset.index)
     this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
       return itemIndex === index ? Object.assign({}, item, { name: event.detail.value }) : item
     }))
   },
 
-  changeRepaymentAllocation: function (event) {
+changeRepaymentAllocation: function (event) {
     const index = Number(event.currentTarget.dataset.index)
     this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
       return itemIndex === index ? Object.assign({}, item, { amountInput: event.detail.value }) : item
     }))
   },
 
-  fillRepaymentAllocation: function (event) {
+fillRepaymentAllocation: function (event) {
     const index = Number(event.currentTarget.dataset.index)
     const firstEvent = this.data.issueEvents[0]
     this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
@@ -1551,22 +1522,22 @@ Page(require('./paged').enhance({
     }))
   },
 
-  changeCounterpartyAccount: function (event) {
+changeCounterpartyAccount: function (event) {
     this.setData({ 'issueDraft.counterpartyAccountIndex': Number(event.detail.value) })
     this.refreshIssueFieldsDraft()
   },
 
-  changeDraftAccountName: function (event) {
+changeDraftAccountName: function (event) {
     this.setData({ 'issueDraft.newAccountName': event.detail.value })
     this.refreshIssueFieldsDraft()
   },
 
-  changeDraftAccountType: function (event) {
+changeDraftAccountType: function (event) {
     this.setData({ 'issueDraft.accountTypeIndex': Number(event.detail.value) })
     this.refreshIssueFieldsDraft()
   },
 
-  changeIssueCategory: function (event) {
+changeIssueCategory: function (event) {
     const categoryIndex = Number(event.detail.value)
     const category = (this.data.issueCategories || [])[categoryIndex]
     this.setData({
@@ -1576,7 +1547,7 @@ Page(require('./paged').enhance({
     this.refreshIssueFieldsDraft()
   },
 
-  changeIssueNature: function (event) {
+changeIssueNature: function (event) {
     const natureIndex = Number(event.detail.value)
     const nature = NATURE_OPTIONS[natureIndex] && NATURE_OPTIONS[natureIndex].value
     this.setData({
@@ -1589,16 +1560,15 @@ Page(require('./paged').enhance({
     this.refreshIssueFieldsDraft()
   },
 
-  selectPrimaryEvent: function (event) {
+selectPrimaryEvent: function (event) {
     this.setData({ 'issueDraft.primaryEventId': event.currentTarget.dataset.id })
   },
 
-
-  selectTargetRelation: function (event) {
+selectTargetRelation: function (event) {
     this.setData({ 'issueDraft.targetEventId': event.currentTarget.dataset.id })
   },
 
-  resolveWithFields: function () {
+resolveWithFields: function () {
     const issue = this.data.currentIssue
     if (!issue || this.data.busy || this.data.bankBatchLoading) return
     if (issue.paymentNeedsReview) {
@@ -1631,17 +1601,17 @@ Page(require('./paged').enhance({
     return this.resolveIssue('apply_fields', { fields: fields })
   },
 
-  confirmDistinct: function () {
+confirmDistinct: function () {
     if (this.data.currentIssue && this.data.currentIssue.historicalDuplicate &&
         (this.data.historicalLoading || this.data.historicalError || !this.data.historicalCandidates.length)) return
     this.resolveIssue('confirm_distinct', {})
   },
 
-  confirmSame: function () {
+confirmSame: function () {
     this.resolveIssue('confirm_same', { primaryEventId: this.data.issueDraft.primaryEventId })
   },
 
-  linkRefund: function () {
+linkRefund: function () {
     if (!this.data.issueDraft.targetEventId) {
       this.setData({ errorMessage: '请选择这笔退款对应的原消费' })
       return
@@ -1649,15 +1619,15 @@ Page(require('./paged').enhance({
     this.resolveIssue('link_refund', { targetEventId: this.data.issueDraft.targetEventId })
   },
 
-  markRefundPending: function () {
+markRefundPending: function () {
     this.resolveIssue('mark_refund_pending', {})
   },
 
-  confirmInstallment: function () {
+confirmInstallment: function () {
     this.resolveIssue('confirm_installment_principal', { installmentCandidateId: this.data.issueDraft.primaryEventId })
   },
 
-  reviewDraftEntry: function (issue, decision, extra) {
+reviewDraftEntry: function (issue, decision, extra) {
     const data = this.data
     const form = { issueDraft: data.issueDraft, paymentRows: data.paymentRows, paymentNatureIndex: data.paymentNatureIndex,
       paymentEvidenceNote: data.paymentEvidenceNote, repaymentAllocationChoices: data.repaymentAllocationChoices,
@@ -1670,7 +1640,7 @@ Page(require('./paged').enhance({
       decision: Object.assign({ decision: decision }, extra || {}), form: form }
   },
 
-  restoreReviewDraft: function (issueId) {
+restoreReviewDraft: function (issueId) {
     if (!this._draftSession) return
     const entry = this._draftSession.state.entries.concat(this._draftSession.state.conflictedChoices || []).find(function (item) { return item.issueId === issueId })
     if (!entry || !entry.form) return
@@ -1685,14 +1655,14 @@ Page(require('./paged').enhance({
       paymentEvidenceNote: form.paymentEvidenceNote || '', repaymentAllocationChoices: form.repaymentAllocationChoices || [] })
   },
 
-  recheckDraftConflicts: function () {
+recheckDraftConflicts: function () {
     if (!this._draftSession || this.data.busy) return
     this._draftSession.discardConflicts()
     this.setStep({ currentStep: this.data.accountStepSummary.pending ? 2 : 3,
       errorMessage: '已显示最新结果，原选择仍保留，请重新核对有变化的项目' })
   },
 
-  resolveIssue: async function (decision, extra) {
+resolveIssue: async function (decision, extra) {
     if (!this._draftSession) return
     const issue = this.data.currentIssue
     if (!issue || this.data.busy) return
@@ -1702,7 +1672,7 @@ Page(require('./paged').enhance({
     } catch (error) { this.setData({ errorMessage: publicError(error, '选择未保存，请重试') }) }
   },
 
-  abandonUpdate: function () {
+abandonUpdate: function () {
     const self = this
     if (this.data.busy || !this.data.update || !['draft', 'failed', 'review'].includes(this.data.update.status)) return
     wx.showModal({
@@ -1717,7 +1687,7 @@ Page(require('./paged').enhance({
     })
   },
 
-  performAbandonUpdate: async function () {
+performAbandonUpdate: async function () {
     if (this.data.busy || !this.data.update) return
     this.setData({ busy: true, errorMessage: '', currentIssue: null })
     try {
@@ -1739,9 +1709,9 @@ Page(require('./paged').enhance({
     }
   },
 
-  openImportHistory: function () { if (!this.data.busy) wx.navigateTo({ url: '/pages/import-history/index' }) },
+openImportHistory: function () { if (!this.data.busy) wx.navigateTo({ url: '/pages/import-history/index' }) },
 
-  startAnother: function () {
+startAnother: function () {
     this._businessData = null
     this._reviewProjection = null
     this._reviewPage = 0
@@ -1785,5 +1755,9 @@ Page(require('./paged').enhance({
       repaymentAllocationChoices: [], repaymentAllocationStatusText: '', repaymentAllocationCanSave: false
     })
     this._accountUiDrafts.clear()
-  }
+  },
+
+cancelPagedReads: runtime.cancelPagedReads,
+
+request: runtime.request
 }))

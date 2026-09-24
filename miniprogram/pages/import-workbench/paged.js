@@ -7,94 +7,17 @@ const model = require('./model')
 const presentation = require('./presentation')
 const inlineEvidence = require('./inline-evidence')
 const { buildFinalDetail, TITLES: FINAL_DETAIL_TITLES } = require('./final-detail')
-const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).length
+
 const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务版本过旧，请更新云函数后重试'
   : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
-const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon', 'financeUpdates.setRepayment',
-  'reviewIssues.refreshAccountGroups', 'reviewIssues.resolveAccountMappings', 'reviewIssues.resolve'])
 
-function boundedSetData(page) {
-  const send = page.setData.bind(page)
-  page.setData = function (patch, callback) {
-    let part = {}, size = 2
-    const chunks = []
-    for (const key of Object.keys(patch)) {
-      const entry = { [key]: patch[key] }, next = bytes(entry)
-      if (next > 64 * 1024) throw new Error('当前展示项超过预算，请通过详情分页查看')
-      if (size + next > 60 * 1024) { chunks.push(part); part = {}; size = 2 }
-      part[key] = patch[key]; size += next
-    }
-    if (Object.keys(part).length) chunks.push(part)
-    chunks.forEach((chunk, index) => send(chunk, index === chunks.length - 1 ? callback : undefined))
-  }
-}
+
+
 
 function enhance(definition) {
   const original = Object.assign({}, definition)
   const result = Object.assign({}, definition, {
-    onLoad(options) {
-      boundedSetData(this)
-      this._viewEpoch = 0
-      this._viewActive = true
-      this.setData({ pageLoading: false, pageError: '', directoryPage: null })
-      return original.onLoad.call(this, options)
-    },
-    onShow() {
-      if (!getApp().hasLoginApproval()) {
-        this.cancelPagedReads()
-        if (this._viewSession) this._viewSession.close()
-        if (this._unsubscribeDraft) this._unsubscribeDraft()
-        this._viewSession = null; this._businessData = null; this._draftSession = null
-        this.setData(JSON.parse(JSON.stringify(original.data)))
-        return
-      }
-      const returning = this._viewActive === false
-      this._viewActive = true
-      original.onShow.call(this)
-      if (returning && this.data.update) return this.loadUpdate(this.data.update.updateId)
-    },
-    onHide() {
-      this._viewActive = false; this._viewEpoch++
-      this.cancelPagedReads()
-      this.setData({ currentIssue: null, currentMembers: [], issueEvents: [], issueRelations: [], issueVisibleEvents: [],
-        evidenceSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null, busy: false })
-      return original.onHide.call(this)
-    },
-    onUnload() {
-      this._viewActive = false; this._viewEpoch++
-      this.cancelPagedReads()
-      if (this._viewSession) this._viewSession.close()
-      this._viewSession = null; this._businessData = null; this._draftSession = null
-      return original.onUnload.call(this)
-    },
-    cancelPagedReads() {
-      this.closeInlineEvidence('issue')
-      this.closeInlineEvidence('account')
-      for (const key of ['_mainPager', '_memberPager', '_relationPager', '_historicalPager', '_accountPager', '_evidencePager', '_detailPager', '_finalPager', '_directoryPager', '_optionPager']) {
-        if (this[key]) this[key].cancel()
-        this[key] = null
-      }
-      this._issueEvidenceToken = null; this._accountEvidenceToken = null; this._evidenceReadToken = null
-      this._issueEvidenceRecords = []; this._accountRecordList = []; this._finalDetail = null
-    },
-    async request(action, data) {
-      if (action === 'financeUpdates.summary') return api.readSummary(data.updateId)
-      if (commandActions.has(action)) {
-        const input = Object.assign({}, data)
-        if (action === 'reviewIssues.resolveAccountMappings') {
-          input.updateVersion = this.data.update.version
-          input.decisions = input.decisions.map(decision => Object.assign({}, decision, { issueVersion: decision.issueVersion ||
-            (this.businessData().issues.find(issue => issue.issueId === decision.issueId) || {}).version }))
-        }
-        const receipt = await api.command(action, input)
-        if (action === 'financeUpdates.post' || action === 'financeUpdates.abandon') return receipt
-        try { return await api.readSummary(receipt.update.updateId) }
-        catch (error) { return Object.assign({}, receipt, { refreshRequired: true }) }
-      }
-      if (action === 'reviewIssues.get') return this.readIssue(data.issueId)
-      return api.callImport(action, data)
-    },
-    applyUpdateView(view, background, restoreToFirstStep, quiet) {
+applyUpdateView(view, background, restoreToFirstStep, quiet) {
       if (!this._viewActive) return
       if (!view.workbench) {
         // 操作事实先显示；明细读取失败不抹掉已保存/已入账结果。
@@ -144,17 +67,17 @@ function enhance(definition) {
       }
       if (changed || this._loadedStep !== step) this.loadActivePage(true, undefined, quiet)
     },
-    stepPatch(step) {
+stepPatch(step) {
       if ([2, 3].includes(step)) return {}
       const patch = presentation.emptyLists()
       if (step === 4 && this._viewSession) Object.assign(patch, { finalSummary: this._viewSession.summary.workbench.finalSummary,
         fundsFlowGroups: this._viewSession.summary.workbench.fundsFlowGroups })
       return patch
     },
-    setStep(patch) { setChangedData(this, Object.assign({}, this.stepPatch(patch.currentStep), patch)); return this.loadActivePage(true) },
-    renderReview(reset) { return this.loadActivePage(reset) },
-    loadDuplicateRecords() { return this.loadActivePage(true) },
-    async loadActivePage(reset, direction, quiet) {
+setStep(patch) { setChangedData(this, Object.assign({}, this.stepPatch(patch.currentStep), patch)); return this.loadActivePage(true) },
+renderReview(reset) { return this.loadActivePage(reset) },
+loadDuplicateRecords() { return this.loadActivePage(true) },
+async loadActivePage(reset, direction, quiet) {
       if (!this._viewSession || !this._viewActive) return
       const step = this.data.currentStep
       const epoch = ++this._viewEpoch
@@ -201,15 +124,15 @@ function enhance(definition) {
         if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageLoading: false, pageError: errorText(error) })
       }
     },
-    changeReviewPage(event) { return this.loadActivePage(false, event.currentTarget.dataset.direction === 'first' ? 'first' : Number(event.currentTarget.dataset.direction)) },
-    async retryPagedView() {
+changeReviewPage(event) { return this.loadActivePage(false, event.currentTarget.dataset.direction === 'first' ? 'first' : Number(event.currentTarget.dataset.direction)) },
+async retryPagedView() {
       const epoch = this._viewEpoch
       this.setData({ pageLoading: true })
       try { const summary = await api.readSummary(this.data.update.updateId); if (this._viewActive && epoch === this._viewEpoch) { this._mainPager = null; this.applyUpdateView(summary, true); await this.loadActivePage(true) } }
       catch (error) { if (this._viewActive) this.setData({ pageError: errorText(error) }) }
       finally { if (this._viewActive) this.setData({ pageLoading: false }) }
     },
-    async loadDirectories(events = [], extraIds = []) {
+async loadDirectories(events = [], extraIds = []) {
       const pairs = await Promise.all(['accounts', 'categories', 'accountDrafts'].map(async kind => {
         const response = await this._viewSession.read('financeUpdates.options', { kind, pageSize: 8 })
         const key = kind === 'categories' ? 'categoryId' : 'accountId'
@@ -222,7 +145,7 @@ function enhance(definition) {
       }))
       return Object.fromEntries(pairs)
     },
-    async readIssue(issueId) {
+async readIssue(issueId) {
       const session = this._viewSession
       const [details, relations] = await Promise.all([
         session.read('reviewIssues.get', { issueId, memberKind: 'event', pageSize: 8 }),
@@ -238,7 +161,7 @@ function enhance(definition) {
         { targetEvent: editorPreview(member.relation.targetEvent) }) }) : member)
       return Object.assign({}, details, directory, { members: members.concat(candidates), relationPage: relations })
     },
-    async openIssue(event) {
+async openIssue(event) {
       await original.openIssue.call(this, event)
       if (!this.data.currentIssue || !this._viewActive) return
       const issueId = this.data.currentIssue.issueId
@@ -257,29 +180,29 @@ function enhance(definition) {
         if (row) this.editLoanRepayment({ currentTarget:{ dataset:{ id:row.eventId } } })
       }
     },
-    excludeIssueEvents() { return this.resolveIssue('exclude_events', { selection: { mode: 'all' } }) },
-    selectPrimaryMember(event) { this.setData({ 'issueDraft.primaryEventId': event.currentTarget.dataset.id }) },
-    async openAccountChoice(event) {
+excludeIssueEvents() { return this.resolveIssue('exclude_events', { selection: { mode: 'all' } }) },
+selectPrimaryMember(event) { this.setData({ 'issueDraft.primaryEventId': event.currentTarget.dataset.id }) },
+async openAccountChoice(event) {
       original.openAccountChoice.call(this, event)
       if (!this.data.accountChoiceSheet) return
       this.setData({ choiceKind: 'accounts' })
       this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: 'accounts', pageSize: 12 })
       return this.changeChoicePage(event)
     },
-    async bindAccountChoiceSearch(event) {
+async bindAccountChoiceSearch(event) {
       if (!this.data.accountChoiceSheet) return
       this.setData({ accountChoiceQuery: event.detail.value })
       this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.choiceKind, query: String(event.detail.value).slice(0, 80), pageSize: 12 })
       return this.changeChoicePage(event)
     },
-    changeChoiceKind(event) {
+changeChoiceKind(event) {
       const kind = event.currentTarget.dataset.kind
       if (!['accounts', 'accountDrafts'].includes(kind)) return
       this.setData({ choiceKind: kind, accountChoiceQuery: '' })
       this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
       return this.changeChoicePage(event)
     },
-    async changeChoicePage(event) {
+async changeChoicePage(event) {
       const pager = this._directoryPager
       this.setData({ choiceLoading: true })
       try {
@@ -289,7 +212,7 @@ function enhance(definition) {
         this.setData({ accountChoiceResults: model.accountSelectorOptions(this.data.choiceKind === 'accounts' ? response.items : [], this.data.choiceKind === 'accountDrafts' ? response.items : []), choicePage: response.page, choiceLoading: false })
       } catch (error) { if (pager === this._directoryPager) this.setData({ choiceLoading: false, errorMessage: errorText(error) }) }
     },
-    selectAccountChoice(event) {
+selectAccountChoice(event) {
       const id = String(event.currentTarget.dataset.value).replace(/^account:/, '')
       const selected = (this._choiceRows || []).find(row => row.accountId === id)
       if (selected) {
@@ -302,28 +225,28 @@ function enhance(definition) {
       }
       return original.selectAccountChoice.call(this, event)
     },
-    async openDirectory(event) {
+async openDirectory(event) {
       const target = event.currentTarget.dataset.target
       const kind = target === 'category' ? 'categories' : 'accounts'
       this.setData({ directorySheet: { target, kind, query: '', items: [], loading: true } })
       this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
       return this.changeDirectoryPage(event)
     },
-    async searchDirectory(event) {
+async searchDirectory(event) {
       if (!this.data.directorySheet) return
       const query = String(event.detail.value).slice(0, 80)
       this.setData({ 'directorySheet.query': query })
       this._optionPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.directorySheet.kind, query, pageSize: 12 })
       return this.changeDirectoryPage(event)
     },
-    changeDirectoryKind(event) {
+changeDirectoryKind(event) {
       const kind = event.currentTarget.dataset.kind
       if (!this.data.directorySheet || this.data.directorySheet.target === 'category' || !['accounts', 'accountDrafts'].includes(kind)) return
       this.setData({ 'directorySheet.kind': kind, 'directorySheet.query': '' })
       this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
       return this.changeDirectoryPage(event)
     },
-    async changeDirectoryPage(event) {
+async changeDirectoryPage(event) {
       const pager = this._optionPager
       this.setData({ 'directorySheet.loading': true })
       try {
@@ -332,7 +255,7 @@ function enhance(definition) {
         this.setData({ 'directorySheet.items': response.items, 'directorySheet.page': response.page, 'directorySheet.loading': false })
       } catch (error) { if (pager === this._optionPager) this.setData({ 'directorySheet.loading': false, errorMessage: errorText(error) }) }
     },
-    selectDirectory(event) {
+selectDirectory(event) {
       const sheet = this.data.directorySheet
       if (!sheet || !this.data.currentIssue) return
       const item = sheet.items[Number(event.currentTarget.dataset.index)]
@@ -366,8 +289,8 @@ function enhance(definition) {
       }
       this.closeDirectory(); this.refreshIssueFieldsDraft()
     },
-    closeDirectory() { if (this._optionPager) this._optionPager.cancel(); this._optionPager = null; this.setData({ directorySheet: null }) },
-    expandBankBatch() {
+closeDirectory() { if (this._optionPager) this._optionPager.cancel(); this._optionPager = null; this.setData({ directorySheet: null }) },
+expandBankBatch() {
       if (this.data.currentIssue.repaymentOwnershipRequired) return
       if (this.data.bankBatchExpanded) { this.setData({ bankBatchExpanded: false, bankBatchRecords: [], bankBatchSelectedCount: 0 }); return }
       const candidates = new Set(this.data.bankBatchCandidates.map(row => row.issueId))
@@ -379,7 +302,7 @@ function enhance(definition) {
       })
       this.setData({ bankBatchExpanded: true, bankBatchLoading: false, bankBatchRecords: rows })
     },
-    async changeHistoricalPage(event) {
+async changeHistoricalPage(event) {
       const pager = this._historicalPager
       if (!pager || !this.data.currentIssue) return
       const issueId = this.data.currentIssue.issueId
@@ -396,22 +319,22 @@ function enhance(definition) {
       } catch (error) { if (pager === this._historicalPager) this.setData({ historicalError: errorText(error) }) }
       finally { if (pager === this._historicalPager) this.setData({ historicalLoading: false }) }
     },
-    selectHistoricalTransaction(event) {
+selectHistoricalTransaction(event) {
       if (this.data.busy || this.data.historicalLoading) return
       const row = this.data.historicalCandidates.find(item => item.transactionId === event.currentTarget.dataset.id && !item.stale)
       if (row) this.setData({ historicalSelection: row.transactionId })
     },
-    linkHistoricalTransaction() {
+linkHistoricalTransaction() {
       if (!this.data.currentIssue || !this.data.currentIssue.historicalDuplicate || !this.data.historicalSelection || this.data.historicalLoading) return
       return this.resolveIssue('link_existing_transaction', { transactionId: this.data.historicalSelection })
     },
-    async refreshHistoricalReview() {
+async refreshHistoricalReview() {
       if (this.data.busy || !this.data.update) return
       const updateId = this.data.update.updateId
       this.closeIssue()
       await this.loadUpdate(updateId, false)
     },
-    async changeIssueMembers(event) {
+async changeIssueMembers(event) {
       const pager = this._memberPager
       if (!pager || !this.data.currentIssue) return
       const issueId = this.data.currentIssue.issueId
@@ -426,7 +349,7 @@ function enhance(definition) {
         await this.loadInlineEvidence('issue', this._issueEvidenceRecords)
       } catch (error) { if (pager === this._memberPager) this.setData({ issueEvidenceLoading: false, errorMessage: errorText(error) }) }
     },
-    async changeIssueRelations(event) {
+async changeIssueRelations(event) {
       const pager = this._relationPager
       if (!pager || !this.data.currentIssue) return
       try {
@@ -435,7 +358,7 @@ function enhance(definition) {
         this.setData({ issueRelations: response.items.filter(member => member.relation).map(member => model.relationChoiceView(editorPreview(member.relation.targetEvent), member.relation)), relationPage: response.page })
       } catch (error) { if (pager === this._relationPager) this.setData({ errorMessage: errorText(error) }) }
     },
-    async openAccountRecords(event) {
+async openAccountRecords(event) {
       const issueId = event.currentTarget.dataset.id
       const mapping = this.data.accountMappings.find(item => item.issueId === issueId)
       if (!mapping) return
@@ -443,7 +366,7 @@ function enhance(definition) {
       this.setData({ accountRecordsSheet: { issueId, label: mapping.label, records: [], loading: true } })
       return this.changeAccountMembers(event)
     },
-    async changeAccountMembers(event) {
+async changeAccountMembers(event) {
       const pager = this._accountPager
       if (!pager || !this.data.accountRecordsSheet) return
       this.closeInlineEvidence('account')
@@ -458,12 +381,12 @@ function enhance(definition) {
         await this.loadInlineEvidence('account', this._accountRecordList)
       } catch (error) { if (pager === this._accountPager) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': errorText(error) }) }
     },
-    closeInlineEvidence(scope) {
+closeInlineEvidence(scope) {
       const key = scope === 'issue' ? '_issueInlineEvidence' : '_accountInlineEvidence'
       if (this[key]) this[key].close()
       this[key] = null
     },
-    loadInlineEvidence(scope, records) {
+loadInlineEvidence(scope, records) {
       this.closeInlineEvidence(scope)
       const key = scope === 'issue' ? '_issueInlineEvidence' : '_accountInlineEvidence'
       const path = scope === 'issue' ? 'issueVisibleEvents' : 'accountRecordsSheet.records'
@@ -477,22 +400,22 @@ function enhance(definition) {
       this[key] = reader
       return reader.loadAll()
     },
-    changeInlineSource(event) {
+changeInlineSource(event) {
       const scope = event.currentTarget.dataset.scope
       const reader = scope === 'account' ? this._accountInlineEvidence : this._issueInlineEvidence
       if (reader) return reader.change(event.currentTarget.dataset.id, direction(event))
     },
-    retryIssueRecordEvidence(event) {
+retryIssueRecordEvidence(event) {
       if (this._issueInlineEvidence) return this._issueInlineEvidence.change(event.currentTarget.dataset.id, 0)
     },
-    retryAccountRecordEvidence(event) {
+retryAccountRecordEvidence(event) {
       if (this._accountInlineEvidence) return this._accountInlineEvidence.change(event.currentTarget.dataset.id, 0)
     },
-    editLoanRepayment(event) {
+editLoanRepayment(event) {
       const eventId = event.currentTarget.dataset.id || this.data.evidenceSheet && this.data.evidenceSheet.eventId
       if (eventId && this.data.update && this.data.update.status === 'review') wx.navigateTo({ url:'/pages/repayment-entry/index?updateId=' + encodeURIComponent(this.data.update.updateId) + '&eventId=' + encodeURIComponent(eventId) })
     },
-    async openEvidence(event) {
+async openEvidence(event) {
       const eventId = event.currentTarget.dataset.id
       this._evidencePager = this._viewSession.pager('economicEvents.evidence', { eventId, pageSize: 8 })
       const row = (this.businessData().events || []).find(e=>e.eventId === eventId)
@@ -513,7 +436,7 @@ function enhance(definition) {
         } catch(error) { if (pager === this._evidencePager) this.setData({ errorMessage:errorText(error) }) }
       }
     },
-    async changeEvidencePage(event) {
+async changeEvidencePage(event) {
       const pager = this._evidencePager
       try {
         const response = await pager.load(direction(event))
@@ -522,11 +445,11 @@ function enhance(definition) {
         this.setData({ evidenceSheet: { eventId: this.data.evidenceSheet.eventId,repaymentEditable:this._repaymentEditable,evidence: response.items, page: response.page, loading: false, part: '' } })
       } catch (error) { if (pager === this._evidencePager) this.setData({ 'evidenceSheet.loading': false, errorMessage: errorText(error) }) }
     },
-    async openEvidencePart(event) {
+async openEvidencePart(event) {
       this._detailPager = this._viewSession.pager('economicEvents.detail', { eventId: this.data.evidenceSheet.eventId, evidenceId: event.currentTarget.dataset.id })
       return this.changeEvidencePart(event)
     },
-    async changeEvidencePart(event) {
+async changeEvidencePart(event) {
       const pager = this._detailPager
       try {
         const response = await pager.load(direction(event))
@@ -535,7 +458,7 @@ function enhance(definition) {
           'evidenceSheet.partFields': presentation.evidencePartFields(response.part, response.page) })
       } catch (error) { if (pager === this._detailPager) this.setData({ errorMessage: errorText(error) }) }
     },
-    async openFinalDetail(event) {
+async openFinalDetail(event) {
       const kind = event.currentTarget.dataset.kind
       const accountId = event.currentTarget.dataset.id
       const filter = { status: 'ready' }
@@ -554,7 +477,7 @@ function enhance(definition) {
       this.setData({ finalDetailSheet: { kind, title: title || FINAL_DETAIL_TITLES.all, count: 0, records: [], accounts: [], loading: true }, finalDetailParent: null })
       return this.changeFinalPage(event)
     },
-    async changeFinalPage(event) {
+async changeFinalPage(event) {
       const pager = this._finalPager, target = this._finalKind
       try {
         const response = await pager.load(direction(event))
@@ -566,8 +489,8 @@ function enhance(definition) {
         this.setData({ finalDetailSheet: Object.assign({}, sheet, { count: response.total, records: (sheet.records || []).map(presentation.record), page: response.page, loading: false }), finalDetailScrollTop: 0 })
       } catch (error) { if (pager === this._finalPager) this.setData({ 'finalDetailSheet.loading': false, errorMessage: errorText(error) }) }
     },
-    openFinalAccount(event) { return this.openFinalDetail({ currentTarget: { dataset: { kind: 'account', id: event.currentTarget.dataset.id } } }) },
-    async postUpdate() {
+openFinalAccount(event) { return this.openFinalDetail({ currentTarget: { dataset: { kind: 'account', id: event.currentTarget.dataset.id } } }) },
+async postUpdate() {
       if (this.data.busy || !this._draftSession) return
       const session = this._draftSession
       const operation = this._postOperation = { epoch: this._viewEpoch }
@@ -598,7 +521,7 @@ function enhance(definition) {
       }
       finally { if (active()) this.setData({ busy: false }) }
     }
-  })
+})
   for (const [method, keys] of Object.entries({ closeIssue: ['_memberPager', '_relationPager', '_historicalPager'], closeAccountRecords: ['_accountPager'],
     closeEvidence: ['_evidencePager', '_detailPager'], closeFinalDetail: ['_finalPager'], closeAccountChoice: ['_directoryPager'] })) {
     result[method] = function () {
@@ -626,4 +549,4 @@ function editorPreview(event) {
 }
 function direction(event) { const value = event && event.currentTarget.dataset.direction; return value === 'first' ? value : Number(value || 0) }
 function compactMapping(mapping) { const { choiceOptions, evidencePreview, ...visible } = presentation.accountMapping(mapping); return Object.assign(visible, { evidencePreview: Boolean(evidencePreview) }) }
-module.exports = { enhance, boundedSetData, bytes }
+module.exports = { enhance }
