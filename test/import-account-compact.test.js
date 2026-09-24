@@ -38,7 +38,7 @@ test('新建编辑行统一白底，确认按钮独立，已确认项可更改',
   assert.match(markup, /!item.needsConfirmation/)
   assert.match(markup, /account-summary-text/)
   assert.match(markup, /class="account-change"/)
-  assert.match(markup, /还需确认/)
+  assert.match(markup, /（剩 /)
 })
 
 test('类型仍完整可读，名称可编辑且不缩字，保留至少88rpx触控高度', () => {

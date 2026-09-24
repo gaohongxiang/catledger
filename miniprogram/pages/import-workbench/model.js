@@ -3,7 +3,7 @@ const bankSuggestion = require('./bank-suggestion')
 const ISSUE_LABELS = Object.freeze({
   account_mapping: '确认账户归属',
   category_assignment: '交易分类待确认',
-  shared_fields: '补全共同字段',
+  shared_fields: '确认交易类型',
   same_event: '判断是否同一笔',
   refund_relation: '退款关系待确认',
   transfer_accounts: '确认资金流转账户',
@@ -15,7 +15,7 @@ const ISSUE_LABELS = Object.freeze({
 const ISSUE_HELP = Object.freeze({
   account_mapping: '选择这笔记录应归属的账本账户',
   category_assignment: '为这些同类收支选择一个分类',
-  shared_fields: '补全这些记录共同缺少的信息',
+  shared_fields: '请确认这笔是消费、收入、退款、还款还是转账，并核对使用的账户',
   same_event: '确认不同来源记录是不是同一笔交易',
   refund_relation: '选择这笔退款对应的原消费',
   transfer_accounts: '确认资金从哪个账户转到哪个账户',
@@ -35,7 +35,7 @@ const ISSUE_GROUP_LABELS = Object.freeze({
   transfer_accounts: '资金流转',
   category_assignment: '交易分类',
   field_conflict: '字段冲突',
-  shared_fields: '信息补全',
+  shared_fields: '交易类型',
   identity_conflict: '来源冲突',
   installment_origin: '分期来源'
 })
@@ -283,7 +283,7 @@ function evidenceFields(rawFields) {
 function fileStateText(state) {
   return {
     queued: '等待上传', preparing: '准备中', uploading: '上传中', parsing: '解析中',
-    ready: '解析完成', failed: '解析失败', duplicate: '已经入账', discarded: '已移除'
+    ready: '解析完成', mapping: '待确认账单列', failed: '解析失败', duplicate: '已经入账', discarded: '已移除'
   }[state] || state
 }
 
@@ -319,15 +319,16 @@ function sameFileContent(left, right) {
 
 function uploadSummary(files) {
   const failed = files.filter(function (file) { return file.state === 'failed' }).length
-  const attention = files.filter(function (file) {
-    return ['failed', 'duplicate'].includes(file.state)
-  }).length
+  const mapping = files.filter(function (file) { return file.state === 'mapping' }).length
+  const duplicate = files.filter(function (file) { return file.state === 'duplicate' }).length
   return {
     total: files.length,
     queued: files.filter(function (file) { return file.state === 'queued' }).length,
     ready: files.filter(function (file) { return file.state === 'ready' }).length,
     failed: failed,
-    attention: attention
+    mapping: mapping,
+    duplicate: duplicate,
+    attention: failed + mapping
   }
 }
 
@@ -392,7 +393,7 @@ function buildIssueFieldsDraft(state) {
   }
   if (['shared_fields', 'field_conflict'].includes(issue.issueType)) {
     const nature = (state.natureOptions || [])[draft.natureIndex]
-    if (!nature || !nature.value || nature.value === 'unknown') return invalid('请选择明确的收支性质')
+    if (!nature || !nature.value || nature.value === 'unknown') return invalid('请选择交易类型')
     fields.economicNature = nature.value
     fields.flowDirection = nature.value === 'income' || nature.value === 'refund' ? 'inflow'
       : ['internal_transfer', 'repayment', 'borrow'].includes(nature.value) ? 'neutral' : 'outflow'
@@ -421,6 +422,10 @@ function issueView(issue) {
   if (aggregateRepayment) label = '还款分配待确认'
   if (missingFundsSide === 'from') label = '转出账户待确认'
   if (missingFundsSide === 'to') label = '转入账户待确认'
+  const historicalDuplicate = issue.primaryReasonCode === 'historical_duplicate_candidate'
+  if (historicalDuplicate) label = '疑似已经入账'
+  const issueHelp = historicalDuplicate ? '发现账户、金额和时间接近的已入账记录，请核对是否同一笔。'
+    : ISSUE_HELP[issue.issueType] || '请核对相关记录后作出选择'
   const groupedAccount = issue.issueType === 'account_mapping' && /^payment_(component_\d+|target)$/.test(context.fundsSide || '')
   const paymentNeedsReview = Boolean(!groupedAccount && subject && (issue.reasonCodes || []).concat(subject.reasonCodes || []).includes('payment_components_ambiguous') && !subject.paymentResolution)
   if (paymentNeedsReview) label = '组合支付待核对'
@@ -435,11 +440,12 @@ function issueView(issue) {
     aggregateRepayment: aggregateRepayment,
     missingFundsSide: missingFundsSide,
     fundsProjection: projected || null,
+    historicalDuplicate: historicalDuplicate,
     missingAccountLabel: missingFundsSide === 'to' ? '转入账户' : '转出账户',
-    canConfirmSame: issue.issueType === 'same_event' && issue.primaryReasonCode !== 'source_group_conflict',
-    reasonText: issue.primaryReasonCode === 'loan_repayment_required' ? '本金、利息、费用未确认，补齐后才能入账；暂不关联只推迟贷款关系。' : issue.primaryReasonCode === 'source_group_conflict'
-      ? '共享参考号不能证明是同一笔，独立来源编号或时间存在歧义，请保留独立记录并核对'
-      : ISSUE_HELP[issue.issueType] || '请核对相关记录后作出选择',
+    canConfirmSame: issue.issueType === 'same_event' && !historicalDuplicate && issue.primaryReasonCode !== 'source_group_conflict',
+    reasonText: issue.primaryReasonCode === 'loan_repayment_required' ? '补齐本金、利息、费用后才能入账。' : issue.primaryReasonCode === 'source_group_conflict'
+      ? '参考号相同但来源编号或时间有歧义，请核对。'
+      : issueHelp,
     subjectTitle: subject ? subject.displayTitle : label,
     subjectMeta: subject ? subject.displayMeta : '',
     subjectAmountText: subject ? subject.amountText : '',
@@ -458,7 +464,7 @@ function issueView(issue) {
         ? '转入账户已确定，只需选择资金从哪个账户转出'
         : missingFundsSide === 'to'
           ? '转出账户已确定，只需选择资金转入哪个账户'
-          : ISSUE_HELP[issue.issueType] || '请核对相关记录后作出选择'
+          : issueHelp
   })
 }
 
@@ -696,13 +702,17 @@ function partitionOpenIssues(issues) {
 }
 
 // 两个整理视角共享事件集合。问题组和退款比对候选不能替代交易笔数。
+function isHistoricalDuplicate(event) {
+  return event.status === 'excluded' && (event.reasonCodes || []).some(reason => ['already_posted', 'linked_existing_transaction'].includes(reason))
+}
+
 function organizerRecordState(events, issues, categories, query, options) {
   const summaryOnly = Boolean(options && options.summaryOnly)
   const decorate = !summaryOnly && (!options || options.decorate !== false || query)
   const byId = new Map((events || []).map(function (event) { return [event.eventId, decorate ? eventView(event) : event] }))
   const rows = [...byId.values()]
   const active = rows.filter(function (event) { return ['ready', 'needs_action', 'posted'].includes(event.status) })
-  const excluded = rows.filter(function (event) { return event.status === 'excluded' })
+  const excluded = rows.filter(function (event) { return event.status === 'excluded' && !isHistoricalDuplicate(event) })
   const activeIds = new Set(active.map(function (event) { return event.eventId }))
   const openSource = (issues || []).filter(function (issue) {
     return issue.status === 'open' && (issue.blocking || issue.issueType === 'category_assignment')
@@ -742,8 +752,8 @@ function organizerRecordState(events, issues, categories, query, options) {
   const blockedCategoryIssues = new Set(annotated.filter(function (event) {
     return event.categoryIssueId && event.pendingReview
   }).map(function (event) { return event.categoryIssueId }))
-  const duplicateCandidates = rows.filter(function (event) { return event.duplicateEvidenceCount > 0 })
-  const duplicateCount = duplicateCandidates.reduce(function (sum, event) { return sum + Number(event.duplicateEvidenceCount) }, 0)
+  const duplicateCandidates = rows.filter(function (event) { return event.duplicateEvidenceCount > 0 || isHistoricalDuplicate(event) })
+  const duplicateCount = duplicateCandidates.reduce(function (sum, event) { return sum + Number(event.duplicateEvidenceCount || 0) + (isHistoricalDuplicate(event) ? 1 : 0) }, 0)
   const summary = { activeCount: active.length, excludedCount: excluded.length, duplicateCount: duplicateCount,
     totalCount: active.length + excluded.length + duplicateCount }
   return {
@@ -978,6 +988,7 @@ function fundsFlowSummary(events, accounts) {
 }
 
 module.exports = {
+  isHistoricalDuplicate,
   eventAccountIds,
   fundsFlowSummary,
   buildIssueFieldsDraft,

@@ -1,3 +1,4 @@
+@import "./bank-mapping.wxss";
 /* MINI-1906UI：仅展示层。品牌色、资金含义和业务状态保持分离。 */
 .import-page {
   --ui-page: var(--theme-page);
@@ -113,6 +114,22 @@ button::after { border: 0; }
   background: transparent;
   border: 0;
   border-radius: 0;
+}
+.stage-refresh-slot {
+  display: flex;
+  width: 56rpx;
+  min-height: 40rpx;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 56rpx;
+}
+.stage-refresh-spinner {
+  width: 28rpx;
+  height: 28rpx;
+  border: 3rpx solid var(--ui-line);
+  border-top-color: var(--ui-accent-strong);
+  border-radius: 50%;
+  animation: processing-spin 760ms linear infinite;
 }
 .stage-item {
   position: relative;
@@ -437,6 +454,9 @@ button::after { border: 0; }
   border-right: 2rpx solid var(--ui-line);
 }
 .parse-summary-item:last-child { border-right: 0; }
+.parse-summary-action { min-width: 0; margin: 0; border-radius: 0; background: transparent; line-height: 1.4; }
+.parse-summary-action::after { border: 0; }
+.parse-summary-action .parse-summary-label { color: var(--ui-accent-strong); }
 .parse-summary-value { color: var(--ui-ink); font-size: var(--font-body, 28rpx); font-weight: 500; }
 .parse-summary-label { margin-top: 4rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
 
@@ -573,6 +593,14 @@ button::after { border: 0; }
   color: var(--ui-subtle);
   font-size: var(--font-caption, 24rpx);
   line-height: 1.6;
+}
+.account-confirm-note { flex: 1; min-width: 0; }
+.account-confirm-note .account-inline-note,
+.account-confirm-note .account-state-note {
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .account-evidence-trigger {
@@ -766,7 +794,7 @@ button::after { border: 0; }
   line-height: 1;
 }
 .review-status-tab-active .review-status-tab-count { color: var(--ui-accent-strong); background: transparent; }
-.review-batch-list { margin-top: 18rpx; }
+.review-batch-list { margin-top: 18rpx; min-height: 384rpx; }
 .review-batch { padding: 0 0 16rpx; }
 .review-batch + .review-batch { margin-top: 4rpx; }
 .review-decision-card {
@@ -1880,9 +1908,7 @@ button::after { border: 0; }
 .file-error {
   display: block;
   width: 100%;
-  max-height: 48rpx;
   margin-top: 4rpx;
-  overflow: hidden;
   color: var(--theme-expense, #b54738);
   font-size: var(--font-caption, 24rpx);
   line-height: 24rpx;
@@ -1890,17 +1916,17 @@ button::after { border: 0; }
 }
 .file-row-side {
   display: flex;
-  width: 136rpx;
-  min-width: 136rpx;
+  width: 64rpx;
+  min-width: 64rpx;
   min-height: 64rpx;
   align-items: flex-start;
   justify-content: flex-end;
-  flex: 0 0 136rpx;
+  flex: 0 0 64rpx;
 }
 .file-row-actions {
   display: flex;
-  width: 136rpx;
-  min-width: 136rpx;
+  width: 64rpx;
+  min-width: 64rpx;
   align-items: flex-start;
   justify-content: flex-end;
   gap: 8rpx;
@@ -1929,6 +1955,10 @@ button::after { border: 0; }
   line-height: 1;
 }
 .file-small-action-disabled { opacity: .38; }
+.file-strip-hover { opacity: .7; }
+.file-meta-action { color: var(--ui-accent-strong); }
+.file-meta-action::after { content: ' ›'; }
+.file-failure-reason { display: block; margin: 20rpx 0; color: var(--theme-expense, #b54738); font-size: var(--font-body, 28rpx); line-height: 1.6; overflow-wrap: anywhere; }
 .file-remove { color: var(--theme-expense, #b54738); }
 .file-progress {
   height: 4rpx;
@@ -2078,9 +2108,11 @@ button::after { border: 0; }
   border-radius: 0;
 }
 .relation-selected { background: var(--ui-accent-soft); }
-.relation-main { min-width: 0; flex: 1; }
+.relation-main { min-width: 0; flex: 1; overflow: hidden; }
 .relation-title-line { display: flex; align-items: center; gap: 10rpx; }
 .relation-title {
+  display: block;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   flex: 0 1 auto;
@@ -2667,7 +2699,7 @@ button::after { border: 0; }
 .account-proof-item .account-change { flex: 0 0 80rpx; width: 80rpx; max-width: 80rpx; min-width: 80rpx; min-height: 64rpx; margin: 0; padding: 0 4rpx; color: var(--ui-accent-strong); font-size: var(--font-caption); line-height: 64rpx; font-weight: 400; background: var(--ui-surface); }
 .account-decision-row, .account-mode-trigger { background: var(--ui-surface); }
 .account-mode-trigger-create .account-mode-value, .account-mode-trigger-pending .account-mode-value { color: var(--ui-ink); }
-.account-confirm-row { display: flex; justify-content: flex-end; margin-top: 12rpx; }
+.account-confirm-row { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; min-height: 76rpx; margin-top: 8rpx; }
 .account-proof-item .account-confirm { flex: 0 0 auto; width: auto; min-width: 160rpx; min-height: 64rpx; margin: 0; padding: 0 20rpx; color: var(--ui-on-accent); font-size: var(--font-caption); line-height: 64rpx; background: var(--ui-accent-strong); border-radius: var(--theme-radius-small, 12rpx); }
 .account-proof-item .account-confirm[disabled] { color: var(--ui-muted); background: var(--ui-line); }
 .account-shared-note { display: block; padding: 16rpx 0; color: var(--ui-muted); font-size: var(--font-caption); line-height: 1.5; }
@@ -2688,7 +2720,7 @@ button::after { border: 0; }
 .stage-connector:nth-child(6) { left: 75%; }
 .stage-connector::after { position: absolute; top: 50%; right: 0; width: 10rpx; height: 10rpx; content: ''; border-top: 2rpx solid currentColor; border-right: 2rpx solid currentColor; transform: translateY(-50%) rotate(45deg); }
 .account-proof-list { margin-top: 20rpx; overflow: hidden; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); background: var(--ui-surface); }
-.account-proof-item { margin: 0; padding: 18rpx 20rpx; border: 0; border-bottom: 1rpx solid var(--ui-line); border-radius: 0; background: var(--ui-surface); }
+.account-proof-item { margin: 0; padding: 18rpx 20rpx; box-sizing: border-box; border: 0; border-bottom: 1rpx solid var(--ui-line); border-radius: 0; background: var(--ui-surface); }
 .account-proof-head { align-items: baseline; }
 .account-proof-title { font-size: var(--font-body, 28rpx); font-weight: 500; }
 .account-mode-trigger, .account-decision-create, .account-decision-create .account-mode-trigger-create,

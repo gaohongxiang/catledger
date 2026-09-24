@@ -46,11 +46,12 @@ function reviewLists(state, business, data, index) {
   else if (data.activeReviewStatus === 'duplicate') {
     kind = 'duplicateReviewEvents'
     rows = state.duplicateCandidates.map(event => Object.assign({}, event, {
-      duplicateCount: Number(event.duplicateEvidenceCount), auditNote: '已保留一笔，点开对照主记录与重复来源。' }))
+      duplicateCount: Number(event.duplicateEvidenceCount || 0) + (model.isHistoricalDuplicate(event) ? 1 : 0),
+      auditNote: model.isHistoricalDuplicate(event) ? '已与历史账目对应，本次不重复入账。' : '已保留一笔，点开对照主记录与重复来源。' }))
     patch.duplicateReviewLoaded = true
   } else if (data.activeReviewStatus === 'excluded') {
     kind = 'excluded'
-    rows = (business.events || []).filter(event => event.status === 'excluded')
+    rows = (business.events || []).filter(event => event.status === 'excluded' && !model.isHistoricalDuplicate(event))
   } else {
     kind = 'review'
     rows = model.reviewIssueRows(state.hydratedIssues.filter(issue => issue.issueType !== 'category_assignment' && issue.subjectCount > 0))

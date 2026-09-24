@@ -41,7 +41,7 @@ test('部分失败允许已成功文件继续；全部失败或重复不允许�
   assert.equal(evaluate('next-accounts', 'disabled', state('files_ready', 0, 1, 1)), false)
   assert.equal(evaluate('next-accounts', 'disabled', state('files_ready', 0, 0, 2)), true)
   assert.equal(evaluate('next-accounts', 'disabled', state('files_ready', 0, 0)), true)
-  assert.match(markup, /bindtap="retryFile"/)
+  assert.match(markup, /bindtap="retryFileAttention"/)
 })
 test('准备账户期间不能重复提交，继续添加不伪装成已解析', () => {
   assert.equal(evaluate('next-accounts', 'disabled', state('organizing', 0, 2, 0, true)), true)
@@ -55,11 +55,12 @@ test('账户进度使用 confirmed，而不是把 ready 或建议冒充确认', 
     assert.ok(markup.includes('="' + handler + '"'), handler)
   }
 })
-test('分类与核对维度独立，整理、确认和完成页均常驻两条公式', () => {
-  assert.equal((markup.match(/class="record-count-equation"/g) || []).length, 6)
+test('分类与核对维度独立，整理、确认和完成页共用同一行紧凑统计', () => {
+  assert.equal((markup.match(/class="record-count-equation"/g) || []).length, 1)
+  assert.equal((markup.match(/template is="record-count-formula"/g) || []).length, 3)
   assert.doesNotMatch(markup, /<record-summary /)
   const formulas = markup.slice(markup.indexOf('class="review-count-formulas"'), markup.indexOf('class="review-main-tabs"'))
-  assert.equal((formulas.match(/class="record-count-equation"/g) || []).length, 2)
+  assert.match(formulas, /template is="record-count-formula"/)
   assert.ok(!formulas.includes('wx:if'))
   assert.match(markup, /activeReviewTab === 'category'/)
   assert.match(markup, /categoryStatusTabs\[0\]\.count/)

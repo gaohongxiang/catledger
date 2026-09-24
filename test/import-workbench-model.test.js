@@ -24,7 +24,7 @@ test('多文件摘要分别统计解析成功与失败，不把失败文件伪�
     { clientId: 'c', state: 'duplicate' },
     { clientId: 'd', state: 'ready' }
   ]
-  assert.deepEqual(model.uploadSummary(files), { total: 4, queued: 0, ready: 2, failed: 1, attention: 2 })
+  assert.deepEqual(model.uploadSummary(files), { total: 4, queued: 0, ready: 2, failed: 1, mapping: 0, duplicate: 1, attention: 1 })
 })
 
 test('解析失败后追加的新账单仍可单独进入待解析队列', function () {
@@ -32,13 +32,13 @@ test('解析失败后追加的新账单仍可单独进入待解析队列', funct
     { clientId: 'a', state: 'failed' },
     { clientId: 'b', state: 'queued' }
   ]
-  assert.deepEqual(model.uploadSummary(files), { total: 2, queued: 1, ready: 0, failed: 1, attention: 1 })
+  assert.deepEqual(model.uploadSummary(files), { total: 2, queued: 1, ready: 0, failed: 1, mapping: 0, duplicate: 0, attention: 1 })
 })
 
 test('未入账旧整理由服务端直接替换，文件列表只需标记已经入账的重复文件', function () {
   assert.equal(model.fileStateText('duplicate'), '已经入账')
   assert.deepEqual(model.uploadSummary([{ state: 'duplicate' }]), {
-    total: 1, queued: 0, ready: 0, failed: 0, attention: 1
+    total: 1, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 1, attention: 0
   })
 })
 

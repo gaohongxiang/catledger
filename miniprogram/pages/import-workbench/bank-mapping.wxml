@@ -1,0 +1,44 @@
+<view wx:if="{{bankMappingSheet}}" class="sheet-layer" catchtouchmove="preventTouchMove">
+  <view class="sheet-scrim" bindtap="closeBankMapping"></view>
+  <view class="workflow-sheet bank-mapping-sheet">
+    <view class="sheet-handle"></view>
+    <view class="account-choice-header">
+      <text class="account-choice-title serif-title">确认银行账单</text>
+      <button class="account-choice-cancel" bindtap="closeBankMapping" disabled="{{busy}}">稍后</button>
+    </view>
+    <scroll-view scroll-y enhanced show-scrollbar="{{false}}" class="bank-mapping-scroll">
+      <text class="bank-mapping-name">{{bankMappingSheet.name}}</text>
+      <picker range="{{bankMappingSheet.statementOptions}}" range-key="label" value="{{bankMappingSheet.statementIndex}}" data-key="statementKind" bindchange="changeBankMapping" disabled="{{busy}}">
+        <view class="bank-mapping-row"><text>账单类型</text><text>{{bankMappingSheet.statementOptions[bankMappingSheet.statementIndex].label}} ›</text></view>
+      </picker>
+      <text class="bank-mapping-copy">对照样例确认列含义；仅支持人民币。</text>
+      <picker wx:if="{{bankMappingSheet.preview.sheets.length > 1}}" range="{{bankMappingSheet.preview.sheets}}" range-key="name" value="{{bankMappingSheet.preview.sheetIndex}}" data-key="sheet" bindchange="refreshBankPreview" disabled="{{busy}}">
+        <view class="bank-mapping-row"><text>工作表</text><text>{{bankMappingSheet.preview.sheets[bankMappingSheet.preview.sheetIndex].name}} ›</text></view>
+      </picker>
+      <text wx:if="{{bankMappingSheet.preview.sheets.length > 1}}" class="bank-mapping-copy">本次只读取所选工作表，请选择交易明细所在的表。</text>
+      <view class="bank-mapping-header-row"><text>表头在第</text><input type="number" maxlength="3" value="{{bankMappingSheet.headerRowInput}}" bindinput="inputBankHeader" disabled="{{busy}}" /><text>行</text><button size="mini" bindtap="refreshBankPreview" disabled="{{busy}}">更新预览</button></view>
+      <picker range="{{bankMappingSheet.amountModes}}" range-key="label" value="{{bankMappingSheet.modeIndex}}" data-key="amountMode" bindchange="changeBankMapping" disabled="{{busy}}">
+        <view class="bank-mapping-row"><text>金额格式</text><text>{{bankMappingSheet.amountModes[bankMappingSheet.modeIndex].label}} ›</text></view>
+      </picker>
+      <picker wx:if="{{bankMappingSheet.draft.amountMode === 'signed'}}" range="{{bankMappingSheet.directionOptions}}" range-key="label" value="{{bankMappingSheet.positiveIndex}}" data-key="positiveDirection" bindchange="changeBankMapping" disabled="{{busy}}">
+        <view class="bank-mapping-row"><text>正数表示</text><text>{{bankMappingSheet.directionOptions[bankMappingSheet.positiveIndex].label}} ›</text></view>
+      </picker>
+      <picker wx:if="{{bankMappingSheet.draft.amountMode === 'direction'}}" range="{{bankMappingSheet.directionOptions}}" range-key="label" value="{{bankMappingSheet.debitIndex}}" data-key="debitDirection" bindchange="changeBankMapping" disabled="{{busy}}">
+        <view class="bank-mapping-row"><text>借方 / DR / D 表示</text><text>{{bankMappingSheet.directionOptions[bankMappingSheet.debitIndex].label}} ›</text></view>
+      </picker>
+      <text wx:if="{{bankMappingSheet.draft.amountMode === 'direction'}}" class="bank-mapping-copy">收支标记直接写“收入 / 支出”时，无需选择借贷含义。</text>
+      <block wx:for="{{bankMappingSheet.fields}}" wx:key="key" wx:for-item="field">
+        <picker wx:if="{{field.required || bankMappingSheet.advanced}}" range="{{bankMappingSheet.columnOptions}}" range-key="name" value="{{field.selected}}" data-key="{{field.key}}" bindchange="changeBankMapping" disabled="{{busy}}">
+          <view class="bank-mapping-field">
+            <view class="bank-mapping-row"><text>{{field.label}}{{field.required ? ' *' : ''}}</text><text class="bank-column-value">{{field.value}} ›</text></view>
+            <text wx:if="{{field.example}}" class="bank-mapping-example">样例：{{field.example}}</text>
+          </view>
+        </picker>
+      </block>
+      <button class="text-action" bindtap="toggleBankColumns" disabled="{{busy}}">{{bankMappingSheet.advanced ? '收起更多列' : '查看摘要、对方、流水号等更多列'}}</button>
+      <text class="bank-mapping-copy">未选的列保留在原始记录中</text>
+    </scroll-view>
+    <text wx:if="{{bankMappingSheet.error}}" class="inline-error">{{bankMappingSheet.error}}</text>
+    <button class="primary-button" bindtap="confirmBankMapping" disabled="{{busy}}" loading="{{busy}}">{{busy ? '正在读取' : '确认并解析'}}</button>
+  </view>
+</view>

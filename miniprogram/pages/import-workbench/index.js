@@ -7,6 +7,7 @@ const model = require('./model')
 const presentation = require('./presentation')
 const { buildFinalDetail } = require('./final-detail')
 const draftSessions = require('../../services/import-draft-session')
+const bankMapping = require('./bank-mapping')
 
 function additionalRepaymentOptions(catalog, rows) {
   const selected = new Set(rows.map(function (row) { return row.accountId }))
@@ -43,7 +44,9 @@ const ERROR_MESSAGES = Object.freeze({
   CSV_COLUMN_LIMIT_EXCEEDED: '账单列结构异常，请重新从支付平台导出',
   CSV_RECORD_LIMIT_EXCEEDED: '单个账单超过 5000 条，请缩短导出时间范围',
   FILE_ENCODING_INVALID: '文件编码无法识别，请重新导出',
-  FILE_FORMAT_UNSUPPORTED: '仅支持支付宝或微信的 CSV、XLSX 账单',
+  FILE_FORMAT_UNSUPPORTED: '尚未识别这份表格的账单结构，文件没有入账',
+  BANK_MAPPING_REQUIRED: '请确认银行账单的列和收支方向',
+  BANK_ROWS_INVALID: '部分行无法识别，请检查日期、金额、收支和币种列；仅支持人民币，公式需先转为数值',
   FILE_SIZE_INVALID: '每个文件需大于 0 且不超过 5 MB',
   IDENTITY_CONFLICT: '来源记录身份冲突，需要在问题卡片中确认',
   INITIALIZATION_REQUIRED: '账本还没有初始化，请重新登录后再试',
@@ -55,12 +58,13 @@ function publicError(error, fallback) {
   return ERROR_MESSAGES[error && error.code] || error && error.message || fallback
 }
 
-function suggestedAccountTypeIndex(label) {
+function suggestedAccountTypeIndex(label, sourceType) {
   const value = String(label || '')
   if (/信用|花呗|白条|贷|先采后付/.test(value)) return 3
   if (/银行|储蓄|借记|卡/.test(value)) return 1
   if (/现金/.test(value)) return 0
   if (/余额宝|基金|理财/.test(value)) return 4
+  if (sourceType === 'bank') return 1
   return 2
 }
 
@@ -97,15 +101,17 @@ Page(require('./paged').enhance({
     currentStep: 1,
     reviewPage: { index: 0, pages: 1, count: 0 },
     unlockedStep: 1,
-    steps: [
-      { value: 1, label: '解析' },
-      { value: 2, label: '账户' },
-      { value: 3, label: '整理' },
-      { value: 4, label: '入账' }
-    ],
     busy: false,
     files: [],
-    uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, attention: 0 },
+    bankMappingSheet: null,
+    fileAttentionSheet: null,
+    historicalCandidates: [],
+    historicalPage: null,
+    historicalSelection: '',
+    historicalLoading: false,
+    historicalError: '',
+    uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 0, attention: 0 },
+    pendingInstallments: false,
     update: null,
     sources: [],
     events: [],
@@ -170,6 +176,7 @@ Page(require('./paged').enhance({
     accountChoiceSheet: null,
     accountChoiceQuery: '',
     accountChoiceResults: [],
+    choiceLoading: false,
     accountTypeOptions: ACCOUNT_TYPE_OPTIONS,
     categories: [],
     issueCategories: [],
@@ -239,11 +246,6 @@ Page(require('./paged').enhance({
     }) })
     return state
   },
-  loadRecordEvidence: async function (records, isCurrent, onRecord) {
-    records.forEach(function (record, index) {
-      if (isCurrent()) onRecord(index, Object.assign({}, record, { evidenceState: 'ready', detailRequired: true }))
-    })
-  },
   onLoad: function (options) {
     themeService.bindPage(this)
     this._requestIds = {}
@@ -261,7 +263,6 @@ Page(require('./paged').enhance({
 
   onHide: function () {
     this.finishInputEditing()
-    this._returnToFirstStep = Boolean(this.data.update && ['draft', 'failed', 'review'].includes(this.data.update.status))
   },
 
   onUnload: function () {
@@ -276,16 +277,16 @@ Page(require('./paged').enhance({
     this._issueEvidenceRecords = []
     this._accountEvidenceToken = null
     this._accountRecordList = []
+    this.clearFileProgressThrottle()
+    if (this._accountDraftTimer) {
+      clearTimeout(this._accountDraftTimer)
+      this._accountDraftTimer = null
+      this.persistAccountDrafts()
+    }
   },
 
   onShow: function () {
     themeService.bindPage(this)
-    if (this._returnToFirstStep) {
-      this._returnToFirstStep = false
-      if (this.data.update && ['draft', 'failed', 'review'].includes(this.data.update.status)) {
-        this.setStep({ currentStep: 1, currentIssue: null, accountChoiceSheet: null, evidenceSheet: null, accountRecordsSheet: null })
-      }
-    }
     const revision = getApp().globalData.ledgerRevision || 0
     if (this._ledgerRevision != null && this._ledgerRevision !== revision && this.data.update) {
       if (this._draftSession) this._draftSession.flush().catch(function () {})
@@ -305,7 +306,7 @@ Page(require('./paged').enhance({
     wx.chooseMessageFile({
       count: remaining,
       type: 'file',
-      extension: ['csv', 'xlsx'],
+      extension: ['csv', 'xls', 'xlsx'],
       success: async function (result) {
         const selected = result.tempFiles || []
         if (selected.length === 0) return
@@ -420,6 +421,8 @@ Page(require('./paged').enhance({
       )
       this.syncUploadSummary()
       this.setData({ phase: this.data.files.length ? 'files_ready' : 'idle', busy: false })
+      const pending = this.data.files.find(file => file.state === 'mapping')
+      if (pending) await this.openBankMapping({ currentTarget: { dataset: { id: pending.clientId } } })
     } catch (error) {
       this.setData({ phase: 'selected', busy: false, errorMessage: publicError(error, '多文件上传准备失败') })
     }
@@ -454,7 +457,7 @@ Page(require('./paged').enhance({
       cloudPath: file.cloudPath,
       filePath: filePath,
       onProgress: function (progress) {
-        self.setFileState(file.clientId, { progress: progress })
+        self.setFileProgress(file.clientId, progress)
       },
       onRetry: function (failure, retry) {
         self.setFileState(file.clientId, {
@@ -465,18 +468,58 @@ Page(require('./paged').enhance({
     })
   },
 
-  parsePreparedFile: async function (clientId, fileID) {
+  setFileProgress: function (clientId, progress) {
+    if (!this._fileProgressPending) {
+      this._fileProgressPending = new Map()
+      this._fileProgressTimers = new Map()
+    }
+    if (typeof setTimeout !== 'function') {
+      this.setFileState(clientId, { progress: progress })
+      return
+    }
+    this._fileProgressPending.set(clientId, progress)
+    if (this._fileProgressTimers.has(clientId)) return
+    const self = this
+    this._fileProgressTimers.set(clientId, setTimeout(function () {
+      self._fileProgressTimers.delete(clientId)
+      const pending = self._fileProgressPending.get(clientId)
+      self._fileProgressPending.delete(clientId)
+      if (pending === undefined) return
+      if (!self.data.files.some(function (item) { return item.clientId === clientId })) return
+      self.setFileState(clientId, { progress: pending })
+    }, 100))
+  },
+
+  clearFileProgressThrottle: function (clientId) {
+    if (!this._fileProgressTimers) return
+    for (const [id, timer] of this._fileProgressTimers) {
+      if (clientId && id !== clientId) continue
+      clearTimeout(timer)
+      this._fileProgressTimers.delete(id)
+      if (this._fileProgressPending) this._fileProgressPending.delete(id)
+    }
+  },
+
+  parsePreparedFile: async function (clientId, fileID, options) {
     const file = this.data.files.find(function (item) { return item.clientId === clientId })
     if (!file) return
-    this.setFileState(clientId, { state: 'parsing', stateText: model.fileStateText('parsing'), errorMessage: '' })
+    this.setFileState(clientId, { state: 'parsing', stateText: model.fileStateText('parsing'), errorMessage: '', errorCode: '' })
     try {
-      const result = await this.request('imports.parseFile', {
+      const result = await this.request('imports.parseFile', Object.assign({
         requestId: importApi.createRequestId(),
         importId: file.importId,
         fileID: fileID,
         timezoneOffsetMinutes: new Date().getTimezoneOffset()
-      })
-      if (result.duplicateImportId) {
+      }, options || (file.bankMapping ? { bankMapping: file.bankMapping } : {})))
+      if (result.mappingRequired && result.bankPreview) {
+        if (!this._bankPreviews) this._bankPreviews = new Map()
+        this._bankPreviews.set(clientId, result.bankPreview)
+        this.setFileState(clientId, { state: 'mapping', stateText: model.fileStateText('mapping'),
+          hasBankMapping: true, importVersion: result.import.version, errorMessage: '' })
+        if (this.data.bankMappingSheet && this.data.bankMappingSheet.clientId === clientId) {
+          this.setData({ bankMappingSheet: bankMapping.view(clientId, file.name, result.bankPreview) })
+        }
+      } else if (result.duplicateImportId) {
         this.setFileState(clientId, {
           state: 'duplicate', stateText: model.fileStateText('duplicate'),
           importVersion: result.import && result.import.version || file.importVersion,
@@ -486,6 +529,7 @@ Page(require('./paged').enhance({
         this.setFileState(clientId, {
           state: 'failed', stateText: model.fileStateText('failed'),
           importVersion: result.import.version,
+          errorCode: result.import.errorCode,
           errorMessage: ERROR_MESSAGES[result.import.errorCode] || '解析失败，请重试'
         })
       } else if (!result.batch || !result.batch.batchId) {
@@ -504,16 +548,124 @@ Page(require('./paged').enhance({
           summary: result.batch && result.batch.summary || null,
           errorMessage: ''
         })
+        if (this._bankPreviews) this._bankPreviews.delete(clientId)
       }
     } catch (error) {
       this.setFileState(clientId, {
         state: 'failed', stateText: model.fileStateText('failed'),
+        errorCode: error.code || '',
         errorMessage: publicError(error, '解析失败，请重试')
       })
     }
   },
 
+  openBankMapping: async function (event) {
+    if (this.data.busy) return
+    const id = event.currentTarget.dataset.id
+    let file = this.data.files.find(item => item.clientId === id)
+    if (!file) return
+    let preview = this._bankPreviews && this._bankPreviews.get(id)
+    if (!preview && file.fileID) {
+      this.setData({ busy: true })
+      await this.parsePreparedFile(id, file.fileID, {})
+      this.syncUploadSummary()
+      this.setData({ busy: false })
+      file = this.data.files.find(item => item.clientId === id)
+      preview = this._bankPreviews && this._bankPreviews.get(id)
+    }
+    if (preview) this.setData({ fileAttentionSheet: null, bankMappingSheet: bankMapping.view(id, file.name, preview, file.bankMapping) })
+    else this.showFileFailure(file)
+  },
+
+  showFileFailure: function (file) {
+    this.setData({ fileAttentionSheet: { clientId: file.clientId, name: file.name,
+      reason: file.errorMessage || '未能读取账单预览，请重新读取这份文件。',
+      hasBankMapping: Boolean(file.hasBankMapping && this._bankPreviews && this._bankPreviews.has(file.clientId)) } })
+  },
+
+  openFileAttention: function (event) {
+    if (this.data.busy) return
+    const data = event.currentTarget.dataset
+    const file = this.data.files.find(item => data.id ? item.clientId === data.id : item.state === data.state)
+    if (!file) return
+    if (file.state === 'mapping') return this.openBankMapping({ currentTarget: { dataset: { id: file.clientId } } })
+    this.showFileFailure(file)
+  },
+
+  tapFileRow: function (event) {
+    const file = this.data.files.find(item => item.clientId === event.currentTarget.dataset.id)
+    if (!file || (file.state !== 'mapping' && file.state !== 'failed')) return
+    this.openFileAttention(event)
+  },
+
+  closeFileAttention: function () { if (!this.data.busy) this.setData({ fileAttentionSheet: null }) },
+
+  retryFileAttention: async function () {
+    if (this.data.busy || !this.data.fileAttentionSheet) return
+    const sheet = this.data.fileAttentionSheet
+    const event = { currentTarget: { dataset: { id: sheet.clientId } } }
+    if (sheet.hasBankMapping) return this.openBankMapping(event)
+    this.setData({ fileAttentionSheet: null })
+    await this.retryFile(event)
+    const file = this.data.files.find(item => item.clientId === sheet.clientId)
+    if (file && file.state === 'failed') this.showFileFailure(file)
+  },
+
+  closeBankMapping: function () { if (!this.data.busy) this.setData({ bankMappingSheet: null }) },
+
+  changeBankMapping: function (event) {
+    if (this.data.busy || !this.data.bankMappingSheet) return
+    const sheet = this.data.bankMappingSheet
+    const key = event.currentTarget.dataset.key, value = Number(event.detail.value)
+    const draft = Object.assign({}, sheet.draft, { columns: Object.assign({}, sheet.draft.columns) })
+    if (key === 'amountMode') draft.amountMode = sheet.amountModes[value].value
+    else if (key === 'statementKind') draft.statementKind = sheet.statementOptions[value].value
+    else if (key === 'positiveDirection' || key === 'debitDirection') draft[key] = sheet.directionOptions[value].value
+    else if (value === 0) delete draft.columns[key]
+    else draft.columns[key] = value - 1
+    const next = bankMapping.view(sheet.clientId, sheet.name, sheet.preview, draft)
+    next.advanced = sheet.advanced
+    this.setData({ bankMappingSheet: next })
+  },
+
+  toggleBankColumns: function () { this.setData({ 'bankMappingSheet.advanced': !this.data.bankMappingSheet.advanced }) },
+  inputBankHeader: function (event) { this.setData({ 'bankMappingSheet.headerRowInput': event.detail.value }) },
+
+  refreshBankPreview: async function (event) {
+    if (this.data.busy || !this.data.bankMappingSheet) return
+    const sheet = this.data.bankMappingSheet
+    const changingSheet = event && event.currentTarget.dataset.key === 'sheet'
+    const preview = changingSheet ? { sheetIndex: Number(event.detail.value) }
+      : { sheetIndex: sheet.preview.sheetIndex, headerRow: Number(sheet.headerRowInput) }
+    if (!changingSheet && (!Number.isInteger(preview.headerRow) || preview.headerRow < 1 || preview.headerRow > 120)) {
+      this.setData({ 'bankMappingSheet.error': '表头行请输入 1 到 120' }); return
+    }
+    const file = this.data.files.find(item => item.clientId === sheet.clientId)
+    if (!file) return
+    this.setData({ busy: true })
+    await this.parsePreparedFile(file.clientId, file.fileID, { bankPreview: preview })
+    this.syncUploadSummary()
+    const updated = this.data.files.find(item => item.clientId === file.clientId)
+    this.setData({ busy: false, 'bankMappingSheet.error': updated.errorMessage || '' })
+  },
+
+  confirmBankMapping: async function () {
+    if (this.data.busy || !this.data.bankMappingSheet) return
+    const sheet = this.data.bankMappingSheet, result = bankMapping.payload(sheet)
+    if (result.error) { this.setData({ 'bankMappingSheet.error': result.error }); return }
+    const file = this.data.files.find(item => item.clientId === sheet.clientId)
+    if (!file) return
+    this.setFileState(file.clientId, { bankMapping: result.value })
+    this.setData({ busy: true })
+    await this.parsePreparedFile(file.clientId, file.fileID, { bankMapping: result.value })
+    this.syncUploadSummary()
+    const updated = this.data.files.find(item => item.clientId === file.clientId)
+    this.setData({ busy: false, phase: 'files_ready', bankMappingSheet: updated.state === 'ready' || updated.state === 'duplicate'
+      ? null : Object.assign({}, sheet, { error: updated.errorMessage || '未完成解析，请检查列选择后重试' }) })
+  },
+
   setFileState: function (clientId, patch) {
+    if (patch.state || patch.fileID || patch.progress === 100) this.clearFileProgressThrottle(clientId)
     this.setData({ files: model.updateFile(this.data.files, clientId, patch) })
   },
 
@@ -531,6 +683,7 @@ Page(require('./paged').enhance({
     else await this.uploadAndParseFile(file)
     this.syncUploadSummary()
     this.setData({ phase: 'files_ready', busy: false })
+    if (this.data.files.find(item => item.clientId === clientId && item.state === 'mapping')) await this.openBankMapping(event)
   },
 
   removeFile: async function (event) {
@@ -548,6 +701,8 @@ Page(require('./paged').enhance({
         })
       }
       this._sourceFiles.delete(clientId)
+      if (this._bankPreviews) this._bankPreviews.delete(clientId)
+      this.clearFileProgressThrottle(clientId)
       const remainingFiles = this.data.files.filter(function (item) { return item.clientId !== clientId })
       this.setData({
         files: remainingFiles,
@@ -599,7 +754,7 @@ Page(require('./paged').enhance({
       load.pending = this.request('financeUpdates.summary', { updateId: updateId })
       let view = await load.pending
       if (!active()) return
-      if (view.update.status === 'review' && view.update.requiresReorganization) {
+      if (view.update.status === 'review') {
         load.pending = this.request('financeUpdates.organize', {
           requestId: importApi.createRequestId(), updateId: updateId, version: view.update.version
         })
@@ -695,6 +850,10 @@ Page(require('./paged').enhance({
     wx.navigateTo({ url: '/pages/accounts/index' })
   },
 
+  openInstallmentSources: function () {
+    wx.navigateTo({ url: '/pages/installment-sources/index' })
+  },
+
   switchReviewStatus: function (event) {
     const status = String(event.currentTarget.dataset.status || '')
     if (!['pending', 'completed', 'excluded', 'duplicate'].includes(status) || status === this.data.activeReviewStatus) return
@@ -752,7 +911,7 @@ Page(require('./paged').enhance({
           accountId: resolvedAccountId || (suggestedAccount ? suggestedAccount.accountId : ''),
           recommendedAccountId: suggestedAccount ? suggestedAccount.accountId : '',
           name: suggestedName,
-          typeIndex: suggestedAccountTypeIndex(issue.accountContext && issue.accountContext.label),
+          typeIndex: suggestedAccountTypeIndex(issue.accountContext && issue.accountContext.label, issue.accountContext && issue.accountContext.sourceType),
           dirty: false,
           localConfirmed: false,
           revision: 0
@@ -839,7 +998,7 @@ Page(require('./paged').enhance({
   },
 
   closeAccountChoice: function () {
-    this.setData({ accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [] })
+    this.setData({ accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [], choiceLoading: false })
   },
 
   selectAccountChoice: function (event) {
@@ -876,65 +1035,6 @@ Page(require('./paged').enhance({
 
   preventTouchMove: function () {},
 
-  loadAccountRecordEvidence: async function (records, token) {
-    const isCurrent = () => this._accountEvidenceToken === token
-    await this.loadRecordEvidence(records, isCurrent, () => {
-      const count = this.data.accountRecordsSheet.records.length
-      this.setData({ 'accountRecordsSheet.records': this._accountRecordList.slice(0, count) })
-    })
-    if (isCurrent()) this.setData({ 'accountRecordsSheet.sourcesLoading': false })
-  },
-
-  loadIssueRecordEvidence: async function (records, token) {
-    const isCurrent = () => this._issueEvidenceToken === token && Boolean(this.data.currentIssue)
-    await this.loadRecordEvidence(records, isCurrent, () => {
-      this.setData({ issueVisibleEvents: this._issueEvidenceRecords.slice(0, this.data.issueVisibleEvents.length) })
-    })
-    if (isCurrent()) this.setData({ issueEvidenceLoading: false })
-  },
-
-  showMoreIssueRecords: function () {
-    if (this.data.issueEvidenceLoading || !this.data.currentIssue) return
-    const previousCount = this.data.issueVisibleEvents.length
-    const records = this._issueEvidenceRecords.slice(0, previousCount + 20)
-    this.setData({ issueVisibleEvents: records, issueEvidenceLoading: true,
-      issueEvidenceHasMore: records.length < this._issueEvidenceRecords.length })
-    return this.loadIssueRecordEvidence(records.slice(previousCount), this._issueEvidenceToken)
-  },
-
-  retryIssueRecordEvidence: function (event) {
-    if (this.data.issueEvidenceLoading || !this.data.currentIssue) return
-    const record = this._issueEvidenceRecords.find(function (item) { return item.eventId === event.currentTarget.dataset.id })
-    if (!record) return
-    record.evidenceLoading = true
-    record.evidenceError = ''
-    this.setData({ issueEvidenceLoading: true,
-      issueVisibleEvents: this._issueEvidenceRecords.slice(0, this.data.issueVisibleEvents.length) })
-    return this.loadIssueRecordEvidence([record], this._issueEvidenceToken)
-  },
-
-  retryAccountRecordEvidence: function (event) {
-    const sheet = this.data.accountRecordsSheet
-    if (!sheet || sheet.sourcesLoading) return
-    const record = this._accountRecordList.find(function (item) { return item.eventId === event.currentTarget.dataset.id })
-    if (!record) return
-    record.evidenceLoading = true
-    record.evidenceError = ''
-    this.setData({ 'accountRecordsSheet.sourcesLoading': true,
-      'accountRecordsSheet.records': this._accountRecordList.slice(0, sheet.records.length) })
-    return this.loadAccountRecordEvidence([record], this._accountEvidenceToken)
-  },
-
-  showMoreAccountRecords: function () {
-    const sheet = this.data.accountRecordsSheet
-    if (!sheet || this.data.busy || sheet.sourcesLoading) return
-    const previousCount = sheet.records.length
-    const records = (this._accountRecordList || []).slice(0, previousCount + 20)
-    this.setData({ 'accountRecordsSheet.records': records, 'accountRecordsSheet.sourcesLoading': true,
-      'accountRecordsSheet.hasMore': records.length < this._accountRecordList.length })
-    return this.loadAccountRecordEvidence(records.slice(previousCount), this._accountEvidenceToken)
-  },
-
   closeAccountRecords: function () {
     if (this.data.busy) return
     this._accountEvidenceToken = null
@@ -955,6 +1055,28 @@ Page(require('./paged').enhance({
     draft.localConfirmed = false
     draft.revision = (draft.revision || 0) + 1
     this.setData({ accountStepError: '' })
+    this.scheduleAccountDraftSync()
+  },
+
+  scheduleAccountDraftSync: function () {
+    if (typeof setTimeout !== 'function') {
+      this.persistAccountDrafts()
+      this.refreshAccountMappings()
+      return
+    }
+    if (this._accountDraftTimer) clearTimeout(this._accountDraftTimer)
+    const self = this
+    this._accountDraftTimer = setTimeout(function () {
+      self._accountDraftTimer = null
+      self.persistAccountDrafts()
+      self.refreshAccountMappings()
+    }, 300)
+  },
+
+  flushAccountDraftSync: function () {
+    if (!this._accountDraftTimer) return
+    clearTimeout(this._accountDraftTimer)
+    this._accountDraftTimer = null
     this.persistAccountDrafts()
     this.refreshAccountMappings()
   },
@@ -973,6 +1095,7 @@ Page(require('./paged').enhance({
 
   completeAccountMapping: function (event) {
     if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
+    this.flushAccountDraftSync()
     const issueId = event && event.currentTarget && event.currentTarget.dataset.id
     const mapping = this.refreshAccountMappings().mappings.find(function (item) { return item.issueId === issueId })
     if (!mapping || !mapping.inline || !mapping.canConfirm) {
@@ -1033,7 +1156,9 @@ Page(require('./paged').enhance({
     try {
       const session = this._draftSession
       await session.flush()
-      this.applyUpdateView(session.view, true)
+      const checked = await this.request('financeUpdates.organize', { requestId: importApi.createRequestId(),
+        updateId: session.view.update.updateId, version: session.view.update.version })
+      this.applyUpdateView(checked, true)
       if (this.data.accountStepSummary.pending > 0 || (step === 4 && (this.data.openIssueCount || !this.data.coverage.selectedEventsReadyToPost))) {
         this.setStep({ currentStep: this.data.accountStepSummary.pending ? 2 : 3,
           errorMessage: '整理结果已更新，请完成剩余核对后继续' })
@@ -1169,7 +1294,7 @@ Page(require('./paged').enhance({
         issueEvidenceHasMore: this._issueEvidenceRecords.length > 20,
         update: details.update,
         currentIssue: currentIssue,
-        issueSourceExpanded: false,
+        issueSourceExpanded: true,
         issueFieldsReason: '',
         paymentValidationHint: '',
         paymentRows: paymentDefaults.rows,
@@ -1217,7 +1342,6 @@ Page(require('./paged').enhance({
       this.restoreReviewDraft(issueId)
       this.refreshIssueFieldsDraft()
       if (currentIssue.paymentNeedsReview) this.refreshPaymentDraft()
-      await this.loadIssueRecordEvidence(this._issueEvidenceRecords.slice(0, 20), token)
     } catch (error) {
       if (this._issueEvidenceToken !== token) return
       this.setData({ busy: false, errorMessage: publicError(error, '问题详情加载失败') })
@@ -1256,6 +1380,7 @@ Page(require('./paged').enhance({
 
   finishInputEditing: function () {
     this._editingInput = ''
+    this.flushAccountDraftSync()
     const pending = this._pendingBackgroundView
     this._pendingBackgroundView = null
     if (pending && this.data.update && pending.update.updateId === this.data.update.updateId) this.applyUpdateView(pending, true)
@@ -1506,6 +1631,8 @@ Page(require('./paged').enhance({
   },
 
   confirmDistinct: function () {
+    if (this.data.currentIssue && this.data.currentIssue.historicalDuplicate &&
+        (this.data.historicalLoading || this.data.historicalError || !this.data.historicalCandidates.length)) return
     this.resolveIssue('confirm_distinct', {})
   },
 
@@ -1627,10 +1754,11 @@ Page(require('./paged').enhance({
     this._postingRequestId = null
     if (draftSessions.forgetLast) draftSessions.forgetLast()
     this._sourceFiles.clear()
+    if (this._bankPreviews) this._bankPreviews.clear()
     this._duplicateLoadToken = null
     this.setData({
       phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', abandoningRestore: false,
-      files: [], update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
+      files: [], bankMappingSheet: null, fileAttentionSheet: null, update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
       recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
       reviewedEvents: [], categoryWaitingEvents: [], noCategoryEvents: [],
       accountIssues: [], reviewIssues: [], reviewGroups: [], verificationIssues: [], categoryIssues: [], categoryCards: [], categoryQuery: '', categoryEventCount: 0, categorizedEvents: [], categorizedEventCount: 0, activeCategoryStatus: 'pending', categoryStatusTabs: model.organizerRecordState([], [], []).categoryStatusTabs, activeReviewTab: 'review', activeReviewStatus: 'pending', excludedReviewGroups: [], duplicateReviewEvents: [], openIssueCount: 0,
@@ -1650,7 +1778,7 @@ Page(require('./paged').enhance({
       accountStepBusy: false, accountStepError: '', accountStepProgressText: '',
       accounts: [], accountDrafts: [], accountMappingDrafts: [], accountChoices: [{ accountId: '', name: '新建账户' }],
       accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [], categories: [], issueCategories: [],
-      uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, attention: 0 },
+      uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 0, attention: 0 },
       posting: null, errorMessage: '', currentIssue: null, currentMembers: [],
       issueEvents: [], issueRelations: [], evidenceSheet: null,
       repaymentAllocationChoices: [], repaymentAllocationStatusText: '', repaymentAllocationCanSave: false

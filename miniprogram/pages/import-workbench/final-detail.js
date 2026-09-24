@@ -43,4 +43,4 @@ function buildFinalDetail(kind, data, accountId) {
     mode: 'records', count: records.length, records, accounts: [] }
 }
 
-module.exports = { buildFinalDetail }
+module.exports = { buildFinalDetail, TITLES }

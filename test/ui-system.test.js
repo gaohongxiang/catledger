@@ -151,7 +151,7 @@ test('最终入账展示财务与相同记录拆分并提供入账后的去向',
   assert.match(template, /本批支出/)
   assert.match(template, /本批收入/)
   assert.doesNotMatch(template, /分类完成度|还剩 {{reviewIssues.length}} 项/)
-  assert.equal((template.match(/全部记录 {{recordSummary.totalCount}}/g) || []).length, 3)
+  assert.equal((template.match(/template is="record-count-formula"/g) || []).length, 3)
   assert.match(template, /disabled="{{busy \|\| openIssueCount \|\| accountStepSummary.pending > 0 \|\| !coverage.selectedEventsReadyToPost}}"/)
   assert.match(template, /新建账户/)
   assert.match(template, /查看明细/)
