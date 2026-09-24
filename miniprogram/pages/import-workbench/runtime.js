@@ -31,6 +31,20 @@ function boundedSetData(page) {
 
 function compactMapping(mapping) { const { choiceOptions, evidencePreview, ...visible } = presentation.accountMapping(mapping); return Object.assign(visible, { evidencePreview: Boolean(evidencePreview) }) }
 
+async function resumeInitialLoad(page) {
+  const initial = page._pendingInitialLoad
+  if (!initial || !initial.visible || initial.attempt || !getApp().hasLoginApproval()) return
+  page._viewActive = true
+  if (!initial.updateId) { page._pendingInitialLoad = null; return }
+  const attempt = initial.attempt = {}
+  const loaded = await page.loadUpdate(initial.updateId, true)
+  if (page._pendingInitialLoad !== initial || initial.attempt !== attempt || !initial.visible) return
+  initial.attempt = null
+  if (!loaded) return
+  page._pendingInitialLoad = null
+  if (initial.eventId) await page.openEvidence({ currentTarget: { dataset: { id: initial.eventId } } })
+}
+
 module.exports = {
   applyPendingBackgroundView() {
     if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.accountChoiceSheet) {
@@ -47,15 +61,11 @@ module.exports = {
     this._sourceFiles = new Map()
     this._accountUiDrafts = new Map()
     const updateId = options && options.fresh === '1' ? null : options && options.updateId || draftSessions.lastUpdateId()
-    loginGuard.run(this, updateId ? async () => {
-        await this.loadUpdate(updateId, true)
-        const eventId = options && options.evidenceEventId
-        if (eventId) {
-          await this.openEvidence({ currentTarget: { dataset: { id: eventId } } })
-        }
-      } : function () {})
+    this._pendingInitialLoad = { updateId, eventId: options && options.evidenceEventId, visible: true, attempt: null }
+    loginGuard.run(this, () => resumeInitialLoad(this))
   },
   onShow(initialData) {
+    if (this._pendingInitialLoad) this._pendingInitialLoad.visible = true
     if (!getApp().hasLoginApproval()) {
       this._viewActive = false; this._viewEpoch++
       this.cancelPagedReads()
@@ -70,6 +80,10 @@ module.exports = {
     this._viewActive = true
     themeService.bindPage(this)
     const revision = getApp().globalData.ledgerRevision || 0
+    if (this._pendingInitialLoad) {
+      this._ledgerRevision = revision
+      return resumeInitialLoad(this)
+    }
     if (this._ledgerRevision != null && this._ledgerRevision !== revision && this.data.update) {
       if (this._draftSession) this._draftSession.flush().catch(function () {})
       else this.loadUpdate(this.data.update.updateId)
@@ -78,6 +92,10 @@ module.exports = {
     if (returning && this.data.update) return this.loadUpdate(this.data.update.updateId)
   },
   onHide() {
+    if (this._pendingInitialLoad) {
+      this._pendingInitialLoad.visible = false
+      this._pendingInitialLoad.attempt = null
+    }
     this._viewActive = false; this._viewEpoch++
     this.cancelPagedReads()
     this.setData({ currentIssue: null, currentMembers: [], issueEvents: [], issueRelations: [], issueVisibleEvents: [],
@@ -85,6 +103,7 @@ module.exports = {
     this.finishInputEditing()
   },
   onUnload() {
+    this._pendingInitialLoad = null
     this._viewActive = false; this._viewEpoch++
     this.cancelPagedReads()
     if (this._viewSession) this._viewSession.close()
@@ -190,6 +209,7 @@ module.exports = {
       if (!active()) return
       this.setData({ restoreUpdateId: '' })
       this.applyUpdateView(view, false, restoreToFirstStep)
+      return true
     } catch (error) {
       if (!active()) return
       this.setData({ phase: 'error', busy: false, errorMessage: publicError(error, '整理结果加载失败') })

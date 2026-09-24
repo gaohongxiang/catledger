@@ -4,6 +4,88 @@ const { create, MAX_PAGES, MAX_HISTORY } = require('../miniprogram/services/impo
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
 const event = (direction, id) => ({ currentTarget: { dataset: { direction, id } } })
 
+test('冷启动自动登录后新导入页激活，待恢复批次与原文仅恢复一次', async () => {
+  for (const restore of [false, true]) {
+    const h = runtime(fixture(2), { approved: false, initialView: false,
+      pageOptions: restore ? { updateId: 'synthetic-update', evidenceEventId: 'synthetic-event-0' } : { fresh: '1' } })
+    const page = h.page
+    h.intercept = action => action === 'financeUpdates.organize' ? h.summary : undefined
+    page.onShow(); await flush()
+    assert.equal(h.calls.length, 0)
+    h.app.approved = true
+    await h.loginOptions.afterLogin()
+    assert.equal(page._viewActive, true)
+    assert.equal(page.data.phase, restore ? 'review' : 'idle')
+    assert.equal(Boolean(page.data.evidenceSheet), restore)
+    const calls = h.calls.length
+    await page.onShow()
+    assert.equal(h.calls.length, calls)
+    assert.deepEqual(h.calls.filter(c => /^financeUpdates\.(summary|organize)$/.test(c.action)).map(c => c.action),
+      restore ? ['financeUpdates.summary', 'financeUpdates.organize', 'financeUpdates.summary'] : [])
+    assert.equal(h.activeSubscriptions, restore ? 1 : 0)
+    page.onUnload()
+  }
+})
+
+test('登录期间隐藏不启动恢复，返回只恢复一次；卸载后迟到登录不读取', async () => {
+  for (const leave of ['onHide', 'onUnload']) {
+    const h = runtime(fixture(2), { approved: false, initialView: false, pageOptions: { updateId: 'synthetic-update' } })
+    const page = h.page
+    h.intercept = action => action === 'financeUpdates.organize' ? h.summary : undefined
+    page.onShow(); await flush(); page[leave]()
+    const patches = h.patches.length
+    h.app.approved = true
+    await h.loginOptions.afterLogin()
+    assert.equal(h.calls.length, 0)
+    assert.equal(h.patches.length, patches)
+    assert.equal(page._viewActive, false)
+    if (leave === 'onHide') {
+      await page.onShow()
+      assert.equal(page.data.phase, 'review')
+      assert.deepEqual(h.calls.filter(c => /^financeUpdates\.(summary|organize)$/.test(c.action)).map(c => c.action),
+        ['financeUpdates.summary', 'financeUpdates.organize', 'financeUpdates.summary'])
+      page.onUnload()
+    }
+  }
+})
+
+test('登录后摘要在隐藏期间返回，不继续整理或打开原文', async () => {
+  const h = runtime(fixture(2), { approved: false, initialView: false,
+    pageOptions: { updateId: 'synthetic-update', evidenceEventId: 'synthetic-event-0' } })
+  const page = h.page
+  let release
+  h.intercept = action => action === 'financeUpdates.summary' ? new Promise(resolve => { release = resolve }) : undefined
+  page.onShow(); await flush(); h.app.approved = true
+  const pending = h.loginOptions.afterLogin()
+  await flush(); page.onHide()
+  const patches = h.patches.length
+  release(h.summary); await pending
+  assert.deepEqual(h.calls.map(c => c.action), ['financeUpdates.summary'])
+  assert.equal(h.patches.length, patches)
+  assert.equal(page.data.evidenceSheet, null)
+  page.onUnload()
+})
+
+test('初次恢复尚未收到摘要便离开，返回可重新恢复，旧摘要不抢占新结果', async () => {
+  const h = runtime(fixture(2), { approved: false, initialView: false, pageOptions: { updateId: 'synthetic-update' } })
+  const page = h.page
+  let release
+  h.intercept = action => action === 'financeUpdates.summary' ? new Promise(resolve => { release = resolve }) : undefined
+  page.onShow(); await flush(); h.app.approved = true
+  const previous = h.loginOptions.afterLogin()
+  await flush(); page.onHide()
+  h.intercept = action => action === 'financeUpdates.organize' ? h.summary : undefined
+  await page.onShow()
+  const patches = h.patches.length
+  release(h.summary); await previous
+  assert.equal(h.patches.length, patches)
+  assert.equal(page.data.phase, 'review')
+  assert.deepEqual(h.calls.filter(c => /^financeUpdates\.(summary|organize)$/.test(c.action)).map(c => c.action),
+    ['financeUpdates.summary', 'financeUpdates.summary', 'financeUpdates.organize', 'financeUpdates.summary'])
+  assert.equal(h.activeSubscriptions, 1)
+  page.onUnload()
+})
+
 test('真实 Page 首次整理只发 prepare，已有批次重新整理并保留历史复查', async () => {
   const h = runtime(fixture(2)), page = h.page
   h.intercept = action => ['financeUpdates.prepare', 'financeUpdates.organize'].includes(action) ? h.summary : undefined

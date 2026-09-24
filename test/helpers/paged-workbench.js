@@ -18,11 +18,11 @@ function fixture(count = 121, blocking = false) {
       blocking ? [{ issueType: 'same_event', status: 'open', count: 1 }] : [], 0, 0) }
   return { events, issues, summary }
 }
-function runtime(data = fixture()) {
+function runtime(data = fixture(), options = {}) {
   const cache = Object.assign(createReadCache(), { stableKey }), storage = new Map(), calls = [], patches = [], modules = new Map()
   let session, definition
   const h = { ...data, calls, patches, cache, intercept: null, maxDataBytes: 0, derives: {}, activeSubscriptions: 0 }
-  h.app = { approved: true, hasLoginApproval() { return this.approved }, globalData: {} }
+  h.app = { approved: options.approved !== false, hasLoginApproval() { return this.approved }, globalData: {} }
   const call = async (action, input = {}) => {
     calls.push({ action, input: JSON.parse(JSON.stringify(input)) })
     if (h.intercept) { const value = await h.intercept(action, input); if (value !== undefined) return value }
@@ -59,14 +59,13 @@ function runtime(data = fixture()) {
         return () => { if (active) { active = false; h.activeSubscriptions--; off() } }
       }
     } return session } }
-  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), showToast() {}, pageScrollTo() {} }
+  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), showToast() {}, pageScrollTo() {}, nextTick: setImmediate }
   h.wx = wx
   const root = path.join(__dirname, '../../miniprogram')
   function load(filename) {
     if (filename.endsWith('/services/catledger-import.js')) return api
     if (filename.endsWith('/services/import-draft-session.js')) return draftService
     if (filename.endsWith('/services/read-cache.js')) return cache
-    if (filename.endsWith('/services/login-guard.js')) return { run: (_, work) => work() }
     if (filename.endsWith('/theme/service.js')) return { bindPage() {} }
     if (modules.has(filename)) return modules.get(filename).exports
     const module = { exports: {} }; modules.set(filename, module)
@@ -79,8 +78,9 @@ function runtime(data = fixture()) {
     return module.exports
   }
   load(path.join(root, 'pages/import-workbench/index.js'))
-  h.createPage = () => {
-    const page = Object.assign({}, definition, { data: JSON.parse(JSON.stringify(definition.data)), setData(patch, callback) {
+  h.createPage = (pageOptions = {}, initialView = true) => {
+    const page = Object.assign({}, definition, { data: JSON.parse(JSON.stringify(definition.data)),
+      selectComponent: () => ({ show: options => { h.loginOptions = options } }), setData(patch, callback) {
     patches.push(Buffer.byteLength(JSON.stringify(patch)))
     for (const [key, value] of Object.entries(patch)) {
       const keys = key.replace(/\[(\d+)\]/g, '.$1').split('.'); let target = this.data
@@ -90,11 +90,11 @@ function runtime(data = fixture()) {
     h.maxDataBytes = Math.max(h.maxDataBytes, Buffer.byteLength(JSON.stringify(this.data)))
     if (callback) callback.call(this)
   } })
-    page.onLoad({})
-    page.applyUpdateView(h.summary)
+    page.onLoad(pageOptions)
+    if (initialView) page.applyUpdateView(h.summary)
     return page
   }
-  h.page = h.createPage()
+  h.page = h.createPage(options.pageOptions, options.initialView)
   h.flush = flush
   return h
 }
