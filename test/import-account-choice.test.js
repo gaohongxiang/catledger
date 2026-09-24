@@ -1,33 +1,17 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const vm = require('node:vm')
 const test = require('node:test')
 const model = require('../miniprogram/pages/import-workbench/model')
 
 function pageFor(issue, accounts = [], importApi = {}, draftService = {}) {
-  let definition
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.js'), 'utf8'), {
-    // 仅验证独立共享表单；实际分页、读取和生命周期由 import-paged-workbench.test.js 覆盖。
-    require: (name) => name === './paged' ? { enhance: value => value } : name === '../../services/view-patch' ? require('../miniprogram/services/view-patch') : name === './final-detail' ? require('../miniprogram/pages/import-workbench/final-detail') : name === './presentation' ? require('../miniprogram/pages/import-workbench/presentation') : name === './model' ? model : name === '../../services/catledger-import' ? importApi : name === '../../services/import-draft-session' ? draftService : { bindPage() {} },
-    getApp: () => ({ globalData: {} }),
-    Page: (page) => { definition = page }
-  })
-  return Object.assign({}, definition, {
-    _accountUiDrafts: new Map(),
-    request: (action, data) => importApi.callImport(action, data),
-    data: Object.assign({}, definition.data, {
-      update: { updateId: 'synthetic-update' }, accountIssues: [issue], accounts
-    }),
-    setData(patch) {
-      for (const [key, value] of Object.entries(patch)) {
-        const parts = key.replace(/\[(\d+)\]/g, '.$1').split('.')
-        let target = this.data
-        for (const part of parts.slice(0, -1)) target = target[part]
-        target[parts[parts.length - 1]] = value
-      }
-    }
-  })
+  const h = require('./helpers/paged-workbench').runtime()
+  const page = h.page
+  page._businessData = null
+  page._draftSession = null
+  page.request = (action, data) => importApi.callImport(action, data)
+  Object.assign(page.data, { update: { updateId: 'synthetic-update' }, accountIssues: [issue], accounts })
+  return page
 }
 
 function unknownIssue() {

@@ -1,3 +1,4 @@
+const { errorText, direction } = require('./presentation')
 const api = require('../../services/catledger-import')
 const ledgerApi = require('../../services/catledger-api')
 const viewSession = require('../../services/import-view-session')
@@ -8,8 +9,7 @@ const presentation = require('./presentation')
 const inlineEvidence = require('./inline-evidence')
 const { buildFinalDetail, TITLES: FINAL_DETAIL_TITLES } = require('./final-detail')
 
-const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务版本过旧，请更新云函数后重试'
-  : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
+
 
 
 
@@ -132,19 +132,6 @@ async retryPagedView() {
       catch (error) { if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageError: errorText(error) }) }
       finally { if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageLoading: false }) }
     },
-async loadDirectories(events = [], extraIds = []) {
-      const pairs = await Promise.all(['accounts', 'categories', 'accountDrafts'].map(async kind => {
-        const response = await this._viewSession.read('financeUpdates.options', { kind, pageSize: 8 })
-        const key = kind === 'categories' ? 'categoryId' : 'accountId'
-        const pins = [...new Set((kind === 'categories' ? events.map(event => event.categoryId).filter(Boolean) : events.flatMap(event => model.eventAccountIds(event)
-          .concat((event.fundsProjection && event.fundsProjection.to && event.fundsProjection.to.candidates || []).map(row => row.accountId))))
-          .concat(extraIds.filter(Boolean)))]
-          .filter(id => !response.items.some(item => item[key] === id))
-        const extra = pins.length ? (await this._viewSession.read('financeUpdates.options', { kind, ids: pins, pageSize: 100 })).items : []
-        return [kind, response.items.concat(extra)]
-      }))
-      return Object.fromEntries(pairs)
-    },
 async readIssue(issueId) {
       const session = this._viewSession
       const [details, relations] = await Promise.all([
@@ -182,114 +169,6 @@ async openIssue(event) {
     },
 excludeIssueEvents() { return this.resolveIssue('exclude_events', { selection: { mode: 'all' } }) },
 selectPrimaryMember(event) { this.setData({ 'issueDraft.primaryEventId': event.currentTarget.dataset.id }) },
-async openAccountChoice(event) {
-      original.openAccountChoice.call(this, event)
-      if (!this.data.accountChoiceSheet) return
-      this.setData({ choiceKind: 'accounts' })
-      this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: 'accounts', pageSize: 12 })
-      return this.changeChoicePage(event)
-    },
-async bindAccountChoiceSearch(event) {
-      if (!this.data.accountChoiceSheet) return
-      this.setData({ accountChoiceQuery: event.detail.value })
-      this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.choiceKind, query: String(event.detail.value).slice(0, 80), pageSize: 12 })
-      return this.changeChoicePage(event)
-    },
-changeChoiceKind(event) {
-      const kind = event.currentTarget.dataset.kind
-      if (!['accounts', 'accountDrafts'].includes(kind)) return
-      this.setData({ choiceKind: kind, accountChoiceQuery: '' })
-      this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
-      return this.changeChoicePage(event)
-    },
-async changeChoicePage(event) {
-      const pager = this._directoryPager
-      this.setData({ choiceLoading: true })
-      try {
-        const response = await pager.load(direction(event))
-        if (pager !== this._directoryPager || !this.data.accountChoiceSheet) return
-        this._choiceRows = response.items
-        this.setData({ accountChoiceResults: model.accountSelectorOptions(this.data.choiceKind === 'accounts' ? response.items : [], this.data.choiceKind === 'accountDrafts' ? response.items : []), choicePage: response.page, choiceLoading: false })
-      } catch (error) { if (pager === this._directoryPager) this.setData({ choiceLoading: false, errorMessage: errorText(error) }) }
-    },
-selectAccountChoice(event) {
-      const id = String(event.currentTarget.dataset.value).replace(/^account:/, '')
-      const selected = (this._choiceRows || []).find(row => row.accountId === id)
-      if (selected) {
-        const data = this.businessData()
-        const accounts = data.accounts.filter(row => row.accountId !== id).slice(0, 11).concat(selected)
-        data.accounts = accounts
-        this.setData({ accounts })
-        const draft = this._accountUiDrafts.get(this.data.accountChoiceSheet.issueId)
-        if (draft) draft.accountName = selected.name
-      }
-      return original.selectAccountChoice.call(this, event)
-    },
-async openDirectory(event) {
-      const target = event.currentTarget.dataset.target
-      const kind = target === 'category' ? 'categories' : 'accounts'
-      this.setData({ directorySheet: { target, kind, query: '', items: [], loading: true } })
-      this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
-      return this.changeDirectoryPage(event)
-    },
-async searchDirectory(event) {
-      if (!this.data.directorySheet) return
-      const query = String(event.detail.value).slice(0, 80)
-      this.setData({ 'directorySheet.query': query })
-      this._optionPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.directorySheet.kind, query, pageSize: 12 })
-      return this.changeDirectoryPage(event)
-    },
-changeDirectoryKind(event) {
-      const kind = event.currentTarget.dataset.kind
-      if (!this.data.directorySheet || this.data.directorySheet.target === 'category' || !['accounts', 'accountDrafts'].includes(kind)) return
-      this.setData({ 'directorySheet.kind': kind, 'directorySheet.query': '' })
-      this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
-      return this.changeDirectoryPage(event)
-    },
-async changeDirectoryPage(event) {
-      const pager = this._optionPager
-      this.setData({ 'directorySheet.loading': true })
-      try {
-        const response = await pager.load(direction(event))
-        if (pager !== this._optionPager || !this.data.directorySheet) return
-        this.setData({ 'directorySheet.items': response.items, 'directorySheet.page': response.page, 'directorySheet.loading': false })
-      } catch (error) { if (pager === this._optionPager) this.setData({ 'directorySheet.loading': false, errorMessage: errorText(error) }) }
-    },
-selectDirectory(event) {
-      const sheet = this.data.directorySheet
-      if (!sheet || !this.data.currentIssue) return
-      const item = sheet.items[Number(event.currentTarget.dataset.index)]
-      if (!item) return
-      if (sheet.target === 'category') {
-        const nature = this.data.issueDraft.natureIndex
-        const kind = nature === 1 ? 'income' : [0, 6].includes(nature) ? 'expense' : ''
-        if (item.kind !== kind) { this.setData({ errorMessage: '请选择与当前收支性质一致的分类' }); return }
-        const options = [this.data.issueCategories[0], item]
-        this.setData({ issueCategories: options, categories: this.data.categories.filter(row => row.categoryId !== item.categoryId).slice(0, 11).concat(item), 'issueDraft.categoryIndex': 1, issueCategoryCanSave: true })
-      } else if (['payment', 'paymentTarget', 'repayment'].includes(sheet.target)) {
-        if (sheet.target !== 'payment' && !['credit', 'other_liability'].includes(item.type)) { this.setData({ errorMessage: '请选择负债账户' }); return }
-        if (sheet.target === 'repayment') {
-          if (this.data.repaymentAllocationChoices.length >= 20) { this.setData({ errorMessage: '一次最多分配 20 个账户' }); return }
-          if (!this.data.repaymentAllocationChoices.some(row => row.accountId === item.accountId)) this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.concat(Object.assign({}, item, { amountInput: '' })))
-        } else {
-          const key = sheet.target === 'payment' ? 'paymentAccountChoices' : 'paymentTargetChoices'
-          const choices = this.data[key]
-          const pinned = new Set(this.data.paymentRows.map(row => row.accountId).filter(Boolean))
-          const next = choices.filter(row => !row.accountId || pinned.has(row.accountId) || row.accountId === item.accountId)
-          if (!next.some(row => row.accountId === item.accountId)) next.push(item)
-          const rows = this.data.paymentRows.map(row => Object.assign({}, row, { accountIndex: Math.max(0, next.findIndex(account => account.accountId === row.accountId)) }))
-          this.setData(Object.assign({ [key]: next }, sheet.target === 'payment' ? { paymentRows: rows } : {}))
-          if (sheet.target === 'paymentTarget') { this.setData({ paymentTargetIndex: this.data.paymentTargetChoices.findIndex(row => row.accountId === item.accountId) }); this.refreshPaymentDraft() }
-        }
-      } else {
-        const property = sheet.target === 'counterparty' ? 'counterpartyAccountChoices' : 'accountChoices'
-        const field = sheet.target === 'counterparty' ? 'counterpartyAccountIndex' : 'accountIndex'
-        this.setData({ [property]: [this.data[property][0], item], ['issueDraft.' + field]: 1,
-          accounts: this.data.accounts.filter(row => row.accountId !== item.accountId).slice(0, 11).concat(item) })
-      }
-      this.closeDirectory(); this.refreshIssueFieldsDraft()
-    },
-closeDirectory() { if (this._optionPager) this._optionPager.cancel(); this._optionPager = null; this.setData({ directorySheet: null }) },
 expandBankBatch() {
       if (this.data.currentIssue.repaymentOwnershipRequired) return
       if (this.data.bankBatchExpanded) { this.setData({ bankBatchExpanded: false, bankBatchRecords: [], bankBatchSelectedCount: 0 }); return }
@@ -357,29 +236,6 @@ async changeIssueRelations(event) {
         if (pager !== this._relationPager || !this.data.currentIssue) return
         this.setData({ issueRelations: response.items.filter(member => member.relation).map(member => model.relationChoiceView(editorPreview(member.relation.targetEvent), member.relation)), relationPage: response.page })
       } catch (error) { if (pager === this._relationPager) this.setData({ errorMessage: errorText(error) }) }
-    },
-async openAccountRecords(event) {
-      const issueId = event.currentTarget.dataset.id
-      const mapping = this.data.accountMappings.find(item => item.issueId === issueId)
-      if (!mapping) return
-      this._accountPager = this._viewSession.pager('reviewIssues.members', { issueId, memberKind: 'event', pageSize: 8 })
-      this.setData({ accountRecordsSheet: { issueId, label: mapping.label, records: [], loading: true } })
-      return this.changeAccountMembers(event)
-    },
-async changeAccountMembers(event) {
-      const pager = this._accountPager
-      if (!pager || !this.data.accountRecordsSheet) return
-      this.closeInlineEvidence('account')
-      this.setData({ 'accountRecordsSheet.records': [], 'accountRecordsSheet.loading': true })
-      try {
-        const response = await pager.load(direction(event))
-        if (pager !== this._accountPager || !this.data.accountRecordsSheet) return
-        const list = model.accountRecordList(response.items)
-        this._accountRecordList = list.records.map(presentation.record)
-        this.setData({ accountRecordsSheet: Object.assign({}, this.data.accountRecordsSheet, { records: this._accountRecordList, dateRange: '当前页 ' + list.dateRange,
-          count: response.total, loading: false, hasMore: false, page: response.page }) })
-        await this.loadInlineEvidence('account', this._accountRecordList)
-      } catch (error) { if (pager === this._accountPager) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': errorText(error) }) }
     },
 closeInlineEvidence(scope) {
       const key = scope === 'issue' ? '_issueInlineEvidence' : '_accountInlineEvidence'
@@ -522,8 +378,8 @@ async postUpdate() {
       finally { if (active()) this.setData({ busy: false }) }
     }
 })
-  for (const [method, keys] of Object.entries({ closeIssue: ['_memberPager', '_relationPager', '_historicalPager'], closeAccountRecords: ['_accountPager'],
-    closeEvidence: ['_evidencePager', '_detailPager'], closeFinalDetail: ['_finalPager'], closeAccountChoice: ['_directoryPager'] })) {
+  for (const [method, keys] of Object.entries({ closeIssue: ['_memberPager', '_relationPager', '_historicalPager'],
+    closeEvidence: ['_evidencePager', '_detailPager'], closeFinalDetail: ['_finalPager'] })) {
     result[method] = function () {
       if (this.data.busy && ['closeIssue', 'closeAccountRecords'].includes(method)) return
       if (method === 'closeIssue') this.closeInlineEvidence('issue')
@@ -547,6 +403,6 @@ function editorPreview(event) {
   }))
   return Object.assign({}, event, { primaryEvidence, detailRequired: event.detailRequired || shortened })
 }
-function direction(event) { const value = event && event.currentTarget.dataset.direction; return value === 'first' ? value : Number(value || 0) }
+
 function compactMapping(mapping) { const { choiceOptions, evidencePreview, ...visible } = presentation.accountMapping(mapping); return Object.assign(visible, { evidencePreview: Boolean(evidencePreview) }) }
 module.exports = { enhance }

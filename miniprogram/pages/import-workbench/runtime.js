@@ -24,6 +24,11 @@ function boundedSetData(page) {
 }
 
 module.exports = {
+  applyPendingBackgroundView() {
+    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.accountChoiceSheet) {
+      const view = this._pendingBackgroundView; this._pendingBackgroundView = null; this.applyUpdateView(view, true)
+    }
+  },
 onLoad(options) {
       boundedSetData(this)
       this._viewEpoch = 0

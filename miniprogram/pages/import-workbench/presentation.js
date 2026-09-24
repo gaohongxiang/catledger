@@ -111,4 +111,8 @@ function publicError(error, fallback) {
   return ERROR_MESSAGES[error && error.code] || error && error.message || fallback
 }
 
-module.exports = { ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, card, evidencePartFields, PAGE_SIZE }
+const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务版本过旧，请更新云函数后重试'
+  : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
+function direction(event) { const value = event && event.currentTarget.dataset.direction; return value === 'first' ? value : Number(value || 0) }
+
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, card, evidencePartFields, PAGE_SIZE }
