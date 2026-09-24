@@ -78,7 +78,7 @@ test('账户批量确认只重算直接受影响或引用同一支付方式的�
 })
 
 test('账户页只向服务端提交一个批量动作，解析页已有更新时直接恢复', function () {
-  const source = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.js'), 'utf8')
+  const source = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/runtime.js'), 'utf8')
   const contract = require(path.join(projectRoot, 'shared/catledger-import.json'))
   assert.ok(contract.actions['reviewIssues.resolveAccountMappings'])
   assert.match(fs.readFileSync(path.join(projectRoot, 'miniprogram/services/import-draft-session.js'), 'utf8'), /reviewIssues\.resolveAccountMappings/)
@@ -86,7 +86,7 @@ test('账户页只向服务端提交一个批量动作，解析页已有更新�
 })
 
 test('首次进入账户步骤只调用一个原子 prepare 动作', function () {
-  const source = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.js'), 'utf8')
+  const source = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/runtime.js'), 'utf8')
   const contract = require(path.join(projectRoot, 'shared/catledger-import.json'))
   const start = source.indexOf('createFinanceUpdate: async function')
   const end = source.indexOf('\n  loadUpdate:', start)
@@ -104,7 +104,7 @@ test('整理卡明确区分交易摘要和冻结的原始记录', function () {
 })
 
 test('未入账批次由服务端重整并复查历史，客户端不再复制规划版本', function () {
-  const pageSource = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.js'), 'utf8')
+  const pageSource = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/runtime.js'), 'utf8')
   assert.equal(organizerPlanner.PLAN_VERSION, 'organizer-plan-v29')
   assert.doesNotMatch(pageSource, /CURRENT_PLAN_VERSION/)
   assert.match(pageSource, /view\.update\.status === 'review'[\s\S]*financeUpdates\.organize/)

@@ -19,6 +19,26 @@ for (const name of ['catledger-api', 'catledger-import']) {
   assert.ok(fs.existsSync(path.join(directory, manifest.main)))
 }
 
+// 工作台只允许显式注册，重复处理者不能靠对象合并顺序决定。
+const workbench = path.join(root, 'miniprogram/pages/import-workbench')
+const pageSource = fs.readFileSync(path.join(workbench, 'index.js'), 'utf8')
+const registration = pageSource.slice(pageSource.indexOf('Page({'))
+assert.ok(registration.startsWith('Page({'), '导入工作台必须显式注册 Page')
+assert.ok(!/enhance|Object\.assign|\.\.\./.test(registration), '页面入口禁止隐式覆盖')
+const handlers = [...registration.matchAll(/^  (\w+)(?::|\()/gm)].map(match => match[1])
+assert.equal(new Set(handlers).size, handlers.length, '导入工作台存在重复处理者')
+for (const lifecycle of ['onLoad', 'onShow', 'onHide', 'onUnload']) assert.ok(handlers.includes(lifecycle), `缺少生命周期 ${lifecycle}`)
+const markup = fs.readFileSync(path.join(workbench, 'index.wxml'), 'utf8')
+for (const [, handler] of markup.matchAll(/(?:bind|catch)(?::)?[\w-]+="([A-Za-z]\w*)"/g)) {
+  assert.ok(handlers.includes(handler), `导入工作台丢失 WXML 处理者 ${handler}`)
+}
+for (const file of ['runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'posting-flow.js']) {
+  const source = fs.readFileSync(path.join(workbench, file), 'utf8')
+  const methods = [...source.slice(source.indexOf('module.exports = {')).matchAll(/^  (\w+)(?::|\()/gm)].map(match => match[1])
+  assert.equal(new Set(methods).size, methods.length, `${file} 存在重复处理者`)
+  assert.ok(!/require\(['"]\.\/index['"]\)/.test(source), `${file} 不得反向加载 Page`)
+}
+
 // 检查实际 CommonJS 依赖图：函数包独立部署，领域层禁止循环引用。
 const runtime = files.filter((file) => /^cloudfunctions\/[^/]+\/(?:src\/.*|index)\.js$/.test(file))
 const graph = new Map(runtime.map((file) => [file, []]))

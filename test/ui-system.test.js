@@ -134,7 +134,7 @@ test('原始交易在当前弹层内下钻并由底部按钮返回处理', funct
 
 test('问题处理操作区全宽对齐且超额还款时禁用保存', function () {
   const template = read('miniprogram/pages/import-workbench/index.wxml')
-  const source = read('miniprogram/pages/import-workbench/index.js') + read('miniprogram/pages/import-workbench/paged.js')
+  const source = read('miniprogram/pages/import-workbench/index.js') + read('miniprogram/pages/import-workbench/transaction-review.js') + read('miniprogram/pages/import-workbench/posting-flow.js')
   const style = read('miniprogram/pages/import-workbench/index.wxss')
 
   assert.match(template, /bankBatchSelectedCount[^\n]+保存选择/)
@@ -146,7 +146,7 @@ test('问题处理操作区全宽对齐且超额还款时禁用保存', function
 
 test('最终入账展示财务与相同记录拆分并提供入账后的去向', function () {
   const template = read('miniprogram/pages/import-workbench/index.wxml')
-  const source = read('miniprogram/pages/import-workbench/index.js') + read('miniprogram/pages/import-workbench/paged.js')
+  const source = read('miniprogram/pages/import-workbench/index.js') + read('miniprogram/pages/import-workbench/transaction-review.js') + read('miniprogram/pages/import-workbench/posting-flow.js')
 
   assert.match(template, /本批支出/)
   assert.match(template, /本批收入/)
