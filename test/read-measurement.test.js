@@ -84,3 +84,47 @@ test('MINI-1915 缓存冷/热/并发/前台/写屏障/失败/换用户计数', a
   await cache.settleStorage()
   observer.enable(false)
 })
+
+test('MINI-1915 冷启动持久快照的展示、刷新成功和失败计数', async t => {
+  const seed = runtime()
+  await seed.page('index').loadDashboard()
+  await seed.cache.settleStorage()
+  for (const succeeds of [true, false]) {
+    const h = runtime(new Map(seed.storage)), home = h.page('index'), observer = h.load('services/read-observer')
+    const money = h.load('utils/money')
+    let derives = 0, release
+    for (const [name, fn] of Object.entries(money)) if (typeof fn === 'function') money[name] = (...args) => { derives++; return fn(...args) }
+    h.intercept = action => action === 'dashboard.get' ? new Promise(resolve => { release = resolve }) : undefined
+    if (!succeeds) h.respond = action => action === 'dashboard.get' ? { ok: false, error: { code: 'CONFLICT', message: '合成拒绝' } } : undefined
+    observer.attach(home); observer.enable(true)
+    const key = stableKey('dashboard.get', { month: h.load('utils/time').currentMonth() })
+    const metrics = () => {
+      const events = observer.snapshot()
+      return { requests: h.calls.length, responseBytes: events.filter(e => e.event === 'request').reduce((sum, e) => sum + (e.bytes || 0), 0),
+        setData: events.filter(e => e.event === 'setData').length, setDataBytes: events.filter(e => e.event === 'setData').reduce((sum, e) => sum + e.bytes, 0),
+        derives, snapshots: events.filter(e => e.event === 'snapshot').length, callbacks: events.filter(e => e.event === 'fresh').length,
+        fresh: h.cache.snapshot(key).fresh, hasDashboard: home.data.hasDashboard, loading: home.data.loading, error: Boolean(home.data.errorMessage) }
+    }
+    const loading = home.loadDashboard()
+    await tick()
+    const beforeResponse = metrics()
+    assert.equal(beforeResponse.requests, 1)
+    assert.equal(beforeResponse.hasDashboard, true, '新页面在网络返回前展示持久快照')
+    assert.equal(beforeResponse.loading, true)
+    assert.equal(beforeResponse.error, false)
+    assert.equal(beforeResponse.fresh, false, '展示快照不能冒充已确认的新鲜读取')
+    assert.equal(beforeResponse.snapshots, 1)
+    assert.equal(observer.snapshot().find(e => e.event === 'snapshot').source, 'storage')
+    release(); await loading
+    const afterResponse = metrics()
+    assert.equal(afterResponse.requests, 1)
+    assert.equal(afterResponse.hasDashboard, true)
+    assert.equal(afterResponse.loading, false)
+    assert.equal(afterResponse.error, !succeeds)
+    assert.equal(afterResponse.fresh, succeeds)
+    assert.equal(afterResponse.callbacks, succeeds ? 1 : 0)
+    t.diagnostic(JSON.stringify({ name: succeeds ? 'storage-snapshot-refresh' : 'storage-snapshot-failed-refresh', beforeResponse, afterResponse }))
+    await h.cache.settleStorage()
+    observer.enable(false)
+  }
+})
