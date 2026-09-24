@@ -3,6 +3,7 @@ const presentation = require('./presentation')
 const { errorText, direction } = require('./presentation')
 const api = require('../../services/catledger-import')
 const drafts = require('../../services/import-draft-session')
+const readCache = require('../../services/read-cache')
 const { buildFinalDetail, TITLES: FINAL_DETAIL_TITLES } = require('./final-detail')
 
 module.exports = {
@@ -123,10 +124,11 @@ module.exports = {
   },
 
   postUpdate: async function () {
-    if (this.data.busy || !this._draftSession) return
+    if (!this._viewActive || !getApp().hasLoginApproval() || this.data.busy || !this._draftSession) return
     const session = this._draftSession
-    const operation = this._postOperation = { epoch: this._viewEpoch }
-    const active = () => this._viewActive && this._viewEpoch === operation.epoch && this._postOperation === operation
+    const operation = this._postOperation = { epoch: this._viewEpoch, scope: readCache.getSession(), updateId: session.view.update.updateId }
+    const active = () => this._viewActive && getApp().hasLoginApproval() && readCache.getSession() === operation.scope &&
+      this._viewEpoch === operation.epoch && this._postOperation === operation && this.data.update && this.data.update.updateId === operation.updateId
     this.setData({ busy: true, errorMessage: '' })
     try {
       if (!session.state.postFlight) {

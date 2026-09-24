@@ -21,7 +21,7 @@ function fixture(count = 121, blocking = false) {
 function runtime(data = fixture(), options = {}) {
   const cache = Object.assign(createReadCache(), { stableKey }), storage = new Map(), calls = [], patches = [], modules = new Map()
   let session, definition
-  const h = { ...data, calls, patches, cache, intercept: null, maxDataBytes: 0, derives: {}, activeSubscriptions: 0 }
+  const h = { ...data, calls, patches, cache, storage, intercept: null, maxDataBytes: 0, derives: {}, activeSubscriptions: 0 }
   h.app = { approved: options.approved !== false, hasLoginApproval() { return this.approved }, globalData: {} }
   const call = async (action, input = {}) => {
     calls.push({ action, input: JSON.parse(JSON.stringify(input)) })
@@ -59,12 +59,12 @@ function runtime(data = fixture(), options = {}) {
         return () => { if (active) { active = false; h.activeSubscriptions--; off() } }
       }
     } return session } }
-  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), showToast() {}, pageScrollTo() {}, nextTick: setImmediate }
+  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key), showToast() {}, pageScrollTo() {}, nextTick: setImmediate }
   h.wx = wx
   const root = path.join(__dirname, '../../miniprogram')
   function load(filename) {
     if (filename.endsWith('/services/catledger-import.js')) return api
-    if (filename.endsWith('/services/import-draft-session.js')) return draftService
+    if (filename.endsWith('/services/import-draft-session.js') && !options.realDraftManager) return draftService
     if (filename.endsWith('/services/read-cache.js')) return cache
     if (filename.endsWith('/theme/service.js')) return { bindPage() {} }
     if (modules.has(filename)) return modules.get(filename).exports

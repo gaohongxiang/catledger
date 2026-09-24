@@ -8,6 +8,7 @@ const ledgerApi = require('../../services/catledger-api')
 const viewSession = require('../../services/import-view-session')
 const loginGuard = require('../../services/login-guard')
 const themeService = require('../../theme/service')
+const readCache = require('../../services/read-cache')
 
 const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).length
 const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon', 'financeUpdates.setRepayment',
@@ -54,6 +55,7 @@ module.exports = {
   onLoad(options) {
     boundedSetData(this)
     this._viewEpoch = 0
+    this._pageEpoch = 0
     this._viewActive = true
     this.setData({ pageLoading: false, pageError: '', directoryPage: null })
     themeService.bindPage(this)
@@ -297,6 +299,7 @@ module.exports = {
   },
 
   startAnother: function () {
+    this._viewEpoch++
     this.cancelPagedReads(); if (this._viewSession) this._viewSession.close(); this._viewSession = null
     this._businessData = null
     this._reviewProjection = null
@@ -305,7 +308,10 @@ module.exports = {
     if (this._updateLoad) this._updateLoad.cancelled = true
     this._restoreAbandonRequest = null
     if (this._unsubscribeDraft) this._unsubscribeDraft()
-    if (this._draftSession) this._draftSession.clear()
+    if (this._draftSession) {
+      if (this._draftSession.state.flight || this._draftSession.state.postFlight) this._draftSession.pause()
+      else this._draftSession.clear()
+    }
     this._draftSession = null
     this._unsubscribeDraft = null
     this._postingRequestId = null
@@ -381,9 +387,10 @@ module.exports = {
       if (!this._draftSession || this._draftSession.view.update.updateId !== view.update.updateId) {
         if (this._unsubscribeDraft) this._unsubscribeDraft()
         const session = this._draftSession = draftSessions.open(view)
+        const scope = readCache.getSession()
         this._accountUiDrafts = new Map(Object.entries(session.state.drafts))
         this._unsubscribeDraft = session.subscribe(() => {
-            if (!this._viewActive || this._draftSession !== session) return
+            if (!this._viewActive || this._draftSession !== session || readCache.getSession() !== scope) return
             setChangedData(this, { draftSync: session.status })
             if (this._viewSession.summary.viewVersion !== session.view.viewVersion) this.applyUpdateView(session.view, true, false, true)
           })
@@ -391,7 +398,7 @@ module.exports = {
       if (changed) this._accountUiDrafts = new Map(Object.entries(this._draftSession.state.drafts))
       this._draftSession.schedule()
     }
-    if (changed || this._loadedStep !== step) this.loadActivePage(true, undefined, quiet)
+    if (changed || this._loadedStep !== step) return this.loadActivePage(true, undefined, quiet)
   },
 
   stepPatch: function (step) {
@@ -417,9 +424,10 @@ module.exports = {
   loadActivePage: async function (reset, direction, quiet) {
     if (!this._viewSession || !this._viewActive) return
     const step = this.data.currentStep
-    const epoch = ++this._viewEpoch
+    const epoch = ++this._pageEpoch, viewEpoch = this._viewEpoch, scope = readCache.getSession()
+    const active = () => this._viewActive && epoch === this._pageEpoch && viewEpoch === this._viewEpoch && readCache.getSession() === scope
     this._loadedStep = step
-    if (![2, 3].includes(step)) { setChangedData(this, this.stepPatch(step)); return }
+    if (![2, 3].includes(step)) { setChangedData(this, Object.assign({}, this.stepPatch(step), { pageLoading: false, pageError: '' })); return }
     let action = 'reviewIssues.list', filter = {}, kind = 'accountMappings'
     if (step === 2) filter = { group: 'accounts' }
     else if (this.data.activeReviewTab === 'category') {
@@ -436,9 +444,9 @@ module.exports = {
     if (!quiet) this.setData({ pageLoading: true, pageError: '' })
     try {
       const response = await pager.load(direction)
-      if (!this._viewActive || epoch !== this._viewEpoch || pager !== this._mainPager) return
+      if (!active() || pager !== this._mainPager) return
       const directory = step === 2 ? await this.loadDirectories(response.items.map(issue => issue.subject).filter(Boolean)) : { accounts: this.data.accounts, categories: this.data.categories, accountDrafts: this.data.accountDrafts }
-      if (!this._viewActive || epoch !== this._viewEpoch) return
+      if (!active()) return
       const issues = action === 'reviewIssues.list' ? response.items : []
       const events = action === 'economicEvents.list' ? response.items : []
       this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [], accountMappingDrafts: [] })
@@ -458,7 +466,7 @@ module.exports = {
       patch.duplicateReviewLoaded = true
       setChangedData(this, patch)
     } catch (error) {
-      if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageLoading: false, pageError: errorText(error) })
+      if (active()) this.setData({ pageLoading: false, pageError: errorText(error) })
     }
   },
 
@@ -467,10 +475,21 @@ module.exports = {
   },
 
   retryPagedView: async function () {
-    const epoch = this._viewEpoch
-    this.setData({ pageLoading: true })
-    try { const summary = await api.readSummary(this.data.update.updateId); if (this._viewActive && epoch === this._viewEpoch) { this._mainPager = null; this.applyUpdateView(summary, true); await this.loadActivePage(true) } }
-    catch (error) { if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageError: errorText(error) }) }
-    finally { if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageLoading: false }) }
+    if (!this._viewActive || !this.data.update) return
+    const operation = this._refreshOperation = { epoch: this._viewEpoch, pageEpoch: ++this._pageEpoch,
+      scope: readCache.getSession(), updateId: this.data.update.updateId }
+    const active = () => this._viewActive && this._refreshOperation === operation && this._viewEpoch === operation.epoch &&
+      this._pageEpoch === operation.pageEpoch && readCache.getSession() === operation.scope &&
+      this.data.update && this.data.update.updateId === operation.updateId
+    this.setData({ pageLoading: true, pageError: '' })
+    try {
+      const summary = await api.readSummary(operation.updateId)
+      if (!active()) return
+      this._mainPager = null
+      const pending = this.applyUpdateView(summary, true) || this.loadActivePage(true)
+      operation.pageEpoch = this._pageEpoch
+      await pending
+    } catch (error) { if (active()) this.setData({ pageError: errorText(error) }) }
+    finally { if (active()) this.setData({ pageLoading: false }) }
   }
 }
