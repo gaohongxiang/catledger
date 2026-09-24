@@ -183,3 +183,84 @@ Astra 单一协调公共契约、事务/幂等、页面共享状态及缓存；�
 每个变更列原职责、消费者、行为证据、资源差异和剩余风险。后续依赖前项时按逆依赖正常 revert，不声称能任意撤回前置而继续运行；不清数据库、不删草稿、不 force push。文档/测试/缓存各自可回退，不用巨型提交打包。
 
 当前为一期计划整合；Astra 收到用户转交指令后按其范围实施/验证/提交/推送。未另授权不合并 main、不部署、不迁移云数据库、不新增云资源、不上传/审核/发布或写真实账目。交付候选不等于用户主目录或手机已更新；必要验收缺失时标明待验收。
+
+
+## 6. P0 冻结的接缝与保护目标（2026-09-24，4e374391）
+
+此节是拆分前结构证据，当前阶段状态只在实施规划。原服务约 1698 行；下面位置均指该 SHA，不作为未来内部位置断言。
+
+生产消费者：import-service 只装配 createReviewIssueService；core → synchronizeHistoricalReviews（含恢复包装）；read → selectDomainEvents/effectiveProjectedEvents；maintenance → applyFields；semantic-plan-upgrade → FIELD_MASK/selectDomainEvents/saveEvent/createFollowUpIssue/recalculateUpdateCounts。内部 reviseAccountMapping 被 import-service 的 reviewIssueReviseAccountMapping 保留，并被导入测试 helpers/paged-service 调用；action-registry 和 shared 契约没有同名网络 action。
+
+测试消费者：payment-resolution/repayment-ownership/repayment-allocation/semantic-plan-upgrade/funds-allocation 读取规则；review-candidate-budget 读取 saveEvents；import-workflow-regression 读取批量执行器和投影作用域，另有绑定旧路径的源码断言。P1/P2 随函数归属改导入，不留兼容导出。
+
+### 函数位置及内部调用者
+
+| 能力 | 原行号 | 内部调用者 |
+| --- | --- | --- |
+| validateDecision | 85–88 | createReviewIssueService |
+| selectIssue | 90–103 | createReviewIssueService |
+| selectMembers | 105–116 | resolveOpenAccountMapping, reviseResolvedAccountMapping, createReviewIssueService |
+| domainEvent | 118–140 | selectDomainEvents |
+| selectDomainEvents | 142–180 | refreshProjectedEvents, restoreStaleHistoricalLinks, resolveOpenAccountMapping, reviseResolvedAccountMapping, createReviewIssueService |
+| eventContext | 182–198 | saveEvent |
+| validateEventReferences | 200–264 | saveEvents, saveEvent |
+| resolvedReasons | 266–269 | finalizeSavedEvent, applyAccountMappingEvents, createReviewIssueService |
+| validateOptionalUuid | 271–273 | applyFields |
+| applyFields | 275–357 | applyMappedAccount, applyAccountMappingEvents, createReviewIssueService |
+| finalizeSavedEvent | 359–367 | saveEvents, saveEvent |
+| loadReferenceCatalog | 369–398 | saveEvents, createReviewIssueService |
+| saveEvents | 400–418 | applyAccountMappingEvents, createReviewIssueService |
+| updateMappingMemberVersions | 420–437 | applyAccountMappingEvents, reviseResolvedAccountMapping, createReviewIssueService |
+| saveEvent | 439–466 | refreshProjectedEvents, createReviewIssueService |
+| stageAccountMappings | 468–505 | applyAccountMappingEvents, createReviewIssueService |
+| mappingReferenceForMember | 507–517 | applyAccountMappingEvents |
+| applyMappedAccount | 519–533 | applyAccountMappingEvents, createReviewIssueService |
+| accountMappingEventMembers | 535–538 | resolveOpenAccountMapping, reviseResolvedAccountMapping |
+| stagePaymentReferenceMapping | 540–564 | createReviewIssueService |
+| deletePaymentReferenceMapping | 566–575 | 外部消费者或无直接调用 |
+| updateAccountMappingMemberVersions | 577–588 | 外部消费者或无直接调用 |
+| stageProjectedAccountMappings | 590–618 | createReviewIssueService |
+| createFollowUpIssue | 620–622 | refreshProjectedEvents, restoreStaleHistoricalLinks |
+| createFollowUpIssues | 623–655 | createFollowUpIssue, resolveOpenAccountMapping, reviseResolvedAccountMapping, createReviewIssueService |
+| projectedPaymentReferenceKeys | 657–663 | isEventInProjectionRefreshScope |
+| isEventInProjectionRefreshScope | 665–670 | refreshProjectedEvents |
+| refreshProjectedEvents | 672–716 | createReviewIssueService |
+| effectiveProjectedEvents | 718–722 | resolveOpenAccountMapping, createReviewIssueService |
+| effectiveProjectedEventsFromIndex | 724–729 | effectiveProjectedEvents, resolveOpenAccountMapping |
+| restoreStaleHistoricalLinks | 731–750 | synchronizeHistoricalReviews |
+| synchronizeHistoricalReviews | 752–756 | recalculateUpdateCounts |
+| recalculateUpdateCounts | 758–784 | createReviewIssueService |
+| assertDecisionMatchesIssue | 786–794 | createReviewIssueService |
+| runAccountMappingBatch | 796–802 | createReviewIssueService |
+| materializeAccountMappingFields | 804–823 | 外部消费者或无直接调用 |
+| materializeAccountMappingChoice | 825–832 | applyAccountMappingEvents |
+| applyAccountMappingEvents | 834–882 | resolveOpenAccountMapping, reviseResolvedAccountMapping |
+| resolveOpenAccountMapping | 884–915 | createReviewIssueService |
+| reviseResolvedAccountMapping | 917–959 | createReviewIssueService |
+
+上述参数均保持原签名：规则接收事件/字段/原因并返回新浅对象或列表；finalizeSavedEvent 原地修改 next 的状态/原因/版本/fieldSources。读写函数接收现有 connection/uid/updateId，事件 ID 去重排序分块，selectIssue/事件读取保持调用方 forUpdate 位置。保存与跟进问题可能因引用、金额/分类/退款上下文或版本失败，异常由原事务统一回滚。saveEvents 使用批量目录/上下文与分块 UPDATE；saveEvent 单笔上下文，可 preserveReferences。recalculateUpdateCounts 依次历史恢复与同步、草稿可达性、计数和预期版本更新；core 不改为调用此收尾。细项副作用及目标归属以 2.2 表为准。
+
+### 页面装配与状态
+
+- 直接同名覆盖 7 个：onLoad/onShow/onHide/onUnload/openIssue/openAccountChoice/selectAccountChoice。
+- 后置包装 6 个：closeIssue/closeAccountRecords/closeEvidence/closeFinalDetail/closeAccountChoice/startAnother。原 close 方法先关闭本层，包装器取消对应分页器，再处理待应用后台视图。
+- onLoad：boundedSetData → epoch/active/分页初值 → theme → requestIds/sourceFiles/UI 草稿 → 登录 guard → loadUpdate/指定原文。
+- onShow：登录校验/无登录清理 → active → theme/ledgerRevision → 返回页面 loadUpdate。onHide：active=false/epoch++ → 取消分页/原文 → 关层 → finishInputEditing。onUnload：同样取消 → viewSession.close → 清空读状态 → 取消 load/订阅/定时器并持久化 UI 草稿。
+- runtime 拥有活动 epoch、busy 操作令牌、currentIssue 开关和 pendingBackgroundView 协调；交易流程拥有表单与当前成员/原文；账户流程拥有 UI 选择与草稿 Map；上传拥有 sourceFiles/进度 Map/计时器；posting 只显示回执。
+- view-session 拥有版本/游标/缓存，分页器为页面实例字段；draft-session 拥有持久草稿/flight/postFlight/requestId。页面离开不清除这些事实。订阅 _unsubscribeDraft 每实例一份；_fileProgressTimers、_accountDraftTimer 在原生命周期释放。WXML 所有 bind/catch 处理者必须落到显式 Page 清单。
+
+### 测试保护与拟替换映射
+
+| 原保护目标 | 保留/替代验证 |
+| --- | --- |
+| import-workflow-regression 内部 index 源码中的 prepare/恢复/organize | import-paged-workbench「真实 Page 首次整理」实际请求序列；原基线通过，临时移除 organize 的受控破坏可使替代用例失败 |
+| 账户排除原因在总服务内出现 | 隔离账户决定行为与经济事件 reasonCodes；迁移时先改实际归属，P4 再评估去重 |
+| import-account-compact 同行布局、字号、88rpx、aria、禁用绑定 | 全部保留；这些保护真实 UI，不是无效源码耦合 |
+| 掩码/付款/还款来源与规则优先级 | 既有 payment-resolution、funds-allocation、repayment-allocation/ownership、semantic-plan-upgrade |
+| 引用/单批保存、版本/隔离/回滚 | review-candidate-budget、finance-update-posting、runtime-roles-db、bank-import-db、history-review-db |
+| 失效历史恢复/锁内复查/同额独立 | history-review-db（候选变化、删除后恢复、拒绝跨用户、重放与原子阻断） |
+| 离开页面后入账事实与原请求 | import-paged-workbench 新增真实 Page + 实际 draft-session 组合用例，配合 import-draft-session 响应丢失/持久恢复正反用例 |
+| 实际业务图与资源 | measure-import-review：固定 UUID/JS 和 MySQL 时钟，全字段/关系/ID 保留，按主键稳定读取并哈希；SQL 顺序与响应字节逐操作比较；既有 benchmark-import clientMetrics(24990) 保留请求/派生/setData/data/cache 指标 |
+| 普通缓存一致性 | read-cache/read-validation/read-snapshots/cached-page-requests 保留；read-measurement 用真实客户端与 observer 记录十种场景 |
+
+不以测试数下降验收，不删除任何金额、身份、原文、分页或恢复反例。P0 合成业务图夹具的准备错误（第二批需先映射账户并显式完成分类及历史核对）已单独纠正，未修改生产判断。

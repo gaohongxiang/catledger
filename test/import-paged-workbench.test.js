@@ -4,6 +4,37 @@ const { create, MAX_PAGES, MAX_HISTORY } = require('../miniprogram/services/impo
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
 const event = (direction, id) => ({ currentTarget: { dataset: { direction, id } } })
 
+test('真实 Page 首次整理只发 prepare，已有批次重新整理并保留历史复查', async () => {
+  const h = runtime(fixture(2)), page = h.page
+  h.intercept = action => ['financeUpdates.prepare', 'financeUpdates.organize'].includes(action) ? h.summary : undefined
+  page.data.update = null
+  page.data.files = [{ state: 'ready', batchId: 'synthetic-batch' }]
+  await page.createFinanceUpdate()
+  assert.deepEqual(h.calls.filter(c => /financeUpdates\.(prepare|create|organize)$/.test(c.action)).map(c => c.action), ['financeUpdates.prepare'])
+  const start = h.calls.length
+  await page.createFinanceUpdate()
+  assert.deepEqual(h.calls.slice(start).filter(c => /financeUpdates\.(prepare|create|organize)$/.test(c.action)).map(c => c.action), ['financeUpdates.organize'])
+  page.onUnload()
+})
+
+test('已发入账离开页面，原请求保留并可确认，不因卸载重新生成幂等键', async () => {
+  const h = runtime(fixture(2)), page = h.page, session = page._draftSession
+  let release
+  const posted = { ...h.summary, update: { ...h.summary.update, status: 'posted', version: 2 }, posting: { createdTransactionCount: 2 } }
+  h.intercept = action => action === 'financeUpdates.post' ? new Promise(resolve => { release = () => resolve(posted) }) : undefined
+  const pending = page.postUpdate()
+  await flush()
+  const original = JSON.stringify(session.state.postFlight.payload)
+  page.onUnload(); release(); await pending
+  assert.equal(JSON.stringify(session.state.postFlight.payload), original)
+  assert.equal(page.data.phase, 'review')
+  h.intercept = action => action === 'financeUpdates.post' ? posted : undefined
+  assert.equal((await session.post()).update.status, 'posted')
+  const writes = h.calls.filter(c => c.action === 'financeUpdates.post')
+  assert.equal(writes.length, 2)
+  assert.deepEqual(writes[0].input, writes[1].input)
+})
+
 test('原文整段按源字段展示，重复列与空值不丢；不拼接或解析跨页片段', () => {
   const { evidencePartFields } = require('../miniprogram/pages/import-workbench/presentation')
   const part = JSON.stringify([{ name: '备注', value: '', column: 1 }, { name: '备注', value: '第二列原文', column: 2 }, { name: '金额', value: '0', column: 3 }])
