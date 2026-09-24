@@ -14,7 +14,9 @@ test('protected subpages share the same login sheet component', () => {
     const config = JSON.parse(read(`miniprogram/pages/${page}/index.json`))
     assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
     assert.match(read(`miniprogram/pages/${page}/index.wxml`), /id="page-login-sheet"/)
-    assert.match(read(`miniprogram/pages/${page}/index.js`), /loginGuard\.run/)
+    const controller = page === 'import-workbench' ? 'runtime' : 'index'
+    if (page === 'import-workbench') assert.match(read(`miniprogram/pages/${page}/index.js`), /onLoad:\s*runtime\.onLoad/)
+    assert.match(read(`miniprogram/pages/${page}/${controller}.js`), /loginGuard\.run/)
   }
   const tabConfig = JSON.parse(read('miniprogram/custom-tab-bar/index.json'))
   assert.equal(tabConfig.usingComponents['login-sheet'], '/components/login-sheet/index')
