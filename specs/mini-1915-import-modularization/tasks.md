@@ -23,9 +23,9 @@ Astra 在用户转交 [交接指令](ASTRA-HANDOFF.md) 后任唯一主负责人�
 
 依赖 P0。所有权：review-issue-service.js、新增 review/policy.js、实际规则消费者的 require、相关测试及必要入口文档。
 
-- [ ] 1A.1 原样提取 FIELD_MASK、applyFields、resolvedReasons、validateDecision、assertDecisionMatchesIssue 等确定性规则，检查直接/传递依赖不引入 SQL、存储或服务工厂。（R1、R5）
-- [ ] 1A.2 同提交迁移生产/测试引用，保留正式工厂，不加旧内部转导出、兼容包装、fallback 或双实现。（R3、R5）
-- [ ] 1A.3 验证掩码、决定/类型、错误码、对象行为、原优先级和维护/旧计划调用；工程/依赖检查通过。（R1、R3、R6）
+- [x] 1A.1 原样提取 FIELD_MASK、applyFields、resolvedReasons、validateDecision、assertDecisionMatchesIssue 等确定性规则，检查直接/传递依赖不引入 SQL、存储或服务工厂。（R1、R5）
+- [x] 1A.2 同提交迁移生产/测试引用，保留正式工厂，不加旧内部转导出、兼容包装、fallback 或双实现。（R3、R5）
+- [x] 1A.3 验证掩码、决定/类型、错误码、对象行为、原优先级和维护/旧计划调用；工程/依赖检查通过。（R1、R3、R6）
 
 出口：不改 SQL、事务、锁、页面、数据/计划版本、公开 action 或账务语义。带副作用 helper 留到 P1-B，不为凑范围抽象；本提交不混入缓存修改或测试删减。
 

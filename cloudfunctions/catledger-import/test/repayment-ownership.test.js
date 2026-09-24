@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
-const { applyFields } = require('../src/review-issue-service')
+const { applyFields } = require('../src/review/policy')
 const { evaluatePostability, classifyReviewIssue } = require('../src/organizer-model')
 const { repaymentTargetReference } = require('../src/account-reference')
 const { reconcileProjectedAccounts, createMappingIndex } = require('../src/source-funds')

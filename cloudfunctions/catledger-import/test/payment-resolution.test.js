@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { inspectPaymentResolution, paymentResolutionForEvent } = require('../src/payment-resolution')
-const { applyFields } = require('../src/review-issue-service')
+const { applyFields } = require('../src/review/policy')
 const { evaluatePostability } = require('../src/organizer-model')
 const { transactionDrafts } = require('../src/finance-update-posting')
 const { correctionImpactResult } = require('../src/maintenance-state')

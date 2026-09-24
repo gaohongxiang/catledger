@@ -11,7 +11,7 @@ const { insertAction, parseJson, selectUpdate } = require('./finance-update-repo
 const { createTransactions, linkEventTransaction, transactionDrafts, eventContext } = require('./finance-update-posting')
 const { executeIdempotentMutation, executeUserRead } = require('./import-transaction')
 const { EVENT_STATUS, unique, evaluatePostability } = require('./organizer-model')
-const { applyFields } = require('./review-issue-service')
+const { applyFields } = require('./review/policy')
 const { validateUuid, validateVersion } = require('./validation')
 
 async function selectCorrectableEvent(connection, uid, eventId, { forUpdate = false } = {}) {

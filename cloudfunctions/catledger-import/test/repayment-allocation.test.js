@@ -6,7 +6,7 @@ const {
   repaymentAllocationsForEvent
 } = require('../src/repayment-allocation')
 const { transactionDrafts } = require('../src/finance-update-posting')
-const { applyFields, FIELD_MASK } = require('../src/review-issue-service')
+const { applyFields, FIELD_MASK } = require('../src/review/policy')
 
 const A = '51000000-0000-4000-8000-000000000201'
 const B = '51000000-0000-4000-8000-000000000202'

@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { refreshEventSemantic } = require('../src/semantic-plan-upgrade')
 const { resolveRowSemantic } = require('../src/row-semantic-resolver')
-const { FIELD_MASK } = require('../src/review-issue-service')
+const { FIELD_MASK } = require('../src/review/policy')
 const row = { sourceType: 'alipay', sourceFormat: 'alipay_app_csv', rawTransactionType: '信用借还',
   item: '免押服务使用费', direction: 'expense', rawStatus: '交易成功', amountMinor: '600', paymentMethod: '账户余额' }
 const event = { eventId: 'synthetic-event', updateId: 'synthetic-update', version: 7, status: 'needs_action',
