@@ -35,6 +35,47 @@ test('已发入账离开页面，原请求保留并可确认，不因卸载重�
   assert.deepEqual(writes[0].input, writes[1].input)
 })
 
+test('隐藏期间迟到摘要停止后续整理，返回后从当前批次重新读取', async () => {
+  const h = runtime(fixture(2)), page = h.page
+  let release
+  h.intercept = action => action === 'financeUpdates.summary' ? new Promise(resolve => { release = resolve }) : undefined
+  const pending = page.loadUpdate('synthetic-update')
+  await flush(); page.onHide()
+  const patches = h.patches.length
+  h.intercept = action => action === 'financeUpdates.organize' ? h.summary : undefined
+  release(h.summary); await pending
+  assert.equal(h.calls.filter(c => c.action === 'financeUpdates.organize').length, 0)
+  assert.equal(h.patches.length, patches)
+  await page.onShow()
+  assert.equal(h.calls.filter(c => c.action === 'financeUpdates.organize').length, 1)
+  assert.equal(page.data.phase, 'review')
+  page.onUnload()
+})
+
+test('旧入账在返回后完成，不覆盖新操作或解除新 busy，原请求可恢复已入账', async () => {
+  const h = runtime(fixture(2)), page = h.page, session = page._draftSession
+  let release
+  const posted = { ...h.summary, update: { ...h.summary.update, status: 'posted', version: 2 }, posting: { createdTransactionCount: 2 } }
+  h.intercept = action => action === 'financeUpdates.post' ? new Promise(resolve => { release = () => resolve(posted) }) : undefined
+  const pending = page.postUpdate(); await flush()
+  const requestId = session.state.postFlight.payload.requestId
+  page.onHide()
+  // 模拟返回时已有新操作；旧操作不能取得这次页面活动的渲染所有权。
+  page._viewActive = true; page.setData({ busy: true })
+  const patches = h.patches.length
+  release(); await pending
+  assert.equal(page.data.busy, true)
+  assert.equal(h.patches.length, patches)
+  assert.equal(session.state.postFlight.payload.requestId, requestId)
+  h.intercept = action => action === 'financeUpdates.post' ? posted : undefined
+  await session.post()
+  assert.ok(h.calls.filter(c => c.action === 'financeUpdates.post').every(c => c.input.requestId === requestId))
+  h.summary = posted; page.setData({ busy: false })
+  await page.loadUpdate('synthetic-update')
+  assert.equal(page.data.phase, 'done')
+  page.onUnload()
+})
+
 test('原文整段按源字段展示，重复列与空值不丢；不拼接或解析跨页片段', () => {
   const { evidencePartFields } = require('../miniprogram/pages/import-workbench/presentation')
   const part = JSON.stringify([{ name: '备注', value: '', column: 1 }, { name: '备注', value: '第二列原文', column: 2 }, { name: '金额', value: '0', column: 3 }])

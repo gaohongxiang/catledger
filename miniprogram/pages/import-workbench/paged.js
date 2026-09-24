@@ -570,27 +570,33 @@ function enhance(definition) {
     async postUpdate() {
       if (this.data.busy || !this._draftSession) return
       const session = this._draftSession
+      const operation = this._postOperation = { epoch: this._viewEpoch }
+      const active = () => this._viewActive && this._viewEpoch === operation.epoch && this._postOperation === operation
       this.setData({ busy: true, errorMessage: '' })
       try {
         if (!session.state.postFlight) {
           await session.flush()
+          if (!active()) return
           this.applyUpdateView(session.view, true)
           if (!session.view.coverage.selectedEventsReadyToPost) { this.setData({ errorMessage: '请完成剩余核对后再入账' }); return }
         }
         this.setData({ busy: true })
         const receipt = await session.post()
-        if (!this._viewActive) return
+        if (!active()) return
         if (this._unsubscribeDraft) this._unsubscribeDraft()
         session.clear(); drafts.forgetLast(); this._draftSession = null
         this.applyUpdateView(receipt)
-        try { this.applyUpdateView(await api.readSummary(receipt.update.updateId)) } catch (error) { /* 已入账状态保留，用户可独立刷新。 */ }
+        try {
+          const summary = await api.readSummary(receipt.update.updateId)
+          if (active()) this.applyUpdateView(summary)
+        } catch (error) { /* 已入账状态保留，用户可独立刷新。 */ }
       } catch (error) {
-        if (this._viewActive && error.code === 'HISTORY_REVIEW_REQUIRED') {
+        if (active() && error.code === 'HISTORY_REVIEW_REQUIRED') {
           await this.loadUpdate(session.view.update.updateId, false)
-          if (this._viewActive && this.data.phase !== 'error') this.setStep({ currentStep: 3, errorMessage: errorText(error) })
-        } else if (this._viewActive) this.setData({ errorMessage: errorText(error) })
+          if (active() && this.data.phase !== 'error') this.setStep({ currentStep: 3, errorMessage: errorText(error) })
+        } else if (active()) this.setData({ errorMessage: errorText(error) })
       }
-      finally { if (this._viewActive) this.setData({ busy: false }) }
+      finally { if (active()) this.setData({ busy: false }) }
     }
   })
   for (const [method, keys] of Object.entries({ closeIssue: ['_memberPager', '_relationPager', '_historicalPager'], closeAccountRecords: ['_accountPager'],

@@ -748,7 +748,8 @@ Page(require('./paged').enhance({
   loadUpdate: async function (updateId, restoreToFirstStep) {
     const load = { updateId: updateId, cancelled: false, pending: null }
     this._updateLoad = load
-    const active = () => this._updateLoad === load && !load.cancelled
+    const epoch = this._viewEpoch
+    const active = () => this._viewActive !== false && this._viewEpoch === epoch && this._updateLoad === load && !load.cancelled
     this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false })
     try {
       load.pending = this.request('financeUpdates.summary', { updateId: updateId })
