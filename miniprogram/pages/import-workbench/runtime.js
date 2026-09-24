@@ -299,6 +299,7 @@ module.exports = {
   },
 
   startAnother: function () {
+    this._pendingInitialLoad = null
     this._viewEpoch++
     this.cancelPagedReads(); if (this._viewSession) this._viewSession.close(); this._viewSession = null
     this._businessData = null
