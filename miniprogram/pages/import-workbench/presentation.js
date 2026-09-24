@@ -92,4 +92,23 @@ function evidencePartFields(part, page) {
   } catch (_) { return [] }
 }
 
-module.exports = { accountMapping, emptyLists, reviewLists, detailWindow, record, card, evidencePartFields, PAGE_SIZE }
+const ERROR_MESSAGES = Object.freeze({
+  CONFLICT: '整理状态已经变化，请刷新后重试',
+  CSV_COLUMN_LIMIT_EXCEEDED: '账单列结构异常，请重新从支付平台导出',
+  CSV_RECORD_LIMIT_EXCEEDED: '单个账单超过 5000 条，请缩短导出时间范围',
+  FILE_ENCODING_INVALID: '文件编码无法识别，请重新导出',
+  FILE_FORMAT_UNSUPPORTED: '尚未识别这份表格的账单结构，文件没有入账',
+  BANK_MAPPING_REQUIRED: '请确认银行账单的列和收支方向',
+  BANK_ROWS_INVALID: '部分行无法识别，请检查日期、金额、收支和币种列；仅支持人民币，公式需先转为数值',
+  FILE_SIZE_INVALID: '每个文件需大于 0 且不超过 5 MB',
+  IDENTITY_CONFLICT: '来源记录身份冲突，需要在问题卡片中确认',
+  INITIALIZATION_REQUIRED: '账本还没有初始化，请重新登录后再试',
+  UNRESOLVED_IMPORT: '仍有阻塞问题，暂时不能整批入账',
+  UNSUPPORTED_ACTION: '导入服务版本过旧，请更新云函数后重试'
+})
+
+function publicError(error, fallback) {
+  return ERROR_MESSAGES[error && error.code] || error && error.message || fallback
+}
+
+module.exports = { ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, card, evidencePartFields, PAGE_SIZE }

@@ -9,6 +9,7 @@ const read = name => fs.readFileSync(path.join(root, name), 'utf8')
 const routes = JSON.parse(read('miniprogram/app.json')).pages
 
 function runtime(route, callApi) {
+  if (route === 'pages/import-workbench/index') return require('./helpers/paged-workbench').runtime()
   const filename = path.join(root, 'miniprogram', route + '.js')
   const req = createRequire(filename)
   let definition

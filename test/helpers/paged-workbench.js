@@ -53,6 +53,7 @@ function runtime(data = fixture()) {
     open(view) { if (!session) session = createDraft({ scope: 'synthetic', view, autoSync: false, call,
       read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key), requestId: api.createRequestId }); return session } }
   const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), showToast() {}, pageScrollTo() {} }
+  h.wx = wx
   const root = path.join(__dirname, '../../miniprogram')
   function load(filename) {
     if (filename.endsWith('/services/catledger-import.js')) return api

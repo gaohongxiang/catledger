@@ -1,8 +1,6 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const vm = require('node:vm')
-const { createRequire } = require('node:module')
 const test = require('node:test')
 const mapping = require('../miniprogram/pages/import-workbench/bank-mapping')
 const model = require('../miniprogram/pages/import-workbench/model')
@@ -30,23 +28,8 @@ test('银行列确认展示样例，借贷和正负必须明确，切换格式�
 })
 
 function workbench(request) {
-  let definition
-  const filePath = path.resolve(__dirname, '../miniprogram/pages/import-workbench/index.js')
-  const localRequire = createRequire(filePath)
-  vm.runInNewContext(fs.readFileSync(filePath, 'utf8'), {
-    Page: value => { definition = value }, getApp: () => ({ globalData: {} }),
-    require: name => name === './paged' ? { enhance: value => value }
-      : name === '../../services/catledger-import' ? { createRequestId: () => 'synthetic-request' }
-        : ['./model', './bank-mapping', './presentation', './final-detail', '../../services/view-patch'].includes(name) ? localRequire(name) : {}
-  })
-  const page = { ...definition, data: JSON.parse(JSON.stringify(definition.data)), request,
-    setData(patch) {
-      for (const [key, value] of Object.entries(patch)) {
-        const parts = key.split('.'); let target = this.data
-        for (const part of parts.slice(0, -1)) target = target[part]
-        target[parts[parts.length - 1]] = value
-      }
-    } }
+  const { page } = require('./helpers/paged-workbench').runtime()
+  page.request = request
   page.data.files = [{ clientId: 'file', name: '合成.xls', importId: 'synthetic-import', fileID: 'synthetic-upload', state: 'queued' }]
   return page
 }
