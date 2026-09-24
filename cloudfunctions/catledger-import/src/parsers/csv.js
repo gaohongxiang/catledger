@@ -5,11 +5,12 @@ const { importError } = require('../errors')
 const MAX_COLUMNS = 64
 const MAX_RECORDS = 5000
 
-function readCsvRecords(text) {
+function readCsvRecords(text, { delimiter = ',' } = {}) {
   let parsed
   try {
     parsed = parse(text, {
       bom: false,
+      delimiter,
       columns: false,
       info: true,
       raw: true,

@@ -421,6 +421,9 @@ function transactionDraft(event, originalTransactionId) {
 }
 
 function transactionDrafts(event, originalTransactionId) {
+  // 此标记只能由入账事务在核实“信用卡账单 + credit 账户”后设置。
+  // 普通银行贷款本金仍走下面原有真实资金转账逻辑。
+  if (event.confirmedCreditInstallmentPrincipal === true) return []
   const repayment = repaymentInput(event)
   if (repayment) return repaymentBooking.drafts(repayment)
   const plan = eventAllocation(event)
@@ -510,6 +513,7 @@ function createFinanceUpdatePosting({ getPool }) {
           const evaluated = evaluatePostability(event, contexts.get(event.eventId))
           if (evaluated.status !== EVENT_STATUS.READY) throw importError('UNRESOLVED_IMPORT')
         }
+        await require('./historical-duplicates').assertHistoricalReviewsCurrent(connection, uid, updateId)
         // Draft accounts are assigned stable future IDs during review, but the
         // formal Account rows are created only after the user starts posting.
         // This transaction also owns every later transaction/link/state write,
@@ -547,7 +551,8 @@ function createFinanceUpdatePosting({ getPool }) {
         if (postingState.affectedRows !== 1) throw importError('CONFLICT')
 
         let created = 0, reused = 0, refundContext = null
-        const transactionRows = [], linkRows = [], newByIdentity = new Map(), bookedRepayments = []
+        const transactionRows = [], linkRows = [], newByIdentity = new Map(), bookedRepayments = [], installmentRows = [], installmentInBatch = new Map()
+        const installmentStore = require('./installment-items')
         async function flush() {
           await insertMany(connection, `INSERT INTO catledger_transactions
             (uid, transaction_id, type, source_account_id, destination_account_id, category_id, original_transaction_id,
@@ -560,7 +565,22 @@ function createFinanceUpdatePosting({ getPool }) {
           event.postingId = postingId
           const eventIdentities = identities.get(event.eventId) || []
           const inBatch = eventIdentities.map(id => newByIdentity.get(id)).filter(Boolean).sort((a, b) => a.order - b.order)[0]
-          const existing = history.get(event.eventId) || inBatch
+          // prepareImport 在服务端核对账户 type=credit，其他账户拒绝该分期账单路径。
+          const prepared = await installmentStore.prepareImport(connection,uid,event,eventIdentities)
+          if (prepared && prepared.creditStatement===true && prepared.component==='principal') event.confirmedCreditInstallmentPrincipal=true
+          const installmentKey = prepared && (prepared.loanId || prepared.referenceKey || prepared.identityId)
+            ? [prepared.accountId,prepared.loanId || prepared.referenceKey || prepared.identityId,prepared.periodNumber,prepared.component].join(':') : null
+          const sameInstallment = installmentKey && installmentInBatch.get(installmentKey)
+          if (sameInstallment) {
+            if (prepared.component!=='principal' && sameInstallment.eventId!==prepared.eventId && (!prepared.identityId || prepared.identityId!==sameInstallment.identityId)) throw importError('LOAN_SOURCE_MISMATCH')
+            if (sameInstallment.amountMinor!==prepared.amountMinor) throw importError('LOAN_SOURCE_MISMATCH')
+            if (prepared.identityId && prepared.identityId===sameInstallment.identityId) prepared.existingItem=sameInstallment
+            prepared.canonicalItem=sameInstallment
+            prepared.reuseTransactionId=sameInstallment.transactionId
+            prepared.reuseTransactionVersion=sameInstallment.transactionVersion
+          }
+          const existing = history.get(event.eventId) || inBatch || prepared && prepared.reuseTransactionId &&
+            {transactionId:prepared.reuseTransactionId,version:prepared.reuseTransactionVersion}
           const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid || Boolean(event.fieldSources.loanRepayment)
           if (allocation && existing) throw importError('IDENTITY_CONFLICT')
           let transactions
@@ -593,13 +613,22 @@ function createFinanceUpdatePosting({ getPool }) {
           for (const transaction of transactions) linkRows.push([uid, randomUUID(), updateId, event.eventId,
             transaction.transactionId, transaction.role, existing ? 'reused' : 'created', 'event-transaction-link-v2', existing ? Number(existing.version) : 1])
           if (event.fieldSources.loanRepayment) bookedRepayments.push({ event,transactions })
+          if (prepared) {
+            const transactionId=transactions[0] && transactions[0].transactionId
+            installmentRows.push({prepared,transactionId})
+            if (installmentKey && !sameInstallment) installmentInBatch.set(installmentKey,{...prepared,transactionId,transactionVersion:existing?Number(existing.version):1})
+          }
           // 同批后续证据仍可复用刚创建/已复用的交易，与逐笔查询语义一致。
-          const first = { transactionId: transactions[0].transactionId, version: existing ? Number(existing.version) : 1, order: newByIdentity.size }
-          for (const id of eventIdentities) if (!newByIdentity.has(id)) newByIdentity.set(id, first)
+          if (transactions.length) {
+            const first = { transactionId: transactions[0].transactionId, version: existing ? Number(existing.version) : 1, order: newByIdentity.size }
+            for (const id of eventIdentities) if (!newByIdentity.has(id)) newByIdentity.set(id, first)
+          }
         }
         await flush()
         await updateEvents(connection, uid, updateId, ['state', 'status', 'version'],
           ready.map(event => [event.eventId, event.version, 'posted', 'posted', event.version + 1]))
+        for (const item of installmentRows) await installmentStore.persistImport(connection,uid,item.prepared,item.transactionId)
+        await installmentStore.persistReviewedImports(connection,uid,updateId,events,identities)
 
         // Imported transactions, newly materialized accounts and every state
         // transition still belong to this transaction. A cash deficit aborts

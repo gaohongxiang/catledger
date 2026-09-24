@@ -6,6 +6,8 @@ const theme = require('../../theme/service')
 const money = require('../../utils/money')
 const { present, form } = require('../loans/model')
 const scheduleForm = require('./schedule-form')
+const detailReader = require('./detail-reader').create(api)
+const installmentActions = require('./installment-actions')
 
 function fieldErrorFor(message) {
   const text = String(message || '')
@@ -16,20 +18,25 @@ function fieldErrorFor(message) {
 }
 
 Page({
+  ...detailReader,
+  ...installmentActions,
   data: { sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
+    periodOpen: false, periodLoading: false, periodError: '', selectedPeriod: null, periodSources: [], periodLegacy: [], periodMoreSources: false, periodCanBook: false, periodEditing: false, periodAdjustOpen: false, periodDraft: null, progressOpen: false, progressThrough: '',
+    detail: null, detailLoading: false, detailError: '', periodRows: [], scheduleMore: false, scheduleHistorical: false, guideOpen: false, historyOpen: false,
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
     principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
     scheduleOpen: false, schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
-  onLoad(query) { this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId){this._redirecting=true;wx.redirectTo({url:'/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
+  onLoad(query) { this._readClosed = false; this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId){this._redirecting=true;wx.redirectTo({url:'/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
   onShow() { if(this._redirecting)return;theme.bindPage(this); return loginGuard.run(this, () => this.load()) },
   onUnload() { pageReadSession.end(this) },
   load() {
-    const current = pageReadSession.begin(this, ['sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule'], ['_load','_sourceInitialized'])
+    const current = pageReadSession.begin(this, ['periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodAdjustOpen','periodDraft','progressOpen','progressThrough','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','historyOpen','sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule'], ['_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext'])
     if (this._load) return this._load
+    const readOptions = { force: !!this._forceLoanRead }; this._forceLoanRead = false
     this.setData({ loading: true, errorMessage: '' })
-    const showLoan = (result, snapshot) => { if (current() && result) this.setData({ loan: present(result.loan), errorMessage: snapshot ? '正在更新，当前显示上次结果' : '' }) }
+    const showLoan = (result, snapshot) => { if (current() && result) { this.setData({ loan: present(result.loan), errorMessage: snapshot ? '正在更新，当前显示上次结果' : '' }); this.applyDetailLoan(this.data.loan) } }
     const showSource = result => { if (current()) this.setData({ sourceContext: result && result.transaction ? Object.assign({}, result, { occurredText: String(result.transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' ') }) : result }) }
-    this._load = Promise.all([api.callApi('catalog.get'), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { onSnapshot: result => showLoan(result, true) }).then(result => { showLoan(result); return result }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { onSnapshot: showSource }).then(result => { showSource(result); return result }) : Promise.resolve(null)])
+    this._load = Promise.all([api.callApi('catalog.get', {}, readOptions), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { ...readOptions, onSnapshot: result => showLoan(result, true) }).then(result => { showLoan(result); return result }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { onSnapshot: showSource }).then(result => { showSource(result); return result }) : Promise.resolve(null)])
       .then(async ([catalog, result, sourceContext]) => {
         if (!current()) return
         // 并行读取中观察到新全局修订时，补齐先返回的旧目录/来源，避免保存门禁停在旧快照。
@@ -44,6 +51,7 @@ Page({
         this.setData({ accounts, sourceContext, accountIndex: selected ? accounts.findIndex(a => a.accountId === selected.accountId) : -1 })
         if (result) {
           this.setData({ loan: present(result.loan) })
+          this.applyDetailLoan(this.data.loan)
           if (!this.data.formOpen) this.fillForm(result.loan)
         } else if (this.data.accountIndex < 0 && accounts.length && !this._sourceTransactionId) this.setData({ accountIndex: 0 })
         if (sourceContext && !this._sourceInitialized) {
@@ -59,14 +67,15 @@ Page({
             const recovered = await pending.verify()
             if (current() && recovered) {
               this.showSaved(recovered)
-              if (/^loans\.(create|update)$/.test(recovered.action)) {
+              if (/^loans\./.test(recovered.action)) {
                 const fresh = await api.callApi('loans.get', { loanId: this._loanId }, { force: true })
-                if (current()) { this.setData({ loan: present(fresh.loan) }); this.fillForm(fresh.loan) }
+                if (current()) { this.setData({ loan: present(fresh.loan) }); this.applyDetailLoan(this.data.loan); this.fillForm(fresh.loan) }
               }
             }
           }
           catch (error) { if (current()) this.setData({ errorMessage: error.message || '上次操作仍待核实', hasPending: Boolean(pending.pending()) }) }
         }
+        if (current() && this.data.loan) await this.loadDetail()
       })
       .catch(error => { if (current()) this.setData({ errorMessage: this.data.loan ? '更新未成功，当前显示上次结果；' + (error.message || '请重试') : error.message || '贷款资料暂未加载' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
@@ -111,7 +120,8 @@ Page({
   toggleSchedule() { this.setData({ scheduleOpen: !this.data.scheduleOpen }) },
   openAccounts() { wx.navigateTo({ url: '/pages/accounts/index' }) },
   showSaved(outcome) {
-    this.setData({ hasPending: false, savedMessage: (outcome.recovered ? '上次操作已确认成功' : '贷款资料已保存') + (this._savedWithSchedule ? '；可到「还款计划与对账」按参数生成期次' : '') })
+    this.setData({ hasPending: false, savedMessage: (outcome.recovered ? '上次操作已确认成功' : '贷款资料已保存') + (this._savedWithSchedule ? '；分期参数已更新' : '') })
+    wx.showToast({ title: outcome.recovered ? '已确认保存' : '已保存', icon: 'success', duration: 1500 })
     this._savedWithSchedule = false
     if (/^loans\.(create|update)$/.test(outcome.action)) {
       this._loanId = outcome.result.loanId

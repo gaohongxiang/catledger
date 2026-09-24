@@ -5,6 +5,7 @@ const money = require('../../utils/money')
 const time = require('../../utils/time')
 const themeService = require('../../theme/service')
 const { buildAccountsView } = require('./model')
+const billing = require('../../utils/account-billing')
 
 const TYPE_OPTIONS = [
   { value: 'cash', label: '现金' },
@@ -33,7 +34,11 @@ Page({
     typeOptions: TYPE_OPTIONS,
     typeIndex: 0,
     name: '',
-    balanceYuan: '0.00'
+    balanceYuan: '0.00',
+    isLiability: false,
+    billingSupported: false,
+    billingDays: billing.DAY_OPTIONS,
+    billingDraft: billing.draft()
   },
 
   onLoad: function () { themeService.bindPage(this) },
@@ -52,7 +57,7 @@ Page({
   },
 
   loadAccounts: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'errorMessage', 'assets', 'liabilities', 'archivedAccounts', 'totals', 'formOpen', 'name', 'balanceYuan'], ['_readLoad'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasLoaded', 'saving', 'errorMessage', 'assets', 'liabilities', 'archivedAccounts', 'totals', 'formOpen', 'name', 'balanceYuan', 'isLiability', 'billingSupported', 'billingDraft'], ['_readLoad'])
     if (this._readLoad) return this._readLoad
     const self = this
     const force = Boolean(options && options.force)
@@ -60,7 +65,7 @@ Page({
     this._readLoad = api.callApi('accounts.list', {}, { force: force })
       .then(function (result) {
         if (!isCurrent()) return
-        self.setData(Object.assign({ hasLoaded: true }, buildAccountsView(result.accounts)))
+        self.setData(Object.assign({ hasLoaded: true, billingSupported: result.liabilitySettingsVersion === 1 }, buildAccountsView(result.accounts)))
       })
       .catch(function (error) {
         if (!isCurrent()) return
@@ -82,7 +87,7 @@ Page({
 
   openCreate: function () {
     this.setTabBarHidden(true)
-    this.setData({ formOpen: true, formMode: 'create', formTitle: '创建账户', typeIndex: 0, name: '', balanceYuan: '0.00', errorMessage: '' })
+    this.setData({ formOpen: true, formMode: 'create', formTitle: '创建账户', typeIndex: 0, name: '', balanceYuan: '0.00', errorMessage: '', isLiability: false, billingDraft: billing.draft() })
   },
 
   openAccountDetail: function (event) {
@@ -102,7 +107,17 @@ Page({
   },
 
   stopBubble: function () {},
-  changeType: function (event) { this.setData({ typeIndex: Number(event.detail.value) }) },
+  changeType: function (event) {
+    if (this.data.saving) return
+    const typeIndex = Number(event.detail.value)
+    if (!TYPE_OPTIONS[typeIndex]) return
+    this.setData({ typeIndex: typeIndex, isLiability: ['credit', 'other_liability'].includes(TYPE_OPTIONS[typeIndex].value), errorMessage: '' })
+  },
+  changeBillingDay: function (event) {
+    if (this.data.saving || !['statementDay', 'repaymentDay'].includes(event.currentTarget.dataset.field)) return
+    this.setData({ ['billingDraft.' + event.currentTarget.dataset.field]: Number(event.detail.value), errorMessage: '' })
+  },
+  bindCreditLimit: function (event) { if (!this.data.saving) this.setData({ 'billingDraft.creditLimitYuan': event.detail.value, errorMessage: '' }) },
   bindName: function (event) { this.setData({ name: event.detail.value }) },
   bindBalance: function (event) { this.setData({ balanceYuan: event.detail.value }) },
 
@@ -113,13 +128,19 @@ Page({
     try {
       action = 'accounts.create'
       data = { requestId: api.createRequestId(), type: TYPE_OPTIONS[this.data.typeIndex].value, name: this.data.name, currency: 'CNY', openingDisplayBalanceMinor: money.yuanToMinor(this.data.balanceYuan, { allowZero: true }), occurredLocalAt: time.today() + 'T' + time.currentClock() + ':00', timezoneOffsetMinutes: new Date().getTimezoneOffset() }
+      if (this.data.isLiability) {
+        const fields = billing.payload(this.data.billingDraft)
+        if (!this.data.billingSupported && Object.keys(fields).some(function (key) { return fields[key] !== null })) throw new Error(billing.UNAVAILABLE)
+        if (this.data.billingSupported) Object.assign(data, fields)
+      }
     } catch (error) { this.setData({ errorMessage: error.message }); return }
 
     const self = this
     const isCurrent = pageReadSession.capture(this)
     this.setData({ saving: true, errorMessage: '' })
-    return api.callApi(action, data).then(function () {
+    return api.callApi(action, data).then(function (result) {
       if (!isCurrent()) return
+      if (Object.prototype.hasOwnProperty.call(data, 'statementDay')) billing.assertSaved(result, data)
       wx.showToast({ title: '已保存', icon: 'success' })
       self.setTabBarHidden(false)
       self.setData({ formOpen: false })

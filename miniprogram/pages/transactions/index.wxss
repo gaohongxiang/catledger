@@ -1,4 +1,19 @@
 .detail-page { padding-top: 20rpx; }
+.account-return {
+  display: flex;
+  min-height: 88rpx;
+  box-sizing: border-box;
+  margin: 0 var(--layout-content-inset, 20rpx) 12rpx;
+  padding: 0 20rpx;
+  align-items: center;
+  gap: 10rpx;
+  color: var(--theme-accent-strong, #a34d20);
+  background: var(--theme-surface, #fffdf9);
+  border: 1rpx solid var(--theme-line, rgba(41, 35, 30, .09));
+  border-radius: var(--theme-radius-medium, 18rpx);
+  font-size: var(--font-body, 28rpx);
+}
+.account-return-active { opacity: .7; }
 .month-switcher,
 .date-picker-content,
 .date-filter-note,

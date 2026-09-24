@@ -8,11 +8,11 @@ const scheduleForm=require('../loan-detail/schedule-form')
 const planModel=require('../loan-plan/model')
 const model=require('./model')
 Page({
-  data:{ accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
+  data:{ sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
     schedule:Object.assign(scheduleForm.blank(),{measurementIndex:1}),paidTerms:'0',baselineDate:'',typeIndex:0,customRecordType:'',
     typeOptions:model.TYPE_OPTIONS,discountOptions:model.DISCOUNT_OPTIONS,methods:scheduleForm.METHOD_OPTIONS,quotes:scheduleForm.QUOTE_OPTIONS,
     discountIndex:0,discountValue:'',feeIndex:0,feeOptions:['一次性费用','每期费用'],advancedOpen:false,previewLoading:false,preview:null,remainingText:'',confirmed:false },
-  onLoad(query){this._query=query || {};theme.bindPage(this);this.setData({accountLocked:!!this._query.accountId && !this._query.loanId,baselineDate:this._query.baselineDate || model.today(),sourceReady:(!this._query.accountId && !this._query.sourceTransactionId) || !!this._query.loanId,sourceLocked:!!this._query.sourceTransactionId})},
+  onLoad(query){this._query=query || {};theme.bindPage(this);this.setData({accountLocked:!!this._query.accountId && !this._query.loanId,baselineDate:this._query.baselineDate || model.today(),sourceReady:(!this._query.accountId && !this._query.sourceTransactionId) || !!this._query.loanId,sourceLocked:!!(this._query.sourceTransactionId || this._query.sourceItemId)})},
   onShow(){return login.run(this,()=>this.load())},
   onUnload(){session.end(this)},
   async load(){
@@ -31,8 +31,16 @@ Page({
         if(source.state!=='candidate'||source.targetAccount.inactive)throw new Error('原还款状态已变化，请返回重新核对')
         accountId=source.targetAccount.accountId;this.setData({sourceReady:true,...(!this._initialized?{baselineDate:source.transaction.occurredLocalAt.slice(0,10)}:{})})
       }
+      if(this._query.sourceItemId && !this._query.loanId){
+        this.setData({sourceReady:false})
+        const result=await api.callApi('loans.installmentSources',{itemId:this._query.sourceItemId},{force:true});if(!current())return
+        const source=result.items[0];if(!source)throw new Error('该账单已关联或状态变化，请返回重新读取')
+        accountId=source.accountId
+        this.setData({sourceReady:true,sourceNote:'已识别第 '+source.periodNumber+' 期'+({principal:'本金',interest:'利息',fee:'手续费'}[source.component])+' '+money.formatMinor(source.amountMinor)+'。请补齐总本金、首期日期及还款依据。',...(!this._initialized?{name:source.referenceLabel||'信用卡分期',paidTerms:String(source.periodNumber),typeIndex:1,'schedule.terms':source.totalTerms?String(source.totalTerms):'',baselineDate:source.occurredDate}:{})})
+      }
       const accountIndex=accounts.findIndex(a=>a.accountId===accountId)
       this.setData({accounts,accountIndex})
+      if(this._query.sourceItemId && accountIndex<0){this.setData({sourceReady:false});throw new Error('该账单的信用卡账户已停用，请先恢复账户')}
       if(this.data.accountLocked){
         this.setData({sourceReady:accountIndex>=0})
         if(accountIndex<0)throw new Error('原负债账户已停用或不可用，请返回账户管理')
@@ -73,7 +81,7 @@ Page({
     finally{if(current()&&this._previewToken===token)this.setData({previewLoading:false})}
   },
   accept(outcome){
-    this.setData({hasPending:false,savedMessage:outcome.recovered?'上次保存已确认成功':'贷款与后续计划已保存'})
+    this.setData({hasPending:false,savedMessage:outcome.recovered?'上次保存已确认成功':'分期记录已保存'})
     if(/^loans\.(create|update)$/.test(outcome.action))wx.redirectTo({url:'/pages/loan-detail/index?loanId='+encodeURIComponent(outcome.result.loanId)+(this._query.sourceTransactionId?'&sourceTransactionId='+encodeURIComponent(this._query.sourceTransactionId):'')})
   },
   async save(){
@@ -88,7 +96,7 @@ Page({
           if(!String(this.data.name).trim())throw new Error('请填写贷款名称')
           data=Object.assign(input,{loanId:loan.loanId,version:loan.version,name:String(this.data.name).trim(),institution:loan.institution,kind:loan.kind,
             accountId:loan.accountId,baselinePrincipalMinor:loan.baselinePrincipalMinor,baselineDate:loan.baselineDate,startDate:loan.startDate,endDate:loan.endDate,repaymentMethod:loan.repaymentMethod})
-        }else data=model.createPayload(this.data,this._preview)
+        }else {data=model.createPayload(this.data,this._preview);if(this._query.sourceItemId)data.sourceItemId=this._query.sourceItemId}
       }
       const outcome=await pending.send('api',action,data);if(current())this.accept(outcome)
     }catch(error){if(current())this.setData({errorMessage:error.message,hasPending:!!pending.pending()})}

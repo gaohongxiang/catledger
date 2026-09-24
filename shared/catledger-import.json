@@ -70,7 +70,20 @@
     }
   },
   "actions": {
-    "financeUpdates.list": {"kind": "read", "data": ["pageSize?", "cursor?"], "returns": ["items[{updateId,status,version,sourceCount,createdAt,files,transactionCount,deletedTransactionCount}]", "nextCursor"], "rules": ["Current user only; posted and undone history; createdAt UTC descending plus updateId; signed user-scoped keyset cursor; pageSize 1..40 (default 20); no raw bill rows."]},
+    "financeUpdates.list": {
+      "kind": "read",
+      "data": [
+        "pageSize?",
+        "cursor?"
+      ],
+      "returns": [
+        "items[{updateId,status,version,sourceCount,createdAt,files,transactionCount,deletedTransactionCount}]",
+        "nextCursor"
+      ],
+      "rules": [
+        "Current user only; posted and undone history; createdAt UTC descending plus updateId; signed user-scoped keyset cursor; pageSize 1..40 (default 20); no raw bill rows."
+      ]
+    },
     "financeUpdates.rows": {
       "kind": "read",
       "data": [
@@ -195,8 +208,10 @@
       "data": [
         "requestId",
         "importId",
-        "fileID",
-        "timezoneOffsetMinutes"
+        "fileID?",
+        "timezoneOffsetMinutes",
+        "bankMapping?",
+        "bankPreview?"
       ],
       "returns": [
         "import",
@@ -204,9 +219,25 @@
         "duplicateImportId?",
         "reusedImportId?",
         "replacedUpdateId?",
-        "duplicateDisposition?"
+        "duplicateDisposition?",
+        "mappingRequired?",
+        "bankPreview?"
       ],
-      "isolation": "a failed file parse changes only that import file and never rolls back or mutates sibling files"
+      "isolation": "a failed file parse changes only that import file and never rolls back or mutates sibling files",
+      "bankMapping": {
+        "schemaVersion": 1,
+        "statementKind": "standard | credit; default standard unless the file explicitly identifies a credit-card statement. Principal-only installment treatment additionally requires a server-verified credit account.",
+        "sheetIndex": "0-based; selected sheet only",
+        "headerRow": "physical spreadsheet row / CSV logical record, 1..120",
+        "headerToken": "server fingerprint bound to file, sheet and original header",
+        "columns": "unique 0-based indexes: transactionTime,time,amount,direction,income,expense,currency,transactionId,counterparty,item,paymentMethod,status,transactionType,note,installmentReference,installmentPeriod,installmentTerms,installmentComponent",
+        "amountMode": "direction | split | signed",
+        "positiveDirection": "income | expense required for signed",
+        "debitDirection": "income | expense explicitly selected for debit/credit values",
+        "currency": "CNY only"
+      },
+      "bankPreview": "Optional {sheetIndex,headerRow} requests a new bounded preview. Without bankMapping, bank files return mappingRequired with sheet names, headers, two sample rows and inferred columns; no batch or transaction is created. Owner-only response, not stored in mutation receipts.",
+      "retry": "BANK_MAPPING_REQUIRED and BANK_ROWS_INVALID keep the owner-bound uploaded object. fileID may be omitted once bound. Invalid bank rows fail that entire file. Confirmed column interpretation participates in parse fingerprint and statement analysis; business writes still require financeUpdates.post."
     },
     "imports.getFile": {
       "kind": "read",
@@ -258,7 +289,8 @@
         "posting",
         "invalidates"
       ],
-      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
+      "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。",
+      "historyReview": "Current review with the current plan version synchronizes historical duplicate candidates without rebuilding confirmed decisions; changes advance the update version."
     },
     "financeUpdates.prepare": {
       "kind": "idempotent-atomic-mutation",
@@ -416,7 +448,20 @@
       ],
       "receiptV2": "首次操作事实同事务冻结；不依赖提交后的展示读取。"
     },
-    "financeUpdates.setRepayment": {"kind": "idempotent-versioned-mutation", "data": ["requestId", "updateId", "updateVersion", "eventId", "eventVersion", "repayment"], "rules": ["review event only; repayment=null restores ordinary transfer; mode=review blocks posting; confirmed defer|associate stores explicit components and account/loan choice. All formal writes occur atomically during financeUpdates.post."]},
+    "financeUpdates.setRepayment": {
+      "kind": "idempotent-versioned-mutation",
+      "data": [
+        "requestId",
+        "updateId",
+        "updateVersion",
+        "eventId",
+        "eventVersion",
+        "repayment"
+      ],
+      "rules": [
+        "review event only; repayment=null restores ordinary transfer; mode=review blocks posting; confirmed defer|associate stores explicit components and account/loan choice. All formal writes occur atomically during financeUpdates.post."
+      ]
+    },
     "financeUpdates.post": {
       "kind": "idempotent-versioned-mutation",
       "data": [
@@ -533,7 +578,9 @@
     },
     "financeUpdates.undoImpact": {
       "kind": "read",
-      "rules": ["Preview uses current active created import transactions, including category edits; previewToken freezes current versions. Undo rechecks token, origin, dependencies, balances and audited side effects; reused transactions are retained."],
+      "rules": [
+        "Preview uses current active created import transactions, including category edits; previewToken freezes current versions. Undo rechecks token, origin, dependencies, balances and audited side effects; reused transactions are retained."
+      ],
       "data": [
         "updateId"
       ],
@@ -637,6 +684,22 @@
     "UNSUPPORTED_ACTION",
     "VALIDATION_ERROR",
     "OPERATION_UNCONFIRMED",
-    "RECEIPT_RECONCILIATION_REQUIRED"
-  ]
+    "RECEIPT_RECONCILIATION_REQUIRED",
+    "HISTORY_REVIEW_REQUIRED",
+    "HISTORY_MATCH_LIMIT_EXCEEDED"
+  ],
+  "bankTableFormats": [
+    "csv",
+    "xls",
+    "xlsx"
+  ],
+  "historicalDuplicateReview": {
+    "version": "historical-review-v1",
+    "candidate": "Current-user live formal transactions, same bound funds account, equal amount, compatible direction, UTC within 48 hours; includes manual and other imported sources. Stable identity matches retain existing automatic reuse; similarity alone never merges.",
+    "review": "One same_event issue per current event, primaryReasonCode=historical_duplicate_candidate. Subject member is event; candidate members are transaction IDs with frozen versions. reviewIssues.members accepts memberKind=transaction and returns bounded transaction summaries, never another user’s records.",
+    "decisions": "confirm_distinct acknowledges the current complete candidate set. link_existing_transaction requires a current candidate of that issue; it creates an audited historical_primary link and excludes this event from new posting. Target changes invalidate the decision. Repeated requests are idempotent.",
+    "lifecycle": "prepare, current-version organize and review mutations synchronize candidates. Restoring a review and advancing the page recheck history. Posting always rechecks under the same user lock; new or changed candidates cause HISTORY_REVIEW_REQUIRED and full rollback. Client retains drafts and returns to review.",
+    "limits": "At most 10000 matching event/transaction pairs per scan; excess returns HISTORY_MATCH_LIMIT_EXCEEDED before any financial write. Candidates use existing signed version/user-scoped member pagination.",
+    "counts": "already_posted and linked_existing_transaction excluded events appear under duplicate, separately from deliberate user exclusions. No duplicate financial writes or changes to history."
+  }
 }

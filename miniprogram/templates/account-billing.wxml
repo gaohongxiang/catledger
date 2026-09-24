@@ -1,0 +1,9 @@
+<template name="account-billing-fields">
+  <picker range="{{billingDays}}" value="{{billingDraft.statementDay}}" data-field="statementDay" bindchange="changeBillingDay" disabled="{{saving}}">
+    <view class="sheet-field"><text>账单日 · 选填</text><text class="sheet-value">{{billingDays[billingDraft.statementDay]}} ›</text></view>
+  </picker>
+  <picker range="{{billingDays}}" value="{{billingDraft.repaymentDay}}" data-field="repaymentDay" bindchange="changeBillingDay" disabled="{{saving}}">
+    <view class="sheet-field"><text>还款日 · 选填</text><text class="sheet-value">{{billingDays[billingDraft.repaymentDay]}} ›</text></view>
+  </picker>
+  <view class="sheet-field"><text>信用额度（元）· 选填</text><input class="sheet-input money-number" type="digit" value="{{billingDraft.creditLimitYuan}}" placeholder="未设置，留空可清除" maxlength="21" bindinput="bindCreditLimit" aria-label="信用额度（元，选填）" cursor-spacing="32" disabled="{{saving}}" /></view>
+</template>

@@ -137,7 +137,7 @@ Page({
     const force = Boolean(options && (options.force || options.currentTarget))
     this.setData({ loading: force || !api.isFresh('dashboard.get', { month: month }), errorMessage: '', month: month, monthLabel: time.monthLabel(month) })
 
-    const applyDashboard = function (dashboard, snapshot) {
+    const applyDashboard = function (dashboard) {
         if (!isCurrent()) return
         const cashFlowTrend = Array.isArray(dashboard.cashFlowTrend) ? dashboard.cashFlowTrend : []
         self.setData({
@@ -146,7 +146,7 @@ Page({
           expenseText: money.formatMinor(dashboard.summary.expenseMinor),
           netIncomeText: money.formatMinor(dashboard.summary.netIncomeMinor),
           hasDashboard: true,
-          errorMessage: snapshot ? '正在更新，当前显示上次结果' : '',
+          errorMessage: '',
           trendReady: Array.isArray(dashboard.cashFlowTrend),
           trendSparse: cashFlowTrend.filter(function (row) {
             return row.incomeHeightPermille > 0 || row.expenseHeightPermille > 0
@@ -173,8 +173,8 @@ Page({
             .map(viewModel.transactionView)
         })
     }
-    this._dashboardLoad = this.fetchDashboard(month, { force, onSnapshot: result => applyDashboard(result, true) })
-      .then(result => applyDashboard(result, false))
+    this._dashboardLoad = this.fetchDashboard(month, { force, onSnapshot: applyDashboard })
+      .then(applyDashboard)
       .catch(function () {
         if (!isCurrent()) return
         self.setData({ errorMessage: self.data.hasDashboard ? '更新未成功，当前显示上次结果' : '账本暂时没连接上' })

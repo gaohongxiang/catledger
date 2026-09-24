@@ -14,6 +14,7 @@ function deriveRowDisposition(row, links, eventsById) {
   const active = links.filter((link) => link.evidenceRole !== 'discarded')
   const event = active.length === 1 ? eventsById.get(active[0].eventId) : null
   const invalid = row.parseState !== 'valid'
+  const historicalDuplicate = event && (event.reasonCodes || []).some(reason => ['already_posted', 'linked_existing_transaction'].includes(reason))
   const conflict = active.length > 1 || semantic && semantic.resolutionStatus === 'conflict'
   const recognized = !invalid && !conflict && semantic && semantic.resolutionStatus === 'resolved' &&
     !(row.issues || []).some((issue) => ['row_extra_columns', 'file_header_unknown'].includes(issue.code)) &&
@@ -23,9 +24,9 @@ function deriveRowDisposition(row, links, eventsById) {
   else if (active.length > 1) disposition = 'needs_confirmation'
   else if (semantic && ['non_financial', 'failed', 'closed'].includes(semantic.moneyEffect)) disposition = 'non_financial'
   else if ((!active.length && links.some((link) => link.evidenceRole === 'discarded')) ||
-      event && event.status === 'excluded' && !(event.reasonCodes || []).includes('already_posted')) disposition = 'user_excluded'
+      event && event.status === 'excluded' && !historicalDuplicate) disposition = 'user_excluded'
   else if (!event) disposition = 'unassigned'
-  else if (active[0].evidenceRole === 'duplicate' || (event.reasonCodes || []).includes('already_posted')) disposition = 'duplicate'
+  else if (active[0].evidenceRole === 'duplicate' || historicalDuplicate) disposition = 'duplicate'
   else if (!recognized || event.status === 'needs_action') disposition = 'needs_confirmation'
   else disposition = 'financial'
   return { rowId: row.rowId, disposition, recognized: Boolean(recognized && disposition !== 'unassigned'), conflict: Boolean(conflict) }

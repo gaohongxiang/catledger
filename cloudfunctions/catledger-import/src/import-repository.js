@@ -361,7 +361,7 @@ async function persistDocumentRows(connection, uid, batchId, sourceProfile, file
     else invalid += 1
     if (outcome.processingState === 'pending') pending += 1
 
-    const paymentMethodKey = buildPaymentMethodKey(document.descriptor.sourceType, row.normalized.paymentMethod)
+    const paymentMethodKey = row.bankPaymentKey || buildPaymentMethodKey(document.descriptor.sourceType, row.normalized.paymentMethod)
     const categoryEvidence = buildCategoryEvidence(document.descriptor.sourceType, row)
     rowInserts.push([
       uid, rowId, batchId, identity && identity.identityId, row.rowNumber, row.sourceLocator,
@@ -496,11 +496,13 @@ async function batchHasRemovedTransactions(connection, uid, batchId) {
 }
 
 function documentParseFingerprint(document, contentSha256, timezoneOffsetMinutes) {
-  return digestParts(
+  const parts = [
     'parse-run-v2', contentSha256, document.descriptor.parserVersion,
     document.descriptor.normalizationVersion, document.identityVersion, timezoneOffsetMinutes,
     document.profile.profileVersion, document.profile.adapterVersion, document.profile.policyVersion
-  )
+  ]
+  if (document.bankMapping) parts.push(JSON.stringify(document.bankMapping))
+  return digestParts(...parts)
 }
 
 // 同字节文件只有解析版本相同才复用；版本升级追加批次，保留旧证据和旧更新。
@@ -546,7 +548,7 @@ async function persistParsedBatch(connection, uid, {
       actualSize, contentSha256, fileID,
       document.descriptor.sourceFormat.endsWith('xlsx')
         ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        : 'text/csv',
+        : document.descriptor.sourceFormat.endsWith('_xls') ? 'application/vnd.ms-excel' : 'text/csv',
       uid, importId
     ]
   )

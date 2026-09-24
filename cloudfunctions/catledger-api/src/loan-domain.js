@@ -43,7 +43,7 @@ function scheduleMetadata(data, baselinePrincipalMinor) {
 }
 function loanMetadata(data) {
   const allowed = new Set(['loanId','version','name','institution','kind','accountId','baselinePrincipalMinor','baselineDate','startDate','endDate','repaymentMethod',
-    'scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','installmentSetup','generatePlan','confirmed'])
+    'scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','installmentSetup','generatePlan','confirmed','sourceItemId'])
   if (Object.keys(data).some(key => !allowed.has(key))) throw ledgerError('VALIDATION_ERROR')
   if (!['borrowing','installment'].includes(data.kind)) throw ledgerError('VALIDATION_ERROR')
   const baselinePrincipalMinor = data.baselinePrincipalMinor == null ? null : parseMinorUnits(data.baselinePrincipalMinor, { allowZero: true }).toString()
@@ -58,7 +58,7 @@ function loanMetadata(data) {
 function publicLoan(row) {
   const remainingPrincipalMinor = row.remainingPrincipalMinor == null ? null : String(row.remainingPrincipalMinor)
   return { loanId: row.loanId, name: row.name, institution: row.institution, kind: row.kind,
-    accountId: row.accountId, accountName: row.accountName, accountArchived: row.accountArchived != null,
+    accountId: row.accountId, accountName: row.accountName, accountArchived: row.accountArchived != null, archived:row.archivedAt!=null,
     currency: 'CNY', installmentSetup:parseSetup(row.installmentSetup), baselinePrincipalMinor: row.baselinePrincipalMinor == null ? null : String(row.baselinePrincipalMinor),
     baselineDate: row.baselineDate, startDate: row.startDate, endDate: row.endDate, repaymentMethod: row.repaymentMethod,
     scheduleMethod: row.scheduleMethod ?? null, scheduleTerms: row.scheduleTerms == null ? null : Number(row.scheduleTerms),
@@ -66,6 +66,7 @@ function publicLoan(row) {
     ratePpm: row.ratePpm == null ? null : String(row.ratePpm), repaymentMinor: row.repaymentMinor == null ? null : String(row.repaymentMinor),
     feePerTermMinor: row.feePerTermMinor == null ? null : String(row.feePerTermMinor),
     feeUpfrontMinor: row.feeUpfrontMinor == null ? null : String(row.feeUpfrontMinor), firstPaymentDate: row.firstPaymentDate ?? null,
+    ...(row.installmentSummary ? {installmentSummary:row.installmentSummary} : {}),
     remainingPrincipalMinor, status: remainingPrincipalMinor == null ? 'unknown' : remainingPrincipalMinor === '0' ? 'settled' : 'active', version: Number(row.version) }
 }
 module.exports = { loanMetadata, publicLoan, text, date }

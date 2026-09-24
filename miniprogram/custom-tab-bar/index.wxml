@@ -6,7 +6,7 @@
     <view class="entry-option entry-option-primary" role="button" aria-label="账单导入" bindtap="chooseBill">
       <view class="entry-option-copy">
         <text class="entry-option-title">账单导入</text>
-        <text class="entry-option-note">支付宝、微信账单，批量整理入账</text>
+        <text class="entry-option-note">银行、支付宝、微信账单，批量整理入账</text>
       </view>
     </view>
     <view class="entry-option entry-option-secondary" role="button" aria-label="记一笔" bindtap="openEditor">

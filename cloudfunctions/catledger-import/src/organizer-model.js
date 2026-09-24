@@ -187,6 +187,7 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
     case ECONOMIC_NATURE.REPAYMENT:
     case ECONOMIC_NATURE.BORROW:
       if (event.flowDirection !== FLOW_DIRECTION.NEUTRAL) reasons.push('postability_direction_conflict')
+      if (event.fieldSources && event.fieldSources.installment && event.fieldSources.installment.creditStatement === true && event.fieldSources.installment.component === 'principal') break
       if (event.economicNature === ECONOMIC_NATURE.REPAYMENT && isAggregateRepayment(event)) {
         const allocation = repaymentAllocationsForEvent(event)
         if (!allocation.valid) reasons.push(allocation.reason)
@@ -246,7 +247,7 @@ function classifyReviewIssue(event) {
     return { issueType: inspectPaymentAccounts(event, event.fieldSources && event.fieldSources.paymentAccounts).valid
       ? REVIEW_ISSUE_TYPE.SHARED_FIELDS : REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'payment_components_ambiguous' }
   }
-  if (reasons.has('ledger_account_required') && ACCOUNT_FIRST_NATURES.has(event.economicNature)) {
+  if (reasons.has('ledger_account_required') && (ACCOUNT_FIRST_NATURES.has(event.economicNature) || event.fieldSources && event.fieldSources.installment && event.fieldSources.installment.creditStatement === true)) {
     return { issueType: REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'ledger_account_required' }
   }
   if (reasons.has('repayment_other_treatment_required') || reasons.has('repayment_ownership_invalid') ||

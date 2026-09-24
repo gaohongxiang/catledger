@@ -125,11 +125,12 @@ test('从账户新建锁定已确认账户；账户停用或目录失败时不�
 
 test('账户流水入口使用本月及当前账户；目录缺失或停用不放宽筛选', async () => {
   for (const mode of ['missing', 'archived', 'failure']) {
-    const h = setup(), detail = h.page('account-detail'), page = h.page('transactions')
+    const h = setup(), detail = h.page('account-detail'), page = h.page('account-transactions')
     detail.onLoad({ accountId: 'debt-a' })
     await detail.loadAccount()
     detail.openAccountTransactions()
-    page.setData({ month: '2020-01', appliedSearch: '旧查询', sourceFilterIndex: 2 })
+    assert.deepEqual(h.navigation, ['/pages/account-transactions/index?accountId=debt-a'])
+    page.onLoad({ accountId: 'debt-a' })
     if (mode === 'missing') h.accounts = []
     if (mode === 'archived') h.accounts[0].archived = true
     if (mode === 'failure') h.intercept = action => { if (action === 'catalog.get') throw new Error('合成断网') }
@@ -138,25 +139,41 @@ test('账户流水入口使用本月及当前账户；目录缺失或停用不�
     assert.ok(queries.length)
     assert.ok(queries.every(c => c.data.accountId === 'debt-a' && c.data.month === h.load('utils/time').currentMonth() && !c.data.source && !c.data.search))
     assert.equal(page.data.accountFilters[page.data.accountFilterIndex].accountId, 'debt-a')
-    assert.equal(h.app.globalData.transactionsAccountFilter, null)
+    assert.equal(page.data.returnAccountId, 'debt-a')
   }
 })
 
+test('账户明细直接返回上一页详情，再返回账户列表', async () => {
+  const h = setup(), detail = h.page('account-detail'), page = h.page('account-transactions')
+  detail.onLoad({ accountId: 'debt-a' }); await detail.loadAccount()
+  detail.openAccountTransactions()
+  page.onLoad({ accountId: 'debt-a' })
+  page.onShow(); await page.prepareAndLoad()
+  await page.nextMonth()
+  await page.changeAccountFilter({ detail: { value: 0 } })
+  assert.equal(page.data.returnAccountId, 'debt-a')
+  page.returnToAccountDetail()
+  assert.deepEqual(h.navigation, ['/pages/account-transactions/index?accountId=debt-a', 'back'])
+  page.returnToAccountDetail()
+  assert.equal(h.navigation.length, 2)
+})
+
 test('账户流水入口拒绝旧全量响应；换用户不恢复原账户名称或导航意图', async () => {
-  const h = setup(), page = h.page('transactions')
+  const h = setup(), page = h.page('account-transactions')
   let release
   h.intercept = (action, data) => action === 'transactions.list' && !data.accountId ? new Promise(resolve => { release = resolve }) : undefined
-  const old = page.prepareAndLoad(); await flush()
-  h.app.globalData.transactionsAccountFilter = { accountId: 'debt-b', name: '合成旧会话专属账户', session: h.cache.getSession() }
+  const tab = h.page('transactions')
+  const old = tab.prepareAndLoad(); await flush()
+  page.onLoad({ accountId: 'debt-b' })
   page.onShow(); await page.prepareAndLoad()
   assert.equal(page.data.transactions[0].transactionId, 'debt-b')
   release(); await old
   assert.equal(page.data.transactions[0].transactionId, 'debt-b')
-  h.app.globalData.transactionsAccountFilter = { accountId: 'debt-b', name: '合成旧会话专属账户', session: h.cache.getSession() }
   h.cache.reset(); h.uid = h.app.globalData.uid = '9876543210'; h.accounts = []; h.intercept = null
   page.onShow(); await page.prepareAndLoad()
   assert.equal(page.data.accountFilterIndex, 0)
+  assert.equal(page.data.returnAccountId, '')
   assert.equal(page.data.accountFilters.length, 1)
-  assert.equal(JSON.stringify(page.data).includes('合成旧会话专属账户'), false)
-  assert.equal(h.app.globalData.transactionsAccountFilter, null)
+  assert.equal(page.data.transactions.length, 0)
+  assert.equal(page.data.hasLoaded, false)
 })

@@ -2,7 +2,7 @@ const path = require('node:path')
 
 const { importError } = require('./errors')
 
-const ACCEPTED_EXTENSIONS = Object.freeze(['csv', 'xlsx'])
+const ACCEPTED_EXTENSIONS = Object.freeze(['csv', 'xls', 'xlsx'])
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const MAX_FILE_NAME_CHARS = 255
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i

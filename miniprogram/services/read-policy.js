@@ -6,8 +6,11 @@ const READ_POLICIES = Object.freeze({
   'loans.unassigned': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
   'loans.payment': { ttl: Infinity, tags: ['loans', 'transactions'] },
   'loans.payments': { ttl: Infinity, tags: ['loans', 'transactions'] },
-  'loans.list': { ttl: Infinity, tags: ['loans', 'accountDirectory'] },
-  'loans.get': { ttl: Infinity, tags: ['loans', 'accountDirectory'] },
+  'loans.installments': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
+  'loans.installment': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
+  'loans.installmentSources': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
+  'loans.list': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
+  'loans.get': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
   'catalog.get': { ttl: 5 * 60 * 1000, tags: ['accountDirectory', 'categoryDirectory'] },
   'profile.get': { ttl: 5 * 60 * 1000, tags: ['profile'] },
   bootstrap: { ttl: Infinity, tags: ['categories', 'profile'] },
@@ -20,10 +23,11 @@ const READ_POLICIES = Object.freeze({
 })
 
 function mutationTags(action) {
+  if (/^loans\.(setInstallmentProgress|linkInstallmentSource|archiveInstallment|removeInstallmentItem)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (action === 'profile.update') return ['profile']
   if (/^loans\.(savePeriod|allocatePeriods|generatePlan)$/.test(action)) return ['loans']
   if (/^loans\.(record|correct|reverse|bookRepayment|assignRepayment|releaseRepayment)$/.test(action)) return ['loans', 'accounts', 'transactions']
-  if (/^loans\.(create|update)$/.test(action)) return ['loans']
+  if (/^loans\.(create|update)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (action === 'accounts.create') return ['accounts', 'transactions', 'accountDirectory']
   if (action === 'accounts.correctBalance') return ['accounts', 'transactions']
   if (/^accounts\.(createBatch|update|archive)$/.test(action)) return ['accounts', 'accountDirectory']

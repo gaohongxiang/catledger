@@ -256,7 +256,8 @@ test('账户详情独立页：余额大卡、流水入口、负债贷款区与�
   assert.match(markup, /ad-balance-value money-number {{account\.amountTone}}/)
   assert.doesNotMatch(markup, /ad-balance-state/)
   assert.match(markup, /{{account\.balanceLabel}}/)
-  assert.match(markup, /<list-row title="账户流水"[^>]*bindtap="openAccountTransactions"/)
+  assert.match(markup, /<view class="ad-card">[\s\S]*?class="ad-card-link" bindtap="openAccountTransactions"/)
+  assert.doesNotMatch(markup, /class="ad-list"/)
   assert.match(markup, /wx:if="{{account\.nature === 'liability'}}" class="account-loans"/)
   assert.match(markup, /bindtap="createAccountLoan"[^>]*aria-label="为当前账户新增贷款"/)
   assert.match(markup, /ad-loans-add-icon/)
@@ -272,7 +273,10 @@ test('账户详情独立页：余额大卡、流水入口、负债贷款区与�
   assert.match(source, /accounts\.update/)
   assert.match(source, /accounts\.correctBalance/)
   assert.match(source, /accounts\.archive/)
-  assert.match(source, /transactionsAccountFilter/)
+  assert.match(source, /wx\.navigateTo\(\{ url: '\/pages\/account-transactions\/index\?accountId='/)
+  assert.match(read('miniprogram/app.json'), /"pages\/account-transactions\/index"/)
+  assert.match(read('miniprogram/pages/account-transactions/index.js'), /createTransactionsPage\(true,/)
+  assert.match(read('miniprogram/pages/account-transactions/index.wxml'), /include src="\.\.\/transactions\/index\.wxml"/)
   assert.match(style, /\.ad-card \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
   assert.match(style, /\.ad-actions \{[^}]*background:\s*var\(--theme-surface/)
   assert.match(style, /\.ad-icon-button \{[^}]*min-height:\s*88rpx|\.ad-icon-button \{[^}]*height:\s*88rpx/)
@@ -448,7 +452,7 @@ test('大卡与弹层圆角升 xl，列表行卡保持 large', function () {
   })
   assert.match(read('miniprogram/pages/loan-payment/index.wxss'), /\.lp-summary \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
   assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.ld-form-card \{[^}]*var\(--theme-radius-xl, 32rpx\)/)
-  assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.ld-panel \{[^}]*var\(--layout-radius-large\)/)
+  assert.match(read('miniprogram/pages/loan-detail/index.wxss'), /\.record-sheet \{[^}]*border-radius: 30rpx/)
 })
 
 test('我的页资料区：头像即按钮、昵称与 ID 使用图标按钮，编辑逻辑不变', function () {
@@ -565,7 +569,7 @@ test('瓷贴默认分类与自定义分类均有图标，原生渲染不依赖�
 
 test('明细按天分组：组头标签与分页同日合并', function () {
   const markup = read('miniprogram/pages/transactions/index.wxml')
-  const source = read('miniprogram/pages/transactions/index.js')
+  const source = read('miniprogram/pages/transactions/page.js')
   assert.match(markup, /<text wx:if="\{\{item\.dayLabel\}\}" class="detail-group content-inset">\{\{item\.dayLabel\}\}<\/text>/)
   assert.match(source, /function attachDayLabels\(rows, previousDay\)/)
   assert.match(source, /return '今天'/)

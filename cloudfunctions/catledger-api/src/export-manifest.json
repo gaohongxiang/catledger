@@ -14,7 +14,10 @@
       "currency",
       "version",
       "created_at",
-      "updated_at"
+      "updated_at",
+      "statement_day",
+      "repayment_day",
+      "credit_limit_minor"
     ],
     "json": []
   },
@@ -193,10 +196,13 @@
       "fee_per_term_minor",
       "fee_upfront_minor",
       "first_payment_date",
-      "installment_setup_json"
+      "installment_setup_json",
+      "progress_json",
+      "archived_at"
     ],
     "json": [
-      "installment_setup_json"
+      "installment_setup_json",
+      "progress_json"
     ]
   },
   {
@@ -767,6 +773,46 @@
       "fee_treatment",
       "interest_category_id",
       "fee_category_id"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_installment_bindings",
+    "keys": [
+      "account_id",
+      "reference_key"
+    ],
+    "columns": [
+      "account_id",
+      "reference_key",
+      "loan_id"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_installment_items",
+    "keys": [
+      "item_id"
+    ],
+    "columns": [
+      "item_id",
+      "account_id",
+      "loan_id",
+      "reference_key",
+      "reference_label",
+      "period_number",
+      "total_terms",
+      "component",
+      "amount_minor",
+      "occurred_date",
+      "origin",
+      "source_event_id",
+      "source_identity_id",
+      "transaction_id",
+      "canonical",
+      "active",
+      "version",
+      "created_at"
     ],
     "json": []
   }

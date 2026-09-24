@@ -115,6 +115,9 @@ function normalizeRow(sourceType, raw, timezoneOffsetMinutes, rowIssues = [], so
     paymentMethod: raw.paymentMethod,
     counterparty: raw.counterparty,
     item: raw.item,
+    note: raw.note,
+    installmentFields: raw.installmentFields,
+    bankStatementKind: raw.bankStatementKind,
     amountMinor,
     currency: 'CNY'
   })

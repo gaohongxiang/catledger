@@ -7,6 +7,7 @@ function statementAnalysis(document) {
   return {
     version: ANALYSIS_VERSION,
     profile: document.profile,
+    ...(document.bankMapping ? { bankMapping: document.bankMapping } : {}),
     dataRows: document.rows.length,
     unknownHeaderCount: document.diagnostics.unknownHeaders.length,
     controls: document.controls || [],

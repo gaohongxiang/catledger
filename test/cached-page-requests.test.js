@@ -906,14 +906,16 @@ test('确有旧提交时，核实接口错误保留真实原因而不统一改�
 const managementRows = count => Array.from({ length: count }, (_, index) => ({ transactionId: 'manual-' + index, version: 1,
   origin: 'manual', editable: true, type: 'expense', amountMinor: '100', label: '合成支出' }))
 
-test('明细多选支持手动和导入有效类型，限制100笔，换筛选清空选择，取消不发送', async () => {
+test('明细全选包含超过100笔手动和导入有效类型，换筛选清空选择，取消不发送', async () => {
   const h = runtime(), page = await visit(h, 'transactions')
   page.data.transactions = managementRows(102).concat([{ transactionId: 'import', origin: 'import', editable: true, type: 'expense' },
     { transactionId: 'adjustment', origin: 'manual', editable: true, type: 'balance_adjustment' }])
   page.toggleSelection(); await page.selectAll()
-  assert.equal(page.data.selectedCount, 100)
-  assert.equal(page.data.transactions.filter(row => row.selected).length, 100)
-  page.selectTransaction(103); assert.equal(page.data.selectedCount, 100)
+  assert.equal(page.data.selectedCount, 103)
+  assert.equal(page.data.transactions.filter(row => row.selected).length, 103)
+  page.selectTransaction(103); assert.equal(page.data.selectedCount, 103)
+  page.selectTransaction(102); assert.equal(page.data.selectedCount, 102)
+  page.selectTransaction(102); assert.equal(page.data.selectedCount, 103)
   const deleting = page.deleteSelected(); await flush()
   assert.equal(h.modals.length, 1)
   h.modals[0].success({ confirm: false }); await deleting
@@ -944,17 +946,21 @@ test('删除确认冻结所选ID，双击一次提交，刷新账户/交易缓�
   }
 })
 
-test('批量删除响应丢失后锁定旧选择；重进页面自动查回执，不误删新选择', async () => {
+test('1505笔批量删除响应丢失后锁定完整旧选择；重进页面自动查回执，不误删新选择', async () => {
   const h = runtime(), page = await visit(h, 'transactions')
   let stored
   h.respond = (action, data) => {
     if (action === 'transactions.deleteMany') { stored = data; return { ok: false, error: { code: 'CLOUD_CALL_FAILED', message: '合成响应丢失' } } }
     if (action === 'transactions.commandResult') return { ok: true, data: { action: 'transactions.deleteMany', result: { deletedCount: stored.items.length } } }
   }
-  page.data.transactions = managementRows(2); page.toggleSelection(); page.selectTransaction(0)
+  page.data.transactions = managementRows(1506); page.data.nextCursor = null
+  page.toggleSelection(); await page.selectAll(); page.selectTransaction(1505)
   const deleting = page.deleteSelected(); await flush(); h.modals.at(-1).success({ confirm: true }); await deleting
-  assert.equal(page.data.deleteRetryCount, 1)
-  page.selectTransaction(1); assert.equal(page.data.selectedCount, 1)
+  assert.equal(page.data.deleteRetryCount, 1505)
+  assert.equal(stored.items.length, 1505)
+  assert.equal(new Set(stored.items.map(row => row.transactionId)).size, 1505)
+  assert.ok(stored.items.every(row => row.transactionId !== 'manual-1505' && row.version === 1))
+  page.selectTransaction(1505); assert.equal(page.data.selectedCount, 1505)
   page.onShow(); await page.prepareAndLoad(); await flush()
   assert.equal(page.data.deleteRetryCount, 0)
   assert.equal(h.calls.filter(row => row.action === 'transactions.deleteMany').length, 1)
@@ -1003,7 +1009,7 @@ test('导入历史换登录会话立即清空旧列表，迟到响应不能回�
 })
 
 
-test('全选自动读取当前筛选后续页，最多100笔，再次点击取消；读取失败可以重试', async () => {
+test('全选自动读完当前筛选后续页，再次点击取消；读取失败可以重试', async () => {
   const h = runtime()
   let fail = true
   h.respond = (action, data) => {
@@ -1016,7 +1022,60 @@ test('全选自动读取当前筛选后续页，最多100笔，再次点击取�
   const page = await visit(h, 'transactions'); page.toggleSelection()
   await page.selectAll(); assert.equal(page.data.selectedCount, 30); assert.equal(page.data.allSelected, false)
   fail = false; await page.selectAll()
-  assert.equal(page.data.selectedCount, 100); assert.equal(page.data.allSelected, true); assert.equal(page.data.errorMessage, '')
-  assert.equal(page.data.transactions.filter(row => row.selected && row.origin === 'import').length, 50)
+  assert.equal(page.data.selectedCount, 120); assert.equal(page.data.allSelected, true); assert.equal(page.data.errorMessage, '')
+  assert.equal(page.data.transactions.filter(row => row.selected && row.origin === 'import').length, 60)
   await page.selectAll(); assert.equal(page.data.selectedCount, 0); assert.equal(page.data.allSelected, false)
+})
+
+test('1505笔跨51页全选不被缓存淘汰截断，确认完整笔数且只提交一次', async () => {
+  const h = runtime(), total = 1505
+  h.respond = (action, data) => {
+    if (action === 'transactions.deleteMany') return { ok: true, data: { deleted: true, deletedCount: data.items.length } }
+    if (action !== 'transactions.list') return
+    const offset = Number(data.cursor || 0)
+    const rows = managementRows(Math.min(30, total - offset)).map((row, i) => ({ ...row,
+      transactionId: 'synthetic-' + (offset + i), origin: i % 2 ? 'import' : 'manual', occurredLocalAt: '2026-09-01T12:00:00' }))
+    return { ok: true, data: { transactions: rows, nextCursor: offset + 30 < total ? String(offset + 30) : null,
+      summary: { incomeMinor: '0', expenseMinor: String(total * 100), netIncomeMinor: String(-total * 100) } } }
+  }
+  const page = await visit(h, 'transactions'), scope = JSON.parse(JSON.stringify(page.requestData(null)))
+  page.toggleSelection(); await page.selectAll()
+  assert.equal(page.data.selectedCount, total)
+  assert.equal(page.data.transactions.filter(row => row.selected).length, total)
+  assert.equal(page.data.allSelected, true)
+  assert.equal(page.data.selectingAll, false)
+  const reads = h.calls.filter(row => row.action === 'transactions.list')
+  assert.equal(reads.length, 51)
+  for (const row of reads) {
+    const data = { ...row.data }; delete data.cursor
+    assert.deepEqual(data, scope)
+  }
+  const deleting = page.deleteSelected(); await page.deleteSelected(); await flush()
+  assert.equal(h.modals.length, 1); assert.equal(h.modals[0].title, '删除 1505 笔账目？')
+  h.modals[0].success({ confirm: true }); await deleting
+  const writes = h.calls.filter(row => row.action === 'transactions.deleteMany')
+  assert.equal(writes.length, 1)
+  assert.equal(writes[0].data.items.length, total)
+  assert.equal(new Set(writes[0].data.items.map(row => row.transactionId)).size, total)
+  assert.equal(h.toasts.at(-1), '已删除 1505 笔')
+})
+
+test('全选加载中离开页面或退出会话，迟到分页不能继续勾选或发送删除', async () => {
+  for (const leave of ['page', 'session']) {
+    const h = runtime(), page = await visit(h, 'transactions')
+    let release
+    page.data.transactions = managementRows(120)
+    h.respond = action => action === 'transactions.list' ? new Promise(resolve => { release = resolve }) : undefined
+    page.toggleSelection()
+    const selecting = page.selectAll(); await flush()
+    assert.equal(page.data.selectedCount, 120)
+    assert.equal(page.data.allSelected, false)
+    if (leave === 'page') page.onUnload()
+    else { h.app.approved = false; h.cache.reset(); page.onShow() }
+    release({ ok: true, data: { transactions: managementRows(5), nextCursor: null } })
+    await selecting
+    assert.equal(page.data.allSelected, false)
+    assert.equal(page.data.transactions.length, leave === 'page' ? 120 : 0)
+    assert.equal(h.calls.some(row => row.action === 'transactions.deleteMany'), false)
+  }
 })

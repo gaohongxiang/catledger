@@ -2,12 +2,13 @@ const alipayApp = require('./alipay-app')
 const alipayWeb = require('./alipay-web')
 const wechatCsv = require('./wechat-csv')
 const wechatXlsx = require('./wechat-xlsx')
+const { bankProfile } = require('./bank')
 
-const PROFILES = Object.freeze([wechatCsv, wechatXlsx, alipayApp, alipayWeb])
+const PROFILES = Object.freeze([wechatCsv, wechatXlsx, alipayApp, alipayWeb, ...['csv', 'xls', 'xlsx'].map(bankProfile)])
 const BY_FORMAT = new Map(PROFILES.map((profile) => [profile.sourceFormat, profile]))
 
 function profilesForContainer(container) {
-  return PROFILES.filter((profile) => profile.container === container)
+  return PROFILES.filter((profile) => profile.container === container && profile.fieldAliases)
 }
 
 function profileForFormat(sourceFormat) {

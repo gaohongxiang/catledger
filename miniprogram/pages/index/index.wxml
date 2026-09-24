@@ -39,7 +39,7 @@
       </view>
     </view>
 
-    <ui-state wx:if="{{errorMessage && hasDashboard}}" error description="刷新未成功，当前显示上次结果 · 重试" bindtap="loadDashboard" />
+    <ui-state wx:if="{{errorMessage && hasDashboard}}" error description="{{errorMessage}} · 重试" bindtap="loadDashboard" />
     <view class="home-flow">
 
 

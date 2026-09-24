@@ -728,7 +728,35 @@ function effectiveProjectedEventsFromIndex(events, mappingIndex) {
   }).event)
 }
 
+async function restoreStaleHistoricalLinks(connection, uid, updateId) {
+  const stale = await require('./historical-duplicates').staleHistoricalLinks(connection, uid, updateId)
+  if (!stale.length) return false
+  const events = await selectDomainEvents(connection, uid, updateId, [...new Set(stale.map(row => row.eventId))])
+  for (const event of events) {
+    event.status = 'needs_action'
+    event.reasonCodes = event.reasonCodes.filter(reason => !['linked_existing_transaction', 'already_posted'].includes(reason))
+    const evaluated = evaluatePostability(event)
+    event.status = evaluated.status
+    event.reasonCodes = unique([...event.reasonCodes, ...evaluated.reasonCodes])
+    event.version++
+    await connection.execute(`UPDATE catledger_economic_events SET state = ?, status = ?, reason_codes_json = ?, version = ?
+      WHERE uid = ? AND update_id = ? AND event_id = ?`,
+    [event.status, event.status, JSON.stringify(event.reasonCodes), event.version, uid, updateId, event.eventId])
+    await createFollowUpIssue(connection, uid, updateId, event)
+  }
+  for (const part of chunks(stale.map(row => [row.linkId]))) await connection.execute(`UPDATE catledger_economic_event_transactions
+    SET superseded_at = CURRENT_TIMESTAMP(3) WHERE uid = ? AND update_id = ? AND link_id IN (${part.map(() => '?').join(',')})`, [uid, updateId, ...part.flat()])
+  return true
+}
+
+async function synchronizeHistoricalReviews(connection, uid, updateId) {
+  const restored = await restoreStaleHistoricalLinks(connection, uid, updateId)
+  const changed = await require('./historical-duplicates').synchronizeHistoricalReviews(connection, uid, updateId)
+  return restored || changed
+}
+
 async function recalculateUpdateCounts(connection, uid, updateId, nextVersion, actionId, expectedVersion, duplicateEvidenceDelta = 0) {
+  await synchronizeHistoricalReviews(connection, uid, updateId)
   await synchronizeDraftReachability(connection, uid, updateId)
   const [[counts]] = await connection.execute(
     `SELECT COUNT(*) AS finalEventCount,
@@ -756,6 +784,8 @@ async function recalculateUpdateCounts(connection, uid, updateId, nextVersion, a
 }
 
 function assertDecisionMatchesIssue(issue, decision) {
+  if (issue.primaryReasonCode === 'historical_duplicate_candidate' &&
+      !['confirm_distinct', 'link_existing_transaction', 'exclude_events'].includes(decision)) throw importError('VALIDATION_ERROR')
   if (decision === 'confirm_same' && issue.issueType !== 'same_event') throw importError('VALIDATION_ERROR')
   if (decision === 'confirm_distinct' && !['same_event', 'identity_conflict'].includes(issue.issueType)) throw importError('VALIDATION_ERROR')
   if (decision === 'link_refund' && issue.issueType !== 'refund_relation') throw importError('VALIDATION_ERROR')
@@ -1258,6 +1288,8 @@ function createReviewIssueService({ getPool }) {
           const primary = events.find((event) => event.eventId === primaryEventId)
           const next = { ...primary, reasonCodes: resolvedReasons(issue.issueType, primary.reasonCodes), resolvingIssueType: issue.issueType }
           affected.push(await saveEvent(connection, uid, primary, next, actionId))
+        } else if (decision === 'confirm_distinct' && issue.primaryReasonCode === 'historical_duplicate_candidate') {
+          await require('./historical-duplicates').assertHistoricalChoice(connection, uid, updateId, issue)
         } else if (decision === 'confirm_distinct') {
           await assertIdentityIntegrity(connection, uid, updateId, eventIds)
           for (const part of chunks(eventIds.map(id => [id]))) await connection.execute(
@@ -1454,6 +1486,7 @@ function createReviewIssueService({ getPool }) {
           affected.push(await saveEvent(connection, uid, source, next, actionId))
         } else if (decision === 'link_existing_transaction') {
           const transactionId = validateUuid(data.transactionId)
+          await require('./historical-duplicates').assertHistoricalChoice(connection, uid, updateId, issue, transactionId)
           await assertNoLoanTransactions(connection, uid, [transactionId])
           const primaryEventId = data.primaryEventId ? validateUuid(data.primaryEventId) : eventIds[0]
           const event = events.find((item) => item.eventId === primaryEventId)
@@ -1478,6 +1511,14 @@ function createReviewIssueService({ getPool }) {
             resolvingIssueType: issue.issueType
           }
           affected.push(await saveEvent(connection, uid, event, next, actionId))
+          await connection.execute(`UPDATE catledger_review_issues i SET status = 'superseded', blocking = 0, version = version + 1,
+            resolved_action_id = ? WHERE i.uid = ? AND i.update_id = ? AND i.status = 'open' AND i.issue_id <> ?
+            AND EXISTS (SELECT 1 FROM catledger_review_issue_members m WHERE m.uid = i.uid AND m.issue_id = i.issue_id
+              AND m.object_type = 'event' AND m.object_id = ? AND m.member_role <> 'candidate')
+            AND NOT EXISTS (SELECT 1 FROM catledger_review_issue_members m JOIN catledger_economic_events e
+              ON e.uid = m.uid AND e.event_id = m.object_id WHERE m.uid = i.uid AND m.issue_id = i.issue_id
+              AND m.object_type = 'event' AND m.member_role <> 'candidate' AND e.status <> 'excluded')`,
+          [actionId, uid, updateId, issueId, event.eventId])
         }
 
         const partialExclusion = ['exclude_events'].includes(decision) && affected.length < events.length
@@ -1644,7 +1685,7 @@ function createReviewIssueService({ getPool }) {
 }
 
 module.exports = {
-  selectDomainEvents, effectiveProjectedEvents, saveEvent, saveEvents, createFollowUpIssue, recalculateUpdateCounts,
+  synchronizeHistoricalReviews, selectDomainEvents, effectiveProjectedEvents, saveEvent, saveEvents, createFollowUpIssue, recalculateUpdateCounts,
   FIELD_MASK,
   applyFields,
   createReviewIssueService,

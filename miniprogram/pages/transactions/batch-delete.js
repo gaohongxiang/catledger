@@ -5,13 +5,26 @@ const pageReadSession = require('../../services/page-read-session')
 function selectable(row) {
   return ['manual', 'import'].indexOf(row.origin) >= 0 && ['income', 'expense', 'transfer', 'refund'].indexOf(row.type) >= 0
 }
+// 分段更新勾选标记，避免整份列表一次 setData 超出原生传输大小。
+function selectRange(page, start, selected) {
+  let count = 0
+  for (let offset = start; offset < page.data.transactions.length; offset += 100) {
+    const patch = {}
+    page.data.transactions.slice(offset, offset + 100).forEach((row, index) => {
+      const value = selected && selectable(row)
+      if (value) count++
+      if (Boolean(row.selected) !== value) patch['transactions[' + (offset + index) + '].selected'] = value
+    })
+    if (Object.keys(patch).length) page.setData(patch)
+  }
+  return count
+}
 module.exports = {
   canSelect: selectable,
   resetSelection: function () {
     this._selectionEpoch = (this._selectionEpoch || 0) + 1
-    const patch = { selectedCount: 0, allSelected: false, selectingAll: false }
-    this.data.transactions.forEach((row, index) => { if (row.selected) patch['transactions[' + index + '].selected'] = false })
-    this.setData(patch)
+    selectRange(this, 0, false)
+    this.setData({ selectedCount: 0, allSelected: false, selectingAll: false })
   },
   toggleSelection: function () {
     if (this.data.deleting || this.data.selectingAll || this.data.loading || this.data.deleteRetryCount) return
@@ -22,9 +35,8 @@ module.exports = {
     if (this.data.deleting || this.data.selectingAll || this.data.deleteRetryCount) return
     const row = this.data.transactions[index]
     if (!row || !selectable(row)) return
-    if (!row.selected && this.data.selectedCount >= 100) return wx.showToast({ title: '一次最多选择 100 笔', icon: 'none' })
     const count = this.data.selectedCount + (row.selected ? -1 : 1)
-    const patch = { selectedCount: count, allSelected: count > 0 && (count === 100 || (!this.data.nextCursor && count === this.data.transactions.filter(selectable).length)) }
+    const patch = { selectedCount: count, allSelected: count > 0 && !this.data.nextCursor && count === this.data.transactions.filter(selectable).length }
     patch['transactions[' + index + '].selected'] = !row.selected
     this.setData(patch)
   },
@@ -35,22 +47,17 @@ module.exports = {
     const current = () => isCurrent() && this._selectionEpoch === epoch
     this.setData({ selectingAll: true, errorMessage: '' })
     try {
-      while (current() && this.data.transactions.filter(selectable).length < 100 && this.data.nextCursor) {
+      let count = selectRange(this, 0, true)
+      this.setData({ selectedCount: count, allSelected: count > 0 && !this.data.nextCursor })
+      while (current() && this.data.nextCursor) {
         const cursor = this.data.nextCursor
+        const start = this.data.transactions.length
         await this.loadTransactions(true)
         if (!current()) return
+        count += selectRange(this, start, true)
+        this.setData({ selectedCount: count, allSelected: count > 0 && !this.data.nextCursor })
         if (cursor === this.data.nextCursor) break
       }
-      if (!current()) return
-      let count = 0
-      const patch = {}
-      this.data.transactions.forEach((row, index) => {
-        const selected = selectable(row) && count < 100
-        if (selected) count++
-        if (Boolean(row.selected) !== selected) patch['transactions[' + index + '].selected'] = selected
-      })
-      this.setData(Object.assign(patch, { selectedCount: count, allSelected: count > 0 && (count === 100 || !this.data.nextCursor) }))
-      if (count === 100 && (this.data.nextCursor || this.data.transactions.filter(selectable).length > 100)) wx.showToast({ title: '已选择前 100 笔', icon: 'none' })
     } finally { if (current()) this.setData({ selectingAll: false }) }
   },
   recoverBatchDelete: async function () {

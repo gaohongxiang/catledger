@@ -16,6 +16,10 @@ function normalizedText(row) {
 }
 
 function stableReferences(row) {
+  // Bank reference numbers have bank/account-local namespaces. Equality with
+  // a payment-platform order number is not a cross-source identity guarantee.
+  // Bank rows deduplicate through their persisted, account-scoped identityId.
+  if (row.sourceType === 'bank') return []
   return [
     ['transaction', row.sourceTransactionId],
     ['order', row.sourceOrderId],

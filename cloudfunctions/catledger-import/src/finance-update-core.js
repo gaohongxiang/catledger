@@ -2,6 +2,7 @@ const { commandResult } = require('./command-result')
 const { discardUpdateGraph } = require('./discarded-update')
 const { upgradeSemanticPlan } = require('./semantic-plan-upgrade')
 const { PLAN_VERSION } = require('./domain-versions')
+const { synchronizeHistoricalReviews } = require('./review-issue-service')
 const { buildOrganizePlan } = require('./organizer-planner')
 const { importError } = require('./errors')
 const {
@@ -40,7 +41,21 @@ function createFinanceUpdateCore({ getPool }) {
     if (!['draft', 'failed', 'review'].includes(current.status) || Number(current.version) !== version) {
       throw importError('CONFLICT')
     }
-    if (current.status === 'review' && current.planVersion === PLAN_VERSION) return commandResult(connection, uid, updateId, data)
+    if (current.status === 'review' && current.planVersion === PLAN_VERSION) {
+      if (await synchronizeHistoricalReviews(connection, uid, updateId)) {
+        const actionId = await insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,
+          actionType: 'organize', requestDigest, reasons: ['historical_duplicates_checked'] })
+        await connection.execute(`UPDATE catledger_finance_updates u JOIN (SELECT uid, update_id,
+          SUM(status = 'ready') AS ready, SUM(status = 'needs_action') AS pending, SUM(status = 'excluded') AS excluded
+          FROM catledger_economic_events WHERE uid = ? AND update_id = ? GROUP BY uid, update_id) counts
+          ON counts.uid = u.uid AND counts.update_id = u.update_id
+          SET u.version = ?, u.current_action_id = ?, u.ready_event_count = counts.ready,
+            u.needs_action_event_count = counts.pending, u.excluded_event_count = counts.excluded
+          WHERE u.uid = ? AND u.update_id = ? AND u.version = ?`,
+        [uid, updateId, version + 1, actionId, uid, updateId, version])
+      }
+      return commandResult(connection, uid, updateId, data)
+    }
     const rows = await selectPlanningRows(connection, uid, updateId)
     if (current.status === 'review' && ['organizer-plan-v26', 'organizer-plan-v27', 'organizer-plan-v28', PLAN_VERSION].includes(current.planVersion)) {
       return upgradeSemanticPlan(connection, uid, current, rows, requestDigest, data)
@@ -84,6 +99,7 @@ function createFinanceUpdateCore({ getPool }) {
       ]
     )
     if (result.affectedRows !== 1) throw importError('CONFLICT')
+    await synchronizeHistoricalReviews(connection, uid, updateId)
     return commandResult(connection, uid, updateId, data)
   }
 

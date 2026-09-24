@@ -118,7 +118,7 @@ test('贷款分页只保留当前页和五个返回游标，退出后迟到响�
   for (let i = 0; i < 10; i++) await page.nextPage()
   assert.equal(page.data.items.length, 1); assert.equal(page._previous.length, 5)
   let resolve
-  const late = runtime('pages/loans/index', () => new Promise(done => { resolve = done }))
+  const late = runtime('pages/loans/index', action => action==='loans.installmentSources' ? Promise.resolve({items:[],nextCursor:null}) : new Promise(done => { resolve = done }))
   late.page.onLoad(); const loading = late.page.loadLoans(); late.page.onUnload()
   resolve({ items: [{ loanId: 'private-old', remainingPrincipalMinor: '0', status: 'settled' }], nextCursor: null })
   await loading; assert.equal(late.page.data.items.length, 0)
@@ -187,8 +187,13 @@ test('实际借还表单必须明确零和构成，整数守恒支持大额而�
 
 for (const route of routes) {
   test(route + '：页面、主题和全部声明事件完整，WXML 标签配对', () => {
-    const markup = read('miniprogram/' + route + '.wxml')
-    const style = read('miniprogram/' + route + '.wxss')
+    const accountTransactions = route === 'pages/account-transactions/index'
+    const markup = read('miniprogram/' + (accountTransactions ? 'pages/transactions/index' : route) + '.wxml')
+    const style = read('miniprogram/' + (accountTransactions ? 'pages/transactions/index' : route) + '.wxss')
+    if (accountTransactions) {
+      assert.match(read('miniprogram/' + route + '.wxml'), /include src="\.\.\/transactions\/index\.wxml"/)
+      assert.match(read('miniprogram/' + route + '.wxss'), /@import "\.\.\/transactions\/index\.wxss"/)
+    }
     const { page } = runtime(route)
     assert.ok(style.trim().length > 100)
     assert.match(markup, /themeClass/)
@@ -211,7 +216,9 @@ for (const route of routes) {
 test('现有路由有交付记录，单笔编辑不再注册整批维护页', () => {
   assert.equal(routes.includes('pages/import-maintenance/index'), false)
   const inventory = read('specs/mini-1906ui-all-pages/README.md')
-  for (const route of routes) assert.ok(inventory.includes(route.split('/')[1]), route)
+  const accountDetail = read('specs/mini-1910-liability-settings/README.md')
+  const installment = read('specs/mini-1914-installment-flow/design.md')
+  for (const route of routes) assert.ok((route === 'pages/installment-sources/index' ? installment : route === 'pages/account-transactions/index' ? accountDetail : inventory).includes(route.split('/')[1]), route)
 })
 
 test('账本与个人页：初次读取失败不冒充成功零值，成功后更新，刷新失败保留原数量', async () => {

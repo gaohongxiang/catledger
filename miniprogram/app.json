@@ -9,12 +9,14 @@
     "pages/import-history/index",
     "pages/accounts/index",
     "pages/account-detail/index",
+    "pages/account-transactions/index",
     "pages/categories/index",
     "pages/statistics/index",
     "pages/theme/index",
     "pages/loans/index",
     "pages/loan-link/index",
     "pages/repayment-entry/index",
+    "pages/installment-sources/index",
     "pages/loan-detail/index",
     "pages/loan-form/index",
     "pages/loan-payment/index",
@@ -38,10 +40,22 @@
     "selectedColor": "#BE5B24",
     "backgroundColor": "#FFFEFD",
     "list": [
-      { "pagePath": "pages/index/index", "text": "首页" },
-      { "pagePath": "pages/transactions/index", "text": "明细" },
-      { "pagePath": "pages/statistics/index", "text": "统计" },
-      { "pagePath": "pages/profile/index", "text": "我的" }
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/transactions/index",
+        "text": "明细"
+      },
+      {
+        "pagePath": "pages/statistics/index",
+        "text": "统计"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的"
+      }
     ]
   }
 }

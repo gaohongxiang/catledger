@@ -141,6 +141,14 @@ test('本地投影只改变选择展示，金额和正式就绪状态不在客�
   assert.equal(model.organizerRecordState(conflicted.events, conflicted.issues, []).reviewStatusTabs[0].count, 1)
 })
 
+test('历史查重复查明确拒绝后释放原入账请求，保留待整理选择', async () => {
+  const f = fixture({ async call() { throw Object.assign(new Error('需要历史核对'), { code: 'HISTORY_REVIEW_REQUIRED' }) } })
+  f.session.enqueue([review()])
+  await assert.rejects(f.session.post(), { code: 'HISTORY_REVIEW_REQUIRED' })
+  assert.equal(f.session.state.postFlight, null)
+  assert.equal(f.session.state.entries.length, 1)
+})
+
 test('放弃屏障等待在途完成并停止后续发送', async () => {
   let release; let calls = 0
   const f = fixture({ call() { calls += 1; return new Promise(resolve => { release = resolve }) } })

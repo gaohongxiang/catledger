@@ -80,6 +80,8 @@ function searchText(value) {
 const activeSql = "e.status IN ('ready','needs_action','posted')"
 const needsCategorySql = "e.economic_nature IN ('income','expense','fee','unknown') AND (e.category_id IS NULL OR e.economic_nature = 'unknown')"
 const requiredCategorySql = "e.economic_nature IN ('income','expense','fee','unknown')"
+const historicalDuplicateSql = `(e.status = 'excluded' AND (JSON_CONTAINS(e.reason_codes_json, '"already_posted"')
+  OR JSON_CONTAINS(e.reason_codes_json, '"linked_existing_transaction"')))`
 const reviewSql = `EXISTS (SELECT 1 FROM catledger_review_issue_members m JOIN catledger_review_issues i
   ON i.uid = m.uid AND i.update_id = m.update_id AND i.issue_id = m.issue_id
   WHERE m.uid = e.uid AND m.update_id = e.update_id AND m.object_id = e.event_id AND m.object_type = 'event'
@@ -145,8 +147,9 @@ async function eventPage(connection, uid, context, state) {
   let where = 'e.uid = ? AND e.update_id = ?'
   const values = [uid, state.update.updateId]
   if (eventId) { where += ' AND e.event_id = ?'; values.push(eventId) }
-  if (status === 'duplicate') where += " AND EXISTS (SELECT 1 FROM catledger_event_evidence v WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND v.evidence_role = 'duplicate')"
+  if (status === 'duplicate') where += ` AND (${historicalDuplicateSql} OR EXISTS (SELECT 1 FROM catledger_event_evidence v WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND v.evidence_role = 'duplicate'))`
   else if (status) { where += ' AND e.status = ?'; values.push(status) }
+  if (status === 'excluded') where += ` AND NOT ${historicalDuplicateSql}`
   if (nature) { where += ' AND e.economic_nature = ?'; values.push(nature) }
   if (view === 'expense') where += ` AND (e.economic_nature IN ('expense','fee') OR (JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.confirmed')=TRUE AND (
     (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestMinor')) AS UNSIGNED)>0) OR
@@ -221,7 +224,7 @@ async function presentationEvents(connection, uid, updateId, ids) {
 
 async function memberPage(connection, uid, context, state) {
   const issueId = validateUuid(context.data.issueId)
-  const memberKind = optionalEnum(context.data.memberKind, ['event', 'relation'])
+  const memberKind = optionalEnum(context.data.memberKind, ['event', 'relation', 'transaction'])
   const page = preparePage(context, state, uid, 'members', { issueId, memberKind })
   const condition = memberKind ? ' AND object_type = ?' : ''
   const values = [uid, state.update.updateId, issueId, ...(memberKind ? [memberKind] : [])]
@@ -240,7 +243,17 @@ async function memberPage(connection, uid, context, state) {
   const events = ids.length ? await presentationEvents(connection, uid, state.update.updateId, ids) : []
   const byId = new Map(events.map(event => [event.eventId, boundedItem(event, 'eventId', 'event')]))
   const byRelation = new Map(relations.map(row => [row.relationId, { ...row, version: Number(row.version), targetEvent: byId.get(row.targetEventId) || null }]))
-  const result = finishPage(context, state, page, rows.map(row => ({ ...row, objectVersion: Number(row.objectVersion), event: byId.get(row.objectId) || null, relation: byRelation.get(row.objectId) || null })), count.total, 'memberId', 'member')
+  const transactionIds = rows.filter(row => row.objectType === 'transaction').map(row => row.objectId)
+  const transactions = transactionIds.length ? (await connection.execute(`SELECT t.transaction_id AS transactionId, t.version, t.type,
+    t.amount_minor AS amountMinor, t.occurred_local_at AS localAt, LEFT(t.note, 160) AS note, t.deleted_at AS deletedAt,
+    a.name AS sourceAccountName, b.name AS destinationAccountName
+    FROM catledger_transactions t LEFT JOIN catledger_accounts a ON a.uid = t.uid AND a.account_id = t.source_account_id
+    LEFT JOIN catledger_accounts b ON b.uid = t.uid AND b.account_id = t.destination_account_id
+    WHERE t.uid = ? AND t.transaction_id IN (${transactionIds.map(() => '?').join(',')})`, [uid, ...transactionIds]))[0] : []
+  const byTransaction = new Map(transactions.map(row => [row.transactionId, { ...row, version: Number(row.version), amountMinor: String(row.amountMinor) }]))
+  const result = finishPage(context, state, page, rows.map(row => ({ ...row, objectVersion: Number(row.objectVersion),
+    event: byId.get(row.objectId) || null, relation: byRelation.get(row.objectId) || null,
+    ...(row.objectType === 'transaction' ? { transaction: byTransaction.get(row.objectId) || null } : {}) })), count.total, 'memberId', 'member')
   return { ...result, issueId, issueVersion: Number(issue.version) }
 }
 

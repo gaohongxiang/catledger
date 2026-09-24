@@ -41,7 +41,8 @@ function createLoanPeriodService({getPool,selectLoan}) {
     return write(context,'loans.savePeriod',async(c,uid,data)=>{
       const loan=await currentLoan(c,uid,data),value=periodValues(data),id=data.periodId?validateId(data.periodId):randomUUID()
       const setup=parseSetup(loan.installmentSetup)
-      if(setup && value.periodNumber<=setup.historicalPaidTerms)throw ledgerError('VALIDATION_ERROR')
+      if(setup && value.periodNumber<=setup.historicalPaidTerms && data.historicalRevision!==true)throw ledgerError('VALIDATION_ERROR')
+      if(loan.scheduleTerms && value.periodNumber>Number(loan.scheduleTerms))throw ledgerError('VALIDATION_ERROR')
       const [[duplicate]]=await c.execute('SELECT period_id FROM catledger_loan_periods WHERE uid=? AND loan_id=? AND period_number=? AND period_id<>?',[uid,loan.loanId,value.periodNumber,id])
       if(duplicate)throw ledgerError('CONFLICT')
       let version=1

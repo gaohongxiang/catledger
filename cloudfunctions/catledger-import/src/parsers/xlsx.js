@@ -185,6 +185,7 @@ function parseWorksheet(xml, sharedStrings, sheetIndex, sheetName) {
         currentRow = {
           values: [],
           formulaColumns: [],
+          numericColumns: [],
           rowNumber: Number(tag.attributes.r) || records.length + 1
         }
       } else if (tag.name === 'c' && currentRow) {
@@ -214,6 +215,7 @@ function parseWorksheet(xml, sharedStrings, sheetIndex, sheetName) {
         }
         if ([...String(value)].length > MAX_CELL_CHARS) throw importError('FILE_SIZE_INVALID')
         currentRow.values[currentCell.index] = String(value)
+        if (currentCell.type === '' || currentCell.type === 'n') currentRow.numericColumns.push(currentCell.index)
         if (currentCell.formula) currentRow.formulaColumns.push(currentCell.index)
         currentCell = null
       } else if (tag.name === 'row' && currentRow) {
@@ -247,6 +249,7 @@ async function readXlsxSheets(content) {
     if (!xml) throw importError('FILE_FORMAT_UNSUPPORTED')
     return {
       name: sheet.name || `Sheet${index + 1}`,
+      date1904: /<workbookPr\b[^>]*\bdate1904=["'](?:1|true)["']/u.test(entries.get('xl/workbook.xml')),
       records: parseWorksheet(xml, sharedStrings, index, sheet.name || `Sheet${index + 1}`)
     }
   })

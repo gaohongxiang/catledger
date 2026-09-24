@@ -1,4 +1,9 @@
 const ERROR_MESSAGES = Object.freeze({
+  HISTORY_REVIEW_REQUIRED: '发现尚未核对的历史相似账目，请先确认是否重复；本次没有入账',
+  HISTORY_MATCH_LIMIT_EXCEEDED: '历史同额候选过多，请缩短本次账单时间范围后核对；本次没有入账',
+  LOAN_SOURCE_MISMATCH: '这期账单与已确认分期不一致，请核对所属分期、期数和金额',
+  BANK_MAPPING_REQUIRED: '请确认银行账单的列和收支方向',
+  BANK_ROWS_INVALID: '部分行的日期、金额、收支或币种无法识别，请检查所选列；仅支持人民币且不接受公式',
   LOAN_PRINCIPAL_UNCONFIRMED: '请先确认贷款本金基线，再关联还款',
   LOAN_PRINCIPAL_EXCEEDED: '还款本金超过该时点的贷款余额，请核对',
   LOAN_TRANSACTION_LOCKED: '这组交易已关联贷款，请前往贷款管理整组处理',

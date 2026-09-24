@@ -43,10 +43,10 @@ function buildSourceProfile({ sourceType, candidate }) {
 }
 
 function buildRowIdentity({ sourceType, sourceProfileKey, fileSha256, row }) {
-  const stable = stableIdentity(row)
+  const stable = sourceType === 'bank' && !row.bankAccountIdentity ? null : stableIdentity(row)
   const kind = stable ? stable.kind : 'physical_record'
   const version = stable ? IDENTITY_VERSION : PHYSICAL_IDENTITY_VERSION
-  const values = stable ? stable.values : [fileSha256, row.sourceLocator]
+  const values = stable ? (sourceType === 'bank' ? [row.bankAccountIdentity, ...stable.values] : stable.values) : [fileSha256, row.sourceLocator]
   const identityKey = digestParts(version, sourceType, sourceProfileKey, kind, ...values)
   const coreDigest = digestParts(
     CORE_DIGEST_VERSION,

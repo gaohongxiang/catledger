@@ -1,0 +1,25 @@
+<view class="page-canvas loan-page {{themeClass}}" style="{{themeStyle}}">
+  <page-head class="content-inset" title="账单里的分期" copy="选择所属分期后，账单会归到对应期次。已入账费用直接复用，也可以以后再补建分期。" />
+  <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
+  <button wx:if="{{errorMessage && !choosing}}" class="loan-first" bindtap="load">重新读取</button>
+  <ui-state wx:if="{{loading}}" description="正在读取…" />
+  <empty-cat wx:if="{{hasLoaded && !items.length}}" hide-art title="没有待补充的分期" description="已归属的账单可在分期详情里查看。" />
+  <view class="loan-list"><view wx:for="{{items}}" wx:key="itemId" class="loan-row">
+    <view class="loan-row-top"><text class="loan-name">{{item.referenceLabel || '待确认所属分期'}}</text><text class="loan-state">第 {{item.periodNumber}}{{item.totalTerms ? ' / ' + item.totalTerms : ''}} 期</text></view>
+    <text class="loan-note">{{item.accountName}} · {{item.occurredDate}}</text>
+    <text class="loan-principal">{{item.label}} {{item.amount}}</text>
+    <view class="source-actions"><button class="secondary-button" data-id="{{item.itemId}}" bindtap="create" disabled="{{loading || saving}}">新建分期</button><button class="secondary-button" data-id="{{item.itemId}}" bindtap="choose" disabled="{{loading || saving}}">归入已有分期</button></view>
+    <button class="loan-first" data-id="{{item.itemId}}" bindtap="openSource">查看原账单</button>
+  </view></view>
+  <button wx:if="{{nextCursor}}" class="secondary-button" data-next="true" bindtap="load" disabled="{{loading}}">下一页</button>
+  <view wx:if="{{choosing}}" class="sources-mask" catchtouchmove="stop" bindtap="close"><scroll-view scroll-y class="sources-sheet" catchtap="stop">
+    <text class="sources-title">这期属于哪笔分期</text>
+    <text class="loan-note">归入后，前 {{selected.periodNumber}} 期按进度完成；同一分期编号的其他账单一起关联。</text>
+    <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
+    <button wx:for="{{loans}}" wx:key="loanId" class="sources-choice" data-id="{{item.loanId}}" bindtap="link" disabled="{{loading || saving}}">{{item.name}} · {{item.scheduleTerms}} 期</button>
+    <text wx:if="{{!loading && !loans.length}}" class="loan-note">这一页没有期数相符的分期。</text>
+    <button wx:if="{{loanCursor}}" class="secondary-button" bindtap="loadLoans" data-next="true" disabled="{{loading || saving}}">继续查找</button>
+    <button class="loan-first" bindtap="close" disabled="{{saving}}">取消</button>
+  </scroll-view></view>
+  <login-sheet id="page-login-sheet" />
+</view>

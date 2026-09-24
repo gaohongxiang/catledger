@@ -2,7 +2,8 @@ const { READ_POLICIES } = require('./read-policy')
 const { validMetadata } = require('./read-metadata')
 const { bytes } = require('./read-observer')
 const KEY = 'catledger_read_snapshots_v1'
-const SCHEMA = 1, MAX_ENTRIES = 12, MAX_BYTES = 512 * 1024, MAX_ENTRY_BYTES = 96 * 1024, MAX_AGE = 24 * 60 * 60 * 1000
+// 账单资料扩展了账户读取结构；旧快照即使数据修订相同也必须重新读取。
+const SCHEMA = 2, MAX_ENTRIES = 12, MAX_BYTES = 512 * 1024, MAX_ENTRY_BYTES = 96 * 1024, MAX_AGE = 24 * 60 * 60 * 1000
 const ACTIONS = new Set(['dashboard.get', 'catalog.get', 'accounts.list', 'categories.list', 'statistics.get', 'transactions.list'])
 function actionOf(key) { return typeof key === 'string' ? key.slice(0, key.indexOf(':')) : '' }
 function complete(action, value) {

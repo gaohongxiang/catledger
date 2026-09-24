@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
 const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
-const { localServices, call, prepareSyntheticUpdate } = require('./helpers/local-services')
+const { localServices, call, prepareSyntheticUpdate, confirmSyntheticHistoryDistinct } = require('./helpers/local-services')
 
 test('批量删除、导入记录与整批撤销使用隔离 MySQL 和最小权限', { skip: !process.env.CATLEDGER_TEST_DB_HOST }, async t => {
   const lab = await isolatedMysql()
@@ -50,7 +50,7 @@ test('批量删除、导入记录与整批撤销使用隔离 MySQL 和最小权�
       assert.equal(await live([income, expense]), 2)
       await api('transactions.deleteMany', request([income, expense])); assert.equal(await balance(cash), '0')
     })
-    await t.test('过期版本、不存在、重复ID、空列表和超限都不部分删除', async () => {
+    await t.test('过期版本、不存在、重复ID（含超过100笔）和空列表都不部分删除', async () => {
       const rows = [await manual(), await manual()]
       const stale = request(rows); stale.items[1].version++
       await assert.rejects(api('transactions.deleteMany', stale), { publicCode: 'CONFLICT' })
@@ -80,6 +80,8 @@ test('批量删除、导入记录与整批撤销使用隔离 MySQL 和最小权�
       const issues = await imp('reviewIssues.list', { updateId: update.updateId, group: 'accounts' })
       const decisions = issues.items.filter(row => row.status === 'open').map(row => ({ issueId: row.issueId, issueVersion: row.version, operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountId: bank } }))
       if (decisions.length) update = await imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: update.updateId, updateVersion: update.appliedVersion, decisions })
+      // 不同前缀代表独立合成消费，不能绕过新加入的历史疑似重复确认。
+      update = await confirmSyntheticHistoryDistinct(services, update)
       return imp('financeUpdates.post', { requestId: randomUUID(), updateId: update.updateId, version: update.appliedVersion })
     }
     await t.test('无撤销审计的旧导入与手动混选删除，跨月分页隔离、余额及同文件重导正确', async () => {

@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "贷款资料",
+  "navigationBarTitleText": "贷款详情",
   "usingComponents": {
     "login-sheet": "/components/login-sheet/index",
     "page-head": "/components/page-head/index",

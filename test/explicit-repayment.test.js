@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
 const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
-const { localServices,call,prepareSyntheticUpdate } = require('./helpers/local-services')
+const { localServices,call,prepareSyntheticUpdate,confirmSyntheticHistoryDistinct } = require('./helpers/local-services')
 const booking = require('../cloudfunctions/catledger-api/src/repayment-booking').createRepaymentBooking(code=>Object.assign(new Error(code),{ publicCode:code }))
 const { decision } = require('../miniprogram/pages/repayment-entry/model')
 test('本金、利息和费用必须明确且守恒；未知不能变成零',()=>{
@@ -100,6 +100,8 @@ test('明确还款：真实 MySQL 原子入账、延期关联、幂等及导入'
       let result=await imp('financeUpdates.setRepayment',{ requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,eventId:event.eventId,eventVersion:Number(event.version),repayment:{ mode:'review' } })
       await assert.rejects(imp('financeUpdates.post',{ requestId:randomUUID(),updateId:update.updateId,version:result.appliedVersion }),{ publicCode:'UNRESOLVED_IMPORT' })
       result=await imp('financeUpdates.setRepayment',{ requestId:randomUUID(),updateId:update.updateId,updateVersion:result.appliedVersion,eventId:event.eventId,eventVersion:Number(event.version)+1,repayment })
+      // 同额同日的合成还款彼此独立；先经过现行历史核对门禁。
+      result=await confirmSyntheticHistoryDistinct(services,result)
       const summary=await imp('financeUpdates.summary',{ updateId:update.updateId })
       assert.equal(summary.workbench.finalSummary.expenseText,'¥0.20')
       const expensePage=await imp('economicEvents.list',{ protocolVersion:2,updateId:update.updateId,view:'expense',pageSize:10 })
@@ -117,6 +119,7 @@ test('明确还款：真实 MySQL 原子入账、延期关联、幂等及导入'
       const {update,event}=await importDraft('SYNTHETIC-ASSOCIATE')
       const current=(await api('loans.get',{ loanId:loan.loanId })).loan
       let result=await imp('financeUpdates.setRepayment',{ requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,eventId:event.eventId,eventVersion:Number(event.version),repayment:{ ...repayment,mode:'associate',loanId:loan.loanId,loanVersion:1 } })
+      result=await confirmSyntheticHistoryDistinct(services,result)
       const before=await balances()
       await assert.rejects(imp('financeUpdates.post',{ requestId:randomUUID(),updateId:update.updateId,version:result.appliedVersion }),{ publicCode:'CONFLICT' })
       assert.deepEqual(await balances(),before)

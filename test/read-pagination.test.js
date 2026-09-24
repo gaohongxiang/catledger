@@ -45,7 +45,7 @@ function pagedRuntime() {
   h.respond = (action, data) => action === 'transactions.list' ? { ok: true, data: {
     source: data.source || null, ...(data.cursor ? {} : { summary: { incomeMinor: '0', expenseMinor: '900', netIncomeMinor: '-900' } }),
     transactions: Array.from({ length: 30 }, (_, i) => ({ transactionId: 'synthetic-' + (Number(data.cursor || 0) + i), version: 1, type: 'expense', origin: 'manual', amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', sourceAccount: { accountId: 'account-a', name: '合成账户' } })),
-    nextCursor: String(Number(data.cursor || 0) + 30)
+    nextCursor: Number(data.cursor || 0) + 30 < 300 ? String(Number(data.cursor || 0) + 30) : null
   } } : undefined
   return { h, page, patches }
 }
@@ -60,7 +60,7 @@ test('长列表只追加30行，选择态走路径补丁，前台未变恢复分
     assert.ok(bytes(append[0]) < 24 * 1024); assert.ok(patches.every(p => !Object.hasOwn(p, 'transactions')))
     assert.equal(page.data.expenseText, summary); assert.equal(page.data.transactions.length, i * 30)
   }
-  patches.length = 0; page.toggleSelection(); await page.selectAll(); assert.equal(page.data.selectedCount, 100)
+  patches.length = 0; page.toggleSelection(); await page.selectAll(); assert.equal(page.data.selectedCount, 300)
   page.resetSelection(); assert.equal(page.data.transactions.filter(t => t.selected).length, 0)
   assert.ok(patches.every(p => !Object.hasOwn(p, 'transactions')))
   const before = h.calls.length, rows = page.data.transactions
@@ -75,9 +75,9 @@ test('跨页版本变化自动重读首屏，不拼接、不沿用选择；刷�
     if (action === 'transactions.list' && data.cursor) { h.revision = '2'; return { ok: false, error: { code: 'READ_SNAPSHOT_CHANGED', message: 'changed' } } }
     return respond(action, data)
   }
-  page.toggleSelection(); page.selectTransaction(0)
-  await page.loadTransactions(true)
+  page.toggleSelection(); await page.selectAll()
   assert.equal(page.data.transactions.length, 30); assert.equal(page._listRevision, '2'); assert.equal(page.data.selectedCount, 0)
+  assert.equal(page.data.allSelected, false); assert.equal(page.data.selectingAll, false)
   h.respond = (action, data) => {
     if (action === 'transactions.deleteMany') return { ok: true, data: { deletedCount: data.items.length } }
     if (action === 'transactions.list') return { ok: false, error: { code: 'FORBIDDEN', message: '合成读取失败' } }

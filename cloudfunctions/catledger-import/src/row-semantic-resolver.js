@@ -7,6 +7,7 @@ const { mergeRuleOutputs } = require('./rule-evaluator')
 
 const SINGLE_ACCOUNT_ACTIONS = new Set([
   SOURCE_ACTION.PURCHASE,
+  SOURCE_ACTION.INSTALLMENT_PRINCIPAL,
   SOURCE_ACTION.RECEIPT,
   SOURCE_ACTION.TRANSFER_SENT,
   SOURCE_ACTION.TRANSFER_RECEIVED,
@@ -95,7 +96,7 @@ function endpointResolution(row, profile, actionResult, settlementResult, paymen
   const action = actionResult.sourceAction
   const ordinaryEndpoint = selectedPaymentEndpoint(profile.sourceType, paymentComponents, 'ledger_account')
   let common = { ledgerAccountRef: null, from: null, to: null, fundsProjection: null, ruleIds: [] }
-  if ([SOURCE_ACTION.PURCHASE, SOURCE_ACTION.TRANSFER_SENT, SOURCE_ACTION.FEE].includes(action)) {
+  if ([SOURCE_ACTION.PURCHASE, SOURCE_ACTION.INSTALLMENT_PRINCIPAL, SOURCE_ACTION.TRANSFER_SENT, SOURCE_ACTION.FEE].includes(action)) {
     common = {
       ledgerAccountRef: ordinaryEndpoint,
       from: ordinaryEndpoint,

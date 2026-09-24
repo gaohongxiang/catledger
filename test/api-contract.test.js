@@ -30,7 +30,7 @@ test('shared contract and server action registry stay in exact sync', () => {
 
   const handlers = createActionHandlers({
     dataExportService: serviceStub(['start','page','finish']),
-    loanService: serviceStub(['bookRepayment','assignRepayment','releaseRepayment','transaction','unassigned','list','get','create','update','record','correct','source','reverse','payment','payments','periods','savePeriod','allocatePeriods','planAllocation','periodHistory','previewPlan','generatePlan']),
+    loanService: serviceStub(['installments','installment','installmentSources','setInstallmentProgress','linkInstallmentSource','archiveInstallment','removeInstallmentItem','bookRepayment','assignRepayment','releaseRepayment','transaction','unassigned','list','get','create','update','record','correct','source','reverse','payment','payments','periods','savePeriod','allocatePeriods','planAllocation','periodHistory','previewPlan','generatePlan']),
     catalogService: serviceStub(['get', 'validate']),
     profileService: serviceStub(['get', 'update']),
     accountService: serviceStub(['archive', 'correctBalance', 'create', 'createBatch', 'list', 'update']),

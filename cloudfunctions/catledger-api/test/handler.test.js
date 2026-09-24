@@ -69,6 +69,26 @@ test('oversized nested public data is rejected without recursive stack growth', 
   assert.equal(result.error.code, 'VALIDATION_ERROR')
 })
 
+test('large flat delete selections pass while identity and nested payload guards remain active', async () => {
+  let calls = 0
+  const handler = createHandler({ getWxContext: () => ({ OPENID: 'trusted-selection-user' }),
+    services: { 'transactions.deleteMany': async ({ data }) => { calls++; return { deletedCount: data.items.length } },
+      'accounts.list': async () => { throw Error('must not run') } }, logger: createLogger() })
+  const items = Array.from({ length: 1505 }, (_, i) => ({ transactionId: 'synthetic-' + i, version: 1 }))
+  const result = await handler({ action: 'transactions.deleteMany', data: { items } })
+  assert.equal(result.ok, true)
+  assert.equal(result.data.deletedCount, 1505)
+  for (const extra of [{ uid: 'forged' }, { nested: { OPENID: 'forged' } }]) {
+    const poisoned = items.slice(); poisoned[1001] = { ...poisoned[1001], ...extra }
+    assert.equal((await handler({ action: 'transactions.deleteMany', data: { items: poisoned } })).error.code, 'INVALID_REQUEST')
+  }
+  let nested = {}
+  for (let i = 0; i < 1100; i++) nested = { child: nested }
+  assert.equal((await handler({ action: 'transactions.deleteMany', data: { items, nested } })).error.code, 'VALIDATION_ERROR')
+  assert.equal((await handler({ action: 'accounts.list', data: { items } })).error.code, 'VALIDATION_ERROR')
+  assert.equal(calls, 1)
+})
+
 test('runtime identity fields outside public data do not look like client input', async () => {
   let called = false
   const handler = createHandler({

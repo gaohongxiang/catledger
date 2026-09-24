@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
 const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
-const { localServices, call, syntheticBill } = require('./helpers/local-services')
+const { localServices, call, syntheticBill, confirmSyntheticHistoryDistinct } = require('./helpers/local-services')
 const hasDatabase = Boolean(process.env.CATLEDGER_TEST_DB_HOST)
 
 test('贷款已有交易关联与整组更正保留来源、版本和一次付款', { skip: !hasDatabase }, async t => {
@@ -85,6 +85,8 @@ test('贷款已有交易关联与整组更正保留来源、版本和一次付�
       const issues=await imp('reviewIssues.list',{updateId:update.updateId,group:'accounts'})
       const decisions=issues.items.filter(i=>i.status==='open').map(i=>({issueId:i.issueId,issueVersion:i.version,operation:'resolve',decision:'apply_fields',fields:{mappingAccountId:assetAccountId}}))
       if(decisions.length) update=await imp('reviewIssues.resolveAccountMappings',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,decisions})
+      // 此套件验证用户保留本次记录后的事后更正；历史候选先明确确认。
+      update=await confirmSyntheticHistoryDistinct(services,update)
       const posted=await imp('financeUpdates.post',{requestId:randomUUID(),updateId:update.updateId,version:update.appliedVersion})
       const [links]=await lab.owner.execute('SELECT event_id,transaction_id FROM catledger_economic_event_transactions WHERE uid=? AND update_id=? AND superseded_at IS NULL',[user.uid,update.updateId])
       return {...posted,transactionId:links[0]?.transaction_id,eventId:links[0]?.event_id}
@@ -125,7 +127,7 @@ test('贷款已有交易关联与整组更正保留来源、版本和一次付�
       const [active]=await lab.owner.execute('SELECT transaction_id,transaction_version FROM catledger_economic_event_transactions WHERE uid=? AND event_id=? AND superseded_at IS NULL',[user.uid,imported.eventId])
       assert.equal(active.length,1);assert.equal(active[0].transaction_id,imported.transactionId);assert.equal(Number(active[0].transaction_version),3)
     })
-    await t.test('手工还款遇到后来导入的同笔：仅在明确选择后消除重复，保留一次资金变化及审计',async()=>{
+    await t.test('用户保留导入记录后再更正为已有还款：明确选择才消除重复，保留一次资金变化及审计',async()=>{
       const loan=await createLoan(), before=await balance()
       const manualPayment=await api('loans.record',{...smallBase,requestId:randomUUID(),mode:'new',allocations:[small(loan.loanId)]})
       const imported=await postedExpense('SYNTHETIC-LOAN-DUPLICATE')

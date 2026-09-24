@@ -20,7 +20,9 @@ function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCou
   const reviewPending = rows.filter(row => reviewIds.has(row.eventId) || (row.status === 'needs_action' && !categoryIds.has(row.eventId))).length
   const categoryPending = rows.filter(row => categoryRequired(row) && (!row.categoryId || row.economicNature === 'unknown')).length
   const categoryComplete = rows.filter(row => categoryRequired(row) && row.categoryId && row.economicNature !== 'unknown').length
-  const excluded = events.filter(row => row.status === 'excluded').length
+  const historical = row => row.status === 'excluded' && (row.reasonCodes || []).some(reason => ['already_posted', 'linked_existing_transaction'].includes(reason))
+  const excluded = events.filter(row => row.status === 'excluded' && !historical(row)).length
+  duplicateCount += events.filter(historical).length
   const ready = events.filter(row => row.status === 'ready')
   const sum = natures => ready.filter(row => natures.includes(row.economicNature)).reduce((n, row) => n + BigInt(row.amountMinor), 0n)
   const count = natures => ready.filter(row => natures.includes(row.economicNature)).length

@@ -96,6 +96,26 @@ test('重启仅在当前身份确认后恢复完整快照，校验前仍为脏�
   assert.equal(envCache.snapshot(stableKey('dashboard.get')), null)
 })
 
+test('账单设置升级丢弃旧格式快照，同一数据修订也重新读取新字段', async () => {
+  const first = runtime(); await first.api.callApi('dashboard.get'); await first.cache.settleStorage()
+  const legacy = JSON.parse(first.storage.get(KEY))
+  legacy.schema = 1
+  first.storage.set(KEY, JSON.stringify(legacy))
+  first.storage.set('catledger_pending_ledger_v1:synthetic', { requestId: 'original' })
+  const upgraded = runtime(first.storage)
+  upgraded.respond = action => action === 'dashboard.get' ? { ok: true, data: {
+    accounts: [], summary: {}, recentTransactions: [], liabilitySettingsVersion: 1
+  } } : undefined
+  await upgraded.api.revalidateForeground()
+  const value = await upgraded.api.callApi('dashboard.get')
+  assert.equal(value.liabilitySettingsVersion, 1)
+  const dashboardRead = upgraded.calls.find(call => call.action === 'dashboard.get')
+  assert.ok(dashboardRead, '旧格式不能因 dataRevision 未变而继续充当新鲜结果')
+  assert.equal(dashboardRead.knownRevision, undefined)
+  assert.equal((await upgraded.api.callApi('accounts.list')).liabilitySettingsVersion, 1)
+  assert.deepEqual(first.storage.get('catledger_pending_ledger_v1:synthetic'), { requestId: 'original' })
+})
+
 test('缓存只淘汰展示快照，容量/24小时/损坏/schema与退出都不误删原请求', async () => {
   let now = 0
   const storage = new Map([['catledger_pending_ledger_v1:synthetic', { requestId: 'original' }]])
@@ -136,7 +156,7 @@ test('存储不可用和禁用持久化均不影响正式写入，也不允许�
 
 test('贷款返回复用当前版本；目录慢载时资料独立恢复，失效资料不能提交', async () => {
   const h = runtime(), page = h.page('loan-detail'); page._loanId = 'synthetic-loan'
-  h.respond = action => action === 'loans.get' ? { ok: true, data: meta({ loan: { loanId: page._loanId, accountId: 'account-a', name: '合成贷款', baselineDate: '2026-09-01', baselinePrincipalMinor: '0', remainingPrincipalMinor: '0', status: 'settled' } }) } : undefined
+  h.respond = action => action === 'loans.get' ? { ok: true, data: meta({ loan: { loanId: page._loanId, version:1, accountId: 'account-a', name: '合成贷款', baselineDate: '2026-09-01', baselinePrincipalMinor: '0', remainingPrincipalMinor: '0', status: 'settled' } }) } : undefined
   await page.load(); const count = h.calls.length; await page.load(); assert.equal(h.calls.length, count)
   h.cache.invalidate(['accountDirectory', 'loans'])
   let release
@@ -155,13 +175,14 @@ test('前台轻量读取瞬时失败重试一次，最终失败不承诺最新',
   assert.equal(h.api.isFresh('dashboard.get'), false)
 })
 
-test('快照恢复先标更新中，确认新鲜才清提示；排队持久化不能穿越退出', async () => {
+test('快照恢复只显示加载图标，成功不显示失败；排队持久化不能穿越退出', async () => {
   const h = runtime(), home = h.page('index'); await home.loadDashboard()
   h.cache.invalidate(['accounts'])
   let release
   h.intercept = () => new Promise(resolve => { release = resolve })
   const pending = home.loadDashboard()
-  assert.match(home.data.errorMessage, /正在更新.*上次结果/)
+  assert.equal(home.data.loading, true)
+  assert.equal(home.data.errorMessage, '')
   await flush(); release(); await pending
   assert.equal(home.data.errorMessage, '')
   // 同步派生多个缓存的写盘合并到下一任务；退出作废队列。
@@ -179,7 +200,7 @@ test('快照恢复先标更新中，确认新鲜才清提示；排队持久化�
 
 test('贷款写后返回补齐并行读取中失效的旧目录，不要求用户再手动重读', async () => {
   const h = runtime(), page = h.page('loan-detail'); page._loanId = 'synthetic-loan'
-  h.respond = action => action === 'loans.get' ? { ok: true, data: { loan: { loanId: page._loanId, accountId: 'account-a', name: '合成贷款', baselineDate: '2026-09-01', baselinePrincipalMinor: '0', remainingPrincipalMinor: '0', status: 'settled' } } } : undefined
+  h.respond = action => action === 'loans.get' ? { ok: true, data: { loan: { loanId: page._loanId, version:1, accountId: 'account-a', name: '合成贷款', baselineDate: '2026-09-01', baselinePrincipalMinor: '0', remainingPrincipalMinor: '0', status: 'settled' } } } : undefined
   await page.load(); assert.equal(page.contextFresh(), true)
   await h.api.callApi('loans.update', { requestId: 'synthetic' })
   await page.load(); assert.equal(page.contextFresh(), true); assert.equal(page.data.errorMessage, '')

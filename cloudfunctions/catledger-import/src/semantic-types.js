@@ -25,6 +25,7 @@ const SOURCE_ACTION = Object.freeze({
   REPAYMENT: 'repayment',
   BORROW: 'borrow',
   FEE: 'fee',
+  INSTALLMENT_PRINCIPAL: 'installment_principal',
   YIELD: 'yield'
 })
 

@@ -48,5 +48,7 @@ for (const name of ['economic-nature', 'economic-event-builder', 'organizer-plan
 }
 assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/repayment-booking.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/repayment-booking.js'), 'utf8'), '实际还款领域契约必须一致')
+assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/installment-items.js'), 'utf8'),
+  fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/installment-items.js'), 'utf8'), '分期来源与费用防重复规则必须一致')
 execFileSync('git', ['diff', '--check'], { cwd: root, stdio: 'inherit' })
 process.stdout.write(`检查通过：${files.length} 个仓库文件，${runtime.length} 个运行时模块；语法、配置、部署边界与依赖图。\n`)

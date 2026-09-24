@@ -5,10 +5,10 @@
 
   <ui-state wx:if="{{!formReady && !errorMessage}}" description="登录后开始记账" />
   <block wx:if="{{formReady && !readonlyDetail}}">
-  <button wx:if="{{mode === 'create'}}" class="editor-import" disabled="{{saving || openingImport}}" bindtap="openImport" aria-label="导入支付宝、微信账单">
+  <button wx:if="{{mode === 'create'}}" class="editor-import" disabled="{{saving || openingImport}}" bindtap="openImport" aria-label="导入银行、支付宝、微信账单">
     <view class="editor-import-copy">
       <text class="editor-import-title">导入账单</text>
-      <text class="editor-import-note">支付宝、微信账单，批量整理入账</text>
+      <text class="editor-import-note">银行、支付宝、微信账单，批量整理入账</text>
     </view>
     <chevron-icon size="{{26}}" />
   </button>

@@ -53,7 +53,8 @@ function read(action, data, options, internal) {
     observer.record('fresh', { action, source: hit ? 'memory' : 'network', ms: Date.now() - startedAt })
     if (action === 'dashboard.get' && Array.isArray(result.accounts)) {
       cache.seedFrom(key, cache.stableKey('accounts.list'), READ_POLICIES['accounts.list'], view => ({
-        accounts: view.accounts, uid: view.uid, readVersion: view.readVersion, dataRevision: view.dataRevision, unchanged: false
+        accounts: view.accounts, liabilitySettingsVersion: view.liabilitySettingsVersion,
+        uid: view.uid, readVersion: view.readVersion, dataRevision: view.dataRevision, unchanged: false
       }))
     }
     return result

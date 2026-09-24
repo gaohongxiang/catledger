@@ -102,11 +102,11 @@ test('整理卡明确区分交易摘要和冻结的原始记录', function () {
   assert.doesNotMatch(markup, />账单记录<\/text>/)
 })
 
-test('旧版未入账批次由服务端声明是否需要重整，客户端不再复制规划版本', function () {
+test('未入账批次由服务端重整并复查历史，客户端不再复制规划版本', function () {
   const pageSource = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.js'), 'utf8')
   assert.equal(organizerPlanner.PLAN_VERSION, 'organizer-plan-v29')
   assert.doesNotMatch(pageSource, /CURRENT_PLAN_VERSION/)
-  assert.match(pageSource, /view\.update\.requiresReorganization[\s\S]*financeUpdates\.organize/)
+  assert.match(pageSource, /view\.update\.status === 'review'[\s\S]*financeUpdates\.organize/)
 })
 
 test('支付宝原始字段数组按字段名和值展示，不得出现 object Object', function () {

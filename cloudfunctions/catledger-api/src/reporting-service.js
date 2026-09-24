@@ -234,6 +234,7 @@ function createReportingService({ getPool }) {
           summary,
           cashFlowTrend,
           accounts,
+          liabilitySettingsVersion: 1,
           recentTransactions: recentRows.slice(0, 5).map(transactionToPublic)
         }
       }

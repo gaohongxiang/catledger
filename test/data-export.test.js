@@ -10,8 +10,8 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const apiPool=await source.role('api',grants.api),importPool=await source.role('import',grants.importer)
   const services=localServices({apiPool,importPool,subject:'synthetic-export'}),api=(a,d)=>call(services.api,a,d),imp=(a,d)=>call(services.import,a,d)
   const user=await api('bootstrap'),uid=user.uid,categoryId=user.categories.find(c=>c.kind==='expense').id
-  const account=async(type,amount,name)=>(await api('accounts.create',{requestId:randomUUID(),type,name,openingDisplayBalanceMinor:amount,occurredLocalAt:'2026-09-01T00:00:00',timezoneOffsetMinutes:-480})).accountId
-  const asset=await account('bank','100000','合成资产'),debt=await account('credit','10000','合成负债')
+  const account=async(type,amount,name,settings={})=>(await api('accounts.create',{requestId:randomUUID(),type,name,openingDisplayBalanceMinor:amount,occurredLocalAt:'2026-09-01T00:00:00',timezoneOffsetMinutes:-480,...settings})).accountId
+  const asset=await account('bank','100000','合成资产'),debt=await account('credit','10000','合成负债',{statementDay:25,repaymentDay:10,creditLimitMinor:'200000'})
   const {loanId}=await api('loans.create',{requestId:randomUUID(),accountId:debt,name:'合成贷款',kind:'borrowing',baselinePrincipalMinor:'10000',baselineDate:'2026-09-01'})
   const period=await api('loans.savePeriod',{requestId:randomUUID(),loanId,loanVersion:1,periodNumber:1,dueDate:'2026-09-20',principalMinor:'1000',interestMinor:'100',feeMinor:'0'})
   const payment=await api('loans.record',{requestId:randomUUID(),mode:'new',kind:'repayment',assetAccountId:asset,totalMinor:'1100',occurredLocalAt:'2026-09-02T12:00:00',timezoneOffsetMinutes:-480,confirmed:true,
@@ -21,7 +21,11 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   await api('transactions.create',{requestId:randomUUID(),type:'refund',amountMinor:'300',destinationAccountId:asset,originalTransactionId:manual.transactionId,occurredLocalAt:'2026-09-04T12:00:00',timezoneOffsetMinutes:-480})
   const update=await prepareSyntheticUpdate(services,4,'SYNTHETIC-EXPORT'),updateId=update.updateId
   const issue=(await imp('reviewIssues.list',{updateId,group:'accounts'})).items[0]
-  const mapped=await imp('reviewIssues.resolveAccountMappings',{requestId:randomUUID(),updateId,updateVersion:update.appliedVersion,decisions:[{issueId:issue.issueId,issueVersion:issue.version,operation:'resolve',decision:'apply_fields',fields:{mappingAccountId:asset}}]})
+  let mapped=await imp('reviewIssues.resolveAccountMappings',{requestId:randomUUID(),updateId,updateVersion:update.appliedVersion,decisions:[{issueId:issue.issueId,issueVersion:issue.version,operation:'resolve',decision:'apply_fields',fields:{mappingAccountId:asset}}]})
+  // 合成消费与前面的合成贷款利息同额；按现行历史核对流程明确为独立账目。
+  const reviews=(await imp('reviewIssues.list',{updateId,status:'open'})).items.filter(row=>row.primaryReasonCode==='historical_duplicate_candidate')
+  for(const review of reviews)mapped=await imp('reviewIssues.resolve',{requestId:randomUUID(),updateId,updateVersion:mapped.appliedVersion,
+    issueId:review.issueId,issueVersion:review.version,decision:'confirm_distinct'})
   await imp('financeUpdates.post',{requestId:randomUUID(),updateId,version:mapped.appliedVersion})
   const [[sourceTransaction]]=await source.owner.execute('SELECT transaction_id AS id FROM catledger_economic_event_transactions WHERE uid=? AND update_id=? LIMIT 1',[uid,updateId])
   const selection=(await api('loans.source',{transactionIds:[sourceTransaction.id]})).source

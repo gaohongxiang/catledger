@@ -1,4 +1,7 @@
 <view class="page-canvas detail-page {{themeClass}}" style="{{themeStyle}}">
+  <view wx:if="{{loggedIn && returnAccountId && !importFilter}}" class="account-return" bindtap="returnToAccountDetail" hover-class="account-return-active" role="button" aria-label="返回账户详情">
+    <chevron-icon direction="left" size="{{24}}" /><text>返回账户详情</text>
+  </view>
   <view wx:if="{{!importFilter}}" class="month-switcher">
     <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><chevron-icon direction="left" size="{{30}}" /></view>
     <picker class="date-picker" mode="date" value="{{pickerDate}}" start="2000-01-01" end="2099-12-31" bindchange="changeDate">

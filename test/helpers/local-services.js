@@ -41,4 +41,18 @@ async function prepareSyntheticUpdate(services, rows, prefix) {
     fileID: 'cloud://synthetic.bucket/' + file.cloudPath, timezoneOffsetMinutes: -480 })
   return call(services.import, 'financeUpdates.prepare', { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })
 }
-module.exports = { localServices, syntheticBill, call, prepareSyntheticUpdate }
+// 仅由明确需要保留独立合成记录的场景调用；不默认跳过导入历史核对。
+async function confirmSyntheticHistoryDistinct(services, update) {
+  const assert = require('node:assert/strict'), { randomUUID } = require('node:crypto')
+  const issues = (await call(services.import, 'reviewIssues.list', { updateId: update.updateId, status: 'open' })).items
+    .filter(issue => issue.primaryReasonCode === 'historical_duplicate_candidate')
+  if (issues.length) await assert.rejects(call(services.import, 'financeUpdates.post', {
+    requestId: randomUUID(), updateId: update.updateId, version: update.appliedVersion
+  }), { publicCode: 'UNRESOLVED_IMPORT' })
+  for (const issue of issues) update = await call(services.import, 'reviewIssues.resolve', {
+    requestId: randomUUID(), updateId: update.updateId, updateVersion: update.appliedVersion,
+    issueId: issue.issueId, issueVersion: issue.version, decision: 'confirm_distinct'
+  })
+  return update
+}
+module.exports = { localServices, syntheticBill, call, prepareSyntheticUpdate, confirmSyntheticHistoryDistinct }

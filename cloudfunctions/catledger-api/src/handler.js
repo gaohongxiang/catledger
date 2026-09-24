@@ -61,7 +61,8 @@ const PUBLIC_ERROR_CODES = new Set([
   'VALIDATION_ERROR'
 ])
 
-function inspectClientData(event) {
+function inspectClientData(event, action) {
+  const selectionItems = action === 'transactions.deleteMany' && Array.isArray(event.items) ? event.items : null
   const pending = [event]
   const visited = new Set()
   let inspected = 0
@@ -77,7 +78,13 @@ function inspectClientData(event) {
     if (IDENTITY_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(value, field))) {
       return 'identity'
     }
-    for (const child of Object.values(value)) pending.push(child)
+    for (const child of Object.values(value)) {
+      // 已知结构的平面 ID/version 列表不消耗嵌套复杂度预算；任何额外字段仍逐层检查。
+      if (value === selectionItems && child && typeof child === 'object' && !Array.isArray(child) &&
+          Object.keys(child).length === 2 && Object.keys(child).every(key => key === 'transactionId' || key === 'version') &&
+          typeof child.transactionId === 'string' && Number.isSafeInteger(child.version)) continue
+      pending.push(child)
+    }
   }
   return null
 }
@@ -127,7 +134,7 @@ function createHandler({ getWxContext, repository, services = {}, logger = conso
       ? event.data
       : {}
 
-    const clientDataIssue = inspectClientData(publicData)
+    const clientDataIssue = inspectClientData(publicData, action)
     if (clientDataIssue) {
       return failure(clientDataIssue === 'identity' ? 'INVALID_REQUEST' : 'VALIDATION_ERROR')
     }

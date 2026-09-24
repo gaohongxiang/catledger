@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto')
 
 const { normalizeAccountName } = require('./account-name')
+const { normalizeBilling } = require('./account-billing')
 const { ledgerError } = require('./ledger-errors')
 const { executeLedgerRead } = require('./ledger-read')
 const { executeIdempotentMutation } = require('./ledger-transaction')
@@ -50,6 +51,9 @@ function accountToPublic(row) {
     nature: row.nature,
     name: row.name,
     currency: row.currency,
+    statementDay: row.statementDay == null ? null : Number(row.statementDay),
+    repaymentDay: row.repaymentDay == null ? null : Number(row.repaymentDay),
+    creditLimitMinor: row.creditLimitMinor == null ? null : minorUnitsToString(row.creditLimitMinor),
     version: Number(row.version),
     archived: row.archivedAt != null,
     bookBalanceMinor: bookBalance.toString(),
@@ -65,6 +69,9 @@ async function listAccountRows(connection, uid) {
             a.nature,
             a.name,
             a.currency,
+            a.statement_day AS statementDay,
+            a.repayment_day AS repaymentDay,
+            a.credit_limit_minor AS creditLimitMinor,
             a.version,
             a.archived_at AS archivedAt,
             COALESCE(b.book_balance, 0) AS bookBalance
@@ -111,6 +118,9 @@ async function lockAccount(connection, uid, accountId) {
             nature,
             name,
             currency,
+            statement_day AS statementDay,
+            repayment_day AS repaymentDay,
+            credit_limit_minor AS creditLimitMinor,
             version,
             archived_at AS archivedAt
        FROM catledger_accounts
@@ -189,12 +199,13 @@ function prepareNewAccount(data) {
     nature: ACCOUNT_TYPES[type],
     name,
     normalizedName,
-    currency
+    currency,
+    ...normalizeBilling(data, ACCOUNT_TYPES[type])
   }
 }
 
 async function insertAccounts(connection, uid, accounts) {
-  const placeholders = accounts.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ')
+  const placeholders = accounts.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')
   const values = accounts.flatMap((account) => [
     uid,
     account.accountId,
@@ -202,12 +213,15 @@ async function insertAccounts(connection, uid, accounts) {
     account.nature,
     account.name,
     account.normalizedName,
-    account.currency
+    account.currency,
+    account.statementDay,
+    account.repaymentDay,
+    account.creditLimitMinor
   ])
   try {
     await connection.execute(
       `INSERT INTO catledger_accounts
-         (uid, account_id, type, nature, name, normalized_name, currency)
+         (uid, account_id, type, nature, name, normalized_name, currency, statement_day, repayment_day, credit_limit_minor)
        VALUES ${placeholders}`,
       values
     )
@@ -233,7 +247,7 @@ function createAccountService({ getPool }) {
       provider,
       subjectHash,
       read,
-      operation: async (connection, uid) => ({ accounts: await listAccountsForUser(connection, uid) })
+      operation: async (connection, uid) => ({ accounts: await listAccountsForUser(connection, uid), liabilitySettingsVersion: 1 })
     })
   }
 
@@ -311,14 +325,15 @@ function createAccountService({ getPool }) {
         if (Number(current.version) !== version) {
           throw ledgerError('CONFLICT')
         }
-        const { name, normalizedName } = normalizeAccountName(data.name)
+        const { name, normalizedName } = normalizeAccountName(data.name === undefined ? current.name : data.name)
+        const billing = normalizeBilling(data, current.nature, current)
 
         try {
           await connection.execute(
             `UPDATE catledger_accounts
-                SET name = ?, normalized_name = ?, version = version + 1
+                SET name = ?, normalized_name = ?, statement_day = ?, repayment_day = ?, credit_limit_minor = ?, version = version + 1
               WHERE uid = ? AND account_id = ? AND version = ?`,
-            [name, normalizedName, uid, current.accountId, version]
+            [name, normalizedName, billing.statementDay, billing.repaymentDay, billing.creditLimitMinor, uid, current.accountId, version]
           )
         } catch (error) {
           if (error && error.code === 'ER_DUP_ENTRY') {
@@ -331,6 +346,7 @@ function createAccountService({ getPool }) {
         return accountToPublic({
           ...current,
           name,
+          ...billing,
           version: version + 1,
           bookBalance: bookBalance.toString()
         })

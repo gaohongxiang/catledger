@@ -1,0 +1,13 @@
+{
+  "navigationBarTitleText": "账户明细",
+  "enablePullDownRefresh": true,
+  "onReachBottomDistance": 160,
+  "usingComponents": {
+    "category-tile": "/components/category-tile/index",
+    "empty-cat": "/components/empty-cat/index",
+    "skeleton-rows": "/components/skeleton-rows/index",
+    "ui-state": "/components/ui-state/index",
+    "chevron-icon": "/components/chevron-icon/index",
+    "category-picker": "/components/category-picker/index"
+  }
+}

@@ -44,6 +44,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
   const accountConflict = accountIds.length > 1
   const coreConflict = group.some((row) => !compatibleCore(primary, row, STRONG_REFERENCE_WINDOW_MS))
   const identityConflict = group.some((row) => row.identityState === 'identity_conflict')
+  const bankIdentityConflict = group.some((row) => row.sourceType === 'bank' && row.identityState === 'identity_conflict')
   const ignoredBySavedRule = group.every((row) => {
     const reference = ledgerAccountReferenceForRow(row)
     return row.mappingAction === 'ignore' || Boolean(reference &&
@@ -86,7 +87,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     eventKeyVersion: EVENT_KEY_VERSION,
     // “以后不计入”直接应用到后续匹配事件，同时保留一条可见、可修改的
     // 已确认账户项；用户无需重复选择，也不会失去覆盖历史决定的入口。
-    status: existingTransactionIds.length > 0 || failedOrClosed || nonFinancial || ignoredBySavedRule
+    status: !bankIdentityConflict && (existingTransactionIds.length > 0 || failedOrClosed || nonFinancial || ignoredBySavedRule)
       ? EVENT_STATUS.EXCLUDED
       : EVENT_STATUS.NEEDS_ACTION,
     flowDirection,
@@ -105,6 +106,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
     manualFieldMask: 0,
     fieldSources: {
       semanticBlockers: rowBlockers,
+      ...(primarySemantic.relationHints && primarySemantic.relationHints.installment ? { installment:primarySemantic.relationHints.installment } : {}),
       ...paymentEvidenceFields(group.map((row) => ({ direction: row.direction, semantic: getRowSemantic(row) }))),
       primaryEvidenceId: null,
       rowIds: group.map((row) => row.rowId),

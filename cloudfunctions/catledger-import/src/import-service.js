@@ -31,6 +31,7 @@ const {
 } = require('./validation')
 
 const PARSE_FAILURE_CODES = new Set([
+  'BANK_ROWS_INVALID',
   'CSV_COLUMN_LIMIT_EXCEEDED',
   'CSV_RECORD_LIMIT_EXCEEDED',
   'FILE_ENCODING_INVALID',
@@ -127,12 +128,12 @@ function createImportService({ getPool, storage }) {
   async function parseWithAction(context, action) {
     const importId = validateUuid(context.data.importId)
     const timezoneOffsetMinutes = validateTimezoneOffset(context.data.timezoneOffsetMinutes)
-    const fileID = context.data.fileID
     const file = await diagnosePhase('select_file', () => executeUserRead({
       getPool,
       ...context,
       operation: (connection, uid) => selectImportFile(connection, uid, importId)
     }))
+    const fileID = context.data.fileID || file.fileID
     if (!['awaiting_upload', 'failed', 'review_ready', 'committed', 'duplicate'].includes(file.state)) {
       throw importError('CONFLICT')
     }
@@ -160,8 +161,14 @@ function createImportService({ getPool, storage }) {
       document = await diagnosePhase('parse_file', () => parseEvidenceFile({
         content,
         extension: file.extension,
-        timezoneOffsetMinutes
+        timezoneOffsetMinutes,
+        bankMapping: context.data.bankMapping,
+        bankPreview: context.data.bankPreview
       }))
+      if (document.descriptor && document.descriptor.sourceType === 'bank' &&
+          (document.rows.some(row => row.parseState !== 'valid') || document.issues.some(issue => issue.severity === 'error'))) {
+        throw importError('BANK_ROWS_INVALID')
+      }
     } catch (error) {
       if (!PARSE_FAILURE_CODES.has(error.publicCode)) throw error
       return executeIdempotentMutation({
@@ -172,6 +179,15 @@ function createImportService({ getPool, storage }) {
           connection, uid, importId, fileID, error.publicCode
         )
       })
+    }
+
+    if (document.mappingRequired) {
+      const saved = await executeIdempotentMutation({ getPool, ...context, action,
+        operation: (connection, uid) => markParseFailure(connection, uid, importId, fileID, 'BANK_MAPPING_REQUIRED') })
+      // The receipt records only resumable file state. Raw preview cells are
+      // returned to the owner, never copied into receipts or diagnostic logs.
+      return saved.import.state === 'failed' && saved.import.errorCode === 'BANK_MAPPING_REQUIRED'
+        ? { ...saved, mappingRequired: true, bankPreview: document.bankPreview } : saved
     }
 
     const result = await diagnosePhase('persist_file', () => executeIdempotentMutation({

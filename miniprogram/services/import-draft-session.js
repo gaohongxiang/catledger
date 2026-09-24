@@ -148,7 +148,7 @@ function create(options) {
         payload: { requestId: options.requestId(), updateId: state.updateId, version: version, mode: 'all_ready' } } }), false)
       try { return await send(state.postFlight) }
       catch (error) {
-        if (!state.postFlight.reconcile && !retryable(error)) persist(Object.assign({}, state, { postFlight: null }), false)
+        if (error.code === 'HISTORY_REVIEW_REQUIRED' || !state.postFlight.reconcile && !retryable(error)) persist(Object.assign({}, state, { postFlight: null }), false)
         throw error
       }
     },

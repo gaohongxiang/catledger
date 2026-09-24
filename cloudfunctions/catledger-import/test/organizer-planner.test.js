@@ -74,7 +74,8 @@ test('桥接分组保留同身份重叠证据，同时拒绝时间窗口传递�
   assert.equal(plan.events.length, 3)
   assert.equal(plan.evidence.length, 4)
   assert.equal(plan.evidence.filter(e => e.evidenceRole === 'duplicate').length, 1)
-  const late = { ...b, sourceType: 'bank', utcAt: '2026-08-05 04:00:00.000' }
+  // Use an abstract third namespace: bank-local IDs deliberately cannot bridge platforms.
+  const late = { ...b, sourceType: 'synthetic-bridge-source', utcAt: '2026-08-05 04:00:00.000' }
   const middle = { ...c, utcAt: '2026-08-03 04:00:00.000' }
   assert.equal(buildOrganizePlan({ updateId: 'update', rows: [a, middle, late], idFactory: ids() }).events.length, 3)
 })

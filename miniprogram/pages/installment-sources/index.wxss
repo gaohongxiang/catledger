@@ -1,0 +1,7 @@
+@import "../loans/index.wxss";
+.source-actions { display:flex; gap:16rpx; margin-top:24rpx; }
+.source-actions button { flex:1; font-size:26rpx; }
+.sources-mask { position:fixed; z-index:100; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:flex-end; }
+.sources-sheet { max-height:75vh; box-sizing:border-box; padding:32rpx 28rpx calc(28rpx + env(safe-area-inset-bottom)); background:var(--theme-surface); border-radius:30rpx 30rpx 0 0; }
+.sources-title { display:block; font-size:34rpx; font-weight:600; margin-bottom:20rpx; }
+.sources-choice { background:transparent; border-bottom:1rpx solid var(--theme-line); text-align:left; font-size:28rpx; padding:22rpx 0; }

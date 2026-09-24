@@ -1,39 +1,111 @@
 <view class="page-canvas loan-detail {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" title="{{loan ? loan.name : '贷款'}}" copy="{{loan.installmentSetup ? '计划与实际还款分别核对，账户余额仍以账本为准。' : '只登记贷款资料，不会重复生成借款交易。金额留空表示尚不清楚，已知为零请填写 0。'}}" />
+  <page-head wx:if="{{formOpen}}" class="content-inset" title="编辑贷款资料" />
+  <view wx:if="{{loan}}" class="detail-account"><text>所属账户</text><text>{{loan.accountName}}{{loan.accountArchived ? '（已停用）' : ''}}</text></view>
   <view wx:if="{{sourceTransactionId}}" class="ld-note-card">
     <text class="ld-note">已保留原还款。这里只创建或补充贷款资料，保存后继续关联，不会重新登记付款。</text>
     <text wx:if="{{sourceContext}}" class="ld-note">还款发生于 {{sourceContext.occurredText}}；关联前须确认该日初或更早的本金基准，不是本次扣款金额。</text>
   </view>
-  <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
   <ui-state wx:if="{{errorMessage && !fieldError}}" error description="{{errorMessage}}" />
-  <button wx:if="{{errorMessage && !fieldError && !saving}}" class="ld-link" bindtap="load">重新读取与核实</button>
+  <button wx:if="{{errorMessage && !fieldError && !saving}}" class="ld-link" bindtap="refreshDetail">重新读取与核实</button>
   <button wx:if="{{hasPending && !formOpen}}" class="primary-button ld-retry" disabled="{{saving || loading}}" loading="{{saving}}" bindtap="save">重试上次操作</button>
   <ui-state wx:if="{{loading && !loan}}" description="正在读取资料…" />
-  <view wx:if="{{loan && !formOpen}}" class="ld-panel">
-    <text class="ld-muted">已确认剩余本金</text>
-    <text class="ld-principal money-number">{{loan.principalText}}</text>
-    <text class="ld-muted">{{loan.statusText}} · {{loan.accountName}}{{loan.accountArchived ? '（已停用）' : ''}}</text>
-    <view class="ld-rows">
-      <view class="ld-row"><text>本金基准</text><text>{{loan.baselineDate ? loan.baselineDate + ' 日初' : '待补充'}}</text></view>
-      <view class="ld-row"><text>类型</text><text>{{loan.kindText}}</text></view>
-      <view wx:if="{{loan.installmentSetup}}" class="ld-row"><text>原借款金额</text><text>{{loan.originalPrincipalText}}</text></view>
-      <view wx:if="{{loan.installmentSetup}}" class="ld-row"><text>接入前历史进度</text><text>已还 {{loan.installmentSetup.historicalPaidTerms}} / {{loan.scheduleTerms}} 期</text></view>
-      <view wx:if="{{!loan.installmentSetup}}" class="ld-row"><text>机构</text><text>{{loan.institution || '未填写'}}</text></view>
-      <view wx:if="{{!loan.installmentSetup}}" class="ld-row"><text>起止日期</text><text>{{loan.startDate || '未填写'}} 至 {{loan.endDate || '未填写'}}</text></view>
-      <view class="ld-row"><text>还款方式</text><text>{{loan.repaymentMethod || '未填写'}}</text></view>
-      <view wx:if="{{loan.scheduleText}}" class="ld-row"><text>分期参数</text><text>{{loan.scheduleText}}</text></view>
+  <block wx:if="{{loan && detail && !formOpen}}">
+    <view class="record-sheet">
+      <view class="record-kicker-row">
+        <view class="record-status"><view></view><text>{{detail.status}}</text></view>
+        <text class="record-kind">{{detail.kind}}{{detail.mode ? ' · ' + detail.mode : ''}}</text>
+      </view>
+      <view class="record-heading">
+        <text class="record-name">{{loan.name}}</text>
+        <text wx:if="{{detail.terms}}" class="record-term">{{detail.progressText}} {{detail.paid}} / {{detail.terms}} 期</text>
+      </view>
+      <view class="record-context-line">
+        <text class="record-time">{{detail.timeRange}}</text>
+        <view class="record-meta"><text class="money-number">借款 {{detail.principal}} 元</text><text wx:if="{{detail.terms}}">{{detail.terms}} 期</text><text>{{detail.method}}</text></view>
+      </view>
+      <view wx:if="{{detail.terms}}" class="record-progress-line">
+        <text>还款进度</text><view class="active-track"><view style="width: {{detail.progress}}%;"></view></view><text class="money-number">{{detail.progress}}%</text>
+      </view>
+      <view class="due-card {{detail.overdue ? 'due-card-overdue' : ''}} {{detail.complete ? 'due-card-complete' : ''}}">
+        <view class="due-card-head">
+          <view class="due-title-row"><view class="due-dot"></view><text>{{detail.dueLabel}}</text><text class="due-date">{{detail.dueDate}}</text></view>
+          <text wx:if="{{detail.dueTerm}}" class="due-term">第 {{detail.dueTerm}} 期</text>
+        </view>
+        <view class="due-card-body">
+          <view class="due-amount-block">
+            <text wx:if="{{detail.duePayment}}" class="due-amount money-number">{{detail.duePayment}}<text class="amount-unit"> 元</text></text>
+            <text wx:else class="due-complete-title">{{detail.dueTitle}}</text>
+            <text wx:if="{{detail.duePayment}}" class="due-breakdown">本金 {{detail.duePrincipal}} · 利息/费 <text class="detail-cost-ink">{{detail.dueCost}}</text></text>
+            <text wx:else class="due-breakdown">{{detail.dueNote}}</text>
+          </view>
+          <view class="due-remaining-block">
+            <text class="due-remaining-label">剩余应还</text>
+            <view class="due-remaining-amount"><text class="money-number">{{detail.remaining}}</text><text>元</text></view>
+            <text class="due-remaining-split">本金 {{detail.remainingPrincipal}} · 利息/费 <text class="detail-cost-ink">{{detail.remainingCost}}</text></text>
+          </view>
+        </view>
+      </view>
     </view>
-    <button class="primary-button ld-action" bindtap="recordPayment" disabled="{{saving || loading}}">{{sourceTransactionId ? '继续关联原还款（不重复扣款）' : loan.installmentSetup ? '登记实际还款' : '登记实际借还'}}</button>
-    <button class="secondary-button ld-action" bindtap="openPlan" disabled="{{saving || loading}}">还款计划与对账</button>
-    <button class="secondary-button ld-action" bindtap="edit" disabled="{{saving}}">编辑资料</button>
-  </view>
-  <view wx:if="{{loan && !formOpen}}" class="ld-history">
-    <button class="ld-link" bindtap="loadHistory" disabled="{{historyLoading}}">{{historyLoaded ? '刷新实际记录（第一页）' : '查看实际借还记录'}}</button>
-    <ui-state wx:if="{{historyError}}" error description="{{historyError}}" />
-    <text wx:if="{{historyLoaded && !history.length}}" class="ld-note">还没有实际借还记录</text>
-    <view wx:for="{{history}}" wx:key="paymentId" class="ld-history-row" hover-class="ld-history-hover" data-id="{{item.paymentId}}" bindtap="openPayment" aria-role="button"><view class="ld-history-main"><text>{{item.kindText}} · {{item.status === 'active' ? '已登记' : '已撤销'}}</text><text class="ld-muted">{{item.occurredText}}</text></view><text class="money-number">{{item.totalText}}</text></view>
-    <button wx:if="{{historyNext}}" class="secondary-button ld-action" data-next="true" bindtap="loadHistory" disabled="{{historyLoading}}">下一页记录</button>
-  </view>
+
+    <view class="cost-overview">
+      <view class="cost-orbit cost-orbit-large"></view><view class="cost-orbit cost-orbit-small"></view>
+      <view class="cost-overview-main">
+        <view class="cost-overview-cost">
+          <text class="cost-label">预计利息及费用</text>
+          <view class="cost-money detail-cost-ink"><text class="money-number">{{detail.cost ? detail.cost.cost : '—'}}</text><text>元</text></view>
+          <text class="cost-note">{{detail.cost ? detail.cost.note : detailLoading ? '正在读取分期方案' : '补充分期参数后显示'}}</text>
+        </view>
+        <view class="cost-overview-apr">
+          <text class="cost-label">复利年化（IRR）</text>
+          <view class="cost-apr-row"><text class="cost-apr-value money-number">{{detail.cost ? detail.cost.apr : '—'}}</text><text wx:if="{{detail.cost.aprLevel}}" class="cost-apr-level cost-apr-level-{{detail.cost.aprTone}}">{{detail.cost.aprLevel}}</text></view>
+          <view class="cost-simple"><text>单利年化</text><text class="money-number">{{detail.cost ? detail.cost.simpleApr : '—'}}</text></view>
+        </view>
+      </view>
+      <view class="cost-secondary">
+        <view><text>预计总还款</text><text class="money-number">{{detail.cost ? detail.cost.total : '—'}} 元</text></view>
+        <view><text>成本占借款金额</text><text class="money-number">{{detail.cost ? detail.cost.ratio : '—'}}</text></view>
+      </view>
+      <text wx:if="{{detail.cost.discount}}" class="cost-discount">{{detail.cost.discount}}</text>
+      <view class="cost-guide" bindtap="openCalculationGuide" aria-role="button" aria-label="查看单利与复利年化说明">
+        <view><text>单利与复利年化说明</text><text>根据原分期方案的现金流测算</text></view>
+        <view class="cost-guide-action"><text>查看</text><chevron-icon size="{{24}}" /></view>
+      </view>
+    </view>
+
+    <view class="detail-section-head">
+      <view class="detail-section-title"><text>逐期还款</text><button wx:if="{{detail.tracking && !loan.archived}}" size="mini" class="progress-entry" bindtap="openProgress" disabled="{{saving || loading}}">修改已完成期数</button></view>
+      <text class="detail-section-count">{{detail.terms ? '共 ' + detail.terms + ' 期' : '已确认计划'}}</text>
+    </view>
+    <view wx:if="{{detailError}}" class="detail-read-error"><text>{{detailError}}</text><button bindtap="refreshDetail" disabled="{{loading || detailLoading}}">重新读取</button></view>
+    <view class="payment-schedule">
+      <view class="payment-schedule-head"><text>期数 / 日期</text><text>应还</text><text>本金</text><text>利息 / 费</text></view>
+      <view wx:for="{{periodRows}}" wx:key="key" data-term="{{item.term}}" bindtap="openInstallment" aria-role="button" aria-label="第{{item.term}}期，{{item.state}}" class="payment-schedule-row {{item.paid ? 'schedule-row-paid' : ''}} {{item.current ? 'schedule-row-current' : ''}} {{item.overdue ? 'schedule-row-overdue' : ''}} {{item.cancelled ? 'schedule-row-cancelled' : ''}}">
+        <view class="schedule-term"><text>第 {{item.term}} 期</text><text>{{item.date}}</text><text wx:if="{{item.difference}}" class="schedule-state">账单金额有变化</text><text wx:elif="{{item.state && !item.historical && !item.paid}}" class="schedule-state">{{item.state}}</text></view>
+        <text class="schedule-payment money-number">{{item.payment}}</text><text class="schedule-principal money-number">{{item.principal}}</text><text class="schedule-interest money-number">{{item.interestFee}}</text>
+      </view>
+      <text wx:if="{{!periodRows.length}}" class="schedule-empty">{{detailLoading ? '正在读取期次…' : detailError ? '期次暂未加载' : '还没有确认的还款期次'}}</text>
+      <view wx:if="{{scheduleMore}}" class="schedule-more">
+        <button bindtap="showMoreSchedule" disabled="{{detailLoading}}" loading="{{detailLoading}}">显示更多</button>
+      </view>
+    </view>
+    <text wx:if="{{scheduleHistorical}}" class="schedule-footnote">历史期次按原分期方案展示。</text>
+    <text wx:if="{{detail.progressNote}}" class="schedule-footnote">{{detail.progressNote}}</text>
+    <text wx:if="{{detail.principalGap}}" class="schedule-footnote">{{detail.principalGap}}</text>
+
+    <view class="detail-actions">
+      <block wx:if="{{loan.kind !== 'installment' && !loan.archived}}">
+        <button wx:if="{{!sourceTransactionId}}" class="secondary-button" bindtap="recordPayment" disabled="{{saving || loading}}">记录借款或还款</button>
+        <button class="ld-link" bindtap="openPlan">维护还款计划</button>
+        <button class="ld-link" bindtap="loadHistory" disabled="{{historyLoading}}">查看已有借还记录</button>
+        <text wx:if="{{historyError}}" class="ld-note">{{historyError}}</text>
+        <button wx:for="{{history}}" wx:key="paymentId" class="ld-link" data-id="{{item.paymentId}}" bindtap="openPayment">{{item.occurredText}} · {{item.kindText}} {{item.totalText}} 元</button>
+        <button wx:if="{{historyNext}}" class="ld-link" data-next="true" bindtap="loadHistory">继续查看记录</button>
+      </block>
+      <button wx:if="{{sourceTransactionId}}" class="primary-button" bindtap="recordPayment" disabled="{{saving || loading}}">继续关联原还款</button>
+      <button wx:if="{{!loan.archived}}" class="secondary-button" bindtap="edit" disabled="{{saving || loading}}">编辑记录信息</button>
+      <button wx:if="{{!loan.archived}}" class="detail-delete" bindtap="archiveInstallment" disabled="{{saving || loading}}">删除记录</button>
+    </view>
+  </block>
   <view wx:if="{{formOpen}}" class="ld-form">
     <view class="ld-form-card">
       <view class="ld-card-head">
@@ -80,7 +152,7 @@
         <input class="ld-cell-input" value="{{repaymentMethod}}" data-field="repaymentMethod" bindinput="input" maxlength="80" placeholder="例如：等额本息" placeholder-class="ld-placeholder" />
       </label>
     <view class="ld-advanced-toggle" bindtap="toggleSchedule" aria-role="button" aria-label="{{scheduleOpen ? '收起分期参数' : '展开分期参数'}}">
-      <view class="ld-advanced-texts"><text class="ld-advanced-title">分期参数</text><text class="ld-advanced-hint">选填 · 保存后可到「还款计划与对账」试算并生成期次</text></view>
+      <view class="ld-advanced-texts"><text class="ld-advanced-title">分期参数</text><text class="ld-advanced-hint">选填 · 用于展示完整分期方案</text></view>
       <text class="ld-advanced-symbol">{{scheduleOpen ? '收起' : '展开'}}</text>
     </view>
     <block wx:if="{{scheduleOpen}}">
@@ -142,5 +214,17 @@
     <button class="primary-button ld-action" loading="{{saving}}" disabled="{{saving || loading}}" bindtap="save">{{hasPending ? '重试上次保存' : '保存贷款资料'}}</button>
     <button class="ld-link" disabled="{{saving}}" bindtap="cancelEdit">取消</button>
   </view>
+  <view wx:if="{{guideOpen}}" class="detail-guide-mask" bindtap="closeCalculationGuide" catchtouchmove="stopGuideTap">
+    <view class="detail-guide-sheet" catchtap="stopGuideTap">
+      <text class="detail-guide-title">单利与复利年化说明</text>
+      <text>先按每月计划还款和净到账金额求出月度 IRR，再换算年化。</text>
+      <view><text>单利年化</text><text>月度 IRR × 12</text></view>
+      <view><text>复利年化</text><text>（1 + 月度 IRR）¹² − 1</text></view>
+      <text>一次性费用从净到账中扣除，同时计入总成本；约定优惠按减免后的应还计算，零付款月份保留时间间隔。</text>
+      <text>这里展示原分期方案的预计成本。实际支出以账本为准，提前还款或修改期次后的成本需另行核对。</text>
+      <button class="primary-button" bindtap="closeCalculationGuide">知道了</button>
+    </view>
+  </view>
+  <include src="installment-sheet.wxml" />
   <login-sheet id="page-login-sheet" />
 </view>

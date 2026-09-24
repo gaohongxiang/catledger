@@ -165,7 +165,13 @@ function createReadCache(options) {
     now,
     mutate,
     invalidate,
-    token(key) { const entry = fresh(key); return entry ? entry.token : null },
+    token(key) {
+      const entry = fresh(key)
+      if (!entry) return null
+      // 连续翻页仍在使用首屏基线；保留最近使用顺序，不延长有效期或改变版本。
+      entries.delete(key); entries.set(key, entry)
+      return entry.token
+    },
     peek(key) { const entry = fresh(key); return entry ? clone(entry.value) : null },
     snapshot(key) {
       const entry = entries.get(key)

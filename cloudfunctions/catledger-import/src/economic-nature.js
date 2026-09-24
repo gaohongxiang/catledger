@@ -5,7 +5,7 @@ function economicNatureForSemantic(semantic) {
   return {
     purchase: 'expense', receipt: 'income', transfer_sent: 'expense', transfer_received: 'income',
     refund_credit: 'refund', top_up: 'internal_transfer', withdrawal: 'internal_transfer',
-    repayment: 'repayment', borrow: 'borrow', fee: 'fee', yield: 'income'
+    repayment: 'repayment', installment_principal: 'repayment', borrow: 'borrow', fee: 'fee', yield: 'income'
   }[semantic.sourceAction] || 'unknown'
 }
 
