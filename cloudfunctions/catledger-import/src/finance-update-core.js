@@ -2,7 +2,7 @@ const { commandResult } = require('./command-result')
 const { discardUpdateGraph } = require('./discarded-update')
 const { upgradeSemanticPlan } = require('./semantic-plan-upgrade')
 const { PLAN_VERSION } = require('./domain-versions')
-const { synchronizeHistoricalReviews } = require('./review-issue-service')
+const { synchronizeHistoricalReviews } = require('./review/reconciliation')
 const { buildOrganizePlan } = require('./organizer-planner')
 const { importError } = require('./errors')
 const {

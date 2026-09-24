@@ -55,7 +55,7 @@ test('不同金额多目标还款不做平方比较，同额候选仍取时间�
 })
 
 test('账户组批量保存不保留全部序列化后的事件副本', async () => {
-  const { saveEvents } = require('../src/review-issue-service')
+  const { saveEvents } = require('../src/review/event-store')
   let serialized = 0, saved = 0
   const pairs = Array.from({ length: 1000 }, (_, n) => ({ current: { eventId: 'event-' + n, version: 1 }, next: {
     eventId: 'event-' + n, status: 'needs_action', economicNature: 'unknown', currency: 'CNY', reasonCodes: [],

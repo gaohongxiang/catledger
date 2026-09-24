@@ -4,6 +4,7 @@ const path = require('node:path')
 const test = require('node:test')
 
 const reviewIssues = require('../src/review-issue-service')
+const { isEventInProjectionRefreshScope } = require('../src/review/reconciliation')
 const organizerPlanner = require('../src/organizer-planner')
 
 const projectRoot = path.resolve(__dirname, '../../..')
@@ -69,11 +70,11 @@ test('账户批量确认只重算直接受影响或引用同一支付方式的�
     })
   }
 
-  assert.equal(reviewIssues.isEventInProjectionRefreshScope({
+  assert.equal(isEventInProjectionRefreshScope({
     eventId: 'event-direct', fieldSources: '{}'
   }, scope), true)
-  assert.equal(reviewIssues.isEventInProjectionRefreshScope(related, scope), true)
-  assert.equal(reviewIssues.isEventInProjectionRefreshScope(unrelated, scope), false)
+  assert.equal(isEventInProjectionRefreshScope(related, scope), true)
+  assert.equal(isEventInProjectionRefreshScope(unrelated, scope), false)
 })
 
 test('账户页只向服务端提交一个批量动作，解析页已有更新时直接恢复', function () {

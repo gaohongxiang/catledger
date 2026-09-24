@@ -1,4 +1,5 @@
-const { selectDomainEvents, effectiveProjectedEvents } = require('./review-issue-service')
+const { effectiveProjectedEvents } = require('./review/reconciliation')
+const { selectDomainEvents } = require('./review/event-store')
 const { digestParts } = require('./digest')
 const { PLAN_VERSION } = require('./domain-versions')
 const { importError } = require('./errors')
