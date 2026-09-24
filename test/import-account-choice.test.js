@@ -4,7 +4,7 @@ const path = require('node:path')
 const test = require('node:test')
 const model = require('../miniprogram/pages/import-workbench/model')
 
-function pageFor(issue, accounts = [], importApi = {}, draftService = {}) {
+function pageFor(issue, accounts = [], importApi = {}) {
   const h = require('./helpers/paged-workbench').runtime()
   const page = h.page
   page._businessData = null
@@ -359,25 +359,6 @@ test('组合金额使用整数差额，多账户仅全部动作分配，空白�
   assert.deepEqual(all.map(row => row.amountInput), ['0.00', '0.00', '0.30'])
   assert.equal(model.buildPaymentResolutionDraft(all, 'expense', null, '核对', '30').valid, true)
 })
-
-function accountView(issues, accounts = []) {
-  return { update: { updateId: 'synthetic-update', status: 'review', counts: {} },
-    issues, accounts, events: [], sources: [], categories: [], accountDrafts: [] }
-}
-const accountTap = (id) => ({ currentTarget: { dataset: { id } } })
-const stepTap = (step) => ({ currentTarget: { dataset: { step } } })
-
-function draftPage(view, call) {
-  const service = require('../miniprogram/services/import-draft-session')
-  const storage = new Map()
-  const session = service.create({ scope: 'page-test', view, autoSync: false,
-    read: () => null, write: (key, data) => storage.set(key, data), remove: key => storage.delete(key),
-    requestId: () => 'request', call })
-  const page = pageFor(view.issues[0], view.accounts, {}, { open: () => session, project: service.project })
-  page._draftEnabled = true
-  page.applyUpdateView(view)
-  return { page, session }
-}
 
 test('修改分配金额只更新对应字段，不能把另一行名称重新下发', () => {
   const page = pageFor(unknownIssue()); page.data.issueEvents = [{ amountMinor: '10000' }]

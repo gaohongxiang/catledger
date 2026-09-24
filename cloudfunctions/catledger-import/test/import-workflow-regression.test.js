@@ -5,7 +5,6 @@ const test = require('node:test')
 
 const { runAccountMappingBatch } = require('../src/review/account-mapping')
 const { isEventInProjectionRefreshScope } = require('../src/review/reconciliation')
-const organizerPlanner = require('../src/organizer-planner')
 
 const projectRoot = path.resolve(__dirname, '../../..')
 const workbenchModel = require(path.join(projectRoot, 'miniprogram/pages/import-workbench/model'))
@@ -77,37 +76,11 @@ test('账户批量确认只重算直接受影响或引用同一支付方式的�
   assert.equal(isEventInProjectionRefreshScope(unrelated, scope), false)
 })
 
-test('账户页只向服务端提交一个批量动作，解析页已有更新时直接恢复', function () {
-  const source = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/runtime.js'), 'utf8')
-  const contract = require(path.join(projectRoot, 'shared/catledger-import.json'))
-  assert.ok(contract.actions['reviewIssues.resolveAccountMappings'])
-  assert.match(fs.readFileSync(path.join(projectRoot, 'miniprogram/services/import-draft-session.js'), 'utf8'), /reviewIssues\.resolveAccountMappings/)
-  assert.match(source, /if \(this\.data\.update && this\.data\.update\.updateId\)[\s\S]*loadUpdate\(this\.data\.update\.updateId\)/)
-})
-
-test('首次进入账户步骤只调用一个原子 prepare 动作', function () {
-  const source = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/runtime.js'), 'utf8')
-  const contract = require(path.join(projectRoot, 'shared/catledger-import.json'))
-  const start = source.indexOf('createFinanceUpdate: async function')
-  const end = source.indexOf('\n  loadUpdate:', start)
-  const method = source.slice(start, end)
-  assert.ok(contract.actions['financeUpdates.prepare'])
-  assert.match(method, /request\('financeUpdates\.prepare'/)
-  assert.doesNotMatch(method, /request\('financeUpdates\.(?:create|organize)'/)
-})
-
 test('整理卡明确区分交易摘要和冻结的原始记录', function () {
   const markup = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/index.wxml'), 'utf8')
   assert.doesNotMatch(markup, />交易摘要<\/text>/)
   assert.match(markup, /template is="record-source-fields"/)
   assert.doesNotMatch(markup, />账单记录<\/text>/)
-})
-
-test('未入账批次由服务端重整并复查历史，客户端不再复制规划版本', function () {
-  const pageSource = fs.readFileSync(path.join(projectRoot, 'miniprogram/pages/import-workbench/runtime.js'), 'utf8')
-  assert.equal(organizerPlanner.PLAN_VERSION, 'organizer-plan-v29')
-  assert.doesNotMatch(pageSource, /CURRENT_PLAN_VERSION/)
-  assert.match(pageSource, /view\.update\.status === 'review'[\s\S]*financeUpdates\.organize/)
 })
 
 test('支付宝原始字段数组按字段名和值展示，不得出现 object Object', function () {

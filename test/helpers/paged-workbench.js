@@ -71,7 +71,7 @@ function runtime(data = fixture()) {
     if (modules.has(filename)) return modules.get(filename).exports
     const module = { exports: {} }; modules.set(filename, module)
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { module, exports: module.exports, Page: value => { definition = value },
-      wx, getApp: () => h.app, setTimeout, clearTimeout,
+      wx, getApp: () => h.app, setTimeout, clearTimeout, ArrayBuffer, Uint8Array,
       require: name => load(path.resolve(path.dirname(filename), name) + '.js') }, { filename })
     if (filename.endsWith('/import-workbench/model.js')) for (const [name, fn] of Object.entries(module.exports)) if (typeof fn === 'function') {
       module.exports[name] = (...args) => { h.derives[name] = (h.derives[name] || 0) + 1; return fn(...args) }

@@ -243,17 +243,18 @@ Astra 单一协调公共契约、事务/幂等、页面共享状态及缓存；�
 ### 页面装配与状态
 
 - 直接同名覆盖 7 个：onLoad/onShow/onHide/onUnload/openIssue/openAccountChoice/selectAccountChoice。
-- 后置包装 6 个：closeIssue/closeAccountRecords/closeEvidence/closeFinalDetail/closeAccountChoice/startAnother。原 close 方法先关闭本层，包装器取消对应分页器，再处理待应用后台视图。
+- 后置包装 6 个：closeIssue/closeAccountRecords/closeEvidence/closeFinalDetail/closeAccountChoice/startAnother。原包装器先取消对应分页器，再调用 close 关闭本层，最后处理待应用后台视图。
 - onLoad：boundedSetData → epoch/active/分页初值 → theme → requestIds/sourceFiles/UI 草稿 → 登录 guard → loadUpdate/指定原文。
 - onShow：登录校验/无登录清理 → active → theme/ledgerRevision → 返回页面 loadUpdate。onHide：active=false/epoch++ → 取消分页/原文 → 关层 → finishInputEditing。onUnload：同样取消 → viewSession.close → 清空读状态 → 取消 load/订阅/定时器并持久化 UI 草稿。
 - runtime 拥有活动 epoch、busy 操作令牌、currentIssue 开关和 pendingBackgroundView 协调；交易流程拥有表单与当前成员/原文；账户流程拥有 UI 选择与草稿 Map；上传拥有 sourceFiles/进度 Map/计时器；posting 只显示回执。
 - view-session 拥有版本/游标/缓存，分页器为页面实例字段；draft-session 拥有持久草稿/flight/postFlight/requestId。页面离开不清除这些事实。订阅 _unsubscribeDraft 每实例一份；_fileProgressTimers、_accountDraftTimer 在原生命周期释放。WXML 所有 bind/catch 处理者必须落到显式 Page 清单。
 
-### 测试保护与拟替换映射
+### 测试保护与替换映射
 
 | 原保护目标 | 保留/替代验证 |
 | --- | --- |
 | import-workflow-regression 内部 index 源码中的 prepare/恢复/organize | import-paged-workbench「真实 Page 首次整理」实际请求序列；原基线通过，临时移除 organize 的受控破坏可使替代用例失败 |
+| import-contract 上传数量/并发/重试的内部写法 | import-upload-flow 真实 Page：份数/大小/重复内容、五文件并行和单份失败重试；并发改为 1 的受控破坏验证替代用例会失败 |
 | 账户排除原因在总服务内出现 | 隔离账户决定行为与经济事件 reasonCodes；迁移时先改实际归属，P4 再评估去重 |
 | import-account-compact 同行布局、字号、88rpx、aria、禁用绑定 | 全部保留；这些保护真实 UI，不是无效源码耦合 |
 | 掩码/付款/还款来源与规则优先级 | 既有 payment-resolution、funds-allocation、repayment-allocation/ownership、semantic-plan-upgrade |

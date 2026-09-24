@@ -7,6 +7,7 @@ const selected = id => ({ clientId: id, name: id + '.csv', size: 20, state: 'que
 test('实际 Page 选择账单限制剩余份数，拒绝超限文件并保留已经选择的文件', async () => {
   const h = runtime(), page = h.page
   page.data.files = [selected('one'), selected('two'), selected('three')]
+  assert.equal(page.data.maxFiles, 5)
   let picker
   h.wx.chooseMessageFile = options => { picker = options }
   page.chooseFiles()
@@ -20,6 +21,9 @@ test('实际 Page 选择账单限制剩余份数，拒绝超限文件并保留�
   assert.equal(page.data.files.length, 4)
   assert.equal(page.data.files[3].name, 'new.csv')
   assert.equal(page.data.uploadSummary.queued, 4)
+  page.readLocalFile = async () => new Uint8Array([1, 2]).buffer
+  await picker.success({ tempFiles: [{ name: 'one.csv', size: 20, path: '/synthetic/copy.csv' }] })
+  assert.equal(page.data.files.length, 4)
   page.onUnload()
 })
 
