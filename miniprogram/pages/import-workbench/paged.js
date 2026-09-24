@@ -132,188 +132,6 @@ async retryPagedView() {
       catch (error) { if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageError: errorText(error) }) }
       finally { if (this._viewActive && epoch === this._viewEpoch) this.setData({ pageLoading: false }) }
     },
-async readIssue(issueId) {
-      const session = this._viewSession
-      const [details, relations] = await Promise.all([
-        session.read('reviewIssues.get', { issueId, memberKind: 'event', pageSize: 8 }),
-        session.read('reviewIssues.members', { issueId, memberKind: 'relation', pageSize: 8 })
-      ])
-      const entry = this._draftSession && this._draftSession.state.entries.find(item => item.issueId === issueId)
-      const form = entry && entry.form || {}
-      const directory = await this.loadDirectories(details.subject ? [details.subject] : [], [form.accountId, form.counterpartyAccountId, form.categoryId, form.paymentTargetId]
-        .concat((form.paymentRows || []).map(row => row.accountId), (form.repaymentAllocationChoices || []).filter(row => !row.isNew).map(row => row.accountId)))
-      // 主体单独返回，候选分页不会把被处理对象挤出首页。
-      const members = details.subject ? [{ objectId: details.subject.eventId, objectType: 'event', event: editorPreview(details.subject) }] : details.members.slice(0, 1)
-      const candidates = relations.items.map(member => member.relation ? Object.assign({}, member, { relation: Object.assign({}, member.relation,
-        { targetEvent: editorPreview(member.relation.targetEvent) }) }) : member)
-      return Object.assign({}, details, directory, { members: members.concat(candidates), relationPage: relations })
-    },
-async openIssue(event) {
-      await original.openIssue.call(this, event)
-      if (!this.data.currentIssue || !this._viewActive) return
-      const issueId = this.data.currentIssue.issueId
-      this.setData({ historicalCandidates: [], historicalPage: null, historicalSelection: '', historicalLoading: false, historicalError: '' })
-      this._memberPager = this._viewSession.pager('reviewIssues.members', { issueId, memberKind: 'event', pageSize: 8 })
-      this._relationPager = this._viewSession.pager('reviewIssues.members', { issueId, memberKind: 'relation', pageSize: 8 })
-      const reads = [this.changeIssueMembers({ currentTarget: { dataset: {} } }), this.changeIssueRelations({ currentTarget: { dataset: {} } })]
-      if (this.data.currentIssue && this.data.currentIssue.historicalDuplicate) {
-        this._historicalPager = this._viewSession.pager('reviewIssues.members', { issueId, memberKind: 'transaction', pageSize: 8 })
-        reads.push(this.changeHistoricalPage({ currentTarget: { dataset: {} } }))
-      }
-      await Promise.all(reads)
-      if (!this._viewActive || !this.data.currentIssue || this.data.currentIssue.issueId !== issueId) return
-      if (this.data.currentIssue && this.data.currentIssue.primaryReasonCode === 'loan_repayment_required') {
-        const row = this.data.issueEvents[0]
-        if (row) this.editLoanRepayment({ currentTarget:{ dataset:{ id:row.eventId } } })
-      }
-    },
-excludeIssueEvents() { return this.resolveIssue('exclude_events', { selection: { mode: 'all' } }) },
-selectPrimaryMember(event) { this.setData({ 'issueDraft.primaryEventId': event.currentTarget.dataset.id }) },
-expandBankBatch() {
-      if (this.data.currentIssue.repaymentOwnershipRequired) return
-      if (this.data.bankBatchExpanded) { this.setData({ bankBatchExpanded: false, bankBatchRecords: [], bankBatchSelectedCount: 0 }); return }
-      const candidates = new Set(this.data.bankBatchCandidates.map(row => row.issueId))
-      const accounts = this.data.accounts
-      const rows = this.businessData().issues.filter(issue => candidates.has(issue.issueId)).map(issue => {
-        const suggestion = model.bankAccountSuggestion(issue.subject ? [issue.subject] : [], accounts)
-        return { issueId: issue.issueId, version: issue.version, count: Number(issue.memberCount), records: issue.subject ? [presentation.record(issue.subject)] : [],
-          candidateIds: suggestion ? suggestion.candidates.map(row => row.accountId) : [], selected: false, readable: Boolean(suggestion) }
-      })
-      this.setData({ bankBatchExpanded: true, bankBatchLoading: false, bankBatchRecords: rows })
-    },
-async changeHistoricalPage(event) {
-      const pager = this._historicalPager
-      if (!pager || !this.data.currentIssue) return
-      const issueId = this.data.currentIssue.issueId
-      this.setData({ historicalLoading: true, historicalSelection: '', historicalError: '' })
-      try {
-        const response = await pager.load(direction(event))
-        if (pager !== this._historicalPager || !this.data.currentIssue || this.data.currentIssue.issueId !== issueId) return
-        const candidates = response.items.map(member => {
-          const row = member.transaction || { transactionId: member.objectId }
-          return Object.assign({}, row, { stale: !member.transaction || Boolean(row.deletedAt) || row.version !== member.objectVersion,
-            amountText: model.amountText(row.amountMinor), accountText: [row.sourceAccountName, row.destinationAccountName].filter(Boolean).join(' → ') })
-        })
-        this.setData({ historicalCandidates: candidates, historicalPage: response.page })
-      } catch (error) { if (pager === this._historicalPager) this.setData({ historicalError: errorText(error) }) }
-      finally { if (pager === this._historicalPager) this.setData({ historicalLoading: false }) }
-    },
-selectHistoricalTransaction(event) {
-      if (this.data.busy || this.data.historicalLoading) return
-      const row = this.data.historicalCandidates.find(item => item.transactionId === event.currentTarget.dataset.id && !item.stale)
-      if (row) this.setData({ historicalSelection: row.transactionId })
-    },
-linkHistoricalTransaction() {
-      if (!this.data.currentIssue || !this.data.currentIssue.historicalDuplicate || !this.data.historicalSelection || this.data.historicalLoading) return
-      return this.resolveIssue('link_existing_transaction', { transactionId: this.data.historicalSelection })
-    },
-async refreshHistoricalReview() {
-      if (this.data.busy || !this.data.update) return
-      const updateId = this.data.update.updateId
-      this.closeIssue()
-      await this.loadUpdate(updateId, false)
-    },
-async changeIssueMembers(event) {
-      const pager = this._memberPager
-      if (!pager || !this.data.currentIssue) return
-      const issueId = this.data.currentIssue.issueId
-      this.closeInlineEvidence('issue')
-      this.setData({ issueVisibleEvents: [], issueEvidenceLoading: true })
-      try {
-        const response = await pager.load(direction(event))
-        if (pager !== this._memberPager || !this.data.currentIssue || this.data.currentIssue.issueId !== issueId) return
-        this._issueEvidenceRecords = response.items.filter(member => member.event).map(member => Object.assign({}, presentation.record(member.event), { evidence: [], evidenceLoading: true }))
-        this.setData({ issueVisibleEvents: this._issueEvidenceRecords, issueEvidenceTotal: response.total, issueEvidenceLoading: false,
-          issueEvidenceHasMore: false, memberPage: response.page })
-        await this.loadInlineEvidence('issue', this._issueEvidenceRecords)
-      } catch (error) { if (pager === this._memberPager) this.setData({ issueEvidenceLoading: false, errorMessage: errorText(error) }) }
-    },
-async changeIssueRelations(event) {
-      const pager = this._relationPager
-      if (!pager || !this.data.currentIssue) return
-      try {
-        const response = await pager.load(direction(event))
-        if (pager !== this._relationPager || !this.data.currentIssue) return
-        this.setData({ issueRelations: response.items.filter(member => member.relation).map(member => model.relationChoiceView(editorPreview(member.relation.targetEvent), member.relation)), relationPage: response.page })
-      } catch (error) { if (pager === this._relationPager) this.setData({ errorMessage: errorText(error) }) }
-    },
-closeInlineEvidence(scope) {
-      const key = scope === 'issue' ? '_issueInlineEvidence' : '_accountInlineEvidence'
-      if (this[key]) this[key].close()
-      this[key] = null
-    },
-loadInlineEvidence(scope, records) {
-      this.closeInlineEvidence(scope)
-      const key = scope === 'issue' ? '_issueInlineEvidence' : '_accountInlineEvidence'
-      const path = scope === 'issue' ? 'issueVisibleEvents' : 'accountRecordsSheet.records'
-      const session = this._viewSession
-      const active = () => this._viewActive && this._viewSession === session && this[key] === reader &&
-        Boolean(scope === 'issue' ? this.data.currentIssue : this.data.accountRecordsSheet)
-      const reader = inlineEvidence.create(session, records, active, (index, patch) => {
-        Object.assign(records[index], patch)
-        this.setData({ [path + '[' + index + ']']: records[index] })
-      })
-      this[key] = reader
-      return reader.loadAll()
-    },
-changeInlineSource(event) {
-      const scope = event.currentTarget.dataset.scope
-      const reader = scope === 'account' ? this._accountInlineEvidence : this._issueInlineEvidence
-      if (reader) return reader.change(event.currentTarget.dataset.id, direction(event))
-    },
-retryIssueRecordEvidence(event) {
-      if (this._issueInlineEvidence) return this._issueInlineEvidence.change(event.currentTarget.dataset.id, 0)
-    },
-retryAccountRecordEvidence(event) {
-      if (this._accountInlineEvidence) return this._accountInlineEvidence.change(event.currentTarget.dataset.id, 0)
-    },
-editLoanRepayment(event) {
-      const eventId = event.currentTarget.dataset.id || this.data.evidenceSheet && this.data.evidenceSheet.eventId
-      if (eventId && this.data.update && this.data.update.status === 'review') wx.navigateTo({ url:'/pages/repayment-entry/index?updateId=' + encodeURIComponent(this.data.update.updateId) + '&eventId=' + encodeURIComponent(eventId) })
-    },
-async openEvidence(event) {
-      const eventId = event.currentTarget.dataset.id
-      this._evidencePager = this._viewSession.pager('economicEvents.evidence', { eventId, pageSize: 8 })
-      const row = (this.businessData().events || []).find(e=>e.eventId === eventId)
-      this._repaymentEditable = Boolean(row && ['repayment','internal_transfer'].includes(row.economicNature) && this.data.update.status === 'review')
-      this.setData({ evidenceSheet: { eventId,repaymentEditable:this._repaymentEditable,evidence: [], loading: true, part: '' } })
-      const pager = this._evidencePager
-      await this.changeEvidencePage(event)
-      const evidenceId = event.currentTarget.dataset.evidenceId
-      if (evidenceId && pager === this._evidencePager && this.data.evidenceSheet) {
-        await this.openEvidencePart({ currentTarget: { dataset: { id: evidenceId } } })
-      }
-      if (!row && this.data.update.status === 'review') {
-        try {
-          const detail = await api.readPage('economicEvents.list',{ updateId:this.data.update.updateId,eventId,pageSize:1 })
-          if (pager !== this._evidencePager || !this.data.evidenceSheet) return
-          this._repaymentEditable = Boolean(detail.items[0] && ['repayment','internal_transfer'].includes(detail.items[0].economicNature))
-          this.setData({ 'evidenceSheet.repaymentEditable':this._repaymentEditable })
-        } catch(error) { if (pager === this._evidencePager) this.setData({ errorMessage:errorText(error) }) }
-      }
-    },
-async changeEvidencePage(event) {
-      const pager = this._evidencePager
-      try {
-        const response = await pager.load(direction(event))
-        if (pager !== this._evidencePager || !this.data.evidenceSheet) return
-        this._detailPager = null
-        this.setData({ evidenceSheet: { eventId: this.data.evidenceSheet.eventId,repaymentEditable:this._repaymentEditable,evidence: response.items, page: response.page, loading: false, part: '' } })
-      } catch (error) { if (pager === this._evidencePager) this.setData({ 'evidenceSheet.loading': false, errorMessage: errorText(error) }) }
-    },
-async openEvidencePart(event) {
-      this._detailPager = this._viewSession.pager('economicEvents.detail', { eventId: this.data.evidenceSheet.eventId, evidenceId: event.currentTarget.dataset.id })
-      return this.changeEvidencePart(event)
-    },
-async changeEvidencePart(event) {
-      const pager = this._detailPager
-      try {
-        const response = await pager.load(direction(event))
-        if (pager !== this._detailPager || !this.data.evidenceSheet) return
-        this.setData({ 'evidenceSheet.part': response.part, 'evidenceSheet.partPage': response.page,
-          'evidenceSheet.partFields': presentation.evidencePartFields(response.part, response.page) })
-      } catch (error) { if (pager === this._detailPager) this.setData({ errorMessage: errorText(error) }) }
-    },
 async openFinalDetail(event) {
       const kind = event.currentTarget.dataset.kind
       const accountId = event.currentTarget.dataset.id
@@ -378,8 +196,7 @@ async postUpdate() {
       finally { if (active()) this.setData({ busy: false }) }
     }
 })
-  for (const [method, keys] of Object.entries({ closeIssue: ['_memberPager', '_relationPager', '_historicalPager'],
-    closeEvidence: ['_evidencePager', '_detailPager'], closeFinalDetail: ['_finalPager'] })) {
+  for (const [method, keys] of Object.entries({ closeFinalDetail: ['_finalPager'] })) {
     result[method] = function () {
       if (this.data.busy && ['closeIssue', 'closeAccountRecords'].includes(method)) return
       if (method === 'closeIssue') this.closeInlineEvidence('issue')
@@ -394,15 +211,7 @@ async postUpdate() {
   result.startAnother = function () { this.cancelPagedReads(); if (this._viewSession) this._viewSession.close(); this._viewSession = null; return original.startAnother.call(this) }
   return result
 }
-function editorPreview(event) {
-  if (!event || !event.primaryEvidence) return event
-  let shortened = false
-  const primaryEvidence = Object.fromEntries(Object.entries(event.primaryEvidence).map(([key, value]) => {
-    if (typeof value === 'string' && value.length > 160) { shortened = true; return [key, value.slice(0, 160) + '…'] }
-    return [key, value]
-  }))
-  return Object.assign({}, event, { primaryEvidence, detailRequired: event.detailRequired || shortened })
-}
+
 
 function compactMapping(mapping) { const { choiceOptions, evidencePreview, ...visible } = presentation.accountMapping(mapping); return Object.assign(visible, { evidencePreview: Boolean(evidencePreview) }) }
 module.exports = { enhance }

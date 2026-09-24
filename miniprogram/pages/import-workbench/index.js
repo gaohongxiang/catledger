@@ -1,3 +1,4 @@
+const transactionReview = require('./transaction-review')
 const accountReview = require('./account-review')
 const uploadFlow = require('./upload-flow')
 const { publicError } = require('./presentation')
@@ -10,48 +11,18 @@ const presentation = require('./presentation')
 const { buildFinalDetail } = require('./final-detail')
 const draftSessions = require('../../services/import-draft-session')
 
-function additionalRepaymentOptions(catalog, rows) {
-  const selected = new Set(rows.map(function (row) { return row.accountId }))
-  return [{ name: '补充还款账户', isPlaceholder: true }].concat(catalog.filter(function (account) {
-    return !selected.has(account.accountId)
-  })).concat([{ name: '新建负债账户', isCreate: true }])
-}
-
-const NATURE_OPTIONS = Object.freeze([
-  { value: 'expense', label: '支出' },
-  { value: 'income', label: '收入' },
-  { value: 'refund', label: '退款' },
-  { value: 'internal_transfer', label: '内部转账' },
-  { value: 'repayment', label: '还款' },
-  { value: 'borrow', label: '借款' },
-  { value: 'fee', label: '手续费' },
-  { value: 'balance_adjustment', label: '余额调整' },
-  { value: 'unknown', label: '暂不确定' }
-])
 
 
 
 
 
 
-function minorToYuanInput(value) {
-  const minor = String(value || '0').padStart(3, '0')
-  const fraction = minor.slice(-2).replace(/0$/u, '')
-  return minor.slice(0, -2).replace(/^0+(?=\d)/u, '') + (fraction ? '.' + fraction : '')
-}
 
-function allocationStatus(options, totalAmountMinor) {
-  const state = model.buildRepaymentAllocationDraft(options, totalAmountMinor)
-  const remaining = String(state.remainingMinor || '0')
-  return {
-    state: state,
-    text: state.valid
-      ? '已分配完成'
-      : remaining.startsWith('-')
-        ? '超出 ' + model.amountText(remaining.slice(1))
-        : '还差 ' + model.amountText(remaining)
-  }
-}
+
+
+
+
+
 
 const initialData = {
     restoreUpdateId: '',
@@ -186,7 +157,7 @@ const initialData = {
       newAccountName: '',
       accountTypeIndex: 2
     },
-    natureOptions: NATURE_OPTIONS,
+    natureOptions: transactionReview.NATURE_OPTIONS,
     themeClass: '',
     themeStyle: ''
   }
@@ -347,37 +318,15 @@ abandonRestoringUpdate: async function () {
     }
   },
 
-toggleIssueSource: function () {
-    this.setData({ issueSourceExpanded: !this.data.issueSourceExpanded })
-  },
+toggleIssueSource: transactionReview.toggleIssueSource,
 
-switchReviewTab: function (event) {
-    const tab = event.currentTarget.dataset.tab
-    if (!['review', 'category'].includes(tab)) return
-    this.setData({ activeReviewTab: tab })
-    this.renderReview(true)
-    if (tab === 'review' && this.data.activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
-  },
+switchReviewTab: transactionReview.switchReviewTab,
 
-switchCategoryStatus: function (event) {
-    const status = event.currentTarget.dataset.status
-    if (!['pending', 'completed', 'none'].includes(status)) return
-    this.setData({ activeCategoryStatus: status })
-    this.renderReview(true)
-  },
+switchCategoryStatus: transactionReview.switchCategoryStatus,
 
-searchCategoryIssues: function (event) {
-    const query = event.detail.value
-    this.setData({ categoryQuery: query })
-    this._reviewProjection = null
-    this.renderReview(true)
-  },
+searchCategoryIssues: transactionReview.searchCategoryIssues,
 
-reviewBeforeCategory: function (event) {
-    this.setData({ activeReviewTab: 'review', activeReviewStatus: 'pending' })
-    this.renderReview(true)
-    if (event.currentTarget.dataset.id) this.openIssue(event)
-  },
+reviewBeforeCategory: transactionReview.reviewBeforeCategory,
 
 viewTransactions: function () {
     wx.switchTab({ url: '/pages/transactions/index' })
@@ -400,24 +349,9 @@ openInstallmentSources: function () {
     wx.navigateTo({ url: '/pages/installment-sources/index' })
   },
 
-switchReviewStatus: function (event) {
-    const status = String(event.currentTarget.dataset.status || '')
-    if (!['pending', 'completed', 'excluded', 'duplicate'].includes(status) || status === this.data.activeReviewStatus) return
-    this.setData({ activeReviewStatus: status })
-    this.renderReview(true)
-    if (status === 'duplicate') this.loadDuplicateRecords()
-  },
+switchReviewStatus: transactionReview.switchReviewStatus,
 
-toggleExcludedGroup: function (event) {
-    const key = String(event.currentTarget.dataset.key || '')
-    if (!key) return
-    this.setData({
-      excludedReviewGroups: (this.data.excludedReviewGroups || []).map(function (group) {
-        return group.key === key ? Object.assign({}, group, { expanded: !group.expanded }) : group
-      })
-    })
-    this.renderReview(false)
-  },
+toggleExcludedGroup: transactionReview.toggleExcludedGroup,
 
 buildAccountMappingState: accountReview.buildAccountMappingState,
 
@@ -431,10 +365,7 @@ preventTouchMove: function () {},
 
 closeAccountRecords: accountReview.closeAccountRecords,
 
-closeReviewSheet: function () {
-    if (this.data.evidenceSheet) this.closeEvidence()
-    else this.closeIssue()
-  },
+closeReviewSheet: transactionReview.closeReviewSheet,
 
 bindAccountDraftName: accountReview.bindAccountDraftName,
 
@@ -485,183 +416,9 @@ goToStep: async function (event) {
     this.persistAccountDrafts()
   },
 
-openIssue: async function (event) {
-    if (this.data.busy) return
-    const issueId = event.currentTarget.dataset.id
-    const token = {}
-    this._issueEvidenceToken = token
-    this.setData({ busy: true, errorMessage: '' })
-    try {
-      const details = await this.request('reviewIssues.get', { issueId: issueId })
-      if (this._issueEvidenceToken !== token) return
-      const eventMembers = details.members.filter(function (member) { return member.event })
-      const relationMembers = details.members.filter(function (member) { return member.relation })
-      const firstEvent = eventMembers[0] && eventMembers[0].event
-      const summaryIssue = this.businessData().issues.find(function (issue) { return issue.issueId === issueId })
-      const draftChoices = (details.accountDrafts || []).map(function (account) {
-        return Object.assign({}, account, { name: account.name + '（本批新建）', isDraft: true })
-      })
-      const selectableAccounts = details.accounts.concat(draftChoices)
-      const isTransferIssue = details.issue.issueType === 'transfer_accounts'
-      const issueAccountContext = details.issue.accountContext || summaryIssue && summaryIssue.accountContext || null
-      const suggestedTransferAccount = firstEvent && firstEvent.fundsProjection
-        ? model.suggestExistingAccount(issueAccountContext, selectableAccounts)
-        : null
-      const projectedMissingTo = Boolean(firstEvent && firstEvent.fundsProjection &&
-        firstEvent.ledgerAccountId && !firstEvent.counterpartyLedgerAccountId)
-      const selectorAccountId = (projectedMissingTo
-        ? firstEvent.counterpartyLedgerAccountId
-        : firstEvent && firstEvent.ledgerAccountId) || (!isTransferIssue && suggestedTransferAccount && suggestedTransferAccount.accountId)
-      const ownershipTarget = Boolean(isTransferIssue && firstEvent && firstEvent.repaymentOwnershipRequired)
-      const accountChoices = isTransferIssue
-        ? [{ accountId: '', name: '请选择账户', isPlaceholder: true }]
-          .concat(ownershipTarget ? selectableAccounts.filter(function (account) { return ['credit', 'other_liability'].includes(account.type) }) : selectableAccounts)
-          .concat([{ accountId: '', name: '新建账户', isCreate: true }])
-        : [{ accountId: '', name: '新建账户', isCreate: true }].concat(selectableAccounts)
-      const existingAccountIndex = accountChoices.findIndex(function (account) {
-        return selectorAccountId && account.accountId === selectorAccountId
-      })
-      const accountIndex = existingAccountIndex < 0 ? 0 : existingAccountIndex
-      const counterpartyAccountChoices = [{ accountId: '', name: '请选择转入账户', isPlaceholder: true }].concat(selectableAccounts)
-      const counterpartyAccountIndex = Math.max(0, counterpartyAccountChoices.findIndex(function (account) {
-        return firstEvent && firstEvent.counterpartyLedgerAccountId && account.accountId === firstEvent.counterpartyLedgerAccountId
-      }))
-      const natureIndex = Math.max(0, NATURE_OPTIONS.findIndex(function (nature) {
-        return firstEvent && nature.value === firstEvent.economicNature
-      }))
-      const selectedNature = NATURE_OPTIONS[natureIndex] && NATURE_OPTIONS[natureIndex].value
-      const compatibleCategories = model.categoriesForNature(details.categories, selectedNature)
-      const issueCategories = [{ categoryId: '', name: '请选择分类', isPlaceholder: true }].concat(compatibleCategories)
-      const compatibleCategoryIndex = Math.max(0, issueCategories.findIndex(function (category) {
-        return firstEvent && category.categoryId === firstEvent.categoryId
-      }))
-      const relationChoices = relationMembers.map(function (member) {
-        return model.relationChoiceView(member.relation.targetEvent, member.relation)
-      })
-      const selectedRefundTargetId = relationChoices.length === 1 ? relationChoices[0].targetEventId : ''
-      const currentIssue = model.issueView(Object.assign({}, details.issue, {
-        accountContext: issueAccountContext,
-        subject: details.issue.subject || summaryIssue && summaryIssue.subject || firstEvent || null
-      }))
-      const bankSuggestion = isTransferIssue
-        ? model.bankAccountSuggestion(eventMembers.map(function (member) { return member.event }), selectableAccounts)
-        : null
-      const bankBatchCandidates = bankSuggestion && !currentIssue.repaymentOwnershipRequired ? this.businessData().issues.filter(function (issue) {
-        if (issue.issueId === issueId || issue.issueType !== 'transfer_accounts' || issue.status !== 'open') return false
-        const suggestion = model.bankAccountSuggestion(issue.subjects || (issue.subject ? [issue.subject] : []), selectableAccounts)
-        return suggestion && suggestion.key === bankSuggestion.key
-      }).map(function (issue) { return { issueId: issue.issueId } }) : []
-      const accountNames = new Map(selectableAccounts.map(function (account) { return [account.accountId, account.name] }))
-      if (currentIssue.fundsProjection && firstEvent) {
-        currentIssue.fundsRoute = {
-          fromName: accountNames.get(firstEvent.ledgerAccountId) || currentIssue.fundsProjection.from.label,
-          toName: accountNames.get(firstEvent.counterpartyLedgerAccountId) || currentIssue.fundsProjection.to.label,
-          fromKnown: Boolean(firstEvent.ledgerAccountId),
-          toKnown: Boolean(firstEvent.counterpartyLedgerAccountId)
-        }
-        currentIssue.suggestedExisting = Boolean(suggestedTransferAccount)
-      }
-      const existingAllocations = new Map((firstEvent && firstEvent.repaymentAllocations || []).map(function (item) {
-        return [item.accountId, item.amountMinor]
-      }))
-      const repaymentAccountOptions = currentIssue.aggregateRepayment
-        ? model.repaymentAllocationOptions(details.accounts, draftChoices, currentIssue.fundsProjection, firstEvent) : []
-      const repaymentAllocationChoices = repaymentAccountOptions.filter(function (account) {
-        return account.recommended || existingAllocations.has(account.accountId)
-      }).map(function (account) {
-        const amountMinor = existingAllocations.get(account.accountId)
-        return Object.assign({}, account, { amountInput: amountMinor ? minorToYuanInput(amountMinor) : '' })
-      })
-      existingAllocations.forEach(function (amount, accountId) {
-        if (!repaymentAllocationChoices.some(function (row) { return row.accountId === accountId })) {
-          repaymentAllocationChoices.push({ accountId: accountId, name: '原账户已不可用', unavailable: true, amountInput: minorToYuanInput(amount) })
-        }
-      })
-      const repaymentStatus = allocationStatus(repaymentAllocationChoices, firstEvent && firstEvent.amountMinor || '0')
-      const evidenceEvents = eventMembers.map(function (member) { return { event: member.event, role: '待处理记录' } })
-      const evidenceIds = new Set(evidenceEvents.map(function (item) { return item.event.eventId }))
-      relationMembers.forEach(function (member) {
-        const target = member.relation.targetEvent
-        if (target && target.eventId && !evidenceIds.has(target.eventId)) {
-          evidenceIds.add(target.eventId)
-          evidenceEvents.push({ event: target, role: '候选原消费' })
-        }
-      })
-      this._issueEvidenceRecords = evidenceEvents.map(function (item) {
-        return Object.assign({}, model.eventView(item.event), { recordRole: item.role,
-          evidenceLoading: true, evidenceError: '', evidence: [] })
-      })
-      const paymentDefaults = model.paymentResolutionDefaults(firstEvent, selectableAccounts)
-      this.setData({
-        busy: false,
-        issueVisibleEvents: this._issueEvidenceRecords.slice(0, 20),
-        issueEvidenceTotal: this._issueEvidenceRecords.length,
-        issueEvidenceLoading: true,
-        issueEvidenceHasMore: this._issueEvidenceRecords.length > 20,
-        update: details.update,
-        currentIssue: currentIssue,
-        issueSourceExpanded: true,
-        issueFieldsReason: '',
-        paymentValidationHint: '',
-        paymentRows: paymentDefaults.rows,
-        paymentAccountChoices: [{ accountId: '', name: '请选择资金账户' }].concat(selectableAccounts),
-        paymentTargetChoices: [{ accountId: '', name: '请选择被还款账户' }].concat(selectableAccounts.filter(function (a) { return ['credit', 'other_liability'].includes(a.type) })),
-        paymentNatureIndex: paymentDefaults.natureIndex, paymentTargetIndex: Math.max(0, [{ accountId: '' }].concat(selectableAccounts.filter(function (a) { return ['credit', 'other_liability'].includes(a.type) })).findIndex(function (a) { return a.accountId === (firstEvent && firstEvent.counterpartyLedgerAccountId) })), paymentEvidenceNote: '', paymentCanSave: false,
-        paymentDifferenceText: '请逐项填写实际支付金额；合计须等于 ' + model.amountText(firstEvent && firstEvent.amountMinor),
-        bankSuggestion: bankSuggestion,
-        bankBatchCandidates: bankBatchCandidates,
-        bankBatchExpanded: false,
-        bankBatchLoading: false,
-        bankBatchRecords: [],
-        bankBatchSelectedCount: 0,
-        currentMembers: details.members,
-        issueEvents: eventMembers.map(function (member) { return model.eventView(member.event) }),
-        issueRelations: relationChoices,
-        repaymentAllocationChoices: repaymentAllocationChoices,
-        repaymentAccountOptions: repaymentAccountOptions,
-        repaymentAdditionalOptions: additionalRepaymentOptions(repaymentAccountOptions, repaymentAllocationChoices),
-        repaymentAdditionalIndex: 0,
-        repaymentAllocationStatusText: currentIssue.aggregateRepayment ? repaymentStatus.text : '',
-        repaymentAllocationCanSave: currentIssue.aggregateRepayment ? repaymentStatus.state.valid : true,
-        accounts: selectableAccounts,
-        accountDrafts: details.accountDrafts || [],
-        accountChoices: accountChoices,
-        counterpartyAccountChoices: counterpartyAccountChoices,
-        categories: details.categories,
-        issueCategories: issueCategories,
-        issueCategoryCanSave: Boolean(issueCategories[compatibleCategoryIndex] && issueCategories[compatibleCategoryIndex].categoryId),
-        issueDraft: {
-          accountIndex: accountIndex,
-          counterpartyAccountIndex: counterpartyAccountIndex,
-          categoryIndex: compatibleCategoryIndex,
-          natureIndex: natureIndex,
-          primaryEventId: firstEvent && firstEvent.eventId || '',
-          targetEventId: selectedRefundTargetId,
-          newAccountName: summaryIssue && summaryIssue.accountContext && summaryIssue.accountContext.recognized
-            ? Array.from(summaryIssue.accountContext.label.trim()).slice(0, 32).join('')
-            : '',
-          accountTypeIndex: currentIssue.repaymentOwnershipRequired ? 3 : 2,
-          repaymentOwner: firstEvent && firstEvent.repaymentOwnership && firstEvent.repaymentOwnership.owner || '',
-          repaymentOtherTreatment: firstEvent && firstEvent.repaymentOwnership && firstEvent.repaymentOwnership.treatment || ''
-        }
-      })
-      this.restoreReviewDraft(issueId)
-      this.refreshIssueFieldsDraft()
-      if (currentIssue.paymentNeedsReview) this.refreshPaymentDraft()
-    } catch (error) {
-      if (this._issueEvidenceToken !== token) return
-      this.setData({ busy: false, errorMessage: publicError(error, '问题详情加载失败') })
-    }
-  },
+openIssue: transactionReview.openIssue,
 
-closeIssue: function () {
-    if (!this.data.busy) {
-      this.finishInputEditing()
-      this._issueEvidenceToken = null
-      this._issueEvidenceRecords = []
-      this.setData({ currentIssue: null, currentMembers: [], evidenceSheet: null, issueVisibleEvents: [] })
-    }
-  },
+closeIssue: transactionReview.closeIssue,
 
 backFinalDetail: function () {
     if (this.data.finalDetailParent) this.setData({ finalDetailSheet: this.prepareFinalDetail(this.data.finalDetailParent), finalDetailParent: null })
@@ -675,10 +432,7 @@ prepareFinalDetail: function (kind, accountId, index) {
 
 closeFinalDetail: function () { this._finalDetail = null; this.setData({ finalDetailSheet: null, finalDetailParent: null }) },
 
-closeEvidence: function () {
-    this._evidenceReadToken = null
-    this.setData({ busy: false, evidenceSheet: null })
-  },
+closeEvidence: transactionReview.closeEvidence,
 
 beginInputEditing: function (event) {
     this._editingInput = event.currentTarget.dataset.inputKey
@@ -692,324 +446,77 @@ finishInputEditing: function () {
     if (pending && this.data.update && pending.update.updateId === this.data.update.updateId) this.applyUpdateView(pending, true)
   },
 
-refreshIssueFieldsDraft: function () {
-    const state = model.buildIssueFieldsDraft(this.data)
-    setChangedData(this, { issueFieldsCanSave: state.valid, issueFieldsReason: state.valid ? '' : state.reason })
-    return state
-  },
+refreshIssueFieldsDraft: transactionReview.refreshIssueFieldsDraft,
 
-changeRepaymentOwner: function (event) {
-    if (this.data.busy) return
-    const owner = event.currentTarget.dataset.owner
-    if (!['self', 'other'].includes(owner) || owner === this.data.issueDraft.repaymentOwner) return
-    this.setData({ 'issueDraft.repaymentOwner': owner, 'issueDraft.repaymentOtherTreatment': '',
-      'issueDraft.accountIndex': 0, 'issueDraft.newAccountName': '', 'issueDraft.accountTypeIndex': 3,
-      bankBatchSelectedCount: 0, bankBatchExpanded: false, bankBatchRecords: [] })
-    this.refreshIssueFieldsDraft()
-  },
+changeRepaymentOwner: transactionReview.changeRepaymentOwner,
 
-changeRepaymentOtherTreatment: function (event) {
-    if (this.data.busy || this.data.issueDraft.repaymentOwner !== 'other') return
-    const treatment = event.currentTarget.dataset.treatment
-    if (!['expense', 'pending'].includes(treatment)) return
-    this.setData({ 'issueDraft.repaymentOtherTreatment': treatment })
-    this.refreshIssueFieldsDraft()
-  },
+changeRepaymentOtherTreatment: transactionReview.changeRepaymentOtherTreatment,
 
-changeIssueAccount: function (event) {
-    this.setData({ 'issueDraft.accountIndex': Number(event.detail.value), bankBatchSelectedCount: 0,
-      bankBatchRecords: (this.data.bankBatchRecords || []).map(function (item) { return Object.assign({}, item, { selected: false }) }) })
-    this.refreshIssueFieldsDraft()
-  },
+changeIssueAccount: transactionReview.changeIssueAccount,
 
-refreshPaymentDraft: function () {
-    if (this.data.currentIssue && this.data.currentIssue.paymentAccountsOnly) {
-      const rows = this.data.paymentRows
-      const valid = rows.length >= 2 && rows.every(function (row) { return Boolean(row.accountId) }) && new Set(rows.map(function (row) { return row.accountId })).size === rows.length
-      this.setData({ paymentCanSave: valid, paymentValidationHint: valid ? '' : '请选择至少两个不同的付款账户' })
-      return { valid: valid, accounts: rows.map(function (row) { return { componentIndex: row.componentIndex, accountId: row.accountId } }) }
-    }
-    const nature = ['', 'expense', 'repayment'][this.data.paymentNatureIndex]
-    const target = (this.data.paymentTargetChoices || [])[this.data.paymentTargetIndex]
-    const state = model.buildPaymentResolutionDraft(this.data.paymentRows, nature, target && target.accountId,
-      this.data.paymentEvidenceNote, this.data.issueEvents[0] && this.data.issueEvents[0].amountMinor)
-    // 提示只解释已有校验结果，不能反过来决定是否可保存。
-    const hint = state.valid ? ''
-      : !String(this.data.paymentEvidenceNote || '').trim() && state.remainingMinor === '0'
-        ? '金额已分配，请补全交易性质、账户及核对说明'
-        : '请核对付款账户、分配金额、交易性质及必填说明'
-    this.setData({ paymentCanSave: state.valid, paymentValidationHint: hint,
-      paymentDifferenceText: state.remainingMinor === '0' ? '已分配完成' :
-        (String(state.remainingMinor).startsWith('-') ? '超出 ' : '还差 ') + model.amountText(String(state.remainingMinor).replace('-', '')) })
-    return state
-  },
+refreshPaymentDraft: transactionReview.refreshPaymentDraft,
 
-changePaymentRow: function (event) {
-    const index = Number(event.currentTarget.dataset.index)
-    const field = event.currentTarget.dataset.field
-    if (this.data.busy) return
-    const rows = field === 'amount' ? model.updatePaymentAmounts(this.data.paymentRows, index, event.detail.value,
-      this.data.issueEvents[0] && this.data.issueEvents[0].amountMinor) : this.data.paymentRows.map(function (row, i) {
-      if (i !== index) return row
-      if (field === 'account') {
-        const accountIndex = Number(event.detail.value)
-        const account = this.data.paymentAccountChoices[accountIndex]
-        return Object.assign({}, row, { accountIndex: accountIndex, accountId: account && account.accountId || '' })
-      }
-      return Object.assign({}, row, { amountInput: event.detail.value })
-    }.bind(this))
-    setChangedData(this, { paymentRows: rows }); this.refreshPaymentDraft()
-  },
+changePaymentRow: transactionReview.changePaymentRow,
 
-fillPaymentAmount: function (event) {
-    if (this.data.busy) return
-    this.setData({ paymentRows: model.updatePaymentAmounts(this.data.paymentRows, Number(event.currentTarget.dataset.index), '',
-      this.data.issueEvents[0] && this.data.issueEvents[0].amountMinor, true) })
-    this.refreshPaymentDraft()
-  },
+fillPaymentAmount: transactionReview.fillPaymentAmount,
 
-changePaymentNature: function (event) { this.setData({ paymentNatureIndex: Number(event.detail.value) }); this.refreshPaymentDraft() },
+changePaymentNature: transactionReview.changePaymentNature,
 
-changePaymentTarget: function (event) { this.setData({ paymentTargetIndex: Number(event.detail.value) }); this.refreshPaymentDraft() },
+changePaymentTarget: transactionReview.changePaymentTarget,
 
-changePaymentNote: function (event) { this.setData({ paymentEvidenceNote: event.detail.value }); this.refreshPaymentDraft() },
+changePaymentNote: transactionReview.changePaymentNote,
 
-selectBankSuggestion: function (event) {
-    if (this.data.busy) return
-    const accountIndex = this.data.accountChoices.findIndex(function (account) {
-      return account.accountId === event.currentTarget.dataset.id
-    })
-    if (accountIndex > 0) this.changeIssueAccount({ detail: { value: accountIndex } })
-  },
+selectBankSuggestion: transactionReview.selectBankSuggestion,
 
-toggleBankBatch: function (event) {
-    if (this.data.busy || this.data.bankBatchLoading) return
-    const account = (this.data.accountChoices || [])[this.data.issueDraft.accountIndex]
-    if (!account || !account.accountId) {
-      this.setData({ errorMessage: '请先选择要应用的账户' })
-      return
-    }
-    const rows = this.data.bankBatchRecords.map(function (row) {
-      if (row.issueId !== event.currentTarget.dataset.id || !row.readable) return row
-      if (!account || !row.candidateIds.includes(account.accountId)) return row
-      return Object.assign({}, row, { selected: !row.selected })
-    })
-    this.setData({ bankBatchRecords: rows, bankBatchSelectedCount: rows.filter(function (row) { return row.selected }).length })
-  },
+toggleBankBatch: transactionReview.toggleBankBatch,
 
-resolveBankBatch: async function (fields) {
-    if (!this._draftSession) return
-    const issue = this.data.currentIssue
-    const side = this.data.bankSuggestion.side === 'to' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
-    const entries = [this.reviewDraftEntry(issue, 'apply_fields', { fields: fields })]
-    for (const row of this.data.bankBatchRecords.filter(function (item) { return item.selected })) {
-      const source = this.businessData().issues.find(function (item) { return item.issueId === row.issueId })
-      if (!source || source.version !== row.version) { this.setData({ errorMessage: '部分交易已变化，请重新选择' }); return }
-      const selected = {}; selected[side] = fields[side]
-      entries.push(this.reviewDraftEntry(source, 'apply_fields', { fields: selected }))
-    }
-    try { this._draftSession.enqueue(entries); this.closeIssue() }
-    catch (error) { this.setData({ errorMessage: publicError(error, '选择未保存，请重试') }) }
-  },
+resolveBankBatch: transactionReview.resolveBankBatch,
 
-refreshRepaymentChoices: function (choices) {
-    const firstEvent = this.data.issueEvents[0]
-    const status = allocationStatus(choices, firstEvent && firstEvent.amountMinor || '0')
-    setChangedData(this, {
-      repaymentAllocationChoices: choices,
-      repaymentAdditionalOptions: additionalRepaymentOptions(this.data.repaymentAccountOptions, choices),
-      repaymentAdditionalIndex: 0,
-      repaymentAllocationStatusText: status.text,
-      repaymentAllocationCanSave: status.state.valid,
-      errorMessage: ''
-    })
-  },
+refreshRepaymentChoices: transactionReview.refreshRepaymentChoices,
 
-addRepaymentAccount: function (event) {
-    if (this.data.busy || this.data.repaymentAllocationChoices.length >= 20) return
-    const option = this.data.repaymentAdditionalOptions[Number(event.detail.value)]
-    if (!option || option.isPlaceholder) return
-    const row = option.isCreate ? { accountId: 'new-' + Date.now(), name: '', isNew: true, amountInput: '' } : option
-    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.concat([row]))
-  },
+addRepaymentAccount: transactionReview.addRepaymentAccount,
 
-removeRepaymentAccount: function (event) {
-    if (this.data.busy) return
-    const index = Number(event.currentTarget.dataset.index)
-    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.filter(function (_, itemIndex) { return itemIndex !== index }))
-  },
+removeRepaymentAccount: transactionReview.removeRepaymentAccount,
 
-changeRepaymentAccountName: function (event) {
-    const index = Number(event.currentTarget.dataset.index)
-    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
-      return itemIndex === index ? Object.assign({}, item, { name: event.detail.value }) : item
-    }))
-  },
+changeRepaymentAccountName: transactionReview.changeRepaymentAccountName,
 
-changeRepaymentAllocation: function (event) {
-    const index = Number(event.currentTarget.dataset.index)
-    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
-      return itemIndex === index ? Object.assign({}, item, { amountInput: event.detail.value }) : item
-    }))
-  },
+changeRepaymentAllocation: transactionReview.changeRepaymentAllocation,
 
-fillRepaymentAllocation: function (event) {
-    const index = Number(event.currentTarget.dataset.index)
-    const firstEvent = this.data.issueEvents[0]
-    this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.map(function (item, itemIndex) {
-      return Object.assign({}, item, { amountInput: itemIndex === index ? minorToYuanInput(firstEvent && firstEvent.amountMinor || '0') : '' })
-    }))
-  },
+fillRepaymentAllocation: transactionReview.fillRepaymentAllocation,
 
-changeCounterpartyAccount: function (event) {
-    this.setData({ 'issueDraft.counterpartyAccountIndex': Number(event.detail.value) })
-    this.refreshIssueFieldsDraft()
-  },
+changeCounterpartyAccount: transactionReview.changeCounterpartyAccount,
 
-changeDraftAccountName: function (event) {
-    this.setData({ 'issueDraft.newAccountName': event.detail.value })
-    this.refreshIssueFieldsDraft()
-  },
+changeDraftAccountName: transactionReview.changeDraftAccountName,
 
-changeDraftAccountType: function (event) {
-    this.setData({ 'issueDraft.accountTypeIndex': Number(event.detail.value) })
-    this.refreshIssueFieldsDraft()
-  },
+changeDraftAccountType: transactionReview.changeDraftAccountType,
 
-changeIssueCategory: function (event) {
-    const categoryIndex = Number(event.detail.value)
-    const category = (this.data.issueCategories || [])[categoryIndex]
-    this.setData({
-      'issueDraft.categoryIndex': categoryIndex,
-      issueCategoryCanSave: Boolean(category && category.categoryId)
-    })
-    this.refreshIssueFieldsDraft()
-  },
+changeIssueCategory: transactionReview.changeIssueCategory,
 
-changeIssueNature: function (event) {
-    const natureIndex = Number(event.detail.value)
-    const nature = NATURE_OPTIONS[natureIndex] && NATURE_OPTIONS[natureIndex].value
-    this.setData({
-      'issueDraft.natureIndex': natureIndex,
-      'issueDraft.categoryIndex': 0,
-      issueCategoryCanSave: false,
-      issueCategories: [{ categoryId: '', name: '请选择分类', isPlaceholder: true }]
-        .concat(model.categoriesForNature(this.data.categories, nature))
-    })
-    this.refreshIssueFieldsDraft()
-  },
+changeIssueNature: transactionReview.changeIssueNature,
 
-selectPrimaryEvent: function (event) {
-    this.setData({ 'issueDraft.primaryEventId': event.currentTarget.dataset.id })
-  },
+selectPrimaryEvent: transactionReview.selectPrimaryEvent,
 
-selectTargetRelation: function (event) {
-    this.setData({ 'issueDraft.targetEventId': event.currentTarget.dataset.id })
-  },
+selectTargetRelation: transactionReview.selectTargetRelation,
 
-resolveWithFields: function () {
-    const issue = this.data.currentIssue
-    if (!issue || this.data.busy || this.data.bankBatchLoading) return
-    if (issue.paymentNeedsReview) {
-      const state = this.refreshPaymentDraft()
-      if (!state.valid) return
-      return this.resolveIssue('apply_fields', { fields: issue.paymentAccountsOnly ? { paymentAccounts: state.accounts } : { paymentResolution: state.resolution } })
-    }
-    if (issue.aggregateRepayment) {
-      const firstEvent = this.data.issueEvents[0]
-      const allocation = model.buildRepaymentAllocationDraft(
-        this.data.repaymentAllocationChoices,
-        firstEvent && firstEvent.amountMinor
-      )
-      if (!allocation.valid) {
-        this.setData({ errorMessage: allocation.reason || '请完成还款分配' })
-        return
-      }
-      this.resolveIssue('apply_fields', { fields: { repaymentAllocations: allocation.allocations } })
-      return
-    }
-    const state = this.refreshIssueFieldsDraft()
-    if (!state.valid) {
-      this.setData({ errorMessage: state.reason })
-      return
-    }
-    const fields = state.fields
-    if (!issue.repaymentOwnershipRequired && this.data.bankBatchSelectedCount > 0 && this.data.bankSuggestion) {
-      return this.resolveBankBatch(fields)
-    }
-    return this.resolveIssue('apply_fields', { fields: fields })
-  },
+resolveWithFields: transactionReview.resolveWithFields,
 
-confirmDistinct: function () {
-    if (this.data.currentIssue && this.data.currentIssue.historicalDuplicate &&
-        (this.data.historicalLoading || this.data.historicalError || !this.data.historicalCandidates.length)) return
-    this.resolveIssue('confirm_distinct', {})
-  },
+confirmDistinct: transactionReview.confirmDistinct,
 
-confirmSame: function () {
-    this.resolveIssue('confirm_same', { primaryEventId: this.data.issueDraft.primaryEventId })
-  },
+confirmSame: transactionReview.confirmSame,
 
-linkRefund: function () {
-    if (!this.data.issueDraft.targetEventId) {
-      this.setData({ errorMessage: '请选择这笔退款对应的原消费' })
-      return
-    }
-    this.resolveIssue('link_refund', { targetEventId: this.data.issueDraft.targetEventId })
-  },
+linkRefund: transactionReview.linkRefund,
 
-markRefundPending: function () {
-    this.resolveIssue('mark_refund_pending', {})
-  },
+markRefundPending: transactionReview.markRefundPending,
 
-confirmInstallment: function () {
-    this.resolveIssue('confirm_installment_principal', { installmentCandidateId: this.data.issueDraft.primaryEventId })
-  },
+confirmInstallment: transactionReview.confirmInstallment,
 
-reviewDraftEntry: function (issue, decision, extra) {
-    const data = this.data
-    const form = { issueDraft: data.issueDraft, paymentRows: data.paymentRows, paymentNatureIndex: data.paymentNatureIndex,
-      paymentEvidenceNote: data.paymentEvidenceNote, repaymentAllocationChoices: data.repaymentAllocationChoices,
-      accountId: ((data.accountChoices || [])[data.issueDraft.accountIndex] || {}).accountId,
-      counterpartyAccountId: ((data.counterpartyAccountChoices || [])[data.issueDraft.counterpartyAccountIndex] || {}).accountId,
-      categoryId: ((data.issueCategories || [])[data.issueDraft.categoryIndex] || {}).categoryId,
-      paymentTargetId: ((data.paymentTargetChoices || [])[data.paymentTargetIndex] || {}).accountId }
-    return { kind: 'review', issueId: issue.issueId, issueVersion: issue.version, issueType: issue.issueType,
-      subjectIds: issue.subjectEventIds || (this.data.issueEvents || []).map(function (event) { return event.eventId }),
-      decision: Object.assign({ decision: decision }, extra || {}), form: form }
-  },
+reviewDraftEntry: transactionReview.reviewDraftEntry,
 
-restoreReviewDraft: function (issueId) {
-    if (!this._draftSession) return
-    const entry = this._draftSession.state.entries.concat(this._draftSession.state.conflictedChoices || []).find(function (item) { return item.issueId === issueId })
-    if (!entry || !entry.form) return
-    const form = entry.form
-    const indexOf = function (options, key, value) { return Math.max(0, (options || []).findIndex(function (item) { return value && item[key] === value })) }
-    this.setData({ issueDraft: Object.assign({}, form.issueDraft, {
-      accountIndex: indexOf(this.data.accountChoices, 'accountId', form.accountId),
-      counterpartyAccountIndex: indexOf(this.data.counterpartyAccountChoices, 'accountId', form.counterpartyAccountId),
-      categoryIndex: indexOf(this.data.issueCategories, 'categoryId', form.categoryId) }),
-      paymentRows: form.paymentRows || [], paymentNatureIndex: form.paymentNatureIndex || 0,
-      paymentTargetIndex: indexOf(this.data.paymentTargetChoices, 'accountId', form.paymentTargetId),
-      paymentEvidenceNote: form.paymentEvidenceNote || '', repaymentAllocationChoices: form.repaymentAllocationChoices || [] })
-  },
+restoreReviewDraft: transactionReview.restoreReviewDraft,
 
-recheckDraftConflicts: function () {
-    if (!this._draftSession || this.data.busy) return
-    this._draftSession.discardConflicts()
-    this.setStep({ currentStep: this.data.accountStepSummary.pending ? 2 : 3,
-      errorMessage: '已显示最新结果，原选择仍保留，请重新核对有变化的项目' })
-  },
+recheckDraftConflicts: transactionReview.recheckDraftConflicts,
 
-resolveIssue: async function (decision, extra) {
-    if (!this._draftSession) return
-    const issue = this.data.currentIssue
-    if (!issue || this.data.busy) return
-    try {
-      this._draftSession.enqueue([this.reviewDraftEntry(issue, decision, extra)])
-      this.closeIssue()
-    } catch (error) { this.setData({ errorMessage: publicError(error, '选择未保存，请重试') }) }
-  },
+resolveIssue: transactionReview.resolveIssue,
 
 abandonUpdate: function () {
     const self = this
@@ -1114,4 +621,25 @@ selectDirectory: accountReview.selectDirectory,
 closeDirectory: accountReview.closeDirectory,
 openAccountRecords: accountReview.openAccountRecords,
 changeAccountMembers: accountReview.changeAccountMembers
+,
+readIssue: transactionReview.readIssue,
+excludeIssueEvents: transactionReview.excludeIssueEvents,
+selectPrimaryMember: transactionReview.selectPrimaryMember,
+expandBankBatch: transactionReview.expandBankBatch,
+changeHistoricalPage: transactionReview.changeHistoricalPage,
+selectHistoricalTransaction: transactionReview.selectHistoricalTransaction,
+linkHistoricalTransaction: transactionReview.linkHistoricalTransaction,
+refreshHistoricalReview: transactionReview.refreshHistoricalReview,
+changeIssueMembers: transactionReview.changeIssueMembers,
+changeIssueRelations: transactionReview.changeIssueRelations,
+closeInlineEvidence: transactionReview.closeInlineEvidence,
+loadInlineEvidence: transactionReview.loadInlineEvidence,
+changeInlineSource: transactionReview.changeInlineSource,
+retryIssueRecordEvidence: transactionReview.retryIssueRecordEvidence,
+retryAccountRecordEvidence: transactionReview.retryAccountRecordEvidence,
+editLoanRepayment: transactionReview.editLoanRepayment,
+openEvidence: transactionReview.openEvidence,
+changeEvidencePage: transactionReview.changeEvidencePage,
+openEvidencePart: transactionReview.openEvidencePart,
+changeEvidencePart: transactionReview.changeEvidencePart
 }))

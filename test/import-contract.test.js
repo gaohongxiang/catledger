@@ -40,7 +40,7 @@ test('统一 FinanceUpdate 上线后不再公开旧单文件写链路', function
 })
 
 test('小程序导入调用只使用已登记动作，各导入入口复用独立工作台', function () {
-  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'paged.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
+  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'paged.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const actions = [...page.matchAll(/(?:callImport|request)\(\s*['"]([^'"]+)['"]/g)].map(function (match) { return match[1] })
   assert.ok(actions.length > 0)
   actions.forEach(function (action) { assert.ok(contract.actions[action], action) })
@@ -53,7 +53,7 @@ test('小程序导入调用只使用已登记动作，各导入入口复用独�
 })
 
 test('旧版云函数动作错误显示为版本过旧而不是尚未开放', function () {
-  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'paged.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
+  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'paged.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const serverErrors = fs.readFileSync(path.join(__dirname, '../cloudfunctions/catledger-import/src/errors.js'), 'utf8')
   assert.match(page, /UNSUPPORTED_ACTION:\s*'导入服务版本过旧，请更新云函数后重试'/)
   assert.match(page, /ERROR_MESSAGES\[error && error\.code\]/)
@@ -63,7 +63,7 @@ test('旧版云函数动作错误显示为版本过旧而不是尚未开放', fu
 
 test('导入工作台沿用按需登录与主题组件', function () {
   const config = require('../miniprogram/pages/import-workbench/index.json')
-  const source = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'paged.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
+  const source = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'paged.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxml'), 'utf8')
   assert.equal(config.usingComponents['login-sheet'], '/components/login-sheet/index')
   assert.match(source, /loginGuard\.run/)
@@ -73,7 +73,7 @@ test('导入工作台沿用按需登录与主题组件', function () {
 })
 
 test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 post/skip', function () {
-  const source = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'paged.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
+  const source = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'paged.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const modelSource = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/model.js'), 'utf8')
   const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxml'), 'utf8')
   // 结构约束与 CSS 的换行排版无关。
