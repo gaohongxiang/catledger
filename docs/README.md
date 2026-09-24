@@ -26,6 +26,7 @@
 | 一笔账怎样才算正确、哪些情况必须询问用户 | [招财猫记账本业务规则与验收.md](./招财猫记账本业务规则与验收.md) |
 | 小程序、云函数、MySQL、解析和数据关系怎样实现 | [招财猫记账本架构设计.md](./招财猫记账本架构设计.md) |
 | 当前做到哪一步、下一步做什么、完成证据在哪里 | [招财猫记账本实施规划.md](./招财猫记账本实施规划.md) |
+| 现有逻辑怎样分阶段拆分模块、交给 6 sol 评审 | [MINI-1915 模块化计划（待评审，实施未开始）](../specs/mini-1915-import-modularization/README.md) |
 | 当前代码已经真正支持什么 | [现行说明/小程序基础.md](./现行说明/小程序基础.md) |
 | 近期真实导入怎样验收 | [../specs/mini-1906v-import-acceptance/](../specs/mini-1906v-import-acceptance/) |
 | 现有账本完整性缺口怎样收口 | [../specs/mini-1906a1-ledger-integrity-closure/](../specs/mini-1906a1-ledger-integrity-closure/) |
