@@ -125,4 +125,3 @@ test('重新开始只终止页面恢复，不删除未确认 postFlight', async 
   assert.equal(page.data.phase, 'idle')
   page.onUnload()
 })
-
