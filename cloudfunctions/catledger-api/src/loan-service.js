@@ -32,7 +32,7 @@ async function validateLiability(connection, uid, accountId) {
   if (!['credit','other_liability'].includes(account.type)) throw ledgerError('VALIDATION_ERROR')
   if (account.currency !== 'CNY') throw ledgerError('UNSUPPORTED_CURRENCY')
 }
-function createLoanService({ getPool }) {
+function createLoanService({ getPool, now = Date.now }) {
   const read = (context, operation) => executeLedgerRead({ getPool, ...context, consistentSnapshot: true, operation })
   const write = (context, action, operation) => executeIdempotentMutation({ getPool, ...context, currentReads: true, action, operation })
   async function list(context) {
@@ -109,6 +109,6 @@ function createLoanService({ getPool }) {
       return { loanId: current.loanId, version: data.version + 1 }
     })
   }
-  return { list, get, create, update, ...require('./loan-charge-service').createLoanChargeService({ getPool,selectLoan }), ...require('./installment-service').createInstallmentService({ getPool,selectLoan }), ...require('./explicit-repayment-service').createExplicitRepaymentService({ getPool }), ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
+  return { list, get, create, update, ...require('./loan-charge-service').createLoanChargeService({ getPool,selectLoan,now }), ...require('./loan-charge-sync').createLoanChargeSync({ getPool,now }), ...require('./installment-service').createInstallmentService({ getPool,selectLoan }), ...require('./explicit-repayment-service').createExplicitRepaymentService({ getPool }), ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
 }
 module.exports = { createLoanService, selectLoan, validateLiability }

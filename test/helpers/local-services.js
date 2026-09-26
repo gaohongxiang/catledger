@@ -1,12 +1,12 @@
 // 两个部署目录各自加载入口；此适配器只供本地合成验证，不进入云函数或小程序包。
 const path = require('node:path')
 function moduleFor(kind, name) { return require(path.resolve(__dirname, '../../cloudfunctions/catledger-' + kind + '/src/' + name)) }
-function localServices({ apiPool, importPool, objects = new Map(), subject = 'synthetic-local-native', logger = { warn() {}, error() {} } }) {
+function localServices({ apiPool, importPool, now = Date.now, objects = new Map(), subject = 'synthetic-local-native', logger = { warn() {}, error() {} } }) {
   const getPool = () => apiPool
   const repository = moduleFor('api', 'user-repository').createUserRepository({ getPool })
   const apiServices = moduleFor('api', 'action-registry').createActionHandlers({
     dataExportService: moduleFor('api', 'data-export-service').createDataExportService({ getPool }),
-    loanService: moduleFor('api', 'loan-service').createLoanService({ getPool }),
+    loanService: moduleFor('api', 'loan-service').createLoanService({ getPool, now }),
     accountService: moduleFor('api', 'account-service').createAccountService({ getPool }),
     categoryService: moduleFor('api', 'category-service').createCategoryService({ getPool }),
     catalogService: moduleFor('api', 'catalog-service').createCatalogService({ getPool }),
