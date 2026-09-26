@@ -1,88 +1,39 @@
 # 招财猫记账本 · CatLedger
 
-<p align="center">
-  <img src="assets/brand/catledger-logo-master.png" alt="招财猫记账本 Logo" width="160">
-</p>
+<p align="center"><img src="assets/brand/catledger-logo-master.png" alt="招财猫记账本 Logo" width="160"></p>
 
-招财猫记账本是一款面向中国用户的微信小程序记账工具。它以支付宝、微信支付等账单的批量导入与整理为核心，同时支持手动记账、账户与分类、财务总览，以及贷款和分期管理。
+面向个人用户的微信原生记账小程序：把银行、支付宝、微信支付账单解析、去重、核对后整批入账，同时支持手工交易、账户、分类、统计、贷款和信用卡分期。只有正式交易影响账本，来源证据和计划不重复计钱。
 
-> `main` 是微信小程序主线；任务、部署、验收和授权边界统一查阅 [实施规划](docs/招财猫记账本实施规划.md)。旧 Web 版保存在 `catledger-web` 分支与 `web-v2-final` 标签。
+**第一次看项目，先读[项目逻辑说明](docs/招财猫记账本入账逻辑说明.md)。** 它按实际业务顺序解释架构、每一步判断和失败恢复。
 
-## 技术方向
+| 目的 | 入口 |
+| --- | --- |
+| 找全部现行文档 | [文档导航](docs/README.md) |
+| 查看当前任务与验收、部署状态 | [实施规划](docs/招财猫记账本实施规划.md) |
+| 配置项目、测试和交付 | [开发与验证](docs/开发与验证.md) |
+| 修改代码前核对职责与约束 | [AGENTS](AGENTS.md)、[架构设计](docs/招财猫记账本架构设计.md) |
+| 追溯旧方案和修复证据 | [归档](docs/归档/README.md)、[阶段规格](specs/README.md) |
 
-- 微信原生小程序：WXML、WXSS、JavaScript
-- 微信云开发：事件云函数、MySQL、私有云存储
-- 不使用云托管，不维护桌面客户端或移动 Web
-- 原始账单只作短期处理证据，正式结构化数据进入 MySQL
-- 金额、余额、统计和后续情景测算由确定性程序完成，AI 不作为账本权威
+## 技术与目录
 
-## 目录
+微信原生 WXML/WXSS/JavaScript；两个事件云函数；CloudBase MySQL 与私有云存储。不运行微服务集群，不把模型输出当作权威账本，不替用户执行真实资金操作。
 
-- `miniprogram/`：小程序客户端
-- `cloudfunctions/catledger-api/`：身份、账户、分类、手工交易、查询和统计
-- `cloudfunctions/catledger-import/`：账单上传意图、解析、整理、待确认和整批入账
-- `shared/`：跨端公共请求、响应与业务契约
-- `migrations/`：连续、forward-only、可重入的 MySQL 显式迁移
-- `specs/`：按阶段冻结的需求、设计和任务
-- `assets/brand/`：项目级品牌母图和使用说明
-- `docs/`：需求、业务规则、架构、实施规划与现行说明
-
-## 开始开发
-
-1. 安装微信开发者工具。
-2. 导入仓库根目录，使用项目 AppID 或个人测试配置。
-3. 个人环境配置、AppSecret、云密钥和数据库凭据不得提交。
-4. 在两支云函数中配置 `CATLEDGER_DB_HOST`、`CATLEDGER_DB_PORT`、`CATLEDGER_DB_USER`、`CATLEDGER_DB_PASSWORD`、`CATLEDGER_DB_NAME` 私有环境变量。
-5. 先执行 `migrations/` 中的显式迁移，再按需部署云函数。
-6. 开工前先阅读 `AGENTS.md` 和 `docs/招财猫记账本实施规划.md` 的当前看板与第 19 章。
-
-云函数本地检查：
-
-```shell
-cd cloudfunctions/catledger-api
-npm install
-npm test
-npm run audit:prod
-
-cd ../catledger-import
-npm install
-npm test
-npm run audit:prod
+```text
+miniprogram/                       原生客户端
+cloudfunctions/catledger-api/       身份、正式账本、统计、贷款、导出
+cloudfunctions/catledger-import/    上传、解析、整理、核对、入账
+shared/                            公共接口契约
+migrations/                        显式、可重入的向前迁移
+scripts/、test/                    工程工具与验证
+assets/brand/                      品牌母图
+ docs/                             现行手册、任务状态与历史索引
+specs/                             阶段规格与固定验证材料
 ```
 
-迁移命令只读取本机或云函数私有环境变量：
+## 开始
 
-```shell
-cd cloudfunctions/catledger-api
-npm run migrate
-```
+用微信开发者工具打开仓库根目录。先按[开发与验证](docs/开发与验证.md)准备个人配置及函数依赖，再运行检查；云端迁移、部署、上传均须核对环境和授权，不因打开项目自动执行。凭据、原始账单及个人环境配置不得提交。
 
-## 文档入口
+`main` 是小程序主线；任务分支验收后才合并。`backup-docs` 是本次文档整理前的用户备份，不作为开发分支改写。旧 Web 版保存在 `catledger-web` 与 `web-v2-final`，旧版 Docker、端口和构建说明不适用于小程序。
 
-- [文档索引](docs/README.md)：需求、业务规则、架构和现行说明。
-- [实施规划](docs/招财猫记账本实施规划.md)：唯一当前状态与历史验证记录。
-- [MINI-1915 一期规格](specs/mini-1915-import-modularization/README.md)：导入模块化及有限减复杂度边界。
-
-## Web 版
-
-需要查看或维护旧 Web 版时，请切换到 `catledger-web`：
-
-```shell
-git switch catledger-web
-```
-
-`web-v2-final` 是迁移前的不可变归档点。旧版构建、Docker、8080/8082 预览和完整文档都保留在该分支中。
-
-## 分支约定
-
-- `main`：微信小程序稳定主线；
-- `catledger-web`：Web 最终归档，只做必要维护；
-- `codex/<task-id>-<short-name>`：本地任务分支，验收合入后删除；
-- `web-v2-final`：迁移前 Web 产品标签；
-- `archive/ezbookkeeping-sync-final`：旧上游同步分支的历史归档标签。
-
-仓库不设置 `develop` 或长期小程序开发分支，避免同一产品出现多条事实主线。
-
-## 开源许可
-
-本项目采用 [MIT License](LICENSE)。在保留版权和许可声明的前提下，可以修改、分发和用于商业用途。原 ezBookkeeping 上游的版权与许可声明继续保留在许可证和 Git 历史中。
+项目采用 [MIT License](LICENSE)，保留上游版权与 Git 历史。当前状态不在本页另写一份，统一见实施规划。
