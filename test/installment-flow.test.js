@@ -54,7 +54,16 @@ test('L01 真实放款和扣款不误套分期应还本金例外',()=>{
  assert.equal(installmentEvidence({bankStatementKind:'credit',item:'分期本金及利息 第10期'}),null)
 })
 
-test('历史选择分20期继续，已保存和明确未还/部分期不反复询问',()=>{
+test('历史选择保留已保存及明确未还/部分期，不反复询问',()=>{
  const base={...loan,scheduleTerms:36,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:36},progress:{schema:2,through:36,exceptions:{'3':'unpaid','9':'partial'},reviewedPeriods:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,true])),simpleRepayment:true}}
  const result=buildView(base,[],[]);assert.deepEqual(result.summary.repaymentPrompts.map(r=>r.periodNumber),Array.from({length:16},(_,i)=>i+21));assert.equal(result.rows[2].complete,false);assert.equal(result.rows[8].complete,false)
+})
+test('历史36期和最长600期不在第20期截断，真实付款/部分付款/取消仍受保护',()=>{
+ for(const terms of [36,600]){
+  const historical={...loan,scheduleTerms:terms,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:terms}}
+  const result=buildView(historical,[],[])
+  assert.deepEqual(result.summary.repaymentPrompts.map(r=>r.periodNumber),Array.from({length:terms},(_,i)=>i+1))
+  const protectedView=buildView(historical,[{periodNumber:21,status:'paid'},{periodNumber:22,status:'partial'},{periodNumber:23,cancelled:true}],[])
+  assert.deepEqual(protectedView.summary.repaymentPrompts.map(r=>r.periodNumber),Array.from({length:terms},(_,i)=>i+1).filter(n=>![21,22,23].includes(n)))
+ }
 })

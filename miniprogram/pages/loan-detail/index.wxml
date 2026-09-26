@@ -75,7 +75,7 @@
 
     <view class="detail-section-head">
       <view class="detail-section-title"><text>逐期还款</text><text>{{detail.terms ? '共 ' + detail.terms + ' 期' : ''}}</text></view>
-      <view wx:if="{{!loan.archived}}" class="schedule-actions"><button wx:if="{{repaymentChoiceCount}}" class="progress-entry" bindtap="saveRepayments" disabled="{{saving || loading || detailLoading}}" loading="{{saving}}">保存</button><button class="progress-entry" bindtap="openLoanManagement" disabled="{{saving || loading}}">管理</button></view>
+      <button wx:if="{{!loan.archived && repaymentChoiceCount}}" class="progress-entry" bindtap="saveRepayments" disabled="{{saving || loading || detailLoading}}" loading="{{saving}}">保存</button>
     </view>
     <view wx:if="{{detailError}}" class="detail-read-error"><text>{{detailError}}</text><button bindtap="refreshDetail" disabled="{{loading || detailLoading}}">重新读取</button></view>
     <view wx:if="{{chargeSummary.recorded !== null && chargeSummary.hasContract}}" class="schedule-fee-summary"><text>已记利息及费用 {{chargeSummary.recorded}}</text></view>
@@ -102,6 +102,11 @@
     <button wx:if="{{!detail.terms && !loan.archived}}" class="secondary-button detail-actions" bindtap="recordPayment" disabled="{{saving || loading}}">记一笔借还</button>
 
     <button wx:if="{{sourceTransactionId && !loan.archived}}" class="secondary-button detail-actions" bindtap="recordPayment" disabled="{{saving || loading}}">继续关联原还款</button>
+    <view wx:if="{{!loan.archived}}" class="detail-actions">
+      <button class="secondary-button" bindtap="edit" disabled="{{saving || loading}}">编辑</button>
+      <button wx:if="{{detail.tracking}}" class="detail-delete" bindtap="archiveInstallment" disabled="{{saving || loading}}">删除</button>
+      <button wx:if="{{chargeSummary.authorized}}" class="ld-link" bindtap="pauseChargePlan" disabled="{{saving || loading}}">停止此前的自动记费</button>
+    </view>
   </block>
   <view wx:if="{{formOpen}}" class="ld-form">
     <view class="ld-form-card">

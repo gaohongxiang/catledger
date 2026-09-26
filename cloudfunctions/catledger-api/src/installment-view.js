@@ -54,7 +54,7 @@ function buildView(loan, savedPeriods = [], items = [], today = new Date(Date.no
   // 只询问新出现账单之前尚未选择的期次；用户明确选过未还的期次不反复询问。
   summary.repaymentPrompts = rows.filter(r => !r.cancelled && !r.paymentConfirmed && r.status !== 'partial' &&
     (r.periodNumber <= lastBilled && !Object.hasOwn(exceptions, r.periodNumber) && r.periodNumber > through ||
-      r.completedByProgress && !(progress.reviewedPeriods || {})[r.periodNumber])).slice(0, 20).map(r => ({ periodNumber:r.periodNumber, dueDate:r.dueDate, paid:true }))
+      r.completedByProgress && !(progress.reviewedPeriods || {})[r.periodNumber])).map(r => ({ periodNumber:r.periodNumber, dueDate:r.dueDate, paid:true }))
   summary.remainingPrincipalMinor = loan.remainingPrincipalMinor==null?null:String(loan.remainingPrincipalMinor)
   return { rows, summary, original }
 }

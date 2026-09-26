@@ -33,13 +33,32 @@ function create(api) {
       ])
       if (!valid()) return
       const periods = results[0], preview = results[1]
+      // 分页只限制读取大小；需要选择的历史期次一起展示，不能在第20期截断。
+      if (periods.status === 'fulfilled' && this._periodAction === 'loans.installments') {
+        try {
+          let view = periods.value
+          const lastChoice = Math.max(0, ...(view.summary.repaymentPrompts || []).map(row => row.periodNumber))
+          let through = (view.items[view.items.length - 1] || {}).periodNumber || 0
+          while (view.nextCursor && through < lastChoice) {
+            const page = await api.callApi(this._periodAction, { loanId: loan.loanId, pageSize: 40, cursor: view.nextCursor }, options)
+            if (!valid()) return
+            const nextThrough = (page.items[page.items.length - 1] || {}).periodNumber || 0
+            if (Number(page.loanVersion) !== Number(loan.version) || nextThrough <= through) throw new Error('期次读取未完成')
+            view = { ...view, items: view.items.concat(page.items), nextCursor: page.nextCursor }
+            through = nextThrough
+          }
+          if (through < lastChoice) throw new Error('期次读取未完成')
+          periods.value = view
+        } catch (error) { periods.status = 'rejected'; periods.reason = error }
+      }
+      if (!valid()) return
       const matching = periods.status === 'fulfilled' && Number(periods.value.loanVersion) === Number(loan.version)
       this._detailView = matching ? Object.assign({}, periods.value, { tracking: this._periodAction === 'loans.installments' }) : null
       this._detailPreview = preview.status === 'fulfilled' ? preview.value : null
       this._detailHistory = this._periodAction === 'loans.installments' ? [] : model.historicalRows(loan, this._detailPreview)
       this._detailReady = matching && preview.status === 'fulfilled'
       const error = !matching ? '还款计划未能更新，请重新读取。' : preview.status === 'rejected' ? '成本和历史期次暂未加载，请重试。' : ''
-      this.setData({ detail: model.build(loan, this._detailView, this._detailPreview), detailLoading: false, detailError: error, repaymentRows: matching ? (periods.value.summary.repaymentPrompts || []).map(r=>{const draft=this.data.repaymentRows.find(d=>d.periodNumber===r.periodNumber);return draft?{...r,paid:draft.paid}:r}) : [] })
+      this.setData({ detail: model.build(loan, this._detailView, this._detailPreview), detailLoading: false, detailError: error, repaymentRows: matching ? (periods.value.summary.repaymentPrompts || []).map(r=>{const draft=this.data.repaymentRows.find(d=>d.periodNumber===r.periodNumber);return draft?{...r,paid:draft.paid}:r}) : this.data.repaymentRows })
       this.showScheduleWindow({ historyOffset: 0, cursor: null }, this._detailView)
     },
     showScheduleWindow(window, view, append) {

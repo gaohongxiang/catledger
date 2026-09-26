@@ -4,7 +4,7 @@ const ORIGINS=['recorded_consumption','cash_borrowing','historical','new_consump
 const STATES={planned:'尚未记账',recorded:'已记费用',baseline:'期初已覆盖',covered:'一次性收费已覆盖',suppressed:'已撤销，不自动补回',paused:'暂停待确认',cancelled:'已取消'}
 const BASIS={plan:'按确认方案，待银行核对',actual:'实际费用依据',baseline:'历史基准',manual:'人工确认金额'}
 const confirm=options=>new Promise(resolve=>wx.showModal({...options,success:r=>resolve(r.confirm),fail:()=>resolve(false)}))
-const initial={loanManagementOpen:false,oneOffOpen:false,periodCharges:[],periodChargeIssues:[],periodChargeNext:null,periodFeesError:'',chargeHasOneOff:false,chargePreview:null,chargeSummary:null,chargeRows:[],chargeNext:null,chargeIssues:[],chargeLoading:false,chargeError:'',chargeFormOpen:false,chargeDraft:null,chargeCategories:[],chargeOrigins:['已入账消费转分期','实际现金借款','历史贷款接入','尚未入账消费'],chargeModes:['按期自动记费','仅确认本次补齐'],chargeHistories:['从起算日继续，不补更早月份','补齐授权范围内的历史缺项'],chargeCoverages:['已核对已有费用，不需另认领','期初余额已含历史费用','认领已入账费用','一次性收费覆盖多期'],chargeExisting:[],chargeExistingIndex:-1,chargeEvidenceNext:null,chargeCoverageRows:[],chargePrior:[],chargePriorIndex:0,chargeEdit:null,chargeImpact:null}
+const initial={oneOffOpen:false,periodCharges:[],periodChargeIssues:[],periodChargeNext:null,periodFeesError:'',chargeHasOneOff:false,chargePreview:null,chargeSummary:null,chargeRows:[],chargeNext:null,chargeIssues:[],chargeLoading:false,chargeError:'',chargeFormOpen:false,chargeDraft:null,chargeCategories:[],chargeOrigins:['已入账消费转分期','实际现金借款','历史贷款接入','尚未入账消费'],chargeModes:['按期自动记费','仅确认本次补齐'],chargeHistories:['从起算日继续，不补更早月份','补齐授权范围内的历史缺项'],chargeCoverages:['已核对已有费用，不需另认领','期初余额已含历史费用','认领已入账费用','一次性收费覆盖多期'],chargeExisting:[],chargeExistingIndex:-1,chargeEvidenceNext:null,chargeCoverageRows:[],chargePrior:[],chargePriorIndex:0,chargeEdit:null,chargeImpact:null}
 function rowView(item){return {...item,shortLabel:item.component==='interest'?'利息':'手续费',label:(item.periodNumber?'第'+item.periodNumber+'期':'一次性')+(item.component==='interest'?'利息':'费用'),amountText:money.formatMinor(item.amountMinor),stateText:STATES[item.state],basisText:BASIS[item.basis],settledText:money.formatMinor(item.settledMinor),refundText:money.formatMinor(item.refundMinor||'0')}}
 const methods={
  async loadCharges(event){
@@ -25,16 +25,6 @@ const methods={
     chargePrior:[{contractId:'',label:'新合同'}].concat(result.priorContracts.filter(k=>k.loanId!==this._loanId).map((k,index)=>({...k,label:'认领旧合同 '+(index+1)+'（原管理记录须已归档）'})))})
   }catch(error){if(current()&&this._chargeRead===token)this.setData({chargeError:error.message||'费用资料未能读取'})}
   finally{if(current()&&this._chargeRead===token)this.setData({chargeLoading:false})}
- },
- openLoanManagement(){if(!this.data.saving)this.setData({loanManagementOpen:true})},
- closeLoanManagement(){this.setData({loanManagementOpen:false})},
- async manageLoan(event){
-  if(this.data.saving)return
-  this.closeLoanManagement()
-  const action=event.currentTarget.dataset.action
-  if(action==='stopAuto'&&this.data.chargeSummary.authorized)return this.pauseChargePlan()
-  if(action==='edit')return this.edit()
-  if(action==='archive')return this.archiveInstallment()
  },
  chooseChargeStop(){
   if(this.data.saving||!this.data.chargeFormOpen||!this.data.chargeSummary||!this.data.chargeSummary.hasContract)return

@@ -95,5 +95,20 @@ test('逐期简化：第6期接入、第8期补漏、原月费用防重与余额
     assert.equal((await h.api('loans.installments',{loanId:previous.loanId})).summary.paidPeriods,0)
    }finally{await h.owner.execute('UPDATE catledger_categories SET archived_at=NULL WHERE uid=? AND category_id=?',[h.uid,h.categoryId])}
   })
+  await t.test('旧36期全部展示且一次保存，第21期可取消；息费只补所选35期，余额与重试幂等',async()=>{
+   const historical=await h.create({scheduleTerms:36,baselinePrincipalMinor:'0',installmentSetup:{...h.plan.installmentSetup,originalPrincipalMinor:'1800000',historicalPaidTerms:36}})
+   const first=await h.api('loans.installments',{loanId:historical.loanId,pageSize:20})
+   assert.equal(first.items.length,20);assert.equal(first.summary.repaymentPrompts.length,36)
+   const next=await h.api('loans.installments',{loanId:historical.loanId,pageSize:20,cursor:first.nextCursor})
+   assert.equal(next.items[0].periodNumber,21);assert.equal(next.summary.repaymentPrompts.length,36)
+   const before=await accounts(),amount=await expense(),repayments=first.summary.repaymentPrompts.map(r=>({periodNumber:r.periodNumber,paid:r.periodNumber!==21}))
+   const input={requestId:randomUUID(),loanId:historical.loanId,version:first.loanVersion,repayments}
+   const result=await h.api('loans.confirmInstallments',input);assert.deepEqual(await h.api('loans.confirmInstallments',input),result)
+   assert.deepEqual(await accounts(),before);assert.equal(await expense()-amount,70000n)
+   const saved=await h.api('loans.installments',{loanId:historical.loanId,pageSize:40})
+   assert.equal(saved.items.length,36);assert.equal(saved.summary.paidPeriods,35);assert.equal(saved.items[20].complete,false)
+   assert.equal(saved.items[35].complete,true);assert.equal(saved.summary.repaymentPrompts.length,0)
+   assert.equal((await h.api('loans.get',{loanId:historical.loanId})).loan.remainingPrincipalMinor,'50000')
+  })
  }finally{await h.close()}
 })

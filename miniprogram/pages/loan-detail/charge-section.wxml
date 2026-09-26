@@ -22,11 +22,3 @@
     <button wx:if="{{chargeEdit.updateId}}" class="ld-link" bindtap="openChargeIssueSource">查看原账单</button>
   </scroll-view>
 </view>
-<view wx:if="{{loanManagementOpen}}" class="detail-guide-mask" bindtap="closeLoanManagement" catchtouchmove="stopGuideTap">
-  <scroll-view scroll-y class="installment-sheet loan-management-sheet" catchtap="stopGuideTap">
-    <view class="installment-sheet-head"><text>管理这笔贷款</text><button bindtap="closeLoanManagement">关闭</button></view>
-    <button wx:if="{{chargeSummary.authorized}}" class="loan-management-row" data-action="stopAuto" bindtap="manageLoan"><text>停止此前的自动记费</text><text>›</text></button>
-    <button class="loan-management-row" data-action="edit" bindtap="manageLoan"><text>编辑贷款资料</text><text>›</text></button>
-    <button wx:if="{{detail.tracking}}" class="loan-management-row loan-management-danger" data-action="archive" bindtap="manageLoan"><text>删除分期记录</text><text>账目保留 ›</text></button>
-  </scroll-view>
-</view>

@@ -142,24 +142,70 @@ test('第8期账单补漏在列表一次保存；取消勾选第7期后不重置
  assert.deepEqual(JSON.parse(JSON.stringify(command.data.repayments)),[{periodNumber:7,paid:false},{periodNumber:8,paid:true}]);assert.equal(command.data.version,2);assert.equal(h.modals.length,0)
  assert.equal(h.calls.some(c=>['loans.configureCharges','loans.setInstallmentProgress'].includes(c.action)),false)
 })
-test('逐期表只保存已展示的选择；翻页保留未还草稿，不将未展示期次误取消或提交',async()=>{
- const {h,p}=detail(),base=h.respond
- h.respond=(action,data)=>action==='loans.installments'?ok({loanVersion:2,items:[data.cursor?8:7].map(promptedPeriod),nextCursor:data.cursor?null:'next',summary:{paidPeriods:6,unpaidPrincipalMinor:'300000',unpaidInterestMinor:'12000',unpaidFeeMinor:'0',repaymentPrompts:[7,8].map(periodNumber=>({periodNumber,paid:true}))}}):action==='loans.confirmInstallments'?{ok:false,error:{code:'CONFLICT',message:'合成版本冲突'}}:base(action,data)
- await p.load();p.selectRepayments({detail:{value:[]}})
- assert.deepEqual(p.data.repaymentRows.map(r=>r.paid),[false,true])
- assert.equal(p.data.repaymentChoiceCount,1)
+test('36期历史选择跨页完整展示，第21期可修改，一次保存；继续看未来期次不改草稿',async()=>{
+ const {buildView}=require('../cloudfunctions/catledger-api/src/installment-view')
+ const {h,p}=detail(),base=h.respond,history={...loan,scheduleTerms:60,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:36}}
+ const view=buildView(history)
+ h.respond=(action,data)=>{
+  if(action==='loans.get')return ok({loan:history})
+  if(action==='loans.installments'){const offset=Number(data.cursor||0),end=offset+data.pageSize;return ok({loanVersion:2,items:view.rows.slice(offset,end),summary:view.summary,nextCursor:end<60?String(end):null})}
+  if(action==='loans.confirmInstallments')return {ok:false,error:{code:'CONFLICT',message:'合成版本冲突'}}
+  return base(action,data)
+ }
+ await p.load();assert.equal(p.data.repaymentChoiceCount,36)
+ assert.deepEqual(p.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term),Array.from({length:36},(_,i)=>i+1))
+ assert.equal(new Set(p.data.periodRows.map(r=>r.term)).size,p.data.periodRows.length)
+ const checked=Array.from({length:36},(_,i)=>String(i+1)).filter(n=>n!=='21')
+ p.selectRepayments({detail:{value:checked}});assert.equal(p.data.periodRows[20].repaymentPaid,false)
+ await p.showMoreSchedule();assert.equal(p.data.periodRows.length,60);assert.equal(p.data.periodRows[20].repaymentPaid,false)
  await p.saveRepayments()
- const first=h.calls.filter(c=>c.action==='loans.confirmInstallments')[0]
- assert.deepEqual(JSON.parse(JSON.stringify(first.data.repayments)),[{periodNumber:7,paid:false}])
- await p.showMoreSchedule()
- assert.deepEqual(p.data.periodRows.map(r=>[r.term,r.repaymentPaid]),[[7,false],[8,true]])
- assert.equal(p.data.repaymentChoiceCount,2)
- p.selectRepayments({detail:{value:['8']}});await p.saveRepayments()
- const last=h.calls.filter(c=>c.action==='loans.confirmInstallments').at(-1)
- assert.deepEqual(JSON.parse(JSON.stringify(last.data.repayments)),[{periodNumber:7,paid:false},{periodNumber:8,paid:true}])
+ const writes=h.calls.filter(c=>c.action==='loans.confirmInstallments');assert.equal(writes.length,1)
+ assert.equal(writes[0].data.repayments.length,36);assert.equal(writes[0].data.repayments[20].paid,false);assert.equal(writes[0].data.repayments[35].paid,true)
  assert.equal(h.modals.length,0)
- p.onHide();p.selectRepayments({detail:{value:['7','8']}})
- assert.equal(p.data.periodRows[0].repaymentPaid,false)
+ p.onHide();p.selectRepayments({detail:{value:checked.concat('21')}});assert.equal(p.data.periodRows[20].repaymentPaid,false)
+})
+test('历史跨页读取失败或版本变化时，不允许只提交前20期；重试后36期完整恢复',async()=>{
+ for(const failure of ['network','version']){
+  const {buildView}=require('../cloudfunctions/catledger-api/src/installment-view')
+  const {h,p}=detail(),base=h.respond,history={...loan,scheduleTerms:36,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:36}},view=buildView(history)
+  let fail=true
+  h.respond=(action,data)=>{
+   if(action==='loans.get')return ok({loan:history})
+   if(action==='loans.installments'){
+    if(data.cursor&&fail&&failure==='network')throw new Error('合成分页失败')
+    const offset=Number(data.cursor||0),end=offset+data.pageSize
+    return ok({loanVersion:data.cursor&&fail?3:2,items:view.rows.slice(offset,end),summary:view.summary,nextCursor:end<36?String(end):null})
+   }
+   return base(action,data)
+  }
+  await p.load();assert.ok(p.data.detailError);assert.equal(p.data.repaymentChoiceCount,0)
+  await p.saveRepayments();assert.equal(h.calls.some(c=>c.action==='loans.confirmInstallments'),false)
+  fail=false;await p.refreshDetail();assert.equal(p.data.repaymentChoiceCount,36);assert.equal(p.data.periodRows.length,36)
+  assert.ok(p.data.periodRows.every(r=>r.repaymentPaid))
+ }
+})
+test('600期历史选择完整加载且全部可修改，不向用户暴露读取分页',async()=>{
+ const {buildView}=require('../cloudfunctions/catledger-api/src/installment-view')
+ const {h,p}=detail(),base=h.respond,history={...loan,scheduleTerms:600,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:600}},view=buildView(history)
+ h.respond=(action,data)=>{
+  if(action==='loans.get')return ok({loan:history})
+  if(action==='loans.installments'){const offset=Number(data.cursor||0),end=offset+data.pageSize;return ok({loanVersion:2,items:view.rows.slice(offset,end),summary:view.summary,nextCursor:end<600?String(end):null})}
+  return base(action,data)
+ }
+ await p.load();assert.equal(p.data.periodRows.length,600);assert.equal(p.data.repaymentChoiceCount,600);assert.equal(p.data.scheduleMore,false)
+ assert.equal(new Set(p.data.periodRows.map(r=>r.term)).size,600)
+ p.selectRepayments({detail:{value:Array.from({length:599},(_,i)=>String(i+1))}})
+ assert.equal(p.data.periodRows[599].repaymentPaid,false);assert.equal(p.data.periodRows[20].repaymentPaid,true)
+ assert.equal(h.calls.some(c=>c.action==='loans.confirmInstallments'),false)
+})
+test('离开页面后的跨页补读失败，不覆盖新页面状态或草稿',async()=>{
+ const {h,p}=detail(),base=h.respond
+ let release
+ h.respond=(action,data)=>action==='loans.installments'?(data.cursor?new Promise(resolve=>release=resolve):ok({loanVersion:2,items:[promptedPeriod(1)],summary:{repaymentPrompts:[{periodNumber:2,paid:true}]},nextCursor:'next'})):base(action,data)
+ const reading=p.load();await tick();assert.equal(typeof release,'function');p.onHide()
+ p.setData({detailError:'新页面状态',periodRows:[{term:99}],repaymentRows:[{periodNumber:99,paid:false}]})
+ release({ok:false,error:{code:'INTERNAL_ERROR',message:'合成迟到失败'}});await reading
+ assert.equal(p.data.detailError,'新页面状态');assert.equal(p.data.periodRows[0].term,99);assert.equal(p.data.repaymentRows[0].paid,false)
 })
 test('记费设置内选择暂停/结清/利率变化仍先确认，取消和已关闭设置的迟到选择不写',async()=>{
  const {h,p}=detail();await p.load();let sheet
@@ -173,7 +219,7 @@ test('记费设置内选择暂停/结清/利率变化仍先确认，取消和已
  const writes=h.calls.filter(c=>c.action==='loans.endCharges');assert.equal(writes.length,1);assert.equal(writes[0].data.reason,'rate_changed');assert.equal(writes[0].data.confirmed,true)
 })
 test('编辑贷款内打开期次计划保留未保存资料，待核实写入时不可跳转',async()=>{
- const {h,p}=detail();await p.load();await p.manageLoan({currentTarget:{dataset:{action:'edit'}}})
+ const {h,p}=detail();await p.load();await p.edit()
  assert.match(h.navigation.at(-1),/loan-form\/index\?loanId=synthetic-loan$/)
  const form=h.page('loan-form');form.onLoad({loanId:loan.loanId});await form.load();form.setData({name:'尚未保存的名称'})
  form.openPlan();assert.match(h.navigation.at(-1),/loan-plan\/index\?loanId=synthetic-loan$/)
@@ -231,8 +277,7 @@ test('统一逐期入口：按当前期读取费用/差异，选择更正不写�
  assert.equal(p.data.periodOpen,false);assert.equal(p.data.chargeEdit.options[0].operation,'adjust')
  p.chooseChargeOperation({detail:{value:1}});assert.equal(p.data.chargeEdit.operation,'refund')
  await p.closeChargeForm();assert.equal(p.data.periodOpen,true);assert.equal(p.data.selectedPeriod.term,11)
- p.closeInstallment();p.openLoanManagement();assert.equal(p.data.loanManagementOpen,true)
- p.manageLoan({currentTarget:{dataset:{action:'charges'}}});assert.equal(p.data.loanManagementOpen,false);assert.equal(p.data.chargeFormOpen,false)
+ p.closeInstallment();assert.equal(p.data.chargeFormOpen,false)
  assert.equal(h.calls.some(c=>['loans.changeCharge','loans.configureCharges','loans.record'].includes(c.action)),false)
  await p.closeChargeForm();await p.openOneOffCharges();assert.equal(h.calls.at(-1).data.periodNumber,0);assert.equal(p.data.oneOffOpen,true)
 })

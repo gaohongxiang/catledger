@@ -95,7 +95,6 @@
 .schedule-repayment { min-width: 0; padding-left: 8rpx; text-align: center; color: var(--detail-muted); font-size: 20rpx; }
 .schedule-repayment .schedule-repayment-button { box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 64rpx; margin: 0; padding: 8rpx 4rpx; border: 1rpx solid var(--detail-line); border-radius: 10rpx; background: var(--detail-soft); color: var(--detail-accent); font-size: 20rpx; line-height: 1.4; white-space: nowrap; }
 .schedule-repayment-button::after { border: 0; }
-.schedule-actions { display: flex; align-items: center; gap: 16rpx; }
 .schedule-choice { display: flex; align-items: center; justify-content: center; min-height: 64rpx; white-space: nowrap; color: var(--detail-accent); }
 .schedule-choice checkbox { transform: scale(.7); margin: 0 -4rpx; }
 .schedule-choice-note { display: block; margin: 0 4rpx 16rpx; color: var(--detail-muted); font-size: 20rpx; line-height: 1.6; }
@@ -204,10 +203,6 @@
 .period-fee-row > text { flex-shrink:0; }
 .period-fee-chevron { color:var(--detail-muted);padding-left:8rpx; }
 .period-fee-issue { color:var(--detail-cost); }
-.loan-management-sheet .loan-management-row { display:flex;justify-content:space-between;align-items:center;box-sizing:border-box;width:100%;gap:20rpx;margin:0;padding:26rpx 0;min-height:88rpx;background:transparent;border-bottom:1rpx solid var(--detail-line);border-radius:0;font-size:28rpx;text-align:left;line-height:1.5;color:var(--detail-ink); }
-.loan-management-row > text:last-child { color:var(--detail-muted);font-size:23rpx; }
-.loan-management-row::after { border:0; }
-.loan-management-sheet .loan-management-danger { color:var(--detail-cost); }
 .charge-current-settings { padding-bottom:20rpx;margin-bottom:12rpx;border-bottom:1rpx solid var(--detail-line); }
 .charge-row { display:flex;align-items:center;justify-content:space-between;gap:16rpx;padding:18rpx 0;border-bottom:1rpx solid var(--detail-line);font-size:26rpx; }
 .charge-row view { min-width:0;flex:1; }
