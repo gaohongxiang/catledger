@@ -122,3 +122,61 @@ test('A5 授权预览迟到或确认期间改范围，不得把旧授权提交�
  const page=p.moreChargePreview();await tick();p.closeChargeForm();release(ok({preview:[],nextCursor:null}));await page
  assert.equal(p.data.chargePreview,null);assert.equal(p.data.chargeFormOpen,false)
 })
+
+test('统一逐期入口：按当前期读取费用/差异，选择更正不写账，返回本期；管理入口不触发费用写入',async()=>{
+ const {h,p}=detail(),original=h.respond,fee={chargeId:'charge-11',chargeKey:'period:11:interest',periodNumber:11,component:'interest',amountMinor:'2000',settledMinor:'0',state:'recorded',basis:'plan',chargeDate:'2026-11-01'}
+ h.respond=(action,data)=>{
+  if(action==='loans.installment')return ok({loanVersion:2,period:{periodNumber:data.periodNumber,dueDate:'2026-11-30',principalMinor:'50000',interestMinor:'2000',feeMinor:'0'},sources:[],legacyPayments:[]})
+  if(action==='loans.chargePlan'&&data.periodNumber!==undefined)return ok({items:[{...fee,periodNumber:data.periodNumber||null}],issues:[{eventId:'same-period',periodNumber:11,amountMinor:'1800'},{eventId:'other-period',periodNumber:12,amountMinor:'2000'}],nextCursor:null})
+  return original(action,data)
+ }
+ p.onLoad({loanId:loan.loanId});await p.load();await p.openInstallment({currentTarget:{dataset:{term:11}}})
+ assert.equal(p.data.periodCharges[0].chargeId,'charge-11');assert.deepEqual(p.data.periodChargeIssues.map(i=>i.eventId),['same-period'])
+ assert.equal(h.calls.filter(c=>c.action==='loans.chargePlan').at(-1).data.periodNumber,11)
+ await p.openChargeEdit({currentTarget:{dataset:{id:fee.chargeId}}})
+ assert.equal(p.data.periodOpen,false);assert.equal(p.data.chargeEdit.options[0].operation,'adjust')
+ p.chooseChargeOperation({detail:{value:1}});assert.equal(p.data.chargeEdit.operation,'refund')
+ await p.closeChargeForm();assert.equal(p.data.periodOpen,true);assert.equal(p.data.selectedPeriod.term,11)
+ p.closeInstallment();p.openLoanManagement();assert.equal(p.data.loanManagementOpen,true)
+ p.manageLoan({currentTarget:{dataset:{action:'charges'}}});assert.equal(p.data.loanManagementOpen,false);assert.equal(p.data.chargeFormOpen,true)
+ assert.equal(h.calls.some(c=>['loans.changeCharge','loans.configureCharges','loans.record'].includes(c.action)),false)
+ await p.closeChargeForm();await p.openOneOffCharges();assert.equal(h.calls.at(-1).data.periodNumber,0);assert.equal(p.data.oneOffOpen,true)
+})
+
+test('本期费用/费用更正预览迟到，不跨期回填也不恢复旧选择',async()=>{
+ const {h,p}=detail();await p.load();p.setData({detail:{tracking:true}})
+ let release;const original=h.respond
+ h.respond=(action,data)=>action==='loans.installment'?ok({loanVersion:2,period:{periodNumber:data.periodNumber,dueDate:'2026-02-28',principalMinor:'50000',interestMinor:'2000',feeMinor:'0'},sources:[],legacyPayments:[]}):action==='loans.chargePlan'&&data.periodNumber?new Promise(r=>release=r):original(action,data)
+ const first=p.openInstallment({currentTarget:{dataset:{term:2}}});await tick();p.closeInstallment();release(ok({items:[{chargeId:'old'}],issues:[]}));await first
+ assert.equal(p.data.periodCharges.length,0);assert.equal(p.data.periodOpen,false)
+ p.setData({chargeEdit:{chargeId:'charge',amountYuan:'20',operation:'adjust',options:[{operation:'adjust'},{operation:'refund'}]}})
+ h.respond=(action,data)=>action==='loans.chargeImpact'?new Promise(r=>release=r):original(action,data)
+ const preview=p.previewChargeChange({currentTarget:{dataset:{}}});await tick();p.chooseChargeOperation({detail:{value:1}});release(ok({canChange:true,deltaMinor:'-200',nextPostingMinor:'0'}));await preview
+ assert.equal(p.data.chargeImpact,null);assert.equal(p.data.chargeEdit.operation,'refund')
+})
+
+test('从第二期记还款：带入实际未付分项/费用依据，保留改动草稿；未确认不提交，付款携带本期期次版本',async()=>{
+ const {h,p}=detail(),base=h.respond
+ h.accounts.push({accountId:'bank',type:'bank',name:'合成银行卡',archived:false})
+ h.respond=(action,data)=>{
+  if(action==='loans.installment')return ok({loanVersion:2,period:{periodId:'saved-period',version:7,periodNumber:2,dueDate:'2026-02-28',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',paidPrincipalMinor:'10000',paidInterestMinor:'500',paidFeeMinor:'0'},sources:[],legacyPayments:[]})
+  if(action==='loans.chargePlan'&&data.periodNumber===2)return ok({items:[{chargeId:'charge-2',chargeKey:'period:2:interest',periodNumber:2,component:'interest',state:'recorded',categoryId:h.categories[0].id,amountMinor:'2000',outstandingMinor:'1500'}],issues:[],nextCursor:null,contract:{originKind:'recorded_consumption'}})
+  if(action==='loans.record')return {ok:false,error:{code:'VALIDATION_ERROR',message:'合成拒绝，保留草稿'}}
+  return base(action,data)
+ }
+ await p.load();await p.openInstallment({currentTarget:{dataset:{term:2}}});p.recordPeriodPayment()
+ assert.match(h.navigation.at(-1),/loan-payment\/index\?loanId=synthetic-loan&periodNumber=2$/)
+ const payment=h.page('loan-payment');payment.onLoad({loanId:loan.loanId,periodNumber:'2'});await payment.load()
+ assert.equal(payment.data.totalYuan,'415.00');assert.equal(payment.data.allocations[0].principalYuan,'400.00');assert.equal(payment.data.allocations[0].interestYuan,'15.00')
+ assert.equal(payment.data.allocations[0].interestIndex,1);assert.equal(payment.data.allocations[0].chargeChoices[0].selected,true)
+ assert.equal(payment.data.allocations[0].chargeChoices[0].paidYuan,'15.00')
+ payment.chooseKind({detail:{value:1}});assert.equal(payment.data.kindIndex,0)
+ payment.chooseAccount({detail:{value:0}});await payment.save();assert.equal(h.calls.some(c=>c.action==='loans.record'),false)
+ payment.editAllocation({currentTarget:{dataset:{index:0,field:'principalYuan'}},detail:{value:'300.00'}})
+ payment.input({currentTarget:{dataset:{field:'totalYuan'}},detail:{value:'315.00'}});await payment.load()
+ assert.equal(payment.data.allocations[0].principalYuan,'300.00');assert.equal(payment.data.totalYuan,'315.00')
+ payment.confirm({detail:{value:['confirmed']}});await payment.save()
+ const command=h.calls.find(c=>c.action==='loans.record');assert.ok(command)
+ assert.deepEqual({...command.data.allocations[0].period},{periodNumber:2,version:7});assert.equal(command.data.allocations[0].chargeAllocations[0].amountMinor,'1500')
+ assert.match(payment.data.errorMessage,/保留草稿/);assert.equal(payment.data.allocations[0].principalYuan,'300.00')
+})

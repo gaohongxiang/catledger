@@ -25,6 +25,7 @@ function payload(data) {
         value[field + 'CategoryId'] = value[field + 'Minor'] !== '0' && value[field + 'Treatment'] === 'expense' ? category.id : null
       }
       value.chargeAllocations=(a.chargeChoices||[]).filter(c=>c.selected).map(c=>({chargeId:c.chargeId,component:c.component,amountMinor:money.yuanToMinor(c.paidYuan)}))
+      if(a.period){if(drawdown)throw new Error('本期还款不能登记为借款到账');value.period=a.period}
       if(!a.chargeChoices&&a.chargeAllocations)value.chargeAllocations=a.chargeAllocations
       return value
     }) }

@@ -1,0 +1,13 @@
+<view class="period-fees">
+  <view class="period-fees-title"><text>{{oneOffOpen ? '费用记录' : '本期利息与费用'}}</text></view>
+  <text wx:if="{{periodFeesError}}" class="installment-note">{{periodFeesError}}</text>
+  <view wx:for="{{periodChargeIssues}}" wx:key="eventId" class="period-fee-row period-fee-issue" data-id="{{item.eventId}}" bindtap="openChargeEdit" aria-role="button">
+    <view><text>银行账单待核对</text><text>{{item.amountText}} · 点击核对这笔费用</text></view><text>›</text>
+  </view>
+  <view wx:for="{{periodCharges}}" wx:key="chargeId" class="period-fee-row" data-id="{{item.chargeId}}" bindtap="openChargeEdit" aria-role="button">
+    <view><text>{{item.shortLabel}} · {{item.stateText}}</text><text>{{item.basisText}}</text><text wx:if="{{item.settledMinor !== '0'}}">已清偿 {{item.settledText}}</text><text wx:if="{{item.refundMinor !== '0'}}">实际退费 {{item.refundText}}</text></view>
+    <text class="money-number">{{item.amountText}} <text class="period-fee-chevron">›</text></text>
+  </view>
+  <text wx:if="{{!periodCharges.length && !periodFeesError && !periodLoading}}" class="installment-note">{{chargeSummary.hasContract ? '本期暂无费用记录' : '尚未开启按期记费，可在管理中一次设置。'}}</text>
+  <button wx:if="{{periodChargeNext}}" class="ld-link" bindtap="morePeriodCharges">查看更多费用记录</button>
+</view>

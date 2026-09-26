@@ -22,7 +22,7 @@ Page({
   ...installmentActions,
   ...require('./charge-actions').methods,
   data: { ...require('./charge-actions').initial,chargeRefundAccounts:[],sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
-    periodOpen: false, periodLoading: false, periodError: '', selectedPeriod: null, periodSources: [], periodLegacy: [], periodMoreSources: false, periodCanBook: false, periodEditing: false, periodAdjustOpen: false, periodDraft: null, progressOpen: false, progressThrough: '',
+    periodOpen: false, periodLoading: false, periodError: '', selectedPeriod: null, periodSources: [], periodLegacy: [], periodMoreSources: false, periodCanBook: false, periodEditing: false, periodAdjustOpen: false, periodEvidenceOpen:false, periodDraft: null, progressOpen: false, progressThrough: '',
     detail: null, detailLoading: false, detailError: '', periodRows: [], scheduleMore: false, scheduleHistorical: false, guideOpen: false, historyOpen: false,
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
     principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
@@ -32,7 +32,7 @@ Page({
   onHide(){pageReadSession.end(this)},
   onUnload() { pageReadSession.end(this) },
   load() {
-    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(['chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodAdjustOpen','periodDraft','progressOpen','progressThrough','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','historyOpen','sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext'])
+    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(['chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodAdjustOpen','periodEvidenceOpen','periodDraft','progressOpen','progressThrough','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','historyOpen','sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_chargeChangeToken','_chargeReturnTerm','_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext'])
     if (this._load) return this._load
     const readOptions = { force: !!this._forceLoanRead }; this._forceLoanRead = false
     this.setData({ loading: true, errorMessage: '' })
@@ -83,7 +83,7 @@ Page({
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
     return this._load
   },
-  recordPayment() {
+  recordPayment(event) {
     if (this.data.loading || this.data.saving || !this._loanId) return
     if (!this.contextFresh()) { this.setData({ errorMessage: '请先重新读取与核实最新资料' }); return }
     const source = this.data.sourceContext
@@ -92,7 +92,8 @@ Page({
       this.edit(); this.setData({ errorMessage: '请先确认还款日期日初或更早的本金基准，不能把本次扣款当贷款本金' }); return
     }
     if (this._sourceTransactionId && source.payment) { wx.navigateTo({ url:'/pages/repayment-entry/index?paymentId=' + encodeURIComponent(source.payment.paymentId) + '&loanId=' + encodeURIComponent(this._loanId) }); return }
-    wx.navigateTo({ url: '/pages/loan-payment/index?loanId=' + encodeURIComponent(this._loanId) + (this._sourceTransactionId ? '&sourceTransactionId=' + encodeURIComponent(this._sourceTransactionId) : '') })
+    const options=event&&event.currentTarget&&event.currentTarget.dataset||{},period=Number(options.term)
+    wx.navigateTo({ url: '/pages/loan-payment/index?loanId=' + encodeURIComponent(this._loanId) + (this._sourceTransactionId ? '&sourceTransactionId=' + encodeURIComponent(this._sourceTransactionId) : '') + (Number.isInteger(period)&&period>0?'&periodNumber='+period:options.kind==='drawdown'?'&kind=drawdown':'') })
   },
   openPlan() { wx.navigateTo({ url: '/pages/loan-plan/index?loanId=' + encodeURIComponent(this._loanId) }) },
   openPayment(event) { wx.navigateTo({ url: '/pages/loan-payment/index?paymentId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },

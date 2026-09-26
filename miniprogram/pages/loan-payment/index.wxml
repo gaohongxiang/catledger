@@ -1,5 +1,5 @@
 <view class="page-canvas loan-payment {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" title="{{payment ? payment.kindText + '记录' : '登记实际借还'}}" copy="总额须等于本金、利息、费用之和；提交前逐项核对。" />
+  <page-head class="content-inset" title="{{payment ? payment.kindText + '记录' : periodNumber ? '第 ' + periodNumber + ' 期还款' : kindIndex === 1 ? '登记借款到账' : '登记还款'}}" copy="{{periodNumber ? '本期金额已带入，请核对实际扣款。已记过的流水请选择关联。' : '按实际发生的资金填写，已有账目请选择关联。'}}" />
   <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <button wx:if="{{errorMessage}}" class="lp-link" disabled="{{saving || loading}}" bindtap="load">重新读取与核实</button>
@@ -15,7 +15,7 @@
       <view class="lp-row"><text>本金</text><text class="money-number">{{item.principalText}}</text></view>
       <view class="lp-row"><text>利息 · {{item.interestTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.interestText}}</text></view>
       <view class="lp-row"><text>费用 · {{item.feeTreatment === 'accrued' ? '清偿已计负债' : '本次支出'}}</text><text class="money-number">{{item.feeText}}</text></view>
-      <button wx:if="{{payment.kind === 'repayment'}}" class="lp-link" data-id="{{item.loanId}}" bindtap="allocatePlan" disabled="{{saving || loading}}">对账到还款期次</button>
+      <button wx:if="{{payment.kind === 'repayment'}}" class="lp-link" data-id="{{item.loanId}}" bindtap="allocatePlan" disabled="{{saving || loading}}">查看或调整期次关联</button>
     </view>
     <view class="lp-panel">
       <text class="lp-section-title">对应账目</text>
@@ -36,7 +36,7 @@
       <picker class="lp-field" range="{{entryModes}}" value="{{modeIndex - 1}}" bindchange="chooseEntryMode" disabled="{{saving || loading}}"><text>处理已有还款</text><view class="lp-picker"><text class="lp-picker-value">{{entryModes[modeIndex - 1]}}</text><chevron-icon size="{{24}}" /></view></picker>
       <button class="secondary-button lp-action" bindtap="load" disabled="{{saving || loading}}">重新核对这笔还款的完整来源</button>
     </block>
-    <picker class="lp-field" range="{{kinds}}" value="{{kindIndex}}" bindchange="chooseKind" disabled="{{saving || sourceLocked || sourceTiming || replacePayment}}"><text>实际类型</text><view class="lp-picker"><text class="lp-picker-value">{{kinds[kindIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <picker wx:if="{{!periodNumber}}" class="lp-field" range="{{kinds}}" value="{{kindIndex}}" bindchange="chooseKind" disabled="{{saving || sourceLocked || sourceTiming || replacePayment}}"><text>实际类型</text><view class="lp-picker"><text class="lp-picker-value">{{kinds[kindIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
     <view wx:if="{{modeIndex > 0 && !editingPayment}}" class="lp-panel">
       <text class="lp-section-title">已有账目</text>
       <picker wx:if="{{!sourceLocked}}" class="lp-field" mode="date" fields="month" value="{{sourceMonth}}" bindchange="sourceMonth" disabled="{{saving}}"><text>查询月份</text><view class="lp-picker"><text class="lp-picker-value">{{sourceMonth || '选择账目所在月份'}}</text><chevron-icon size="{{24}}" /></view></picker>

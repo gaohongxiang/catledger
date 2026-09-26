@@ -8,9 +8,9 @@ const confirm = options => new Promise(resolve => wx.showModal({ ...options, suc
 
 module.exports = {
   async openInstallment(event) {
-    if (!this.data.detail.tracking || this.data.saving) return
+    if (!this.data.detail || this.data.saving || !this.data.detail.tracking && !(this.data.loan && this.data.loan.scheduleTerms)) return
     const term = Number(event.currentTarget.dataset.term), current = session.capture(this), token = this._periodToken = {}
-    this.setData({ periodOpen: true, periodLoading: true, periodError: '', selectedPeriod: null, periodEditing: false, periodAdjustOpen: false })
+    this.setData({ periodOpen: true, periodLoading: true, periodError: '', selectedPeriod: null, periodEditing: false, periodAdjustOpen: false,periodEvidenceOpen:false,periodCharges:[],periodChargeIssues:[],periodChargeNext:null,periodFeesError:'' })
     try {
       const result = await api.callApi('loans.installment', { loanId: this._loanId, periodNumber: term }, { force: true })
       if (!current() || token !== this._periodToken) return
@@ -20,10 +20,12 @@ module.exports = {
         periodCanBook: !!(account && account.type === 'credit' && ['interest','fee'].some(key=>result.period[key+'Minor']!=='0' && !(result.period.recordedComponents||[]).includes(key))),
         periodSources: result.sources.map(item => Object.assign({}, item, { label: LABELS[item.component], amount: money.formatMinor(item.amountMinor) })),
         periodLegacy: result.legacyPayments, periodMoreSources: result.moreSources })
+      await this.loadPeriodCharges(term,token)
     } catch (error) { if (current() && token === this._periodToken) this.setData({ periodError: error.message || '这期记录暂未读取' }) }
     finally { if (current() && token === this._periodToken) this.setData({ periodLoading: false }) }
   },
   closeInstallment() { if (!this.data.saving) { this._periodToken = {}; this.setData({ periodOpen: false }) } },
+  recordPeriodPayment(){if(this.data.selectedPeriod&&!this.data.periodLoading)return this.recordPayment({currentTarget:{dataset:{term:this.data.selectedPeriod.term}}})},
   async installmentWrite(action, data) {
     if (this.data.saving || this.data.loading || !session.isCurrent(this)) return
     const current = session.capture(this)
@@ -47,7 +49,7 @@ module.exports = {
     return this.installmentWrite('loans.setInstallmentProgress', { loanId: this._loanId, version: selected.loanVersion,
       periodNumber: selected.period.periodNumber, status: event.currentTarget.dataset.status })
   },
-  bookPeriodCosts(){this.closeInstallment();this.openChargeForm()},
+  bookPeriodCosts(){const term=this.data.selectedPeriod&&this.data.selectedPeriod.term;this.closeInstallment();this.openChargeForm();this._chargeReturnTerm=term},
   openProgress() {
     if (!this._detailView || this.data.saving || this.data.loan.archived) return
     this.setData({ progressOpen: true, progressThrough: String(this._detailView.summary.manualThrough), periodError: '' })
@@ -76,6 +78,7 @@ module.exports = {
     if (!await confirm({ title: '删除分期记录', content: '删除分期并解除关联。账单和已入账金额保留，可重新关联或新建分期。', confirmText: '删除记录', confirmColor: '#A94B40' })) return
     if (session.isCurrent(this)) return this.installmentWrite('loans.archiveInstallment', { loanId: this._loanId, version: this.data.loan.version, archived: true })
   },
+  togglePeriodEvidence(){this.setData({periodEvidenceOpen:!this.data.periodEvidenceOpen})},
   togglePeriodAdjust() { this.setData({ periodAdjustOpen: !this.data.periodAdjustOpen }) },
   editInstallmentPeriod() {
     const row = this._selectedInstallment && this._selectedInstallment.period

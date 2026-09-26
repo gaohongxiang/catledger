@@ -183,16 +183,28 @@
 .detail-actions .secondary-button { min-height: 92rpx; border: 1rpx solid var(--detail-line); border-radius: 28rpx; background: var(--detail-surface); color: var(--detail-ink); font-size: 32rpx; }
 .installment-sheet .primary-button, .installment-sheet .secondary-button { width: 100%; }
 
-.charge-section { margin-top: 28rpx; padding: 28rpx; border: 1rpx solid var(--detail-line); border-radius: 24rpx; background: var(--detail-surface); }
-.charge-metrics { display:flex; gap:24rpx; margin:20rpx 0; }
-.charge-metrics view { flex:1; }
-.charge-metrics text { display:block; font-size:26rpx; }
-.charge-metrics .money-number { margin-top:8rpx; font-size:36rpx; color:var(--detail-cost); }
-.charge-row { display:flex; align-items:center; justify-content:space-between; gap:16rpx; padding:18rpx 0; border-bottom:1rpx solid var(--detail-line); font-size:26rpx; }
+/* 费用并入逐期还款；只在用户打开时展示设置与更正。 */
+.schedule-fee-summary { display:flex;justify-content:space-between;align-items:center;gap:20rpx;padding:0 4rpx 22rpx;color:var(--detail-muted);font-size:22rpx;line-height:1.6; }
+.schedule-fee-summary view text { display:block; }
+.schedule-fee-summary view text:first-child { color:var(--detail-ink); }
+.schedule-fee-summary > text { flex-shrink:0;font-size:20rpx; }
+.schedule-one-off { display:flex;justify-content:space-between;padding:24rpx;color:var(--detail-accent);font-size:24rpx;border-bottom:1rpx solid var(--detail-line); }
+.period-fees { margin:26rpx 0; }
+.period-fees-title { color:var(--detail-ink);font-size:26rpx;font-weight:600; }
+.period-fee-row { display:flex;align-items:center;justify-content:space-between;gap:20rpx;padding:22rpx 0;border-bottom:1rpx solid var(--detail-line);font-size:27rpx; }
+.period-fee-row > view { min-width:0;flex:1; }
+.period-fee-row > view text { display:block;line-height:1.5; }
+.period-fee-row > view text:not(:first-child) { color:var(--detail-muted);font-size:22rpx;margin-top:5rpx; }
+.period-fee-row > text { flex-shrink:0; }
+.period-fee-chevron { color:var(--detail-muted);padding-left:8rpx; }
+.period-fee-issue { color:var(--detail-cost); }
+.loan-management-row { display:flex;justify-content:space-between;align-items:center;gap:20rpx;margin:0;padding:26rpx 0;min-height:88rpx;background:transparent;border-bottom:1rpx solid var(--detail-line);border-radius:0;font-size:28rpx;text-align:left;line-height:1.5;color:var(--detail-ink); }
+.loan-management-row > text:last-child { color:var(--detail-muted);font-size:23rpx; }
+.loan-management-row::after { border:0; }
+.loan-management-danger { color:var(--detail-cost); }
+.charge-row { display:flex;align-items:center;justify-content:space-between;gap:16rpx;padding:18rpx 0;border-bottom:1rpx solid var(--detail-line);font-size:26rpx; }
 .charge-row view { min-width:0;flex:1; }
 .charge-row .ld-link { flex-shrink:0; }
-.charge-buttons { display:flex;flex-wrap:wrap;gap:8rpx; }
-.charge-buttons button { flex:1 1 42%;font-size:26rpx; }
 .charge-form { padding:24rpx 0; }
 .charge-form .ld-cell { display:block;padding:20rpx 0;min-height:88rpx; }
 .charge-form .ld-cell text { display:block; }

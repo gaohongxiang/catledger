@@ -4,13 +4,13 @@ const session = require('../../services/page-read-session')
 const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
 const model = require('./model')
-Page(Object.assign({}, require('./source'), {
-  data: {unallocatedYuan:'0',unallocatedText:'0.00', sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['关联已有账目，保持原构成','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
+Page(Object.assign({}, require('./source'), require('./period-entry'), {
+  data: {periodNumber:null,unallocatedYuan:'0',unallocatedText:'0.00', sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['关联已有账目，保持原构成','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
     accounts: [], accountIndex: -1, categories: [], choices: [], nextLoanCursor: null, kindIndex: 0, kinds: ['实际还款','新放款到账'],
-    modes: ['登记尚未入账的借还','关联已有账目，保持原构成','更正已有账目的本息费'], modeIndex: 0, source: null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
+    modes: ['这笔资金变动还没记账','已记过，关联已有账目','更正已有账目的本息费'], modeIndex: 0, source: null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
     sourceMonth: '', nextSourceCursor: null, sourceSelectedCount: 0, editingPayment: null, replacePayment: null,
     treatments: ['尚未入账，本次记支出','已计入负债，本次只清偿'], reviewText: '请填写总额与已确认本息费，未知分项不能提交。', totalYuan: '', date: '', time: '12:00', confirmed: false },
-  onLoad(query) { this._loanId = query && query.loanId; this._paymentId = query && query.paymentId; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ hasPayment: Boolean(this._paymentId), sourceLocked: Boolean(this._sourceTransactionId), sourceTransactionId: this._sourceTransactionId, modeIndex: this._sourceTransactionId ? 1 : 0 }) },
+  onLoad(query) { this._loanId = query && query.loanId; this._paymentId = query && query.paymentId; this._sourceTransactionId = query && query.sourceTransactionId || ''; const period=Number(query&&query.periodNumber);theme.bindPage(this); this.setData({ periodNumber:Number.isInteger(period)&&period>0&&period<=600?period:null,kindIndex:query&&query.kind==='drawdown'?1:0,hasPayment: Boolean(this._paymentId), sourceLocked: Boolean(this._sourceTransactionId), sourceTransactionId: this._sourceTransactionId, modeIndex: this._sourceTransactionId ? 1 : 0 }) },
   onShow() { return loginGuard.run(this, () => this.load()) },
   onUnload() { session.end(this) },
   load() {
@@ -55,13 +55,14 @@ Page(Object.assign({}, require('./source'), {
           this.setData(patch)
         }
       }
+      if(current())await this.loadPeriodEntry(current)
       if (current()){await this.loadEntrySource(current);if(current()&&!this._paymentId)await this.loadAllocationCharges()}
     }).catch(error => { if (current()) this.setData({ errorMessage: error.message || '借还记录暂未读取' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
     return this._load
   },
   input(event) { const key = event.currentTarget.dataset.field; if (['totalYuan','date','time','unallocatedYuan'].includes(key)) { this.setData({ [key]: event.detail.value, confirmed: false }); this.review() } },
-  chooseKind(event) { this.setData({ kindIndex: Number(event.detail.value), confirmed: false }); this.review() },
+  chooseKind(event) { if(this.data.periodNumber)return;this.setData({ kindIndex: Number(event.detail.value), confirmed: false }); this.review() },
   chooseAccount(event) { this.setData({ accountIndex: Number(event.detail.value), confirmed: false }); this.review() },
   editAllocation(event) {
     const { index, field } = event.currentTarget.dataset
@@ -75,18 +76,33 @@ Page(Object.assign({}, require('./source'), {
     const selected=event&&event.currentTarget&&event.currentTarget.dataset.id
     try{
       await Promise.all(this.data.allocations.filter(a=>!selected||a.loanId===selected).map(async a=>{
-        const result=await api.callApi('loans.chargePlan',{loanId:a.loanId,pageSize:20,...(selected&&a.chargeNext?{cursor:a.chargeNext}:{})},{force:true})
+        const result=await api.callApi('loans.chargePlan',{loanId:a.loanId,pageSize:20,...(a.period?{periodNumber:a.period.periodNumber}:{}),...(selected&&a.chargeNext?{cursor:a.chargeNext}:{})},{force:true})
+        const covered=result.items.filter(c=>c.state==='covered').map(c=>c.coveredByChargeId)
+        if(a.period&&covered.length){const once=await api.callApi('loans.chargePlan',{loanId:a.loanId,periodNumber:0,pageSize:40},{force:true});result.items=result.items.concat(once.items.filter(c=>covered.includes(c.chargeId)))}
         if(!current()||this._chargeRead!==token)return
         const index=this.data.allocations.findIndex(row=>row.loanId===a.loanId);if(index<0)return
         const live=this.data.allocations[index],previous=live.chargeChoices||[],proof=live.chargeAllocations||[]
+        const defaults={}
+        if(live.period&&!live.periodChargesInitialized){
+          for(const field of ['interest','fee']){
+            const planned=result.items.find(c=>c.chargeKey==='period:'+live.period.periodNumber+':'+field)
+            const charge=planned&&result.items.find(c=>c.chargeId===(planned.coveredByChargeId||planned.chargeId))
+            if(charge&&['planned','recorded','baseline'].includes(charge.state)&&Number(live[field+'Yuan'])>0){
+              defaults[field]={chargeId:charge.chargeId,paidYuan:live[field+'Yuan']}
+              this.setData({['allocations['+index+'].'+field+'Index']:charge.state==='planned'?0:1,
+                ['allocations['+index+'].'+field+'CategoryIndex']:this.data.categories.findIndex(c=>c.id===charge.categoryId)})
+            }
+          }
+        }
         const choices=result.items.filter(c=>['planned','recorded','baseline'].includes(c.state)).map(c=>{
           const saved=previous.find(p=>p.chargeId===c.chargeId),paid=proof.find(p=>p.chargeId===c.chargeId)
-          return {chargeId:c.chargeId,component:c.component,state:c.state,selected:saved?saved.selected:!!paid,paidYuan:saved?saved.paidYuan:require('../../utils/money').minorToYuan(paid?paid.amountMinor:c.outstandingMinor),
+          const initial=defaults[c.component]&&defaults[c.component].chargeId===c.chargeId?defaults[c.component]:null
+          return {chargeId:c.chargeId,component:c.component,state:c.state,selected:saved?saved.selected:!!paid||!!initial,paidYuan:saved?saved.paidYuan:initial?initial.paidYuan:require('../../utils/money').minorToYuan(paid?paid.amountMinor:c.outstandingMinor),
             label:(c.periodNumber?'第'+c.periodNumber+'期':'一次性')+(c.component==='interest'?'利息':'费用')+' · '+(c.state==='planned'?'本次首次记费':'清偿已记费用')+' · 可分配 '+require('../../utils/money').formatMinor(c.outstandingMinor)}
         })
         // 翻页保留已选项与金额草稿，不丢掉前页的付款分配。
         const kept=selected?previous.filter(p=>p.selected&&!choices.some(c=>c.chargeId===p.chargeId)):[]
-        this.setData({['allocations['+index+'].chargeChoices']:kept.concat(choices),['allocations['+index+'].chargeNext']:result.nextCursor,['allocations['+index+'].originKind']:result.contract&&result.contract.originKind})
+        this.setData({['allocations['+index+'].chargeChoices']:kept.concat(choices),['allocations['+index+'].chargeNext']:result.nextCursor,['allocations['+index+'].originKind']:result.contract&&result.contract.originKind,['allocations['+index+'].periodChargesInitialized']:true})
       }))
     }catch(error){if(current()&&this._chargeRead===token)this.setData({errorMessage:error.message||'费用清偿依据未能读取'})}
   },
