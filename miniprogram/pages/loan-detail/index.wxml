@@ -1,4 +1,5 @@
 <view class="page-canvas loan-detail {{themeClass}}" style="{{themeStyle}}">
+  <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
   <page-head wx:if="{{formOpen}}" class="content-inset" title="编辑贷款资料" />
   <view wx:if="{{loan}}" class="detail-account"><text>所属账户</text><text>{{loan.accountName}}{{loan.accountArchived ? '（已停用）' : ''}}</text></view>
   <view wx:if="{{sourceTransactionId}}" class="ld-note-card">
@@ -39,7 +40,7 @@
             <text wx:else class="due-breakdown">{{detail.dueNote}}</text>
           </view>
           <view class="due-remaining-block">
-            <text class="due-remaining-label">剩余应还</text>
+            <text class="due-remaining-label">预计后续应还</text>
             <view class="due-remaining-amount"><text class="money-number">{{detail.remaining}}</text><text>元</text></view>
             <text class="due-remaining-split">本金 {{detail.remainingPrincipal}} · 利息/费 <text class="detail-cost-ink">{{detail.remainingCost}}</text></text>
           </view>
@@ -72,8 +73,9 @@
       </view>
     </view>
 
+    <include src="charge-section.wxml" />
     <view class="detail-section-head">
-      <view class="detail-section-title"><text>逐期还款</text><button wx:if="{{detail.tracking && !loan.archived}}" size="mini" class="progress-entry" bindtap="openProgress" disabled="{{saving || loading}}">修改已完成期数</button></view>
+      <view class="detail-section-title"><text>逐期还款</text><button wx:if="{{detail.tracking && !loan.archived}}" size="mini" class="progress-entry" bindtap="openProgress" disabled="{{saving || loading}}">批量确认已还范围</button></view>
       <text class="detail-section-count">{{detail.terms ? '共 ' + detail.terms + ' 期' : '已确认计划'}}</text>
     </view>
     <view wx:if="{{detailError}}" class="detail-read-error"><text>{{detailError}}</text><button bindtap="refreshDetail" disabled="{{loading || detailLoading}}">重新读取</button></view>
@@ -93,7 +95,7 @@
     <text wx:if="{{detail.principalGap}}" class="schedule-footnote">{{detail.principalGap}}</text>
 
     <view class="detail-actions">
-      <block wx:if="{{loan.kind !== 'installment' && !loan.archived}}">
+      <block wx:if="{{!loan.archived}}">
         <button wx:if="{{!sourceTransactionId}}" class="secondary-button" bindtap="recordPayment" disabled="{{saving || loading}}">记录借款或还款</button>
         <button class="ld-link" bindtap="openPlan">维护还款计划</button>
         <button class="ld-link" bindtap="loadHistory" disabled="{{historyLoading}}">查看已有借还记录</button>

@@ -13,6 +13,7 @@ Page({
       return this.loadLoans()
     })
   },
+  onHide(){pageReadSession.end(this)},
   onUnload() { pageReadSession.end(this) },
   onPullDownRefresh() { return this.firstPage().finally(() => wx.stopPullDownRefresh()) },
   loanQuery() { return Object.assign({ pageSize: 20, cursor: this._cursor || null }, this._accountId ? { accountId: this._accountId } : {}) },
@@ -21,6 +22,7 @@ Page({
     if (this._load) return this._load
     this.setData({ loading: true, errorMessage: '' })
     this._load = (async () => {
+      await require('../../services/loan-charge-sync').beforePage(this,current)
       if (this._accountId) {
         const catalog = await api.callApi('catalog.get', {}, { force: Boolean(force) })
         if (!current()) return

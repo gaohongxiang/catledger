@@ -143,6 +143,8 @@ module.exports = {
       if (this._unsubscribeDraft) this._unsubscribeDraft()
       session.clear(); drafts.forgetLast(); this._draftSession = null
       this.applyUpdateView(receipt)
+      await require('../../services/loan-charge-sync').beforePage(this,active)
+      if(!active())return
       try {
         const summary = await api.readSummary(receipt.update.updateId)
         if (active()) this.applyUpdateView(summary)

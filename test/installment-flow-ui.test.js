@@ -20,11 +20,11 @@ test('期次操作只发送进度，保存后详情重新读取；不会跳转�
   assert.deepEqual(h.toasts,['已更新']);assert.equal(p.data.savedMessage,'')
   assert.ok(h.calls.filter(c=>c.action==='loans.installments').length>=2)
 })
-test('从银行账单新建只预填明确期数、账户和进度，不推算未知总本金',async()=>{
+test('从银行账单新建只预填明确期数和账户，出账不预填已还进度，不推算未知总本金',async()=>{
   const h=runtime(),p=h.page('loan-form');h.accounts=[{accountId:'credit',type:'credit',name:'合成卡',archived:false}]
   h.respond=action=>action==='loans.installmentSources'?{ok:true,data:{items:[{itemId:'source',accountId:'credit',periodNumber:10,totalTerms:12,component:'principal',amountMinor:'200000',occurredDate:'2026-07-31',referenceLabel:'合成分期'}],nextCursor:null}}:undefined
   p.onLoad({sourceItemId:'source'});await p.load()
-  assert.equal(p.data.sourceLocked,true);assert.equal(p.data.sourceReady,true);assert.equal(p.data.paidTerms,'10');assert.equal(p.data.schedule.terms,'12')
+  assert.equal(p.data.sourceLocked,true);assert.equal(p.data.sourceReady,true);assert.equal(p.data.paidTerms,'0');assert.equal(p.data.schedule.terms,'12')
   assert.equal(p.data.principalYuan,'');assert.equal(p.data.schedule.firstPaymentDate,'')
   assert.equal(p.data.accounts[p.data.accountIndex].accountId,'credit')
 })

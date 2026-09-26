@@ -43,14 +43,28 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
   const read=(context,operation)=>executeLedgerRead({getPool,...context,consistentSnapshot:true,operation})
   const write=(context,action,operation)=>executeIdempotentMutation({getPool,...context,action,operation})
   async function chargePlan(context) {
-    return read(context,async(c,uid)=>{
+    return read(context,async(c,uid,revision)=>{
       const loan=await selectLoan(c,uid,context.data.loanId),contract=await store.contract(c,uid,loan.loanId)
-      const [prior]=await c.execute(store.CONTRACT_SQL+' WHERE uid=? AND account_id=? ORDER BY created_at DESC LIMIT 41',[uid,loan.accountId])
+      const [prior]=await c.execute(store.CONTRACT_SQL+' WHERE uid=? AND account_id=? ORDER BY created_at DESC LIMIT 21',[uid,loan.accountId])
       const items=contract?await store.charges(c,uid,contract.contractId):[]
-      const [sources]=await c.execute(ITEM_SELECT+" WHERE i.uid=? AND i.account_id=? AND (i.loan_id=? OR i.loan_id IS NULL) AND i.active=1 AND i.component<>'principal' LIMIT 1201",[uid,loan.accountId,loan.loanId])
+      const [sources]=await c.execute(ITEM_SELECT+" WHERE i.uid=? AND i.account_id=? AND (i.loan_id=? OR i.loan_id IS NULL) AND i.active=1 AND i.component<>'principal' ORDER BY i.period_number,i.item_id LIMIT 41",[uid,loan.accountId,loan.loanId])
       const preview=context.data.configuration?domain.plannedCharges(fullPlan(loan),domain.authorization(context.data.configuration),context.data.configuration.periodCharges):[]
-      return {loanId:loan.loanId,loanVersion:Number(loan.version),contract,items,preview,
-        candidates:sources.map(publicItem).filter(i=>i.active),moreCandidates:sources.length>1200,
+      const {encodeCursor,decodeCursor}=require('./cursor'),data=context.data,size=data.pageSize||40
+      if(!Number.isInteger(size)||size<1||size>40||data.periodNumber!=null&&(!Number.isInteger(data.periodNumber)||data.periodNumber<1||data.periodNumber>600))throw ledgerError('VALIDATION_ERROR')
+      const cursor=data.cursor?decodeCursor(context.subjectHash,data.cursor):null
+      if(cursor&&(cursor.action!=='loans.chargePlan'||cursor.uid!==uid||cursor.loanId!==loan.loanId||cursor.revision!==revision||cursor.periodNumber!==(data.periodNumber||null)))throw ledgerError('CONFLICT')
+      const offset=cursor?cursor.offset:0,selected=data.periodNumber?items.filter(i=>i.periodNumber===data.periodNumber):items
+      const [issues]=contract?await c.execute(`SELECT e.event_id AS eventId,e.update_id AS updateId,e.amount_minor AS amountMinor,
+        e.event_local_date AS localDate,JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.periodNumber')) AS periodNumber,
+        JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.component')) AS component
+        FROM catledger_economic_events e JOIN catledger_finance_updates u ON u.uid=e.uid AND u.update_id=e.update_id
+        WHERE e.uid=? AND e.ledger_account_id=? AND u.status NOT IN ('posted','undone','abandoned') AND e.status<>'excluded'
+          AND JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.referenceKey'))=? ORDER BY e.event_local_date,e.event_id LIMIT 41`,[uid,contract.accountId,contract.referenceKey]):[[]]
+      return {loanId:loan.loanId,loanVersion:Number(loan.version),contract,items:selected.slice(offset,offset+size),preview:preview.slice(offset,offset+size),
+        totalCharges:selected.length,previewCount:preview.length,previewAmountMinor:preview.reduce((n,p)=>n+BigInt(p.amountMinor),0n).toString(),
+        nextCursor:offset+size<Math.max(selected.length,preview.length)?encodeCursor(context.subjectHash,{action:'loans.chargePlan',uid,loanId:loan.loanId,revision,offset:offset+size,periodNumber:data.periodNumber||null}):null,
+        issues:issues.slice(0,40).map(i=>({...i,amountMinor:String(i.amountMinor),periodNumber:Number(i.periodNumber)})),moreIssues:issues.length>40,
+        candidates:sources.slice(0,40).map(publicItem).filter(i=>i.active),moreCandidates:sources.length>40,
         priorContracts:prior.map(r=>({...r,authorization:domain.parse(r.authorization)})),cutoff:domain.today(now()),
         recordedMinor:items.filter(i=>i.state==='recorded').reduce((s,i)=>s+BigInt(i.amountMinor),0n).toString(),
         unverifiedMinor:items.filter(i=>i.state==='recorded'&&i.basis==='plan').reduce((s,i)=>s+BigInt(i.amountMinor),0n).toString()}
@@ -97,12 +111,13 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
         contract={contractId:randomUUID(),loanId:loan.loanId,accountId:loan.accountId,referenceKey,version:0,planVersion:0,authorization:null}
         await c.execute(`INSERT INTO catledger_loan_charge_contracts(uid,contract_id,loan_id,account_id,reference_key,origin_kind,authorization_json)
           VALUES(?,?,?,?,?,?,?)`,[uid,contract.contractId,loan.loanId,loan.accountId,referenceKey,data.originKind,JSON.stringify(auth)])
-      } else if (contract.accountId!==loan.accountId || contract.originKind!==data.originKind || referenceKey && contract.referenceKey!==referenceKey) throw ledgerError('LOAN_SOURCE_MISMATCH')
+      } else if (contract.accountId!==loan.accountId || !contract.authorization.coverageOnly&&contract.originKind!==data.originKind || referenceKey && contract.referenceKey!==referenceKey) throw ledgerError('LOAN_SOURCE_MISMATCH')
+      if(contract.authorization&&contract.authorization.coverageOnly)await c.execute('UPDATE catledger_loan_charge_contracts SET origin_kind=? WHERE uid=? AND contract_id=?',[data.originKind,uid,contract.contractId])
       const old=await store.charges(c,uid,contract.contractId),planVersion=contract.planVersion+1
       for (const item of plan) {
         const previous=old.find(p=>p.chargeKey===item.chargeKey)
         if (!previous) await insertCharge(c,uid,contract.contractId,item,planVersion)
-        else if (['planned','paused'].includes(previous.state)) await c.execute(`UPDATE catledger_loan_charges SET charge_date=?,amount_minor=?,category_id=?,plan_version=?,version=version+1
+        else if (['planned','paused'].includes(previous.state)) await c.execute(`UPDATE catledger_loan_charges SET charge_date=?,amount_minor=?,category_id=?,plan_version=?,state='planned',version=version+1
           WHERE uid=? AND charge_id=?`,[item.chargeDate,item.amountMinor,item.categoryId,planVersion,uid,previous.chargeId])
         // 已记录/已覆盖/抑制的历史不能由新版本覆盖或复活。
       }

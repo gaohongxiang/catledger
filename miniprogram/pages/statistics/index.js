@@ -123,7 +123,7 @@ Page({
     }
   },
 
-  onHide: function () { this.setData({ categorySheetOpen: false }); this.setTabHidden(false) },
+  onHide: function () { pageReadSession.end(this); this.setData({ categorySheetOpen: false }); this.setTabHidden(false) },
 
   onPullDownRefresh: function () {
     if (!app.hasLoginApproval()) { wx.stopPullDownRefresh(); return }
@@ -187,7 +187,7 @@ Page({
           self.openCategoryCompletion()
         }
     }
-    this._statisticsLoad = api.callApi('statistics.get', this.statisticsRequest(), { force, onSnapshot: result => applyStatistics(result, true) })
+    this._statisticsLoad = require('../../services/loan-charge-sync').beforePage(this,isCurrent).then(()=>api.callApi('statistics.get',this.statisticsRequest(),{force,onSnapshot:result=>applyStatistics(result,true)}))
       .then(result => applyStatistics(result, false))
       .catch(function (error) {
         if (!isCurrent()) return

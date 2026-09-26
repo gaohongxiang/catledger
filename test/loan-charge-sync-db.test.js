@@ -60,7 +60,10 @@ test('A2 到期同步：漏月、未授权、起算、并发回滚及回执',{sk
    await h.configure(pending,{fromDate:'2020-01-01',throughDate:'2029-12-31',firstChargeDate:'2020-01-31'})
    const first=await h.sync(pending);assert.equal(first.createdCount,40);assert.equal(first.hasMore,true)
    const second=await h.sync(pending);assert.equal(second.createdCount,36);assert.equal(second.hasMore,false)
-   const view=await h.state(pending);assert.equal(view.items.filter(i=>i.state==='recorded').length,76)
+   const view=await h.state(pending);assert.equal(view.items.length,40);assert.ok(view.nextCursor)
+   let cursor=view.nextCursor,pages=1
+   while(cursor){const next=await h.api('loans.chargePlan',{loanId:pending.loanId,cursor});assert.ok(next.items.length<=40);view.items.push(...next.items);cursor=next.nextCursor;pages++}
+   assert.equal(pages,3);assert.equal(view.items.filter(i=>i.state==='recorded').length,76)
    assert.ok(view.items.filter(i=>i.state==='recorded').every(i=>i.chargeDate<='2026-04-30'))
    assert.equal(view.items.find(i=>i.chargeDate==='2024-02-29').state,'recorded')
    await assert.rejects(h.sync(pending,{cutoff:'2030-01-01'}),{publicCode:'VALIDATION_ERROR'})

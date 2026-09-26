@@ -15,7 +15,7 @@ function payload(data) {
   const result = { mode, kind: drawdown ? 'drawdown' : 'repayment', assetAccountId: asset.accountId,
     totalMinor: money.yuanToMinor(data.totalYuan), occurredLocalAt: data.date + 'T' + data.time + ':00', timezoneOffsetMinutes: new Date().getTimezoneOffset(), confirmed: true,
     allocations: data.allocations.map(a => {
-      if (drawdown && a.kind === 'installment') throw new Error('消费分期不登记重复借款到账')
+      if (drawdown && a.kind === 'installment' && a.originKind!=='cash_borrowing') throw new Error('消费分期不登记重复借款到账')
       const value = { loanId: a.loanId, version: a.version, principalMinor: money.yuanToMinor(a.principalYuan, { allowZero: true }),
         interestMinor: drawdown ? '0' : money.yuanToMinor(a.interestYuan, { allowZero: true }), feeMinor: drawdown ? '0' : money.yuanToMinor(a.feeYuan, { allowZero: true }) }
       for (const field of ['interest','fee']) {
@@ -24,10 +24,14 @@ function payload(data) {
         if (value[field + 'Minor'] !== '0' && value[field + 'Treatment'] === 'expense' && !category) throw new Error('请选择利息或费用的支出分类')
         value[field + 'CategoryId'] = value[field + 'Minor'] !== '0' && value[field + 'Treatment'] === 'expense' ? category.id : null
       }
+      value.chargeAllocations=(a.chargeChoices||[]).filter(c=>c.selected).map(c=>({chargeId:c.chargeId,component:c.component,amountMinor:money.yuanToMinor(c.paidYuan)}))
+      if(!a.chargeChoices&&a.chargeAllocations)value.chargeAllocations=a.chargeAllocations
       return value
     }) }
   const total = result.allocations.reduce((sum, a) => addMinor(sum, addMinor(a.principalMinor, addMinor(a.interestMinor, a.feeMinor))), '0')
-  if (total !== result.totalMinor) throw new Error('本金、利息、费用之和必须等于实际总额')
+  const unallocated=money.yuanToMinor(data.unallocatedYuan||'0',{allowZero:true})
+  if(unallocated!=='0'){if(mode!=='associate'||drawdown)throw new Error('未分配余额仅用于关联信用卡整单付款');result.unallocatedMinor=unallocated}
+  if (addMinor(total,unallocated) !== result.totalMinor) throw new Error('本金、利息、费用与未分配余额之和必须等于实际总额')
   if (data.sourceTiming) Object.assign(result, data.sourceTiming)
   if (data.source) result.source = data.source
   if (data.editingPayment) Object.assign(result, data.editingPayment)
@@ -42,10 +46,10 @@ function review(data) {
   } catch (error) { return error.message }
 }
 function paymentView(result) {
-  return { payment: Object.assign({}, result.payment, { totalText: money.formatMinor(result.payment.totalMinor),
+  return { unallocatedText:money.formatMinor(result.unallocatedMinor||'0'),unallocatedYuan:money.minorToYuan(result.unallocatedMinor||'0'),payment: Object.assign({}, result.payment, { totalText: money.formatMinor(result.payment.totalMinor),
     occurredText: String(result.payment.occurredLocalAt || '').slice(5, 16).replace('T', ' '),
     kindText: result.payment.kind === 'drawdown' ? '放款' : '还款', statusText: result.payment.status === 'active' ? '已登记' : '已撤销' }),
-  allocations: result.allocations.map(a => Object.assign({}, a, { principalText: money.formatMinor(a.principalMinor),
+  allocations: result.allocations.map(a => Object.assign({}, a, { chargeAllocations:(result.chargeAllocations||[]).filter(c=>c.loanId===a.loanId).map(c=>({chargeId:c.chargeId,component:c.component,amountMinor:String(c.amountMinor)})),principalText: money.formatMinor(a.principalMinor),
     interestText: money.formatMinor(a.interestMinor), feeText: money.formatMinor(a.feeMinor) })),
   transactions: result.transactions.map(t => Object.assign({}, t, { amountText: money.formatMinor(t.amountMinor),
     flowText: t.type === 'expense' ? '支出' : '转账' })) }

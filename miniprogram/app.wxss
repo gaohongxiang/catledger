@@ -355,3 +355,5 @@ button[disabled].danger-button { color: var(--theme-text-muted); background: var
 .sheet-error { margin-top: 16rpx; color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); }
 .sheet-save { width: 100%; margin-top: 24rpx; }
 .sheet-cancel { width: 100%; margin-top: 12rpx; }
+
+.charge-sync-note { margin: 16rpx 24rpx; padding: 20rpx; border: 1rpx solid var(--theme-line, #dce8e2); border-radius: 12rpx; color: var(--theme-text-muted, #78877f); font-size: 24rpx; }

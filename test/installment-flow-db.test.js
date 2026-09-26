@@ -7,7 +7,7 @@ const {localServices,call}=require('./helpers/local-services')
 const plan={scheduleMethod:'flat',scheduleTerms:12,measurementKind:'repayment',repaymentMinor:'203909',
   firstPaymentDate:'2025-10-31',kind:'installment',name:'合成分期',baselinePrincipalMinor:'2400000',baselineDate:'2025-10-01',generatePlan:true,confirmed:true,
   installmentSetup:{schema:1,originalPrincipalMinor:'2400000',historicalPaidTerms:0,recordType:'credit_card',customRecordType:'',discountKind:null,discountValue:null}}
-test('统一分期：真实 MySQL、最小权限、费用去重、连续进度、迟关联与用户隔离',{skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:120000},async t=>{
+test('统一分期：真实 MySQL、最小权限、费用去重、独立进度、迟关联与用户隔离',{skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:120000},async t=>{
   const lab=await isolatedMysql()
   try {
     const apiPool=await lab.role('api',grants.api),importPool=await lab.role('import',grants.importer),logs=[]
@@ -41,9 +41,9 @@ test('统一分期：真实 MySQL、最小权限、费用去重、连续进度�
       const repeat=await imp('financeUpdates.post',request);assert.equal(repeat.status,result.status)
       return {...result,testUpdateId:update.updateId}
     }
-    await t.test('建立方案和补十期进度均不生成本金或费用流水',async()=>{
+    await t.test('建立方案和单期确认第10期均不生成流水，也不扩散到前9期',async()=>{
       assert.deepEqual(await expense(),{amount:'0',n:0});await progress(10)
-      const result=await view();assert.equal(result.summary.paidPeriods,10);assert.equal(result.items.length,12);assert.equal(result.items[10].stateText,'缺少账单，待补充')
+      const result=await view();assert.equal(result.summary.paidPeriods,1);assert.equal(result.items.length,12);assert.ok(result.items.slice(0,9).every(row=>!row.complete));assert.equal(result.items[10].stateText,'付款待确认')
       assert.deepEqual(await expense(),{amount:'0',n:0})
     })
     await t.test('手动补记本期费用仅一次，重复/并发请求复用结果',async()=>{
@@ -59,13 +59,13 @@ test('统一分期：真实 MySQL、最小权限、费用去重、连续进度�
       const linked=await api('loans.linkInstallmentSource',{requestId:randomUUID(),loanId:first.loanId,version,itemId:sources.items[0].itemId});version=linked.version
       assert.equal(linked.linked,2);assert.deepEqual(await expense(),{amount:'3909',n:1})
       const detail=await api('loans.installment',{loanId:first.loanId,periodNumber:10})
-      assert.equal(detail.sources.length,3);assert.ok(detail.sources.every(s=>s.active));assert.equal((await view()).summary.paidPeriods,10)
+      assert.equal(detail.sources.length,3);assert.ok(detail.sources.every(s=>s.active));assert.equal((await view()).summary.paidPeriods,1)
     })
     let finalBill
     await t.test('建立明确归属后后续期自动匹配，异常期不被后续期抹掉',async()=>{
       await progress(9,{status:'unpaid'});finalBill=await bank(12,'interest')
       const result=await view();version=result.loanVersion
-      assert.equal(result.summary.paidPeriods,11);assert.equal(result.items[8].stateText,'已逾期');assert.deepEqual(await expense(),{amount:'7818',n:2})
+      assert.equal(result.summary.paidPeriods,1);assert.equal(result.items[8].stateText,'已逾期');assert.deepEqual(await expense(),{amount:'7818',n:2})
       assert.equal((await api('loans.installmentSources',{})).items.length,0)
     })
     await t.test('不同银行流水即使同分期同一期同额，也拒绝吞并并原子回滚',async()=>{
@@ -79,8 +79,8 @@ test('统一分期：真实 MySQL、最小权限、费用去重、连续进度�
       const impact=await imp('financeUpdates.undoImpact',{updateId:finalBill.testUpdateId})
       await imp('financeUpdates.undo',{requestId:randomUUID(),updateId:finalBill.testUpdateId,version:finalBill.appliedVersion,previewToken:impact.previewToken})
       const result=await view();version=result.loanVersion
-      assert.equal(result.summary.completedThrough,10);assert.equal(result.summary.paidPeriods,9)
-      assert.equal(result.items[8].stateText,'已逾期');assert.equal(result.items[10].stateText,'缺少账单，待补充')
+      assert.equal(result.summary.completedThrough,0);assert.equal(result.summary.paidPeriods,1)
+      assert.equal(result.items[8].stateText,'已逾期');assert.equal(result.items[10].stateText,'付款待确认')
       assert.deepEqual(await expense(),{amount:'3909',n:1})
       assert.equal((await api('loans.installment',{loanId:first.loanId,periodNumber:12})).sources[0].active,false)
     })
@@ -91,7 +91,7 @@ test('统一分期：真实 MySQL、最小权限、费用去重、连续进度�
       assert.equal((await api('loans.list',{})).items.length,1)
       assert.equal((await api('loans.installmentSources',{})).items[0].loanId,null)
       const second=await api('loans.create',{...plan,accountId,sourceItemId:source.itemId,requestId:randomUUID()})
-      assert.equal((await api('loans.installments',{loanId:second.loanId})).summary.paidPeriods,4)
+      assert.equal((await api('loans.installments',{loanId:second.loanId})).summary.paidPeriods,0)
       const changed=await api('loans.setInstallmentProgress',{requestId:randomUUID(),loanId:second.loanId,version:second.version,periodNumber:5,status:'completed',bookCosts:true})
       const detail=await api('loans.installment',{loanId:second.loanId,periodNumber:5}),item=detail.sources[0]
       const removed=await api('loans.removeInstallmentItem',{requestId:randomUUID(),loanId:second.loanId,version:changed.version,itemId:item.itemId,itemVersion:item.version})
@@ -139,7 +139,7 @@ test('统一分期：真实 MySQL、最小权限、费用去重、连续进度�
       rebuilt=await api('loans.create',{...plan,accountId,sourceItemId:source.itemId,requestId:randomUUID()})
       const detail=await api('loans.installment',{loanId:rebuilt.loanId,periodNumber:10})
       assert.equal(detail.sources.length,3);assert.equal(new Set(detail.sources.filter(s=>s.component==='interest').map(s=>s.transactionId)).size,1)
-      assert.equal((await api('loans.installments',{loanId:rebuilt.loanId})).summary.paidPeriods,10)
+      assert.equal((await api('loans.installments',{loanId:rebuilt.loanId})).summary.paidPeriods,0)
       assert.deepEqual(await expense(),before)
       const ids=new Set(detail.sources.map(row=>row.itemId))
       assert.ok((await api('loans.installmentSources',{})).items.every(row=>!ids.has(row.itemId)))
@@ -149,7 +149,7 @@ test('统一分期：真实 MySQL、最小权限、费用去重、连续进度�
       await bank(10,'interest');assert.deepEqual(await expense(),before)
       await bank(11,'principal');await bank(11,'interest')
       const result=await api('loans.installments',{loanId:rebuilt.loanId});rebuilt.version=result.loanVersion
-      assert.equal(result.summary.paidPeriods,11);assert.deepEqual(await expense(),{amount:'11727',n:3})
+      assert.equal(result.summary.paidPeriods,0);assert.deepEqual(await expense(),{amount:'11727',n:3})
     })
     await t.test('解除关联中途失败整体回滚，同请求重试成功；删后新期账单可关联另一笔分期',async()=>{
       let fail=true
@@ -170,7 +170,7 @@ test('统一分期：真实 MySQL、最小权限、费用去重、连续进度�
       assert.ok(source)
       const fresh=await api('loans.create',{...plan,accountId,requestId:randomUUID()})
       const linked=await api('loans.linkInstallmentSource',{requestId:randomUUID(),loanId:fresh.loanId,version:fresh.version,itemId:source.itemId})
-      assert.equal((await api('loans.installments',{loanId:fresh.loanId})).summary.paidPeriods,12)
+      assert.equal((await api('loans.installments',{loanId:fresh.loanId})).summary.paidPeriods,0)
       assert.deepEqual(await expense(),before)
       // 旧记录即使通过兼容接口恢复，也不能抢回已经重新关联的账单。
       const old=(await api('loans.get',{loanId:rebuilt.loanId})).loan
@@ -203,7 +203,7 @@ test('统一分期：真实 MySQL、最小权限、费用去重、连续进度�
       const manual=sources.find(row=>row.origin==='manual'&&row.periodNumber===10)
       assert.ok(manual);assert.equal(manual.referenceKey,null)
       const before=await expense(),fresh=await api('loans.create',{...plan,accountId,sourceItemId:manual.itemId,requestId:randomUUID()})
-      assert.equal((await api('loans.installments',{loanId:fresh.loanId})).summary.paidPeriods,12)
+      assert.equal((await api('loans.installments',{loanId:fresh.loanId})).summary.paidPeriods,0)
       assert.equal((await api('loans.installment',{loanId:fresh.loanId,periodNumber:10})).sources.length,3)
       assert.deepEqual(await expense(),before)
     })

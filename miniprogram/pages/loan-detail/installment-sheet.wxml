@@ -21,7 +21,7 @@
         <button wx:if="{{!selectedPeriod.complete}}" class="primary-button" data-status="completed" bindtap="setPeriodStatus" disabled="{{saving}}" loading="{{saving}}">确认已完成至第 {{selectedPeriod.term}} 期</button>
 
         <text class="installment-note">确认进度只更新期次状态。消费本金不再计支出。</text>
-        <button wx:if="{{periodCanBook}}" class="secondary-button" bindtap="bookPeriodCosts" disabled="{{saving}}">补记本期利息 / 费</button>
+        <button wx:if="{{periodCanBook}}" class="secondary-button" bindtap="bookPeriodCosts" disabled="{{saving}}">确认费用授权与覆盖</button>
         <button class="ld-link" bindtap="togglePeriodAdjust" disabled="{{saving}}">{{periodAdjustOpen ? '收起调整' : '调整本期记录'}}</button>
         <view wx:if="{{periodAdjustOpen}}" class="installment-inline"><button data-status="unpaid" bindtap="setPeriodStatus" disabled="{{saving}}">本期未还</button><button data-status="partial" bindtap="setPeriodStatus" disabled="{{saving}}">部分未还</button><button data-status="clear" bindtap="setPeriodStatus" disabled="{{saving}}">清除本期标记</button></view>
         <button wx:if="{{periodAdjustOpen}}" class="ld-link" bindtap="editInstallmentPeriod" disabled="{{saving}}">本期金额或日期有变化</button>

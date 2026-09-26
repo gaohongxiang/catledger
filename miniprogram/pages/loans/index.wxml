@@ -1,4 +1,5 @@
 <view class="page-canvas loan-page {{themeClass}}" style="{{themeStyle}}">
+  <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
   <page-head has-actions class="content-inset" title="{{scopeAccount ? scopeAccount.name : scoped ? '账户贷款' : '全部贷款与还款'}}" copy="{{scoped ? '本账户的贷款与分期，每笔单独核对还款。' : '跨账户查看贷款、分期和待关联还款。'}}"><button wx:if="{{!scoped || (scopeAccount && !scopeAccount.archived)}}" disabled="{{loading}}" size="mini" class="head-cta" bindtap="createLoan" aria-label="新增贷款"><view class="head-cta-label"><image src="/assets/icons/plus-on-accent.svg" mode="aspectFit" /><text>新增贷款</text></view></button></page-head>
   <view wx:if="{{pendingInstallmentCount}}" class="loan-entry" bindtap="openInstallmentSources" aria-role="button"><view class="loan-entry-main"><text class="loan-entry-title">账单里的分期待补充</text><text class="loan-entry-note">新建分期或归入已有记录</text></view><chevron-icon size="{{24}}" /></view>
   <view wx:if="{{pendingRepaymentCount > 0}}" class="loan-entry" bindtap="openUnassigned" hover-class="loan-entry-hover" aria-role="button" aria-label="待关联还款，{{pendingRepaymentCount}}笔">

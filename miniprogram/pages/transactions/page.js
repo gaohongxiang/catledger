@@ -86,7 +86,7 @@ return Object.assign({
 
   onShow: function () {
     this._returningToAccount = false
-    if (this._readSession !== undefined && !pageReadSession.isCurrent(this)) this.setData({ importFilter: null })
+    if (this._readSession !== undefined && this._readSession !== readCache.getSession()) this.setData({ importFilter: null })
     beginRead(this)
     if (accountMode && this._accountEntrySession !== readCache.getSession()) {
       this.setData({ returnAccountId: '', accountFilters: [{ accountId: '', name: '全部账户' }], accountFilterIndex: 0, transactions: [], hasLoaded: false, loggedIn: app.hasLoginApproval(), errorMessage: '登录状态已变化，请返回账户列表重新进入' })
@@ -138,6 +138,7 @@ return Object.assign({
     }
   },
 
+  onHide: function(){pageReadSession.end(this)},
   onUnload: function () { pageReadSession.end(this) },
 
   prepareAndLoad: function (options) {
@@ -149,7 +150,8 @@ return Object.assign({
     const self = this
     const force = Boolean(options && options.force)
     // 两个读模型独立完成；目录失败只影响筛选项，不清空已成功的列表。
-    const catalog = api.callApi('catalog.get', {}, { force }).then(function (result) {
+    const sync=require('../../services/loan-charge-sync').beforePage(this,isCurrent)
+    const catalog = sync.then(()=>api.callApi('catalog.get', {}, { force })).then(function (result) {
       if (!isCurrent()) return
       const selectedAccount = self.data.accountFilters[self.data.accountFilterIndex]
       const selectedCategory = self.data.categoryFilters[self.data.categoryFilterIndex]
@@ -171,7 +173,8 @@ return Object.assign({
       if (isCurrent()) self.setData({ catalogError: '筛选项暂未同步，下拉可重试' })
     })
     this.setData({ catalogError: '' })
-    this._prepareLoad = Promise.all([catalog, this.loadTransactions(false, { force, reuse: true })])
+    this._prepareLoad = sync.then(()=>Promise.all([catalog,this.loadTransactions(false,{force,reuse:true})]))
+      .catch(function(error){if(isCurrent()&&error.code!=='READ_CANCELLED')self.setData({errorMessage:error.message})})
       .finally(function () { if (isCurrent()) self._prepareLoad = null })
     return this._prepareLoad
   },

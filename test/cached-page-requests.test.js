@@ -195,14 +195,14 @@ test('切换会话后迟到目录结果不回填', async () => {
   assert.equal(h.app.globalData.uid, '')
 })
 
-test('首页、明细、账本、我的首次一轮仅4次请求，后续切页0请求且无加载闪烁', async () => {
+test('首页、明细、账本、我的首次四个摘要请求及两次费用检查，后续仅费用检查且无加载闪烁', async () => {
   const h = runtime()
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
-  assert.deepEqual(h.calls.map(call => call.action).sort(), ['catalog.get', 'dashboard.get', 'profile.get', 'transactions.list'])
+  assert.deepEqual(h.calls.map(call => call.action).sort(), ['catalog.get', 'dashboard.get', 'loans.dueCharges', 'loans.dueCharges', 'profile.get', 'transactions.list'])
   h.calls.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) h.page(name).loading.length = 0
   for (const name of ['index', 'transactions', 'ledger', 'profile']) await visit(h, name)
-  assert.equal(h.calls.length, 0)
+  assert.deepEqual(h.calls.map(c=>c.action), ['loans.dueCharges','loans.dueCharges'])
   for (const name of ['index', 'transactions', 'ledger', 'profile']) assert.equal(h.page(name).loading.includes(true), false, name)
 })
 
@@ -213,10 +213,10 @@ test('返回明细保留后续分页，显式刷新读取服务器并更新分�
   assert.equal(page.data.transactions.length, 2)
   h.calls.length = 0
   await visit(h, 'transactions')
-  assert.equal(h.calls.length, 0)
+  assert.deepEqual(h.calls.map(c=>c.action), ['loans.dueCharges'])
   assert.equal(page.data.transactions.length, 2)
   await page.prepareAndLoad({ force: true })
-  assert.equal(h.calls.length, 2)
+  assert.deepEqual(h.calls.map(c=>c.action), ['loans.dueCharges','loans.dueCharges','catalog.get','transactions.list'])
   assert.equal(page.data.transactions.length, 1)
 })
 
@@ -343,8 +343,8 @@ test('加载下一页期间发生写入时重读首屏，不把旧分页与新�
   assert.equal(page.data.month, '2025-01')
   assert.equal(page.data.cashFlowTrend[0].month, currentMonth)
   assert.equal(page.data.selectedTrend.month, currentMonth)
-  assert.deepEqual(h.calls.map(call => call.action), ['statistics.get'])
-  assert.equal(h.calls[0].data.trendEndMonth, currentMonth)
+  assert.deepEqual(h.calls.map(call => call.action), ['loans.dueCharges','statistics.get'])
+  assert.equal(h.calls[1].data.trendEndMonth, currentMonth)
   await page.chooseMonth({ detail: { value: '2025-02' } })
   assert.equal(page.data.cashFlowTrend[0].month, currentMonth)
   assert.equal(page.data.selectedTrend.month, currentMonth)

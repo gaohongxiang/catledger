@@ -88,6 +88,7 @@ module.exports = {
       modeIndex: reconcile ? 2 : 0, confirmed: false, savedMessage: '', errorMessage: '' }))
     if (reconcile) this.setData({ sourceTiming: null })
     this.review()
+    return this.loadAllocationCharges()
   },
   cancelEdit() {
     if (this.data.saving || this.data.hasPending) return

@@ -21,10 +21,12 @@ function decision(data) {
     if (!loan) throw new Error('请选择要关联的贷款，或明确选择暂不关联')
     value.loanId = loan.loanId; value.loanVersion = loan.version
   }
+  value.chargeAllocations=(data.chargeChoices||[]).filter(c=>c.selected).map(c=>({chargeId:c.chargeId,component:c.component,amountMinor:money.yuanToMinor(c.paidYuan)}))
+  if(value.mode==='defer'&&['interest','fee'].some(f=>value[f+'Minor']!=='0'&&value[f+'Treatment']==='accrued'))throw new Error('清偿已记费用请先选择对应贷款及具体费用')
   return value
 }
 function fields(value, categories) {
-  const result = { linkIndex:value.mode === 'associate' ? 1 : 0 }
+  const result = { linkIndex:value.mode === 'associate' ? 1 : 0,chargeAllocations:value.chargeAllocations||[] }
   for (const field of ['principal','interest','fee']) result[field + 'Yuan'] = value[field + 'Minor'] == null ? '' : money.minorToYuan(value[field + 'Minor'])
   for (const field of ['interest','fee']) {
     result[field + 'Index'] = value[field + 'Treatment'] === 'accrued' ? 1 : 0

@@ -31,7 +31,7 @@ function createLoanPaymentService({ getPool, selectLoan }) {
       const value = await selectPayment(connection, uid, context.data.paymentId)
       const links = await paymentLinks(connection, uid, value.paymentId), transactions = []
       for (const link of links) transactions.push(transactionToPublic(await selectTransaction(connection, uid, link.transactionId)))
-      const [chargeAllocations]=await connection.execute('SELECT charge_id AS chargeId,amount_minor AS amountMinor FROM catledger_loan_charge_allocations WHERE uid=? AND payment_id=?',[uid,value.paymentId])
+      const [chargeAllocations]=await connection.execute('SELECT a.charge_id AS chargeId,a.amount_minor AS amountMinor,c.component,k.loan_id AS loanId FROM catledger_loan_charge_allocations a JOIN catledger_loan_charges c ON c.uid=a.uid AND c.charge_id=a.charge_id JOIN catledger_loan_charge_contracts k ON k.uid=c.uid AND k.contract_id=c.contract_id WHERE a.uid=? AND a.payment_id=?',[uid,value.paymentId])
       const allocations=await selectAllocations(connection,uid,value.paymentId)
       const allocated=allocations.reduce((sum,a)=>sum+BigInt(a.principalMinor)+BigInt(a.interestMinor)+BigInt(a.feeMinor),0n)
       return { chargeAllocations,unallocatedMinor:String(BigInt(value.totalMinor)-allocated),payment: value, repayment: await require('./repayment-booking').createRepaymentBooking(ledgerError).detail(connection, uid, value.paymentId), allocations, transactions }

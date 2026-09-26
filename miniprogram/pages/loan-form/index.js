@@ -8,7 +8,7 @@ const scheduleForm=require('../loan-detail/schedule-form')
 const planModel=require('../loan-plan/model')
 const model=require('./model')
 Page({
-  data:{ sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
+  data:{baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
     schedule:Object.assign(scheduleForm.blank(),{measurementIndex:1}),paidTerms:'0',baselineDate:'',typeIndex:0,customRecordType:'',
     typeOptions:model.TYPE_OPTIONS,discountOptions:model.DISCOUNT_OPTIONS,methods:scheduleForm.METHOD_OPTIONS,quotes:scheduleForm.QUOTE_OPTIONS,
     discountIndex:0,discountValue:'',feeIndex:0,feeOptions:['一次性费用','每期费用'],advancedOpen:false,previewLoading:false,preview:null,remainingText:'',confirmed:false },
@@ -36,7 +36,7 @@ Page({
         const result=await api.callApi('loans.installmentSources',{itemId:this._query.sourceItemId},{force:true});if(!current())return
         const source=result.items[0];if(!source)throw new Error('该账单已关联或状态变化，请返回重新读取')
         accountId=source.accountId
-        this.setData({sourceReady:true,sourceNote:'已识别第 '+source.periodNumber+' 期'+({principal:'本金',interest:'利息',fee:'手续费'}[source.component])+' '+money.formatMinor(source.amountMinor)+'。请补齐总本金、首期日期及还款依据。',...(!this._initialized?{name:source.referenceLabel||'信用卡分期',paidTerms:String(source.periodNumber),typeIndex:1,'schedule.terms':source.totalTerms?String(source.totalTerms):'',baselineDate:source.occurredDate}:{})})
+        this.setData({sourceReady:true,sourceNote:'已识别第 '+source.periodNumber+' 期'+({principal:'本金',interest:'利息',fee:'手续费'}[source.component])+' '+money.formatMinor(source.amountMinor)+'。此行仅证明出账，不确认已还。请补齐总本金、首期日期及还款依据。',...(!this._initialized?{name:source.referenceLabel||'信用卡分期',paidTerms:'0',typeIndex:1,'schedule.terms':source.totalTerms?String(source.totalTerms):'',baselineDate:source.occurredDate}:{})})
       }
       const accountIndex=accounts.findIndex(a=>a.accountId===accountId)
       this.setData({accounts,accountIndex})
@@ -58,6 +58,7 @@ Page({
   input(event){const field=event.currentTarget.dataset.field;if(!['name','principalYuan','paidTerms','customRecordType','discountValue','baselineDate'].includes(field))return;if(this.data.loan&&!['name','customRecordType'].includes(field))return;this.setData({[field]:event.detail.value});if(field==='baselineDate')this.setData({confirmed:false});else if(!['name','customRecordType'].includes(field))this.invalidate()},
   scheduleInput(event){if(this.data.loan)return;const field=event.currentTarget.dataset.field;if(!['terms','ratePercent','repaymentYuan','firstPaymentDate','feeUpfrontYuan','feePerTermYuan'].includes(field))return;this.setData({['schedule.'+field]:event.detail.value});this.invalidate()},
   selectAccount(event){if(!this.data.loan&&!this.data.sourceLocked&&!this.data.accountLocked)this.setData({accountIndex:Number(event.detail.value),confirmed:false})},
+  selectBaselineMode(event){if(this.data.loan||this.data.sourceLocked)return;this.setData({baselineMode:Number(event.detail.value)});this.invalidate()},
   selectType(event){this.setData({typeIndex:Number(event.detail.value)})},
   selectMethod(event){if(this.data.loan)return;const index=Number(event.currentTarget.dataset.index);if(this.data.schedule.measurementIndex===0&&this.data.schedule.quoteIndex===3&&index!==0)return;this.setData({schedule:scheduleForm.selectMethod(this.data.schedule,index)});this.invalidate()},
   selectMeasurement(event){if(this.data.loan)return;this.setData({'schedule.measurementIndex':Number(event.currentTarget.dataset.index)});this.invalidate()},

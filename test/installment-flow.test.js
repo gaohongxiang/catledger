@@ -1,47 +1,43 @@
-const test = require('node:test')
-const assert = require('node:assert/strict')
-const { buildView, updateProgress } = require('../cloudfunctions/catledger-api/src/installment-view')
-const { installmentEvidence } = require('../cloudfunctions/catledger-import/src/profiles/bank-installment')
-const loan = { kind:'installment',scheduleMethod:'flat',scheduleTerms:12,measurementKind:'repayment',repaymentMinor:'203909',
-  feePerTermMinor:null,feeUpfrontMinor:null,firstPaymentDate:'2025-10-31',
-  installmentSetup:{schema:1,originalPrincipalMinor:'2400000',historicalPaidTerms:0,recordType:'credit_card',discountKind:null,discountValue:null} }
-test('第 10 期来源推进前十期；缺失 11 期与当前 12 期分开，不编造逾期',()=>{
-  const view=buildView(loan,[],[{periodNumber:10,component:'principal',active:true}],'2026-09-23')
-  assert.equal(view.summary.paidPeriods,10)
-  assert.ok(view.rows.slice(0,10).every(r=>r.complete))
-  assert.equal(view.rows[10].stateText,'缺少账单，待补充')
-  assert.equal(view.rows[11].current,true)
-  assert.equal(view.summary.remainingPrincipalMinor,'400000')
+const test = require('node:test'), assert = require('node:assert/strict')
+const {buildView,updateProgress}=require('../cloudfunctions/catledger-api/src/installment-view')
+const {installmentEvidence}=require('../cloudfunctions/catledger-import/src/profiles/bank-installment')
+const loan={kind:'installment',scheduleMethod:'flat',scheduleTerms:12,measurementKind:'repayment',repaymentMinor:'203909',feePerTermMinor:null,feeUpfrontMinor:null,firstPaymentDate:'2025-10-31',remainingPrincipalMinor:'2400000',installmentSetup:{schema:1,originalPrincipalMinor:'2400000',historicalPaidTerms:0,recordType:'credit_card',discountKind:null,discountValue:null}}
+test('L09 第12期账单只证明出账；单期确认10不扩散，缺11不定逾期',()=>{
+ const items=[{periodNumber:12,component:'principal',active:true}]
+ const before=buildView(loan,[],items,'2026-09-23');assert.equal(before.summary.paidPeriods,0);assert.equal(before.rows[11].billed,true)
+ const progress=updateProgress(loan,{periodNumber:10,status:'completed'}),after=buildView({...loan,progress},[],items,'2026-09-23')
+ assert.equal(after.summary.paidPeriods,1);assert.equal(after.rows[9].complete,true);assert.equal(after.summary.completedThrough,0)
+ assert.equal(after.rows[10].stateText,'付款待确认');assert.equal(after.rows[11].stateText,'已出账，付款待确认')
+ assert.equal(after.summary.remainingPrincipalMinor,'2400000');assert.equal(after.summary.estimatedPrincipalMinor,'2200000')
 })
-test('明确未还、部分未还不被更晚期号覆盖；失效来源不能推进',()=>{
-  const updated={...loan,progress:updateProgress(loan,{periodNumber:9,status:'unpaid'})}
-  const view=buildView(updated,[],[{periodNumber:12,active:true},{periodNumber:10,active:false}],'2026-09-23')
-  assert.equal(view.rows[8].stateText,'已逾期');assert.equal(view.summary.paidPeriods,11)
-  const reverted=buildView(loan,[],[{periodNumber:12,active:false}],'2026-09-23')
-  assert.equal(reverted.summary.paidPeriods,0)
-  const partial=buildView({...loan,progress:{through:12,exceptions:{'9':'partial'}}},[],[],'2026-09-23')
-  assert.equal(partial.rows[8].unpaidPrincipalMinor,'200000')
+test('L09 批量范围需明确确认；保留未还/部分及范围外的单期确认，实付12不扩散',()=>{
+ let progress=updateProgress(loan,{periodNumber:9,status:'unpaid'});progress=updateProgress({...loan,progress},{periodNumber:12,status:'completed'})
+ assert.throws(()=>updateProgress({...loan,progress},{completedThrough:10}),{publicCode:'VALIDATION_ERROR'})
+ progress=updateProgress({...loan,progress},{completedThrough:10,confirmedBatch:true})
+ const view=buildView({...loan,progress},[],[],'2026-09-23')
+ assert.equal(view.summary.paidPeriods,10);assert.equal(view.rows[8].stateText,'已逾期');assert.equal(view.rows[10].complete,false);assert.equal(view.rows[11].complete,true)
+ const actual=buildView(loan,[{periodNumber:12,status:'paid'}],[]);assert.equal(actual.summary.paidPeriods,1);assert.equal(actual.summary.actualPaidPeriods,1)
 })
-test('修改连续进度可以回退手动确认，保留明确异常',()=>{
-  const prior={...loan,progress:{through:12,exceptions:{'12':'completed','9':'unpaid'}}}
-  const next=updateProgress(prior,{completedThrough:10})
-  assert.deepEqual(next,{through:10,exceptions:{'9':'unpaid'}})
-  assert.throws(()=>updateProgress(loan,{completedThrough:13}),{publicCode:'VALIDATION_ERROR'})
+test('L14 模糊旧through保留待核对；明确单期、历史确认和异常均不清零',()=>{
+ const legacy={through:12,exceptions:{'10':'completed','9':'partial'}}
+ const progress=updateProgress({...loan,progress:legacy},{periodNumber:11,status:'unpaid'})
+ assert.deepEqual(progress.legacy,legacy);assert.equal(progress.legacyNeedsReview,true)
+ const view=buildView({...loan,progress},[],[]);assert.equal(view.summary.paidPeriods,1);assert.equal(view.rows[8].unpaidPrincipalMinor,'200000')
+ const historical=buildView({...loan,installmentSetup:{...loan.installmentSetup,historicalPaidTerms:4}},[],[])
+ assert.equal(historical.summary.paidPeriods,4);assert.equal(historical.summary.actualPaidPeriods,0)
+ const confirmed=updateProgress({...loan,progress},{completedThrough:10,confirmedBatch:true});assert.equal(confirmed.legacyNeedsReview,false);assert.deepEqual(confirmed.legacy,legacy)
 })
-test('账单金额差异提示原位处理，取消期不误报缺账单',()=>{
-  const view=buildView(loan,[{periodNumber:11,cancelled:true}], [{periodNumber:10,component:'interest',amountMinor:'3000',active:true}], '2026-09-23')
-  assert.deepEqual(view.rows[9].differences,['interest']);assert.equal(view.rows[9].complete,true)
-  assert.equal(view.rows[9].interestMinor,'3909')
-  assert.equal(view.rows[10].stateText,'已取消');assert.equal(view.rows[10].unpaidInterestMinor,'0')
+test('费用差异与取消状态不改变还款事实',()=>{
+ const view=buildView(loan,[{periodNumber:11,cancelled:true}],[{periodNumber:10,component:'interest',amountMinor:'3000',active:true}],'2026-09-23')
+ assert.deepEqual(view.rows[9].differences,['interest']);assert.equal(view.rows[9].complete,false);assert.equal(view.rows[9].interestMinor,'3909')
+ assert.equal(view.rows[10].stateText,'已取消');assert.equal(view.rows[10].unpaidInterestMinor,'0')
 })
-test('只有明确的信用卡账单解析分期本金，普通贷款现金流保持原语义',()=>{
-  const raw={rawTransactionType:'分期本金',item:'分期编号 SYNTHETIC-A 第10期 共12期'}
-  assert.equal(installmentEvidence(raw),null)
-  const found=installmentEvidence({...raw,bankStatementKind:'credit'})
-  assert.equal(found.periodNumber,10);assert.equal(found.component,'principal');assert.equal(found.totalTerms,12)
-  assert.equal(installmentEvidence({...raw,bankStatementKind:'standard'}),null)
-  const interest=installmentEvidence({...raw,bankStatementKind:'credit',rawTransactionType:'分期利息'})
-  assert.equal(interest.referenceKey,found.referenceKey)
-  assert.equal(interest.component,'interest')
-  assert.equal(installmentEvidence({bankStatementKind:'credit',item:'分期本金及利息 第10期'}),null)
+test('L01 真实放款和扣款不误套分期应还本金例外',()=>{
+ const raw={rawTransactionType:'分期本金',item:'分期编号 SYNTHETIC-A 第10期 共12期'}
+ assert.equal(installmentEvidence(raw),null)
+ const found=installmentEvidence({...raw,bankStatementKind:'credit'});assert.equal(found.periodNumber,10);assert.equal(found.component,'principal');assert.equal(found.totalTerms,12)
+ assert.equal(installmentEvidence({...raw,bankStatementKind:'standard'}),null)
+ for(const type of ['现金分期放款到账','贷款实际扣款'])assert.equal(installmentEvidence({...raw,bankStatementKind:'credit',rawTransactionType:type}),null)
+ const interest=installmentEvidence({...raw,bankStatementKind:'credit',rawTransactionType:'分期利息'});assert.equal(interest.referenceKey,found.referenceKey);assert.equal(interest.component,'interest')
+ assert.equal(installmentEvidence({bankStatementKind:'credit',item:'分期本金及利息 第10期'}),null)
 })

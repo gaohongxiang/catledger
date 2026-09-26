@@ -22,10 +22,11 @@ test('MINI-1915 缓存冷/热/并发/前台/写屏障/失败/换用户计数', a
     const count = h.calls.length, derived = derives, before = state()
     await operation()
     const events = observer.snapshot()
-    const result = { name, requests: h.calls.length - count, responseBytes: events.filter(e => e.event === 'request').reduce((n, e) => n + (e.bytes || 0), 0),
+    const result = { name, requests: h.calls.slice(count).filter(c=>c.action!=='loans.dueCharges').length, dueReads:h.calls.slice(count).filter(c=>c.action==='loans.dueCharges').length, responseBytes: events.filter(e => e.event === 'request').reduce((n, e) => n + (e.bytes || 0), 0),
       setData: events.filter(e => e.event === 'setData').length, setDataBytes: events.filter(e => e.event === 'setData').reduce((n, e) => n + e.bytes, 0),
-      derives: derives - derived, snapshots: events.filter(e => e.event === 'snapshot').length, callbacks: events.filter(e => e.event === 'fresh').length, before, after: state() }
+      derives: derives - derived, snapshots: events.filter(e => e.event === 'snapshot').length, callbacks: events.filter(e => e.event === 'fresh'&&e.action==='dashboard.get').length, before, after: state() }
     assert.equal(result.requests, requests, name)
+    assert.equal(result.dueReads, ['same-key-concurrent','late-read-after-write'].includes(name)?0:1,name+' due check')
     t.diagnostic(JSON.stringify(result))
   }
   await sample('cold-home', () => home.loadDashboard(), 1)
@@ -100,15 +101,16 @@ test('MINI-1915 冷启动持久快照的展示、刷新成功和失败计数', a
     const key = stableKey('dashboard.get', { month: h.load('utils/time').currentMonth() })
     const metrics = () => {
       const events = observer.snapshot()
-      return { requests: h.calls.length, responseBytes: events.filter(e => e.event === 'request').reduce((sum, e) => sum + (e.bytes || 0), 0),
+      return { requests: h.calls.filter(c=>c.action!=='loans.dueCharges').length, dueReads:h.calls.filter(c=>c.action==='loans.dueCharges').length, responseBytes: events.filter(e => e.event === 'request').reduce((sum, e) => sum + (e.bytes || 0), 0),
         setData: events.filter(e => e.event === 'setData').length, setDataBytes: events.filter(e => e.event === 'setData').reduce((sum, e) => sum + e.bytes, 0),
-        derives, snapshots: events.filter(e => e.event === 'snapshot').length, callbacks: events.filter(e => e.event === 'fresh').length,
+        derives, snapshots: events.filter(e => e.event === 'snapshot').length, callbacks: events.filter(e => e.event === 'fresh'&&e.action==='dashboard.get').length,
         fresh: h.cache.snapshot(key).fresh, hasDashboard: home.data.hasDashboard, loading: home.data.loading, error: Boolean(home.data.errorMessage) }
     }
     const loading = home.loadDashboard()
     await tick()
     const beforeResponse = metrics()
     assert.equal(beforeResponse.requests, 1)
+    assert.equal(beforeResponse.dueReads, 1)
     assert.equal(beforeResponse.hasDashboard, true, '新页面在网络返回前展示持久快照')
     assert.equal(beforeResponse.loading, true)
     assert.equal(beforeResponse.error, false)

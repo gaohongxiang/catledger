@@ -36,6 +36,7 @@ module.exports = {
       if (outcome.action === 'loans.archiveInstallment' && outcome.result.archived) { wx.navigateBack(); return }
       this._detailReady = false; this._detailForce = true; this._forceLoanRead = true
       await this.load()
+      return true
     } catch (error) {
       if (current()) this.setData({ periodError: error.message, errorMessage: error.message, hasPending: !!pending.pending() })
     } finally { if (current()) this.setData({ saving: false }) }
@@ -46,24 +47,19 @@ module.exports = {
     return this.installmentWrite('loans.setInstallmentProgress', { loanId: this._loanId, version: selected.loanVersion,
       periodNumber: selected.period.periodNumber, status: event.currentTarget.dataset.status })
   },
-  async bookPeriodCosts() {
-    const selected = this._selectedInstallment
-    if (!selected || this.data.saving || selected.archived) return
-    if (!await confirm({ title: '补记本期利息 / 费', content: '按本期方案补记尚未入账的利息和手续费，并确认完成至本期。已有费用自动复用，本金不会再算支出。', confirmText: '确认补记' })) return
-    if (!session.isCurrent(this)) return
-    return this.installmentWrite('loans.setInstallmentProgress', { loanId: this._loanId, version: selected.loanVersion,
-      periodNumber: selected.period.periodNumber, status: 'completed', bookCosts: true })
-  },
+  bookPeriodCosts(){this.closeInstallment();this.openChargeForm()},
   openProgress() {
     if (!this._detailView || this.data.saving || this.data.loan.archived) return
-    this.setData({ progressOpen: true, progressThrough: String(this._detailView.summary.completedThrough), periodError: '' })
+    this.setData({ progressOpen: true, progressThrough: String(this._detailView.summary.manualThrough), periodError: '' })
   },
   closeProgress() { if (!this.data.saving) this.setData({ progressOpen: false }) },
   progressInput(event) { this.setData({ progressThrough: event.detail.value }) },
-  saveProgress() {
+  async saveProgress() {
     const value = this.data.progressThrough
     if (!/^\d+$/.test(value) || Number(value) > this.data.loan.scheduleTerms) { this.setData({ periodError: '请输入 0 到总期数之间的整数' }); return }
-    return this.installmentWrite('loans.setInstallmentProgress', { loanId: this._loanId, version: this._detailView.loanVersion, completedThrough: Number(value) })
+    const current=session.capture(this)
+    if(!await confirm({title:'批量确认已还范围',content:'将第1至'+value+'期标为人工确认。已知未还、部分未还和范围外单期确认保留；不生成付款或费用。',confirmText:'确认范围'})||!current())return
+    return this.installmentWrite('loans.setInstallmentProgress',{loanId:this._loanId,version:this._detailView.loanVersion,completedThrough:Number(value),confirmedBatch:true})
   },
   openInstallmentSource(event) {
     const source = (this.data.periodSources || []).find(item => item.itemId === event.currentTarget.dataset.id)

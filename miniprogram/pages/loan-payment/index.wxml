@@ -8,7 +8,7 @@
   <block wx:if="{{payment}}">
     <view class="lp-summary">
       <text class="lp-principal money-number">{{payment.totalText}}</text>
-      <text class="lp-note">{{payment.occurredText}} · {{payment.statusText}}</text>
+      <text class="lp-note">{{payment.occurredText}} · {{payment.statusText}}</text><text class="lp-note">整单未分配余额 {{unallocatedText}} 元</text>
     </view>
     <view wx:for="{{allocations}}" wx:key="loanId" class="lp-panel">
       <text class="lp-panel-name">{{item.loanName}}</text>
@@ -56,6 +56,7 @@
     <picker class="lp-field" range="{{accounts}}" range-key="name" value="{{accountIndex < 0 ? 0 : accountIndex}}" bindchange="chooseAccount" disabled="{{saving || sourceTiming}}"><text>{{kindIndex === 1 ? '到账账户' : '付款账户'}}</text><view class="lp-picker"><text class="lp-picker-value">{{accountIndex >= 0 ? accounts[accountIndex].name : '请选择资产账户'}}</text><chevron-icon size="{{24}}" /></view></picker>
     <label class="lp-field"><text>实际总额（元）</text><input class="lp-input money-number" type="digit" value="{{totalYuan}}" maxlength="22" data-field="totalYuan" bindinput="input" disabled="{{saving || sourceTiming}}" placeholder="以实际到账或扣款为准" /></label>
     <view class="lp-time"><picker class="lp-field" mode="date" value="{{date}}" data-field="date" bindchange="input" disabled="{{saving || sourceTiming}}"><text>发生日期</text><view class="lp-picker"><text class="lp-picker-value">{{date || '请选择日期'}}</text><chevron-icon size="{{24}}" /></view></picker><picker class="lp-field" mode="time" value="{{time}}" data-field="time" bindchange="input" disabled="{{saving || sourceTiming}}"><text>时间</text><view class="lp-picker"><text class="lp-picker-value">{{time}}</text><chevron-icon size="{{24}}" /></view></picker></view>
+    <label wx:if="{{modeIndex === 1}}" class="lp-field"><text>整单未分配余额（普通消费等，元）</text><input type="digit" class="lp-input" value="{{unallocatedYuan}}" data-field="unallocatedYuan" bindinput="input" disabled="{{saving}}" /></label>
     <view wx:for="{{allocations}}" wx:for-item="a" wx:for-index="i" wx:key="loanId" class="lp-panel">
       <view class="lp-panel-heading"><text class="lp-panel-name">{{a.loanName}}</text><button wx:if="{{allocations.length > 1}}" class="lp-link lp-link-compact" data-id="{{a.loanId}}" bindtap="removeLoan" disabled="{{saving}}">移除此项</button></view>
       <label class="lp-field"><text>本金（元）</text><input class="lp-input money-number" type="digit" maxlength="22" value="{{a.principalYuan}}" data-index="{{i}}" data-field="principalYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="请填写已确认本金" /></label>
@@ -66,6 +67,10 @@
         <label class="lp-field"><text>费用（元）</text><input class="lp-input money-number" type="digit" maxlength="22" value="{{a.feeYuan}}" data-index="{{i}}" data-field="feeYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="明确没有请填 0" /></label>
         <picker class="lp-field" range="{{treatments}}" value="{{a.feeIndex}}" data-index="{{i}}" data-field="feeIndex" bindchange="editAllocation" disabled="{{saving}}"><text>费用处理</text><view class="lp-picker"><text class="lp-picker-value">{{treatments[a.feeIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
         <category-picker wx:if="{{a.feeIndex === 0}}" class="category-picker-control lp-field" range="{{categories}}" value="{{a.feeCategoryIndex}}" data-index="{{i}}" data-field="feeCategoryIndex" bindchange="editAllocation" disabled="{{saving}}"><text>费用支出分类</text><view class="lp-picker"><text class="lp-picker-value">{{a.feeCategoryIndex >= 0 ? categories[a.feeCategoryIndex].name : '非零费用需选择'}}</text><chevron-icon size="{{24}}" /></view></category-picker>
+        <text class="lp-note">选择费用依据，并填写本次清偿金额。已记费用选“只清偿”；尚未记费选“本次记支出”。分项金额须与所选依据合计一致。</text>
+        <checkbox-group data-index="{{i}}" bindchange="selectPaymentCharges"><label wx:for="{{a.chargeChoices}}" wx:for-item="charge" wx:for-index="j" wx:key="chargeId" class="lp-source"><checkbox value="{{charge.chargeId}}" checked="{{charge.selected}}" disabled="{{saving}}" /><text>{{charge.label}}</text></label></checkbox-group>
+        <block wx:for="{{a.chargeChoices}}" wx:for-item="charge" wx:for-index="j" wx:key="chargeId"><label wx:if="{{charge.selected}}" class="lp-field"><text>本次分配（{{charge.component === 'interest' ? '利息' : '费用'}}，元）</text><input class="lp-input" type="digit" value="{{charge.paidYuan}}" data-index="{{i}}" data-charge="{{j}}" bindinput="paymentChargeAmount" disabled="{{saving}}" /></label></block>
+        <button wx:if="{{a.chargeNext}}" class="lp-link" data-id="{{a.loanId}}" bindtap="loadAllocationCharges" disabled="{{saving || loading}}">读取后续费用（保留已选项）</button>
       </block>
     </view>
     <button class="lp-link" bindtap="moreLoans" disabled="{{saving || loading}}">分配给另一笔贷款</button>

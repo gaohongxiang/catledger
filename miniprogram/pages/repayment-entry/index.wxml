@@ -18,7 +18,12 @@
       <category-picker class="category-picker-control" wx:if="{{feeIndex === 0 && feeYuan && feeYuan != '0' && feeYuan != '0.00'}}" range="{{categories}}" value="{{feeCategoryIndex}}" data-field="feeCategoryIndex" bindchange="select" disabled="{{mode === 'pending'}}"><view class="form-row sub-row"><text>费用分类</text><text>{{categories[feeCategoryIndex].name || '请选择支出分类'}}</text></view></category-picker>
       <picker wx:if="{{mode !== 'pending'}}" range="{{linkOptions}}" value="{{linkIndex}}" data-field="linkIndex" bindchange="select"><view class="form-row"><text>贷款关联</text><text>{{linkOptions[linkIndex]}}</text></view></picker>
       <block wx:if="{{linkIndex === 1}}"><picker range="{{loans}}" range-key="name" value="{{loanIndex}}" data-field="loanIndex" bindchange="select"><view class="form-row"><text>关联贷款</text><text>{{loans[loanIndex].name || '请选择已有贷款'}}</text><chevron-icon size="{{22}}" /></view></picker><button wx:if="{{nextLoanCursor}}" class="secondary-button" bindtap="moreLoans">加载更多贷款</button><button class="text-button" bindtap="createLoan">补充贷款资料</button></block>
-      <checkbox-group bindchange="confirm"><label class="confirm-row"><checkbox value="confirmed" checked="{{confirmed}}" color="#BE5B24" /><text>{{mode === 'pending' ? '确认关联这笔已入账还款，不再新增流水' : '确认实际已付，且本息费及其处理方式无误'}}</text></label></checkbox-group>
+      <view wx:if="{{linkIndex === 1 && mode !== 'pending'}}" class="form-card">
+      <text class="form-hint">选择这次实际付款对应的费用；已计入负债的费用不会再次计支出。部分付款请填写本次分配金额。</text>
+      <checkbox-group bindchange="selectChargeChoices"><view wx:for="{{chargeChoices}}" wx:key="chargeId"><label><checkbox value="{{item.chargeId}}" checked="{{item.selected}}" />{{item.label}}</label><input wx:if="{{item.selected}}" type="digit" data-index="{{index}}" value="{{item.paidYuan}}" bindinput="chargeAmount" placeholder="本次清偿金额（元）" /></view></checkbox-group>
+      <button wx:if="{{chargeNext}}" data-next="true" bindtap="loadChargeChoices">下一页费用</button>
+    </view>
+    <checkbox-group bindchange="confirm"><label class="confirm-row"><checkbox value="confirmed" checked="{{confirmed}}" color="#BE5B24" /><text>{{mode === 'pending' ? '确认关联这笔已入账还款，不再新增流水' : '确认实际已付，且本息费及其处理方式无误'}}</text></label></checkbox-group>
     </block>
     <text wx:if="{{mode === 'import' && classification === 0}}" class="form-note">按已确认的转出、转入账户记转账，不生成贷款关联待办。</text>
   </view>

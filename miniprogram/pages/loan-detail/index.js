@@ -20,7 +20,8 @@ function fieldErrorFor(message) {
 Page({
   ...detailReader,
   ...installmentActions,
-  data: { sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
+  ...require('./charge-actions').methods,
+  data: { ...require('./charge-actions').initial,chargeRefundAccounts:[],sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
     periodOpen: false, periodLoading: false, periodError: '', selectedPeriod: null, periodSources: [], periodLegacy: [], periodMoreSources: false, periodCanBook: false, periodEditing: false, periodAdjustOpen: false, periodDraft: null, progressOpen: false, progressThrough: '',
     detail: null, detailLoading: false, detailError: '', periodRows: [], scheduleMore: false, scheduleHistorical: false, guideOpen: false, historyOpen: false,
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
@@ -28,15 +29,16 @@ Page({
     scheduleOpen: false, schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
   onLoad(query) { this._readClosed = false; this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId){this._redirecting=true;wx.redirectTo({url:'/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
   onShow() { if(this._redirecting)return;theme.bindPage(this); return loginGuard.run(this, () => this.load()) },
+  onHide(){pageReadSession.end(this)},
   onUnload() { pageReadSession.end(this) },
   load() {
-    const current = pageReadSession.begin(this, ['periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodAdjustOpen','periodDraft','progressOpen','progressThrough','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','historyOpen','sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule'], ['_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext'])
+    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(['chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodAdjustOpen','periodDraft','progressOpen','progressThrough','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','historyOpen','sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext'])
     if (this._load) return this._load
     const readOptions = { force: !!this._forceLoanRead }; this._forceLoanRead = false
     this.setData({ loading: true, errorMessage: '' })
     const showLoan = (result, snapshot) => { if (current() && result) { this.setData({ loan: present(result.loan), errorMessage: snapshot ? '正在更新，当前显示上次结果' : '' }); this.applyDetailLoan(this.data.loan) } }
     const showSource = result => { if (current()) this.setData({ sourceContext: result && result.transaction ? Object.assign({}, result, { occurredText: String(result.transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' ') }) : result }) }
-    this._load = Promise.all([api.callApi('catalog.get', {}, readOptions), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { ...readOptions, onSnapshot: result => showLoan(result, true) }).then(result => { showLoan(result); return result }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { onSnapshot: showSource }).then(result => { showSource(result); return result }) : Promise.resolve(null)])
+    this._load = require('../../services/loan-charge-sync').beforePage(this,current).then(()=>Promise.all([api.callApi('catalog.get', {}, readOptions), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { ...readOptions, onSnapshot: result => showLoan(result, true) }).then(result => { showLoan(result); return result }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { onSnapshot: showSource }).then(result => { showSource(result); return result }) : Promise.resolve(null)]))
       .then(async ([catalog, result, sourceContext]) => {
         if (!current()) return
         // 并行读取中观察到新全局修订时，补齐先返回的旧目录/来源，避免保存门禁停在旧快照。
@@ -48,7 +50,7 @@ Page({
         getApp().globalData.uid = catalog.uid
         const accounts = catalog.accounts.filter(a => ['credit','other_liability'].includes(a.type) && !a.archived)
         const selected = this.data.accounts[this.data.accountIndex]
-        this.setData({ accounts, sourceContext, accountIndex: selected ? accounts.findIndex(a => a.accountId === selected.accountId) : -1 })
+        this.setData({ accounts,chargeCategories:catalog.categories.filter(c=>c.kind==='expense'&&!c.archived),chargeRefundAccounts:catalog.accounts.filter(a=>!a.archived&&(['cash','bank','wallet','other_asset'].includes(a.type)||result&&a.accountId===result.loan.accountId)), sourceContext, accountIndex: selected ? accounts.findIndex(a => a.accountId === selected.accountId) : -1 })
         if (result) {
           this.setData({ loan: present(result.loan) })
           this.applyDetailLoan(this.data.loan)
@@ -75,7 +77,7 @@ Page({
           }
           catch (error) { if (current()) this.setData({ errorMessage: error.message || '上次操作仍待核实', hasPending: Boolean(pending.pending()) }) }
         }
-        if (current() && this.data.loan) await this.loadDetail()
+        if (current() && this.data.loan)await Promise.all([this.loadDetail(),this.loadCharges()])
       })
       .catch(error => { if (current()) this.setData({ errorMessage: this.data.loan ? '更新未成功，当前显示上次结果；' + (error.message || '请重试') : error.message || '贷款资料暂未加载' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })

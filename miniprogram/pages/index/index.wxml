@@ -1,4 +1,5 @@
 <view class="page-canvas home-page {{themeClass}}" style="{{themeStyle}}">
+  <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
   <view class="home-header home-content-line">
     <view class="home-intro">
       <text class="home-greeting">{{todayLabel}}</text>

@@ -7,7 +7,7 @@ const theme = require('../../theme/service')
 const money = require('../../utils/money')
 const model = require('./model')
 Page({
-  data: { loading:false,saving:false,errorMessage:'',savedMessage:'',mode:'new',payment:null,event:null,assets:[],debts:[],categories:[],
+  data: { chargeChoices:[],chargeAllocations:[],chargeNext:null,loading:false,saving:false,errorMessage:'',savedMessage:'',mode:'new',payment:null,event:null,assets:[],debts:[],categories:[],
     assetIndex:-1,debtIndex:-1,totalYuan:'',date:'',time:'12:00',note:'',principalYuan:'',interestYuan:'',feeYuan:'',
     interestIndex:0,feeIndex:0,interestCategoryIndex:-1,feeCategoryIndex:-1,confirmed:false,
     classification:1,classificationOptions:['普通转账','借款还款'],linkIndex:0,linkOptions:['暂不关联，入账后再处理','关联已有贷款'],
@@ -21,6 +21,7 @@ Page({
     }
   },
   onShow() { return login.run(this,()=>this.load()) },
+  onHide() { session.end(this) },
   onUnload() { session.end(this) },
   async load() {
     const current = session.begin(this,Object.keys(this.data),['_loading'])
@@ -73,6 +74,7 @@ Page({
     if (!['classification','assetIndex','debtIndex','linkIndex','loanIndex','interestIndex','feeIndex','interestCategoryIndex','feeCategoryIndex'].includes(field)) return
     this.setData({ [field]:Number(event.detail.value),confirmed:false })
     if (field === 'debtIndex') return this.loadLoans()
+    if(field==='loanIndex'||field==='linkIndex')return this.loadChargeChoices()
   },
   confirm(event) { this.setData({ confirmed:event.detail.value.includes('confirmed') }) },
   async loadLoans(more = false,selectedId) {
@@ -84,8 +86,26 @@ Page({
       if (!current() || this._loansToken !== token) return
       const loans = more ? this.data.loans.concat(result.items) : result.items
       this.setData({ loans,loanIndex:loans.findIndex(l=>l.loanId === (selectedId || this._query.loanId)),nextLoanCursor:result.nextCursor })
+      await this.loadChargeChoices()
     } catch(error) { if (current() && this._loansToken===token) this.setData({ errorMessage:error.message }) }
   },
+  async loadChargeChoices(event){
+    const loan=this.data.loans[this.data.loanIndex],current=session.capture(this),token=this._chargeToken={}
+    if(!loan||this.data.linkIndex!==1||this.data.mode==='pending'){this.setData({chargeChoices:[],chargeNext:null});return}
+    const next=event&&event.currentTarget&&event.currentTarget.dataset.next
+    if(!next)this.setData({chargeChoices:[],chargeNext:null})
+    try{const view=await api.callApi('loans.chargePlan',{loanId:loan.loanId,pageSize:40,...(next&&this.data.chargeNext?{cursor:this.data.chargeNext}:{})},{force:true})
+      if(!current()||token!==this._chargeToken)return
+      const saved=this.data.chargeChoices,proof=this.data.chargeAllocations
+      const choices=view.items.filter(c=>['planned','recorded','baseline'].includes(c.state)).map(c=>{
+        const old=saved.find(p=>p.chargeId===c.chargeId),prior=proof.find(p=>p.chargeId===c.chargeId)
+        return {chargeId:c.chargeId,component:c.component,selected:old?old.selected:!!prior,paidYuan:old?old.paidYuan:money.minorToYuan(prior?prior.amountMinor:c.outstandingMinor),label:(c.periodNumber?'第'+c.periodNumber+'期':'一次性')+(c.component==='interest'?'利息':'费用')+' · '+(c.state==='planned'?'首次记费':'清偿已有费用')+' '+money.formatMinor(c.outstandingMinor)}
+      })
+      this.setData({chargeChoices:saved.filter(c=>c.selected&&!choices.some(p=>p.chargeId===c.chargeId)).concat(choices),chargeNext:view.nextCursor,['loans['+this.data.loanIndex+'].version']:view.loanVersion})
+    }catch(error){if(current()&&token===this._chargeToken)this.setData({errorMessage:error.message})}
+  },
+  selectChargeChoices(event){const ids=event.detail.value;this.setData({chargeChoices:this.data.chargeChoices.map(c=>({...c,selected:ids.includes(c.chargeId)})),confirmed:false})},
+  chargeAmount(event){const index=Number(event.currentTarget.dataset.index);if(this.data.chargeChoices[index])this.setData({['chargeChoices['+index+'].paidYuan']:event.detail.value,confirmed:false})},
   moreLoans() { return this.loadLoans(true) },
   createLoan() {
     const selected = this.data.loans[this.data.loanIndex]

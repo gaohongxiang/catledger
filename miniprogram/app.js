@@ -51,9 +51,10 @@ App({
     this.globalData.cloudAvailable = true
   },
 
-  onHide: function () { this._readCacheWasHidden = true },
+  onHide: function () { this.globalData.chargeSyncForeground=false;this._readCacheWasHidden = true },
 
   onShow: function () {
+    this.globalData.chargeSyncForeground=true
     require('./services/export-files').cleanup(false)
     if (this._readCacheWasHidden) {
       // 所有页面共用一次轻量版本校验；失败保留旧画面和脏标记。

@@ -49,6 +49,8 @@ function runtime(savedStorage) {
       else if (action === 'accounts.list') result = { accounts: h.accounts || accounts() }
       else if (action === 'dashboard.get') result = { accounts: accounts(), summary, netWorthMinor: balance, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }], recentTransactions: [] }
       else if (action === 'transactions.list') result = { source: data.source || null, transactions: [transaction(data.search || (data.accountId ? data.accountId : data.cursor ? 'row-2' : 'row-1'))], nextCursor: data.cursor ? null : 'page-2', ...(data.cursor ? {} : { summary }) }
+      else if (action === 'loans.dueCharges') result={count:0,amountMinor:'0',cutoff:'2026-09-26',batchLimit:40}
+      else if(action==='loans.chargePlan') result={loanVersion:1,items:[],preview:[],issues:[],priorContracts:[],candidates:[],contract:null,cutoff:'2026-09-26',recordedMinor:'0',unverifiedMinor:'0',nextCursor:null}
       else if (action === 'loans.periods') result = { loanVersion: 1, items: [], summary: {paidPeriods:0,unpaidPrincipalMinor:'0',unpaidInterestMinor:'0',unpaidFeeMinor:'0'}, nextCursor:null }
       else if (action === 'loans.installmentSources') result = { items: [], nextCursor: null }
       else if (action === 'transactions.refundable') result = { transactions: [] }

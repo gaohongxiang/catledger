@@ -127,6 +127,8 @@ Page({
     })
   },
 
+  onHide: function(){pageReadSession.end(this)},
+  onUnload: function(){pageReadSession.end(this)},
   loadDashboard: function (options) {
     const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'netIncomeText', 'trendReady', 'cashFlowTrend', 'accounts', 'recentTransactions'], ['_dashboardLoad'])
     if (this._dashboardLoad || !app.hasLoginApproval()) {
@@ -173,7 +175,7 @@ Page({
             .map(viewModel.transactionView)
         })
     }
-    this._dashboardLoad = this.fetchDashboard(month, { force, onSnapshot: applyDashboard })
+    this._dashboardLoad = require('../../services/loan-charge-sync').beforePage(this,isCurrent).then(()=>this.fetchDashboard(month,{force,onSnapshot:applyDashboard}))
       .then(applyDashboard)
       .catch(function () {
         if (!isCurrent()) return

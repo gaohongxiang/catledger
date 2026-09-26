@@ -5,7 +5,7 @@ const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
 const model = require('./model')
 Page(Object.assign({}, require('./source'), {
-  data: { sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['关联已有账目，保持原构成','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
+  data: {unallocatedYuan:'0',unallocatedText:'0.00', sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['关联已有账目，保持原构成','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
     accounts: [], accountIndex: -1, categories: [], choices: [], nextLoanCursor: null, kindIndex: 0, kinds: ['实际还款','新放款到账'],
     modes: ['登记尚未入账的借还','关联已有账目，保持原构成','更正已有账目的本息费'], modeIndex: 0, source: null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
     sourceMonth: '', nextSourceCursor: null, sourceSelectedCount: 0, editingPayment: null, replacePayment: null,
@@ -55,12 +55,12 @@ Page(Object.assign({}, require('./source'), {
           this.setData(patch)
         }
       }
-      if (current()) await this.loadEntrySource(current)
+      if (current()){await this.loadEntrySource(current);if(!this._paymentId)await this.loadAllocationCharges()}
     }).catch(error => { if (current()) this.setData({ errorMessage: error.message || '借还记录暂未读取' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
     return this._load
   },
-  input(event) { const key = event.currentTarget.dataset.field; if (['totalYuan','date','time'].includes(key)) { this.setData({ [key]: event.detail.value, confirmed: false }); this.review() } },
+  input(event) { const key = event.currentTarget.dataset.field; if (['totalYuan','date','time','unallocatedYuan'].includes(key)) { this.setData({ [key]: event.detail.value, confirmed: false }); this.review() } },
   chooseKind(event) { this.setData({ kindIndex: Number(event.detail.value), confirmed: false }); this.review() },
   chooseAccount(event) { this.setData({ accountIndex: Number(event.detail.value), confirmed: false }); this.review() },
   editAllocation(event) {
@@ -69,6 +69,28 @@ Page(Object.assign({}, require('./source'), {
     const value = field.endsWith('Index') ? Number(event.detail.value) : event.detail.value
     this.setData({ ['allocations[' + index + '].' + field]: value, confirmed: false }); this.review()
   },
+  async loadAllocationCharges(event){
+    const current=session.capture(this),token=this._chargeRead={}
+    const selected=event&&event.currentTarget&&event.currentTarget.dataset.id
+    try{
+      await Promise.all(this.data.allocations.filter(a=>!selected||a.loanId===selected).map(async a=>{
+        const result=await api.callApi('loans.chargePlan',{loanId:a.loanId,pageSize:20,...(selected&&a.chargeNext?{cursor:a.chargeNext}:{})},{force:true})
+        if(!current()||this._chargeRead!==token)return
+        const index=this.data.allocations.findIndex(row=>row.loanId===a.loanId);if(index<0)return
+        const live=this.data.allocations[index],previous=live.chargeChoices||[],proof=live.chargeAllocations||[]
+        const choices=result.items.filter(c=>['planned','recorded','baseline'].includes(c.state)).map(c=>{
+          const saved=previous.find(p=>p.chargeId===c.chargeId),paid=proof.find(p=>p.chargeId===c.chargeId)
+          return {chargeId:c.chargeId,component:c.component,state:c.state,selected:saved?saved.selected:!!paid,paidYuan:saved?saved.paidYuan:require('../../utils/money').minorToYuan(paid?paid.amountMinor:c.outstandingMinor),
+            label:(c.periodNumber?'第'+c.periodNumber+'期':'一次性')+(c.component==='interest'?'利息':'费用')+' · '+(c.state==='planned'?'本次首次记费':'清偿已记费用')+' · 可分配 '+require('../../utils/money').formatMinor(c.outstandingMinor)}
+        })
+        // 翻页保留已选项与金额草稿，不丢掉前页的付款分配。
+        const kept=selected?previous.filter(p=>p.selected&&!choices.some(c=>c.chargeId===p.chargeId)):[]
+        this.setData({['allocations['+index+'].chargeChoices']:kept.concat(choices),['allocations['+index+'].chargeNext']:result.nextCursor,['allocations['+index+'].originKind']:result.contract&&result.contract.originKind})
+      }))
+    }catch(error){if(current()&&this._chargeRead===token)this.setData({errorMessage:error.message||'费用清偿依据未能读取'})}
+  },
+  selectPaymentCharges(event){const index=Number(event.currentTarget.dataset.index),a=this.data.allocations[index];if(!a)return;const ids=event.detail.value;this.setData({['allocations['+index+'].chargeChoices']:(a.chargeChoices||[]).map(c=>({...c,selected:ids.includes(c.chargeId)})),confirmed:false});this.review()},
+  paymentChargeAmount(event){const {index,charge}=event.currentTarget.dataset;if(!this.data.allocations[index]||!this.data.allocations[index].chargeChoices[charge])return;this.setData({['allocations['+index+'].chargeChoices['+charge+'].paidYuan']:event.detail.value,confirmed:false});this.review()},
   review() { this.setData({ reviewText: model.review(this.data) }) },
   allocatePlan(event) { if(this.data.payment) wx.navigateTo({ url: '/pages/loan-plan/index?loanId=' + encodeURIComponent(event.currentTarget.dataset.id) + '&paymentId=' + encodeURIComponent(this.data.payment.paymentId) }) },
   confirm(event) { this.setData({ confirmed: event.detail.value.includes('confirmed') }) },
@@ -88,7 +110,7 @@ Page(Object.assign({}, require('./source'), {
     if (!loan || this.data.allocations.some(a => a.loanId === loan.loanId)) return
     if (this.data.allocations.length >= 20) { this.setData({ errorMessage: '一次最多分配 20 笔贷款' }); return }
     this.setData({ allocations: this.data.allocations.concat(model.allocation(loan)), choices: [], nextLoanCursor: null, confirmed: false })
-    this.review()
+    this.review();return this.loadAllocationCharges()
   },
   removeLoan(event) { if (this.data.allocations.length > 1) this.setData({ allocations: this.data.allocations.filter(a => a.loanId !== event.currentTarget.dataset.id), confirmed: false }); this.review() },
   accept(outcome) {

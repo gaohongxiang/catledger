@@ -12,8 +12,8 @@ const { attachSource } = require('./installment-link')
 
 async function loadView(c,uid,loan) {
   const [periods]=await c.execute(PERIOD_SQL+' WHERE p.uid=? AND p.loan_id=? GROUP BY p.uid,p.period_id ORDER BY p.period_number LIMIT 601',[uid,loan.loanId])
-  const [items]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.loan_id=? AND i.canonical=1 AND i.active=1 ORDER BY i.period_number LIMIT 1801',[uid,loan.loanId])
-  if (periods.length>600 || items.length>1800) throw ledgerError('LOAN_SOURCE_TOO_LARGE')
+  const [items]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.loan_id=? AND i.active=1 ORDER BY i.period_number LIMIT 3601',[uid,loan.loanId])
+  if (periods.length>600 || items.length>3600) throw ledgerError('LOAN_SOURCE_TOO_LARGE')
   return buildView(loan,periods.map(publicPeriod),items.map(publicItem))
 }
 async function populateTracking(c,uid,loans) {
@@ -21,7 +21,7 @@ async function populateTracking(c,uid,loans) {
   if(!tracked.length)return loans
   const ids=tracked.map(l=>l.loanId),marks=ids.map(()=>'?').join(',')
   const [periods]=await c.execute(PERIOD_SQL+` WHERE p.uid=? AND p.loan_id IN (${marks}) GROUP BY p.uid,p.period_id`,[uid,...ids])
-  const [items]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.loan_id IN (${marks}) AND i.canonical=1 AND i.active=1`,[uid,...ids])
+  const [items]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.loan_id IN (${marks}) AND i.active=1`,[uid,...ids])
   const summaries=new Map(tracked.map(loan=>[loan.loanId,buildView(loan,periods.filter(p=>p.loanId===loan.loanId).map(publicPeriod),items.filter(i=>i.loanId===loan.loanId).map(publicItem)).summary]))
   return loans.map(loan=>({...loan,installmentSummary:summaries.get(loan.loanId)||null}))
 }

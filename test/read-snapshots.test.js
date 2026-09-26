@@ -44,7 +44,7 @@ test('首页后台更新成功不闪失败提示，真正失败后点击重试�
   h.respond=null
   const before=h.calls.length,retry=page.loadDashboard({currentTarget:{}})
   await tick()
-  assert.equal(h.calls.length,before+1,'点击重试必须重新联网')
+  assert.deepEqual(h.calls.slice(before).map(c=>c.action),['loans.dueCharges','dashboard.get'],'重试先核实费用再读取摘要')
   assert.equal(page.data.loading,true)
   assert.equal(page.data.errorMessage,'')
   assert.equal(page.data.netWorthText,previous)

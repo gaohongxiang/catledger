@@ -39,8 +39,9 @@ function createPayload(data, preview) {
   if (!data.confirmed || !preview || preview.summary.remainingPrincipalMinor == null) throw new Error('请先核对剩余本金和后续期次，再勾选确认')
   if (!data.baselineDate) throw new Error('请选择开始核对日期')
   const input=previewInput(data); delete input.principalMinor
-  return Object.assign(input,{ name:String(data.name).trim(),institution:null,kind:'installment',accountId:account.accountId,
-    baselinePrincipalMinor:preview.summary.remainingPrincipalMinor,baselineDate:data.baselineDate,startDate:null,endDate:null,
+  if(data.baselineMode===1&&Number(data.paidTerms)!==0)throw new Error('新现金借款尚未到账，历史已还期数应为 0')
+  return Object.assign(input,{ ...(data.baselineMode===1?{originKind:'cash_borrowing'}:{}),name:String(data.name).trim(),institution:null,kind:'installment',accountId:account.accountId,
+    baselinePrincipalMinor:data.baselineMode===1?'0':preview.summary.remainingPrincipalMinor,baselineDate:data.baselineDate,startDate:null,endDate:null,
     repaymentMethod:scheduleForm.METHOD_LABELS[input.scheduleMethod],generatePlan:true,confirmed:true })
 }
 module.exports={TYPE_OPTIONS,DISCOUNT_OPTIONS,today,previewInput,fields,createPayload}

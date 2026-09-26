@@ -65,7 +65,7 @@ test('长列表只追加30行，选择态走路径补丁，前台未变恢复分
   assert.ok(patches.every(p => !Object.hasOwn(p, 'transactions')))
   const before = h.calls.length, rows = page.data.transactions
   const validation = h.api.revalidateForeground(); page.onShow(); await page.prepareAndLoad(); await validation
-  assert.equal(h.calls.length, before + 1); assert.equal(page.data.transactions, rows); assert.equal(page.data.transactions.length, 300)
+  assert.equal(h.calls.length, before + 2); assert.deepEqual(h.calls.slice(before).map(c=>c.action).sort(),['loans.dueCharges','reads.validate']); assert.equal(page.data.transactions, rows); assert.equal(page.data.transactions.length, 300)
 })
 
 test('跨页版本变化自动重读首屏，不拼接、不沿用选择；刷新失败保留已确认删除', async () => {

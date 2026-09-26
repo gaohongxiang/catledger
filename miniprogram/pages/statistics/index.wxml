@@ -1,4 +1,5 @@
 <view class="page-canvas statistics-page {{themeClass}}" style="{{themeStyle}}">
+  <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
   <view class="month-switcher">
     <view class="month-arrow" role="button" aria-label="上一个月" bindtap="previousMonth"><chevron-icon direction="left" size="{{30}}" /></view>
     <picker mode="date" fields="month" value="{{month}}" bindchange="chooseMonth"><text class="month-current money-number">{{monthLabel}}</text></picker>
