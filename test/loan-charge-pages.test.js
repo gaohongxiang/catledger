@@ -81,7 +81,7 @@ function detail(){
   if(action==='loans.get')return ok({loan})
   if(action==='loans.previewPlan')return ok({periods:[{dueDate:'2026-12-31'}]})
   if(action==='loans.installments')return ok({loanVersion:2,items:[],summary:{paidPeriods:0,manualThrough:0,completedThrough:0,unpaidPrincipalMinor:'600000',unpaidInterestMinor:'24000',unpaidFeeMinor:'0'},nextCursor:null})
-  if(action==='loans.chargePlan'&&data.configuration)return ok({previewAmountMinor:'24000',previewCount:12})
+  if(action==='loans.chargePlan'&&data.configuration)return ok({preview:[],previewAmountMinor:'24000',previewCount:12,duePreviewCount:6,duePreviewMinor:'12000'})
   if(action==='loans.configureCharges')return ok({contractId:'synthetic-contract',version:3})
  }
  p.onLoad({loanId:loan.loanId});return {h,p}
@@ -104,4 +104,21 @@ test('A4 显式批量确认可取消；单期保持单期，保存失败保留�
  p.setData({chargeEdit:{chargeId:'fee',amountYuan:'18'},chargeImpact:{canChange:true,deltaText:'-2.00',previewToken:'signed'}});p._chargeChange={loanId:loan.loanId,chargeId:'fee',operation:'adjust',amountMinor:'1800'}
  const original=h.respond;h.respond=(action,data)=>action==='loans.changeCharge'?{ok:false,error:{code:'LOAN_TRANSACTION_LOCKED',message:'已有付款'}}:original(action,data)
  const failed=p.confirmChargeChange();h.modals.at(-1).success({confirm:true});await failed;assert.equal(p.data.chargeEdit.amountYuan,'18');assert.match(p.data.errorMessage,/付款/)
+})
+
+test('A5 授权预览迟到或确认期间改范围，不得把旧授权提交；翻页不能复活已清预览',async()=>{
+ const {h,p}=detail();await p.load();p.openChargeForm()
+ p.setData({'chargeDraft.originIndex':0,'chargeDraft.coverageIndex':0,'chargeDraft.fixed':true,'chargeDraft.interestCategoryIndex':0})
+ const base=h.respond;let release
+ h.respond=(action,data)=>action==='loans.chargePlan'&&data.configuration?new Promise(resolve=>release=resolve):base(action,data)
+ const old=p.authorizeCharges();await tick();p.chargeInput({currentTarget:{dataset:{field:'fromDate'}},detail:{value:'2026-04-01'}})
+ release(ok({preview:[],duePreviewCount:3,duePreviewMinor:'6000',previewAmountMinor:'24000'}));await old
+ assert.equal(h.modals.length,0);assert.equal(p.data.chargePreview,null)
+ h.respond=base;const confirmation=p.authorizeCharges();await tick()
+ p.chargeInput({currentTarget:{dataset:{field:'fromDate'}},detail:{value:'2026-05-01'}});h.modals.at(-1).success({confirm:true});await confirmation
+ assert.equal(h.calls.some(c=>c.action==='loans.configureCharges'),false)
+ p._chargePreviewInput={loanId:loan.loanId};p.setData({chargePreview:{next:'synthetic-cursor',items:[]}})
+ h.respond=(action,data)=>action==='loans.chargePlan'&&data.cursor?new Promise(resolve=>release=resolve):base(action,data)
+ const page=p.moreChargePreview();await tick();p.closeChargeForm();release(ok({preview:[],nextCursor:null}));await page
+ assert.equal(p.data.chargePreview,null);assert.equal(p.data.chargeFormOpen,false)
 })

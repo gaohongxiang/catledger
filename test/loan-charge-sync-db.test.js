@@ -8,7 +8,15 @@ test('A2 到期同步：漏月、未授权、起算、并发回滚及回执',{sk
   let loan
   await t.test('L02 一月四月已有费用，只补二三月，1～4月80元，无本金或银行卡变化',async()=>{
    loan=await h.create();const jan=await h.expense('2026-01-01'),apr=await h.expense('2026-04-01')
-   await h.configure(loan,{coverage:[{chargeKey:'period:1:interest',transactionId:jan.transactionId},{chargeKey:'period:4:interest',transactionId:apr.transactionId}]})
+   const coverage=[{chargeKey:'period:1:interest',transactionId:jan.transactionId},{chargeKey:'period:4:interest',transactionId:apr.transactionId}]
+   const configuration={...h.authorization,interestCategoryId:h.categoryId,coverage}
+   const preview=await h.api('loans.chargePlan',{loanId:loan.loanId,configuration,pageSize:2})
+   assert.equal(preview.duePreviewCount,2);assert.equal(preview.duePreviewMinor,'4000');assert.equal(preview.recordedMinor,'0')
+   assert.deepEqual(preview.preview.map(p=>p.previewState),['covered','due'])
+   const next=await h.api('loans.chargePlan',{loanId:loan.loanId,configuration,pageSize:2,cursor:preview.nextCursor})
+   assert.deepEqual(next.preview.map(p=>p.previewState),['due','covered'])
+   await assert.rejects(h.api('loans.chargePlan',{loanId:loan.loanId,configuration:{...configuration,fromDate:'2026-04-01'},cursor:preview.nextCursor}),{publicCode:'CONFLICT'})
+   await h.configure(loan,{coverage})
    const q=h.measure(),start=Date.now(),result=await h.sync(loan)
    assert.equal(result.createdCount,2);assert.equal(result.amountMinor,'4000');assert.deepEqual(result.created.map(i=>i.chargeDate),['2026-02-01','2026-03-01'])
    const view=await h.state(loan);assert.equal(view.recordedMinor,'8000');assert.equal(view.unverifiedMinor,'4000')

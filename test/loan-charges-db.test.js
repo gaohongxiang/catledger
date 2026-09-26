@@ -60,6 +60,10 @@ test('A1 收费身份、授权与历史覆盖：真实 MySQL / 最小权限',{sk
    const view=await api('loans.chargePlan',{loanId:third.loanId})
    assert.equal(view.items.filter(i=>i.state==='covered').length,12);assert.equal(view.recordedMinor,'24000')
    assert.equal(view.items.filter(i=>i.transactionId===tx.transactionId).length,1)
+   const input={loanId:third.loanId,chargeId:view.items.find(i=>i.transactionId===tx.transactionId).chargeId,operation:'suppress'}
+   const impact=await api('loans.chargeImpact',input)
+   assert.equal(impact.dependencies.coveredCount,12);assert.equal(impact.canChange,false)
+   await assert.rejects(api('loans.changeCharge',{...input,requestId:randomUUID(),confirmed:true,previewToken:impact.previewToken}),{publicCode:'LOAN_TRANSACTION_LOCKED'})
   })
   await t.test('L17 身份取可信会话，跨用户及新表越权写被拒绝，审计只追加',async()=>{
    const other=localServices({apiPool,importPool,subject:'synthetic-loan-charge-other'});await call(other.api,'bootstrap')

@@ -18,6 +18,7 @@ const DUE_FROM = `FROM catledger_loan_charges f
     AND f.charge_date<=JSON_UNQUOTE(JSON_EXTRACT(k.authorization_json,'$.throughDate'))
     AND (JSON_UNQUOTE(JSON_EXTRACT(k.authorization_json,'$.mode'))='auto'
       OR (? IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(k.authorization_json,'$.mode'))='once' AND k.contract_id=?))
+    AND (? IS NULL OR k.contract_id=?)
     AND (? IS NULL OR k.loan_id=?)
     AND NOT EXISTS(SELECT 1 FROM catledger_loan_periods p WHERE p.uid=k.uid AND p.loan_id=k.loan_id
       AND p.period_number=f.period_number AND p.cancelled=1)
@@ -31,12 +32,19 @@ function scope(data,cutoff,uid) {
   const contractId=data.confirmed===true&&typeof data.contractId==='string'?data.contractId:null
   if (data.contractId && !contractId) throw ledgerError('VALIDATION_ERROR')
   const loanId=data.loanId||null
-  return [uid,cutoff,contractId,contractId,loanId,loanId]
+  return [uid,cutoff,contractId,contractId,contractId,contractId,loanId,loanId]
 }
-function createLoanChargeSync({getPool,now=Date.now}) {
+async function validateScope(c,uid,data) {
+  const {validateId}=require('./transaction-domain')
+  if(data.loanId){const [[loan]]=await c.execute('SELECT loan_id FROM catledger_loans WHERE uid=? AND loan_id=?',[uid,validateId(data.loanId)]);if(!loan)throw ledgerError('NOT_FOUND')}
+  if(data.contractId){const [[contract]]=await c.execute('SELECT loan_id AS loanId FROM catledger_loan_charge_contracts WHERE uid=? AND contract_id=?',[uid,validateId(data.contractId)]);if(!contract)throw ledgerError('NOT_FOUND');if(data.loanId&&contract.loanId!==data.loanId)throw ledgerError('LOAN_SOURCE_MISMATCH')}
+}
+function createLoanChargeSync({getPool,now=Date.now,enabled=()=>process.env.CATLEDGER_LOAN_SYNC_DISABLED!=='1'}) {
   async function dueCharges(context) {
     return executeLedgerRead({getPool,...context,consistentSnapshot:true,operation:async(c,uid)=>{
       const cutoff=today(now()),values=scope(context.data,cutoff,uid)
+      if(!enabled())throw ledgerError('LOAN_CHARGE_PAUSED')
+      await validateScope(c,uid,context.data)
       const [[row]]=await c.execute('SELECT COUNT(*) AS count,COALESCE(SUM(f.amount_minor),0) AS amount '+DUE_FROM,values)
       return {cutoff,count:Number(row.count),amountMinor:String(row.amount),batchLimit:40}
     }})
@@ -44,6 +52,8 @@ function createLoanChargeSync({getPool,now=Date.now}) {
   async function syncCharges(context) {
     return executeIdempotentMutation({getPool,...context,action:'loans.syncCharges',operation:async(c,uid,data)=>{
       const cutoff=today(now()),limit=data.limit==null?40:data.limit,values=scope(data,cutoff,uid)
+      if(!enabled())throw ledgerError('LOAN_CHARGE_PAUSED')
+      await validateScope(c,uid,data)
       if(!Number.isInteger(limit)||limit<1||limit>40)throw ledgerError('VALIDATION_ERROR')
       const [due]=await c.execute(`SELECT f.charge_id AS chargeId,f.contract_id AS contractId,f.component,
         f.amount_minor AS amountMinor,f.charge_date AS chargeDate,f.category_id AS categoryId,

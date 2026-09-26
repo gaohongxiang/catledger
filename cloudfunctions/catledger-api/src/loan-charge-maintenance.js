@@ -24,7 +24,8 @@ function createLoanChargeMaintenance({getPool,selectLoan,now=Date.now}) {
     }
     const target=['adjust','distinct','refund'].includes(data.operation)?amount(event?event.amountMinor:data.amountMinor):item.amountMinor
     const dependencies=await store.dependencies(c,uid,item)
-    let blocked=dependencies.settledMinor!=='0'||dependencies.refundCount>0||dependencies.paymentCount>0||dependencies.sourceCount>0
+    let blocked=dependencies.settledMinor!=='0'||dependencies.refundCount>0||dependencies.paymentCount>0||dependencies.sourceCount>0||dependencies.coveredCount>0
+    if(data.operation==='suppress')blocked=blocked||!['planned','paused','recorded'].includes(item.state)
     if(data.operation==='distinct')blocked=!event
     if(data.operation==='refund')blocked=item.state!=='recorded'||!item.transactionId||item.deletedAt!=null
     if(data.operation==='restore')blocked=blocked||item.state!=='suppressed'

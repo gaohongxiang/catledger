@@ -233,9 +233,10 @@ test('贷款/账目/期次更改使衔接查询缓存失效，原普通记账不
 
 test('贷款首页真实待办数量来自服务端；零时入口隐藏',async()=>{
   let count=0
-  const h=runtime('loans',()=>({ items:[],nextCursor:null,pendingRepaymentCount:count }))
-  h.page.onLoad();await h.page.loadLoans();assert.equal(h.page.data.pendingRepaymentCount,0)
-  count=2;await h.page.loadLoans(true);assert.equal(h.page.data.pendingRepaymentCount,2)
+  const h=require('./helpers/read-runtime').runtime(),page=h.page('loans')
+  h.respond=action=>action==='loans.list'?{ok:true,data:{items:[],nextCursor:null,pendingRepaymentCount:count}}:undefined
+  page.onLoad();await page.loadLoans();assert.equal(page.data.pendingRepaymentCount,0)
+  count=2;await page.loadLoans(true);assert.equal(page.data.pendingRepaymentCount,2)
   assert.match(fs.readFileSync(path.join(__dirname,'../miniprogram/pages/loans/index.wxml'),'utf8'),/wx:if="{{pendingRepaymentCount > 0}}"/)
 })
 

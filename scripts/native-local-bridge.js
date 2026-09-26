@@ -28,6 +28,20 @@ async function main() {
       occurredLocalAt: '2026-09-01T10:00:00', timezoneOffsetMinutes: -480 })
     await call(services.api, 'accounts.createBatch', { requestId: randomUUID(), accounts: Array.from({ length: 20 }, (_, i) => ({ type: i === 19 ? 'credit' : 'wallet', name: '合成备用账户' + String(i + 1).padStart(2, '0') })) })
     const update = await prepareSyntheticUpdate(services, 121, 'SYNTHETIC-NATIVE')
+    let loanState={}
+    if(process.argv[3]==='loans') {
+      const api=(action,data)=>call(services.api,action,data)
+      const credit=await api('accounts.create',{requestId:randomUUID(),name:'合成分期信用卡',type:'credit',openingDisplayBalanceMinor:'600000',occurredLocalAt:'2026-01-01T00:00:00',timezoneOffsetMinutes:-480})
+      const bank=await api('accounts.create',{requestId:randomUUID(),name:'合成还款银行卡',type:'bank',openingDisplayBalanceMinor:'9000000',occurredLocalAt:'2026-01-01T00:00:00',timezoneOffsetMinutes:-480})
+      const categoryId=identity.categories.find(c=>c.kind==='expense').id
+      const loan=await api('loans.create',{...require('../test/helpers/loan-charges').plan,requestId:randomUUID(),accountId:credit.accountId})
+      const coverage=[]
+      for(const month of ['01','04']){
+        const txn=await api('transactions.create',{requestId:randomUUID(),type:'expense',sourceAccountId:credit.accountId,categoryId,amountMinor:'2000',occurredLocalAt:'2026-'+month+'-01T12:00:00',timezoneOffsetMinutes:-480})
+        coverage.push({chargeKey:'period:'+Number(month)+':interest',transactionId:txn.transactionId})
+      }
+      loanState={loanId:loan.loanId,creditAccountId:credit.accountId,bankAccountId:bank.accountId,categoryId,coverage}
+    }
     server = http.createServer(async (request, response) => {
       response.setHeader('Content-Type', 'application/json; charset=utf-8')
       if (request.url !== '/' + key || request.method !== 'POST') { response.writeHead(404); response.end('{}'); return }
@@ -46,9 +60,9 @@ async function main() {
     })
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     const state = { endpoint: 'http://127.0.0.1:' + server.address().port + '/' + key, updateId: update.updateId,
-      accountId: account.accountId, uid: identity.uid, categories: identity.categories, source: 'local synthetic MySQL; not cloud acceptance' }
+      ...loanState,accountId: account.accountId, uid: identity.uid, categories: identity.categories, source: 'local synthetic MySQL; not cloud acceptance' }
     fs.writeFileSync(stateFile, JSON.stringify([state]), { mode: 0o600 })
-    process.stdout.write('Native local bridge ready: 121 synthetic rows, 21 accounts, separate runtime roles.\n')
+    process.stdout.write('Native local bridge ready: 121 synthetic rows, '+(loanState.loanId?23:21)+' accounts, separate runtime roles.\n')
     process.once('SIGUSR1', () => { process.stdout.write(JSON.stringify({ kind: 'native-local-traces', traces }) + '\n') })
   } catch (error) { await close(); throw error }
 }

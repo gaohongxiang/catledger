@@ -28,6 +28,7 @@ function authorization(data) {
       data.fixedConfirmed !== true || data.coverageConfirmed !== true || data.dateConfirmed !== true) fail('VALIDATION_ERROR')
   const value = { schema:1, mode:data.mode, fromDate:date(data.fromDate), throughDate:date(data.throughDate),
     firstChargeDate:date(data.firstChargeDate), historyChoice:data.historyChoice,
+    upfrontChargeDate:data.upfrontChargeDate?date(data.upfrontChargeDate):null,
     baselineCoveredThrough:data.baselineCoveredThrough ? date(data.baselineCoveredThrough) : null,
     interestCategoryId:data.interestCategoryId || null, feeCategoryId:data.feeCategoryId || null,
     fixedConfirmed:true, coverageConfirmed:true, dateConfirmed:true }

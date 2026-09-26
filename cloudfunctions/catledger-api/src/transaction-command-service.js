@@ -172,6 +172,7 @@ async function selectTransaction(connection, uid, transactionId, { forUpdate = f
 }
 
 function ensureEditable(row, version) {
+  if(row.origin==='loan_plan'&&row.deletedAt==null)throw ledgerError('LOAN_TRANSACTION_LOCKED')
   if (row.deletedAt != null || row.origin !== 'manual' || !MANUAL_TYPES.has(row.type)) {
     throw ledgerError('NOT_FOUND')
   }

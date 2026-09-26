@@ -23,7 +23,7 @@ const ITEM_SELECT = `SELECT i.item_id AS itemId,i.account_id AS accountId,i.loan
 function publicItem(row) {
   const reviewed = row.eventStatus==='excluded' && row.updateStatus==='posted' && Number(row.historicalSource)===1
   const valid = Boolean(row.active) && (!row.eventId || row.updateStatus==='posted' && ['posted','corrected'].includes(row.eventStatus) || reviewed) &&
-    (row.component === 'principal' || row.transactionId && row.transactionDeleted == null && row.transactionType === 'expense' &&
+    (row.component === 'principal' || row.coverageState==='baseline'&&String(row.coveredAmount)===String(row.amountMinor) || row.transactionId && row.transactionDeleted == null && row.transactionType === 'expense' &&
       (row.transactionAccount === row.accountId || row.registeredTransactionId === row.transactionId) && (String(row.transactionAmount) === String(row.amountMinor) || row.coverageState === 'covered' && row.coveringTransactionId === row.transactionId && String(row.coveredAmount) === String(row.amountMinor)))
   return { itemId:row.itemId,accountId:row.accountId,loanId:row.loanId,referenceKey:row.referenceKey,referenceLabel:row.referenceLabel,
     periodNumber:Number(row.periodNumber),totalTerms:row.totalTerms==null?null:Number(row.totalTerms),component:row.component,
@@ -95,7 +95,7 @@ async function prepareImport(c,uid,event,identityIds,reviewedTransactionId=null)
   if (!reviewedTransactionId) await assertCostSource(c,uid,{...evidence,eventId:event.eventId,identityId},canonical)
   return { ...evidence,accountId:event.ledgerAccountId,loanId:chargeMatch && chargeMatch.loanId || loan && loan.loanId || previous && previous.loanId || null,
     amountMinor:String(event.amountMinor),occurredDate:event.localDate,origin:'import',eventId:event.eventId,identityId,
-    chargeMatch,existingItem:previous,canonicalItem:canonical,reuseTransactionId:chargeMatch && chargeMatch.transactionId || canonical && canonical.transactionId,
+    chargeMatch,skipFinancial:chargeMatch&&chargeMatch.state==='baseline',existingItem:previous,canonicalItem:canonical,reuseTransactionId:chargeMatch && chargeMatch.transactionId || canonical && canonical.transactionId,
     reuseTransactionVersion:chargeMatch && chargeMatch.transactionVersion || canonical && canonical.transactionVersion }
 }
 async function persistImport(c,uid,prepared,transactionId) {

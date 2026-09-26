@@ -12,12 +12,14 @@ const CHARGE_SQL = `SELECT f.charge_id AS chargeId,f.contract_id AS contractId,f
   t.version AS transactionVersion,t.deleted_at AS deletedAt,t.amount_minor AS transactionAmount,
   COALESCE((SELECT SUM(a.amount_minor) FROM catledger_loan_charge_allocations a
     JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id AND p.status='active'
-    WHERE a.uid=f.uid AND a.charge_id=f.charge_id),0) AS settledMinor
+    WHERE a.uid=f.uid AND a.charge_id=f.charge_id),0) AS settledMinor,
+  COALESCE((SELECT SUM(r.amount_minor) FROM catledger_transactions r WHERE r.uid=f.uid AND r.original_transaction_id=f.transaction_id AND r.deleted_at IS NULL),0) AS refundMinor
   FROM catledger_loan_charges f LEFT JOIN catledger_transactions t ON t.uid=f.uid AND t.transaction_id=f.transaction_id`
 function publicCharge(row) {
   return {...row, amountMinor:String(row.amountMinor),settledMinor:String(row.settledMinor || '0'),
+    refundMinor:String(row.refundMinor||'0'),netAmountMinor:String(BigInt(row.amountMinor)-BigInt(row.refundMinor||'0')),
     version:Number(row.version),planVersion:Number(row.planVersion),periodNumber:row.periodNumber==null?null:Number(row.periodNumber),
-    transactionVersion:Number(row.transactionVersion || 0),outstandingMinor:String(BigInt(row.amountMinor)-BigInt(row.settledMinor || '0'))}
+    transactionVersion:Number(row.transactionVersion || 0),outstandingMinor:String([BigInt(row.amountMinor)-BigInt(row.settledMinor||'0')-BigInt(row.refundMinor||'0'),0n].reduce((a,b)=>a>b?a:b))}
 }
 async function contract(c,uid,loanId) {
   const [[row]]=await c.execute(CONTRACT_SQL+' WHERE uid=? AND loan_id=?',[uid,loanId])
@@ -38,17 +40,17 @@ async function audit(c,uid,contractId,chargeId,action,snapshot) {
     VALUES(?,?,?,?,?,?)`,[uid,randomUUID(),contractId,chargeId||null,action,JSON.stringify(snapshot)])
 }
 async function dependencies(c,uid,item) {
-  if (!item.transactionId) return {settledMinor:item.settledMinor,refundCount:0,sourceCount:0,paymentCount:0}
   const [[row]]=await c.execute(`SELECT
     (SELECT COUNT(*) FROM catledger_transactions WHERE uid=? AND original_transaction_id=? AND deleted_at IS NULL) AS refundCount,
     (SELECT COUNT(*) FROM catledger_economic_event_transactions WHERE uid=? AND transaction_id=? AND superseded_at IS NULL) AS sourceCount,
-    (SELECT COUNT(*) FROM catledger_loan_payment_transactions WHERE uid=? AND active_transaction_id=?) AS paymentCount`,
-    [uid,item.transactionId,uid,item.transactionId,uid,item.transactionId])
+    (SELECT COUNT(*) FROM catledger_loan_payment_transactions WHERE uid=? AND active_transaction_id=?) AS paymentCount,
+    (SELECT COUNT(*) FROM catledger_loan_charges WHERE uid=? AND covered_by_charge_id=?) AS coveredCount`,
+    [uid,item.transactionId,uid,item.transactionId,uid,item.transactionId,uid,item.chargeId])
   return {settledMinor:item.settledMinor,...Object.fromEntries(Object.entries(row).map(([k,v])=>[k,Number(v)]))}
 }
 async function assertUnencumbered(c,uid,item,{sources=false}={}) {
   const dep=await dependencies(c,uid,item)
-  if (dep.settledMinor!=='0'||dep.refundCount||dep.paymentCount||(!sources&&dep.sourceCount)) fail('LOAN_TRANSACTION_LOCKED')
+  if (dep.settledMinor!=='0'||dep.refundCount||dep.paymentCount||dep.coveredCount||(!sources&&dep.sourceCount)) fail('LOAN_TRANSACTION_LOCKED')
   return dep
 }
 async function assertNoCharges(c,uid,ids) {

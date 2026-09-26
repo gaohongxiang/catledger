@@ -73,6 +73,8 @@ test('A3 付款守恒及费用维护',{skip:!process.env.CATLEDGER_TEST_DB_HOST,
    const impact=await h.api('loans.chargeImpact',input);assert.equal(impact.deltaMinor,'-200')
    await h.api('loans.changeCharge',{...input,requestId:randomUUID(),confirmed:true,previewToken:impact.previewToken})
    const after=await amounts();assert.equal(after.asset-before.asset,200n);assert.equal(after.expenses-before.expenses,-200n)
+   const refunded=(await h.state(loan)).items.find(c=>c.chargeId===fee.chargeId)
+   assert.equal(refunded.refundMinor,'200');assert.equal(refunded.netAmountMinor,'1800');assert.equal(refunded.outstandingMinor,'0');assert.equal(refunded.settledMinor,'2000')
    loan=await get(loan)
    await h.api('loans.endCharges',{requestId:randomUUID(),loanId:loan.loanId,version:loan.version,reason:'settled',confirmed:true})
    const state=await h.state(loan);assert.equal(state.items.filter(c=>c.state==='cancelled').length,8)

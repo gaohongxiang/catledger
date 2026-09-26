@@ -580,7 +580,8 @@ function createFinanceUpdatePosting({ getPool }) {
           const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid || Boolean(event.fieldSources.loanRepayment)
           if (allocation && existing) throw importError('IDENTITY_CONFLICT')
           let transactions
-          if (existing) { transactions = [{ transactionId: existing.transactionId, role: event.economicNature === ECONOMIC_NATURE.REFUND ? 'refund_transaction' : 'primary' }]; reused += 1 }
+          if(prepared&&prepared.skipFinancial){if(existing)throw importError('LOAN_SOURCE_MISMATCH');transactions=[]}
+          else if (existing) { transactions = [{ transactionId: existing.transactionId, role: event.economicNature === ECONOMIC_NATURE.REFUND ? 'refund_transaction' : 'primary' }]; reused += 1 }
           else if (event.economicNature === ECONOMIC_NATURE.REFUND) {
             if (!refundContext) {
               await flush()

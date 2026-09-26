@@ -33,9 +33,10 @@ function createBatchDelete({ getPool }) {
           ORDER BY transaction_id FOR UPDATE`, [uid, ...part])
         rows.push(...selected)
       }
-      if (rows.length !== ids.length || rows.some(row => !['manual', 'import'].includes(row.origin) || !MANUAL_TYPES.has(row.type))) throw ledgerError('NOT_FOUND')
+      if (rows.length !== ids.length) throw ledgerError('NOT_FOUND')
       if (rows.some(row => Number(row.version) !== versions.get(row.transactionId))) throw ledgerError('CONFLICT')
       await assertNoLoanTransactions(connection, uid, ids)
+      if (rows.some(row => !['manual', 'import'].includes(row.origin) || !MANUAL_TYPES.has(row.type))) throw ledgerError('NOT_FOUND')
       // 按整组判断：退款与原消费可以一起删除，组外退款不能失去原消费。
       for (const part of chunks(ids)) {
         const [refunds] = await connection.execute(`SELECT transaction_id AS transactionId FROM catledger_transactions

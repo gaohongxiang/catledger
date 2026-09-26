@@ -15,10 +15,11 @@ async function prepare(c,uid,event,evidence,loanId) {
   if(!rows[0])fail('LOAN_COVERAGE_REQUIRED')
   const item=store.publicCharge(rows[0])
   if(item.component!==evidence.component || item.periodNumber!==null && item.periodNumber!==evidence.periodNumber)fail('LOAN_SOURCE_MISMATCH')
-  if(['suppressed','cancelled','paused','baseline'].includes(item.state))fail('LOAN_CHARGE_PAUSED')
+  if(['suppressed','cancelled','paused'].includes(item.state))fail('LOAN_CHARGE_PAUSED')
   if(item.amountMinor!==String(event.amountMinor))fail('LOAN_CHARGE_DIFFERENCE')
   let financial=item
   if(item.state==='covered')financial=await store.charge(c,uid,item.coveredByChargeId)
+  if(item.state==='covered'&&financial.state!=='recorded')fail('LOAN_CHARGE_PAUSED')
   if(financial.state==='recorded'&&(financial.deletedAt!=null||financial.transactionAmount!=financial.amountMinor))fail('LOAN_SOURCE_MISMATCH')
   const [sources]=await c.execute(`SELECT i.source_identity_id AS identityId,i.source_event_id AS eventId,e.status,u.status AS updateStatus
     FROM catledger_loan_charge_sources s JOIN catledger_installment_items i ON i.uid=s.uid AND i.item_id=s.item_id
@@ -36,7 +37,7 @@ async function persist(c,uid,match,itemId,transactionId) {
   const [[existing]]=await c.execute('SELECT charge_id AS chargeId FROM catledger_loan_charge_sources WHERE uid=? AND item_id=?',[uid,itemId])
   if(existing&&existing.chargeId!==match.chargeId)fail('LOAN_SOURCE_MISMATCH')
   if(!existing)await c.execute('INSERT INTO catledger_loan_charge_sources(uid,charge_id,item_id) VALUES(?,?,?)',[uid,match.chargeId,itemId])
-  if(match.state!=='covered')await c.execute("UPDATE catledger_loan_charges SET state='recorded',basis='actual',transaction_id=?,version=version+1 WHERE uid=? AND charge_id=?",[transactionId,uid,match.chargeId])
+  if(!['covered','baseline'].includes(match.state))await c.execute("UPDATE catledger_loan_charges SET state='recorded',basis='actual',transaction_id=?,version=version+1 WHERE uid=? AND charge_id=?",[transactionId,uid,match.chargeId])
   await store.audit(c,uid,match.contractId,match.chargeId,'bank_reconcile',{itemId,transactionId})
 }
 async function refreshEvidence(c,uid,updateId) {

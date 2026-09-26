@@ -7,6 +7,7 @@ const { fullPlan } = require('./installment-view')
 const domain = require('./loan-charge-domain')
 const store = require('./loan-charge-store')
 const { ITEM_SELECT,publicItem } = require('./installment-items')
+const { digestRequest } = require('./request-digest')
 
 async function validateChargeAccount(c,uid,accountId) {
   const [[account]]=await c.execute('SELECT type,archived_at AS archivedAt FROM catledger_accounts WHERE uid=? AND account_id=?',[uid,accountId])
@@ -16,6 +17,14 @@ async function validateChargeAccount(c,uid,accountId) {
 async function category(c,uid,id) {
   const [[row]]=await c.execute("SELECT category_id FROM catledger_categories WHERE uid=? AND category_id=? AND kind='expense' AND archived_at IS NULL",[uid,validateId(id)])
   if (!row) throw ledgerError('VALIDATION_ERROR')
+}
+async function chargeSchedule(c,uid,loan,auth,overrides) {
+  const [saved]=await c.execute('SELECT period_number AS periodNumber,interest_minor AS interestMinor,fee_minor AS feeMinor,cancelled FROM catledger_loan_periods WHERE uid=? AND loan_id=? ORDER BY period_number',[uid,loan.loanId])
+  const periods=fullPlan(loan).map(p=>{const row=saved.find(r=>Number(r.periodNumber)===p.periodNumber);return !row?p:{...p,interestMinor:row.cancelled?'0':String(row.interestMinor),feeMinor:row.cancelled?'0':String(row.feeMinor)}})
+  const items=domain.plannedCharges(periods,auth,overrides)
+  if(BigInt(loan.feeUpfrontMinor||'0')>0n)items.push({chargeKey:'upfront:fee',periodNumber:null,component:'fee',
+    amountMinor:domain.amount(String(loan.feeUpfrontMinor)),chargeDate:domain.date(auth.upfrontChargeDate),categoryId:auth.feeCategoryId})
+  return items
 }
 async function insertCharge(c,uid,contractId,item,planVersion) {
   const chargeId=randomUUID()
@@ -48,11 +57,26 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
       const [prior]=await c.execute(store.CONTRACT_SQL+' WHERE uid=? AND account_id=? ORDER BY created_at DESC LIMIT 21',[uid,loan.accountId])
       const items=contract?await store.charges(c,uid,contract.contractId):[]
       const [sources]=await c.execute(ITEM_SELECT+" WHERE i.uid=? AND i.account_id=? AND (i.loan_id=? OR i.loan_id IS NULL) AND i.active=1 AND i.component<>'principal' ORDER BY i.period_number,i.item_id LIMIT 41",[uid,loan.accountId,loan.loanId])
-      const preview=context.data.configuration?domain.plannedCharges(fullPlan(loan),domain.authorization(context.data.configuration),context.data.configuration.periodCharges):[]
+      const preview=context.data.configuration?await chargeSchedule(c,uid,loan,domain.authorization(context.data.configuration),context.data.configuration.periodCharges):[]
+      if(context.data.configuration){
+        const input=context.data.configuration,auth=domain.authorization(input),ref=contract&&contract.referenceKey||domain.reference(input.referenceLabel)
+        if(input.coverage!==undefined&&(!Array.isArray(input.coverage)||input.coverage.length>1200)||input.oneOffCharges!==undefined&&(!Array.isArray(input.oneOffCharges)||input.oneOffCharges.length>12))throw ledgerError('VALIDATION_ERROR')
+        const [known]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.account_id=? AND i.active=1 AND i.canonical=1 AND i.component<>'principal'
+          AND (i.loan_id=? OR (? IS NOT NULL AND i.reference_key=? AND i.loan_id IS NULL)) LIMIT 1201`,[uid,loan.accountId,loan.loanId,ref,ref])
+        if(known.length>1200)throw ledgerError('LOAN_SOURCE_TOO_LARGE')
+        const sources=known.map(publicItem).filter(i=>i.active),covered=new Set((input.coverage||[]).map(c=>c.chargeKey))
+        for(const one of input.oneOffCharges||[]){if(!Array.isArray(one.covers))throw ledgerError('VALIDATION_ERROR');for(const key of one.covers)covered.add(key)}
+        for(const item of preview){
+          const prior=items.find(i=>i.chargeKey===item.chargeKey)
+          item.previewState=prior&&!['planned','paused'].includes(prior.state)?'existing':covered.has(item.chargeKey)||auth.baselineCoveredThrough&&item.chargeDate<=auth.baselineCoveredThrough||sources.some(s=>s.periodNumber===item.periodNumber&&s.component===item.component&&s.amountMinor===item.amountMinor)?'covered':
+            item.chargeDate<auth.fromDate||item.chargeDate>auth.throughDate?'outside':item.chargeDate>domain.today(now())?'future':'due'
+        }
+      }
       const {encodeCursor,decodeCursor}=require('./cursor'),data=context.data,size=data.pageSize||40
+      const configurationDigest=data.configuration?digestRequest('charge-preview',data.configuration):null
       if(!Number.isInteger(size)||size<1||size>40||data.periodNumber!=null&&(!Number.isInteger(data.periodNumber)||data.periodNumber<1||data.periodNumber>600))throw ledgerError('VALIDATION_ERROR')
       const cursor=data.cursor?decodeCursor(context.subjectHash,data.cursor):null
-      if(cursor&&(cursor.action!=='loans.chargePlan'||cursor.uid!==uid||cursor.loanId!==loan.loanId||cursor.revision!==revision||cursor.periodNumber!==(data.periodNumber||null)))throw ledgerError('CONFLICT')
+      if(cursor&&(cursor.action!=='loans.chargePlan'||cursor.uid!==uid||cursor.loanId!==loan.loanId||cursor.revision!==revision||cursor.periodNumber!==(data.periodNumber||null)||cursor.configurationDigest!==configurationDigest))throw ledgerError('CONFLICT')
       const offset=cursor?cursor.offset:0,selected=data.periodNumber?items.filter(i=>i.periodNumber===data.periodNumber):items
       const [issues]=contract?await c.execute(`SELECT e.event_id AS eventId,e.update_id AS updateId,e.amount_minor AS amountMinor,
         e.event_local_date AS localDate,JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.periodNumber')) AS periodNumber,
@@ -62,12 +86,13 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
           AND JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.referenceKey'))=? ORDER BY e.event_local_date,e.event_id LIMIT 41`,[uid,contract.accountId,contract.referenceKey]):[[]]
       return {loanId:loan.loanId,loanVersion:Number(loan.version),contract,items:selected.slice(offset,offset+size),preview:preview.slice(offset,offset+size),
         totalCharges:selected.length,previewCount:preview.length,previewAmountMinor:preview.reduce((n,p)=>n+BigInt(p.amountMinor),0n).toString(),
-        nextCursor:offset+size<Math.max(selected.length,preview.length)?encodeCursor(context.subjectHash,{action:'loans.chargePlan',uid,loanId:loan.loanId,revision,offset:offset+size,periodNumber:data.periodNumber||null}):null,
+        duePreviewCount:preview.filter(p=>p.previewState==='due').length,duePreviewMinor:preview.filter(p=>p.previewState==='due').reduce((n,p)=>n+BigInt(p.amountMinor),0n).toString(),
+        nextCursor:offset+size<Math.max(selected.length,preview.length)?encodeCursor(context.subjectHash,{action:'loans.chargePlan',uid,loanId:loan.loanId,revision,offset:offset+size,periodNumber:data.periodNumber||null,configurationDigest}):null,
         issues:issues.slice(0,40).map(i=>({...i,amountMinor:String(i.amountMinor),periodNumber:Number(i.periodNumber)})),moreIssues:issues.length>40,
         candidates:sources.slice(0,40).map(publicItem).filter(i=>i.active),moreCandidates:sources.length>40,
         priorContracts:prior.map(r=>({...r,authorization:domain.parse(r.authorization)})),cutoff:domain.today(now()),
-        recordedMinor:items.filter(i=>i.state==='recorded').reduce((s,i)=>s+BigInt(i.amountMinor),0n).toString(),
-        unverifiedMinor:items.filter(i=>i.state==='recorded'&&i.basis==='plan').reduce((s,i)=>s+BigInt(i.amountMinor),0n).toString()}
+        recordedMinor:items.filter(i=>i.state==='recorded').reduce((s,i)=>s+BigInt(i.netAmountMinor),0n).toString(),
+        unverifiedMinor:items.filter(i=>i.state==='recorded'&&i.basis==='plan').reduce((s,i)=>s+BigInt(i.netAmountMinor),0n).toString()}
     })
   }
   async function configureCharges(context) {
@@ -76,7 +101,7 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
       if (Number(loan.version)!==parseVersion(data.version)) throw ledgerError('CONFLICT')
       if (loan.archivedAt!=null || data.confirmed!==true) throw ledgerError('VALIDATION_ERROR')
       await validateChargeAccount(c,uid,loan.accountId)
-      const auth=domain.authorization(data),plan=domain.plannedCharges(fullPlan(loan),auth,data.periodCharges)
+      const auth=domain.authorization(data),plan=await chargeSchedule(c,uid,loan,auth,data.periodCharges)
       const oneOff=data.oneOffCharges||[]
       if(!Array.isArray(oneOff)||oneOff.length>12)throw ledgerError('VALIDATION_ERROR')
       for(const item of oneOff) {

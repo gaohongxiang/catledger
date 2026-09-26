@@ -99,6 +99,13 @@ async function seedUser(pool, uid = randomUUID()) {
 }
 
 async function seedImports(pool, user) {
+  // 当前导入代码读取新的收费防重表。仅在造历史夹具期间提供完整空 schema，
+  // 随后逐表断言仍为空并移除；0011 仍只迁移原有29张非空表。
+  for (const item of laterTables) await pool.query(item.sql)
+  try { return await seedImportsCurrent(pool, user) }
+  finally { await removeLaterEmptyTables(pool) }
+}
+async function seedImportsCurrent(pool, user) {
   const objects = new Map()
   const service = createImportService({ getPool: () => pool, storage: {
     async downloadExact(fileID, objectKey) {

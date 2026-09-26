@@ -1,7 +1,7 @@
 <view wx:if="{{loan.scheduleTerms}}" class="charge-section">
   <view class="detail-section-title"><text>费用与实际付款</text><button class="progress-entry" bindtap="loadCharges" disabled="{{chargeLoading}}">刷新</button></view>
   <view wx:if="{{chargeSummary}}" class="charge-metrics">
-    <view><text>已记费用</text><text class="money-number">{{chargeSummary.recorded}} 元</text></view>
+    <view><text>已记费用（扣除退费）</text><text class="money-number">{{chargeSummary.recorded}} 元</text></view>
     <view><text>其中方案待核对</text><text class="money-number">{{chargeSummary.unverified}} 元</text></view>
   </view>
   <text class="ld-note">{{chargeSummary.mode}} · {{chargeSummary.range}}</text>
@@ -24,6 +24,7 @@
     <picker class="ld-cell" range="{{chargeModes}}" value="{{chargeDraft.modeIndex}}" data-field="modeIndex" bindchange="chargeInput"><text>授权方式</text><text>{{chargeModes[chargeDraft.modeIndex]}}</text></picker>
     <picker class="ld-cell" range="{{chargeHistories}}" value="{{chargeDraft.historyIndex}}" data-field="historyIndex" bindchange="chargeInput"><text>历史处理</text><text>{{chargeHistories[chargeDraft.historyIndex]}}</text></picker>
     <picker class="ld-cell" mode="date" value="{{chargeDraft.firstChargeDate}}" data-field="firstChargeDate" bindchange="chargeInput"><text>首期计费日（独立于还款日）</text><text>{{chargeDraft.firstChargeDate || '请选择'}}</text></picker>
+    <picker wx:if="{{loan.feeUpfrontMinor && loan.feeUpfrontMinor !== '0'}}" class="ld-cell" mode="date" value="{{chargeDraft.upfrontChargeDate}}" data-field="upfrontChargeDate" bindchange="chargeInput"><text>一次性手续费计费日</text><text>{{chargeDraft.upfrontChargeDate || '请确认实际约定日期'}}</text></picker>
     <picker class="ld-cell" mode="date" value="{{chargeDraft.fromDate}}" data-field="fromDate" bindchange="chargeInput"><text>费用起算日</text><text>{{chargeDraft.fromDate}}</text></picker>
     <picker class="ld-cell" mode="date" value="{{chargeDraft.throughDate}}" data-field="throughDate" bindchange="chargeInput"><text>授权截止日</text><text>{{chargeDraft.throughDate || '请选择'}}</text></picker>
     <label class="ld-cell"><text>合同 / 银行分期编号（可空）</text><input value="{{chargeDraft.referenceLabel}}" data-field="referenceLabel" bindinput="chargeInput" maxlength="80" placeholder="用于以后账单的明确核对" /></label>
@@ -37,17 +38,18 @@
       <button class="ld-link" bindtap="loadChargeEvidence">读取负债账户已有费用</button><button wx:if="{{chargeEvidenceNext}}" class="ld-link" data-next="true" bindtap="loadChargeEvidence">下一页已有支出</button>
       <picker class="ld-cell" range="{{chargeExisting}}" range-key="label" value="{{chargeExistingIndex}}" bindchange="chooseChargeEvidence"><text>选择实际费用</text><text>{{chargeExistingIndex >= 0 ? chargeExisting[chargeExistingIndex].label : '请选择已入账支出'}}</text></picker>
       <picker class="ld-cell" range="{{['利息','费用']}}" value="{{chargeDraft.componentIndex}}" data-field="componentIndex" bindchange="chargeInput"><text>对应分项</text><text>{{chargeDraft.componentIndex ? '费用' : '利息'}}</text></picker>
-      <label class="ld-cell"><text>对应起始期</text><input type="number" value="{{chargeDraft.evidencePeriod}}" data-field="evidencePeriod" bindinput="chargeInput" /></label>
+      <label class="ld-cell"><text>对应起始期（合同一次性费填0）</text><input type="number" value="{{chargeDraft.evidencePeriod}}" data-field="evidencePeriod" bindinput="chargeInput" /></label>
       <label wx:if="{{chargeDraft.coverageIndex === 3}}" class="ld-cell"><text>一次性覆盖到第几期</text><input type="number" value="{{chargeDraft.coverThrough}}" data-field="coverThrough" bindinput="chargeInput" /></label>
       <button class="ld-link" bindtap="addChargeCoverage">加入覆盖列表</button>
       <view wx:for="{{chargeCoverageRows}}" wx:key="transactionId" class="charge-row"><text>{{item.label}}</text><button class="ld-link" data-index="{{index}}" bindtap="removeChargeCoverage">移除</button></view>
     </block>
     <checkbox-group data-field="fixed" bindchange="chargeInput"><label class="charge-confirm"><checkbox value="fixed" checked="{{chargeDraft.fixed}}" />我已确认固定金额、计费日期、分类及历史覆盖；按所选范围记账，无需每期导入。</label></checkbox-group>
+    <view wx:if="{{chargePreview}}"><text class="ld-note">截至今天本次可补 {{chargePreview.dueCount}} 项，共 {{chargePreview.dueText}}；已有覆盖提交时再次核验。</text><view wx:for="{{chargePreview.items}}" wx:key="chargeKey" class="charge-row"><text>{{item.chargeDate}} · {{item.component === 'interest' ? '利息' : '费用'}} · {{item.amountText}}</text><text>{{item.stateText}}</text></view><button wx:if="{{chargePreview.next}}" class="ld-link" bindtap="moreChargePreview">下一页预览</button></view>
     <button class="primary-button" bindtap="authorizeCharges" disabled="{{saving || loading}}" loading="{{saving}}">预览并确认授权</button><button class="ld-link" bindtap="closeChargeForm" disabled="{{saving}}">收起</button>
   </view>
   <text wx:if="{{chargeRows.length}}" class="ld-note">已记、计划与覆盖依据（每页 20 项）</text>
   <view wx:for="{{chargeRows}}" wx:key="chargeId" class="charge-row">
-    <view><text>{{item.label}} · {{item.amountText}} 元</text><text class="ld-note">{{item.chargeDate}} · {{item.stateText}}</text><text class="ld-note">{{item.basisText}} · 已分配付款 {{item.settledText}}</text></view>
+    <view><text>{{item.label}} · {{item.amountText}} 元</text><text class="ld-note">{{item.chargeDate}} · {{item.stateText}}</text><text class="ld-note">{{item.basisText}} · 已分配付款 {{item.settledText}} · 实际退费 {{item.refundText}}</text></view>
     <button class="ld-link" data-id="{{item.chargeId}}" bindtap="openChargeEdit" disabled="{{saving || loan.archived}}">处理</button>
   </view>
   <button wx:if="{{chargeNext}}" class="ld-link" data-next="true" bindtap="loadCharges" disabled="{{chargeLoading}}">下一页费用依据</button>

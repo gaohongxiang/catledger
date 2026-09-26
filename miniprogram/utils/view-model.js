@@ -24,7 +24,7 @@ function transactionView(transaction) {
     : ['income', 'expense'].includes(transaction.type) ? '未分类' : TYPE_LABELS[transaction.type] || '账目'
   const prefix = transaction.type === 'expense' ? '-' : (transaction.type === 'income' || transaction.type === 'refund') ? '+' : ''
   return Object.assign({}, transaction, {
-    typeLabel: transaction.refundLinkStatus === 'pending'
+    typeLabel: transaction.origin==='loan_plan'?'方案费用':transaction.refundLinkStatus === 'pending'
       ? '待关联退款'
       : TYPE_LABELS[transaction.type] || '账目',
     label: label,

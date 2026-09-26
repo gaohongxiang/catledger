@@ -36,6 +36,16 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   await api('loans.correct',{...sourceData,requestId:randomUUID(),paymentId:linked.paymentId,version:1,loans:linked.loans,
     allocations:[{...sourceData.allocations[0],version:loanVersion+1,principalMinor:'70',interestMinor:'30'}]})
   const other=localServices({apiPool,importPool,subject:'synthetic-export-other'}),otherUser=await call(other.api,'bootstrap')
+  // 新收费图必须有非空授权、跨期一次覆盖、自引用、实单来源与实际付款分配。
+  const chargeLoan=await api('loans.create',{...require('./helpers/loan-charges').plan,requestId:randomUUID(),accountId:debt,feePerTermMinor:'100'})
+  const lump=await api('transactions.create',{requestId:randomUUID(),type:'expense',sourceAccountId:debt,categoryId,amountMinor:'24000',occurredLocalAt:'2026-01-01T12:00:00',timezoneOffsetMinutes:-480})
+  await api('loans.configureCharges',{...require('./helpers/loan-charges').authorization,requestId:randomUUID(),loanId:chargeLoan.loanId,version:chargeLoan.version,interestCategoryId:categoryId,feeCategoryId:categoryId,referenceLabel:'SYNTHETIC-EXPORT-COVER',oneOffCharges:[{key:'whole-interest',component:'interest',chargeDate:'2026-01-01',amountMinor:'24000',transactionId:lump.transactionId,covers:Array.from({length:12},(_,i)=>'period:'+(i+1)+':interest')}]})
+  await api('loans.syncCharges',{requestId:randomUUID(),loanId:chargeLoan.loanId})
+  const importHelpers=require('./helpers/loan-charges'),h={api,imp,services,accountId:debt}
+  const statement=await importHelpers.prepareBank(h,{reference:'SYNTHETIC-EXPORT-COVER'});await importHelpers.postBank(h,statement)
+  const chargeView=await api('loans.chargePlan',{loanId:chargeLoan.loanId}),fee=chargeView.items.find(c=>c.component==='fee'&&c.state==='recorded')
+  assert.ok(fee)
+  await api('loans.record',{requestId:randomUUID(),mode:'new',kind:'repayment',assetAccountId:asset,totalMinor:'1100',occurredLocalAt:'2026-09-04T12:00:00',timezoneOffsetMinutes:-480,confirmed:true,allocations:[{loanId:chargeLoan.loanId,version:chargeView.loanVersion,principalMinor:'1000',interestMinor:'0',feeMinor:'100',interestTreatment:'expense',feeTreatment:'accrued',chargeAllocations:[{chargeId:fee.chargeId,component:'fee',amountMinor:'100'}]}]})
   // 只在一次性库播种超宽审计行，证明大字段不会截坏 UTF-8。
   const wide='合成🐱\n"'.repeat(40000)
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
@@ -54,6 +64,7 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const done=await api('dataExports.finish',{exportId:job.exportId,completeToken:terminal});assert.equal(done.rows,records.length)
   const exportedWide=records.find(r=>r.table==='catledger_finance_actions'&&r.row.decision_json.syntheticWide);assert.equal(exportedWide.row.decision_json.syntheticWide,wide)
   assert.ok(!parts.join('').includes(otherUser.uid));assert.ok(records.every(r=>!Object.hasOwn(r.row,'uid')))
+  for(const name of ['catledger_loan_charge_contracts','catledger_loan_charges','catledger_loan_charge_sources','catledger_loan_charge_allocations','catledger_loan_charge_audit'])assert.ok(records.some(r=>r.table===name),name+' must be nonempty')
   await t.test('清单覆盖当前全部业务表和非生成列，导出逐行等于原库',async()=>{
    const [tables]=await source.owner.query('SELECT DISTINCT TABLE_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME=\'uid\'')
    assert.deepEqual(tables.map(t=>t.name).filter(n=>!['catledger_users','catledger_user_identities','catledger_data_exports'].includes(n)).sort(),manifest.map(t=>t.name).sort())
@@ -69,7 +80,17 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
    await target.owner.execute("INSERT INTO catledger_users(uid,status) VALUES(?,'active')",[newUid])
    await target.owner.execute("INSERT INTO catledger_user_identities(uid,provider,subject_hash) VALUES(?,'wechat-mini',?)",[newUid,hashWechatSubject(subject)])
    const refunds=[]
-   const restoreRows = records.slice().sort((a,b) => a.table === 'catledger_categories' && b.table === 'catledger_categories' ? Number(Boolean(a.row.parent_id)) - Number(Boolean(b.row.parent_id)) : 0)
+   const restoreRows=[]
+   for(const table of manifest){
+    let rows=records.filter(r=>r.table===table.name)
+    if(table.name==='catledger_categories')rows.sort((a,b)=>Number(Boolean(a.row.parent_id))-Number(Boolean(b.row.parent_id)))
+    if(table.name==='catledger_loan_charges'){
+     const ordered=[],seen=new Set()
+     while(rows.length){const ready=rows.filter(r=>!r.row.covered_by_charge_id||seen.has(r.row.covered_by_charge_id));assert.ok(ready.length,'coverage graph must be acyclic');ready.forEach(r=>seen.add(r.row.charge_id));ordered.push(...ready);rows=rows.filter(r=>!seen.has(r.row.charge_id))}
+     rows=ordered
+    }
+    restoreRows.push(...rows)
+   }
    for(const entry of restoreRows){const table=manifest.find(t=>t.name===entry.table),row={...entry.row}
     if(table.name==='catledger_transactions'&&row.original_transaction_id){refunds.push([row.original_transaction_id,newUid,row.transaction_id]);row.original_transaction_id=null}
     await target.owner.execute(`INSERT INTO ${table.name}(uid,${table.columns.join(',')}) VALUES(${['uid',...table.columns].map(()=>'?').join(',')})`,[newUid,...table.columns.map(k=>table.json.includes(k)&&row[k]!=null?JSON.stringify(row[k]):row[k])])
@@ -77,7 +98,7 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
    for(const values of refunds)await target.owner.execute('UPDATE catledger_transactions SET original_transaction_id=?,updated_at=updated_at WHERE uid=? AND transaction_id=?',values)
    for(const table of manifest){const [rows]=await target.owner.execute(`SELECT ${table.columns.join(',')} FROM ${table.name} WHERE uid=? ORDER BY ${table.keys.join(',')}`,[newUid]);assert.deepEqual(rows.map(r=>({...r})),records.filter(r=>r.table===table.name).map(r=>r.row))}
    const restored=localServices({apiPool:target.owner,importPool:target.owner,subject}),read=(a,d)=>call(restored.api,a,d)
-   for(const [action,data]of [['accounts.list',{}],['statistics.get',{month:'2026-09'}],['loans.get',{loanId}],['loans.periods',{loanId}],['loans.planAllocation',{loanId,paymentId:payment.paymentId}]]){
+   for(const [action,data]of [['accounts.list',{}],['statistics.get',{month:'2026-09'}],['loans.get',{loanId}],['loans.periods',{loanId}],['loans.planAllocation',{loanId,paymentId:payment.paymentId}],['loans.chargePlan',{loanId:chargeLoan.loanId}]]){
     const actual=await read(action,data),expected=await api(action,data)
     const business=({readVersion,uid,dataRevision,unchanged,...value})=>value
     if(actual.readVersion){assert.equal(actual.uid,newUid);assert.equal(actual.readVersion,1);assert.equal(actual.unchanged,false)}

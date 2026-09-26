@@ -55,7 +55,7 @@ Page(Object.assign({}, require('./source'), {
           this.setData(patch)
         }
       }
-      if (current()){await this.loadEntrySource(current);if(!this._paymentId)await this.loadAllocationCharges()}
+      if (current()){await this.loadEntrySource(current);if(current()&&!this._paymentId)await this.loadAllocationCharges()}
     }).catch(error => { if (current()) this.setData({ errorMessage: error.message || '借还记录暂未读取' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
     return this._load
@@ -70,6 +70,7 @@ Page(Object.assign({}, require('./source'), {
     this.setData({ ['allocations[' + index + '].' + field]: value, confirmed: false }); this.review()
   },
   async loadAllocationCharges(event){
+    if(!session.isCurrent(this))return
     const current=session.capture(this),token=this._chargeRead={}
     const selected=event&&event.currentTarget&&event.currentTarget.dataset.id
     try{

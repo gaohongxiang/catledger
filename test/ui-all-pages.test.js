@@ -17,6 +17,7 @@ function runtime(route, callApi) {
   const app = { hasLoginApproval: () => true, globalData: { categories: [], profile: {}, ledgerRevision: 0, uid: '1234567890' } }
   const api = { peek: () => null, isFresh: () => false, cacheToken: () => null, createRequestId: () => 'synthetic-request', bootstrap: () => Promise.resolve({ categories: [] }), callApi: (name, data) => {
     calls.push({ name, data });
+    if(name==='loans.dueCharges')return Promise.resolve({count:0,cutoff:'2026-09-26'})
     if (name === 'transactions.commandResult') return Promise.reject(Object.assign(new Error('未确认'), { code: 'OPERATION_UNCONFIRMED' }))
     return callApi ? callApi(name, data) : Promise.resolve({ accounts: [], categories: [] })
   }, callImport: () => { throw new Error('预览测试禁止真实导入写入') } }
@@ -29,6 +30,11 @@ function runtime(route, callApi) {
       if (name.includes('/services/pending-ledger-write')) return req(name).createPendingWrite({ scope: () => app.globalData.uid,
         read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key),
         requestId: api.createRequestId, call: (_, action, data) => api.callApi(action, data) })
+      if(name.includes('/services/loan-charge-sync')){
+        const module={exports:{}},file=req.resolve(name),local=createRequire(file)
+        vm.runInNewContext(fs.readFileSync(file,'utf8'),{module,getApp:()=>app,require:dep=>dep==='./catledger-api'?api:dep==='./pending-ledger-write'?{pending:()=>null}:local(dep)})
+        return module.exports
+      }
       if (name.includes('/services/login-guard')) return { run: (p, cb) => { if (app.hasLoginApproval()) return cb() } }
       if (name.includes('/theme/service')) return { bindPage() {}, currentTokens: () => ({ accent: '#BE5B24' }) }
       if (name === './source' && route === 'pages/loan-payment/index') {
@@ -120,7 +126,7 @@ test('贷款分页只保留当前页和五个返回游标，退出后迟到响�
   assert.equal(page.data.items.length, 1); assert.equal(page._previous.length, 5)
   let resolve
   const late = runtime('pages/loans/index', action => action==='loans.installmentSources' ? Promise.resolve({items:[],nextCursor:null}) : new Promise(done => { resolve = done }))
-  late.page.onLoad(); const loading = late.page.loadLoans(); late.page.onUnload()
+  late.page.onLoad(); const loading = late.page.loadLoans(); await new Promise(done=>setImmediate(done));late.page.onUnload()
   resolve({ items: [{ loanId: 'private-old', remainingPrincipalMinor: '0', status: 'settled' }], nextCursor: null })
   await loading; assert.equal(late.page.data.items.length, 0)
   const { present } = require('../miniprogram/pages/loans/model')
@@ -271,7 +277,7 @@ test('统计展示保留金额、比例与零值，点击仅选择已有读模�
   assert.equal(page.data.categoryKind, 'income')
   page.selectCategoryKind({ currentTarget: { dataset: { kind: 'income' } } })
   assert.equal(page.data.categoryKind, '')
-  assert.equal(calls.length, 1)
+  assert.deepEqual(calls.map(c=>c.name),['loans.dueCharges','statistics.get'])
 })
 test('统计读取中不能改月份，下一月读取失败不在新标题下显示上月图表', async () => {
   const { page } = runtime('pages/statistics/index', () => Promise.reject(new Error('合成错误')))
