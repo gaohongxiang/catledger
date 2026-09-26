@@ -57,8 +57,11 @@ function createInstallmentService({getPool,selectLoan}) {
         FROM catledger_loan_period_allocations a JOIN catledger_loan_periods t ON t.uid=a.uid AND t.period_id=a.period_id
         JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id
         WHERE a.uid=? AND a.loan_id=? AND t.period_number=? AND a.active=1 ORDER BY p.occurred_local_at DESC LIMIT 20`,[uid,loan.loanId,data.periodNumber])
+      const [[lastPayment]]=await c.execute(`SELECT p.asset_account_id AS accountId FROM catledger_loan_payments p
+        JOIN catledger_loan_payment_allocations a ON a.uid=p.uid AND a.payment_id=p.payment_id
+        WHERE p.uid=? AND a.loan_id=? AND p.kind='repayment' AND p.status='active' ORDER BY p.occurred_local_at DESC,p.payment_id DESC LIMIT 1`,[uid,loan.loanId])
       return {loanId:loan.loanId,loanVersion:Number(loan.version),archived:loan.archivedAt!=null,period:row,
-        sources:sources.slice(0,40).map(publicItem),moreSources:sources.length>40,legacyPayments:legacy.map(p=>({...p,totalMinor:String(p.totalMinor)}))}
+        repaymentAccountId:lastPayment&&lastPayment.accountId||null,sources:sources.slice(0,40).map(publicItem),moreSources:sources.length>40,legacyPayments:legacy.map(p=>({...p,totalMinor:String(p.totalMinor)}))}
     })
   }
   async function setInstallmentProgress(context) {
@@ -88,6 +91,14 @@ function createInstallmentService({getPool,selectLoan}) {
         }
       }
       await c.execute('UPDATE catledger_loans SET progress_json=?,version=version+1 WHERE uid=? AND loan_id=?',[JSON.stringify(progress),uid,loan.loanId])
+      return {loanId:loan.loanId,version:Number(loan.version)+1}
+    })
+  }
+  async function confirmInstallments(context) {
+    return write(context,'loans.confirmInstallments',async(c,uid,data)=>{
+      const loan=await editable(c,uid,data),view=await loadView(c,uid,loan)
+      await require('./installment-repayment').confirm(c,uid,loan,view,data.repayments,true)
+      await c.execute('UPDATE catledger_loans SET version=version+1 WHERE uid=? AND loan_id=?',[uid,loan.loanId])
       return {loanId:loan.loanId,version:Number(loan.version)+1}
     })
   }
@@ -152,6 +163,6 @@ function createInstallmentService({getPool,selectLoan}) {
       return {loanId:loan.loanId,version:Number(loan.version)+1}
     })
   }
-  return {installments,installment,setInstallmentProgress,installmentSources,linkInstallmentSource,archiveInstallment,removeInstallmentItem}
+  return {installments,installment,setInstallmentProgress,confirmInstallments,installmentSources,linkInstallmentSource,archiveInstallment,removeInstallmentItem}
 }
 module.exports={createInstallmentService,loadView,populateTracking}

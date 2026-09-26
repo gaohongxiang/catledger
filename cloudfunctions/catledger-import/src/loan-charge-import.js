@@ -12,7 +12,7 @@ async function prepare(c,uid,event,evidence,loanId) {
   const mapping=event.fieldSources && event.fieldSources.loanCharge
   const [rows]=await c.execute(store.CHARGE_SQL+' WHERE f.uid=? AND f.contract_id=? AND '+(mapping?'f.charge_id=?':'f.charge_key=?'),
     [uid,contract.contractId,mapping?mapping.chargeId:'period:'+evidence.periodNumber+':'+evidence.component])
-  if(!rows[0])fail('LOAN_COVERAGE_REQUIRED')
+  if(!rows[0]){if(parse(contract.authorization).simpleRepayment)return null;fail('LOAN_COVERAGE_REQUIRED')}
   const item=store.publicCharge(rows[0])
   if(item.component!==evidence.component || item.periodNumber!==null && item.periodNumber!==evidence.periodNumber)fail('LOAN_SOURCE_MISMATCH')
   if(['suppressed','cancelled','paused'].includes(item.state))fail('LOAN_CHARGE_PAUSED')

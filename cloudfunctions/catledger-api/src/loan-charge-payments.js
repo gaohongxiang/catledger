@@ -40,6 +40,7 @@ async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null
     const treatment=input[item.component+'Treatment']
     if(!contract||contract.contractId!==item.contractId||item.component!==entry.component||seen.has(item.chargeId))fail('LOAN_CHARGE_COVERAGE')
     seen.add(item.chargeId)
+    if(item.balanceAdjustmentId)fail('LOAN_CHARGE_COVERAGE')
     if(paymentDate&&item.chargeDate>paymentDate)fail('LOAN_CHARGE_COVERAGE')
     if(treatment==='accrued' && (!['recorded','baseline'].includes(item.state)||item.state==='recorded'&&(item.deletedAt!=null||item.transactionAmount!=item.amountMinor)))fail('LOAN_CHARGE_COVERAGE')
     if(treatment==='expense' && (item.state!=='planned'||entry.amountMinor!==item.amountMinor||input[item.component+'CategoryId']!==item.categoryId))fail('LOAN_CHARGE_COVERAGE')

@@ -94,6 +94,17 @@ after(async () => {
   }
 })
 
+test('0027历史余额关系可重入，空旧记录保持为空且不生成账目', { skip: !hasDatabase }, async () => {
+  const connection=await pool.getConnection()
+  try {
+    const sql=readFileSync(path.resolve(__dirname,'../../../migrations/0027_installment_history_balance.sql'),'utf8')
+    for(let i=0;i<2;i++)for(const statement of splitSqlStatements(sql))await connection.query(statement)
+    const [columns]=await connection.query("SELECT IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='catledger_loan_charges' AND COLUMN_NAME='balance_adjustment_id'")
+    assert.equal(columns.length,1);assert.equal(columns[0].nullable,'YES')
+    const [[transactions]]=await connection.query('SELECT COUNT(*) AS n FROM catledger_transactions');assert.equal(Number(transactions.n),0)
+  }finally{connection.release()}
+})
+
 test('语义迁移在 DDL 已执行但记账中断时可重入，历史行字段保持可空', { skip: !hasDatabase }, async () => {
   const connection = await pool.getConnection()
   try {
@@ -134,8 +145,9 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 26)
+  assert.equal(rows.length, 27)
   assert.equal(rows[25].version, '0026_loan_charge_lifecycle.sql')
+  assert.equal(rows[26].version, '0027_installment_history_balance.sql')
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
   assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')

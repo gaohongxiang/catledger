@@ -38,8 +38,7 @@ function buildView(loan, savedPeriods = [], items = [], today = new Date(Date.no
       recordedComponents: [...new Set(sources.map(item => item.component))],
       status: row.cancelled ? 'cancelled' : complete ? 'paid' : partial ? 'partial' : exception === 'unpaid' ? 'unpaid' : 'missing',
       complete, current: !complete && plan.periodNumber === currentNumber,
-      stateText: row.cancelled ? '已取消' : complete ? '已完成' : partial ? '部分未还' : exception === 'unpaid' ? (row.dueDate < today ? '已逾期' : '未还')
-        : sources.length ? '已出账，付款待确认' : '付款待确认',
+      stateText: row.cancelled ? '已取消' : complete ? '已还' : partial ? '部分未还' : exception === 'unpaid' ? (row.dueDate < today ? '已逾期' : '未还') : '未还',
       completedByProgress: complete && (!old || old.status !== 'paid'),paymentConfirmed:!!(old&&old.status==='paid'),billed:sources.length>0 }
   })
   const upcoming = rows.find(row => !row.complete && !row.cancelled)
@@ -51,6 +50,11 @@ function buildView(loan, savedPeriods = [], items = [], today = new Date(Date.no
     unpaidPrincipalMinor: sum(rows, 'unpaidPrincipalMinor'), unpaidInterestMinor: sum(rows, 'unpaidInterestMinor'),
     unpaidFeeMinor: sum(rows, 'unpaidFeeMinor'), nextDueDate: upcoming ? upcoming.dueDate : null }
   summary.estimatedPrincipalMinor = summary.unpaidPrincipalMinor
+  const lastBilled = Math.max(0, ...rows.filter(r => r.billed).map(r => r.periodNumber))
+  // 只询问新出现账单之前尚未选择的期次；用户明确选过未还的期次不反复询问。
+  summary.repaymentPrompts = rows.filter(r => !r.cancelled && !r.paymentConfirmed && r.status !== 'partial' &&
+    (r.periodNumber <= lastBilled && !Object.hasOwn(exceptions, r.periodNumber) && r.periodNumber > through ||
+      r.completedByProgress && !(progress.reviewedPeriods || {})[r.periodNumber])).slice(0, 20).map(r => ({ periodNumber:r.periodNumber, dueDate:r.dueDate, paid:true }))
   summary.remainingPrincipalMinor = loan.remainingPrincipalMinor==null?null:String(loan.remainingPrincipalMinor)
   return { rows, summary, original }
 }

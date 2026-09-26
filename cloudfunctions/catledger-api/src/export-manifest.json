@@ -856,7 +856,8 @@
       "covered_by_charge_id",
       "plan_version",
       "version",
-      "created_at"
+      "created_at",
+      "balance_adjustment_id"
     ],
     "json": []
   },

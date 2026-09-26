@@ -26,6 +26,14 @@ const migrationsDirectory = path.resolve(__dirname, '../../../../migrations')
 const laterTables = fs.readdirSync(migrationsDirectory).filter(name => /^\d{4}_.*\.sql$/.test(name) && Number(name.slice(0, 4)) > 12).sort()
   .flatMap(name => splitSqlStatements(fs.readFileSync(path.join(migrationsDirectory, name), 'utf8')))
   .map(sql => ({ sql, name: (sql.match(/^CREATE TABLE IF NOT EXISTS (catledger_\w+)/) || [])[1] })).filter(item => item.name)
+async function restoreLaterTables(pool) {
+  for (const item of laterTables) await pool.query(item.sql)
+  // 后续 ALTER 也必须恢复；不把新表放进0011的29张历史非空夹具。
+  const connection = await pool.getConnection()
+  try {
+    for (const statement of splitSqlStatements(fs.readFileSync(path.join(migrationsDirectory,'0027_installment_history_balance.sql'),'utf8'))) await connection.query(statement)
+  } finally { connection.release() }
+}
 async function removeLaterEmptyTables(pool) {
   for (const item of laterTables.slice().reverse()) {
     const [[row]] = await pool.query('SELECT COUNT(*) AS count FROM ' + item.name)
@@ -101,7 +109,7 @@ async function seedUser(pool, uid = randomUUID()) {
 async function seedImports(pool, user) {
   // 当前导入代码读取新的收费防重表。仅在造历史夹具期间提供完整空 schema，
   // 随后逐表断言仍为空并移除；0011 仍只迁移原有29张非空表。
-  for (const item of laterTables) await pool.query(item.sql)
+  await restoreLaterTables(pool)
   try { return await seedImportsCurrent(pool, user) }
   finally { await removeLaterEmptyTables(pool) }
 }
@@ -178,7 +186,7 @@ function registerShortUserIdMigrationTests({ getPool, hasDatabase }) {
     test.beforeEach(async () => { if (hasDatabase) { await removeLaterEmptyTables(getPool()); await ensureHistoricalTables(getPool()) } })
     test.afterEach(async () => { if (hasDatabase) {
       for (const table of historicalTables) await getPool().query('DROP TABLE IF EXISTS ' + table)
-      for (const item of laterTables) await getPool().query(item.sql)
+      await restoreLaterTables(getPool())
     } })
   test('0011迁移完整用户账本，保留29张表数据、时间、对象路径和幂等重放', { skip: !hasDatabase, timeout: 30000 }, async () => {
     const pool = getPool()

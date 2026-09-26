@@ -46,12 +46,15 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const chargeView=await api('loans.chargePlan',{loanId:chargeLoan.loanId}),fee=chargeView.items.find(c=>c.component==='fee'&&c.state==='recorded')
   assert.ok(fee)
   await api('loans.record',{requestId:randomUUID(),mode:'new',kind:'repayment',assetAccountId:asset,totalMinor:'1100',occurredLocalAt:'2026-09-04T12:00:00',timezoneOffsetMinutes:-480,confirmed:true,allocations:[{loanId:chargeLoan.loanId,version:chargeView.loanVersion,principalMinor:'1000',interestMinor:'0',feeMinor:'100',interestTreatment:'expense',feeTreatment:'accrued',chargeAllocations:[{chargeId:fee.chargeId,component:'fee',amountMinor:'100'}]}]})
+  const historyDebt=await account('credit','600000','合成历史分期')
+  const historical=await api('loans.create',{...require('./helpers/loan-charges').plan,requestId:randomUUID(),accountId:historyDebt,baselinePrincipalMinor:'500000',repayments:[{periodNumber:1,paid:true},{periodNumber:2,paid:true}]})
+  assert.ok((await api('loans.chargePlan',{loanId:historical.loanId})).items.every(c=>c.balanceAdjustmentId))
   // 只在一次性库播种超宽审计行，证明大字段不会截坏 UTF-8。
   const wide='合成🐱\n"'.repeat(40000)
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
   const revision=async()=>String((await source.owner.execute('SELECT data_revision AS v FROM catledger_users WHERE uid=?',[uid]))[0][0].v)
   const startData={requestId:randomUUID()},job=await api('dataExports.start',startData),rev=await revision()
-  assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
+  assert.equal(job.schemaVersion,27);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
   await assert.rejects(call(other.api,'dataExports.page',{exportId:job.exportId}),{publicCode:'NOT_FOUND'})
   const records=[],parts=[];let cursor=null,terminal=null,pageCount=0
   do{
@@ -98,7 +101,7 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
    for(const values of refunds)await target.owner.execute('UPDATE catledger_transactions SET original_transaction_id=?,updated_at=updated_at WHERE uid=? AND transaction_id=?',values)
    for(const table of manifest){const [rows]=await target.owner.execute(`SELECT ${table.columns.join(',')} FROM ${table.name} WHERE uid=? ORDER BY ${table.keys.join(',')}`,[newUid]);assert.deepEqual(rows.map(r=>({...r})),records.filter(r=>r.table===table.name).map(r=>r.row))}
    const restored=localServices({apiPool:target.owner,importPool:target.owner,subject}),read=(a,d)=>call(restored.api,a,d)
-   for(const [action,data]of [['accounts.list',{}],['statistics.get',{month:'2026-09'}],['loans.get',{loanId}],['loans.periods',{loanId}],['loans.planAllocation',{loanId,paymentId:payment.paymentId}],['loans.chargePlan',{loanId:chargeLoan.loanId}]]){
+   for(const [action,data]of [['accounts.list',{}],['statistics.get',{month:'2026-09'}],['loans.get',{loanId}],['loans.periods',{loanId}],['loans.planAllocation',{loanId,paymentId:payment.paymentId}],['loans.chargePlan',{loanId:chargeLoan.loanId}],['loans.chargePlan',{loanId:historical.loanId}]]){
     const actual=await read(action,data),expected=await api(action,data)
     const business=({readVersion,uid,dataRevision,unchanged,...value})=>value
     if(actual.readVersion){assert.equal(actual.uid,newUid);assert.equal(actual.readVersion,1);assert.equal(actual.unchanged,false)}

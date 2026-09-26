@@ -7,7 +7,7 @@ const CONTRACT_SQL = `SELECT contract_id AS contractId,loan_id AS loanId,account
   authorization_json AS authorization,version FROM catledger_loan_charge_contracts`
 const CHARGE_SQL = `SELECT f.charge_id AS chargeId,f.contract_id AS contractId,f.charge_key AS chargeKey,
   f.component,f.period_number AS periodNumber,f.charge_date AS chargeDate,f.amount_minor AS amountMinor,
-  f.category_id AS categoryId,f.state,f.basis,f.transaction_id AS transactionId,
+  f.category_id AS categoryId,f.state,f.basis,f.transaction_id AS transactionId,f.balance_adjustment_id AS balanceAdjustmentId,
   f.covered_by_charge_id AS coveredByChargeId,f.plan_version AS planVersion,f.version,
   t.version AS transactionVersion,t.deleted_at AS deletedAt,t.amount_minor AS transactionAmount,
   COALESCE((SELECT SUM(a.amount_minor) FROM catledger_loan_charge_allocations a
@@ -19,7 +19,7 @@ function publicCharge(row) {
   return {...row, amountMinor:String(row.amountMinor),settledMinor:String(row.settledMinor || '0'),
     refundMinor:String(row.refundMinor||'0'),netAmountMinor:String(BigInt(row.amountMinor)-BigInt(row.refundMinor||'0')),
     version:Number(row.version),planVersion:Number(row.planVersion),periodNumber:row.periodNumber==null?null:Number(row.periodNumber),
-    transactionVersion:Number(row.transactionVersion || 0),outstandingMinor:String([BigInt(row.amountMinor)-BigInt(row.settledMinor||'0')-BigInt(row.refundMinor||'0'),0n].reduce((a,b)=>a>b?a:b))}
+    transactionVersion:Number(row.transactionVersion || 0),outstandingMinor:row.balanceAdjustmentId ? '0' : String([BigInt(row.amountMinor)-BigInt(row.settledMinor||'0')-BigInt(row.refundMinor||'0'),0n].reduce((a,b)=>a>b?a:b))}
 }
 async function contract(c,uid,loanId) {
   const [[row]]=await c.execute(CONTRACT_SQL+' WHERE uid=? AND loan_id=?',[uid,loanId])
@@ -55,7 +55,7 @@ async function assertUnencumbered(c,uid,item,{sources=false}={}) {
 }
 async function assertNoCharges(c,uid,ids) {
   if (!ids.length) return
-  const [[row]]=await c.execute(`SELECT charge_id FROM catledger_loan_charges WHERE uid=? AND transaction_id IN (${ids.map(()=>'?').join(',')}) LIMIT 1`,[uid,...ids])
+  const [[row]]=await c.execute(`SELECT charge_id FROM catledger_loan_charges WHERE uid=? AND (transaction_id IN (${ids.map(()=>'?').join(',')}) OR balance_adjustment_id IN (${ids.map(()=>'?').join(',')})) LIMIT 1`,[uid,...ids,...ids])
   if (row) fail('LOAN_TRANSACTION_LOCKED')
 }
 module.exports = { CONTRACT_SQL,CHARGE_SQL,publicCharge,contract,charges,charge,audit,dependencies,assertUnencumbered,assertNoCharges }

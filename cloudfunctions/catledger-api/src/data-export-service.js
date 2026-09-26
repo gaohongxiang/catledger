@@ -17,7 +17,7 @@ function createDataExportService({ getPool, now = Date.now }) {
   }
   function publicJob(job) {
     return { exportId:job.exportId,format:FORMAT,startedAt:job.startedAt,expiresAt:job.expiresAt,
-      schemaVersion:26,tables:manifest.map(t=>t.name),maxRows:MAX_ROWS,maxBytes:MAX_BYTES }
+      schemaVersion:27,tables:manifest.map(t=>t.name),maxRows:MAX_ROWS,maxBytes:MAX_BYTES }
   }
   // 临时任务不属于账本，不写 mutation_receipts，也不递增业务修订。
   async function locked(context, operation) {

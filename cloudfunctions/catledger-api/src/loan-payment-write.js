@@ -20,6 +20,13 @@ function versionInputs(input, previous, requested) {
   return [...versions].map(([loanId,version])=>({loanId,version}))
 }
 async function writePayment(connection,uid,data,secret,selectLoan,{correct=false}={}) {
+  if(data.simplePeriod!==undefined && typeof data.simplePeriod!=='boolean')throw ledgerError('VALIDATION_ERROR')
+  if(data.simplePeriod){
+    if(correct)throw ledgerError('VALIDATION_ERROR')
+    // 先校验完整金额和日期再写费用；后续任何失败均由同一外层事务回滚。
+    paymentInput(data)
+    data=await require('./installment-repayment').payment(connection,uid,data,selectLoan,require('./installment-service').loadView)
+  }
   const replacement=correct ? {paymentId:data.paymentId,version:data.version,loans:data.loans} : data.replacePayment
   const previous=replacement ? await inspectPayment(connection,uid,replacement.paymentId,replacement.version) : null
   const mode=correct ? (previous.payment.mode==='new'?'new':'correctExisting') : data.mode

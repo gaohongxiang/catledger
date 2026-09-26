@@ -43,7 +43,7 @@ test('统一分期：真实 MySQL、最小权限、费用去重、独立进度�
     }
     await t.test('建立方案和单期确认第10期均不生成流水，也不扩散到前9期',async()=>{
       assert.deepEqual(await expense(),{amount:'0',n:0});await progress(10)
-      const result=await view();assert.equal(result.summary.paidPeriods,1);assert.equal(result.items.length,12);assert.ok(result.items.slice(0,9).every(row=>!row.complete));assert.equal(result.items[10].stateText,'付款待确认')
+      const result=await view();assert.equal(result.summary.paidPeriods,1);assert.equal(result.items.length,12);assert.ok(result.items.slice(0,9).every(row=>!row.complete));assert.equal(result.items[10].complete,false);assert.equal(result.items[10].status,'missing')
       assert.deepEqual(await expense(),{amount:'0',n:0})
     })
     await t.test('手动补记本期费用仅一次，重复/并发请求复用结果',async()=>{
@@ -80,7 +80,7 @@ test('统一分期：真实 MySQL、最小权限、费用去重、独立进度�
       await imp('financeUpdates.undo',{requestId:randomUUID(),updateId:finalBill.testUpdateId,version:finalBill.appliedVersion,previewToken:impact.previewToken})
       const result=await view();version=result.loanVersion
       assert.equal(result.summary.completedThrough,0);assert.equal(result.summary.paidPeriods,1)
-      assert.equal(result.items[8].stateText,'已逾期');assert.equal(result.items[10].stateText,'付款待确认')
+      assert.equal(result.items[8].stateText,'已逾期');assert.equal(result.items[10].complete,false);assert.equal(result.items[10].status,'missing')
       assert.deepEqual(await expense(),{amount:'3909',n:1})
       assert.equal((await api('loans.installment',{loanId:first.loanId,periodNumber:12})).sources[0].active,false)
     })

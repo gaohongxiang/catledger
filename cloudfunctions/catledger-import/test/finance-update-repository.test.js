@@ -287,7 +287,14 @@ test('历史关联分块读取真实版本，跳过已删除交易并保留事�
   const events = Array.from({ length: 1000 }, (_, n) => ({ eventId: 'event-' + n,
     fieldSources: {}, reasonCodes: [], existingTransactionIds: ['tx-' + n, 'missing'] }))
   const connection = { async execute(sql, values) {
-    if (sql.includes('FROM catledger_loan_charges')) { assert.ok(values.length <= 101); return [[]] }
+    if (sql.includes('FROM catledger_loan_charges')) {
+      assert.equal(values[0],'synthetic-user')
+      assert.match(sql,/\(transaction_id IN \([? ,]+\) OR balance_adjustment_id IN \([? ,]+\)\)/)
+      const count=(values.length-1)/2
+      assert.ok(Number.isInteger(count)&&count<=100)
+      assert.deepEqual(values.slice(1,count+1),values.slice(count+1))
+      return [[]]
+    }
     if (sql.includes('FROM catledger_loan_payment_transactions')) { assert.ok(values.length <= 101); return [[]] }
     if (sql.includes('FROM catledger_transactions')) {
       reads++
