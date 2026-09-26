@@ -67,6 +67,7 @@ function createInstallmentService({getPool,selectLoan}) {
       if (data.completedThrough===undefined && data.periodNumber===undefined) throw ledgerError('VALIDATION_ERROR')
       if (data.bookCosts!==undefined && typeof data.bookCosts!=='boolean') throw ledgerError('VALIDATION_ERROR')
       if (data.bookCosts) {
+        if (await require('./loan-charge-store').contract(c,uid,loan.loanId)) throw ledgerError('LOAN_TRANSACTION_LOCKED')
         if (data.status!=='completed' || !data.periodNumber) throw ledgerError('VALIDATION_ERROR')
         const view=await loadView(c,uid,loan),row=view.rows.find(row=>row.periodNumber===data.periodNumber)
         const [[account]]=await c.execute('SELECT type,archived_at AS archivedAt FROM catledger_accounts WHERE uid=? AND account_id=? FOR UPDATE',[uid,loan.accountId])
@@ -119,6 +120,12 @@ function createInstallmentService({getPool,selectLoan}) {
       if (Number(loan.version)!==parseVersion(data.version) || typeof data.archived!=='boolean') throw ledgerError('CONFLICT')
       if (loan.kind!=='installment') throw ledgerError('VALIDATION_ERROR')
       if (data.archived) {
+        const store = require('./loan-charge-store'), contract = await store.contract(c,uid,loan.loanId)
+        if (contract) {
+          await c.execute('UPDATE catledger_loan_charge_contracts SET authorization_json=?,version=version+1 WHERE uid=? AND contract_id=?',
+            [JSON.stringify({...contract.authorization,mode:'paused'}),uid,contract.contractId])
+          await store.audit(c,uid,contract.contractId,null,'archive',{authorization:contract.authorization})
+        }
         // 只释放管理关系；原始来源、费用交易及来源身份仍保留，重新关联不再次记账。
         await c.execute('UPDATE catledger_installment_items SET loan_id=NULL,version=version+1 WHERE uid=? AND loan_id=?',[uid,loan.loanId])
         await c.execute('DELETE FROM catledger_installment_bindings WHERE uid=? AND loan_id=?',[uid,loan.loanId])
@@ -133,6 +140,7 @@ function createInstallmentService({getPool,selectLoan}) {
       const [[raw]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.item_id=? FOR UPDATE',[uid,validateId(data.itemId)])
       if (!raw || raw.loanId!==loan.loanId || raw.origin!=='manual') throw ledgerError('VALIDATION_ERROR')
       const item=publicItem(raw)
+      await require('./loan-charge-store').assertNoCharges(c,uid,[item.transactionId].filter(Boolean))
       if (item.version!==parseVersion(data.itemVersion)) throw ledgerError('CONFLICT')
       const [[used]]=await c.execute(`SELECT
         EXISTS(SELECT 1 FROM catledger_economic_event_transactions WHERE uid=? AND transaction_id=? AND superseded_at IS NULL) AS imported,

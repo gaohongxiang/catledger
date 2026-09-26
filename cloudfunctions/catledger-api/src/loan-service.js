@@ -77,6 +77,8 @@ function createLoanService({ getPool }) {
     return write(context, 'loans.update', async (connection, uid, data) => {
       const current = await selectLoan(connection, uid, data.loanId, true)
       if (Number(current.version) !== parseVersion(data.version)) throw ledgerError('CONFLICT')
+      const chargeContract = await require('./loan-charge-store').contract(connection, uid, current.loanId)
+      if (chargeContract) throw ledgerError('LOAN_BASELINE_LOCKED')
       const previousSetup = parseSetup(current.installmentSetup)
       const value = loanMetadata({ ...data,...(data.installmentSetup === undefined && previousSetup ? { installmentSetup:previousSetup } : {}) })
       if (data.generatePlan !== undefined || data.sourceItemId !== undefined) throw ledgerError('VALIDATION_ERROR')
@@ -107,6 +109,6 @@ function createLoanService({ getPool }) {
       return { loanId: current.loanId, version: data.version + 1 }
     })
   }
-  return { list, get, create, update, ...require('./installment-service').createInstallmentService({ getPool,selectLoan }), ...require('./explicit-repayment-service').createExplicitRepaymentService({ getPool }), ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
+  return { list, get, create, update, ...require('./loan-charge-service').createLoanChargeService({ getPool,selectLoan }), ...require('./installment-service').createInstallmentService({ getPool,selectLoan }), ...require('./explicit-repayment-service').createExplicitRepaymentService({ getPool }), ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
 }
 module.exports = { createLoanService, selectLoan, validateLiability }

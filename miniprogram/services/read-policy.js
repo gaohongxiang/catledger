@@ -1,6 +1,7 @@
 // 连续前台使用期间复用；本机写入、重新进入前台及手动刷新控制重读。
 const ALL_TAGS = ['accounts', 'transactions', 'categories', 'profile', 'loans', 'accountDirectory', 'categoryDirectory']
 const READ_POLICIES = Object.freeze({
+  'loans.chargePlan': { ttl: 0, tags: ['loans', 'transactions', 'accountDirectory'] },
   'reads.validate': { ttl: 0, tags: ALL_TAGS },
   'loans.transaction': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
   'loans.unassigned': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
@@ -24,6 +25,7 @@ const READ_POLICIES = Object.freeze({
 
 function mutationTags(action) {
   if (/^loans\.(setInstallmentProgress|linkInstallmentSource|archiveInstallment|removeInstallmentItem)$/.test(action)) return ['loans', 'transactions', 'accounts']
+  if (/^loans\.(configureCharges|pauseCharges)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (action === 'profile.update') return ['profile']
   if (/^loans\.(savePeriod|allocatePeriods|generatePlan)$/.test(action)) return ['loans']
   if (/^loans\.(record|correct|reverse|bookRepayment|assignRepayment|releaseRepayment)$/.test(action)) return ['loans', 'accounts', 'transactions']

@@ -16,6 +16,7 @@ function fixture(options = {}) {
       if (sql.includes('catledger_user_identities')) return [[{ uid: options.uid || 'user-a' }]]
       if (sql.includes('FROM catledger_users')) return [[{ uid: options.uid || 'user-a' }]]
       if (sql.includes('UPDATE catledger_users SET data_revision')) return [{ affectedRows: 1 }]
+      if (sql.includes('FROM catledger_loan_charges')) { assert.equal(values[0], options.uid || 'user-a'); return [options.chargeLinked ? [{ charge_id: 'charge' }] : []] }
       if (sql.includes('FROM catledger_loan_payment_transactions')) return [options.loanLinked ? [{ payment_id: 'loan-payment' }] : []]
       if (sql.includes('INSERT INTO catledger_mutation_receipts')) {
         const [uid,key,action,requestDigest] = values
@@ -125,4 +126,10 @@ test('未分类在SQL中筛选且绑定游标范围，账户/日期/搜索条件
   assert.equal(Object.hasOwn(second, 'summary'), false)
   assert.equal(queries.some(row => row.sql.includes('AS incomeMinor')), false)
   await assert.rejects(service.list(context({ ...input, uncategorized: false, cursor: first.nextCursor })), { publicCode: 'VALIDATION_ERROR' })
+})
+
+test('已认领费用分类不能绕过贷款收费维护，拒绝时回滚且不更改交易', async () => {
+  const h = fixture({ chargeLinked: true })
+  await assert.rejects(h.run(context(data)), { publicCode: 'LOAN_TRANSACTION_LOCKED' })
+  assert.equal(h.writes.length, 0); assert.equal(h.rollbacks, 1)
 })

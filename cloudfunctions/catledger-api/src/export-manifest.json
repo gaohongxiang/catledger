@@ -815,5 +815,93 @@
       "created_at"
     ],
     "json": []
+  },
+  {
+    "name": "catledger_loan_charge_contracts",
+    "keys": [
+      "contract_id"
+    ],
+    "columns": [
+      "contract_id",
+      "loan_id",
+      "account_id",
+      "reference_key",
+      "origin_kind",
+      "plan_version",
+      "authorization_json",
+      "version",
+      "created_at"
+    ],
+    "json": [
+      "authorization_json"
+    ]
+  },
+  {
+    "name": "catledger_loan_charges",
+    "keys": [
+      "charge_id"
+    ],
+    "columns": [
+      "charge_id",
+      "contract_id",
+      "charge_key",
+      "component",
+      "period_number",
+      "charge_date",
+      "amount_minor",
+      "category_id",
+      "state",
+      "basis",
+      "transaction_id",
+      "covered_by_charge_id",
+      "plan_version",
+      "version",
+      "created_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_charge_sources",
+    "keys": [
+      "charge_id",
+      "item_id"
+    ],
+    "columns": [
+      "charge_id",
+      "item_id",
+      "created_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_charge_allocations",
+    "keys": [
+      "payment_id",
+      "charge_id"
+    ],
+    "columns": [
+      "payment_id",
+      "charge_id",
+      "amount_minor",
+      "created_at"
+    ],
+    "json": []
+  },
+  {
+    "name": "catledger_loan_charge_audit",
+    "keys": [
+      "audit_id"
+    ],
+    "columns": [
+      "audit_id",
+      "contract_id",
+      "charge_id",
+      "action",
+      "snapshot_json",
+      "created_at"
+    ],
+    "json": [
+      "snapshot_json"
+    ]
   }
 ]
