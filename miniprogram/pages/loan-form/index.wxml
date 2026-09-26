@@ -36,13 +36,11 @@
     <text class="ld-note form-hint">按已还期次计算，剩余本金：</text><text class="remaining-principal money-number">{{remainingText}}</text>
     <picker mode="date" value="{{baselineDate}}" data-field="baselineDate" bindchange="input"><view class="ld-picker"><text class="ld-picker-value">开始核对日期</text><text>{{baselineDate}}</text><chevron-icon size="{{22}}" /></view></picker>
     <text class="ld-note form-hint">以该日日初本金为基准，后续实际还款从此日开始关联。</text>
-    <view wx:for="{{preview.rows}}" wx:key="periodNumber" class="plan-row"><text>第 {{item.periodNumber}} 期 · {{item.dueDate}}</text><text class="money-number">{{item.totalText}}</text></view>
-    <text wx:if="{{preview.truncated}}" class="ld-note form-hint">此处展示前 24 期，保存后可查看全部期次。</text><text class="ld-note form-hint">{{preview.summaryText}}</text>
-    <view wx:if="{{repaymentRows.length}}">
-      <text class="ld-card-title">这些期次还了吗？</text>
-      <text class="ld-note form-hint">默认已还，没还的取消勾选。保存时一并记入各月利息，保留当前账户余额。</text>
-      <checkbox-group bindchange="selectRepayments"><label wx:for="{{repaymentRows}}" wx:key="periodNumber" class="confirm-row"><checkbox value="{{item.periodNumber}}" checked="{{item.paid}}" disabled="{{saving}}" color="#19775C" /><text>第 {{item.periodNumber}} 期 · {{item.dueDate}} · 已还</text></label></checkbox-group>
-    </view>
+    <text wx:if="{{repaymentRows.length}}" class="ld-note form-hint">没还的取消勾选；保存时补记利息，当前余额不变。</text>
+    <checkbox-group bindchange="selectRepayments">
+      <view wx:for="{{preview.rows}}" wx:key="periodNumber" class="plan-row"><view class="plan-period"><text>第 {{item.periodNumber}} 期</text><text>{{item.dueDate}}</text></view><text class="money-number">{{item.totalText}}</text><label wx:if="{{item.repaymentChoice}}" class="schedule-choice"><checkbox value="{{item.periodNumber}}" checked="{{item.repaymentPaid}}" disabled="{{saving || loading}}" color="#19775C" aria-label="第{{item.periodNumber}}期已还" /><text>{{item.repaymentPaid ? '已还' : '未还'}}</text></label><text wx:else class="plan-pending">未还</text></view>
+    </checkbox-group>
+    <text wx:if="{{preview.truncated}}" class="ld-note form-hint">此处展示前 {{preview.rows.length}} 期，保存后可查看全部期次。</text><text class="ld-note form-hint">{{preview.summaryText}}</text>
   </view>
   <button wx:if="{{loan}}" class="ld-link" bindtap="openPlan" disabled="{{loading || saving || hasPending}}">调整期次金额与日期 ›</button>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" /><ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />

@@ -57,14 +57,18 @@ module.exports = {
       repayments: [{ periodNumber: selected.period.periodNumber, paid: status === 'completed' }] })
   },
   selectRepayments(event) {
-    if (this.data.saving || this.data.detailLoading) return
-    const selected = new Set(event.detail.value)
-    this.setData({ repaymentRows: this.data.repaymentRows.map(r=>({...r,paid:selected.has(String(r.periodNumber))})) })
+    if (!session.isCurrent(this) || this.data.saving || this.data.loading || this.data.detailLoading) return
+    const selected = new Set(event.detail.value), visible = new Set(this.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term))
+    this.setData({ repaymentRows: this.data.repaymentRows.map(r=>visible.has(r.periodNumber)?{...r,paid:selected.has(String(r.periodNumber))}:r) })
+    this.setData(this.repaymentSelection())
   },
   saveRepayments() {
     if (!this._detailView || !this.data.repaymentRows.length || this.data.loan.archived || this.data.detailLoading) return
+    const visible = new Set(this.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term))
+    const repayments = this.data.repaymentRows.filter(r=>visible.has(r.periodNumber)).map(({periodNumber,paid})=>({periodNumber,paid}))
+    if (!repayments.length) return
     return this.installmentWrite('loans.confirmInstallments', { loanId:this._loanId, version:this._detailView.loanVersion,
-      repayments:this.data.repaymentRows.map(({periodNumber,paid})=>({periodNumber,paid})) })
+      repayments })
   },
   openInstallmentSource(event) {
     const source = (this.data.periodSources || []).find(item => item.itemId === event.currentTarget.dataset.id)

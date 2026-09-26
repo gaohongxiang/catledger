@@ -95,6 +95,10 @@
 .schedule-repayment { min-width: 0; padding-left: 8rpx; text-align: center; color: var(--detail-muted); font-size: 20rpx; }
 .schedule-repayment .schedule-repayment-button { box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 64rpx; margin: 0; padding: 8rpx 4rpx; border: 1rpx solid var(--detail-line); border-radius: 10rpx; background: var(--detail-soft); color: var(--detail-accent); font-size: 20rpx; line-height: 1.4; white-space: nowrap; }
 .schedule-repayment-button::after { border: 0; }
+.schedule-actions { display: flex; align-items: center; gap: 16rpx; }
+.schedule-choice { display: flex; align-items: center; justify-content: center; min-height: 64rpx; white-space: nowrap; color: var(--detail-accent); }
+.schedule-choice checkbox { transform: scale(.7); margin: 0 -4rpx; }
+.schedule-choice-note { display: block; margin: 0 4rpx 16rpx; color: var(--detail-muted); font-size: 20rpx; line-height: 1.6; }
 .schedule-row-paid { color: var(--detail-muted); }
 .schedule-row-paid .schedule-interest { opacity: .65; }
 .schedule-row-overdue { background: #fff8eb; box-shadow: inset 4rpx 0 0 #d9902d; }
@@ -213,7 +217,3 @@
 .charge-form .ld-cell text { display:block; }
 .charge-form .ld-cell input { border-bottom:1rpx solid var(--detail-line);padding:12rpx 0; }
 .charge-confirm { display:block;margin:24rpx 0;font-size:26rpx; }
-
-.repayment-check{margin:24rpx 0;padding:28rpx;border:1rpx solid var(--detail-line);border-radius:20rpx;background:var(--detail-surface)}
-.repayment-check-title{display:block;font-size:30rpx;font-weight:600;margin-bottom:12rpx}
-.repayment-check-row{display:flex;align-items:center;gap:12rpx;padding:16rpx 0;font-size:26rpx}

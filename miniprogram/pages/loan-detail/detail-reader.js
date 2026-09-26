@@ -14,7 +14,7 @@ function create(api) {
         this._detailView = null
         this._detailHistory = []
         this._detailNext = null
-        this.setData({ repaymentRows: [], periodRows: [], scheduleMore: false, detailError: '' })
+        this.setData({ repaymentRows: [], repaymentChoiceCount: 0, periodRows: [], scheduleMore: false, detailError: '' })
       }
       if (this._periodAction === 'loans.installments' && this._detailReady && api.isFresh && !api.isFresh(this._periodAction || 'loans.periods', { loanId: loan.loanId, pageSize: PAGE_SIZE })) this._detailReady = false
       this.setData({ detail: model.build(loan, this._detailView, this._detailPreview) })
@@ -51,8 +51,14 @@ function create(api) {
           : this._detailView && this._detailView.items.length ? { historyOffset: history.length, cursor: null } : null
         : view && view.nextCursor ? { historyOffset: history.length, cursor: view.nextCursor } : null
       const visible = rows.map(row => model.rowView(row, model.today()))
-      this.setData({ periodRows: append ? this.data.periodRows.concat(visible) : visible, scheduleMore: !!this._detailNext,
+      this.setData({ ...this.repaymentSelection(append ? this.data.periodRows.concat(visible) : visible), scheduleMore: !!this._detailNext,
         scheduleHistorical: inHistory || !!(append && this.data.scheduleHistorical) })
+    },
+    repaymentSelection(rows = this.data.periodRows) {
+      const choices = new Map((this.data.repaymentRows || []).map(row => [row.periodNumber, row.paid]))
+      const periodRows = rows.map(row => ({ ...row, repaymentChoice: choices.has(row.term) && !row.cancelled,
+        repaymentPaid: choices.get(row.term) === true }))
+      return { periodRows, repaymentChoiceCount: periodRows.filter(row => row.repaymentChoice).length }
     },
     async showMoreSchedule() {
       if (this.data.detailLoading || !session.isCurrent(this)) return

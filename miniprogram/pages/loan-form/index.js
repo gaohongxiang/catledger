@@ -7,6 +7,11 @@ const money=require('../../utils/money')
 const scheduleForm=require('../loan-detail/schedule-form')
 const planModel=require('../loan-plan/model')
 const model=require('./model')
+function repaymentPreview(result,repaymentRows){
+  const choices=new Map(repaymentRows.map(r=>[r.periodNumber,r.paid]))
+  const preview=planModel.previewView(result,Math.max(24,...repaymentRows.map(r=>r.periodNumber)))
+  return {...preview,rows:preview.rows.map(r=>({...r,repaymentChoice:choices.has(r.periodNumber),repaymentPaid:choices.get(r.periodNumber)===true}))}
+}
 Page({
   data:{repaymentRows:[],baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
     schedule:Object.assign(scheduleForm.blank(),{measurementIndex:1}),paidTerms:'0',baselineDate:'',typeIndex:0,customRecordType:'',
@@ -69,7 +74,7 @@ Page({
   selectRepayments(event){
     if(this.data.saving||this.data.loading||!this._preview)return
     const selected=new Set(event.detail.value),repaymentRows=this.data.repaymentRows.map(r=>({...r,paid:selected.has(String(r.periodNumber))}))
-    this.setData({repaymentRows,remainingText:money.formatMinor(model.remaining(this._preview,repaymentRows))})
+    this.setData({repaymentRows,preview:repaymentPreview(this._preview,repaymentRows),remainingText:money.formatMinor(model.remaining(this._preview,repaymentRows))})
   },
   confirm(event){this.setData({confirmed:event.detail.value.includes('confirmed')})},
   openAccounts(){wx.navigateTo({url:'/pages/accounts/index'})},
@@ -85,7 +90,7 @@ Page({
       this._preview=result
       const previous=new Map(this.data.repaymentRows.map(r=>[r.periodNumber,r.paid]))
       const repaymentRows=result.periods.filter(r=>r.periodNumber<=Number(this.data.paidTerms)).map(r=>({periodNumber:r.periodNumber,dueDate:r.dueDate,paid:previous.has(r.periodNumber)?previous.get(r.periodNumber):true}))
-      this.setData({preview:planModel.previewView(result),repaymentRows,remainingText:money.formatMinor(model.remaining(result,repaymentRows))})
+      this.setData({preview:repaymentPreview(result,repaymentRows),repaymentRows,remainingText:money.formatMinor(model.remaining(result,repaymentRows))})
     }catch(error){if(current()&&this._previewToken===token)this.setData({errorMessage:error.message || '计划暂未核对'})}
     finally{if(current()&&this._previewToken===token)this.setData({previewLoading:false})}
   },

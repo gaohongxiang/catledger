@@ -11,7 +11,13 @@
 .form-hint { margin-top: 14rpx; }
 .choice-disabled { opacity: .45; }
 .remaining-principal { display: block; margin: 12rpx 0 24rpx; font-size: var(--font-display); color: var(--theme-ink); }
-.plan-row { display: flex; justify-content: space-between; gap: 12rpx; padding: 16rpx 0; border-bottom: 1rpx solid var(--theme-line); font-size: var(--font-caption); }
+.plan-row { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; padding: 16rpx 0; border-bottom: 1rpx solid var(--theme-line); font-size: var(--font-caption); }
+.plan-period { flex: 1; min-width: 0; }
+.plan-period text { display: block; }
+.plan-period text + text { color: var(--theme-text-muted); font-size: 20rpx; }
+.plan-row .money-number { white-space: nowrap; }
+.plan-row .schedule-choice, .plan-pending { width: 112rpx; text-align: center; font-size: 22rpx; }
+.plan-pending { color: var(--theme-text-muted); }
 .confirm-row { display: flex; align-items: flex-start; margin-top: 24rpx; gap: 12rpx; font-size: var(--font-caption); line-height: 1.6; }
 .confirm-row checkbox { flex-shrink: 0; }
 .local-note { margin: 24rpx 8rpx 0; }

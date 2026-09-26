@@ -25,10 +25,10 @@ function canGenerate(loan){
  if(loan.measurementKind==='rate')return loan.quoteType!=null&&loan.ratePpm!=null
  return loan.measurementKind==='repayment'&&loan.repaymentMinor!=null
 }
-function previewView(result){
+function previewView(result,limit=24){
  const rows=result.periods.map(p=>({periodNumber:p.periodNumber,dueDate:p.dueDate,
   totalText:money.formatMinor(fields.reduce((s,f)=>addMinor(s,p[f+'Minor']),'0'))}))
- return {periodCount:result.periods.length,rows:rows.slice(0,24),truncated:result.periods.length>24,
+ return {periodCount:result.periods.length,rows:rows.slice(0,limit),truncated:result.periods.length>limit,
   summaryText:'合计应还 '+money.formatMinor(result.summary.totalPaymentMinor)+'（利息 '+money.formatMinor(result.summary.totalInterestMinor)+'、费用 '+money.formatMinor(result.summary.totalFeeMinor)+'）'}
 }
 function generatePayload(data){

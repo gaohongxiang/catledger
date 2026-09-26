@@ -28,6 +28,24 @@ test('账单所在期次预选为接入范围；未保存不写账，不推算�
   assert.equal(p.data.principalYuan,'');assert.equal(p.data.schedule.firstPaymentDate,'')
   assert.equal(p.data.accounts[p.data.accountIndex].accountId,'credit')
 })
+test('创建36期分期只用预览表选择已还，超过24期仍全部可改，一次保存所见选择',async()=>{
+  const {remainingSchedule}=require('../cloudfunctions/catledger-api/src/loan-installment')
+  const h=runtime(),p=h.page('loan-form');h.accounts=[{accountId:'credit',type:'credit',name:'合成卡',archived:false}]
+  h.respond=(action,data)=>action==='loans.previewPlan'?{ok:true,data:remainingSchedule(data)}:action==='loans.create'?{ok:true,data:{loanId:'new-synthetic-loan'}}:undefined
+  p.onLoad({accountId:'credit'});await p.load()
+  p.setData({name:'合成分期',principalYuan:'36000',paidTerms:'36',baselineDate:'2026-01-01','schedule.terms':'36','schedule.repaymentYuan':'1100','schedule.firstPaymentDate':'2023-01-31'})
+  await p.preview()
+  assert.equal(p.data.preview.rows.length,36);assert.equal(new Set(p.data.preview.rows.map(r=>r.periodNumber)).size,36)
+  assert.ok(p.data.preview.rows.every(r=>r.repaymentChoice&&r.repaymentPaid));assert.equal(p.data.preview.truncated,false)
+  p.selectRepayments({detail:{value:p.data.preview.rows.filter(r=>r.periodNumber!==25).map(r=>String(r.periodNumber))}})
+  assert.equal(p.data.preview.rows[24].repaymentPaid,false);assert.match(p.data.remainingText,/1,000\.00/)
+  await p.preview();assert.equal(p.data.preview.rows[24].repaymentPaid,false)
+  assert.equal(h.calls.some(c=>c.action==='loans.create'),false)
+  await p.save()
+  const writes=h.calls.filter(c=>c.action==='loans.create');assert.equal(writes.length,1)
+  assert.equal(writes[0].data.repayments.length,36);assert.equal(writes[0].data.repayments[24].paid,false)
+  assert.equal(writes[0].data.baselinePrincipalMinor,'100000');assert.equal(h.modals.length,0)
+})
 test('来源读取迟到时不能回填已关闭的期次弹层',async()=>{
   const h=runtime(),p=h.page('loan-detail');p._loanId='synthetic-loan';p._readSession=h.cache.getSession();p.data.detail={tracking:true}
   let release;h.respond=action=>action==='loans.installment'?new Promise(r=>release=r):undefined

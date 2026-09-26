@@ -89,6 +89,9 @@ function detail(){
 function periodPayment(term, id) {
  return ok({loanVersion:2,period:{periodNumber:term,dueDate:'2026-02-28',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',status:'paid',paymentConfirmed:true},sources:[],legacyPayments:[{paymentId:id,totalMinor:'52000',occurredLocalAt:'2026-02-28T12:00:00'}]})
 }
+function promptedPeriod(periodNumber) {
+ return {periodNumber,dueDate:'2026-07-31',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',status:'missing'}
+}
 test('已记还款只从对应期次查看；返回重读最新本期，失败可见，查看与取消均不写账',async()=>{
  const {h,p}=detail(),base=h.respond
  let version=1,failed=false
@@ -130,12 +133,33 @@ test('未确认费用覆盖不把计划利息或已还进度算成实际零费�
 })
 test('第8期账单补漏在列表一次保存；取消勾选第7期后不重置、不弹第二次确认',async()=>{
  const {h,p}=detail(),base=h.respond
- h.respond=(action,data)=>action==='loans.installments'?ok({loanVersion:2,items:[],summary:{paidPeriods:6,unpaidPrincipalMinor:'300000',unpaidInterestMinor:'12000',unpaidFeeMinor:'0',repaymentPrompts:[{periodNumber:7,dueDate:'2026-07-31',paid:true},{periodNumber:8,dueDate:'2026-08-31',paid:true}]}}):action==='loans.confirmInstallments'?ok({loanId:loan.loanId,version:3}):base(action,data)
+ h.respond=(action,data)=>action==='loans.installments'?ok({loanVersion:2,items:[7,8].map(promptedPeriod),summary:{paidPeriods:6,unpaidPrincipalMinor:'300000',unpaidInterestMinor:'12000',unpaidFeeMinor:'0',repaymentPrompts:[{periodNumber:7,dueDate:'2026-07-31',paid:true},{periodNumber:8,dueDate:'2026-08-31',paid:true}]}}):action==='loans.confirmInstallments'?ok({loanId:loan.loanId,version:3}):base(action,data)
  await p.load();assert.deepEqual(p.data.repaymentRows.map(r=>r.paid),[true,true])
+ assert.deepEqual(p.data.periodRows.map(r=>[r.term,r.repaymentChoice,r.repaymentPaid]),[[7,true,true],[8,true,true]])
  p.selectRepayments({detail:{value:['8']}});assert.equal(h.calls.some(c=>c.action==='loans.confirmInstallments'),false)
+ assert.equal(p.data.periodRows[0].repaymentPaid,false);assert.equal(p.data.periodRows.length,2)
  await p.saveRepayments();const command=h.calls.find(c=>c.action==='loans.confirmInstallments')
  assert.deepEqual(JSON.parse(JSON.stringify(command.data.repayments)),[{periodNumber:7,paid:false},{periodNumber:8,paid:true}]);assert.equal(command.data.version,2);assert.equal(h.modals.length,0)
  assert.equal(h.calls.some(c=>['loans.configureCharges','loans.setInstallmentProgress'].includes(c.action)),false)
+})
+test('逐期表只保存已展示的选择；翻页保留未还草稿，不将未展示期次误取消或提交',async()=>{
+ const {h,p}=detail(),base=h.respond
+ h.respond=(action,data)=>action==='loans.installments'?ok({loanVersion:2,items:[data.cursor?8:7].map(promptedPeriod),nextCursor:data.cursor?null:'next',summary:{paidPeriods:6,unpaidPrincipalMinor:'300000',unpaidInterestMinor:'12000',unpaidFeeMinor:'0',repaymentPrompts:[7,8].map(periodNumber=>({periodNumber,paid:true}))}}):action==='loans.confirmInstallments'?{ok:false,error:{code:'CONFLICT',message:'合成版本冲突'}}:base(action,data)
+ await p.load();p.selectRepayments({detail:{value:[]}})
+ assert.deepEqual(p.data.repaymentRows.map(r=>r.paid),[false,true])
+ assert.equal(p.data.repaymentChoiceCount,1)
+ await p.saveRepayments()
+ const first=h.calls.filter(c=>c.action==='loans.confirmInstallments')[0]
+ assert.deepEqual(JSON.parse(JSON.stringify(first.data.repayments)),[{periodNumber:7,paid:false}])
+ await p.showMoreSchedule()
+ assert.deepEqual(p.data.periodRows.map(r=>[r.term,r.repaymentPaid]),[[7,false],[8,true]])
+ assert.equal(p.data.repaymentChoiceCount,2)
+ p.selectRepayments({detail:{value:['8']}});await p.saveRepayments()
+ const last=h.calls.filter(c=>c.action==='loans.confirmInstallments').at(-1)
+ assert.deepEqual(JSON.parse(JSON.stringify(last.data.repayments)),[{periodNumber:7,paid:false},{periodNumber:8,paid:true}])
+ assert.equal(h.modals.length,0)
+ p.onHide();p.selectRepayments({detail:{value:['7','8']}})
+ assert.equal(p.data.periodRows[0].repaymentPaid,false)
 })
 test('记费设置内选择暂停/结清/利率变化仍先确认，取消和已关闭设置的迟到选择不写',async()=>{
  const {h,p}=detail();await p.load();let sheet
@@ -167,8 +191,9 @@ test('A4 真实详情页无文件授权：明确来源、从四月继续、覆�
  assert.equal(h.calls.some(c=>c.action==='loans.bookInstallmentCosts'||c.action==='loans.record'),false)
 })
 test('一次保存失败保留勾选，不会自动改回已还；费用更正失败也保留草稿',async()=>{
- const {h,p}=detail();await p.load();p.setData({repaymentRows:[{periodNumber:7,paid:false},{periodNumber:8,paid:true}]})
- const base=h.respond;h.respond=(action,data)=>action==='loans.confirmInstallments'?{ok:false,error:{code:'CONFLICT',message:'请重新读取'}}:base(action,data)
+ const {h,p}=detail(),base=h.respond
+ h.respond=(action,data)=>action==='loans.installments'?ok({loanVersion:2,items:[7,8].map(promptedPeriod),summary:{repaymentPrompts:[7,8].map(periodNumber=>({periodNumber,paid:true}))}}):action==='loans.confirmInstallments'?{ok:false,error:{code:'CONFLICT',message:'请重新读取'}}:base(action,data)
+ await p.load();p.selectRepayments({detail:{value:['8']}})
  await p.saveRepayments();assert.equal(p.data.repaymentRows[0].paid,false);assert.match(p.data.errorMessage,/重新读取/);assert.equal(h.modals.length,0)
  p.setData({chargeEdit:{chargeId:'fee',amountYuan:'18'},chargeImpact:{canChange:true,deltaText:'-2.00',previewToken:'signed'}});p._chargeChange={loanId:loan.loanId,chargeId:'fee',operation:'adjust',amountMinor:'1800'}
  const original=h.respond;h.respond=(action,data)=>action==='loans.changeCharge'?{ok:false,error:{code:'LOAN_TRANSACTION_LOCKED',message:'已有付款'}}:original(action,data)
