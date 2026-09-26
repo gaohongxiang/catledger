@@ -79,9 +79,11 @@
 .cost-guide > view:first-child text:last-child { margin-top: 3rpx; color: var(--detail-muted); font-size: 14rpx; }
 .cost-guide-action { display: flex; align-items: center; gap: 6rpx; margin-left: 16rpx; color: var(--detail-accent); font-size: 16rpx; }
 .detail-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; margin: 50rpx 3rpx 20rpx; color: var(--detail-ink); }
-.detail-section-title { display: flex; align-items: center; gap: 16rpx; min-width: 0; }
-.detail-section-title > text { flex-shrink: 0; font-size: 35rpx; font-weight: 700; }
-.detail-section-count { flex-shrink: 0; color: var(--detail-muted); font-size: 18rpx; }
+.detail-tabs { display: flex; align-items: center; gap: 28rpx; min-width: 0; }
+.detail-tabs .detail-tab { box-sizing: border-box; width: auto; margin: 0; padding: 14rpx 0; border-radius: 0; border-bottom: 4rpx solid transparent; background: transparent; color: var(--detail-muted); font-size: 30rpx; line-height: 1.5; }
+.detail-tab::after { border: 0; }
+.detail-tabs .detail-tab-active { border-bottom-color: var(--detail-accent); color: var(--detail-ink); font-weight: 700; }
+.detail-section-count { display: block; margin: 0 4rpx 12rpx; color: var(--detail-muted); font-size: 22rpx; }
 .payment-schedule { overflow: hidden; border: 2rpx solid var(--detail-line); border-radius: 20rpx; background: var(--detail-surface); color: var(--detail-ink); }
 .payment-schedule-head, .payment-schedule-row { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
 .payment-schedule-head { padding: 15rpx 13rpx; background: var(--detail-soft); color: var(--detail-muted); font-size: 15rpx; font-weight: 500; }
@@ -166,7 +168,7 @@
 .detail-actions .detail-delete { margin-top: 16rpx; min-height: 92rpx; background: #FCF8F5; border: 1rpx solid #E6CECA; border-radius: 28rpx; color: #A94B40; font-size: 32rpx; }
 .installment-sheet { width: 100%; max-height: 84vh; box-sizing: border-box; background: var(--theme-surface); border-radius: 32rpx 32rpx 0 0; padding: 28rpx 30rpx calc(30rpx + env(safe-area-inset-bottom)); }
 .installment-sheet-head { display: flex; align-items: center; justify-content: space-between; font-size: 36rpx; font-weight: 600; }
-.installment-sheet-head button { margin: 0; background: transparent; color: var(--theme-text-muted); font-size: 26rpx; }
+.installment-sheet .installment-sheet-head button { width: auto; margin: 0; padding: 0 8rpx; min-height: 64rpx; line-height: 1.5; display: flex; align-items: center; background: transparent; color: var(--theme-text-muted); font-size: 26rpx; }
 .installment-note { display: block; margin: 12rpx 0 20rpx; color: var(--theme-text-muted); font-size: 24rpx; line-height: 1.7; }
 .installment-amounts { display: flex; padding: 26rpx 0; border-bottom: 1rpx solid var(--theme-line); margin-bottom: 24rpx; }
 .installment-amounts view { display: flex; flex: 1; flex-direction: column; gap: 12rpx; font-size: 30rpx; }
@@ -198,10 +200,15 @@
 .period-fee-row > text { flex-shrink:0; }
 .period-fee-chevron { color:var(--detail-muted);padding-left:8rpx; }
 .period-fee-issue { color:var(--detail-cost); }
-.loan-management-row { display:flex;justify-content:space-between;align-items:center;gap:20rpx;margin:0;padding:26rpx 0;min-height:88rpx;background:transparent;border-bottom:1rpx solid var(--detail-line);border-radius:0;font-size:28rpx;text-align:left;line-height:1.5;color:var(--detail-ink); }
+.loan-management-sheet .loan-management-row, .payment-history .loan-management-row { display:flex;justify-content:space-between;align-items:center;box-sizing:border-box;width:100%;gap:20rpx;margin:0;padding:26rpx 0;min-height:88rpx;background:transparent;border-bottom:1rpx solid var(--detail-line);border-radius:0;font-size:28rpx;text-align:left;line-height:1.5;color:var(--detail-ink); }
 .loan-management-row > text:last-child { color:var(--detail-muted);font-size:23rpx; }
 .loan-management-row::after { border:0; }
-.loan-management-danger { color:var(--detail-cost); }
+.loan-management-sheet .loan-management-danger { color:var(--detail-cost); }
+.payment-history-actions { display:flex;justify-content:flex-end;gap:24rpx; }
+.payment-history-actions .ld-link { width:auto;margin:0;padding:12rpx 0;min-height:64rpx; }
+.payment-history-row view text { display:block; }
+.payment-history-row view text:last-child { margin-top:6rpx;color:var(--detail-muted);font-size:22rpx; }
+.charge-current-settings { padding-bottom:20rpx;margin-bottom:12rpx;border-bottom:1rpx solid var(--detail-line); }
 .charge-row { display:flex;align-items:center;justify-content:space-between;gap:16rpx;padding:18rpx 0;border-bottom:1rpx solid var(--detail-line);font-size:26rpx; }
 .charge-row view { min-width:0;flex:1; }
 .charge-row .ld-link { flex-shrink:0; }

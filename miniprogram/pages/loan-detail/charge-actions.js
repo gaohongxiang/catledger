@@ -33,17 +33,20 @@ const methods={
   this.closeLoanManagement()
   const action=event.currentTarget.dataset.action
   if(action==='charges')return this.openChargeForm()
-  if(action==='repayment'||action==='drawdown')return this.recordPayment({currentTarget:{dataset:{kind:action}}})
-  if(action==='sync')return this.syncChargesNow()
-  if(action==='progress')return this.openProgress()
-  if(action==='plan')return this.openPlan()
   if(action==='edit')return this.edit()
   if(action==='archive')return this.archiveInstallment()
-  if(action==='pause')return this.pauseChargePlan()
-  if(['settled','rate_changed'].includes(action))return this.endChargePlan({currentTarget:{dataset:{reason:action}}})
-  if(action==='history'){this.setData({historyOpen:true});return this.loadHistory()}
  },
- closeLoanHistory(){this.setData({historyOpen:false})},
+ chooseChargeStop(){
+  if(this.data.saving||!this.data.chargeFormOpen||!this.data.chargeSummary||!this.data.chargeSummary.hasContract)return
+  const current=session.capture(this),token=this._chargeControlToken={}
+  const choices=[...(this.data.chargeSummary.authorized?[{label:'暂时停记，之后再继续',action:'pause'}]:[]),{label:'已经提前结清',action:'settled'},{label:'费用或利率有变化',action:'rate_changed'}]
+  wx.showActionSheet({itemList:choices.map(i=>i.label),success:result=>{
+   if(!current()||this._chargeControlToken!==token||!this.data.chargeFormOpen||this.data.saving)return
+   const choice=choices[result.tapIndex];if(!choice)return
+   this._chargeControlToken=null
+   return choice.action==='pause'?this.pauseChargePlan():this.endChargePlan({currentTarget:{dataset:{reason:choice.action}}})
+  }})
+ },
  async loadPeriodCharges(term,token,cursor){
   const current=session.capture(this)
   try{
@@ -62,6 +65,7 @@ const methods={
  closeOneOffCharges(){if(!this.data.saving){this._periodToken={};this.setData({oneOffOpen:false})}},
  invalidateChargePreview(){this._chargeChangeToken={};this._chargePreviewToken={};this._chargePreviewInput=null;this._chargeAuthorizing=false;this.setData({chargePreview:null})},
  openChargeForm(){
+  this._chargeControlToken=null
   this._chargeReturnTerm=null
   this.invalidateChargePreview()
   const view=this._chargeView;if(!view||this.data.saving||this.data.loan.archived)return
@@ -75,7 +79,7 @@ const methods={
  },
  chargeInput(event){const key=event.currentTarget.dataset.field;if(!this.data.chargeDraft||!Object.prototype.hasOwnProperty.call(this.data.chargeDraft,key))return;this.invalidateChargePreview();this.setData({['chargeDraft.'+key]:key.endsWith('Index')?Number(event.detail.value):key==='fixed'?event.detail.value.includes('fixed'):event.detail.value,chargeImpact:null,chargePreview:null})},
  choosePrior(event){this.invalidateChargePreview();this.setData({chargePriorIndex:Number(event.detail.value)})},
- closeChargeForm(){if(!this.data.saving){this.invalidateChargePreview();this.setData({chargeFormOpen:false,chargeEdit:null,chargeImpact:null});return this.returnToChargePeriod()}},
+ closeChargeForm(){this._chargeControlToken=null;if(!this.data.saving){this.invalidateChargePreview();this.setData({chargeFormOpen:false,chargeEdit:null,chargeImpact:null});return this.returnToChargePeriod()}},
  returnToChargePeriod(){const term=this._chargeReturnTerm;this._chargeReturnTerm=null;if(term===0)return this.openOneOffCharges();if(term)return this.openInstallment({currentTarget:{dataset:{term}}})},
  async loadChargeEvidence(event){
   if(this.data.saving)return

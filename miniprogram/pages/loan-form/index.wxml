@@ -40,7 +40,7 @@
     <text wx:if="{{preview.truncated}}" class="ld-note form-hint">此处展示前 24 期，保存后可查看全部期次。</text><text class="ld-note form-hint">{{preview.summaryText}}</text>
     <checkbox-group bindchange="confirm"><label class="confirm-row"><checkbox value="confirmed" checked="{{confirmed}}" color="#BE5B24" /><text>已核对剩余本金、历史进度和后续计划，与合同或账单一致</text></label></checkbox-group>
   </view>
-  <text wx:if="{{loan}}" class="ld-note form-hint">已有分期计划保留原参数。调整具体期次请到“还款计划与对账”。</text>
+  <button wx:if="{{loan}}" class="ld-link" bindtap="openPlan" disabled="{{loading || saving || hasPending}}">调整期次金额与日期 ›</button>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" /><ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
   <button wx:if="{{errorMessage && !hasPending}}" class="ld-link" bindtap="load" disabled="{{loading || saving}}">重新读取账户与资料</button>
   <text wx:if="{{hasPending}}" class="ld-note form-hint">上次保存结果待核实，再次保存将恢复原请求。</text>

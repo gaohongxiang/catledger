@@ -21,9 +21,9 @@ Page({
   ...detailReader,
   ...installmentActions,
   ...require('./charge-actions').methods,
-  data: { ...require('./charge-actions').initial,chargeRefundAccounts:[],sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
+  data: { ...require('./charge-actions').initial,chargeRefundAccounts:[],sourceTransactionId: '', sourceContext: null, history: [], historyNext: null, historyCursor: null, historyLoaded: false, historyLoading: false, historyError: '', loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
     periodOpen: false, periodLoading: false, periodError: '', selectedPeriod: null, periodSources: [], periodLegacy: [], periodMoreSources: false, periodCanBook: false, periodEditing: false, periodAdjustOpen: false, periodEvidenceOpen:false, periodDraft: null, progressOpen: false, progressThrough: '',
-    detail: null, detailLoading: false, detailError: '', periodRows: [], scheduleMore: false, scheduleHistorical: false, guideOpen: false, historyOpen: false,
+    detail: null, detailLoading: false, detailError: '', periodRows: [], scheduleMore: false, scheduleHistorical: false, guideOpen: false, detailTab: 'schedule',
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
     principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
     scheduleOpen: false, schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
@@ -32,7 +32,7 @@ Page({
   onHide(){pageReadSession.end(this)},
   onUnload() { pageReadSession.end(this) },
   load() {
-    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(['chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodAdjustOpen','periodEvidenceOpen','periodDraft','progressOpen','progressThrough','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','historyOpen','sourceContext','history','historyNext','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_chargeChangeToken','_chargeReturnTerm','_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext'])
+    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(['chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodAdjustOpen','periodEvidenceOpen','periodDraft','progressOpen','progressThrough','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','detailTab','sourceContext','history','historyNext','historyCursor','historyLoaded','historyLoading','historyError','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_historyRead','_chargeControlToken','_chargeChangeToken','_chargeReturnTerm','_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext'])
     if (this._load) return this._load
     const readOptions = { force: !!this._forceLoanRead }; this._forceLoanRead = false
     this.setData({ loading: true, errorMessage: '' })
@@ -77,7 +77,7 @@ Page({
           }
           catch (error) { if (current()) this.setData({ errorMessage: error.message || '上次操作仍待核实', hasPending: Boolean(pending.pending()) }) }
         }
-        if (current() && this.data.loan)await Promise.all([this.loadDetail(),this.loadCharges()])
+        if (current() && this.data.loan)await Promise.all([this.loadDetail(),this.loadCharges(),...(this.data.detailTab==='history'?[this.loadHistory()]:[])])
       })
       .catch(error => { if (current()) this.setData({ errorMessage: this.data.loan ? '更新未成功，当前显示上次结果；' + (error.message || '请重试') : error.message || '贷款资料暂未加载' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
@@ -95,18 +95,28 @@ Page({
     const options=event&&event.currentTarget&&event.currentTarget.dataset||{},period=Number(options.term)
     wx.navigateTo({ url: '/pages/loan-payment/index?loanId=' + encodeURIComponent(this._loanId) + (this._sourceTransactionId ? '&sourceTransactionId=' + encodeURIComponent(this._sourceTransactionId) : '') + (Number.isInteger(period)&&period>0?'&periodNumber='+period:options.kind==='drawdown'?'&kind=drawdown':'') })
   },
-  openPlan() { wx.navigateTo({ url: '/pages/loan-plan/index?loanId=' + encodeURIComponent(this._loanId) }) },
+  openPlan() { if(this.data.loan&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({ url: '/pages/loan-plan/index?loanId=' + encodeURIComponent(this._loanId) }) },
   openPayment(event) { wx.navigateTo({ url: '/pages/loan-payment/index?paymentId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },
+  showPeriodTable() { if(!this.data.saving)this.setData({detailTab:'schedule'}) },
+  showPaymentHistory() {
+    if(this.data.saving||this.data.loading||this.data.detailTab==='history')return
+    this.setData({detailTab:'history'})
+    return this.loadHistory()
+  },
   async loadHistory(event) {
-    if (this.data.historyLoading || !this._loanId) return
+    if ((this.data.historyLoading && this._historyRead) || !this._loanId) return
     const current = pageReadSession.capture(this)
+    const token = this._historyRead = {}
     const cursor = event && event.currentTarget && event.currentTarget.dataset.next ? this.data.historyNext : null
     this.setData({ historyLoading: true, historyError: '' })
     try {
       const result = await api.callApi('loans.payments', { loanId: this._loanId, pageSize: 20, cursor }, { force: true })
-      if (current()) this.setData({ history: result.items.map(p => Object.assign({}, p, { totalText: money.formatMinor(p.totalMinor), kindText: p.kind === 'drawdown' ? '放款' : '还款', occurredText: String(p.occurredLocalAt || '').slice(5, 16).replace('T', ' ') })), historyNext: result.nextCursor, historyLoaded: true })
-    } catch (error) { if (current()) this.setData({ historyError: error.message }) }
-    finally { if (current()) this.setData({ historyLoading: false }) }
+      if (current() && this._historyRead === token) {
+        const items = result.items.map(p => Object.assign({}, p, { totalText: money.formatMinor(p.totalMinor), kindText: p.kind === 'drawdown' ? '借款到账' : '还款', occurredText: String(p.occurredLocalAt || '').slice(0, 16).replace('T', ' ') }))
+        this.setData({ history: items, historyCursor: cursor, historyNext: result.nextCursor, historyLoaded: true })
+      }
+    } catch (error) { if (current() && this._historyRead === token) this.setData({ historyError: error.message }) }
+    finally { if (current() && this._historyRead === token) { this._historyRead = null; this.setData({ historyLoading: false }) } }
   },
   clearDate(event) { const field = event.currentTarget.dataset.field; if (['startDate','endDate'].includes(field)) this.setData({ [field]: '' }) },
   fillForm(loan) { const schedule = scheduleForm.fromLoan(loan); this.setData(Object.assign(form(loan), { accountIndex: this.data.accounts.findIndex(a => a.accountId === loan.accountId), schedule, scheduleOpen: scheduleForm.touched(schedule) })) },

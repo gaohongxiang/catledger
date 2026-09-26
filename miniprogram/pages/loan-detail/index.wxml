@@ -74,9 +74,14 @@
     </view>
 
     <view class="detail-section-head">
-      <view class="detail-section-title"><text>逐期还款</text><text class="detail-section-count">{{detail.terms ? '共 ' + detail.terms + ' 期' : '已确认计划'}}</text></view>
+      <view class="detail-tabs">
+        <button class="detail-tab {{detailTab !== 'history' ? 'detail-tab-active' : ''}}" bindtap="showPeriodTable" disabled="{{saving}}">逐期还款</button>
+        <button class="detail-tab {{detailTab === 'history' ? 'detail-tab-active' : ''}}" bindtap="showPaymentHistory" disabled="{{saving || loading}}">还款记录</button>
+      </view>
       <button wx:if="{{!loan.archived}}" class="progress-entry" bindtap="openLoanManagement" disabled="{{saving || loading}}">管理</button>
     </view>
+    <block wx:if="{{detailTab !== 'history'}}">
+    <text class="detail-section-count">{{detail.terms ? '共 ' + detail.terms + ' 期' : '已确认计划'}}</text>
     <view wx:if="{{detailError}}" class="detail-read-error"><text>{{detailError}}</text><button bindtap="refreshDetail" disabled="{{loading || detailLoading}}">重新读取</button></view>
     <view wx:if="{{chargeSummary}}" class="schedule-fee-summary">
       <view><text>已记利息及费用 {{chargeSummary.recorded}}</text><text wx:if="{{chargeSummary.unverifiedMinor !== '0'}}">其中 {{chargeSummary.unverified}} 待账单核对</text></view>
@@ -98,6 +103,17 @@
     <text wx:if="{{scheduleHistorical}}" class="schedule-footnote">历史期次按原分期方案展示。</text>
     <text wx:if="{{detail.progressNote}}" class="schedule-footnote">{{detail.progressNote}}</text>
     <text wx:if="{{detail.principalGap}}" class="schedule-footnote">{{detail.principalGap}}</text>
+    </block>
+    <view wx:else class="payment-history">
+      <view wx:if="{{!loan.archived}}" class="payment-history-actions">
+        <button class="ld-link" bindtap="recordPayment" disabled="{{saving || loading}}">记还款</button>
+        <button wx:if="{{loan.kind === 'borrowing' || chargeSummary.originKind === 'cash_borrowing'}}" class="ld-link" data-kind="drawdown" bindtap="recordPayment" disabled="{{saving || loading}}">借款到账</button>
+      </view>
+      <view wx:if="{{historyError}}" class="detail-read-error"><text>{{historyError}}</text><button bindtap="loadHistory" disabled="{{historyLoading}}">重试</button></view>
+      <text wx:if="{{!history.length}}" class="schedule-empty">{{historyLoading ? '正在读取还款记录…' : historyError ? '还款记录暂未加载' : '还没有已关联的还款记录'}}</text>
+      <button wx:for="{{history}}" wx:key="paymentId" class="loan-management-row payment-history-row" data-id="{{item.paymentId}}" bindtap="openPayment"><view><text>{{item.kindText}}</text><text>{{item.occurredText}}</text></view><text class="money-number">{{item.totalText}} ›</text></button>
+      <view class="payment-history-actions"><button wx:if="{{historyCursor}}" class="ld-link" bindtap="loadHistory" disabled="{{historyLoading}}">返回最新</button><button wx:if="{{historyNext}}" class="ld-link" data-next="true" bindtap="loadHistory" disabled="{{historyLoading}}" loading="{{historyLoading}}">下一页</button></view>
+    </view>
 
     <button wx:if="{{sourceTransactionId && !loan.archived}}" class="secondary-button detail-actions" bindtap="recordPayment" disabled="{{saving || loading}}">继续关联原还款</button>
   </block>
@@ -205,6 +221,7 @@
       </view>
     </block>
     </view>
+    <button wx:if="{{loan}}" class="ld-link" bindtap="openPlan" disabled="{{loading || saving || hasPending}}">调整期次金额与日期 ›</button>
     <text wx:if="{{hasPending}}" class="ld-note">上次保存结果待核实，再次提交会沿用原请求和原内容。</text>
     <button class="primary-button ld-action" loading="{{saving}}" disabled="{{saving || loading}}" bindtap="save">{{hasPending ? '重试上次保存' : '保存贷款资料'}}</button>
     <button class="ld-link" disabled="{{saving}}" bindtap="cancelEdit">取消</button>

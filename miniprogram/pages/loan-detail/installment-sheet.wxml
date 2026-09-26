@@ -28,6 +28,7 @@
           <button wx:if="{{!selectedPeriod.complete}}" class="ld-link" data-status="completed" bindtap="setPeriodStatus" disabled="{{saving}}">仅确认本期已还</button>
           <text class="installment-note">仅确认进度不记费用、不记银行卡扣款。</text>
           <view class="installment-inline"><button data-status="unpaid" bindtap="setPeriodStatus" disabled="{{saving}}">本期未还</button><button data-status="partial" bindtap="setPeriodStatus" disabled="{{saving}}">部分未还</button><button data-status="clear" bindtap="setPeriodStatus" disabled="{{saving}}">清除本期标记</button></view>
+          <button wx:if="{{selectedPeriod.term > 1}}" class="ld-link" data-term="{{selectedPeriod.term}}" bindtap="openProgress" disabled="{{saving}}">确认第1～{{selectedPeriod.term}}期已还</button>
         </block>
         <button wx:if="{{periodAdjustOpen}}" class="ld-link" bindtap="editInstallmentPeriod" disabled="{{saving}}">本期金额或日期有变化</button>
         <view wx:if="{{periodAdjustOpen && periodEditing}}" class="installment-period-edit">

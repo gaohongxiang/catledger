@@ -50,9 +50,11 @@ module.exports = {
       periodNumber: selected.period.periodNumber, status: event.currentTarget.dataset.status })
   },
   bookPeriodCosts(){const term=this.data.selectedPeriod&&this.data.selectedPeriod.term;this.closeInstallment();this.openChargeForm();this._chargeReturnTerm=term},
-  openProgress() {
+  openProgress(event) {
     if (!this._detailView || this.data.saving || this.data.loan.archived) return
-    this.setData({ progressOpen: true, progressThrough: String(this._detailView.summary.manualThrough), periodError: '' })
+    const term = Number(event && event.currentTarget && event.currentTarget.dataset.term)
+    const through = Number.isInteger(term) && term > 0 && term <= this.data.loan.scheduleTerms ? term : this._detailView.summary.manualThrough
+    this.setData({ periodOpen: false, progressOpen: true, progressThrough: String(through), periodError: '' })
   },
   closeProgress() { if (!this.data.saving) this.setData({ progressOpen: false }) },
   progressInput(event) { this.setData({ progressThrough: event.detail.value }) },

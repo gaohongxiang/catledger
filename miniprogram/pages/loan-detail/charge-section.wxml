@@ -4,6 +4,11 @@
     <ui-state wx:if="{{chargeError}}" error description="{{chargeError}}" />
     <view class="charge-form">
     <text class="ld-note">确认一次后，可按期记利息和费用，无需每期导入。不会扣银行卡，也不会标成已还。</text>
+    <view wx:if="{{chargeSummary.hasContract}}" class="charge-current-settings">
+      <text class="ld-note">当前：{{chargeSummary.mode}} · {{chargeSummary.range}}</text>
+      <button wx:if="{{chargeSummary.mode === '仅本次确认'}}" class="ld-link" bindtap="syncChargesNow" disabled="{{saving}}">补齐已确认费用</button>
+      <button class="ld-link" bindtap="chooseChargeStop" disabled="{{saving}}">暂停或停止记费 ›</button>
+    </view>
     <picker class="ld-cell" range="{{chargeOrigins}}" value="{{chargeDraft.originIndex}}" data-field="originIndex" bindchange="chargeInput"><text>这笔贷款的来源</text><text>{{chargeDraft.originIndex >= 0 ? chargeOrigins[chargeDraft.originIndex] : '请选择真实来源'}}</text></picker>
     <picker class="ld-cell" range="{{chargeModes}}" value="{{chargeDraft.modeIndex}}" data-field="modeIndex" bindchange="chargeInput"><text>授权方式</text><text>{{chargeModes[chargeDraft.modeIndex]}}</text></picker>
     <picker class="ld-cell" range="{{chargeHistories}}" value="{{chargeDraft.historyIndex}}" data-field="historyIndex" bindchange="chargeInput"><text>历史处理</text><text>{{chargeHistories[chargeDraft.historyIndex]}}</text></picker>
@@ -61,25 +66,7 @@
   <scroll-view scroll-y class="installment-sheet loan-management-sheet" catchtap="stopGuideTap">
     <view class="installment-sheet-head"><text>管理这笔贷款</text><button bindtap="closeLoanManagement">关闭</button></view>
     <button wx:if="{{loan.scheduleTerms}}" class="loan-management-row" data-action="charges" bindtap="manageLoan"><text>自动记费设置</text><text>{{chargeSummary.mode}} ›</text></button>
-    <button wx:if="{{detail.tracking}}" class="loan-management-row" data-action="progress" bindtap="manageLoan"><text>批量确认已还</text><text>仅更新进度 ›</text></button>
-    <button class="loan-management-row" data-action="repayment" bindtap="manageLoan"><text>其他还款</text><text>跨期或整单还款 ›</text></button>
-    <button wx:if="{{loan.kind === 'borrowing' || chargeSummary.originKind === 'cash_borrowing'}}" class="loan-management-row" data-action="drawdown" bindtap="manageLoan"><text>补记借款到账</text><text>实际收到的资金 ›</text></button>
-    <button class="loan-management-row" data-action="history" bindtap="manageLoan"><text>已有借还记录</text><text>›</text></button>
-    <button class="loan-management-row" data-action="plan" bindtap="manageLoan"><text>调整还款计划</text><text>›</text></button>
     <button class="loan-management-row" data-action="edit" bindtap="manageLoan"><text>编辑贷款资料</text><text>›</text></button>
-    <button wx:if="{{chargeSummary.mode === '仅本次确认'}}" class="loan-management-row" data-action="sync" bindtap="manageLoan"><text>补齐已确认费用</text><text>按本次授权 ›</text></button>
-    <button wx:if="{{chargeSummary.authorized}}" class="loan-management-row" data-action="pause" bindtap="manageLoan"><text>暂停自动记费</text><text>已记费用保留 ›</text></button>
-    <button wx:if="{{chargeSummary.hasContract}}" class="loan-management-row" data-action="settled" bindtap="manageLoan"><text>提前结清</text><text>停止未来记费 ›</text></button>
-    <button wx:if="{{chargeSummary.hasContract}}" class="loan-management-row" data-action="rate_changed" bindtap="manageLoan"><text>费用或利率有变化</text><text>暂停并重新确认 ›</text></button>
     <button wx:if="{{detail.tracking}}" class="loan-management-row loan-management-danger" data-action="archive" bindtap="manageLoan"><text>删除分期记录</text><text>账目保留 ›</text></button>
-  </scroll-view>
-</view>
-<view wx:if="{{historyOpen}}" class="detail-guide-mask" bindtap="closeLoanHistory" catchtouchmove="stopGuideTap">
-  <scroll-view scroll-y class="installment-sheet" catchtap="stopGuideTap">
-    <view class="installment-sheet-head"><text>借还记录</text><button bindtap="closeLoanHistory">关闭</button></view>
-    <ui-state wx:if="{{historyError}}" error description="{{historyError}}" />
-    <text wx:if="{{!history.length}}" class="installment-note">{{historyLoading ? '正在读取…' : '尚无已关联的实际借还'}}</text>
-    <button wx:for="{{history}}" wx:key="paymentId" class="loan-management-row" data-id="{{item.paymentId}}" bindtap="openPayment"><text>{{item.occurredText}} · {{item.kindText}}</text><text>{{item.totalText}} ›</text></button>
-    <button wx:if="{{historyNext}}" class="ld-link" data-next="true" bindtap="loadHistory" disabled="{{historyLoading}}">查看更多</button>
   </scroll-view>
 </view>

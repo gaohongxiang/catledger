@@ -68,6 +68,7 @@ Page({
   toggleAdvanced(){this.setData({advancedOpen:!this.data.advancedOpen})},
   confirm(event){this.setData({confirmed:event.detail.value.includes('confirmed')})},
   openAccounts(){wx.navigateTo({url:'/pages/accounts/index'})},
+  openPlan(){if(this.data.loan&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({url:'/pages/loan-plan/index?loanId='+encodeURIComponent(this.data.loan.loanId)})},
   cancel(){if(!this.data.saving)wx.navigateBack()},
   async preview(){
     if(this.data.loading||this.data.saving||this.data.previewLoading||!this.data.sourceReady||(this._query.loanId&&!this.data.loan))return
