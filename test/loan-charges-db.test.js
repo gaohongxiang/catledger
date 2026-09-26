@@ -60,6 +60,11 @@ test('A1 收费身份、授权与历史覆盖：真实 MySQL / 最小权限',{sk
    const view=await api('loans.chargePlan',{loanId:third.loanId})
    assert.equal(view.items.filter(i=>i.state==='covered').length,12);assert.equal(view.recordedMinor,'24000')
    assert.equal(view.items.filter(i=>i.transactionId===tx.transactionId).length,1)
+   assert.equal(view.oneOffCount,1)
+   const onlyOnce=await api('loans.chargePlan',{loanId:third.loanId,periodNumber:0})
+   assert.equal(onlyOnce.items.length,1);assert.equal(onlyOnce.items[0].transactionId,tx.transactionId)
+   const onlyPeriod=await api('loans.chargePlan',{loanId:third.loanId,periodNumber:8})
+   assert.equal(onlyPeriod.items.length,1);assert.equal(onlyPeriod.items[0].state,'covered')
    const input={loanId:third.loanId,chargeId:view.items.find(i=>i.transactionId===tx.transactionId).chargeId,operation:'suppress'}
    const impact=await api('loans.chargeImpact',input)
    assert.equal(impact.dependencies.coveredCount,12);assert.equal(impact.canChange,false)

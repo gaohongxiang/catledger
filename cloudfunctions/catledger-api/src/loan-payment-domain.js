@@ -12,6 +12,11 @@ function paymentInput(data) {
     if (ids.has(loanId)) throw ledgerError('VALIDATION_ERROR')
     ids.add(loanId)
     const value = { loanId, version, chargeAllocations: require('./loan-charge-payments').normalizeCoverage(item.chargeAllocations) }
+    if (item.period !== undefined) {
+      const period = item.period
+      if (data.kind !== 'repayment' || !period || !Number.isInteger(period.periodNumber) || period.periodNumber < 1 || period.periodNumber > 600 || !Number.isInteger(period.version) || period.version < 0) throw ledgerError('VALIDATION_ERROR')
+      value.period = { periodNumber: period.periodNumber, version: period.version }
+    }
     for (const field of ['principalMinor','interestMinor','feeMinor']) value[field] = parseMinorUnits(item[field], { allowZero: true }).toString()
     if (BigInt(value.principalMinor) + BigInt(value.interestMinor) + BigInt(value.feeMinor) === 0n) throw ledgerError('VALIDATION_ERROR')
     for (const field of ['interest','fee']) {

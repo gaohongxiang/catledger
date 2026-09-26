@@ -15,6 +15,10 @@ test('A3 费用核对与导入事务：实际先、方案先、差异与独立�
   })
   await t.test('L05 实单18拒绝额外记账；预览净差-2，确认后原费用变18并补来源',async()=>{
    const update=await prepareBank(h,{period:3,amount:'18.00',date:'2026-03-01'}),before=await h.state(loan),fee=before.items.find(i=>i.chargeKey==='period:3:interest')
+   const otherPeriod=await prepareBank(h,{period:5,amount:'17.00',date:'2026-05-01'})
+   const selected=await h.api('loans.chargePlan',{loanId:loan.loanId,periodNumber:3})
+   assert.deepEqual(selected.issues.map(i=>i.eventId),[update.event.eventId])
+   assert.ok((await h.state(loan)).issues.some(i=>i.eventId===otherPeriod.event.eventId))
    await assert.rejects(postBank(h,update),{publicCode:'LOAN_CHARGE_DIFFERENCE'})
    assert.equal((await h.state(loan)).recordedMinor,'8000')
    const request={loanId:loan.loanId,chargeId:fee.chargeId,operation:'adjust',eventId:update.event.eventId}

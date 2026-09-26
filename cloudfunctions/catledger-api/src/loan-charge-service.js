@@ -74,20 +74,22 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
       }
       const {encodeCursor,decodeCursor}=require('./cursor'),data=context.data,size=data.pageSize||40
       const configurationDigest=data.configuration?digestRequest('charge-preview',data.configuration):null
-      if(!Number.isInteger(size)||size<1||size>40||data.periodNumber!=null&&(!Number.isInteger(data.periodNumber)||data.periodNumber<1||data.periodNumber>600))throw ledgerError('VALIDATION_ERROR')
+      if(!Number.isInteger(size)||size<1||size>40||data.periodNumber!=null&&(!Number.isInteger(data.periodNumber)||data.periodNumber<0||data.periodNumber>600))throw ledgerError('VALIDATION_ERROR')
       const cursor=data.cursor?decodeCursor(context.subjectHash,data.cursor):null
-      if(cursor&&(cursor.action!=='loans.chargePlan'||cursor.uid!==uid||cursor.loanId!==loan.loanId||cursor.revision!==revision||cursor.periodNumber!==(data.periodNumber||null)||cursor.configurationDigest!==configurationDigest))throw ledgerError('CONFLICT')
-      const offset=cursor?cursor.offset:0,selected=data.periodNumber?items.filter(i=>i.periodNumber===data.periodNumber):items
+      if(cursor&&(cursor.action!=='loans.chargePlan'||cursor.uid!==uid||cursor.loanId!==loan.loanId||cursor.revision!==revision||cursor.periodNumber!==(data.periodNumber??null)||cursor.configurationDigest!==configurationDigest))throw ledgerError('CONFLICT')
+      const offset=cursor?cursor.offset:0,selected=data.periodNumber!=null?items.filter(i=>i.periodNumber===(data.periodNumber||null)):items
       const [issues]=contract?await c.execute(`SELECT e.event_id AS eventId,e.update_id AS updateId,e.amount_minor AS amountMinor,
         e.event_local_date AS localDate,JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.periodNumber')) AS periodNumber,
         JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.component')) AS component
         FROM catledger_economic_events e JOIN catledger_finance_updates u ON u.uid=e.uid AND u.update_id=e.update_id
         WHERE e.uid=? AND e.ledger_account_id=? AND u.status NOT IN ('posted','undone','abandoned') AND e.status<>'excluded'
-          AND JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.referenceKey'))=? ORDER BY e.event_local_date,e.event_id LIMIT 41`,[uid,contract.accountId,contract.referenceKey]):[[]]
+          AND JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.referenceKey'))=?
+          ${data.periodNumber!=null?"AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.periodNumber')),'0')=?":''}
+          ORDER BY e.event_local_date,e.event_id LIMIT 41`,[uid,contract.accountId,contract.referenceKey,...(data.periodNumber!=null?[String(data.periodNumber)]:[])]):[[]]
       return {loanId:loan.loanId,loanVersion:Number(loan.version),contract,items:selected.slice(offset,offset+size),preview:preview.slice(offset,offset+size),
-        totalCharges:selected.length,previewCount:preview.length,previewAmountMinor:preview.reduce((n,p)=>n+BigInt(p.amountMinor),0n).toString(),
+        totalCharges:selected.length,oneOffCount:items.filter(i=>i.periodNumber===null).length,previewCount:preview.length,previewAmountMinor:preview.reduce((n,p)=>n+BigInt(p.amountMinor),0n).toString(),
         duePreviewCount:preview.filter(p=>p.previewState==='due').length,duePreviewMinor:preview.filter(p=>p.previewState==='due').reduce((n,p)=>n+BigInt(p.amountMinor),0n).toString(),
-        nextCursor:offset+size<Math.max(selected.length,preview.length)?encodeCursor(context.subjectHash,{action:'loans.chargePlan',uid,loanId:loan.loanId,revision,offset:offset+size,periodNumber:data.periodNumber||null,configurationDigest}):null,
+        nextCursor:offset+size<Math.max(selected.length,preview.length)?encodeCursor(context.subjectHash,{action:'loans.chargePlan',uid,loanId:loan.loanId,revision,offset:offset+size,periodNumber:data.periodNumber??null,configurationDigest}):null,
         issues:issues.slice(0,40).map(i=>({...i,amountMinor:String(i.amountMinor),periodNumber:Number(i.periodNumber)})),moreIssues:issues.length>40,
         candidates:sources.slice(0,40).map(publicItem).filter(i=>i.active),moreCandidates:sources.length>40,
         priorContracts:prior.map(r=>({...r,authorization:domain.parse(r.authorization)})),cutoff:domain.today(now()),

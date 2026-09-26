@@ -27,8 +27,9 @@ function buildView(loan, savedPeriods = [], items = [], today = new Date(Date.no
     const old = saved.get(plan.periodNumber), row = { ...plan, ...old }, exception = exceptions[plan.periodNumber]
     const sources = items.filter(item => Number(item.periodNumber) === plan.periodNumber && item.active !== false)
     const differences = sources.filter(item => item.amountMinor != null && String(item.amountMinor) !== String(row[item.component + 'Minor'])).map(item => item.component)
-    const partial = exception === 'partial' || !exception && old && old.status === 'partial'
-    const complete = Boolean(!row.cancelled && exception !== 'unpaid' && !partial && (exception === 'completed' || plan.periodNumber <= through || old && old.status==='paid'))
+    const actualPaid=old&&old.status==='paid',actualPartial=old&&old.status==='partial'
+    const partial = Boolean(actualPartial || !actualPaid && exception === 'partial')
+    const complete = Boolean(!row.cancelled && (actualPaid || exception !== 'unpaid' && !partial && (exception === 'completed' || plan.periodNumber <= through)))
     const amounts = Object.fromEntries(FIELDS.map(field => {
       const key = 'unpaid' + field[0].toUpperCase() + field.slice(1) + 'Minor'
       return [key, complete || row.cancelled ? '0' : String(partial && old && old[key] != null ? old[key] : row[field + 'Minor'])]

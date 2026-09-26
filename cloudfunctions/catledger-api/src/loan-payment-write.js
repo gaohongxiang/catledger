@@ -28,6 +28,7 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
   // 两组贷款版本一次核对，最终只递增一次；更正中间态不当作新的本金余额。
   const loans=await lockLoanVersions(connection,uid,loanVersions,selectLoan,40)
   const allocated=new Map(input.allocations.map(a=>[a.loanId,loans.get(a.loanId)]))
+  const paymentPeriods=require('./loan-payment-period'), periodAllocations=await paymentPeriods.prepare(connection,uid,input,loans,previous)
   let source=null,originalSource=null,roots=[]
   if(correct && previous.payment.mode!=='new') {
     if(input.kind!==previous.payment.kind || input.assetAccountId!==previous.payment.assetAccountId || input.totalMinor!==previous.payment.totalMinor ||
@@ -84,6 +85,7 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
     transactions.push({...draft,transactionId,version:1})
   }
   await chargePayments.persist(connection,uid,paymentId,chargeAllocations,transactions)
+  await paymentPeriods.persist(connection,uid,paymentId,periodAllocations)
   for(const row of transactions) await connection.execute(`INSERT INTO catledger_loan_payment_transactions
     (uid,payment_id,transaction_id,transaction_version,created_by_payment) VALUES (?,?,?,?,?)`,[uid,paymentId,row.transactionId,Number(row.version),input.mode==='associate'?0:1])
   for(const root of roots) await connection.execute(`INSERT INTO catledger_loan_replaced_transactions

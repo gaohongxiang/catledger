@@ -32,6 +32,16 @@ test('费用差异与取消状态不改变还款事实',()=>{
  assert.deepEqual(view.rows[9].differences,['interest']);assert.equal(view.rows[9].complete,false);assert.equal(view.rows[9].interestMinor,'3909')
  assert.equal(view.rows[10].stateText,'已取消');assert.equal(view.rows[10].unpaidInterestMinor,'0')
 })
+test('本期真实清偿优先于旧人工标记；部分付款不伪装全额，撤销后原标记仍可追溯',()=>{
+ const progress={schema:2,through:0,exceptions:{'2':'unpaid','3':'completed'}}
+ const saved=[{periodNumber:2,status:'paid'},{periodNumber:3,status:'partial',unpaidPrincipalMinor:'100000',unpaidInterestMinor:'3909',unpaidFeeMinor:'0'}]
+ const view=buildView({...loan,progress},saved,[])
+ assert.equal(view.rows[1].paymentConfirmed,true);assert.equal(view.rows[1].complete,true);assert.equal(view.rows[1].completedByProgress,false)
+ assert.equal(view.rows[2].status,'partial');assert.equal(view.rows[2].complete,false);assert.equal(view.rows[2].unpaidPrincipalMinor,'100000')
+ const reversed=buildView({...loan,progress},[],[])
+ assert.equal(reversed.rows[1].complete,false);assert.equal(reversed.rows[2].completedByProgress,true)
+ assert.deepEqual(progress.exceptions,{'2':'unpaid','3':'completed'})
+})
 test('L01 真实放款和扣款不误套分期应还本金例外',()=>{
  const raw={rawTransactionType:'分期本金',item:'分期编号 SYNTHETIC-A 第10期 共12期'}
  assert.equal(installmentEvidence(raw),null)
