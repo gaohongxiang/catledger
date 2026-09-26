@@ -1,6 +1,10 @@
 const ERROR_MESSAGES = Object.freeze({
   HISTORY_REVIEW_REQUIRED: '发现尚未核对的历史相似账目，请先确认是否重复；本次没有入账',
   HISTORY_MATCH_LIMIT_EXCEEDED: '历史同额候选过多，请缩短本次账单时间范围后核对；本次没有入账',
+  LOAN_COVERAGE_REQUIRED: '请先确认已有费用覆盖',
+  LOAN_CHARGE_DIFFERENCE: '本期费用与已记金额不同，请到贷款详情预览并确认差额',
+  LOAN_CHARGE_PAUSED: '本期费用已覆盖、暂停或删除，请先核对',
+  LOAN_CHARGE_COVERAGE: '已计费用需要关联尚未清偿的收费项',
   LOAN_SOURCE_MISMATCH: '这期账单与已确认分期不一致，请核对所属分期、期数和金额',
   BANK_MAPPING_REQUIRED: '请确认银行账单的列和收支方向',
   BANK_ROWS_INVALID: '部分行的日期、金额、收支或币种无法识别，请检查所选列；仅支持人民币且不接受公式',

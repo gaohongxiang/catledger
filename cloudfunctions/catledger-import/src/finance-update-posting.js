@@ -593,7 +593,7 @@ function createFinanceUpdatePosting({ getPool }) {
               transactionRows.push([uid, transactionId, draft.type, draft.sourceAccountId, draft.destinationAccountId,
                 original ? original.categoryId : draft.categoryId, draft.originalTransactionId, draft.amountMinor, event.localDate,
                 event.localAt, event.timezoneOffsetMinutes, event.utcAt, noteForEvent(event), 'import'])
-              return { transactionId, role: draft.role }
+              return { transactionId, role: draft.role,...(draft.chargeId?{chargeId:draft.chargeId}:{}) }
             })
             created += transactions.length
           } else {
@@ -602,7 +602,7 @@ function createFinanceUpdatePosting({ getPool }) {
               transactionRows.push([uid, transactionId, draft.type, draft.sourceAccountId, draft.destinationAccountId,
                 draft.categoryId, draft.originalTransactionId, draft.amountMinor, event.localDate, event.localAt,
                 event.timezoneOffsetMinutes, event.utcAt, noteForEvent(event), 'import'])
-              return { transactionId, role: draft.role }
+              return { transactionId, role: draft.role,...(draft.chargeId?{chargeId:draft.chargeId}:{}) }
             })
             created += transactions.length
           }

@@ -57,6 +57,11 @@ function createLoanPeriodService({getPool,selectLoan}) {
       }else await c.execute(`INSERT INTO catledger_loan_periods (uid,period_id,loan_id,period_number,due_date,principal_minor,interest_minor,fee_minor,cancelled) VALUES (?,?,?,?,?,?,?,?,?)`,
         [uid,id,loan.loanId,value.periodNumber,value.dueDate,value.principalMinor,value.interestMinor,value.feeMinor,value.cancelled?1:0])
       await c.execute('INSERT INTO catledger_loan_period_revisions (uid,period_id,version,snapshot_json) VALUES (?,?,?,?)',[uid,id,version,JSON.stringify(value)])
+      const contract=await require('./loan-charge-store').contract(c,uid,loan.loanId)
+      if(contract) {
+        await c.execute("UPDATE catledger_loan_charges SET state=?,version=version+1 WHERE uid=? AND contract_id=? AND period_number=? AND state IN ('planned','paused')",[value.cancelled?'cancelled':'paused',uid,contract.contractId,value.periodNumber])
+        await require('./loan-charge-store').audit(c,uid,contract.contractId,null,'period_revision',{periodId:id,periodNumber:value.periodNumber,version,value})
+      }
       await advanceLoans(c,uid,new Map([[loan.loanId,loan]]))
       return {loanId:loan.loanId,loanVersion:loan.version+1,periodId:id,version}
     })

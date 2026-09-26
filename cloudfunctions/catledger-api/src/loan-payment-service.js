@@ -31,7 +31,10 @@ function createLoanPaymentService({ getPool, selectLoan }) {
       const value = await selectPayment(connection, uid, context.data.paymentId)
       const links = await paymentLinks(connection, uid, value.paymentId), transactions = []
       for (const link of links) transactions.push(transactionToPublic(await selectTransaction(connection, uid, link.transactionId)))
-      return { payment: value, repayment: await require('./repayment-booking').createRepaymentBooking(ledgerError).detail(connection, uid, value.paymentId), allocations: await selectAllocations(connection, uid, value.paymentId), transactions }
+      const [chargeAllocations]=await connection.execute('SELECT charge_id AS chargeId,amount_minor AS amountMinor FROM catledger_loan_charge_allocations WHERE uid=? AND payment_id=?',[uid,value.paymentId])
+      const allocations=await selectAllocations(connection,uid,value.paymentId)
+      const allocated=allocations.reduce((sum,a)=>sum+BigInt(a.principalMinor)+BigInt(a.interestMinor)+BigInt(a.feeMinor),0n)
+      return { chargeAllocations,unallocatedMinor:String(BigInt(value.totalMinor)-allocated),payment: value, repayment: await require('./repayment-booking').createRepaymentBooking(ledgerError).detail(connection, uid, value.paymentId), allocations, transactions }
     })
   }
   async function payments(context) {

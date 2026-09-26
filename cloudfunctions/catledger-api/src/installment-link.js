@@ -5,6 +5,7 @@ const { ITEM_SELECT, publicItem, canonicalItem, assertCostSource } = require('./
 
 async function collapseDuplicate(c,uid,item,canonical) {
   if (!item.transactionId || item.transactionId===canonical.transactionId) return
+  await require('./loan-charge-store').assertNoCharges(c,uid,[item.transactionId,canonical.transactionId])
   const [[dependencies]]=await c.execute(`SELECT
     EXISTS(SELECT 1 FROM catledger_transactions WHERE uid=? AND original_transaction_id=? AND deleted_at IS NULL) AS refunds,
     EXISTS(SELECT 1 FROM catledger_loan_payment_transactions WHERE uid=? AND transaction_id=? AND active=1) AS payments`,
@@ -36,7 +37,7 @@ async function sourceGroup(c,uid,loan,source) {
     }
     referenceKeys.forEach(key=>references.add(key));transactionIds.forEach(id=>transactions.add(id))
     const [rows]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.account_id=? AND i.active=1 AND (${filters.join(' OR ')})
-      ORDER BY i.period_number,i.created_at,i.item_id LIMIT 3601 FOR UPDATE`,values)
+      ORDER BY i.period_number,i.created_at,i.item_id LIMIT 3601`,values)
     if(rows.length>3600)throw ledgerError('LOAN_SOURCE_TOO_LARGE')
     referenceKeys=[];transactionIds=[];first=false
     for(const row of rows) {
@@ -54,7 +55,7 @@ async function sourceGroup(c,uid,loan,source) {
 }
 async function attachSource(c,uid,loan,itemId) {
   if (loan.kind!=='installment' || !loan.scheduleTerms) throw ledgerError('VALIDATION_ERROR')
-  const [[selected]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.item_id=? FOR UPDATE',[uid,validateId(itemId)])
+  const [[selected]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.item_id=?',[uid,validateId(itemId)])
   if (!selected) throw ledgerError('NOT_FOUND')
   const source=publicItem(selected)
   if (!source.active || source.accountId!==loan.accountId || source.loanId && source.loanId!==loan.loanId) throw ledgerError('LOAN_SOURCE_MISMATCH')

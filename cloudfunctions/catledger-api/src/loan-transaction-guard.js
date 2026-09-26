@@ -1,10 +1,10 @@
 const { ledgerError } = require('./ledger-errors')
 // 调用者已取得同一用户锁；分块保护整组正式交易，不能只改其中一项。
-async function assertNoLoanTransactions(connection, uid, transactionIds) {
+async function assertNoLoanTransactions(connection, uid, transactionIds, { evidenceOnlyIds = [] } = {}) {
   const ids = [...new Set(transactionIds.filter(Boolean))]
   for (let offset = 0; offset < ids.length; offset += 100) {
     const chunk = ids.slice(offset, offset + 100)
-    await require('./loan-charge-store').assertNoCharges(connection, uid, chunk)
+    await require('./loan-charge-store').assertNoCharges(connection, uid, chunk.filter(id => !evidenceOnlyIds.includes(id)))
     const [[row]] = await connection.execute(`SELECT payment_id FROM catledger_loan_payment_transactions
       WHERE uid=? AND active_transaction_id IN (${chunk.map(() => '?').join(',')}) LIMIT 1`, [uid, ...chunk])
     if (row) throw ledgerError('LOAN_TRANSACTION_LOCKED')

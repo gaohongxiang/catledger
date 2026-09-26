@@ -35,6 +35,13 @@ async function historicalGroups(connection, uid, updateId) {
           AND t.destination_account_id = e.counterparty_ledger_account_id))
     WHERE e.uid = ? AND e.update_id = ? AND e.status IN ('ready', 'needs_action')
       AND e.ledger_account_id IS NOT NULL AND e.currency = 'CNY'
+      -- 明确合同收费交给费用身份路径逐项核对；不是以同额跳过一般历史核对。
+      AND NOT EXISTS (SELECT 1 FROM catledger_loan_charges f
+        JOIN catledger_loan_charge_contracts k ON k.uid=f.uid AND k.contract_id=f.contract_id
+        WHERE f.uid=e.uid AND k.account_id=e.ledger_account_id AND f.transaction_id=t.transaction_id
+          AND k.reference_key=JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.referenceKey'))
+          AND f.charge_key=CONCAT('period:',JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.periodNumber')),':',
+            JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.component'))))
       AND NOT EXISTS (SELECT 1 FROM catledger_event_evidence current_evidence
         JOIN catledger_import_rows current_row ON current_row.uid = current_evidence.uid AND current_row.row_id = current_evidence.row_id
         JOIN catledger_import_rows prior_row ON prior_row.uid = current_row.uid AND prior_row.identity_id = current_row.identity_id

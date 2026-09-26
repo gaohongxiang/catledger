@@ -162,7 +162,7 @@ async function prepareUndo(connection, uid, update, forUpdate = false) {
       ON t.uid = l.uid AND t.transaction_id = l.transaction_id
     WHERE l.uid = ? AND l.update_id = ? AND l.superseded_at IS NULL AND l.role <> 'refund_original'
     ORDER BY l.transaction_id, l.link_id${forUpdate ? ' FOR UPDATE' : ''}`, [uid, updateId])
-  await assertNoLoanTransactions(connection, uid, linked.map(row => row.transactionId))
+  await assertNoLoanTransactions(connection, uid, linked.map(row => row.transactionId), { evidenceOnlyIds: linked.filter(row => row.creationMethod==='reused' && row.origin==='loan_plan').map(row => row.transactionId) })
   const transactions = linked.map((row) => ({ ...row, linkedVersion: Number(row.linkedVersion), version: Number(row.version), amountMinor: String(row.amountMinor) }))
   const created = [...new Map(transactions.filter((row) => row.creationMethod === 'created').map((row) => [row.transactionId, row])).values()]
   const ids = created.map((row) => row.transactionId)
@@ -380,6 +380,7 @@ function createFinanceUpdateMaintenance({ getPool }) {
           [appliedVersion, actionId, uid, updateId, version]
         )
         if (result.affectedRows !== 1) throw importError('CONFLICT')
+        await require('./loan-charge-import').refreshEvidence(connection,uid,updateId)
         return commandResult(connection, uid, updateId, context.data)
       }
     })

@@ -137,7 +137,7 @@ function createInstallmentService({getPool,selectLoan}) {
   async function removeInstallmentItem(context) {
     return write(context,'loans.removeInstallmentItem',async(c,uid,data)=>{
       const loan=await editable(c,uid,data)
-      const [[raw]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.item_id=? FOR UPDATE',[uid,validateId(data.itemId)])
+      const [[raw]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.item_id=?',[uid,validateId(data.itemId)])
       if (!raw || raw.loanId!==loan.loanId || raw.origin!=='manual') throw ledgerError('VALIDATION_ERROR')
       const item=publicItem(raw)
       await require('./loan-charge-store').assertNoCharges(c,uid,[item.transactionId].filter(Boolean))

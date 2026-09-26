@@ -70,10 +70,17 @@ test('实际借还复用总账：守恒、防重、版本、整组撤销与关�
       const payload = request([allocation(loan.loanId, 3, '40000', '18000', '2000'), allocation(second.loanId, 1, '40000', '0', '0')])
       payload.allocations[0].interestTreatment = 'accrued'; payload.allocations[0].feeTreatment = 'accrued'
       payload.allocations[0].interestCategoryId = null; payload.allocations[0].feeCategoryId = null
+      await assert.rejects(api('loans.record', payload), { publicCode:'LOAN_CHARGE_COVERAGE' })
+      // 明确先在负债端记过的两项费用；不能仅信任 accrued 客户端标签。
+      payload.allocations[0].chargeAllocations=[]
+      for(const [component,amountMinor] of [['interest','18000'],['fee','2000']]) {
+        const {transactionId}=await api('transactions.create',{requestId:randomUUID(),type:'expense',sourceAccountId:debt,categoryId,amountMinor,occurredLocalAt:'2026-09-01T12:00:00',timezoneOffsetMinutes:-480})
+        payload.allocations[0].chargeAllocations.push({transactionId,component,amountMinor})
+      }
       const results = await Promise.allSettled([api('loans.record', payload), api('loans.record', { ...payload, requestId: randomUUID() })])
       assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
       assert.equal(results.find(r => r.status === 'rejected').reason.publicCode, 'CONFLICT')
-      assert.deepEqual(await totals(), { asset: '900000', expense: '0' })
+      assert.deepEqual(await totals(), { asset: '900000', expense: '20000' })
       for (const row of [loan, second]) assert.equal((await api('loans.get', { loanId: row.loanId })).loan.remainingPrincipalMinor, '40000')
     })
     await t.test('未知、超分配、重复贷款、跨用户和负本金均拒绝且整批回滚', async () => {
@@ -87,7 +94,7 @@ test('实际借还复用总账：守恒、防重、版本、整组撤销与关�
       const other = localServices({ apiPool, importPool, subject: 'synthetic-loan-payment-other' }); await call(other.api, 'bootstrap')
       await assert.rejects(call(other.api, 'loans.payment', { paymentId: payment.paymentId }), { publicCode: 'NOT_FOUND' })
       await assert.rejects(call(other.api, 'loans.record', request([allocation(loan.loanId, 4)])), { publicCode: 'NOT_FOUND' })
-      assert.deepEqual(await totals(), { asset: '900000', expense: '0' })
+      assert.deepEqual(await totals(), { asset: '900000', expense: '20000' })
     })
     await t.test('第二笔正式交易失败和现金不足均不留下部分付款，分页不串贷款', async () => {
       let inserts = 0
@@ -106,7 +113,7 @@ test('实际借还复用总账：守恒、防重、版本、整组撤销与关�
       await assert.rejects(call(faulty.api, 'loans.record', payload), { publicCode: 'INTERNAL_ERROR' })
       assert.equal(inserts, 2)
       assert.equal((await api('loans.get', { loanId: loan.loanId })).loan.version, 4)
-      assert.deepEqual(await totals(), { asset: '900000', expense: '0' })
+      assert.deepEqual(await totals(), { asset: '900000', expense: '20000' })
       await assert.rejects(api('transactions.commandResult', { requestId: payload.requestId, commandAction: 'loans.record' }), { publicCode: 'OPERATION_UNCONFIRMED' })
       const cash = await account('cash', '9999', '合成现金不足')
       await assert.rejects(api('loans.record', { ...payload, requestId: randomUUID(), assetAccountId: cash }), { publicCode: 'INSUFFICIENT_CASH_BALANCE' })
@@ -123,7 +130,7 @@ test('实际借还复用总账：守恒、防重、版本、整组撤销与关�
       assert.equal((await api('loans.get', { loanId: zero.loanId })).loan.remainingPrincipalMinor, '100000')
       await api('loans.record', { ...request([allocation(zero.loanId, 2, '100000', '0', '0')]), occurredLocalAt: '2026-09-03T10:00:00' })
       await assert.rejects(api('loans.reverse', { requestId: randomUUID(), paymentId: draw.paymentId, version: 1, loans: [{ loanId: zero.loanId, version: 3 }], confirmed: true }), { publicCode: 'LOAN_PRINCIPAL_EXCEEDED' })
-      assert.deepEqual(await totals(), { asset: '900000', expense: '0' })
+      assert.deepEqual(await totals(), { asset: '900000', expense: '20000' })
     })
   } finally { await lab.close() }
 })

@@ -1,7 +1,7 @@
 const { executeLedgerRead } = require('./ledger-read')
 const { digestIdempotencyKey } = require('./request-digest')
 const { ledgerError } = require('./ledger-errors')
-const ACTIONS = new Set(['loans.syncCharges', 'loans.configureCharges', 'loans.pauseCharges', 'loans.setInstallmentProgress', 'loans.linkInstallmentSource', 'loans.archiveInstallment', 'loans.removeInstallmentItem', 'loans.create', 'loans.update', 'loans.record', 'loans.reverse', 'loans.correct', 'loans.savePeriod', 'loans.allocatePeriods', 'loans.generatePlan', 'transactions.create', 'transactions.update', 'transactions.delete', 'transactions.deleteMany', 'transactions.linkRefund', 'transactions.setCategory'])
+const ACTIONS = new Set(['loans.changeCharge','loans.endCharges', 'loans.syncCharges', 'loans.configureCharges', 'loans.pauseCharges', 'loans.setInstallmentProgress', 'loans.linkInstallmentSource', 'loans.archiveInstallment', 'loans.removeInstallmentItem', 'loans.create', 'loans.update', 'loans.record', 'loans.reverse', 'loans.correct', 'loans.savePeriod', 'loans.allocatePeriods', 'loans.generatePlan', 'transactions.create', 'transactions.update', 'transactions.delete', 'transactions.deleteMany', 'transactions.linkRefund', 'transactions.setCategory'])
 function createCommandResult({ getPool }) {
   return context => {
     const { requestId, commandAction } = context.data

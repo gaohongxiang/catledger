@@ -16,7 +16,7 @@ function createRepaymentBooking(error) {
   }
   function normalize(value, totalMinor) {
     if (!value || value.confirmed !== true || !['defer','associate'].includes(value.mode)) throw error('VALIDATION_ERROR')
-    const result = { confirmed: true, mode: value.mode, assetAccountId: id(value.assetAccountId), liabilityAccountId: id(value.liabilityAccountId) }
+    const result = { chargeAllocations: require('./loan-charge-payments').normalizeCoverage(value.chargeAllocations), confirmed: true, mode: value.mode, assetAccountId: id(value.assetAccountId), liabilityAccountId: id(value.liabilityAccountId) }
     for (const field of ['principal','interest','fee']) result[field + 'Minor'] = amount(value[field + 'Minor'])
     if (['principal','interest','fee'].reduce((sum, field) => sum + BigInt(result[field + 'Minor']), 0n) !== BigInt(amount(totalMinor, true))) throw error('VALIDATION_ERROR')
     for (const field of ['interest','fee']) {
@@ -36,8 +36,13 @@ function createRepaymentBooking(error) {
     let transfer = BigInt(input.principalMinor)
     for (const field of ['interest','fee']) {
       if (input[field + 'Treatment'] === 'accrued') transfer += BigInt(input[field + 'Minor'])
-      else if (input[field + 'Minor'] !== '0') result.push({ type: 'expense', sourceAccountId: input.assetAccountId,
-        destinationAccountId: null, categoryId: input[field + 'CategoryId'], originalTransactionId: null, amountMinor: input[field + 'Minor'], role: 'repayment_allocation' })
+      else if (input[field + 'Minor'] !== '0') {
+        const selected=(input.chargeAllocations||[]).filter(c=>c.component===field)
+        const portions=selected.length?selected:[{amountMinor:input[field+'Minor']}]
+        for(const portion of portions)result.push({type:'expense',sourceAccountId:input.assetAccountId,destinationAccountId:null,
+          categoryId:input[field+'CategoryId'],originalTransactionId:null,amountMinor:portion.amountMinor,role:'repayment_allocation',
+          ...(portion.chargeId?{chargeId:portion.chargeId}:{})})
+      }
     }
     if (transfer) result.unshift({ type: 'transfer', sourceAccountId: input.assetAccountId, destinationAccountId: input.liabilityAccountId,
       categoryId: null, originalTransactionId: null, amountMinor: String(transfer), role: 'repayment_allocation' })
@@ -68,6 +73,17 @@ function createRepaymentBooking(error) {
     if (loan.baselinePrincipalMinor == null || loan.baselineDate == null) throw error('LOAN_PRINCIPAL_UNCONFIRMED')
     if (String(payment.occurredLocalAt).slice(0,10) < String(loan.baselineDate)) throw error('VALIDATION_ERROR')
     await validateRelations(connection, uid, { ...input, assetAccountId:payment.assetAccountId })
+    if(advancePayment) {
+      const charges=await require('./loan-charge-payments').validate(connection,uid,loan,input,{paymentDate:String(payment.occurredLocalAt).slice(0,10)})
+      // 延后关联已有费用必须用真实付款组中的费用交易认领，禁止事后另造费用。
+      const [transactions]=await connection.execute("SELECT t.transaction_id AS transactionId,t.amount_minor AS amountMinor,t.type FROM catledger_loan_payment_transactions p JOIN catledger_transactions t ON t.uid=p.uid AND t.transaction_id=p.transaction_id WHERE p.uid=? AND p.payment_id=? AND p.active=1",[uid,payment.paymentId])
+      for(const charge of charges.filter(c=>c.treatment==='expense')) {
+        const matches=transactions.filter(t=>t.type==='expense'&&String(t.amountMinor)===charge.amountMinor&&!t.chargeId)
+        if(matches.length!==1)throw error('LOAN_CHARGE_COVERAGE')
+        matches[0].chargeId=charge.chargeId
+      }
+      await require('./loan-charge-payments').persist(connection,uid,payment.paymentId,charges,transactions)
+    }
     await connection.execute(`INSERT INTO catledger_loan_payment_allocations
       (uid,payment_id,loan_id,principal_minor,interest_minor,fee_minor,interest_treatment,fee_treatment,interest_category_id,fee_category_id,confirmed_loan_version)
       VALUES (?,?,?,?,?,?,?,?,?,?,?)`, [uid,payment.paymentId,input.loanId,input.principalMinor,input.interestMinor,input.feeMinor,
@@ -86,6 +102,14 @@ function createRepaymentBooking(error) {
   }
   async function persist(connection, uid, input, { totalMinor, localAt, utcAt, timezoneOffsetMinutes, transactions, source = null }) {
     await validateRelations(connection, uid, input)
+    const coverage = input.chargeAllocations || []
+    let chargeItems = []
+    if (input.mode==='associate' || coverage.length || ['interest','fee'].some(f => input[f+'Treatment']==='accrued' && input[f+'Minor']!=='0')) {
+      if (input.mode !== 'associate') throw error('LOAN_CHARGE_COVERAGE')
+      const [[loan]] = await connection.execute('SELECT loan_id AS loanId,account_id AS accountId FROM catledger_loans WHERE uid=? AND loan_id=?',[uid,input.loanId])
+      if (!loan || loan.accountId!==input.liabilityAccountId) throw error('LOAN_CHARGE_COVERAGE')
+      chargeItems = await require('./loan-charge-payments').validate(connection,uid,loan,input,{paymentDate:localAt.slice(0,10)})
+    }
     const paymentId = randomUUID(), mode = source ? 'associate' : 'new'
     await connection.execute(`INSERT INTO catledger_loan_payments
       (uid,payment_id,kind,origin_mode,asset_account_id,total_minor,occurred_local_at,occurred_at_utc,timezone_offset_minutes)
@@ -99,6 +123,7 @@ function createRepaymentBooking(error) {
     if (source) await connection.execute(`INSERT INTO catledger_loan_payment_sources
       (uid,payment_id,update_id,event_id,original_event_json,original_links_json,applied_event_version) VALUES (?,?,?,?,?,?,?)`,
       [uid,paymentId,source.event.updateId,source.event.eventId,JSON.stringify(source.event),JSON.stringify(source.links),source.event.version])
+    await require('./loan-charge-payments').persist(connection,uid,paymentId,chargeItems,transactions)
     const loans = input.mode === 'associate' ? [await assign(connection, uid,
       { paymentId,status:'active',assetAccountId:input.assetAccountId,occurredLocalAt:localAt }, input, { advancePayment:false })] : []
     return { paymentId,version:1,transactionCount:transactions.length,pending:loans.length === 0,loans }

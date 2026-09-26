@@ -47,7 +47,7 @@ const api = {
   catledger_import_rows: 'SELECT'
 }
 const importer = {
-  catledger_loan_charge_contracts: 'SELECT',
+  catledger_loan_charge_contracts: 'SELECT, INSERT',
   catledger_loan_charges: 'SELECT, INSERT, UPDATE',
   catledger_loan_charge_sources: 'SELECT, INSERT',
   catledger_loan_charge_allocations: 'SELECT, INSERT',

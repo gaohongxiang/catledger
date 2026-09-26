@@ -23,6 +23,7 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
   const replacement=correct ? {paymentId:data.paymentId,version:data.version,loans:data.loans} : data.replacePayment
   const previous=replacement ? await inspectPayment(connection,uid,replacement.paymentId,replacement.version) : null
   const mode=correct ? (previous.payment.mode==='new'?'new':'correctExisting') : data.mode
+  if(previous)await require('./loan-charge-store').assertNoCharges(connection,uid,previous.transactions.map(t=>t.transactionId))
   const input=paymentInput({...data,mode}), loanVersions=versionInputs(input,previous,replacement&&replacement.loans)
   // 两组贷款版本一次核对，最终只递增一次；更正中间态不当作新的本金余额。
   const loans=await lockLoanVersions(connection,uid,loanVersions,selectLoan,40)
@@ -44,13 +45,20 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
     if(input.mode!=='correctExisting' || !source.event || previous.payment.mode!=='new' || input.kind!=='repayment' || previous.payment.kind!=='repayment' ||
       input.totalMinor!==previous.payment.totalMinor || input.assetAccountId!==previous.payment.assetAccountId) throw ledgerError('LOAN_SOURCE_MISMATCH')
   }
-  const drafts=paymentDrafts(input,allocated)
+  const chargePayments=require('./loan-charge-payments'), chargeAllocations=[]
+  for (const a of input.allocations) {
+    const loan=allocated.get(a.loanId), contract=await require('./loan-charge-store').contract(connection,uid,loan.loanId)
+    if(contract)loan.originKind=contract.originKind
+    if(input.kind==='repayment')chargeAllocations.push(...await chargePayments.validate(connection,uid,loan,a,{excludePaymentId:previous&&previous.payment.paymentId,paymentDate:input.localDate}))
+  }
+  const drafts=paymentDrafts(input,allocated,chargeAllocations)
   if(source) validateSourceAmounts(source,input,drafts,allocated,input.mode==='associate')
   const deleting=correct ? previous.transactions : (input.mode==='correctExisting'?source.transactions:[]).concat(previous?previous.transactions:[])
   const changes=deleting.map(transaction=>({transaction,multiplier:-1n})).concat(input.mode==='associate'?[]:drafts.map(transaction=>({transaction})))
   const accounts=await lockAccounts(connection,uid,[input.assetAccountId,...[...loans.values()].map(l=>l.accountId),...deleting.flatMap(t=>[t.sourceAccountId,t.destinationAccountId])])
   if(!['cash','bank','wallet','other_asset'].includes(accounts.get(input.assetAccountId).type)) throw ledgerError('VALIDATION_ERROR')
   for(const loan of allocated.values()) {
+    if(input.unallocatedMinor!=='0'&&accounts.get(loan.accountId).type!=='credit')throw ledgerError('VALIDATION_ERROR')
     if(!['credit','other_liability'].includes(accounts.get(loan.accountId).type)) throw ledgerError('VALIDATION_ERROR')
     if(loan.baselinePrincipalMinor==null) throw ledgerError('LOAN_PRINCIPAL_UNCONFIRMED')
     if(input.localDate<loan.baselineDate) throw ledgerError('VALIDATION_ERROR')
@@ -75,6 +83,7 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
     if(source&&source.event) await connection.execute("UPDATE catledger_transactions SET origin='import' WHERE uid=? AND transaction_id=?",[uid,transactionId])
     transactions.push({...draft,transactionId,version:1})
   }
+  await chargePayments.persist(connection,uid,paymentId,chargeAllocations,transactions)
   for(const row of transactions) await connection.execute(`INSERT INTO catledger_loan_payment_transactions
     (uid,payment_id,transaction_id,transaction_version,created_by_payment) VALUES (?,?,?,?,?)`,[uid,paymentId,row.transactionId,Number(row.version),input.mode==='associate'?0:1])
   for(const root of roots) await connection.execute(`INSERT INTO catledger_loan_replaced_transactions

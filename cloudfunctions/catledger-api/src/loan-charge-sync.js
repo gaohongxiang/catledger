@@ -20,7 +20,12 @@ const DUE_FROM = `FROM catledger_loan_charges f
       OR (? IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(k.authorization_json,'$.mode'))='once' AND k.contract_id=?))
     AND (? IS NULL OR k.loan_id=?)
     AND NOT EXISTS(SELECT 1 FROM catledger_loan_periods p WHERE p.uid=k.uid AND p.loan_id=k.loan_id
-      AND p.period_number=f.period_number AND p.cancelled=1)`
+      AND p.period_number=f.period_number AND p.cancelled=1)
+    AND NOT EXISTS(SELECT 1 FROM catledger_economic_events e JOIN catledger_finance_updates u ON u.uid=e.uid AND u.update_id=e.update_id
+      WHERE e.uid=f.uid AND e.ledger_account_id=k.account_id AND u.status NOT IN ('posted','undone','abandoned') AND e.status<>'excluded'
+      AND JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.referenceKey'))=k.reference_key
+      AND JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.periodNumber'))=f.period_number
+      AND JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.installment.component'))=f.component AND e.amount_minor<>f.amount_minor)`
 function scope(data,cutoff,uid) {
   if (data.cutoff!==undefined || data.uid!==undefined || data.throughDate!==undefined) throw ledgerError('VALIDATION_ERROR')
   const contractId=data.confirmed===true&&typeof data.contractId==='string'?data.contractId:null

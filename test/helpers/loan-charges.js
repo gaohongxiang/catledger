@@ -27,3 +27,22 @@ async function chargeLab() {
   setNow:value=>{clock=Date.parse(value)},measure:()=>queries,plan,authorization}
 }
 module.exports={chargeLab,plan,authorization}
+async function prepareBank(h,{period=2,amount='20.00',reference='SYNTHETIC-CHARGE',suffix='',component='interest',date='2026-02-01'}={}) {
+ const content=Buffer.from('交易日期,交易金额,收支,交易类型,卡号,流水号,摘要,分期编号,当前期数,总期数,分期项目\n'+date+','+amount+',支出,分期'+(component==='interest'?'利息':component==='fee'?'手续费':'本金')+',SYNTHETIC-CARD,'+reference+'-'+period+'-'+component+suffix+',合成账单,'+reference+','+period+',12,'+component+'\n')
+ const {files}=await h.imp('imports.prepareMany',{requestId:randomUUID(),files:[{fileName:'合成分期.csv',size:content.length}]})
+ const file=files[0];h.services.objects.set(file.cloudPath,content)
+ const input={importId:file.importId,fileID:'cloud://synthetic.bucket/'+file.cloudPath,timezoneOffsetMinutes:-480}
+ const {bankPreview:p}=await h.imp('imports.parseFile',{requestId:randomUUID(),...input})
+ const parsed=await h.imp('imports.parseFile',{requestId:randomUUID(),...input,bankMapping:{...p.suggested,statementKind:'credit',schemaVersion:1,sheetIndex:p.sheetIndex,headerRow:p.headerRow,headerToken:p.headerToken}})
+ let update=await h.imp('financeUpdates.prepare',{requestId:randomUUID(),batchIds:[parsed.batch.batchId]})
+ const accounts=await h.imp('reviewIssues.list',{updateId:update.updateId,group:'accounts'})
+ const decisions=accounts.items.filter(i=>i.status==='open').map(i=>({issueId:i.issueId,issueVersion:i.version,operation:'resolve',decision:'apply_fields',fields:{mappingAccountId:h.accountId}}))
+ if(decisions.length)update=await h.imp('reviewIssues.resolveAccountMappings',{requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,decisions})
+ const events=await h.imp('economicEvents.list',{updateId:update.updateId})
+ return {...update,event:events.items[0]}
+}
+async function postBank(h,update) {
+ return h.imp('financeUpdates.post',{requestId:randomUUID(),updateId:update.updateId,version:update.appliedVersion})
+}
+module.exports.prepareBank=prepareBank
+module.exports.postBank=postBank

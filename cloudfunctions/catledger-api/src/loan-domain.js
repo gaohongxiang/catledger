@@ -43,8 +43,9 @@ function scheduleMetadata(data, baselinePrincipalMinor) {
 }
 function loanMetadata(data) {
   const allowed = new Set(['loanId','version','name','institution','kind','accountId','baselinePrincipalMinor','baselineDate','startDate','endDate','repaymentMethod',
-    'scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','installmentSetup','generatePlan','confirmed','sourceItemId'])
+    'scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','installmentSetup','generatePlan','confirmed','sourceItemId','originKind'])
   if (Object.keys(data).some(key => !allowed.has(key))) throw ledgerError('VALIDATION_ERROR')
+  if(data.originKind!==undefined&&!['cash_borrowing','recorded_consumption','new_consumption','historical'].includes(data.originKind))throw ledgerError('VALIDATION_ERROR')
   if (!['borrowing','installment'].includes(data.kind)) throw ledgerError('VALIDATION_ERROR')
   const baselinePrincipalMinor = data.baselinePrincipalMinor == null ? null : parseMinorUnits(data.baselinePrincipalMinor, { allowZero: true }).toString()
   const baselineDate = date(data.baselineDate), startDate = date(data.startDate), endDate = date(data.endDate)

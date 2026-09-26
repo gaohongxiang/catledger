@@ -83,7 +83,7 @@ assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/r
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/repayment-booking.js'), 'utf8'), '实际还款领域契约必须一致')
 assert.equal(fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src/installment-items.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src/installment-items.js'), 'utf8'), '分期来源与费用防重复规则必须一致')
-for (const name of ['loan-charge-domain', 'loan-charge-store']) assert.equal(
+for (const name of ['loan-charge-domain', 'loan-charge-store', 'loan-charge-import', 'loan-charge-payments']) assert.equal(
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-api/src', name + '.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'cloudfunctions/catledger-import/src', name + '.js'), 'utf8'), name + ' 费用关系必须一致')
 execFileSync('git', ['diff', '--check'], { cwd: root, stdio: 'inherit' })

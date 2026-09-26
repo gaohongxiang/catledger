@@ -12,8 +12,8 @@ function createExplicitRepaymentService({ getPool }) {
   async function bookRepayment(context) {
     return write(context, 'loans.bookRepayment', async (connection, uid, data) => {
       const input = booking.normalize(data.repayment, data.totalMinor)
-      const drafts = booking.drafts(input).map(d => buildManualTransaction({ ...d,occurredLocalAt:data.occurredLocalAt,
-        timezoneOffsetMinutes:data.timezoneOffsetMinutes,note:data.note || '借款还款' }))
+      const drafts = booking.drafts(input).map(d => ({...buildManualTransaction({ ...d,occurredLocalAt:data.occurredLocalAt,
+        timezoneOffsetMinutes:data.timezoneOffsetMinutes,note:data.note || '借款还款' }),...(d.chargeId?{chargeId:d.chargeId}:{})}))
       const accounts = await lockAccounts(connection, uid, [input.assetAccountId,input.liabilityAccountId])
       await booking.validateRelations(connection, uid, input)
       await assertCashBalanceChanges(connection, uid, accounts, drafts.map(transaction => ({ transaction })))
@@ -21,7 +21,7 @@ function createExplicitRepaymentService({ getPool }) {
       for (const draft of drafts) {
         const transactionId = randomUUID()
         await insertManualTransaction(connection, uid, transactionId, draft)
-        transactions.push({ transactionId,version:1 })
+        transactions.push({ transactionId,version:1,...(draft.chargeId?{chargeId:draft.chargeId}:{}) })
       }
       return booking.persist(connection, uid, input, { totalMinor:data.totalMinor,localAt:drafts[0].localAt,
         utcAt:drafts[0].occurredAtUtc,timezoneOffsetMinutes:drafts[0].timezoneOffsetMinutes,transactions })
@@ -39,7 +39,7 @@ function createExplicitRepaymentService({ getPool }) {
     return write(context, 'loans.assignRepayment', async (connection, uid, data) => {
       const { payment,detail } = await pendingPayment(connection, uid, data)
       const input = booking.normalize({ ...detail,confirmed:true,mode:'associate',assetAccountId:payment.assetAccountId,
-        loanId:data.loanId,loanVersion:data.loanVersion }, payment.totalMinor)
+        loanId:data.loanId,loanVersion:data.loanVersion,chargeAllocations:data.chargeAllocations }, payment.totalMinor)
       const loan = await booking.assign(connection, uid, payment, input)
       return { paymentId:payment.paymentId,version:payment.version + 1,pending:false,loans:[loan] }
     })

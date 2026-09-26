@@ -1,6 +1,7 @@
 // 两支云函数独立打包相同领域文件；任何入账/关联都在原用户锁事务中执行。
 const { randomUUID } = require('node:crypto')
 const fail = code => { throw Object.assign(new Error(code), { code, publicCode: code }) }
+// 调用方持有用户级写锁；附加只读收费来源关系不申请 UPDATE 锁。
 const ITEM_SELECT = `SELECT i.item_id AS itemId,i.account_id AS accountId,i.loan_id AS loanId,
   i.reference_key AS referenceKey,i.reference_label AS referenceLabel,i.period_number AS periodNumber,i.total_terms AS totalTerms,
   i.component,i.amount_minor AS amountMinor,i.occurred_date AS occurredDate,i.origin,i.source_event_id AS eventId,
@@ -8,18 +9,22 @@ const ITEM_SELECT = `SELECT i.item_id AS itemId,i.account_id AS accountId,i.loan
   t.version AS transactionVersion,t.deleted_at AS transactionDeleted,t.amount_minor AS transactionAmount,
   t.source_account_id AS transactionAccount,t.type AS transactionType,e.status AS eventStatus,e.update_id AS updateId,
   u.status AS updateStatus,
+  cover.amount_minor AS coveredAmount,cover.state AS coverageState,cover.transaction_id AS registeredTransactionId,parent.transaction_id AS coveringTransactionId,
   EXISTS(SELECT 1 FROM catledger_economic_event_transactions h WHERE h.uid=i.uid AND h.event_id=i.source_event_id
     AND h.transaction_id=i.transaction_id AND h.role='historical_primary' AND h.superseded_at IS NULL
     AND h.transaction_version=t.version) AS historicalSource
   FROM catledger_installment_items i
+  LEFT JOIN catledger_loan_charge_sources cs ON cs.uid=i.uid AND cs.item_id=i.item_id
+  LEFT JOIN catledger_loan_charges cover ON cover.uid=cs.uid AND cover.charge_id=cs.charge_id
+  LEFT JOIN catledger_loan_charges parent ON parent.uid=cover.uid AND parent.charge_id=cover.covered_by_charge_id
   LEFT JOIN catledger_transactions t ON t.uid=i.uid AND t.transaction_id=i.transaction_id
   LEFT JOIN catledger_economic_events e ON e.uid=i.uid AND e.event_id=i.source_event_id
   LEFT JOIN catledger_finance_updates u ON u.uid=e.uid AND u.update_id=e.update_id`
 function publicItem(row) {
   const reviewed = row.eventStatus==='excluded' && row.updateStatus==='posted' && Number(row.historicalSource)===1
-  const valid = Boolean(row.active) && (!row.eventId || ['posted','corrected'].includes(row.eventStatus) || reviewed) &&
+  const valid = Boolean(row.active) && (!row.eventId || row.updateStatus==='posted' && ['posted','corrected'].includes(row.eventStatus) || reviewed) &&
     (row.component === 'principal' || row.transactionId && row.transactionDeleted == null && row.transactionType === 'expense' &&
-      row.transactionAccount === row.accountId && String(row.transactionAmount) === String(row.amountMinor))
+      (row.transactionAccount === row.accountId || row.registeredTransactionId === row.transactionId) && (String(row.transactionAmount) === String(row.amountMinor) || row.coverageState === 'covered' && row.coveringTransactionId === row.transactionId && String(row.coveredAmount) === String(row.amountMinor)))
   return { itemId:row.itemId,accountId:row.accountId,loanId:row.loanId,referenceKey:row.referenceKey,referenceLabel:row.referenceLabel,
     periodNumber:Number(row.periodNumber),totalTerms:row.totalTerms==null?null:Number(row.totalTerms),component:row.component,
     amountMinor:String(row.amountMinor),occurredDate:row.occurredDate,origin:row.origin,eventId:row.eventId,updateId:row.updateId,
@@ -35,7 +40,7 @@ async function boundLoan(c,uid,accountId,referenceKey) {
 }
 async function canonicalItem(c,uid,loanId,periodNumber,component) {
   if (!loanId) return null
-  const [[row]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.loan_id=? AND i.period_number=? AND i.component=? AND i.canonical=1 AND i.active=1 FOR UPDATE',
+  const [[row]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.loan_id=? AND i.period_number=? AND i.component=? AND i.canonical=1 AND i.active=1',
     [uid,loanId,periodNumber,component])
   if (!row) return null
   const item=publicItem(row)
@@ -73,7 +78,7 @@ async function prepareImport(c,uid,event,identityIds,reviewedTransactionId=null)
   if (loan && (evidence.periodNumber>Number(loan.terms) || evidence.totalTerms && evidence.totalTerms!==Number(loan.terms))) fail('LOAN_SOURCE_MISMATCH')
   let previous=null
   if (identityId) {
-    const [[row]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.source_identity_id=? FOR UPDATE',[uid,identityId])
+    const [[row]]=await c.execute(ITEM_SELECT+' WHERE i.uid=? AND i.source_identity_id=?',[uid,identityId])
     if (row) {
       previous=publicItem(row)
       if (!previous.active) {
@@ -83,18 +88,20 @@ async function prepareImport(c,uid,event,identityIds,reviewedTransactionId=null)
       }
     }
   }
-  const canonical=previous || await canonicalItem(c,uid,loan && loan.loanId,evidence.periodNumber,evidence.component)
+  const chargeMatch=await require('./loan-charge-import').prepare(c,uid,event,evidence,loan && loan.loanId)
+  const canonical=chargeMatch ? null : previous || await canonicalItem(c,uid,loan && loan.loanId,evidence.periodNumber,evidence.component)
   if (canonical && (canonical.amountMinor!==String(event.amountMinor) || canonical.accountId!==event.ledgerAccountId)) fail('LOAN_SOURCE_MISMATCH')
   if (reviewedTransactionId && canonical && canonical.transactionId!==reviewedTransactionId) fail('LOAN_SOURCE_MISMATCH')
   if (!reviewedTransactionId) await assertCostSource(c,uid,{...evidence,eventId:event.eventId,identityId},canonical)
-  return { ...evidence,accountId:event.ledgerAccountId,loanId:loan && loan.loanId || previous && previous.loanId || null,
+  return { ...evidence,accountId:event.ledgerAccountId,loanId:chargeMatch && chargeMatch.loanId || loan && loan.loanId || previous && previous.loanId || null,
     amountMinor:String(event.amountMinor),occurredDate:event.localDate,origin:'import',eventId:event.eventId,identityId,
-    existingItem:previous,canonicalItem:canonical,reuseTransactionId:canonical && canonical.transactionId,
-    reuseTransactionVersion:canonical && canonical.transactionVersion }
+    chargeMatch,existingItem:previous,canonicalItem:canonical,reuseTransactionId:chargeMatch && chargeMatch.transactionId || canonical && canonical.transactionId,
+    reuseTransactionVersion:chargeMatch && chargeMatch.transactionVersion || canonical && canonical.transactionVersion }
 }
 async function persistImport(c,uid,prepared,transactionId) {
   if (!prepared || prepared.existingItem) return
-  await insertItem(c,uid,{...prepared,transactionId:prepared.reuseTransactionId || transactionId,canonical:!prepared.canonicalItem})
+  const itemId=await insertItem(c,uid,{...prepared,transactionId:prepared.reuseTransactionId || transactionId,canonical:!prepared.canonicalItem&&!prepared.chargeMatch})
+  await require('./loan-charge-import').persist(c,uid,prepared.chargeMatch,itemId,prepared.reuseTransactionId || transactionId)
   if (prepared.loanId) await c.execute('UPDATE catledger_loans SET version=version+1 WHERE uid=? AND loan_id=?',[uid,prepared.loanId])
 }
 async function persistReviewedImports(c,uid,updateId,events,identities) {

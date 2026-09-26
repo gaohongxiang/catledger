@@ -60,7 +60,7 @@ function createLoanService({ getPool, now = Date.now }) {
       if (value.installmentSetup && (data.generatePlan !== true || value.kind !== 'installment')) throw ledgerError('VALIDATION_ERROR')
       await validateLiability(connection, uid, value.accountId)
       const plan = data.generatePlan ? remainingSchedule(storedScheduleInput(value)) : null
-      if (plan && value.baselinePrincipalMinor !== plan.summary.remainingPrincipalMinor) throw ledgerError('VALIDATION_ERROR')
+      if (plan && value.baselinePrincipalMinor !== plan.summary.remainingPrincipalMinor && !(data.originKind==='cash_borrowing' && value.baselinePrincipalMinor==='0')) throw ledgerError('VALIDATION_ERROR')
       await connection.execute(`INSERT INTO catledger_loans
         (uid,loan_id,account_id,name,institution,kind,baseline_principal_minor,baseline_date,start_date,end_date,repayment_method,
         schedule_method,schedule_terms,measurement_kind,quote_type,rate_ppm,repayment_minor,fee_per_term_minor,fee_upfront_minor,first_payment_date,installment_setup_json)
@@ -78,9 +78,9 @@ function createLoanService({ getPool, now = Date.now }) {
       const current = await selectLoan(connection, uid, data.loanId, true)
       if (Number(current.version) !== parseVersion(data.version)) throw ledgerError('CONFLICT')
       const chargeContract = await require('./loan-charge-store').contract(connection, uid, current.loanId)
-      if (chargeContract) throw ledgerError('LOAN_BASELINE_LOCKED')
       const previousSetup = parseSetup(current.installmentSetup)
       const value = loanMetadata({ ...data,...(data.installmentSetup === undefined && previousSetup ? { installmentSetup:previousSetup } : {}) })
+      if(chargeContract && ['accountId','kind','baselinePrincipalMinor','baselineDate','scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate'].some(key=>String(value[key])!==String(current[key])))throw ledgerError('LOAN_BASELINE_LOCKED')
       if (data.generatePlan !== undefined || data.sourceItemId !== undefined) throw ledgerError('VALIDATION_ERROR')
       if (previousSetup) {
         const core = setup => setup && [setup.originalPrincipalMinor,setup.historicalPaidTerms,setup.discountKind,setup.discountValue]
@@ -109,6 +109,6 @@ function createLoanService({ getPool, now = Date.now }) {
       return { loanId: current.loanId, version: data.version + 1 }
     })
   }
-  return { list, get, create, update, ...require('./loan-charge-service').createLoanChargeService({ getPool,selectLoan,now }), ...require('./loan-charge-sync').createLoanChargeSync({ getPool,now }), ...require('./installment-service').createInstallmentService({ getPool,selectLoan }), ...require('./explicit-repayment-service').createExplicitRepaymentService({ getPool }), ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
+  return { list, get, create, update, ...require('./loan-charge-maintenance').createLoanChargeMaintenance({ getPool,selectLoan,now }), ...require('./loan-charge-service').createLoanChargeService({ getPool,selectLoan,now }), ...require('./loan-charge-sync').createLoanChargeSync({ getPool,now }), ...require('./installment-service').createInstallmentService({ getPool,selectLoan }), ...require('./explicit-repayment-service').createExplicitRepaymentService({ getPool }), ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
 }
 module.exports = { createLoanService, selectLoan, validateLiability }

@@ -52,6 +52,16 @@ async function deleteTransactions(connection,uid,transactions) {
 }
 async function reversePayment(connection,uid,inspection) {
   const {payment,transactions,originals,source,originalSource}=inspection
+  const chargeStore=require('./loan-charge-store')
+  for(const transaction of transactions.filter(t=>t.createdByPayment)) {
+    const [[reference]]=await connection.execute('SELECT charge_id AS chargeId FROM catledger_loan_charges WHERE uid=? AND transaction_id=?',[uid,transaction.transactionId])
+    if(!reference)continue
+    const charge=await chargeStore.charge(connection,uid,reference.chargeId),dependencies=await chargeStore.dependencies(connection,uid,charge)
+    const [[own]]=await connection.execute('SELECT amount_minor AS amountMinor FROM catledger_loan_charge_allocations WHERE uid=? AND payment_id=? AND charge_id=?',[uid,payment.paymentId,charge.chargeId])
+    if(dependencies.sourceCount||dependencies.refundCount||dependencies.paymentCount!==1||!own||charge.settledMinor!==String(own.amountMinor))throw ledgerError('LOAN_TRANSACTION_LOCKED')
+    await connection.execute("UPDATE catledger_loan_charges SET state='suppressed',version=version+1 WHERE uid=? AND charge_id=?",[uid,charge.chargeId])
+    await chargeStore.audit(connection,uid,charge.contractId,charge.chargeId,'reverse_paid_expense',{paymentId:payment.paymentId})
+  }
   await deactivatePayment(connection,uid,payment.paymentId)
   await deleteTransactions(connection,uid,transactions.filter(t=>t.createdByPayment))
   for(const row of originals) {

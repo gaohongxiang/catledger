@@ -28,6 +28,7 @@ async function eventLinks(connection, uid, event, forUpdate = false) {
   return links.map(l => ({ ...l, transactionVersion: Number(l.transactionVersion) }))
 }
 async function assertSourceUnbound(connection, uid, ids, allowedPaymentId = null) {
+  await require('./loan-charge-store').assertNoCharges(connection,uid,ids)
   const [rows] = await connection.execute(`SELECT payment_id AS paymentId FROM catledger_loan_payment_transactions
     WHERE uid=? AND active_transaction_id IN (${ids.map(() => '?').join(',')})`, [uid,...ids])
   if (rows.some(row => row.paymentId !== allowedPaymentId)) throw ledgerError('LOAN_TRANSACTION_LOCKED')

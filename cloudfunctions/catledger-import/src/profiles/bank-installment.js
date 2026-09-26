@@ -6,6 +6,7 @@ function installmentEvidence(row) {
   if (row.bankStatementKind !== 'credit') return null
   const explicit = row.installmentFields || {}
   const text = [row.rawTransactionType || row.transactionType, row.item, row.note].map(clean).join(' ')
+  if (/放款|到账|借入|支用|提现|实际扣款|还款扣款/.test(text)) return null
   if (!/分期/.test(text) && !explicit.period && !explicit.reference) return null
   const part = clean(explicit.component) || text
   const components = [/(?:本金|principal)/i.test(part) && 'principal', /(?:利息|interest)/i.test(part) && 'interest',
@@ -18,7 +19,7 @@ function installmentEvidence(row) {
       totalTerms != null && (!Number.isInteger(totalTerms) || totalTerms < periodNumber || totalTerms > 600)) return null
   const named = text.match(/(?:分期(?:计划)?(?:编号|号)|计划编号|合同(?:编号|号))\s*[:：#]?\s*([\p{L}\p{N}_-]{2,80})/u)
   const reference = clean(explicit.reference) || named && named[1] || ''
-  return { schema: 1, creditStatement: true, periodNumber, totalTerms, component: components[0],
+  return { schema: 2, creditStatement: true, factKind:'billing', originKind:/现金分期|现金借款|取现分期/.test(text)?'cash_borrowing':'unconfirmed', periodNumber, totalTerms, component: components[0],
     referenceKey: reference ? createHash('sha256').update('bank-installment-v1:' + reference).digest('hex') : null,
     referenceLabel: reference.slice(0, 120) || null }
 }
