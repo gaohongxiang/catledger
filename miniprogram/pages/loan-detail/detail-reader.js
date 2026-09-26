@@ -14,7 +14,7 @@ function create(api) {
         this._detailView = null
         this._detailHistory = []
         this._detailNext = null
-        this.setData({ periodRows: [], scheduleMore: false, detailError: '' })
+        this.setData({ repaymentRows: [], periodRows: [], scheduleMore: false, detailError: '' })
       }
       if (this._periodAction === 'loans.installments' && this._detailReady && api.isFresh && !api.isFresh(this._periodAction || 'loans.periods', { loanId: loan.loanId, pageSize: PAGE_SIZE })) this._detailReady = false
       this.setData({ detail: model.build(loan, this._detailView, this._detailPreview) })
@@ -39,7 +39,7 @@ function create(api) {
       this._detailHistory = this._periodAction === 'loans.installments' ? [] : model.historicalRows(loan, this._detailPreview)
       this._detailReady = matching && preview.status === 'fulfilled'
       const error = !matching ? '还款计划未能更新，请重新读取。' : preview.status === 'rejected' ? '成本和历史期次暂未加载，请重试。' : ''
-      this.setData({ detail: model.build(loan, this._detailView, this._detailPreview), detailLoading: false, detailError: error })
+      this.setData({ detail: model.build(loan, this._detailView, this._detailPreview), detailLoading: false, detailError: error, repaymentRows: matching ? (periods.value.summary.repaymentPrompts || []).map(r=>{const draft=this.data.repaymentRows.find(d=>d.periodNumber===r.periodNumber);return draft?{...r,paid:draft.paid}:r}) : [] })
       this.showScheduleWindow({ historyOffset: 0, cursor: null }, this._detailView)
     },
     showScheduleWindow(window, view, append) {

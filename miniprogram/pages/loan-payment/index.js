@@ -5,9 +5,9 @@ const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
 const model = require('./model')
 Page(Object.assign({}, require('./source'), require('./period-entry'), {
-  data: {periodNumber:null,unallocatedYuan:'0',unallocatedText:'0.00', sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['关联已有账目，保持原构成','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
+  data: {simplePeriod:false,amountDetailsOpen:false,periodNumber:null,unallocatedYuan:'0',unallocatedText:'0.00', sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['使用这笔已有账目，金额不变','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
     accounts: [], accountIndex: -1, categories: [], choices: [], nextLoanCursor: null, kindIndex: 0, kinds: ['实际还款','新放款到账'],
-    modes: ['这笔资金变动还没记账','已记过，关联已有账目','更正已有账目的本息费'], modeIndex: 0, source: null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
+    modes: ['还没记过，新记一笔','已经记过，选已有账目','更正已有账目的本息费'], modeIndex: 0, source: null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
     sourceMonth: '', nextSourceCursor: null, sourceSelectedCount: 0, editingPayment: null, replacePayment: null,
     treatments: ['尚未入账，本次记支出','已计入负债，本次只清偿'], reviewText: '请填写总额与已确认本息费，未知分项不能提交。', totalYuan: '', date: '', time: '12:00', confirmed: false },
   onLoad(query) { this._loanId = query && query.loanId; this._paymentId = query && query.paymentId; this._sourceTransactionId = query && query.sourceTransactionId || ''; const period=Number(query&&query.periodNumber);theme.bindPage(this); this.setData({ periodNumber:Number.isInteger(period)&&period>0&&period<=600?period:null,kindIndex:query&&query.kind==='drawdown'?1:0,hasPayment: Boolean(this._paymentId), sourceLocked: Boolean(this._sourceTransactionId), sourceTransactionId: this._sourceTransactionId, modeIndex: this._sourceTransactionId ? 1 : 0 }) },
@@ -56,11 +56,12 @@ Page(Object.assign({}, require('./source'), require('./period-entry'), {
         }
       }
       if(current())await this.loadPeriodEntry(current)
-      if (current()){await this.loadEntrySource(current);if(current()&&!this._paymentId)await this.loadAllocationCharges()}
+      if (current()){await this.loadEntrySource(current);if(current()&&!this._paymentId&&!model.simplePeriod(this.data))await this.loadAllocationCharges();if(current())this.review()}
     }).catch(error => { if (current()) this.setData({ errorMessage: error.message || '借还记录暂未读取' }) })
       .finally(() => { if (current()) { this._load = null; this.setData({ loading: false }) } })
     return this._load
   },
+  toggleAmountDetails(){this.setData({amountDetailsOpen:!this.data.amountDetailsOpen})},
   input(event) { const key = event.currentTarget.dataset.field; if (['totalYuan','date','time','unallocatedYuan'].includes(key)) { this.setData({ [key]: event.detail.value, confirmed: false }); this.review() } },
   chooseKind(event) { if(this.data.periodNumber)return;this.setData({ kindIndex: Number(event.detail.value), confirmed: false }); this.review() },
   chooseAccount(event) { this.setData({ accountIndex: Number(event.detail.value), confirmed: false }); this.review() },
@@ -108,7 +109,7 @@ Page(Object.assign({}, require('./source'), require('./period-entry'), {
   },
   selectPaymentCharges(event){const index=Number(event.currentTarget.dataset.index),a=this.data.allocations[index];if(!a)return;const ids=event.detail.value;this.setData({['allocations['+index+'].chargeChoices']:(a.chargeChoices||[]).map(c=>({...c,selected:ids.includes(c.chargeId)})),confirmed:false});this.review()},
   paymentChargeAmount(event){const {index,charge}=event.currentTarget.dataset;if(!this.data.allocations[index]||!this.data.allocations[index].chargeChoices[charge])return;this.setData({['allocations['+index+'].chargeChoices['+charge+'].paidYuan']:event.detail.value,confirmed:false});this.review()},
-  review() { this.setData({ reviewText: model.review(this.data) }) },
+  review() { this.setData({ simplePeriod:model.simplePeriod(this.data),reviewText: model.review(this.data) }) },
   allocatePlan(event) { if(this.data.payment) wx.navigateTo({ url: '/pages/loan-plan/index?loanId=' + encodeURIComponent(event.currentTarget.dataset.id) + '&paymentId=' + encodeURIComponent(this.data.payment.paymentId) }) },
   confirm(event) { this.setData({ confirmed: event.detail.value.includes('confirmed') }) },
   async moreLoans(event) {
@@ -137,6 +138,7 @@ Page(Object.assign({}, require('./source'), require('./period-entry'), {
   async save() {
     if (this.data.loading || this.data.saving || (this._paymentId && !pending.pending())) return
     const current = session.capture(this)
+    const returnToPeriod = model.simplePeriod(this.data)
     this.setData({ saving: true, errorMessage: '', savedMessage: '' })
     try {
       const data = pending.pending() ? {} : model.payload(this.data)
@@ -144,7 +146,10 @@ Page(Object.assign({}, require('./source'), require('./period-entry'), {
       if (current()) this.accept(outcome)
     } catch (error) { if (current()) this.setData({ errorMessage: error.message, hasPending: Boolean(pending.pending()) }) }
     finally { if (current()) this.setData({ saving: false }) }
-    if (current() && this.data.savedMessage) return this.load()
+    if (current() && this.data.savedMessage) {
+      if (returnToPeriod) { wx.showToast({ title: '已记本期还款', icon: 'success' }); wx.navigateBack(); return }
+      return this.load()
+    }
   },
   reverse() {
     if (this.data.loading || this.data.saving || !this.data.payment) return

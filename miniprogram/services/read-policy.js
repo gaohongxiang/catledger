@@ -26,7 +26,7 @@ const READ_POLICIES = Object.freeze({
 })
 
 function mutationTags(action) {
-  if (/^loans\.(setInstallmentProgress|linkInstallmentSource|archiveInstallment|removeInstallmentItem)$/.test(action)) return ['loans', 'transactions', 'accounts']
+  if (/^loans\.(confirmInstallments|setInstallmentProgress|linkInstallmentSource|archiveInstallment|removeInstallmentItem)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (/^loans\.(configureCharges|pauseCharges|syncCharges|changeCharge|endCharges)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (action === 'profile.update') return ['profile']
   if (/^loans\.(savePeriod|allocatePeriods|generatePlan)$/.test(action)) return ['loans']

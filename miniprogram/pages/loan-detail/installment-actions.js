@@ -8,7 +8,7 @@ const confirm = options => new Promise(resolve => wx.showModal({ ...options, suc
 
 module.exports = {
   async openInstallment(event) {
-    if (!this.data.detail || this.data.saving || !this.data.detail.tracking && !(this.data.loan && this.data.loan.scheduleTerms)) return
+    if (!session.isCurrent(this) || !this.data.detail || this.data.saving || !this.data.detail.tracking && !(this.data.loan && this.data.loan.scheduleTerms)) return
     const term = Number(event.currentTarget.dataset.term), current = session.capture(this), token = this._periodToken = {}
     this.setData({ periodOpen: true, periodLoading: true, periodError: '', selectedPeriod: null, periodEditing: false, periodAdjustOpen: false,periodEvidenceOpen:false,periodCharges:[],periodChargeIssues:[],periodChargeNext:null,periodFeesError:'' })
     try {
@@ -19,12 +19,19 @@ module.exports = {
       this.setData({ selectedPeriod: Object.assign({}, result.period, model.rowView(result.period, model.today())),
         periodCanBook: !!(account && account.type === 'credit' && ['interest','fee'].some(key=>result.period[key+'Minor']!=='0' && !(result.period.recordedComponents||[]).includes(key))),
         periodSources: result.sources.map(item => Object.assign({}, item, { label: LABELS[item.component], amount: money.formatMinor(item.amountMinor) })),
-        periodLegacy: result.legacyPayments, periodMoreSources: result.moreSources })
+        periodLegacy: result.legacyPayments.map(payment => ({ ...payment, totalText: money.formatMinor(payment.totalMinor), occurredText: String(payment.occurredLocalAt || '').slice(0, 10) })), periodMoreSources: result.moreSources })
       await this.loadPeriodCharges(term,token)
     } catch (error) { if (current() && token === this._periodToken) this.setData({ periodError: error.message || '这期记录暂未读取' }) }
     finally { if (current() && token === this._periodToken) this.setData({ periodLoading: false }) }
   },
   closeInstallment() { if (!this.data.saving) { this._periodToken = {}; this.setData({ periodOpen: false }) } },
+  recordListedPayment(event) {
+    if (!session.isCurrent(this) || !this.data.loan || this.data.loan.archived || this.data.detailLoading) return
+    const term = Number(event.currentTarget.dataset.term)
+    const row = this.data.periodRows.find(item => item.term === term)
+    if (!row || row.paid || row.cancelled) return
+    return this.recordPayment({currentTarget:{dataset:{term}}})
+  },
   recordPeriodPayment(){if(this.data.selectedPeriod&&!this.data.periodLoading)return this.recordPayment({currentTarget:{dataset:{term:this.data.selectedPeriod.term}}})},
   async installmentWrite(action, data) {
     if (this.data.saving || this.data.loading || !session.isCurrent(this)) return
@@ -44,26 +51,20 @@ module.exports = {
     } finally { if (current()) this.setData({ saving: false }) }
   },
   setPeriodStatus(event) {
-    const selected = this._selectedInstallment
-    if (!selected || this.data.periodLoading || selected.archived) return
-    return this.installmentWrite('loans.setInstallmentProgress', { loanId: this._loanId, version: selected.loanVersion,
-      periodNumber: selected.period.periodNumber, status: event.currentTarget.dataset.status })
+    const selected = this._selectedInstallment, status = event.currentTarget.dataset.status
+    if (!selected || this.data.periodLoading || selected.archived || !['completed','unpaid'].includes(status)) return
+    return this.installmentWrite('loans.confirmInstallments', { loanId: this._loanId, version: selected.loanVersion,
+      repayments: [{ periodNumber: selected.period.periodNumber, paid: status === 'completed' }] })
   },
-  bookPeriodCosts(){const term=this.data.selectedPeriod&&this.data.selectedPeriod.term;this.closeInstallment();this.openChargeForm();this._chargeReturnTerm=term},
-  openProgress(event) {
-    if (!this._detailView || this.data.saving || this.data.loan.archived) return
-    const term = Number(event && event.currentTarget && event.currentTarget.dataset.term)
-    const through = Number.isInteger(term) && term > 0 && term <= this.data.loan.scheduleTerms ? term : this._detailView.summary.manualThrough
-    this.setData({ periodOpen: false, progressOpen: true, progressThrough: String(through), periodError: '' })
+  selectRepayments(event) {
+    if (this.data.saving || this.data.detailLoading) return
+    const selected = new Set(event.detail.value)
+    this.setData({ repaymentRows: this.data.repaymentRows.map(r=>({...r,paid:selected.has(String(r.periodNumber))})) })
   },
-  closeProgress() { if (!this.data.saving) this.setData({ progressOpen: false }) },
-  progressInput(event) { this.setData({ progressThrough: event.detail.value }) },
-  async saveProgress() {
-    const value = this.data.progressThrough
-    if (!/^\d+$/.test(value) || Number(value) > this.data.loan.scheduleTerms) { this.setData({ periodError: '请输入 0 到总期数之间的整数' }); return }
-    const current=session.capture(this)
-    if(!await confirm({title:'批量确认已还范围',content:'将第1至'+value+'期标为人工确认。已知未还、部分未还和范围外单期确认保留；不生成付款或费用。',confirmText:'确认范围'})||!current())return
-    return this.installmentWrite('loans.setInstallmentProgress',{loanId:this._loanId,version:this._detailView.loanVersion,completedThrough:Number(value),confirmedBatch:true})
+  saveRepayments() {
+    if (!this._detailView || !this.data.repaymentRows.length || this.data.loan.archived || this.data.detailLoading) return
+    return this.installmentWrite('loans.confirmInstallments', { loanId:this._loanId, version:this._detailView.loanVersion,
+      repayments:this.data.repaymentRows.map(({periodNumber,paid})=>({periodNumber,paid})) })
   },
   openInstallmentSource(event) {
     const source = (this.data.periodSources || []).find(item => item.itemId === event.currentTarget.dataset.id)

@@ -4,10 +4,12 @@ function allocation(loan) {
   return { loanId: loan.loanId, loanName: loan.name, version: loan.version, kind: loan.kind,
     principalYuan: '', interestYuan: '', feeYuan: '', interestIndex: 0, feeIndex: 0, interestCategoryIndex: -1, feeCategoryIndex: -1 }
 }
+function simplePeriod(data) { return !!data.periodNumber && !data.modeIndex && !data.editingPayment && !data.replacePayment && !data.sourceLocked }
 function payload(data) {
   const asset = data.accounts[data.accountIndex]
   if (!asset) throw new Error('请选择资金账户')
-  if (!data.confirmed) throw new Error('请核对并确认本息费构成')
+  const simple = simplePeriod(data)
+  if (!simple && !data.confirmed) throw new Error('请核对并确认本息费构成')
   const drawdown = data.kindIndex === 1
   const mode = ['new','associate','correctExisting'][data.modeIndex || 0]
   if (mode !== 'new' && !data.source && !data.editingPayment) throw new Error('请先选择并核对完整来源账目')
@@ -19,16 +21,17 @@ function payload(data) {
       const value = { loanId: a.loanId, version: a.version, principalMinor: money.yuanToMinor(a.principalYuan, { allowZero: true }),
         interestMinor: drawdown ? '0' : money.yuanToMinor(a.interestYuan, { allowZero: true }), feeMinor: drawdown ? '0' : money.yuanToMinor(a.feeYuan, { allowZero: true }) }
       for (const field of ['interest','fee']) {
-        value[field + 'Treatment'] = a[field + 'Index'] === 1 ? 'accrued' : 'expense'
+        value[field + 'Treatment'] = simple || a[field + 'Index'] === 1 ? 'accrued' : 'expense'
         const category = data.categories[a[field + 'CategoryIndex']]
         if (value[field + 'Minor'] !== '0' && value[field + 'Treatment'] === 'expense' && !category) throw new Error('请选择利息或费用的支出分类')
         value[field + 'CategoryId'] = value[field + 'Minor'] !== '0' && value[field + 'Treatment'] === 'expense' ? category.id : null
       }
-      value.chargeAllocations=(a.chargeChoices||[]).filter(c=>c.selected).map(c=>({chargeId:c.chargeId,component:c.component,amountMinor:money.yuanToMinor(c.paidYuan)}))
+      value.chargeAllocations=(simple?[]:a.chargeChoices||[]).filter(c=>c.selected).map(c=>({chargeId:c.chargeId,component:c.component,amountMinor:money.yuanToMinor(c.paidYuan)}))
       if(a.period){if(drawdown)throw new Error('本期还款不能登记为借款到账');value.period=a.period}
-      if(!a.chargeChoices&&a.chargeAllocations)value.chargeAllocations=a.chargeAllocations
+      if(!simple&&!a.chargeChoices&&a.chargeAllocations)value.chargeAllocations=a.chargeAllocations
       return value
     }) }
+  if(simple)result.simplePeriod=true
   const total = result.allocations.reduce((sum, a) => addMinor(sum, addMinor(a.principalMinor, addMinor(a.interestMinor, a.feeMinor))), '0')
   const unallocated=money.yuanToMinor(data.unallocatedYuan||'0',{allowZero:true})
   if(unallocated!=='0'){if(mode!=='associate'||drawdown)throw new Error('未分配余额仅用于关联信用卡整单付款');result.unallocatedMinor=unallocated}
@@ -42,6 +45,7 @@ function payload(data) {
 function review(data) {
   try {
     const value = payload(Object.assign({}, data, { confirmed: true }))
+    if(value.simplePeriod)return '保存后扣除付款账户 '+money.formatMinor(value.totalMinor)+' 元，并记好本期本金、利息和费用。'
     const expense = value.allocations.reduce((sum, a) => addMinor(sum, addMinor(a.interestTreatment === 'expense' ? a.interestMinor : '0', a.feeTreatment === 'expense' ? a.feeMinor : '0')), '0')
     return '实际总额 ' + money.formatMinor(value.totalMinor) + '，确认其中支出 ' + money.formatMinor(expense) + '，分配至 ' + value.allocations.length + ' 笔贷款。'
   } catch (error) { return error.message }
@@ -62,4 +66,4 @@ function editView(data) {
     allocations:data.allocations.map(a=>Object.assign({},a,{principalYuan:money.minorToYuan(a.principalMinor),interestYuan:money.minorToYuan(a.interestMinor),feeYuan:money.minorToYuan(a.feeMinor),
       interestIndex:a.interestTreatment==='accrued'?1:0,feeIndex:a.feeTreatment==='accrued'?1:0,interestCategoryIndex:data.categories.findIndex(c=>c.id===a.interestCategoryId),feeCategoryIndex:data.categories.findIndex(c=>c.id===a.feeCategoryId)})) }
 }
-module.exports = { allocation, payload, paymentView, editView, review }
+module.exports = { simplePeriod, allocation, payload, paymentView, editView, review }

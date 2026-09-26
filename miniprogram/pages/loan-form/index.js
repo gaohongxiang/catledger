@@ -8,7 +8,7 @@ const scheduleForm=require('../loan-detail/schedule-form')
 const planModel=require('../loan-plan/model')
 const model=require('./model')
 Page({
-  data:{baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
+  data:{repaymentRows:[],baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
     schedule:Object.assign(scheduleForm.blank(),{measurementIndex:1}),paidTerms:'0',baselineDate:'',typeIndex:0,customRecordType:'',
     typeOptions:model.TYPE_OPTIONS,discountOptions:model.DISCOUNT_OPTIONS,methods:scheduleForm.METHOD_OPTIONS,quotes:scheduleForm.QUOTE_OPTIONS,
     discountIndex:0,discountValue:'',feeIndex:0,feeOptions:['一次性费用','每期费用'],advancedOpen:false,previewLoading:false,preview:null,remainingText:'',confirmed:false },
@@ -36,7 +36,7 @@ Page({
         const result=await api.callApi('loans.installmentSources',{itemId:this._query.sourceItemId},{force:true});if(!current())return
         const source=result.items[0];if(!source)throw new Error('该账单已关联或状态变化，请返回重新读取')
         accountId=source.accountId
-        this.setData({sourceReady:true,sourceNote:'已识别第 '+source.periodNumber+' 期'+({principal:'本金',interest:'利息',fee:'手续费'}[source.component])+' '+money.formatMinor(source.amountMinor)+'。此行仅证明出账，不确认已还。请补齐总本金、首期日期及还款依据。',...(!this._initialized?{name:source.referenceLabel||'信用卡分期',paidTerms:'0',typeIndex:1,'schedule.terms':source.totalTerms?String(source.totalTerms):'',baselineDate:source.occurredDate}:{})})
+        this.setData({sourceReady:true,sourceNote:'已识别第 '+source.periodNumber+' 期'+({principal:'本金',interest:'利息',fee:'手续费'}[source.component])+' '+money.formatMinor(source.amountMinor)+'，保存后放入对应期次。请填写分期方案，再勾选已还的期次。',...(!this._initialized?{name:source.referenceLabel||'信用卡分期',paidTerms:String(source.periodNumber),typeIndex:1,'schedule.terms':source.totalTerms?String(source.totalTerms):'',baselineDate:source.occurredDate}:{})})
       }
       const accountIndex=accounts.findIndex(a=>a.accountId===accountId)
       this.setData({accounts,accountIndex})
@@ -66,6 +66,11 @@ Page({
   selectDiscount(event){if(this.data.loan)return;this.setData({discountIndex:Number(event.detail.value)});this.invalidate()},
   selectFee(event){if(this.data.loan)return;const feeIndex=Number(event.detail.value),old=this.data.feeIndex===0?'feeUpfrontYuan':'feePerTermYuan',next=feeIndex===0?'feeUpfrontYuan':'feePerTermYuan';this.setData({feeIndex,['schedule.'+old]:'',['schedule.'+next]:this.data.schedule[old]});this.invalidate()},
   toggleAdvanced(){this.setData({advancedOpen:!this.data.advancedOpen})},
+  selectRepayments(event){
+    if(this.data.saving||this.data.loading||!this._preview)return
+    const selected=new Set(event.detail.value),repaymentRows=this.data.repaymentRows.map(r=>({...r,paid:selected.has(String(r.periodNumber))}))
+    this.setData({repaymentRows,remainingText:money.formatMinor(model.remaining(this._preview,repaymentRows))})
+  },
   confirm(event){this.setData({confirmed:event.detail.value.includes('confirmed')})},
   openAccounts(){wx.navigateTo({url:'/pages/accounts/index'})},
   openPlan(){if(this.data.loan&&!this.data.loading&&!this.data.saving&&!this.data.hasPending)wx.navigateTo({url:'/pages/loan-plan/index?loanId='+encodeURIComponent(this.data.loan.loanId)})},
@@ -78,7 +83,9 @@ Page({
       const input=model.previewInput(this.data),result=await api.callApi('loans.previewPlan',input,{force:true})
       if(!current()||this._previewToken!==token)return
       this._preview=result
-      this.setData({preview:planModel.previewView(result),remainingText:money.formatMinor(result.summary.remainingPrincipalMinor)})
+      const previous=new Map(this.data.repaymentRows.map(r=>[r.periodNumber,r.paid]))
+      const repaymentRows=result.periods.filter(r=>r.periodNumber<=Number(this.data.paidTerms)).map(r=>({periodNumber:r.periodNumber,dueDate:r.dueDate,paid:previous.has(r.periodNumber)?previous.get(r.periodNumber):true}))
+      this.setData({preview:planModel.previewView(result),repaymentRows,remainingText:money.formatMinor(model.remaining(result,repaymentRows))})
     }catch(error){if(current()&&this._previewToken===token)this.setData({errorMessage:error.message || '计划暂未核对'})}
     finally{if(current()&&this._previewToken===token)this.setData({previewLoading:false})}
   },

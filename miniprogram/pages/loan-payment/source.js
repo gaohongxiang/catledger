@@ -14,6 +14,7 @@ module.exports = {
     this._selectedSources = new Map()
     this.setData({ modeIndex: Number(event.detail.value), source: null, sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0, sourceTiming: null, confirmed: false })
     this.review()
+    if(this.data.periodNumber && this.data.modeIndex>0)return this.loadAllocationCharges()
   },
   sourceMonth(event) { this.setData({ sourceMonth: event.detail.value, sourceRows: [], nextSourceCursor: null }) },
   async loadSources(event) {

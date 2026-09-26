@@ -7,7 +7,7 @@
       <text class="installment-note">{{selectedPeriod.date}} · {{selectedPeriod.state}}</text>
       <view class="installment-amounts"><view><text>应还</text><text>{{selectedPeriod.payment}}</text></view><view><text>本金</text><text>{{selectedPeriod.principal}}</text></view><view><text>利息 / 费</text><text class="detail-cost-ink">{{selectedPeriod.interestFee}}</text></view></view>
       <text wx:if="{{selectedPeriod.difference}}" class="installment-note">本期账单与方案金额不同，请核对费用与原账单。</text>
-      <text wx:if="{{selectedPeriod.completedByProgress}}" class="installment-note">已人工确认本期；这项操作没有生成银行卡流水。</text>
+
       <include src="period-fees.wxml" />
       <button wx:if="{{periodSources.length}}" class="ld-link" bindtap="togglePeriodEvidence">{{periodEvidenceOpen ? '收起账单来源' : '查看账单来源'}}</button>
       <block wx:if="{{periodEvidenceOpen}}">
@@ -19,16 +19,13 @@
       </view>
       <text wx:if="{{periodMoreSources}}" class="installment-note">显示最近 40 条来源；完整来源保留在已导入账单中。</text>
       </block>
-      <button wx:for="{{periodLegacy}}" wx:key="paymentId" class="ld-link" data-id="{{item.paymentId}}" bindtap="openPayment">查看本期已有关联还款</button>
+      <button wx:for="{{periodLegacy}}" wx:key="paymentId" class="ld-link" data-id="{{item.paymentId}}" bindtap="openPayment" disabled="{{saving || periodLoading}}">{{item.occurredText}} · 查看这笔还款 {{item.totalText}} ›</button>
       <block wx:if="{{!loan.archived}}">
-        <button wx:if="{{!selectedPeriod.paymentConfirmed && !selectedPeriod.cancelled}}" class="primary-button" bindtap="recordPeriodPayment" disabled="{{saving || periodLoading}}">记本期还款</button>
-        <button wx:if="{{periodCanBook && !chargeSummary.hasContract}}" class="secondary-button" bindtap="bookPeriodCosts" disabled="{{saving}}">设置按期记费</button>
+        <button wx:if="{{!selectedPeriod.complete && !selectedPeriod.cancelled}}" class="primary-button" bindtap="recordPeriodPayment" disabled="{{saving || periodLoading}}">记本期还款</button>
         <button class="ld-link" bindtap="togglePeriodAdjust" disabled="{{saving}}">{{periodAdjustOpen ? '收起调整' : '调整本期记录'}}</button>
         <block wx:if="{{detail.tracking && periodAdjustOpen}}">
-          <button wx:if="{{!selectedPeriod.complete}}" class="ld-link" data-status="completed" bindtap="setPeriodStatus" disabled="{{saving}}">仅确认本期已还</button>
-          <text class="installment-note">仅确认进度不记费用、不记银行卡扣款。</text>
-          <view class="installment-inline"><button data-status="unpaid" bindtap="setPeriodStatus" disabled="{{saving}}">本期未还</button><button data-status="partial" bindtap="setPeriodStatus" disabled="{{saving}}">部分未还</button><button data-status="clear" bindtap="setPeriodStatus" disabled="{{saving}}">清除本期标记</button></view>
-          <button wx:if="{{selectedPeriod.term > 1}}" class="ld-link" data-term="{{selectedPeriod.term}}" bindtap="openProgress" disabled="{{saving}}">确认第1～{{selectedPeriod.term}}期已还</button>
+          <button wx:if="{{!selectedPeriod.complete}}" class="ld-link" data-status="completed" bindtap="setPeriodStatus" disabled="{{saving}}">补记本期已还（同时记利息）</button>
+          <button wx:if="{{selectedPeriod.complete && !selectedPeriod.paymentConfirmed}}" class="ld-link" data-status="unpaid" bindtap="setPeriodStatus" disabled="{{saving}}">改为未还</button>
         </block>
         <button wx:if="{{periodAdjustOpen}}" class="ld-link" bindtap="editInstallmentPeriod" disabled="{{saving}}">本期金额或日期有变化</button>
         <view wx:if="{{periodAdjustOpen && periodEditing}}" class="installment-period-edit">
@@ -44,17 +41,6 @@
     </block>
   </scroll-view>
 </view>
-<view wx:if="{{progressOpen}}" class="detail-guide-mask" bindtap="closeProgress" catchtouchmove="stopGuideTap">
-  <view class="detail-guide-sheet" catchtap="stopGuideTap">
-    <text class="detail-guide-title">批量确认已还</text>
-    <input class="progress-input money-number" type="number" value="{{progressThrough}}" bindinput="progressInput" maxlength="3" />
-    <text>填 10 即确认第1～10期，不新增费用或付款。明确未还、部分未还和范围外的确认保留。</text>
-    <ui-state wx:if="{{periodError}}" error description="{{periodError}}" />
-    <button class="primary-button" bindtap="saveProgress" disabled="{{saving}}" loading="{{saving}}">保存进度</button>
-    <button class="ld-link" bindtap="closeProgress" disabled="{{saving}}">取消</button>
-  </view>
-</view>
-
 <view wx:if="{{oneOffOpen}}" class="detail-guide-mask" bindtap="closeOneOffCharges" catchtouchmove="stopGuideTap">
   <scroll-view scroll-y class="installment-sheet" catchtap="stopGuideTap">
     <view class="installment-sheet-head"><text>一次性费用</text><button bindtap="closeOneOffCharges">关闭</button></view>

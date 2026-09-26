@@ -8,6 +8,6 @@
     <view><text>{{item.shortLabel}} · {{item.stateText}}</text><text>{{item.basisText}}</text><text wx:if="{{item.settledMinor !== '0'}}">已清偿 {{item.settledText}}</text><text wx:if="{{item.refundMinor !== '0'}}">实际退费 {{item.refundText}}</text></view>
     <text class="money-number">{{item.amountText}} <text class="period-fee-chevron">›</text></text>
   </view>
-  <text wx:if="{{!periodCharges.length && !periodFeesError && !periodLoading}}" class="installment-note">{{chargeSummary.hasContract ? '本期暂无费用记录' : '尚未开启按期记费，可在管理中一次设置。'}}</text>
+  <text wx:if="{{!periodCharges.length && !periodFeesError && !periodLoading}}" class="installment-note">本期还款时一并记入利息和费用</text>
   <button wx:if="{{periodChargeNext}}" class="ld-link" bindtap="morePeriodCharges">查看更多费用记录</button>
 </view>

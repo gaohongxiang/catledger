@@ -54,12 +54,29 @@ test('到期、部分还款和本金结清均不能冒充全部已还', () => {
   assert.equal(principalSettled.complete, false); assert.equal(principalSettled.status, '本金已结清')
 })
 
+test('列表统一显示已还；保留人工与实际付款证据字段用于撤销保护', () => {
+  const value = loan({ remainingPrincipalMinor: '0', installmentSetup: { ...loan().installmentSetup, historicalPaidTerms: 12 } })
+  const summary = { paidPeriods: 12, manualPaidPeriods: 12, actualPaidPeriods: 0, unpaidPrincipalMinor: '0', unpaidInterestMinor: '0', unpaidFeeMinor: '0' }
+  const result = model.build(value, periodView({ tracking: true, summary }), preview(value))
+  assert.equal(result.progress, 100); assert.equal(result.paid, 12); assert.equal(result.remaining, '0.00')
+  assert.equal(result.status, '已完成'); assert.equal(result.dueTitle, '已全部记录'); assert.equal(result.dueNote, '已记录全部期次')
+  assert.equal(result.cost.cost, '1,200.00')
+  const manual = { ...period(1, 'paid'), completedByProgress: true, paymentConfirmed: false, stateText: '已完成' }
+  assert.equal(model.rowView(manual, '2026-09-26').state, '已还')
+  assert.equal(model.rowView({ ...manual, status: 'historical', completedByProgress: false }, '2026-09-26').state, '已还')
+  assert.equal(model.rowView({ ...manual, paymentConfirmed: true }, '2026-09-26').state, '已还')
+  const actual = model.build(value, periodView({ tracking: true, summary: { ...summary, manualPaidPeriods: 0, actualPaidPeriods: 12 } }), preview(value))
+  assert.equal(actual.status, '已完成'); assert.equal(actual.dueTitle, '已全部记录')
+  const mixed = model.build(value, periodView({ tracking: true, summary: { ...summary, manualPaidPeriods: 1, actualPaidPeriods: 11 } }), preview(value))
+  assert.equal(mixed.status, '已完成'); assert.equal(model.rowView(manual).manualConfirmed,true); assert.equal(model.rowView({...manual,paymentConfirmed:true}).manualConfirmed,false)
+})
+
 test('历史和接入后进度分别保留，修订后的确认期次优先显示', () => {
   const value = loan(), view = periodView()
   view.summary.paidPeriods = 2
   view.items[0].interestMinor = '6500'
   const result = model.build(value, view, preview(value))
-  assert.equal(result.paid, 5); assert.equal(result.progressNote, '历史已还 3 期 · 接入后已还 2 期')
+  assert.equal(result.paid, 5); assert.equal(result.progressNote, '')
   assert.equal(model.rowView(view.items[0], '2026-01-01').interestFee, '65.00')
   assert.equal(model.historicalRows(value, preview(value)).some(row => row.periodNumber === 4), false)
 })

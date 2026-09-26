@@ -1,4 +1,5 @@
 // 从 loan-cost-calculator 的 loan-form 适配；账户和本金核对使用本账本契约。
+const { addMinor } = require('../../utils/minor-arithmetic')
 const money = require('../../utils/money')
 const scheduleForm = require('../loan-detail/schedule-form')
 const TYPE_OPTIONS = [{value:'',label:'不选择'},{value:'credit_card',label:'信用卡分期'},{value:'bank_loan',label:'银行借款'},{value:'online_loan',label:'网络借款'},{value:'other',label:'其他'}]
@@ -20,7 +21,7 @@ function previewInput(data) {
       discountValue=String(Math.round(Number(discountText)*100000))
     } else discountValue=money.yuanToMinor(discountText)
   }
-  return Object.assign({},schedule,{ principalMinor,installmentSetup:{ schema:1,originalPrincipalMinor:principalMinor,historicalPaidTerms:paidTerms,
+  return Object.assign({},schedule,{ principalMinor,installmentSetup:{ schema:1,originalPrincipalMinor:principalMinor,historicalPaidTerms:data.loan ? paidTerms : 0,
     recordType:type.value,customRecordType:type.value==='other' ? String(data.customRecordType || '').trim() : '',discountKind,discountValue } })
 }
 function fields(loan) {
@@ -36,12 +37,17 @@ function createPayload(data, preview) {
   if (!String(data.name || '').trim()) throw new Error('请填写贷款名称')
   const account=data.accounts[data.accountIndex]
   if (!account) throw new Error('请选择关联负债账户')
-  if (!data.confirmed || !preview || preview.summary.remainingPrincipalMinor == null) throw new Error('请先核对剩余本金和后续期次，再勾选确认')
+  if (!preview || preview.summary.remainingPrincipalMinor == null) throw new Error('请先查看还款计划')
   if (!data.baselineDate) throw new Error('请选择开始核对日期')
   const input=previewInput(data); delete input.principalMinor
   if(data.baselineMode===1&&Number(data.paidTerms)!==0)throw new Error('新现金借款尚未到账，历史已还期数应为 0')
   return Object.assign(input,{ ...(data.baselineMode===1?{originKind:'cash_borrowing'}:{}),name:String(data.name).trim(),institution:null,kind:'installment',accountId:account.accountId,
-    baselinePrincipalMinor:data.baselineMode===1?'0':preview.summary.remainingPrincipalMinor,baselineDate:data.baselineDate,startDate:null,endDate:null,
+    repayments:(data.repaymentRows || []).map(({periodNumber,paid})=>({periodNumber,paid})),
+    baselinePrincipalMinor:data.baselineMode===1?'0':remaining(preview,data.repaymentRows || []),baselineDate:data.baselineDate,startDate:null,endDate:null,
     repaymentMethod:scheduleForm.METHOD_LABELS[input.scheduleMethod],generatePlan:true,confirmed:true })
 }
-module.exports={TYPE_OPTIONS,DISCOUNT_OPTIONS,today,previewInput,fields,createPayload}
+function remaining(preview, rows) {
+  const paid = new Set(rows.filter(r=>r.paid).map(r=>r.periodNumber))
+  return preview.periods.filter(r=>!paid.has(r.periodNumber)).reduce((sum,r)=>addMinor(sum,String(r.principalMinor)),'0')
+}
+module.exports={TYPE_OPTIONS,DISCOUNT_OPTIONS,today,previewInput,fields,createPayload,remaining}

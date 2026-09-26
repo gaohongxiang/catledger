@@ -1,43 +1,3 @@
-  <view class="detail-guide-mask" wx:if="{{chargeFormOpen}}" bindtap="closeChargeForm" catchtouchmove="stopGuideTap">
-  <scroll-view scroll-y class="installment-sheet charge-form-sheet" catchtap="stopGuideTap">
-    <view class="installment-sheet-head"><text>自动记费设置</text><button bindtap="closeChargeForm" disabled="{{saving}}">关闭</button></view>
-    <ui-state wx:if="{{chargeError}}" error description="{{chargeError}}" />
-    <view class="charge-form">
-    <text class="ld-note">确认一次后，可按期记利息和费用，无需每期导入。不会扣银行卡，也不会标成已还。</text>
-    <view wx:if="{{chargeSummary.hasContract}}" class="charge-current-settings">
-      <text class="ld-note">当前：{{chargeSummary.mode}} · {{chargeSummary.range}}</text>
-      <button wx:if="{{chargeSummary.mode === '仅本次确认'}}" class="ld-link" bindtap="syncChargesNow" disabled="{{saving}}">补齐已确认费用</button>
-      <button class="ld-link" bindtap="chooseChargeStop" disabled="{{saving}}">暂停或停止记费 ›</button>
-    </view>
-    <picker class="ld-cell" range="{{chargeOrigins}}" value="{{chargeDraft.originIndex}}" data-field="originIndex" bindchange="chargeInput"><text>这笔贷款的来源</text><text>{{chargeDraft.originIndex >= 0 ? chargeOrigins[chargeDraft.originIndex] : '请选择真实来源'}}</text></picker>
-    <picker class="ld-cell" range="{{chargeModes}}" value="{{chargeDraft.modeIndex}}" data-field="modeIndex" bindchange="chargeInput"><text>授权方式</text><text>{{chargeModes[chargeDraft.modeIndex]}}</text></picker>
-    <picker class="ld-cell" range="{{chargeHistories}}" value="{{chargeDraft.historyIndex}}" data-field="historyIndex" bindchange="chargeInput"><text>历史处理</text><text>{{chargeHistories[chargeDraft.historyIndex]}}</text></picker>
-    <picker class="ld-cell" mode="date" value="{{chargeDraft.firstChargeDate}}" data-field="firstChargeDate" bindchange="chargeInput"><text>首期计费日（独立于还款日）</text><text>{{chargeDraft.firstChargeDate || '请选择'}}</text></picker>
-    <picker wx:if="{{loan.feeUpfrontMinor && loan.feeUpfrontMinor !== '0'}}" class="ld-cell" mode="date" value="{{chargeDraft.upfrontChargeDate}}" data-field="upfrontChargeDate" bindchange="chargeInput"><text>一次性手续费计费日</text><text>{{chargeDraft.upfrontChargeDate || '请确认实际约定日期'}}</text></picker>
-    <picker class="ld-cell" mode="date" value="{{chargeDraft.fromDate}}" data-field="fromDate" bindchange="chargeInput"><text>费用起算日</text><text>{{chargeDraft.fromDate}}</text></picker>
-    <picker class="ld-cell" mode="date" value="{{chargeDraft.throughDate}}" data-field="throughDate" bindchange="chargeInput"><text>授权截止日</text><text>{{chargeDraft.throughDate || '请选择'}}</text></picker>
-    <label class="ld-cell"><text>合同 / 银行分期编号（可空）</text><input value="{{chargeDraft.referenceLabel}}" data-field="referenceLabel" bindinput="chargeInput" maxlength="80" placeholder="用于以后账单的明确核对" /></label>
-    <category-picker class="ld-cell" range="{{chargeCategories}}" value="{{chargeDraft.interestCategoryIndex}}" data-field="interestCategoryIndex" bindchange="chargeInput"><text>利息分类</text><text>{{chargeDraft.interestCategoryIndex >= 0 ? chargeCategories[chargeDraft.interestCategoryIndex].name : '有利息时必选'}}</text></category-picker>
-    <category-picker class="ld-cell" range="{{chargeCategories}}" value="{{chargeDraft.feeCategoryIndex}}" data-field="feeCategoryIndex" bindchange="chargeInput"><text>费用分类</text><text>{{chargeDraft.feeCategoryIndex >= 0 ? chargeCategories[chargeDraft.feeCategoryIndex].name : '有费用时必选'}}</text></category-picker>
-    <picker wx:if="{{chargePrior.length > 1}}" class="ld-cell" range="{{chargePrior}}" range-key="label" value="{{chargePriorIndex}}" bindchange="choosePrior"><text>是否认领旧合同</text><text>{{chargePrior[chargePriorIndex].label}}</text></picker>
-    <picker class="ld-cell" range="{{chargeCoverages}}" value="{{chargeDraft.coverageIndex}}" data-field="coverageIndex" bindchange="chargeInput"><text>已记费用如何处理</text><text>{{chargeDraft.coverageIndex >= 0 ? chargeCoverages[chargeDraft.coverageIndex] : '请选择，避免重复增加欠款'}}</text></picker>
-    <picker wx:if="{{chargeDraft.coverageIndex === 1}}" class="ld-cell" mode="date" value="{{chargeDraft.baselineCoveredThrough}}" data-field="baselineCoveredThrough" bindchange="chargeInput"><text>期初欠款已含费用至</text><text>{{chargeDraft.baselineCoveredThrough || '请选择早于起算日的日期'}}</text></picker>
-    <block wx:if="{{chargeDraft.coverageIndex >= 2}}">
-      <picker class="ld-cell" mode="date" fields="month" value="{{chargeDraft.evidenceMonth}}" data-field="evidenceMonth" bindchange="chargeInput"><text>已有支出所在月份</text><text>{{chargeDraft.evidenceMonth}}</text></picker>
-      <button class="ld-link" bindtap="loadChargeEvidence">读取负债账户已有费用</button><button wx:if="{{chargeEvidenceNext}}" class="ld-link" data-next="true" bindtap="loadChargeEvidence">下一页已有支出</button>
-      <picker class="ld-cell" range="{{chargeExisting}}" range-key="label" value="{{chargeExistingIndex}}" bindchange="chooseChargeEvidence"><text>选择实际费用</text><text>{{chargeExistingIndex >= 0 ? chargeExisting[chargeExistingIndex].label : '请选择已入账支出'}}</text></picker>
-      <picker class="ld-cell" range="{{['利息','费用']}}" value="{{chargeDraft.componentIndex}}" data-field="componentIndex" bindchange="chargeInput"><text>对应分项</text><text>{{chargeDraft.componentIndex ? '费用' : '利息'}}</text></picker>
-      <label class="ld-cell"><text>对应起始期（合同一次性费填0）</text><input type="number" value="{{chargeDraft.evidencePeriod}}" data-field="evidencePeriod" bindinput="chargeInput" /></label>
-      <label wx:if="{{chargeDraft.coverageIndex === 3}}" class="ld-cell"><text>一次性覆盖到第几期</text><input type="number" value="{{chargeDraft.coverThrough}}" data-field="coverThrough" bindinput="chargeInput" /></label>
-      <button class="ld-link" bindtap="addChargeCoverage">加入覆盖列表</button>
-      <view wx:for="{{chargeCoverageRows}}" wx:key="transactionId" class="charge-row"><text>{{item.label}}</text><button class="ld-link" data-index="{{index}}" bindtap="removeChargeCoverage">移除</button></view>
-    </block>
-    <checkbox-group data-field="fixed" bindchange="chargeInput"><label class="charge-confirm"><checkbox value="fixed" checked="{{chargeDraft.fixed}}" />我已确认固定金额、计费日期、分类及历史覆盖；按所选范围记账，无需每期导入。</label></checkbox-group>
-    <view wx:if="{{chargePreview}}"><text class="ld-note">截至今天本次可补 {{chargePreview.dueCount}} 项，共 {{chargePreview.dueText}}；已有覆盖提交时再次核验。</text><view wx:for="{{chargePreview.items}}" wx:key="chargeKey" class="charge-row"><text>{{item.chargeDate}} · {{item.component === 'interest' ? '利息' : '费用'}} · {{item.amountText}}</text><text>{{item.stateText}}</text></view><button wx:if="{{chargePreview.next}}" class="ld-link" bindtap="moreChargePreview">下一页预览</button></view>
-    <button class="primary-button" bindtap="authorizeCharges" disabled="{{saving || loading}}" loading="{{saving}}">预览并确认授权</button><button class="ld-link" bindtap="closeChargeForm" disabled="{{saving}}">取消</button>
-  </view>
-  </scroll-view>
-</view>
 <view wx:if="{{chargeEdit}}" class="detail-guide-mask" bindtap="closeChargeForm" catchtouchmove="stopGuideTap">
   <scroll-view scroll-y class="installment-sheet" catchtap="stopGuideTap">
     <view class="installment-sheet-head"><text>{{chargeEdit.label}}</text><button bindtap="closeChargeForm" disabled="{{saving}}">返回</button></view>
@@ -65,7 +25,7 @@
 <view wx:if="{{loanManagementOpen}}" class="detail-guide-mask" bindtap="closeLoanManagement" catchtouchmove="stopGuideTap">
   <scroll-view scroll-y class="installment-sheet loan-management-sheet" catchtap="stopGuideTap">
     <view class="installment-sheet-head"><text>管理这笔贷款</text><button bindtap="closeLoanManagement">关闭</button></view>
-    <button wx:if="{{loan.scheduleTerms}}" class="loan-management-row" data-action="charges" bindtap="manageLoan"><text>自动记费设置</text><text>{{chargeSummary.mode}} ›</text></button>
+    <button wx:if="{{chargeSummary.authorized}}" class="loan-management-row" data-action="stopAuto" bindtap="manageLoan"><text>停止此前的自动记费</text><text>›</text></button>
     <button class="loan-management-row" data-action="edit" bindtap="manageLoan"><text>编辑贷款资料</text><text>›</text></button>
     <button wx:if="{{detail.tracking}}" class="loan-management-row loan-management-danger" data-action="archive" bindtap="manageLoan"><text>删除分期记录</text><text>账目保留 ›</text></button>
   </scroll-view>

@@ -135,7 +135,7 @@ test('新建分期资料预选原借款账户，目录重排不串账户，保�
   const h = runtime('loan-form', (name, data) => {
     if (name === 'catalog.get') return { ...catalog, accounts: reorder ? catalog.accounts.slice().reverse() : catalog.accounts }
     if (name === 'loans.transaction') { if (fail) throw new Error('合成来源读取失败'); return context }
-    if (name === 'loans.previewPlan') return {periods:[],summary:{totalPaymentMinor:'10000',totalInterestMinor:'0',totalFeeMinor:'0',remainingPrincipalMinor:'10000'}}
+    if (name === 'loans.previewPlan') return {periods:[{periodNumber:1,dueDate:'2026-08-02',principalMinor:'10000',interestMinor:'0',feeMinor:'0'}],summary:{totalPaymentMinor:'10000',totalInterestMinor:'0',totalFeeMinor:'0',remainingPrincipalMinor:'10000'}}
     if (name === 'loans.create') { stored = { ...loan, ...data }; return { loanId: loan.loanId, version: 1 } }
     if (name === 'loans.get') return { loan: stored }
     throw new Error('unexpected ' + name)

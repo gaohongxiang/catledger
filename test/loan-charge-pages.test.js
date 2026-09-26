@@ -86,39 +86,56 @@ function detail(){
  }
  p.onLoad({loanId:loan.loanId});return {h,p}
 }
-test('还款记录按需读取与有界翻页；记录和跨期还款可直接打开，返回刷新仍不写账',async()=>{
+function periodPayment(term, id) {
+ return ok({loanVersion:2,period:{periodNumber:term,dueDate:'2026-02-28',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',status:'paid',paymentConfirmed:true},sources:[],legacyPayments:[{paymentId:id,totalMinor:'52000',occurredLocalAt:'2026-02-28T12:00:00'}]})
+}
+test('已记还款只从对应期次查看；返回重读最新本期，失败可见，查看与取消均不写账',async()=>{
  const {h,p}=detail(),base=h.respond
- let version=1
- h.respond=(action,data)=>action==='loans.payments'?ok({items:[{paymentId:data.cursor?'older':'latest-'+version,kind:'repayment',totalMinor:'52000',occurredLocalAt:'2026-09-01T12:00:00'}],nextCursor:data.cursor?null:'older-page'}):base(action,data)
- await p.load();assert.equal(p.data.detailTab,'schedule');assert.equal(h.calls.some(c=>c.action==='loans.payments'),false)
- await p.showPaymentHistory();assert.equal(p.data.detailTab,'history');assert.equal(p.data.history[0].paymentId,'latest-1')
- p.openPayment({currentTarget:{dataset:{id:'latest-1'}}});assert.match(h.navigation.at(-1),/paymentId=latest-1$/)
- p.recordPayment();assert.match(h.navigation.at(-1),/loan-payment\/index\?loanId=synthetic-loan$/)
- await p.loadHistory({currentTarget:{dataset:{next:true}}});assert.equal(p.data.history.length,1);assert.equal(p.data.history[0].paymentId,'older');assert.equal(p.data.historyCursor,'older-page')
- version=2;p.onHide();p.onShow();await p._load;assert.equal(p.data.detailTab,'history');assert.equal(p.data.history[0].paymentId,'latest-2');assert.equal(p.data.historyCursor,null)
- p.showPeriodTable();assert.equal(p.data.detailTab,'schedule')
+ let version=1,failed=false
+ h.respond=(action,data)=>action==='loans.installment'?(failed?{ok:false,error:{code:'INTERNAL_ERROR',message:'合成读取失败'}}:periodPayment(data.periodNumber,'payment-'+version)):base(action,data)
+ await p.load();assert.equal(h.calls.some(c=>c.action==='loans.installment'||c.action==='loans.payments'),false)
+ await p.openInstallment({currentTarget:{dataset:{term:2}}})
+ assert.equal(p.data.selectedPeriod.term,2);assert.equal(p.data.periodLegacy[0].paymentId,'payment-1');assert.equal(p.data.periodLegacy[0].occurredText,'2026-02-28')
+ assert.match(p.data.periodLegacy[0].totalText,/520\.00/)
+ p.openPayment({currentTarget:{dataset:{id:'other-period'}}});assert.equal(h.navigation.length,0)
+ p.openPayment({currentTarget:{dataset:{id:'payment-1'}}});assert.match(h.navigation.at(-1),/paymentId=payment-1$/);assert.equal(p.data.periodOpen,false)
+ version=2;p.onHide();p.onShow();await p._load;await p.openInstallment({currentTarget:{dataset:{term:2}}})
+ assert.equal(p.data.periodLegacy[0].paymentId,'payment-2')
+ p.closeInstallment();failed=true;await p.openInstallment({currentTarget:{dataset:{term:2}}})
+ assert.match(p.data.periodError,/合成读取失败/);assert.equal(p.data.selectedPeriod,null)
  assert.equal(h.calls.some(c=>['loans.record','loans.configureCharges','loans.setInstallmentProgress'].includes(c.action)),false)
 })
-test('还款记录读取中离开再返回可重新读取；旧响应和换用户不能回填原记录',async()=>{
+test('本期付款读取中切期、离开或换用户，旧响应和旧finally不能串入新期或新用户',async()=>{
  const {h,p}=detail(),base=h.respond;await p.load()
- let release
- h.respond=(action,data)=>action==='loans.payments'?(data.cursor?new Promise(resolve=>release=resolve):ok({items:[],nextCursor:'older-page'})):base(action,data)
- await p.showPaymentHistory();const old=p.loadHistory({currentTarget:{dataset:{next:true}}});await tick();p.onHide()
- h.respond=(action,data)=>action==='loans.payments'?ok({items:[{paymentId:'new',kind:'repayment',totalMinor:'100',occurredLocalAt:'2026-09-02'}],nextCursor:null}):base(action,data)
- p.onShow();await p._load;assert.equal(p.data.historyLoading,false);assert.equal(p.data.history[0].paymentId,'new')
- release(ok({items:[{paymentId:'old',totalMinor:'100'}],nextCursor:'old-next'}));await old
- assert.equal(p.data.history[0].paymentId,'new');assert.equal(p.data.historyNext,null)
- h.cache.reset();h.uid='9876543210';h.app.globalData.uid=h.uid;await p.load()
- assert.equal(p.data.detailTab,'schedule');assert.equal(p.data.history.length,0);assert.equal(p.data.historyLoaded,false)
+ const releases=[]
+ h.respond=(action,data)=>action==='loans.installment'?new Promise(resolve=>releases.push(resolve)):base(action,data)
+ const old=p.openInstallment({currentTarget:{dataset:{term:1}}});await tick();p.closeInstallment()
+ const next=p.openInstallment({currentTarget:{dataset:{term:2}}});await tick()
+ releases[0](periodPayment(1,'old'));await old;assert.equal(p.data.selectedPeriod,null);assert.equal(p.data.periodLoading,true)
+ releases[1](periodPayment(2,'new'));await next;assert.equal(p.data.selectedPeriod.term,2);assert.equal(p.data.periodLegacy[0].paymentId,'new')
+ const hidden=p.openInstallment({currentTarget:{dataset:{term:3}}});await tick();p.onHide()
+ p.openPayment({currentTarget:{dataset:{id:'new'}}});assert.equal(h.navigation.length,0)
+ h.cache.reset();h.uid='9876543210';h.app.globalData.uid=h.uid;p.onShow();await p._load
+ releases[2](periodPayment(3,'other-user'));await hidden
+ assert.equal(p.data.periodOpen,false);assert.equal(p.data.selectedPeriod,null);assert.equal(p.data.periodLegacy.length,0);assert.equal(p.data.periodLoading,false)
 })
-test('从第十期调整中批量确认带入1至10期，取消不写，保存仍须确认范围',async()=>{
- const {h,p}=detail();await p.load();p.setData({periodOpen:true})
- p.openProgress({currentTarget:{dataset:{term:10}}});assert.equal(p.data.periodOpen,false);assert.equal(p.data.progressOpen,true);assert.equal(p.data.progressThrough,'10')
- assert.equal(h.calls.some(c=>c.action==='loans.setInstallmentProgress'),false)
- const cancelled=p.saveProgress();assert.match(h.modals.at(-1).content,/第1至10期/);h.modals.at(-1).success({confirm:false});await cancelled
- assert.equal(h.calls.some(c=>c.action==='loans.setInstallmentProgress'),false)
- const saved=p.saveProgress();h.modals.at(-1).success({confirm:true});await saved
- const command=h.calls.find(c=>c.action==='loans.setInstallmentProgress');assert.equal(command.data.completedThrough,10);assert.equal(command.data.confirmedBatch,true)
+test('未确认费用覆盖不把计划利息或已还进度算成实际零费用；已有合同才显示已记净额',async()=>{
+ const {h,p}=detail(),base=h.respond
+ await p.load();assert.equal(p.data.chargeSummary.recorded,null)
+ let recordedMinor='0'
+ h.respond=(action,data)=>action==='loans.chargePlan'?ok({items:[],issues:[],priorContracts:[],contract:{authorization:{mode:'once',fromDate:'2026-01-01',throughDate:'2026-12-31'}},recordedMinor,unverifiedMinor:'0',nextCursor:null}):base(action,data)
+ await p.loadCharges();assert.match(p.data.chargeSummary.recorded,/0\.00/)
+ recordedMinor='1800';await p.loadCharges();assert.match(p.data.chargeSummary.recorded,/18\.00/)
+ assert.equal(h.calls.some(c=>['loans.record','loans.configureCharges','loans.syncCharges'].includes(c.action)),false)
+})
+test('第8期账单补漏在列表一次保存；取消勾选第7期后不重置、不弹第二次确认',async()=>{
+ const {h,p}=detail(),base=h.respond
+ h.respond=(action,data)=>action==='loans.installments'?ok({loanVersion:2,items:[],summary:{paidPeriods:6,unpaidPrincipalMinor:'300000',unpaidInterestMinor:'12000',unpaidFeeMinor:'0',repaymentPrompts:[{periodNumber:7,dueDate:'2026-07-31',paid:true},{periodNumber:8,dueDate:'2026-08-31',paid:true}]}}):action==='loans.confirmInstallments'?ok({loanId:loan.loanId,version:3}):base(action,data)
+ await p.load();assert.deepEqual(p.data.repaymentRows.map(r=>r.paid),[true,true])
+ p.selectRepayments({detail:{value:['8']}});assert.equal(h.calls.some(c=>c.action==='loans.confirmInstallments'),false)
+ await p.saveRepayments();const command=h.calls.find(c=>c.action==='loans.confirmInstallments')
+ assert.deepEqual(JSON.parse(JSON.stringify(command.data.repayments)),[{periodNumber:7,paid:false},{periodNumber:8,paid:true}]);assert.equal(command.data.version,2);assert.equal(h.modals.length,0)
+ assert.equal(h.calls.some(c=>['loans.configureCharges','loans.setInstallmentProgress'].includes(c.action)),false)
 })
 test('记费设置内选择暂停/结清/利率变化仍先确认，取消和已关闭设置的迟到选择不写',async()=>{
  const {h,p}=detail();await p.load();let sheet
@@ -149,12 +166,10 @@ test('A4 真实详情页无文件授权：明确来源、从四月继续、覆�
  const write=h.calls.find(c=>c.action==='loans.configureCharges');assert.ok(write);assert.equal(write.data.fromDate,'2026-04-01');assert.equal(write.data.historyChoice,'continue');assert.equal(write.data.originKind,'recorded_consumption');assert.equal(write.data.fixedConfirmed,true)
  assert.equal(h.calls.some(c=>c.action==='loans.bookInstallmentCosts'||c.action==='loans.record'),false)
 })
-test('A4 显式批量确认可取消；单期保持单期，保存失败保留费用更正表单',async()=>{
- const {h,p}=detail();await p.load();p.openProgress();p.progressInput({detail:{value:'10'}})
- const cancelled=p.saveProgress();h.modals.at(-1).success({confirm:false});await cancelled
- assert.equal(h.calls.some(c=>c.action==='loans.setInstallmentProgress'),false)
- const saved=p.saveProgress();h.modals.at(-1).success({confirm:true});await saved
- const command=h.calls.find(c=>c.action==='loans.setInstallmentProgress');assert.equal(command.data.confirmedBatch,true);assert.equal(command.data.completedThrough,10)
+test('一次保存失败保留勾选，不会自动改回已还；费用更正失败也保留草稿',async()=>{
+ const {h,p}=detail();await p.load();p.setData({repaymentRows:[{periodNumber:7,paid:false},{periodNumber:8,paid:true}]})
+ const base=h.respond;h.respond=(action,data)=>action==='loans.confirmInstallments'?{ok:false,error:{code:'CONFLICT',message:'请重新读取'}}:base(action,data)
+ await p.saveRepayments();assert.equal(p.data.repaymentRows[0].paid,false);assert.match(p.data.errorMessage,/重新读取/);assert.equal(h.modals.length,0)
  p.setData({chargeEdit:{chargeId:'fee',amountYuan:'18'},chargeImpact:{canChange:true,deltaText:'-2.00',previewToken:'signed'}});p._chargeChange={loanId:loan.loanId,chargeId:'fee',operation:'adjust',amountMinor:'1800'}
  const original=h.respond;h.respond=(action,data)=>action==='loans.changeCharge'?{ok:false,error:{code:'LOAN_TRANSACTION_LOCKED',message:'已有付款'}}:original(action,data)
  const failed=p.confirmChargeChange();h.modals.at(-1).success({confirm:true});await failed;assert.equal(p.data.chargeEdit.amountYuan,'18');assert.match(p.data.errorMessage,/付款/)
@@ -192,7 +207,7 @@ test('统一逐期入口：按当前期读取费用/差异，选择更正不写�
  p.chooseChargeOperation({detail:{value:1}});assert.equal(p.data.chargeEdit.operation,'refund')
  await p.closeChargeForm();assert.equal(p.data.periodOpen,true);assert.equal(p.data.selectedPeriod.term,11)
  p.closeInstallment();p.openLoanManagement();assert.equal(p.data.loanManagementOpen,true)
- p.manageLoan({currentTarget:{dataset:{action:'charges'}}});assert.equal(p.data.loanManagementOpen,false);assert.equal(p.data.chargeFormOpen,true)
+ p.manageLoan({currentTarget:{dataset:{action:'charges'}}});assert.equal(p.data.loanManagementOpen,false);assert.equal(p.data.chargeFormOpen,false)
  assert.equal(h.calls.some(c=>['loans.changeCharge','loans.configureCharges','loans.record'].includes(c.action)),false)
  await p.closeChargeForm();await p.openOneOffCharges();assert.equal(h.calls.at(-1).data.periodNumber,0);assert.equal(p.data.oneOffOpen,true)
 })
@@ -209,11 +224,31 @@ test('本期费用/费用更正预览迟到，不跨期回填也不恢复旧选�
  assert.equal(p.data.chargeImpact,null);assert.equal(p.data.chargeEdit.operation,'refund')
 })
 
-test('从第二期记还款：带入实际未付分项/费用依据，保留改动草稿；未确认不提交，付款携带本期期次版本',async()=>{
+test('逐期列表直接进入指定期的还款草稿，不打开明细或写账；已还/取消/历史期、过期视图保持保护',async()=>{
+ const {h,p}=detail(),base=h.respond
+ h.respond=(action,data)=>{
+  const result=base(action,data)
+  if(action==='loans.installments')return ok({...result.data,items:['unpaid','partial','paid','historical','unpaid'].map((status,index)=>({periodNumber:index+1,dueDate:'2026-02-28',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',status,cancelled:index===4}))})
+  return result
+ }
+ await p.load()
+ const calls=h.calls.length
+ for(const term of [1,2])p.recordListedPayment({currentTarget:{dataset:{term}}})
+ assert.deepEqual(h.navigation,['/pages/loan-payment/index?loanId=synthetic-loan&periodNumber=1','/pages/loan-payment/index?loanId=synthetic-loan&periodNumber=2'])
+ assert.equal(p.data.periodOpen,false);assert.equal(h.calls.length,calls)
+ for(const term of [3,4,5,99])p.recordListedPayment({currentTarget:{dataset:{term}}})
+ const event={currentTarget:{dataset:{term:2}}}
+ for(const field of ['saving','loading','detailLoading']){p.setData({[field]:true});p.recordListedPayment(event);p.setData({[field]:false})}
+ p.setData({'loan.archived':true});p.recordListedPayment(event);p.setData({'loan.archived':false})
+ assert.equal(h.navigation.length,2)
+ p.onHide();p.recordListedPayment(event);assert.equal(h.navigation.length,2)
+})
+
+test('从第二期记还款带入未付金额和上次银行卡；保存一次提交本息费，失败保留草稿',async()=>{
  const {h,p}=detail(),base=h.respond
  h.accounts.push({accountId:'bank',type:'bank',name:'合成银行卡',archived:false})
  h.respond=(action,data)=>{
-  if(action==='loans.installment')return ok({loanVersion:2,period:{periodId:'saved-period',version:7,periodNumber:2,dueDate:'2026-02-28',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',paidPrincipalMinor:'10000',paidInterestMinor:'500',paidFeeMinor:'0'},sources:[],legacyPayments:[]})
+  if(action==='loans.installment')return ok({repaymentAccountId:'bank',loanVersion:2,period:{periodId:'saved-period',version:7,periodNumber:2,dueDate:'2026-02-28',principalMinor:'50000',interestMinor:'2000',feeMinor:'0',paidPrincipalMinor:'10000',paidInterestMinor:'500',paidFeeMinor:'0'},sources:[],legacyPayments:[]})
   if(action==='loans.chargePlan'&&data.periodNumber===2)return ok({items:[{chargeId:'charge-2',chargeKey:'period:2:interest',periodNumber:2,component:'interest',state:'recorded',categoryId:h.categories[0].id,amountMinor:'2000',outstandingMinor:'1500'}],issues:[],nextCursor:null,contract:{originKind:'recorded_consumption'}})
   if(action==='loans.record')return {ok:false,error:{code:'VALIDATION_ERROR',message:'合成拒绝，保留草稿'}}
   return base(action,data)
@@ -222,15 +257,20 @@ test('从第二期记还款：带入实际未付分项/费用依据，保留改�
  assert.match(h.navigation.at(-1),/loan-payment\/index\?loanId=synthetic-loan&periodNumber=2$/)
  const payment=h.page('loan-payment');payment.onLoad({loanId:loan.loanId,periodNumber:'2'});await payment.load()
  assert.equal(payment.data.totalYuan,'415.00');assert.equal(payment.data.allocations[0].principalYuan,'400.00');assert.equal(payment.data.allocations[0].interestYuan,'15.00')
- assert.equal(payment.data.allocations[0].interestIndex,1);assert.equal(payment.data.allocations[0].chargeChoices[0].selected,true)
- assert.equal(payment.data.allocations[0].chargeChoices[0].paidYuan,'15.00')
+ assert.equal(payment.data.simplePeriod,true);assert.equal(payment.data.accounts[payment.data.accountIndex].accountId,'bank')
+ assert.equal(payment.data.allocations[0].chargeChoices,undefined)
  payment.chooseKind({detail:{value:1}});assert.equal(payment.data.kindIndex,0)
- payment.chooseAccount({detail:{value:0}});await payment.save();assert.equal(h.calls.some(c=>c.action==='loans.record'),false)
+ assert.equal(h.calls.some(c=>c.action==='loans.record'),false)
  payment.editAllocation({currentTarget:{dataset:{index:0,field:'principalYuan'}},detail:{value:'300.00'}})
  payment.input({currentTarget:{dataset:{field:'totalYuan'}},detail:{value:'315.00'}});await payment.load()
  assert.equal(payment.data.allocations[0].principalYuan,'300.00');assert.equal(payment.data.totalYuan,'315.00')
- payment.confirm({detail:{value:['confirmed']}});await payment.save()
+ assert.equal(payment.data.confirmed,false);await payment.save()
  const command=h.calls.find(c=>c.action==='loans.record');assert.ok(command)
- assert.deepEqual({...command.data.allocations[0].period},{periodNumber:2,version:7});assert.equal(command.data.allocations[0].chargeAllocations[0].amountMinor,'1500')
+ assert.deepEqual({...command.data.allocations[0].period},{periodNumber:2,version:7});assert.equal(command.data.simplePeriod,true);assert.equal(command.data.allocations[0].interestTreatment,'accrued');assert.equal(command.data.allocations[0].chargeAllocations.length,0)
  assert.match(payment.data.errorMessage,/保留草稿/);assert.equal(payment.data.allocations[0].principalYuan,'300.00')
+ h.respond=(action,data)=>action==='loans.record'?ok({paymentId:'saved-payment',version:1,loans:[{loanId:loan.loanId,version:3}]}):base(action,data)
+ const before=h.calls.filter(c=>c.action==='loans.record').length
+ await payment.save();assert.equal(h.calls.filter(c=>c.action==='loans.record').length,before+1)
+ assert.equal(h.navigation.at(-1),'back');assert.equal(h.toasts.at(-1),'已记本期还款')
+ assert.equal(h.calls.some(c=>c.action==='loans.payment'),false)
 })

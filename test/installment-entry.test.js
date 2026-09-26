@@ -42,7 +42,7 @@ test('四种还款方式与三种优惠保持本金守恒，现金优惠不超�
   assert.throws(()=>buildSchedule(schedule({scheduleMethod:'equal_payment',measurementKind:'rate',repaymentMinor:null,quoteType:'annual',ratePpm:'9007199254740991',discountKind:'total',discountValue:'100'})),{publicCode:'VALIDATION_ERROR'})
 })
 
-test('新表单要求明确历史期数与计划确认；空值不会自动变成已还或保存',()=>{
+test('新表单保存已勾选期次并同时记费；无需第二次确认，未还本金保留',()=>{
   const data={name:'合成分期',accounts:[{accountId:'debt'}],accountIndex:0,principalYuan:'12000',paidTerms:'3',typeIndex:2,discountIndex:0,discountValue:'7',baselineDate:'2026-04-01',
     schedule:Object.assign(scheduleForm.blank(),{terms:'12',measurementIndex:1,repaymentYuan:'1100',firstPaymentDate:'2026-01-31'})}
   const input=form.previewInput(data);assert.equal(input.installmentSetup.discountValue,'700000')
@@ -50,10 +50,12 @@ test('新表单要求明确历史期数与计划确认；空值不会自动变�
   assert.throws(()=>form.previewInput({...data,paidTerms:'13'}),/历史已还/)
   assert.throws(()=>form.previewInput({...data,schedule:{...data.schedule,firstPaymentDate:''}}),/首次还款/)
   const preview=remainingSchedule(input)
-  assert.throws(()=>form.createPayload(data,preview),/勾选确认/)
-  const payload=form.createPayload({...data,confirmed:true},preview)
-  assert.equal(payload.kind,'installment');assert.equal(payload.generatePlan,true);assert.equal(payload.baselinePrincipalMinor,'900000')
-  assert.equal(payload.installmentSetup.originalPrincipalMinor,'1200000');assert.equal(payload.installmentSetup.historicalPaidTerms,3)
+  assert.throws(()=>form.createPayload(data,null),/还款计划/)
+  const repayments=[{periodNumber:1,paid:true},{periodNumber:2,paid:false},{periodNumber:3,paid:true}]
+  const payload=form.createPayload({...data,confirmed:false,repaymentRows:repayments},preview)
+  assert.deepEqual(payload.repayments,repayments)
+  assert.equal(payload.kind,'installment');assert.equal(payload.generatePlan,true);assert.equal(payload.baselinePrincipalMinor,'1000000')
+  assert.equal(payload.installmentSetup.originalPrincipalMinor,'1200000');assert.equal(payload.installmentSetup.historicalPaidTerms,0)
 })
 
 test('分期录入真实 MySQL：原子计划、历史本金、幂等、回滚、隔离和旧资料兼容',{skip:!process.env.CATLEDGER_TEST_DB_HOST},async t=>{

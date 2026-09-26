@@ -22,13 +22,14 @@ function historicalRows(loan, preview) {
 }
 function rowView(row, date) {
   const paid = row.status === 'paid' || row.status === 'historical'
+  const manualConfirmed = paid && !row.paymentConfirmed && (Boolean(row.completedByProgress) || row.status === 'historical')
   const overdue = row.stateText ? row.stateText === '已逾期' : !paid && !row.cancelled && row.dueDate <= date
   return {
     key: row.periodId || 'history-' + row.periodNumber, term: row.periodNumber, date: String(row.dueDate || '').replace(/-/g, '.'),
     payment: cost.amount(cost.total(row)), principal: cost.amount(row.principalMinor), interestFee: cost.amount(addMinor(row.interestMinor, row.feeMinor)),
-    paid, overdue, current: Boolean(row.current), cancelled: Boolean(row.cancelled), historical: row.status === 'historical',
+    paid, manualConfirmed, overdue, current: Boolean(row.current), cancelled: Boolean(row.cancelled), historical: row.status === 'historical',
     difference: Boolean(row.differences && row.differences.length),
-    state: row.stateText || (row.cancelled ? '已取消' : row.status === 'partial' ? '部分已还' : row.status === 'historical' ? '历史已还' : paid ? '已还' : overdue ? '待确认' : '')
+    state: row.cancelled ? '已取消' : manualConfirmed ? '已还' : row.paymentConfirmed ? '已还' : row.stateText || (row.status === 'partial' ? '部分已还' : paid ? '已还' : overdue ? '待确认' : '')
   }
 }
 function build(loan, view, preview, date) {
@@ -51,9 +52,9 @@ function build(loan, view, preview, date) {
     status: loan.archived ? '已删除' : complete ? '已完成' : view && view.tracking ? '还款中' : loan.status === 'settled' ? '本金已结清' : loan.statusText || '还款中',
     kind: loan.kindText, mode: loan.measurementKind === 'repayment' ? '按还款额记录' : loan.measurementKind === 'rate' ? '按利率记录' : '',
     principal: cost.amount(original), terms, paid, progress: terms ? Math.min(100, Math.round(paid / terms * 100)) : 0,
-    progressText: summary ? '已确认还款' : '历史确认',
+    progressText: summary ? '已还' : '历史已还',
     tracking: !!(view && view.tracking),
-    progressNote: view && view.tracking ? (summary&&summary.legacyNeedsReview?'旧规则进度待核对，原值保留；已出账不代表已还。':'人工确认 '+Number(summary&&summary.manualPaidPeriods||0)+' 期；真实付款分配 '+Number(summary&&summary.actualPaidPeriods||0)+' 期。') : history ? '历史已还 ' + history + ' 期' + (summary ? ' · 接入后已还 ' + Number(summary.paidPeriods || 0) + ' 期' : '') : '',
+    progressNote: '',
     timeRange: first ? first + (last ? ' 至 ' + last : ' 起') : '还款日期待补充',
     method: METHOD_LABELS[loan.scheduleMethod] || loan.repaymentMethod || '方式待补充',
     complete, overdue: view && view.tracking ? Boolean(dueRow && dueRow.stateText === '已逾期') : Boolean(next && next <= date),
@@ -61,7 +62,7 @@ function build(loan, view, preview, date) {
     dueDate: next ? next.replace(/-/g, '.') : '', dueTerm: dueRow ? dueRow.periodNumber : null,
     duePayment: dueRow ? cost.amount(['unpaidPrincipalMinor', 'unpaidInterestMinor', 'unpaidFeeMinor'].reduce((sum, key) => addMinor(sum, dueRow[key]), '0')) : '',
     dueTitle: complete ? '已全部记录' : noPlan ? '待补充计划' : pending ? '—' : '查看待还期次',
-    dueNote: complete ? '已记录全部期次' : noPlan ? '补充后查看每期应还' : '点期次核对付款或确认进度',
+    dueNote: complete ? '已记录全部期次' : noPlan ? '补充后查看每期应还' : '在下方列表记录每期还款',
     duePrincipal: amountOf('unpaidPrincipalMinor'), dueCost: dueRow ? cost.amount(addMinor(dueRow.unpaidInterestMinor, dueRow.unpaidFeeMinor)) : '—',
     remaining: cost.amount(noPlan ? null : remaining), remainingPrincipal: cost.amount(loan.remainingPrincipalMinor),
     remainingCost: summary && !noPlan ? cost.amount(addMinor(summary.unpaidInterestMinor, summary.unpaidFeeMinor)) : '—',

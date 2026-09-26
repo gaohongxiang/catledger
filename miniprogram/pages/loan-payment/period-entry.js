@@ -7,7 +7,7 @@ module.exports={
   const view=await api.callApi('loans.installment',{loanId:this._loanId,periodNumber:this.data.periodNumber},{force:true})
   if(!current())return
   const row=view.period,index=this.data.allocations.findIndex(a=>a.loanId===this._loanId)
-  if(!row||row.cancelled||index<0)throw new Error('本期计划已改变，请返回重新核对')
+  if(!row||row.cancelled||row.complete||index<0)throw new Error('本期计划已改变，请返回重新核对')
   const old=this.data.allocations[index],next={...old,version:view.loanVersion,period:{periodNumber:row.periodNumber,version:row.periodId?row.version:0}}
   if(!old.period){
    let total='0'
@@ -18,6 +18,7 @@ module.exports={
    }
    this.setData({totalYuan:money.minorToYuan(total),date:this.data.date||new Date().toISOString().slice(0,10)})
   }
-  this.setData({['allocations['+index+']']:next,confirmed:false})
+  const accountIndex=this.data.accountIndex>=0?this.data.accountIndex:this.data.accounts.findIndex(a=>a.accountId===view.repaymentAccountId)
+  this.setData({['allocations['+index+']']:next,accountIndex,confirmed:false})
  }
 }

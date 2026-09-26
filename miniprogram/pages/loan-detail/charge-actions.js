@@ -18,7 +18,7 @@ const methods={
    this._chargeView=result
    const auth=result.contract&&result.contract.authorization
    this.setData({chargeHasOneOff:result.oneOffCount>0,chargeRows:result.items.map(rowView),chargeNext:result.nextCursor,chargeIssues:result.issues.map(i=>({...i,amountText:money.formatMinor(i.amountMinor)})),
-    chargeSummary:{hasContract:!!result.contract,originKind:result.contract&&result.contract.originKind,authorized:auth&&auth.mode==='auto',unverifiedMinor:result.unverifiedMinor,recorded:money.formatMinor(result.recordedMinor),unverified:money.formatMinor(result.unverifiedMinor),cutoff:result.cutoff,
+    chargeSummary:{hasContract:!!result.contract,originKind:result.contract&&result.contract.originKind,authorized:auth&&auth.mode==='auto',unverifiedMinor:result.unverifiedMinor,recorded:result.contract?money.formatMinor(result.recordedMinor):null,unverified:money.formatMinor(result.unverifiedMinor),cutoff:result.cutoff,
      mode:!auth?'尚未授权':auth.mode==='auto'?'已授权按期记费':auth.mode==='once'?'仅本次确认':'已暂停',
      range:auth&&auth.fromDate?auth.fromDate+' 至 '+auth.throughDate:'确认日期与历史覆盖后可开启',
      history:auth&&auth.historyChoice==='continue'?'起算日前未补齐；已有账目保留':'已有费用按明确身份复用'},
@@ -32,7 +32,7 @@ const methods={
   if(this.data.saving)return
   this.closeLoanManagement()
   const action=event.currentTarget.dataset.action
-  if(action==='charges')return this.openChargeForm()
+  if(action==='stopAuto'&&this.data.chargeSummary.authorized)return this.pauseChargePlan()
   if(action==='edit')return this.edit()
   if(action==='archive')return this.archiveInstallment()
  },

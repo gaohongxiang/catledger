@@ -104,7 +104,7 @@ test('分期首次日期不推断历史已还；旧试算响应和退出后的�
 test('新分期编辑固定原本金与历史参数；读取失败不能误建新贷款',async()=>{
   const data={name:'合成',principalYuan:'12000',paidTerms:'3',typeIndex:0,discountIndex:0,discountValue:'',schedule:{terms:'12',methodIndex:0,measurementIndex:1,repaymentYuan:'1100',firstPaymentDate:'2026-01-31'}}
   const value=require('../miniprogram/pages/loan-form/model').previewInput(data)
-  const loan={...value,loanId:'loan',name:'合成',kind:'installment',baselinePrincipalMinor:'900000',baselineDate:'2026-04-01',version:1,accountId:'debt'}
+  const loan={...value,installmentSetup:{...value.installmentSetup,historicalPaidTerms:3},loanId:'loan',name:'合成',kind:'installment',baselinePrincipalMinor:'900000',baselineDate:'2026-04-01',version:1,accountId:'debt'}
   const {page}=runtime('pages/loan-form/index',action=>Promise.resolve(action==='catalog.get'?{uid:'1234567890',accounts:[{accountId:'debt',type:'credit'}]}:{loan}))
   page.onLoad({loanId:'loan',sourceTransactionId:'synthetic-linked'});await page.load()
   assert.equal(page.data.loan.loanId,'loan');assert.equal(page.data.sourceReady,true)
