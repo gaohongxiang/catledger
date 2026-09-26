@@ -74,3 +74,17 @@ MINI-1904F 当前执行契约修订：受0.5核实例的内存限制，云端旧
 `0021_installment_setup.sql`：贷款表增加可空 JSON installment_setup_json（原始本金、历史已还、分类、优惠）；先加 schedule_v2 CHECK 再删旧 schedule CHECK，保留旧参数约束，新增 JSON 结构/历史范围约束，一次性费用与原本金比较（旧 NULL setup 仍与本金基准比较）。information_schema 守卫保证可重入；已有资料、计划、实际交易不回填。部署顺序迁移→API→客户端；云管理 SQL 不保持连接时用核验后的等价单条 ALTER，全部校验后登记原文件 SHA-256。已有贷款表级权限覆盖新列，不扩权。验证见 installment-entry.test.js、runtime-roles-db.test.js；状态见 MINI-1908F。
 
 `0022_category_hierarchy.sql`：分类增加可空 parent_id 与生成的 parent_scope，同用户同 kind 外键为 RESTRICT、自引用 CHECK，同级活动名称唯一；先加新唯一键再移除旧全局名称唯一键，每一步均以 information_schema 守卫。父级层数由持用户锁的服务校验；不回填分类归属或交易、不恢复停用分类。导出清单包含 parent_id；已有表级权限无需扩权。先迁移→API/import→小程序，云执行需另获明确授权；本地状态见 MINI-1909C。
+
+## 0026 贷款费用生命周期
+
+`0026_loan_charge_lifecycle.sql` 新建五张表：稳定合同 `catledger_loan_charge_contracts`、收费与覆盖/抑制 `catledger_loan_charges`、账单来源 `catledger_loan_charge_sources`、实际清偿 `catledger_loan_charge_allocations`、只追加审计 `catledger_loan_charge_audit`。所有主外键、唯一约束均含可信 uid；收费键独立于金额、请求号、方案版本和管理 loanId，交易唯一认领。迁移只有可重入 DDL，不改既有账目、不回填授权、不补历史费用。旧进度兼容由读模型保留原值并标待核对，不在迁移中伪造付款。
+
+本轮仅在合成隔离 MySQL 8.4 执行，包括重跑、权限拒绝、并发/失败回滚和两库恢复。云迁移、云权限变更、部署和客户端上传均未执行。
+
+未来得到发布授权后按以下顺序进行：核对目标库、备份和既有0001～0025校验和 → 执行0026并核对表/约束/校验和 → 按 `scripts/runtime-role-grants.js` 补齐两个运行角色必要权限（审计仅 SELECT/INSERT）并验证反向拒绝 → 同步部署兼容费用身份的 API/import 两个包 → 校验函数详情与会话 → 客户端预览/真机验证后再按授权上传发布。迁移前不能运行依赖新表的函数；两个函数不能长期混用新旧收费防重逻辑。
+
+DDL 隐式提交，中断不能假定全部回滚；保持维护状态，核验已建对象后用同一 checksum 脚本重跑，全部成功才登记。绝不运行时自动建表或给云函数 DDL 权限。
+
+回退优先将 `CATLEDGER_LOAN_SYNC_DISABLED=1` 配在 API 以停止新费用同步，保留原成功回执可读/可重放；必要时暂停客户端写入口。已产生收费后，保留兼容的 API/import 依赖校验及五张表，不删除费用、授权、覆盖、审计，也不能直接退回会忽略新关系的旧写入函数。修复用后续 forward-only 迁移/兼容代码。业务更正通过签名预览、依赖复查和原请求完成；真实退费是退款，取消未来计划不是退款。客户端可回退为兼容只读界面，不能借回退开放旧普通编辑/删除绕过保护。
+
+完整导出 schemaVersion 26 包含上述非空关系，隔离恢复按原ID先父收费后覆盖子项，外键保持开启。导出/恢复测试不是生产一键恢复能力或真实恢复授权。状态与 L01～L18 证据见[实施规划](../docs/招财猫记账本实施规划.md)。
