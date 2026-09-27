@@ -28,13 +28,14 @@ function buildView(loan, savedPeriods = [], items = [], today = new Date(Date.no
     const sources = items.filter(item => Number(item.periodNumber) === plan.periodNumber && item.active !== false)
     const differences = sources.filter(item => item.amountMinor != null && String(item.amountMinor) !== String(row[item.component + 'Minor'])).map(item => item.component)
     const actualPaid=old&&old.status==='paid',actualPartial=old&&old.status==='partial'
-    const partial = Boolean(actualPartial || !actualPaid && exception === 'partial')
+    const historyFact = (progress.historyFacts||{})[plan.periodNumber]
+    const partial = Boolean(!historyFact && (actualPartial || !actualPaid && exception === 'partial'))
     const complete = Boolean(!row.cancelled && (actualPaid || exception !== 'unpaid' && !partial && (exception === 'completed' || plan.periodNumber <= through)))
     const amounts = Object.fromEntries(FIELDS.map(field => {
       const key = 'unpaid' + field[0].toUpperCase() + field.slice(1) + 'Minor'
       return [key, complete || row.cancelled ? '0' : String(partial && old && old[key] != null ? old[key] : row[field + 'Minor'])]
     }))
-    return { ...row, ...amounts, periodNumber: plan.periodNumber, sourceCount: sources.length, differences,
+    return { ...row, ...amounts, historicalPrincipalMinor:historyFact?String(historyFact.principalMinor):null, periodNumber: plan.periodNumber, sourceCount: sources.length, differences,
       recordedComponents: [...new Set(sources.map(item => item.component))],
       status: row.cancelled ? 'cancelled' : complete ? 'paid' : partial ? 'partial' : exception === 'unpaid' ? 'unpaid' : 'missing',
       complete, current: !complete && plan.periodNumber === currentNumber,

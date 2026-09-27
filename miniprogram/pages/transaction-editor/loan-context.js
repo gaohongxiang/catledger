@@ -27,7 +27,7 @@ function createLoanContext({ api, session, navigate }) {
       return this._loanLoad
     },
     openLoanLink() {
-      if (!session.isCurrent(this) || this.data.saving || this.data.loanContextLoading || !this.data.loanContext || this.data.loanContext.state !== 'candidate') return
+      if (!session.isCurrent(this) || this.data.saving || this.data.loanContextLoading || !this.data.loanContext || !['candidate','allocatable'].includes(this.data.loanContext.state)) return
       navigate({ url: '/pages/loan-link/index?transactionId=' + encodeURIComponent(this.data.transactionId) })
     },
     openLinkedPayment() {

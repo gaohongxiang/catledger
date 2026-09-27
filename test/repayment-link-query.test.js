@@ -73,12 +73,12 @@ test('还款衔接只读查询：真实MySQL权限、候选分页、整组更正
     const candidateOne = await transfer('1000', '2026-08-02T18:15:15', otherDebt), candidateTwo = await transfer('1000', '2026-08-02T18:15:15', otherDebt)
     await transfer('1000', '2026-10-01T12:00:00') // 最新的信用卡还款也不能占用候选分页
     await transfer('1000', '2026-08-04T12:00:00', asset, debt) // 放款方向不是还款候选
-    await t.test('信用卡总额转账无贷款提示；在分页前排除，其他借款同额同秒保持独立', async () => {
+    await t.test('信用卡总额转账允许主动分配，但不进入已确认借款候选；同额同秒保持独立', async () => {
       const before = await balances(), beforeExpense = await expense('2026-08')
       const ordinary = await read(original.transactionId)
-      assert.equal(ordinary.state, 'none'); assert.equal(ordinary.targetAccount, null); assert.equal(ordinary.payment, null)
+      assert.equal(ordinary.state, 'allocatable'); assert.equal(ordinary.targetAccount.accountId, debt); assert.equal(ordinary.payment, null)
       assert.deepEqual(ordinary.allocations, []); assert.deepEqual(ordinary.evidence, { items: [], hasMore: false })
-      assert.equal((await read(second.transactionId)).state, 'none')
+      assert.equal((await read(second.transactionId)).state, 'allocatable')
       const all = await api('loans.unassigned', { pageSize: 40 })
       assert.equal(all.items.length, 0)
       for (const transaction of [september,candidateOne,candidateTwo]) assert.equal((await read(transaction.transactionId)).state,'none')
@@ -123,11 +123,11 @@ test('还款衔接只读查询：真实MySQL权限、候选分页、整组更正
       assert.equal(view.allocations.find(a => a.loanId === sibling.loanId).periodCount, 0)
       assert.deepEqual(await balances(), before)
     })
-    await t.test('撤销信用账户贷款关联后回到普通转账，不再出现贷款候选', async () => {
+    await t.test('撤销信用账户关联后回到可主动分配的原转账，不自动进入待办', async () => {
       const before = await balances(), p = (await api('loans.payment', { paymentId: linked.paymentId })).payment
       await api('loans.reverse', { requestId: randomUUID(), paymentId: linked.paymentId, version: p.version, confirmed: true,
         loans: await Promise.all([loan, sibling].map(async l => ({ loanId: l.loanId, version: (await currentLoan(l.loanId)).version }))) })
-      assert.equal((await read(original.transactionId)).state, 'none')
+      assert.equal((await read(original.transactionId)).state, 'allocatable')
       assert.equal((await api('loans.unassigned', { month: '2026-08', accountId: debt })).items.length, 0)
       assert.deepEqual(await balances(), before)
     })
@@ -144,7 +144,7 @@ test('还款衔接只读查询：真实MySQL权限、候选分页、整组更正
       assert.deepEqual(await balances(), debtDelta(before, -300n), '再次更正只调整负债与费用，不二次扣资金')
       assert.equal(await expense('2026-08'), beforeExpense + 300n)
       await api('loans.reverse', { requestId: randomUUID(), paymentId: next.paymentId, version: 1, confirmed: true, loans: next.loans })
-      assert.equal((await read(second.transactionId)).state, 'none')
+      assert.equal((await read(second.transactionId)).state, 'allocatable')
       assert.deepEqual(await balances(), before)
       assert.equal(await expense('2026-08'), beforeExpense)
     })

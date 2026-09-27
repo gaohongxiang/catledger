@@ -22,10 +22,10 @@ Page({
         const context = contextView(await api.callApi('loans.transaction', { transactionId: this._transactionId }, { force: true }))
         if (!valid()) return
         this.setData({ context, loans: [], nextCursor: null, hasLoaded: true })
-        if (context.state !== 'candidate' || context.targetAccount.inactive) return
+        if (!['candidate','allocatable'].includes(context.state) || context.targetAccount.inactive) return
         const result = await api.callApi('loans.list', { accountId: context.targetAccount.accountId, pageSize: 20, cursor }, { force: true })
         if (!valid()) return
-        this.setData({ loans: result.items.map(l => choiceView(l,context.transaction.occurredLocalAt.slice(0,10))), nextCursor: result.nextCursor })
+        this.setData({ loans: result.items.filter(l=>context.state!=='allocatable'||l.kind==='installment').map(l => choiceView(l,context.transaction.occurredLocalAt.slice(0,10))), nextCursor: result.nextCursor })
       } else {
         const [result,catalog] = await Promise.all([
           api.callApi('loans.unassigned', { month: month || null, accountId, pageSize: 20, cursor }, { force: true }), api.callApi('catalog.get')])
@@ -49,9 +49,10 @@ Page({
   changeAccount(event) { if (this.data.accountLocked) return; this.setData({ accountIndex: Number(event.detail.value), items: [], hasLoaded: false }); return this.firstPage() },
   selectTransaction(event) { if (!this.data.loading) wx.navigateTo({ url: '/pages/loan-link/index?transactionId=' + encodeURIComponent(event.currentTarget.dataset.id) }) },
   selectLoan(event) {
-    if (this.data.loading || this.data.errorMessage || !this.data.context || this.data.context.state !== 'candidate') return
+    if (this.data.loading || this.data.errorMessage || !this.data.context || !['candidate','allocatable'].includes(this.data.context.state)) return
     const loan = this.data.loans.find(l => l.loanId === event.currentTarget.dataset.id)
     if (!loan) return
+    if(this.data.context.state==='allocatable'&&loan.canLink){wx.navigateTo({url:'/pages/loan-payment/index?loanId='+encodeURIComponent(loan.loanId)+'&sourceTransactionId='+encodeURIComponent(this._transactionId)});return}
     const target = loan.canLink ? 'repayment-entry' : 'loan-detail'
     wx.navigateTo({ url: '/pages/' + target + '/index?loanId=' + encodeURIComponent(loan.loanId) + (loan.canLink ? '&paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) : '&sourceTransactionId=' + encodeURIComponent(this._transactionId)) })
   },

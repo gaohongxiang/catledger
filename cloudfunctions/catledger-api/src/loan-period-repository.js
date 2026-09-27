@@ -23,7 +23,8 @@ function publicPeriod(row) {
   const result={...row,periodNumber:Number(row.periodNumber),version:Number(row.version),cancelled:Boolean(row.cancelled)}
   for(const f of FIELDS) {
     result[f+'Minor']=String(row[f+'Minor']);result['paid'+capital(f)+'Minor']=String(row['paid'+capital(f)+'Minor'])
-    result['unpaid'+capital(f)+'Minor']=String(BigInt(result[f+'Minor'])-BigInt(result['paid'+capital(f)+'Minor']))
+    const unpaid=BigInt(result[f+'Minor'])-BigInt(result['paid'+capital(f)+'Minor'])
+    result['unpaid'+capital(f)+'Minor']=String(unpaid<0n?0n:unpaid)
   }
   result.status=result.cancelled?'cancelled':FIELDS.every(f=>result['unpaid'+capital(f)+'Minor']==='0')?'paid':FIELDS.some(f=>result['paid'+capital(f)+'Minor']!=='0')?'partial':'unpaid'
   return result

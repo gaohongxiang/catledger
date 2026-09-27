@@ -57,6 +57,7 @@ module.exports = {
     const account = drawdown ? first.destinationAccount : first.sourceAccount
     if (!account || typeof first.occurredLocalAt !== 'string') throw new Error('来源账户或时间不完整，请重新核对')
     this.setData({ source: result.source, sourceTransactions: rows(transactions), sourceRows: [], nextSourceCursor: null,
+      sourceAccountId: first.type==='transfer'&&first.destinationAccount ? first.destinationAccount.accountId : '',
       sourceEvidence: result.evidence || { items: [], hasMore: false },
       sourceTiming: { occurredLocalAt: first.occurredLocalAt.replace(' ','T'), timezoneOffsetMinutes: first.timezoneOffsetMinutes },
       accountIndex: this.data.accounts.findIndex(a => a.accountId === account.accountId),
@@ -84,9 +85,10 @@ module.exports = {
     this._viewPaymentId = this._paymentId
     this._paymentId = null
     this._selectedSources = new Map()
+    const associate=this.data.payment.mode==='associate'
     this.setData(Object.assign(model.editView(this.data), { hasPayment: false, payment: null, editingPayment: reconcile ? null : previous,
       replacePayment: reconcile ? previous : null, source: null, sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0,
-      modeIndex: reconcile ? 2 : 0, confirmed: false, savedMessage: '', errorMessage: '' }))
+      modeIndex: reconcile ? 2 : associate ? 1 : 0, confirmed: false, savedMessage: '', errorMessage: '' }))
     if (reconcile) this.setData({ sourceTiming: null })
     this.review()
     return this.loadAllocationCharges()

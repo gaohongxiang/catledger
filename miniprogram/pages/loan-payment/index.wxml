@@ -60,6 +60,11 @@
     <button wx:if="{{simplePeriod}}" class="lp-link" bindtap="toggleAmountDetails">{{amountDetailsOpen ? '收起金额明细' : '查看或修改本金、利息和费用'}}</button>
     <view wx:if="{{!simplePeriod || amountDetailsOpen}}" wx:for="{{allocations}}" wx:for-item="a" wx:for-index="i" wx:key="loanId" class="lp-panel">
       <view class="lp-panel-heading"><text class="lp-panel-name">{{a.loanName}}</text><button wx:if="{{allocations.length > 1}}" class="lp-link lp-link-compact" data-id="{{a.loanId}}" bindtap="removeLoan" disabled="{{saving}}">移除此项</button></view>
+      <block wx:if="{{!periodNumber && a.kind === 'installment' && modeIndex === 1 && !editingPayment}}">
+        <label class="lp-field"><text>对应期次</text><input class="lp-input" type="number" value="{{a.periodInput}}" data-index="{{i}}" bindinput="periodInput" placeholder="输入期号" disabled="{{saving || loading}}" /></label>
+        <button class="lp-link" data-index="{{i}}" bindtap="selectAllocationPeriod" disabled="{{saving || loading}}">使用该期金额</button>
+      </block>
+      <text wx:if="{{a.period}}" class="lp-note">已选第 {{a.period.periodNumber}} 期；核对本次实际份额。</text>
       <label class="lp-field"><text>本金（元）</text><input class="lp-input money-number" type="digit" maxlength="22" value="{{a.principalYuan}}" data-index="{{i}}" data-field="principalYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="请填写已确认本金" /></label>
       <block wx:if="{{kindIndex === 0}}">
         <label class="lp-field"><text>利息（元）</text><input class="lp-input money-number" type="digit" maxlength="22" value="{{a.interestYuan}}" data-index="{{i}}" data-field="interestYuan" bindinput="editAllocation" disabled="{{saving}}" placeholder="明确没有请填 0" /></label>
@@ -76,7 +81,7 @@
     </view>
     <button wx:if="{{!periodNumber}}" class="lp-link" bindtap="moreLoans" disabled="{{saving || loading}}">分配给另一笔贷款</button>
     <view wx:if="{{choices.length}}" class="lp-choices"><button wx:for="{{choices}}" wx:key="loanId" class="lp-choice" data-id="{{item.loanId}}" bindtap="addLoan" disabled="{{saving}}">{{item.name}} · {{item.accountName}}</button><button wx:if="{{nextLoanCursor}}" class="secondary-button lp-action" data-next="true" bindtap="moreLoans" disabled="{{saving || loading}}">下一页贷款</button></view>
-    <view wx:if="{{!simplePeriod}}" class="lp-review"><text class="lp-section-title">核对本次影响</text><text class="lp-note">{{reviewText}}</text><text class="lp-note">{{replacePayment ? '消除已选的重复付款，保留一次实际扣款。' : editingPayment || modeIndex === 2 ? '整组替换已有账目，调整本金与费用构成，资金账户不再次扣款。' : modeIndex === 1 ? '账目构成必须与分配一致，只建立贷款关联，不新增付款或支出。' : kindIndex === 1 ? '资产和贷款本金增加，不计收入。' : '付款账户扣除总额，本金分项冲减贷款；尚未入账的利息与费用计为支出，已计负债的分项只清偿。'}}</text></view>
+    <view wx:if="{{!simplePeriod}}" class="lp-review"><text class="lp-section-title">核对本次影响</text><text class="lp-note">{{reviewText}}</text><text class="lp-note">{{replacePayment ? '消除已选的重复付款，保留一次实际扣款。' : modeIndex === 2 || editingPayment && modeIndex !== 1 ? '整组替换已有账目，调整本金与费用构成，资金账户不再次扣款。' : modeIndex === 1 ? '账目构成必须与分配一致，只建立贷款关联，不新增付款或支出。' : kindIndex === 1 ? '资产和贷款本金增加，不计收入。' : '付款账户扣除总额，本金分项冲减贷款；尚未入账的利息与费用计为支出，已计负债的分项只清偿。'}}</text></view>
     <checkbox-group wx:if="{{!simplePeriod}}" bindchange="confirm"><label class="lp-confirm"><checkbox value="confirmed" checked="{{confirmed}}" disabled="{{saving}}" />我已核对总额、各笔贷款的本息费及入账情况</label></checkbox-group>
     <button class="primary-button lp-action" disabled="{{saving || loading || hasPending || (sourceLocked && !editingPayment && !source)}}" loading="{{saving}}" bindtap="save">{{simplePeriod ? '保存本期还款' : editingPayment || replacePayment || modeIndex === 2 ? '确认整组更正' : modeIndex === 1 ? '确认关联已有账目' : kindIndex === 1 ? '确认登记实际放款' : '确认登记实际还款'}}</button>
   </view>

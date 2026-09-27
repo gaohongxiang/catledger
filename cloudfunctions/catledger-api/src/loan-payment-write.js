@@ -29,7 +29,7 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
   }
   const replacement=correct ? {paymentId:data.paymentId,version:data.version,loans:data.loans} : data.replacePayment
   const previous=replacement ? await inspectPayment(connection,uid,replacement.paymentId,replacement.version) : null
-  const mode=correct ? (previous.payment.mode==='new'?'new':'correctExisting') : data.mode
+  const mode=correct ? previous.payment.mode : data.mode
   if(previous)await require('./loan-charge-store').assertNoCharges(connection,uid,previous.transactions.map(t=>t.transactionId))
   const input=paymentInput({...data,mode}), loanVersions=versionInputs(input,previous,replacement&&replacement.loans)
   // 两组贷款版本一次核对，最终只递增一次；更正中间态不当作新的本金余额。
@@ -42,7 +42,7 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
       input.localAt!==sourceTime(previous.payment.occurredLocalAt,previous.payment.timezoneOffsetMinutes) || input.timezoneOffsetMinutes!==previous.payment.timezoneOffsetMinutes) throw ledgerError('LOAN_SOURCE_MISMATCH')
     source={...previous.source,transactions:previous.transactions}
     originalSource=previous.originalSource
-    roots=previous.payment.mode==='correctExisting' ? previous.originals.map(t=>({transactionId:t.transactionId,deletedVersion:Number(t.version)})) : previous.transactions.map(t=>({transactionId:t.transactionId,deletedVersion:Number(t.version)+1}))
+    roots=previous.payment.mode==='correctExisting' ? previous.originals.map(t=>({transactionId:t.transactionId,deletedVersion:Number(t.version)})) : []
   } else if(input.mode!=='new') {
     if(!data.source || typeof data.source.fingerprint!=='string') throw ledgerError('VALIDATION_ERROR')
     source=await loadSource(connection,uid,data.source.transactionIds,{forUpdate:true})
@@ -62,7 +62,7 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
   }
   const drafts=paymentDrafts(input,allocated,chargeAllocations)
   if(source) validateSourceAmounts(source,input,drafts,allocated,input.mode==='associate')
-  const deleting=correct ? previous.transactions : (input.mode==='correctExisting'?source.transactions:[]).concat(previous?previous.transactions:[])
+  const deleting=correct ? (input.mode==='associate'?[]:previous.transactions) : (input.mode==='correctExisting'?source.transactions:[]).concat(previous?previous.transactions:[])
   const changes=deleting.map(transaction=>({transaction,multiplier:-1n})).concat(input.mode==='associate'?[]:drafts.map(transaction=>({transaction})))
   const accounts=await lockAccounts(connection,uid,[input.assetAccountId,...[...loans.values()].map(l=>l.accountId),...deleting.flatMap(t=>[t.sourceAccountId,t.destinationAccountId])])
   if(!['cash','bank','wallet','other_asset'].includes(accounts.get(input.assetAccountId).type)) throw ledgerError('VALIDATION_ERROR')

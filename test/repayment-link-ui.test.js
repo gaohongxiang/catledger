@@ -109,7 +109,7 @@ test('从账单关联按目标借款账户查贷款，缺基准先补资料并�
   assert.equal(h.calls.some(c => /record|create/.test(c.name)), false)
 })
 
-test('信用卡普通转账打开旧关联链接也不查询贷款、不允许新建或选择贷款', async () => {
+test('服务端不提供可分配状态的账目，旧链接不开放贷款操作', async () => {
   const h = runtime('loan-link', name => {
     assert.equal(name, 'loans.transaction')
     return ordinaryContext
@@ -198,7 +198,7 @@ test('来源/目录重读失败清空可提交来源，卸载后迟到信息不�
   late.page.onUnload(); resolve(sourceResult); await pending; assert.equal(late.page.data.source, null)
 })
 
-test('账单详情保留已有关联；普通信用卡转账不开放贷款入口，其他借款仍可关联', async () => {
+test('账单详情保留已有关联；none状态不开放入口，已确认借款仍可关联', async () => {
   let result = linkedContext(), live = true, fail = false
   const routes = [], calls = []
   const session = { isCurrent: () => live, capture: () => () => live }

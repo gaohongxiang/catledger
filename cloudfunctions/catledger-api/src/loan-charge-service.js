@@ -56,7 +56,8 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
       const loan=await selectLoan(c,uid,context.data.loanId),contract=await store.contract(c,uid,loan.loanId)
       const [prior]=await c.execute(store.CONTRACT_SQL+' WHERE uid=? AND account_id=? ORDER BY created_at DESC LIMIT 21',[uid,loan.accountId])
       const items=contract?await store.charges(c,uid,contract.contractId):[]
-      const [sources]=await c.execute(ITEM_SELECT+" WHERE i.uid=? AND i.account_id=? AND (i.loan_id=? OR i.loan_id IS NULL) AND i.active=1 AND i.component<>'principal' ORDER BY i.period_number,i.item_id LIMIT 41",[uid,loan.accountId,loan.loanId])
+      const [sources]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.account_id=? AND (i.loan_id=? OR i.loan_id IS NULL) AND i.active=1 AND i.component<>'principal'
+        ${context.data.periodNumber!=null?'AND i.period_number=?':''} ORDER BY i.period_number,i.item_id LIMIT 41`,[uid,loan.accountId,loan.loanId,...(context.data.periodNumber!=null?[context.data.periodNumber]:[])])
       const preview=context.data.configuration?await chargeSchedule(c,uid,loan,domain.authorization(context.data.configuration),context.data.configuration.periodCharges):[]
       if(context.data.configuration){
         const input=context.data.configuration,auth=domain.authorization(input),ref=contract&&contract.referenceKey||domain.reference(input.referenceLabel)

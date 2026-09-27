@@ -78,6 +78,19 @@ async function transactionContext(connection, uid, transactionId) {
     return { state: row.deletedAt != null ? 'replaced' : 'linked', transaction: transactionToPublic(row),
       targetAccount: null, ...await paymentSummary(connection, uid, paymentId), evidence: await repaymentEvidence(connection, uid, eventId) }
   }
+  if (row.type === 'transfer') {
+    const [accounts] = await connection.execute('SELECT account_id AS accountId,name,type,archived_at AS archivedAt FROM catledger_accounts WHERE uid=? AND account_id IN (?,?)', [uid,row.sourceAccountId,row.destinationAccountId])
+    const source = accounts.find(a => a.accountId === row.sourceAccountId), target = accounts.find(a => a.accountId === row.destinationAccountId)
+    if (source && target && ASSETS.includes(source.type) && target.type === 'credit' && source.archivedAt == null && target.archivedAt == null) {
+      try {
+        const selected = await require('./loan-source').loadSource(connection,uid,[row.transactionId])
+        if (selected.transactions.length === 1) return { state:'allocatable',transaction:transactionToPublic(row),
+          targetAccount:{accountId:target.accountId,name:target.name,type:target.type,inactive:false},payment:null,allocations:[],evidence:await repaymentEvidence(connection,uid,eventId) }
+      } catch (error) {
+        if (!['LOAN_TRANSACTION_LOCKED','LOAN_SOURCE_MISMATCH','CONFLICT'].includes(error.publicCode)) throw error
+      }
+    }
+  }
   return { state:'none',transaction:transactionToPublic(row),targetAccount:null,payment:null,allocations:[],evidence:{ items:[],hasMore:false } }
 }
 function createRepaymentQueryService({ getPool }) {

@@ -19,15 +19,30 @@ async function claimExisting(c,uid,loan,input) {
   if(!transaction||transaction.type!=='expense'||transaction.deletedAt!=null||transaction.accountId!==loan.accountId)fail('LOAN_CHARGE_COVERAGE')
   const [[existing]]=await c.execute('SELECT charge_id AS chargeId FROM catledger_loan_charges WHERE uid=? AND transaction_id=?',[uid,input.transactionId])
   if(existing)return store.charge(c,uid,existing.chargeId)
+  const items=require('./installment-items')
+  const [raw]=await c.execute(items.ITEM_SELECT+' WHERE i.uid=? AND i.loan_id=? AND i.transaction_id=? AND i.component=? AND i.active=1 AND i.canonical=1 LIMIT 2',[uid,loan.loanId,input.transactionId,input.component])
+  const evidence=raw.map(items.publicItem).filter(i=>i.active)
+  if(evidence.length>1)fail('LOAN_CHARGE_COVERAGE')
+  const source=evidence[0]
   let contract=await store.contract(c,uid,loan.loanId)
   if(!contract) {
     contract={contractId:randomUUID(),loanId:loan.loanId,accountId:loan.accountId}
-    await c.execute(`INSERT INTO catledger_loan_charge_contracts(uid,contract_id,loan_id,account_id,origin_kind,authorization_json)
-      VALUES(?,?,?,?,'historical',?)`,[uid,contract.contractId,loan.loanId,loan.accountId,JSON.stringify({schema:1,mode:'paused',coverageOnly:true})])
+    await c.execute(`INSERT INTO catledger_loan_charge_contracts(uid,contract_id,loan_id,account_id,reference_key,origin_kind,authorization_json)
+      VALUES(?,?,?,?,?,'historical',?)`,[uid,contract.contractId,loan.loanId,loan.accountId,source&&source.referenceKey||null,JSON.stringify({schema:1,mode:'paused',coverageOnly:true})])
+  }
+  const key=source?'period:'+source.periodNumber+':'+input.component:'actual:'+input.transactionId
+  const [[planned]]=await c.execute('SELECT charge_id AS chargeId,state,amount_minor AS amountMinor FROM catledger_loan_charges WHERE uid=? AND contract_id=? AND charge_key=?',[uid,contract.contractId,key])
+  if(planned){
+    if(planned.state!=='planned'||String(planned.amountMinor)!==String(transaction.amountMinor))fail('LOAN_CHARGE_COVERAGE')
+    await c.execute("UPDATE catledger_loan_charges SET state='recorded',basis='actual',transaction_id=?,version=version+1 WHERE uid=? AND charge_id=?",[input.transactionId,uid,planned.chargeId])
+    if(source)await c.execute('INSERT INTO catledger_loan_charge_sources(uid,charge_id,item_id) VALUES(?,?,?)',[uid,planned.chargeId,source.itemId])
+    await store.audit(c,uid,contract.contractId,planned.chargeId,'claim_payment_coverage',{transactionId:input.transactionId,component:input.component})
+    return store.charge(c,uid,planned.chargeId)
   }
   const chargeId=randomUUID()
-  await c.execute(`INSERT INTO catledger_loan_charges(uid,charge_id,contract_id,charge_key,component,charge_date,amount_minor,category_id,state,basis,transaction_id)
-    VALUES(?,?,?,?,?,?,?,?,'recorded','actual',?)`,[uid,chargeId,contract.contractId,'actual:'+input.transactionId,input.component,transaction.localDate,String(transaction.amountMinor),transaction.categoryId,input.transactionId])
+  await c.execute(`INSERT INTO catledger_loan_charges(uid,charge_id,contract_id,charge_key,component,period_number,charge_date,amount_minor,category_id,state,basis,transaction_id)
+    VALUES(?,?,?,?,?,?,?,?,?,'recorded','actual',?)`,[uid,chargeId,contract.contractId,key,input.component,source?source.periodNumber:null,transaction.localDate,String(transaction.amountMinor),transaction.categoryId,input.transactionId])
+  if(source)await c.execute('INSERT INTO catledger_loan_charge_sources(uid,charge_id,item_id) VALUES(?,?,?)',[uid,chargeId,source.itemId])
   await store.audit(c,uid,contract.contractId,chargeId,'claim_payment_coverage',{transactionId:input.transactionId,component:input.component})
   return store.charge(c,uid,chargeId)
 }
@@ -43,13 +58,14 @@ async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null
     if(paymentDate&&item.chargeDate>paymentDate)fail('LOAN_CHARGE_COVERAGE')
     if(treatment==='accrued' && (!['recorded','baseline'].includes(item.state)||item.state==='recorded'&&(item.deletedAt!=null||item.transactionAmount!=item.amountMinor)))fail('LOAN_CHARGE_COVERAGE')
     if(treatment==='expense' && (item.state!=='planned'||entry.amountMinor!==item.amountMinor||input[item.component+'CategoryId']!==item.categoryId))fail('LOAN_CHARGE_COVERAGE')
-    let used=BigInt(item.settledMinor)
+    let used=BigInt(item.settledMinor), historical=BigInt(item.historicalCoveredMinor)
     if(excludePaymentId) {
-      const [[prior]]=await c.execute('SELECT amount_minor AS amountMinor FROM catledger_loan_charge_allocations WHERE uid=? AND payment_id=? AND charge_id=?',[uid,excludePaymentId,item.chargeId])
-      if(prior)used-=BigInt(prior.amountMinor)
+      const [[prior]]=await c.execute('SELECT amount_minor AS amountMinor,historical_replaced_minor AS historicalReplacedMinor FROM catledger_loan_charge_allocations WHERE uid=? AND payment_id=? AND charge_id=?',[uid,excludePaymentId,item.chargeId])
+      if(prior){used-=BigInt(prior.amountMinor);historical+=BigInt(prior.historicalReplacedMinor)}
     }
     const [[refund]]=await c.execute('SELECT COALESCE(SUM(amount_minor),0) AS amount FROM catledger_transactions WHERE uid=? AND original_transaction_id=? AND deleted_at IS NULL',[uid,item.transactionId])
-    const historical = BigInt(item.historicalCoveredMinor)
+    const available=BigInt(item.amountMinor)-BigInt(refund.amount)-used
+    historical=historical>available?available:historical
     if(used+BigInt(entry.amountMinor)+BigInt(refund.amount)+(replaceHistorical?0n:historical)>BigInt(item.amountMinor))fail('LOAN_CHARGE_COVERAGE')
     const replaced = replaceHistorical ? (historical<BigInt(entry.amountMinor)?historical:BigInt(entry.amountMinor)) : 0n
     sums[item.component]+=BigInt(entry.amountMinor);items.push({chargeId:item.chargeId,contractId:item.contractId,loanId:loan.loanId,component:item.component,treatment,amountMinor:entry.amountMinor,historicalReplacedMinor:String(replaced)})
