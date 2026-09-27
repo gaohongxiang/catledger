@@ -6,6 +6,7 @@ const { fullPlan, progressOf } = require('./installment-view')
 // 从某一期登记付款时，付款、费用清偿和期次关联共用原事务与原回执。
 async function prepare(connection, uid, input, loans, previous) {
   const result = []
+  const prepaid=await require('./installment-prepaid').prepaidFees(connection,uid,[...loans.keys()])
   const [prior] = previous ? await connection.execute(`SELECT loan_id AS loanId,period_id AS periodId,principal_minor AS principalMinor,
     interest_minor AS interestMinor,fee_minor AS feeMinor,historical_principal_minor AS historicalPrincipalMinor
     FROM catledger_loan_period_allocations WHERE uid=? AND payment_id=? AND active=1`,[uid,previous.payment.paymentId]) : [[]]
@@ -23,7 +24,8 @@ async function prepare(connection, uid, input, loans, previous) {
       const previousPaid = prior.filter(p=>p.periodId===period.periodId).reduce((sum,p)=>sum+BigInt(p[field+'Minor']),0n)
       const history = (progressOf(loan).historyFacts||{})[requested.periodNumber]
       const limit = field==='principal'&&history&&BigInt(history.principalMinor)>BigInt(period.principalMinor)?history.principalMinor:period[field+'Minor']
-      if (BigInt(share[field + 'Minor']) + paid - previousPaid > BigInt(limit)) throw ledgerError('LOAN_PLAN_OVERALLOCATED')
+      const prepaidMinor=field==='fee'?prepaid.filter(p=>p.loanId===loan.loanId&&Number(p.periodNumber)===requested.periodNumber).reduce((sum,p)=>sum+BigInt(p.amountMinor),0n):0n
+      if (BigInt(share[field + 'Minor']) + paid - previousPaid + prepaidMinor > BigInt(limit)) throw ledgerError('LOAN_PLAN_OVERALLOCATED')
     }
     for (const fee of share.chargeAllocations) {
       if(!fee.chargeId){

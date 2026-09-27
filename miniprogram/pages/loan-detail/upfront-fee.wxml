@@ -1,0 +1,25 @@
+<block wx:if="{{upfrontCanRecord && !upfrontForm}}">
+  <text class="installment-note">计划中的一次性手续费尚未记账。已实际发生时可补记或关联已有支出，无需先勾选历史已还。</text>
+  <button class="secondary-button" bindtap="openUpfrontFee" disabled="{{saving || loading}}">处理已发生的一次性手续费</button>
+</block>
+<view wx:if="{{upfrontForm}}" class="installment-period-edit">
+  <picker range="{{['确认已发生，记录实际费用','关联已有手续费支出']}}" value="{{upfrontForm.modeIndex}}" data-field="modeIndex" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>处理方式</text><text>{{upfrontForm.modeIndex === 1 ? '关联已有支出' : '记录实际费用'}}</text></view></picker>
+  <picker range="{{chargeRefundAccounts}}" range-key="name" value="{{upfrontForm.accountIndex}}" data-field="accountIndex" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>实际付款或记费账户</text><text>{{chargeRefundAccounts[upfrontForm.accountIndex].name || '请选择'}}</text></view></picker>
+  <text class="installment-note">选择负债账户表示费用已计入欠款；选择银行等资产账户表示已实际支付，按所选账户记一笔费用。</text>
+  <block wx:if="{{upfrontForm.modeIndex === 0}}">
+    <label class="installment-edit-row"><text>实际手续费（元）</text><input type="digit" value="{{upfrontForm.amountYuan}}" data-field="amountYuan" bindinput="upfrontInput" disabled="{{saving}}" /></label>
+    <picker mode="date" value="{{upfrontForm.date}}" data-field="date" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>实际收费日期</text><text>{{upfrontForm.date || '请选择'}}</text></view></picker>
+    <category-picker range="{{chargeCategories}}" value="{{upfrontForm.categoryIndex}}" data-field="categoryIndex" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>费用分类</text><text>{{chargeCategories[upfrontForm.categoryIndex].name || '请选择'}}</text></view></category-picker>
+  </block>
+  <block wx:else>
+    <picker mode="date" fields="month" value="{{upfrontForm.month}}" data-field="month" bindchange="upfrontInput" disabled="{{saving}}"><view class="installment-edit-row"><text>原费用月份</text><text>{{upfrontForm.month || '请选择'}}</text></view></picker>
+    <button class="ld-link" bindtap="loadUpfrontEvidence" disabled="{{saving || upfrontLoading}}">查询已有支出</button>
+    <picker range="{{upfrontExisting}}" range-key="label" value="{{upfrontExistingIndex}}" bindchange="chooseUpfrontEvidence" disabled="{{saving || upfrontLoading}}"><view class="installment-edit-row"><text>原支出</text><text>{{upfrontExisting[upfrontExistingIndex].label || '请选择'}}</text></view></picker>
+    <button wx:if="{{upfrontNext}}" class="ld-link" data-next="yes" bindtap="loadUpfrontEvidence" disabled="{{saving || upfrontLoading}}">下一页支出</button>
+  </block>
+  <view class="installment-edit-row"><text>此费用已包含逐期手续费</text><switch checked="{{upfrontForm.covers}}" data-field="covers" bindchange="upfrontInput" disabled="{{saving}}" /></view>
+  <block wx:if="{{upfrontForm.covers}}"><label class="installment-edit-row"><text>从第几期</text><input type="number" value="{{upfrontForm.from}}" data-field="from" bindinput="upfrontInput" disabled="{{saving}}" /></label><label class="installment-edit-row"><text>至第几期</text><input type="number" value="{{upfrontForm.through}}" data-field="through" bindinput="upfrontInput" disabled="{{saving}}" /></label><text class="installment-note">所选期次手续费合计必须等于本次实收；分摊用于核对，不再次记费。</text></block>
+  <text wx:if="{{chargeError}}" class="installment-note">{{chargeError}}</text>
+  <button class="primary-button" bindtap="saveUpfrontFee" loading="{{saving}}" disabled="{{saving || upfrontLoading}}">确认已发生并保存</button>
+  <button class="ld-link" bindtap="closeUpfrontFee" disabled="{{saving}}">取消</button>
+</view>

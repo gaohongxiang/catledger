@@ -126,6 +126,7 @@ async function confirm(c, uid, loan, view, input, alignPrincipal = false) {
       const current = await store.charge(c,uid,item.chargeId)
       if (entry.paid && !row.paymentConfirmed && ['recorded','baseline','covered'].includes(current.state)) {
         const financial = current.coveredByChargeId ? await store.charge(c,uid,current.coveredByChargeId) : current
+        if(BigInt(financial.directlyPaidMinor||'0')>0n)continue
         if (financial.settledMinor !== '0') throw ledgerError('LOAN_TRANSACTION_LOCKED')
         const amount = current.netAmountMinor
         if (current.historicalSettledMinor !== amount) {

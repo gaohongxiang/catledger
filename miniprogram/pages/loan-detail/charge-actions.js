@@ -17,7 +17,7 @@ const methods={
    if(!current()||this._chargeRead!==token)return
    this._chargeView=result
    const auth=result.contract&&result.contract.authorization
-   this.setData({chargeHasOneOff:result.oneOffCount>0,chargeRows:result.items.map(rowView),chargeNext:result.nextCursor,chargeIssues:result.issues.map(i=>({...i,amountText:money.formatMinor(i.amountMinor)})),
+   this.setData({chargeHasOneOff:result.oneOffCount>0||Number(this.data.loan.feeUpfrontMinor)>0,chargeRows:result.items.map(rowView),chargeNext:result.nextCursor,chargeIssues:result.issues.map(i=>({...i,amountText:money.formatMinor(i.amountMinor)})),
     chargeSummary:{hasContract:!!result.contract,originKind:result.contract&&result.contract.originKind,authorized:auth&&auth.mode==='auto',unverifiedMinor:result.unverifiedMinor,recorded:result.contract?money.formatMinor(result.recordedMinor):null,unverified:money.formatMinor(result.unverifiedMinor),cutoff:result.cutoff,
      mode:!auth?'尚未授权':auth.mode==='auto'?'已授权按期记费':auth.mode==='once'?'仅本次确认':'已暂停',
      range:auth&&auth.fromDate?auth.fromDate+' 至 '+auth.throughDate:'确认日期与历史覆盖后可开启',
@@ -42,7 +42,7 @@ const methods={
   try{
    const value=await api.callApi('loans.chargePlan',{loanId:this._loanId,periodNumber:term,pageSize:20,...(cursor?{cursor}:{})},{force:true})
    if(!current()||this._periodToken!==token)return
-   this.setData({periodCharges:value.items.map(rowView),periodChargeNext:value.nextCursor,
+   this.setData({...(term===0?{upfrontCanRecord:Number(this.data.loan.feeUpfrontMinor)>0&&!value.items.some(c=>c.chargeKey==='upfront:fee'&&c.state!=='planned')}:{}),periodCharges:value.items.map(rowView),periodChargeNext:value.nextCursor,
     periodChargeIssues:(value.issues||[]).filter(i=>i.periodNumber===term).map(i=>({...i,amountText:money.formatMinor(i.amountMinor)})),periodFeesError:''})
   }catch(error){if(current()&&this._periodToken===token)this.setData({periodFeesError:error.message||'本期费用暂未读取'})}
  },

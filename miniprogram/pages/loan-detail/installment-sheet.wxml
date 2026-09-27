@@ -44,6 +44,7 @@
   <scroll-view scroll-y class="installment-sheet" catchtap="stopGuideTap">
     <view class="installment-sheet-head"><text>一次性费用</text><button bindtap="closeOneOffCharges">关闭</button></view>
     <ui-state wx:if="{{periodLoading}}" description="正在读取…" />
+    <include src="upfront-fee.wxml" />
     <include src="period-fees.wxml" />
   </scroll-view>
 </view>
