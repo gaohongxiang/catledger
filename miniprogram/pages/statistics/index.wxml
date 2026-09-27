@@ -59,7 +59,7 @@
     </view>
     <view class="graph-scale"><text>上限 {{charts.monthlyChart.maxText}}</text><text>下限 {{charts.monthlyChart.minText}}</text></view>
     <view class="graph-image-wrap"><image class="graph-image" src="{{charts.monthlyChart.src}}" mode="scaleToFill" aria-label="近六个月收支柱状图" />
-      <view class="graph-hit"><view wx:for="{{cashFlowTrend}}" wx:key="month" class="graph-hit-column {{selectedTrend.month === item.month ? 'graph-month-selected' : ''}}" bindtap="selectTrend" data-index="{{index}}" aria-role="button" aria-label="{{item.month}}，收入{{item.incomeText}}，支出{{item.expenseText}}"></view></view>
+      <view class="graph-hit"><view wx:for="{{cashFlowTrend}}" wx:key="month" class="graph-hit-column" bindtap="selectTrend" data-index="{{index}}" aria-role="button" aria-label="{{item.month}}，收入{{item.incomeText}}，支出{{item.expenseText}}"></view></view>
     </view>
     <view class="graph-axis"><text wx:for="{{cashFlowTrend}}" wx:key="month" class="{{selectedTrend.month === item.month ? 'axis-month-selected' : ''}}">{{item.monthText}}月</text></view>
   </view>

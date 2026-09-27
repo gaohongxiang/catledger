@@ -328,7 +328,7 @@
 .graph-scale text:last-child { text-align: right; }
 .graph-image-wrap { position: relative; height: 220rpx; }
 .graph-image { display: block; width: 100%; height: 220rpx; }
-.graph-hit { position: absolute; inset: 0 2%; display: flex; }
+.graph-hit { position: absolute; inset: 6% 2% 11%; display: flex; }
 .graph-hit-column { flex: 1; min-width: 0; }
 .graph-hit-column:active { background: var(--theme-accent-soft); opacity: .4; }
 .graph-axis { display: flex; justify-content: space-between; padding: 0 12rpx; font-size: var(--font-caption, 24rpx); color: var(--theme-text-muted); }
@@ -373,7 +373,6 @@
 .trend-selection-values > view { min-width: 0; }
 .trend-selection-values text { display: block; font-size: var(--font-section, 32rpx); overflow-wrap: anywhere; }
 .trend-selection-values .trend-value-label { font-size: var(--font-caption, 24rpx); color: var(--theme-text-muted); margin-bottom: 4rpx; }
-.graph-month-selected { background: var(--theme-accent-soft); opacity: .3; border-radius: var(--theme-radius-small, 12rpx); }
 .axis-month-selected { color: var(--theme-accent-strong); font-weight: 500; }
 
 .composition-column { min-width: 0; }
