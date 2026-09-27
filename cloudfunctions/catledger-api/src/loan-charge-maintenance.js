@@ -25,7 +25,7 @@ function createLoanChargeMaintenance({getPool,selectLoan,now=Date.now}) {
     const target=['adjust','distinct','refund'].includes(data.operation)?amount(event?event.amountMinor:data.amountMinor):item.amountMinor
     const dependencies=await store.dependencies(c,uid,item)
     let blocked=dependencies.settledMinor!=='0'||dependencies.refundCount>0||dependencies.paymentCount>0||dependencies.sourceCount>0||dependencies.coveredCount>0
-    if(data.operation==='suppress')blocked=blocked||!['planned','paused','recorded'].includes(item.state)
+    if(data.operation==='suppress')blocked=blocked||item.historicalCoveredMinor!=='0'||!['planned','paused','recorded'].includes(item.state)
     if(data.operation==='distinct')blocked=!event
     if(data.operation==='refund')blocked=item.state!=='recorded'||!item.transactionId||item.deletedAt!=null
     if(data.operation==='restore')blocked=blocked||item.state!=='suppressed'
@@ -73,6 +73,7 @@ function createLoanChargeMaintenance({getPool,selectLoan,now=Date.now}) {
       } else if(operation==='adjust') {
         if(item.transactionId)await c.execute('UPDATE catledger_transactions SET amount_minor=?,version=version+1 WHERE uid=? AND transaction_id=? AND deleted_at IS NULL',[target,uid,item.transactionId])
         if(item.balanceAdjustmentId)await c.execute('UPDATE catledger_transactions SET amount_minor=?,version=version+1 WHERE uid=? AND transaction_id=? AND deleted_at IS NULL',[target,uid,item.balanceAdjustmentId])
+        if(item.historicalSettledMinor!=='0')await c.execute('UPDATE catledger_loan_charges SET historical_settled_minor=? WHERE uid=? AND charge_id=?',[target,uid,item.chargeId])
         await c.execute("UPDATE catledger_loan_charges SET amount_minor=?,basis='manual',state=IF(state='paused','planned',state),version=version+1 WHERE uid=? AND charge_id=?",[target,uid,item.chargeId])
       } else {
         const state={suppress:'suppressed',restore:'planned',pause:'paused',cancel:'cancelled'}[operation]

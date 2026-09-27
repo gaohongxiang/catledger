@@ -9,6 +9,12 @@ const CHARGE_SQL = `SELECT f.charge_id AS chargeId,f.contract_id AS contractId,f
   f.component,f.period_number AS periodNumber,f.charge_date AS chargeDate,f.amount_minor AS amountMinor,
   f.category_id AS categoryId,f.state,f.basis,f.transaction_id AS transactionId,f.balance_adjustment_id AS balanceAdjustmentId,
   f.covered_by_charge_id AS coveredByChargeId,f.plan_version AS planVersion,f.version,
+  f.historical_settled_minor AS historicalSettledMinor,
+  COALESCE((SELECT SUM(child.historical_settled_minor) FROM catledger_loan_charges child
+    WHERE child.uid=f.uid AND child.covered_by_charge_id=f.charge_id AND child.state='covered'),0) AS historicalChildrenMinor,
+  COALESCE((SELECT SUM(a.historical_replaced_minor) FROM catledger_loan_charge_allocations a
+    JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id AND p.status='active'
+    WHERE a.uid=f.uid AND a.charge_id=f.charge_id),0) AS historicalReplacedMinor,
   t.version AS transactionVersion,t.deleted_at AS deletedAt,t.amount_minor AS transactionAmount,
   COALESCE((SELECT SUM(a.amount_minor) FROM catledger_loan_charge_allocations a
     JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id AND p.status='active'
@@ -16,10 +22,17 @@ const CHARGE_SQL = `SELECT f.charge_id AS chargeId,f.contract_id AS contractId,f
   COALESCE((SELECT SUM(r.amount_minor) FROM catledger_transactions r WHERE r.uid=f.uid AND r.original_transaction_id=f.transaction_id AND r.deleted_at IS NULL),0) AS refundMinor
   FROM catledger_loan_charges f LEFT JOIN catledger_transactions t ON t.uid=f.uid AND t.transaction_id=f.transaction_id`
 function publicCharge(row) {
+  const net = BigInt(row.amountMinor)-BigInt(row.refundMinor||'0'), actual = BigInt(row.settledMinor||'0')
+  const historical = [BigInt(row.historicalSettledMinor||'0'),BigInt(row.historicalChildrenMinor||'0')].reduce((a,b)=>a>b?a:b)
+  const remainingHistory = historical-BigInt(row.historicalReplacedMinor||'0')
+  const covered = [remainingHistory,net-actual].reduce((a,b)=>a<b?a:b)
+  const historicalCoveredMinor = covered>0n?covered:0n
+  const outstanding = net-actual-historicalCoveredMinor
   return {...row, amountMinor:String(row.amountMinor),settledMinor:String(row.settledMinor || '0'),
+    historicalSettledMinor:String(row.historicalSettledMinor||'0'),historicalCoveredMinor:String(historicalCoveredMinor),
     refundMinor:String(row.refundMinor||'0'),netAmountMinor:String(BigInt(row.amountMinor)-BigInt(row.refundMinor||'0')),
     version:Number(row.version),planVersion:Number(row.planVersion),periodNumber:row.periodNumber==null?null:Number(row.periodNumber),
-    transactionVersion:Number(row.transactionVersion || 0),outstandingMinor:row.balanceAdjustmentId ? '0' : String([BigInt(row.amountMinor)-BigInt(row.settledMinor||'0')-BigInt(row.refundMinor||'0'),0n].reduce((a,b)=>a>b?a:b))}
+    transactionVersion:Number(row.transactionVersion || 0),outstandingMinor:String(outstanding>0n?outstanding:0n)}
 }
 async function contract(c,uid,loanId) {
   const [[row]]=await c.execute(CONTRACT_SQL+' WHERE uid=? AND loan_id=?',[uid,loanId])

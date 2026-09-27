@@ -49,12 +49,21 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const historyDebt=await account('credit','600000','合成历史分期')
   const historical=await api('loans.create',{...require('./helpers/loan-charges').plan,requestId:randomUUID(),accountId:historyDebt,baselinePrincipalMinor:'500000',repayments:[{periodNumber:1,paid:true},{periodNumber:2,paid:true}]})
   assert.ok((await api('loans.chargePlan',{loanId:historical.loanId})).items.every(c=>c.balanceAdjustmentId))
+  const historyView=await api('loans.installment',{loanId:historical.loanId,periodNumber:1})
+  const historyFee=(await api('loans.chargePlan',{loanId:historical.loanId})).items.find(c=>c.periodNumber===1)
+  const historyTransfer=await api('transactions.create',{requestId:randomUUID(),type:'transfer',sourceAccountId:asset,destinationAccountId:historyDebt,
+    amountMinor:'52000',occurredLocalAt:'2026-09-05T12:00:00',timezoneOffsetMinutes:-480})
+  const historySource=(await api('loans.source',{transactionIds:[historyTransfer.transactionId]})).source
+  await api('loans.record',{requestId:randomUUID(),mode:'associate',kind:'repayment',source:historySource,assetAccountId:asset,totalMinor:'52000',
+    occurredLocalAt:'2026-09-05T12:00:00',timezoneOffsetMinutes:-480,confirmed:true,allocations:[{loanId:historical.loanId,version:historyView.loanVersion,
+      period:{periodNumber:1,version:historyView.period.version},principalMinor:'50000',interestMinor:'2000',feeMinor:'0',interestTreatment:'accrued',feeTreatment:'expense',
+      chargeAllocations:[{chargeId:historyFee.chargeId,component:'interest',amountMinor:'2000'}]}]})
   // 只在一次性库播种超宽审计行，证明大字段不会截坏 UTF-8。
   const wide='合成🐱\n"'.repeat(40000)
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
   const revision=async()=>String((await source.owner.execute('SELECT data_revision AS v FROM catledger_users WHERE uid=?',[uid]))[0][0].v)
   const startData={requestId:randomUUID()},job=await api('dataExports.start',startData),rev=await revision()
-  assert.equal(job.schemaVersion,27);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
+  assert.equal(job.schemaVersion,28);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
   await assert.rejects(call(other.api,'dataExports.page',{exportId:job.exportId}),{publicCode:'NOT_FOUND'})
   const records=[],parts=[];let cursor=null,terminal=null,pageCount=0
   do{
@@ -68,6 +77,8 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const exportedWide=records.find(r=>r.table==='catledger_finance_actions'&&r.row.decision_json.syntheticWide);assert.equal(exportedWide.row.decision_json.syntheticWide,wide)
   assert.ok(!parts.join('').includes(otherUser.uid));assert.ok(records.every(r=>!Object.hasOwn(r.row,'uid')))
   for(const name of ['catledger_loan_charge_contracts','catledger_loan_charges','catledger_loan_charge_sources','catledger_loan_charge_allocations','catledger_loan_charge_audit'])assert.ok(records.some(r=>r.table===name),name+' must be nonempty')
+  for(const [table,column] of [['catledger_loan_charges','historical_settled_minor'],['catledger_loan_charge_allocations','historical_replaced_minor'],['catledger_loan_period_allocations','historical_principal_minor']])
+    assert.ok(records.some(r=>r.table===table&&BigInt(r.row[column])>0n),column+' must contain real confirmation facts')
   await t.test('清单覆盖当前全部业务表和非生成列，导出逐行等于原库',async()=>{
    const [tables]=await source.owner.query('SELECT DISTINCT TABLE_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME=\'uid\'')
    assert.deepEqual(tables.map(t=>t.name).filter(n=>!['catledger_users','catledger_user_identities','catledger_data_exports'].includes(n)).sort(),manifest.map(t=>t.name).sort())

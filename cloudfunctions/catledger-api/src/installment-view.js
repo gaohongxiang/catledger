@@ -44,7 +44,8 @@ function buildView(loan, savedPeriods = [], items = [], today = new Date(Date.no
   const upcoming = rows.find(row => !row.complete && !row.cancelled)
   let completedThrough=0
   for(const row of rows){if(!row.complete)break;completedThrough=row.periodNumber}
-  const summary = { completedThrough, manualThrough: through,legacyProgress:progress.legacy,legacyNeedsReview:progress.legacyNeedsReview,
+  const historyNeedsReview = rows.some(r=>r.completedByProgress&&progress.simpleRepayment&&(progress.reviewedPeriods||{})[r.periodNumber]&&!(progress.historyFacts||{})[r.periodNumber])
+  const summary = { completedThrough, manualThrough: through,legacyProgress:progress.legacy,legacyNeedsReview:progress.legacyNeedsReview||historyNeedsReview,historyNeedsReview,
     actualPaidPeriods:rows.filter(r=>r.paymentConfirmed).length,manualPaidPeriods:rows.filter(r=>r.completedByProgress).length,
     paidPeriods: rows.filter(row => row.complete).length, totalTerms: Number(loan.scheduleTerms),
     unpaidPrincipalMinor: sum(rows, 'unpaidPrincipalMinor'), unpaidInterestMinor: sum(rows, 'unpaidInterestMinor'),

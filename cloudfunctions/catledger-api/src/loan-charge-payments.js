@@ -31,7 +31,7 @@ async function claimExisting(c,uid,loan,input) {
   await store.audit(c,uid,contract.contractId,chargeId,'claim_payment_coverage',{transactionId:input.transactionId,component:input.component})
   return store.charge(c,uid,chargeId)
 }
-async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null}={}) {
+async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null,replaceHistorical=false}={}) {
   const selection=normalizeCoverage(input.chargeAllocations),items=[],seen=new Set(),sums={interest:0n,fee:0n}
   let contract=await store.contract(c,uid,loan.loanId)
   for(const entry of selection) {
@@ -40,7 +40,6 @@ async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null
     const treatment=input[item.component+'Treatment']
     if(!contract||contract.contractId!==item.contractId||item.component!==entry.component||seen.has(item.chargeId))fail('LOAN_CHARGE_COVERAGE')
     seen.add(item.chargeId)
-    if(item.balanceAdjustmentId)fail('LOAN_CHARGE_COVERAGE')
     if(paymentDate&&item.chargeDate>paymentDate)fail('LOAN_CHARGE_COVERAGE')
     if(treatment==='accrued' && (!['recorded','baseline'].includes(item.state)||item.state==='recorded'&&(item.deletedAt!=null||item.transactionAmount!=item.amountMinor)))fail('LOAN_CHARGE_COVERAGE')
     if(treatment==='expense' && (item.state!=='planned'||entry.amountMinor!==item.amountMinor||input[item.component+'CategoryId']!==item.categoryId))fail('LOAN_CHARGE_COVERAGE')
@@ -50,8 +49,10 @@ async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null
       if(prior)used-=BigInt(prior.amountMinor)
     }
     const [[refund]]=await c.execute('SELECT COALESCE(SUM(amount_minor),0) AS amount FROM catledger_transactions WHERE uid=? AND original_transaction_id=? AND deleted_at IS NULL',[uid,item.transactionId])
-    if(used+BigInt(entry.amountMinor)+BigInt(refund.amount)>BigInt(item.amountMinor))fail('LOAN_CHARGE_COVERAGE')
-    sums[item.component]+=BigInt(entry.amountMinor);items.push({chargeId:item.chargeId,contractId:item.contractId,loanId:loan.loanId,component:item.component,treatment,amountMinor:entry.amountMinor})
+    const historical = BigInt(item.historicalCoveredMinor)
+    if(used+BigInt(entry.amountMinor)+BigInt(refund.amount)+(replaceHistorical?0n:historical)>BigInt(item.amountMinor))fail('LOAN_CHARGE_COVERAGE')
+    const replaced = replaceHistorical ? (historical<BigInt(entry.amountMinor)?historical:BigInt(entry.amountMinor)) : 0n
+    sums[item.component]+=BigInt(entry.amountMinor);items.push({chargeId:item.chargeId,contractId:item.contractId,loanId:loan.loanId,component:item.component,treatment,amountMinor:entry.amountMinor,historicalReplacedMinor:String(replaced)})
   }
   for(const component of ['interest','fee']) {
     const required=input[component+'Treatment']==='accrued'||contract&&!contract.authorization.coverageOnly||sums[component]>0n
@@ -67,8 +68,8 @@ async function persist(c,uid,paymentId,items,transactions=[]) {
       await c.execute("UPDATE catledger_loan_charges SET state='recorded',basis='actual',transaction_id=?,version=version+1 WHERE uid=? AND charge_id=? AND state='planned'",[transaction.transactionId,uid,item.chargeId])
       await store.audit(c,uid,item.contractId,item.chargeId,'paid_expense',{paymentId,transactionId:transaction.transactionId})
     }
-    await c.execute('INSERT INTO catledger_loan_charge_allocations(uid,payment_id,charge_id,amount_minor) VALUES(?,?,?,?)',[uid,paymentId,item.chargeId,item.amountMinor])
-    await store.audit(c,uid,item.contractId,item.chargeId,'settle',{paymentId,amountMinor:item.amountMinor})
+    await c.execute('INSERT INTO catledger_loan_charge_allocations(uid,payment_id,charge_id,amount_minor,historical_replaced_minor) VALUES(?,?,?,?,?)',[uid,paymentId,item.chargeId,item.amountMinor,item.historicalReplacedMinor||'0'])
+    await store.audit(c,uid,item.contractId,item.chargeId,'settle',{paymentId,amountMinor:item.amountMinor,historicalReplacedMinor:item.historicalReplacedMinor||'0'})
   }
 }
 module.exports={normalizeCoverage,validate,persist}

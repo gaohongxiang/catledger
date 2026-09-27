@@ -48,6 +48,8 @@ function createLoanPeriodService({getPool,selectLoan}) {
       let version=1
       if(data.periodId){
         const old=await period(c,uid,id)
+        const facts=require('./installment-view').progressOf(loan).historyFacts||{}
+        if ((facts[old.periodNumber] || facts[value.periodNumber]) && (value.cancelled || old.periodNumber!==value.periodNumber)) throw ledgerError('LOAN_TRANSACTION_LOCKED')
         if(old.loanId!==loan.loanId) throw ledgerError('NOT_FOUND')
         if(old.version!==parseVersion(data.version)) throw ledgerError('CONFLICT')
         if(FIELDS.some(f=>BigInt(value[f+'Minor'])<BigInt(old['paid'+capital(f)+'Minor']) || (value.cancelled&&old['paid'+capital(f)+'Minor']!=='0'))) throw ledgerError('LOAN_PLAN_OVERALLOCATED')
@@ -80,6 +82,9 @@ function createLoanPeriodService({getPool,selectLoan}) {
     return write(context,'loans.allocatePeriods',async(c,uid,data)=>{
       if(data.confirmed!==true || !Array.isArray(data.items)||data.items.length>40) throw ledgerError('VALIDATION_ERROR')
       const loan=await currentLoan(c,uid,data),current=await paymentAllocation(c,uid,loan.loanId,data.paymentId)
+      // 历史凭证替换的期次关系只能随整组实际付款维护，不能经旧分配接口拆散。
+      const facts=require('./installment-view').progressOf(loan).historyFacts||{}
+      if(Object.keys(facts).length)throw ledgerError('LOAN_TRANSACTION_LOCKED')
       if(current.payment.status!=='active'||current.payment.version!==parseVersion(data.version))throw ledgerError('CONFLICT')
       const ids=new Set(),items=[]
       for(const input of data.items){

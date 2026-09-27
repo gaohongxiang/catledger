@@ -674,7 +674,8 @@
       "confirmed_period_version",
       "confirmed_payment_version",
       "active",
-      "created_at"
+      "created_at",
+      "historical_principal_minor"
     ],
     "json": []
   },
@@ -857,7 +858,8 @@
       "plan_version",
       "version",
       "created_at",
-      "balance_adjustment_id"
+      "balance_adjustment_id",
+      "historical_settled_minor"
     ],
     "json": []
   },
@@ -884,7 +886,8 @@
       "payment_id",
       "charge_id",
       "amount_minor",
-      "created_at"
+      "created_at",
+      "historical_replaced_minor"
     ],
     "json": []
   },

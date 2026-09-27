@@ -57,7 +57,8 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
   for (const a of input.allocations) {
     const loan=allocated.get(a.loanId), contract=await require('./loan-charge-store').contract(connection,uid,loan.loanId)
     if(contract)loan.originKind=contract.originKind
-    if(input.kind==='repayment')chargeAllocations.push(...await chargePayments.validate(connection,uid,loan,a,{excludePaymentId:previous&&previous.payment.paymentId,paymentDate:input.localDate}))
+    const history = require('./installment-view').progressOf(loan).historyFacts || {}
+    if(input.kind==='repayment')chargeAllocations.push(...await chargePayments.validate(connection,uid,loan,a,{excludePaymentId:previous&&previous.payment.paymentId,paymentDate:input.localDate,replaceHistorical:input.mode!=='new'&&Boolean(a.period&&history[a.period.periodNumber])}))
   }
   const drafts=paymentDrafts(input,allocated,chargeAllocations)
   if(source) validateSourceAmounts(source,input,drafts,allocated,input.mode==='associate')
@@ -82,7 +83,6 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
   for(const a of input.allocations) await connection.execute(`INSERT INTO catledger_loan_payment_allocations
     (uid,payment_id,loan_id,principal_minor,interest_minor,fee_minor,interest_treatment,fee_treatment,interest_category_id,fee_category_id,confirmed_loan_version)
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,[uid,paymentId,a.loanId,a.principalMinor,a.interestMinor,a.feeMinor,a.interestTreatment,a.feeTreatment,a.interestCategoryId,a.feeCategoryId,a.version])
-  await assertPrincipalTimeline(connection,uid,loans)
   const transactions=[]
   if(input.mode==='associate') transactions.push(...source.transactions)
   else for(const draft of drafts) {
@@ -93,6 +93,7 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
   }
   await chargePayments.persist(connection,uid,paymentId,chargeAllocations,transactions)
   await paymentPeriods.persist(connection,uid,paymentId,periodAllocations)
+  await assertPrincipalTimeline(connection,uid,loans)
   for(const row of transactions) await connection.execute(`INSERT INTO catledger_loan_payment_transactions
     (uid,payment_id,transaction_id,transaction_version,created_by_payment) VALUES (?,?,?,?,?)`,[uid,paymentId,row.transactionId,Number(row.version),input.mode==='associate'?0:1])
   for(const root of roots) await connection.execute(`INSERT INTO catledger_loan_replaced_transactions

@@ -1,7 +1,7 @@
 const { randomUUID } = require('node:crypto')
 const { ledgerError } = require('./ledger-errors')
 const { FIELDS, PERIOD_SQL, publicPeriod, advancePeriods } = require('./loan-period-repository')
-const { fullPlan } = require('./installment-view')
+const { fullPlan, progressOf } = require('./installment-view')
 
 // 从某一期登记付款时，付款、费用清偿和期次关联共用原事务与原回执。
 async function prepare(connection, uid, input, loans, previous) {
@@ -24,13 +24,24 @@ async function prepare(connection, uid, input, loans, previous) {
         FROM catledger_loan_charges c WHERE c.uid=? AND c.charge_id=?`, [requested.periodNumber, uid, fee.chargeId])
       if (!charge || Number(charge.periodNumber) !== requested.periodNumber && Number(charge.coversPeriod) !== 1) throw ledgerError('LOAN_CHARGE_COVERAGE')
     }
-    result.push({ share, period, create: !saved })
+    const progress = progressOf(loan), fact = (progress.historyFacts||{})[requested.periodNumber]
+    let historicalPrincipalMinor = '0'
+    if (fact) {
+      if (input.mode==='new') throw ledgerError('LOAN_TRANSACTION_LOCKED')
+      const [[used]] = await connection.execute(`SELECT COALESCE(SUM(a.historical_principal_minor),0) AS amount
+        FROM catledger_loan_period_allocations a JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id AND p.status='active'
+        WHERE a.uid=? AND a.loan_id=? AND a.period_id=? AND a.active=1`,[uid,loan.loanId,period.periodId])
+      const available = BigInt(fact.principalMinor)-BigInt(used.amount), proposed=BigInt(share.principalMinor)
+      historicalPrincipalMinor = String(available<proposed?available:proposed)
+      if (available<0n) throw ledgerError('CONFLICT')
+    } else if (progress.simpleRepayment && progress.reviewedPeriods?.[requested.periodNumber] && progress.exceptions?.[requested.periodNumber]==='completed') throw ledgerError('LOAN_HISTORY_REVIEW_REQUIRED')
+    result.push({ share, period, create: !saved, historicalPrincipalMinor })
   }
   return result
 }
 
 async function persist(connection, uid, paymentId, items) {
-  for (const { share, period, create } of items) {
+  for (const { share, period, create, historicalPrincipalMinor } of items) {
     const id = create ? randomUUID() : period.periodId, version = create ? 1 : period.version
     if (create) {
       await connection.execute(`INSERT INTO catledger_loan_periods (uid,period_id,loan_id,period_number,due_date,principal_minor,interest_minor,fee_minor,cancelled)
@@ -39,8 +50,8 @@ async function persist(connection, uid, paymentId, items) {
       await connection.execute('INSERT INTO catledger_loan_period_revisions (uid,period_id,version,snapshot_json) VALUES (?,?,?,?)', [uid, id, version, JSON.stringify(snapshot)])
     }
     await connection.execute(`INSERT INTO catledger_loan_period_allocations
-      (uid,allocation_id,payment_id,loan_id,period_id,principal_minor,interest_minor,fee_minor,confirmed_period_version,confirmed_payment_version)
-      VALUES (?,?,?,?,?,?,?,?,?,1)`, [uid, randomUUID(), paymentId, share.loanId, id, share.principalMinor, share.interestMinor, share.feeMinor, version])
+      (uid,allocation_id,payment_id,loan_id,period_id,principal_minor,interest_minor,fee_minor,confirmed_period_version,confirmed_payment_version,historical_principal_minor)
+      VALUES (?,?,?,?,?,?,?,?,?,1,?)`, [uid, randomUUID(), paymentId, share.loanId, id, share.principalMinor, share.interestMinor, share.feeMinor, version, historicalPrincipalMinor])
     await advancePeriods(connection, uid, [id])
   }
 }

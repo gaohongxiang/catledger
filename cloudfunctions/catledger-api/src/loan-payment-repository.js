@@ -1,11 +1,14 @@
 const { ledgerError } = require('./ledger-errors')
 const { validateId, parseVersion } = require('./transaction-domain')
 const { MAX_ALLOCATIONS } = require('./loan-payment-domain')
+// 实际凭证替换历史确认时，只计尚未包含在基准中的本金；撤销凭证后原历史事实仍保留。
+const PRINCIPAL = `CAST(a.principal_minor AS DECIMAL(65,0)) - COALESCE((SELECT SUM(h.historical_principal_minor)
+  FROM catledger_loan_period_allocations h WHERE h.uid=a.uid AND h.payment_id=a.payment_id AND h.loan_id=a.loan_id AND h.active=1),0)`
 async function populatePrincipal(connection, uid, loans) {
   if (!loans.length) return loans
   const ids = loans.map(l => l.loanId)
   const [rows] = await connection.execute(`SELECT a.loan_id AS loanId,
-    SUM(IF(p.kind='drawdown', CAST(a.principal_minor AS DECIMAL(65,0)), -CAST(a.principal_minor AS DECIMAL(65,0)))) AS delta
+    SUM(IF(p.kind='drawdown', CAST(a.principal_minor AS DECIMAL(65,0)), -(${PRINCIPAL}))) AS delta
     FROM catledger_loan_payment_allocations a JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id
     WHERE a.uid=? AND a.loan_id IN (${ids.map(() => '?').join(',')}) AND p.status='active' GROUP BY a.loan_id`, [uid,...ids])
   const deltas = new Map(rows.map(row => [row.loanId, BigInt(row.delta)]))
@@ -16,9 +19,10 @@ async function assertPrincipalTimeline(connection, uid, loans) {
   // 数据库计算每个历史时点的余额，应用层只收一行；回溯登记和撤销也不能制造负本金。
   for (const loan of loans.values()) {
     if (loan.baselinePrincipalMinor == null || loan.baselineDate == null) throw ledgerError('LOAN_PRINCIPAL_UNCONFIRMED')
+    if (BigInt(loan.baselinePrincipalMinor)<0n || BigInt(loan.baselinePrincipalMinor)>9223372036854775807n) throw ledgerError('LOAN_PRINCIPAL_EXCEEDED')
     const [[row]] = await connection.execute(`SELECT MIN(balance) AS minimum, MAX(balance) AS maximum, MIN(localAt) AS firstAt FROM (
       SELECT p.occurred_local_at AS localAt, CAST(? AS DECIMAL(65,0)) + SUM(IF(p.kind='drawdown',
-        CAST(a.principal_minor AS DECIMAL(65,0)), -CAST(a.principal_minor AS DECIMAL(65,0))))
+        CAST(a.principal_minor AS DECIMAL(65,0)), -(${PRINCIPAL})))
         OVER (ORDER BY p.occurred_local_at, (p.kind='repayment'), p.payment_id ROWS UNBOUNDED PRECEDING) AS balance
       FROM catledger_loan_payment_allocations a JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id
       WHERE a.uid=? AND a.loan_id=? AND p.status='active') timeline`, [String(loan.baselinePrincipalMinor), uid, loan.loanId])

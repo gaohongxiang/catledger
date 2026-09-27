@@ -67,6 +67,8 @@ function createInstallmentService({getPool,selectLoan}) {
   async function setInstallmentProgress(context) {
     return write(context,'loans.setInstallmentProgress',async(c,uid,data)=>{
       const loan=await editable(c,uid,data),progress=updateProgress(loan,data)
+      const contract=await require('./loan-charge-store').contract(c,uid,loan.loanId)
+      if (progress.simpleRepayment || contract && contract.authorization.simpleRepayment) throw ledgerError('LOAN_TRANSACTION_LOCKED')
       if (data.completedThrough===undefined && data.periodNumber===undefined) throw ledgerError('VALIDATION_ERROR')
       if (data.bookCosts!==undefined && typeof data.bookCosts!=='boolean') throw ledgerError('VALIDATION_ERROR')
       if (data.bookCosts) {

@@ -70,7 +70,7 @@ async function book(c, uid, loan, state, row, historical, paymentDate) {
     if (item && item.amountMinor !== amount) throw ledgerError('LOAN_CHARGE_DIFFERENCE')
     const categoryId = item && item.categoryId || (state.categories.find(i => i.systemKey === (component === 'interest' ? 'finance__interest' : 'finance__service')) || {}).categoryId || null
     if (!item) {
-      item = { chargeId: randomUUID(), chargeKey: key, amountMinor: amount, categoryId, chargeDate: source ? source.occurredDate : paymentDate && paymentDate < row.dueDate ? paymentDate : row.dueDate }
+      item = { chargeId: randomUUID(), chargeKey: key, periodNumber: row.periodNumber, component, amountMinor: amount, categoryId, chargeDate: source ? source.occurredDate : paymentDate && paymentDate < row.dueDate ? paymentDate : row.dueDate }
       await c.execute(`INSERT INTO catledger_loan_charges(uid,charge_id,contract_id,charge_key,component,period_number,charge_date,amount_minor,category_id)
         VALUES(?,?,?,?,?,?,?,?,?)`, [uid, item.chargeId, state.contract.contractId, key, component, row.periodNumber, item.chargeDate, amount, categoryId])
       state.charges.push(item)
@@ -100,33 +100,60 @@ async function book(c, uid, loan, state, row, historical, paymentDate) {
 async function confirm(c, uid, loan, view, input, alignPrincipal = false) {
   const selected = selections(input, Number(loan.scheduleTerms)), state = await context(c, uid, loan)
   const previous = progressOf(loan)
-  const progress = { ...previous, schema: 2, simpleRepayment: true, reviewedPeriods: { ...previous.reviewedPeriods }, exceptions: { ...previous.exceptions } }
+  const progress = { ...previous, schema: 2, simpleRepayment: true, historyFacts: { ...previous.historyFacts }, reviewedPeriods: { ...previous.reviewedPeriods }, exceptions: { ...previous.exceptions } }
   const setup = require('./loan-installment').parseSetup(loan.installmentSetup)
   let principal = BigInt(loan.baselinePrincipalMinor)
   for (const entry of selected) {
     const row = view.rows.find(r => r.periodNumber === entry.periodNumber)
     if (!row || row.cancelled || row.status === 'partial' || !entry.paid && row.paymentConfirmed) throw ledgerError('LOAN_TRANSACTION_LOCKED')
-    if (alignPrincipal && !row.paymentConfirmed) {
-      const accounted = previous.reviewedPeriods && previous.reviewedPeriods[entry.periodNumber]
-        ? row.complete : entry.periodNumber <= Number(setup && setup.historicalPaidTerms || 0)
-      if (entry.paid !== accounted) principal += (entry.paid ? -1n : 1n) * BigInt(row.principalMinor)
+    const fact = progress.historyFacts[entry.periodNumber]
+    const legacyReviewed = previous.simpleRepayment && previous.reviewedPeriods && previous.reviewedPeriods[entry.periodNumber] && row.completedByProgress && !fact
+    if (legacyReviewed) throw ledgerError('LOAN_HISTORY_REVIEW_REQUIRED')
+    const historicalSetup = !previous.reviewedPeriods?.[entry.periodNumber] && entry.periodNumber <= Number(setup && setup.historicalPaidTerms || 0)
+    const originalPrincipal = historicalSetup ? fullPlan(loan).find(p=>p.periodNumber===entry.periodNumber).principalMinor : row.principalMinor
+    if (!row.paymentConfirmed) {
+      if (entry.paid && !fact) {
+        if (alignPrincipal && !historicalSetup) principal -= BigInt(row.principalMinor)
+        progress.historyFacts[entry.periodNumber] = { principalMinor: String(originalPrincipal), periodVersion: Number(row.version||0), loanVersion: Number(loan.version||1) }
+      } else if (!entry.paid && (fact || historicalSetup)) {
+        principal += BigInt(fact ? fact.principalMinor : originalPrincipal)
+        delete progress.historyFacts[entry.periodNumber]
+      }
     }
     if (entry.paid && !row.paymentConfirmed) await book(c, uid, loan, state, row, true)
-    else if (!entry.paid) for (const item of state.charges.filter(i => (i.periodNumber === entry.periodNumber || entry.periodNumber === 1 && i.chargeKey === 'upfront:fee') && i.balanceAdjustmentId && i.state === 'recorded')) {
-      await store.assertUnencumbered(c, uid, item)
-      await c.execute('UPDATE catledger_transactions SET deleted_at=CURRENT_TIMESTAMP(3),version=version+1 WHERE uid=? AND transaction_id IN (?,?)', [uid, item.transactionId, item.balanceAdjustmentId])
-      await c.execute("UPDATE catledger_loan_charges SET state='planned',transaction_id=NULL,balance_adjustment_id=NULL,version=version+1 WHERE uid=? AND charge_id=?", [uid, item.chargeId])
-      await store.audit(c, uid, state.contract.contractId, item.chargeId, 'unmark_historical_paid', { periodNumber: entry.periodNumber })
+    const costs = state.charges.filter(i => i.periodNumber === entry.periodNumber || entry.periodNumber === 1 && i.chargeKey === 'upfront:fee')
+    for (const item of costs) {
+      const current = await store.charge(c,uid,item.chargeId)
+      if (entry.paid && !row.paymentConfirmed && ['recorded','baseline','covered'].includes(current.state)) {
+        const financial = current.coveredByChargeId ? await store.charge(c,uid,current.coveredByChargeId) : current
+        if (financial.settledMinor !== '0') throw ledgerError('LOAN_TRANSACTION_LOCKED')
+        const amount = current.netAmountMinor
+        if (current.historicalSettledMinor !== amount) {
+          await c.execute('UPDATE catledger_loan_charges SET historical_settled_minor=?,version=version+1 WHERE uid=? AND charge_id=?',[amount,uid,item.chargeId])
+          await store.audit(c,uid,state.contract.contractId,item.chargeId,'confirm_settlement',{periodNumber:entry.periodNumber,amountMinor:amount,chargeVersion:current.version})
+        }
+      } else if (!entry.paid && current.historicalSettledMinor !== '0') {
+        const financial = current.coveredByChargeId ? await store.charge(c,uid,current.coveredByChargeId) : current
+        if (financial.settledMinor !== '0') throw ledgerError('LOAN_TRANSACTION_LOCKED')
+        if (current.balanceAdjustmentId && current.state === 'recorded') {
+          await store.assertUnencumbered(c, uid, current)
+          await c.execute('UPDATE catledger_transactions SET deleted_at=CURRENT_TIMESTAMP(3),version=version+1 WHERE uid=? AND transaction_id IN (?,?)', [uid, current.transactionId, current.balanceAdjustmentId])
+          await c.execute("UPDATE catledger_loan_charges SET state='planned',transaction_id=NULL,balance_adjustment_id=NULL WHERE uid=? AND charge_id=?", [uid,item.chargeId])
+        }
+        await c.execute('UPDATE catledger_loan_charges SET historical_settled_minor=0,version=version+1 WHERE uid=? AND charge_id=?',[uid,item.chargeId])
+        await store.audit(c, uid, state.contract.contractId, item.chargeId, 'unmark_historical_paid', { periodNumber: entry.periodNumber, before:current })
+      }
     }
     progress.exceptions[entry.periodNumber] = entry.paid ? 'completed' : 'unpaid'
     progress.reviewedPeriods[entry.periodNumber] = true
   }
   if (principal < 0n) throw ledgerError('LOAN_BASELINE_LOCKED')
+  await require('./loan-payment-repository').assertPrincipalTimeline(c,uid,new Map([[loan.loanId,{...loan,baselinePrincipalMinor:principal.toString()}]]))
   // 普通逐期流程只在用户保存时记费；旧自动设置在显式接入此流程时停止。
   await c.execute('UPDATE catledger_loan_charge_contracts SET authorization_json=?,version=version+1 WHERE uid=? AND contract_id=?',
     [JSON.stringify({ ...state.contract.authorization, mode: 'paused', simpleRepayment: true, coverageOnly: true }), uid, state.contract.contractId])
   await c.execute('UPDATE catledger_loans SET progress_json=?,baseline_principal_minor=? WHERE uid=? AND loan_id=?', [JSON.stringify(progress), principal.toString(), uid, loan.loanId])
-  await store.audit(c, uid, state.contract.contractId, null, 'save_repayments', { repayments:selected, previousMode:state.contract.authorization.mode })
+  await store.audit(c, uid, state.contract.contractId, null, 'save_repayments', { repayments:selected, previousFacts:previous.historyFacts||{}, historyFacts:progress.historyFacts, baselineBefore:String(loan.baselinePrincipalMinor), baselineAfter:principal.toString(), previousMode:state.contract.authorization.mode })
   return progress
 }
 

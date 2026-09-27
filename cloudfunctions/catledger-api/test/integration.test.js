@@ -145,9 +145,10 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 27)
+  assert.equal(rows.length, 28)
   assert.equal(rows[25].version, '0026_loan_charge_lifecycle.sql')
   assert.equal(rows[26].version, '0027_installment_history_balance.sql')
+  assert.equal(rows[27].version, '0028_installment_confirmation_facts.sql')
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
   assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')
