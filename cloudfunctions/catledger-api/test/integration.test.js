@@ -983,12 +983,12 @@ test('category management is isolated, versioned, reorderable and history-safe',
   const second = await bootstrapLedgerUser('integration-category-two')
   const created = await categoryService.create({
     provider: 'wechat-mini', subjectHash: first.subjectHash,
-    data: { requestId: randomTestUuid(), kind: 'expense', name: '宠物' }
+    data: { requestId: randomTestUuid(), kind: 'expense', name: '合成自定义分类' }
   })
-  assert.equal(created.name, '宠物')
+  assert.equal(created.name, '合成自定义分类')
   await assert.rejects(categoryService.create({
     provider: 'wechat-mini', subjectHash: first.subjectHash,
-    data: { requestId: randomTestUuid(), kind: 'expense', name: '  宠物 ' }
+    data: { requestId: randomTestUuid(), kind: 'expense', name: '  合成自定义分类 ' }
   }), { publicCode: 'CONFLICT' })
   const renamed = await categoryService.update({
     provider: 'wechat-mini', subjectHash: first.subjectHash,
