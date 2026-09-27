@@ -1,5 +1,5 @@
 <view class="page-canvas loan-payment {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" title="{{payment ? payment.kindText + '记录' : periodNumber ? '第 ' + periodNumber + ' 期还款' : kindIndex === 1 ? '登记借款到账' : '登记还款'}}" copy="{{periodNumber ? '本期金额已带入，请核对实际扣款。已经记过的，请选已有账目。' : '按实际到账或扣款填写；已经记过的，请选已有账目。'}}" />
+  <page-head class="content-inset" title="{{payment ? payment.kindText + '记录' : periodNumber ? '第 ' + periodNumber + ' 期还款' : kindIndex === 1 ? '登记借款到账' : '登记还款'}}" copy="{{periodNumber ? '本期金额已带入，核对付款账户、金额和日期后保存。' : '按实际到账或扣款填写；已经记过的，请选已有账目。'}}" />
   <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <button wx:if="{{errorMessage}}" class="lp-link" disabled="{{saving || loading}}" bindtap="load">重新读取与核实</button>
@@ -30,7 +30,7 @@
     <button wx:if="{{editingPayment || replacePayment}}" class="lp-link" bindtap="cancelEdit" disabled="{{saving || hasPending}}">返回原借还记录</button>
     <view wx:if="{{editingPayment}}" class="lp-note-card"><text class="lp-note">更正整组构成，保留原记录供核对。实际账户、时间和总额保持本次事实。</text></view>
     <view wx:if="{{replacePayment}}" class="lp-note-card"><text class="lp-note">请明确选择后来导入的同一笔还款。确认后撤销重复的手工付款，将来源账目更正为一次完整还款；相同金额或日期不会自动合并。</text></view>
-    <picker wx:if="{{!sourceLocked && !editingPayment && !replacePayment}}" class="lp-field" range="{{modes}}" value="{{modeIndex}}" bindchange="chooseMode" disabled="{{saving}}"><text>这笔钱记过了吗</text><view class="lp-picker"><text class="lp-picker-value">{{modes[modeIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
+    <picker wx:if="{{!periodNumber && !sourceLocked && !editingPayment && !replacePayment}}" class="lp-field" range="{{modes}}" value="{{modeIndex}}" bindchange="chooseMode" disabled="{{saving}}"><text>这笔钱记过了吗</text><view class="lp-picker"><text class="lp-picker-value">{{modes[modeIndex]}}</text><chevron-icon size="{{24}}" /></view></picker>
     <block wx:if="{{sourceLocked && !editingPayment && !replacePayment}}">
       <view class="lp-note-card"><text class="lp-note">已从原账目进入。总额与原始时间重新核对，不会再次扣款；不能切换到新登记。缺少本息费时请查机构账单，不要把总额直接当本金。</text></view>
       <picker class="lp-field" range="{{entryModes}}" value="{{modeIndex - 1}}" bindchange="chooseEntryMode" disabled="{{saving || loading}}"><text>处理已有还款</text><view class="lp-picker"><text class="lp-picker-value">{{entryModes[modeIndex - 1]}}</text><chevron-icon size="{{24}}" /></view></picker>
