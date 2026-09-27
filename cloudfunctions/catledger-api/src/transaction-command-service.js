@@ -100,6 +100,7 @@ async function prepareRefund(connection, uid, transaction, currentTransactionId 
   if (transaction.originalTransactionId === currentTransactionId) throw ledgerError('VALIDATION_ERROR')
   await assertNoLoanTransactions(connection, uid, [transaction.originalTransactionId])
   const original = await lockOriginalExpense(connection, uid, transaction.originalTransactionId)
+  if(transaction.originalVersion!==undefined && Number(original.version)!==parseVersion(transaction.originalVersion))throw ledgerError('CONFLICT')
   const refundOccurredAtUtc = transaction.occurredAtUtc
   if (refundOccurredAtUtc && String(original.occurredAtUtc) > String(refundOccurredAtUtc)) {
     throw ledgerError('VALIDATION_ERROR')
@@ -214,6 +215,7 @@ async function linkPendingRefund(connection, uid, data) {
   const transaction = {
     type: 'refund',
     originalTransactionId: validateId(data.originalTransactionId),
+    ...(data.originalVersion===undefined?{}:{originalVersion:parseVersion(data.originalVersion)}),
     amountMinor: minorUnitsToString(current.amountMinor),
     occurredAtUtc: current.occurredAtUtc
   }

@@ -160,22 +160,22 @@
     },
     "transactions.create": {
       "kind": "idempotent-mutation",
-      "data": ["requestId", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "originalTransactionId?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
+      "data": ["requestId", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "originalTransactionId?", "originalVersion?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
       "returns": "transaction"
     },
     "transactions.update": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "transactionId", "version", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "originalTransactionId?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
+      "data": ["requestId", "transactionId", "version", "type", "sourceAccountId?", "destinationAccountId?", "categoryId?", "originalTransactionId?", "originalVersion?", "amountMinor", "occurredLocalAt", "timezoneOffsetMinutes", "note?"],
       "returns": "transaction"
     },
     "transactions.refundable": {
       "kind": "read",
-      "data": ["limit?"],
-      "returns": ["transactions"]
+      "data": ["pageSize? (1..40, default 20)", "limit? (legacy 1..100)", "cursor?", "month?", "accountId?", "search? (40 characters)", "occurredLocalAt?", "timezoneOffsetMinutes?", "originalTransactionId?", "editingTransactionId?"],
+      "returns": "{transactions,nextCursor}; signed cursor binds uid, query and dataRevision. Only active expenses with remaining capacity, no protected loan fee/payment members, and no later than the supplied refund UTC time; editing excludes the current refund from used capacity. Direct original IDs use the same eligibility. Each candidate has version/refundableMinor. Client sends originalVersion on create/update/linkRefund; current original state, version when supplied, date and aggregate capacity are rechecked under the write lock."
     },
     "transactions.linkRefund": {
       "kind": "idempotent-versioned-mutation",
-      "data": ["requestId", "transactionId", "version", "originalTransactionId"],
+      "data": ["requestId", "transactionId", "version", "originalTransactionId", "originalVersion?"],
       "returns": "transaction"
     },
     "transactions.setCategory": {

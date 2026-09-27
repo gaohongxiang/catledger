@@ -20,24 +20,10 @@ function findIndex(items, key, value) {
   return items.findIndex(function (item) { return item[key] === value })
 }
 
-function refundableViews(transactions, editing) {
-  const rows = (transactions || []).map(function (transaction) {
-    const category = transaction.category && transaction.category.name ? transaction.category.name : '支出'
-    const note = transaction.note ? ' · ' + transaction.note : ''
-    return Object.assign({}, transaction, {
-      pickerLabel: String(transaction.occurredLocalAt || '').slice(0, 10) + ' · ' + category + note + ' · 可退' + money.formatMinor(transaction.refundableMinor)
-    })
-  })
-  if (editing && editing.type === 'refund' && editing.originalTransaction &&
-      !rows.some(item => item.transactionId === editing.originalTransaction.transactionId)) {
-    rows.unshift({ transactionId: editing.originalTransaction.transactionId,
-      pickerLabel: String(editing.originalTransaction.occurredLocalAt || '').slice(0, 10) + ' · 原支出 · 当前退款' })
-  }
-  return rows
-}
 
-Page(Object.assign({}, require('./loan-context').createLoanContext({ api, session: pageReadSession, navigate: options => wx.navigateTo(options) }), {
+Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').createLoanContext({ api, session: pageReadSession, navigate: options => wx.navigateTo(options) }), {
   data: {
+    refundNextCursor:null,refundCanPrevious:false,refundMonth:'',refundSearch:'',refundAccounts:[{accountId:null,name:'全部消费账户'}],refundAccountIndex:0,
     loanContext: null, loanContextLoading: false, loanContextError: '', loanManaged: false,
     mode: 'create',
     readonlyDetail: false,
@@ -78,6 +64,8 @@ Page(Object.assign({}, require('./loan-context').createLoanContext({ api, sessio
 
   onLoad: function (options) {
     themeService.bindPage(this)
+    this._refundDirectId=options&&options.originalTransactionId||null
+    if(this._refundDirectId)this.setData({typeIndex:3,originalTransactionId:this._refundDirectId})
     const requestedMode = options && options.mode
     const mode = ['edit', 'import', 'view', 'link-refund'].includes(requestedMode) ? requestedMode : 'create'
     this.setData({ mode: mode, readonlyDetail: mode === 'import' || mode === 'view' })
@@ -113,7 +101,7 @@ Page(Object.assign({}, require('./loan-context').createLoanContext({ api, sessio
     return pageReadSession.begin(this,
       Object.keys(this.data).filter(key => !['mode', 'readonlyDetail'].includes(key) && !key.startsWith('theme')),
       ['_loanLoad', '_initialized', '_writeFinished', '_pendingWriteChecked', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
-        '_detailTransaction', '_editingTransaction', '_catalogCategories'])
+        '_detailTransaction', '_editingTransaction', '_catalogCategories', '_refundQuery', '_refundCursor', '_refundPrevious'])
   },
 
   prepareForm: function (options) {
@@ -134,6 +122,7 @@ Page(Object.assign({}, require('./loan-context').createLoanContext({ api, sessio
           selectedCategoryId: editing.category && editing.category.categoryId || null })
       } else if (editing) {
         this.fillEditingTransaction(editing)
+        if(editing.type==='refund'&&editing.originalTransaction)this._refundDirectId=editing.originalTransaction.transactionId
       }
       // 本地字段不等待目录；已有交易也先展示，再准备可编辑的分类。
       this.setData({ formReady: true })
@@ -187,7 +176,9 @@ Page(Object.assign({}, require('./loan-context').createLoanContext({ api, sessio
     const editing = this._editingTransaction
     const editingBlocked = Boolean(editing && [editing.sourceAccount, editing.destinationAccount].filter(Boolean)
       .some(account => !accounts.some(row => row.accountId === account.accountId)))
-    this.setData({ accounts, hasAccounts: accounts.length > 0, sourceAccountId: sourceId, destinationAccountId: destinationId,
+    const refundAccount=this.data.refundAccounts[this.data.refundAccountIndex]
+    const refundAccounts=[{accountId:null,name:'全部消费账户'}].concat(result.accounts||[])
+    this.setData({ refundAccounts,refundAccountIndex:Math.max(0,refundAccounts.findIndex(a=>a.accountId===(refundAccount&&refundAccount.accountId))),accounts, hasAccounts: accounts.length > 0, sourceAccountId: sourceId, destinationAccountId: destinationId,
       sourceIndex: findIndex(accounts, 'accountId', sourceId), destinationIndex: findIndex(accounts, 'accountId', destinationId),
       catalogReady: true, catalogError: '', editingBlocked,
       errorMessage: editingBlocked ? '关联账户已停用，不能修改；仍可删除这笔账。' : this.data.errorMessage })
@@ -216,28 +207,6 @@ Page(Object.assign({}, require('./loan-context').createLoanContext({ api, sessio
     if (!category) return Promise.resolve()
     return this.sendLedgerWrite('transactions.setCategory', {
       transactionId: this.data.transactionId, version: this.data.version, categoryId: category.id })
-  },
-
-  loadRefundables: function () {
-    const isCurrent = pageReadSession.capture(this)
-    if (!isCurrent()) return Promise.resolve()
-    if (this.data.refundablesReady) return Promise.resolve()
-    if (this._refundablesLoad) return this._refundablesLoad
-    const self = this
-    this.setData({ refundablesLoading: true, errorMessage: '' })
-    this._refundablesLoad = api.callApi('transactions.refundable', { limit: 60 })
-      .then(function (result) {
-        if (!isCurrent()) return
-        const rows = refundableViews(result.transactions, self._editingTransaction)
-        self.setData({ refundableTransactions: rows, refundablesReady: true,
-          originalIndex: findIndex(rows, 'transactionId', self.data.originalTransactionId) })
-      }).catch(function (error) {
-        if (!isCurrent()) return
-        if (TYPE_OPTIONS[self.data.typeIndex].value === 'refund') self.setData({ errorMessage: error.message || '原支出读取失败，请重试' })
-      }).finally(function () {
-        if (!isCurrent()) return
-        self.setData({ refundablesLoading: false }); self._refundablesLoad = null })
-    return this._refundablesLoad
   },
 
   refreshCategories: function (type, chooseDefault) {
@@ -273,8 +242,8 @@ Page(Object.assign({}, require('./loan-context').createLoanContext({ api, sessio
 
   bindAmount: function (event) { this.setData({ amountYuan: event.detail.value }) },
   bindNote: function (event) { this.setData({ note: event.detail.value }) },
-  changeDate: function (event) { this.setData({ date: event.detail.value }) },
-  changeClock: function (event) { this.setData({ clock: event.detail.value }) },
+  changeDate: function (event) { this.setData({ date: event.detail.value }); if(this.data.typeIndex===3)return this.searchRefunds() },
+  changeClock: function (event) { this.setData({ clock: event.detail.value }); if(this.data.typeIndex===3)return this.searchRefunds() },
   changeSource: function (event) { this.selectOption('sourceIndex', 'sourceAccountId', this.data.accounts, 'accountId', event) },
   changeDestination: function (event) { this.selectOption('destinationIndex', 'destinationAccountId', this.data.accounts, 'accountId', event) },
   changeCategory: function (event) { this.selectOption('categoryIndex', 'selectedCategoryId', this.data.categories, 'id', event) },
@@ -343,6 +312,7 @@ Page(Object.assign({}, require('./loan-context').createLoanContext({ api, sessio
       if (!original) throw new Error('请选择原支出')
       data.destinationAccountId = this.data.destinationAccountId
       data.originalTransactionId = original.transactionId
+      data.originalVersion = original.version
     }
     if (this.data.mode === 'edit') {
       data.transactionId = this.data.transactionId
@@ -378,7 +348,7 @@ Page(Object.assign({}, require('./loan-context').createLoanContext({ api, sessio
         data = {
           transactionId: this.data.transactionId,
           version: this.data.version,
-          originalTransactionId: original.transactionId
+          originalTransactionId: original.transactionId, originalVersion: original.version
         }
       } else {
         const type = TYPE_OPTIONS[this.data.typeIndex].value

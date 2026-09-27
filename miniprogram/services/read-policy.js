@@ -22,7 +22,7 @@ const READ_POLICIES = Object.freeze({
   'dashboard.get': { ttl: Infinity, tags: ['accounts', 'transactions', 'categories'] },
   'transactions.list': { ttl: Infinity, tags: ['transactions', 'accounts', 'categories'] },
   'statistics.get': { ttl: Infinity, tags: ['transactions', 'categories'] },
-  'transactions.refundable': { ttl: Infinity, tags: ['transactions', 'accounts', 'categories'] }
+  'transactions.refundable': { ttl: Infinity, tags: ['transactions', 'accounts', 'categories', 'loans'] }
 })
 
 function mutationTags(action) {

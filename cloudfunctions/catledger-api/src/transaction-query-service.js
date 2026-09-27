@@ -157,37 +157,47 @@ async function queryTransactionPage(connection, uid, filters, cursor) {
   return rows
 }
 
-async function listRefundableRows(connection, uid, limit) {
+function refundFilters(data = {}) {
+  const pageSize=data.pageSize == null ? (data.limit == null ? 20 : data.limit) : data.pageSize
+  if(!Number.isInteger(pageSize)||pageSize<1||pageSize>(data.pageSize==null?100:40))throw ledgerError('VALIDATION_ERROR')
+  const month=data.month||null,range=month?parseMonth(month):null
+  const accountId=data.accountId?validateId(data.accountId):null
+  const originalTransactionId=data.originalTransactionId?validateId(data.originalTransactionId):null
+  const editingTransactionId=data.editingTransactionId?validateId(data.editingTransactionId):null
+  if(data.search!=null&&typeof data.search!=='string')throw ledgerError('VALIDATION_ERROR')
+  const search=(data.search||'').normalize('NFKC').trim()
+  if(Array.from(search).length>40)throw ledgerError('VALIDATION_ERROR')
+  const at=data.occurredLocalAt==null?null:require('./local-time').parseLocalDateTime(data.occurredLocalAt,data.timezoneOffsetMinutes).occurredAtUtc
+  return {pageSize,month,range,accountId,originalTransactionId,editingTransactionId,search,at}
+}
+async function listRefundableRows(connection, uid, filters, cursor) {
+  const conditions=[],values=[uid,filters.editingTransactionId,filters.editingTransactionId,uid]
+  if(filters.range){conditions.push('t.occurred_local_date>=? AND t.occurred_local_date<?');values.push(filters.range.startDate,filters.range.endDate)}
+  if(filters.accountId){conditions.push('t.source_account_id=?');values.push(filters.accountId)}
+  if(filters.originalTransactionId){conditions.push('t.transaction_id=?');values.push(filters.originalTransactionId)}
+  if(filters.at){conditions.push('t.occurred_at_utc<=?');values.push(filters.at)}
+  if(filters.search){conditions.push("(t.note LIKE ? OR c.name LIKE ? OR sa.name LIKE ?)");const search='%'+escapeLike(filters.search)+'%';values.push(search,search,search)}
+  if(cursor){conditions.push('(t.occurred_local_at<? OR (t.occurred_local_at=? AND t.transaction_id<?))');values.push(cursor.at.replace('T',' '),cursor.at.replace('T',' '),cursor.id)}
   const [rows] = await connection.execute(
-    `SELECT t.transaction_id AS transactionId, t.type,
-            t.source_account_id AS sourceAccountId, sa.name AS sourceAccountName,
-            t.destination_account_id AS destinationAccountId, da.name AS destinationAccountName,
-            t.category_id AS categoryId, c.name AS categoryName, c.system_key AS categorySystemKey, c.parent_id AS categoryParentId, cp.name AS categoryParentName, c.kind AS categoryKind,
-            t.amount_minor AS amountMinor, t.occurred_local_at AS occurredLocalAt,
-            t.timezone_offset_minutes AS timezoneOffsetMinutes, t.note, t.version,
-            COALESCE(refunds.refunded_minor, 0) AS refundedMinor
-       FROM catledger_transactions t
-       LEFT JOIN catledger_accounts sa ON sa.uid = t.uid AND sa.account_id = t.source_account_id
-       LEFT JOIN catledger_accounts da ON da.uid = t.uid AND da.account_id = t.destination_account_id
-       LEFT JOIN catledger_categories c ON c.uid = t.uid AND c.category_id = t.category_id
-       LEFT JOIN catledger_categories cp ON cp.uid = c.uid AND cp.category_id = c.parent_id
-       LEFT JOIN (
-         SELECT uid, original_transaction_id, SUM(amount_minor) AS refunded_minor
-           FROM catledger_transactions
-          WHERE uid = ? AND type = 'refund' AND deleted_at IS NULL
-          GROUP BY uid, original_transaction_id
-       ) refunds ON refunds.uid = t.uid AND refunds.original_transaction_id = t.transaction_id
-      WHERE t.uid = ? AND t.type = 'expense' AND t.deleted_at IS NULL
-        AND CAST(t.amount_minor AS DECIMAL(20, 0)) > COALESCE(refunds.refunded_minor, 0)
-      ORDER BY t.occurred_local_at DESC, t.transaction_id DESC
-      LIMIT ?`,
-    [uid, uid, limit]
-  )
-  return rows.map((row) => ({
-    ...transactionToPublic(row),
-    refundedMinor: minorUnitsToString(row.refundedMinor),
-    refundableMinor: (BigInt(minorUnitsToString(row.amountMinor)) - BigInt(minorUnitsToString(row.refundedMinor))).toString()
-  }))
+    `SELECT t.transaction_id AS transactionId,t.type,t.source_account_id AS sourceAccountId,sa.name AS sourceAccountName,
+      t.category_id AS categoryId,c.name AS categoryName,c.system_key AS categorySystemKey,c.parent_id AS categoryParentId,
+      cp.name AS categoryParentName,c.kind AS categoryKind,t.amount_minor AS amountMinor,t.occurred_local_at AS occurredLocalAt,
+      t.timezone_offset_minutes AS timezoneOffsetMinutes,t.note,t.version,COALESCE(refunds.refunded_minor,0) AS refundedMinor
+    FROM catledger_transactions t
+    LEFT JOIN catledger_accounts sa ON sa.uid=t.uid AND sa.account_id=t.source_account_id
+    LEFT JOIN catledger_categories c ON c.uid=t.uid AND c.category_id=t.category_id
+    LEFT JOIN catledger_categories cp ON cp.uid=c.uid AND cp.category_id=c.parent_id
+    LEFT JOIN (SELECT uid,original_transaction_id,SUM(amount_minor) AS refunded_minor FROM catledger_transactions
+      WHERE uid=? AND type='refund' AND deleted_at IS NULL AND (? IS NULL OR transaction_id<>?) GROUP BY uid,original_transaction_id) refunds
+      ON refunds.uid=t.uid AND refunds.original_transaction_id=t.transaction_id
+    WHERE t.uid=? AND t.type='expense' AND t.deleted_at IS NULL
+      AND CAST(t.amount_minor AS DECIMAL(20,0))>COALESCE(refunds.refunded_minor,0)
+      AND NOT EXISTS(SELECT 1 FROM catledger_loan_payment_transactions p WHERE p.uid=t.uid AND p.active_transaction_id=t.transaction_id)
+      AND NOT EXISTS(SELECT 1 FROM catledger_loan_charges f WHERE f.uid=t.uid AND (f.transaction_id=t.transaction_id OR f.balance_adjustment_id=t.transaction_id))
+      ${conditions.length?'AND '+conditions.join(' AND '):''}
+    ORDER BY t.occurred_local_at DESC,t.transaction_id DESC LIMIT ?`,[...values,filters.pageSize+1])
+  return rows.map(row=>({...transactionToPublic(row),refundedMinor:minorUnitsToString(row.refundedMinor),
+    refundableMinor:(BigInt(row.amountMinor)-BigInt(row.refundedMinor)).toString()}))
 }
 
 function createTransactionQueryService({ getPool }) {
@@ -250,15 +260,18 @@ function createTransactionQueryService({ getPool }) {
   }
 
   async function refundable(context) {
-    return executeLedgerRead({
-      getPool,
-      ...context,
-      operation: async (connection, uid) => {
-        const limit = context.data && context.data.limit == null ? 50 : context.data.limit
-        if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw ledgerError('VALIDATION_ERROR')
-        return { transactions: await listRefundableRows(connection, uid, limit) }
+    return executeLedgerRead({getPool,...context,consistentSnapshot:true,operation:async(connection,uid,revision)=>{
+      const data=context.data||{},filters=refundFilters(data),digest=digestRequest('transactions.refundable',filters)
+      const cursor=data.cursor?decodeCursor(context.subjectHash,data.cursor):null
+      if(cursor&&(cursor.action!=='transactions.refundable'||cursor.uid!==uid||cursor.digest!==digest||typeof cursor.at!=='string'||typeof cursor.id!=='string'))throw ledgerError('VALIDATION_ERROR')
+      if(cursor&&cursor.revision!==revision)throw ledgerError('READ_SNAPSHOT_CHANGED')
+      if(filters.editingTransactionId){
+        const [[editing]]=await connection.execute("SELECT type,deleted_at AS deletedAt FROM catledger_transactions WHERE uid=? AND transaction_id=?",[uid,filters.editingTransactionId])
+        if(!editing||editing.type!=='refund'||editing.deletedAt!=null)throw ledgerError('NOT_FOUND')
       }
-    })
+      const rows=await listRefundableRows(connection,uid,filters,cursor),transactions=rows.slice(0,filters.pageSize),last=transactions.at(-1)
+      return {transactions,nextCursor:rows.length>filters.pageSize?encodeCursor(context.subjectHash,{action:'transactions.refundable',uid,revision,digest,at:last.occurredLocalAt,id:last.transactionId}):null}
+    }})
   }
 
   return { list, refundable }

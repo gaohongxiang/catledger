@@ -70,6 +70,7 @@ function buildManualTransaction(data) {
     destinationAccountId,
     categoryId,
     originalTransactionId,
+    ...(data.type==='refund'&&data.originalVersion!==undefined?{originalVersion:parseVersion(data.originalVersion)}:{}),
     amountMinor: amount.toString(),
     note,
     ...time

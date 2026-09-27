@@ -53,6 +53,13 @@
       </view>
     </category-picker>
 
+    <block wx:if="{{typeOptions[typeIndex].value === 'refund'}}">
+      <picker class="form-row content-inset" mode="date" fields="month" value="{{refundMonth}}" data-field="refundMonth" bindchange="refundFilter" disabled="{{saving}}"><text class="form-label">消费月份</text><text class="form-value">{{refundMonth || '全部月份'}}</text></picker>
+      <picker class="form-row content-inset" range="{{refundAccounts}}" range-key="name" value="{{refundAccountIndex}}" data-field="refundAccountIndex" bindchange="refundFilter" disabled="{{saving}}"><text class="form-label">消费账户</text><text class="form-value">{{refundAccounts[refundAccountIndex].name}}</text></picker>
+      <view class="form-row content-inset"><text class="form-label">查找原消费</text><input class="form-value" value="{{refundSearch}}" maxlength="40" placeholder="备注、分类或账户关键词" data-field="refundSearch" bindinput="refundFilter" disabled="{{saving}}" /></view>
+      <view class="form-row content-inset"><button class="secondary-button" bindtap="searchRefunds" disabled="{{saving || refundablesLoading}}">查询原消费</button><button class="secondary-button" bindtap="clearRefundFilters" disabled="{{saving}}">清除筛选</button></view>
+      <text class="loan-context-note content-inset">贷款费用需从分期费用详情办理退费。</text>
+    </block>
     <picker wx:if="{{typeOptions[typeIndex].value === 'refund'}}" mode="selector" range="{{refundableTransactions}}" range-key="pickerLabel" value="{{originalIndex < 0 ? 0 : originalIndex}}" bindchange="changeOriginal" disabled="{{saving || !refundablesReady}}">
       <view class="form-row content-inset">
         <text class="form-label">原支出</text>
@@ -60,6 +67,10 @@
       </view>
     </picker>
 
+    <view wx:if="{{typeOptions[typeIndex].value === 'refund' && (refundCanPrevious || refundNextCursor)}}" class="form-row content-inset">
+      <button class="secondary-button" bindtap="previousRefundPage" disabled="{{saving || refundablesLoading || !refundCanPrevious}}">上一页原消费</button>
+      <button class="secondary-button" bindtap="nextRefundPage" disabled="{{saving || refundablesLoading || !refundNextCursor}}">下一页原消费</button>
+    </view>
     <view wx:if="{{mode !== 'link-refund'}}" class="form-row form-row-pair content-inset">
       <picker class="half-picker" mode="date" value="{{date}}" bindchange="changeDate" disabled="{{saving}}">
         <view><text class="form-label">日期</text><text class="form-value">{{date}}</text></view>
@@ -91,6 +102,7 @@
     </view>
     <button wx:if="{{detail.canEditCategory && categoryDirty}}" class="primary-button save-button" loading="{{saving}}" disabled="{{saving || !catalogReady || categoryIndex < 0}}" bindtap="saveDetailCategory">保存分类</button>
   </block>
+  <button wx:if="{{transactionId && readonlyDetail && loanContext.transaction.type === 'expense' && !loanManaged}}" class="secondary-button" bindtap="startRefund" disabled="{{saving || loanContextLoading}}">为这笔消费记退款</button>
   <ui-state wx:if="{{transactionId && loanContextLoading}}" description="正在核对贷款与分期关联…" />
   <view wx:if="{{transactionId && loanContextError}}" class="catalog-retry content-inset"><text class="catalog-retry-message">{{loanContextError}}</text><button class="catalog-retry-button" bindtap="loadLoanContext" disabled="{{loanContextLoading}}">重试关联信息</button></view>
   <view wx:if="{{loanContext && loanContext.state !== 'none'}}" class="loan-context">
