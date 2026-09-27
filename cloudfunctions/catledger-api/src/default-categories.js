@@ -29,7 +29,7 @@ const ROOT_CATEGORIES = Object.freeze([
 
 // Adapted from ezBookkeeping presets (MIT); existing root keys and financial semantics are retained.
 const CHILDREN = {
-  food: [["meal", "餐食"], ["drink", "饮品"], ["snack", "水果零食"]],
+  food: [["meal", "吃饭"], ["drink", "饮品"], ["snack", "水果零食"]],
   transport: [["public", "公共交通"], ["taxi", "打车租车"], ["car", "养车用车"], ["train", "火车"], ["flight", "机票"]],
   shopping__clothing: [["shopping__jewelry", "饰品"]],
   life_services: [["housing__housekeeping", "家政服务"], ["communication__postage", "快递邮寄"]],

@@ -47,7 +47,7 @@ test('真实预设目录每项有图标，改名保持图标，两级关系不�
 test('统计汇总只计算一次，未细分与未分类分开，跨期退款净额保持整数精度', () => {
   const result = rollupCategories([
     { categoryId: 'p', categoryName: '餐饮', amountMinor: '100', hasChildren: true },
-    { categoryId: 'a', parentId: 'p', parentName: '餐饮', categoryName: '餐食', amountMinor: '9007199254740993' },
+    { categoryId: 'a', parentId: 'p', parentName: '餐饮', categoryName: '吃饭', amountMinor: '9007199254740993' },
     { categoryId: 'b', parentId: 'p', parentName: '餐饮', categoryName: '饮品', amountMinor: '-80' },
     { categoryId: null, categoryName: '未分类', amountMinor: '3', hasChildren: '0' }
   ], 9007199254741016n)
