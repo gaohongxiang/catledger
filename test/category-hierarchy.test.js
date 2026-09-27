@@ -25,17 +25,24 @@ test('可选层级搜索保留原索引，选择子类展开所属大类，允�
   assert.equal(tree.selectionGroups(rows, '找不到', {}, -1).length, 0)
   assert.equal(tree.selectionGroups([{ categoryId: 'c', parentId: 'p', parentName: '大类', name: '子类' }], '大类', {}, -1)[0].displayName, '大类 / 子类')
 })
-test('真实预设目录每项有图标，改名保持图标，子类沿用所属大类视觉', () => {
+test('真实预设目录每项有图标，改名保持图标，两级关系不依赖键名前缀', () => {
   const keys = new Set(DEFAULT_CATEGORIES.map(row => row.systemKey))
   assert.equal(keys.size, DEFAULT_CATEGORIES.length)
   for (const row of DEFAULT_CATEGORIES) {
-    if (row.parentSystemKey) { assert.ok(keys.has(row.parentSystemKey)); assert.equal(DEFAULT_CATEGORIES.find(p => p.systemKey === row.parentSystemKey).kind, row.kind) }
+    if (row.parentSystemKey) {
+      assert.ok(keys.has(row.parentSystemKey))
+      const parent = DEFAULT_CATEGORIES.find(p => p.systemKey === row.parentSystemKey)
+      assert.equal(parent.kind, row.kind); assert.ok(!parent.parentSystemKey)
+    }
     const icon = palette.iconFor(row.name, row.systemKey)
     assert.ok(fs.existsSync(path.join(__dirname, '../miniprogram', icon)))
     assert.equal(palette.iconFor('重命名后的合成分类', row.systemKey), icon)
     assert.equal(palette.colorNameFor('重命名后的合成分类', row.systemKey), palette.colorNameFor(row.name, row.systemKey))
   }
   assert.equal(palette.iconFor('自定义类别'), '/assets/icons/categories/other.svg')
+  assert.notEqual(palette.iconFor('', 'food__drink'), palette.iconFor('', 'food__meal'))
+  assert.notEqual(palette.iconFor('', 'entertainment__pets'), palette.iconFor('', 'entertainment'))
+  assert.notEqual(palette.iconFor('', 'shopping__clothing'), palette.iconFor('', 'shopping__electronics'))
 })
 test('统计汇总只计算一次，未细分与未分类分开，跨期退款净额保持整数精度', () => {
   const result = rollupCategories([

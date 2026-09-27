@@ -1,7 +1,7 @@
 const { digestParts } = require('./digest')
 
 const CATEGORY_ALIAS_VERSION = 'category-alias-v1'
-const CATEGORY_RULE_VERSION = 'category-rules-v2'
+const CATEGORY_RULE_VERSION = 'category-rules-v3'
 
 const FORBIDDEN_NAMES = new Set([
   '商户消费', '扫二维码付款', '充值', '提现', '转账', '红包', '微信红包',
@@ -12,12 +12,17 @@ const ALIPAY_SYSTEM_KEYS = Object.freeze({
   餐饮美食: 'food',
   交通出行: 'transport',
   爱车养车: 'transport__car',
-  服饰装扮: 'shopping',
+  服饰装扮: 'shopping__clothing',
   日用百货: 'shopping__houseware',
   家居家装: 'shopping',
   数码电器: 'shopping__electronics',
   美容美发: 'shopping__beauty',
   宠物: 'entertainment__pets',
+  运动户外: 'entertainment__fitness',
+  酒店旅游: 'entertainment__travel',
+  文化休闲: 'entertainment',
+  生活服务: 'life_services',
+  公益捐赠: 'social__donations',
   教育培训: 'education',
   医疗健康: 'medical',
   保险: 'finance__insurance',

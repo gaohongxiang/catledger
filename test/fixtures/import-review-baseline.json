@@ -1,0 +1,326 @@
+{
+  "clock": "2026-09-24T00:00:00Z",
+  "uuid": "fixed sequential UUIDs; no ID elision or remapping",
+  "samples": [
+    {
+      "name": "prepare",
+      "sqlCount": 75,
+      "sqlOrderHash": "cb8c07f04c40529ea410f08d8b5ba872e88170bc93087ddbc94c83ee6a7594c4",
+      "responseBytes": 943,
+      "resultHash": "7229c14ed3d2af4b51013bc17e401ee2ab057ab1ff085c4e90996b7ad6f122f9"
+    },
+    {
+      "name": "map-accounts",
+      "sqlCount": 39,
+      "sqlOrderHash": "96546f2e68a2dddadee0c9d734e22029efa6b49773f525f981d458c0b1bd7b73",
+      "responseBytes": 956,
+      "resultHash": "1d3983a824b2effeab120c91a916b742f6b38da326111aec36d164d0c806a751"
+    },
+    {
+      "name": "map-replay",
+      "sqlCount": 10,
+      "sqlOrderHash": "fdda5ff0a44ac8ddf89a39f5223f7ff02351c2110a5bc29b114520f1beb76e64",
+      "responseBytes": 956,
+      "resultHash": "68622734744743e64d26c63b2813c84dcf89f5fbd3f72bf62efabac39c26d1b2"
+    },
+    {
+      "name": "refresh-no-candidates",
+      "sqlCount": 16,
+      "sqlOrderHash": "27a66e2a8e06e92f7516a074b8e15af11a2f5f90fd5e48fe5810c1f45518a955",
+      "responseBytes": 954,
+      "resultHash": "9879e7e8b79e881851b85fda17a99d30924a36e044c1436bccb56a82fa931e1e"
+    },
+    {
+      "name": "refresh-again",
+      "sqlCount": 16,
+      "sqlOrderHash": "27a66e2a8e06e92f7516a074b8e15af11a2f5f90fd5e48fe5810c1f45518a955",
+      "responseBytes": 954,
+      "resultHash": "69167ebcbde2b40110e6328573f57239780f450dc4ef4620e3146eb9dc88546c"
+    },
+    {
+      "name": "summary",
+      "sqlCount": 18,
+      "sqlOrderHash": "dcca17d6c673d5db60c22f392c82fe2a219d93748cbd6b0eeb5451393343bf8e",
+      "responseBytes": 3188,
+      "resultHash": "75f199e54053c02f3283b5782873ccb565be14127a5333d9fc86f4dd3fabe577"
+    },
+    {
+      "name": "event-page",
+      "sqlCount": 9,
+      "sqlOrderHash": "755f11018119bc45036893349b636d01917ac307af73372ca3426ef1833c5618",
+      "responseBytes": 3187,
+      "resultHash": "8d575ca46d4769369a509891cb0d6250b6f68ebd251530c6ac9d169caf20a64c"
+    },
+    {
+      "name": "post",
+      "sqlCount": 61,
+      "sqlOrderHash": "be3f6801a06519434a8575c20a4cfa421dbae658dc25f9640ff5034ff3ccc7aa",
+      "responseBytes": 992,
+      "resultHash": "4bbdd0a737e4db8ae61a36b579782bb88f3c4fe5c3e143e5e80e23b626f73b23"
+    },
+    {
+      "name": "post-replay",
+      "sqlCount": 24,
+      "sqlOrderHash": "7ad1fbbe6dc2dc5309c5f90aaab955e283cff63e64d5375c1116942c079ec076",
+      "responseBytes": 992,
+      "resultHash": "bf339e260b10606ec9fd7fc39711f0f5c6ec2854cfe190812ca754869e448ad4"
+    },
+    {
+      "name": "prepare-history",
+      "sqlCount": 88,
+      "sqlOrderHash": "1bc2edce0aa82032e00d059f663256b6bdce14d953aa6c6d9a6823c0c30d4d2f",
+      "responseBytes": 943,
+      "resultHash": "3c65c08e3ba3889de277e0b707e360b2ec0ab191c6b62aa680beebff6bc530f0"
+    },
+    {
+      "name": "map-history-accounts",
+      "sqlCount": 41,
+      "sqlOrderHash": "7fbd629b659092149a86f025c59b4515909488723955c8deeb8a9daf5fe48db5",
+      "responseBytes": 956,
+      "resultHash": "63c761733d755bef57ed8c3c51c8a71208a05b84c8be246d950ba69e93dbd6da"
+    },
+    {
+      "name": "category-fields",
+      "sqlCount": 32,
+      "sqlOrderHash": "6cace22debad1ca5ac559683d53ec57b2b0e0829c92c14ae2e954222d2b6a0a5",
+      "responseBytes": 941,
+      "resultHash": "05f4f89f42d1d4bf3be20245fe477533c8c240838031d47263894b4b73326683"
+    },
+    {
+      "name": "history-distinct",
+      "sqlCount": 29,
+      "sqlOrderHash": "ae8e67b315fb66f3abe3ef440b78a25fe7e06b2e0bee0008a490fa81acd84547",
+      "responseBytes": 941,
+      "resultHash": "679cbb5404f2fa2fe137f65dbe1c017d9c351c704cfa9a8abdc637babeca79a9"
+    },
+    {
+      "name": "post-distinct",
+      "sqlCount": 66,
+      "sqlOrderHash": "7efbac2f6e7fde991e5354af7bc14f4fd1e1ae754a8dba978477940cb07fcc5e",
+      "responseBytes": 992,
+      "resultHash": "f1b45662f279985b8192e4745559173aa7453c8802e8ed590c5a48e7e3991dd5"
+    }
+  ],
+  "graph": [
+    {
+      "table": "catledger_accounts",
+      "rows": 1,
+      "hash": "3b904416becc3537d6430e4dac9e6f71cb223c6cd635972d60f08a3032ea4161"
+    },
+    {
+      "table": "catledger_categories",
+      "rows": 72,
+      "hash": "81cf954ec78ced7afaf406ecc5f22856ea2b68c951cd6f45ae4cb7ab6efc584e"
+    },
+    {
+      "table": "catledger_data_exports",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_economic_event_relations",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_economic_event_transactions",
+      "rows": 4,
+      "hash": "68a346dc891daa0978abe53e117e14f8a55816e13b6a182d10089d3d76a5f51e"
+    },
+    {
+      "table": "catledger_economic_events",
+      "rows": 4,
+      "hash": "d787ba3bcb641c7f2571367249bb494034117c7a40d936e4f992b5d6865a6b89"
+    },
+    {
+      "table": "catledger_event_evidence",
+      "rows": 4,
+      "hash": "7d0d1f1073fc2f61833189da1b6b839fd58807887fbbc1a8e0b426966c17d185"
+    },
+    {
+      "table": "catledger_finance_actions",
+      "rows": 10,
+      "hash": "4b6384e96a11f87f8b3c59c072d5b563dfff6ad7963ad623e16931bc1c7a696a"
+    },
+    {
+      "table": "catledger_finance_update_account_drafts",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_finance_update_account_mapping_drafts",
+      "rows": 3,
+      "hash": "80fec2007ad30b8c05547b525c9ea430d338d5cc285b9c986924e117c7b122bf"
+    },
+    {
+      "table": "catledger_finance_update_postings",
+      "rows": 2,
+      "hash": "5f41ab7f668f7af47470f36643506717c0a02f12a16359511e115ba941b59e71"
+    },
+    {
+      "table": "catledger_finance_update_sources",
+      "rows": 2,
+      "hash": "81ea176309c1898a4fa7506604c30cd20e06ea4e6806784be6388f043fac4b76"
+    },
+    {
+      "table": "catledger_finance_updates",
+      "rows": 2,
+      "hash": "bf38360a8c544e84a09bf6cf4f4ed01aa225b5988339d0b50e981f0011af5e9a"
+    },
+    {
+      "table": "catledger_import_account_mappings",
+      "rows": 1,
+      "hash": "1e6609d96bff7d20c4f8c4c1d52f643c43f8b5382b4aae2a8a499ad26d390a18"
+    },
+    {
+      "table": "catledger_import_batches",
+      "rows": 2,
+      "hash": "fdcaa8e13351e73768969236993e073a00ff722f48925d363dc45a3ddb595357"
+    },
+    {
+      "table": "catledger_import_category_mappings",
+      "rows": 2,
+      "hash": "c3911d18ae161dbfb10587e13f3024567891a68411012951976808be9674fa4b"
+    },
+    {
+      "table": "catledger_import_files",
+      "rows": 2,
+      "hash": "bb25dd0ede635f617d5511bc4416487ff3bb40bc0feeb38761fbaf14553d913b"
+    },
+    {
+      "table": "catledger_import_rows",
+      "rows": 4,
+      "hash": "002b386c5189a76fe73bdbf7ede2276e37e23a4bf9cbb801a957f6f5d962d02f"
+    },
+    {
+      "table": "catledger_import_source_profiles",
+      "rows": 2,
+      "hash": "de5fa78c778c38ff4a10b74508677cde8a7d810932e984657097db0c94d0ec9a"
+    },
+    {
+      "table": "catledger_installment_bindings",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_installment_items",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_charge_allocations",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_charge_audit",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_charge_contracts",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_charge_sources",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_charges",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_payment_allocations",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_payment_corrections",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_payment_sources",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_payment_transactions",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_payments",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_period_allocations",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_period_revisions",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_periods",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_repayment_details",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loan_replaced_transactions",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_loans",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "table": "catledger_mutation_receipts",
+      "rows": 18,
+      "hash": "9889197e51478bd7182553a6b7f78925f9b02f56d689e6cbc156a8507e67e9e1"
+    },
+    {
+      "table": "catledger_review_issue_members",
+      "rows": 12,
+      "hash": "507769700bf4f67df908bddaa47ab721303c4e49474e3b3b62a58d0378b203c0"
+    },
+    {
+      "table": "catledger_review_issues",
+      "rows": 7,
+      "hash": "a9e0162e303b129529e71fa97a12deb972573b03b6d6fe348e76b35bfbdf3e7d"
+    },
+    {
+      "table": "catledger_source_identities",
+      "rows": 4,
+      "hash": "3e2dfaee2a7a88f81589c0a70417099b59da7d0fd739a7d2c8c6512e32c994d7"
+    },
+    {
+      "table": "catledger_transactions",
+      "rows": 5,
+      "hash": "41b41e2d6e5a408557629c5455b710d91d393b9347886ce7b44a98dec1c8dc36"
+    },
+    {
+      "table": "catledger_user_identities",
+      "rows": 1,
+      "hash": "38821bfb2b2543adf61177d772370c421adbac0472845ecb4c86a9a9d5a13d1d"
+    },
+    {
+      "table": "catledger_users",
+      "rows": 1,
+      "hash": "662a20fdc82eeaac4dcd5c45cfe2116e60f6755b22b0cc3795aed055cedc0798"
+    }
+  ]
+}

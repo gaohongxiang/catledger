@@ -12,6 +12,13 @@ test('支付宝明确分类保守映射到当前账本系统分类', function ()
   assert.equal(buildCategoryEvidence('alipay', row('交通出行', '', '')).deterministicSystemKey, 'transport')
   assert.equal(buildCategoryEvidence('alipay', row('医疗健康', '', '')).deterministicSystemKey, 'medical')
   assert.equal(buildCategoryEvidence('alipay', row('商业服务', '', '')).deterministicSystemKey, null)
+  assert.equal(buildCategoryEvidence('alipay', row('服饰装扮', '', '')).deterministicSystemKey, 'shopping__clothing')
+  assert.equal(buildCategoryEvidence('alipay', row('运动户外', '', '')).deterministicSystemKey, 'entertainment__fitness')
+  assert.equal(buildCategoryEvidence('alipay', row('酒店旅游', '', '')).deterministicSystemKey, 'entertainment__travel')
+  assert.equal(buildCategoryEvidence('alipay', row('生活服务', '', '')).deterministicSystemKey, 'life_services')
+  for (const name of ['信用借还', '账户存取', '退款', '转账红包']) {
+    assert.equal(buildCategoryEvidence('alipay', row(name, '', '')).deterministicSystemKey, null)
+  }
 })
 
 test('分类别名稳定摘要且排除宽泛交易类型', function () {
@@ -29,5 +36,5 @@ test('平台名称不猜细分类，明确保费和邮寄证据建议对应子�
   assert.equal(buildCategoryEvidence('wechat', row('商户消费', '合成商户', '保费')).deterministicSystemKey, 'finance__insurance')
   assert.equal(buildCategoryEvidence('wechat', row('商户消费', '合成商户', '寄件')).deterministicSystemKey, 'communication__postage')
   assert.equal(buildCategoryEvidence('alipay', row('宠物', '', '')).deterministicSystemKey, 'entertainment__pets')
-  assert.equal(buildCategoryEvidence('alipay', row('保险', '', '')).ruleVersion, 'category-rules-v2')
+  assert.equal(buildCategoryEvidence('alipay', row('保险', '', '')).ruleVersion, 'category-rules-v3')
 })

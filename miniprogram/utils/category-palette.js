@@ -13,6 +13,8 @@ const COLOR_BY_NAME = Object.freeze({
   '餐饮': 'orange',
   '交通': 'blue',
   '购物': 'purple',
+  '服饰鞋包': 'purple', '衣物鞋包': 'purple', '日用家居': 'orange', '数码电器': 'blue', '美容美发': 'red',
+  '运动健身': 'green', '宠物': 'orange', '旅行': 'blue', '生活服务': 'teal',
   '住房': 'teal', '居住': 'teal', '生活缴费': 'yellow', '人情': 'red', '工资': 'teal', '奖金': 'yellow', '兼职': 'blue', '理财收益': 'green', '礼金': 'red', '通讯': 'blue', '金融保险': 'teal',
   '医疗': 'red',
   '教育': 'yellow',
@@ -23,6 +25,8 @@ const ICON_BY_NAME = Object.freeze({
   '餐饮': 'dining',
   '交通': 'transport',
   '购物': 'shopping',
+  '服饰鞋包': 'clothing', '衣物鞋包': 'clothing', '日用家居': 'houseware', '数码电器': 'electronics', '美容美发': 'beauty',
+  '运动健身': 'fitness', '宠物': 'pets', '旅行': 'travel', '生活服务': 'life-services',
   '住房': 'housing', '居住': 'housing', '生活缴费': 'utilities', '人情': 'social', '工资': 'salary', '奖金': 'bonus', '兼职': 'part-time', '理财收益': 'investment', '礼金': 'gift', '通讯': 'communication', '金融保险': 'finance', '其他支出': 'other', '其他收入': 'other',
   '医疗': 'medical',
   '教育': 'education',
@@ -36,9 +40,36 @@ const STYLE_BY_KEY = Object.freeze({
   education: ['education', 'yellow'], entertainment: ['entertainment', 'green'], social: ['social', 'red'],
   communication: ['communication', 'blue'], finance: ['finance', 'teal'], other_expense: ['other', 'grey'],
   salary: ['salary', 'teal'], bonus: ['bonus', 'yellow'], part_time: ['part-time', 'blue'],
-  investment: ['investment', 'green'], gift: ['gift', 'red'], other_income: ['other', 'grey']
+  investment: ['investment', 'green'], gift: ['gift', 'red'], other_income: ['other', 'grey'],
+  shopping__clothing: ['clothing', 'purple'], shopping__houseware: ['houseware', 'orange'],
+  shopping__electronics: ['electronics', 'blue'], shopping__beauty: ['beauty', 'red'],
+  entertainment__fitness: ['fitness', 'green'], entertainment__pets: ['pets', 'orange'],
+  entertainment__travel: ['travel', 'blue'], life_services: ['life-services', 'teal'],
+  food__meal: ['meal', 'orange'], food__drink: ['drink', 'orange'], food__snack: ['snack', 'orange'],
+  transport__public: ['bus', 'blue'], transport__taxi: ['taxi', 'blue'], transport__car: ['car', 'blue'],
+  transport__train: ['train', 'blue'], transport__flight: ['flight', 'blue'],
+  shopping__jewelry: ['jewelry', 'purple'], housing__rent: ['rent', 'teal'], housing__repairs: ['repairs', 'teal'],
+  housing__housekeeping: ['housekeeping', 'teal'], communication__postage: ['postage', 'teal'],
+  utilities__water_power: ['water-power', 'yellow'], utilities__gas: ['gas', 'yellow'],
+  utilities__property: ['property', 'yellow'], utilities__heating: ['heating', 'yellow'],
+  medical__treatment: ['treatment', 'red'], medical__medicine: ['medicine', 'red'], medical__device: ['medical', 'red'],
+  education__books: ['education', 'yellow'], education__courses: ['courses', 'yellow'], education__exams: ['exams', 'yellow'],
+  entertainment__party: ['party', 'green'], entertainment__shows: ['shows', 'green'],
+  entertainment__games: ['entertainment', 'green'], entertainment__subscriptions: ['subscriptions', 'green'],
+  social__gifts: ['gift', 'red'], social__donations: ['donations', 'red'],
+  communication__phone: ['communication', 'blue'], communication__internet: ['internet', 'blue'],
+  finance__insurance: ['insurance', 'teal'], finance__tax: ['tax', 'teal'], finance__service: ['service', 'teal'],
+  finance__interest: ['interest', 'teal'], finance__fine: ['fine', 'teal'],
+  salary__base: ['salary', 'teal'], salary__overtime: ['overtime', 'teal'],
+  bonus__performance: ['performance', 'yellow'], bonus__annual: ['annual', 'yellow'],
+  part_time__side_job: ['part-time', 'blue'], investment__returns: ['investment', 'green'],
+  investment__rental: ['rental-income', 'green'], investment__interest: ['interest-income', 'green'],
+  gift__gift_money: ['gift', 'red'], gift__winnings: ['winnings', 'yellow']
 })
-function styleFor(systemKey) { return STYLE_BY_KEY[String(systemKey || '').split('__')[0]] }
+function styleFor(systemKey) {
+  const key = String(systemKey || '')
+  return STYLE_BY_KEY[key] || STYLE_BY_KEY[key.split('__')[0]]
+}
 function colorNameFor(name, systemKey) {
   const style = styleFor(systemKey)
   return style ? style[1] : COLOR_BY_NAME[name] || 'grey'
