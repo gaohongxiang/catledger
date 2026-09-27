@@ -1,12 +1,14 @@
 const session = require('../../services/page-read-session')
 const model = require('./detail-model')
 const PAGE_SIZE = 20
+const snapshot = require('./installment-snapshot')
 
 function create(api) {
   return {
     applyDetailLoan(loan) {
       const key = loan.loanId + ':' + loan.version
       if (this._detailKey !== key) {
+        const draft=this._detailKey&&this._detailKey.startsWith(loan.loanId+':')?(this.data.repaymentRows||[]).filter(row=>this._repaymentInitial&&this._repaymentInitial.has(row.periodNumber)&&this._repaymentInitial.get(row.periodNumber)!==row.paid):[]
         this._detailKey = key
         this._detailReady = false
         this._detailGeneration = (this._detailGeneration || 0) + 1
@@ -15,10 +17,10 @@ function create(api) {
         this._detailHistory = []
         this._detailNext = null
         this._repaymentInitial = null
-        this.setData({ repaymentRows: [], repaymentChoiceCount: 0, repaymentSelectedCount: 0, repaymentDirtyCount: 0, periodRows: [], scheduleMore: false, detailError: '' })
+        this.setData({ repaymentRows: draft, repaymentChoiceCount: 0, repaymentSelectedCount: 0, repaymentDirtyCount: 0, periodRows: [], scheduleMore: false, detailError: '' })
         this.syncRepaymentAlert()
       }
-      if (this._periodAction === 'loans.installments' && this._detailReady && api.isFresh && !api.isFresh(this._periodAction || 'loans.periods', { loanId: loan.loanId, pageSize: PAGE_SIZE })) this._detailReady = false
+      if (this._periodAction === 'loans.installments' && this._detailReady && api.isFresh && !api.isFresh(this._periodAction, { loanId: loan.loanId, pageSize: PAGE_SIZE, detailSnapshot:true })) this._detailReady = false
       this.setData({ detail: model.build(loan, this._detailView, this._detailPreview) })
     },
     async loadDetail() {
@@ -29,12 +31,19 @@ function create(api) {
       this._periodAction = loan.kind === 'installment' && input ? 'loans.installments' : 'loans.periods'
       const options = { force: !!this._detailForce }; this._detailForce = false
       this.setData({ detailLoading: true, detailError: '' })
-      const results = await Promise.allSettled([
-        api.callApi(this._periodAction, { loanId: loan.loanId, pageSize: PAGE_SIZE }, options),
-        input ? api.callApi('loans.previewPlan', input, options) : Promise.resolve(null)
-      ])
+      const tracked=this._periodAction==='loans.installments'
+      const results = await Promise.allSettled([api.callApi(this._periodAction, { loanId: loan.loanId, pageSize: PAGE_SIZE, ...tracked?{detailSnapshot:true}:{} }, options)])
       if (!valid()) return
-      const periods = results[0], preview = results[1]
+      const periods = results[0]
+      let preview
+      if(periods.status==='fulfilled'&&periods.value.snapshot){
+        try{const value=snapshot.unpack(periods.value,loan);periods.value=value.view;preview={status:'fulfilled',value:value.preview}}
+        catch(error){periods.status='rejected';periods.reason=error;preview={status:'rejected',reason:error}}
+      }else{
+        // 兼容旧服务响应与普通贷款；失败保持独立成本展示，不接纳半份历史选择。
+        ;[preview]=await Promise.allSettled([input?api.callApi('loans.previewPlan',input,options):Promise.resolve(null)])
+      }
+      if (!valid()) return
       // 分页只限制读取大小；需要选择的历史期次一起展示，不能在第20期截断。
       if (periods.status === 'fulfilled' && this._periodAction === 'loans.installments') {
         try {

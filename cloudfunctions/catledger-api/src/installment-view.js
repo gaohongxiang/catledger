@@ -23,11 +23,14 @@ function buildView(loan, savedPeriods = [], items = [], today = new Date(Date.no
   const saved = new Map(savedPeriods.map(row => [Number(row.periodNumber), row]))
   const through=Math.min(Number(loan.scheduleTerms),Math.max(Number(progress.through)||0,0))
   const currentNumber = (original.find(row => row.dueDate >= today) || original.at(-1) || {}).periodNumber
+  const sourcesByNumber=new Map(),prepaidByNumber=new Map()
+  for(const item of items)if(item.active!==false){const n=Number(item.periodNumber);if(!sourcesByNumber.has(n))sourcesByNumber.set(n,[]);sourcesByNumber.get(n).push(item)}
+  for(const item of prepaid){const n=Number(item.periodNumber);prepaidByNumber.set(n,(prepaidByNumber.get(n)||0n)+BigInt(item.amountMinor))}
   const rows = original.map(plan => {
     const old = saved.get(plan.periodNumber), row = { ...plan, ...old }, exception = exceptions[plan.periodNumber]
-    const prepaidFee=prepaid.filter(p=>Number(p.periodNumber)===plan.periodNumber).reduce((sum,p)=>sum+BigInt(p.amountMinor),0n)
+    const prepaidFee=prepaidByNumber.get(plan.periodNumber)||0n
     if(prepaidFee>0n){row.paidFeeMinor=String(BigInt(row.paidFeeMinor||'0')+prepaidFee);row.unpaidFeeMinor=String(BigInt(row.feeMinor)>BigInt(row.paidFeeMinor)?BigInt(row.feeMinor)-BigInt(row.paidFeeMinor):0n)}
-    const sources = items.filter(item => Number(item.periodNumber) === plan.periodNumber && item.active !== false)
+    const sources = sourcesByNumber.get(plan.periodNumber)||[]
     const differences = sources.filter(item => item.amountMinor != null && String(item.amountMinor) !== String(row[item.component + 'Minor'])).map(item => item.component)
     const actualPaid=old&&(old.status==='paid'||prepaidFee>0n&&FIELDS.every(f=>BigInt(row['paid'+f[0].toUpperCase()+f.slice(1)+'Minor']||'0')>=BigInt(row[f+'Minor']))),actualPartial=old&&!actualPaid&&old.status==='partial'
     const historyFact = (progress.historyFacts||{})[plan.periodNumber]

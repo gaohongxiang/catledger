@@ -23,7 +23,11 @@ async function populateTracking(c,uid,loans) {
   const [periods]=await c.execute(PERIOD_SQL+` WHERE p.uid=? AND p.loan_id IN (${marks}) GROUP BY p.uid,p.period_id`,[uid,...ids])
   const [items]=await c.execute(ITEM_SELECT+` WHERE i.uid=? AND i.loan_id IN (${marks}) AND i.active=1`,[uid,...ids])
   const prepaid=await require('./installment-prepaid').prepaidFees(c,uid,ids)
-  const summaries=new Map(tracked.map(loan=>[loan.loanId,buildView(loan,periods.filter(p=>p.loanId===loan.loanId).map(publicPeriod),items.filter(i=>i.loanId===loan.loanId).map(publicItem),undefined,prepaid.filter(p=>p.loanId===loan.loanId)).summary]))
+  const grouped=new Map(ids.map(id=>[id,{periods:[],items:[],prepaid:[]}]))
+  for(const row of periods)grouped.get(row.loanId).periods.push(publicPeriod(row))
+  for(const row of items)grouped.get(row.loanId).items.push(publicItem(row))
+  for(const row of prepaid)grouped.get(row.loanId).prepaid.push(row)
+  const summaries=new Map(tracked.map(loan=>{const value=grouped.get(loan.loanId);return [loan.loanId,buildView(loan,value.periods,value.items,undefined,value.prepaid).summary]}))
   return loans.map(loan=>({...loan,installmentSummary:summaries.get(loan.loanId)||null}))
 }
 function size(data) { const n=data.pageSize==null?20:data.pageSize;if(!Number.isInteger(n)||n<1||n>40)throw ledgerError('VALIDATION_ERROR');return n }
@@ -41,7 +45,9 @@ function createInstallmentService({getPool,selectLoan}) {
     return read(context,async(c,uid,revision)=>{
       const data=context.data,loan=await selectLoan(c,uid,data.loanId),view=await loadView(c,uid,loan),limit=size(data)
       const cursor=data.cursor?decodeCursor(context.subjectHash,data.cursor):null
+      if(data.detailSnapshot!==undefined&&typeof data.detailSnapshot!=='boolean'||data.detailSnapshot&&cursor)throw ledgerError('VALIDATION_ERROR')
       if (cursor && (cursor.action!=='loans.installments'||cursor.uid!==uid||cursor.loanId!==loan.loanId||cursor.version!==Number(loan.version)||cursor.revision!==revision)) throw ledgerError('CONFLICT')
+      if(data.detailSnapshot)return {loanId:loan.loanId,loanVersion:Number(loan.version),archived:loan.archivedAt!=null,summary:view.summary,items:[],nextCursor:null,snapshot:require('./installment-snapshot').pack(view)}
       const offset=cursor?cursor.offset:0
       return {loanId:loan.loanId,loanVersion:Number(loan.version),archived:loan.archivedAt!=null,summary:view.summary,
         items:view.rows.slice(offset,offset+limit),nextCursor:offset+limit<view.rows.length?encodeCursor(context.subjectHash,

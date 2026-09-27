@@ -30,10 +30,13 @@ test('明确还款：真实 MySQL 原子入账、延期关联、幂等及导入'
     const expenses=async()=> (await api('statistics.get',{ month:'2026-09' })).summary.expenseMinor
     const loan=await api('loans.create',{ requestId:randomUUID(),name:'合成借款',kind:'borrowing',accountId:debt,baselinePrincipalMinor:'10000',baselineDate:'2026-08-01' })
     let first
-    await t.test('普通转账不会成为待办，信用卡也不接受明确借款确认',async()=>{
+    await t.test('普通转账不自动成为待办；信用卡仅提供主动分期分配，不接受明确借款确认',async()=>{
       for(const target of [debt,credit]) {
         const tx=await api('transactions.create',{ requestId:randomUUID(),type:'transfer',sourceAccountId:asset,destinationAccountId:target,amountMinor:'100',occurredLocalAt:'2026-09-01T12:00:00',timezoneOffsetMinutes:-480 })
-        assert.equal((await api('loans.transaction',{ transactionId:tx.transactionId })).state,'none')
+        const before=await balances(),context=await api('loans.transaction',{transactionId:tx.transactionId})
+        assert.equal(context.state,target===credit?'allocatable':'none')
+        assert.equal(context.payment,null);assert.deepEqual(context.allocations,[])
+        assert.deepEqual(await balances(),before)
       }
       assert.equal((await api('loans.unassigned')).total,0)
       await assert.rejects(api('loans.bookRepayment',{ ...packet(),repayment:{ ...repayment,liabilityAccountId:credit } }),{ publicCode:'VALIDATION_ERROR' })

@@ -9,9 +9,9 @@ const authorization={confirmed:true,originKind:'recorded_consumption',mode:'auto
  firstChargeDate:'2026-01-01',fixedConfirmed:true,dateConfirmed:true,coverageConfirmed:true}
 async function chargeLab() {
  const lab=await isolatedMysql(),apiPool=await lab.role('api',grants.api),importPool=await lab.role('import',grants.importer)
- let clock=Date.parse('2026-04-30T12:00:00Z'),queries=0
+ let clock=Date.parse('2026-04-30T12:00:00Z'),queries=0,readRows=0,writeRows=0
  const measured=new Proxy(apiPool,{get(target,key){if(key==='getConnection')return async()=>{
-  const c=await target.getConnection();return new Proxy(c,{get(conn,method){if(method==='execute')return async(...args)=>{queries++;return conn.execute(...args)};const value=conn[method];return typeof value==='function'?value.bind(conn):value}})
+  const c=await target.getConnection();return new Proxy(c,{get(conn,method){if(method==='execute')return async(...args)=>{queries++;const result=await conn.execute(...args);if(Array.isArray(result[0]))readRows+=result[0].length;else writeRows+=Number(result[0].affectedRows||0);return result};const value=conn[method];return typeof value==='function'?value.bind(conn):value}})
  };const value=target[key];return typeof value==='function'?value.bind(target):value}})
  const services=localServices({apiPool:measured,importPool,subject:'synthetic-charges-'+randomUUID(),now:()=>clock})
  const api=(a,d={})=>call(services.api,a,d),imp=(a,d)=>call(services.import,a,d)
@@ -24,7 +24,7 @@ async function chargeLab() {
  const expense=(date,amountMinor='2000',extra={})=>api('transactions.create',{requestId:randomUUID(),type:'expense',sourceAccountId:accountId,categoryId,amountMinor,occurredLocalAt:date+'T12:00:00',timezoneOffsetMinutes:-480,...extra})
  const sync=(loan,extra={})=>api('loans.syncCharges',{requestId:randomUUID(),loanId:loan.loanId,...extra})
  return {...lab,services,apiPool,importPool,api,imp,uid:identity.uid,categoryId,accountId,assetAccountId,create,configure,state,expense,sync,
-  setNow:value=>{clock=Date.parse(value)},measure:()=>queries,plan,authorization}
+  setNow:value=>{clock=Date.parse(value)},measure:()=>queries,metrics:()=>({sql:queries,readRows,writeRows}),plan,authorization}
 }
 module.exports={chargeLab,plan,authorization}
 async function prepareBank(h,{period=2,amount='20.00',reference='SYNTHETIC-CHARGE',suffix='',component='interest',date='2026-02-01'}={}) {

@@ -49,8 +49,9 @@ async function context(c, uid, loan) {
   const [raw] = await c.execute(ITEM_SELECT + ' WHERE i.uid=? AND i.loan_id=? AND i.active=1 AND i.canonical=1 LIMIT 1801', [uid, loan.loanId])
   if (raw.length > 1800) throw ledgerError('LOAN_SOURCE_TOO_LARGE')
   const [categories] = await c.execute("SELECT category_id AS categoryId,system_key AS systemKey FROM catledger_categories WHERE uid=? AND kind='expense' AND archived_at IS NULL", [uid])
+  const savedByNumber=new Map(saved.map(p=>[Number(p.periodNumber),p]))
   return { contract, charges: await store.charges(c, uid, contract.contractId), sources: raw.map(publicItem).filter(i => i.active),
-    categories, rows: fullPlan(loan).map(row => ({ ...row, ...saved.find(p => Number(p.periodNumber) === row.periodNumber) })) }
+    categories, rows: fullPlan(loan).map(row => ({ ...row, ...savedByNumber.get(row.periodNumber) })) }
 }
 
 async function book(c, uid, loan, state, row, historical, paymentDate) {
@@ -102,15 +103,16 @@ async function confirm(c, uid, loan, view, input, alignPrincipal = false) {
   const previous = progressOf(loan)
   const progress = { ...previous, schema: 2, simpleRepayment: true, historyFacts: { ...previous.historyFacts }, reviewedPeriods: { ...previous.reviewedPeriods }, exceptions: { ...previous.exceptions } }
   const setup = require('./loan-installment').parseSetup(loan.installmentSetup)
+  const rows=new Map(view.rows.map(row=>[row.periodNumber,row])),original=new Map(view.original.map(row=>[row.periodNumber,row]))
   let principal = BigInt(loan.baselinePrincipalMinor)
   for (const entry of selected) {
-    const row = view.rows.find(r => r.periodNumber === entry.periodNumber)
+    const row = rows.get(entry.periodNumber)
     if (!row || row.cancelled || row.status === 'partial' || !entry.paid && row.paymentConfirmed) throw ledgerError('LOAN_TRANSACTION_LOCKED')
     const fact = progress.historyFacts[entry.periodNumber]
     const legacyReviewed = previous.simpleRepayment && previous.reviewedPeriods && previous.reviewedPeriods[entry.periodNumber] && row.completedByProgress && !fact
     if (legacyReviewed) throw ledgerError('LOAN_HISTORY_REVIEW_REQUIRED')
     const historicalSetup = !previous.reviewedPeriods?.[entry.periodNumber] && entry.periodNumber <= Number(setup && setup.historicalPaidTerms || 0)
-    const originalPrincipal = historicalSetup ? fullPlan(loan).find(p=>p.periodNumber===entry.periodNumber).principalMinor : row.principalMinor
+    const originalPrincipal = historicalSetup ? original.get(entry.periodNumber).principalMinor : row.principalMinor
     if (!row.paymentConfirmed) {
       if (entry.paid && !fact) {
         if (alignPrincipal && !historicalSetup) principal -= BigInt(row.principalMinor)
