@@ -22,17 +22,17 @@ Page({
   ...installmentActions,
   ...require('./charge-actions').methods,
   data: { ...require('./charge-actions').initial,chargeRefundAccounts:[],sourceTransactionId: '', sourceContext: null, loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
-    periodOpen: false, periodLoading: false, periodError: '', selectedPeriod: null, periodSources: [], periodLegacy: [], periodMoreSources: false, periodCanBook: false, periodEditing: false, periodAdjustOpen: false, periodEvidenceOpen:false, periodDraft: null, progressOpen: false, progressThrough: '',
-    repaymentRows: [], repaymentChoiceCount: 0, detail: null, detailLoading: false, detailError: '', periodRows: [], scheduleMore: false, scheduleHistorical: false, guideOpen: false,
+    periodOpen: false, periodLoading: false, periodError: '', selectedPeriod: null, periodSources: [], periodLegacy: [], periodMoreSources: false, periodCanBook: false, periodEditing: false, periodEvidenceOpen:false, periodDraft: null, progressOpen: false, progressThrough: '',
+    repaymentRows: [], repaymentChoiceCount: 0, repaymentSelectedCount: 0, repaymentDirtyCount: 0, detail: null, detailLoading: false, detailError: '', periodRows: [], scheduleMore: false, scheduleHistorical: false, guideOpen: false, costOpen: false,
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
     principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
     scheduleOpen: false, schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
   onLoad(query) { this._readClosed = false; this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId){this._redirecting=true;wx.redirectTo({url:'/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
   onShow() { if(this._redirecting)return;theme.bindPage(this); return loginGuard.run(this, () => this.load()) },
   onHide(){pageReadSession.end(this)},
-  onUnload() { pageReadSession.end(this) },
+  onUnload() { pageReadSession.end(this); if (this._repaymentAlert && typeof wx.disableAlertBeforeUnload === 'function') wx.disableAlertBeforeUnload(); this._repaymentAlert = false },
   load() {
-    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(['chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodAdjustOpen','periodEvidenceOpen','periodDraft','progressOpen','progressThrough','repaymentRows','repaymentChoiceCount','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','sourceContext','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_chargeControlToken','_chargeChangeToken','_chargeReturnTerm','_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext'])
+    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(['chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodEvidenceOpen','periodDraft','progressOpen','progressThrough','repaymentRows','repaymentChoiceCount','repaymentSelectedCount','repaymentDirtyCount','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','costOpen','sourceContext','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_chargeControlToken','_chargeChangeToken','_chargeReturnTerm','_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext','_repaymentInitial','_repaymentAlert'])
     if (this._load) return this._load
     const readOptions = { force: !!this._forceLoanRead }; this._forceLoanRead = false
     this.setData({ loading: true, errorMessage: '' })
@@ -116,6 +116,7 @@ Page({
   selectAccount(event) { this.setData({ accountIndex: Number(event.detail.value), ...(this.data.fieldError === 'account' ? { fieldError: '' } : {}) }) },
   selectKind(event) { this.setData({ kindIndex: Number(event.currentTarget.dataset.index) }) },
   toggleSchedule() { this.setData({ scheduleOpen: !this.data.scheduleOpen }) },
+  toggleCostDetail() { this.setData({ costOpen: !this.data.costOpen }) },
   openAccounts() { wx.navigateTo({ url: '/pages/accounts/index' }) },
   showSaved(outcome) {
     this.setData({ hasPending: false, savedMessage: (outcome.recovered ? '上次操作已确认成功' : '贷款资料已保存') + (this._savedWithSchedule ? '；分期参数已更新' : '') })

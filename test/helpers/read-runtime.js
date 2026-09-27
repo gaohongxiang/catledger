@@ -15,7 +15,7 @@ function runtime(savedStorage) {
   const summary = { incomeMinor: '0', expenseMinor: '100', netIncomeMinor: '-100' }
   const transaction = id => ({ transactionId: id, type: 'expense', amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00', sourceAccount: accounts()[0] })
   const h = { app, calls, cache, storage, now(value) { now = value }, intercept: null,
-    revision: '1', categories, accounts: null, navigation: [], modals: [], uid: '1234567890', clipboard: [], toasts: [], clipboardFails: false }
+    revision: '1', categories, accounts: null, navigation: [], modals: [], uid: '1234567890', clipboard: [], toasts: [], clipboardFails: false, unloadAlerts: [] }
   const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key), nextTick: cb => cb(), showModal(options) { h.modals.push(options) }, showToast(options) { h.toasts.push(options.title) },
     setClipboardData(options) { h.clipboard.push(options.data); if (h.clipboardFails) options.fail(); else options.success() }, navigateBack() { h.navigation.push('back') },
     navigateTo(options) {
@@ -25,6 +25,7 @@ function runtime(savedStorage) {
       if (h.failNavigation && options.fail) options.fail()
       if (options.complete) options.complete()
     }, switchTab(options) { h.navigation.push(options.url) }, redirectTo(options) { h.navigation.push(options.url) }, pageScrollTo() {}, stopPullDownRefresh() {},
+    enableAlertBeforeUnload(options) { h.unloadAlerts.push(options && options.message || '') }, disableAlertBeforeUnload() { h.unloadAlerts.push(false) },
     cloud: { callFunction: async ({ name, data: envelope }) => {
       const { action, data } = envelope
       calls.push({ name, action, data, ...(envelope.knownRevision === undefined ? {} : { knownRevision: envelope.knownRevision }) })

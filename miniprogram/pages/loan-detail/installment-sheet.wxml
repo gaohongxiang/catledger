@@ -22,13 +22,12 @@
       <button wx:for="{{periodLegacy}}" wx:key="paymentId" class="ld-link" data-id="{{item.paymentId}}" bindtap="openPayment" disabled="{{saving || periodLoading}}">{{item.occurredText}} · 查看这笔还款 {{item.totalText}} ›</button>
       <block wx:if="{{!loan.archived}}">
         <button wx:if="{{!selectedPeriod.complete && !selectedPeriod.cancelled}}" class="primary-button" bindtap="recordPeriodPayment" disabled="{{saving || periodLoading}}">记本期还款</button>
-        <button class="ld-link" bindtap="togglePeriodAdjust" disabled="{{saving}}">{{periodAdjustOpen ? '收起调整' : '调整本期记录'}}</button>
-        <block wx:if="{{detail.tracking && periodAdjustOpen}}">
-          <button wx:if="{{!selectedPeriod.complete}}" class="ld-link" data-status="completed" bindtap="setPeriodStatus" disabled="{{saving}}">补记本期已还（同时记利息）</button>
-          <button wx:if="{{selectedPeriod.complete && !selectedPeriod.paymentConfirmed}}" class="ld-link" data-status="unpaid" bindtap="setPeriodStatus" disabled="{{saving}}">改为未还</button>
-        </block>
-        <button wx:if="{{periodAdjustOpen}}" class="ld-link" bindtap="editInstallmentPeriod" disabled="{{saving}}">本期金额或日期有变化</button>
-        <view wx:if="{{periodAdjustOpen && periodEditing}}" class="installment-period-edit">
+        <view class="sheet-actions">
+          <view wx:if="{{detail.tracking && !selectedPeriod.complete}}" class="sheet-action" data-status="completed" bindtap="setPeriodStatus" hover-class="sheet-action-hover" aria-role="button"><text>补记本期已还（记利息）</text><text class="sheet-action-chevron">›</text></view>
+          <view class="sheet-action" bindtap="editInstallmentPeriod" hover-class="sheet-action-hover" aria-role="button"><text>修改金额或日期</text><text class="sheet-action-chevron">›</text></view>
+          <view wx:if="{{detail.tracking && selectedPeriod.complete && !selectedPeriod.paymentConfirmed}}" class="sheet-action sheet-action-danger" data-status="unpaid" bindtap="setPeriodStatus" hover-class="sheet-action-hover" aria-role="button"><text>改为未还</text><text class="sheet-action-chevron">›</text></view>
+        </view>
+        <view wx:if="{{periodEditing}}" class="installment-period-edit">
           <text class="installment-note">修改本期约定金额；原账单和已入账费用保留，减免不会自动删除真实支出。</text>
           <picker mode="date" value="{{periodDraft.dueDate}}" data-field="dueDate" bindchange="periodDraftInput"><view class="installment-edit-row"><text>应还日期</text><text>{{periodDraft.dueDate}}</text></view></picker>
           <label class="installment-edit-row"><text>本金（元）</text><input type="digit" value="{{periodDraft.principal}}" data-field="principal" bindinput="periodDraftInput" /></label>

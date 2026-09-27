@@ -14,7 +14,9 @@ function create(api) {
         this._detailView = null
         this._detailHistory = []
         this._detailNext = null
-        this.setData({ repaymentRows: [], repaymentChoiceCount: 0, periodRows: [], scheduleMore: false, detailError: '' })
+        this._repaymentInitial = null
+        this.setData({ repaymentRows: [], repaymentChoiceCount: 0, repaymentSelectedCount: 0, repaymentDirtyCount: 0, periodRows: [], scheduleMore: false, detailError: '' })
+        this.syncRepaymentAlert()
       }
       if (this._periodAction === 'loans.installments' && this._detailReady && api.isFresh && !api.isFresh(this._periodAction || 'loans.periods', { loanId: loan.loanId, pageSize: PAGE_SIZE })) this._detailReady = false
       this.setData({ detail: model.build(loan, this._detailView, this._detailPreview) })
@@ -58,6 +60,7 @@ function create(api) {
       this._detailHistory = this._periodAction === 'loans.installments' ? [] : model.historicalRows(loan, this._detailPreview)
       this._detailReady = matching && preview.status === 'fulfilled'
       const error = !matching ? '还款计划未能更新，请重新读取。' : preview.status === 'rejected' ? '成本和历史期次暂未加载，请重试。' : ''
+      if (matching) this._repaymentInitial = new Map((periods.value.summary.repaymentPrompts || []).map(row => [row.periodNumber, row.paid === true]))
       this.setData({ detail: model.build(loan, this._detailView, this._detailPreview), detailLoading: false, detailError: error, repaymentRows: matching ? (periods.value.summary.repaymentPrompts || []).map(r=>{const draft=this.data.repaymentRows.find(d=>d.periodNumber===r.periodNumber);return draft?{...r,paid:draft.paid}:r}) : this.data.repaymentRows })
       this.showScheduleWindow({ historyOffset: 0, cursor: null }, this._detailView)
     },
@@ -72,12 +75,24 @@ function create(api) {
       const visible = rows.map(row => model.rowView(row, model.today()))
       this.setData({ ...this.repaymentSelection(append ? this.data.periodRows.concat(visible) : visible), scheduleMore: !!this._detailNext,
         scheduleHistorical: inHistory || !!(append && this.data.scheduleHistorical) })
+      this.syncRepaymentAlert()
     },
     repaymentSelection(rows = this.data.periodRows) {
       const choices = new Map((this.data.repaymentRows || []).map(row => [row.periodNumber, row.paid]))
+      const initial = this._repaymentInitial || new Map()
       const periodRows = rows.map(row => ({ ...row, repaymentChoice: choices.has(row.term) && !row.cancelled,
-        repaymentPaid: choices.get(row.term) === true }))
-      return { periodRows, repaymentChoiceCount: periodRows.filter(row => row.repaymentChoice).length }
+        repaymentPaid: choices.get(row.term) === true,
+        repaymentDirty: choices.has(row.term) && initial.has(row.term) && choices.get(row.term) !== initial.get(row.term) }))
+      return { periodRows, repaymentChoiceCount: periodRows.filter(row => row.repaymentChoice).length,
+        repaymentSelectedCount: periodRows.filter(row => row.repaymentChoice && row.repaymentPaid).length,
+        repaymentDirtyCount: periodRows.filter(row => row.repaymentDirty).length }
+    },
+    syncRepaymentAlert() {
+      const dirty = (this.data.repaymentDirtyCount || 0) > 0
+      if (dirty === !!this._repaymentAlert) return
+      this._repaymentAlert = dirty
+      if (dirty) { if (typeof wx.enableAlertBeforeUnload === 'function') wx.enableAlertBeforeUnload({ message: '还款选择尚未保存' }) }
+      else if (typeof wx.disableAlertBeforeUnload === 'function') wx.disableAlertBeforeUnload()
     },
     async showMoreSchedule() {
       if (this.data.detailLoading || !session.isCurrent(this)) return

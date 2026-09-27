@@ -10,7 +10,7 @@ module.exports = {
   async openInstallment(event) {
     if (!session.isCurrent(this) || !this.data.detail || this.data.saving || !this.data.detail.tracking && !(this.data.loan && this.data.loan.scheduleTerms)) return
     const term = Number(event.currentTarget.dataset.term), current = session.capture(this), token = this._periodToken = {}
-    this.setData({ periodOpen: true, periodLoading: true, periodError: '', selectedPeriod: null, periodEditing: false, periodAdjustOpen: false,periodEvidenceOpen:false,periodCharges:[],periodChargeIssues:[],periodChargeNext:null,periodFeesError:'' })
+    this.setData({ periodOpen: true, periodLoading: true, periodError: '', selectedPeriod: null, periodEditing: false, periodEvidenceOpen:false,periodCharges:[],periodChargeIssues:[],periodChargeNext:null,periodFeesError:'' })
     try {
       const result = await api.callApi('loans.installment', { loanId: this._loanId, periodNumber: term }, { force: true })
       if (!current() || token !== this._periodToken) return
@@ -61,14 +61,17 @@ module.exports = {
     const selected = new Set(event.detail.value), visible = new Set(this.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term))
     this.setData({ repaymentRows: this.data.repaymentRows.map(r=>visible.has(r.periodNumber)?{...r,paid:selected.has(String(r.periodNumber))}:r) })
     this.setData(this.repaymentSelection())
+    this.syncRepaymentAlert()
   },
-  saveRepayments() {
+  async saveRepayments() {
     if (!this._detailView || !this.data.repaymentRows.length || this.data.loan.archived || this.data.detailLoading) return
     const visible = new Set(this.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term))
     const repayments = this.data.repaymentRows.filter(r=>visible.has(r.periodNumber)).map(({periodNumber,paid})=>({periodNumber,paid}))
     if (!repayments.length) return
-    return this.installmentWrite('loans.confirmInstallments', { loanId:this._loanId, version:this._detailView.loanVersion,
+    const saved = await this.installmentWrite('loans.confirmInstallments', { loanId:this._loanId, version:this._detailView.loanVersion,
       repayments })
+    if (saved) this.syncRepaymentAlert()
+    return saved
   },
   openInstallmentSource(event) {
     const source = (this.data.periodSources || []).find(item => item.itemId === event.currentTarget.dataset.id)
@@ -86,7 +89,6 @@ module.exports = {
     if (session.isCurrent(this)) return this.installmentWrite('loans.archiveInstallment', { loanId: this._loanId, version: this.data.loan.version, archived: true })
   },
   togglePeriodEvidence(){this.setData({periodEvidenceOpen:!this.data.periodEvidenceOpen})},
-  togglePeriodAdjust() { this.setData({ periodAdjustOpen: !this.data.periodAdjustOpen }) },
   editInstallmentPeriod() {
     const row = this._selectedInstallment && this._selectedInstallment.period
     if (!row || this.data.saving) return
