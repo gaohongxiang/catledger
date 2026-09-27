@@ -31,9 +31,9 @@
 ## 分支与发布
 
 - origin/main 是小程序主线；catledger-web 与 web-v2-final 是旧 Web 归档，不用上游重置 main，不因文档清理删除另一产品归档。
-- 一般功能分支沿用 codex/<task-id>-<short-name>；**本次文档及贷款改造例外：按用户要求统一在 docs 工作和验收，不再新建同任务分支。** codex/docs-20260926-reorganization 停止维护，确认当前 tip 被 docs 包含且评审已迁移后清理；旧 PR 关闭不等于已合入 main。
+- 一般功能分支沿用 codex/<task-id>-<short-name>；用户指定工作分支或要求收敛时按当前指令执行，不重建已收敛的同任务分支。实际分支与清理结果只维护在实施规划；旧 PR 关闭不等于已合入 main。
 - 有未提交或未合入成果的工作区不能删除。安全清理用 git worktree remove 与 git branch -d，不用 rm -rf；备份在用户验收后按明确授权处理。
-- 用户转交贷款方案后，Astra 可按范围实现、验证、提交并推送 docs；未获用户验收合并指令，不合并 main。过去任务中的合并/部署授权不自动覆盖本轮。
+- 合并、推送和分支清理依据用户授权；合并前核对远端后续提交、必要验证与未迁移评审。合并授权不自动包含部署、小程序上传或正式发布。
 - 发布云函数通过 manageFunctions(action="updateFunctionCode") 时，传 functionRootPath=<工作区>/cloudfunctions 和 functionName=<函数目录名>，根路径直接包含各函数目录，不用 contentPath 代替。发布后用 queryFunctions(getFunctionDetail) 核对 Active/Available、运行时、VPC、环境变量键和触发器。
 - 小程序可见改动用微信开发者工具预览，发布前真机走查。代码/文档分支实施不自动授权云数据库迁移、云函数部署、小程序上传、提审或发布。
 
