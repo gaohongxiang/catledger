@@ -24,7 +24,7 @@ function publicItem(row) {
   const reviewed = row.eventStatus==='excluded' && row.updateStatus==='posted' && Number(row.historicalSource)===1
   const valid = Boolean(row.active) && (!row.eventId || row.updateStatus==='posted' && ['posted','corrected'].includes(row.eventStatus) || reviewed) &&
     (row.component === 'principal' || row.coverageState==='baseline'&&String(row.coveredAmount)===String(row.amountMinor) || row.transactionId && row.transactionDeleted == null && row.transactionType === 'expense' &&
-      (row.transactionAccount === row.accountId || row.registeredTransactionId === row.transactionId) && (String(row.transactionAmount) === String(row.amountMinor) || row.coverageState === 'covered' && row.coveringTransactionId === row.transactionId && String(row.coveredAmount) === String(row.amountMinor)))
+      (row.transactionAccount === row.accountId || row.registeredTransactionId === row.transactionId || row.coverageState==='covered'&&row.coveringTransactionId===row.transactionId) && (String(row.transactionAmount) === String(row.amountMinor) || row.coverageState === 'covered' && row.coveringTransactionId === row.transactionId && String(row.coveredAmount) === String(row.amountMinor)))
   return { itemId:row.itemId,accountId:row.accountId,loanId:row.loanId,referenceKey:row.referenceKey,referenceLabel:row.referenceLabel,
     periodNumber:Number(row.periodNumber),totalTerms:row.totalTerms==null?null:Number(row.totalTerms),component:row.component,
     amountMinor:String(row.amountMinor),occurredDate:row.occurredDate,origin:row.origin,eventId:row.eventId,updateId:row.updateId,

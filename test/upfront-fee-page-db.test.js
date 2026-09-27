@@ -1,7 +1,7 @@
 const test=require('node:test')
 const assert=require('node:assert/strict')
 const {randomUUID}=require('node:crypto')
-const {chargeLab}=require('./helpers/loan-charges')
+const {chargeLab,prepareBank,postBank}=require('./helpers/loan-charges')
 const {realPage}=require('./helpers/real-page')
 const field=(field,value)=>({currentTarget:{dataset:{field}},detail:{value}})
 test('无历史期次的新分期，一次性费用从真实详情明确发生并复用原账', {skip:!process.env.CATLEDGER_TEST_DB_HOST,timeout:120000},async t=>{
@@ -47,10 +47,16 @@ test('无历史期次的新分期，一次性费用从真实详情明确发生�
    await assert.rejects(h.api('transactions.delete',{requestId:randomUUID(),transactionId:expense.transactionId,version:1}),{publicCode:'LOAN_TRANSACTION_LOCKED'})
   })
   await t.test('实付一次性手续费覆盖12期，实际还款只付本金，终止不伪造退款',async()=>{
-   const covered=await h.create({repaymentMinor:'50000',feePerTermMinor:'1000',feeUpfrontMinor:'12000'})
+   await postBank(h,await prepareBank(h,{period:1,component:'principal',amount:'500.00',reference:'SYNTHETIC-UPFRONT',date:'2026-01-02'}))
+   const source=(await h.api('loans.installmentSources')).items.find(i=>i.component==='principal')
+   const covered=await h.create({sourceItemId:source.itemId,repaymentMinor:'50000',feePerTermMinor:'1000',feeUpfrontMinor:'12000'})
    const paid=await h.api('loans.recordUpfrontFee',{requestId:randomUUID(),loanId:covered.loanId,version:1,mode:'new',confirmed:true,amountMinor:'12000',accountId:h.assetAccountId,categoryId:h.categoryId,occurredLocalAt:'2026-01-02T12:00:00',timezoneOffsetMinutes:-480,covers:Array.from({length:12},(_,i)=>i+1)})
    const before=(await h.api('accounts.list')).accounts,view=await h.api('loans.installment',{loanId:covered.loanId,periodNumber:1})
    assert.equal(view.period.feeMinor,'1000');assert.equal(view.period.unpaidFeeMinor,'0')
+   await postBank(h,await prepareBank(h,{period:2,component:'fee',amount:'10.00',reference:'SYNTHETIC-UPFRONT',date:'2026-02-01'}))
+   assert.deepEqual((await h.api('accounts.list')).accounts,before,'后到分摊费用只补证据，不再次扣款')
+   const late=(await h.api('loans.installment',{loanId:covered.loanId,periodNumber:2})).sources
+   assert.equal(late.length,1);assert.equal(late[0].active,true);assert.equal(late[0].transactionId,paid.transactionId)
    const ui=realPage(h),p=ui.page('loan-payment');p.onLoad({loanId:covered.loanId,periodNumber:'1'});await p.load()
    assert.equal(p.data.allocations[0].feeYuan,'0.00');assert.equal(p.data.totalYuan,'500.00')
    p.chooseAccount({detail:{value:p.data.accounts.findIndex(a=>a.accountId===h.assetAccountId)}});p.input({currentTarget:{dataset:{field:'date'}},detail:{value:'2026-01-31'}})
