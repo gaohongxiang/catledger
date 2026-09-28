@@ -44,10 +44,12 @@ async function deactivatePayment(connection,uid,paymentId) {
   await connection.execute('UPDATE catledger_loan_payment_sources SET active=0 WHERE uid=? AND payment_id=?',[uid,paymentId])
 }
 async function deleteTransactions(connection,uid,transactions) {
-  for(const row of transactions) {
+  for(let offset=0;offset<transactions.length;offset+=200) {
+    const batch=transactions.slice(offset,offset+200)
     const [result]=await connection.execute(`UPDATE catledger_transactions SET deleted_at=CURRENT_TIMESTAMP(3),version=version+1
-      WHERE uid=? AND transaction_id=? AND version=? AND deleted_at IS NULL`,[uid,row.transactionId,Number(row.version)])
-    if(result.affectedRows!==1) throw ledgerError('CONFLICT')
+      WHERE uid=? AND (transaction_id,version) IN (${batch.map(()=>'(?,?)').join(',')}) AND deleted_at IS NULL`,
+      [uid,...batch.flatMap(row=>[row.transactionId,Number(row.version)])])
+    if(result.affectedRows!==batch.length) throw ledgerError('CONFLICT')
   }
 }
 async function reversePayment(connection,uid,inspection) {

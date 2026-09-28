@@ -10,7 +10,7 @@ function createLoanContext({ api, session, navigate }) {
       this._loanLoad = api.callApi('loans.transaction', { transactionId }, { force: true }).then(result => {
         if (!current() || this.data.transactionId !== transactionId) return
         const context = contextView(result)
-        const patch = { loanContext: context, loanManaged: context.linked || context.state === 'candidate' }
+        const patch = { loanContext: context, loanManaged: context.linked || ['candidate','retained_charge'].includes(context.state) }
         // 已有编辑草稿不能让迟到的分类目录重新开放整组贷款成员。
         if (patch.loanManaged) patch.detail = buildReadonlyDetail(result.transaction, this._catalogCategories || [], false)
         if (this.data.readonlyDetail && !this.data.categoryDirty) {
@@ -18,7 +18,7 @@ function createLoanContext({ api, session, navigate }) {
           patch.version = result.transaction.version
           patch.selectedCategoryId = result.transaction.category && result.transaction.category.categoryId || null
           patch.detail = buildReadonlyDetail(result.transaction, this._catalogCategories || [],
-            !context.linked && context.state !== 'candidate' && this.data.mode === 'import' && ['income','expense'].includes(result.transaction.type))
+            !patch.loanManaged && this.data.mode === 'import' && ['income','expense'].includes(result.transaction.type))
         }
         this.setData(patch)
         if (this.updateNavigationTitle) this.updateNavigationTitle()
@@ -33,6 +33,7 @@ function createLoanContext({ api, session, navigate }) {
     },
     openLinkedPayment() {
       const context = this.data.loanContext
+      if(session.isCurrent(this)&&!this.data.saving&&!this.data.loanContextLoading&&context&&context.state==='retained_charge'){navigate({url:'/pages/loan-detail/index?chargeId='+encodeURIComponent(context.chargeId)});return}
       if (session.isCurrent(this) && !this.data.saving && !this.data.loanContextLoading && context && context.linked) navigate({ url: '/pages/loan-payment/index?paymentId=' + encodeURIComponent(context.payment.paymentId) })
     }
   }

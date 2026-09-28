@@ -67,8 +67,8 @@ function createRepaymentBooking(error) {
     const [[existing]] = await connection.execute('SELECT loan_id FROM catledger_loan_payment_allocations WHERE uid=? AND payment_id=? LIMIT 1', [uid,payment.paymentId])
     if (existing || payment.status !== 'active') throw error('CONFLICT')
     const [[loan]] = await connection.execute(`SELECT loan_id AS loanId,account_id AS accountId,baseline_principal_minor AS baselinePrincipalMinor,
-      baseline_date AS baselineDate,version FROM catledger_loans WHERE uid=? AND loan_id=? FOR UPDATE`, [uid,id(input.loanId)])
-    if (!loan || Number(loan.version) !== input.loanVersion) throw error('CONFLICT')
+      baseline_date AS baselineDate,deleted_at AS deletedAt,version FROM catledger_loans WHERE uid=? AND loan_id=? FOR UPDATE`, [uid,id(input.loanId)])
+    if (!loan || loan.deletedAt!=null || Number(loan.version) !== input.loanVersion) throw error('CONFLICT')
     if (loan.accountId !== input.liabilityAccountId) throw error('VALIDATION_ERROR')
     if (loan.baselinePrincipalMinor == null || loan.baselineDate == null) throw error('LOAN_PRINCIPAL_UNCONFIRMED')
     if (String(payment.occurredLocalAt).slice(0,10) < String(loan.baselineDate)) throw error('VALIDATION_ERROR')

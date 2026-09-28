@@ -53,15 +53,15 @@ test('来源读取迟到时不能回填已关闭的期次弹层',async()=>{
   release({ok:true,data:{loanVersion:1,period:{periodNumber:11},sources:[],legacyPayments:[]}});await task
   assert.equal(p.data.periodOpen,false);assert.equal(p.data.selectedPeriod,null)
 })
-test('删除说明保留账单和金额；取消无写入，确认只发分期解除请求并返回',async()=>{
+test('删除一次确认展示实际影响；取消无写入，成功后读取列表并返回',async()=>{
   const h=runtime(),p=h.page('loan-detail');p._loanId=loan.loanId;p._readSession=h.cache.getSession();p.data.loan=loan
-  h.respond=action=>action==='loans.archiveInstallment'?{ok:true,data:{loanId:loan.loanId,version:3,archived:true}}:undefined
-  const cancelled=p.archiveInstallment();h.modals.at(-1).success({confirm:false});await cancelled
-  assert.equal(h.calls.length,0)
-  const saved=p.archiveInstallment(),modal=h.modals.at(-1)
-  assert.match(modal.content,/解除关联/);assert.match(modal.content,/账单和已入账金额保留/)
+  h.respond=action=>action==='loans.deleteImpact'?{ok:true,data:{loanId:loan.loanId,version:2,canDelete:true,counts:{repayments:3,fees:2},previewToken:'synthetic-preview'}}:action==='loans.delete'?{ok:true,data:{loanId:loan.loanId,version:3,deleted:true}}:undefined
+  const cancelled=p.archiveInstallment();await new Promise(r=>setImmediate(r));h.modals.at(-1).success({confirm:false});await cancelled
+  assert.equal(h.calls.filter(c=>c.action==='loans.delete').length,0)
+  const saved=p.archiveInstallment();await new Promise(r=>setImmediate(r));const modal=h.modals.at(-1)
+  assert.match(modal.content,/3笔还款和2笔费用/);assert.match(modal.content,/已核实的导入记录保留/)
   modal.success({confirm:true});await saved
-  assert.equal(h.calls.filter(row=>row.action==='loans.archiveInstallment').length,1)
+  assert.equal(h.calls.filter(row=>row.action==='loans.delete').length,1)
   assert.ok(h.calls.every(row=>!row.action.startsWith('transactions.')||row.action==='transactions.commandResult'))
   assert.deepEqual(h.navigation,['back']);assert.deepEqual(h.toasts,['已删除'])
 })

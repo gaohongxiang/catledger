@@ -24,6 +24,19 @@ async function context(c, uid, loan) {
   if (!['credit', 'other_liability'].includes(account.type)) throw ledgerError('VALIDATION_ERROR')
   let contract = await store.contract(c, uid, loan.loanId)
   if (!contract) {
+    if(loan.chargeContractId){
+      const {validateId}=require('./transaction-domain')
+      const [[old]]=await c.execute(store.CONTRACT_SQL+' WHERE uid=? AND contract_id=?',[uid,validateId(loan.chargeContractId)])
+      if(!old||old.accountId!==loan.accountId)throw ledgerError('NOT_FOUND')
+      const [[owner]]=await c.execute('SELECT archived_at AS archivedAt FROM catledger_loans WHERE uid=? AND loan_id=?',[uid,old.loanId])
+      if(!owner||owner.archivedAt==null)throw ledgerError('CONFLICT')
+      await c.execute('UPDATE catledger_loan_charge_contracts SET loan_id=?,version=version+1 WHERE uid=? AND contract_id=?',[loan.loanId,uid,old.contractId])
+      await store.audit(c,uid,old.contractId,null,'claim_contract',{previousLoanId:old.loanId,loanId:loan.loanId})
+      await require('./loan-charge-rebuild').releaseRemoved(c,uid,old.contractId)
+      contract=await store.contract(c,uid,loan.loanId)
+    }
+  }
+  if (!contract) {
     const [bindings] = await c.execute('SELECT reference_key AS referenceKey FROM catledger_installment_bindings WHERE uid=? AND loan_id=? ORDER BY reference_key', [uid, loan.loanId])
     const referenceKey = bindings[0] && bindings[0].referenceKey || null
     const [previous] = await c.execute(store.CONTRACT_SQL + ' WHERE uid=? AND account_id=? AND (? IS NULL OR reference_key=?)', [uid, loan.accountId, referenceKey, referenceKey])
@@ -33,6 +46,7 @@ async function context(c, uid, loan) {
       if (referenceKey && old.referenceKey === referenceKey && owner && owner.archivedAt != null) {
         await c.execute('UPDATE catledger_loan_charge_contracts SET loan_id=?,version=version+1 WHERE uid=? AND contract_id=?', [loan.loanId, uid, old.contractId])
         await store.audit(c, uid, old.contractId, null, 'claim_contract', { previousLoanId: old.loanId, loanId: loan.loanId })
+        await require('./loan-charge-rebuild').releaseRemoved(c,uid,old.contractId)
         contract = await store.contract(c, uid, loan.loanId)
         break
       }
@@ -81,13 +95,13 @@ async function book(c, uid, loan, state, row, historical, paymentDate) {
       if (categoryId && !state.categories.some(category => category.categoryId === categoryId)) throw ledgerError('NOT_FOUND')
       transactionId = randomUUID()
       const time = parseLocalDateTime(item.chargeDate + 'T12:00:00', -480)
-      await c.execute(`INSERT INTO catledger_transactions(uid,transaction_id,type,source_account_id,amount_minor,category_id,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin)
-        VALUES(?,?,'expense',?,?,?,?,?,?,?,?,'loan_plan')`, [uid, transactionId, loan.accountId, amount, categoryId, time.localDate, time.localAt, time.timezoneOffsetMinutes, time.occurredAtUtc,
-        loan.name + (row.periodNumber == null ? ' 一次性' : ' 第' + row.periodNumber + '期') + (component === 'interest' ? '利息' : '手续费')])
+      await c.execute(`INSERT INTO catledger_transactions(uid,transaction_id,type,source_account_id,amount_minor,category_id,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin,creation_provenance_json)
+        VALUES(?,?,'expense',?,?,?,?,?,?,?,?,'loan_plan',?)`, [uid, transactionId, loan.accountId, amount, categoryId, time.localDate, time.localAt, time.timezoneOffsetMinutes, time.occurredAtUtc,
+        loan.name + (row.periodNumber == null ? ' 一次性' : ' 第' + row.periodNumber + '期') + (component === 'interest' ? '利息' : '手续费'), JSON.stringify({kind:'loan',loanIds:[loan.loanId]})])
       if (historical) {
         adjustmentId = randomUUID()
-        await c.execute(`INSERT INTO catledger_transactions(uid,transaction_id,type,destination_account_id,amount_minor,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin)
-          VALUES(?,?,'balance_adjustment',?,?,?,?,?,?,?,'system')`, [uid, adjustmentId, loan.accountId, amount, time.localDate, time.localAt, time.timezoneOffsetMinutes, time.occurredAtUtc, '补记历史费用，保留已确认余额'])
+        await c.execute(`INSERT INTO catledger_transactions(uid,transaction_id,type,destination_account_id,amount_minor,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin,creation_provenance_json)
+          VALUES(?,?,'balance_adjustment',?,?,?,?,?,?,?,'system',?)`, [uid, adjustmentId, loan.accountId, amount, time.localDate, time.localAt, time.timezoneOffsetMinutes, time.occurredAtUtc, '补记历史费用，保留已确认余额', JSON.stringify({kind:'loan',loanIds:[loan.loanId]})])
       }
     }
     await c.execute("UPDATE catledger_loan_charges SET state='recorded',basis=?,transaction_id=?,balance_adjustment_id=?,version=version+1 WHERE uid=? AND charge_id=?",

@@ -110,7 +110,7 @@ Page({
           if(!String(this.data.name).trim())throw new Error('请填写贷款名称')
           data=Object.assign(input,{loanId:loan.loanId,version:loan.version,name:String(this.data.name).trim(),institution:loan.institution,kind:loan.kind,
             accountId:loan.accountId,baselinePrincipalMinor:loan.baselinePrincipalMinor,baselineDate:loan.baselineDate,startDate:loan.startDate,endDate:loan.endDate,repaymentMethod:loan.repaymentMethod})
-        }else {data=model.createPayload(this.data,this._preview);if(this._query.sourceItemId)data.sourceItemId=this._query.sourceItemId}
+        }else {data=model.createPayload(this.data,this._preview);if(this._query.sourceItemId)data.sourceItemId=this._query.sourceItemId;if(this._query.chargeContractId)data.chargeContractId=this._query.chargeContractId}
       }
       const outcome=await pending.send('api',action,data);if(current())this.accept(outcome)
     }catch(error){if(current())this.setData({errorMessage:error.message,hasPending:!!pending.pending()})}

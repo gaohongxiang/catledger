@@ -5,7 +5,7 @@ const loginGuard = require('../../services/login-guard')
 const theme = require('../../theme/service')
 const model = require('./model')
 Page(Object.assign({}, require('./source'), require('./period-entry'), {
-  data: {pageTitle:'登记还款',managementOpen:false,hasUnallocated:false,sourceAccountId:'',simplePeriod:false,amountDetailsOpen:false,periodNumber:null,unallocatedYuan:'0',unallocatedText:'0.00', sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['使用这笔已有账目，金额不变','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
+  data: {retainedCharges:[],pageTitle:'登记还款',managementOpen:false,hasUnallocated:false,sourceAccountId:'',simplePeriod:false,amountDetailsOpen:false,periodNumber:null,unallocatedYuan:'0',unallocatedText:'0.00', sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['使用这笔已有账目，金额不变','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
     accounts: [], accountIndex: -1, categories: [], choices: [], nextLoanCursor: null, kindIndex: 0, kinds: ['实际还款','新放款到账'],
     modes: ['还没记过，新记一笔','已经记过，选已有账目','更正已有账目的本息费'], modeIndex: 0, source: null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
     sourceMonth: '', nextSourceCursor: null, sourceSelectedCount: 0, editingPayment: null, replacePayment: null,
@@ -17,7 +17,7 @@ Page(Object.assign({}, require('./source'), require('./period-entry'), {
     const current = session.begin(this, Object.keys(this.data), ['_load'])
     if (this._load) return this._load
     this.setData({ loading: true, errorMessage: '' })
-    if (this._sourceTransactionId && !this._paymentId && !this.data.editingPayment && !this.data.replacePayment) this.setData({ source: null, sourceTiming: null, sourceTransactions: [], sourceEvidence: { items: [], hasMore: false }, confirmed: false })
+    if (this._sourceTransactionId && !this._paymentId && !this.data.editingPayment && !this.data.replacePayment) this.setData({ source: null, retainedCharges:[],sourceTiming: null, sourceTransactions: [], sourceEvidence: { items: [], hasMore: false }, confirmed: false })
     this._load = api.callApi('catalog.get').then(async catalog => {
       if (!current()) return
       getApp().globalData.uid = catalog.uid
@@ -102,10 +102,13 @@ Page(Object.assign({}, require('./source'), require('./period-entry'), {
         }
         const choices=result.items.filter(c=>['planned','recorded','baseline'].includes(c.state)).map(c=>{
           const saved=previous.find(p=>p.chargeId===c.chargeId),paid=proof.find(p=>p.chargeId===c.chargeId)
-          const available=require('../../utils/minor-arithmetic').addMinor(c.outstandingMinor,live.period&&this.data.modeIndex===1?c.historicalCoveredMinor||'0':'0')
+          const retained=(this.data.retainedCharges||[]).find(f=>f.chargeId===c.chargeId)
+          const reusedExpense=retained&&this.data.sourceTransactions.some(t=>t.transactionId===retained.transactionId)
+          const available=retained?retained.amountMinor:require('../../utils/minor-arithmetic').addMinor(c.outstandingMinor,live.period&&this.data.modeIndex===1?c.historicalCoveredMinor||'0':'0')
+          if(retained&&!saved)this.setData({['allocations['+index+'].'+c.component+'Index']:reusedExpense?0:1,['allocations['+index+'].'+c.component+'CategoryIndex']:this.data.categories.findIndex(category=>category.id===c.categoryId)})
           const initial=defaults[c.component]&&defaults[c.component].chargeId===c.chargeId?defaults[c.component]:null
           return {chargeId:c.chargeId,transactionId:c.chargeId.startsWith('source:')?c.transactionId:null,component:c.component,state:c.state,selected:saved?saved.selected:!!paid||!!initial,paidYuan:saved?saved.paidYuan:initial?initial.paidYuan:require('../../utils/money').minorToYuan(paid?paid.amountMinor:available),
-            label:(c.periodNumber?'第'+c.periodNumber+'期':'一次性')+(c.component==='interest'?'利息':'费用')+' · '+(c.state==='planned'?'本次首次记费':'清偿已记费用')+' · 可分配 '+require('../../utils/money').formatMinor(available)}
+            label:(c.periodNumber?'第'+c.periodNumber+'期':'一次性')+(c.component==='interest'?'利息':'费用')+' · '+(retained?'复用原付款，不再扣款':c.state==='planned'?'本次首次记费':'清偿已记费用')+' · 可分配 '+require('../../utils/money').formatMinor(available)}
         })
         // 翻页保留已选项与金额草稿，不丢掉前页的付款分配。
         const kept=selected?previous.filter(p=>p.selected&&!choices.some(c=>c.chargeId===p.chargeId)):[]

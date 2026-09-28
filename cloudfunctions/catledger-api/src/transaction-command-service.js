@@ -153,6 +153,7 @@ async function selectTransaction(connection, uid, transactionId, { forUpdate = f
             t.timezone_offset_minutes AS timezoneOffsetMinutes,
             t.note,
             t.origin,
+            t.creation_provenance_json AS creationProvenance,
             t.version,
             t.deleted_at AS deletedAt
        FROM catledger_transactions t
@@ -186,8 +187,8 @@ async function insertManualTransaction(connection, uid, transactionId, transacti
     `INSERT INTO catledger_transactions
        (uid, transaction_id, type, source_account_id, destination_account_id,
         category_id, original_transaction_id, amount_minor, occurred_local_date, occurred_local_at,
-        timezone_offset_minutes, occurred_at_utc, note, origin)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+        timezone_offset_minutes, occurred_at_utc, note, origin, creation_provenance_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?)`,
     [
       uid,
       transactionId,
@@ -201,7 +202,8 @@ async function insertManualTransaction(connection, uid, transactionId, transacti
       transaction.localAt,
       transaction.timezoneOffsetMinutes,
       transaction.occurredAtUtc,
-      transaction.note
+      transaction.note,
+      JSON.stringify(transaction.creationProvenance || { kind: 'independent' })
     ]
   )
 }

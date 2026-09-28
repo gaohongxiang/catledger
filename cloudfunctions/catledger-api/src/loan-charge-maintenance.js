@@ -7,8 +7,29 @@ const { digestRequest } = require('./request-digest')
 const { parse,amount,today } = require('./loan-charge-domain')
 const store = require('./loan-charge-store')
 function createLoanChargeMaintenance({getPool,selectLoan,now=Date.now}) {
+  async function retainedScope(c,uid,chargeId) {
+    const item=await store.charge(c,uid,chargeId)
+    const [[contract]]=await c.execute(store.CONTRACT_SQL+' WHERE uid=? AND contract_id=?',[uid,item.contractId])
+    const loan=await selectLoan(c,uid,contract.loanId)
+    if(loan.deletedAt==null||!['recorded','suppressed'].includes(item.state)||item.planRemovedAt)throw ledgerError('NOT_FOUND')
+    return {loan,contract,item}
+  }
+  async function retainedCharge(context) {
+    return executeLedgerRead({getPool,...context,consistentSnapshot:true,operation:async(c,uid)=>{
+      const {contract,item}=await retainedScope(c,uid,context.data.chargeId)
+      return {charge:item,contractId:contract.contractId,accountId:contract.accountId,cutoff:today(now())}
+    }})
+  }
   async function prepare(c,uid,data,secret) {
-    const loan=await selectLoan(c,uid,data.loanId),contract=await store.contract(c,uid,loan.loanId),item=await store.charge(c,uid,data.chargeId)
+    let loan,contract,item
+    if(data.detached===true){
+      if(data.loanId||data.eventId||!['adjust','suppress','refund'].includes(data.operation))throw ledgerError('VALIDATION_ERROR')
+      ;({loan,contract,item}=await retainedScope(c,uid,data.chargeId))
+    }else{
+      loan=await selectLoan(c,uid,data.loanId)
+      if(loan.deletedAt!=null)throw ledgerError('NOT_FOUND')
+      contract=await store.contract(c,uid,loan.loanId);item=await store.charge(c,uid,data.chargeId)
+    }
     if(!contract||item.contractId!==contract.contractId)throw ledgerError('NOT_FOUND')
     if(!['adjust','suppress','restore','pause','cancel','distinct','refund'].includes(data.operation))throw ledgerError('VALIDATION_ERROR')
     let event=null
@@ -87,13 +108,14 @@ function createLoanChargeMaintenance({getPool,selectLoan,now=Date.now}) {
         await c.execute('UPDATE catledger_finance_updates SET version=version+1 WHERE uid=? AND update_id=?',[uid,event.updateId])
       }
       await store.audit(c,uid,contract.contractId,chargeId,operation,{before:item,afterAmountMinor:target,eventId:event&&event.eventId,refundId,dependencies:impact.dependencies})
-      await c.execute('UPDATE catledger_loans SET version=version+1 WHERE uid=? AND loan_id=?',[uid,loan.loanId])
-      return {loanId:loan.loanId,version:Number(loan.version)+1,chargeId,refundId,deltaMinor:impact.deltaMinor,eventId:event&&event.eventId,updateVersion:event?event.updateVersion+1:null}
+      if(!data.detached)await c.execute('UPDATE catledger_loans SET version=version+1 WHERE uid=? AND loan_id=?',[uid,loan.loanId])
+      return {loanId:loan.loanId,version:Number(loan.version)+(data.detached?0:1),chargeId,refundId,deltaMinor:impact.deltaMinor,eventId:event&&event.eventId,updateVersion:event?event.updateVersion+1:null}
     }})
   }
   async function endCharges(context) {
     return executeIdempotentMutation({getPool,...context,action:'loans.endCharges',operation:async(c,uid,data)=>{
       const loan=await selectLoan(c,uid,data.loanId),contract=await store.contract(c,uid,loan.loanId)
+      if(loan.deletedAt!=null)throw ledgerError('NOT_FOUND')
       if(!contract||Number(loan.version)!==data.version||data.confirmed!==true)throw ledgerError('CONFLICT')
       if(!['settled','rate_changed','waiver','contract_cancelled'].includes(data.reason))throw ledgerError('VALIDATION_ERROR')
       await c.execute("UPDATE catledger_loan_charges SET state=?,version=version+1 WHERE uid=? AND contract_id=? AND state IN ('planned','paused') AND charge_date>?",
@@ -105,6 +127,6 @@ function createLoanChargeMaintenance({getPool,selectLoan,now=Date.now}) {
       return {loanId:loan.loanId,version:Number(loan.version)+1}
     }})
   }
-  return {chargeImpact,changeCharge,endCharges}
+  return {chargeImpact,changeCharge,endCharges,retainedCharge}
 }
 module.exports={createLoanChargeMaintenance}

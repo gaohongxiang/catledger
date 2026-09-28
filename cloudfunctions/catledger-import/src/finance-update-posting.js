@@ -448,8 +448,8 @@ async function createTransactions(connection, uid, updateId, event) {
       `INSERT INTO catledger_transactions
          (uid, transaction_id, type, source_account_id, destination_account_id,
           category_id, original_transaction_id, amount_minor, occurred_local_date,
-          occurred_local_at, timezone_offset_minutes, occurred_at_utc, note, origin)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import')`,
+          occurred_local_at, timezone_offset_minutes, occurred_at_utc, note, origin, creation_provenance_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', JSON_OBJECT('kind','independent'))`,
       [
         uid, transactionId, draft.type, draft.sourceAccountId, draft.destinationAccountId,
         draft.categoryId, draft.originalTransactionId, draft.amountMinor, event.localDate,
@@ -552,7 +552,7 @@ function createFinanceUpdatePosting({ getPool }) {
         async function flush() {
           await insertMany(connection, `INSERT INTO catledger_transactions
             (uid, transaction_id, type, source_account_id, destination_account_id, category_id, original_transaction_id,
-             amount_minor, occurred_local_date, occurred_local_at, timezone_offset_minutes, occurred_at_utc, note, origin) VALUES`, transactionRows)
+             amount_minor, occurred_local_date, occurred_local_at, timezone_offset_minutes, occurred_at_utc, note, origin, creation_provenance_json) VALUES`, transactionRows.map(row=>[...row,JSON.stringify({kind:'independent'})]))
           await insertMany(connection, `INSERT INTO catledger_economic_event_transactions
             (uid, link_id, update_id, event_id, transaction_id, role, creation_method, rule_version, transaction_version) VALUES`, linkRows)
           transactionRows.length = 0; linkRows.length = 0

@@ -7,7 +7,7 @@ function candidateView(t) {
     businessText: '已确认还款 · 待关联' })
 }
 function contextView(value) {
-  if (!value || !['none','candidate','allocatable','linked','replaced'].includes(value.state) || !value.transaction || !Array.isArray(value.allocations)) {
+  if (!value || !['none','candidate','allocatable','linked','replaced','retained_charge'].includes(value.state) || !value.transaction || !Array.isArray(value.allocations)) {
     throw new Error('贷款关联信息不完整，请重新读取')
   }
   const linked = value.state === 'linked' || value.state === 'replaced'
@@ -17,7 +17,7 @@ function contextView(value) {
   return Object.assign({}, value, { linked, amountText: money.formatMinor(value.payment ? value.payment.totalMinor : value.transaction.amountMinor), occurredText: timeText(value.transaction.occurredLocalAt),
     accountText: candidateView(value.transaction).accountText,
     businessText: linked ? (value.payment.kind === 'drawdown' ? '贷款放款' : hasInstallment ? '已关联分期还款' : '已关联贷款还款') :
-      value.state === 'none' ? '普通账目' : value.state === 'allocatable' ? '信用卡还款 · 可明确分配到分期' : '借款还款 · 尚未关联贷款',
+      value.state === 'none' ? '普通账目' : value.state === 'retained_charge' ? '计划已删除 · 保留的有效费用' : value.state === 'allocatable' ? '信用卡还款 · 可明确分配到分期' : '借款还款 · 尚未关联贷款',
     totalText: value.payment ? money.formatMinor(value.payment.totalMinor) : '',
     showPaymentTotal: Boolean(value.payment && String(value.payment.totalMinor) !== String(value.transaction.amountMinor)),
     evidence: value.evidence || { items: [], hasMore: false },

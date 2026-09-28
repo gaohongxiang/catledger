@@ -7,7 +7,7 @@ const CONTRACT_SQL = `SELECT contract_id AS contractId,loan_id AS loanId,account
   authorization_json AS authorization,version FROM catledger_loan_charge_contracts`
 const CHARGE_SQL = `SELECT f.charge_id AS chargeId,f.contract_id AS contractId,f.charge_key AS chargeKey,
   f.component,f.period_number AS periodNumber,f.charge_date AS chargeDate,f.amount_minor AS amountMinor,
-  f.category_id AS categoryId,f.state,f.basis,f.transaction_id AS transactionId,f.balance_adjustment_id AS balanceAdjustmentId,
+  f.category_id AS categoryId,f.state,f.basis,f.plan_removed_at AS planRemovedAt,f.transaction_id AS transactionId,f.balance_adjustment_id AS balanceAdjustmentId,
   f.covered_by_charge_id AS coveredByChargeId,f.plan_version AS planVersion,f.version,
   f.historical_settled_minor AS historicalSettledMinor,
   COALESCE((SELECT SUM(child.historical_settled_minor) FROM catledger_loan_charges child

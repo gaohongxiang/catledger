@@ -43,7 +43,7 @@ function scheduleMetadata(data, baselinePrincipalMinor) {
 }
 function loanMetadata(data) {
   const allowed = new Set(['loanId','version','name','institution','kind','accountId','baselinePrincipalMinor','baselineDate','startDate','endDate','repaymentMethod',
-    'scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','installmentSetup','generatePlan','confirmed','sourceItemId','originKind','repayments'])
+    'scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate','installmentSetup','generatePlan','confirmed','sourceItemId','chargeContractId','originKind','repayments'])
   if (Object.keys(data).some(key => !allowed.has(key))) throw ledgerError('VALIDATION_ERROR')
   if(data.originKind!==undefined&&!['cash_borrowing','recorded_consumption','new_consumption','historical'].includes(data.originKind))throw ledgerError('VALIDATION_ERROR')
   if (!['borrowing','installment'].includes(data.kind)) throw ledgerError('VALIDATION_ERROR')
@@ -59,7 +59,7 @@ function loanMetadata(data) {
 function publicLoan(row) {
   const remainingPrincipalMinor = row.remainingPrincipalMinor == null ? null : String(row.remainingPrincipalMinor)
   return { loanId: row.loanId, name: row.name, institution: row.institution, kind: row.kind,
-    accountId: row.accountId, accountName: row.accountName, accountArchived: row.accountArchived != null, archived:row.archivedAt!=null,
+    accountId: row.accountId, accountName: row.accountName, accountArchived: row.accountArchived != null, archived:row.archivedAt!=null, deleted:row.deletedAt!=null,
     currency: 'CNY', installmentSetup:parseSetup(row.installmentSetup), baselinePrincipalMinor: row.baselinePrincipalMinor == null ? null : String(row.baselinePrincipalMinor),
     baselineDate: row.baselineDate, startDate: row.startDate, endDate: row.endDate, repaymentMethod: row.repaymentMethod,
     scheduleMethod: row.scheduleMethod ?? null, scheduleTerms: row.scheduleTerms == null ? null : Number(row.scheduleTerms),

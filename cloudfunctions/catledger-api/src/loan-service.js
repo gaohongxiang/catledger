@@ -16,12 +16,12 @@ const LOAN_SELECT = `SELECT l.loan_id AS loanId, l.account_id AS accountId, l.na
   l.repayment_method AS repaymentMethod, l.schedule_method AS scheduleMethod, l.schedule_terms AS scheduleTerms,
   l.measurement_kind AS measurementKind, l.quote_type AS quoteType, l.rate_ppm AS ratePpm, l.repayment_minor AS repaymentMinor,
   l.fee_per_term_minor AS feePerTermMinor, l.fee_upfront_minor AS feeUpfrontMinor, l.first_payment_date AS firstPaymentDate,
-  l.installment_setup_json AS installmentSetup,l.progress_json AS progress,l.archived_at AS archivedAt,l.version, l.created_at AS createdAt,
+  l.installment_setup_json AS installmentSetup,l.progress_json AS progress,l.archived_at AS archivedAt,l.deleted_at AS deletedAt,l.version, l.created_at AS createdAt,
   a.name AS accountName, a.archived_at AS accountArchived FROM catledger_loans l
   JOIN catledger_accounts a ON a.uid=l.uid AND a.account_id=l.account_id`
-async function selectLoan(connection, uid, loanId, forUpdate = false) {
+async function selectLoan(connection, uid, loanId, forUpdate = false, allowDeleted = false) {
   const [[row]] = await connection.execute(LOAN_SELECT + ' WHERE l.uid=? AND l.loan_id=?' + (forUpdate ? ' FOR UPDATE' : ''), [uid, validateId(loanId)])
-  if (!row) throw ledgerError('NOT_FOUND')
+  if (!row || forUpdate && row.deletedAt != null && !allowDeleted) throw ledgerError('NOT_FOUND')
   return row
 }
 async function validateLiability(connection, uid, accountId) {
@@ -74,6 +74,7 @@ function createLoanService({ getPool, now = Date.now }) {
         value.feePerTermMinor,value.feeUpfrontMinor,value.firstPaymentDate,value.installmentSetup ? JSON.stringify(value.installmentSetup) : null])
       if (plan) await insertSchedulePeriods(connection,uid,loanId,plan.periods)
       if (data.sourceItemId) await require('./installment-link').attachSource(connection,uid,{...value,loanId},data.sourceItemId)
+      if(data.chargeContractId)await require('./installment-repayment').context(connection,uid,{...value,loanId,chargeContractId:data.chargeContractId})
       if (selections && selections.length) {
         const loan={...value,loanId,originKind:data.originKind},view=await require('./installment-service').loadView(connection,uid,loan)
         await require('./installment-repayment').confirm(connection,uid,loan,view,selections)
@@ -90,7 +91,7 @@ function createLoanService({ getPool, now = Date.now }) {
       const previousSetup = parseSetup(current.installmentSetup)
       const value = loanMetadata({ ...data,...(data.installmentSetup === undefined && previousSetup ? { installmentSetup:previousSetup } : {}) })
       if(chargeContract && ['accountId','kind','baselinePrincipalMinor','baselineDate','scheduleMethod','scheduleTerms','measurementKind','quoteType','ratePpm','repaymentMinor','feePerTermMinor','feeUpfrontMinor','firstPaymentDate'].some(key=>String(value[key])!==String(current[key])))throw ledgerError('LOAN_BASELINE_LOCKED')
-      if (data.generatePlan !== undefined || data.sourceItemId !== undefined || data.repayments !== undefined) throw ledgerError('VALIDATION_ERROR')
+      if (data.generatePlan !== undefined || data.sourceItemId !== undefined || data.chargeContractId !== undefined || data.repayments !== undefined) throw ledgerError('VALIDATION_ERROR')
       if (previousSetup) {
         const core = setup => setup && [setup.originalPrincipalMinor,setup.historicalPaidTerms,setup.discountKind,setup.discountValue]
         const changed = JSON.stringify(core(previousSetup)) !== JSON.stringify(core(value.installmentSetup)) ||
@@ -118,6 +119,6 @@ function createLoanService({ getPool, now = Date.now }) {
       return { loanId: current.loanId, version: data.version + 1 }
     })
   }
-  return { list, get, create, update, ...require('./loan-upfront-fee').createUpfrontFeeService({getPool,selectLoan,now}), ...require('./loan-charge-maintenance').createLoanChargeMaintenance({ getPool,selectLoan,now }), ...require('./loan-charge-service').createLoanChargeService({ getPool,selectLoan,now }), ...require('./loan-charge-sync').createLoanChargeSync({ getPool,now }), ...require('./installment-service').createInstallmentService({ getPool,selectLoan }), ...require('./explicit-repayment-service').createExplicitRepaymentService({ getPool }), ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
+  return { list, get, create, update, ...require('./loan-deletion-service').createLoanDeletionService({getPool,selectLoan}), ...require('./loan-upfront-fee').createUpfrontFeeService({getPool,selectLoan,now}), ...require('./loan-charge-maintenance').createLoanChargeMaintenance({ getPool,selectLoan,now }), ...require('./loan-charge-service').createLoanChargeService({ getPool,selectLoan,now }), ...require('./loan-charge-sync').createLoanChargeSync({ getPool,now }), ...require('./installment-service').createInstallmentService({ getPool,selectLoan }), ...require('./explicit-repayment-service').createExplicitRepaymentService({ getPool }), ...require('./repayment-query-service').createRepaymentQueryService({ getPool }), ...createLoanPaymentService({ getPool, selectLoan }), ...require('./loan-period-service').createLoanPeriodService({ getPool, selectLoan }), ...require('./loan-schedule-service').createLoanScheduleService({ getPool, selectLoan }) }
 }
 module.exports = { createLoanService, selectLoan, validateLiability }

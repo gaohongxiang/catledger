@@ -33,6 +33,7 @@ async function restoreLaterTables(pool) {
   try {
     for (const statement of splitSqlStatements(fs.readFileSync(path.join(migrationsDirectory,'0027_installment_history_balance.sql'),'utf8'))) await connection.query(statement)
     for (const statement of splitSqlStatements(fs.readFileSync(path.join(migrationsDirectory,'0028_installment_confirmation_facts.sql'),'utf8'))) await connection.query(statement)
+    for (const statement of splitSqlStatements(fs.readFileSync(path.join(migrationsDirectory,'0029_loan_group_deletion.sql'),'utf8'))) await connection.query(statement)
   } finally { connection.release() }
 }
 async function removeLaterEmptyTables(pool) {

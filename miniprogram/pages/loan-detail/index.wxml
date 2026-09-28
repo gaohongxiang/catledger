@@ -1,4 +1,12 @@
 <view class="page-canvas loan-detail {{themeClass}} {{loan && detail && !formOpen && !loan.archived && repaymentChoiceCount ? 'repayment-bar-space' : ''}}" style="{{themeStyle}}">
+  <view wx:if="{{deletedPlan}}" class="ld-note-card"><text>{{savedMessage}}</text><button class="ld-link" bindtap="refreshDeletedList">刷新列表</button></view>
+  <view wx:for="{{deleteBlockers}}" wx:key="code" class="ld-note-card"><text>{{item.message}}</text><button class="ld-link" data-index="{{index}}" bindtap="openDeleteBlocker">{{item.entry.label}}</button></view>
+  <view wx:if="{{retainedChargeMode && retainedCharge}}" class="ld-note-card">
+    <text class="record-name">{{retainedCharge.label}} · {{retainedCharge.amountText}}</text>
+    <text class="installment-note">计划已删除，这笔费用及必要余额记录保留。</text>
+    <button class="ld-link" data-id="{{retainedCharge.chargeId}}" bindtap="openChargeEdit" disabled="{{saving || loading}}">维护费用／实际退费</button>
+    <button class="ld-link" bindtap="rebuildFromCharge" disabled="{{saving || loading}}">关联到新计划</button>
+  </view>
   <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note"><text>{{chargeSyncMessage}}</text><button wx:if="{{!chargeSyncComplete}}" class="ld-link" bindtap="syncChargesNow" disabled="{{saving || loading}}">继续补记</button></view>
   <page-head wx:if="{{formOpen}}" class="content-inset" title="编辑贷款资料" />
   <view wx:if="{{loan}}" class="detail-account"><text>所属账户</text><text>{{loan.accountName}}{{loan.accountArchived ? '（已停用）' : ''}}</text></view>
@@ -10,7 +18,7 @@
   <button wx:if="{{errorMessage && !fieldError && !saving}}" class="ld-link" bindtap="refreshDetail">重新读取与核实</button>
   <button wx:if="{{hasPending && !formOpen}}" class="primary-button ld-retry" disabled="{{saving || loading}}" loading="{{saving}}" bindtap="save">重试上次操作</button>
   <ui-state wx:if="{{loading && !loan}}" description="正在读取资料…" />
-  <block wx:if="{{loan && detail && !formOpen}}">
+  <block wx:if="{{loan && detail && !formOpen && !deletedPlan}}">
     <view class="record-sheet {{detail.complete ? 'record-sheet-complete' : ''}}">
       <view class="record-kicker-row">
         <view class="record-status"><view></view><text>{{detail.status}}</text></view>
@@ -110,7 +118,7 @@
     <button wx:if="{{sourceTransactionId && !loan.archived}}" class="secondary-button detail-actions" bindtap="recordPayment" disabled="{{saving || loading}}">继续关联原还款</button>
     <view wx:if="{{!loan.archived}}" class="detail-actions">
       <button class="secondary-button" bindtap="edit" disabled="{{saving || loading}}">编辑</button>
-      <button wx:if="{{detail.tracking}}" class="detail-delete" bindtap="archiveInstallment" disabled="{{saving || loading}}">删除</button>
+      <button wx:if="{{!loan.deleted}}" class="detail-delete" bindtap="archiveInstallment" loading="{{deletingPreview}}" disabled="{{saving || loading || deletingPreview}}">删除</button>
       <button wx:if="{{chargeSummary.authorized}}" class="ld-link" bindtap="pauseChargePlan" disabled="{{saving || loading}}">停止此前的自动记费</button>
     </view>
     <view wx:if="{{!loan.archived && repaymentChoiceCount}}" class="repayment-bar">

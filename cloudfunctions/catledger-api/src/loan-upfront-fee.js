@@ -42,7 +42,7 @@ function createUpfrontFeeService({getPool,selectLoan,now=Date.now}){
    }
    if(data.mode==='new'){
     await require('./cash-balance-guard').assertCashBalanceChanges(c,uid,accounts,[{transaction}])
-    const transactionId=randomUUID();await insertManualTransaction(c,uid,transactionId,transaction)
+    const transactionId=randomUUID();await insertManualTransaction(c,uid,transactionId,{...transaction,creationProvenance:{kind:'loan',loanIds:[loan.loanId]}})
     transaction={...transaction,transactionId,version:1}
    }
    await c.execute("UPDATE catledger_loan_charges SET state='recorded',basis='actual',transaction_id=?,charge_date=?,category_id=?,version=version+1 WHERE uid=? AND charge_id=?",[transaction.transactionId,date,transaction.categoryId,uid,fee.chargeId])

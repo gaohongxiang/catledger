@@ -1,6 +1,8 @@
 // 连续前台使用期间复用；本机写入、重新进入前台及手动刷新控制重读。
 const ALL_TAGS = ['accounts', 'transactions', 'categories', 'profile', 'loans', 'accountDirectory', 'categoryDirectory']
 const READ_POLICIES = Object.freeze({
+  'loans.deleteImpact': { ttl:0,tags:['loans','transactions','accounts'] },
+  'loans.retainedCharge': { ttl:0,tags:['loans','transactions'] },
   'loans.chargeImpact': { ttl:0,tags:['loans','transactions'] },
   'loans.dueCharges': { ttl: 0, tags: ['loans', 'transactions', 'accountDirectory'] },
   'loans.chargePlan': { ttl: 0, tags: ['loans', 'transactions', 'accountDirectory'] },
@@ -26,7 +28,7 @@ const READ_POLICIES = Object.freeze({
 })
 
 function mutationTags(action) {
-  if (/^loans\.(confirmInstallments|setInstallmentProgress|linkInstallmentSource|archiveInstallment|removeInstallmentItem)$/.test(action)) return ['loans', 'transactions', 'accounts']
+  if (/^loans\.(delete|confirmInstallments|setInstallmentProgress|linkInstallmentSource|archiveInstallment|removeInstallmentItem)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (/^loans\.(recordUpfrontFee|configureCharges|pauseCharges|syncCharges|changeCharge|endCharges)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (action === 'profile.update') return ['profile']
   if (/^loans\.(savePeriod|allocatePeriods|generatePlan)$/.test(action)) return ['loans']

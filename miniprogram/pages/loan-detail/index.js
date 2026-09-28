@@ -20,23 +20,27 @@ function fieldErrorFor(message) {
 Page({
   ...detailReader,
   ...installmentActions,
+  ...require('./delete-plan'),
+  ...require('./retained-charge'),
   ...require('./charge-actions').methods,
   ...require('./upfront-fee').methods,
-  data: { ...require('./upfront-fee').initial,...require('./charge-actions').initial,chargeRefundAccounts:[],sourceTransactionId: '', sourceContext: null, loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
+  data: { deletedPlan:false,deletingPreview:false,deleteBlockers:[],retainedChargeMode:false,retainedCharge:null, ...require('./upfront-fee').initial,...require('./charge-actions').initial,chargeRefundAccounts:[],sourceTransactionId: '', sourceContext: null, loan: null, loading: false, saving: false, errorMessage: '', fieldError: '', savedMessage: '', formOpen: false, hasPending: false,
     periodOpen: false, periodLoading: false, periodError: '', selectedPeriod: null, periodSources: [], periodLegacy: [], periodMoreSources: false, periodCanBook: false, periodEditing: false, periodEvidenceOpen:false, periodDraft: null, progressOpen: false, progressThrough: '',
     repaymentRows: [], repaymentChoiceCount: 0, repaymentSelectedCount: 0, repaymentDirtyCount: 0, detail: null, detailLoading: false, detailError: '', periodRows: [], scheduleMore: false, scheduleHistorical: false, guideOpen: false, costOpen: false,
     accounts: [], accountIndex: -1, kinds: ['普通借款','消费分期'], kindIndex: 0, name: '', institution: '',
     principalYuan: '', baselineDate: '', startDate: '', endDate: '', repaymentMethod: '',
     scheduleOpen: false, schedule: scheduleForm.blank(), scheduleMethods: scheduleForm.METHOD_OPTIONS, scheduleQuotes: scheduleForm.QUOTE_OPTIONS, scheduleMeasurements: scheduleForm.MEASUREMENT_OPTIONS },
-  onLoad(query) { this._readClosed = false; this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId){this._redirecting=true;wx.redirectTo({url:'/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
+  onLoad(query) { this._retainedChargeId=query&&query.chargeId||null;this.setData({retainedChargeMode:!!this._retainedChargeId});this._readClosed = false; this._loanId = query && query.loanId || null; this._sourceTransactionId = query && query.sourceTransactionId || ''; theme.bindPage(this); this.setData({ formOpen: false, sourceTransactionId: this._sourceTransactionId }); if(!this._loanId&&!this._retainedChargeId){this._redirecting=true;wx.redirectTo({url:'/pages/loan-form/index'+(this._sourceTransactionId?'?sourceTransactionId='+encodeURIComponent(this._sourceTransactionId):'')})} },
   onShow() { if(this._redirecting)return;theme.bindPage(this); return loginGuard.run(this, () => this.load()) },
   onHide(){pageReadSession.end(this)},
   onUnload() { pageReadSession.end(this); if (this._repaymentAlert && typeof wx.disableAlertBeforeUnload === 'function') wx.disableAlertBeforeUnload(); this._repaymentAlert = false },
   load() {
-    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(Object.keys(require('./upfront-fee').initial),['chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodEvidenceOpen','periodDraft','progressOpen','progressThrough','repaymentRows','repaymentChoiceCount','repaymentSelectedCount','repaymentDirtyCount','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','costOpen','sourceContext','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_upfrontRead','_chargeControlToken','_chargeChangeToken','_chargeReturnTerm','_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext','_repaymentInitial','_repaymentAlert'])
+    if(this._retainedChargeId)return this.loadRetainedCharge()
+    const current = pageReadSession.begin(this, Object.keys(require('./charge-actions').initial).concat(Object.keys(require('./upfront-fee').initial),['deletedPlan','deletingPreview','deleteBlockers','chargeRefundAccounts','periodOpen','periodLoading','periodError','selectedPeriod','periodSources','periodLegacy','periodMoreSources','periodCanBook','periodEditing','periodEvidenceOpen','periodDraft','progressOpen','progressThrough','repaymentRows','repaymentChoiceCount','repaymentSelectedCount','repaymentDirtyCount','detail','detailLoading','detailError','periodRows','scheduleMore','scheduleHistorical','guideOpen','costOpen','sourceContext','loan','loading','saving','errorMessage','savedMessage','formOpen','hasPending','accounts','accountIndex','name','institution','principalYuan','baselineDate','startDate','endDate','repaymentMethod','kindIndex','schedule']), ['_deletePreview','_upfrontRead','_chargeControlToken','_chargeChangeToken','_chargeReturnTerm','_chargePreviewToken','_chargePreviewInput','_chargeAuthorizing','_chargeView','_chargeRead','_chargeChange','_selectedInstallment','_periodToken','_load','_sourceInitialized','_detailKey','_detailReady','_detailView','_detailPreview','_detailHistory','_detailNext','_repaymentInitial','_repaymentAlert'])
+    if(this.data.deletedPlan)return this.refreshDeletedList()
     if (this._load) return this._load
     const readOptions = { force: !!this._forceLoanRead }; this._forceLoanRead = false
-    this.setData({ loading: true, errorMessage: '' })
+    this.setData({ loading: true, deletingPreview:false,errorMessage: '' })
     const showLoan = (result, snapshot) => { if (current() && result) { this.setData({ loan: present(result.loan), errorMessage: snapshot ? '正在更新，当前显示上次结果' : '' }); this.applyDetailLoan(this.data.loan) } }
     const showSource = result => { if (current()) this.setData({ sourceContext: result && result.transaction ? Object.assign({}, result, { occurredText: String(result.transaction.occurredLocalAt || '').slice(5, 16).replace('T', ' ') }) : result }) }
     this._load = require('../../services/loan-charge-sync').beforePage(this,current).then(()=>Promise.all([api.callApi('catalog.get', {}, readOptions), this._loanId ? api.callApi('loans.get', { loanId: this._loanId }, { ...readOptions, onSnapshot: result => showLoan(result, true) }).then(result => { showLoan(result); return result }) : Promise.resolve(null), this._sourceTransactionId ? api.callApi('loans.transaction', { transactionId: this._sourceTransactionId }, { onSnapshot: showSource }).then(result => { showSource(result); return result }) : Promise.resolve(null)]))
@@ -52,6 +56,10 @@ Page({
         const accounts = catalog.accounts.filter(a => ['credit','other_liability'].includes(a.type) && !a.archived)
         const selected = this.data.accounts[this.data.accountIndex]
         this.setData({ accounts,chargeCategories:catalog.categories.filter(c=>c.kind==='expense'&&!c.archived),chargeRefundAccounts:catalog.accounts.filter(a=>!a.archived&&(['cash','bank','wallet','other_asset'].includes(a.type)||result&&a.accountId===result.loan.accountId)), sourceContext, accountIndex: selected ? accounts.findIndex(a => a.accountId === selected.accountId) : -1 })
+        if (result && result.loan.deleted && !pending.pending()) {
+          await this.acceptDeletedPlan({action:'loans.delete',result:{loanId:this._loanId,deleted:true}})
+          return
+        }
         if (result) {
           this.setData({ loan: present(result.loan) })
           this.applyDetailLoan(this.data.loan)
@@ -69,6 +77,7 @@ Page({
           try {
             const recovered = await pending.verify()
             if (current() && recovered) {
+              if(await this.acceptDeletedPlan(recovered))return
               this.showSaved(recovered)
               if (/^loans\./.test(recovered.action)) {
                 const fresh = await api.callApi('loans.get', { loanId: this._loanId }, { force: true })
@@ -152,6 +161,7 @@ Page({
       }
       const outcome = await pending.send('api', this._loanId ? 'loans.update' : 'loans.create', data)
       if (!current()) return
+      if(await this.acceptDeletedPlan(outcome))return
       this.showSaved(outcome)
     } catch (error) { if (current()) this.setData({ errorMessage: error.message, fieldError: fieldErrorFor(error.message), hasPending: Boolean(pending.pending()) }) }
     finally { if (current()) this.setData({ saving: false }) }

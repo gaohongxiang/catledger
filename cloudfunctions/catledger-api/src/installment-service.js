@@ -92,9 +92,9 @@ function createInstallmentService({getPool,selectLoan}) {
           if (amount==='0' || await canonicalItem(c,uid,loan.loanId,row.periodNumber,component)) continue
           const transactionId=randomUUID()
           await c.execute(`INSERT INTO catledger_transactions
-            (uid,transaction_id,type,source_account_id,amount_minor,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin)
-            VALUES (?,?,'expense',?,?,?,?,?,?,?,'manual')`,[uid,transactionId,loan.accountId,amount,time.localDate,time.localAt,time.timezoneOffsetMinutes,time.occurredAtUtc,
-            `${loan.name} 第${row.periodNumber}期${component==='interest'?'利息':'手续费'}`])
+            (uid,transaction_id,type,source_account_id,amount_minor,occurred_local_date,occurred_local_at,timezone_offset_minutes,occurred_at_utc,note,origin,creation_provenance_json)
+            VALUES (?,?,'expense',?,?,?,?,?,?,?,'manual',?)`,[uid,transactionId,loan.accountId,amount,time.localDate,time.localAt,time.timezoneOffsetMinutes,time.occurredAtUtc,
+            `${loan.name} 第${row.periodNumber}期${component==='interest'?'利息':'手续费'}`,JSON.stringify({kind:'loan',loanIds:[loan.loanId]})])
           await insertItem(c,uid,{accountId:loan.accountId,loanId:loan.loanId,periodNumber:row.periodNumber,totalTerms:Number(loan.scheduleTerms),
             component,amountMinor:amount,occurredDate:row.dueDate,origin:'manual',transactionId})
         }

@@ -125,7 +125,7 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
       if (!contract && data.contractId) {
         const [[previous]]=await c.execute(store.CONTRACT_SQL+' WHERE uid=? AND contract_id=?',[uid,validateId(data.contractId)])
         if (!previous || previous.accountId!==loan.accountId) throw ledgerError('NOT_FOUND')
-        const oldLoan=await selectLoan(c,uid,previous.loanId,true)
+        const oldLoan=await selectLoan(c,uid,previous.loanId,true,true)
         if (oldLoan.archivedAt==null) throw ledgerError('CONFLICT')
         contract={...previous,version:Number(previous.version),planVersion:Number(previous.planVersion),authorization:domain.parse(previous.authorization)}
         if(referenceKey&&referenceKey!==contract.referenceKey)throw ledgerError('LOAN_SOURCE_MISMATCH')
@@ -141,6 +141,7 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
           VALUES(?,?,?,?,?,?,?)`,[uid,contract.contractId,loan.loanId,loan.accountId,referenceKey,data.originKind,JSON.stringify(auth)])
       } else if (contract.accountId!==loan.accountId || !contract.authorization.coverageOnly&&contract.originKind!==data.originKind || referenceKey && contract.referenceKey!==referenceKey) throw ledgerError('LOAN_SOURCE_MISMATCH')
       if(contract.authorization&&contract.authorization.coverageOnly)await c.execute('UPDATE catledger_loan_charge_contracts SET origin_kind=? WHERE uid=? AND contract_id=?',[data.originKind,uid,contract.contractId])
+      await require('./loan-charge-rebuild').releaseRemoved(c,uid,contract.contractId)
       const old=await store.charges(c,uid,contract.contractId),planVersion=contract.planVersion+1
       for (const item of plan) {
         const previous=old.find(p=>p.chargeKey===item.chargeKey)

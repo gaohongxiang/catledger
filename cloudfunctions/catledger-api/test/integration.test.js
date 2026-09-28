@@ -145,10 +145,23 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 28)
+  assert.equal(rows.length, 29)
   assert.equal(rows[25].version, '0026_loan_charge_lifecycle.sql')
   assert.equal(rows[26].version, '0027_installment_history_balance.sql')
   assert.equal(rows[27].version, '0028_installment_confirmation_facts.sql')
+  assert.equal(rows[28].version, '0029_loan_group_deletion.sql')
+  const connection = await pool.getConnection()
+  try {
+    const statements = splitSqlStatements(require('node:fs').readFileSync(path.join(migrationsDirectory, rows[28].version), 'utf8'))
+    for (let repeat = 0; repeat < 2; repeat++) for (const statement of statements) await connection.query(statement)
+    const [columns] = await connection.query(`SELECT TABLE_NAME AS tableName,COLUMN_NAME AS name,IS_NULLABLE AS nullable
+      FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND
+      ((TABLE_NAME='catledger_transactions' AND COLUMN_NAME='creation_provenance_json') OR
+       (TABLE_NAME='catledger_loans' AND COLUMN_NAME IN ('deleted_at','deletion_snapshot_json')) OR
+       (TABLE_NAME='catledger_loan_charges' AND COLUMN_NAME='plan_removed_at'))`)
+    assert.equal(columns.length, 4)
+    assert.ok(columns.every(column => column.nullable === 'YES'))
+  } finally { connection.release() }
   assert.equal(rows[0].version, '0001_identity_and_categories.sql')
   assert.equal(rows[1].version, '0002_accounts_and_transactions.sql')
   assert.equal(rows[2].version, '0003_category_management_and_refunds.sql')

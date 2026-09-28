@@ -64,10 +64,10 @@ function createLoanChargeSync({getPool,now=Date.now,enabled=()=>process.env.CATL
         const time=parseLocalDateTime(item.chargeDate+'T12:00:00',-480),transactionId=randomUUID()
         await c.execute(`INSERT INTO catledger_transactions
           (uid,transaction_id,type,source_account_id,amount_minor,category_id,occurred_local_date,occurred_local_at,
-           timezone_offset_minutes,occurred_at_utc,note,origin)
-          VALUES(?,?,'expense',?,?,?,?,?,?,?,?,'loan_plan')`,[uid,transactionId,item.accountId,String(item.amountMinor),item.categoryId,
+           timezone_offset_minutes,occurred_at_utc,note,origin,creation_provenance_json)
+          VALUES(?,?,'expense',?,?,?,?,?,?,?,?,'loan_plan',?)`,[uid,transactionId,item.accountId,String(item.amountMinor),item.categoryId,
           time.localDate,time.localAt,time.timezoneOffsetMinutes,time.occurredAtUtc,
-          item.name+' '+(item.periodNumber?'第'+item.periodNumber+'期':'一次性')+(item.component==='interest'?'利息':'费用')+'（按确认方案，待核对）'])
+          item.name+' '+(item.periodNumber?'第'+item.periodNumber+'期':'一次性')+(item.component==='interest'?'利息':'费用')+'（按确认方案，待核对）',JSON.stringify({kind:'loan',loanIds:[item.loanId]})])
         const [result]=await c.execute("UPDATE catledger_loan_charges SET state='recorded',basis='plan',transaction_id=?,version=version+1 WHERE uid=? AND charge_id=? AND state='planned'",[transactionId,uid,item.chargeId])
         if(result.affectedRows!==1)throw ledgerError('CONFLICT')
         await store.audit(c,uid,item.contractId,item.chargeId,'accrue',{transactionId,amountMinor:String(item.amountMinor),chargeDate:item.chargeDate,cutoff})

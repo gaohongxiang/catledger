@@ -83,11 +83,6 @@ module.exports = {
     if (!await confirm({ title: '撤销这笔补记费用', content: '撤销本次手动补记的费用支出。已导入并关联的银行费用需从原账单核对。', confirmText: '撤销费用' })) return
     if (session.isCurrent(this)) return this.installmentWrite('loans.removeInstallmentItem', { loanId: this._loanId, version: selected.loanVersion, itemId: source.itemId, itemVersion: source.version })
   },
-  async archiveInstallment() {
-    if (this.data.saving || !this.data.loan) return
-    if (!await confirm({ title: '删除分期记录', content: '删除分期并解除关联。账单和已入账金额保留，可重新关联或新建分期。', confirmText: '删除记录', confirmColor: '#A94B40' })) return
-    if (session.isCurrent(this)) return this.installmentWrite('loans.archiveInstallment', { loanId: this._loanId, version: this.data.loan.version, archived: true })
-  },
   togglePeriodEvidence(){this.setData({periodEvidenceOpen:!this.data.periodEvidenceOpen})},
   editInstallmentPeriod() {
     const row = this._selectedInstallment && this._selectedInstallment.period

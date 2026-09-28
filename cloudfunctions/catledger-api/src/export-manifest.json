@@ -198,11 +198,14 @@
       "first_payment_date",
       "installment_setup_json",
       "progress_json",
-      "archived_at"
+      "archived_at",
+      "deleted_at",
+      "deletion_snapshot_json"
     ],
     "json": [
       "installment_setup_json",
-      "progress_json"
+      "progress_json",
+      "deletion_snapshot_json"
     ]
   },
   {
@@ -263,9 +266,12 @@
       "version",
       "deleted_at",
       "created_at",
-      "updated_at"
+      "updated_at",
+      "creation_provenance_json"
     ],
-    "json": []
+    "json": [
+      "creation_provenance_json"
+    ]
   },
   {
     "name": "catledger_finance_actions",
@@ -859,7 +865,8 @@
       "version",
       "created_at",
       "balance_adjustment_id",
-      "historical_settled_minor"
+      "historical_settled_minor",
+      "plan_removed_at"
     ],
     "json": []
   },

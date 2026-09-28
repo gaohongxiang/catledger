@@ -130,7 +130,7 @@ const methods={
   let item=this.data.periodCharges.concat(this.data.chargeRows).find(i=>i.chargeId===id)
   if(issue){try{const view=await api.callApi('loans.chargePlan',{loanId:this._loanId,periodNumber:issue.periodNumber},{force:true});if(!current()||this._periodToken!==scope)return;item=view.items.find(i=>i.component===issue.component&&i.chargeKey==='period:'+issue.periodNumber+':'+issue.component)}catch(error){if(current())this.setData({chargeError:error.message});return}}
   if(!item){this.setData({chargeError:'请先确认这期收费覆盖，再核对账单'});return}
-  const keys=item.state==='suppressed'?['restore']:['planned','paused','recorded'].includes(item.state)?['adjust',...(item.state==='recorded'&&!issue?['refund']:[]),...(item.state==='planned'?['pause']:[]),...(['planned','paused'].includes(item.state)?['cancel']:[]),'suppress']:[]
+  const keys=this.data.retainedChargeMode?['adjust','refund','suppress']:item.state==='suppressed'?['restore']:['planned','paused','recorded'].includes(item.state)?['adjust',...(item.state==='recorded'&&!issue?['refund']:[]),...(item.state==='planned'?['pause']:[]),...(['planned','paused'].includes(item.state)?['cancel']:[]),'suppress']:[]
   if(issue)keys.push('distinct')
   const labels={adjust:'更正费用金额',refund:'登记实际退费',suppress:'撤销这笔费用',restore:'重新补记',pause:'暂停本项记费',cancel:'减免或取消未来费用',distinct:'这是另一笔新增收费'}
   this._chargeReturnTerm=this.data.oneOffOpen?0:this.data.periodOpen&&this.data.selectedPeriod?this.data.selectedPeriod.term:null
@@ -140,7 +140,7 @@ const methods={
  chargeEditInput(event){this._chargeChangeToken={};const field=event.currentTarget.dataset.field;if(['amountYuan','refundDate','refundAccountIndex'].includes(field))this.setData({['chargeEdit.'+field]:field==='refundAccountIndex'?Number(event.detail.value):event.detail.value,chargeImpact:null})},
  async previewChargeChange(event){
   const d=this.data.chargeEdit,current=session.capture(this),token=this._chargeChangeToken={};if(!d||this.data.saving)return
-  try{const operation=event.currentTarget.dataset.operation||d.operation,data={loanId:this._loanId,chargeId:d.chargeId,operation,...(d.eventId?{eventId:d.eventId}:{}),...(['adjust','distinct','refund'].includes(operation)?{amountMinor:money.yuanToMinor(d.amountYuan)}:{})}
+  try{const operation=event.currentTarget.dataset.operation||d.operation,data={...(this.data.retainedChargeMode?{detached:true}:{loanId:this._loanId}),chargeId:d.chargeId,operation,...(d.eventId?{eventId:d.eventId}:{}),...(['adjust','distinct','refund'].includes(operation)?{amountMinor:money.yuanToMinor(d.amountYuan)}:{})}
    if(operation==='refund'){const account=this.data.chargeRefundAccounts[d.refundAccountIndex];if(!account)throw new Error('请选择实际收到退款的账户');Object.assign(data,{destinationAccountId:account.accountId,occurredLocalAt:d.refundDate+'T12:00:00',timezoneOffsetMinutes:-480})}
    const result=await api.callApi('loans.chargeImpact',data,{force:true});if(current()&&this._chargeChangeToken===token){this._chargeChange=data;this.setData({chargeImpact:{...result,deltaText:money.formatMinor(result.deltaMinor),additionalText:money.formatMinor(result.nextPostingMinor||'0')}})}
   }catch(error){if(current()&&this._chargeChangeToken===token)this.setData({chargeError:error.message})}

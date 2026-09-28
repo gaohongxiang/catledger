@@ -107,6 +107,7 @@
   <view wx:if="{{transactionId && loanContextError}}" class="catalog-retry content-inset"><text class="catalog-retry-message">{{loanContextError}}</text><button class="catalog-retry-button" bindtap="loadLoanContext" disabled="{{loanContextLoading}}">重试关联信息</button></view>
   <view wx:if="{{loanContext && loanContext.state !== 'none'}}" class="loan-context">
     <text class="loan-context-title">{{loanContext.businessText}}</text>
+    <button wx:if="{{loanContext.state === 'retained_charge'}}" class="secondary-button" bindtap="openLinkedPayment" disabled="{{saving || loanContextLoading}}">查看与维护保留费用</button>
     <block wx:if="{{loanContext.state === 'allocatable'}}">
       <text class="loan-context-note">若其中包含分期还款，可选择贷款与期次并填写份额；原转账总额、账户和时间保持不变。</text>
       <button class="secondary-button" bindtap="openLoanLink" disabled="{{saving || loanContextLoading}}">分配到分期</button>

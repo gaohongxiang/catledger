@@ -58,6 +58,12 @@ async function paymentSummary(connection, uid, paymentId) {
 }
 async function transactionContext(connection, uid, transactionId) {
   const row = await selectTransaction(connection, uid, validateId(transactionId))
+  const [[retained]]=await connection.execute(`SELECT f.charge_id AS chargeId FROM catledger_loan_charges f
+    JOIN catledger_loan_charge_contracts k ON k.uid=f.uid AND k.contract_id=f.contract_id
+    JOIN catledger_loans l ON l.uid=k.uid AND l.loan_id=k.loan_id
+    WHERE f.uid=? AND (f.transaction_id=? OR f.balance_adjustment_id=?) AND l.deleted_at IS NOT NULL
+      AND f.state='recorded' AND f.plan_removed_at IS NULL`,[uid,row.transactionId,row.transactionId])
+  if(retained&&row.deletedAt==null)return {state:'retained_charge',chargeId:retained.chargeId,transaction:transactionToPublic(row),payment:null,allocations:[],evidence:{items:[],hasMore:false}}
   const paymentId = await linkedPayment(connection, uid, row.transactionId)
   if (row.deletedAt != null && !paymentId) throw ledgerError('NOT_FOUND')
   const [links] = await connection.execute(`SELECT event_id AS eventId FROM catledger_economic_event_transactions

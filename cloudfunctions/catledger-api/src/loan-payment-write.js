@@ -53,12 +53,16 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
     if(input.mode!=='correctExisting' || !source.event || previous.payment.mode!=='new' || input.kind!=='repayment' || previous.payment.kind!=='repayment' ||
       input.totalMinor!==previous.payment.totalMinor || input.assetAccountId!==previous.payment.assetAccountId) throw ledgerError('LOAN_SOURCE_MISMATCH')
   }
+  // 保留的费用分项通过原完整付款复用；更正须从费用维护入口处理。
+  if(input.mode==='correctExisting'&&source)await require('./loan-charge-store').assertNoCharges(connection,uid,source.transactions.map(t=>t.transactionId))
+  const retainedCoverage=require('./loan-payment-reuse').retainedCoverage(source)
+  const retainedExpenses=Object.fromEntries((source?.retained?.charges||[]).filter(f=>source.transactions.some(t=>t.transactionId===f.transactionId)).map(f=>[f.chargeId,f.transactionId]))
   const chargePayments=require('./loan-charge-payments'), chargeAllocations=[]
   for (const a of input.allocations) {
     const loan=allocated.get(a.loanId), contract=await require('./loan-charge-store').contract(connection,uid,loan.loanId)
     if(contract)loan.originKind=contract.originKind
     const history = require('./installment-view').progressOf(loan).historyFacts || {}
-    if(input.kind==='repayment')chargeAllocations.push(...await chargePayments.validate(connection,uid,loan,a,{excludePaymentId:previous&&previous.payment.paymentId,paymentDate:input.localDate,replaceHistorical:input.mode!=='new'&&Boolean(a.period&&history[a.period.periodNumber])}))
+    if(input.kind==='repayment')chargeAllocations.push(...await chargePayments.validate(connection,uid,loan,a,{retainedCoverage,retainedExpenses,excludePaymentId:previous&&previous.payment.paymentId,paymentDate:input.localDate,replaceHistorical:input.mode!=='new'&&Boolean(a.period&&history[a.period.periodNumber])}))
   }
   const drafts=paymentDrafts(input,allocated,chargeAllocations)
   if(source) validateSourceAmounts(source,input,drafts,allocated,input.mode==='associate')
@@ -83,11 +87,15 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
   for(const a of input.allocations) await connection.execute(`INSERT INTO catledger_loan_payment_allocations
     (uid,payment_id,loan_id,principal_minor,interest_minor,fee_minor,interest_treatment,fee_treatment,interest_category_id,fee_category_id,confirmed_loan_version)
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,[uid,paymentId,a.loanId,a.principalMinor,a.interestMinor,a.feeMinor,a.interestTreatment,a.feeTreatment,a.interestCategoryId,a.feeCategoryId,a.version])
+  const provenance=require('./transaction-provenance')
+  const origins=[]
+  if(correct || input.mode==='correctExisting')for(const t of (correct?previous.transactions:source.transactions))origins.push(await provenance.resolve(connection,uid,t.transactionId))
+  const creationProvenance=origins.length?provenance.combine(origins):provenance.loanOrigin(input.allocations.map(a=>a.loanId))
   const transactions=[]
   if(input.mode==='associate') transactions.push(...source.transactions)
   else for(const draft of drafts) {
     const transactionId=randomUUID()
-    await insertManualTransaction(connection,uid,transactionId,draft)
+    await insertManualTransaction(connection,uid,transactionId,{...draft,creationProvenance})
     if(source&&source.event) await connection.execute("UPDATE catledger_transactions SET origin='import' WHERE uid=? AND transaction_id=?",[uid,transactionId])
     transactions.push({...draft,transactionId,version:1})
   }

@@ -27,8 +27,8 @@ async function eventLinks(connection, uid, event, forUpdate = false) {
   if (!links.length || links.length > MAX_TRANSACTIONS || links.some(l => l.role === 'refund_original')) throw ledgerError('LOAN_SOURCE_MISMATCH')
   return links.map(l => ({ ...l, transactionVersion: Number(l.transactionVersion) }))
 }
-async function assertSourceUnbound(connection, uid, ids, allowedPaymentId = null) {
-  await require('./loan-charge-store').assertNoCharges(connection,uid,ids)
+async function assertSourceUnbound(connection, uid, ids, allowedPaymentId = null, retained = null) {
+  await require('./loan-payment-reuse').assertReusableCharges(connection,uid,ids,retained)
   const [rows] = await connection.execute(`SELECT payment_id AS paymentId FROM catledger_loan_payment_transactions
     WHERE uid=? AND active_transaction_id IN (${ids.map(() => '?').join(',')})`, [uid,...ids])
   if (rows.some(row => row.paymentId !== allowedPaymentId)) throw ledgerError('LOAN_TRANSACTION_LOCKED')
@@ -48,7 +48,9 @@ async function loadSource(connection, uid, requestedIds, { forUpdate = false, al
     const row = await selectTransaction(connection, uid, id, { forUpdate })
     if (row.deletedAt) throw ledgerError('NOT_FOUND')
   }
-  await assertSourceUnbound(connection, uid, ids, allowedPaymentId)
+  const retained=await require('./loan-payment-reuse').retainedGroup(connection,uid,ids)
+  if(retained)ids=retained.transactionIds
+  await assertSourceUnbound(connection, uid, ids, allowedPaymentId, retained)
   const [refs] = await connection.execute(`SELECT DISTINCT event_id AS eventId FROM catledger_economic_event_transactions
     WHERE uid=? AND transaction_id IN (${ids.map(() => '?').join(',')}) AND superseded_at IS NULL AND role<>'refund_original' LIMIT 2`, [uid,...ids])
   if (refs.length > 1) throw ledgerError('LOAN_SOURCE_MISMATCH')
@@ -68,14 +70,15 @@ async function loadSource(connection, uid, requestedIds, { forUpdate = false, al
     await protectRefundedExpense(connection, uid, row, null)
     transactions.push(row)
   }
-  await assertSourceUnbound(connection, uid, ids, allowedPaymentId)
+  if(retained&&JSON.stringify(ids)!==JSON.stringify(retained.transactionIds))throw ledgerError('LOAN_SOURCE_MISMATCH')
+  await assertSourceUnbound(connection, uid, ids, allowedPaymentId, retained)
   await assertNoExternalLinks(connection, uid, ids, event && event.eventId)
-  return { transactions, event, links }
+  return { transactions, event, links, retained }
 }
 function sourceSelection(uid, secret, source) {
   const transactionIds = source.transactions.map(t => t.transactionId).sort()
   const digest = digestRequest('loans.source', { transactions: source.transactions.map(t => ({ id:t.transactionId,version:Number(t.version) })).sort((a,b) => a.id.localeCompare(b.id)),
-    event: source.event ? { id:source.event.eventId,version:source.event.version,updateVersion:source.event.updateVersion } : null })
+    event: source.event ? { id:source.event.eventId,version:source.event.version,updateVersion:source.event.updateVersion } : null,retained:source.retained||null })
   return { transactionIds, fingerprint: encodeCursor(secret, { action:'loans.source',uid,digest }),
     event: source.event ? { eventId:source.event.eventId,updateId:source.event.updateId,eventVersion:source.event.version,updateVersion:source.event.updateVersion } : null }
 }

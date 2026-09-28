@@ -22,7 +22,7 @@ function createLoanPaymentService({ getPool, selectLoan }) {
   async function source(context) {
     return read(context, async (connection, uid) => {
       const selected = await loadSource(connection, uid, context.data.transactionIds)
-      return { source: sourceSelection(uid, context.subjectHash, selected), transactions: selected.transactions.map(transactionToPublic),
+      return { source: sourceSelection(uid, context.subjectHash, selected), transactions: selected.transactions.map(transactionToPublic),retainedCharges:selected.retained?.charges||[],
         evidence: await repaymentEvidence(connection, uid, selected.event && selected.event.eventId) }
     })
   }

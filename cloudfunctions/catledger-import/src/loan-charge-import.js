@@ -14,6 +14,7 @@ async function prepare(c,uid,event,evidence,loanId) {
     [uid,contract.contractId,mapping?mapping.chargeId:'period:'+evidence.periodNumber+':'+evidence.component])
   if(!rows[0]){if(parse(contract.authorization).simpleRepayment)return null;fail('LOAN_COVERAGE_REQUIRED')}
   const item=store.publicCharge(rows[0])
+  if(item.planRemovedAt)return null
   if(item.component!==evidence.component || item.periodNumber!==null && item.periodNumber!==evidence.periodNumber)fail('LOAN_SOURCE_MISMATCH')
   if(['suppressed','cancelled','paused'].includes(item.state))fail('LOAN_CHARGE_PAUSED')
   if(item.amountMinor!==String(event.amountMinor))fail('LOAN_CHARGE_DIFFERENCE')

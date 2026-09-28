@@ -46,7 +46,7 @@ async function claimExisting(c,uid,loan,input) {
   await store.audit(c,uid,contract.contractId,chargeId,'claim_payment_coverage',{transactionId:input.transactionId,component:input.component})
   return store.charge(c,uid,chargeId)
 }
-async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null,replaceHistorical=false}={}) {
+async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null,replaceHistorical=false,retainedCoverage={},retainedExpenses={}}={}) {
   const selection=normalizeCoverage(input.chargeAllocations),items=[],seen=new Set(),sums={interest:0n,fee:0n}
   let contract=await store.contract(c,uid,loan.loanId)
   for(const entry of selection) {
@@ -57,8 +57,14 @@ async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null
     seen.add(item.chargeId)
     if(paymentDate&&item.chargeDate>paymentDate)fail('LOAN_CHARGE_COVERAGE')
     if(treatment==='accrued' && (!['recorded','baseline'].includes(item.state)||item.state==='recorded'&&(item.deletedAt!=null||item.transactionAmount!=item.amountMinor)))fail('LOAN_CHARGE_COVERAGE')
-    if(treatment==='expense' && (item.state!=='planned'||entry.amountMinor!==item.amountMinor||input[item.component+'CategoryId']!==item.categoryId))fail('LOAN_CHARGE_COVERAGE')
+    const reusedExpense=treatment==='expense'&&item.state==='recorded'&&item.deletedAt==null&&retainedExpenses[item.chargeId]===item.transactionId
+    if(treatment==='expense' && (item.state!=='planned'&&!reusedExpense||entry.amountMinor!==item.amountMinor||input[item.component+'CategoryId']!==item.categoryId))fail('LOAN_CHARGE_COVERAGE')
     let used=BigInt(item.settledMinor), historical=BigInt(item.historicalCoveredMinor)
+    if(reusedExpense){
+      const [[other]]=await c.execute("SELECT a.payment_id FROM catledger_loan_charge_allocations a JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id AND p.status='active' WHERE a.uid=? AND a.charge_id=? LIMIT 1",[uid,item.chargeId])
+      if(other||item.directlyPaidMinor!==entry.amountMinor)fail('LOAN_CHARGE_COVERAGE')
+      used=0n
+    }
     if(excludePaymentId) {
       const [[prior]]=await c.execute('SELECT amount_minor AS amountMinor,historical_replaced_minor AS historicalReplacedMinor FROM catledger_loan_charge_allocations WHERE uid=? AND payment_id=? AND charge_id=?',[uid,excludePaymentId,item.chargeId])
       if(prior){used-=BigInt(prior.amountMinor);historical+=BigInt(prior.historicalReplacedMinor)}
@@ -66,9 +72,10 @@ async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null
     const [[refund]]=await c.execute('SELECT COALESCE(SUM(amount_minor),0) AS amount FROM catledger_transactions WHERE uid=? AND original_transaction_id=? AND deleted_at IS NULL',[uid,item.transactionId])
     const available=BigInt(item.amountMinor)-BigInt(refund.amount)-used
     historical=historical>available?available:historical
-    if(used+BigInt(entry.amountMinor)+BigInt(refund.amount)+(replaceHistorical?0n:historical)>BigInt(item.amountMinor))fail('LOAN_CHARGE_COVERAGE')
-    const replaced = replaceHistorical ? (historical<BigInt(entry.amountMinor)?historical:BigInt(entry.amountMinor)) : 0n
-    sums[item.component]+=BigInt(entry.amountMinor);items.push({chargeId:item.chargeId,contractId:item.contractId,loanId:loan.loanId,component:item.component,treatment,amountMinor:entry.amountMinor,historicalReplacedMinor:String(replaced)})
+    const limit=replaceHistorical?historical:BigInt(retainedCoverage[item.chargeId]||'0')
+    const replaced=[historical,BigInt(entry.amountMinor),limit].reduce((a,b)=>a<b?a:b)
+    if(used+BigInt(entry.amountMinor)+BigInt(refund.amount)+historical-replaced>BigInt(item.amountMinor))fail('LOAN_CHARGE_COVERAGE')
+    sums[item.component]+=BigInt(entry.amountMinor);items.push({chargeId:item.chargeId,contractId:item.contractId,loanId:loan.loanId,component:item.component,treatment,reusedExpense,amountMinor:entry.amountMinor,historicalReplacedMinor:String(replaced)})
   }
   for(const component of ['interest','fee']) {
     const required=input[component+'Treatment']==='accrued'||contract&&!contract.authorization.coverageOnly||sums[component]>0n
@@ -78,7 +85,7 @@ async function validate(c,uid,loan,input,{excludePaymentId=null,paymentDate=null
 }
 async function persist(c,uid,paymentId,items,transactions=[]) {
   for(const item of items) {
-    if(item.treatment==='expense') {
+    if(item.treatment==='expense'&&!item.reusedExpense) {
       const transaction=transactions.find(t=>t.chargeId===item.chargeId)
       if(!transaction)fail('LOAN_CHARGE_COVERAGE')
       await c.execute("UPDATE catledger_loan_charges SET state='recorded',basis='actual',transaction_id=?,version=version+1 WHERE uid=? AND charge_id=? AND state='planned'",[transaction.transactionId,uid,item.chargeId])
