@@ -116,17 +116,17 @@
       <button class="secondary-button" bindtap="openLoanLink" disabled="{{saving || loanContextLoading}}">关联贷款／分期，或新建分期资料</button>
     </block>
     <block wx:if="{{loanContext.linked}}">
-      <text wx:if="{{loanContext.state === 'replaced'}}" class="loan-context-note">这条原账目已整组更正，下方为当前实际借还，不能再次登记原付款。</text>
-      <text class="loan-context-note">整组实际借还总额 {{loanContext.totalText}}；以下为整组构成，不是当前单条账目金额。</text>
+      <text wx:if="{{loanContext.state === 'replaced'}}" class="loan-context-note">原账目已整组更正，以下为当前实际借还，不能重复登记。</text>
+      <text class="loan-context-note">整组借还 {{loanContext.totalText}}（非本笔金额）</text>
       <view wx:for="{{loanContext.allocations}}" wx:key="loanId" class="loan-context-allocation">
-        <text class="loan-context-name">{{item.loanName}} · {{item.kindText}}</text>
+        <view class="loan-context-head"><text class="loan-context-name">{{item.loanName}} · {{item.kindText}}</text><text wx:if="{{loanContext.payment.kind === 'repayment'}}" class="loan-context-period">{{item.periodText}}</text></view>
         <text class="loan-context-note">本金 {{item.principalText}} · 利息 {{item.interestText}} · 费用 {{item.feeText}}</text>
-        <text class="loan-context-note">利息：{{item.interestTreatment === 'accrued' ? '已计负债，仅清偿' : '本次支出'}}；费用：{{item.feeTreatment === 'accrued' ? '已计负债，仅清偿' : '本次支出'}}</text>
-        <block wx:if="{{loanContext.payment.kind === 'repayment'}}"><text class="loan-context-note">{{item.periodText}}</text><text wx:if="{{item.hasUnallocated}}" class="loan-context-note">{{item.unallocatedText}}</text></block>
-        <button class="loan-context-link" data-id="{{item.loanId}}" bindtap="openLinkedLoan" disabled="{{loanContextLoading}}">查看贷款资料</button>
-        <button wx:if="{{loanContext.payment.kind === 'repayment'}}" class="loan-context-link" data-id="{{item.loanId}}" data-plan="yes" bindtap="openLinkedLoan" disabled="{{loanContextLoading}}">查看完整期次与对账</button>
+        <text wx:if="{{item.interestTreatment === 'accrued' || item.feeTreatment === 'accrued'}}" class="loan-context-note">{{item.interestTreatment === 'accrued' ? '利息' : ''}}{{item.interestTreatment === 'accrued' && item.feeTreatment === 'accrued' ? '、' : ''}}{{item.feeTreatment === 'accrued' ? '费用' : ''}}已计负债，仅清偿</text>
+        <text wx:if="{{loanContext.payment.kind === 'repayment' && item.hasUnallocated}}" class="loan-context-note">{{item.unallocatedText}}</text>
+        <view class="loan-action" data-id="{{item.loanId}}" bindtap="openLinkedLoan" hover-class="loan-action-hover" aria-role="button"><text>贷款详情</text><text class="loan-action-chevron">›</text></view>
+        <view wx:if="{{loanContext.payment.kind === 'repayment'}}" class="loan-action" data-id="{{item.loanId}}" data-plan="yes" bindtap="openLinkedLoan" hover-class="loan-action-hover" aria-role="button"><text>期次与对账</text><text class="loan-action-chevron">›</text></view>
       </view>
-      <button class="secondary-button" bindtap="openLinkedPayment" disabled="{{loanContextLoading}}">查看或更正整组实际借还</button>
+      <view class="loan-action" bindtap="openLinkedPayment" hover-class="loan-action-hover" aria-role="button"><text>查看或更正整组借还</text><text class="loan-action-chevron">›</text></view>
     </block>
     <view wx:if="{{loanContext.evidence.items.length}}" class="loan-context-allocation"><text class="loan-context-name">导入来源信息 · 待核对</text>
       <view wx:for="{{loanContext.evidence.items}}" wx:for-item="evidence" wx:key="index"><text class="loan-context-note">{{evidence.description}}</text><text wx:for="{{evidence.fields}}" wx:key="index" class="loan-context-note">{{item.label}}：{{item.value}}</text></view>
