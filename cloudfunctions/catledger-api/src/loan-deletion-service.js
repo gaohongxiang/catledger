@@ -21,6 +21,7 @@ function createLoanDeletionService({getPool,selectLoan}) {
       const revoked=transactions.filter(t=>t.disposition==='revoke'),ids=new Set(revoked.map(t=>t.transactionId))
       const accounts=await lockAccounts(c,uid,revoked.flatMap(t=>[t.sourceAccountId,t.destinationAccountId]),{allowArchived:true})
       await assertCashBalanceChanges(c,uid,accounts,revoked.map(transaction=>({transaction,multiplier:-1n})))
+      await require('./loan-deletion-review').record(c,uid,loan,contract,scope.reviews)
       // 清除的是当前占用；从不调用会恢复旧错误原账的 reversePayment。
       for(const p of payments){
         const [source]=p.sources

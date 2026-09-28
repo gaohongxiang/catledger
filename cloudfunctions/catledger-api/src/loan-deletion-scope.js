@@ -4,6 +4,7 @@ const { encodeCursor } = require('./cursor')
 const { digestRequest } = require('./request-digest')
 const provenance = require('./transaction-provenance')
 const store = require('./loan-charge-store')
+const creationReview = require('./loan-deletion-review')
 const { transactionDeltas, queryBookBalance } = require('./cash-balance-guard')
 
 // 完整范围先计算，再由唯一外层用户锁事务执行。任何依赖都不能静默跳过。
@@ -11,6 +12,7 @@ async function prepare(c, uid, data, secret, selectLoan) {
   const loan=await selectLoan(c,uid,data.loanId)
   if(loan.deletedAt!=null)throw ledgerError('NOT_FOUND')
   if(Number(loan.version)!==parseVersion(data.version))throw ledgerError('CONFLICT')
+  const requestedReviews=creationReview.parse(data.reviewedCreations,loan),reviews=[]
   const contract=await store.contract(c,uid,loan.loanId),charges=contract?await store.charges(c,uid,contract.contractId):[]
   const [items]=await c.execute('SELECT item_id AS itemId,transaction_id AS transactionId,loan_id AS loanId,component,active,version FROM catledger_installment_items WHERE uid=? AND loan_id=? ORDER BY item_id',[uid,loan.loanId])
   const [payments]=await c.execute(`SELECT DISTINCT p.payment_id AS paymentId,p.version,p.kind,p.origin_mode AS mode
@@ -30,6 +32,7 @@ async function prepare(c, uid, data, secret, selectLoan) {
     ORDER BY t.transaction_id LIMIT 6001`,[uid,loan.loanId,loan.loanId,contract?.contractId||null,loan.loanId,contract?.contractId||null])
   if(transactions.length>6000||items.length>3600||payments.length>1200)throw ledgerError('LOAN_SOURCE_TOO_LARGE')
   const blockers=[],relations=[],byId=new Map(transactions.map(t=>[t.transactionId,t])),byCharge=new Map(charges.map(f=>[f.chargeId,f]))
+  if([...requestedReviews.keys()].some(id=>!byId.has(id)))throw ledgerError('NOT_FOUND')
   const dependencies=await require('./loan-deletion-relations').load(c,uid,payments,transactions)
   const block=(code,message,entry)=>{if(!blockers.some(b=>b.code===code&&b.entry.url===entry.url))blockers.push({code,message,entry})}
   const loanEntry={label:'返回贷款详情核对',url:'/pages/loan-detail/index?loanId='+loan.loanId}
@@ -44,7 +47,12 @@ async function prepare(c, uid, data, secret, selectLoan) {
     t.amountMinor=String(t.amountMinor);t.version=Number(t.version)
     const sources=dependencies.sources(t.transactionId)
     const valid=sources.filter(s=>Number(s.version)===t.version&&s.updateStatus==='posted'&&(['posted','corrected'].includes(s.status)||s.status==='excluded'&&s.role==='historical_primary'))
+    const storedProvenance=t.provenance
     t.provenance=t.provenance?provenance.normalize(t.provenance):await provenance.resolve(c,uid,t.transactionId)
+    if(requestedReviews.has(t.transactionId)){
+      const review=await creationReview.verify(c,uid,loan,contract,charges,t,requestedReviews.get(t.transactionId),storedProvenance)
+      reviews.push(review);t.provenance=review.provenance
+    }
     const own=t.provenance.kind==='loan'&&t.provenance.loanIds.length===1&&t.provenance.loanIds[0]===loan.loanId
     t.disposition=valid.length?'retain':own?'revoke':t.provenance.kind==='unknown'?'review':'retain'
     t.reason=valid.length?'verified_source':own?'exclusive_creation':t.provenance.kind==='unknown'?'unknown_creation':'existing_transaction'
@@ -91,7 +99,7 @@ async function prepare(c, uid, data, secret, selectLoan) {
   for(const p of payments)if(p.links.some(l=>byId.get(l.transactionId)?.disposition==='revoke'))counts[p.kind==='drawdown'?'drawdowns':'repayments']++
   counts.fees=transactions.filter(t=>t.disposition==='revoke'&&t.type==='expense').length
   counts.balanceAdjustments=transactions.filter(t=>t.disposition==='revoke'&&t.type==='balance_adjustment').length
-  const scope={loanId:loan.loanId,version:Number(loan.version),contract,charges,items,payments,transactions,relations,accountChanges,blockers}
+  const scope={loanId:loan.loanId,version:Number(loan.version),contract,charges,items,payments,transactions,relations,accountChanges,blockers,reviews}
   const previewToken=encodeCursor(secret,{action:'loans.delete',uid,digest:digestRequest('loan-delete-v1',scope)})
   const impact={loanId:loan.loanId,version:Number(loan.version),canDelete:!blockers.length,counts,blockers,accountChanges,previewToken,
     revoke:transactions.filter(t=>t.disposition==='revoke').map(t=>({transactionId:t.transactionId,version:t.version})),
