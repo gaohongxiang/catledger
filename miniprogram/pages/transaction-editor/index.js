@@ -8,6 +8,7 @@ const time = require('../../utils/time')
 const themeService = require('../../theme/service')
 const { needsEditingTransaction } = require('./model')
 const { buildReadonlyDetail } = require('./readonly-detail')
+const deleteFeedback = require('../transactions/delete-feedback')
 
 const TYPE_OPTIONS = [
   { value: 'expense', label: '支出' },
@@ -27,6 +28,7 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
     loanContext: null, loanContextLoading: false, loanContextError: '', loanManaged: false,
     mode: 'create',
     readonlyDetail: false,
+    canDelete: false,
     detail: null,
     categoryDirty: false,
     transactionId: '',
@@ -100,7 +102,7 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
   beginRead: function () {
     return pageReadSession.begin(this,
       Object.keys(this.data).filter(key => !['mode', 'readonlyDetail'].includes(key) && !key.startsWith('theme')),
-      ['_loanLoad', '_initialized', '_writeFinished', '_pendingWriteChecked', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
+      ['_loanLoad', '_initialized', '_writeFinished', '_deleteConfirming', '_pendingWriteChecked', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
         '_detailTransaction', '_editingTransaction', '_catalogCategories', '_refundQuery', '_refundCursor', '_refundPrevious'])
   },
 
@@ -115,6 +117,8 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
       }
       this._editingTransaction = editing
       this._initialized = true
+      this.setData({ canDelete: Boolean(editing && ['income', 'expense', 'transfer', 'refund'].includes(editing.type) &&
+        (this.data.mode === 'edit' || this.data.mode === 'import' && editing.origin === 'import')) })
       if (this.data.readonlyDetail) {
         this._detailTransaction = editing
         const detail = buildReadonlyDetail(editing, [], this.data.mode === 'import' && ['income', 'expense'].includes(editing.type))
@@ -128,7 +132,7 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
       this.setData({ formReady: true })
     }
     const loanLoad = this.loadLoanContext()
-    if (this.data.readonlyDetail && !this.data.detail.canEditCategory) return loanLoad
+    if (this.data.readonlyDetail && !this.data.detail.canEditCategory) return Promise.all([loanLoad, this.verifyPendingWrite()])
     const self = this
     const needsRefund = !this.data.readonlyDetail && TYPE_OPTIONS[this.data.typeIndex].value === 'refund'
     const refundLoad = needsRefund ? this.loadRefundables() : Promise.resolve()
@@ -258,16 +262,23 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
     if (this._writeFinished) return
     this._writeFinished = true
     app.globalData.editingTransaction = null
-    const titles = { 'transactions.create': '已记账', 'transactions.update': '已更新', 'transactions.delete': '已删除',
+    const titles = { 'transactions.create': '已记账', 'transactions.update': '已更新', 'transactions.delete': '已删除', 'transactions.deleteMany': '已删除',
       'transactions.linkRefund': '已关联', 'transactions.setCategory': '分类已保存' }
+    const deleted = action === 'transactions.delete' || action === 'transactions.deleteMany'
+    if (deleted) deleteFeedback.markDeleted(app)
     wx.showToast({ title: titles[action] || '上次操作已完成', icon: 'success' })
-    wx.navigateBack()
+    const isCurrent = pageReadSession.capture(this)
+    wx.navigateBack({ fail: () => {
+      if (isCurrent() && deleted) this.setData({ errorMessage: deleteFeedback.refreshMessage })
+    } })
   },
   verifyPendingWrite: async function () {
     const isCurrent = pageReadSession.capture(this)
-    if (!isCurrent() || !app.globalData.uid || this._pendingWriteChecked) return
+    if (!isCurrent() || this._pendingWriteChecked) return
     this._pendingWriteChecked = true
     try {
+      if (!app.globalData.uid) await api.callApi('catalog.get')
+      if (!isCurrent()) return
       if (!pendingWrites.pending()) return
       const result = await pendingWrites.verify()
       if (result && isCurrent()) this.writeSucceeded(result.action)
@@ -278,14 +289,14 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
   },
   sendLedgerWrite: async function (action, data) {
     const isCurrent = pageReadSession.capture(this)
-    if (!isCurrent() || this.data.saving) return
+    if (!isCurrent() || this.data.saving || this._writeFinished) return
     this.setData({ saving: true, errorMessage: '' })
     try {
       if (!app.globalData.uid) await api.callApi('catalog.get')
       if (!isCurrent()) return
-      const result = await pendingWrites.send('api', action, data)
+      const result = await pendingWrites.send('api', action, data, { exact: action === 'transactions.delete' })
       if (isCurrent()) this.writeSucceeded(result.action)
-    } catch (error) { if (isCurrent()) this.setData({ errorMessage: error.message || '上次操作结果待核实，再次保存将恢复原请求' }) }
+    } catch (error) { if (isCurrent()) this.setData({ errorMessage: action === 'transactions.delete' ? deleteFeedback.failureMessage(error) : error.message || '上次操作结果待核实，再次保存将恢复原请求' }) }
     finally { if (isCurrent()) this.setData({ saving: false }) }
   },
 
@@ -373,20 +384,31 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
   },
 
   remove: function () {
-    if (this.data.loanManaged) { this.setData({ errorMessage: '此账目由贷款管理维护，请查看实际借还记录' }); return Promise.resolve() }
     const self = this
     const isCurrent = pageReadSession.capture(this)
-    if (!isCurrent()) return
+    if (!isCurrent() || this.data.saving || this._deleteConfirming || this._writeFinished) return
+    if (this.data.loanManaged) { this.setData({ errorMessage: deleteFeedback.failureMessage({ code: 'LOAN_TRANSACTION_LOCKED' }) }); return Promise.resolve() }
+    const data = { transactionId: this.data.transactionId, version: this.data.version }
+    let packet
+    try { packet = pendingWrites.pending() } catch (_) {}
+    if (packet && packet.target === 'api' && packet.action === 'transactions.delete' && packet.payload.transactionId === data.transactionId && packet.payload.version === data.version) {
+      return this.sendLedgerWrite('transactions.delete', data)
+    }
+    this._deleteConfirming = true
     wx.showModal({
       title: '删除这笔账？',
-      content: '删除后会从余额和统计中排除，但会保留必要的审计记录。',
+      content: deleteFeedback.confirmation,
+      confirmText: '确认删除',
       confirmColor: themeService.currentTokens().danger,
       success: function (result) {
-        if (!isCurrent() || !result.confirm || self.data.saving) {
+        if (!isCurrent()) return
+        self._deleteConfirming = false
+        if (!result.confirm || self.data.saving) {
           return
         }
-        return self.sendLedgerWrite('transactions.delete', { transactionId: self.data.transactionId, version: self.data.version })
-      }
+        return self.sendLedgerWrite('transactions.delete', data)
+      },
+      fail: function () { if (isCurrent()) { self._deleteConfirming = false; self.setData({ errorMessage: '删除确认未完成，请重试' }) } }
     })
   }
 }))

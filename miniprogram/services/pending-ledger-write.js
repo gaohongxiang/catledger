@@ -4,7 +4,7 @@ const importApi = require('./catledger-import')
 const config = require('../config/cloudbase')
 const clone = value => JSON.parse(JSON.stringify(value))
 const rejected = new Set(['LOAN_CHARGE_COVERAGE','LOAN_CHARGE_PAUSED','LOAN_CHARGE_DIFFERENCE','LOAN_COVERAGE_REQUIRED','VALIDATION_ERROR', 'CONFLICT', 'NOT_FOUND', 'ACCOUNT_INACTIVE', 'INSUFFICIENT_CASH_BALANCE',
-  'REFUND_EXCEEDS_ORIGINAL', 'REFUNDED_TRANSACTION_LOCKED', 'UNSUPPORTED_CURRENCY', 'UNRESOLVED_IMPORT', 'LOAN_TRANSACTION_LOCKED', 'LOAN_BASELINE_LOCKED', 'LOAN_HISTORY_REVIEW_REQUIRED', 'LOAN_PRINCIPAL_UNCONFIRMED', 'LOAN_PRINCIPAL_EXCEEDED', 'LOAN_SOURCE_MISMATCH', 'LOAN_SOURCE_TOO_LARGE', 'LOAN_PLAN_OVERALLOCATED', 'LOAN_PLAN_EXISTS'])
+  'REFUND_EXCEEDS_ORIGINAL', 'REFUNDED_TRANSACTION_LOCKED', 'TRANSACTION_GROUP_LOCKED', 'UNSUPPORTED_CURRENCY', 'UNRESOLVED_IMPORT', 'LOAN_TRANSACTION_LOCKED', 'LOAN_BASELINE_LOCKED', 'LOAN_HISTORY_REVIEW_REQUIRED', 'LOAN_PRINCIPAL_UNCONFIRMED', 'LOAN_PRINCIPAL_EXCEEDED', 'LOAN_SOURCE_MISMATCH', 'LOAN_SOURCE_TOO_LARGE', 'LOAN_PLAN_OVERALLOCATED', 'LOAN_PLAN_EXISTS'])
 function createPendingWrite(options) {
   const key = () => {
     const scope = options.scope()
@@ -55,6 +55,8 @@ function createPendingWrite(options) {
         packet = { schema: 1, target, action, payload: Object.assign({}, clone(data), { requestId: options.requestId() }) }
         persist(storageKey, packet)
       }
+      // 核实原回执期间可能换用户；不得在新身份下重发旧用户的冻结请求。
+      if (key() !== storageKey) throw Object.assign(new Error('登录状态已变化，请重新打开页面'), { code: 'LOGIN_REQUIRED' })
       try {
         const result = await options.call(packet.target, packet.action, packet.payload)
         clear(storageKey, packet)

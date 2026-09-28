@@ -72,3 +72,21 @@ test('exact 确认旧回执后执行当前选择；同一删除恢复仍只查�
   assert.equal((await h.client.send('api', 'transactions.deleteMany', data, { exact: true })).recovered, true)
   assert.equal(h.calls.filter(row => row.action === 'transactions.deleteMany').length, 2)
 })
+
+test('核实原删除期间换用户或退出，不在新身份下重发，原请求仍可恢复', async () => {
+  for (const changedUid of ['1234567891', '']) {
+    const h = harness()
+    const data = { items: [{ transactionId: 'original', version: 1 }] }
+    await assert.rejects(h.client.send('api', 'transactions.deleteMany', data, { exact: true }))
+    h.committed = null
+    const originalCall = h.options.call
+    h.options.call = async (...args) => {
+      if (args[1].endsWith('.commandResult')) h.uid = changedUid
+      return originalCall(...args)
+    }
+    await assert.rejects(h.client.send('api', 'transactions.deleteMany', data, { exact: true }), { code: 'LOGIN_REQUIRED' })
+    assert.equal(h.calls.filter(call => call.action === 'transactions.deleteMany').length, 1)
+    h.uid = '1234567890'
+    assert.equal(h.client.pending().payload.requestId, 'original-key')
+  }
+})

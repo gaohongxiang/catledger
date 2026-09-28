@@ -1,6 +1,13 @@
 const api = require('../../services/catledger-api')
 const pendingWrites = require('../../services/pending-ledger-write')
 const pageReadSession = require('../../services/page-read-session')
+const deleteFeedback = require('./delete-feedback')
+
+async function refreshDeletedList(page, isCurrent) {
+  try { await page.loadTransactions(false, { force: true }) }
+  catch (_) { if (isCurrent()) page.setData({ errorMessage: deleteFeedback.refreshMessage }) }
+  if (isCurrent() && page.data.errorMessage) page.setData({ errorMessage: deleteFeedback.refreshMessage })
+}
 
 function selectable(row) {
   return ['manual', 'import'].indexOf(row.origin) >= 0 && ['income', 'expense', 'transfer', 'refund'].indexOf(row.type) >= 0
@@ -69,13 +76,15 @@ module.exports = {
       await pendingWrites.verify()
       if (!isCurrent()) return
       this._batchRequest = null
+      this.resetSelection()
       this.setData({ deleteRetryCount: 0 })
-      await this.loadTransactions(false, { force: true })
-      if (isCurrent() && this.data.errorMessage) this.setData({ errorMessage: '已删除，列表待刷新；请重新读取最新结果' })
     } catch (error) {
       if (isCurrent()) this.setData({ deleteRetryCount: packet.payload.items.length,
-        errorMessage: error.code === 'OPERATION_UNCONFIRMED' ? '上次删除未收到结果，可点击“继续删除”确认。' : error.message })
+        errorMessage: error.code === 'OPERATION_UNCONFIRMED' ? '上次删除未收到结果，可点击“继续删除”确认。' : deleteFeedback.failureMessage(error) })
+      return
     }
+    deleteFeedback.markDeleted(getApp())
+    await refreshDeletedList(this, isCurrent)
   },
   deleteSelected: async function () {
     if (this.data.deleting || this.data.selectingAll || this.data.loading) return
@@ -85,21 +94,26 @@ module.exports = {
         .map(row => ({ transactionId: row.transactionId, version: row.version })).sort((a, b) => a.transactionId.localeCompare(b.transactionId))
     }
     if (!request || !request.items.length) return
+    const retry = Boolean(this.data.deleteRetryCount)
+    let deleted = false
     this.setData({ deleting: true, errorMessage: '' })
     try {
-      const choice = await new Promise((resolve, reject) => wx.showModal({ title: '删除 ' + request.items.length + ' 笔账目？',
-        content: '将删除选中的账目，并重新计算余额和统计。删除后无法直接恢复。', confirmText: '确认删除', confirmColor: '#a95132', success: resolve, fail: reject }))
-      if (!choice.confirm || !isCurrent()) return
+      if (!retry) {
+        const choice = await new Promise((resolve, reject) => wx.showModal({ title: '删除 ' + request.items.length + ' 笔账目？',
+          content: deleteFeedback.confirmation, confirmText: '确认删除', confirmColor: '#a95132', success: resolve, fail: reject }))
+        if (!choice.confirm || !isCurrent()) return
+      }
       await api.callApi('catalog.get')
       if (!isCurrent()) return
       const result = await pendingWrites.send('api', 'transactions.deleteMany', request, { exact: true })
       if (!isCurrent()) return
       this._batchRequest = null
+      this.resetSelection()
       this.setData({ selectionMode: false, selectedCount: 0, deleteRetryCount: 0 })
+      deleted = true
+      deleteFeedback.markDeleted(getApp())
       getApp().globalData.ledgerRevision = (getApp().globalData.ledgerRevision || 0) + 1
       wx.showToast({ title: '已删除 ' + result.result.deletedCount + ' 笔', icon: 'success' })
-      await this.loadTransactions(false, { force: true })
-      if (isCurrent() && this.data.errorMessage) this.setData({ errorMessage: '已删除，列表待刷新；请重新读取最新结果' })
     } catch (error) {
       if (!isCurrent()) return
       let packet
@@ -108,8 +122,8 @@ module.exports = {
         this._batchRequest = packet.payload
         this.setData({ deleteRetryCount: packet.payload.items.length })
       } else { this._batchRequest = null; this.setData({ deleteRetryCount: 0 }) }
-      this.setData({ errorMessage: error.code === 'REFUNDED_TRANSACTION_LOCKED' ? '选中的消费还有退款，请把对应退款一起选中后删除。'
-        : error.code === 'CONFLICT' ? '部分账目已被修改，请刷新后重新选择。此次未删除任何账目。' : error.message || '删除未完成，请重试' })
+      this.setData({ errorMessage: deleteFeedback.failureMessage(error) })
     } finally { if (isCurrent()) this.setData({ deleting: false }) }
+    if (deleted && isCurrent()) await refreshDeletedList(this, isCurrent)
   }
 }

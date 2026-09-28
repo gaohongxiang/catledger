@@ -1,12 +1,13 @@
 const readCache = require('../../services/read-cache')
 const batchDelete = require('./batch-delete')
+const deleteFeedback = require('./delete-feedback')
 const pageReadSession = require('../../services/page-read-session')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const viewModel = require('../../utils/view-model')
 
 function beginRead(page) {
-  return pageReadSession.begin(page, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'returnAccountId', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey', '_listRevision'])
+  return pageReadSession.begin(page, ['loading', 'loadingMore', 'hasLoaded', 'catalogError', 'errorMessage', 'transactions', 'nextCursor', 'incomeText', 'expenseText', 'netText', 'netClass', 'accountFilters', 'categoryFilters', 'accountFilterIndex', 'returnAccountId', 'categoryFilterIndex', 'sourceFilterIndex', 'search', 'appliedSearch', 'selectionMode', 'selectedCount', 'allSelected', 'selectingAll', 'deleting', 'deleteRetryCount'], ['_prepareLoad', '_transactionsLoad', '_listCacheToken', '_transactionsKey', '_transactionsGeneration', '_listQueryKey', '_listRevision', '_deleteRefreshRevision'])
 }
 
 function shiftDay(date, delta) {
@@ -221,20 +222,21 @@ return Object.assign({
     if (append && this._transactionsLoad) return this._transactionsLoad
     const queryKey = JSON.stringify(this.requestData(null))
     const baseToken = api.cacheToken('transactions.list', this.requestData(null))
+    const deleteRevision = deleteFeedback.revision(app)
+    const force = Boolean(options && options.force) || deleteFeedback.needsRefresh(this, app)
     if (append && (!baseToken || baseToken !== this._listCacheToken)) return this.loadTransactions(false, { force: true })
-    if (options && options.reuse && !options.force && !this._transactionsLoad && this.data.hasLoaded && baseToken && baseToken === this._listCacheToken) return Promise.resolve()
+    if (options && options.reuse && !force && !this._transactionsLoad && this.data.hasLoaded && baseToken && baseToken === this._listCacheToken) return Promise.resolve()
     const generation = (this._transactionsGeneration || 0) + 1
     this._transactionsGeneration = generation
     this._transactionsKey = requestKey
     const isLatest = () => isCurrent() && this._transactionsGeneration === generation
     const self = this
-    const force = Boolean(options && options.force)
     if (!append && queryKey !== this._listQueryKey) this.setData({ hasLoaded: false, transactions: [], nextCursor: null })
     const needsNetwork = force || !api.isFresh('transactions.list', data)
-    this.setData(append ? { loadingMore: needsNetwork } : { loading: needsNetwork, errorMessage: '' })
+    this.setData(append ? { loadingMore: needsNetwork } : { loading: needsNetwork, errorMessage: deleteFeedback.needsRefresh(this, app) ? deleteFeedback.refreshMessage : '' })
     const applyTransactions = function (result, snapshot) {
         if (!isLatest()) return
-        if (snapshot && self.data.hasLoaded && self._listQueryKey === queryKey) { self.setData({ errorMessage: '正在更新，当前显示上次结果' }); return }
+        if (snapshot && self.data.hasLoaded && self._listQueryKey === queryKey) { self.setData({ errorMessage: deleteFeedback.needsRefresh(self, app) ? deleteFeedback.refreshMessage : '正在更新，当前显示上次结果' }); return }
         if (!append && !snapshot && options && options.reuse && !force && self.data.hasLoaded &&
             self._listQueryKey === queryKey && api.cacheToken('transactions.list', data) === self._listCacheToken) { self.setData({ errorMessage: '' }); return }
         if (!snapshot && append && (api.cacheToken('transactions.list', self.requestData(null)) !== baseToken || result.dataRevision !== self._listRevision)) {
@@ -247,7 +249,8 @@ return Object.assign({
           ? String(self.data.transactions[self.data.transactions.length - 1].occurredLocalAt || '').slice(0, 10)
           : null
         const labeled = attachDayLabels(rows, lastDay)
-        const patch = { hasLoaded: true, nextCursor: result.nextCursor, errorMessage: snapshot ? '正在更新，当前显示上次结果' : '', staggerOn: !append }
+        const refreshed = !append && !snapshot ? deleteRevision : self._deleteRefreshRevision
+        const patch = { hasLoaded: true, nextCursor: result.nextCursor, errorMessage: deleteFeedback.needsRefresh(self, app, refreshed) ? deleteFeedback.refreshMessage : snapshot ? '正在更新，当前显示上次结果' : '', staggerOn: !append }
         if (append) labeled.forEach((row, index) => { patch['transactions[' + (self.data.transactions.length + index) + ']'] = row })
         else {
           patch.transactions = labeled
@@ -258,6 +261,7 @@ return Object.assign({
             : String(result.summary.netIncomeMinor) === '0' ? 'amount-neutral' : 'amount-income'
         }
         self.setData(patch)
+        if (!append && !snapshot) self._deleteRefreshRevision = deleteRevision
     }
     this._transactionsLoad = api.callApi('transactions.list', data, { force, onSnapshot: append ? null : result => applyTransactions(result, true) })
       .then(result => applyTransactions(result, false))
@@ -267,7 +271,7 @@ return Object.assign({
           self._transactionsLoad = null
           return self.loadTransactions(false, { force: true })
         }
-        self.setData({ errorMessage: self.data.hasLoaded ? '更新未成功，当前显示上次结果' : error.message || '明细加载失败' })
+        self.setData({ errorMessage: deleteFeedback.needsRefresh(self, app) ? deleteFeedback.refreshMessage : self.data.hasLoaded ? '更新未成功，当前显示上次结果' : error.message || '明细加载失败' })
       })
       .finally(function () {
         if (!isLatest()) return
