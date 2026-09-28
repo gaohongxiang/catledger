@@ -492,7 +492,15 @@ async function batchHasRemovedTransactions(connection, uid, batchId) {
       WHERE l.uid = u.uid AND l.update_id = u.update_id AND l.superseded_at IS NULL
         AND l.role <> 'refund_original' AND t.deleted_at IS NOT NULL
     ) LIMIT 1`, [uid, batchId, latest.updateId])
-  return Boolean(removed)
+  if (removed) return true
+  const [[permanentlyRemoved]] = await connection.execute(`SELECT e.event_id FROM catledger_economic_events e
+    JOIN catledger_event_evidence ee ON ee.uid=e.uid AND ee.event_id=e.event_id AND ee.evidence_role<>'discarded'
+    JOIN catledger_import_rows r ON r.uid=ee.uid AND r.row_id=ee.row_id
+    WHERE e.uid=? AND e.update_id=? AND r.batch_id=?
+      AND (JSON_CONTAINS(e.reason_codes_json, JSON_QUOTE('transaction_permanently_deleted'))
+        OR JSON_CONTAINS(e.reason_codes_json, JSON_QUOTE('reused_transaction_permanently_deleted'))) LIMIT 1`,
+  [uid, latest.updateId, batchId])
+  return Boolean(permanentlyRemoved)
 }
 
 function documentParseFingerprint(document, contentSha256, timezoneOffsetMinutes) {

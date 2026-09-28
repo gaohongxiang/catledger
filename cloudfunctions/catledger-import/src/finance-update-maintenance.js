@@ -128,6 +128,10 @@ async function validateCorrectionRelations(connection, uid, transaction, draft, 
 async function prepareCorrection(connection, uid, update, event, transactions, fields, forUpdate = false) {
   await assertNoLoanTransactions(connection, uid, transactions.map(row => row.transactionId))
   const impact = correctionImpactResult(event, transactions)
+  if (event.reasonCodes.includes('transaction_permanently_deleted')) {
+    if (!impact.conflicts.includes('TRANSACTION_SET_CHANGED')) impact.conflicts.push('TRANSACTION_SET_CHANGED')
+    impact.canCorrect = false
+  }
   const created = transactions.filter((row) => row.creationMethod === 'created' && row.role !== 'refund_original')
   const next = fields ? applyFields(event, fields) : event
   // 聚合事件不能通过改性质退化为局部单笔编辑。
@@ -182,6 +186,9 @@ async function prepareUndo(connection, uid, update, forUpdate = false) {
   // 整批撤销以用户刚预览的当前交易为准；改过分类的账目也可撤销。
   // 当前版本包含在 previewToken 中，预览后再发生修改仍会拒绝提交。
   if (created.some((row) => row.deletedAt != null || row.origin !== 'import')) conflicts.push('TRANSACTION_SET_CHANGED')
+  const [[removed]] = await connection.execute(`SELECT event_id FROM catledger_economic_events
+    WHERE uid=? AND update_id=? AND JSON_CONTAINS(reason_codes_json, JSON_QUOTE('transaction_permanently_deleted')) LIMIT 1`, [uid, updateId])
+  if (removed && !conflicts.includes('TRANSACTION_SET_CHANGED')) conflicts.push('TRANSACTION_SET_CHANGED')
   if (dependents.length) conflicts.push('EXTERNAL_REFUND_DEPENDENCY')
   if (!effects.verified) conflicts.push('LEGACY_SIDE_EFFECTS_UNVERIFIED')
   if (state.deficits.length) conflicts.push('INSUFFICIENT_CASH_BALANCE')

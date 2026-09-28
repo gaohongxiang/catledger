@@ -35,7 +35,7 @@
     "loans.releaseRepayment": {"kind":"idempotent-versioned-mutation","data":["requestId","paymentId","version","confirmed"],"returns":"{paymentId,version,released:true}","rules":["Release only pending confirmed repayments, preserving all financial transactions. Never silently detach an allocated payment."]},
     "loans.transaction": {"kind":"read","data":["transactionId"],"returns":["state (none|candidate|allocatable|linked|replaced)","transaction","targetAccount?","payment?","allocations (whole-payment shares; first 3 actual periods, periodCount, unallocated components)","evidence (bounded raw hints, never confirmed financial facts)"],"rules":["Trusted uid; consistent read-only snapshot; active linked/replaced relations take priority for every account type. Only explicitly confirmed active repayments without loan allocations return candidate with payment and repayment details. An active unoccupied single asset-to-credit transfer returns allocatable after source validation; no allocation is inferred. Other ordinary transfers return none. No inferred installment, amount or period; revoked relations are not reported active."]},
     "loans.unassigned": {"kind":"read","data":["month?","accountId? (liability; credit accepted with empty results)","pageSize? (1..40)","cursor?"],"returns":["month","accountId","items","nextCursor"],"rules":["Only confirmed active repayments without loan allocations; whole financial group appears once; returns total and repaymentTotalMinor; cursor binds uid/month/account. Credit bill repayments stay outside this pending-confirmed list; their transaction details offer explicit installment allocation."]},
-    "transactions.deleteMany": {"kind": "idempotent-mutation", "data": ["requestId", "items[{transactionId,version}]"], "returns": ["deleted", "deletedCount", "transactionIds"], "rules": ["Nonempty unique current-user manual/import transactions without a 100-item cap; the complete selected set is validated and deleted in one user-locked transaction, with bounded SQL chunks; all-or-nothing; versions, loan associations, final cash balance and refunds outside selection validated; archived accounts allowed; selected original and refunds can be removed together; frozen receipt recoverable via transactions.commandResult."]},
+    "transactions.deleteMany": {"kind": "idempotent-mutation", "data": ["requestId", "items[{transactionId,version}]"], "returns": ["deleted", "deletedCount", "transactionIds"], "rules": ["Nonempty unique current-user manual/import ordinary transactions without a 100-item cap; validate the complete selected set, then physically delete in one user-locked transaction with bounded SQL chunks. All-or-nothing; versions, complete single-source payment/repayment allocation sets, active and historical loan/fee references, final cash balance and refunds outside selection validated; archived accounts allowed; selected refunds are deleted before originals. Remove exclusive event links and review transaction candidates, preserve shared evidence/files and historical posting facts. Detach only unprotected soft-deleted refund references, keeping those historical rows. Minimal receipt contains only deletion results, never a recovery copy; replay cannot delete later additions or reimports."]},
     "dataExports.start": {"kind":"mutation","data":["requestId"],"returns":["exportId","format","schemaVersion","startedAt","expiresAt","tables","maxRows","maxBytes"],"rules":["One private job per authenticated user; one hour expiry; start/replay does not change business revision."]},
     "dataExports.page": {"kind":"read","data":["exportId","cursor?"],"returns":["text","bytes","rows","totalRows","nextCursor","completeToken"],"rules":["Signed keyset/UTF-8 fragment cursor; 50 completed rows and 65536 UTF-8 text bytes maximum; unchanged business revision required."]},
     "dataExports.finish": {"kind":"command","data":["exportId","completeToken"],"returns":["exportId","complete","rows","format","startedAt"],"rules":["Only signed terminal token; active user lock checks revision; immutable completed result can be replayed."]},
@@ -188,7 +188,7 @@
       "kind": "idempotent-versioned-mutation",
       "data": ["requestId", "transactionId", "version"],
       "returns": ["transactionId", "deleted", "version"],
-      "rules": ["仅软删除当前用户的手工交易，校验交易版本并保留幂等回执", "关联账户停用不阻止删除，账户维持停用；新增与编辑仍要求活动账户", "保留现金余额、退款依赖及贷款关联保护"]
+      "rules": ["永久删除当前可信用户的普通手工或导入交易，版本、完整依赖与最小幂等回执在原事务中核验；返回version为删除结果版本，不代表仍存有交易行", "关联账户停用不阻止删除，账户维持停用；新增与编辑仍要求活动账户", "现金、完整退款组、同源付款分配组、贷款付款与费用及系统可恢复历史继续保护；来源证据、原文件、账户、分类和历史成功回执保留", "专属事件链接和交易候选清理；仅解除未受保护的旧软删除退款引用，不清旧软删除行。重导走原整理核对；系统更正、替换、撤销仍保留原软删除语义"]
     }
   },
   "categoryHierarchy": {
@@ -207,7 +207,7 @@
     "money": "minor-unit decimal strings only; JavaScript floating point is forbidden",
     "time": "occurredLocalAt plus JavaScript getTimezoneOffset() minutes; optional date and month filters use local date",
     "mutation": "requestId is UUID; same key and request replays, same key with different request conflicts",
-    "deletion": "accounts and categories archive; manual transactions soft-delete; no physical business deletion",
+    "deletion": "accounts and categories archive; user deletion of ordinary manual/import transactions physically removes selected rows and exclusive references atomically; system corrections/replacements/reversals retain their historical soft-delete semantics. No recycle bin, restoration, permanent ignore list or cleanup of old soft-deleted rows.",
     "refund": "manual refunds must reference one active original expense; imported pending refunds credit one account without affecting income or expense statistics until linked",
     "cashBalance": "a write may not create or deepen a negative cash balance; historical negative cash remains visible and only improving writes or an explicit balance correction are allowed"
   },
@@ -238,6 +238,7 @@
     "NOT_FOUND",
     "REFUND_EXCEEDS_ORIGINAL",
     "REFUNDED_TRANSACTION_LOCKED",
+    "TRANSACTION_GROUP_LOCKED",
     "SERVICE_NOT_CONFIGURED",
     "SERVICE_TEMPORARY_UNAVAILABLE",
     "UNSUPPORTED_ACTION",

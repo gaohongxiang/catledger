@@ -1,4 +1,5 @@
 const { assertNoLoanTransactions } = require('./loan-transaction-guard')
+const { ensureDeletable, assertDeleteRange, permanentlyDelete } = require('./transaction-permanent-delete')
 const { randomUUID } = require('node:crypto')
 
 const { ledgerError } = require('./ledger-errors')
@@ -367,22 +368,14 @@ function createTransactionCommandService({ getPool }) {
       action: 'transactions.delete',
       operation: async (connection, uid, data) => {
         const current = await selectTransaction(connection, uid, data.transactionId, { forUpdate: true })
-        await assertNoLoanTransactions(connection, uid, [current.transactionId])
-        ensureEditable(current, data.version)
-        if (current.type === 'expense') {
-          await protectRefundedExpense(connection, uid, current, null)
-        }
-        // 停用阻止新增/编辑，不阻止删除历史手工账目；仍锁账户并检查现金余额。
+        await assertDeleteRange(connection, uid, [current.transactionId])
+        ensureDeletable(current, data.version)
+        // 停用阻止新增/编辑，不阻止删除历史普通账目；仍锁账户并检查现金余额。
         const accounts = await lockAccounts(connection, uid, [current.sourceAccountId, current.destinationAccountId], { allowArchived: true })
         await assertCashBalanceChanges(connection, uid, accounts, [
           { transaction: current, multiplier: -1n }
         ])
-        await connection.execute(
-          `UPDATE catledger_transactions
-              SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1
-            WHERE uid = ? AND transaction_id = ? AND version = ? AND deleted_at IS NULL`,
-          [uid, current.transactionId, data.version]
-        )
+        await permanentlyDelete(connection, uid, [current])
         return {
           transactionId: current.transactionId,
           deleted: true,

@@ -8,12 +8,14 @@ const VERSION = 'historical-review-v1'
 const MAX_MATCHES = 10000
 
 async function staleHistoricalLinks(connection, uid, updateId) {
-  const [rows] = await connection.execute(`SELECT l.link_id AS linkId, l.event_id AS eventId
-    FROM catledger_economic_event_transactions l JOIN catledger_economic_events e
-      ON e.uid = l.uid AND e.event_id = l.event_id AND e.status = 'excluded'
+  const [rows] = await connection.execute(`SELECT l.link_id AS linkId, e.event_id AS eventId
+    FROM catledger_economic_events e LEFT JOIN catledger_economic_event_transactions l
+      ON l.uid = e.uid AND l.event_id = e.event_id AND l.role = 'historical_primary' AND l.superseded_at IS NULL
     LEFT JOIN catledger_transactions t ON t.uid = l.uid AND t.transaction_id = l.transaction_id
-    WHERE l.uid = ? AND l.update_id = ? AND l.role = 'historical_primary' AND l.superseded_at IS NULL
-      AND (t.transaction_id IS NULL OR t.deleted_at IS NOT NULL OR t.version <> l.transaction_version)`, [uid, updateId])
+    WHERE e.uid = ? AND e.update_id = ? AND e.status = 'excluded'
+      AND ((l.link_id IS NOT NULL AND (t.transaction_id IS NULL OR t.deleted_at IS NOT NULL OR t.version <> l.transaction_version))
+        OR (l.link_id IS NULL AND (JSON_CONTAINS(e.reason_codes_json, JSON_QUOTE('already_posted'))
+          OR JSON_CONTAINS(e.reason_codes_json, JSON_QUOTE('linked_existing_transaction')))))`, [uid, updateId])
   return rows
 }
 

@@ -100,7 +100,7 @@ async function restoreStaleHistoricalLinks(connection, uid, updateId) {
     [event.status, event.status, JSON.stringify(event.reasonCodes), event.version, uid, updateId, event.eventId])
     await createFollowUpIssue(connection, uid, updateId, event)
   }
-  for (const part of chunks(stale.map(row => [row.linkId]))) await connection.execute(`UPDATE catledger_economic_event_transactions
+  for (const part of chunks(stale.filter(row => row.linkId).map(row => [row.linkId]))) await connection.execute(`UPDATE catledger_economic_event_transactions
     SET superseded_at = CURRENT_TIMESTAMP(3) WHERE uid = ? AND update_id = ? AND link_id IN (${part.map(() => '?').join(',')})`, [uid, updateId, ...part.flat()])
   return true
 }

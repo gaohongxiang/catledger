@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
 const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
-const { localServices, call, prepareSyntheticUpdate } = require('./helpers/local-services')
+const { localServices, call, prepareSyntheticUpdate, syntheticBill } = require('./helpers/local-services')
 
 test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 120000 }, async t => {
   const lab = await isolatedMysql()
@@ -102,14 +102,21 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
       await resolve(c, updateId, newIssue, 'confirm_distinct'); await post(c, updateId)
       assert.equal(await count(c), 3)
     })
-    await t.test('候选变更拒绝旧选择；已确认复用的历史记录被删除后恢复本次记录', async () => {
+    for (const removal of ['soft', 'permanent']) await t.test(`候选变更拒绝旧选择；已确认复用的历史记录被${removal}删除后恢复本次记录`, async () => {
       const c = await context(), prior = await c.manual(), updateId = await bank(c)
       let [issue] = await issues(c, updateId)
       await lab.owner.execute('UPDATE catledger_transactions SET version = version + 1 WHERE uid = ? AND transaction_id = ?', [c.uid, prior.transactionId])
       await assert.rejects(resolve(c, updateId, issue, 'link_existing_transaction', { transactionId: prior.transactionId }), { publicCode: 'HISTORY_REVIEW_REQUIRED' })
       await recheck(c, updateId); [issue] = await issues(c, updateId)
       await resolve(c, updateId, issue, 'link_existing_transaction', { transactionId: prior.transactionId })
-      await lab.owner.execute('UPDATE catledger_transactions SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1 WHERE uid = ? AND transaction_id = ?', [c.uid, prior.transactionId])
+      if (removal === 'soft') await lab.owner.execute('UPDATE catledger_transactions SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1 WHERE uid = ? AND transaction_id = ?', [c.uid, prior.transactionId])
+      else {
+        await c.api('transactions.delete', { requestId: randomUUID(), transactionId: prior.transactionId, version: prior.version + 1 })
+        const [[row]] = await lab.owner.execute('SELECT transaction_id FROM catledger_transactions WHERE uid=? AND transaction_id=?', [c.uid, prior.transactionId])
+        assert.equal(row, undefined)
+        const members = await c.imp('reviewIssues.members', { updateId, issueId: issue.issueId, memberKind: 'transaction' })
+        assert.equal(members.items.length, 0)
+      }
       await assert.rejects(post(c, updateId), { publicCode: 'HISTORY_REVIEW_REQUIRED' })
       await recheck(c, updateId)
       assert.equal((await issues(c, updateId)).length, 0)
@@ -130,19 +137,46 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
       } while (cursor)
       assert.equal(new Set(found).size, 10)
     })
-    await t.test('未知交易类型也先查重；复用记录删除后恢复类型核对，不能直接入账', async () => {
+    for (const removal of ['soft', 'permanent']) await t.test(`未知交易类型也先查重；复用记录${removal}删除后恢复类型核对，不能直接入账`, async () => {
       const c = await context(), prior = await c.manual(), updateId = await bank(c, '', '')
       const [issue] = await issues(c, updateId)
       assert.ok(issue)
       await resolve(c, updateId, issue, 'link_existing_transaction', { transactionId: prior.transactionId })
       assert.equal((await c.imp('reviewIssues.list', { updateId, status: 'open' })).items.length, 0)
-      await lab.owner.execute('UPDATE catledger_transactions SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1 WHERE uid = ? AND transaction_id = ?', [c.uid, prior.transactionId])
+      if (removal === 'soft') await lab.owner.execute('UPDATE catledger_transactions SET deleted_at = CURRENT_TIMESTAMP(3), version = version + 1 WHERE uid = ? AND transaction_id = ?', [c.uid, prior.transactionId])
+      else await c.api('transactions.delete', { requestId: randomUUID(), transactionId: prior.transactionId, version: prior.version })
       await assert.rejects(post(c, updateId), { publicCode: 'HISTORY_REVIEW_REQUIRED' })
       await recheck(c, updateId)
       const pending = (await c.imp('reviewIssues.list', { updateId, status: 'open' })).items
       assert.ok(pending.some(row => row.issueType === 'shared_fields'))
       await assert.rejects(post(c, updateId), { publicCode: 'UNRESOLVED_IMPORT' })
       assert.equal(await count(c), 0)
+    })
+    await t.test('自动同来源排除草稿在永久删除后重新核对；已有未删交易仍复用', async () => {
+      const c = await context(), prefix = 'SYNTHETIC-DELETE-AUTO'
+      const first = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 2, prefix))
+      await post(c, first)
+      // 不同字节文件含相同稳定来源身份，使第二份在第一份已入账时形成排除草稿。
+      const content = Buffer.concat([syntheticBill(2, prefix), Buffer.from('\n')])
+      const { files } = await c.imp('imports.prepareMany', { requestId: randomUUID(), files: [{ fileName: '合成同来源.csv', size: content.length }] })
+      c.services.objects.set(files[0].cloudPath, content)
+      const parsed = await c.imp('imports.parseFile', { requestId: randomUUID(), importId: files[0].importId,
+        fileID: 'cloud://synthetic.bucket/' + files[0].cloudPath, timezoneOffsetMinutes: -480 })
+      const pending = await c.imp('financeUpdates.prepare', { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })
+      assert.equal((await c.imp('economicEvents.list', { updateId: pending.updateId, status: 'duplicate' })).items.length, 2)
+      const rows = (await c.api('transactions.list', { importUpdateId: first })).transactions
+      await c.api('transactions.delete', { requestId: randomUUID(), transactionId: rows[0].transactionId, version: rows[0].version })
+      await assert.rejects(post(c, pending.updateId), { publicCode: 'HISTORY_REVIEW_REQUIRED' })
+      await recheck(c, pending.updateId)
+      await mapAccounts(c, { updateId: pending.updateId, appliedVersion: (await summary(c, pending.updateId)).update.version })
+      // 与另一笔同额记录仍须按原历史核对流程确认，不由删除自动授权新入账。
+      for (const issue of await issues(c, pending.updateId)) await resolve(c, pending.updateId, issue, 'confirm_distinct')
+      const saved = await post(c, pending.updateId)
+      assert.equal(saved.posting.createdTransactionCount, 1)
+      assert.equal(await count(c), 2)
+      const current = (await c.api('transactions.list', { importUpdateId: pending.updateId })).transactions
+      assert.ok(current.some(row => row.transactionId === rows[1].transactionId))
+      assert.ok(current.every(row => row.transactionId !== rows[0].transactionId))
     })
     await t.test('两份无流水号文件先同时整理，第一份入账后第二份不可绕过历史核对', async () => {
       const c = await context(), first = await bank(c, '甲'), second = await bank(c, '乙')

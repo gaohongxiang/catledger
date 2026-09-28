@@ -12,8 +12,17 @@ test('API/import separate runtime roles: V2 paging, atomic chunks, replay, balan
     const apiPool = await db.role('api', grants.api), importPool = await db.role('import', grants.importer)
     for (const pool of [apiPool, importPool]) {
       await assert.rejects(pool.query('CREATE TABLE forbidden_probe (id INT)'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
-      await assert.rejects(pool.query('DELETE FROM catledger_transactions WHERE 1 = 0'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
+      for (const table of ['catledger_accounts', 'catledger_categories', 'catledger_import_files', 'catledger_source_identities', 'catledger_loan_charge_audit']) {
+        await assert.rejects(pool.query(`DELETE FROM ${table} WHERE 1 = 0`), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
+      }
     }
+    await assert.rejects(importPool.query('DELETE FROM catledger_transactions WHERE 1 = 0'), { code: 'ER_TABLEACCESS_DENIED_ERROR' })
+    // 升级脚本仅补普通删除需要的三个表级权限，可重入；无库级 DELETE 或 DDL。
+    const [[runtime]] = await apiPool.query('SELECT CURRENT_USER() AS account')
+    const [user, host] = runtime.account.split('@')
+    const sql = require('../scripts/print-permanent-delete-grants').statements({ database: db.database, user, host })
+    for (let run = 0; run < 2; run++) for (const statement of sql) await db.owner.query(statement)
+    for (const table of require('../scripts/print-permanent-delete-grants').TABLES) await apiPool.query(`DELETE FROM ${table} WHERE 1 = 0`)
     await assert.rejects(apiPool.query('UPDATE catledger_finance_updates SET status = status WHERE 1 = 0'), { code: 'ER_COLUMNACCESS_DENIED_ERROR' })
     await assert.rejects(importPool.query('UPDATE catledger_review_issue_members SET object_id = object_id WHERE 1 = 0'), { code: 'ER_COLUMNACCESS_DENIED_ERROR' })
     await assert.rejects(importPool.query('UPDATE catledger_import_rows SET raw_fields_json = raw_fields_json WHERE 1 = 0'), { code: 'ER_COLUMNACCESS_DENIED_ERROR' })

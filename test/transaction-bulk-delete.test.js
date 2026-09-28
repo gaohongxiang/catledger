@@ -28,9 +28,10 @@ test('完整批量删除在隔离 MySQL 中保持整组原子性和幂等', { sk
       const [[row]] = await lab.owner.execute("SELECT COUNT(*) AS count FROM catledger_mutation_receipts WHERE uid=? AND action='transactions.deleteMany'", [user.uid])
       return Number(row.count)
     }
+    // 无 deleted_at 过滤，必须验证物理行消失。
     const live = async rows => {
       const [[row]] = await lab.owner.execute(`SELECT COUNT(*) AS count FROM catledger_transactions
-        WHERE uid=? AND deleted_at IS NULL AND transaction_id IN (${rows.map(() => '?').join(',')})`, [user.uid, ...rows.map(r => r.transactionId)])
+        WHERE uid=? AND transaction_id IN (${rows.map(() => '?').join(',')})`, [user.uid, ...rows.map(r => r.transactionId)])
       return Number(row.count)
     }
     async function seed(count, override = () => ({})) {
@@ -104,7 +105,7 @@ test('完整批量删除在隔离 MySQL 中保持整组原子性和幂等', { sk
           const connection = await target.getConnection()
           return new Proxy(connection, { get(conn, method) {
             if (method === 'execute') return async (sql, values) => {
-              if (/UPDATE catledger_transactions\s+SET deleted_at/.test(sql) && ++updates === 2) throw new Error('synthetic second chunk failure')
+              if (/DELETE FROM catledger_transactions\s/.test(sql) && ++updates === 2) throw new Error('synthetic second chunk failure')
               return conn.execute(sql, values)
             }
             return typeof conn[method] === 'function' ? conn[method].bind(conn) : conn[method]

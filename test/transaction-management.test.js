@@ -95,6 +95,8 @@ test('批量删除、导入记录与整批撤销使用隔离 MySQL 和最小权�
       assert.equal((await api('transactions.list', { importUpdateId: original.updateId })).transactions.length, 2)
       const before = BigInt(await balance(bank)), own = await manual()
       await api('transactions.deleteMany', request([own, first.transactions[0]]))
+      const [[removed]] = await lab.owner.execute('SELECT transaction_id FROM catledger_transactions WHERE uid=? AND transaction_id=?', [user.uid, first.transactions[0].transactionId])
+      assert.equal(removed, undefined)
       assert.equal(BigInt(await balance(bank)), before + 100n)
       assert.equal((await imp('financeUpdates.list')).items.find(row => row.updateId === original.updateId).transactionCount, 1)
       const replay = await posted('SYNTHETIC-UNIFIED')
@@ -109,6 +111,24 @@ test('批量删除、导入记录与整批撤销使用隔离 MySQL 和最小权�
       await assert.rejects(api('transactions.list', { importUpdateId: again.updateId, cursor: first.nextCursor }), { publicCode: 'VALIDATION_ERROR' })
       const other = localServices({ apiPool, importPool, subject: 'synthetic-unified-other' }); await call(other.api, 'bootstrap')
       await assert.rejects(call(other.api, 'transactions.list', { importUpdateId: again.updateId }), { publicCode: 'NOT_FOUND' })
+    })
+    await t.test('普通删除不能把旧批次残余账目当完整集合继续更正或撤销', async () => {
+      const post = await posted('SYNTHETIC-DELETION-MAINTENANCE')
+      const before = await imp('financeUpdates.undoImpact', { updateId: post.updateId })
+      assert.equal(before.canUndo, true)
+      const rows = (await api('transactions.list', { importUpdateId: post.updateId })).transactions
+      const [[event]] = await lab.owner.execute('SELECT event_id AS eventId FROM catledger_economic_event_transactions WHERE uid=? AND transaction_id=?', [user.uid, rows[0].transactionId])
+      await api('transactions.delete', { requestId: randomUUID(), transactionId: rows[0].transactionId, version: rows[0].version })
+      const after = await imp('financeUpdates.undoImpact', { updateId: post.updateId })
+      assert.equal(after.canUndo, false); assert.ok(after.conflicts.includes('TRANSACTION_SET_CHANGED'))
+      await assert.rejects(imp('financeUpdates.undo', { requestId: randomUUID(), updateId: post.updateId,
+        version: post.appliedVersion, previewToken: before.previewToken }), { publicCode: 'CONFLICT' })
+      const correction = await imp('economicEvents.correctionImpact', { eventId: event.eventId })
+      assert.equal(correction.canCorrect, false); assert.ok(correction.conflicts.includes('TRANSACTION_SET_CHANGED'))
+      assert.equal(await live([rows[1]]), 1)
+      const history = (await imp('financeUpdates.list')).items.find(row => row.updateId === post.updateId)
+      assert.equal(history.status, 'posted'); assert.equal(history.transactionCount, 1)
+      assert.equal((await imp('financeUpdates.summary', { updateId: post.updateId })).posting.createdTransactionCount, 2)
     })
     await t.test('导入可查文件和时间，改分类后可撤销，旧预览不得覆盖后来修改；重导仍正常入账', async () => {
       const post = await posted('SYNTHETIC-REIMPORT')

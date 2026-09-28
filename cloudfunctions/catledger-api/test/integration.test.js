@@ -695,8 +695,7 @@ test('停用账户历史手工账目可删除且保持隔离、版本、幂等�
     const listed = await transactionService.list({ ...context, data: { month: '2026-09' } })
     assert.equal(listed.transactions.some(row => row.transactionId === created.transactionId), false)
     const [[stored]] = await pool.execute('SELECT deleted_at, version FROM catledger_transactions WHERE transaction_id = ?', [created.transactionId])
-    assert.ok(stored.deleted_at)
-    assert.equal(Number(stored.version), created.version + 1)
+    assert.equal(stored, undefined)
   }
 })
 
@@ -901,7 +900,7 @@ test('cash balance guard rejects new deficits and deleting required inflows', { 
 
 })
 
-test('manual transaction update and soft delete recalculate balances and statistics', { skip: !hasDatabase }, async () => {
+test('manual transaction update and permanent delete recalculate balances and statistics', { skip: !hasDatabase }, async () => {
   const { subjectHash, expenseCategory } = await bootstrapLedgerUser('integration-transaction-edit')
   const first = await createTestAccount(subjectHash, { name: '账户甲' })
   const second = await createTestAccount(subjectHash, { type: 'wallet', name: '账户乙' })
