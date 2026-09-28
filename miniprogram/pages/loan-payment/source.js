@@ -80,13 +80,14 @@ module.exports = {
   editPayment() { this.beginEdit(false) },
   reconcileImport() { this.beginEdit(true) },
   beginEdit(reconcile) {
-    if (this.data.saving || this.data.loading || this.data.hasPending || !this.data.payment || this.data.payment.status !== 'active') return
+    if (!session.isCurrent(this) || this.data.saving || this.data.loading || this.data.hasPending || !this.data.payment || this.data.payment.status !== 'active') return
+    if (reconcile && (this.data.payment.mode !== 'new' || this.data.payment.kind !== 'repayment')) return
     const previous = { paymentId: this.data.payment.paymentId, version: this.data.payment.version, loans: this.data.allocations.map(a => ({ loanId:a.loanId,version:a.version })) }
     this._viewPaymentId = this._paymentId
     this._paymentId = null
     this._selectedSources = new Map()
     const associate=this.data.payment.mode==='associate'
-    this.setData(Object.assign(model.editView(this.data), { hasPayment: false, payment: null, editingPayment: reconcile ? null : previous,
+    this.setData(Object.assign(model.editView(this.data), { managementOpen: false, hasPayment: false, payment: null, editingPayment: reconcile ? null : previous,
       replacePayment: reconcile ? previous : null, source: null, sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0,
       modeIndex: reconcile ? 2 : associate ? 1 : 0, confirmed: false, savedMessage: '', errorMessage: '' }))
     if (reconcile) this.setData({ sourceTiming: null })

@@ -208,8 +208,8 @@ test('账单详情保留已有关联；none状态不开放入口，已确认借�
   const page = { ...methods, data: { transactionId: transaction.transactionId, mode: 'import', readonlyDetail: true, categoryDirty: true, detail: { canEditCategory: true } }, setData(patch) { Object.assign(this.data, patch) } }
   await page.loadLoanContext()
   assert.equal(page.data.loanManaged, true); assert.equal(page.data.detail.canEditCategory, false)
-  page.openLinkedLoan({ currentTarget: { dataset: { id: 'loan', plan: 'yes' } } })
-  assert.equal(routes[0], '/pages/loan-plan/index?loanId=loan&paymentId=payment')
+  page.openLinkedPayment()
+  assert.equal(routes[0], '/pages/loan-payment/index?paymentId=payment')
   result = ordinaryContext; await page.loadLoanContext()
   assert.equal(page.data.loanManaged, false); assert.equal(page.data.loanContext.state, 'none')
   page.openLoanLink(); assert.equal(routes.length, 1)

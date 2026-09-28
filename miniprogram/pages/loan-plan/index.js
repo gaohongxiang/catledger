@@ -6,11 +6,11 @@ const theme=require('../../theme/service')
 const money=require('../../utils/money')
 const model=require('./model')
 Page({
- data:{loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,loanId:'',loanName:'',loanVersion:0,items:[],nextCursor:null,summary:null,
+ data:{expandedPeriodId:'',showPlanDetails:false,selectedPeriods:{},loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,loanId:'',loanName:'',loanVersion:0,items:[],nextCursor:null,summary:null,
   formOpen:false,form:model.blank(),paymentId:null,paymentVersion:0,paymentActive:false,paymentShare:null,allocationItems:[],allocationReview:'',confirmed:false,
   history:[],historyKind:'',historyPeriodId:null,historyNext:null,
   canGeneratePlan:false,previewOpen:false,preview:null,previewLoading:false,previewError:'',generateConfirmed:false},
- onLoad(query){theme.bindPage(this);this.setData({loanId:query.loanId,paymentId:query.paymentId||null})},
+ onLoad(query){theme.bindPage(this);this.setData({loanId:query.loanId,paymentId:query.paymentId||null});if(wx.setNavigationBarTitle)wx.setNavigationBarTitle({title:query.paymentId?'调整对应期次':'还款计划'})},
  onShow(){return loginGuard.run(this,()=>this.load())},
  onUnload(){session.end(this)},
  async load(event){
@@ -64,7 +64,9 @@ Page({
  },
  removePeriod(event){this._allocationDirty=true;this.setData({allocationItems:this.data.allocationItems.filter(a=>a.periodId!==event.currentTarget.dataset.id),confirmed:false});this.review()},
  allocationInput(event){const {index,field}=event.currentTarget.dataset;if(!this.data.allocationItems[index]||!['principalYuan','interestYuan','feeYuan'].includes(field))return;this._allocationDirty=true;this.setData({['allocationItems['+index+'].'+field]:event.detail.value,confirmed:false});this.review()},
- review(){this.setData({allocationReview:model.allocationReview(this.data)})},
+ review(){this.setData({allocationReview:model.allocationReview(this.data),selectedPeriods:this.data.allocationItems.reduce((all,row)=>{all[row.periodId]=true;return all},{})})},
+ togglePeriod(event){const id=event.currentTarget.dataset.id;if(session.isCurrent(this)&&!this.data.loading&&!this.data.saving&&this.data.items.some(row=>row.periodId===id))this.setData({expandedPeriodId:this.data.expandedPeriodId===id?'':id})},
+ togglePlanDetails(){if(session.isCurrent(this)&&!this.data.loading&&!this.data.saving)this.setData({showPlanDetails:!this.data.showPlanDetails})},
  accept(outcome){this._allocationDirty=false;this.setData({hasPending:false,savedMessage:outcome.recovered?'上次操作已确认成功':'操作已完成',formOpen:false,confirmed:false,previewOpen:false,preview:null,previewError:'',generateConfirmed:false})},
  async openPreview(){
   if(this.data.saving||this.data.previewLoading||!this.data.canGeneratePlan)return

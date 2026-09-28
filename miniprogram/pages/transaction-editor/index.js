@@ -71,7 +71,7 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
     const requestedMode = options && options.mode
     const mode = ['edit', 'import', 'view', 'link-refund'].includes(requestedMode) ? requestedMode : 'create'
     this.setData({ mode: mode, readonlyDetail: mode === 'import' || mode === 'view' })
-    if (wx.setNavigationBarTitle) wx.setNavigationBarTitle({ title: mode === 'create' ? '记一笔' : '编辑账单' })
+    this.updateNavigationTitle()
     loginGuard.run(this, this.prepareForm.bind(this))
   },
 
@@ -84,6 +84,10 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
   },
 
   onUnload: function () { pageReadSession.end(this) },
+
+  updateNavigationTitle: function () {
+    if (wx.setNavigationBarTitle) wx.setNavigationBarTitle({ title: this.data.loanManaged || this.data.readonlyDetail ? '账单详情' : this.data.mode === 'create' ? '记一笔' : '编辑账单' })
+  },
 
   openImport: function () {
     if (this.data.mode !== 'create' || !this.data.formReady || this.data.saving ||

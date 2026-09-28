@@ -51,11 +51,13 @@ function review(data) {
   } catch (error) { return error.message }
 }
 function paymentView(result) {
-  return { unallocatedText:money.formatMinor(result.unallocatedMinor||'0'),unallocatedYuan:money.minorToYuan(result.unallocatedMinor||'0'),payment: Object.assign({}, result.payment, { totalText: money.formatMinor(result.payment.totalMinor),
-    occurredText: String(result.payment.occurredLocalAt || '').slice(5, 16).replace('T', ' '),
+  return { hasUnallocated: String(result.unallocatedMinor || '0') !== '0', unallocatedText:money.formatMinor(result.unallocatedMinor||'0'),unallocatedYuan:money.minorToYuan(result.unallocatedMinor||'0'),payment: Object.assign({}, result.payment, { totalText: money.formatMinor(result.payment.totalMinor),
+    occurredText: String(result.payment.occurredLocalAt || '').slice(0, 16).replace('T', ' '),
     kindText: result.payment.kind === 'drawdown' ? '放款' : '还款', statusText: result.payment.status === 'active' ? '已登记' : '已撤销' }),
   allocations: result.allocations.map(a => Object.assign({}, a, { chargeAllocations:(result.chargeAllocations||[]).filter(c=>c.loanId===a.loanId).map(c=>({chargeId:c.chargeId,component:c.component,amountMinor:String(c.amountMinor)})),principalText: money.formatMinor(a.principalMinor),
-    interestText: money.formatMinor(a.interestMinor), feeText: money.formatMinor(a.feeMinor) })),
+    interestText: money.formatMinor(a.interestMinor), feeText: money.formatMinor(a.feeMinor),
+    periodText: a.period ? '第 ' + a.period.periodNumber + ' 期' : '',
+    hasAccruedCost: a.interestTreatment === 'accrued' && a.interestMinor !== '0' || a.feeTreatment === 'accrued' && a.feeMinor !== '0' })),
   transactions: result.transactions.map(t => Object.assign({}, t, { amountText: money.formatMinor(t.amountMinor),
     flowText: t.type === 'expense' ? '支出' : '转账' })) }
 }
@@ -66,4 +68,12 @@ function editView(data) {
     allocations:data.allocations.map(a=>Object.assign({},a,{principalYuan:money.minorToYuan(a.principalMinor),interestYuan:money.minorToYuan(a.interestMinor),feeYuan:money.minorToYuan(a.feeMinor),
       interestIndex:a.interestTreatment==='accrued'?1:0,feeIndex:a.feeTreatment==='accrued'?1:0,interestCategoryIndex:data.categories.findIndex(c=>c.id===a.interestCategoryId),feeCategoryIndex:data.categories.findIndex(c=>c.id===a.feeCategoryId)})) }
 }
-module.exports = { simplePeriod, allocation, payload, paymentView, editView, review }
+function pageTitle(data) {
+  const kind = data.payment ? data.payment.kind : data.kindIndex === 1 ? 'drawdown' : 'repayment'
+  const label = kind === 'drawdown' ? '放款' : '还款'
+  if (data.payment || data.hasPayment) return label + '详情'
+  if (data.editingPayment) return '修改这次' + label
+  if (data.replacePayment) return '核对重复还款'
+  return data.periodNumber ? '第 ' + data.periodNumber + ' 期还款' : kind === 'drawdown' ? '登记借款到账' : '登记还款'
+}
+module.exports = { simplePeriod, allocation, payload, paymentView, editView, review, pageTitle }

@@ -1,10 +1,10 @@
 <view class="editor-page {{themeClass}}" style="{{themeStyle}}">
-  <view wx:if="{{!readonlyDetail}}" class="editor-heading content-inset">
+  <view wx:if="{{!readonlyDetail && !loanManaged}}" class="editor-heading content-inset">
     <text class="editor-title serif-title">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '编辑账单' : '记一笔')}}</text>
   </view>
 
   <ui-state wx:if="{{!formReady && !errorMessage}}" description="登录后开始记账" />
-  <block wx:if="{{formReady && !readonlyDetail}}">
+  <block wx:if="{{formReady && !readonlyDetail && !loanManaged}}">
   <button wx:if="{{mode === 'create'}}" class="editor-import" disabled="{{saving || openingImport}}" bindtap="openImport" aria-label="导入银行、支付宝、微信账单">
     <view class="editor-import-copy">
       <text class="editor-import-title">导入账单</text>
@@ -88,7 +88,7 @@
   </view>
 
   </block>
-  <block wx:if="{{formReady && readonlyDetail}}">
+  <block wx:if="{{formReady && (readonlyDetail || loanManaged)}}">
     <view class="readonly-amount">
       <text class="readonly-source">{{detail.sourceLabel}}</text>
       <text class="readonly-money money-number {{detail.typeClass}}">{{detail.amountText}}</text>
@@ -117,16 +117,13 @@
     </block>
     <block wx:if="{{loanContext.linked}}">
       <text wx:if="{{loanContext.state === 'replaced'}}" class="loan-context-note">原账目已整组更正，以下为当前实际借还，不能重复登记。</text>
-      <text class="loan-context-note">整组借还 {{loanContext.totalText}}（非本笔金额）</text>
+      <text wx:if="{{loanContext.showPaymentTotal}}" class="loan-context-note">本次{{loanContext.payment.kind === 'drawdown' ? '放款' : '还款'}}合计 {{loanContext.totalText}}</text>
       <view wx:for="{{loanContext.allocations}}" wx:key="loanId" class="loan-context-allocation">
         <view class="loan-context-head"><text class="loan-context-name">{{item.loanName}} · {{item.kindText}}</text><text wx:if="{{loanContext.payment.kind === 'repayment'}}" class="loan-context-period">{{item.periodText}}</text></view>
-        <text class="loan-context-note">本金 {{item.principalText}} · 利息 {{item.interestText}} · 费用 {{item.feeText}}</text>
-        <text wx:if="{{item.interestTreatment === 'accrued' || item.feeTreatment === 'accrued'}}" class="loan-context-note">{{item.interestTreatment === 'accrued' ? '利息' : ''}}{{item.interestTreatment === 'accrued' && item.feeTreatment === 'accrued' ? '、' : ''}}{{item.feeTreatment === 'accrued' ? '费用' : ''}}已计负债，仅清偿</text>
+        <text class="loan-context-note">本金 {{item.principalText}} · 利息 {{item.interestText}}<text wx:if="{{item.feeMinor !== '0'}}"> · 费用 {{item.feeText}}</text></text>
         <text wx:if="{{loanContext.payment.kind === 'repayment' && item.hasUnallocated}}" class="loan-context-note">{{item.unallocatedText}}</text>
-        <view class="loan-action" data-id="{{item.loanId}}" bindtap="openLinkedLoan" hover-class="loan-action-hover" aria-role="button"><text>贷款详情</text><text class="loan-action-chevron">›</text></view>
-        <view wx:if="{{loanContext.payment.kind === 'repayment'}}" class="loan-action" data-id="{{item.loanId}}" data-plan="yes" bindtap="openLinkedLoan" hover-class="loan-action-hover" aria-role="button"><text>期次与对账</text><text class="loan-action-chevron">›</text></view>
       </view>
-      <view class="loan-action" bindtap="openLinkedPayment" hover-class="loan-action-hover" aria-role="button"><text>查看或更正整组借还</text><text class="loan-action-chevron">›</text></view>
+      <view class="loan-action" bindtap="openLinkedPayment" hover-class="loan-action-hover" aria-role="button"><text>{{loanContext.payment.kind === 'drawdown' ? '放款详情' : '还款详情'}}</text><text class="loan-action-chevron">›</text></view>
     </block>
     <view wx:if="{{loanContext.evidence.items.length}}" class="loan-context-allocation"><text class="loan-context-name">导入来源信息 · 待核对</text>
       <view wx:for="{{loanContext.evidence.items}}" wx:for-item="evidence" wx:key="index"><text class="loan-context-note">{{evidence.description}}</text><text wx:for="{{evidence.fields}}" wx:key="index" class="loan-context-note">{{item.label}}：{{item.value}}</text></view>
@@ -138,11 +135,11 @@
     <text class="catalog-retry-message">{{catalogError}}</text>
     <button wx:if="{{formReady}}" class="catalog-retry-button" disabled="{{preparing}}" bindtap="retryCatalog">重试</button>
   </view>
-  <button wx:if="{{formReady && !readonlyDetail && catalogReady && !hasAccounts}}" class="secondary-button save-button" bindtap="openAccounts">创建账户，返回后继续记账</button>
+  <button wx:if="{{formReady && !readonlyDetail && !loanManaged && catalogReady && !hasAccounts}}" class="secondary-button save-button" bindtap="openAccounts">创建账户，返回后继续记账</button>
   <view wx:if="{{errorMessage}}" class="editor-error content-inset">{{errorMessage}}</view>
   <button wx:if="{{!formReady && errorMessage}}" class="secondary-button save-button" loading="{{preparing}}" disabled="{{preparing}}" bindtap="prepareForm">重新读取</button>
   <button wx:if="{{formReady && errorMessage && typeOptions[typeIndex].value === 'refund' && !refundablesReady}}" class="secondary-button save-button" loading="{{refundablesLoading}}" disabled="{{refundablesLoading}}" bindtap="loadRefundables">重新读取原支出</button>
-  <button wx:if="{{formReady && !readonlyDetail}}" class="primary-button save-button" loading="{{saving}}" disabled="{{saving || loanManaged || !catalogReady || editingBlocked || !hasAccounts || (typeOptions[typeIndex].value === 'refund' && !refundablesReady)}}" bindtap="save">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '保存修改' : '确认记账')}}</button>
-  <button wx:if="{{formReady && canDelete}}" class="danger-button delete-button" disabled="{{saving || loanManaged}}" bindtap="remove">删除这笔账</button>
+  <button wx:if="{{formReady && !readonlyDetail && !loanManaged}}" class="primary-button save-button" loading="{{saving}}" disabled="{{saving || loanManaged || !catalogReady || editingBlocked || !hasAccounts || (typeOptions[typeIndex].value === 'refund' && !refundablesReady)}}" bindtap="save">{{mode === 'link-refund' ? '关联原消费' : (mode === 'edit' ? '保存修改' : '确认记账')}}</button>
+  <button wx:if="{{formReady && canDelete && !loanManaged}}" class="danger-button delete-button" disabled="{{saving || loanManaged}}" bindtap="remove">删除这笔账</button>
 </view>
 <login-sheet id="page-login-sheet" />

@@ -19,6 +19,7 @@ function contextView(value) {
     businessText: linked ? (value.payment.kind === 'drawdown' ? '贷款放款' : hasInstallment ? '已关联分期还款' : '已关联贷款还款') :
       value.state === 'none' ? '普通账目' : value.state === 'allocatable' ? '信用卡还款 · 可明确分配到分期' : '借款还款 · 尚未关联贷款',
     totalText: value.payment ? money.formatMinor(value.payment.totalMinor) : '',
+    showPaymentTotal: Boolean(value.payment && String(value.payment.totalMinor) !== String(value.transaction.amountMinor)),
     evidence: value.evidence || { items: [], hasMore: false },
     allocations: value.allocations.map(a => {
       const periods = a.periods || []

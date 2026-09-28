@@ -1,18 +1,19 @@
 <view class="page-canvas plan-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head class="content-inset" badge="{{loanName || '贷款管理'}}" title="{{paymentId ? '分配实际还款' : '还款计划'}}" copy="计划只用于对账，不会自动生成借款或扣款。" />
+  <page-head class="content-inset" badge="{{loanName || '贷款管理'}}" title="{{paymentId ? '调整对应期次' : '还款计划'}}" copy="{{paymentId ? '选择这次还款对应的期次，核对金额后保存。' : '按实际约定维护每期应还金额和日期。'}}" />
   <ui-state wx:if="{{savedMessage}}" description="{{savedMessage}}" />
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}}" />
   <button wx:if="{{errorMessage}}" class="plan-link" bindtap="load" disabled="{{loading || saving}}">重新读取与核实</button>
   <view wx:if="{{hasPending}}" class="plan-note-card"><text class="plan-note">上次操作结果待核实，重试沿用原请求。</text><button class="secondary-button plan-action" bindtap="retry" disabled="{{loading || saving}}">核实并重试</button></view>
   <ui-state wx:if="{{loading}}" description="正在读取…" />
   <block wx:if="{{summary}}">
-    <view class="plan-summary">
+    <view wx:if="{{!paymentId}}" class="plan-summary">
       <text class="plan-muted">下一到期日 · {{summary.nextDueDate || '无未付期次'}}</text>
       <text class="plan-principal money-number">{{summary.unpaidText}}</text>
       <text class="plan-note">确认计划的未结清金额，到期不会自动标记已还。</text>
-      <text wx:if="{{summary.totalTerms}}" class="plan-note">接入前已还 {{summary.historicalPaidTerms}} / {{summary.totalTerms}} 期；接入后按实际还款已结清 {{summary.paidPeriods}} 期。</text>
+      <button class="plan-link plan-link-compact" bindtap="togglePlanDetails" disabled="{{loading || saving}}" aria-expanded="{{showPlanDetails}}">{{showPlanDetails ? '收起核对信息' : '查看核对信息'}}</button>
+      <text wx:if="{{showPlanDetails && summary.totalTerms}}" class="plan-note">接入前已还 {{summary.historicalPaidTerms}} / {{summary.totalTerms}} 期；接入后按实际还款已结清 {{summary.paidPeriods}} 期。</text>
       <view class="plan-row"><text>其中未付本金</text><text class="money-number">{{summary.principalText}}</text></view>
-      <text class="plan-note">计划未付本金减已确认剩余本金：{{summary.gapText}}。差额需核对未分配付款或计划，不能据此自动改账。</text>
+      <text wx:if="{{showPlanDetails}}" class="plan-note">计划未付本金减已确认剩余本金：{{summary.gapText}}。差额需核对未分配付款或计划，不能据此自动改账。</text>
       <button class="secondary-button plan-action" bindtap="newPeriod" disabled="{{loading || saving || hasPending}}">新增确认期次</button>
     </view>
     <ui-state wx:if="{{!items.length}}" description="当前没有计划。可按机构账单或明确约定逐期录入；计划不会生成借款或付款。" />
@@ -21,10 +22,11 @@
       <list-row title="{{'第 ' + item.periodNumber + ' 期 · ' + item.dueDate}}" note="{{item.statusText}}" chevron="{{false}}" divider="{{false}}">
         <view class="plan-amounts"><text class="plan-amount money-number">{{item.totalText}}</text><text class="plan-note">未付 {{item.unpaidText}}</text></view>
       </list-row>
-      <view class="plan-period-actions"><button class="plan-link plan-link-compact" data-id="{{item.periodId}}" bindtap="editPeriod" disabled="{{saving || loading || hasPending}}">编辑计划</button><button wx:if="{{paymentId && paymentActive && !item.cancelled}}" class="plan-link plan-link-compact" data-id="{{item.periodId}}" bindtap="addPeriod" disabled="{{saving || loading}}">分配到本期</button>
-        <button class="plan-link plan-link-compact" data-id="{{item.periodId}}" data-kind="payment" bindtap="history" disabled="{{saving || loading}}">付款历史</button><button class="plan-link plan-link-compact" data-id="{{item.periodId}}" data-kind="plan" bindtap="history" disabled="{{saving || loading}}">计划修订</button></view>
+      <view class="plan-period-actions"><button class="plan-link plan-link-compact" data-id="{{item.periodId}}" bindtap="togglePeriod" disabled="{{saving || loading}}" aria-expanded="{{expandedPeriodId === item.periodId}}">{{expandedPeriodId === item.periodId ? '收起' : '更多'}}</button><button wx:if="{{expandedPeriodId === item.periodId}}" class="plan-link plan-link-compact" data-id="{{item.periodId}}" bindtap="editPeriod" disabled="{{saving || loading || hasPending}}">编辑计划</button><button wx:if="{{paymentId && paymentActive && !item.cancelled}}" class="plan-link plan-link-compact" data-id="{{item.periodId}}" bindtap="addPeriod" disabled="{{saving || loading || selectedPeriods[item.periodId]}}">{{selectedPeriods[item.periodId] ? '已选择' : '选择本期'}}</button>
+        <button wx:if="{{expandedPeriodId === item.periodId}}" class="plan-link plan-link-compact" data-id="{{item.periodId}}" data-kind="payment" bindtap="history" disabled="{{saving || loading}}">付款历史</button><button wx:if="{{expandedPeriodId === item.periodId}}" class="plan-link plan-link-compact" data-id="{{item.periodId}}" data-kind="plan" bindtap="history" disabled="{{saving || loading}}">计划修订</button></view>
     </view>
     <button wx:if="{{nextCursor}}" class="secondary-button plan-action" data-next="true" bindtap="load" disabled="{{loading || saving}}">下一页期次</button>
+    <button wx:if="{{paymentId && paymentActive && !formOpen}}" class="plan-link" bindtap="newPeriod" disabled="{{loading || saving || hasPending}}">缺少期次？新增确认期次</button>
     <button class="plan-link" bindtap="load" disabled="{{loading || saving}}">刷新第一页</button>
   </block>
   <view wx:if="{{previewOpen}}" class="plan-panel">
