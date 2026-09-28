@@ -1,7 +1,7 @@
 const money = require('../../utils/money')
 const TYPES = { expense: '支出', income: '收入', refund: '退款', transfer: '转账', adjustment: '余额校正', balance_adjustment: '余额校正' }
 function buildReadonlyDetail(transaction, categories, canEditCategory) {
-  const options = [{ id: null, name: '未分类' }].concat(categories.filter(row => row.kind === transaction.type && !row.archivedAt && !row.archived))
+  const options = [{ id: null, name: '未分类', iconKind: 'uncategorized' }].concat(categories.filter(row => row.kind === transaction.type && !row.archivedAt && !row.archived))
   const categoryId = transaction.category && transaction.category.categoryId || null
   const categoryIndex = options.findIndex(row => row.id === categoryId)
   const rows = [{ label: '类型', value: TYPES[transaction.type] || transaction.typeLabel || '账目' },

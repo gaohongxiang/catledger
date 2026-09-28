@@ -69,7 +69,7 @@ return Object.assign({
     sourceFilterIndex: 0,
     sourceFilters: [{ value: '', name: '全部来源' }, { value: 'manual', name: '记一笔' }, { value: 'import', name: '账单导入' }],
     accountFilters: [{ accountId: '', name: '全部账户' }],
-    categoryFilters: [{ categoryId: '', name: '全部分类' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true }]
+    categoryFilters: [{ categoryId: '', name: '全部分类', iconKind: 'all_categories' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true, iconKind: 'uncategorized' }]
   },
 
   onLoad: function (query) {
@@ -160,7 +160,7 @@ return Object.assign({
       const accountFilters = [{ accountId: '', name: '全部账户' }].concat((result.accounts || []).filter(account => !account.archived || selectedAccount && account.accountId === selectedAccount.accountId))
       // An account entry must never silently widen to all accounts if the directory is stale or unavailable.
       if (selectedAccount && selectedAccount.accountId && !accountFilters.some(account => account.accountId === selectedAccount.accountId)) accountFilters.push(selectedAccount)
-      const categoryFilters = [{ categoryId: '', name: '全部分类' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true }]
+      const categoryFilters = [{ categoryId: '', name: '全部分类', iconKind: 'all_categories' }, { categoryId: '__uncategorized__', name: '未分类', uncategorized: true, iconKind: 'uncategorized' }]
         .concat((result.categories || []).map(category => Object.assign({}, category, { categoryId: category.id })))
       self.setData({ accountFilters, categoryFilters,
         accountFilterIndex: Math.max(0, accountFilters.findIndex(item => selectedAccount && item.accountId === selectedAccount.accountId)),

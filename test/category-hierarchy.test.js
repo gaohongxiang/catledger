@@ -77,3 +77,45 @@ test('未分类不会把所有根类误认为子类，分页导入选择直接�
   local.toggle({currentTarget:{dataset:{key:'parent'}}}); assert.equal(local.data.groups[0].expanded,false)
   local.search({detail:{value:'餐饮'}}); assert.equal(local.data.groups[0].expanded,true)
 })
+
+test('真实明细入口区分资金动作与分类，退款保留原分类文字，同名分类不冒充动作', async () => {
+  const { runtime } = require('./helpers/read-runtime')
+  const fixtures = [
+    { type: 'transfer', expected: 'transfer' },
+    { type: 'refund', refundLinkStatus: 'pending', expected: 'refund' },
+    { type: 'refund', category: { categoryId: 'food', name: '吃饭', systemKey: 'food__meal' }, expected: 'refund' },
+    { type: 'balance_adjustment', expected: 'balance-adjustment' },
+    { type: 'expense', expected: 'uncategorized' },
+    { type: 'income', expected: 'uncategorized' },
+    { type: 'expense', category: { categoryId: 'food', name: '转账', systemKey: 'food__meal' }, expected: 'meal' },
+    { type: 'expense', category: { categoryId: 'custom', name: '退款' }, expected: 'other' },
+    { type: 'income', category: { categoryId: 'custom-income', name: '未分类' }, expected: 'other' }
+  ]
+  for (const route of ['transactions', 'account-transactions']) {
+    const h = runtime(), page = h.page(route)
+    h.respond = action => action === 'transactions.list' ? { ok: true, data: {
+      transactions: fixtures.map((row, index) => ({ ...row, transactionId: 'synthetic-' + index,
+        amountMinor: '100', occurredLocalAt: '2026-09-01T12:00:00' })), nextCursor: null,
+      summary: { incomeMinor: '200', expenseMinor: '200', netIncomeMinor: '0' }
+    } } : undefined
+    page.onLoad({ accountId: 'account-a' }); page.onShow(); await page.prepareAndLoad()
+    const tile = h.load('components/category-tile/index')
+    const component = { data: {}, setData(patch) { Object.assign(this.data, patch) } }
+    page.data.transactions.forEach((row, index) => {
+      tile.observers['name, color, systemKey, iconKind'].call(component, row.label, '', row.category && row.category.systemKey, row.iconKind)
+      assert.equal(component.data.icon, '/assets/icons/categories/' + fixtures[index].expected + '.svg', route + ': ' + index)
+      assert.ok(fs.existsSync(path.join(__dirname, '../miniprogram', component.data.icon)))
+      assert.equal(component.data.resolvedColor, index === 0 ? 'blue' : index === 1 || index === 2 ? 'teal' : index === 6 ? 'orange' : 'grey')
+    })
+    assert.equal(page.data.transactions[2].label, '吃饭')
+    assert.equal(page.data.transactions[1].typeLabel, '待关联退款')
+    assert.equal(page.data.transactions[3].amountClass, 'amount-neutral')
+    const picker = tree.selectionGroups(page.data.categoryFilters, '', {}, 0)
+    assert.equal(palette.iconFor(picker[0].name, '', picker[0].iconKind), '/assets/icons/categories/all-categories.svg')
+    assert.equal(palette.iconFor(picker[1].name, '', picker[1].iconKind), '/assets/icons/categories/uncategorized.svg')
+    page.onUnload()
+  }
+  const { buildReadonlyDetail } = require('../miniprogram/pages/transaction-editor/readonly-detail')
+  const detail = buildReadonlyDetail({ type: 'expense', amountMinor: '100' }, [], true)
+  assert.equal(detail.categories[detail.categoryIndex].iconKind, 'uncategorized')
+})

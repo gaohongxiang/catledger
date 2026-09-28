@@ -3,6 +3,7 @@ const palette = require('../../utils/category-palette')
 Component({
   properties: {
     systemKey: { type: String, value: '' },
+    iconKind: { type: String, value: '' },
     name: {
       type: String,
       value: ''
@@ -26,11 +27,11 @@ Component({
     icon: ''
   },
   observers: {
-    'name, color, systemKey': function (name, color, systemKey) {
+    'name, color, systemKey, iconKind': function (name, color, systemKey, iconKind) {
       this.setData({
-        resolvedColor: color || palette.colorNameFor(name, systemKey),
+        resolvedColor: color || palette.colorNameFor(name, systemKey, iconKind),
         initial: name ? name.slice(0, 1) : '',
-        icon: palette.iconFor(name, systemKey)
+        icon: palette.iconFor(name, systemKey, iconKind)
       })
     }
   }

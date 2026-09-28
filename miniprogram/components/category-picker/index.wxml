@@ -10,7 +10,7 @@
     <scroll-view scroll-y class="cp-list">
       <view wx:for="{{groups}}" wx:key="key" class="cp-group">
         <view class="cp-row {{value === item.optionIndex ? 'cp-selected' : ''}}">
-          <view class="cp-choice" data-index="{{item.optionIndex}}" bindtap="choose" aria-role="button" aria-label="{{item.displayName}}"><category-tile name="{{item.name}}" system-key="{{item.systemKey}}" size="small" hide-name /><text>{{item.displayName}}</text><text wx:if="{{value === item.optionIndex}}" class="cp-check">已选</text></view>
+          <view class="cp-choice" data-index="{{item.optionIndex}}" bindtap="choose" aria-role="button" aria-label="{{item.displayName}}"><category-tile name="{{item.name}}" system-key="{{item.systemKey}}" icon-kind="{{item.iconKind}}" size="small" hide-name /><text>{{item.displayName}}</text><text wx:if="{{value === item.optionIndex}}" class="cp-check">已选</text></view>
           <view wx:if="{{item.hasChildren}}" class="cp-expand" data-key="{{item.key}}" bindtap="toggle" aria-role="button" aria-label="{{item.expanded ? '收起' : '展开'}}{{item.name}}子类"><chevron-icon direction="{{item.expanded ? 'down' : 'right'}}" size="{{24}}" /></view>
         </view>
         <view wx:if="{{item.expanded}}" class="cp-children">

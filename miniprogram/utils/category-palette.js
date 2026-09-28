@@ -70,13 +70,20 @@ function styleFor(systemKey) {
   const key = String(systemKey || '')
   return STYLE_BY_KEY[key] || STYLE_BY_KEY[key.split('__')[0]]
 }
-function colorNameFor(name, systemKey) {
-  const style = styleFor(systemKey)
+const STYLE_BY_ICON_KIND = Object.freeze({
+  transfer: ['transfer', 'blue'],
+  refund: ['refund', 'teal'],
+  balance_adjustment: ['balance-adjustment', 'grey'],
+  uncategorized: ['uncategorized', 'grey'],
+  all_categories: ['all-categories', 'grey']
+})
+function colorNameFor(name, systemKey, iconKind) {
+  const style = STYLE_BY_ICON_KIND[iconKind] || styleFor(systemKey)
   return style ? style[1] : COLOR_BY_NAME[name] || 'grey'
 }
 function bandColorFor(name, systemKey) { return TILE_COLORS[colorNameFor(name, systemKey)].solid }
-function iconFor(name, systemKey) {
-  const style = styleFor(systemKey), stem = style ? style[0] : ICON_BY_NAME[name] || 'other'
+function iconFor(name, systemKey, iconKind) {
+  const style = STYLE_BY_ICON_KIND[iconKind] || styleFor(systemKey), stem = style ? style[0] : ICON_BY_NAME[name] || 'other'
   return '/assets/icons/categories/' + stem + '.svg'
 }
 module.exports = { TILE_COLORS, COLOR_BY_NAME, ICON_BY_NAME, STYLE_BY_KEY, colorNameFor, bandColorFor, iconFor }
