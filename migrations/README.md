@@ -19,7 +19,13 @@
 
 来源表的UPDATE用于MySQL的`SELECT ... FOR UPDATE`锁定读取；应用代码仍不得改写既有来源。ReviewIssueMember的列级UPDATE用于账户归属批处理保存事件后同步乐观并发版本，缺少时resolveAccountMappings整体回滚并返回ER_COLUMNACCESS_DENIED_ERROR。部署或迁移后必须执行运行权限检查：可在VPC可连接环境以应用账号运行`npm run check:db-permissions`，或由管理SQL读取`SHOW GRANTS FOR 'catledger_app'@'%'`，将原始授权行交给同一`assertRuntimePermissions`检查；随后用真实微信会话核对云函数读取。0012后撤回退出旧表的授权，不得只验证表存在和函数Active。
 
-PERF-5新增 `test/runtime-roles-db.test.js`：每轮独立库、12个迁移及重跑，API/import两个表/列级DML账号运行真实handler，覆盖121条跨块失败回滚、并发回执、身份隔离、余额统计、退款、撤销和废弃清理。DDL、正式交易物理DELETE、成员身份及原文列UPDATE的反向拒绝同步验证。清单在 `scripts/runtime-role-grants.js`；默认进入 `npm run test:db`。云端现有账号只读授权检查通过；本机成功不代表已部署新版。
+`test/runtime-roles-db.test.js` 每轮使用独立库、当前全部迁移及重跑，API/import两个表/列级DML账号运行真实handler，覆盖跨块失败回滚、并发回执、身份隔离、余额统计、退款、撤销和废弃清理。DDL、账户/分类/文件/身份/审计DELETE、导入账号正式交易DELETE、成员身份及原文列UPDATE的反向拒绝同步验证。清单在 `scripts/runtime-role-grants.js`；默认进入 `npm run test:db`。本机成功不代表云端权限已调整或新版已部署。
+
+### 普通账目永久删除的权限增量
+
+不改变表结构，不追加空迁移，也不修改已执行迁移。API运行账号仅增加 `catledger_transactions`、`catledger_economic_event_transactions`、`catledger_review_issue_members` 三张表的 `DELETE`，分别用于普通账目与专属引用；其他表不扩大权限，来源原文、审计和贷款保护保持。已有事件原因、事件版本和批次版本列级UPDATE继续复用。若两函数共用运行账号，以实际共享账号授予此最小增量，不授予库级DELETE/DDL/GRANT OPTION；独立import账号仍无需正式交易DELETE。
+
+[授权SQL生成脚本](../scripts/print-permanent-delete-grants.js)只输出明确库名、账号及host对应的三条GRANT，不连接或执行。运行步骤见[开发与验证](../docs/开发与验证.md#7-迁移与部署需另有授权)。隔离库验证重复执行无副作用及其他权限仍拒绝；线上授权、双函数部署和客户端发布须另行授权。本次不清旧软删除记录，也不改变导出结构版本。
 
 ## 0011 用户UID缩短
 
