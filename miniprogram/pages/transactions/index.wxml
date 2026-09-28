@@ -94,10 +94,12 @@
   <view wx:if="{{loadingMore}}" class="ui-state-caption" aria-role="status">正在读取更多账目…</view>
   <text wx:elif="{{hasLoaded && transactions.length && !nextCursor}}" class="ui-state-caption">已显示当前筛选下的全部账目</text>
   <ui-state wx:if="{{catalogError}}" description="{{catalogError}}" />
-  <view wx:if="{{errorMessage}}" class="detail-error content-inset" bindtap="prepareAndLoad">{{errorMessage}} · 点此重试</view>
+  <view wx:if="{{errorMessage && !selectionMode && !deleteRetryCount}}" class="detail-error content-inset" bindtap="prepareAndLoad">{{errorMessage}} · 点此重试</view>
 
-  <view wx:if="{{selectionMode || deleteRetryCount}}" class="selection-bar-spacer"></view>
+  <view wx:if="{{selectionMode || deleteRetryCount}}" class="selection-bar-spacer {{errorMessage ? 'selection-bar-spacer-tall' : ''}}"></view>
   <view wx:if="{{selectionMode || deleteRetryCount}}" class="selection-bar">
+    <text wx:if="{{errorMessage}}" class="selection-bar-error">{{errorMessage}}</text>
+    <view class="selection-bar-main">
     <block wx:if="{{selectionMode}}">
       <text class="selection-bar-count">已选 {{selectedCount}} 笔</text>
       <button class="selection-bar-link" id="batch-select-all" bindtap="selectAll" disabled="{{deleting || selectingAll || loading || deleteRetryCount}}">{{selectingAll ? '正在选择…' : allSelected ? '取消全选' : '全选'}}</button>
@@ -106,5 +108,6 @@
       <button class="danger-button selection-bar-delete" bindtap="deleteSelected" loading="{{deleting}}" disabled="{{deleting || selectingAll || loading || (!selectedCount && !deleteRetryCount)}}">删除 {{selectedCount}} 笔</button>
     </block>
     <button wx:else class="danger-button selection-bar-delete selection-bar-delete-block" bindtap="deleteSelected" loading="{{deleting}}" disabled="{{deleting || selectingAll || loading}}">继续删除 {{deleteRetryCount}} 笔</button>
+    </view>
   </view>
 </view>

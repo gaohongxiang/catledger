@@ -305,16 +305,16 @@
   bottom: calc(116rpx + env(safe-area-inset-bottom));
   left: 0;
   z-index: 15;
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
   box-sizing: border-box;
   padding: 16rpx 24rpx;
   background: var(--theme-surface, #fffdf9);
   border-top: 1rpx solid var(--theme-line, rgba(41, 35, 30, .09));
   box-shadow: 0 -6rpx 20rpx rgba(74, 50, 30, .06);
 }
+.selection-bar-main { display: flex; align-items: center; gap: 16rpx; }
+.selection-bar-error { display: block; margin-bottom: 8rpx; color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
 .selection-bar-spacer { height: 132rpx; }
+.selection-bar-spacer-tall { height: 220rpx; }
 .selection-bar-count { flex: 0 0 auto; color: var(--theme-ink, #29231e); font-size: var(--font-caption, 24rpx); }
 .selection-bar-link { min-height: 72rpx; margin: 0; padding: 0 12rpx; color: var(--theme-accent, #be5b24); background: transparent; font-size: var(--font-caption, 24rpx); line-height: 72rpx; }
 .selection-bar-space { flex: 1; }
