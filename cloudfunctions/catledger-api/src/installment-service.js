@@ -106,7 +106,7 @@ function createInstallmentService({getPool,selectLoan}) {
   async function confirmInstallments(context) {
     return write(context,'loans.confirmInstallments',async(c,uid,data)=>{
       const loan=await editable(c,uid,data),view=await loadView(c,uid,loan)
-      await require('./installment-repayment').confirm(c,uid,loan,view,data.repayments,true)
+      await require('./installment-repayment').confirm(c,uid,loan,view,data.repayments,true,data)
       await c.execute('UPDATE catledger_loans SET version=version+1 WHERE uid=? AND loan_id=?',[uid,loan.loanId])
       return {loanId:loan.loanId,version:Number(loan.version)+1}
     })

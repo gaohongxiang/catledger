@@ -168,12 +168,28 @@ function refundFilters(data = {}) {
   const search=(data.search||'').normalize('NFKC').trim()
   if(Array.from(search).length>40)throw ledgerError('VALIDATION_ERROR')
   const at=data.occurredLocalAt==null?null:require('./local-time').parseLocalDateTime(data.occurredLocalAt,data.timezoneOffsetMinutes).occurredAtUtc
-  return {pageSize,month,range,accountId,originalTransactionId,editingTransactionId,search,at}
+  const amountMinor=data.amountMinor==null?null:require('./money').parseMinorUnits(data.amountMinor).toString()
+  if(data.feeCandidate!=null&&typeof data.feeCandidate!=='boolean')throw ledgerError('VALIDATION_ERROR')
+  const feeCandidate=data.feeCandidate===true
+  let chargeCandidates=null
+  if(data.chargeCandidates!=null){
+    if(!feeCandidate||!accountId||!Array.isArray(data.chargeCandidates)||!data.chargeCandidates.length||data.chargeCandidates.length>1200)throw ledgerError('VALIDATION_ERROR')
+    chargeCandidates=data.chargeCandidates.map(row=>({range:parseMonth(row.month),amountMinor:require('./money').parseMinorUnits(row.amountMinor).toString()}))
+  }
+  return {pageSize,month,range,accountId,originalTransactionId,editingTransactionId,search,at,amountMinor,feeCandidate,chargeCandidates}
 }
 async function listRefundableRows(connection, uid, filters, cursor) {
   const conditions=[],values=[uid,filters.editingTransactionId,filters.editingTransactionId,uid]
   if(filters.range){conditions.push('t.occurred_local_date>=? AND t.occurred_local_date<?');values.push(filters.range.startDate,filters.range.endDate)}
   if(filters.accountId){conditions.push('t.source_account_id=?');values.push(filters.accountId)}
+  if(filters.amountMinor){conditions.push('t.amount_minor=?');values.push(filters.amountMinor)}
+  if(filters.feeCandidate){
+    conditions.push('COALESCE(refunds.refunded_minor,0)=0')
+    conditions.push('NOT EXISTS(SELECT 1 FROM catledger_installment_items i WHERE i.uid=t.uid AND i.transaction_id=t.transaction_id AND i.active=1 AND i.canonical=1)')
+  }
+  if(filters.chargeCandidates){
+    conditions.push('('+filters.chargeCandidates.map(row=>{values.push(row.range.startDate,row.range.endDate,row.amountMinor);return '(t.occurred_local_date>=? AND t.occurred_local_date<? AND t.amount_minor=?)'}).join(' OR ')+')')
+  }
   if(filters.originalTransactionId){conditions.push('t.transaction_id=?');values.push(filters.originalTransactionId)}
   if(filters.at){conditions.push('t.occurred_at_utc<=?');values.push(filters.at)}
   if(filters.search){conditions.push("(t.note LIKE ? OR c.name LIKE ? OR sa.name LIKE ?)");const search='%'+escapeLike(filters.search)+'%';values.push(search,search,search)}

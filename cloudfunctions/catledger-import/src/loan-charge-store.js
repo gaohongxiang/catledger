@@ -41,6 +41,41 @@ async function contract(c,uid,loanId) {
   const [[row]]=await c.execute(CONTRACT_SQL+' WHERE uid=? AND loan_id=?',[uid,loanId])
   return row?{...row,authorization:parse(row.authorization),version:Number(row.version),planVersion:Number(row.planVersion)}:null
 }
+// 所有收费写入口共用认领规则。账户/金额/日期不是身份；只有明确选择或已绑定来源可认领旧合同。
+async function ensureContract(c,uid,loan,{contractId=null,referenceKey=null,originKind='historical',authorization}={}) {
+  const current=await contract(c,uid,loan.loanId)
+  if(current){
+    if(current.accountId!==loan.accountId||contractId&&current.contractId!==contractId||referenceKey&&current.referenceKey!==referenceKey)fail('LOAN_SOURCE_MISMATCH')
+    return {contract:current,created:false}
+  }
+  const [bindings]=await c.execute('SELECT reference_key AS referenceKey FROM catledger_installment_bindings WHERE uid=? AND loan_id=? ORDER BY reference_key',[uid,loan.loanId])
+  const verified=new Set(bindings.map(r=>r.referenceKey)),keys=[...new Set([...verified,referenceKey].filter(Boolean))]
+  const [matching]=keys.length?await c.execute(CONTRACT_SQL+` WHERE uid=? AND account_id=? AND reference_key IN (${keys.map(()=>'?').join(',')})`,[uid,loan.accountId,...keys]):[[]]
+  let previous
+  if(contractId){
+    if(typeof contractId!=='string'||!/^[0-9a-f-]{36}$/i.test(contractId))fail('VALIDATION_ERROR')
+    const [[selected]]=await c.execute(CONTRACT_SQL+' WHERE uid=? AND contract_id=?',[uid,contractId])
+    previous=selected
+    if(!previous||previous.accountId!==loan.accountId)fail('NOT_FOUND')
+    if(referenceKey&&previous.referenceKey!==referenceKey||verified.size&&previous.referenceKey&&!verified.has(previous.referenceKey)||matching.some(r=>r.contractId!==contractId))fail('LOAN_SOURCE_MISMATCH')
+  }else if(matching.length){
+    if(matching.length!==1||!verified.has(matching[0].referenceKey))fail('LOAN_COVERAGE_REQUIRED')
+    previous=matching[0]
+  }
+  if(previous){
+    const [[owner]]=await c.execute('SELECT archived_at AS archivedAt FROM catledger_loans WHERE uid=? AND loan_id=?',[uid,previous.loanId])
+    if(!owner||owner.archivedAt==null)fail('CONFLICT')
+    await c.execute('UPDATE catledger_loan_charge_contracts SET loan_id=?,version=version+1 WHERE uid=? AND contract_id=?',[loan.loanId,uid,previous.contractId])
+    await audit(c,uid,previous.contractId,null,'claim_contract',{previousLoanId:previous.loanId,loanId:loan.loanId})
+    // 只释放整组撤销的计划项；用户单独取消/抑制没有该标记。
+    await c.execute("UPDATE catledger_loan_charges SET state='planned',plan_removed_at=NULL,version=version+1 WHERE uid=? AND contract_id=? AND plan_removed_at IS NOT NULL",[uid,previous.contractId])
+    return {contract:await contract(c,uid,loan.loanId),created:false}
+  }
+  const id=randomUUID(),reference=referenceKey||bindings[0]?.referenceKey||null
+  await c.execute(`INSERT INTO catledger_loan_charge_contracts(uid,contract_id,loan_id,account_id,reference_key,origin_kind,authorization_json)
+    VALUES(?,?,?,?,?,?,?)`,[uid,id,loan.loanId,loan.accountId,reference,originKind,JSON.stringify(authorization)])
+  return {contract:{contractId:id,loanId:loan.loanId,accountId:loan.accountId,referenceKey:reference,originKind,authorization,version:1,planVersion:1},created:true}
+}
 async function charges(c,uid,contractId) {
   const [rows]=await c.execute(CHARGE_SQL+' WHERE f.uid=? AND f.contract_id=? ORDER BY f.charge_date,f.charge_key LIMIT 1213',[uid,contractId])
   if (rows.length>1212) fail('LOAN_SOURCE_TOO_LARGE')
@@ -74,4 +109,4 @@ async function assertNoCharges(c,uid,ids) {
   const [[row]]=await c.execute(`SELECT charge_id FROM catledger_loan_charges WHERE uid=? AND (transaction_id IN (${ids.map(()=>'?').join(',')}) OR balance_adjustment_id IN (${ids.map(()=>'?').join(',')})) LIMIT 1`,[uid,...ids,...ids])
   if (row) fail('LOAN_TRANSACTION_LOCKED')
 }
-module.exports = { CONTRACT_SQL,CHARGE_SQL,publicCharge,contract,charges,charge,audit,dependencies,assertUnencumbered,assertNoCharges }
+module.exports = { CONTRACT_SQL,CHARGE_SQL,publicCharge,contract,ensureContract,charges,charge,audit,dependencies,assertUnencumbered,assertNoCharges }

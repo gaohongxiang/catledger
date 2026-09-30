@@ -76,13 +76,15 @@ test('A1 收费身份、授权与历史覆盖：真实 MySQL / 最小权限',{sk
    await assert.rejects(apiPool.execute('DELETE FROM catledger_loan_charge_audit WHERE uid=?',[uid]),{code:'ER_TABLEACCESS_DENIED_ERROR'})
    const [[audit]]=await lab.owner.execute('SELECT COUNT(*) n FROM catledger_loan_charge_audit WHERE uid=?',[uid]);assert.ok(Number(audit.n)>=4)
   })
-  await t.test('L13/L18 归档暂停授权、重建必须认领原合同；普通删除不能拆掉收费关系',async()=>{
+  await t.test('L13/L18 归档暂停授权、独立新建与明确重建分别处理；普通删除不能拆掉收费关系',async()=>{
    const before=await api('loans.chargePlan',{loanId:first.loanId}),recorded=before.items.find(i=>i.transactionId)
    await assert.rejects(api('transactions.delete',{requestId:randomUUID(),transactionId:recorded.transactionId,version:recorded.transactionVersion}),{publicCode:'LOAN_TRANSACTION_LOCKED'})
    await api('loans.archiveInstallment',{requestId:randomUUID(),loanId:first.loanId,version:before.loanVersion,archived:true})
    assert.equal((await api('loans.chargePlan',{loanId:first.loanId})).contract.authorization.mode,'paused')
+   const independent=await create({name:'合成无关新合同'})
+   const fresh=await config(independent)
+   assert.notEqual(fresh.contractId,before.contract.contractId)
    const replacement=await create({name:'合成重建合同'})
-   await assert.rejects(config(replacement),{publicCode:'LOAN_COVERAGE_REQUIRED'})
    const claimed=await config(replacement,{contractId:before.contract.contractId})
    assert.equal(claimed.contractId,before.contract.contractId)
    const after=await api('loans.chargePlan',{loanId:replacement.loanId})

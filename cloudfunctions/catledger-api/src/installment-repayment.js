@@ -22,43 +22,10 @@ async function context(c, uid, loan) {
   const [[account]] = await c.execute('SELECT type,archived_at AS archivedAt FROM catledger_accounts WHERE uid=? AND account_id=?', [uid, loan.accountId])
   if (!account || account.archivedAt != null) throw ledgerError('ACCOUNT_INACTIVE')
   if (!['credit', 'other_liability'].includes(account.type)) throw ledgerError('VALIDATION_ERROR')
-  let contract = await store.contract(c, uid, loan.loanId)
-  if (!contract) {
-    if(loan.chargeContractId){
-      const {validateId}=require('./transaction-domain')
-      const [[old]]=await c.execute(store.CONTRACT_SQL+' WHERE uid=? AND contract_id=?',[uid,validateId(loan.chargeContractId)])
-      if(!old||old.accountId!==loan.accountId)throw ledgerError('NOT_FOUND')
-      const [[owner]]=await c.execute('SELECT archived_at AS archivedAt FROM catledger_loans WHERE uid=? AND loan_id=?',[uid,old.loanId])
-      if(!owner||owner.archivedAt==null)throw ledgerError('CONFLICT')
-      await c.execute('UPDATE catledger_loan_charge_contracts SET loan_id=?,version=version+1 WHERE uid=? AND contract_id=?',[loan.loanId,uid,old.contractId])
-      await store.audit(c,uid,old.contractId,null,'claim_contract',{previousLoanId:old.loanId,loanId:loan.loanId})
-      await require('./loan-charge-rebuild').releaseRemoved(c,uid,old.contractId)
-      contract=await store.contract(c,uid,loan.loanId)
-    }
-  }
-  if (!contract) {
-    const [bindings] = await c.execute('SELECT reference_key AS referenceKey FROM catledger_installment_bindings WHERE uid=? AND loan_id=? ORDER BY reference_key', [uid, loan.loanId])
-    const referenceKey = bindings[0] && bindings[0].referenceKey || null
-    const [previous] = await c.execute(store.CONTRACT_SQL + ' WHERE uid=? AND account_id=? AND (? IS NULL OR reference_key=?)', [uid, loan.accountId, referenceKey, referenceKey])
-    // 无明确编号时不猜旧合同；有同一编号且原记录已归档时沿用原费用身份。
-    for (const old of previous) {
-      const [[owner]] = await c.execute('SELECT archived_at AS archivedAt FROM catledger_loans WHERE uid=? AND loan_id=?', [uid, old.loanId])
-      if (referenceKey && old.referenceKey === referenceKey && owner && owner.archivedAt != null) {
-        await c.execute('UPDATE catledger_loan_charge_contracts SET loan_id=?,version=version+1 WHERE uid=? AND contract_id=?', [loan.loanId, uid, old.contractId])
-        await store.audit(c, uid, old.contractId, null, 'claim_contract', { previousLoanId: old.loanId, loanId: loan.loanId })
-        await require('./loan-charge-rebuild').releaseRemoved(c,uid,old.contractId)
-        contract = await store.contract(c, uid, loan.loanId)
-        break
-      }
-      if (referenceKey || owner && owner.archivedAt != null) throw ledgerError('LOAN_COVERAGE_REQUIRED')
-    }
-    if (!contract) {
-      const authorization = { schema: 1, mode: 'paused', simpleRepayment: true, coverageOnly: true }
-      contract = { contractId: randomUUID(), authorization, referenceKey }
-      await c.execute(`INSERT INTO catledger_loan_charge_contracts(uid,contract_id,loan_id,account_id,reference_key,origin_kind,authorization_json)
-        VALUES(?,?,?,?,?,?,?)`, [uid, contract.contractId, loan.loanId, loan.accountId, referenceKey, loan.originKind || 'historical', JSON.stringify(authorization)])
-    }
-  }
+  const {contract}=await store.ensureContract(c,uid,loan,{
+    contractId:loan.chargeContractId,originKind:loan.originKind||'historical',
+    authorization:{schema:1,mode:'paused',simpleRepayment:true,coverageOnly:true}
+  })
   const [saved] = await c.execute('SELECT period_number AS periodNumber,interest_minor AS interestMinor,fee_minor AS feeMinor,cancelled FROM catledger_loan_periods WHERE uid=? AND loan_id=?', [uid, loan.loanId])
   const [raw] = await c.execute(ITEM_SELECT + ' WHERE i.uid=? AND i.loan_id=? AND i.active=1 AND i.canonical=1 LIMIT 1801', [uid, loan.loanId])
   if (raw.length > 1800) throw ledgerError('LOAN_SOURCE_TOO_LARGE')
@@ -112,12 +79,15 @@ async function book(c, uid, loan, state, row, historical, paymentDate) {
   }
 }
 
-async function confirm(c, uid, loan, view, input, alignPrincipal = false) {
+async function confirm(c, uid, loan, view, input, alignPrincipal = false, coverage = {}) {
   const selected = selections(input, Number(loan.scheduleTerms)), state = await context(c, uid, loan)
   const previous = progressOf(loan)
   const progress = { ...previous, schema: 2, simpleRepayment: true, historyFacts: { ...previous.historyFacts }, reviewedPeriods: { ...previous.reviewedPeriods }, exceptions: { ...previous.exceptions } }
   const setup = require('./loan-installment').parseSetup(loan.installmentSetup)
   const rows=new Map(view.rows.map(row=>[row.periodNumber,row])),original=new Map(view.original.map(row=>[row.periodNumber,row]))
+  const paidRows=selected.filter(entry=>entry.paid).map(entry=>rows.get(entry.periodNumber))
+  if(paidRows.some(row=>!row||row.cancelled||row.status==='partial'))throw ledgerError('LOAN_TRANSACTION_LOCKED')
+  await require('./installment-coverage').apply(c,uid,loan,state,paidRows.filter(row=>!row.paymentConfirmed),coverage)
   let principal = BigInt(loan.baselinePrincipalMinor)
   for (const entry of selected) {
     const row = rows.get(entry.periodNumber)

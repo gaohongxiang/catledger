@@ -1,3 +1,4 @@
+@import "../../templates/historical-charge-coverage.wxss";
 .loan-detail { --detail-page: #f1f6f3; --detail-surface: #fbfdfc; --detail-soft: #f1f5f3; --detail-cost-bg: #edf7f2; --detail-ink: #173a30; --detail-muted: #78877f; --detail-line: #dce8e2; --detail-accent: #237657; --detail-cost: #a94b40; --theme-surface: #fbfdfc; --theme-line: #dce8e2; --theme-text-muted: #78877f; --theme-accent: #168361; --theme-accent-strong: #237657; padding: 16rpx 28rpx calc(48rpx + env(safe-area-inset-bottom)); background: var(--detail-page); }
 .loan-detail.theme-emerald-list { --detail-page: #f1f6f3; --detail-surface: #fbfdfc; --detail-soft: #f1f5f3; --detail-cost-bg: #edf7f2; --detail-ink: #173a30; --detail-muted: #78877f; --detail-line: #dce8e2; --detail-accent: #237657; --detail-cost: #a94b40; }
 .loan-detail .money-number { font-family: "DIN Alternate", "Avenir Next", "PingFang SC", sans-serif; font-variant-numeric: tabular-nums; }

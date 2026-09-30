@@ -24,12 +24,9 @@ async function claimExisting(c,uid,loan,input) {
   const evidence=raw.map(items.publicItem).filter(i=>i.active)
   if(evidence.length>1)fail('LOAN_CHARGE_COVERAGE')
   const source=evidence[0]
-  let contract=await store.contract(c,uid,loan.loanId)
-  if(!contract) {
-    contract={contractId:randomUUID(),loanId:loan.loanId,accountId:loan.accountId}
-    await c.execute(`INSERT INTO catledger_loan_charge_contracts(uid,contract_id,loan_id,account_id,reference_key,origin_kind,authorization_json)
-      VALUES(?,?,?,?,?,'historical',?)`,[uid,contract.contractId,loan.loanId,loan.accountId,source&&source.referenceKey||null,JSON.stringify({schema:1,mode:'paused',coverageOnly:true})])
-  }
+  const {contract}=await store.ensureContract(c,uid,loan,{
+    authorization:{schema:1,mode:'paused',coverageOnly:true}
+  })
   const key=source?'period:'+source.periodNumber+':'+input.component:'actual:'+input.transactionId
   const [[planned]]=await c.execute('SELECT charge_id AS chargeId,state,amount_minor AS amountMinor FROM catledger_loan_charges WHERE uid=? AND contract_id=? AND charge_key=?',[uid,contract.contractId,key])
   if(planned){

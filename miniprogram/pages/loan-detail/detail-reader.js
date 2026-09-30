@@ -85,6 +85,12 @@ function create(api) {
       this.setData({ ...this.repaymentSelection(append ? this.data.periodRows.concat(visible) : visible), scheduleMore: !!this._detailNext,
         scheduleHistorical: inHistory || !!(append && this.data.scheduleHistorical) })
       this.syncRepaymentAlert()
+      this.prepareRepaymentCoverage()
+    },
+    prepareRepaymentCoverage(){
+      const paid=new Set((this.data.repaymentRows||[]).filter(row=>row.paid).map(row=>row.periodNumber))
+      const rows=(this._detailView&&this._detailView.items||[]).filter(row=>paid.has(row.periodNumber)&&!row.paymentConfirmed)
+      return this.prepareHistoricalCoverage(rows,this.data.loan&&this.data.loan.accountId,this.data.loan&&this.data.loan.feeUpfrontMinor)
     },
     repaymentSelection(rows = this.data.periodRows) {
       const choices = new Map((this.data.repaymentRows || []).map(row => [row.periodNumber, row.paid]))
@@ -97,7 +103,7 @@ function create(api) {
         repaymentDirtyCount: periodRows.filter(row => row.repaymentDirty).length }
     },
     syncRepaymentAlert() {
-      const dirty = (this.data.repaymentDirtyCount || 0) > 0
+      const dirty = (this.data.repaymentDirtyCount || 0) > 0 || (this.data.historyCoverageSelections||[]).length>0
       if (dirty === !!this._repaymentAlert) return
       this._repaymentAlert = dirty
       if (dirty) { if (typeof wx.enableAlertBeforeUnload === 'function') wx.enableAlertBeforeUnload({ message: '还款选择尚未保存' }) }

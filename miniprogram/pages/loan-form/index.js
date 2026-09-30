@@ -13,16 +13,18 @@ function repaymentPreview(result,repaymentRows){
   return {...preview,rows:preview.rows.map(r=>({...r,repaymentChoice:choices.has(r.periodNumber),repaymentPaid:choices.get(r.periodNumber)===true}))}
 }
 Page({
-  data:{repaymentRows:[],baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
+  ...require('../../services/historical-charge-coverage').methods,
+  data:{...require('../../services/historical-charge-coverage').initial,repaymentRows:[],baselineMode:0,baselineModes:['以确认剩余本金接入已有贷款','新现金借款，到账前本金为 0'], sourceNote:'',accountLocked:false,loading:false,saving:false,errorMessage:'',savedMessage:'',hasPending:false,sourceReady:true,sourceLocked:false,loan:null,accounts:[],accountIndex:-1,name:'',principalYuan:'',
     schedule:Object.assign(scheduleForm.blank(),{measurementIndex:1}),paidTerms:'0',baselineDate:'',typeIndex:0,customRecordType:'',
     typeOptions:model.TYPE_OPTIONS,discountOptions:model.DISCOUNT_OPTIONS,methods:scheduleForm.METHOD_OPTIONS,quotes:scheduleForm.QUOTE_OPTIONS,
     discountIndex:0,discountValue:'',feeIndex:0,feeOptions:['一次性费用','每期费用'],advancedOpen:false,previewLoading:false,preview:null,remainingText:'',confirmed:false },
   onLoad(query){this._query=query || {};theme.bindPage(this);this.setData({accountLocked:!!this._query.accountId && !this._query.loanId,baselineDate:this._query.baselineDate || model.today(),sourceReady:(!this._query.accountId && !this._query.sourceTransactionId) || !!this._query.loanId,sourceLocked:!!(this._query.sourceTransactionId || this._query.sourceItemId)})},
   onShow(){return login.run(this,()=>this.load())},
+  onHide(){session.end(this)},
   onUnload(){session.end(this)},
   async load(){
     if(this.data.saving)return
-    const current=session.begin(this,Object.keys(this.data),['_preview','_initialized'])
+    const current=session.begin(this,Object.keys(this.data),['_preview','_initialized','_historyCoverageToken','_historyRecommendToken','_historyCoverageAccount'])
     this.setData({loading:true,errorMessage:'',hasPending:!!pending.pending(),...(!this._query.loanId && (this.data.accountLocked || this.data.sourceLocked) ? {sourceReady:false} : {})})
     try{
       if(pending.pending()) {try{const recovered=await pending.verify();if(current()&&recovered){this.accept(recovered);return}}catch(error){if(current())this.setData({errorMessage:error.message,hasPending:!!pending.pending()})}}
@@ -59,10 +61,10 @@ Page({
     }catch(error){if(current())this.setData({errorMessage:error.message || '贷款资料暂未读取'})}
     finally{if(current())this.setData({loading:false})}
   },
-  invalidate(){this._preview=null;this._previewToken={};this.setData({preview:null,confirmed:false,previewLoading:false,errorMessage:''})},
+  invalidate(){this._preview=null;this._previewToken={};this.resetHistoricalCoverage();this.setData({preview:null,confirmed:false,previewLoading:false,errorMessage:''})},
   input(event){const field=event.currentTarget.dataset.field;if(!['name','principalYuan','paidTerms','customRecordType','discountValue','baselineDate'].includes(field))return;if(this.data.loan&&!['name','customRecordType'].includes(field))return;this.setData({[field]:event.detail.value});if(field==='baselineDate')this.setData({confirmed:false});else if(!['name','customRecordType'].includes(field))this.invalidate()},
   scheduleInput(event){if(this.data.loan)return;const field=event.currentTarget.dataset.field;if(!['terms','ratePercent','repaymentYuan','firstPaymentDate','feeUpfrontYuan','feePerTermYuan'].includes(field))return;this.setData({['schedule.'+field]:event.detail.value});this.invalidate()},
-  selectAccount(event){if(!this.data.loan&&!this.data.sourceLocked&&!this.data.accountLocked)this.setData({accountIndex:Number(event.detail.value),confirmed:false})},
+  selectAccount(event){if(!this.data.loan&&!this.data.sourceLocked&&!this.data.accountLocked){this.setData({accountIndex:Number(event.detail.value),confirmed:false});this.invalidate()}},
   selectBaselineMode(event){if(this.data.loan||this.data.sourceLocked)return;this.setData({baselineMode:Number(event.detail.value)});this.invalidate()},
   selectType(event){this.setData({typeIndex:Number(event.detail.value)})},
   selectMethod(event){if(this.data.loan)return;const index=Number(event.currentTarget.dataset.index);if(this.data.schedule.measurementIndex===0&&this.data.schedule.quoteIndex===3&&index!==0)return;this.setData({schedule:scheduleForm.selectMethod(this.data.schedule,index)});this.invalidate()},
@@ -75,6 +77,12 @@ Page({
     if(this.data.saving||this.data.loading||!this._preview)return
     const selected=new Set(event.detail.value),repaymentRows=this.data.repaymentRows.map(r=>({...r,paid:selected.has(String(r.periodNumber))}))
     this.setData({repaymentRows,preview:repaymentPreview(this._preview,repaymentRows),remainingText:money.formatMinor(model.remaining(this._preview,repaymentRows))})
+    this.prepareFormCoverage()
+  },
+  prepareFormCoverage(){
+    if(!this._preview||this.data.loan)return
+    const paid=new Set(this.data.repaymentRows.filter(row=>row.paid).map(row=>row.periodNumber)),account=this.data.accounts[this.data.accountIndex]
+    return this.prepareHistoricalCoverage(this._preview.periods.filter(row=>paid.has(row.periodNumber)),account&&account.accountId,money.yuanToMinor(this.data.schedule.feeUpfrontYuan||'0',{allowZero:true}))
   },
   confirm(event){this.setData({confirmed:event.detail.value.includes('confirmed')})},
   openAccounts(){wx.navigateTo({url:'/pages/accounts/index'})},
@@ -91,6 +99,7 @@ Page({
       const previous=new Map(this.data.repaymentRows.map(r=>[r.periodNumber,r.paid]))
       const repaymentRows=result.periods.filter(r=>r.periodNumber<=Number(this.data.paidTerms)).map(r=>({periodNumber:r.periodNumber,dueDate:r.dueDate,paid:previous.has(r.periodNumber)?previous.get(r.periodNumber):true}))
       this.setData({preview:repaymentPreview(result,repaymentRows),repaymentRows,remainingText:money.formatMinor(model.remaining(result,repaymentRows))})
+      await this.prepareFormCoverage()
     }catch(error){if(current()&&this._previewToken===token)this.setData({errorMessage:error.message || '计划暂未核对'})}
     finally{if(current()&&this._previewToken===token)this.setData({previewLoading:false})}
   },
@@ -110,7 +119,7 @@ Page({
           if(!String(this.data.name).trim())throw new Error('请填写贷款名称')
           data=Object.assign(input,{loanId:loan.loanId,version:loan.version,name:String(this.data.name).trim(),institution:loan.institution,kind:loan.kind,
             accountId:loan.accountId,baselinePrincipalMinor:loan.baselinePrincipalMinor,baselineDate:loan.baselineDate,startDate:loan.startDate,endDate:loan.endDate,repaymentMethod:loan.repaymentMethod})
-        }else {data=model.createPayload(this.data,this._preview);if(this._query.sourceItemId)data.sourceItemId=this._query.sourceItemId;if(this._query.chargeContractId)data.chargeContractId=this._query.chargeContractId}
+        }else {data=model.createPayload(this.data,this._preview);Object.assign(data,this.historicalCoveragePayload(data.repayments.filter(row=>row.paid).map(row=>row.periodNumber)));if(this._query.sourceItemId)data.sourceItemId=this._query.sourceItemId;if(this._query.chargeContractId)data.chargeContractId=this._query.chargeContractId}
       }
       const outcome=await pending.send('api',action,data);if(current())this.accept(outcome)
     }catch(error){if(current())this.setData({errorMessage:error.message,hasPending:!!pending.pending()})}

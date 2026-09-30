@@ -1,9 +1,10 @@
 <view wx:if="{{periodOpen}}" class="detail-guide-mask" bindtap="closeInstallment" catchtouchmove="stopGuideTap">
   <scroll-view scroll-y class="installment-sheet" catchtap="stopGuideTap">
-    <view class="installment-sheet-head"><text>第 {{selectedPeriod.term || '—'}} 期</text><button bindtap="closeInstallment" disabled="{{saving}}">关闭</button></view>
+    <view class="installment-sheet-head"><text>{{historyCoverageEditor ? '选择已记支出' : '第 ' + (selectedPeriod.term || '—') + ' 期'}}</text><button wx:if="{{historyCoverageEditor}}" bindtap="closeHistoricalCoverage" disabled="{{saving}}">返回</button><button wx:else bindtap="closeInstallment" disabled="{{saving}}">关闭</button></view>
+    <include src="../../templates/historical-charge-coverage.wxml" />
     <ui-state wx:if="{{periodLoading}}" description="正在读取本期…" />
     <ui-state wx:if="{{periodError}}" error description="{{periodError}}" />
-    <block wx:if="{{selectedPeriod}}">
+    <block wx:if="{{selectedPeriod && !historyCoverageEditor}}">
       <text class="installment-note">{{selectedPeriod.date}} · {{selectedPeriod.state}}</text>
       <view class="installment-amounts"><view><text>应还</text><text>{{selectedPeriod.payment}}</text></view><view><text>本金</text><text>{{selectedPeriod.principal}}</text></view><view><text>利息 / 费</text><text class="detail-cost-ink">{{selectedPeriod.interestFee}}</text></view></view>
       <text wx:if="{{selectedPeriod.difference}}" class="installment-note">本期账单与方案金额不同，请核对费用与原账单。</text>
@@ -21,6 +22,7 @@
       </block>
       <button wx:for="{{periodLegacy}}" wx:key="paymentId" class="ld-link" data-id="{{item.paymentId}}" bindtap="openPayment" disabled="{{saving || periodLoading}}">{{item.occurredText}} · 查看这笔还款 {{item.totalText}} ›</button>
       <block wx:if="{{!loan.archived}}">
+        <button wx:if="{{!selectedPeriod.complete && !selectedPeriod.cancelled && historyCoverageByPeriod[selectedPeriod.term]}}" class="ld-link" data-term="{{selectedPeriod.term}}" bindtap="openHistoricalCoverage" disabled="{{saving || periodLoading}}">{{historyCoverageByPeriod[selectedPeriod.term].selected ? '已选原费用，查看或更换' : '利息已经记过？选择原账目'}}</button>
         <button wx:if="{{!selectedPeriod.complete && !selectedPeriod.cancelled}}" class="primary-button" bindtap="recordPeriodPayment" disabled="{{saving || periodLoading}}">记本期还款</button>
         <view class="sheet-actions">
           <view wx:if="{{detail.tracking && !selectedPeriod.complete}}" class="sheet-action" data-status="completed" bindtap="setPeriodStatus" hover-class="sheet-action-hover" aria-role="button"><text>补记本期已还（记利息）</text><text class="sheet-action-chevron">›</text></view>

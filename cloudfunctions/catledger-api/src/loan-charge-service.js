@@ -33,20 +33,28 @@ async function insertCharge(c,uid,contractId,item,planVersion) {
     VALUES(?,?,?,?,?,?,?,?,?,?)`,[uid,chargeId,contractId,item.chargeKey,item.component,item.periodNumber||null,item.chargeDate,item.amountMinor,item.categoryId,planVersion])
   return chargeId
 }
-async function adoptTransaction(c,uid,contractId,item,transactionId,itemId) {
+async function adoptTransaction(c,uid,contractId,item,transactionId,itemId,options={}) {
   validateId(transactionId)
-  const [[t]]=await c.execute('SELECT type,source_account_id AS accountId,amount_minor AS amountMinor,deleted_at AS deletedAt FROM catledger_transactions WHERE uid=? AND transaction_id=?',[uid,transactionId])
+  const [[t]]=await c.execute('SELECT type,source_account_id AS accountId,amount_minor AS amountMinor,deleted_at AS deletedAt,version FROM catledger_transactions WHERE uid=? AND transaction_id=? FOR UPDATE',[uid,transactionId])
   const [[scope]]=await c.execute('SELECT account_id AS accountId FROM catledger_loan_charge_contracts WHERE uid=? AND contract_id=?',[uid,contractId])
-  if (!t || t.deletedAt!=null || t.type!=='expense' || t.accountId!==scope.accountId || String(t.amountMinor)!==item.amountMinor) throw ledgerError('LOAN_SOURCE_MISMATCH')
+  if (!t || !scope || t.deletedAt!=null || t.type!=='expense' || t.accountId!==scope.accountId || String(t.amountMinor)!==item.amountMinor) throw ledgerError('LOAN_SOURCE_MISMATCH')
+  if (options.explicit && Number(t.version)!==parseVersion(options.transactionVersion)) throw ledgerError('CONFLICT')
   if (item.state==='recorded' && item.transactionId!==transactionId || !['planned','recorded'].includes(item.state)) throw ledgerError('LOAN_SOURCE_MISMATCH')
   const [[other]]=await c.execute('SELECT charge_id FROM catledger_loan_charges WHERE uid=? AND transaction_id=? AND charge_id<>?',[uid,transactionId,item.chargeId])
   if(other)throw ledgerError('LOAN_SOURCE_MISMATCH')
+  if(options.explicit){
+    const [[refund]]=await c.execute("SELECT transaction_id FROM catledger_transactions WHERE uid=? AND original_transaction_id=? AND type='refund' AND deleted_at IS NULL LIMIT 1",[uid,transactionId])
+    const [[payment]]=await c.execute('SELECT payment_id FROM catledger_loan_payment_transactions WHERE uid=? AND active_transaction_id=? LIMIT 1',[uid,transactionId])
+    const [[source]]=await c.execute('SELECT item_id FROM catledger_installment_items WHERE uid=? AND transaction_id=? AND active=1 AND canonical=1 AND (? IS NULL OR item_id<>?) LIMIT 1',[uid,transactionId,itemId||null,itemId||null])
+    if(refund||payment||source)throw ledgerError('LOAN_SOURCE_MISMATCH')
+  }
   await c.execute("UPDATE catledger_loan_charges SET transaction_id=?,state='recorded',basis='actual',version=version+1 WHERE uid=? AND charge_id=?",[transactionId,uid,item.chargeId])
   if (itemId) {
     const [[linked]]=await c.execute('SELECT charge_id AS chargeId FROM catledger_loan_charge_sources WHERE uid=? AND item_id=?',[uid,itemId])
     if (linked && linked.chargeId!==item.chargeId) throw ledgerError('LOAN_SOURCE_MISMATCH')
     if (!linked) await c.execute('INSERT INTO catledger_loan_charge_sources(uid,charge_id,item_id) VALUES(?,?,?)',[uid,item.chargeId,itemId])
   }
+  Object.assign(item,{state:'recorded',transactionId,basis:'actual'})
 }
 function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
   const read=(context,operation)=>executeLedgerRead({getPool,...context,consistentSnapshot:true,operation})
@@ -120,29 +128,11 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
       auth.confirmedAt=new Date(now()).toISOString()
       for(const id of new Set(plan.map(i=>i.categoryId))) await category(c,uid,id)
       if (!['cash_borrowing','recorded_consumption','new_consumption','historical'].includes(data.originKind)) throw ledgerError('VALIDATION_ERROR')
-      let contract=await store.contract(c,uid,loan.loanId)
       const referenceKey=domain.reference(data.referenceLabel)
-      if (!contract && data.contractId) {
-        const [[previous]]=await c.execute(store.CONTRACT_SQL+' WHERE uid=? AND contract_id=?',[uid,validateId(data.contractId)])
-        if (!previous || previous.accountId!==loan.accountId) throw ledgerError('NOT_FOUND')
-        const oldLoan=await selectLoan(c,uid,previous.loanId,true,true)
-        if (oldLoan.archivedAt==null) throw ledgerError('CONFLICT')
-        contract={...previous,version:Number(previous.version),planVersion:Number(previous.planVersion),authorization:domain.parse(previous.authorization)}
-        if(referenceKey&&referenceKey!==contract.referenceKey)throw ledgerError('LOAN_SOURCE_MISMATCH')
-        await store.audit(c,uid,contract.contractId,null,'claim_contract',{previousLoanId:contract.loanId,loanId:loan.loanId})
-        await c.execute('UPDATE catledger_loan_charge_contracts SET loan_id=? WHERE uid=? AND contract_id=?',[loan.loanId,uid,contract.contractId])
-      }
-      if (!contract) {
-        const [[previous]]=await c.execute(`SELECT f.contract_id FROM catledger_loan_charge_contracts f JOIN catledger_loans l ON l.uid=f.uid AND l.loan_id=f.loan_id
-          WHERE f.uid=? AND f.account_id=? AND (f.reference_key=? OR (? IS NULL AND l.archived_at IS NOT NULL)) LIMIT 1`,[uid,loan.accountId,referenceKey,referenceKey])
-        if(previous)throw ledgerError('LOAN_COVERAGE_REQUIRED')
-        contract={contractId:randomUUID(),loanId:loan.loanId,accountId:loan.accountId,referenceKey,version:0,planVersion:0,authorization:null}
-        await c.execute(`INSERT INTO catledger_loan_charge_contracts(uid,contract_id,loan_id,account_id,reference_key,origin_kind,authorization_json)
-          VALUES(?,?,?,?,?,?,?)`,[uid,contract.contractId,loan.loanId,loan.accountId,referenceKey,data.originKind,JSON.stringify(auth)])
-      } else if (contract.accountId!==loan.accountId || !contract.authorization.coverageOnly&&contract.originKind!==data.originKind || referenceKey && contract.referenceKey!==referenceKey) throw ledgerError('LOAN_SOURCE_MISMATCH')
-      if(contract.authorization&&contract.authorization.coverageOnly)await c.execute('UPDATE catledger_loan_charge_contracts SET origin_kind=? WHERE uid=? AND contract_id=?',[data.originKind,uid,contract.contractId])
-      await require('./loan-charge-rebuild').releaseRemoved(c,uid,contract.contractId)
-      const old=await store.charges(c,uid,contract.contractId),planVersion=contract.planVersion+1
+      const {contract,created}=await store.ensureContract(c,uid,loan,{contractId:data.contractId,referenceKey,originKind:data.originKind,authorization:auth})
+      if (contract.accountId!==loan.accountId || !contract.authorization.coverageOnly&&contract.originKind!==data.originKind) throw ledgerError('LOAN_SOURCE_MISMATCH')
+      if(contract.authorization.coverageOnly)await c.execute('UPDATE catledger_loan_charge_contracts SET origin_kind=? WHERE uid=? AND contract_id=?',[data.originKind,uid,contract.contractId])
+      const old=await store.charges(c,uid,contract.contractId),planVersion=created?1:contract.planVersion+1
       for (const item of plan) {
         const previous=old.find(p=>p.chargeKey===item.chargeKey)
         if (!previous) await insertCharge(c,uid,contract.contractId,item,planVersion)
@@ -180,10 +170,10 @@ function createLoanChargeService({getPool,selectLoan,now=Date.now}) {
       if(auth.baselineCoveredThrough) await c.execute(`UPDATE catledger_loan_charges SET state='baseline',basis='baseline',version=version+1
         WHERE uid=? AND contract_id=? AND state='planned' AND charge_date<=?`,[uid,contract.contractId,auth.baselineCoveredThrough])
       await c.execute(`UPDATE catledger_loan_charge_contracts SET authorization_json=?,plan_version=?,version=? WHERE uid=? AND contract_id=?`,
-        [JSON.stringify(auth),planVersion,contract.version+1,uid,contract.contractId])
-      await store.audit(c,uid,contract.contractId,null,'authorize',{previous:contract.authorization,authorization:auth,planVersion,coverage:data.coverage||[]})
+        [JSON.stringify(auth),planVersion,created?1:contract.version+1,uid,contract.contractId])
+      await store.audit(c,uid,contract.contractId,null,'authorize',{previous:created?null:contract.authorization,authorization:auth,planVersion,coverage:data.coverage||[]})
       await c.execute('UPDATE catledger_loans SET version=version+1 WHERE uid=? AND loan_id=?',[uid,loan.loanId])
-      return {loanId:loan.loanId,version:Number(loan.version)+1,contractId:contract.contractId,contractVersion:contract.version+1,planVersion}
+      return {loanId:loan.loanId,version:Number(loan.version)+1,contractId:contract.contractId,contractVersion:created?1:contract.version+1,planVersion}
     })
   }
   async function pauseCharges(context) {

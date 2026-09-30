@@ -101,7 +101,7 @@
       <checkbox-group bindchange="selectRepayments">
       <view wx:for="{{periodRows}}" wx:key="key" data-term="{{item.term}}" bindtap="openInstallment" aria-role="button" aria-label="第{{item.term}}期，{{item.state}}" class="payment-schedule-row {{item.paid ? 'schedule-row-paid' : ''}} {{item.current ? 'schedule-row-current' : ''}} {{item.overdue ? 'schedule-row-overdue' : ''}} {{item.cancelled ? 'schedule-row-cancelled' : ''}} {{item.repaymentDirty ? 'payment-schedule-row-dirty' : ''}}">
         <view class="schedule-term"><text>第 {{item.term}} 期</text><text>{{item.date}}</text><text wx:if="{{item.difference}}" class="schedule-state">账单金额有变化</text><text wx:elif="{{item.state && !item.historical && !item.paid}}" class="schedule-state">{{item.state}}</text></view>
-        <text class="schedule-payment money-number">{{item.payment}}</text><text class="schedule-principal money-number">{{item.principal}}</text><text class="schedule-interest money-number">{{item.interestFee}}</text>
+        <text class="schedule-payment money-number">{{item.payment}}</text><text class="schedule-principal money-number">{{item.principal}}</text><view class="schedule-interest history-coverage-value"><text class="money-number">{{item.interestFee}}</text><button wx:if="{{!loan.archived && item.repaymentPaid && historyCoverageByPeriod[item.term]}}" class="history-coverage-entry" data-term="{{item.term}}" catchtap="openHistoricalCoverage" disabled="{{saving || loading || detailLoading}}">{{historyCoverageByPeriod[item.term].label}}</button></view>
         <view class="schedule-repayment"><label wx:if="{{!loan.archived && item.repaymentChoice}}" class="schedule-choice" catchtap="stopGuideTap"><checkbox value="{{item.term}}" checked="{{item.repaymentPaid}}" disabled="{{saving || loading || detailLoading}}" color="#19775C" aria-label="第{{item.term}}期已还" /><text>{{item.repaymentPaid ? '已还' : '未还'}}</text><text wx:if="{{item.repaymentDirty}}" class="schedule-dirty">待保存</text></label><button wx:elif="{{!loan.archived && !item.paid && !item.cancelled}}" class="schedule-repayment-button" data-term="{{item.term}}" catchtap="recordListedPayment" disabled="{{saving || loading || detailLoading}}">记本期还款</button><text wx:else class="{{item.paid && !item.cancelled ? 'schedule-paid-link' : ''}}">{{item.cancelled ? '已取消' : item.paid ? item.state + ' ›' : '—'}}</text></view>
       </view>
       </checkbox-group>
@@ -249,6 +249,7 @@
       <button class="primary-button" bindtap="closeCalculationGuide">知道了</button>
     </view>
   </view>
+  <view wx:if="{{historyCoverageEditor && !periodOpen}}" class="detail-guide-mask" bindtap="closeHistoricalCoverage" catchtouchmove="stopHistoricalTap"><scroll-view scroll-y class="installment-sheet" catchtap="stopHistoricalTap"><view class="installment-sheet-head"><text>选择已记支出</text><button bindtap="closeHistoricalCoverage">返回</button></view><include src="../../templates/historical-charge-coverage.wxml" /></scroll-view></view>
   <include src="installment-sheet.wxml" />
   <include src="charge-section.wxml" />
   <login-sheet id="page-login-sheet" />

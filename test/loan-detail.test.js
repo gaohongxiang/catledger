@@ -105,7 +105,7 @@ test('IRR 保留零付款月份，一次性费用只计一次；年化沿用本�
 
 function pageRuntime(callApi, value = loan()) {
   const methods = require('../miniprogram/pages/loan-detail/detail-reader').create({ callApi })
-  const page = { ...methods, _loanId: value.loanId, _readSession: cache.getSession(), data: { loan: value },
+  const page = { ...methods, prepareHistoricalCoverage() {}, _loanId: value.loanId, _readSession: cache.getSession(), data: { loan: value },
     setData(patch) { Object.assign(this.data, patch) } }
   page.applyDetailLoan(value)
   return page

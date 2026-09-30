@@ -1,3 +1,4 @@
+@import "../../templates/historical-charge-coverage.wxss";
 @import '../loan-detail/index.wxss';
 .loan-form { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
 .loan-form .ld-cell-label { flex-wrap: wrap; gap: 0 8rpx; }

@@ -21,10 +21,11 @@ module.exports = {
         periodSources: result.sources.map(item => Object.assign({}, item, { label: LABELS[item.component], amount: money.formatMinor(item.amountMinor) })),
         periodLegacy: result.legacyPayments.map(payment => ({ ...payment, totalText: money.formatMinor(payment.totalMinor), occurredText: String(payment.occurredLocalAt || '').slice(0, 10) })), periodMoreSources: result.moreSources })
       await this.loadPeriodCharges(term,token)
+      if(current()&&token===this._periodToken&&!result.period.paymentConfirmed)await this.prepareHistoricalCoverage([result.period],this.data.loan.accountId,this.data.loan.feeUpfrontMinor)
     } catch (error) { if (current() && token === this._periodToken) this.setData({ periodError: error.message || '这期记录暂未读取' }) }
     finally { if (current() && token === this._periodToken) this.setData({ periodLoading: false }) }
   },
-  closeInstallment() { if (!this.data.saving) { this._periodToken = {}; this.setData({ periodOpen: false }) } },
+  closeInstallment() { if (!this.data.saving) { this._periodToken = {}; this.closeHistoricalCoverage();this.setData({ periodOpen: false });this.prepareRepaymentCoverage() } },
   recordListedPayment(event) {
     if (!session.isCurrent(this) || !this.data.loan || this.data.loan.archived || this.data.detailLoading) return
     const term = Number(event.currentTarget.dataset.term)
@@ -40,6 +41,7 @@ module.exports = {
     try {
       const outcome = await pending.send('api', action, data, { exact: true })
       if (!current()) return
+      this.resetHistoricalCoverage()
       this.setData({ periodOpen: false, progressOpen: false, hasPending: false, savedMessage: '' })
       wx.showToast({ title: outcome.action === 'loans.archiveInstallment' && outcome.result.archived ? '已删除' : '已更新', icon: 'success', duration: 1500 })
       if (outcome.action === 'loans.archiveInstallment' && outcome.result.archived) { wx.navigateBack(); return }
@@ -53,8 +55,9 @@ module.exports = {
   setPeriodStatus(event) {
     const selected = this._selectedInstallment, status = event.currentTarget.dataset.status
     if (!selected || this.data.periodLoading || selected.archived || !['completed','unpaid'].includes(status)) return
-    return this.installmentWrite('loans.confirmInstallments', { loanId: this._loanId, version: selected.loanVersion,
-      repayments: [{ periodNumber: selected.period.periodNumber, paid: status === 'completed' }] })
+    try{return this.installmentWrite('loans.confirmInstallments', { loanId: this._loanId, version: selected.loanVersion,
+      repayments: [{ periodNumber: selected.period.periodNumber, paid: status === 'completed' }],...this.historicalCoveragePayload(status==='completed'?[selected.period.periodNumber]:[]) })}
+    catch(error){this.setData({periodError:error.message})}
   },
   selectRepayments(event) {
     if (!session.isCurrent(this) || this.data.saving || this.data.loading || this.data.detailLoading) return
@@ -62,14 +65,18 @@ module.exports = {
     this.setData({ repaymentRows: this.data.repaymentRows.map(r=>visible.has(r.periodNumber)?{...r,paid:selected.has(String(r.periodNumber))}:r) })
     this.setData(this.repaymentSelection())
     this.syncRepaymentAlert()
+    this.prepareRepaymentCoverage()
   },
   async saveRepayments() {
     if (!this._detailView || !this.data.repaymentRows.length || this.data.loan.archived || this.data.detailLoading) return
     const visible = new Set(this.data.periodRows.filter(r=>r.repaymentChoice).map(r=>r.term))
     const repayments = this.data.repaymentRows.filter(r=>visible.has(r.periodNumber)).map(({periodNumber,paid})=>({periodNumber,paid}))
     if (!repayments.length) return
+    let coverage
+    try{coverage=this.historicalCoveragePayload(repayments.filter(row=>row.paid).map(row=>row.periodNumber))}
+    catch(error){this.setData({errorMessage:error.message});return}
     const saved = await this.installmentWrite('loans.confirmInstallments', { loanId:this._loanId, version:this._detailView.loanVersion,
-      repayments })
+      repayments,...coverage })
     if (saved) this.syncRepaymentAlert()
     return saved
   },

@@ -1,0 +1,22 @@
+<view wx:if="{{historyCoverageEditor}}" class="history-coverage">
+  <view class="history-coverage-summary"><text>{{historyCoverageEditor.title}}</text><text class="money-number">{{historyCoverageEditor.totalText || historyCoverageEditor.amountText}}</text></view>
+  <view wx:if="{{historyCoverageEditor.components.length > 1}}" class="history-coverage-tabs"><button wx:for="{{historyCoverageEditor.components}}" wx:key="key" class="{{item.key === historyCoverageEditor.chargeKey ? 'history-coverage-active' : ''}}" data-key="{{item.key}}" bindtap="openHistoricalCoverage">{{item.label}}</button></view>
+  <view class="history-coverage-filters">
+    <picker wx:if="{{!historyCoverageEditor.allDates}}" mode="date" fields="month" value="{{historyCoverageEditor.month}}" data-field="month" bindchange="changeHistoricalMonth"><view>{{historyCoverageEditor.month}} ▾</view></picker>
+    <text wx:else>全部日期</text>
+    <button data-field="allDates" bindtap="toggleHistoricalFilter">{{historyCoverageEditor.allDates ? '按月份' : '跨月查找'}}</button>
+    <button data-field="advanced" bindtap="toggleHistoricalFilter">{{historyCoverageEditor.advanced ? '收起条件' : '更多条件'}}</button>
+  </view>
+  <view wx:if="{{historyCoverageEditor.advanced}}" class="history-coverage-advanced">
+    <input placeholder="备注或分类（选填）" value="{{historyCoverageEditor.search}}" data-field="search" bindinput="historicalCoverageInput" bindconfirm="loadHistoricalCandidates" maxlength="40" />
+    <view wx:if="{{!historyCoverageEditor.upfront}}" class="history-coverage-range"><button data-field="multiple" bindtap="toggleHistoricalFilter">{{historyCoverageEditor.multiple ? '改为单期' : '这笔覆盖多期'}}</button><label wx:if="{{historyCoverageEditor.multiple}}"><text>第 {{historyCoverageEditor.periodNumber}} 至</text><input type="number" value="{{historyCoverageEditor.through}}" data-field="through" bindinput="historicalCoverageInput" maxlength="3" /><text>期</text></label></view>
+    <button class="secondary-button" bindtap="loadHistoricalCandidates" disabled="{{saving || historyCoverageLoading}}">查找</button>
+  </view>
+  <view wx:if="{{historyCoverageEditor.selectedLabel}}" class="history-coverage-selected"><text>已选：{{historyCoverageEditor.selectedLabel}}</text><button data-key="{{historyCoverageEditor.chargeKey}}" bindtap="removeHistoricalCoverage">取消选用</button></view>
+  <text class="history-coverage-note">选用后保留原账目，不再补记这笔费用。</text>
+  <text wx:if="{{historyCoverageLoading}}" class="history-coverage-empty">正在查找…</text>
+  <view wx:for="{{historyCoverageCandidates}}" wx:key="transactionId" class="history-coverage-candidate" data-id="{{item.transactionId}}" bindtap="chooseHistoricalCandidate" aria-role="button" aria-label="选用{{item.dateText}}的{{item.noteText}} {{item.amountText}}" aria-disabled="{{saving || historyCoverageLoading}}"><view><text>{{item.noteText}}</text><text>{{item.dateText}}</text></view><text class="money-number">{{item.amountText}}</text><text>选用</text></view>
+  <text wx:if="{{!historyCoverageLoading && !historyCoverageCandidates.length && !historyCoverageError}}" class="history-coverage-empty">没有可选账目，可换月份或跨月查找。</text>
+  <button wx:if="{{historyCoverageNext}}" class="ld-link" data-next="{{true}}" bindtap="loadHistoricalCandidates" disabled="{{saving || historyCoverageLoading}}">下一页</button>
+  <ui-state wx:if="{{historyCoverageError}}" error description="{{historyCoverageError}}" />
+</view>
