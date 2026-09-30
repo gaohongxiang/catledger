@@ -66,22 +66,27 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
 
   onLoad: function (options) {
     themeService.bindPage(this)
+    this._directId=options&&options.transactionId||null
+    this._directVisible=true
     this._refundDirectId=options&&options.originalTransactionId||null
     if(this._refundDirectId)this.setData({typeIndex:3,originalTransactionId:this._refundDirectId})
     const requestedMode = options && options.mode
-    const mode = ['edit', 'import', 'view', 'link-refund'].includes(requestedMode) ? requestedMode : 'create'
+    const mode = this._directId?'view':['edit', 'import', 'view', 'link-refund'].includes(requestedMode) ? requestedMode : 'create'
     this.setData({ mode: mode, readonlyDetail: mode === 'import' || mode === 'view' })
     this.updateNavigationTitle()
     loginGuard.run(this, this.prepareForm.bind(this))
   },
 
   onShow: function () {
+    this._directVisible=true
     themeService.bindPage(this)
     if (!pageReadSession.isCurrent(this) || !this.data.catalogReady ||
         this._catalogToken !== api.cacheToken('catalog.get')) {
       loginGuard.run(this, this.prepareForm.bind(this))
     } else { this.loadLoanContext() }
   },
+
+  onHide: function () { this._directVisible=false },
 
   onUnload: function () { pageReadSession.end(this) },
 
@@ -106,15 +111,30 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
   beginRead: function () {
     return pageReadSession.begin(this,
       Object.keys(this.data).filter(key => !['mode', 'readonlyDetail'].includes(key) && !key.startsWith('theme')),
-      ['_loanLoad', '_initialized', '_writeFinished', '_deleteConfirming', '_pendingWriteChecked', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
+      ['_directLoad','_directTransaction','_directContext','_loanLoad', '_initialized', '_writeFinished', '_deleteConfirming', '_pendingWriteChecked', '_catalogLoad', '_catalogToken', '_catalogApplied', '_refundablesLoad',
         '_detailTransaction', '_editingTransaction', '_catalogCategories', '_refundQuery', '_refundCursor', '_refundPrevious'])
   },
 
   prepareForm: function (options) {
     const isCurrent = this.beginRead()
     if (!isCurrent() || !app.hasLoginApproval()) return Promise.resolve()
+    if(this._directId&&!this._initialized&&!this._directTransaction){
+      if(this._directLoad)return this._directLoad
+      this.setData({preparing:true,formReady:false,errorMessage:''})
+      const task=api.callApi('loans.transaction',{transactionId:this._directId},{force:true}).then(result=>{
+        if(!isCurrent()||!this._directVisible)return
+        if(!result.transaction||result.transaction.transactionId!==this._directId)throw new Error('当前账目已失效，请返回后重新打开')
+        this._directTransaction=result.transaction;this._directContext=result
+        const mode=result.transaction.origin==='import'?'import':result.transaction.editable?'edit':'view'
+        this.setData({mode,readonlyDetail:mode==='import'||mode==='view'})
+        return this.prepareForm(options)
+      }).catch(error=>{if(isCurrent()&&this._directVisible)this.setData({formReady:false,errorMessage:error.message||'当前账目已失效，请返回后重新打开'})})
+        .finally(()=>{if(this._directLoad===task){this._directLoad=null;if(isCurrent()&&this._directVisible)this.setData({preparing:false})}})
+      this._directLoad=task
+      return task
+    }
     if (!this._initialized) {
-      const editing = needsEditingTransaction(this.data.mode) ? app.globalData.editingTransaction : null
+      const editing = needsEditingTransaction(this.data.mode) ? this._directId?this._directTransaction:app.globalData.editingTransaction : null
       if (needsEditingTransaction(this.data.mode) && (!editing || !editing.transactionId)) {
         this.setData({ errorMessage: '当前交易已失效，请返回后重试' })
         return Promise.resolve()
@@ -135,7 +155,8 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
       // 本地字段不等待目录；已有交易也先展示，再准备可编辑的分类。
       this.setData({ formReady: true })
     }
-    const loanLoad = this.loadLoanContext()
+    const loanLoad = this.loadLoanContext(this._directContext)
+    this._directContext=null
     if (this.data.readonlyDetail && !this.data.detail.canEditCategory) return Promise.all([loanLoad, this.verifyPendingWrite()])
     const self = this
     const needsRefund = !this.data.readonlyDetail && TYPE_OPTIONS[this.data.typeIndex].value === 'refund'

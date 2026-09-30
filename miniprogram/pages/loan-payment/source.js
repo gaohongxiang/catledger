@@ -12,7 +12,7 @@ module.exports = {
     if (this.data.saving || ![0,1,2].includes(Number(event.detail.value)) || (this.data.sourceLocked && Number(event.detail.value) === 0)) return
     if (this.data.sourceLocked) { this.setData({ modeIndex: Number(event.detail.value), confirmed: false }); this.review(); return }
     this._selectedSources = new Map()
-    this.setData({ modeIndex: Number(event.detail.value), source: null, retainedCharges:[],sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0, sourceTiming: null, confirmed: false })
+    this.setData({ modeIndex: Number(event.detail.value), source: null, retainedRepayment:null, retainedCharges:[],sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0, sourceTiming: null, confirmed: false })
     this.review()
     if(this.data.periodNumber && this.data.modeIndex>0)return this.loadAllocationCharges()
   },
@@ -35,7 +35,7 @@ module.exports = {
     for (const row of this.data.sourceRows) { if (selected.has(row.transactionId)) values.set(row.transactionId, row); else values.delete(row.transactionId) }
     if (values.size > 60) { this.setData({ errorMessage: '一次最多选择 60 笔账目' }); return }
     this._selectedSources = values
-    this.setData({ sourceSelectedCount: values.size, source: null, retainedCharges:[],sourceTiming: null, sourceTransactions: [], confirmed: false })
+    this.setData({ sourceSelectedCount: values.size, source: null, retainedRepayment:null, retainedCharges:[],sourceTiming: null, sourceTransactions: [], confirmed: false })
   },
   async inspectSource() {
     if (this.data.saving || this.data.loading) return
@@ -56,7 +56,14 @@ module.exports = {
     const first = transactions[0], drawdown = this.data.kindIndex === 1
     const account = drawdown ? first.destinationAccount : first.sourceAccount
     if (!account || typeof first.occurredLocalAt !== 'string') throw new Error('来源账户或时间不完整，请重新核对')
+    const repayment=result.retainedRepayment
+    const allocations=this.data.allocations.map(a=>repayment&&this.data.allocations.length===1&&a.accountId===repayment.liabilityAccountId?Object.assign({},a,{
+      principalYuan:money.minorToYuan(repayment.principalMinor),interestYuan:money.minorToYuan(repayment.interestMinor),feeYuan:money.minorToYuan(repayment.feeMinor),
+      interestIndex:repayment.interestTreatment==='accrued'?1:0,feeIndex:repayment.feeTreatment==='accrued'?1:0,
+      interestCategoryIndex:this.data.categories.findIndex(c=>c.id===repayment.interestCategoryId),feeCategoryIndex:this.data.categories.findIndex(c=>c.id===repayment.feeCategoryId)
+    }):a)
     this.setData({ source: result.source, retainedCharges:result.retainedCharges||[],sourceTransactions: rows(transactions), sourceRows: [], nextSourceCursor: null,
+      allocations, retainedRepayment:repayment||null,
       sourceAccountId: first.type==='transfer'&&first.destinationAccount ? first.destinationAccount.accountId : '',
       sourceEvidence: result.evidence || { items: [], hasMore: false },
       sourceTiming: { occurredLocalAt: first.occurredLocalAt.replace(' ','T'), timezoneOffsetMinutes: first.timezoneOffsetMinutes },
@@ -67,7 +74,7 @@ module.exports = {
   },
   async loadEntrySource(current) {
     if (!this._sourceTransactionId || this._paymentId || this.data.editingPayment || this.data.replacePayment || this.data.hasPending) return
-    this.setData({ source: null, retainedCharges:[],sourceTiming: null, sourceTransactions: [], sourceEvidence: { items: [], hasMore: false }, confirmed: false })
+    this.setData({ source: null, retainedRepayment:null, retainedCharges:[],sourceTiming: null, sourceTransactions: [], sourceEvidence: { items: [], hasMore: false }, confirmed: false })
     const result = await api.callApi('loans.source', { transactionIds: [this._sourceTransactionId] }, { force: true })
     if (!current()) return
     this.setData({ sourceLocked: true, kindIndex: 0, modeIndex: this.data.modeIndex === 2 ? 2 : 1, sourceSelectedCount: 1 })
@@ -88,7 +95,7 @@ module.exports = {
     this._selectedSources = new Map()
     const associate=this.data.payment.mode==='associate'
     this.setData(Object.assign(model.editView(this.data), { managementOpen: false, hasPayment: false, payment: null, editingPayment: reconcile ? null : previous,
-      replacePayment: reconcile ? previous : null, source: null, retainedCharges:[],sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0,
+      replacePayment: reconcile ? previous : null, source: null, retainedRepayment:null, retainedCharges:[],sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0,
       modeIndex: reconcile ? 2 : associate ? 1 : 0, confirmed: false, savedMessage: '', errorMessage: '' }))
     if (reconcile) this.setData({ sourceTiming: null })
     this.review()

@@ -125,7 +125,7 @@ test('贷款分页只保留当前页和五个返回游标，退出后迟到响�
   for (let i = 0; i < 10; i++) await page.nextPage()
   assert.equal(page.data.items.length, 1); assert.equal(page._previous.length, 5)
   let resolve
-  const late = runtime('pages/loans/index', action => action==='loans.installmentSources' ? Promise.resolve({items:[],nextCursor:null}) : new Promise(done => { resolve = done }))
+  const late = runtime('pages/loans/index', action => ['loans.installmentSources','loans.retainedCharges'].includes(action) ? Promise.resolve({items:[],nextCursor:null}) : new Promise(done => { resolve = done }))
   late.page.onLoad(); const loading = late.page.loadLoans(); await new Promise(done=>setImmediate(done));late.page.onUnload()
   resolve({ items: [{ loanId: 'private-old', remainingPrincipalMinor: '0', status: 'settled' }], nextCursor: null })
   await loading; assert.equal(late.page.data.items.length, 0)

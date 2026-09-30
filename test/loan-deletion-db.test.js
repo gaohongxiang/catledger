@@ -171,11 +171,15 @@ test('贷款整组删除：真实接口、来源认领、重建、幂等及事�
   const paid=await payment(h,l,{mode:'correctExisting',source,interest:'2000',expenseCharges:true,charges:[{chargeId:f.chargeId,component:'interest',amountMinor:'2000'}]})
   const current=(await h.api('loans.payment',{paymentId:paid.paymentId})).transactions,before=await balances(h)
   await h.api('loans.delete',(await removal(h,l)).input)
+  assert.equal((await h.api('loans.retainedCharge',{chargeId:f.chargeId})).charge.historicalSettledMinor,'0')
   const next=await h.create({chargeContractId:state.contract.contractId}),reusable=await h.api('loans.source',{transactionIds:[current[0].transactionId]})
   assert.equal(reusable.transactions.length,2);assert.equal(reusable.retainedCharges[0].chargeId,f.chargeId)
   await payment(h,next,{mode:'associate',source:reusable.source,interest:'2000',expenseCharges:true,charges:[{chargeId:f.chargeId,component:'interest',amountMinor:'2000'}]})
   assert.deepEqual(await balances(h),before);assert.equal((await h.api('loans.get',{loanId:next.loanId})).loan.remainingPrincipalMinor,'550000')
   assert.equal((await removal(h,next)).impact.revoke.length,0)
+  await h.api('loans.delete',(await removal(h,next)).input)
+  const retained=(await h.api('loans.retainedCharge',{chargeId:f.chargeId})).charge
+  assert.equal(retained.directlyPaidMinor,'2000');assert.equal(retained.historicalSettledMinor,'0');assert.equal(retained.outstandingMinor,'0')
  })
  await scenario('无新历史确认时复用原清偿付款，也不再次抵扣已保留费用',async h=>{
   const l=await h.create();await confirm(h,l);const state=await h.state(l),f=state.items[0],txn=await transfer(h,'52000')

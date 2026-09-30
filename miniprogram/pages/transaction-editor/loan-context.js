@@ -2,12 +2,12 @@ const { contextView } = require('../loan-link/model')
 const { buildReadonlyDetail } = require('./readonly-detail')
 function createLoanContext({ api, session, navigate }) {
   return {
-    loadLoanContext() {
+    loadLoanContext(knownContext) {
       if (!this.data.transactionId || !session.isCurrent(this)) return Promise.resolve()
       if (this._loanLoad) return this._loanLoad
       const current = session.capture(this), transactionId = this.data.transactionId
       this.setData({ loanContextLoading: true, loanContextError: '' })
-      this._loanLoad = api.callApi('loans.transaction', { transactionId }, { force: true }).then(result => {
+      this._loanLoad = (knownContext?Promise.resolve(knownContext):api.callApi('loans.transaction', { transactionId }, { force: true })).then(result => {
         if (!current() || this.data.transactionId !== transactionId) return
         const context = contextView(result)
         const patch = { loanContext: context, loanManaged: context.linked || ['candidate','retained_charge'].includes(context.state) }

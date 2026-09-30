@@ -30,7 +30,7 @@
       <ui-state wx:if="{{context.targetAccount.inactive}}" description="付款或负债账户已停用，请在账户管理核对状态；当前不能建立关联。" />
       <block wx:else>
         <button wx:if="{{context.state === 'candidate'}}" class="primary-button ll-action" bindtap="createLoan" disabled="{{loading}}">补充贷款资料并继续关联</button>
-        <button wx:if="{{context.state === 'candidate'}}" class="secondary-button ll-action" bindtap="managePending">核对本息费与关联方式</button>
+        <button wx:if="{{context.state === 'candidate' && !context.retained}}" class="secondary-button ll-action" bindtap="managePending">核对本息费与关联方式</button>
         <text class="ll-section-title">选择 {{context.targetAccount.name}} 下的贷款</text>
         <text wx:if="{{!loading && !loans.length}}" class="ll-note">还没有对应贷款资料。创建资料不会重复生成消费或借款。</text>
         <view wx:for="{{loans}}" wx:key="loanId" class="ll-candidate" hover-class="ll-candidate-hover" data-id="{{item.loanId}}" bindtap="selectLoan" aria-role="button" aria-label="{{item.name}} {{item.kindText}}">

@@ -19,6 +19,12 @@ function createLoanDeletionService({getPool,selectLoan}) {
       if(data.confirmed!==true||data.previewToken!==impact.previewToken)throw ledgerError('CONFLICT')
       if(!impact.canDelete)throw ledgerError('LOAN_DELETE_BLOCKED')
       const revoked=transactions.filter(t=>t.disposition==='revoke'),ids=new Set(revoked.map(t=>t.transactionId))
+      const retainedIds=new Set(transactions.filter(t=>t.disposition==='retain').map(t=>t.transactionId)),retainedSettlement=new Map()
+      // 原历史确认本身继续有效；只把完整保留付款中尚未替代历史确认的部分转为保留依据。
+      for(const p of payments){
+        if(!p.links.length||p.links.some(l=>!retainedIds.has(l.transactionId)))continue
+        for(const a of p.coverage)retainedSettlement.set(a.chargeId,(retainedSettlement.get(a.chargeId)||0n)+BigInt(a.amountMinor)-BigInt(a.historicalReplacedMinor))
+      }
       const accounts=await lockAccounts(c,uid,revoked.flatMap(t=>[t.sourceAccountId,t.destinationAccountId]),{allowArchived:true})
       await assertCashBalanceChanges(c,uid,accounts,revoked.map(transaction=>({transaction,multiplier:-1n})))
       await require('./loan-deletion-review').record(c,uid,loan,contract,scope.reviews)
@@ -42,7 +48,10 @@ function createLoanDeletionService({getPool,selectLoan}) {
         if(withdrawn||['planned','baseline'].includes(f.state)&&!f.planRemovedAt){
           removed.push(f.chargeId)
         }else if(f.state==='recorded'){
-          retained.push({id:f.chargeId,settled:String(BigInt(f.settledMinor)+BigInt(f.historicalCoveredMinor))})
+          // 资产端费用的原交易已证明实付，重复删除/重建不能再累加人工历史。
+          const extra=['cash','bank','wallet','other_asset'].includes(f.transactionAccountType)?0n:retainedSettlement.get(f.chargeId)||0n
+          const historical=[BigInt(f.historicalSettledMinor),BigInt(f.historicalChildrenMinor||'0')].reduce((a,b)=>a>b?a:b)
+          retained.push({id:f.chargeId,settled:extra>0n?String(historical+extra):f.historicalSettledMinor})
         }
       }
       for(let offset=0;offset<removed.length;offset+=200){

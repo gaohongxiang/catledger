@@ -3,6 +3,7 @@ const ALL_TAGS = ['accounts', 'transactions', 'categories', 'profile', 'loans', 
 const READ_POLICIES = Object.freeze({
   'loans.deleteImpact': { ttl:0,tags:['loans','transactions','accounts'] },
   'loans.retainedCharge': { ttl:0,tags:['loans','transactions'] },
+  'loans.retainedCharges': { ttl:0,tags:['loans','transactions','accounts'] },
   'loans.chargeImpact': { ttl:0,tags:['loans','transactions'] },
   'loans.dueCharges': { ttl: 0, tags: ['loans', 'transactions', 'accountDirectory'] },
   'loans.chargePlan': { ttl: 0, tags: ['loans', 'transactions', 'accountDirectory'] },

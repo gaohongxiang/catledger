@@ -127,6 +127,6 @@ function createLoanChargeMaintenance({getPool,selectLoan,now=Date.now}) {
       return {loanId:loan.loanId,version:Number(loan.version)+1}
     }})
   }
-  return {chargeImpact,changeCharge,endCharges,retainedCharge}
+  return {chargeImpact,changeCharge,endCharges,retainedCharge,retainedCharges:require('./loan-retained-charge-query').createRetainedChargesQuery({getPool})}
 }
 module.exports={createLoanChargeMaintenance}

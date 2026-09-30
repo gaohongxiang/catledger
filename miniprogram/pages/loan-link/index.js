@@ -52,7 +52,7 @@ Page({
     if (this.data.loading || this.data.errorMessage || !this.data.context || !['candidate','allocatable'].includes(this.data.context.state)) return
     const loan = this.data.loans.find(l => l.loanId === event.currentTarget.dataset.id)
     if (!loan) return
-    if(this.data.context.state==='allocatable'&&loan.canLink){wx.navigateTo({url:'/pages/loan-payment/index?loanId='+encodeURIComponent(loan.loanId)+'&sourceTransactionId='+encodeURIComponent(this._transactionId)});return}
+    if((this.data.context.state==='allocatable'||this.data.context.retained)&&loan.canLink){wx.navigateTo({url:'/pages/loan-payment/index?loanId='+encodeURIComponent(loan.loanId)+'&sourceTransactionId='+encodeURIComponent(this._transactionId)});return}
     const target = loan.canLink ? 'repayment-entry' : 'loan-detail'
     wx.navigateTo({ url: '/pages/' + target + '/index?loanId=' + encodeURIComponent(loan.loanId) + (loan.canLink ? '&paymentId=' + encodeURIComponent(this.data.context.payment.paymentId) : '&sourceTransactionId=' + encodeURIComponent(this._transactionId)) })
   },

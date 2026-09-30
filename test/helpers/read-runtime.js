@@ -54,6 +54,7 @@ function runtime(savedStorage) {
       else if(action==='loans.chargePlan') result={loanVersion:1,items:[],preview:[],issues:[],priorContracts:[],candidates:[],contract:null,cutoff:'2026-09-26',recordedMinor:'0',unverifiedMinor:'0',nextCursor:null}
       else if (action === 'loans.periods') result = { loanVersion: 1, items: [], summary: {paidPeriods:0,unpaidPrincipalMinor:'0',unpaidInterestMinor:'0',unpaidFeeMinor:'0'}, nextCursor:null }
       else if (action === 'loans.installmentSources') result = { items: [], nextCursor: null }
+      else if (action === 'loans.retainedCharges') result = { items: [],total:0,nextCursor:null }
       else if (action === 'transactions.refundable') result = { transactions: [] }
       else if (action === 'statistics.get') result = { month: data.month, summary, cashFlowTrend: [{ month: data.trendEndMonth || data.month, incomeMinor: '0', expenseMinor: '100' }] }
       else { balance = '10100'; h.revision = String(Number(h.revision) + 1); result = { saved: true } }

@@ -7,6 +7,20 @@
     <chevron-icon size="{{24}}" />
   </view>
   <ui-state wx:if="{{errorMessage}}" error description="{{errorMessage}} · 重试" bindtap="firstPage" />
+  <view wx:if="{{retainedTotal > 0}}" class="loan-entry" bindtap="toggleRetained" aria-role="button" aria-label="保留费用，{{retainedTotal}}笔">
+    <view class="loan-entry-main"><text class="loan-entry-title">保留费用 · {{retainedTotal}} 笔</text><text class="loan-entry-note">计划已删除，费用仍有效；可查看或明确关联新计划</text></view><chevron-icon size="{{24}}" />
+  </view>
+  <view wx:if="{{retainedOpen && retainedTotal > 0}}" class="loan-list">
+    <view wx:for="{{retainedCharges}}" wx:key="chargeId" class="loan-row" data-id="{{item.chargeId}}" bindtap="openRetainedCharge" aria-role="button">
+      <view class="loan-row-top"><text class="loan-name">{{item.componentText}}</text><text class="money-number">{{item.amountText}}</text></view>
+      <text class="loan-note">{{item.chargeDate}} · {{item.accountName}} · {{item.loanName}}</text>
+    </view>
+    <ui-state wx:if="{{retainedError}}" error description="{{retainedError}} · 重试" bindtap="loadRetained" />
+    <view wx:if="{{retainedCanPrevious || retainedNextCursor}}" class="loan-paging">
+      <button disabled="{{loading || retainedLoading || !retainedCanPrevious}}" bindtap="previousRetained">上一页费用</button>
+      <button disabled="{{loading || retainedLoading || !retainedNextCursor}}" bindtap="nextRetained">下一页费用</button>
+    </view>
+  </view>
   <ui-state wx:if="{{loading && !hasLoaded}}" description="正在读取贷款…" />
   <empty-cat wx:if="{{hasLoaded && !items.length}}" hide-art title="还没有贷款资料" description="{{scoped ? '此账户尚未添加贷款资料。普通欠款可直接按账户记账，需要分期计划时再添加。' : '从负债账户添加贷款，也可在这里选择账户后建立分期计划。'}}" />
   <view class="loan-list">

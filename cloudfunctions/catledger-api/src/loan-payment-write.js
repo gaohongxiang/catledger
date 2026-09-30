@@ -49,6 +49,11 @@ async function writePayment(connection,uid,data,secret,selectLoan,{correct=false
     if(sourceSelection(uid,secret,source).fingerprint!==data.source.fingerprint) throw ledgerError('CONFLICT')
     if(input.mode==='correctExisting') roots=source.transactions.map(t=>({transactionId:t.transactionId,deletedVersion:Number(t.version)+1}))
   }
+  if(source?.retained?.repayment && input.kind==='repayment')for(const a of input.allocations){
+    const progress=require('./installment-view').progressOf(allocated.get(a.loanId))
+    const hasHistory=Number(progress.through)>0||Object.keys(progress.historyFacts||{}).length>0||Object.values(progress.exceptions||{}).includes('completed')||progress.legacyNeedsReview
+    if(BigInt(a.principalMinor)>0n && hasHistory && !a.period)throw ledgerError('LOAN_PERIOD_REQUIRED')
+  }
   if(previous && !correct) {
     if(input.mode!=='correctExisting' || !source.event || previous.payment.mode!=='new' || input.kind!=='repayment' || previous.payment.kind!=='repayment' ||
       input.totalMinor!==previous.payment.totalMinor || input.assetAccountId!==previous.payment.assetAccountId) throw ledgerError('LOAN_SOURCE_MISMATCH')

@@ -84,6 +84,15 @@ async function transactionContext(connection, uid, transactionId) {
     return { state: row.deletedAt != null ? 'replaced' : 'linked', transaction: transactionToPublic(row),
       targetAccount: null, ...await paymentSummary(connection, uid, paymentId), evidence: await repaymentEvidence(connection, uid, eventId) }
   }
+  if (['transfer','expense'].includes(row.type)) {
+    const retained=await require('./loan-payment-reuse').retainedGroup(connection,uid,[row.transactionId])
+    if(retained?.repayment){
+      const repayment=retained.repayment
+      const [accounts]=await connection.execute('SELECT account_id AS accountId,name,type,archived_at AS archivedAt FROM catledger_accounts WHERE uid=? AND account_id IN (?,?)',[uid,row.sourceAccountId,repayment.liabilityAccountId])
+      const targetAccount=candidate(row,accounts,repayment)
+      if(targetAccount)return {state:'candidate',retained:true,transaction:transactionToPublic(row),targetAccount,payment:null,repayment,allocations:[],evidence:await repaymentEvidence(connection,uid,eventId)}
+    }
+  }
   if (row.type === 'transfer') {
     const [accounts] = await connection.execute('SELECT account_id AS accountId,name,type,archived_at AS archivedAt FROM catledger_accounts WHERE uid=? AND account_id IN (?,?)', [uid,row.sourceAccountId,row.destinationAccountId])
     const source = accounts.find(a => a.accountId === row.sourceAccountId), target = accounts.find(a => a.accountId === row.destinationAccountId)

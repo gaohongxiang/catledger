@@ -7,7 +7,7 @@ const model = require('./model')
 Page(Object.assign({}, require('./source'), require('./period-entry'), {
   data: {retainedCharges:[],pageTitle:'登记还款',managementOpen:false,hasUnallocated:false,sourceAccountId:'',simplePeriod:false,amountDetailsOpen:false,periodNumber:null,unallocatedYuan:'0',unallocatedText:'0.00', sourceLocked: false, sourceTransactionId: '', sourceEvidence: { items: [], hasMore: false }, entryModes: ['使用这笔已有账目，金额不变','更正已有账目的本息费'], loading: false, saving: false, errorMessage: '', savedMessage: '', hasPending: false, hasPayment: false, payment: null, transactions: [], allocations: [],
     accounts: [], accountIndex: -1, categories: [], choices: [], nextLoanCursor: null, kindIndex: 0, kinds: ['实际还款','新放款到账'],
-    modes: ['还没记过，新记一笔','已经记过，选已有账目','更正已有账目的本息费'], modeIndex: 0, source: null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
+    modes: ['还没记过，新记一笔','已经记过，选已有账目','更正已有账目的本息费'], modeIndex: 0, source: null, retainedRepayment:null, sourceTiming: null, sourceTransactions: [], sourceRows: [],
     sourceMonth: '', nextSourceCursor: null, sourceSelectedCount: 0, editingPayment: null, replacePayment: null,
     treatments: ['尚未入账，本次记支出','已计入负债，本次只清偿'], reviewText: '请填写总额与已确认本息费，未知分项不能提交。', totalYuan: '', date: '', time: '12:00', confirmed: false },
   onLoad(query) { this._loanId = query && query.loanId; this._paymentId = query && query.paymentId; this._sourceTransactionId = query && query.sourceTransactionId || ''; const period=Number(query&&query.periodNumber);theme.bindPage(this); this.setData({ periodNumber:Number.isInteger(period)&&period>0&&period<=600?period:null,kindIndex:query&&query.kind==='drawdown'?1:0,hasPayment: Boolean(this._paymentId), sourceLocked: Boolean(this._sourceTransactionId), sourceTransactionId: this._sourceTransactionId, modeIndex: this._sourceTransactionId ? 1 : 0 });this.updatePageTitle() },
@@ -17,7 +17,7 @@ Page(Object.assign({}, require('./source'), require('./period-entry'), {
     const current = session.begin(this, Object.keys(this.data), ['_load'])
     if (this._load) return this._load
     this.setData({ loading: true, errorMessage: '' })
-    if (this._sourceTransactionId && !this._paymentId && !this.data.editingPayment && !this.data.replacePayment) this.setData({ source: null, retainedCharges:[],sourceTiming: null, sourceTransactions: [], sourceEvidence: { items: [], hasMore: false }, confirmed: false })
+    if (this._sourceTransactionId && !this._paymentId && !this.data.editingPayment && !this.data.replacePayment) this.setData({ source: null, retainedRepayment:null, retainedCharges:[],sourceTiming: null, sourceTransactions: [], sourceEvidence: { items: [], hasMore: false }, confirmed: false })
     this._load = api.callApi('catalog.get').then(async catalog => {
       if (!current()) return
       getApp().globalData.uid = catalog.uid
@@ -50,7 +50,7 @@ Page(Object.assign({}, require('./source'), require('./period-entry'), {
         const ids = [...new Set(this.data.allocations.map(a => a.loanId).concat(previous ? previous.loans.map(l => l.loanId) : []))]
         const selected = new Map((await Promise.all(ids.map(loanId => api.callApi('loans.get', { loanId })))).map(value => [value.loan.loanId, value.loan]))
         if (current()) {
-          const patch = { allocations: this.data.allocations.map(a => Object.assign({}, a, { version: selected.get(a.loanId).version, loanName: selected.get(a.loanId).name, kind: selected.get(a.loanId).kind })), confirmed: false }
+          const patch = { allocations: this.data.allocations.map(a => Object.assign({}, a, { version: selected.get(a.loanId).version, loanName: selected.get(a.loanId).name, kind: selected.get(a.loanId).kind, hasHistoricalRepayments:model.allocation(selected.get(a.loanId)).hasHistoricalRepayments })), confirmed: false }
           if (previous) patch[this.data.editingPayment ? 'editingPayment' : 'replacePayment'] = Object.assign({}, previous, { loans: previous.loans.map(l => ({ loanId:l.loanId,version:selected.get(l.loanId).version })) })
           this.setData(patch)
         }

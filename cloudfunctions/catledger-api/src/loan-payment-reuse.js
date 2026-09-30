@@ -20,7 +20,14 @@ async function retainedGroup(c,uid,ids) {
     const [charges]=await c.execute(`SELECT a.charge_id AS chargeId,a.amount_minor AS amountMinor,f.transaction_id AS transactionId
       FROM catledger_loan_charge_allocations a JOIN catledger_loan_charges f ON f.uid=a.uid AND f.charge_id=a.charge_id
       WHERE a.uid=? AND a.payment_id=? ORDER BY a.charge_id`,[uid,payment.paymentId])
-    return {paymentId:payment.paymentId,transactionIds:links.map(l=>l.transactionId),charges:charges.map(f=>({...f,amountMinor:String(f.amountMinor)}))}
+    const [allocations]=await c.execute(`SELECT l.account_id AS liabilityAccountId,a.principal_minor AS principalMinor,
+      a.interest_minor AS interestMinor,a.fee_minor AS feeMinor,a.interest_treatment AS interestTreatment,a.fee_treatment AS feeTreatment,
+      a.interest_category_id AS interestCategoryId,a.fee_category_id AS feeCategoryId
+      FROM catledger_loan_payment_allocations a JOIN catledger_loans l ON l.uid=a.uid AND l.loan_id=a.loan_id
+      JOIN catledger_loan_payments p ON p.uid=a.uid AND p.payment_id=a.payment_id
+      WHERE a.uid=? AND a.payment_id=? AND p.kind='repayment' LIMIT 2`,[uid,payment.paymentId])
+    const repayment=allocations.length===1?{...allocations[0],...Object.fromEntries(['principal','interest','fee'].map(f=>[f+'Minor',String(allocations[0][f+'Minor'])]))}:null
+    return {paymentId:payment.paymentId,transactionIds:links.map(l=>l.transactionId),repayment,charges:charges.map(f=>({...f,amountMinor:String(f.amountMinor)}))}
   }
   return null
 }

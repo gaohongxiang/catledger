@@ -1,7 +1,8 @@
 const { addMinor } = require('../../utils/minor-arithmetic')
 const money = require('../../utils/money')
 function allocation(loan) {
-  return { loanId: loan.loanId, loanName: loan.name, version: loan.version, kind: loan.kind,
+  return { loanId: loan.loanId, loanName: loan.name, accountId:loan.accountId, version: loan.version, kind: loan.kind,
+    hasHistoricalRepayments:!!(loan.installmentSummary&&(loan.installmentSummary.manualPaidPeriods>0||loan.installmentSummary.legacyNeedsReview)),
     principalYuan: '', interestYuan: '', feeYuan: '', interestIndex: 0, feeIndex: 0, interestCategoryIndex: -1, feeCategoryIndex: -1 }
 }
 function simplePeriod(data) { return !!data.periodNumber && !data.modeIndex && !data.editingPayment && !data.replacePayment && !data.sourceLocked }
@@ -17,6 +18,7 @@ function payload(data) {
   const result = { mode, kind: drawdown ? 'drawdown' : 'repayment', assetAccountId: asset.accountId,
     totalMinor: money.yuanToMinor(data.totalYuan), occurredLocalAt: data.date + 'T' + data.time + ':00', timezoneOffsetMinutes: new Date().getTimezoneOffset(), confirmed: true,
     allocations: data.allocations.map(a => {
+      if(data.retainedRepayment&&a.hasHistoricalRepayments&&!a.period&&money.yuanToMinor(a.principalYuan,{allowZero:true})!=='0')throw new Error('这个计划已有历史已还，请在还款分配中选择对应期次，避免重复减少本金')
       if (drawdown && a.kind === 'installment' && a.originKind!=='cash_borrowing') throw new Error('消费分期不登记重复借款到账')
       const value = { loanId: a.loanId, version: a.version, principalMinor: money.yuanToMinor(a.principalYuan, { allowZero: true }),
         interestMinor: drawdown ? '0' : money.yuanToMinor(a.interestYuan, { allowZero: true }), feeMinor: drawdown ? '0' : money.yuanToMinor(a.feeYuan, { allowZero: true }) }
