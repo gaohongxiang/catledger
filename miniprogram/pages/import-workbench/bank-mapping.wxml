@@ -4,7 +4,6 @@
     <view class="sheet-handle"></view>
     <view class="account-choice-header">
       <text class="account-choice-title serif-title">确认银行账单</text>
-      <button class="account-choice-cancel" bindtap="closeBankMapping" disabled="{{busy}}">稍后</button>
     </view>
     <scroll-view scroll-y enhanced show-scrollbar="{{false}}" class="bank-mapping-scroll">
       <text class="bank-mapping-name">{{bankMappingSheet.name}}</text>
@@ -16,7 +15,11 @@
         <view class="bank-mapping-row"><text>工作表</text><text>{{bankMappingSheet.preview.sheets[bankMappingSheet.preview.sheetIndex].name}} ›</text></view>
       </picker>
       <text wx:if="{{bankMappingSheet.preview.sheets.length > 1}}" class="bank-mapping-copy">本次只读取所选工作表，请选择交易明细所在的表。</text>
-      <view class="bank-mapping-header-row"><text>表头在第</text><input type="number" maxlength="3" value="{{bankMappingSheet.headerRowInput}}" bindinput="inputBankHeader" bindblur="refreshBankPreview" bindconfirm="refreshBankPreview" confirm-type="done" disabled="{{busy}}" /><text>行</text><text wx:if="{{bankMappingSheet.previewPending}}" class="bank-header-status">{{bankMappingSheet.previewLoading ? '正在识别…' : '修改后自动识别'}}</text></view>
+      <view class="bank-mapping-row bank-mapping-header-row">
+        <text>表头行号</text>
+        <view class="bank-header-value"><text>第</text><input type="number" maxlength="3" value="{{bankMappingSheet.headerRowInput}}" bindinput="inputBankHeader" bindblur="refreshBankPreview" bindconfirm="refreshBankPreview" confirm-type="done" disabled="{{busy}}" /><text>行</text></view>
+      </view>
+      <text wx:if="{{bankMappingSheet.previewPending}}" class="bank-header-status">{{bankMappingSheet.previewLoading ? '正在识别…' : '修改后自动识别'}}</text>
       <picker range="{{bankMappingSheet.amountModes}}" range-key="label" value="{{bankMappingSheet.modeIndex}}" data-key="amountMode" bindchange="changeBankMapping" disabled="{{busy}}">
         <view class="bank-mapping-row"><text>金额格式</text><text>{{bankMappingSheet.amountModes[bankMappingSheet.modeIndex].label}} ›</text></view>
       </picker>
@@ -36,9 +39,11 @@
         </picker>
       </block>
       <button class="text-action bank-columns-toggle" bindtap="toggleBankColumns" disabled="{{busy}}">{{bankMappingSheet.advanced ? '收起更多列' : '查看摘要、对方等更多列'}}</button>
-      <text class="bank-mapping-copy">未选的列保留在原始记录中</text>
     </scroll-view>
     <text wx:if="{{bankMappingSheet.error}}" class="inline-error">{{bankMappingSheet.error}}</text>
-    <button class="primary-button" bindtap="confirmBankMapping" disabled="{{busy}}" loading="{{busy}}">{{busy ? '正在读取' : '确认并解析'}}</button>
+    <view class="bank-mapping-actions">
+      <button class="secondary-button" bindtap="closeBankMapping" disabled="{{busy}}">稍后</button>
+      <button class="primary-button" bindtap="confirmBankMapping" disabled="{{busy}}" loading="{{busy}}">{{busy ? '正在读取' : '确认并解析'}}</button>
+    </view>
   </view>
 </view>
