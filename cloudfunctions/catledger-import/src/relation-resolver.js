@@ -4,6 +4,7 @@ const { EVENT_STATUS, RELATION_TYPE, RELATION_STATUS, evaluatePostability } = re
 const { ECONOMIC_NATURE, unique } = require('./organizer-values')
 const { timeValue, normalizedText, STRONG_REFERENCE_WINDOW_MS } = require('./evidence-matching')
 const { autoReasonCode, candidateReasonCode, createRefundCandidateIndex } = require('./refund-relation-policy')
+const { findRefundSourceConflicts, applyRefundSourceConflict } = require('./refund-source-conflict')
 const SAME_EVENT_CANDIDATE_WINDOW_MS = 48 * 60 * 60 * 1000
 
 function refundRelation(updateId, refund, target, idFactory, status, reasonCode) {
@@ -85,12 +86,21 @@ function sameEventCandidateGroups(events) {
 
 function buildRelations(updateId, events, idFactory) {
   const relations = []
+  for (const { refund, originals } of findRefundSourceConflicts(events)) {
+    Object.assign(refund, applyRefundSourceConflict(refund, originals))
+    originals.forEach(original => relations.push(refundRelation(updateId, refund, original, idFactory,
+      RELATION_STATUS.PROPOSED, 'refund_source_conflict')))
+  }
   const chronological = [...events].sort((left, right) => (timeValue(left.utcAt) || 0) - (timeValue(right.utcAt) || 0))
   const uniqueRefundMatches = []
   const refundIndex = chronological.some(event => event.economicNature === ECONOMIC_NATURE.REFUND) ? createRefundCandidateIndex() : null
   chronological.forEach((event) => {
-    if (event.status === EVENT_STATUS.EXCLUDED) return
+    if (event.status === EVENT_STATUS.EXCLUDED) {
+      if (refundIndex) refundIndex.add(event)
+      return
+    }
     if (event.economicNature === ECONOMIC_NATURE.REFUND) {
+      if (event.fieldSources && event.fieldSources.refundSourceConflict) return
       const selection = refundIndex.select(event)
       const candidates = selection.candidates
       if (candidates.length === 0) {
@@ -183,4 +193,4 @@ function buildRelations(updateId, events, idFactory) {
   return relations
 }
 
-module.exports = { sameEventCandidateGroups, buildRelations }
+module.exports = { sameEventCandidateGroups, buildRelations, refundRelation }

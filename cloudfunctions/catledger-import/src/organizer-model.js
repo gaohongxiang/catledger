@@ -79,6 +79,7 @@ const HARD_BLOCKING_REASONS = new Set([
   'refund_amount_exceeded',
   'refund_relation_ambiguous',
   'refund_relation_invalid',
+  'refund_source_conflict',
   'transaction_status_unknown'
 ])
 
@@ -108,6 +109,7 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
   const reasons = unique(effectiveSemanticReasons(event, [...(event.reasonCodes || []),
     ...(event.fieldSources && event.fieldSources.semanticBlockers || [])
   ].filter((reason) => HARD_BLOCKING_REASONS.has(reason))))
+  if (event.fieldSources && event.fieldSources.refundSourceConflict) reasons.push('refund_source_conflict')
   if (event.fieldSources && event.fieldSources.paymentResolution && !paymentResolutionForEvent(event).valid) reasons.push('payment_components_ambiguous')
   if (event.fieldSources && event.fieldSources.loanRepayment) {
     try { require('./explicit-repayment').inputForEvent(event) } catch (_) { reasons.push('loan_repayment_required') }
@@ -191,6 +193,8 @@ function evaluatePostability(event, context) {
 
 function classifyReviewIssue(event) {
   const reasons = new Set(event.reasonCodes || [])
+  if (reasons.has('refund_source_conflict')) return { issueType: REVIEW_ISSUE_TYPE.REFUND_RELATION, primaryReason: 'refund_source_conflict' }
+  if (reasons.has('row_status_unknown')) return { issueType: REVIEW_ISSUE_TYPE.SHARED_FIELDS, primaryReason: 'row_status_unknown' }
   if (reasons.has('loan_repayment_required')) return { issueType: REVIEW_ISSUE_TYPE.SHARED_FIELDS, primaryReason: 'loan_repayment_required' }
   if (reasons.has('source_group_conflict')) {
     return { issueType: REVIEW_ISSUE_TYPE.SAME_EVENT, primaryReason: 'source_group_conflict' }

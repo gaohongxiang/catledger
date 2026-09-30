@@ -12,6 +12,7 @@ const { resolvedReasons } = require('./policy')
 function domainEvent(row) {
   return {
     eventId: row.eventId,
+    eventKey: row.eventKey,
     sourceDirection: row.sourceDirection,
     updateId: row.updateId,
     status: row.status,
@@ -38,7 +39,7 @@ async function selectDomainEvents(connection, uid, updateId, eventIds, { forUpda
   const rows = []
   for (const part of chunks([...new Set(eventIds)].sort().map(id => [id]))) {
   const [found] = await connection.execute(
-    `SELECT event_id AS eventId, update_id AS updateId, status, version,
+    `SELECT event_id AS eventId, event_key AS eventKey, update_id AS updateId, status, version,
             flow_direction AS flowDirection, economic_nature AS economicNature,
             ledger_account_id AS ledgerAccountId,
             counterparty_ledger_account_id AS counterpartyLedgerAccountId,

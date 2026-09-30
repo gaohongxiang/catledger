@@ -153,7 +153,7 @@ async function showIssueEditor(event) {
         const target = member.relation.targetEvent
         if (target && target.eventId && !evidenceIds.has(target.eventId)) {
           evidenceIds.add(target.eventId)
-          evidenceEvents.push({ event: target, role: '候选原消费' })
+          evidenceEvents.push({ event: target, role: currentIssue.refundSourceConflict ? '状态矛盾的原消费' : '候选原消费' })
         }
       })
     this._issueEvidenceRecords = evidenceEvents.map(function (item) {
@@ -586,6 +586,7 @@ module.exports = {
   },
 
   linkRefund: function () {
+    if (this.data.currentIssue && this.data.currentIssue.evidenceReviewOnly) return
     if (!this.data.issueDraft.targetEventId) {
       this.setData({ errorMessage: '请选择这笔退款对应的原消费' })
       return
@@ -594,6 +595,7 @@ module.exports = {
   },
 
   markRefundPending: function () {
+    if (this.data.currentIssue && this.data.currentIssue.evidenceReviewOnly) return
     this.resolveIssue('mark_refund_pending', {})
   },
 

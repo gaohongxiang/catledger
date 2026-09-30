@@ -4,6 +4,7 @@ const REFUND_MATCH_KIND = Object.freeze({
   ITEM_EVIDENCE: 'item_evidence',
   MERCHANT_EVIDENCE: 'merchant_evidence'
 })
+const { reliableSharedReference } = require('./refund-source-conflict')
 
 const MATCH_RANK = Object.freeze({
   [REFUND_MATCH_KIND.EXACT_REFERENCE]: 1,
@@ -43,14 +44,16 @@ function accountsCompatibleForRelation(left, right) {
 function baseCandidateEligible(refund, original) {
   if (!refund || !original || refund.eventId === original.eventId) return false
   if (original.fieldSources && original.fieldSources.paymentResolution) return false
-  if (!['expense', 'fee'].includes(original.economicNature) || original.status === 'excluded') return false
+  if (!['expense', 'fee'].includes(original.economicNature)) return false
+  const reliableReference = reliableSharedReference(refund, original)
+  if (original.status === 'excluded' && (!(original.existingTransactionIds || []).length || !reliableReference)) return false
   if (original.currency !== refund.currency || original.amountMinor == null || refund.amountMinor == null) return false
   if (BigInt(original.amountMinor) < BigInt(refund.amountMinor)) return false
   const refundTime = timeValue(refund.utcAt)
   const originalTime = timeValue(original.utcAt)
   if (refundTime == null || originalTime == null || refundTime < originalTime) return false
   if (refundTime - originalTime > REFUND_CANDIDATE_WINDOW_MS) return false
-  return accountsCompatibleForRelation(refund, original)
+  return reliableReference || accountsCompatibleForRelation(refund, original)
 }
 
 function sharedScopedReference(refund, original) {
@@ -131,7 +134,7 @@ function createRefundCandidateIndex() {
   const expenses = [], byReference = new Map()
   return {
     add(event) {
-      if (!['expense', 'fee'].includes(event.economicNature) || event.status === 'excluded') return
+      if (!['expense', 'fee'].includes(event.economicNature) || event.status === 'excluded' && !(event.existingTransactionIds || []).length) return
       expenses.push(event)
       for (const ref of event.relationEvidence && event.relationEvidence.scopedStableReferences || []) {
         if (!byReference.has(ref)) byReference.set(ref, new Set())

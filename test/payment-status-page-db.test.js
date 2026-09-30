@@ -1,0 +1,156 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { randomUUID } = require('node:crypto')
+const { chargeLab } = require('./helpers/loan-charges')
+const { realPage } = require('./helpers/real-page')
+const { localServices, call } = require('./helpers/local-services')
+const { bill, prepare } = require('./helpers/payment-status')
+
+test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 180000 }, async t => {
+  const h = await chargeLab()
+  const createAccount = name => h.api('accounts.create', { requestId: randomUUID(), type: 'wallet', name,
+    openingDisplayBalanceMinor: '100000', occurredLocalAt: '2020-01-01T00:00:00', timezoneOffsetMinutes: -480 })
+  const summary = updateId => h.imp('financeUpdates.summary', { updateId })
+  const issues = async updateId => (await h.imp('reviewIssues.list', { updateId, status: 'open' })).items
+  const issueRequest = async (updateId, issue, decision, extra = {}) => ({ requestId: randomUUID(), updateId,
+    updateVersion: (await summary(updateId)).update.version, issueId: issue.issueId, issueVersion: issue.version, decision, ...extra })
+  const post = async updateId => h.imp('financeUpdates.post', { requestId: randomUUID(), updateId, version: (await summary(updateId)).update.version })
+  const amounts = async () => (await h.owner.execute("SELECT type, amount_minor AS amount, source_account_id AS sourceAccountId, destination_account_id AS destinationAccountId, original_transaction_id AS originalTransactionId, transaction_id AS transactionId, occurred_local_date AS localDate FROM catledger_transactions WHERE uid=? AND type IN ('expense','refund') AND deleted_at IS NULL ORDER BY occurred_local_at, transaction_id", [h.uid]))[0]
+  async function open(updateId, issue) {
+    const ui = realPage(h)
+    ui.respond = (action, data) => action.startsWith('financeUpdates.') || action.startsWith('reviewIssues.') || action.startsWith('economicEvents.')
+      ? h.services.import({ action, data }) : h.services.api({ action, data })
+    const page = ui.page('import-workbench'); page.onLoad({ fresh: '1' })
+    await page.loadUpdate(updateId, true)
+    await page.openIssue({ currentTarget: { dataset: { id: issue.issueId } } })
+    return { ui, page }
+  }
+  try {
+    const wallet = await createAccount('支付宝账户余额'), savings = await createAccount('余额宝')
+    await t.test('关闭或失败原消费不能被普通待关联绕过；Page显示两条来源并可完成排除', async () => {
+      const update = await prepare(h, bill())
+      const issue = (await issues(update.updateId)).find(i => i.primaryReasonCode === 'refund_source_conflict')
+      assert.ok(issue)
+      const { ui, page } = await open(update.updateId, issue)
+      assert.equal(page.data.currentIssue.refundSourceConflict, true)
+      assert.equal(page.data.issueVisibleEvents.length, 1)
+      assert.equal(page.data.issueRelations.length, 1)
+      await page.openEvidence({ currentTarget: { dataset: { id: page.data.issueRelations[0].targetEventId } } })
+      await page.openEvidencePart({ currentTarget: { dataset: { id: page.data.evidenceSheet.evidence[0].evidenceId } } })
+      assert.match(page.data.evidenceSheet.part, /交易关闭/)
+      page.closeEvidence()
+      assert.match(page.data.currentIssue.reasonText, /原消费已关闭或失败/)
+      const calls = ui.calls.length
+      page.markRefundPending(); page.linkRefund()
+      assert.equal(ui.calls.length, calls)
+      for (const [decision, extra] of [['mark_refund_pending', {}], ['apply_fields', { fields: { economicNature: 'income', flowDirection: 'inflow', ledgerAccountId: wallet.accountId } }]]) {
+        await assert.rejects(h.imp('reviewIssues.resolve', await issueRequest(update.updateId, issue, decision, extra)), { publicCode: 'VALIDATION_ERROR' })
+      }
+      await assert.rejects(post(update.updateId), { publicCode: 'UNRESOLVED_IMPORT' })
+      assert.equal((await amounts()).length, 0)
+      const stale = await issueRequest(update.updateId, issue, 'exclude_events')
+      await page.excludeIssueEvents(); await page._draftSession.flush()
+      assert.equal((await issues(update.updateId)).filter(i => i.blocking).length, 0)
+      assert.equal((await amounts()).length, 0)
+      const sent = ui.calls.find(c => c.action === 'reviewIssues.resolve')
+      assert.ok(sent)
+      await h.imp('reviewIssues.resolve', sent.data)
+      await assert.rejects(h.imp('reviewIssues.resolve', stale), { publicCode: 'CONFLICT' })
+      const other = localServices({ apiPool: h.apiPool, importPool: h.importPool, subject: 'synthetic-f06-other' })
+      await call(other.api, 'bootstrap')
+      await assert.rejects(call(other.import, 'reviewIssues.resolve', { ...stale, requestId: randomUUID() }), { publicCode: 'NOT_FOUND' })
+      page.onUnload()
+    })
+    await t.test('没有可靠同订单冲突的待关联退款保留实际到账', async () => {
+      const update = await prepare(h, bill({ prefix: 'SYNTH-PENDING', sameOrder: false, refundAmount: '3.00' }))
+      const issue = (await issues(update.updateId)).find(i => i.issueType === 'refund_relation')
+      assert.equal(issue.primaryReasonCode, 'refund_relation_required')
+      const { page } = await open(update.updateId, issue)
+      assert.equal(page.data.currentIssue.refundSourceConflict, false)
+      page.markRefundPending(); await page._draftSession.flush(); await post(update.updateId)
+      const pending = (await amounts()).find(row => row.type === 'refund' && String(row.amount) === '300')
+      assert.ok(pending); assert.equal(pending.originalTransactionId, null)
+      assert.equal(pending.destinationAccountId, wallet.accountId)
+      page.onUnload()
+    })
+    await t.test('旧未入账批次升级保留原待关联决定但重新阻断来源矛盾；中途失败整组回滚和原键重放', async () => {
+      const update = await prepare(h, bill({ prefix: 'SYNTH-LEGACY' }))
+      const issue = (await issues(update.updateId)).find(i => i.primaryReasonCode === 'refund_source_conflict')
+      const event = (await h.imp('economicEvents.list', { updateId: update.updateId })).items.find(e => e.economicNature === 'refund')
+      // 存量夹具仅退回旧版本实际可保存的字段，不构造正式账目。
+      await h.owner.execute("DELETE FROM catledger_review_issue_members WHERE uid=? AND update_id=? AND object_type='relation'", [h.uid, update.updateId])
+      await h.owner.execute('DELETE FROM catledger_economic_event_relations WHERE uid=? AND update_id=?', [h.uid, update.updateId])
+      await h.owner.execute("UPDATE catledger_economic_events SET field_sources_json=JSON_REMOVE(field_sources_json,'$.refundSourceConflict'), reason_codes_json=JSON_ARRAY('refund_relation_required') WHERE uid=? AND event_id=?", [h.uid, event.eventId])
+      await h.owner.execute("UPDATE catledger_review_issues SET primary_reason_code='refund_relation_required', reason_codes_json=JSON_ARRAY('refund_relation_required'), member_count=1, candidate_count=0 WHERE uid=? AND issue_id=?", [h.uid, issue.issueId])
+      await h.imp('reviewIssues.resolve', await issueRequest(update.updateId, issue, 'mark_refund_pending'))
+      await h.owner.execute("UPDATE catledger_finance_updates SET plan_version='organizer-plan-v29' WHERE uid=? AND update_id=?", [h.uid, update.updateId])
+      const request = { requestId: randomUUID(), updateId: update.updateId, version: (await summary(update.updateId)).update.version }
+      await h.owner.query("CREATE TRIGGER fail_f06_upgrade BEFORE UPDATE ON catledger_economic_events FOR EACH ROW BEGIN IF JSON_CONTAINS(NEW.reason_codes_json, JSON_QUOTE('refund_source_conflict')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic upgrade rollback'; END IF; END")
+      try { await assert.rejects(h.imp('financeUpdates.organize', request), { publicCode: 'INTERNAL_ERROR' }) }
+      finally { await h.owner.query('DROP TRIGGER fail_f06_upgrade') }
+      const [[rollback]] = await h.owner.execute('SELECT plan_version AS planVersion,version FROM catledger_finance_updates WHERE uid=? AND update_id=?', [h.uid, update.updateId])
+      assert.equal(rollback.planVersion, 'organizer-plan-v29'); assert.equal(Number(rollback.version), request.version)
+      assert.equal(Number((await h.owner.execute('SELECT COUNT(*) AS n FROM catledger_economic_event_relations WHERE uid=? AND update_id=?', [h.uid, update.updateId]))[0][0].n), 0)
+      const result = await h.imp('financeUpdates.organize', request)
+      assert.deepEqual(await h.imp('financeUpdates.organize', request), result)
+      const upgraded = (await issues(update.updateId)).find(i => i.primaryReasonCode === 'refund_source_conflict')
+      assert.ok(upgraded)
+      const [[stored]] = await h.owner.execute('SELECT field_sources_json AS fields FROM catledger_economic_events WHERE uid=? AND event_id=?', [h.uid, event.eventId])
+      assert.equal(stored.fields.refundRelation.status, 'pending')
+      assert.ok(stored.fields.refundSourceConflict)
+      await assert.rejects(post(update.updateId), { publicCode: 'UNRESOLVED_IMPORT' })
+    })
+    await t.test('成功原消费和部分退款跨月、跨退款账户分别入账并保留关系；重放和重复来源不重复记账', async () => {
+      const content = bill({ prefix: 'SYNTH-SUCCESS', status: '交易成功', refundAmount: '5.00', refundAccount: '余额宝' })
+      const update = await prepare(h, content)
+      const accountIssues = (await issues(update.updateId)).filter(i => i.issueType === 'account_mapping')
+      if (accountIssues.length) await h.imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: update.updateId,
+        updateVersion: (await summary(update.updateId)).update.version, decisions: accountIssues.map(issue => ({ operation: 'resolve',
+          issueId: issue.issueId, issueVersion: issue.version, decision: 'apply_fields', fields: { mappingAccountId: savings.accountId } })) })
+      assert.deepEqual((await issues(update.updateId)).filter(i => i.blocking).map(i => ({ reason: i.primaryReasonCode, reasons: i.reasonCodes })), [])
+      const request = { requestId: randomUUID(), updateId: update.updateId, version: (await summary(update.updateId)).update.version }
+      await h.imp('financeUpdates.post', request); await h.imp('financeUpdates.post', request)
+      const rows = await amounts(), expense = rows.find(row => row.type === 'expense')
+      const refund = rows.find(row => row.originalTransactionId === expense.transactionId)
+      assert.equal(String(expense.amount), '2000'); assert.equal(expense.localDate, '2026-01-31')
+      assert.equal(expense.sourceAccountId, wallet.accountId)
+      assert.equal(String(refund.amount), '500'); assert.equal(refund.localDate, '2026-02-02')
+      assert.equal(refund.destinationAccountId, savings.accountId)
+      const repeated = await prepare(h, Buffer.concat([content, Buffer.from('\n')]))
+      const repeatEvents = (await h.imp('economicEvents.list', { updateId: repeated.updateId })).items
+      assert.ok(repeatEvents.every(event => event.status === 'excluded'))
+      assert.equal((await amounts()).length, rows.length)
+    })
+    await t.test('原单已在历史账本时复用其支出，后到全额退款只记到账', async () => {
+      const prefix = 'SYNTH-HISTORY'
+      const first = await prepare(h, bill({ prefix, status: '交易成功', refund: false }))
+      const priorExpenseIds = new Set((await amounts()).filter(row => row.type === 'expense').map(row => row.transactionId))
+      const duplicates = (await issues(first.updateId)).filter(issue => issue.primaryReasonCode === 'historical_duplicate_candidate')
+      for (const issue of duplicates) await h.imp('reviewIssues.resolve', await issueRequest(first.updateId, issue, 'confirm_distinct'))
+      await post(first.updateId)
+      const before = await amounts(), prior = before.find(row => row.type === 'expense' && !priorExpenseIds.has(row.transactionId))
+      const second = await prepare(h, bill({ prefix, status: '交易关闭' }))
+      await post(second.updateId)
+      const after = await amounts()
+      assert.equal(after.filter(row => row.type === 'expense').length, before.filter(row => row.type === 'expense').length)
+      assert.ok(after.some(row => row.type === 'refund' && row.originalTransactionId === prior.transactionId && String(row.amount) === '2000'))
+    })
+    await t.test('微信未知状态有可完成的查看/排除路径，不能声称填账户类型后已经核对到账', async () => {
+      const content = Buffer.from('交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号\n2026-03-01 12:00:00,商户消费,合成未知商户,合成未知状态,支出,1.00,零钱,已全额退款,SYNTH-WX-UNKNOWN')
+      const update = await prepare(h, content)
+      const issue = (await issues(update.updateId)).find(i => i.primaryReasonCode === 'row_status_unknown')
+      const { page } = await open(update.updateId, issue)
+      assert.equal(page.data.currentIssue.statusUnknown, true)
+      assert.equal(page.data.currentIssue.evidenceReviewOnly, true)
+      assert.equal(page.data.issueFieldsCanSave, false)
+      const before = (await amounts()).length
+      await page.resolveWithFields()
+      assert.ok(page.data.currentIssue)
+      await assert.rejects(post(update.updateId), { publicCode: 'UNRESOLVED_IMPORT' })
+      await page.excludeIssueEvents(); await page._draftSession.flush()
+      assert.equal((await issues(update.updateId)).filter(i => i.blocking).length, 0)
+      assert.equal((await amounts()).length, before)
+      page.onUnload()
+    })
+  } finally { await h.close() }
+})

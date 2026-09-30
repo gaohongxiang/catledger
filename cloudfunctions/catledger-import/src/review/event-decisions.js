@@ -40,6 +40,10 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
   // “历史映射 < 本批映射草稿 < 已手工端点”得到当前有效资金端，
   // 避免用户只选择转入端时把过期的转出端一并保存。
   const events = await effectiveProjectedEvents(connection, uid, updateId, storedEvents)
+  // 来源表明同一订单既未付款又有退款到账时，普通补字段/待关联不能替代证据核对。
+  if (decision !== 'exclude_events' && events.some(event => event.fieldSources && event.fieldSources.refundSourceConflict)) {
+    throw importError('VALIDATION_ERROR')
+  }
 
   const appliedVersion = updateVersion + 1
   const actionId = await insertAction(connection, uid, {

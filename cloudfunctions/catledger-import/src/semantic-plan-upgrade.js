@@ -4,7 +4,8 @@ const { randomUUID } = require('node:crypto')
 const { prepareEvidenceSplit } = require('./evidence-plan-upgrade')
 const { hasGroupConflict, identityGroups } = require('./evidence-matching')
 const { buildReviewIssues } = require('./organizer-planner')
-const { sameEventCandidateGroups } = require('./relation-resolver')
+const { sameEventCandidateGroups, refundRelation } = require('./relation-resolver')
+const { findRefundSourceConflicts, withRefundSourceEvidence, applyRefundSourceConflict } = require('./refund-source-conflict')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { SEMANTIC_HARD_BLOCKERS, semanticBlockers } = require('./semantic-policy')
 const { economicNatureForRow } = require('./organizer-model')
@@ -108,9 +109,27 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
       return pair
     })
     .filter(pair => pair.next !== pair.current)
+  // 已保存的“待关联”决定不能绕过新版识别出的同订单来源矛盾；仅升级未入账事件。
+  const conflicts = findRefundSourceConflicts(events.map(event => withRefundSourceEvidence(event, eventRows(event))))
+  const conflictRelations = []
+  for (const { refund, originals } of conflicts) {
+    const currentEvent = events.find(event => event.eventId === refund.eventId)
+    let pair = changes.find(pair => pair.current.eventId === refund.eventId)
+    const next = applyRefundSourceConflict(pair ? pair.next : currentEvent, originals)
+    if (JSON.stringify(next.fieldSources.refundSourceConflict) === JSON.stringify(currentEvent.fieldSources.refundSourceConflict) &&
+        currentEvent.reasonCodes.includes('refund_source_conflict')) continue
+    if (pair) pair.next = next
+    else changes.push({ current: currentEvent, next })
+    for (const original of originals) {
+      const relation = refundRelation(updateId, next, original, randomUUID, 'proposed', 'refund_source_conflict')
+      conflictRelations.push(relation)
+    }
+  }
   const version = Number(current.version)
   const actionId = await insertAction(connection, uid, { updateId, expectedVersion: version, appliedVersion: version + 1,
     actionType: 'semantic_upgrade', requestDigest, reasons: ['source_semantics_upgraded'] })
+  if (conflictRelations.length) await persistPlan(connection, uid, updateId, { planVersion: PLAN_VERSION,
+    events: [], evidence: [], relations: conflictRelations, issues: [], members: [] })
   for (const split of splits) {
     await persistPlan(connection, uid, updateId, { planVersion: PLAN_VERSION, events: split.additions,
       evidence: [], relations: [], issues: [], members: [] })
@@ -126,7 +145,7 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
     const [issues] = await connection.execute(`SELECT DISTINCT i.issue_id AS issueId FROM catledger_review_issues i
       JOIN catledger_review_issue_members m ON m.uid = i.uid AND m.issue_id = i.issue_id
       WHERE i.uid = ? AND i.update_id = ? AND i.status = 'open'
-        AND i.issue_type IN ('shared_fields', 'field_conflict', 'transfer_accounts', 'category_assignment', 'same_event', 'identity_conflict')
+        AND i.issue_type IN ('shared_fields', 'field_conflict', 'transfer_accounts', 'category_assignment', 'same_event', 'identity_conflict', 'refund_relation')
         AND m.object_type = 'event' AND m.object_id IN (${ids.map(() => '?').join(',')})`, [uid, updateId, ...ids])
     for (const issue of issues) {
       const [members] = await connection.execute(`SELECT object_id AS eventId FROM catledger_review_issue_members

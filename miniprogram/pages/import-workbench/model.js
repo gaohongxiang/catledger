@@ -334,6 +334,7 @@ function uploadSummary(files) {
 
 function buildIssueFieldsDraft(state) {
   const issue = state.currentIssue
+  if (issue && issue.evidenceReviewOnly) return { valid: false, reason: issue.reasonText }
   const draft = state.issueDraft || {}
   const invalid = function (reason) { return { valid: false, reason: reason, fields: {} } }
   if (!issue) return invalid('请先打开待核对项目')
@@ -424,10 +425,20 @@ function issueView(issue) {
   if (missingFundsSide === 'to') label = '转入账户待确认'
   const historicalDuplicate = issue.primaryReasonCode === 'historical_duplicate_candidate'
   if (historicalDuplicate) label = '疑似已经入账'
-  const issueHelp = historicalDuplicate ? '发现账户、金额和时间接近的已入账记录，请核对是否同一笔。'
+  const reasons = (issue.reasonCodes || []).concat(subject && subject.reasonCodes || [])
+  const refundSourceConflict = reasons.includes('refund_source_conflict')
+  const statusUnknown = reasons.includes('row_status_unknown')
+  const evidenceReviewOnly = refundSourceConflict || statusUnknown
+  if (refundSourceConflict) label = '退款与原订单状态冲突'
+  else if (statusUnknown) label = '账单状态尚待核对'
+  const issueHelp = refundSourceConflict
+    ? '同一来源订单显示原消费已关闭或失败，却另有退款到账。请对照下方两条原始记录，核实实际扣款及退款；证据补齐前可不计入本次账本，不能暂记待关联退款。'
+    : statusUnknown
+      ? '此账单状态尚未支持，当前无法确认扣款或到账。请核对下方原始记录；可先不计入本次账本，保留来源并在模板适配后重新导入。'
+      : historicalDuplicate ? '发现账户、金额和时间接近的已入账记录，请核对是否同一笔。'
     : ISSUE_HELP[issue.issueType] || '请核对相关记录后作出选择'
   const groupedAccount = issue.issueType === 'account_mapping' && /^payment_(component_\d+|target)$/.test(context.fundsSide || '')
-  const paymentNeedsReview = Boolean(!groupedAccount && subject && (issue.reasonCodes || []).concat(subject.reasonCodes || []).includes('payment_components_ambiguous') && !subject.paymentResolution)
+  const paymentNeedsReview = Boolean(!evidenceReviewOnly && !groupedAccount && subject && reasons.includes('payment_components_ambiguous') && !subject.paymentResolution)
   if (paymentNeedsReview) label = '组合支付待核对'
   const repaymentOwnershipRequired = Boolean(issue.issueType === 'transfer_accounts' && !paymentNeedsReview && subject && subject.repaymentOwnershipRequired)
   if (repaymentOwnershipRequired) label = subject.repaymentOwnership && subject.repaymentOwnership.owner === 'other'
@@ -436,6 +447,9 @@ function issueView(issue) {
     label: issue.primaryReasonCode === 'loan_repayment_required' ? '借款还款本息费待核对' : label,
     repaymentOwnershipRequired: repaymentOwnershipRequired,
     paymentNeedsReview: paymentNeedsReview,
+    refundSourceConflict: refundSourceConflict,
+    statusUnknown: statusUnknown,
+    evidenceReviewOnly: evidenceReviewOnly,
     paymentAccountsOnly: paymentNeedsReview && issue.issueType === 'account_mapping',
     aggregateRepayment: aggregateRepayment,
     missingFundsSide: missingFundsSide,
@@ -450,7 +464,7 @@ function issueView(issue) {
     subjectMeta: subject ? subject.displayMeta : '',
     subjectAmountText: subject ? subject.amountText : '',
     subjectDirectionClass: subject ? subject.directionClass : '',
-    decisionText: repaymentOwnershipRequired
+    decisionText: evidenceReviewOnly ? issueHelp : repaymentOwnershipRequired
       ? '银行名称不能确认账户归属，请核对这笔钱是替谁还的'
       : paymentNeedsReview
       ? issue.issueType === 'account_mapping' ? '确认这些付款方式对应的账本账户' : '核对各账户实际支付金额，并确认这笔是支出还是还款'
