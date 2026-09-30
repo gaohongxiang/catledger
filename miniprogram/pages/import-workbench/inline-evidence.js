@@ -22,6 +22,7 @@ function create(session, records, isCurrent, publish) {
     if (!row || !current()) return
     const ticket = ++row.ticket
     const valid = () => current() && row.ticket === ticket
+    row.evidenceId = null
     publish(index, { evidence: [], evidenceLoading: true, evidenceError: '', evidencePage: null })
     try {
       const response = await row.pager.load(direction)
@@ -31,6 +32,7 @@ function create(session, records, isCurrent, publish) {
         publish(index, { evidence: [], evidenceLoading: false, evidenceError: '未找到原始记录，请刷新本页后重试' })
         return
       }
+      row.evidenceId = source.evidenceId
       let text = '', cursor = null
       for (let part = 0; part < 2; part++) {
         const detail = await session.read('economicEvents.detail', { eventId: row.eventId, evidenceId: source.evidenceId, cursor }, valid)
@@ -54,6 +56,10 @@ function create(session, records, isCurrent, publish) {
       await Promise.all([0, 1].map(async () => {
         while (current() && next < rows.length) await load(next++)
       }))
+    },
+    sourcePager(eventId, evidenceId) {
+      const row = rows.find(row => row.eventId === eventId && row.evidenceId === evidenceId)
+      return current() && row ? row.pager.fork() : null
     },
     change(eventId, direction) { return load(rows.findIndex(row => row.eventId === eventId), direction) },
     close() { closed = true; rows.forEach(row => row.pager.cancel()) }

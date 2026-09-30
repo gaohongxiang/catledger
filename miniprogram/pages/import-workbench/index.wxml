@@ -606,28 +606,27 @@
           <skeleton-rows wx:if="{{evidenceSheet.loading && !evidenceSheet.evidence.length}}" rows="{{3}}" />
           <view wx:for="{{evidenceSheet.evidence}}" wx:key="evidenceId" class="evidence-card">
             <view class="evidence-card-head"><text class="evidence-role">{{item.roleLabel}}</text><text class="evidence-source">{{item.fileName}} · 第 {{item.rowNumber}} 行</text></view>
-            <button wx:if="{{item.detailRequired}}" class="account-source-link" data-id="{{item.evidenceId}}" bindtap="openEvidencePart">查看完整原文</button>
-            <view class="evidence-fields">
-              <view wx:for="{{item.fields}}" wx:for-item="field" wx:key="key" class="evidence-field"><text class="evidence-key">{{field.key}}</text><text class="evidence-value">{{field.value || '—'}}</text></view>
-            </view>
           </view>
-          <view wx:if="{{!evidenceSheet.loading && !evidenceSheet.evidence.length}}" class="relation-empty">没有可显示的原始交易。</view>
+          <view wx:if="{{evidenceSheet.error}}" class="relation-empty"><text>{{evidenceSheet.error}}</text><button class="account-source-link" bindtap="changeEvidencePage">重试读取来源</button></view>
+          <view wx:elif="{{!evidenceSheet.loading && !evidenceSheet.evidence.length}}" class="relation-empty">没有可显示的原始交易。</view>
+          <skeleton-rows wx:if="{{evidenceSheet.partLoading}}" rows="{{3}}" />
+          <view wx:if="{{evidenceSheet.partError}}" class="relation-empty"><text>{{evidenceSheet.partError}}</text><button class="account-source-link" bindtap="changeEvidencePart">重试读取原文</button></view>
           <view wx:if="{{evidenceSheet.partFields.length}}" class="evidence-fields">
-            <view wx:for="{{evidenceSheet.partFields}}" wx:key="key" class="evidence-field"><text class="evidence-key">{{item.name}}</text><text selectable class="evidence-value">{{item.value || '—'}}</text></view>
+            <view wx:for="{{evidenceSheet.partFields}}" wx:key="key" class="evidence-field"><text class="evidence-key">{{item.name}}</text><text selectable class="evidence-value">{{item.value === '' ? '（空）' : item.value}}</text></view>
           </view>
           <view wx:elif="{{evidenceSheet.part}}" class="evidence-fields"><text class="evidence-source">原文片段</text><text selectable class="evidence-value">{{evidenceSheet.part}}</text></view>
         </scroll-view>
 <view wx:if="{{evidenceSheet.page && (evidenceSheet.page.hasPrevious || evidenceSheet.page.hasNext)}}" class="list-pagination">
-        <button class="stage-previous" data-direction="first" bindtap="changeEvidencePage" disabled="{{!evidenceSheet.page.canFirst}}">首页</button>
-        <button class="stage-previous" data-direction="-1" bindtap="changeEvidencePage" disabled="{{!evidenceSheet.page.hasPrevious}}">上一页</button>
-        <text>{{evidenceSheet.page.start}}–{{evidenceSheet.page.end}} / {{evidenceSheet.page.count}} 项</text>
-        <button class="stage-previous" data-direction="1" bindtap="changeEvidencePage" disabled="{{!evidenceSheet.page.hasNext}}">下一页</button>
+        <button wx:if="{{evidenceSheet.page.canFirst}}" class="stage-previous" data-direction="first" bindtap="changeEvidencePage" disabled="{{evidenceSheet.loading || evidenceSheet.error}}">首份</button>
+        <button class="stage-previous" data-direction="-1" bindtap="changeEvidencePage" disabled="{{evidenceSheet.loading || evidenceSheet.error || !evidenceSheet.page.hasPrevious}}">上份</button>
+        <text>来源 {{evidenceSheet.page.start}} / {{evidenceSheet.page.count}}</text>
+        <button class="stage-previous" data-direction="1" bindtap="changeEvidencePage" disabled="{{evidenceSheet.loading || evidenceSheet.error || !evidenceSheet.page.hasNext}}">下份</button>
       </view>
         <view wx:if="{{evidenceSheet.partPage && (evidenceSheet.partPage.hasPrevious || evidenceSheet.partPage.hasNext)}}" class="list-pagination">
-          <button class="stage-previous" data-direction="first" bindtap="changeEvidencePart">首段</button>
-          <button class="stage-previous" data-direction="-1" bindtap="changeEvidencePart" disabled="{{!evidenceSheet.partPage.hasPrevious}}">上一段</button>
+          <button class="stage-previous" data-direction="first" bindtap="changeEvidencePart" disabled="{{evidenceSheet.partLoading || evidenceSheet.partError || !evidenceSheet.partPage.canFirst}}">首段</button>
+          <button class="stage-previous" data-direction="-1" bindtap="changeEvidencePart" disabled="{{evidenceSheet.partLoading || evidenceSheet.partError || !evidenceSheet.partPage.hasPrevious}}">上一段</button>
           <text>第 {{evidenceSheet.partPage.index + 1}} 段</text>
-          <button class="stage-previous" data-direction="1" bindtap="changeEvidencePart" disabled="{{!evidenceSheet.partPage.hasNext}}">下一段</button>
+          <button class="stage-previous" data-direction="1" bindtap="changeEvidencePart" disabled="{{evidenceSheet.partLoading || evidenceSheet.partError || !evidenceSheet.partPage.hasNext}}">下一段</button>
         </view>
         <button class="evidence-return" bindtap="closeEvidence">{{currentIssue ? '返回处理' : '返回列表'}}</button>
       </view>

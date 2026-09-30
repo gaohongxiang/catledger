@@ -421,7 +421,7 @@ module.exports = {
           errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : '操作已保存，明细待刷新', refreshRequired: true })
       return
     }
-    if (background && (this._editingInput || this.data.currentIssue || this.data.accountChoiceSheet)) { this._pendingBackgroundView = view; return }
+    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.accountChoiceSheet)) { this._pendingBackgroundView = view; return }
     const same = this._viewSession && this._viewSession.summary.update.updateId === view.update.updateId
     const changed = !same || this._viewSession.summary.viewVersion !== view.viewVersion
     if (!same) { if (this._viewSession) this._viewSession.close(); this._viewSession = viewSession.create(api.callImport, view) }
@@ -522,7 +522,11 @@ module.exports = {
         patch.accountMappings = this.mappingState().mappings.map(compactMapping)
       } else if (kind === 'reviewGroups') patch.reviewGroups = model.reviewIssueGroups(issues).map(group => ({ issueType: group.issueType, issues: group.issues.map(presentation.card) }))
       else if (kind === 'categoryCards') patch.categoryCards = model.categoryIssueCards(issues, '').map(presentation.card)
-      else if (kind === 'excludedReviewGroups') patch.excludedReviewGroups = model.excludedEventGroups(events, []).map(group => Object.assign({}, group, { events: [] }))
+      else if (kind === 'excludedReviewGroups') {
+        const expanded = this.data.reviewPage.index === response.page.index
+          ? this.data.excludedReviewGroups.filter(group => group.expanded).map(group => group.key) : []
+        patch.excludedReviewGroups = presentation.excludedGroups(events, expanded)
+      }
       else patch[kind] = events.map(event => presentation.record(Object.assign({}, event, { duplicateCount: Number(event.duplicateEvidenceCount || 0) + (model.isHistoricalDuplicate(event) ? 1 : 0),
               auditNote: model.isHistoricalDuplicate(event) ? '已与历史账目对应，本次不重复入账。' : '已保留一笔，点开对照主记录与重复来源。' })))
       if (!quiet) patch.pageLoading = false

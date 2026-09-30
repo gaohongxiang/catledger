@@ -426,6 +426,9 @@ function issueView(issue) {
   const historicalDuplicate = issue.primaryReasonCode === 'historical_duplicate_candidate'
   if (historicalDuplicate) label = '疑似已经入账'
   const reasons = (issue.reasonCodes || []).concat(subject && subject.reasonCodes || [])
+  const bankChannelCandidate = issue.issueType === 'same_event' && (issue.primaryReasonCode === 'bank_channel_same_event_candidate' ||
+    (issue.reasonCodes || []).includes('bank_channel_same_event_candidate'))
+  const bankChannelAmbiguous = bankChannelCandidate && Number(issue.candidateCount) > 1
   const refundSourceConflict = reasons.includes('refund_source_conflict')
   const statusUnknown = reasons.includes('row_status_unknown')
   const evidenceReviewOnly = refundSourceConflict || statusUnknown
@@ -435,6 +438,10 @@ function issueView(issue) {
     ? '同一来源订单显示原消费已关闭或失败，却另有退款到账。请对照下方两条原始记录，核实实际扣款及退款；证据补齐前可不计入本次账本，不能暂记待关联退款。'
     : statusUnknown
       ? '此账单状态尚未支持，当前无法确认扣款或到账。请核对下方原始记录；可先不计入本次账本，保留来源并在模板适配后重新导入。'
+      : bankChannelCandidate
+        ? bankChannelAmbiguous
+          ? '同一账户、同金额、同一分钟且银行渠道吻合，但存在多笔候选，需逐笔核对，不能整组合并。'
+          : '同一账户、同金额、同一分钟且银行渠道吻合，请核对原始记录后确认是否同一笔。'
       : historicalDuplicate ? '发现账户、金额和时间接近的已入账记录，请核对是否同一笔。'
     : ISSUE_HELP[issue.issueType] || '请核对相关记录后作出选择'
   const groupedAccount = issue.issueType === 'account_mapping' && /^payment_(component_\d+|target)$/.test(context.fundsSide || '')
@@ -456,7 +463,7 @@ function issueView(issue) {
     fundsProjection: projected || null,
     historicalDuplicate: historicalDuplicate,
     missingAccountLabel: missingFundsSide === 'to' ? '转入账户' : '转出账户',
-    canConfirmSame: issue.issueType === 'same_event' && !historicalDuplicate && issue.primaryReasonCode !== 'source_group_conflict',
+    canConfirmSame: issue.issueType === 'same_event' && !historicalDuplicate && !bankChannelAmbiguous && issue.primaryReasonCode !== 'source_group_conflict',
     reasonText: issue.primaryReasonCode === 'loan_repayment_required' ? '补齐本金、利息、费用后才能入账。' : issue.primaryReasonCode === 'source_group_conflict'
       ? '参考号相同但来源编号或时间有歧义，请核对。'
       : issueHelp,

@@ -4,7 +4,19 @@ const model = require('./model')
 const presentation = require('./presentation')
 const { errorText, direction } = require('./presentation')
 const api = require('../../services/catledger-import')
+const readCache = require('../../services/read-cache')
 const inlineEvidence = require('./inline-evidence')
+
+function evidenceCurrent(page, token) {
+  return Boolean(token && page._viewActive && page._evidenceReadToken === token &&
+    page._viewSession === token.session && token.session.summary.viewVersion === token.version &&
+    readCache.getSession() === token.scope && page.data.evidenceSheet && page.data.evidenceSheet.eventId === token.eventId)
+}
+
+function bankChannelCandidate(issue) {
+  return issue.issueType === 'same_event' && (issue.primaryReasonCode === 'bank_channel_same_event_candidate' ||
+    (issue.reasonCodes || []).includes('bank_channel_same_event_candidate'))
+}
 
 function additionalRepaymentOptions(catalog, rows) {
   const selected = new Set(rows.map(function (row) { return row.accountId }))
@@ -66,6 +78,8 @@ async function showIssueEditor(event) {
     const eventMembers = details.members.filter(function (member) { return member.event })
     const relationMembers = details.members.filter(function (member) { return member.relation })
     const firstEvent = eventMembers[0] && eventMembers[0].event
+    const primaryEvent = bankChannelCandidate(details.issue) && eventMembers.map(member => member.event).find(row =>
+      ['expense', 'refund'].includes(row.economicNature) && ['wechat', 'alipay'].includes(row.primaryEvidence && row.primaryEvidence.sourceType)) || firstEvent
     const summaryIssue = this.businessData().issues.find(function (issue) { return issue.issueId === issueId })
     const draftChoices = (details.accountDrafts || []).map(function (account) {
         return Object.assign({}, account, { name: account.name + '（本批新建）', isDraft: true })
@@ -204,7 +218,7 @@ async function showIssueEditor(event) {
           counterpartyAccountIndex: counterpartyAccountIndex,
           categoryIndex: compatibleCategoryIndex,
           natureIndex: natureIndex,
-          primaryEventId: firstEvent && firstEvent.eventId || '',
+          primaryEventId: primaryEvent && primaryEvent.eventId || '',
           targetEventId: selectedRefundTargetId,
           newAccountName: summaryIssue && summaryIssue.accountContext && summaryIssue.accountContext.recognized
           ? Array.from(summaryIssue.accountContext.label.trim()).slice(0, 32).join('')
@@ -233,8 +247,7 @@ module.exports = {
     const tab = event.currentTarget.dataset.tab
     if (!['review', 'category'].includes(tab)) return
     this.setData({ activeReviewTab: tab })
-    this.renderReview(true)
-    if (tab === 'review' && this.data.activeReviewStatus === 'duplicate') this.loadDuplicateRecords()
+    return this.renderReview(true)
   },
 
   switchCategoryStatus: function (event) {
@@ -261,19 +274,14 @@ module.exports = {
     const status = String(event.currentTarget.dataset.status || '')
     if (!['pending', 'completed', 'excluded', 'duplicate'].includes(status) || status === this.data.activeReviewStatus) return
     this.setData({ activeReviewStatus: status })
-    this.renderReview(true)
-    if (status === 'duplicate') this.loadDuplicateRecords()
+    return this.renderReview(true)
   },
 
   toggleExcludedGroup: function (event) {
     const key = String(event.currentTarget.dataset.key || '')
-    if (!key) return
-    this.setData({
-        excludedReviewGroups: (this.data.excludedReviewGroups || []).map(function (group) {
-            return group.key === key ? Object.assign({}, group, { expanded: !group.expanded }) : group
-          })
-      })
-    this.renderReview(false)
+    if (!key || !this._viewActive || this.data.activeReviewTab !== 'review' || this.data.activeReviewStatus !== 'excluded') return
+    const expanded = this.data.excludedReviewGroups.filter(group => group.key === key ? !group.expanded : group.expanded).map(group => group.key)
+    this.setData({ excludedReviewGroups: presentation.excludedGroups(this.businessData().events || [], expanded) })
   },
 
   closeReviewSheet: function () {
@@ -582,6 +590,28 @@ module.exports = {
   },
 
   confirmSame: function () {
+    const issue = this.data.currentIssue
+    if (!issue || this.data.busy) return
+    if (bankChannelCandidate(issue)) {
+      const invalid = message => this.setData({ errorMessage: message, issueFieldsReason: message, issueFieldsCanSave: false })
+      const events = (this.data.currentMembers || []).filter(member => member.event).map(member => member.event)
+      if (Number(issue.candidateCount) > 1 || events.length > 2) {
+        invalid('存在多笔候选，请逐笔核对，不能整组确认为同一笔')
+        return
+      }
+      const primary = events.find(row => row.eventId === this.data.issueDraft.primaryEventId)
+      if (!primary || !['wechat', 'alipay'].includes(primary.primaryEvidence && primary.primaryEvidence.sourceType) ||
+        !['expense', 'refund'].includes(primary.economicNature)) {
+        invalid('请选择微信或支付宝中已明确为支出或退款的记录作为主记录')
+        return
+      }
+      if (events.length !== 2 || events.filter(row => row.primaryEvidence && row.primaryEvidence.sourceType === 'bank').length !== 1) {
+        invalid('请先核对完整的银行和微信或支付宝两笔记录')
+        return
+      }
+      this.setData({ errorMessage: '' })
+      this.refreshIssueFieldsDraft()
+    }
     this.resolveIssue('confirm_same', { primaryEventId: this.data.issueDraft.primaryEventId })
   },
 
@@ -659,7 +689,14 @@ module.exports = {
     const directory = await this.loadDirectories(details.subject ? [details.subject] : [], [form.accountId, form.counterpartyAccountId, form.categoryId, form.paymentTargetId]
       .concat((form.paymentRows || []).map(row => row.accountId), (form.repaymentAllocationChoices || []).filter(row => !row.isNew).map(row => row.accountId)))
     // 主体单独返回，候选分页不会把被处理对象挤出首页。
-    const members = details.subject ? [{ objectId: details.subject.eventId, objectType: 'event', event: editorPreview(details.subject) }] : details.members.slice(0, 1)
+    let members = details.subject ? [{ objectId: details.subject.eventId, objectType: 'event', event: editorPreview(details.subject) }] : details.members.slice(0, 1)
+    if (bankChannelCandidate(details.issue)) {
+      const seen = new Set()
+      members = members.concat(details.members).filter(member => {
+        if (!member.event || seen.has(member.event.eventId)) return false
+        seen.add(member.event.eventId); return true
+      }).slice(0, 8).map(member => Object.assign({}, member, { event: editorPreview(member.event) }))
+    }
     const candidates = relations.items.map(member => member.relation ? Object.assign({}, member, { relation: Object.assign({}, member.relation,
             { targetEvent: editorPreview(member.relation.targetEvent) }) }) : member)
     return Object.assign({}, details, directory, { members: members.concat(candidates), relationPage: relations })
@@ -790,48 +827,71 @@ module.exports = {
 
   openEvidence: async function (event) {
     const eventId = event.currentTarget.dataset.id
-    this._evidencePager = this._viewSession.pager('economicEvents.evidence', { eventId, pageSize: 8 })
+    if (!eventId || !this._viewActive || !this._viewSession) return
+    const evidenceId = event.currentTarget.dataset.evidenceId
+    let sourcePager
+    if (evidenceId) {
+      for (const reader of [this._issueInlineEvidence, this._accountInlineEvidence]) {
+        if (reader) sourcePager = sourcePager || reader.sourcePager(eventId, evidenceId)
+      }
+      if (!sourcePager) return
+    }
+    for (const key of ['_evidencePager', '_detailPager']) { if (this[key]) this[key].cancel(); this[key] = null }
+    const session = this._viewSession
+    const token = this._evidenceReadToken = { session, eventId, version: session.summary.viewVersion, scope: readCache.getSession() }
+    this._evidencePager = sourcePager || session.pager('economicEvents.evidence', { eventId, pageSize: 1 })
     const row = (this.businessData().events || []).find(e=>e.eventId === eventId)
     this._repaymentEditable = Boolean(row && ['repayment','internal_transfer'].includes(row.economicNature) && this.data.update.status === 'review')
-    this.setData({ evidenceSheet: { eventId,repaymentEditable:this._repaymentEditable,evidence: [], loading: true, part: '' } })
-    const pager = this._evidencePager
-    await this.changeEvidencePage(event)
-    const evidenceId = event.currentTarget.dataset.evidenceId
-    if (evidenceId && pager === this._evidencePager && this.data.evidenceSheet) {
-      await this.openEvidencePart({ currentTarget: { dataset: { id: evidenceId } } })
-    }
-    if (!row && this.data.update.status === 'review') {
+    this.setData({ evidenceSheet: { eventId, repaymentEditable: this._repaymentEditable, evidence: [], loading: true,
+      error: '', part: '', partFields: [], partLoading: false, partError: '' } })
+    await this.changeEvidencePage({ currentTarget: { dataset: {} } })
+    if (evidenceCurrent(this, token) && !row && this.data.update.status === 'review') {
       try {
-        const detail = await api.readPage('economicEvents.list',{ updateId:this.data.update.updateId,eventId,pageSize:1 })
-        if (pager !== this._evidencePager || !this.data.evidenceSheet) return
+        const detail = await session.read('economicEvents.list', { eventId, pageSize: 1 }, () => evidenceCurrent(this, token))
+        if (!evidenceCurrent(this, token)) return
         this._repaymentEditable = Boolean(detail.items[0] && ['repayment','internal_transfer'].includes(detail.items[0].economicNature))
         this.setData({ 'evidenceSheet.repaymentEditable':this._repaymentEditable })
-      } catch(error) { if (pager === this._evidencePager) this.setData({ errorMessage:errorText(error) }) }
+      } catch(error) { if (evidenceCurrent(this, token)) this.setData({ errorMessage:errorText(error) }) }
     }
   },
 
   changeEvidencePage: async function (event) {
-    const pager = this._evidencePager
+    const pager = this._evidencePager, token = this._evidenceReadToken
+    if (!pager || !evidenceCurrent(this, token)) return
+    const request = this._evidencePageToken = {}
+    const current = () => evidenceCurrent(this, token) && this._evidencePageToken === request && this._evidencePager === pager
+    if (this._detailPager) this._detailPager.cancel()
+    this._detailPager = null
+    this.setData({ 'evidenceSheet.loading': true, 'evidenceSheet.error': '', 'evidenceSheet.evidence': [],
+      'evidenceSheet.part': '', 'evidenceSheet.partFields': [], 'evidenceSheet.partPage': null,
+      'evidenceSheet.partLoading': false, 'evidenceSheet.partError': '' })
     try {
       const response = await pager.load(direction(event))
-      if (pager !== this._evidencePager || !this.data.evidenceSheet) return
-      this._detailPager = null
-      this.setData({ evidenceSheet: { eventId: this.data.evidenceSheet.eventId,repaymentEditable:this._repaymentEditable,evidence: response.items, page: response.page, loading: false, part: '' } })
-    } catch (error) { if (pager === this._evidencePager) this.setData({ 'evidenceSheet.loading': false, errorMessage: errorText(error) }) }
+      if (!current()) return
+      this.setData({ 'evidenceSheet.evidence': response.items, 'evidenceSheet.page': response.page, 'evidenceSheet.loading': false })
+      if (response.items[0]) await this.openEvidencePart({ currentTarget: { dataset: { id: response.items[0].evidenceId } } })
+    } catch (error) { if (current()) this.setData({ 'evidenceSheet.loading': false, 'evidenceSheet.error': errorText(error) }) }
   },
 
   openEvidencePart: async function (event) {
-    this._detailPager = this._viewSession.pager('economicEvents.detail', { eventId: this.data.evidenceSheet.eventId, evidenceId: event.currentTarget.dataset.id })
-    return this.changeEvidencePart(event)
+    const token = this._evidenceReadToken, evidenceId = event.currentTarget.dataset.id
+    if (!evidenceCurrent(this, token) || !this.data.evidenceSheet.evidence.some(source => source.evidenceId === evidenceId)) return
+    if (this._detailPager) this._detailPager.cancel()
+    this._detailPager = token.session.pager('economicEvents.detail', { eventId: token.eventId, evidenceId })
+    return this.changeEvidencePart({ currentTarget: { dataset: {} } })
   },
 
   changeEvidencePart: async function (event) {
-    const pager = this._detailPager
+    const pager = this._detailPager, token = this._evidenceReadToken
+    if (!pager || !evidenceCurrent(this, token)) return
+    const request = this._evidencePartToken = {}
+    const current = () => evidenceCurrent(this, token) && this._evidencePartToken === request && this._detailPager === pager
+    this.setData({ 'evidenceSheet.partLoading': true, 'evidenceSheet.partError': '', 'evidenceSheet.part': '', 'evidenceSheet.partFields': [] })
     try {
       const response = await pager.load(direction(event))
-      if (pager !== this._detailPager || !this.data.evidenceSheet) return
+      if (!current()) return
       this.setData({ 'evidenceSheet.part': response.part, 'evidenceSheet.partPage': response.page,
-          'evidenceSheet.partFields': presentation.evidencePartFields(response.part, response.page) })
-    } catch (error) { if (pager === this._detailPager) this.setData({ errorMessage: errorText(error) }) }
+          'evidenceSheet.partFields': presentation.evidencePartFields(response.part, response.page), 'evidenceSheet.partLoading': false })
+    } catch (error) { if (current()) this.setData({ 'evidenceSheet.partLoading': false, 'evidenceSheet.partError': errorText(error) }) }
   }
 }

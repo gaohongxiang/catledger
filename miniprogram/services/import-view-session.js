@@ -33,9 +33,10 @@ function create(call, summary) {
     while (pages.size > MAX_PAGES) pages.delete(pages.keys().next().value)
     return result
   }
-  function pager(action, data) {
-    let history = [{ cursor: null, start: 0, index: 0 }], position = 0, result = null, ticket = 0
-    const epoch = revision
+  function pager(action, data, snapshot) {
+    let history = snapshot ? snapshot.history.slice() : [{ cursor: null, start: 0, index: 0 }]
+    let position = snapshot ? snapshot.position : 0, result = snapshot ? snapshot.result : null, ticket = 0
+    const epoch = snapshot ? snapshot.epoch : revision
     return {
       async load(direction) {
         const token = ++ticket
@@ -53,6 +54,8 @@ function create(call, summary) {
         return Object.assign({}, next, { page: { index: point.index, count: next.total, start: point.start + (next.total ? 1 : 0),
           end: point.start + (next.items || next.members || []).length, hasPrevious: position > 0, hasNext: Boolean(next.nextCursor), canFirst: point.index > 0 } })
       },
+      // 从同一来源位置打开弹层，保留有界游标且不移动底层卡片。
+      fork() { return pager(action, data, { history, position, result, epoch }) },
       cancel() { ticket++ },
       get historySize() { return history.length }
     }

@@ -25,6 +25,11 @@ function card(issue) {
     hiddenSubjectCount: issue.hiddenSubjectCount, subjects: (issue.subjects || []).map(record) }
 }
 
+function excludedGroups(events, expanded) {
+  return model.excludedEventGroups(events, expanded).map(group => Object.assign({}, group, {
+    events: group.expanded ? group.events.map(record) : [] }))
+}
+
 function windowRows(rows, index) {
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   index = Math.max(0, Math.min(index, pages - 1))
@@ -65,8 +70,7 @@ function reviewLists(state, business, data, index) {
     patch.categoryWaitingEvents = window.rows.filter(row => row.event).map(row => record(row.event))
   } else if (kind === 'excluded') {
     const expanded = (data.excludedReviewGroups || []).filter(group => group.expanded).map(group => group.key)
-    patch.excludedReviewGroups = model.excludedEventGroups(window.rows, expanded).map(group => Object.assign({}, group, {
-      events: group.expanded ? group.events.map(record) : [] }))
+    patch.excludedReviewGroups = excludedGroups(window.rows, expanded)
   } else patch[kind] = window.rows.map(record)
   return patch
 }
@@ -115,4 +119,4 @@ const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务�
   : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
 function direction(event) { const value = event && event.currentTarget.dataset.direction; return value === 'first' ? value : Number(value || 0) }
 
-module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, card, evidencePartFields, PAGE_SIZE }
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, card, excludedGroups, evidencePartFields, PAGE_SIZE }
