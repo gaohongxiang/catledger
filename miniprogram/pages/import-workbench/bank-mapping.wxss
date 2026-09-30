@@ -10,4 +10,5 @@
 .bank-mapping-example { display: block; font-size: 23rpx; line-height: 1.5; color: var(--ui-muted); word-break: break-all; }
 .bank-mapping-header-row { display: flex; align-items: center; gap: 12rpx; padding-bottom: 12rpx; margin: 16rpx 0; color: var(--ui-muted); font-size: 24rpx; border-bottom: 1rpx solid var(--ui-line); }
 .bank-mapping-header-row input { width: 88rpx; padding: 10rpx; text-align: center; border: 1rpx solid var(--ui-line); border-radius: 10rpx; color: var(--ui-ink); }
-.bank-mapping-header-row button { margin-left: auto; margin-right: 0; color: var(--ui-accent); background: var(--ui-surface-muted); }
+.bank-header-status { margin-left: auto; font-size: 22rpx; white-space: nowrap; }
+.bank-mapping-sheet .bank-columns-toggle { display: flex; align-items: center; justify-content: center; width: 100%; max-width: none; min-height: 80rpx; height: auto; padding: 12rpx 0; line-height: 1.5; white-space: nowrap; }

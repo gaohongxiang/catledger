@@ -171,6 +171,7 @@ Page({
   closeFileAttention: uploadFlow.closeFileAttention,
   retryFileAttention: uploadFlow.retryFileAttention,
   closeBankMapping: uploadFlow.closeBankMapping,
+  cancelBankPreview: uploadFlow.cancelBankPreview,
   changeBankMapping: uploadFlow.changeBankMapping,
   toggleBankColumns: uploadFlow.toggleBankColumns,
   inputBankHeader: uploadFlow.inputBankHeader,

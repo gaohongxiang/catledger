@@ -149,6 +149,7 @@ test('信用卡双语表头优先交易日期，支持紧凑日期加时分，�
   const { document, preview } = await parse(rows, 'xls', { positiveDirection: 'expense' })
   assert.equal(preview.headerRow, 2)
   assert.deepEqual(preview.suggested.columns, { transactionTime: 0, amount: 2, item: 3, paymentMethod: 4 })
+  assert.deepEqual(preview.samples, rows.slice(3, 5))
   assert.equal(document.rows.length, 2)
   assert.ok(document.rows.every(row => row.parseState === 'valid'))
   assert.equal(document.rows[0].raw.transactionTime, '20260902 08:35')
@@ -162,6 +163,18 @@ test('信用卡双语表头优先交易日期，支持紧凑日期加时分，�
   assert.equal(document.records.metadataRows.length, 2)
   assert.equal(document.records.decorativeRows.length, 4)
   assert.ok(document.rows.every(row => row.eligibility === 'review_required'))
+})
+
+test('银行预览排除重复表头和控制说明，保留需要修正的交易样例', async () => {
+  const damaged = ['损坏日期', '¥9.99', '合成消费']
+  const { preview, document } = await parse([
+    ['交易日期', '交易金额', '交易摘要'], ['Trans Date', 'Amount', 'Tran Description'],
+    [], ['说明：合成说明'], ['共计2条记录'], ['合计', '11.99'],
+    damaged, ['20260904', '¥2.00', '合成消费']
+  ], 'xls', { positiveDirection: 'expense' })
+  assert.deepEqual(preview.samples, [damaged, ['20260904', '¥2.00', '合成消费']])
+  assert.equal(document.rows.length, 2)
+  assert.equal(document.rows[0].parseState, 'invalid')
 })
 
 test('银行记录数不匹配会阻断，含交易字段的说明行不会被当成页脚丢弃', async () => {

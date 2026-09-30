@@ -123,6 +123,7 @@ module.exports = {
     if (returning && this.data.update) return this.loadUpdate(this.data.update.updateId)
   },
   onHide() {
+    this.cancelBankPreview()
     if (this._pendingInitialLoad) {
       this._pendingInitialLoad.visible = false
       this._pendingInitialLoad.attempt = null
@@ -130,10 +131,12 @@ module.exports = {
     this._viewActive = false; this._viewEpoch++
     this.cancelPagedReads()
     this.setData({ currentIssue: null, currentMembers: [], issueEvents: [], issueRelations: [], issueVisibleEvents: [],
-        evidenceSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null, busy: false })
+        evidenceSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null,
+        bankMappingSheet: null, busy: false })
     this.finishInputEditing()
   },
   onUnload() {
+    this.cancelBankPreview()
     this._pendingInitialLoad = null
     this._viewActive = false; this._viewEpoch++
     this.cancelPagedReads()

@@ -104,3 +104,106 @@ test('读取失败说明保留到重试成功；预览恢复失败会显示原�
   assert.equal(page.data.fileAttentionSheet, null)
   assert.equal(page.data.files[0].state, 'ready')
 })
+
+function editableBank() {
+  const h = require('./helpers/paged-workbench').runtime()
+  h.page.data.files = [{ clientId: 'file', name: '合成.xls', importId: 'synthetic-import', fileID: 'synthetic-upload', state: 'mapping' }]
+  h.page.data.bankMappingSheet = mapping.view('file', '合成.xls', preview, {
+    ...preview.suggested, statementKind: 'credit', positiveDirection: 'expense', debitDirection: 'expense'
+  })
+  return h
+}
+const headerInput = value => ({ detail: { value } })
+const previewResult = row => ({ import: { version: 3, state: 'failed' }, mappingRequired: true,
+  bankPreview: { ...preview, headerRow: row, headerToken: 'synthetic-header-' + row } })
+
+test('真实Page行号输入停止后自动识别一次，保留信用卡和方向选择，失焦不重复请求', async () => {
+  const h = editableBank(), page = h.page
+  h.intercept = (action, input) => { assert.equal(action, 'imports.parseFile'); return previewResult(input.bankPreview.headerRow) }
+  page.inputBankHeader(headerInput('1'))
+  page.inputBankHeader(headerInput('12'))
+  assert.equal(page.data.bankMappingSheet.previewPending, true)
+  await new Promise(resolve => setTimeout(resolve, 450))
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.calls[0].input.bankPreview.headerRow, 12)
+  assert.equal(page.data.bankMappingSheet.preview.headerRow, 12)
+  assert.equal(page.data.bankMappingSheet.draft.statementKind, 'credit')
+  assert.equal(page.data.bankMappingSheet.draft.debitDirection, 'expense')
+  assert.equal(page.data.bankMappingSheet.previewPending, false)
+  await page.refreshBankPreview()
+  assert.equal(h.calls.length, 1)
+  page.onUnload()
+})
+
+test('无效行号不请求；输入途中改方向不丢行号，确认必须使用新表头和令牌', async () => {
+  const h = editableBank(), page = h.page
+  h.intercept = (action, input) => input.bankPreview ? previewResult(input.bankPreview.headerRow) : {
+    import: { version: 4 }, batch: { batchId: 'synthetic-batch' }
+  }
+  page.inputBankHeader(headerInput('121'))
+  await page.confirmBankMapping()
+  assert.equal(h.calls.length, 0)
+  assert.match(page.data.bankMappingSheet.error, /1 到 120/)
+  page.inputBankHeader(headerInput('12'))
+  page.changeBankMapping({ currentTarget: { dataset: { key: 'debitDirection' } }, detail: { value: 2 } })
+  assert.equal(page.data.bankMappingSheet.headerRowInput, '12')
+  await page.confirmBankMapping()
+  assert.equal(h.calls.length, 2)
+  assert.equal(h.calls[1].input.bankMapping.headerRow, 12)
+  assert.equal(h.calls[1].input.bankMapping.headerToken, 'synthetic-header-12')
+  assert.equal(page.data.files[0].state, 'ready')
+  page.onUnload()
+})
+
+test('自动识别失败保留输入及解释选择，确认会先重试识别而不提交旧表头', async () => {
+  const h = editableBank(), page = h.page
+  let fails = true
+  h.intercept = (action, input) => {
+    if (fails) throw new Error('合成断网')
+    return input.bankPreview ? previewResult(12) : { import: { version: 4 }, batch: { batchId: 'synthetic-batch' } }
+  }
+  page.inputBankHeader(headerInput('12'))
+  await page.refreshBankPreview()
+  assert.equal(page.data.busy, false)
+  assert.equal(page.data.bankMappingSheet.headerRowInput, '12')
+  assert.equal(page.data.bankMappingSheet.previewPending, true)
+  assert.equal(page.data.bankMappingSheet.draft.statementKind, 'credit')
+  assert.match(page.data.bankMappingSheet.error, /断网/)
+  fails = false
+  await page.confirmBankMapping()
+  assert.equal(h.calls.filter(call => call.input.bankMapping).length, 1)
+  assert.equal(h.calls.at(-1).input.bankMapping.headerRow, 12)
+  page.onUnload()
+})
+
+for (const leave of ['hide', 'unload', 'owner', 'scope']) test('表头预览迟到响应在 ' + leave + ' 后不回填', async () => {
+  const h = editableBank(), page = h.page
+  let finish
+  h.intercept = () => new Promise(resolve => { finish = resolve })
+  page.inputBankHeader(headerInput('12'))
+  const pending = page.refreshBankPreview()
+  await h.flush()
+  if (leave === 'hide') page.onHide()
+  if (leave === 'unload') page.onUnload()
+  if (leave === 'owner') h.app.globalData.uid = 'synthetic-other-owner'
+  if (leave === 'scope') h.cache.reset()
+  if (leave === 'hide' || leave === 'unload') assert.equal(page.data.files[0].state, 'mapping')
+  const state = JSON.stringify(page.data)
+  finish(previewResult(12))
+  await pending
+  assert.equal(JSON.stringify(page.data), state)
+  assert.equal(page._bankPreviews && page._bankPreviews.has('file'), undefined)
+  page.onUnload()
+})
+
+test('关闭弹层或输入后换用户取消自动识别，不发送旧文件', async () => {
+  for (const leave of ['close', 'owner']) {
+    const h = editableBank(), page = h.page
+    page.inputBankHeader(headerInput('12'))
+    if (leave === 'close') page.closeBankMapping()
+    else h.app.globalData.uid = 'synthetic-other-owner'
+    await new Promise(resolve => setTimeout(resolve, 450))
+    assert.equal(h.calls.length, 0)
+    page.onUnload()
+  }
+})

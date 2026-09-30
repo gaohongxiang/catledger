@@ -3,6 +3,7 @@ const cloudUpload = require('../../services/cloud-upload-policy')
 const loginGuard = require('../../services/login-guard')
 const model = require('./model')
 const bankMapping = require('./bank-mapping')
+const readCache = require('../../services/read-cache')
 const { publicError, ERROR_MESSAGES } = require('./presentation')
 
 const MAX_FILES = 5
@@ -216,7 +217,7 @@ module.exports = {
     }
   },
 
-  parsePreparedFile: async function (clientId, fileID, options) {
+  parsePreparedFile: async function (clientId, fileID, options, canApply) {
     const file = this.data.files.find(function (item) { return item.clientId === clientId })
     if (!file) return
     this.setFileState(clientId, { state: 'parsing', stateText: model.fileStateText('parsing'), errorMessage: '', errorCode: '' })
@@ -227,13 +228,21 @@ module.exports = {
         fileID: fileID,
         timezoneOffsetMinutes: new Date().getTimezoneOffset()
       }, options || (file.bankMapping ? { bankMapping: file.bankMapping } : {})))
+      if (canApply && !canApply()) return
       if (result.mappingRequired && result.bankPreview) {
         if (!this._bankPreviews) this._bankPreviews = new Map()
         this._bankPreviews.set(clientId, result.bankPreview)
         this.setFileState(clientId, { state: 'mapping', stateText: model.fileStateText('mapping'),
           hasBankMapping: true, importVersion: result.import.version, errorMessage: '' })
         if (this.data.bankMappingSheet && this.data.bankMappingSheet.clientId === clientId) {
-          this.setData({ bankMappingSheet: bankMapping.view(clientId, file.name, result.bankPreview) })
+          const previous = this.data.bankMappingSheet
+          const draft = options && options.bankPreview ? Object.assign({}, result.bankPreview.suggested, {
+            statementKind: previous.draft.statementKind, positiveDirection: previous.draft.positiveDirection,
+            debitDirection: previous.draft.debitDirection
+          }) : undefined
+          const next = bankMapping.view(clientId, file.name, result.bankPreview, draft)
+          next.advanced = previous.advanced
+          this.setData({ bankMappingSheet: next })
         }
       } else if (result.duplicateImportId) {
         this.setFileState(clientId, {
@@ -267,6 +276,7 @@ module.exports = {
         if (this._bankPreviews) this._bankPreviews.delete(clientId)
       }
     } catch (error) {
+      if (canApply && !canApply()) return
       this.setFileState(clientId, {
         state: 'failed', stateText: model.fileStateText('failed'),
         errorCode: error.code || '',
@@ -289,7 +299,10 @@ module.exports = {
       file = this.data.files.find(item => item.clientId === id)
       preview = this._bankPreviews && this._bankPreviews.get(id)
     }
-    if (preview) this.setData({ fileAttentionSheet: null, bankMappingSheet: bankMapping.view(id, file.name, preview, file.bankMapping) })
+    if (preview) {
+      this.cancelBankPreview()
+      this.setData({ fileAttentionSheet: null, bankMappingSheet: bankMapping.view(id, file.name, preview, file.bankMapping) })
+    }
     else this.showFileFailure(file)
   },
 
@@ -327,7 +340,22 @@ module.exports = {
     if (file && file.state === 'failed') this.showFileFailure(file)
   },
 
-  closeBankMapping: function () { if (!this.data.busy) this.setData({ bankMappingSheet: null }) },
+  closeBankMapping: function () {
+    if (this.data.busy) return
+    this.cancelBankPreview()
+    this.setData({ bankMappingSheet: null })
+  },
+
+  cancelBankPreview: function () {
+    if (this._bankPreviewTimer) clearTimeout(this._bankPreviewTimer)
+    this._bankPreviewTimer = null
+    const token = this._bankPreviewToken
+    if (token && this.data.files.some(file => file.clientId === token.clientId && file.state === 'parsing')) {
+      this.setFileState(token.clientId, { state: token.previousState, stateText: model.fileStateText(token.previousState) })
+      this.syncUploadSummary()
+    }
+    this._bankPreviewToken = null
+  },
 
   changeBankMapping: function (event) {
     if (this.data.busy || !this.data.bankMappingSheet) return
@@ -341,15 +369,29 @@ module.exports = {
     else draft.columns[key] = value - 1
     const next = bankMapping.view(sheet.clientId, sheet.name, sheet.preview, draft)
     next.advanced = sheet.advanced
+    next.headerRowInput = sheet.headerRowInput
+    next.previewPending = sheet.previewPending
+    next.previewError = sheet.previewError
     this.setData({ bankMappingSheet: next })
   },
 
   toggleBankColumns: function () { this.setData({ 'bankMappingSheet.advanced': !this.data.bankMappingSheet.advanced }) },
 
-  inputBankHeader: function (event) { this.setData({ 'bankMappingSheet.headerRowInput': event.detail.value }) },
+  inputBankHeader: function (event) {
+    if (this.data.busy || !this.data.bankMappingSheet) return
+    this.cancelBankPreview()
+    const value = event.detail.value, sheet = this.data.bankMappingSheet
+    const changed = Number(value) !== sheet.preview.headerRow
+    this.setData({ 'bankMappingSheet.headerRowInput': value, 'bankMappingSheet.previewPending': changed,
+      'bankMappingSheet.previewError': false, 'bankMappingSheet.error': '' })
+    if (changed) this._bankPreviewTimer = setTimeout(() => this.refreshBankPreview(), 400)
+  },
 
   refreshBankPreview: async function (event) {
     if (this.data.busy || !this.data.bankMappingSheet) return
+    this.cancelBankPreview()
+    if (!this._viewActive || !getApp().hasLoginApproval() || getApp().globalData.uid !== this._viewOwner ||
+        readCache.getSession() !== this._viewScope) return false
     const sheet = this.data.bankMappingSheet
     const changingSheet = event && event.currentTarget.dataset.key === 'sheet'
     const preview = changingSheet ? { sheetIndex: Number(event.detail.value) }
@@ -357,17 +399,32 @@ module.exports = {
     if (!changingSheet && (!Number.isInteger(preview.headerRow) || preview.headerRow < 1 || preview.headerRow > 120)) {
       this.setData({ 'bankMappingSheet.error': '表头行请输入 1 到 120' }); return
     }
+    if (!changingSheet && preview.headerRow === sheet.preview.headerRow && !sheet.previewError) {
+      this.setData({ 'bankMappingSheet.previewPending': false }); return true
+    }
     const file = this.data.files.find(item => item.clientId === sheet.clientId)
     if (!file) return
-    this.setData({ busy: true })
-    await this.parsePreparedFile(file.clientId, file.fileID, { bankPreview: preview })
+    const token = this._bankPreviewToken = { clientId: file.clientId, previousState: file.state }, epoch = this._viewEpoch,
+      owner = getApp().globalData.uid, scope = readCache.getSession()
+    const canApply = () => this._bankPreviewToken === token && this._viewActive && this._viewEpoch === epoch &&
+      getApp().hasLoginApproval() && getApp().globalData.uid === owner && readCache.getSession() === scope &&
+      this.data.bankMappingSheet && this.data.bankMappingSheet.clientId === file.clientId
+    this.setData({ busy: true, 'bankMappingSheet.previewPending': true, 'bankMappingSheet.previewLoading': true,
+      'bankMappingSheet.error': '' })
+    await this.parsePreparedFile(file.clientId, file.fileID, { bankPreview: preview }, canApply)
+    if (!canApply()) return false
     this.syncUploadSummary()
     const updated = this.data.files.find(item => item.clientId === file.clientId)
-    this.setData({ busy: false, 'bankMappingSheet.error': updated.errorMessage || '' })
+    const failed = updated.state !== 'mapping'
+    this.setData({ busy: false, 'bankMappingSheet.previewLoading': false, 'bankMappingSheet.previewPending': failed,
+      'bankMappingSheet.previewError': failed, 'bankMappingSheet.error': updated.errorMessage || '' })
+    this._bankPreviewToken = null
+    return !failed
   },
 
   confirmBankMapping: async function () {
     if (this.data.busy || !this.data.bankMappingSheet) return
+    if (this.data.bankMappingSheet.previewPending && !await this.refreshBankPreview()) return
     const sheet = this.data.bankMappingSheet, result = bankMapping.payload(sheet)
     if (result.error) { this.setData({ 'bankMappingSheet.error': result.error }); return }
     const file = this.data.files.find(item => item.clientId === sheet.clientId)

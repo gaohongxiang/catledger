@@ -16,7 +16,7 @@
         <view class="bank-mapping-row"><text>工作表</text><text>{{bankMappingSheet.preview.sheets[bankMappingSheet.preview.sheetIndex].name}} ›</text></view>
       </picker>
       <text wx:if="{{bankMappingSheet.preview.sheets.length > 1}}" class="bank-mapping-copy">本次只读取所选工作表，请选择交易明细所在的表。</text>
-      <view class="bank-mapping-header-row"><text>表头在第</text><input type="number" maxlength="3" value="{{bankMappingSheet.headerRowInput}}" bindinput="inputBankHeader" disabled="{{busy}}" /><text>行</text><button size="mini" bindtap="refreshBankPreview" disabled="{{busy}}">更新预览</button></view>
+      <view class="bank-mapping-header-row"><text>表头在第</text><input type="number" maxlength="3" value="{{bankMappingSheet.headerRowInput}}" bindinput="inputBankHeader" bindblur="refreshBankPreview" bindconfirm="refreshBankPreview" confirm-type="done" disabled="{{busy}}" /><text>行</text><text wx:if="{{bankMappingSheet.previewPending}}" class="bank-header-status">{{bankMappingSheet.previewLoading ? '正在识别…' : '修改后自动识别'}}</text></view>
       <picker range="{{bankMappingSheet.amountModes}}" range-key="label" value="{{bankMappingSheet.modeIndex}}" data-key="amountMode" bindchange="changeBankMapping" disabled="{{busy}}">
         <view class="bank-mapping-row"><text>金额格式</text><text>{{bankMappingSheet.amountModes[bankMappingSheet.modeIndex].label}} ›</text></view>
       </picker>
@@ -31,11 +31,11 @@
         <picker wx:if="{{field.required || bankMappingSheet.advanced}}" range="{{bankMappingSheet.columnOptions}}" range-key="name" value="{{field.selected}}" data-key="{{field.key}}" bindchange="changeBankMapping" disabled="{{busy}}">
           <view class="bank-mapping-field">
             <view class="bank-mapping-row"><text>{{field.label}}{{field.required ? ' *' : ''}}</text><text class="bank-column-value">{{field.value}} ›</text></view>
-            <text wx:if="{{field.example}}" class="bank-mapping-example">样例：{{field.example}}</text>
+            <text wx:if="{{field.example && !bankMappingSheet.previewPending}}" class="bank-mapping-example">样例：{{field.example}}</text>
           </view>
         </picker>
       </block>
-      <button class="text-action" bindtap="toggleBankColumns" disabled="{{busy}}">{{bankMappingSheet.advanced ? '收起更多列' : '查看摘要、对方、流水号等更多列'}}</button>
+      <button class="text-action bank-columns-toggle" bindtap="toggleBankColumns" disabled="{{busy}}">{{bankMappingSheet.advanced ? '收起更多列' : '查看摘要、对方等更多列'}}</button>
       <text class="bank-mapping-copy">未选的列保留在原始记录中</text>
     </scroll-view>
     <text wx:if="{{bankMappingSheet.error}}" class="inline-error">{{bankMappingSheet.error}}</text>

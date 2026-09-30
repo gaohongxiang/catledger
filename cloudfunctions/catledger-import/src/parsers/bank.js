@@ -61,6 +61,19 @@ function headerToken(contentHash, sheetIndex, record) {
   return digestParts('bank-header-v1', contentHash, sheetIndex, record.sourceLocator || record.logicalNumber, JSON.stringify(record.values))
 }
 
+function bankRecordKind(values, headerValues, columns, amountMode, date1904, timezoneOffsetMinutes = -480) {
+  const inferred = inferColumns(values)
+  const amountFields = { direction: ['amount', 'direction'], split: ['income', 'expense'], signed: ['amount'] }[amountMode]
+  if (!values.some(clean) || JSON.stringify(values) === JSON.stringify(headerValues) ||
+      ['transactionTime', ...amountFields].every(field => columns[field] != null && inferred[field] === columns[field])) return 'decorative'
+  const occupied = values.map(clean).filter(Boolean)
+  if (occupied.length === 1 && BANK_RECORD_COUNT.test(occupied[0])) return 'control'
+  if (occupied.length === 1 && /^(?:说明|温馨提示|重要提示)\s*[:：]/u.test(occupied[0])) return 'metadata'
+  if (!parseLocalDateTime(bankTime(values[columns.transactionTime], values[columns.time], date1904), timezoneOffsetMinutes) &&
+      /^(?:合计|总计|小计|本页合计|余额|期初余额|期末余额)(?:[:：\s]|$)/u.test(occupied[0] || '')) return 'control'
+  return 'data'
+}
+
 function inspectBank(sheets, contentHash, requested = {}) {
   if (requested == null || typeof requested !== 'object' || Array.isArray(requested) ||
       Object.keys(requested).some(key => !['sheetIndex', 'headerRow'].includes(key))) throw importError('VALIDATION_ERROR')
@@ -86,12 +99,18 @@ function inspectBank(sheets, contentHash, requested = {}) {
   // Debit/credit columns are suggestions only: credit-card statements reverse
   // the apparent asset-account meaning. Every bank mapping is confirmed once.
   const amountMode = columns.income != null && columns.expense != null ? 'split' : columns.direction != null ? 'direction' : 'signed'
+  const samples = []
+  for (let i = index + 1; i < sheet.records.length && samples.length < 2; i++) {
+    const values = sheet.records[i].values
+    if (bankRecordKind(values, header.values, columns, amountMode, sheet.date1904) === 'data') {
+      samples.push(values.map(value => clean(value).slice(0, 32)))
+    }
+  }
   const preview = {
     schemaVersion: 1, sheetIndex, headerRow: recordNumber(header, index), headerToken: headerToken(contentHash, sheetIndex, header),
     sheets: sheets.map((value, i) => ({ index: i, name: value.name.slice(0, 64) })),
     headers: header.values.map((value, i) => ({ index: i, name: clean(value).slice(0, 48) || `第 ${i + 1} 列` })),
-    samples: sheet.records.slice(index + 1).filter(record => record.values.some(clean)).slice(0, 2)
-      .map(record => record.values.map(value => clean(value).slice(0, 32))),
+    samples,
     suggested: { columns, amountMode, positiveDirection: '', debitDirection: '', currency: 'CNY',
       statementKind: /信用卡/.test(sheet.records.slice(0,index+1).map(record=>record.values.join(' ')).join(' ')) ? 'credit' : 'standard' }
   }
@@ -167,8 +186,6 @@ function parseBank(sheets, { content, extension, timezoneOffsetMinutes, bankMapp
   const header = sheet.records[selectedHeaderIndex]
   const descriptor = bankProfile(extension)
   const rows = [], metadataRows = [], controlFields = [], decorativeRows = []
-  const amountFields = { direction: ['amount', 'direction'], split: ['income', 'expense'], signed: ['amount'] }[mapping.amountMode]
-  const headerFields = ['transactionTime', ...amountFields]
   const countControls = []
   const metadataText = sheet.records.slice(0, selectedHeaderIndex).map(record => record.values.join(' ')).join('\n')
   const foreignCurrency = /(?:币种|货币)\s*[:：]?\s*(?:美元|港币|港元|欧元|日元|英镑|USD|HKD|EUR|JPY|GBP)/iu.test(metadataText)
@@ -176,27 +193,20 @@ function parseBank(sheets, { content, extension, timezoneOffsetMinutes, bankMapp
     const values = record.values
     const at = field => mapping.columns[field] == null ? '' : String(values[mapping.columns[field]] || '')
     const captured = kind => ({ kind, sourceLocator: record.sourceLocator || `CSV:${record.startLine}-${record.endLine}`, values })
-    const inferredHeader = inferColumns(values)
     if (index < selectedHeaderIndex) { metadataRows.push(captured('metadata')); return }
-    if (index === selectedHeaderIndex || !values.some(clean) || JSON.stringify(values) === JSON.stringify(header.values) ||
-        headerFields.every(field => inferredHeader[field] === mapping.columns[field])) {
+    const kind = bankRecordKind(values, header.values, mapping.columns, mapping.amountMode, sheet.date1904, timezoneOffsetMinutes)
+    if (kind === 'decorative') {
       decorativeRows.push(captured('decorative')); return
     }
-    const occupied = values.map(clean).filter(Boolean)
-    const recordCount = occupied.length === 1 && BANK_RECORD_COUNT.exec(occupied[0])
-    if (recordCount) {
-      controlFields.push(captured('control'))
-      countControls.push({ sourceLocator: captured('control').sourceLocator, expected: Number(recordCount[1]) })
-      return
-    }
-    // A footer note is metadata only when it occupies a single cell and has no
-    // transaction fields. Keep the original record; never discard a damaged row.
-    if (occupied.length === 1 && /^(?:说明|温馨提示|重要提示)\s*[:：]/u.test(occupied[0])) {
+    if (kind === 'metadata') {
       metadataRows.push(captured('metadata')); return
     }
-    if (!parseLocalDateTime(bankTime(at('transactionTime'), at('time'), sheet.date1904), timezoneOffsetMinutes) &&
-        /^(?:合计|总计|小计|本页合计|余额|期初余额|期末余额)(?:[:：\s]|$)/u.test(clean(values.find(clean)))) {
-      controlFields.push(captured('control')); return
+    if (kind === 'control') {
+      controlFields.push(captured('control'))
+      const occupied = values.map(clean).filter(Boolean)
+      const recordCount = occupied.length === 1 && BANK_RECORD_COUNT.exec(occupied[0])
+      if (recordCount) countControls.push({ sourceLocator: captured('control').sourceLocator, expected: Number(recordCount[1]) })
+      return
     }
     const rowIssues = []
     const error = (code, field) => rowIssues.push({ code, field, severity: 'error' })
