@@ -1,4 +1,5 @@
 const api = require('../../services/catledger-api')
+const pendingWrites = require('../../services/pending-ledger-write')
 const pageReadSession = require('../../services/page-read-session')
 const loginGuard = require('../../services/login-guard')
 const money = require('../../utils/money')
@@ -15,6 +16,9 @@ Page({
     loading: false,
     saving: false,
     errorMessage: '',
+    accountStatusMessage: '',
+    accountStatusRefresh: false,
+    pendingAccountAction: '',
     accountLoans: [], accountLoansLoading: false, accountLoansLoaded: false, accountLoansError: '', accountLoansMore: false, accountPendingCount: 0,
     editingName: false,
     nameDraft: '',
@@ -39,24 +43,31 @@ Page({
   },
 
   onUnload: function () { pageReadSession.end(this) },
+  onHide: function () { pageReadSession.end(this); this._archiveConfirming = false; this.setData({ saving: false }) },
 
   loadAccount: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'saving', 'errorMessage', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'formOpen', 'balanceYuan', 'billingSupported', 'editingBilling', 'billingFieldDraft', 'billingFieldError'], ['_readLoad', '_accountLoansToken'])
+    const isCurrent = pageReadSession.begin(this, ['account', 'loading', 'saving', 'errorMessage', 'accountStatusMessage', 'accountStatusRefresh', 'pendingAccountAction', 'accountLoans', 'accountLoansLoading', 'accountLoansLoaded', 'accountLoansError', 'accountLoansMore', 'accountPendingCount', 'editingName', 'nameDraft', 'nameError', 'formOpen', 'balanceYuan', 'billingSupported', 'editingBilling', 'billingFieldDraft', 'billingFieldError'], ['_readLoad', '_accountLoansToken'])
     if (this._readLoad) return this._readLoad
     const self = this
     const force = Boolean(options && options.force)
+    let completedStatus = options && options.completedStatus || ''
     this.setData({ loading: force || !api.isFresh('accounts.list'), errorMessage: '' })
-    this._readLoad = api.callApi('accounts.list', {}, { force: force })
-      .then(function (result) {
+    this._readLoad = this.recoverAccountStatus(isCurrent).then(function (recoveredStatus) {
+      completedStatus = completedStatus || recoveredStatus
+      if (isCurrent()) return api.callApi('accounts.list', {}, { force: force || Boolean(completedStatus) })
+    }).then(async function (result) {
         if (!isCurrent()) return
         const account = (result.accounts || []).map(decorateAccount).find(function (item) { return item.accountId === self.data.accountId }) || null
+        if (self.data.accountStatusRefresh) self.setData({ accountStatusRefresh: false, accountStatusMessage: '' })
         self.setData(Object.assign({ account: account, billingSupported: result.liabilitySettingsVersion === 1, errorMessage: account ? '' : '账户不存在或已删除' }, account ? {} :
           { accountLoans: [], accountLoansLoaded: false, accountLoansMore: false, accountPendingCount: 0 }))
-        if (account) return self.loadAccountLoans()
+        if (account) await self.loadAccountLoans()
+        return true
       })
       .catch(function (error) {
         if (!isCurrent()) return
-        self.setData({ errorMessage: error.message || '账户加载失败' })
+        self.setData(completedStatus ? { errorMessage: '', accountStatusMessage: completedStatus + '，详情待刷新', accountStatusRefresh: true } : { errorMessage: error.message || '账户加载失败' })
+        return false
       })
       .finally(function () {
         if (!isCurrent()) return
@@ -64,6 +75,63 @@ Page({
         self._readLoad = null
       })
     return this._readLoad
+  },
+
+  pendingAccountStatus: function () {
+    const packet = pendingWrites.pending()
+    return packet && packet.target === 'api' && ['accounts.archive', 'accounts.restore'].includes(packet.action) &&
+      packet.payload.accountId === this.data.accountId ? packet : null
+  },
+
+  recoverAccountStatus: async function (isCurrent) {
+    if (!isCurrent()) return ''
+    const packet = this.pendingAccountStatus()
+    this.setData({ pendingAccountAction: packet ? packet.action : '' })
+    if (!packet) return ''
+    try {
+      await pendingWrites.verify()
+      if (!isCurrent()) return ''
+      const status = packet.action === 'accounts.restore' ? '已恢复' : '已停用'
+      this.setData({ pendingAccountAction: '', accountStatusMessage: status })
+      return status
+    } catch (error) {
+      if (isCurrent()) this.setData({ accountStatusMessage: '上次账户操作结果待核实，请继续原操作', errorMessage: error.code === 'OPERATION_UNCONFIRMED' ? '' : error.message })
+      return ''
+    }
+  },
+
+  changeAccountStatus: async function (action, payload) {
+    const account = this.data.account, isCurrent = pageReadSession.capture(this)
+    if (!account || this.data.saving || !isCurrent()) return
+    this.setData({ saving: true, errorMessage: '', accountStatusMessage: '' })
+    try {
+      await pendingWrites.send('api', action, payload || { accountId: account.accountId, version: account.version }, { exact: true, canSend: isCurrent })
+      if (!isCurrent()) return
+      const status = action === 'accounts.restore' ? '已恢复' : '已停用'
+      this.setData({ pendingAccountAction: '', accountStatusMessage: status, editingName: false, editingBilling: '', formOpen: false })
+      if (this._readLoad) await this._readLoad
+      if (!isCurrent()) return
+      await this.loadAccount({ force: true, completedStatus: status })
+      if (isCurrent()) wx.showToast({ title: status, icon: 'success' })
+    } catch (error) {
+      if (!isCurrent()) return
+      const pending = this.pendingAccountStatus()
+      this.setData({ pendingAccountAction: pending ? pending.action : '', errorMessage: error.message || '账户操作失败',
+        accountStatusMessage: pending ? '上次账户操作结果待核实，请继续原操作' : '' })
+    } finally { if (isCurrent()) this.setData({ saving: false }) }
+  },
+
+  retryAccountStatus: function () {
+    const packet = this.pendingAccountStatus()
+    if (packet) return this.changeAccountStatus(packet.action, packet.payload)
+    return this.loadAccount({ force: true })
+  },
+
+  restore: function () {
+    if (!this.data.account || !this.data.account.archived) return
+    if (this.data.accountStatusRefresh) return this.loadAccount({ force: true })
+    if (this.pendingAccountStatus()) return this.retryAccountStatus()
+    return this.changeAccountStatus('accounts.restore')
   },
 
   recoverMutation: async function (error, fallback, isCurrent) {
@@ -238,17 +306,20 @@ Page({
     const account = this.data.account
     const self = this
     const isCurrent = pageReadSession.capture(this)
-    if (!account || account.archived) return
-    wx.showModal({
+    if (!account || account.archived || this.data.saving || this._archiveConfirming || !isCurrent()) return
+    if (this.data.accountStatusRefresh) return this.loadAccount({ force: true })
+    if (this.pendingAccountStatus()) return this.retryAccountStatus()
+    const confirmation = this._archiveConfirming = {}
+    return new Promise(resolve => wx.showModal({
       title: '停用“' + account.name + '”？',
-      content: '历史账目和余额仍会保留，但这个账户不能再用于新交易。',
+      content: account.balanceLabel + ' ' + account.balanceText + ' 和历史账目会保留。停用后不能新增交易、转账或记录贷款还款，账户资料也不能修改；已有欠款及贷款本金不会清零。以后可在已停用账户详情点“恢复使用”，恢复时不补息，也不改变自动记费授权。',
       confirmColor: themeService.currentTokens().danger,
       success: function (result) {
-        if (!result.confirm || !isCurrent()) return
-        api.callApi('accounts.archive', { requestId: api.createRequestId(), accountId: account.accountId, version: account.version })
-          .then(function () { if (!isCurrent()) return; wx.showToast({ title: '已停用', icon: 'success' }); self.loadAccount() })
-          .catch(function (error) { return self.recoverMutation(error, '停用失败', isCurrent) })
-      }
-    })
+        if (self._archiveConfirming === confirmation) self._archiveConfirming = false
+        if (!result.confirm || !isCurrent()) { resolve(); return }
+        resolve(self.changeAccountStatus('accounts.archive', { accountId: account.accountId, version: account.version }))
+      },
+      fail: function () { if (self._archiveConfirming === confirmation) self._archiveConfirming = false; resolve() }
+    }))
   }
 })

@@ -59,7 +59,7 @@
     "loans.reverse": {"kind": "idempotent-versioned-mutation", "data": ["requestId", "paymentId", "version", "loans", "confirmed"], "returns": "{paymentId,version,reversed,loans}; current versions for every allocated loan; reverse whole group or reject without partial changes"},
     "loans.payment": {"kind":"read","data":["paymentId"],"returns":"{payment,repayment?,allocations,transactions,chargeAllocations,unallocatedMinor}; pending confirmed payments have empty allocations; max 20 loans / 60 transactions, current loan versions plus frozen confirmedLoanVersion; a single active period per allocation returns period={periodNumber,version}"},
     "loans.payments": {"kind": "read", "data": ["loanId", "pageSize?", "cursor?"], "returns": "{items,nextCursor}; pageSize 1..40, signed user/loan scope, includes reversal history"},
-    "transactions.commandResult": { "kind": "read", "data": ["requestId", "commandAction"], "returns": ["action", "receiptId", "result"], "scope": "current user frozen transaction or loan write receipt; missing or mismatched action remains OPERATION_UNCONFIRMED" },
+    "transactions.commandResult": { "kind": "read", "data": ["requestId", "commandAction"], "returns": ["action", "receiptId", "result"], "scope": "current user frozen transaction, loan, accounts.archive or accounts.restore write receipt; missing or mismatched action remains OPERATION_UNCONFIRMED" },
     "catalog.get": {
       "kind": "read",
       "data": [],
@@ -110,6 +110,12 @@
       "kind": "idempotent-versioned-mutation",
       "data": ["requestId", "accountId", "version"],
       "returns": "account"
+    },
+    "accounts.restore": {
+      "kind": "idempotent-versioned-mutation",
+      "data": ["requestId", "accountId", "version"],
+      "returns": "account",
+      "rules": ["恢复原账户ID；仅修改停用状态及版本，不写账、不改变贷款本金、费用或自动记费授权。已活动且版本匹配时不重复递增账户版本；原请求只回放回执。活动账户重名返回ACCOUNT_NAME_CONFLICT，过期版本返回CONFLICT。"]
     },
     "accounts.correctBalance": {
       "kind": "idempotent-mutation",
@@ -232,6 +238,7 @@
     "LOAN_PRINCIPAL_UNCONFIRMED",
     "LOAN_PRINCIPAL_EXCEEDED",
     "ACCOUNT_INACTIVE",
+    "ACCOUNT_NAME_CONFLICT",
     "AUTH_REQUIRED",
     "CONFLICT",
     "IDEMPOTENCY_CONFLICT",

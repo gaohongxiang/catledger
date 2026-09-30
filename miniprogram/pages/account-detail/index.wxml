@@ -39,7 +39,14 @@
 
     <view wx:if="{{account.needsCorrection}}" class="correction-callout"><text>待校正</text><text>资产账户出现负数，通常表示期初余额或漏记交易需要核对。</text></view>
     <view wx:if="{{errorMessage}}" class="sheet-error">{{errorMessage}}</view>
-    <view wx:if="{{!account.archived}}" class="ad-actions">
+    <view wx:if="{{accountStatusMessage}}" class="account-loans-note">{{accountStatusMessage}}</view>
+    <view wx:if="{{accountStatusRefresh}}" class="ad-actions"><button class="secondary-button" loading="{{loading}}" disabled="{{loading}}" bindtap="loadAccount">刷新账户详情</button></view>
+    <view wx:elif="{{pendingAccountAction}}" class="ad-actions"><button class="primary-button primary-button-medium" loading="{{saving}}" disabled="{{saving}}" bindtap="retryAccountStatus">继续原操作</button></view>
+    <view wx:elif="{{account.archived}}" class="ad-actions">
+      <text class="account-loans-note">恢复原账户后可继续转账、还款及维护资料。现有余额、欠款和贷款本金会保留；恢复不补息，也不改变自动记费授权。</text>
+      <button class="primary-button primary-button-medium" loading="{{saving}}" disabled="{{saving}}" bindtap="restore">恢复使用</button>
+    </view>
+    <view wx:else class="ad-actions">
       <list-row wx:if="{{account.nature === 'asset'}}" title="校正余额" note="按实际余额补记差额" tone="primary" aria-label="校正账户余额" bindtap="openCorrection" />
       <list-row title="停用账户" note="历史账目和余额仍会保留" tone="danger" aria-label="停用账户" chevron="{{false}}" divider="{{false}}" bindtap="archive" />
     </view>

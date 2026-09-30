@@ -33,7 +33,7 @@ test('shared contract and server action registry stay in exact sync', () => {
     loanService: serviceStub(['deleteImpact','delete','retainedCharge','recordUpfrontFee','chargeImpact','changeCharge','endCharges','dueCharges','syncCharges','chargePlan','configureCharges','pauseCharges','installments','installment','installmentSources','setInstallmentProgress','confirmInstallments','linkInstallmentSource','archiveInstallment','removeInstallmentItem','bookRepayment','assignRepayment','releaseRepayment','transaction','unassigned','list','get','create','update','record','correct','source','reverse','payment','payments','periods','savePeriod','allocatePeriods','planAllocation','periodHistory','previewPlan','generatePlan']),
     catalogService: serviceStub(['get', 'validate']),
     profileService: serviceStub(['get', 'update']),
-    accountService: serviceStub(['archive', 'correctBalance', 'create', 'createBatch', 'list', 'update']),
+    accountService: serviceStub(['archive', 'correctBalance', 'create', 'createBatch', 'list', 'restore', 'update']),
     categoryService: serviceStub(['archive', 'assignTransactions', 'create', 'list', 'reorder', 'restore', 'unclassified', 'update']),
     transactionService: serviceStub(['commandResult', 'create', 'dashboard', 'linkRefund', 'list', 'refundable', 'remove', 'removeMany', 'setCategory', 'statistics', 'update'])
   })

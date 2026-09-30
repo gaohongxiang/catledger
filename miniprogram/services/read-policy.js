@@ -36,7 +36,7 @@ function mutationTags(action) {
   if (/^loans\.(create|update)$/.test(action)) return ['loans', 'transactions', 'accounts']
   if (action === 'accounts.create') return ['accounts', 'transactions', 'accountDirectory']
   if (action === 'accounts.correctBalance') return ['accounts', 'transactions']
-  if (/^accounts\.(createBatch|update|archive)$/.test(action)) return ['accounts', 'accountDirectory']
+  if (/^accounts\.(createBatch|update|archive|restore)$/.test(action)) return ['accounts', 'accountDirectory']
   if (/^categories\.(create|update|archive|restore|reorder)$/.test(action)) return ['categories', 'categoryDirectory']
   if (action === 'categories.assignTransactions' || action === 'transactions.setCategory') return ['transactions']
   if (/^transactions\.(create|update|delete|deleteMany|linkRefund)$/.test(action)) return ['transactions', 'accounts']

@@ -387,6 +387,41 @@ function createAccountService({ getPool }) {
     })
   }
 
+  async function restore(context) {
+    return executeIdempotentMutation({
+      getPool,
+      currentReads: true,
+      ...context,
+      action: 'accounts.restore',
+      operation: async (connection, uid, data) => {
+        const current = await lockAccount(connection, uid, data.accountId)
+        const version = parseVersion(data.version)
+        if (Number(current.version) !== version) throw ledgerError('CONFLICT')
+        const archived = current.archivedAt != null
+        if (archived) {
+          try {
+            await connection.execute(
+              `UPDATE catledger_accounts
+                  SET archived_at = NULL, version = version + 1
+                WHERE uid = ? AND account_id = ? AND version = ?`,
+              [uid, current.accountId, version]
+            )
+          } catch (error) {
+            if (error && error.code === 'ER_DUP_ENTRY') throw ledgerError('ACCOUNT_NAME_CONFLICT')
+            throw error
+          }
+        }
+        const bookBalance = await queryBookBalance(connection, uid, current.accountId)
+        return accountToPublic({
+          ...current,
+          version: version + (archived ? 1 : 0),
+          archivedAt: null,
+          bookBalance: bookBalance.toString()
+        })
+      }
+    })
+  }
+
   async function correctBalance(context) {
     return executeIdempotentMutation({
       getPool,
@@ -427,6 +462,7 @@ function createAccountService({ getPool }) {
     create,
     createBatch,
     list,
+    restore,
     update
   }
 }
