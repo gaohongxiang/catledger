@@ -53,9 +53,10 @@
   </view>
 
   <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
+  <button wx:if="{{preparePending && !update}}" class="primary-button" bindtap="createFinanceUpdate" disabled="{{busy}}">继续整理上次账单</button>
 
   <block wx:if="{{currentStep === 1 && !update}}">
-    <view wx:if="{{!files.length && phase !== 'loading' && !restoreUpdateId}}" data-ui="empty-picker" class="file-picker-empty">
+    <view wx:if="{{!files.length && phase !== 'loading' && !restoreUpdateId && !preparePending}}" data-ui="empty-picker" class="file-picker-empty">
       <view class="file-picker-symbol" aria-hidden="true"><view class="file-picker-paper"></view><text>＋</text></view>
       <text class="stage-panel-title">选择账单文件</text>
       <text class="stage-panel-copy">支持银行、支付宝、微信账单（CSV/XLS/XLSX）。</text>

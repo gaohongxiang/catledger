@@ -8,6 +8,7 @@ const postingFlow = require('./posting-flow')
 const initialData = {
     restoreUpdateId: '',
     abandoningRestore: false,
+    preparePending: false,
     phase: 'idle',
     maxFiles: uploadFlow.MAX_FILES,
     currentStep: 1,

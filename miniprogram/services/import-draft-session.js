@@ -191,7 +191,7 @@ function open(view) {
     call: api.callImport, requestId: api.createRequestId }))
   const session = sessions.get(id)
   session.accept(view)
-  wx.setStorageSync(PREFIX + config.envId + ':last', view.update.updateId)
+  rememberLast(view.update.updateId)
   return session
 }
 async function pauseUpdate(updateId) {
@@ -206,8 +206,20 @@ function clearUpdate(updateId) {
   sessions.delete(id)
   if (lastUpdateId() === updateId) forgetLast()
 }
-function lastUpdateId() { return wx.getStorageSync(PREFIX + config.envId + ':last') || '' }
-function forgetLast() { wx.removeStorageSync(PREFIX + config.envId + ':last') }
+function ownerScope() {
+  const app = getApp(), uid = app.globalData.uid
+  return app.hasLoginApproval() && uid ? config.envId + ':' + uid : null
+}
+function rememberLast(updateId, scope = ownerScope()) {
+  if (!scope) return
+  const key = PREFIX + scope + ':last'
+  try {
+    wx.setStorageSync(key, updateId)
+    if (wx.getStorageSync(key) !== updateId) throw new Error('write not persisted')
+  } catch (_) { throw Object.assign(new Error('本机未能保存整理进度，请释放空间后刷新'), { code: 'DRAFT_STORAGE_FAILED' }) }
+}
+function lastUpdateId() { const scope = ownerScope(); return scope ? wx.getStorageSync(PREFIX + scope + ':last') || '' : '' }
+function forgetLast() { const scope = ownerScope(); if (scope) wx.removeStorageSync(PREFIX + scope + ':last') }
 
 // 只投影用户已作的决定；金额、退款与重复关系仍以服务端结果为准。
 function project(view, entries) {
@@ -225,4 +237,4 @@ function project(view, entries) {
   })
   return Object.assign({}, view, { issues, events })
 }
-module.exports = { create, open, pauseUpdate, clearUpdate, lastUpdateId, forgetLast, project }
+module.exports = { create, open, pauseUpdate, clearUpdate, rememberLast, lastUpdateId, forgetLast, project }

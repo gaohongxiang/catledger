@@ -90,3 +90,56 @@ test('核实原删除期间换用户或退出，不在新身份下重发，原�
     assert.equal(h.client.pending().payload.requestId, 'original-key')
   }
 })
+
+test('确认交接先可靠保存恢复位置，再清原请求；失败保留已成功事实供下次核实', async () => {
+  const h = harness()
+  h.lost = false
+  h.options.onConfirmed = (packet, result, scope) => {
+    assert.equal(scope, h.uid)
+    assert.equal(packet.payload.requestId, h.client.pending().payload.requestId)
+    assert.equal(result.saved, true)
+    throw Object.assign(new Error('合成交接失败'), { code: 'DRAFT_STORAGE_FAILED' })
+  }
+  await assert.rejects(h.client.send('api', 'transactions.create', { amountMinor: '100' }), failure => {
+    assert.equal(failure.confirmedResult.result.saved, true)
+    return failure.code === 'DRAFT_STORAGE_FAILED'
+  })
+  assert.ok(h.client.pending())
+  h.options.onConfirmed = () => {}
+  assert.equal((await h.client.verify()).recovered, true)
+  assert.equal(h.client.pending(), null)
+})
+
+test('核实未知原请求时页面离开，不再自动补发原命令', async () => {
+  const h = harness()
+  await assert.rejects(h.client.send('api', 'transactions.create', { amountMinor: '100' }))
+  h.committed = null
+  let active = true
+  const call = h.options.call
+  h.options.call = (...args) => { if (args[1].endsWith('.commandResult')) active = false; return call(...args) }
+  await assert.rejects(h.client.send('api', 'transactions.create', { amountMinor: '100' }, { exact: true, canSend: () => active }), { code: 'VIEW_INACTIVE' })
+  assert.equal(h.calls.filter(call => call.action === 'transactions.create').length, 1)
+  assert.ok(h.client.pending())
+})
+
+test('旧响应迟到不能再次交接已核实的结果，或覆盖后续操作的恢复位置', async () => {
+  const h = harness(), handed = []
+  let release
+  const call = h.options.call
+  h.lost = false
+  h.options.requestId = () => 'request-' + h.calls.length
+  h.options.onConfirmed = packet => handed.push(packet.payload.requestId)
+  h.options.call = async (...args) => {
+    const result = await call(...args)
+    if (args[1] === 'transactions.create') await new Promise(resolve => { release = resolve })
+    return result
+  }
+  const first = h.client.send('api', 'transactions.create', { amountMinor: '100' })
+  await new Promise(resolve => setImmediate(resolve))
+  await h.client.verify()
+  await h.client.send('api', 'transactions.update', { amountMinor: '200' })
+  const before = [...handed]
+  release(); await first
+  assert.deepEqual(handed, before)
+  assert.equal(handed.length, 2)
+})

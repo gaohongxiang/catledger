@@ -1,5 +1,6 @@
 const cloudCallPolicy = require('./cloud-call-policy')
 const observer = require('./read-observer')
+const readCache = require('./read-cache')
 
 const CLOUD_RETRY_DELAY_MS = 300
 
@@ -21,6 +22,7 @@ function waitBeforeRetry() {
 }
 
 function handleTransportFailure(originalError, action, data, attempt, invoke) {
+  if (originalError && originalError.code === 'SESSION_CHANGED') throw originalError
   const failure = cloudCallPolicy.classifyCloudFailure(originalError)
   if (cloudCallPolicy.shouldRetry(action, data, failure, attempt)) {
     return waitBeforeRetry().then(function () {
@@ -52,6 +54,7 @@ function createCloudFunctionClient(options) {
     const startedAt = Date.now()
     return Promise.resolve()
       .then(function () {
+        if (requestOptions && requestOptions.beforeSend) requestOptions.beforeSend()
         return wx.cloud.callFunction({
           name: functionName,
           data: Object.assign({ action: action, data: data || {} }, requestOptions && requestOptions.knownRevision !== undefined ? { knownRevision: requestOptions.knownRevision } : {})
@@ -90,7 +93,15 @@ function createCloudFunctionClient(options) {
 
   function call(action, data, requestOptions) {
     if (!hasLoginApproval()) return Promise.reject(loginRequiredError())
-    return callInternal(action, data, undefined, requestOptions)
+    const uid = getApp().globalData.uid, scope = readCache.getSession()
+    return callInternal(action, data, undefined, Object.assign({}, requestOptions, {
+      // 自动重试也必须属于原会话，不能在用户切换后以新身份发出旧请求。
+      beforeSend() {
+        if (!hasLoginApproval() || getApp().globalData.uid !== uid || readCache.getSession() !== scope) {
+          throw Object.assign(new Error('登录状态已改变，请重新打开页面'), { code: 'SESSION_CHANGED' })
+        }
+      }
+    }))
   }
 
   return {

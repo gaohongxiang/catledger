@@ -17,13 +17,14 @@ function evaluate(id, key, data) {
   assert.ok(value && value.startsWith('{{'), id + ':' + key)
   return Boolean(vm.runInNewContext(value.slice(2, -2), data, { timeout: 200 }))
 }
-const state = (phase, queued, ready, failed = 0, busy = false) => ({ phase, busy, restoreUpdateId: '', maxFiles: 5,
+const state = (phase, queued, ready, failed = 0, busy = false) => ({ phase, busy, restoreUpdateId: '', preparePending: false, maxFiles: 5,
   files: Array(queued + ready + failed).fill({}), uploadSummary: { queued, ready, failed, attention: failed } })
 
 test('空文件只显示选择入口；不摆出不可用的开始解析', () => {
   const s = state('idle', 0, 0)
   assert.equal(evaluate('empty-picker', 'wx:if', s), true)
   assert.equal(evaluate('parse-action', 'wx:if', s), false)
+  assert.equal(evaluate('empty-picker', 'wx:if', {...s,preparePending:true}), false)
 })
 test('队列有文件才开始解析；正在解析仍显示原位进度且禁用', () => {
   assert.equal(evaluate('parse-action', 'wx:if', state('selected', 2, 0)), true)

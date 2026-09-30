@@ -22,7 +22,7 @@ function runtime(data = fixture(), options = {}) {
   const cache = Object.assign(createReadCache(), { stableKey }), storage = new Map(), calls = [], patches = [], modules = new Map()
   let session, definition
   const h = { ...data, calls, patches, cache, storage, intercept: null, maxDataBytes: 0, derives: {}, activeSubscriptions: 0 }
-  h.app = { approved: options.approved !== false, hasLoginApproval() { return this.approved }, globalData: {} }
+  h.app = { approved: options.approved !== false, hasLoginApproval() { return this.approved }, globalData: { uid: '1234567890' } }
   const call = async (action, input = {}) => {
     calls.push({ action, input: JSON.parse(JSON.stringify(input)) })
     if (h.intercept) { const value = await h.intercept(action, input); if (value !== undefined) return value }
@@ -50,7 +50,7 @@ function runtime(data = fixture(), options = {}) {
   }
   const api = { callImport: call, readSummary: updateId => call('financeUpdates.summary', { updateId }),
     command: (action, input) => call(action, { ...input }), createRequestId: () => 'synthetic-request-' + calls.length }
-  const draftService = { lastUpdateId: () => '', forgetLast() {}, clearUpdate() {}, pauseUpdate() {}, project: (view) => view,
+  const draftService = { lastUpdateId: () => '', rememberLast() {}, forgetLast() {}, clearUpdate() {}, pauseUpdate() {}, project: (view) => view,
     open(view) { if (!session) { session = createDraft({ scope: 'synthetic', view, autoSync: false, call,
       read: key => storage.get(key), write: (key, value) => storage.set(key, value), remove: key => storage.delete(key), requestId: api.createRequestId });
       const subscribe = session.subscribe

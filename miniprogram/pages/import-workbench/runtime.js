@@ -9,6 +9,7 @@ const viewSession = require('../../services/import-view-session')
 const loginGuard = require('../../services/login-guard')
 const themeService = require('../../theme/service')
 const readCache = require('../../services/read-cache')
+const pendingWrites = require('../../services/pending-ledger-write')
 
 const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).length
 const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon', 'financeUpdates.setRepayment',
@@ -32,13 +33,25 @@ function boundedSetData(page) {
 
 function compactMapping(mapping) { const { choiceOptions, evidencePreview, ...visible } = presentation.accountMapping(mapping); return Object.assign(visible, { evidencePreview: Boolean(evidencePreview) }) }
 
+function currentOwner() { const app = getApp(); return app.hasLoginApproval() ? app.globalData.uid || '' : '' }
+function pendingPrepare() {
+  if (!currentOwner()) return null
+  const packet = pendingWrites.pending()
+  return packet && packet.target === 'import' && packet.action === 'financeUpdates.prepare' ? packet : null
+}
+
 async function resumeInitialLoad(page) {
   const initial = page._pendingInitialLoad
   if (!initial || !initial.visible || initial.attempt || !getApp().hasLoginApproval()) return
   page._viewActive = true
-  if (!initial.updateId) { page._pendingInitialLoad = null; return }
   const attempt = initial.attempt = {}
-  const loaded = await page.loadUpdate(initial.updateId, true)
+  let loaded
+  if (!initial.updateId && pendingPrepare()) loaded = await page.createFinanceUpdate({ recoveryOnly: true })
+  else {
+    if (!initial.updateId && initial.restoreLast) initial.updateId = draftSessions.lastUpdateId()
+    if (!initial.updateId) { page._pendingInitialLoad = null; return }
+    loaded = await page.loadUpdate(initial.updateId, true)
+  }
   if (page._pendingInitialLoad !== initial || initial.attempt !== attempt || !initial.visible) return
   initial.attempt = null
   if (!loaded) return
@@ -57,13 +70,15 @@ module.exports = {
     this._viewEpoch = 0
     this._pageEpoch = 0
     this._viewActive = true
+    this._viewOwner = currentOwner()
+    this._viewScope = readCache.getSession()
     this.setData({ pageLoading: false, pageError: '', directoryPage: null })
     themeService.bindPage(this)
     this._requestIds = {}
     this._sourceFiles = new Map()
     this._accountUiDrafts = new Map()
-    const updateId = options && options.fresh === '1' ? null : options && options.updateId || draftSessions.lastUpdateId()
-    this._pendingInitialLoad = { updateId, eventId: options && options.evidenceEventId, visible: true, attempt: null }
+    const updateId = options && options.fresh !== '1' && options.updateId || null
+    this._pendingInitialLoad = { updateId, restoreLast: !(options && options.fresh === '1'), eventId: options && options.evidenceEventId, visible: true, attempt: null }
     loginGuard.run(this, () => resumeInitialLoad(this))
   },
   onShow(initialData) {
@@ -79,9 +94,23 @@ module.exports = {
       return
     }
     const returning = this._viewActive === false
+    const owner = currentOwner(), scope = readCache.getSession()
+    if (this._viewOwner && (this._viewOwner !== owner || this._viewScope !== scope)) {
+      this._viewEpoch++; this.cancelPagedReads()
+      if (this._viewSession) this._viewSession.close()
+      if (this._unsubscribeDraft) this._unsubscribeDraft()
+      this._unsubscribeDraft = null; this._viewSession = null; this._businessData = null; this._draftSession = null
+      this._prepareRestore = false
+      this._pendingInitialLoad = { updateId: null, restoreLast: true, visible: true, attempt: null }
+      this.setData(JSON.parse(JSON.stringify(initialData)))
+    }
+    this._viewOwner = owner; this._viewScope = scope
     this._viewActive = true
     themeService.bindPage(this)
     const revision = getApp().globalData.ledgerRevision || 0
+    if (returning && this._prepareRestore && !this.data.update && !this._pendingInitialLoad) {
+      this._pendingInitialLoad = { updateId: null, restoreLast: true, visible: true, attempt: null }
+    }
     if (this._pendingInitialLoad) {
       this._ledgerRevision = revision
       return resumeInitialLoad(this)
@@ -138,7 +167,7 @@ module.exports = {
     this._issueEvidenceToken = null; this._accountEvidenceToken = null; this._evidenceReadToken = null
     this._issueEvidenceRecords = []; this._accountRecordList = []; this._finalDetail = null
   },
-  async request(action, data) {
+  async request(action, data, canRead) {
     if (action === 'financeUpdates.summary') return api.readSummary(data.updateId)
     if (commandActions.has(action)) {
       const input = Object.assign({}, data)
@@ -149,6 +178,7 @@ module.exports = {
       }
       const receipt = await api.command(action, input)
       if (action === 'financeUpdates.post' || action === 'financeUpdates.abandon') return receipt
+      if (canRead && !canRead()) return receipt
       try { return await api.readSummary(receipt.update.updateId) }
       catch (error) { return Object.assign({}, receipt, { refreshRequired: true }) }
     }
@@ -159,41 +189,69 @@ module.exports = {
     return this._businessData || this.data
   },
 
-  createFinanceUpdate: async function () {
-    if (this.data.busy) return
+  createFinanceUpdate: async function (settings) {
+    if (!this._viewActive || !getApp().hasLoginApproval() || this.data.busy) return
     if (this.data.update && this.data.update.updateId) {
-      await this.loadUpdate(this.data.update.updateId)
+      if (this.data.refreshRequired) await this.retryPagedView()
+      else await this.loadUpdate(this.data.update.updateId)
       return
     }
-    const batchIds = this.data.files.filter(function (file) { return file.state === 'ready' && file.batchId })
-    .map(function (file) { return file.batchId })
+    const packet = pendingPrepare()
+    const batchIds = packet ? packet.payload.batchIds : this.data.files.filter(file => file.state === 'ready' && file.batchId).map(file => file.batchId)
     if (batchIds.length === 0) {
       this.setData({ errorMessage: '至少需要一个解析成功的账单文件' })
       return
     }
-    this.setData({ phase: 'organizing', busy: true, errorMessage: '' })
+    const operation = this._prepareOperation = { epoch: this._viewEpoch, scope: readCache.getSession(), owner: currentOwner() }
+    const active = () => this._viewActive && getApp().hasLoginApproval() && operation.owner === currentOwner() &&
+      readCache.getSession() === operation.scope && this._viewEpoch === operation.epoch && this._prepareOperation === operation
+    this._prepareRestore = true
+    this.setData({ phase: 'organizing', busy: true, errorMessage: '', preparePending: Boolean(packet) })
+    let receipt
     try {
-      let view = await this.request('financeUpdates.prepare', {
-          requestId: api.createRequestId(), batchIds: batchIds
-        })
-      view = await this.refreshAccountGroups(view)
+      const result = settings && settings.recoveryOnly ? await pendingWrites.verify()
+        : await pendingWrites.send('import', 'financeUpdates.prepare', { batchIds }, { exact: true, canSend: active })
+      receipt = result.result
+      if (!active()) return
+      // 写回执与后续读取分开：即使摘要失败，也已有可恢复的原批次。
+      this.setData({ update: receipt.update, preparePending: false })
+      let view = await api.readSummary(receipt.update.updateId)
+      if (!active()) return
+      view = await this.refreshAccountGroups(view, active)
+      if (!active()) return
       this.applyUpdateView(view)
+      if (!view.workbench) this.setData({ errorMessage: '整理已完成，结果待刷新' })
+      this._prepareRestore = false
+      return true
     } catch (error) {
-      this.setData({ phase: 'files_ready', busy: false, errorMessage: publicError(error, '跨来源整理失败') })
-    }
+      if (!active()) return
+      if (error.confirmedResult && error.confirmedResult.action === 'financeUpdates.prepare') receipt = error.confirmedResult.result
+      if (receipt) {
+        this.applyUpdateView(receipt)
+        this.setData({ errorMessage: '整理已完成，结果待刷新', preparePending: false, refreshRequired: true })
+        this._prepareRestore = false
+        return true
+      }
+      const pending = Boolean(pendingPrepare())
+      this.setData({ phase: this.data.files.length ? 'files_ready' : 'idle', preparePending: pending,
+        errorMessage: pending ? '上次整理结果待确认，请继续整理上次账单' : publicError(error, '跨来源整理失败') })
+      return false
+    } finally { if (active()) this.setData({ busy: false }) }
   },
 
-  refreshAccountGroups: async function (view) {
+  refreshAccountGroups: async function (view, canRead) {
     if (view.update.status !== 'review' || view.freshness && view.freshness.requiresAccountGroupRefresh === false) return view
     return this.request('reviewIssues.refreshAccountGroups', { requestId: api.createRequestId(),
-        updateId: view.update.updateId, version: view.update.version })
+        updateId: view.update.updateId, version: view.update.version }, canRead)
   },
 
   loadUpdate: async function (updateId, restoreToFirstStep) {
     const load = { updateId: updateId, cancelled: false, pending: null }
     this._updateLoad = load
     const epoch = this._viewEpoch
-    const active = () => this._viewActive !== false && this._viewEpoch === epoch && this._updateLoad === load && !load.cancelled
+    const scope = readCache.getSession(), owner = currentOwner()
+    const active = () => this._viewActive !== false && getApp().hasLoginApproval() && scope === readCache.getSession() && owner === currentOwner() &&
+      this._viewEpoch === epoch && this._updateLoad === load && !load.cancelled
     this.setData({ phase: 'loading', busy: true, errorMessage: '', restoreUpdateId: restoreToFirstStep ? updateId : '', abandoningRestore: false })
     try {
       load.pending = this.request('financeUpdates.summary', { updateId: updateId })
@@ -201,12 +259,12 @@ module.exports = {
       if (!active()) return
       if (view.update.status === 'review') {
         load.pending = this.request('financeUpdates.organize', {
-            requestId: api.createRequestId(), updateId: updateId, version: view.update.version
-          })
+          requestId: api.createRequestId(), updateId: updateId, version: view.update.version
+          }, active)
         view = await load.pending
         if (!active()) return
       }
-      load.pending = this.refreshAccountGroups(view)
+      load.pending = this.refreshAccountGroups(view, active)
       view = await load.pending
       if (!active()) return
       this.setData({ restoreUpdateId: '' })
@@ -300,6 +358,7 @@ module.exports = {
 
   startAnother: function () {
     this._pendingInitialLoad = null
+    this._prepareRestore = false
     this._viewEpoch++
     this.cancelPagedReads(); if (this._viewSession) this._viewSession.close(); this._viewSession = null
     this._businessData = null
@@ -321,7 +380,7 @@ module.exports = {
     if (this._bankPreviews) this._bankPreviews.clear()
     this._duplicateLoadToken = null
     this.setData({
-        phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', abandoningRestore: false,
+        phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', abandoningRestore: false, preparePending: false,
         files: [], bankMappingSheet: null, fileAttentionSheet: null, update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
         recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
         reviewedEvents: [], categoryWaitingEvents: [], noCategoryEvents: [],

@@ -82,7 +82,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   // 文件数量/重复选择/并发与单文件重试由 import-upload-flow 的真实 Page 验证。
   assert.match(source, /phase: 'uploading', busy: true, errorMessage: ''/)
   assert.match(markup, /请重试失败文件或继续添加/)
-  assert.match(source, /request\('financeUpdates\.prepare'/)
+  assert.match(source, /pendingWrites\.send\('import', 'financeUpdates\.prepare'/)
   assert.match(source, /request\('financeUpdates\.organize'/)
   assert.match(source, /request\('reviewIssues\.get'/)
   assert.match(source, /this\._draftSession\.enqueue/)
@@ -117,7 +117,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(markup, /交易摘要|查看 \{\{item\.evidenceCount\}\} 条原始记录/)
   assert.match(markup, /class="funds-route-picker"/)
   assert.match(markup, /!\(currentIssue\.issueType === 'transfer_accounts' && currentIssue\.fundsRoute\)/)
-  assert.match(markup, /<view wx:if="\{\{!files.length && phase !== 'loading' && !restoreUpdateId\}\}" data-ui="empty-picker" class="file-picker-empty">/)
+  assert.match(markup, /<view wx:if="\{\{!files.length && phase !== 'loading' && !restoreUpdateId && !preparePending\}\}" data-ui="empty-picker" class="file-picker-empty">/)
   assert.match(markup, /class="file-row-side"/)
   assert.match(markup, /class="file-progress \{\{item\.state === 'preparing'/)
   assert.match(styles, /\.file-row-side \{[^}]*flex: 0 0 64rpx;/)
