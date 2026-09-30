@@ -26,6 +26,7 @@ const SOURCE_REASONS = new Set([...SEMANTIC_HARD_BLOCKERS, 'economic_nature_requ
 // 在原事件的有效证据组内重算来源语义；绝不重新分组或复制人工决定。
 function refreshEventSemantic(current, evidenceRows) {
   if (!['ready', 'needs_action'].includes(current.status) || !evidenceRows.length) return current
+  evidenceRows = require('./bank-channel-matching').semanticRowsAfterConfirmation(current, evidenceRows)
   const rows = evidenceRows.map(row => ({ ...row, semantic: getRowSemantic(row) }))
   const natures = unique(rows.map(economicNatureForRow))
   const semantics = rows.map(row => row.semantic)
@@ -179,6 +180,7 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
     const followUps = await selectDomainEvents(connection, uid, updateId, [...followUpIds])
     for (const event of followUps) await createFollowUpIssue(connection, uid, updateId, event)
   }
+  await require('./review/bank-channel-candidates').synchronize(connection, uid, updateId, actionId, rows)
   await recalculateUpdateCounts(connection, uid, updateId, version + 1, actionId, version,
     -splits.reduce((count, split) => count + split.additions.length, 0))
   await connection.execute(`UPDATE catledger_finance_updates SET plan_version = ?

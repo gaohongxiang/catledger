@@ -210,6 +210,7 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
             r.source_order_id_raw AS sourceOrderId,
             r.source_merchant_order_id_raw AS sourceMerchantOrderId,
             r.status_raw AS rawStatus, r.transaction_type_raw AS rawTransactionType,
+            r.transaction_time_raw AS rawTransactionTime,
             r.semantic_json AS semantic,
             r.issues_json AS issues,
             r.normalized_local_date AS localDate, r.normalized_local_at AS localAt,
@@ -562,7 +563,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
             r.payment_method_raw AS paymentMethod,
             s.source_type_snapshot AS sourceType, s.file_name_snapshot AS fileName
        FROM catledger_economic_events e
-       LEFT JOIN (SELECT event_id, COUNT(*) AS evidenceCount, SUM(evidence_role = 'duplicate') AS duplicateEvidenceCount
+       LEFT JOIN (SELECT event_id, COUNT(*) AS evidenceCount, SUM(evidence_role IN ('duplicate', 'supporting')) AS duplicateEvidenceCount
          FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role <> 'discarded'
          ${eventIds ? ` AND event_id IN (${eventIds.map(() => '?').join(',')})` : ''}
          GROUP BY event_id) evidence_counts ON evidence_counts.event_id = e.event_id
@@ -578,7 +579,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
     [uid, updateId, ...(eventIds || []), uid, updateId, ...(eventIds || [])]
   )
   return rows.map(row => includeFieldSources
-    ? { ...publicEvent(row), fieldSources: parseJson(row.fieldSources, {}) } : publicEvent(row))
+    ? { ...publicEvent(row), utcAt: row.utcAt, fieldSources: parseJson(row.fieldSources, {}) } : publicEvent(row))
 }
 
 
@@ -632,7 +633,9 @@ function publicIssue(row) {
   const groupedReference = (subjectFieldSources.paymentAccountReferences || []).find((ref) => ref.memberRole === row.subjectMemberRole)
   const groupedAccount = groupedReference ? { ...groupedReference, fundsSide: groupedReference.memberRole,
     accountId: accountGroups.mappedAccount({ fieldSources: subjectFieldSources, counterpartyLedgerAccountId: row.subjectCounterpartyLedgerAccountId }, groupedReference) } : null
-  const account = groupedAccount || mappingAccount || projectedAccount || subjectAccount
+  const mergedAccount = subjectFieldSources.bankChannelAccountContexts && subjectFieldSources.bankChannelAccountContexts[row.issueId]
+  const account = mergedAccount ? { ...mergedAccount, accountId: row.subjectLedgerAccountId || null }
+    : groupedAccount || mappingAccount || projectedAccount || subjectAccount
   const reasonCodes = parseJson(row.reasonCodes, [])
   return {
     issueId: row.issueId,

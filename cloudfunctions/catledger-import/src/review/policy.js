@@ -27,7 +27,7 @@ const ISSUE_RESOLVED_REASONS = Object.freeze({
   ]),
   category_assignment: new Set(['category_required']),
   shared_fields: new Set(['core_fields_missing', 'economic_nature_required', 'postability_direction_conflict']),
-  same_event: new Set(['same_event_candidate', 'relation_ambiguous', 'source_group_conflict']),
+  same_event: new Set(['same_event_candidate', 'relation_ambiguous', 'source_group_conflict', 'bank_channel_same_event_candidate']),
   refund_relation: new Set(['refund_relation_required', 'refund_relation_ambiguous', 'refund_relation_invalid', 'refund_amount_exceeded', 'relation_ambiguous']),
   transfer_accounts: new Set([
     'repayment_ownership_required', 'repayment_other_treatment_required', 'repayment_ownership_invalid', 'economic_nature_required',

@@ -39,7 +39,7 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
   // 事件可能仍带着整理前的历史映射快照。执行任何人工裁决前先按
   // “历史映射 < 本批映射草稿 < 已手工端点”得到当前有效资金端，
   // 避免用户只选择转入端时把过期的转出端一并保存。
-  const events = await effectiveProjectedEvents(connection, uid, updateId, storedEvents)
+  let events = await effectiveProjectedEvents(connection, uid, updateId, storedEvents)
   // 来源表明同一订单既未付款又有退款到账时，普通补字段/待关联不能替代证据核对。
   if (decision !== 'exclude_events' && events.some(event => event.fieldSources && event.fieldSources.refundSourceConflict)) {
     throw importError('VALIDATION_ERROR')
@@ -61,6 +61,8 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
   if (decision === 'confirm_same') {
     const primaryEventId = validateUuid(data.primaryEventId)
     if (!eventIds.includes(primaryEventId) || eventIds.length < 2) throw importError('VALIDATION_ERROR')
+    const channelPrimary = await require('./bank-channel-candidates').confirmedPrimary(connection, uid, updateId,
+      events, primaryEventId, actionId, { required: issue.primaryReasonCode === 'bank_channel_same_event_candidate' })
     await assertIdentityIntegrity(connection, uid, updateId, eventIds, { merge: true })
     for (const event of events) {
       if (event.eventId === primaryEventId) continue
@@ -70,6 +72,7 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
         [uid, updateId, event.eventId]
       )
       if (Number(linkCount.count) !== 0) throw importError('CONFLICT')
+      if (channelPrimary) await require('./bank-channel-candidates').mergeRelations(connection, uid, updateId, primaryEventId, event.eventId)
       await connection.execute(
         `UPDATE catledger_event_evidence
                   SET event_id = ?, evidence_role = CASE WHEN evidence_role = 'discarded' THEN 'discarded' ELSE 'supporting' END
@@ -81,6 +84,7 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
                 WHERE uid = ? AND update_id = ? AND (source_event_id = ? OR target_event_id = ?)`,
         [uid, updateId, event.eventId, event.eventId]
       )
+      if (channelPrimary) await stageAccountMappings(connection, uid, updateId, [primaryEventId], channelPrimary.ledgerAccountId, actionId)
       const [deleted] = await connection.execute(
         `DELETE FROM catledger_economic_events
                 WHERE uid = ? AND update_id = ? AND event_id = ? AND version = ?
@@ -90,14 +94,18 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
       if (deleted.affectedRows !== 1) throw importError('CONFLICT')
       duplicateEvidenceDelta += 1
     }
-    const primary = events.find((event) => event.eventId === primaryEventId)
+    const primary = channelPrimary || events.find((event) => event.eventId === primaryEventId)
     const next = { ...primary, reasonCodes: resolvedReasons(issue.issueType, primary.reasonCodes), resolvingIssueType: issue.issueType }
     affected.push(await saveEvent(connection, uid, primary, next, actionId))
+    if (channelPrimary) await require('./issue-store').updateMappingMemberVersions(connection, uid, updateId, affected)
   } else if (decision === 'confirm_distinct' && issue.primaryReasonCode === 'historical_duplicate_candidate') {
     await require('../historical-duplicates').assertHistoricalChoice(connection, uid, updateId, issue)
   } else if (decision === 'confirm_distinct') {
+    const channelEvents = await require('./bank-channel-candidates').distinctEvents(connection, uid, updateId,
+      events, { required: issue.primaryReasonCode === 'bank_channel_same_event_candidate' })
+    if (channelEvents) events = channelEvents
     await assertIdentityIntegrity(connection, uid, updateId, eventIds)
-    for (const part of chunks(eventIds.map(id => [id]))) await connection.execute(
+    for (const part of channelEvents ? [] : chunks(eventIds.map(id => [id]))) await connection.execute(
       `UPDATE catledger_economic_event_relations SET status = 'rejected', version = version + 1
               WHERE uid = ? AND update_id = ? AND status = 'proposed'
                 AND (source_event_id IN (${part.map(() => '?').join(', ')})
@@ -312,6 +320,7 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
   if (resolved.affectedRows !== 1) throw importError('CONFLICT')
   await createFollowUpIssues(connection, uid, updateId, affected)
   await refreshProjectedEvents(connection, uid, updateId, actionId)
+  if (['apply_fields', 'exclude_events'].includes(decision)) await require('./bank-channel-candidates').synchronize(connection, uid, updateId, actionId)
   await recalculateUpdateCounts(connection, uid, updateId, appliedVersion, actionId, updateVersion, duplicateEvidenceDelta)
   return commandResult(connection, uid, updateId, data, issueId)
 }

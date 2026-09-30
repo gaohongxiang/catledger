@@ -450,6 +450,7 @@ async function resolveAccountMappings(connection, uid, data, requestDigest, { up
               eventIds: [...batch.affectedEventIds],
               paymentReferenceKeys: [...batch.paymentReferenceKeys]
             })
+          await require('./bank-channel-candidates').synchronize(connection, uid, updateId, batch.actionId)
           await recalculateUpdateCounts(
             connection, uid, updateId, batch.updateVersion + 1,
             batch.actionId, batch.updateVersion
@@ -578,6 +579,7 @@ async function reviseAccountMapping(connection, uid, data, requestDigest, { upda
     )
   }
   await refreshProjectedEvents(connection, uid, updateId, actionId)
+  await require('./bank-channel-candidates').synchronize(connection, uid, updateId, actionId)
   await recalculateUpdateCounts(connection, uid, updateId, appliedVersion, actionId, updateVersion)
   return commandResult(connection, uid, updateId, input)
 }

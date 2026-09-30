@@ -12,7 +12,8 @@ function buildCoverageReport({ sources = [], events = [], issues = [], rows = []
     links.push(link)
     linksByRow.set(link.rowId, links)
   }
-  const dispositions = rows.map((row) => deriveRowDisposition(row, linksByRow.get(row.rowId) || [], eventsById))
+  const explained = require('./bank-channel-matching').explainedRowIds(events, rows)
+  const dispositions = rows.map((row) => deriveRowDisposition(row, linksByRow.get(row.rowId) || [], eventsById, explained))
   const rowIds = new Set(rows.map((row) => row.rowId))
   const linkedEvents = new Set(evidence.filter((link) => link.evidenceRole !== 'discarded').map((link) => link.eventId))
   const rowConservationPassed = rows.length === dataRows && rowIds.size === rows.length &&

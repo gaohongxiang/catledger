@@ -75,6 +75,7 @@ const HARD_BLOCKING_REASONS = new Set([
   'identity_conflict',
   'identity_review_required',
   'source_group_conflict',
+  'bank_channel_same_event_candidate',
   'relation_ambiguous',
   'refund_amount_exceeded',
   'refund_relation_ambiguous',
@@ -217,6 +218,9 @@ function classifyReviewIssue(event) {
   if (reasons.has('payment_components_ambiguous') && !paymentResolutionForEvent(event).valid) {
     return { issueType: inspectPaymentAccounts(event, event.fieldSources && event.fieldSources.paymentAccounts).valid
       ? REVIEW_ISSUE_TYPE.SHARED_FIELDS : REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'payment_components_ambiguous' }
+  }
+  if (reasons.has('bank_channel_same_event_candidate')) {
+    return { issueType: REVIEW_ISSUE_TYPE.SAME_EVENT, primaryReason: 'bank_channel_same_event_candidate' }
   }
   if (reasons.has('ledger_account_required') && (ACCOUNT_FIRST_NATURES.has(event.economicNature) || event.fieldSources && event.fieldSources.installment && event.fieldSources.installment.creditStatement === true)) {
     return { issueType: REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'ledger_account_required' }

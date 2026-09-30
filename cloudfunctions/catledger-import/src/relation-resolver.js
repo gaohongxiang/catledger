@@ -5,6 +5,7 @@ const { ECONOMIC_NATURE, unique } = require('./organizer-values')
 const { timeValue, normalizedText, STRONG_REFERENCE_WINDOW_MS } = require('./evidence-matching')
 const { autoReasonCode, candidateReasonCode, createRefundCandidateIndex } = require('./refund-relation-policy')
 const { findRefundSourceConflicts, applyRefundSourceConflict } = require('./refund-source-conflict')
+const { bankChannelGroups } = require('./bank-channel-matching')
 const SAME_EVENT_CANDIDATE_WINDOW_MS = 48 * 60 * 60 * 1000
 
 function refundRelation(updateId, refund, target, idFactory, status, reasonCode) {
@@ -38,6 +39,7 @@ function sameEventCandidateGroups(events) {
     return { candidateKey, events }
   })
   const buckets = new Map()
+  result.push(...bankChannelGroups(events))
   events.forEach((event) => {
     if (event.status === EVENT_STATUS.EXCLUDED || event.sameEventCandidateKey) return
     const key = `${event.amountMinor || ''}|${event.currency}|${event.flowDirection}`
@@ -63,6 +65,7 @@ function sameEventCandidateGroups(events) {
       const candidates = alternatives.get(event.sourceType).filter((candidate) => {
         if (!available.has(candidate.eventId) || candidate.eventId === event.eventId) return false
         if (candidate.sourceType === event.sourceType) return false
+        if (candidate.sourceType === 'bank' || event.sourceType === 'bank') return false
         const candidateTime = facts.get(candidate.eventId).time
         if (currentTime == null || candidateTime == null || Math.abs(currentTime - candidateTime) > SAME_EVENT_CANDIDATE_WINDOW_MS) return false
         const candidateText = facts.get(candidate.eventId).text

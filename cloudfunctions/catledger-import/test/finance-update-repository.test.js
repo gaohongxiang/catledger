@@ -18,7 +18,7 @@ test('整理摘要返回去重的真实成员 ID，不用候选数推算主体',
   assert.deepEqual(issue.subjectEventIds, ['event-a', 'event-b'])
 })
 
-test('整理成员与重复数量查询限定用户和批次，辅助证据不冒充重复', async () => {
+test('整理成员与重复数量查询限定用户和批次，同笔辅助原文计入减少的记录数', async () => {
   const { selectIssues, selectEvents } = require('../src/finance-update-repository')
   const queries = []
   const connection = { async execute(sql, values) {
@@ -32,7 +32,7 @@ test('整理成员与重复数量查询限定用户和批次，辅助证据不�
   assert.equal(events[0].duplicateEvidenceCount, 2)
   assert.match(queries[0].sql, /issue_member.uid = issue.uid AND issue_member.update_id = issue.update_id/)
   assert.match(queries[0].sql, /issue_member.object_type = 'event'[\s\S]*issue_member.member_role <> 'candidate'/)
-  assert.match(queries[1].sql, /SUM\(evidence_role = 'duplicate'\)/)
+  assert.match(queries[1].sql, /SUM\(evidence_role IN \('duplicate', 'supporting'\)\)/)
   assert.deepEqual(queries.map(query => query.values), [['user-a', 'batch-a'], ['user-a', 'batch-a', 'user-a', 'batch-a']])
 })
 

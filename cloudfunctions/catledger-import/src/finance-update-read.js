@@ -106,7 +106,7 @@ async function summary(connection, uid, updateId) {
     MAX(i.issue_type <> 'category_assignment' AND i.blocking = 1) AS review, MAX(i.issue_type = 'category_assignment') AS category
     FROM catledger_review_issues i JOIN catledger_review_issue_members m ON m.uid = i.uid AND m.update_id = i.update_id AND m.issue_id = i.issue_id
     WHERE i.uid = ? AND i.update_id = ? AND i.status = 'open' AND m.object_type = 'event' AND m.member_role <> 'candidate' GROUP BY m.object_id`, [uid, updateId])
-  const [[duplicates]] = await connection.execute("SELECT COUNT(*) AS count FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role = 'duplicate'", [uid, updateId])
+  const [[duplicates]] = await connection.execute("SELECT COUNT(*) AS count FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role IN ('duplicate', 'supporting')", [uid, updateId])
   const [[drafts]] = await connection.execute('SELECT COUNT(*) AS count FROM catledger_finance_update_account_drafts WHERE uid = ? AND update_id = ? AND materialized_at IS NULL', [uid, updateId])
   const [issueCounts] = await connection.execute(`SELECT issue_type AS issueType, status,
     COUNT(*) AS count, SUM(blocking = 1 AND issue_type <> 'category_assignment') AS blockingCount
@@ -148,7 +148,7 @@ async function eventPage(connection, uid, context, state) {
   let where = 'e.uid = ? AND e.update_id = ?'
   const values = [uid, state.update.updateId]
   if (eventId) { where += ' AND e.event_id = ?'; values.push(eventId) }
-  if (status === 'duplicate') where += ` AND (${historicalDuplicateSql} OR EXISTS (SELECT 1 FROM catledger_event_evidence v WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND v.evidence_role = 'duplicate'))`
+  if (status === 'duplicate') where += ` AND (${historicalDuplicateSql} OR EXISTS (SELECT 1 FROM catledger_event_evidence v WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND v.evidence_role IN ('duplicate', 'supporting')))`
   else if (status) { where += ' AND e.status = ?'; values.push(status) }
   if (status === 'excluded') where += ` AND NOT ${historicalDuplicateSql}`
   if (nature) { where += ' AND e.economic_nature = ?'; values.push(nature) }
@@ -353,12 +353,16 @@ async function rowPage(connection, uid, context, state) {
   const rows = await selectPlanningRows(connection, uid, state.update.updateId, ids.map(row => row.rowId))
   const [links] = await connection.execute(`SELECT row_id AS rowId, event_id AS eventId, evidence_role AS evidenceRole FROM catledger_event_evidence
     WHERE uid = ? AND update_id = ? AND row_id IN (${ids.map(() => '?').join(',')})`, [uid, state.update.updateId, ...ids.map(row => row.rowId)])
-  const events = await selectEvents(connection, uid, state.update.updateId, { eventIds: [...new Set(links.map(row => row.eventId))] })
+  const events = await selectEvents(connection, uid, state.update.updateId, { includeFieldSources: true, eventIds: [...new Set(links.map(row => row.eventId))] })
   const byId = new Map(events.map(event => [event.eventId, event]))
   const byRow = new Map(rows.map(row => [row.rowId, row]))
+  const missingPrimaryIds = [...new Set(events.map(event => event.fieldSources && event.fieldSources.bankChannelResolution &&
+    event.fieldSources.bankChannelResolution.primaryRowId).filter(id => id && !byRow.has(id)))]
+  const explanationRows = missingPrimaryIds.length ? rows.concat(await selectPlanningRows(connection, uid, state.update.updateId, missingPrimaryIds)) : rows
+  const explained = require('./bank-channel-matching').explainedRowIds(events, explanationRows)
   return finishPage(context, state, page, ids.map(({ rowId }) => {
     const row = byRow.get(rowId)
-    return { ...deriveRowDisposition({ ...row, semantic: getRowSemantic(row), issues: parseJson(row.issues, []) }, links.filter(link => link.rowId === rowId), byId),
+    return { ...deriveRowDisposition({ ...row, semantic: getRowSemantic(row), issues: parseJson(row.issues, []) }, links.filter(link => link.rowId === rowId), byId, explained),
       rowNumber: row.rowNumber, sourceType: row.sourceType, sourceOrder: row.sourceOrder }
   }), count.total, 'rowId', 'row')
 }

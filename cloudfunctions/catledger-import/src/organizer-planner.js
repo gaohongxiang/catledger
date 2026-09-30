@@ -222,6 +222,7 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
         bucket.subjects.push({ event, memberRole: descriptor.memberRole })
       }
       ;(relationsByEvent.get(event.eventId) || []).filter((relation) => (
+        currentClassification.primaryReason === 'bank_channel_same_event_candidate' ? false :
         currentClassification.issueType === 'refund_relation'
           ? relation.relationType === RELATION_TYPE.REFUND_OF && ![RELATION_STATUS.REJECTED, RELATION_STATUS.UNDONE].includes(relation.status)
           : ['same_event', 'transfer_accounts'].includes(currentClassification.issueType) && relation.status === RELATION_STATUS.PROPOSED
@@ -260,6 +261,10 @@ function buildReviewIssues(updateId, events, relations, candidateGroups, idFacto
       reasonCodes
     })
     let sortOrder = 0
+    if (bucket.classification.primaryReason === 'bank_channel_same_event_candidate') {
+      bucket.subjects.sort((left, right) => Number(right.event.sourceType !== 'bank') - Number(left.event.sourceType !== 'bank') ||
+        left.event.eventKey.localeCompare(right.event.eventKey))
+    }
     bucket.subjects.forEach(({ event, memberRole }) => members.push({
       memberId: idFactory(), updateId, issueId, objectType: 'event', objectId: event.eventId,
       objectVersion: event.version, memberRole, sortOrder: sortOrder++

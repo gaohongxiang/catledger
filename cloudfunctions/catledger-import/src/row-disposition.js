@@ -9,14 +9,14 @@ const RELATION_BLOCKERS = new Set([
 ])
 
 // 归宿只有这个入口生成。用户排除改变是否入账，不改来源是否已被理解。
-function deriveRowDisposition(row, links, eventsById) {
+function deriveRowDisposition(row, links, eventsById, explained = new Set()) {
   const semantic = row.semantic
   const active = links.filter((link) => link.evidenceRole !== 'discarded')
   const event = active.length === 1 ? eventsById.get(active[0].eventId) : null
   const invalid = row.parseState !== 'valid'
   const historicalDuplicate = event && (event.reasonCodes || []).some(reason => ['already_posted', 'linked_existing_transaction'].includes(reason))
   const conflict = active.length > 1 || semantic && semantic.resolutionStatus === 'conflict'
-  const recognized = !invalid && !conflict && semantic && semantic.resolutionStatus === 'resolved' &&
+  const recognized = !invalid && !conflict && semantic && (semantic.resolutionStatus === 'resolved' || explained.has(row.rowId)) &&
     !(row.issues || []).some((issue) => ['row_extra_columns', 'file_header_unknown'].includes(issue.code)) &&
     !(event && (event.reasonCodes || []).some((reason) => RELATION_BLOCKERS.has(reason)))
   let disposition
@@ -26,7 +26,7 @@ function deriveRowDisposition(row, links, eventsById) {
   else if ((!active.length && links.some((link) => link.evidenceRole === 'discarded')) ||
       event && event.status === 'excluded' && !historicalDuplicate) disposition = 'user_excluded'
   else if (!event) disposition = 'unassigned'
-  else if (active[0].evidenceRole === 'duplicate' || historicalDuplicate) disposition = 'duplicate'
+  else if (['duplicate', 'supporting'].includes(active[0].evidenceRole) || historicalDuplicate) disposition = 'duplicate'
   else if (!recognized || event.status === 'needs_action') disposition = 'needs_confirmation'
   else disposition = 'financial'
   return { rowId: row.rowId, disposition, recognized: Boolean(recognized && disposition !== 'unassigned'), conflict: Boolean(conflict) }

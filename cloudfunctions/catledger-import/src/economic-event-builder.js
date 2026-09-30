@@ -9,6 +9,7 @@ const { ledgerAccountReferenceForRow, projectSourceFunds, withAggregateCandidate
 const { EVENT_STATUS, EVIDENCE_ROLE, economicNatureForRow, evaluatePostability, flowDirectionForRow } = require('./organizer-model')
 const { ECONOMIC_NATURE, FLOW_DIRECTION, unique } = require('./organizer-values')
 const { compatibleCore, STRONG_REFERENCE_WINDOW_MS, stableReferences, scopedStableReferences } = require('./evidence-matching')
+const { bankChannelEvidenceForRow } = require('./bank-channel-matching')
 
 function representativeEvent(updateId, group, idFactory, mappingIndex, mappingResolution, references) {
   const primary = group[0]
@@ -137,6 +138,7 @@ function representativeEvent(updateId, group, idFactory, mappingIndex, mappingRe
       stableReferences: unique(group.flatMap(stableReferences)),
       scopedStableReferences: unique(group.flatMap(scopedStableReferences)),
       rows: group.map((row) => ({
+        ...bankChannelEvidenceForRow(row),
         sourceType: row.sourceType,
         sourceProfileId: row.sourceProfileId || '',
         accountGroupingKey: accountGroupingKey(row.sourceType, row.paymentMethod),
