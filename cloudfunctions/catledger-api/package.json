@@ -14,7 +14,7 @@
   },
   "overrides": {
     "@cloudbase/database": "1.5.0",
-    "axios": "0.33.0",
+    "axios": "0.34.0",
     "qs": "6.16.0"
   }
 }
