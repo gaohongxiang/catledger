@@ -258,7 +258,7 @@
           <view class="pairing-entry-body">
             <view class="pairing-entry-total"><text wx:if="{{pairingEntry.total !== null}}" class="pairing-entry-number money-number">{{pairingEntry.total}}</text><text class="pairing-entry-title">{{pairingEntry.total === null ? '多组建议配对' : '组建议配对'}}</text></view>
             <text class="pairing-entry-copy">银行卡与微信／支付宝，逐组对照两边账单。</text>
-            <text class="pairing-entry-note">{{pairingEntry.loading ? '正在核验组数，可先打开查看…' : pairingEntry.error ? '组数暂未读到，点击重新核验。' : pairingEntry.total === 0 ? '暂无唯一建议，其他候选仍可在下方逐笔核对。' : '与下方待核对同步，确认后不用重复处理。'}}</text>
+            <text class="pairing-entry-note">{{pairingEntry.loading ? '正在核验组数，可先打开查看…' : pairingEntry.error ? '组数暂未读到，点击重新核验。' : pairingEntry.total === 0 ? '暂无唯一建议，其他候选仍可在下方逐笔核对。' : '已包含在下方待核对中，这里可成批确认。'}}</text>
           </view>
         </button>
         <skeleton-rows wx:if="{{pageLoading && !reviewGroups.length}}" rows="{{3}}" />

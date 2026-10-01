@@ -125,6 +125,21 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
       await lab.owner.execute('UPDATE catledger_accounts SET archived_at=CURRENT_TIMESTAMP(3) WHERE uid=? AND account_id=?', [other.uid, other.accountId])
       await assert.rejects(other.resolve({ scopeToken: p.scopeToken, selection: { mode: 'all_except', excludedPairKeys: [] } }), { publicCode: 'STALE_VIEW' })
     })
+    await t.test('翻页游标不随无关账本修订失效，候选图变化仍要求重新核对', async () => {
+      const c = await setup({ apiPool, importPool, count: 12 })
+      const preview = await c.pairings({ pageSize: 4 })
+      assert.equal(preview.items.length, 4)
+      await c.api('accounts.create', { requestId: randomUUID(), name: '无关账本写入', type: 'cash' })
+      const continued = await c.pairings({ pageSize: 4, cursor: preview.nextCursor })
+      const fresh = await c.pairings({ pageSize: 8 })
+      assert.deepEqual(continued.items.map(pair => pair.pairKey), fresh.items.slice(4).map(pair => pair.pairKey),
+        '数据修订推进后原翻页游标仍定位到同一页')
+      const shifted = await setup({ apiPool, importPool, count: 12 })
+      const before = await shifted.pairings({ pageSize: 4 })
+      await lab.owner.execute('UPDATE catledger_accounts SET archived_at=CURRENT_TIMESTAMP(3) WHERE uid=? AND account_id=?', [shifted.uid, shifted.accountId])
+      await assert.rejects(shifted.pairings({ pageSize: 4, cursor: before.nextCursor }), { publicCode: 'INVALID_CURSOR' },
+        '候选图变化后旧翻页游标必须失效')
+    })
     await t.test('退款合并保留退款关系阻断与两条原文，不变成普通消费', async () => {
       const c = await setup({ apiPool, importPool, count: 1, refund: true })
       const preview = await c.pairings()

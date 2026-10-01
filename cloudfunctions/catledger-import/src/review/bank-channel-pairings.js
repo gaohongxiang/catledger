@@ -94,7 +94,9 @@ function createBankChannelPairings({ getPool }) {
       if (context.data.viewVersion != null && context.data.viewVersion !== state.viewVersion) throw importError('STALE_VIEW')
       const selected = range(state, mode, issueId)
       const frozen = { mode, issueId, graphDigest: state.digest, revision: state.revision }
-      const pageScope = { ...scope(uid, updateId, state, 'bank-pair-page'), mode, issueId, graphDigest: state.digest, revision: state.revision }
+      // 翻页游标只定位 pairKey，不绑数据修订：无关账本写入也推进 revision，不能把游标永久失效；
+      // 范围一致性由提交时的 scopeToken（frozen）校验。
+      const pageScope = { ...scope(uid, updateId, state, 'bank-pair-page'), mode, issueId, graphDigest: state.digest }
       const last = decodeCursor(context.subjectHash, context.data.cursor, pageScope)
       if (last != null) keys([last], 1)
       const remaining = selected.filter(pair => !last || pair.pairKey > last)

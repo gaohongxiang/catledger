@@ -102,6 +102,32 @@ test('确认配对后卡片重新读取剩余范围，不把原29组继续显示
   assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 2)
 })
 
+test('关闭弹层时入口卡片已被清空的，按当前资格兜底重拉恢复', async t => {
+  const h = mixed(), page = h.page
+  t.after(() => page.onUnload())
+  await until(h, () => page.data.pairingEntry && !page.data.pairingEntry.loading)
+  await page.openPairingEntry()
+  page.cancelPairingEntry()
+  assert.equal(page.data.pairingEntry, null)
+  page.closePairingReview()
+  await until(h, () => page.data.pairingEntry && !page.data.pairingEntry.loading)
+  assert.equal(page.data.pairingEntry.total, 29)
+  assert.equal(page.data.pairingEntry.error, false)
+})
+
+test('兜底重拉不改变资格门控：分类 tab 下关闭弹层不显示配对卡片', async t => {
+  const h = mixed(), page = h.page
+  t.after(() => page.onUnload())
+  await until(h, () => page.data.pairingEntry && !page.data.pairingEntry.loading)
+  await page.switchReviewTab({ currentTarget: { dataset: { tab: 'category' } } })
+  assert.equal(page.data.pairingEntry, null)
+  const reads = h.calls.filter(call => call.action === 'reviewIssues.pairings').length
+  page.closePairingReview()
+  await h.flush(); await h.flush()
+  assert.equal(page.data.pairingEntry, null)
+  assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, reads)
+})
+
 test('没有混合银行与平台来源时不显示建议卡片，也不增加范围查询', async t => {
   const h = setup(29), page = h.page
   t.after(() => page.onUnload())

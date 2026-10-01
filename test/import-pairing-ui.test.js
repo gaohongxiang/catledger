@@ -193,6 +193,30 @@ test('配对可见、内容、可确认及保存指标在真实数据桥回调�
   h.observer.enable(false); page.onUnload()
 })
 
+test('翻页游标失效进入重新核对而非拿死游标重试，显式重核后恢复', async () => {
+  const h = setup(6), page = h.page
+  await page.openPairingReview()
+  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(page.data.pairingCanConfirm, true)
+  h.onPairingCall = (action, input) => {
+    if (action === 'reviewIssues.pairings' && input.cursor) throw Object.assign(new Error('分页位置无效，请重新读取'), { code: 'INVALID_CURSOR' })
+  }
+  await page.changePairingPage(pageDirection(1))
+  assert.equal(page.data.pairingNeedsRecheck, true)
+  assert.equal(page.data.pairingLoading, false)
+  assert.equal(page.data.pairingCanConfirm, false)
+  await page.retryPairingPage()
+  assert.equal(page.data.pairingNeedsRecheck, true)
+  assert.equal(page.data.pairingCanConfirm, false)
+  assert.equal(page._draftSession.state.entries.length, 0)
+  h.onPairingCall = null
+  await page.recheckPairings()
+  assert.equal(page.data.pairingNeedsRecheck, false)
+  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(page.data.pairingCanConfirm, true)
+  page.onUnload()
+})
+
 test('不同笔也占用本次记录，不能把同一记录分配给第二条决定；取消自身后释放', async () => {
   const h = setup(2), page = h.page
   h.pairs[1].bank.eventId = h.pairs[0].bank.eventId

@@ -185,7 +185,7 @@ module.exports = {
     } catch (error) {
       if (!valid()) return
       this.setData({ pairingLoading: false, pairingError: errorText(error), pairingCanConfirm: false })
-      if (['STALE_VIEW', 'CONFLICT'].includes(error.code)) this.invalidatePairingReview({ viewVersion: '' })
+      if (['STALE_VIEW', 'CONFLICT', 'INVALID_CURSOR'].includes(error.code)) this.invalidatePairingReview({ viewVersion: '' })
     }
   },
   retryPairingPage() { return this.changePairingPage({ currentTarget: { dataset: {} } }) },

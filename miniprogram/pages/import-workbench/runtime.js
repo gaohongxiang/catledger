@@ -73,6 +73,8 @@ module.exports = {
     if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.accountChoiceSheet && !this.data.accountRecordsSheet && !this.data.pairingSheet) {
       const view = this._pendingBackgroundView; this._pendingBackgroundView = null; this.applyUpdateView(view, true)
     }
+    // 配对入口卡片可能因隐藏或过期被清空，且本次视图应用未触发整页重读；按当前资格兜底重拉一次。
+    if (!this.data.pairingEntry && this.loadPairingEntry) this.loadPairingEntry()
   },
   onLoad(options) {
     require('../../services/read-observer').attach(this)
