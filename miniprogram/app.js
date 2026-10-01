@@ -30,6 +30,7 @@ App({
   },
 
   onLaunch() {
+    this._startupStartedAt = Date.now()
     require('./services/export-files').cleanup(false)
     themeService.install(this)
     // 每次启动重新确认当前微信身份，本机旧登录标记不能代替账号识别。
@@ -114,6 +115,8 @@ App({
     this.globalData.loginApproved = true
     this.globalData.loginStartupPending = false
     this.globalData.categories = Array.isArray(categories) ? categories : []
+    this._identityConfirmedAt = Date.now()
+    require('./services/read-observer').record('startup', { phase: 'identity_confirmed', ms: Math.max(0, this._identityConfirmedAt - (this._startupStartedAt || this._identityConfirmedAt)) })
     return Promise.resolve(this.globalData.profile)
   },
 

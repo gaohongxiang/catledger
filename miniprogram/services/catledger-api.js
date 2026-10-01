@@ -82,7 +82,13 @@ function revalidateForeground() {
   return cache.validate(ALL_TAGS, () => cache.read(cache.stableKey('reads.validate'), READ_POLICIES['reads.validate'], () => load('reads.validate', {}, { force: true }), { force: true }))
 }
 function bootstrap(options) { return callApi('bootstrap', {}, options) }
-function identifyWechatAccount() { return read('bootstrap', {}, { force: true }, true) }
+function identifyWechatAccount() {
+  const startedAt = Date.now()
+  return read('bootstrap', {}, { force: true }, true).then(result => {
+    observer.record('identity', { action: 'bootstrap', ms: Date.now() - startedAt, ok: true })
+    return result
+  }, error => { observer.record('identity', { action: 'bootstrap', ms: Date.now() - startedAt, ok: false }); throw error })
+}
 function initializeProfileAfterConsent(data) {
   return cache.mutate(mutationTags('profile.update'), () => client.callInternal('profile.update', {
     requestId: data.requestId, nickname: data.nickname, previousNickname: ''
@@ -96,6 +102,14 @@ function peek(action, data) {
   const app = getApp()
   return app && app.hasLoginApproval() ? cache.peek(cache.stableKey(action, data)) : null
 }
-module.exports = { bootstrap, callApi, cacheToken, peek, revalidateForeground,
+function displaySnapshot(action, data) {
+  const app = getApp()
+  if (!app || !app.hasLoginApproval() || !app.globalData.uid) return null
+  cache.bindScope(envId, app.globalData.uid)
+  const snapshot = cache.snapshot(cache.stableKey(action, data))
+  if (!snapshot || !snapshot.value || snapshot.value.uid !== app.globalData.uid) return null
+  return snapshot
+}
+module.exports = { bootstrap, callApi, cacheToken, peek, displaySnapshot, revalidateForeground,
   isFresh: (action, data) => cacheToken(action, data) !== null,
   createRequestId: cloudFunctionClient.createRequestId, identifyWechatAccount, initializeProfileAfterConsent }

@@ -174,7 +174,20 @@ function createHandler({ getWxContext, repository, services = {}, logger = conso
 
       let response
       if (action === 'bootstrap') {
-        const result = await actionHandler(identity)
+        const phases = {}, allowed = new Set(['connection', 'readTransaction', 'identity', 'initialization', 'categories', 'commit', 'rollback', 'retry'])
+        let attempts = 0
+        const record = sample => {
+          if (!sample || !allowed.has(sample.phase) || !Number.isFinite(sample.ms) || sample.ms < 0) return
+          phases[sample.phase + 'Ms'] = (phases[sample.phase + 'Ms'] || 0) + sample.ms
+          if (Number.isInteger(sample.attempt)) attempts = Math.max(attempts, sample.attempt + 1)
+        }
+        let result
+        try { result = await actionHandler(identity, record) } finally {
+          if (Object.keys(phases).length) writeLog(logger, 'info', {
+            event: 'catledger-bootstrap-timing', action: 'bootstrap', traceId: traceIdFromContext(context),
+            ...phases, attempts, initialized: Boolean(result), elapsedMs: Math.max(0, now() - startedAt)
+          })
+        }
         response = {
           ok: true,
           data: {

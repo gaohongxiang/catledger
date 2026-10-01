@@ -3,17 +3,24 @@ const test = require('node:test')
 
 const { createUserRepository } = require('../src/user-repository')
 
-function createConnection({ identity, identityInsertError, userInsertError, nickname = null }) {
+function createConnection({ identity, identityInsertError, userInsertError, nickname = null, initializationVersion = 0, status = 'active' }) {
   const state = {
     began: 0,
     committed: 0,
     released: 0,
-    rolledBack: 0
+    rolledBack: 0,
+    readBegan: 0
   }
 
   return {
     state,
     attemptedUids: [],
+    statements: [],
+    async query(sql) {
+      this.statements.push(sql)
+      if (sql.includes('START TRANSACTION READ ONLY')) state.readBegan++
+      return [[]]
+    },
     async beginTransaction() {
       state.began += 1
     },
@@ -27,7 +34,9 @@ function createConnection({ identity, identityInsertError, userInsertError, nick
       state.released += 1
     },
     async execute(sql, values) {
-      if (sql.includes('SELECT uid, nickname, CAST(data_revision')) return [[{uid:identity?.uid || 'synthetic-new', nickname,dataRevision:'0'}]]
+      this.statements.push(sql)
+      if (sql.includes('SELECT i.uid')) return [identity ? [{...identity,nickname,dataRevision:'0',status,initializationVersion}] : []]
+      if (sql.includes('SELECT uid, nickname, initialization_version')) return [status==='active'?[{uid:identity?.uid || 'synthetic-new', nickname,dataRevision:'0',initializationVersion}]:[]]
       if (sql.includes('SELECT system_key')) return [[]]
       if (sql.includes('INSERT INTO catledger_users')) {
         this.attemptedUids.push(values[0])
@@ -85,15 +94,17 @@ for (const code of ['ER_DUP_ENTRY', 'ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT', 
     assert.equal(connections.length, 0)
     assert.deepEqual(first.state, {
       began: 1,
-      committed: 0,
+      committed: 1,
       released: 1,
-      rolledBack: 1
+      rolledBack: 1,
+      readBegan: 1
     })
     assert.deepEqual(second.state, {
       began: 1,
-      committed: 1,
+      committed: 2,
       released: 1,
-      rolledBack: 0
+      rolledBack: 0,
+      readBegan: 1
     })
   })
 }
@@ -120,9 +131,10 @@ test('bootstrap does not retry a non-transactional failure', async () => {
   assert.equal(connectionRequests, 1)
   assert.deepEqual(connection.state, {
     began: 1,
-    committed: 0,
+    committed: 1,
     released: 1,
-    rolledBack: 1
+    rolledBack: 1,
+    readBegan: 1
   })
 })
 
@@ -143,8 +155,8 @@ test('短UID撞到现有用户时回滚并重取新ID，不能复用其他用户
   assert.deepEqual(first.attemptedUids, ['1234567890'])
   assert.deepEqual(second.attemptedUids, ['2345678901'])
   assert.equal(first.state.rolledBack, 1)
-  assert.equal(first.state.committed, 0)
-  assert.equal(second.state.committed, 1)
+  assert.equal(first.state.committed, 1)
+  assert.equal(second.state.committed, 2)
 })
 
 test('连续短UID冲突超过重试上限时失败，所有尝试均回滚', async () => {
@@ -157,7 +169,7 @@ test('连续短UID冲突超过重试上限时失败，所有尝试均回滚', as
   })
   await assert.rejects(repository.bootstrap({ provider: 'wechat-mini', subjectHash: 'synthetic-subject' }), duplicate)
   assert.equal(attempts, 5)
-  assert.ok(connections.every(connection => connection.state.rolledBack === 1 && connection.state.committed === 0))
+  assert.ok(connections.every(connection => connection.state.rolledBack === 1 && connection.state.committed === 1))
 })
 
 test('重复登录读取已存ID，不重新生成编号', async () => {
@@ -170,4 +182,26 @@ test('重复登录读取已存ID，不重新生成编号', async () => {
   assert.equal(result.uid, '3456789012')
   assert.equal(result.isNewUser, false)
   assert.equal(result.nickname, '原有昵称')
+})
+
+test('已初始化老用户只读身份和完整分类，不取写锁、不维护或递增 revision', async () => {
+  const connection=createConnection({identity:{uid:'3456789012'},initializationVersion:1,nickname:'合成昵称'})
+  const timings=[]
+  const repository=createUserRepository({getPool:()=>({getConnection:async()=>connection})})
+  const result=await repository.bootstrap({provider:'wechat-mini',subjectHash:'synthetic-subject'},sample=>timings.push(sample))
+  assert.equal(result.dataRevision,'0');assert.equal(result.categories.length,1)
+  assert.equal(connection.state.began,0);assert.equal(connection.state.readBegan,1)
+  assert.equal(connection.state.committed,1)
+  assert.equal(connection.statements.filter(sql=>/^SELECT/.test(sql)).length,2)
+  assert.equal(connection.statements.some(sql=>/FOR UPDATE|INSERT|UPDATE catledger|SELECT system_key/.test(sql)),false)
+  assert.deepEqual(timings.map(row=>row.phase),['connection','readTransaction','identity','categories','commit'])
+  assert.ok(timings.every(row=>row.ms>=0&&Object.keys(row).length===3))
+})
+
+test('已初始化但失效的用户被拒绝，不读取分类或进入维护', async () => {
+  const connection=createConnection({identity:{uid:'3456789012'},initializationVersion:1,status:'disabled'})
+  const repository=createUserRepository({getPool:()=>({getConnection:async()=>connection})})
+  await assert.rejects(repository.bootstrap({provider:'wechat-mini',subjectHash:'synthetic-subject'}),{publicCode:'INITIALIZATION_REQUIRED'})
+  assert.equal(connection.state.began,0);assert.equal(connection.state.rolledBack,1)
+  assert.equal(connection.statements.some(sql=>/catledger_categories|FOR UPDATE/.test(sql)),false)
 })

@@ -42,11 +42,13 @@ async function validateScope(c,uid,data) {
 function createLoanChargeSync({getPool,now=Date.now,enabled=()=>process.env.CATLEDGER_LOAN_SYNC_DISABLED!=='1'}) {
   async function dueCharges(context) {
     return executeLedgerRead({getPool,...context,consistentSnapshot:true,operation:async(c,uid)=>{
-      const cutoff=today(now()),values=scope(context.data,cutoff,uid)
+      const checkedAt=now(),cutoff=today(checkedAt),values=scope(context.data,cutoff,uid)
       if(!enabled())throw ledgerError('LOAN_CHARGE_PAUSED')
       await validateScope(c,uid,context.data)
       const [[row]]=await c.execute('SELECT COUNT(*) AS count,COALESCE(SUM(f.amount_minor),0) AS amount '+DUE_FROM,values)
-      return {cutoff,count:Number(row.count),amountMinor:String(row.amount),batchLimit:40}
+      // 以服务端上海业务日限制可复用时长，客户端不自行用手机日期决定费用截止。
+      const recheckAfterMs=Math.max(0,Math.min(30000,Date.parse(cutoff+'T00:00:00+08:00')+86400000-checkedAt))
+      return {cutoff,count:Number(row.count),amountMinor:String(row.amount),batchLimit:40,recheckAfterMs}
     }})
   }
   async function syncCharges(context) {

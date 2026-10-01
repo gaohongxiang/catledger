@@ -6,6 +6,7 @@ const time = require('../../utils/time')
 const viewModel = require('../../utils/view-model')
 const profilePresentation = require('../../utils/profile-presentation')
 const themeService = require('../../theme/service')
+const observer = require('../../services/read-observer')
 
 const HOME_RECENT_LIMIT = 3
 
@@ -35,6 +36,10 @@ Page({
     displayAvatarUrl: profilePresentation.DEFAULT_AVATAR_URL,
     loading: false,
     hasDashboard: false,
+    dashboardStatus: '',
+    dashboardFresh: false,
+    chargeSyncMessage: '',
+    chargeSyncComplete: false,
     errorMessage: '',
     month: '',
     monthLabel: '',
@@ -50,6 +55,7 @@ Page({
   },
 
   onLoad: function () {
+    observer.attach(this)
     themeService.bindPage(this)
     const month = time.currentMonth()
     const loggedIn = app.hasLoginApproval()
@@ -61,6 +67,8 @@ Page({
       month: month,
       monthLabel: time.monthLabel(month),
       todayLabel: time.todayLabel()
+    }, () => {
+      if (!this._readClosed) observer.record('startup', { phase: 'shell', page: this.route, ms: Math.max(0, Date.now() - (app._startupStartedAt || Date.now())) })
     })
   },
 
@@ -83,6 +91,10 @@ Page({
     this.setData({
       loading: false,
       hasDashboard: false,
+      dashboardStatus: '',
+      dashboardFresh: false,
+      chargeSyncMessage: '',
+      chargeSyncComplete: false,
       errorMessage: '',
       netWorthText: '—',
       incomeText: '—',
@@ -130,16 +142,21 @@ Page({
   onHide: function(){pageReadSession.end(this)},
   onUnload: function(){pageReadSession.end(this)},
   loadDashboard: function (options) {
-    const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'netIncomeText', 'trendReady', 'cashFlowTrend', 'accounts', 'recentTransactions'], ['_dashboardLoad'])
+    const month = time.currentMonth()
+    const snapshot = api.displaySnapshot('dashboard.get', { month })
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'netIncomeText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
     if (this._dashboardLoad || !app.hasLoginApproval()) {
       return this._dashboardLoad || Promise.resolve()
     }
-    const month = time.currentMonth()
     const self = this
+    const readTicket = {}
+    this._dashboardReadTicket = readTicket
+    const startedAt = Date.now()
     const force = Boolean(options && (options.force || options.currentTarget))
-    this.setData({ loading: force || !api.isFresh('dashboard.get', { month: month }), errorMessage: '', month: month, monthLabel: time.monthLabel(month) })
+    this.setData({ loading: force || !api.isFresh('dashboard.get', { month: month }), errorMessage: '', month: month, monthLabel: time.monthLabel(month), dashboardFresh: false,
+      dashboardStatus: this.data.hasDashboard || snapshot ? '显示上次结果，正在检查费用并更新' : '正在检查费用并读取账本' })
 
-    const applyDashboard = function (dashboard) {
+    const applyDashboard = function (dashboard, state) {
         if (!isCurrent()) return
         const cashFlowTrend = Array.isArray(dashboard.cashFlowTrend) ? dashboard.cashFlowTrend : []
         self.setData({
@@ -148,6 +165,8 @@ Page({
           expenseText: money.formatMinor(dashboard.summary.expenseMinor),
           netIncomeText: money.formatMinor(dashboard.summary.netIncomeMinor),
           hasDashboard: true,
+          dashboardFresh: Boolean(state && state.complete),
+          dashboardStatus: !state ? '显示上次结果，正在检查费用并更新' : state.complete ? '' : '费用同步未完成，当前结果还不是最新余额',
           errorMessage: '',
           trendReady: Array.isArray(dashboard.cashFlowTrend),
           trendSparse: cashFlowTrend.filter(function (row) {
@@ -173,13 +192,35 @@ Page({
           recentTransactions: dashboard.recentTransactions
             .slice(0, HOME_RECENT_LIMIT)
             .map(viewModel.transactionView)
+        }, function () {
+          if (!isCurrent() || self._dashboardReadTicket !== readTicket) return
+          observer.record('interactive', { page: self.route, action: 'dashboard.get', phase: !state ? 'home_snapshot' : state.complete ? 'home_latest' : 'home_incomplete',
+            elapsedMs: Date.now() - startedAt, ms: Math.max(0, Date.now() - (app._identityConfirmedAt || startedAt)), source: !state && snapshot ? snapshot.source : undefined })
         })
     }
-    this._dashboardLoad = require('../../services/loan-charge-sync').beforePage(this,isCurrent).then(()=>this.fetchDashboard(month,{force,onSnapshot:applyDashboard}))
-      .then(applyDashboard)
+    // 同身份快照只作展示，先交付，再按写屏障顺序完成费用同步和正式读取。
+    if (snapshot) {
+      applyDashboard(snapshot.value)
+      observer.record('snapshot', { action: 'dashboard.get', source: snapshot.source, ms: Math.max(0, Date.now() - startedAt) })
+    }
+    const chargeSync = require('../../services/loan-charge-sync')
+    this._dashboardLoad = (async () => {
+      let sync = await chargeSync.beforePage(this,isCurrent,{force})
+      for (let round=0;round<2;round++) {
+        if (!isCurrent()) return
+        const dashboard = await this.fetchDashboard(month,{force:force&&round===0})
+        if (!isCurrent()) return
+        const verified = sync.complete && chargeSync.isVerified(sync) && sync.dataRevision === dashboard.dataRevision
+        if (!sync.complete || verified) { applyDashboard(dashboard,sync); return }
+        // 正式读取发现外部新版本或跨日，只重新核对一次；连续变化保留画面并明确待更新。
+        applyDashboard(dashboard)
+        if (round===0) sync = await chargeSync.beforePage(this,isCurrent,{force:true})
+        else this.setData({dashboardFresh:false,chargeSyncComplete:false,dashboardStatus:'账本仍在更新，当前结果待核实',chargeSyncMessage:'费用核对后账本再次变化，请重试'})
+      }
+    })()
       .catch(function () {
         if (!isCurrent()) return
-        self.setData({ errorMessage: self.data.hasDashboard ? '更新未成功，当前显示上次结果' : '账本暂时没连接上' })
+        self.setData({ errorMessage: self.data.hasDashboard ? '更新未成功，当前显示上次结果' : '账本暂时没连接上', dashboardFresh: false, dashboardStatus: self.data.hasDashboard ? '更新未完成，当前显示上次结果' : '' })
       })
       .finally(function () {
         if (!isCurrent()) return

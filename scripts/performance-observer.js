@@ -33,7 +33,7 @@ function createObserver(pool, options = {}) {
           const start = performance.now()
           try {
             const result = await target[key](...args)
-            if (/SELECT uid FROM catledger_users[\s\S]*FOR UPDATE/i.test(sql)) {
+            if (/SELECT\b[\s\S]*\bFROM catledger_users[\s\S]*FOR UPDATE/i.test(sql)) {
               acquired = performance.now(); current.userLockWaitMs += acquired - start
               if (options.onUserLock) options.onUserLock()
             }

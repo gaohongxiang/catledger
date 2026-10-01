@@ -151,7 +151,7 @@ return Object.assign({
     const self = this
     const force = Boolean(options && options.force)
     // 两个读模型独立完成；目录失败只影响筛选项，不清空已成功的列表。
-    const sync=require('../../services/loan-charge-sync').beforePage(this,isCurrent)
+    const sync=require('../../services/loan-charge-sync').beforePage(this,isCurrent,{force})
     const catalog = sync.then(()=>api.callApi('catalog.get', {}, { force })).then(function (result) {
       if (!isCurrent()) return
       const selectedAccount = self.data.accountFilters[self.data.accountFilterIndex]

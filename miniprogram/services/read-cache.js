@@ -134,6 +134,12 @@ function createReadCache(options) {
         .then(result => { checkSession(expectedSession); return result })
     },
     getSession: () => session,
+    // 复用现有写屏障、作用域与版本；只作为短期协调结果的失效依据，不授权任何写入。
+    consistencyToken(tags, expectedRevision) {
+      if (!scope || latestRevision === null || (expectedRevision !== undefined && expectedRevision !== latestRevision) ||
+        validation || [...writes].some(write => write.tags.some(tag => tags.includes(tag)))) return null
+      return session + ':' + latestRevision + ':' + stamp(tags)
+    },
     bindScope(env, uid) {
       if (typeof env !== 'string' || !env || !/^[1-9]\d{9}$/.test(uid)) return
       if (scope && scope.env === env && scope.uid === uid) return

@@ -5,7 +5,7 @@ const READ_POLICIES = Object.freeze({
   'loans.retainedCharge': { ttl:0,tags:['loans','transactions'] },
   'loans.retainedCharges': { ttl:0,tags:['loans','transactions','accounts'] },
   'loans.chargeImpact': { ttl:0,tags:['loans','transactions'] },
-  'loans.dueCharges': { ttl: 0, tags: ['loans', 'transactions', 'accountDirectory'] },
+  'loans.dueCharges': { ttl: 0, tags: ['loans', 'transactions', 'accounts', 'accountDirectory', 'categories', 'categoryDirectory'] },
   'loans.chargePlan': { ttl: 0, tags: ['loans', 'transactions', 'accountDirectory'] },
   'reads.validate': { ttl: 0, tags: ALL_TAGS },
   'loans.transaction': { ttl: Infinity, tags: ['loans', 'transactions', 'accountDirectory'] },
@@ -41,6 +41,9 @@ function mutationTags(action) {
   if (/^categories\.(create|update|archive|restore|reorder)$/.test(action)) return ['categories', 'categoryDirectory']
   if (action === 'categories.assignTransactions' || action === 'transactions.setCategory') return ['transactions']
   if (/^transactions\.(create|update|delete|deleteMany|linkRefund)$/.test(action)) return ['transactions', 'accounts']
+  // 未入账事件也参与贷款费用冲突排除；只刷新相关贷款事实，不清空账本和目录快照。
+  if (/^financeUpdates\.(prepare|organize|abandon|setRepayment)$/.test(action) ||
+    /^reviewIssues\.(resolve|resolveAccountMappings|refreshAccountGroups|resolvePairings)$/.test(action)) return ['loans']
   if (/^financeUpdates\.(post|undo)$/.test(action) || action === 'economicEvents.correct') return ['loans', 'accounts', 'transactions', 'categories', 'accountDirectory', 'categoryDirectory']
   return []
 }

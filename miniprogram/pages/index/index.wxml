@@ -1,5 +1,5 @@
 <view class="page-canvas home-page {{themeClass}}" style="{{themeStyle}}">
-  <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
+  <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note" bindtap="loadDashboard" aria-role="button">{{chargeSyncMessage}}；点此重试，或在贷款详情继续同步。</view>
   <view class="home-header home-content-line">
     <view class="home-intro">
       <text class="home-greeting">{{todayLabel}}</text>
@@ -40,6 +40,7 @@
       </view>
     </view>
 
+    <view wx:if="{{loggedIn && dashboardStatus}}" class="charge-sync-note" aria-role="status">{{dashboardStatus}}</view>
     <ui-state wx:if="{{errorMessage && hasDashboard}}" error description="{{errorMessage}} · 重试" bindtap="loadDashboard" />
     <view class="home-flow">
 

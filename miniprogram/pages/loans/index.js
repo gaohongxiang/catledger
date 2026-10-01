@@ -24,7 +24,7 @@ Page({
     if (this._load) return this._load
     this.setData({ loading: true, errorMessage: '' })
     this._load = (async () => {
-      await require('../../services/loan-charge-sync').beforePage(this,current)
+      await require('../../services/loan-charge-sync').beforePage(this,current,{force:Boolean(force)})
       if (this._accountId) {
         const catalog = await api.callApi('catalog.get', {}, { force: Boolean(force) })
         if (!current()) return

@@ -68,7 +68,7 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
   const revision=async()=>String((await source.owner.execute('SELECT data_revision AS v FROM catledger_users WHERE uid=?',[uid]))[0][0].v)
   const startData={requestId:randomUUID()},job=await api('dataExports.start',startData),rev=await revision()
-  assert.equal(job.schemaVersion,29);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
+  assert.equal(job.schemaVersion,30);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
   await assert.rejects(call(other.api,'dataExports.page',{exportId:job.exportId}),{publicCode:'NOT_FOUND'})
   const records=[],parts=[];let cursor=null,terminal=null,pageCount=0
   do{
