@@ -1,0 +1,3986 @@
+{
+  "task": "JOINT-20261001",
+  "measuredDate": "2026-10-01",
+  "purpose": "Same-machine synthetic measurements and bounded native verification; no production or phone data.",
+  "limitations": [
+    "No physical phone, real WAN, cloud cold-start or database auto-suspend measurement.",
+    "Page timing uses actual VM setData completion callbacks, not native frame presentation.",
+    "100 pairs use 3 samples per implementation; 1000 pairs use 1 sample. No P95 inference.",
+    "Timing begins after initial workbench summary/list. Optional pagination and user thinking time are excluded.",
+    "Request and SQL durations can overlap; do not sum them with client wall time."
+  ],
+  "startup": {
+    "environment": {
+      "node": "v24.14.1",
+      "mysql": "8.4.11",
+      "cpu": "Apple M2 Max",
+      "runs": 3,
+      "transactions": 1000,
+      "timing": "local handler/real Page VM setData callback proxy; excludes phone rendering, cloud cold-start and network",
+      "sources": [
+        {
+          "label": "baseline",
+          "head": "cf8ab199e91f8e847da494d6143243a6784c47b3",
+          "measuredSourcesSha256": "d9c934e26245740e63fda74027c3ed0b7392915a80c70a782eb2dee8aebf0f81"
+        },
+        {
+          "label": "current",
+          "head": "93e4ac1ba466a9ca6986093c3160ac75b6ebefac",
+          "measuredSourcesSha256": "8d6cabf4ae2cac9eec151f2fd01be420d250d5c4628718e370f702bf9a518431"
+        }
+      ]
+    },
+    "samples": [
+      {
+        "source": "baseline",
+        "run": 1,
+        "mode": "initialized-bootstrap",
+        "requests": 1,
+        "sqlCount": 6,
+        "lockMs": 1.25,
+        "connectionMs": 0.03,
+        "ms": 3.15,
+        "responseBytes": 13012,
+        "bootstrapPhases": null
+      },
+      {
+        "source": "baseline",
+        "run": 1,
+        "mode": "no-snapshot",
+        "requests": 3,
+        "sqlCount": 18,
+        "lockMs": 1.11,
+        "identityMs": 2.98,
+        "firstContentMs": 24.58,
+        "identityToContentMs": 21.6,
+        "latestMs": 24.62,
+        "responseBytes": 17273,
+        "sets": 5,
+        "setDataBytes": 4234,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 1.82
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 3.95
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 11.81
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 1,
+        "mode": "stored-snapshot",
+        "requests": 3,
+        "sqlCount": 15,
+        "lockMs": 1.04,
+        "identityMs": 2.11,
+        "firstContentMs": 6.49,
+        "identityToContentMs": 4.38,
+        "latestMs": 7.61,
+        "responseBytes": 13261,
+        "sets": 6,
+        "setDataBytes": 8130,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 1.84
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.28
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 0.82
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 1,
+        "mode": "repeat-home",
+        "requests": 1,
+        "sqlCount": 5,
+        "ms": 1.43,
+        "responseBytes": 158,
+        "handlerPhases": [
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.11
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 2,
+        "mode": "initialized-bootstrap",
+        "requests": 1,
+        "sqlCount": 6,
+        "lockMs": 0.94,
+        "connectionMs": 0.01,
+        "ms": 1.53,
+        "responseBytes": 13012,
+        "bootstrapPhases": null
+      },
+      {
+        "source": "baseline",
+        "run": 2,
+        "mode": "no-snapshot",
+        "requests": 3,
+        "sqlCount": 18,
+        "lockMs": 0.98,
+        "identityMs": 2.59,
+        "firstContentMs": 14.33,
+        "identityToContentMs": 11.74,
+        "latestMs": 14.34,
+        "responseBytes": 17273,
+        "sets": 5,
+        "setDataBytes": 4234,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 2.31
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 3.87
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 4.32
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 2,
+        "mode": "stored-snapshot",
+        "requests": 3,
+        "sqlCount": 15,
+        "lockMs": 1.03,
+        "identityMs": 2.02,
+        "firstContentMs": 5.81,
+        "identityToContentMs": 3.79,
+        "latestMs": 6.71,
+        "responseBytes": 13261,
+        "sets": 6,
+        "setDataBytes": 8130,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 1.77
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 0.65
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 2,
+        "mode": "repeat-home",
+        "requests": 1,
+        "sqlCount": 5,
+        "ms": 1.17,
+        "responseBytes": 158,
+        "handlerPhases": [
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 0.96
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 3,
+        "mode": "initialized-bootstrap",
+        "requests": 1,
+        "sqlCount": 6,
+        "lockMs": 0.84,
+        "connectionMs": 0.01,
+        "ms": 1.37,
+        "responseBytes": 13012,
+        "bootstrapPhases": null
+      },
+      {
+        "source": "baseline",
+        "run": 3,
+        "mode": "no-snapshot",
+        "requests": 3,
+        "sqlCount": 18,
+        "lockMs": 0.88,
+        "identityMs": 1.61,
+        "firstContentMs": 10.35,
+        "identityToContentMs": 8.74,
+        "latestMs": 10.36,
+        "responseBytes": 17273,
+        "sets": 5,
+        "setDataBytes": 4234,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 1.4
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.62
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 4.37
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 3,
+        "mode": "stored-snapshot",
+        "requests": 3,
+        "sqlCount": 15,
+        "lockMs": 0.88,
+        "identityMs": 2.04,
+        "firstContentMs": 6.31,
+        "identityToContentMs": 4.28,
+        "latestMs": 7.33,
+        "responseBytes": 13261,
+        "sets": 6,
+        "setDataBytes": 8130,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 1.72
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.27
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 0.73
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 3,
+        "mode": "repeat-home",
+        "requests": 1,
+        "sqlCount": 5,
+        "ms": 1.33,
+        "responseBytes": 158,
+        "handlerPhases": [
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.1
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "mode": "initialized-bootstrap",
+        "requests": 1,
+        "sqlCount": 5,
+        "lockMs": 0,
+        "connectionMs": 0.01,
+        "ms": 1.54,
+        "responseBytes": 13012,
+        "bootstrapPhases": {
+          "connectionMs": 0,
+          "readTransactionMs": 1,
+          "identityMs": 0,
+          "categoriesMs": 0,
+          "commitMs": 0,
+          "elapsedMs": 1
+        }
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "mode": "no-snapshot",
+        "requests": 3,
+        "sqlCount": 17,
+        "lockMs": 0,
+        "identityMs": 1.91,
+        "firstContentMs": 14.91,
+        "identityToContentMs": 13,
+        "latestMs": 14.96,
+        "responseBytes": 17296,
+        "sets": 5,
+        "setDataBytes": 4354,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 1.01
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.08
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 4.24
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "mode": "stored-snapshot",
+        "requests": 3,
+        "sqlCount": 14,
+        "lockMs": 0,
+        "identityMs": 1.12,
+        "firstContentMs": 3.14,
+        "identityToContentMs": 2.02,
+        "latestMs": 5.95,
+        "responseBytes": 13284,
+        "sets": 6,
+        "setDataBytes": 8357,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 0.89
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.01
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 0.78
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "mode": "repeat-home",
+        "requests": 0,
+        "sqlCount": 0,
+        "ms": 0.24,
+        "responseBytes": 0,
+        "handlerPhases": []
+      },
+      {
+        "source": "current",
+        "run": 2,
+        "mode": "initialized-bootstrap",
+        "requests": 1,
+        "sqlCount": 5,
+        "lockMs": 0,
+        "connectionMs": 0.01,
+        "ms": 1.21,
+        "responseBytes": 13012,
+        "bootstrapPhases": {
+          "connectionMs": 0,
+          "readTransactionMs": 1,
+          "identityMs": 0,
+          "categoriesMs": 0,
+          "commitMs": 1,
+          "elapsedMs": 2
+        }
+      },
+      {
+        "source": "current",
+        "run": 2,
+        "mode": "no-snapshot",
+        "requests": 3,
+        "sqlCount": 17,
+        "lockMs": 0,
+        "identityMs": 1.25,
+        "firstContentMs": 8.81,
+        "identityToContentMs": 7.56,
+        "latestMs": 8.83,
+        "responseBytes": 17296,
+        "sets": 5,
+        "setDataBytes": 4354,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 1.03
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.09
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 3.72
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 2,
+        "mode": "stored-snapshot",
+        "requests": 3,
+        "sqlCount": 14,
+        "lockMs": 0,
+        "identityMs": 1.37,
+        "firstContentMs": 3.61,
+        "identityToContentMs": 2.24,
+        "latestMs": 6.35,
+        "responseBytes": 13284,
+        "sets": 6,
+        "setDataBytes": 8357,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 1.14
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.02
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 0.65
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 2,
+        "mode": "repeat-home",
+        "requests": 0,
+        "sqlCount": 0,
+        "ms": 0.26,
+        "responseBytes": 0,
+        "handlerPhases": []
+      },
+      {
+        "source": "current",
+        "run": 3,
+        "mode": "initialized-bootstrap",
+        "requests": 1,
+        "sqlCount": 5,
+        "lockMs": 0,
+        "connectionMs": 0.01,
+        "ms": 0.95,
+        "responseBytes": 13012,
+        "bootstrapPhases": {
+          "connectionMs": 0,
+          "readTransactionMs": 1,
+          "identityMs": 0,
+          "categoriesMs": 0,
+          "commitMs": 0,
+          "elapsedMs": 1
+        }
+      },
+      {
+        "source": "current",
+        "run": 3,
+        "mode": "no-snapshot",
+        "requests": 3,
+        "sqlCount": 17,
+        "lockMs": 0,
+        "identityMs": 1.11,
+        "firstContentMs": 9.46,
+        "identityToContentMs": 8.35,
+        "latestMs": 9.47,
+        "responseBytes": 17296,
+        "sets": 5,
+        "setDataBytes": 4354,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 0.89
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.15
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 3.8
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 3,
+        "mode": "stored-snapshot",
+        "requests": 3,
+        "sqlCount": 14,
+        "lockMs": 0,
+        "identityMs": 1.26,
+        "firstContentMs": 3.3,
+        "identityToContentMs": 2.05,
+        "latestMs": 6.08,
+        "responseBytes": 13284,
+        "sets": 6,
+        "setDataBytes": 8357,
+        "handlerPhases": [
+          {
+            "action": "bootstrap",
+            "serverMs": 1.05
+          },
+          {
+            "action": "loans.dueCharges",
+            "serverMs": 1.04
+          },
+          {
+            "action": "dashboard.get",
+            "serverMs": 0.72
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 3,
+        "mode": "repeat-home",
+        "requests": 0,
+        "sqlCount": 0,
+        "ms": 0.23,
+        "responseBytes": 0,
+        "handlerPhases": []
+      }
+    ]
+  },
+  "review": {
+    "environment": {
+      "runs": 3,
+      "records": 8,
+      "cpu": "Apple M2 Max",
+      "node": "v24.14.1",
+      "mysql": "8.4.11",
+      "timing": "local real Page/service/handler; setData callback VM proxy, excludes native rendering, real network and cloud cold-start",
+      "sql": "database round trips including transaction controls; overlapping SQL ms must not be added to client wall time",
+      "measurementSha256": "afa2a6cc9689ddf19c658a27985567c5dad9e1acf76cd33452568cde27bd14a8",
+      "sourceHashScope": "Git-listed JS/JSON/WXML/WXSS under cloudfunctions, shared and miniprogram, plus test/helpers/read-runtime.js; includes untracked, non-ignored source files",
+      "metricDefinitions": {
+        "requestBoundary": "real Page cloud-call adapter entering the real local import service through its promise settlement; initial workbench summary/list and closing are excluded",
+        "observedSerialRequestRounds": "longest chain of non-overlapping real requests by exact start/settlement event order: start round = 1 + maximum round already settled; zero requests gives zero rounds. This measures temporal serialization, not a proven await/causal dependency graph; concurrency limits and independent scheduling can also increase it",
+        "maxConcurrentRequests": "maximum requests entered but not yet settled at the same real-service boundary; not SQL connection concurrency",
+        "duplicateRequests": "within one sample, sum(count - 1) for repeated action plus canonical JSON data; object key order and omitted undefined do not change identity, array order does; first requests are excluded",
+        "duplicateRequestGroups": "number of action-plus-data identities requested more than once; duplicateActions groups only excess requests by action; no arguments or identity keys are emitted",
+        "viewSessionCache": "existing import-view-session cache events captured before observer retention filtering. hits includes retained responses and pending-request coalescing; these cannot be separated by the existing event. Baseline without this emitter reports available:false and null counts, not inferred zero hits",
+        "requestTimeline": "actual start/settlement elapsed ms plus unrounded event order and observed round; actions only, no request arguments",
+        "failedRequests": "real service rejection, synchronous throw, or response without ok:true"
+      },
+      "sources": [
+        {
+          "label": "baseline",
+          "head": "cf8ab199e91f8e847da494d6143243a6784c47b3",
+          "measuredSourcesSha256": "3820fc4042214418d6151693315616ee97a00268fafdec0b86856fadf8fbdda8",
+          "measuredSourcesSha256End": "3820fc4042214418d6151693315616ee97a00268fafdec0b86856fadf8fbdda8"
+        },
+        {
+          "label": "current",
+          "head": "93e4ac1ba466a9ca6986093c3160ac75b6ebefac",
+          "measuredSourcesSha256": "b019ef29b4a4a598621cac76763a2b87045dbfac58c722e770c500987df24b9f",
+          "measuredSourcesSha256End": "b019ef29b4a4a598621cac76763a2b87045dbfac58c722e770c500987df24b9f"
+        }
+      ],
+      "measurementSha256End": "afa2a6cc9689ddf19c658a27985567c5dad9e1acf76cd33452568cde27bd14a8"
+    },
+    "samples": [
+      {
+        "source": "baseline",
+        "run": 1,
+        "kind": "fields",
+        "mode": "first-open",
+        "responseBytes": 13636,
+        "maxResponseBytes": 3937,
+        "sets": 9,
+        "setDataBytes": 12225,
+        "maxSetDataBytes": 10005,
+        "feedbackMs": 40.64,
+        "contentMs": 40.64,
+        "readyMs": 40.64,
+        "evidenceMs": 57.8,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 57.94,
+        "requests": 10,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 90,
+        "sqlMs": 41.28,
+        "connectionMs": 28.76,
+        "lockMs": 0,
+        "measuredRequests": 10,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.83,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 8.65,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.86,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 13.02,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 13.26,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 18.57,
+            "endOrder": 9,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 13.3,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 17.02,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 13.32,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 37.26,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 37.35,
+            "startOrder": 11,
+            "observedRound": 3,
+            "concurrencyAtStart": 1,
+            "endMs": 39.17,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 41.11,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 47.25,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 41.15,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 44.34,
+            "endOrder": 15,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 47.66,
+            "startOrder": 17,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 49.99,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 50.08,
+            "startOrder": 19,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 57.65,
+            "endOrder": 20,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 1,
+        "kind": "fields",
+        "mode": "same-version-reopen",
+        "responseBytes": 13636,
+        "maxResponseBytes": 3937,
+        "sets": 9,
+        "setDataBytes": 12225,
+        "maxSetDataBytes": 10005,
+        "feedbackMs": 11.22,
+        "contentMs": 11.22,
+        "readyMs": 11.22,
+        "evidenceMs": 18.51,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 18.58,
+        "requests": 10,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 90,
+        "sqlMs": 25.64,
+        "connectionMs": 0.26,
+        "lockMs": 0,
+        "measuredRequests": 10,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.11,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 5.36,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.14,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 3.08,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.45,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 8.35,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.47,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 8.99,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.48,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 8.56,
+            "endOrder": 9,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 8.61,
+            "startOrder": 10,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 10.59,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 11.36,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 14.59,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 11.39,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 13.8,
+            "endOrder": 15,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 14.75,
+            "startOrder": 17,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 16.69,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 16.74,
+            "startOrder": 19,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 18.42,
+            "endOrder": 20,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 2,
+        "kind": "fields",
+        "mode": "first-open",
+        "responseBytes": 13636,
+        "maxResponseBytes": 3937,
+        "sets": 9,
+        "setDataBytes": 12225,
+        "maxSetDataBytes": 10005,
+        "feedbackMs": 12.39,
+        "contentMs": 12.39,
+        "readyMs": 12.39,
+        "evidenceMs": 18.57,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 18.63,
+        "requests": 10,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 90,
+        "sqlMs": 31.7,
+        "connectionMs": 0.19,
+        "lockMs": 0,
+        "measuredRequests": 10,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.1,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 3.77,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.12,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 2.23,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.86,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 10.72,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.88,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 10.29,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.89,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 9.78,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 9.85,
+            "startOrder": 9,
+            "observedRound": 3,
+            "concurrencyAtStart": 3,
+            "endMs": 11.76,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 12.55,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 15.2,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 12.58,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 14.82,
+            "endOrder": 15,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 15.36,
+            "startOrder": 17,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 16.93,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 16.98,
+            "startOrder": 19,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 18.47,
+            "endOrder": 20,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 2,
+        "kind": "fields",
+        "mode": "same-version-reopen",
+        "responseBytes": 13636,
+        "maxResponseBytes": 3937,
+        "sets": 9,
+        "setDataBytes": 12225,
+        "maxSetDataBytes": 10005,
+        "feedbackMs": 8.77,
+        "contentMs": 8.77,
+        "readyMs": 8.77,
+        "evidenceMs": 16.26,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 16.32,
+        "requests": 10,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 90,
+        "sqlMs": 21.25,
+        "connectionMs": 0.17,
+        "lockMs": 0,
+        "measuredRequests": 10,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.07,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 3.67,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.1,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 1.99,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.81,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 5.97,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.83,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 6.47,
+            "endOrder": 9,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.84,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 6.7,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.75,
+            "startOrder": 11,
+            "observedRound": 3,
+            "concurrencyAtStart": 1,
+            "endMs": 8.35,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.86,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 12.85,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.88,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 11.08,
+            "endOrder": 15,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 12.98,
+            "startOrder": 17,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 14.68,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 14.72,
+            "startOrder": 19,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 16.21,
+            "endOrder": 20,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 3,
+        "kind": "fields",
+        "mode": "first-open",
+        "responseBytes": 13636,
+        "maxResponseBytes": 3937,
+        "sets": 9,
+        "setDataBytes": 12225,
+        "maxSetDataBytes": 10005,
+        "feedbackMs": 8.45,
+        "contentMs": 8.45,
+        "readyMs": 8.45,
+        "evidenceMs": 14.15,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 14.19,
+        "requests": 10,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 90,
+        "sqlMs": 18.67,
+        "connectionMs": 0.18,
+        "lockMs": 0,
+        "measuredRequests": 10,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.13,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 4.29,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.29,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 2.44,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.42,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 6.67,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.44,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 6.71,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.45,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 6.51,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.58,
+            "startOrder": 9,
+            "observedRound": 3,
+            "concurrencyAtStart": 3,
+            "endMs": 7.91,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.57,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 11.15,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.58,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 10.72,
+            "endOrder": 15,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 11.32,
+            "startOrder": 17,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 12.8,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 12.85,
+            "startOrder": 19,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 14.08,
+            "endOrder": 20,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 3,
+        "kind": "fields",
+        "mode": "same-version-reopen",
+        "responseBytes": 13636,
+        "maxResponseBytes": 3937,
+        "sets": 9,
+        "setDataBytes": 12225,
+        "maxSetDataBytes": 10005,
+        "feedbackMs": 7.58,
+        "contentMs": 7.58,
+        "readyMs": 7.58,
+        "evidenceMs": 13.66,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 13.71,
+        "requests": 10,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 90,
+        "sqlMs": 18.38,
+        "connectionMs": 0.22,
+        "lockMs": 0,
+        "measuredRequests": 10,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.06,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 3.45,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.08,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 1.93,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.54,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 6.05,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.56,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 5.71,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.57,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 5.75,
+            "endOrder": 9,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.79,
+            "startOrder": 10,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 7.14,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 7.67,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 10.35,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 7.69,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 9.84,
+            "endOrder": 15,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 10.59,
+            "startOrder": 17,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 12.25,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 12.29,
+            "startOrder": 19,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 13.59,
+            "endOrder": 20,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 1,
+        "kind": "historical",
+        "mode": "first-open",
+        "responseBytes": 14766,
+        "maxResponseBytes": 3911,
+        "sets": 12,
+        "setDataBytes": 12741,
+        "maxSetDataBytes": 9966,
+        "feedbackMs": 8.76,
+        "contentMs": 8.76,
+        "readyMs": 14.86,
+        "evidenceMs": 18.01,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 18.1,
+        "requests": 11,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 100,
+        "sqlMs": 31.36,
+        "connectionMs": 0.3,
+        "lockMs": 0,
+        "measuredRequests": 11,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.1,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 4.27,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.13,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 2.59,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.41,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 6.38,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.44,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 7.33,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.45,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 6.5,
+            "endOrder": 9,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.55,
+            "startOrder": 10,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 8.18,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 9.04,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 14.9,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 9.07,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 14.52,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 9.09,
+            "startOrder": 15,
+            "observedRound": 4,
+            "concurrencyAtStart": 3,
+            "endMs": 14.7,
+            "endOrder": 17,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 15.05,
+            "startOrder": 19,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 16.63,
+            "endOrder": 20,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 16.69,
+            "startOrder": 21,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 17.91,
+            "endOrder": 22,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 1,
+        "kind": "historical",
+        "mode": "same-version-reopen",
+        "responseBytes": 14766,
+        "maxResponseBytes": 3911,
+        "sets": 12,
+        "setDataBytes": 12741,
+        "maxSetDataBytes": 9966,
+        "feedbackMs": 8.48,
+        "contentMs": 8.48,
+        "readyMs": 8.48,
+        "evidenceMs": 15.14,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 15.18,
+        "requests": 11,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 100,
+        "sqlMs": 24.19,
+        "connectionMs": 0.25,
+        "lockMs": 0,
+        "measuredRequests": 11,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.11,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 4.44,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.13,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 2.85,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.52,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 7.1,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.54,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 7.06,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.55,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 6.26,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.31,
+            "startOrder": 9,
+            "observedRound": 3,
+            "concurrencyAtStart": 3,
+            "endMs": 7.99,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.62,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 12.07,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.64,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 11.15,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.66,
+            "startOrder": 15,
+            "observedRound": 4,
+            "concurrencyAtStart": 3,
+            "endMs": 11.68,
+            "endOrder": 17,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 12.18,
+            "startOrder": 19,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 13.65,
+            "endOrder": 20,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 13.7,
+            "startOrder": 21,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 15.08,
+            "endOrder": 22,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 2,
+        "kind": "historical",
+        "mode": "first-open",
+        "responseBytes": 14766,
+        "maxResponseBytes": 3911,
+        "sets": 12,
+        "setDataBytes": 12741,
+        "maxSetDataBytes": 9966,
+        "feedbackMs": 7.9,
+        "contentMs": 7.9,
+        "readyMs": 10.77,
+        "evidenceMs": 13.74,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 13.78,
+        "requests": 11,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 100,
+        "sqlMs": 20.69,
+        "connectionMs": 0.25,
+        "lockMs": 0,
+        "measuredRequests": 11,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.1,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 3.74,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.12,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 2.45,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.83,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 5.89,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.85,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 6,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.86,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 5.48,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.54,
+            "startOrder": 9,
+            "observedRound": 3,
+            "concurrencyAtStart": 3,
+            "endMs": 7.29,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.09,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 10.79,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.13,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 10.35,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.15,
+            "startOrder": 15,
+            "observedRound": 4,
+            "concurrencyAtStart": 3,
+            "endMs": 10.72,
+            "endOrder": 17,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 10.94,
+            "startOrder": 19,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 12.52,
+            "endOrder": 20,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 12.57,
+            "startOrder": 21,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 13.67,
+            "endOrder": 22,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 2,
+        "kind": "historical",
+        "mode": "same-version-reopen",
+        "responseBytes": 14766,
+        "maxResponseBytes": 3911,
+        "sets": 12,
+        "setDataBytes": 12741,
+        "maxSetDataBytes": 9966,
+        "feedbackMs": 7.82,
+        "contentMs": 7.82,
+        "readyMs": 7.82,
+        "evidenceMs": 14.42,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 14.46,
+        "requests": 11,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 100,
+        "sqlMs": 21.82,
+        "connectionMs": 0.23,
+        "lockMs": 0,
+        "measuredRequests": 11,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.05,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 3.44,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.07,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 1.79,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.56,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 5.67,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.59,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 5.82,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.6,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 5.71,
+            "endOrder": 9,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.75,
+            "startOrder": 10,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 7.3,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 7.95,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 11.1,
+            "endOrder": 17,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 7.97,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 10.36,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 7.99,
+            "startOrder": 15,
+            "observedRound": 4,
+            "concurrencyAtStart": 3,
+            "endMs": 11.32,
+            "endOrder": 19,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 11.24,
+            "startOrder": 18,
+            "observedRound": 5,
+            "concurrencyAtStart": 2,
+            "endMs": 13.02,
+            "endOrder": 20,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 13.06,
+            "startOrder": 21,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 14.36,
+            "endOrder": 22,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 3,
+        "kind": "historical",
+        "mode": "first-open",
+        "responseBytes": 14766,
+        "maxResponseBytes": 3911,
+        "sets": 12,
+        "setDataBytes": 12741,
+        "maxSetDataBytes": 9966,
+        "feedbackMs": 8.17,
+        "contentMs": 8.17,
+        "readyMs": 11.17,
+        "evidenceMs": 17.09,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 17.13,
+        "requests": 11,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 100,
+        "sqlMs": 23.58,
+        "connectionMs": 0.29,
+        "lockMs": 0,
+        "measuredRequests": 11,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.14,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 4.04,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.16,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 2.63,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.15,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 6.11,
+            "endOrder": 9,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.18,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 6.03,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 4.19,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 6.17,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.22,
+            "startOrder": 11,
+            "observedRound": 3,
+            "concurrencyAtStart": 1,
+            "endMs": 7.57,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.33,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 11.19,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.35,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 10.57,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 8.37,
+            "startOrder": 15,
+            "observedRound": 4,
+            "concurrencyAtStart": 3,
+            "endMs": 11.1,
+            "endOrder": 17,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 11.34,
+            "startOrder": 19,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 15.57,
+            "endOrder": 20,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 15.63,
+            "startOrder": 21,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 16.99,
+            "endOrder": 22,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "baseline",
+        "run": 3,
+        "kind": "historical",
+        "mode": "same-version-reopen",
+        "responseBytes": 14766,
+        "maxResponseBytes": 3911,
+        "sets": 12,
+        "setDataBytes": 12741,
+        "maxSetDataBytes": 9966,
+        "feedbackMs": 7.44,
+        "contentMs": 7.44,
+        "readyMs": 7.44,
+        "evidenceMs": 13.74,
+        "viewSessionCache": {
+          "available": false,
+          "lookups": null,
+          "hits": null,
+          "misses": null,
+          "byAction": null
+        },
+        "totalMs": 13.79,
+        "requests": 11,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 100,
+        "sqlMs": 20.19,
+        "connectionMs": 0.19,
+        "lockMs": 0,
+        "measuredRequests": 11,
+        "observedSerialRequestRounds": 6,
+        "maxConcurrentRequests": 3,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.07,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 3.65,
+            "endOrder": 4,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 0.1,
+            "startOrder": 2,
+            "observedRound": 1,
+            "concurrencyAtStart": 2,
+            "endMs": 1.97,
+            "endOrder": 3,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.74,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 5.61,
+            "endOrder": 9,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.76,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 5.57,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 3.77,
+            "startOrder": 7,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 5.69,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.74,
+            "startOrder": 11,
+            "observedRound": 3,
+            "concurrencyAtStart": 1,
+            "endMs": 7.01,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 7.54,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 10.56,
+            "endOrder": 18,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 7.55,
+            "startOrder": 14,
+            "observedRound": 4,
+            "concurrencyAtStart": 2,
+            "endMs": 9.62,
+            "endOrder": 16,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 7.56,
+            "startOrder": 15,
+            "observedRound": 4,
+            "concurrencyAtStart": 3,
+            "endMs": 10.47,
+            "endOrder": 17,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 10.69,
+            "startOrder": 19,
+            "observedRound": 5,
+            "concurrencyAtStart": 1,
+            "endMs": 12.3,
+            "endOrder": 20,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 12.34,
+            "startOrder": 21,
+            "observedRound": 6,
+            "concurrencyAtStart": 1,
+            "endMs": 13.67,
+            "endOrder": 22,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "kind": "fields",
+        "mode": "first-open",
+        "responseBytes": 10340,
+        "maxResponseBytes": 3937,
+        "sets": 11,
+        "setDataBytes": 16683,
+        "maxSetDataBytes": 8551,
+        "feedbackMs": 0.38,
+        "contentMs": 5.51,
+        "readyMs": 14.63,
+        "evidenceMs": 23.3,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 8,
+          "hits": 1,
+          "misses": 7,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "reviewIssues.members": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "financeUpdates.options": {
+              "lookups": 4,
+              "hits": 0,
+              "misses": 4
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            }
+          }
+        },
+        "totalMs": 23.38,
+        "requests": 7,
+        "actions": [
+          "reviewIssues.get",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "economicEvents.evidence",
+          "financeUpdates.options",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 61,
+        "sqlMs": 22.75,
+        "connectionMs": 11.23,
+        "lockMs": 0,
+        "measuredRequests": 7,
+        "observedSerialRequestRounds": 4,
+        "maxConcurrentRequests": 4,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.69,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 5.12,
+            "endOrder": 2,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.33,
+            "startOrder": 3,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 10.62,
+            "endOrder": 7,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.36,
+            "startOrder": 4,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 11.07,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.38,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 11.25,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 6.41,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 4,
+            "endMs": 21.22,
+            "endOrder": 12,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 11.17,
+            "startOrder": 9,
+            "observedRound": 3,
+            "concurrencyAtStart": 3,
+            "endMs": 13.17,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 21.32,
+            "startOrder": 13,
+            "observedRound": 4,
+            "concurrencyAtStart": 1,
+            "endMs": 23.09,
+            "endOrder": 14,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "kind": "fields",
+        "mode": "same-version-reopen",
+        "responseBytes": 0,
+        "maxResponseBytes": 0,
+        "sets": 11,
+        "setDataBytes": 16683,
+        "maxSetDataBytes": 8551,
+        "feedbackMs": 0.16,
+        "contentMs": 0.38,
+        "readyMs": 1.05,
+        "evidenceMs": 0.65,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 8,
+          "hits": 8,
+          "misses": 0,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "reviewIssues.members": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "financeUpdates.options": {
+              "lookups": 4,
+              "hits": 4,
+              "misses": 0
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            }
+          }
+        },
+        "totalMs": 1.09,
+        "requests": 0,
+        "actions": [],
+        "sqlCount": 0,
+        "sqlMs": 0,
+        "connectionMs": 0,
+        "lockMs": 0,
+        "measuredRequests": 0,
+        "observedSerialRequestRounds": 0,
+        "maxConcurrentRequests": 0,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": []
+      },
+      {
+        "source": "current",
+        "run": 2,
+        "kind": "fields",
+        "mode": "first-open",
+        "responseBytes": 10340,
+        "maxResponseBytes": 3937,
+        "sets": 11,
+        "setDataBytes": 16683,
+        "maxSetDataBytes": 8551,
+        "feedbackMs": 0.15,
+        "contentMs": 5.94,
+        "readyMs": 12.03,
+        "evidenceMs": 12.14,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 8,
+          "hits": 1,
+          "misses": 7,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "reviewIssues.members": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "financeUpdates.options": {
+              "lookups": 4,
+              "hits": 0,
+              "misses": 4
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            }
+          }
+        },
+        "totalMs": 12.17,
+        "requests": 7,
+        "actions": [
+          "reviewIssues.get",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "economicEvents.evidence",
+          "financeUpdates.options",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 61,
+        "sqlMs": 20.02,
+        "connectionMs": 0.28,
+        "lockMs": 0,
+        "measuredRequests": 7,
+        "observedSerialRequestRounds": 3,
+        "maxConcurrentRequests": 4,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.22,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 5.59,
+            "endOrder": 2,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.31,
+            "startOrder": 3,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 9.31,
+            "endOrder": 7,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.35,
+            "startOrder": 4,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 9.61,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 6.37,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 9.75,
+            "endOrder": 10,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 6.41,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 4,
+            "endMs": 9.81,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 9.68,
+            "startOrder": 9,
+            "observedRound": 3,
+            "concurrencyAtStart": 3,
+            "endMs": 11.53,
+            "endOrder": 13,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 9.87,
+            "startOrder": 12,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 12.06,
+            "endOrder": 14,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 2,
+        "kind": "fields",
+        "mode": "same-version-reopen",
+        "responseBytes": 0,
+        "maxResponseBytes": 0,
+        "sets": 11,
+        "setDataBytes": 16683,
+        "maxSetDataBytes": 8551,
+        "feedbackMs": 0.18,
+        "contentMs": 0.39,
+        "readyMs": 1.05,
+        "evidenceMs": 0.66,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 8,
+          "hits": 8,
+          "misses": 0,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "reviewIssues.members": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "financeUpdates.options": {
+              "lookups": 4,
+              "hits": 4,
+              "misses": 0
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            }
+          }
+        },
+        "totalMs": 1.1,
+        "requests": 0,
+        "actions": [],
+        "sqlCount": 0,
+        "sqlMs": 0,
+        "connectionMs": 0,
+        "lockMs": 0,
+        "measuredRequests": 0,
+        "observedSerialRequestRounds": 0,
+        "maxConcurrentRequests": 0,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": []
+      },
+      {
+        "source": "current",
+        "run": 3,
+        "kind": "fields",
+        "mode": "first-open",
+        "responseBytes": 10340,
+        "maxResponseBytes": 3937,
+        "sets": 11,
+        "setDataBytes": 16683,
+        "maxSetDataBytes": 8551,
+        "feedbackMs": 0.17,
+        "contentMs": 4.87,
+        "readyMs": 11.21,
+        "evidenceMs": 10.7,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 8,
+          "hits": 1,
+          "misses": 7,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "reviewIssues.members": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "financeUpdates.options": {
+              "lookups": 4,
+              "hits": 0,
+              "misses": 4
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            }
+          }
+        },
+        "totalMs": 11.24,
+        "requests": 7,
+        "actions": [
+          "reviewIssues.get",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "financeUpdates.options",
+          "economicEvents.evidence",
+          "financeUpdates.options",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 61,
+        "sqlMs": 18.2,
+        "connectionMs": 0.27,
+        "lockMs": 0,
+        "measuredRequests": 7,
+        "observedSerialRequestRounds": 3,
+        "maxConcurrentRequests": 4,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.25,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 4.59,
+            "endOrder": 2,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.15,
+            "startOrder": 3,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 7.92,
+            "endOrder": 7,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.18,
+            "startOrder": 4,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 8.11,
+            "endOrder": 9,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 5.2,
+            "startOrder": 5,
+            "observedRound": 2,
+            "concurrencyAtStart": 3,
+            "endMs": 8,
+            "endOrder": 8,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 5.25,
+            "startOrder": 6,
+            "observedRound": 2,
+            "concurrencyAtStart": 4,
+            "endMs": 8.32,
+            "endOrder": 11,
+            "ok": true
+          },
+          {
+            "action": "financeUpdates.options",
+            "startMs": 8.22,
+            "startOrder": 10,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 10.73,
+            "endOrder": 14,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 8.4,
+            "startOrder": 12,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 10.59,
+            "endOrder": 13,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 3,
+        "kind": "fields",
+        "mode": "same-version-reopen",
+        "responseBytes": 0,
+        "maxResponseBytes": 0,
+        "sets": 11,
+        "setDataBytes": 16683,
+        "maxSetDataBytes": 8551,
+        "feedbackMs": 0.11,
+        "contentMs": 0.26,
+        "readyMs": 0.77,
+        "evidenceMs": 0.47,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 8,
+          "hits": 8,
+          "misses": 0,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "reviewIssues.members": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "financeUpdates.options": {
+              "lookups": 4,
+              "hits": 4,
+              "misses": 0
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            }
+          }
+        },
+        "totalMs": 0.84,
+        "requests": 0,
+        "actions": [],
+        "sqlCount": 0,
+        "sqlMs": 0,
+        "connectionMs": 0,
+        "lockMs": 0,
+        "measuredRequests": 0,
+        "observedSerialRequestRounds": 0,
+        "maxConcurrentRequests": 0,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": []
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "kind": "historical",
+        "mode": "first-open",
+        "responseBytes": 6859,
+        "maxResponseBytes": 3911,
+        "sets": 14,
+        "setDataBytes": 14959,
+        "maxSetDataBytes": 6230,
+        "feedbackMs": 0.15,
+        "contentMs": 4.44,
+        "readyMs": 10.07,
+        "evidenceMs": 11.42,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 5,
+          "hits": 1,
+          "misses": 4,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "reviewIssues.members": {
+              "lookups": 2,
+              "hits": 1,
+              "misses": 1
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            }
+          }
+        },
+        "totalMs": 11.46,
+        "requests": 4,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 39,
+        "sqlMs": 13.12,
+        "connectionMs": 0.1,
+        "lockMs": 0,
+        "measuredRequests": 4,
+        "observedSerialRequestRounds": 3,
+        "maxConcurrentRequests": 2,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.21,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 4.16,
+            "endOrder": 2,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 5.27,
+            "startOrder": 3,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 9.94,
+            "endOrder": 7,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 5.31,
+            "startOrder": 4,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 9.49,
+            "endOrder": 5,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 9.58,
+            "startOrder": 6,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 11.33,
+            "endOrder": 8,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "kind": "historical",
+        "mode": "same-version-reopen",
+        "responseBytes": 0,
+        "maxResponseBytes": 0,
+        "sets": 14,
+        "setDataBytes": 14959,
+        "maxSetDataBytes": 6230,
+        "feedbackMs": 0.15,
+        "contentMs": 0.31,
+        "readyMs": 0.77,
+        "evidenceMs": 0.82,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 5,
+          "hits": 5,
+          "misses": 0,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "reviewIssues.members": {
+              "lookups": 2,
+              "hits": 2,
+              "misses": 0
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            }
+          }
+        },
+        "totalMs": 0.87,
+        "requests": 0,
+        "actions": [],
+        "sqlCount": 0,
+        "sqlMs": 0,
+        "connectionMs": 0,
+        "lockMs": 0,
+        "measuredRequests": 0,
+        "observedSerialRequestRounds": 0,
+        "maxConcurrentRequests": 0,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": []
+      },
+      {
+        "source": "current",
+        "run": 2,
+        "kind": "historical",
+        "mode": "first-open",
+        "responseBytes": 6859,
+        "maxResponseBytes": 3911,
+        "sets": 14,
+        "setDataBytes": 14959,
+        "maxSetDataBytes": 6230,
+        "feedbackMs": 0.14,
+        "contentMs": 3.94,
+        "readyMs": 8.4,
+        "evidenceMs": 9.02,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 5,
+          "hits": 1,
+          "misses": 4,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "reviewIssues.members": {
+              "lookups": 2,
+              "hits": 1,
+              "misses": 1
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            }
+          }
+        },
+        "totalMs": 9.07,
+        "requests": 4,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 39,
+        "sqlMs": 9.68,
+        "connectionMs": 0.09,
+        "lockMs": 0,
+        "measuredRequests": 4,
+        "observedSerialRequestRounds": 3,
+        "maxConcurrentRequests": 2,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.2,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 3.59,
+            "endOrder": 2,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 4.67,
+            "startOrder": 3,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 8.3,
+            "endOrder": 7,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 4.73,
+            "startOrder": 4,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 7.18,
+            "endOrder": 5,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 7.28,
+            "startOrder": 6,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 8.91,
+            "endOrder": 8,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 2,
+        "kind": "historical",
+        "mode": "same-version-reopen",
+        "responseBytes": 0,
+        "maxResponseBytes": 0,
+        "sets": 14,
+        "setDataBytes": 14959,
+        "maxSetDataBytes": 6230,
+        "feedbackMs": 0.11,
+        "contentMs": 0.28,
+        "readyMs": 0.75,
+        "evidenceMs": 0.8,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 5,
+          "hits": 5,
+          "misses": 0,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "reviewIssues.members": {
+              "lookups": 2,
+              "hits": 2,
+              "misses": 0
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            }
+          }
+        },
+        "totalMs": 0.84,
+        "requests": 0,
+        "actions": [],
+        "sqlCount": 0,
+        "sqlMs": 0,
+        "connectionMs": 0,
+        "lockMs": 0,
+        "measuredRequests": 0,
+        "observedSerialRequestRounds": 0,
+        "maxConcurrentRequests": 0,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": []
+      },
+      {
+        "source": "current",
+        "run": 3,
+        "kind": "historical",
+        "mode": "first-open",
+        "responseBytes": 6859,
+        "maxResponseBytes": 3911,
+        "sets": 14,
+        "setDataBytes": 14959,
+        "maxSetDataBytes": 6230,
+        "feedbackMs": 0.13,
+        "contentMs": 5.95,
+        "readyMs": 9.81,
+        "evidenceMs": 11.33,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 5,
+          "hits": 1,
+          "misses": 4,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "reviewIssues.members": {
+              "lookups": 2,
+              "hits": 1,
+              "misses": 1
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 0,
+              "misses": 1
+            }
+          }
+        },
+        "totalMs": 11.38,
+        "requests": 4,
+        "actions": [
+          "reviewIssues.get",
+          "reviewIssues.members",
+          "economicEvents.evidence",
+          "economicEvents.detail"
+        ],
+        "sqlCount": 39,
+        "sqlMs": 11.35,
+        "connectionMs": 0.09,
+        "lockMs": 0,
+        "measuredRequests": 4,
+        "observedSerialRequestRounds": 3,
+        "maxConcurrentRequests": 2,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": [
+          {
+            "action": "reviewIssues.get",
+            "startMs": 0.19,
+            "startOrder": 1,
+            "observedRound": 1,
+            "concurrencyAtStart": 1,
+            "endMs": 5.58,
+            "endOrder": 2,
+            "ok": true
+          },
+          {
+            "action": "reviewIssues.members",
+            "startMs": 6.55,
+            "startOrder": 3,
+            "observedRound": 2,
+            "concurrencyAtStart": 1,
+            "endMs": 9.69,
+            "endOrder": 7,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.evidence",
+            "startMs": 6.59,
+            "startOrder": 4,
+            "observedRound": 2,
+            "concurrencyAtStart": 2,
+            "endMs": 9.39,
+            "endOrder": 5,
+            "ok": true
+          },
+          {
+            "action": "economicEvents.detail",
+            "startMs": 9.52,
+            "startOrder": 6,
+            "observedRound": 3,
+            "concurrencyAtStart": 2,
+            "endMs": 11.2,
+            "endOrder": 8,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "source": "current",
+        "run": 3,
+        "kind": "historical",
+        "mode": "same-version-reopen",
+        "responseBytes": 0,
+        "maxResponseBytes": 0,
+        "sets": 14,
+        "setDataBytes": 14959,
+        "maxSetDataBytes": 6230,
+        "feedbackMs": 0.14,
+        "contentMs": 0.34,
+        "readyMs": 0.85,
+        "evidenceMs": 0.9,
+        "viewSessionCache": {
+          "available": true,
+          "lookups": 5,
+          "hits": 5,
+          "misses": 0,
+          "byAction": {
+            "reviewIssues.get": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "reviewIssues.members": {
+              "lookups": 2,
+              "hits": 2,
+              "misses": 0
+            },
+            "economicEvents.evidence": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            },
+            "economicEvents.detail": {
+              "lookups": 1,
+              "hits": 1,
+              "misses": 0
+            }
+          }
+        },
+        "totalMs": 0.94,
+        "requests": 0,
+        "actions": [],
+        "sqlCount": 0,
+        "sqlMs": 0,
+        "connectionMs": 0,
+        "lockMs": 0,
+        "measuredRequests": 0,
+        "observedSerialRequestRounds": 0,
+        "maxConcurrentRequests": 0,
+        "duplicateRequests": 0,
+        "duplicateRequestGroups": 0,
+        "duplicateActions": {},
+        "failedRequests": 0,
+        "requestTimeline": []
+      }
+    ]
+  },
+  "pairing": {
+    "environment": {
+      "node": "v24.14.1",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M2 Max",
+      "samplesPerSource": {
+        "pairs100": 3,
+        "pairs1000": 1
+      },
+      "sources": [
+        {
+          "label": "baseline",
+          "head": "cf8ab199e91f8e847da494d6143243a6784c47b3",
+          "workingTreeChanged": false,
+          "measuredSourcesSha256": "d2bd68ed4cd5a5b26e4a84db23d376863f61cfdd0fdd3553e1667d774c4aaa0a",
+          "verifiedUnchanged": true
+        },
+        {
+          "label": "current",
+          "head": "93e4ac1ba466a9ca6986093c3160ac75b6ebefac",
+          "workingTreeChanged": true,
+          "measuredSourcesSha256": "5421ed64d5ffb6b317d6859626a4e765c17841b9ddd7b2b354ee8e3352b1ffef",
+          "verifiedUnchanged": true
+        }
+      ],
+      "measurementSha256": "c07ec717e0c7535f76d365511df951beae203868c7a07a1a0ddd5ad506bc7bce",
+      "isolation": "fresh synthetic user and newly migrated loopback schema per sample, API/import minimum-grant roles",
+      "timing": "instrumented local handler and real Page VM setData callback proxy; excludes user thinking, phone rendering, network and cloud cold-start",
+      "boundary": "starts after initial workbench summary/list; counts all actual page requests through final saved summary; optional preview pagination is not simulated",
+      "metricDefinitions": {
+        "firstFeedbackMs": "first sheet setData callback after opening",
+        "firstContentMs": "first candidate/member row setData callback",
+        "serverMs": "sum of real local handler invocation-to-response durations; parallel reads overlap, so not additive to Page wall time",
+        "mutationServerMs": "sum of real resolve handler durations; excludes page reads and UI callbacks",
+        "maxMutationServerMs": "slowest bounded resolve request; includes connection acquisition and database work, excludes cloud/network",
+        "firstReadyMs": "first confirmation-ready setData callback",
+        "allSavedMs": "first explicit confirmation through last successful command receipt",
+        "summaryReads": "actual financeUpdates.summary requests",
+        "fullProjectionRefreshes": "actual reconciliation.refreshProjectedEvents calls without a bounded event scope",
+        "bankCandidateRebuilds": "actual bank-channel-candidates.synchronize calls",
+        "updateCountRebuilds": "actual reconciliation.recalculateUpdateCounts calls",
+        "relationBuilds": "actual relation-resolver.buildRelations calls",
+        "sqlCount": "database round trips including BEGIN/COMMIT/ROLLBACK",
+        "bytes": "UTF-8 JSON bytes; actual setData bridge patches after chunking"
+      },
+      "mysql": "8.4.11"
+    },
+    "samples": [
+      {
+        "source": "baseline",
+        "run": 1,
+        "pairs": 100,
+        "requests": 1500,
+        "failedRequests": 0,
+        "requestBytes": 394396,
+        "responseBytes": 6468229,
+        "maxResponseBytes": 49055,
+        "serverMs": 10371.6,
+        "maxServerMs": 79.4,
+        "mutationServerMs": 4416.8,
+        "maxMutationServerMs": 79.4,
+        "setDataCount": 2000,
+        "setDataBytes": 2626951,
+        "maxSetDataBytes": 18758,
+        "firstFeedbackMs": 59.7,
+        "firstContentMs": 59.7,
+        "firstReadyMs": 59.7,
+        "allSavedMs": 9159.7,
+        "interactionClicks": 200,
+        "explicitConfirmations": 100,
+        "totalMs": 9259.8,
+        "savedPairs": 100,
+        "actions": {
+          "reviewIssues.get": 100,
+          "reviewIssues.members": 300,
+          "financeUpdates.options": 400,
+          "economicEvents.evidence": 200,
+          "economicEvents.detail": 200,
+          "reviewIssues.resolve": 100,
+          "financeUpdates.summary": 100,
+          "reviewIssues.list": 100
+        },
+        "summaryReads": 100,
+        "sqlCount": 18898,
+        "sqlMs": 9083.6,
+        "connectionMs": 70.3,
+        "userLockHoldMs": 4326.5,
+        "userLockWaitMs": 21.5,
+        "fullProjectionRefreshes": 100,
+        "scopedProjectionRefreshes": 0,
+        "updateCountRebuilds": 100,
+        "bankCandidateRebuilds": 0,
+        "relationBuilds": 0
+      },
+      {
+        "source": "baseline",
+        "run": 2,
+        "pairs": 100,
+        "requests": 1500,
+        "failedRequests": 0,
+        "requestBytes": 394396,
+        "responseBytes": 6461081,
+        "maxResponseBytes": 49055,
+        "serverMs": 9998.4,
+        "maxServerMs": 70.2,
+        "mutationServerMs": 4340.4,
+        "maxMutationServerMs": 70.2,
+        "setDataCount": 2000,
+        "setDataBytes": 2630714,
+        "maxSetDataBytes": 18758,
+        "firstFeedbackMs": 30.7,
+        "firstContentMs": 30.7,
+        "firstReadyMs": 30.7,
+        "allSavedMs": 8850,
+        "interactionClicks": 200,
+        "explicitConfirmations": 100,
+        "totalMs": 8925.8,
+        "savedPairs": 100,
+        "actions": {
+          "reviewIssues.get": 100,
+          "reviewIssues.members": 300,
+          "financeUpdates.options": 400,
+          "economicEvents.evidence": 200,
+          "economicEvents.detail": 200,
+          "reviewIssues.resolve": 100,
+          "financeUpdates.summary": 100,
+          "reviewIssues.list": 100
+        },
+        "summaryReads": 100,
+        "sqlCount": 18898,
+        "sqlMs": 8790.7,
+        "connectionMs": 40,
+        "userLockHoldMs": 4259.9,
+        "userLockWaitMs": 17.9,
+        "fullProjectionRefreshes": 100,
+        "scopedProjectionRefreshes": 0,
+        "updateCountRebuilds": 100,
+        "bankCandidateRebuilds": 0,
+        "relationBuilds": 0
+      },
+      {
+        "source": "baseline",
+        "run": 3,
+        "pairs": 100,
+        "requests": 1500,
+        "failedRequests": 0,
+        "requestBytes": 394396,
+        "responseBytes": 6469281,
+        "maxResponseBytes": 49055,
+        "serverMs": 9901.6,
+        "maxServerMs": 79.7,
+        "mutationServerMs": 4289.7,
+        "maxMutationServerMs": 79.7,
+        "setDataCount": 2000,
+        "setDataBytes": 2603774,
+        "maxSetDataBytes": 18758,
+        "firstFeedbackMs": 31,
+        "firstContentMs": 31,
+        "firstReadyMs": 31,
+        "allSavedMs": 8835.8,
+        "interactionClicks": 200,
+        "explicitConfirmations": 100,
+        "totalMs": 8900.5,
+        "savedPairs": 100,
+        "actions": {
+          "reviewIssues.get": 100,
+          "reviewIssues.members": 300,
+          "financeUpdates.options": 400,
+          "economicEvents.evidence": 200,
+          "economicEvents.detail": 200,
+          "reviewIssues.resolve": 100,
+          "financeUpdates.summary": 100,
+          "reviewIssues.list": 100
+        },
+        "summaryReads": 100,
+        "sqlCount": 18898,
+        "sqlMs": 8681.9,
+        "connectionMs": 41.7,
+        "userLockHoldMs": 4214.2,
+        "userLockWaitMs": 17.3,
+        "fullProjectionRefreshes": 100,
+        "scopedProjectionRefreshes": 0,
+        "updateCountRebuilds": 100,
+        "bankCandidateRebuilds": 0,
+        "relationBuilds": 0
+      },
+      {
+        "source": "baseline",
+        "run": 1,
+        "pairs": 1000,
+        "requests": 15000,
+        "failedRequests": 0,
+        "requestBytes": 3944899,
+        "responseBytes": 72333229,
+        "maxResponseBytes": 49062,
+        "serverMs": 679421.5,
+        "maxServerMs": 722,
+        "mutationServerMs": 487520.8,
+        "maxMutationServerMs": 722,
+        "setDataCount": 20000,
+        "setDataBytes": 23686568,
+        "maxSetDataBytes": 18758,
+        "firstFeedbackMs": 65,
+        "firstContentMs": 65,
+        "firstReadyMs": 65,
+        "allSavedMs": 665651.7,
+        "interactionClicks": 2000,
+        "explicitConfirmations": 1000,
+        "totalMs": 665897,
+        "savedPairs": 1000,
+        "actions": {
+          "reviewIssues.get": 1000,
+          "reviewIssues.members": 3000,
+          "financeUpdates.options": 4000,
+          "economicEvents.evidence": 2000,
+          "economicEvents.detail": 2000,
+          "reviewIssues.resolve": 1000,
+          "financeUpdates.summary": 1000,
+          "reviewIssues.list": 1000
+        },
+        "summaryReads": 1000,
+        "sqlCount": 238489,
+        "sqlMs": 641234.6,
+        "connectionMs": 358.8,
+        "userLockHoldMs": 486456.6,
+        "userLockWaitMs": 306,
+        "fullProjectionRefreshes": 1000,
+        "scopedProjectionRefreshes": 0,
+        "updateCountRebuilds": 1000,
+        "bankCandidateRebuilds": 0,
+        "relationBuilds": 0
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "pairs": 100,
+        "requests": 19,
+        "failedRequests": 0,
+        "requestBytes": 5803,
+        "responseBytes": 25367,
+        "maxResponseBytes": 4340,
+        "serverMs": 890.4,
+        "maxServerMs": 752.5,
+        "mutationServerMs": 752.5,
+        "maxMutationServerMs": 752.5,
+        "setDataCount": 39,
+        "setDataBytes": 126444,
+        "maxSetDataBytes": 9994,
+        "firstFeedbackMs": 0.2,
+        "firstContentMs": 38.6,
+        "firstReadyMs": 38.7,
+        "allSavedMs": 754.1,
+        "interactionClicks": 2,
+        "explicitConfirmations": 1,
+        "totalMs": 871.2,
+        "savedPairs": 100,
+        "actions": {
+          "reviewIssues.pairings": 1,
+          "economicEvents.evidence": 8,
+          "economicEvents.detail": 8,
+          "reviewIssues.resolvePairings": 1,
+          "financeUpdates.summary": 1
+        },
+        "summaryReads": 1,
+        "sqlCount": 923,
+        "sqlMs": 791.4,
+        "connectionMs": 16.3,
+        "userLockHoldMs": 751.3,
+        "userLockWaitMs": 0.2,
+        "fullProjectionRefreshes": 0,
+        "scopedProjectionRefreshes": 0,
+        "updateCountRebuilds": 1,
+        "bankCandidateRebuilds": 1,
+        "relationBuilds": 0
+      },
+      {
+        "source": "current",
+        "run": 2,
+        "pairs": 100,
+        "requests": 19,
+        "failedRequests": 0,
+        "requestBytes": 5803,
+        "responseBytes": 25367,
+        "maxResponseBytes": 4340,
+        "serverMs": 550.6,
+        "maxServerMs": 437.4,
+        "mutationServerMs": 437.4,
+        "maxMutationServerMs": 437.4,
+        "setDataCount": 39,
+        "setDataBytes": 126444,
+        "maxSetDataBytes": 9994,
+        "firstFeedbackMs": 0.9,
+        "firstContentMs": 40.1,
+        "firstReadyMs": 40.2,
+        "allSavedMs": 438.2,
+        "interactionClicks": 2,
+        "explicitConfirmations": 1,
+        "totalMs": 532.1,
+        "savedPairs": 100,
+        "actions": {
+          "reviewIssues.pairings": 1,
+          "economicEvents.evidence": 8,
+          "economicEvents.detail": 8,
+          "reviewIssues.resolvePairings": 1,
+          "financeUpdates.summary": 1
+        },
+        "summaryReads": 1,
+        "sqlCount": 923,
+        "sqlMs": 481.3,
+        "connectionMs": 11.9,
+        "userLockHoldMs": 436.4,
+        "userLockWaitMs": 0.4,
+        "fullProjectionRefreshes": 0,
+        "scopedProjectionRefreshes": 0,
+        "updateCountRebuilds": 1,
+        "bankCandidateRebuilds": 1,
+        "relationBuilds": 0
+      },
+      {
+        "source": "current",
+        "run": 3,
+        "pairs": 100,
+        "requests": 19,
+        "failedRequests": 0,
+        "requestBytes": 5803,
+        "responseBytes": 25367,
+        "maxResponseBytes": 4340,
+        "serverMs": 713.3,
+        "maxServerMs": 585,
+        "mutationServerMs": 585,
+        "maxMutationServerMs": 585,
+        "setDataCount": 39,
+        "setDataBytes": 126444,
+        "maxSetDataBytes": 9994,
+        "firstFeedbackMs": 0.2,
+        "firstContentMs": 31.5,
+        "firstReadyMs": 31.6,
+        "allSavedMs": 586,
+        "interactionClicks": 2,
+        "explicitConfirmations": 1,
+        "totalMs": 686.6,
+        "savedPairs": 100,
+        "actions": {
+          "reviewIssues.pairings": 1,
+          "economicEvents.evidence": 8,
+          "economicEvents.detail": 8,
+          "reviewIssues.resolvePairings": 1,
+          "financeUpdates.summary": 1
+        },
+        "summaryReads": 1,
+        "sqlCount": 923,
+        "sqlMs": 644.2,
+        "connectionMs": 11.8,
+        "userLockHoldMs": 583.9,
+        "userLockWaitMs": 0.2,
+        "fullProjectionRefreshes": 0,
+        "scopedProjectionRefreshes": 0,
+        "updateCountRebuilds": 1,
+        "bankCandidateRebuilds": 1,
+        "relationBuilds": 0
+      },
+      {
+        "source": "current",
+        "run": 1,
+        "pairs": 1000,
+        "requests": 28,
+        "failedRequests": 0,
+        "requestBytes": 13768,
+        "responseBytes": 42104,
+        "maxResponseBytes": 4347,
+        "serverMs": 162853.1,
+        "maxServerMs": 21928.8,
+        "mutationServerMs": 161838.1,
+        "maxMutationServerMs": 21928.8,
+        "setDataCount": 48,
+        "setDataBytes": 216854,
+        "maxSetDataBytes": 10018,
+        "firstFeedbackMs": 0.3,
+        "firstContentMs": 634,
+        "firstReadyMs": 634.1,
+        "allSavedMs": 161845,
+        "interactionClicks": 2,
+        "explicitConfirmations": 1,
+        "totalMs": 162825.5,
+        "savedPairs": 1000,
+        "actions": {
+          "reviewIssues.pairings": 1,
+          "economicEvents.evidence": 8,
+          "economicEvents.detail": 8,
+          "reviewIssues.resolvePairings": 10,
+          "financeUpdates.summary": 1
+        },
+        "summaryReads": 1,
+        "sqlCount": 8915,
+        "sqlMs": 160548.6,
+        "connectionMs": 30.2,
+        "userLockHoldMs": 161812.6,
+        "userLockWaitMs": 3.3,
+        "fullProjectionRefreshes": 0,
+        "scopedProjectionRefreshes": 0,
+        "updateCountRebuilds": 10,
+        "bankCandidateRebuilds": 10,
+        "relationBuilds": 0
+      }
+    ]
+  },
+  "native": {
+    "kind": "native-read-server",
+    "scenario": "pairings",
+    "sourceHash": "953fb504cf344be611b9eba47719bc79630c9ef66b40ea1e850acf8804d0a6e3",
+    "sourceSha": "cf8ab199e91f8e847da494d6143243a6784c47b3",
+    "verification": {
+      "formalTransactions": 0,
+      "savedPairingDecisions": 102,
+      "balancesUnchanged": true,
+      "suggestedRemaining": 0,
+      "ambiguousRemaining": 0,
+      "updateStatuses": [
+        "review",
+        "review"
+      ]
+    },
+    "requests": 85,
+    "failedRequests": 0,
+    "pairingCommands": [
+      {
+        "ms": 1071,
+        "responseBytes": 1126
+      },
+      {
+        "ms": 261,
+        "responseBytes": 1104
+      }
+    ],
+    "layout": "Final three templates recompiled and screenshot inspected using captured synthetic Page data after DB bridge shutdown; no additional write.",
+    "workingTreeChanged": true,
+    "sourceContext": "Native interaction ran on the uncommitted implementation identified by sourceHash. Later changes restored the non-mixed-source historical check and updated the security dependency; final layout was recompiled from the final templates. This is separate from final-commit VM/MySQL timing."
+  }
+}
