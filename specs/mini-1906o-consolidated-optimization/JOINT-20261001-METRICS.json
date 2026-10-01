@@ -3982,5 +3982,128 @@
     "layout": "Final three templates recompiled and screenshot inspected using captured synthetic Page data after DB bridge shutdown; no additional write.",
     "workingTreeChanged": true,
     "sourceContext": "Native interaction ran on the uncommitted implementation identified by sourceHash. Later changes restored the non-mixed-source historical check and updated the security dependency; final layout was recompiled from the final templates. This is separate from final-commit VM/MySQL timing."
+  },
+  "cloudDeploymentVerification": {
+    "environment": "cloud1-d6gqxki3s97cc4ee9",
+    "region": "ap-shanghai",
+    "codeCommit": "72d019ea0fd7df8598e04efb377a6388cb18cefb",
+    "ci": {
+      "url": "https://github.com/gaohongxiang/catledger/actions/runs/36826329591",
+      "root": 1091,
+      "api": 109,
+      "importer": 347,
+      "failed": 0,
+      "skipped": 0,
+      "productionAuditVulnerabilities": 0
+    },
+    "backup": {
+      "id": 10795757,
+      "type": "full snapshot",
+      "status": "success",
+      "usable": true,
+      "finishedAt": "2026-10-01 14:47:50 Asia/Shanghai"
+    },
+    "migrations": {
+      "count": 31,
+      "allOriginalChecksumsMatch": true,
+      "added": [
+        "0030_user_initialization_version.sql",
+        "0031_bank_channel_decisions.sql"
+      ],
+      "newDecisionTableEmpty": true,
+      "userScopedForeignKeys": 3
+    },
+    "permissions": {
+      "requirements": 140,
+      "missing": 0,
+      "addedTableGrants": 1,
+      "removedGrants": 0,
+      "addedPrivileges": [
+        "SELECT",
+        "INSERT",
+        "UPDATE"
+      ],
+      "table": "catledger_bank_channel_decisions",
+      "noAddedDdlOrDatabaseWidePrivileges": true
+    },
+    "functions": [
+      {
+        "name": "catledger-api",
+        "codeCommit": "72d019ea0fd7df8598e04efb377a6388cb18cefb",
+        "status": "Active",
+        "available": "Available",
+        "runtime": "Nodejs18.15",
+        "timeout": 20,
+        "memoryMB": 512,
+        "modifiedAt": "2026-10-01 15:09:30",
+        "configurationUnchanged": true,
+        "environmentKeys": [
+          "CATLEDGER_DB_HOST",
+          "CATLEDGER_DB_NAME",
+          "CATLEDGER_DB_PASSWORD",
+          "CATLEDGER_DB_PORT",
+          "CATLEDGER_DB_USER"
+        ],
+        "triggerCount": 0,
+        "packageFiles": 6054,
+        "packageLinks": 1,
+        "packageVerified": true,
+        "manifestSha256": "861e1a2c9e513cf9776ff30f87ce02cd55c8d37533a59d59e1a847404536036b"
+      },
+      {
+        "name": "catledger-import",
+        "codeCommit": "72d019ea0fd7df8598e04efb377a6388cb18cefb",
+        "status": "Active",
+        "available": "Available",
+        "runtime": "Nodejs18.15",
+        "timeout": 60,
+        "memoryMB": 512,
+        "modifiedAt": "2026-10-01 15:07:38",
+        "configurationUnchanged": true,
+        "environmentKeys": [
+          "CATLEDGER_DB_HOST",
+          "CATLEDGER_DB_NAME",
+          "CATLEDGER_DB_PASSWORD",
+          "CATLEDGER_DB_PORT",
+          "CATLEDGER_DB_USER"
+        ],
+        "triggerCount": 0,
+        "packageFiles": 6177,
+        "packageLinks": 2,
+        "packageVerified": true,
+        "manifestSha256": "8b0792254759665419e9a196c70fac65a42e85e8be5201b5de0879bd6d141a1e"
+      }
+    ],
+    "preservation": {
+      "afterMigrationAndDeployment": {
+        "tables": 44,
+        "countsAndOriginalColumnsDigestUnchanged": true
+      },
+      "afterNativeRefresh": {
+        "nonUserTables": 43,
+        "countsAndOriginalColumnsDigestUnchanged": true,
+        "userBusinessFieldsAndRevisionUnchanged": true,
+        "expectedInitializationMaintenanceFields": [
+          "initialization_version",
+          "updated_at"
+        ]
+      }
+    },
+    "native": {
+      "actualProject": "/Users/gaohongxiang/projects/catledger",
+      "refreshed": true,
+      "readiness": {
+        "hasDueCharges": false,
+        "hasPendingWrite": false
+      },
+      "route": "pages/index/index",
+      "loading": false,
+      "hasPageError": false,
+      "newPairingModuleLoaded": true,
+      "furtherFinancialStateRead": "not executed: automatic approval rejected broader live financial-state inspection",
+      "realPairingWrite": "not performed",
+      "phone": "not verified"
+    },
+    "boundary": "Deployment checks are separate from the local synthetic performance measurements above; no real ledger experiment or production performance result is claimed."
   }
 }
