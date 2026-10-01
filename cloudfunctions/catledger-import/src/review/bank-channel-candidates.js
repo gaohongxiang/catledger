@@ -8,32 +8,41 @@ const { updateMappingMemberVersions, createFollowUpIssues } = require('./issue-s
 const { buildReviewIssues } = require('../organizer-planner')
 const { PLAN_VERSION } = require('../domain-versions')
 
-async function hydrate(connection, uid, updateId, events = null, rows = null) {
-  rows = rows || await selectPlanningRows(connection, uid, updateId)
-  const [links] = await connection.execute(`SELECT event_id AS eventId, row_id AS rowId, evidence_id AS evidenceId,
-    evidence_role AS role FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role <> 'discarded'
-    ORDER BY (evidence_role = 'primary') DESC, evidence_id`, [uid, updateId])
-  events = events || await selectDomainEvents(connection, uid, updateId, [...new Set(links.map(link => link.eventId))], { forUpdate: true })
-  const byId = new Map(rows.map(row => [row.rowId, row]))
-  const rowsByEvent = new Map()
-  for (const link of links) {
-    if (!rowsByEvent.has(link.eventId)) rowsByEvent.set(link.eventId, [])
-    if (byId.has(link.rowId)) rowsByEvent.get(link.eventId).push(byId.get(link.rowId))
-  }
-  return events.map(event => ({ ...event, sourceType: (rowsByEvent.get(event.eventId) || [])[0]?.sourceType,
-    relationEvidence: { rows: rowsByEvent.get(event.eventId) || [] } }))
-}
+const { hydrate, hasBankPlatformEvidence } = require('./bank-channel-hydration')
+const { confirmedPrimary, mergeRelations } = require('./bank-channel-merge')
+const decisions = require('./bank-channel-decisions')
+const { applyPairs } = require('./bank-channel-apply')
 
-function hasBankPlatformEvidence(events) {
-  const types = new Set(events.flatMap(event => event.relationEvidence.rows.map(row => row.sourceType)))
-  return types.has('bank') && (types.has('wechat') || types.has('alipay'))
-}
-
-async function synchronize(connection, uid, updateId, actionId, rows = null) {
+async function synchronize(connection, uid, updateId, actionId, rows = null, { reuseDecisions = true } = {}) {
   const [[source]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_finance_update_sources
     WHERE uid = ? AND update_id = ? AND source_type_snapshot = 'bank'`, [uid, updateId])
   if (!Number(source.count)) return
-  const events = await hydrate(connection, uid, updateId, null, rows)
+  let events = await hydrate(connection, uid, updateId, null, rows)
+  const storedDistinct = new Map(events.map(event => [event.eventId, JSON.stringify(event.fieldSources.bankChannelDistinctPairs || [])]))
+  if (reuseDecisions) {
+    const remembered = await decisions.remembered(connection, uid, events)
+    remembered.filter(pair => pair.decision === 'distinct').forEach(decisions.markDistinct)
+    const same = remembered.filter(pair => pair.decision === 'same')
+    const uses = new Map()
+    for (const pair of same) for (const event of [pair.bank, pair.platform]) uses.set(event.eventId, (uses.get(event.eventId) || 0) + 1)
+    // 可靠身份的原决定仍需双向无占用；发生冲突留给当前候选，不猜测。
+    const [occupied] = same.length ? await connection.execute(`SELECT DISTINCT event_id AS id FROM catledger_economic_event_transactions
+      WHERE uid = ? AND update_id = ?`, [uid, updateId]) : [[]]
+    const [accounts] = same.length ? await connection.execute(`SELECT account_id AS id, currency FROM catledger_accounts WHERE uid = ? AND archived_at IS NULL
+      UNION ALL SELECT draft_account_id, currency FROM catledger_finance_update_account_drafts WHERE uid = ? AND update_id = ?`, [uid, uid, updateId]) : [[]]
+    const unavailable = new Set(occupied.map(row => row.id)), active = new Map(accounts.map(row => [row.id, row.currency]))
+    const reusable = same.filter(pair => uses.get(pair.bank.eventId) === 1 && uses.get(pair.platform.eventId) === 1 &&
+      !unavailable.has(pair.bank.eventId) && !unavailable.has(pair.platform.eventId) && active.get(pair.bank.ledgerAccountId) === pair.bank.currency &&
+      !require('../evidence-matching').hasSourceIdentityConflict(pair.bank.relationEvidence.rows.concat(pair.platform.relationEvidence.rows)))
+    if (reusable.length) {
+      // 初始化事务沿用原整理的原子边界；内部块限制 SQL 参数和临时集合，不逐笔公开提交。
+      for (let offset = 0; offset < reusable.length; offset += 100) {
+        await applyPairs(connection, uid, updateId, reusable.slice(offset, offset + 100), actionId, { persistDecisions: false })
+      }
+      events = await hydrate(connection, uid, updateId, null, rows)
+      ;(await decisions.remembered(connection, uid, events)).filter(pair => pair.decision === 'distinct').forEach(decisions.markDistinct)
+    }
+  }
   // 旧版已确认“不同笔”的决定也继续有效，不能因规则升级再次提问。
   const [distinct] = await connection.execute(`SELECT i.issue_id AS issueId, m.object_id AS eventId
     FROM catledger_review_issues i JOIN catledger_finance_actions a
@@ -84,7 +93,9 @@ async function synchronize(connection, uid, updateId, actionId, rows = null) {
   const signature = ids => [...ids].sort().join('|')
   const prior = [...priorIssues.values()].map(signature).sort()
   const next = groups.map(group => signature(group.events.map(event => event.eventId))).sort()
-  if (!legacyIssues.size && JSON.stringify(prior) === JSON.stringify(next)) return
+  const distinctChanged = events.some(event => storedDistinct.get(event.eventId) !== JSON.stringify(event.fieldSources.bankChannelDistinctPairs || []))
+  // 删除一条边后连通组成员可能完全不变；稳定来源的拒绝边仍必须落库。
+  if (!legacyIssues.size && !distinctChanged && JSON.stringify(prior) === JSON.stringify(next)) return
   const affectedIds = new Set([...managedEventIds, ...desired.keys(), ...events.filter(event => event.fieldSources.bankChannelCandidate).map(event => event.eventId)])
   const touchedIssues = [...new Set(open.filter(item => affectedIds.has(item.eventId) && item.issueType !== 'account_mapping').map(item => item.issueId))]
   for (const issueId of touchedIssues) {
@@ -113,86 +124,6 @@ async function synchronize(connection, uid, updateId, actionId, rows = null) {
   for (const issue of review.issues) issue.issueKey = digestParts(VERSION, actionId, issue.issueKey)
   await persistPlan(connection, uid, updateId, { planVersion: PLAN_VERSION, events: [], evidence: [], relations: [], ...review })
   await createFollowUpIssues(connection, uid, updateId, saved.filter(event => !desired.has(event.eventId)))
-}
-
-async function confirmedPrimary(connection, uid, updateId, events, requestedId, actionId, { required = true } = {}) {
-  const hydrated = await hydrate(connection, uid, updateId, events)
-  if (!required && !hasBankPlatformEvidence(hydrated)) return null
-  const platforms = hydrated.filter(event => ['wechat', 'alipay'].includes(event.sourceType))
-  const banks = hydrated.filter(event => event.sourceType === 'bank')
-  // 多个平台或多笔银行候选不能一次合成一笔；交给独立记录裁决。
-  if (platforms.length !== 1 || banks.length !== 1 || hydrated.length !== 2 || !bankChannelPair(banks[0], platforms[0])) throw importError('VALIDATION_ERROR')
-  const primary = platforms[0]
-  if (primary.eventId !== requestedId) throw importError('VALIDATION_ERROR')
-  const bankCategoryChosen = Boolean(banks[0].manualFieldMask & 128)
-  if (bankCategoryChosen && (primary.manualFieldMask & 128) && banks[0].categoryId !== primary.categoryId) throw importError('VALIDATION_ERROR')
-  if (banks[0].economicNature !== 'unknown' && banks[0].economicNature !== primary.economicNature) throw importError('VALIDATION_ERROR')
-  const primaryRows = primary.relationEvidence.rows
-  const bankRows = banks[0].relationEvidence.rows
-  const accountContexts = { ...primary.fieldSources.bankChannelAccountContexts }
-  const [accountMembers] = await connection.execute(`SELECT m.member_id AS memberId, m.issue_id AS issueId, m.member_role AS role, m.sort_order AS sortOrder
-    FROM catledger_review_issue_members m JOIN catledger_review_issues i ON i.uid = m.uid AND i.issue_id = m.issue_id
-    WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'event' AND m.object_id = ? AND i.issue_type = 'account_mapping'`,
-  [uid, updateId, banks[0].eventId])
-  for (const member of accountMembers) {
-    const [[existing]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_review_issue_members
-      WHERE uid = ? AND update_id = ? AND issue_id = ? AND object_type = 'event' AND object_id = ? AND member_role = ?`,
-    [uid, updateId, member.issueId, primary.eventId, member.role])
-    if (Number(existing.count)) {
-      await connection.execute('DELETE FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND member_id = ?', [uid, updateId, member.memberId])
-      await connection.execute(`UPDATE catledger_review_issues SET member_count = member_count - 1, version = version + 1
-        WHERE uid = ? AND update_id = ? AND issue_id = ?`, [uid, updateId, member.issueId])
-    } else {
-      await connection.execute('DELETE FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND member_id = ?', [uid, updateId, member.memberId])
-      await connection.execute(`INSERT INTO catledger_review_issue_members
-        (uid, member_id, update_id, issue_id, object_type, object_id, object_version, member_role, sort_order)
-        VALUES (?, ?, ?, ?, 'event', ?, ?, ?, ?)`,
-      [uid, member.memberId, updateId, member.issueId, primary.eventId, primary.version + 1, member.role, Number(member.sortOrder)])
-      const reference = banks[0].fieldSources.ledgerAccountReference
-      if (reference) accountContexts[member.issueId] = { ...reference, fundsSide: 'ordinary' }
-    }
-  }
-  return { ...primary, categoryId: bankCategoryChosen ? banks[0].categoryId : primary.categoryId || banks[0].categoryId,
-    manualFieldMask: primary.manualFieldMask | (banks[0].manualFieldMask & 128),
-    fieldSources: { ...primary.fieldSources, bankChannelCandidate: undefined,
-    bankChannelAccountContexts: accountContexts,
-    rowIds: primaryRows.concat(bankRows).map(row => row.rowId),
-    bankChannelResolution: { version: VERSION, actionId, ledgerAccountId: primary.ledgerAccountId,
-      primaryRowId: primaryRows[0].rowId, explainedBankRowIds: bankRows.map(row => row.rowId) } } }
-}
-
-async function mergeRelations(connection, uid, updateId, primaryId, secondaryId) {
-  const [relations] = await connection.execute(`SELECT relation_id AS relationId, relation_type AS type, status,
-    source_event_id AS sourceId, target_event_id AS targetId, amount_minor AS amountMinor, currency
-    FROM catledger_economic_event_relations WHERE uid = ? AND update_id = ?
-      AND (source_event_id IN (?, ?) OR target_event_id IN (?, ?)) FOR UPDATE`,
-  [uid, updateId, primaryId, secondaryId, primaryId, secondaryId])
-  const projected = relations.map(relation => ({ ...relation,
-    nextSource: relation.sourceId === secondaryId ? primaryId : relation.sourceId,
-    nextTarget: relation.targetId === secondaryId ? primaryId : relation.targetId }))
-  const active = projected.filter(relation => !['rejected', 'undone'].includes(relation.status))
-  if (active.some(relation => relation.nextSource === relation.nextTarget)) throw importError('VALIDATION_ERROR')
-  const confirmedBySource = new Map()
-  for (const relation of active.filter(item => item.type === 'refund_of' && item.status === 'confirmed')) {
-    const target = confirmedBySource.get(relation.nextSource)
-    if (target && target !== relation.nextTarget) throw importError('VALIDATION_ERROR')
-    confirmedBySource.set(relation.nextSource, relation.nextTarget)
-  }
-  for (const relation of projected.filter(item => item.sourceId === secondaryId || item.targetId === secondaryId)) {
-    const prior = active.find(item => item !== relation && item.sourceId !== secondaryId && item.targetId !== secondaryId &&
-      item.type === relation.type && item.nextSource === relation.nextSource && item.nextTarget === relation.nextTarget)
-    if (prior && relation.status === 'confirmed' && prior.status !== 'confirmed') {
-      await connection.execute(`UPDATE catledger_economic_event_relations SET status = 'confirmed', version = version + 1
-        WHERE uid = ? AND update_id = ? AND relation_id = ?`, [uid, updateId, prior.relationId])
-    }
-    await connection.execute(`UPDATE catledger_economic_event_relations SET source_event_id = ?, target_event_id = ?,
-      status = ?, version = version + 1 WHERE uid = ? AND update_id = ? AND relation_id = ?`,
-    [relation.nextSource, relation.nextTarget, prior ? 'rejected' : relation.status, uid, updateId, relation.relationId])
-  }
-  // 被合并消费的退款核对可能在另一问题中；关系版本必须同步，避免旧版本永远无法提交。
-  await connection.execute(`UPDATE catledger_review_issue_members m JOIN catledger_economic_event_relations r
-    ON r.uid = m.uid AND r.relation_id = m.object_id SET m.object_version = r.version
-    WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'relation'`, [uid, updateId])
 }
 
 async function distinctEvents(connection, uid, updateId, events, { required = true } = {}) {

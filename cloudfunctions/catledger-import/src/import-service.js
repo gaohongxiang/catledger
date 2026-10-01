@@ -339,6 +339,8 @@ function createImportService({ getPool, storage }) {
     economicEventCorrectionImpact: maintenance.correctionImpact,
     economicEventEvidence: reads.evidence,
     reviewIssueGet: reads.issue,
+    reviewIssuePairings: reviewIssues.pairings,
+    reviewIssueResolvePairings: reviewIssues.resolvePairings,
     reviewIssueRefreshAccountGroups: reviewIssues.refreshAccountGroups,
     reviewIssueList: reads.issues,
     reviewIssueResolveAccountMappings: reviewIssues.resolveAccountMappings,

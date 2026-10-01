@@ -75,14 +75,14 @@
     {
       "name": "map-history-accounts",
       "sqlCount": 50,
-      "sqlOrderHash": "03e4900de5b28ccc12e1ac238e77407e27bff907dba70382487ed9a0e517e339",
+      "sqlOrderHash": "a2ce85f631f3a254f53ce33be6a375bb335f0f1ff02ed00c8f8f001d446a3d14",
       "responseBytes": 956,
       "resultHash": "a49a65360677c80de8c27fa25d8110df70a6095a3172a51e28c3f98a08f4c543"
     },
     {
       "name": "category-fields",
       "sqlCount": 41,
-      "sqlOrderHash": "bd82b478f7f70d29be333c461e89a946a0e5c7fa9b7f4d96c866bfb8107252af",
+      "sqlOrderHash": "203367b701b8cb687787a2a2c006352f4e28ef43ee7c507f0d636ce456458c8e",
       "responseBytes": 941,
       "resultHash": "cc076107002bed742a343b359b1b780e136d4fe97aa8a1bf2684ae1470dc1489"
     },
@@ -106,6 +106,11 @@
       "table": "catledger_accounts",
       "rows": 1,
       "hash": "3b904416becc3537d6430e4dac9e6f71cb223c6cd635972d60f08a3032ea4161"
+    },
+    {
+      "table": "catledger_bank_channel_decisions",
+      "rows": 0,
+      "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     {
       "table": "catledger_categories",

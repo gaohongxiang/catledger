@@ -1,4 +1,5 @@
 const ERROR_MESSAGES = Object.freeze({
+  PAIRING_LIMIT_EXCEEDED: '相似配对关系过多，请缩小本次账单范围后核对；本次没有保存或入账',
   HISTORY_REVIEW_REQUIRED: '发现尚未核对的历史相似账目，请先确认是否重复；本次没有入账',
   HISTORY_MATCH_LIMIT_EXCEEDED: '历史同额候选过多，请缩短本次账单时间范围后核对；本次没有入账',
   LOAN_COVERAGE_REQUIRED: '请先确认已有费用覆盖',

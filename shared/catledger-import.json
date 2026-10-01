@@ -639,6 +639,58 @@
         "posting",
         "invalidates"
       ]
+    },
+    "reviewIssues.pairings": {
+      "kind": "read",
+      "data": [
+        "updateId",
+        "viewVersion?",
+        "mode=suggested|ambiguous",
+        "issueId?",
+        "pageSize? (1..20)",
+        "cursor?",
+        "recheckPairKeys? (<=500)"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "viewVersion",
+        "update",
+        "items",
+        "total",
+        "suggestedTotal",
+        "scopeNatureCounts",
+        "scopeSourceCount",
+        "scopeToken",
+        "nextCursor",
+        "returnedKeys?",
+        "missingKeys?"
+      ],
+      "rules": [
+        "Compute degrees on complete eligible bank/platform graph before pagination or issue filtering; suggested pairs require degree one at both ends. No writes from preview.",
+        "Scope and cursors bind trusted user, update, view, dataRevision and full candidate digest; request page never establishes uniqueness. Source previews remain bounded; original evidence uses existing segmented reads."
+      ]
+    },
+    "reviewIssues.resolvePairings": {
+      "kind": "idempotent-mutation",
+      "data": [
+        "requestId",
+        "updateId",
+        "scopeToken + selection OR continuationToken",
+        "selection.mode=all_except with excludedPairKeys (<=500) OR include with pairs[{pairKey,decision=same|distinct}] (1..100)"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "operation-receipt",
+        "update",
+        "pairing:{savedCount,totalCount,remainingCount,batchSavedCount,continuationToken}"
+      ],
+      "rules": [
+        "At most 100 disjoint pairs in one all-or-nothing user-lock transaction; no public single-command loop. Recheck identities, source facts, active accounts, occupation, scope and versions.",
+        "all_except freezes full suggested range. Continuation is signed and refers to the original finance action; only unchanged remaining facts survive own acknowledged version advancement. External revision or candidate change requires explicit recheck.",
+        "Same merges draft events into platform primary, preserves evidence/refund references and never changes formal balances. Distinct rejects only the explicit pair.",
+        "Persist reliable source identity pairs plus necessary fact digest; no broad text/amount rules and no unreliable-identity replay. One range cleanup/count/receipt per batch, final client summary once.",
+        "Original request persisted before sending. Unknown results replay original requestId; trusted continuation saved before a new batch request; preserve partial progress, local intent and refresh failures."
+      ]
     }
   },
   "rules": {
@@ -686,7 +738,8 @@
     "OPERATION_UNCONFIRMED",
     "RECEIPT_RECONCILIATION_REQUIRED",
     "HISTORY_REVIEW_REQUIRED",
-    "HISTORY_MATCH_LIMIT_EXCEEDED"
+    "HISTORY_MATCH_LIMIT_EXCEEDED",
+    "PAIRING_LIMIT_EXCEEDED"
   ],
   "bankTableFormats": [
     "csv",

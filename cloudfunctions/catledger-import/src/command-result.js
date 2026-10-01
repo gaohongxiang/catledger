@@ -17,6 +17,7 @@ function operationReceipt(result, action, receiptId) {
   return assertBudget({ protocolVersion: 2, kind: 'operation-receipt', receiptId, action,
     updateId: update.updateId, appliedVersion: update.version, status: update.status,
     counts: update.counts, update, posting: result.posting || null,
-    invalidates: ['summary', 'events', 'issues', 'members', 'options', 'evidence'] }, 'receipt')
+    ...(result.pairing ? { pairing: result.pairing } : {}),
+    invalidates: ['summary', 'events', 'issues', 'members', 'options', 'evidence'].concat(result.pairing ? ['pairings'] : []) }, 'receipt')
 }
 module.exports = { commandResult, operationReceipt }

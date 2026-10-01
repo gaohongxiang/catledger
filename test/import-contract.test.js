@@ -21,7 +21,8 @@ test('导入公共契约与事件云函数动作保持一致', function () {
     financeUpdateUndoImpact: handler, economicEventCorrect: handler,
     economicEventCorrectionImpact: handler, economicEventEvidence: handler, reviewIssueGet: handler,
     reviewIssueList: handler, reviewIssueResolve: handler, reviewIssueResolveAccountMappings: handler,
-    reviewIssueRefreshAccountGroups: handler, reviewIssueReviseAccountMapping: handler
+    reviewIssueRefreshAccountGroups: handler, reviewIssueReviseAccountMapping: handler,
+    reviewIssuePairings: handler, reviewIssueResolvePairings: handler
   })
   assert.deepEqual(Object.keys(handlers).sort(), names)
   assert.equal(Object.values(handlers).every(function (value) { return typeof value === 'function' }), true)
@@ -40,7 +41,7 @@ test('统一 FinanceUpdate 上线后不再公开旧单文件写链路', function
 })
 
 test('小程序导入调用只使用已登记动作，各导入入口复用独立工作台', function () {
-  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
+  const page = ['index.js', 'runtime.js', 'upload-flow.js', 'account-review.js', 'transaction-review.js', 'pairing-review.js', 'posting-flow.js', 'presentation.js'].map(file => fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench', file), 'utf8')).join('\n')
   const actions = [...page.matchAll(/(?:callImport|request)\(\s*['"]([^'"]+)['"]/g)].map(function (match) { return match[1] })
   assert.ok(actions.length > 0)
   actions.forEach(function (action) { assert.ok(contract.actions[action], action) })

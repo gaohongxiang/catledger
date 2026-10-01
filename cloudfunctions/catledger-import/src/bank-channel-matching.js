@@ -72,6 +72,8 @@ function bankChannelPair(left, right) {
   const platformType = sourceRows(platform)[0].sourceType
   if (!['wechat', 'alipay'].includes(platformType) || bank.ledgerAccountId !== platform.ledgerAccountId ||
       bank.amountMinor !== platform.amountMinor || bank.currency !== platform.currency || bank.flowDirection !== platform.flowDirection) return false
+  if (bank.economicNature !== 'unknown' && bank.economicNature !== platform.economicNature) return false
+  if ((bank.manualFieldMask & 128) && (platform.manualFieldMask & 128) && bank.categoryId !== platform.categoryId) return false
   if (!sourceRows(bank).every(row => channel(row) === platformType)) return false
   if (minute(a) !== minute(b)) return false
   const key = pairKey(left, right)
@@ -79,7 +81,7 @@ function bankChannelPair(left, right) {
   return true
 }
 
-function bankChannelGroups(events) {
+function bankChannelEdges(events, maxEdges = 10000) {
   const candidates = events.filter(event => !event.sameEventCandidateKey && eligible(event))
   const buckets = new Map()
   for (const event of candidates) {
@@ -87,14 +89,29 @@ function bankChannelGroups(events) {
     if (!buckets.has(key)) buckets.set(key, [])
     buckets.get(key).push(event)
   }
-  const groups = []
+  const pairs = []
   for (const bucket of buckets.values()) {
-    const edges = new Map(bucket.map(event => [event, new Set()]))
     for (const bank of bucket.filter(event => sourceRows(event)[0].sourceType === 'bank')) {
-      for (const other of bucket) if (bank !== other && bankChannelPair(bank, other)) {
-        edges.get(bank).add(other); edges.get(other).add(bank)
+      for (const platform of bucket) if (bank !== platform && bankChannelPair(bank, platform)) {
+        if (pairs.length >= maxEdges) throw require('./errors').importError('PAIRING_LIMIT_EXCEEDED')
+        pairs.push({ bank, platform, pairKey: pairKey(bank, platform) })
       }
     }
+  }
+  return pairs
+}
+
+function bankChannelGroups(events) {
+  const pairs = bankChannelEdges(events)
+  const buckets = new Map()
+  for (const pair of pairs) {
+    for (const event of [pair.bank, pair.platform]) if (!buckets.has(event)) buckets.set(event, new Set())
+    buckets.get(pair.bank).add(pair.platform); buckets.get(pair.platform).add(pair.bank)
+  }
+  const groups = []
+  {
+    const bucket = [...buckets.keys()]
+    const edges = buckets
     const seen = new Set()
     for (const event of bucket) {
       if (seen.has(event) || !edges.get(event).size) continue
@@ -146,4 +163,4 @@ function explainedRowIds(events, rows) {
   return explained
 }
 
-module.exports = { VERSION, REASON, bankChannelEvidenceForRow, bankChannelPair, bankChannelGroups, pairKey, semanticRowsAfterConfirmation, explainedRowIds }
+module.exports = { VERSION, REASON, bankChannelEvidenceForRow, bankChannelPair, bankChannelEdges, bankChannelGroups, pairKey, semanticRowsAfterConfirmation, explainedRowIds }

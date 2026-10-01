@@ -99,7 +99,12 @@ function createFinanceUpdateCore({ getPool }) {
       ]
     )
     if (result.affectedRows !== 1) throw importError('CONFLICT')
-    await synchronizeHistoricalReviews(connection, uid, updateId)
+    // 仅银行/平台组合需要复用具体来源决定；仍在原整理事务内完成。
+    const sourceTypes = new Set(rows.map(row => row.sourceType))
+    if (sourceTypes.has('bank') && (sourceTypes.has('wechat') || sourceTypes.has('alipay'))) {
+      await require('./review/bank-channel-candidates').synchronize(connection, uid, updateId, actionId, rows)
+      await require('./review/reconciliation').recalculateUpdateCounts(connection, uid, updateId, appliedVersion, actionId, appliedVersion)
+    } else await synchronizeHistoricalReviews(connection, uid, updateId)
     return commandResult(connection, uid, updateId, data)
   }
 

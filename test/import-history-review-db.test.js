@@ -10,12 +10,12 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
   try {
     const apiPool = await lab.role('api', grants.api), importPool = await lab.role('import', grants.importer)
     const logs = []
-    async function context() {
+    async function context(accountType = 'bank') {
       const services = localServices({ apiPool, importPool, subject: 'synthetic-history-' + randomUUID(),
         logger: { warn(value) { logs.push(value) }, error(value) { logs.push(value) } } })
       const api = (action, data) => call(services.api, action, data), imp = (action, data) => call(services.import, action, data)
       const user = await api('bootstrap')
-      const accountId = (await api('accounts.create', { requestId: randomUUID(), type: 'bank', name: '合成查重账户',
+      const accountId = (await api('accounts.create', { requestId: randomUUID(), type: accountType, name: '合成查重账户',
         openingDisplayBalanceMinor: '100000', occurredLocalAt: '2026-09-01T00:00:00', timezoneOffsetMinutes: -480 })).accountId
       const categoryId = user.categories.find(row => row.kind === 'expense').id
       const manual = (overrides = {}) => api('transactions.create', { requestId: randomUUID(), type: 'expense', sourceAccountId: accountId,
@@ -72,6 +72,19 @@ test('历史疑似重复：真实隔离 MySQL，原子拒绝与人工裁决', { 
       const counts = (await summary(c, updateId)).workbench.recordSummary
       assert.equal(counts.duplicateCount, 1); assert.equal(counts.excludedCount, 0); assert.equal(counts.totalCount, 1)
       assert.equal((await c.imp('economicEvents.list', { updateId, status: 'duplicate' })).items.length, 1)
+    })
+    await t.test('已有账户映射的单平台新来源在首次整理就产生历史核对，不等待再次整理或账户提交', async () => {
+      const c = await context('wallet')
+      const first = await mapAccounts(c, await prepareSyntheticUpdate(c.services, 1, 'SYNTHETIC-HISTORY-FIRST'))
+      await post(c, first)
+      const next = await prepareSyntheticUpdate(c.services, 1, 'SYNTHETIC-HISTORY-OTHER-SOURCE')
+      const pending = (await c.imp('reviewIssues.list', { updateId: next.updateId, status: 'open' })).items
+      assert.equal(pending.filter(row => row.issueType === 'account_mapping').length, 0)
+      const historical = pending.find(row => row.primaryReasonCode === 'historical_duplicate_candidate')
+      assert.ok(historical, '已有映射不能跳过首次整理的历史候选生成')
+      assert.equal(historical.candidateCount, 1)
+      assert.equal(await count(c), 1)
+      await assert.rejects(post(c, next.updateId), { publicCode: 'UNRESOLVED_IMPORT' })
     })
     await t.test('手工账也参与；同额独立交易只有明确确认后才新增，另一个用户不能套用候选', async () => {
       const c = await context(), other = await context()

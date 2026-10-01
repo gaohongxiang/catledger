@@ -7,6 +7,7 @@ const { resolve: resolveInTransaction } = require('./review/event-decisions')
 const { setRepayment: setRepaymentInTransaction } = require('./review/repayment')
 
 function createReviewIssueService({ getPool }) {
+  const pairings = require('./review/bank-channel-pairings').createBankChannelPairings({ getPool })
   async function refreshAccountGroups(context) {
     const updateId = validateUuid(context.data.updateId)
     validateUuid(context.data.requestId)
@@ -82,7 +83,8 @@ function createReviewIssueService({ getPool }) {
     })
   }
 
-  return { setRepayment, resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups }
+  return { setRepayment, resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups,
+    pairings: pairings.list, resolvePairings: pairings.resolve }
 }
 
 module.exports = { createReviewIssueService }

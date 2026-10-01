@@ -64,6 +64,14 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
     const channelPrimary = await require('./bank-channel-candidates').confirmedPrimary(connection, uid, updateId,
       events, primaryEventId, actionId, { required: issue.primaryReasonCode === 'bank_channel_same_event_candidate' })
     await assertIdentityIntegrity(connection, uid, updateId, eventIds, { merge: true })
+    if (channelPrimary) {
+      const hydrated = await require('./bank-channel-hydration').hydrate(connection, uid, updateId, events)
+      const [[linked]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_economic_event_transactions
+        WHERE uid = ? AND update_id = ? AND event_id IN (?, ?)`, [uid, updateId, ...eventIds])
+      if (Number(linked.count)) throw importError('CONFLICT')
+      await require('./bank-channel-decisions').remember(connection, uid,
+        require('../bank-channel-matching').bankChannelEdges(hydrated).map(pair => ({ ...pair, decision: 'same' })), actionId)
+    }
     for (const event of events) {
       if (event.eventId === primaryEventId) continue
       const [[linkCount]] = await connection.execute(
@@ -105,6 +113,12 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
       events, { required: issue.primaryReasonCode === 'bank_channel_same_event_candidate' })
     if (channelEvents) events = channelEvents
     await assertIdentityIntegrity(connection, uid, updateId, eventIds)
+    if (channelEvents) {
+      // distinctEvents 已写入本批拒绝边；用裁决前的水合事件记录稳定来源身份。
+      const hydrated = await require('./bank-channel-hydration').hydrate(connection, uid, updateId, storedEvents)
+      await require('./bank-channel-decisions').remember(connection, uid,
+        require('../bank-channel-matching').bankChannelEdges(hydrated).map(pair => ({ ...pair, decision: 'distinct' })), actionId)
+    }
     for (const part of channelEvents ? [] : chunks(eventIds.map(id => [id]))) await connection.execute(
       `UPDATE catledger_economic_event_relations SET status = 'rejected', version = version + 1
               WHERE uid = ? AND update_id = ? AND status = 'proposed'

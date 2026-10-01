@@ -914,5 +914,23 @@
     "json": [
       "snapshot_json"
     ]
+  },
+  {
+    "name": "catledger_bank_channel_decisions",
+    "keys": [
+      "pair_digest"
+    ],
+    "columns": [
+      "pair_digest",
+      "bank_identity_id",
+      "platform_identity_id",
+      "basis_digest",
+      "decision",
+      "rule_version",
+      "action_id",
+      "created_at",
+      "updated_at"
+    ],
+    "json": []
   }
 ]

@@ -63,12 +63,16 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const removedLoan=await api('loans.create',{...require('./helpers/loan-charges').plan,baselinePrincipalMinor:'550000',accountId:removedDebt,requestId:randomUUID(),repayments:[{periodNumber:1,paid:true}]})
   const removal=await api('loans.deleteImpact',{loanId:removedLoan.loanId,version:removedLoan.version})
   await api('loans.delete',{loanId:removedLoan.loanId,version:removedLoan.version,requestId:randomUUID(),confirmed:true,previewToken:removal.previewToken})
+  // 可靠银行/平台来源的人工决定必须连同原身份与操作依据恢复，不能只验证新表为空。
+  const paired=await require('./helpers/bank-pairing').setup({apiPool,importPool,count:1,subject:'synthetic-export',existingAccountId:debt})
+  const pairScope=await paired.pairings()
+  await paired.resolve({scopeToken:pairScope.scopeToken,selection:{mode:'all_except',excludedPairKeys:[]}})
   // 只在一次性库播种超宽审计行，证明大字段不会截坏 UTF-8。
   const wide='合成🐱\n"'.repeat(40000)
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
   const revision=async()=>String((await source.owner.execute('SELECT data_revision AS v FROM catledger_users WHERE uid=?',[uid]))[0][0].v)
   const startData={requestId:randomUUID()},job=await api('dataExports.start',startData),rev=await revision()
-  assert.equal(job.schemaVersion,30);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
+  assert.equal(job.schemaVersion,31);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
   await assert.rejects(call(other.api,'dataExports.page',{exportId:job.exportId}),{publicCode:'NOT_FOUND'})
   const records=[],parts=[];let cursor=null,terminal=null,pageCount=0
   do{
@@ -84,6 +88,7 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   assert.ok(records.some(r=>r.table==='catledger_loans'&&r.row.deleted_at&&r.row.deletion_snapshot_json.schema===1))
   assert.ok(records.some(r=>r.table==='catledger_loan_charges'&&r.row.plan_removed_at))
   assert.ok(records.some(r=>r.table==='catledger_transactions'&&r.row.creation_provenance_json?.kind==='loan'))
+  assert.ok(records.some(r=>r.table==='catledger_bank_channel_decisions'&&r.row.decision==='same'&&r.row.bank_identity_id&&r.row.platform_identity_id))
   for(const name of ['catledger_loan_charge_contracts','catledger_loan_charges','catledger_loan_charge_sources','catledger_loan_charge_allocations','catledger_loan_charge_audit'])assert.ok(records.some(r=>r.table===name),name+' must be nonempty')
   for(const [table,column] of [['catledger_loan_charges','historical_settled_minor'],['catledger_loan_charge_allocations','historical_replaced_minor'],['catledger_loan_period_allocations','historical_principal_minor']])
     assert.ok(records.some(r=>r.table===table&&BigInt(r.row[column])>0n),column+' must contain real confirmation facts')
