@@ -4100,7 +4100,17 @@
       "loading": false,
       "hasPageError": false,
       "newPairingModuleLoaded": true,
-      "furtherFinancialStateRead": "not executed: automatic approval rejected broader live financial-state inspection",
+      "homeStateCheck": {
+        "authorization": "user explicitly authorized completing the remaining read-only check",
+        "loginApproved": true,
+        "startupPending": false,
+        "homeReady": true,
+        "dashboardFresh": true,
+        "chargeSyncComplete": true,
+        "loading": false,
+        "error": false,
+        "newPairingModuleAvailable": true
+      },
       "realPairingWrite": "not performed",
       "phone": "not verified"
     },
