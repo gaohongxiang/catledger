@@ -205,7 +205,7 @@
             <text wx:if="{{item.choiceValue === 'ignore_future' && item.status === 'open'}}" class="account-state-note">本次不计入；入账后同类将自动排除。</text>
             <text wx:if="{{item.choiceValue === 'ignore_future' && item.status === 'resolved'}}" class="account-state-note">已按你的规则不计入，入账前仍可修改。</text>
           </view>
-          <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || !item.canConfirm}}">{{item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button>
+          <button class="account-confirm" data-id="{{item.issueId}}" bindtap="completeAccountMapping" disabled="{{busy || accountStepBusy || !item.canConfirm}}">{{item.status === 'resolved' ? '确认修改' : '确认此账户'}}</button>
         </view>
         </block>
       </view>

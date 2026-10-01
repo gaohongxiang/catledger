@@ -142,7 +142,7 @@ module.exports = {
     this.cancelPagedReads()
     this.setData({ currentIssue: null, currentMembers: [], issueEvents: [], issueRelations: [], issueVisibleEvents: [],
         evidenceSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null,
-        bankMappingSheet: null, busy: false })
+        bankMappingSheet: null, busy: false, accountStepBusy: false, accountStepProgressText: '' })
     this.finishInputEditing()
   },
   onUnload() {
@@ -373,6 +373,9 @@ module.exports = {
   startAnother: function () {
     this._pendingInitialLoad = null
     this._prepareRestore = false
+    this._pendingBackgroundView = null
+    this._editingInput = ''
+    if (this._accountDraftTimer) { clearTimeout(this._accountDraftTimer); this._accountDraftTimer = null }
     this._viewEpoch++
     this.cancelPagedReads(); if (this._viewSession) this._viewSession.close(); this._viewSession = null
     this._businessData = null

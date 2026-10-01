@@ -29,6 +29,81 @@ function validAccountName(value) {
   return length >= 1 && length <= 32
 }
 
+async function recoverAccountConfirmation(page, issueId) {
+  const session = page._draftSession, view = page._viewSession
+  const issue = (page.businessData().accountIssues || []).find(item => item.issueId === issueId)
+  const draft = page._accountUiDrafts.get(issueId)
+  if (!session || !issue || !draft || (!session.status.syncing && session.view.viewVersion === view.summary.viewVersion)) {
+    page.setData({ accountStepError: '整理结果已变化，选择已保留，请刷新本页后核验' })
+    return false
+  }
+  const epoch = page._viewEpoch, scope = readCache.getSession(), owner = getApp().globalData.uid, revision = draft.revision || 0
+  const decision = readCache.stableKey('account', page.accountMappingDecision(issue))
+  const current = () => page._viewActive && page._viewEpoch === epoch && readCache.getSession() === scope &&
+    getApp().hasLoginApproval() && getApp().globalData.uid === owner && page._draftSession === session && page.data.update &&
+    page.data.update.updateId === session.state.updateId
+  page.setData({ accountStepBusy: true, accountStepError: '', accountStepProgressText: '正在核验账户选择…' })
+  try {
+    // 等待原写入及其摘要，不另建请求；刷新前先保存下一项的未提交选择。
+    session.saveDrafts(Object.fromEntries(page._accountUiDrafts), page.data.currentStep)
+    if (session.status.syncing) await session.flush()
+    if (!current()) return false
+    if (session.status.conflicts || session.status.error || (session.view.viewVersion === view.summary.viewVersion && !view.active)) {
+      page.setData({ accountStepError: session.status.error || '账户结果尚未核实，选择已保留，请重试同步' })
+      return false
+    }
+    const pending = page._pendingBackgroundView
+    const summary = pending && pending.viewVersion !== session.view.viewVersion
+      ? await require('../../services/catledger-import').readSummary(session.state.updateId) : session.view
+    if (!current()) return false
+    page._editingInput = ''
+    page._pendingBackgroundView = null
+    await page.applyUpdateView(summary)
+    if (!current()) return false
+    if (page.data.update.status !== 'review' || session.view.update.status !== 'review') {
+      page.setData({ accountStepError: '当前导入已结束，请查看最新结果' })
+      return false
+    }
+    // 订阅可能已开始刷新，同版本分页会复用在途读取；必须等到账户页核验完成。
+    await page.loadActivePage(true)
+    if (!current()) return false
+    const checkedView = page._viewSession, checkedVersion = checkedView.summary.viewVersion
+    const unchanged = mapping => {
+      const choice = page._accountUiDrafts.get(issueId)
+      return current() && page._viewSession === checkedView && checkedView.active && checkedView.summary.viewVersion === checkedVersion &&
+        (!page._pendingBackgroundView || page._pendingBackgroundView.viewVersion === checkedVersion) &&
+        page.data.update.status === 'review' && !page.data.pageError && mapping && mapping.version === issue.version && choice &&
+        (choice.revision || 0) === revision && readCache.stableKey('account', page.accountMappingDecision(mapping)) === decision
+    }
+    const mapping = page.mappingState().mappings.find(item => item.issueId === issueId)
+    const choice = page._accountUiDrafts.get(issueId)
+    if (!unchanged(mapping)) {
+      page.setData({ accountStepError: '账户对应记录已变化，选择已保留，请核对后再次确认' })
+      return false
+    }
+    if (choice.mode === 'account') {
+      const data = page.businessData()
+      let available = data.accounts.concat(data.accountDrafts).some(account => account.accountId === choice.accountId)
+      if (!available) {
+        const pinned = await page.loadDirectories([], [choice.accountId], ['accounts', 'accountDrafts'])
+        if (!current()) return false
+        available = pinned.accounts.concat(pinned.accountDrafts).some(account => account.accountId === choice.accountId)
+      }
+      if (!available) {
+        page.setData({ accountStepError: '所选账户已不可用，原选择已保留，请重新选择后确认' })
+        return false
+      }
+    }
+    // 目录补查与调用方 await 都可能让出执行；入队前还要核对同一冻结决定。
+    return { current, unchanged }
+  } catch (error) {
+    if (current()) page.setData({ accountStepError: publicError(error, '账户核验未完成，选择已保留，请重试') })
+    return false
+  } finally {
+    if (current()) page.setData({ accountStepBusy: false, accountStepProgressText: '' })
+  }
+}
+
 function showAccountChoice(event) {
   if (this.data.accountStepBusy) return
   const issueId = event.currentTarget.dataset.id
@@ -290,12 +365,20 @@ module.exports = {
     this.refreshAccountMappings()
   },
 
-  completeAccountMapping: function (event) {
+  completeAccountMapping: async function (event) {
     if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
-    if (this._viewSession && !this._viewSession.active) { this.setData({ accountStepError: '整理结果已变化，选择已保留，请刷新本页后核验' }); return }
     this.flushAccountDraftSync()
     const issueId = event && event.currentTarget && event.currentTarget.dataset.id
+    let recovered
+    if (this._viewSession && !this._viewSession.active) {
+      recovered = await recoverAccountConfirmation(this, issueId)
+      if (!recovered || !recovered.current()) return
+    }
     const mapping = this.refreshAccountMappings().mappings.find(function (item) { return item.issueId === issueId })
+    if (recovered && !recovered.unchanged(mapping)) {
+      this.setData({ accountStepError: '账户对应记录已变化，选择已保留，请核对后再次确认' })
+      return
+    }
     if (!mapping || !mapping.inline || !mapping.canConfirm) {
       this.setData({ accountStepError: '请选择账户归属；选择新建时，请补全账户名称' })
       return
