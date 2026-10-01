@@ -272,7 +272,7 @@ test('问题事件缺少主证据时仍安全展示，分类只匹配经济性�
   assert.deepEqual(model.eventView({ amountMinor: '500', economicNature: 'refund', primaryEvidence: null }), {
     amountMinor: '500', economicNature: 'refund', primaryEvidence: null,
     amountText: '¥5.00', displayTitle: '退款', displayMeta: '',
-    displayDay: '', displayMonth: '', displayDetailMeta: '', directionClass: ''
+    displayDate: '', displayDay: '', displayMonth: '', displayDetailMeta: '', directionClass: ''
   })
   const categories = [
     { categoryId: 'income', kind: 'income' },
@@ -314,6 +314,7 @@ test('整理问题按类型分组，并直接展示退款交易与候选数量',
   assert.equal(rows[0].subjectAmountText, '¥5.00')
   assert.equal(model.eventView(rows[0].subject).displayDay, '02')
   assert.equal(model.eventView(rows[0].subject).displayMonth, '8月')
+  assert.equal(model.eventView(rows[0].subject).displayDate, '08-02')
   assert.equal(rows[0].decisionText, '2 笔候选待核对')
   assert.equal(rows[1].groupStart, false)
   assert.equal(rows[1].decisionText, '未找到可确认的原消费')

@@ -826,6 +826,7 @@ function eventView(event) {
     amountText: amountText(event.summaryExpenseMinor == null ? event.amountMinor : event.summaryExpenseMinor),
     displayTitle: event.summaryExpenseMinor == null ? displayTitle : '还款利息及费用',
     displayMeta: [dateText, detailText, sourceText].filter(Boolean).join(' · '),
+    displayDate: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(5, 10) : '',
     displayDay: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(8, 10) : '',
     displayMonth: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? Number(localAt.slice(5, 7)) + '月' : '',
     displayDetailMeta: [detailText, sourceText].filter(Boolean).join(' · '),

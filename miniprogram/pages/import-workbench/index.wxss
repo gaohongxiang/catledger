@@ -861,12 +861,12 @@ button::after { border: 0; }
 .review-preview-row:last-of-type { border-bottom: 0; }
 .review-preview-date {
   display: flex;
-  width: 54rpx;
+  width: 76rpx;
   min-height: 46rpx;
   align-items: center;
   justify-content: center;
-  flex: 0 0 54rpx;
-  flex-direction: column;
+  flex: 0 0 76rpx;
+  white-space: nowrap;
   border-right: 0;
   padding-right: 0;
 }
@@ -875,12 +875,6 @@ button::after { border: 0; }
   font-size: var(--font-caption, 24rpx);
   font-weight: 500;
   line-height: 1.05;
-}
-.review-preview-month {
-  margin-top: 3rpx;
-  color: var(--ui-subtle);
-  font-size: var(--font-caption, 24rpx);
-  line-height: 1;
 }
 .review-preview-title {
   overflow: hidden;

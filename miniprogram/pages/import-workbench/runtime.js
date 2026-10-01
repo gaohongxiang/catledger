@@ -171,6 +171,7 @@ module.exports = {
     }
   },
   cancelPagedReads() {
+    if (this.cancelPairingEntry) this.cancelPairingEntry()
     if (this.cancelPairingReview) this.cancelPairingReview()
     this.closeInlineEvidence('issue')
     this.closeInlineEvidence('account')
@@ -508,6 +509,7 @@ module.exports = {
   loadActivePage: async function (reset, direction, quiet) {
     if (!this._viewSession || !this._viewActive) return
     const step = this.data.currentStep
+    this.loadPairingEntry()
     const epoch = ++this._pageEpoch, viewEpoch = this._viewEpoch, scope = readCache.getSession()
     const active = () => this._viewActive && epoch === this._pageEpoch && viewEpoch === this._viewEpoch && readCache.getSession() === scope
     this._loadedStep = step

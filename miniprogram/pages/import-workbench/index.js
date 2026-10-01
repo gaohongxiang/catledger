@@ -4,9 +4,11 @@ const uploadFlow = require('./upload-flow')
 const accountReview = require('./account-review')
 const transactionReview = require('./transaction-review')
 const pairingReview = require('./pairing-review')
+const pairingEntry = require('./pairing-entry')
 const postingFlow = require('./posting-flow')
 
 const initialData = Object.assign({}, pairingReview.initialData, {
+    pairingEntry: null,
     restoreUpdateId: '',
     abandoningRestore: false,
     preparePending: false,
@@ -227,6 +229,9 @@ Page({
   goToStep: runtime.goToStep,
   openIssue: transactionReview.openIssue,
   openPairingReview: pairingReview.openPairingReview,
+  openPairingEntry: pairingEntry.openPairingEntry,
+  loadPairingEntry: pairingEntry.loadPairingEntry,
+  cancelPairingEntry: pairingEntry.cancelPairingEntry,
   openAmbiguousPairingReview: pairingReview.openAmbiguousPairingReview,
   cancelPairingReview: pairingReview.cancelPairingReview,
   closePairingReview: pairingReview.closePairingReview,

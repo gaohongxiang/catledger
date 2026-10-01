@@ -10,7 +10,7 @@ function emptyLists() {
 // 展示层只传模板使用的字段；证据、成员全集与操作版本保留在业务视图。
 function record(event) {
   const view = model.eventView(event), result = {}
-  ;['eventId', 'displayTitle', 'displayMeta', 'displayDay', 'displayMonth', 'displayDetailMeta',
+  ;['eventId', 'displayTitle', 'displayMeta', 'displayDate', 'displayDetailMeta',
     'amountText', 'directionClass', 'needsCategory', 'reviewIssueId', 'categoryName', 'natureLabel',
     'accountText', 'duplicateCount', 'auditNote', 'detailRequired'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
   for (const key of ['displayTitle', 'displayMeta', 'displayDetailMeta', 'accountText']) if (typeof result[key] === 'string' && result[key].length > 160) {
@@ -92,7 +92,8 @@ function evidencePartFields(part, page) {
   try {
     const fields = JSON.parse(part)
     if (!Array.isArray(fields) || !fields.every(field => field && typeof field.name === 'string' && Object.prototype.hasOwnProperty.call(field, 'value'))) return []
-    return fields.map((field, index) => ({ key: index, name: field.name, value: String(field.value == null ? '' : field.value) }))
+    const displayFields = model.evidenceFields(fields)
+    return fields.map((field, index) => ({ key: index, name: field.name, value: displayFields[index].value }))
   } catch (_) { return [] }
 }
 

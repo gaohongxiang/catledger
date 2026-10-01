@@ -250,10 +250,17 @@
         </button>
       </view>
       <block wx:if="{{activeReviewStatus === 'pending'}}">
-        <view class="pairing-entry">
-          <view><text class="pairing-entry-title">银行卡与微信／支付宝</text><text class="pairing-entry-copy">集中确认建议配对，少数多候选可逐对选择。</text></view>
-          <button class="stage-previous" bindtap="openPairingReview" disabled="{{busy}}">查看建议配对</button>
-        </view>
+        <button wx:if="{{pairingEntry}}" class="review-decision-card pairing-entry" bindtap="openPairingEntry" disabled="{{busy || pairingEntry.total === 0}}" aria-label="判断是否同一笔，{{pairingEntry.total === null ? '多组建议配对' : pairingEntry.total + '组建议配对'}}，批量核对">
+          <view class="review-decision-heading">
+            <view class="review-decision-copy"><text class="review-decision-title">判断是否同一笔</text></view>
+            <view class="review-decision-action"><text class="review-action-button">批量核对</text><chevron-icon size="{{22}}" /></view>
+          </view>
+          <view class="pairing-entry-body">
+            <view class="pairing-entry-total"><text wx:if="{{pairingEntry.total !== null}}" class="pairing-entry-number money-number">{{pairingEntry.total}}</text><text class="pairing-entry-title">{{pairingEntry.total === null ? '多组建议配对' : '组建议配对'}}</text></view>
+            <text class="pairing-entry-copy">银行卡与微信／支付宝，逐组对照两边账单。</text>
+            <text class="pairing-entry-note">{{pairingEntry.loading ? '正在核验组数，可先打开查看…' : pairingEntry.error ? '组数暂未读到，点击重新核验。' : pairingEntry.total === 0 ? '暂无唯一建议，其他候选仍可在下方逐笔核对。' : '与下方待核对同步，确认后不用重复处理。'}}</text>
+          </view>
+        </button>
         <skeleton-rows wx:if="{{pageLoading && !reviewGroups.length}}" rows="{{3}}" />
         <view wx:if="{{reviewGroups.length}}" class="review-batch-list">
           <view wx:for="{{reviewGroups}}" wx:key="issueType" class="review-batch">
@@ -264,7 +271,7 @@
               </view>
               <view class="review-preview-list review-decision-previews">
                 <view wx:for="{{issue.subjects}}" wx:for-item="preview" wx:key="eventId" class="review-preview-row">
-                  <view wx:if="{{preview.displayDay}}" class="review-preview-date"><text class="review-preview-day money-number">{{preview.displayDay}}</text><text class="review-preview-month">{{preview.displayMonth}}</text></view>
+                  <view wx:if="{{preview.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{preview.displayDate}}</text></view>
                   <view class="review-preview-copy"><text class="review-preview-title">{{preview.displayTitle}}</text><text class="review-preview-meta">{{preview.displayDetailMeta || preview.displayMeta}}</text></view>
                   <text class="review-preview-amount money-number {{preview.directionClass}}">{{preview.amountText}}</text>
                 </view>
@@ -281,7 +288,7 @@
         <view wx:for="{{reviewedEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看已核对交易">
           <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">已核对{{item.needsCategory ? ' · 待分类' : ''}}</text><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view></view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
-            <view wx:if="{{item.displayDay}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDay}}</text><text class="review-preview-month">{{item.displayMonth}}</text></view>
+            <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
             <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
             <text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text>
           </view></view>
@@ -306,7 +313,7 @@
           </view>
           <view class="review-preview-list review-decision-previews">
             <view wx:for="{{item.subjects}}" wx:for-item="record" wx:key="eventId" class="review-preview-row" data-id="{{record.eventId}}" catchtap="openEvidence" aria-role="button" aria-label="查看交易证据">
-              <view wx:if="{{record.displayDay}}" class="review-preview-date"><text class="review-preview-day money-number">{{record.displayDay}}</text><text class="review-preview-month">{{record.displayMonth}}</text></view>
+              <view wx:if="{{record.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{record.displayDate}}</text></view>
               <view class="review-preview-copy"><text class="review-preview-title">{{record.displayTitle}}</text><text class="review-preview-meta">{{record.displayDetailMeta || record.displayMeta}}</text></view>
               <text class="review-preview-amount money-number {{record.directionClass}}">{{record.amountText}}</text>
             </view>
@@ -316,7 +323,7 @@
         <view wx:for="{{categoryWaitingEvents}}" wx:key="eventId" class="review-decision-card category-decision-card">
           <view class="review-decision-heading"><text class="review-decision-title">待分类 · 先核对交易</text><button class="review-inline-action" data-id="{{item.reviewIssueId}}" bindtap="reviewBeforeCategory">去核对<chevron-icon size="{{22}}" /></button></view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看交易证据">
-            <view wx:if="{{item.displayDay}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDay}}</text><text class="review-preview-month">{{item.displayMonth}}</text></view>
+            <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
             <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
             <text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text>
           </view></view>
@@ -330,7 +337,7 @@
             <view class="review-decision-copy"><text class="review-decision-title category-completed-title">{{activeCategoryStatus === 'completed' ? item.natureLabel + ' · ' + item.categoryName : '无需分类 · ' + item.natureLabel}}{{item.pendingReview ? ' · 待核对' : ''}}</text></view><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view>
           </view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
-            <view wx:if="{{item.displayDay}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDay}}</text><text class="review-preview-month">{{item.displayMonth}}</text></view>
+            <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
             <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
             <text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text>
           </view></view>
