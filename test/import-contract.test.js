@@ -118,7 +118,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(markup, /交易摘要|查看 \{\{item\.evidenceCount\}\} 条原始记录/)
   assert.match(markup, /class="funds-route-picker"/)
   assert.match(markup, /!\(currentIssue\.issueType === 'transfer_accounts' && currentIssue\.fundsRoute\)/)
-  assert.match(markup, /<view wx:if="\{\{!files.length && phase !== 'loading' && !restoreUpdateId && !preparePending\}\}" data-ui="empty-picker" class="file-picker-empty">/)
+  assert.match(markup, /<view wx:if="\{\{!files.length && phase !== 'loading' && phase !== 'organizing' && !restoreUpdateId && !preparePending\}\}" data-ui="empty-picker" class="file-picker-empty">/)
   assert.match(markup, /class="file-row-side"/)
   assert.match(markup, /class="file-progress \{\{item\.state === 'preparing'/)
   assert.match(styles, /\.file-row-side \{[^}]*flex: 0 0 64rpx;/)

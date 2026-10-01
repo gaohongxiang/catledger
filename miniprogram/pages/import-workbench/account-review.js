@@ -5,6 +5,13 @@ const presentation = require('./presentation')
 const { errorText, direction } = require('./presentation')
 const readCache = require('../../services/read-cache')
 
+function currentAccountRecords(page, token) {
+  return token && page._viewActive && page._viewEpoch === token.epoch && page._accountEvidenceToken === token &&
+    readCache.getSession() === token.scope && getApp().hasLoginApproval() && getApp().globalData.uid === token.owner &&
+    page.data.update && page.data.update.updateId === token.updateId &&
+    page.data.accountRecordsSheet && page.data.accountRecordsSheet.issueId === token.issueId
+}
+
 const ACCOUNT_TYPE_OPTIONS = Object.freeze([
     { value: 'cash', label: '现金' },
     { value: 'bank', label: '银行卡' },
@@ -549,24 +556,52 @@ module.exports = {
 
   openAccountRecords: async function (event) {
     const issueId = event.currentTarget.dataset.id
-    if (!this._viewActive || !this._viewSession || !this._viewSession.active) return
+    if (!this._viewActive || !this._viewSession || !getApp().hasLoginApproval() || this.data.busy) return
     const mapping = this.data.accountMappings.find(item => item.issueId === issueId)
     if (!mapping) return
     this.closeInlineEvidence('account')
     if (this._accountPager) this._accountPager.cancel()
-    this._accountEvidenceToken = { session: this._viewSession, version: this._viewSession.summary.viewVersion,
-      scope: readCache.getSession(), issueId }
-    this._accountPager = this._viewSession.pager('reviewIssues.members', { issueId, memberKind: 'event', pageSize: 8 })
+    this._accountPager = null
+    const token = this._accountEvidenceToken = { session: this._viewSession, version: this._viewSession.summary.viewVersion,
+      scope: readCache.getSession(), issueId, epoch: this._viewEpoch, owner: getApp().globalData.uid,
+      updateId: this.data.update.updateId }
     this.setData({ accountRecordsSheet: { issueId, label: mapping.label, records: [], loading: true } })
-    return this.changeAccountMembers(event)
+    try {
+      if (!this._viewSession.active || (this._pendingBackgroundView && this._pendingBackgroundView.viewVersion !== token.version)) {
+        // 查看记录只恢复只读摘要；先保留账户输入，不触发重新整理或再次保存。
+        if (this._draftSession) this._draftSession.saveDrafts(Object.fromEntries(this._accountUiDrafts), this.data.currentStep)
+        const pending = this._pendingBackgroundView
+        const summary = await require('../../services/catledger-import').readSummary(token.updateId)
+        if (!currentAccountRecords(this, token)) return
+        if (this._pendingBackgroundView && this._pendingBackgroundView.viewVersion !== summary.viewVersion &&
+            (this._pendingBackgroundView !== pending || this._pendingBackgroundView.update.version > summary.update.version)) {
+          throw new Error('账户记录仍在更新，请重新读取')
+        }
+        this._pendingBackgroundView = null
+        await this.applyUpdateView(summary)
+        if (!currentAccountRecords(this, token)) return
+        if (!this._viewSession.active) throw new Error('账户记录仍在更新，请重新读取')
+        token.session = this._viewSession; token.version = this._viewSession.summary.viewVersion
+      }
+      if (this._pendingBackgroundView && this._pendingBackgroundView.viewVersion !== token.version) throw new Error('账户记录仍在更新，请重新读取')
+      this._accountPager = this._viewSession.pager('reviewIssues.members', { issueId, memberKind: 'event', pageSize: 8 })
+      return this.changeAccountMembers(event)
+    } catch (error) {
+      if (currentAccountRecords(this, token)) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': errorText(error) })
+    }
   },
 
   changeAccountMembers: async function (event) {
     const pager = this._accountPager
     const token = this._accountEvidenceToken
-    const active = () => this._viewActive && pager === this._accountPager && token === this._accountEvidenceToken &&
-      token && this._viewSession === token.session && token.session.summary.viewVersion === token.version &&
-      readCache.getSession() === token.scope && this.data.accountRecordsSheet && this.data.accountRecordsSheet.issueId === token.issueId
+    if (!currentAccountRecords(this, token)) return
+    if (!pager || !token.session.active || token.session.summary.viewVersion !== token.version ||
+        (this._pendingBackgroundView && this._pendingBackgroundView.viewVersion !== token.version)) {
+      return this.openAccountRecords({ currentTarget: { dataset: { id: token.issueId } } })
+    }
+    const active = () => currentAccountRecords(this, token) && pager === this._accountPager &&
+      this._viewSession === token.session && token.session.summary.viewVersion === token.version &&
+      (!this._pendingBackgroundView || this._pendingBackgroundView.viewVersion === token.version)
     if (!pager || !active()) return
     this.closeInlineEvidence('account')
     this.setData({ 'accountRecordsSheet.records': [], 'accountRecordsSheet.loading': true, 'accountRecordsSheet.error': '' })

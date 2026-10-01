@@ -55,8 +55,8 @@
   <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
   <button wx:if="{{preparePending && !update}}" class="primary-button" bindtap="createFinanceUpdate" disabled="{{busy}}">继续整理上次账单</button>
 
-  <block wx:if="{{currentStep === 1 && !update}}">
-    <view wx:if="{{!files.length && phase !== 'loading' && !restoreUpdateId && !preparePending}}" data-ui="empty-picker" class="file-picker-empty">
+  <block wx:if="{{currentStep === 1 && (!update || phase === 'organizing')}}">
+    <view wx:if="{{!files.length && phase !== 'loading' && phase !== 'organizing' && !restoreUpdateId && !preparePending}}" data-ui="empty-picker" class="file-picker-empty">
       <view class="file-picker-symbol" aria-hidden="true"><view class="file-picker-paper"></view><text>＋</text></view>
       <text class="stage-panel-title">选择账单文件</text>
       <text class="stage-panel-copy">支持银行、支付宝、微信账单（CSV/XLS/XLSX）。</text>
@@ -105,10 +105,10 @@
       </view>
     </view>
 
-    <view wx:if="{{phase === 'loading' || restoreUpdateId}}" class="processing-stage">
+    <view wx:if="{{phase === 'loading' || restoreUpdateId || (phase === 'organizing' && !files.length)}}" class="processing-stage">
       <view class="processing-mark"><view class="processing-ring"></view><text class="processing-value money-number">01</text></view>
-      <text class="processing-title">{{abandoningRestore ? '正在放弃上次导入' : restoreUpdateId ? '正在恢复上次导入' : '正在读取导入进度'}}</text>
-      <text class="processing-copy">{{abandoningRestore ? '恢复已停止，正在清理本批导入。' : restoreUpdateId ? '上次有尚未入账的导入，正在恢复处理进度。' : '正在恢复这批账单的处理状态。'}}</text>
+      <text class="processing-title">{{phase === 'organizing' ? '正在准备账户' : abandoningRestore ? '正在放弃上次导入' : restoreUpdateId ? '正在恢复上次导入' : '正在读取导入进度'}}</text>
+      <text class="processing-copy">{{phase === 'organizing' ? '正在整理账户归属与待确认记录。' : abandoningRestore ? '恢复已停止，正在清理本批导入。' : restoreUpdateId ? '上次有尚未入账的导入，正在恢复处理进度。' : '正在恢复这批账单的处理状态。'}}</text>
       <button wx:if="{{restoreUpdateId}}" class="text-action restore-abandon-button" bindtap="abandonRestoringUpdate" disabled="{{abandoningRestore}}">{{abandoningRestore ? '正在放弃…' : '放弃上次导入'}}</button>
     </view>
 
@@ -130,7 +130,7 @@
     </view>
   </block>
 
-  <view wx:if="{{currentStep === 1 && update}}" class="step-section parse-stage">
+  <view wx:if="{{currentStep === 1 && update && phase !== 'organizing'}}" class="step-section parse-stage">
     <text class="stage-panel-kicker">解析摘要 · STEP 01</text>
     <text class="step-title serif-title">{{accountStepSummary.pending > 0 ? '账单已读取，请确认账户。' : (reviewStatusTabs[0].count ? '还有 ' + reviewStatusTabs[0].count + ' 笔交易待核对。' : (coverage.selectedEventsReadyToPost ? '本批账单已核对完成。' : '账单已读取。'))}}</text>
     <text class="step-copy">{{accountStepSummary.pending > 0 ? '还有 ' + accountStepSummary.pending + ' 项账户待确认。' : (reviewStatusTabs[0].count ? '继续整理剩余交易，已核对和已排除的结果会保留。' : (coverage.selectedEventsReadyToPost ? '可以继续确认入账，待分类不影响入账。' : '请继续查看当前整理结果。'))}}</text>
@@ -167,7 +167,7 @@
       <view wx:for="{{accountMappings}}" wx:key="issueId" class="account-proof-item">
         <view class="account-proof-head">
           <view class="account-proof-title-line"><text class="account-proof-title">{{item.label}}</text><text wx:if="{{item.needsConfirmation}}" class="account-pending-label">{{item.dirty && item.status === 'resolved' ? '待确认' : (item.suggestedExisting ? '建议 · 待确认' : '待确认')}}</text></view>
-          <view wx:if="{{item.inline && item.evidencePreview}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易"><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
+          <view wx:if="{{item.memberCount > 0}}" class="account-evidence-trigger {{item.choiceValue === 'pending' ? 'account-proof-pending' : ''}}" data-id="{{item.issueId}}" bindtap="openAccountRecords" aria-role="button" aria-disabled="{{busy}}" aria-label="查看{{item.label}}的{{item.memberCount}}笔交易"><text class="money-number">{{item.memberCount}} 笔</text><chevron-icon size="{{20}}" /></view>
           <text wx:else class="account-proof-meta">{{item.memberCount}} 条记录</text>
         </view>
 

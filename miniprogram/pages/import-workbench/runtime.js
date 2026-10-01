@@ -70,7 +70,7 @@ async function resumeInitialLoad(page) {
 
 module.exports = {
   applyPendingBackgroundView() {
-    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.accountChoiceSheet && !this.data.pairingSheet) {
+    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.accountChoiceSheet && !this.data.accountRecordsSheet && !this.data.pairingSheet) {
       const view = this._pendingBackgroundView; this._pendingBackgroundView = null; this.applyUpdateView(view, true)
     }
   },
@@ -436,10 +436,11 @@ module.exports = {
           errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : '操作已保存，明细待刷新', refreshRequired: true })
       return
     }
-    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.accountChoiceSheet || this.data.pairingSheet)) {
+    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
       this._pendingBackgroundView = view
       if (this._viewSession && this._viewSession.summary.viewVersion !== view.viewVersion) {
         if (this.data.currentIssue) this.setData({ issueStale: true, issueCanSubmit: false })
+        if (this.data.accountRecordsSheet) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': '账户记录已更新，请重新读取' })
         if (this.data.pairingSheet && this.invalidatePairingReview) this.invalidatePairingReview(view)
       }
       return

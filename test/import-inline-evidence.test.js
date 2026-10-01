@@ -127,6 +127,85 @@ test('账户核对同样自动展示原始记录，关闭后清空；重新进�
   page.onUnload()
 })
 
+async function staleAccountRecords() {
+  const h = runtime(fixture(9, true)), page = h.page
+  await flush()
+  page.setData({ accountMappings: [{ issueId: 'synthetic-issue', label: '合成账户', memberCount: 9 }] })
+  h.intercept = () => { throw Object.assign(new Error('合成过期'), { code: 'STALE_VIEW' }) }
+  await assert.rejects(page._viewSession.read('reviewIssues.members', { issueId: 'synthetic-issue', pageSize: 1 }))
+  h.summary = { ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }
+  h.intercept = evidence(h)
+  return { h, page }
+}
+
+test('账户笔数在旧会话过期后仍立即打开，重新读取摘要与原文，不发送写入', async t => {
+  const { h, page } = await staleAccountRecords()
+  t.after(() => page.onUnload())
+  const opening = page.openAccountRecords(event('synthetic-issue'))
+  assert.equal(page.data.accountRecordsSheet.loading, true)
+  await opening
+  assert.equal(page.data.accountRecordsSheet.records.length, 8)
+  assert.deepEqual(rendered(page.data.accountRecordsSheet.records[0]), fields)
+  assert.equal(h.calls.some(row => /resolve|post|organize/.test(row.action)), false)
+})
+
+test('账户记录刷新失败留在弹层，重试可恢复，不要求再次点击账户', async t => {
+  const { h, page } = await staleAccountRecords()
+  t.after(() => page.onUnload())
+  const read = h.intercept
+  h.intercept = (action, input) => action === 'financeUpdates.summary' ? Promise.reject(new Error('合成读取失败')) : read(action, input)
+  await page.openAccountRecords(event('synthetic-issue'))
+  assert.match(page.data.accountRecordsSheet.error, /合成读取失败/)
+  h.intercept = read
+  await page.changeAccountMembers(event('', 0))
+  assert.equal(page.data.accountRecordsSheet.records.length, 8)
+  assert.equal(page.data.accountRecordsSheet.error, '')
+})
+
+for (const close of ['closeAccountRecords', 'onHide', 'onUnload']) test('账户记录恢复中' + close + '，迟到摘要不打开弹层或覆盖页面', async () => {
+  const { h, page } = await staleAccountRecords()
+  let release
+  h.intercept = action => action === 'financeUpdates.summary' ? new Promise(resolve => { release = resolve }) : undefined
+  const opening = page.openAccountRecords(event('synthetic-issue'))
+  await flush()
+  assert.equal(typeof release, 'function')
+  page[close]()
+  const before = JSON.stringify(page.data), count = h.calls.length
+  release(h.summary); await opening
+  assert.equal(JSON.stringify(page.data), before)
+  assert.equal(h.calls.length, count)
+  if (close !== 'onUnload') page.onUnload()
+})
+
+test('账户记录恢复期间更晚背景版本到达，不用旧摘要覆盖新版本', async t => {
+  const { h, page } = await staleAccountRecords()
+  t.after(() => page.onUnload())
+  let release
+  h.intercept = action => action === 'financeUpdates.summary' ? new Promise(resolve => { release = resolve }) : undefined
+  const opening = page.openAccountRecords(event('synthetic-issue'))
+  await flush()
+  const latest = { ...h.summary, viewVersion: 'v3', update: { ...h.summary.update, version: 3 } }
+  page.applyUpdateView(latest, true)
+  release(h.summary); await opening
+  assert.equal(page._pendingBackgroundView, latest)
+  assert.match(page.data.accountRecordsSheet.error, /仍在更新/)
+  assert.equal(h.calls.filter(row => row.action === 'financeUpdates.summary').length, 1)
+})
+
+test('账户记录恢复中换用户，迟到摘要不回填或继续读取', async t => {
+  const { h, page } = await staleAccountRecords()
+  t.after(() => page.onUnload())
+  let release
+  h.intercept = action => action === 'financeUpdates.summary' ? new Promise(resolve => { release = resolve }) : undefined
+  const opening = page.openAccountRecords(event('synthetic-issue'))
+  await flush()
+  h.app.globalData.uid = 'synthetic-other-user'
+  const count = h.calls.length, before = JSON.stringify(page.data)
+  release(h.summary); await opening
+  assert.equal(h.calls.length, count)
+  assert.equal(JSON.stringify(page.data), before)
+})
+
 test('成员翻页后旧页原文迟到不串入新页，视图版本变化也不回填', async () => {
   const h = runtime(fixture(9, true)), page = h.page
   const read = evidence(h), releases = []
