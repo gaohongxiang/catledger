@@ -3,6 +3,7 @@ const { setChangedData } = require('../../services/view-patch')
 const model = require('./model')
 const presentation = require('./presentation')
 const { errorText, direction } = require('./presentation')
+const readCache = require('../../services/read-cache')
 
 const ACCOUNT_TYPE_OPTIONS = Object.freeze([
     { value: 'cash', label: '现金' },
@@ -291,6 +292,7 @@ module.exports = {
 
   completeAccountMapping: function (event) {
     if (this.data.busy || this.data.accountStepBusy || !this.data.update) return
+    if (this._viewSession && !this._viewSession.active) { this.setData({ accountStepError: '整理结果已变化，选择已保留，请刷新本页后核验' }); return }
     this.flushAccountDraftSync()
     const issueId = event && event.currentTarget && event.currentTarget.dataset.id
     const mapping = this.refreshAccountMappings().mappings.find(function (item) { return item.issueId === issueId })
@@ -340,15 +342,16 @@ module.exports = {
     return decision
   },
 
-  loadDirectories: async function (events = [], extraIds = []) {
-    const pairs = await Promise.all(['accounts', 'categories', 'accountDrafts'].map(async kind => {
-          const response = await this._viewSession.read('financeUpdates.options', { kind, pageSize: 8 })
+  loadDirectories: async function (events = [], extraIds = [], kinds = ['accounts', 'categories', 'accountDrafts']) {
+    const session = this._viewSession
+    const pairs = await Promise.all(kinds.map(async kind => {
+          const response = await session.read('financeUpdates.options', { kind, pageSize: 8 })
           const key = kind === 'categories' ? 'categoryId' : 'accountId'
           const pins = [...new Set((kind === 'categories' ? events.map(event => event.categoryId).filter(Boolean) : events.flatMap(event => model.eventAccountIds(event)
                   .concat((event.fundsProjection && event.fundsProjection.to && event.fundsProjection.to.candidates || []).map(row => row.accountId))))
               .concat(extraIds.filter(Boolean)))]
           .filter(id => !response.items.some(item => item[key] === id))
-          const extra = pins.length ? (await this._viewSession.read('financeUpdates.options', { kind, ids: pins, pageSize: 100 })).items : []
+          const extra = pins.length ? (await session.read('financeUpdates.options', { kind, ids: pins, pageSize: 100 })).items : []
           return [kind, response.items.concat(extra)]
         }))
     return Object.fromEntries(pairs)
@@ -371,13 +374,17 @@ module.exports = {
 
   changeChoicePage: async function (event) {
     const pager = this._directoryPager
-    this.setData({ choiceLoading: true })
+    const session = this._viewSession, scope = readCache.getSession(), version = session && session.summary.viewVersion
+    const active = () => this._viewActive && this._viewSession === session && readCache.getSession() === scope &&
+      session.summary.viewVersion === version && pager === this._directoryPager && this.data.accountChoiceSheet
+    if (!pager || !active()) return
+    this.setData({ choiceLoading: true, choiceError: '' })
     try {
       const response = await pager.load(direction(event))
-      if (pager !== this._directoryPager || !this.data.accountChoiceSheet) return
+      if (!active()) return
       this._choiceRows = response.items
       this.setData({ accountChoiceResults: model.accountSelectorOptions(this.data.choiceKind === 'accounts' ? response.items : [], this.data.choiceKind === 'accountDrafts' ? response.items : []), choicePage: response.page, choiceLoading: false })
-    } catch (error) { if (pager === this._directoryPager) this.setData({ choiceLoading: false, errorMessage: errorText(error) }) }
+    } catch (error) { if (active()) this.setData({ choiceLoading: false, choiceError: errorText(error) }) }
   },
 
   openDirectory: async function (event) {
@@ -406,12 +413,16 @@ module.exports = {
 
   changeDirectoryPage: async function (event) {
     const pager = this._optionPager
-    this.setData({ 'directorySheet.loading': true })
+    const session = this._viewSession, scope = readCache.getSession(), version = session && session.summary.viewVersion
+    const active = () => this._viewActive && this._viewSession === session && readCache.getSession() === scope &&
+      session.summary.viewVersion === version && pager === this._optionPager && this.data.directorySheet
+    if (!pager || !active()) return
+    this.setData({ 'directorySheet.loading': true, 'directorySheet.error': '' })
     try {
       const response = await pager.load(direction(event))
-      if (pager !== this._optionPager || !this.data.directorySheet) return
+      if (!active()) return
       this.setData({ 'directorySheet.items': response.items, 'directorySheet.page': response.page, 'directorySheet.loading': false })
-    } catch (error) { if (pager === this._optionPager) this.setData({ 'directorySheet.loading': false, errorMessage: errorText(error) }) }
+    } catch (error) { if (active()) this.setData({ 'directorySheet.loading': false, 'directorySheet.error': errorText(error) }) }
   },
 
   selectDirectory: function (event) {
@@ -455,8 +466,13 @@ module.exports = {
 
   openAccountRecords: async function (event) {
     const issueId = event.currentTarget.dataset.id
+    if (!this._viewActive || !this._viewSession || !this._viewSession.active) return
     const mapping = this.data.accountMappings.find(item => item.issueId === issueId)
     if (!mapping) return
+    this.closeInlineEvidence('account')
+    if (this._accountPager) this._accountPager.cancel()
+    this._accountEvidenceToken = { session: this._viewSession, version: this._viewSession.summary.viewVersion,
+      scope: readCache.getSession(), issueId }
     this._accountPager = this._viewSession.pager('reviewIssues.members', { issueId, memberKind: 'event', pageSize: 8 })
     this.setData({ accountRecordsSheet: { issueId, label: mapping.label, records: [], loading: true } })
     return this.changeAccountMembers(event)
@@ -464,17 +480,21 @@ module.exports = {
 
   changeAccountMembers: async function (event) {
     const pager = this._accountPager
-    if (!pager || !this.data.accountRecordsSheet) return
+    const token = this._accountEvidenceToken
+    const active = () => this._viewActive && pager === this._accountPager && token === this._accountEvidenceToken &&
+      token && this._viewSession === token.session && token.session.summary.viewVersion === token.version &&
+      readCache.getSession() === token.scope && this.data.accountRecordsSheet && this.data.accountRecordsSheet.issueId === token.issueId
+    if (!pager || !active()) return
     this.closeInlineEvidence('account')
-    this.setData({ 'accountRecordsSheet.records': [], 'accountRecordsSheet.loading': true })
+    this.setData({ 'accountRecordsSheet.records': [], 'accountRecordsSheet.loading': true, 'accountRecordsSheet.error': '' })
     try {
       const response = await pager.load(direction(event))
-      if (pager !== this._accountPager || !this.data.accountRecordsSheet) return
+      if (!active()) return
       const list = model.accountRecordList(response.items)
       this._accountRecordList = list.records.map(presentation.record)
       this.setData({ accountRecordsSheet: Object.assign({}, this.data.accountRecordsSheet, { records: this._accountRecordList, dateRange: '当前页 ' + list.dateRange,
               count: response.total, loading: false, hasMore: false, page: response.page }) })
       await this.loadInlineEvidence('account', this._accountRecordList)
-    } catch (error) { if (pager === this._accountPager) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': errorText(error) }) }
+    } catch (error) { if (active()) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': errorText(error) }) }
   }
 }

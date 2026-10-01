@@ -1,0 +1,47 @@
+<import src="pairing-record.wxml" />
+<view wx:if="{{pairingSheet}}" class="sheet-layer" catchtouchmove="preventTouchMove">
+  <view class="sheet-scrim" bindtap="closePairingReview"></view>
+  <view class="workflow-sheet pairing-review-sheet">
+    <view class="sheet-handle"></view>
+    <view class="pairing-heading"><text class="sheet-title serif-title">{{pairingSheet.title}}</text><button class="stage-previous" bindtap="closePairingReview">关闭</button></view>
+    <text class="pairing-boundary">选择“同一笔”只整理本批待入账记录，最终入账时才影响余额。</text>
+    <text wx:if="{{pairingScopeText}}" class="pairing-scope">{{pairingScopeText}}</text>
+    <text wx:if="{{pairingChoiceText && !pairingSaved}}" class="pairing-choice">{{pairingChoiceText}}</text>
+    <scroll-view scroll-y enhanced show-scrollbar="{{false}}" class="pairing-scroll">
+      <skeleton-rows wx:if="{{pairingLoading && !pairingRows.length}}" rows="{{3}}" />
+      <view wx:if="{{pairingNeedsRecheck}}" class="pairing-notice"><text>候选或账户状态已变化，原选择已保留。重新核验范围后才能确认。</text><button class="stage-previous" bindtap="recheckPairings" disabled="{{pairingBusy}}">重新核对</button></view>
+      <view wx:if="{{pairingMissingCount}}" class="pairing-notice"><text>上次选择中有 {{pairingMissingCount}} 组已不在当前候选范围。原选择仍保存在本机，不会应用到其他记录。</text><button class="stage-previous" bindtap="acknowledgeMissingPairings">确认移出本次范围，保留原选择</button></view>
+      <view wx:if="{{pairingError}}" class="pairing-notice"><text>{{pairingError}}</text><button wx:if="{{!pairingNeedsRecheck && !pairingCanResume}}" class="stage-previous" bindtap="retryPairingPage" disabled="{{pairingLoading || pairingBusy}}">重试读取</button></view>
+      <view wx:if="{{pairingRows.length && !pairingSaved}}" class="pairing-page-scope"><text>本页已选 {{pairingPageSelectedCount}} / {{pairingRows.length}} 组</text><button wx:if="{{pairingSheet.mode === 'suggested'}}" class="stage-previous" bindtap="togglePairingPage" disabled="{{pairingLoading || pairingBusy || pairingNeedsRecheck}}">{{pairingPageSelectedCount === pairingRows.length ? '取消本页' : '选择本页'}}</button></view>
+      <view wx:for="{{pairingRows}}" wx:key="pairKey" class="pairing-card {{item.selected ? 'pairing-card-selected' : ''}}">
+        <view class="pairing-card-heading"><text class="pairing-nature">{{item.natureLabel}}</text><button wx:if="{{pairingSheet.mode === 'suggested'}}" class="pairing-choice-button {{item.selected ? 'pairing-choice-selected' : ''}}" data-key="{{item.pairKey}}" bindtap="selectPairing" disabled="{{pairingLoading || pairingBusy || pairingNeedsRecheck || pairingSaved}}" aria-role="checkbox" aria-checked="{{item.selected}}">{{item.selected ? '已选择配对' : '本次暂不配对'}}</button></view>
+        <template is="pairing-record" data="{{record: item.bank}}" />
+        <view class="pairing-link-mark" aria-hidden="true">↕</view>
+        <template is="pairing-record" data="{{record: item.platform}}" />
+        <text class="pairing-reason">{{item.reasonText}}</text>
+        <view wx:if="{{pairingSheet.mode === 'ambiguous'}}" class="pairing-decisions">
+          <button class="pairing-choice-button {{item.decision === 'same' ? 'pairing-choice-selected' : ''}}" data-key="{{item.pairKey}}" data-decision="same" bindtap="selectPairing" disabled="{{pairingLoading || pairingBusy || pairingNeedsRecheck || pairingSaved || item.occupied}}">{{item.decision === 'same' ? '已选：同一笔' : item.occupied ? '已有其他配对' : '这两条是同一笔'}}</button>
+          <button class="pairing-choice-button {{item.decision === 'distinct' ? 'pairing-choice-selected' : ''}}" data-key="{{item.pairKey}}" data-decision="distinct" bindtap="selectPairing" disabled="{{pairingLoading || pairingBusy || pairingNeedsRecheck || pairingSaved || item.occupied}}">{{item.decision === 'distinct' ? '已选：不同笔' : item.occupied ? '已有其他决定' : '这两条不是同一笔'}}</button>
+        </view>
+        <view class="pairing-evidence">
+          <template is="pairing-record-evidence" data="{{record: item.bank}}" />
+          <template is="pairing-record-evidence" data="{{record: item.platform}}" />
+        </view>
+      </view>
+      <view wx:if="{{!pairingLoading && !pairingError && !pairingRows.length}}" class="tab-empty"><text class="tab-empty-title">当前没有{{pairingSheet.mode === 'suggested' ? '唯一建议配对' : '可用候选关系'}}</text><text class="tab-empty-copy">其他未核对事项仍需按原规则完成，关闭不会确认不同笔或排除记录。</text></view>
+      <view wx:if="{{pairingPage.count}}" class="list-pagination">
+        <button wx:if="{{pairingPage.canFirst}}" class="stage-previous" data-direction="first" bindtap="changePairingPage" disabled="{{pairingLoading || pairingBusy}}">首页</button>
+        <button class="stage-previous" data-direction="-1" bindtap="changePairingPage" disabled="{{pairingLoading || pairingBusy || !pairingPage.hasPrevious}}">上一页</button>
+        <text>{{pairingPage.start}}–{{pairingPage.end}} / {{pairingPage.count}}</text>
+        <button class="stage-previous" data-direction="1" bindtap="changePairingPage" disabled="{{pairingLoading || pairingBusy || !pairingPage.hasNext}}">下一页</button>
+      </view>
+    </scroll-view>
+    <view class="pairing-footer">
+      <text wx:if="{{pairingProgressText}}" class="pairing-progress">{{pairingProgressText}}</text>
+      <text wx:if="{{pairingLoading}}" class="pairing-progress">正在核验配对范围…</text>
+      <button wx:if="{{pairingCanResume}}" class="sheet-confirm sheet-confirm-wide" bindtap="resumePairings" disabled="{{pairingBusy}}">{{pairingSaved ? '刷新已保存结果' : '恢复原请求并继续'}}</button>
+      <button wx:elif="{{!pairingSaved}}" class="sheet-confirm sheet-confirm-wide" bindtap="confirmPairings" loading="{{pairingBusy}}" disabled="{{!pairingCanConfirm}}">{{pairingBusy ? '正在保存配对' : '确认所选配对（' + pairingSelectedCount + '组）'}}</button>
+      <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="closePairingReview">完成</button>
+    </view>
+  </view>
+</view>

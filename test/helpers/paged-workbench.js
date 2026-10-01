@@ -78,6 +78,7 @@ function runtime(data = fixture(), options = {}) {
     return module.exports
   }
   load(path.join(root, 'pages/import-workbench/index.js'))
+  h.observer = load(path.join(root, 'services/read-observer.js'))
   h.createPage = (pageOptions = {}, initialView = true) => {
     const page = Object.assign({}, definition, { data: JSON.parse(JSON.stringify(definition.data)),
       selectComponent: () => ({ show: options => { h.loginOptions = options } }), setData(patch, callback) {

@@ -3,9 +3,10 @@ const runtime = require('./runtime')
 const uploadFlow = require('./upload-flow')
 const accountReview = require('./account-review')
 const transactionReview = require('./transaction-review')
+const pairingReview = require('./pairing-review')
 const postingFlow = require('./posting-flow')
 
-const initialData = {
+const initialData = Object.assign({}, pairingReview.initialData, {
     restoreUpdateId: '',
     abandoningRestore: false,
     preparePending: false,
@@ -21,6 +22,7 @@ const initialData = {
     historicalCandidates: [],
     historicalPage: null,
     historicalSelection: '',
+    historicalSelectionVerified: false,
     historicalLoading: false,
     historicalError: '',
     uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 0, attention: 0 },
@@ -90,6 +92,7 @@ const initialData = {
     accountChoiceQuery: '',
     accountChoiceResults: [],
     choiceLoading: false,
+    choiceError: '',
     accountTypeOptions: accountReview.ACCOUNT_TYPE_OPTIONS,
     categories: [],
     issueCategories: [],
@@ -113,6 +116,14 @@ const initialData = {
     bankBatchLoading: false,
     bankBatchSelectedCount: 0,
     currentIssue: null,
+    issueDetailsLoading: false,
+    issueDetailsReady: false,
+    issueDetailsError: '',
+    issueMembersError: '',
+    issueRelationsLoading: false,
+    issueRelationsError: '',
+    issueCanSubmit: false,
+    issueStale: false,
     issueFieldsCanSave: false,
     currentMembers: [],
     issueEvents: [],
@@ -142,7 +153,7 @@ const initialData = {
     natureOptions: transactionReview.NATURE_OPTIONS,
     themeClass: '',
     themeStyle: ''
-  }
+  })
 
 // 每个页面处理者只有一个明确归属；不依赖对象覆盖顺序。
 Page({
@@ -215,6 +226,20 @@ Page({
   finishDraftStep: runtime.finishDraftStep,
   goToStep: runtime.goToStep,
   openIssue: transactionReview.openIssue,
+  openPairingReview: pairingReview.openPairingReview,
+  openAmbiguousPairingReview: pairingReview.openAmbiguousPairingReview,
+  cancelPairingReview: pairingReview.cancelPairingReview,
+  closePairingReview: pairingReview.closePairingReview,
+  invalidatePairingReview: pairingReview.invalidatePairingReview,
+  changePairingPage: pairingReview.changePairingPage,
+  retryPairingPage: pairingReview.retryPairingPage,
+  selectPairing: pairingReview.selectPairing,
+  togglePairingPage: pairingReview.togglePairingPage,
+  acknowledgeMissingPairings: pairingReview.acknowledgeMissingPairings,
+  changePairingEvidence: pairingReview.changePairingEvidence,
+  recheckPairings: pairingReview.recheckPairings,
+  confirmPairings: pairingReview.confirmPairings,
+  resumePairings: pairingReview.resumePairings,
   closeIssue: transactionReview.closeIssue,
   backFinalDetail: postingFlow.backFinalDetail,
   prepareFinalDetail: postingFlow.prepareFinalDetail,
@@ -278,6 +303,8 @@ Page({
   openAccountRecords: accountReview.openAccountRecords,
   changeAccountMembers: accountReview.changeAccountMembers,
   readIssue: transactionReview.readIssue,
+  retryIssueDetails: transactionReview.retryIssueDetails,
+  updateIssueReadiness: transactionReview.updateIssueReadiness,
   excludeIssueEvents: transactionReview.excludeIssueEvents,
   selectPrimaryMember: transactionReview.selectPrimaryMember,
   expandBankBatch: transactionReview.expandBankBatch,

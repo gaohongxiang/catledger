@@ -1,0 +1,39 @@
+.pairing-entry { display: flex; align-items: center; gap: 20rpx; margin: 16rpx 24rpx; padding: 24rpx; border: 1rpx solid var(--ui-line); border-radius: 16rpx; background: var(--ui-surface); }
+.pairing-entry > view { flex: 1; min-width: 0; }
+.pairing-entry-title, .pairing-entry-copy { display: block; }
+.pairing-entry-title { font-size: var(--font-body, 28rpx); color: var(--ui-text); }
+.pairing-entry-copy { margin-top: 8rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+.pairing-entry .stage-previous, .pairing-review-sheet .stage-previous { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: auto; min-width: 0; min-height: 56rpx; margin: 0; padding: 10rpx 18rpx; border-radius: var(--theme-radius-small, 12rpx); color: var(--ui-accent-strong); background: var(--ui-surface-muted); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+.pairing-entry .stage-previous::after, .pairing-review-sheet .stage-previous::after { border: 0; }
+.pairing-entry .stage-previous[disabled], .pairing-review-sheet .stage-previous[disabled] { color: var(--ui-muted); opacity: .5; }
+.pairing-review-sheet { display: flex; flex-direction: column; height: 88vh; overflow: hidden; }
+.pairing-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16rpx; }
+.pairing-heading .sheet-title { flex: 1; min-width: 0; margin: 0; }
+.pairing-boundary, .pairing-scope, .pairing-choice { display: block; flex-shrink: 0; margin-top: 12rpx; font-size: var(--font-caption, 24rpx); line-height: 1.6; color: var(--ui-muted); }
+.pairing-scope { color: var(--ui-text); }
+.pairing-choice { color: var(--ui-accent); }
+.pairing-scroll { flex: 1; min-height: 0; height: 1px; margin-top: 20rpx; }
+.pairing-notice { display: flex; flex-direction: column; gap: 14rpx; padding: 20rpx; margin-bottom: 20rpx; background: var(--ui-surface-muted); border-radius: 12rpx; font-size: var(--font-caption, 24rpx); line-height: 1.6; }
+.pairing-notice .stage-previous { align-self: flex-start; margin: 0; }
+.pairing-page-scope, .pairing-card-heading, .pairing-record-heading { display: flex; justify-content: space-between; align-items: center; gap: 12rpx; }
+.pairing-page-scope { margin-bottom: 16rpx; font-size: var(--font-caption, 24rpx); color: var(--ui-muted); }
+.pairing-card { padding: 22rpx; margin-bottom: 20rpx; border: 1rpx solid var(--ui-line); border-radius: 16rpx; }
+.pairing-card-selected { border-color: var(--ui-accent); }
+.pairing-nature { font-size: var(--font-body, 28rpx); color: var(--ui-text); font-weight: 600; }
+.pairing-record { padding: 14rpx 0; }
+.pairing-source-label, .pairing-record-meta, .pairing-reason { font-size: var(--font-caption, 24rpx); color: var(--ui-muted); line-height: 1.5; }
+.pairing-record-title, .pairing-record-meta, .pairing-reason { display: block; margin-top: 8rpx; overflow-wrap: anywhere; }
+.pairing-record-title, .pairing-amount { color: var(--ui-text); font-size: var(--font-body, 28rpx); }
+.pairing-evidence { margin-top: 22rpx; padding-top: 18rpx; border-top: 1rpx solid var(--ui-line); }
+.pairing-record-evidence + .pairing-record-evidence { margin-top: 24rpx; }
+.pairing-evidence-label { display: block; color: var(--ui-text); font-size: var(--font-caption, 24rpx); font-weight: 500; line-height: 1.5; }
+.pairing-original { margin-top: 14rpx; padding: 14rpx; border-radius: 8rpx; background: var(--ui-surface-muted); }
+.pairing-link-mark { color: var(--ui-accent); border-top: 1rpx solid var(--ui-line); text-align: center; height: 8rpx; font-size: 32rpx; line-height: 8rpx; }
+.pairing-decisions { display: flex; gap: 12rpx; margin-top: 16rpx; }
+.pairing-decisions .pairing-choice-button { flex: 1; }
+.pairing-choice-button { width: auto; min-width: 0; margin: 0; padding: 12rpx 16rpx; color: var(--ui-muted); background: var(--ui-surface-muted); border-radius: 12rpx; font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+.pairing-choice-button::after { border: 0; }
+.pairing-choice-selected { color: var(--ui-accent); background: var(--ui-accent-soft); }
+.pairing-choice-button[disabled] { opacity: .6; }
+.pairing-footer { flex-shrink: 0; display: flex; flex-direction: column; gap: 12rpx; padding-top: 16rpx; border-top: 1rpx solid var(--ui-line); }
+.pairing-progress { color: var(--ui-muted); font-size: var(--font-caption, 24rpx); line-height: 1.5; }

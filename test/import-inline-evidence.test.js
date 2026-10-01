@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { runtime, fixture, flush } = require('./helpers/paged-workbench')
+const { MAX_PAGES, MAX_BYTES } = require('../miniprogram/services/import-view-session')
 const event = (id, direction = 0, scope = 'issue') => ({ currentTarget: { dataset: { id, direction, scope } } })
 const fields = [{ name: '交易摘要', value: '合成商户' }, { name: '备注', value: '' }, { name: '备注', value: '重复列保留' }, { name: '金额', value: '0' }]
 
@@ -68,7 +69,8 @@ test('超长行只展示完整字段并标记未展示内容；八笔成员仍�
   assert.ok(Math.max(...h.patches) <= 65536)
   await page.changeIssueMembers(event('', 1))
   assert.equal(page.data.issueVisibleEvents[0].eventId, 'synthetic-event-8')
-  assert.equal(page._viewSession.pageCount, 3)
+  assert.ok(page._viewSession.pageCount <= MAX_PAGES)
+  assert.ok(page._viewSession.cachedBytes <= MAX_BYTES)
   page.onUnload()
 })
 

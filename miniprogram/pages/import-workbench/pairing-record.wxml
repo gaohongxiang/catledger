@@ -1,0 +1,26 @@
+<template name="pairing-record">
+  <view class="pairing-record">
+    <view class="pairing-record-heading"><text class="pairing-source-label">{{record.sourceLabel}}</text><text class="pairing-amount money-number">{{record.amountText}}</text></view>
+    <text class="pairing-record-title">{{record.title}}</text>
+    <text class="pairing-record-meta">{{record.localAt}}{{record.item && record.item !== record.title ? ' · ' + record.item : ''}}</text>
+  </view>
+</template>
+
+<template name="pairing-record-evidence">
+  <view class="pairing-record-evidence">
+    <text class="pairing-evidence-label">{{record.sourceLabel}}原文</text>
+    <text wx:if="{{record.evidenceLoading}}" class="pairing-record-meta">正在自动读取原文…</text>
+    <view wx:for="{{record.evidence}}" wx:for-item="source" wx:key="evidenceId" class="pairing-original">
+      <text class="account-original-caption">{{source.fileName}} · 第 {{source.rowNumber}} 行</text>
+      <view wx:for="{{source.fields}}" wx:for-item="field" wx:key="key" class="account-original-field"><text class="account-original-key">{{field.name}}</text><text class="account-original-value" selectable>{{field.value === '' ? '（空）' : field.value}}</text></view>
+      <button wx:if="{{source.incomplete}}" class="account-source-link" data-id="{{record.eventId}}" data-evidence-id="{{source.evidenceId}}" bindtap="openEvidence">查看完整原文</button>
+    </view>
+    <view wx:if="{{record.evidencePage.count > 1}}" class="list-pagination">
+      <button wx:if="{{record.evidencePage.canFirst}}" class="stage-previous" data-id="{{record.eventId}}" data-direction="first" bindtap="changePairingEvidence" disabled="{{record.evidenceLoading}}">首份</button>
+      <button class="stage-previous" data-id="{{record.eventId}}" data-direction="-1" bindtap="changePairingEvidence" disabled="{{record.evidenceLoading || !record.evidencePage.hasPrevious}}">上份</button>
+      <text>来源 {{record.evidencePage.start}} / {{record.evidencePage.count}}</text>
+      <button class="stage-previous" data-id="{{record.eventId}}" data-direction="1" bindtap="changePairingEvidence" disabled="{{record.evidenceLoading || !record.evidencePage.hasNext}}">下份</button>
+    </view>
+    <button wx:if="{{record.evidenceError}}" class="account-source-link" data-id="{{record.eventId}}" bindtap="changePairingEvidence">{{record.evidenceError}} · 重试原文</button>
+  </view>
+</template>

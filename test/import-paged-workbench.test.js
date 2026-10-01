@@ -345,7 +345,9 @@ test('后台摘要更新在输入和核对弹层期间延迟应用，不重新�
   const before = JSON.stringify(page.data.issueDraft), patches = h.patches.length
   page.applyUpdateView({ ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }, true)
   assert.equal(JSON.stringify(page.data.issueDraft), before)
-  assert.equal(h.patches.length, patches)
+  assert.equal(h.patches.length, patches + 1)
+  assert.equal(page.data.issueStale, true)
+  assert.equal(page.data.issueCanSubmit, false)
   page.finishInputEditing()
   assert.equal(JSON.stringify(page.data.issueDraft), before)
   page.closeIssue()

@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { runtime, fixture } = require('./helpers/paged-workbench')
+const { setup, pair, tap: choosePair } = require('./helpers/pairing-workbench')
 const model = require('../miniprogram/pages/import-workbench/model')
 const tap = id => ({ currentTarget: { dataset: { id } } })
 
@@ -16,38 +17,32 @@ function channelFixture(count = 2, sourceType = 'wechat', economicNature = 'expe
 }
 
 for (const [sourceType, economicNature, reasonField] of [['wechat', 'expense', 'primaryReasonCode'], ['alipay', 'refund', 'reasonCodes']]) {
-  test('银行渠道同笔候选保留' + sourceType + '的' + economicNature + '语义，拦截银行主记录并允许改回后保存', async () => {
+  test('银行渠道候选直接进入具体配对，保留' + sourceType + '的' + economicNature + '语义且不要求选择主记录', async () => {
     const data = channelFixture(2, sourceType, economicNature, reasonField)
-    const h = runtime(data), page = h.page
+    const h = setup(1, data), page = h.page
+    h.pairs[0].platform.sourceType = sourceType; h.pairs[0].economicNature = economicNature
+    await h.flush()
+    const detailReads = h.calls.filter(call => call.action === 'reviewIssues.get').length
     await page.openIssue(tap('synthetic-issue'))
-    assert.equal(page.data.issueDraft.primaryEventId, 'synthetic-event-1')
-    assert.equal(page.data.issueVisibleEvents.length, 2)
-    assert.equal(page.data.currentIssue.canConfirmSame, true)
-    assert.match(page.data.currentIssue.reasonText, /同一账户、同金额、同一分钟且银行渠道吻合/)
-    assert.equal(page._draftSession.state.entries.length, 0, '默认选中不会自动确认同一笔')
-    page.selectPrimaryMember(tap('synthetic-event-0'))
-    page.confirmSame()
-    assert.equal(page._draftSession.state.entries.length, 0, '无效选择不进入待同步草稿')
-    assert.equal(page.data.currentIssue.issueId, 'synthetic-issue')
-    assert.equal(page.data.issueDraft.primaryEventId, 'synthetic-event-0', '错误时保留当前选择')
-    assert.match(page.data.errorMessage, /微信或支付宝.*支出或退款/)
-    assert.equal(page.data.issueFieldsReason, page.data.errorMessage, '当前弹层的保存提示必须显示校验错误')
-    assert.equal(page.data.issueFieldsCanSave, false)
-    page.selectPrimaryMember(tap('synthetic-event-1'))
-    page.confirmSame()
-    assert.equal(page._draftSession.state.entries[0].decision.primaryEventId, 'synthetic-event-1')
-    assert.equal(page.data.errorMessage, '', '修正后保存成功不残留错误')
-    await page.openIssue(tap('synthetic-issue'))
-    assert.equal(page.data.issueDraft.primaryEventId, 'synthetic-event-1', '重新打开保留有效用户草稿')
+    assert.equal(page.data.currentIssue, null)
+    assert.equal(page.data.pairingSheet.mode, 'ambiguous')
+    assert.equal(page.data.pairingRows[0].natureLabel, economicNature === 'refund' ? '退款' : '消费')
+    assert.equal(h.calls.filter(call => call.action === 'reviewIssues.get').length, detailReads, '已有摘要直接路由，不先拉旧整组详情')
+    assert.equal(page._draftSession.state.entries.length, 0)
+    page.selectPairing(choosePair('pair-0', 'same'))
+    await page.confirmPairings()
+    const command = h.calls.find(call => call.action === 'reviewIssues.resolvePairings')
+    assert.deepEqual(command.input.selection.pairs, [{ pairKey: 'pair-0', decision: 'same' }])
+    assert.equal('primaryEventId' in command.input, false)
     page.onUnload()
   })
 }
 
 for (const [sourceType, economicNature] of [['wechat', 'unknown'], ['alipay', 'income'], ['other', 'expense']]) {
-  test('银行渠道同笔候选拒绝语义不合适的主记录：' + sourceType + '/' + economicNature, async () => {
-    const h = runtime(channelFixture(2, sourceType, economicNature)), page = h.page
-    await page.openIssue(tap('synthetic-issue'))
-    page.selectPrimaryMember(tap('synthetic-event-1'))
+  test('旧调用边界仍拒绝语义不合适的银行渠道主记录：' + sourceType + '/' + economicNature, async () => {
+    const data = channelFixture(2, sourceType, economicNature), h = runtime(data), page = h.page
+    page.setData({ currentIssue: model.issueView(data.issues[0]), currentMembers: data.events.map(event => ({ event })),
+      'issueDraft.primaryEventId': 'synthetic-event-1' })
     page.confirmSame()
     assert.equal(page._draftSession.state.entries.length, 0)
     assert.equal(page.data.issueDraft.primaryEventId, 'synthetic-event-1')
@@ -56,19 +51,22 @@ for (const [sourceType, economicNature] of [['wechat', 'unknown'], ['alipay', 'i
   })
 }
 
-test('银行渠道多笔候选不能整组合并，手动选择仍按已有草稿恢复', async () => {
-  const h = runtime(channelFixture(3)), page = h.page
+test('银行渠道多候选必须选具体边，关闭后保留未提交的跨页选择', async () => {
+  const h = setup(2, channelFixture(3)), page = h.page
+  h.pairs = [pair('a'), pair('b')]
+  h.pairs.forEach(row => { row.bank.eventId = 'synthetic-event-0' })
   await page.openIssue(tap('synthetic-issue'))
-  assert.equal(page.data.currentIssue.canConfirmSame, false)
-  assert.match(page.data.currentIssue.reasonText, /多笔候选.*核对/)
-  page.selectPrimaryMember(tap('synthetic-event-2'))
+  assert.equal(page.data.currentIssue, null)
+  assert.equal(page.data.pairingSelectedCount, 0)
   page.confirmSame()
   assert.equal(page._draftSession.state.entries.length, 0)
-  assert.equal(page.data.issueDraft.primaryEventId, 'synthetic-event-2')
-  assert.match(page.data.errorMessage, /多笔候选.*核对/)
-  page.confirmDistinct()
+  page.selectPairing(choosePair('pair-a', 'same'))
+  assert.equal(page.data.pairingRows[1].occupied, true)
+  page.closePairingReview()
   await page.openIssue(tap('synthetic-issue'))
-  assert.equal(page.data.issueDraft.primaryEventId, 'synthetic-event-2', '已有用户草稿优先于默认平台记录')
+  assert.equal(page.data.pairingRows[0].decision, 'same')
+  assert.equal(page.data.pairingRows[1].occupied, true)
+  assert.equal(page._draftSession.state.entries.length, 0, '关闭不是确认、拒绝或排除')
   page.onUnload()
 })
 

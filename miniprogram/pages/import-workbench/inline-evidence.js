@@ -1,4 +1,5 @@
 const { evidencePartFields } = require('./presentation')
+const readCache = require('../../services/read-cache')
 
 // 只加载当前成员页：每笔一份来源、最多两个 2048 字符片段。
 // 长原文只展示完整列，剩余内容仍可进入原文分页查看。
@@ -13,8 +14,9 @@ function previewFields(text, complete) {
 
 function create(session, records, isCurrent, publish) {
   const version = session.summary.viewVersion
+  const scope = readCache.getSession()
   let closed = false
-  const current = () => !closed && session.summary.viewVersion === version && isCurrent()
+  const current = () => !closed && readCache.getSession() === scope && session.summary.viewVersion === version && isCurrent()
   const rows = records.map(record => ({ eventId: record.eventId,
     pager: session.pager('economicEvents.evidence', { eventId: record.eventId, pageSize: 1 }), ticket: 0 }))
   async function load(index, direction = 0) {
@@ -29,7 +31,7 @@ function create(session, records, isCurrent, publish) {
       if (!valid()) return
       const source = response.items[0]
       if (!source) {
-        publish(index, { evidence: [], evidenceLoading: false, evidenceError: '未找到原始记录，请刷新本页后重试' })
+        await publish(index, { evidence: [], evidenceLoading: false, evidenceError: '未找到原始记录，请刷新本页后重试' })
         return
       }
       row.evidenceId = source.evidenceId
@@ -42,11 +44,11 @@ function create(session, records, isCurrent, publish) {
         if (!cursor) break
       }
       const fields = previewFields(text, !cursor)
-      publish(index, { evidence: [{ evidenceId: source.evidenceId, fileName: source.fileName,
+      await publish(index, { evidence: [{ evidenceId: source.evidenceId, fileName: source.fileName,
         rowNumber: source.rowNumber, fields, incomplete: Boolean(cursor) || !fields.length }],
       evidenceLoading: false, evidencePage: response.page })
     } catch (error) {
-      if (valid()) publish(index, { evidenceLoading: false,
+      if (valid()) await publish(index, { evidenceLoading: false,
         evidenceError: error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : '原始记录读取失败，请重试' })
     }
   }

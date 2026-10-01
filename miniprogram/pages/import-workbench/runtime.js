@@ -33,6 +33,15 @@ function boundedSetData(page) {
 
 function compactMapping(mapping) { const { choiceOptions, evidencePreview, ...visible } = presentation.accountMapping(mapping); return Object.assign(visible, { evidencePreview: Boolean(evidencePreview) }) }
 
+function createViewSession(page, view) {
+  const session = viewSession.create(api.callImport, view, { onStale() {
+    if (!page._viewActive || page._viewSession !== session) return
+    if (page.data.currentIssue) page.setData({ issueStale: true, issueCanSubmit: false, issueDetailsLoading: false })
+    if (page.data.pairingSheet && page.invalidatePairingReview) page.invalidatePairingReview({ viewVersion: '' })
+  } })
+  return session
+}
+
 function currentOwner() { const app = getApp(); return app.hasLoginApproval() ? app.globalData.uid || '' : '' }
 function pendingPrepare() {
   if (!currentOwner()) return null
@@ -61,11 +70,12 @@ async function resumeInitialLoad(page) {
 
 module.exports = {
   applyPendingBackgroundView() {
-    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.accountChoiceSheet) {
+    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.accountChoiceSheet && !this.data.pairingSheet) {
       const view = this._pendingBackgroundView; this._pendingBackgroundView = null; this.applyUpdateView(view, true)
     }
   },
   onLoad(options) {
+    require('../../services/read-observer').attach(this)
     boundedSetData(this)
     this._viewEpoch = 0
     this._pageEpoch = 0
@@ -161,6 +171,7 @@ module.exports = {
     }
   },
   cancelPagedReads() {
+    if (this.cancelPairingReview) this.cancelPairingReview()
     this.closeInlineEvidence('issue')
     this.closeInlineEvidence('account')
     for (const key of ['_mainPager', '_memberPager', '_relationPager', '_historicalPager', '_accountPager', '_evidencePager', '_detailPager', '_finalPager', '_directoryPager', '_optionPager']) {
@@ -421,10 +432,17 @@ module.exports = {
           errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : '操作已保存，明细待刷新', refreshRequired: true })
       return
     }
-    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.accountChoiceSheet)) { this._pendingBackgroundView = view; return }
+    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.accountChoiceSheet || this.data.pairingSheet)) {
+      this._pendingBackgroundView = view
+      if (this._viewSession && this._viewSession.summary.viewVersion !== view.viewVersion) {
+        if (this.data.currentIssue) this.setData({ issueStale: true, issueCanSubmit: false })
+        if (this.data.pairingSheet && this.invalidatePairingReview) this.invalidatePairingReview(view)
+      }
+      return
+    }
     const same = this._viewSession && this._viewSession.summary.update.updateId === view.update.updateId
     const changed = !same || this._viewSession.summary.viewVersion !== view.viewVersion
-    if (!same) { if (this._viewSession) this._viewSession.close(); this._viewSession = viewSession.create(api.callImport, view) }
+    if (!same) { if (this._viewSession) this._viewSession.close(); this._viewSession = createViewSession(this, view) }
     else this._viewSession.accept(view)
     if (changed) { this._mainPager = null; this._businessData = null }
     const workbench = view.workbench
