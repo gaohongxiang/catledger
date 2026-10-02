@@ -153,7 +153,10 @@
     <view class="stage-navigation-spacer"></view>
     <view class="stage-action stage-navigation">
       <view class="stage-navigation-buttons">
-        <button wx:if="{{update}}" class="primary-button stage-primary" data-step="2" bindtap="goToStep" disabled="{{busy || unlockedStep < 2}}">下一步：确认账户</button>
+        <block wx:if="{{update}}">
+          <button class="stage-previous" bindtap="abandonUpdate" disabled="{{busy}}">放弃本批</button>
+          <button class="primary-button stage-primary" data-step="2" bindtap="goToStep" disabled="{{busy || unlockedStep < 2}}">下一步：确认账户</button>
+        </block>
         <button wx:else data-ui="next-accounts" class="primary-button stage-primary" bindtap="createFinanceUpdate" loading="{{phase === 'organizing'}}" disabled="{{busy || uploadSummary.ready === 0}}">{{phase === 'organizing' ? '正在准备账户' : '下一步：确认账户'}}</button>
       </view>
     </view>
@@ -462,13 +465,6 @@
     <text class="done-title serif-title">本批账单已放弃。</text>
     <text class="done-copy">正式账户和账本没有改变，可以重新选择账单开始。</text>
     <button class="primary-button done-button" bindtap="startAnother">重新开始</button>
-  </view>
-
-  <view wx:if="{{update && phase === 'review' && currentStep === 1}}" class="abandon-batch">
-    <view class="abandon-batch-actions">
-      <button class="text-action abandon-batch-button" bindtap="abandonUpdate" disabled="{{busy}}">放弃本批账单</button>
-    </view>
-    <text class="abandon-batch-copy">放弃不影响已有账本</text>
   </view>
 
   <view wx:if="{{fileAttentionSheet}}" class="sheet-layer" catchtouchmove="preventTouchMove">

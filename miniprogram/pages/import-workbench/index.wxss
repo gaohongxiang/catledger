@@ -1252,23 +1252,6 @@ button::after { border: 0; }
 .done-secondary-row { display: flex; gap: 14rpx; margin-top: 14rpx; }
 .done-secondary-row button { min-width: 0; flex: 1; }
 .another-import { width: 100%; }
-.abandon-batch { padding: 30rpx 0 16rpx; text-align: center; border-top: 2rpx solid var(--ui-line); }
-.abandon-batch-button {
-  min-height: 72rpx;
-  margin: 0 auto;
-  padding: 0 28rpx;
-  color: var(--theme-expense, #b54738);
-  font-size: var(--font-caption, 24rpx);
-  line-height: 72rpx;
-}
-.abandon-batch-button[disabled] { color: var(--ui-subtle); background-color: transparent !important; opacity: .48; }
-.abandon-batch-copy {
-  display: block;
-  margin-top: 2rpx;
-  color: var(--ui-subtle);
-  font-size: var(--font-caption, 24rpx);
-  line-height: 1.5;
-}
 
 .commit-bar {
   position: fixed;
