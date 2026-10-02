@@ -553,8 +553,10 @@ module.exports = {
           ? this.data.excludedReviewGroups.filter(group => group.expanded).map(group => group.key) : []
         patch.excludedReviewGroups = presentation.excludedGroups(events, expanded)
       }
-      else patch[kind] = events.map(event => presentation.record(Object.assign({}, event, { duplicateCount: Number(event.duplicateEvidenceCount || 0) + (model.isHistoricalDuplicate(event) ? 1 : 0),
-              auditNote: model.isHistoricalDuplicate(event) ? '已与历史账目对应，本次不重复入账。' : '已保留一笔，点开对照主记录与重复来源。' })))
+      else { const categoryNames = new Map((this.data.categories || []).map(category => [category.categoryId, category.name]))
+        patch[kind] = events.map(event => presentation.record(Object.assign({}, event, { duplicateCount: Number(event.duplicateEvidenceCount || 0) + (model.isHistoricalDuplicate(event) ? 1 : 0),
+              categoryName: event.categoryName || (event.categoryId ? categoryNames.get(event.categoryId) || '分类已设置' : ''),
+              auditNote: model.isHistoricalDuplicate(event) ? '已与历史账目对应，本次不重复入账。' : '已保留一笔，点开对照主记录与重复来源。' }))) }
       if (!quiet) patch.pageLoading = false
       patch.duplicateReviewLoaded = true
       setChangedData(this, patch)

@@ -334,7 +334,7 @@
         <skeleton-rows wx:if="{{pageLoading && !(activeCategoryStatus === 'completed' ? categorizedEvents.length : noCategoryEvents.length)}}" rows="{{3}}" />
         <view wx:for="{{activeCategoryStatus === 'completed' ? categorizedEvents : noCategoryEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看交易证据">
           <view class="review-decision-heading review-completed-heading">
-            <view class="review-decision-copy"><text class="review-decision-title category-completed-title">{{activeCategoryStatus === 'completed' ? item.natureLabel + ' · ' + item.categoryName : '无需分类 · ' + item.natureLabel}}{{item.pendingReview ? ' · 待核对' : ''}}</text></view><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view>
+            <view class="review-decision-copy"><text class="review-decision-title category-completed-title">{{activeCategoryStatus === 'completed' ? (item.categoryName ? item.natureLabel + ' · ' + item.categoryName : item.natureLabel) : '无需分类 · ' + item.natureLabel}}{{item.pendingReview ? ' · 待核对' : ''}}</text></view><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view>
           </view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
             <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>

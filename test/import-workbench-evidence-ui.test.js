@@ -81,6 +81,8 @@ for (const kind of ['待分类', '已分类', '无需分类', '已排除', '重�
     page.toggleExcludedGroup(tap({ key: page.data.excludedReviewGroups[0].key }))
     row = page.data.excludedReviewGroups[0].events[0]
   }
+  if (kind === '已分类' || kind === '无需分类') assert.ok(row.natureLabel && row.natureLabel !== 'undefined', kind + ' 行要展示性质标签')
+  if (kind === '已分类') assert.ok(row.categoryName && row.categoryName !== 'undefined', '已分类行要展示分类名')
   await page.openEvidence(tap({ id: row.eventId }))
   assert.equal(page.data.evidenceSheet.partFields[0].value, 'synthetic-evidence-0')
   assert.equal(page.data.errorMessage, '')
