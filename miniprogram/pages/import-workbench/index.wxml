@@ -467,7 +467,6 @@
   <view wx:if="{{update && phase === 'review' && currentStep === 1}}" class="abandon-batch">
     <view class="abandon-batch-actions">
       <button class="text-action abandon-batch-button" bindtap="abandonUpdate" disabled="{{busy}}">放弃本批账单</button>
-      <button class="primary-button" data-step="2" bindtap="goToStep" disabled="{{busy || unlockedStep < 2}}">下一步：确认账户</button>
     </view>
     <text class="abandon-batch-copy">放弃不影响已有账本</text>
   </view>
