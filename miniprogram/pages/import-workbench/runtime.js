@@ -429,7 +429,7 @@ module.exports = {
     this._accountUiDrafts.clear()
   },
 
-  applyUpdateView: function (view, background, restoreToFirstStep, quiet) {
+  applyUpdateView: function (view, background, restoreToFirstStep, quiet, keepStep) {
     if (!this._viewActive) return
     if (!view.workbench) {
       // 操作事实先显示；明细读取失败不抹掉已保存/已入账结果。
@@ -457,13 +457,15 @@ module.exports = {
     const workflow = view.update.status !== 'review' ? 4 : workbench.accountStepSummary.pending ? 2 : workbench.reviewStatusTabs[0].count ? 3 : 4
     const current = this.data.currentStep
     const step = view.update.status !== 'review' ? 4 : restoreToFirstStep ? 1
-    : background || (same && current >= 1 && current <= workflow) ? current : workflow
+    : background || (same && (keepStep || (current >= 1 && current <= workflow))) ? current : workflow
     const patch = Object.assign({}, workbench, { update: view.update, sources: view.sources.map(source => ({ sourceId: source.sourceId,
               fileName: source.fileName, sourceType: source.sourceType, summary: source.summary })), coverage: view.coverage, posting: view.posting,
         phase: { posted: 'done', undone: 'undone', abandoned: 'abandoned' }[view.update.status] || 'review',
         currentStep: step, unlockedStep: workflow, openIssueCount: open, busy: false, errorMessage: '', refreshRequired: false })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }
     setChangedData(this, patch)
+    // 配对入口卡片随每次视图应用按当前资格对账；loadPairingEntry 内部有版本缓存，已最新时不重读。
+    if (this.loadPairingEntry) this.loadPairingEntry()
     if (view.update.status === 'posted' && view.sources.some(source=>source.sourceType==='bank')) {
       const key=view.update.updateId+':'+view.viewVersion
       if(this._installmentPendingKey!==key){

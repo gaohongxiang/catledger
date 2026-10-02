@@ -268,7 +268,8 @@ async function showIssueEditor(event, savedForm) {
   if (this._pendingBackgroundView) {
     const pending = this._pendingBackgroundView
     this._pendingBackgroundView = null
-    this.applyUpdateView(pending, false)
+    // 挂起视图本就为避免打断用户而延迟；延迟到开弹层时应用仍保持当前步骤，不能按 workflow 把用户降级。
+    this.applyUpdateView(pending, false, false, false, true)
   }
   const summary = this.businessData().issues.find(issue => issue.issueId === issueId) || { issueId, issueType: '', label: '核对记录' }
   if (bankChannelCandidate(summary) && this.openAmbiguousPairingReview) {
@@ -397,7 +398,7 @@ module.exports = {
         const pending = this._pendingBackgroundView || await api.readSummary(this.data.update.updateId)
         if (!active()) return
         this._pendingBackgroundView = null
-        this.applyUpdateView(pending, false)
+        this.applyUpdateView(pending, false, false, false, true)
       } catch (error) {
         if (active()) this.setData({ issueDetailsLoading: false, issueDetailsError: publicError(error, '版本核验失败，请重试') })
         return

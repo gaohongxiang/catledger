@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { setup } = require('./helpers/pairing-workbench')
 const { fixture } = require('./helpers/paged-workbench')
+const { workbenchSummary } = require('../cloudfunctions/catledger-import/src/workbench-summary')
 
 function mixed(count = 29) {
   const data = fixture(2, true)
@@ -126,6 +127,45 @@ test('兜底重拉不改变资格门控：分类 tab 下关闭弹层不显示配
   await h.flush(); await h.flush()
   assert.equal(page.data.pairingEntry, null)
   assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, reads)
+})
+
+test('挂起视图延迟到打开弹层时应用，不降级当前步骤，关闭弹层后配对卡片仍在', async t => {
+  const h = mixed(), page = h.page
+  t.after(() => page.onUnload())
+  await until(h, () => page.data.pairingEntry && !page.data.pairingEntry.loading)
+  assert.equal(page.data.currentStep, 3)
+  // 输入聚焦期间后台视图到达（账户步骤重新出现待处理，workflow 降为 2），被挂起
+  page.beginInputEditing({ currentTarget: { dataset: { inputKey: 'synthetic' } } })
+  const parked = { ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 },
+    workbench: workbenchSummary(h.events, h.events.map(event => ({ eventId: event.eventId, review: 1 })),
+      [{ issueType: 'account_mapping', status: 'open', count: 1 }, { issueType: 'same_event', status: 'open', count: 1 }], 0, 0) }
+  h.summary = parked
+  page.applyUpdateView(parked, true)
+  assert.equal(Boolean(page._pendingBackgroundView), true)
+  assert.equal(page.data.currentStep, 3)
+  await page.openIssue({ currentTarget: { dataset: { id: 'synthetic-issue' } } })
+  assert.equal(page.data.currentStep, 3, '打开弹层应用挂起视图不能把用户从步骤3降级')
+  assert.equal(Boolean(page.data.currentIssue), true)
+  page.closeIssue()
+  await until(h, () => page.data.pairingEntry && !page.data.pairingEntry.loading)
+  assert.equal(page.data.currentStep, 3)
+  assert.equal(page.data.pairingEntry.total, 29)
+  assert.equal(page.data.pairingEntry.error, false)
+})
+
+test('视图应用按当前资格对账配对入口：被清空的卡片即时重建，已最新时不重读', async t => {
+  const h = mixed(), page = h.page
+  t.after(() => page.onUnload())
+  await until(h, () => page.data.pairingEntry && !page.data.pairingEntry.loading)
+  const reads = () => h.calls.filter(call => call.action === 'reviewIssues.pairings').length
+  page.applyUpdateView(h.summary)
+  await h.flush(); await h.flush()
+  assert.equal(reads(), 1, '卡片已最新时视图应用不产生多余读取')
+  page.cancelPairingEntry()
+  assert.equal(page.data.pairingEntry, null)
+  page.applyUpdateView(h.summary)
+  await until(h, () => page.data.pairingEntry && !page.data.pairingEntry.loading)
+  assert.equal(page.data.pairingEntry.total, 29, '同版本视图应用也按资格重建被清空的卡片')
 })
 
 test('没有混合银行与平台来源时不显示建议卡片，也不增加范围查询', async t => {
