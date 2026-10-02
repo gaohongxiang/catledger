@@ -272,7 +272,8 @@ test('问题事件缺少主证据时仍安全展示，分类只匹配经济性�
   assert.deepEqual(model.eventView({ amountMinor: '500', economicNature: 'refund', primaryEvidence: null }), {
     amountMinor: '500', economicNature: 'refund', primaryEvidence: null,
     amountText: '¥5.00', displayTitle: '退款', displayMeta: '',
-    displayDate: '', displayDay: '', displayMonth: '', displayDetailMeta: '', directionClass: ''
+    displayDate: '', displayDay: '', displayMonth: '', displayDetailMeta: '', directionClass: '',
+    natureLabel: '退款'
   })
   const categories = [
     { categoryId: 'income', kind: 'income' },

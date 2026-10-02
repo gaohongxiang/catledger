@@ -761,8 +761,7 @@ function organizerRecordState(events, issues, categories, query, options) {
     return Object.assign({}, summaryOnly ? { eventId: event.eventId, economicNature: event.economicNature } : event, { reviewIssueId: reviewIssueId, categoryIssueId: categoryIssueId,
       pendingReview: pendingReview, needsCategory: needsCategory,
       categoryName: names.get(event.categoryId) || '分类已设置',
-      natureLabel: { income: '收入', expense: '支出', fee: '手续费', repayment: '还款', internal_transfer: '内部转账',
-        refund: '退款', borrow: '借款', balance_adjustment: '余额调整', unknown: '性质待确认' }[event.economicNature] || '性质待确认'
+      natureLabel: natureLabelOf(event.economicNature)
     })
   })
   const reviewPending = annotated.filter(function (event) { return event.pendingReview })
@@ -813,6 +812,11 @@ function workflowPosition(status, groups) {
   return { currentStep: 4, unlockedStep: 4 }
 }
 
+function natureLabelOf(nature) {
+  return { income: '收入', expense: '支出', fee: '手续费', repayment: '还款', internal_transfer: '内部转账',
+    refund: '退款', borrow: '借款', balance_adjustment: '余额调整', unknown: '性质待确认' }[nature] || '性质待确认'
+}
+
 function eventView(event) {
   const evidence = event.primaryEvidence || {}
   const displayTitle = [evidence.item, evidence.counterparty].find(function (value) {
@@ -830,7 +834,8 @@ function eventView(event) {
     displayDay: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(8, 10) : '',
     displayMonth: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? Number(localAt.slice(5, 7)) + '月' : '',
     displayDetailMeta: [detailText, sourceText].filter(Boolean).join(' · '),
-    directionClass: event.flowDirection === 'inflow' ? 'row-income' : event.flowDirection === 'outflow' ? 'row-expense' : ''
+    directionClass: event.flowDirection === 'inflow' ? 'row-income' : event.flowDirection === 'outflow' ? 'row-expense' : '',
+    natureLabel: event.natureLabel || natureLabelOf(event.economicNature)
   })
 }
 
