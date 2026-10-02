@@ -1818,6 +1818,7 @@ button::after { border: 0; }
   border-bottom: 2rpx solid var(--ui-line);
 }
 .mapping-label { color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
+.mapping-browse { display: block; margin-top: 8rpx; padding: 8rpx 0; color: var(--ui-accent-strong); font-size: var(--font-caption, 24rpx); }
 .mapping-value {
   min-width: 0;
   overflow: hidden;
