@@ -125,7 +125,6 @@
       </view>
       <view class="stage-action">
         <text class="stage-action-summary content-inset">{{uploadSummary.ready ? (uploadSummary.attention ? '可以先整理已读取成功的账单' : '全部解析完成，可以确认账户') : (uploadSummary.mapping ? '先确认账单列，再确认账户' : '至少成功解析 1 份账单后才可继续')}}</text>
-        <button data-ui="next-accounts" class="primary-button stage-primary" bindtap="createFinanceUpdate" loading="{{phase === 'organizing'}}" disabled="{{busy || uploadSummary.ready === 0}}">{{phase === 'organizing' ? '正在准备账户' : '下一步：确认账户'}}</button>
       </view>
     </view>
   </block>
@@ -149,6 +148,16 @@
       </view>
     </view>
   </view>
+
+  <block wx:if="{{currentStep === 1 && !restoreUpdateId && ((update && phase === 'review') || phase === 'files_ready' || phase === 'organizing' || (phase === 'selected' && !uploadSummary.queued && files.length > 0))}}">
+    <view class="stage-navigation-spacer"></view>
+    <view class="stage-action stage-navigation">
+      <view class="stage-navigation-buttons">
+        <button wx:if="{{update}}" class="primary-button stage-primary" data-step="2" bindtap="goToStep" disabled="{{busy || unlockedStep < 2}}">下一步：确认账户</button>
+        <button wx:else data-ui="next-accounts" class="primary-button stage-primary" bindtap="createFinanceUpdate" loading="{{phase === 'organizing'}}" disabled="{{busy || uploadSummary.ready === 0}}">{{phase === 'organizing' ? '正在准备账户' : '下一步：确认账户'}}</button>
+      </view>
+    </view>
+  </block>
 
   <view wx:if="{{update && phase === 'review' && (currentStep === 2 || currentStep === 3) && draftSync.error}}" class="draft-sync-note">
     <text>{{draftSync.error || '正在自动保存…'}}</text>

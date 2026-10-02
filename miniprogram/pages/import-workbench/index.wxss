@@ -2446,12 +2446,6 @@ button::after { border: 0; }
 .review-editor-sheet .relation-empty { border-bottom: 0; }
 
 .parse-stage { margin-top: 28rpx; }
-.parse-stage .stage-action button.stage-primary {
-  width: 100%;
-  max-width: none;
-  margin-left: 0;
-  margin-right: 0;
-}
 
 .account-mode-control {
   min-height: 88rpx;
@@ -2699,6 +2693,7 @@ button::after { border: 0; }
 .account-proof-item .account-confirm[disabled] { color: var(--ui-muted); background: var(--ui-line); }
 .account-shared-note { display: block; padding: 16rpx 0; color: var(--ui-muted); font-size: var(--font-caption); line-height: 1.5; }
 .account-stage, .review-stage, .final-stage { padding-bottom: 160rpx; }
+.stage-navigation-spacer { height: 150rpx; }
 .stage-navigation { position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); background: var(--ui-page); border-top: 1rpx solid var(--ui-line); }
 .stage-navigation-buttons { display: flex; align-items: stretch; gap: 16rpx; }
 .stage-navigation .stage-previous { flex: 0 0 160rpx; min-width: 0; margin: 0; padding: 0 12rpx; min-height: 88rpx; color: var(--ui-accent-strong); font-size: var(--font-caption, 24rpx); line-height: 88rpx; background: var(--ui-surface); border: 1rpx solid var(--ui-accent-strong); border-radius: var(--theme-radius-small, 12rpx); }
