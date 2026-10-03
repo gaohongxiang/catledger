@@ -25,7 +25,7 @@
         </view>
         <view class="net-worth-split" aria-hidden="true"></view>
         <view class="net-worth-side">
-          <text class="net-worth-label">本月</text>
+          <text class="net-worth-label">本月收支</text>
           <view class="net-worth-parts">
             <view class="net-worth-part"><text class="net-worth-part-label">支出</text><text class="net-worth-part-value money-number">{{loggedIn && hasDashboard ? monthExpenseText : '—'}}</text></view>
             <view class="net-worth-part"><text class="net-worth-part-label">收入</text><text class="net-worth-part-value money-number">{{loggedIn && hasDashboard ? monthIncomeText : '—'}}</text></view>

@@ -143,7 +143,7 @@ test('净值卡左右分栏：左侧资产结构，右侧本月收支，长金�
   assert.match(markup, /net-worth-split/)
   assert.match(markup, />总资产<\/text>/)
   assert.match(markup, />总负债<\/text>/)
-  assert.match(markup, />本月<\/text>/)
+  assert.match(markup, />本月收支<\/text>/)
   assert.match(markup, /monthExpenseText/)
   assert.match(markup, /monthIncomeText/)
   assert.match(rule('.net-worth-part-value'), /overflow-wrap:\s*anywhere/)
