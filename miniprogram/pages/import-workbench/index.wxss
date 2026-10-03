@@ -2685,10 +2685,12 @@ button::after { border: 0; }
 .stage-navigation .stage-previous[disabled] { opacity: .5; }
 
 /* 在现有统一视觉上收紧账户列表；保留其他步骤与兼容修复。 */
-.stage-track { position: relative; display: flex; align-items: flex-start; padding: 16rpx 0; }
+.stage-track { position: relative; display: flex; align-items: flex-start; margin-top: 8rpx; padding: 24rpx 16rpx; background: var(--ui-surface); border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); }
 .stage-track .stage-item { flex: 1 1 25%; padding: 0; min-height: 88rpx; gap: 10rpx; }
 .stage-track .stage-number { width: 40rpx; height: 40rpx; flex: 0 0 40rpx; }
-.stage-connector { position: absolute; top: 36rpx; width: 24rpx; height: 2rpx; margin: 0; transform: translate(-50%, -50%); color: var(--ui-muted); background: currentColor; }
+.stage-track .stage-current .stage-number { width: 48rpx; height: 48rpx; flex: 0 0 48rpx; font-size: var(--font-body, 28rpx); }
+.stage-track .stage-current .stage-title { font-weight: 600; }
+.stage-connector { position: absolute; top: 44rpx; width: 24rpx; height: 2rpx; margin: 0; transform: translate(-50%, -50%); color: var(--ui-muted); background: currentColor; }
 .stage-connector:nth-child(2) { left: 25%; }
 .stage-connector:nth-child(4) { left: 50%; }
 .stage-connector:nth-child(6) { left: 75%; }

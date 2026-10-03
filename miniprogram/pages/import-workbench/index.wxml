@@ -23,10 +23,6 @@
 </template>
 
 <view class="page-canvas import-page {{themeClass}}" style="{{themeStyle}}">
-  <page-head has-actions class="content-inset" title="导入账单">
-    <button size="mini" class="page-head-link" bindtap="openImportHistory" disabled="{{busy}}">导入记录</button>
-  </page-head>
-
   <text wx:if="{{pageError}}" class="stage-action-error">{{pageError}}</text>
   <button wx:if="{{pageError || refreshRequired}}" class="stage-previous" bindtap="retryPagedView">刷新</button>
   <view class="stage-track" aria-label="账单导入进度">

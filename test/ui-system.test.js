@@ -398,7 +398,8 @@ test('分类瓷贴默认色映射覆盖八个内置分类并回退灰色', funct
 
 test('page-head 统一全部页面页头，徽章按需只留真实业务上下文', function () {
   // profile 页头按用户要求移除（导航标题「我的」即页头），不加 page-head
-  const pages = ['loans', 'import-history', 'data-privacy', 'ledger', 'accounts', 'categories', 'theme', 'loan-payment', 'loan-plan', 'loan-link', 'loan-detail', 'import-workbench']
+  // import-workbench 页头按用户要求移除（导航标题「导入账单」即页头，步骤卡即主视觉），不加 page-head
+  const pages = ['loans', 'import-history', 'data-privacy', 'ledger', 'accounts', 'categories', 'theme', 'loan-payment', 'loan-plan', 'loan-link', 'loan-detail']
   pages.forEach(function (page) {
     const markup = read('miniprogram/pages/' + page + '/index.wxml')
     const config = read('miniprogram/pages/' + page + '/index.json')

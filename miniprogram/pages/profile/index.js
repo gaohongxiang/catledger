@@ -218,6 +218,14 @@ Page({
     wx.navigateTo({ url: '/pages/categories/index' })
   },
 
+  openImportHistory: function () {
+    if (!app.hasLoginApproval()) {
+      this.promptWechatLogin(this.openImportHistory.bind(this))
+      return
+    }
+    wx.navigateTo({ url: '/pages/import-history/index' })
+  },
+
   openTheme: function () {
     wx.navigateTo({ url: '/pages/theme/index' })
   },
