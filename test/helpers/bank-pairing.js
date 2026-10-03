@@ -1,7 +1,7 @@
 const path = require('node:path')
 const { randomUUID } = require('node:crypto')
 const defaultRoot = path.resolve(__dirname, '../..')
-async function setup({ apiPool, importPool, count = 2, ambiguous = false, refund = false, reliable = true, sourceRoot = defaultRoot, subject, existingAccountId, logger }) {
+async function setup({ apiPool, importPool, count = 2, ambiguous = false, refund = false, reliable = true, bankNature = '', sourceRoot = defaultRoot, subject, existingAccountId, logger }) {
   const { localServices, call } = require(path.join(sourceRoot, 'test/helpers/local-services'))
   const services = localServices({ apiPool, importPool, subject: subject || 'synthetic-pair-' + randomUUID(), logger })
   const api = (action, data) => call(services.api, action, data), imp = (action, data) => call(services.import, action, data)
@@ -13,7 +13,7 @@ async function setup({ apiPool, importPool, count = 2, ambiguous = false, refund
     '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注',
     ...Array.from({ length: count }, (_, i) => `${time(i)},${refund ? '退款' : '商户消费'},合成商户,合成商品,${direction},12.34,合成信用卡(2222),${refund ? '退款成功' : '支付成功'},SYNTHETIC-${prefix}-${i},,,`)].join('\n')),
   Buffer.from(['交易日期,交易金额,收支,交易类型,摘要,账户,交易流水号',
-    ...Array.from({ length: count }, (_, i) => `${time(i)},12.34,${direction},,财付通-合成商户,${reliable ? '9999000011112222' : '****2222'},${reliable ? 'SYNTHETIC-BANK-' + prefix + '-' + i : ''}`)].join('\n'))]
+    ...Array.from({ length: count }, (_, i) => `${time(i)},12.34,${direction},${bankNature},财付通-合成商户,${reliable ? '9999000011112222' : '****2222'},${reliable ? 'SYNTHETIC-BANK-' + prefix + '-' + i : ''}`)].join('\n'))]
   async function prepare(inputContents = contents) {
     const batchIds = []
     for (const [index, content] of inputContents.entries()) {

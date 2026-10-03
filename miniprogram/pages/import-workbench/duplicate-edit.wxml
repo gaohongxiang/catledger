@@ -1,0 +1,26 @@
+<view wx:if="{{duplicateEditSheet}}" class="sheet-layer" catchtouchmove="preventTouchMove">
+  <view class="sheet-scrim" bindtap="closeDuplicateEdit"></view>
+  <view class="workflow-sheet editor-sheet">
+    <view class="sheet-handle"></view>
+    <view class="pairing-heading"><text class="sheet-title serif-title">修改判断</text><button class="stage-previous" bindtap="closeDuplicateEdit" disabled="{{duplicateEditSheet.saving}}">关闭</button></view>
+    <text class="sheet-copy">{{duplicateEditSheet.kind === 'distinct' ? '当前按多笔独立记录保留，可以重新确认下面这两条是否为同一笔。' : duplicateEditSheet.kind === 'historical' ? '当前已关联到一笔历史账目，可以撤回这次判断后重新核对。' : '当前按同一笔保留。改为多笔后，各条记录分别核对；未完成的交易类型、归属和退款关系仍需确认。'}}</text>
+    <scroll-view scroll-y class="pairing-scroll">
+      <skeleton-rows wx:if="{{duplicateEditSheet.loading}}" rows="{{2}}" />
+      <view wx:for="{{duplicateEditSheet.records}}" wx:key="index" class="pairing-card">
+        <view class="event-record-primary"><text>{{item.sourceLabel}}</text><text class="money-number">¥{{item.amountText}}</text></view>
+        <text class="event-title">{{item.title}}</text><text class="event-meta">{{item.localAt}} · {{item.evidenceCount}} 条来源</text>
+      </view>
+      <view wx:if="{{duplicateEditSheet.kind === 'distinct' && duplicateEditSheet.count > 1}}" class="list-pagination"><button class="stage-previous" data-direction="-1" bindtap="changeDuplicatePair" disabled="{{duplicateEditSheet.saving || duplicateEditSheet.pending || duplicateEditSheet.pairIndex === 0}}">上一对</button><text>{{duplicateEditSheet.pairIndex + 1}} / {{duplicateEditSheet.count}}</text><button class="stage-previous" data-direction="1" bindtap="changeDuplicatePair" disabled="{{duplicateEditSheet.saving || duplicateEditSheet.pending || duplicateEditSheet.pairIndex + 1 >= duplicateEditSheet.count}}">下一对</button></view>
+      <text wx:if="{{duplicateEditSheet.reason}}" class="sheet-copy">{{duplicateEditSheet.reason}}</text>
+      <view wx:if="{{duplicateEditSheet.error}}" class="relation-empty"><text>{{duplicateEditSheet.error}}</text><button wx:if="{{!duplicateEditSheet.pending}}" class="review-text-action" bindtap="refreshDuplicateEdit" disabled="{{duplicateEditSheet.saving}}">{{duplicateEditSheet.saved ? '刷新列表' : '重新读取'}}</button></view>
+    </scroll-view>
+    <view class="pairing-footer">
+      <button wx:if="{{duplicateEditSheet.pending}}" class="sheet-confirm sheet-confirm-wide" bindtap="saveDuplicateEdit" loading="{{duplicateEditSheet.saving}}" disabled="{{duplicateEditSheet.saving}}">确认上次修改结果</button>
+      <view wx:elif="{{!duplicateEditSheet.saved && !duplicateEditSheet.loading && duplicateEditSheet.canSave}}" class="pairing-direct-actions">
+        <block wx:if="{{duplicateEditSheet.kind === 'distinct'}}"><button class="sheet-secondary" bindtap="closeDuplicateEdit" disabled="{{duplicateEditSheet.saving}}">仍是多笔</button><button class="sheet-confirm" bindtap="saveDuplicateEdit" loading="{{duplicateEditSheet.saving}}" disabled="{{duplicateEditSheet.saving || duplicateEditSheet.stale}}">改为同一笔</button></block>
+        <block wx:else><button class="sheet-secondary" bindtap="saveDuplicateEdit" loading="{{duplicateEditSheet.saving}}" disabled="{{duplicateEditSheet.saving || duplicateEditSheet.stale}}">{{duplicateEditSheet.kind === 'historical' ? '重新核对' : '不是同一笔'}}</button><button class="sheet-confirm" bindtap="closeDuplicateEdit" disabled="{{duplicateEditSheet.saving}}">保持原判断</button></block>
+      </view>
+      <button wx:elif="{{duplicateEditSheet.saved}}" class="sheet-confirm sheet-confirm-wide" bindtap="refreshDuplicateEdit" disabled="{{duplicateEditSheet.saving}}">刷新列表</button>
+    </view>
+  </view>
+</view>

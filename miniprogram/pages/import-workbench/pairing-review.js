@@ -5,12 +5,12 @@ const inlineEvidence = require('./inline-evidence')
 const { formatMinor } = require('../../utils/money')
 const { errorText, direction } = require('./presentation')
 
-// 一页四对，与原成员页共用八笔原文的读取预算；选择范围由服务端签名。
+// 建议配对一页四对，逐笔判断一页一对；选择范围由服务端签名。
 const PAGE_SIZE = 4
 const initialData = { pairingSheet: null, pairingRows: [], pairingPage: null, pairingLoading: false,
   pairingError: '', pairingCanConfirm: false, pairingSelectedCount: 0, pairingPageSelectedCount: 0,
   pairingScopeText: '', pairingChoiceText: '', pairingNeedsRecheck: false, pairingMissingCount: 0,
-  pairingProgressText: '', pairingBusy: false, pairingCanResume: false, pairingSaved: false }
+  pairingProgressText: '', pairingBusy: false, pairingCanResume: false, pairingSaved: false, pairingCanDecide: false }
 const copy = value => JSON.parse(JSON.stringify(value))
 const keyFor = (mode, issueId) => mode + ':' + (issueId || 'all')
 const owner = () => { const app = getApp(); return app.hasLoginApproval() ? app.globalData.uid || '' : '' }
@@ -61,6 +61,8 @@ function render(page) {
   const needsRecheck = Boolean(draft && (draft.needsRecheck || draft.viewVersion !== token.session.summary.viewVersion))
   const selected = sheet.mode === 'suggested' ? Math.max(0, (range && range.total || 0) - exclusions.size) : choices.size
   const otherPending = session.state.entries.some(entry => entry.status !== 'saved' && entry.issueId !== 'pairing:' + sheet.key)
+  const ready = Boolean(current(page, token) && range && draft && draft.scopeToken === range.scopeToken && !page.data.pairingLoading && !page.data.pairingError &&
+    !needsRecheck && (!missing.size || draft.missingAcknowledged) && (!pendingTask || task.error) && !saved && !otherPending && !session.status.syncing)
   let scopeText = ''
   if (range) {
     scopeText = sheet.mode === 'suggested' ? '全部建议范围共 ' + range.total + ' 组' + (Number.isSafeInteger(range.scopeSourceCount) ? '，包含 ' + range.scopeSourceCount + ' 条来源' : '')
@@ -81,8 +83,8 @@ function render(page) {
     pairingNeedsRecheck: needsRecheck, pairingMissingCount: missing.size && !draft.missingAcknowledged ? missing.size : 0,
     pairingBusy: syncing, pairingSaved: saved, pairingProgressText: progressText,
     pairingCanResume: Boolean(pendingTask && !task.error && !session.status.syncing || saved && !task.summaryReady),
-    pairingCanConfirm: Boolean(current(page, token) && range && draft && draft.scopeToken === range.scopeToken && !page.data.pairingLoading && !page.data.pairingError &&
-      !needsRecheck && (!missing.size || draft.missingAcknowledged) && (!pendingTask || task.error) && !saved && !otherPending && !session.status.syncing && selected > 0) }, () => {
+    pairingCanDecide: ready && sheet.mode === 'ambiguous' && rows.length === 1,
+    pairingCanConfirm: ready && selected > 0 }, () => {
       if (page.data.pairingCanConfirm) mark(page, token, 'pairing_ready')
       if (saved && token.submitStartedAt) mark(page, token, 'pairing_submit', token.submitStartedAt)
     })
@@ -100,13 +102,13 @@ async function open(page, mode, issueId, recheck) {
   const session = page._viewSession, key = keyFor(mode, issueId)
   const token = page._pairingToken = { session, version: session.summary.viewVersion, epoch: page._viewEpoch, scope: readCache.getSession(), owner: owner(), startedAt: Date.now(), marks: new Set() }
   page._pairingRange = null
-  page.setData(Object.assign({}, initialData, { pairingSheet: { key, mode, issueId, title: mode === 'suggested' ? '建议配对' : '选择具体配对' }, pairingLoading: true }), () => mark(page, token, 'pairing_feedback'))
+  page.setData(Object.assign({}, initialData, { pairingSheet: { key, mode, issueId, title: mode === 'suggested' ? '建议配对' : '判断是否同一笔' }, pairingLoading: true }), () => mark(page, token, 'pairing_feedback'))
   let draft = draftFor(page)
   if (!draft) {
     draft = { mode, issueId, viewVersion: token.version, revision: 0, excludedPairKeys: [], missingPairKeys: [], pairs: [], needsRecheck: false }
     try { page._draftSession.savePairingDraft(key, draft) } catch (error) { page.setData({ pairingLoading: false, pairingError: errorText(error) }); return }
   }
-  const input = { mode, pageSize: PAGE_SIZE }
+  const input = { mode, pageSize: mode === 'ambiguous' ? 1 : PAGE_SIZE }
   if (issueId) input.issueId = issueId
   if (recheck) input.recheckPairKeys = mode === 'suggested' ? draft.excludedPairKeys || [] : (draft.pairs || []).map(pair => pair.pairKey)
   page._pairingRecheck = Boolean(recheck)
@@ -175,11 +177,15 @@ module.exports = {
       const rows = response.items.map(rowsFor)
       this.setData({ pairingRows: rows, pairingPage: response.page, pairingLoading: false }, () => mark(this, token, 'pairing_content'))
       render(this)
-      const records = [], paths = []
-      rows.forEach((row, index) => ['bank', 'platform'].forEach(side => { records.push(row[side]); paths.push('pairingRows[' + index + '].' + side) }))
+      const records = [], locations = []
+      rows.forEach((row, index) => ['bank', 'platform'].forEach(side => { records.push(row[side]); locations.push({ index, side }) }))
       const reader = this._pairingInlineEvidence = inlineEvidence.create(token.session, records, valid, (index, patch) => {
         if (!valid()) return
-        const update = {}; Object.keys(patch).forEach(key => { update[paths[index] + '.' + key] = patch[key] }); this.setData(update)
+        // 原文异步到达时保留整行摘要和判断键，避免局部桥接覆盖记录。
+        const location = locations[index], visible = this.data.pairingRows.slice(), row = visible[location.index]
+        if (!row || row.pairKey !== rows[location.index].pairKey) return
+        visible[location.index] = { ...row, [location.side]: { ...row[location.side], ...patch } }
+        this.setData({ pairingRows: visible })
       })
       reader.loadAll().catch(() => {})
     } catch (error) {
@@ -260,6 +266,19 @@ module.exports = {
     } catch (error) {
       if (active(this, token)) this.setData({ pairingError: session.status.error || errorText(error) })
     } finally { if (active(this, token)) render(this) }
+  },
+  async decidePairing(event) {
+    const token = this._pairingToken, decision = event.currentTarget.dataset.decision
+    if (!current(this, token) || !this.data.pairingCanDecide || !['same', 'distinct'].includes(decision)) return
+    const row = this.data.pairingRows[0], draft = copy(draftFor(this)), session = this._draftSession
+    // 此次点击只授权当前这一对；不能夹带旧版跨页尚未提交的选择。
+    draft.pairs = [{ pairKey: row.pairKey, decision, bankEventId: row.bank.eventId, platformEventId: row.platform.eventId }]
+    try {
+      persistChoices(this, draft)
+      await this.confirmPairings()
+      const task = session.pairingTask(keyFor('ambiguous', this.data.pairingSheet && this.data.pairingSheet.issueId))
+      if (active(this, token) && task && task.status === 'saved' && task.summaryReady) this.closePairingReview()
+    } catch (error) { if (active(this, token)) this.setData({ pairingError: errorText(error) }) }
   },
   async resumePairings() {
     const token = this._pairingToken

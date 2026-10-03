@@ -1,6 +1,7 @@
 <template name="record-count-formula">
   <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
-  <text class="record-count-equation">全部 {{totalCount}} · 有效 {{activeCount}} · 已排除 {{excludedCount}} · 重复 {{duplicateCount}}</text>
+  <text class="record-count-equation">有效交易 {{activeCount}}＝全部 {{totalCount}}－已排除 {{excludedCount}}－重复 {{duplicateCount}}</text>
+  <text class="record-count-equation record-count-chain">有效交易＝待核对＋已核对＝待分类＋已分类＋无需分类</text>
 </template>
 
 <template name="record-source-fields">
@@ -281,7 +282,7 @@
               <view class="review-preview-list review-decision-previews">
                 <view wx:for="{{issue.subjects}}" wx:for-item="preview" wx:key="eventId" class="review-preview-row">
                   <view wx:if="{{preview.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{preview.displayDate}}</text></view>
-                  <view class="review-preview-copy"><text class="review-preview-title">{{preview.displayTitle}}</text><text class="review-preview-meta">{{preview.displayDetailMeta || preview.displayMeta}}</text></view>
+                  <view class="review-preview-copy"><text class="review-preview-title">{{preview.displayTitle}}</text><text class="review-preview-meta">{{preview.displayDetailMeta || preview.displayMeta}}</text><text wx:if="{{preview.pairingDecision}}" class="review-text-action" data-id="{{preview.eventId}}" catchtap="openDuplicateEdit">修改同笔判断</text></view>
                   <text class="review-preview-amount money-number {{preview.directionClass}}">{{preview.amountText}}</text>
                 </view>
                 <text wx:if="{{issue.hiddenSubjectCount}}" class="review-preview-more">另有 {{issue.hiddenSubjectCount}} 笔将应用同一决定</text>
@@ -295,7 +296,7 @@
         <text class="record-list-note content-inset">包含自动通过和已确认的交易。</text>
         <skeleton-rows wx:if="{{pageLoading && !reviewedEvents.length}}" rows="{{3}}" />
         <view wx:for="{{reviewedEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看已核对交易">
-          <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">已核对{{item.needsCategory ? ' · 待分类' : ''}}</text><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view></view>
+          <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">已核对{{item.needsCategory ? ' · 待分类' : ''}}</text><button wx:if="{{item.pairingDecision}}" class="review-inline-action" data-id="{{item.eventId}}" catchtap="openDuplicateEdit">修改判断<chevron-icon size="{{22}}" /></button><view wx:else class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view></view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
             <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
             <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
@@ -381,6 +382,7 @@
         <view wx:for="{{duplicateReviewEvents}}" wx:key="eventId" class="review-audit-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看主记录与重复来源">
           <view class="review-audit-row"><view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayMeta}}</text></view><text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text></view>
           <view class="review-audit-footer"><text class="review-audit-badge">重复来源 {{item.duplicateCount}} 条</text><text class="review-audit-note">{{item.auditNote}}</text></view>
+          <button wx:if="{{update.status === 'review'}}" class="review-text-action" data-id="{{item.eventId}}" catchtap="openDuplicateEdit">修改判断 ›</button>
         </view>
       </view>
       <view wx:else class="tab-empty"><text class="tab-empty-title">{{reviewQuery ? '没有匹配的交易' : '没有重复记录'}}</text></view>
@@ -909,6 +911,7 @@
   </view>
 
   <include src="category-edit.wxml" />
+  <include src="duplicate-edit.wxml" />
   <view wx:if="{{directorySheet}}" class="sheet-layer directory-layer" catchtouchmove="preventTouchMove">
     <view class="sheet-scrim" bindtap="closeDirectory"></view>
     <view class="workflow-sheet editor-sheet">

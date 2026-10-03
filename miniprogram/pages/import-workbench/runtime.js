@@ -38,6 +38,7 @@ function createViewSession(page, view) {
     if (!page._viewActive || page._viewSession !== session) return
     if (page.data.currentIssue) page.setData({ issueStale: true, issueCanSubmit: false, issueDetailsLoading: false })
     if (page.data.categoryEditSheet) page.invalidateCategoryEdit()
+    if (page.data.duplicateEditSheet) page.invalidateDuplicateEdit()
     if (page.data.pairingSheet && page.invalidatePairingReview) page.invalidatePairingReview({ viewVersion: '' })
   } })
   return session
@@ -71,7 +72,7 @@ async function resumeInitialLoad(page) {
 
 module.exports = {
   applyPendingBackgroundView() {
-    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.accountChoiceSheet && !this.data.accountRecordsSheet && !this.data.pairingSheet) {
+    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.duplicateEditSheet && !this.data.accountChoiceSheet && !this.data.accountRecordsSheet && !this.data.pairingSheet) {
       const view = this._pendingBackgroundView; this._pendingBackgroundView = null; this.applyUpdateView(view, true)
     }
     // 配对入口卡片可能因隐藏或过期被清空，且本次视图应用未触发整页重读；按当前资格兜底重拉一次。
@@ -144,7 +145,7 @@ module.exports = {
     this._viewActive = false; this._viewEpoch++
     this.cancelPagedReads()
     this.setData({ currentIssue: null, currentMembers: [], issueEvents: [], issueRelations: [], issueVisibleEvents: [],
-        evidenceSheet: null, categoryEditSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null,
+        evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null,
         bankMappingSheet: null, busy: false, accountStepBusy: false, accountStepProgressText: '' })
     this.finishInputEditing()
   },
@@ -157,6 +158,7 @@ module.exports = {
     this._viewSession = null; this._businessData = null; this._draftSession = null
     this._evidenceReadToken = null
     this._categoryEditToken = null
+    this._duplicateEditToken = null
     this._editingInput = ''
     this._pendingBackgroundView = null
     if (this._updateLoad) this._updateLoad.cancelled = true
@@ -425,7 +427,7 @@ module.exports = {
         accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [], categories: [], issueCategories: [],
         uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 0, attention: 0 },
         posting: null, errorMessage: '', currentIssue: null, currentMembers: [],
-        issueEvents: [], issueRelations: [], evidenceSheet: null, categoryEditSheet: null,
+        issueEvents: [], issueRelations: [], evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null,
         repaymentAllocationChoices: [], repaymentAllocationStatusText: '', repaymentAllocationCanSave: false
       })
     this._accountUiDrafts.clear()
@@ -440,11 +442,12 @@ module.exports = {
           errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : '操作已保存，明细待刷新', refreshRequired: true })
       return
     }
-    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.categoryEditSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
+    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.categoryEditSheet || this.data.duplicateEditSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
       this._pendingBackgroundView = view
       if (this._viewSession && this._viewSession.summary.viewVersion !== view.viewVersion) {
         if (this.data.currentIssue) this.setData({ issueStale: true, issueCanSubmit: false })
         if (this.data.categoryEditSheet) this.invalidateCategoryEdit()
+        if (this.data.duplicateEditSheet) this.invalidateDuplicateEdit()
         if (this.data.accountRecordsSheet) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': '账户记录已更新，请重新读取' })
         if (this.data.pairingSheet && this.invalidatePairingReview) this.invalidatePairingReview(view)
       }

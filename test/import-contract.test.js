@@ -16,10 +16,10 @@ test('导入公共契约与事件云函数动作保持一致', function () {
     parse: handler, parseFile: handler, prepare: handler, prepareMany: handler,
     financeUpdateList: handler, financeUpdateRows: handler, financeUpdateSummary: handler, financeUpdateOptions: handler, economicEventList: handler, economicEventDetail: handler, reviewIssueMembers: handler,
     financeUpdateAbandon: handler, financeUpdateCreate: handler, financeUpdateGet: handler,
-    financeUpdateSetRepayment: handler, financeUpdateSetCategory: handler, financeUpdatePrepare: handler,
+    financeUpdateSetRepayment: handler, financeUpdateSetCategory: handler, financeUpdateReviseDuplicate: handler, financeUpdatePrepare: handler,
     financeUpdateOrganize: handler, financeUpdatePost: handler, financeUpdateUndo: handler,
     financeUpdateUndoImpact: handler, economicEventCorrect: handler,
-    economicEventCorrectionImpact: handler, economicEventEvidence: handler, reviewIssueGet: handler,
+    economicEventCorrectionImpact: handler, economicEventEvidence: handler, economicEventDuplicateReview: handler, reviewIssueGet: handler,
     reviewIssueList: handler, reviewIssueResolve: handler, reviewIssueResolveAccountMappings: handler,
     reviewIssueRefreshAccountGroups: handler, reviewIssueReviseAccountMapping: handler,
     reviewIssuePairings: handler, reviewIssueResolvePairings: handler

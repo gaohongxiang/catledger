@@ -7,6 +7,7 @@ const SAFE_READ_ACTIONS = Object.freeze({
   'dashboard.get': true,
   'economicEvents.correctionImpact': true,
   'economicEvents.evidence': true,
+  'economicEvents.duplicateReview': true,
   'economicEvents.list': true,
   'economicEvents.detail': true,
   'financeUpdates.summary': true,

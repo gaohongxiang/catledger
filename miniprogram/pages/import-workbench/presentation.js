@@ -12,7 +12,7 @@ function record(event) {
   const view = model.eventView(event), result = {}
   ;['eventId', 'displayTitle', 'displayMeta', 'displayDate', 'displayDetailMeta',
     'amountText', 'directionClass', 'needsCategory', 'reviewIssueId', 'categoryName', 'natureLabel',
-    'accountText', 'duplicateCount', 'auditNote', 'detailRequired'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
+    'accountText', 'duplicateCount', 'auditNote', 'detailRequired', 'pairingDecision'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
   for (const key of ['displayTitle', 'displayMeta', 'displayDetailMeta', 'accountText']) if (typeof result[key] === 'string' && result[key].length > 160) {
     result[key] = result[key].slice(0, 160) + '…'; result.detailRequired = true
   }

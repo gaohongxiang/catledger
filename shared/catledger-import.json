@@ -719,6 +719,64 @@
         "posting",
         "invalidates"
       ]
+    },
+    "economicEvents.duplicateReview": {
+      "kind": "versioned-read",
+      "data": [
+        "updateId",
+        "eventId",
+        "pairIndex?",
+        "viewVersion?"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "viewVersion",
+        "update",
+        "eventVersion",
+        "canSplit",
+        "reason",
+        "count",
+        "records",
+        "kind=same|distinct|historical",
+        "canMerge?",
+        "canReopen?",
+        "pairIndex?",
+        "pairs?"
+      ],
+      "rules": [
+        "Preview only the selected event source groups. Exact shared source identity and active formal transaction links cannot be split into extra transactions. No writes on read."
+      ]
+    },
+    "financeUpdates.reviseDuplicate": {
+      "kind": "idempotent-double-versioned-mutation",
+      "data": [
+        "requestId",
+        "updateId",
+        "updateVersion",
+        "eventId",
+        "eventVersion",
+        "decision=distinct|same|reopen",
+        "pairKey?",
+        "otherEventId?",
+        "otherEventVersion?"
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
+        "update",
+        "posting",
+        "invalidates"
+      ],
+      "rules": [
+        "Only review batches; revalidate source groups and both versions under the user lock. Move original evidence without copying identities, preserve primary edits and saved origin fields, restore independent events and required follow-up reviews. Recheck affected refund relations. Correct only selected source-pair memories. No formal ledger writes. Unknown results replay the exact request.",
+        "A previous explicit distinct bank/platform pair may be changed to same after revalidating both events and all current pairing facts. A manually linked historical duplicate may reopen historical review; the original formal transaction and exact-source automatic duplicates remain protected."
+      ]
     }
   },
   "rules": {

@@ -103,7 +103,9 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
       duplicateEvidenceDelta += 1
     }
     const primary = channelPrimary || events.find((event) => event.eventId === primaryEventId)
-    const next = { ...primary, reasonCodes: resolvedReasons(issue.issueType, primary.reasonCodes), resolvingIssueType: issue.issueType }
+    const next = { ...primary, fieldSources: { ...primary.fieldSources,
+      mergeOrigins: channelPrimary ? channelPrimary.fieldSources.mergeOrigins : require('./merge-origins').mergeOrigins(events) },
+      reasonCodes: resolvedReasons(issue.issueType, primary.reasonCodes), resolvingIssueType: issue.issueType }
     affected.push(await saveEvent(connection, uid, primary, next, actionId))
     if (channelPrimary) await require('./issue-store').updateMappingMemberVersions(connection, uid, updateId, affected)
   } else if (decision === 'confirm_distinct' && issue.primaryReasonCode === 'historical_duplicate_candidate') {
@@ -294,7 +296,8 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
                (uid, link_id, update_id, event_id, transaction_id, role,
                 creation_method, rule_version, transaction_version)
              VALUES (?, ?, ?, ?, ?, 'historical_primary', 'reused',
-                     'event-transaction-link-v2', ?)`,
+                     'event-transaction-link-v2', ?)
+             ON DUPLICATE KEY UPDATE superseded_at = NULL, transaction_version = VALUES(transaction_version)`,
       [uid, randomUUID(), updateId, event.eventId, transactionId, Number(transactions[0].version)]
     )
     const next = {

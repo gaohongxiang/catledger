@@ -6,6 +6,7 @@ const transactionReview = require('./transaction-review')
 const pairingReview = require('./pairing-review')
 const pairingEntry = require('./pairing-entry')
 const categoryEdit = require('./category-edit')
+const duplicateEdit = require('./duplicate-edit')
 const postingFlow = require('./posting-flow')
 
 const initialData = Object.assign({}, pairingReview.initialData, {
@@ -49,6 +50,7 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     categoryQuery: '',
     reviewQuery: '',
     categoryEditSheet: null,
+    duplicateEditSheet: null,
     categoryEventCount: 0,
     categorizedEvents: [],
     categorizedEventCount: 0,
@@ -248,6 +250,7 @@ Page({
   changePairingEvidence: pairingReview.changePairingEvidence,
   recheckPairings: pairingReview.recheckPairings,
   confirmPairings: pairingReview.confirmPairings,
+  decidePairing: pairingReview.decidePairing,
   resumePairings: pairingReview.resumePairings,
   closeIssue: transactionReview.closeIssue,
   backFinalDetail: postingFlow.backFinalDetail,
@@ -311,6 +314,13 @@ Page({
   refreshCategoryEdit: categoryEdit.refreshCategoryEdit,
   invalidateCategoryEdit: categoryEdit.invalidateCategoryEdit,
   pendingCategoryEdit: categoryEdit.pendingCategoryEdit,
+  openDuplicateEdit: duplicateEdit.openDuplicateEdit,
+  closeDuplicateEdit: duplicateEdit.closeDuplicateEdit,
+  saveDuplicateEdit: duplicateEdit.saveDuplicateEdit,
+  changeDuplicatePair: duplicateEdit.changeDuplicatePair,
+  refreshDuplicateEdit: duplicateEdit.refreshDuplicateEdit,
+  invalidateDuplicateEdit: duplicateEdit.invalidateDuplicateEdit,
+  pendingDuplicateEdit: duplicateEdit.pendingDuplicateEdit,
   searchDirectory: accountReview.searchDirectory,
   changeDirectoryKind: accountReview.changeDirectoryKind,
   changeDirectoryPage: accountReview.changeDirectoryPage,

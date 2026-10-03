@@ -42,7 +42,7 @@ function mutationTags(action) {
   if (action === 'categories.assignTransactions' || action === 'transactions.setCategory') return ['transactions']
   if (/^transactions\.(create|update|delete|deleteMany|linkRefund)$/.test(action)) return ['transactions', 'accounts']
   // 未入账事件也参与贷款费用冲突排除；只刷新相关贷款事实，不清空账本和目录快照。
-  if (/^financeUpdates\.(prepare|organize|abandon|setRepayment|setCategory)$/.test(action) ||
+  if (/^financeUpdates\.(prepare|organize|abandon|setRepayment|setCategory|reviseDuplicate)$/.test(action) ||
     /^reviewIssues\.(resolve|resolveAccountMappings|refreshAccountGroups|resolvePairings)$/.test(action)) return ['loans']
   if (/^financeUpdates\.(post|undo)$/.test(action) || action === 'economicEvents.correct') return ['loans', 'accounts', 'transactions', 'categories', 'accountDirectory', 'categoryDirectory']
   return []

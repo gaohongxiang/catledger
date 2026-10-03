@@ -2716,6 +2716,7 @@ button::after { border: 0; }
 
 .review-count-formulas { margin: 12rpx 0 24rpx; color: var(--ui-muted); }
 .review-count-formulas .record-count-equation { font-size: var(--font-caption, 24rpx); line-height: 1.8; white-space: normal; overflow-wrap: anywhere; }
+.review-count-formulas .record-count-chain { display: inline-block; white-space: nowrap; overflow-wrap: normal; }
 /* 四个步骤共用内容标题层级，低于顶部主标题。 */
 .import-page .stage-panel-title,
 .import-page .step-title,
@@ -2807,3 +2808,6 @@ button::after { border: 0; }
 
 .directory-layer { z-index: 160; }
 .evidence-fields .evidence-value { white-space: pre-wrap; word-break: break-all; }
+
+.pairing-direct-actions { display: flex; gap: 20rpx; width: 100%; }
+.pairing-direct-actions > button { flex: 1; min-width: 0; margin: 0; }

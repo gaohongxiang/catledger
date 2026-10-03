@@ -125,6 +125,11 @@ module.exports = {
 
   postUpdate: async function () {
     if (!this._viewActive || !getApp().hasLoginApproval() || this.data.busy || !this._draftSession) return
+    const duplicatePending = this.pendingDuplicateEdit()
+    if (duplicatePending) {
+      await this.openDuplicateEdit({ currentTarget: { dataset: { id: duplicatePending.payload.eventId } } })
+      return
+    }
     const categoryPending = this.pendingCategoryEdit()
     if (categoryPending) {
       await this.openCategoryEdit({ currentTarget: { dataset: { id: categoryPending.payload.eventId } } })

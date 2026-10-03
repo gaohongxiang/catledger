@@ -9,6 +9,7 @@ const { setCategory: setCategoryInTransaction } = require('./review/category')
 
 function createReviewIssueService({ getPool }) {
   const pairings = require('./review/bank-channel-pairings').createBankChannelPairings({ getPool })
+  const duplicateRevision = require('./review/duplicate-revision').createDuplicateRevision({ getPool })
   async function refreshAccountGroups(context) {
     const updateId = validateUuid(context.data.updateId)
     validateUuid(context.data.requestId)
@@ -93,6 +94,7 @@ function createReviewIssueService({ getPool }) {
   }
 
   return { setCategory, setRepayment, resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups,
+    duplicateReview: duplicateRevision.preview, reviseDuplicate: duplicateRevision.revise,
     pairings: pairings.list, resolvePairings: pairings.resolve }
 }
 

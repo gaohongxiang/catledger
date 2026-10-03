@@ -12,7 +12,7 @@ const {
 const MAX_ATTEMPTS = 4
 const MAX_READ_ATTEMPTS = 2
 const RECEIPT_ACTIONS = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.abandon',
-  'financeUpdates.setCategory', 'financeUpdates.setRepayment', 'financeUpdates.post', 'financeUpdates.undo', 'economicEvents.correct', 'reviewIssues.resolve',
+  'financeUpdates.setCategory', 'financeUpdates.reviseDuplicate', 'financeUpdates.setRepayment', 'financeUpdates.post', 'financeUpdates.undo', 'economicEvents.correct', 'reviewIssues.resolve',
   'reviewIssues.resolveAccountMappings', 'reviewIssues.refreshAccountGroups', 'reviewIssues.reviseAccountMapping', 'reviewIssues.resolvePairings'])
 
 async function resolveUid(connection, provider, subjectHash) {

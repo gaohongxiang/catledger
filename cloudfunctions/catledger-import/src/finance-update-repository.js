@@ -506,6 +506,7 @@ function publicEvent(row) {
     categoryId: row.categoryId || null,
     categoryName: row.categoryName ? [row.parentCategoryName, row.categoryName].filter(Boolean).join(' / ') : '',
     reasonCodes,
+    ...((fieldSources.bankChannelDistinctPairs || []).length && !fieldSources.mergeOrigins && !fieldSources.bankChannelResolution ? { pairingDecision: 'distinct' } : {}),
     loanRepayment: fieldSources.loanRepayment || null,
     sourceDirection: row.sourceDirection || null,
     fundsProjection: fieldSources.fundsProjection || null,
