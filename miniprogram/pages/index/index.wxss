@@ -89,11 +89,11 @@
 }
 /* 净值卡左右分栏：左侧净资产与资产负债结构，右侧本月收支。 */
 .net-worth-columns { display: flex; align-items: stretch; }
-.net-worth-main { flex: 1.2; min-width: 0; }
+.net-worth-main { flex: 1.2; min-width: 0; display: flex; flex-direction: column; }
 .net-worth-split { flex: 0 0 1rpx; margin: 8rpx 28rpx 0; background: var(--home-line, var(--theme-line, #e5dfd7)); }
-.net-worth-side { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; }
-.net-worth-parts { display: flex; gap: 28rpx; margin-top: 20rpx; }
-.net-worth-part { min-width: 0; }
+.net-worth-side { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.net-worth-parts { display: flex; gap: 28rpx; margin-top: auto; padding-top: 20rpx; }
+.net-worth-part { min-width: 0; flex: 1; }
 .net-worth-part-label { display: block; color: var(--theme-hero-muted, #392718); font-size: var(--font-caption, 24rpx); line-height: 1.4; }
 .net-worth-part-value {
   display: block;
@@ -102,17 +102,6 @@
   font-size: var(--font-caption, 26rpx);
   line-height: 1.4;
   white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-.net-worth-side-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; margin-top: 14rpx; }
-.net-worth-side-value {
-  min-width: 0;
-  color: var(--theme-hero-value-ink, #633921);
-  font-size: var(--font-section, 32rpx);
-  font-weight: 500;
-  line-height: 1.4;
-  text-align: right;
   overflow-wrap: anywhere;
   word-break: break-word;
 }

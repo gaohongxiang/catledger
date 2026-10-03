@@ -35,7 +35,7 @@ test('标题使用中等字重和自然字距，不缩小正文来伪造清秀',
 })
 
 test('金额不省略、不裁掉负号，极长数值允许换行', () => {
-  for (const selector of ['.net-worth-number', '.net-worth-part-value', '.net-worth-side-value', '.account-balance', '.timeline-amount']) {
+  for (const selector of ['.net-worth-number', '.net-worth-part-value', '.net-worth-part-value', '.account-balance', '.timeline-amount']) {
     const declarations = rule(selector)
     assert.doesNotMatch(declarations, /text-overflow:\s*ellipsis|overflow:\s*hidden/)
     assert.match(declarations, /overflow-wrap:\s*anywhere/)
@@ -147,7 +147,7 @@ test('净值卡左右分栏：左侧资产结构，右侧本月收支，长金�
   assert.match(markup, /monthExpenseText/)
   assert.match(markup, /monthIncomeText/)
   assert.match(rule('.net-worth-part-value'), /overflow-wrap:\s*anywhere/)
-  assert.match(rule('.net-worth-side-value'), /overflow-wrap:\s*anywhere/)
+  assert.match(rule('.net-worth-part-value'), /overflow-wrap:\s*anywhere/)
   assert.doesNotMatch(markup, /累计收入|累计支出|month-strip/)
 })
 
@@ -171,5 +171,5 @@ test('时段问候移到页头标题之上，分栏统计留在 hero 卡内', ()
   assert.ok(markup.indexOf('class="net-worth-card"') < markup.indexOf('net-worth-columns'), '分栏统计应位于 hero 卡内')
   assert.ok(markup.indexOf('net-worth-columns') < markup.indexOf('class="home-flow"'), '分栏统计应在 home-flow 之前')
   assert.match(rule('.net-worth-part-label'), /color:\s*var\(--theme-hero-muted/)
-  assert.match(rule('.net-worth-side-value'), /color:\s*var\(--theme-hero-value-ink/)
+  assert.match(rule('.net-worth-part-value'), /color:\s*var\(--theme-hero-value-ink/)
 })
