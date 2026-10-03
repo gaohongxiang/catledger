@@ -1977,6 +1977,7 @@ button::after { border: 0; }
   flex-direction: column;
 }
 .evidence-sheet-heading { display: block; }
+.review-source-caption { display: block; padding: 12rpx 18rpx 4rpx; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
 .evidence-scroll { min-height: 0; margin-top: 18rpx; flex: 1; }
 .evidence-return {
   width: 100%;
@@ -2811,3 +2812,7 @@ button::after { border: 0; }
 
 .pairing-direct-actions { display: flex; gap: 20rpx; width: 100%; }
 .pairing-direct-actions > button { flex: 1; min-width: 0; margin: 0; }
+.duplicate-edit-sheet { display: flex; flex-direction: column; height: 64vh; overflow: hidden; }
+.duplicate-edit-sheet > .sheet-handle,
+.duplicate-edit-sheet > .review-sheet-heading,
+.duplicate-edit-sheet > .sheet-copy { flex-shrink: 0; }

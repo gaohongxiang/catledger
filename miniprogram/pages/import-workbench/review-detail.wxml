@@ -1,0 +1,27 @@
+<view wx:if="{{reviewDetailSheet && !reviewDetailSheet.hidden}}" class="sheet-layer" catchtouchmove="preventTouchMove">
+  <view class="sheet-scrim" bindtap="closeReviewDetails"></view>
+  <view class="workflow-sheet editor-sheet">
+    <view class="sheet-handle"></view>
+    <view class="evidence-drilldown">
+      <view class="review-sheet-heading"><text class="sheet-title serif-title">交易详情</text><button class="review-sheet-close" bindtap="closeReviewDetails" aria-label="关闭交易详情"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
+      <scroll-view class="evidence-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+        <skeleton-rows wx:if="{{reviewDetailSheet.loading && !reviewDetailSheet.sources.length}}" rows="{{3}}" />
+        <view wx:for="{{reviewDetailSheet.sources}}" wx:key="evidenceId" class="evidence-card">
+          <view class="evidence-card-head"><text class="evidence-role">原始交易 {{index + 1}} · {{item.sourceLabel}}</text></view>
+          <text class="review-source-caption">{{item.fileName}} · 第 {{item.rowNumber}} 行</text>
+          <skeleton-rows wx:if="{{item.loading}}" rows="{{2}}" />
+          <view class="evidence-fields"><view wx:for="{{item.fields}}" wx:for-item="field" wx:key="key" class="evidence-field"><text class="evidence-key">{{field.name}}</text><text selectable class="evidence-value">{{field.value === '' ? '（空）' : field.value}}</text></view></view>
+          <view wx:if="{{item.error}}" class="relation-empty"><text>{{item.error}}</text><button class="account-source-link" data-index="{{index}}" bindtap="retryReviewSource">重试读取原文</button></view>
+          <button wx:if="{{item.incomplete}}" class="account-source-link" data-id="{{reviewDetailSheet.eventId}}" data-evidence-id="{{item.evidenceId}}" bindtap="openReviewSource">查看完整原文</button>
+        </view>
+        <view wx:if="{{reviewDetailSheet.error || reviewDetailSheet.stale}}" class="relation-empty"><text>{{reviewDetailSheet.stale ? '记录已更新，请重新查看' : reviewDetailSheet.error}}</text><button class="account-source-link" bindtap="refreshReviewDetails">重新读取</button></view>
+        <text wx:elif="{{!reviewDetailSheet.loading && !reviewDetailSheet.sources.length}}" class="relation-empty">没有可显示的原始交易。</text>
+      </scroll-view>
+      <view class="pairing-footer">
+        <button wx:if="{{reviewDetailSheet.canEdit}}" class="sheet-confirm sheet-confirm-wide" bindtap="openReviewJudgment" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改同笔判断</button>
+        <button wx:if="{{reviewDetailSheet.repaymentEditable}}" class="evidence-return" data-id="{{reviewDetailSheet.eventId}}" bindtap="editLoanRepayment">设置普通转账 / 借款还款</button>
+        <button class="evidence-return" bindtap="closeReviewDetails">返回列表</button>
+      </view>
+    </view>
+  </view>
+</view>

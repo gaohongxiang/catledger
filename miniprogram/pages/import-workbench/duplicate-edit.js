@@ -78,7 +78,8 @@ module.exports = {
       const summary = await api.readSummary(token.receipt.update.updateId)
       if (!current(this, token)) return
       this._duplicateEditToken = null; this._pendingBackgroundView = null
-      this.setData({ duplicateEditSheet: null })
+      this._reviewDetailToken = null
+      this.setData({ duplicateEditSheet: null, reviewDetailSheet: null })
       await this.applyUpdateView(summary, false, false, false, true)
       wx.showToast({ title: token.decision === 'same' ? '已合并为一笔' : token.decision === 'reopen' ? '已返回待核对' : '已恢复为独立记录', icon: 'none' })
     } catch (_) { if (current(this, token)) patchSheet(this, { 'saving': false, 'error': '判断已修改，列表暂未刷新，请重试刷新' }) }

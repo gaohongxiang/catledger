@@ -39,6 +39,7 @@ function createViewSession(page, view) {
     if (page.data.currentIssue) page.setData({ issueStale: true, issueCanSubmit: false, issueDetailsLoading: false })
     if (page.data.categoryEditSheet) page.invalidateCategoryEdit()
     if (page.data.duplicateEditSheet) page.invalidateDuplicateEdit()
+    if (page.data.reviewDetailSheet) page.setData({ 'reviewDetailSheet.stale': true, 'reviewDetailSheet.loading': false })
     if (page.data.pairingSheet && page.invalidatePairingReview) page.invalidatePairingReview({ viewVersion: '' })
   } })
   return session
@@ -72,7 +73,7 @@ async function resumeInitialLoad(page) {
 
 module.exports = {
   applyPendingBackgroundView() {
-    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.duplicateEditSheet && !this.data.accountChoiceSheet && !this.data.accountRecordsSheet && !this.data.pairingSheet) {
+    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.duplicateEditSheet && !this.data.reviewDetailSheet && !this.data.accountChoiceSheet && !this.data.accountRecordsSheet && !this.data.pairingSheet) {
       const view = this._pendingBackgroundView; this._pendingBackgroundView = null; this.applyUpdateView(view, true)
     }
     // 配对入口卡片可能因隐藏或过期被清空，且本次视图应用未触发整页重读；按当前资格兜底重拉一次。
@@ -145,7 +146,7 @@ module.exports = {
     this._viewActive = false; this._viewEpoch++
     this.cancelPagedReads()
     this.setData({ currentIssue: null, currentMembers: [], issueEvents: [], issueRelations: [], issueVisibleEvents: [],
-        evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null,
+        evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, reviewDetailSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null,
         bankMappingSheet: null, busy: false, accountStepBusy: false, accountStepProgressText: '' })
     this.finishInputEditing()
   },
@@ -177,6 +178,7 @@ module.exports = {
     }
   },
   cancelPagedReads() {
+    this._reviewDetailToken = null
     if (this.cancelPairingEntry) this.cancelPairingEntry()
     if (this.cancelPairingReview) this.cancelPairingReview()
     this.closeInlineEvidence('issue')
@@ -415,19 +417,14 @@ module.exports = {
           selectedEvents: 0, readySelectedEvents: 0, pendingSelectedEvents: 0, excludedEvents: 0,
           statementFullyRecognized: false, selectedEventsReadyToPost: false
         },
-        reviewStatusTabs: [
-          { value: 'pending', label: '待核对', count: 0 },
-          { value: 'completed', label: '已核对', count: 0 },
-          { value: 'excluded', label: '已排除', count: 0 },
-          { value: 'duplicate', label: '重复', count: 0 }
-        ],
+        reviewStatusTabs: model.reviewStatusTabs(),
         accountMappings: [], accountStepSummary: { total: 0, ready: 0, confirmed: 0, invalid: 0, create: 0, inline: 0, transfer: 0, open: 0, dirty: 0, pending: 0 },
         accountStepBusy: false, accountStepError: '', accountStepProgressText: '',
         accounts: [], accountDrafts: [], accountMappingDrafts: [], accountChoices: [{ accountId: '', name: '新建账户' }],
         accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [], categories: [], issueCategories: [],
         uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 0, attention: 0 },
         posting: null, errorMessage: '', currentIssue: null, currentMembers: [],
-        issueEvents: [], issueRelations: [], evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null,
+        issueEvents: [], issueRelations: [], evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, reviewDetailSheet: null,
         repaymentAllocationChoices: [], repaymentAllocationStatusText: '', repaymentAllocationCanSave: false
       })
     this._accountUiDrafts.clear()
@@ -442,12 +439,13 @@ module.exports = {
           errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : '操作已保存，明细待刷新', refreshRequired: true })
       return
     }
-    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.categoryEditSheet || this.data.duplicateEditSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
+    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.reviewDetailSheet || this.data.categoryEditSheet || this.data.duplicateEditSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
       this._pendingBackgroundView = view
       if (this._viewSession && this._viewSession.summary.viewVersion !== view.viewVersion) {
         if (this.data.currentIssue) this.setData({ issueStale: true, issueCanSubmit: false })
         if (this.data.categoryEditSheet) this.invalidateCategoryEdit()
         if (this.data.duplicateEditSheet) this.invalidateDuplicateEdit()
+        if (this.data.reviewDetailSheet) this.setData({ 'reviewDetailSheet.stale': true, 'reviewDetailSheet.loading': false })
         if (this.data.accountRecordsSheet) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': '账户记录已更新，请重新读取' })
         if (this.data.pairingSheet && this.invalidatePairingReview) this.invalidatePairingReview(view)
       }
@@ -464,7 +462,7 @@ module.exports = {
     const current = this.data.currentStep
     const step = view.update.status !== 'review' ? 4 : restoreToFirstStep ? 1
     : background || (same && (keepStep || (current >= 1 && current <= workflow))) ? current : workflow
-    const patch = Object.assign({}, workbench, { update: view.update, sources: view.sources.map(source => ({ sourceId: source.sourceId,
+    const patch = Object.assign({}, workbench, { reviewStatusTabs: model.reviewStatusTabs(workbench.reviewStatusTabs), update: view.update, sources: view.sources.map(source => ({ sourceId: source.sourceId,
               fileName: source.fileName, sourceType: source.sourceType, summary: source.summary })), coverage: view.coverage, posting: view.posting,
         phase: { posted: 'done', undone: 'undone', abandoned: 'abandoned' }[view.update.status] || 'review',
         currentStep: step, unlockedStep: workflow, openIssueCount: open, busy: false, errorMessage: '', refreshRequired: false })

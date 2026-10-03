@@ -432,6 +432,7 @@ module.exports = {
     for (const key of ["_evidencePager","_detailPager"]) { if (this[key]) this[key].cancel(); this[key] = null }
     this._evidenceReadToken = null
     this.setData({ busy: false, evidenceSheet: null })
+    if (this.data.reviewDetailSheet) this.setData({ 'reviewDetailSheet.hidden': false })
     this.applyPendingBackgroundView()
   },
 
@@ -972,6 +973,7 @@ module.exports = {
     const evidenceId = event.currentTarget.dataset.evidenceId
     let sourcePager
     if (evidenceId) {
+      sourcePager = this.reviewDetailSourcePager(eventId, evidenceId)
       for (const reader of [this._issueInlineEvidence, this._accountInlineEvidence, this._pairingInlineEvidence]) {
         if (reader) sourcePager = sourcePager || reader.sourcePager(eventId, evidenceId)
       }

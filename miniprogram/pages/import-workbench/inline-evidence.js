@@ -68,4 +68,4 @@ function create(session, records, isCurrent, publish) {
   }
 }
 
-module.exports = { create }
+module.exports = { create, previewFields }

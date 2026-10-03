@@ -1,5 +1,10 @@
 const bankSuggestion = require('./bank-suggestion')
 
+function reviewStatusTabs(tabs = []) {
+  return [['pending', '待核对'], ['completed', '已核对'], ['duplicate', '重复交易'], ['excluded', '已排除']]
+    .map(([value, label]) => ({ value, label, count: Number((tabs.find(tab => tab.value === value) || {}).count || 0) }))
+}
+
 const ISSUE_LABELS = Object.freeze({
   account_mapping: '确认账户归属',
   category_assignment: '交易分类待确认',
@@ -803,12 +808,12 @@ function organizerRecordState(events, issues, categories, query, options) {
     categorizedEventCount: categoryCompleted.length,
     duplicateCandidates: duplicateCandidates,
     hydratedIssues: hydratedIssues,
-    reviewStatusTabs: [
+    reviewStatusTabs: reviewStatusTabs([
       { value: 'pending', label: '待核对', count: reviewPending.length },
       { value: 'completed', label: '已核对', count: reviewCompleted.length },
       { value: 'excluded', label: '已排除', count: excluded.length },
       { value: 'duplicate', label: '重复', count: duplicateCount }
-    ],
+    ]),
     categoryStatusTabs: [
       { value: 'pending', label: '待分类', count: categoryPending.length },
       { value: 'completed', label: '已分类', count: categoryCompleted.length },
@@ -1022,6 +1027,7 @@ function fundsFlowSummary(events, accounts) {
 }
 
 module.exports = {
+  reviewStatusTabs,
   isHistoricalDuplicate,
   eventAccountIds,
   fundsFlowSummary,

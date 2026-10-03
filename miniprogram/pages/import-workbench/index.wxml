@@ -295,8 +295,8 @@
       <block wx:elif="{{activeReviewStatus === 'completed'}}">
         <text class="record-list-note content-inset">包含自动通过和已确认的交易。</text>
         <skeleton-rows wx:if="{{pageLoading && !reviewedEvents.length}}" rows="{{3}}" />
-        <view wx:for="{{reviewedEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看已核对交易">
-          <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">已核对{{item.needsCategory ? ' · 待分类' : ''}}</text><button wx:if="{{item.pairingDecision}}" class="review-inline-action" data-id="{{item.eventId}}" catchtap="openDuplicateEdit">修改判断<chevron-icon size="{{22}}" /></button><view wx:else class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view></view>
+        <view wx:for="{{reviewedEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openReviewDetails" aria-role="button" aria-label="查看已核对交易">
+          <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">已核对{{item.needsCategory ? ' · 待分类' : ''}}</text><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view></view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
             <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
             <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
@@ -379,16 +379,16 @@
       <skeleton-rows wx:elif="{{pageLoading && !duplicateReviewEvents.length}}" rows="{{3}}" />
       <view wx:elif="{{duplicateReviewError}}" class="tab-empty"><text class="tab-empty-copy">{{duplicateReviewError}}</text><button class="text-action" bindtap="loadDuplicateRecords">重试</button></view>
       <view wx:elif="{{duplicateReviewEvents.length}}" class="review-audit-list">
-        <view wx:for="{{duplicateReviewEvents}}" wx:key="eventId" class="review-audit-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看主记录与重复来源">
+        <view wx:for="{{duplicateReviewEvents}}" wx:key="eventId" class="review-audit-card" data-id="{{item.eventId}}" bindtap="openReviewDetails" aria-role="button" aria-label="查看重复交易与原始来源">
           <view class="review-decision-heading review-completed-heading">
             <text class="review-audit-badge">重复来源 {{item.duplicateCount}} 条</text>
-            <view wx:if="{{update.status === 'review'}}" class="review-decision-action" data-id="{{item.eventId}}" catchtap="openDuplicateEdit" aria-role="button" aria-label="修改判断"><text class="review-action-button">修改判断</text><chevron-icon size="{{22}}" /></view>
+            <view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view>
           </view>
           <view class="review-audit-row"><view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayMeta}}</text></view><text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text></view>
           <view class="review-audit-footer"><text class="review-audit-note">{{item.auditNote}}</text></view>
         </view>
       </view>
-      <view wx:else class="tab-empty"><text class="tab-empty-title">{{reviewQuery ? '没有匹配的交易' : '没有重复记录'}}</text></view>
+      <view wx:else class="tab-empty"><text class="tab-empty-title">{{reviewQuery ? '没有匹配的交易' : '没有重复交易'}}</text></view>
     </block>
 <view wx:if="{{reviewPage && (reviewPage.hasPrevious || reviewPage.hasNext)}}" class="list-pagination">
         <button class="stage-previous" data-direction="first" bindtap="changeReviewPage" disabled="{{!reviewPage.canFirst}}">首页</button>
@@ -914,6 +914,7 @@
   </view>
 
   <include src="category-edit.wxml" />
+  <include src="review-detail.wxml" />
   <include src="duplicate-edit.wxml" />
   <view wx:if="{{directorySheet}}" class="sheet-layer directory-layer" catchtouchmove="preventTouchMove">
     <view class="sheet-scrim" bindtap="closeDirectory"></view>

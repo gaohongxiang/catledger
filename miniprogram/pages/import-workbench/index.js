@@ -7,6 +7,7 @@ const pairingReview = require('./pairing-review')
 const pairingEntry = require('./pairing-entry')
 const categoryEdit = require('./category-edit')
 const duplicateEdit = require('./duplicate-edit')
+const reviewDetail = require('./review-detail')
 const postingFlow = require('./posting-flow')
 
 const initialData = Object.assign({}, pairingReview.initialData, {
@@ -51,6 +52,7 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     reviewQuery: '',
     categoryEditSheet: null,
     duplicateEditSheet: null,
+    reviewDetailSheet: null,
     categoryEventCount: 0,
     categorizedEvents: [],
     categorizedEventCount: 0,
@@ -69,12 +71,7 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     duplicateReviewLoaded: false,
     duplicateReviewError: '',
 
-    reviewStatusTabs: [
-      { value: 'pending', label: '待核对', count: 0 },
-      { value: 'completed', label: '已核对', count: 0 },
-      { value: 'excluded', label: '已排除', count: 0 },
-      { value: 'duplicate', label: '重复', count: 0 }
-    ],
+    reviewStatusTabs: model.reviewStatusTabs(),
     activeReviewStatus: 'pending',
     excludedReviewGroups: [],
     duplicateReviewEvents: [],
@@ -257,6 +254,13 @@ Page({
   prepareFinalDetail: postingFlow.prepareFinalDetail,
   closeFinalDetail: postingFlow.closeFinalDetail,
   closeEvidence: transactionReview.closeEvidence,
+  openReviewDetails: reviewDetail.openReviewDetails,
+  refreshReviewDetails: reviewDetail.refreshReviewDetails,
+  retryReviewSource: reviewDetail.retryReviewSource,
+  openReviewJudgment: reviewDetail.openReviewJudgment,
+  reviewDetailSourcePager: reviewDetail.reviewDetailSourcePager,
+  openReviewSource: reviewDetail.openReviewSource,
+  closeReviewDetails: reviewDetail.closeReviewDetails,
   beginInputEditing: runtime.beginInputEditing,
   finishInputEditing: runtime.finishInputEditing,
   refreshIssueFieldsDraft: transactionReview.refreshIssueFieldsDraft,

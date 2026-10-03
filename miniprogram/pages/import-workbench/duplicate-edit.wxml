@@ -1,9 +1,9 @@
 <view wx:if="{{duplicateEditSheet}}" class="sheet-layer" catchtouchmove="preventTouchMove">
   <view class="sheet-scrim" bindtap="closeDuplicateEdit"></view>
-  <view class="workflow-sheet editor-sheet">
+  <view class="workflow-sheet editor-sheet duplicate-edit-sheet">
     <view class="sheet-handle"></view>
-    <view class="pairing-heading"><text class="sheet-title serif-title">修改判断</text><button class="stage-previous" bindtap="closeDuplicateEdit" disabled="{{duplicateEditSheet.saving}}">关闭</button></view>
-    <text class="sheet-copy">{{duplicateEditSheet.kind === 'distinct' ? '当前按多笔独立记录保留，可以重新确认下面这两条是否为同一笔。' : duplicateEditSheet.kind === 'historical' ? '当前已关联到一笔历史账目，可以撤回这次判断后重新核对。' : '当前按同一笔保留。改为多笔后，各条记录分别核对；未完成的交易类型、归属和退款关系仍需确认。'}}</text>
+    <view class="review-sheet-heading"><text class="sheet-title serif-title">修改同笔判断</text><button class="review-sheet-close" bindtap="closeDuplicateEdit" disabled="{{duplicateEditSheet.saving}}" aria-label="关闭修改判断"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
+    <text class="sheet-copy">{{duplicateEditSheet.kind === 'distinct' ? '当前是多笔独立交易，可把下面两条改为同一笔。' : duplicateEditSheet.kind === 'historical' ? '当前关联了已有账目，可以撤回后重新核对。' : '当前合并为一笔，可改为多笔分别核对。'}}</text>
     <scroll-view scroll-y class="pairing-scroll">
       <skeleton-rows wx:if="{{duplicateEditSheet.loading}}" rows="{{2}}" />
       <view wx:for="{{duplicateEditSheet.records}}" wx:key="index" class="pairing-card">
