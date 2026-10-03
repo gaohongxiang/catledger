@@ -19,6 +19,7 @@ const { selectDomainEvents, saveEvent } = require('./review/event-store')
 const { FIELD_MASK } = require('./review/policy')
 const { insertAction, persistPlan, selectPaymentMappings, selectActiveAccounts } = require('./finance-update-repository')
 const { PLAN_VERSION } = require('./domain-versions')
+const { CATEGORY_RULE_VERSION } = require('./category-rules')
 
 const SOURCE_REASONS = new Set([...SEMANTIC_HARD_BLOCKERS, 'economic_nature_required',
   'source_account_endpoint_unknown', 'transaction_status_unknown'])
@@ -72,6 +73,20 @@ function refreshEventSemantic(current, evidenceRows) {
   return sourceView(next) === sourceView(current) ? current : next
 }
 
+function refreshAutomaticCategory(current, rows) {
+  if (!['ready', 'needs_action'].includes(current.status) || !rows.length ||
+      !['income', 'expense', 'fee'].includes(current.economicNature) ||
+      (current.manualFieldMask & (FIELD_MASK.categoryId | FIELD_MASK.economicNature | FIELD_MASK.flowDirection | FIELD_MASK.paymentResolution))) return current
+  const primary = rows[0]
+  const kind = current.economicNature === 'income' ? 'income' : 'expense'
+  if (primary.direction !== kind) return current
+  const categoryId = primary.suggestedCategoryId || null
+  if (categoryId === current.categoryId) return current
+  return { ...current, categoryId,
+    reasonCodes: current.reasonCodes.filter(reason => reason !== 'category_required'),
+    fieldSources: { ...current.fieldSources, categoryRuleVersion: CATEGORY_RULE_VERSION } }
+}
+
 async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest, data = {}) {
   const updateId = current.updateId
   const [links] = await connection.execute(`SELECT evidence_id AS evidenceId, event_id AS eventId, row_id AS rowId, evidence_role AS role
@@ -96,10 +111,11 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
     if (split) {
       splits.push(split)
       // 原事件人工字段完全保留，来源语义在该主证据组中继续原位升级。
-      split.next = refreshEventSemantic(split.next, rows.filter(row => split.next.fieldSources.rowIds.includes(row.rowId)))
+      const primaryRows = rows.filter(row => split.next.fieldSources.rowIds.includes(row.rowId))
+      split.next = refreshAutomaticCategory(refreshEventSemantic(split.next, primaryRows), primaryRows)
       return { current: event, next: split.next }
     }
-    return { current: event, next: refreshEventSemantic(event, rows) }
+    return { current: event, next: refreshAutomaticCategory(refreshEventSemantic(event, rows), rows) }
   })
     .map(pair => {
       if (!['ready', 'needs_action'].includes(pair.next.status)) return pair
@@ -156,9 +172,9 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
         WHERE uid = ? AND update_id = ? AND issue_id = ? AND status = 'open'`, [uid, updateId, issue.issueId])
     }
     for (const pair of changes) {
-      // 仅刷新系统推导，所有账户、分类、金额、时间都沿用已有值。
-      // 若已有分类与新性质不兼容，保留分类并要求核对，不能清空用户决定。
-      if (pair.next.categoryId) {
+      // 仅刷新系统推导分类；人工分类、账户、金额、时间保持原值。
+      // 若人工分类与新性质不兼容，保留分类并要求核对，不能清空用户决定。
+      if (pair.next.categoryId && pair.next.categoryId === pair.current.categoryId) {
         const [[category]] = await connection.execute(`SELECT kind FROM catledger_categories
           WHERE uid = ? AND category_id = ? AND archived_at IS NULL`, [uid, pair.next.categoryId])
         const kind = pair.next.economicNature === 'income' ? 'income' : 'expense'
@@ -166,7 +182,7 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
           pair.next.reasonCodes = unique([...pair.next.reasonCodes, 'core_fields_conflict'])
         }
       }
-      await saveEvent(connection, uid, pair.current, pair.next, actionId, { preserveReferences: true, actionSource: 'semantic' })
+      await saveEvent(connection, uid, pair.current, pair.next, actionId, { preserveReferences: true, actionSource: 'semantic', allowAutomaticCategory: true })
       await connection.execute(`UPDATE catledger_review_issue_members m JOIN catledger_review_issues i
         ON i.uid = m.uid AND i.issue_id = m.issue_id SET m.object_version = ?
         WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'event' AND m.object_id = ? AND (i.status = 'open' OR (i.issue_type = 'account_mapping' AND i.status = 'resolved'))`,
@@ -187,4 +203,4 @@ async function upgradeSemanticPlan(connection, uid, current, rows, requestDigest
     WHERE uid = ? AND update_id = ? AND version = ?`, [PLAN_VERSION, uid, updateId, version + 1])
   return commandResult(connection, uid, updateId, data)
 }
-module.exports = { refreshEventSemantic, upgradeSemanticPlan }
+module.exports = { refreshEventSemantic, refreshAutomaticCategory, upgradeSemanticPlan }

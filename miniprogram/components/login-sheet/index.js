@@ -95,7 +95,10 @@ Component({
         if (isCurrent()) this.setData({ stage: 'error', submitting: false,
           errorMessage: error.message || '暂时无法连接账本，请重试' })
       }).finally(() => {
-        if (this._loginLoad === pending) this._loginLoad = null
+        if (this._loginLoad === pending) {
+          this._loginLoad = null
+          if (this._attemptSession !== readCache.getSession()) this.close()
+        }
       })
       this._loginLoad = pending
       return pending

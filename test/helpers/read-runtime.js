@@ -3,7 +3,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const { createReadCache, stableKey } = require('../../miniprogram/services/read-cache')
 const root = path.join(__dirname, '..', '..', 'miniprogram')
-function runtime(savedStorage) {
+function runtime(savedStorage, options = {}) {
   let now = 0, balance = '10000'
   const modules = new Map(), calls = [], pages = new Map(), storage = savedStorage || new Map()
   const cache = Object.assign(createReadCache({ now: () => now, storage: { get: k => storage.get(k), set: (k,v) => storage.set(k,v), remove: k => storage.delete(k) } }), { stableKey })
@@ -26,7 +26,7 @@ function runtime(savedStorage) {
       if (options.complete) options.complete()
     }, switchTab(options) { h.navigation.push(options.url) }, redirectTo(options) { h.navigation.push(options.url) }, pageScrollTo() {}, stopPullDownRefresh() {},
     enableAlertBeforeUnload(options) { h.unloadAlerts.push(options && options.message || '') }, disableAlertBeforeUnload() { h.unloadAlerts.push(false) },
-    cloud: { callFunction: async ({ name, data: envelope }) => {
+    cloud: { init() {}, callFunction: async ({ name, data: envelope }) => {
       const { action, data } = envelope
       calls.push({ name, action, data, ...(envelope.knownRevision === undefined ? {} : { knownRevision: envelope.knownRevision }) })
       const wrap = response => {
@@ -63,12 +63,13 @@ function runtime(savedStorage) {
   }
   function load(filename) {
     if (filename.endsWith('/services/read-cache.js')) return cache
-    if (filename.includes('/theme/')) return { bindPage() {}, bindTabBar() {}, currentTokens: () => ({ accent: '#000' }) }
+    if (filename.includes('/theme/')) return { install() {}, bindPage() {}, bindTabBar() {}, currentPresentation: () => ({}), currentTokens: () => ({ accent: '#000' }) }
     if (modules.has(filename)) return modules.get(filename).exports
     const module = { exports: {} }; modules.set(filename, module)
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), {
-      module, exports: module.exports, getApp: () => app, wx, console, setTimeout, clearTimeout,
-      Page: definition => { module.exports = definition }, Component: definition => { module.exports = definition },
+      module, exports: module.exports, getApp: () => app, wx, console,
+      setTimeout: options.setTimeout || setTimeout, clearTimeout: options.clearTimeout || clearTimeout, Date: options.Date || Date,
+      App: definition => { module.exports = definition }, Page: definition => { module.exports = definition }, Component: definition => { module.exports = definition },
       require: name => load(path.resolve(path.dirname(filename), name + (path.extname(name) ? '' : '.js')))
     }, { filename })
     return module.exports

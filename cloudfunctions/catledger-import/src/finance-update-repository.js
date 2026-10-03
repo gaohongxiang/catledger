@@ -8,6 +8,7 @@ const { digestParts } = require('./digest')
 const { PLAN_VERSION } = require('./domain-versions')
 const { importError } = require('./errors')
 const { buildPaymentMethodKey } = require('./identity')
+const { suggestedCategory } = require('./category-mapping')
 const { paymentAccountDetails, paymentReferenceKey } = require('./payment-account')
 const { getRowSemantic } = require('./row-semantic-resolver')
 const { evaluatePostability } = require('./organizer-model')
@@ -185,16 +186,6 @@ async function categoryIndexes(connection, uid) {
       .map((category) => [`${category.kind}:${category.systemKey}`, category.categoryId])),
     mappings: new Map(mappings.map((mapping) => [`${mapping.sourceType}:${mapping.aliasKey}`, mapping.categoryId]))
   }
-}
-
-function suggestedCategory(row, indexes) {
-  const evidence = parseJson(row.categoryEvidence, {})
-  for (const aliasKey of Array.isArray(evidence.aliasKeys) ? evidence.aliasKeys : []) {
-    const categoryId = indexes.mappings.get(`${row.sourceType}:${aliasKey}`)
-    const category = indexes.byId.get(categoryId)
-    if (category && category.kind === row.direction) return categoryId
-  }
-  return indexes.bySystemKey.get(`${row.direction}:${evidence.deterministicSystemKey}`) || null
 }
 
 async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
@@ -513,6 +504,7 @@ function publicEvent(row) {
     amountMinor: row.amountMinor == null ? null : String(row.amountMinor),
     currency: row.currency,
     categoryId: row.categoryId || null,
+    categoryName: row.categoryName ? [row.parentCategoryName, row.categoryName].filter(Boolean).join(' / ') : '',
     reasonCodes,
     loanRepayment: fieldSources.loanRepayment || null,
     sourceDirection: row.sourceDirection || null,
@@ -553,7 +545,8 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
             e.ledger_account_id AS ledgerAccountId,
             e.counterparty_ledger_account_id AS counterpartyLedgerAccountId,
             e.event_local_at AS localAt, e.event_utc_at AS utcAt, e.amount_minor AS amountMinor, e.currency,
-            e.category_id AS categoryId, e.reason_codes_json AS reasonCodes,
+            e.category_id AS categoryId, category.name AS categoryName, parent_category.name AS parentCategoryName,
+            e.reason_codes_json AS reasonCodes,
             e.field_sources_json AS fieldSources,
             COALESCE(evidence_counts.evidenceCount, 0) AS evidenceCount,
             COALESCE(evidence_counts.duplicateEvidenceCount, 0) AS duplicateEvidenceCount,
@@ -563,6 +556,8 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
             r.payment_method_raw AS paymentMethod,
             s.source_type_snapshot AS sourceType, s.file_name_snapshot AS fileName
        FROM catledger_economic_events e
+       LEFT JOIN catledger_categories category ON category.uid = e.uid AND category.category_id = e.category_id
+       LEFT JOIN catledger_categories parent_category ON parent_category.uid = category.uid AND parent_category.category_id = category.parent_id
        LEFT JOIN (SELECT event_id, COUNT(*) AS evidenceCount, SUM(evidence_role IN ('duplicate', 'supporting')) AS duplicateEvidenceCount
          FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role <> 'discarded'
          ${eventIds ? ` AND event_id IN (${eventIds.map(() => '?').join(',')})` : ''}
@@ -575,7 +570,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
        LEFT JOIN catledger_finance_update_sources s
          ON s.uid = r.uid AND s.update_id = e.update_id AND s.batch_id = r.batch_id
       WHERE e.uid = ? AND e.update_id = ?${eventIds ? ` AND e.event_id IN (${eventIds.map(() => '?').join(',')})` : ''}
-      ORDER BY e.event_local_at, e.event_id`,
+      ORDER BY e.event_local_at IS NULL, e.event_local_at, e.event_id`,
     [uid, updateId, ...(eventIds || []), uid, updateId, ...(eventIds || [])]
   )
   return rows.map(row => includeFieldSources
@@ -692,7 +687,7 @@ function publicIssue(row) {
   }
 }
 
-async function selectIssues(connection, uid, updateId, { status = null, issueIds = null, includeMembers = true } = {}) {
+async function selectIssues(connection, uid, updateId, { status = null, issueIds = null, includeMembers = true, chronologicalSubject = false } = {}) {
   if (issueIds && !issueIds.length) return []
   const values = [uid, updateId]
   const statusSql = status ? ' AND issue.status = ?' : ''
@@ -731,7 +726,14 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
        FROM catledger_review_issues issue
        LEFT JOIN catledger_review_issue_members subject FORCE INDEX (idx_catledger_review_issue_members_issue)
          ON subject.uid = issue.uid AND subject.update_id = issue.update_id AND subject.issue_id = issue.issue_id
-       AND subject.object_type = 'event' AND subject.sort_order = 0
+       AND subject.object_type = 'event' AND ${chronologicalSubject ? `subject.member_id = (
+         SELECT first_member.member_id FROM catledger_review_issue_members first_member
+         JOIN catledger_economic_events first_event ON first_event.uid = first_member.uid
+           AND first_event.update_id = first_member.update_id AND first_event.event_id = first_member.object_id
+         WHERE first_member.uid = issue.uid AND first_member.update_id = issue.update_id AND first_member.issue_id = issue.issue_id
+           AND first_member.object_type = 'event' AND first_member.member_role <> 'candidate'
+         ORDER BY first_event.event_local_at IS NULL, first_event.event_local_at, first_event.event_id, first_member.member_id LIMIT 1)`
+        : 'subject.sort_order = 0'}
        LEFT JOIN catledger_economic_events subject_event
          ON subject_event.uid = subject.uid AND subject_event.update_id = issue.update_id
         AND subject_event.event_id = subject.object_id

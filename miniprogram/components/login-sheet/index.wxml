@@ -1,12 +1,19 @@
-<view wx:if="{{open && automatic && stage === 'loading'}}" class="login-startup {{themeClass}}" style="{{themeStyle}}" catchtouchmove="stopBubble">
-  <text>正在打开账本…</text>
+<view wx:if="{{open && automatic && stage !== 'setup'}}" class="login-startup {{themeClass}}" style="{{themeStyle}}" catchtouchmove="stopBubble">
+  <view class="login-startup-content">
+    <view wx:if="{{stage === 'loading'}}" class="login-spinner"></view>
+    <text class="login-title">{{stage === 'error' ? '暂时未能打开账本' : '正在打开账本…'}}</text>
+    <block wx:if="{{stage === 'error'}}">
+      <button class="login-primary" bindtap="confirm">重试</button>
+      <button class="login-startup-cancel" bindtap="close">返回</button>
+    </block>
+  </view>
 </view>
 <view wx:elif="{{open}}" class="login-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="close" catchtouchmove="stopBubble">
   <view class="login-sheet" catchtap="stopBubble">
     <view class="login-accent"></view>
 
     <text class="login-title">{{stage === 'setup' ? '欢迎来到招财猫' : (stage === 'loading' ? '正在进入账本' : '暂时未能进入账本')}}</text>
-    <text class="login-copy">{{stage === 'setup' ? '选好头像和昵称，以后可以在“我的”修改。' : (stage === 'loading' ? '正在识别微信账号…' : '请检查网络后重试，你的账本不会改变。')}}</text>
+    <text wx:if="{{stage === 'setup'}}" class="login-copy">选好头像和昵称，以后可以在“我的”修改。</text>
     <form wx:if="{{stage === 'setup'}}" bindsubmit="confirm">
     <view class="login-profile-row">
       <view class="login-avatar-column">
@@ -26,8 +33,7 @@
     <button class="login-primary {{submitting ? 'login-primary-disabled' : ''}}" loading="{{submitting}}" disabled="{{submitting}}" form-type="submit">开始记账</button>
     </form>
     <block wx:if="{{stage === 'error'}}">
-      <text class="login-error">{{errorMessage}}</text>
-      <button class="login-primary" bindtap="confirm">重新连接</button>
+      <button class="login-primary" bindtap="confirm">重试</button>
     </block>
     <text wx:if="{{!submitting || stage === 'loading'}}" class="login-cancel" bindtap="close">{{stage === 'loading' ? '取消' : '暂不进入'}}</text>
   </view>

@@ -125,6 +125,11 @@ module.exports = {
 
   postUpdate: async function () {
     if (!this._viewActive || !getApp().hasLoginApproval() || this.data.busy || !this._draftSession) return
+    const categoryPending = this.pendingCategoryEdit()
+    if (categoryPending) {
+      await this.openCategoryEdit({ currentTarget: { dataset: { id: categoryPending.payload.eventId } } })
+      return
+    }
     const session = this._draftSession
     const operation = this._postOperation = { epoch: this._viewEpoch, scope: readCache.getSession(), updateId: session.view.update.updateId }
     const active = () => this._viewActive && getApp().hasLoginApproval() && readCache.getSession() === operation.scope &&

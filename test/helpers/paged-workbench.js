@@ -7,7 +7,7 @@ const { workbenchSummary } = require('../../cloudfunctions/catledger-import/src/
 const flush = () => new Promise(resolve => setImmediate(resolve))
 function fixture(count = 121, blocking = false) {
   const events = Array.from({ length: count }, (_, index) => ({ eventId: 'synthetic-event-' + index, version: 1, status: blocking ? 'needs_action' : 'ready',
-    economicNature: 'expense', flowDirection: 'outflow', amountMinor: '100', categoryId: 'synthetic-category', ledgerAccountId: 'synthetic-account',
+    economicNature: 'expense', flowDirection: 'outflow', amountMinor: '100', categoryId: 'synthetic-category', categoryName: '合成分类', ledgerAccountId: 'synthetic-account',
     fieldSources: {}, localAt: '2026-09-01 12:00:00', primaryEvidence: { sourceType: 'wechat', item: '合成商品' + index, counterparty: '合成商户' }, evidenceCount: 1 }))
   const issues = blocking ? [{ issueId: 'synthetic-issue', issueType: 'same_event', status: 'open', version: 1, blocking: true,
     memberCount: count, candidateCount: 0, subjectEventIds: [], subject: events[0] }] : []

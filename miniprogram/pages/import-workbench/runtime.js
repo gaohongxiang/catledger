@@ -12,7 +12,7 @@ const readCache = require('../../services/read-cache')
 const pendingWrites = require('../../services/pending-ledger-write')
 
 const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).length
-const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon', 'financeUpdates.setRepayment',
+const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon', 'financeUpdates.setRepayment', 'financeUpdates.setCategory',
     'reviewIssues.refreshAccountGroups', 'reviewIssues.resolveAccountMappings', 'reviewIssues.resolve'])
 
 function boundedSetData(page) {
@@ -37,6 +37,7 @@ function createViewSession(page, view) {
   const session = viewSession.create(api.callImport, view, { onStale() {
     if (!page._viewActive || page._viewSession !== session) return
     if (page.data.currentIssue) page.setData({ issueStale: true, issueCanSubmit: false, issueDetailsLoading: false })
+    if (page.data.categoryEditSheet) page.invalidateCategoryEdit()
     if (page.data.pairingSheet && page.invalidatePairingReview) page.invalidatePairingReview({ viewVersion: '' })
   } })
   return session
@@ -143,7 +144,7 @@ module.exports = {
     this._viewActive = false; this._viewEpoch++
     this.cancelPagedReads()
     this.setData({ currentIssue: null, currentMembers: [], issueEvents: [], issueRelations: [], issueVisibleEvents: [],
-        evidenceSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null,
+        evidenceSheet: null, categoryEditSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null,
         bankMappingSheet: null, busy: false, accountStepBusy: false, accountStepProgressText: '' })
     this.finishInputEditing()
   },
@@ -155,6 +156,7 @@ module.exports = {
     if (this._viewSession) this._viewSession.close()
     this._viewSession = null; this._businessData = null; this._draftSession = null
     this._evidenceReadToken = null
+    this._categoryEditToken = null
     this._editingInput = ''
     this._pendingBackgroundView = null
     if (this._updateLoad) this._updateLoad.cancelled = true
@@ -404,7 +406,7 @@ module.exports = {
         files: [], bankMappingSheet: null, fileAttentionSheet: null, update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
         recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
         reviewedEvents: [], categoryWaitingEvents: [], noCategoryEvents: [],
-        accountIssues: [], reviewIssues: [], reviewGroups: [], verificationIssues: [], categoryIssues: [], categoryCards: [], categoryQuery: '', categoryEventCount: 0, categorizedEvents: [], categorizedEventCount: 0, activeCategoryStatus: 'pending', categoryStatusTabs: model.organizerRecordState([], [], []).categoryStatusTabs, activeReviewTab: 'review', activeReviewStatus: 'pending', excludedReviewGroups: [], duplicateReviewEvents: [], openIssueCount: 0,
+        accountIssues: [], reviewIssues: [], reviewGroups: [], verificationIssues: [], categoryIssues: [], categoryCards: [], categoryQuery: '', reviewQuery: '', categoryEventCount: 0, categorizedEvents: [], categorizedEventCount: 0, activeCategoryStatus: 'pending', categoryStatusTabs: model.organizerRecordState([], [], []).categoryStatusTabs, activeReviewTab: 'review', activeReviewStatus: 'pending', excludedReviewGroups: [], duplicateReviewEvents: [], openIssueCount: 0,
         duplicateReviewCandidates: [], duplicateReviewLoading: false, duplicateReviewLoaded: false, duplicateReviewError: '',
         coverage: {
           dataRows: 0, recognizedRows: 0, unrecognizedRows: 0,
@@ -423,7 +425,7 @@ module.exports = {
         accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [], categories: [], issueCategories: [],
         uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 0, attention: 0 },
         posting: null, errorMessage: '', currentIssue: null, currentMembers: [],
-        issueEvents: [], issueRelations: [], evidenceSheet: null,
+        issueEvents: [], issueRelations: [], evidenceSheet: null, categoryEditSheet: null,
         repaymentAllocationChoices: [], repaymentAllocationStatusText: '', repaymentAllocationCanSave: false
       })
     this._accountUiDrafts.clear()
@@ -438,10 +440,11 @@ module.exports = {
           errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : '操作已保存，明细待刷新', refreshRequired: true })
       return
     }
-    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
+    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.categoryEditSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
       this._pendingBackgroundView = view
       if (this._viewSession && this._viewSession.summary.viewVersion !== view.viewVersion) {
         if (this.data.currentIssue) this.setData({ issueStale: true, issueCanSubmit: false })
+        if (this.data.categoryEditSheet) this.invalidateCategoryEdit()
         if (this.data.accountRecordsSheet) this.setData({ 'accountRecordsSheet.loading': false, 'accountRecordsSheet.error': '账户记录已更新，请重新读取' })
         if (this.data.pairingSheet && this.invalidatePairingReview) this.invalidatePairingReview(view)
       }
@@ -525,9 +528,9 @@ module.exports = {
       const status = this.data.activeCategoryStatus
       if (status === 'pending') { filter = { group: 'category', status: 'open', query: this.data.categoryQuery }; kind = 'categoryCards' }
       else { action = 'economicEvents.list'; filter = { view: 'category_' + status, query: this.data.categoryQuery }; kind = status === 'none' ? 'noCategoryEvents' : 'categorizedEvents' }
-    } else if (this.data.activeReviewStatus === 'pending') { filter = { group: 'review', status: 'open' }; kind = 'reviewGroups' }
+    } else if (this.data.activeReviewStatus === 'pending') { filter = { group: 'review', status: 'open', query: this.data.reviewQuery }; kind = 'reviewGroups' }
     else { action = 'economicEvents.list'; const status = this.data.activeReviewStatus
-      filter = status === 'completed' ? { view: 'review_completed' } : { status }
+      filter = Object.assign(status === 'completed' ? { view: 'review_completed' } : { status }, { query: this.data.reviewQuery })
       kind = { completed: 'reviewedEvents', excluded: 'excludedReviewGroups', duplicate: 'duplicateReviewEvents' }[status]
     }
     if (reset || !this._mainPager) this._mainPager = this._viewSession.pager(action, filter)
@@ -548,16 +551,16 @@ module.exports = {
         for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed) this._accountUiDrafts.delete(id)
         Object.assign(patch, directory)
         patch.accountMappings = this.mappingState().mappings.map(compactMapping)
-      } else if (kind === 'reviewGroups') patch.reviewGroups = model.reviewIssueGroups(issues).map(group => ({ issueType: group.issueType, issues: group.issues.map(presentation.card) }))
+      } else if (kind === 'reviewGroups') patch.reviewGroups = model.reviewIssueGroups(issues).map(group => ({ key: group.key, issueType: group.issueType, issues: group.issues.map(presentation.card) }))
       else if (kind === 'categoryCards') patch.categoryCards = model.categoryIssueCards(issues, '').map(presentation.card)
       else if (kind === 'excludedReviewGroups') {
         const expanded = this.data.reviewPage.index === response.page.index
           ? this.data.excludedReviewGroups.filter(group => group.expanded).map(group => group.key) : []
         patch.excludedReviewGroups = presentation.excludedGroups(events, expanded)
       }
-      else { const categoryNames = new Map((this.data.categories || []).map(category => [category.categoryId, category.name]))
+      else { const categoryNames = model.categoryNames(this.data.categories)
         patch[kind] = events.map(event => presentation.record(Object.assign({}, event, { duplicateCount: Number(event.duplicateEvidenceCount || 0) + (model.isHistoricalDuplicate(event) ? 1 : 0),
-              categoryName: event.categoryName || (event.categoryId ? categoryNames.get(event.categoryId) || '分类已设置' : ''),
+              categoryName: event.categoryName || categoryNames.get(event.categoryId) || '',
               auditNote: model.isHistoricalDuplicate(event) ? '已与历史账目对应，本次不重复入账。' : '已保留一笔，点开对照主记录与重复来源。' }))) }
       if (!quiet) patch.pageLoading = false
       patch.duplicateReviewLoaded = true

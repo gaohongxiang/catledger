@@ -5,6 +5,7 @@ const { validateDecision } = require('./review/policy')
 const { refreshAccountGroups: refreshAccountGroupsInTransaction, resolveAccountMappings: resolveAccountMappingsInTransaction, reviseAccountMapping: reviseAccountMappingInTransaction } = require('./review/account-mapping')
 const { resolve: resolveInTransaction } = require('./review/event-decisions')
 const { setRepayment: setRepaymentInTransaction } = require('./review/repayment')
+const { setCategory: setCategoryInTransaction } = require('./review/category')
 
 function createReviewIssueService({ getPool }) {
   const pairings = require('./review/bank-channel-pairings').createBankChannelPairings({ getPool })
@@ -56,6 +57,14 @@ function createReviewIssueService({ getPool }) {
       operation:async (connection,uid,data,requestDigest) => setRepaymentInTransaction(connection, uid, data, requestDigest, { updateId, eventId, updateVersion, eventVersion }) })
   }
 
+  async function setCategory(context) {
+    const input = context.data
+    const values = { updateId: validateUuid(input.updateId), eventId: validateUuid(input.eventId),
+      categoryId: validateUuid(input.categoryId), updateVersion: validateVersion(input.updateVersion), eventVersion: validateVersion(input.eventVersion) }
+    return executeIdempotentMutation({ getPool, ...context, action: 'financeUpdates.setCategory',
+      operation: (connection, uid, data, requestDigest) => setCategoryInTransaction(connection, uid, data, requestDigest, values) })
+  }
+
   async function resolve(context) {
     const updateId = validateUuid(context.data.updateId)
     const issueId = validateUuid(context.data.issueId)
@@ -83,7 +92,7 @@ function createReviewIssueService({ getPool }) {
     })
   }
 
-  return { setRepayment, resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups,
+  return { setCategory, setRepayment, resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups,
     pairings: pairings.list, resolvePairings: pairings.resolve }
 }
 

@@ -50,6 +50,7 @@ App({
     })
 
     this.globalData.cloudAvailable = true
+    require('./services/catledger-api').prepareWechatAccount()
   },
 
   onHide: function () { this.globalData.chargeSyncForeground=false;this._readCacheWasHidden = true },

@@ -6,6 +6,7 @@ const { ledgerError } = require('./ledger-errors')
 const { executeLedgerRead } = require('./ledger-read')
 const { executeIdempotentMutation } = require('./ledger-transaction')
 const { parseMonth } = require('./local-time')
+const { CATEGORY_ALIAS_VERSION, categoryMemory } = require('./category-memory')
 
 const KINDS = new Set(['expense', 'income'])
 
@@ -214,7 +215,8 @@ function createCategoryService({ getPool }) {
 
         const [evidenceRows] = await connection.execute(
           `SELECT source.source_type_snapshot AS sourceType,
-                  import_row.category_evidence_json AS categoryEvidence
+                  import_row.transaction_type_raw AS rawTransactionType,
+                  import_row.counterparty_raw AS counterparty, import_row.item_raw AS item
              FROM catledger_economic_event_transactions event_link
              JOIN catledger_event_evidence evidence
                ON evidence.uid = event_link.uid AND evidence.update_id = event_link.update_id
@@ -229,7 +231,7 @@ function createCategoryService({ getPool }) {
         )
         const aliases = new Map()
         evidenceRows.forEach(function (row) {
-          const evidence = parseCategoryEvidence(row.categoryEvidence)
+          const evidence = categoryMemory(row.sourceType, row)
           ;(evidence.aliasKeys || []).forEach(function (aliasKey) {
             aliases.set(`${row.sourceType}:${aliasKey}`, { sourceType: row.sourceType, aliasKey })
           })
@@ -238,9 +240,9 @@ function createCategoryService({ getPool }) {
           await connection.execute(
             `INSERT INTO catledger_import_category_mappings
                (uid, mapping_id, source_type, alias_key, alias_key_version, category_id)
-             VALUES (?, ?, ?, ?, 'category-alias-v1', ?)
-             ON DUPLICATE KEY UPDATE category_id = VALUES(category_id), version = version + 1`,
-            [uid, randomUUID(), alias.sourceType, alias.aliasKey, category.id]
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE category_id = VALUES(category_id), alias_key_version = VALUES(alias_key_version), disabled_at = NULL, version = version + 1`,
+            [uid, randomUUID(), alias.sourceType, alias.aliasKey, CATEGORY_ALIAS_VERSION, category.id]
           )
         }
         return { updatedCount: items.length }

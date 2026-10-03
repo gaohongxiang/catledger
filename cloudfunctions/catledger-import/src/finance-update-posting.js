@@ -27,14 +27,12 @@ const { EVENT_STATUS, evaluatePostability, hasPendingRefundRelation } = require(
 const { ECONOMIC_NATURE } = require('./organizer-values')
 const { isAggregateRepayment, repaymentAllocationsForEvent } = require('./repayment-allocation')
 const { validateUuid, validateVersion } = require('./validation')
-const { CATEGORY_ALIAS_VERSION } = require('./category-mapping')
+const { CATEGORY_ALIAS_VERSION, categoryMemory } = require('./category-memory')
 
 function categoryMappingCandidates(rows) {
   const categoriesByAlias = new Map()
   ;(rows || []).forEach((row) => {
-    const evidence = typeof row.categoryEvidence === 'string'
-      ? parseJson(row.categoryEvidence, {})
-      : row.categoryEvidence || {}
+    const evidence = categoryMemory(row.sourceType, row)
     ;(evidence.aliasKeys || []).forEach((aliasKey) => {
       const key = `${row.sourceType}:${aliasKey}`
       const current = categoriesByAlias.get(key) || {
@@ -47,11 +45,10 @@ function categoryMappingCandidates(rows) {
     })
   })
   return [...categoriesByAlias.values()]
-    .filter((item) => item.categoryIds.size === 1)
     .map((item) => ({
       sourceType: item.sourceType,
       aliasKey: item.aliasKey,
-      categoryId: [...item.categoryIds][0]
+      categoryId: item.categoryIds.size === 1 ? [...item.categoryIds][0] : null
     }))
     .sort((left, right) => `${left.sourceType}:${left.aliasKey}`.localeCompare(`${right.sourceType}:${right.aliasKey}`))
 }
@@ -274,7 +271,8 @@ async function promoteCategoryMappings(connection, uid, updateId) {
   const [rows] = await connection.execute(
     `SELECT source.source_type_snapshot AS sourceType,
             event.category_id AS categoryId,
-            import_row.category_evidence_json AS categoryEvidence
+            import_row.transaction_type_raw AS rawTransactionType,
+            import_row.counterparty_raw AS counterparty, import_row.item_raw AS item
        FROM catledger_economic_events event
        JOIN catledger_event_evidence evidence
          ON evidence.uid = event.uid AND evidence.update_id = event.update_id
@@ -293,11 +291,21 @@ async function promoteCategoryMappings(connection, uid, updateId) {
   const audit = []
   for (const mapping of categoryMappingCandidates(rows)) {
     const before = await readMapping(connection, uid, 'category', mapping)
+    if (!mapping.categoryId) {
+      // 同一具体证据在本批有不同决定时，使旧记忆失效，不能继续抢先命中。
+      if (before && !before.disabledAt) {
+        await connection.execute(`UPDATE catledger_import_category_mappings
+          SET disabled_at = CURRENT_TIMESTAMP(3), version = version + 1
+          WHERE uid = ? AND source_type = ? AND alias_key = ?`, [uid, mapping.sourceType, mapping.aliasKey])
+        audit.push({ before, after: await readMapping(connection, uid, 'category', mapping) })
+      }
+      continue
+    }
     await connection.execute(
       `INSERT INTO catledger_import_category_mappings
          (uid, mapping_id, source_type, alias_key, alias_key_version, category_id)
        VALUES (?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE category_id = VALUES(category_id), disabled_at = NULL, version = version + 1`,
+       ON DUPLICATE KEY UPDATE category_id = VALUES(category_id), alias_key_version = VALUES(alias_key_version), disabled_at = NULL, version = version + 1`,
       [uid, randomUUID(), mapping.sourceType, mapping.aliasKey, CATEGORY_ALIAS_VERSION, mapping.categoryId]
     )
     audit.push({ before, after: await readMapping(connection, uid, 'category', mapping) })

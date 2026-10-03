@@ -25,10 +25,6 @@ const ISSUE_HELP = Object.freeze({
 })
 
 const ACCOUNT_ISSUE_TYPES = Object.freeze(['account_mapping'])
-const ISSUE_GROUP_ORDER = Object.freeze([
-  'refund_relation', 'same_event', 'transfer_accounts', 'category_assignment', 'field_conflict',
-  'shared_fields', 'identity_conflict', 'installment_origin'
-])
 const ISSUE_GROUP_LABELS = Object.freeze({
   refund_relation: '退款关系',
   same_event: '重复与同笔判断',
@@ -613,23 +609,39 @@ function buildRepaymentAllocationDraft(options, totalAmountMinor) {
   }
 }
 
+function compareDate(left, right, leftId, rightId) {
+  return String(left || '\uffff').localeCompare(String(right || '\uffff')) || String(leftId || '').localeCompare(String(rightId || ''))
+}
+function compareEvents(left, right) {
+  return compareDate(left.localAt, right.localAt, left.eventId, right.eventId)
+}
+function issueDate(issue) {
+  if (issue.sortLocalAt !== undefined) return issue.sortLocalAt
+  const dates = (issue.subjects || (issue.subject ? [issue.subject] : [])).map(event => event.localAt).filter(Boolean).sort()
+  return dates[0] || null
+}
+function compareIssues(left, right) {
+  return compareDate(issueDate(left), issueDate(right), left.issueId, right.issueId)
+}
+function categoryNames(categories) {
+  const byId = new Map((categories || []).map(category => [category.categoryId, category]))
+  return new Map((categories || []).map(category => {
+    const parent = byId.get(category.parentId)
+    return [category.categoryId, [category.parentName || parent && parent.name, category.name].filter(Boolean).join(' / ')]
+  }))
+}
 function reviewIssueRows(issues) {
   const counts = (issues || []).reduce(function (result, issue) {
     result[issue.issueType] = (result[issue.issueType] || 0) + 1
     return result
   }, {})
-  const order = new Map(ISSUE_GROUP_ORDER.map(function (type, index) { return [type, index] }))
   let previousType = ''
-  return [...(issues || [])].sort(function (left, right) {
-    const leftOrder = order.has(left.issueType) ? order.get(left.issueType) : ISSUE_GROUP_ORDER.length
-    const rightOrder = order.has(right.issueType) ? order.get(right.issueType) : ISSUE_GROUP_ORDER.length
-    return leftOrder - rightOrder || String(left.subject && left.subject.localAt || '').localeCompare(String(right.subject && right.subject.localAt || '')) ||
-      String(left.issueId).localeCompare(String(right.issueId))
-  }).map(function (issue) {
+  return [...(issues || [])].sort(compareIssues).map(function (issue) {
     const view = issueView(issue)
     const groupStart = issue.issueType !== previousType
     previousType = issue.issueType
     return Object.assign({}, view, {
+      sortLocalAt: issueDate(issue),
       groupStart,
       groupLabel: ISSUE_GROUP_LABELS[issue.issueType] || view.label,
       groupCount: counts[issue.issueType] || 0
@@ -644,6 +656,7 @@ function reviewIssueGroups(issues) {
     let group = groups[groups.length - 1]
     if (!group || group.issueType !== issue.issueType) {
       group = {
+        key: issue.issueId,
         issueType: issue.issueType,
         label: issue.groupLabel,
         count: issue.groupCount,
@@ -652,6 +665,7 @@ function reviewIssueGroups(issues) {
       groups.push(group)
     }
     const subjects = (issue.subjects || (issue.subject ? [issue.subject] : []))
+      .slice().sort(compareEvents)
       .slice(0, 3)
       .map(eventView)
     const subjectCount = Number(issue.subjectCount || Math.max(1, Number(issue.memberCount || 1) - Number(issue.candidateCount || 0)))
@@ -670,7 +684,7 @@ function reviewIssueGroups(issues) {
 function categoryIssueCards(issues, query) {
   const keyword = String(query || '').trim().toLowerCase()
   const completeSubjects = new Map((issues || []).map(function (issue) {
-    return [issue.issueId, (issue.subjects || (issue.subject ? [issue.subject] : [])).map(eventView)]
+    return [issue.issueId, (issue.subjects || (issue.subject ? [issue.subject] : [])).slice().sort(compareEvents).map(eventView)]
   }))
   return reviewIssueGroups((issues || []).filter(function (issue) {
     return issue.issueType === 'category_assignment'
@@ -693,25 +707,23 @@ function categoryIssueCards(issues, query) {
       })).join(' ').toLowerCase()
     })
   }).filter(function (issue) { return !keyword || issue.searchText.includes(keyword) })
-    .sort(function (a, b) { return a.merchant.localeCompare(b.merchant) || a.issueId.localeCompare(b.issueId) })
+    .sort(compareIssues)
 }
 
 function categorizedEventRows(events, categories, query) {
   const keyword = String(query || '').trim().toLowerCase()
-  const names = new Map((categories || []).map(function (category) { return [category.categoryId, category.name] }))
+  const names = categoryNames(categories)
   return (events || []).filter(function (event) {
     return event.categoryId && ['income', 'expense', 'fee'].includes(event.economicNature) &&
       ['ready', 'needs_action', 'posted', 'corrected'].includes(event.status)
   }).map(function (event) {
     return Object.assign({}, eventView(event), {
-      categoryName: names.get(event.categoryId) || '分类已设置',
+      categoryName: event.categoryName || names.get(event.categoryId) || '',
       natureLabel: event.economicNature === 'income' ? '收入' : '支出'
     })
   }).filter(function (event) {
     return !keyword || [event.displayTitle, event.displayMeta, event.categoryName].join(' ').toLowerCase().includes(keyword)
-  }).sort(function (a, b) {
-    return String(a.localAt || '').localeCompare(String(b.localAt || '')) || String(a.eventId).localeCompare(String(b.eventId))
-  })
+  }).sort(compareEvents)
 }
 
 function partitionOpenIssues(issues) {
@@ -732,6 +744,7 @@ function organizerRecordState(events, issues, categories, query, options) {
   const decorate = !summaryOnly && (!options || options.decorate !== false || query)
   const byId = new Map((events || []).map(function (event) { return [event.eventId, decorate ? eventView(event) : event] }))
   const rows = [...byId.values()]
+  if (!summaryOnly) rows.sort(compareEvents)
   const active = rows.filter(function (event) { return ['ready', 'needs_action', 'posted'].includes(event.status) })
   const excluded = rows.filter(function (event) { return event.status === 'excluded' && !isHistoricalDuplicate(event) })
   const activeIds = new Set(active.map(function (event) { return event.eventId }))
@@ -752,7 +765,7 @@ function organizerRecordState(events, issues, categories, query, options) {
   const keyword = String(query || '').trim().toLowerCase()
   const matches = function (event) { return !keyword || [event.displayTitle, event.displayMeta, event.categoryName].join(' ').toLowerCase().includes(keyword) }
   const categoryRequired = function (event) { return ['income', 'expense', 'fee', 'unknown'].includes(event.economicNature) || !event.economicNature }
-  const names = new Map((categories || []).map(function (category) { return [category.categoryId, category.name] }))
+  const names = categoryNames(categories)
   const annotated = active.map(function (event) {
     const reviewIssueId = verificationById.get(event.eventId) || ''
     const categoryIssueId = categoryById.get(event.eventId) || ''
@@ -760,7 +773,7 @@ function organizerRecordState(events, issues, categories, query, options) {
     const needsCategory = categoryRequired(event) && (!event.categoryId || event.economicNature === 'unknown')
     return Object.assign({}, summaryOnly ? { eventId: event.eventId, economicNature: event.economicNature } : event, { reviewIssueId: reviewIssueId, categoryIssueId: categoryIssueId,
       pendingReview: pendingReview, needsCategory: needsCategory,
-      categoryName: names.get(event.categoryId) || '分类已设置',
+      categoryName: event.categoryName || names.get(event.categoryId) || '',
       natureLabel: natureLabelOf(event.economicNature)
     })
   })
@@ -897,24 +910,18 @@ function excludedReason(event) {
 
 function excludedEventGroups(events, expandedKeys) {
   const expanded = expandedKeys instanceof Set ? expandedKeys : new Set(expandedKeys || [])
-  const groups = new Map()
-  ;(events || []).forEach(function (event) {
+  const groups = []
+  ;(events || []).slice().sort(compareEvents).forEach(function (event) {
     const view = eventView(event)
     const reason = excludedReason(view)
-    let group = groups.get(reason.key)
-    if (!group) {
-      group = Object.assign({}, reason, { events: [] })
-      groups.set(reason.key, group)
+    let group = groups[groups.length - 1]
+    if (!group || group.reasonKey !== reason.key) {
+      group = Object.assign({}, reason, { key: reason.key + ':' + view.eventId, reasonKey: reason.key, events: [] })
+      groups.push(group)
     }
     group.events.push(view)
   })
-  return [...groups.values()].sort(function (left, right) {
-    return left.order - right.order || left.label.localeCompare(right.label)
-  }).map(function (group) {
-    group.events.sort(function (left, right) {
-      return String(left.localAt || '').localeCompare(String(right.localAt || '')) ||
-        String(left.eventId || '').localeCompare(String(right.eventId || ''))
-    })
+  return groups.map(function (group) {
     return Object.assign({}, group, {
       count: group.events.length,
       expanded: expanded.has(group.key)
@@ -1046,6 +1053,8 @@ module.exports = {
   relationChoiceView,
   repaymentAllocationOptions,
   reviewIssueGroups,
+  compareEvents,
+  categoryNames,
   reviewIssueRows,
   runWithConcurrency,
   sameFileContent,

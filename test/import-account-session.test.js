@@ -153,7 +153,11 @@ async function overlappingConfirmation(options = {}) {
   const saving = page._draftSession.flush().catch(error => error)
   await until(() => committed)
   await page.openAccountChoice(tap(h.issues[1].issueId))
-  const choosing = page.bindAccountChoiceSearch({ currentTarget: { dataset: {} }, detail: { value: '合成' } })
+  let choosing
+  const changeChoicePage = page.changeChoicePage
+  page.changeChoicePage = function (event) { choosing = changeChoicePage.call(this, event); return choosing }
+  assert.equal(page.bindAccountChoiceSearch({ currentTarget: { dataset: {} }, detail: { value: '合成' } }), undefined)
+  page.changeChoicePage = changeChoicePage
   await flush()
   page.closeAccountChoice()
   assert.equal(page._viewSession.active, false)

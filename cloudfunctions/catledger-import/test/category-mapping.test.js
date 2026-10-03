@@ -21,11 +21,13 @@ test('支付宝明确分类保守映射到当前账本系统分类', function ()
   }
 })
 
-test('分类别名稳定摘要且排除宽泛交易类型', function () {
-  const first = buildCategoryEvidence('wechat', row('商户消费', ' 合成商户 ', '食品'))
-  const second = buildCategoryEvidence('wechat', row('商户消费', '合成商户', '食品'))
+test('分类记忆按商户与商品联合摘要，排除宽泛交易类型', function () {
+  const first = buildCategoryEvidence('wechat', row('商户消费', ' 合成商户 ', '合成商品'))
+  const second = buildCategoryEvidence('wechat', row('商户消费', '合成商户', '合成商品'))
   assert.deepEqual(first.aliasKeys, second.aliasKeys)
-  assert.equal(first.aliasKeys.length, 2)
+  assert.equal(first.aliasKeys.length, 1)
+  assert.notDeepEqual(first.aliasKeys, buildCategoryEvidence('wechat', row('商户消费', '合成商户', '另一商品')).aliasKeys)
+  assert.notDeepEqual(first.aliasKeys, buildCategoryEvidence('wechat', row('商户消费', '另一商户', '合成商品')).aliasKeys)
   assert.match(first.aliasKeys[0], /^[0-9a-f]{64}$/)
   assert.equal(canonicalName(' 餐饮 - 美食 '), '餐饮美食')
 })
@@ -36,5 +38,5 @@ test('平台名称不猜细分类，明确保费和邮寄证据建议对应子�
   assert.equal(buildCategoryEvidence('wechat', row('商户消费', '合成商户', '保费')).deterministicSystemKey, 'finance__insurance')
   assert.equal(buildCategoryEvidence('wechat', row('商户消费', '合成商户', '寄件')).deterministicSystemKey, 'communication__postage')
   assert.equal(buildCategoryEvidence('alipay', row('宠物', '', '')).deterministicSystemKey, 'entertainment__pets')
-  assert.equal(buildCategoryEvidence('alipay', row('保险', '', '')).ruleVersion, 'category-rules-v3')
+  assert.equal(buildCategoryEvidence('alipay', row('保险', '', '')).ruleVersion, 'category-rules-v4')
 })

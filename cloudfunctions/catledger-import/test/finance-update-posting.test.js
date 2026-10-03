@@ -3,14 +3,16 @@ const test = require('node:test')
 
 const { categoryMappingCandidates, transactionDraft } = require('../src/finance-update-posting')
 
-test('只提升本批内分类一致的来源别名映射', function () {
-  assert.deepEqual(categoryMappingCandidates([
-    { sourceType: 'wechat', categoryId: 'food', categoryEvidence: { aliasKeys: ['meal', 'merchant'] } },
-    { sourceType: 'wechat', categoryId: 'food', categoryEvidence: { aliasKeys: ['meal'] } },
-    { sourceType: 'wechat', categoryId: 'shopping', categoryEvidence: { aliasKeys: ['merchant'] } }
-  ]), [
-    { sourceType: 'wechat', aliasKey: 'meal', categoryId: 'food' }
+test('同一商户不同商品独立记忆，同一具体证据分类冲突明确失效', function () {
+  const { categoryMemory } = require('../src/category-memory')
+  const first = { sourceType: 'wechat', rawTransactionType: '商户消费', counterparty: '合成商户', item: '合成商品甲' }
+  const second = { ...first, item: '合成商品乙' }
+  const candidates = categoryMappingCandidates([
+    { ...first, categoryId: 'food' }, { ...second, categoryId: 'food' }, { ...second, categoryId: 'shopping' }
   ])
+  assert.equal(candidates.length, 2)
+  assert.equal(candidates.find(item => item.aliasKey === categoryMemory('wechat', first).pairKey).categoryId, 'food')
+  assert.equal(candidates.find(item => item.aliasKey === categoryMemory('wechat', second).pairKey).categoryId, null)
 })
 
 test('待关联退款沿用标准 refund 交易并保留空原消费', function () {

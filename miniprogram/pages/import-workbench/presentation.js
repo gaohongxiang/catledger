@@ -56,7 +56,7 @@ function reviewLists(state, business, data, index) {
     patch.duplicateReviewLoaded = true
   } else if (data.activeReviewStatus === 'excluded') {
     kind = 'excluded'
-    rows = (business.events || []).filter(event => event.status === 'excluded' && !model.isHistoricalDuplicate(event))
+    rows = (business.events || []).filter(event => event.status === 'excluded' && !model.isHistoricalDuplicate(event)).sort(model.compareEvents)
   } else {
     kind = 'review'
     rows = model.reviewIssueRows(state.hydratedIssues.filter(issue => issue.issueType !== 'category_assignment' && issue.subjectCount > 0))
@@ -64,7 +64,7 @@ function reviewLists(state, business, data, index) {
   const window = windowRows(rows, index)
   patch.reviewPage = window.page
   if (kind === 'review') patch.reviewGroups = model.reviewIssueGroups(window.rows).map(group => ({
-    issueType: group.issueType, issues: group.issues.map(card) }))
+    key: group.key, issueType: group.issueType, issues: group.issues.map(card) }))
   else if (kind === 'category') {
     patch.categoryCards = window.rows.filter(row => row.issue).map(row => card(row.issue))
     patch.categoryWaitingEvents = window.rows.filter(row => row.event).map(row => record(row.event))

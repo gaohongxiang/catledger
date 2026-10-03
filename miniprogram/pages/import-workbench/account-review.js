@@ -447,11 +447,13 @@ module.exports = {
     return Object.fromEntries(pairs)
   },
 
-  bindAccountChoiceSearch: async function (event) {
+  bindAccountChoiceSearch: function (event) {
     if (!this.data.accountChoiceSheet) return
-    this.setData({ accountChoiceQuery: event.detail.value })
-    this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.choiceKind, query: String(event.detail.value).slice(0, 80), pageSize: 12 })
-    return this.changeChoicePage(event)
+    const query = String(event.detail.value || '').slice(0, 80)
+    this.setData({ accountChoiceQuery: query })
+    this._directoryPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.choiceKind, query, pageSize: 12 })
+    // bindinput 必须同步结束，不能把异步目录读取返回给原生输入框。
+    this.changeChoicePage(event)
   },
 
   changeChoiceKind: function (event) {
@@ -479,23 +481,28 @@ module.exports = {
 
   openDirectory: async function (event) {
     const target = event.currentTarget.dataset.target
-    const kind = target === 'category' ? 'categories' : 'accounts'
-    this.setData({ directorySheet: { target, kind, query: '', items: [], loading: true } })
-    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
+    const editor = target === 'categoryEdit' && this.data.categoryEditSheet
+    if (target === 'categoryEdit' && (!editor || editor.loading || editor.saving || editor.stale || editor.pending || editor.saved)) return
+    const kind = ['category', 'categoryEdit'].includes(target) ? 'categories' : 'accounts'
+    const categoryKind = editor ? editor.kind : undefined
+    this.setData({ directorySheet: { target, kind, ...(categoryKind ? { categoryKind } : {}), query: '', items: [], loading: true } })
+    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, ...(categoryKind ? { categoryKind } : {}), pageSize: 12 })
     return this.changeDirectoryPage(event)
   },
 
-  searchDirectory: async function (event) {
+  searchDirectory: function (event) {
     if (!this.data.directorySheet) return
-    const query = String(event.detail.value).slice(0, 80)
+    const query = String(event.detail.value || '').slice(0, 80)
     this.setData({ 'directorySheet.query': query })
-    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.directorySheet.kind, query, pageSize: 12 })
-    return this.changeDirectoryPage(event)
+    const categoryKind = this.data.directorySheet.categoryKind
+    this._optionPager = this._viewSession.pager('financeUpdates.options', { kind: this.data.directorySheet.kind,
+      ...(categoryKind ? { categoryKind } : {}), query, pageSize: 12 })
+    this.changeDirectoryPage(event)
   },
 
   changeDirectoryKind: function (event) {
     const kind = event.currentTarget.dataset.kind
-    if (!this.data.directorySheet || this.data.directorySheet.target === 'category' || !['accounts', 'accountDrafts'].includes(kind)) return
+    if (!this.data.directorySheet || this.data.directorySheet.kind === 'categories' || !['accounts', 'accountDrafts'].includes(kind)) return
     this.setData({ 'directorySheet.kind': kind, 'directorySheet.query': '' })
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
     return this.changeDirectoryPage(event)
@@ -517,6 +524,11 @@ module.exports = {
 
   selectDirectory: function (event) {
     const sheet = this.data.directorySheet
+    if (sheet && sheet.target === 'categoryEdit') {
+      const item = sheet.items[Number(event.currentTarget.dataset.index)]
+      if (item && this.selectEditedCategory(item)) this.closeDirectory()
+      return
+    }
     if (!sheet || !this.data.currentIssue) return
     const item = sheet.items[Number(event.currentTarget.dataset.index)]
     if (!item) return

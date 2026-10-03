@@ -257,8 +257,9 @@
           <text class="review-status-tab-label">{{item.label}}</text><text class="review-status-tab-count money-number">{{item.count}}</text>
         </button>
       </view>
+      <input wx:if="{{recordSummary.totalCount}}" class="category-search" value="{{reviewQuery}}" maxlength="80" placeholder="搜索商户、交易、分类或日期" bindinput="searchReviewIssues" data-input-key="searchReviewIssues" bindfocus="beginInputEditing" bindblur="finishInputEditing" aria-label="搜索当前交易核对列表，日期可输入2026-10-03或10-03" />
       <block wx:if="{{activeReviewStatus === 'pending'}}">
-        <button wx:if="{{pairingEntry}}" class="review-decision-card pairing-entry" bindtap="openPairingEntry" disabled="{{busy || pairingEntry.total === 0}}" aria-label="判断是否同一笔，{{pairingEntry.total === null ? '多组建议配对' : pairingEntry.total + '组建议配对'}}，批量核对">
+        <button wx:if="{{pairingEntry && !reviewQuery}}" class="review-decision-card pairing-entry" bindtap="openPairingEntry" disabled="{{busy || pairingEntry.total === 0}}" aria-label="判断是否同一笔，{{pairingEntry.total === null ? '多组建议配对' : pairingEntry.total + '组建议配对'}}，批量核对">
           <view class="review-decision-heading">
             <view class="review-decision-copy"><text class="review-decision-title">判断是否同一笔</text></view>
             <view class="review-decision-action"><text class="review-action-button">批量核对</text><chevron-icon size="{{22}}" /></view>
@@ -271,7 +272,7 @@
         </button>
         <skeleton-rows wx:if="{{pageLoading && !reviewGroups.length}}" rows="{{3}}" />
         <view wx:if="{{reviewGroups.length}}" class="review-batch-list">
-          <view wx:for="{{reviewGroups}}" wx:key="issueType" class="review-batch">
+          <view wx:for="{{reviewGroups}}" wx:key="key" class="review-batch">
             <button wx:for="{{item.issues}}" wx:for-item="issue" wx:key="issueId" class="review-decision-card" data-id="{{issue.issueId}}" bindtap="openIssue" aria-label="{{issue.batchDecision}} {{issue.label}}">
               <view class="review-decision-heading">
                 <view class="review-decision-copy"><text class="review-decision-title">{{issue.label}}</text><text class="review-decision-note">{{issue.decisionText}}</text></view>
@@ -288,7 +289,7 @@
             </button>
           </view>
         </view>
-        <view wx:else class="tab-empty"><text class="tab-empty-title">交易核对已完成</text><text class="tab-empty-copy">{{categoryEventCount ? '还有 ' + categoryEventCount + ' 笔需要分类。' : '可以继续查看整批入账汇总。'}}</text></view>
+        <view wx:else class="tab-empty"><text class="tab-empty-title">{{reviewQuery ? '没有匹配的交易' : '交易核对已完成'}}</text><text class="tab-empty-copy">{{reviewQuery ? '试试其他关键词或交易日期。' : (categoryEventCount ? '还有 ' + categoryEventCount + ' 笔需要分类。' : '可以继续查看整批入账汇总。')}}</text></view>
       </block>
       <block wx:elif="{{activeReviewStatus === 'completed'}}">
         <text class="record-list-note content-inset">包含自动通过和已确认的交易。</text>
@@ -301,7 +302,7 @@
             <text class="review-preview-amount money-number {{item.directionClass}}">{{item.amountText}}</text>
           </view></view>
         </view>
-        <view wx:if="{{!reviewedEvents.length}}" class="tab-empty"><text class="tab-empty-title">暂无已核对交易</text></view>
+        <view wx:if="{{!reviewedEvents.length}}" class="tab-empty"><text class="tab-empty-title">{{reviewQuery ? '没有匹配的交易' : '暂无已核对交易'}}</text></view>
       </block>
     </block>
 
@@ -311,7 +312,7 @@
           <text class="review-status-tab-label">{{item.label}}</text><text class="review-status-tab-count money-number">{{item.count}}</text>
         </button>
       </view>
-      <input wx:if="{{recordSummary.activeCount}}" class="category-search" value="{{categoryQuery}}" placeholder="搜索商户、交易或分类" bindinput="searchCategoryIssues" data-input-key="searchCategoryIssues" bindfocus="beginInputEditing" bindblur="finishInputEditing" aria-label="搜索当前分类列表" />
+      <input wx:if="{{recordSummary.activeCount}}" class="category-search" value="{{categoryQuery}}" maxlength="80" placeholder="搜索商户、交易、分类或日期" bindinput="searchCategoryIssues" data-input-key="searchCategoryIssues" bindfocus="beginInputEditing" bindblur="finishInputEditing" aria-label="搜索当前分类列表，日期可输入2026-10-03或10-03" />
       <block wx:if="{{activeCategoryStatus === 'pending'}}">
         <skeleton-rows wx:if="{{pageLoading && !categoryCards.length && !categoryWaitingEvents.length}}" rows="{{3}}" />
         <view wx:for="{{categoryCards}}" wx:key="issueId" class="review-decision-card category-decision-card" data-id="{{item.issueId}}" bindtap="openIssue" aria-role="button" aria-label="{{item.natureLabel}}待分类，{{item.subjectCount}}笔">
@@ -342,7 +343,9 @@
         <skeleton-rows wx:if="{{pageLoading && !(activeCategoryStatus === 'completed' ? categorizedEvents.length : noCategoryEvents.length)}}" rows="{{3}}" />
         <view wx:for="{{activeCategoryStatus === 'completed' ? categorizedEvents : noCategoryEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看交易证据">
           <view class="review-decision-heading review-completed-heading">
-            <view class="review-decision-copy"><text class="review-decision-title category-completed-title">{{activeCategoryStatus === 'completed' ? (item.categoryName ? item.natureLabel + ' · ' + item.categoryName : item.natureLabel) : '无需分类 · ' + item.natureLabel}}{{item.pendingReview ? ' · 待核对' : ''}}</text></view><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view>
+            <view class="review-decision-copy"><text class="review-decision-title category-completed-title">{{activeCategoryStatus === 'completed' ? (item.categoryName ? item.natureLabel + ' · ' + item.categoryName : item.natureLabel) : '无需分类 · ' + item.natureLabel}}{{item.pendingReview ? ' · 待核对' : ''}}</text></view>
+            <view wx:if="{{activeCategoryStatus === 'completed' && update.status === 'review'}}" class="review-decision-action category-edit-action" data-id="{{item.eventId}}" catchtap="openCategoryEdit" aria-role="button" aria-label="修改分类"><text class="review-action-button">修改分类</text><chevron-icon size="{{22}}" /></view>
+            <view wx:else class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view>
           </view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
             <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
@@ -368,7 +371,7 @@
           </view>
         </view>
       </view>
-      <view wx:else class="tab-empty"><text class="tab-empty-title">没有已排除记录</text></view>
+      <view wx:else class="tab-empty"><text class="tab-empty-title">{{reviewQuery ? '没有匹配的交易' : '没有已排除记录'}}</text></view>
     </block>
     <block wx:if="{{activeReviewTab === 'review' && activeReviewStatus === 'duplicate'}}">
       <view wx:if="{{duplicateReviewLoading}}" class="tab-empty"><text class="tab-empty-title">正在核对重复来源</text></view>
@@ -380,7 +383,7 @@
           <view class="review-audit-footer"><text class="review-audit-badge">重复来源 {{item.duplicateCount}} 条</text><text class="review-audit-note">{{item.auditNote}}</text></view>
         </view>
       </view>
-      <view wx:else class="tab-empty"><text class="tab-empty-title">没有重复记录</text></view>
+      <view wx:else class="tab-empty"><text class="tab-empty-title">{{reviewQuery ? '没有匹配的交易' : '没有重复记录'}}</text></view>
     </block>
 <view wx:if="{{reviewPage && (reviewPage.hasPrevious || reviewPage.hasNext)}}" class="list-pagination">
         <button class="stage-previous" data-direction="first" bindtap="changeReviewPage" disabled="{{!reviewPage.canFirst}}">首页</button>
@@ -905,11 +908,12 @@
     </view>
   </view>
 
+  <include src="category-edit.wxml" />
   <view wx:if="{{directorySheet}}" class="sheet-layer directory-layer" catchtouchmove="preventTouchMove">
     <view class="sheet-scrim" bindtap="closeDirectory"></view>
     <view class="workflow-sheet editor-sheet">
       <text class="sheet-title">{{directorySheet.kind === 'categories' ? '查找分类' : '查找账户'}}</text>
-      <view wx:if="{{directorySheet.target !== 'category'}}" class="list-pagination"><button class="stage-previous" data-kind="accounts" bindtap="changeDirectoryKind">已有账户</button><button class="stage-previous" data-kind="accountDrafts" bindtap="changeDirectoryKind">本批新建</button></view>
+      <view wx:if="{{directorySheet.kind !== 'categories'}}" class="list-pagination"><button class="stage-previous" data-kind="accounts" bindtap="changeDirectoryKind">已有账户</button><button class="stage-previous" data-kind="accountDrafts" bindtap="changeDirectoryKind">本批新建</button></view>
       <input class="account-choice-search" value="{{directorySheet.query}}" maxlength="80" placeholder="输入名称查找" bindinput="searchDirectory" />
       <scroll-view class="account-records-scroll" scroll-y>
         <skeleton-rows wx:if="{{directorySheet.loading && !directorySheet.items.length}}" rows="{{4}}" />

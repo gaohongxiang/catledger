@@ -16,7 +16,7 @@ test('导入公共契约与事件云函数动作保持一致', function () {
     parse: handler, parseFile: handler, prepare: handler, prepareMany: handler,
     financeUpdateList: handler, financeUpdateRows: handler, financeUpdateSummary: handler, financeUpdateOptions: handler, economicEventList: handler, economicEventDetail: handler, reviewIssueMembers: handler,
     financeUpdateAbandon: handler, financeUpdateCreate: handler, financeUpdateGet: handler,
-    financeUpdateSetRepayment: handler, financeUpdatePrepare: handler,
+    financeUpdateSetRepayment: handler, financeUpdateSetCategory: handler, financeUpdatePrepare: handler,
     financeUpdateOrganize: handler, financeUpdatePost: handler, financeUpdateUndo: handler,
     financeUpdateUndoImpact: handler, economicEventCorrect: handler,
     economicEventCorrectionImpact: handler, economicEventEvidence: handler, reviewIssueGet: handler,
@@ -25,7 +25,7 @@ test('导入公共契约与事件云函数动作保持一致', function () {
     reviewIssuePairings: handler, reviewIssueResolvePairings: handler
   })
   assert.deepEqual(Object.keys(handlers).sort(), names)
-  assert.equal(Object.values(handlers).every(function (value) { return typeof value === 'function' }), true)
+  for (const [action, value] of Object.entries(handlers)) assert.equal(typeof value, 'function', action)
 })
 
 test('统一 FinanceUpdate 上线后不再公开旧单文件写链路', function () {

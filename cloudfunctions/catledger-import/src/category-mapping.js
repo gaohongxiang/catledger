@@ -1,83 +1,34 @@
-const { digestParts } = require('./digest')
-
-const CATEGORY_ALIAS_VERSION = 'category-alias-v1'
-const CATEGORY_RULE_VERSION = 'category-rules-v3'
-
-const FORBIDDEN_NAMES = new Set([
-  '商户消费', '扫二维码付款', '充值', '提现', '转账', '红包', '微信红包',
-  '转账退款', '零钱提现', '零钱充值', '信用卡还款', '不计收支', '二维码收款', '其他'
-].map(canonicalName))
-
-const ALIPAY_SYSTEM_KEYS = Object.freeze({
-  餐饮美食: 'food',
-  交通出行: 'transport',
-  爱车养车: 'transport__car',
-  服饰装扮: 'shopping__clothing',
-  日用百货: 'shopping__houseware',
-  家居家装: 'shopping',
-  数码电器: 'shopping__electronics',
-  美容美发: 'shopping__beauty',
-  宠物: 'entertainment__pets',
-  运动户外: 'entertainment__fitness',
-  酒店旅游: 'entertainment__travel',
-  文化休闲: 'entertainment',
-  生活服务: 'life_services',
-  公益捐赠: 'social__donations',
-  教育培训: 'education',
-  医疗健康: 'medical',
-  保险: 'finance__insurance',
-  投资理财: 'investment'
-})
-
-function canonicalName(value) {
-  return String(value || '').normalize('NFKC').trim().toLowerCase()
-    .replace(/[\s\-—]+/g, '')
-}
-
-function categoryCandidates(row) {
-  const values = [row.raw.transactionType, row.raw.counterparty, row.raw.item]
-  const seen = new Set()
-  const result = []
-  values.forEach((value) => {
-    const display = String(value || '').normalize('NFKC').trim()
-    const canonical = canonicalName(display)
-    if (!canonical || FORBIDDEN_NAMES.has(canonical) || seen.has(canonical)) return
-    seen.add(canonical)
-    result.push(display)
-  })
-  return result
-}
-
-function aliasKeys(sourceType, row) {
-  return categoryCandidates(row).map((value) => (
-    digestParts(CATEGORY_ALIAS_VERSION, sourceType, canonicalName(value))
-  ))
-}
-
-function deterministicSystemKey(sourceType, row) {
-  if (sourceType === 'alipay') {
-    const key = ALIPAY_SYSTEM_KEYS[canonicalName(row.raw.transactionType)]
-    if (key) return key
-  }
-  const evidence = canonicalName(`${row.raw.counterparty || ''} ${row.raw.item || ''}`)
-  if (sourceType === 'wechat') {
-    if (evidence.includes('寄件') || evidence.includes('快递')) return 'communication__postage'
-    if (evidence.includes('保险') || evidence.includes('保费')) return 'finance__insurance'
-  }
-  return null
-}
+const { CATEGORY_ALIAS_VERSION, canonicalName, categoryMemory } = require('./category-memory')
+const { CATEGORY_RULE_VERSION, categoryRule } = require('./category-rules')
 
 function buildCategoryEvidence(sourceType, row) {
-  return {
-    version: CATEGORY_ALIAS_VERSION,
-    ruleVersion: CATEGORY_RULE_VERSION,
-    aliasKeys: aliasKeys(sourceType, row),
-    deterministicSystemKey: deterministicSystemKey(sourceType, row)
-  }
+  const memory = categoryMemory(sourceType, row)
+  const rule = categoryRule(sourceType, row)
+  return { ...memory, ruleVersion: CATEGORY_RULE_VERSION,
+    deterministicSystemKey: rule.detail ? rule.detail.systemKey : rule.sourceKey,
+    rule }
 }
 
-module.exports = {
-  CATEGORY_ALIAS_VERSION,
-  buildCategoryEvidence,
-  canonicalName
+function suggestedCategory(row, indexes) {
+  // 原文不改写；旧批次也用当前规则重新计算，不能继续消费旧的宽泛类型顺序。
+  const evidence = buildCategoryEvidence(row.sourceType, row)
+  const mapped = key => {
+    const id = key && indexes.mappings.get(`${row.sourceType}:${key}`)
+    const category = indexes.byId.get(id)
+    return category && category.kind === row.direction ? id : null
+  }
+  const system = key => key && indexes.bySystemKey.get(`${row.direction}:${key}`) || null
+  const exact = mapped(evidence.pairKey)
+  if (exact) return exact
+  if (evidence.rule.detail) {
+    const { systemKey, parentSystemKey } = evidence.rule.detail
+    return system(systemKey) || system(parentSystemKey)
+  }
+  for (const key of [evidence.legacyItemKey, evidence.merchantKey, evidence.legacyMerchantKey]) {
+    const id = mapped(key)
+    if (id) return id
+  }
+  return system(evidence.rule.sourceKey)
 }
+
+module.exports = { CATEGORY_ALIAS_VERSION, buildCategoryEvidence, canonicalName, suggestedCategory }

@@ -169,7 +169,8 @@
         "pageSize?",
         "query?",
         "id?",
-        "ids? (1..100)"
+        "ids? (1..100)",
+        "categoryKind? (income|expense; categories only)"
       ],
       "returns": [
         "protocolVersion=2",
@@ -690,6 +691,33 @@
         "Same merges draft events into platform primary, preserves evidence/refund references and never changes formal balances. Distinct rejects only the explicit pair.",
         "Persist reliable source identity pairs plus necessary fact digest; no broad text/amount rules and no unreliable-identity replay. One range cleanup/count/receipt per batch, final client summary once.",
         "Original request persisted before sending. Unknown results replay original requestId; trusted continuation saved before a new batch request; preserve partial progress, local intent and refresh failures."
+      ]
+    },
+    "financeUpdates.setCategory": {
+      "kind": "idempotent-double-versioned-mutation",
+      "data": [
+        "requestId",
+        "updateId",
+        "updateVersion",
+        "eventId",
+        "eventVersion",
+        "categoryId"
+      ],
+      "rules": [
+        "Only an active, already categorized income/expense/fee event in a review batch can be changed. The selected category must be active, owned by the same user and compatible with the event nature. Change only this event and mark its category as manual; preserve other fields, issues, source evidence and formal ledger."
+      ],
+      "returns": [
+        "protocolVersion=2",
+        "kind=operation-receipt",
+        "receiptId",
+        "action",
+        "updateId",
+        "appliedVersion",
+        "status",
+        "counts",
+        "update",
+        "posting",
+        "invalidates"
       ]
     }
   },

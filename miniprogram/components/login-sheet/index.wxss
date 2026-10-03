@@ -13,6 +13,29 @@
   font-family: "PingFang SC", "Source Han Sans SC", sans-serif;
   font-size: var(--font-body, 28rpx);
 }
+.login-startup-content { width: 100%; max-width: 560rpx; padding: 48rpx; text-align: center; }
+.login-startup .login-title { color: var(--theme-ink, #29231e); font-size: 36rpx; }
+.login-spinner {
+  box-sizing: border-box;
+  width: 44rpx;
+  height: 44rpx;
+  margin: 0 auto 28rpx;
+  border: 4rpx solid var(--theme-border, #e5dfd7);
+  border-top-color: var(--theme-accent, #be5b24);
+  border-radius: 50%;
+  animation: login-spin 1s linear infinite;
+}
+.login-startup-cancel {
+  margin: 24rpx auto 0;
+  padding: 12rpx 24rpx;
+  min-height: 88rpx;
+  line-height: 64rpx;
+  font-size: var(--font-caption, 24rpx);
+  color: var(--theme-text-muted, #746a60);
+  background: transparent;
+}
+.login-startup-cancel::after { border: 0; }
+@keyframes login-spin { to { transform: rotate(360deg); } }
 
 .login-backdrop {
   position: fixed;
@@ -162,5 +185,5 @@
 }
 .login-nickname-shake { animation: login-nickname-shake 360ms ease; }
 @media (prefers-reduced-motion: reduce) {
-  .login-nickname-shake { animation: none !important; }
+  .login-nickname-shake, .login-spinner { animation: none !important; }
 }

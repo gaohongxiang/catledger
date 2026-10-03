@@ -22,7 +22,7 @@ function waitBeforeRetry() {
 }
 
 function handleTransportFailure(originalError, action, data, attempt, invoke) {
-  if (originalError && originalError.code === 'SESSION_CHANGED') throw originalError
+  if (originalError && (originalError.code === 'SESSION_CHANGED' || originalError.code === 'CLOUD_CALL_TIMEOUT')) throw originalError
   const failure = cloudCallPolicy.classifyCloudFailure(originalError)
   if (cloudCallPolicy.shouldRetry(action, data, failure, attempt)) {
     return waitBeforeRetry().then(function () {
@@ -88,7 +88,32 @@ function createCloudFunctionClient(options) {
   }
 
   function callInternal(action, data, message, requestOptions) {
-    return invoke(action, data, 0, message, requestOptions)
+    const timeoutMs = requestOptions && requestOptions.timeoutMs
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return invoke(action, data, 0, message, requestOptions)
+    const deadline = Date.now() + timeoutMs
+    let active = true, timer
+    const timeoutError = () => Object.assign(new Error('连接账本超时，请检查网络后重新连接'), { code: 'CLOUD_CALL_TIMEOUT' })
+    const checkDeadline = () => {
+      if (!active || Date.now() >= deadline) throw timeoutError()
+    }
+    const boundedOptions = Object.assign({}, requestOptions, {
+      beforeSend() {
+        checkDeadline()
+        if (requestOptions.beforeSend) requestOptions.beforeSend()
+      }
+    })
+    // 首次调用和自动重试共用一个等待上限；平台请求无法取消时，迟到结果也不再交给缓存。
+    const work = invoke(action, data, 0, message, boundedOptions).then(result => {
+      checkDeadline()
+      return result
+    })
+    const expired = new Promise((resolve, reject) => {
+      timer = setTimeout(() => { active = false; reject(timeoutError()) }, timeoutMs)
+    })
+    return Promise.race([work, expired]).finally(() => {
+      active = false
+      clearTimeout(timer)
+    })
   }
 
   function call(action, data, requestOptions) {

@@ -21,20 +21,30 @@ async function readVersion(connection, uid, updateId) {
       COALESCE(SUM(version), 0) AS versions, MAX(updated_at) AS updatedAt FROM catledger_accounts WHERE uid = ?
     UNION ALL SELECT 'categories', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_categories WHERE uid = ?
     UNION ALL SELECT 'mappings', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_import_account_mappings WHERE uid = ?`, [uid, uid, uid])
-  return { update, viewVersion: digestParts('finance-view-v2', uid, updateId, update.version,
+  return { update, viewVersion: digestParts('finance-view-v2-time-order-search-v2', uid, updateId, update.version,
     update.planVersion, PLAN_VERSION, accountGroups.VERSION, JSON.stringify(directories)) }
 }
 
-function scopeFor(uid, updateId, viewVersion, kind, filter) {
-  return { uid, updateId, kind, filter, order: 'id-asc', viewVersion }
+const TIME_ORDER = 'local-at-asc-id-asc-v1'
+function scopeFor(uid, updateId, viewVersion, kind, filter, order) {
+  return { uid, updateId, kind, filter, order, viewVersion }
 }
-function preparePage(context, state, uid, kind, filter) {
+function preparePage(context, state, uid, kind, filter, order = 'id-asc') {
   const data = context.data
   if (data.viewVersion != null && data.viewVersion !== state.viewVersion) throw importError('STALE_VIEW')
-  const scope = scopeFor(uid, state.update.updateId, state.viewVersion, kind, filter)
+  const scope = scopeFor(uid, state.update.updateId, state.viewVersion, kind, filter, order)
   const last = decodeCursor(context.subjectHash, data.cursor, scope)
-  if (last != null && (typeof last !== 'string' || !/^[0-9a-f-]{36}$/.test(last))) throw importError('INVALID_CURSOR')
-  return { size: pageSize(data.pageSize), last: last || '', scope }
+  const uuid = value => typeof value === 'string' && /^[0-9a-f-]{36}$/.test(value)
+  if (last != null && (order === TIME_ORDER
+    ? typeof last !== 'object' || !uuid(last.id) || !(last.at === null || typeof last.at === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$/.test(last.at))
+    : !uuid(last))) throw importError('INVALID_CURSOR')
+  return { size: pageSize(data.pageSize), last: last || (order === TIME_ORDER ? null : ''), scope }
+}
+function afterTime(page, date, id) {
+  if (!page.last) return { sql: '', values: [] }
+  if (page.last.at === null) return { sql: ` AND ${date} IS NULL AND ${id} > ?`, values: [page.last.id] }
+  return { sql: ` AND (${date} > ? OR (${date} = ? AND ${id} > ?) OR ${date} IS NULL)`,
+    values: [page.last.at, page.last.at, page.last.id] }
 }
 function boundedItem(item, key, kind) {
   if (jsonBytes(item) <= 16 * 1024) return item
@@ -47,7 +57,7 @@ function boundedItem(item, key, kind) {
   // 明确引用完整详情；原字段仍留库并可通过分段接口取得。
   const result = { [key]: item[key], detailRequired: true, detailKind: kind }
   for (const name of ['version', 'status', 'issueType', 'blocking', 'memberCount', 'candidateCount', 'economicNature',
-    'flowDirection', 'localAt', 'amountMinor', 'currency', 'ledgerAccountId', 'counterpartyLedgerAccountId', 'categoryId',
+    'flowDirection', 'localAt', 'sortLocalAt', 'amountMinor', 'currency', 'ledgerAccountId', 'counterpartyLedgerAccountId', 'categoryId', 'categoryName',
     'evidenceCount', 'duplicateEvidenceCount', 'objectId', 'objectType', 'objectVersion', 'memberRole']) {
     if (item[name] != null) result[name] = item[name]
   }
@@ -57,7 +67,9 @@ function finishPage(context, state, page, rows, total, key, kind) {
   const result = { protocolVersion: 2, viewVersion: state.viewVersion, update: state.update, items: [], total: Number(total), nextCursor: null }
   for (const row of rows.slice(0, page.size)) {
     const item = boundedItem(row, key, kind)
-    const nextCursor = encodeCursor(context.subjectHash, page.scope, row[key])
+    const last = page.scope.order === TIME_ORDER
+      ? { at: (row.sortLocalAt === undefined ? row.localAt : row.sortLocalAt) || null, id: row[key] } : row[key]
+    const nextCursor = encodeCursor(context.subjectHash, page.scope, last)
     const candidate = { ...result, items: result.items.concat(item), nextCursor }
     // 留出小程序setData封装空间；仍低于对外256KiB最大预算。
     if (jsonBytes(candidate) > 48 * 1024) break
@@ -77,6 +89,30 @@ function searchText(value) {
   if (value == null) return ''
   if (typeof value !== 'string' || value.length > 80) throw importError('VALIDATION_ERROR')
   return value.trim()
+}
+
+function eventSearch(query) {
+  const normalized = query.replace(/[年/.]/gu, '-').replace(/月/gu, '-').replace(/日$/u, '').replace(/-$/u, '')
+  const full = /^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?$/u.exec(normalized)
+  const short = !full && /^(\d{1,2})-(\d{1,2})$/u.exec(normalized)
+  if (full || short) {
+    const year = full ? Number(full[1]) : 2000
+    const month = Number(full ? full[2] || 1 : short[1])
+    const day = Number(full ? full[3] || 1 : short[2])
+    const date = new Date(Date.UTC(year, month - 1, day))
+    if (year >= 1000 && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
+      const mm = String(month).padStart(2, '0'), dd = String(day).padStart(2, '0')
+      const format = short ? '%m-%d' : full[3] ? '%Y-%m-%d' : full[2] ? '%Y-%m' : '%Y'
+      const value = short ? mm + '-' + dd : full[1] + (full[2] ? '-' + mm : '') + (full[3] ? '-' + dd : '')
+      return { sql: `DATE_FORMAT(e.event_local_at, '${format}') = ?`, values: [value] }
+    }
+  }
+  return { sql: `(EXISTS (SELECT 1 FROM catledger_event_evidence v JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
+      WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id
+        AND (LOCATE(?, r.item_raw) > 0 OR LOCATE(?, r.counterparty_raw) > 0))
+    OR EXISTS (SELECT 1 FROM catledger_categories c LEFT JOIN catledger_categories p ON p.uid = c.uid AND p.category_id = c.parent_id
+      WHERE c.uid = e.uid AND c.category_id = e.category_id AND LOCATE(?, CONCAT_WS(' / ', p.name, c.name)) > 0))`,
+  values: [query, query, query] }
 }
 const activeSql = "e.status IN ('ready','needs_action','posted')"
 const needsCategorySql = "e.economic_nature IN ('income','expense','fee','unknown') AND (e.category_id IS NULL OR e.economic_nature = 'unknown')"
@@ -144,7 +180,7 @@ async function eventPage(connection, uid, context, state) {
   const view = optionalEnum(data.view, ['active', 'review_pending', 'review_completed', 'category_pending', 'category_completed', 'category_none', 'expense', 'posted'])
   const accountId = data.accountId == null ? null : validateUuid(data.accountId)
   const query = searchText(data.query)
-  const page = preparePage(context, state, uid, 'events', { status, eventId, issueId, nature, view, accountId, query })
+  const page = preparePage(context, state, uid, 'events', { status, eventId, issueId, nature, view, accountId, query }, TIME_ORDER)
   let where = 'e.uid = ? AND e.update_id = ?'
   const values = [uid, state.update.updateId]
   if (eventId) { where += ' AND e.event_id = ?'; values.push(eventId) }
@@ -166,11 +202,12 @@ async function eventPage(connection, uid, context, state) {
   }
   if (accountId) { where += ` AND (e.ledger_account_id = ? OR e.counterparty_ledger_account_id = ? OR JSON_SEARCH(e.field_sources_json, 'one', ?, NULL,
     '$.repaymentAllocations[*].accountId', '$.paymentResolution.allocations[*].accountId') IS NOT NULL)`; values.push(accountId, accountId, accountId) }
-  if (query) { where += ` AND EXISTS (SELECT 1 FROM catledger_event_evidence v JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
-    WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND (LOCATE(?, r.item_raw) > 0 OR LOCATE(?, r.counterparty_raw) > 0))`; values.push(query, query) }
+  if (query) { const search = eventSearch(query); where += ' AND ' + search.sql; values.push(...search.values) }
   if (issueId) { where += " AND EXISTS (SELECT 1 FROM catledger_review_issue_members m WHERE m.uid = e.uid AND m.update_id = e.update_id AND m.object_type = 'event' AND m.object_id = e.event_id AND m.issue_id = ?)"; values.push(issueId) }
   const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM catledger_economic_events e WHERE ${where}`, values)
-  const [ids] = await connection.execute(`SELECT e.event_id AS eventId FROM catledger_economic_events e WHERE ${where} AND e.event_id > ? ORDER BY e.event_id LIMIT ?`, [...values, page.last, page.size + 1])
+  const after = afterTime(page, 'e.event_local_at', 'e.event_id')
+  const [ids] = await connection.execute(`SELECT e.event_id AS eventId FROM catledger_economic_events e WHERE ${where}${after.sql}
+    ORDER BY e.event_local_at IS NULL, e.event_local_at, e.event_id LIMIT ?`, [...values, ...after.values, page.size + 1])
   const items = ids.length ? await selectEvents(connection, uid, state.update.updateId, { eventIds: ids.map(row => row.eventId) }) : []
   if (view === 'expense') for (const item of items) {
     if (item.loanRepayment && item.loanRepayment.confirmed) item.summaryExpenseMinor = String(require('./workbench-summary').repaymentExpense(item))
@@ -185,26 +222,36 @@ async function issuePage(connection, uid, context, state) {
   if (issueType && (typeof issueType !== 'string' || !/^[a-z_]{1,64}$/.test(issueType))) throw importError('VALIDATION_ERROR')
   const group = optionalEnum(context.data.group, ['accounts', 'review', 'category'])
   const query = searchText(context.data.query)
-  const page = preparePage(context, state, uid, 'issues', { status, issueType, group, query })
+  const page = preparePage(context, state, uid, 'issues', { status, issueType, group, query }, TIME_ORDER)
   const values = [uid, state.update.updateId]
-  let where = 'uid = ? AND update_id = ?'
-  if (status) { where += ' AND status = ?'; values.push(status) }
-  if (issueType) { where += ' AND issue_type = ?'; values.push(issueType) }
-  if (group === 'accounts') where += " AND issue_type = 'account_mapping' AND status IN ('open','resolved')"
-  if (group === 'review') where += " AND issue_type NOT IN ('account_mapping','category_assignment') AND blocking = 1"
-  if (group === 'category') where += " AND issue_type = 'category_assignment'"
+  let where = 'i.uid = ? AND i.update_id = ?'
+  if (status) { where += ' AND i.status = ?'; values.push(status) }
+  if (issueType) { where += ' AND i.issue_type = ?'; values.push(issueType) }
+  if (group === 'accounts') where += " AND i.issue_type = 'account_mapping' AND i.status IN ('open','resolved')"
+  if (group === 'review') where += " AND i.issue_type NOT IN ('account_mapping','category_assignment') AND i.blocking = 1"
+  if (group === 'category') where += " AND i.issue_type = 'category_assignment'"
   if (query) {
-    where += ` AND issue_id IN (SELECT m.issue_id FROM catledger_review_issue_members m
-      JOIN catledger_event_evidence v ON v.uid = m.uid AND v.update_id = m.update_id AND v.event_id = m.object_id
-      JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
-      WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'event' AND (LOCATE(?, r.item_raw) > 0 OR LOCATE(?, r.counterparty_raw) > 0))`
-    values.push(uid, state.update.updateId, query, query)
+    const search = eventSearch(query)
+    where += ` AND EXISTS (SELECT 1 FROM catledger_review_issue_members m
+      JOIN catledger_economic_events e ON e.uid = m.uid AND e.update_id = m.update_id AND e.event_id = m.object_id
+      WHERE m.uid = i.uid AND m.update_id = i.update_id AND m.issue_id = i.issue_id AND m.object_type = 'event'
+        AND m.member_role <> 'candidate' AND ${search.sql})`
+    values.push(...search.values)
   }
-  const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM catledger_review_issues WHERE ${where}`, values)
-  const [ids] = await connection.execute(`SELECT issue_id AS issueId FROM catledger_review_issues WHERE ${where} AND issue_id > ? ORDER BY issue_id LIMIT ?`, [...values, page.last, page.size + 1])
-  const items = ids.length ? await selectIssues(connection, uid, state.update.updateId, { issueIds: ids.map(row => row.issueId), includeMembers: false }) : []
+  const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM catledger_review_issues i WHERE ${where}`, values)
+  const after = afterTime(page, 'dates.sortLocalAt', 'i.issue_id')
+  // 候选只用于比对，不参与问题组的日期；取真实成员最早一笔，未知时间排最后。
+  const [ids] = await connection.execute(`SELECT i.issue_id AS issueId, dates.sortLocalAt FROM catledger_review_issues i
+    LEFT JOIN (SELECT m.issue_id, MIN(e.event_local_at) AS sortLocalAt FROM catledger_review_issue_members m
+      JOIN catledger_economic_events e ON e.uid = m.uid AND e.update_id = m.update_id AND e.event_id = m.object_id
+      WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'event' AND m.member_role <> 'candidate'
+      GROUP BY m.issue_id) dates ON dates.issue_id = i.issue_id
+    WHERE ${where}${after.sql} ORDER BY dates.sortLocalAt IS NULL, dates.sortLocalAt, i.issue_id LIMIT ?`,
+  [uid, state.update.updateId, ...values, ...after.values, page.size + 1])
+  const items = ids.length ? await selectIssues(connection, uid, state.update.updateId,
+    { issueIds: ids.map(row => row.issueId), includeMembers: false, chronologicalSubject: ['review', 'category'].includes(group) }) : []
   const byId = new Map(items.map(item => [item.issueId, item]))
-  return finishPage(context, state, page, ids.map(row => byId.get(row.issueId)), count.total, 'issueId', 'issue')
+  return finishPage(context, state, page, ids.map(row => ({ ...byId.get(row.issueId), sortLocalAt: row.sortLocalAt })), count.total, 'issueId', 'issue')
 }
 
 async function presentationEvents(connection, uid, updateId, ids) {
@@ -226,13 +273,21 @@ async function presentationEvents(connection, uid, updateId, ids) {
 async function memberPage(connection, uid, context, state) {
   const issueId = validateUuid(context.data.issueId)
   const memberKind = optionalEnum(context.data.memberKind, ['event', 'relation', 'transaction'])
-  const page = preparePage(context, state, uid, 'members', { issueId, memberKind })
+  const chronological = memberKind === 'event'
+  const page = preparePage(context, state, uid, 'members', { issueId, memberKind }, chronological ? TIME_ORDER : 'id-asc')
   const condition = memberKind ? ' AND object_type = ?' : ''
   const values = [uid, state.update.updateId, issueId, ...(memberKind ? [memberKind] : [])]
   const [[issue]] = await connection.execute('SELECT version FROM catledger_review_issues WHERE uid = ? AND update_id = ? AND issue_id = ?', [uid, state.update.updateId, issueId])
   if (!issue) throw importError('NOT_FOUND')
   const [[count]] = await connection.execute('SELECT COUNT(*) AS total FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND issue_id = ?' + condition, values)
-  const [rows] = await connection.execute(`SELECT member_id AS memberId, object_type AS objectType, object_id AS objectId,
+  const after = chronological && afterTime(page, 'e.event_local_at', 'm.member_id')
+  const [rows] = chronological ? await connection.execute(`SELECT m.member_id AS memberId, m.object_type AS objectType, m.object_id AS objectId,
+    m.object_version AS objectVersion, m.member_role AS memberRole, m.sort_order AS sortOrder, e.event_local_at AS sortLocalAt
+    FROM catledger_review_issue_members m LEFT JOIN catledger_economic_events e
+      ON e.uid = m.uid AND e.update_id = m.update_id AND e.event_id = m.object_id
+    WHERE m.uid = ? AND m.update_id = ? AND m.issue_id = ? AND m.object_type = ?${after.sql}
+    ORDER BY e.event_local_at IS NULL, e.event_local_at, m.member_id LIMIT ?`, [...values, ...after.values, page.size + 1])
+    : await connection.execute(`SELECT member_id AS memberId, object_type AS objectType, object_id AS objectId,
     object_version AS objectVersion, member_role AS memberRole, sort_order AS sortOrder FROM catledger_review_issue_members
     WHERE uid = ? AND update_id = ? AND issue_id = ?${condition} AND member_id > ? ORDER BY member_id LIMIT ?`, [...values, page.last, page.size + 1])
   const relationIds = rows.filter(row => row.objectType === 'relation').map(row => row.objectId)
@@ -282,14 +337,17 @@ async function optionPage(connection, uid, context, state) {
   if (['new_accounts', 'affected_accounts'].includes(kind)) return affectedAccountPage(connection, uid, context, state)
   if (!Object.hasOwn(OPTIONS, kind)) throw importError('VALIDATION_ERROR')
   const option = OPTIONS[kind]
+  const categoryKind = optionalEnum(context.data.categoryKind, ['income', 'expense'])
+  if (categoryKind && kind !== 'categories') throw importError('VALIDATION_ERROR')
   const query = searchText(context.data.query)
   const id = context.data.id == null ? null : validateUuid(context.data.id)
   const ids = context.data.ids == null ? null : context.data.ids
   if (ids && (!Array.isArray(ids) || ids.length > 100 || !ids.length)) throw importError('VALIDATION_ERROR')
   const selectedIds = ids ? [...new Set(ids.map(validateUuid))].sort() : null
-  const page = preparePage(context, state, uid, 'options', { kind, query, id, ids: selectedIds })
+  const page = preparePage(context, state, uid, 'options', { kind, query, id, ids: selectedIds, ...(categoryKind ? { categoryKind } : {}) })
   const values = kind === 'accountDrafts' ? [uid, state.update.updateId] : [uid]
   let condition = option.condition
+  if (categoryKind) { condition += ' AND kind = ?'; values.push(categoryKind) }
   if (query) {
     condition += kind === 'categories' ? ` AND LOCATE(?, CONCAT_WS(' ', name, (SELECT p.name FROM catledger_categories p WHERE p.uid = catledger_categories.uid AND p.category_id = catledger_categories.parent_id))) > 0` : ' AND LOCATE(?, name) > 0'
     values.push(query)

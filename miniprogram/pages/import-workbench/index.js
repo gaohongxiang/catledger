@@ -5,6 +5,7 @@ const accountReview = require('./account-review')
 const transactionReview = require('./transaction-review')
 const pairingReview = require('./pairing-review')
 const pairingEntry = require('./pairing-entry')
+const categoryEdit = require('./category-edit')
 const postingFlow = require('./posting-flow')
 
 const initialData = Object.assign({}, pairingReview.initialData, {
@@ -46,6 +47,8 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     categoryIssues: [],
     categoryCards: [],
     categoryQuery: '',
+    reviewQuery: '',
+    categoryEditSheet: null,
     categoryEventCount: 0,
     categorizedEvents: [],
     categorizedEventCount: 0,
@@ -202,6 +205,7 @@ Page({
   switchReviewTab: transactionReview.switchReviewTab,
   switchCategoryStatus: transactionReview.switchCategoryStatus,
   searchCategoryIssues: transactionReview.searchCategoryIssues,
+  searchReviewIssues: transactionReview.searchReviewIssues,
   reviewBeforeCategory: transactionReview.reviewBeforeCategory,
   viewTransactions: postingFlow.viewTransactions,
   viewStatistics: postingFlow.viewStatistics,
@@ -300,6 +304,13 @@ Page({
   changeChoiceKind: accountReview.changeChoiceKind,
   changeChoicePage: accountReview.changeChoicePage,
   openDirectory: accountReview.openDirectory,
+  openCategoryEdit: categoryEdit.openCategoryEdit,
+  selectEditedCategory: categoryEdit.selectEditedCategory,
+  saveCategoryEdit: categoryEdit.saveCategoryEdit,
+  closeCategoryEdit: categoryEdit.closeCategoryEdit,
+  refreshCategoryEdit: categoryEdit.refreshCategoryEdit,
+  invalidateCategoryEdit: categoryEdit.invalidateCategoryEdit,
+  pendingCategoryEdit: categoryEdit.pendingCategoryEdit,
   searchDirectory: accountReview.searchDirectory,
   changeDirectoryKind: accountReview.changeDirectoryKind,
   changeDirectoryPage: accountReview.changeDirectoryPage,

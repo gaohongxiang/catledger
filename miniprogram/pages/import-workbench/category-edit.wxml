@@ -1,0 +1,19 @@
+<view wx:if="{{categoryEditSheet}}" class="sheet-layer" catchtouchmove="preventTouchMove">
+  <view class="sheet-scrim" bindtap="closeCategoryEdit"></view>
+  <view class="workflow-sheet editor-sheet category-edit-sheet">
+    <view class="sheet-handle"></view>
+    <text class="sheet-title serif-title">修改分类</text>
+    <view wx:if="{{categoryEditSheet.record}}" class="review-preview-row">
+      <view class="review-preview-copy"><text class="review-preview-title">{{categoryEditSheet.record.displayTitle}}</text><text class="review-preview-meta">{{categoryEditSheet.record.displayMeta}}</text></view>
+      <text class="review-preview-amount money-number {{categoryEditSheet.record.directionClass}}">{{categoryEditSheet.record.amountText}}</text>
+    </view>
+    <skeleton-rows wx:if="{{categoryEditSheet.loading}}" rows="{{2}}" />
+    <button wx:else class="mapping-field" data-target="categoryEdit" bindtap="openDirectory" disabled="{{categoryEditSheet.saving || categoryEditSheet.pending || categoryEditSheet.saved || categoryEditSheet.stale}}" aria-label="选择交易分类">
+      <text class="mapping-label">交易分类</text><text class="mapping-value">{{categoryEditSheet.selectedName || '请选择分类'}}</text><view class="field-chevron"></view>
+    </button>
+    <text wx:if="{{categoryEditSheet.error}}" class="inline-error">{{categoryEditSheet.error}}</text>
+    <button wx:if="{{categoryEditSheet.saved || (categoryEditSheet.stale && !categoryEditSheet.pending)}}" class="sheet-confirm sheet-confirm-wide" bindtap="refreshCategoryEdit" loading="{{categoryEditSheet.saving}}" disabled="{{categoryEditSheet.saving}}">{{categoryEditSheet.saved ? '刷新列表' : '重新核对'}}</button>
+    <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="saveCategoryEdit" loading="{{categoryEditSheet.saving}}" disabled="{{categoryEditSheet.loading || categoryEditSheet.saving || !categoryEditSheet.canSave}}">{{categoryEditSheet.pending ? '确认保存结果' : '保存分类'}}</button>
+    <button class="evidence-return" bindtap="closeCategoryEdit" disabled="{{categoryEditSheet.saving}}">返回列表</button>
+  </view>
+</view>

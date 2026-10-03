@@ -5,6 +5,8 @@ const { assertMetadata } = require('./read-metadata')
 const { envId } = require('../config/cloudbase')
 const observer = require('./read-observer')
 const client = cloudFunctionClient.createCloudFunctionClient({ functionName: 'catledger-api', fallbackMessage: '服务暂时不可用，请稍后重试' })
+const IDENTITY_TIMEOUT_MS = 15000
+let startupIdentity = null
 
 function validatePayload(action, data, result) {
   if (action === 'catalog.get' && (!Array.isArray(result.accounts) || !Array.isArray(result.categories))) {
@@ -23,12 +25,18 @@ function validatePayload(action, data, result) {
 }
 async function load(action, data, options, internal) {
   const app = getApp(), uid = app && app.hasLoginApproval() ? app.globalData.uid : ''
+  const session = cache.getSession()
   const key = cache.stableKey(action, data)
   const snapshot = !(options && options.force) && action !== 'bootstrap' && cache.snapshot(key)
   const previous = snapshot && snapshot.value
   const request = previous ? { knownRevision: previous.dataRevision } : undefined
   const invoke = requestOptions => internal
-    ? client.callInternal(action, data, '账本初始化失败', requestOptions) : client.call(action, data, requestOptions)
+    ? client.callInternal(action, data, '账本初始化失败', Object.assign({}, requestOptions, {
+      timeoutMs: IDENTITY_TIMEOUT_MS,
+      beforeSend() {
+        if (cache.getSession() !== session) throw Object.assign(new Error('登录状态已改变，请重新打开页面'), { code: 'SESSION_CHANGED' })
+      }
+    })) : client.call(action, data, requestOptions)
   let result = assertMetadata(await invoke(request), uid)
   if (result.unchanged) {
     if (previous && previous.uid === result.uid && previous.dataRevision === result.dataRevision) result = { ...previous, unchanged: false }
@@ -82,12 +90,30 @@ function revalidateForeground() {
   return cache.validate(ALL_TAGS, () => cache.read(cache.stableKey('reads.validate'), READ_POLICIES['reads.validate'], () => load('reads.validate', {}, { force: true }), { force: true }))
 }
 function bootstrap(options) { return callApi('bootstrap', {}, options) }
-function identifyWechatAccount() {
+function loadWechatIdentity() {
   const startedAt = Date.now()
   return read('bootstrap', {}, { force: true }, true).then(result => {
     observer.record('identity', { action: 'bootstrap', ms: Date.now() - startedAt, ok: true })
     return result
   }, error => { observer.record('identity', { action: 'bootstrap', ms: Date.now() - startedAt, ok: false }); throw error })
+}
+function prepareWechatAccount() {
+  const session = cache.getSession()
+  const ticket = { session, expiresAt: Date.now() + IDENTITY_TIMEOUT_MS }
+  // 应用启动即开始，和首屏绘制并行；延至微任务，避免在 App.onLaunch 内读取未就绪的 getApp()。
+  ticket.promise = Promise.resolve().then(() => {
+    if (cache.getSession() !== session) throw Object.assign(new Error('登录状态已改变，请重新打开页面'), { code: 'SESSION_CHANGED' })
+    return loadWechatIdentity()
+  })
+  // 界面可能尚未挂载；先接住失败，仍由消费此请求的登录入口处理原错误。
+  ticket.promise.catch(() => {})
+  startupIdentity = ticket
+}
+function identifyWechatAccount() {
+  const ticket = startupIdentity
+  startupIdentity = null
+  if (ticket && ticket.session === cache.getSession() && Date.now() < ticket.expiresAt) return ticket.promise
+  return loadWechatIdentity()
 }
 function initializeProfileAfterConsent(data) {
   return cache.mutate(mutationTags('profile.update'), () => client.callInternal('profile.update', {
@@ -112,4 +138,4 @@ function displaySnapshot(action, data) {
 }
 module.exports = { bootstrap, callApi, cacheToken, peek, displaySnapshot, revalidateForeground,
   isFresh: (action, data) => cacheToken(action, data) !== null,
-  createRequestId: cloudFunctionClient.createRequestId, identifyWechatAccount, initializeProfileAfterConsent }
+  createRequestId: cloudFunctionClient.createRequestId, prepareWechatAccount, identifyWechatAccount, initializeProfileAfterConsent }

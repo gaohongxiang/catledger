@@ -340,9 +340,15 @@ module.exports = {
   },
 
   searchCategoryIssues: function (event) {
-    const query = event.detail.value
+    const query = String(event.detail.value || '').slice(0, 80)
     this.setData({ categoryQuery: query })
     this._reviewProjection = null
+    // bindinput 的返回值会替换原生输入内容，异步读取不能作为返回值。
+    this.renderReview(true)
+  },
+
+  searchReviewIssues: function (event) {
+    this.setData({ reviewQuery: String(event.detail.value || '').slice(0, 80) })
     this.renderReview(true)
   },
 

@@ -5,7 +5,7 @@ const crypto = require('node:crypto')
 const { isolatedMysql } = require('./isolated-mysql')
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
-async function measure() {
+async function measure({ onResult = () => {}, onRows = () => {} } = {}) {
   const lab = await isolatedMysql(), OriginalDate = Date, originalUuid = crypto.randomUUID
   let sequence = 0
   crypto.randomUUID = () => '19150000-0000-4000-8000-' + String(++sequence).padStart(12, '0')
@@ -37,6 +37,7 @@ async function measure() {
     async function sample(name, operation) {
       sql = []
       const result = await operation().catch(error => { error.measurementStage = name; throw error })
+      onResult(name, result)
       results.push({ name, sqlCount: sql.length, sqlOrderHash: hash(sql), responseBytes: Buffer.byteLength(JSON.stringify(result)), resultHash: hash(result) })
       return result
     }
@@ -100,6 +101,7 @@ async function measure() {
       if (!/^catledger_[a-z_]+$/.test(name)) throw Error('unexpected table')
       const [keys] = await lab.owner.execute("SELECT COLUMN_NAME AS name FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND INDEX_NAME='PRIMARY' ORDER BY SEQ_IN_INDEX", [lab.database, name])
       const [rows] = await lab.owner.execute('SELECT * FROM `' + name + '` WHERE uid=? ORDER BY ' + keys.map(k => '`' + k.name + '`').join(','), [uid])
+      onRows(name, rows)
       // 不删除 ID/外键、金额、业务时间、版本、JSON 或空/非空状态。
       graph.push({ table: name, rows: rows.length, hash: hash(rows) })
     }

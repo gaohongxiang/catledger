@@ -284,7 +284,8 @@ test('目录可搜索到首页之外的账户，改变选择后保持对象ID；
   h.intercept = (action, input) => action === 'financeUpdates.options' && input.query === '后页账户'
     ? { protocolVersion: 2, viewVersion: 'v1', items: [{ accountId: 'synthetic-last-account', name: '后页账户', type: 'bank' }], total: 1 } : undefined
   await page.openDirectory({ currentTarget: { dataset: { target: 'account' } } })
-  await page.searchDirectory({ detail: { value: '后页账户' }, currentTarget: { dataset: {} } })
+  assert.equal(page.searchDirectory({ detail: { value: '后页账户' }, currentTarget: { dataset: {} } }), undefined)
+  await flush()
   page.selectDirectory({ currentTarget: { dataset: { index: 0 } } })
   assert.equal(page.data.accountChoices[page.data.issueDraft.accountIndex].accountId, 'synthetic-last-account')
   const chosen = page.data.issueDraft.accountIndex

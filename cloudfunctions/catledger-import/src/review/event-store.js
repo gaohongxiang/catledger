@@ -7,7 +7,7 @@ const { parseJson } = require('../finance-update-repository')
 const { evaluatePostability } = require('../organizer-model')
 const { ECONOMIC_NATURE, unique } = require('../organizer-values')
 const { isAggregateRepayment, repaymentAllocationsForEvent } = require('../repayment-allocation')
-const { resolvedReasons } = require('./policy')
+const { FIELD_MASK, resolvedReasons } = require('./policy')
 
 function domainEvent(row) {
   return {
@@ -219,12 +219,21 @@ async function saveEvents(connection, uid, updateId, pairs, actionId) {
   return pairs.map(pair => pair.next)
 }
 
-async function saveEvent(connection, uid, current, next, actionId, { preserveReferences = false, actionSource = 'user' } = {}) {
+async function saveEvent(connection, uid, current, next, actionId, { preserveReferences = false, actionSource = 'user', allowAutomaticCategory = false } = {}) {
   if (preserveReferences) {
-    const sameReferences = ['ledgerAccountId', 'counterpartyLedgerAccountId', 'currency', 'categoryId'].every(key => current[key] === next[key]) &&
+    const categoryChanged = current.categoryId !== next.categoryId
+    const automaticCategory = allowAutomaticCategory && actionSource === 'semantic' && !(current.manualFieldMask & FIELD_MASK.categoryId)
+    const sameReferences = ['ledgerAccountId', 'counterpartyLedgerAccountId', 'currency'].every(key => current[key] === next[key]) &&
+      (!categoryChanged || automaticCategory) &&
       ['paymentAccounts', 'paymentResolution', 'repaymentAllocations'].every(key =>
         JSON.stringify(current.fieldSources && current.fieldSources[key]) === JSON.stringify(next.fieldSources && next.fieldSources[key]))
     if (!sameReferences) throw importError('CONFLICT')
+    if (categoryChanged && next.categoryId) {
+      const [[category]] = await connection.execute(`SELECT kind FROM catledger_categories
+        WHERE uid = ? AND category_id = ? AND archived_at IS NULL FOR UPDATE`, [uid, next.categoryId])
+      if (!category || !['income', 'expense', 'fee'].includes(next.economicNature) ||
+          category.kind !== (next.economicNature === 'income' ? 'income' : 'expense')) throw importError('CONFLICT')
+    }
   } else await validateEventReferences(connection, uid, next)
   const context = await eventContext(connection, uid, next.updateId, next.eventId)
   finalizeSavedEvent(current, next, actionId, context, actionSource)
