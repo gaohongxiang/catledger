@@ -7,6 +7,7 @@ const viewModel = require('../../utils/view-model')
 const profilePresentation = require('../../utils/profile-presentation')
 const themeService = require('../../theme/service')
 const observer = require('../../services/read-observer')
+const { addMinor } = require('../../utils/minor-arithmetic')
 
 const HOME_RECENT_LIMIT = 3
 const dashboardQuery = month => ({ month, summaryScope: 'all' })
@@ -46,6 +47,10 @@ Page({
     netWorthText: '—',
     incomeText: '—',
     expenseText: '—',
+    assetsText: '—',
+    liabilitiesText: '—',
+    monthExpenseText: '—',
+    monthIncomeText: '—',
     trendReady: false,
     trendSparse: false,
     cashFlowTrend: [],
@@ -97,6 +102,10 @@ Page({
       netWorthText: '—',
       incomeText: '—',
       expenseText: '—',
+      assetsText: '—',
+      liabilitiesText: '—',
+      monthExpenseText: '—',
+      monthIncomeText: '—',
       trendReady: false,
       trendSparse: false,
       cashFlowTrend: [],
@@ -143,7 +152,7 @@ Page({
     const month = time.currentMonth()
     const query = dashboardQuery(month)
     const snapshot = api.displaySnapshot('dashboard.get', query)
-    const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'monthExpenseText', 'monthIncomeText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
     if (this._dashboardLoad || !app.hasLoginApproval()) {
       return this._dashboardLoad || Promise.resolve()
     }
@@ -158,10 +167,20 @@ Page({
     const applyDashboard = function (dashboard, state) {
         if (!isCurrent()) return
         const cashFlowTrend = Array.isArray(dashboard.cashFlowTrend) ? dashboard.cashFlowTrend : []
+        let assetsMinor = '0', liabilitiesMinor = '0'
+        ;(Array.isArray(dashboard.accounts) ? dashboard.accounts : []).forEach(function (account) {
+          if (account.nature === 'liability') liabilitiesMinor = addMinor(liabilitiesMinor, account.bookBalanceMinor || '0')
+          else assetsMinor = addMinor(assetsMinor, account.bookBalanceMinor || '0')
+        })
+        const monthRow = cashFlowTrend.filter(function (row) { return row.month === dashboard.month })[0] || {}
         self.setData({
           netWorthText: money.formatMinor(dashboard.netWorthMinor),
           incomeText: money.formatMinor(dashboard.summary.incomeMinor),
           expenseText: money.formatMinor(dashboard.summary.expenseMinor),
+          assetsText: money.formatMinor(assetsMinor),
+          liabilitiesText: money.formatMinor(liabilitiesMinor.charAt(0) === '-' ? liabilitiesMinor.slice(1) : liabilitiesMinor),
+          monthExpenseText: money.formatMinor(monthRow.expenseMinor || '0'),
+          monthIncomeText: money.formatMinor(monthRow.incomeMinor || '0'),
           hasDashboard: true,
           dashboardFresh: Boolean(state && state.complete),
           dashboardStatus: !state ? '显示上次结果，正在检查费用并更新' : state.complete ? '' : '费用同步未完成，当前结果还不是最新余额',

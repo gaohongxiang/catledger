@@ -87,67 +87,35 @@
   overflow-wrap: anywhere;
   word-break: break-word;
 }
-/* 三个摘要不再共用一排表格边线；长金额换行，不省略。 */
-.month-strip { display: flex; align-items: stretch; margin: 18rpx -20rpx 0; }
-.net-worth-card .month-strip { margin: 24rpx 0 0; padding-top: 20rpx; }
-.month-stat {
-  box-sizing: border-box;
-  flex: 1;
-  min-width: 0;
-  padding: 20rpx 16rpx;
-  background: var(--home-surface, var(--theme-surface, #fffefd));
-  border: 1rpx solid var(--home-line, var(--theme-line, #e5dfd7));
-  border-radius: var(--theme-radius-large, 24rpx);
-  box-shadow: var(--home-shadow, var(--theme-shadow-soft));
-}
-.month-stat + .month-stat { margin-left: 12rpx; }
-.month-stat-heading { display: flex; align-items: center; flex-wrap: wrap; }
-.month-stat-icon {
-  width: 24rpx;
-  height: 24rpx;
-  flex-shrink: 0;
-  margin-right: 6rpx;
-}
-.month-stat-label { color: var(--home-muted, var(--theme-text-muted, #726d66)); font-size: var(--font-caption, 24rpx); line-height: 1.4; }
-.month-stat-value {
+/* 净值卡左右分栏：左侧净资产与资产负债结构，右侧本月收支。 */
+.net-worth-columns { display: flex; align-items: stretch; }
+.net-worth-main { flex: 1.2; min-width: 0; }
+.net-worth-split { flex: 0 0 1rpx; margin: 8rpx 28rpx 0; background: var(--home-line, var(--theme-line, #e5dfd7)); }
+.net-worth-side { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; }
+.net-worth-parts { display: flex; gap: 28rpx; margin-top: 20rpx; }
+.net-worth-part { min-width: 0; }
+.net-worth-part-label { display: block; color: var(--theme-hero-muted, #392718); font-size: var(--font-caption, 24rpx); line-height: 1.4; }
+.net-worth-part-value {
   display: block;
-  margin-top: 10rpx;
-  font-size: var(--font-section, 32rpx);
-  font-weight: 500;
+  margin-top: 6rpx;
+  color: var(--theme-hero-value-ink, #633921);
+  font-size: var(--font-caption, 26rpx);
   line-height: 1.4;
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
-/* 长金额只改变排列，不截断、不改单位，也不把负号孤立成一行。 */
-.month-strip-stacked { display: block; }
-.month-strip-stacked .month-stat {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 88rpx;
-  padding: 16rpx 20rpx;
-}
-.month-strip-stacked .month-stat + .month-stat { margin-top: 12rpx; margin-left: 0; }
-.month-strip-stacked .month-stat-heading { flex-shrink: 0; }
-.month-strip-stacked .month-stat-value {
+.net-worth-side-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; margin-top: 14rpx; }
+.net-worth-side-value {
   min-width: 0;
-  margin-top: 0;
-  margin-left: 20rpx;
+  color: var(--theme-hero-value-ink, #633921);
+  font-size: var(--font-section, 32rpx);
+  font-weight: 500;
+  line-height: 1.4;
   text-align: right;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
-
-/* 累计收支位于 hero 底部：卡面透明化，文字走 hero 令牌。 */
-.net-worth-card .month-stat {
-  padding: 0;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-}
-.net-worth-card .month-stat-label { color: var(--theme-hero-muted, #392718); }
-.net-worth-card .month-stat-value { color: var(--theme-hero-value-ink, #633921); }
-.net-worth-card .month-strip-stacked .month-stat { min-height: 72rpx; padding: 8rpx 0; }
-.net-worth-card .month-strip-stacked .month-stat + .month-stat { margin-top: 4rpx; }
 
 .home-page .home-header .home-login-button {
   display: flex;

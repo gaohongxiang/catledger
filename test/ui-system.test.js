@@ -345,8 +345,8 @@ test('首页卡片外沿与文字使用内收的双基线', function () {
 test('首页月度摘要直接使用收入绿与支出红', function () {
   const template = read('miniprogram/pages/index/index.wxml')
 
-  assert.match(template, /month-stat-value money-number amount-income/)
-  assert.match(template, /month-stat-value money-number amount-expense/)
+  assert.match(template, /net-worth-side-value money-number amount-income/)
+  assert.match(template, /net-worth-side-value money-number amount-expense/)
 })
 
 test('我的页不恢复账户设置或账本设置', function () {

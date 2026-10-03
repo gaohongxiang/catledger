@@ -33,6 +33,25 @@ test('已有本月快照不能作为累计展示，累计读取返回前保留�
   assert.equal(page.data.dashboardFresh, true)
 })
 
+test('净值卡分栏：总资产与总负债按账户性质拆分，右侧展示本月收支', async () => {
+  const h = runtime(), page = h.page('index')
+  h.respond = action => action === 'dashboard.get' ? { ok: true, data: { summaryScope: 'all', netWorthMinor: '-324335',
+    month: '2026-10',
+    accounts: [
+      { nature: 'asset', bookBalanceMinor: '1737920' },
+      { nature: 'liability', bookBalanceMinor: '-2062255' }
+    ],
+    summary: { incomeMinor: '123400', expenseMinor: '129000', netIncomeMinor: '-5600' },
+    cashFlowTrend: [{ month: '2026-10', incomeMinor: '0', expenseMinor: '42881' }], recentTransactions: [] } } : undefined
+  await page.loadDashboard()
+  assert.equal(page.data.netWorthText, '-¥3,243.35')
+  assert.equal(page.data.assetsText, '¥17,379.20')
+  assert.equal(page.data.liabilitiesText, '¥20,622.55')
+  assert.equal(page.data.monthExpenseText, '¥428.81')
+  assert.equal(page.data.monthIncomeText, '¥0.00')
+  assert.equal(page.data.incomeText, '¥1,234.00')
+})
+
 test('旧服务端漏回累计范围时拒绝展示和缓存，重试可取得正确累计', async () => {
   const h = runtime(), page = h.page('index'); page.onLoad()
   h.respond = action => action === 'dashboard.get' ? result('month') : undefined

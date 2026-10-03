@@ -12,22 +12,22 @@
 
   <block wx:else>
     <view class="net-worth-card">
-      <view class="net-worth-heading">
-        <text class="net-worth-label">当前净资产</text>
-      </view>
-      <ticker-number class="net-worth-number money-number" value="{{loggedIn && hasDashboard ? netWorthText : '—'}}" />
-      <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 ? 'month-strip-stacked' : ''}}">
-        <view class="month-stat">
-          <view class="month-stat-heading">
-            <text class="month-stat-label">累计收入</text>
+      <view class="net-worth-columns">
+        <view class="net-worth-main">
+          <view class="net-worth-heading">
+            <text class="net-worth-label">当前净资产</text>
           </view>
-          <text class="month-stat-value money-number amount-income">{{loggedIn && hasDashboard ? incomeText : '—'}}</text>
+          <ticker-number class="net-worth-number money-number" value="{{loggedIn && hasDashboard ? netWorthText : '—'}}" />
+          <view class="net-worth-parts">
+            <view class="net-worth-part"><text class="net-worth-part-label">总资产</text><text class="net-worth-part-value money-number">{{loggedIn && hasDashboard ? assetsText : '—'}}</text></view>
+            <view class="net-worth-part"><text class="net-worth-part-label">总负债</text><text class="net-worth-part-value money-number">{{loggedIn && hasDashboard ? liabilitiesText : '—'}}</text></view>
+          </view>
         </view>
-        <view class="month-stat">
-          <view class="month-stat-heading">
-            <text class="month-stat-label">累计支出</text>
-          </view>
-          <text class="month-stat-value money-number amount-expense">{{loggedIn && hasDashboard ? expenseText : '—'}}</text>
+        <view class="net-worth-split" aria-hidden="true"></view>
+        <view class="net-worth-side">
+          <text class="net-worth-label">本月</text>
+          <view class="net-worth-side-row"><text class="net-worth-part-label">支出</text><text class="net-worth-side-value money-number amount-expense">{{loggedIn && hasDashboard ? monthExpenseText : '—'}}</text></view>
+          <view class="net-worth-side-row"><text class="net-worth-part-label">收入</text><text class="net-worth-side-value money-number amount-income">{{loggedIn && hasDashboard ? monthIncomeText : '—'}}</text></view>
         </view>
       </view>
     </view>
