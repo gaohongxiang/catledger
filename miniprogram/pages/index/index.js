@@ -9,6 +9,7 @@ const themeService = require('../../theme/service')
 const observer = require('../../services/read-observer')
 
 const HOME_RECENT_LIMIT = 3
+const dashboardQuery = month => ({ month, summaryScope: 'all' })
 
 function greetingText(loggedIn, profile) {
   if (!loggedIn) return '你好'
@@ -42,11 +43,9 @@ Page({
     chargeSyncComplete: false,
     errorMessage: '',
     month: '',
-    monthLabel: '',
     netWorthText: '—',
     incomeText: '—',
     expenseText: '—',
-    netIncomeText: '—',
     trendReady: false,
     trendSparse: false,
     cashFlowTrend: [],
@@ -65,7 +64,6 @@ Page({
       greeting: greetingText(loggedIn, app.globalData.profile),
       displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile),
       month: month,
-      monthLabel: time.monthLabel(month),
       todayLabel: time.todayLabel()
     }, () => {
       if (!this._readClosed) observer.record('startup', { phase: 'shell', page: this.route, ms: Math.max(0, Date.now() - (app._startupStartedAt || Date.now())) })
@@ -99,7 +97,6 @@ Page({
       netWorthText: '—',
       incomeText: '—',
       expenseText: '—',
-      netIncomeText: '—',
       trendReady: false,
       trendSparse: false,
       cashFlowTrend: [],
@@ -130,11 +127,12 @@ Page({
   },
 
   fetchDashboard: function (month, options) {
-    return api.callApi('dashboard.get', { month: month }, options).catch(function (error) {
+    const query = dashboardQuery(month)
+    return api.callApi('dashboard.get', query, options).catch(function (error) {
       if (!error || error.code !== 'INITIALIZATION_REQUIRED') throw error
       return api.bootstrap({ force: true }).then(function (result) {
         app.globalData.categories = Array.isArray(result.categories) ? result.categories : []
-        return api.callApi('dashboard.get', { month: month }, options)
+        return api.callApi('dashboard.get', query, options)
       })
     })
   },
@@ -143,8 +141,9 @@ Page({
   onUnload: function(){pageReadSession.end(this)},
   loadDashboard: function (options) {
     const month = time.currentMonth()
-    const snapshot = api.displaySnapshot('dashboard.get', { month })
-    const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'netIncomeText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
+    const query = dashboardQuery(month)
+    const snapshot = api.displaySnapshot('dashboard.get', query)
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
     if (this._dashboardLoad || !app.hasLoginApproval()) {
       return this._dashboardLoad || Promise.resolve()
     }
@@ -153,7 +152,7 @@ Page({
     this._dashboardReadTicket = readTicket
     const startedAt = Date.now()
     const force = Boolean(options && (options.force || options.currentTarget))
-    this.setData({ loading: force || !api.isFresh('dashboard.get', { month: month }), errorMessage: '', month: month, monthLabel: time.monthLabel(month), dashboardFresh: false,
+    this.setData({ loading: force || !api.isFresh('dashboard.get', query), errorMessage: '', month: month, dashboardFresh: false,
       dashboardStatus: this.data.hasDashboard || snapshot ? '显示上次结果，正在检查费用并更新' : '正在检查费用并读取账本' })
 
     const applyDashboard = function (dashboard, state) {
@@ -163,7 +162,6 @@ Page({
           netWorthText: money.formatMinor(dashboard.netWorthMinor),
           incomeText: money.formatMinor(dashboard.summary.incomeMinor),
           expenseText: money.formatMinor(dashboard.summary.expenseMinor),
-          netIncomeText: money.formatMinor(dashboard.summary.netIncomeMinor),
           hasDashboard: true,
           dashboardFresh: Boolean(state && state.complete),
           dashboardStatus: !state ? '显示上次结果，正在检查费用并更新' : state.complete ? '' : '费用同步未完成，当前结果还不是最新余额',
@@ -220,7 +218,7 @@ Page({
     })()
       .catch(function () {
         if (!isCurrent()) return
-        self.setData({ errorMessage: self.data.hasDashboard ? '更新未成功，当前显示上次结果' : '账本暂时没连接上', dashboardFresh: false, dashboardStatus: self.data.hasDashboard ? '更新未完成，当前显示上次结果' : '' })
+        self.setData({ errorMessage: self.data.hasDashboard ? '更新未成功，当前显示上次结果' : '首页暂未读取', dashboardFresh: false, dashboardStatus: self.data.hasDashboard ? '更新未完成，当前显示上次结果' : '' })
       })
       .finally(function () {
         if (!isCurrent()) return

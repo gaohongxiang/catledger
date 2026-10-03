@@ -1395,6 +1395,7 @@ test('dashboard returns net worth, month summary, cash-flow trend and recent for
     data: { month: '2026-08' }
   })
   assert.equal(dashboard.netWorthMinor, '960')
+  assert.equal(dashboard.summaryScope, 'month')
   assert.equal(dashboard.summary.incomeMinor, '100')
   assert.equal(dashboard.summary.expenseMinor, '40')
   assert.equal(dashboard.cashFlowTrend.length, 6)
@@ -1420,6 +1421,54 @@ test('dashboard returns net worth, month summary, cash-flow trend and recent for
   assert.equal(statistics.incomeCategories[0].shareBasisPoints, 10000)
   assert.equal(statistics.daily.length, 31)
   assert.equal(statistics.daily[28].incomeMinor, '100')
+})
+
+test('首页累计收支跨年份且独立于趋势月份，退款、转账、期初、删除和用户隔离保持', { skip: !hasDatabase }, async () => {
+  const user = await bootstrapLedgerUser('home-all-time'), other = await bootstrapLedgerUser('home-all-time-other')
+  const context = { provider: 'wechat-mini', subjectHash: user.subjectHash }
+  const account = await createTestAccount(user.subjectHash, { openingDisplayBalanceMinor: '900',
+    occurredLocalAt: '2024-01-01T00:00:00', timezoneOffsetMinutes: -480 })
+  const destination = await createTestAccount(user.subjectHash)
+  const dashboard = month => transactionService.dashboard({ ...context, data: { month, summaryScope: 'all' } })
+  const empty = await dashboard('2026-08')
+  assert.deepEqual(empty.summary, { incomeMinor: '0', expenseMinor: '0', netIncomeMinor: '0' })
+  assert.equal(empty.netWorthMinor, '900', '期初余额只影响当前净资产')
+  const create = data => transactionService.create({ ...context, data: { requestId: randomTestUuid(),
+    timezoneOffsetMinutes: -480, occurredLocalAt: '2026-08-29T12:00:00', ...data } })
+  await create({ type: 'income', destinationAccountId: account.accountId, categoryId: user.incomeCategory.id,
+    amountMinor: '500', occurredLocalAt: '2024-01-01T12:00:00' })
+  const oldExpense = await create({ type: 'expense', sourceAccountId: account.accountId, categoryId: user.expenseCategory.id,
+    amountMinor: '200', occurredLocalAt: '2024-02-01T12:00:00' })
+  await create({ type: 'refund', destinationAccountId: account.accountId, originalTransactionId: oldExpense.transactionId,
+    amountMinor: '50', occurredLocalAt: '2025-03-01T12:00:00' })
+  await create({ type: 'income', destinationAccountId: account.accountId, categoryId: user.incomeCategory.id, amountMinor: '100' })
+  await create({ type: 'expense', sourceAccountId: account.accountId, categoryId: user.expenseCategory.id, amountMinor: '40' })
+  const unlinked = await create({ type: 'refund', destinationAccountId: account.accountId,
+    originalTransactionId: oldExpense.transactionId, amountMinor: '70' })
+  // 导入的待关联退款已到账，但尚不冲减统计；手工新增退款必须关联原消费。
+  await pool.execute("UPDATE catledger_transactions SET original_transaction_id = NULL, origin = 'import' WHERE transaction_id = ?", [unlinked.transactionId])
+  await create({ type: 'transfer', sourceAccountId: account.accountId, destinationAccountId: destination.accountId, amountMinor: '30' })
+  const removed = await create({ type: 'expense', sourceAccountId: account.accountId, categoryId: user.expenseCategory.id, amountMinor: '80' })
+  await transactionService.remove({ ...context, data: { requestId: randomTestUuid(), transactionId: removed.transactionId, version: removed.version } })
+  const otherAccount = await createTestAccount(other.subjectHash)
+  await transactionService.create({ provider: 'wechat-mini', subjectHash: other.subjectHash, data: {
+    requestId: randomTestUuid(), type: 'income', destinationAccountId: otherAccount.accountId,
+    categoryId: other.incomeCategory.id, amountMinor: '999999', occurredLocalAt: '2026-08-01T12:00:00', timezoneOffsetMinutes: -480 } })
+  const before = await repository.bootstrap(context)
+  const all = await dashboard('2026-08'), differentMonth = await dashboard('2024-02')
+  assert.equal(all.summaryScope, 'all')
+  assert.deepEqual(all.summary, { incomeMinor: '600', expenseMinor: '190', netIncomeMinor: '410' })
+  assert.deepEqual(differentMonth.summary, all.summary, '累计不随月份或最近六个月窗口缩小')
+  assert.equal(all.netWorthMinor, '1380')
+  assert.equal(differentMonth.netWorthMinor, all.netWorthMinor)
+  assert.equal(all.cashFlowTrend[5].incomeMinor, '100')
+  assert.equal(all.cashFlowTrend[5].expenseMinor, '40')
+  const monthly = await transactionService.dashboard({ ...context, data: { month: '2026-08' } })
+  const statistics = await transactionService.statistics({ ...context, data: { month: '2026-08' } })
+  assert.deepEqual(monthly.summary, { incomeMinor: '100', expenseMinor: '40', netIncomeMinor: '60' })
+  assert.deepEqual(statistics.summary, monthly.summary)
+  assert.equal((await repository.bootstrap(context)).dataRevision, before.dataRevision, '读取不生成账目或推进修订')
+  await assert.rejects(transactionService.dashboard({ ...context, data: { month: '2026-08', summaryScope: 'unknown' } }), { publicCode: 'VALIDATION_ERROR' })
 })
 
  test('单笔分类编辑与未分类分页：真实MySQL隔离、幂等、并发和余额不变', { skip: !hasDatabase }, async () => {

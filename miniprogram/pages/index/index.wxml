@@ -1,5 +1,4 @@
 <view class="page-canvas home-page {{themeClass}}" style="{{themeStyle}}">
-  <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note" bindtap="loadDashboard" aria-role="button">{{chargeSyncMessage}}；点此重试，或在贷款详情继续同步。</view>
   <view class="home-header home-content-line">
     <view class="home-intro">
       <text class="home-greeting">{{todayLabel}}</text>
@@ -14,34 +13,32 @@
   <block wx:else>
     <view class="net-worth-card">
       <view class="net-worth-heading">
-        <text class="net-worth-label">净资产</text>
-        <text class="net-worth-month">{{monthLabel}}</text>
+        <text class="net-worth-label">当前净资产</text>
       </view>
       <ticker-number class="net-worth-number money-number" value="{{loggedIn && hasDashboard ? netWorthText : '—'}}" />
-      <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 || netIncomeText.length > 12 ? 'month-strip-stacked' : ''}}">
+      <view class="month-strip {{incomeText.length > 12 || expenseText.length > 12 ? 'month-strip-stacked' : ''}}">
         <view class="month-stat">
           <view class="month-stat-heading">
-            <text class="month-stat-label">收入</text>
+            <text class="month-stat-label">累计收入</text>
           </view>
           <text class="month-stat-value money-number amount-income">{{loggedIn && hasDashboard ? incomeText : '—'}}</text>
         </view>
         <view class="month-stat">
           <view class="month-stat-heading">
-            <text class="month-stat-label">支出</text>
+            <text class="month-stat-label">累计支出</text>
           </view>
           <text class="month-stat-value money-number amount-expense">{{loggedIn && hasDashboard ? expenseText : '—'}}</text>
-        </view>
-        <view class="month-stat">
-          <view class="month-stat-heading">
-            <text class="month-stat-label">结余</text>
-          </view>
-          <text class="month-stat-value money-number">{{loggedIn && hasDashboard ? netIncomeText : '—'}}</text>
         </view>
       </view>
     </view>
 
-    <view wx:if="{{loggedIn && dashboardStatus}}" class="charge-sync-note" aria-role="status">{{dashboardStatus}}</view>
-    <ui-state wx:if="{{errorMessage && hasDashboard}}" error description="{{errorMessage}} · 重试" bindtap="loadDashboard" />
+    <view wx:if="{{loggedIn && (loading || errorMessage || dashboardStatus || chargeSyncMessage)}}" class="home-read-status {{!loading && (errorMessage || chargeSyncMessage) ? 'home-read-status-error' : ''}}" aria-role="{{errorMessage ? 'alert' : 'status'}}">
+      <view class="home-read-state">
+        <view wx:if="{{loading}}" class="dashboard-refresh-icon dashboard-refresh-spinning"></view>
+        <text class="home-read-message">{{loading ? (hasDashboard ? '正在更新首页…' : '正在读取首页…') : (errorMessage || chargeSyncMessage || dashboardStatus)}}</text>
+      </view>
+      <view wx:if="{{!loading}}" class="dashboard-refresh" bindtap="loadDashboard" hover-class="none" aria-role="button" aria-label="重新读取首页全部数据"><text class="dashboard-refresh-label">重试</text></view>
+    </view>
     <view class="home-flow">
 
 
@@ -81,16 +78,12 @@
           </view>
         </view>
         <view wx:elif="{{!loggedIn}}" class="statistics-card-empty">暂无收支数据</view>
-        <view wx:elif="{{loading}}" class="statistics-card-empty">正在汇总本月账目…</view>
+        <view wx:elif="{{loading}}" class="statistics-card-empty">正在汇总收支趋势…</view>
         <view wx:elif="{{trendReady}}" class="statistics-card-empty">近半年还没有收支</view>
         <view wx:else class="statistics-card-empty">统计数据暂未连接</view>
     </view>
 
     <section-header class="section-heading" compact title="账户余额">
-        <view wx:if="{{loggedIn}}" class="dashboard-refresh {{errorMessage ? 'dashboard-refresh-error' : ''}}" bindtap="loadDashboard" hover-class="none" aria-role="button" aria-label="{{loading ? '账户余额正在更新' : (errorMessage ? '数据同步失败，点击重试' : '刷新账户余额')}}">
-          <text wx:if="{{errorMessage}}" class="dashboard-refresh-label">重试</text>
-          <view wx:else class="dashboard-refresh-icon {{loading ? 'dashboard-refresh-spinning' : ''}}"></view>
-        </view>
         <text class="section-link" bindtap="openAccounts">全部</text>
     </section-header>
 
@@ -104,8 +97,8 @@
           </view>
         </view>
     </view>
-    <view wx:elif="{{loading && !hasDashboard}}" class="account-empty" aria-role="status">正在读取账户…</view>
-    <view wx:elif="{{errorMessage && !hasDashboard}}" class="account-empty ui-state-error" bindtap="loadDashboard" aria-role="button">账户暂未读取，点此重试</view>
+    <skeleton-rows wx:elif="{{loading && !hasDashboard}}" rows="{{2}}" />
+    <view wx:elif="{{loggedIn && !hasDashboard}}" class="account-empty">账户暂未读取</view>
     <view wx:else class="account-empty">{{loggedIn ? '还没有账户，添加后会显示在这里' : '登录后查看你的账户'}}</view>
 
     <section-header class="section-heading recent-heading" compact title="最近账目">
@@ -130,7 +123,7 @@
           <text class="timeline-amount money-number {{item.amountClass}}">{{item.amountText}}</text>
         </view>
       </view>
-      <empty-cat wx:else title="这个月还没有账" description="导入或手动记录后，最新账目会出现在这里。" />
+      <empty-cat wx:else title="还没有账目" description="导入或手动记录后，最新账目会出现在这里。" />
     </block>
     <skeleton-rows wx:elif="{{loading}}" rows="{{3}}" />
     <empty-cat wx:else title="{{errorMessage ? '账目暂未读取' : '登录后查看最近账目'}}" description="导入或手动记录后，最新账目会出现在这里。" />

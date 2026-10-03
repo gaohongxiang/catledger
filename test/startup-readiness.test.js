@@ -7,7 +7,7 @@ const due = (overrides = {}) => ok({ count: 0, cutoff: '2026-10-01', recheckAfte
 
 test('首页同作用域快照在费用查询返回前交付，正式 dashboard 等同步后只读一次', async () => {
   const h = runtime(), page = h.page('index'); page.onLoad()
-  await h.api.callApi('dashboard.get', { month: page.data.month })
+  await h.api.callApi('dashboard.get', { month: page.data.month, summaryScope: 'all' })
   h.cache.invalidate(['transactions'])
   let release
   h.respond = action => action === 'loans.dueCharges' ? new Promise(resolve => { release = resolve }) : undefined
@@ -36,7 +36,7 @@ test('无快照与未确认身份不会借旧数据显示余额，关闭后的�
   assert.equal(page.data.hasDashboard, false)
   h.app.approved = false
   await page.loadDashboard()
-  assert.equal(h.api.displaySnapshot('dashboard.get', { month: page.data.month }), null)
+  assert.equal(h.api.displaySnapshot('dashboard.get', { month: page.data.month, summaryScope: 'all' }), null)
 })
 
 test('费用失败仍可展示已知账本但明确未完成，下一次重试不得复用失败', async () => {

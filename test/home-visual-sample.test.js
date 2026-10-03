@@ -18,7 +18,7 @@ function rule(selector) {
 test('首页样板保留净值口径、五项金额绑定和用户头像', () => {
   assert.match(markup, /净资产/)
   assert.doesNotMatch(markup, /总资产|人民币净值|资产减去负债/)
-  for (const key of ['netWorthText', 'incomeText', 'expenseText', 'netIncomeText', 'displayAvatarUrl']) {
+  for (const key of ['netWorthText', 'incomeText', 'expenseText', 'displayAvatarUrl']) {
     assert.ok(key === 'displayAvatarUrl' ? markup.includes('{{' + key + '}}') : markup.includes("{{loggedIn && hasDashboard ? " + key + " : '—'}}"), key)
   }
   assert.match(markup, /item\.balanceText/)
@@ -94,7 +94,7 @@ test('未登录/空数据/更新/失败分支继续存在', () => {
   for (const expression of ['!cloudAvailable', '!loggedIn', 'loading', 'trendReady', 'errorMessage', 'accounts.length > 0', 'hasDashboard', 'recentTransactions.length > 0']) {
     assert.ok(markup.includes(expression), expression)
   }
-  assert.match(markup, /数据同步失败，点击重试/)
+  assert.match(markup, /重新读取首页全部数据/)
 })
 
 test('首页不隐藏账户方向和来源时间', () => {
@@ -135,11 +135,11 @@ test('净值卡文字颜色全部走主题 hero 令牌，不再保留页面级�
   assert.match(rule('.net-worth-card'), /color:\s*var\(--theme-hero-ink/)
   assert.match(rule('.net-worth-number'), /color:\s*var\(--theme-hero-value-ink/)
   assert.match(rule('.net-worth-label'), /color:\s*var\(--theme-hero-muted/)
-  assert.match(rule('.net-worth-month'), /color:\s*var\(--theme-hero-muted/)
+  assert.doesNotMatch(markup, /net-worth-month|monthLabel/)
 })
 
-test('月度长金额改为纵向摘要，保持原始金额字符串和负号', () => {
-  assert.match(markup, /incomeText\.length > 12 \|\| expenseText\.length > 12 \|\| netIncomeText\.length > 12/)
+test('累计长金额改为纵向摘要，保持原始金额字符串和负号', () => {
+  assert.match(markup, /incomeText\.length > 12 \|\| expenseText\.length > 12/)
   assert.match(markup, /month-strip-stacked/)
   assert.match(rule('.month-strip-stacked'), /display:\s*block/)
   assert.match(rule('.month-strip-stacked .month-stat'), /justify-content:\s*space-between/)
@@ -152,7 +152,7 @@ test('首页 hero 大圆角抬升柔影，无水印无卡内趋势', () => {
   assert.doesNotMatch(markup, /net-worth-watermark|hero-trend/)
 })
 
-test('时段问候移到页头标题之上，月度收支结余小字条留在 hero 底部', () => {
+test('时段问候移到页头标题之上，累计收支小字条留在 hero 底部', () => {
   const source = read('miniprogram/pages/index/index.js')
   assert.match(markup, /class="home-greeting">\{\{todayLabel\}\}/)
   assert.doesNotMatch(markup, /net-worth-greeting/)

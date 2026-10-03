@@ -9,6 +9,9 @@ const IDENTITY_TIMEOUT_MS = 15000
 let startupIdentity = null
 
 function validatePayload(action, data, result) {
+  if (action === 'dashboard.get' && data && data.summaryScope === 'all' && result.summaryScope !== 'all') {
+    throw Object.assign(new Error('累计收支暂时无法读取，请稍后重试'), { code: 'INVALID_RESPONSE' })
+  }
   if (action === 'catalog.get' && (!Array.isArray(result.accounts) || !Array.isArray(result.categories))) {
     throw Object.assign(new Error('暂时无法加载账户和分类'), { code: 'INVALID_RESPONSE' })
   }

@@ -79,8 +79,9 @@
     "profile.update": {"kind": "idempotent-mutation", "data": ["requestId", "nickname", "previousNickname"], "returns": ["nickname"], "rules": ["Trim and save 1..6 Unicode characters on the current user's account; previousNickname is the last server value and stale edits conflict; nickname is never an identity or unique key"]},
     "dashboard.get": {
       "kind": "read",
-      "data": ["month"],
-      "returns": ["month", "netWorthMinor", "summary", "cashFlowTrend", "accounts", "recentTransactions"]
+      "data": ["month", "summaryScope? (month|all; defaults to month)"],
+      "returns": ["month", "summaryScope", "netWorthMinor", "summary", "cashFlowTrend", "accounts", "recentTransactions"],
+      "rules": ["summaryScope=all aggregates every non-deleted formal transaction for the trusted user, independently of the trend month. Linked refunds reduce expense; transfers, principal and balance adjustments are not income or expense. Net worth remains current account book balances. The home card requests all; legacy requests and statistics retain monthly summaries."]
     },
     "statistics.get": {
       "kind": "read",

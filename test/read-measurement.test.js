@@ -12,7 +12,7 @@ test('MINI-1915 缓存冷/热/并发/前台/写屏障/失败/换用户计数', a
   let derives = 0
   for (const [key, fn] of Object.entries(viewModel)) if (typeof fn === 'function') viewModel[key] = (...args) => { derives++; return fn(...args) }
   observer.attach(home)
-  const key = stableKey('dashboard.get', { month: h.load('utils/time').currentMonth() })
+  const key = stableKey('dashboard.get', { month: h.load('utils/time').currentMonth(), summaryScope: 'all' })
   const state = () => {
     const snapshot = h.cache.snapshot(key)
     return { token: h.cache.token(key), fresh: snapshot ? snapshot.fresh : false, revision: snapshot ? snapshot.value.dataRevision : null }
@@ -98,7 +98,7 @@ test('MINI-1915 冷启动持久快照的展示、刷新成功和失败计数', a
     h.intercept = action => action === 'dashboard.get' ? new Promise(resolve => { release = resolve }) : undefined
     if (!succeeds) h.respond = action => action === 'dashboard.get' ? { ok: false, error: { code: 'CONFLICT', message: '合成拒绝' } } : undefined
     observer.attach(home); observer.enable(true)
-    const key = stableKey('dashboard.get', { month: h.load('utils/time').currentMonth() })
+    const key = stableKey('dashboard.get', { month: h.load('utils/time').currentMonth(), summaryScope: 'all' })
     const metrics = () => {
       const events = observer.snapshot()
       return { requests: h.calls.filter(c=>c.action!=='loans.dueCharges').length, dueReads:h.calls.filter(c=>c.action==='loans.dueCharges').length, responseBytes: events.filter(e => e.event === 'request').reduce((sum, e) => sum + (e.bytes || 0), 0),

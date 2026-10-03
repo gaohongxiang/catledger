@@ -1,5 +1,6 @@
 const { listAccountsForUser } = require('./account-service')
 const { executeLedgerRead } = require('./ledger-read')
+const { ledgerError } = require('./ledger-errors')
 const { parseMonth } = require('./local-time')
 const { minorUnitsToString } = require('./money')
 const { transactionToPublic } = require('./transaction-domain')
@@ -207,6 +208,8 @@ async function queryMonthlyCashFlowTrend(connection, uid, month) {
 
 function createReportingService({ getPool }) {
   async function dashboard(context) {
+    const summaryScope = context.data && context.data.summaryScope != null ? context.data.summaryScope : 'month'
+    if (!['month', 'all'].includes(summaryScope)) throw ledgerError('VALIDATION_ERROR')
     return executeLedgerRead({
       getPool,
       ...context,
@@ -223,13 +226,16 @@ function createReportingService({ getPool }) {
           pageSize: 5
         }, null)
         const cashFlowTrend = await queryMonthlyCashFlowTrend(connection, uid, month)
-        const summary = summaryFromTrend(cashFlowTrend, month)
+        const summary = summaryScope === 'all'
+          ? await queryMonthlySummary(connection, uid, null)
+          : summaryFromTrend(cashFlowTrend, month)
         const netWorth = accounts.reduce(
           (total, account) => total + BigInt(account.bookBalanceMinor),
           0n
         )
         return {
           month,
+          summaryScope,
           netWorthMinor: netWorth.toString(),
           summary,
           cashFlowTrend,

@@ -230,9 +230,9 @@ test('正式交易和导入入账均刷新相关缓存，普通草稿读取不�
   await visit(h, 'index')
   assert.equal(h.page('index').data.netWorthText, '¥101.00')
   await h.importApi.callImport('financeUpdates.summary', { updateId: 'synthetic' })
-  assert.equal(h.api.isFresh('dashboard.get', { month: h.page('index').data.month }), true)
+  assert.equal(h.api.isFresh('dashboard.get', { month: h.page('index').data.month, summaryScope: 'all' }), true)
   await h.importApi.callImport('financeUpdates.post', { updateId: 'synthetic' })
-  assert.equal(h.api.isFresh('dashboard.get', { month: h.page('index').data.month }), false)
+  assert.equal(h.api.isFresh('dashboard.get', { month: h.page('index').data.month, summaryScope: 'all' }), false)
 })
 
 test('缓存失效会重新读取；已有页面内容保留，失败不会改成零', async () => {

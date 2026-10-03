@@ -48,7 +48,7 @@ function runtime(savedStorage, options = {}) {
       else if (action === 'profile.get') result = { nickname: '测试用户' }
       else if (action === 'categories.list') result = { categories }
       else if (action === 'accounts.list') result = { accounts: h.accounts || accounts() }
-      else if (action === 'dashboard.get') result = { accounts: accounts(), summary, netWorthMinor: balance, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }], recentTransactions: [] }
+      else if (action === 'dashboard.get') result = { accounts: accounts(), summary, summaryScope: data.summaryScope || 'month', netWorthMinor: balance, cashFlowTrend: [{ month: data.month, incomeMinor: '0', expenseMinor: '100' }], recentTransactions: [] }
       else if (action === 'transactions.list') result = { source: data.source || null, transactions: [transaction(data.search || (data.accountId ? data.accountId : data.cursor ? 'row-2' : 'row-1'))], nextCursor: data.cursor ? null : 'page-2', ...(data.cursor ? {} : { summary }) }
       else if (action === 'loans.dueCharges') result={count:0,amountMinor:'0',cutoff:'2026-09-26',batchLimit:40}
       else if(action==='loans.chargePlan') result={loanVersion:1,items:[],preview:[],issues:[],priorContracts:[],candidates:[],contract:null,cutoff:'2026-09-26',recordedMinor:'0',unverifiedMinor:'0',nextCursor:null}
