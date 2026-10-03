@@ -330,7 +330,7 @@ test('首页只保留三条最近账目以避免摘要页重心下坠', function
   assert.match(sectionHeaderStyle, /\.sh-title[^}]*font-weight:\s*500/)
   assert.match(homeStyle, /\.timeline-label[^}]*font-weight:\s*400/)
   assert.match(homeStyle, /\.account-empty[^}]*font-size:\s*var\(--font-caption, 24rpx\)/)
-  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="这个月还没有账"/)
+  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="还没有账目"/)
 })
 
 test('首页卡片外沿与文字使用内收的双基线', function () {
@@ -427,7 +427,7 @@ test('page-head 统一全部页面页头，徽章按需只留真实业务上下�
 })
 
 test('empty-cat 接管主场景空态，empty-state 保留次级场景', function () {
-  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="这个月还没有账"/)
+  assert.match(read('miniprogram/pages/index/index.wxml'), /<empty-cat wx:else title="还没有账目"/)
   assert.match(read('miniprogram/pages/transactions/index.wxml'), /<empty-cat wx:elif[^>]*title="这里暂时没有账目"/)
   assert.match(read('miniprogram/pages/loans/index.wxml'), /<empty-cat[^>]*hide-art[^>]*title="还没有贷款资料"/)
   assert.match(read('miniprogram/pages/import-history/index.wxml'), /<empty-cat[^>]*title="暂无已入账的导入记录"/)
