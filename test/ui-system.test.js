@@ -342,11 +342,12 @@ test('首页卡片外沿与文字使用内收的双基线', function () {
   assert.match(style, /\.home-content-line,[\s\S]*\.home-flow[\s\S]*padding-left:\s*20rpx/)
 })
 
-test('首页月度摘要直接使用收入绿与支出红', function () {
+test('首页月度摘要直接展示在净值卡右栏，无数据显示 —', function () {
   const template = read('miniprogram/pages/index/index.wxml')
 
-  assert.match(template, /net-worth-part-value money-number amount-income/)
-  assert.match(template, /net-worth-part-value money-number amount-expense/)
+  assert.match(template, /monthIncomeText : '—'/)
+  assert.match(template, /monthExpenseText : '—'/)
+  assert.doesNotMatch(template, /amount-income|amount-expense/)
 })
 
 test('我的页不恢复账户设置或账本设置', function () {
