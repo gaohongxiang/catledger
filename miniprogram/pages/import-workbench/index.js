@@ -8,6 +8,7 @@ const pairingEntry = require('./pairing-entry')
 const categoryEdit = require('./category-edit')
 const duplicateEdit = require('./duplicate-edit')
 const reviewDetail = require('./review-detail')
+const reviewEdit = require('./review-edit')
 const postingFlow = require('./posting-flow')
 
 const initialData = Object.assign({}, pairingReview.initialData, {
@@ -53,6 +54,7 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     categoryEditSheet: null,
     duplicateEditSheet: null,
     reviewDetailSheet: null,
+    reviewEditSheet: null,
     categoryEventCount: 0,
     categorizedEvents: [],
     categorizedEventCount: 0,
@@ -325,6 +327,14 @@ Page({
   refreshDuplicateEdit: duplicateEdit.refreshDuplicateEdit,
   invalidateDuplicateEdit: duplicateEdit.invalidateDuplicateEdit,
   pendingDuplicateEdit: duplicateEdit.pendingDuplicateEdit,
+  openReviewEdit: reviewEdit.openReviewEdit,
+  changeReviewedNature: reviewEdit.changeReviewedNature,
+  selectReviewedAccount: reviewEdit.selectReviewedAccount,
+  invalidateReviewEdit: reviewEdit.invalidateReviewEdit,
+  closeReviewEdit: reviewEdit.closeReviewEdit,
+  refreshReviewEdit: reviewEdit.refreshReviewEdit,
+  saveReviewEdit: reviewEdit.saveReviewEdit,
+  pendingReviewEdit: reviewEdit.pendingReviewEdit,
   searchDirectory: accountReview.searchDirectory,
   changeDirectoryKind: accountReview.changeDirectoryKind,
   changeDirectoryPage: accountReview.changeDirectoryPage,

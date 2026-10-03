@@ -916,6 +916,7 @@
   <include src="category-edit.wxml" />
   <include src="review-detail.wxml" />
   <include src="duplicate-edit.wxml" />
+  <include src="review-edit.wxml" />
   <view wx:if="{{directorySheet}}" class="sheet-layer directory-layer" catchtouchmove="preventTouchMove">
     <view class="sheet-scrim" bindtap="closeDirectory"></view>
     <view class="workflow-sheet editor-sheet">

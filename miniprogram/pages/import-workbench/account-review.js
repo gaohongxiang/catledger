@@ -481,6 +481,10 @@ module.exports = {
 
   openDirectory: async function (event) {
     const target = event.currentTarget.dataset.target
+    if (['reviewAccount', 'reviewCounterparty'].includes(target)) {
+      const sheet = this.data.reviewEditSheet
+      if (!sheet || sheet.loading || sheet.saving || sheet.pending || sheet.stale || sheet.saved) return
+    }
     const editor = target === 'categoryEdit' && this.data.categoryEditSheet
     if (target === 'categoryEdit' && (!editor || editor.loading || editor.saving || editor.stale || editor.pending || editor.saved)) return
     const kind = ['category', 'categoryEdit'].includes(target) ? 'categories' : 'accounts'
@@ -524,6 +528,11 @@ module.exports = {
 
   selectDirectory: function (event) {
     const sheet = this.data.directorySheet
+    if (sheet && ['reviewAccount', 'reviewCounterparty'].includes(sheet.target)) {
+      const item = sheet.items[Number(event.currentTarget.dataset.index)]
+      if (item && this.selectReviewedAccount(item, sheet.target)) this.closeDirectory()
+      return
+    }
     if (sheet && sheet.target === 'categoryEdit') {
       const item = sheet.items[Number(event.currentTarget.dataset.index)]
       if (item && this.selectEditedCategory(item)) this.closeDirectory()

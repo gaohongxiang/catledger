@@ -18,7 +18,8 @@
         <text wx:elif="{{!reviewDetailSheet.loading && !reviewDetailSheet.sources.length}}" class="relation-empty">没有可显示的原始交易。</text>
       </scroll-view>
       <view class="pairing-footer">
-        <button wx:if="{{reviewDetailSheet.canEdit}}" class="sheet-confirm sheet-confirm-wide" bindtap="openReviewJudgment" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改同笔判断</button>
+        <button wx:if="{{reviewDetailSheet.reviewEditable}}" class="sheet-confirm sheet-confirm-wide" data-id="{{reviewDetailSheet.eventId}}" bindtap="openReviewEdit" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改核对结果</button>
+        <button wx:if="{{reviewDetailSheet.canEdit}}" class="{{reviewDetailSheet.reviewEditable ? 'evidence-return' : 'sheet-confirm sheet-confirm-wide'}}" bindtap="openReviewJudgment" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改同笔判断</button>
         <button wx:if="{{reviewDetailSheet.repaymentEditable}}" class="evidence-return" data-id="{{reviewDetailSheet.eventId}}" bindtap="editLoanRepayment">设置普通转账 / 借款还款</button>
         <button class="evidence-return" bindtap="closeReviewDetails">返回列表</button>
       </view>

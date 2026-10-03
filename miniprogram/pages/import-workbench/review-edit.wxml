@@ -1,0 +1,23 @@
+<view wx:if="{{reviewEditSheet}}" class="sheet-layer" catchtouchmove="preventTouchMove">
+  <view class="sheet-scrim" bindtap="closeReviewEdit"></view>
+  <view class="workflow-sheet editor-sheet">
+    <view class="sheet-handle"></view>
+    <view class="review-sheet-heading"><text class="sheet-title serif-title">修改核对结果</text><button class="review-sheet-close" bindtap="closeReviewEdit" disabled="{{reviewEditSheet.saving}}" aria-label="关闭修改核对结果"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
+    <view wx:if="{{reviewEditSheet.record}}" class="review-preview-row">
+      <view class="review-preview-copy"><text class="review-preview-title">{{reviewEditSheet.record.displayTitle}}</text><text class="review-preview-meta">{{reviewEditSheet.record.displayMeta}}</text></view>
+      <text class="review-preview-amount money-number {{reviewEditSheet.record.directionClass}}">{{reviewEditSheet.record.amountText}}</text>
+    </view>
+    <skeleton-rows wx:if="{{reviewEditSheet.loading}}" rows="{{3}}" />
+    <view wx:elif="{{reviewEditSheet.record}}" class="mapping-fields">
+      <picker class="mapping-picker" mode="selector" range="{{natureOptions}}" range-key="label" value="{{reviewEditSheet.natureIndex}}" bindchange="changeReviewedNature" disabled="{{reviewEditSheet.saving || reviewEditSheet.pending || reviewEditSheet.saved || reviewEditSheet.stale}}">
+        <view class="mapping-field"><text class="mapping-label">交易类型</text><text class="mapping-value">{{natureOptions[reviewEditSheet.natureIndex].label}}</text><view class="field-chevron"></view></view>
+      </picker>
+      <view class="mapping-field" data-target="reviewAccount" bindtap="openDirectory" aria-role="button" aria-label="选择资金账户" aria-disabled="{{reviewEditSheet.saving || reviewEditSheet.pending || reviewEditSheet.saved || reviewEditSheet.stale}}"><text class="mapping-label">{{reviewEditSheet.accountLabel}}</text><text class="mapping-value">{{reviewEditSheet.accountName || '请选择账户'}}</text><view class="field-chevron"></view></view>
+      <view wx:if="{{reviewEditSheet.hasDestination}}" class="mapping-field" data-target="reviewCounterparty" bindtap="openDirectory" aria-role="button" aria-label="选择转入账户" aria-disabled="{{reviewEditSheet.saving || reviewEditSheet.pending || reviewEditSheet.saved || reviewEditSheet.stale}}"><text class="mapping-label">转入账户</text><text class="mapping-value">{{reviewEditSheet.counterpartyName || '请选择账户'}}</text><view class="field-chevron"></view></view>
+    </view>
+    <text wx:if="{{reviewEditSheet.error}}" class="inline-error">{{reviewEditSheet.error}}</text>
+    <button wx:if="{{reviewEditSheet.saved || (reviewEditSheet.stale && !reviewEditSheet.pending)}}" class="sheet-confirm sheet-confirm-wide" bindtap="refreshReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.saving}}">{{reviewEditSheet.saved ? '刷新列表' : '重新读取'}}</button>
+    <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认保存结果' : '保存修改'}}</button>
+    <button class="evidence-return" bindtap="closeReviewEdit" disabled="{{reviewEditSheet.saving}}">取消修改</button>
+  </view>
+</view>

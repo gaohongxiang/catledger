@@ -125,6 +125,11 @@ module.exports = {
 
   postUpdate: async function () {
     if (!this._viewActive || !getApp().hasLoginApproval() || this.data.busy || !this._draftSession) return
+    const reviewPending = this.pendingReviewEdit()
+    if (reviewPending) {
+      await this.openReviewEdit({ currentTarget: { dataset: { id: reviewPending.payload.eventId } } })
+      return
+    }
     const duplicatePending = this.pendingDuplicateEdit()
     if (duplicatePending) {
       await this.openDuplicateEdit({ currentTarget: { dataset: { id: duplicatePending.payload.eventId } } })

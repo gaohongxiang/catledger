@@ -10,6 +10,13 @@ const { setCategory: setCategoryInTransaction } = require('./review/category')
 function createReviewIssueService({ getPool }) {
   const pairings = require('./review/bank-channel-pairings').createBankChannelPairings({ getPool })
   const duplicateRevision = require('./review/duplicate-revision').createDuplicateRevision({ getPool })
+  async function setReview(context) {
+    const input = context.data
+    const values = { updateId: validateUuid(input.updateId), eventId: validateUuid(input.eventId),
+      updateVersion: validateVersion(input.updateVersion), eventVersion: validateVersion(input.eventVersion) }
+    return executeIdempotentMutation({ getPool, ...context, action: 'financeUpdates.setReview',
+      operation: (connection, uid, data, requestDigest) => require('./review/event-review').setReview(connection, uid, data, requestDigest, values) })
+  }
   async function refreshAccountGroups(context) {
     const updateId = validateUuid(context.data.updateId)
     validateUuid(context.data.requestId)
@@ -93,7 +100,7 @@ function createReviewIssueService({ getPool }) {
     })
   }
 
-  return { setCategory, setRepayment, resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups,
+  return { setReview, setCategory, setRepayment, resolve, resolveAccountMappings, reviseAccountMapping, refreshAccountGroups,
     duplicateReview: duplicateRevision.preview, reviseDuplicate: duplicateRevision.revise,
     pairings: pairings.list, resolvePairings: pairings.resolve }
 }

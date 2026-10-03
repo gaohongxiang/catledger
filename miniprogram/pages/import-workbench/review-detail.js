@@ -45,6 +45,7 @@ module.exports = {
     const token = this._reviewDetailToken = { session, eventId, version: session.summary.viewVersion,
       scope: cache.getSession(), sources: [], reading: new Set() }
     this.setData({ reviewDetailSheet: { eventId, sources: [], sourceCount: 0, loading: true, error: '', stale: false,
+      reviewEditable: this.data.update.status === 'review' && (this.data.reviewedEvents || []).some(item => item.eventId === eventId),
       canEdit: this.data.update.status === 'review' && Boolean(duplicate || row && (row.pairingDecision ||
         Number(row.evidenceCount) > 1 || Number(row.duplicateEvidenceCount) > 0)),
       repaymentEditable: this.data.update.status === 'review' && Boolean(row && ['repayment', 'internal_transfer'].includes(row.economicNature)) } })
@@ -118,6 +119,7 @@ module.exports = {
     return this.openEvidence(event)
   },
   closeReviewDetails() {
+    if (this.data.reviewEditSheet && this.data.reviewEditSheet.saving) return
     if (this.data.duplicateEditSheet && this.data.duplicateEditSheet.saving) return
     this._reviewDetailToken = null
     this.setData({ reviewDetailSheet: null })
