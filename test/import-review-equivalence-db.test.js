@@ -5,9 +5,9 @@ test('当前分类预设下导入业务图、回执、请求量与 SQL 顺序保
   // 2026-10-03自动分类完善：用同一固定UUID/时钟逐字段对照改动前后合成图。
   // 仅美食名称、分类证据/记忆、计划v32和派生视图/回执变化；交易、余额、账户和来源关系全部一致。
   // 合成银行记录只有商品、没有明确商户，不再学习两个宽泛别名；post-distinct少6轮SQL。
-  // 14阶段响应字节数保持，完整源码/SQL顺序仍由该基线约束；不得无证据整体刷新快照。
-  // 搜索游标升级单独对照旧/新视图盐：只有 summary.viewVersion / freshness.viewRevision
-  // 与 event-page.viewVersion 变化；45张表、全部业务响应、字节数及SQL逐项一致，仅更新两个响应哈希。
+  // 2026-10-04以e9cf030f读取实现作固定数据隔离对照：45张持久表、14阶段SQL数量与其他响应保持。
+  // 仅summary视图版本/新鲜度、event-page视图版本及原账单status字段变化；该页SQL仅新增已有状态列。
+  // 据此更新两阶段响应和event-page投影SQL的基线，不得无证据整体刷新快照。
   const expected = require('./fixtures/import-review-baseline.json')
   assert.deepEqual(await measure(), expected)
 })

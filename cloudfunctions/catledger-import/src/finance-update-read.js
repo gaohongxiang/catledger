@@ -23,7 +23,7 @@ async function readVersion(connection, uid, updateId) {
     UNION ALL SELECT 'categories', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_categories WHERE uid = ?
     UNION ALL SELECT 'mappings', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_import_account_mappings WHERE uid = ?`, [uid, uid, uid])
   return { update, viewVersion: digestParts('finance-view-v2-time-order-search-v2', uid, updateId, update.version,
-    update.planVersion, PLAN_VERSION, accountGroups.VERSION, JSON.stringify(directories)) }
+    update.planVersion, PLAN_VERSION, accountGroups.VERSION, excludedGroups.VERSION, JSON.stringify(directories)) }
 }
 
 const TIME_ORDER = 'local-at-asc-id-asc-v1'

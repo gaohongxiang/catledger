@@ -350,7 +350,7 @@ test('退款在主页面逐笔直接展示，不创建顺序处理入口', funct
   assert.equal(Object.prototype.hasOwnProperty.call(groups[0], 'actionText'), false)
 })
 
-test('已排除交易优先按具体账户分组并默认收起', function () {
+test('整账户排除按账户归组，自动关闭和失败按原因归组并默认收起', function () {
   const groups = model.excludedEventGroups([
     {
       eventId: 'account-1', status: 'excluded', reasonCodes: ['manual_exclusion', 'account_mapping_excluded'],
@@ -383,8 +383,8 @@ test('已排除交易优先按具体账户分组并默认收起', function () {
     return { label: group.label, count: group.count, expanded: group.expanded }
   }), [
     { label: '支付宝小荷包（树与草的小荷包）', count: 3, expanded: false },
-    { label: '支付宝账户余额', count: 1, expanded: false },
-    { label: '微信零钱', count: 1, expanded: false }
+    { label: '交易关闭', count: 1, expanded: false },
+    { label: '交易失败', count: 1, expanded: false }
   ])
   assert.deepEqual(groups[0].events.map(function (event) { return event.eventId }), ['account-1', 'account-2', 'account-legacy'])
 })

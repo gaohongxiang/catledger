@@ -169,10 +169,10 @@ test('空片段带后续游标不能无限补读或伪造完整页', async () =>
   page.onUnload()
 })
 
-test('同一账户不同排除原因仍合组，首笔变化后组标识稳定', () => {
+test('已明确整账户排除的记录合组，首笔变化后组标识稳定', () => {
   const rows = fixture(41).events.map((row, index) => ({ ...row, status: 'excluded',
     localAt: '2026-09-01 12:' + String(index).padStart(2, '0') + ':00',
-    reasonCodes: [index >= 32 && index < 34 ? 'source_non_financial' : 'account_mapping_excluded'],
+    reasonCodes: index >= 32 && index < 34 ? ['source_non_financial', 'account_mapping_excluded'] : ['account_mapping_excluded'],
     primaryEvidence: { ...row.primaryEvidence, sourceType: 'alipay',
       paymentMethod: index === 40 ? '合成小荷包乙' : '合成小荷包甲' } }))
   const groups = model.excludedEventGroups(rows)
@@ -191,27 +191,32 @@ function excludedFixture(count = 137) {
   return data
 }
 
-test('排除账户卡不暗示整账户被手动排除，展开后逐笔展示自动、账户规则和手动原因', async () => {
-  const data = excludedFixture(6)
+test('同账户的整账户排除、自动排除及单笔手动排除分开归组，不同账户的相同自动原因合组', async () => {
+  const data = excludedFixture(8)
   const reasons = [['transaction_closed'], ['transaction_failed'], ['manual_exclusion', 'source_account_ignored_default'],
-    ['manual_exclusion', 'account_mapping_excluded'], ['manual_exclusion'], []]
-  const statuses = ['交易关闭', '支付失败', '交易成功', '交易成功', '交易成功', '']
+    ['manual_exclusion', 'account_mapping_excluded'], ['manual_exclusion'], [], ['transaction_closed'], ['transaction_failed']]
+  const statuses = ['交易关闭', '支付失败', '交易成功', '交易成功', '交易成功', '', '交易关闭', '支付失败']
   data.events.forEach((row, index) => { row.reasonCodes = reasons[index]
-    row.primaryEvidence.paymentMethod = '合成银行信用购'; row.primaryEvidence.status = statuses[index] })
+    row.primaryEvidence.paymentMethod = index < 6 ? '合成银行信用购' : '合成另一账户'; row.primaryEvidence.status = statuses[index] })
   const h = runtime(data), page = h.page
   page.data.activeReviewStatus = 'excluded'
   await page.setStep({ currentStep: 3 })
-  assert.equal(page.data.excludedReviewGroups.length, 1)
-  const group = page.data.excludedReviewGroups[0]
-  assert.equal(group.label, '合成银行信用购')
-  assert.equal(group.count, 6)
+  assert.deepEqual(Array.from(page.data.excludedReviewGroups, group => [group.label, group.count]), [
+    ['交易关闭', 2], ['交易失败', 2], ['合成银行信用购', 2], ['手动排除', 1], ['其他排除', 1]
+  ])
   const { groupFor } = require('../cloudfunctions/catledger-import/src/excluded-event-groups')
-  assert.equal(groupFor({ sourceType: 'alipay', paymentMethod: '合成银行信用购', reasonCodes: reasons[0] }).label, group.label)
-  await page.toggleExcludedGroup(tap({ key: group.key }))
-  const records = page.data.excludedReviewGroups[0].events
+  assert.equal(groupFor({ sourceType: 'alipay', paymentMethod: '合成银行信用购', reasonCodes: reasons[0] }).label, '交易关闭')
+  assert.equal(groupFor({ sourceType: 'alipay', paymentMethod: '合成银行信用购', reasonCodes: reasons[2] }).label, '合成银行信用购')
+  const byId = new Map()
+  for (const group of page.data.excludedReviewGroups) {
+    await page.toggleExcludedGroup(tap({ key: group.key }))
+    const opened = page.data.excludedReviewGroups.find(row => row.key === group.key)
+    for (const row of opened.events) { assert.equal(byId.has(row.eventId), false); byId.set(row.eventId, row) }
+  }
+  const records = data.events.map(row => byId.get(row.eventId))
   assert.deepEqual(Array.from(records, row => row.exclusionReasonText), [
     '交易已关闭，自动不计入', '交易失败，自动不计入', '按已保存的账户规则自动排除',
-    '按本次账户选择排除', '本次手动排除', '原因待核对'
+    '按本次账户选择排除', '本次手动排除', '原因待核对', '交易已关闭，自动不计入', '交易失败，自动不计入'
   ])
   assert.deepEqual(Array.from(records, row => row.sourceStatus), statuses)
   assert.equal(h.calls.some(call => !['financeUpdates.summary', 'economicEvents.list'].includes(call.action)), false)

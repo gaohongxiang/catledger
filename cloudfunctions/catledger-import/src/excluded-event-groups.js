@@ -1,6 +1,6 @@
 const { digestParts } = require('./digest')
 
-const VERSION = 'excluded-event-groups-v1'
+const VERSION = 'excluded-event-groups-v2'
 const UNKNOWN_ACCOUNTS = new Set(['未提供', '未填写', '未注明', '未标明', '未知', '不详', '无', '暂无', '该账户',
   '待确认', '未识别', '未知账户', '未知支付方式', '微信支付方式未标明', '支付宝支付方式未标明', '银行账户未标明', 'na', 'null', 'undefined'])
 
@@ -20,22 +20,22 @@ function groupId(key) {
 }
 
 function reasonFor(row) {
-  // 一个具体来源账户只有一张卡，排除理由保留在各笔事件中，不再把同账户拆卡。
-  for (const candidate of [row.paymentMethod, row.fromLabel, row.toLabel]) {
-    const accountName = String(candidate || '').trim(), normalized = normalizePaymentAccountName(accountName)
-    if (normalized && !UNKNOWN_ACCOUNTS.has(normalized)) return {
-      key: 'account:' + String(row.sourceType || '') + ':' + normalized,
-      label: accountName, note: '按来源账户归组，具体排除原因见各笔记录。'
-    }
-  }
   const reasons = new Set(row.reasonCodes || [])
-  if (reasons.has('source_non_financial')) return { key: 'source_non_financial', label: '非资金记录', note: '只保留来源证据，不创建账户或正式账目。' }
-  if (reasons.has('transaction_closed')) return { key: 'transaction_closed', label: '交易已关闭', note: '账单状态明确为关闭，不会计入账本。' }
-  if (reasons.has('transaction_failed')) return { key: 'transaction_failed', label: '交易失败', note: '账单状态明确为失败，不会计入账本。' }
-  if (reasons.has('already_posted')) return { key: 'already_posted', label: '已经入账', note: '相同来源交易已经存在，不会重复入账。' }
+  // 只有整账户排除决定才按账户归组；支付账户名称不能替代自动排除原因。
   if (reasons.has('account_mapping_excluded') || reasons.has('source_account_ignored_default')) {
+    for (const candidate of [row.paymentMethod, row.fromLabel, row.toLabel]) {
+      const accountName = String(candidate || '').trim(), normalized = normalizePaymentAccountName(accountName)
+      if (normalized && !UNKNOWN_ACCOUNTS.has(normalized)) return {
+        key: 'account:' + String(row.sourceType || '') + ':' + normalized,
+        label: accountName, note: '这些记录按账户排除规则不计入本次账本。'
+      }
+    }
     return { key: 'account_mapping_excluded', label: '账户已排除', note: '这些记录按账户排除决定不计入本次账本。' }
   }
+  if (reasons.has('source_non_financial')) return { key: 'source_non_financial', label: '非资金记录', note: '只保留来源证据，不创建账户或正式账目。' }
+  if (reasons.has('transaction_closed')) return { key: 'transaction_closed', label: '交易关闭', note: '账单状态明确为关闭，不会计入账本。' }
+  if (reasons.has('transaction_failed')) return { key: 'transaction_failed', label: '交易失败', note: '账单状态明确为失败，不会计入账本。' }
+  if (reasons.has('already_posted')) return { key: 'already_posted', label: '已经入账', note: '相同来源交易已经存在，不会重复入账。' }
   if (reasons.has('manual_exclusion')) return { key: 'manual_exclusion', label: '手动排除', note: '整理时选择了不计入本次账本。' }
   return { key: 'other_exclusion', label: '其他排除', note: '这些记录不满足本次入账条件。' }
 }

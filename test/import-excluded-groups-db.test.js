@@ -26,7 +26,7 @@ function ordered(rows, key = 'eventId') {
     || String(a.localAt || '').localeCompare(String(b.localAt || '')) || a[key].localeCompare(b[key]))
 }
 
-test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员分页与只读隔离', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 120000 }, async t => {
+test('已排除整批归组：真实 MySQL 区分整账户与自动排除、独立成员分页与只读隔离', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 120000 }, async t => {
   const lab = await isolatedMysql()
   try {
     const apiPool = await lab.role('api', grants.api), importPool = await lab.role('import', grants.importer), trace = []
@@ -59,9 +59,10 @@ test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员�
         let bucket = second ? 'other-source' : i < 125 ? 'main' : i < 180 ? 'other-account-' + i
           : i < 183 ? 'closed' : i < 186 ? 'failed' : ['non-financial', 'manual', 'other', 'history-auto', 'history-link', 'unknown-account', 'active'][i - 186]
         const reasons = second ? ['account_mapping_excluded'] : i < 125
-          ? [['account_mapping_excluded'], ['source_account_ignored_default'], ['manual_exclusion'], ['transaction_closed'],
-            ['transaction_failed'], ['source_non_financial'], ['synthetic_other_exclusion']][i % 7]
-          : i < 180 ? ['account_mapping_excluded'] : i < 183 ? ['account_mapping_excluded', 'transaction_closed']
+          ? [['account_mapping_excluded'], ['source_account_ignored_default'], ['manual_exclusion', 'account_mapping_excluded'],
+            ['transaction_closed', 'account_mapping_excluded'], ['transaction_failed', 'source_account_ignored_default'],
+            ['source_non_financial', 'account_mapping_excluded'], ['synthetic_other_exclusion', 'account_mapping_excluded']][i % 7]
+          : i < 180 ? ['account_mapping_excluded'] : i < 183 ? ['transaction_closed']
             : i < 186 ? ['manual_exclusion', 'transaction_failed'] : [
               ['transaction_failed', 'source_non_financial'], ['manual_exclusion'], [], ['already_posted', 'account_mapping_excluded'],
               ['linked_existing_transaction', 'account_mapping_excluded'], ['source_account_ignored_default'], ['manual_exclusion']][i - 186]
@@ -69,6 +70,8 @@ test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员�
           : i % 3 === 1 ? '合成银行 - 信用卡 尾号 1234' : '合成银行信用卡 622200001234')
           : i < 180 ? (i >= 178 ? '合成长账户'.repeat(40) + i : '合成储蓄账户' + i)
             : ['', '/', '未提供', '--', '未知', 'N/A', '暂无', 'null', 'undefined', '', '', '该账户'][i - 180]
+        // 自动/单笔排除即使有具体账户，也不能混进整账户排除卡；同原因跨账户合卡。
+        if (!second && i >= 180 && i <= 188) paymentMethod = i % 2 ? '合成另一支付账户' : name
         let fields = {}
         if (!second && i === 119) { paymentMethod = '未提供'; fields = { fundsProjection: { from: { label: name } } } }
         if (!second && i === 120) { paymentMethod = '/'; fields = { fundsProjection: { from: { label: '未知' }, to: { label: name } } } }
@@ -102,7 +105,7 @@ test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员�
       return { items, pages }
     }
     let allGroups, main, otherSource
-    await t.test('跨 50 笔与不同理由仍只一张账户卡；完整组列表按最早真实日期分页', async () => {
+    await t.test('整账户排除跨50笔仍只一卡；有具体支付账户的自动排除按原因合卡', async () => {
       const result = await collect(groups, { pageSize: 50 }, 'groupId'); allGroups = result.items
       assert.equal(allGroups.length, 63)
       assert.deepEqual(result.pages.map(page => page.items.length), [50, 13])
@@ -111,9 +114,14 @@ test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员�
       assert.ok(main); assert.ok(otherSource); assert.notEqual(main.groupId, otherSource.groupId)
       assert.equal(allGroups.reduce((n, group) => n + group.count, 0), 194)
       assert.ok(allGroups.some(group => group.label === '非资金记录' && group.count === 1))
-      assert.ok(allGroups.some(group => group.label === '交易已关闭' && group.count === 3))
+      assert.ok(allGroups.some(group => group.label === '交易关闭' && group.count === 3))
       assert.ok(allGroups.some(group => group.label === '交易失败' && group.count === 3))
       assert.ok(allGroups.some(group => group.label === '账户已排除' && group.count === 1))
+      assert.equal(allGroups.some(group => group.label === '合成另一支付账户'), false)
+      const closed = allGroups.find(group => group.label === '交易关闭')
+      const closedMembers = await collect(data => members(closed.groupId, data))
+      assert.deepEqual(closedMembers.items.map(row => row.eventId), ordered(events.filter(row => row.bucket === 'closed')).map(row => row.eventId))
+      assert.equal(new Set(closedMembers.items.map(row => row.primaryEvidence.paymentMethod)).size, 2)
       for (const group of allGroups) {
         assert.match(group.groupId, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
         assert.equal(group.key, group.groupId); assert.ok(group.label.length <= 160)
@@ -165,7 +173,7 @@ test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员�
       await assert.rejects(members('not-a-uuid', {}), { publicCode: 'VALIDATION_ERROR' })
       const other = localServices({ apiPool, importPool, subject: 'synthetic-excluded-groups-other' })
       const otherIdentity = await call(other.api, 'bootstrap'), otherUpdate = await prepareSyntheticUpdate(other, 3, 'SYNTHETIC-EXCLUDED-OTHER')
-      await lab.owner.execute("UPDATE catledger_economic_events SET status='excluded',reason_codes_json='[\"manual_exclusion\"]',field_sources_json='{}' WHERE uid=?", [otherIdentity.uid])
+      await lab.owner.execute("UPDATE catledger_economic_events SET status='excluded',reason_codes_json='[\"account_mapping_excluded\"]',field_sources_json='{}' WHERE uid=?", [otherIdentity.uid])
       await lab.owner.execute('UPDATE catledger_import_rows SET payment_method_raw=? WHERE uid=?', [name, otherIdentity.uid])
       await assert.rejects(call(other.import, 'economicEvents.list', { updateId, view: 'excluded_groups' }), { publicCode: 'NOT_FOUND' })
       await assert.rejects(call(other.import, 'economicEvents.list', { updateId: otherUpdate.updateId, status: 'excluded',
@@ -175,7 +183,7 @@ test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员�
       assert.ok(isolated.items.every(item => !events.some(event => event.eventId === item.eventId)))
     })
     await t.test('超长排除记录降级后仍保留自动排除原因及原账单状态', async () => {
-      const event = events.find(row => row.bucket === 'main' && row.reasons.includes('transaction_closed'))
+      const event = events.find(row => row.bucket === 'closed')
       const fields = JSON.stringify({ fundsProjection: { from: { label: '合成超长说明'.repeat(2000) } } })
       await lab.owner.execute('UPDATE catledger_economic_events SET field_sources_json=? WHERE uid=? AND event_id=?', [fields, uid, event.eventId])
       const page = await read({ status: 'excluded', eventId: event.eventId })
