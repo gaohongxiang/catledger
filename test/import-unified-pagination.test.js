@@ -81,7 +81,8 @@ for (const tab of ['review', 'category']) test(tab + '的74笔分属46个问题�
   const seen = Array.from(cards(), card => card.eventId)
   assert.equal(new Set(seen).size, 50)
   assert.equal(cards()[28].issueId, data.issues[0].issueId, '第29笔仍能进入同一原始问题')
-  assert.match(cards()[28].batchDecision, /关联 29 笔/)
+  assert.equal(cards()[28].groupCount, 29)
+  assert.equal(cards()[28].groupPos && cards()[28].groupPos !== '', true, '同组行应连成卡片')
   let selected
   page.openIssue = event => { selected = event.currentTarget.dataset.id }
   await page.openPendingRecord(tap({ id: cards()[28].eventId, issueId: cards()[28].issueId }))

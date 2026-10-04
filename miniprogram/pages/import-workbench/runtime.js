@@ -561,8 +561,8 @@ module.exports = {
         for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed) this._accountUiDrafts.delete(id)
         Object.assign(patch, directory)
         patch.accountMappings = this.mappingState().mappings.map(compactMapping)
-      } else if (kind === 'reviewGroups') patch.reviewGroups = events.length ? [{ key: 'pending-events', issues: events.map(event => presentation.pendingCard(event, false)) }] : []
-      else if (kind === 'categoryCards') patch.categoryCards = events.map(event => presentation.pendingCard(event, true))
+      } else if (kind === 'reviewGroups') patch.reviewGroups = events.length ? [{ key: 'pending-events', issues: presentation.linkGroupRows(events.map(event => presentation.pendingCard(event, false))) }] : []
+      else if (kind === 'categoryCards') patch.categoryCards = presentation.linkGroupRows(events.map(event => presentation.pendingCard(event, true)))
       else if (kind === 'excludedReviewGroups') {
         patch.excludedReviewGroups = response.items.map(group => ({ groupId: group.groupId, key: group.groupId,
           label: group.label, note: group.note, count: group.count, expanded: false, events: [], loading: false, error: '', page: null }))

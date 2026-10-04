@@ -49,11 +49,23 @@ function pendingCard(event, category) {
     eventId: event.eventId, issueId: issue && issue.issueId || '',
     label: view.label || (category ? '待分类 · 先核对交易' : '待核对交易'),
     decisionText: view.decisionText || '',
-    batchDecision: issue ? count > 1 ? (category ? '分类关联 ' : '处理关联 ') + count + ' 笔' : category ? '分类' : '处理'
-      : category ? '去核对' : '查看详情',
+    batchDecision: issue ? (category ? '分类' : '处理') : category ? '去核对' : '查看详情',
+    groupKey: issue && issue.issueId || '',
+    groupCount: count,
+    groupPos: '',
     subjectCount: 1, hiddenSubjectCount: 0,
     natureLabel: event.economicNature === 'income' ? '收入' : '支出', subjects: [listRecord(event)]
   }
+}
+
+// 同组问题的事件行在列表中相邻时连成一张卡：首行带组数标记，其余行只留动作。
+function linkGroupRows(cards) {
+  ;(cards || []).forEach(function (card, index) {
+    const samePrev = Boolean(card.groupKey) && index > 0 && cards[index - 1].groupKey === card.groupKey
+    const sameNext = Boolean(card.groupKey) && index < cards.length - 1 && cards[index + 1].groupKey === card.groupKey
+    card.groupPos = samePrev && sameNext ? 'middle' : samePrev ? 'last' : sameNext ? 'first' : ''
+  })
+  return cards
 }
 
 function excludedGroups(events, expanded) {
@@ -151,4 +163,4 @@ const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务�
   : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
 function direction(event) { const value = event && event.currentTarget.dataset.direction; return value === 'first' ? value : Number(value || 0) }
 
-module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, listRecord, card, pendingCard, excludedGroups, evidencePartFields, PAGE_SIZE }
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, listRecord, card, pendingCard, linkGroupRows, excludedGroups, evidencePartFields, PAGE_SIZE }

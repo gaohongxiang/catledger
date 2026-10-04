@@ -86,7 +86,7 @@ test('退款与其他待整理问题复用同一卡片骨架', function () {
   assert.ok(pendingStart >= 0 && pendingEnd > pendingStart)
   assert.doesNotMatch(pendingMarkup, /item\.issueType === 'refund_relation'/)
   assert.doesNotMatch(pendingMarkup, /refund-issue-list|refund-issue-row/)
-  assert.match(pendingMarkup, /wx:for="{{item\.issues}}"[\s\S]*class="review-decision-card"/)
+  assert.match(pendingMarkup, /wx:for="{{item\.issues}}"[\s\S]*class="review-decision-card/)
   assert.doesNotMatch(style, /\.refund-issue-(?:list|row)/)
 })
 
