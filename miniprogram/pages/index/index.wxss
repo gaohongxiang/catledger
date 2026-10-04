@@ -54,7 +54,8 @@
   flex-shrink: 0;
   border-radius: var(--theme-radius-medium, 18rpx);
 }
-.home-loading-slot { display: flex; width: 30rpx; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 12rpx; color: var(--home-muted, var(--theme-text-muted, #726d66)); }
+.home-title-row { display: flex; align-items: center; gap: 12rpx; }
+.home-title-spin { flex-shrink: 0; color: var(--home-muted, var(--theme-text-muted, #726d66)); }
 
 .net-worth-card {
   position: relative;

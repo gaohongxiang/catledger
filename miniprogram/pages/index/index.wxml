@@ -2,11 +2,10 @@
   <view class="home-header home-content-line">
     <view class="home-intro">
       <text class="home-greeting">{{todayLabel}}</text>
-      <text class="home-title serif-title">{{greeting}}</text>
+      <view class="home-title-row"><text class="home-title serif-title">{{greeting}}</text><view wx:if="{{loggedIn && loading}}" class="dashboard-refresh-icon dashboard-refresh-spinning home-title-spin" aria-role="status" aria-label="正在更新" /></view>
     </view>
     <button wx:if="{{!loggedIn}}" class="home-login-button" size="mini" bindtap="promptWechatLogin"><text class="home-login-label">登录</text></button>
     <image wx:else class="home-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
-    <view class="home-loading-slot" aria-hidden="{{!loading}}"><view wx:if="{{loggedIn && loading}}" class="dashboard-refresh-icon dashboard-refresh-spinning" aria-role="status" aria-label="正在更新" /></view>
   </view>
 
   <empty-state wx:if="{{!cloudAvailable}}" title="当前基础库不支持云开发" description="请升级微信开发者工具或小程序基础库后再打开招财猫记账本。" />
