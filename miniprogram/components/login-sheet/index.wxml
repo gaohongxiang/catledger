@@ -5,7 +5,7 @@
     <button class="login-startup-cancel" bindtap="close">返回</button>
   </view>
 </view>
-<view wx:elif="{{open}}" class="login-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="close" catchtouchmove="stopBubble">
+<view wx:elif="{{open && (!automatic || stage === 'setup')}}" class="login-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="close" catchtouchmove="stopBubble">
   <view class="login-sheet" catchtap="stopBubble">
     <view class="login-accent"></view>
 
