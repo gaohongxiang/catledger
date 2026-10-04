@@ -6,6 +6,7 @@
     </view>
     <button wx:if="{{!loggedIn}}" class="home-login-button" size="mini" bindtap="promptWechatLogin"><text class="home-login-label">登录</text></button>
     <image wx:else class="home-logo" src="{{displayAvatarUrl}}" mode="aspectFill" />
+    <view class="home-loading-slot" aria-hidden="{{!loading}}"><view wx:if="{{loggedIn && loading}}" class="dashboard-refresh-icon dashboard-refresh-spinning" aria-role="status" aria-label="正在更新" /></view>
   </view>
 
   <empty-state wx:if="{{!cloudAvailable}}" title="当前基础库不支持云开发" description="请升级微信开发者工具或小程序基础库后再打开招财猫记账本。" />
@@ -35,12 +36,11 @@
       </view>
     </view>
 
-    <view wx:if="{{loggedIn && (loading || errorMessage || dashboardStatus || chargeSyncMessage)}}" class="home-read-status {{!loading && (errorMessage || chargeSyncMessage) ? 'home-read-status-error' : ''}}" aria-role="{{errorMessage ? 'alert' : 'status'}}">
+    <view wx:if="{{loggedIn && !loading && (errorMessage || dashboardStatus || chargeSyncMessage)}}" class="home-read-status {{(errorMessage || chargeSyncMessage) ? 'home-read-status-error' : ''}}" aria-role="{{errorMessage ? 'alert' : 'status'}}">
       <view class="home-read-state">
-        <view wx:if="{{loading}}" class="dashboard-refresh-icon dashboard-refresh-spinning"></view>
-        <text class="home-read-message">{{loading ? (hasDashboard ? '正在更新首页…' : '正在读取首页…') : (errorMessage || chargeSyncMessage || dashboardStatus)}}</text>
+        <text class="home-read-message">{{errorMessage || chargeSyncMessage || dashboardStatus}}</text>
       </view>
-      <view wx:if="{{!loading}}" class="dashboard-refresh" bindtap="loadDashboard" hover-class="none" aria-role="button" aria-label="重新读取首页全部数据"><text class="dashboard-refresh-label">重试</text></view>
+      <view class="dashboard-refresh" bindtap="loadDashboard" hover-class="none" aria-role="button" aria-label="重新读取首页全部数据"><text class="dashboard-refresh-label">重试</text></view>
     </view>
     <view class="home-flow">
 
