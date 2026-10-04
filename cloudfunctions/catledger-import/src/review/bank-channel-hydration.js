@@ -10,6 +10,10 @@ async function hydrate(connection, uid, updateId, events = null, rows = null, { 
     WHERE e.uid = ? AND e.update_id = ? AND e.evidence_role <> 'discarded'
     ORDER BY (e.evidence_role = 'primary') DESC, e.evidence_id`, [uid, updateId])
   events = events || await selectDomainEvents(connection, uid, updateId, [...new Set(links.map(link => link.eventId))], { forUpdate })
+  return hydrateEvidence(events, rows, links)
+}
+
+function hydrateEvidence(events, rows, links) {
   const byId = new Map(rows.map(row => [row.rowId, row]))
   const rowsByEvent = new Map()
   for (const link of links) {
@@ -25,4 +29,4 @@ function hasBankPlatformEvidence(events) {
   return types.has('bank') && (types.has('wechat') || types.has('alipay'))
 }
 
-module.exports = { hydrate, hasBankPlatformEvidence }
+module.exports = { hydrate, hydrateEvidence, hasBankPlatformEvidence }

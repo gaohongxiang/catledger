@@ -15,6 +15,9 @@ const { analysisFullyObserved } = require('./statement-analysis')
 const accountGroups = require('./payment-account-groups')
 const excludedGroups = require('./excluded-event-groups')
 const { workbenchSummary } = require('./workbench-summary')
+const { REASON: PAIRING_REASON } = require('./bank-channel-matching')
+const { pairingGraph } = require('./review/bank-channel-graph')
+const { hydrateEvidence } = require('./review/bank-channel-hydration')
 
 async function readVersion(connection, uid, updateId) {
   const update = publicUpdate(await selectUpdate(connection, uid, updateId))
@@ -140,22 +143,35 @@ const pendingReviewSql = `(${reviewSql} OR (e.status = 'needs_action' AND NOT ${
 async function summary(connection, uid, updateId) {
   const state = await readVersion(connection, uid, updateId)
   const sources = await selectSources(connection, uid, updateId)
+  const pairing = state.update.status === 'review' && !state.update.requiresReorganization && sources.some(source => source.sourceType === 'bank') &&
+    sources.some(source => ['wechat', 'alipay'].includes(source.sourceType))
   // 汇总仅扫描必要字段；问题成员和原始展示字段独立分页。
   const [rows] = await connection.execute(`SELECT event_id AS eventId, status, economic_nature AS economicNature,
     flow_direction AS flowDirection, amount_minor AS amountMinor, ledger_account_id AS ledgerAccountId,
     counterparty_ledger_account_id AS counterpartyLedgerAccountId, field_sources_json AS fieldSources,
-    category_id AS categoryId, event_local_at AS localAt, event_utc_at AS utcAt, currency, reason_codes_json AS reasonCodes FROM catledger_economic_events WHERE uid = ? AND update_id = ?`, [uid, updateId])
+    category_id AS categoryId, event_local_at AS localAt, event_utc_at AS utcAt, currency, reason_codes_json AS reasonCodes${pairing ? `, manual_field_mask AS manualFieldMask,
+      ((COALESCE((SELECT d.currency FROM catledger_finance_update_account_drafts d
+          WHERE d.uid = e.uid AND d.update_id = e.update_id AND d.draft_account_id = e.ledger_account_id),
+        (SELECT a.currency FROM catledger_accounts a WHERE a.uid = e.uid AND a.account_id = e.ledger_account_id AND a.archived_at IS NULL)) = e.currency)
+        AND NOT EXISTS (SELECT 1 FROM catledger_economic_event_transactions t
+          WHERE t.uid = e.uid AND t.update_id = e.update_id AND t.event_id = e.event_id)) AS pairingAvailable` : ''} FROM catledger_economic_events${pairing ? ' e' : ''} WHERE uid = ? AND update_id = ?`, [uid, updateId])
   const events = rows.map(row => ({ ...row, status: publicEvent(row).status, reasonCodes: parseJson(row.reasonCodes, []), fieldSources: parseJson(row.fieldSources, {}) }))
   const [pending] = await connection.execute(`SELECT m.object_id AS eventId,
-    MAX(i.issue_type <> 'category_assignment' AND i.blocking = 1) AS review, MAX(i.issue_type = 'category_assignment') AS category
+    MAX(i.issue_type <> 'category_assignment' AND i.blocking = 1) AS review, MAX(i.issue_type = 'category_assignment') AS category${pairing ? `,
+    JSON_ARRAYAGG(CASE WHEN i.issue_type = 'same_event' AND i.primary_reason_code = ? AND m.member_role = 'subject'
+      THEN i.issue_id ELSE NULL END) AS pairingIssueIds` : ''}
     FROM catledger_review_issues i JOIN catledger_review_issue_members m ON m.uid = i.uid AND m.update_id = i.update_id AND m.issue_id = i.issue_id
-    WHERE i.uid = ? AND i.update_id = ? AND i.status = 'open' AND m.object_type = 'event' AND m.member_role <> 'candidate' GROUP BY m.object_id`, [uid, updateId])
+    WHERE i.uid = ? AND i.update_id = ? AND i.status = 'open' AND m.object_type = 'event' AND m.member_role <> 'candidate' GROUP BY m.object_id`, [...(pairing ? [PAIRING_REASON] : []), uid, updateId])
   const [[duplicates]] = await connection.execute("SELECT COUNT(*) AS count FROM catledger_event_evidence WHERE uid = ? AND update_id = ? AND evidence_role IN ('duplicate', 'supporting')", [uid, updateId])
   const [[drafts]] = await connection.execute('SELECT COUNT(*) AS count FROM catledger_finance_update_account_drafts WHERE uid = ? AND update_id = ? AND materialized_at IS NULL', [uid, updateId])
   const [issueCounts] = await connection.execute(`SELECT issue_type AS issueType, status,
     COUNT(*) AS count, SUM(blocking = 1 AND issue_type <> 'category_assignment') AS blockingCount
     FROM catledger_review_issues WHERE uid = ? AND update_id = ? GROUP BY issue_type, status`, [uid, updateId])
-  const coverageEvidence = state.update.status === 'abandoned' ? { rows: [], evidence: [] } : await selectCoverageEvidence(connection, uid, updateId)
+  const coverageEvidence = state.update.status === 'abandoned' ? { rows: [], evidence: [] } : await selectCoverageEvidence(connection, uid, updateId, { pairing })
+  // 复用本次摘要已读取的事件、问题成员与证据，不再调用 graph 或扫描整批候选。
+  const pairingSuggestedCount = pairing ? pairingGraph(hydrateEvidence(events.filter(event => Number(event.pairingAvailable)),
+    coverageEvidence.rows, coverageEvidence.evidence.filter(link => link.evidenceRole !== 'discarded')),
+  pending.flatMap(row => parseJson(row.pairingIssueIds, []).filter(Boolean).map(issueId => ({ eventId: row.eventId, issueId })))).suggestedCount : 0
   const coverage = buildCoverageReport({ sources, events, ...coverageEvidence })
   coverage.openBlockingIssues = issueCounts.filter(row => row.status === 'open').reduce((n, row) => n + Number(row.blockingCount), 0)
   coverage.selectedEventsReadyToPost = coverage.selectedEventsReadyToPost && coverage.openBlockingIssues === 0 && state.update.planVersion === PLAN_VERSION
@@ -170,7 +186,7 @@ async function summary(connection, uid, updateId) {
     reused_transaction_count AS reusedTransactionCount FROM catledger_finance_update_postings
     WHERE uid = ? AND update_id = ? AND state = 'completed' ORDER BY completed_at DESC LIMIT 1`, [uid, updateId])
   return assertBudget({ protocolVersion: 2, ...state,
-    workbench: workbenchSummary(events, pending, issueCounts, Number(duplicates.count), Number(drafts.count)),
+    workbench: { ...workbenchSummary(events, pending, issueCounts, Number(duplicates.count), Number(drafts.count)), pairingSuggestedCount },
     sources: sources.map(({ analysis, ...source }) => ({ ...source, observationsPassed: analysisFullyObserved(analysis) })),
     coverage, totals: Object.values(totals), issueCounts: issueCounts.map(row => ({ ...row, count: Number(row.count), blockingCount: Number(row.blockingCount) })),
     posting: posting ? { createdTransactionCount: Number(posting.createdTransactionCount), reusedTransactionCount: Number(posting.reusedTransactionCount) } : null,

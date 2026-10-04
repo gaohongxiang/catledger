@@ -8,6 +8,7 @@ const { VERSION, bankChannelPair, semanticRowsAfterConfirmation } = require('../
 const { applyFields } = require('../src/review/policy')
 const { bankTime } = require('../src/parsers/bank')
 const { parseLocalDateTime } = require('../src/parsers/normalize')
+const { pairingGraph } = require('../src/review/bank-channel-graph')
 
 const ACCOUNT = '50000000-0000-4000-8000-000000000001'
 const OTHER_ACCOUNT = '50000000-0000-4000-8000-000000000002'
@@ -354,6 +355,29 @@ function separateEvents(rows) {
   const idFactory = ids()
   return rows.map(item => buildOrganizePlan({ updateId: 'synthetic-bank-channel-update', rows: [item], accounts, idFactory }).events[0])
 }
+
+test('摘要与分页共用完整配对图，先算双向唯一再筛open问题，重复成员不重复计数', () => {
+  const events = separateEvents([row('bank'), row('wechat')])
+  const members = events.map(event => ({ eventId: event.eventId, issueId: 'synthetic-open-issue' }))
+  assert.equal(pairingGraph(events, members.concat(members)).suggestedCount, 1)
+  assert.equal(pairingGraph(events, members.slice(0, 1)).suggestedCount, 0)
+  const extra = separateEvents([row('wechat', '2')])[0]
+  extra.eventId = 'synthetic-other-platform-event'
+  assert.equal(pairingGraph(events.concat(extra), members).suggestedCount, 0,
+    '问题之外仍有候选时不能把双向歧义误计为唯一')
+})
+
+test('摘要共用的配对图保持来源冲突及人工分类冲突边界', () => {
+  const events = separateEvents([row('bank'), row('wechat')])
+  const members = events.map(event => ({ eventId: event.eventId, issueId: 'synthetic-open-issue' }))
+  events[0].manualFieldMask = events[1].manualFieldMask = 128
+  events[0].categoryId = 'synthetic-category-a'; events[1].categoryId = 'synthetic-category-b'
+  assert.equal(pairingGraph(events, members).suggestedCount, 0)
+  events[1].categoryId = events[0].categoryId
+  assert.equal(pairingGraph(events, members).suggestedCount, 1)
+  events[0].relationEvidence.rows = [row('bank'), row('bank', '2')]
+  assert.equal(pairingGraph(events, members).suggestedCount, 0)
+})
 
 test('人工改值后按原始证据重验，不以双方改成相同金额或同一分钟掩盖冲突', async t => {
   const rows = [row('bank'), row('wechat')]

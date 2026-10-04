@@ -21,12 +21,21 @@ module.exports = {
   },
   loadPairingEntry() {
     if (!eligible(this)) { this.cancelPairingEntry(); return }
+    const workbench = this._viewSession.summary.workbench || {}
+    if (Object.prototype.hasOwnProperty.call(workbench, 'pairingSuggestedCount')) {
+      // 摘要每次应用都读取，包括同版本新增字段；同时废弃旧服务端在途的入口读取。
+      this._pairingEntryToken = null
+      const total = workbench.pairingSuggestedCount
+      const valid = Number.isSafeInteger(total) && total >= 0
+      setChangedData(this, { pairingEntry: { total: valid ? total : null, loading: false, error: !valid } })
+      return
+    }
     if (this._pairingEntryToken && current(this, this._pairingEntryToken)) return this._pairingEntryToken.promise
     const session = this._viewSession
     const token = this._pairingEntryToken = { session, version: session.summary.viewVersion, epoch: this._viewEpoch,
       owner: owner(), scope: readCache.getSession() }
     setChangedData(this, { pairingEntry: { total: null, loading: true, error: false } })
-    // 与建议弹层首页共用同一个有界会话缓存和在途请求，不读取原文或自行推算总数。
+    // 旧服务端兼容：与建议弹层首页共用有界缓存和在途请求，不读取原文或自行推算总数。
     token.promise = session.read('reviewIssues.pairings', { mode: 'suggested', pageSize: 4 }).then(result => {
       if (!current(this, token) || !session.active) return
       if (!Number.isSafeInteger(result.total) || result.total < 0) throw new Error('配对组数尚未核实')

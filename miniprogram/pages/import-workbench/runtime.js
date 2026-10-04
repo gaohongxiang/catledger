@@ -472,7 +472,7 @@ module.exports = {
         currentStep: step, unlockedStep: workflow, openIssueCount: open, busy: false, errorMessage: '', refreshRequired: false })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }
     setChangedData(this, patch)
-    // 配对入口卡片随每次视图应用按当前资格对账；loadPairingEntry 内部有版本缓存，已最新时不重读。
+    // 配对入口随每次摘要应用更新；旧服务端缺少计数字段时才复用版本分页缓存。
     if (this.loadPairingEntry) this.loadPairingEntry()
     if (view.update.status === 'posted' && view.sources.some(source=>source.sourceType==='bank')) {
       const key=view.update.updateId+':'+view.viewVersion

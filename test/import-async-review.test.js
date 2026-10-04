@@ -144,10 +144,10 @@ for (const step of [2, 3]) for (const changed of [false, true]) test('第 ' + st
   assert.equal(page.data.pageLoading, false)
   assert.equal(page.data.pageError, '')
   if (step === 3) {
-    assert.equal(page.data.reviewedEvents.length, 40)
+    assert.equal(page.data.reviewedEvents.length, 50)
     await page.changeReviewPage({ currentTarget: { dataset: { direction: 1 } } })
     assert.equal(page.data.reviewPage.index, 1)
-    assert.equal(page.data.reviewedEvents[0].eventId, 'synthetic-event-40')
+    assert.equal(page.data.reviewedEvents[0].eventId, 'synthetic-event-50')
   } else assert.equal(page.data.accounts[0].accountId, 'synthetic-account')
   page.onUnload()
 })
@@ -166,10 +166,10 @@ for (const leave of ['onHide', 'onUnload', 'step']) test('摘要刷新等待期�
   summary.resolve(nextView(h)); await pending
   assert.deepEqual(clone(page.data), before)
   if (next) {
-    list.resolve({ protocolVersion: 2, viewVersion: 'v1', items: h.events.slice(0, 40), total: 81, nextCursor: '40' })
+    list.resolve({ protocolVersion: 2, viewVersion: 'v1', items: h.events.slice(0, 50), total: 81, nextCursor: '50' })
     await next
     assert.equal(page.data.pageLoading, false)
-    assert.equal(page.data.reviewedEvents.length, 40)
+    assert.equal(page.data.reviewedEvents.length, 50)
   }
   page.onUnload()
 })

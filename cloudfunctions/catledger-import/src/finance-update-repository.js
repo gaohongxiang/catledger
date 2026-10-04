@@ -782,10 +782,14 @@ async function selectActiveAccounts(connection, uid) {
   return accounts
 }
 
-async function selectCoverageEvidence(connection, uid, updateId) {
+async function selectCoverageEvidence(connection, uid, updateId, { pairing = false } = {}) {
   const rows = await selectPlanningRows(connection, uid, updateId)
   const [evidence] = await connection.execute(
-    `SELECT row_id AS rowId, event_id AS eventId, evidence_role AS evidenceRole
+    pairing ? `SELECT e.row_id AS rowId, e.event_id AS eventId, e.evidence_role AS evidenceRole, i.identity_kind AS identityKind
+       FROM catledger_event_evidence e JOIN catledger_import_rows r ON r.uid = e.uid AND r.row_id = e.row_id
+       LEFT JOIN catledger_source_identities i ON i.uid = r.uid AND i.identity_id = r.identity_id
+       WHERE e.uid = ? AND e.update_id = ? ORDER BY (e.evidence_role = 'primary') DESC, e.evidence_id`
+      : `SELECT row_id AS rowId, event_id AS eventId, evidence_role AS evidenceRole
        FROM catledger_event_evidence WHERE uid = ? AND update_id = ?`, [uid, updateId]
   )
   return {

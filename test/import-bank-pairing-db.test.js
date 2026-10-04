@@ -4,17 +4,36 @@ const { randomUUID } = require('node:crypto')
 const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
 const { setup } = require('./helpers/bank-pairing')
+const { summary: readSummary } = require('../cloudfunctions/catledger-import/src/finance-update-read')
 
 test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 240000 }, async t => {
   const lab = await isolatedMysql()
   try {
     const apiPool = await lab.role('api', grants.api), importPool = await lab.role('import', grants.importer)
+    await t.test('摘要复用既有扫描，完整计数不新增SQL或影响viewVersion', async () => {
+      const c = await setup({ apiPool, importPool, count: 3 })
+      const preview = await c.pairings(), statements = []
+      const connection = await importPool.getConnection()
+      try {
+        const result = await readSummary({ execute(sql, values) { statements.push(sql); return connection.execute(sql, values) } }, c.uid, c.updateId)
+        assert.equal(result.workbench.pairingSuggestedCount, preview.total)
+        assert.equal(result.viewVersion, preview.viewVersion)
+        assert.equal(statements.length, 14, '沿用既有摘要14条查询，不追加graph的来源/事件/账户/成员读取')
+        assert.equal(statements.filter(sql => /SELECT r.row_id AS rowId, r.batch_id AS batchId/.test(sql)).length, 1)
+        assert.equal(statements.filter(sql => /SELECT event_id AS eventId, status, economic_nature/.test(sql)).length, 1)
+        assert.equal(statements.every(sql => /^SELECT /u.test(sql)), true, '计数只读，不生成交易或推进版本')
+        assert.equal(JSON.stringify(result).includes('SYNTHETIC-BANK-'), false, '摘要不携带原始账单字段')
+      } finally { connection.release() }
+    })
     await t.test('100组跨页唯一候选一次原子保存，回执重放、来源和最终余额正确', async () => {
       const c = await setup({ apiPool, importPool, count: 100 })
       const balanceOf = async () => (await c.api('accounts.list')).accounts.find(row => row.accountId === c.accountId)
       assert.equal((await balanceOf()).bookBalanceMinor, '0')
       const preview = await c.pairings({ pageSize: 4 })
       assert.equal(preview.total, 100); assert.equal(preview.items.length, 4); assert.equal(preview.scopeSourceCount, 200)
+      const summary = await c.summary()
+      assert.equal(summary.workbench.pairingSuggestedCount, preview.total, '摘要返回完整双向唯一组数，不取第一页条数')
+      assert.equal(summary.viewVersion, preview.viewVersion, '摘要与配对仍共用原视图版本')
       const second = await c.pairings({ pageSize: 4, cursor: preview.nextCursor })
       assert.equal(second.scopeToken, preview.scopeToken)
       const issues = (await c.imp('reviewIssues.list', { updateId: c.updateId, status: 'open', pageSize: 100 })).items
@@ -24,6 +43,10 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
       const result = await c.resolve(input)
       assert.deepEqual(result.pairing, { savedCount: 100, totalCount: 100, remainingCount: 0, batchSavedCount: 100, continuationToken: null })
       assert.deepEqual(await c.resolve(input), result)
+      const after = await c.summary()
+      assert.equal(after.workbench.pairingSuggestedCount, 0)
+      assert.notEqual(after.viewVersion, summary.viewVersion)
+      await assert.rejects(c.pairings({ viewVersion: summary.viewVersion }), { publicCode: 'STALE_VIEW' })
       const [[before]] = await lab.owner.execute('SELECT COUNT(*) AS count FROM catledger_transactions WHERE uid = ?', [c.uid])
       assert.equal(Number(before.count), 0)
       assert.equal((await balanceOf()).bookBalanceMinor, '0', '保存配对不能提前改变正式信用卡余额')
@@ -35,6 +58,7 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
       assert.equal(Number(orphans.count), 0)
       const posted = await c.post()
       assert.equal(posted.posting.createdTransactionCount, 100)
+      assert.equal((await c.summary()).workbench.pairingSuggestedCount, 0, '已入账摘要不进入仅核对阶段的配对读取')
       const [[balance]] = await lab.owner.execute('SELECT SUM(amount_minor) AS total FROM catledger_transactions WHERE uid = ?', [c.uid])
       assert.equal(String(balance.total), '123400')
       const account = await balanceOf()
@@ -43,6 +67,7 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
     await t.test('2银行+2平台完整图不被一页1对误判唯一，明确两对只生成两笔', async () => {
       const c = await setup({ apiPool, importPool, count: 2, ambiguous: true })
       assert.equal((await c.pairings()).total, 0)
+      assert.equal((await c.summary()).workbench.pairingSuggestedCount, 0, '多候选不能当作建议组数')
       const first = await c.pairings({ mode: 'ambiguous', pageSize: 1 })
       assert.equal(first.total, 4); assert.equal(first.suggestedTotal, 0)
       const all = await c.pairings({ mode: 'ambiguous' }), a = all.items[0]
@@ -123,6 +148,7 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
       await assert.rejects(other.resolve({ scopeToken: (await c.pairings()).scopeToken, selection: { mode: 'all_except', excludedPairKeys: [] } }), { publicCode: 'INVALID_CURSOR' })
       const p = await other.pairings()
       await lab.owner.execute('UPDATE catledger_accounts SET archived_at=CURRENT_TIMESTAMP(3) WHERE uid=? AND account_id=?', [other.uid, other.accountId])
+      assert.equal((await other.summary()).workbench.pairingSuggestedCount, 0, '失效账户不能出现在建议组数中')
       await assert.rejects(other.resolve({ scopeToken: p.scopeToken, selection: { mode: 'all_except', excludedPairKeys: [] } }), { publicCode: 'STALE_VIEW' })
     })
     await t.test('翻页游标不随无关账本修订失效，候选图变化仍要求重新核对', async () => {
@@ -144,6 +170,7 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
       const c = await setup({ apiPool, importPool, count: 1, refund: true })
       const preview = await c.pairings()
       assert.deepEqual(preview.scopeNatureCounts, { expense: 0, refund: 1 })
+      assert.equal((await c.summary()).workbench.pairingSuggestedCount, 1)
       await c.resolve({ scopeToken: preview.scopeToken, selection: { mode: 'all_except', excludedPairKeys: [] } })
       const [[event]] = await lab.owner.execute('SELECT economic_nature AS nature, status FROM catledger_economic_events WHERE uid=? AND update_id=?', [c.uid, c.updateId])
       assert.equal(event.nature, 'refund'); assert.equal(event.status, 'needs_action')
@@ -159,6 +186,7 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
       assert.equal(Number(rules.n), 0)
       c.updateId = await c.prepare(); await c.map()
       assert.equal((await c.pairings()).total, 1)
+      assert.equal((await c.summary()).workbench.pairingSuggestedCount, 1, '物理行身份计数与配对图保持一致')
     })
   } finally { await lab.close() }
 })

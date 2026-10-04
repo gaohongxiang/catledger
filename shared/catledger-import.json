@@ -195,9 +195,11 @@
         "protocolVersion=2",
         "viewVersion",
         "summary fields",
+        "workbench.pairingSuggestedCount",
         "nextCursor?"
       ],
-      "contract": "PERFORMANCE-V2-CONTRACT.md"
+      "contract": "PERFORMANCE-V2-CONTRACT.md",
+      "pairingSuggestedCount": "Non-negative integer count of bidirectionally unique bank/channel pairs sharing an open same_event issue with bank_channel_same_event_candidate reason. Reuses the summary's event, issue-member and evidence reads and the paging graph rules, without changing viewVersion. The client applies every fresh summary even when viewVersion is unchanged; only a missing field falls back to the existing bounded pairings read. Invalid values remain an explicit entry error."
     },
     "imports.prepareMany": {
       "kind": "idempotent-mutation",
@@ -725,6 +727,14 @@
         "posting",
         "invalidates"
       ]
+    },
+    "financeUpdates.setReview": {
+      "kind": "idempotent-double-versioned-mutation",
+      "data": ["requestId", "updateId", "updateVersion", "eventId", "eventVersion", "fields"],
+      "rules": [
+        "仅review批次内已核对的有效事件可修改economicNature、ledgerAccountId、counterpartyLedgerAccountId；未决阻断、组合付款及专用贷款还款走原处理入口。类型变化同步重验分类与退款关系，保留来源，不写正式账目。"
+      ],
+      "returns": ["protocolVersion=2", "kind=operation-receipt", "receiptId", "action", "updateId", "appliedVersion", "status", "counts", "update", "posting", "invalidates"]
     },
     "economicEvents.duplicateReview": {
       "kind": "versioned-read",

@@ -7,7 +7,8 @@ const { readVersion } = require('../finance-update-read')
 const { executeUserRead, executeIdempotentMutation } = require('../import-transaction')
 const { insertAction, parseJson } = require('../finance-update-repository')
 const { commandResult } = require('../command-result')
-const { bankChannelEdges, REASON } = require('../bank-channel-matching')
+const { REASON } = require('../bank-channel-matching')
+const { pairingGraph } = require('./bank-channel-graph')
 const { hydrate } = require('./bank-channel-hydration')
 const { applyPairs } = require('./bank-channel-apply')
 const { synchronize } = require('./bank-channel-candidates')
@@ -46,22 +47,8 @@ async function graph(connection, uid, updateId, { forUpdate = false } = {}) {
     FROM catledger_review_issues i JOIN catledger_review_issue_members m ON m.uid = i.uid AND m.issue_id = i.issue_id
     WHERE i.uid = ? AND i.update_id = ? AND i.status = 'open' AND i.issue_type = 'same_event'
       AND i.primary_reason_code = ? AND m.object_type = 'event' AND m.member_role = 'subject'`, [uid, updateId, REASON])
-  const issues = new Map()
-  for (const member of members) {
-    if (!issues.has(member.eventId)) issues.set(member.eventId, new Set())
-    issues.get(member.eventId).add(member.issueId)
-  }
-  // 完整有效图先计算双向度数；分页和当前问题筛选只能发生在这之后。
-  const all = bankChannelEdges(events.filter(event => !unavailable.has(event.eventId) && active.get(event.ledgerAccountId) === event.currency))
-    .filter(pair => !require('../evidence-matching').hasSourceIdentityConflict(pair.bank.relationEvidence.rows.concat(pair.platform.relationEvidence.rows)))
-    .sort((a, b) => a.pairKey.localeCompare(b.pairKey))
-  const degrees = new Map()
-  for (const pair of all) for (const event of [pair.bank, pair.platform]) degrees.set(event.eventId, (degrees.get(event.eventId) || 0) + 1)
-  const pairs = all.map(pair => ({ ...pair,
-    issueIds: [...(issues.get(pair.bank.eventId) || [])].filter(id => issues.get(pair.platform.eventId)?.has(id)),
-    unique: degrees.get(pair.bank.eventId) === 1 && degrees.get(pair.platform.eventId) === 1 }))
-    .filter(pair => pair.issueIds.length)
-  return { ...state, revision: String(user.revision), pairs,
+  const { all, pairs, suggestedCount } = pairingGraph(events.filter(event => !unavailable.has(event.eventId) && active.get(event.ledgerAccountId) === event.currency), members)
+  return { ...state, revision: String(user.revision), pairs, suggestedCount,
     digest: digestParts(collectionDigest(all, true), JSON.stringify(members.map(row => [row.issueId, row.issueVersion, row.eventId]).sort())) }
 }
 function range(graph, mode, issueId) {
@@ -103,7 +90,7 @@ function createBankChannelPairings({ getPool }) {
       const items = remaining.slice(0, pageSize).map(previewPair)
       const available = new Set(selected.map(pair => pair.pairKey))
       const result = { protocolVersion: 2, viewVersion: state.viewVersion, update: state.update, items,
-        total: selected.length, suggestedTotal: state.pairs.filter(pair => pair.unique).length,
+        total: selected.length, suggestedTotal: state.suggestedCount,
         scopeNatureCounts: { expense: selected.filter(pair => pair.platform.economicNature === 'expense').length,
           refund: selected.filter(pair => pair.platform.economicNature === 'refund').length },
         scopeSourceCount: selected.reduce((count, pair) => count + pair.bank.relationEvidence.rows.length + pair.platform.relationEvidence.rows.length, 0),

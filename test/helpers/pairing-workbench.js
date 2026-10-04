@@ -41,6 +41,9 @@ function setup(count = 100, data = fixture(2, true)) {
       const count = Math.min(100, task.total - task.saved), keys = task.keys.slice(task.saved, task.saved + count)
       task.saved += count; h.pairs = h.pairs.filter(row => !keys.includes(row.pairKey))
       h.summary = { ...h.summary, viewVersion: 'v' + (h.summary.update.version + 1), update: { ...h.summary.update, version: h.summary.update.version + 1 } }
+      if (Object.hasOwn(h.summary.workbench, 'pairingSuggestedCount')) {
+        h.summary.workbench = { ...h.summary.workbench, pairingSuggestedCount: h.pairs.length }
+      }
       const receipt = { protocolVersion: 2, kind: 'operation-receipt', update: h.summary.update,
         pairing: { savedCount: task.saved, totalCount: task.total, remainingCount: task.total - task.saved,
           batchSavedCount: count, continuationToken: task.saved < task.total ? 'signed-next-' + task.saved : null } }

@@ -4,17 +4,88 @@ const { setup } = require('./helpers/pairing-workbench')
 const { fixture } = require('./helpers/paged-workbench')
 const { workbenchSummary } = require('../cloudfunctions/catledger-import/src/workbench-summary')
 
-function mixed(count = 29) {
+function mixed(count = 29, summaryCount) {
   const data = fixture(2, true)
   data.summary.sources = [{ sourceId: 'synthetic-bank', sourceType: 'bank' }, { sourceId: 'synthetic-wechat', sourceType: 'wechat' }]
+  if (summaryCount !== undefined) data.summary.workbench.pairingSuggestedCount = summaryCount
   return setup(count, data)
 }
+
+test('摘要完整组数立即显示，直到打开弹层才请求首页，分页与重开缓存保持', async t => {
+  const h = mixed(29, 29), page = h.page
+  t.after(() => page.onUnload())
+  assert.equal(page.data.pairingEntry.total, 29)
+  assert.equal(page.data.pairingEntry.loading, false)
+  await h.flush()
+  assert.equal(h.calls.some(call => call.action === 'reviewIssues.pairings'), false)
+  assert.equal(h.calls.some(call => call.action === 'economicEvents.evidence'), false)
+  await page.openPairingEntry()
+  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(page.data.pairingSelectedCount, 29)
+  assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 1)
+  await page.changePairingPage({ currentTarget: { dataset: { direction: 1 } } })
+  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 2)
+  page.closePairingReview(); await page.openPairingEntry()
+  assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 2)
+})
+
+test('同版本摘要刷新仍更新组数，显式0组不回退旧请求', async t => {
+  const h = mixed(29, 29), page = h.page
+  t.after(() => page.onUnload())
+  h.onPairingCall = action => action === 'financeUpdates.organize' ? { update: h.summary.update } : undefined
+  for (const count of [7, 0]) {
+    h.summary = { ...h.summary, workbench: { ...h.summary.workbench, pairingSuggestedCount: count } }
+    assert.equal(await page.loadUpdate(h.summary.update.updateId), true)
+    assert.equal(page.data.pairingEntry.total, count)
+    assert.equal(page.data.pairingEntry.error, false)
+  }
+  assert.equal(h.calls.filter(call => call.action === 'financeUpdates.summary').length, 4)
+  assert.equal(h.calls.some(call => call.action === 'reviewIssues.pairings'), false)
+})
+
+test('旧入口请求在途时应用同版本新摘要，迟到组数不得覆盖摘要', async t => {
+  const h = mixed(), page = h.page
+  t.after(() => page.onUnload())
+  let release
+  h.onPairingCall = action => action === 'reviewIssues.pairings' ? new Promise(resolve => { release = resolve }) : undefined
+  await until(h, () => Boolean(release))
+  h.summary = { ...h.summary, workbench: { ...h.summary.workbench, pairingSuggestedCount: 7 } }
+  await page.applyUpdateView(h.summary)
+  assert.equal(page.data.pairingEntry.total, 7)
+  release({ protocolVersion: 2, viewVersion: 'v1', total: 29, items: [] })
+  await h.flush(); await h.flush()
+  assert.equal(page.data.pairingEntry.total, 7)
+  assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 1)
+})
+
+test('摘要组数格式错误明确显示重新核验，不能当成0或静默回退', async t => {
+  const h = mixed(29, 29), page = h.page
+  t.after(() => page.onUnload())
+  for (const count of [null, '29', -1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+    await page.applyUpdateView({ ...h.summary, workbench: { ...h.summary.workbench, pairingSuggestedCount: count } })
+    assert.equal(page.data.pairingEntry.total, null)
+    assert.equal(page.data.pairingEntry.error, true)
+  }
+  assert.equal(h.calls.some(call => call.action === 'reviewIssues.pairings'), false)
+})
+
+test('确认配对后草稿会话刷新摘要为0组，不单独重拉入口', async t => {
+  const h = mixed(29, 29), page = h.page
+  t.after(() => page.onUnload())
+  await page.openPairingEntry()
+  await page.confirmPairings(); page.closePairingReview()
+  await until(h, () => page.data.pairingEntry && page.data.pairingEntry.total === 0)
+  assert.equal(h.calls.filter(call => call.action === 'reviewIssues.resolvePairings').length, 1)
+  assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 1)
+  assert.equal(page._viewSession.summary.workbench.pairingSuggestedCount, 0)
+})
 async function until(h, check) {
   for (let attempt = 0; attempt < 100 && !check(); attempt++) await h.flush()
   assert.ok(check())
 }
 
-test('入口显示服务端完整29组，首页4组预读与弹层共用一次请求，不提前读原文', async t => {
+test('旧摘要缺字段时回退完整29组，首页4组预读与弹层共用一次请求，不提前读原文', async t => {
   const h = mixed(), page = h.page
   t.after(() => page.onUnload())
   await until(h, () => page.data.pairingEntry && !page.data.pairingEntry.loading)

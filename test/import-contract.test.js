@@ -16,7 +16,7 @@ test('导入公共契约与事件云函数动作保持一致', function () {
     parse: handler, parseFile: handler, prepare: handler, prepareMany: handler,
     financeUpdateList: handler, financeUpdateRows: handler, financeUpdateSummary: handler, financeUpdateOptions: handler, economicEventList: handler, economicEventDetail: handler, reviewIssueMembers: handler,
     financeUpdateAbandon: handler, financeUpdateCreate: handler, financeUpdateGet: handler,
-    financeUpdateSetRepayment: handler, financeUpdateSetCategory: handler, financeUpdateReviseDuplicate: handler, financeUpdatePrepare: handler,
+    financeUpdateSetRepayment: handler, financeUpdateSetCategory: handler, financeUpdateSetReview: handler, financeUpdateReviseDuplicate: handler, financeUpdatePrepare: handler,
     financeUpdateOrganize: handler, financeUpdatePost: handler, financeUpdateUndo: handler,
     financeUpdateUndoImpact: handler, economicEventCorrect: handler,
     economicEventCorrectionImpact: handler, economicEventEvidence: handler, economicEventDuplicateReview: handler, reviewIssueGet: handler,
@@ -185,15 +185,14 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(source, /refundChoices/)
   assert.match(markup, /class="review-status-tab \{\{activeReviewStatus/)
   assert.match(markup, /wx:for="\{\{reviewGroups\}\}"/)
-  assert.match(source, /label: '待核对'/)
-  assert.match(source, /label: '已排除'/)
-  assert.match(source, /label: '重复'/)
+  assert.deepEqual(require('../miniprogram/pages/import-workbench/model').reviewStatusTabs().map(tab => tab.label),
+    ['待核对', '已核对', '重复交易', '已排除'])
   assert.doesNotMatch(markup, /class="review-subtabs"/)
   assert.doesNotMatch(source, /switchReviewGroup|visibleReviewGroups|activeReviewGroupType/)
   assert.doesNotMatch(markup, /class="review-sequence-card"/)
   assert.doesNotMatch(markup, /逐笔核对退款关系|确认后自动进入下一笔/)
   assert.doesNotMatch(markup, /class="[^"]*refund-issue-row/)
-  assert.match(markup, /class="review-decision-card"/)
+  assert.match(markup, /class="review-decision-card(?:\s|")/)
   assert.doesNotMatch(source, /_continuousIssueType|continuousType/)
   assert.match(markup, /\{\{issue\.label\}\}/)
   assert.match(markup, /\{\{preview\.amountText\}\}/)
