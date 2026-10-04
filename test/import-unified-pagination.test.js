@@ -191,6 +191,33 @@ function excludedFixture(count = 137) {
   return data
 }
 
+test('排除账户卡不暗示整账户被手动排除，展开后逐笔展示自动、账户规则和手动原因', async () => {
+  const data = excludedFixture(6)
+  const reasons = [['transaction_closed'], ['transaction_failed'], ['manual_exclusion', 'source_account_ignored_default'],
+    ['manual_exclusion', 'account_mapping_excluded'], ['manual_exclusion'], []]
+  const statuses = ['交易关闭', '支付失败', '交易成功', '交易成功', '交易成功', '']
+  data.events.forEach((row, index) => { row.reasonCodes = reasons[index]
+    row.primaryEvidence.paymentMethod = '合成银行信用购'; row.primaryEvidence.status = statuses[index] })
+  const h = runtime(data), page = h.page
+  page.data.activeReviewStatus = 'excluded'
+  await page.setStep({ currentStep: 3 })
+  assert.equal(page.data.excludedReviewGroups.length, 1)
+  const group = page.data.excludedReviewGroups[0]
+  assert.equal(group.label, '合成银行信用购')
+  assert.equal(group.count, 6)
+  const { groupFor } = require('../cloudfunctions/catledger-import/src/excluded-event-groups')
+  assert.equal(groupFor({ sourceType: 'alipay', paymentMethod: '合成银行信用购', reasonCodes: reasons[0] }).label, group.label)
+  await page.toggleExcludedGroup(tap({ key: group.key }))
+  const records = page.data.excludedReviewGroups[0].events
+  assert.deepEqual(Array.from(records, row => row.exclusionReasonText), [
+    '交易已关闭，自动不计入', '交易失败，自动不计入', '按已保存的账户规则自动排除',
+    '按本次账户选择排除', '本次手动排除', '原因待核对'
+  ])
+  assert.deepEqual(Array.from(records, row => row.sourceStatus), statuses)
+  assert.equal(h.calls.some(call => !['financeUpdates.summary', 'economicEvents.list'].includes(call.action)), false)
+  page.onUnload()
+})
+
 test('整批同账户只有一张卡；总笔数跨过50条，组内分页不拆卡且末页保留余数', async () => {
   const h = runtime(excludedFixture()), page = h.page
   page.data.activeReviewStatus = 'excluded'

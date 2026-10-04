@@ -369,7 +369,7 @@
             <text wx:if="{{item.loading}}" class="record-list-note">正在读取交易</text>
             <view wx:if="{{item.error}}" class="excluded-group-error"><text>{{item.error}}</text><button class="text-action" data-key="{{item.key}}" data-direction="retry" bindtap="changeExcludedGroupPage">重试</button></view>
             <view wx:for="{{item.events}}" wx:for-item="record" wx:key="eventId" class="review-audit-row" data-id="{{record.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看原始证据">
-              <view class="review-preview-copy"><text class="review-preview-title">{{record.displayTitle}}</text><text class="review-preview-meta">{{record.displayMeta}}</text></view><text class="review-preview-amount money-number {{record.directionClass}}">{{record.amountText}}</text>
+              <view class="review-preview-copy"><text class="review-preview-title">{{record.displayTitle}}</text><text class="review-preview-meta">{{record.displayMeta}}</text><text class="review-preview-meta excluded-record-reason">排除原因：{{record.exclusionReasonText}}</text><text wx:if="{{record.sourceStatus}}" class="review-preview-meta excluded-record-status">原账单状态：{{record.sourceStatus}}</text></view><text class="review-preview-amount money-number {{record.directionClass}}">{{record.amountText}}</text>
             </view>
             <view wx:if="{{item.page && (item.page.canFirst || item.page.hasNext)}}" class="list-pagination excluded-group-pagination">
               <button class="stage-previous" data-key="{{item.key}}" data-direction="first" bindtap="changeExcludedGroupPage" disabled="{{item.loading || !item.page.canFirst}}">首页</button>

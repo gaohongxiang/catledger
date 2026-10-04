@@ -881,6 +881,23 @@ function accountRecordList(members) {
   return { records: records, dateRange: dates.length ? dates[0] + (dates[0] === dates[dates.length - 1] ? '' : ' 至 ' + dates[dates.length - 1]) : '时间范围待核对' }
 }
 
+function exclusionReasonText(event) {
+  const reasons = new Set(event && event.reasonCodes || [])
+  const labels = [
+    ['source_non_financial', '非资金记录，自动不计入'],
+    ['transaction_closed', '交易已关闭，自动不计入'],
+    ['transaction_failed', '交易失败，自动不计入'],
+    ['already_posted', '已经入账，不重复计入'],
+    ['linked_existing_transaction', '已关联账本中的交易，不重复计入'],
+    ['account_mapping_excluded', '按本次账户选择排除'],
+    ['source_account_ignored_default', '按已保存的账户规则自动排除']
+  ].filter(([code]) => reasons.has(code)).map(([, label]) => label)
+  if (reasons.has('manual_exclusion') && !reasons.has('account_mapping_excluded') && !reasons.has('source_account_ignored_default')) {
+    labels.push('本次手动排除')
+  }
+  return labels.join('；') || '原因待核对'
+}
+
 function excludedReason(event) {
   const reasons = new Set(event && event.reasonCodes || [])
   const evidence = event && event.primaryEvidence || {}, projection = event && event.fundsProjection || {}
@@ -891,7 +908,7 @@ function excludedReason(event) {
       return normalized && !placeholder.test(normalized)
     })
   if (accountName) return { key: 'account:' + String(evidence.sourceType || '') + ':' + normalizePaymentAccountName(accountName),
-    label: accountName + '已排除', note: '该账户下的这些交易不计入本次账本。', order: 10 }
+    label: accountName, note: '按来源账户归组，具体排除原因见各笔记录。', order: 10 }
   if (reasons.has('source_non_financial')) {
     return { key: 'source_non_financial', label: '非资金记录', note: '只保留来源证据，不创建账户或正式账目。', order: 5 }
   }
@@ -1050,6 +1067,7 @@ module.exports = {
   evidenceFields,
   eventView,
   finalSummary,
+  exclusionReasonText,
   excludedEventGroups,
   fileStateText,
   formatFileSize,

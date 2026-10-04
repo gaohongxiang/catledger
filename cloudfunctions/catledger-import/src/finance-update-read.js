@@ -63,6 +63,12 @@ function boundedItem(item, key, kind) {
     if (item[name] != null) result[name] = item[name]
   }
   if (Object.hasOwn(item, 'pendingIssue')) result.pendingIssue = item.pendingIssue
+  if (kind === 'event' && item.status === 'excluded') {
+    result.reasonCodes = (item.reasonCodes || []).filter(code => ['source_non_financial', 'transaction_closed',
+      'transaction_failed', 'already_posted', 'linked_existing_transaction', 'account_mapping_excluded',
+      'source_account_ignored_default', 'manual_exclusion'].includes(code))
+    result.primaryEvidence = { status: String(item.primaryEvidence && item.primaryEvidence.status || '').slice(0, 128) }
+  }
   return result
 }
 function finishPage(context, state, page, rows, total, key, kind) {

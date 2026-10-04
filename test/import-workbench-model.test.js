@@ -382,9 +382,9 @@ test('已排除交易优先按具体账户分组并默认收起', function () {
   assert.deepEqual(groups.map(function (group) {
     return { label: group.label, count: group.count, expanded: group.expanded }
   }), [
-    { label: '支付宝小荷包（树与草的小荷包）已排除', count: 3, expanded: false },
-    { label: '支付宝账户余额已排除', count: 1, expanded: false },
-    { label: '微信零钱已排除', count: 1, expanded: false }
+    { label: '支付宝小荷包（树与草的小荷包）', count: 3, expanded: false },
+    { label: '支付宝账户余额', count: 1, expanded: false },
+    { label: '微信零钱', count: 1, expanded: false }
   ])
   assert.deepEqual(groups[0].events.map(function (event) { return event.eventId }), ['account-1', 'account-2', 'account-legacy'])
 })

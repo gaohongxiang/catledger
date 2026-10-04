@@ -528,7 +528,8 @@ function publicEvent(row) {
       counterparty: row.counterparty || '',
       item: row.item || '',
       note: row.sourceNote || '',
-      paymentMethod: row.paymentMethod || ''
+      paymentMethod: row.paymentMethod || '',
+      status: row.sourceStatus || ''
     } : null
   }
 }
@@ -554,7 +555,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
             primary_evidence.row_id AS primaryRowId,
             r.source_row_number AS rowNumber, r.counterparty_raw AS counterparty,
             r.item_raw AS item, r.note_raw AS sourceNote, r.normalized_direction AS sourceDirection,
-            r.payment_method_raw AS paymentMethod,
+            r.payment_method_raw AS paymentMethod, r.status_raw AS sourceStatus,
             s.source_type_snapshot AS sourceType, s.file_name_snapshot AS fileName
        FROM catledger_economic_events e
        LEFT JOIN catledger_categories category ON category.uid = e.uid AND category.category_id = e.category_id

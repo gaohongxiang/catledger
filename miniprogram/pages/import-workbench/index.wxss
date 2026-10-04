@@ -2438,6 +2438,7 @@ button::after { border: 0; }
 }
 .category-decision-card { margin-bottom: 16rpx; }
 .review-audit-row[bindtap], .review-audit-card[bindtap] { min-height: 96rpx; }
+.excluded-record-reason, .excluded-record-status { white-space: normal; }
 
 .category-completed-title { overflow: hidden; text-overflow: ellipsis; }
 

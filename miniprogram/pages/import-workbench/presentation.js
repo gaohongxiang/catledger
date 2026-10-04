@@ -13,6 +13,10 @@ function record(event) {
   ;['eventId', 'displayTitle', 'displayMeta', 'displayDate', 'displayDetailMeta',
     'amountText', 'directionClass', 'needsCategory', 'reviewIssueId', 'categoryName', 'natureLabel',
     'accountText', 'duplicateCount', 'auditNote', 'detailRequired', 'pairingDecision'].forEach(key => { if (view[key] !== undefined) result[key] = view[key] })
+  if (event.status === 'excluded') {
+    result.exclusionReasonText = model.exclusionReasonText(event)
+    result.sourceStatus = String(event.primaryEvidence && event.primaryEvidence.status || '').trim()
+  }
   for (const key of ['displayTitle', 'displayMeta', 'displayDetailMeta', 'accountText']) if (typeof result[key] === 'string' && result[key].length > 160) {
     result[key] = result[key].slice(0, 160) + '…'; result.detailRequired = true
   }
@@ -23,7 +27,7 @@ function listRecord(event) {
   const result = record(event)
   delete result.accountText
   // 列表只传单行摘要，五十项同时展示也不突破原生单次更新预算；完整字段留在详情。
-  for (const key of ['displayTitle', 'displayMeta', 'displayDetailMeta', 'categoryName']) {
+  for (const key of ['displayTitle', 'displayMeta', 'displayDetailMeta', 'categoryName', 'sourceStatus']) {
     if (typeof result[key] === 'string' && result[key].length > 80) {
       result[key] = result[key].slice(0, 80) + '…'; result.detailRequired = true
     }

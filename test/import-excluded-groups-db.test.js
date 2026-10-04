@@ -78,9 +78,10 @@ test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员�
         const status = bucket === 'active' ? 'ready' : 'excluded'
         await lab.owner.execute(`UPDATE catledger_economic_events SET status=?,event_local_at=?,reason_codes_json=?,field_sources_json=?
           WHERE uid=? AND update_id=? AND event_id=?`, [status, localAt, JSON.stringify(reasons), JSON.stringify(fields), uid, updateId, row.eventId])
-        await lab.owner.execute('UPDATE catledger_import_rows SET payment_method_raw=?,item_raw=?,counterparty_raw=? WHERE uid=? AND row_id=?',
-          [paymentMethod, searchHit ? '跨页末段商品' : '合成普通商品', '合成账户商户', uid, row.rowId])
-        events.push({ ...row, bucket, sourceType, localAt, searchHit, status, historical })
+        const sourceStatus = reasons.includes('transaction_closed') ? '交易关闭' : reasons.includes('transaction_failed') ? '支付失败' : '交易成功'
+        await lab.owner.execute('UPDATE catledger_import_rows SET payment_method_raw=?,item_raw=?,counterparty_raw=?,status_raw=? WHERE uid=? AND row_id=?',
+          [paymentMethod, searchHit ? '跨页末段商品' : '合成普通商品', '合成账户商户', sourceStatus, uid, row.rowId])
+        events.push({ ...row, bucket, sourceType, localAt, searchHit, status, historical, sourceStatus, reasons })
       }
     }
     const read = data => call(services.import, 'economicEvents.list', { updateId, ...data })
@@ -127,6 +128,7 @@ test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员�
       assert.deepEqual(result.items.map(item => item.eventId), ordered(events.filter(e => e.bucket === 'main')).map(e => e.eventId))
       assert.ok(result.pages.length >= 3)
       assert.ok(result.items.slice(-2).every(item => item.localAt === null))
+      for (const item of result.items) assert.equal(item.primaryEvidence.status, events.find(event => event.eventId === item.eventId).sourceStatus)
       const distinct = await collect(data => members(otherSource.groupId, data), { pageSize: 2 })
       assert.deepEqual(distinct.items.map(item => item.eventId), ordered(events.filter(e => e.bucket === 'other-source')).map(e => e.eventId))
       assert.ok(distinct.items.every(item => item.primaryEvidence.sourceType === 'alipay'))
@@ -171,6 +173,17 @@ test('已排除整批账户卡：真实 MySQL 账户优先归组、独立成员�
       const isolated = await call(other.import, 'economicEvents.list', { updateId: otherUpdate.updateId, status: 'excluded', excludedGroupId: main.groupId })
       assert.equal(isolated.total, 3)
       assert.ok(isolated.items.every(item => !events.some(event => event.eventId === item.eventId)))
+    })
+    await t.test('超长排除记录降级后仍保留自动排除原因及原账单状态', async () => {
+      const event = events.find(row => row.bucket === 'main' && row.reasons.includes('transaction_closed'))
+      const fields = JSON.stringify({ fundsProjection: { from: { label: '合成超长说明'.repeat(2000) } } })
+      await lab.owner.execute('UPDATE catledger_economic_events SET field_sources_json=? WHERE uid=? AND event_id=?', [fields, uid, event.eventId])
+      const page = await read({ status: 'excluded', eventId: event.eventId })
+      assert.equal(page.items.length, 1)
+      assert.equal(page.items[0].detailRequired, true)
+      assert.deepEqual(page.items[0].reasonCodes, ['transaction_closed'])
+      assert.equal(page.items[0].primaryEvidence.status, '交易关闭')
+      await lab.owner.execute("UPDATE catledger_economic_events SET field_sources_json='{}' WHERE uid=? AND event_id=?", [uid, event.eventId])
     })
     await t.test('摘要不读取整批原文详情，短响应成员页完整续读且读取不改变账务或导入状态', async () => {
       await lab.owner.execute('UPDATE catledger_import_rows SET note_raw=? WHERE uid=?', ['合成备注'.repeat(200), uid])

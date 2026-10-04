@@ -25,7 +25,7 @@ function reasonFor(row) {
     const accountName = String(candidate || '').trim(), normalized = normalizePaymentAccountName(accountName)
     if (normalized && !UNKNOWN_ACCOUNTS.has(normalized)) return {
       key: 'account:' + String(row.sourceType || '') + ':' + normalized,
-      label: accountName + '已排除', note: '该账户下的这些交易不计入本次账本。'
+      label: accountName, note: '按来源账户归组，具体排除原因见各笔记录。'
     }
   }
   const reasons = new Set(row.reasonCodes || [])
