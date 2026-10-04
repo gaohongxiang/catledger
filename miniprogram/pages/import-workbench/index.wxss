@@ -934,9 +934,8 @@ button::after { border: 0; }
   box-shadow: var(--theme-shadow-soft);
 }
 .review-decision-card + .review-decision-card { margin-top: 10rpx; }
-.review-decision-card.card-group-first { border-bottom-color: transparent; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-.review-decision-card.card-group-middle, .review-decision-card.card-group-last { margin-top: 0; border-top-color: transparent; border-top-left-radius: 0; border-top-right-radius: 0; }
-.review-decision-card.card-group-middle { border-bottom-color: transparent; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.review-decision-card.card-group-first, .review-decision-card.card-group-middle { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.review-decision-card.card-group-middle, .review-decision-card.card-group-last { margin-top: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .review-decision-heading {
   display: flex;
   min-height: 44rpx;
