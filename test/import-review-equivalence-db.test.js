@@ -8,6 +8,8 @@ test('当前分类预设下导入业务图、回执、请求量与 SQL 顺序保
   // 2026-10-04以e9cf030f读取实现作固定数据隔离对照：45张持久表、14阶段SQL数量与其他响应保持。
   // 仅summary视图版本/新鲜度、event-page视图版本及原账单status字段变化；该页SQL仅新增已有状态列。
   // 据此更新两阶段响应和event-page投影SQL的基线，不得无证据整体刷新快照。
+  // 分期摘要修复另以17c27708作固定数据隔离对照：45表逐字段仅计划v33、银行profile/policy v3
+  // 及其派生指纹变化；14阶段SQL数量、响应字节数和全部账务字段保持。SQL新增同用户账单映射投影。
   const expected = require('./fixtures/import-review-baseline.json')
   assert.deepEqual(await measure(), expected)
 })

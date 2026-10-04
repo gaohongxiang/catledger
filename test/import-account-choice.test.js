@@ -338,7 +338,7 @@ test('组合支付资金卡复用账户路线样式，目标选择和保存门�
   const paymentForm = markup.slice(markup.indexOf('class="payment-resolution-form"'), markup.indexOf('class="mapping-fields"'))
   assert.equal((paymentForm.match(/bindchange="changePaymentTarget"/g) || []).length, 1)
   assert.match(paymentForm, /class="funds-route-picker"[^>]*value="\{\{paymentTargetIndex\}\}"/)
-  assert.match(markup, /wx:elif="\{\{currentIssue.missingFundsSide === 'both'\}\}"[^>]*bindchange="changeCounterpartyAccount"/)
+  assert.match(markup, /wx:elif="\{\{currentIssue.missingFundsSide === 'both'\}\}"[^>]*data-target="counterparty"[^>]*bindtap="openDirectory"/)
   const save = markup.match(/<button[^>]+bindtap="resolveWithFields"[^>]*>/)[0]
   assert.match(save, /!issueFieldsCanSave/)
   assert.match(save, /!paymentCanSave/)

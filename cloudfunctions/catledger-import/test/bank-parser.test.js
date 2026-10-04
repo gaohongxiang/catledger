@@ -28,6 +28,20 @@ async function parse(rows, extension = 'csv', overrides = {}, options = {}) {
 }
 const identity = (row, fileSha256 = 'a'.repeat(64)) => buildRowIdentity({ sourceType: 'bank', sourceProfileKey: 'unbound', fileSha256, row })
 
+for (const extension of ['csv', 'xls', 'xlsx']) test(`银行 ${extension} 信用卡连写分期摘要保留正负号并识别本期出账`, async () => {
+  const { document } = await parse([['交易日期', '交易金额', '摘要'],
+    ['20260902', '+90.00', '电销现分按月收6期第3期共6期'],
+    ['20260902', '+90.00', '电销总账分月6期第3期共6期'],
+    ['20260902', '+3.00', '分期付款利息第3期共6期'],
+    ['20260902', '-90.00', '合成还款']
+  ], extension, { positiveDirection: 'expense', statementKind: 'credit' })
+  assert.deepEqual(document.rows.map(row => row.normalized.direction), ['expense', 'expense', 'expense', 'income'])
+  assert.deepEqual(document.rows.slice(0, 3).map(row => [row.semantic.relationHints.installment.component,
+    row.semantic.relationHints.installment.periodNumber, row.semantic.relationHints.installment.totalTerms]),
+  [['principal', 3, 6], ['principal', 3, 6], ['interest', 3, 6]])
+  assert.equal(document.rows[3].semantic.relationHints.installment, null)
+})
+
 for (const extension of ['csv', 'xls', 'xlsx']) {
   test(`银行 ${extension} 保留原始字段、实际行、时区和独立同额交易`, async () => {
     const { document } = await parse([['合成银行账户明细'], header, record, [...record.slice(0, 5), 'SYNTHETIC-2', '独立商品']], extension)

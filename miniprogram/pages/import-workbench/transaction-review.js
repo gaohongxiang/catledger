@@ -185,6 +185,7 @@ function initializeIssueEditor(details, token) {
     const paymentDefaults = model.paymentResolutionDefaults(firstEvent, selectableAccounts)
     this.setData({
         busy: false,
+        natureOptions: NATURE_OPTIONS.map(option => option.value === 'repayment' && currentIssue.installmentPrincipal ? Object.assign({}, option, { label: '分期本金出账' }) : option),
         update: details.update,
         currentIssue: currentIssue,
         issueSourceExpanded: true,
@@ -984,16 +985,18 @@ module.exports = {
     const token = this._evidenceReadToken = { session, eventId, version: session.summary.viewVersion, scope: readCache.getSession() }
     this._evidencePager = sourcePager || session.pager('economicEvents.evidence', { eventId, pageSize: 1 })
     const row = (this.businessData().events || []).find(e=>e.eventId === eventId)
-    this._repaymentEditable = Boolean(row && ['repayment','internal_transfer'].includes(row.economicNature) && this.data.update.status === 'review')
+    this._repaymentEditable = Boolean(row && !row.installment && ['repayment','internal_transfer'].includes(row.economicNature) && this.data.update.status === 'review')
     this.setData({ evidenceSheet: { eventId, repaymentEditable: this._repaymentEditable, evidence: [], loading: true,
-      error: '', part: '', partFields: [], partLoading: false, partError: '' } })
+      installmentNote: row && model.eventView(row).installmentNote || '', error: '', part: '', partFields: [], partLoading: false, partError: '' } })
     await this.changeEvidencePage({ currentTarget: { dataset: {} } })
     if (evidenceCurrent(this, token) && !row && this.data.update.status === 'review') {
       try {
         const detail = await session.read('economicEvents.list', { eventId, pageSize: 1 }, () => evidenceCurrent(this, token))
         if (!evidenceCurrent(this, token)) return
-        this._repaymentEditable = Boolean(detail.items[0] && ['repayment','internal_transfer'].includes(detail.items[0].economicNature))
-        this.setData({ 'evidenceSheet.repaymentEditable':this._repaymentEditable })
+        const found = detail.items[0]
+        this._repaymentEditable = Boolean(found && !found.installment && ['repayment','internal_transfer'].includes(found.economicNature))
+        this.setData({ 'evidenceSheet.repaymentEditable':this._repaymentEditable,
+          'evidenceSheet.installmentNote': found && model.eventView(found).installmentNote || '' })
       } catch(error) { if (evidenceCurrent(this, token)) this.setData({ errorMessage:errorText(error) }) }
     }
   },

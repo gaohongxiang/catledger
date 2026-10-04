@@ -2,6 +2,7 @@ const cache = require('../../services/read-cache')
 const api = require('../../services/catledger-import')
 const { previewFields } = require('./inline-evidence')
 const { errorText } = require('./presentation')
+const { eventView } = require('./model')
 
 function current(page, token) {
   const sheet = page.data.reviewDetailSheet
@@ -45,10 +46,11 @@ module.exports = {
     const token = this._reviewDetailToken = { session, eventId, version: session.summary.viewVersion,
       scope: cache.getSession(), sources: [], reading: new Set() }
     this.setData({ reviewDetailSheet: { eventId, sources: [], sourceCount: 0, loading: true, error: '', stale: false,
-      reviewEditable: this.data.update.status === 'review' && (this.data.reviewedEvents || []).some(item => item.eventId === eventId),
+      installmentNote: row && eventView(row).installmentNote || '',
+      reviewEditable: !(row && row.installment && row.installment.component === 'principal') && this.data.update.status === 'review' && (this.data.reviewedEvents || []).some(item => item.eventId === eventId),
       canEdit: this.data.update.status === 'review' && Boolean(duplicate || row && (row.pairingDecision ||
         Number(row.evidenceCount) > 1 || Number(row.duplicateEvidenceCount) > 0)),
-      repaymentEditable: this.data.update.status === 'review' && Boolean(row && ['repayment', 'internal_transfer'].includes(row.economicNature)) } })
+      repaymentEditable: this.data.update.status === 'review' && Boolean(row && !row.installment && ['repayment', 'internal_transfer'].includes(row.economicNature)) } })
     try {
       let cursor = null
       do {

@@ -57,7 +57,7 @@ function createFinanceUpdateCore({ getPool }) {
       return commandResult(connection, uid, updateId, data)
     }
     const rows = await selectPlanningRows(connection, uid, updateId)
-    if (current.status === 'review' && ['organizer-plan-v26', 'organizer-plan-v27', 'organizer-plan-v28', 'organizer-plan-v29', 'organizer-plan-v30', 'organizer-plan-v31', PLAN_VERSION].includes(current.planVersion)) {
+    if (current.status === 'review' && ['organizer-plan-v26', 'organizer-plan-v27', 'organizer-plan-v28', 'organizer-plan-v29', 'organizer-plan-v30', 'organizer-plan-v31', 'organizer-plan-v32', PLAN_VERSION].includes(current.planVersion)) {
       return upgradeSemanticPlan(connection, uid, current, rows, requestDigest, data)
     }
     const paymentMappings = await selectPaymentMappings(connection, uid, updateId)

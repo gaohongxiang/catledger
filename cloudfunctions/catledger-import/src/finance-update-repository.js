@@ -190,6 +190,9 @@ async function categoryIndexes(connection, uid) {
 
 async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
   if (rowIds && !rowIds.length) return []
+  const installmentColumn = field => `CASE WHEN JSON_TYPE(JSON_EXTRACT(batch.analysis_json, '$.bankMapping.columns.${field}')) = 'INTEGER'
+    THEN JSON_UNQUOTE(JSON_EXTRACT(r.raw_fields_json,
+      CONCAT('$[', JSON_UNQUOTE(JSON_EXTRACT(batch.analysis_json, '$.bankMapping.columns.${field}')), '].value'))) ELSE NULL END`
   const [rows] = await connection.execute(
     `SELECT r.row_id AS rowId, r.batch_id AS batchId, s.import_id AS importId,
             s.source_order AS sourceOrder, s.source_type_snapshot AS sourceType,
@@ -203,6 +206,9 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
             r.status_raw AS rawStatus, r.transaction_type_raw AS rawTransactionType,
             r.transaction_time_raw AS rawTransactionTime,
             r.semantic_json AS semantic,
+            JSON_UNQUOTE(JSON_EXTRACT(batch.analysis_json, '$.bankMapping.statementKind')) AS bankStatementKind,
+            JSON_OBJECT('reference', ${installmentColumn('installmentReference')}, 'period', ${installmentColumn('installmentPeriod')},
+              'terms', ${installmentColumn('installmentTerms')}, 'component', ${installmentColumn('installmentComponent')}) AS installmentFields,
             r.issues_json AS issues,
             r.normalized_local_date AS localDate, r.normalized_local_at AS localAt,
             r.normalized_utc_at AS utcAt, r.timezone_offset_minutes AS timezoneOffsetMinutes,
@@ -217,6 +223,7 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
        FROM catledger_finance_update_sources s
        JOIN catledger_import_rows r
          ON r.uid = s.uid AND r.batch_id = s.batch_id
+       JOIN catledger_import_batches batch ON batch.uid = r.uid AND batch.batch_id = r.batch_id
        LEFT JOIN catledger_import_account_mappings m
          ON m.uid = r.uid AND m.source_type = s.source_type_snapshot
         AND m.payment_method_key = r.payment_method_key AND m.disabled_at IS NULL
@@ -261,6 +268,8 @@ async function selectPlanningRows(connection, uid, updateId, rowIds = null) {
       timezoneOffsetMinutes: row.timezoneOffsetMinutes == null ? null : Number(row.timezoneOffsetMinutes),
       amountMinor: row.amountMinor == null ? null : String(row.amountMinor),
       semantic: parseJson(row.semantic, null),
+      installmentFields: parseJson(row.installmentFields, {}),
+      note: row.sourceNote || '',
       suggestedCategoryId: suggestedCategory(row, indexes)
     }
   })
@@ -508,6 +517,11 @@ function publicEvent(row) {
     reasonCodes,
     ...((fieldSources.bankChannelDistinctPairs || []).length && !fieldSources.mergeOrigins && !fieldSources.bankChannelResolution ? { pairingDecision: 'distinct' } : {}),
     loanRepayment: fieldSources.loanRepayment || null,
+    ...(fieldSources.installment && fieldSources.installment.creditStatement === true ? { installment: {
+      creditStatement: true, factKind: 'billing', component: fieldSources.installment.component,
+      periodNumber: fieldSources.installment.periodNumber, totalTerms: fieldSources.installment.totalTerms || null,
+      originKind: fieldSources.installment.originKind || 'unconfirmed'
+    } } : {}),
     sourceDirection: row.sourceDirection || null,
     fundsProjection: fieldSources.fundsProjection || null,
     ...(repaymentOwnership.bankRepayment({ fieldSources }) ? {

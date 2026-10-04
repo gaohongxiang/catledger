@@ -12,6 +12,15 @@ function currentAccountRecords(page, token) {
     page.data.accountRecordsSheet && page.data.accountRecordsSheet.issueId === token.issueId
 }
 
+function currentTransferDirectory(page) {
+  if (!page.data.directorySheet || !page.data.directorySheet.transferAccount) return true
+  const token = page._transferDirectoryToken, issue = page.data.currentIssue
+  return Boolean(token && page._viewActive && page._viewSession === token.session && token.session.active &&
+    readCache.getSession() === token.scope && getApp().hasLoginApproval() && getApp().globalData.uid === token.owner &&
+    token.session.summary.viewVersion === token.version && !page.data.issueStale && issue &&
+    issue.issueId === token.issueId && issue.version === token.issueVersion && page._issueEvidenceToken === token.issueToken)
+}
+
 const ACCOUNT_TYPE_OPTIONS = Object.freeze([
     { value: 'cash', label: '现金' },
     { value: 'bank', label: '银行卡' },
@@ -481,6 +490,10 @@ module.exports = {
 
   openDirectory: async function (event) {
     const target = event.currentTarget.dataset.target
+    const issue = this.data.currentIssue
+    const transferAccount = Boolean(issue && issue.issueType === 'transfer_accounts' && ['account', 'counterparty'].includes(target))
+    if (transferAccount && (!this._viewActive || !this._viewSession || !this._viewSession.active || !getApp().hasLoginApproval() ||
+      this.data.busy || this.data.issueStale || !this.data.issueDetailsReady)) return
     if (['reviewAccount', 'reviewCounterparty'].includes(target)) {
       const sheet = this.data.reviewEditSheet
       if (!sheet || sheet.loading || sheet.saving || sheet.pending || sheet.stale || sheet.saved) return
@@ -489,13 +502,24 @@ module.exports = {
     if (target === 'categoryEdit' && (!editor || editor.loading || editor.saving || editor.stale || editor.pending || editor.saved)) return
     const kind = ['category', 'categoryEdit'].includes(target) ? 'categories' : 'accounts'
     const categoryKind = editor ? editor.kind : undefined
-    this.setData({ directorySheet: { target, kind, ...(categoryKind ? { categoryKind } : {}), query: '', items: [], loading: true } })
+    let transferOptions = {}
+    this._transferDirectoryToken = null
+    if (transferAccount) {
+      const choices = this.data[target === 'counterparty' ? 'counterpartyAccountChoices' : 'accountChoices'] || []
+      const selected = choices[this.data.issueDraft[target === 'counterparty' ? 'counterpartyAccountIndex' : 'accountIndex']]
+      transferOptions = { transferAccount: true, title: target === 'counterparty' || issue.missingFundsSide === 'to' ? '选择转入账户' : '选择转出账户',
+        canCreate: choices.some(row => row.isCreate), canClear: Boolean(selected && !selected.isPlaceholder) }
+      this._transferDirectoryToken = { issueId: issue.issueId, issueVersion: issue.version, issueToken: this._issueEvidenceToken,
+        session: this._viewSession, version: this._viewSession.summary.viewVersion, scope: readCache.getSession(), owner: getApp().globalData.uid }
+    }
+    if (this._optionPager) this._optionPager.cancel()
+    this.setData({ directorySheet: { target, kind, ...transferOptions, ...(categoryKind ? { categoryKind } : {}), query: '', items: [], loading: true } })
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, ...(categoryKind ? { categoryKind } : {}), pageSize: 12 })
     return this.changeDirectoryPage(event)
   },
 
   searchDirectory: function (event) {
-    if (!this.data.directorySheet) return
+    if (!this.data.directorySheet || !currentTransferDirectory(this)) return
     const query = String(event.detail.value || '').slice(0, 80)
     this.setData({ 'directorySheet.query': query })
     const categoryKind = this.data.directorySheet.categoryKind
@@ -506,7 +530,7 @@ module.exports = {
 
   changeDirectoryKind: function (event) {
     const kind = event.currentTarget.dataset.kind
-    if (!this.data.directorySheet || this.data.directorySheet.kind === 'categories' || !['accounts', 'accountDrafts'].includes(kind)) return
+    if (!this.data.directorySheet || !currentTransferDirectory(this) || this.data.directorySheet.kind === 'categories' || !['accounts', 'accountDrafts'].includes(kind)) return
     this.setData({ 'directorySheet.kind': kind, 'directorySheet.query': '' })
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
     return this.changeDirectoryPage(event)
@@ -516,7 +540,7 @@ module.exports = {
     const pager = this._optionPager
     const session = this._viewSession, scope = readCache.getSession(), version = session && session.summary.viewVersion
     const active = () => this._viewActive && this._viewSession === session && readCache.getSession() === scope &&
-      session.summary.viewVersion === version && pager === this._optionPager && this.data.directorySheet
+      session.summary.viewVersion === version && pager === this._optionPager && this.data.directorySheet && currentTransferDirectory(this)
     if (!pager || !active()) return
     this.setData({ 'directorySheet.loading': true, 'directorySheet.error': '' })
     try {
@@ -528,6 +552,28 @@ module.exports = {
 
   selectDirectory: function (event) {
     const sheet = this.data.directorySheet
+    if (sheet && sheet.transferAccount) {
+      if (!currentTransferDirectory(this) || this.data.busy) return
+      const property = sheet.target === 'counterparty' ? 'counterpartyAccountChoices' : 'accountChoices'
+      const change = sheet.target === 'counterparty' ? 'changeCounterpartyAccount' : 'changeIssueAccount'
+      const choice = event.currentTarget.dataset.choice
+      if (choice === 'clear' || choice === 'create') {
+        const index = this.data[property].findIndex(row => choice === 'clear' ? row.isPlaceholder : row.isCreate)
+        if (index < 0 || choice === 'create' && !sheet.canCreate) return
+        this[change]({ detail: { value: index } }); this.closeDirectory()
+        return
+      }
+      if (sheet.loading || sheet.error) return
+      const item = sheet.items[Number(event.currentTarget.dataset.index)]
+      if (!item) return
+      const selected = sheet.kind === 'accountDrafts' ? Object.assign({}, item, { isDraft: true, name: item.name + '（本批新建）' }) : item
+      const choices = this.data[property].filter(row => row.isPlaceholder).concat(selected,
+        this.data[property].filter(row => row.isCreate))
+      this.setData({ [property]: choices, accounts: this.data.accounts.filter(row => row.accountId !== item.accountId).slice(0, 11).concat(selected) })
+      this[change]({ detail: { value: choices.findIndex(row => row.accountId === item.accountId) } })
+      this.closeDirectory()
+      return
+    }
     if (sheet && ['reviewAccount', 'reviewCounterparty'].includes(sheet.target)) {
       const item = sheet.items[Number(event.currentTarget.dataset.index)]
       if (item && this.selectReviewedAccount(item, sheet.target)) this.closeDirectory()
@@ -572,7 +618,7 @@ module.exports = {
   },
 
   closeDirectory: function () {
-    if (this._optionPager) this._optionPager.cancel(); this._optionPager = null; this.setData({ directorySheet: null })
+    if (this._optionPager) this._optionPager.cancel(); this._optionPager = null; this._transferDirectoryToken = null; this.setData({ directorySheet: null })
   },
 
   openAccountRecords: async function (event) {

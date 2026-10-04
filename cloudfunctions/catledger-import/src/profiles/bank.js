@@ -42,8 +42,8 @@ function resolveSettlement(row) {
 
 function bankProfile(container) {
   return Object.freeze({ profileId: `bank_${container}`, sourceFormat: `bank_${container}`,
-    sourceType: 'bank', container, profileVersion: 'bank-profile-v2', adapterVersion: 'bank-adapter-v3',
-    policyVersion: 'bank-policy-v2', parserName: 'bank-table-evidence', parserVersion: 'bank-parser-v3',
+    sourceType: 'bank', container, profileVersion: 'bank-profile-v3', adapterVersion: 'bank-adapter-v3',
+    policyVersion: 'bank-policy-v3', parserName: 'bank-table-evidence', parserVersion: 'bank-parser-v3',
     normalizationVersion: 'bank-normalization-v3', resolveAction, resolveSettlement,
     relationHints: (row, settled) => ({ ...relationHints(row, settled), installment: row.direction === 'expense' ? installmentEvidence(row) : null }) })
 }

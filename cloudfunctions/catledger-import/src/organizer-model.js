@@ -121,6 +121,12 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
     reasons.push('core_fields_missing')
   }
   if (!event.ledgerAccountId) reasons.push('ledger_account_required')
+  const installment = event.fieldSources && event.fieldSources.installment
+  // 本金出账只登记分期来源；人工选择的实际转账不能沿用到此类记录。
+  if (installment && installment.creditStatement === true && installment.component === 'principal' &&
+      (event.economicNature !== ECONOMIC_NATURE.REPAYMENT || event.counterpartyLedgerAccountId ||
+        event.fieldSources.loanRepayment || event.fieldSources.paymentResolution ||
+        (event.fieldSources.repaymentAllocations || []).length)) reasons.push('core_fields_conflict')
   reasons.push(...repaymentOwnership.reasonsFor(event))
   if (needsCategory(event)) {
     reasons.push('category_required')
@@ -250,7 +256,9 @@ function classifyReviewIssue(event) {
   )) {
     return { issueType: REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'ledger_account_required' }
   }
-  if ([ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(event.economicNature) ||
+  const installmentPrincipal = event.fieldSources && event.fieldSources.installment &&
+    event.fieldSources.installment.creditStatement === true && event.fieldSources.installment.component === 'principal'
+  if ((!installmentPrincipal && [ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(event.economicNature)) ||
       reasons.has('transfer_account_required') || reasons.has('repayment_account_required') || reasons.has('borrow_account_required') ||
       [...reasons].some((reason) => reason.startsWith('repayment_allocation_'))) {
     return {

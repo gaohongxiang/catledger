@@ -36,9 +36,12 @@ function refreshEventSemantic(current, evidenceRows) {
   const financial = semantics.every(semantic => semantic.moneyEffect === 'financial')
   const sources = current.fieldSources || {}
   const signature = semantic => JSON.stringify([semantic.sourceAction, semantic.moneyEffect, semantic.settlement,
-    semantic.issues && semantic.issues.map(issue => issue.code).sort(), semantic.fromAccountRef, semantic.toAccountRef])
+    semantic.issues && semantic.issues.map(issue => issue.code).sort(), semantic.fromAccountRef, semantic.toAccountRef,
+    semantic.relationHints && semantic.relationHints.installment || null])
+  const installment = semantics[0].relationHints && semantics[0].relationHints.installment || null
+  const installmentChanged = JSON.stringify(installment) !== JSON.stringify(sources.installment || null)
   const sameSource = evidenceRows.every((row, index) => row.semantic && signature(row.semantic) === signature(semantics[index]))
-  if (sameSource && JSON.stringify(blockers.slice().sort()) === JSON.stringify((sources.semanticBlockers || []).slice().sort()) &&
+  if (sameSource && !installmentChanged && JSON.stringify(blockers.slice().sort()) === JSON.stringify((sources.semanticBlockers || []).slice().sort()) &&
       ((current.manualFieldMask & FIELD_MASK.economicNature) || (natures.length === 1 && natures[0] === current.economicNature))) return current
   const next = { ...current, fieldSources: { ...sources, semanticBlockers: blockers },
     reasonCodes: (current.reasonCodes || []).filter(reason => !SOURCE_REASONS.has(reason)) }
@@ -61,6 +64,17 @@ function refreshEventSemantic(current, evidenceRows) {
       }
     }
     next.fieldSources.ledgerAccountReference = ledgerAccountReferenceForRow(rows[0])
+    const sameInstallment = semantics.every(semantic => JSON.stringify(semantic.relationHints && semantic.relationHints.installment || null) === JSON.stringify(installment))
+    if (sameInstallment) {
+      if (installment) next.fieldSources.installment = installment
+      else delete next.fieldSources.installment
+    } else next.reasonCodes.push('core_fields_conflict')
+    if (installment && installment.component === 'principal' && next.economicNature === 'repayment' && !next.counterpartyLedgerAccountId) {
+      next.reasonCodes = next.reasonCodes.filter(reason => !['transfer_account_required', 'repayment_account_required', 'borrow_account_required'].includes(reason))
+    }
+    if (installment && installment.component === 'principal' &&
+        (next.economicNature !== 'repayment' || next.counterpartyLedgerAccountId ||
+          next.flowDirection !== 'neutral')) next.reasonCodes.push('core_fields_conflict')
     Object.assign(next.fieldSources, paymentEvidenceFields(rows))
     const references = referencesForRows(rows)
     if (references.length) next.fieldSources.paymentAccountReferences = references

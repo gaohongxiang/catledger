@@ -5,6 +5,7 @@
     <view class="evidence-drilldown">
       <view class="review-sheet-heading"><text class="sheet-title serif-title">交易详情</text><button class="review-sheet-close" bindtap="closeReviewDetails" aria-label="关闭交易详情"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
       <scroll-view class="evidence-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+        <text wx:if="{{reviewDetailSheet.installmentNote}}" class="sheet-copy">{{reviewDetailSheet.installmentNote}}</text>
         <skeleton-rows wx:if="{{reviewDetailSheet.loading && !reviewDetailSheet.sources.length}}" rows="{{3}}" />
         <view wx:for="{{reviewDetailSheet.sources}}" wx:key="evidenceId" class="evidence-card">
           <view class="evidence-card-head"><text class="evidence-role">原始交易 {{index + 1}} · {{item.sourceLabel}}</text></view>

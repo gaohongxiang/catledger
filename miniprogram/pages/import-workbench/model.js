@@ -399,6 +399,11 @@ function buildIssueFieldsDraft(state) {
     fields.economicNature = nature.value
     fields.flowDirection = nature.value === 'income' || nature.value === 'refund' ? 'inflow'
       : ['internal_transfer', 'repayment', 'borrow'].includes(nature.value) ? 'neutral' : 'outflow'
+    if (issue.installmentPrincipal) {
+      if (nature.value !== 'repayment') return invalid('这笔是本期分期本金出账，请选择“分期本金出账”')
+      fields.counterpartyLedgerAccountId = null
+      fields.categoryId = null
+    }
   }
   return { valid: true, fields: fields }
 }
@@ -406,6 +411,7 @@ function buildIssueFieldsDraft(state) {
 function issueView(issue) {
   const context = issue.accountContext || {}
   const subject = issue.subject ? eventView(issue.subject) : null
+  const installmentPrincipal = Boolean(subject && subject.installment && subject.installment.creditStatement && subject.installment.component === 'principal')
   const projected = issue.subject && issue.subject.fundsProjection
   const aggregateRepayment = Boolean(issue.issueType === 'transfer_accounts' && projected &&
     projected.to && projected.to.referenceKind === 'aggregate')
@@ -435,7 +441,9 @@ function issueView(issue) {
   const evidenceReviewOnly = refundSourceConflict || statusUnknown
   if (refundSourceConflict) label = '退款与原订单状态冲突'
   else if (statusUnknown) label = '账单状态尚待核对'
-  const issueHelp = refundSourceConflict
+  const issueHelp = installmentPrincipal
+    ? '这是本期分期本金出账，不代表实际还款。请确认所属信用卡并选择“分期本金出账”；入账后可关联或新建分期计划。'
+    : refundSourceConflict
     ? '同一来源订单显示原消费已关闭或失败，却另有退款到账。请对照下方两条原始记录，核实实际扣款及退款；证据补齐前可不计入本次账本，不能暂记待关联退款。'
     : statusUnknown
       ? '此账单状态尚未支持，当前无法确认扣款或到账。请核对下方原始记录；可先不计入本次账本，保留来源并在模板适配后重新导入。'
@@ -453,6 +461,7 @@ function issueView(issue) {
     ? '代他人还款待核对' : '还款账户归属待确认'
   return Object.assign({}, issue, {
     label: issue.primaryReasonCode === 'loan_repayment_required' ? '借款还款本息费待核对' : label,
+    installmentPrincipal: installmentPrincipal,
     repaymentOwnershipRequired: repaymentOwnershipRequired,
     paymentNeedsReview: paymentNeedsReview,
     refundSourceConflict: refundSourceConflict,
@@ -463,7 +472,7 @@ function issueView(issue) {
     missingFundsSide: missingFundsSide,
     fundsProjection: projected || null,
     historicalDuplicate: historicalDuplicate,
-    missingAccountLabel: missingFundsSide === 'to' ? '转入账户' : '转出账户',
+    missingAccountLabel: installmentPrincipal ? '所属信用卡' : missingFundsSide === 'to' ? '转入账户' : '转出账户',
     canConfirmSame: issue.issueType === 'same_event' && !historicalDuplicate && !bankChannelAmbiguous && issue.primaryReasonCode !== 'source_group_conflict',
     reasonText: issue.primaryReasonCode === 'loan_repayment_required' ? '补齐本金、利息、费用后才能入账。' : issue.primaryReasonCode === 'source_group_conflict'
       ? '参考号相同但来源编号或时间有歧义，请核对。'
@@ -844,16 +853,20 @@ function eventView(event) {
   const dateText = localAt.slice(0, 16).replace(/^\d{4}-/u, '').replace(' ', ' · ')
   const sourceText = { alipay: '支付宝', wechat: '微信', bank: '银行' }[evidence.sourceType] || ''
   const detailText = evidence.counterparty && evidence.counterparty !== displayTitle ? evidence.counterparty : ''
+  const installment = event.installment && event.installment.creditStatement ? event.installment : null
+  const installmentLabel = installment && { principal: '分期本金出账', interest: '分期利息', fee: '分期手续费' }[installment.component] || ''
+  const installmentMeta = installmentLabel && [installmentLabel, '第' + installment.periodNumber + '期' + (installment.totalTerms ? '／共' + installment.totalTerms + '期' : '')].join(' · ')
   return Object.assign({}, event, {
     amountText: amountText(event.summaryExpenseMinor == null ? event.amountMinor : event.summaryExpenseMinor),
     displayTitle: event.summaryExpenseMinor == null ? displayTitle : '还款利息及费用',
-    displayMeta: [dateText, detailText, sourceText].filter(Boolean).join(' · '),
+    displayMeta: [dateText, installmentMeta || detailText, sourceText].filter(Boolean).join(' · '),
     displayDate: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(5, 10) : '',
     displayDay: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? localAt.slice(8, 10) : '',
     displayMonth: /^\d{4}-\d{2}-\d{2}/u.test(localAt) ? Number(localAt.slice(5, 7)) + '月' : '',
-    displayDetailMeta: [detailText, sourceText].filter(Boolean).join(' · '),
+    displayDetailMeta: [installmentMeta || detailText, sourceText].filter(Boolean).join(' · '),
+    ...(installmentLabel ? { installmentNote: (installment.component === 'principal' ? '本期本金出账，仅保留分期来源，不记实际还款。' : '本期分期费用，按账单记一次支出。') + '入账后可在“补充分期记录”中关联或新建分期计划。' } : {}),
     directionClass: event.flowDirection === 'inflow' ? 'row-income' : event.flowDirection === 'outflow' ? 'row-expense' : '',
-    natureLabel: event.natureLabel || natureLabelOf(event.economicNature)
+    natureLabel: installmentLabel || event.natureLabel || natureLabelOf(event.economicNature)
   })
 }
 
