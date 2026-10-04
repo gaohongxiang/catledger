@@ -39,6 +39,7 @@ Component({
 
     show: function (options) {
       if (app.hasLoginApproval()) {
+        app.globalData.identityConfirming = false
         if (options && typeof options.afterLogin === 'function') options.afterLogin()
         return Promise.resolve()
       }
@@ -64,12 +65,18 @@ Component({
 
     close: function () {
       if (this.data.submitting && this.data.stage !== 'loading') return
+      app.globalData.identityConfirming = false
       this._attempt = null
       this._afterLogin = null
       this._bootstrapResult = null
       this._profileRequestId = null
       this._loginLoad = null
       this.setData({ open: false, submitting: false, errorMessage: '' })
+      if (typeof getCurrentPages === 'function') {
+        const pages = getCurrentPages()
+        const page = pages[pages.length - 1]
+        if (page && typeof page.onShow === 'function') page.onShow()
+      }
     },
 
     captureAttempt: function () {
@@ -85,6 +92,7 @@ Component({
       this.setData({ stage: 'loading', submitting: true, errorMessage: '' })
       const pending = api.identifyWechatAccount().then(result => {
         if (!isCurrent()) return
+        app.globalData.identityConfirming = false
         if (result.nickname) return this.finish(result, result.nickname, isCurrent)
         this._bootstrapResult = result
         const profile = profilePresentation.withDefaultProfile(app.globalData.profile)
@@ -92,8 +100,8 @@ Component({
           nickname: Array.from(profile.nickname).slice(0, profilePresentation.NICKNAME_MAX_LENGTH).join(''),
           avatarUrl: profile.avatarUrl })
       }).catch(error => {
-        if (isCurrent()) this.setData({ stage: 'error', submitting: false,
-          errorMessage: error.message || '暂时无法连接账本，请重试' })
+        if (isCurrent()) { app.globalData.identityConfirming = false; this.setData({ stage: 'error', submitting: false,
+          errorMessage: error.message || '暂时无法连接账本，请重试' }) }
       }).finally(() => {
         if (this._loginLoad === pending) {
           this._loginLoad = null

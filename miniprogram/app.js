@@ -21,6 +21,7 @@ App({
     cloudAvailable: false,
     loginApproved: false,
     loginStartupPending: false,
+    identityConfirming: false,
     uid: '',
     profile: { nickname: '', avatarUrl: '' },
     themeId: '',
@@ -50,6 +51,7 @@ App({
     })
 
     this.globalData.cloudAvailable = true
+    this.globalData.identityConfirming = true
     require('./services/catledger-api').prepareWechatAccount()
   },
 

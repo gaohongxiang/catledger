@@ -44,6 +44,7 @@ Page({
     chargeSyncComplete: false,
     errorMessage: '',
     month: '',
+    identityPending: false,
     netWorthText: '—',
     incomeText: '—',
     expenseText: '—',
@@ -67,6 +68,7 @@ Page({
     this.setData({
       cloudAvailable: app.globalData.cloudAvailable,
       loggedIn: loggedIn,
+      identityPending: !loggedIn && Boolean(app.globalData.identityConfirming),
       greeting: greetingText(loggedIn, app.globalData.profile),
       displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile),
       month: month,
@@ -84,6 +86,7 @@ Page({
     const loggedIn = app.hasLoginApproval()
     this.setData({
       loggedIn: loggedIn,
+      identityPending: !loggedIn && Boolean(app.globalData.identityConfirming),
       greeting: greetingText(loggedIn, app.globalData.profile),
       todayLabel: time.todayLabel(),
       displayAvatarUrl: profilePresentation.displayAvatarUrl(loggedIn, app.globalData.profile)

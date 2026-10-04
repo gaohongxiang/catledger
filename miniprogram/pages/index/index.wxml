@@ -80,6 +80,7 @@
             <button id="trend-import-entry" class="trend-guide-btn" catchtap="openImport"><text class="trend-guide-label trend-guide-label-soft">导入账单</text></button>
           </view>
         </view>
+        <skeleton-rows wx:elif="{{!loggedIn && identityPending}}" rows="{{2}}" />
         <view wx:elif="{{!loggedIn}}" class="statistics-card-empty">暂无收支数据</view>
         <view wx:elif="{{loading}}" class="statistics-card-empty">正在汇总收支趋势…</view>
         <view wx:elif="{{trendReady}}" class="statistics-card-empty">近半年还没有收支</view>
@@ -101,6 +102,7 @@
         </view>
     </view>
     <skeleton-rows wx:elif="{{loading && !hasDashboard}}" rows="{{2}}" />
+    <skeleton-rows wx:elif="{{!loggedIn && identityPending}}" rows="{{2}}" />
     <view wx:elif="{{loggedIn && !hasDashboard}}" class="account-empty">账户暂未读取</view>
     <view wx:else class="account-empty">{{loggedIn ? '还没有账户，添加后会显示在这里' : '登录后查看你的账户'}}</view>
 
@@ -129,6 +131,7 @@
       <empty-cat wx:else title="还没有账目" description="导入或手动记录后，最新账目会出现在这里。" />
     </block>
     <skeleton-rows wx:elif="{{loading}}" rows="{{3}}" />
+    <skeleton-rows wx:elif="{{!loggedIn && identityPending}}" rows="{{3}}" />
     <empty-cat wx:else title="{{errorMessage ? '账目暂未读取' : '登录后查看最近账目'}}" description="导入或手动记录后，最新账目会出现在这里。" />
     </view>
   </block>

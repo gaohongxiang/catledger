@@ -1,11 +1,8 @@
-<view wx:if="{{open && automatic && stage !== 'setup'}}" class="login-startup {{themeClass}}" style="{{themeStyle}}" catchtouchmove="stopBubble">
+<view wx:if="{{open && automatic && stage === 'error'}}" class="login-startup {{themeClass}}" style="{{themeStyle}}" catchtouchmove="stopBubble">
   <view class="login-startup-content">
-    <view wx:if="{{stage === 'loading'}}" class="login-spinner"></view>
-    <text class="login-title">{{stage === 'error' ? '暂时未能打开账本' : '正在打开账本…'}}</text>
-    <block wx:if="{{stage === 'error'}}">
-      <button class="login-primary" bindtap="confirm">重试</button>
-      <button class="login-startup-cancel" bindtap="close">返回</button>
-    </block>
+    <text class="login-title">暂时未能打开账本</text>
+    <button class="login-primary" bindtap="confirm">重试</button>
+    <button class="login-startup-cancel" bindtap="close">返回</button>
   </view>
 </view>
 <view wx:elif="{{open}}" class="login-backdrop {{themeClass}}" style="{{themeStyle}}" bindtap="close" catchtouchmove="stopBubble">
