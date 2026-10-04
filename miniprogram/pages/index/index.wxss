@@ -222,6 +222,10 @@
   line-height: 1.4;
 }
 .statistics-card-empty {
+  display: flex;
+  min-height: 208rpx;
+  align-items: center;
+  justify-content: center;
   padding: 36rpx 0;
   color: var(--home-muted, var(--theme-text-muted, #726d66));
   font-size: var(--font-caption, 24rpx);
@@ -229,6 +233,11 @@
 }
 
 .trend-guide {
+  display: flex;
+  min-height: 208rpx;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
   padding: 8rpx 0 8rpx;
   text-align: center;
 }
@@ -285,6 +294,7 @@
 }
 
 .account-list {
+  min-height: 208rpx;
   padding: 0 20rpx;
   margin: 0 -20rpx;
   background: var(--home-surface-muted, var(--theme-surface-muted, #f4eee3));
@@ -347,6 +357,10 @@
   word-break: break-word;
 }
 .account-empty {
+  display: flex;
+  min-height: 208rpx;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   padding: 32rpx 0;
   color: var(--home-muted, var(--theme-text-muted, #726d66));
