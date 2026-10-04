@@ -17,7 +17,7 @@ for (const status of ['pending', 'completed', 'excluded', 'duplicate']) {
     await page.setStep({ currentStep: 3 })
     const totals = JSON.stringify(page.data.recordSummary)
     await page.changeReviewPage({ currentTarget: { dataset: { direction: '1' } } })
-    const target = status === 'pending' ? h.issues.at(-1) : status === 'excluded'
+    const target = status === 'pending' ? { ...h.events.at(-1), pendingIssue: { ...h.issues.at(-1), subject: undefined, subjectEventIds: undefined } } : status === 'excluded'
       ? { groupId: 'synthetic-search-group', label: '合成账户已排除', count: 1, note: '合成搜索结果' } : h.events.at(-1)
     h.intercept = (action, query) => query.query === '2026-10-03' ? {
       protocolVersion: 2, viewVersion: 'v1', items: [target], total: 1, nextCursor: null
@@ -29,9 +29,9 @@ for (const status of ['pending', 'completed', 'excluded', 'duplicate']) {
     assert.equal(request.input.query, '2026-10-03')
     assert.ok(!request.input.cursor)
     if (status === 'pending') {
-      assert.equal(request.action, 'reviewIssues.list')
-      assert.equal(request.input.group, 'review')
-      assert.equal(page.data.reviewGroups[0].issues[0].issueId, target.issueId)
+      assert.equal(request.action, 'economicEvents.list')
+      assert.equal(request.input.view, 'review_pending')
+      assert.equal(page.data.reviewGroups[0].issues[0].issueId, target.pendingIssue.issueId)
     } else {
       assert.equal(request.action, 'economicEvents.list')
       assert.equal(['completed', 'excluded'].includes(status) ? request.input.view : request.input.status,

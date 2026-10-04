@@ -23,15 +23,16 @@ for (const [label, tab, status, cap] of lists) test(label + '短响应补足50�
     issueType: tab === 'category' ? 'category_assignment' : 'same_event', status: 'open', version: 1,
     blocking: tab === 'review', memberCount: 1, candidateCount: 0, subject: event }))
   if (status === 'excluded') data.events.forEach(row => { row.status = 'excluded'; row.reasonCodes = ['manual_exclusion'] })
-  const h = runtime(data), page = h.page, rows = issues ? data.issues : data.events
+  const h = runtime(data), page = h.page, rows = data.events.map((event, index) => ({ ...event,
+    pendingIssue: issues ? { ...data.issues[index], subject: undefined } : null }))
   page.data.activeReviewTab = tab
   page.data[tab === 'review' ? 'activeReviewStatus' : 'activeCategoryStatus'] = status
-  h.intercept = (action, input) => action === (issues ? 'reviewIssues.list' : 'economicEvents.list')
+  h.intercept = (action, input) => action === 'economicEvents.list'
     ? fragment(h, rows, input, cap) : undefined
-  const current = () => page.businessData()[issues ? 'issues' : 'events']
-  const id = row => issues ? row.issueId : row.eventId
+  const current = () => page.businessData().events
+  const id = row => row.eventId
   await page.setStep({ currentStep: 3 })
-  const firstRead = h.calls.find(c => c.action === (issues ? 'reviewIssues.list' : 'economicEvents.list'))
+  const firstRead = h.calls.find(c => c.action === 'economicEvents.list')
   assert.equal(firstRead.input.pageSize, 50)
   assert.equal(current().length, 50)
   assert.equal(page.data.reviewPage.start, 1)
@@ -57,6 +58,58 @@ for (const [label, tab, status, cap] of lists) test(label + '短响应补足50�
   assert.deepEqual(Array.from(current(), id), rows.slice(0, 50).map(id))
   assert.ok(h.patches.every(bytes => bytes <= 65536))
   assert.ok(page._viewSession.cachedBytes <= 262144)
+  page.onUnload()
+})
+
+for (const tab of ['review', 'category']) test(tab + '的74笔分属46个问题时仍显示50+24笔，不把组数当笔数', async () => {
+  const data = fixture(74, true)
+  const base = data.issues[0]
+  data.issues = [{ ...base, issueType: tab === 'category' ? 'category_assignment' : 'same_event',
+    memberCount: 29, subjectEventIds: data.events.slice(0, 29).map(row => row.eventId) }]
+    .concat(data.events.slice(29).map((event, i) => ({ ...base, issueId: 'synthetic-single-' + i,
+      issueType: tab === 'category' ? 'category_assignment' : 'same_event', memberCount: 1,
+      subjectEventIds: [event.eventId], subject: event })))
+  assert.equal(data.issues.length, 46)
+  const h = runtime(data), page = h.page
+  page.data.activeReviewTab = tab
+  await page.setStep({ currentStep: 3 })
+  const cards = () => tab === 'review' ? page.data.reviewGroups.flatMap(group => group.issues) : page.data.categoryCards
+  assert.equal(cards().length, 50)
+  assert.equal(page.data.reviewPage.count, 74)
+  assert.equal(page.data.reviewPage.hasNext, true)
+  assert.equal(page.data.reviewPage.unit, '笔')
+  const seen = Array.from(cards(), card => card.eventId)
+  assert.equal(new Set(seen).size, 50)
+  assert.equal(cards()[28].issueId, data.issues[0].issueId, '第29笔仍能进入同一原始问题')
+  assert.match(cards()[28].batchDecision, /关联 29 笔/)
+  let selected
+  page.openIssue = event => { selected = event.currentTarget.dataset.id }
+  await page.openPendingRecord(tap({ id: cards()[28].eventId, issueId: cards()[28].issueId }))
+  assert.equal(selected, data.issues[0].issueId, '分页不改变决定范围')
+  await page.changeReviewPage(tap({ direction: 1 }))
+  assert.equal(cards().length, 24)
+  assert.equal(page.data.reviewPage.start, 51)
+  assert.equal(page.data.reviewPage.end, 74)
+  assert.equal(page.data.reviewPage.hasNext, false)
+  seen.push(...Array.from(cards(), card => card.eventId))
+  assert.deepEqual(seen, data.events.map(row => row.eventId))
+  await page.changeReviewPage(tap({ direction: 'first' }))
+  assert.equal(cards().length, 50)
+  page.onUnload()
+})
+
+test('没有问题入口的待核对交易也显示并可看详情，不被过滤成已完成', async () => {
+  const data = fixture(3, true)
+  data.issues = []
+  const h = runtime(data), page = h.page
+  await page.setStep({ currentStep: 3 })
+  const cards = page.data.reviewGroups[0].issues
+  assert.equal(cards.length, 3)
+  assert.ok(cards.every(card => !card.issueId && card.batchDecision === '查看详情'))
+  let selected
+  page.openReviewDetails = event => { selected = event.currentTarget.dataset.id }
+  await page.openPendingRecord(tap({ id: cards[2].eventId }))
+  assert.equal(selected, data.events[2].eventId)
   page.onUnload()
 })
 
@@ -224,7 +277,7 @@ test('50项长标题和商户摘要不突破原生更新预算，完整来源保
     assert.equal(page.data.pageError, '', kind)
     assert.equal(page.data.reviewPage.end, 50, kind)
     assert.ok(h.patches.every(bytes => bytes <= 65536), kind)
-    const record = kind === 'completed' ? page.businessData().events[0] : page.businessData().issues[0].subject
+    const record = page.businessData().events[0]
     assert.equal(record.primaryEvidence.item, title)
     assert.equal(record.primaryEvidence.counterparty, merchant)
     page.onUnload()

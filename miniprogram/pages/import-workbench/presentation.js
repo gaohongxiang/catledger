@@ -37,6 +37,21 @@ function card(issue) {
     hiddenSubjectCount: issue.hiddenSubjectCount, subjects: (issue.subjects || []).map(listRecord) }
 }
 
+function pendingCard(event, category) {
+  const issue = event.pendingIssue
+  const view = issue ? model.issueView(Object.assign({}, issue, { subject: event })) : {}
+  const count = issue ? Math.max(1, Number(issue.memberCount || 1) - Number(issue.candidateCount || 0)) : 1
+  return {
+    eventId: event.eventId, issueId: issue && issue.issueId || '',
+    label: view.label || (category ? '待分类 · 先核对交易' : '待核对交易'),
+    decisionText: view.decisionText || '',
+    batchDecision: issue ? count > 1 ? (category ? '分类关联 ' : '处理关联 ') + count + ' 笔' : category ? '分类' : '处理'
+      : category ? '去核对' : '查看详情',
+    subjectCount: 1, hiddenSubjectCount: 0,
+    natureLabel: event.economicNature === 'income' ? '收入' : '支出', subjects: [listRecord(event)]
+  }
+}
+
 function excludedGroups(events, expanded) {
   return model.excludedEventGroups(events, expanded).map(group => Object.assign({}, group, {
     events: group.expanded ? group.events.map(listRecord) : [] }))
@@ -132,4 +147,4 @@ const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务�
   : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
 function direction(event) { const value = event && event.currentTarget.dataset.direction; return value === 'first' ? value : Number(value || 0) }
 
-module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, listRecord, card, excludedGroups, evidencePartFields, PAGE_SIZE }
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, listRecord, card, pendingCard, excludedGroups, evidencePartFields, PAGE_SIZE }

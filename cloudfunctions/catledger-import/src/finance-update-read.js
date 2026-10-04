@@ -62,6 +62,7 @@ function boundedItem(item, key, kind) {
     'evidenceCount', 'duplicateEvidenceCount', 'objectId', 'objectType', 'objectVersion', 'memberRole', 'pairingDecision']) {
     if (item[name] != null) result[name] = item[name]
   }
+  if (Object.hasOwn(item, 'pendingIssue')) result.pendingIssue = item.pendingIssue
   return result
 }
 function finishPage(context, state, page, rows, total, key, kind) {
@@ -219,8 +220,30 @@ async function eventPage(connection, uid, context, state) {
   if (view === 'expense') for (const item of items) {
     if (item.loanRepayment && item.loanRepayment.confirmed) item.summaryExpenseMinor = String(require('./workbench-summary').repaymentExpense(item))
   }
+  if (view === 'review_pending' || view === 'category_pending') await attachPendingIssues(connection, uid, state.update.updateId, items, view)
   const byId = new Map(items.map(item => [item.eventId, item]))
   return finishPage(context, state, page, ids.map(row => byId.get(row.eventId)), count.total, 'eventId', 'event')
+}
+
+async function attachPendingIssues(connection, uid, updateId, events, view) {
+  if (!events.length) return
+  // 当前交易页一次批量取入口；问题的完整成员和决定范围仍由原问题详情接口提供。
+  const [rows] = await connection.execute(`SELECT m.object_id AS eventId, i.issue_id AS issueId, i.issue_type AS issueType,
+    i.status, i.version, i.blocking, i.primary_reason_code AS primaryReasonCode,
+    i.reason_codes_json AS reasonCodes, i.member_count AS memberCount, i.candidate_count AS candidateCount
+    FROM catledger_review_issue_members m JOIN catledger_review_issues i
+      ON i.uid = m.uid AND i.update_id = m.update_id AND i.issue_id = m.issue_id
+    WHERE m.uid = ? AND m.update_id = ? AND m.object_type = 'event' AND m.member_role <> 'candidate'
+      AND m.object_id IN (${events.map(() => '?').join(',')}) AND i.status = 'open'
+      AND ${view === 'category_pending' ? "i.issue_type = 'category_assignment'" : "i.blocking = 1 AND i.issue_type <> 'category_assignment'"}
+    ORDER BY i.created_at, i.issue_id`, [uid, updateId, ...events.map(event => event.eventId)])
+  const issues = new Map()
+  for (const row of rows) if (!issues.has(row.eventId)) issues.set(row.eventId, {
+    issueId: row.issueId, issueType: row.issueType, status: row.status, version: Number(row.version),
+    blocking: row.issueType !== 'category_assignment' && Boolean(row.blocking), primaryReasonCode: row.primaryReasonCode,
+    reasonCodes: parseJson(row.reasonCodes, []), memberCount: Number(row.memberCount), candidateCount: Number(row.candidateCount)
+  })
+  for (const event of events) event.pendingIssue = issues.get(event.eventId) || null
 }
 
 function compareTime(a, b, key) {

@@ -533,9 +533,9 @@ module.exports = {
     if (step === 2) filter = { group: 'accounts' }
     else if (this.data.activeReviewTab === 'category') {
       const status = this.data.activeCategoryStatus
-      if (status === 'pending') { filter = { group: 'category', status: 'open', query: this.data.categoryQuery }; kind = 'categoryCards' }
+      if (status === 'pending') { action = 'economicEvents.list'; filter = { view: 'category_pending', query: this.data.categoryQuery }; kind = 'categoryCards' }
       else { action = 'economicEvents.list'; filter = { view: 'category_' + status, query: this.data.categoryQuery }; kind = status === 'none' ? 'noCategoryEvents' : 'categorizedEvents' }
-    } else if (this.data.activeReviewStatus === 'pending') { filter = { group: 'review', status: 'open', query: this.data.reviewQuery }; kind = 'reviewGroups' }
+    } else if (this.data.activeReviewStatus === 'pending') { action = 'economicEvents.list'; filter = { view: 'review_pending', query: this.data.reviewQuery }; kind = 'reviewGroups' }
     else { action = 'economicEvents.list'; const status = this.data.activeReviewStatus
       filter = Object.assign(status === 'completed' ? { view: 'review_completed' } : status === 'excluded' ? { view: 'excluded_groups' } : { status }, { query: this.data.reviewQuery })
       kind = { completed: 'reviewedEvents', excluded: 'excludedReviewGroups', duplicate: 'duplicateReviewEvents' }[status]
@@ -549,18 +549,20 @@ module.exports = {
       if (!active() || pager !== this._mainPager) return
       const directory = step === 2 ? await this.loadDirectories(response.items.map(issue => issue.subject).filter(Boolean)) : { accounts: this.data.accounts, categories: this.data.categories, accountDrafts: this.data.accountDrafts }
       if (!active()) return
-      const issues = action === 'reviewIssues.list' ? response.items : []
       const events = action === 'economicEvents.list' && kind !== 'excludedReviewGroups' ? response.items : []
+      const issues = action === 'reviewIssues.list' ? response.items :
+        Array.from(new Map(events.filter(event => event.pendingIssue).map(event => [event.pendingIssue.issueId,
+          Object.assign({}, event.pendingIssue, { subject: event })])).values())
       this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [], accountMappingDrafts: [] })
       const patch = presentation.emptyLists()
-      patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : '项' })
+      patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : step === 3 ? '笔' : '项' })
       if (step === 2) {
         const visible = new Set(issues.map(issue => issue.issueId))
         for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed) this._accountUiDrafts.delete(id)
         Object.assign(patch, directory)
         patch.accountMappings = this.mappingState().mappings.map(compactMapping)
-      } else if (kind === 'reviewGroups') patch.reviewGroups = model.reviewIssueGroups(issues).map(group => ({ key: group.key, issueType: group.issueType, issues: group.issues.map(presentation.card) }))
-      else if (kind === 'categoryCards') patch.categoryCards = model.categoryIssueCards(issues, '').map(presentation.card)
+      } else if (kind === 'reviewGroups') patch.reviewGroups = events.length ? [{ key: 'pending-events', issues: events.map(event => presentation.pendingCard(event, false)) }] : []
+      else if (kind === 'categoryCards') patch.categoryCards = events.map(event => presentation.pendingCard(event, true))
       else if (kind === 'excludedReviewGroups') {
         patch.excludedReviewGroups = response.items.map(group => ({ groupId: group.groupId, key: group.groupId,
           label: group.label, note: group.note, count: group.count, expanded: false, events: [], loading: false, error: '', page: null }))

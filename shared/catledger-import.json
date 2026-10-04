@@ -34,7 +34,7 @@
     "spec": "specs/mini-1906o-consolidated-optimization/PERFORMANCE-V2-CONTRACT.md",
     "clientState": {
       "workbenchPageSize": 50,
-      "workbenchPaging": "Review and category lists fill one visible page from bounded transport fragments; only the final page may be shorter. Exclusions page batch-wide group summaries first; one expanded group pages its transactions in batches of 50 without splitting the account card. Page navigation commits after every fragment succeeds; evidence and other member paging keep their own bounds.",
+      "workbenchPaging": "Review and category lists page 50 transactions, including pending lists, with total matching the tab transaction count; shared issue decisions keep their original complete member scope. Clients fill one visible page from bounded transport fragments; only the final page may be shorter. Exclusions page batch-wide group summaries first; one expanded group pages its transactions in batches of 50 without splitting the account card. Page navigation commits after every fragment succeeds; evidence and other member paging keep their own bounds.",
       "maxCachedPages": 3,
       "maxCursorHistory": 8,
       "summary": "Server-authoritative counts and posting gates; current page never supplies batch totals.",
@@ -160,7 +160,8 @@
         "nextCursor?"
       ],
       "contract": "PERFORMANCE-V2-CONTRACT.md",
-      "excludedGroups": "view=excluded_groups returns items[{groupId,key,label,note,count,sortLocalAt}] and total group count for the entire filtered batch. Stable group IDs use the normalized concrete source account regardless of exclusion reason; only records without a known account fall back to reason groups. status=excluded plus excludedGroupId pages only that group's transactions with total transaction count. Both views share version, user, update, query and cursor isolation; summaries never contain member ID arrays or source text."
+      "excludedGroups": "view=excluded_groups returns items[{groupId,key,label,note,count,sortLocalAt}] and total group count for the entire filtered batch. Stable group IDs use the normalized concrete source account regardless of exclusion reason; only records without a known account fall back to reason groups. status=excluded plus excludedGroupId pages only that group's transactions with total transaction count. Both views share version, user, update, query and cursor isolation; summaries never contain member ID arrays or source text.",
+      "pendingIssues": "review_pending and category_pending count and page transactions, including every member of multi-event issues. Each event carries pendingIssue (compact current open issue metadata, or null); one bounded query selects the earliest eligible issue for each current-page event. Candidates and resolved issues are excluded. Search matches individual events; opening the referenced issue retains its full original decision scope."
     },
     "financeUpdates.options": {
       "categoryHierarchy": "Category options include parentId and parentName; query matches both parent and child names. Paging remains version-bound and user-scoped. Both levels can be selected; client opens this full directory instead of searching only the loaded candidate subset.",

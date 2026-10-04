@@ -374,6 +374,13 @@ module.exports = {
     return showIssueEditor.call(this, event)
   },
 
+  openPendingRecord: function (event) {
+    const data = event.currentTarget.dataset
+    if (data.issueId) return this.openIssue({ currentTarget: { dataset: { id: data.issueId } } })
+    if (this.data.activeReviewTab === 'category') return this.reviewBeforeCategory({ currentTarget: { dataset: {} } })
+    return this.openReviewDetails({ currentTarget: { dataset: { id: data.id } } })
+  },
+
   updateIssueReadiness: function () {
     const token = this._issueEvidenceToken
     if (!issueCurrent(this, token)) return

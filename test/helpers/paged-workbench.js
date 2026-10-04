@@ -11,7 +11,7 @@ function fixture(count = 121, blocking = false) {
     economicNature: 'expense', flowDirection: 'outflow', amountMinor: '100', categoryId: 'synthetic-category', categoryName: '合成分类', ledgerAccountId: 'synthetic-account',
     fieldSources: {}, localAt: '2026-09-01 12:00:00', primaryEvidence: { sourceType: 'wechat', item: '合成商品' + index, counterparty: '合成商户' }, evidenceCount: 1 }))
   const issues = blocking ? [{ issueId: 'synthetic-issue', issueType: 'same_event', status: 'open', version: 1, blocking: true,
-    memberCount: count, candidateCount: 0, subjectEventIds: [], subject: events[0] }] : []
+    memberCount: count, candidateCount: 0, subjectEventIds: events.map(event => event.eventId), subject: events[0] }] : []
   const summary = { protocolVersion: 2, viewVersion: 'v1', update: { updateId: 'synthetic-update', version: 1, status: 'review', counts: { readyEvents: blocking ? 0 : count } },
     sources: [], coverage: { selectedEventsReadyToPost: !blocking, openBlockingIssues: blocking ? 1 : 0, dataRows: count, rowConservationPassed: true },
     freshness: { requiresAccountGroupRefresh: false }, posting: null,
@@ -32,6 +32,14 @@ function runtime(data = fixture(), options = {}) {
     if (action === 'economicEvents.list') {
       rows = h.events.filter(event => (!input.status || event.status === input.status) &&
         (!input.economicNature || event.economicNature === input.economicNature))
+      if (['review_pending', 'category_pending'].includes(input.view)) rows = rows.map(event => {
+        const issue = h.issues.find(issue => issue.status === 'open' &&
+          (input.view === 'category_pending' ? issue.issueType === 'category_assignment' : issue.issueType !== 'category_assignment' && issue.blocking) &&
+          (issue.subject && issue.subject.eventId === event.eventId || (issue.subjectEventIds || []).includes(event.eventId)))
+        const pendingIssue = issue ? Object.fromEntries(['issueId', 'issueType', 'status', 'version', 'blocking', 'primaryReasonCode',
+          'reasonCodes', 'memberCount', 'candidateCount'].filter(key => issue[key] !== undefined).map(key => [key, issue[key]])) : null
+        return { ...event, pendingIssue }
+      })
       if (input.view === 'excluded_groups' || input.excludedGroupId) {
         const groups = workbenchModel.excludedEventGroups(rows.filter(event => event.status === 'excluded' && !workbenchModel.isHistoricalDuplicate(event)))
         rows = input.excludedGroupId ? (groups.find(group => group.key === input.excludedGroupId) || { events: [] }).events

@@ -209,6 +209,7 @@ Page({
   searchCategoryIssues: transactionReview.searchCategoryIssues,
   searchReviewIssues: transactionReview.searchReviewIssues,
   reviewBeforeCategory: transactionReview.reviewBeforeCategory,
+  openPendingRecord: transactionReview.openPendingRecord,
   viewTransactions: postingFlow.viewTransactions,
   viewStatistics: postingFlow.viewStatistics,
   completeCategories: postingFlow.completeCategories,
