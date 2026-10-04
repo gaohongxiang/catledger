@@ -51,6 +51,7 @@ Page({
     liabilitiesText: '—',
     monthExpenseText: '—',
     monthIncomeText: '—',
+    monthNetText: '—',
     trendReady: false,
     trendSparse: false,
     cashFlowTrend: [],
@@ -106,6 +107,7 @@ Page({
       liabilitiesText: '—',
       monthExpenseText: '—',
       monthIncomeText: '—',
+      monthNetText: '—',
       trendReady: false,
       trendSparse: false,
       cashFlowTrend: [],
@@ -152,7 +154,7 @@ Page({
     const month = time.currentMonth()
     const query = dashboardQuery(month)
     const snapshot = api.displaySnapshot('dashboard.get', query)
-    const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'monthExpenseText', 'monthIncomeText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
+    const isCurrent = pageReadSession.begin(this, ['loading', 'hasDashboard', 'errorMessage', 'netWorthText', 'incomeText', 'expenseText', 'assetsText', 'liabilitiesText', 'monthExpenseText', 'monthIncomeText', 'monthNetText', 'trendReady', 'trendSparse', 'cashFlowTrend', 'accounts', 'recentTransactions', 'dashboardStatus', 'dashboardFresh', 'chargeSyncMessage', 'chargeSyncComplete'], ['_dashboardLoad'])
     if (this._dashboardLoad || !app.hasLoginApproval()) {
       return this._dashboardLoad || Promise.resolve()
     }
@@ -181,6 +183,7 @@ Page({
           liabilitiesText: liabilitiesMinor === '0' ? '—' : money.formatMinor(liabilitiesMinor.charAt(0) === '-' ? liabilitiesMinor.slice(1) : liabilitiesMinor),
           monthExpenseText: monthRow.expenseMinor && monthRow.expenseMinor !== '0' ? money.formatMinor(monthRow.expenseMinor) : '—',
           monthIncomeText: monthRow.incomeMinor && monthRow.incomeMinor !== '0' ? money.formatMinor(monthRow.incomeMinor) : '—',
+          monthNetText: monthRow.expenseMinor || monthRow.incomeMinor ? money.formatMinor(addMinor(monthRow.incomeMinor || '0', monthRow.expenseMinor === '0' || !monthRow.expenseMinor ? '0' : '-' + monthRow.expenseMinor)) : '—',
           hasDashboard: true,
           dashboardFresh: Boolean(state && state.complete),
           dashboardStatus: !state ? '显示上次结果，正在检查费用并更新' : state.complete ? '' : '费用同步未完成，当前结果还不是最新余额',

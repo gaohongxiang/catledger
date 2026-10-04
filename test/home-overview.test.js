@@ -49,6 +49,7 @@ test('净值卡分栏：总资产与总负债按账户性质拆分，右侧展�
   assert.equal(page.data.liabilitiesText, '¥20,622.55')
   assert.equal(page.data.monthExpenseText, '¥428.81')
   assert.equal(page.data.monthIncomeText, '—')
+  assert.equal(page.data.monthNetText, '-¥428.81')
   assert.equal(page.data.incomeText, '¥1,234.00')
 })
 
