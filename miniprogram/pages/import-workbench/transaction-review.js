@@ -365,13 +365,6 @@ module.exports = {
     return this.renderReview(true)
   },
 
-  toggleExcludedGroup: function (event) {
-    const key = String(event.currentTarget.dataset.key || '')
-    if (!key || !this._viewActive || this.data.activeReviewTab !== 'review' || this.data.activeReviewStatus !== 'excluded') return
-    const expanded = this.data.excludedReviewGroups.filter(group => group.key === key ? !group.expanded : group.expanded).map(group => group.key)
-    this.setData({ excludedReviewGroups: presentation.excludedGroups(this.businessData().events || [], expanded) })
-  },
-
   closeReviewSheet: function () {
     if (this.data.evidenceSheet) this.closeEvidence()
     else this.closeIssue()

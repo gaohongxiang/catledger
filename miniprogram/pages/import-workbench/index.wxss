@@ -1033,6 +1033,8 @@ button::after { border: 0; }
 }
 .excluded-group-chevron-expanded { transform: rotate(135deg); }
 .excluded-group-records { padding: 0 16rpx; background: var(--ui-surface); border-top: 2rpx solid var(--ui-line); }
+.excluded-group-pagination { margin: 0; padding: 16rpx 0; }
+.excluded-group-error { padding: 16rpx 0; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
 .review-audit-card {
   overflow: hidden;
   margin-top: 12rpx;

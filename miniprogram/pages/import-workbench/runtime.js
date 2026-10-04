@@ -179,6 +179,7 @@ module.exports = {
     }
   },
   cancelPagedReads() {
+    this.cancelExcludedGroup()
     this._reviewDetailToken = null
     this._reviewEditToken = null
     if (this.cancelPairingEntry) this.cancelPairingEntry()
@@ -520,6 +521,8 @@ module.exports = {
 
   loadActivePage: async function (reset, direction, quiet) {
     if (!this._viewSession || !this._viewActive) return
+    const expandedExcluded = this.data.excludedReviewGroups.find(group => group.expanded)
+    this.cancelExcludedGroup()
     const step = this.data.currentStep
     this.loadPairingEntry()
     const epoch = ++this._pageEpoch, viewEpoch = this._viewEpoch, scope = readCache.getSession()
@@ -534,10 +537,11 @@ module.exports = {
       else { action = 'economicEvents.list'; filter = { view: 'category_' + status, query: this.data.categoryQuery }; kind = status === 'none' ? 'noCategoryEvents' : 'categorizedEvents' }
     } else if (this.data.activeReviewStatus === 'pending') { filter = { group: 'review', status: 'open', query: this.data.reviewQuery }; kind = 'reviewGroups' }
     else { action = 'economicEvents.list'; const status = this.data.activeReviewStatus
-      filter = Object.assign(status === 'completed' ? { view: 'review_completed' } : { status }, { query: this.data.reviewQuery })
+      filter = Object.assign(status === 'completed' ? { view: 'review_completed' } : status === 'excluded' ? { view: 'excluded_groups' } : { status }, { query: this.data.reviewQuery })
       kind = { completed: 'reviewedEvents', excluded: 'excludedReviewGroups', duplicate: 'duplicateReviewEvents' }[status]
     }
-    if (reset || !this._mainPager) this._mainPager = this._viewSession.pager(action, filter)
+    if (reset || !this._mainPager) this._mainPager = this._viewSession.pager(action,
+      step === 3 ? Object.assign({}, filter, { pageSize: presentation.PAGE_SIZE }) : filter, { fillPage: step === 3 })
     const pager = this._mainPager
     if (!quiet) this.setData({ pageLoading: true, pageError: '' })
     try {
@@ -546,10 +550,10 @@ module.exports = {
       const directory = step === 2 ? await this.loadDirectories(response.items.map(issue => issue.subject).filter(Boolean)) : { accounts: this.data.accounts, categories: this.data.categories, accountDrafts: this.data.accountDrafts }
       if (!active()) return
       const issues = action === 'reviewIssues.list' ? response.items : []
-      const events = action === 'economicEvents.list' ? response.items : []
+      const events = action === 'economicEvents.list' && kind !== 'excludedReviewGroups' ? response.items : []
       this._businessData = Object.assign({}, directory, { issues, events, accountIssues: step === 2 ? issues.map(model.issueView) : [], accountMappingDrafts: [] })
       const patch = presentation.emptyLists()
-      patch.reviewPage = response.page
+      patch.reviewPage = Object.assign({}, response.page, { unit: kind === 'excludedReviewGroups' ? '组' : '项' })
       if (step === 2) {
         const visible = new Set(issues.map(issue => issue.issueId))
         for (const [id, draft] of this._accountUiDrafts) if (!visible.has(id) && !draft.dirty && !draft.localConfirmed) this._accountUiDrafts.delete(id)
@@ -558,17 +562,20 @@ module.exports = {
       } else if (kind === 'reviewGroups') patch.reviewGroups = model.reviewIssueGroups(issues).map(group => ({ key: group.key, issueType: group.issueType, issues: group.issues.map(presentation.card) }))
       else if (kind === 'categoryCards') patch.categoryCards = model.categoryIssueCards(issues, '').map(presentation.card)
       else if (kind === 'excludedReviewGroups') {
-        const expanded = this.data.reviewPage.index === response.page.index
-          ? this.data.excludedReviewGroups.filter(group => group.expanded).map(group => group.key) : []
-        patch.excludedReviewGroups = presentation.excludedGroups(events, expanded)
+        patch.excludedReviewGroups = response.items.map(group => ({ groupId: group.groupId, key: group.groupId,
+          label: group.label, note: group.note, count: group.count, expanded: false, events: [], loading: false, error: '', page: null }))
       }
       else { const categoryNames = model.categoryNames(this.data.categories)
-        patch[kind] = events.map(event => presentation.record(Object.assign({}, event, { duplicateCount: Number(event.duplicateEvidenceCount || 0) + (model.isHistoricalDuplicate(event) ? 1 : 0),
+        patch[kind] = events.map(event => presentation.listRecord(Object.assign({}, event, { duplicateCount: Number(event.duplicateEvidenceCount || 0) + (model.isHistoricalDuplicate(event) ? 1 : 0),
               categoryName: event.categoryName || categoryNames.get(event.categoryId) || '',
               auditNote: model.isHistoricalDuplicate(event) ? '已与历史账目对应，本次不重复入账。' : '已保留一笔，点开对照主记录与重复来源。' }))) }
       if (!quiet) patch.pageLoading = false
       patch.duplicateReviewLoaded = true
       setChangedData(this, patch)
+      if (kind === 'excludedReviewGroups' && expandedExcluded && !direction &&
+        patch.excludedReviewGroups.some(group => group.key === expandedExcluded.key)) {
+        await this.toggleExcludedGroup({ currentTarget: { dataset: { key: expandedExcluded.key } } })
+      }
     } catch (error) {
       if (active()) this.setData({ pageLoading: false, pageError: errorText(error) })
     }

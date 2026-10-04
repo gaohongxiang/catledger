@@ -174,14 +174,14 @@ test('24990条：先摘要、按页读取，活动状态与缓存不保留批次
   assert.equal(h.calls.length, 0)
   page.data.activeReviewStatus = 'completed'
   await page.setStep({ currentStep: 3 })
-  assert.equal(page.data.reviewedEvents.length, 40)
+  assert.equal(page.data.reviewedEvents.length, 50)
   assert.equal(page.data.recordSummary.totalCount, 24990)
   for (let i = 0; i < 20; i++) await page.changeReviewPage(event(1))
   assert.equal(page.data.reviewPage.index, 20)
   assert.ok(page._viewSession.pageCount <= MAX_PAGES)
   assert.ok(page._mainPager.historySize <= MAX_HISTORY)
-  assert.ok(page._viewSession.cachedItems <= 120)
-  assert.equal(page.businessData().events.length, 40)
+  assert.ok(page._viewSession.cachedItems <= 150)
+  assert.equal(page.businessData().events.length, 50)
   assert.equal(page._draftSession.view.events, undefined)
   const before = JSON.stringify(h.derives), reads = h.calls.length
   page._draftSession.enqueue([{ kind: 'review', issueId: 'synthetic-issue', issueVersion: 1, decision: { decision: 'confirm_distinct' } }])
@@ -380,7 +380,7 @@ test('当前页读取失败可重试，失败不伪造空批次或修改整批�
   assert.equal(page.data.recordSummary.totalCount, 121)
   h.intercept = null
   await page.loadActivePage(true)
-  assert.equal(page.data.reviewedEvents.length, 40)
+  assert.equal(page.data.reviewedEvents.length, 50)
   assert.equal(page.data.recordSummary.totalCount, 121)
   page.onUnload()
 })

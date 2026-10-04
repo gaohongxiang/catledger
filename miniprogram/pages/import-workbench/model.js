@@ -883,6 +883,15 @@ function accountRecordList(members) {
 
 function excludedReason(event) {
   const reasons = new Set(event && event.reasonCodes || [])
+  const evidence = event && event.primaryEvidence || {}, projection = event && event.fundsProjection || {}
+  const placeholder = /^(?:未提供|未填写|未注明|未标明|未知|不详|无|暂无|该账户|待确认|未识别|未知账户|未知支付方式|微信支付方式未标明|支付宝支付方式未标明|银行账户未标明|na|null|undefined)$/
+  const accountName = [evidence.paymentMethod, projection.from && projection.from.label, projection.to && projection.to.label]
+    .map(value => String(value || '').trim()).find(value => {
+      const normalized = normalizePaymentAccountName(value)
+      return normalized && !placeholder.test(normalized)
+    })
+  if (accountName) return { key: 'account:' + String(evidence.sourceType || '') + ':' + normalizePaymentAccountName(accountName),
+    label: accountName + '已排除', note: '该账户下的这些交易不计入本次账本。', order: 10 }
   if (reasons.has('source_non_financial')) {
     return { key: 'source_non_financial', label: '非资金记录', note: '只保留来源证据，不创建账户或正式账目。', order: 5 }
   }
@@ -896,16 +905,7 @@ function excludedReason(event) {
     return { key: 'already_posted', label: '已经入账', note: '相同来源交易已经存在，不会重复入账。', order: 40 }
   }
   if (reasons.has('account_mapping_excluded') || reasons.has('source_account_ignored_default')) {
-    const evidence = event && event.primaryEvidence || {}
-    const projection = event && event.fundsProjection || {}
-    const projectedAccount = projection.from && projection.from.label || projection.to && projection.to.label || ''
-    const accountName = String(evidence.paymentMethod || projectedAccount || '该账户').trim()
-    return {
-      key: 'account:' + String(evidence.sourceType || '') + ':' + normalizePaymentAccountName(accountName),
-      label: accountName + '已排除',
-      note: '该账户下的这些交易不计入本次账本。',
-      order: 10
-    }
+    return { key: 'account_mapping_excluded', label: '账户已排除', note: '这些记录按账户排除决定不计入本次账本。', order: 10 }
   }
   if (reasons.has('manual_exclusion')) {
     return { key: 'manual_exclusion', label: '手动排除', note: '整理时选择了不计入本次账本。', order: 50 }
@@ -915,18 +915,18 @@ function excludedReason(event) {
 
 function excludedEventGroups(events, expandedKeys) {
   const expanded = expandedKeys instanceof Set ? expandedKeys : new Set(expandedKeys || [])
-  const groups = []
+  const groups = new Map()
   ;(events || []).slice().sort(compareEvents).forEach(function (event) {
     const view = eventView(event)
     const reason = excludedReason(view)
-    let group = groups[groups.length - 1]
-    if (!group || group.reasonKey !== reason.key) {
-      group = Object.assign({}, reason, { key: reason.key + ':' + view.eventId, reasonKey: reason.key, events: [] })
-      groups.push(group)
+    let group = groups.get(reason.key)
+    if (!group) {
+      group = Object.assign({}, reason, { reasonKey: reason.key, events: [] })
+      groups.set(reason.key, group)
     }
     group.events.push(view)
   })
-  return groups.map(function (group) {
+  return [...groups.values()].map(function (group) {
     return Object.assign({}, group, {
       count: group.events.length,
       expanded: expanded.has(group.key)

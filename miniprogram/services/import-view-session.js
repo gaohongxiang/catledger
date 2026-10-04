@@ -69,29 +69,53 @@ function create(call, summary, options = {}) {
     remember(key, result, action)
     return result
   }
-  function pager(action, data, snapshot) {
+  function pager(action, data, settings = {}, snapshot) {
     let history = snapshot ? snapshot.history.slice() : [{ cursor: null, start: 0, index: 0 }]
     let position = snapshot ? snapshot.position : 0, result = snapshot ? snapshot.result : null, ticket = 0
     const epoch = snapshot ? snapshot.epoch : revision
+    async function loadPage(cursor, token) {
+      const size = inputFor(data).pageSize
+      const seen = new Set()
+      let combined = null
+      do {
+        if (seen.has(cursor)) throw Object.assign(new Error('分页结果不完整，请重试'), { code: 'INVALID_CURSOR' })
+        seen.add(cursor)
+        const input = Object.assign({}, data, { cursor })
+        if (settings.fillPage) input.pageSize = size - (combined ? combined.items.length : 0)
+        const next = await read(action, input, () => token === ticket && epoch === revision)
+        if (!settings.fillPage) return next
+        if (!Array.isArray(next.items) || next.items.length > input.pageSize ||
+          (next.nextCursor && (!next.items.length || seen.has(next.nextCursor))) || (combined && combined.total !== next.total)) {
+          throw Object.assign(new Error('分页结果不完整，请重试'), { code: 'INVALID_CURSOR' })
+        }
+        combined = Object.assign({}, next, { items: (combined ? combined.items : []).concat(next.items) })
+        cursor = next.nextCursor
+      } while (cursor && combined.items.length < size)
+      return combined
+    }
     return {
       async load(direction) {
         const token = ++ticket
-        if (direction === 'first') { history = [{ cursor: null, start: 0, index: 0 }]; position = 0 }
+        let nextHistory = history.slice(), nextPosition = position
+        if (direction === 'first') { nextHistory = [{ cursor: null, start: 0, index: 0 }]; nextPosition = 0 }
         else if (direction === 1 && result && result.nextCursor) {
           const previous = history[position]
-          history = history.slice(0, position + 1).concat({ cursor: result.nextCursor, start: previous.start + (result.items || result.members || []).length, index: previous.index + 1 })
-          if (history.length > MAX_HISTORY) history.shift()
-          position = history.length - 1
-        } else if (direction === -1 && position > 0) position--
-        const point = history[position]
-        const next = await read(action, Object.assign({}, data, { cursor: point.cursor }), () => token === ticket)
+          nextHistory = history.slice(0, position + 1).concat({ cursor: result.nextCursor, start: previous.start + (result.items || result.members || []).length, index: previous.index + 1 })
+          if (nextHistory.length > MAX_HISTORY) nextHistory.shift()
+          nextPosition = nextHistory.length - 1
+        } else if (direction === -1 && position > 0) nextPosition--
+        const point = nextHistory[nextPosition]
+        // 原文弹层保留失败位置供原位重试；主列表补足整页后才推进页码。
+        if (!settings.fillPage) { history = nextHistory; position = nextPosition }
+        const next = await loadPage(point.cursor, token)
         if (token !== ticket || epoch !== revision) throw Object.assign(new Error('分页请求已失效'), { code: 'STALE_VIEW' })
+        history = nextHistory; position = nextPosition
         result = next
         return Object.assign({}, next, { page: { index: point.index, count: next.total, start: point.start + (next.total ? 1 : 0),
           end: point.start + (next.items || next.members || []).length, hasPrevious: position > 0, hasNext: Boolean(next.nextCursor), canFirst: point.index > 0 } })
       },
       // 从同一来源位置打开弹层，保留有界游标且不移动底层卡片。
-      fork() { return pager(action, data, { history, position, result, epoch }) },
+      fork() { return pager(action, data, settings, { history, position, result, epoch }) },
       cancel() { ticket++ },
       get historySize() { return history.length }
     }

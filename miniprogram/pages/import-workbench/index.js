@@ -9,6 +9,7 @@ const categoryEdit = require('./category-edit')
 const duplicateEdit = require('./duplicate-edit')
 const reviewDetail = require('./review-detail')
 const reviewEdit = require('./review-edit')
+const excludedReview = require('./excluded-review')
 const postingFlow = require('./posting-flow')
 
 const initialData = Object.assign({}, pairingReview.initialData, {
@@ -214,7 +215,10 @@ Page({
   correctBalances: postingFlow.correctBalances,
   openInstallmentSources: postingFlow.openInstallmentSources,
   switchReviewStatus: transactionReview.switchReviewStatus,
-  toggleExcludedGroup: transactionReview.toggleExcludedGroup,
+  toggleExcludedGroup: excludedReview.toggleExcludedGroup,
+  cancelExcludedGroup: excludedReview.cancelExcludedGroup,
+  loadExcludedGroup: excludedReview.loadExcludedGroup,
+  changeExcludedGroupPage: excludedReview.changeExcludedGroupPage,
   buildAccountMappingState: accountReview.buildAccountMappingState,
   openAccountChoice: accountReview.openAccountChoice,
   closeAccountChoice: accountReview.closeAccountChoice,

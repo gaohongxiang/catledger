@@ -33,6 +33,8 @@
     "receiptPolicy": "所有导入命令固定小回执，首次事实同事务冻结，摘要独立读取；旧请求身份只读核实。",
     "spec": "specs/mini-1906o-consolidated-optimization/PERFORMANCE-V2-CONTRACT.md",
     "clientState": {
+      "workbenchPageSize": 50,
+      "workbenchPaging": "Review and category lists fill one visible page from bounded transport fragments; only the final page may be shorter. Exclusions page batch-wide group summaries first; one expanded group pages its transactions in batches of 50 without splitting the account card. Page navigation commits after every fragment succeeds; evidence and other member paging keep their own bounds.",
       "maxCachedPages": 3,
       "maxCursorHistory": 8,
       "summary": "Server-authoritative counts and posting gates; current page never supplies batch totals.",
@@ -148,7 +150,8 @@
         "view?",
         "query?",
         "accountId?",
-        "eventId?"
+        "eventId?",
+        "excludedGroupId? (with status=excluded)"
       ],
       "returns": [
         "protocolVersion=2",
@@ -156,7 +159,8 @@
         "items/part",
         "nextCursor?"
       ],
-      "contract": "PERFORMANCE-V2-CONTRACT.md"
+      "contract": "PERFORMANCE-V2-CONTRACT.md",
+      "excludedGroups": "view=excluded_groups returns items[{groupId,key,label,note,count,sortLocalAt}] and total group count for the entire filtered batch. Stable group IDs use the normalized concrete source account regardless of exclusion reason; only records without a known account fall back to reason groups. status=excluded plus excludedGroupId pages only that group's transactions with total transaction count. Both views share version, user, update, query and cursor isolation; summaries never contain member ID arrays or source text."
     },
     "financeUpdates.options": {
       "categoryHierarchy": "Category options include parentId and parentName; query matches both parent and child names. Paging remains version-bound and user-scoped. Both levels can be selected; client opens this full directory instead of searching only the loaded candidate subset.",

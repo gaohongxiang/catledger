@@ -4,6 +4,7 @@ const vm = require('node:vm')
 const { createReadCache, stableKey } = require('../../miniprogram/services/read-cache')
 const { create: createDraft } = require('../../miniprogram/services/import-draft-session')
 const { workbenchSummary } = require('../../cloudfunctions/catledger-import/src/workbench-summary')
+const workbenchModel = require('../../miniprogram/pages/import-workbench/model')
 const flush = () => new Promise(resolve => setImmediate(resolve))
 function fixture(count = 121, blocking = false) {
   const events = Array.from({ length: count }, (_, index) => ({ eventId: 'synthetic-event-' + index, version: 1, status: blocking ? 'needs_action' : 'ready',
@@ -28,8 +29,15 @@ function runtime(data = fixture(), options = {}) {
     if (h.intercept) { const value = await h.intercept(action, input); if (value !== undefined) return value }
     if (action === 'financeUpdates.summary') return h.summary
     let rows = [], extra = {}
-    if (action === 'economicEvents.list') rows = h.events.filter(event => (!input.status || event.status === input.status) &&
-      (!input.economicNature || event.economicNature === input.economicNature))
+    if (action === 'economicEvents.list') {
+      rows = h.events.filter(event => (!input.status || event.status === input.status) &&
+        (!input.economicNature || event.economicNature === input.economicNature))
+      if (input.view === 'excluded_groups' || input.excludedGroupId) {
+        const groups = workbenchModel.excludedEventGroups(rows.filter(event => event.status === 'excluded' && !workbenchModel.isHistoricalDuplicate(event)))
+        rows = input.excludedGroupId ? (groups.find(group => group.key === input.excludedGroupId) || { events: [] }).events
+          : groups.map(({ events, ...group }) => ({ ...group, groupId: group.key }))
+      }
+    }
     else if (action === 'reviewIssues.list') rows = h.issues.filter(issue => input.group === 'review' ? issue.issueType !== 'account_mapping' : input.group === 'accounts' ? issue.issueType === 'account_mapping' : true)
     else if (action === 'reviewIssues.members' || action === 'reviewIssues.get') {
       const issue = h.issues.find(item => item.issueId === input.issueId)

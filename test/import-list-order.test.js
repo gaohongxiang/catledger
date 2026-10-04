@@ -20,7 +20,7 @@ test('待核对按时间穿插类型，一组取最早成员，组内排序且�
   assert.equal(rows[1].subjects[0].eventId, 'm2', '排序不改变用于保存的原成员集合')
 })
 
-test('待分类按时间而不是商户；已排除按连续原因分段，展开后日期仍递增', () => {
+test('待分类按时间而不是商户；已排除同原因合并，组内日期递增', () => {
   const cards = model.categoryIssueCards([
     { issueId: 'first', issueType: 'category_assignment', subject: event('Z商户', 1) },
     { issueId: 'second', issueType: 'category_assignment', subject: event('A商户', 2) }
@@ -30,8 +30,8 @@ test('待分类按时间而不是商户；已排除按连续原因分段，展�
     reasonCodes: [e.eventId === 'middle' ? 'transaction_failed' : 'manual_exclusion'] }))
   const groups = model.excludedEventGroups(events)
   const expanded = model.excludedEventGroups(events, groups.map(g => g.key))
-  assert.deepEqual(expanded.flatMap(g => g.events.map(e => e.eventId)), ['early', 'middle', 'late'])
-  assert.equal(new Set(groups.map(g => g.key)).size, 3)
+  assert.deepEqual(expanded.map(g => g.events.map(e => e.eventId)), [['early', 'late'], ['middle']])
+  assert.equal(new Set(groups.map(g => g.key)).size, 2)
   assert.ok(expanded.every(g => g.expanded))
 })
 

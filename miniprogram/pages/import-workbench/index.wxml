@@ -366,8 +366,16 @@
             <view class="excluded-group-copy"><text class="excluded-group-title">{{item.label}}</text><text class="excluded-group-note">{{item.note}}</text></view><view class="excluded-group-side"><text class="excluded-group-count money-number">{{item.count}} 笔</text><view class="excluded-group-chevron {{item.expanded ? 'excluded-group-chevron-expanded' : ''}}"></view></view>
           </view>
           <view wx:if="{{item.expanded}}" class="excluded-group-records">
+            <text wx:if="{{item.loading}}" class="record-list-note">正在读取交易</text>
+            <view wx:if="{{item.error}}" class="excluded-group-error"><text>{{item.error}}</text><button class="text-action" data-key="{{item.key}}" data-direction="retry" bindtap="changeExcludedGroupPage">重试</button></view>
             <view wx:for="{{item.events}}" wx:for-item="record" wx:key="eventId" class="review-audit-row" data-id="{{record.eventId}}" bindtap="openEvidence" aria-role="button" aria-label="查看原始证据">
               <view class="review-preview-copy"><text class="review-preview-title">{{record.displayTitle}}</text><text class="review-preview-meta">{{record.displayMeta}}</text></view><text class="review-preview-amount money-number {{record.directionClass}}">{{record.amountText}}</text>
+            </view>
+            <view wx:if="{{item.page && (item.page.canFirst || item.page.hasNext)}}" class="list-pagination excluded-group-pagination">
+              <button class="stage-previous" data-key="{{item.key}}" data-direction="first" bindtap="changeExcludedGroupPage" disabled="{{item.loading || !item.page.canFirst}}">首页</button>
+              <button class="stage-previous" data-key="{{item.key}}" data-direction="-1" bindtap="changeExcludedGroupPage" disabled="{{item.loading || !item.page.hasPrevious}}">上一页</button>
+              <text>{{item.page.start}}–{{item.page.end}} / {{item.count}} 笔</text>
+              <button class="stage-previous excluded-group-next" data-key="{{item.key}}" data-direction="1" bindtap="changeExcludedGroupPage" disabled="{{item.loading || !item.page.hasNext}}">下一页</button>
             </view>
           </view>
         </view>
@@ -393,8 +401,8 @@
 <view wx:if="{{reviewPage && (reviewPage.hasPrevious || reviewPage.hasNext)}}" class="list-pagination">
         <button class="stage-previous" data-direction="first" bindtap="changeReviewPage" disabled="{{!reviewPage.canFirst}}">首页</button>
         <button class="stage-previous" data-direction="-1" bindtap="changeReviewPage" disabled="{{!reviewPage.hasPrevious}}">上一页</button>
-        <text>{{reviewPage.start}}–{{reviewPage.end}} / {{reviewPage.count}} 项</text>
-        <button class="stage-previous" data-direction="1" bindtap="changeReviewPage" disabled="{{!reviewPage.hasNext}}">下一页</button>
+        <text>{{reviewPage.start}}–{{reviewPage.end}} / {{reviewPage.count}} {{reviewPage.unit || '项'}}</text>
+        <button class="stage-previous review-page-next" data-direction="1" bindtap="changeReviewPage" disabled="{{!reviewPage.hasNext}}">下一页</button>
       </view>
     <view class="stage-action stage-navigation"><view class="stage-navigation-buttons">
       <button class="stage-previous" data-step="2" bindtap="goToStep" disabled="{{busy}}">上一步</button>

@@ -13,6 +13,7 @@ const { getRowSemantic } = require('./row-semantic-resolver')
 const { buildCoverageReport } = require('./coverage-report')
 const { analysisFullyObserved } = require('./statement-analysis')
 const accountGroups = require('./payment-account-groups')
+const excludedGroups = require('./excluded-event-groups')
 const { workbenchSummary } = require('./workbench-summary')
 
 async function readVersion(connection, uid, updateId) {
@@ -177,9 +178,15 @@ async function eventPage(connection, uid, context, state) {
   const eventId = data.eventId == null ? null : validateUuid(data.eventId)
   const issueId = data.issueId == null ? null : validateUuid(data.issueId)
   const nature = optionalEnum(data.economicNature, ['income', 'expense', 'refund', 'fee', 'internal_transfer', 'repayment', 'unknown', 'borrow', 'balance_adjustment'])
-  const view = optionalEnum(data.view, ['active', 'review_pending', 'review_completed', 'category_pending', 'category_completed', 'category_none', 'expense', 'posted'])
+  const view = optionalEnum(data.view, ['active', 'review_pending', 'review_completed', 'category_pending', 'category_completed', 'category_none', 'expense', 'posted', 'excluded_groups'])
   const accountId = data.accountId == null ? null : validateUuid(data.accountId)
+  const excludedGroupId = data.excludedGroupId == null ? null : validateUuid(data.excludedGroupId)
   const query = searchText(data.query)
+  if (view === 'excluded_groups' || excludedGroupId) {
+    if (eventId || issueId || nature || accountId || (view === 'excluded_groups'
+      ? excludedGroupId || status && status !== 'excluded' : status !== 'excluded' || view)) throw importError('VALIDATION_ERROR')
+    return excludedGroupPage(connection, uid, context, state, query, excludedGroupId)
+  }
   const page = preparePage(context, state, uid, 'events', { status, eventId, issueId, nature, view, accountId, query }, TIME_ORDER)
   let where = 'e.uid = ? AND e.update_id = ?'
   const values = [uid, state.update.updateId]
@@ -214,6 +221,53 @@ async function eventPage(connection, uid, context, state) {
   }
   const byId = new Map(items.map(item => [item.eventId, item]))
   return finishPage(context, state, page, ids.map(row => byId.get(row.eventId)), count.total, 'eventId', 'event')
+}
+
+function compareTime(a, b, key) {
+  return Number(a.sortLocalAt == null) - Number(b.sortLocalAt == null)
+    || String(a.sortLocalAt || '').localeCompare(String(b.sortLocalAt || '')) || a[key].localeCompare(b[key])
+}
+function afterTimeValue(row, page, key) {
+  return !page.last || compareTime(row, { sortLocalAt: page.last.at, [key]: page.last.id }, key) > 0
+}
+
+async function excludedGroupPage(connection, uid, context, state, query, excludedGroupId) {
+  const page = preparePage(context, state, uid, excludedGroupId ? 'excluded_group_members' : 'excluded_groups',
+    { excludedGroupId, query, groupVersion: excludedGroups.VERSION }, TIME_ORDER)
+  const search = query ? eventSearch(query) : null
+  // 完整批次只扫描归组所需字段；原文详情仅在展开后按当前成员页读取。
+  const [rows] = await connection.execute(`SELECT e.event_id AS eventId, e.event_local_at AS sortLocalAt,
+    e.reason_codes_json AS reasonCodes, s.source_type_snapshot AS sourceType, r.payment_method_raw AS paymentMethod,
+    JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json, '$.fundsProjection.from.label')) AS fromLabel,
+    JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json, '$.fundsProjection.to.label')) AS toLabel
+    FROM catledger_economic_events e
+    LEFT JOIN catledger_event_evidence v ON v.uid = e.uid AND v.update_id = e.update_id
+      AND v.event_id = e.event_id AND v.evidence_role = 'primary'
+    LEFT JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
+    LEFT JOIN catledger_finance_update_sources s ON s.uid = r.uid AND s.update_id = e.update_id AND s.batch_id = r.batch_id
+    WHERE e.uid = ? AND e.update_id = ? AND e.status = 'excluded' AND NOT ${historicalDuplicateSql}
+      ${search ? ' AND ' + search.sql : ''}
+    ORDER BY e.event_local_at IS NULL, e.event_local_at, e.event_id`, [uid, state.update.updateId, ...(search ? search.values : [])])
+  const groups = new Map(), members = []
+  for (const row of rows) {
+    const group = excludedGroups.groupFor({ ...row, reasonCodes: parseJson(row.reasonCodes, []) })
+    let summary = groups.get(group.groupId)
+    if (!summary) {
+      summary = { ...group, count: 0, sortLocalAt: row.sortLocalAt }
+      groups.set(group.groupId, summary)
+    }
+    summary.count++
+    if (group.groupId === excludedGroupId && afterTimeValue(row, page, 'eventId') && members.length < page.size + 1) members.push(row)
+  }
+  if (!excludedGroupId) {
+    const summaries = [...groups.values()].sort((a, b) => compareTime(a, b, 'groupId'))
+    return finishPage(context, state, page, summaries.filter(row => afterTimeValue(row, page, 'groupId')).slice(0, page.size + 1),
+      summaries.length, 'groupId', 'excluded_group')
+  }
+  const items = members.length ? await selectEvents(connection, uid, state.update.updateId, { eventIds: members.map(row => row.eventId) }) : []
+  const byId = new Map(items.map(item => [item.eventId, item]))
+  return finishPage(context, state, page, members.map(row => byId.get(row.eventId)),
+    groups.has(excludedGroupId) ? groups.get(excludedGroupId).count : 0, 'eventId', 'event')
 }
 
 async function issuePage(connection, uid, context, state) {

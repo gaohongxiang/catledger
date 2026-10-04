@@ -12,8 +12,8 @@ function completeOriginals(h) {
     ? { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: original(input.evidenceId), nextCursor: null } : undefined
 }
 
-test('非资金记录与其他已排除分组可以展开、收起，同页刷新不丢展开状态', async () => {
-  const data = fixture(44)
+test('整批已排除分组按需展开、收起，刷新保留正在查看的组', async () => {
+  const data = fixture(54)
   const reasons = ['source_non_financial', 'account_mapping_excluded', 'transaction_closed', 'transaction_failed', 'manual_exclusion', 'other_exclusion']
   data.events.forEach((row, index) => { row.status = 'excluded'; row.reasonCodes = [reasons[index % reasons.length]] })
   const h = runtime(data), page = h.page
@@ -21,20 +21,18 @@ test('非资金记录与其他已排除分组可以展开、收起，同页刷�
   await page.setStep({ currentStep: 3 })
   const requests = h.calls.length
   for (const group of [...page.data.excludedReviewGroups]) {
-    page.toggleExcludedGroup(tap({ key: group.key }))
-    await flush()
+    await page.toggleExcludedGroup(tap({ key: group.key }))
     const opened = page.data.excludedReviewGroups.find(row => row.key === group.key)
     assert.equal(opened.expanded, true, group.label)
     assert.equal(opened.events.length, opened.count)
   }
-  assert.equal(h.calls.length, requests, '展开只使用已取得的当前页')
-  assert.equal(page.data.excludedReviewGroups.reduce((sum, group) => sum + group.events.length, 0), 40)
+  assert.ok(h.calls.length > requests, '展开才读取该组交易')
+  assert.equal(page.data.excludedReviewGroups.reduce((sum, group) => sum + group.count, 0), 54)
+  assert.equal(page.data.excludedReviewGroups.filter(group => group.expanded).length, 1)
+  const openKey = page.data.excludedReviewGroups.find(group => group.expanded).key
   await page.loadActivePage(false, 0, true)
-  assert.ok(page.data.excludedReviewGroups.every(group => group.expanded))
-  const first = page.data.excludedReviewGroups[0]
-  page.toggleExcludedGroup(tap({ key: first.key }))
-  assert.equal(page.data.excludedReviewGroups[0].events.length, 0)
-  await page.changeReviewPage(tap({ direction: 1 }))
+  assert.equal(page.data.excludedReviewGroups.find(group => group.key === openKey).expanded, true)
+  await page.toggleExcludedGroup(tap({ key: openKey }))
   assert.ok(page.data.excludedReviewGroups.every(group => !group.expanded && !group.events.length))
   page.onUnload()
 })
@@ -78,7 +76,7 @@ for (const kind of ['待分类', '已分类', '无需分类', '已排除', '重�
   else if (kind === '无需分类') row = page.data.noCategoryEvents[0]
   else if (kind === '重复') row = page.data.duplicateReviewEvents[0]
   else {
-    page.toggleExcludedGroup(tap({ key: page.data.excludedReviewGroups[0].key }))
+    await page.toggleExcludedGroup(tap({ key: page.data.excludedReviewGroups[0].key }))
     row = page.data.excludedReviewGroups[0].events[0]
   }
   if (kind === '已分类' || kind === '无需分类') assert.ok(row.natureLabel && row.natureLabel !== 'undefined', kind + ' 行要展示性质标签')

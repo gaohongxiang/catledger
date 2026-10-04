@@ -1,5 +1,5 @@
 const model = require('./model')
-const PAGE_SIZE = 40
+const PAGE_SIZE = 50
 
 function emptyLists() {
   return { accountMappings: [], reviewGroups: [], reviewedEvents: [], categoryCards: [],
@@ -19,15 +19,27 @@ function record(event) {
   return result
 }
 
+function listRecord(event) {
+  const result = record(event)
+  delete result.accountText
+  // 列表只传单行摘要，五十项同时展示也不突破原生单次更新预算；完整字段留在详情。
+  for (const key of ['displayTitle', 'displayMeta', 'displayDetailMeta', 'categoryName']) {
+    if (typeof result[key] === 'string' && result[key].length > 80) {
+      result[key] = result[key].slice(0, 80) + '…'; result.detailRequired = true
+    }
+  }
+  return result
+}
+
 function card(issue) {
   return { issueId: issue.issueId, label: issue.label, decisionText: issue.decisionText || '',
     batchDecision: issue.batchDecision, subjectCount: issue.subjectCount, natureLabel: issue.natureLabel || '',
-    hiddenSubjectCount: issue.hiddenSubjectCount, subjects: (issue.subjects || []).map(record) }
+    hiddenSubjectCount: issue.hiddenSubjectCount, subjects: (issue.subjects || []).map(listRecord) }
 }
 
 function excludedGroups(events, expanded) {
   return model.excludedEventGroups(events, expanded).map(group => Object.assign({}, group, {
-    events: group.expanded ? group.events.map(record) : [] }))
+    events: group.expanded ? group.events.map(listRecord) : [] }))
 }
 
 function windowRows(rows, index) {
@@ -67,11 +79,11 @@ function reviewLists(state, business, data, index) {
     key: group.key, issueType: group.issueType, issues: group.issues.map(card) }))
   else if (kind === 'category') {
     patch.categoryCards = window.rows.filter(row => row.issue).map(row => card(row.issue))
-    patch.categoryWaitingEvents = window.rows.filter(row => row.event).map(row => record(row.event))
+    patch.categoryWaitingEvents = window.rows.filter(row => row.event).map(row => listRecord(row.event))
   } else if (kind === 'excluded') {
     const expanded = (data.excludedReviewGroups || []).filter(group => group.expanded).map(group => group.key)
     patch.excludedReviewGroups = excludedGroups(window.rows, expanded)
-  } else patch[kind] = window.rows.map(record)
+  } else patch[kind] = window.rows.map(listRecord)
   return patch
 }
 
@@ -120,4 +132,4 @@ const errorText = error => error.code === 'UNSUPPORTED_ACTION' ? '导入服务�
   : error.code === 'STALE_VIEW' ? '整理结果已变化，请刷新本页' : error.message || '读取未完成，请重试'
 function direction(event) { const value = event && event.currentTarget.dataset.direction; return value === 'first' ? value : Number(value || 0) }
 
-module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, card, excludedGroups, evidencePartFields, PAGE_SIZE }
+module.exports = { errorText, direction, ERROR_MESSAGES, publicError, accountMapping, emptyLists, reviewLists, detailWindow, record, listRecord, card, excludedGroups, evidencePartFields, PAGE_SIZE }
