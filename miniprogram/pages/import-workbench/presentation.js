@@ -41,11 +41,22 @@ function card(issue) {
     hiddenSubjectCount: issue.hiddenSubjectCount, subjects: (issue.subjects || []).map(listRecord) }
 }
 
+// 待核对右侧显示“性质 · 操作”，原问题标题和缺失提示保持不变。
+// 复用与已核对相同的 eventView 结果，不把所有非收入记录都标成支出。
+function pendingReviewCard(view) {
+  const labels = [...new Set((view.subjects || []).map(subject => subject.natureLabel || '性质待确认'))]
+  const natureLabel = labels.length === 1 ? labels[0] : labels.length ? '多种性质' : '性质待确认'
+  return Object.assign({}, view, {
+    natureLabel,
+    batchDecision: natureLabel + ' · ' + (view.batchDecision || '处理')
+  })
+}
+
 function pendingCard(event, category) {
   const issue = event.pendingIssue
   const view = issue ? model.issueView(Object.assign({}, issue, { subject: event })) : {}
   const count = issue ? Math.max(1, Number(issue.memberCount || 1) - Number(issue.candidateCount || 0)) : 1
-  return {
+  const result = {
     eventId: event.eventId, issueId: issue && issue.issueId || '',
     label: view.label || (category ? '待分类 · 先核对交易' : '待核对交易'),
     decisionText: view.decisionText || '',
@@ -56,6 +67,7 @@ function pendingCard(event, category) {
     subjectCount: 1, hiddenSubjectCount: 0,
     natureLabel: event.economicNature === 'income' ? '收入' : '支出', subjects: [listRecord(event)]
   }
+  return category ? result : pendingReviewCard(result)
 }
 
 // 同组问题的事件行在列表中相邻时连成一张卡：首行带组数标记，其余行只留动作。
@@ -107,7 +119,7 @@ function reviewLists(state, business, data, index) {
   const window = windowRows(rows, index)
   patch.reviewPage = window.page
   if (kind === 'review') patch.reviewGroups = model.reviewIssueGroups(window.rows).map(group => ({
-    key: group.key, issueType: group.issueType, issues: group.issues.map(card) }))
+    key: group.key, issueType: group.issueType, issues: group.issues.map(issue => pendingReviewCard(card(issue))) }))
   else if (kind === 'category') {
     patch.categoryCards = window.rows.filter(row => row.issue).map(row => card(row.issue))
     patch.categoryWaitingEvents = window.rows.filter(row => row.event).map(row => listRecord(row.event))
