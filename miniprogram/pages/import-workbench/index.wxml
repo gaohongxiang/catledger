@@ -296,7 +296,7 @@
         <text class="record-list-note content-inset">包含自动通过和已确认的交易。</text>
         <skeleton-rows wx:if="{{pageLoading && !reviewedEvents.length}}" rows="{{3}}" />
         <view wx:for="{{reviewedEvents}}" wx:key="eventId" class="review-decision-card category-decision-card" data-id="{{item.eventId}}" bindtap="openReviewDetails" aria-role="button" aria-label="查看已核对交易">
-          <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">{{item.natureLabel ? item.natureLabel + ' · ' : ''}}已核对{{item.needsCategory ? ' · 待分类' : ''}}</text><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view></view>
+          <view class="review-decision-heading review-completed-heading"><text class="review-decision-title">{{item.natureLabel}}{{item.needsCategory ? ' · 待分类' : ''}}</text><view class="review-completed-side"><text class="review-action-button">查看</text><chevron-icon size="{{22}}" /></view></view>
           <view class="review-preview-list review-decision-previews"><view class="review-preview-row">
             <view wx:if="{{item.displayDate}}" class="review-preview-date"><text class="review-preview-day money-number">{{item.displayDate}}</text></view>
             <view class="review-preview-copy"><text class="review-preview-title">{{item.displayTitle}}</text><text class="review-preview-meta">{{item.displayDetailMeta || item.displayMeta}}</text></view>
