@@ -1,0 +1,8 @@
+<template name="transaction-detail-fields">
+  <view class="transaction-detail-fields">
+    <view wx:for="{{fields}}" wx:key="key" class="mapping-field detail-fact-row">
+      <text class="mapping-label">{{item.label}}</text>
+      <text selectable class="mapping-value {{item.missing ? 'mapping-empty' : ''}}">{{item.value}}</text>
+    </view>
+  </view>
+</template>

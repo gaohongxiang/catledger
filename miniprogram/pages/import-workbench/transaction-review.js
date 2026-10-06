@@ -1,3 +1,4 @@
+const { readDetail } = require('./detail-reader')
 const { publicError } = require('./presentation')
 const { setChangedData } = require('../../services/view-patch')
 const model = require('./model')
@@ -83,6 +84,22 @@ function directoryKinds(issue) {
   if (['account_mapping', 'transfer_accounts'].includes(issue.issueType)) return ['accounts', 'accountDrafts']
   if (['shared_fields', 'field_conflict'].includes(issue.issueType)) return ['accounts', 'accountDrafts', 'categories']
   return []
+}
+
+async function readIssueFacts(page, token) {
+  if (!issueCurrent(page, token) || token.factsReading) return
+  const row = page.data.currentIssue.subject || page.data.issueEvents[0]
+  if (!row || !row.eventId) return
+  token.factsReading = true
+  page.setData({ issueFactsLoading: true, issueFactsError: '' })
+  try {
+    const detail = await readDetail(token.session, row.eventId, () => issueCurrent(page, token))
+    if (!detail || !issueCurrent(page, token)) return
+    page.setData({ issueFacts: { eventId: row.eventId, detailFacts: detail.detailFacts || null }, issueFactsLoading: false })
+    if (token.initialized) page.refreshIssueFieldsDraft()
+  } catch (error) {
+    if (issueCurrent(page, token)) page.setData({ issueFactsLoading: false, issueFactsError: publicError(error, '记账信息未能完整读取') })
+  } finally { token.factsReading = false }
 }
 
 function cancelIssueReads(page) {
@@ -222,6 +239,7 @@ function initializeIssueEditor(details, token) {
           accountIndex: accountIndex,
           counterpartyAccountIndex: counterpartyAccountIndex,
           categoryIndex: compatibleCategoryIndex,
+          categoryChanged: false,
           natureIndex: natureIndex,
           primaryEventId: primaryEvent && primaryEvent.eventId || '',
           targetEventId: selectedRefundTargetId,
@@ -238,6 +256,7 @@ function initializeIssueEditor(details, token) {
     if (currentIssue.paymentNeedsReview) this.refreshPaymentDraft()
   token.initialized = true
   this.setData({ issueDetailsReady: true })
+
 }
 
 async function completeIssueEditor(page, token) {
@@ -280,6 +299,7 @@ async function showIssueEditor(event, savedForm) {
   const token = this._issueEvidenceToken = { issueId, session: this._viewSession, version: this._viewSession.summary.viewVersion,
     scope: readCache.getSession(), startedAt: Date.now(), savedForm }
   this.setData({ currentIssue: model.issueView(summary), currentMembers: [], issueEvents: [], issueVisibleEvents: [], issueRelations: [],
+    issueFacts: null, issueFactsLoading: false, issueFactsError: '', issueDetail: null,
     issueDetailsLoading: true, issueDetailsReady: false, issueDetailsError: '', issueCanSubmit: false, issueStale: false,
     issueMembersError: '', issueRelationsError: '', issueRelationsLoading: false, issueSourceExpanded: true,
     issueEvidenceLoading: true, issueEvidenceTotal: Number(summary.memberCount || 0), memberPage: null, relationPage: null,
@@ -298,6 +318,8 @@ async function showIssueEditor(event, savedForm) {
     this.setData({ currentIssue, issueEvents: members.map(row => model.eventView(row.event)),
       issueVisibleEvents: members.map(row => Object.assign({}, presentation.record(row.event), { evidenceLoading: true, evidence: [] })) },
     () => markIssue(this, token, 'review_content'))
+    // 与目录和原文并行补充当前笔只读事实，失败不会重读已成功的目录或覆盖输入。
+    token.factsPromise = readIssueFacts(this, token)
     this._memberPager = token.session.pager('reviewIssues.members', { issueId, memberKind: 'event', pageSize: 8 })
     const reads = [this.changeIssueMembers({ currentTarget: { dataset: {} } }), completeIssueEditor(this, token)]
     if (currentIssue.issueType === 'refund_relation') {
@@ -389,6 +411,8 @@ module.exports = {
       !this.data.issueDetailsError && !this.data.issueMembersError && !this.data.issueRelationsError && !this.data.historicalError)
     if (ready !== this.data.issueCanSubmit) this.setData({ issueCanSubmit: ready }, () => { if (ready) markIssue(this, token, 'review_ready') })
   },
+
+  retryIssueFacts: function () { return readIssueFacts(this, this._issueEvidenceToken) },
 
   retryIssueDetails: async function () {
     const token = this._issueEvidenceToken
@@ -515,7 +539,10 @@ module.exports = {
   },
 
   changePaymentNature: function (event) {
-    this.setData({ paymentNatureIndex: Number(event.detail.value) }); this.refreshPaymentDraft()
+    if (this.data.busy || this.data.issueStale || !this.data.issueDetailsReady) return
+    const index = Number(event.detail.value)
+    if (!Number.isInteger(index) || index < 0 || index > 2) return
+    this.setData({ paymentNatureIndex: index }); this.refreshPaymentDraft(); this.refreshIssueFieldsDraft()
   },
 
   changePaymentTarget: function (event) {
@@ -633,6 +660,7 @@ module.exports = {
     const category = (this.data.issueCategories || [])[categoryIndex]
     this.setData({
         'issueDraft.categoryIndex': categoryIndex,
+        'issueDraft.categoryChanged': true,
         issueCategoryCanSave: Boolean(category && category.categoryId)
       })
     this.refreshIssueFieldsDraft()
@@ -657,6 +685,7 @@ module.exports = {
 
   selectTargetRelation: function (event) {
     this.setData({ 'issueDraft.targetEventId': event.currentTarget.dataset.id })
+    this.refreshIssueFieldsDraft()
   },
 
   resolveWithFields: function () {
@@ -750,6 +779,7 @@ module.exports = {
       accountId: ((data.accountChoices || [])[data.issueDraft.accountIndex] || {}).accountId,
       counterpartyAccountId: ((data.counterpartyAccountChoices || [])[data.issueDraft.counterpartyAccountIndex] || {}).accountId,
       categoryId: ((data.issueCategories || [])[data.issueDraft.categoryIndex] || {}).categoryId,
+      categoryChanged: Boolean(data.issueDraft.categoryChanged),
       paymentTargetId: ((data.paymentTargetChoices || [])[data.paymentTargetIndex] || {}).accountId }
     return { kind: 'review', issueId: issue.issueId, issueVersion: issue.version, issueType: issue.issueType,
       subjectIds: issue.subjectEventIds || (this.data.issueEvents || []).map(function (event) { return event.eventId }),
@@ -781,7 +811,8 @@ module.exports = {
     this.setData({ issueDraft: Object.assign({}, form.issueDraft, {
             accountIndex: indexOf(this.data.accountChoices, 'accountId', form.accountId),
             counterpartyAccountIndex: indexOf(this.data.counterpartyAccountChoices, 'accountId', form.counterpartyAccountId),
-            categoryIndex: indexOf(this.data.issueCategories, 'categoryId', form.categoryId) }),
+            categoryIndex: indexOf(this.data.issueCategories, 'categoryId', form.categoryId),
+            categoryChanged: Boolean(form.categoryChanged) }),
         paymentRows, paymentNatureIndex: form.paymentNatureIndex || 0,
         historicalSelection: form.historicalSelection || '',
         historicalSelectionVerified: Boolean(form.historicalSelection && this.data.historicalCandidates.some(row => row.transactionId === form.historicalSelection && !row.stale)),

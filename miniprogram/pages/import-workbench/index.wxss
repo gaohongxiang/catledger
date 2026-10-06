@@ -2828,3 +2828,12 @@ button::after { border: 0; }
 .duplicate-edit-sheet > .sheet-handle,
 .duplicate-edit-sheet > .review-sheet-heading,
 .duplicate-edit-sheet > .sheet-copy { flex-shrink: 0; }
+
+/* 性质与记账字段始终位于原始账单之前；长账户/备注可换行，不遮挡操作。 */
+.detail-nature-first { margin-bottom: 12rpx; }
+.detail-nature-picker .mapping-label { font-weight: 600; }
+.transaction-detail-fields { margin-bottom: 16rpx; }
+.detail-fact-row { align-items: flex-start; gap: 20rpx; }
+.detail-fact-row .mapping-label { flex: 0 0 164rpx; }
+.detail-fact-row .mapping-value { min-width: 0; white-space: normal; overflow: visible; text-overflow: clip; word-break: break-all; }
+.detail-original-title { display: block; margin: 24rpx 0 12rpx; font-weight: 600; }

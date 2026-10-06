@@ -3,6 +3,8 @@ const cache = require('../../services/read-cache')
 const pending = require('../../services/pending-ledger-write')
 const { record, errorText } = require('./presentation')
 const { NATURE_OPTIONS } = require('./transaction-review')
+const detail = require('./detail-fields')
+const { readDetail } = require('./detail-reader')
 const ACTION = 'financeUpdates.setReview'
 const hasDestination = nature => ['internal_transfer', 'repayment', 'borrow'].includes(nature)
 function current(page, token) {
@@ -26,10 +28,14 @@ function fieldsFor(page) {
 }
 function refreshDraft(page) {
   const sheet = page.data.reviewEditSheet
-  const destination = hasDestination(sheet.economicNature)
+  const row = { ...page._reviewEditToken.row, economicNature: sheet.economicNature, ledgerAccountId: sheet.ledgerAccountId, counterpartyLedgerAccountId: sheet.counterpartyLedgerAccountId }
+  const categoryKind = nature => nature === 'income' ? 'income' : ['expense', 'fee'].includes(nature) ? 'expense' : ''
+  if (categoryKind(row.economicNature) !== categoryKind(page._reviewEditToken.row.economicNature)) { row.categoryId = null; row.categoryName = '' }
+  const labels = detail.accountLabels(row), destination = hasDestination(sheet.economicNature)
   const valid = Boolean(sheet.ledgerAccountId && (!destination || sheet.counterpartyLedgerAccountId && sheet.counterpartyLedgerAccountId !== sheet.ledgerAccountId))
   page.setData({ 'reviewEditSheet.hasDestination': destination,
-    'reviewEditSheet.accountLabel': destination ? '转出账户' : ['income', 'refund'].includes(sheet.economicNature) ? '收款账户' : '付款账户',
+    'reviewEditSheet.accountLabel': labels.from, 'reviewEditSheet.destinationLabel': labels.to,
+    'reviewEditSheet.fields': detail.fieldsFor(row, {}, { omit: ['nature', 'account', 'counterparty'] }),
     'reviewEditSheet.canSave': valid && Object.keys(fieldsFor(page)).length > 0, 'reviewEditSheet.error': '' })
 }
 
@@ -46,6 +52,10 @@ module.exports = {
     try {
       let row = (this.businessData().events || []).find(item => item.eventId === eventId)
       if (!row) row = (await token.session.read('economicEvents.list', { eventId, pageSize: 1 }, () => current(this, token))).items[0]
+      if (!current(this, token)) return
+      const verified = this._reviewDetailToken && this._reviewDetailToken.eventId === eventId && this._reviewDetailToken.version === token.version && this._reviewDetailToken.row
+      if (verified) row = verified
+      else if (row && row.detailRequired) row = await readDetail(token.session, eventId, () => current(this, token))
       if (!current(this, token)) return
       if (!row || !['ready', 'needs_action'].includes(row.status)) throw Error('交易已变化，请返回刷新列表')
       const packet = packetFor(this, eventId)

@@ -117,7 +117,10 @@
         "items/part",
         "nextCursor?"
       ],
-      "contract": "PERFORMANCE-V2-CONTRACT.md"
+      "contract": "PERFORMANCE-V2-CONTRACT.md",
+      "rules": [
+        "Without evidenceId, the JSON-text event includes optional detailFacts v1: current-user account names, confirmed/pending/unlinked refund originals and associated repayment loan name, read in the same snapshot. It uses current projected account endpoints; fieldSources and internal UTC metadata are not exposed. Evidence text and existing 2048-character paging remain unchanged; non-evidence cursors bind the detail-facts shape. This read never posts a transaction or creates a plan."
+      ]
     },
     "reviewIssues.members": {
       "kind": "read",

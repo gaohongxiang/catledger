@@ -1,3 +1,4 @@
+<import src="detail-fields.wxml" />
 <template name="record-count-formula">
   <view wx:if="{{chargeSyncMessage}}" class="charge-sync-note">{{chargeSyncMessage}}；可下拉刷新，或在贷款详情继续同步。</view>
   <text class="record-count-equation">有效交易 {{activeCount}}＝全部 {{totalCount}}－已排除 {{excludedCount}}－重复 {{duplicateCount}}</text>
@@ -671,6 +672,16 @@
         <button class="review-text-action" bindtap="retryIssueDetails" disabled="{{issueDetailsLoading && !issueStale}}">重新核验此项</button>
       </view>
       <block wx:if="{{issueDetailsReady}}">
+      <view class="detail-nature-first">
+        <picker wx:if="{{!currentIssue.evidenceReviewOnly && !currentIssue.paymentNeedsReview && (currentIssue.issueType === 'shared_fields' || currentIssue.issueType === 'field_conflict')}}" class="mapping-picker detail-nature-picker" mode="selector" range="{{natureOptions}}" range-key="label" value="{{issueDraft.natureIndex}}" bindchange="changeIssueNature" disabled="{{busy || issueStale || !issueDetailsReady}}">
+          <view class="mapping-field"><text class="mapping-label">交易性质</text><text class="mapping-value">{{natureOptions[issueDraft.natureIndex].label}}</text><view class="field-chevron"></view></view>
+        </picker>
+        <picker wx:elif="{{currentIssue.paymentNeedsReview && !currentIssue.paymentAccountsOnly}}" mode="selector" range="{{paymentNatureOptions}}" value="{{paymentNatureIndex}}" bindchange="changePaymentNature" disabled="{{busy}}"><view class="mapping-field detail-nature-picker"><text>交易性质</text><text class="mapping-value">{{paymentNatureOptions[paymentNatureIndex]}}</text></view></picker>
+        <view wx:else class="mapping-field detail-nature-picker"><text class="mapping-label">交易性质</text><text class="mapping-value">{{issueDetail && issueDetail.issueId === currentIssue.issueId ? issueDetail.natureLabel : '性质待确认'}}</text></view>
+      </view>
+      <template wx:if="{{issueDetail && issueDetail.issueId === currentIssue.issueId}}" is="transaction-detail-fields" data="{{fields: issueDetail.basicFields}}" />
+
+
       <view wx:if="{{currentIssue.paymentNeedsReview}}" class="payment-resolution-form">
         <view wx:if="{{!currentIssue.paymentAccountsOnly}}" class="payment-total">
           <text class="payment-total-label">本笔付款总额</text>
@@ -689,7 +700,7 @@
           <view wx:else class="funds-route-point {{paymentNatureIndex === 1 ? 'funds-route-known' : 'funds-route-missing'}}"><text class="funds-route-label">用途</text><text class="funds-route-name">{{paymentNatureIndex === 1 ? '本次消费支出' : '请先确认交易性质'}}</text></view>
         </view>
         <text wx:if="{{paymentNatureIndex === 2}}" class="mapping-browse" data-target="paymentTarget" bindtap="openDirectory">搜索全部负债账户 ›</text>
-        <picker wx:if="{{!currentIssue.paymentAccountsOnly}}" mode="selector" range="{{paymentNatureOptions}}" value="{{paymentNatureIndex}}" bindchange="changePaymentNature" disabled="{{busy}}"><view class="mapping-field"><text>交易性质</text><text class="mapping-value">{{paymentNatureOptions[paymentNatureIndex]}}</text></view></picker>
+
         <view class="payment-allocation">
           <view wx:if="{{!currentIssue.paymentAccountsOnly}}" class="repayment-allocation-heading"><text>付款分配</text><text class="{{paymentDifferenceText === '已分配完成' ? 'allocation-complete' : ''}}">{{paymentDifferenceText}}</text></view>
           <text wx:if="{{!currentIssue.paymentAccountsOnly}}" class="repayment-allocation-help">按支付详情填写；“全部分配”将其他项置零。</text>
@@ -749,30 +760,30 @@
         <view wx:elif="{{currentIssue.fundsRoute && (!currentIssue.repaymentOwnershipRequired || issueDraft.repaymentOwner === 'self')}}" class="funds-route-card">
           <button wx:if="{{currentIssue.missingFundsSide === 'from' || currentIssue.missingFundsSide === 'both'}}" class="funds-route-picker funds-account-control" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转出账户">
             <view class="funds-route-point funds-route-missing">
-              <text class="funds-route-label">转出</text><text class="funds-route-name">{{accountChoices[issueDraft.accountIndex].name}} ›</text>
+              <text class="funds-route-label">{{issueDetail.accountLabel || '转出'}}</text><text class="funds-route-name">{{accountChoices[issueDraft.accountIndex].name}} ›</text>
             </view>
           </button>
           <view wx:else class="funds-route-point funds-route-known">
-            <text class="funds-route-label">转出</text><text class="funds-route-name">{{currentIssue.fundsRoute.fromName}}</text>
+            <text class="funds-route-label">{{issueDetail.accountLabel || '转出'}}</text><text class="funds-route-name">{{currentIssue.fundsRoute.fromName}}</text>
           </view>
           <view class="funds-route-divider"></view>
           <button wx:if="{{currentIssue.missingFundsSide === 'to'}}" class="funds-route-picker funds-account-control" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转入账户">
             <view class="funds-route-point funds-route-missing">
-              <text class="funds-route-label">转入</text><text class="funds-route-name">{{accountChoices[issueDraft.accountIndex].name}} ›</text>
+              <text class="funds-route-label">{{issueDetail.destinationLabel || '转入'}}</text><text class="funds-route-name">{{accountChoices[issueDraft.accountIndex].name}} ›</text>
             </view>
           </button>
           <button wx:elif="{{currentIssue.missingFundsSide === 'both'}}" class="funds-route-picker funds-account-control" data-target="counterparty" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转入账户">
-            <view class="funds-route-point funds-route-missing"><text class="funds-route-label">转入</text><text class="funds-route-name">{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].name}} ›</text></view>
+            <view class="funds-route-point funds-route-missing"><text class="funds-route-label">{{issueDetail.destinationLabel || '转入'}}</text><text class="funds-route-name">{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].name}} ›</text></view>
           </button>
           <view wx:else class="funds-route-point funds-route-known">
-            <text class="funds-route-label">转入</text><text class="funds-route-name">{{currentIssue.fundsRoute.toName}}</text>
+            <text class="funds-route-label">{{issueDetail.destinationLabel || '转入'}}</text><text class="funds-route-name">{{currentIssue.fundsRoute.toName}}</text>
           </view>
         </view>
         <button wx:if="{{currentIssue.issueType === 'transfer_accounts' && !currentIssue.aggregateRepayment && !currentIssue.fundsRoute}}" class="transfer-account-control" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转出账户">
-          <view class="mapping-field"><text class="mapping-label">{{currentIssue.missingAccountLabel}}</text><text class="mapping-value {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{accountChoices[issueDraft.accountIndex].name}}</text><view class="field-chevron"></view></view>
+          <view class="mapping-field"><text class="mapping-label">{{issueDetail && issueDetail.issueId === currentIssue.issueId ? issueDetail.selectorLabel : currentIssue.missingAccountLabel}}</text><text class="mapping-value {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{accountChoices[issueDraft.accountIndex].name}}</text><view class="field-chevron"></view></view>
         </button>
         <picker wx:if="{{currentIssue.issueType !== 'category_assignment' && currentIssue.issueType !== 'transfer_accounts' && !currentIssue.aggregateRepayment}}" class="mapping-picker" mode="selector" range="{{accountChoices}}" range-key="name" value="{{issueDraft.accountIndex}}" bindchange="changeIssueAccount">
-          <view class="mapping-field"><text class="mapping-label">{{currentIssue.missingAccountLabel}}</text><text class="mapping-value {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{accountChoices[issueDraft.accountIndex].name}}</text><view class="field-chevron"></view></view>
+          <view class="mapping-field"><text class="mapping-label">{{issueDetail && issueDetail.issueId === currentIssue.issueId ? issueDetail.selectorLabel : currentIssue.missingAccountLabel}}</text><text class="mapping-value {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{accountChoices[issueDraft.accountIndex].name}}</text><view class="field-chevron"></view></view>
         </picker>
         <text wx:if="{{currentIssue.issueType !== 'category_assignment' && currentIssue.issueType !== 'transfer_accounts' && !currentIssue.aggregateRepayment}}" class="mapping-browse" data-target="account" bindtap="openDirectory">搜索全部账户 ›</text>
         <text wx:if="{{bankSuggestion && errorMessage}}" class="stage-action-error">{{errorMessage}}</text>
@@ -808,17 +819,18 @@
           </picker>
           <text class="draft-account-note">仅保存本批草稿，入账前不改动正式账户。</text>
         </view>
-        <button wx:if="{{currentIssue.issueType === 'transfer_accounts' && !currentIssue.aggregateRepayment && !currentIssue.fundsProjection}}" class="transfer-account-control" data-target="counterparty" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转入账户">
-          <view class="mapping-field"><text class="mapping-label">转入账户</text><text class="mapping-value {{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].name}}</text><view class="field-chevron"></view></view>
+        <button wx:if="{{(currentIssue.issueType === 'transfer_accounts' && !currentIssue.aggregateRepayment && !currentIssue.fundsProjection) || (issueDetail && issueDetail.issueId === currentIssue.issueId && issueDetail.hasDestination)}}" class="transfer-account-control" data-target="counterparty" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转入账户">
+          <view class="mapping-field"><text class="mapping-label">{{issueDetail.destinationLabel || '转入账户'}}</text><text class="mapping-value {{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].name}}</text><view class="field-chevron"></view></view>
         </button>
-        <picker wx:if="{{currentIssue.issueType === 'shared_fields' || currentIssue.issueType === 'field_conflict'}}" class="mapping-picker" mode="selector" range="{{natureOptions}}" range-key="label" value="{{issueDraft.natureIndex}}" bindchange="changeIssueNature">
-          <view class="mapping-field"><text class="mapping-label">交易类型</text><text class="mapping-value">{{natureOptions[issueDraft.natureIndex].label}}</text><view class="field-chevron"></view></view>
-        </picker>
-        <category-picker wx:if="{{currentIssue.issueType === 'category_assignment' && issueCategories.length}}" class="category-picker-control mapping-picker" remote data-target="category" bindbrowse="openDirectory" range="{{issueCategories}}" value="{{issueDraft.categoryIndex}}" bindchange="changeIssueCategory">
+
+        <category-picker wx:if="{{(currentIssue.issueType === 'category_assignment' || (issueDetail && issueDetail.categoryEditable)) && issueCategories.length}}" class="category-picker-control mapping-picker" remote data-target="category" bindbrowse="openDirectory" range="{{issueCategories}}" value="{{issueDraft.categoryIndex}}" bindchange="changeIssueCategory">
           <view class="mapping-field"><text class="mapping-label">交易分类</text><text class="mapping-value {{issueCategories[issueDraft.categoryIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{issueCategories[issueDraft.categoryIndex].name}}</text><view class="field-chevron"></view></view>
         </category-picker>
       </view>
 
+      <template wx:if="{{issueDetail && issueDetail.issueId === currentIssue.issueId}}" is="transaction-detail-fields" data="{{fields: issueDetail.fields}}" />
+      <view wx:if="{{issueFactsLoading}}" class="sheet-copy">正在补充关联信息…</view>
+      <view wx:if="{{issueFactsError}}" class="relation-empty"><text>记账关联信息尚未完整读取</text><button class="account-source-link" bindtap="retryIssueFacts">重新读取记账信息</button></view>
       </block>
       <text wx:if="{{issueRelationsLoading}}" class="sheet-copy">正在读取候选原消费…</text>
       <view wx:if="{{issueRelationsError}}" class="relation-empty"><text>{{issueRelationsError}}</text><button class="review-text-action" bindtap="changeIssueRelations">重新读取候选</button></view>

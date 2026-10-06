@@ -55,6 +55,10 @@ function runtime(data = fixture(), options = {}) {
       : input.kind === 'categories' ? [{ categoryId: 'synthetic-category', name: '合成分类', kind: 'expense' }] : []
     else if (action === 'economicEvents.evidence') rows = Array.from({ length: 17 }, (_, index) => ({ evidenceId: 'synthetic-evidence-' + index, detailRequired: true, fileName: '合成账单.csv', rowNumber: index + 1 }))
     else if (action === 'economicEvents.detail') {
+      if (!input.evidenceId) {
+        const row = h.events.find(event => event.eventId === input.eventId)
+        return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: JSON.stringify(row), nextCursor: null }
+      }
       const index = Number(input.cursor || 0)
       return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: '合成原文😀'.repeat(200), nextCursor: index < 20 ? String(index + 1) : null }
     } else throw new Error('unexpected action ' + action)

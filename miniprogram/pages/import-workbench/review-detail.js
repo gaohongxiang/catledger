@@ -3,6 +3,8 @@ const api = require('../../services/catledger-import')
 const { previewFields } = require('./inline-evidence')
 const { errorText } = require('./presentation')
 const { eventView } = require('./model')
+const { fieldsFor, principalOf } = require('./detail-fields')
+const { readDetail } = require('./detail-reader')
 
 function current(page, token) {
   const sheet = page.data.reviewDetailSheet
@@ -37,6 +39,21 @@ async function readSource(page, token, index) {
   } finally { token.reading.delete(index) }
 }
 
+async function readFields(page, token) {
+  try {
+    const row = await readDetail(token.session, token.eventId, () => current(page, token))
+    if (!row || !current(page, token)) return
+    token.row = row
+    const protectedFields = row.paymentResolution || (row.repaymentAllocations || []).length ||
+      row.loanRepayment && !['ordinary', 'review'].includes(row.loanRepayment.mode)
+    page.setData({ 'reviewDetailSheet.fields': fieldsFor(row), 'reviewDetailSheet.fieldsLoading': false,
+      'reviewDetailSheet.fieldsError': '', 'reviewDetailSheet.installmentNote': eventView(row).installmentNote || '',
+      'reviewDetailSheet.reviewEditable': page.data.reviewDetailSheet.reviewEditable && !principalOf(row) && !protectedFields })
+  } catch (error) {
+    if (current(page, token)) page.setData({ 'reviewDetailSheet.fieldsLoading': false, 'reviewDetailSheet.fieldsError': errorText(error) })
+  }
+}
+
 module.exports = {
   async openReviewDetails(event) {
     const eventId = event.currentTarget.dataset.id, session = this._viewSession
@@ -46,11 +63,13 @@ module.exports = {
     const token = this._reviewDetailToken = { session, eventId, version: session.summary.viewVersion,
       scope: cache.getSession(), sources: [], reading: new Set() }
     this.setData({ reviewDetailSheet: { eventId, sources: [], sourceCount: 0, loading: true, error: '', stale: false,
-      installmentNote: row && eventView(row).installmentNote || '',
+      fields: row ? fieldsFor(row, { accounts: (this.data.accounts || []).concat(this.data.accountDrafts || []), categories: this.data.categories || [] }) : [],
+      fieldsLoading: true, fieldsError: '', installmentNote: row && eventView(row).installmentNote || '',
       reviewEditable: !(row && row.installment && row.installment.component === 'principal') && this.data.update.status === 'review' && (this.data.reviewedEvents || []).some(item => item.eventId === eventId),
       canEdit: this.data.update.status === 'review' && Boolean(duplicate || row && (row.pairingDecision ||
         Number(row.evidenceCount) > 1 || Number(row.duplicateEvidenceCount) > 0)),
       repaymentEditable: this.data.update.status === 'review' && Boolean(row && !row.installment && ['repayment', 'internal_transfer'].includes(row.economicNature)) } })
+    const fieldsRead = readFields(this, token)
     try {
       let cursor = null
       do {
@@ -71,7 +90,8 @@ module.exports = {
         if (!current(this, token)) return
         cursor = response.nextCursor
       } while (cursor)
-      this.setData({ 'reviewDetailSheet.loading': false })
+      await fieldsRead
+      if (current(this, token)) this.setData({ 'reviewDetailSheet.loading': false })
     } catch (error) {
       if (current(this, token)) this.setData({ 'reviewDetailSheet.loading': false, 'reviewDetailSheet.error': errorText(error) })
     }

@@ -8,6 +8,7 @@ const pairingEntry = require('./pairing-entry')
 const categoryEdit = require('./category-edit')
 const duplicateEdit = require('./duplicate-edit')
 const reviewDetail = require('./review-detail')
+const detailForm = require('./detail-form')
 const reviewEdit = require('./review-edit')
 const excludedReview = require('./excluded-review')
 const postingFlow = require('./posting-flow')
@@ -55,6 +56,7 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     categoryEditSheet: null,
     duplicateEditSheet: null,
     reviewDetailSheet: null,
+    issueDetail: null,
     reviewEditSheet: null,
     categoryEventCount: 0,
     categorizedEvents: [],
@@ -270,7 +272,7 @@ Page({
   closeReviewDetails: reviewDetail.closeReviewDetails,
   beginInputEditing: runtime.beginInputEditing,
   finishInputEditing: runtime.finishInputEditing,
-  refreshIssueFieldsDraft: transactionReview.refreshIssueFieldsDraft,
+  refreshIssueFieldsDraft: detailForm.refreshIssueFieldsDraft,
   changeRepaymentOwner: transactionReview.changeRepaymentOwner,
   changeRepaymentOtherTreatment: transactionReview.changeRepaymentOtherTreatment,
   changeIssueAccount: transactionReview.changeIssueAccount,
@@ -293,7 +295,7 @@ Page({
   changeDraftAccountName: transactionReview.changeDraftAccountName,
   changeDraftAccountType: transactionReview.changeDraftAccountType,
   changeIssueCategory: transactionReview.changeIssueCategory,
-  changeIssueNature: transactionReview.changeIssueNature,
+  changeIssueNature: detailForm.changeIssueNature,
   selectPrimaryEvent: transactionReview.selectPrimaryEvent,
   selectTargetRelation: transactionReview.selectTargetRelation,
   resolveWithFields: transactionReview.resolveWithFields,
@@ -349,6 +351,7 @@ Page({
   changeAccountMembers: accountReview.changeAccountMembers,
   readIssue: transactionReview.readIssue,
   retryIssueDetails: transactionReview.retryIssueDetails,
+  retryIssueFacts: transactionReview.retryIssueFacts,
   updateIssueReadiness: transactionReview.updateIssueReadiness,
   excludeIssueEvents: transactionReview.excludeIssueEvents,
   selectPrimaryMember: transactionReview.selectPrimaryMember,

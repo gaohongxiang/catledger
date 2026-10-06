@@ -1,6 +1,7 @@
 const { effectiveProjectedEvents } = require('./review/reconciliation')
 const { selectDomainEvents } = require('./review/event-store')
 const { digestParts } = require('./digest')
+const { eventDetailFacts } = require('./event-detail-facts')
 const { PLAN_VERSION } = require('./domain-versions')
 const { importError } = require('./errors')
 const { executeUserRead } = require('./import-transaction')
@@ -353,7 +354,7 @@ async function issuePage(connection, uid, context, state) {
   return finishPage(context, state, page, ids.map(row => ({ ...byId.get(row.issueId), sortLocalAt: row.sortLocalAt })), count.total, 'issueId', 'issue')
 }
 
-async function presentationEvents(connection, uid, updateId, ids) {
+async function presentationEvents(connection, uid, updateId, ids, includeFieldSources = false) {
   if (!ids.length) return []
   const visible = await selectEvents(connection, uid, updateId, { eventIds: ids })
   const projected = await effectiveProjectedEvents(connection, uid, updateId,
@@ -365,7 +366,7 @@ async function presentationEvents(connection, uid, updateId, ids) {
     return { ...event, ledgerAccountId: resolved.ledgerAccountId, counterpartyLedgerAccountId: resolved.counterpartyLedgerAccountId,
       paymentComponents: fields.paymentComponents || [], paymentResolution: fields.paymentResolution || null,
       paymentAccounts: fields.paymentAccounts || null, fundsProjection: fields.fundsProjection || event.fundsProjection,
-      repaymentAllocations: fields.repaymentAllocations || [] }
+      repaymentAllocations: fields.repaymentAllocations || [], ...(includeFieldSources ? { fieldSources: fields } : {}) }
   })
 }
 
@@ -479,7 +480,7 @@ async function detail(connection, uid, context, state) {
   const eventId = validateUuid(context.data.eventId)
   const evidenceId = context.data.evidenceId == null ? null : validateUuid(context.data.evidenceId)
   if (context.data.viewVersion != null && context.data.viewVersion !== state.viewVersion) throw importError('STALE_VIEW')
-  const scope = scopeFor(uid, state.update.updateId, state.viewVersion, 'detail', { eventId, evidenceId })
+  const scope = scopeFor(uid, state.update.updateId, state.viewVersion, 'detail', { eventId, evidenceId, ...(!evidenceId ? { shape: 'event-detail-facts-v1' } : {}) })
   const offset = decodeCursor(context.subjectHash, context.data.cursor, scope) || 0
   if (!Number.isInteger(offset) || offset < 0) throw importError('INVALID_CURSOR')
   let text
@@ -492,9 +493,11 @@ async function detail(connection, uid, context, state) {
     return assertBudget({ protocolVersion: 2, viewVersion: state.viewVersion, eventId, evidenceId, format: 'json-text', part: row.part,
       nextCursor: offset + 2048 < Number(row.length) ? encodeCursor(context.subjectHash, scope, offset + 2048) : null }, 'page')
   }
-  const events = await selectEvents(connection, uid, state.update.updateId, { eventIds: [eventId] })
+  const events = await presentationEvents(connection, uid, state.update.updateId, [eventId], true)
   if (!events[0]) throw importError('NOT_FOUND')
-  text = JSON.stringify(events[0])
+  const facts = await eventDetailFacts(connection, uid, state.update.updateId, events[0])
+  const { fieldSources, utcAt, ...event } = events[0]
+  text = JSON.stringify({ ...event, detailFacts: facts })
   if (offset > text.length) throw importError('INVALID_CURSOR')
   return assertBudget({ protocolVersion: 2, viewVersion: state.viewVersion, eventId, format: 'json-text', part: text.slice(offset, offset + 2048),
     nextCursor: offset + 2048 < text.length ? encodeCursor(context.subjectHash, scope, offset + 2048) : null }, 'page')

@@ -205,7 +205,12 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(markup, /\{\{item\.amountMinor\}\} \{\{item\.currency\}\}/)
   assert.match(styles, /\.review-decision-card/)
   assert.match(styles, /\.relation-selected \{ background: var\(--ui-accent-soft/)
-  assert.match(markup, />转入账户<\/text>/)
+  // 对端名称随性质和账单方向变化，不能再要求静态“转入账户”。
+  assert.match(markup, /issueDetail\.destinationLabel \|\| '转入账户'/)
+  const labels = require('../miniprogram/pages/import-workbench/detail-fields').accountLabels
+  assert.equal(labels({ economicNature: 'internal_transfer', sourceDirection: 'expense' }).to, '转入账户')
+  assert.equal(labels({ economicNature: 'repayment', sourceDirection: 'income' }).from, '还入账户')
+  assert.equal(labels({ economicNature: 'repayment', sourceDirection: 'income' }).to, '付款账户')
   assert.doesNotMatch(markup, />对方账户<\/text>/)
   assert.match(markup, /class="sheet-utility-actions"/)
   assert.ok(markup.indexOf('保存选择') < markup.indexOf('sheet-utility-actions'))

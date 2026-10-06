@@ -305,6 +305,8 @@ test('单端账户不能选成已知另一端，双端都选好且不相同才�
 test('新账户名称与性质实时校验，保存分类仍须选定分类', () => {
   const page = pageFor(unknownIssue())
   page.data.currentIssue = { issueType: 'shared_fields' }
+  // 直接构造表单的测试须模拟详情已经核实；未就绪时不能切换性质。
+  page.data.issueDetailsReady = true
   page.data.accountChoices = [{ isCreate: true }]
   for (const name of ['', '   ', '名'.repeat(33)]) {
     page.changeDraftAccountName({ detail: { value: name } })

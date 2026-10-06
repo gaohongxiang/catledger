@@ -14,6 +14,7 @@ function evidence(h, sourceFields = [fields]) {
         total: all.length, nextCursor: start + size < all.length ? String(start + size) : null }
     }
     if (action === 'economicEvents.detail') {
+      if (!input.evidenceId) return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: JSON.stringify(h.events.find(row => row.eventId === input.eventId)), nextCursor: null }
       const text = JSON.stringify(sourceFields[Number(input.evidenceId.split('-').at(-1))]), offset = Number(input.cursor || 0)
       return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: text.slice(offset, offset + 2048),
         nextCursor: offset + 2048 < text.length ? String(offset + 2048) : null }
@@ -63,7 +64,7 @@ test('超长行只展示完整字段并标记未展示内容；八笔成员仍�
     assert.deepEqual(rendered(row), prefix)
     assert.equal(row.evidence[0].incomplete, true)
   }
-  assert.equal(h.calls.filter(row => row.action === 'economicEvents.detail').length, 16)
+  assert.equal(h.calls.filter(row => row.action === 'economicEvents.detail' && row.input.evidenceId).length, 16)
   assert.equal(h.calls.filter(row => row.action === 'economicEvents.evidence').length, 8)
   assert.ok(h.maxDataBytes <= 262144)
   assert.ok(Math.max(...h.patches) <= 65536)
@@ -224,7 +225,7 @@ test('成员翻页后旧页原文迟到不串入新页，视图版本变化也�
   page.onUnload()
 
   const next = runtime(fixture(1, true)), nextRead = evidence(next), nextReleases = []
-  next.intercept = (action, input) => action === 'economicEvents.detail'
+  next.intercept = (action, input) => action === 'economicEvents.detail' && input.evidenceId
     ? new Promise(resolve => nextReleases.push(() => resolve(nextRead(action, input)))) : nextRead(action, input)
   const loading = next.page.openIssue(event('synthetic-issue'))
   for (let i = 0; i < 100 && !nextReleases.length; i++) await flush()
