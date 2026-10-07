@@ -11,6 +11,8 @@ test('当前分类预设下导入业务图、回执、请求量与 SQL 顺序保
   // 分期摘要修复另以17c27708作固定数据隔离对照：45表逐字段仅计划v33、银行profile/policy v3
   // 及其派生指纹变化；14阶段SQL数量、响应字节数和全部账务字段保持。SQL新增同用户账单映射投影。
   // 配对计数随摘要返回：仅summary增加pairingSuggestedCount=0（26字节）；45表、SQL顺序及其余13阶段保持。
+  // 2026-10-07核对提示以9fcf1be8作固定UUID/时钟隔离对照：45表逐字段、14阶段SQL顺序与响应字节保持。
+  // 仅summary.viewVersion/freshness.viewRevision和event-page.viewVersion随attention.VERSION变化，更新两处响应指纹。
   const expected = require('./fixtures/import-review-baseline.json')
   assert.deepEqual(await measure(), expected)
 })
