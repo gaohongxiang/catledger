@@ -2,6 +2,7 @@ const { effectiveProjectedEvents } = require('./review/reconciliation')
 const { selectDomainEvents } = require('./review/event-store')
 const { digestParts } = require('./digest')
 const { eventDetailFacts } = require('./event-detail-facts')
+const attention = require('./review-attention')
 const { PLAN_VERSION } = require('./domain-versions')
 const { importError } = require('./errors')
 const { executeUserRead } = require('./import-transaction')
@@ -27,7 +28,7 @@ async function readVersion(connection, uid, updateId) {
     UNION ALL SELECT 'categories', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_categories WHERE uid = ?
     UNION ALL SELECT 'mappings', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_import_account_mappings WHERE uid = ?`, [uid, uid, uid])
   return { update, viewVersion: digestParts('finance-view-v2-time-order-search-v2', uid, updateId, update.version,
-    update.planVersion, PLAN_VERSION, accountGroups.VERSION, excludedGroups.VERSION, JSON.stringify(directories)) }
+    update.planVersion, PLAN_VERSION, accountGroups.VERSION, excludedGroups.VERSION, attention.VERSION, JSON.stringify(directories)) }
 }
 
 const TIME_ORDER = 'local-at-asc-id-asc-v1'
@@ -67,6 +68,7 @@ function boundedItem(item, key, kind) {
     if (item[name] != null) result[name] = item[name]
   }
   if (Object.hasOwn(item, 'pendingIssue')) result.pendingIssue = item.pendingIssue
+  if (item.reviewAttention) result.reviewAttention = item.reviewAttention
   if (kind === 'event' && item.status === 'excluded') {
     result.reasonCodes = (item.reasonCodes || []).filter(code => ['source_non_financial', 'transaction_closed',
       'transaction_failed', 'already_posted', 'linked_existing_transaction', 'account_mapping_excluded',
@@ -261,12 +263,19 @@ async function attachPendingIssues(connection, uid, updateId, events, view) {
       AND ${view === 'category_pending' ? "i.issue_type = 'category_assignment'" : "i.blocking = 1 AND i.issue_type <> 'category_assignment'"}
     ORDER BY i.created_at, i.issue_id`, [uid, updateId, ...events.map(event => event.eventId)])
   const issues = new Map()
-  for (const row of rows) if (!issues.has(row.eventId)) issues.set(row.eventId, {
-    issueId: row.issueId, issueType: row.issueType, status: row.status, version: Number(row.version),
-    blocking: row.issueType !== 'category_assignment' && Boolean(row.blocking), primaryReasonCode: row.primaryReasonCode,
-    reasonCodes: parseJson(row.reasonCodes, []), memberCount: Number(row.memberCount), candidateCount: Number(row.candidateCount)
-  })
-  for (const event of events) event.pendingIssue = issues.get(event.eventId) || null
+  for (const row of rows) {
+    if (!issues.has(row.eventId)) issues.set(row.eventId, [])
+    issues.get(row.eventId).push({
+      issueId: row.issueId, issueType: row.issueType, status: row.status, version: Number(row.version),
+      blocking: row.issueType !== 'category_assignment' && Boolean(row.blocking), primaryReasonCode: row.primaryReasonCode,
+      reasonCodes: parseJson(row.reasonCodes, []), memberCount: Number(row.memberCount), candidateCount: Number(row.candidateCount)
+    })
+  }
+  for (const event of events) {
+    const candidates = issues.get(event.eventId) || []
+    if (view === 'category_pending') event.pendingIssue = candidates[0] || null
+    else Object.assign(event, attention.reviewAttention(event, candidates))
+  }
 }
 
 function compareTime(a, b, key) {

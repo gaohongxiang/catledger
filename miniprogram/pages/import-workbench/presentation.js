@@ -41,14 +41,41 @@ function card(issue) {
     hiddenSubjectCount: issue.hiddenSubjectCount, subjects: (issue.subjects || []).map(listRecord) }
 }
 
-// 待核对右侧显示“性质 · 操作”，原问题标题和缺失提示保持不变。
-// 复用与已核对相同的 eventView 结果，不把所有非收入记录都标成支出。
-function pendingReviewCard(view) {
+// 卡片只传实际渲染的摘要，避免增加多项提示后五十笔超过原生更新预算。
+function pendingPreview(row) {
+  const result = {}
+  for (const key of ['eventId', 'displayDate', 'amountText', 'directionClass', 'pairingDecision', 'natureLabel', 'detailRequired']) {
+    if (row[key] !== undefined) result[key] = row[key]
+  }
+  for (const [key, value] of [['displayTitle', row.displayTitle], ['displayDetailMeta', row.displayDetailMeta || row.displayMeta]]) {
+    if (typeof value !== 'string') continue
+    result[key] = value.length > 40 ? value.slice(0, 40) + '…' : value
+    if (value.length > 40) result.detailRequired = true
+  }
+  return result
+}
+
+// 左侧集中显示性质、当前可处理项和其余已知缺口；右侧仅保留处理入口。
+// 顺序由服务端当前视图给出。旧服务端只展示真实的当前问题，不预测后续步骤。
+function pendingReviewCard(view, attention) {
   const labels = [...new Set((view.subjects || []).map(subject => subject.natureLabel || '性质待确认'))]
   const natureLabel = labels.length === 1 ? labels[0] : labels.length ? '多种性质' : '性质待确认'
-  return Object.assign({}, view, {
-    natureLabel,
-    batchDecision: natureLabel + ' · ' + (view.batchDecision || '处理')
+  const unknown = ['性质待确认', '待确认', '暂不确定'].includes(natureLabel)
+  const valid = attention && attention.version === 'review-attention-v1' &&
+    (attention.issueId || '') === (view.issueId || '') && Array.isArray(attention.steps) && attention.steps.length > 0 &&
+    attention.steps.length <= 20 && attention.steps.every(item => item && typeof item.key === 'string' &&
+      typeof item.label === 'string' && item.label.length > 0 && item.label.length <= 48)
+  const fallback = unknown && ['确认交易类型', '待核对交易'].includes(view.label) ? '性质待确认' : view.label || '交易信息待核对'
+  const steps = valid ? [...new Set(attention.steps.map(item => item.label))] : [fallback]
+  if (unknown && !steps.includes('性质待确认')) steps.push('性质待确认')
+  const { groupCount, ...rest } = view
+  const scopeCount = groupCount || view.subjectCount || 1
+  return Object.assign({}, rest, {
+    natureLabel, scopeCount,
+    // 补充说明在卡片上不显示，不重复传输；完整原文和问题说明仍留在业务详情。
+    decisionText: '', subjects: (view.subjects || []).map(pendingPreview),
+    label: (unknown ? '' : natureLabel + '｜') + steps.join(' · ') + (scopeCount > 1 ? '（同组 ' + scopeCount + ' 笔）' : ''),
+    batchDecision: '处理'
   })
 }
 
@@ -67,7 +94,7 @@ function pendingCard(event, category) {
     subjectCount: 1, hiddenSubjectCount: 0,
     natureLabel: event.economicNature === 'income' ? '收入' : '支出', subjects: [listRecord(event)]
   }
-  return category ? result : pendingReviewCard(result)
+  return category ? result : pendingReviewCard(result, event.reviewAttention)
 }
 
 // 同组问题的事件行在列表中相邻时连成一张卡：首行带组数标记，其余行只留动作。
@@ -76,6 +103,8 @@ function linkGroupRows(cards) {
     const samePrev = Boolean(card.groupKey) && index > 0 && cards[index - 1].groupKey === card.groupKey
     const sameNext = Boolean(card.groupKey) && index < cards.length - 1 && cards[index + 1].groupKey === card.groupKey
     card.groupPos = samePrev && sameNext ? 'middle' : samePrev ? 'last' : sameNext ? 'first' : ''
+    // 核对组数也放在左侧，只有当前可见连续组的首行展示；分类卡片保持原样。
+    if (samePrev && card.scopeCount > 1) card.label = card.label.replace(/（同组 \d+ 笔）$/, '')
   })
   return cards
 }

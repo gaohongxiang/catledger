@@ -52,8 +52,8 @@ test('待处理按交易分页：真实 MySQL 74 笔完整可达、紧凑问题�
       events.push({ ...row, localAt })
     }
     async function insertIssue({ issueId = randomUUID(), issueType = 'shared_fields', status = 'open', blocking = true,
-      targets = [], candidates = [], owner = uid, batch = updateId, createdAt = '2026-08-10 00:00:00.000' } = {}) {
-      const reasonCodes = ['synthetic_pending_issue'], version = 3
+      targets = [], candidates = [], owner = uid, batch = updateId, createdAt = '2026-08-10 00:00:00.000', primaryReason = 'synthetic_pending_issue' } = {}) {
+      const reasonCodes = [primaryReason], version = 3
       await lab.owner.execute(`INSERT INTO catledger_review_issues
         (uid,issue_id,update_id,issue_key,issue_key_version,issue_type,status,version,blocking,primary_reason_code,
          member_count,candidate_count,rule_version,reason_codes_json,created_at)
@@ -126,10 +126,10 @@ test('待处理按交易分页：真实 MySQL 74 笔完整可达、紧凑问题�
       await assert.rejects(pending({ cursor: page.nextCursor, query: '合成非首成员专用商品' }), { publicCode: 'INVALID_CURSOR' })
       await assert.rejects(categories({ cursor: page.nextCursor }), { publicCode: 'INVALID_CURSOR' })
     })
-    await t.test('同一交易多个问题仍只一笔；按创建时间和 ID 选入口，处理后展示下一个', async () => {
-      const low = await insertIssue({ issueId: '11111111-1111-4111-8111-111111111111', targets: [events[0]], createdAt: '2026-08-01 00:00:00.000' })
-      const high = await insertIssue({ issueId: '22222222-2222-4222-8222-222222222222', targets: [events[0]], createdAt: '2026-08-01 00:00:00.000' })
-      const later = await insertIssue({ issueId: '00000000-0000-4000-8000-000000000001', targets: [events[0]], createdAt: '2026-08-02 00:00:00.000' })
+    await t.test('同优先级多个问题仍只一笔；按创建时间和 ID 稳定选入口，处理后展示下一个', async () => {
+      const low = await insertIssue({ issueId: '11111111-1111-4111-8111-111111111111', issueType: 'account_mapping', targets: [events[0]], createdAt: '2026-08-01 00:00:00.000' })
+      const high = await insertIssue({ issueId: '22222222-2222-4222-8222-222222222222', issueType: 'account_mapping', targets: [events[0]], createdAt: '2026-08-01 00:00:00.000' })
+      const later = await insertIssue({ issueId: '00000000-0000-4000-8000-000000000001', issueType: 'account_mapping', targets: [events[0]], createdAt: '2026-08-02 00:00:00.000' })
       const before = await pending({ eventId: events[0].eventId })
       assert.equal(before.total, 1); assert.equal(before.items.length, 1)
       assert.deepEqual(before.items[0].pendingIssue, low)
@@ -187,6 +187,8 @@ test('待处理按交易分页：真实 MySQL 74 笔完整可达、紧凑问题�
       const withIssue = (await pending({ eventId: events[0].eventId })).items[0]
       assert.equal(withIssue.detailRequired, true); assert.equal(withIssue.detailKind, 'event')
       assert.equal(withIssue.pendingIssue.issueId, '00000000-0000-4000-8000-000000000001')
+      assert.equal(withIssue.reviewAttention.issueId, withIssue.pendingIssue.issueId)
+      assert.ok(withIssue.reviewAttention.steps.length)
       assert.ok(!Object.hasOwn(withIssue, 'primaryEvidence'))
       const withoutIssue = (await pending({ eventId: events[74].eventId })).items[0]
       assert.equal(withoutIssue.detailRequired, true); assert.equal(withoutIssue.pendingIssue, null)
@@ -197,6 +199,34 @@ test('待处理按交易分页：真实 MySQL 74 笔完整可达、紧凑问题�
       assert.ok(!Object.hasOwn(ordinary, 'pendingIssue'))
       assert.ok(trace.every(entry => !/^\s*(?:INSERT|UPDATE|DELETE|REPLACE|ALTER|CREATE)\b/i.test(entry.sql)))
       assert.deepEqual(await snapshot(), before)
+    })
+    await t.test('最新真实阻断优先、同笔先于性质；处理后摘要和入口同步重算', async () => {
+      const target = events[2]
+      const nature = await insertIssue({ targets: [target], primaryReason: 'economic_nature_required', createdAt: '2026-08-01 00:00:00.000' })
+      const pair = await insertIssue({ targets: [target], issueType: 'same_event', primaryReason: 'bank_channel_same_event_candidate', createdAt: '2026-08-02 00:00:00.000' })
+      const conflict = await insertIssue({ targets: [target], primaryReason: 'row_status_unknown', createdAt: '2026-08-03 00:00:00.000' })
+      await lab.owner.execute("UPDATE catledger_economic_events SET economic_nature='unknown',ledger_account_id=?,reason_codes_json=? WHERE uid=? AND event_id=?",
+        ['33333333-3333-4333-8333-333333333333', JSON.stringify(['row_status_unknown', 'economic_nature_required', 'bank_channel_same_event_candidate']), uid, target.eventId])
+      const readTarget = async () => (await pending({ eventId: target.eventId })).items[0]
+      let row = await readTarget()
+      assert.equal(row.pendingIssue.issueId, conflict.issueId)
+      assert.equal(row.reviewAttention.issueId, conflict.issueId)
+      assert.equal(row.reviewAttention.steps[0].key, 'status')
+      const finish = async (item, reasons) => {
+        await lab.owner.execute("UPDATE catledger_review_issues SET status='resolved',version=version+1 WHERE uid=? AND issue_id=?", [uid, item.issueId])
+        await lab.owner.execute('UPDATE catledger_economic_events SET reason_codes_json=? WHERE uid=? AND event_id=?', [JSON.stringify(reasons), uid, target.eventId])
+        await lab.owner.execute('UPDATE catledger_finance_updates SET version=version+1 WHERE uid=? AND update_id=?', [uid, updateId])
+      }
+      await finish(conflict, ['economic_nature_required', 'bank_channel_same_event_candidate'])
+      row = await readTarget()
+      assert.equal(row.pendingIssue.issueId, pair.issueId)
+      assert.equal(row.reviewAttention.issueId, pair.issueId)
+      assert.deepEqual(row.reviewAttention.steps.map(item => item.key), ['same_event', 'nature'])
+      await finish(pair, ['economic_nature_required'])
+      row = await readTarget()
+      assert.equal(row.pendingIssue.issueId, nature.issueId)
+      assert.equal(row.reviewAttention.issueId, nature.issueId)
+      assert.deepEqual(row.reviewAttention.steps.map(item => item.key), ['nature'])
     })
   } finally { await lab.close() }
 })

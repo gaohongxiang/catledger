@@ -81,7 +81,7 @@ for (const tab of ['review', 'category']) test(tab + '的74笔分属46个问题�
   const seen = Array.from(cards(), card => card.eventId)
   assert.equal(new Set(seen).size, 50)
   assert.equal(cards()[28].issueId, data.issues[0].issueId, '第29笔仍能进入同一原始问题')
-  assert.equal(cards()[28].groupCount, 29)
+  assert.equal(tab === 'review' ? cards()[28].scopeCount : cards()[28].groupCount, 29)
   assert.equal(cards()[28].groupPos && cards()[28].groupPos !== '', true, '同组行应连成卡片')
   let selected
   page.openIssue = event => { selected = event.currentTarget.dataset.id }
@@ -106,7 +106,7 @@ test('没有问题入口的待核对交易也显示并可看详情，不被过�
   await page.setStep({ currentStep: 3 })
   const cards = page.data.reviewGroups[0].issues
   assert.equal(cards.length, 3)
-  assert.ok(cards.every(card => !card.issueId && card.natureLabel && card.batchDecision === card.natureLabel + ' · 查看详情'))
+  assert.ok(cards.every(card => !card.issueId && card.batchDecision === '处理'))
   let selected
   page.openReviewDetails = event => { selected = event.currentTarget.dataset.id }
   await page.openPendingRecord(tap({ id: cards[2].eventId }))
