@@ -171,5 +171,71 @@ test('银行 XLS 经原有最小权限和隔离 MySQL 完成解析、去重、�
       const [[count]] = await lab.owner.execute('SELECT COUNT(*) AS n FROM catledger_import_batches WHERE uid=? AND import_id=?', [user.uid, bad.file.importId])
       assert.equal(Number(count.n), 0)
     })
+    await t.test('带符号还款从信用卡流入或付款卡流出核对后均记对端点、余额和幂等回执', async () => {
+      const credit = (await api('accounts.create', { requestId: randomUUID(), type: 'credit', name: '合成方向信用卡',
+        openingDisplayBalanceMinor: '30000', occurredLocalAt: '2026-08-01T00:00:00', timezoneOffsetMinutes: -480 })).accountId
+      const funding = (await api('accounts.create', { requestId: randomUUID(), type: 'bank', name: '合成方向付款卡',
+        openingDisplayBalanceMinor: '100000', occurredLocalAt: '2026-08-01T00:00:00', timezoneOffsetMinutes: -480 })).accountId
+      const balances = async () => Object.fromEntries((await api('accounts.list')).accounts
+        .filter(row => [credit, funding].includes(row.accountId)).map(row => [row.accountId, row.bookBalanceMinor]))
+      for (const sourceDirection of ['income', 'expense']) {
+        const incoming = sourceDirection === 'income', ledgerAccountId = incoming ? credit : funding
+        const counterpartyLedgerAccountId = incoming ? funding : credit
+        const amountMinor = incoming ? '10000' : '2000'
+        const book = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([
+          ['交易日期', '交易金额', '交易摘要', '尾号4位'],
+          [incoming ? '20260906 08:35' : '20260907 09:45', incoming ? '¥-100.00' : '¥20.00', '合成待核对款项', incoming ? '合成1111' : '合成2222']
+        ]), '合成明细')
+        const prepared = await prepare(XLSX.write(book, { type: 'buffer', bookType: 'biff8' }), '合成资金方向-' + sourceDirection + '.xls')
+        const bankMapping = { ...await inspect(prepared), positiveDirection: 'expense', statementKind: incoming ? 'credit' : 'standard' }
+        const parsed = await imp('imports.parseFile', { requestId: randomUUID(), ...prepared.input, bankMapping })
+        const update = await imp('financeUpdates.prepare', { requestId: randomUUID(), batchIds: [parsed.batch.batchId] })
+        const summary = () => imp('financeUpdates.summary', { updateId: update.updateId })
+        const accountIssues = (await imp('reviewIssues.list', { updateId: update.updateId, group: 'accounts', status: 'open' })).items
+        await imp('reviewIssues.resolveAccountMappings', { requestId: randomUUID(), updateId: update.updateId,
+          updateVersion: (await summary()).update.version, decisions: accountIssues.map(issue => ({ issueId: issue.issueId,
+            issueVersion: issue.version, operation: 'resolve', decision: 'apply_fields', fields: { mappingAccountId: ledgerAccountId } })) })
+        const event = (await imp('economicEvents.list', { updateId: update.updateId })).items[0]
+        assert.equal(event.sourceDirection, sourceDirection)
+        assert.equal(event.ledgerAccountId, ledgerAccountId)
+        assert.equal(event.amountMinor, amountMinor)
+        const issue = (await imp('reviewIssues.list', { updateId: update.updateId, group: 'review', status: 'open' })).items
+          .find(row => row.issueType === 'shared_fields' && row.subject.eventId === event.eventId)
+        assert.ok(issue, '账单未提供交易类型时沿用人工性质核对')
+        const detail = await imp('reviewIssues.get', { updateId: update.updateId, issueId: issue.issueId, memberKind: 'event' })
+        assert.equal(detail.subject.sourceDirection, sourceDirection)
+        const before = await balances()
+        const raw = (await lab.owner.execute('SELECT row_id,normalized_direction,normalized_amount_minor,raw_fields_json FROM catledger_import_rows WHERE uid=? AND batch_id=? ORDER BY row_id', [user.uid, parsed.batch.batchId]))[0]
+        const decision = { requestId: randomUUID(), updateId: update.updateId, updateVersion: (await summary()).update.version,
+          issueId: issue.issueId, issueVersion: issue.version, decision: 'apply_fields',
+          fields: { economicNature: 'repayment', flowDirection: 'neutral', ledgerAccountId, counterpartyLedgerAccountId } }
+        const [saved, repeated] = await Promise.all([imp('reviewIssues.resolve', decision), imp('reviewIssues.resolve', decision)])
+        assert.deepEqual(repeated, saved)
+        assert.deepEqual(await balances(), before, '保存核对决定不影响正式余额')
+        assert.deepEqual((await lab.owner.execute('SELECT row_id,normalized_direction,normalized_amount_minor,raw_fields_json FROM catledger_import_rows WHERE uid=? AND batch_id=? ORDER BY row_id', [user.uid, parsed.batch.batchId]))[0], raw)
+        await lab.owner.execute("UPDATE catledger_finance_updates SET plan_version='organizer-plan-v32' WHERE uid=? AND update_id=?", [user.uid, update.updateId])
+        await imp('financeUpdates.organize', { requestId: randomUUID(), updateId: update.updateId, version: saved.appliedVersion })
+        const refreshed = (await imp('economicEvents.list', { updateId: update.updateId })).items[0]
+        assert.equal(refreshed.eventId, event.eventId)
+        assert.equal(refreshed.economicNature, 'repayment')
+        assert.equal(refreshed.sourceDirection, sourceDirection)
+        assert.equal(refreshed.ledgerAccountId, ledgerAccountId)
+        assert.equal(refreshed.counterpartyLedgerAccountId, counterpartyLedgerAccountId)
+        const ready = await summary()
+        assert.equal(ready.coverage.selectedEventsReadyToPost, true, sourceDirection + ' 摘要与实际入账共同承认人工性质')
+        const post = { requestId: randomUUID(), updateId: update.updateId, version: ready.update.version }
+        const receipt = await imp('financeUpdates.post', post)
+        assert.deepEqual(await imp('financeUpdates.post', post), receipt)
+        const transactions = (await api('transactions.list', { importUpdateId: update.updateId })).transactions
+        assert.equal(transactions.length, 1)
+        assert.equal(transactions[0].type, 'transfer')
+        assert.equal(transactions[0].sourceAccount.accountId, funding)
+        assert.equal(transactions[0].destinationAccount.accountId, credit)
+        const after = await balances()
+        assert.equal(BigInt(after[funding]), BigInt(before[funding]) - BigInt(amountMinor))
+        assert.equal(BigInt(after[credit]), BigInt(before[credit]) + BigInt(amountMinor))
+      }
+    })
   } finally { await lab.close() }
 })

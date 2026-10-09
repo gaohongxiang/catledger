@@ -106,7 +106,7 @@ test('没有问题入口的待核对交易也显示并可看详情，不被过�
   await page.setStep({ currentStep: 3 })
   const cards = page.data.reviewGroups[0].issues
   assert.equal(cards.length, 3)
-  assert.ok(cards.every(card => !card.issueId && card.batchDecision === '处理'))
+  assert.ok(cards.every(card => !card.issueId && card.batchDecision === '查看详情'))
   let selected
   page.openReviewDetails = event => { selected = event.currentTarget.dataset.id }
   await page.openPendingRecord(tap({ id: cards[2].eventId }))

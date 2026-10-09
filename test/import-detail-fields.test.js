@@ -34,7 +34,28 @@ test('入账端点与可见账户角色一致，不通过显示层再次交换�
       assert.equal(labels.reverse, reverse)
       if (nature === 'repayment') assert.equal(labels.from, reverse ? '还入账户' : '付款账户')
       if (nature === 'borrow') assert.equal(labels.from, reverse ? '到账账户' : '借款负债账户')
+      const ordered = detail.fieldsFor(input, { accounts: [credit, bank] }).filter(field => ['account', 'counterparty'].includes(field.key))
+      assert.deepEqual(ordered.map(field => field.label), {
+        repayment: ['付款账户', '还入账户'], borrow: ['借款负债账户', '到账账户'], internal_transfer: ['转出账户', '转入账户']
+      }[nature])
+      assert.equal(ordered[0].value, draft.sourceAccountId === credit.accountId ? credit.name : bank.name)
+      assert.equal(ordered[1].value, draft.destinationAccountId === credit.accountId ? credit.name : bank.name)
     }
+  }
+})
+test('单端账户随性质命名，组合支付及合并还款保留分配并先付后收', () => {
+  for (const [nature, label] of Object.entries({ income: '收款账户', refund: '收款账户', expense: '付款账户', fee: '付款账户',
+    balance_adjustment: '调整账户', unknown: '账单所属账户' })) assert.equal(fields(row(nature)).account.label, label)
+  for (const allocation of [
+    { paymentResolution: { allocations: [{ accountId: bank.accountId, amountMinor: '12345' }] }, counterpartyLedgerAccountId: credit.accountId },
+    { ledgerAccountId: bank.accountId, repaymentAllocations: [{ accountId: credit.accountId, amountMinor: '12345' }] }
+  ]) {
+    const result = detail.fieldsFor({ ...row('repayment'), ...allocation }, { accounts: [bank, credit] })
+      .filter(field => /^(account|counterparty|payment-|repayment-)/.test(field.key))
+    assert.match(result[0].label, /^付款账户/)
+    assert.match(result[0].value, /合成储蓄卡/)
+    assert.match(result[1].label, /^还入账户/)
+    assert.match(result[1].value, /合成信用卡/)
   }
 })
 test('分期本金只显示来源字段，不误呈现为已发生的还款；零金额不当作缺失', () => {
@@ -143,13 +164,85 @@ test('真实 Page：性质切换后账户角色立即更新，完整详情晚到
   assert.equal(page.data.issueDetail.natureLabel, '还款')
   page.onUnload()
 })
+test('真实 Page：轻量问题摘要不遮住来源方向，三种双端性质的显示、草稿和入账端点一致', async () => {
+  for (const sourceDirection of ['income', 'expense']) for (const nature of ['repayment', 'borrow', 'internal_transfer']) {
+    const data = fixture(1, true)
+    Object.assign(data.events[0], row('unknown'), { sourceDirection, flowDirection: sourceDirection === 'income' ? 'inflow' : 'outflow' })
+    const { sourceDirection: omitted, ...summary } = data.events[0]
+    Object.assign(data.issues[0], { issueType: 'shared_fields', primaryReasonCode: 'economic_nature_required', subject: summary })
+    const h = runtime(data), page = h.page
+    let release
+    h.intercept = (action, input) => {
+      if (action === 'economicEvents.detail' && !input.evidenceId) return new Promise(resolve => { release = resolve })
+      if (action === 'financeUpdates.options' && input.kind === 'accounts') return { protocolVersion: 2, viewVersion: h.summary.viewVersion, items: [credit, bank], total: 2, nextCursor: null }
+    }
+    try {
+      await page.openIssue(tap('synthetic-issue'))
+      assert.equal(page.data.currentIssue.subject.sourceDirection, sourceDirection)
+      page.changeIssueNature({ detail: { value: NATURE_OPTIONS.findIndex(item => item.value === nature) } })
+      const labels = sourceDirection === 'income'
+        ? { repayment: ['还入账户', '付款账户'], borrow: ['到账账户', '借款负债账户'], internal_transfer: ['转入账户', '转出账户'] }
+        : { repayment: ['付款账户', '还入账户'], borrow: ['借款负债账户', '到账账户'], internal_transfer: ['转出账户', '转入账户'] }
+      assert.equal(page.data.issueDetail.accountLabel, labels[nature][0])
+      assert.equal(page.data.issueDetail.destinationLabel, labels[nature][1])
+      assert.equal(page.data.issueDetail.destinationFirst, sourceDirection === 'income')
+      const firstTarget = page.data.issueDetail.destinationFirst ? 'counterparty' : 'account'
+      await page.openDirectory({ currentTarget: { dataset: { target: firstTarget } } })
+      assert.equal(page.data.directorySheet.title, '选择' + { repayment: '付款账户', borrow: '借款负债账户', internal_transfer: '转出账户' }[nature])
+      page.closeDirectory()
+      await page.openDirectory({ currentTarget: { dataset: { target: 'counterparty' } } })
+      page.selectDirectory({ currentTarget: { dataset: { index: page.data.directorySheet.items.findIndex(account => account.accountId === bank.accountId) } } })
+      const saved = JSON.stringify(page.data.issueDraft)
+      release({ viewVersion: h.summary.viewVersion, part: JSON.stringify({ ...data.events[0], ledgerAccountId: 'stale-account', detailFacts: {} }), nextCursor: null })
+      await flush(); await flush()
+      assert.equal(JSON.stringify(page.data.issueDraft), saved, '详情迟到不覆盖人工账户选择')
+      assert.equal(page.data.issueCanSubmit, true)
+      await page.resolveWithFields()
+      const entry = page._draftSession.state.entries[0]
+      assert.equal(entry.decision.fields.ledgerAccountId, credit.accountId)
+      assert.equal(entry.decision.fields.counterpartyLedgerAccountId, bank.accountId)
+      const posting = transactionDrafts({ ...data.events[0], ...entry.decision.fields })[0]
+      assert.equal(posting.sourceAccountId, sourceDirection === 'income' ? bank.accountId : credit.accountId)
+      assert.equal(posting.destinationAccountId, sourceDirection === 'income' ? credit.accountId : bank.accountId)
+      assert.equal(data.events[0].sourceDirection, sourceDirection)
+    } finally { page.onUnload() }
+  }
+})
+test('真实 Page：裁切详情补回方向但保留草稿，关闭后迟到的方向不得回填', async () => {
+  for (const closeBeforeDetail of [false, true]) {
+    const data = fixture(1, true)
+    Object.assign(data.events[0], row('unknown'), { ledgerAccountId: 'synthetic-account' })
+    delete data.events[0].sourceDirection
+    Object.assign(data.issues[0], { issueType: 'shared_fields', primaryReasonCode: 'economic_nature_required' })
+    const h = runtime(data), page = h.page
+    let release
+    h.intercept = (action, input) => action === 'economicEvents.detail' && !input.evidenceId ? new Promise(resolve => { release = resolve }) : undefined
+    try {
+      await page.openIssue(tap('synthetic-issue'))
+      page.changeIssueNature({ detail: { value: NATURE_OPTIONS.findIndex(item => item.value === 'repayment') } })
+      const saved = JSON.stringify(page.data.issueDraft)
+      if (closeBeforeDetail) page.closeIssue()
+      release({ viewVersion: h.summary.viewVersion, part: JSON.stringify({ ...data.events[0], sourceDirection: 'income', detailFacts: {} }), nextCursor: null })
+      await flush(); await flush()
+      if (closeBeforeDetail) {
+        assert.equal(page.data.currentIssue, null)
+        assert.equal(page.data.issueFacts, null)
+      } else {
+        assert.equal(page.data.issueDetail.accountLabel, '还入账户')
+        assert.equal(page.data.issueDetail.destinationLabel, '付款账户')
+        assert.equal(page.data.issueDetail.destinationFirst, true)
+        assert.equal(JSON.stringify(page.data.issueDraft), saved)
+      }
+    } finally { page.onUnload() }
+  }
+})
 test('待核对/已核对/编辑模板均把性质与字段放在原文之前', () => {
   const dir = path.join(__dirname, '../miniprogram/pages/import-workbench')
   const pending = fs.readFileSync(path.join(dir, 'index.wxml'), 'utf8')
-  const start = pending.indexOf('class="detail-nature-first"')
+  const start = pending.indexOf('class="detail-nature-first')
   assert.ok(start > 0)
   assert.ok(start < pending.indexOf('class="payment-resolution-form"'))
-  assert.ok(start < pending.indexOf('bindchange="changeIssueAccount"'))
+  assert.ok(start < pending.indexOf('data-target="account" bindtap="openDirectory"'))
   assert.equal((pending.match(/bindchange="changeIssueNature"/g) || []).length, 1)
   for (const file of ['review-detail.wxml', 'review-edit.wxml']) {
     const source = fs.readFileSync(path.join(dir, file), 'utf8')
@@ -157,6 +250,57 @@ test('待核对/已核对/编辑模板均把性质与字段放在原文之前', 
   }
 })
 
+test('真实 Page：紧凑摘要保留零金额和缺失提示，省去空白对方备注与独立账单状态', async () => {
+  for (const amount of ['0', null]) {
+    const data = fixture(1, true)
+    Object.assign(data.events[0], { economicNature: 'unknown', amountMinor: amount, localAt: amount === null ? null : '2026-09-01 12:00:00',
+      primaryEvidence: { sourceType: 'wechat', counterparty: '', status: '', note: '' } })
+    Object.assign(data.issues[0], { issueType: 'shared_fields', primaryReasonCode: 'economic_nature_required' })
+    const source = JSON.stringify(data.events[0]), h = runtime(data), page = h.page
+    try {
+      await page.openIssue(tap('synthetic-issue'))
+      assert.equal(page.data.issueDetail.summary.amount, amount === null ? '金额待补充' : '¥0.00')
+      assert.equal(page.data.issueDetail.summary.time, amount === null ? '时间待补充' : '2026-09-01 12:00:00')
+      assert.equal(page.data.issueDetail.summary.party, '')
+      assert.ok(page.data.issueDetail.fields.every(field => !['status', 'note'].includes(field.key)))
+      assert.equal(page.data.issueFieldsCanSave, false, '提示合并不解除未知性质的保存门禁')
+      assert.equal(page.data.issueDetail.hideValidationHint, true)
+      assert.equal(JSON.stringify(data.events[0]), source)
+    } finally { page.onUnload() }
+  }
+  const data = draft('expense'), patches = {}
+  data.currentIssue.subject.primaryEvidence.status = '支付成功'
+  form.refreshIssueFieldsDraft.call({ data, setData: patch => Object.assign(patches, patch) })
+  assert.equal(patches.issueDetail.fields.some(field => field.key === 'status'), false)
+  assert.equal(data.currentIssue.subject.primaryEvidence.status, '支付成功', '省去重复展示，不修改原始账单字段')
+  assert.equal(patches.issueDetail.fields.find(field => field.key === 'note').value, '合成备注')
+})
+
+
+test('真实 Page：默认本人还款和代还方式只提示一次，缺账户或处理方式仍禁存', async () => {
+  const data = fixture(1, true)
+  Object.assign(data.events[0], { economicNature: 'repayment', repaymentOwnershipRequired: true,
+    fundsProjection: { kind: 'repayment', from: { label: '合成钱包' }, to: { referenceKind: 'atomic', label: '合成信用卡' } } })
+  Object.assign(data.issues[0], { issueType: 'transfer_accounts', subject: data.events[0] })
+  const h = runtime(data), page = h.page
+  try {
+    await page.openIssue(tap('synthetic-issue'))
+    assert.equal(page.data.issueDraft.repaymentOwner, 'self')
+    assert.equal(page.data.issueDetail.hideValidationHint, true)
+    assert.equal(page.data.issueFieldsCanSave, false)
+    page.changeRepaymentOwner({ currentTarget: { dataset: { owner: 'other' } } })
+    assert.equal(page.data.issueDetail.hideValidationHint, true)
+    assert.equal(page.data.issueFieldsCanSave, false)
+    page.changeRepaymentOtherTreatment({ currentTarget: { dataset: { treatment: 'pending' } } })
+    assert.equal(page.data.issueFieldsCanSave, true)
+    page.changeRepaymentOwner({ currentTarget: { dataset: { owner: 'self' } } })
+    page.data.accountChoices = [{ accountId: 'synthetic-other-wallet', type: 'wallet', name: '合成其他钱包' }]
+    page.refreshIssueFieldsDraft()
+    assert.equal(page.data.issueFieldsCanSave, false)
+    assert.equal(page.data.issueDetail.hideValidationHint, false)
+    assert.equal(page.data.issueFieldsReason, '请选择自己的信用卡或其他负债账户')
+  } finally { page.onUnload() }
+})
 
 test('性质切换只展示适用字段：退款保留随原消费分类，组合支付还款不显示消费分类', () => {
   const data = draft('refund')

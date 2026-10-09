@@ -1,5 +1,6 @@
 const readCache = require('../../services/read-cache')
 const { setChangedData } = require('../../services/view-patch')
+const { SUGGESTED_PAGE_SIZE } = require('./pairing-review')
 
 const owner = () => { const app = getApp(); return app.hasLoginApproval() ? app.globalData.uid || '' : '' }
 function eligible(page) {
@@ -36,7 +37,7 @@ module.exports = {
       owner: owner(), scope: readCache.getSession() }
     setChangedData(this, { pairingEntry: { total: null, loading: true, error: false } })
     // 旧服务端兼容：与建议弹层首页共用有界缓存和在途请求，不读取原文或自行推算总数。
-    token.promise = session.read('reviewIssues.pairings', { mode: 'suggested', pageSize: 4 }).then(result => {
+    token.promise = session.read('reviewIssues.pairings', { mode: 'suggested', pageSize: SUGGESTED_PAGE_SIZE }).then(result => {
       if (!current(this, token) || !session.active) return
       if (!Number.isSafeInteger(result.total) || result.total < 0) throw new Error('配对组数尚未核实')
       setChangedData(this, { pairingEntry: { total: result.total, loading: false, error: false } })

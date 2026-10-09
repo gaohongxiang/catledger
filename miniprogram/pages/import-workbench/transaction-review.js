@@ -86,6 +86,15 @@ function directoryKinds(issue) {
   return []
 }
 
+function issueSubject(details, fallback) {
+  const summary = details.issue.subject || fallback || null
+  const eventId = summary && summary.eventId
+  // 问题摘要不含完整来源方向；优先使用同一事件的详情，不能让摘要盖住它。
+  const candidates = [details.subject].concat(details.members.map(member => member.event))
+  const event = candidates.find(row => row && (!eventId || row.eventId === eventId))
+  return event ? Object.assign({}, summary, event) : summary
+}
+
 async function readIssueFacts(page, token) {
   if (!issueCurrent(page, token) || token.factsReading) return
   const row = page.data.currentIssue.subject || page.data.issueEvents[0]
@@ -95,7 +104,8 @@ async function readIssueFacts(page, token) {
   try {
     const detail = await readDetail(token.session, row.eventId, () => issueCurrent(page, token))
     if (!detail || !issueCurrent(page, token)) return
-    page.setData({ issueFacts: { eventId: row.eventId, detailFacts: detail.detailFacts || null }, issueFactsLoading: false })
+    page.setData({ issueFacts: { eventId: row.eventId, sourceDirection: detail.sourceDirection || null,
+      detailFacts: detail.detailFacts || null }, issueFactsLoading: false })
     if (token.initialized) page.refreshIssueFieldsDraft()
   } catch (error) {
     if (issueCurrent(page, token)) page.setData({ issueFactsLoading: false, issueFactsError: publicError(error, '记账信息未能完整读取') })
@@ -134,6 +144,7 @@ function initializeIssueEditor(details, token) {
       ? firstEvent.counterpartyLedgerAccountId
       : firstEvent && firstEvent.ledgerAccountId) || (!isTransferIssue && suggestedTransferAccount && suggestedTransferAccount.accountId)
     const ownershipTarget = Boolean(isTransferIssue && firstEvent && firstEvent.repaymentOwnershipRequired)
+    const ownership = firstEvent && firstEvent.repaymentOwnership || {}
     const accountChoices = isTransferIssue
     ? [{ accountId: '', name: '请选择账户', isPlaceholder: true }]
     .concat(ownershipTarget ? selectableAccounts.filter(function (account) { return ['credit', 'other_liability'].includes(account.type) }) : selectableAccounts)
@@ -143,7 +154,7 @@ function initializeIssueEditor(details, token) {
         return selectorAccountId && account.accountId === selectorAccountId
       })
     const accountIndex = existingAccountIndex < 0 ? 0 : existingAccountIndex
-    const counterpartyAccountChoices = [{ accountId: '', name: '请选择转入账户', isPlaceholder: true }].concat(selectableAccounts)
+    const counterpartyAccountChoices = [{ accountId: '', name: '请选择账户', isPlaceholder: true }].concat(selectableAccounts)
     const counterpartyAccountIndex = Math.max(0, counterpartyAccountChoices.findIndex(function (account) {
           return firstEvent && firstEvent.counterpartyLedgerAccountId && account.accountId === firstEvent.counterpartyLedgerAccountId
         }))
@@ -162,7 +173,7 @@ function initializeIssueEditor(details, token) {
     const selectedRefundTargetId = relationChoices.length === 1 ? relationChoices[0].targetEventId : ''
     const currentIssue = model.issueView(Object.assign({}, details.issue, {
           accountContext: issueAccountContext,
-          subject: details.issue.subject || summaryIssue && summaryIssue.subject || firstEvent || null
+          subject: issueSubject(details, summaryIssue && summaryIssue.subject)
         }))
     const bankSuggestion = isTransferIssue
     ? model.bankAccountSuggestion(eventMembers.map(function (member) { return member.event }), selectableAccounts)
@@ -209,8 +220,8 @@ function initializeIssueEditor(details, token) {
         issueFieldsReason: '',
         paymentValidationHint: '',
         paymentRows: paymentDefaults.rows,
-        paymentAccountChoices: [{ accountId: '', name: '请选择资金账户' }].concat(selectableAccounts),
-        paymentTargetChoices: [{ accountId: '', name: '请选择被还款账户' }].concat(selectableAccounts.filter(function (a) { return ['credit', 'other_liability'].includes(a.type) })),
+        paymentAccountChoices: [{ accountId: '', name: '请选择付款账户' }].concat(selectableAccounts),
+        paymentTargetChoices: [{ accountId: '', name: '请选择还入账户' }].concat(selectableAccounts.filter(function (a) { return ['credit', 'other_liability'].includes(a.type) })),
         paymentNatureIndex: paymentDefaults.natureIndex, paymentTargetIndex: Math.max(0, [{ accountId: '' }].concat(selectableAccounts.filter(function (a) { return ['credit', 'other_liability'].includes(a.type) })).findIndex(function (a) { return a.accountId === (firstEvent && firstEvent.counterpartyLedgerAccountId) })), paymentEvidenceNote: '', paymentCanSave: false,
         paymentDifferenceText: '请逐项填写实际支付金额；合计须等于 ' + model.amountText(firstEvent && firstEvent.amountMinor),
         bankSuggestion: bankSuggestion,
@@ -247,8 +258,8 @@ function initializeIssueEditor(details, token) {
           ? Array.from(summaryIssue.accountContext.label.trim()).slice(0, 32).join('')
           : '',
           accountTypeIndex: currentIssue.repaymentOwnershipRequired ? 3 : 2,
-          repaymentOwner: firstEvent && firstEvent.repaymentOwnership && firstEvent.repaymentOwnership.owner || '',
-          repaymentOtherTreatment: firstEvent && firstEvent.repaymentOwnership && firstEvent.repaymentOwnership.treatment || ''
+          repaymentOwner: ['self', 'other'].includes(ownership.owner) ? ownership.owner : ownershipTarget ? 'self' : '',
+          repaymentOtherTreatment: ownership.treatment || ''
         }
       })
     this.restoreReviewDraft(issueId, token.savedForm)
@@ -313,7 +324,7 @@ async function showIssueEditor(event, savedForm) {
       return this.openAmbiguousPairingReview({ currentTarget: { dataset: { issueId } } })
     }
     token.details = details
-    const currentIssue = model.issueView(Object.assign({}, details.issue, { subject: details.issue.subject || details.subject || summary.subject }))
+    const currentIssue = model.issueView(Object.assign({}, details.issue, { subject: issueSubject(details, summary.subject) }))
     const members = details.members.filter(row => row.event)
     this.setData({ currentIssue, issueEvents: members.map(row => model.eventView(row.event)),
       issueVisibleEvents: members.map(row => Object.assign({}, presentation.record(row.event), { evidenceLoading: true, evidence: [] })) },
@@ -468,17 +479,20 @@ module.exports = {
   },
 
   changeRepaymentOwner: function (event) {
-    if (this.data.busy) return
+    if (this.data.busy || !this.data.issueDetailsReady || !issueCurrent(this, this._issueEvidenceToken) ||
+        !this.data.currentIssue.repaymentOwnershipRequired) return
     const owner = event.currentTarget.dataset.owner
     if (!['self', 'other'].includes(owner) || owner === this.data.issueDraft.repaymentOwner) return
-    this.setData({ 'issueDraft.repaymentOwner': owner, 'issueDraft.repaymentOtherTreatment': '',
-        'issueDraft.accountIndex': 0, 'issueDraft.newAccountName': '', 'issueDraft.accountTypeIndex': 3,
+    this.closeDirectory()
+    // 两种模式各自保留输入；提交字段由当前模式决定，代还不携带本人账户。
+    this.setData({ 'issueDraft.repaymentOwner': owner, errorMessage: '',
         bankBatchSelectedCount: 0, bankBatchExpanded: false, bankBatchRecords: [] })
     this.refreshIssueFieldsDraft()
   },
 
   changeRepaymentOtherTreatment: function (event) {
-    if (this.data.busy || this.data.issueDraft.repaymentOwner !== 'other') return
+    if (this.data.busy || !this.data.issueDetailsReady || !issueCurrent(this, this._issueEvidenceToken) ||
+        this.data.issueDraft.repaymentOwner !== 'other') return
     const treatment = event.currentTarget.dataset.treatment
     if (!['expense', 'pending'].includes(treatment)) return
     this.setData({ 'issueDraft.repaymentOtherTreatment': treatment })
@@ -554,11 +568,20 @@ module.exports = {
   },
 
   selectBankSuggestion: function (event) {
-    if (this.data.busy) return
-    const accountIndex = this.data.accountChoices.findIndex(function (account) {
-        return account.accountId === event.currentTarget.dataset.id
-      })
-    if (accountIndex > 0) this.changeIssueAccount({ detail: { value: accountIndex } })
+    const data = this.data, issue = data.currentIssue
+    if (data.busy || !data.issueDetailsReady || !issueCurrent(this, this._issueEvidenceToken) || !getApp().hasLoginApproval() ||
+      issue.repaymentOwnershipRequired && data.issueDraft.repaymentOwner !== 'self') return
+    const candidate = data.bankSuggestion && data.bankSuggestion.candidates.find(account => account.accountId === event.currentTarget.dataset.id)
+    if (!candidate || candidate.archived || candidate.archivedAt || candidate.status === 'archived' || candidate.unavailable) return
+    let accountIndex = data.accountChoices.findIndex(account => account.accountId === candidate.accountId)
+    // 完整目录会压缩预载选项；清除另一个选择后，仍可直接采用当前建议。
+    if (accountIndex < 0) {
+      const choices = data.accountChoices.filter(account => !account.isCreate).concat(candidate,
+        data.accountChoices.filter(account => account.isCreate))
+      accountIndex = choices.findIndex(account => account.accountId === candidate.accountId)
+      this.setData({ accountChoices: choices, accounts: data.accounts.filter(account => account.accountId !== candidate.accountId).slice(0, 11).concat(candidate) })
+    }
+    this.changeIssueAccount({ detail: { value: accountIndex } })
   },
 
   toggleBankBatch: function (event) {
@@ -791,6 +814,10 @@ module.exports = {
     const entry = savedForm ? { form: savedForm } : this._draftSession.state.entries.concat(this._draftSession.state.conflictedChoices || []).find(function (item) { return item.issueId === issueId })
     if (!entry || !entry.form) return
     const form = entry.form
+    const draft = Object.assign({}, form.issueDraft)
+    if (this.data.currentIssue && this.data.currentIssue.repaymentOwnershipRequired && !['self', 'other'].includes(draft.repaymentOwner)) {
+      draft.repaymentOwner = this.data.issueDraft.repaymentOwner || 'self'
+    }
     // 被归档/移除的旧选择保留原 ID 并明确失效，不能悄悄改成首项或新建账户。
     const pins = {}
     const keepChoice = (property, key, value) => {
@@ -808,7 +835,7 @@ module.exports = {
     }))
     if (Object.keys(pins).length) this.setData(pins)
     const indexOf = function (options, key, value) { return Math.max(0, (options || []).findIndex(function (item) { return value && item[key] === value })) }
-    this.setData({ issueDraft: Object.assign({}, form.issueDraft, {
+    this.setData({ issueDraft: Object.assign({}, draft, {
             accountIndex: indexOf(this.data.accountChoices, 'accountId', form.accountId),
             counterpartyAccountIndex: indexOf(this.data.counterpartyAccountChoices, 'accountId', form.counterpartyAccountId),
             categoryIndex: indexOf(this.data.issueCategories, 'categoryId', form.categoryId),

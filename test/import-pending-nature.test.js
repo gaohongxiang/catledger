@@ -54,7 +54,7 @@ test('没有性质或未关联问题时保留明确回退和原查看入口', ()
   delete input.pendingIssue
   const result = presentation().pendingCard(input, false)
   assert.equal(result.natureLabel, '性质待确认')
-  assert.equal(result.batchDecision, '处理')
+  assert.equal(result.batchDecision, '查看详情')
   assert.equal(result.label, '性质待确认')
 })
 
@@ -92,15 +92,15 @@ function fallbackCard(view, labels) {
 test('兼容问题列表也显示性质，不改变原核对提示', () => {
   const result = fallbackCard(presentation(), ['退款', '退款'])
   assert.equal(result.batchDecision, '处理')
-  assert.equal(result.label, '退款｜判断是否同一笔（同组 2 笔）')
+  assert.equal(result.label, '判断是否同一笔｜退款（同组 2 笔）')
   assert.equal(result.decisionText, '')
   assert.equal(result.subjects.length, 2)
 })
 
 test('混合性质或部分未知的旧问题组不能用首笔性质代表整组', () => {
   const view = presentation()
-  assert.equal(fallbackCard(view, ['支出', '退款']).label, '多种性质｜判断是否同一笔（同组 2 笔）')
-  assert.equal(fallbackCard(view, ['支出', undefined]).label, '多种性质｜判断是否同一笔（同组 2 笔）')
+  assert.equal(fallbackCard(view, ['支出', '退款']).label, '判断是否同一笔｜多种性质（同组 2 笔）')
+  assert.equal(fallbackCard(view, ['支出', undefined]).label, '判断是否同一笔｜多种性质（同组 2 笔）')
 })
 
 test('已核对记录仍使用原性质展示，不附加待核对操作', () => {

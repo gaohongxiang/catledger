@@ -10,6 +10,7 @@ const loginGuard = require('../../services/login-guard')
 const themeService = require('../../theme/service')
 const readCache = require('../../services/read-cache')
 const pendingWrites = require('../../services/pending-ledger-write')
+const reviewLayout = require('./review-layout')
 
 const bytes = value => unescape(encodeURIComponent(JSON.stringify(value))).length
 const commandActions = new Set(['financeUpdates.prepare', 'financeUpdates.organize', 'financeUpdates.post', 'financeUpdates.abandon', 'financeUpdates.setRepayment', 'financeUpdates.setCategory', 'financeUpdates.setReview',
@@ -27,7 +28,10 @@ function boundedSetData(page) {
       part[key] = patch[key]; size += next
     }
     if (Object.keys(part).length) chunks.push(part)
-    chunks.forEach((chunk, index) => send(chunk, index === chunks.length - 1 ? callback : undefined))
+    chunks.forEach((chunk, index) => send(chunk, index === chunks.length - 1 ? function () {
+      if (callback) callback.call(page)
+      if (Object.keys(patch).some(key => !['issueBodyLayout', 'directoryBodyLayout'].includes(key))) reviewLayout.schedule(page)
+    } : undefined))
   }
 }
 

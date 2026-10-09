@@ -46,7 +46,7 @@ function suggest(events, accounts) {
   })
   const candidates = (accounts || []).filter(function (account) {
     return account.accountId && account.type === reference.type && bankName(account.name) === reference.bank &&
-      !knownIds.includes(account.accountId) && !account.archived && account.status !== 'archived'
+      !knownIds.includes(account.accountId) && !account.archived && !account.archivedAt && !account.unavailable && account.status !== 'archived'
   })
   return Object.assign({}, reference, { candidates: candidates,
     reason: '账单显示' + reference.label + '，未提供尾号，请核对。' })

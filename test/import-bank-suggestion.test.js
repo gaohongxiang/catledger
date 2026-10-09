@@ -40,6 +40,8 @@ test('已知端点及归档账户排除，银行全名别名可匹配且不做�
   const source = repayment(); source.ledgerAccountId = 'credit1'
   assert.equal(model.bankAccountSuggestion([source], accounts).candidates.length, 0)
   assert.equal(model.bankAccountSuggestion([repayment()], accounts.map(x => ({ ...x, archived: true }))).candidates.length, 0)
+  assert.equal(model.bankAccountSuggestion([repayment()], accounts.map(x => ({ ...x, archivedAt: '2026-01-01' }))).candidates.length, 0)
+  assert.equal(model.bankAccountSuggestion([repayment()], accounts.map(x => ({ ...x, unavailable: true }))).candidates.length, 0)
   const result = model.bankAccountSuggestion([repayment('中国光大银行信用卡')], [
     { accountId: 'a', name: '光大银行信用卡(1234)', type: 'credit' },
     { accountId: 'b', name: '光大银行储蓄卡(1234)', type: 'bank' }

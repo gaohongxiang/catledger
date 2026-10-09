@@ -258,13 +258,16 @@ function classifyReviewIssue(event) {
   }
   const installmentPrincipal = event.fieldSources && event.fieldSources.installment &&
     event.fieldSources.installment.creditStatement === true && event.fieldSources.installment.component === 'principal'
-  if ((!installmentPrincipal && [ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(event.economicNature)) ||
+  const missingTransferAccount = !event.ledgerAccountId || !event.counterpartyLedgerAccountId || event.ledgerAccountId === event.counterpartyLedgerAccountId
+  if ((!installmentPrincipal && missingTransferAccount && [ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(event.economicNature)) ||
       reasons.has('transfer_account_required') || reasons.has('repayment_account_required') || reasons.has('borrow_account_required') ||
       [...reasons].some((reason) => reason.startsWith('repayment_allocation_'))) {
     return {
       issueType: REVIEW_ISSUE_TYPE.TRANSFER_ACCOUNTS,
       primaryReason: [...reasons].find((reason) => reason.startsWith('repayment_allocation_')) ||
-        [...reasons].find((reason) => reason.endsWith('_account_required'))
+        [...reasons].find((reason) => reason.endsWith('_account_required')) ||
+        (event.economicNature === ECONOMIC_NATURE.REPAYMENT ? 'repayment_account_required'
+          : event.economicNature === ECONOMIC_NATURE.BORROW ? 'borrow_account_required' : 'transfer_account_required')
     }
   }
   if (event.sameEventCandidateKey || reasons.has('same_event_candidate') || reasons.has('relation_ambiguous')) {

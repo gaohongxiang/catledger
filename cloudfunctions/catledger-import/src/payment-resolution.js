@@ -1,9 +1,11 @@
+const { FIELD_MASK } = require('./manual-field-mask')
 const PAYMENT_RESOLUTION_VERSION = 'payment-resolution-v2'
 const LEGACY_PAYMENT_RESOLUTION_VERSION = 'payment-resolution-v1'
 const NONNEGATIVE_MINOR = /^(?:0|[1-9]\d{0,18})$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MINOR = /^[1-9]\d{0,18}$/
 const RESOLVABLE = new Set(['payment_components_ambiguous', 'row_transaction_type_unknown'])
+const CONFIRMABLE_NATURES = new Set(['income', 'expense', 'fee', 'refund', 'internal_transfer', 'repayment', 'borrow'])
 
 function paymentEvidenceFields(rows) {
   if (!rows.length) return { paymentComponents: [], paymentSourceDirection: '' }
@@ -76,7 +78,11 @@ function paymentResolutionForEvent(event) {
 }
 
 function effectiveSemanticReasons(event, reasons) {
-  return paymentResolutionForEvent(event).valid ? reasons.filter((reason) => !RESOLVABLE.has(reason)) : reasons
+  const paymentResolved = paymentResolutionForEvent(event).valid
+  const natureConfirmed = Boolean(event.manualFieldMask & FIELD_MASK.economicNature) && CONFIRMABLE_NATURES.has(event.economicNature)
+  // 明确选择性质只解除“交易类型未知”；原始语义和其他阻断仍保留。
+  return reasons.filter(reason => !(paymentResolved && RESOLVABLE.has(reason)) &&
+    !(natureConfirmed && reason === 'row_transaction_type_unknown'))
 }
 
 module.exports = { inspectPaymentAccounts, paymentEvidenceFields, PAYMENT_RESOLUTION_VERSION, inspectPaymentResolution, paymentResolutionForEvent, effectiveSemanticReasons }

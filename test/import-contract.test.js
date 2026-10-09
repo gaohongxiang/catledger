@@ -116,7 +116,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(markup, /class="parse-button-spinner"/)
   assert.match(markup, /template is="record-source-fields"/)
   assert.doesNotMatch(markup, /交易摘要|查看 \{\{item\.evidenceCount\}\} 条原始记录/)
-  assert.match(markup, /class="funds-route-picker"/)
+  assert.match(markup, /class="funds-route-picker funds-account-control"/)
   assert.match(markup, /currentIssue\.issueType !== 'transfer_accounts' && !currentIssue\.aggregateRepayment/)
   assert.match(markup, /<view wx:if="\{\{!files.length && phase !== 'loading' && phase !== 'organizing' && !restoreUpdateId && !preparePending\}\}" data-ui="empty-picker" class="file-picker-empty">/)
   assert.match(markup, /class="file-row-side"/)
@@ -206,7 +206,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(styles, /\.review-decision-card/)
   assert.match(styles, /\.relation-selected \{ background: var\(--ui-accent-soft/)
   // 对端名称随性质和账单方向变化，不能再要求静态“转入账户”。
-  assert.match(markup, /issueDetail\.destinationLabel \|\| '转入账户'/)
+  assert.match(markup, /aria-label="\{\{'选择' \+ issueDetail\.destinationLabel\}\}"/)
   const labels = require('../miniprogram/pages/import-workbench/detail-fields').accountLabels
   assert.equal(labels({ economicNature: 'internal_transfer', sourceDirection: 'expense' }).to, '转入账户')
   assert.equal(labels({ economicNature: 'repayment', sourceDirection: 'income' }).from, '还入账户')

@@ -338,8 +338,8 @@ test('组合支付资金卡复用账户路线样式，目标选择和保存门�
   assert.match(markup, /class="funds-route-card payment-funds-route"/)
   assert.match(markup, /wx:for="\{\{paymentRows\}\}" wx:key="componentIndex" class="funds-route-name"/)
   const paymentForm = markup.slice(markup.indexOf('class="payment-resolution-form"'), markup.indexOf('class="mapping-fields"'))
-  assert.equal((paymentForm.match(/bindchange="changePaymentTarget"/g) || []).length, 1)
-  assert.match(paymentForm, /class="funds-route-picker"[^>]*value="\{\{paymentTargetIndex\}\}"/)
+  assert.equal((paymentForm.match(/data-target="paymentTarget"[^>]*bindtap="openDirectory"/g) || []).length, 1)
+  assert.match(paymentForm, /\{\{paymentTargetChoices\[paymentTargetIndex\]\.name\}\}/)
   assert.match(markup, /wx:elif="\{\{currentIssue.missingFundsSide === 'both'\}\}"[^>]*data-target="counterparty"[^>]*bindtap="openDirectory"/)
   const save = markup.match(/<button[^>]+bindtap="resolveWithFields"[^>]*>/)[0]
   assert.match(save, /!issueFieldsCanSave/)

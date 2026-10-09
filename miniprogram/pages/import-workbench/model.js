@@ -1,4 +1,5 @@
 const bankSuggestion = require('./bank-suggestion')
+const { fundsAccountLabels } = require('./detail-fields')
 
 function reviewStatusTabs(tabs = []) {
   return [['pending', '待核对'], ['completed', '已核对'], ['duplicate', '重复交易'], ['excluded', '已排除']]
@@ -383,13 +384,13 @@ function buildIssueFieldsDraft(state) {
     if (!missingSide) {
       const target = (state.counterpartyAccountChoices || [])[draft.counterpartyAccountIndex]
       if (!target || target.isPlaceholder || !target.accountId || target.archived || target.archivedAt || target.unavailable ||
-          fields.ledgerAccountId === target.accountId) return invalid('请选择两个不同的转出和转入账户')
+          fields.ledgerAccountId === target.accountId) return invalid('请选择两个不同的资金账户')
       fields.counterpartyLedgerAccountId = target.accountId
     } else {
       const otherField = missingSide === 'to' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'
       const events = (state.issueEvents || []).concat(issue.subject ? [issue.subject] : [])
       if (account.accountId && events.some(function (event) { return event[otherField] === account.accountId })) {
-        return invalid('请选择两个不同的转出和转入账户')
+        return invalid('请选择两个不同的资金账户')
       }
     }
   }
@@ -413,6 +414,7 @@ function issueView(issue) {
   const subject = issue.subject ? eventView(issue.subject) : null
   const installmentPrincipal = Boolean(subject && subject.installment && subject.installment.creditStatement && subject.installment.component === 'principal')
   const projected = issue.subject && issue.subject.fundsProjection
+  const fundsLabels = fundsAccountLabels(subject && subject.economicNature)
   const aggregateRepayment = Boolean(issue.issueType === 'transfer_accounts' && projected &&
     projected.to && projected.to.referenceKind === 'aggregate')
   const missingFundsSide = issue.issueType === 'transfer_accounts' && projected
@@ -428,8 +430,8 @@ function issueView(issue) {
   if (issue.issueType === 'account_mapping' && context.label) label = context.label
   if (issue.issueType === 'transfer_accounts' && context.label) label = '资金流转 · ' + context.label
   if (aggregateRepayment) label = '还款分配待确认'
-  if (missingFundsSide === 'from') label = '转出账户待确认'
-  if (missingFundsSide === 'to') label = '转入账户待确认'
+  if (missingFundsSide === 'from') label = fundsLabels.from + '待确认'
+  if (missingFundsSide === 'to') label = fundsLabels.to + '待确认'
   const historicalDuplicate = issue.primaryReasonCode === 'historical_duplicate_candidate'
   if (historicalDuplicate) label = '疑似已经入账'
   const reasons = (issue.reasonCodes || []).concat(subject && subject.reasonCodes || [])
@@ -472,7 +474,7 @@ function issueView(issue) {
     missingFundsSide: missingFundsSide,
     fundsProjection: projected || null,
     historicalDuplicate: historicalDuplicate,
-    missingAccountLabel: installmentPrincipal ? '所属信用卡' : missingFundsSide === 'to' ? '转入账户' : '转出账户',
+    missingAccountLabel: installmentPrincipal ? '所属信用卡' : missingFundsSide === 'to' ? fundsLabels.to : fundsLabels.from,
     canConfirmSame: issue.issueType === 'same_event' && !historicalDuplicate && !bankChannelAmbiguous && issue.primaryReasonCode !== 'source_group_conflict',
     reasonText: issue.primaryReasonCode === 'loan_repayment_required' ? '补齐本金、利息、费用后才能入账。' : issue.primaryReasonCode === 'source_group_conflict'
       ? '参考号相同但来源编号或时间有歧义，请核对。'
@@ -492,9 +494,9 @@ function issueView(issue) {
       : aggregateRepayment
         ? '确认这笔合并账单分别还给哪些真实账户'
         : missingFundsSide === 'from'
-        ? '转入账户已确定，只需选择资金从哪个账户转出'
+        ? fundsLabels.to + '已确定，只需确认' + fundsLabels.from
         : missingFundsSide === 'to'
-          ? '转出账户已确定，只需选择资金转入哪个账户'
+          ? fundsLabels.from + '已确定，只需确认' + fundsLabels.to
           : issueHelp
   })
 }

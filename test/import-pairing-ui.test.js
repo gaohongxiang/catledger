@@ -11,22 +11,83 @@ test('真实 Page 立即打开骨架，范围未齐禁确认，原文自动有�
   assert.equal(page.data.pairingLoading, true); assert.equal(page.data.pairingCanConfirm, false)
   await page.confirmPairings(); assert.equal(page._draftSession.state.entries.length, 0)
   await h.flush(); release(undefined); await opening; await h.flush(); await h.flush()
-  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(page.data.pairingRows.length, 10)
+  assert.equal(h.calls.find(call => call.action === 'reviewIssues.pairings').input.pageSize, 10)
   assert.equal(page.data.pairingSelectedCount, 100)
   assert.equal(page.data.pairingCanConfirm, true)
   assert.match(page.data.pairingScopeText, /100.*200/)
-  assert.equal(h.calls.filter(call => call.action === 'economicEvents.evidence').length, 8)
-  assert.equal(h.calls.filter(call => call.action === 'economicEvents.detail').length, 16)
+  assert.equal(h.calls.filter(call => call.action === 'economicEvents.evidence').length, 20)
+  assert.equal(h.calls.filter(call => call.action === 'economicEvents.detail').length, 40)
   assert.equal(h.calls.some(call => call.action === 'financeUpdates.options'), false)
   assert.equal(h.patches.every(size => size <= 64 * 1024), true)
   page.onUnload()
+})
+
+test('十组长原文逐组更新不超桥接预算，折叠和取消配对不被迟到原文覆盖', async t => {
+  const h = setup(11), page = h.page
+  t.after(() => page.onUnload())
+  const source = JSON.stringify([{ name: '商品', value: '合成'.repeat(700) }, { name: '备注', value: '说明'.repeat(700) }])
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  h.onPairingCall = (action, input) => {
+    if (action === 'economicEvents.detail') return gate.then(() => ({ protocolVersion: 2, viewVersion: h.summary.viewVersion,
+      part: input.cursor ? source.slice(2048) : source.slice(0, 2048), nextCursor: input.cursor ? null : 'second-part' }))
+  }
+  await page.openPairingReview()
+  assert.equal(page.data.pairingRows.length, 10)
+  assert.ok(page.data.pairingRows.every(row => row.collapsed === false))
+  page.togglePairingCard(tap('pair-0')); page.selectPairing(tap('pair-0'))
+  assert.equal(page.data.pairingRows[0].collapsed, true)
+  assert.equal(page.data.pairingRows[1].collapsed, false)
+  release()
+  for (let attempt = 0; attempt < 100 && page.data.pairingRows.some(row => row.bank.evidenceLoading || row.platform.evidenceLoading); attempt++) await h.flush()
+  assert.ok(page.data.pairingRows.every(row => !row.bank.evidenceLoading && !row.platform.evidenceLoading))
+  assert.ok(Buffer.byteLength(JSON.stringify(page.data.pairingRows)) > 64 * 1024, '反例必须覆盖整页原文超过单次更新预算')
+  assert.ok(page.data.pairingRows.every(row => row.bank.evidence[0].fields.length === 2 && row.platform.evidence[0].fields.length === 2))
+  assert.equal(page.data.pairingRows[0].collapsed, true)
+  assert.equal(page.data.pairingRows[0].selected, false)
+  assert.equal(page.data.pairingRows[0].bank.title, '合成商户')
+  const reads = h.calls.length
+  page.togglePairingCard(tap('pair-0')); page.selectPairing(tap('pair-0'))
+  assert.equal(page.data.pairingRows[0].collapsed, false)
+  assert.equal(page.data.pairingRows[0].selected, true)
+  assert.equal(h.calls.length, reads, '展开已读卡片和勾选不重读原文或提交决定')
+  assert.ok(h.patches.every(size => size <= 64 * 1024))
+  assert.equal(page._draftSession.state.entries.length, 0)
+})
+
+test('本页全选框切换十组、补全部分选择，其他页例外保持且关闭后的迟到点击无效', async t => {
+  const h = setup(29), page = h.page
+  t.after(() => page.onUnload())
+  await page.openPairingReview()
+  page.togglePairingPage()
+  assert.equal(page.data.pairingPageSelectedCount, 0)
+  assert.equal(page.data.pairingSelectedCount, 19)
+  await page.changePairingPage(pageDirection(1))
+  assert.equal(page.data.pairingPageSelectedCount, 10)
+  page.selectPairing(tap('pair-12'))
+  assert.equal(page.data.pairingPageSelectedCount, 9)
+  assert.equal(page.data.pairingSelectedCount, 18)
+  page.togglePairingPage()
+  assert.equal(page.data.pairingPageSelectedCount, 10)
+  assert.equal(page.data.pairingSelectedCount, 19, '补全当前页不能恢复上一页被取消的十组')
+  await page.changePairingPage(pageDirection(-1))
+  assert.equal(page.data.pairingPageSelectedCount, 0)
+  page.togglePairingPage()
+  assert.equal(page.data.pairingSelectedCount, 29)
+  page.setData({ pairingNeedsRecheck: true }); page.togglePairingPage()
+  assert.equal(page.data.pairingSelectedCount, 29)
+  page.closePairingReview()
+  assert.doesNotThrow(() => page.togglePairingPage())
+  assert.equal(page._draftSession.state.entries.length, 0)
+  assert.equal(h.calls.some(call => call.action === 'reviewIssues.resolvePairings'), false)
 })
 
 test('100 组建议一次确认，跨页取消例外在回页和重开后保留，最终只刷新一次摘要', async () => {
   const h = setup(100), page = h.page
   await page.openPairingReview()
   page.selectPairing(tap('pair-0'))
-  await page.changePairingPage(pageDirection(1)); page.selectPairing(tap('pair-5'))
+  await page.changePairingPage(pageDirection(1)); page.selectPairing(tap('pair-15'))
   await page.changePairingPage(pageDirection(-1))
   assert.equal(page.data.pairingRows[0].selected, false)
   page.closePairingReview(); await page.openPairingReview()
@@ -35,11 +96,11 @@ test('100 组建议一次确认，跨页取消例外在回页和重开后保留�
   await page.confirmPairings()
   const writes = h.calls.filter(call => call.action === 'reviewIssues.resolvePairings')
   assert.equal(writes.length, 1)
-  assert.deepEqual([...writes[0].input.selection.excludedPairKeys].sort(), ['pair-0', 'pair-5'])
+  assert.deepEqual([...writes[0].input.selection.excludedPairKeys].sort(), ['pair-0', 'pair-15'])
   assert.equal(h.calls.filter(call => call.action === 'financeUpdates.summary').length - summaryReads, 1)
   assert.match(page.data.pairingProgressText, /已保存 98 \/ 98 组.*结果已更新/)
   assert.equal(page.data.pairingSaved, true)
-  assert.deepEqual(h.pairs.map(row => row.pairKey), ['pair-0', 'pair-5'])
+  assert.deepEqual(h.pairs.map(row => row.pairKey), ['pair-0', 'pair-15'])
   page.closePairingReview(); await page.openPairingReview()
   assert.equal(page.data.pairingSelectedCount, 2, '重新打开使用剩余范围，而非旧完成任务')
   assert.equal(page.data.pairingCanConfirm, true)
@@ -47,13 +108,13 @@ test('100 组建议一次确认，跨页取消例外在回页和重开后保留�
 })
 
 test('全范围计数保留退款与全部有效来源，不从当前页猜选中部分的性质', async () => {
-  const h = setup(6), page = h.page
-  h.pairs[5].economicNature = 'refund'; h.pairs[5].platform.evidenceCount = 3
+  const h = setup(12), page = h.page
+  h.pairs[11].economicNature = 'refund'; h.pairs[11].platform.evidenceCount = 3
   await page.openPairingReview()
-  assert.match(page.data.pairingScopeText, /14 条来源.*消费 5 组、退款 1 组/)
+  assert.match(page.data.pairingScopeText, /26 条来源.*消费 11 组、退款 1 组/)
   page.selectPairing(tap('pair-0'))
-  assert.doesNotMatch(page.data.pairingScopeText, /消费 5 组/)
-  assert.match(page.data.pairingChoiceText, /5 笔待入账记录/)
+  assert.doesNotMatch(page.data.pairingScopeText, /消费 11 组/)
+  assert.match(page.data.pairingChoiceText, /跨页共选 11 组 · 已取消 1 组/)
   await page.changePairingPage(pageDirection(1))
   assert.equal(page.data.pairingRows[1].natureLabel, '退款')
   page.onUnload()
@@ -198,9 +259,9 @@ test('配对可见、内容、可确认及保存指标在真实数据桥回调�
 })
 
 test('翻页游标失效进入重新核对而非拿死游标重试，显式重核后恢复', async () => {
-  const h = setup(6), page = h.page
+  const h = setup(16), page = h.page
   await page.openPairingReview()
-  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(page.data.pairingRows.length, 10)
   assert.equal(page.data.pairingCanConfirm, true)
   h.onPairingCall = (action, input) => {
     if (action === 'reviewIssues.pairings' && input.cursor) throw Object.assign(new Error('分页位置无效，请重新读取'), { code: 'INVALID_CURSOR' })
@@ -216,7 +277,7 @@ test('翻页游标失效进入重新核对而非拿死游标重试，显式重�
   h.onPairingCall = null
   await page.recheckPairings()
   assert.equal(page.data.pairingNeedsRecheck, false)
-  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(page.data.pairingRows.length, 10)
   assert.equal(page.data.pairingCanConfirm, true)
   page.onUnload()
 })

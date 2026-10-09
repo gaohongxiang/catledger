@@ -13,6 +13,8 @@ test('当前分类预设下导入业务图、回执、请求量与 SQL 顺序保
   // 配对计数随摘要返回：仅summary增加pairingSuggestedCount=0（26字节）；45表、SQL顺序及其余13阶段保持。
   // 2026-10-07核对提示以9fcf1be8作固定UUID/时钟隔离对照：45表逐字段、14阶段SQL顺序与响应字节保持。
   // 仅summary.viewVersion/freshness.viewRevision和event-page.viewVersion随attention.VERSION变化，更新两处响应指纹。
+  // 2026-10-08人工类型确认：固定数据测得45表及14阶段响应、SQL数量保持；
+  // 仅summary原查询补读manual_field_mask以保持核对/入账口径一致，更新该阶段SQL指纹。
   const expected = require('./fixtures/import-review-baseline.json')
   assert.deepEqual(await measure(), expected)
 })

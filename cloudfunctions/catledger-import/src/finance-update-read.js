@@ -152,7 +152,8 @@ async function summary(connection, uid, updateId) {
   const [rows] = await connection.execute(`SELECT event_id AS eventId, status, economic_nature AS economicNature,
     flow_direction AS flowDirection, amount_minor AS amountMinor, ledger_account_id AS ledgerAccountId,
     counterparty_ledger_account_id AS counterpartyLedgerAccountId, field_sources_json AS fieldSources,
-    category_id AS categoryId, event_local_at AS localAt, event_utc_at AS utcAt, currency, reason_codes_json AS reasonCodes${pairing ? `, manual_field_mask AS manualFieldMask,
+    category_id AS categoryId, event_local_at AS localAt, event_utc_at AS utcAt, currency, reason_codes_json AS reasonCodes,
+    manual_field_mask AS manualFieldMask${pairing ? `,
       ((COALESCE((SELECT d.currency FROM catledger_finance_update_account_drafts d
           WHERE d.uid = e.uid AND d.update_id = e.update_id AND d.draft_account_id = e.ledger_account_id),
         (SELECT a.currency FROM catledger_accounts a WHERE a.uid = e.uid AND a.account_id = e.ledger_account_id AND a.archived_at IS NULL)) = e.currency)

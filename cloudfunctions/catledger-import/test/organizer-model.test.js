@@ -3,6 +3,8 @@ const test = require('node:test')
 
 const { EVENT_STATUS, classifyReviewIssue, economicNatureForRow, evaluatePostability } = require('../src/organizer-model')
 const { ECONOMIC_NATURE, FLOW_DIRECTION } = require('../src/organizer-values')
+const { FIELD_MASK } = require('../src/review/policy')
+const { SEMANTIC_HARD_BLOCKERS } = require('../src/semantic-policy')
 
 function event(patch = {}) {
   return {
@@ -39,6 +41,31 @@ test('ready 只能由服务端根据完整经济字段推导', function () {
   const unresolved = evaluatePostability(event({ ledgerAccountId: null, status: EVENT_STATUS.READY }))
   assert.equal(unresolved.status, EVENT_STATUS.NEEDS_ACTION)
   assert.ok(unresolved.reasonCodes.includes('ledger_account_required'))
+})
+
+test('人工性质只解除类型未知，填账户或分类不代替确认，其他语义与关系门禁保持', () => {
+  const unknown = event({ economicNature: 'unknown', categoryId: null,
+    reasonCodes: ['row_transaction_type_unknown'], fieldSources: { semanticBlockers: ['row_transaction_type_unknown'] } })
+  const confirmed = { ...unknown, economicNature: 'repayment', flowDirection: 'neutral', counterpartyLedgerAccountId: 'account-2',
+    manualFieldMask: FIELD_MASK.economicNature | FIELD_MASK.flowDirection }
+  const before = JSON.stringify(confirmed)
+  assert.deepEqual(evaluatePostability(confirmed), { status: 'ready', reasonCodes: [] })
+  assert.equal(JSON.stringify(confirmed), before, '原始语义证据不被人工决定擦除')
+  for (const manualFieldMask of [0, FIELD_MASK.ledgerAccountId, FIELD_MASK.categoryId]) {
+    assert.ok(evaluatePostability({ ...confirmed, manualFieldMask }).reasonCodes.includes('row_transaction_type_unknown'))
+  }
+  assert.ok(evaluatePostability({ ...confirmed, economicNature: 'unknown' }).reasonCodes.includes('row_transaction_type_unknown'))
+  for (const blocker of SEMANTIC_HARD_BLOCKERS.filter(reason => reason !== 'row_transaction_type_unknown')
+    .concat(['identity_conflict', 'core_fields_conflict', 'refund_source_conflict'])) {
+    const guarded = { ...confirmed, reasonCodes: [blocker], fieldSources: { semanticBlockers: ['row_transaction_type_unknown', blocker] } }
+    const evaluated = evaluatePostability(guarded), issue = classifyReviewIssue({ ...guarded, ...evaluated })
+    assert.equal(evaluated.status, 'needs_action', blocker)
+    assert.ok(evaluated.reasonCodes.includes(blocker), blocker)
+    assert.ok(issue.primaryReason, '未解决问题必须有明确原因，不能写入 undefined')
+    assert.notEqual(issue.primaryReason, 'repayment_account_required', '两端已齐不能误报缺还款账户')
+  }
+  assert.ok(evaluatePostability({ ...confirmed, counterpartyLedgerAccountId: null }).reasonCodes.includes('repayment_account_required'))
+  assert.ok(evaluatePostability({ ...confirmed, economicNature: 'refund', flowDirection: 'inflow' }).reasonCodes.includes('refund_relation_required'))
 })
 
 test('退款必须确认原交易关系，转账必须有两个不同账户', function () {

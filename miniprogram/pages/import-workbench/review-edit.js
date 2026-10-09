@@ -35,6 +35,7 @@ function refreshDraft(page) {
   const valid = Boolean(sheet.ledgerAccountId && (!destination || sheet.counterpartyLedgerAccountId && sheet.counterpartyLedgerAccountId !== sheet.ledgerAccountId))
   page.setData({ 'reviewEditSheet.hasDestination': destination,
     'reviewEditSheet.accountLabel': labels.from, 'reviewEditSheet.destinationLabel': labels.to,
+    'reviewEditSheet.accountFields': detail.accountFields(row),
     'reviewEditSheet.fields': detail.fieldsFor(row, {}, { omit: ['nature', 'account', 'counterparty'] }),
     'reviewEditSheet.canSave': valid && Object.keys(fieldsFor(page)).length > 0, 'reviewEditSheet.error': '' })
 }

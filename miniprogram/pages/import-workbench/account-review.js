@@ -12,9 +12,9 @@ function currentAccountRecords(page, token) {
     page.data.accountRecordsSheet && page.data.accountRecordsSheet.issueId === token.issueId
 }
 
-function currentTransferDirectory(page) {
-  if (!page.data.directorySheet || !page.data.directorySheet.transferAccount) return true
-  const token = page._transferDirectoryToken, issue = page.data.currentIssue
+function currentIssueDirectory(page) {
+  if (!page.data.directorySheet || !page.data.directorySheet.issueDirectory) return true
+  const token = page._issueDirectoryToken, issue = page.data.currentIssue
   return Boolean(token && page._viewActive && page._viewSession === token.session && token.session.active &&
     readCache.getSession() === token.scope && getApp().hasLoginApproval() && getApp().globalData.uid === token.owner &&
     token.session.summary.viewVersion === token.version && !page.data.issueStale && issue &&
@@ -29,6 +29,29 @@ const ACCOUNT_TYPE_OPTIONS = Object.freeze([
     { value: 'other_asset', label: '其他资产' },
     { value: 'other_liability', label: '其他负债' }
   ])
+
+function directorySelection(data, target) {
+  if (target === 'reviewAccount' || target === 'reviewCounterparty') {
+    return (data.reviewEditSheet || {})[target === 'reviewAccount' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'] || ''
+  }
+  if (target === 'categoryEdit') return (data.categoryEditSheet || {}).selectedId || ''
+  const entry = target === 'category' ? (data.issueCategories || [])[data.issueDraft.categoryIndex]
+    : target === 'paymentTarget' ? (data.paymentTargetChoices || [])[data.paymentTargetIndex]
+      : target === 'counterparty' ? (data.counterpartyAccountChoices || [])[data.issueDraft.counterpartyAccountIndex]
+        : target === 'account' ? (data.accountChoices || [])[data.issueDraft.accountIndex] : null
+  return entry && (entry.accountId || entry.categoryId) || ''
+}
+
+function directoryRows(sheet, items) {
+  return items.map(item => {
+    const wrongType = sheet.liabilityOnly && !['credit', 'other_liability'].includes(item.type)
+    const unavailable = Boolean(item.archived || item.archivedAt || item.unavailable)
+    const type = ACCOUNT_TYPE_OPTIONS.find(option => option.value === item.type)
+    return { ...item, directorySelected: (item.accountId || item.categoryId) === sheet.selectedId,
+      directoryDisabled: wrongType || unavailable,
+      directoryMeta: unavailable ? (sheet.kind === 'categories' ? '分类不可用' : '账户不可用') : wrongType ? '不能作为还款账户' : type ? type.label : '' }
+  }).sort((a, b) => Number(a.directoryDisabled) - Number(b.directoryDisabled))
+}
 
 function suggestedAccountTypeIndex(label, sourceType) {
   const value = String(label || '')
@@ -491,8 +514,8 @@ module.exports = {
   openDirectory: async function (event) {
     const target = event.currentTarget.dataset.target
     const issue = this.data.currentIssue
-    const transferAccount = Boolean(issue && issue.issueType === 'transfer_accounts' && ['account', 'counterparty'].includes(target))
-    if (transferAccount && (!this._viewActive || !this._viewSession || !this._viewSession.active || !getApp().hasLoginApproval() ||
+    const issueDirectory = Boolean(issue && ['account', 'counterparty', 'payment', 'paymentTarget', 'repayment', 'category'].includes(target))
+    if (issueDirectory && (!this._viewActive || !this._viewSession || !this._viewSession.active || !getApp().hasLoginApproval() ||
       this.data.busy || this.data.issueStale || !this.data.issueDetailsReady)) return
     if (['reviewAccount', 'reviewCounterparty'].includes(target)) {
       const sheet = this.data.reviewEditSheet
@@ -502,24 +525,35 @@ module.exports = {
     if (target === 'categoryEdit' && (!editor || editor.loading || editor.saving || editor.stale || editor.pending || editor.saved)) return
     const kind = ['category', 'categoryEdit'].includes(target) ? 'categories' : 'accounts'
     const categoryKind = editor ? editor.kind : undefined
-    let transferOptions = {}
-    this._transferDirectoryToken = null
-    if (transferAccount) {
+    const reviewed = this.data.reviewEditSheet
+    let issueOptions = ['reviewAccount', 'reviewCounterparty'].includes(target)
+      ? { title: '选择' + (target === 'reviewAccount' ? reviewed.accountLabel : reviewed.destinationLabel) } : {}
+    this._issueDirectoryToken = null
+    if (issueDirectory) {
+      const accountField = ['account', 'counterparty'].includes(target)
       const choices = this.data[target === 'counterparty' ? 'counterpartyAccountChoices' : 'accountChoices'] || []
       const selected = choices[this.data.issueDraft[target === 'counterparty' ? 'counterpartyAccountIndex' : 'accountIndex']]
-      transferOptions = { transferAccount: true, title: target === 'counterparty' || issue.missingFundsSide === 'to' ? '选择转入账户' : '选择转出账户',
-        canCreate: choices.some(row => row.isCreate), canClear: Boolean(selected && !selected.isPlaceholder) }
-      this._transferDirectoryToken = { issueId: issue.issueId, issueVersion: issue.version, issueToken: this._issueEvidenceToken,
+      const labels = this.data.issueDetail || {}
+      const routeLabel = issue.fundsRoute && !issue.aggregateRepayment && !labels.generic
+        ? (target === 'counterparty' || issue.missingFundsSide === 'to' ? labels.fundsToLabel : labels.fundsFromLabel) : ''
+      issueOptions = { issueDirectory: true,
+        title: accountField ? '选择' + (routeLabel || (target === 'counterparty' ? labels.destinationLabel || '转入账户' : labels.selectorLabel || '资金账户'))
+          : { repayment: '补充还入账户', payment: '补充付款账户', paymentTarget: '选择还入账户', category: '选择分类' }[target],
+        canCreate: accountField ? choices.some(row => row.isCreate) : target === 'repayment' && this.data.repaymentAllocationChoices.length < 20,
+        canClear: accountField && choices.some(row => row.isPlaceholder) && Boolean(selected && !selected.isPlaceholder) }
+      this._issueDirectoryToken = { issueId: issue.issueId, issueVersion: issue.version, issueToken: this._issueEvidenceToken,
         session: this._viewSession, version: this._viewSession.summary.viewVersion, scope: readCache.getSession(), owner: getApp().globalData.uid }
     }
     if (this._optionPager) this._optionPager.cancel()
-    this.setData({ directorySheet: { target, kind, ...transferOptions, ...(categoryKind ? { categoryKind } : {}), query: '', items: [], loading: true } })
+    const liabilityOnly = ['paymentTarget', 'repayment'].includes(target) || Boolean(issue && issue.repaymentOwnershipRequired && target === 'account')
+    this.setData({ directorySheet: { target, kind, ...issueOptions, ...(categoryKind ? { categoryKind } : {}),
+      liabilityOnly, selectedId: directorySelection(this.data, target), query: '', items: [], loading: true } })
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, ...(categoryKind ? { categoryKind } : {}), pageSize: 12 })
     return this.changeDirectoryPage(event)
   },
 
   searchDirectory: function (event) {
-    if (!this.data.directorySheet || !currentTransferDirectory(this)) return
+    if (!this.data.directorySheet || !currentIssueDirectory(this)) return
     const query = String(event.detail.value || '').slice(0, 80)
     this.setData({ 'directorySheet.query': query })
     const categoryKind = this.data.directorySheet.categoryKind
@@ -530,7 +564,7 @@ module.exports = {
 
   changeDirectoryKind: function (event) {
     const kind = event.currentTarget.dataset.kind
-    if (!this.data.directorySheet || !currentTransferDirectory(this) || this.data.directorySheet.kind === 'categories' || !['accounts', 'accountDrafts'].includes(kind)) return
+    if (!this.data.directorySheet || !currentIssueDirectory(this) || this.data.directorySheet.kind === 'categories' || !['accounts', 'accountDrafts'].includes(kind)) return
     this.setData({ 'directorySheet.kind': kind, 'directorySheet.query': '' })
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
     return this.changeDirectoryPage(event)
@@ -540,20 +574,21 @@ module.exports = {
     const pager = this._optionPager
     const session = this._viewSession, scope = readCache.getSession(), version = session && session.summary.viewVersion
     const active = () => this._viewActive && this._viewSession === session && readCache.getSession() === scope &&
-      session.summary.viewVersion === version && pager === this._optionPager && this.data.directorySheet && currentTransferDirectory(this)
+      session.summary.viewVersion === version && pager === this._optionPager && this.data.directorySheet && currentIssueDirectory(this)
     if (!pager || !active()) return
     this.setData({ 'directorySheet.loading': true, 'directorySheet.error': '' })
     try {
       const response = await pager.load(direction(event))
       if (!active()) return
-      this.setData({ 'directorySheet.items': response.items, 'directorySheet.page': response.page, 'directorySheet.loading': false })
+      this.setData({ 'directorySheet.items': directoryRows(this.data.directorySheet, response.items), 'directorySheet.page': response.page, 'directorySheet.loading': false })
     } catch (error) { if (active()) this.setData({ 'directorySheet.loading': false, 'directorySheet.error': errorText(error) }) }
   },
 
   selectDirectory: function (event) {
     const sheet = this.data.directorySheet
-    if (sheet && sheet.transferAccount) {
-      if (!currentTransferDirectory(this) || this.data.busy) return
+    if (sheet && sheet.issueDirectory && (!currentIssueDirectory(this) || this.data.busy)) return
+    if (sheet && !event.currentTarget.dataset.choice && (sheet.items[Number(event.currentTarget.dataset.index)] || {}).directoryDisabled) return
+    if (sheet && sheet.issueDirectory && ['account', 'counterparty'].includes(sheet.target)) {
       const property = sheet.target === 'counterparty' ? 'counterpartyAccountChoices' : 'accountChoices'
       const change = sheet.target === 'counterparty' ? 'changeCounterpartyAccount' : 'changeIssueAccount'
       const choice = event.currentTarget.dataset.choice
@@ -574,6 +609,14 @@ module.exports = {
       this.closeDirectory()
       return
     }
+    if (sheet && sheet.issueDirectory && sheet.target === 'repayment' && event.currentTarget.dataset.choice === 'create') {
+      if (!sheet.canCreate) return
+      const index = this.data.repaymentAdditionalOptions.findIndex(row => row.isCreate)
+      if (index < 0) return
+      this.addRepaymentAccount({ detail: { value: index } }); this.closeDirectory()
+      return
+    }
+    if (sheet && sheet.issueDirectory && (sheet.loading || sheet.error)) return
     if (sheet && ['reviewAccount', 'reviewCounterparty'].includes(sheet.target)) {
       const item = sheet.items[Number(event.currentTarget.dataset.index)]
       if (item && this.selectReviewedAccount(item, sheet.target)) this.closeDirectory()
@@ -618,7 +661,7 @@ module.exports = {
   },
 
   closeDirectory: function () {
-    if (this._optionPager) this._optionPager.cancel(); this._optionPager = null; this._transferDirectoryToken = null; this.setData({ directorySheet: null })
+    if (this._optionPager) this._optionPager.cancel(); this._optionPager = null; this._issueDirectoryToken = null; this.setData({ directorySheet: null })
   },
 
   openAccountRecords: async function (event) {

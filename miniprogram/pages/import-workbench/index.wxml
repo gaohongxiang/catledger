@@ -24,6 +24,12 @@
           <button wx:if="{{external}}" class="account-source-link" data-id="{{record.eventId}}" bindtap="openEvidence">查看原始记录</button>
 </template>
 
+<template name="issue-destination-account">
+  <button class="transfer-account-control" data-target="counterparty" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{'选择' + (label || '转入账户')}}">
+    <view class="mapping-field"><text class="mapping-label">{{label || '转入账户'}}</text><text class="mapping-value {{choices[selectedIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{choices[selectedIndex].isPlaceholder ? '请选择' + (label || '转入账户') : choices[selectedIndex].name}}</text><view class="field-chevron"></view></view>
+  </button>
+</template>
+
 <view class="page-canvas import-page {{themeClass}}" style="{{themeStyle}}">
   <text wx:if="{{pageError}}" class="stage-action-error">{{pageError}}</text>
   <button wx:if="{{pageError || refreshRequired}}" class="stage-previous" bindtap="retryPagedView">刷新</button>
@@ -662,45 +668,42 @@
         <button class="evidence-return" bindtap="closeEvidence">{{currentIssue ? '返回处理' : '返回列表'}}</button>
       </view>
       <block wx:else>
-      <view class="review-sheet-heading"><text class="sheet-title serif-title">{{currentIssue.paymentNeedsReview ? (currentIssue.paymentAccountsOnly ? '确认付款账户' : '分配付款金额') : currentIssue.label}}</text><button class="review-sheet-close" bindtap="closeIssue" disabled="{{busy}}" aria-label="关闭核对，暂不保存"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
-      <text wx:if="{{!currentIssue.paymentNeedsReview || currentIssue.paymentAccountsOnly}}" class="sheet-copy">{{currentIssue.decisionText}}</text>
+      <view class="review-sheet-heading"><text class="sheet-title">{{currentIssue.repaymentOwnershipRequired ? '确认还款' : currentIssue.paymentNeedsReview ? (currentIssue.paymentAccountsOnly ? '确认付款账户' : '分配付款金额') : currentIssue.label}}</text><button class="review-sheet-close" bindtap="closeIssue" disabled="{{busy}}" aria-label="关闭核对，暂不保存"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
+      <text wx:if="{{currentIssue.evidenceReviewOnly || currentIssue.installmentPrincipal || (currentIssue.issueType !== 'shared_fields' && currentIssue.issueType !== 'account_mapping' && currentIssue.issueType !== 'transfer_accounts' && currentIssue.issueType !== 'category_assignment')}}" class="sheet-copy">{{currentIssue.decisionText}}</text>
 
-      <scroll-view class="review-editor-body" scroll-y enhanced show-scrollbar="{{false}}">
+      <scroll-view class="review-editor-body" style="{{issueBodyLayout && issueBodyLayout.issueId === currentIssue.issueId ? 'height:' + issueBodyLayout.height + 'px' : ''}}" scroll-y enhanced show-scrollbar="{{false}}">
+      <view class="review-editor-content">
       <skeleton-rows wx:if="{{issueDetailsLoading}}" rows="{{3}}" />
       <view wx:if="{{issueDetailsError || issueStale}}" class="relation-empty">
         <text>{{issueStale ? '整理结果已变化，当前输入已保留；请重新核验后保存。' : issueDetailsError}}</text>
         <button class="review-text-action" bindtap="retryIssueDetails" disabled="{{issueDetailsLoading && !issueStale}}">重新核验此项</button>
       </view>
       <block wx:if="{{issueDetailsReady}}">
-      <view class="detail-nature-first">
-        <picker wx:if="{{!currentIssue.evidenceReviewOnly && !currentIssue.paymentNeedsReview && (currentIssue.issueType === 'shared_fields' || currentIssue.issueType === 'field_conflict')}}" class="mapping-picker detail-nature-picker" mode="selector" range="{{natureOptions}}" range-key="label" value="{{issueDraft.natureIndex}}" bindchange="changeIssueNature" disabled="{{busy || issueStale || !issueDetailsReady}}">
-          <view class="mapping-field"><text class="mapping-label">交易性质</text><text class="mapping-value">{{natureOptions[issueDraft.natureIndex].label}}</text><view class="field-chevron"></view></view>
-        </picker>
-        <picker wx:elif="{{currentIssue.paymentNeedsReview && !currentIssue.paymentAccountsOnly}}" mode="selector" range="{{paymentNatureOptions}}" value="{{paymentNatureIndex}}" bindchange="changePaymentNature" disabled="{{busy}}"><view class="mapping-field detail-nature-picker"><text>交易性质</text><text class="mapping-value">{{paymentNatureOptions[paymentNatureIndex]}}</text></view></picker>
-        <view wx:else class="mapping-field detail-nature-picker"><text class="mapping-label">交易性质</text><text class="mapping-value">{{issueDetail && issueDetail.issueId === currentIssue.issueId ? issueDetail.natureLabel : '性质待确认'}}</text></view>
+      <view wx:if="{{issueDetail && issueDetail.issueId === currentIssue.issueId}}" class="detail-nature-first {{currentIssue.repaymentOwnershipRequired ? 'repayment-summary-card' : ''}}">
+        <view class="issue-summary-main">
+          <picker wx:if="{{!currentIssue.evidenceReviewOnly && !currentIssue.paymentNeedsReview && (currentIssue.issueType === 'shared_fields' || currentIssue.issueType === 'field_conflict')}}" class="issue-summary-picker" mode="selector" range="{{natureOptions}}" range-key="label" value="{{issueDraft.natureIndex}}" bindchange="changeIssueNature" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择交易性质">
+            <view class="issue-summary-nature"><text>{{natureOptions[issueDraft.natureIndex].value === 'unknown' ? '选择交易性质' : natureOptions[issueDraft.natureIndex].label}}</text><chevron-icon size="{{22}}" /></view>
+          </picker>
+          <picker wx:elif="{{currentIssue.paymentNeedsReview && !currentIssue.paymentAccountsOnly}}" class="issue-summary-picker" mode="selector" range="{{paymentNatureOptions}}" value="{{paymentNatureIndex}}" bindchange="changePaymentNature" disabled="{{busy}}" aria-label="选择交易性质"><view class="issue-summary-nature"><text>{{paymentNatureIndex ? paymentNatureOptions[paymentNatureIndex] : '选择交易性质'}}</text><chevron-icon size="{{22}}" /></view></picker>
+          <text wx:else class="issue-summary-nature">{{issueDetail.natureLabel}}</text>
+          <text class="issue-summary-amount money-number" selectable aria-label="{{issueDetail.summary.amountLabel}}">{{issueDetail.summary.amount}}</text>
+        </view>
+        <view class="issue-summary-meta"><text wx:if="{{issueDetail.summary.party}}" class="issue-summary-party">{{issueDetail.summary.party}}</text><text class="issue-summary-time">{{issueDetail.summary.time}}</text></view>
       </view>
-      <template wx:if="{{issueDetail && issueDetail.issueId === currentIssue.issueId}}" is="transaction-detail-fields" data="{{fields: issueDetail.basicFields}}" />
-
 
       <view wx:if="{{currentIssue.paymentNeedsReview}}" class="payment-resolution-form">
-        <view wx:if="{{!currentIssue.paymentAccountsOnly}}" class="payment-total">
-          <text class="payment-total-label">本笔付款总额</text>
-          <text class="payment-total-amount money-number">{{issueEvents[0].amountText}}</text>
-        </view>
         <view wx:if="{{!currentIssue.paymentAccountsOnly}}" class="funds-route-card payment-funds-route">
           <view class="funds-route-point">
-            <text class="funds-route-label">转出</text>
+            <text class="funds-route-label">付款账户</text>
             <text wx:for="{{paymentRows}}" wx:key="componentIndex" class="funds-route-name">{{item.accountId ? paymentAccountChoices[item.accountIndex].name : item.label + ' · 请选择'}}</text>
             <text wx:if="{{!paymentRows.length}}" class="funds-route-name">请选择付款账户</text>
           </view>
           <view class="funds-route-divider" />
-          <picker wx:if="{{paymentNatureIndex === 2}}" class="funds-route-picker" mode="selector" range="{{paymentTargetChoices}}" range-key="name" value="{{paymentTargetIndex}}" bindchange="changePaymentTarget" disabled="{{busy}}">
-            <view class="funds-route-point funds-route-missing"><text class="funds-route-label">转入 · 还款账户</text><text class="funds-route-name">{{paymentTargetChoices[paymentTargetIndex].name}}</text></view>
-          </picker>
+          <button wx:if="{{paymentNatureIndex === 2}}" class="funds-route-picker funds-account-control" data-target="paymentTarget" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择还入账户">
+            <view class="funds-route-point funds-route-missing"><text class="funds-route-label">还入账户</text><text class="funds-route-name">{{paymentTargetChoices[paymentTargetIndex].name}}</text></view>
+          </button>
           <view wx:else class="funds-route-point {{paymentNatureIndex === 1 ? 'funds-route-known' : 'funds-route-missing'}}"><text class="funds-route-label">用途</text><text class="funds-route-name">{{paymentNatureIndex === 1 ? '本次消费支出' : '请先确认交易性质'}}</text></view>
         </view>
-        <text wx:if="{{paymentNatureIndex === 2}}" class="mapping-browse" data-target="paymentTarget" bindtap="openDirectory">搜索全部负债账户 ›</text>
-
         <view class="payment-allocation">
           <view wx:if="{{!currentIssue.paymentAccountsOnly}}" class="repayment-allocation-heading"><text>付款分配</text><text class="{{paymentDifferenceText === '已分配完成' ? 'allocation-complete' : ''}}">{{paymentDifferenceText}}</text></view>
           <text wx:if="{{!currentIssue.paymentAccountsOnly}}" class="repayment-allocation-help">按支付详情填写；“全部分配”将其他项置零。</text>
@@ -719,21 +722,21 @@
       </view>
       <view wx:if="{{!currentIssue.evidenceReviewOnly && !currentIssue.paymentNeedsReview && (currentIssue.issueType === 'account_mapping' || currentIssue.issueType === 'category_assignment' || currentIssue.issueType === 'shared_fields' || currentIssue.issueType === 'field_conflict' || currentIssue.issueType === 'transfer_accounts')}}" class="mapping-fields">
         <view wx:if="{{currentIssue.repaymentOwnershipRequired}}" class="repayment-ownership">
-          <text class="mapping-label">这笔钱是替谁还的？</text>
-          <view class="ownership-options">
-            <button class="ownership-option {{issueDraft.repaymentOwner === 'self' ? 'ownership-option-selected' : ''}}" data-owner="self" bindtap="changeRepaymentOwner" disabled="{{busy}}" aria-pressed="{{issueDraft.repaymentOwner === 'self'}}">自己的账户</button>
-            <button class="ownership-option {{issueDraft.repaymentOwner === 'other' ? 'ownership-option-selected' : ''}}" data-owner="other" bindtap="changeRepaymentOwner" disabled="{{busy}}" aria-pressed="{{issueDraft.repaymentOwner === 'other'}}">替他人还款</button>
-          </view>
+          <button class="repayment-mode-row" data-owner="{{issueDraft.repaymentOwner === 'other' ? 'self' : 'other'}}" bindtap="changeRepaymentOwner" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{issueDraft.repaymentOwner === 'other' ? '切换为自己还款' : '切换为替他人还款'}}">
+            <text class="repayment-mode-label">还款归属</text>
+            <text class="repayment-mode-value">{{issueDraft.repaymentOwner === 'other' ? '替他人还款' : '为自己还款'}}<text class="repayment-mode-chevron" aria-hidden="true">›</text></text>
+          </button>
           <view wx:if="{{issueDraft.repaymentOwner === 'other'}}" class="ownership-treatment">
             <text class="mapping-label">这笔钱是否需要收回？</text>
-            <button class="ownership-option {{issueDraft.repaymentOtherTreatment === 'expense' ? 'ownership-option-selected' : ''}}" data-treatment="expense" bindtap="changeRepaymentOtherTreatment" disabled="{{busy}}" aria-pressed="{{issueDraft.repaymentOtherTreatment === 'expense'}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">无需收回</text><text class="ownership-treatment-detail">记为支出</text></view><view class="ownership-treatment-check" aria-hidden="true"></view></button>
-            <button class="ownership-option {{issueDraft.repaymentOtherTreatment === 'pending' ? 'ownership-option-selected' : ''}}" data-treatment="pending" bindtap="changeRepaymentOtherTreatment" disabled="{{busy}}" aria-pressed="{{issueDraft.repaymentOtherTreatment === 'pending'}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">需要收回或暂不确定</text><text class="ownership-treatment-detail">保留待核对，暂不入账</text></view><view class="ownership-treatment-check" aria-hidden="true"></view></button>
+            <button class="ownership-option {{issueDraft.repaymentOtherTreatment === 'expense' ? 'ownership-option-selected' : ''}}" data-treatment="expense" bindtap="changeRepaymentOtherTreatment" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-pressed="{{issueDraft.repaymentOtherTreatment === 'expense'}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">无需收回</text><text class="ownership-treatment-detail">记为支出</text></view><view class="ownership-treatment-check" aria-hidden="true"></view></button>
+            <button class="ownership-option {{issueDraft.repaymentOtherTreatment === 'pending' ? 'ownership-option-selected' : ''}}" data-treatment="pending" bindtap="changeRepaymentOtherTreatment" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-pressed="{{issueDraft.repaymentOtherTreatment === 'pending'}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">需要收回或暂不确定</text><text class="ownership-treatment-detail">保留待核对，暂不入账</text></view><view class="ownership-treatment-check" aria-hidden="true"></view></button>
             <text wx:if="{{issueDraft.repaymentOtherTreatment === 'pending'}}" class="draft-account-note">先保存账户归属，后续明确记账方式；这笔仍需核对才能整批入账。</text>
           </view>
         </view>
+        <view class="{{currentIssue.repaymentOwnershipRequired && issueDraft.repaymentOwner === 'self' ? 'repayment-self-panel' : ''}}">
         <view wx:if="{{currentIssue.aggregateRepayment && currentIssue.fundsRoute}}" class="funds-route-card aggregate-route-card">
           <view class="funds-route-point funds-route-known">
-            <text class="funds-route-label">还款来源</text><text class="funds-route-name">{{currentIssue.fundsRoute.fromName}}</text>
+            <text class="funds-route-label">付款账户</text><text class="funds-route-name">{{currentIssue.fundsRoute.fromName}}</text>
           </view>
           <view class="funds-route-divider"></view>
           <view class="funds-route-point funds-route-known">
@@ -752,50 +755,90 @@
             <button size="mini" class="repayment-allocation-all" data-index="{{index}}" bindtap="fillRepaymentAllocation" disabled="{{busy}}">全部</button>
             <button size="mini" class="repayment-allocation-remove" data-index="{{index}}" bindtap="removeRepaymentAccount" disabled="{{busy}}" aria-label="移除该还款账户"><image class="repayment-remove-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button>
           </view>
-          <picker mode="selector" range="{{repaymentAdditionalOptions}}" range-key="name" value="{{repaymentAdditionalIndex}}" bindchange="addRepaymentAccount" disabled="{{busy || repaymentAllocationChoices.length >= 20}}">
-            <view class="repayment-allocation-add">＋ 补充还款账户</view>
-          </picker>
-          <text class="mapping-browse" data-target="repayment" bindtap="openDirectory">搜索全部负债账户 ›</text>
+          <button class="repayment-allocation-add repayment-add-control" data-target="repayment" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady || repaymentAllocationChoices.length >= 20}}">＋ 补充还入账户</button>
         </view>
-        <view wx:elif="{{currentIssue.fundsRoute && (!currentIssue.repaymentOwnershipRequired || issueDraft.repaymentOwner === 'self')}}" class="funds-route-card">
-          <button wx:if="{{currentIssue.missingFundsSide === 'from' || currentIssue.missingFundsSide === 'both'}}" class="funds-route-picker funds-account-control" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转出账户">
-            <view class="funds-route-point funds-route-missing">
-              <text class="funds-route-label">{{issueDetail.accountLabel || '转出'}}</text><text class="funds-route-name">{{accountChoices[issueDraft.accountIndex].name}} ›</text>
+        <view wx:elif="{{currentIssue.fundsRoute && (!currentIssue.repaymentOwnershipRequired || issueDraft.repaymentOwner === 'self')}}" class="route-vertical">
+          <view class="route-vertical-point">
+            <view class="route-vertical-rail"><view class="route-vertical-dot {{(currentIssue.missingFundsSide === 'from' || currentIssue.missingFundsSide === 'both') ? 'route-vertical-dot-accent' : ''}}" /><view class="route-vertical-line" /></view>
+            <view class="route-vertical-body">
+              <text class="route-vertical-label">{{issueDetail.fundsFromLabel}}{{(currentIssue.missingFundsSide === 'from' || currentIssue.missingFundsSide === 'both') ? ' · 必选' : ''}}</text>
+              <button wx:if="{{currentIssue.missingFundsSide === 'from' || currentIssue.missingFundsSide === 'both'}}" class="route-vertical-pick" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'选择' + issueDetail.fundsFromLabel}}">
+                <text>{{accountChoices[issueDraft.accountIndex].isPlaceholder ? '请选择' + issueDetail.fundsFromLabel : accountChoices[issueDraft.accountIndex].name}}</text><text class="route-vertical-chevron" aria-hidden="true">›</text>
+              </button>
+              <text wx:else class="route-vertical-name">{{currentIssue.fundsRoute.fromName}}</text>
             </view>
-          </button>
-          <view wx:else class="funds-route-point funds-route-known">
-            <text class="funds-route-label">{{issueDetail.accountLabel || '转出'}}</text><text class="funds-route-name">{{currentIssue.fundsRoute.fromName}}</text>
           </view>
-          <view class="funds-route-divider"></view>
-          <button wx:if="{{currentIssue.missingFundsSide === 'to'}}" class="funds-route-picker funds-account-control" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转入账户">
-            <view class="funds-route-point funds-route-missing">
-              <text class="funds-route-label">{{issueDetail.destinationLabel || '转入'}}</text><text class="funds-route-name">{{accountChoices[issueDraft.accountIndex].name}} ›</text>
+          <view class="route-vertical-point">
+            <view class="route-vertical-rail"><view class="route-vertical-dot {{(currentIssue.missingFundsSide === 'to' || currentIssue.missingFundsSide === 'both') ? 'route-vertical-dot-accent' : ''}}" /></view>
+            <view class="route-vertical-body">
+              <text class="route-vertical-label">{{issueDetail.fundsToLabel}}{{(currentIssue.missingFundsSide === 'to' || currentIssue.missingFundsSide === 'both') ? ' · 必选' : ''}}</text>
+              <button wx:if="{{currentIssue.missingFundsSide === 'to'}}" class="route-vertical-pick" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'选择' + issueDetail.fundsToLabel}}">
+                <text>{{accountChoices[issueDraft.accountIndex].isPlaceholder ? '请选择' + issueDetail.fundsToLabel : accountChoices[issueDraft.accountIndex].name}}</text><text class="route-vertical-chevron" aria-hidden="true">›</text>
+              </button>
+              <button wx:elif="{{currentIssue.missingFundsSide === 'both'}}" class="route-vertical-pick" data-target="counterparty" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'选择' + issueDetail.fundsToLabel}}">
+                <text>{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? '请选择' + issueDetail.fundsToLabel : counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].name}}</text><text class="route-vertical-chevron" aria-hidden="true">›</text>
+              </button>
+              <text wx:else class="route-vertical-name">{{currentIssue.fundsRoute.toName}}</text>
             </view>
-          </button>
-          <button wx:elif="{{currentIssue.missingFundsSide === 'both'}}" class="funds-route-picker funds-account-control" data-target="counterparty" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转入账户">
-            <view class="funds-route-point funds-route-missing"><text class="funds-route-label">{{issueDetail.destinationLabel || '转入'}}</text><text class="funds-route-name">{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].name}} ›</text></view>
-          </button>
-          <view wx:else class="funds-route-point funds-route-known">
-            <text class="funds-route-label">{{issueDetail.destinationLabel || '转入'}}</text><text class="funds-route-name">{{currentIssue.fundsRoute.toName}}</text>
           </view>
         </view>
-        <button wx:if="{{currentIssue.issueType === 'transfer_accounts' && !currentIssue.aggregateRepayment && !currentIssue.fundsRoute}}" class="transfer-account-control" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转出账户">
+        <view wx:if="{{issueDetail && issueDetail.issueId === currentIssue.issueId && issueDetail.hasDestination}}" class="route-vertical">
+          <block wx:if="{{issueDetail.destinationFirst}}">
+            <view class="route-vertical-point">
+              <view class="route-vertical-rail"><view class="route-vertical-dot {{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? 'route-vertical-dot-accent' : ''}}" /><view class="route-vertical-line" /></view>
+              <view class="route-vertical-body">
+                <text class="route-vertical-label">{{issueDetail.destinationLabel}}{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? ' · 必选' : ''}}</text>
+                <button class="route-vertical-pick {{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? '' : 'route-vertical-pick-filled'}}" data-target="counterparty" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'选择' + issueDetail.destinationLabel}}">
+                  <text>{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? '请选择' + issueDetail.destinationLabel : counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].name}}</text><text class="route-vertical-chevron" aria-hidden="true">›</text>
+                </button>
+              </view>
+            </view>
+            <view class="route-vertical-point">
+              <view class="route-vertical-rail"><view class="route-vertical-dot {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'route-vertical-dot-accent' : ''}}" /></view>
+              <view class="route-vertical-body">
+                <text class="route-vertical-label">{{issueDetail.accountLabel}}{{accountChoices[issueDraft.accountIndex].isPlaceholder ? ' · 必选' : ''}}</text>
+                <button class="route-vertical-pick {{accountChoices[issueDraft.accountIndex].isPlaceholder ? '' : 'route-vertical-pick-filled'}}" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'选择' + issueDetail.accountLabel}}">
+                  <text>{{accountChoices[issueDraft.accountIndex].isPlaceholder ? '请选择' + issueDetail.accountLabel : accountChoices[issueDraft.accountIndex].name}}</text><text class="route-vertical-chevron" aria-hidden="true">›</text>
+                </button>
+              </view>
+            </view>
+          </block>
+          <block wx:else>
+            <view class="route-vertical-point">
+              <view class="route-vertical-rail"><view class="route-vertical-dot {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'route-vertical-dot-accent' : ''}}" /><view class="route-vertical-line" /></view>
+              <view class="route-vertical-body">
+                <text class="route-vertical-label">{{issueDetail.accountLabel}}{{accountChoices[issueDraft.accountIndex].isPlaceholder ? ' · 必选' : ''}}</text>
+                <button class="route-vertical-pick {{accountChoices[issueDraft.accountIndex].isPlaceholder ? '' : 'route-vertical-pick-filled'}}" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'选择' + issueDetail.accountLabel}}">
+                  <text>{{accountChoices[issueDraft.accountIndex].isPlaceholder ? '请选择' + issueDetail.accountLabel : accountChoices[issueDraft.accountIndex].name}}</text><text class="route-vertical-chevron" aria-hidden="true">›</text>
+                </button>
+              </view>
+            </view>
+            <view class="route-vertical-point">
+              <view class="route-vertical-rail"><view class="route-vertical-dot {{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? 'route-vertical-dot-accent' : ''}}" /></view>
+              <view class="route-vertical-body">
+                <text class="route-vertical-label">{{issueDetail.destinationLabel}}{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? ' · 必选' : ''}}</text>
+                <button class="route-vertical-pick {{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? '' : 'route-vertical-pick-filled'}}" data-target="counterparty" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'选择' + issueDetail.destinationLabel}}">
+                  <text>{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? '请选择' + issueDetail.destinationLabel : counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].name}}</text><text class="route-vertical-chevron" aria-hidden="true">›</text>
+                </button>
+              </view>
+            </view>
+          </block>
+        </view>
+        <template wx:if="{{issueDetail && issueDetail.destinationFirst && !(issueDetail.issueId === currentIssue.issueId && issueDetail.hasDestination)}}" is="issue-destination-account" data="{{label: issueDetail.destinationLabel, choices: counterpartyAccountChoices, selectedIndex: issueDraft.counterpartyAccountIndex, disabled: busy || issueStale || !issueDetailsReady}}" />
+        <button wx:if="{{currentIssue.issueType === 'transfer_accounts' && !currentIssue.aggregateRepayment && !currentIssue.fundsRoute}}" class="transfer-account-control" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'选择' + issueDetail.selectorLabel}}">
           <view class="mapping-field"><text class="mapping-label">{{issueDetail && issueDetail.issueId === currentIssue.issueId ? issueDetail.selectorLabel : currentIssue.missingAccountLabel}}</text><text class="mapping-value {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{accountChoices[issueDraft.accountIndex].name}}</text><view class="field-chevron"></view></view>
         </button>
-        <picker wx:if="{{currentIssue.issueType !== 'category_assignment' && currentIssue.issueType !== 'transfer_accounts' && !currentIssue.aggregateRepayment}}" class="mapping-picker" mode="selector" range="{{accountChoices}}" range-key="name" value="{{issueDraft.accountIndex}}" bindchange="changeIssueAccount">
+        <button wx:if="{{currentIssue.issueType !== 'category_assignment' && currentIssue.issueType !== 'transfer_accounts' && !currentIssue.aggregateRepayment && !(issueDetail && issueDetail.issueId === currentIssue.issueId && issueDetail.hasDestination)}}" class="transfer-account-control" data-target="account" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'选择' + issueDetail.selectorLabel}}">
           <view class="mapping-field"><text class="mapping-label">{{issueDetail && issueDetail.issueId === currentIssue.issueId ? issueDetail.selectorLabel : currentIssue.missingAccountLabel}}</text><text class="mapping-value {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{accountChoices[issueDraft.accountIndex].name}}</text><view class="field-chevron"></view></view>
-        </picker>
-        <text wx:if="{{currentIssue.issueType !== 'category_assignment' && currentIssue.issueType !== 'transfer_accounts' && !currentIssue.aggregateRepayment}}" class="mapping-browse" data-target="account" bindtap="openDirectory">搜索全部账户 ›</text>
+        </button>
         <text wx:if="{{bankSuggestion && errorMessage}}" class="stage-action-error">{{errorMessage}}</text>
         <view wx:if="{{bankSuggestion && (!currentIssue.repaymentOwnershipRequired || issueDraft.repaymentOwner === 'self')}}" class="bank-suggestion">
-          <text class="draft-account-note">{{bankSuggestion.reason}}</text>
-          <view wx:if="{{bankSuggestion.candidates.length}}" class="bank-candidate-list">
-            <button wx:for="{{bankSuggestion.candidates}}" wx:key="accountId" size="mini" class="bank-candidate" data-id="{{item.accountId}}" bindtap="selectBankSuggestion" disabled="{{busy}}">
-              <text>{{accountChoices[issueDraft.accountIndex].accountId === item.accountId ? '已选 · 待保存' : bankSuggestion.candidates.length === 1 ? '建议 · 待确认' : '同银行候选'}}</text>
-              <text class="bank-candidate-name">{{item.name}}</text>
-            </button>
+          <view class="bank-suggestion-summary" aria-hidden="{{!accountChoices[issueDraft.accountIndex].isPlaceholder}}" style="visibility: {{accountChoices[issueDraft.accountIndex].isPlaceholder ? 'visible' : 'hidden'}};">
+            <text class="bank-suggestion-copy">未提供尾号，请核对。</text>
+            <block wx:if="{{accountChoices[issueDraft.accountIndex].isPlaceholder}}">
+              <button wx:for="{{bankSuggestion.candidates}}" wx:key="accountId" class="funds-suggestion" data-id="{{item.accountId}}" bindtap="selectBankSuggestion" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="{{'使用建议账户：' + item.name}}"><text class="funds-suggestion-name">使用：{{item.name}}</text></button>
+            </block>
           </view>
-          <text wx:else class="draft-account-note">暂无同银行同类型账户，可选择其他账户或新建。</text>
           <button wx:if="{{!currentIssue.repaymentOwnershipRequired && bankBatchCandidates.length && bankSuggestion.candidates.length}}" size="mini" class="review-text-action" bindtap="expandBankBatch" disabled="{{busy || bankBatchLoading}}">{{bankBatchLoading ? '正在读取其他记录…' : bankBatchExpanded ? '收起其他记录' : '核对当前页同银行记录（' + bankBatchCandidates.length + ' 项）'}}</button>
           <view wx:if="{{bankBatchExpanded}}" class="bank-batch-list">
             <text class="draft-account-note">先选定账户，再勾选一起应用的整组记录。</text>
@@ -811,7 +854,7 @@
             <text wx:if="{{!bankBatchLoading && !bankBatchRecords.length}}" class="draft-account-note">没有仍需确认的同类记录。</text>
           </view>
         </view>
-        <text wx:if="{{currentIssue.suggestedExisting}}" class="draft-account-note">已按账户名称、银行和尾号推荐已有账户，请核对。</text>
+        <text wx:if="{{currentIssue.suggestedExisting && !bankSuggestion}}" class="draft-account-note">已按账户名称、银行和尾号推荐已有账户，请核对。</text>
         <view wx:if="{{accountChoices[issueDraft.accountIndex].isCreate && (!currentIssue.repaymentOwnershipRequired || issueDraft.repaymentOwner === 'self')}}" class="draft-account-fields">
           <view class="mapping-field"><text class="mapping-label">账户名称</text><input class="mapping-input" maxlength="32" value="{{issueDraft.newAccountName}}" bindinput="changeDraftAccountName" data-input-key="changeDraftAccountName" bindfocus="beginInputEditing" bindblur="finishInputEditing" placeholder="例如：微信余额" /></view>
           <picker class="mapping-picker" mode="selector" range="{{accountTypeOptions}}" range-key="label" value="{{issueDraft.accountTypeIndex}}" bindchange="changeDraftAccountType">
@@ -819,9 +862,8 @@
           </picker>
           <text class="draft-account-note">仅保存本批草稿，入账前不改动正式账户。</text>
         </view>
-        <button wx:if="{{(currentIssue.issueType === 'transfer_accounts' && !currentIssue.aggregateRepayment && !currentIssue.fundsProjection) || (issueDetail && issueDetail.issueId === currentIssue.issueId && issueDetail.hasDestination)}}" class="transfer-account-control" data-target="counterparty" bindtap="openDirectory" disabled="{{busy || issueStale || !issueDetailsReady}}" aria-label="选择转入账户">
-          <view class="mapping-field"><text class="mapping-label">{{issueDetail.destinationLabel || '转入账户'}}</text><text class="mapping-value {{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{counterpartyAccountChoices[issueDraft.counterpartyAccountIndex].name}}</text><view class="field-chevron"></view></view>
-        </button>
+        <template wx:if="{{!issueDetail.destinationFirst && !(issueDetail && issueDetail.hasDestination) && currentIssue.issueType === 'transfer_accounts' && !currentIssue.aggregateRepayment && !currentIssue.fundsProjection}}" is="issue-destination-account" data="{{label: issueDetail.destinationLabel, choices: counterpartyAccountChoices, selectedIndex: issueDraft.counterpartyAccountIndex, disabled: busy || issueStale || !issueDetailsReady}}" />
+        </view>
 
         <category-picker wx:if="{{(currentIssue.issueType === 'category_assignment' || (issueDetail && issueDetail.categoryEditable)) && issueCategories.length}}" class="category-picker-control mapping-picker" remote data-target="category" bindbrowse="openDirectory" range="{{issueCategories}}" value="{{issueDraft.categoryIndex}}" bindchange="changeIssueCategory">
           <view class="mapping-field"><text class="mapping-label">交易分类</text><text class="mapping-value {{issueCategories[issueDraft.categoryIndex].isPlaceholder ? 'mapping-empty' : ''}}">{{issueCategories[issueDraft.categoryIndex].name}}</text><view class="field-chevron"></view></view>
@@ -901,8 +943,10 @@
           <button wx:if="{{currentIssue.canConfirmSame}}" size="mini" class="review-text-action" data-id="{{item.eventId}}" bindtap="selectPrimaryEvent">{{issueDraft.primaryEventId === item.eventId ? '已选为主记录' : '选为主记录'}}</button>
           <template is="record-source-fields" data="{{record: item}}" />
           <button wx:if="{{currentIssue.canConfirmSame || currentIssue.issueType === 'installment_origin'}}" class="account-source-link" data-id="{{item.eventId}}" bindtap="selectPrimaryMember">{{issueDraft.primaryEventId === item.eventId ? '已选为主记录' : '选为主记录'}}</button>
-          <text wx:if="{{item.evidenceError}}" class="stage-action-error">{{item.evidenceError}}</text>
-          <button wx:if="{{item.evidenceError}}" size="mini" class="review-text-action" data-id="{{item.eventId}}" bindtap="retryIssueRecordEvidence" disabled="{{item.evidenceLoading}}">重新读取原始记录</button>
+          <view wx:if="{{item.evidenceError}}" class="review-source-feedback">
+            <text class="stage-action-error">{{item.evidenceError}}</text>
+            <button size="mini" class="review-text-action" data-id="{{item.eventId}}" bindtap="retryIssueRecordEvidence" disabled="{{item.evidenceLoading}}" aria-label="重新读取原始记录">重新读取</button>
+          </view>
         </view>
 <view wx:if="{{memberPage && (memberPage.hasPrevious || memberPage.hasNext)}}" class="list-pagination">
         <button class="stage-previous" data-direction="first" bindtap="changeIssueMembers" disabled="{{!memberPage.canFirst}}">首页</button>
@@ -912,11 +956,12 @@
       </view>
         </block>
       </view>
+      </view>
       </scroll-view>
 
       <view class="sheet-actions">
         <text wx:if="{{currentIssue.paymentNeedsReview && !paymentCanSave && !busy}}" class="sheet-save-hint">{{paymentValidationHint}}</text>
-        <text wx:if="{{!currentIssue.evidenceReviewOnly && !currentIssue.paymentNeedsReview && !currentIssue.aggregateRepayment && !issueFieldsCanSave && issueFieldsReason && !busy}}" class="sheet-save-hint">{{issueFieldsReason}}</text>
+        <text wx:if="{{!currentIssue.evidenceReviewOnly && !currentIssue.paymentNeedsReview && !currentIssue.aggregateRepayment && !issueFieldsCanSave && issueFieldsReason && !issueDetail.hideValidationHint && !busy}}" class="sheet-save-hint">{{issueFieldsReason}}</text>
         <button wx:if="{{!currentIssue.evidenceReviewOnly && (currentIssue.issueType === 'account_mapping' || currentIssue.issueType === 'category_assignment' || currentIssue.issueType === 'shared_fields' || currentIssue.issueType === 'field_conflict' || currentIssue.issueType === 'transfer_accounts')}}" class="sheet-confirm sheet-confirm-wide" bindtap="resolveWithFields" loading="{{busy}}" disabled="{{!issueCanSubmit || busy || (currentIssue.paymentNeedsReview && !paymentCanSave) || bankBatchLoading || (currentIssue.aggregateRepayment && !repaymentAllocationCanSave) || (!currentIssue.paymentNeedsReview && !currentIssue.aggregateRepayment && !issueFieldsCanSave)}}">{{bankBatchSelectedCount ? '保存选择（共 ' + (bankBatchSelectedCount + 1) + ' 项）' : '保存选择'}}</button>
         <button wx:if="{{currentIssue.canConfirmSame}}" class="sheet-confirm sheet-confirm-wide" bindtap="confirmSame" disabled="{{busy || !issueCanSubmit}}">是同一笔</button>
         <button wx:if="{{currentIssue.historicalDuplicate}}" class="sheet-confirm sheet-confirm-wide" bindtap="linkHistoricalTransaction" disabled="{{!issueCanSubmit || busy || historicalLoading || !historicalSelectionVerified}}">与选中记录是同一笔，不再入账</button>
@@ -939,26 +984,35 @@
   <include src="review-edit.wxml" />
   <view wx:if="{{directorySheet}}" class="sheet-layer directory-layer" catchtouchmove="preventTouchMove">
     <view class="sheet-scrim" bindtap="closeDirectory"></view>
-    <view class="workflow-sheet editor-sheet">
-      <text class="sheet-title">{{directorySheet.title || (directorySheet.kind === 'categories' ? '查找分类' : '查找账户')}}</text>
-      <view wx:if="{{directorySheet.kind !== 'categories'}}" class="list-pagination"><button class="stage-previous" data-kind="accounts" bindtap="changeDirectoryKind">已有账户</button><button class="stage-previous" data-kind="accountDrafts" bindtap="changeDirectoryKind">本批新建</button></view>
-      <input class="account-choice-search" value="{{directorySheet.query}}" maxlength="80" placeholder="输入名称查找" bindinput="searchDirectory" />
-      <view wx:if="{{directorySheet.transferAccount && (directorySheet.canCreate || directorySheet.canClear)}}" class="directory-local-actions">
-        <button wx:if="{{directorySheet.canCreate}}" class="review-text-action" data-choice="create" bindtap="selectDirectory" disabled="{{busy}}">新建账户</button>
-        <button wx:if="{{directorySheet.canClear}}" class="review-text-action" data-choice="clear" bindtap="selectDirectory" disabled="{{busy}}">清除选择</button>
+    <view class="workflow-sheet directory-sheet">
+      <view class="sheet-handle"></view>
+      <view class="directory-heading"><text class="directory-title">{{directorySheet.title || (directorySheet.kind === 'categories' ? '选择分类' : '选择账户')}}</text><button class="review-sheet-close" bindtap="closeDirectory" aria-label="返回编辑"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
+      <view wx:if="{{directorySheet.kind !== 'categories'}}" class="directory-tabs">
+        <button class="directory-tab {{directorySheet.kind === 'accounts' ? 'directory-tab-selected' : ''}}" data-kind="accounts" bindtap="changeDirectoryKind" aria-pressed="{{directorySheet.kind === 'accounts'}}">已有账户</button>
+        <button class="directory-tab {{directorySheet.kind === 'accountDrafts' ? 'directory-tab-selected' : ''}}" data-kind="accountDrafts" bindtap="changeDirectoryKind" aria-pressed="{{directorySheet.kind === 'accountDrafts'}}">本批新建</button>
       </view>
-      <scroll-view class="account-records-scroll" scroll-y>
+      <view class="directory-search"><image src="/assets/icons/search.svg" class="directory-search-icon" mode="aspectFit" /><input class="directory-search-input" value="{{directorySheet.query}}" maxlength="80" placeholder="{{directorySheet.kind === 'categories' ? '搜索分类名称' : '搜索账户名称'}}" bindinput="searchDirectory" /></view>
+      <scroll-view class="directory-list" style="{{directoryBodyLayout && directoryBodyLayout.target === directorySheet.target ? 'height:' + directoryBodyLayout.height + 'px' : ''}}" scroll-y enhanced show-scrollbar="{{false}}">
+        <view class="directory-list-content">
         <skeleton-rows wx:if="{{directorySheet.loading && !directorySheet.items.length}}" rows="{{4}}" />
-        <view wx:if="{{directorySheet.error}}" class="relation-empty"><text>{{directorySheet.error}}</text><button class="review-text-action" bindtap="changeDirectoryPage">重新读取此页</button></view>
-        <button wx:for="{{directorySheet.items}}" wx:key="index" class="account-choice-account-row" data-index="{{index}}" bindtap="selectDirectory" disabled="{{directorySheet.transferAccount && (directorySheet.loading || busy)}}">{{item.parentName ? item.parentName + ' / ' : ''}}{{item.name}}</button>
+        <view wx:if="{{directorySheet.error}}" class="directory-empty"><text>{{directorySheet.error}}</text><button class="directory-text-action" bindtap="changeDirectoryPage">重新读取</button></view>
+        <text wx:if="{{!directorySheet.loading && !directorySheet.error && !directorySheet.items.length}}" class="directory-empty">{{directorySheet.query ? '没有找到匹配项' : directorySheet.kind === 'accountDrafts' ? '本批还没有新建账户' : directorySheet.kind === 'categories' ? '暂无可选分类' : '暂无可选账户'}}</text>
+        <button wx:for="{{directorySheet.items}}" wx:key="index" class="directory-row {{item.directorySelected ? 'directory-row-selected' : ''}} {{item.directoryDisabled ? 'directory-row-unavailable' : ''}}" data-index="{{index}}" bindtap="selectDirectory" disabled="{{directorySheet.loading || busy || item.directoryDisabled}}" aria-pressed="{{item.directorySelected}}">
+          <view class="directory-row-copy"><text class="directory-row-name">{{item.parentName ? item.parentName + ' / ' : ''}}{{item.name}}</text><text wx:if="{{item.directoryMeta}}" class="directory-row-meta">{{item.directoryMeta}}</text></view>
+          <view wx:if="{{!item.directoryDisabled}}" class="directory-check {{item.directorySelected ? 'directory-check-selected' : ''}}"><image wx:if="{{item.directorySelected}}" src="/assets/icons/check.svg" mode="aspectFit" /></view>
+        </button>
+        </view>
       </scroll-view>
-<view wx:if="{{directorySheet.page && (directorySheet.page.hasPrevious || directorySheet.page.hasNext)}}" class="list-pagination">
-        <button class="stage-previous" data-direction="first" bindtap="changeDirectoryPage" disabled="{{!directorySheet.page.canFirst}}">首页</button>
-        <button class="stage-previous" data-direction="-1" bindtap="changeDirectoryPage" disabled="{{!directorySheet.page.hasPrevious}}">上一页</button>
-        <text>{{directorySheet.page.start}}–{{directorySheet.page.end}} / {{directorySheet.page.count}} 项</text>
-        <button class="stage-previous" data-direction="1" bindtap="changeDirectoryPage" disabled="{{!directorySheet.page.hasNext}}">下一页</button>
+      <view wx:if="{{directorySheet.page && directorySheet.page.canFirst}}" class="directory-pagination">
+        <button class="directory-text-action" data-direction="{{directorySheet.page.hasPrevious ? '-1' : 'first'}}" bindtap="changeDirectoryPage" disabled="{{directorySheet.loading}}">{{directorySheet.page.hasPrevious ? '上一页' : '回首页'}}</button>
+        <text>{{directorySheet.page.start}}–{{directorySheet.page.end}} / {{directorySheet.page.count}}</text>
+        <button class="directory-text-action" data-direction="1" bindtap="changeDirectoryPage" disabled="{{directorySheet.loading || !directorySheet.page.hasNext}}">下一页</button>
       </view>
-      <button class="evidence-return" bindtap="closeDirectory">返回编辑</button>
+      <view wx:elif="{{directorySheet.page && directorySheet.page.hasNext}}" class="directory-pagination"><text>{{directorySheet.page.start}}–{{directorySheet.page.end}} / {{directorySheet.page.count}}</text><button class="directory-text-action" data-direction="1" bindtap="changeDirectoryPage" disabled="{{directorySheet.loading}}">下一页</button></view>
+      <view wx:if="{{directorySheet.issueDirectory && (directorySheet.canCreate || directorySheet.canClear)}}" class="directory-local-actions">
+        <button wx:if="{{directorySheet.canCreate}}" class="directory-text-action directory-create" data-choice="create" bindtap="selectDirectory" disabled="{{busy}}">＋ {{directorySheet.liabilityOnly ? '新建负债账户' : '新建账户'}}</button>
+        <button wx:if="{{directorySheet.canClear}}" class="directory-text-action directory-clear" data-choice="clear" bindtap="selectDirectory" disabled="{{busy}}">清除选择</button>
+      </view>
     </view>
   </view>
   <login-sheet id="page-login-sheet" />

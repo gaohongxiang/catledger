@@ -5,8 +5,8 @@ const inlineEvidence = require('./inline-evidence')
 const { formatMinor } = require('../../utils/money')
 const { errorText, direction } = require('./presentation')
 
-// 建议配对一页四对，逐笔判断一页一对；选择范围由服务端签名。
-const PAGE_SIZE = 4
+// 建议配对一页十组，逐笔判断一页一对；选择范围由服务端签名。
+const SUGGESTED_PAGE_SIZE = 10
 const initialData = { pairingSheet: null, pairingRows: [], pairingPage: null, pairingLoading: false,
   pairingError: '', pairingCanConfirm: false, pairingSelectedCount: 0, pairingPageSelectedCount: 0,
   pairingScopeText: '', pairingChoiceText: '', pairingNeedsRecheck: false, pairingMissingCount: 0,
@@ -29,7 +29,7 @@ function rowsFor(row) {
     localAt: record.localAt || '', title: String(record.counterparty || record.item || '待核对记录').slice(0, 160), item: String(record.item || '').slice(0, 160),
     amountText: (record.currency && record.currency !== 'CNY' ? record.currency + ' ' : '') + formatMinor(record.amountMinor),
     evidenceCount: record.evidenceCount, evidence: [], evidenceLoading: true, evidenceError: '' })
-  return { pairKey: row.pairKey, economicNature: row.economicNature,
+  return { pairKey: row.pairKey, economicNature: row.economicNature, collapsed: false,
     natureLabel: { expense: '消费', refund: '退款' }[row.economicNature] || '待入账记录',
     bank: display(row.bank), platform: display(row.platform),
     reasonText: '账户、金额、币种与收支方向一致，交易分钟和支付渠道符合匹配规则。' }
@@ -51,9 +51,12 @@ function render(page) {
   const exclusions = new Set((draft && draft.excludedPairKeys || []).filter(key => !missing.has(key)))
   const used = new Set()
   choices.forEach(pair => { used.add(pair.bankEventId); used.add(pair.platformEventId) })
-  const rows = (page.data.pairingRows || []).map(row => {
+  const choicePatch = {}
+  const rows = (page.data.pairingRows || []).map((row, index) => {
     const choice = choices.get(row.pairKey), decision = sheet.mode === 'suggested' ? exclusions.has(row.pairKey) ? '' : 'same' : choice && choice.decision || ''
-    return Object.assign({}, row, { decision, selected: Boolean(decision), occupied: !decision && (used.has(row.bank.eventId) || used.has(row.platform.eventId)) })
+    const state = { decision, selected: Boolean(decision), occupied: !decision && (used.has(row.bank.eventId) || used.has(row.platform.eventId)) }
+    for (const [key, value] of Object.entries(state)) if (row[key] !== value) choicePatch['pairingRows[' + index + '].' + key] = value
+    return state
   })
   const saved = Boolean(task && task.status === 'saved' && !(draft && draft.scopeToken && draft.scopeToken !== task.scopeToken))
   const pendingTask = task && task.kind === 'pairing' && task.status !== 'saved'
@@ -65,7 +68,7 @@ function render(page) {
     !needsRecheck && (!missing.size || draft.missingAcknowledged) && (!pendingTask || task.error) && !saved && !otherPending && !session.status.syncing)
   let scopeText = ''
   if (range) {
-    scopeText = sheet.mode === 'suggested' ? '全部建议范围共 ' + range.total + ' 组' + (Number.isSafeInteger(range.scopeSourceCount) ? '，包含 ' + range.scopeSourceCount + ' 条来源' : '')
+    scopeText = sheet.mode === 'suggested' ? '共 ' + range.total + ' 组' + (Number.isSafeInteger(range.scopeSourceCount) ? '，' + range.scopeSourceCount + ' 条来源' : '')
       : '当前范围共 ' + range.total + ' 条候选关系；每条记录本次最多用于一条决定'
     if (sheet.mode === 'suggested' && !exclusions.size && range.scopeNatureCounts) {
       const counts = range.scopeNatureCounts
@@ -78,8 +81,8 @@ function render(page) {
     if (progress.remainingCount) progressText += '，剩余 ' + progress.remainingCount + ' 组' + (task.error ? '待重新核对' : session.state.flight ? '结果待核实' : '待提交')
     else progressText += task.summaryReady ? '，结果已更新' : '，结果待刷新'
   }
-  page.setData({ pairingRows: rows, pairingSelectedCount: selected, pairingPageSelectedCount: rows.filter(row => row.selected).length,
-    pairingScopeText: scopeText, pairingChoiceText: sheet.mode === 'suggested' ? '跨页共选 ' + selected + ' 组，取消 ' + exclusions.size + ' 组例外；将分别合并为 ' + selected + ' 笔待入账记录。' : '跨页共选 ' + selected + ' 条决定；“不同笔”只拒绝选中的这一对。',
+  page.setData({ ...choicePatch, pairingSelectedCount: selected, pairingPageSelectedCount: rows.filter(row => row.selected).length,
+    pairingScopeText: scopeText, pairingChoiceText: sheet.mode === 'suggested' ? '跨页共选 ' + selected + ' 组' + (exclusions.size ? ' · 已取消 ' + exclusions.size + ' 组' : '') : '跨页共选 ' + selected + ' 条决定',
     pairingNeedsRecheck: needsRecheck, pairingMissingCount: missing.size && !draft.missingAcknowledged ? missing.size : 0,
     pairingBusy: syncing, pairingSaved: saved, pairingProgressText: progressText,
     pairingCanResume: Boolean(pendingTask && !task.error && !session.status.syncing || saved && !task.summaryReady),
@@ -108,7 +111,7 @@ async function open(page, mode, issueId, recheck) {
     draft = { mode, issueId, viewVersion: token.version, revision: 0, excludedPairKeys: [], missingPairKeys: [], pairs: [], needsRecheck: false }
     try { page._draftSession.savePairingDraft(key, draft) } catch (error) { page.setData({ pairingLoading: false, pairingError: errorText(error) }); return }
   }
-  const input = { mode, pageSize: mode === 'ambiguous' ? 1 : PAGE_SIZE }
+  const input = { mode, pageSize: mode === 'ambiguous' ? 1 : SUGGESTED_PAGE_SIZE }
   if (issueId) input.issueId = issueId
   if (recheck) input.recheckPairKeys = mode === 'suggested' ? draft.excludedPairKeys || [] : (draft.pairs || []).map(pair => pair.pairKey)
   page._pairingRecheck = Boolean(recheck)
@@ -118,6 +121,7 @@ async function open(page, mode, issueId, recheck) {
 }
 
 module.exports = {
+  SUGGESTED_PAGE_SIZE,
   initialData,
   openPairingReview() { return open(this, 'suggested', '') },
   openAmbiguousPairingReview(event) {
@@ -181,11 +185,10 @@ module.exports = {
       rows.forEach((row, index) => ['bank', 'platform'].forEach(side => { records.push(row[side]); locations.push({ index, side }) }))
       const reader = this._pairingInlineEvidence = inlineEvidence.create(token.session, records, valid, (index, patch) => {
         if (!valid()) return
-        // 原文异步到达时保留整行摘要和判断键，避免局部桥接覆盖记录。
-        const location = locations[index], visible = this.data.pairingRows.slice(), row = visible[location.index]
+        // 每次只更新一组并保留摘要及勾选，十组长原文不作为整页反复传输。
+        const location = locations[index], row = this.data.pairingRows[location.index]
         if (!row || row.pairKey !== rows[location.index].pairKey) return
-        visible[location.index] = { ...row, [location.side]: { ...row[location.side], ...patch } }
-        this.setData({ pairingRows: visible })
+        this.setData({ ['pairingRows[' + location.index + ']']: { ...row, [location.side]: { ...row[location.side], ...patch } } })
       })
       reader.loadAll().catch(() => {})
     } catch (error) {
@@ -195,6 +198,23 @@ module.exports = {
     }
   },
   retryPairingPage() { return this.changePairingPage({ currentTarget: { dataset: {} } }) },
+  togglePairingCard(event) {
+    const index = this.data.pairingRows.findIndex(row => row.pairKey === event.currentTarget.dataset.key)
+    if (this.data.pairingLoading || index < 0) return
+    this.setData({ ['pairingRows[' + index + '].collapsed']: !this.data.pairingRows[index].collapsed })
+  },
+  togglePairingPage() {
+    const sheet = this.data.pairingSheet
+    if (!sheet || sheet.mode !== 'suggested' || !this.data.pairingRows.length || this.data.pairingLoading || this.data.pairingBusy || this.data.pairingSaved || this.data.pairingNeedsRecheck) return
+    const draft = draftFor(this), task = this._draftSession && this._draftSession.pairingTask(sheet.key)
+    if (!draft || task && task.kind === 'pairing' && !task.error && task.status !== 'saved') return
+    const next = copy(draft), excluded = new Set(next.excludedPairKeys || [])
+    const allSelected = this.data.pairingRows.every(row => row.selected)
+    this.data.pairingRows.forEach(row => { if (allSelected) excluded.add(row.pairKey); else excluded.delete(row.pairKey) })
+    next.excludedPairKeys = [...excluded]
+    try { this.setData({ pairingError: '' }); persistChoices(this, next) }
+    catch (error) { this.setData({ pairingError: errorText(error), pairingCanConfirm: false }) }
+  },
   selectPairing(event) {
     if (this.data.pairingLoading || this.data.pairingBusy || this.data.pairingSaved || this.data.pairingNeedsRecheck) return
     const draft = draftFor(this), row = this.data.pairingRows.find(item => item.pairKey === event.currentTarget.dataset.key)
@@ -217,17 +237,6 @@ module.exports = {
       }
     }
     try { this.setData({ pairingError: '' }); persistChoices(this, next) }
-    catch (error) { this.setData({ pairingError: errorText(error), pairingCanConfirm: false }) }
-  },
-  togglePairingPage() {
-    if (this.data.pairingSheet.mode !== 'suggested' || this.data.pairingLoading || this.data.pairingBusy || this.data.pairingSaved || this.data.pairingNeedsRecheck) return
-    const task = this._draftSession.pairingTask(this.data.pairingSheet.key)
-    if (task && task.kind === 'pairing' && !task.error && task.status !== 'saved') return
-    const draft = copy(draftFor(this)), excluded = new Set(draft.excludedPairKeys || [])
-    const allSelected = this.data.pairingRows.every(row => row.selected)
-    this.data.pairingRows.forEach(row => { if (allSelected) excluded.add(row.pairKey); else excluded.delete(row.pairKey) })
-    draft.excludedPairKeys = [...excluded]
-    try { this.setData({ pairingError: '' }); persistChoices(this, draft) }
     catch (error) { this.setData({ pairingError: errorText(error), pairingCanConfirm: false }) }
   },
   acknowledgeMissingPairings() {

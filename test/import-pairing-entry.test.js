@@ -20,14 +20,21 @@ test('摘要完整组数立即显示，直到打开弹层才请求首页，分�
   assert.equal(h.calls.some(call => call.action === 'reviewIssues.pairings'), false)
   assert.equal(h.calls.some(call => call.action === 'economicEvents.evidence'), false)
   await page.openPairingEntry()
-  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(page.data.pairingRows.length, 10)
   assert.equal(page.data.pairingSelectedCount, 29)
   assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 1)
   await page.changePairingPage({ currentTarget: { dataset: { direction: 1 } } })
-  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(page.data.pairingRows.length, 10)
   assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 2)
+  assert.equal(page.data.pairingPage.start, 11)
+  assert.equal(page.data.pairingPage.end, 20)
+  await page.changePairingPage({ currentTarget: { dataset: { direction: 1 } } })
+  assert.equal(page.data.pairingRows.length, 9)
+  assert.equal(page.data.pairingPage.start, 21)
+  assert.equal(page.data.pairingPage.end, 29)
+  assert.equal(page.data.pairingPage.hasNext, false)
   page.closePairingReview(); await page.openPairingEntry()
-  assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 2)
+  assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 3)
 })
 
 test('同版本摘要刷新仍更新组数，显式0组不回退旧请求', async t => {
@@ -85,7 +92,7 @@ async function until(h, check) {
   assert.ok(check())
 }
 
-test('旧摘要缺字段时回退完整29组，首页4组预读与弹层共用一次请求，不提前读原文', async t => {
+test('旧摘要缺字段时回退完整29组，首页10组预读与弹层共用一次请求，不提前读原文', async t => {
   const h = mixed(), page = h.page
   t.after(() => page.onUnload())
   await until(h, () => page.data.pairingEntry && !page.data.pairingEntry.loading)
@@ -93,7 +100,7 @@ test('旧摘要缺字段时回退完整29组，首页4组预读与弹层共用�
   assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 1)
   assert.equal(h.calls.some(call => call.action === 'economicEvents.evidence'), false)
   await page.openPairingEntry()
-  assert.equal(page.data.pairingRows.length, 4)
+  assert.equal(page.data.pairingRows.length, 10)
   assert.equal(page.data.pairingSelectedCount, 29)
   assert.equal(h.calls.filter(call => call.action === 'reviewIssues.pairings').length, 1)
   page.closePairingReview(); await page.loadActivePage(true)

@@ -67,6 +67,25 @@ test('转账要求两个不同账户，背景更新保留选择并阻止旧版�
   page.onUnload()
 })
 
+test('已核对流入还款的付款端显示在上，目录选择与保存仍对应原字段', async () => {
+  const h = await setup(), page = h.page
+  Object.assign(h.events[0], { economicNature: 'repayment', sourceDirection: 'income', counterpartyLedgerAccountId: 'original-payer' })
+  const eventId = h.events[0].eventId, receiver = h.events[0].ledgerAccountId
+  try {
+    await page.openReviewEdit(tap(eventId))
+    assert.deepEqual(Array.from(page.data.reviewEditSheet.accountFields, field => [field.key, field.label]),
+      [['counterparty', '付款账户'], ['account', '还入账户']])
+    await page.openDirectory({ currentTarget: { dataset: { target: 'reviewCounterparty' } } })
+    assert.equal(page.data.directorySheet.title, '选择付款账户')
+    page.closeDirectory()
+    page.selectReviewedAccount({ accountId: 'changed-payer', name: '合成付款卡' }, 'reviewCounterparty')
+    assert.equal(page.data.reviewEditSheet.ledgerAccountId, receiver)
+    await page.saveReviewEdit()
+    assert.deepEqual(h.calls.find(call => call.action === 'financeUpdates.setReview').input.fields,
+      { counterpartyLedgerAccountId: 'changed-payer' })
+  } finally { page.onUnload() }
+})
+
 test('结果未知时保留原请求，先恢复修改再允许整批入账；已保存后刷新失败不重复写', async () => {
   const h = await setup(), page = h.page
   let attempts = 0

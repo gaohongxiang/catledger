@@ -23,20 +23,29 @@ function natureLabel(row) {
   }
   return NATURE_LABELS[row.economicNature] || NATURE_LABELS.unknown
 }
+function fundsAccountLabels(nature) {
+  return { from: nature === 'borrow' ? '借款负债账户' : nature === 'repayment' ? '付款账户' : '转出账户',
+    to: nature === 'borrow' ? '到账账户' : nature === 'repayment' ? '还入账户' : '转入账户' }
+}
 function accountLabels(row) {
   if (principalOf(row)) return { from: '所属信用卡', to: '', hasDestination: false }
   const nature = row.economicNature, dual = destinationNatures.includes(nature)
-  const from = nature === 'borrow' ? '借款负债账户' : nature === 'repayment' ? '付款账户' : '转出账户'
-  const to = nature === 'borrow' ? '到账账户' : nature === 'repayment' ? '还入账户' : '转入账户'
+  const { from, to } = fundsAccountLabels(nature)
   // 普通双端事件的 ledgerAccountId 是原账单账户；入账时 income 来源会反向。
   // 组合支付/合并还款有自己的规范分配，不套用普通来源方向。
   const allocated = row.paymentResolution || (row.repaymentAllocations || []).length ||
     row.fieldSources && (row.fieldSources.paymentResolution || (row.fieldSources.repaymentAllocations || []).length)
   const reverse = dual && !allocated && row.sourceDirection === 'income'
-  return { from: dual ? (reverse ? to : from) : nature === 'refund' ? '退款到账账户'
-      : nature === 'income' ? '收款账户' : nature === 'fee' ? '记费账户'
+  return { from: dual ? (reverse ? to : from) : ['income', 'refund'].includes(nature) ? '收款账户'
+      : nature === 'fee' ? '付款账户'
       : nature === 'balance_adjustment' ? '调整账户' : nature === 'expense' ? '付款账户' : '账单所属账户',
     to: reverse ? from : to, hasDestination: dual, reverse }
+}
+function accountFields(row) {
+  const labels = accountLabels(row)
+  const fields = [{ key: 'account', label: labels.from, accountId: row.ledgerAccountId }]
+  if (labels.hasDestination) fields.push({ key: 'counterparty', label: labels.to, accountId: row.counterpartyLedgerAccountId })
+  return labels.reverse ? fields.reverse() : fields
 }
 function accountText(id, catalog) {
   if (!id) return ''
@@ -71,11 +80,12 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
   if (allocation && Array.isArray(allocation.allocations)) {
     allocation.allocations.forEach((part, index) => add('payment-' + index, '付款账户 ' + (index + 1),
       [accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
-  } else add('account', labels.from, accountText(row.ledgerAccountId, catalogs.accounts), false)
-  if (repayments.length) repayments.forEach((part, index) => add('repayment-' + index, '还款分配 ' + (index + 1),
+    if (labels.hasDestination && !repayments.length) add('counterparty', labels.to,
+      accountText(row.counterpartyLedgerAccountId, catalogs.accounts), false)
+  } else if (repayments.length) add('account', labels.from, accountText(row.ledgerAccountId, catalogs.accounts), false)
+  else accountFields(row).forEach(field => add(field.key, field.label, accountText(field.accountId, catalogs.accounts), false))
+  if (repayments.length) repayments.forEach((part, index) => add('repayment-' + index, '还入账户 ' + (index + 1),
     [accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
-  else if (labels.hasDestination) add('counterparty', labels.to,
-    accountText(row.counterpartyLedgerAccountId, catalogs.accounts), false)
   if (categoryNatures.includes(row.economicNature)) add('category', '交易分类', categoryText(row, catalogs.categories), true, '待分类（可稍后补）')
   if (row.economicNature === 'refund') {
     const refund = facts.refund
@@ -117,4 +127,4 @@ function referencedIds(row = {}) {
     .concat((payment.allocations || []).map(item => item.accountId),
       (row.repaymentAllocations || extra.repaymentAllocations || []).map(item => item.accountId)).filter(Boolean))]
 }
-module.exports = { fieldsFor, natureLabel, accountLabels, principalOf, installmentOf, money, referencedIds }
+module.exports = { fieldsFor, natureLabel, accountLabels, accountFields, fundsAccountLabels, principalOf, installmentOf, money, referencedIds }

@@ -68,8 +68,9 @@ test('分类与核对维度独立，整理、确认和完成页共用同一行�
   assert.match(markup, /recordSummary.excludedCount/)
   assert.match(markup, /recordSummary.duplicateCount/)
 })
-test('付款总额保持模型金额；全部分配按钮不改成含义不同的剩余金额', () => {
-  assert.match(markup, /class="payment-total-amount money-number">{{issueEvents\[0\].amountText}}/)
+test('付款总额放入统一摘要；全部分配按钮不改成含义不同的剩余金额', () => {
+  assert.match(markup, /class="issue-summary-amount money-number"[^>]*>\{\{issueDetail\.summary\.amount\}\}/)
+  assert.doesNotMatch(markup, /payment-total-amount/)
   assert.match(markup, /bindtap="fillPaymentAmount"[^>]*>全部分配/)
   assert.match(markup, /bindinput="changePaymentRow"/)
   assert.match(markup, /maxlength="300"/)

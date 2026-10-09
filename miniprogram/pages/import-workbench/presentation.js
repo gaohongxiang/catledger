@@ -55,9 +55,17 @@ function pendingPreview(row) {
   return result
 }
 
-// 左侧集中显示性质、当前可处理项和其余已知缺口；右侧仅保留处理入口。
+const BEFORE_NATURE_STEPS = new Set(['source_conflict', 'status', 'source', 'amount', 'identity',
+  'account_conflict', 'fields', 'basic', 'same_event'])
+const BEFORE_NATURE_ISSUES = new Set(['same_event', 'identity_conflict', 'field_conflict'])
+const BEFORE_NATURE_REASONS = new Set(['refund_source_conflict', 'row_status_unknown', 'transaction_status_unknown',
+  'source_profile_unknown', 'row_amount_invalid', 'identity_conflict', 'identity_review_required', 'account_mapping_conflict',
+  'core_fields_conflict', 'row_semantic_conflict', 'postability_direction_conflict', 'source_group_conflict', 'core_fields_missing',
+  'same_event_candidate', 'bank_channel_same_event_candidate', 'historical_duplicate_candidate'])
+
+// 基础核验和同笔判断在前，性质居中，具体字段在后；只插入性质，不重排服务端待办。
 // 顺序由服务端当前视图给出。旧服务端只展示真实的当前问题，不预测后续步骤。
-function pendingReviewCard(view, attention) {
+function pendingReviewCard(view, attention, issue) {
   const labels = [...new Set((view.subjects || []).map(subject => subject.natureLabel || '性质待确认'))]
   const natureLabel = labels.length === 1 ? labels[0] : labels.length ? '多种性质' : '性质待确认'
   const unknown = ['性质待确认', '待确认', '暂不确定'].includes(natureLabel)
@@ -66,16 +74,24 @@ function pendingReviewCard(view, attention) {
     attention.steps.length <= 20 && attention.steps.every(item => item && typeof item.key === 'string' &&
       typeof item.label === 'string' && item.label.length > 0 && item.label.length <= 48)
   const fallback = unknown && ['确认交易类型', '待核对交易'].includes(view.label) ? '性质待确认' : view.label || '交易信息待核对'
-  const steps = valid ? [...new Set(attention.steps.map(item => item.label))] : [fallback]
-  if (unknown && !steps.includes('性质待确认')) steps.push('性质待确认')
+  const seen = new Set()
+  const steps = (valid ? attention.steps : [{ key: 'review', label: fallback }])
+    .filter(item => !seen.has(item.label) && seen.add(item.label))
+  if (unknown && !seen.has('性质待确认')) steps.push({ key: 'nature', label: '性质待确认' })
+  const joinSteps = items => items.map(item => item.label).join(' · ')
+  // 判重前的必要账户若在同笔事项前，仍随它留在性质前；普通账户字段放在性质后。
+  const natureIndex = valid ? steps.reduce((index, item, position) => BEFORE_NATURE_STEPS.has(item.key) ? position + 1 : index, 0)
+    : issue && (BEFORE_NATURE_ISSUES.has(issue.issueType) || BEFORE_NATURE_REASONS.has(issue.primaryReasonCode)) ? steps.length : 0
+  const label = unknown ? joinSteps(steps)
+    : [joinSteps(steps.slice(0, natureIndex)), natureLabel, joinSteps(steps.slice(natureIndex))].filter(Boolean).join('｜')
   const { groupCount, ...rest } = view
   const scopeCount = groupCount || view.subjectCount || 1
   return Object.assign({}, rest, {
     natureLabel, scopeCount,
     // 补充说明在卡片上不显示，不重复传输；完整原文和问题说明仍留在业务详情。
     decisionText: '', subjects: (view.subjects || []).map(pendingPreview),
-    label: (unknown ? '' : natureLabel + '｜') + steps.join(' · ') + (scopeCount > 1 ? '（同组 ' + scopeCount + ' 笔）' : ''),
-    batchDecision: '处理'
+    label: label + (scopeCount > 1 ? '（同组 ' + scopeCount + ' 笔）' : ''),
+    batchDecision: view.issueId ? '处理' : '查看详情'
   })
 }
 
@@ -94,7 +110,7 @@ function pendingCard(event, category) {
     subjectCount: 1, hiddenSubjectCount: 0,
     natureLabel: event.economicNature === 'income' ? '收入' : '支出', subjects: [listRecord(event)]
   }
-  return category ? result : pendingReviewCard(result, event.reviewAttention)
+  return category ? result : pendingReviewCard(result, event.reviewAttention, issue)
 }
 
 // 同组问题的事件行在列表中相邻时连成一张卡：首行带组数标记，其余行只留动作。
@@ -148,7 +164,7 @@ function reviewLists(state, business, data, index) {
   const window = windowRows(rows, index)
   patch.reviewPage = window.page
   if (kind === 'review') patch.reviewGroups = model.reviewIssueGroups(window.rows).map(group => ({
-    key: group.key, issueType: group.issueType, issues: group.issues.map(issue => pendingReviewCard(card(issue))) }))
+    key: group.key, issueType: group.issueType, issues: group.issues.map(issue => pendingReviewCard(card(issue), null, issue)) }))
   else if (kind === 'category') {
     patch.categoryCards = window.rows.filter(row => row.issue).map(row => card(row.issue))
     patch.categoryWaitingEvents = window.rows.filter(row => row.event).map(row => listRecord(row.event))
