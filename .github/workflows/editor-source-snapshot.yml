@@ -1,0 +1,22 @@
+name: Editor source snapshot
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/editor-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive tracked source for isolated editor validation
+        run: git archive --format=tar HEAD -o "$RUNNER_TEMP/catledger-editor-source.tar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catledger-editor-source
+          path: ${{ runner.temp }}/catledger-editor-source.tar
+          retention-days: 1
