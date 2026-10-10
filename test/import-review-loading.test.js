@@ -135,33 +135,26 @@ test('目录局部失败只重试目录，不重取详情、成员或原文', as
   page.onUnload()
 })
 
-test('退款关系未读完或失败时禁止保存，局部重试保留已明确选择', async () => {
-  const h = runtime(dataFor('refund_relation')), page = h.page
+test('退款候选失败不冒充无候选，局部重试后只修改当前决定', async t => {
+  const editor = require('./helpers/editor-workbench')
+  const { h, page } = await editor.open(t, { economicNature: 'refund', ledgerAccountId: 'account-0' })
+  h.refundCandidates = { event: [{ kind: 'event', id: 'original', version: 1, amountMinor: '100', remainingMinor: '100' }], transaction: [] }
   let fail = true
-  await flush()
-  h.intercept = (action, input) => {
-    if (action === 'reviewIssues.members' && input.memberKind === 'relation') {
-      if (fail) throw new Error('合成关系失败')
-      return { protocolVersion: 2, viewVersion: 'v1', total: 1, nextCursor: null,
-        items: [{ relation: { targetEvent: { ...h.events[0], eventId: 'original' }, targetEventId: 'original' } }] }
-    }
-    return compactEvidence(h, action, input)
-  }
-  await page.openIssue(tap())
-  assert.match(page.data.issueRelationsError, /合成关系失败/)
-  assert.equal(page.data.issueCanSubmit, false)
-  await page.resolveIssue('mark_refund_pending', {})
-  assert.equal(page._draftSession.state.entries.length, 0)
-  page.selectTargetRelation(tap('chosen-intent'))
+  h.intercept = action => { if (action === 'economicEvents.refundCandidates' && fail) throw Error('合成关系失败') }
+  await page.loadEditorRefunds(editor.tap({ kind: 'event' }))
+  assert.match(page.data.reviewEditSheet.refundError, /合成关系失败/)
+  assert.notEqual(page.data.reviewEditSheet.refundCanPending, true)
+  page.selectEditorRefund(editor.tap({ mode: 'pending' }))
+  assert.equal(editor.draft(page).refund, null)
   fail = false
-  await page.changeIssueRelations(tap())
-  assert.equal(page.data.issueDraft.targetEventId, 'chosen-intent')
-  assert.equal(page.data.issueCanSubmit, true)
-  page.onUnload()
+  await page.loadEditorRefunds(editor.tap({ kind: 'event' }))
+  page.selectEditorRefund(editor.tap({ id: 'original' }))
+  assert.equal(editor.draft(page).refund.id, 'original')
+  assert.equal(editor.writes(h).length, 0)
 })
 
-test('后台新版本使旧选择停止提交，重新核验后保留账户、分类和文字输入', async () => {
-  const h = runtime(dataFor('shared_fields')), page = h.page
+test('账户映射后台版本变化停止提交，重核后保留账户与文字输入', async () => {
+  const h = runtime(dataFor('account_mapping')), page = h.page
   h.intercept = (action, input) => compactEvidence(h, action, input)
   await page.openIssue(tap())
   page.changeDraftAccountName({ detail: { value: '保留核对备注' } })
@@ -179,14 +172,13 @@ test('后台新版本使旧选择停止提交，重新核验后保留账户、�
   assert.equal(page.data.issueDraft.newAccountName, '保留核对备注')
   assert.equal(page.data.issueDraft.note, '保留用户补充')
   assert.equal(page.data.accountChoices[page.data.issueDraft.accountIndex].accountId, 'synthetic-account')
-  assert.equal(page.data.issueCategories[page.data.issueDraft.categoryIndex].categoryId, 'synthetic-category')
   assert.equal(page.data.currentIssue.version, 2)
   assert.equal(page.data.issueCanSubmit, true)
   page.onUnload()
 })
 
 test('重核后失效账户保留原选择且禁止按新建默认项保存', async () => {
-  const h = runtime(dataFor('shared_fields')), page = h.page
+  const h = runtime(dataFor('account_mapping')), page = h.page
   let remove = false
   h.intercept = (action, input) => {
     if (remove && action === 'financeUpdates.options' && input.kind === 'accounts') return { protocolVersion: 2, viewVersion: 'v2', items: [], total: 0 }

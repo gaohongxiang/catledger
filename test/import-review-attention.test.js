@@ -147,13 +147,13 @@ test('真实 Page 同组未知与已知性质都先判同笔；刷新后各自�
   }
   await page.setStep({ currentStep: 3 })
   let selected
-  page.openIssue = ev => { selected = ev.currentTarget.dataset.id }
+  page.openReviewEdit = ev => { selected = ev.currentTarget.dataset }
   let cards = page.data.reviewGroups[0].issues
   assert.equal(cards[0].label, '判断是否同一笔 · 性质待确认（同组 2 笔）')
   assert.equal(cards[1].label, '判断是否同一笔｜支出｜付款账户待确认')
   for (const card of cards) {
     assert.equal(card.batchDecision, '处理')
-    page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected, 'pair')
+    page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected.id, card.eventId); assert.equal(selected.focusIssueId, 'pair')
   }
   pairing = false
   h.summary = { ...h.summary, viewVersion: 'synthetic-updated-attention', update: { ...h.summary.update, version: 2 } }
@@ -163,7 +163,7 @@ test('真实 Page 同组未知与已知性质都先判同笔；刷新后各自�
   assert.equal(cards[1].label, '支出｜付款账户待确认')
   for (const [index, nextIssue] of ['nature', 'account'].entries()) {
     const card = cards[index]
-    page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected, nextIssue)
+    page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected.id, card.eventId); assert.equal(selected.focusIssueId, nextIssue)
   }
   assert.ok(h.patches.every(bytes => bytes <= 65536))
   page.onUnload()
@@ -184,16 +184,16 @@ test('真实 Page 已知还款在归属和账户字段前；按钮跳过性质�
   }
   await page.setStep({ currentStep: 3 })
   let selected
-  page.openIssue = ev => { selected = ev.currentTarget.dataset.id }
+  page.openReviewEdit = ev => { selected = ev.currentTarget.dataset }
   let card = page.data.reviewGroups[0].issues[0]
   assert.equal(card.label, '还款｜还款账户归属待确认 · 资金账户待确认')
-  page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected, 'ownership')
+  page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected.id, card.eventId); assert.equal(selected.focusIssueId, 'ownership')
   ownershipRequired = false
   h.summary = { ...h.summary, viewVersion: 'synthetic-ownership-confirmed', update: { ...h.summary.update, version: 2 } }
   await page.applyUpdateView(h.summary, false, false, false, true); await flush()
   card = page.data.reviewGroups[0].issues[0]
   assert.equal(card.label, '还款｜还入账户待确认')
-  page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected, 'accounts')
+  page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected.id, card.eventId); assert.equal(selected.focusIssueId, 'accounts')
   page.onUnload()
 })
 

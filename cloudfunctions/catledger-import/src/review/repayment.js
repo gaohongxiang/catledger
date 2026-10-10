@@ -51,16 +51,23 @@ async function prepareRepayment(connection, uid, updateId, event, value, { edito
       if (!row || row.kind !== 'expense') throw importError('VALIDATION_ERROR')
     }
     if (partial.loanId) {
-      const [[row]] = await connection.execute('SELECT version FROM catledger_loans WHERE uid=? AND loan_id=? AND deleted_at IS NULL', [uid, partial.loanId])
+      const [[row]] = await connection.execute('SELECT account_id AS accountId,version FROM catledger_loans WHERE uid=? AND loan_id=? AND deleted_at IS NULL', [uid, partial.loanId])
       if (!row || Number(row.version) !== partial.loanVersion) throw importError('CONFLICT')
+      const route = require('../editor-fields').funds(event)
+      if (route.destinationAccountId && route.destinationAccountId !== row.accountId) throw importError('VALIDATION_ERROR')
     }
     if (partial.chargeAllocations?.length) {
+      const store = require('../loan-charge-store'), contract = partial.loanId && await store.contract(connection, uid, partial.loanId)
+      const seen = new Set(), totals = { interest: 0n, fee: 0n }
       for (const selection of partial.chargeAllocations) {
-        if (!selection.chargeId || !partial.loanId) throw importError('LOAN_CHARGE_COVERAGE')
-        const [[row]] = await connection.execute(`SELECT c.charge_id FROM catledger_loan_charges c JOIN catledger_loan_charge_contracts p
-          ON p.uid=c.uid AND p.contract_id=c.contract_id WHERE c.uid=? AND c.charge_id=? AND p.loan_id=?`, [uid, selection.chargeId, partial.loanId])
-        if (!row) throw importError('LOAN_CHARGE_COVERAGE')
+        if (!selection.chargeId || !contract || seen.has(selection.chargeId)) throw importError('LOAN_CHARGE_COVERAGE')
+        seen.add(selection.chargeId)
+        const charge = await store.charge(connection, uid, selection.chargeId)
+        if (charge.contractId !== contract.contractId || charge.component !== selection.component ||
+          !['planned','recorded','baseline'].includes(charge.state) || BigInt(selection.amountMinor) > BigInt(charge.outstandingMinor)) throw importError('LOAN_CHARGE_COVERAGE')
+        totals[selection.component] += BigInt(selection.amountMinor)
       }
+      for (const key of ['interest','fee']) if (partial[key + 'Minor'] != null && totals[key] > BigInt(partial[key + 'Minor'])) throw importError('LOAN_CHARGE_COVERAGE')
     }
   }
   if (editor && decision && decision.confirmed) {

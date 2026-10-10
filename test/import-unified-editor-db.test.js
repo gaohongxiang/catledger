@@ -10,12 +10,12 @@ test('统一交易编辑器：真实 MySQL 单笔、关系、事务及入账闭�
     try {
       const grants = require('../scripts/runtime-role-grants')
       const apiPool = await lab.role('api', grants.api), importer = await lab.role('import', grants.importer)
-      let failAfterIssue = false
+      let failurePattern = null
       const importPool = { async getConnection() {
         const connection = await importer.getConnection()
         return new Proxy(connection, { get(target,key) {
           if (key === 'execute') return async (sql,values) => {
-            if (failAfterIssue && /UPDATE catledger_economic_events SET/.test(sql)) throw Error('synthetic rollback after relation and issue changes')
+            if (failurePattern && failurePattern.test(sql)) throw Error('synthetic rollback boundary')
             return target.execute(sql,values)
           }
           return typeof target[key] === 'function' ? target[key].bind(target) : target[key]
@@ -38,7 +38,7 @@ test('统一交易编辑器：真实 MySQL 单笔、关系、事务及入账闭�
       async function setup(amounts, map=true) {
         const services=localServices({apiPool,importPool,subject:'synthetic-unified-editor-'+randomUUID()})
         const c={services,api:(action,data)=>call(services.api,action,data),imp:(action,data)=>call(services.import,action,data),accounts:{}}
-        c.uid=(await c.api('bootstrap')).uid
+        const identity=await c.api('bootstrap');c.uid=identity.uid;c.categories=identity.categories
         for(const type of ['wallet','bank','credit','other_liability']) c.accounts[type]=(await c.api('accounts.create',{requestId:randomUUID(),name:'合成编辑-'+type,type,
           openingDisplayBalanceMinor:'1000000',occurredLocalAt:'2026-08-01T00:00:00',timezoneOffsetMinutes:-480})).accountId
         return batch(c,amounts,map)
@@ -124,7 +124,7 @@ test('统一交易编辑器：真实 MySQL 单笔、关系、事务及入账闭�
         const original=(await dump(c,'catledger_transactions','transaction_id')).find(row=>row.origin==='import')
         await batch(c,[40,60],true,'02')
         const row=(await rows(c))[0]
-        const candidates=await c.imp('economicEvents.refundCandidates',{updateId:c.update.updateId,eventId:row.eventId,kind:'transaction',pageSize:1})
+        const candidates=await c.imp('economicEvents.refundCandidates',{updateId:c.update.updateId,eventId:row.eventId,eventVersion:row.version,kind:'transaction',pageSize:1})
         assert.ok(candidates.items.some(item=>item.id===original.transaction_id));assert.ok(candidates.total>=1)
         await c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'refund'},decisions:{refund:{mode:'link',kind:'transaction',id:original.transaction_id,version:Number(original.version)}}}))
         await c.imp('financeUpdates.setReview',await input(c,1,{fields:{economicNature:'refund'},decisions:{refund:{mode:'link',kind:'transaction',id:original.transaction_id,version:Number(original.version)}}}))
@@ -148,23 +148,43 @@ test('统一交易编辑器：真实 MySQL 单笔、关系、事务及入账闭�
         const data=await input(c,1,{fields:{economicNature:'refund',note:'合成原子保存'},decisions:{refund:{mode:'link',kind:'event',id:original.eventId,version:original.version}}})
         const tables=[['catledger_economic_events','event_id'],['catledger_economic_event_relations','relation_id'],['catledger_review_issues','issue_id'],['catledger_review_issue_members','member_id'],['catledger_finance_actions','action_id'],['catledger_mutation_receipts','idempotency_key_digest']]
         const before=await Promise.all(tables.map(([table,key])=>dump(c,table,key)))
-        failAfterIssue=true
-        await assert.rejects(c.imp('financeUpdates.setReview',data),{publicCode:'INTERNAL_ERROR'});failAfterIssue=false
-        assert.deepEqual(await Promise.all(tables.map(([table,key])=>dump(c,table,key))),before)
+        for (const pattern of [/INSERT INTO catledger_finance_actions/, /INSERT INTO catledger_economic_event_relations/,
+          /UPDATE catledger_review_issues SET/, /UPDATE catledger_economic_events SET/, /UPDATE catledger_mutation_receipts/]) {
+          failurePattern=pattern
+          await assert.rejects(c.imp('financeUpdates.setReview',data),{publicCode:'INTERNAL_ERROR'}, String(pattern));failurePattern=null
+          assert.deepEqual(await Promise.all(tables.map(([table,key])=>dump(c,table,key))),before, String(pattern))
+        }
         const results=await Promise.all([c.imp('financeUpdates.setReview',data),c.imp('financeUpdates.setReview',data)])
         assert.deepEqual(results[0],results[1])
         assert.equal((await rows(c)).find(row=>row.eventId===data.eventId).version,data.eventVersion+1)
         assert.deepEqual(await c.imp('imports.commandResult',{requestId:data.requestId,commandAction:'financeUpdates.setReview'}),results[0])
       })
       await t.test('文本清空及人工金额经重整、入账保留，来源数据仍不变',async()=>{
-        const c=await setup([100]),data=await input(c,0,{fields:{note:'',counterparty:'',amountMinor:'12345'}})
+        const c=await setup([100]),data=await input(c,0,{fields:{note:'',counterparty:'',amountMinor:'12345',
+          economicNature:'fee',ledgerAccountId:c.accounts.bank,categoryId:c.categories.find(row=>row.kind==='expense').id,
+          occurredLocalAt:'2026-09-03 13:14:15',timezoneOffsetMinutes:-480}})
         await c.imp('financeUpdates.setReview',data)
         await lab.owner.execute("UPDATE catledger_finance_updates SET plan_version='organizer-plan-v31' WHERE uid=? AND update_id=?",[c.uid,c.update.updateId])
         await c.imp('financeUpdates.organize',{requestId:randomUUID(),updateId:c.update.updateId,version:(await summary(c)).update.version})
         const row=await detail(c,data.eventId);assert.equal(row.note,'');assert.equal(row.counterparty,'');assert.equal(row.amountMinor,'12345')
+        assert.equal(row.economicNature,'fee');assert.equal(row.ledgerAccountId,c.accounts.bank);assert.equal(row.categoryId,data.fields.categoryId)
+        assert.ok(row.localAt.startsWith('2026-09-03 13:14:15'))
         await post(c)
         const transaction=(await dump(c,'catledger_transactions','transaction_id')).find(row=>row.origin==='import')
         assert.equal(String(transaction.amount_minor),'12345');assert.doesNotMatch(transaction.note,/合成备注|合成商户/);assert.match(transaction.note,/合成商品/)
+      })
+      await t.test('UE45 规则升级保留已确认人工退款关系，重整不改原事件/证据身份',async()=>{
+        const c=await setup([100,40]),original=(await rows(c))[0]
+        const data=await input(c,1,{fields:{economicNature:'refund',note:'人工合成退款'},decisions:{refund:{mode:'link',kind:'event',id:original.eventId,version:original.version}}})
+        await c.imp('financeUpdates.setReview',data)
+        const evidence=(await dump(c,'catledger_event_evidence','evidence_id')).map(row=>[row.evidence_id,row.row_id,row.event_id])
+        await lab.owner.execute("UPDATE catledger_finance_updates SET plan_version='organizer-plan-v31' WHERE uid=? AND update_id=?",[c.uid,c.update.updateId])
+        await c.imp('financeUpdates.organize',{requestId:randomUUID(),updateId:c.update.updateId,version:(await summary(c)).update.version})
+        const row=await detail(c,data.eventId),relations=await dump(c,'catledger_economic_event_relations','relation_id')
+        assert.equal(row.economicNature,'refund');assert.equal(row.note,'人工合成退款')
+        assert.ok(relations.some(link=>link.source_event_id===data.eventId&&link.target_event_id===original.eventId&&link.status==='confirmed'&&link.manual===1))
+        assert.deepEqual((await dump(c,'catledger_event_evidence','evidence_id')).map(item=>[item.evidence_id,item.row_id,item.event_id]),evidence)
+        await post(c)
       })
       await t.test('越权账户/事件、旧版本、源状态和只读键均拒绝',async()=>{
         const c=await setup([100]),other=await setup([100]),data=await input(c,0,{fields:{note:'合成备注'}})
@@ -173,6 +193,173 @@ test('统一交易编辑器：真实 MySQL 单笔、关系、事务及入账闭�
         await assert.rejects(c.imp('financeUpdates.setReview',{...data,eventVersion:data.eventVersion+1}),{publicCode:'CONFLICT'})
         await post(c)
         await assert.rejects(c.imp('financeUpdates.setReview',{...data,requestId:randomUUID()}),{publicCode:'CONFLICT'})
+      })
+      await t.test('UE54 已排除、已更正和已入账事件不能被普通修改复活，失败不留审计或回执',async()=>{
+        for(const status of ['excluded','corrected','posted']) {
+          const c=await setup([100]),data=await input(c,0,{fields:{note:'不得覆盖终态'}})
+          // 单独固定事件生命周期，验证在批次版本仍匹配时也必须拒绝；整批入账另有真实链路覆盖。
+          await lab.owner.execute('UPDATE catledger_economic_events SET state=?,status=? WHERE uid=? AND event_id=?',[status,status,c.uid,data.eventId])
+          const tables=[['catledger_economic_events','event_id'],['catledger_finance_actions','action_id'],['catledger_mutation_receipts','idempotency_key_digest'],['catledger_transactions','transaction_id']]
+          const before=await Promise.all(tables.map(([table,key])=>dump(c,table,key)))
+          await assert.rejects(c.imp('financeUpdates.setReview',data),{publicCode:'CONFLICT'})
+          assert.deepEqual(await Promise.all(tables.map(([table,key])=>dump(c,table,key))),before)
+        }
+      })
+      await t.test('UE12/19/57 代还待核对、合法大额和内部负债转移保留各自财务边界',async()=>{
+        const c=await setup([100]),row=(await rows(c))[0]
+        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{amountMinor:'9007199254740993'}}))
+        assert.equal((await detail(c,row.eventId)).amountMinor,'9007199254740993')
+        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{amountMinor:'10000',economicNature:'unknown'},decisions:{ownership:{owner:'other',treatment:'pending'}}}))
+        const pending=await detail(c,row.eventId)
+        assert.equal(pending.status,'needs_action');assert.equal(pending.economicNature,'unknown');assert.equal(pending.counterpartyLedgerAccountId,null)
+        const before=await dump(c,'catledger_transactions','transaction_id')
+        await assert.rejects(post(c),{publicCode:'UNRESOLVED_IMPORT'})
+        assert.deepEqual(await dump(c,'catledger_transactions','transaction_id'),before)
+        const fields={economicNature:'repayment',ledgerAccountId:c.accounts.credit,counterpartyLedgerAccountId:c.accounts.other_liability}
+        await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{fields,decisions:{ownership:{owner:'self'}}})),{publicCode:'VALIDATION_ERROR'})
+        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{...fields,economicNature:'internal_transfer'}}))
+        await post(c)
+        const transfer=(await dump(c,'catledger_transactions','transaction_id')).find(item=>item.origin==='import')
+        assert.equal(transfer.type,'transfer');assert.equal(transfer.source_account_id,c.accounts.credit);assert.equal(transfer.destination_account_id,c.accounts.other_liability)
+      })
+      await t.test('UE40 同笔和同批不同笔并发各仅一个版本生效，冲突不会覆盖另一输入',async()=>{
+        for(const sameEvent of [true,false]) {
+          const c=await setup([100,40])
+          const first=await input(c,0,{fields:{note:'并发甲'}}),second=await input(c,sameEvent?0:1,{fields:{note:'并发乙'}})
+          const results=await Promise.allSettled([c.imp('financeUpdates.setReview',first),c.imp('financeUpdates.setReview',second)])
+          assert.equal(results.filter(row=>row.status==='fulfilled').length,1)
+          assert.equal(results.find(row=>row.status==='rejected').reason.publicCode,'CONFLICT')
+          assert.equal((await summary(c)).update.version,first.updateVersion+1)
+          const events=await rows(c)
+          assert.equal(events.filter(row=>row.note==='并发甲'||row.note==='并发乙').length,1)
+        }
+      })
+      await t.test('UE30 无候选退款可暂记，回执明确待核对与可入账结果，读取不改数据库',async()=>{
+        const c=await setup([40]),row=(await rows(c))[0]
+        const before=await dump(c,'catledger_economic_events','event_id')
+        for(const kind of ['event','transaction']) {
+          const result=await c.imp('economicEvents.refundCandidates',{updateId:c.update.updateId,eventId:row.eventId,eventVersion:row.version,kind})
+          assert.equal(result.total,0)
+        }
+        assert.deepEqual(await dump(c,'catledger_economic_events','event_id'),before)
+        const pending=await c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'refund'}}))
+        assert.equal(pending.event.status,'needs_action')
+        const ready=await c.imp('financeUpdates.setReview',await input(c,0,{decisions:{refund:{mode:'pending'}}}))
+        assert.equal(ready.event.status,'ready')
+        await post(c)
+        const refund=(await dump(c,'catledger_transactions','transaction_id')).find(row=>row.type==='refund')
+        assert.equal(refund.destination_account_id,c.accounts.wallet);assert.equal(refund.original_transaction_id,null)
+        assert.equal(refund.category_id,null)
+      })
+      await t.test('UE60 关联依赖快照拒绝原消费新版本，旧游标和跨用户账户不能进入候选',async()=>{
+        const c=await setup([100,40]),original=(await rows(c))[0]
+        const linked=await input(c,1,{fields:{economicNature:'refund'},decisions:{refund:{mode:'link',kind:'event',id:original.eventId,version:original.version}}})
+        await c.imp('financeUpdates.setReview',linked)
+        const facts=(await detail(c,linked.eventId)).editorFacts
+        assert.equal(facts.expectedRelations.length,2)
+        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{note:'原消费新说明'}}))
+        const before=await dump(c,'catledger_economic_events','event_id')
+        await assert.rejects(c.imp('financeUpdates.setReview',await input(c,1,{fields:{note:'过期依赖'},expectedRelations:facts.expectedRelations})),{publicCode:'CONFLICT'})
+        assert.deepEqual(await dump(c,'catledger_economic_events','event_id'),before)
+        const other=await setup([1]),row=(await rows(c))[1]
+        await assert.rejects(c.imp('economicEvents.refundCandidates',{updateId:c.update.updateId,eventId:row.eventId,eventVersion:row.version,kind:'event',fields:{ledgerAccountId:other.accounts.wallet}}),{publicCode:'VALIDATION_ERROR'})
+        await assert.rejects(c.imp('economicEvents.refundCandidates',{updateId:c.update.updateId,eventId:row.eventId,eventVersion:row.version-1,kind:'event'}),{publicCode:'CONFLICT'})
+      })
+      await t.test('UE31/32 改退款性质须明确解除本笔关系；被引用的原消费不能改为收入',async()=>{
+        const c=await setup(),original=(await rows(c))[0]
+        for(const index of [1,2]) await c.imp('financeUpdates.setReview',await input(c,index,{fields:{economicNature:'refund'},
+          decisions:{refund:{mode:'link',kind:'event',id:original.eventId,version:original.version}}}))
+        const events=await dump(c,'catledger_economic_events','event_id'),links=await dump(c,'catledger_economic_event_relations','relation_id')
+        await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'income'}})),{publicCode:'VALIDATION_ERROR'})
+        const change=await input(c,1,{fields:{economicNature:'income'}})
+        await assert.rejects(c.imp('financeUpdates.setReview',change),{publicCode:'VALIDATION_ERROR'})
+        assert.deepEqual(await dump(c,'catledger_economic_events','event_id'),events)
+        assert.deepEqual(await dump(c,'catledger_economic_event_relations','relation_id'),links)
+        await c.imp('financeUpdates.setReview',{...change,requestId:randomUUID(),acknowledgedChanges:['refund']})
+        const after=await dump(c,'catledger_economic_event_relations','relation_id')
+        assert.equal(after.find(row=>row.source_event_id===change.eventId).status,'rejected')
+        assert.deepEqual(after.filter(row=>row.source_event_id!==change.eventId),links.filter(row=>row.source_event_id!==change.eventId))
+      })
+      await t.test('UE28/51 过期、已删除或跨用户原消费不能关联，失败没有部分保存',async()=>{
+        const c=await setup([40]),other=await setup([100])
+        const create=owner=>owner.api('transactions.create',{requestId:randomUUID(),type:'expense',amountMinor:'10000',sourceAccountId:owner.accounts.wallet,categoryId:owner.categories.find(row=>row.kind==='expense').id,
+          occurredLocalAt:'2026-08-15T12:00:00',timezoneOffsetMinutes:-480,note:'合成历史消费'})
+        const original=await create(c),foreign=await create(other)
+        const before=await dump(c,'catledger_economic_events','event_id')
+        for(const [id,version] of [[foreign.transactionId,1],[original.transactionId,2],[randomUUID(),1]]) {
+          await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'refund'},
+            decisions:{refund:{mode:'link',kind:'transaction',id,version}}})),{publicCode:'CONFLICT'})
+          assert.deepEqual(await dump(c,'catledger_economic_events','event_id'),before)
+        }
+        await c.api('transactions.delete',{requestId:randomUUID(),transactionId:original.transactionId,version:1})
+        await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'refund'},
+          decisions:{refund:{mode:'link',kind:'transaction',id:original.transactionId,version:1}}})),{publicCode:'CONFLICT'})
+        assert.deepEqual(await dump(c,'catledger_economic_events','event_id'),before)
+      })
+      await t.test('UE27 已有退款改金额排除自身，可靠身份复用的待入账退款不重复占额度',async()=>{
+        const c=await setup([40,10]),original=await c.api('transactions.create',{requestId:randomUUID(),type:'expense',amountMinor:'10000',sourceAccountId:c.accounts.wallet,categoryId:c.categories.find(row=>row.kind==='expense').id,
+          occurredLocalAt:'2026-08-15T12:00:00',timezoneOffsetMinutes:-480})
+        const linked=await input(c,0,{fields:{economicNature:'refund'},decisions:{refund:{mode:'link',kind:'transaction',id:original.transactionId,version:1}}})
+        await c.imp('financeUpdates.setReview',linked)
+        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{amountMinor:'5000'}}))
+        const after=await rows(c),candidate=await c.imp('economicEvents.refundCandidates',{updateId:c.update.updateId,eventId:after[1].eventId,eventVersion:after[1].version,kind:'transaction'})
+        assert.equal(candidate.items.find(row=>row.id===original.transactionId).remainingMinor,'5000')
+        // 使用同一可靠 identity 的两条真实来源关系播种复用状态，单独验累计查询；不模拟金额相似去重。
+        const formal=await c.api('transactions.create',{requestId:randomUUID(),type:'refund',amountMinor:'5000',destinationAccountId:c.accounts.wallet,
+          originalTransactionId:original.transactionId,occurredLocalAt:'2026-09-01T12:00:00',timezoneOffsetMinutes:-480})
+        await lab.owner.execute(`INSERT INTO catledger_economic_event_transactions
+          (uid,link_id,update_id,event_id,transaction_id,role,creation_method,rule_version,transaction_version)
+          VALUES (?,?,?,?,?,'historical_primary','reused','event-transaction-link-v2',1)`,[c.uid,randomUUID(),c.update.updateId,linked.eventId,formal.transactionId])
+        const reused=await c.imp('economicEvents.refundCandidates',{updateId:c.update.updateId,eventId:after[1].eventId,eventVersion:after[1].version,kind:'transaction'})
+        assert.equal(reused.items.find(row=>row.id===original.transactionId).remainingMinor,'5000')
+      })
+      await t.test('UE08/09/51 本息费明确900+80+20，缺项待核对、越权费用拒绝，保存不提前记账',async()=>{
+        const c=await setup([1000]),categoryId=(await c.api('bootstrap')).categories.find(row=>row.kind==='expense').id
+        const fields={economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.other_liability}
+        const repayment={confirmed:true,mode:'defer',assetAccountId:c.accounts.wallet,liabilityAccountId:c.accounts.other_liability,
+          principalMinor:'90000',interestMinor:'8000',feeMinor:'2000',interestTreatment:'expense',feeTreatment:'expense',interestCategoryId:categoryId,feeCategoryId:categoryId}
+        const before=await dump(c,'catledger_transactions','transaction_id')
+        const {confirmed,assetAccountId,liabilityAccountId,...draft}=repayment
+        const partial=await c.imp('financeUpdates.setReview',await input(c,0,{fields,decisions:{repayment:{mode:'review',draft:{...draft,interestMinor:null}}}}))
+        assert.equal(partial.event.status,'needs_action')
+        await assert.rejects(post(c),{publicCode:'UNRESOLVED_IMPORT'})
+        await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{decisions:{repayment:{...repayment,interestCategoryId:randomUUID()}}})),{publicCode:'VALIDATION_ERROR'})
+        await c.imp('financeUpdates.setReview',await input(c,0,{decisions:{repayment}}))
+        assert.deepEqual(await dump(c,'catledger_transactions','transaction_id'),before)
+        await post(c)
+        const tx=(await dump(c,'catledger_transactions','transaction_id')).filter(row=>row.origin==='import')
+        assert.deepEqual(tx.map(row=>[row.type,String(row.amount_minor)]).sort(),[['expense','2000'],['expense','8000'],['transfer','90000']])
+        assert.ok(tx.every(row=>row.source_account_id===c.accounts.wallet))
+        assert.equal((await c.api('loans.unassigned')).total,1)
+      })
+      await t.test('UE08 已记本息费只清偿既有收费项，入账1000不重复费用且本金只减900',async()=>{
+        const c=await setup([1000]),categoryId=(await c.api('bootstrap')).categories.find(row=>row.kind==='expense').id
+        const {plan,authorization}=require('./helpers/loan-charges')
+        const loan=await c.api('loans.create',{...plan,requestId:randomUUID(),accountId:c.accounts.other_liability,
+          baselinePrincipalMinor:'1080000',repaymentMinor:'98000',feeUpfrontMinor:'2000',
+          installmentSetup:{...plan.installmentSetup,originalPrincipalMinor:'1080000',recordType:'bank_loan'}})
+        await c.api('loans.configureCharges',{...authorization,requestId:randomUUID(),loanId:loan.loanId,version:loan.version,
+          interestCategoryId:categoryId,feeCategoryId:categoryId,upfrontChargeDate:'2026-01-01'})
+        await c.api('loans.syncCharges',{requestId:randomUUID(),loanId:loan.loanId})
+        const latest=(await c.api('loans.get',{loanId:loan.loanId})).loan,charges=(await c.api('loans.chargePlan',{loanId:loan.loanId})).items
+        const interest=charges.find(row=>row.chargeKey==='period:1:interest'),fee=charges.find(row=>row.chargeKey==='upfront:fee')
+        assert.equal(interest.amountMinor,'8000');assert.equal(fee.amountMinor,'2000')
+        const before=await dump(c,'catledger_transactions','transaction_id')
+        const decision={confirmed:true,mode:'associate',loanId:loan.loanId,loanVersion:latest.version,
+          assetAccountId:c.accounts.wallet,liabilityAccountId:c.accounts.other_liability,principalMinor:'90000',interestMinor:'8000',feeMinor:'2000',
+          interestTreatment:'accrued',feeTreatment:'accrued',chargeAllocations:[{chargeId:interest.chargeId,component:'interest',amountMinor:'8000'},
+            {chargeId:fee.chargeId,component:'fee',amountMinor:'2000'}]}
+        await assert.rejects(c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.other_liability},
+          decisions:{repayment:{...decision,chargeAllocations:[{...decision.chargeAllocations[0],chargeId:randomUUID()},decision.chargeAllocations[1]]}}})),{publicCode:'NOT_FOUND'})
+        await c.imp('financeUpdates.setReview',await input(c,0,{fields:{economicNature:'repayment',counterpartyLedgerAccountId:c.accounts.other_liability},decisions:{repayment:decision}}))
+        assert.deepEqual(await dump(c,'catledger_transactions','transaction_id'),before)
+        await post(c)
+        const after=await dump(c,'catledger_transactions','transaction_id'),created=after.filter(row=>!before.some(old=>old.transaction_id===row.transaction_id))
+        assert.deepEqual(created.map(row=>[row.type,String(row.amount_minor)]),[['transfer','100000']])
+        assert.equal((await c.api('loans.get',{loanId:loan.loanId})).loan.remainingPrincipalMinor,'990000')
+        const settled=(await c.api('loans.chargePlan',{loanId:loan.loanId})).items
+        assert.equal(settled.find(row=>row.chargeId===interest.chargeId).outstandingMinor,'0')
+        assert.equal(settled.find(row=>row.chargeId===fee.chargeId).outstandingMinor,'0')
       })
     } finally { await lab.close() }
   })

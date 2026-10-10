@@ -19,7 +19,7 @@ test('导入公共契约与事件云函数动作保持一致', function () {
     financeUpdateSetRepayment: handler, financeUpdateSetCategory: handler, financeUpdateSetReview: handler, financeUpdateReviseDuplicate: handler, financeUpdatePrepare: handler,
     financeUpdateOrganize: handler, financeUpdatePost: handler, financeUpdateUndo: handler,
     financeUpdateUndoImpact: handler, economicEventCorrect: handler,
-    economicEventCorrectionImpact: handler, economicEventEvidence: handler, economicEventDuplicateReview: handler, reviewIssueGet: handler,
+    economicEventCorrectionImpact: handler, economicEventEvidence: handler, economicEventRefundCandidates: handler, economicEventDuplicateReview: handler, reviewIssueGet: handler,
     reviewIssueList: handler, reviewIssueResolve: handler, reviewIssueResolveAccountMappings: handler,
     reviewIssueRefreshAccountGroups: handler, reviewIssueReviseAccountMapping: handler,
     reviewIssuePairings: handler, reviewIssueResolvePairings: handler
@@ -116,8 +116,8 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(markup, /class="parse-button-spinner"/)
   assert.match(markup, /template is="record-source-fields"/)
   assert.doesNotMatch(markup, /交易摘要|查看 \{\{item\.evidenceCount\}\} 条原始记录/)
-  assert.match(markup, /class="funds-route-picker funds-account-control"/)
-  assert.match(markup, /currentIssue\.issueType !== 'transfer_accounts' && !currentIssue\.aggregateRepayment/)
+  assert.match(markup, /include src="review-edit.wxml"/)
+  assert.doesNotMatch(markup, /changePaymentRow|changeIssueNature|editLoanRepayment/)
   assert.match(markup, /<view wx:if="\{\{!files.length && phase !== 'loading' && phase !== 'organizing' && !restoreUpdateId && !preparePending\}\}" data-ui="empty-picker" class="file-picker-empty">/)
   assert.match(markup, /class="file-row-side"/)
   assert.match(markup, /class="file-progress \{\{item\.state === 'preparing'/)
@@ -196,24 +196,25 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(source, /_continuousIssueType|continuousType/)
   assert.match(markup, /\{\{issue\.label\}\}/)
   assert.match(markup, /\{\{preview\.amountText\}\}/)
-  assert.match(markup, /只显示有证据支持的候选/)
-  assert.match(markup, /请选择这笔退款对应的原消费|确认退款关系/)
-  assert.match(markup, /本批没有匹配到原消费/)
-  assert.match(markup, /bindtap="markRefundPending"/)
-  assert.match(source, /resolveIssue\('mark_refund_pending'/)
+  const editorFields = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
+  assert.match(editorFields, /正在核验候选/)
+  assert.match(editorFields, /bindtap="selectEditorRefund"/)
+  assert.match(editorFields, /sheet.refundCanPending/)
+  assert.match(editorFields, /data-kind="transaction"/)
+  assert.doesNotMatch(markup, /linkRefund|markRefundPending/)
   assert.doesNotMatch(markup, /涉及 \{\{item\.memberCount\}\} 个关联对象/)
   assert.doesNotMatch(markup, /\{\{item\.amountMinor\}\} \{\{item\.currency\}\}/)
   assert.match(styles, /\.review-decision-card/)
   assert.match(styles, /\.relation-selected \{ background: var\(--ui-accent-soft/)
   // 对端名称随性质和账单方向变化，不能再要求静态“转入账户”。
-  assert.match(markup, /aria-label="\{\{'选择' \+ issueDetail\.destinationLabel\}\}"/)
+  assert.match(editorFields, /aria-label="\{\{'修改' \+ item.label\}\}"/)
   const labels = require('../miniprogram/pages/import-workbench/detail-fields').accountLabels
   assert.equal(labels({ economicNature: 'internal_transfer', sourceDirection: 'expense' }).to, '转入账户')
   assert.equal(labels({ economicNature: 'repayment', sourceDirection: 'income' }).from, '还入账户')
   assert.equal(labels({ economicNature: 'repayment', sourceDirection: 'income' }).to, '付款账户')
   assert.doesNotMatch(markup, />对方账户<\/text>/)
   assert.match(markup, /class="sheet-utility-actions"/)
-  assert.ok(markup.indexOf('保存选择') < markup.indexOf('sheet-utility-actions'))
+  assert.ok(markup.indexOf('保存本组选择') < markup.indexOf('sheet-utility-actions'))
   assert.match(styles, /\.review-editor-sheet \{[^}]*overflow: hidden/)
   assert.match(styles, /\.sheet-secondary \{[^}]*background: var\(--ui-accent-soft/)
   assert.match(styles, /\.final-summary/)

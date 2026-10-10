@@ -102,7 +102,7 @@ async function resolve(connection, uid, data, requestDigest, { updateId, issueId
       if (deleted.affectedRows !== 1) throw importError('CONFLICT')
       duplicateEvidenceDelta += 1
     }
-    const primary = channelPrimary || events.find((event) => event.eventId === primaryEventId)
+    const primary = require('../editor-fields').mergeText(channelPrimary || events.find((event) => event.eventId === primaryEventId), events)
     const next = { ...primary, fieldSources: { ...primary.fieldSources,
       mergeOrigins: channelPrimary ? channelPrimary.fieldSources.mergeOrigins : require('./merge-origins').mergeOrigins(events) },
       reasonCodes: resolvedReasons(issue.issueType, primary.reasonCodes), resolvingIssueType: issue.issueType }

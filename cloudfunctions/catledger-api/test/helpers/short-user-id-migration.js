@@ -216,6 +216,8 @@ function registerShortUserIdMigrationTests({ getPool, hasDatabase }) {
     const repeat = await applyUidMigration(pool)
     assert.equal(Number(repeat.users_migrated), 0)
     assert.deepEqual(await snapshot(pool), withMigratedUids(before, mapping))
+    // 29张历史非空表及重复迁移已完整核验；现代服务的目录版本还会读取后期空表。
+    await restoreLaterTables(pool)
     for (const previous of [user, other, existingShort]) {
       const initialized = await createUserRepository({ getPool: () => pool }).bootstrap(context(previous))
       assert.equal(initialized.uid, mapping.get(previous.uid))

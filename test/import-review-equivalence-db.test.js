@@ -15,6 +15,9 @@ test('当前分类预设下导入业务图、回执、请求量与 SQL 顺序保
   // 仅summary.viewVersion/freshness.viewRevision和event-page.viewVersion随attention.VERSION变化，更新两处响应指纹。
   // 2026-10-08人工类型确认：固定数据测得45表及14阶段响应、SQL数量保持；
   // 仅summary原查询补读manual_field_mask以保持核对/入账口径一致，更新该阶段SQL指纹。
+  // EDITOR-20261009：与6c282083固定UUID/时钟双跑，45表逐字段完全一致，14阶段SQL数量/响应字节不变。
+  // 响应仅summary及event-page的viewVersion/freshness变化；7阶段SQL因有效字段投影/贷款目录修订补读而变。
+  // 仅更新这7处SQL指纹和2处响应指纹，其他基线保持。
   const expected = require('./fixtures/import-review-baseline.json')
   assert.deepEqual(await measure(), expected)
 })

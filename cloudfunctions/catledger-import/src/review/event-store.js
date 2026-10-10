@@ -92,7 +92,7 @@ async function eventContext(connection, uid, updateId, eventId) {
   return { relations, transactionLinks }
 }
 
-async function validateEventReferences(connection, uid, event, catalog = null) {
+async function validateEventReferences(connection, uid, event, catalog = null, { forUpdate = true } = {}) {
   const fieldSources = event && event.fieldSources || {}
   const plan = eventAllocation(event)
   if (plan.kind === 'conflict') throw importError('VALIDATION_ERROR')
@@ -120,7 +120,7 @@ async function validateEventReferences(connection, uid, event, catalog = null) {
     const [accounts] = catalog ? [accountIds.map(id => catalog.accounts.get(id)).filter(Boolean)] : await connection.execute(
       `SELECT account_id AS accountId, type, currency, archived_at AS archivedAt
          FROM catledger_accounts
-        WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(', ')}) FOR UPDATE`,
+        WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(', ')})${forUpdate ? ' FOR UPDATE' : ''}`,
       [uid, ...accountIds]
     )
     if (accounts.some((account) => account.archivedAt != null || account.currency !== event.currency)) {
@@ -133,7 +133,7 @@ async function validateEventReferences(connection, uid, event, catalog = null) {
         `SELECT draft_account_id AS accountId, type, currency
            FROM catledger_finance_update_account_drafts
           WHERE uid = ? AND update_id = ?
-            AND draft_account_id IN (${draftIds.map(() => '?').join(', ')}) FOR UPDATE`,
+            AND draft_account_id IN (${draftIds.map(() => '?').join(', ')})${forUpdate ? ' FOR UPDATE' : ''}`,
         [uid, event.updateId, ...draftIds]
       )
       if (drafts.length !== draftIds.length || drafts.some((draft) => draft.currency !== event.currency)) {
@@ -261,4 +261,4 @@ async function saveEvent(connection, uid, current, next, actionId, { preserveRef
   return next
 }
 
-module.exports = { selectDomainEvents, loadReferenceCatalog, saveEvents, saveEvent }
+module.exports = { selectDomainEvents, loadReferenceCatalog, validateEventReferences, saveEvents, saveEvent }

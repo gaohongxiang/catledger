@@ -346,21 +346,10 @@ function buildIssueFieldsDraft(state) {
       ? { valid: true, fields: { categoryId: category.categoryId } }
       : invalid('请选择交易分类')
   }
-  if (!['account_mapping', 'transfer_accounts', 'shared_fields', 'field_conflict'].includes(issue.issueType)) {
-    return invalid('请先完成当前确认')
-  }
-  if (issue.repaymentOwnershipRequired) {
-    if (!['self', 'other'].includes(draft.repaymentOwner)) return invalid('请先确认是自己的账户还是替他人还款')
-    if (draft.repaymentOwner === 'other') {
-      if (!['expense', 'pending'].includes(draft.repaymentOtherTreatment)) return invalid('请选择这笔代还款如何处理')
-      return { valid: true, fields: { repaymentOwnership: { owner: 'other', treatment: draft.repaymentOtherTreatment } } }
-    }
-  }
+  if (issue.issueType !== 'account_mapping') return invalid('请从对应记录进入统一编辑器')
   const account = (state.accountChoices || [])[draft.accountIndex]
-  const missingSide = issue.issueType === 'transfer_accounts' && ['from', 'to'].includes(issue.missingFundsSide)
-    ? issue.missingFundsSide : ''
   const fields = {}
-  const accountField = missingSide === 'to' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
+  const accountField = 'ledgerAccountId'
   if (!account || account.isPlaceholder) return invalid('请选择需要确认的账户')
   if (account.accountId) {
     if (account.archived || account.archivedAt || account.unavailable) return invalid('请选择可用账户')
@@ -371,41 +360,10 @@ function buildIssueFieldsDraft(state) {
     if (!type || !type.value || Array.from(name).length < 1 || Array.from(name).length > 32) {
       return invalid('请填写 1～32 字的新账户名称并选择类型')
     }
-    fields[missingSide === 'to' ? 'counterpartyLedgerAccountDraft' : 'ledgerAccountDraft'] = {
+    fields.ledgerAccountDraft = {
       name: name, type: type.value, currency: 'CNY'
     }
   } else return invalid('请选择需要确认的账户')
-  if (issue.repaymentOwnershipRequired && draft.repaymentOwner === 'self') {
-    const type = account.accountId ? account.type : ((state.accountTypeOptions || [])[draft.accountTypeIndex] || {}).value
-    if (!['credit', 'other_liability'].includes(type)) return invalid('请选择自己的信用卡或其他负债账户')
-    fields.repaymentOwnership = { owner: 'self' }
-  }
-  if (issue.issueType === 'transfer_accounts') {
-    if (!missingSide) {
-      const target = (state.counterpartyAccountChoices || [])[draft.counterpartyAccountIndex]
-      if (!target || target.isPlaceholder || !target.accountId || target.archived || target.archivedAt || target.unavailable ||
-          fields.ledgerAccountId === target.accountId) return invalid('请选择两个不同的资金账户')
-      fields.counterpartyLedgerAccountId = target.accountId
-    } else {
-      const otherField = missingSide === 'to' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'
-      const events = (state.issueEvents || []).concat(issue.subject ? [issue.subject] : [])
-      if (account.accountId && events.some(function (event) { return event[otherField] === account.accountId })) {
-        return invalid('请选择两个不同的资金账户')
-      }
-    }
-  }
-  if (['shared_fields', 'field_conflict'].includes(issue.issueType)) {
-    const nature = (state.natureOptions || [])[draft.natureIndex]
-    if (!nature || !nature.value || nature.value === 'unknown') return invalid('请选择交易类型')
-    fields.economicNature = nature.value
-    fields.flowDirection = nature.value === 'income' || nature.value === 'refund' ? 'inflow'
-      : ['internal_transfer', 'repayment', 'borrow'].includes(nature.value) ? 'neutral' : 'outflow'
-    if (issue.installmentPrincipal) {
-      if (nature.value !== 'repayment') return invalid('这笔是本期分期本金出账，请选择“分期本金出账”')
-      fields.counterpartyLedgerAccountId = null
-      fields.categoryId = null
-    }
-  }
   return { valid: true, fields: fields }
 }
 

@@ -51,8 +51,10 @@ function runtime(data = fixture(), options = {}) {
       const issue = h.issues.find(item => item.issueId === input.issueId)
       rows = input.memberKind === 'relation' ? [] : h.events.map(event => ({ objectType: 'event', objectId: event.eventId, event, objectVersion: 1, memberRole: 'subject' }))
       extra = { issue, subject: h.events[0] }
-    } else if (action === 'financeUpdates.options') rows = input.kind === 'accounts' ? [{ accountId: 'synthetic-account', name: '合成钱包', type: 'wallet' }]
-      : input.kind === 'categories' ? [{ categoryId: 'synthetic-category', name: '合成分类', kind: 'expense' }] : []
+    } else if (action === 'financeUpdates.options') rows = input.kind === 'accounts' ? h.accounts || [{ accountId: 'synthetic-account', name: '合成钱包', type: 'wallet' }]
+      : input.kind === 'categories' ? h.categories || [{ categoryId: 'synthetic-category', name: '合成分类', kind: 'expense' }]
+      : input.kind === 'loans' ? h.loans || [] : input.kind === 'accountDrafts' ? h.accountDrafts || [] : []
+    else if (action === 'economicEvents.refundCandidates') rows = h.refundCandidates?.[input.kind] || []
     else if (action === 'economicEvents.evidence') rows = Array.from({ length: 17 }, (_, index) => ({ evidenceId: 'synthetic-evidence-' + index, detailRequired: true, fileName: '合成账单.csv', rowNumber: index + 1 }))
     else if (action === 'economicEvents.detail') {
       if (!input.evidenceId) {
@@ -60,11 +62,16 @@ function runtime(data = fixture(), options = {}) {
         const editorFacts = row && require('../../cloudfunctions/catledger-import/src/review/editor-policy').capability({
           ...row, fieldSources: { ...(row.fieldSources || {}), ...(row.installment ? { installment: row.installment } : {}),
           ...(row.paymentResolution ? { paymentResolution: row.paymentResolution } : {}) }, timezoneOffsetMinutes: -480 })
-        return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: JSON.stringify({ ...row, editorFacts }), nextCursor: null }
+        const related = h.issues.filter(issue => issue.status === 'open' &&
+          (issue.subject?.eventId === row?.eventId || (issue.subjectEventIds || []).includes(row?.eventId)))
+        const attention = require('../../cloudfunctions/catledger-import/src/review-attention').reviewAttention(row, related)
+        return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: JSON.stringify({ ...row, ...attention, editorFacts }), nextCursor: null }
       }
       const index = Number(input.cursor || 0)
       return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: '合成原文😀'.repeat(200), nextCursor: index < 20 ? String(index + 1) : null }
     } else throw new Error('unexpected action ' + action)
+    if (input.query && action === 'financeUpdates.options') rows = rows.filter(row => String(row.name || '').includes(input.query))
+    if (input.categoryKind) rows = rows.filter(row => row.kind === input.categoryKind)
     const start = Number(input.cursor || 0), size = input.pageSize || 40
     const result = { protocolVersion: 2, viewVersion: h.summary.viewVersion, update: h.summary.update,
       items: rows.slice(start, start + size), total: rows.length, nextCursor: start + size < rows.length ? String(start + size) : null, ...extra }
@@ -82,7 +89,7 @@ function runtime(data = fixture(), options = {}) {
         return () => { if (active) { active = false; h.activeSubscriptions--; off() } }
       }
     } return session } }
-  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key), showToast() {}, pageScrollTo() {}, nextTick: setImmediate }
+  const wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key), showToast() {}, showModal(options) { h.modal = options; options.success({ confirm: true }) }, pageScrollTo() {}, nextTick: setImmediate }
   h.wx = wx
   const root = path.join(__dirname, '../../miniprogram')
   function load(filename) {

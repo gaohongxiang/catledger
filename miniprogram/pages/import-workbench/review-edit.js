@@ -29,13 +29,13 @@ function refresh(page) {
   const labels = view.accountFields
   const { payload, ...visibleEditor } = view
   const { dirty, dormant, acknowledgedChanges, ...visibleDraft } = token.draft
-  setChangedData(page, { 'reviewEditSheet.draft': visibleDraft, 'reviewEditSheet.editor': visibleEditor,
-    'reviewEditSheet.economicNature': token.draft.economicNature,
-    'reviewEditSheet.ledgerAccountId': token.draft.ledgerAccountId, 'reviewEditSheet.counterpartyLedgerAccountId': token.draft.counterpartyLedgerAccountId,
-    'reviewEditSheet.accountLabel': labels.find(field => field.key === 'account')?.label || '资金账户',
-    'reviewEditSheet.destinationLabel': labels.find(field => field.key === 'counterparty')?.label || '资金账户',
-    'reviewEditSheet.accountFields': labels, 'reviewEditSheet.hasDestination': labels.length === 2,
-    'reviewEditSheet.canSave': view.canSave, 'reviewEditSheet.error': '' })
+  setChangedData(page, { reviewEditSheet: { ...page.data.reviewEditSheet, draft: visibleDraft, editor: visibleEditor,
+    economicNature: token.draft.economicNature,
+    ledgerAccountId: token.draft.ledgerAccountId, counterpartyLedgerAccountId: token.draft.counterpartyLedgerAccountId,
+    accountLabel: labels.find(field => field.key === 'account')?.label || '资金账户',
+    destinationLabel: labels.find(field => field.key === 'counterparty')?.label || '资金账户',
+    accountFields: labels, hasDestination: labels.length === 2,
+    canSave: view.canSave, error: '' } })
 }
 function update(page, key, value) {
   const token = page._reviewEditToken
@@ -43,7 +43,7 @@ function update(page, key, value) {
   const next = model.change(token.row, token.draft, key, value)
   if (next === token.draft) return
   token.draft = next; token.editVersion = (token.editVersion || 0) + 1
-  if (['economicNature','amountInput','date','time'].includes(key)) {
+  if (['economicNature','amountInput','date','time','ledgerAccountId','counterpartyLedgerAccountId'].includes(key)) {
     token.refundEpoch = (token.refundEpoch || 0) + 1; token.refundChecked = {}; token.refundOptions = []; token.refundCursor = null
     token.draft.refund = null
     page.setData({ 'reviewEditSheet.refundChoices': [], 'reviewEditSheet.refundLoading': false, 'reviewEditSheet.refundCanPending': false, 'reviewEditSheet.refundTotal': null, 'reviewEditSheet.refundError': '' })
@@ -104,18 +104,15 @@ module.exports = {
       token.row = row
       const packet = packetFor(this, eventId)
       token.payload = packet && packet.payload
-      token.draft = model.create(row)
-      if (packet) {
-        const fields = packet.payload.fields || {}
-        for (const key of ['economicNature','ledgerAccountId','counterpartyLedgerAccountId','categoryId','counterparty','note']) if (key in fields) token.draft[key] = fields[key] || ''
-        if (fields.amountMinor) token.draft.amountInput = model.yuan(fields.amountMinor)
-      }
+      token.draft = packet ? model.restore(row, packet.payload) : model.create(row)
       for (const item of [].concat(this.data.accounts || [], this.data.accountDrafts || [], row.detailFacts?.accounts || [])) token.accounts.set(item.accountId, item)
       for (const item of [].concat(this.data.categories || [], row.detailFacts?.categories || [])) token.categories.set(item.categoryId, item)
       if (row.categoryId && row.categoryName) token.categories.set(row.categoryId, { categoryId: row.categoryId, name: row.categoryName, kind: model.categoryKind(row.economicNature) })
       this.setData({ 'reviewEditSheet.record': record(row), 'reviewEditSheet.loading': false,
         'reviewEditSheet.pending': Boolean(packet), 'reviewEditSheet.issue': row.pendingIssue || null,
-        'reviewEditSheet.attention': row.reviewAttention?.steps || [],
+        'reviewEditSheet.groupReview': Boolean(row.pendingIssue && (['same_event','identity_conflict','field_conflict','installment_origin'].includes(row.pendingIssue.issueType) ||
+          ['row_status_unknown','transaction_status_unknown','source_profile_unknown','identity_review_required','row_semantic_conflict','refund_source_conflict','account_mapping_conflict'].includes(row.pendingIssue.primaryReasonCode))),
+        'reviewEditSheet.attention': (row.reviewAttention?.steps || []).filter(step => row.status !== 'ready' || step.key !== 'review'),
         'reviewEditSheet.originalRefund': row.detailFacts?.refund || null, 'reviewEditSheet.loanName': row.detailFacts?.loan?.name || '',
         'reviewEditSheet.sourceFields': require('./detail-fields').fieldsFor(row, {}, { omit: ['nature','amount','time','party','account','counterparty','category','note'] }) })
       refresh(this)
@@ -212,15 +209,16 @@ module.exports = {
     if (!editable(this, token) || !token.view.refund || token.view.errors.length || model.minor(token.draft.amountInput) == null || !token.draft.date || !token.draft.time) return
     const kind = event?.currentTarget?.dataset?.kind || this.data.reviewEditSheet.refundKind || 'event'
     const more = event?.currentTarget?.dataset?.more
-    const fingerprint = JSON.stringify([token.draft.economicNature, token.draft.amountInput, token.draft.date, token.draft.time])
+    const fingerprintOf = () => JSON.stringify([token.draft.economicNature, token.draft.amountInput, token.draft.date, token.draft.time, token.draft.ledgerAccountId])
+    const fingerprint = fingerprintOf()
     const epoch = token.refundEpoch = (token.refundEpoch || 0) + 1
-    const active = () => editable(this, token) && token.refundEpoch === epoch && fingerprint === JSON.stringify([
-      token.draft.economicNature, token.draft.amountInput, token.draft.date, token.draft.time])
+    const active = () => editable(this, token) && token.refundEpoch === epoch && fingerprint === fingerprintOf()
+    token.refundOptions = []
     this.setData({ 'reviewEditSheet.refundKind': kind, 'reviewEditSheet.refundLoading': true, 'reviewEditSheet.refundError': '' })
     try {
       const fields = { amountMinor: model.minor(token.draft.amountInput), occurredLocalAt: token.draft.date + ' ' + token.draft.time,
-        timezoneOffsetMinutes: token.row.editorFacts.timezoneOffsetMinutes }
-      const result = await token.session.read('economicEvents.refundCandidates', { eventId: token.eventId, kind, fields,
+        timezoneOffsetMinutes: token.row.editorFacts.timezoneOffsetMinutes, ledgerAccountId: token.draft.ledgerAccountId || null }
+      const result = await token.session.read('economicEvents.refundCandidates', { eventId: token.eventId, eventVersion: token.row.version, kind, fields,
         cursor: more ? token.refundCursor : null, pageSize: 12 }, active)
       if (!active()) return
       token.refundCursor = result.nextCursor
@@ -228,7 +226,8 @@ module.exports = {
       token.refundChecked = { ...(token.refundChecked || {}), [kind]: result.total }
       this.setData({ 'reviewEditSheet.refundChoices': result.items.map(item => ({ ...item, amountText: '¥' + model.yuan(item.remainingMinor) })),
         'reviewEditSheet.refundTotal': result.total, 'reviewEditSheet.refundMore': Boolean(result.nextCursor),
-        'reviewEditSheet.refundCanPending': token.refundChecked.event === 0 && token.refundChecked.transaction === 0,
+        'reviewEditSheet.refundCanPending': token.refundChecked.event === 0 && token.refundChecked.transaction === 0 &&
+          !token.row.refundSourceConflict && !(token.row.editorFacts.blockingReasons || []).length,
         'reviewEditSheet.refundLoading': false })
     } catch (error) { if (active()) this.setData({ 'reviewEditSheet.refundLoading': false, 'reviewEditSheet.refundError': errorText(error) }) }
   },
@@ -316,7 +315,24 @@ module.exports = {
   async refreshReviewEdit() {
     const token = this._reviewEditToken
     if (!current(this, token) || this.data.reviewEditSheet.saving) return
-    if (!token.receipt) { this.closeReviewEdit(); this.closeReviewDetails(); return this.retryPagedView() }
+    if (!token.receipt) {
+      const draft = token.draft
+      this.setData({ 'reviewEditSheet.saving': true })
+      try {
+        const summary = await api.readSummary(token.session.summary.update.updateId)
+        if (!current(this, token)) return
+        this._reviewEditToken = null; this._reviewDetailToken = null
+        this.setData({ reviewEditSheet: null, reviewDetailSheet: null })
+        await this.applyUpdateView(summary, false, false, false, true)
+        await this.openReviewEdit({ currentTarget: { dataset: { id: token.eventId } } })
+        const fresh = this._reviewEditToken
+        if (!fresh || fresh.eventId !== token.eventId || !editable(this, fresh)) return
+        fresh.draft = draft; fresh.editVersion = (token.editVersion || 0) + 1
+        refresh(this)
+        this.setData({ 'reviewEditSheet.error': '已读取最新记录，输入仍保留，请核验后保存' })
+      } catch (error) { if (current(this, token)) this.setData({ 'reviewEditSheet.saving': false, 'reviewEditSheet.error': errorText(error) }) }
+      return
+    }
     this.setData({ 'reviewEditSheet.saving': true })
     try {
       const summary = await api.readSummary(token.receipt.update.updateId)
@@ -324,7 +340,7 @@ module.exports = {
       this._reviewEditToken = null; this._reviewDetailToken = null; this._pendingBackgroundView = null
       this.setData({ reviewEditSheet: null, reviewDetailSheet: null })
       await this.applyUpdateView(summary, false, false, false, true)
-      wx.showToast({ title: '本笔修改已保存', icon: 'none' })
+      wx.showToast({ title: token.receipt.event?.status === 'needs_action' ? '已保存，仍有待核对事项' : '本笔修改已保存', icon: 'none' })
     } catch (_) { if (current(this, token)) this.setData({ 'reviewEditSheet.saving': false, 'reviewEditSheet.error': '修改已保存，列表暂未刷新，请重试刷新' }) }
   },
   async saveReviewEdit() {

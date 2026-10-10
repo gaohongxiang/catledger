@@ -18,6 +18,7 @@ function operationReceipt(result, action, receiptId) {
     updateId: update.updateId, appliedVersion: update.version, status: update.status,
     counts: update.counts, update, posting: result.posting || null,
     ...(result.pairing ? { pairing: result.pairing } : {}),
+    ...(result.event ? { event: { eventId: result.event.eventId, version: result.event.version, status: result.event.status } } : {}),
     invalidates: ['summary', 'events', 'issues', 'members', 'options', 'evidence'].concat(result.pairing ? ['pairings'] : []) }, 'receipt')
 }
 module.exports = { commandResult, operationReceipt }

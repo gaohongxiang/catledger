@@ -43,7 +43,7 @@ for (const [sourceType, economicNature] of [['wechat', 'unknown'], ['alipay', 'i
     const data = channelFixture(2, sourceType, economicNature), h = runtime(data), page = h.page
     page.setData({ currentIssue: model.issueView(data.issues[0]), currentMembers: data.events.map(event => ({ event })),
       'issueDraft.primaryEventId': 'synthetic-event-1' })
-    page.confirmSame()
+    await page.confirmSame()
     assert.equal(page._draftSession.state.entries.length, 0)
     assert.equal(page.data.issueDraft.primaryEventId, 'synthetic-event-1')
     assert.match(page.data.errorMessage, /微信或支付宝.*支出或退款/)
@@ -58,7 +58,7 @@ test('银行渠道多候选必须选具体边，关闭后保留未提交的跨�
   await page.openIssue(tap('synthetic-issue'))
   assert.equal(page.data.currentIssue, null)
   assert.equal(page.data.pairingSelectedCount, 0)
-  page.confirmSame()
+  await page.confirmSame()
   assert.equal(page._draftSession.state.entries.length, 0)
   page.selectPairing(choosePair('pair-a', 'same'))
   await page.changePairingPage({ currentTarget: { dataset: { direction: 1 } } })
@@ -90,7 +90,7 @@ test('其他同笔问题保持原有主记录默认选择', async () => {
   assert.equal(page.data.issueDraft.primaryEventId, 'synthetic-event-0')
   assert.equal(page.data.issueEvents.length, 1)
   assert.equal(page.data.currentIssue.canConfirmSame, true)
-  page.confirmSame()
+  await page.confirmSame()
   assert.equal(page._draftSession.state.entries[0].decision.primaryEventId, 'synthetic-event-0')
   page.onUnload()
 })

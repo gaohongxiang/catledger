@@ -139,6 +139,10 @@ test('不完整本息费保留明确零值；不把错误输入悄悄当零或�
   assert.equal(next.fieldSources.loanRepayment.mode,'review');assert.equal(next.fieldSources.editorOverrides.incompleteRepayment.feeMinor,'0')
   assert.equal(evaluatePostability(next).status,'needs_action')
   const bad=change(row,[['repaymentMode','loan'],['principalInput','90x']]);assert.equal(bad.canSave,false)
+  assert.match(bad.fieldErrors.repayment,/格式不正确/)
+  const over=change(row,[['repaymentMode','loan'],['principalInput','110'],['interestInput',''],['feeInput','0']])
+  assert.equal(over.canSave,false);assert.match(over.fieldErrors.repayment,/超过付款总额/)
+  invalid(()=>prepare(row,over.payload))
 })
 test('合并唯一人工文本含显式清空；两个冲突值不静默选主记录', () => {
   const primary=base(), secondary=prepare(base(),{fields:{note:'',counterparty:'合成修改对方'}})
@@ -157,6 +161,21 @@ test('退款候选 SQL 仅绑定查询，历史累计包含未入账引用，不
   }
 })
 const tap=(data)=>({currentTarget:{dataset:data}})
+test('UE47 旧服务无 editorFacts 时只读，不能通过输入或保存伪造编辑成功',async()=>{
+  const h=runtime(fixture(1,true)),page=h.page
+  h.intercept=(action,input)=>action==='economicEvents.detail'&&!input.evidenceId
+    ? {protocolVersion:2,viewVersion:h.summary.viewVersion,part:JSON.stringify(h.events[0]),nextCursor:null}:undefined
+  await page.openReviewEdit(tap({id:h.events[0].eventId}))
+  const before=JSON.stringify(page.data.reviewEditSheet.draft)
+  assert.equal(page.data.reviewEditSheet.editor.supported,false)
+  assert.match(page.data.reviewEditSheet.editor.readonlyReason,/更新导入服务/)
+  page.changeEditorText({currentTarget:{dataset:{field:'note'}},detail:{value:'不应提交'}})
+  await page.saveReviewEdit()
+  assert.equal(JSON.stringify(page.data.reviewEditSheet.draft),before)
+  assert.equal(page.data.reviewEditSheet.canSave,false)
+  assert.equal(h.calls.some(call=>call.action==='financeUpdates.setReview'),false)
+  page.onUnload()
+})
 test('真实 Page：点同组第二笔只打开第二笔，已填值可改且只保存本笔',async()=>{
   const h=runtime(fixture(2,true)),page=h.page
   await page.setStep({currentStep:3})
@@ -193,4 +212,80 @@ test('隐藏本息费不随多账户模式提交；缺账户的组成保留合�
   assert.equal(split.showLoan, false)
   assert.ok(split.accountFields.find(field => field.label === '还入账户').allowedTypes.includes('credit'))
   assert.equal(split.payload.decisions && split.payload.decisions.repayment, undefined)
+})
+
+test('UE24 资金结构往返保留各自账户和分配；代还仅提交当前单端', () => {
+  const row = publicRow(base('repayment', { counterpartyLedgerAccountId: credit.accountId }))
+  let draft = model.create(row)
+  draft = model.change(row, draft, 'composition', 'payment')
+  draft = model.change(row, draft, 'parts', [{ accountId: wallet.accountId, amountInput: '30' }, { accountId: bank.accountId, amountInput: '70' }])
+  draft = model.change(row, draft, 'evidenceNote', '合成分配')
+  draft = model.change(row, draft, 'composition', 'single')
+  assert.equal(draft.ledgerAccountId, wallet.accountId); assert.equal(draft.counterpartyLedgerAccountId, credit.accountId)
+  draft = model.change(row, draft, 'composition', 'payment')
+  assert.deepEqual(draft.parts.map(part => part.amountInput), ['30','70'])
+  draft = model.change(row, draft, 'owner', 'other')
+  draft = model.change(row, draft, 'otherTreatment', 'expense')
+  const other = model.derive(row, draft, catalog)
+  assert.equal(other.showComposition, false); assert.equal(other.payload.composition?.parts, undefined)
+  assert.equal(other.payload.decisions.repayment, undefined)
+  draft = model.change(row, draft, 'owner', 'self')
+  assert.equal(draft.composition, 'payment'); assert.equal(draft.parts[1].accountId, bank.accountId)
+})
+
+test('UE10 贷款延后关联不提交隐藏计划和分类，切回恢复输入', () => {
+  const row = publicRow(base('repayment', { counterpartyLedgerAccountId: debt.accountId }))
+  let draft = model.create(row)
+  for (const [key, value] of [['repaymentMode','loan'], ['loanMode','associate'], ['loanId',randomUUID()],
+    ['loanVersion',2], ['principalInput','90'], ['interestInput',''], ['interestCategoryId',randomUUID()], ['interestTreatment','accrued'], ['feeInput','0'], ['loanMode','defer']]) draft = model.change(row, draft, key, value)
+  const saved = model.derive(row, draft, catalog).payload.decisions.repayment.draft
+  assert.equal(saved.loanId, null); assert.equal(saved.loanVersion, null); assert.equal(saved.interestCategoryId, null)
+  const selected = draft.loanId
+  draft = model.change(row, draft, 'loanMode', 'associate')
+  assert.equal(draft.loanId, selected); assert.equal(draft.principalInput, '90')
+})
+
+test('UE41 冻结请求恢复完整金额、时间、组成、贷款和明确清空值', () => {
+  const row = publicRow(base())
+  const restored = model.restore(row, { fields: { economicNature: 'repayment', amountMinor: '0', occurredLocalAt: null, note: '', counterparty: '', ledgerAccountId: null },
+    composition: { kind: 'repayment', parts: [{ accountId: credit.accountId, amountMinor: null }], incomplete: true },
+    decisions: { repayment: { mode: 'review', draft: { mode: 'associate', loanId: debt.accountId, loanVersion: 2, principalMinor: null, interestMinor: '0', feeMinor: null, chargeAllocations: [] } } } })
+  assert.equal(restored.amountInput, '0.00'); assert.equal(restored.date, ''); assert.equal(restored.time, '')
+  assert.equal(restored.note, ''); assert.equal(restored.counterparty, ''); assert.equal(restored.ledgerAccountId, '')
+  assert.equal(restored.parts[0].amountInput, ''); assert.equal(restored.loanVersion, 2)
+  assert.equal(restored.principalInput, ''); assert.equal(restored.interestInput, '0.00')
+})
+
+test('UE40 真实 Page 过期后重读保留完整草稿，必须人工再次保存', async () => {
+  const h = runtime(fixture(1, true)), page = h.page
+  await page.openReviewEdit(tap({ id: h.events[0].eventId }))
+  for (const [field, value] of [['note',''], ['amountInput','23.45'], ['time','10:23:59']]) page.changeEditorText({ currentTarget: { dataset: { field } }, detail: { value } })
+  const originalDraft = JSON.stringify(page._reviewEditToken.draft)
+  page.invalidateReviewEdit()
+  h.summary = { ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }
+  h.events[0].version = 2
+  await page.refreshReviewEdit()
+  assert.equal(JSON.stringify(page._reviewEditToken.draft), originalDraft)
+  assert.equal(page._reviewEditToken.row.version, 2)
+  assert.equal(page.data.reviewEditSheet.stale, false)
+  assert.match(page.data.reviewEditSheet.error, /输入仍保留/)
+  assert.equal(h.calls.some(call => call.action === 'financeUpdates.setReview'), false)
+  page.onUnload()
+})
+
+test('UE25 真实 Page 候选总数、失败与两范围检查共同决定暂记资格', async () => {
+  const data = fixture(1, true); data.events[0].economicNature = 'refund'
+  const h = runtime(data), page = h.page
+  await page.openReviewEdit(tap({ id: h.events[0].eventId }))
+  await page.loadEditorRefunds(tap({ kind: 'event' }))
+  assert.equal(page.data.reviewEditSheet.refundCanPending, false)
+  h.intercept = action => { if (action === 'economicEvents.refundCandidates') throw Error('合成候选失败') }
+  await page.loadEditorRefunds(tap({ kind: 'transaction' }))
+  assert.equal(page.data.reviewEditSheet.refundCanPending, false)
+  h.intercept = null
+  await page.loadEditorRefunds(tap({ kind: 'transaction' }))
+  assert.equal(page.data.reviewEditSheet.refundCanPending, true)
+  page.selectEditorRefund(tap({ mode: 'pending' }))
+  assert.equal(page._reviewEditToken.view.payload.decisions.refund.mode, 'pending')
+  page.onUnload()
 })

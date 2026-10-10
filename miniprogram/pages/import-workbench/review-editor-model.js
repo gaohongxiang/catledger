@@ -66,9 +66,11 @@ function change(row, draft, key, value) {
   if (key === 'owner') {
     if (value === 'other') {
       const labels = detail.accountLabels({ ...row, economicNature: 'repayment', editorComposition: draft.composition })
-      next.dormant.selfAccounts = { ledgerAccountId: draft.ledgerAccountId, counterpartyLedgerAccountId: draft.counterpartyLedgerAccountId }
-      next.ledgerAccountId = labels.reverse ? draft.counterpartyLedgerAccountId : draft.ledgerAccountId
+      next.dormant.selfAccounts = { ledgerAccountId: draft.ledgerAccountId, counterpartyLedgerAccountId: draft.counterpartyLedgerAccountId,
+        composition: draft.composition, parts: draft.parts }
+      next.ledgerAccountId = draft.composition === 'payment' ? '' : labels.reverse ? draft.counterpartyLedgerAccountId : draft.ledgerAccountId
       next.counterpartyLedgerAccountId = ''
+      next.composition = 'single'; next.parts = []
     } else if (next.dormant.selfAccounts) Object.assign(next, next.dormant.selfAccounts)
     else if (row.sourceDirection === 'income' && draft.composition === 'single') {
       next.ledgerAccountId = ''; next.counterpartyLedgerAccountId = draft.ledgerAccountId
@@ -78,6 +80,7 @@ function change(row, draft, key, value) {
     if (!['single', 'payment', 'repayment'].includes(value) || value === 'repayment' && draft.economicNature !== 'repayment' ||
       value === 'payment' && !['expense','repayment'].includes(draft.economicNature) || detail.principalOf(row)) return draft
     next.dormant[draft.composition + 'Parts'] = draft.parts
+    next.dormant[draft.composition + 'Accounts'] = { ledgerAccountId: draft.ledgerAccountId, counterpartyLedgerAccountId: draft.counterpartyLedgerAccountId }
     next.parts = next.dormant[value + 'Parts'] || Array.from({ length: value === 'payment' ? 2 : value === 'repayment' ? 1 : 0 }, (_, index) => ({ accountId: '', amountInput: '', componentIndex: index }))
     const reverse = draft.composition === 'single' && MOVEMENTS.includes(draft.economicNature) && row.sourceDirection === 'income'
     const from = reverse ? draft.counterpartyLedgerAccountId : draft.ledgerAccountId
@@ -85,6 +88,7 @@ function change(row, draft, key, value) {
     const nextReverse = value === 'single' && MOVEMENTS.includes(draft.economicNature) && row.sourceDirection === 'income'
     next.ledgerAccountId = nextReverse ? to : value === 'payment' || value === 'single' ? '' : from
     next.counterpartyLedgerAccountId = nextReverse ? '' : value === 'repayment' ? '' : to
+    if (next.dormant[value + 'Accounts']) Object.assign(next, next.dormant[value + 'Accounts'])
   }
   next[key] = value
   return next
@@ -93,7 +97,7 @@ function accountFields(row, draft, catalog) {
   const other = draft.economicNature === 'repayment' && draft.owner === 'other'
   const projected = { ...row, economicNature: other ? 'expense' : draft.economicNature,
     ledgerAccountId: draft.ledgerAccountId, counterpartyLedgerAccountId: draft.counterpartyLedgerAccountId, editorComposition: draft.composition }
-  const loan = draft.economicNature === 'repayment' && draft.repaymentMode === 'loan'
+  const loan = draft.economicNature === 'repayment' && !other && draft.composition === 'single' && draft.repaymentMode === 'loan'
   return detail.accountFields(projected).map(field => {
     let allowedTypes = null
     if (other || field.label === '付款账户' && draft.economicNature === 'repayment' || field.label === '到账账户') allowedTypes = ASSETS
@@ -106,29 +110,33 @@ function accountFields(row, draft, catalog) {
   })
 }
 function derive(row, draft, catalogs = {}) {
-  const errors = [], missing = [], accounts = catalogs.accounts || [], categories = catalogs.categories || []
+  const errors = [], missing = [], fieldErrors = {}, accounts = catalogs.accounts || [], categories = catalogs.categories || []
+  const invalid = (field, message) => {
+    errors.push(message)
+    if (!(fieldErrors[field] || '').includes(message)) fieldErrors[field] = [fieldErrors[field], message].filter(Boolean).join('；')
+  }
   const facts = row.editorFacts, supported = Boolean(facts && facts.version === 1 && !facts.readonly)
   const other = draft.economicNature === 'repayment' && draft.owner === 'other'
   const effectiveNature = other ? draft.otherTreatment === 'expense' ? 'expense' : 'unknown' : draft.economicNature
   const principal = detail.principalOf(row)
   const amount = minor(draft.amountInput)
   if (!draft.amountInput.trim()) missing.push('记账金额')
-  else if (amount == null) errors.push('金额需为非负数字，最多两位小数，且不超过账本范围')
+  else if (amount == null) invalid('amountInput', '金额需为非负数字，最多两位小数，且不超过账本范围')
   const localAt = draft.date && draft.time ? draft.date + ' ' + draft.time : ''
   if (!localAt) missing.push('交易时间')
   else {
     const date = new Date(localAt.replace(' ', 'T') + 'Z')
     if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(localAt) || !Number.isFinite(date.getTime()) ||
-      date.toISOString().slice(0, 19) !== localAt.replace(' ', 'T') || Number(draft.date.slice(0, 4)) < 1000) errors.push('请输入有效日期和时分秒')
+      date.toISOString().slice(0, 19) !== localAt.replace(' ', 'T') || Number(draft.date.slice(0, 4)) < 1000) invalid('time', '请输入有效日期和时分秒')
   }
   if (effectiveNature === 'unknown') missing.push('交易性质')
   const fields = accountFields(row, draft, accounts)
   const routeFields = draft.composition === 'single' ? fields : fields.filter(field => draft.composition === 'payment' ? field.key === 'counterparty' : field.key === 'account')
   for (const field of routeFields) {
     if (!field.accountId) missing.push(field.label)
-    if (field.invalid) errors.push(field.label + '的账户不可用或类型不符')
+    if (field.invalid) invalid('funds', field.label + '的账户不可用或类型不符')
   }
-  if (fields.length === 2 && fields[0].accountId && fields[0].accountId === fields[1].accountId) errors.push('两个资金账户必须不同')
+  if (fields.length === 2 && fields[0].accountId && fields[0].accountId === fields[1].accountId) invalid('funds', '两个资金账户必须不同')
   const output = {}, original = create(row)
   const put = (key, value, before) => { if (value !== before) output[key] = value }
   if (draft.dirty.economicNature || effectiveNature !== row.economicNature || (row.reasonCodes || []).includes('row_transaction_type_unknown') && effectiveNature !== 'unknown') output.economicNature = effectiveNature
@@ -137,17 +145,17 @@ function derive(row, draft, catalogs = {}) {
   if (amount != null || draft.dirty.amountInput && !draft.amountInput.trim()) put('amountMinor', amount, row.amountMinor == null ? null : String(row.amountMinor))
   if (localAt && localAt !== String(row.localAt || '').slice(0, 19)) {
     output.occurredLocalAt = localAt; output.timezoneOffsetMinutes = facts && facts.timezoneOffsetMinutes
-    if (!Number.isInteger(output.timezoneOffsetMinutes)) errors.push('原账单时区尚未读取，暂不能修改时间')
+    if (!Number.isInteger(output.timezoneOffsetMinutes)) invalid('time', '原账单时区尚未读取，暂不能修改时间')
   }
   if (!localAt && (draft.dirty.date || draft.dirty.time)) output.occurredLocalAt = null
   for (const key of ['counterparty', 'note']) if (draft.dirty[key]) {
-    if (Array.from(draft[key]).length > 200) errors.push('记账文本最多 200 字')
+    if (Array.from(draft[key]).length > 200) invalid(key, '记账文本最多 200 字')
     output[key] = draft[key]
   }
   const category = categoryKind(effectiveNature) ? draft.categoryId || null : null
   put('categoryId', category, row.categoryId || null)
   const selectedCategory = categories.find(item => item.categoryId === category)
-  if (selectedCategory && selectedCategory.kind !== categoryKind(effectiveNature)) errors.push('分类与交易性质不符')
+  if (selectedCategory && (selectedCategory.archivedAt || selectedCategory.unavailable || selectedCategory.kind !== categoryKind(effectiveNature))) invalid('categoryId', '分类不可用或与交易性质不符')
   if (row.pendingIssue && ['account_mapping','transfer_accounts'].includes(row.pendingIssue.issueType)) {
     if (draft.ledgerAccountId) output.ledgerAccountId = draft.ledgerAccountId
     if (draft.counterpartyLedgerAccountId) output.counterpartyLedgerAccountId = draft.counterpartyLedgerAccountId
@@ -164,43 +172,45 @@ function derive(row, draft, catalogs = {}) {
     let sum = 0n, partial = false
     for (const part of draft.parts) {
       if (!part.accountId || minor(part.amountInput) == null) partial = true
-      if (part.amountInput && minor(part.amountInput) == null) errors.push('分配金额格式不正确')
-      if (draft.composition === 'repayment' && minor(part.amountInput) === '0') errors.push('还入账户分配需大于零')
+      if (part.amountInput && minor(part.amountInput) == null) invalid('composition', '分配金额格式不正确')
+      if (draft.composition === 'repayment' && minor(part.amountInput) === '0') invalid('composition', '还入账户分配需大于零')
       if (minor(part.amountInput) != null) sum += BigInt(minor(part.amountInput))
       const account = accounts.find(item => item.accountId === part.accountId)
       const allowed = draft.composition === 'repayment' ? DEBTS : draft.economicNature === 'repayment' ? ASSETS : null
-      if (account && (account.archivedAt || allowed && !allowed.includes(account.type))) errors.push('分配账户不可用或类型不符')
-      if (part.accountId && routeFields.some(field => field.accountId === part.accountId)) errors.push('付出和收到的账户必须不同')
+      if (account && (account.archivedAt || allowed && !allowed.includes(account.type))) invalid('composition', '分配账户不可用或类型不符')
+      if (part.accountId && routeFields.some(field => field.accountId === part.accountId)) invalid('composition', '付出和收到的账户必须不同')
     }
-    if (amount != null && sum > BigInt(amount)) errors.push('分配金额超出总额')
-    if (new Set(draft.parts.map(part => part.accountId).filter(Boolean)).size < draft.parts.filter(part => part.accountId).length) errors.push('分配账户不能重复')
+    if (amount != null && sum > BigInt(amount)) invalid('composition', '分配金额超出总额')
+    if (new Set(draft.parts.map(part => part.accountId).filter(Boolean)).size < draft.parts.filter(part => part.accountId).length) invalid('composition', '分配账户不能重复')
     const incomplete = partial || amount == null || sum !== BigInt(amount) || draft.parts.length < (draft.composition === 'payment' ? 2 : 1) ||
       draft.composition === 'payment' && (!draft.evidenceNote.trim() || effectiveNature === 'unknown' || effectiveNature === 'repayment' && !draft.counterpartyLedgerAccountId)
     if (incomplete) missing.push('资金分配')
     composition = { kind: draft.composition, parts: draft.parts.map(part => ({ accountId: part.accountId || null, amountMinor: minor(part.amountInput) })),
       evidenceNote: draft.evidenceNote, incomplete: Boolean(incomplete) }
-  } else if (draft.dirty.composition) {
+  } else if (draft.dirty.composition || draft.composition !== original.composition) {
     composition = { kind: 'single', evidenceNote: draft.evidenceNote }
-    if (original.composition !== 'single' && !draft.evidenceNote.trim()) errors.push('请说明为何改为单账户资金交易')
+    if (original.composition !== 'single' && !draft.evidenceNote.trim()) invalid('evidenceNote', '请说明为何改为单账户资金交易')
   }
   if (draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single' && draft.repaymentMode === 'loan') {
     const chargeAllocations = draft.loanMode === 'associate' ? draft.chargeAllocations.map(part => {
       const value = minor(part.amountInput == null ? yuan(part.amountMinor) : part.amountInput)
-      if (value == null || value === '0') errors.push('费用清偿金额需为大于零的有效金额')
+      if (value == null || value === '0') invalid('repayment', '费用清偿金额需为大于零的有效金额')
       return { chargeId: part.chargeId, component: part.component, amountMinor: value }
     }) : []
-    for (const key of ['principal', 'interest', 'fee']) if (draft[key + 'Input'].trim() && minor(draft[key + 'Input']) == null) errors.push('本息费金额格式不正确')
+    for (const key of ['principal', 'interest', 'fee']) if (draft[key + 'Input'].trim() && minor(draft[key + 'Input']) == null) invalid('repayment', '本息费金额格式不正确')
     const values = ['principal', 'interest', 'fee'].map(key => minor(draft[key + 'Input']))
+    if (amount != null && values.filter(value => value != null).reduce((sum, value) => sum + BigInt(value), 0n) > BigInt(amount)) invalid('repayment', '已填本息费不能超过付款总额')
     const incompleteLoan = values.some(value => value == null) || amount == null || fields.some(field => !field.accountId) ||
       draft.loanMode === 'associate' && !draft.loanId ||
       ['interest','fee'].some(key => draft[key + 'Treatment'] === 'expense' && minor(draft[key + 'Input']) !== '0' && !draft[key + 'CategoryId'])
-    if (values.every(value => value != null) && amount != null && values.reduce((sum, value) => sum + BigInt(value), 0n) !== BigInt(amount)) errors.push('本金、利息和费用合计必须等于付款总额')
+    if (values.every(value => value != null) && amount != null && values.reduce((sum, value) => sum + BigInt(value), 0n) !== BigInt(amount)) invalid('repayment', '本金、利息和费用合计必须等于付款总额')
     if (incompleteLoan) {
       decisions.repayment = { mode: 'review', draft: { principalMinor: values[0], interestMinor: values[1], feeMinor: values[2],
-        mode: draft.loanMode, loanId: draft.loanId || null, loanVersion: draft.loanVersion || null,
+        mode: draft.loanMode, loanId: draft.loanMode === 'associate' ? draft.loanId || null : null, loanVersion: draft.loanMode === 'associate' ? draft.loanVersion || null : null,
         interestTreatment: draft.interestTreatment, feeTreatment: draft.feeTreatment,
-        interestCategoryId: draft.interestCategoryId || null, feeCategoryId: draft.feeCategoryId || null, chargeAllocations } }; missing.push('还款本息费')
-    } else if (amount == null || values.reduce((sum, value) => sum + BigInt(value), 0n) !== BigInt(amount)) errors.push('本金、利息和费用合计必须等于付款总额')
+        interestCategoryId: draft.interestTreatment === 'expense' ? draft.interestCategoryId || null : null,
+        feeCategoryId: draft.feeTreatment === 'expense' ? draft.feeCategoryId || null : null, chargeAllocations } }; missing.push('还款本息费')
+    } else if (amount == null || values.reduce((sum, value) => sum + BigInt(value), 0n) !== BigInt(amount)) invalid('repayment', '本金、利息和费用合计必须等于付款总额')
     else {
       decisions.repayment = { confirmed: true, mode: draft.loanMode, assetAccountId: fields[0]?.accountId,
         liabilityAccountId: fields[1]?.accountId, principalMinor: values[0], interestMinor: values[1], feeMinor: values[2],
@@ -208,14 +218,14 @@ function derive(row, draft, catalogs = {}) {
         ...(draft.loanMode === 'associate' ? { loanId: draft.loanId, loanVersion: draft.loanVersion } : {}) }
       for (const key of ['interest', 'fee']) {
         decisions.repayment[key + 'Treatment'] = draft[key + 'Treatment']
-        decisions.repayment[key + 'CategoryId'] = draft[key + 'CategoryId'] || null
-        if (draft[key + 'Treatment'] === 'expense' && minor(draft[key + 'Input']) !== '0' && !draft[key + 'CategoryId']) errors.push('请选择利息／费用的支出分类')
+        decisions.repayment[key + 'CategoryId'] = draft[key + 'Treatment'] === 'expense' ? draft[key + 'CategoryId'] || null : null
+        if (draft[key + 'Treatment'] === 'expense' && minor(draft[key + 'Input']) !== '0' && !draft[key + 'CategoryId']) invalid('repayment', '请选择利息／费用的支出分类')
       }
-      if (draft.loanMode === 'associate' && !draft.loanId) errors.push('请选择关联贷款')
+      if (draft.loanMode === 'associate' && !draft.loanId) invalid('repayment', '请选择关联贷款')
       for (const key of ['interest', 'fee']) {
         const allocated = chargeAllocations.filter(part => part.component === key && part.amountMinor != null).reduce((sum, part) => sum + BigInt(part.amountMinor), 0n)
-        if (allocated > BigInt(minor(draft[key + 'Input']))) errors.push('费用清偿分配超出对应分项')
-        if (draft[key + 'Treatment'] === 'accrued' && allocated !== BigInt(minor(draft[key + 'Input']))) errors.push('清偿已记费用须完整选择对应收费项')
+        if (allocated > BigInt(minor(draft[key + 'Input']))) invalid('repayment', '费用清偿分配超出对应分项')
+        if (draft[key + 'Treatment'] === 'accrued' && allocated !== BigInt(minor(draft[key + 'Input']))) invalid('repayment', '清偿已记费用须完整选择对应收费项')
       }
     }
   } else if (row.loanRepayment && (draft.dirty.repaymentMode || draft.dirty.economicNature || draft.dirty.owner || draft.dirty.composition)) decisions.repayment = null
@@ -224,8 +234,8 @@ function derive(row, draft, catalogs = {}) {
   let sourceCorrection
   if (row.installment && (draft.dirty.periodInput || draft.dirty.totalTermsInput)) {
     sourceCorrection = { periodNumber: draft.periodInput ? Number(draft.periodInput) : null, totalTerms: draft.totalTermsInput ? Number(draft.totalTermsInput) : null }
-    for (const value of Object.values(sourceCorrection)) if (value !== null && (!Number.isInteger(value) || value < 1 || value > 600)) errors.push('期次需为 1～600 的整数')
-    if (sourceCorrection.periodNumber && sourceCorrection.totalTerms && sourceCorrection.periodNumber > sourceCorrection.totalTerms) errors.push('本期期号不能大于总期数')
+    for (const value of Object.values(sourceCorrection)) if (value !== null && (!Number.isInteger(value) || value < 1 || value > 600)) invalid('sourceCorrection', '期次需为 1～600 的整数')
+    if (sourceCorrection.periodNumber && sourceCorrection.totalTerms && sourceCorrection.periodNumber > sourceCorrection.totalTerms) invalid('sourceCorrection', '本期期号不能大于总期数')
     if (sourceCorrection.periodNumber === null) missing.push('分期期号')
   }
   const changed = Boolean(sourceCorrection) || Object.keys(output).length || Object.keys(decisions).length || Boolean(composition)
@@ -250,10 +260,50 @@ function derive(row, draft, catalogs = {}) {
     accountFields: fields, categoryKind: categoryKind(effectiveNature), categoryName: selectedCategory?.name || row.categoryId === category && row.categoryName || '',
     showOwnership: draft.economicNature === 'repayment' && !principal, other, showLoan: draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single',
     refund: effectiveNature === 'refund', principal, showComposition: draft.composition !== 'single',
-    errors: [...new Set(errors)], missing: [...new Set(missing)], changed: Boolean(changed),
+    fieldErrors, errors: [...new Set(errors)], missing: [...new Set(missing)], changed: Boolean(changed),
     canSave: supported && Boolean(changed) && errors.length === 0,
     complete: missing.length === 0 && !(facts?.blockingReasons || []).length && !(row.reasonCodes || []).some(reason => ['row_status_unknown','identity_conflict','same_event_candidate','refund_source_conflict','core_fields_conflict'].includes(reason)),
-    payload: { editorVersion: 1, fields: output, ...(composition ? { composition } : {}),
+    payload: { editorVersion: 1, fields: output, expectedRelations: facts?.expectedRelations || [], ...(composition ? { composition } : {}),
       ...(Object.keys(decisions).length ? { decisions } : {}), ...(sourceCorrection ? { sourceCorrection } : {}), acknowledgedChanges: draft.acknowledgedChanges } }
 }
-module.exports = { create, change, derive, accountFields, NATURES, ASSETS, DEBTS, categoryKind, minor, yuan }
+// 结果未知时展示冻结请求的完整值；重试始终发送原 payload，而非重新派生的新请求。
+function restore(row, payload) {
+  let draft = create(row)
+  const fields = payload.fields || {}, decisions = payload.decisions || {}
+  if (has(fields, 'economicNature')) draft = change(row, draft, 'economicNature', fields.economicNature)
+  const ownership = decisions.ownership
+  if (ownership) {
+    draft.economicNature = 'repayment'
+    draft = change(row, draft, 'owner', ownership.owner)
+    if (ownership.treatment) draft.otherTreatment = ownership.treatment
+  }
+  if (payload.composition) {
+    draft.composition = payload.composition.kind
+    draft.parts = (payload.composition.parts || []).map(part => ({ ...part, accountId: part.accountId || '', amountInput: yuan(part.amountMinor) }))
+    draft.evidenceNote = payload.composition.evidenceNote || ''
+  }
+  for (const key of ['ledgerAccountId','counterpartyLedgerAccountId','categoryId','counterparty','note']) if (has(fields, key)) draft[key] = fields[key] == null ? '' : fields[key]
+  if (has(fields, 'amountMinor')) draft.amountInput = yuan(fields.amountMinor)
+  if (has(fields, 'occurredLocalAt')) {
+    draft.date = String(fields.occurredLocalAt || '').slice(0, 10)
+    draft.time = String(fields.occurredLocalAt || '').slice(11, 19)
+  }
+  if (has(decisions, 'repayment')) {
+    const repayment = decisions.repayment
+    draft.repaymentMode = repayment ? 'loan' : 'ordinary'
+    if (repayment) {
+      const value = repayment.draft || repayment
+      draft.loanMode = value.mode; draft.loanId = value.loanId || ''; draft.loanVersion = value.loanVersion || 0
+      for (const key of ['principal','interest','fee']) draft[key + 'Input'] = yuan(value[key + 'Minor'])
+      for (const key of ['interestTreatment','feeTreatment','interestCategoryId','feeCategoryId']) draft[key] = value[key] || ''
+      draft.chargeAllocations = (value.chargeAllocations || []).map(part => ({ ...part, amountInput: yuan(part.amountMinor) }))
+    }
+  }
+  if (decisions.refund) draft.refund = { ...decisions.refund }
+  if (payload.sourceCorrection) for (const [key, field] of [['periodNumber','periodInput'], ['totalTerms','totalTermsInput']]) {
+    if (has(payload.sourceCorrection, key)) draft[field] = payload.sourceCorrection[key] == null ? '' : String(payload.sourceCorrection[key])
+  }
+  draft.acknowledgedChanges = payload.acknowledgedChanges || []
+  return draft
+}
+module.exports = { create, restore, change, derive, accountFields, NATURES, ASSETS, DEBTS, categoryKind, minor, yuan }

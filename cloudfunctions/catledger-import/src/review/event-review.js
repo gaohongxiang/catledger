@@ -78,6 +78,7 @@ async function setReview(connection, uid, data, requestDigest, { updateId, event
 // 与旧 setReview 共用外层用户锁、幂等回执和批次版本，不新增写协议或嵌套事务。
 async function saveEditor(connection, uid, data, requestDigest, update, event) {
   const next = require('./editor-policy').prepare(event, data)
+  await require('./editor-refund').validateExpectations(connection, uid, event, data.expectedRelations)
   if (event.fieldSources.installment && (data.sourceCorrection || ['ledgerAccountId','amountMinor','occurredLocalAt'].some(key => Object.hasOwn(data.fields || {}, key)))) {
     const [[claimed]] = await connection.execute('SELECT COUNT(*) AS count FROM catledger_installment_items WHERE uid=? AND source_event_id=? AND active=1', [uid, event.eventId])
     if (Number(claimed.count)) throw importError('LOAN_SOURCE_MISMATCH')
@@ -93,6 +94,6 @@ async function saveEditor(connection, uid, data, requestDigest, update, event) {
   await updateMappingMemberVersions(connection, uid, event.updateId, saved, true)
   await createFollowUpIssues(connection, uid, event.updateId, saved)
   await recalculateUpdateCounts(connection, uid, event.updateId, Number(update.version) + 1, actionId, Number(update.version), 0)
-  return commandResult(connection, uid, event.updateId)
+  return { ...await commandResult(connection, uid, event.updateId), event: saved[0] }
 }
 module.exports = { setReview }

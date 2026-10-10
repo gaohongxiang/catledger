@@ -5,7 +5,15 @@ test('A3 费用核对与导入事务：实际先、方案先、差异与独立�
  try {
   const loan=await h.create();await h.configure(loan,{referenceLabel:'SYNTHETIC-CHARGE'});await h.sync(loan)
   await t.test('L05 方案20遇实单20仅复用，原费用和银行卡不多记',async()=>{
-   const update=await prepareBank(h),post=await postBank(h,update)
+   const update=await prepareBank(h),before=await h.state(loan)
+   const edit={requestId:randomUUID(),updateId:update.updateId,updateVersion:update.appliedVersion,eventId:update.event.eventId,
+    eventVersion:update.event.version,editorVersion:1,fields:{note:''}}
+   await assert.rejects(h.imp('financeUpdates.setReview',{...edit,sourceCorrection:{periodNumber:13,totalTerms:12}}),{publicCode:'VALIDATION_ERROR'})
+   const saved=await h.imp('financeUpdates.setReview',edit)
+   const afterEdit=await h.state(loan)
+   assert.equal(BigInt(afterEdit.dataRevision),BigInt(before.dataRevision)+1n)
+   assert.deepEqual(afterEdit,{...before,dataRevision:afterEdit.dataRevision},'UE14 单笔编辑只推进数据修订，不预先认领或重复记正式费用')
+   const post=await postBank(h,{...update,appliedVersion:saved.appliedVersion})
    const view=await h.state(loan),fee=view.items.find(i=>i.chargeKey==='period:2:interest')
    assert.equal(view.recordedMinor,'8000');assert.equal(fee.basis,'actual')
    const [[count]]=await h.owner.execute("SELECT COUNT(*) n FROM catledger_transactions WHERE uid=? AND type='expense' AND deleted_at IS NULL",[h.uid]);assert.equal(Number(count.n),4)

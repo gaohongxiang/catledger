@@ -296,18 +296,19 @@ test('整合PR7：移除最后一个待解析文件后，selected状态仍可继
   assert.equal(vm.runInNewContext(expr, { phase: 'selected', files: [{ state: 'queued' }], uploadSummary: { queued: 1 } }), false)
 })
 
-test('整合PR7：付款账户提示和来源展开不改变模型校验或保存结果', () => {
-  const { page, calls } = runtime('pages/import-workbench/index')
-  page.data.currentIssue = { paymentAccountsOnly: true }
-  page.data.paymentRows = [{ componentIndex: 0, accountId: 'a' }, { componentIndex: 1, accountId: 'a' }]
-  assert.equal(page.refreshPaymentDraft().valid, false)
-  assert.ok(page.data.paymentValidationHint)
-  page.toggleIssueSource(); assert.equal(page.data.issueSourceExpanded, true)
-  assert.equal(page.data.paymentCanSave, false)
-  page.data.paymentRows[1].accountId = 'b'
-  assert.equal(page.refreshPaymentDraft().valid, true)
-  assert.equal(page.data.paymentValidationHint, '')
-  assert.equal(calls.length, 0)
+test('付款分配错误与来源展开不改变草稿或触发保存', async t => {
+  const editor = require('./helpers/editor-workbench')
+  const { h, page, accounts } = await editor.open(t, { economicNature: 'expense' })
+  editor.mode(page, 'composition', 'payment')
+  editor.select(page, 'editorPart0', accounts[0]); editor.select(page, 'editorPart1', accounts[0])
+  assert.equal(editor.view(page).canSave, false)
+  const before = JSON.stringify(editor.draft(page))
+  await page.openEditorOriginal(); page.closeEvidence()
+  assert.equal(JSON.stringify(editor.draft(page)), before)
+  assert.equal(editor.view(page).canSave, false)
+  editor.select(page, 'editorPart1', accounts[1])
+  assert.equal(editor.view(page).errors.length, 0)
+  assert.equal(editor.writes(h).length, 0)
 })
 
 test('整理数量公式常驻，保留最新账户同行选择', () => {
@@ -318,7 +319,7 @@ test('整理数量公式常驻，保留最新账户同行选择', () => {
   assert.match(markup, /account-decision-create/)
   assert.doesNotMatch(markup, /account-create-fields/)
   assert.match(markup, /issueFieldsReason/)
-  assert.match(markup, /paymentValidationHint/)
+  assert.match(read('miniprogram/pages/import-workbench/review-editor-fields.wxml'), /editor.fieldErrors.amountInput/)
   assert.match(markup, /!currentIssue.paymentNeedsReview \|\| issueSourceExpanded/)
 })
 

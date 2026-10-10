@@ -68,20 +68,20 @@ test('分类与核对维度独立，整理、确认和完成页共用同一行�
   assert.match(markup, /recordSummary.excludedCount/)
   assert.match(markup, /recordSummary.duplicateCount/)
 })
-test('付款总额放入统一摘要；全部分配按钮不改成含义不同的剩余金额', () => {
-  assert.match(markup, /class="issue-summary-amount money-number"[^>]*>\{\{issueDetail\.summary\.amount\}\}/)
-  assert.doesNotMatch(markup, /payment-total-amount/)
-  assert.match(markup, /bindtap="fillPaymentAmount"[^>]*>全部分配/)
-  assert.match(markup, /bindinput="changePaymentRow"/)
-  assert.match(markup, /maxlength="300"/)
+test('统一摘要直接编辑付款总额，组成金额与核对说明在同一模板', () => {
+  const fields = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
+  assert.match(fields, /class="editor-amount"/)
+  assert.match(fields, /data-field="amountInput" bindinput="changeEditorText"/)
+  assert.match(fields, /bindinput="changeEditorPart"/)
+  assert.match(fields, /maxlength="300" data-field="evidenceNote"/)
+  assert.doesNotMatch(markup, /payment-resolution-form|changePaymentRow/)
 })
-test('正式提交及全部分配/聚合校验条件保持完整', () => {
+test('整批入账门禁保留，单笔保存使用统一派生校验', () => {
   assert.ok(markup.includes('disabled="{{busy || openIssueCount || accountStepSummary.pending > 0 || !coverage.selectedEventsReadyToPost}}"'))
-  assert.ok(markup.includes('(currentIssue.paymentNeedsReview && !paymentCanSave)'))
-  assert.ok(markup.includes('(currentIssue.aggregateRepayment && !repaymentAllocationCanSave)'))
-  assert.match(markup, /bindtap="resolveWithFields"/)
+  const editor = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/review-edit.wxml'), 'utf8')
+  assert.match(editor, /bindtap="saveReviewEdit"[^>]+!reviewEditSheet.canSave/)
+  assert.match(editor, /reviewEditSheet.editor.complete/)
   assert.match(markup, /bindtap="confirmDistinct"/)
-  assert.match(markup, /bindtap="linkRefund"/)
   assert.match(markup, /template is="record-source-fields"/)
 })
 test('暖橘局部令牌不改其他主题；标题正常字距与常规正文', () => {

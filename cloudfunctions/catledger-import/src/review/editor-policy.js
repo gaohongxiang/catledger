@@ -35,8 +35,8 @@ function validateTime(value, offset) {
 }
 function prepare(event, data) {
   object(data, ['requestId', 'updateId', 'updateVersion', 'eventId', 'eventVersion', 'editorVersion', 'fields',
-    'composition', 'decisions', 'sourceCorrection', 'acknowledgedChanges'])
-  if (data.editorVersion !== 1 || capability(event).readonly) fail()
+    'composition', 'decisions', 'sourceCorrection', 'expectedRelations', 'acknowledgedChanges'])
+  if (data.editorVersion !== 1 || capability(event).readonly || event.currency !== 'CNY') fail()
   const fields = data.fields || {}, decisions = data.decisions || {}, acknowledgements = data.acknowledgedChanges || []
   object(fields, BASIC); object(decisions, ['ownership', 'repayment', 'refund'])
   if (!Array.isArray(acknowledgements) || acknowledgements.some(key => !['composition', 'repayment', 'refund'].includes(key))) fail()
@@ -45,7 +45,10 @@ function prepare(event, data) {
   if (!NATURES.has(nature)) fail()
   if (has(fields, 'amountMinor') && fields.amountMinor !== null && (typeof fields.amountMinor !== 'string' ||
     !/^(0|[1-9]\d{0,18})$/.test(fields.amountMinor) || BigInt(fields.amountMinor) > 9223372036854775807n)) fail()
-  if (has(fields, 'occurredLocalAt') && fields.occurredLocalAt !== null) validateTime(fields.occurredLocalAt, fields.timezoneOffsetMinutes)
+  if (has(fields, 'occurredLocalAt') && fields.occurredLocalAt !== null) {
+    if (fields.timezoneOffsetMinutes !== event.timezoneOffsetMinutes) fail()
+    validateTime(fields.occurredLocalAt, fields.timezoneOffsetMinutes)
+  }
   else if (has(fields, 'timezoneOffsetMinutes')) fail()
   for (const key of ['counterparty', 'note']) if (has(fields, key)) {
     if (typeof fields[key] !== 'string' || Array.from(fields[key]).length > 200) fail()

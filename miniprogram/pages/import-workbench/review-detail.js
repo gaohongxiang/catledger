@@ -57,6 +57,38 @@ async function readFields(page, token) {
   }
 }
 
+async function readSources(page, token) {
+  if (!current(page, token) || token.sourcesReading) return
+  token.sourcesReading = true
+  page.setData({ 'reviewDetailSheet.loading': true, 'reviewDetailSheet.error': '' })
+  try {
+    const limit = token.sources.length + 8
+    do {
+      const response = await token.session.read('economicEvents.evidence', {
+        eventId: token.eventId, pageSize: limit - token.sources.length, cursor: token.sourceCursor || null
+      }, () => current(page, token))
+      if (!current(page, token)) return
+      const start = token.sources.length
+      for (const source of response.items) {
+        const index = token.sources.length
+        token.sources.push(source)
+        page.setData({ ['reviewDetailSheet.sources[' + index + ']']: { ...source, fields: [], loading: true, error: '',
+          sourceLabel: { bank: '银行卡账单', wechat: '微信账单', alipay: '支付宝账单' }[source.sourceType] || '原始账单' } })
+      }
+      token.sourceCursor = response.nextCursor
+      page.setData({ 'reviewDetailSheet.sourceCount': response.total, 'reviewDetailSheet.moreSources': Boolean(response.nextCursor) })
+      let next = start
+      await Promise.all([0, 1].map(async () => {
+        while (current(page, token) && next < token.sources.length) await readSource(page, token, next++)
+      }))
+      if (!current(page, token)) return
+    } while (token.sourceCursor && token.sources.length < limit)
+    page.setData({ 'reviewDetailSheet.loading': false })
+  } catch (error) {
+    if (current(page, token)) page.setData({ 'reviewDetailSheet.loading': false, 'reviewDetailSheet.error': errorText(error) })
+  } finally { token.sourcesReading = false }
+}
+
 module.exports = {
   async openReviewDetails(event) {
     const eventId = event.currentTarget.dataset.id, session = this._viewSession
@@ -73,32 +105,9 @@ module.exports = {
         Number(row.evidenceCount) > 1 || Number(row.duplicateEvidenceCount) > 0)),
       repaymentEditable: this.data.update.status === 'review' && Boolean(row && !row.installment && ['repayment', 'internal_transfer'].includes(row.economicNature)) } })
     const fieldsRead = readFields(this, token)
-    try {
-      let cursor = null
-      do {
-        const response = await session.read('economicEvents.evidence', { eventId, pageSize: 40, cursor }, () => current(this, token))
-        if (!current(this, token)) return
-        const start = token.sources.length
-        for (const source of response.items) {
-          const index = token.sources.length
-          token.sources.push(source)
-          this.setData({ ['reviewDetailSheet.sources[' + index + ']']: { ...source, fields: [], loading: true, error: '',
-            sourceLabel: { bank: '银行卡账单', wechat: '微信账单', alipay: '支付宝账单' }[source.sourceType] || '原始账单' } })
-        }
-        this.setData({ 'reviewDetailSheet.sourceCount': response.total })
-        let next = start
-        await Promise.all([0, 1].map(async () => {
-          while (current(this, token) && next < token.sources.length) await readSource(this, token, next++)
-        }))
-        if (!current(this, token)) return
-        cursor = response.nextCursor
-      } while (cursor)
-      await fieldsRead
-      if (current(this, token)) this.setData({ 'reviewDetailSheet.loading': false })
-    } catch (error) {
-      if (current(this, token)) this.setData({ 'reviewDetailSheet.loading': false, 'reviewDetailSheet.error': errorText(error) })
-    }
+    await Promise.all([fieldsRead, readSources(this, token)])
   },
+  loadReviewSources() { return readSources(this, this._reviewDetailToken) },
   async refreshReviewDetails() {
     const sheet = this.data.reviewDetailSheet, token = this._reviewDetailToken
     if (!sheet || !token || !this._viewActive) return

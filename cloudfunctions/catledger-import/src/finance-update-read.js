@@ -6,7 +6,7 @@ const attention = require('./review-attention')
 const { PLAN_VERSION } = require('./domain-versions')
 const { importError } = require('./errors')
 const { executeUserRead } = require('./import-transaction')
-const { validateUuid } = require('./validation')
+const { validateUuid, validateVersion } = require('./validation')
 const { BUDGET, assertBudget, jsonBytes, pageSize } = require('./performance-contract')
 const { encodeCursor, decodeCursor } = require('./view-cursor')
 const { selectUpdate, publicUpdate, publicEvent, selectSources, selectEvents, selectIssues, selectCoverageEvidence, selectPlanningRows, parseJson } = require('./finance-update-repository')
@@ -26,8 +26,9 @@ async function readVersion(connection, uid, updateId) {
   const [directories] = await connection.execute(`SELECT 'accounts' AS kind, COUNT(*) AS count,
       COALESCE(SUM(version), 0) AS versions, MAX(updated_at) AS updatedAt FROM catledger_accounts WHERE uid = ?
     UNION ALL SELECT 'categories', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_categories WHERE uid = ?
-    UNION ALL SELECT 'mappings', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_import_account_mappings WHERE uid = ?`, [uid, uid, uid])
-  return { update, viewVersion: digestParts('finance-view-v2-time-order-search-editor-v1', uid, updateId, update.version,
+    UNION ALL SELECT 'mappings', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_import_account_mappings WHERE uid = ?
+    UNION ALL SELECT 'loans', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_loans WHERE uid = ?`, [uid, uid, uid, uid])
+  return { update, viewVersion: digestParts('finance-view-v2-time-order-search-editor-v2', uid, updateId, update.version,
     update.planVersion, PLAN_VERSION, accountGroups.VERSION, excludedGroups.VERSION, attention.VERSION, JSON.stringify(directories)) }
 }
 
@@ -511,6 +512,7 @@ async function detail(connection, uid, context, state) {
   const facts = await eventDetailFacts(connection, uid, state.update.updateId, events[0])
   await attachPendingIssues(connection, uid, state.update.updateId, events, 'review_pending')
   const editorFacts = require('./review/editor-policy').capability(events[0])
+  editorFacts.expectedRelations = await require('./review/editor-refund').expectations(connection, uid, { ...events[0], updateId: state.update.updateId })
   const { fieldSources, utcAt, ...event } = events[0]
   text = JSON.stringify({ ...event, detailFacts: facts, editorFacts })
   if (offset > text.length) throw importError('INVALID_CURSOR')
@@ -557,13 +559,15 @@ async function refundCandidates(connection, uid, context, state) {
   const data = context.data, eventId = validateUuid(data.eventId)
   const [stored] = await selectDomainEvents(connection, uid, state.update.updateId, [eventId])
   if (!stored) throw importError('NOT_FOUND')
+  if (stored.version !== validateVersion(data.eventVersion)) throw importError('CONFLICT')
   const fields = data.fields || {}
-  if (Object.keys(fields).some(key => !['amountMinor','occurredLocalAt','timezoneOffsetMinutes'].includes(key))) throw importError('VALIDATION_ERROR')
+  if (Object.keys(fields).some(key => !['amountMinor','occurredLocalAt','timezoneOffsetMinutes','ledgerAccountId'].includes(key))) throw importError('VALIDATION_ERROR')
   if (require('./review/editor-policy').capability(stored).recordRole === 'installment_source') throw importError('VALIDATION_ERROR')
   const event = { ...require('./review/editor-policy').prepare(stored, { editorVersion: 1, fields }), economicNature: 'refund', flowDirection: 'inflow' }
   if (!event.utcAt || event.amountMinor == null) throw importError('VALIDATION_ERROR')
+  await require('./review/event-store').validateEventReferences(connection, uid, { ...event, counterpartyLedgerAccountId: null, categoryId: null, fieldSources: {} }, null, { forUpdate: false })
   const kind = optionalEnum(data.kind, ['event','transaction']) || 'event', query = searchText(data.query)
-  const page = preparePage(context, state, uid, 'refund-candidates', { eventId, kind, query, amountMinor:event.amountMinor, utcAt:event.utcAt })
+  const page = preparePage(context, state, uid, 'refund-candidates', { eventId, eventVersion: stored.version, kind, query, amountMinor:event.amountMinor, utcAt:event.utcAt, ledgerAccountId: event.ledgerAccountId })
   const result = await require('./review/editor-refund').candidates(connection, uid, event, kind,
     { after: page.last, query, limit: page.size + 1 })
   return finishPage(context, state, page, result.items, result.total, 'id', 'refund-candidate')

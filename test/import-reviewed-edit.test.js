@@ -25,6 +25,7 @@ test('普通单来源已核对交易可修改：不要求重复或同笔历史�
   assert.equal(page.data.reviewDetailSheet.canEdit, false)
   await page.openReviewEdit(tap(eventId))
   assert.equal(page.data.reviewEditSheet.economicNature, 'expense')
+  assert.equal(page.data.reviewEditSheet.attention.some(item => item.label === '交易信息待核对'), false)
   page.changeReviewedNature({ detail: { value: 1 } })
   assert.equal(page.data.reviewEditSheet.canSave, true)
   page.closeReviewEdit()

@@ -6,12 +6,25 @@ const { digestParts } = require('../digest')
 const { RELATION_KEY_VERSION } = require('../domain-versions')
 const { REFUND_RELATION_STATE_VERSION } = require('../organizer-model')
 const fail = () => { throw importError('VALIDATION_ERROR') }
+// 已通过可靠来源身份复用到正式退款的待整理事件不再次消耗额度。
+// 相似金额/日期/文字不参与去重；正式余额仍只由原 posting 边界改变。
+const unpostedRefund = `NOT EXISTS (SELECT 1 FROM catledger_event_evidence se
+  JOIN catledger_import_rows sr ON sr.uid=se.uid AND sr.row_id=se.row_id
+  JOIN catledger_import_rows pr ON pr.uid=sr.uid AND pr.identity_id=sr.identity_id
+  JOIN catledger_event_evidence pe ON pe.uid=pr.uid AND pe.row_id=pr.row_id AND pe.evidence_role<>'discarded'
+  JOIN catledger_economic_event_transactions pl ON pl.uid=pe.uid AND pl.event_id=pe.event_id
+    AND pl.superseded_at IS NULL AND pl.role IN ('primary','refund_transaction','historical_primary')
+  JOIN catledger_transactions pt ON pt.uid=pl.uid AND pt.transaction_id=pl.transaction_id
+    AND pt.deleted_at IS NULL AND pt.type='refund' AND pt.original_transaction_id=e.transaction_id
+  WHERE se.uid=s.uid AND se.event_id=s.event_id AND se.evidence_role<>'discarded'
+    AND sr.identity_id IS NOT NULL AND sr.identity_state<>'identity_conflict' AND pr.identity_state<>'identity_conflict')`
 function candidateQuery(uid, refund, kind, { id, after = '', query = '' } = {}) {
   const batch = kind === 'event'
   if (!batch && kind !== 'transaction') fail()
   const key = batch ? 'e.event_id' : 'e.transaction_id'
   const at = batch ? 'e.event_utc_at' : 'e.occurred_at_utc'
   const localAt = batch ? 'e.event_local_at' : 'e.occurred_local_at'
+  const currency = batch ? 'e.currency' : "'CNY'"
   const note = batch ? `CONCAT_WS(' ',
     (SELECT r.item_raw FROM catledger_event_evidence v JOIN catledger_import_rows r ON r.uid=v.uid AND r.row_id=v.row_id
       WHERE v.uid=e.uid AND v.update_id=e.update_id AND v.event_id=e.event_id AND v.evidence_role='primary' LIMIT 1),
@@ -24,7 +37,7 @@ function candidateQuery(uid, refund, kind, { id, after = '', query = '' } = {}) 
     : `(SELECT COALESCE(SUM(t.amount_minor),0) FROM catledger_transactions t WHERE t.uid=e.uid
         AND t.original_transaction_id=e.transaction_id AND t.type='refund' AND t.deleted_at IS NULL)
       + (SELECT COALESCE(SUM(s.amount_minor),0) FROM catledger_economic_events s
-        WHERE s.uid=e.uid AND s.status IN ('ready','needs_action') AND s.economic_nature='refund' AND s.event_id<>?
+        WHERE s.uid=e.uid AND s.status IN ('ready','needs_action') AND s.economic_nature='refund' AND s.event_id<>? AND ${unpostedRefund}
           AND (EXISTS (SELECT 1 FROM catledger_economic_event_transactions l WHERE l.uid=s.uid AND l.event_id=s.event_id
             AND l.role='refund_original' AND l.superseded_at IS NULL AND l.transaction_id=e.transaction_id)
           OR EXISTS (SELECT 1 FROM catledger_economic_event_relations r JOIN catledger_economic_event_transactions l
@@ -34,10 +47,12 @@ function candidateQuery(uid, refund, kind, { id, after = '', query = '' } = {}) 
   const filters = batch ? `e.update_id=? AND e.event_id<>? AND e.status IN ('ready','needs_action') AND e.economic_nature IN ('expense','fee')
       AND COALESCE(JSON_TYPE(JSON_EXTRACT(e.field_sources_json,'$.paymentResolution')),'NULL')='NULL'
       AND COALESCE(JSON_TYPE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment')),'NULL')='NULL'
+      AND COALESCE(JSON_TYPE(JSON_EXTRACT(e.field_sources_json,'$.installment')),'NULL')='NULL'
       AND NOT JSON_CONTAINS(e.reason_codes_json,JSON_QUOTE('row_status_unknown'))
       AND NOT JSON_CONTAINS(e.reason_codes_json,JSON_QUOTE('refund_source_conflict'))`
     : `e.deleted_at IS NULL AND e.type='expense'
       AND NOT EXISTS (SELECT 1 FROM catledger_loan_payment_transactions p WHERE p.uid=e.uid AND p.active_transaction_id=e.transaction_id)
+      AND NOT EXISTS (SELECT 1 FROM catledger_loan_charges c WHERE c.uid=e.uid AND (c.transaction_id=e.transaction_id OR c.balance_adjustment_id=e.transaction_id))
       AND NOT EXISTS (SELECT 1 FROM catledger_economic_event_transactions p WHERE p.uid=e.uid AND p.transaction_id=e.transaction_id
         AND p.superseded_at IS NULL AND p.role IN ('payment_allocation','repayment_allocation'))`
   const values = [refund.eventId, uid, ...(batch ? [refund.updateId, refund.eventId] : []), refund.utcAt, refund.currency]
@@ -47,9 +62,9 @@ function candidateQuery(uid, refund, kind, { id, after = '', query = '' } = {}) 
   if (query) { where += ` AND LOCATE(?, COALESCE(${note},''))>0`; values.push(query) }
   values.push(refund.amountMinor)
   return { sql: `SELECT ${key} AS id,e.version,${localAt} AS localAt,${at} AS utcAt,e.amount_minor AS amountMinor,
-      e.currency,LEFT(${note},160) AS note,e.amount_minor-(${total}) AS remainingMinor
+      ${currency} AS currency,LEFT(${note},160) AS note,e.amount_minor-(${total}) AS remainingMinor
     FROM ${batch ? 'catledger_economic_events' : 'catledger_transactions'} e
-    WHERE e.uid=? AND ${filters} AND ${at}<=? AND e.currency=?${where}
+    WHERE e.uid=? AND ${filters} AND ${at}<=? AND ${currency}=?${where}
     HAVING remainingMinor>=?`, values }
 }
 async function candidates(connection, uid, refund, kind, options = {}) {
@@ -70,6 +85,31 @@ async function currentOriginals(connection, uid, event) {
     WHERE l.uid=? AND l.update_id=? AND l.event_id=? AND l.role='refund_original' AND l.superseded_at IS NULL`,
   [uid, event.updateId, event.eventId])
   return batch.map(row => ({ ...row, kind: 'event' })).concat(history.map(row => ({ ...row, kind: 'transaction' })))
+}
+async function expectations(connection, uid, event) {
+  const originals = await currentOriginals(connection, uid, event), result = []
+  for (const row of originals) {
+    result.push({ kind: row.kind, id: row.id, version: Number(row.version) })
+    if (row.relationId) result.push({ kind: 'refund_relation', id: row.relationId, version: Number(row.relationVersion) })
+  }
+  const loanId = event.fieldSources?.loanRepayment?.loanId || event.fieldSources?.editorOverrides?.incompleteRepayment?.loanId
+  if (loanId) {
+    const [[loan]] = await connection.execute('SELECT version FROM catledger_loans WHERE uid=? AND loan_id=? AND deleted_at IS NULL', [uid, loanId])
+    if (loan) result.push({ kind: 'loan', id: loanId, version: Number(loan.version) })
+  }
+  return result.sort((a, b) => (a.kind + a.id).localeCompare(b.kind + b.id))
+}
+async function validateExpectations(connection, uid, event, value) {
+  // 兼容最初的 editor-v1 调用；新版客户端每次传递完整的依赖快照。
+  if (value === undefined) return
+  if (!Array.isArray(value) || value.length > 84) fail()
+  for (const row of value) {
+    if (!row || Object.keys(row).some(key => !['kind','id','version'].includes(key)) ||
+      !['event','transaction','refund_relation','loan'].includes(row.kind) || !Number.isSafeInteger(row.version) || row.version < 1) fail()
+    validateUuid(row.id)
+  }
+  const expected = value.map(row => ({ kind: row.kind, id: row.id, version: row.version })).sort((a, b) => (a.kind + a.id).localeCompare(b.kind + b.id))
+  if (JSON.stringify(expected) !== JSON.stringify(await expectations(connection, uid, event))) throw importError('CONFLICT')
 }
 async function detach(connection, uid, event) {
   await connection.execute(`UPDATE catledger_economic_event_relations SET status='rejected',manual=1,version=version+1
@@ -129,7 +169,8 @@ async function apply(connection, uid, current, next, data) {
     }
     delete next.fieldSources.refundRelation
   } else if (choice.mode === 'pending') {
-    if (next.fieldSources.refundSourceConflict || ['row_status_unknown','transaction_status_unknown','refund_source_conflict'].some(reason =>
+    if (next.fieldSources.refundSourceConflict || ['row_status_unknown','transaction_status_unknown','refund_source_conflict',
+      'source_profile_unknown','identity_conflict','identity_review_required','core_fields_conflict','row_semantic_conflict','same_event_candidate','bank_channel_same_event_candidate'].some(reason =>
       (next.reasonCodes || []).concat(next.fieldSources.semanticBlockers || []).includes(reason))) fail()
     for (const kind of ['event', 'transaction']) if ((await candidates(connection, uid, next, kind, { limit: 1 })).total) fail()
     await detach(connection, uid, current)
@@ -144,4 +185,4 @@ async function apply(connection, uid, current, next, data) {
   next.reasonCodes = next.reasonCodes.filter(reason => !['refund_relation_required','refund_relation_invalid','refund_relation_ambiguous',
     'refund_amount_exceeded'].includes(reason))
 }
-module.exports = { candidates, candidateQuery, apply, currentOriginals }
+module.exports = { candidates, candidateQuery, apply, currentOriginals, expectations, validateExpectations }

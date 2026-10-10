@@ -19,26 +19,28 @@ test('无归属选择时即使已有账户选择也不能保存', () => {
   assert.equal(model.buildIssueFieldsDraft(data).valid, false)
 })
 
-test('本人账户确认选择已有负债或完整新建账户', () => {
-  const data = state(); data.issueDraft.repaymentOwner = 'self'; data.issueDraft.accountIndex = 1
-  assert.deepEqual(model.buildIssueFieldsDraft(data).fields, { counterpartyLedgerAccountId: 'credit', repaymentOwnership: { owner: 'self' } })
-  data.issueDraft.accountIndex = 2
-  assert.equal(model.buildIssueFieldsDraft(data).valid, false)
-  data.issueDraft.newAccountName = '我的合成信用卡'
-  assert.deepEqual(model.buildIssueFieldsDraft(data).fields.counterpartyLedgerAccountDraft, { name: '我的合成信用卡', type: 'credit', currency: 'CNY' })
-  data.issueDraft.accountTypeIndex = 1
-  assert.equal(model.buildIssueFieldsDraft(data).valid, false)
-  data.issueDraft.accountIndex = 3
-  assert.equal(model.buildIssueFieldsDraft(data).valid, false)
+test('本人账户确认选择负债账户，本批新建也使用稳定账户 ID', async t => {
+  const editor = require('./helpers/editor-workbench')
+  const { page, accounts, drafts } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0' })
+  assert.equal(editor.select(page, 'reviewCounterparty', accounts[1]), false)
+  assert.equal(editor.select(page, 'reviewCounterparty', drafts[0]), true)
+  assert.equal(editor.view(page).payload.fields.counterpartyLedgerAccountId, drafts[0].accountId)
+  assert.equal(editor.view(page).payload.decisions.ownership.owner, 'self')
 })
 
-test('他人还款必须明确处理方式且不提交残留账户新建信息', () => {
-  const data = state(); data.issueDraft.repaymentOwner = 'other'; data.issueDraft.accountIndex = 2
-  data.issueDraft.newAccountName = '不应创建的信用卡'
-  assert.equal(model.buildIssueFieldsDraft(data).valid, false)
+test('代还需明确处理方式且不提交隐藏的本人账户或贷款信息', async t => {
+  const editor = require('./helpers/editor-workbench')
+  const { page, drafts } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0' })
+  editor.select(page, 'reviewCounterparty', drafts[0]); editor.mode(page, 'owner', 'other')
+  assert.ok(editor.view(page).missing.includes('代还处理方式'))
   for (const treatment of ['expense', 'pending']) {
-    data.issueDraft.repaymentOtherTreatment = treatment
-    assert.deepEqual(model.buildIssueFieldsDraft(data), { valid: true, fields: { repaymentOwnership: { owner: 'other', treatment } } })
+    editor.mode(page, 'otherTreatment', treatment)
+    const payload = editor.view(page).payload
+    assert.deepEqual(editor.plain(payload.decisions.ownership), { owner: 'other', treatment })
+    assert.equal(payload.decisions.repayment, undefined)
+    assert.equal(payload.fields.counterpartyLedgerAccountId, undefined)
+    assert.equal(payload.fields.ledgerAccountDraft, undefined)
+    assert.equal(payload.fields.economicNature, treatment === 'expense' ? 'expense' : 'unknown')
   }
 })
 

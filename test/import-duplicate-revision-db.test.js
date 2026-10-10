@@ -20,6 +20,37 @@ test('重复判断修改：真实解析、最小权限、事务与来源保全',
       c.revise = input => c.imp('financeUpdates.reviseDuplicate', input)
       return c
     }
+    await t.test('UE35 人工文本冲突须先裁决；合并后改金额再拆分保留本笔值及各来源快照',async()=>{
+      const c=await setup({apiPool,importPool,count:1,bankNature:'消费'})
+      const pair=(await c.pairings()).items[0],main=pair.platform.eventId,other=pair.bank.eventId
+      const read=async id=>{
+        let cursor=null,text=''
+        do {const result=await c.imp('economicEvents.detail',{updateId:c.updateId,eventId:id,cursor});text+=result.part;cursor=result.nextCursor}while(cursor)
+        return JSON.parse(text)
+      }
+      const edit=async(id,fields)=>c.imp('financeUpdates.setReview',{requestId:randomUUID(),updateId:c.updateId,
+        updateVersion:(await c.summary()).update.version,eventId:id,eventVersion:(await read(id)).version,editorVersion:1,fields})
+      const evidence=async()=>(await lab.owner.execute('SELECT evidence_id,row_id FROM catledger_event_evidence WHERE uid=? ORDER BY evidence_id',[c.uid]))[0]
+      const raw=await evidence()
+      await edit(main,{note:'',counterparty:'人工合成对方',amountMinor:'1234'})
+      await edit(other,{note:'合成冲突备注'})
+      const conflicting=await c.pairings()
+      await assert.rejects(c.resolve({scopeToken:conflicting.scopeToken,selection:{mode:'all_except',excludedPairKeys:[]}}),{publicCode:'VALIDATION_ERROR'})
+      assert.equal((await read(main)).note,'');assert.equal((await read(other)).note,'合成冲突备注')
+      await edit(other,{note:''})
+      const compatible=await c.pairings()
+      await c.resolve({scopeToken:compatible.scopeToken,selection:{mode:'all_except',excludedPairKeys:[]}})
+      await edit(main,{amountMinor:'1500'})
+      const version=(await read(main)).version
+      await c.imp('financeUpdates.reviseDuplicate',{requestId:randomUUID(),updateId:c.updateId,eventId:main,
+        updateVersion:(await c.summary()).update.version,eventVersion:version,decision:'distinct'})
+      const splitRows=(await c.imp('economicEvents.list',{updateId:c.updateId})).items
+      assert.equal(splitRows.length,2)
+      const primary=await read(main),restored=await read(splitRows.find(row=>row.eventId!==main).eventId)
+      assert.equal(primary.amountMinor,'1500');assert.equal(primary.note,'');assert.equal(primary.counterparty,'人工合成对方')
+      assert.equal(restored.amountMinor,'1234');assert.equal(restored.note,'')
+      assert.deepEqual(await evidence(),raw)
+    })
     await t.test('单对直接合并后改为独立记录，证据与原主记录人工分类保留，未知性质继续阻断', async () => {
       const c = await merged()
       const preview = await c.preview()

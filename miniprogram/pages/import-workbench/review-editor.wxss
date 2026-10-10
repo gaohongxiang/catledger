@@ -1,0 +1,66 @@
+/* 待核对与只读详情共用字段、纵向资金区域和安全区。 */
+.workflow-sheet.unified-editor-sheet {
+  display: flex;
+  flex-direction: column;
+  height: 86vh;
+  max-height: 86vh;
+  overflow: hidden;
+}
+.unified-editor-sheet.review-editor-sheet .review-editor-body {
+  flex: 1;
+  height: 0;
+  min-height: 0;
+  max-height: none;
+  padding-bottom: 12rpx;
+}
+.unified-editor-sheet .evidence-drilldown { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.unified-editor-sheet .evidence-scroll { flex: 1; height: 0; min-height: 0; }
+.unified-editor-sheet .sheet-actions,
+.unified-editor-sheet .pairing-footer { flex-shrink: 0; }
+.unified-editor-sheet .editor-amount { display: flex; align-items: baseline; justify-content: flex-end; gap: 8rpx; min-width: 0; }
+.unified-editor-sheet .editor-amount input { width: 240rpx; max-width: 100%; min-width: 0; text-align: right; }
+.unified-editor-sheet .mapping-field input,
+.unified-editor-sheet .mapping-field textarea {
+  box-sizing: border-box;
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  min-height: 72rpx;
+  padding: 14rpx 0;
+  font-size: var(--font-body, 28rpx);
+  line-height: 1.5;
+  color: var(--ui-ink);
+}
+.unified-editor-sheet .mapping-field textarea { max-height: 240rpx; }
+.unified-editor-sheet .mapping-value,
+.unified-editor-sheet .route-vertical-pick text:first-child { min-width: 0; overflow-wrap: anywhere; }
+.editor-attention {
+  padding: 16rpx 20rpx;
+  margin-bottom: 16rpx;
+  border-radius: var(--theme-radius-small, 12rpx);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-strong);
+  font-size: var(--font-caption, 24rpx);
+}
+.editor-mode-choices { display: flex; flex-wrap: wrap; gap: 12rpx; margin: 20rpx 0; }
+.editor-mode-choices button {
+  flex: 1 1 180rpx;
+  box-sizing: border-box;
+  min-height: 80rpx;
+  margin: 0;
+  padding: 18rpx 12rpx;
+  border: 1rpx solid var(--ui-line);
+  border-radius: var(--theme-radius-small, 12rpx);
+  background: var(--ui-surface);
+  color: var(--ui-muted);
+  font-size: var(--font-caption, 24rpx);
+  line-height: 1.5;
+}
+.editor-mode-choices button.editor-mode-selected { background: var(--ui-accent-soft); border-color: var(--ui-accent); color: var(--ui-accent-strong); }
+.editor-part { display: flex; flex-wrap: wrap; align-items: center; gap: 12rpx; padding: 16rpx 0; border-bottom: 1rpx solid var(--ui-line); }
+.editor-part > button:first-child { flex: 1 1 200rpx; margin: 0; padding: 16rpx; background: var(--ui-surface-muted); color: var(--ui-ink); font-size: var(--font-body, 28rpx); line-height: 1.5; white-space: normal; text-align: left; }
+.editor-part > input { box-sizing: border-box; flex: 0 1 180rpx; width: 180rpx; min-height: 80rpx; padding: 12rpx; border-bottom: 1rpx solid var(--ui-border); font-size: var(--font-body, 28rpx); }
+.unified-editor-sheet .editor-part .review-text-action { width: auto; padding: 12rpx; }
+.unified-editor-sheet .sheet-save-hint { white-space: normal; overflow-wrap: anywhere; }
+
+.unified-editor-sheet .editor-field-error { display: block; margin: 8rpx 0 16rpx; color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); line-height: 1.6; white-space: normal; }

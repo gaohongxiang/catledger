@@ -5,6 +5,7 @@ const { chargeLab } = require('./helpers/loan-charges')
 const { realPage } = require('./helpers/real-page')
 const { localServices, call } = require('./helpers/local-services')
 const { bill, prepare } = require('./helpers/payment-status')
+const tap = dataset => ({ currentTarget: { dataset } })
 
 test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 180000 }, async t => {
   const h = await chargeLab()
@@ -18,6 +19,7 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
   const amounts = async () => (await h.owner.execute("SELECT type, amount_minor AS amount, source_account_id AS sourceAccountId, destination_account_id AS destinationAccountId, original_transaction_id AS originalTransactionId, transaction_id AS transactionId, occurred_local_date AS localDate FROM catledger_transactions WHERE uid=? AND type IN ('expense','refund') AND deleted_at IS NULL ORDER BY occurred_local_at, transaction_id", [h.uid]))[0]
   async function open(updateId, issue) {
     const ui = realPage(h)
+    ui.wx.showModal = options => { ui.modals.push(options); options.success({ confirm: true }) }
     ui.respond = (action, data) => action.startsWith('financeUpdates.') || action.startsWith('reviewIssues.') || action.startsWith('economicEvents.')
       ? h.services.import({ action, data }) : h.services.api({ action, data })
     const page = ui.page('import-workbench'); page.onLoad({ fresh: '1' })
@@ -40,16 +42,27 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
       assert.match(page.data.evidenceSheet.part, /交易关闭/)
       page.closeEvidence()
       assert.match(page.data.currentIssue.reasonText, /原消费已关闭或失败/)
-      const calls = ui.calls.length
-      page.markRefundPending(); page.linkRefund()
+      const eventId = page.data.issueVisibleEvents[0].eventId
+      page.closeIssue()
+      await page.openReviewEdit(tap({ id: eventId }))
+      await page.loadEditorRefunds(tap({ kind: 'event' }))
+      await page.loadEditorRefunds(tap({ kind: 'transaction' }))
+      assert.equal(page.data.reviewEditSheet.refundCanPending, false)
+      const refund = page.data.reviewEditSheet.draft.refund, calls = ui.calls.length
+      page.selectEditorRefund(tap({ mode: 'pending' }))
       assert.equal(ui.calls.length, calls)
+      assert.deepEqual(page.data.reviewEditSheet.draft.refund, refund)
+      page.closeReviewEdit()
+      await page.openIssue(tap({ id: issue.issueId }))
       for (const [decision, extra] of [['mark_refund_pending', {}], ['apply_fields', { fields: { economicNature: 'income', flowDirection: 'inflow', ledgerAccountId: wallet.accountId } }]]) {
         await assert.rejects(h.imp('reviewIssues.resolve', await issueRequest(update.updateId, issue, decision, extra)), { publicCode: 'VALIDATION_ERROR' })
       }
       await assert.rejects(post(update.updateId), { publicCode: 'UNRESOLVED_IMPORT' })
       assert.equal((await amounts()).length, 0)
       const stale = await issueRequest(update.updateId, issue, 'exclude_events')
+      const scopeCount = page.data.issueScopeCount
       await page.excludeIssueEvents(); await page._draftSession.flush()
+      if (scopeCount > 1) assert.ok(ui.modals.at(-1).content.includes('当前组的 ' + scopeCount + ' 笔记录'))
       assert.equal((await issues(update.updateId)).filter(i => i.blocking).length, 0)
       assert.equal((await amounts()).length, 0)
       const sent = ui.calls.find(c => c.action === 'reviewIssues.resolve')
@@ -67,7 +80,14 @@ test('F06 合成导出结构经过真实解析、核对Page和最小权限MySQL'
       assert.equal(issue.primaryReasonCode, 'refund_relation_required')
       const { page } = await open(update.updateId, issue)
       assert.equal(page.data.currentIssue.refundSourceConflict, false)
-      page.markRefundPending(); await page._draftSession.flush(); await post(update.updateId)
+      const eventId = page.data.issueVisibleEvents[0].eventId
+      page.closeIssue()
+      await page.openReviewEdit(tap({ id: eventId }))
+      await page.loadEditorRefunds(tap({ kind: 'event' }))
+      await page.loadEditorRefunds(tap({ kind: 'transaction' }))
+      assert.equal(page.data.reviewEditSheet.refundCanPending, true)
+      page.selectEditorRefund(tap({ mode: 'pending' }))
+      await page.saveReviewEdit(); await page._draftSession.flush(); await post(update.updateId)
       const pending = (await amounts()).find(row => row.type === 'refund' && String(row.amount) === '300')
       assert.ok(pending); assert.equal(pending.originalTransactionId, null)
       assert.equal(pending.destinationAccountId, wallet.accountId)

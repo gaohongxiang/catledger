@@ -431,8 +431,7 @@ module.exports = {
         accountChoiceSheet: null, accountChoiceQuery: '', accountChoiceResults: [], categories: [], issueCategories: [],
         uploadSummary: { total: 0, queued: 0, ready: 0, failed: 0, mapping: 0, duplicate: 0, attention: 0 },
         posting: null, errorMessage: '', currentIssue: null, currentMembers: [],
-        issueEvents: [], issueRelations: [], evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, reviewDetailSheet: null, reviewEditSheet: null,
-        repaymentAllocationChoices: [], repaymentAllocationStatusText: '', repaymentAllocationCanSave: false
+        issueEvents: [], issueRelations: [], evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, reviewDetailSheet: null, reviewEditSheet: null
       })
     this._accountUiDrafts.clear()
   },

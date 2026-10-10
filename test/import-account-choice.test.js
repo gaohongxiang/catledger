@@ -3,6 +3,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 const model = require('../miniprogram/pages/import-workbench/model')
+const editor = require('./helpers/editor-workbench')
 
 function pageFor(issue, accounts = [], importApi = {}) {
   const h = require('./helpers/paged-workbench').runtime()
@@ -101,62 +102,35 @@ function bankPage(onCall) {
   return page
 }
 
-test('唯一银行候选仍未选中，多张不预选；确认候选只改变本地表单', async () => {
-  let writes = 0
-  const page = bankPage((action) => { if (action === 'reviewIssues.resolve') writes++ })
-  await page.openIssue({ currentTarget: { dataset: { id: 'one' } } })
-  assert.equal(page.data.issueDraft.accountIndex, 0)
-  assert.equal(page.data.bankSuggestion.candidates.length, 1)
-  assert.equal(page.data.currentIssue.subjectTitle, '平安银行信用卡还款')
-  page.selectBankSuggestion({ currentTarget: { dataset: { id: 'card' } } })
-  assert.equal(page.data.accountChoices[page.data.issueDraft.accountIndex].accountId, 'card')
-  assert.equal(writes, 0)
+test('唯一候选与多候选都不自动确认，显式选择只改变本笔草稿', async t => {
+  const { h, page, drafts } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0' })
+  assert.equal(editor.draft(page).counterpartyLedgerAccountId, '')
+  assert.ok(editor.view(page).missing.includes('还入账户'))
+  editor.select(page, 'reviewCounterparty', drafts[0])
+  assert.equal(editor.draft(page).counterpartyLedgerAccountId, drafts[0].accountId)
+  assert.equal(editor.writes(h).length, 0)
 })
 
-test('整理阶段组合支付表单完整后才提交', async () => {
-  const details = syntheticIssueDetails(1, 'shared_fields')
-  details.members[0].event.reasonCodes = ['payment_components_ambiguous', 'row_transaction_type_unknown']
-  details.members[0].event.paymentComponents = [{ componentKind: 'financial', label: '测试银行卡' }, { componentKind: 'financial', label: '测试余额' }]
-  details.members[0].event.amountMinor = '1000'
-  details.issue.subject = details.members[0].event
-  details.accounts = [{ accountId: 'one', name: '测试银行卡', type: 'bank' }, { accountId: 'two', name: '测试余额', type: 'wallet' }]
-  const page = pageFor(details.issue, details.accounts, { async callImport(action) {
-    if (action === 'reviewIssues.get') return details
-    return { evidence: [] }
-  } })
-  page.data.issues = [model.issueView(details.issue)]
-  await page.openIssue({ currentTarget: { dataset: { id: details.issue.issueId } } })
-  assert.equal(page.data.currentIssue.paymentNeedsReview, true)
-  assert.equal(page.data.paymentRows.length, 2)
-  assert.equal(page.data.paymentCanSave, false)
-  page.changePaymentNature({ detail: { value: 1 } })
+test('整理阶段组合支付按金额与说明区分完整和待核对草稿', async t => {
+  const { page, accounts } = await editor.open(t, { economicNature: 'expense', amountMinor: '1000' })
+  editor.mode(page, 'composition', 'payment')
+  assert.equal(editor.view(page).complete, false)
   for (const [index, amount] of [[0, '6.00'], [1, '4.00']]) {
-    page.changePaymentRow({ currentTarget: { dataset: { index, field: 'account' } }, detail: { value: index + 1 } })
-    page.changePaymentRow({ currentTarget: { dataset: { index, field: 'amount' } }, detail: { value: amount } })
+    editor.select(page, 'editorPart' + index, accounts[index])
+    page.changeEditorPart({ ...editor.tap({ index }), detail: { value: amount } })
   }
-  assert.equal(page.data.paymentCanSave, false)
-  page.changePaymentNote({ detail: { value: '已核对合成支付详情' } })
-  assert.equal(page.data.paymentCanSave, true)
-  let submission
-  page.resolveIssue = (decision, extra) => { submission = { decision, ...extra } }
-  page.resolveWithFields()
-  assert.equal(submission.fields.paymentResolution.allocations.length, 2)
-  assert.equal(submission.fields.paymentResolution.nature, 'expense')
-  assert.equal(submission.fields.ledgerAccountId, undefined)
-  page.changePaymentRow({ currentTarget: { dataset: { index: 1, field: 'amount' } }, detail: { value: '4.01' } })
-  assert.equal(page.data.paymentRows[0].amountInput, '5.99')
-  assert.equal(page.data.paymentCanSave, true)
-  page.fillPaymentAmount({ currentTarget: { dataset: { index: 1 } } })
-  assert.deepEqual(Array.from(page.data.paymentRows, row => row.amountInput), ['0.00', '10.00'])
-  assert.equal(page.data.paymentCanSave, true)
-  page.resolveWithFields()
-  assert.equal(submission.fields.paymentResolution.version, 'payment-resolution-v2')
-  assert.deepEqual(Array.from(submission.fields.paymentResolution.allocations, row => row.amountMinor), ['0', '1000'])
-  for (const value of ['', '10.01', '1.001', '-1']) {
-    page.changePaymentRow({ currentTarget: { dataset: { index: 1, field: 'amount' } }, detail: { value } })
-    assert.equal(page.data.paymentRows[0].amountInput, '')
-    assert.equal(page.data.paymentCanSave, false)
+  assert.equal(editor.view(page).complete, false)
+  assert.equal(editor.view(page).payload.composition.incomplete, true)
+  editor.edit(page, 'evidenceNote', '已核对合成支付详情')
+  assert.equal(editor.view(page).complete, true)
+  assert.deepEqual(editor.plain(editor.view(page).payload.composition.parts.map(part => part.amountMinor)), ['600', '400'])
+  for (const value of ['10.01', '1.001', '-1']) {
+    page.changeEditorPart({ ...editor.tap({ index: 1 }), detail: { value } })
+    assert.equal(editor.view(page).canSave, false)
   }
+  page.changeEditorPart({ ...editor.tap({ index: 1 }), detail: { value: '' } })
+  assert.equal(editor.view(page).complete, false)
+  assert.equal(editor.view(page).payload.composition.parts[1].amountMinor, null)
 })
 
 test('组合支付预填唯一来源账户和明确还款性质，歧义与未知保持未选', () => {
@@ -178,25 +152,21 @@ test('组合支付预填唯一来源账户和明确还款性质，歧义与未�
   assert.equal(model.paymentResolutionDefaults({ ...event, primaryEvidence: { item: '信用卡还款' } }, accounts).natureIndex, 0)
 })
 
-test('账户阶段组合支付只保存账户，不要求金额性质目标；整理沿用已保存账户', async () => {
-  const details = syntheticIssueDetails(1, 'account_mapping')
-  const event = details.members[0].event
-  event.reasonCodes = ['payment_components_ambiguous']
-  event.paymentComponents = [{ componentKind: 'financial', label: '测试银行' }, { componentKind: 'financial', label: '测试余额' }]
-  details.issue.subject = event
-  details.accounts = [{ accountId: 'one', name: '测试银行', currency: 'CNY' }, { accountId: 'two', name: '测试余额', currency: 'CNY' }]
-  const page = pageFor(details.issue, details.accounts, { async callImport(action) { return action === 'reviewIssues.get' ? details : { evidence: [] } } })
-  page.data.issues = [model.issueView(details.issue)]
-  await page.openIssue({ currentTarget: { dataset: { id: details.issue.issueId } } })
-  assert.equal(page.data.currentIssue.paymentAccountsOnly, true)
-  assert.equal(page.data.paymentCanSave, true)
-  assert.ok(page.data.paymentRows.every(row => row.amountInput === ''))
-  let submission
-  page.resolveIssue = (decision, extra) => { submission = extra.fields }
-  page.resolveWithFields()
-  assert.deepEqual(Object.keys(submission), ['paymentAccounts'])
-  const defaults = model.paymentResolutionDefaults({ ...event, paymentAccounts: submission.paymentAccounts.map((part, i) => ({ ...part, accountId: i ? 'one' : 'two' })) }, details.accounts)
-  assert.deepEqual(defaults.rows.map(row => row.accountId), ['two', 'one'])
+test('账户阶段按来源成分只保存账户；统一编辑器沿用已保存付款账户', async t => {
+  const issue = unknownIssue()
+  issue.accountContext = { recognized: true, label: '测试银行', fundsSide: 'payment_component_0' }
+  const page = pageFor(issue, [{ accountId: 'one', name: '测试银行', type: 'bank' }])
+  page.refreshAccountMappings()
+  page.openAccountChoice({ currentTarget: { dataset: { id: issue.issueId } } })
+  page.selectAccountChoice({ currentTarget: { dataset: { value: 'account:one' } } })
+  const decision = page.accountMappingDecision(issue)
+  assert.equal(JSON.stringify(decision).includes('paymentResolution'), false)
+  const { page: editorPage } = await editor.open(t, { economicNature: 'expense',
+    paymentComponents: [{ componentKind: 'financial', label: '测试银行' }, { componentKind: 'financial', label: '测试余额' }],
+    paymentAccounts: [{ componentIndex: 0, accountId: 'one' }, { componentIndex: 1, accountId: 'two' }],
+    fieldSources: { paymentComponents: [{ componentKind: 'financial', label: '测试银行' }, { componentKind: 'financial', label: '测试余额' }] } })
+  assert.deepEqual(editor.plain(editor.draft(editorPage).parts.map(part => part.accountId)), ['one', 'two'])
+  assert.ok(editor.draft(editorPage).parts.every(part => part.amountInput === ''))
 })
 
 test('来源账户组不显示组合支付入口，普通选择器仍按账户归属；整理保留组合核对', () => {
@@ -210,25 +180,16 @@ test('来源账户组不显示组合支付入口，普通选择器仍按账户�
   assert.equal(model.issueView({ ...issue, issueType: 'shared_fields' }).paymentNeedsReview, true)
 })
 
-test('补充还款账户只改变本地草稿；全部、删除和新建均重新校验金额', () => {
-  const page = pageFor(unknownIssue())
-  page.data.issueEvents = [{ amountMinor: '10000' }]
-  page.data.repaymentAccountOptions = [{ accountId: 'history', name: '历史花呗', type: 'credit' }]
-  page.refreshRepaymentChoices([{ accountId: 'candidate', name: '本批信用购', amountInput: '' }])
-  assert.equal(page.data.repaymentAllocationCanSave, false)
-  page.addRepaymentAccount({ detail: { value: 1 } })
-  assert.equal(page.data.repaymentAllocationChoices.length, 2)
-  assert.equal(page.data.repaymentAllocationCanSave, false)
-  page.fillRepaymentAllocation({ currentTarget: { dataset: { index: 1 } } })
-  assert.equal(page.data.repaymentAllocationCanSave, true)
-  page.removeRepaymentAccount({ currentTarget: { dataset: { index: 1 } } })
-  assert.equal(page.data.repaymentAllocationCanSave, false)
-  page.addRepaymentAccount({ detail: { value: 2 } })
-  page.fillRepaymentAllocation({ currentTarget: { dataset: { index: 1 } } })
-  assert.equal(page.data.repaymentAllocationCanSave, false)
-  page.changeRepaymentAccountName({ currentTarget: { dataset: { index: 1 } }, detail: { value: '新花呗' } })
-  assert.equal(page.data.repaymentAllocationCanSave, true)
-  assert.equal(page.data.repaymentAdditionalIndex, 0)
+test('补充还入账户只改草稿，删除或清空分配重新计算缺口', async t => {
+  const { h, page, drafts } = await editor.open(t, { economicNature: 'repayment', ledgerAccountId: 'account-0', amountMinor: '10000' })
+  editor.mode(page, 'composition', 'repayment'); editor.select(page, 'editorPart0', drafts[0])
+  page.changeEditorPart({ ...editor.tap({ index: 0 }), detail: { value: '100.00' } })
+  assert.equal(editor.view(page).complete, true)
+  page.addEditorPart(); assert.equal(editor.view(page).complete, false)
+  page.removeEditorPart(editor.tap({ index: 1 })); assert.equal(editor.view(page).complete, true)
+  page.changeEditorPart({ ...editor.tap({ index: 0 }), detail: { value: '' } })
+  assert.equal(editor.view(page).complete, false)
+  assert.equal(editor.writes(h).length, 0)
 })
 
 test('分类保存只提交分类，隐藏的预选账户不覆盖原账户', () => {
@@ -243,68 +204,36 @@ test('分类保存只提交分类，隐藏的预选账户不覆盖原账户', ()
   assert.equal(JSON.stringify(saved.extra.fields), JSON.stringify({ categoryId: 'category-expense' }))
 })
 
-test('性质可以先确认，分类留给后续分类问题而非写空值', () => {
-  const page = pageFor(unknownIssue())
-  page.data.currentIssue = { issueType: 'shared_fields' }
-  page.data.accountChoices = [{ accountId: 'known-account' }]
-  page.data.issueCategories = [{ categoryId: '', isPlaceholder: true }]
-  let saved
-  page.resolveIssue = (_, extra) => { saved = extra.fields }
-  page.resolveWithFields()
-  assert.equal(saved.economicNature, 'expense')
-  assert.equal(Object.hasOwn(saved, 'categoryId'), false)
+test('性质可先确认，分类留待后续而不擅自选首项', async t => {
+  const { page } = await editor.open(t, { economicNature: 'unknown', ledgerAccountId: 'account-0', categoryId: null })
+  editor.nature(page, 'expense')
+  assert.equal(editor.view(page).payload.fields.economicNature, 'expense')
+  assert.equal(Object.hasOwn(editor.view(page).payload.fields, 'categoryId'), false)
 })
 
-test('未选转入账户时保存禁用，选定后启用，清空后再次禁用且直接调用不写入', async () => {
-  const page = bankPage()
-  let writes = 0
-  page.resolveIssue = () => { writes++ }
-  await page.openIssue({ currentTarget: { dataset: { id: 'one' } } })
-  assert.equal(page.data.issueFieldsCanSave, false)
-  page.resolveWithFields()
-  assert.equal(writes, 0)
-  page.selectBankSuggestion({ currentTarget: { dataset: { id: 'card' } } })
-  assert.equal(page.data.issueFieldsCanSave, true)
-  page.resolveWithFields()
-  assert.equal(writes, 1)
-  for (const index of [0, -1, 999]) {
-    page.changeIssueAccount({ detail: { value: index } })
-    assert.equal(page.data.issueFieldsCanSave, false)
-    page.resolveWithFields()
-    assert.equal(writes, 1)
-  }
+test('缺转入账户可保存待核对草稿，但不冒充完成或自动写入', async t => {
+  const { h, page, accounts } = await editor.open(t, { economicNature: 'internal_transfer', ledgerAccountId: 'account-0' })
+  assert.equal(editor.view(page).complete, false)
+  editor.select(page, 'reviewCounterparty', accounts[1]); assert.equal(editor.view(page).complete, true)
+  page.clearEditorChoice(editor.tap({ field: 'counterpartyLedgerAccountId' }))
+  assert.equal(editor.view(page).complete, false)
+  assert.ok(editor.view(page).missing.includes('转入账户'))
+  assert.equal(editor.writes(h).length, 0)
 })
 
-test('单端账户不能选成已知另一端，双端都选好且不相同才允许保存', () => {
-  const page = pageFor(unknownIssue())
-  page.data.accountChoices = [{ isPlaceholder: true }, { accountId: 'from' }, { accountId: 'to' }]
-  page.data.counterpartyAccountChoices = page.data.accountChoices
-  page.data.issueEvents = [{ ledgerAccountId: 'from' }]
-  page.data.currentIssue = { issueType: 'transfer_accounts', missingFundsSide: 'to' }
-  page.changeIssueAccount({ detail: { value: 1 } })
-  assert.equal(page.data.issueFieldsCanSave, false)
-  page.changeIssueAccount({ detail: { value: 2 } })
-  assert.equal(page.data.issueFieldsCanSave, true)
-  assert.deepEqual(model.buildIssueFieldsDraft(page.data).fields, { counterpartyLedgerAccountId: 'to' })
-  page.data.currentIssue.missingFundsSide = 'from'
-  page.data.issueEvents = [{ counterpartyLedgerAccountId: 'to' }]
-  page.changeIssueAccount({ detail: { value: 2 } })
-  assert.equal(page.data.issueFieldsCanSave, false)
-  page.changeIssueAccount({ detail: { value: 1 } })
-  assert.equal(page.data.issueFieldsCanSave, true)
-  page.data.currentIssue.missingFundsSide = 'both'
-  page.changeCounterpartyAccount({ detail: { value: 0 } })
-  assert.equal(page.data.issueFieldsCanSave, false)
-  page.changeCounterpartyAccount({ detail: { value: 1 } })
-  assert.equal(page.data.issueFieldsCanSave, false)
-  page.changeCounterpartyAccount({ detail: { value: 2 } })
-  assert.equal(page.data.issueFieldsCanSave, true)
-  assert.deepEqual(model.buildIssueFieldsDraft(page.data).fields, { ledgerAccountId: 'from', counterpartyLedgerAccountId: 'to' })
+test('两端不能为同一账户，不依赖问题分组或来源投影', async t => {
+  const { page, accounts } = await editor.open(t, { ledgerAccountId: 'account-0' })
+  editor.select(page, 'reviewCounterparty', accounts[0])
+  assert.equal(editor.view(page).canSave, false)
+  editor.select(page, 'reviewCounterparty', accounts[1])
+  assert.equal(editor.view(page).canSave, true)
+  assert.equal(editor.view(page).complete, true)
+  editor.select(page, 'reviewAccount', accounts[1]); assert.equal(editor.view(page).canSave, false)
 })
 
-test('新账户名称与性质实时校验，保存分类仍须选定分类', () => {
+test('账户映射新建名称与类型实时校验，批量分类须选定分类', () => {
   const page = pageFor(unknownIssue())
-  page.data.currentIssue = { issueType: 'shared_fields' }
+  page.data.currentIssue = { issueType: 'account_mapping' }
   // 直接构造表单的测试须模拟详情已经核实；未就绪时不能切换性质。
   page.data.issueDetailsReady = true
   page.data.accountChoices = [{ isCreate: true }]
@@ -318,10 +247,6 @@ test('新账户名称与性质实时校验，保存分类仍须选定分类', ()
   assert.equal(page.data.issueFieldsCanSave, false)
   page.changeDraftAccountType({ detail: { value: 2 } })
   assert.equal(page.data.issueFieldsCanSave, true)
-  page.changeIssueNature({ detail: { value: page.data.natureOptions.findIndex(item => item.value === 'unknown') } })
-  assert.equal(page.data.issueFieldsCanSave, false)
-  page.changeIssueNature({ detail: { value: 0 } })
-  assert.equal(page.data.issueFieldsCanSave, true)
   assert.equal(Object.hasOwn(model.buildIssueFieldsDraft(page.data).fields, 'categoryId'), false)
   page.data.currentIssue = { issueType: 'category_assignment' }
   page.data.issueCategories = [{ categoryId: '', isPlaceholder: true }, { categoryId: 'category' }]
@@ -333,18 +258,15 @@ test('新账户名称与性质实时校验，保存分类仍须选定分类', ()
   assert.equal(page.data.issueFieldsCanSave, false)
 })
 
-test('组合支付资金卡复用账户路线样式，目标选择和保存门槛仍连接真实草稿', () => {
-  const markup = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/index.wxml'), 'utf8')
-  assert.match(markup, /class="funds-route-card payment-funds-route"/)
-  assert.match(markup, /wx:for="\{\{paymentRows\}\}" wx:key="componentIndex" class="funds-route-name"/)
-  const paymentForm = markup.slice(markup.indexOf('class="payment-resolution-form"'), markup.indexOf('class="mapping-fields"'))
-  assert.equal((paymentForm.match(/data-target="paymentTarget"[^>]*bindtap="openDirectory"/g) || []).length, 1)
-  assert.match(paymentForm, /\{\{paymentTargetChoices\[paymentTargetIndex\]\.name\}\}/)
-  assert.match(markup, /wx:elif="\{\{currentIssue.missingFundsSide === 'both'\}\}"[^>]*data-target="counterparty"[^>]*bindtap="openDirectory"/)
-  const save = markup.match(/<button[^>]+bindtap="resolveWithFields"[^>]*>/)[0]
-  assert.match(save, /!issueFieldsCanSave/)
-  assert.match(save, /!paymentCanSave/)
-  assert.match(save, /!repaymentAllocationCanSave/)
+test('普通资金区域只渲染统一编辑字段并使用同一保存门禁', () => {
+  const root = path.join(__dirname, '../miniprogram/pages/import-workbench')
+  const markup = fs.readFileSync(path.join(root, 'review-editor-fields.wxml'), 'utf8')
+  assert.match(markup, /editor.routeFields/)
+  assert.match(markup, /changeEditorPart/)
+  assert.match(markup, /editor.partFields/)
+  const sheet = fs.readFileSync(path.join(root, 'review-edit.wxml'), 'utf8')
+  assert.match(sheet, /reviewEditSheet.canSave/)
+  assert.match(sheet, /saveReviewEdit/)
 })
 
 test('组合金额使用整数差额，多账户仅全部动作分配，空白不能冒充已确认零', () => {
@@ -362,16 +284,14 @@ test('组合金额使用整数差额，多账户仅全部动作分配，空白�
   assert.equal(model.buildPaymentResolutionDraft(all, 'expense', null, '核对', '30').valid, true)
 })
 
-test('修改分配金额只更新对应字段，不能把另一行名称重新下发', () => {
-  const page = pageFor(unknownIssue()); page.data.issueEvents = [{ amountMinor: '10000' }]
-  page.data.repaymentAllocationChoices = [
-    { accountId: 'new-a', isNew: true, name: '正在编写的账户', amountInput: '' },
-    { accountId: 'b', name: '已有账户', amountInput: '' }
-  ]
+test('修改分配金额只更新对应叶字段，不把另一行输入重新下发', async t => {
+  const { page, accounts } = await editor.open(t, { economicNature: 'expense', amountMinor: '10000' })
+  editor.mode(page, 'composition', 'payment')
+  editor.select(page, 'editorPart0', accounts[0]); editor.select(page, 'editorPart1', accounts[1])
   const patches = [], original = page.setData
   page.setData = function (patch) { patches.push(patch); original.call(this, patch) }
-  page.changeRepaymentAllocation({ currentTarget: { dataset: { index: 1 } }, detail: { value: '50.' } })
-  assert.equal(page.data.repaymentAllocationChoices[1].amountInput, '50.')
-  assert.ok(patches.some(patch => patch['repaymentAllocationChoices[1].amountInput'] === '50.'))
-  assert.ok(patches.every(patch => !Object.keys(patch).some(key => key === 'repaymentAllocationChoices' || key.includes('[0].name'))))
+  page.changeEditorPart({ ...editor.tap({ index: 1 }), detail: { value: '50.' } })
+  assert.equal(editor.draft(page).parts[1].amountInput, '50.')
+  assert.ok(patches.some(patch => patch['reviewEditSheet.draft.parts[1].amountInput'] === '50.'))
+  assert.ok(patches.every(patch => !Object.keys(patch).some(key => key === 'reviewEditSheet.draft.parts' || key.includes('parts[0]'))))
 })

@@ -84,9 +84,10 @@ for (const tab of ['review', 'category']) test(tab + '的74笔分属46个问题�
   assert.equal(tab === 'review' ? cards()[28].scopeCount : cards()[28].groupCount, 29)
   assert.equal(cards()[28].groupPos && cards()[28].groupPos !== '', true, '同组行应连成卡片')
   let selected
-  page.openIssue = event => { selected = event.currentTarget.dataset.id }
+  page.openReviewEdit = event => { selected = event.currentTarget.dataset }
   await page.openPendingRecord(tap({ id: cards()[28].eventId, issueId: cards()[28].issueId }))
-  assert.equal(selected, data.issues[0].issueId, '分页不改变决定范围')
+  assert.equal(selected.id, data.events[28].eventId, '分页后仍只编辑实际点击的第29笔')
+  assert.equal(selected.focusIssueId, data.issues[0].issueId, '原问题仅作为关系焦点保留')
   await page.changeReviewPage(tap({ direction: 1 }))
   assert.equal(cards().length, 24)
   assert.equal(page.data.reviewPage.start, 51)

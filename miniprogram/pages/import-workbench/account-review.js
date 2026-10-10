@@ -13,6 +13,10 @@ function currentAccountRecords(page, token) {
 }
 
 function currentIssueDirectory(page) {
+  if (page.data.directorySheet && page.data.directorySheet.editorDirectory) {
+    const token = page._editorDirectoryToken
+    return Boolean(token && token.editor === page._reviewEditToken && page.isReviewEditorCurrent() && token.revision === (token.editor.editVersion || 0))
+  }
   if (!page.data.directorySheet || !page.data.directorySheet.issueDirectory) return true
   const token = page._issueDirectoryToken, issue = page.data.currentIssue
   return Boolean(token && page._viewActive && page._viewSession === token.session && token.session.active &&
@@ -31,25 +35,21 @@ const ACCOUNT_TYPE_OPTIONS = Object.freeze([
   ])
 
 function directorySelection(data, target) {
-  if (target === 'reviewAccount' || target === 'reviewCounterparty') {
-    return (data.reviewEditSheet || {})[target === 'reviewAccount' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'] || ''
-  }
   if (target === 'categoryEdit') return (data.categoryEditSheet || {}).selectedId || ''
   const entry = target === 'category' ? (data.issueCategories || [])[data.issueDraft.categoryIndex]
-    : target === 'paymentTarget' ? (data.paymentTargetChoices || [])[data.paymentTargetIndex]
-      : target === 'counterparty' ? (data.counterpartyAccountChoices || [])[data.issueDraft.counterpartyAccountIndex]
-        : target === 'account' ? (data.accountChoices || [])[data.issueDraft.accountIndex] : null
+    : target === 'account' ? (data.accountChoices || [])[data.issueDraft.accountIndex] : null
   return entry && (entry.accountId || entry.categoryId) || ''
 }
 
 function directoryRows(sheet, items) {
   return items.map(item => {
-    const wrongType = sheet.liabilityOnly && !['credit', 'other_liability'].includes(item.type)
+    const wrongType = sheet.allowedTypes ? !sheet.allowedTypes.includes(item.type)
+      : sheet.liabilityOnly && !['credit', 'other_liability'].includes(item.type)
     const unavailable = Boolean(item.archived || item.archivedAt || item.unavailable)
     const type = ACCOUNT_TYPE_OPTIONS.find(option => option.value === item.type)
-    return { ...item, directorySelected: (item.accountId || item.categoryId) === sheet.selectedId,
+    return { ...item, directorySelected: (sheet.kind === 'loans' ? item.loanId : item.accountId || item.categoryId) === sheet.selectedId,
       directoryDisabled: wrongType || unavailable,
-      directoryMeta: unavailable ? (sheet.kind === 'categories' ? '分类不可用' : '账户不可用') : wrongType ? '不能作为还款账户' : type ? type.label : '' }
+      directoryMeta: unavailable ? (sheet.kind === 'categories' ? '分类不可用' : '账户不可用') : wrongType ? '账户类型不适用于当前资金端' : type ? type.label : '' }
   }).sort((a, b) => Number(a.directoryDisabled) - Number(b.directoryDisabled))
 }
 
@@ -513,41 +513,33 @@ module.exports = {
 
   openDirectory: async function (event) {
     const target = event.currentTarget.dataset.target
+    const editorDirectory = ['reviewAccount', 'reviewCounterparty'].includes(target) || /^editor/.test(target)
+    const editorOptions = editorDirectory ? this.reviewEditorDirectory(target) : null
+    if (editorDirectory && !editorOptions) return
     const issue = this.data.currentIssue
-    const issueDirectory = Boolean(issue && ['account', 'counterparty', 'payment', 'paymentTarget', 'repayment', 'category'].includes(target))
+    const issueDirectory = Boolean(issue && ['account', 'category'].includes(target))
     if (issueDirectory && (!this._viewActive || !this._viewSession || !this._viewSession.active || !getApp().hasLoginApproval() ||
       this.data.busy || this.data.issueStale || !this.data.issueDetailsReady)) return
-    if (['reviewAccount', 'reviewCounterparty'].includes(target)) {
-      const sheet = this.data.reviewEditSheet
-      if (!sheet || sheet.loading || sheet.saving || sheet.pending || sheet.stale || sheet.saved) return
-    }
     const editor = target === 'categoryEdit' && this.data.categoryEditSheet
     if (target === 'categoryEdit' && (!editor || editor.loading || editor.saving || editor.stale || editor.pending || editor.saved)) return
-    const kind = ['category', 'categoryEdit'].includes(target) ? 'categories' : 'accounts'
-    const categoryKind = editor ? editor.kind : undefined
-    const reviewed = this.data.reviewEditSheet
-    let issueOptions = ['reviewAccount', 'reviewCounterparty'].includes(target)
-      ? { title: '选择' + (target === 'reviewAccount' ? reviewed.accountLabel : reviewed.destinationLabel) } : {}
+    const kind = editorOptions ? editorOptions.kind : ['category', 'categoryEdit'].includes(target) ? 'categories' : 'accounts'
+    const categoryKind = editorOptions ? editorOptions.categoryKind : editor ? editor.kind : undefined
+    let issueOptions = editorOptions ? { ...editorOptions, editorDirectory: true } : {}
+    this._editorDirectoryToken = editorDirectory ? { editor: this._reviewEditToken, revision: this._reviewEditToken.editVersion || 0 } : null
     this._issueDirectoryToken = null
     if (issueDirectory) {
-      const accountField = ['account', 'counterparty'].includes(target)
-      const choices = this.data[target === 'counterparty' ? 'counterpartyAccountChoices' : 'accountChoices'] || []
-      const selected = choices[this.data.issueDraft[target === 'counterparty' ? 'counterpartyAccountIndex' : 'accountIndex']]
-      const labels = this.data.issueDetail || {}
-      const routeLabel = issue.fundsRoute && !issue.aggregateRepayment && !labels.generic
-        ? (target === 'counterparty' || issue.missingFundsSide === 'to' ? labels.fundsToLabel : labels.fundsFromLabel) : ''
-      issueOptions = { issueDirectory: true,
-        title: accountField ? '选择' + (routeLabel || (target === 'counterparty' ? labels.destinationLabel || '转入账户' : labels.selectorLabel || '资金账户'))
-          : { repayment: '补充还入账户', payment: '补充付款账户', paymentTarget: '选择还入账户', category: '选择分类' }[target],
-        canCreate: accountField ? choices.some(row => row.isCreate) : target === 'repayment' && this.data.repaymentAllocationChoices.length < 20,
-        canClear: accountField && choices.some(row => row.isPlaceholder) && Boolean(selected && !selected.isPlaceholder) }
+      const choices = this.data.accountChoices || []
+      const selected = choices[this.data.issueDraft.accountIndex]
+      issueOptions = { issueDirectory: true, title: target === 'account' ? '选择账本账户' : '选择分类',
+        canCreate: target === 'account' && choices.some(row => row.isCreate),
+        canClear: target === 'account' && choices.some(row => row.isPlaceholder) && Boolean(selected && !selected.isPlaceholder) }
       this._issueDirectoryToken = { issueId: issue.issueId, issueVersion: issue.version, issueToken: this._issueEvidenceToken,
         session: this._viewSession, version: this._viewSession.summary.viewVersion, scope: readCache.getSession(), owner: getApp().globalData.uid }
     }
     if (this._optionPager) this._optionPager.cancel()
-    const liabilityOnly = ['paymentTarget', 'repayment'].includes(target) || Boolean(issue && issue.repaymentOwnershipRequired && target === 'account')
+    const liabilityOnly = false
     this.setData({ directorySheet: { target, kind, ...issueOptions, ...(categoryKind ? { categoryKind } : {}),
-      liabilityOnly, selectedId: directorySelection(this.data, target), query: '', items: [], loading: true } })
+      liabilityOnly, selectedId: editorOptions ? editorOptions.selectedId : directorySelection(this.data, target), query: '', items: [], loading: true } })
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, ...(categoryKind ? { categoryKind } : {}), pageSize: 12 })
     return this.changeDirectoryPage(event)
   },
@@ -564,7 +556,7 @@ module.exports = {
 
   changeDirectoryKind: function (event) {
     const kind = event.currentTarget.dataset.kind
-    if (!this.data.directorySheet || !currentIssueDirectory(this) || this.data.directorySheet.kind === 'categories' || !['accounts', 'accountDrafts'].includes(kind)) return
+    if (!this.data.directorySheet || !currentIssueDirectory(this) || !['accounts', 'accountDrafts'].includes(this.data.directorySheet.kind) || !['accounts', 'accountDrafts'].includes(kind)) return
     this.setData({ 'directorySheet.kind': kind, 'directorySheet.query': '' })
     this._optionPager = this._viewSession.pager('financeUpdates.options', { kind, pageSize: 12 })
     return this.changeDirectoryPage(event)
@@ -586,11 +578,17 @@ module.exports = {
 
   selectDirectory: function (event) {
     const sheet = this.data.directorySheet
+    if (sheet && sheet.editorDirectory) {
+      if (!currentIssueDirectory(this) || sheet.loading || sheet.error) return
+      const item = sheet.items[Number(event.currentTarget.dataset.index)]
+      if (item && !item.directoryDisabled && this.selectEditorDirectory(item, sheet.target)) this.closeDirectory()
+      return
+    }
     if (sheet && sheet.issueDirectory && (!currentIssueDirectory(this) || this.data.busy)) return
     if (sheet && !event.currentTarget.dataset.choice && (sheet.items[Number(event.currentTarget.dataset.index)] || {}).directoryDisabled) return
-    if (sheet && sheet.issueDirectory && ['account', 'counterparty'].includes(sheet.target)) {
-      const property = sheet.target === 'counterparty' ? 'counterpartyAccountChoices' : 'accountChoices'
-      const change = sheet.target === 'counterparty' ? 'changeCounterpartyAccount' : 'changeIssueAccount'
+    if (sheet && sheet.issueDirectory && sheet.target === 'account') {
+      const property = 'accountChoices'
+      const change = 'changeIssueAccount'
       const choice = event.currentTarget.dataset.choice
       if (choice === 'clear' || choice === 'create') {
         const index = this.data[property].findIndex(row => choice === 'clear' ? row.isPlaceholder : row.isCreate)
@@ -609,19 +607,7 @@ module.exports = {
       this.closeDirectory()
       return
     }
-    if (sheet && sheet.issueDirectory && sheet.target === 'repayment' && event.currentTarget.dataset.choice === 'create') {
-      if (!sheet.canCreate) return
-      const index = this.data.repaymentAdditionalOptions.findIndex(row => row.isCreate)
-      if (index < 0) return
-      this.addRepaymentAccount({ detail: { value: index } }); this.closeDirectory()
-      return
-    }
     if (sheet && sheet.issueDirectory && (sheet.loading || sheet.error)) return
-    if (sheet && ['reviewAccount', 'reviewCounterparty'].includes(sheet.target)) {
-      const item = sheet.items[Number(event.currentTarget.dataset.index)]
-      if (item && this.selectReviewedAccount(item, sheet.target)) this.closeDirectory()
-      return
-    }
     if (sheet && sheet.target === 'categoryEdit') {
       const item = sheet.items[Number(event.currentTarget.dataset.index)]
       if (item && this.selectEditedCategory(item)) this.closeDirectory()
@@ -631,37 +617,19 @@ module.exports = {
     const item = sheet.items[Number(event.currentTarget.dataset.index)]
     if (!item) return
     if (sheet.target === 'category') {
-      const nature = this.data.issueDraft.natureIndex
-      const kind = nature === 1 ? 'income' : [0, 6].includes(nature) ? 'expense' : ''
+      const nature = (this.data.currentIssue.subject || this.data.issueEvents[0] || {}).economicNature
+      const kind = nature === 'income' ? 'income' : ['expense', 'fee'].includes(nature) ? 'expense' : ''
       if (item.kind !== kind) { this.setData({ errorMessage: '请选择与当前收支性质一致的分类' }); return }
       const options = [this.data.issueCategories[0], item]
       this.setData({ issueCategories: options, categories: this.data.categories.filter(row => row.categoryId !== item.categoryId).slice(0, 11).concat(item), 'issueDraft.categoryIndex': 1, issueCategoryCanSave: true })
-    } else if (['payment', 'paymentTarget', 'repayment'].includes(sheet.target)) {
-      if (sheet.target !== 'payment' && !['credit', 'other_liability'].includes(item.type)) { this.setData({ errorMessage: '请选择负债账户' }); return }
-      if (sheet.target === 'repayment') {
-        if (this.data.repaymentAllocationChoices.length >= 20) { this.setData({ errorMessage: '一次最多分配 20 个账户' }); return }
-        if (!this.data.repaymentAllocationChoices.some(row => row.accountId === item.accountId)) this.refreshRepaymentChoices(this.data.repaymentAllocationChoices.concat(Object.assign({}, item, { amountInput: '' })))
-      } else {
-        const key = sheet.target === 'payment' ? 'paymentAccountChoices' : 'paymentTargetChoices'
-        const choices = this.data[key]
-        const pinned = new Set(this.data.paymentRows.map(row => row.accountId).filter(Boolean))
-        const next = choices.filter(row => !row.accountId || pinned.has(row.accountId) || row.accountId === item.accountId)
-        if (!next.some(row => row.accountId === item.accountId)) next.push(item)
-        const rows = this.data.paymentRows.map(row => Object.assign({}, row, { accountIndex: Math.max(0, next.findIndex(account => account.accountId === row.accountId)) }))
-        this.setData(Object.assign({ [key]: next }, sheet.target === 'payment' ? { paymentRows: rows } : {}))
-        if (sheet.target === 'paymentTarget') { this.setData({ paymentTargetIndex: this.data.paymentTargetChoices.findIndex(row => row.accountId === item.accountId) }); this.refreshPaymentDraft() }
-      }
-    } else {
-      const property = sheet.target === 'counterparty' ? 'counterpartyAccountChoices' : 'accountChoices'
-      const field = sheet.target === 'counterparty' ? 'counterpartyAccountIndex' : 'accountIndex'
-      this.setData({ [property]: [this.data[property][0], item], ['issueDraft.' + field]: 1,
-          accounts: this.data.accounts.filter(row => row.accountId !== item.accountId).slice(0, 11).concat(item) })
     }
     this.closeDirectory(); this.refreshIssueFieldsDraft()
   },
 
   closeDirectory: function () {
-    if (this._optionPager) this._optionPager.cancel(); this._optionPager = null; this._issueDirectoryToken = null; this.setData({ directorySheet: null })
+    if (this._optionPager) this._optionPager.cancel()
+    this._optionPager = null; this._issueDirectoryToken = null; this._editorDirectoryToken = null
+    this.setData({ directorySheet: null })
   },
 
   openAccountRecords: async function (event) {

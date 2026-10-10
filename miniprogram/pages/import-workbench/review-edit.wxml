@@ -1,7 +1,7 @@
 <import src="review-editor-fields.wxml" />
 <view wx:if="{{reviewEditSheet && !reviewEditSheet.hidden}}" class="sheet-layer" catchtouchmove="preventTouchMove">
   <view class="sheet-scrim" bindtap="closeReviewEdit"></view>
-  <view class="workflow-sheet editor-sheet">
+  <view class="workflow-sheet review-editor-sheet unified-editor-sheet">
     <view class="sheet-handle"></view>
     <view class="review-sheet-heading"><text class="sheet-title">核对交易</text><button class="review-sheet-close" bindtap="closeReviewEdit" disabled="{{reviewEditSheet.saving}}" aria-label="关闭核对交易"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
     <scroll-view class="review-editor-body" scroll-y enhanced show-scrollbar="{{false}}">
@@ -10,7 +10,7 @@
         <view wx:if="{{reviewEditSheet.attention.length}}" class="editor-attention"><text wx:for="{{reviewEditSheet.attention}}" wx:key="key">{{item.label}} </text></view>
         <text wx:if="{{!reviewEditSheet.editor.supported}}" class="inline-error">{{reviewEditSheet.editor.readonlyReason}}</text>
         <template is="review-editor-fields" data="{{editor: reviewEditSheet.editor, draft: reviewEditSheet.draft, sheet: reviewEditSheet, canEdit: true, disabled: reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved || !reviewEditSheet.editor.supported}}" />
-        <button wx:if="{{reviewEditSheet.issue && (reviewEditSheet.issue.issueType === 'same_event' || reviewEditSheet.issue.issueType === 'identity_conflict' || reviewEditSheet.issue.issueType === 'field_conflict')}}" class="review-text-action" bindtap="openEditorIssue" disabled="{{reviewEditSheet.saving || reviewEditSheet.pending}}">核对来源／同笔关系（显示完整范围） ›</button>
+        <button wx:if="{{reviewEditSheet.groupReview}}" class="review-text-action" bindtap="openEditorIssue" disabled="{{reviewEditSheet.saving || reviewEditSheet.pending}}">核对来源／同笔关系（显示完整范围） ›</button>
         <text class="detail-original-title">原始账单 · 只读</text><button class="review-text-action" bindtap="openEditorOriginal" disabled="{{reviewEditSheet.saving}}">查看完整来源与原文 ›</button>
         <skeleton-rows wx:if="{{reviewEditSheet.evidenceLoading}}" rows="{{2}}" />
         <view wx:for="{{reviewEditSheet.sources}}" wx:key="evidenceId" class="evidence-card"><text class="review-source-caption">{{item.fileName}} · 第 {{item.rowNumber}} 行</text><skeleton-rows wx:if="{{item.loading}}" rows="{{2}}" /><view wx:for="{{item.fields}}" wx:for-item="field" wx:key="key" class="evidence-field"><text class="evidence-key">{{field.name}}</text><text selectable class="evidence-value">{{field.value === '' ? '（空）' : field.value}}</text></view><text wx:if="{{item.incomplete || item.error}}" class="sheet-copy">{{item.error || '原文较长，可在来源详情继续查看'}}</text></view>
@@ -19,7 +19,6 @@
     </scroll-view>
     <view class="sheet-actions">
       <text wx:if="{{reviewEditSheet.error}}" class="inline-error">{{reviewEditSheet.error}}</text>
-      <text wx:for="{{reviewEditSheet.editor.errors}}" wx:key="*this" class="sheet-save-hint">{{item}}</text>
       <text wx:if="{{reviewEditSheet.editor.canSave && !reviewEditSheet.editor.complete}}" class="sheet-copy">可保存当前草稿，剩余事项仍需核对；保存不会改变正式余额。</text>
       <button wx:if="{{reviewEditSheet.saved || (reviewEditSheet.stale && !reviewEditSheet.pending)}}" class="sheet-confirm sheet-confirm-wide" bindtap="refreshReviewEdit" disabled="{{reviewEditSheet.saving}}">{{reviewEditSheet.saved ? '刷新列表' : '重新核验'}}</button>
       <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.editor.complete ? '保存本笔核对' : '保存本笔草稿'}}</button>

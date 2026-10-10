@@ -67,6 +67,17 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   const paired=await require('./helpers/bank-pairing').setup({apiPool,importPool,count:1,subject:'synthetic-export',existingAccountId:debt})
   const pairScope=await paired.pairings()
   await paired.resolve({scopeToken:pairScope.scopeToken,selection:{mode:'all_except',excludedPairKeys:[]}})
+  // UE46：新人工文本（含清空）、退款关系与未完成组成必须与原表一起导出，并由下方两库逐列恢复证明。
+  const editorBatch=await prepareSyntheticUpdate(services,3,'SYNTHETIC-EXPORT-EDITOR')
+  const editorRows=(await imp('economicEvents.list',{updateId:editorBatch.updateId})).items
+  const editorSave=async(index,change)=>imp('financeUpdates.setReview',{requestId:randomUUID(),updateId:editorBatch.updateId,
+    updateVersion:(await imp('financeUpdates.summary',{updateId:editorBatch.updateId})).update.version,eventId:editorRows[index].eventId,
+    eventVersion:editorRows[index].version,editorVersion:1,...change})
+  const editorOriginal=await editorSave(0,{fields:{economicNature:'expense',ledgerAccountId:asset,amountMinor:'10000',note:'',counterparty:''}})
+  await editorSave(1,{fields:{economicNature:'refund',ledgerAccountId:asset,amountMinor:'2500'},
+    decisions:{refund:{mode:'link',kind:'event',id:editorRows[0].eventId,version:editorOriginal.event.version}}})
+  await editorSave(2,{fields:{ledgerAccountId:asset},composition:{kind:'payment',incomplete:true,evidenceNote:'合成未填第二付款端',
+    parts:[{accountId:asset,amountMinor:'100'},{accountId:null,amountMinor:null}]}})
   // 只在一次性库播种超宽审计行，证明大字段不会截坏 UTF-8。
   const wide='合成🐱\n"'.repeat(40000)
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
@@ -89,6 +100,9 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   assert.ok(records.some(r=>r.table==='catledger_loan_charges'&&r.row.plan_removed_at))
   assert.ok(records.some(r=>r.table==='catledger_transactions'&&r.row.creation_provenance_json?.kind==='loan'))
   assert.ok(records.some(r=>r.table==='catledger_bank_channel_decisions'&&r.row.decision==='same'&&r.row.bank_identity_id&&r.row.platform_identity_id))
+  assert.ok(records.some(r=>r.table==='catledger_economic_events'&&r.row.field_sources_json.editorOverrides?.note===''&&r.row.field_sources_json.editorOverrides?.counterparty===''))
+  assert.ok(records.some(r=>r.table==='catledger_economic_events'&&r.row.field_sources_json.editorOverrides?.incompleteComposition?.parts[1].amountMinor===null))
+  assert.ok(records.some(r=>r.table==='catledger_economic_event_relations'&&r.row.source_event_id===editorRows[1].eventId&&r.row.target_event_id===editorRows[0].eventId&&r.row.status==='confirmed'))
   for(const name of ['catledger_loan_charge_contracts','catledger_loan_charges','catledger_loan_charge_sources','catledger_loan_charge_allocations','catledger_loan_charge_audit'])assert.ok(records.some(r=>r.table===name),name+' must be nonempty')
   for(const [table,column] of [['catledger_loan_charges','historical_settled_minor'],['catledger_loan_charge_allocations','historical_replaced_minor'],['catledger_loan_period_allocations','historical_principal_minor']])
     assert.ok(records.some(r=>r.table===table&&BigInt(r.row[column])>0n),column+' must contain real confirmation facts')

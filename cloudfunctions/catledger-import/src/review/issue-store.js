@@ -99,7 +99,8 @@ async function refreshEditedEventIssues(connection, uid, updateId, event, action
       AND m.member_role<>'candidate' AND m.object_id=?`, [uid, updateId, event.eventId])
   const ordinary = new Set(['shared_fields','account_mapping','transfer_accounts','category_assignment','refund_relation'])
   const protectedReasons = new Set(['refund_source_conflict','row_status_unknown','transaction_status_unknown',
-    'account_mapping_conflict','core_fields_conflict','row_semantic_conflict','source_group_conflict','identity_conflict'])
+    'account_mapping_conflict','core_fields_conflict','row_semantic_conflict','source_group_conflict','identity_conflict',
+    'identity_review_required','source_profile_unknown'])
   for (const issue of rows) {
     if (!ordinary.has(issue.issueType) || protectedReasons.has(issue.reason)) continue
     await connection.execute(`DELETE FROM catledger_review_issue_members WHERE uid=? AND update_id=? AND issue_id=?
@@ -112,11 +113,14 @@ async function refreshEditedEventIssues(connection, uid, updateId, event, action
       WHERE uid=? AND update_id=? AND issue_id=?`, [Number(left.count),Number(left.count),Number(left.count),actionId,
         uid,issue.issueId,uid,updateId,issue.issueId])
   }
-  const [[remaining]] = await connection.execute(`SELECT COUNT(DISTINCT i.issue_id) AS count FROM catledger_review_issues i
+  const [remaining] = await connection.execute(`SELECT DISTINCT i.issue_id AS issueId,i.primary_reason_code AS reason FROM catledger_review_issues i
     JOIN catledger_review_issue_members m ON m.uid=i.uid AND m.update_id=i.update_id AND m.issue_id=i.issue_id
     WHERE i.uid=? AND i.update_id=? AND i.status='open' AND i.blocking=1
       AND m.object_type='event' AND m.member_role<>'candidate' AND m.object_id=?`, [uid, updateId, event.eventId])
-  return Number(remaining.count)
+  // 已有明确硬阻断继续由领域规则阻断；额外的汇总标记不能反过来使同笔候选失效。
+  // 未在事件事实中表示的问题仍补汇总阻断，不能因只改备注就解除它。
+  const hard = require('../organizer-model').HARD_BLOCKING_REASONS
+  return remaining.filter(issue => !hard.has(issue.reason) || !event.reasonCodes.includes(issue.reason)).length
 }
 
 module.exports = { refreshEditedEventIssues, selectIssue, selectMembers, updateMappingMemberVersions, createFollowUpIssue, createFollowUpIssues }
