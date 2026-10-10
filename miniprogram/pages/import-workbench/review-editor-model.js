@@ -1,5 +1,6 @@
 // 交易草稿纯模型。入口/问题类型不决定字段，目录只保存稳定 ID。
 const detail = require('./detail-fields')
+const bankAccounts = require('./bank-suggestion')
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
 const MOVEMENTS = ['internal_transfer', 'borrow', 'repayment']
 const ASSETS = ['cash', 'bank', 'wallet', 'other_asset'], DEBTS = ['credit', 'other_liability']
@@ -132,6 +133,16 @@ function derive(row, draft, catalogs = {}) {
   if (effectiveNature === 'unknown') missing.push('交易性质')
   const fields = accountFields(row, draft, accounts)
   const routeFields = draft.composition === 'single' ? fields : fields.filter(field => draft.composition === 'payment' ? field.key === 'counterparty' : field.key === 'account')
+  // 建议沿用原银行/尾号规则，只投影到当前草稿的真实付款、还入端，不自动选账户。
+  const suggestion = !other && draft.composition === 'single' && routeFields.length === 2
+    ? bankAccounts.suggest([{ ...row, economicNature: draft.economicNature,
+      ledgerAccountId: routeFields[0].accountId, counterpartyLedgerAccountId: routeFields[1].accountId }], accounts)
+    : null
+  const suggestionField = suggestion && routeFields[suggestion.side === 'from' ? 0 : 1]
+  const bankSuggestion = suggestion && (!suggestionField.allowedTypes || suggestionField.allowedTypes.includes(suggestion.type)) && { ...suggestion, target: suggestionField.target,
+    key: [suggestion.key, suggestionField.target, ...routeFields.map(field => field.accountId || ''), draft.economicNature].join('|'),
+    candidates: suggestion.candidates.filter(account => (!account.currency || account.currency === (row.currency || 'CNY')) &&
+      (!suggestionField.allowedTypes || suggestionField.allowedTypes.includes(account.type))) }
   for (const field of routeFields) {
     if (!field.accountId) missing.push(field.label)
     if (field.invalid) invalid('funds', field.label + '的账户不可用或类型不符')
@@ -247,7 +258,10 @@ function derive(row, draft, catalogs = {}) {
   return { supported, chargeRows: draft.chargeAllocations.map((part, index) => ({ ...part, index, amountInput: part.amountInput == null ? yuan(part.amountMinor) : part.amountInput })), readonlyReason: facts?.lockedReason || (!facts ? '需更新导入服务后才能编辑' : ''),
     natureOptions: options, natureIndex: Math.max(0, options.findIndex(item => item.value === draft.economicNature)),
     natureLabel: principal ? '分期本金出账' : options.find(item => item.value === draft.economicNature)?.label || '性质待确认',
-    routeFields,
+    routeFields, bankSuggestion,
+    title: draft.economicNature === 'repayment' && !principal ? '确认还款' : '核对交易',
+    summaryParty: draft.counterparty,
+    summaryTime: [draft.date, draft.time.slice(0, 5)].filter(Boolean).join(' '),
     showStructure: !principal && ['expense','repayment'].includes(draft.economicNature) && !other,
     source: Boolean(row.installment),
     needsCompositionNote: draft.composition === 'payment' || draft.composition === 'single' && original.composition !== 'single',

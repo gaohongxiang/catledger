@@ -17,8 +17,28 @@
 .unified-editor-sheet .evidence-scroll { flex: 1; height: 0; min-height: 0; }
 .unified-editor-sheet .sheet-actions,
 .unified-editor-sheet .pairing-footer { flex-shrink: 0; }
-.unified-editor-sheet .editor-amount { display: flex; align-items: baseline; justify-content: flex-end; gap: 8rpx; min-width: 0; }
-.unified-editor-sheet .editor-amount input { width: 240rpx; max-width: 100%; min-width: 0; text-align: right; }
+.unified-editor-sheet .repayment-summary-card { margin-bottom: 24rpx; padding: 28rpx 28rpx 12rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); }
+.unified-editor-sheet .issue-summary-nature { padding: 6rpx 16rpx; border-radius: var(--theme-radius-small, 12rpx); }
+.unified-editor-sheet .editor-amount { display: flex; align-items: baseline; justify-content: flex-end; min-width: 0; max-width: 75%; margin-left: auto; color: var(--ui-ink); font-size: var(--font-title, 40rpx); font-weight: 500; line-height: 1.4; }
+.unified-editor-sheet .editor-amount-input { position: relative; min-width: 0; }
+.unified-editor-sheet .editor-amount-measure { visibility: hidden; display: block; min-width: 100rpx; white-space: nowrap; }
+.unified-editor-sheet .editor-amount input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; min-width: 0; text-align: right; font-size: inherit; font-weight: inherit; line-height: inherit; }
+.unified-editor-sheet .editor-summary-meta { display: block; margin-top: 18rpx; padding-bottom: 14rpx; overflow-wrap: anywhere; }
+.unified-editor-sheet .repayment-ownership { margin: 12rpx 0 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.unified-editor-sheet .route-vertical { margin-bottom: 12rpx; padding: 28rpx; }
+.unified-editor-sheet .route-vertical-point:last-of-type .route-vertical-body { padding-bottom: 0; }
+.unified-editor-sheet.review-editor-sheet .route-vertical-pick { min-height: 112rpx; margin: 0; padding: 22rpx 24rpx; }
+.unified-editor-sheet.review-editor-sheet .route-vertical-pick-filled { min-height: 0; padding: 0; border: 0; background: transparent; }
+.unified-editor-sheet .editor-account-copy { width: 100%; min-width: 0; }
+.unified-editor-sheet .editor-account-copy .route-vertical-label { display: block; margin-bottom: 10rpx; color: var(--ui-accent-strong); font-weight: 400; }
+.unified-editor-sheet .route-vertical-pick-filled .route-vertical-label { color: var(--ui-muted); }
+.unified-editor-sheet .editor-account-value { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
+.unified-editor-sheet .editor-account-value > text:first-child { min-width: 0; overflow-wrap: anywhere; }
+.unified-editor-sheet .bank-suggestion { margin-top: 24rpx; }
+.unified-editor-sheet .bank-suggestion-copy { display: block; margin-bottom: 16rpx; color: var(--theme-warning, #a76416); font-size: var(--font-caption, 24rpx); }
+.unified-editor-sheet.review-editor-sheet .funds-suggestion { padding: 8rpx 20rpx; font-size: var(--font-caption, 24rpx); }
+.unified-editor-sheet.review-editor-sheet .editor-details-toggle { border-top: 0; }
+.unified-editor-sheet .editor-details-toggle .repayment-mode-chevron { color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
 .unified-editor-sheet .mapping-field input,
 .unified-editor-sheet .mapping-field textarea {
   box-sizing: border-box;

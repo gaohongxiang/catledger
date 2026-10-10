@@ -3,13 +3,13 @@
   <view class="sheet-scrim" bindtap="closeReviewEdit"></view>
   <view class="workflow-sheet review-editor-sheet unified-editor-sheet">
     <view class="sheet-handle"></view>
-    <view class="review-sheet-heading"><text class="sheet-title">核对交易</text><button class="review-sheet-close" bindtap="closeReviewEdit" disabled="{{reviewEditSheet.saving}}" aria-label="关闭核对交易"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
+    <view class="review-sheet-heading"><text class="sheet-title">{{reviewEditSheet.editor.title || '核对交易'}}</text><button class="review-sheet-close" bindtap="closeReviewEdit" disabled="{{reviewEditSheet.saving}}" aria-label="关闭核对交易"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
     <scroll-view class="review-editor-body" scroll-y enhanced show-scrollbar="{{false}}">
       <skeleton-rows wx:if="{{reviewEditSheet.loading}}" rows="{{3}}" />
       <block wx:elif="{{reviewEditSheet.record}}">
-        <view wx:if="{{reviewEditSheet.attention.length}}" class="editor-attention"><text wx:for="{{reviewEditSheet.attention}}" wx:key="key">{{item.label}} </text></view>
         <text wx:if="{{!reviewEditSheet.editor.supported}}" class="inline-error">{{reviewEditSheet.editor.readonlyReason}}</text>
         <template is="review-editor-fields" data="{{editor: reviewEditSheet.editor, draft: reviewEditSheet.draft, sheet: reviewEditSheet, canEdit: true, disabled: reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved || !reviewEditSheet.editor.supported}}" />
+        <view wx:if="{{reviewEditSheet.attention.length}}" class="editor-attention"><text wx:for="{{reviewEditSheet.attention}}" wx:key="key">{{item.label}} </text></view>
         <button wx:if="{{reviewEditSheet.groupReview}}" class="review-text-action" bindtap="openEditorIssue" disabled="{{reviewEditSheet.saving || reviewEditSheet.pending}}">核对来源／同笔关系（显示完整范围） ›</button>
         <text class="detail-original-title">原始账单 · 只读</text><button class="review-text-action" bindtap="openEditorOriginal" disabled="{{reviewEditSheet.saving}}">查看完整来源与原文 ›</button>
         <skeleton-rows wx:if="{{reviewEditSheet.evidenceLoading}}" rows="{{2}}" />

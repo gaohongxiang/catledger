@@ -54,6 +54,7 @@ function update(page, key, value) {
     page.setData({ 'reviewEditSheet.chargeLoading': false, 'reviewEditSheet.chargeError': '', 'reviewEditSheet.chargeChoices': [], 'reviewEditSheet.chargeMore': false })
   }
   refresh(page)
+  page.loadEditorSuggestions()
 }
 async function evidence(page, token) {
   if (!current(page, token) || token.evidenceReading) return
@@ -93,7 +94,9 @@ module.exports = {
       version: this._viewSession.summary.viewVersion, eventId, updateVersion: this.data.update.version,
       accounts: new Map(), categories: new Map(), charges: new Map(), sourceCount: 0, evidenceSources: [], focusIssueId: event.currentTarget.dataset.focusIssueId || '' }
     this.setData({ reviewEditSheet: { eventId, record: null, loading: true, saving: false, pending: false,
-      saved: false, stale: false, canSave: false, error: '', sources: [], evidenceLoading: true, evidenceError: '', moreEvidence: false,
+      saved: false, stale: false, canSave: false, error: '', detailsExpanded: false,
+      suggestionLoading: false, suggestionError: '', suggestionMore: false,
+      sources: [], evidenceLoading: true, evidenceError: '', moreEvidence: false,
       chargeChoices: [], chargeLoading: false, chargeError: '', chargeMore: false, refundChoices: [], refundKind: 'event', refundLoading: false, refundError: '', refundTotal: null } })
     try {
       const verified = this._reviewDetailToken
@@ -117,12 +120,50 @@ module.exports = {
         'reviewEditSheet.sourceFields': require('./detail-fields').fieldsFor(row, {}, { omit: ['nature','amount','time','party','account','counterparty','category','note'] }) })
       refresh(this)
       if (packet) this.setData({ 'reviewEditSheet.canSave': true })
+      token.suggestionRead = this.loadEditorSuggestions()
       token.evidenceRead = evidence(this, token)
     } catch (error) { if (current(this, token)) this.setData({ 'reviewEditSheet.loading': false, 'reviewEditSheet.error': errorText(error) }) }
   },
   changeEditorText(event) {
     const key = event.currentTarget.dataset.field
     if (TEXT_FIELDS.has(key)) update(this, key, String(event.detail.value))
+  },
+  toggleEditorDetails() {
+    if (!current(this, this._reviewEditToken) || this.data.reviewEditSheet.saving) return
+    this.setData({ 'reviewEditSheet.detailsExpanded': !this.data.reviewEditSheet.detailsExpanded })
+  },
+  async loadEditorSuggestions(event) {
+    const token = this._reviewEditToken
+    if (!editable(this, token)) return
+    const suggestion = token.view.bankSuggestion
+    if (!suggestion) {
+      token.suggestionKey = ''
+      if (this.data.reviewEditSheet.suggestionLoading || this.data.reviewEditSheet.suggestionError || this.data.reviewEditSheet.suggestionMore) {
+        this.setData({ 'reviewEditSheet.suggestionLoading': false, 'reviewEditSheet.suggestionError': '', 'reviewEditSheet.suggestionMore': false })
+      }
+      return
+    }
+    if (this.data.reviewEditSheet.suggestionLoading && token.suggestionKey === suggestion.key) return
+    if (token.suggestionKey === suggestion.key && !event?.currentTarget?.dataset?.retry) return
+    const key = token.suggestionKey = suggestion.key
+    const active = () => editable(this, token) && token.suggestionKey === key && token.view.bankSuggestion?.key === key
+    this.setData({ 'reviewEditSheet.suggestionLoading': true, 'reviewEditSheet.suggestionError': '', 'reviewEditSheet.suggestionMore': false })
+    try {
+      const response = await token.session.read('financeUpdates.options', { kind: 'accounts', query: suggestion.bank, pageSize: 12 }, active)
+      if (!active()) return
+      for (const account of response.items) token.accounts.set(account.accountId, account)
+      refresh(this)
+      this.setData({ 'reviewEditSheet.suggestionLoading': false, 'reviewEditSheet.suggestionMore': Boolean(response.nextCursor) })
+    } catch (error) {
+      if (active()) this.setData({ 'reviewEditSheet.suggestionLoading': false, 'reviewEditSheet.suggestionError': '建议账户未能读取，可重试或直接选择账户' })
+    }
+  },
+  selectEditorSuggestion(event) {
+    const token = this._reviewEditToken
+    if (!editable(this, token)) return
+    const suggestion = token.view.bankSuggestion
+    const account = suggestion?.candidates.find(item => item.accountId === event.currentTarget.dataset.id)
+    if (account) this.selectEditorDirectory(account, suggestion.target)
   },
   changeReviewedNature(event) {
     const token = this._reviewEditToken
