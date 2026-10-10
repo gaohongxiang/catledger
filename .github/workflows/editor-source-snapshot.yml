@@ -1,7 +1,7 @@
 name: Editor source snapshot
 on:
   push:
-    branches: [main]
+    branches: [main, codex/editor-20261010-recovery]
     paths: [.github/workflows/editor-source-snapshot.yml]
 permissions:
   contents: read

@@ -115,6 +115,9 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
   if (event.fieldSources && event.fieldSources.loanRepayment) {
     try { require('./explicit-repayment').inputForEvent(event) } catch (_) { reasons.push('loan_repayment_required') }
   }
+  const editor = event.fieldSources && event.fieldSources.editorOverrides
+  if (editor && editor.version === 1 && editor.incompleteComposition) reasons.push('editor_composition_incomplete')
+  if (editor && editor.sourceCorrection && editor.sourceCorrection.periodNumber === null) reasons.push('installment_origin_required')
   if (eventAllocation(event).kind === 'conflict') reasons.push('funds_allocation_conflict')
   if (openBlockingIssues > 0) reasons.push('blocking_issue_open')
   if (event.amountMinor == null || !event.localAt || !event.utcAt || !event.currency) {
@@ -202,6 +205,7 @@ function classifyReviewIssue(event) {
   const reasons = new Set(event.reasonCodes || [])
   if (reasons.has('refund_source_conflict')) return { issueType: REVIEW_ISSUE_TYPE.REFUND_RELATION, primaryReason: 'refund_source_conflict' }
   if (reasons.has('row_status_unknown')) return { issueType: REVIEW_ISSUE_TYPE.SHARED_FIELDS, primaryReason: 'row_status_unknown' }
+  if (reasons.has('editor_composition_incomplete')) return { issueType: REVIEW_ISSUE_TYPE.SHARED_FIELDS, primaryReason: 'editor_composition_incomplete' }
   if (reasons.has('loan_repayment_required')) return { issueType: REVIEW_ISSUE_TYPE.SHARED_FIELDS, primaryReason: 'loan_repayment_required' }
   if (reasons.has('source_group_conflict')) {
     return { issueType: REVIEW_ISSUE_TYPE.SAME_EVENT, primaryReason: 'source_group_conflict' }

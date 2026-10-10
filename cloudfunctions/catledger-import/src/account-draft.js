@@ -141,6 +141,7 @@ function reachableAccountIds(events) {
     const fields = typeof event.fieldSources === 'string' ? JSON.parse(event.fieldSources) : event.fieldSources || {}
     for (const allocation of fields.paymentAccounts || []) if (allocation.accountId) result.add(allocation.accountId)
     for (const allocation of (fields.paymentResolution && fields.paymentResolution.allocations) || []) if (allocation.accountId) result.add(allocation.accountId)
+    for (const allocation of fields.editorOverrides?.incompleteComposition?.parts || []) if (allocation.accountId) result.add(allocation.accountId)
     for (const allocation of fields.repaymentAllocations || []) if (allocation.accountId) result.add(allocation.accountId)
   }
   return result

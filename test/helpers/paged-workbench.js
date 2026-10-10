@@ -57,7 +57,10 @@ function runtime(data = fixture(), options = {}) {
     else if (action === 'economicEvents.detail') {
       if (!input.evidenceId) {
         const row = h.events.find(event => event.eventId === input.eventId)
-        return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: JSON.stringify(row), nextCursor: null }
+        const editorFacts = row && require('../../cloudfunctions/catledger-import/src/review/editor-policy').capability({
+          ...row, fieldSources: { ...(row.fieldSources || {}), ...(row.installment ? { installment: row.installment } : {}),
+          ...(row.paymentResolution ? { paymentResolution: row.paymentResolution } : {}) }, timezoneOffsetMinutes: -480 })
+        return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: JSON.stringify({ ...row, editorFacts }), nextCursor: null }
       }
       const index = Number(input.cursor || 0)
       return { protocolVersion: 2, viewVersion: h.summary.viewVersion, part: '合成原文😀'.repeat(200), nextCursor: index < 20 ? String(index + 1) : null }

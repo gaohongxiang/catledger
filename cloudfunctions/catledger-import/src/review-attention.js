@@ -44,6 +44,7 @@ function reasonStep(reason, event) {
   }
   if (['ledger_account_required', 'payment_reference_mapping_required', 'source_account_endpoint_unknown', 'account_endpoint_unknown'].includes(reason)) return accounts(event)
   if (['transfer_account_required', 'repayment_account_required', 'borrow_account_required'].includes(reason) && !principal(event)) return accounts(event)
+  if (reason === 'editor_composition_incomplete') return step('payment', '资金分配待补齐', 60)
   if (reason === 'payment_components_ambiguous') return step('payment', '组合支付待核对', 60)
   if (reason.startsWith('repayment_allocation_') && event.economicNature === 'repayment' && !principal(event)) return step('allocation', '还款分配待补齐', 61)
   if (reason === 'loan_repayment_required' && !principal(event)) return step('loan', '还款本息费待核对', 62)

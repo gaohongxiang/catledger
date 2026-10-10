@@ -10,15 +10,17 @@ function bankRepayment(event) {
 }
 function decisionFor(event) {
   const decision = event && event.fieldSources && event.fieldSources.repaymentOwnership
-  return decision && decision.version === VERSION && decision.confirmedBy === 'user' ? decision : null
+  return decision && [VERSION, 'repayment-ownership-v2'].includes(decision.version) && decision.confirmedBy === 'user' ? decision : null
 }
 function requiresDecision(event) {
+  if (event.fieldSources?.editorOverrides?.ownershipCleared) return false
   const decision = decisionFor(event)
-  return bankRepayment(event) && (!event.counterpartyLedgerAccountId || Boolean(decision && decision.owner === 'other'))
+  return (bankRepayment(event) || decision && decision.version === 'repayment-ownership-v2') && (!event.counterpartyLedgerAccountId || Boolean(decision && decision.owner === 'other'))
 }
 function reasonsFor(event) {
+  if (event.fieldSources?.editorOverrides?.ownershipCleared) return []
   const decision = decisionFor(event)
-  if (!bankRepayment(event)) return []
+  if (!bankRepayment(event) && (!decision || decision.version !== 'repayment-ownership-v2')) return []
   if (decision && decision.owner === 'other') {
     if (event.counterpartyLedgerAccountId || !['expense', 'unknown'].includes(event.economicNature) || event.flowDirection !== 'outflow') return ['repayment_ownership_invalid']
     return decision.treatment === 'pending' || event.economicNature === 'unknown' ? ['repayment_other_treatment_required'] : []
@@ -41,4 +43,24 @@ function applyDecision(event, value) {
     fieldSources: { ...event.fieldSources, repaymentOwnership: decision }
   }
 }
-module.exports = { VERSION, bankRepayment, decisionFor, requiresDecision, reasonsFor, applyDecision }
+// 同一业务归属不依赖来源是否先识别为银行还款。编辑器已在用户事务中核验权限。
+function applyEditorDecision(event, value) {
+  if (!value || Array.isArray(value) || !['self', 'other'].includes(value.owner) ||
+    Object.keys(value).some(key => !['owner', 'treatment'].includes(key))) throw importError('VALIDATION_ERROR')
+  const own = value.owner === 'self'
+  if (own ? event.economicNature !== 'repayment' || value.treatment != null
+    : !['expense', 'pending'].includes(value.treatment) || !['repayment', 'expense', 'unknown'].includes(event.economicNature)) throw importError('VALIDATION_ERROR')
+  const old = require('./editor-fields').funds(event)
+  const decision = { version: 'repayment-ownership-v2', confirmedBy: 'user', owner: value.owner,
+    ...(!own ? { treatment: value.treatment } : {}) }
+  const mask = require('./manual-field-mask').FIELD_MASK
+  return { ...event, economicNature: own ? 'repayment' : value.treatment === 'expense' ? 'expense' : 'unknown',
+    flowDirection: own ? 'neutral' : 'outflow',
+    ledgerAccountId: own ? event.ledgerAccountId : old.sourceAccountId,
+    counterpartyLedgerAccountId: own ? event.counterpartyLedgerAccountId : null,
+    categoryId: own || value.treatment !== 'expense' ? null : event.categoryId,
+    manualFieldMask: (event.manualFieldMask || 0) | mask.repaymentOwnership | mask.economicNature | mask.flowDirection |
+      mask.ledgerAccountId | mask.counterpartyLedgerAccountId,
+    fieldSources: { ...event.fieldSources, repaymentOwnership: decision } }
+}
+module.exports = { VERSION, applyEditorDecision, bankRepayment, decisionFor, requiresDecision, reasonsFor, applyDecision }

@@ -15,7 +15,7 @@ function setup() {
         fileName: '合成账单.csv', sourceType: index ? 'bank' : 'wechat', rowNumber: index + 1 }))
       return { viewVersion: h.summary.viewVersion, items: rows.slice(start, start + 2), total: 3, nextCursor: start ? null : '2' }
     }
-    if (action === 'economicEvents.detail' && !input.evidenceId) return { viewVersion: h.summary.viewVersion, part: JSON.stringify(h.events.find(row => row.eventId === input.eventId)), nextCursor: null }
+    if (action === 'economicEvents.detail' && !input.evidenceId) return { viewVersion: h.summary.viewVersion, part: JSON.stringify({ ...h.events.find(row => row.eventId === input.eventId), editorFacts: { version: 1, readonly: false, composition: 'single', timezoneOffsetMinutes: -480 } }), nextCursor: null }
     if (action === 'economicEvents.detail') return { viewVersion: h.summary.viewVersion, part: h.original(input.evidenceId), nextCursor: null }
     if (action === 'economicEvents.duplicateReview') return { viewVersion: h.summary.viewVersion, update: h.summary.update,
       eventVersion: 1, kind: h.kind || 'same', canSplit: !h.kind, canMerge: h.kind === 'distinct', count: 2,

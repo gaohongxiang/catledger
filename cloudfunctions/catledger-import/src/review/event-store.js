@@ -86,7 +86,7 @@ async function eventContext(connection, uid, updateId, eventId) {
   const [transactionLinks] = await connection.execute(
     `SELECT event_id AS eventId, transaction_id AS transactionId, role
        FROM catledger_economic_event_transactions
-      WHERE uid = ? AND update_id = ? AND event_id = ?`,
+      WHERE uid = ? AND update_id = ? AND event_id = ? AND superseded_at IS NULL`,
     [uid, updateId, eventId]
   )
   return { relations, transactionLinks }
@@ -107,7 +107,9 @@ async function validateEventReferences(connection, uid, event, catalog = null) {
   if (payment && !payment.valid) throw importError('VALIDATION_ERROR')
   const paymentAccounts = fieldSources.paymentAccounts ? inspectPaymentAccounts(event, fieldSources.paymentAccounts, { partial: true }) : null
   if (paymentAccounts && !paymentAccounts.valid) throw importError('VALIDATION_ERROR')
+  const incomplete = fieldSources.editorOverrides && fieldSources.editorOverrides.incompleteComposition
   const accountIds = unique([
+    ...(incomplete ? incomplete.parts.map(item => item.accountId) : []),
     ...(paymentAccounts ? paymentAccounts.accounts.map((item) => item.accountId) : []),
     ...(payment ? payment.resolution.allocations.map((item) => item.accountId) : []),
     event.ledgerAccountId,
@@ -139,8 +141,9 @@ async function validateEventReferences(connection, uid, event, catalog = null) {
       }
       drafts.forEach((draft) => accounts.push(draft))
     }
+    if (!require('../editor-fields').accountRolesValid(event, new Map(accounts.map(account => [account.accountId, account])))) throw importError('VALIDATION_ERROR')
     if (plan.valid && !allocationAccountsValid(event, plan, new Map(accounts.map((account) => [account.accountId, account])))) throw importError('VALIDATION_ERROR')
-    if (event.counterpartyLedgerAccountId && ((fieldSources.paymentAccountReferences || []).some((ref) => ref.memberRole === 'payment_target') || repaymentOwnership.decisionFor(event)?.owner === 'self')) {
+    if (event.counterpartyLedgerAccountId && ((fieldSources.paymentAccountReferences || []).some((ref) => ref.memberRole === 'payment_target') || repaymentOwnership.decisionFor(event)?.owner === 'self' && repaymentOwnership.decisionFor(event)?.version === repaymentOwnership.VERSION)) {
       const target = accounts.find((account) => account.accountId === event.counterpartyLedgerAccountId)
       if (!target || !['credit', 'other_liability'].includes(target.type)) throw importError('VALIDATION_ERROR')
     }
@@ -172,6 +175,7 @@ async function loadReferenceCatalog(connection, uid, updateId, events) {
   const accountIds = unique(events.flatMap(event => {
     const fields = event.fieldSources || {}
     return [event.ledgerAccountId, event.counterpartyLedgerAccountId,
+      ...(fields.editorOverrides?.incompleteComposition?.parts || []).map(item => item.accountId),
       ...(fields.repaymentAllocations || []).map(item => item.accountId),
       ...(fields.paymentAccounts || []).map(item => item.accountId),
       ...(fields.paymentResolution && fields.paymentResolution.allocations || []).map(item => item.accountId)]
@@ -199,13 +203,13 @@ async function loadReferenceCatalog(connection, uid, updateId, events) {
   return catalog
 }
 
-async function saveEvents(connection, uid, updateId, pairs, actionId) {
+async function saveEvents(connection, uid, updateId, pairs, actionId, { openBlockingIssues = 0 } = {}) {
   if (!pairs.length) return []
   const catalog = await loadReferenceCatalog(connection, uid, updateId, pairs.map(pair => pair.next))
   const contexts = await loadEventContexts(connection, uid, updateId)
   for (const { current, next } of pairs) {
     await validateEventReferences(connection, uid, next, catalog)
-    finalizeSavedEvent(current, next, actionId, contexts.get(next.eventId))
+    finalizeSavedEvent(current, next, actionId, { ...contexts.get(next.eventId), openBlockingIssues })
   }
   function* rows() {
     for (const { current, next } of pairs) yield [current.eventId, current.version, next.status, next.status, next.flowDirection, next.economicNature,

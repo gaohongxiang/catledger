@@ -5,6 +5,7 @@ const { errorText } = require('./presentation')
 const { eventView } = require('./model')
 const { fieldsFor, principalOf } = require('./detail-fields')
 const { readDetail } = require('./detail-reader')
+const editorModel = require('./review-editor-model')
 
 function current(page, token) {
   const sheet = page.data.reviewDetailSheet
@@ -44,11 +45,13 @@ async function readFields(page, token) {
     const row = await readDetail(token.session, token.eventId, () => current(page, token))
     if (!row || !current(page, token)) return
     token.row = row
-    const protectedFields = row.paymentResolution || (row.repaymentAllocations || []).length ||
-      row.loanRepayment && !['ordinary', 'review'].includes(row.loanRepayment.mode)
-    page.setData({ 'reviewDetailSheet.fields': fieldsFor(row), 'reviewDetailSheet.fieldsLoading': false,
+    const draft = editorModel.create(row)
+    const editor = editorModel.derive(row, draft, { accounts: row.detailFacts?.accounts || [], categories: row.detailFacts?.categories || [] })
+    page.setData({ 'reviewDetailSheet.draft': draft, 'reviewDetailSheet.editor': editor,
+      'reviewDetailSheet.originalRefund': row.detailFacts?.refund || null, 'reviewDetailSheet.loanName': row.detailFacts?.loan?.name || '',
+      'reviewDetailSheet.fields': fieldsFor(row), 'reviewDetailSheet.fieldsLoading': false,
       'reviewDetailSheet.fieldsError': '', 'reviewDetailSheet.installmentNote': eventView(row).installmentNote || '',
-      'reviewDetailSheet.reviewEditable': page.data.reviewDetailSheet.reviewEditable && !principalOf(row) && !protectedFields })
+      'reviewDetailSheet.reviewEditable': page.data.update.status === 'review' && ['ready','needs_action'].includes(row.status) && Boolean(row.editorFacts?.version === 1 && !row.editorFacts.readonly) })
   } catch (error) {
     if (current(page, token)) page.setData({ 'reviewDetailSheet.fieldsLoading': false, 'reviewDetailSheet.fieldsError': errorText(error) })
   }

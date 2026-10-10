@@ -1,3 +1,4 @@
+<import src="review-editor-fields.wxml" />
 <import src="detail-fields.wxml" />
 <view wx:if="{{reviewDetailSheet && !reviewDetailSheet.hidden}}" class="sheet-layer" catchtouchmove="preventTouchMove">
   <view class="sheet-scrim" bindtap="closeReviewDetails"></view>
@@ -6,7 +7,8 @@
     <view class="evidence-drilldown">
       <view class="review-sheet-heading"><text class="sheet-title serif-title">交易详情</text><button class="review-sheet-close" bindtap="closeReviewDetails" aria-label="关闭交易详情"><image class="review-sheet-close-icon" src="/assets/icons/close.svg" mode="aspectFit" /></button></view>
       <scroll-view class="evidence-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-        <template is="transaction-detail-fields" data="{{fields: reviewDetailSheet.fields}}" />
+        <template wx:if="{{reviewDetailSheet.editor}}" is="review-editor-fields" data="{{editor: reviewDetailSheet.editor, draft: reviewDetailSheet.draft, sheet: reviewDetailSheet, canEdit: false, disabled: true}}" />
+        <template wx:else is="transaction-detail-fields" data="{{fields: reviewDetailSheet.fields}}" />
         <text wx:if="{{reviewDetailSheet.fieldsLoading}}" class="sheet-copy">正在读取完整记账信息…</text>
         <view wx:if="{{reviewDetailSheet.fieldsError}}" class="relation-empty"><text>记账信息尚未完整读取</text><button class="account-source-link" bindtap="refreshReviewDetails">重新读取详情</button></view>
         <text class="detail-original-title">原始账单</text>
@@ -26,7 +28,7 @@
       <view class="pairing-footer">
         <button wx:if="{{reviewDetailSheet.reviewEditable}}" class="sheet-confirm sheet-confirm-wide" data-id="{{reviewDetailSheet.eventId}}" bindtap="openReviewEdit" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.fieldsLoading || reviewDetailSheet.fieldsError || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改核对结果</button>
         <button wx:if="{{reviewDetailSheet.canEdit}}" class="{{reviewDetailSheet.reviewEditable ? 'evidence-return' : 'sheet-confirm sheet-confirm-wide'}}" bindtap="openReviewJudgment" disabled="{{reviewDetailSheet.loading || reviewDetailSheet.stale || reviewDetailSheet.error}}">修改同笔判断</button>
-        <button wx:if="{{reviewDetailSheet.repaymentEditable}}" class="evidence-return" data-id="{{reviewDetailSheet.eventId}}" bindtap="editLoanRepayment">设置普通转账 / 借款还款</button>
+        <button wx:if="{{reviewDetailSheet.repaymentEditable && !reviewDetailSheet.editor.supported}}" class="evidence-return" data-id="{{reviewDetailSheet.eventId}}" bindtap="editLoanRepayment">设置普通转账 / 借款还款</button>
         <button class="evidence-return" bindtap="closeReviewDetails">返回列表</button>
       </view>
     </view>

@@ -67,7 +67,9 @@ async function assertCostSource(c,uid,incoming,canonical) {
   if (sources.some(row=>publicItem(row).active && row.eventId!==incoming.eventId && (!incoming.identityId || row.identityId!==incoming.identityId))) fail('LOAN_SOURCE_MISMATCH')
 }
 async function prepareImport(c,uid,event,identityIds,reviewedTransactionId=null) {
-  const evidence=event.fieldSources && event.fieldSources.installment
+  const raw=event.fieldSources && event.fieldSources.installment
+  const editor=event.fieldSources && event.fieldSources.editorOverrides
+  const evidence=raw && {...raw,...(editor && editor.version===1 ? editor.sourceCorrection || {} : {})}
   if (!evidence) return null
   if (evidence.component==='principal' ? event.economicNature!=='repayment' : !['expense','fee'].includes(event.economicNature)) return null
   if (evidence.creditStatement!==true) fail('LOAN_SOURCE_MISMATCH')

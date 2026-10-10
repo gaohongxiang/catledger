@@ -27,7 +27,7 @@ async function readVersion(connection, uid, updateId) {
       COALESCE(SUM(version), 0) AS versions, MAX(updated_at) AS updatedAt FROM catledger_accounts WHERE uid = ?
     UNION ALL SELECT 'categories', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_categories WHERE uid = ?
     UNION ALL SELECT 'mappings', COUNT(*), COALESCE(SUM(version), 0), MAX(updated_at) FROM catledger_import_account_mappings WHERE uid = ?`, [uid, uid, uid])
-  return { update, viewVersion: digestParts('finance-view-v2-time-order-search-v2', uid, updateId, update.version,
+  return { update, viewVersion: digestParts('finance-view-v2-time-order-search-editor-v1', uid, updateId, update.version,
     update.planVersion, PLAN_VERSION, accountGroups.VERSION, excludedGroups.VERSION, attention.VERSION, JSON.stringify(directories)) }
 }
 
@@ -124,9 +124,11 @@ function eventSearch(query) {
   return { sql: `(EXISTS (SELECT 1 FROM catledger_event_evidence v JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
       WHERE v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id
         AND (LOCATE(?, r.item_raw) > 0 OR LOCATE(?, r.counterparty_raw) > 0))
+    OR LOCATE(?, COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.editorOverrides.counterparty')),'')) > 0
+    OR LOCATE(?, COALESCE(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.editorOverrides.note')),'')) > 0
     OR EXISTS (SELECT 1 FROM catledger_categories c LEFT JOIN catledger_categories p ON p.uid = c.uid AND p.category_id = c.parent_id
       WHERE c.uid = e.uid AND c.category_id = e.category_id AND LOCATE(?, CONCAT_WS(' / ', p.name, c.name)) > 0))`,
-  values: [query, query, query] }
+  values: [query, query, query, query, query] }
 }
 const activeSql = "e.status IN ('ready','needs_action','posted')"
 const needsCategorySql = "e.economic_nature IN ('income','expense','fee','unknown') AND (e.category_id IS NULL OR e.economic_nature = 'unknown')"
@@ -376,7 +378,7 @@ async function presentationEvents(connection, uid, updateId, ids, includeFieldSo
     return { ...event, ledgerAccountId: resolved.ledgerAccountId, counterpartyLedgerAccountId: resolved.counterpartyLedgerAccountId,
       paymentComponents: fields.paymentComponents || [], paymentResolution: fields.paymentResolution || null,
       paymentAccounts: fields.paymentAccounts || null, fundsProjection: fields.fundsProjection || event.fundsProjection,
-      repaymentAllocations: fields.repaymentAllocations || [], ...(includeFieldSources ? { fieldSources: fields } : {}) }
+      repaymentAllocations: fields.repaymentAllocations || [], timezoneOffsetMinutes: resolved.timezoneOffsetMinutes, ...(includeFieldSources ? { fieldSources: fields } : {}) }
   })
 }
 
@@ -438,6 +440,7 @@ async function evidencePage(connection, uid, context, state) {
 }
 
 const OPTIONS = Object.freeze({
+  loans: { table: 'catledger_loans', key: 'loan_id', fields: 'name, account_id AS accountId, version', condition: 'deleted_at IS NULL' },
   accounts: { table: 'catledger_accounts', key: 'account_id', fields: 'name, type, nature, currency, version', condition: 'archived_at IS NULL' },
   categories: { table: 'catledger_categories', key: 'category_id', fields: 'name, kind, system_key AS systemKey, parent_id AS parentId, (SELECT p.name FROM catledger_categories p WHERE p.uid = catledger_categories.uid AND p.category_id = catledger_categories.parent_id) AS parentName, sort_order AS sortOrder, version', condition: 'archived_at IS NULL' },
   accountDrafts: { table: 'catledger_finance_update_account_drafts', key: 'draft_account_id', fields: 'name, type, nature, currency', condition: 'update_id = ? AND materialized_at IS NULL' }
@@ -464,7 +467,7 @@ async function optionPage(connection, uid, context, state) {
   }
   if (id) { condition += ` AND ${option.key} = ?`; values.push(id) }
   if (selectedIds) { condition += ` AND ${option.key} IN (${selectedIds.map(() => '?').join(',')})`; values.push(...selectedIds) }
-  const key = kind === 'categories' ? 'categoryId' : 'accountId'
+  const key = kind === 'categories' ? 'categoryId' : kind === 'loans' ? 'loanId' : 'accountId'
   const [[count]] = await connection.execute(`SELECT COUNT(*) AS total FROM ${option.table} WHERE uid = ? AND ${condition}`, values)
   const [rows] = await connection.execute(`SELECT ${option.key} AS ${key}, ${option.fields} FROM ${option.table} WHERE uid = ? AND ${condition} AND ${option.key} > ? ORDER BY ${option.key} LIMIT ?`, [...values, page.last, page.size + 1])
   return finishPage(context, state, page, rows, count.total, key, kind)
@@ -490,7 +493,7 @@ async function detail(connection, uid, context, state) {
   const eventId = validateUuid(context.data.eventId)
   const evidenceId = context.data.evidenceId == null ? null : validateUuid(context.data.evidenceId)
   if (context.data.viewVersion != null && context.data.viewVersion !== state.viewVersion) throw importError('STALE_VIEW')
-  const scope = scopeFor(uid, state.update.updateId, state.viewVersion, 'detail', { eventId, evidenceId, ...(!evidenceId ? { shape: 'event-detail-facts-v1' } : {}) })
+  const scope = scopeFor(uid, state.update.updateId, state.viewVersion, 'detail', { eventId, evidenceId, ...(!evidenceId ? { shape: 'event-editor-v1' } : {}) })
   const offset = decodeCursor(context.subjectHash, context.data.cursor, scope) || 0
   if (!Number.isInteger(offset) || offset < 0) throw importError('INVALID_CURSOR')
   let text
@@ -506,8 +509,10 @@ async function detail(connection, uid, context, state) {
   const events = await presentationEvents(connection, uid, state.update.updateId, [eventId], true)
   if (!events[0]) throw importError('NOT_FOUND')
   const facts = await eventDetailFacts(connection, uid, state.update.updateId, events[0])
+  await attachPendingIssues(connection, uid, state.update.updateId, events, 'review_pending')
+  const editorFacts = require('./review/editor-policy').capability(events[0])
   const { fieldSources, utcAt, ...event } = events[0]
-  text = JSON.stringify({ ...event, detailFacts: facts })
+  text = JSON.stringify({ ...event, detailFacts: facts, editorFacts })
   if (offset > text.length) throw importError('INVALID_CURSOR')
   return assertBudget({ protocolVersion: 2, viewVersion: state.viewVersion, eventId, format: 'json-text', part: text.slice(offset, offset + 2048),
     nextCursor: offset + 2048 < text.length ? encodeCursor(context.subjectHash, scope, offset + 2048) : null }, 'page')
@@ -548,6 +553,22 @@ async function issueDetail(connection, uid, context, state) {
     members: page.items, total: page.total, nextCursor: page.nextCursor }, 'page')
 }
 
+async function refundCandidates(connection, uid, context, state) {
+  const data = context.data, eventId = validateUuid(data.eventId)
+  const [stored] = await selectDomainEvents(connection, uid, state.update.updateId, [eventId])
+  if (!stored) throw importError('NOT_FOUND')
+  const fields = data.fields || {}
+  if (Object.keys(fields).some(key => !['amountMinor','occurredLocalAt','timezoneOffsetMinutes'].includes(key))) throw importError('VALIDATION_ERROR')
+  if (require('./review/editor-policy').capability(stored).recordRole === 'installment_source') throw importError('VALIDATION_ERROR')
+  const event = { ...require('./review/editor-policy').prepare(stored, { editorVersion: 1, fields }), economicNature: 'refund', flowDirection: 'inflow' }
+  if (!event.utcAt || event.amountMinor == null) throw importError('VALIDATION_ERROR')
+  const kind = optionalEnum(data.kind, ['event','transaction']) || 'event', query = searchText(data.query)
+  const page = preparePage(context, state, uid, 'refund-candidates', { eventId, kind, query, amountMinor:event.amountMinor, utcAt:event.utcAt })
+  const result = await require('./review/editor-refund').candidates(connection, uid, event, kind,
+    { after: page.last, query, limit: page.size + 1 })
+  return finishPage(context, state, page, result.items, result.total, 'id', 'refund-candidate')
+}
+
 function createFinanceUpdateRead({ getPool }) {
   function read(operation, kind) { return context => executeUserRead({ getPool, ...context, consistentSnapshot: true,
     operation: async (connection, uid) => {
@@ -568,6 +589,6 @@ function createFinanceUpdateRead({ getPool }) {
     } }) }
   return {
     rows: read(rowPage), issue: read(issueDetail, 'issue'), summary: read(summary, 'summary'), events: read(eventPage), issues: read(issuePage), members: read(memberPage),
-    evidence: read(evidencePage, 'evidence'), options: read(optionPage), detail: read(detail, 'detail') }
+    refundCandidates: read(refundCandidates, 'detail'), evidence: read(evidencePage, 'evidence'), options: read(optionPage), detail: read(detail, 'detail') }
 }
 module.exports = { createFinanceUpdateRead, readVersion, finishPage, summary }

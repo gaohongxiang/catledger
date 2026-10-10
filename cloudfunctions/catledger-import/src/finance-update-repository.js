@@ -497,9 +497,11 @@ async function selectSources(connection, uid, updateId) {
 function publicEvent(row) {
   const fieldSources = parseJson(row.fieldSources, {})
   const reasonCodes = parseJson(row.reasonCodes, [])
+  const installment = fieldSources.installment && { ...fieldSources.installment,
+    ...(fieldSources.editorOverrides?.version === 1 ? fieldSources.editorOverrides.sourceCorrection || {} : {}) }
   // 旧批次只缺分类时按当前规则展示，保留原始版本供写操作校验。
   const status = row.status === 'needs_action' &&
-    ['income', 'expense', 'fee'].includes(row.economicNature) && reasonCodes.includes('category_required')
+    ['income', 'expense', 'fee'].includes(row.economicNature) && reasonCodes.includes('category_required') && !reasonCodes.includes('blocking_issue_open')
     ? evaluatePostability({ ...row, reasonCodes, fieldSources }).status : row.status
   return {
     eventId: row.eventId,
@@ -515,16 +517,17 @@ function publicEvent(row) {
     categoryId: row.categoryId || null,
     categoryName: row.categoryName ? [row.parentCategoryName, row.categoryName].filter(Boolean).join(' / ') : '',
     reasonCodes,
+    ...Object.fromEntries(Object.entries(require('./editor-fields').overrides({ fieldSources })).filter(([key]) => ['counterparty', 'note'].includes(key))),
     ...((fieldSources.bankChannelDistinctPairs || []).length && !fieldSources.mergeOrigins && !fieldSources.bankChannelResolution ? { pairingDecision: 'distinct' } : {}),
     loanRepayment: fieldSources.loanRepayment || null,
     ...(fieldSources.installment && fieldSources.installment.creditStatement === true ? { installment: {
       creditStatement: true, factKind: 'billing', component: fieldSources.installment.component,
-      periodNumber: fieldSources.installment.periodNumber, totalTerms: fieldSources.installment.totalTerms || null,
+      periodNumber: installment.periodNumber, totalTerms: installment.totalTerms || null,
       originKind: fieldSources.installment.originKind || 'unconfirmed'
     } } : {}),
     sourceDirection: row.sourceDirection || null,
     fundsProjection: fieldSources.fundsProjection || null,
-    ...(repaymentOwnership.bankRepayment({ fieldSources }) ? {
+    ...(repaymentOwnership.bankRepayment({ fieldSources }) || repaymentOwnership.decisionFor({ fieldSources }) ? {
       repaymentOwnership: fieldSources.repaymentOwnership || null,
       repaymentOwnershipRequired: repaymentOwnership.requiresDecision({ fieldSources, counterpartyLedgerAccountId: row.counterpartyLedgerAccountId })
     } : {}),

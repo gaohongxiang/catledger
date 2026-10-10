@@ -40,7 +40,7 @@ async function loadEventContexts(connection, uid, updateId) {
     source_event_id AS sourceEventId, target_event_id AS targetEventId, amount_minor AS amountMinor, currency
     FROM catledger_economic_event_relations WHERE uid = ? AND update_id = ?`, [uid, updateId])
   const [links] = await connection.execute(`SELECT event_id AS eventId, transaction_id AS transactionId, role
-    FROM catledger_economic_event_transactions WHERE uid = ? AND update_id = ?`, [uid, updateId])
+    FROM catledger_economic_event_transactions WHERE uid = ? AND update_id = ? AND superseded_at IS NULL`, [uid, updateId])
   const contexts = new Map()
   function get(id) { if (!contexts.has(id)) contexts.set(id, { relations: [], transactionLinks: [] }); return contexts.get(id) }
   for (const relation of relations) {

@@ -72,6 +72,7 @@ function applyFields(event, fields) {
   let next = { ...event }
   for (const key of Object.keys(fields)) {
     if (key === 'timezoneOffsetMinutes') continue
+    if (['counterparty', 'note', 'sourceCorrection'].includes(key)) throw importError('VALIDATION_ERROR')
     if (!Object.prototype.hasOwnProperty.call(FIELD_MASK, key)) throw importError('VALIDATION_ERROR')
     mask |= FIELD_MASK[key]
     if (key === 'ledgerAccountId' || key === 'counterpartyLedgerAccountId' || key === 'categoryId') {

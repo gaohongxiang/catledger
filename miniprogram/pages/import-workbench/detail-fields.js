@@ -33,7 +33,7 @@ function accountLabels(row) {
   const { from, to } = fundsAccountLabels(nature)
   // 普通双端事件的 ledgerAccountId 是原账单账户；入账时 income 来源会反向。
   // 组合支付/合并还款有自己的规范分配，不套用普通来源方向。
-  const allocated = row.paymentResolution || (row.repaymentAllocations || []).length ||
+  const allocated = row.editorComposition ? row.editorComposition !== 'single' : row.paymentResolution || (row.repaymentAllocations || []).length ||
     row.fieldSources && (row.fieldSources.paymentResolution || (row.fieldSources.repaymentAllocations || []).length)
   const reverse = dual && !allocated && row.sourceDirection === 'income'
   return { from: dual ? (reverse ? to : from) : ['income', 'refund'].includes(nature) ? '收款账户'
@@ -76,7 +76,7 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
   add('nature', '交易性质', natureLabel(row), false)
   add('amount', principal ? '本期本金' : '交易金额', money(row.amountMinor), false)
   add('time', '交易时间', row.localAt && String(row.localAt).replace(/\.\d+$/, ''), false)
-  add('party', '交易对方', source.counterparty || row.counterparty, true)
+  add('party', '交易对方', Object.prototype.hasOwnProperty.call(row, 'counterparty') ? row.counterparty : source.counterparty, true)
   if (allocation && Array.isArray(allocation.allocations)) {
     allocation.allocations.forEach((part, index) => add('payment-' + index, '付款账户 ' + (index + 1),
       [accountText(part.accountId, catalogs.accounts), money(part.amountMinor)].filter(Boolean).join(' · '), false))
@@ -118,7 +118,7 @@ function fieldsFor(row = {}, catalogs = {}, options = {}) {
       loan && loan.mode === 'associate' && loan.loanId ? '已关联贷款，名称待读取' : '尚未关联（可入账后补充）')
   }
   add('status', '账单状态', source.status, true, '账单未提供')
-  add('note', '备注', row.note || source.note, true)
+  add('note', '备注', Object.prototype.hasOwnProperty.call(row, 'note') ? row.note : source.note, true)
   return fields
 }
 function referencedIds(row = {}) {

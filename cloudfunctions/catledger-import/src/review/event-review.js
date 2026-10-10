@@ -15,6 +15,7 @@ async function setReview(connection, uid, data, requestDigest, { updateId, event
   const stored = await selectDomainEvents(connection, uid, updateId, [eventId], { forUpdate: true })
   const [event] = await effectiveProjectedEvents(connection, uid, updateId, stored)
   if (!event || event.version !== eventVersion || !['ready', 'needs_action'].includes(event.status)) throw importError('CONFLICT')
+  if (data.editorVersion != null) return saveEditor(connection, uid, data, requestDigest, update, event)
   const fields = data.fields
   if (!fields || typeof fields !== 'object' || Array.isArray(fields) || !Object.keys(fields).length ||
     Object.keys(fields).some(key => !allowed.has(key))) throw importError('VALIDATION_ERROR')
@@ -74,4 +75,24 @@ async function setReview(connection, uid, data, requestDigest, { updateId, event
   return commandResult(connection, uid, updateId)
 }
 
+// 与旧 setReview 共用外层用户锁、幂等回执和批次版本，不新增写协议或嵌套事务。
+async function saveEditor(connection, uid, data, requestDigest, update, event) {
+  const next = require('./editor-policy').prepare(event, data)
+  if (event.fieldSources.installment && (data.sourceCorrection || ['ledgerAccountId','amountMinor','occurredLocalAt'].some(key => Object.hasOwn(data.fields || {}, key)))) {
+    const [[claimed]] = await connection.execute('SELECT COUNT(*) AS count FROM catledger_installment_items WHERE uid=? AND source_event_id=? AND active=1', [uid, event.eventId])
+    if (Number(claimed.count)) throw importError('LOAN_SOURCE_MISMATCH')
+  }
+  const actionId = await insertAction(connection, uid, { updateId: event.updateId, expectedVersion: Number(update.version),
+    appliedVersion: Number(update.version) + 1, actionType: 'set_event_review', requestDigest,
+    decision: data, reasons: ['review_manually_changed'] })
+  if (next.fieldSources.loanRepayment) next.fieldSources.loanRepayment = await require('./repayment').prepareRepayment(connection, uid, event.updateId, next, next.fieldSources.loanRepayment, { editor: true })
+  await require('./editor-refund').apply(connection, uid, event, next, data)
+  const openBlockingIssues = await require('./issue-store').refreshEditedEventIssues(connection, uid, event.updateId, next, actionId)
+  const saved = await saveEvents(connection, uid, event.updateId, [{ current: event, next }], actionId, { openBlockingIssues })
+  await updateMappingMemberVersions(connection, uid, event.updateId, saved)
+  await updateMappingMemberVersions(connection, uid, event.updateId, saved, true)
+  await createFollowUpIssues(connection, uid, event.updateId, saved)
+  await recalculateUpdateCounts(connection, uid, event.updateId, Number(update.version) + 1, actionId, Number(update.version), 0)
+  return commandResult(connection, uid, event.updateId)
+}
 module.exports = { setReview }

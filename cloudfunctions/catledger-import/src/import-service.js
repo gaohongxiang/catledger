@@ -329,6 +329,7 @@ function createImportService({ getPool, storage }) {
     financeUpdateOptions: reads.options,
     economicEventList: reads.events,
     economicEventDetail: reads.detail,
+    economicEventRefundCandidates: reads.refundCandidates,
     reviewIssueMembers: reads.members,
     financeUpdateOrganize: financeUpdates.organize,
     financeUpdatePrepare: financeUpdates.prepare,

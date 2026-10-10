@@ -9,7 +9,7 @@ async function confirmedPrimary(connection, uid, updateId, events, requestedId, 
   const banks = hydrated.filter(event => event.sourceType === 'bank')
   // 多个平台或多笔银行候选不能一次合成一笔；交给独立记录裁决。
   if (platforms.length !== 1 || banks.length !== 1 || hydrated.length !== 2 || !bankChannelPair(banks[0], platforms[0])) throw importError('VALIDATION_ERROR')
-  const primary = platforms[0]
+  const primary = require('../editor-fields').mergeText(platforms[0], hydrated)
   if (primary.eventId !== requestedId) throw importError('VALIDATION_ERROR')
   const bankCategoryChosen = Boolean(banks[0].manualFieldMask & 128)
   if (bankCategoryChosen && (primary.manualFieldMask & 128) && banks[0].categoryId !== primary.categoryId) throw importError('VALIDATION_ERROR')

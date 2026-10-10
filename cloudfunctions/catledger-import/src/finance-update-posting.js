@@ -1,731 +1,578 @@
-const { booking:repaymentBooking,inputForEvent:repaymentInput } = require('./explicit-repayment')
-const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
 const { loadRefundPostingContext } = require('./refund-posting-context')
 const { commandResult } = require('./command-result')
-const { eventAllocation, allocationAccountsValid, allocationTransactionDrafts } = require('./funds-allocation')
-const { paymentResolutionForEvent } = require('./payment-resolution')
-const { queryCashBalances, assertCashBalancesNotWorsened } = require('./import-cash-guard')
-const { readMapping } = require('./maintenance-side-effects')
-const { MAINTENANCE_POLICY_VERSION } = require('./maintenance-policy')
-const { PLAN_VERSION } = require('./domain-versions')
-const { assertIdentityIntegrity } = require('./evidence-integrity')
+const { loadBatchSemanticRows, reconcileCurrentUpdate } = require('./review/reconciliation')
+const { resolveAccountMappings } = require('./account-mapping-policy')
+const { selectDomainEvents, loadReferenceCatalog } = require('./review/event-store')
+const { eventAllocation, allocationAccountsValid } = require('./funds-allocation')
 const { randomUUID } = require('node:crypto')
-
+const { materializeAccountDrafts, reachableAccountIds } = require('./account-draft')
+const { digestParts } = require('./digest')
 const { importError } = require('./errors')
-const { materializeAccountDrafts, reachableDraftIds } = require('./account-draft')
+const { executeIdempotentMutation } = require('./import-transaction')
 const {
   insertAction,
   parseJson,
-  selectUpdate,
+  selectPaymentMappings,
+  selectActiveAccounts,
+  selectEvents,
   selectSources,
-  selectCoverageEvidence
+  selectUpdate
 } = require('./finance-update-repository')
-const { buildCoverageReport } = require('./coverage-report')
-const { executeIdempotentMutation } = require('./import-transaction')
-const { EVENT_STATUS, evaluatePostability, hasPendingRefundRelation } = require('./organizer-model')
-const { ECONOMIC_NATURE } = require('./organizer-values')
-const { isAggregateRepayment, repaymentAllocationsForEvent } = require('./repayment-allocation')
+const { evaluatePostability } = require('./organizer-model')
+const { projectedEvent, mappingRowsForEvent, validateMappingTarget } = require('./review-issue-service')
+const { PLAN_VERSION } = require('./domain-versions')
 const { validateUuid, validateVersion } = require('./validation')
-const { CATEGORY_ALIAS_VERSION, categoryMemory } = require('./category-memory')
+const { paymentResolutionForEvent } = require('./payment-resolution')
+const { repaymentAllocationsForEvent, isAggregateRepayment } = require('./repayment-allocation')
+const installmentItems = require('./installment-items')
+const explicitRepayment = require('./explicit-repayment')
+const { coverageFor } = require('./loan-transaction-guard')
+const { loadLoanContext } = require('./loan-snapshots')
+const { rebuildPrincipal } = require('./loan-timeline')
+const loanChargePlan = require('./loan-charge-plan')
+const { inspectCoverage } = require('./import-coverage')
 
-function categoryMappingCandidates(rows) {
-  const categoriesByAlias = new Map()
-  ;(rows || []).forEach((row) => {
-    const evidence = categoryMemory(row.sourceType, row)
-    ;(evidence.aliasKeys || []).forEach((aliasKey) => {
-      const key = `${row.sourceType}:${aliasKey}`
-      const current = categoriesByAlias.get(key) || {
-        sourceType: row.sourceType,
-        aliasKey,
-        categoryIds: new Set()
-      }
-      if (row.categoryId) current.categoryIds.add(row.categoryId)
-      categoriesByAlias.set(key, current)
-    })
-  })
-  return [...categoriesByAlias.values()]
-    .map((item) => ({
-      sourceType: item.sourceType,
-      aliasKey: item.aliasKey,
-      categoryId: item.categoryIds.size === 1 ? [...item.categoryIds][0] : null
-    }))
-    .sort((left, right) => `${left.sourceType}:${left.aliasKey}`.localeCompare(`${right.sourceType}:${right.aliasKey}`))
-}
+const POSTING_RULE_VERSION = 'finance-posting-v2'
 
-function postingEvent(row) {
+function publicTransaction(row) {
   return {
-    eventId: row.eventId,
-    updateId: row.updateId,
-    status: row.status,
-    version: Number(row.version),
-    manualFieldMask: Number(row.manualFieldMask || 0),
-    flowDirection: row.flowDirection,
-    economicNature: row.economicNature,
-    ledgerAccountId: row.ledgerAccountId || null,
-    counterpartyLedgerAccountId: row.counterpartyLedgerAccountId || null,
-    localDate: row.localDate,
-    localAt: row.localAt,
-    utcAt: row.utcAt,
-    timezoneOffsetMinutes: row.timezoneOffsetMinutes == null ? null : Number(row.timezoneOffsetMinutes),
-    amountMinor: row.amountMinor == null ? null : String(row.amountMinor),
+    transactionId: row.transactionId,
+    type: row.type,
+    occurredAtUtc: row.occurredAtUtc,
+    occurredLocalAt: row.occurredLocalAt,
+    timezoneOffsetMinutes: Number(row.timezoneOffsetMinutes),
+    amountMinor: String(row.amountMinor),
     currency: row.currency,
-    categoryId: row.categoryId || null,
-    fieldSources: parseJson(row.fieldSources, {}),
-    reasonCodes: parseJson(row.reasonCodes, []),
-    sourceDirection: row.sourceDirection,
-    counterparty: row.counterparty || '',
-    item: row.item || '',
-    sourceNote: row.sourceNote || ''
+    sourceAccountId: row.sourceAccountId,
+    destinationAccountId: row.destinationAccountId,
+    categoryId: row.categoryId,
+    originalTransactionId: row.originalTransactionId,
+    note: row.note,
+    version: Number(row.version),
+    origin: row.origin,
+    importId: row.importId,
+    deletedAt: row.deletedAt
   }
 }
 
-async function selectPostingEvents(connection, uid, updateId) {
+async function loadAffectedAccounts(connection, uid, accountIds) {
+  if (accountIds.length === 0) return new Map()
   const [rows] = await connection.execute(
-    `SELECT e.event_id AS eventId, e.update_id AS updateId, e.status, e.version, e.manual_field_mask AS manualFieldMask,
-            e.flow_direction AS flowDirection, e.economic_nature AS economicNature,
-            e.ledger_account_id AS ledgerAccountId,
-            e.counterparty_ledger_account_id AS counterpartyLedgerAccountId,
-            e.event_local_date AS localDate, e.event_local_at AS localAt,
-            e.event_utc_at AS utcAt, e.timezone_offset_minutes AS timezoneOffsetMinutes,
-            e.amount_minor AS amountMinor, e.currency, e.category_id AS categoryId,
-            e.field_sources_json AS fieldSources, e.reason_codes_json AS reasonCodes,
-            r.normalized_direction AS sourceDirection,
-            r.counterparty_raw AS counterparty, r.item_raw AS item, r.note_raw AS sourceNote
+    `SELECT account_id AS accountId, type, nature, currency,
+            balance_minor AS balanceMinor, version, archived_at AS archivedAt
+       FROM catledger_accounts
+      WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(',')})
+      ORDER BY account_id FOR UPDATE`,
+    [uid, accountIds]
+  )
+  if (rows.length !== accountIds.length || rows.some((row) => row.archivedAt != null)) throw importError('VALIDATION_ERROR')
+  return new Map(rows.map((row) => [row.accountId, row]))
+}
+
+function deltaForDraft(draft) {
+  if (draft.type === 'income' || draft.type === 'refund') return [[draft.destinationAccountId, BigInt(draft.amountMinor)]]
+  if (draft.type === 'expense') return [[draft.sourceAccountId, -BigInt(draft.amountMinor)]]
+  if (draft.type === 'transfer') return [[draft.sourceAccountId, -BigInt(draft.amountMinor)], [draft.destinationAccountId, BigInt(draft.amountMinor)]]
+  throw importError('VALIDATION_ERROR')
+}
+
+function transactionDraft(event, originalTransaction = null) {
+  if (event.fieldSources && event.fieldSources.refundSourceConflict) throw importError('UNRESOLVED_IMPORT')
+  const nature = event.economicNature
+  const draft = {
+    eventId: event.eventId,
+    transactionId: randomUUID(),
+    amountMinor: String(event.amountMinor),
+    currency: event.currency,
+    occurredAtUtc: event.utcAt,
+    occurredLocalAt: event.localAt,
+    timezoneOffsetMinutes: event.timezoneOffsetMinutes,
+    sourceAccountId: null,
+    destinationAccountId: null,
+    categoryId: event.categoryId,
+    originalTransactionId: null,
+    note: event.note || '',
+    version: 1
+  }
+  if (nature === 'income') {
+    draft.type = 'income'
+    draft.destinationAccountId = event.ledgerAccountId
+  } else if (nature === 'expense' || nature === 'fee') {
+    draft.type = 'expense'
+    draft.sourceAccountId = event.ledgerAccountId
+  } else if (nature === 'refund') {
+    draft.type = 'refund'
+    draft.destinationAccountId = event.ledgerAccountId
+    draft.originalTransactionId = originalTransaction ? originalTransaction.transactionId : null
+    draft.categoryId = originalTransaction && originalTransaction.categoryId || null
+  } else if (['internal_transfer', 'repayment', 'borrow'].includes(nature)) {
+    draft.type = 'transfer'
+    const reverse = event.sourceDirection === 'income'
+    draft.sourceAccountId = reverse ? event.counterpartyLedgerAccountId : event.ledgerAccountId
+    draft.destinationAccountId = reverse ? event.ledgerAccountId : event.counterpartyLedgerAccountId
+    draft.categoryId = null
+  } else {
+    throw importError('UNRESOLVED_IMPORT')
+  }
+  if (!draft.sourceAccountId && !draft.destinationAccountId) throw importError('UNRESOLVED_IMPORT')
+  if (draft.type === 'transfer' && (!draft.sourceAccountId || !draft.destinationAccountId || draft.sourceAccountId === draft.destinationAccountId)) {
+    throw importError('VALIDATION_ERROR')
+  }
+  return draft
+}
+
+function transactionDrafts(event, originalTransaction = null) {
+  if (event.fieldSources && event.fieldSources.refundSourceConflict) throw importError('UNRESOLVED_IMPORT')
+  const explicit = explicitRepayment.draftsForEvent(event)
+  if (explicit) return explicit
+  if (event.fieldSources && event.fieldSources.paymentResolution) {
+    const payment = paymentResolutionForEvent(event)
+    if (!payment.valid) throw importError('UNRESOLVED_IMPORT')
+    return payment.allocations.map((item) => {
+      const draft = transactionDraft({ ...event, economicNature: 'expense', ledgerAccountId: item.accountId, amountMinor: item.amountMinor })
+      if (payment.resolution.nature === 'repayment') {
+        draft.type = 'transfer'; draft.destinationAccountId = payment.resolution.targetAccountId; draft.categoryId = null
+      }
+      return draft
+    })
+  }
+  if (isAggregateRepayment(event)) {
+    const allocation = repaymentAllocationsForEvent(event)
+    if (!allocation.valid) throw importError('UNRESOLVED_IMPORT')
+    return allocation.allocations.map((item) => transactionDraft({
+      ...event,
+      sourceDirection: 'expense',
+      amountMinor: item.amountMinor,
+      counterpartyLedgerAccountId: item.accountId
+    }, originalTransaction))
+  }
+  return [transactionDraft(event, originalTransaction)]
+}
+
+async function validateCurrentRefunds(connection, uid, updateId) {
+  const [[conflict]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_economic_events
+    WHERE uid = ? AND update_id = ? AND status = 'ready'
+      AND JSON_EXTRACT(field_sources_json, '$.refundSourceConflict') IS NOT NULL`, [uid, updateId])
+  if (Number(conflict.count) > 0) throw importError('UNRESOLVED_IMPORT')
+  const [relations] = await connection.execute(`SELECT r.source_event_id AS sourceId, r.target_event_id AS targetId,
+    r.amount_minor AS relationAmount, r.currency AS relationCurrency, refund.amount_minor AS refundAmount,
+    refund.currency AS refundCurrency, refund.status AS refundStatus, refund.event_utc_at AS refundAt,
+    original.economic_nature AS originalNature, original.status AS originalStatus, original.amount_minor AS originalAmount,
+    original.currency AS originalCurrency, original.event_utc_at AS originalAt,
+    JSON_EXTRACT(original.field_sources_json, '$.paymentResolution') AS paymentResolution
+    FROM catledger_economic_event_relations r
+    JOIN catledger_economic_events refund ON refund.uid = r.uid AND refund.event_id = r.source_event_id
+    JOIN catledger_economic_events original ON original.uid = r.uid AND original.event_id = r.target_event_id
+    WHERE r.uid = ? AND r.update_id = ? AND r.relation_type = 'refund_of' AND r.status = 'confirmed'
+      AND refund.status = 'ready'`, [uid, updateId])
+  const totals = new Map()
+  for (const relation of relations) {
+    if (!['expense', 'fee'].includes(relation.originalNature) || !['ready', 'excluded'].includes(relation.originalStatus) ||
+        relation.sourceId === relation.targetId || String(relation.relationAmount) !== String(relation.refundAmount) ||
+        relation.refundCurrency !== relation.originalCurrency || relation.relationCurrency !== relation.refundCurrency ||
+        !relation.refundAt || !relation.originalAt || String(relation.refundAt) < String(relation.originalAt) || relation.paymentResolution != null && relation.paymentResolution !== 'null') throw importError('UNRESOLVED_IMPORT')
+    totals.set(relation.targetId, (totals.get(relation.targetId) || 0n) + BigInt(relation.refundAmount))
+    if (totals.get(relation.targetId) > BigInt(relation.originalAmount)) throw importError('UNRESOLVED_IMPORT')
+  }
+}
+
+async function validateEventState(connection, uid, updateId, events) {
+  const context = await loadEventContexts(connection, uid, updateId)
+  const [[blocking]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_review_issues
+    WHERE uid = ? AND update_id = ? AND status = 'open' AND blocking = 1`, [uid, updateId])
+  if (Number(blocking.count) > 0) throw importError('UNRESOLVED_IMPORT')
+  for (const event of events) {
+    const evaluated = evaluatePostability(event, context.get(event.eventId))
+    if (!['ready', 'excluded'].includes(evaluated.status) || evaluated.status !== event.status) throw importError('UNRESOLVED_IMPORT')
+  }
+  await validateCurrentRefunds(connection, uid, updateId)
+}
+
+async function loadPostingEvents(connection, uid, updateId) {
+  const events = await selectEvents(connection, uid, updateId, { includeFieldSources: true })
+  const [rows] = await connection.execute(
+    `SELECT e.event_id AS eventId, e.event_utc_at AS utcAt,
+            e.event_local_date AS localDate, e.timezone_offset_minutes AS timezoneOffsetMinutes,
+            r.normalized_direction AS sourceDirection, r.note_raw AS sourceNote,
+            r.item_raw AS item, r.counterparty_raw AS counterparty, s.import_id AS importId
        FROM catledger_economic_events e
-       LEFT JOIN catledger_event_evidence ee
-         ON ee.uid = e.uid AND ee.update_id = e.update_id AND ee.event_id = e.event_id
-        AND ee.evidence_role = 'primary'
-       LEFT JOIN catledger_import_rows r ON r.uid = ee.uid AND r.row_id = ee.row_id
+       JOIN catledger_event_evidence v
+         ON v.uid = e.uid AND v.update_id = e.update_id AND v.event_id = e.event_id AND v.evidence_role = 'primary'
+       JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
+       JOIN catledger_finance_update_sources s
+         ON s.uid = e.uid AND s.update_id = e.update_id AND s.batch_id = r.batch_id
       WHERE e.uid = ? AND e.update_id = ?
-      ORDER BY e.economic_nature = 'refund', e.event_local_at, e.event_id
-      FOR UPDATE`,
+      ORDER BY e.event_utc_at, e.event_id`,
     [uid, updateId]
   )
-  return rows.map(postingEvent)
+  const byId = new Map(rows.map((row) => [row.eventId, row]))
+  return events.map((event) => {
+    const row = byId.get(event.eventId)
+    const editorText = require('./editor-fields').effectiveText(event, row || {})
+    const note = [row && row.item, editorText.counterparty, editorText.note].filter(Boolean).join(' · ').slice(0, 200)
+    return {
+      ...event,
+      utcAt: row && row.utcAt,
+      localDate: row && row.localDate,
+      timezoneOffsetMinutes: row && Number(row.timezoneOffsetMinutes),
+      sourceDirection: row && row.sourceDirection,
+      importId: row && row.importId,
+      note
+    }
+  })
 }
 
-async function eventContext(connection, uid, updateId, eventId) {
-  const [relations] = await connection.execute(
-    `SELECT relation_type AS relationType, status,
-            source_event_id AS sourceEventId, target_event_id AS targetEventId,
-            amount_minor AS amountMinor, currency
-       FROM catledger_economic_event_relations
-      WHERE uid = ? AND update_id = ? AND (source_event_id = ? OR target_event_id = ?)`,
-    [uid, updateId, eventId, eventId]
+async function takeSnapshots(connection, uid, updateId, actionId, accountIds) {
+  const [accounts] = await connection.execute(
+    `SELECT account_id AS accountId, balance_minor AS balanceMinor, version
+       FROM catledger_accounts
+      WHERE uid = ? AND account_id IN (${accountIds.map(() => '?').join(',')})
+      ORDER BY account_id FOR UPDATE`,
+    [uid, ...accountIds]
   )
-  const [transactionLinks] = await connection.execute(
-    `SELECT event_id AS eventId, transaction_id AS transactionId, role
-       FROM catledger_economic_event_transactions
-      WHERE uid = ? AND update_id = ? AND event_id = ?`,
-    [uid, updateId, eventId]
-  )
-  return { relations, transactionLinks }
-}
-
-async function lockAccountsAndCategories(connection, uid, events) {
-  const accountIds = [...new Set(events.flatMap((event) => {
-    if (!eventAllocation(event).valid) throw importError('UNRESOLVED_IMPORT')
-    const allocation = isAggregateRepayment(event) ? repaymentAllocationsForEvent(event) : null
-    if (allocation && !allocation.valid) throw importError('UNRESOLVED_IMPORT')
-    const payment = event.fieldSources && event.fieldSources.paymentResolution ? paymentResolutionForEvent(event) : null
-    if (payment && !payment.valid) throw importError('UNRESOLVED_IMPORT')
-    return [
-      ...(payment ? payment.resolution.allocations.map((item) => item.accountId) : []),
-      event.ledgerAccountId,
-      event.counterpartyLedgerAccountId,
-      ...(allocation ? allocation.allocations.map((item) => item.accountId) : [])
-    ]
-  }).filter(Boolean))].sort()
-  const accounts = new Map()
-  for (const part of chunks(accountIds.map(id => [id]))) {
-    const [rows] = await connection.execute(
-      `SELECT account_id AS accountId, type, currency, archived_at AS archivedAt
-         FROM catledger_accounts
-        WHERE uid = ? AND account_id IN (${part.map(() => '?').join(', ')})
-        ORDER BY account_id FOR UPDATE`,
-      [uid, ...part.flat()]
-    )
-    if (rows.length !== part.length || rows.some((row) => row.archivedAt != null)) throw importError('UNRESOLVED_IMPORT')
-    rows.forEach((row) => accounts.set(row.accountId, row))
-  }
-  const categoryIds = [...new Set(events.map((event) => event.categoryId).filter(Boolean))].sort()
-  const categories = new Map()
-  for (const part of chunks(categoryIds.map(id => [id]))) {
-    const [rows] = await connection.execute(
-      `SELECT category_id AS categoryId, kind, archived_at AS archivedAt
-         FROM catledger_categories
-        WHERE uid = ? AND category_id IN (${part.map(() => '?').join(', ')})
-        ORDER BY category_id FOR UPDATE`,
-      [uid, ...part.flat()]
-    )
-    if (rows.length !== part.length || rows.some((row) => row.archivedAt != null)) throw importError('UNRESOLVED_IMPORT')
-    rows.forEach((row) => categories.set(row.categoryId, row))
-  }
-  for (const event of events) {
-    if (!accounts.has(event.ledgerAccountId) || accounts.get(event.ledgerAccountId).currency !== event.currency) {
-      throw importError('UNRESOLVED_IMPORT')
-    }
-    if (event.counterpartyLedgerAccountId && (!accounts.has(event.counterpartyLedgerAccountId) ||
-        accounts.get(event.counterpartyLedgerAccountId).currency !== event.currency)) throw importError('UNRESOLVED_IMPORT')
-    if (!allocationAccountsValid(event, eventAllocation(event), accounts)) throw importError('UNRESOLVED_IMPORT')
-    if (event.categoryId) {
-      const expected = event.economicNature === ECONOMIC_NATURE.INCOME ? 'income' : 'expense'
-      if (!categories.has(event.categoryId) || categories.get(event.categoryId).kind !== expected) {
-        throw importError('UNRESOLVED_IMPORT')
-      }
-    }
-  }
+  await insertMany(connection, `INSERT INTO catledger_finance_account_snapshots
+    (uid, snapshot_id, update_id, action_id, account_id, balance_minor,
+     account_version, currency, snapshot_role) VALUES`, accounts.map(account => [uid, randomUUID(), updateId, actionId,
+    account.accountId, String(account.balanceMinor), Number(account.version), 'CNY', 'before_post']))
   return accounts
 }
 
-async function lockEvidenceIdentities(connection, uid, updateId) {
-  const [rows] = await connection.execute(
-    `SELECT DISTINCT ee.event_id AS eventId, r.identity_id AS identityId
-       FROM catledger_event_evidence ee
-       JOIN catledger_import_rows r ON r.uid = ee.uid AND r.row_id = ee.row_id
-      WHERE ee.uid = ? AND ee.update_id = ? AND ee.evidence_role <> 'discarded'
-        AND r.identity_id IS NOT NULL ORDER BY r.identity_id`,
+async function publishAccountMappings(connection, uid, updateId, actionId, postingMappings = null, { previous: suppliedPrevious = null, published: suppliedPublished = null } = {}) {
+  const mappings = postingMappings || (await connection.execute(
+    `SELECT d.draft_mapping_id AS draftMappingId, d.source_type AS sourceType,
+            d.payment_method_key AS paymentMethodKey, d.payment_method_hint AS paymentMethodHint,
+            d.mapping_action AS mappingAction, d.account_id AS accountId, d.default_scope AS defaultScope
+       FROM catledger_finance_update_account_mapping_drafts d
+      WHERE d.uid = ? AND d.update_id = ?
+        AND (d.mapping_action = 'account' OR d.default_scope = 'future')
+      ORDER BY d.created_at, d.draft_mapping_id`,
     [uid, updateId]
-  )
-  const ids = [...new Set(rows.map(row => row.identityId))].sort()
-  for (const part of chunks(ids.map(id => [id]))) {
-    const [locked] = await connection.execute(
-      `SELECT identity_id FROM catledger_source_identities
-        WHERE uid = ? AND identity_id IN (${part.map(() => '?').join(', ')})
-        ORDER BY identity_id FOR UPDATE`,
-      [uid, ...part.flat()]
-    )
-    if (locked.length !== part.length) throw importError('IDENTITY_CONFLICT')
+  ))[0]
+  const active = suppliedPrevious || (mappings.length ? (await connection.execute(`SELECT mapping_id AS mappingId, source_type AS sourceType,
+    payment_method_key AS paymentMethodKey, mapping_action AS mappingAction, account_id AS accountId,
+    version, disabled_at AS disabledAt FROM catledger_import_account_mappings WHERE uid = ? ORDER BY mapping_id FOR UPDATE`, [uid]))[0] : [])
+  const before = new Map(active.map(row => [row.sourceType + ':' + row.paymentMethodKey, row]))
+  const published = suppliedPublished || (mappings.length ? (await connection.execute(`SELECT s.source_type_snapshot AS sourceType, r.payment_method_key AS paymentMethodKey,
+    r.semantic_json AS semantic FROM catledger_finance_update_sources s JOIN catledger_import_rows r ON r.uid=s.uid AND r.batch_id=s.batch_id
+    WHERE s.uid=? AND s.update_id=?`, [uid, updateId]))[0] : [])
+  const referenceMap = new Map(), accountMap = new Map()
+  const ids = [...new Set(mappings.map(row => row.accountId).filter(Boolean))]
+  if (ids.length) for (const part of chunks(ids.map(id => [id]))) {
+    const [rows] = await connection.execute(`SELECT account_id AS accountId,type FROM catledger_accounts WHERE uid=? AND account_id IN (${part.map(() => '?').join(',')})`, [uid, ...part.flat()])
+    rows.forEach(row => accountMap.set(row.accountId, row))
   }
-  const identities = new Map()
-  for (const row of rows) {
-    if (!identities.has(row.eventId)) identities.set(row.eventId, [])
-    identities.get(row.eventId).push(row.identityId)
-  }
-  return identities
-}
-
-async function promoteAccountMappings(connection, uid, updateId) {
-  const [rows] = await connection.execute(
-    `SELECT draft.source_type AS sourceType,
-            draft.payment_method_key AS paymentMethodKey,
-            MAX(draft.payment_method_hint) AS paymentMethodHint,
-            MIN(draft.mapping_action) AS mappingAction,
-            COUNT(DISTINCT draft.mapping_action) AS actionCount,
-            MIN(draft.account_id) AS accountId,
-            COUNT(DISTINCT draft.account_id) AS accountCount,
-            MIN(event_row.status) AS minimumEventStatus,
-            MAX(event_row.status) AS maximumEventStatus
-       FROM catledger_finance_update_account_mapping_drafts draft
-       JOIN catledger_economic_events event_row
-         ON event_row.uid = draft.uid AND event_row.update_id = draft.update_id
-        AND event_row.event_id = draft.event_id
-      WHERE draft.uid = ? AND draft.update_id = ?
-        AND NOT (draft.mapping_action = 'account' AND event_row.status = 'excluded')
-      GROUP BY draft.source_type, draft.payment_method_key
-      ORDER BY draft.source_type, draft.payment_method_key`,
-    [uid, updateId]
-  )
-  const audit = []
-  for (const row of rows) {
-    const before = await readMapping(connection, uid, 'account', row)
-    if (Number(row.actionCount) !== 1) throw importError('UNRESOLVED_IMPORT')
-    if (row.mappingAction === 'account') {
-      if (Number(row.accountCount) !== 1 || row.minimumEventStatus !== 'posted' || row.maximumEventStatus !== 'posted') {
-        throw importError('UNRESOLVED_IMPORT')
-      }
-      await connection.execute(
-        `INSERT INTO catledger_import_account_mappings
-           (uid, mapping_id, source_type, payment_method_key, payment_method_hint,
-            mapping_action, account_id, disabled_at)
-         VALUES (?, ?, ?, ?, ?, 'account', ?, NULL)
-         ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint),
-           mapping_action = 'account', account_id = VALUES(account_id), disabled_at = NULL,
-           version = version + 1`,
-        [uid, randomUUID(), row.sourceType, row.paymentMethodKey, row.paymentMethodHint, row.accountId]
-      )
-    } else if (row.mappingAction === 'ignore') {
-      if (Number(row.accountCount) !== 0 || row.minimumEventStatus !== 'excluded' || row.maximumEventStatus !== 'excluded') {
-        throw importError('UNRESOLVED_IMPORT')
-      }
-      await connection.execute(
-        `INSERT INTO catledger_import_account_mappings
-           (uid, mapping_id, source_type, payment_method_key, payment_method_hint,
-            mapping_action, account_id, disabled_at)
-         VALUES (?, ?, ?, ?, ?, 'ignore', NULL, NULL)
-         ON DUPLICATE KEY UPDATE payment_method_hint = VALUES(payment_method_hint),
-           mapping_action = 'ignore', account_id = NULL, disabled_at = NULL,
-           version = version + 1`,
-        [uid, randomUUID(), row.sourceType, row.paymentMethodKey, row.paymentMethodHint]
-      )
-    } else {
-      throw importError('UNRESOLVED_IMPORT')
+  for (const row of published) {
+    const semantic = parseJson(row.semantic, {})
+    const references = [semantic.sourceAccount && { ...semantic.sourceAccount, sourceType: row.sourceType, paymentMethodKey: row.paymentMethodKey },
+      semantic.fundsProjection && semantic.fundsProjection.from, semantic.fundsProjection && semantic.fundsProjection.to].filter(Boolean)
+    for (const ref of references) {
+      const key = (ref.sourceType || row.sourceType) + ':' + ref.paymentMethodKey
+      if (!referenceMap.has(key) && ref.paymentMethodKey) referenceMap.set(key, { ...ref, sourceType: ref.sourceType || row.sourceType })
     }
-    audit.push({ before, after: await readMapping(connection, uid, 'account', row) })
   }
-  return audit
+  for (const mapping of mappings) {
+    if (mapping.mappingAction === 'account' && !mapping.accountId) continue
+    const key = mapping.sourceType + ':' + mapping.paymentMethodKey
+    // 历史永久映射的类型不匹配时必须拒绝，不能发布到后续账单。
+    const historical = { ...mapping, mappingScope: 'history' }
+    if (!require('./account-mapping-policy').compatibleMapping(historical, referenceMap.get(key) || mapping, accountMap)) throw importError('VALIDATION_ERROR')
+    const previous = before.get(key)
+    const scope = mapping.mappingAction === 'ignore' ? 'future' : 'account'
+    const reason = mapping.mappingAction === 'ignore' ? 'source_account_ignored_default' : 'source_account_mapping_confirmed'
+    await connection.execute(
+      `INSERT INTO catledger_import_account_mappings
+         (uid, mapping_id, source_type, payment_method_key, payment_method_hint,
+          mapping_action, account_id, version, disabled_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, NULL)
+       ON DUPLICATE KEY UPDATE mapping_action = VALUES(mapping_action), account_id = VALUES(account_id),
+         payment_method_hint = VALUES(payment_method_hint), disabled_at = NULL, version = version + 1`,
+      [uid, randomUUID(), mapping.sourceType, mapping.paymentMethodKey, String(mapping.paymentMethodHint || '').slice(0, 128), mapping.mappingAction, mapping.accountId || null]
+    )
+    const [[updated]] = await connection.execute(`SELECT mapping_id AS mappingId, version FROM catledger_import_account_mappings
+      WHERE uid = ? AND source_type = ? AND payment_method_key = ? FOR UPDATE`, [uid, mapping.sourceType, mapping.paymentMethodKey])
+    await connection.execute(`INSERT INTO catledger_finance_update_effects
+      (uid, effect_id, update_id, action_id, effect_type, object_id, before_json, after_json, rule_version)
+      VALUES (?, ?, ?, ?, 'account_mapping', ?, ?, ?, ?)`,
+    [uid, randomUUID(), updateId, actionId, updated.mappingId, JSON.stringify(previous || null), JSON.stringify({
+      mappingAction: mapping.mappingAction, accountId: mapping.accountId || null, version: Number(updated.version),
+      defaultScope: scope, reasonCode: reason
+    }), POSTING_RULE_VERSION])
+    before.set(key, { ...updated, sourceType: mapping.sourceType, paymentMethodKey: mapping.paymentMethodKey,
+      mappingAction: mapping.mappingAction, accountId: mapping.accountId || null, disabledAt: null })
+  }
 }
 
-async function promoteCategoryMappings(connection, uid, updateId) {
-  const [rows] = await connection.execute(
-    `SELECT source.source_type_snapshot AS sourceType,
-            event.category_id AS categoryId,
-            import_row.transaction_type_raw AS rawTransactionType,
-            import_row.counterparty_raw AS counterparty, import_row.item_raw AS item
-       FROM catledger_economic_events event
-       JOIN catledger_event_evidence evidence
-         ON evidence.uid = event.uid AND evidence.update_id = event.update_id
-        AND evidence.event_id = event.event_id AND evidence.evidence_role <> 'discarded'
-       JOIN catledger_import_rows import_row
-         ON import_row.uid = evidence.uid AND import_row.row_id = evidence.row_id
-       JOIN catledger_finance_update_sources source
-         ON source.uid = import_row.uid AND source.update_id = event.update_id
-        AND source.batch_id = import_row.batch_id
-      WHERE event.uid = ? AND event.update_id = ? AND event.status = 'posted'
-        AND event.economic_nature IN ('income', 'expense', 'fee')
-        AND event.category_id IS NOT NULL
-      ORDER BY source.source_type_snapshot, import_row.row_id`,
-    [uid, updateId]
-  )
-  const audit = []
-  for (const mapping of categoryMappingCandidates(rows)) {
-    const before = await readMapping(connection, uid, 'category', mapping)
-    if (!mapping.categoryId) {
-      // 同一具体证据在本批有不同决定时，使旧记忆失效，不能继续抢先命中。
-      if (before && !before.disabledAt) {
-        await connection.execute(`UPDATE catledger_import_category_mappings
-          SET disabled_at = CURRENT_TIMESTAMP(3), version = version + 1
-          WHERE uid = ? AND source_type = ? AND alias_key = ?`, [uid, mapping.sourceType, mapping.aliasKey])
-        audit.push({ before, after: await readMapping(connection, uid, 'category', mapping) })
-      }
+async function validatePostingMappings(connection, uid, updateId, selectedEvents, mappingRows, suppliedCatalog = null) {
+  const events = selectedEvents.filter(event => event.status === 'ready')
+  const catalog = suppliedCatalog || await loadReferenceCatalog(connection, uid, updateId, events)
+  const accounts = [...catalog.accounts.values(), ...catalog.drafts.values()]
+  const references = events.flatMap(event => mappingRowsForEvent(event).map(item => item.reference))
+  const resolution = resolveAccountMappings({ references, mappings: mappingRows, accounts })
+  if (resolution.conflictIdentityKeys.size) throw importError('UNRESOLVED_IMPORT')
+  for (const event of events) {
+    const projected = projectedEvent(event, resolution.index)
+    if (projected.ledgerAccountId !== event.ledgerAccountId || projected.counterpartyLedgerAccountId !== event.counterpartyLedgerAccountId) throw importError('UNRESOLVED_IMPORT')
+    for (const { reference, accountId } of mappingRowsForEvent(event)) {
+      if (accountId) await validateMappingTarget(connection, uid, updateId, event, reference, accountId, catalog)
+    }
+  }
+}
+
+async function postingMappingRows(connection, uid, updateId, selectedEvents, mappingRows, { drafts: suppliedDrafts = null, references: suppliedReferences = null } = {}) {
+  const drafts = suppliedDrafts || (await connection.execute(`SELECT draft_mapping_id AS draftMappingId, event_id AS eventId,
+    source_type AS sourceType, payment_method_key AS paymentMethodKey, payment_method_hint AS paymentMethodHint,
+    mapping_action AS mappingAction, account_id AS accountId, default_scope AS defaultScope
+    FROM catledger_finance_update_account_mapping_drafts WHERE uid=? AND update_id=? ORDER BY created_at,draft_mapping_id`, [uid, updateId]))[0]
+  const refs = suppliedReferences || selectedEvents.filter(event => event.status === 'ready').flatMap(event => mappingRowsForEvent(event).map(item => ({ ...item, event })))
+  const byEvent = new Map()
+  for (const row of refs) { if (!byEvent.has(row.event.eventId)) byEvent.set(row.event.eventId, []); byEvent.get(row.event.eventId).push(row) }
+  const results = []
+  for (const mapping of drafts) {
+    if (mapping.mappingAction === 'ignore') { if (mapping.defaultScope === 'future') results.push(mapping); continue }
+    const actual = (byEvent.get(mapping.eventId) || []).find(row => row.reference.sourceType === mapping.sourceType &&
+      row.reference.paymentMethodKey === mapping.paymentMethodKey && row.accountId === mapping.accountId)
+    if (actual) results.push(mapping)
+  }
+  const grouped = new Map()
+  for (const mapping of results) {
+    const key = mapping.sourceType + ':' + mapping.paymentMethodKey
+    const prior = grouped.get(key)
+    if (prior && (prior.accountId !== mapping.accountId || prior.mappingAction !== mapping.mappingAction)) throw importError('UNRESOLVED_IMPORT')
+    grouped.set(key, mapping)
+  }
+  return [...grouped.values()]
+}
+
+async function recordSideEffects(connection, uid, updateId, actionId, createdAccounts) {
+  for (const account of createdAccounts) {
+    await connection.execute(`INSERT INTO catledger_finance_update_effects
+      (uid,effect_id,update_id,action_id,effect_type,object_id,before_json,after_json,rule_version)
+      VALUES (?,?,?,?, 'account_created',?,NULL,?,?)`,
+    [uid, randomUUID(), updateId, actionId, account.accountId, JSON.stringify({ accountId: account.accountId, type: account.type, name: account.name }), POSTING_RULE_VERSION])
+  }
+}
+
+async function savePostingTransactions(connection, uid, updateId, actionId, drafts, { links = null } = {}) {
+  await insertMany(connection, `INSERT INTO catledger_transactions
+    (uid,transaction_id,type,occurred_at_utc,occurred_local_at,timezone_offset_minutes,
+     amount_minor,currency,source_account_id,destination_account_id,category_id,original_transaction_id,note,version,origin,import_id)
+    VALUES`, drafts.map(draft => [uid,draft.transactionId,draft.type,draft.occurredAtUtc,draft.occurredLocalAt,draft.timezoneOffsetMinutes,
+      draft.amountMinor,draft.currency,draft.sourceAccountId,draft.destinationAccountId,draft.categoryId,draft.originalTransactionId,
+      draft.note,draft.version,'import',draft.importId]))
+  const audit = drafts.map(draft => [uid,randomUUID(),draft.transactionId,actionId,'create',null,
+    JSON.stringify({ ...draft,origin:'import',deletedAt:null }),POSTING_RULE_VERSION])
+  await insertMany(connection, `INSERT INTO catledger_transaction_audits
+    (uid,audit_id,transaction_id,action_id,operation,before_json,after_json,rule_version) VALUES`, audit)
+  if (links) await insertMany(connection, `INSERT INTO catledger_economic_event_transactions
+    (uid,link_id,update_id,event_id,transaction_id,role,creation_method,rule_version,transaction_version) VALUES`, links)
+}
+
+async function loadExistingEventLinks(connection, uid, updateId) {
+  const [rows] = await connection.execute(`SELECT l.event_id AS eventId, l.transaction_id AS transactionId,
+    l.role, l.transaction_version AS transactionVersion, t.deleted_at AS deletedAt, t.version AS currentVersion
+    FROM catledger_economic_event_transactions l JOIN catledger_transactions t ON t.uid=l.uid AND t.transaction_id=l.transaction_id
+    WHERE l.uid=? AND l.update_id=? AND l.superseded_at IS NULL AND l.role IN ('primary','refund_transaction','repayment_allocation','payment_allocation','historical_primary')
+    ORDER BY l.created_at,l.link_id`, [uid, updateId])
+  const byEvent = new Map()
+  for (const row of rows) {
+    if (row.deletedAt != null || Number(row.currentVersion) !== Number(row.transactionVersion)) throw importError('CONFLICT')
+    const list = byEvent.get(row.eventId) || []; list.push(row); byEvent.set(row.eventId, list)
+  }
+  return byEvent
+}
+
+async function postOrdinaryEvents(connection, uid, updateId, actionId, events, identityIds, sourceByEvent, balances, { refundContext = null } = {}) {
+  const drafts = [], links = [], reused = [], preparedInstallments = []
+  for (const event of events) {
+    const installment = await installmentItems.prepareImport(connection, uid, event, identityIds.get(event.eventId) || [])
+    if (installment && (installment.component === 'principal' || installment.skipFinancial)) {
+      preparedInstallments.push({ prepared: installment, transactionId: null })
       continue
     }
-    await connection.execute(
-      `INSERT INTO catledger_import_category_mappings
-         (uid, mapping_id, source_type, alias_key, alias_key_version, category_id)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE category_id = VALUES(category_id), alias_key_version = VALUES(alias_key_version), disabled_at = NULL, version = version + 1`,
-      [uid, randomUUID(), mapping.sourceType, mapping.aliasKey, CATEGORY_ALIAS_VERSION, mapping.categoryId]
-    )
-    audit.push({ before, after: await readMapping(connection, uid, 'category', mapping) })
-  }
-  return audit
-}
-
-async function existingTransactionsForUpdate(connection, uid, updateId) {
-  const [rows] = await connection.execute(
-    // 从当前批次证据经身份索引查询历史链接，一次读取后按事件保留最早有效链接。
-    `SELECT STRAIGHT_JOIN ee.event_id AS eventId, linked.transaction_id AS transactionId, t.version, linked.created_at AS createdAt
-        FROM catledger_event_evidence ee FORCE INDEX (idx_catledger_event_evidence_update_event)
-        JOIN catledger_import_rows source_row
-          ON source_row.uid = ee.uid AND source_row.row_id = ee.row_id
-        JOIN catledger_import_rows prior_row FORCE INDEX (idx_catledger_import_rows_identity)
-          ON prior_row.uid = source_row.uid AND prior_row.identity_id = source_row.identity_id
-        JOIN catledger_event_evidence prior_evidence FORCE INDEX (idx_catledger_event_evidence_row)
-          ON prior_evidence.uid = prior_row.uid AND prior_evidence.row_id = prior_row.row_id
-         AND prior_evidence.evidence_role <> 'discarded'
-        JOIN catledger_economic_event_transactions linked FORCE INDEX (uk_catledger_event_transaction_role)
-          ON linked.uid = prior_evidence.uid AND linked.event_id = prior_evidence.event_id
-         AND linked.superseded_at IS NULL
-         AND linked.role IN ('primary', 'refund_transaction', 'repayment_allocation', 'payment_allocation', 'historical_primary')
-        JOIN catledger_transactions t
-          ON t.uid = linked.uid AND t.transaction_id = linked.transaction_id AND t.deleted_at IS NULL
-       WHERE ee.uid = ? AND ee.update_id = ?
-         AND ee.evidence_role <> 'discarded' AND source_row.identity_id IS NOT NULL
-     ORDER BY createdAt, linked.link_id FOR UPDATE`,
-    [uid, updateId]
-  )
-  const existing = new Map()
-  for (const row of rows) if (!existing.has(row.eventId)) existing.set(row.eventId, row)
-  return existing
-}
-
-function noteForEvent(event) {
-  const values = [event.item, event.counterparty, event.sourceNote]
-    .map((value) => String(value || '').normalize('NFKC').trim())
-    .filter(Boolean)
-  return [...new Set(values)].join(' · ').slice(0, 200) || null
-}
-
-async function originalTransactionIdForRefund(connection, uid, updateId, eventId) {
-  const [direct] = await connection.execute(
-    `SELECT transaction_id AS transactionId
-       FROM catledger_economic_event_transactions
-      WHERE uid = ? AND update_id = ? AND event_id = ? AND role = 'refund_original'
-      LIMIT 1`,
-    [uid, updateId, eventId]
-  )
-  if (direct[0]) return direct[0].transactionId
-  const [related] = await connection.execute(
-    `SELECT tx.transaction_id AS transactionId
-       FROM catledger_economic_event_relations relation_row
-       JOIN catledger_economic_event_transactions tx
-         ON tx.uid = relation_row.uid AND tx.update_id = relation_row.update_id
-        AND tx.event_id = relation_row.target_event_id
-      WHERE relation_row.uid = ? AND relation_row.update_id = ?
-        AND relation_row.source_event_id = ? AND relation_row.relation_type = 'refund_of'
-        AND relation_row.status = 'confirmed'
-        AND tx.role IN ('primary', 'historical_primary')
-      LIMIT 1`,
-    [uid, updateId, eventId]
-  )
-  return related[0] ? related[0].transactionId : null
-}
-
-async function validateRefundAmount(connection, uid, originalTransactionId, amountMinor, utcAt) {
-  await assertNoLoanTransactions(connection, uid, [originalTransactionId])
-  const [originals] = await connection.execute(
-    `SELECT amount_minor AS amountMinor, occurred_at_utc AS utcAt, category_id AS categoryId FROM catledger_transactions
-      WHERE uid = ? AND transaction_id = ? AND type = 'expense' AND deleted_at IS NULL
-      LIMIT 1 FOR UPDATE`,
-    [uid, originalTransactionId]
-  )
-  if (!originals[0] || String(originals[0].utcAt) > String(utcAt)) throw importError('UNRESOLVED_IMPORT')
-  const [[refunds]] = await connection.execute(
-    `SELECT COALESCE(SUM(amount_minor), 0) AS refundedMinor
-       FROM catledger_transactions
-      WHERE uid = ? AND original_transaction_id = ? AND type = 'refund' AND deleted_at IS NULL`,
-    [uid, originalTransactionId]
-  )
-  if (BigInt(String(refunds.refundedMinor)) + BigInt(amountMinor) > BigInt(String(originals[0].amountMinor))) {
-    throw importError('UNRESOLVED_IMPORT')
-  }
-  return originals[0]
-}
-
-function transactionDraft(event, originalTransactionId) {
-  const ordinaryType = event.economicNature === ECONOMIC_NATURE.INCOME ? 'income' : 'expense'
-  if ([ECONOMIC_NATURE.INCOME, ECONOMIC_NATURE.EXPENSE, ECONOMIC_NATURE.FEE].includes(event.economicNature)) {
-    return {
-      type: ordinaryType,
-      sourceAccountId: ordinaryType === 'expense' ? event.ledgerAccountId : null,
-      destinationAccountId: ordinaryType === 'income' ? event.ledgerAccountId : null,
-      categoryId: event.categoryId,
-      originalTransactionId: null
+    if (installment && installment.reuseTransactionId) {
+      reused.push({ ...event, transactionId: installment.reuseTransactionId, transactionVersion: installment.reuseTransactionVersion, installment })
+      continue
+    }
+    const original = event.economicNature === 'refund' ? refundContext.take(event) : null
+    const pieces = transactionDrafts(event, original)
+    for (const [index, draft] of pieces.entries()) {
+      draft.importId = sourceByEvent.get(event.eventId) || event.importId
+      drafts.push(draft)
+      const role = event.fieldSources.paymentResolution ? 'payment_allocation' : isAggregateRepayment(event) ? 'repayment_allocation' : event.economicNature === 'refund' ? 'refund_transaction' : 'primary'
+      links.push([uid,randomUUID(),updateId,event.eventId,draft.transactionId,role,'created',POSTING_RULE_VERSION,draft.version])
+      for (const [accountId,delta] of deltaForDraft(draft)) balances.set(accountId,(balances.get(accountId) || 0n)+delta)
+      if (installment && index === 0) preparedInstallments.push({ prepared: installment, transactionId: draft.transactionId })
     }
   }
-  if (event.economicNature === ECONOMIC_NATURE.REFUND) {
-    return {
-      type: 'refund', sourceAccountId: null, destinationAccountId: event.ledgerAccountId,
-      categoryId: null, originalTransactionId
+  await savePostingTransactions(connection,uid,updateId,actionId,drafts,{links})
+  for (const { prepared, transactionId } of preparedInstallments) await installmentItems.persistImport(connection,uid,prepared,transactionId)
+  for (const event of reused) {
+    await connection.execute(`INSERT INTO catledger_economic_event_transactions
+      (uid,link_id,update_id,event_id,transaction_id,role,creation_method,rule_version,transaction_version)
+      VALUES (?,?,?,?,?,'historical_primary','reused',?,?)`,
+    [uid,randomUUID(),updateId,event.eventId,event.transactionId,POSTING_RULE_VERSION,event.transactionVersion])
+    await installmentItems.persistImport(connection,uid,event.installment,event.transactionId)
+  }
+  return { created: drafts.length, reused: reused.length, drafts }
+}
+
+async function applyBalances(connection, uid, balances) {
+  for (const part of chunks([...balances].map(([id,delta]) => [id,String(delta)]).sort((a,b)=>a[0].localeCompare(b[0])), { parametersPerRow:3, fixedParameters:1 })) {
+    await connection.execute(`UPDATE catledger_accounts SET balance_minor=balance_minor+CASE account_id ${part.map(()=>'WHEN ? THEN ?').join(' ')} END,
+      version=version+1 WHERE uid=? AND account_id IN (${part.map(()=>'?').join(',')})`,[...part.flat(),uid,...part.map(row=>row[0])])
+  }
+}
+
+function orderedPostingEvents(events) {
+  return [...events].sort((left,right)=>Number(left.economicNature==='refund')-Number(right.economicNature==='refund') ||
+    String(left.utcAt || '').localeCompare(String(right.utcAt || '')) || left.eventId.localeCompare(right.eventId))
+}
+
+async function loadIdentitiesByEvent(connection, uid, updateId) {
+  const [rows] = await connection.execute(`SELECT e.event_id AS eventId,r.identity_id AS identityId FROM catledger_event_evidence e
+    JOIN catledger_import_rows r ON r.uid=e.uid AND r.row_id=e.row_id
+    WHERE e.uid=? AND e.update_id=? AND e.evidence_role<>'discarded' AND r.identity_id IS NOT NULL`,[uid,updateId])
+  const map = new Map()
+  for (const row of rows) { const ids=map.get(row.eventId)||[]; if(!ids.includes(row.identityId))ids.push(row.identityId); map.set(row.eventId,ids) }
+  return map
+}
+
+async function postExplicitRepayments(connection, uid, updateId, actionId, events, balances) {
+  let created = 0
+  const transactions = []
+  for (const event of events) {
+    const input = explicitRepayment.inputForEvent(event)
+    if (!input) throw importError('UNRESOLVED_IMPORT')
+    const result = await explicitRepayment.booking.book(connection, uid, { ...input, requestId: actionId }, {
+      actionId, sourceUpdateId: updateId, sourceEventId: event.eventId, origin:'import', importId:event.importId,
+      deferBalances:true, deferPrincipal:true
+    })
+    created += result.transactions.length
+    for (const draft of result.transactions) {
+      transactions.push(draft)
+      for (const [accountId, delta] of deltaForDraft(draft)) balances.set(accountId,(balances.get(accountId)||0n)+delta)
     }
   }
-  if ([ECONOMIC_NATURE.INTERNAL_TRANSFER, ECONOMIC_NATURE.REPAYMENT, ECONOMIC_NATURE.BORROW].includes(event.economicNature)) {
-    const sourceIsLedger = event.sourceDirection !== 'income'
-    return {
-      type: 'transfer',
-      sourceAccountId: sourceIsLedger ? event.ledgerAccountId : event.counterpartyLedgerAccountId,
-      destinationAccountId: sourceIsLedger ? event.counterpartyLedgerAccountId : event.ledgerAccountId,
-      categoryId: null,
-      originalTransactionId: null
-    }
-  }
-  throw importError('UNRESOLVED_IMPORT')
+  return { created, transactions }
 }
 
-function transactionDrafts(event, originalTransactionId) {
-  // 此标记只能由入账事务在核实“信用卡账单 + credit 账户”后设置。
-  // 普通银行贷款本金仍走下面原有真实资金转账逻辑。
-  if (event.confirmedCreditInstallmentPrincipal === true) return []
-  const repayment = repaymentInput(event)
-  if (repayment) return repaymentBooking.drafts(repayment)
-  const plan = eventAllocation(event)
-  if (!plan.valid) throw importError('UNRESOLVED_IMPORT')
-  if (plan.kind !== 'none') return allocationTransactionDrafts(event, plan)
-  return [{
-    ...transactionDraft(event, originalTransactionId),
-    amountMinor: event.amountMinor,
-    role: event.economicNature === ECONOMIC_NATURE.REFUND ? 'refund_transaction' : 'primary'
-  }]
+async function rebuildAffectedPrincipal(connection, uid, events) {
+  const loanIds = [...new Set(events.map(event=>event.fieldSources.loanRepayment && event.fieldSources.loanRepayment.loanId).filter(Boolean))].sort()
+  for(const loanId of loanIds) await rebuildPrincipal(connection,uid,loanId)
 }
 
-async function createTransactions(connection, uid, updateId, event) {
-  let originalTransactionId = null
-  let original = null
-  if (event.economicNature === ECONOMIC_NATURE.REFUND) {
-    originalTransactionId = await originalTransactionIdForRefund(connection, uid, updateId, event.eventId)
-    if (!originalTransactionId && !hasPendingRefundRelation(event)) throw importError('UNRESOLVED_IMPORT')
-    if (originalTransactionId) original = await validateRefundAmount(connection, uid, originalTransactionId, event.amountMinor, event.utcAt)
-  }
-  const created = []
-  for (const draft of transactionDrafts(event, originalTransactionId)) {
-    if (original) draft.categoryId = original.categoryId
-    const transactionId = randomUUID()
-    await connection.execute(
-      `INSERT INTO catledger_transactions
-         (uid, transaction_id, type, source_account_id, destination_account_id,
-          category_id, original_transaction_id, amount_minor, occurred_local_date,
-          occurred_local_at, timezone_offset_minutes, occurred_at_utc, note, origin, creation_provenance_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', JSON_OBJECT('kind','independent'))`,
-      [
-        uid, transactionId, draft.type, draft.sourceAccountId, draft.destinationAccountId,
-        draft.categoryId, draft.originalTransactionId, draft.amountMinor, event.localDate,
-        event.localAt, event.timezoneOffsetMinutes, event.utcAt, noteForEvent(event)
-      ]
-    )
-    created.push({ transactionId, role: draft.role })
-  }
-  return created
+async function receiptForPosted(connection, uid, updateId) {
+  const [[row]] = await connection.execute(`SELECT created_transaction_count AS createdTransactionCount,reused_transaction_count AS reusedTransactionCount
+    FROM catledger_finance_update_postings WHERE uid=? AND update_id=? AND state='completed' ORDER BY completed_at DESC LIMIT 1`,[uid,updateId])
+  if(!row) throw importError('CONFLICT')
+  return commandResult(connection,uid,updateId,{posting:{createdTransactionCount:Number(row.createdTransactionCount),reusedTransactionCount:Number(row.reusedTransactionCount)}})
 }
 
-async function linkEventTransaction(connection, uid, updateId, event, transactionId, creationMethod, transactionVersion = 1, role = null) {
-  const linkRole = role || (event.economicNature === ECONOMIC_NATURE.REFUND ? 'refund_transaction' : 'primary')
-  await connection.execute(
-    `INSERT INTO catledger_economic_event_transactions
-       (uid, link_id, update_id, event_id, transaction_id, role,
-        creation_method, rule_version, transaction_version)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'event-transaction-link-v2', ?)`,
-    [uid, randomUUID(), updateId, event.eventId, transactionId, linkRole, creationMethod, transactionVersion]
-  )
+async function financialSourceRows(connection, uid, updateId) {
+  return (await connection.execute(`SELECT r.row_id AS rowId, r.normalized_direction AS direction, r.semantic_json AS semantic,
+    r.source_profile_id AS sourceProfileId, r.identity_id AS identityId FROM catledger_import_rows r
+    JOIN catledger_finance_update_sources s ON s.uid=r.uid AND s.batch_id=r.batch_id
+    WHERE s.uid=? AND s.update_id=?`,[uid,updateId]))[0]
+}
+
+async function assertNoExternalIdentityReuse(connection, uid, updateId, selectedEvents, identityIds) {
+  const ids = [...new Set(selectedEvents.flatMap(event=>identityIds.get(event.eventId)||[]))]
+  for (const part of chunks(ids.map(id=>[id]))) {
+    const [linked] = await connection.execute(`SELECT DISTINCT r.identity_id AS identityId FROM catledger_import_rows r
+      JOIN catledger_event_evidence v ON v.uid=r.uid AND v.row_id=r.row_id AND v.evidence_role<>'discarded'
+      JOIN catledger_economic_event_transactions l ON l.uid=v.uid AND l.event_id=v.event_id AND l.superseded_at IS NULL
+        AND l.role IN ('primary','refund_transaction','payment_allocation','repayment_allocation','historical_primary')
+      JOIN catledger_transactions t ON t.uid=l.uid AND t.transaction_id=l.transaction_id AND t.deleted_at IS NULL
+      WHERE r.uid=? AND r.identity_id IN (${part.map(()=>'?').join(',')}) AND l.update_id<>?`,[uid,...part.flat(),updateId])
+    if (linked.length) throw importError('CONFLICT')
+  }
+}
+
+async function reconcileBeforePost(connection, uid, updateId, actionId, version) {
+  const state = await reconcileCurrentUpdate(connection,uid,updateId,{actionId,expectedVersion:version})
+  if (state.changed) throw importError('UNRESOLVED_IMPORT')
 }
 
 function createFinanceUpdatePosting({ getPool }) {
-  async function post(context) {
-    const updateId = validateUuid(context.data.updateId)
-    const version = validateVersion(context.data.version)
-    if (context.data.mode != null && context.data.mode !== 'all_ready') throw importError('VALIDATION_ERROR')
-    return executeIdempotentMutation({
-      getPool,
-      currentReads: true,
-      ...context,
-      action: 'financeUpdates.post',
-      operation: async (connection, uid, data, requestDigest) => {
-        const update = await selectUpdate(connection, uid, updateId, { forUpdate: true })
-        if (update.status === 'posted') return commandResult(connection, uid, updateId, context.data)
-        if (update.status !== 'review' || Number(update.version) !== version || update.planVersion !== PLAN_VERSION) {
-          throw importError('CONFLICT')
+  return {
+    post(context) {
+      const updateId = validateUuid(context.data.updateId)
+      const version = validateVersion(context.data.version)
+      return executeIdempotentMutation({getPool,...context,action:'financeUpdates.post',operation:async(connection,uid,data,requestDigest,idempotencyKeyDigest)=>{
+        const update=await selectUpdate(connection,uid,updateId,{forUpdate:true})
+        if (update.status==='posted') return receiptForPosted(connection,uid,updateId)
+        if (update.status!=='review' || Number(update.version)!==version || update.planVersion!==PLAN_VERSION) throw importError('CONFLICT')
+        const actionId=await insertAction(connection,uid,{updateId,expectedVersion:version,appliedVersion:version+1,actionType:'post_update',requestDigest,idempotencyKeyDigest,status:'started'})
+        await reconcileBeforePost(connection,uid,updateId,actionId,version)
+        const events=await loadPostingEvents(connection,uid,updateId)
+        await validateEventState(connection,uid,updateId,events)
+        const selected=events.filter(event=>event.status==='ready')
+        const coverage=await inspectCoverage(connection,uid,updateId,events)
+        if(!coverage.selectedEventsReadyToPost) throw importError('UNRESOLVED_IMPORT')
+        const identityIds=await loadIdentitiesByEvent(connection,uid,updateId)
+        await assertNoExternalIdentityReuse(connection,uid,updateId,selected,identityIds)
+        const mappingRows=await selectPaymentMappings(connection,uid,updateId)
+        const catalog=await loadReferenceCatalog(connection,uid,updateId,selected)
+        await validatePostingMappings(connection,uid,updateId,selected,mappingRows,catalog)
+        const paymentMappingRows=await postingMappingRows(connection,uid,updateId,selected,mappingRows)
+        const createdAccounts=await materializeAccountDrafts(connection,uid,updateId,reachableAccountIds(selected))
+        const accountIds=[...reachableAccountIds(selected)].sort()
+        const accounts=await loadAffectedAccounts(connection,uid,accountIds)
+        for(const event of selected) {
+          if(!require('./editor-fields').accountRolesValid(event, accounts)) throw importError('VALIDATION_ERROR')
+          const allocation=eventAllocation(event)
+          if(allocation.kind==='conflict' || allocation.valid&&!allocationAccountsValid(event,allocation,accounts)) throw importError('UNRESOLVED_IMPORT')
         }
-        const [[openIssues]] = await connection.execute(
-          `SELECT COUNT(*) AS count FROM catledger_review_issues
-            WHERE uid = ? AND update_id = ? AND status = 'open' AND blocking = 1
-              AND issue_type <> 'category_assignment'`,
-          [uid, updateId]
-        )
-        if (Number(openIssues.count) !== 0) throw importError('UNRESOLVED_IMPORT')
-        const events = await selectPostingEvents(connection, uid, updateId)
-        if (events.length !== Number(update.finalEventCount)) throw importError('UNRESOLVED_IMPORT')
-        const coverageEvidence = await selectCoverageEvidence(connection, uid, updateId)
-        const coverage = buildCoverageReport({
-          sources: await selectSources(connection, uid, updateId), events, ...coverageEvidence
-        })
-        if (!coverage.rowConservationPassed) throw importError('UNRESOLVED_IMPORT')
-        const ready = events.filter((event) => [EVENT_STATUS.READY, EVENT_STATUS.NEEDS_ACTION].includes(event.status))
-        await assertIdentityIntegrity(connection, uid, updateId, ready.map(event => event.eventId))
-        const contexts = await loadEventContexts(connection, uid, updateId)
-        for (const event of ready) {
-          const evaluated = evaluatePostability(event, contexts.get(event.eventId))
-          if (evaluated.status !== EVENT_STATUS.READY) throw importError('UNRESOLVED_IMPORT')
+        const beforeSnapshots=accountIds.length?await takeSnapshots(connection,uid,updateId,actionId,accountIds):[]
+        const sourceByEvent=new Map(events.map(event=>[event.eventId,event.importId]))
+        const balances=new Map()
+        const explicit=selected.filter(event=>event.fieldSources.loanRepayment && explicitRepayment.inputForEvent(event))
+        const explicitIds=new Set(explicit.map(event=>event.eventId))
+        const ordinary=orderedPostingEvents(selected.filter(event=>!explicitIds.has(event.eventId)))
+        const nonRefund=ordinary.filter(event=>event.economicNature!=='refund')
+        const refunds=ordinary.filter(event=>event.economicNature==='refund')
+        const first=await postOrdinaryEvents(connection,uid,updateId,actionId,nonRefund,identityIds,sourceByEvent,balances)
+        const loanResult=await postExplicitRepayments(connection,uid,updateId,actionId,explicit,balances)
+        const refundContext=await loadRefundPostingContext(connection,uid,updateId,refunds.map(event=>event.eventId))
+        const refunded=await postOrdinaryEvents(connection,uid,updateId,actionId,refunds,identityIds,sourceByEvent,balances,{refundContext})
+        await applyBalances(connection,uid,balances)
+        await rebuildAffectedPrincipal(connection,uid,explicit)
+        await installmentItems.persistReviewedImports(connection,uid,updateId,events,identityIds)
+        await publishAccountMappings(connection,uid,updateId,actionId,paymentMappingRows)
+        await recordSideEffects(connection,uid,updateId,actionId,createdAccounts)
+        for (const part of chunks(selected.map(event=>[event.eventId,event.version]))) {
+          const [changed]=await connection.execute(`UPDATE catledger_economic_events SET status='posted',state='posted',version=version+1
+            WHERE uid=? AND update_id=? AND (event_id,version) IN (${part.map(()=>'(?,?)').join(',')})`,[uid,updateId,...part.flat()])
+          if(changed.affectedRows!==part.length) throw importError('CONFLICT')
         }
-        await require('./historical-duplicates').assertHistoricalReviewsCurrent(connection, uid, updateId)
-        // Draft accounts are assigned stable future IDs during review, but the
-        // formal Account rows are created only after the user starts posting.
-        // This transaction also owns every later transaction/link/state write,
-        // so any failure removes the accounts again with the full rollback.
-        const newAccounts = await materializeAccountDrafts(connection, uid, updateId, await reachableDraftIds(connection, uid, updateId, ready))
-        const lockedAccounts = await lockAccountsAndCategories(connection, uid, ready)
-        const cashBalancesBeforePost = await queryCashBalances(connection, uid, lockedAccounts)
-        const identities = await lockEvidenceIdentities(connection, uid, updateId)
-        const history = await existingTransactionsForUpdate(connection, uid, updateId)
-        // 已纳入贷款整组的来源不能再被另一批次只复用其中一项，否则更正/撤销会留下外部半组依赖。
-        await assertNoLoanTransactions(connection, uid, [...history.values()].map(row => row.transactionId))
-
-        const postingId = randomUUID()
-        await connection.execute(
-          `INSERT INTO catledger_finance_update_postings
-             (uid, posting_id, update_id, request_digest, state, selected_event_count)
-           VALUES (?, ?, ?, ?, 'running', ?)`,
-          [uid, postingId, updateId, requestDigest, ready.length]
-        )
-        const appliedVersion = version + 1
-        const actionId = await insertAction(connection, uid, {
-          updateId,
-          expectedVersion: version,
-          appliedVersion,
-          actionType: 'post_all_ready',
-          requestDigest,
-          reasons: ['finance_update_posted']
-        })
-        const [postingState] = await connection.execute(
-          `UPDATE catledger_finance_updates
-              SET status = 'posting', current_action_id = ?
-            WHERE uid = ? AND update_id = ? AND version = ? AND status = 'review'`,
-          [actionId, uid, updateId, version]
-        )
-        if (postingState.affectedRows !== 1) throw importError('CONFLICT')
-
-        let created = 0, reused = 0, refundContext = null
-        const transactionRows = [], linkRows = [], newByIdentity = new Map(), bookedRepayments = [], installmentRows = [], installmentInBatch = new Map()
-        const installmentStore = require('./installment-items')
-        async function flush() {
-          await insertMany(connection, `INSERT INTO catledger_transactions
-            (uid, transaction_id, type, source_account_id, destination_account_id, category_id, original_transaction_id,
-             amount_minor, occurred_local_date, occurred_local_at, timezone_offset_minutes, occurred_at_utc, note, origin, creation_provenance_json) VALUES`, transactionRows.map(row=>[...row,JSON.stringify({kind:'independent'})]))
-          await insertMany(connection, `INSERT INTO catledger_economic_event_transactions
-            (uid, link_id, update_id, event_id, transaction_id, role, creation_method, rule_version, transaction_version) VALUES`, linkRows)
-          transactionRows.length = 0; linkRows.length = 0
-        }
-        for (const event of ready) {
-          event.postingId = postingId
-          const eventIdentities = identities.get(event.eventId) || []
-          const inBatch = eventIdentities.map(id => newByIdentity.get(id)).filter(Boolean).sort((a, b) => a.order - b.order)[0]
-          // prepareImport 在服务端核对账户 type=credit，其他账户拒绝该分期账单路径。
-          const prepared = await installmentStore.prepareImport(connection,uid,event,eventIdentities)
-          if (prepared && prepared.creditStatement===true && prepared.component==='principal') event.confirmedCreditInstallmentPrincipal=true
-          const installmentKey = prepared && (prepared.loanId || prepared.referenceKey || prepared.identityId)
-            ? [prepared.accountId,prepared.loanId || prepared.referenceKey || prepared.identityId,prepared.periodNumber,prepared.component].join(':') : null
-          const sameInstallment = installmentKey && installmentInBatch.get(installmentKey)
-          if (sameInstallment) {
-            if (prepared.component!=='principal' && sameInstallment.eventId!==prepared.eventId && (!prepared.identityId || prepared.identityId!==sameInstallment.identityId)) throw importError('LOAN_SOURCE_MISMATCH')
-            if (sameInstallment.amountMinor!==prepared.amountMinor) throw importError('LOAN_SOURCE_MISMATCH')
-            if (prepared.identityId && prepared.identityId===sameInstallment.identityId) prepared.existingItem=sameInstallment
-            prepared.canonicalItem=sameInstallment
-            prepared.reuseTransactionId=sameInstallment.transactionId
-            prepared.reuseTransactionVersion=sameInstallment.transactionVersion
-          }
-          const existing = history.get(event.eventId) || inBatch || prepared && prepared.reuseTransactionId &&
-            {transactionId:prepared.reuseTransactionId,version:prepared.reuseTransactionVersion}
-          const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid || Boolean(event.fieldSources.loanRepayment)
-          if (allocation && existing) throw importError('IDENTITY_CONFLICT')
-          let transactions
-          if(prepared&&prepared.skipFinancial){if(existing)throw importError('LOAN_SOURCE_MISMATCH');transactions=[]}
-          else if (existing) { transactions = [{ transactionId: existing.transactionId, role: event.economicNature === ECONOMIC_NATURE.REFUND ? 'refund_transaction' : 'primary' }]; reused += 1 }
-          else if (event.economicNature === ECONOMIC_NATURE.REFUND) {
-            if (!refundContext) {
-              await flush()
-              refundContext = await loadRefundPostingContext(connection, uid, updateId,
-                ready.filter(item => item.economicNature === ECONOMIC_NATURE.REFUND).map(item => item.eventId))
-            }
-            const original = refundContext.take(event)
-            transactions = transactionDrafts(event, original && original.transactionId).map(draft => {
-              const transactionId = randomUUID()
-              transactionRows.push([uid, transactionId, draft.type, draft.sourceAccountId, draft.destinationAccountId,
-                original ? original.categoryId : draft.categoryId, draft.originalTransactionId, draft.amountMinor, event.localDate,
-                event.localAt, event.timezoneOffsetMinutes, event.utcAt, noteForEvent(event), 'import'])
-              return { transactionId, role: draft.role,...(draft.chargeId?{chargeId:draft.chargeId}:{}) }
-            })
-            created += transactions.length
-          } else {
-            transactions = transactionDrafts(event, null).map(draft => {
-              const transactionId = randomUUID()
-              transactionRows.push([uid, transactionId, draft.type, draft.sourceAccountId, draft.destinationAccountId,
-                draft.categoryId, draft.originalTransactionId, draft.amountMinor, event.localDate, event.localAt,
-                event.timezoneOffsetMinutes, event.utcAt, noteForEvent(event), 'import'])
-              return { transactionId, role: draft.role,...(draft.chargeId?{chargeId:draft.chargeId}:{}) }
-            })
-            created += transactions.length
-          }
-          for (const transaction of transactions) linkRows.push([uid, randomUUID(), updateId, event.eventId,
-            transaction.transactionId, transaction.role, existing ? 'reused' : 'created', 'event-transaction-link-v2', existing ? Number(existing.version) : 1])
-          if (event.fieldSources.loanRepayment) bookedRepayments.push({ event,transactions })
-          if (prepared) {
-            const transactionId=transactions[0] && transactions[0].transactionId
-            installmentRows.push({prepared,transactionId})
-            if (installmentKey && !sameInstallment) installmentInBatch.set(installmentKey,{...prepared,transactionId,transactionVersion:existing?Number(existing.version):1})
-          }
-          // 同批后续证据仍可复用刚创建/已复用的交易，与逐笔查询语义一致。
-          if (transactions.length) {
-            const first = { transactionId: transactions[0].transactionId, version: existing ? Number(existing.version) : 1, order: newByIdentity.size }
-            for (const id of eventIdentities) if (!newByIdentity.has(id)) newByIdentity.set(id, first)
-          }
-        }
-        await flush()
-        await updateEvents(connection, uid, updateId, ['state', 'status', 'version'],
-          ready.map(event => [event.eventId, event.version, 'posted', 'posted', event.version + 1]))
-        for (const item of installmentRows) await installmentStore.persistImport(connection,uid,item.prepared,item.transactionId)
-        await installmentStore.persistReviewedImports(connection,uid,updateId,events,identities)
-
-        // Imported transactions, newly materialized accounts and every state
-        // transition still belong to this transaction. A cash deficit aborts
-        // the whole FinanceUpdate and rolls every formal write back together.
-        await assertCashBalancesNotWorsened(connection, uid, lockedAccounts, cashBalancesBeforePost)
-
-        await connection.execute(
-          `UPDATE catledger_review_issues
-              SET status = 'superseded', blocking = 0, version = version + 1
-            WHERE uid = ? AND update_id = ? AND status = 'open' AND issue_type = 'category_assignment'`,
-          [uid, updateId]
-        )
-
-        // Review only records mapping intent in the FinanceUpdate draft. The
-        // reusable ledger rule crosses the write barrier only inside this same
-        // all-or-nothing posting transaction.
-        const accountMappings = await promoteAccountMappings(connection, uid, updateId)
-        const categoryMappings = await promoteCategoryMappings(connection, uid, updateId)
-        await connection.execute(`UPDATE catledger_finance_updates SET side_effects_json = ? WHERE uid = ? AND update_id = ?`,
-          [JSON.stringify({ version: MAINTENANCE_POLICY_VERSION, accounts: newAccounts.map((row) => ({ accountId: row.accountId, version: 1 })),
-            accountMappings, categoryMappings }), uid, updateId])
-
-        await connection.execute(
-          `UPDATE catledger_finance_update_postings
-              SET state = 'completed', created_transaction_count = ?,
-                  reused_transaction_count = ?, completed_at = CURRENT_TIMESTAMP(3)
-            WHERE uid = ? AND posting_id = ?`,
-          [created, reused, uid, postingId]
-        )
-        await connection.execute(
-          `UPDATE catledger_import_batches b
-           JOIN catledger_finance_update_sources s
-             ON s.uid = b.uid AND s.batch_id = b.batch_id
-              SET b.state = 'committed', b.pending_row_count = 0,
-                  b.posted_row_count = b.valid_row_count,
-                  b.updated_at = CURRENT_TIMESTAMP(3)
-            WHERE s.uid = ? AND s.update_id = ?`,
-          [uid, updateId]
-        )
-        await connection.execute(
-          `UPDATE catledger_import_files f
-           JOIN catledger_finance_update_sources s
-             ON s.uid = f.uid AND s.import_id = f.import_id
-              SET f.state = 'committed', f.version = f.version + 1, f.error_code = NULL
-            WHERE s.uid = ? AND s.update_id = ? AND f.state = 'review_ready'`,
-          [uid, updateId]
-        )
-        const [completed] = await connection.execute(
-          `UPDATE catledger_finance_updates
-              SET status = 'posted', version = ?, posted_event_count = posted_event_count + ?,
-                  ready_event_count = 0, current_action_id = ?
-            WHERE uid = ? AND update_id = ? AND version = ? AND status = 'posting'
-              AND needs_action_event_count = 0`,
-          [appliedVersion, ready.length, actionId, uid, updateId, version]
-        )
-        if (completed.affectedRows !== 1) throw importError('CONFLICT')
-        const loanVersions = new Map()
-        for (const { event,transactions } of bookedRepayments) {
-          const input = repaymentInput(event)
-          if (input.mode === 'associate') {
-            const previous = loanVersions.get(input.loanId)
-            if (previous && previous.base !== input.loanVersion) throw importError('CONFLICT')
-            loanVersions.set(input.loanId,{ base:input.loanVersion,count:(previous ? previous.count : 0) + 1 })
-            input.loanVersion += previous ? previous.count : 0
-          }
-          const [links] = await connection.execute(`SELECT link_id AS linkId,transaction_id AS transactionId,transaction_version AS transactionVersion,
-            role,creation_method AS creationMethod FROM catledger_economic_event_transactions WHERE uid=? AND event_id=? AND superseded_at IS NULL`,[uid,event.eventId])
-          const sourceEvent = { eventId:event.eventId,updateId,version:event.version+1,state:'posted',status:'posted',economicNature:event.economicNature,
-            flowDirection:event.flowDirection,ledgerAccountId:event.ledgerAccountId,counterpartyLedgerAccountId:event.counterpartyLedgerAccountId,
-            categoryId:event.categoryId,manualFieldMask:event.manualFieldMask,fieldSources:event.fieldSources,reasonCodes:event.reasonCodes,
-            updateVersion:appliedVersion,updateStatus:'posted' }
-          await repaymentBooking.persist(connection,uid,input,{ totalMinor:event.amountMinor,localAt:event.localAt,utcAt:event.utcAt,
-            timezoneOffsetMinutes:event.timezoneOffsetMinutes,transactions,source:{ event:sourceEvent,links } })
-        }
-        return commandResult(connection, uid, updateId, context.data)
-      }
-    })
+        const created=first.created+loanResult.created+refunded.created,reused=first.reused+refunded.reused
+        await connection.execute(`INSERT INTO catledger_finance_update_postings
+          (uid,posting_id,update_id,action_id,state,created_transaction_count,reused_transaction_count,started_at,completed_at)
+          VALUES (?,?,?,?,'completed',?,?,CURRENT_TIMESTAMP(3),CURRENT_TIMESTAMP(3))`,[uid,randomUUID(),updateId,actionId,created,reused])
+        await connection.execute(`UPDATE catledger_finance_updates SET status='posted',version=version+1,current_action_id=?,
+          posted_event_count=?,ready_event_count=0,needs_action_event_count=0,error_code=NULL WHERE uid=? AND update_id=? AND version=?`,[actionId,selected.length,uid,updateId,version])
+        await connection.execute(`UPDATE catledger_finance_actions SET status='applied',completed_at=CURRENT_TIMESTAMP(3)
+          WHERE uid=? AND action_id=?`,[uid,actionId])
+        await connection.execute(`UPDATE catledger_import_files f JOIN catledger_finance_update_sources s ON s.uid=f.uid AND s.import_id=f.import_id
+          SET f.state='committed',f.version=f.version+1 WHERE s.uid=? AND s.update_id=? AND f.state='review_ready'`,[uid,updateId])
+        const result=await commandResult(connection,uid,updateId,{posting:{createdTransactionCount:created,reusedTransactionCount:reused}})
+        return result
+      }})
+    }
   }
-
-  return { post }
 }
 
 module.exports = {
-  existingTransactionsForUpdate,
-  createTransactions,
-  linkEventTransaction,
-  lockAccountsAndCategories,
-  eventContext,
-  categoryMappingCandidates,
+  POSTING_RULE_VERSION,
   createFinanceUpdatePosting,
-  noteForEvent,
-  postingEvent,
+  publicTransaction,
   transactionDraft,
-  transactionDrafts
+  transactionDrafts,
+  validateCurrentRefunds,
+  validateEventState,
+  loadPostingEvents,
+  publishAccountMappings,
+  validatePostingMappings,
+  postingMappingRows
 }

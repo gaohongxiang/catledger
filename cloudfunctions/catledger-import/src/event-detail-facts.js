@@ -4,7 +4,8 @@ async function eventDetailFacts(connection, uid, updateId, event) {
   const fields = event.fieldSources || {}, payment = fields.paymentResolution || {}
   const ids = [...new Set([event.ledgerAccountId, event.counterpartyLedgerAccountId]
     .concat((payment.allocations || []).map(item => item.accountId),
-      (fields.repaymentAllocations || []).map(item => item.accountId)).filter(Boolean))]
+      (fields.repaymentAllocations || []).map(item => item.accountId),
+      (fields.editorOverrides?.incompleteComposition?.parts || []).map(item => item.accountId)).filter(Boolean))]
   const accounts = []
   if (ids.length) {
     const marks = ids.map(() => '?').join(',')
@@ -44,6 +45,14 @@ async function eventDetailFacts(connection, uid, updateId, event) {
     const [[row]] = await connection.execute('SELECT loan_id AS loanId,name FROM catledger_loans WHERE uid=? AND loan_id=?', [uid, repayment.loanId])
     loan = row || null
   }
-  return { version: 1, accounts, refund, loan }
+  const categories = []
+  const repaymentFacts = { ...(repayment || {}), ...(fields.editorOverrides?.incompleteRepayment || {}) }
+  const categoryIds = [...new Set([event.categoryId, repaymentFacts.interestCategoryId, repaymentFacts.feeCategoryId].filter(Boolean))]
+  if (categoryIds.length) {
+    const [rows] = await connection.execute(`SELECT category_id AS categoryId,name,kind,archived_at AS archivedAt FROM catledger_categories
+      WHERE uid=? AND category_id IN (${categoryIds.map(() => '?').join(',')})`, [uid, ...categoryIds])
+    categories.push(...rows)
+  }
+  return { version: 1, accounts, categories, refund, loan }
 }
 module.exports = { eventDetailFacts }

@@ -9,13 +9,13 @@ async function loadRefundPostingContext(connection, uid, updateId, eventIds) {
   for (const part of chunks(eventIds.map(id => [id]))) {
     const placeholders = part.map(() => '?').join(','), values = [uid, updateId, ...part.flat()]
     const [links] = await connection.execute(`SELECT event_id AS eventId, transaction_id AS transactionId
-      FROM catledger_economic_event_transactions WHERE uid=? AND update_id=? AND event_id IN (${placeholders}) AND role='refund_original'`, values)
+      FROM catledger_economic_event_transactions WHERE uid=? AND update_id=? AND event_id IN (${placeholders}) AND role='refund_original' AND superseded_at IS NULL`, values)
     links.forEach(row => { if (!direct.has(row.eventId)) direct.set(row.eventId, row.transactionId) })
     const [relations] = await connection.execute(`SELECT r.source_event_id AS eventId, t.transaction_id AS transactionId
       FROM catledger_economic_event_relations r JOIN catledger_economic_event_transactions t
         ON t.uid=r.uid AND t.update_id=r.update_id AND t.event_id=r.target_event_id
       WHERE r.uid=? AND r.update_id=? AND r.source_event_id IN (${placeholders}) AND r.relation_type='refund_of'
-        AND r.status='confirmed' AND t.role IN ('primary','historical_primary')`, values)
+        AND r.status='confirmed' AND t.superseded_at IS NULL AND t.role IN ('primary','historical_primary')`, values)
     relations.forEach(row => { if (!related.has(row.eventId)) related.set(row.eventId, row.transactionId) })
   }
   const originals = new Map(), amounts = new Map()

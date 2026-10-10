@@ -1,5 +1,6 @@
 const { FIELD_MASK } = require('./manual-field-mask')
 const PAYMENT_RESOLUTION_VERSION = 'payment-resolution-v2'
+const EDITOR_PAYMENT_VERSION = 'payment-resolution-v3'
 const LEGACY_PAYMENT_RESOLUTION_VERSION = 'payment-resolution-v1'
 const NONNEGATIVE_MINOR = /^(?:0|[1-9]\d{0,18})$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -36,14 +37,17 @@ function inspectPaymentAccounts(event, value, { partial = false } = {}) {
 function inspectPaymentResolution(event, value) {
   const invalid = (reason = 'payment_resolution_required') => ({ valid: false, reason, allocations: [] })
   const fields = event.fieldSources || {}
-  const components = fields.paymentComponents || []
+  const manual = value && value.version === EDITOR_PAYMENT_VERSION && fields.editorOverrides &&
+    fields.editorOverrides.version === 1 && fields.editorOverrides.composition === 'payment'
+  const components = manual && Array.isArray(value.allocations)
+    ? value.allocations.map(() => ({ componentKind: 'financial' })) : fields.paymentComponents || []
   const financial = components.map((item, index) => ({ ...item, componentIndex: index }))
     .filter((item) => item.componentKind === 'financial')
-  if (fields.paymentSourceDirection !== 'expense') return invalid('payment_resolution_not_supported')
+  if (!manual && fields.paymentSourceDirection !== 'expense') return invalid('payment_resolution_not_supported')
   if (financial.length < 2 || financial.length > 20 || components.some((item) =>
     !['financial', 'certified_discount'].includes(item.componentKind)) ||
-    !fields.semanticBlockers || !fields.semanticBlockers.includes('payment_components_ambiguous')) return invalid('payment_resolution_not_supported')
-  if (!value || ![PAYMENT_RESOLUTION_VERSION, LEGACY_PAYMENT_RESOLUTION_VERSION].includes(value.version) || value.confirmedFromDetails !== true ||
+    !manual && (!fields.semanticBlockers || !fields.semanticBlockers.includes('payment_components_ambiguous'))) return invalid('payment_resolution_not_supported')
+  if (!value || ![PAYMENT_RESOLUTION_VERSION, LEGACY_PAYMENT_RESOLUTION_VERSION, ...(manual ? [EDITOR_PAYMENT_VERSION] : [])].includes(value.version) || value.confirmedFromDetails !== true ||
     !['expense', 'repayment'].includes(value.nature) || typeof value.evidenceNote !== 'string' ||
     !value.evidenceNote.trim() || value.evidenceNote.length > 300 || !MINOR.test(String(event.amountMinor || '')) ||
     !Array.isArray(value.allocations) || value.allocations.length !== financial.length) return invalid()
@@ -54,7 +58,7 @@ function inspectPaymentResolution(event, value) {
   for (const item of value.allocations) {
     if (!item || !Number.isInteger(item.componentIndex) || !financial.some((part) => part.componentIndex === item.componentIndex) ||
       seen.has(item.componentIndex) || !UUID.test(item.accountId || '') || ids.has(item.accountId) ||
-      item.accountId === value.targetAccountId || typeof item.amountMinor !== 'string' || !(value.version === PAYMENT_RESOLUTION_VERSION ? NONNEGATIVE_MINOR : MINOR).test(item.amountMinor)) return invalid('payment_resolution_component_invalid')
+      item.accountId === value.targetAccountId || typeof item.amountMinor !== 'string' || !(value.version !== LEGACY_PAYMENT_RESOLUTION_VERSION ? NONNEGATIVE_MINOR : MINOR).test(item.amountMinor)) return invalid('payment_resolution_component_invalid')
     seen.add(item.componentIndex); ids.add(item.accountId)
     total += BigInt(item.amountMinor)
     allocations.push({ componentIndex: item.componentIndex, accountId: item.accountId, amountMinor: item.amountMinor })
@@ -78,11 +82,14 @@ function paymentResolutionForEvent(event) {
 }
 
 function effectiveSemanticReasons(event, reasons) {
-  const paymentResolved = paymentResolutionForEvent(event).valid
+  const editor = event.fieldSources && event.fieldSources.editorOverrides
+  const singleConfirmed = editor && editor.version === 1 && editor.composition === 'single' && editor.evidenceNote &&
+    !editor.incompleteComposition && event.ledgerAccountId && ['expense','repayment'].includes(event.economicNature)
+  const paymentResolved = paymentResolutionForEvent(event).valid || Boolean(singleConfirmed)
   const natureConfirmed = Boolean(event.manualFieldMask & FIELD_MASK.economicNature) && CONFIRMABLE_NATURES.has(event.economicNature)
   // 明确选择性质只解除“交易类型未知”；原始语义和其他阻断仍保留。
   return reasons.filter(reason => !(paymentResolved && RESOLVABLE.has(reason)) &&
     !(natureConfirmed && reason === 'row_transaction_type_unknown'))
 }
 
-module.exports = { inspectPaymentAccounts, paymentEvidenceFields, PAYMENT_RESOLUTION_VERSION, inspectPaymentResolution, paymentResolutionForEvent, effectiveSemanticReasons }
+module.exports = { EDITOR_PAYMENT_VERSION, inspectPaymentAccounts, paymentEvidenceFields, PAYMENT_RESOLUTION_VERSION, inspectPaymentResolution, paymentResolutionForEvent, effectiveSemanticReasons }

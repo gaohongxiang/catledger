@@ -53,7 +53,9 @@ function repaymentAllocationsForEvent(event) {
 }
 
 function isAggregateRepayment(event) {
-  const projection = event && event.fieldSources && event.fieldSources.fundsProjection
+  const fields = event && event.fieldSources || {}, editor = fields.editorOverrides
+  if (editor && editor.version === 1 && editor.composition) return event.economicNature === 'repayment' && editor.composition === 'repayment'
+  const projection = fields.fundsProjection
   return Boolean(event && event.economicNature === 'repayment' && projection && projection.to &&
     projection.to.referenceKind === 'aggregate')
 }

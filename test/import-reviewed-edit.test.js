@@ -41,7 +41,7 @@ test('修改类型和账户只提交当前笔的变化，保存成功更新已�
   page.selectReviewedAccount({ accountId: 'other-account', name: '另一合成账户' }, 'reviewAccount')
   await page.saveReviewEdit()
   const call = h.calls.find(item => item.action === 'financeUpdates.setReview')
-  assert.deepEqual(call.input.fields, { economicNature: 'income', ledgerAccountId: 'other-account' })
+  assert.deepEqual(call.input.fields, { economicNature: 'income', ledgerAccountId: 'other-account', categoryId: null })
   assert.equal(call.input.eventId, h.events[0].eventId)
   assert.equal(JSON.stringify(h.events[1]), original)
   assert.equal(page.data.reviewEditSheet, null)
@@ -54,7 +54,7 @@ test('转账要求两个不同账户，背景更新保留选择并阻止旧版�
   const h = await setup(), page = h.page
   await page.openReviewEdit(tap(h.events[0].eventId))
   page.changeReviewedNature({ detail: { value: 3 } })
-  assert.equal(page.data.reviewEditSheet.canSave, false)
+  assert.equal(page.data.reviewEditSheet.editor.complete, false, '缺对端可保留合法草稿，但不是可入账结果')
   page.selectReviewedAccount({ accountId: h.events[0].ledgerAccountId, name: '同一账户' }, 'reviewCounterparty')
   assert.equal(page.data.reviewEditSheet.canSave, false)
   page.selectReviewedAccount({ accountId: 'other-account', name: '另一账户' }, 'reviewCounterparty')
@@ -78,11 +78,12 @@ test('已核对流入还款的付款端显示在上，目录选择与保存仍�
     await page.openDirectory({ currentTarget: { dataset: { target: 'reviewCounterparty' } } })
     assert.equal(page.data.directorySheet.title, '选择付款账户')
     page.closeDirectory()
-    page.selectReviewedAccount({ accountId: 'changed-payer', name: '合成付款卡' }, 'reviewCounterparty')
+    page.selectReviewedAccount({ accountId: 'changed-payer', name: '合成付款卡', type: 'bank' }, 'reviewCounterparty')
     assert.equal(page.data.reviewEditSheet.ledgerAccountId, receiver)
     await page.saveReviewEdit()
     assert.deepEqual(h.calls.find(call => call.action === 'financeUpdates.setReview').input.fields,
-      { counterpartyLedgerAccountId: 'changed-payer' })
+      { counterpartyLedgerAccountId: 'changed-payer', categoryId: null })
+    assert.equal(h.calls.find(call => call.action === 'financeUpdates.setReview').input.editorVersion, 1)
   } finally { page.onUnload() }
 })
 
@@ -119,13 +120,13 @@ test('关闭、隐藏、换会话后的迟到读取不能回填已核对编辑�
     const h = await setup(), page = h.page
     let release
     page._businessData.events = []
-    h.custom = action => action === 'economicEvents.list' ? new Promise(resolve => { release = resolve }) : undefined
+    h.custom = (action, input) => action === 'economicEvents.detail' && !input.evidenceId ? new Promise(resolve => { release = resolve }) : undefined
     const opening = page.openReviewEdit(tap(h.events[0].eventId))
     await flush()
     if (leave === 'session') h.cache.reset()
     else page[leave]()
     const patches = h.patches.length
-    release({ viewVersion: h.summary.viewVersion, items: h.events, total: 2, nextCursor: null })
+    release({ viewVersion: h.summary.viewVersion, part: JSON.stringify(h.events[0]), nextCursor: null })
     await opening
     assert.equal(h.patches.length, patches)
     page.onUnload()

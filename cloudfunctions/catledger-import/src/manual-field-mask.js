@@ -11,7 +11,10 @@ const FIELD_MASK = Object.freeze({
   repaymentAllocations: 1 << 8,
   paymentResolution: 1 << 9,
   paymentAccounts: 1 << 10,
-  repaymentOwnership: 1 << 11
+  repaymentOwnership: 1 << 11,
+  counterparty: 1 << 12,
+  note: 1 << 13,
+  sourceCorrection: 1 << 14
 })
 
 module.exports = { FIELD_MASK }

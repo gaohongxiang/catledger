@@ -90,4 +90,33 @@ async function createFollowUpIssues(connection, uid, updateId, events) {
     object_version, member_role, sort_order) VALUES`, members)
 }
 
-module.exports = { selectIssue, selectMembers, updateMappingMemberVersions, createFollowUpIssue, createFollowUpIssues }
+// 更新当前笔的普通核对成员，不结束同组其他成员或判重/来源冲突组。
+async function refreshEditedEventIssues(connection, uid, updateId, event, actionId) {
+  const [rows] = await connection.execute(`SELECT DISTINCT i.issue_id AS issueId,i.issue_type AS issueType,
+    i.primary_reason_code AS reason FROM catledger_review_issues i JOIN catledger_review_issue_members m
+      ON m.uid=i.uid AND m.update_id=i.update_id AND m.issue_id=i.issue_id
+    WHERE i.uid=? AND i.update_id=? AND i.status='open' AND m.object_type='event'
+      AND m.member_role<>'candidate' AND m.object_id=?`, [uid, updateId, event.eventId])
+  const ordinary = new Set(['shared_fields','account_mapping','transfer_accounts','category_assignment','refund_relation'])
+  const protectedReasons = new Set(['refund_source_conflict','row_status_unknown','transaction_status_unknown',
+    'account_mapping_conflict','core_fields_conflict','row_semantic_conflict','source_group_conflict','identity_conflict'])
+  for (const issue of rows) {
+    if (!ordinary.has(issue.issueType) || protectedReasons.has(issue.reason)) continue
+    await connection.execute(`DELETE FROM catledger_review_issue_members WHERE uid=? AND update_id=? AND issue_id=?
+      AND object_type='event' AND member_role<>'candidate' AND object_id=?`, [uid, updateId, issue.issueId, event.eventId])
+    const [[left]] = await connection.execute(`SELECT COUNT(*) AS count FROM catledger_review_issue_members
+      WHERE uid=? AND update_id=? AND issue_id=? AND object_type='event' AND member_role<>'candidate'`, [uid, updateId, issue.issueId])
+    await connection.execute(`UPDATE catledger_review_issues SET version=version+1,
+      status=IF(?=0,'resolved',status),blocking=IF(?=0,0,blocking),resolved_action_id=IF(?=0,?,resolved_action_id),
+      member_count=(SELECT COUNT(*) FROM catledger_review_issue_members m WHERE m.uid=? AND m.issue_id=?)
+      WHERE uid=? AND update_id=? AND issue_id=?`, [Number(left.count),Number(left.count),Number(left.count),actionId,
+        uid,issue.issueId,uid,updateId,issue.issueId])
+  }
+  const [[remaining]] = await connection.execute(`SELECT COUNT(DISTINCT i.issue_id) AS count FROM catledger_review_issues i
+    JOIN catledger_review_issue_members m ON m.uid=i.uid AND m.update_id=i.update_id AND m.issue_id=i.issue_id
+    WHERE i.uid=? AND i.update_id=? AND i.status='open' AND i.blocking=1
+      AND m.object_type='event' AND m.member_role<>'candidate' AND m.object_id=?`, [uid, updateId, event.eventId])
+  return Number(remaining.count)
+}
+
+module.exports = { refreshEditedEventIssues, selectIssue, selectMembers, updateMappingMemberVersions, createFollowUpIssue, createFollowUpIssues }
