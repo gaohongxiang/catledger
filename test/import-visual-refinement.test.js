@@ -70,7 +70,7 @@ test('分类与核对维度独立，整理、确认和完成页共用同一行�
 })
 test('统一摘要直接编辑付款总额，组成金额与核对说明在同一模板', () => {
   const fields = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/import-workbench/review-editor-fields.wxml'), 'utf8')
-  assert.match(fields, /class="editor-amount"/)
+  assert.match(fields, /class="(?:[^"]*\s)?editor-amount(?:\s[^"]*)?"/)
   assert.match(fields, /data-field="amountInput" bindinput="changeEditorText"/)
   assert.match(fields, /bindinput="changeEditorPart"/)
   assert.match(fields, /maxlength="300" data-field="evidenceNote"/)

@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
+const vm = require('node:vm')
 
 const { PUBLIC_ACTIONS, createActionHandlers } = require('../cloudfunctions/catledger-import/src/action-registry')
 const contract = require('../shared/catledger-import.json')
@@ -206,8 +207,13 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.doesNotMatch(markup, /\{\{item\.amountMinor\}\} \{\{item\.currency\}\}/)
   assert.match(styles, /\.review-decision-card/)
   assert.match(styles, /\.relation-selected \{ background: var\(--ui-accent-soft/)
-  // 对端名称随性质和账单方向变化，不能再要求静态“转入账户”。
-  assert.match(editorFields, /aria-label="\{\{'修改' \+ item.label\}\}"/)
+  // 标签随真实资金角色和是否已填变化，不约束模板表达式的具体写法。
+  const accountButton = (editorFields.match(/<button\b[^>]*>/g) || []).find(tag => tag.includes('data-target="{{item.target}}"'))
+  assert.ok(accountButton)
+  const accountLabel = accountButton.match(/aria-label="\{\{(.*?)\}\}"/)[1]
+  for (const [accountId, label, expected] of [['', '付款账户', '选择付款账户'], ['synthetic-account', '还入账户', '修改还入账户']]) {
+    assert.equal(vm.runInNewContext(accountLabel, { item: { accountId, label } }, { timeout: 200 }), expected)
+  }
   const labels = require('../miniprogram/pages/import-workbench/detail-fields').accountLabels
   assert.equal(labels({ economicNature: 'internal_transfer', sourceDirection: 'expense' }).to, '转入账户')
   assert.equal(labels({ economicNature: 'repayment', sourceDirection: 'income' }).from, '还入账户')
