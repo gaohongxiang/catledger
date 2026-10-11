@@ -25,6 +25,8 @@ function keys(value, limit = MAX_EXCEPTIONS) {
 function eventFacts(event) {
   return [event.eventId, event.ledgerAccountId, event.counterpartyLedgerAccountId, event.economicNature,
     event.flowDirection, event.amountMinor, event.currency, event.utcAt, event.categoryId, event.manualFieldMask,
+    ...(event.economicNature === 'repayment' ? [event.fieldSources.repaymentOwnership, event.fieldSources.fundsProjection,
+      event.ledgerAccountFacts, event.counterpartyAccountFacts] : []),
     event.relationEvidence.rows.map(row => [row.rowId, row.identityId, row.identityState, row.amountMinor,
       row.currency, row.direction, row.utcAt, row.rawTransactionTime, row.rawTransactionType, row.rawStatus, row.semantic])]
 }
@@ -47,7 +49,8 @@ async function graph(connection, uid, updateId, { forUpdate = false } = {}) {
     FROM catledger_review_issues i JOIN catledger_review_issue_members m ON m.uid = i.uid AND m.issue_id = i.issue_id
     WHERE i.uid = ? AND i.update_id = ? AND i.status = 'open' AND i.issue_type = 'same_event'
       AND i.primary_reason_code = ? AND m.object_type = 'event' AND m.member_role = 'subject'`, [uid, updateId, REASON])
-  const { all, pairs, suggestedCount } = pairingGraph(events.filter(event => !unavailable.has(event.eventId) && active.get(event.ledgerAccountId) === event.currency), members)
+  const { all, pairs, suggestedCount } = pairingGraph(events.filter(event => !unavailable.has(event.eventId) &&
+    (event.economicNature === 'repayment' || active.get(event.ledgerAccountId) === event.currency)), members)
   return { ...state, revision: String(user.revision), pairs, suggestedCount,
     digest: digestParts(collectionDigest(all, true), JSON.stringify(members.map(row => [row.issueId, row.issueVersion, row.eventId]).sort())) }
 }
@@ -63,7 +66,9 @@ function previewEvent(event) {
 }
 function previewPair(pair) {
   return { pairKey: pair.pairKey, bank: previewEvent(pair.bank), platform: previewEvent(pair.platform),
-    economicNature: pair.platform.economicNature, reason: 'same_account_amount_currency_direction_minute_channel' }
+    economicNature: pair.platform.economicNature,
+    ...(pair.pairKind === 'repayment' ? { pairKind: 'repayment', repayment: pair.repayment, reason: 'repayment_channel_amounts_require_confirmation' }
+      : { reason: 'same_account_amount_currency_direction_minute_channel' }) }
 }
 function assertScope(state, frozen) {
   if (!frozen || frozen.graphDigest !== state.digest || frozen.revision !== state.revision) throw importError('STALE_VIEW')
@@ -138,7 +143,10 @@ function createBankChannelPairings({ getPool }) {
             keys(selection.pairs.map(pair => pair.pairKey), MAX_BATCH)
             chosen = selection.pairs.map(pair => {
               if (!byKey.has(pair.pairKey) || !['same', 'distinct'].includes(pair.decision)) throw importError('VALIDATION_ERROR')
-              return { ...byKey.get(pair.pairKey), decision: pair.decision }
+              const candidate = byKey.get(pair.pairKey)
+              if (candidate.pairKind === 'repayment' && pair.decision === 'same' && pair.repaymentConfirmed !== true) throw importError('VALIDATION_ERROR')
+              if (pair.repaymentConfirmed != null && (candidate.pairKind !== 'repayment' || pair.decision !== 'same' || pair.repaymentConfirmed !== true)) throw importError('VALIDATION_ERROR')
+              return { ...candidate, decision: pair.decision, ...(pair.repaymentConfirmed === true ? { repaymentConfirmed: true } : {}) }
             })
           } else throw importError('VALIDATION_ERROR')
           totalCount = chosen.length

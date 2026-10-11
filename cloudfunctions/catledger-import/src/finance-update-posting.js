@@ -1,4 +1,5 @@
 const { effectiveText, accountRolesValid } = require('./editor-fields')
+const repaymentChannel = require('./repayment-channel')
 const { booking:repaymentBooking,inputForEvent:repaymentInput } = require('./explicit-repayment')
 const { assertNoLoanTransactions } = require('./loan-transaction-guard')
 const { chunks, insertMany, updateEvents, loadEventContexts } = require('./sql-batch')
@@ -150,7 +151,7 @@ async function lockAccountsAndCategories(connection, uid, events) {
     if (rows.length !== part.length || rows.some((row) => row.archivedAt != null)) throw importError('UNRESOLVED_IMPORT')
     rows.forEach((row) => accounts.set(row.accountId, row))
   }
-  const categoryIds = [...new Set(events.map((event) => event.categoryId).filter(Boolean))].sort()
+  const categoryIds = [...new Set(events.flatMap(event => [event.categoryId, repaymentChannel.resolutionFor(event)?.feeCategoryId]).filter(Boolean))].sort()
   const categories = new Map()
   for (const part of chunks(categoryIds.map(id => [id]))) {
     const [rows] = await connection.execute(
@@ -171,6 +172,8 @@ async function lockAccountsAndCategories(connection, uid, events) {
         accounts.get(event.counterpartyLedgerAccountId).currency !== event.currency)) throw importError('UNRESOLVED_IMPORT')
     if (!allocationAccountsValid(event, eventAllocation(event), accounts)) throw importError('UNRESOLVED_IMPORT')
     if (!accountRolesValid(event, accounts)) throw importError('UNRESOLVED_IMPORT')
+    const feeCategoryId = repaymentChannel.resolutionFor(event)?.feeCategoryId
+    if (feeCategoryId && categories.get(feeCategoryId)?.kind !== 'expense') throw importError('UNRESOLVED_IMPORT')
     if (event.categoryId) {
       const expected = event.economicNature === ECONOMIC_NATURE.INCOME ? 'income' : 'expense'
       if (!categories.has(event.categoryId) || categories.get(event.categoryId).kind !== expected) {
@@ -431,6 +434,7 @@ function transactionDrafts(event, originalTransactionId) {
   // 此标记只能由入账事务在核实“信用卡账单 + credit 账户”后设置。
   // 普通银行贷款本金仍走下面原有真实资金转账逻辑。
   if (event.confirmedCreditInstallmentPrincipal === true) return []
+  if (repaymentChannel.resolutionFor(event)) return repaymentChannel.drafts(event)
   const repayment = repaymentInput(event)
   if (repayment) return repaymentBooking.drafts(repayment)
   const plan = eventAllocation(event)
@@ -515,6 +519,11 @@ function createFinanceUpdatePosting({ getPool }) {
         if (!coverage.rowConservationPassed) throw importError('UNRESOLVED_IMPORT')
         const ready = events.filter((event) => [EVENT_STATUS.READY, EVENT_STATUS.NEEDS_ACTION].includes(event.status))
         await assertIdentityIntegrity(connection, uid, updateId, ready.map(event => event.eventId))
+        const channelEvents = ready.filter(repaymentChannel.resolutionFor)
+        if (channelEvents.length) {
+          const hydrated = await require('./review/bank-channel-hydration').hydrate(connection, uid, updateId, channelEvents)
+          if (hydrated.some(event => !repaymentChannel.evidenceValid(event, event.relationEvidence.rows))) throw importError('UNRESOLVED_IMPORT')
+        }
         const contexts = await loadEventContexts(connection, uid, updateId)
         for (const event of ready) {
           const evaluated = evaluatePostability(event, contexts.get(event.eventId))
@@ -588,7 +597,7 @@ function createFinanceUpdatePosting({ getPool }) {
           }
           const existing = history.get(event.eventId) || inBatch || prepared && prepared.reuseTransactionId &&
             {transactionId:prepared.reuseTransactionId,version:prepared.reuseTransactionVersion}
-          const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid || Boolean(event.fieldSources.loanRepayment)
+          const allocation = isAggregateRepayment(event) || paymentResolutionForEvent(event).valid || Boolean(event.fieldSources.loanRepayment) || Boolean(repaymentChannel.resolutionFor(event))
           if (allocation && existing) throw importError('IDENTITY_CONFLICT')
           let transactions
           if(prepared&&prepared.skipFinancial){if(existing)throw importError('LOAN_SOURCE_MISMATCH');transactions=[]}

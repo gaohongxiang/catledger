@@ -29,6 +29,32 @@ test('聚合还款允许完整集合维护，普通多交易事件禁止局部�
   assert.equal(correctionImpactResult({ ...event, economicNature: 'expense' }, transactions).canCorrect, false)
 })
 
+for (const [feeMinor, expectedCount] of [['0', 1], ['50', 2]]) {
+  test(`已确认渠道还款含${expectedCount}条交易时均须整批撤销，不能单事件更正`, () => {
+    const { VERSION, drafts } = require('../src/repayment-channel')
+    const localAt = '2026-09-02 08:35:45.000', utcAt = '2026-09-02 00:35:45.000'
+    const totalMinor = String(50000n + BigInt(feeMinor))
+    const event = { eventId: 'event', status: 'posted', version: 2, economicNature: 'repayment',
+      flowDirection: 'neutral', sourceDirection: 'expense', currency: 'CNY', amountMinor: totalMinor,
+      ledgerAccountId: 'payer', counterpartyLedgerAccountId: 'credit', localAt, utcAt,
+      fieldSources: { repaymentOwnership: { owner: 'self' }, repaymentChannelResolution: {
+        version: VERSION, confirmedBy: 'user', repaymentConfirmed: true,
+        totalMinor, repaymentMinor: '50000', feeMinor, targetAccountId: 'credit', localAt, utcAt
+      } } }
+    const transactions = drafts(event).map((draft, index) => ({ ...draft, transactionId: `tx-${index}`,
+      origin: 'import', creationMethod: 'created', version: 1, linkedVersion: 1, deletedAt: null }))
+    assert.equal(transactions.length, expectedCount)
+    const impact = correctionImpactResult(event, transactions)
+    assert.equal(impact.canCorrect, false)
+    assert.deepEqual(impact.conflicts, ['WHOLE_UPDATE_UNDO_REQUIRED'])
+    assert.deepEqual(impact.transactionIds, transactions.map(row => row.transactionId))
+    if (expectedCount === 1) {
+      const ordinary = { ...event, fieldSources: { repaymentOwnership: { owner: 'self' } } }
+      assert.equal(correctionImpactResult(ordinary, transactions).canCorrect, true)
+    }
+  })
+}
+
 test('现金变化投影不会因修正入口绕过负余额约束', () => {
   const { accountImpacts, cashDeficits } = require('../src/maintenance-policy')
   const impacts = accountImpacts([{ sourceAccountId: 'cash', amountMinor: '100' }], [{ sourceAccountId: 'cash', amountMinor: '201' }])

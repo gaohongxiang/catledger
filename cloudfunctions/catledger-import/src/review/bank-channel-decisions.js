@@ -22,12 +22,19 @@ function eventBasis(event) {
 function decisionIdentity(pair) {
   const bankIdentityId = sourceIdentity(pair.bank), platformIdentityId = sourceIdentity(pair.platform)
   if (!bankIdentityId || !platformIdentityId) return null
-  const basisDigest = digestParts('bank-channel-basis-v1', JSON.stringify(eventBasis(pair.bank)), JSON.stringify(eventBasis(pair.platform)))
+  const basisDigest = pair.pairKind === 'repayment'
+    ? digestParts('repayment-channel-basis-v1', JSON.stringify(eventBasis(pair.bank)), JSON.stringify(eventBasis(pair.platform)),
+      JSON.stringify([pair.bank.counterpartyLedgerAccountId, pair.platform.counterpartyLedgerAccountId,
+        pair.bank.fieldSources.repaymentOwnership, pair.platform.fieldSources.repaymentOwnership, pair.repayment,
+        pair.bank.ledgerAccountFacts?.type, pair.platform.ledgerAccountFacts?.type]))
+    : digestParts('bank-channel-basis-v1', JSON.stringify(eventBasis(pair.bank)), JSON.stringify(eventBasis(pair.platform)))
   return { bankIdentityId, platformIdentityId, basisDigest,
     pairDigest: digestParts(VERSION, bankIdentityId, platformIdentityId, basisDigest) }
 }
 async function remember(connection, uid, pairs, actionId) {
-  const rows = pairs.map(pair => ({ pair, identity: decisionIdentity(pair) })).filter(item => item.identity)
+  // 手续费和目标账户必须逐对明确确认；首版仅记住还款候选的“不同笔”，不自动重放费用授权。
+  const rows = pairs.filter(pair => pair.pairKind !== 'repayment' || pair.decision === 'distinct')
+    .map(pair => ({ pair, identity: decisionIdentity(pair) })).filter(item => item.identity)
   await insertMany(connection, `INSERT INTO catledger_bank_channel_decisions
     (uid, pair_digest, bank_identity_id, platform_identity_id, basis_digest, decision, rule_version, action_id) VALUES`,
   rows.map(({ pair, identity }) => [uid, identity.pairDigest, identity.bankIdentityId, identity.platformIdentityId,
@@ -42,7 +49,9 @@ async function remembered(connection, uid, events) {
       WHERE uid = ? AND pair_digest IN (${part.map(() => '?').join(',')}) AND rule_version = ?`, [uid, ...part.flat(), VERSION])
     rows.forEach(row => saved.set(row.pairDigest, row.decision))
   }
-  return pairs.filter(pair => saved.has(pair.identity.pairDigest)).map(pair => ({ ...pair, decision: saved.get(pair.identity.pairDigest) }))
+  return pairs.filter(pair => saved.has(pair.identity.pairDigest) &&
+    (pair.pairKind !== 'repayment' || saved.get(pair.identity.pairDigest) === 'distinct'))
+    .map(pair => ({ ...pair, decision: saved.get(pair.identity.pairDigest) }))
 }
 function markDistinct(pair) {
   for (const event of [pair.bank, pair.platform]) event.fieldSources = { ...event.fieldSources,

@@ -9,6 +9,8 @@ function accountIds(event) {
 }
 const money = value => { const n = String(value || '0').padStart(3, '0'); return '¥' + n.slice(0, -2) + '.' + n.slice(-2) }
 function repaymentExpense(event) {
+  const channel = event.repaymentChannel || event.fieldSources && event.fieldSources.repaymentChannelResolution
+  if (channel) return BigInt(channel.feeMinor || '0')
   const value = event.loanRepayment || event.fieldSources && event.fieldSources.loanRepayment
   if (!value || !value.confirmed) return 0n
   return ['interest','fee'].reduce((sum,field)=>sum + (value[field+'Treatment'] === 'expense' ? BigInt(value[field+'Minor'] || '0') : 0n),0n)
@@ -43,7 +45,8 @@ function workbenchSummary(events, pending, issueCounts, duplicateCount, draftCou
       categoryCoverageText: categoryCount ? categorizedCount + ' / ' + categoryCount : '无需分类', categoryComplete: categoryCount === categorizedCount,
       newAccountCount: draftCount, affectedAccountCount: new Set(ready.flatMap(accountIds)).size },
     fundsFlowGroups: [['internal_transfer', '内部转账'], ['borrow', '借款'], ['repayment', '还款']].map(([nature, label]) =>
-      ({ nature, label, count: count([nature]), amountText: money(sum([nature])), records: [] }))
+      ({ nature, label, count: count([nature]), amountText: money(ready.filter(row => row.economicNature === nature)
+        .reduce((total, row) => total + BigInt(row.fieldSources?.repaymentChannelResolution?.repaymentMinor || row.amountMinor), 0n)), records: [] }))
   }
 }
 module.exports = { workbenchSummary, accountIds, repaymentExpense }

@@ -6,6 +6,12 @@ const { formatMinor } = require('../../utils/money')
 const ACTION = 'financeUpdates.reviseDuplicate'
 const display = row => ({ ...row, amountText: formatMinor(row.amountMinor),
   sourceLabel: { bank: '银行卡账单', wechat: '微信账单', alipay: '支付宝账单' }[row.sourceType] || '原始账单' })
+function repaymentFor(view) {
+  const pair = view.kind === 'distinct' && view.pairs && view.pairs[0]
+  const repayment = pair && pair.pairKind === 'repayment' && pair.repayment
+  return repayment ? { ...repayment, repaymentText: formatMinor(repayment.repaymentMinor),
+    feeText: formatMinor(repayment.feeMinor), totalText: formatMinor(repayment.totalMinor) } : null
+}
 function patchSheet(page, values) {
   if (page.data.duplicateEditSheet) page.setData({ duplicateEditSheet: { ...page.data.duplicateEditSheet, ...values } })
 }
@@ -32,21 +38,21 @@ module.exports = {
     const packet = packetFor(this, eventId)
     token.payload = packet && packet.payload
     this.setData({ duplicateEditSheet: { eventId, records: [], count: 0, loading: true, saving: false, saved: false,
-      pending: Boolean(packet), stale: false, canSave: Boolean(packet), reason: '', error: '' } })
+      pending: Boolean(packet), stale: false, canSave: Boolean(packet), confirmingRepayment: false, repayment: null, reason: '', error: '' } })
     try {
       const view = await token.session.read('economicEvents.duplicateReview', { eventId }, () => current(this, token))
       if (!current(this, token)) return
       token.eventVersion = view.eventVersion
       token.view = view
       patchSheet(this, { 'records': (view.kind === 'distinct' && view.pairs.length ? view.pairs[0].records : view.records).map(display),
-        'kind': view.kind, 'pairIndex':0,
+        'kind': view.kind, 'pairIndex':0, 'repayment': repaymentFor(view),
         'count': view.count, 'reason': view.reason,
         'canSave': Boolean(packet) || view.canSplit || view.canMerge || view.canReopen, 'loading': false })
     } catch (error) { if (current(this, token)) patchSheet(this, { 'loading': false, 'error': errorText(error) }) }
   },
   async changeDuplicatePair(event) {
     const token=this._duplicateEditToken, sheet=this.data.duplicateEditSheet
-    if(!editable(this,token) || sheet.pending || sheet.saving || sheet.loading || !token.view || token.view.kind!=='distinct') return
+    if(!editable(this,token) || sheet.pending || sheet.saving || sheet.loading || sheet.confirmingRepayment || !token.view || token.view.kind!=='distinct') return
     const index=sheet.pairIndex+Number(event.currentTarget.dataset.direction)
     if(!Number.isInteger(index) || index<0 || index>=token.view.count) return
     patchSheet(this, { 'loading':true, 'canSave':false, 'error':'' })
@@ -54,7 +60,7 @@ module.exports = {
       const view=await token.session.read('economicEvents.duplicateReview',{ eventId:token.eventId,pairIndex:index },()=>current(this,token))
       if(!editable(this,token)) return
       token.view=view
-      patchSheet(this, { 'pairIndex':index, 'records':view.pairs[0].records.map(display),
+      patchSheet(this, { 'pairIndex':index, 'records':view.pairs[0].records.map(display), 'repayment': repaymentFor(view),
         'loading':false, 'canSave':view.canMerge })
     }catch(error){if(current(this,token))patchSheet(this, { 'loading':false,'error':errorText(error) })}
   },
@@ -86,11 +92,25 @@ module.exports = {
   },
   async saveDuplicateEdit() {
     const token = this._duplicateEditToken, sheet = this.data.duplicateEditSheet
-    if (!current(this, token) || sheet.saving || sheet.loading || sheet.saved || !sheet.canSave || !sheet.pending && !editable(this, token)) return
+    if (!current(this, token) || sheet.saving || sheet.loading || sheet.saved || sheet.confirmingRepayment || !sheet.canSave || !sheet.pending && !editable(this, token)) return
     const chosen = token.view && token.view.kind==='distinct' && token.view.pairs[0]
     const payload = token.payload || { updateId: this.data.update.updateId, updateVersion: token.updateVersion,
       eventId: token.eventId, eventVersion: token.eventVersion, decision: chosen ? 'same' : token.view.kind==='historical' ? 'reopen' : 'distinct',
       ...(chosen ? { pairKey:chosen.pairKey, otherEventId:chosen.otherEventId, otherEventVersion:chosen.otherEventVersion } : {}) }
+    if (!sheet.pending && chosen && chosen.pairKind === 'repayment') {
+      const repayment = repaymentFor(token.view), preview = token.view
+      if (!repayment || repayment.version !== 1 || !repayment.targetAccountId || !repayment.targetAccountName) {
+        patchSheet(this, { error: '还入信用卡尚未核实，请重新读取候选' }); return
+      }
+      patchSheet(this, { confirmingRepayment: true })
+      try {
+        const accepted = await new Promise(resolve => wx.showModal({ title: '确认还款与手续费',
+          content: '确认是同次还款，' + (String(repayment.feeMinor) === '0' ? '无手续费' : '差额 ' + repayment.feeText + ' 为手续费') + '，还入「' + repayment.targetAccountName + '」。\n还款到账 ' + repayment.repaymentText + '，合计扣款 ' + repayment.totalText + '。',
+          confirmText: '确认保存', cancelText: '再核对', success: result => resolve(result.confirm), fail: () => resolve(false) }))
+        if (!accepted || !editable(this, token) || token.view !== preview || this.data.duplicateEditSheet.loading) return
+        payload.repaymentConfirmed = true
+      } finally { if (editable(this, token)) patchSheet(this, { confirmingRepayment: false }) }
+    }
     token.decision = payload.decision
     patchSheet(this, { 'saving': true, 'error': '' })
     try {

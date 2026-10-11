@@ -18,6 +18,8 @@ test('当前分类预设下导入业务图、回执、请求量与 SQL 顺序保
   // EDITOR-20261009：与6c282083固定UUID/时钟双跑，45表逐字段完全一致，14阶段SQL数量/响应字节不变。
   // 响应仅summary及event-page的viewVersion/freshness变化；7阶段SQL因有效字段投影/贷款目录修订补读而变。
   // 仅更新这7处SQL指纹和2处响应指纹，其他基线保持。
+  // 2026-10-11还款渠道：与b9e50195固定UUID/时钟双跑，45表仅计划v34、银行profile/policy v4及解析指纹变化。
+  // 14阶段SQL顺序/数量和响应字节保持；回执仅计划版本、summary/event-page仅派生版本变化，账务字段与来源关系保持。
   const expected = require('./fixtures/import-review-baseline.json')
   assert.deepEqual(await measure(), expected)
 })

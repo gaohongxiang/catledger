@@ -13,7 +13,9 @@ function referencesForRows(rows) {
       return reference && { ...reference, memberRole: 'payment_component_' + part.componentIndex, componentIndex: part.componentIndex }
     }).filter(Boolean) : []
     const semantic = getRowSemantic(row)
-    if (semantic.sourceAction === SOURCE_ACTION.REPAYMENT && semantic.toAccountRef?.paymentMethodKey) {
+    if (semantic.sourceAction === SOURCE_ACTION.REPAYMENT && semantic.toAccountRef?.paymentMethodKey &&
+        (semantic.toAccountRef.sourceType !== semantic.ledgerAccountRef?.sourceType ||
+          semantic.toAccountRef.paymentMethodKey !== semantic.ledgerAccountRef?.paymentMethodKey)) {
       result.push({ ...semantic.toAccountRef, memberRole: 'payment_target' })
     }
     return result

@@ -116,14 +116,28 @@ async function split(connection, uid, data, requestDigest, values) {
   const actionId = await insertAction(connection, uid, { updateId, expectedVersion: updateVersion, appliedVersion: updateVersion + 1,
     actionType: 'revise_duplicate', requestDigest, decision: { eventId, decision: 'distinct' }, reasons: ['duplicate_decision_revised'] })
   const origins = event.fieldSources.mergeOrigins || []
+  const channel = event.fieldSources.repaymentChannelResolution
   for (const planned of plan.events) {
     const rowIds = planned.fieldSources.rowIds
+    const sourceDirection = planned.relationEvidence.rows[0]?.direction
     const original = origins.find(item => item.rowIds.length === rowIds.length && item.rowIds.every(id => rowIds.includes(id)))
-    if (planned === primary) Object.assign(planned, event, { eventId, version: eventVersion })
+    if (planned === primary && channel) {
+      if (!original) throw importError('CONFLICT')
+      const { FIELD_MASK } = require('../manual-field-mask')
+      const editable = FIELD_MASK.ledgerAccountId | FIELD_MASK.counterparty | FIELD_MASK.note
+      const text = require('../editor-fields').overrides(event)
+      Object.assign(planned, original.event, { eventId, version: eventVersion, ledgerAccountId: event.ledgerAccountId,
+        manualFieldMask: (original.event.manualFieldMask & ~editable) | (event.manualFieldMask & editable),
+        fieldSources: { ...original.event.fieldSources, editorOverrides: {
+          ...original.event.fieldSources.editorOverrides, version: 1,
+          ...Object.fromEntries(Object.entries(text).filter(([key]) => ['counterparty', 'note'].includes(key)))
+        } } })
+    } else if (planned === primary) Object.assign(planned, event, { eventId, version: eventVersion })
     else if (original) Object.assign(planned, original.event)
     planned.updateId = updateId
+    planned.sourceDirection = sourceDirection
     planned.sameEventCandidateKey = undefined
-    planned.fieldSources = { ...planned.fieldSources, rowIds, mergeOrigins: undefined, bankChannelResolution: undefined,
+    planned.fieldSources = { ...planned.fieldSources, rowIds, mergeOrigins: undefined, bankChannelResolution: undefined, repaymentChannelResolution: undefined,
       bankChannelCandidate: undefined, bankChannelAccountContexts: undefined, lastUserActionId: actionId }
     planned.reasonCodes = resolvedReasons('same_event', planned.reasonCodes)
     planned.status = 'needs_action'
@@ -168,13 +182,19 @@ async function split(connection, uid, data, requestDigest, values) {
     planned.fieldSources.bankChannelDistinctPairs = item.fieldSources.bankChannelDistinctPairs
   }
   // 银行专用账户成员曾移到主记录；移除这些上下文后，新来源各自补回账户核对。
-  for (const issueId of Object.keys(event.fieldSources.bankChannelAccountContexts || {})) {
+  for (const issueId of new Set(Object.keys(event.fieldSources.bankChannelAccountContexts || {}).concat(channel?.bankAccountIssueIds || []))) {
     await connection.execute(`DELETE FROM catledger_review_issue_members WHERE uid = ? AND update_id = ? AND issue_id = ?
       AND object_type='event' AND object_id = ?`, [uid, updateId, issueId, eventId])
     await connection.execute(`UPDATE catledger_review_issues SET member_count=(SELECT COUNT(*) FROM catledger_review_issue_members WHERE uid=? AND issue_id=?),
       status=IF(member_count=0,'superseded',status),blocking=IF(member_count=0,0,blocking),version=version+1
       WHERE uid=? AND update_id=? AND issue_id=?`, [uid, issueId, uid, updateId, issueId])
   }
+  if (channel) await connection.execute(`DELETE FROM catledger_finance_update_account_mapping_drafts
+    WHERE uid=? AND update_id=? AND event_id=? AND source_type='bank'`, [uid, updateId, eventId])
+  const oldTarget = channel?.platformTargetReference
+  if (oldTarget?.paymentMethodKey && !primary.counterpartyLedgerAccountId) await connection.execute(`DELETE FROM catledger_finance_update_account_mapping_drafts
+    WHERE uid=? AND update_id=? AND event_id=? AND source_type=? AND payment_method_key=?`,
+  [uid, updateId, eventId, oldTarget.sourceType, oldTarget.paymentMethodKey])
   for (const item of fresh.filter(item=>item.ledgerAccountId && !item.fieldSources.fundsProjection)) {
     await require('./account-mapping-stage').stageAccountMappings(connection,uid,updateId,[item.eventId],item.ledgerAccountId,actionId)
   }
@@ -207,19 +227,21 @@ async function mergeAgain(connection, uid, data, requestDigest, values) {
   if (state.kind !== 'distinct' || state.reason) throw importError('VALIDATION_ERROR')
   const pair = state.pairs.find(item => item.pairKey === data.pairKey)
   if (!pair) throw importError('CONFLICT')
+  if (pair.pairKind === 'repayment' ? data.repaymentConfirmed !== true : data.repaymentConfirmed != null) throw importError('VALIDATION_ERROR')
   const other = pair.bank.eventId === eventId ? pair.platform : pair.bank
   if (other.eventId !== data.otherEventId || other.version !== data.otherEventVersion) throw importError('CONFLICT')
   const [stored] = await selectDomainEvents(connection, uid, updateId, [other.eventId], { forUpdate: true })
   if (!stored || stored.version !== other.version) throw importError('CONFLICT')
   const actionId = await insertAction(connection, uid, { updateId, expectedVersion: updateVersion, appliedVersion: updateVersion + 1,
-    actionType: 'revise_duplicate', requestDigest, decision: { eventId, otherEventId: other.eventId, pairKey: pair.pairKey, decision: 'same' },
+    actionType: 'revise_duplicate', requestDigest, decision: { eventId, otherEventId: other.eventId, pairKey: pair.pairKey, decision: 'same',
+      ...(pair.pairKind === 'repayment' ? { repaymentConfirmed: true } : {}) },
     reasons: ['duplicate_decision_revised'] })
   // 只解除被重新确认的这一对；其他“不同笔”的选择仍保留。
   for (const item of [pair.bank, pair.platform]) {
     const source = item.eventId === eventId ? state.event : stored
     item.fieldSources.bankChannelDistinctPairs = (source.fieldSources.bankChannelDistinctPairs || []).filter(key => key !== pair.pairKey)
   }
-  await require('./bank-channel-apply').applyPairs(connection, uid, updateId, [{ ...pair, decision:'same' }], actionId)
+  await require('./bank-channel-apply').applyPairs(connection, uid, updateId, [{ ...pair, decision:'same', repaymentConfirmed: data.repaymentConfirmed }], actionId)
   await require('./bank-channel-candidates').synchronize(connection, uid, updateId, actionId, null, { reuseDecisions:false })
   await recalculateUpdateCounts(connection, uid, updateId, updateVersion + 1, actionId, updateVersion)
   return commandResult(connection, uid, updateId)
@@ -270,6 +292,7 @@ function createDuplicateRevision({ getPool }) {
           eventVersion:state.event.version, kind:'distinct', reason:state.reason, canSplit:false, canMerge:!state.reason,
           pairIndex, pairs:state.pairs.slice(pairIndex,pairIndex+1).map(pair => { const other = pair.bank.eventId === eventId ? pair.platform : pair.bank
             return { pairKey:pair.pairKey, otherEventId:other.eventId, otherEventVersion:other.version,
+              ...(pair.pairKind === 'repayment' ? { pairKind: 'repayment', repayment: pair.repayment } : {}),
               records:[previewRecord(pair.bank),previewRecord(pair.platform)] } }), records:[], count:state.pairs.length }, 'page')
         return assertBudget({ protocolVersion: 2, viewVersion: view.viewVersion, update: view.update, eventVersion: state.event.version,
           kind:'same', canSplit: !state.reason, reason: state.reason, count: state.plan.events.length,

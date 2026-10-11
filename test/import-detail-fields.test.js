@@ -180,7 +180,7 @@ test('待核对与已核对使用同一字段模板，性质及输入置于原�
   for (const file of ['review-detail.wxml', 'review-edit.wxml']) {
     const source = fs.readFileSync(path.join(dir, file), 'utf8')
     assert.ok(source.indexOf('is="review-editor-fields"') > 0)
-    assert.ok(source.indexOf('is="review-editor-fields"') < source.indexOf('detail-original-title'))
+    assert.ok(source.indexOf('is="review-editor-fields"') < source.indexOf('class="evidence-card"'))
   }
   const fields = fs.readFileSync(path.join(dir, 'review-editor-fields.wxml'), 'utf8')
   assert.ok(fields.indexOf('changeReviewedNature') < fields.indexOf('editor.routeFields'))

@@ -47,7 +47,8 @@ async function eventDetailFacts(connection, uid, updateId, event) {
   }
   const categories = []
   const repaymentFacts = { ...(repayment || {}), ...(fields.editorOverrides?.incompleteRepayment || {}) }
-  const categoryIds = [...new Set([event.categoryId, repaymentFacts.interestCategoryId, repaymentFacts.feeCategoryId].filter(Boolean))]
+  const categoryIds = [...new Set([event.categoryId, repaymentFacts.interestCategoryId, repaymentFacts.feeCategoryId,
+    fields.repaymentChannelResolution?.feeCategoryId].filter(Boolean))]
   if (categoryIds.length) {
     const [rows] = await connection.execute(`SELECT category_id AS categoryId,name,kind,archived_at AS archivedAt FROM catledger_categories
       WHERE uid=? AND category_id IN (${categoryIds.map(() => '?').join(',')})`, [uid, ...categoryIds])

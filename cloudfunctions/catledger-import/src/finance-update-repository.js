@@ -520,6 +520,7 @@ function publicEvent(row) {
     ...Object.fromEntries(Object.entries(require('./editor-fields').overrides({ fieldSources })).filter(([key]) => ['counterparty', 'note'].includes(key))),
     ...((fieldSources.bankChannelDistinctPairs || []).length && !fieldSources.mergeOrigins && !fieldSources.bankChannelResolution ? { pairingDecision: 'distinct' } : {}),
     loanRepayment: fieldSources.loanRepayment || null,
+    ...(fieldSources.repaymentChannelResolution ? { repaymentChannel: require('./repayment-channel').publicResolution({ fieldSources }) } : {}),
     ...(fieldSources.installment && fieldSources.installment.creditStatement === true ? { installment: {
       creditStatement: true, factKind: 'billing', component: fieldSources.installment.component,
       periodNumber: installment.periodNumber, totalTerms: installment.totalTerms || null,

@@ -31,7 +31,20 @@ function mappingReferenceForMember(event, memberRole) {
   return null
 }
 
+function channelResolution(event) {
+  return event && event.fieldSources && event.fieldSources.repaymentChannelResolution || null
+}
+
+function assertChannelTarget(event) {
+  const resolution = channelResolution(event)
+  if (resolution && event.counterpartyLedgerAccountId !== resolution.targetAccountId) throw importError('VALIDATION_ERROR')
+}
+
 function applyMappedAccount(event, memberRole, accountId, mappingIndex) {
+  const resolution = channelResolution(event)
+  if (resolution && ['mapping_to', 'payment_target'].includes(memberRole) && accountId !== resolution.targetAccountId) {
+    throw importError('VALIDATION_ERROR')
+  }
   const reference = accountGroups.referenceForRole(event, memberRole)
   if (reference) {
     if (memberRole === 'payment_target') return applyFields(event, { counterpartyLedgerAccountId: accountId })
@@ -81,14 +94,21 @@ async function stagePaymentReferenceMapping(
 async function stageProjectedAccountMappings(connection, uid, updateId, events, actionId, mappingIndex = null) {
   const paymentReferences = []
   for (const event of events) {
+    assertChannelTarget(event)
     const projection = event.fieldSources && event.fieldSources.fundsProjection
     if (!projection) continue
+    const resolution = channelResolution(event)
     const sides = [
       { reference: projection.from, accountId: event.ledgerAccountId },
-      { reference: projection.to, accountId: event.counterpartyLedgerAccountId }
+      { reference: projection.to, accountId: event.counterpartyLedgerAccountId },
+      ...(resolution ? [{ reference: resolution.platformTargetReference, accountId: resolution.targetAccountId }] : [])
     ]
+    const staged = new Set()
     for (const side of sides) {
       if (!side.reference || !side.reference.paymentMethodKey || !side.accountId) continue
+      const referenceKey = paymentReferenceKey(side.reference)
+      if (staged.has(referenceKey)) continue
+      staged.add(referenceKey)
       await connection.execute(
         `INSERT INTO catledger_finance_update_account_mapping_drafts
            (uid, draft_mapping_id, update_id, event_id, source_type,
@@ -100,7 +120,6 @@ async function stageProjectedAccountMappings(connection, uid, updateId, events, 
           side.reference.paymentMethodKey, String(side.reference.label || '').slice(0, 128),
           side.accountId, actionId]
       )
-      const referenceKey = paymentReferenceKey(side.reference)
       paymentReferences.push(referenceKey)
       if (mappingIndex) mappingIndex.set(referenceKey, side.accountId)
     }
@@ -128,23 +147,33 @@ async function materializeAccountMappingChoice(connection, uid, updateId, fields
 async function applyAccountMappingEvents(connection, uid, updateId, events, eventMembers, decision, actionId, mappingIndex, revision = false) {
   const membersById = new Map(eventMembers.map(member => [member.objectId, member]))
   const references = new Map(events.map(event => [event.eventId, mappingReferenceForMember(event, membersById.get(event.eventId).memberRole)]))
+  for (const event of events) assertChannelTarget(event)
+  const accountId = decision.decision === 'apply_fields' ? await materializeAccountMappingChoice(connection, uid, updateId, decision.fields, actionId) : null
+  for (const event of events) {
+    const resolution = channelResolution(event)
+    if (resolution && decision.decision === 'apply_fields' &&
+        ['mapping_to', 'payment_target'].includes(membersById.get(event.eventId).memberRole) && accountId !== resolution.targetAccountId) {
+      throw importError('VALIDATION_ERROR')
+    }
+  }
   if (revision) {
     const exact = [], whole = []
     for (const event of events) {
       const ref = references.get(event.eventId)
       if (ref && ref.paymentMethodKey) exact.push([event.eventId, ref.sourceType, ref.paymentMethodKey])
-      else if (!ref) whole.push([event.eventId])
+      else if (!ref && !channelResolution(event)) whole.push([event.eventId])
     }
     for (const part of chunks(exact)) await connection.execute(`DELETE FROM catledger_finance_update_account_mapping_drafts
       WHERE uid = ? AND update_id = ? AND (event_id, source_type, payment_method_key) IN (${part.map(() => '(?,?,?)').join(',')})`, [uid, updateId, ...part.flat()])
     for (const part of chunks(whole)) await connection.execute(`DELETE FROM catledger_finance_update_account_mapping_drafts
       WHERE uid = ? AND update_id = ? AND event_id IN (${part.map(() => '?').join(',')})`, [uid, updateId, ...part.flat()])
   }
-  const accountId = decision.decision === 'apply_fields' ? await materializeAccountMappingChoice(connection, uid, updateId, decision.fields, actionId) : null
   const mappingAction = accountId ? 'account' : decision.paymentRuleAction === 'ignore' ? 'ignore' : null
   const mappingRows = [], ordinary = [], paymentReferenceKeys = []
   if (mappingAction) for (const event of events) {
     const ref = references.get(event.eventId)
+    // 无稳定付款引用时只保存当前账户，不能把银行到账来源映到付款资产。
+    if (channelResolution(event) && (!ref || !ref.paymentMethodKey)) continue
     if (!ref) { ordinary.push(event.eventId); continue }
     if (ref.memberRole && !ref.paymentMethodKey) continue
     if (!ref.sourceType || !ref.paymentMethodKey) throw importError('VALIDATION_ERROR')
@@ -517,10 +546,18 @@ async function reviseAccountMapping(connection, uid, data, requestDigest, { upda
       affected.push(await saveEvent(connection, uid, event, next, actionId))
     }
   }
+  const ordinary = affected.filter(event => !channelResolution(event))
+  const channelEvents = affected.filter(event => channelResolution(event))
   if (decision === 'apply_fields') {
-    await stageAccountMappings(connection, uid, updateId, eventIds, validateUuid(fields.ledgerAccountId), actionId)
+    await stageAccountMappings(connection, uid, updateId, ordinary.map(event => event.eventId), validateUuid(fields.ledgerAccountId), actionId)
+    await stageProjectedAccountMappings(connection, uid, updateId, channelEvents, actionId)
   } else if (data.paymentRuleAction === 'ignore') {
-    await stageAccountMappings(connection, uid, updateId, eventIds, null, actionId, 'ignore')
+    await stageAccountMappings(connection, uid, updateId, ordinary.map(event => event.eventId), null, actionId, 'ignore')
+    for (const event of channelEvents) {
+      const reference = event.fieldSources.fundsProjection && event.fieldSources.fundsProjection.from
+      if (reference && reference.paymentMethodKey) await stagePaymentReferenceMapping(connection, uid, updateId,
+        event.eventId, reference, null, actionId, 'ignore')
+    }
   }
   await connection.execute(
     `UPDATE catledger_review_issues

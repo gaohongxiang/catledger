@@ -94,6 +94,7 @@ async function eventContext(connection, uid, updateId, eventId) {
 
 async function validateEventReferences(connection, uid, event, catalog = null, { forUpdate = true } = {}) {
   const fieldSources = event && event.fieldSources || {}
+  if (fieldSources.repaymentChannelResolution && !require('../repayment-channel').valid(event)) throw importError('VALIDATION_ERROR')
   const plan = eventAllocation(event)
   if (plan.kind === 'conflict') throw importError('VALIDATION_ERROR')
   const hasAllocationDraft = Object.prototype.hasOwnProperty.call(fieldSources, 'repaymentAllocationVersion') ||
@@ -159,6 +160,12 @@ async function validateEventReferences(connection, uid, event, catalog = null, {
       throw importError('VALIDATION_ERROR')
     }
   }
+  const feeCategoryId = fieldSources.repaymentChannelResolution?.feeCategoryId
+  if (feeCategoryId) {
+    const [categories] = catalog ? [[catalog.categories.get(feeCategoryId)].filter(Boolean)] : await connection.execute(
+      `SELECT kind FROM catledger_categories WHERE uid=? AND category_id=? AND archived_at IS NULL LIMIT 1`, [uid, feeCategoryId])
+    if (categories[0]?.kind !== 'expense') throw importError('VALIDATION_ERROR')
+  }
 }
 
 function finalizeSavedEvent(current, next, actionId, context, actionSource = 'user') {
@@ -180,7 +187,7 @@ async function loadReferenceCatalog(connection, uid, updateId, events) {
       ...(fields.paymentAccounts || []).map(item => item.accountId),
       ...(fields.paymentResolution && fields.paymentResolution.allocations || []).map(item => item.accountId)]
   })).sort()
-  const categoryIds = unique(events.map(event => event.categoryId)).sort()
+  const categoryIds = unique(events.flatMap(event => [event.categoryId, event.fieldSources?.repaymentChannelResolution?.feeCategoryId])).sort()
   const catalog = { accounts: new Map(), drafts: new Map(), categories: new Map() }
   for (const ids of chunks(accountIds.map(id => [id]))) {
     const values = ids.flat()

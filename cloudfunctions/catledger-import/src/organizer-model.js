@@ -111,6 +111,7 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
     ...(event.fieldSources && event.fieldSources.semanticBlockers || [])
   ].filter((reason) => HARD_BLOCKING_REASONS.has(reason))))
   if (event.fieldSources && event.fieldSources.refundSourceConflict) reasons.push('refund_source_conflict')
+  if (event.fieldSources && event.fieldSources.repaymentChannelResolution && !require('./repayment-channel').valid(event)) reasons.push('core_fields_conflict')
   if (event.fieldSources && event.fieldSources.paymentResolution && !paymentResolutionForEvent(event).valid) reasons.push('payment_components_ambiguous')
   if (event.fieldSources && event.fieldSources.loanRepayment) {
     try { require('./explicit-repayment').inputForEvent(event) } catch (_) { reasons.push('loan_repayment_required') }
@@ -232,7 +233,9 @@ function classifyReviewIssue(event) {
   if (reasons.has('bank_channel_same_event_candidate')) {
     return { issueType: REVIEW_ISSUE_TYPE.SAME_EVENT, primaryReason: 'bank_channel_same_event_candidate' }
   }
-  if (reasons.has('ledger_account_required') && (ACCOUNT_FIRST_NATURES.has(event.economicNature) || event.fieldSources && event.fieldSources.installment && event.fieldSources.installment.creditStatement === true)) {
+  const bankRepaymentAccount = event.economicNature === ECONOMIC_NATURE.REPAYMENT && !fundsProjection &&
+    event.fieldSources?.ledgerAccountReference?.sourceType === 'bank' && event.fieldSources.ledgerAccountReference.paymentMethodKey
+  if (reasons.has('ledger_account_required') && (ACCOUNT_FIRST_NATURES.has(event.economicNature) || bankRepaymentAccount || event.fieldSources && event.fieldSources.installment && event.fieldSources.installment.creditStatement === true)) {
     return { issueType: REVIEW_ISSUE_TYPE.ACCOUNT_MAPPING, primaryReason: 'ledger_account_required' }
   }
   if (reasons.has('repayment_other_treatment_required') || reasons.has('repayment_ownership_invalid') ||

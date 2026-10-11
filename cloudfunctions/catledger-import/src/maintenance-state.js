@@ -7,7 +7,9 @@ function correctionImpactResult(event, transactions) {
   const owned = transactions.filter((row) => row.role !== 'refund_original')
   const unchanged = owned.length > 0 && owned.every((row) => row.creationMethod === 'created' && row.deletedAt == null &&
     (row.origin == null || row.origin === 'import') && Number(row.version) === Number(row.linkedVersion))
-  const supported = (owned.length === 1 && !(event.fieldSources && event.fieldSources.paymentResolution)) || isAggregateRepayment(event)
+  const fields = event.fieldSources || {}
+  const supported = !fields.repaymentChannelResolution &&
+    ((owned.length === 1 && !fields.paymentResolution) || isAggregateRepayment(event))
   const conflicts = []
   if (!['posted', 'corrected'].includes(event.status) || !unchanged) conflicts.push('TRANSACTION_SET_CHANGED')
   if (!supported) conflicts.push('WHOLE_UPDATE_UNDO_REQUIRED')

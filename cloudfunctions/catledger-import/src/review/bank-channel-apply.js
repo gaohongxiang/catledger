@@ -22,6 +22,7 @@ async function applyPairs(connection, uid, updateId, pairs, actionId, { persistD
   for (const pair of pairs) {
     if (!bankChannelPair(pair.bank, pair.platform) ||
       hasSourceIdentityConflict(pair.bank.relationEvidence.rows.concat(pair.platform.relationEvidence.rows))) throw importError('IDENTITY_CONFLICT')
+    if (pair.pairKind === 'repayment' && pair.decision === 'same' && pair.repaymentConfirmed !== true) throw importError('VALIDATION_ERROR')
   }
   if (persistDecisions) await remember(connection, uid, pairs, actionId)
   // 仅撤销受影响的旧派生问题；余下成员由同一次收尾按剩余边重建。
@@ -41,8 +42,10 @@ async function applyPairs(connection, uid, updateId, pairs, actionId, { persistD
       continue
     }
     if (pair.decision !== 'same') throw importError('VALIDATION_ERROR')
-    const primary = await confirmedPrimary(connection, uid, updateId, [pair.bank, pair.platform], pair.platform.eventId,
-      actionId, { hydratedEvents: [pair.bank, pair.platform] })
+    const primary = pair.pairKind === 'repayment'
+      ? await require('./repayment-channel-merge').confirmedPrimary(connection, uid, updateId, pair, actionId)
+      : await confirmedPrimary(connection, uid, updateId, [pair.bank, pair.platform], pair.platform.eventId,
+        actionId, { hydratedEvents: [pair.bank, pair.platform] })
     await mergeRelations(connection, uid, updateId, primary.eventId, pair.bank.eventId, { syncMembers: false })
     await connection.execute(`UPDATE catledger_event_evidence SET event_id = ?,
       evidence_role = CASE WHEN evidence_role = 'discarded' THEN 'discarded' ELSE 'supporting' END
@@ -68,6 +71,7 @@ async function applyPairs(connection, uid, updateId, pairs, actionId, { persistD
   // 相同账户的来源映射、引用校验、事件版本和后续问题各批量完成一次。
   const byAccount = new Map()
   for (const event of merged) {
+    if (event.fieldSources.repaymentChannelResolution) continue
     if (!byAccount.has(event.ledgerAccountId)) byAccount.set(event.ledgerAccountId, [])
     byAccount.get(event.ledgerAccountId).push(event.eventId)
   }

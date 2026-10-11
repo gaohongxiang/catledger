@@ -31,6 +31,12 @@
           <view class="pairing-link-mark" aria-hidden="true">↕</view>
           <template is="pairing-record" data="{{record: item.platform}}" />
           <text class="pairing-reason">{{item.reasonText}}</text>
+          <view wx:if="{{item.repayment}}" class="mapping-fields">
+            <view class="mapping-field"><text>还入信用卡</text><text>{{item.repayment.targetAccountName || '待读取'}}{{item.repayment.targetConfirmed ? '' : ' · 待确认'}}</text></view>
+            <view class="mapping-field"><text>还款到账</text><text>{{item.repayment.repaymentText}}</text></view>
+            <view class="mapping-field"><text>平台扣款</text><text>{{item.repayment.totalText}}</text></view>
+            <view class="mapping-field"><text>待核对差额</text><text>{{item.repayment.feeText}}</text></view>
+          </view>
           <view class="pairing-evidence">
             <template is="pairing-record-evidence" data="{{record: item.bank}}" />
             <template is="pairing-record-evidence" data="{{record: item.platform}}" />
@@ -49,7 +55,7 @@
       <text wx:if="{{pairingProgressText}}" class="pairing-progress">{{pairingProgressText}}</text>
       <text wx:if="{{pairingLoading}}" class="pairing-progress">正在核验配对范围…</text>
       <button wx:if="{{pairingCanResume}}" class="sheet-confirm sheet-confirm-wide" bindtap="resumePairings" disabled="{{pairingBusy}}">{{pairingSaved ? '刷新已保存结果' : '恢复原请求并继续'}}</button>
-      <view wx:elif="{{pairingSheet.mode === 'ambiguous' && !pairingSaved}}" class="pairing-direct-actions"><button class="sheet-secondary" data-decision="distinct" bindtap="decidePairing" disabled="{{!pairingCanDecide}}">不是同一笔</button><button class="sheet-confirm" data-decision="same" bindtap="decidePairing" loading="{{pairingBusy}}" disabled="{{!pairingCanDecide}}">是同一笔</button></view>
+      <view wx:elif="{{pairingSheet.mode === 'ambiguous' && !pairingSaved}}" class="pairing-direct-actions"><button class="sheet-secondary" data-decision="distinct" bindtap="decidePairing" disabled="{{!pairingCanDecide}}">{{pairingRows[0].repayment ? '不是同次还款' : '不是同一笔'}}</button><button class="sheet-confirm" data-decision="same" bindtap="decidePairing" loading="{{pairingBusy}}" disabled="{{!pairingCanDecide}}">{{pairingRows[0].repayment ? '是同次还款' : '是同一笔'}}</button></view>
       <button wx:elif="{{!pairingSaved}}" class="sheet-confirm sheet-confirm-wide" bindtap="confirmPairings" loading="{{pairingBusy}}" disabled="{{!pairingCanConfirm}}">{{pairingBusy ? '正在保存配对' : '确认所选配对（' + pairingSelectedCount + '组）'}}</button>
       <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="closePairingReview">完成</button>
     </view>

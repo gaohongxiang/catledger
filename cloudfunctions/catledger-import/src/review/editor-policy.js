@@ -18,7 +18,8 @@ function capability(event) {
   const readonly = !['ready', 'needs_action'].includes(event.status) || event.economicNature === 'balance_adjustment'
   const protectedReasons = new Set(['row_status_unknown','transaction_status_unknown','source_profile_unknown','identity_conflict','identity_review_required','account_mapping_conflict','core_fields_conflict','row_semantic_conflict','source_group_conflict','bank_channel_same_event_candidate','same_event_candidate','refund_source_conflict','blocking_issue_open'])
   return { version: 1, readonly, blockingReasons: [...new Set((event.reasonCodes || []).concat(source.semanticBlockers || []).filter(code => protectedReasons.has(code)))], recordRole: principal ? 'installment_source' : 'transaction',
-    natures: principal ? ['repayment'] : [...NATURES], repayment: source.loanRepayment || null,
+    natures: principal || source.repaymentChannelResolution ? ['repayment'] : [...NATURES], repayment: source.loanRepayment || null,
+    ...(source.repaymentChannelResolution ? { repaymentChannel: require('../repayment-channel').publicResolution(event) } : {}),
     ownership: source.repaymentOwnership || null, composition: principal ? 'single' : composition.sourceKind(event),
     incompleteComposition: editor.incompleteComposition || null, evidenceNote: editor.evidenceNote || '',
     sourceCorrection: editor.sourceCorrection || null, incompleteRepayment: editor.incompleteRepayment || null,
@@ -120,6 +121,8 @@ function prepare(event, data) {
     if (!['link', 'pending', 'unlinked'].includes(decisions.refund.mode) || next.economicNature !== 'refund') fail()
   }
   if (next.ledgerAccountId && next.ledgerAccountId === next.counterpartyLedgerAccountId) fail()
+  if (before.repaymentChannelResolution && (!require('../repayment-channel').valid(next) ||
+      has(data, 'sourceCorrection') || has(data, 'composition') || Object.keys(decisions).length)) fail()
   // 只清除派生缺项；来源、身份、同笔等硬阻断交由原验证器和专用决定维护。
   const derived = new Set(['blocking_issue_open','ledger_account_required','economic_nature_required','core_fields_missing',
     'category_required','postability_direction_conflict','transfer_account_required','repayment_account_required','borrow_account_required',

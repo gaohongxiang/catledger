@@ -177,7 +177,8 @@ function create(options) {
         if (draft[key] !== undefined) saved[key] = clone(draft[key])
       }
       if ((saved.excludedPairKeys || []).length > 500 || (saved.pairs || []).length > 100) throw Object.assign(new Error('本次例外最多 500 组，具体配对最多 100 组；请先保存当前选择'), { code: 'DRAFT_LIMIT_REACHED' })
-      saved.pairs = (saved.pairs || []).map(pair => ({ pairKey: pair.pairKey, decision: pair.decision, bankEventId: pair.bankEventId, platformEventId: pair.platformEventId }))
+      saved.pairs = (saved.pairs || []).map(pair => ({ pairKey: pair.pairKey, decision: pair.decision, bankEventId: pair.bankEventId, platformEventId: pair.platformEventId,
+        ...(pair.decision === 'same' && pair.repaymentConfirmed === true ? { repaymentConfirmed: true } : {}) }))
       next.pairingDrafts[pairingKey] = saved
       persist(next, false); emit()
     },
@@ -191,7 +192,8 @@ function create(options) {
         (state.pairingResults[pairingKey] && state.pairingResults[pairingKey].status === 'conflict' ? state.pairingResults[pairingKey] : null)
       const previousSavedCount = prior ? (prior.previousSavedCount || 0) + (prior.progress ? prior.progress.savedCount : prior.savedCount || 0) : 0
       const selection = draft.mode === 'suggested' ? { mode: 'all_except', excludedPairKeys: (draft.excludedPairKeys || []).filter(key => !missing.has(key)) }
-        : { mode: 'include', pairs: (draft.pairs || []).filter(pair => !missing.has(pair.pairKey)).map(pair => ({ pairKey: pair.pairKey, decision: pair.decision })) }
+        : { mode: 'include', pairs: (draft.pairs || []).filter(pair => !missing.has(pair.pairKey)).map(pair => ({ pairKey: pair.pairKey, decision: pair.decision,
+          ...(pair.decision === 'same' && pair.repaymentConfirmed === true ? { repaymentConfirmed: true } : {}) })) }
       enqueue([{ kind: 'pairing', issueId: 'pairing:' + pairingKey, pairingKey, revision: draft.revision,
         scopeToken: draft.scopeToken, selection, totalCount, previousSavedCount, progress: { savedCount: 0, totalCount, remainingCount: totalCount, continuationToken: null } }])
     },

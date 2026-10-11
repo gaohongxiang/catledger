@@ -27,6 +27,7 @@ const SOURCE_REASONS = new Set([...SEMANTIC_HARD_BLOCKERS, 'economic_nature_requ
 // 在原事件的有效证据组内重算来源语义；绝不重新分组或复制人工决定。
 function refreshEventSemantic(current, evidenceRows) {
   if (!['ready', 'needs_action'].includes(current.status) || !evidenceRows.length) return current
+  const confirmedRepayment = require('./repayment-channel').evidenceValid(current, evidenceRows)
   evidenceRows = require('./bank-channel-matching').semanticRowsAfterConfirmation(current, evidenceRows)
   const rows = evidenceRows.map(row => ({ ...row, semantic: getRowSemantic(row) }))
   const natures = unique(rows.map(economicNatureForRow))
@@ -54,7 +55,7 @@ function refreshEventSemantic(current, evidenceRows) {
       next.flowDirection = ['repayment', 'borrow', 'internal_transfer'].includes(next.economicNature) ? 'neutral'
         : ['income', 'refund'].includes(next.economicNature) ? 'inflow' : 'outflow'
     }
-    if (!(current.manualFieldMask & (FIELD_MASK.paymentResolution | FIELD_MASK.repaymentAllocations))) {
+    if (!confirmedRepayment && !(current.manualFieldMask & (FIELD_MASK.paymentResolution | FIELD_MASK.repaymentAllocations))) {
       const projections = rows.map(projectSourceFunds)
       const projection = projections[0]
       if (projections.some(value => JSON.stringify(value) !== JSON.stringify(projection))) {
@@ -77,7 +78,7 @@ function refreshEventSemantic(current, evidenceRows) {
           next.flowDirection !== 'neutral')) next.reasonCodes.push('core_fields_conflict')
     Object.assign(next.fieldSources, paymentEvidenceFields(rows))
     const references = referencesForRows(rows)
-    if (references.length) next.fieldSources.paymentAccountReferences = references
+    if (!confirmedRepayment && references.length) next.fieldSources.paymentAccountReferences = references
     next.reasonCodes = unique([...next.reasonCodes, ...blockers])
   }
   if (semantics.some(semantic => semantic.moneyEffect === 'unknown')) next.reasonCodes.push('transaction_status_unknown')

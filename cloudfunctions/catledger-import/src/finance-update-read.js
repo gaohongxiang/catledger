@@ -65,7 +65,7 @@ function boundedItem(item, key, kind) {
   const result = { [key]: item[key], detailRequired: true, detailKind: kind }
   for (const name of ['version', 'status', 'issueType', 'blocking', 'memberCount', 'candidateCount', 'economicNature',
     'flowDirection', 'localAt', 'sortLocalAt', 'amountMinor', 'currency', 'ledgerAccountId', 'counterpartyLedgerAccountId', 'categoryId', 'categoryName',
-    'evidenceCount', 'duplicateEvidenceCount', 'objectId', 'objectType', 'objectVersion', 'memberRole', 'pairingDecision']) {
+    'evidenceCount', 'duplicateEvidenceCount', 'objectId', 'objectType', 'objectVersion', 'memberRole', 'pairingDecision', 'repaymentChannel', 'summaryExpenseMinor']) {
     if (item[name] != null) result[name] = item[name]
   }
   if (Object.hasOwn(item, 'pendingIssue')) result.pendingIssue = item.pendingIssue
@@ -227,7 +227,8 @@ async function eventPage(connection, uid, context, state) {
   if (nature) { where += ' AND e.economic_nature = ?'; values.push(nature) }
   if (view === 'expense') where += ` AND (e.economic_nature IN ('expense','fee') OR (JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.confirmed')=TRUE AND (
     (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.interestMinor')) AS UNSIGNED)>0) OR
-    (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeMinor')) AS UNSIGNED)>0))))`
+    (JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeTreatment'))='expense' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.loanRepayment.feeMinor')) AS UNSIGNED)>0))) OR
+    (JSON_EXTRACT(e.field_sources_json,'$.repaymentChannelResolution.repaymentConfirmed')=TRUE AND CAST(JSON_UNQUOTE(JSON_EXTRACT(e.field_sources_json,'$.repaymentChannelResolution.feeMinor')) AS UNSIGNED)>0))`
   else if (view === 'posted') where += " AND e.status IN ('posted', 'corrected')"
   else if (view) {
     where += ' AND ' + activeSql
@@ -247,7 +248,7 @@ async function eventPage(connection, uid, context, state) {
     ORDER BY e.event_local_at IS NULL, e.event_local_at, e.event_id LIMIT ?`, [...values, ...after.values, page.size + 1])
   const items = ids.length ? await selectEvents(connection, uid, state.update.updateId, { eventIds: ids.map(row => row.eventId) }) : []
   if (view === 'expense') for (const item of items) {
-    if (item.loanRepayment && item.loanRepayment.confirmed) item.summaryExpenseMinor = String(require('./workbench-summary').repaymentExpense(item))
+    if (item.repaymentChannel || item.loanRepayment && item.loanRepayment.confirmed) item.summaryExpenseMinor = String(require('./workbench-summary').repaymentExpense(item))
   }
   if (view === 'review_pending' || view === 'category_pending') await attachPendingIssues(connection, uid, state.update.updateId, items, view)
   const byId = new Map(items.map(item => [item.eventId, item]))
@@ -533,8 +534,10 @@ async function rowPage(connection, uid, context, state) {
   const events = await selectEvents(connection, uid, state.update.updateId, { includeFieldSources: true, eventIds: [...new Set(links.map(row => row.eventId))] })
   const byId = new Map(events.map(event => [event.eventId, event]))
   const byRow = new Map(rows.map(row => [row.rowId, row]))
-  const missingPrimaryIds = [...new Set(events.map(event => event.fieldSources && event.fieldSources.bankChannelResolution &&
-    event.fieldSources.bankChannelResolution.primaryRowId).filter(id => id && !byRow.has(id)))]
+  const missingPrimaryIds = [...new Set(events.flatMap(event => {
+    const fields = event.fieldSources || {}, channel = fields.repaymentChannelResolution
+    return [fields.bankChannelResolution?.primaryRowId, ...(channel?.bankRowIds || []), ...(channel?.platformRowIds || [])]
+  }).filter(id => id && !byRow.has(id)))]
   const explanationRows = missingPrimaryIds.length ? rows.concat(await selectPlanningRows(connection, uid, state.update.updateId, missingPrimaryIds)) : rows
   const explained = require('./bank-channel-matching').explainedRowIds(events, explanationRows)
   return finishPage(context, state, page, ids.map(({ rowId }) => {

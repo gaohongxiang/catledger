@@ -61,9 +61,15 @@ function eligible(event) {
   })
 }
 function pairKey(left, right) {
+  if (left.economicNature === 'repayment' && right.economicNature === 'repayment') return require('./repayment-channel').pairKey(left, right)
   return digestParts(VERSION, ...sourceRows(left).concat(sourceRows(right)).map(row => row.rowId).sort())
 }
 function bankChannelPair(left, right) {
+  if (left.economicNature === 'repayment' && right.economicNature === 'repayment') {
+    const bank = sourceRows(left)[0]?.sourceType === 'bank' ? left : right, platform = bank === left ? right : left
+    return Boolean(require('./repayment-channel').pairFacts(bank, platform)) &&
+      ![left, right].some(event => (event.fieldSources.bankChannelDistinctPairs || []).includes(pairKey(left, right)))
+  }
   if (!eligible(left) || !eligible(right)) return false
   const a = sourceRows(left)[0], b = sourceRows(right)[0]
   const bank = a.sourceType === 'bank' ? left : b.sourceType === 'bank' ? right : null
@@ -98,7 +104,7 @@ function bankChannelEdges(events, maxEdges = 10000) {
       }
     }
   }
-  return pairs
+  return pairs.concat(require('./repayment-channel').edges(events, maxEdges - pairs.length))
 }
 
 function bankChannelGroups(events) {
@@ -137,6 +143,7 @@ function bankChannelGroups(events) {
 
 // 人工合并只解释“银行缺少交易类型”这一种缺口。升级时仍重验来源、金额、方向和时间。
 function semanticRowsAfterConfirmation(event, rows) {
+  rows = require('./repayment-channel').semanticRows(event, rows)
   const resolution = event.fieldSources && event.fieldSources.bankChannelResolution
   if (!resolution || resolution.version !== VERSION || resolution.ledgerAccountId !== event.ledgerAccountId) return rows
   const primary = rows.find(row => row.rowId === resolution.primaryRowId)
@@ -154,9 +161,11 @@ function explainedRowIds(events, rows) {
   const byId = new Map(rows.map(row => [row.rowId, row]))
   const explained = new Set()
   for (const event of events) {
+    const repayment = require('./repayment-channel').resolutionFor(event)
     const resolution = event.fieldSources && event.fieldSources.bankChannelResolution
-    if (!resolution) continue
-    const evidence = [resolution.primaryRowId, ...(resolution.explainedBankRowIds || [])].map(id => byId.get(id)).filter(Boolean)
+    if (!resolution && !repayment) continue
+    const ids = repayment ? [...repayment.platformRowIds, ...repayment.bankRowIds] : [resolution.primaryRowId, ...(resolution.explainedBankRowIds || [])]
+    const evidence = ids.map(id => byId.get(id)).filter(Boolean)
     const retained = new Set(semanticRowsAfterConfirmation(event, evidence).map(row => row.rowId))
     for (const row of evidence) if (!retained.has(row.rowId)) explained.add(row.rowId)
   }

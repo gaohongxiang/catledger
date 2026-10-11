@@ -10,7 +10,21 @@ async function hydrate(connection, uid, updateId, events = null, rows = null, { 
     WHERE e.uid = ? AND e.update_id = ? AND e.evidence_role <> 'discarded'
     ORDER BY (e.evidence_role = 'primary') DESC, e.evidence_id`, [uid, updateId])
   events = events || await selectDomainEvents(connection, uid, updateId, [...new Set(links.map(link => link.eventId))], { forUpdate })
-  return hydrateEvidence(events, rows, links)
+  const hydrated = hydrateEvidence(events, rows, links)
+  // 还款候选的银行端是本人信用卡，不能把同名的资产账户当作还入端。
+  // 元数据只用于本次核对，不写入来源或列表快照。
+  if (hydrated.some(event => event.sourceType === 'bank' && event.economicNature === 'repayment')) {
+    const [accounts] = await connection.execute(`SELECT account_id AS accountId,name,type,currency,archived_at AS archivedAt
+      FROM catledger_accounts WHERE uid = ? AND archived_at IS NULL
+      UNION ALL SELECT draft_account_id AS accountId,name,type,currency,NULL AS archivedAt
+      FROM catledger_finance_update_account_drafts WHERE uid = ? AND update_id = ? AND materialized_at IS NULL`, [uid, uid, updateId])
+    const byAccount = new Map(accounts.map(account => [account.accountId, account]))
+    for (const event of hydrated) {
+      event.ledgerAccountFacts = byAccount.get(event.ledgerAccountId) || null
+      event.counterpartyAccountFacts = byAccount.get(event.counterpartyLedgerAccountId) || null
+    }
+  }
+  return hydrated
 }
 
 function hydrateEvidence(events, rows, links) {

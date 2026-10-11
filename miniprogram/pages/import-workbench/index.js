@@ -323,6 +323,7 @@ Page({
   selectEditorRefund: reviewEdit.selectEditorRefund,
   loadEditorEvidence: reviewEdit.loadEditorEvidence,
   openEditorIssue: reviewEdit.openEditorIssue,
+  openEditorRepaymentJudgment: reviewEdit.openEditorRepaymentJudgment,
 
   refreshReviewEdit: reviewEdit.refreshReviewEdit,
   saveReviewEdit: reviewEdit.saveReviewEdit,

@@ -191,7 +191,8 @@
       "installment": "Recognized credit-statement installment events include compact installment metadata {creditStatement:true,factKind:billing,component,periodNumber,totalTerms,originKind}; raw references and contract labels are not exposed in this projection. Principal billing is a source fact, not an actual transfer or repayment. Sources become available for explicit plan association after atomic posting.",
       "excludedGroups": "view=excluded_groups returns items[{groupId,key,label,note,count,sortLocalAt}] and total group count for the entire filtered batch. Only account_mapping_excluded or source_account_ignored_default groups use the normalized source account; missing account names fall back to the account-exclusion group. Other events group by actual exclusion reason: non-financial, closed, failed, individually excluded, or unknown. A payment account label alone never makes an account-exclusion group. Automatic reasons can group across accounts; account exclusion and automatic exclusion for the same account stay separate. Grouping version participates in the view version and cursor scope. status=excluded plus excludedGroupId pages only that group's transactions with total transaction count; each event carries actual reasonCodes and primaryEvidence.status from the source bill. Known exclusion reasons and source status survive oversized-event fallback. Both views share version, user, update, query and cursor isolation; summaries never contain member ID arrays or source text.",
       "pendingIssues": "review_pending and category_pending count and page transactions, including every member of multi-event issues. Each event carries pendingIssue (compact current open issue metadata, or null). One bounded query loads eligible issues for current-page events only; candidates, other-user/update members, closed issues and non-blocking review issues are excluded. review_pending selects the first actually available issue by dependency priority: status/identity/core conflicts and missing core facts, account prerequisites needed for matching, same-event/history matching, nature, ownership/accounts, allocations, refund and installment relations; equal priority keeps created_at and issue_id order. category_pending retains its original earliest category issue. Search never shrinks the full original decision scope.",
-      "reviewAttention": "review_pending additionally returns reviewAttention {version:review-attention-v1,issueId,steps:[{key,label}]}. The first task matches pendingIssue; the rest are deduplicated known gaps from the current event plus real eligible issues, never the union of other members' reasons or invented future issues. Missing nature is one task, not an additional fixed label. Tasks retain server order on the card left. Known nature is inserted after prerequisite and same-event tasks but before ownership, ordinary accounts and other field tasks; it is context, never a task or a new entry. The right says 处理 with a chevron for a real issue, or 查看详情 when no issue exists. No arrows imply forced serial steps. Principal billing never becomes actual repayment or a compulsory plan task. A fresh view recomputes tasks and entry together; the projection version participates in view/cursor identity. Oversized-event fallback retains both objects. Missing/mismatched summary falls back to the real current entry. This read does not create issues or transactions, change posting gates, or count category tasks as blockers."
+      "reviewAttention": "review_pending additionally returns reviewAttention {version:review-attention-v1,issueId,steps:[{key,label}]}. The first task matches pendingIssue; the rest are deduplicated known gaps from the current event plus real eligible issues, never the union of other members' reasons or invented future issues. Missing nature is one task, not an additional fixed label. Tasks retain server order on the card left. Known nature is inserted after prerequisite and same-event tasks but before ownership, ordinary accounts and other field tasks; it is context, never a task or a new entry. The right says 处理 with a chevron for a real issue, or 查看详情 when no issue exists. No arrows imply forced serial steps. Principal billing never becomes actual repayment or a compulsory plan task. A fresh view recomputes tasks and entry together; the projection version participates in view/cursor identity. Oversized-event fallback retains both objects. Missing/mismatched summary falls back to the real current entry. This read does not create issues or transactions, change posting gates, or count category tasks as blockers.",
+      "repaymentChannel": "已确认还款渠道事件额外返回 repaymentChannel:{version:1,totalMinor,repaymentMinor,feeMinor,targetAccountId}；事件 amountMinor 保留平台总扣款。expense 视图含正手续费且 summaryExpenseMinor 为手续费；总支出及还款流转分别汇总费用与到账额。大记录简化投影保留这两项。"
     },
     "financeUpdates.options": {
       "categoryHierarchy": "Category options include parentId and parentName; query matches both parent and child names. Paging remains version-bound and user-scoped. Both levels can be selected; client opens this full directory instead of searching only the loaded candidate subset.",
@@ -708,7 +709,8 @@
       ],
       "rules": [
         "Compute degrees on complete eligible bank/platform graph before pagination or issue filtering; suggested pairs require degree one at both ends. No writes from preview.",
-        "Scope and cursors bind trusted user, update, view, dataRevision and full candidate digest; request page never establishes uniqueness. Source previews remain bounded; original evidence uses existing segmented reads."
+        "Scope and cursors bind trusted user, update, view, dataRevision and full candidate digest; request page never establishes uniqueness. Source previews remain bounded; original evidence uses existing segmented reads.",
+        "还款候选返回 pairKind=repayment 与 repayment:{version:1,totalMinor,repaymentMinor,feeMinor,targetAccountId,targetAccountName,targetConfirmed}；明确银行渠道还款流入已确认信用卡、平台同渠道实际还款、同本地日、总扣款不少于到账额且无目标冲突。付款账户可待确认，目标尚未选择时只按无冲突银行/卡号线索建议。还款始终逐对核对，即使唯一也不进入 suggested。"
       ]
     },
     "reviewIssues.resolvePairings": {
@@ -717,7 +719,7 @@
         "requestId",
         "updateId",
         "scopeToken + selection OR continuationToken",
-        "selection.mode=all_except with excludedPairKeys (<=500) OR include with pairs[{pairKey,decision=same|distinct}] (1..100)"
+        "selection.mode=all_except with excludedPairKeys (<=500) OR include with pairs[{pairKey,decision=same|distinct,repaymentConfirmed?:true}] (1..100)"
       ],
       "returns": [
         "protocolVersion=2",
@@ -730,7 +732,8 @@
         "all_except freezes full suggested range. Continuation is signed and refers to the original finance action; only unchanged remaining facts survive own acknowledged version advancement. External revision or candidate change requires explicit recheck.",
         "Same merges draft events into platform primary, preserves evidence/refund references and never changes formal balances. Distinct rejects only the explicit pair.",
         "Persist reliable source identity pairs plus necessary fact digest; no broad text/amount rules and no unreliable-identity replay. One range cleanup/count/receipt per batch, final client summary once.",
-        "Original request persisted before sending. Unknown results replay original requestId; trusted continuation saved before a new batch request; preserve partial progress, local intent and refresh failures."
+        "Original request persisted before sending. Unknown results replay original requestId; trusted continuation saved before a new batch request; preserve partial progress, local intent and refresh failures.",
+        "还款 same 必须 repaymentConfirmed=true，表示明确确认同次还款、差额为手续费及还入目标信用卡；distinct 和普通配对不得携带该标记。净额/费用/总额与原双来源摘要由服务端冻结，保留平台主事件和原文、两端独立映射；不学习可跨新批次复用的手续费同笔决定。"
       ]
     },
     "financeUpdates.setCategory": {
@@ -783,7 +786,8 @@
         "decisions={ownership?:{owner:self|other,treatment?:expense|pending}|null,repayment?:原本息费决定|{mode:review,draft}|null,refund?:{mode:link|pending|unlinked,kind?:event|transaction,id?,version?}}；关联候选稳定 ID/版本及累计上限在事务内重验，收费项使用现行领域规则。",
         "sourceCorrection 仅修正分期来源期次；acknowledgedChanges 只接受 composition、repayment、refund，确认不能绕过依赖检查。原始账单、身份及真实来源阻断保留；普通保存不改其他成员、长期映射或正式账本。",
         "沿原用户锁、批次/事件双版本和 requestId 回执提交；字段、关系、问题成员、版本和回执全部成功或全部回滚。",
-        "新版客户端传 expectedRelations:[{kind:event|transaction|refund_relation|loan,id,version}] 作为当前依赖快照；事务重读完整集合拒绝过期或漏项。新增关联仍由对应明确决定的 ID/版本校验。"
+        "新版客户端传 expectedRelations:[{kind:event|transaction|refund_relation|loan,id,version}] 作为当前依赖快照；事务重读完整集合拒绝过期或漏项。新增关联仍由对应明确决定的 ID/版本校验。",
+        "repaymentChannel 已确认时，editorFacts 携带同一公共金额结构并只支持 repayment；固定金额、时间、目标信用卡、本人归属与单笔模式，允许付款资产账户和人工对方/备注。改变固定事实须先 reviseDuplicate 拆回原始记录；服务端同样拒绝旧 apply_fields 绕过。"
       ],
       "returns": [
         "protocolVersion=2",
@@ -838,7 +842,8 @@
         "decision=distinct|same|reopen",
         "pairKey?",
         "otherEventId?",
-        "otherEventVersion?"
+        "otherEventVersion?",
+        "repaymentConfirmed?:true (same repayment pair only)"
       ],
       "returns": [
         "protocolVersion=2",
@@ -855,7 +860,8 @@
       ],
       "rules": [
         "Only review batches; revalidate source groups and both versions under the user lock. Move original evidence without copying identities, preserve primary edits and saved origin fields, restore independent events and required follow-up reviews. Recheck affected refund relations. Correct only selected source-pair memories. No formal ledger writes. Unknown results replay the exact request.",
-        "A previous explicit distinct bank/platform pair may be changed to same after revalidating both events and all current pairing facts. A manually linked historical duplicate may reopen historical review; the original formal transaction and exact-source automatic duplicates remain protected."
+        "A previous explicit distinct bank/platform pair may be changed to same after revalidating both events and all current pairing facts. A manually linked historical duplicate may reopen historical review; the original formal transaction and exact-source automatic duplicates remain protected.",
+        "跨渠道还款拆分时撤销手续费合同、恢复原账户/来源引用及人工值，保留此后修改的付款端与文字，移除合并新增目标映射；改回 same 时重读当前两条来源、金额、账户与版本，再明确 repaymentConfirmed=true。"
       ]
     }
   },
@@ -867,7 +873,7 @@
     "parseUpgrade": "same unposted file bytes reuse a batch only for an equal parse-run-v2 fingerprint; changed parser or interpretation versions append a batch and preserve prior evidence. A core interpretation change may reuse an identity only with the same file digest, source locator, identity anchor digest and unchanged amount/currency/direction; conflicts from other file bytes remain blocked",
     "organization": "same amount, nearby time or similar text creates candidates only; only a stable shared reference plus compatible core fields may auto-merge evidence",
     "postability": "ready is server-derived after planning, every issue resolution and inside the posting transaction; clients cannot submit ready",
-    "posting": "one FinanceUpdate commits all ready formal transactions and evidence links in one MySQL transaction; one aggregate repayment EconomicEvent may project to multiple formal transfers only when positive unique liability-account allocations exactly conserve the event amount; any failure rolls the whole update back",
+    "posting": "one FinanceUpdate commits all ready formal transactions and evidence links in one MySQL transaction; one aggregate repayment EconomicEvent may project to multiple formal transfers only when positive unique liability-account allocations exactly conserve the event amount; any failure rolls the whole update back; explicitly confirmed repayment-channel events retain platform gross amount while atomically creating a net transfer to the credit account and an optional expense fee from the payer, both payment_allocation links with existing group protection; reliable source replay cannot add another fee",
     "cashBalance": "atomic posting may not create or deepen a negative cash balance; failure rolls back accounts, mappings, transactions, links and state together",
     "prePostingWriteBarrier": "before financeUpdates.post, account creation and reusable mapping changes remain FinanceUpdate-scoped drafts; abandoning or a failed post leaves formal accounts, mappings, transactions, balances and reports unchanged",
     "paymentRules": "recognized atomic payment methods may map to one account or be permanently ignored per user and source; an aggregate statement reference such as Alipay 花呗｜信用购 is never an account or reusable mapping and must be allocated to real liability accounts; temporary ignore never silently becomes a permanent rule",

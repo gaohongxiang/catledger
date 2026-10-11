@@ -209,7 +209,8 @@ module.exports = {
     const token = this._reviewEditToken
     if (!editable(this, token)) return null
     const field = token.view.accountFields.find(field => field.target === target)
-    if (field) return { kind: 'accounts', title: '选择' + field.label, selectedId: field.accountId, allowedTypes: field.allowedTypes }
+    if (field) return field.readonly ? null : { kind: 'accounts', title: '选择' + field.label, selectedId: field.accountId, allowedTypes: field.allowedTypes }
+    if (token.view.repaymentChannel) return null
     if (/^editorPart\d+$/.test(target)) return { kind: 'accounts', title: '选择分配账户', selectedId: token.draft.parts[Number(target.slice(10))]?.accountId,
       allowedTypes: token.draft.composition === 'repayment' ? model.DEBTS : token.draft.economicNature === 'repayment' ? model.ASSETS : null }
     const categories = { editorCategory: 'categoryId', editorInterest: 'interestCategoryId', editorFee: 'feeCategoryId' }
@@ -341,6 +342,16 @@ module.exports = {
     }
     this.closeReviewEdit()
     return this.openIssue({ currentTarget: { dataset: { id: issue.issueId } } })
+  },
+  async openEditorRepaymentJudgment() {
+    const token = this._reviewEditToken
+    if (!editable(this, token) || !token.view.repaymentChannel) return
+    if (Object.keys(token.draft.dirty).length) {
+      this.setData({ 'reviewEditSheet.error': '请先保存当前修改，再修改同笔判断；关系判断不会自动保存本笔字段' })
+      return
+    }
+    this.closeReviewEdit()
+    return this.openDuplicateEdit({ currentTarget: { dataset: { id: token.eventId } } })
   },
   invalidateReviewEdit() {
     if (this.data.reviewEditSheet) this.setData({ 'reviewEditSheet.stale': true, 'reviewEditSheet.loading': false,

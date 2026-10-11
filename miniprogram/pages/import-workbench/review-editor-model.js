@@ -9,6 +9,9 @@ const NATURES = [{ value: 'expense', label: '支出' }, { value: 'income', label
   { value: 'repayment', label: '还款' }, { value: 'borrow', label: '借款到账' },
   { value: 'fee', label: '利息／手续费' }, { value: 'unknown', label: '暂不确定' }]
 const categoryKind = nature => nature === 'income' ? 'income' : ['expense', 'fee'].includes(nature) ? 'expense' : ''
+const repaymentChannelOf = row => row.repaymentChannel || row.editorFacts?.repaymentChannel || null
+const repaymentTargetKey = row => row.sourceDirection === 'income' ? 'ledgerAccountId' : 'counterpartyLedgerAccountId'
+const repaymentPayerKey = row => row.sourceDirection === 'income' ? 'counterpartyLedgerAccountId' : 'ledgerAccountId'
 function yuan(value) {
   if (value == null) return ''
   const digits = String(value).padStart(3, '0')
@@ -23,13 +26,14 @@ function minor(value) {
 }
 function create(row) {
   const source = row.primaryEvidence || {}, facts = row.editorFacts || {}, loan = { ...(row.loanRepayment || {}), ...(row.editorFacts?.incompleteRepayment || {}) }
+  const channel = repaymentChannelOf(row)
   const ownership = row.repaymentOwnership || facts.ownership || {}
   const parts = facts.incompleteComposition ? facts.incompleteComposition.parts : row.paymentResolution ? row.paymentResolution.allocations : facts.composition === 'repayment' ? row.repaymentAllocations || []
     : (row.paymentComponents || []).map((part, componentIndex) => ({ ...part, componentIndex }))
       .filter(part => part.componentKind === 'financial').map(part => ({ ...part,
         ...((row.paymentResolution && row.paymentResolution.allocations || []).find(value => value.componentIndex === part.componentIndex) ||
           (row.paymentAccounts || []).find(value => value.componentIndex === part.componentIndex) || {}) }))
-  return { economicNature: detail.principalOf(row) || ownership.owner === 'other' ? 'repayment' : row.economicNature,
+  const draft = { economicNature: detail.principalOf(row) || ownership.owner === 'other' ? 'repayment' : row.economicNature,
     ledgerAccountId: row.ledgerAccountId || '', counterpartyLedgerAccountId: detail.principalOf(row) ? '' : row.counterpartyLedgerAccountId || '',
     amountInput: yuan(row.amountMinor), date: String(row.localAt || '').slice(0, 10), time: String(row.localAt || '').slice(11, 19),
     counterparty: (has(row, 'counterparty') ? row.counterparty : source.counterparty || '').slice(0, 200),
@@ -45,8 +49,12 @@ function create(row) {
     evidenceNote: facts.incompleteComposition?.evidenceNote || row.paymentResolution?.evidenceNote || facts.evidenceNote || '',
     periodInput: String(row.installment?.periodNumber || ''), totalTermsInput: String(row.installment?.totalTerms || ''),
     refund: null, dirty: {}, dormant: {}, acknowledgedChanges: [] }
+  if (channel) Object.assign(draft, { economicNature: 'repayment', amountInput: yuan(channel.totalMinor),
+    [repaymentTargetKey(row)]: channel.targetAccountId, owner: 'self', composition: 'single', parts: [], repaymentMode: 'ordinary' })
+  return draft
 }
 function change(row, draft, key, value) {
+  if (repaymentChannelOf(row) && ![repaymentPayerKey(row), 'counterparty', 'note', 'acknowledgedChanges'].includes(key)) return draft
   const next = { ...draft, dirty: { ...draft.dirty, [key]: true }, dormant: { ...draft.dormant } }
   if (key === 'economicNature') {
     if (!NATURES.some(item => item.value === value) || detail.principalOf(row)) return draft
@@ -95,6 +103,7 @@ function change(row, draft, key, value) {
   return next
 }
 function accountFields(row, draft, catalog) {
+  const channel = repaymentChannelOf(row)
   const other = draft.economicNature === 'repayment' && draft.owner === 'other'
   const projected = { ...row, economicNature: other ? 'expense' : draft.economicNature,
     ledgerAccountId: draft.ledgerAccountId, counterpartyLedgerAccountId: draft.counterpartyLedgerAccountId, editorComposition: draft.composition }
@@ -105,7 +114,8 @@ function accountFields(row, draft, catalog) {
     if (field.label === '还入账户' || field.label === '借款负债账户') allowedTypes = loan ? ['other_liability'] : DEBTS
     if (detail.principalOf(row)) allowedTypes = ['credit']
     const account = catalog.find(item => item.accountId === field.accountId)
-    return { ...field, target: field.key === 'account' ? 'reviewAccount' : 'reviewCounterparty', allowedTypes,
+    const readonly = Boolean(channel && field.label === '还入账户')
+    return { ...field, target: readonly ? '' : field.key === 'account' ? 'reviewAccount' : 'reviewCounterparty', allowedTypes, readonly,
       name: account ? account.name : field.accountId ? '账户名称待读取' : '',
       invalid: Boolean(account && (account.archivedAt || account.unavailable || allowedTypes && !allowedTypes.includes(account.type))) }
   })
@@ -116,7 +126,7 @@ function derive(row, draft, catalogs = {}) {
     errors.push(message)
     if (!(fieldErrors[field] || '').includes(message)) fieldErrors[field] = [fieldErrors[field], message].filter(Boolean).join('；')
   }
-  const facts = row.editorFacts, supported = Boolean(facts && facts.version === 1 && !facts.readonly)
+  const facts = row.editorFacts, channel = repaymentChannelOf(row), supported = Boolean(facts && facts.version === 1 && !facts.readonly)
   const other = draft.economicNature === 'repayment' && draft.owner === 'other'
   const effectiveNature = other ? draft.otherTreatment === 'expense' ? 'expense' : 'unknown' : draft.economicNature
   const principal = detail.principalOf(row)
@@ -149,6 +159,12 @@ function derive(row, draft, catalogs = {}) {
   }
   if (fields.length === 2 && fields[0].accountId && fields[0].accountId === fields[1].accountId) invalid('funds', '两个资金账户必须不同')
   const output = {}, original = create(row)
+  if (channel) {
+    const fixed = ['economicNature', 'amountInput', 'date', 'time', repaymentTargetKey(row), 'owner', 'otherTreatment',
+      'composition', 'parts', 'repaymentMode', 'loanMode', 'loanId', 'loanVersion', 'principalInput', 'interestInput', 'feeInput',
+      'interestTreatment', 'feeTreatment', 'interestCategoryId', 'feeCategoryId', 'chargeAllocations', 'categoryId', 'refund', 'evidenceNote', 'periodInput', 'totalTermsInput']
+    if (fixed.some(key => JSON.stringify(draft[key]) !== JSON.stringify(original[key]))) invalid('repaymentChannel', '这组还款已确认金额、时间和目标；请先修改同笔判断，再分别核对原记录')
+  }
   const put = (key, value, before) => { if (value !== before) output[key] = value }
   if (draft.dirty.economicNature || effectiveNature !== row.economicNature || (row.reasonCodes || []).includes('row_transaction_type_unknown') && effectiveNature !== 'unknown') output.economicNature = effectiveNature
   put('ledgerAccountId', draft.ledgerAccountId || null, row.ledgerAccountId || null)
@@ -172,8 +188,8 @@ function derive(row, draft, catalogs = {}) {
     if (draft.counterpartyLedgerAccountId) output.counterpartyLedgerAccountId = draft.counterpartyLedgerAccountId
   }
   const decisions = {}
-  if (row.repaymentOwnership && draft.economicNature !== 'repayment' && draft.dirty.economicNature) decisions.ownership = null
-  if (draft.economicNature === 'repayment' && !principal && (draft.owner !== original.owner || draft.dirty.owner || draft.dirty.otherTreatment ||
+  if (!channel && row.repaymentOwnership && draft.economicNature !== 'repayment' && draft.dirty.economicNature) decisions.ownership = null
+  if (!channel && draft.economicNature === 'repayment' && !principal && (draft.owner !== original.owner || draft.dirty.owner || draft.dirty.otherTreatment ||
     draft.dirty.economicNature || !row.repaymentOwnership && effectiveNature === 'repayment')) {
     decisions.ownership = { owner: draft.owner, ...(other ? { treatment: draft.otherTreatment } : {}) }
     if (other && !['expense', 'pending'].includes(draft.otherTreatment)) { delete decisions.ownership; missing.push('代还处理方式') }
@@ -202,7 +218,7 @@ function derive(row, draft, catalogs = {}) {
     composition = { kind: 'single', evidenceNote: draft.evidenceNote }
     if (original.composition !== 'single' && !draft.evidenceNote.trim()) invalid('evidenceNote', '请说明为何改为单账户资金交易')
   }
-  if (draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single' && draft.repaymentMode === 'loan') {
+  if (!channel && draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single' && draft.repaymentMode === 'loan') {
     const chargeAllocations = draft.loanMode === 'associate' ? draft.chargeAllocations.map(part => {
       const value = minor(part.amountInput == null ? yuan(part.amountMinor) : part.amountInput)
       if (value == null || value === '0') invalid('repayment', '费用清偿金额需为大于零的有效金额')
@@ -239,7 +255,7 @@ function derive(row, draft, catalogs = {}) {
         if (draft[key + 'Treatment'] === 'accrued' && allocated !== BigInt(minor(draft[key + 'Input']))) invalid('repayment', '清偿已记费用须完整选择对应收费项')
       }
     }
-  } else if (row.loanRepayment && (draft.dirty.repaymentMode || draft.dirty.economicNature || draft.dirty.owner || draft.dirty.composition)) decisions.repayment = null
+  } else if (!channel && row.loanRepayment && (draft.dirty.repaymentMode || draft.dirty.economicNature || draft.dirty.owner || draft.dirty.composition)) decisions.repayment = null
   if (effectiveNature === 'refund' && draft.refund) decisions.refund = draft.refund
   if (effectiveNature === 'refund' && !draft.refund && row.detailFacts?.refund?.status !== 'confirmed' && row.detailFacts?.refund?.status !== 'pending') missing.push('退款关联')
   let sourceCorrection
@@ -249,8 +265,9 @@ function derive(row, draft, catalogs = {}) {
     if (sourceCorrection.periodNumber && sourceCorrection.totalTerms && sourceCorrection.periodNumber > sourceCorrection.totalTerms) invalid('sourceCorrection', '本期期号不能大于总期数')
     if (sourceCorrection.periodNumber === null) missing.push('分期期号')
   }
+  if (channel) for (const key of Object.keys(output)) if (![repaymentPayerKey(row), 'counterparty', 'note'].includes(key)) delete output[key]
   const changed = Boolean(sourceCorrection) || Object.keys(output).length || Object.keys(decisions).length || Boolean(composition)
-  const options = principal ? [{ value: 'repayment', label: '分期本金出账' }] : NATURES.filter(item => {
+  const options = principal ? [{ value: 'repayment', label: '分期本金出账' }] : channel ? [{ value: 'repayment', label: '还款' }] : NATURES.filter(item => {
     if (draft.composition === 'repayment') return item.value === 'repayment'
     if (draft.composition === 'payment') return ['expense', 'repayment'].includes(item.value)
     return true
@@ -259,10 +276,11 @@ function derive(row, draft, catalogs = {}) {
     natureOptions: options, natureIndex: Math.max(0, options.findIndex(item => item.value === draft.economicNature)),
     natureLabel: principal ? '分期本金出账' : options.find(item => item.value === draft.economicNature)?.label || '性质待确认',
     routeFields, bankSuggestion,
+    repaymentChannel: channel ? { repaymentText: yuan(channel.repaymentMinor), feeText: yuan(channel.feeMinor), totalText: yuan(channel.totalMinor) } : null,
     title: draft.economicNature === 'repayment' && !principal ? '确认还款' : '核对交易',
     summaryParty: draft.counterparty,
     summaryTime: [draft.date, draft.time.slice(0, 5)].filter(Boolean).join(' '),
-    showStructure: !principal && ['expense','repayment'].includes(draft.economicNature) && !other,
+    showStructure: !channel && !principal && ['expense','repayment'].includes(draft.economicNature) && !other,
     source: Boolean(row.installment),
     needsCompositionNote: draft.composition === 'payment' || draft.composition === 'single' && original.composition !== 'single',
     loanFields: ['principal','interest','fee'].map((key, index) => ({ key: key + 'Input', label: ['本金','利息','费用'][index], value: draft[key + 'Input'] })),
@@ -272,7 +290,7 @@ function derive(row, draft, catalogs = {}) {
     interestCategoryName: categories.find(item => item.categoryId === draft.interestCategoryId)?.name || '',
     feeCategoryName: categories.find(item => item.categoryId === draft.feeCategoryId)?.name || '',
     accountFields: fields, categoryKind: categoryKind(effectiveNature), categoryName: selectedCategory?.name || row.categoryId === category && row.categoryName || '',
-    showOwnership: draft.economicNature === 'repayment' && !principal, other, showLoan: draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single',
+    showOwnership: draft.economicNature === 'repayment' && !principal, other, showLoan: !channel && draft.economicNature === 'repayment' && !principal && !other && draft.composition === 'single',
     refund: effectiveNature === 'refund', principal, showComposition: draft.composition !== 'single',
     fieldErrors, errors: [...new Set(errors)], missing: [...new Set(missing)], changed: Boolean(changed),
     canSave: supported && Boolean(changed) && errors.length === 0,

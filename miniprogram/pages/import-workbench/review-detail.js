@@ -51,6 +51,7 @@ async function readFields(page, token) {
       'reviewDetailSheet.originalRefund': row.detailFacts?.refund || null, 'reviewDetailSheet.loanName': row.detailFacts?.loan?.name || '',
       'reviewDetailSheet.fields': fieldsFor(row), 'reviewDetailSheet.fieldsLoading': false,
       'reviewDetailSheet.fieldsError': '', 'reviewDetailSheet.installmentNote': eventView(row).installmentNote || '',
+      'reviewDetailSheet.canEdit': page.data.update.status === 'review' && Boolean(page.data.reviewDetailSheet.canEdit || editor.repaymentChannel),
       'reviewDetailSheet.reviewEditable': page.data.update.status === 'review' && ['ready','needs_action'].includes(row.status) && Boolean(row.editorFacts?.version === 1 && !row.editorFacts.readonly) })
   } catch (error) {
     if (current(page, token)) page.setData({ 'reviewDetailSheet.fieldsLoading': false, 'reviewDetailSheet.fieldsError': errorText(error) })

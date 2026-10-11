@@ -17,28 +17,30 @@
 .unified-editor-sheet .evidence-scroll { flex: 1; height: 0; min-height: 0; }
 .unified-editor-sheet .sheet-actions,
 .unified-editor-sheet .pairing-footer { flex-shrink: 0; }
-.unified-editor-sheet .repayment-summary-card { margin-bottom: 24rpx; padding: 28rpx 28rpx 12rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); }
-.unified-editor-sheet .issue-summary-nature { padding: 6rpx 16rpx; border-radius: var(--theme-radius-small, 12rpx); }
+.unified-editor-sheet .editor-summary-card { margin-bottom: 24rpx; padding: 28rpx 28rpx 20rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-medium, 18rpx); }
+.unified-editor-sheet .issue-summary-nature { display: inline-flex; align-items: center; gap: 8rpx; padding: 6rpx 16rpx; border-radius: var(--theme-radius-small, 12rpx); }
+.unified-editor-sheet .editor-nature-chevron { font-size: 26rpx; font-weight: 400; line-height: 1; }
 .unified-editor-sheet .editor-amount { display: flex; align-items: baseline; justify-content: flex-end; min-width: 0; max-width: 75%; margin-left: auto; color: var(--ui-ink); font-size: var(--font-title, 40rpx); font-weight: 500; line-height: 1.4; }
 .unified-editor-sheet .editor-amount-input { position: relative; min-width: 0; }
 .unified-editor-sheet .editor-amount-measure { visibility: hidden; display: block; min-width: 100rpx; white-space: nowrap; }
 .unified-editor-sheet .editor-amount input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; min-width: 0; text-align: right; font-size: inherit; font-weight: inherit; line-height: inherit; }
-.unified-editor-sheet .editor-summary-meta { display: block; margin-top: 18rpx; padding-bottom: 14rpx; overflow-wrap: anywhere; }
+.unified-editor-sheet .editor-summary-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6rpx 18rpx; margin-top: 12rpx; overflow-wrap: anywhere; }
+.unified-editor-sheet .editor-summary-edit { width: 100%; min-height: 0; margin-right: 0; margin-left: 0; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: left; line-height: inherit; }
 .unified-editor-sheet .repayment-ownership { margin: 12rpx 0 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
 .unified-editor-sheet .route-vertical { margin-bottom: 12rpx; padding: 28rpx; }
 .unified-editor-sheet .route-vertical-point:last-of-type .route-vertical-body { padding-bottom: 0; }
-.unified-editor-sheet.review-editor-sheet .route-vertical-pick { min-height: 112rpx; margin: 0; padding: 22rpx 24rpx; }
+.unified-editor-sheet.review-editor-sheet .route-vertical-pick { min-height: 88rpx; margin: 0; padding: 16rpx 20rpx; }
 .unified-editor-sheet.review-editor-sheet .route-vertical-pick-filled { min-height: 0; padding: 0; border: 0; background: transparent; }
+.unified-editor-sheet .editor-route-missing .repayment-mode-value { color: var(--ui-accent-strong); }
 .unified-editor-sheet .editor-account-copy { width: 100%; min-width: 0; }
 .unified-editor-sheet .editor-account-copy .route-vertical-label { display: block; margin-bottom: 10rpx; color: var(--ui-accent-strong); font-weight: 400; }
 .unified-editor-sheet .route-vertical-pick-filled .route-vertical-label { color: var(--ui-muted); }
 .unified-editor-sheet .editor-account-value { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; }
 .unified-editor-sheet .editor-account-value > text:first-child { min-width: 0; overflow-wrap: anywhere; }
-.unified-editor-sheet .bank-suggestion { margin-top: 24rpx; }
-.unified-editor-sheet .bank-suggestion-copy { display: block; margin-bottom: 16rpx; color: var(--theme-warning, #a76416); font-size: var(--font-caption, 24rpx); }
-.unified-editor-sheet.review-editor-sheet .funds-suggestion { padding: 8rpx 20rpx; font-size: var(--font-caption, 24rpx); }
-.unified-editor-sheet.review-editor-sheet .editor-details-toggle { border-top: 0; }
-.unified-editor-sheet .editor-details-toggle .repayment-mode-chevron { color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
+.unified-editor-sheet .bank-suggestion { margin: 24rpx 0; }
+.unified-editor-sheet .bank-suggestion-summary { flex-wrap: nowrap; gap: 8rpx; }
+.unified-editor-sheet .bank-suggestion-copy { color: var(--theme-warning, #a76416); font-size: 22rpx; }
+.unified-editor-sheet.review-editor-sheet .funds-suggestion { min-width: 0; padding: 4rpx 18rpx; font-size: 22rpx; }
 .unified-editor-sheet .mapping-field input,
 .unified-editor-sheet .mapping-field textarea {
   box-sizing: border-box;
@@ -54,14 +56,8 @@
 .unified-editor-sheet .mapping-field textarea { max-height: 240rpx; }
 .unified-editor-sheet .mapping-value,
 .unified-editor-sheet .route-vertical-pick text:first-child { min-width: 0; overflow-wrap: anywhere; }
-.editor-attention {
-  padding: 16rpx 20rpx;
-  margin-bottom: 16rpx;
-  border-radius: var(--theme-radius-small, 12rpx);
-  background: var(--ui-accent-soft);
-  color: var(--ui-accent-strong);
-  font-size: var(--font-caption, 24rpx);
-}
+.unified-editor-sheet .editor-details .review-text-action { text-align: left; }
+.unified-editor-sheet .editor-cancel { min-height: 64rpx; margin-top: 4rpx; padding: 12rpx 0; background: transparent; line-height: 1.5; }
 .editor-mode-choices { display: flex; flex-wrap: wrap; gap: 12rpx; margin: 20rpx 0; }
 .editor-mode-choices button {
   flex: 1 1 180rpx;
@@ -78,7 +74,7 @@
 }
 .editor-mode-choices button.editor-mode-selected { background: var(--ui-accent-soft); border-color: var(--ui-accent); color: var(--ui-accent-strong); }
 .editor-part { display: flex; flex-wrap: wrap; align-items: center; gap: 12rpx; padding: 16rpx 0; border-bottom: 1rpx solid var(--ui-line); }
-.editor-part > button:first-child { flex: 1 1 200rpx; margin: 0; padding: 16rpx; background: var(--ui-surface-muted); color: var(--ui-ink); font-size: var(--font-body, 28rpx); line-height: 1.5; white-space: normal; text-align: left; }
+.editor-part > button:first-child { flex: 1 1 200rpx; margin: 0; padding: 16rpx 20rpx; border: 1rpx solid var(--ui-line); border-radius: var(--theme-radius-small, 12rpx); background: transparent; color: var(--ui-ink); font-size: var(--font-body, 28rpx); line-height: 1.5; white-space: normal; text-align: left; }
 .editor-part > input { box-sizing: border-box; flex: 0 1 180rpx; width: 180rpx; min-height: 80rpx; padding: 12rpx; border-bottom: 1rpx solid var(--ui-border); font-size: var(--font-body, 28rpx); }
 .unified-editor-sheet .editor-part .review-text-action { width: auto; padding: 12rpx; }
 .unified-editor-sheet .sheet-save-hint { white-space: normal; overflow-wrap: anywhere; }

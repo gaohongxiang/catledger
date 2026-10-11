@@ -29,10 +29,15 @@ function rowsFor(row) {
     localAt: record.localAt || '', title: String(record.counterparty || record.item || '待核对记录').slice(0, 160), item: String(record.item || '').slice(0, 160),
     amountText: (record.currency && record.currency !== 'CNY' ? record.currency + ' ' : '') + formatMinor(record.amountMinor),
     evidenceCount: record.evidenceCount, evidence: [], evidenceLoading: true, evidenceError: '' })
+  const repayment = row.pairKind === 'repayment' && row.repayment
   return { pairKey: row.pairKey, economicNature: row.economicNature, collapsed: false,
-    natureLabel: { expense: '消费', refund: '退款' }[row.economicNature] || '待入账记录',
+    pairKind: repayment ? 'repayment' : '',
+    repayment: repayment ? { ...repayment, repaymentText: formatMinor(repayment.repaymentMinor),
+      feeText: formatMinor(repayment.feeMinor), totalText: formatMinor(repayment.totalMinor) } : null,
+    natureLabel: repayment ? '还款' : { expense: '消费', refund: '退款' }[row.economicNature] || '待入账记录',
     bank: display(row.bank), platform: display(row.platform),
-    reasonText: '账户、金额、币种与收支方向一致，交易分钟和支付渠道符合匹配规则。' }
+    reasonText: repayment ? '同日信用卡到账与平台付款可能是同次还款。金额差暂为待核对差额，请核对目标信用卡及手续费。'
+      : '账户、金额、币种与收支方向一致，交易分钟和支付渠道符合匹配规则。' }
 }
 function progressFor(task) { return task && (task.progress || task) }
 function mark(page, token, phase, start) {
@@ -86,7 +91,7 @@ function render(page) {
     pairingNeedsRecheck: needsRecheck, pairingMissingCount: missing.size && !draft.missingAcknowledged ? missing.size : 0,
     pairingBusy: syncing, pairingSaved: saved, pairingProgressText: progressText,
     pairingCanResume: Boolean(pendingTask && !task.error && !session.status.syncing || saved && !task.summaryReady),
-    pairingCanDecide: ready && sheet.mode === 'ambiguous' && rows.length === 1,
+    pairingCanDecide: ready && !token.confirmingRepayment && sheet.mode === 'ambiguous' && rows.length === 1,
     pairingCanConfirm: ready && selected > 0 }, () => {
       if (page.data.pairingCanConfirm) mark(page, token, 'pairing_ready')
       if (saved && token.submitStartedAt) mark(page, token, 'pairing_submit', token.submitStartedAt)
@@ -163,6 +168,7 @@ module.exports = {
       const response = await pager.load(direction(event))
       if (!valid()) return
       if (typeof response.scopeToken !== 'string' || !Number.isSafeInteger(response.total) || !Array.isArray(response.items)) throw new Error('配对范围尚未核实，请重试')
+      if (this.data.pairingSheet.mode === 'suggested' && response.items.some(row => row.pairKind === 'repayment')) throw new Error('还款差额须逐笔确认，请返回待核对列表处理')
       this._pairingRange = response
       const draft = copy(draftFor(this))
       if (this._pairingRecheck) {
@@ -219,6 +225,7 @@ module.exports = {
     if (this.data.pairingLoading || this.data.pairingBusy || this.data.pairingSaved || this.data.pairingNeedsRecheck) return
     const draft = draftFor(this), row = this.data.pairingRows.find(item => item.pairKey === event.currentTarget.dataset.key)
     if (!draft || !row) return
+    if (row.pairKind === 'repayment') return
     const task = this._draftSession.pairingTask(this.data.pairingSheet.key)
     if (task && task.kind === 'pairing' && !task.error && task.status !== 'saved') return
     const next = copy(draft)
@@ -279,9 +286,30 @@ module.exports = {
   async decidePairing(event) {
     const token = this._pairingToken, decision = event.currentTarget.dataset.decision
     if (!current(this, token) || !this.data.pairingCanDecide || !['same', 'distinct'].includes(decision)) return
-    const row = this.data.pairingRows[0], draft = copy(draftFor(this)), session = this._draftSession
+    const row = this.data.pairingRows[0], session = this._draftSession, pageToken = this._pairingPageToken
+    const valid = () => current(this, token) && !this.data.pairingNeedsRecheck && this._pairingPageToken === pageToken &&
+      this.data.pairingRows[0] && this.data.pairingRows[0].pairKey === row.pairKey
+    let repaymentConfirmed = false
+    if (row.pairKind === 'repayment' && decision === 'same') {
+      if (!row.repayment || row.repayment.version !== 1 || !row.repayment.targetAccountId || !row.repayment.targetAccountName) {
+        this.setData({ pairingError: '还入信用卡尚未核实，请重新读取候选' }); return
+      }
+      token.confirmingRepayment = true
+      render(this)
+      try {
+        const result = await new Promise((resolve, reject) => wx.showModal({ title: '确认还款与手续费',
+          content: '确认是同次还款，' + (String(row.repayment.feeMinor) === '0' ? '无手续费' : '差额 ' + row.repayment.feeText + ' 为手续费') + '，还入「' + row.repayment.targetAccountName + '」。\n还款到账 ' + row.repayment.repaymentText + '，合计扣款 ' + row.repayment.totalText + '。',
+          confirmText: '确认保存', cancelText: '再核对', success: resolve, fail: reject }))
+        if (!valid() || !result.confirm) return
+        repaymentConfirmed = true
+      } catch (error) { if (valid()) this.setData({ pairingError: errorText(error) }); return }
+      finally { token.confirmingRepayment = false; if (current(this, token) && !this.data.pairingNeedsRecheck) render(this) }
+    }
+    if (!valid() || !this.data.pairingCanDecide) return
+    const draft = copy(draftFor(this))
     // 此次点击只授权当前这一对；不能夹带旧版跨页尚未提交的选择。
-    draft.pairs = [{ pairKey: row.pairKey, decision, bankEventId: row.bank.eventId, platformEventId: row.platform.eventId }]
+    draft.pairs = [{ pairKey: row.pairKey, decision, bankEventId: row.bank.eventId, platformEventId: row.platform.eventId,
+      ...(repaymentConfirmed ? { repaymentConfirmed: true } : {}) }]
     try {
       persistChoices(this, draft)
       await this.confirmPairings()
