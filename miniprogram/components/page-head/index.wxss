@@ -22,10 +22,10 @@
 .ph-top {
   display: flex;
   min-width: 0;
-  margin-top: 16rpx;
+  margin-top: var(--layout-space-3);
   align-items: center;
   justify-content: space-between;
-  gap: 20rpx;
+  gap: var(--layout-space-4);
 }
 
 .ph-title {
@@ -42,14 +42,14 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 16rpx;
+  gap: var(--layout-space-3);
 }
 
 .ph-plain .ph-top { margin-top: 0; }
 
 .ph-copy {
   display: block;
-  margin-top: 12rpx;
+  margin-top: var(--layout-space-2);
   color: var(--theme-text-muted, #70685f);
   font-size: var(--font-caption, 24rpx);
   line-height: 1.7;

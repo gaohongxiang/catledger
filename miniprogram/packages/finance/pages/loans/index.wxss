@@ -1,19 +1,19 @@
 .loan-page { padding-bottom: calc(48rpx + env(safe-area-inset-bottom)); }
-.loan-first { margin: 0; padding: 20rpx; min-height: 88rpx; background: transparent; color: var(--theme-accent-strong); font-size: var(--font-caption); }
+.loan-first { margin: 0; padding: var(--layout-space-4); min-height: 88rpx; background: transparent; color: var(--theme-accent-strong); font-size: var(--font-caption); }
 .loan-note { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.6; }
-.loan-entry { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; box-sizing: border-box; width: 100%; min-height: 96rpx; margin-top: 24rpx; padding: 24rpx 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); transition: opacity var(--layout-motion-fast) ease; }
+.loan-entry { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-4); box-sizing: border-box; width: 100%; min-height: 96rpx; margin-top: var(--layout-space-5); padding: 24rpx 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); transition: opacity var(--layout-motion-fast) ease; }
 .loan-entry-hover { opacity: .72; }
 .loan-entry-main { display: flex; flex-direction: column; gap: 4rpx; min-width: 0; }
 .loan-entry-title { font-size: var(--font-body); font-weight: 500; }
 .loan-entry-note { color: var(--theme-text-muted); font-size: var(--font-caption); }
 .loan-list { margin-top: 30rpx; }
-.loan-row { display: block; margin-bottom: 20rpx; padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); }
-.loan-row-top { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-bottom: 8rpx; }
+.loan-row { display: block; margin-bottom: var(--layout-space-4); padding: 28rpx; background: var(--theme-surface); border: 1rpx solid var(--theme-line); border-radius: var(--layout-radius-large); }
+.loan-row-top { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-4); margin-bottom: var(--layout-space-1); }
 .loan-name { font-size: var(--font-section); font-weight: 500; overflow-wrap: anywhere; }
 .loan-state { flex-shrink: 0; color: var(--theme-secondary); font-size: var(--font-caption); }
 .loan-principal { display: block; margin: 16rpx 0 12rpx; font-size: var(--font-display); font-weight: 500; line-height: 1.2; overflow-wrap: anywhere; }
 .loan-row .loan-note { margin-top: 6rpx; }
-.loan-paging { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-top: 28rpx; }
-.loan-page-button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8rpx; min-height: 88rpx; margin: 0; padding: 16rpx 20rpx; background: transparent; color: var(--theme-accent-strong); font-size: var(--font-body); font-weight: 500; }
+.loan-paging { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-4); margin-top: 28rpx; }
+.loan-page-button { display: flex; flex: 1; align-items: center; justify-content: center; gap: var(--layout-space-1); min-height: 88rpx; margin: 0; padding: 16rpx 20rpx; background: transparent; color: var(--theme-accent-strong); font-size: var(--font-body); font-weight: 500; }
 .loan-page-button[disabled] { background: transparent; color: var(--theme-text-muted); }
 .loan-first { display: flex; align-items: center; justify-content: center; width: 100%; }

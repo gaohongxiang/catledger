@@ -3,7 +3,7 @@
 .account-row-active { background: var(--theme-accent-soft, #f0e2ce); }
 
 .ad-head { padding: 12rpx 0 8rpx; }
-.ad-title-line { display: flex; align-items: center; gap: 8rpx; }
+.ad-title-line { display: flex; align-items: center; gap: var(--layout-space-1); }
 .ad-title {
   display: block;
   min-width: 0;
@@ -15,7 +15,7 @@
 }
 .ad-copy {
   display: block;
-  margin-top: 12rpx;
+  margin-top: var(--layout-space-2);
   color: var(--theme-text-muted, #746a60);
   font-size: var(--font-caption, 24rpx);
   line-height: 1.7;
@@ -58,7 +58,7 @@
 
 .ad-card {
   display: flex;
-  margin-top: 24rpx;
+  margin-top: var(--layout-space-5);
   padding: 32rpx 28rpx;
   align-items: flex-start;
   flex-direction: column;
@@ -70,7 +70,7 @@
 .ad-balance-value {
   display: block;
   max-width: 100%;
-  margin-top: 8rpx;
+  margin-top: var(--layout-space-1);
   color: var(--theme-ink, #29231e);
   font-size: var(--font-display, 56rpx);
   font-weight: 500;
@@ -79,14 +79,14 @@
   word-break: break-word;
 }
 
-.ad-card-top { display: flex; align-self: stretch; align-items: baseline; justify-content: space-between; gap: 16rpx; }
+.ad-card-top { display: flex; align-self: stretch; align-items: baseline; justify-content: space-between; gap: var(--layout-space-3); }
 .ad-card-link { display: flex; flex: 0 0 auto; align-items: center; gap: 4rpx; min-height: 56rpx; color: var(--theme-accent-strong, #a34d20); font-size: var(--font-caption, 24rpx); }
 .ad-card-link:active { opacity: .72; }
 
-.ad-billing-line { display: flex; align-self: stretch; align-items: flex-start; gap: 16rpx; padding-top: 20rpx; border-top: 1rpx solid var(--theme-line); }
+.ad-billing-line { display: flex; align-self: stretch; align-items: flex-start; gap: var(--layout-space-3); padding-top: var(--layout-space-4); border-top: 1rpx solid var(--theme-line); }
 .ad-billing-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4rpx; }
 .ad-billing-name { color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); white-space: nowrap; }
-.ad-billing-val-row { display: flex; align-items: center; gap: 8rpx; min-width: 0; }
+.ad-billing-val-row { display: flex; align-items: center; gap: var(--layout-space-1); min-width: 0; }
 .ad-billing-val { color: var(--theme-ink, #29231e); font-size: var(--font-caption, 24rpx); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ad-billing-edit { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 40rpx; height: 40rpx; }
 .ad-billing-edit-icon { width: 24rpx; height: 24rpx; opacity: .55; }
@@ -99,7 +99,7 @@
 .ad-billing-mini-confirm .ad-billing-mini-icon { width: 22rpx; height: 22rpx; opacity: 1; }
 
 .ad-actions {
-  margin-top: 20rpx;
+  margin-top: var(--layout-space-4);
   padding: 0 12rpx;
   background: var(--theme-surface, #fffdf9);
   border-radius: var(--theme-radius-large, 24rpx);
@@ -107,7 +107,7 @@
 }
 
 .correction-callout {
-  margin-top: 20rpx;
+  margin-top: var(--layout-space-4);
   padding: 16rpx 18rpx;
   color: var(--theme-danger, #a95132);
   background: var(--theme-danger-soft, #f6e4d4);
@@ -117,8 +117,8 @@
 .correction-callout text { display: block; font-size: var(--font-caption, 24rpx); line-height: 1.5; }
 .correction-callout text:first-child { font-weight: 500; }
 
-.account-loans { margin-top: 20rpx; padding: 12rpx 24rpx; background: var(--theme-surface, #fffdf9); border-radius: var(--theme-radius-large, 24rpx); box-shadow: var(--theme-shadow-soft); }
-.account-loans-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; }
+.account-loans { margin-top: var(--layout-space-4); padding: 12rpx 24rpx; background: var(--theme-surface, #fffdf9); border-radius: var(--theme-radius-large, 24rpx); box-shadow: var(--theme-shadow-soft); }
+.account-loans-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--layout-space-4); }
 .account-loans-title { font-size: var(--font-section); font-weight: 500; }
 .account-loans-heading .ad-loans-add {
   display: flex;
@@ -146,7 +146,7 @@
 .ad-loans-add-icon image { width: 28rpx; height: 28rpx; }
 .account-loans-heading .ad-loans-add:active { opacity: .6; }
 .account-loans-note { display: block; color: var(--theme-text-muted); font-size: var(--font-caption); line-height: 1.6; }
-.account-loan-row { display: flex; align-items: center; gap: 16rpx; min-height: 104rpx; padding: 16rpx 0; border-bottom: 1rpx solid var(--theme-line); }
+.account-loan-row { display: flex; align-items: center; gap: var(--layout-space-3); min-height: 104rpx; padding: 16rpx 0; border-bottom: 1rpx solid var(--theme-line); }
 .account-loan-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .account-loan-amount { text-align: right; overflow-wrap: anywhere; max-width: 45%; }
 .account-loans-error { padding: 20rpx 0; color: var(--theme-danger); font-size: var(--font-caption); }

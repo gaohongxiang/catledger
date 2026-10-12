@@ -1,6 +1,10 @@
 const DEFAULT_THEME_ID = 'warm-ledger'
 
-const FINANCIAL_SEMANTICS = Object.freeze({
+// 财务语义色：固定值，绝不随主题变化。
+// 与「主题色 / 强调色」(accent) 必须物理隔离——accent 表达品牌，语义色只表达
+// 收/支与方向（涨绿跌红/收绿支红以本项目约定为准）。新增主题时只能引用本对象，
+// 不得另写一份硬编码；小程序 CSS 无法引用 JS，app.wxss 中同步声明 --sem-* 全局变量。
+const SEMANTIC_TOKENS = Object.freeze({
   income: '#477153',
   expense: '#B54738'
 })
@@ -28,8 +32,6 @@ const TOKEN_NAMES = [
   'heroInk',
   'heroValueInk',
   'heroMuted',
-  'income',
-  'expense',
   'danger',
   'dangerSoft',
   'shadowSoft',
@@ -54,7 +56,7 @@ const THEMES = [
       accent: '#BE5B24', accentStrong: '#A34D20', accentSoft: '#F0E2CE', onAccent: '#FFFFFF',
       secondary: '#70685F', secondarySoft: '#F4EEE3', line: '#EAE4DC', border: '#D4CCC3',
       heroStart: '#BE5B24', heroEnd: '#BE5B24', heroInk: '#FFFFFF', heroValueInk: '#FFFFFF', heroMuted: '#FFFFFF',
-      income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A95132', dangerSoft: '#F6E4D4',
+      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense, danger: '#A95132', dangerSoft: '#F6E4D4',
       shadowSoft: '0 8rpx 28rpx rgba(190,91,36,.07)', shadowLifted: '0 8rpx 22rpx rgba(145,87,36,.10)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#FAF8F4', navFront: '#000000'
     }
@@ -70,7 +72,7 @@ const THEMES = [
       accent: '#087D5B', accentStrong: '#087654', accentSoft: '#CFEBDD', onAccent: '#F8FFFC',
       secondary: '#2F7258', secondarySoft: '#E0F1E7', line: '#CBE5D8', border: '#9DCFB9',
       heroStart: '#197858', heroEnd: '#197858', heroInk: '#F8FFFC', heroValueInk: '#EAF6EF', heroMuted: '#E5F3EC',
-      income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A94739', dangerSoft: '#F6E3DE',
+      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense, danger: '#A94739', dangerSoft: '#F6E3DE',
       shadowSoft: '0 8rpx 28rpx rgba(8,125,91,.07)', shadowLifted: '0 8rpx 22rpx rgba(11,143,104,.10)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F2F7F3', navFront: '#000000'
     }
@@ -86,7 +88,7 @@ const THEMES = [
       accent: '#B74F43', accentStrong: '#9F4137', accentSoft: '#ECC7C4', onAccent: '#FFFDFC',
       secondary: '#96584D', secondarySoft: '#F2DADA', line: '#E8CDCC', border: '#D3A29F',
       heroStart: '#AD493E', heroEnd: '#AD493E', heroInk: '#FFFDFC', heroValueInk: '#FBEAE4', heroMuted: '#FAEBE7',
-      income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#A93830', dangerSoft: '#F8E1DC',
+      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense, danger: '#A93830', dangerSoft: '#F8E1DC',
       shadowSoft: '0 8rpx 28rpx rgba(183,79,67,.07)', shadowLifted: '0 8rpx 20rpx rgba(159,65,55,.09)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F9F4F1', navFront: '#000000'
     }
@@ -102,7 +104,7 @@ const THEMES = [
       accent: '#52525B', accentStrong: '#3F3F46', accentSoft: '#DCDEE5', onAccent: '#FFFFFF',
       secondary: '#6B6E7D', secondarySoft: '#E7E8EE', line: '#DADCE3', border: '#BABEC9',
       heroStart: '#626269', heroEnd: '#626269', heroInk: '#FFFFFF', heroValueInk: '#F0EFED', heroMuted: '#F0F0F3',
-      income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#9C4236', dangerSoft: '#F3E1DC',
+      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense, danger: '#9C4236', dangerSoft: '#F3E1DC',
       shadowSoft: '0 8rpx 28rpx rgba(63,63,70,.07)', shadowLifted: '0 7rpx 18rpx rgba(39,39,42,.08)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F4F4F2', navFront: '#000000'
     }
@@ -118,7 +120,7 @@ const THEMES = [
       accent: '#4A5D52', accentStrong: '#394940', accentSoft: '#D7E3D3', onAccent: '#FCFFFC',
       secondary: '#536D4F', secondarySoft: '#E4ECDF', line: '#CFDDC9', border: '#B0C3AA',
       heroStart: '#526B55', heroEnd: '#526B55', heroInk: '#FCFFFC', heroValueInk: '#EEF3EF', heroMuted: '#EDF3E9',
-      income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#934E3D', dangerSoft: '#F1E3DE',
+      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense, danger: '#934E3D', dangerSoft: '#F1E3DE',
       shadowSoft: '0 8rpx 28rpx rgba(74,93,82,.07)', shadowLifted: '0 7rpx 18rpx rgba(50,68,57,.07)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F4F7F3', navFront: '#000000'
     }
@@ -134,7 +136,7 @@ const THEMES = [
       accent: '#956C24', accentStrong: '#76531C', accentSoft: '#EFDFB7', onAccent: '#FFFEF8',
       secondary: '#856522', secondarySoft: '#F3E8CD', line: '#E2D4B4', border: '#C8AF7B',
       heroStart: '#D9B45D', heroEnd: '#D9B45D', heroInk: '#1A1A18', heroValueInk: '#3C311B', heroMuted: '#574425',
-      income: FINANCIAL_SEMANTICS.income, expense: FINANCIAL_SEMANTICS.expense, danger: '#984532', dangerSoft: '#F2DED3',
+      income: SEMANTIC_TOKENS.income, expense: SEMANTIC_TOKENS.expense, danger: '#984532', dangerSoft: '#F2DED3',
       shadowSoft: '0 8rpx 28rpx rgba(149,108,36,.07)', shadowLifted: '0 7rpx 18rpx rgba(26,26,24,.08)',
       radiusXl: '32rpx', radiusLarge: '24rpx', radiusMedium: '18rpx', radiusSmall: '12rpx', navBackground: '#F4F0E4', navFront: '#000000'
     }
@@ -165,6 +167,14 @@ function serializeTokens(tokens, prefix) {
   }).join(';') + ';'
 }
 
+// 语义色全局变量（--sem-*）：与主题无关，任何页面直接可用；与主题 token 物理隔离。
+function serializeSemanticTokens(prefix) {
+  const variablePrefix = prefix || '--sem-'
+  return Object.keys(SEMANTIC_TOKENS).map(function (name) {
+    return variablePrefix + toCssName(name) + ':' + SEMANTIC_TOKENS[name]
+  }).join(';') + ';'
+}
+
 function getThemePresentation(themeId) {
   const theme = getTheme(themeId)
   return {
@@ -172,6 +182,7 @@ function getThemePresentation(themeId) {
     themeName: theme.name,
     themeClass: 'theme-' + theme.id,
     themeStyle: serializeTokens(theme.tokens),
+    semanticStyle: serializeSemanticTokens(),
     themeIconRoot: '/assets/icons/themes/' + theme.id
   }
 }
@@ -190,11 +201,12 @@ function listThemes() {
 
 module.exports = {
   DEFAULT_THEME_ID: DEFAULT_THEME_ID,
-  FINANCIAL_SEMANTICS: FINANCIAL_SEMANTICS,
+  SEMANTIC_TOKENS: SEMANTIC_TOKENS,
   TOKEN_NAMES: TOKEN_NAMES,
   getTheme: getTheme,
   getThemePresentation: getThemePresentation,
   listThemes: listThemes,
+  serializeSemanticTokens: serializeSemanticTokens,
   normalizeThemeId: normalizeThemeId,
   serializeTokens: serializeTokens
 }

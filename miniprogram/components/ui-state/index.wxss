@@ -16,7 +16,7 @@
 
 .us-title {
   display: block;
-  margin-bottom: 8rpx;
+  margin-bottom: var(--layout-space-1);
   color: var(--theme-ink, #2c2823);
   font-size: var(--font-section, 32rpx);
   font-weight: 500;

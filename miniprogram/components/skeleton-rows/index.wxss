@@ -4,7 +4,7 @@
   display: flex;
   min-height: 96rpx;
   align-items: center;
-  gap: 16rpx;
+  gap: var(--layout-space-3);
   box-sizing: border-box;
   padding: 16rpx 20rpx;
 }

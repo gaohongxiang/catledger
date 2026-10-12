@@ -1,4 +1,4 @@
-.detail-page { padding-top: 20rpx; }
+.detail-page { padding-top: var(--layout-space-4); }
 .account-return {
   display: flex;
   min-height: 88rpx;
@@ -22,13 +22,13 @@
 .search-field,
 .detail-item,
 .detail-line { display: flex; }
-.detail-line { gap: 16rpx; flex-wrap: wrap; }
+.detail-line { gap: var(--layout-space-3); flex-wrap: wrap; }
 .month-switcher {
   min-height: 88rpx;
   align-items: center;
   justify-content: center;
-  gap: 8rpx;
-  margin-bottom: 16rpx;
+  gap: var(--layout-space-1);
+  margin-bottom: var(--layout-space-3);
 }
 .month-arrow {
   display: flex;
@@ -80,7 +80,7 @@
   min-width: 0;
   align-items: baseline;
   box-sizing: border-box;
-  gap: 8rpx;
+  gap: var(--layout-space-1);
   padding: 0;
 }
 .summary-divider {
@@ -100,10 +100,10 @@
   overflow-wrap: anywhere;
   line-height: 1.5;
 }
-.summary-income { color: var(--theme-income, #477153); }
-.summary-expense { color: var(--theme-expense, #b54738); }
+.summary-income { color: var(--sem-income, #477153); }
+.summary-expense { color: var(--sem-expense, #b54738); }
 
-.filter-toolbar { align-items: center; gap: 12rpx; margin-top: 16rpx; }
+.filter-toolbar { align-items: center; gap: var(--layout-space-2); margin-top: var(--layout-space-3); }
 .filter-search-toggle {
   display: flex;
   width: 88rpx;
@@ -136,11 +136,11 @@
   justify-content: space-between;
   box-sizing: border-box;
   padding: 0 16rpx;
-  gap: 8rpx;
+  gap: var(--layout-space-1);
 }
 .filter-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-field {
-  margin-top: 12rpx;
+  margin-top: var(--layout-space-2);
   align-items: center;
   color: var(--theme-text-muted);
   background: var(--theme-surface);
@@ -159,12 +159,12 @@
   font-size: var(--font-body, 28rpx);
   color: var(--theme-ink);
   min-width: 0;
-  padding-right: 16rpx;
+  padding-right: var(--layout-space-3);
 }
 .clear-icon-img { width: 24rpx; height: 24rpx; }
 
 .detail-timeline {
-  margin-top: 24rpx;
+  margin-top: var(--layout-space-5);
   border-top: 1rpx solid var(--theme-line);
   border: 1rpx solid var(--theme-line);
   background: var(--theme-surface);
@@ -179,7 +179,7 @@
   line-height: 1.4;
   text-align: left;
 }
-.detail-group:first-child { padding-top: 12rpx; }
+.detail-group:first-child { padding-top: var(--layout-space-2); }
 .detail-item {
   min-height: 124rpx;
   align-items: center;
@@ -191,7 +191,7 @@
   box-sizing: border-box;
 }
 .detail-item:active { opacity: .68; }
-.detail-tile { flex: 0 0 auto; margin-right: 16rpx; }
+.detail-tile { flex: 0 0 auto; margin-right: var(--layout-space-3); }
 .detail-main,
 .detail-copy { min-width: 0; flex: 1; }
 .detail-line { align-items: baseline; justify-content: space-between; }
@@ -227,15 +227,15 @@
   white-space: normal;
   line-height: 1.5;
 }
-.amount-income { color: var(--theme-income, #477153); }
-.amount-expense { color: var(--theme-expense, #b54738); }
+.amount-income { color: var(--sem-income, #477153); }
+.amount-expense { color: var(--sem-expense, #b54738); }
 .amount-neutral { color: var(--theme-text-muted, #746a60); }
 .amount-refund { color: var(--theme-accent-strong, #a34d20); }
-.detail-empty { margin-top: 20rpx; }
+.detail-empty { margin-top: var(--layout-space-4); }
 .detail-status,
 .detail-error {
   min-height: 72rpx;
-  margin-top: 12rpx;
+  margin-top: var(--layout-space-2);
   color: var(--theme-secondary, #64705d);
   font-size: var(--font-caption, 24rpx);
   line-height: 72rpx;
@@ -250,7 +250,7 @@
   flex-direction: row;
   align-items: baseline;
   justify-content: space-between;
-  gap: 20rpx;
+  gap: var(--layout-space-4);
   margin-bottom: 6rpx;
   padding: 0;
 }
@@ -281,7 +281,7 @@
 
 .detail-line-long .detail-amount { margin-left: 0; text-align: left; }
 
-.detail-error { line-height: 1.6; padding-top: 16rpx; padding-bottom: 16rpx; }
+.detail-error { line-height: 1.6; padding-top: var(--layout-space-3); padding-bottom: var(--layout-space-3); }
 
 .filter-select-toggle {
   display: flex;
@@ -311,8 +311,8 @@
   border-top: 1rpx solid var(--theme-line, rgba(41, 35, 30, .09));
   box-shadow: 0 -6rpx 20rpx rgba(74, 50, 30, .06);
 }
-.selection-bar-main { display: flex; align-items: center; gap: 16rpx; }
-.selection-bar-error { display: block; margin-bottom: 8rpx; color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+.selection-bar-main { display: flex; align-items: center; gap: var(--layout-space-3); }
+.selection-bar-error { display: block; margin-bottom: var(--layout-space-1); color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
 .selection-bar-spacer { height: 132rpx; }
 .selection-bar-spacer-tall { height: 220rpx; }
 .selection-bar-count { flex: 0 0 auto; color: var(--theme-ink, #29231e); font-size: var(--font-caption, 24rpx); }
@@ -320,12 +320,12 @@
 .selection-bar-space { flex: 1; }
 .selection-bar-delete { min-height: 72rpx; margin: 0; padding: 12rpx 32rpx; font-size: var(--font-caption, 24rpx); border-radius: 999rpx; }
 .selection-bar-delete-block { flex: 1; }
-.detail-check { display: flex; flex: 0 0 38rpx; width: 38rpx; height: 38rpx; margin-right: 20rpx; align-items: center; justify-content: center; border: 2rpx solid var(--theme-muted, #746a60); border-radius: 50%; }
+.detail-check { display: flex; flex: 0 0 38rpx; width: 38rpx; height: 38rpx; margin-right: var(--layout-space-4); align-items: center; justify-content: center; border: 2rpx solid var(--theme-muted, #746a60); border-radius: 50%; }
 .detail-check-selected { background: var(--theme-accent, #be5b24); border-color: var(--theme-accent, #be5b24); }
 .detail-check-icon { width: 22rpx; height: 22rpx; }
 .detail-check-disabled { opacity: .2; }
 
-.detail-manage-link { min-height: 88rpx; margin: 0; padding: 20rpx; color: var(--theme-accent, #be5b24); background: transparent; font-size: var(--font-caption, 24rpx); line-height: 48rpx; }
+.detail-manage-link { min-height: 88rpx; margin: 0; padding: var(--layout-space-4); color: var(--theme-accent, #be5b24); background: transparent; font-size: var(--font-caption, 24rpx); line-height: 48rpx; }
 
 .import-filter-title { display: block; font-size: var(--font-section, 32rpx); overflow-wrap: anywhere; }
 .import-filter .detail-manage-link { margin-left: 0; }

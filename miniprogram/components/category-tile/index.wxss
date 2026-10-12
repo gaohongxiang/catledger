@@ -2,7 +2,7 @@
   display: inline-flex;
   min-width: 0;
   align-items: center;
-  gap: 16rpx;
+  gap: var(--layout-space-3);
 }
 
 .ct-box {

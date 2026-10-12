@@ -1,4 +1,4 @@
-.ledger-page { padding-top: 32rpx; }
+.ledger-page { padding-top: var(--layout-space-6); }
 .ledger-overview { display: flex; }
 .ledger-count {
   margin-top: -4rpx;

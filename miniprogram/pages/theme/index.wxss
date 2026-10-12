@@ -8,7 +8,7 @@
   display: flex;
   box-sizing: border-box;
   min-height: 256rpx;
-  margin-bottom: 20rpx;
+  margin-bottom: var(--layout-space-4);
   overflow: hidden;
   color: var(--preview-ink);
   background: var(--preview-surface);
@@ -78,16 +78,16 @@
 }
 .theme-card-description {
   max-width: none;
-  margin-top: 12rpx;
+  margin-top: var(--layout-space-2);
   color: var(--preview-text-muted);
   font-size: var(--font-caption, 24rpx);
   line-height: 1.6;
 }
 .theme-swatches {
   display: flex;
-  gap: 8rpx;
+  gap: var(--layout-space-1);
   margin-top: auto;
-  padding-top: 16rpx;
+  padding-top: var(--layout-space-3);
 }
 .theme-swatch { width: 28rpx; height: 8rpx; border-radius: var(--theme-radius-small, 12rpx); }
 .theme-swatch-accent { width: 54rpx; background: var(--preview-accent); }
@@ -97,7 +97,7 @@
   box-sizing: border-box;
   width: 190rpx;
   min-width: 190rpx;
-  margin: 16rpx;
+  margin: var(--layout-space-3);
   padding: 16rpx 14rpx 12rpx;
   color: var(--preview-hero-ink);
   background: var(--preview-hero-start);
@@ -112,7 +112,7 @@
 }
 .preview-balance {
   display: block;
-  margin-top: 12rpx;
+  margin-top: var(--layout-space-2);
   color: var(--preview-hero-value-ink);
   font-size: var(--font-body, 28rpx);
   font-weight: 500;
@@ -122,7 +122,7 @@
 .preview-chart {
   display: flex;
   height: 74rpx;
-  margin-top: 16rpx;
+  margin-top: var(--layout-space-3);
   align-items: flex-end;
   justify-content: space-between;
   border-bottom: 2rpx solid var(--preview-hero-muted);
@@ -135,8 +135,8 @@
 }
 .preview-income,
 .preview-expense { width: 8rpx; min-height: 10rpx; border-radius: var(--theme-radius-small, 12rpx) var(--theme-radius-small, 12rpx) 0 0; }
-.preview-income { background: var(--preview-income); }
-.preview-expense { background: var(--preview-expense); }
+.preview-income { background: var(--sem-income, #477153); }
+.preview-expense { background: var(--sem-expense, #b54738); }
 .preview-bar-height-1 { height: 25%; }
 .preview-bar-height-2 { height: 43%; }
 .preview-bar-height-3 { height: 62%; }

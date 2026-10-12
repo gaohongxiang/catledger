@@ -112,7 +112,7 @@
 .category-drag-lines::before, .category-drag-lines::after { position: absolute; left: 0; content: ''; }
 .category-drag-lines::before { top: -8rpx; }
 .category-drag-lines::after { top: 8rpx; }
-.archived-section { margin-top: 28rpx; padding-top: 8rpx; border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
+.archived-section { margin-top: 28rpx; padding-top: var(--layout-space-1); border-top: 2rpx solid var(--theme-line, rgba(41, 35, 30, .09)); }
 .archived-toggle { min-height: 88rpx; align-items: center; justify-content: space-between; }
 .archived-title { color: var(--theme-ink, #29231e); font-size: var(--font-caption, 24rpx); font-weight: 500; }
 .archived-note { margin-top: 5rpx; color: var(--theme-text-muted, #746a60); font-size: var(--font-caption, 24rpx); }
@@ -132,7 +132,7 @@
 .category-row-archived { min-height: 92rpx; }
 .category-status, .category-error {
   min-height: 72rpx;
-  margin-top: 16rpx;
+  margin-top: var(--layout-space-3);
   color: var(--theme-secondary, #64705d);
   font-size: var(--font-caption, 24rpx);
   line-height: 72rpx;
@@ -199,7 +199,7 @@
   border: 1rpx solid var(--theme-border);
 }
 .sheet-error { margin-top: 14rpx; font-size: var(--font-caption, 24rpx); }
-.sheet-save { width: 100%; margin-top: 24rpx; }
+.sheet-save { width: 100%; margin-top: var(--layout-space-5); }
 
 /* 列表固定行高与拖动命中区一致；完整名称可在详情查看。 */
 .category-row {
@@ -216,7 +216,7 @@
   text-overflow: ellipsis;
 }
 
-.category-name-line { display: flex; align-items: center; gap: 8rpx; min-width: 0; }
+.category-name-line { display: flex; align-items: center; gap: var(--layout-space-1); min-width: 0; }
 .category-expand { display: flex; align-items: center; flex: 0 0 auto; }
 .category-children { margin-left: 56rpx; border-left: 1rpx solid var(--theme-line, #eae4dc); }
 .category-child { padding-left: 72rpx; background: transparent; }
@@ -224,7 +224,7 @@
 .category-edit-icon { width: 30rpx; height: 30rpx; opacity: .62; }
 .category-edit:active .category-edit-icon { opacity: 1; }
 .category-parent-field { display: flex; align-items: center; gap: 14rpx; padding: 24rpx 0; font-size: 28rpx; color: var(--theme-text-muted); }
-.sheet-kind-switch { margin-top: 12rpx; }
+.sheet-kind-switch { margin-top: var(--layout-space-2); }
 .category-create-row {
   display: flex;
   align-items: center;

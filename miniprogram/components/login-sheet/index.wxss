@@ -69,7 +69,7 @@
 .login-cancel {
   min-height: 88rpx;
   line-height: 88rpx;
-  padding-top: 12rpx;
+  padding-top: var(--layout-space-2);
   font-size: var(--font-caption, 24rpx);
 }
 .login-kicker {
@@ -87,16 +87,16 @@
 }
 .login-copy {
   max-width: 620rpx;
-  margin-top: 12rpx;
+  margin-top: var(--layout-space-2);
   color: var(--theme-text-muted, #746a60);
   font-size: var(--font-caption, 24rpx);
   line-height: 1.55;
 }
-.login-profile-row { display: flex; align-items: flex-end; gap: 24rpx; margin-top: 24rpx; }
+.login-profile-row { display: flex; align-items: flex-end; gap: var(--layout-space-5); margin-top: var(--layout-space-5); }
 .login-avatar-column { flex: 0 0 184rpx; display: flex; flex-direction: column; align-items: center; }
 .login-avatar-image { width: 96rpx; height: 96rpx; border-radius: var(--theme-radius-large, 24rpx); }
 .login-nickname-column { flex: 1; min-width: 0; max-width: 380rpx; }
-.login-field-label { display: block; margin-bottom: 8rpx; color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); }
+.login-field-label { display: block; margin-bottom: var(--layout-space-1); color: var(--theme-text-muted); font-size: var(--font-caption, 24rpx); }
 .login-nickname-field {
   display: flex;
   align-items: center;
@@ -129,7 +129,7 @@
 }
 .login-profile-action::after { border: 0; }
 .login-profile-action:active { opacity: .7; }
-.login-error { margin-top: 12rpx; color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); }
+.login-error { margin-top: var(--layout-space-2); color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); }
 .login-primary {
   display: flex;
   min-height: 88rpx;
