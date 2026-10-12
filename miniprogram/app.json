@@ -5,24 +5,31 @@
     "pages/ledger/index",
     "pages/profile/index",
     "pages/transaction-editor/index",
-    "pages/import-workbench/index",
-    "pages/import-history/index",
     "pages/accounts/index",
     "pages/account-detail/index",
     "pages/account-transactions/index",
     "pages/categories/index",
     "pages/statistics/index",
     "pages/theme/index",
-    "pages/loans/index",
-    "pages/loan-link/index",
-    "pages/repayment-entry/index",
-    "pages/installment-sources/index",
-    "pages/loan-detail/index",
-    "pages/loan-form/index",
-    "pages/loan-payment/index",
-    "pages/loan-plan/index",
     "pages/data-privacy/index",
     "pages/about/index"
+  ],
+  "subPackages": [
+    {
+      "root": "packages/finance",
+      "pages": [
+        "pages/import-workbench/index",
+        "pages/import-history/index",
+        "pages/loans/index",
+        "pages/loan-link/index",
+        "pages/repayment-entry/index",
+        "pages/installment-sources/index",
+        "pages/loan-detail/index",
+        "pages/loan-form/index",
+        "pages/loan-payment/index",
+        "pages/loan-plan/index"
+      ]
+    }
   ],
   "lazyCodeLoading": "requiredComponents",
   "style": "v2",

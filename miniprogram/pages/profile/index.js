@@ -223,7 +223,7 @@ Page({
       this.promptWechatLogin(this.openImportHistory.bind(this))
       return
     }
-    wx.navigateTo({ url: '/pages/import-history/index' })
+    wx.navigateTo({ url: '/packages/finance/pages/import-history/index' })
   },
 
   openTheme: function () {

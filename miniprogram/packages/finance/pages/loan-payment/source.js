@@ -1,0 +1,110 @@
+const api = require('../../../../services/catledger-api')
+const session = require('../../../../services/page-read-session')
+const money = require('../../../../utils/money')
+const { addMinor } = require('../../../../utils/minor-arithmetic')
+const model = require('./model')
+function rows(items) { return items.map(t => Object.assign({}, t, { amountText: money.formatMinor(t.amountMinor),
+  occurredText: String(t.occurredLocalAt || '').slice(5, 16).replace('T', ' '),
+  accountText: (t.sourceAccount && t.sourceAccount.name || '') + (t.destinationAccount ? ' → ' + t.destinationAccount.name : ''),
+  typeText: {expense:'支出',income:'收入',transfer:'转账'}[t.type] || t.type })) }
+module.exports = {
+  chooseMode(event) {
+    if (this.data.saving || ![0,1,2].includes(Number(event.detail.value)) || (this.data.sourceLocked && Number(event.detail.value) === 0)) return
+    if (this.data.sourceLocked) { this.setData({ modeIndex: Number(event.detail.value), confirmed: false }); this.review(); return }
+    this._selectedSources = new Map()
+    this.setData({ modeIndex: Number(event.detail.value), source: null, retainedRepayment:null, retainedCharges:[],sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0, sourceTiming: null, confirmed: false })
+    this.review()
+    if(this.data.periodNumber && this.data.modeIndex>0)return this.loadAllocationCharges()
+  },
+  sourceMonth(event) { this.setData({ sourceMonth: event.detail.value, sourceRows: [], nextSourceCursor: null }) },
+  async loadSources(event) {
+    if (this.data.loading || this.data.saving) return
+    const current = session.capture(this)
+    const next = event && event.currentTarget && event.currentTarget.dataset.next
+    const month = this.data.sourceMonth || this.data.date.slice(0,7) || new Date().toISOString().slice(0,7)
+    this.setData({ loading: true, errorMessage: '', sourceMonth: month })
+    try {
+      const result = await api.callApi('transactions.list', { month, pageSize: 40, ...(next && this.data.nextSourceCursor ? { cursor: this.data.nextSourceCursor } : {}) }, { force: true })
+      if (current()) this.setData({ sourceRows: rows(result.transactions.filter(t => ['expense','income','transfer'].includes(t.type))).map(t =>
+        Object.assign({}, t, { selected: Boolean(this._selectedSources && this._selectedSources.has(t.transactionId)) })), nextSourceCursor: result.nextCursor })
+    } catch (error) { if (current()) this.setData({ errorMessage: error.message }) }
+    finally { if (current()) this.setData({ loading: false }) }
+  },
+  selectSources(event) {
+    const selected = new Set(event.detail.value), values = new Map(this._selectedSources || [])
+    for (const row of this.data.sourceRows) { if (selected.has(row.transactionId)) values.set(row.transactionId, row); else values.delete(row.transactionId) }
+    if (values.size > 60) { this.setData({ errorMessage: '一次最多选择 60 笔账目' }); return }
+    this._selectedSources = values
+    this.setData({ sourceSelectedCount: values.size, source: null, retainedRepayment:null, retainedCharges:[],sourceTiming: null, sourceTransactions: [], confirmed: false })
+  },
+  async inspectSource() {
+    if (this.data.saving || this.data.loading) return
+    const ids = [...(this._selectedSources || new Map()).keys()]
+    if (!ids.length) { this.setData({ errorMessage: '请先选择账目' }); return }
+    const current = session.capture(this)
+    this.setData({ loading: true, errorMessage: '' })
+    try {
+      const result = await api.callApi('loans.source', { transactionIds: ids }, { force: true })
+      if (!current()) return
+      this.applySourceResult(result)
+    } catch (error) { if (current()) this.setData({ errorMessage: error.message }) }
+    finally { if (current()) this.setData({ loading: false }) }
+  },
+  applySourceResult(result) {
+    const transactions = result.transactions
+    if (!result.source || !Array.isArray(transactions) || !transactions.length) throw new Error('来源账目不完整，请重新核对')
+    const first = transactions[0], drawdown = this.data.kindIndex === 1
+    const account = drawdown ? first.destinationAccount : first.sourceAccount
+    if (!account || typeof first.occurredLocalAt !== 'string') throw new Error('来源账户或时间不完整，请重新核对')
+    const repayment=result.retainedRepayment
+    const allocations=this.data.allocations.map(a=>repayment&&this.data.allocations.length===1&&a.accountId===repayment.liabilityAccountId?Object.assign({},a,{
+      principalYuan:money.minorToYuan(repayment.principalMinor),interestYuan:money.minorToYuan(repayment.interestMinor),feeYuan:money.minorToYuan(repayment.feeMinor),
+      interestIndex:repayment.interestTreatment==='accrued'?1:0,feeIndex:repayment.feeTreatment==='accrued'?1:0,
+      interestCategoryIndex:this.data.categories.findIndex(c=>c.id===repayment.interestCategoryId),feeCategoryIndex:this.data.categories.findIndex(c=>c.id===repayment.feeCategoryId)
+    }):a)
+    this.setData({ source: result.source, retainedCharges:result.retainedCharges||[],sourceTransactions: rows(transactions), sourceRows: [], nextSourceCursor: null,
+      allocations, retainedRepayment:repayment||null,
+      sourceAccountId: first.type==='transfer'&&first.destinationAccount ? first.destinationAccount.accountId : '',
+      sourceEvidence: result.evidence || { items: [], hasMore: false },
+      sourceTiming: { occurredLocalAt: first.occurredLocalAt.replace(' ','T'), timezoneOffsetMinutes: first.timezoneOffsetMinutes },
+      accountIndex: this.data.accounts.findIndex(a => a.accountId === account.accountId),
+      date: first.occurredLocalAt.slice(0,10), time: first.occurredLocalAt.slice(11,16),
+      totalYuan: money.minorToYuan(transactions.reduce((sum,t) => addMinor(sum,t.amountMinor), '0')), confirmed: false })
+    this.review()
+  },
+  async loadEntrySource(current) {
+    if (!this._sourceTransactionId || this._paymentId || this.data.editingPayment || this.data.replacePayment || this.data.hasPending) return
+    this.setData({ source: null, retainedRepayment:null, retainedCharges:[],sourceTiming: null, sourceTransactions: [], sourceEvidence: { items: [], hasMore: false }, confirmed: false })
+    const result = await api.callApi('loans.source', { transactionIds: [this._sourceTransactionId] }, { force: true })
+    if (!current()) return
+    this.setData({ sourceLocked: true, kindIndex: 0, modeIndex: this.data.modeIndex === 2 ? 2 : 1, sourceSelectedCount: 1 })
+    this.applySourceResult(result)
+  },
+  chooseEntryMode(event) {
+    if (this.data.saving || ![0,1].includes(Number(event.detail.value))) return
+    this.setData({ modeIndex: Number(event.detail.value) + 1, confirmed: false, errorMessage: '' }); this.review()
+  },
+  editPayment() { this.beginEdit(false) },
+  reconcileImport() { this.beginEdit(true) },
+  beginEdit(reconcile) {
+    if (!session.isCurrent(this) || this.data.saving || this.data.loading || this.data.hasPending || !this.data.payment || this.data.payment.status !== 'active') return
+    if (reconcile && (this.data.payment.mode !== 'new' || this.data.payment.kind !== 'repayment')) return
+    const previous = { paymentId: this.data.payment.paymentId, version: this.data.payment.version, loans: this.data.allocations.map(a => ({ loanId:a.loanId,version:a.version })) }
+    this._viewPaymentId = this._paymentId
+    this._paymentId = null
+    this._selectedSources = new Map()
+    const associate=this.data.payment.mode==='associate'
+    this.setData(Object.assign(model.editView(this.data), { managementOpen: false, hasPayment: false, payment: null, editingPayment: reconcile ? null : previous,
+      replacePayment: reconcile ? previous : null, source: null, retainedRepayment:null, retainedCharges:[],sourceTransactions: [], sourceRows: [], sourceSelectedCount: 0,
+      modeIndex: reconcile ? 2 : associate ? 1 : 0, confirmed: false, savedMessage: '', errorMessage: '' }))
+    if (reconcile) this.setData({ sourceTiming: null })
+    this.review()
+    return this.loadAllocationCharges()
+  },
+  cancelEdit() {
+    if (this.data.saving || this.data.hasPending) return
+    this._paymentId = this._viewPaymentId
+    this.setData({ hasPayment: true, editingPayment: null, replacePayment: null, sourceTiming: null })
+    return this.load()
+  }
+}

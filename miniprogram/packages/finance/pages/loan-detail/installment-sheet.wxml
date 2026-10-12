@@ -1,0 +1,52 @@
+<view wx:if="{{periodOpen}}" class="detail-guide-mask" bindtap="closeInstallment" catchtouchmove="stopGuideTap">
+  <scroll-view scroll-y class="installment-sheet" catchtap="stopGuideTap">
+    <view class="installment-sheet-head"><text>{{historyCoverageEditor ? '选择已记支出' : '第 ' + (selectedPeriod.term || '—') + ' 期'}}</text><button wx:if="{{historyCoverageEditor}}" bindtap="closeHistoricalCoverage" disabled="{{saving}}">返回</button><button wx:else bindtap="closeInstallment" disabled="{{saving}}">关闭</button></view>
+    <include src="../../../../templates/historical-charge-coverage.wxml" />
+    <ui-state wx:if="{{periodLoading}}" description="正在读取本期…" />
+    <ui-state wx:if="{{periodError}}" error description="{{periodError}}" />
+    <block wx:if="{{selectedPeriod && !historyCoverageEditor}}">
+      <text class="installment-note">{{selectedPeriod.date}} · {{selectedPeriod.state}}</text>
+      <view class="installment-amounts"><view><text>应还</text><text>{{selectedPeriod.payment}}</text></view><view><text>本金</text><text>{{selectedPeriod.principal}}</text></view><view><text>利息 / 费</text><text class="detail-cost-ink">{{selectedPeriod.interestFee}}</text></view></view>
+      <text wx:if="{{selectedPeriod.difference}}" class="installment-note">本期账单与方案金额不同，请核对费用与原账单。</text>
+
+      <include src="period-fees.wxml" />
+      <button wx:if="{{periodSources.length}}" class="ld-link" bindtap="togglePeriodEvidence">{{periodEvidenceOpen ? '收起账单来源' : '查看账单来源'}}</button>
+      <block wx:if="{{periodEvidenceOpen}}">
+      <view wx:for="{{periodSources}}" wx:key="itemId" class="installment-source">
+        <view><text>{{item.origin === 'import' ? '银行账单' : '手动补记'}} · {{item.label}}</text><text class="money-number">{{item.amount}}</text></view>
+        <text class="installment-note">{{item.active ? item.occurredDate : '来源已撤销或修改，请核对'}}</text>
+        <button wx:if="{{item.updateId}}" class="ld-link" data-id="{{item.itemId}}" bindtap="openInstallmentSource">查看原账单</button>
+        <button wx:if="{{item.origin === 'manual' && item.active && !loan.archived}}" class="ld-link" data-id="{{item.itemId}}" bindtap="removeInstallmentSource" disabled="{{saving}}">撤销这笔补记费用</button>
+      </view>
+      <text wx:if="{{periodMoreSources}}" class="installment-note">显示最近 40 条来源；完整来源保留在已导入账单中。</text>
+      </block>
+      <button wx:for="{{periodLegacy}}" wx:key="paymentId" class="ld-link" data-id="{{item.paymentId}}" bindtap="openPayment" disabled="{{saving || periodLoading}}">{{item.occurredText}} · 查看这笔还款 {{item.totalText}} ›</button>
+      <block wx:if="{{!loan.archived}}">
+        <button wx:if="{{!selectedPeriod.complete && !selectedPeriod.cancelled && historyCoverageByPeriod[selectedPeriod.term]}}" class="ld-link" data-term="{{selectedPeriod.term}}" bindtap="openHistoricalCoverage" disabled="{{saving || periodLoading}}">{{historyCoverageByPeriod[selectedPeriod.term].selected ? '已选原费用，查看或更换' : '利息已经记过？选择原账目'}}</button>
+        <button wx:if="{{!selectedPeriod.complete && !selectedPeriod.cancelled}}" class="primary-button" bindtap="recordPeriodPayment" disabled="{{saving || periodLoading}}">记本期还款</button>
+        <view class="sheet-actions">
+          <view wx:if="{{detail.tracking && !selectedPeriod.complete}}" class="sheet-action" data-status="completed" bindtap="setPeriodStatus" hover-class="sheet-action-hover" aria-role="button"><text>补记本期已还（记利息）</text><text class="sheet-action-chevron">›</text></view>
+          <view class="sheet-action" bindtap="editInstallmentPeriod" hover-class="sheet-action-hover" aria-role="button"><text>修改金额或日期</text><text class="sheet-action-chevron">›</text></view>
+          <view wx:if="{{detail.tracking && selectedPeriod.complete && !selectedPeriod.paymentConfirmed}}" class="sheet-action sheet-action-danger" data-status="unpaid" bindtap="setPeriodStatus" hover-class="sheet-action-hover" aria-role="button"><text>改为未还</text><text class="sheet-action-chevron">›</text></view>
+        </view>
+        <view wx:if="{{periodEditing}}" class="installment-period-edit">
+          <text class="installment-note">修改本期约定金额；原账单和已入账费用保留，减免不会自动删除真实支出。</text>
+          <picker mode="date" value="{{periodDraft.dueDate}}" data-field="dueDate" bindchange="periodDraftInput"><view class="installment-edit-row"><text>应还日期</text><text>{{periodDraft.dueDate}}</text></view></picker>
+          <label class="installment-edit-row"><text>本金（元）</text><input type="digit" value="{{periodDraft.principal}}" data-field="principal" bindinput="periodDraftInput" /></label>
+          <label class="installment-edit-row"><text>利息（元）</text><input type="digit" value="{{periodDraft.interest}}" data-field="interest" bindinput="periodDraftInput" /></label>
+          <label class="installment-edit-row"><text>手续费（元）</text><input type="digit" value="{{periodDraft.fee}}" data-field="fee" bindinput="periodDraftInput" /></label>
+          <view class="installment-edit-row"><text>取消本期</text><switch checked="{{periodDraft.cancelled}}" data-field="cancelled" bindchange="periodDraftInput" /></view>
+          <button class="secondary-button" bindtap="saveInstallmentPeriod" disabled="{{saving}}">保存本期调整</button>
+        </view>
+      </block>
+    </block>
+  </scroll-view>
+</view>
+<view wx:if="{{oneOffOpen}}" class="detail-guide-mask" bindtap="closeOneOffCharges" catchtouchmove="stopGuideTap">
+  <scroll-view scroll-y class="installment-sheet" catchtap="stopGuideTap">
+    <view class="installment-sheet-head"><text>一次性费用</text><button bindtap="closeOneOffCharges">关闭</button></view>
+    <ui-state wx:if="{{periodLoading}}" description="正在读取…" />
+    <include src="upfront-fee.wxml" />
+    <include src="period-fees.wxml" />
+  </scroll-view>
+</view>

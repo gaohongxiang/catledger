@@ -281,7 +281,7 @@ Page({
   },
 
   openImport: function () {
-    wx.navigateTo({ url: '/pages/import-workbench/index' })
+    wx.navigateTo({ url: '/packages/finance/pages/import-workbench/index' })
   },
 
   openStatistics: function () {

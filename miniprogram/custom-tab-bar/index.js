@@ -88,7 +88,7 @@ Component({
     keepEntryOpen: function () {},
 
     chooseBill: function () {
-      this.openEntryPage('/pages/import-workbench/index', '暂时无法打开导入，请重试')
+      this.openEntryPage('/packages/finance/pages/import-workbench/index', '暂时无法打开导入，请重试')
     },
 
     openEditor: function () {

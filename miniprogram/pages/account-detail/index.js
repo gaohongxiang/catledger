@@ -6,7 +6,7 @@ const money = require('../../utils/money')
 const time = require('../../utils/time')
 const themeService = require('../../theme/service')
 const { decorateAccount } = require('../accounts/model')
-const { present: presentLoan } = require('../loans/model')
+const { present: presentLoan } = require('../../services/loan-present')
 const billing = require('../../utils/account-billing')
 
 Page({
@@ -167,18 +167,18 @@ Page({
 
   openAccountLoans: function () {
     const account = this.data.account
-    if (account && account.nature === 'liability' && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/pages/loans/index?accountId=' + encodeURIComponent(account.accountId) })
+    if (account && account.nature === 'liability' && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/packages/finance/pages/loans/index?accountId=' + encodeURIComponent(account.accountId) })
   },
 
   openAccountLoan: function (event) {
     const account = this.data.account
     const loan = this.data.accountLoans.find(item => item.loanId === event.currentTarget.dataset.id)
-    if (account && loan && loan.accountId === account.accountId && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/pages/loan-detail/index?loanId=' + encodeURIComponent(loan.loanId) })
+    if (account && loan && loan.accountId === account.accountId && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/packages/finance/pages/loan-detail/index?loanId=' + encodeURIComponent(loan.loanId) })
   },
 
   createAccountLoan: function () {
     const account = this.data.account
-    if (account && account.nature === 'liability' && !account.archived && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/pages/loan-form/index?accountId=' + encodeURIComponent(account.accountId) })
+    if (account && account.nature === 'liability' && !account.archived && pageReadSession.isCurrent(this)) wx.navigateTo({ url: '/packages/finance/pages/loan-form/index?accountId=' + encodeURIComponent(account.accountId) })
   },
 
   startEditName: function () {

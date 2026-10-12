@@ -100,7 +100,7 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
     const isCurrent = pageReadSession.capture(this)
     this.setData({ openingImport: true })
     wx.navigateTo({
-      url: '/pages/import-workbench/index',
+      url: '/packages/finance/pages/import-workbench/index',
       fail: () => {
         if (isCurrent()) wx.showToast({ title: '暂时无法打开导入，请重试', icon: 'none' })
       },
@@ -363,7 +363,7 @@ Page(Object.assign({}, require('./refund-lookup'), require('./loan-context').cre
       const draft = this.buildRequest()
       if (draft.type !== 'transfer') return
       getApp().globalData.repaymentDraft = draft
-      wx.navigateTo({ url:'/pages/repayment-entry/index' })
+      wx.navigateTo({ url:'/packages/finance/pages/repayment-entry/index' })
     } catch(error) { this.setData({ errorMessage:error.message }) }
   },
 
