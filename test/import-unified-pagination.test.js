@@ -84,10 +84,16 @@ for (const tab of ['review', 'category']) test(tab + '的74笔分属46个问题�
   assert.equal(tab === 'review' ? cards()[28].scopeCount : cards()[28].groupCount, 29)
   assert.equal(cards()[28].groupPos && cards()[28].groupPos !== '', true, '同组行应连成卡片')
   let selected
-  page.openReviewEdit = event => { selected = event.currentTarget.dataset }
+  page.openIssue = event => { selected = { ...event.currentTarget.dataset, entry: 'issue' } }
+  page.openReviewEdit = event => { selected = { ...event.currentTarget.dataset, entry: 'editor' } }
   await page.openPendingRecord(tap({ id: cards()[28].eventId, issueId: cards()[28].issueId }))
-  assert.equal(selected.id, data.events[28].eventId, '分页后仍只编辑实际点击的第29笔')
-  assert.equal(selected.focusIssueId, data.issues[0].issueId, '原问题仅作为关系焦点保留')
+  if (tab === 'review') {
+    assert.deepEqual(selected, { id: data.issues[0].issueId, entry: 'issue' }, '同笔卡片直接核对原问题范围')
+  } else {
+    assert.equal(selected.entry, 'editor')
+    assert.equal(selected.id, data.events[28].eventId, '分类只编辑实际点击的第29笔')
+    assert.equal(selected.focusIssueId, data.issues[0].issueId)
+  }
   await page.changeReviewPage(tap({ direction: 1 }))
   assert.equal(cards().length, 24)
   assert.equal(page.data.reviewPage.start, 51)

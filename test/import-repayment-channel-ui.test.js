@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const model = require('../miniprogram/pages/import-workbench/review-editor-model')
 const { create: createDraftSession } = require('../miniprogram/services/import-draft-session')
-const { setup, pair, tap: pairTap, pageDirection } = require('./helpers/pairing-workbench')
+const { setup, pair, tap: pairTap } = require('./helpers/pairing-workbench')
 const { open, tap, edit, mode, select, draft, view, plain, flush } = require('./helpers/editor-workbench')
 
 const credit = { accountId: 'synthetic-credit', name: '合成信用卡', type: 'credit', currency: 'CNY' }
@@ -20,7 +20,7 @@ const channelRow = (patch = {}) => ({ economicNature: 'repayment', amountMinor: 
   detailFacts: { accounts: [credit, bank] },
   editorFacts: { version: 1, readonly: false, composition: 'single', timezoneOffsetMinutes: -480, expectedRelations: [] }, ...patch })
 
-test('真实 Page 的还款差额不预选，显示目标及差额，只有明确确认才发送费用标记', async t => {
+test('真实 Page 的还款候选先保存同笔判断，双击只发送一次且不捆绑费用确认', async t => {
   const h = setup(0), page = h.page
   t.after(() => page.onUnload())
   h.pairs = [candidate('fee')]
@@ -32,23 +32,15 @@ test('真实 Page 的还款差额不预选，显示目标及差额，只有明�
   assert.equal(row.repayment.targetAccountName, credit.name)
   assert.equal(row.repayment.targetConfirmed, false)
   assert.equal(row.repayment.feeText, '¥3.60')
-  assert.match(row.reasonText, /同日.*平台付款.*待核对差额/)
-  page.selectPairing(pairTap(row.pairKey, 'same'))
-  await page.confirmPairings()
-  assert.equal(resolveCalls(h).length, 0, '旧的普通同笔选择入口不能隐含费用确认')
-  h.wx.showModal = options => { h.modal = options; options.success({ confirm: false }) }
-  await decide(page, 'same')
-  assert.match(h.modal.content, /同次还款.*差额 ¥3\.60 为手续费.*合成信用卡/)
-  assert.match(h.modal.content, /还款到账 ¥1,200\.00.*合计扣款 ¥1,203\.60/)
-  assert.equal(resolveCalls(h).length, 0)
-  assert.equal(page.data.pairingRows[0].selected, false)
-  h.wx.showModal = options => options.success({ confirm: true })
-  await decide(page, 'same')
+  assert.match(row.reasonText, /先判断是否同一笔.*保存后再核对还入账户及差额/)
+  h.wx.showModal = () => assert.fail('同笔判断不先弹出费用确认')
+  await Promise.all([decide(page, 'same'), decide(page, 'same')])
+  assert.equal(resolveCalls(h).length, 1)
   assert.deepEqual(resolveCalls(h)[0].input.selection.pairs,
-    [{ pairKey: row.pairKey, decision: 'same', repaymentConfirmed: true }])
+    [{ pairKey: row.pairKey, decision: 'same' }])
 })
 
-test('普通同笔和不同次还款不附带手续费授权，零差额说明无手续费', async t => {
+test('普通同笔、不同次还款及零差额同笔都只保存关系判断', async t => {
   for (const kind of ['ordinary', 'distinct', 'zero']) {
     const h = setup(0), page = h.page
     t.after(() => page.onUnload())
@@ -57,54 +49,65 @@ test('普通同笔和不同次还款不附带手续费授权，零差额说明�
     await openPair(page)
     await decide(page, kind === 'distinct' ? 'distinct' : 'same')
     const choice = resolveCalls(h)[0].input.selection.pairs[0]
-    if (kind === 'zero') {
-      assert.match(h.modal.content, /无手续费/)
-      assert.equal(choice.repaymentConfirmed, true)
-    } else {
-      assert.equal(h.modal, undefined)
-      assert.equal(Object.hasOwn(choice, 'repaymentConfirmed'), false)
-    }
+    assert.equal(h.modal, undefined)
+    assert.equal(Object.hasOwn(choice, 'repaymentConfirmed'), false)
   }
 })
 
-test('确认弹窗的迟到结果不能跨页面、批次版本或会话写入，也不重复打开确认', async t => {
-  for (const leave of ['close', 'page', 'version', 'session', 'hidden']) {
+test('还款同笔直接保存仍隔离离开页面和更换会话后的迟到结果', async t => {
+  for (const leave of ['session', 'hidden']) {
     const h = setup(0), page = h.page
     t.after(() => page.onUnload())
-    h.pairs = [candidate('first'), candidate('second')]
-    let modal, shown = 0
-    h.wx.showModal = options => { modal = options; shown++ }
+    h.pairs = [candidate('first')]
+    let release
+    h.onPairingCall = action => action === 'reviewIssues.resolvePairings' ? new Promise(resolve => { release = resolve }) : undefined
     await openPair(page)
     const deciding = decide(page, 'same')
+    await h.flush()
     await decide(page, 'same')
-    assert.equal(shown, 1)
+    assert.equal(resolveCalls(h).length, 1)
     assert.equal(page.data.pairingCanDecide, false)
-    if (leave === 'close') page.closePairingReview()
-    if (leave === 'page') await page.changePairingPage(pageDirection(1))
-    if (leave === 'version') await page.applyUpdateView({ ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }, true)
     if (leave === 'session') h.cache.reset()
     if (leave === 'hidden') page.onHide()
     const before = h.patches.length
-    modal.success({ confirm: true })
+    release(undefined)
     await deciding
-    assert.equal(resolveCalls(h).length, 0, leave)
-    if (leave !== 'page') assert.equal(h.patches.length, before, '过期确认不回填：' + leave)
+    assert.equal(resolveCalls(h).length, 1, leave)
+    assert.equal(h.patches.length, before, '迟到结果不回填：' + leave)
   }
 })
 
-test('还款候选不会进入批量默认选择', async t => {
+test('还款候选参加全范围建议选择，性质统计使用服务器总数且批量只保存关系', async t => {
   const h = setup(0), page = h.page
   t.after(() => page.onUnload())
-  h.pairs = [candidate('unexpected-batch')]
+  h.pairs = Array.from({ length: 37 }, (_, index) => candidate(index)).concat([pair('expense-a'), pair('expense-b'), pair('refund', { economicNature: 'refund' })])
+  h.onPairingCall = (action, input) => {
+    if (action !== 'reviewIssues.pairings') return
+    const start = Number(input.cursor || 0), size = input.pageSize
+    return { protocolVersion: 2, viewVersion: h.summary.viewVersion, update: h.summary.update,
+      items: plain(h.pairs.slice(start, start + size)), total: h.pairs.length, suggestedTotal: h.pairs.length,
+      nextCursor: start + size < h.pairs.length ? String(start + size) : null,
+      scopeToken: 'synthetic-repayment-scope-' + h.summary.viewVersion, scopeSourceCount: h.pairs.length * 2,
+      scopeNatureCounts: Object.fromEntries(['expense','refund','repayment'].map(nature => [nature, h.pairs.filter(row => row.economicNature === nature).length])) }
+  }
   await page.openPairingReview()
-  assert.equal(page.data.pairingCanConfirm, false)
-  assert.equal(page.data.pairingSelectedCount, 0)
-  assert.match(page.data.pairingError, /逐笔确认/)
+  assert.equal(page.data.pairingRows.length, 10)
+  assert.equal(page.data.pairingCanConfirm, true)
+  assert.equal(page.data.pairingSelectedCount, 40)
+  assert.match(page.data.pairingScopeText, /消费 2 组、退款 1 组、还款 37 组/)
+  page.selectPairing(pairTap('pair-0'))
+  assert.equal(page.data.pairingSelectedCount, 39)
+  assert.equal(page.data.pairingRows[0].selected, false)
+  page.selectPairing(pairTap('pair-0'))
+  assert.equal(page.data.pairingSelectedCount, 40)
+  h.wx.showModal = () => assert.fail('批量保存同笔不要求先确认费用')
   await page.confirmPairings()
-  assert.equal(resolveCalls(h).length, 0)
+  assert.equal(resolveCalls(h).length, 1)
+  assert.deepEqual(resolveCalls(h)[0].input.selection, { mode: 'all_except', excludedPairKeys: [] })
+  assert.equal(h.pairs.length, 0)
 })
 
-test('费用确认的草稿白名单和跨进程冻结请求都保留明确授权，重试不追加来源原文', async () => {
+test('旧已明确确认费用的草稿及跨进程冻结请求仍原样重试，不追加来源原文', async () => {
   const storage = new Map(), calls = []
   let fail = true
   const summary = { protocolVersion: 2, viewVersion: 'v1', update: { updateId: 'synthetic-update', version: 1, status: 'review' }, workbench: {} }
@@ -159,8 +162,102 @@ test('还款渠道模型固定金额、时间、归属和目标，两种方向�
     assert.equal(result.payload.decisions, undefined)
     assert.equal(result.routeFields.find(field => field.label === '还入账户').readonly, true)
     assert.equal(result.routeFields.find(field => field.label === '付款账户').readonly, false)
-    assert.deepEqual(result.repaymentChannel, { repaymentText: '1200.00', feeText: '3.60', totalText: '1203.60' })
+    assert.equal(model.change(row, original, 'repaymentChannelConfirmed', false), original, '旧已确认记录不能撤销费用确认')
+    assert.deepEqual(result.repaymentChannel, { repaymentText: '1200.00', feeText: '3.60', totalText: '1203.60', confirmed: true })
   }
+})
+
+test('待确认渠道需明确勾选才形成费用决定，零差额说明无手续费，取消后仍可保存其它字段', () => {
+  for (const feeMinor of ['360', '0']) {
+    const row = channelRow({ ledgerAccountId: bank.accountId,
+      repaymentChannel: { ...channel, confirmed: false, feeMinor, totalMinor: String(BigInt(channel.repaymentMinor) + BigInt(feeMinor)) } })
+    const original = model.create(row)
+    assert.equal(original.repaymentChannelConfirmed, false)
+    const before = model.derive(row, original, { accounts: [credit, bank] })
+    assert.equal(before.canSave, false)
+    assert.equal(before.complete, false)
+    assert.ok(before.missing.includes('还入账户及手续费确认'))
+    assert.equal(before.repaymentChannel.confirmed, false)
+    assert.equal(before.repaymentChannel.confirmationText,
+      '确认还入「合成信用卡」，' + (feeMinor === '0' ? '无手续费' : '差额 ¥3.60 为手续费'))
+    assert.equal(model.change(row, original, 'repaymentChannelConfirmed', 'true'), original)
+    assert.equal(model.change(row, original, 'amountInput', '100.00'), original)
+    assert.equal(model.change(row, original, 'counterpartyLedgerAccountId', 'synthetic-other-credit'), original)
+    let changed = model.change(row, original, 'note', '合成待确认备注')
+    const unchecked = model.derive(row, changed, { accounts: [credit, bank] })
+    assert.equal(unchecked.canSave, true)
+    assert.equal(unchecked.complete, false)
+    assert.equal(unchecked.payload.decisions, undefined)
+    changed = model.change(row, changed, 'repaymentChannelConfirmed', true)
+    const checked = model.derive(row, changed, { accounts: [credit, bank] })
+    assert.equal(checked.canSave, true)
+    assert.equal(checked.complete, true)
+    assert.deepEqual(checked.payload.fields, { note: '合成待确认备注' })
+    assert.deepEqual(checked.payload.decisions, { repaymentChannel: { confirmed: true } })
+    assert.equal(model.restore(row, checked.payload).repaymentChannelConfirmed, true)
+    changed = model.change(row, changed, 'repaymentChannelConfirmed', false)
+    const cancelled = model.derive(row, changed, { accounts: [credit, bank] })
+    assert.equal(cancelled.canSave, true)
+    assert.equal(cancelled.complete, false)
+    assert.equal(cancelled.payload.decisions, undefined)
+  }
+})
+
+test('真实 Page 可先保存付款端和备注，勾选确认后才随单笔请求保存费用决定', async t => {
+  for (const confirmed of [false, true]) {
+    const { h, page } = await open(t, channelRow({ repaymentChannel: { ...channel, confirmed: false } }), { accounts: [credit, bank] })
+    assert.equal(draft(page).repaymentChannelConfirmed, false)
+    assert.equal(page.data.reviewEditSheet.editor.repaymentChannel.confirmed, false)
+    assert.equal(select(page, 'reviewAccount', bank), true)
+    edit(page, 'note', '合成还款备注')
+    mode(page, 'repaymentChannelConfirmed', true)
+    mode(page, 'repaymentChannelConfirmed', false)
+    assert.equal(draft(page).repaymentChannelConfirmed, false)
+    assert.equal(view(page).payload.decisions, undefined)
+    if (confirmed) mode(page, 'repaymentChannelConfirmed', true)
+    assert.equal(view(page).canSave, true)
+    assert.equal(view(page).complete, confirmed)
+    h.wx.showModal = () => assert.fail('单笔勾选通过保存提交，不另开确认弹窗')
+    h.intercept = action => {
+      if (action !== 'financeUpdates.setReview') return
+      h.summary = { ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }
+      return { protocolVersion: 2, kind: 'operation-receipt', update: h.summary.update, event: { status: confirmed ? 'ready' : 'needs_action' } }
+    }
+    await page.saveReviewEdit()
+    const writes = h.calls.filter(call => call.action === 'financeUpdates.setReview')
+    assert.equal(writes.length, 1)
+    assert.deepEqual(writes[0].input.fields, { ledgerAccountId: bank.accountId, note: '合成还款备注' })
+    assert.deepEqual(writes[0].input.decisions, confirmed ? { repaymentChannel: { confirmed: true } } : undefined)
+    assert.equal(page.data.reviewEditSheet, null)
+  }
+})
+
+test('单笔费用确认结果未知时保留勾选并恢复冻结请求，重开和重试不能改写决定', async t => {
+  const { h, page } = await open(t, channelRow({ ledgerAccountId: bank.accountId, repaymentChannel: { ...channel, confirmed: false } }), { accounts: [credit, bank] })
+  mode(page, 'repaymentChannelConfirmed', true)
+  let offline = true
+  h.intercept = action => {
+    if (action === 'imports.commandResult') throw Object.assign(Error('合成请求尚未完成'), { code: 'OPERATION_UNCONFIRMED' })
+    if (action !== 'financeUpdates.setReview') return
+    if (offline) throw Error('合成响应中断')
+    h.summary = { ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }
+    return { protocolVersion: 2, kind: 'operation-receipt', update: h.summary.update, event: { status: 'ready' } }
+  }
+  await page.saveReviewEdit()
+  const first = h.calls.find(call => call.action === 'financeUpdates.setReview').input
+  assert.deepEqual(first.decisions, { repaymentChannel: { confirmed: true } })
+  assert.equal(page.data.reviewEditSheet.pending, true)
+  mode(page, 'repaymentChannelConfirmed', false)
+  assert.equal(draft(page).repaymentChannelConfirmed, true)
+  page.closeReviewEdit()
+  await page.openReviewEdit(tap({ id: 'synthetic-event-0' }))
+  assert.equal(page.data.reviewEditSheet.pending, true)
+  assert.equal(draft(page).repaymentChannelConfirmed, true)
+  mode(page, 'repaymentChannelConfirmed', false)
+  assert.equal(draft(page).repaymentChannelConfirmed, true)
+  offline = false
+  await page.saveReviewEdit()
+  assert.deepEqual(h.calls.filter(call => call.action === 'financeUpdates.setReview').map(call => call.input), [first, first])
 })
 
 test('真实 Page 隐藏固定编辑入口，旧控件事件不改渠道事实，付款端与备注单笔保存', async t => {
@@ -204,7 +301,7 @@ test('渠道详情显示三项金额；无需字段修改即可从编辑器返�
   assert.equal(h.calls.some(call => call.action === 'financeUpdates.reviseDuplicate'), false)
   page.closeDuplicateEdit()
   await page.openReviewDetails(tap({ id: 'synthetic-event-0' }))
-  assert.deepEqual(plain(page.data.reviewDetailSheet.editor.repaymentChannel), { repaymentText: '1200.00', feeText: '3.60', totalText: '1203.60' })
+  assert.deepEqual(plain(page.data.reviewDetailSheet.editor.repaymentChannel), { repaymentText: '1200.00', feeText: '3.60', totalText: '1203.60', confirmed: true })
   assert.equal(page.data.reviewDetailSheet.canEdit, true)
   assert.equal(h.calls.some(call => call.action === 'financeUpdates.setReview'), false)
   await flush()
@@ -226,17 +323,12 @@ async function duplicate(t) {
   return { h, page }
 }
 
-test('已选不同笔改回同次还款仍需确认手续费和目标，响应未知重开保持原请求', async t => {
+test('已选不同笔改回同次还款只保存关系，响应未知重开保持原请求', async t => {
   const { h, page } = await duplicate(t)
   assert.equal(page.data.duplicateEditSheet.repayment.feeText, '¥3.60')
   assert.equal(page.data.duplicateEditSheet.repayment.targetAccountName, credit.name)
-  h.wx.showModal = options => { h.modal = options; options.success({ confirm: false }) }
-  await page.saveDuplicateEdit()
-  assert.match(h.modal.content, /差额 ¥3\.60 为手续费.*合成信用卡/)
-  assert.equal(h.calls.some(call => call.action === 'financeUpdates.reviseDuplicate'), false)
-  h.wx.showModal = options => options.success({ confirm: true })
-  let offline = true, confirmations = 0
-  h.wx.showModal = options => { confirmations++; options.success({ confirm: true }) }
+  let offline = true
+  h.wx.showModal = () => assert.fail('复判同笔不先要求费用确认')
   h.command = action => {
     if (action === 'imports.commandResult') throw Object.assign(Error('合成请求尚未完成'), { code: 'OPERATION_UNCONFIRMED' })
     if (action !== 'financeUpdates.reviseDuplicate') return
@@ -246,30 +338,30 @@ test('已选不同笔改回同次还款仍需确认手续费和目标，响应�
   }
   await page.saveDuplicateEdit()
   const first = h.calls.find(call => call.action === 'financeUpdates.reviseDuplicate').input
-  assert.equal(first.repaymentConfirmed, true)
+  assert.equal(Object.hasOwn(first, 'repaymentConfirmed'), false)
   assert.equal(first.pairKey, 'pair-reconsider')
   assert.equal(page.data.duplicateEditSheet.pending, true)
   page.closeDuplicateEdit()
   await page.openDuplicateEdit(tap({ id: 'synthetic-event-0' }))
   offline = false
   await page.saveDuplicateEdit()
-  assert.equal(confirmations, 1, '结果未知只恢复已授权请求，不发起新授权')
   assert.deepEqual(h.calls.filter(call => call.action === 'financeUpdates.reviseDuplicate').map(call => call.input), [first, first])
 })
 
-test('复判的费用确认在关闭、换会话或版本失效后不提交，也不重复确认', async t => {
-  for (const leave of ['close', 'session', 'version']) {
+test('复判还款写入中双击不重复提交，换会话或隐藏后的结果不回填', async t => {
+  for (const leave of ['session', 'hidden']) {
     const { h, page } = await duplicate(t)
-    let confirmation, count = 0
-    h.wx.showModal = options => { confirmation = options; count++ }
+    let release
+    h.command = action => action === 'financeUpdates.reviseDuplicate' ? new Promise(resolve => { release = () => resolve({ protocolVersion: 2, kind: 'operation-receipt', update: h.summary.update }) }) : undefined
     const saving = page.saveDuplicateEdit()
+    await flush()
     await page.saveDuplicateEdit()
-    assert.equal(count, 1)
-    if (leave === 'close') page.closeDuplicateEdit()
+    assert.equal(h.calls.filter(call => call.action === 'financeUpdates.reviseDuplicate').length, 1)
     if (leave === 'session') h.cache.reset()
-    if (leave === 'version') await page.applyUpdateView({ ...h.summary, viewVersion: 'v2', update: { ...h.summary.update, version: 2 } }, true)
-    confirmation.success({ confirm: true })
+    if (leave === 'hidden') page.onHide()
+    const before = h.patches.length
+    release()
     await saving
-    assert.equal(h.calls.some(call => call.action === 'financeUpdates.reviseDuplicate'), false, leave)
+    assert.equal(h.patches.length, before, leave)
   }
 })

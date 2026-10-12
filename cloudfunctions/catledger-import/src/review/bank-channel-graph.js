@@ -15,7 +15,7 @@ function pairingGraph(events, members) {
   for (const pair of all) for (const event of [pair.bank, pair.platform]) degrees.set(event.eventId, (degrees.get(event.eventId) || 0) + 1)
   const pairs = all.map(pair => ({ ...pair,
     issueIds: [...(issues.get(pair.bank.eventId) || [])].filter(id => issues.get(pair.platform.eventId)?.has(id)),
-    unique: pair.pairKind !== 'repayment' && degrees.get(pair.bank.eventId) === 1 && degrees.get(pair.platform.eventId) === 1 }))
+    unique: degrees.get(pair.bank.eventId) === 1 && degrees.get(pair.platform.eventId) === 1 }))
     .filter(pair => pair.issueIds.length)
   return { all, pairs, suggestedCount: pairs.filter(pair => pair.unique).length }
 }

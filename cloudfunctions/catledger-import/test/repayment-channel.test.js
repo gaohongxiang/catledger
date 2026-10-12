@@ -34,7 +34,7 @@ function fixture({ bankAmount = '50000', total = '50050' } = {}) {
   return { bank, platform, rows }
 }
 
-test('银行只有日期仍可按同日本人信用卡提示还款差额，但永远不能进入默认建议', () => {
+test('银行只有日期仍可按同日本人信用卡形成唯一同笔建议，差额确认留到合并后', () => {
   const { bank, platform } = fixture()
   assert.deepEqual(repayment.pairFacts(bank, platform), { version: 1, totalMinor: '50050', repaymentMinor: '50000',
     feeMinor: '50', targetAccountId: 'credit', targetAccountName: '合成银行信用卡1234', targetConfirmed: false })
@@ -42,7 +42,7 @@ test('银行只有日期仍可按同日本人信用卡提示还款差额，但�
   assert.equal(edges.length, 1)
   const graph = pairingGraph([bank, platform], [bank, platform].map(event => ({ eventId: event.eventId, issueId: 'same-issue' })))
   assert.equal(graph.pairs.length, 1)
-  assert.equal(graph.suggestedCount, 0)
+  assert.equal(graph.suggestedCount, 1)
   bank.fieldSources.bankChannelDistinctPairs = [edges[0].pairKey]
   assert.equal(repayment.edges([bank, platform]).length, 0, '已明确不同次时不能再次冒出同一候选')
 })
@@ -106,6 +106,47 @@ test('确认后保持本金、费用和总扣款守恒；零费用不生成空�
     [['transfer', '50000', 'credit'], ['expense', '50', null]])
   const zero = repayment.drafts(confirmed({ total: '50000' }).event)
   assert.equal(zero.length, 1); assert.equal(zero[0].type, 'transfer')
+})
+
+test('只确认同笔的来源关系抵抗重整与语义升级，尚未确认的费用不能入账或汇总', () => {
+  const { event, rows } = confirmed()
+  event.fieldSources.repaymentChannelResolution.repaymentConfirmed = false
+  assert.equal(repayment.relationValid(event), true)
+  assert.equal(repayment.evidenceValid(event, rows), true)
+  assert.equal(repayment.valid(event), false)
+  assert.equal(repayment.postingEvidenceValid(event, rows), false)
+  assert.throws(() => repayment.drafts(event), { publicCode: 'UNRESOLVED_IMPORT' })
+  assert.deepEqual(repayment.semanticRows(event, rows).map(row => row.rowId), ['alipay-row'])
+  assert.equal(require('../src/evidence-plan-upgrade').prepareEvidenceSplit({ current: event, rows }), null)
+  const upgraded = require('../src/semantic-plan-upgrade').refreshEventSemantic(event, rows)
+  assert.deepEqual(upgraded.fieldSources.repaymentChannelResolution, event.fieldSources.repaymentChannelResolution)
+  assert.deepEqual(upgraded.fieldSources.fundsProjection, event.fieldSources.fundsProjection)
+  const { evaluatePostability, classifyReviewIssue } = require('../src/organizer-model')
+  const assessed = evaluatePostability(upgraded)
+  assert.equal(assessed.status, 'needs_action')
+  assert.ok(assessed.reasonCodes.includes('repayment_channel_details_required'))
+  assert.equal(assessed.reasonCodes.includes('core_fields_conflict'), false)
+  assert.deepEqual(classifyReviewIssue({ ...upgraded, ...assessed }), {
+    issueType: 'transfer_accounts', primaryReason: 'repayment_channel_details_required'
+  })
+  const published = repayment.publicResolution(event)
+  assert.equal(published.confirmed, false)
+  const { repaymentExpense } = require('../src/workbench-summary')
+  assert.equal(repaymentExpense(event), 0n)
+  assert.equal(repaymentExpense({ repaymentChannel: published }), 0n)
+  const complete = confirmed().event
+  assert.equal(repaymentExpense(complete), 50n)
+  assert.equal(repaymentExpense({ repaymentChannel: repayment.publicResolution(complete) }), 50n)
+})
+
+test('明细确认只能用布尔状态，缺失或伪造状态不能保留同笔金额例外', () => {
+  for (const value of [undefined, null, 'false', 'true', 1]) {
+    const { event, rows } = confirmed()
+    event.fieldSources.repaymentChannelResolution.repaymentConfirmed = value
+    assert.equal(repayment.relationValid(event), false)
+    assert.equal(repayment.evidenceValid(event, rows), false)
+    assert.equal(repayment.valid(event), false)
+  }
 })
 
 test('只有来源和固定事实均未变更的确认，才允许忽略银行净额与平台总额的差异', () => {

@@ -4,6 +4,7 @@ const { hasGroupConflict, identityGroups } = require('./evidence-matching')
 
 // 只拆危险活动组。原人工字段归于原主证据；不复制到独立的新事件。
 function prepareEvidenceSplit({ current, rows, links, paymentMappings, accounts, idFactory }) {
+  // 同笔已确认、费用待补全的关系也受保护，不能在重整时拆回互相冲突的金额。
   if (require('./repayment-channel').evidenceValid(current, rows)) return null
   if (!['ready', 'needs_action'].includes(current.status) || identityGroups(rows).length < 2 || !hasGroupConflict(rows)) return null
   const plan = buildOrganizePlan({ updateId: current.updateId, rows, paymentMappings, accounts, idFactory })

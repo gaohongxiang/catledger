@@ -5,11 +5,55 @@ const { isolatedMysql } = require('../scripts/isolated-mysql')
 const grants = require('../scripts/runtime-role-grants')
 const { setup } = require('./helpers/bank-pairing')
 const { summary: readSummary } = require('../cloudfunctions/catledger-import/src/finance-update-read')
+const { graph } = require('../cloudfunctions/catledger-import/src/review/bank-channel-pairings')
+const { hashWechatSubject } = require('../cloudfunctions/catledger-import/src/handler')
+const { encodeCursor } = require('../cloudfunctions/catledger-import/src/view-cursor')
 
 test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', { skip: !process.env.CATLEDGER_TEST_DB_HOST, timeout: 240000 }, async t => {
   const lab = await isolatedMysql()
   try {
     const apiPool = await lab.role('api', grants.api), importPool = await lab.role('import', grants.importer)
+    async function allPairings(c, options = {}) {
+      const items = []; let cursor = null, scopeToken
+      do {
+        const page = await c.pairings({ pageSize: 4, ...options, cursor })
+        if (scopeToken) assert.equal(page.scopeToken, scopeToken, '展示翻页不能改变确认范围')
+        scopeToken = page.scopeToken; items.push(...page.items); cursor = page.nextCursor
+        assert.ok(items.length <= page.total, '不能因改用日期排序而重复翻页')
+      } while (cursor)
+      assert.equal(new Set(items.map(pair => pair.pairKey)).size, items.length)
+      return items
+    }
+    await t.test('建议配对全批按日期从早到晚，跨月跨年翻页无遗漏且旧编号游标失效', async () => {
+      const orderedTimes = Array.from({ length: 25 }, (_, i) => new Date(Date.UTC(2025, 11, 20 + i, 12, i))
+        .toISOString().slice(0, 19).replace('T', ' '))
+      const times = orderedTimes.filter((_, i) => i % 2).reverse().concat(orderedTimes.filter((_, i) => !(i % 2)))
+      const subject = 'synthetic-pair-order-' + randomUUID()
+      const c = await setup({ apiPool, importPool, count: times.length, times, subject })
+      const before = await c.summary(), first = await c.pairings({ pageSize: 4 })
+      const pairs = await allPairings(c)
+      assert.deepEqual(pairs.map(pair => pair.bank.localAt.slice(0, 19)), orderedTimes)
+      assert.deepEqual(pairs.map(pair => pair.platform.localAt.slice(0, 19)), orderedTimes)
+      assert.deepEqual((await c.pairings({ pageSize: 4 })).items, first.items, '返回首页仍保持相同日期顺序')
+      const token = JSON.parse(Buffer.from(first.nextCursor.split('.')[0], 'base64url').toString())
+      const { order, ...oldScope } = token.scope
+      assert.ok(order)
+      const oldCursor = encodeCursor(hashWechatSubject(subject), oldScope, token.last)
+      await assert.rejects(c.pairings({ cursor: oldCursor }), { publicCode: 'INVALID_CURSOR' })
+      const missingCursor = encodeCursor(hashWechatSubject(subject), token.scope, 'f'.repeat(64))
+      await assert.rejects(c.pairings({ cursor: missingCursor }), { publicCode: 'INVALID_CURSOR' })
+      assert.equal((await c.summary()).viewVersion, before.viewVersion, '排序和翻页不写入批次')
+      assert.equal(before.workbench.pairingSuggestedCount, pairs.length)
+    })
+    await t.test('一组按较早的有效日期排列，一端缺日期沿用另一端，两端缺失置后', async () => {
+      const c = await setup({ apiPool, importPool, count: 5 })
+      const pairs = await allPairings(c)
+      await lab.owner.execute('UPDATE catledger_economic_events SET event_local_at=?,version=version+1 WHERE uid=? AND event_id=?',
+        ['2026-08-31 23:59:00', c.uid, pairs[3].bank.eventId])
+      await lab.owner.execute('UPDATE catledger_economic_events SET event_local_at=NULL,version=version+1 WHERE uid=? AND event_id IN (?,?,?)',
+        [c.uid, pairs[0].bank.eventId, pairs[1].bank.eventId, pairs[1].platform.eventId])
+      assert.deepEqual((await allPairings(c, { pageSize: 2 })).map(pair => pair.pairKey), [3, 0, 2, 4, 1].map(i => pairs[i].pairKey))
+    })
     await t.test('摘要复用既有扫描，完整计数不新增SQL或影响viewVersion', async () => {
       const c = await setup({ apiPool, importPool, count: 3 })
       const preview = await c.pairings(), statements = []
@@ -71,6 +115,8 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
       const first = await c.pairings({ mode: 'ambiguous', pageSize: 1 })
       assert.equal(first.total, 4); assert.equal(first.suggestedTotal, 0)
       const all = await c.pairings({ mode: 'ambiguous' }), a = all.items[0]
+      const tied = await allPairings(c, { mode: 'ambiguous', pageSize: 1 })
+      assert.deepEqual(tied.map(pair => pair.pairKey), all.items.map(pair => pair.pairKey).sort(), '同时间候选以稳定编号排序且跨页不漏组')
       const b = all.items.find(pair => pair.bank.eventId !== a.bank.eventId && pair.platform.eventId !== a.platform.eventId)
       const overlap = all.items.find(pair => pair.pairKey !== a.pairKey && pair.bank.eventId === a.bank.eventId)
       await assert.rejects(c.resolve({ scopeToken: first.scopeToken, selection: { mode: 'include', pairs: [a, overlap].map(pair => ({ pairKey: pair.pairKey, decision: 'same' })) } }), { publicCode: 'VALIDATION_ERROR' })
@@ -85,7 +131,9 @@ test('配对真实解析/handler/MySQL：范围、原子保存及整批入账', 
       assert.equal(first.pairing.savedCount, 100); assert.equal(first.pairing.remainingCount, 147)
       const remainder = await c.pairings()
       assert.equal(remainder.total, 150)
-      const rejected = remainder.items.filter(pair => !excludedPairKeys.includes(pair.pairKey)).at(-1).bank.eventId
+      const pending = (await graph(lab.owner, c.uid, c.updateId)).pairs
+        .filter(pair => pair.unique && !excludedPairKeys.includes(pair.pairKey))
+      const rejected = pending[0].bank.eventId
       await lab.owner.query(`CREATE TRIGGER synthetic_pair_rollback BEFORE DELETE ON catledger_economic_events FOR EACH ROW
         BEGIN IF OLD.event_id='${rejected}' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic pairing rollback'; END IF; END`)
       const continuation = { requestId: randomUUID(), continuationToken: first.pairing.continuationToken }

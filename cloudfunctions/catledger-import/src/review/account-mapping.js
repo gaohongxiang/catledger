@@ -101,7 +101,7 @@ async function stageProjectedAccountMappings(connection, uid, updateId, events, 
     const sides = [
       { reference: projection.from, accountId: event.ledgerAccountId },
       { reference: projection.to, accountId: event.counterpartyLedgerAccountId },
-      ...(resolution ? [{ reference: resolution.platformTargetReference, accountId: resolution.targetAccountId }] : [])
+      ...(resolution && resolution.repaymentConfirmed === true ? [{ reference: resolution.platformTargetReference, accountId: resolution.targetAccountId }] : [])
     ]
     const staged = new Set()
     for (const side of sides) {

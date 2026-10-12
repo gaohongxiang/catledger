@@ -39,9 +39,13 @@ function prepare(event, data) {
     'composition', 'decisions', 'sourceCorrection', 'expectedRelations', 'acknowledgedChanges'])
   if (data.editorVersion !== 1 || capability(event).readonly || event.currency !== 'CNY') fail()
   const fields = data.fields || {}, decisions = data.decisions || {}, acknowledgements = data.acknowledgedChanges || []
-  object(fields, BASIC); object(decisions, ['ownership', 'repayment', 'refund'])
+  object(fields, BASIC); object(decisions, ['ownership', 'repayment', 'refund', 'repaymentChannel'])
   if (!Array.isArray(acknowledgements) || acknowledgements.some(key => !['composition', 'repayment', 'refund'].includes(key))) fail()
   const before = event.fieldSources || {}, patch = { ...fields }, editor = { ...overrides(event), version: 1 }
+  if (has(decisions, 'repaymentChannel')) {
+    object(decisions.repaymentChannel, ['confirmed'])
+    if (!before.repaymentChannelResolution || decisions.repaymentChannel.confirmed !== true) fail()
+  }
   const nature = has(fields, 'economicNature') ? fields.economicNature : event.economicNature
   if (!NATURES.has(nature)) fail()
   if (has(fields, 'amountMinor') && fields.amountMinor !== null && (typeof fields.amountMinor !== 'string' ||
@@ -121,8 +125,8 @@ function prepare(event, data) {
     if (!['link', 'pending', 'unlinked'].includes(decisions.refund.mode) || next.economicNature !== 'refund') fail()
   }
   if (next.ledgerAccountId && next.ledgerAccountId === next.counterpartyLedgerAccountId) fail()
-  if (before.repaymentChannelResolution && (!require('../repayment-channel').valid(next) ||
-      has(data, 'sourceCorrection') || has(data, 'composition') || Object.keys(decisions).length)) fail()
+  if (before.repaymentChannelResolution && (!require('../repayment-channel').relationValid(next) ||
+      has(data, 'sourceCorrection') || has(data, 'composition') || Object.keys(decisions).some(key => key !== 'repaymentChannel'))) fail()
   // 只清除派生缺项；来源、身份、同笔等硬阻断交由原验证器和专用决定维护。
   const derived = new Set(['blocking_issue_open','ledger_account_required','economic_nature_required','core_fields_missing',
     'category_required','postability_direction_conflict','transfer_account_required','repayment_account_required','borrow_account_required',

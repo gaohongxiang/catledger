@@ -79,11 +79,14 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   await editorSave(2,{fields:{ledgerAccountId:asset},composition:{kind:'payment',incomplete:true,evidenceNote:'合成未填第二付款端',
     parts:[{accountId:asset,amountMinor:'100'},{accountId:null,amountMinor:null}]}})
   // 只在一次性库播种超宽审计行，证明大字段不会截坏 UTF-8。
+  const renamedSource=(await imp('financeUpdates.summary',{updateId})).sources[0]
+  const originalFile=(await imp('imports.getFile',{importId:renamedSource.importId,includeOptions:false,pageSize:1})).import
+  await imp('imports.renameFile',{requestId:randomUUID(),importId:originalFile.importId,version:originalFile.version,displayName:'合成导出改名🐱.csv'})
   const wide='合成🐱\n"'.repeat(40000)
   await source.owner.execute('UPDATE catledger_finance_actions SET decision_json=? WHERE uid=? LIMIT 1',[JSON.stringify({syntheticWide:wide}),uid])
   const revision=async()=>String((await source.owner.execute('SELECT data_revision AS v FROM catledger_users WHERE uid=?',[uid]))[0][0].v)
   const startData={requestId:randomUUID()},job=await api('dataExports.start',startData),rev=await revision()
-  assert.equal(job.schemaVersion,31);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
+  assert.equal(job.schemaVersion,33);assert.deepEqual(await api('dataExports.start',startData),job);await api('bootstrap');assert.equal(await revision(),rev)
   await assert.rejects(call(other.api,'dataExports.page',{exportId:job.exportId}),{publicCode:'NOT_FOUND'})
   const records=[],parts=[];let cursor=null,terminal=null,pageCount=0
   do{
@@ -95,6 +98,8 @@ test('完整私有导出：隔离、宽 Unicode 分段、分页并发失效和�
   assert.ok(pageCount>4);for(const line of parts.join('').trimEnd().split('\n'))records.push(JSON.parse(line))
   const done=await api('dataExports.finish',{exportId:job.exportId,completeToken:terminal});assert.equal(done.rows,records.length)
   const exportedWide=records.find(r=>r.table==='catledger_finance_actions'&&r.row.decision_json.syntheticWide);assert.equal(exportedWide.row.decision_json.syntheticWide,wide)
+  const exportedFile=records.find(r=>r.table==='catledger_import_files'&&r.row.import_id===originalFile.importId).row
+  assert.equal(exportedFile.display_name,'合成导出改名🐱.csv');assert.equal(exportedFile.original_file_name,originalFile.fileName)
   assert.ok(!parts.join('').includes(otherUser.uid));assert.ok(records.every(r=>!Object.hasOwn(r.row,'uid')))
   assert.ok(records.some(r=>r.table==='catledger_loans'&&r.row.deleted_at&&r.row.deletion_snapshot_json.schema===1))
   assert.ok(records.some(r=>r.table==='catledger_loan_charges'&&r.row.plan_removed_at))

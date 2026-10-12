@@ -227,14 +227,14 @@ async function mergeAgain(connection, uid, data, requestDigest, values) {
   if (state.kind !== 'distinct' || state.reason) throw importError('VALIDATION_ERROR')
   const pair = state.pairs.find(item => item.pairKey === data.pairKey)
   if (!pair) throw importError('CONFLICT')
-  if (pair.pairKind === 'repayment' ? data.repaymentConfirmed !== true : data.repaymentConfirmed != null) throw importError('VALIDATION_ERROR')
+  if (data.repaymentConfirmed != null && (pair.pairKind !== 'repayment' || data.repaymentConfirmed !== true)) throw importError('VALIDATION_ERROR')
   const other = pair.bank.eventId === eventId ? pair.platform : pair.bank
   if (other.eventId !== data.otherEventId || other.version !== data.otherEventVersion) throw importError('CONFLICT')
   const [stored] = await selectDomainEvents(connection, uid, updateId, [other.eventId], { forUpdate: true })
   if (!stored || stored.version !== other.version) throw importError('CONFLICT')
   const actionId = await insertAction(connection, uid, { updateId, expectedVersion: updateVersion, appliedVersion: updateVersion + 1,
     actionType: 'revise_duplicate', requestDigest, decision: { eventId, otherEventId: other.eventId, pairKey: pair.pairKey, decision: 'same',
-      ...(pair.pairKind === 'repayment' ? { repaymentConfirmed: true } : {}) },
+      ...(data.repaymentConfirmed === true ? { repaymentConfirmed: true } : {}) },
     reasons: ['duplicate_decision_revised'] })
   // 只解除被重新确认的这一对；其他“不同笔”的选择仍保留。
   for (const item of [pair.bank, pair.platform]) {

@@ -1,14 +1,14 @@
 const path = require('node:path')
 const { randomUUID } = require('node:crypto')
 const defaultRoot = path.resolve(__dirname, '../..')
-async function setup({ apiPool, importPool, count = 2, ambiguous = false, refund = false, reliable = true, bankNature = '', sourceRoot = defaultRoot, subject, existingAccountId, logger }) {
+async function setup({ apiPool, importPool, count = 2, ambiguous = false, refund = false, reliable = true, bankNature = '', sourceRoot = defaultRoot, subject, existingAccountId, logger, times }) {
   const { localServices, call } = require(path.join(sourceRoot, 'test/helpers/local-services'))
   const services = localServices({ apiPool, importPool, subject: subject || 'synthetic-pair-' + randomUUID(), logger })
   const api = (action, data) => call(services.api, action, data), imp = (action, data) => call(services.import, action, data)
   const user = await api('bootstrap')
   const accountId = existingAccountId || (await api('accounts.create', { requestId: randomUUID(), name: '合成配对信用卡', type: 'credit' })).accountId
   const prefix = randomUUID(), direction = refund ? '收入' : '支出'
-  const time = index => new Date(Date.UTC(2026, 8, 1, 12, ambiguous ? 0 : index)).toISOString().slice(0, 19).replace('T', ' ')
+  const time = index => times ? times[index] : new Date(Date.UTC(2026, 8, 1, 12, ambiguous ? 0 : index)).toISOString().slice(0, 19).replace('T', ' ')
   const contents = [Buffer.from(['微信支付账单明细,,,,,,,,,,,',
     '交易时间,交易类型,交易对方,商品,收/支,金额(元),支付方式,当前状态,交易单号,订单号,商户单号,备注',
     ...Array.from({ length: count }, (_, i) => `${time(i)},${refund ? '退款' : '商户消费'},合成商户,合成商品,${direction},12.34,合成信用卡(2222),${refund ? '退款成功' : '支付成功'},SYNTHETIC-${prefix}-${i},,,`)].join('\n')),

@@ -48,6 +48,7 @@ function reasonStep(reason, event) {
   if (reason === 'payment_components_ambiguous') return step('payment', '组合支付待核对', 60)
   if (reason.startsWith('repayment_allocation_') && event.economicNature === 'repayment' && !principal(event)) return step('allocation', '还款分配待补齐', 61)
   if (reason === 'loan_repayment_required' && !principal(event)) return step('loan', '还款本息费待核对', 62)
+  if (reason === 'repayment_channel_details_required') return step('repayment_channel', '还款信息待核对', 62)
   if (['refund_relation_required', 'refund_relation_ambiguous', 'refund_amount_exceeded', 'refund_relation_invalid'].includes(reason) && event.economicNature === 'refund') {
     return step('refund', reason === 'refund_amount_exceeded' ? '退款金额超额待核对' : '退款关系待确认', 70)
   }

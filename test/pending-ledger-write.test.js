@@ -18,6 +18,19 @@ function harness(storage = new Map()) {
   h.client = createPendingWrite(h.options)
   return h
 }
+test('旧服务明确不支持改名时清理未执行请求，仍可继续原有写入', async () => {
+  const h = harness()
+  const client = createPendingWrite({ ...h.options, async call(target, action, data) {
+    if (action === 'imports.renameFile') throw Object.assign(new Error('不支持此操作'), { code: 'UNSUPPORTED_ACTION' })
+    return h.options.call(target, action, data)
+  } })
+  await assert.rejects(client.send('import', 'imports.renameFile', { importId: 'synthetic-file', version: 1, displayName: '合成新名.csv' }), { code: 'UNSUPPORTED_ACTION' })
+  assert.equal(client.pending(), null)
+  h.lost = false
+  await client.send('api', 'transactions.create', { amountMinor: '100' })
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.calls[0].action, 'transactions.create')
+})
 test('响应丢失后编辑内容和重启只核实原请求，不再提交新金额', async () => {
   const h = harness()
   await assert.rejects(h.client.send('api', 'transactions.create', { amountMinor: '100' }))

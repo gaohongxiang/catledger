@@ -420,7 +420,8 @@ function issueView(issue) {
   if (repaymentOwnershipRequired) label = subject.repaymentOwnership && subject.repaymentOwnership.owner === 'other'
     ? '代他人还款待核对' : '还款账户归属待确认'
   return Object.assign({}, issue, {
-    label: issue.primaryReasonCode === 'loan_repayment_required' ? '借款还款本息费待核对' : label,
+    label: issue.primaryReasonCode === 'repayment_channel_details_required' ? '还款信息待核对'
+      : issue.primaryReasonCode === 'loan_repayment_required' ? '借款还款本息费待核对' : label,
     installmentPrincipal: installmentPrincipal,
     repaymentOwnershipRequired: repaymentOwnershipRequired,
     paymentNeedsReview: paymentNeedsReview,
@@ -434,7 +435,8 @@ function issueView(issue) {
     historicalDuplicate: historicalDuplicate,
     missingAccountLabel: installmentPrincipal ? '所属信用卡' : missingFundsSide === 'to' ? fundsLabels.to : fundsLabels.from,
     canConfirmSame: issue.issueType === 'same_event' && !historicalDuplicate && !bankChannelAmbiguous && issue.primaryReasonCode !== 'source_group_conflict',
-    reasonText: issue.primaryReasonCode === 'loan_repayment_required' ? '补齐本金、利息、费用后才能入账。' : issue.primaryReasonCode === 'source_group_conflict'
+    reasonText: issue.primaryReasonCode === 'repayment_channel_details_required' ? '已确认是同一笔，继续核对还入账户和扣款差额。'
+      : issue.primaryReasonCode === 'loan_repayment_required' ? '补齐本金、利息、费用后才能入账。' : issue.primaryReasonCode === 'source_group_conflict'
       ? '参考号相同但来源编号或时间有歧义，请核对。'
       : issueHelp,
     subjectTitle: subject ? subject.displayTitle : label,

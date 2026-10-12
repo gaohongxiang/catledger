@@ -241,8 +241,14 @@ module.exports = {
   openPendingRecord: function (event) {
     const data = event.currentTarget.dataset
     if (!data.id || this.data.busy) return
+    const editingMember = Boolean(this.data.currentIssue)
     if (this.data.currentIssue) this.closeIssue()
     if (data.issueId && this.data.update && this.data.update.status === 'review') {
+      const issue = this.businessData().issues.find(row => row.issueId === data.issueId)
+      // 列表直接判断同笔；关系页内“查看并修改本笔”仍进入当前笔编辑。
+      if (!editingMember && issue && issue.issueType === 'same_event') {
+        return this.openIssue({ currentTarget: { dataset: { id: issue.issueId } } })
+      }
       return this.openReviewEdit({ currentTarget: { dataset: { id: data.id, focusIssueId: data.issueId || '' } } })
     }
     return this.openReviewDetails({ currentTarget: { dataset: { id: data.id } } })

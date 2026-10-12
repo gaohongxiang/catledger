@@ -48,6 +48,7 @@ module.exports = {
   abandonUpdate: function () {
     const self = this
     if (this.data.busy || !this.data.update || !['draft', 'failed', 'review'].includes(this.data.update.status)) return
+    if (this.blockFileNameEdit() || this.blockPendingFileRename()) return
     wx.showModal({
         title: '放弃本批账单？',
         content: '本批的账户选择和整理结果会被放弃。正式账户、余额、交易和统计都不会改变。',
@@ -62,6 +63,7 @@ module.exports = {
 
   performAbandonUpdate: async function () {
     if (this.data.busy || !this.data.update) return
+    if (this.blockFileNameEdit() || this.blockPendingFileRename()) return
     this.setData({ busy: true, errorMessage: '', currentIssue: null })
     try {
       if (this._draftSession) {

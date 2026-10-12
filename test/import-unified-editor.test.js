@@ -176,8 +176,9 @@ test('UE47 旧服务无 editorFacts 时只读，不能通过输入或保存伪�
   assert.equal(h.calls.some(call=>call.action==='financeUpdates.setReview'),false)
   page.onUnload()
 })
-test('真实 Page：点同组第二笔只打开第二笔，已填值可改且只保存本笔',async()=>{
-  const h=runtime(fixture(2,true)),page=h.page
+test('真实 Page：普通字段点同组第二笔只打开第二笔，已填值可改且只保存本笔',async()=>{
+  const data=fixture(2,true);data.issues[0].issueType='shared_fields'
+  const h=runtime(data),page=h.page
   await page.setStep({currentStep:3})
   const row=h.events[1]
   await page.openPendingRecord(tap({id:row.eventId,issueId:h.issues[0].issueId}))

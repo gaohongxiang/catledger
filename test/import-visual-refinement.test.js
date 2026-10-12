@@ -17,7 +17,7 @@ function evaluate(id, key, data) {
   assert.ok(value && value.startsWith('{{'), id + ':' + key)
   return Boolean(vm.runInNewContext(value.slice(2, -2), data, { timeout: 200 }))
 }
-const state = (phase, queued, ready, failed = 0, busy = false) => ({ phase, busy, restoreUpdateId: '', preparePending: false, maxFiles: 5,
+const state = (phase, queued, ready, failed = 0, busy = false) => ({ phase, busy, restoreUpdateId: '', preparePending: false, fileRenamePending: false, maxFiles: 5,
   files: Array(queued + ready + failed).fill({}), uploadSummary: { queued, ready, failed, attention: failed } })
 
 test('空文件只显示选择入口；不摆出不可用的开始解析', () => {
@@ -36,6 +36,7 @@ test('解析完成不再显示旧解析按钮，同时保留下一步', () => {
   const done = state('files_ready', 0, 2)
   assert.equal(evaluate('parse-action', 'wx:if', done), false)
   assert.equal(evaluate('next-accounts', 'disabled', done), false)
+  assert.equal(evaluate('next-accounts', 'disabled', { ...done, fileRenamePending: true }), true)
   assert.doesNotMatch(markup, /添加后可开始/)
 })
 test('部分失败允许已成功文件继续；全部失败或重复不允许继续', () => {

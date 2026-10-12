@@ -17,6 +17,15 @@ const { recalculateUpdateCounts } = require('./reconciliation')
 const MAX_BATCH = 100
 const MAX_EXCEPTIONS = 500
 const MAX_PAGE = 20
+const PAGE_ORDER = 'first-local-at-asc-pair-key-asc-v1'
+function pairLocalAt(pair) {
+  const times = [pair.bank.localAt, pair.platform.localAt].filter(Boolean)
+  return times.length ? times.reduce((first, value) => value < first ? value : first) : null
+}
+function comparePairTime(a, b) {
+  const left = pairLocalAt(a), right = pairLocalAt(b)
+  return Number(left === null) - Number(right === null) || String(left || '').localeCompare(String(right || '')) || a.pairKey.localeCompare(b.pairKey)
+}
 function keys(value, limit = MAX_EXCEPTIONS) {
   if (!Array.isArray(value) || value.length > limit || value.some(key => typeof key !== 'string' || !/^[a-f0-9]{64}$/.test(key)) ||
     new Set(value).size !== value.length) throw importError('VALIDATION_ERROR')
@@ -52,7 +61,8 @@ async function graph(connection, uid, updateId, { forUpdate = false } = {}) {
   const { all, pairs, suggestedCount } = pairingGraph(events.filter(event => !unavailable.has(event.eventId) &&
     (event.economicNature === 'repayment' || active.get(event.ledgerAccountId) === event.currency)), members)
   return { ...state, revision: String(user.revision), pairs, suggestedCount,
-    digest: digestParts(collectionDigest(all, true), JSON.stringify(members.map(row => [row.issueId, row.issueVersion, row.eventId]).sort())) }
+    // 同笔范围现已包含唯一还款候选；旧批量签名不得因此扩大原授权范围。
+    digest: digestParts('same-event-first-v2', collectionDigest(all, true), JSON.stringify(members.map(row => [row.issueId, row.issueVersion, row.eventId]).sort())) }
 }
 function range(graph, mode, issueId) {
   return graph.pairs.filter(pair => (mode === 'suggested' ? pair.unique : issueId || !pair.unique) && (!issueId || pair.issueIds.includes(issueId)))
@@ -84,20 +94,23 @@ function createBankChannelPairings({ getPool }) {
     return executeUserRead({ getPool, ...context, consistentSnapshot: true, operation: async (connection, uid) => {
       const state = await graph(connection, uid, updateId)
       if (context.data.viewVersion != null && context.data.viewVersion !== state.viewVersion) throw importError('STALE_VIEW')
-      const selected = range(state, mode, issueId)
+      const selected = range(state, mode, issueId).sort(comparePairTime)
       const frozen = { mode, issueId, graphDigest: state.digest, revision: state.revision }
-      // 翻页游标只定位 pairKey，不绑数据修订：无关账本写入也推进 revision，不能把游标永久失效；
-      // 范围一致性由提交时的 scopeToken（frozen）校验。
-      const pageScope = { uid, updateId, kind: 'bank-pair-page', mode, issueId, graphDigest: state.digest }
+      // 展示按全范围日期排序；签名游标在同一图中定位上一组，不能按 pairKey 大小截取下一页。
+      // 排序版本隔离旧游标，提交范围和续批仍沿用原有顺序与签名，不受展示排序影响。
+      const pageScope = { uid, updateId, kind: 'bank-pair-page', mode, issueId, graphDigest: state.digest, order: PAGE_ORDER }
       const last = decodeCursor(context.subjectHash, context.data.cursor, pageScope)
       if (last != null) keys([last], 1)
-      const remaining = selected.filter(pair => !last || pair.pairKey > last)
+      const position = last == null ? -1 : selected.findIndex(pair => pair.pairKey === last)
+      if (last != null && position === -1) throw importError('INVALID_CURSOR')
+      const remaining = selected.slice(position + 1)
       const items = remaining.slice(0, pageSize).map(previewPair)
       const available = new Set(selected.map(pair => pair.pairKey))
       const result = { protocolVersion: 2, viewVersion: state.viewVersion, update: state.update, items,
         total: selected.length, suggestedTotal: state.suggestedCount,
         scopeNatureCounts: { expense: selected.filter(pair => pair.platform.economicNature === 'expense').length,
-          refund: selected.filter(pair => pair.platform.economicNature === 'refund').length },
+          refund: selected.filter(pair => pair.platform.economicNature === 'refund').length,
+          ...(selected.some(pair => pair.pairKind === 'repayment') ? { repayment: selected.filter(pair => pair.pairKind === 'repayment').length } : {}) },
         scopeSourceCount: selected.reduce((count, pair) => count + pair.bank.relationEvidence.rows.length + pair.platform.relationEvidence.rows.length, 0),
         scopeToken: encodeCursor(context.subjectHash, scope(uid, updateId, state, 'bank-pair-scope'), frozen),
         nextCursor: remaining.length > items.length ? encodeCursor(context.subjectHash, pageScope, items.at(-1).pairKey) : null }
@@ -144,7 +157,6 @@ function createBankChannelPairings({ getPool }) {
             chosen = selection.pairs.map(pair => {
               if (!byKey.has(pair.pairKey) || !['same', 'distinct'].includes(pair.decision)) throw importError('VALIDATION_ERROR')
               const candidate = byKey.get(pair.pairKey)
-              if (candidate.pairKind === 'repayment' && pair.decision === 'same' && pair.repaymentConfirmed !== true) throw importError('VALIDATION_ERROR')
               if (pair.repaymentConfirmed != null && (candidate.pairKind !== 'repayment' || pair.decision !== 'same' || pair.repaymentConfirmed !== true)) throw importError('VALIDATION_ERROR')
               return { ...candidate, decision: pair.decision, ...(pair.repaymentConfirmed === true ? { repaymentConfirmed: true } : {}) }
             })

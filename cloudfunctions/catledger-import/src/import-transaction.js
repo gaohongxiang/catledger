@@ -155,14 +155,15 @@ async function executeUserRead({ getPool, provider, subjectHash, operation, cons
 
 async function readCommandResult(context) {
   const { requestId, commandAction } = context.data
-  if (!RECEIPT_ACTIONS.has(commandAction)) throw importError('VALIDATION_ERROR')
+  const fileCommand = commandAction === 'imports.renameFile'
+  if (!fileCommand && !RECEIPT_ACTIONS.has(commandAction)) throw importError('VALIDATION_ERROR')
   const keyDigest = digestIdempotencyKey(requestId)
   return executeUserRead({ ...context, consistentSnapshot: true, operation: async (connection, uid) => {
     const [[row]] = await connection.execute(`SELECT action, result_json AS result FROM catledger_mutation_receipts
       WHERE uid = ? AND idempotency_key_digest = ?`, [uid, keyDigest])
     if (!row || row.action !== commandAction || row.result == null) throw importError('OPERATION_UNCONFIRMED')
     const value = readReceipt(row.result)
-    if (value.protocolVersion !== 2 || value.kind !== 'operation-receipt' || value.action !== commandAction || value.receiptId !== keyDigest) {
+    if (value.protocolVersion !== 2 || value.kind !== (fileCommand ? 'file-receipt' : 'operation-receipt') || value.action !== commandAction || value.receiptId !== keyDigest) {
       throw importError('RECEIPT_RECONCILIATION_REQUIRED')
     }
     return assertBudget(value, 'receipt')

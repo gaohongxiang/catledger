@@ -1918,21 +1918,23 @@ button::after { border: 0; }
 }
 .file-row-side {
   display: flex;
-  width: 64rpx;
-  min-width: 64rpx;
+  width: 136rpx;
+  min-width: 136rpx;
   min-height: 64rpx;
   align-items: flex-start;
   justify-content: flex-end;
-  flex: 0 0 64rpx;
+  flex: 0 0 136rpx;
 }
 .file-row-actions {
   display: flex;
-  width: 64rpx;
-  min-width: 64rpx;
+  width: 136rpx;
+  min-width: 136rpx;
   align-items: flex-start;
   justify-content: flex-end;
   gap: 8rpx;
 }
+.parsed-sources .file-row-side { width: 64rpx; min-width: 64rpx; flex-basis: 64rpx; }
+.parsed-sources .file-strip-editing .file-row-side { width: 136rpx; min-width: 136rpx; flex-basis: 136rpx; }
 .file-row-state {
   display: block;
   min-width: 96rpx;
@@ -1957,6 +1959,17 @@ button::after { border: 0; }
   line-height: 1;
 }
 .file-small-action-disabled { opacity: .38; }
+.file-action-icon { display: block; width: 32rpx; height: 32rpx; }
+.file-name-form { display: flex; align-items: center; gap: 8rpx; min-width: 0; height: 72rpx; padding: 0 16rpx; border: 1rpx solid var(--theme-line); border-radius: var(--theme-radius-small, 12rpx); }
+.file-name-input { min-width: 0; height: 72rpx; flex: 1; color: var(--theme-ink); font-size: var(--font-body, 28rpx); }
+.file-name-suffix { flex-shrink: 0; color: var(--ui-muted); font-size: var(--font-caption, 24rpx); }
+.file-name-error { display: block; margin-top: 4rpx; color: var(--theme-danger, #a95132); font-size: var(--font-caption, 24rpx); line-height: 1.5; }
+.file-name-actions { height: 72rpx; align-items: center; }
+.file-name-confirm { display: flex; width: 56rpx; height: 56rpx; align-items: center; justify-content: center; background: var(--theme-accent, #be5b24); border-radius: 50%; }
+.file-name-confirm .file-action-icon { width: 28rpx; height: 28rpx; }
+.file-name-spinner { width: 24rpx; height: 24rpx; border: 2rpx solid var(--ui-on-accent); border-right-color: transparent; border-radius: 50%; animation: processing-spin 760ms linear infinite; }
+.file-rename-recovery { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-bottom: 20rpx; padding: 20rpx 24rpx; color: var(--ui-ink); font-size: var(--font-caption, 24rpx); background: var(--ui-accent-soft); border-radius: var(--theme-radius-small, 12rpx); }
+.file-rename-recovery .text-action { flex-shrink: 0; margin: 0; }
 .file-strip-hover { opacity: .7; }
 .file-meta-action { color: var(--ui-accent-strong); }
 .file-meta-action::after { content: ' ›'; }

@@ -111,7 +111,11 @@ function requiredReasons(event, { relations = [], transactionLinks = [], openBlo
     ...(event.fieldSources && event.fieldSources.semanticBlockers || [])
   ].filter((reason) => HARD_BLOCKING_REASONS.has(reason))))
   if (event.fieldSources && event.fieldSources.refundSourceConflict) reasons.push('refund_source_conflict')
-  if (event.fieldSources && event.fieldSources.repaymentChannelResolution && !require('./repayment-channel').valid(event)) reasons.push('core_fields_conflict')
+  if (event.fieldSources && event.fieldSources.repaymentChannelResolution) {
+    const channel = require('./repayment-channel')
+    if (!channel.relationValid(event)) reasons.push('core_fields_conflict')
+    else if (!channel.valid(event)) reasons.push('repayment_channel_details_required')
+  }
   if (event.fieldSources && event.fieldSources.paymentResolution && !paymentResolutionForEvent(event).valid) reasons.push('payment_components_ambiguous')
   if (event.fieldSources && event.fieldSources.loanRepayment) {
     try { require('./explicit-repayment').inputForEvent(event) } catch (_) { reasons.push('loan_repayment_required') }
@@ -225,6 +229,9 @@ function classifyReviewIssue(event) {
   }
   if (reasons.has('core_fields_conflict')) {
     return { issueType: REVIEW_ISSUE_TYPE.FIELD_CONFLICT, primaryReason: 'core_fields_conflict' }
+  }
+  if (reasons.has('repayment_channel_details_required')) {
+    return { issueType: REVIEW_ISSUE_TYPE.TRANSFER_ACCOUNTS, primaryReason: 'repayment_channel_details_required' }
   }
   if (reasons.has('payment_components_ambiguous') && !paymentResolutionForEvent(event).valid) {
     return { issueType: inspectPaymentAccounts(event, event.fieldSources && event.fieldSources.paymentAccounts).valid

@@ -20,6 +20,8 @@ test('当前分类预设下导入业务图、回执、请求量与 SQL 顺序保
   // 仅更新这7处SQL指纹和2处响应指纹，其他基线保持。
   // 2026-10-11还款渠道：与b9e50195固定UUID/时钟双跑，45表仅计划v34、银行profile/policy v4及解析指纹变化。
   // 14阶段SQL顺序/数量和响应字节保持；回执仅计划版本、summary/event-page仅派生版本变化，账务字段与来源关系保持。
+  // 2026-10-11账单改名：与296235eb固定UUID/时钟双跑，旧源码精确匹配原基线；
+  // 45表仅import_files新增NULL显示名，14阶段响应逐字段、字节及SQL数量完全一致；7阶段SQL补投影/同用户名称关联。
   const expected = require('./fixtures/import-review-baseline.json')
   assert.deepEqual(await measure(), expected)
 })

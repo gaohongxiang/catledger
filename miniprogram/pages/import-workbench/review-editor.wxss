@@ -58,6 +58,38 @@
 .unified-editor-sheet .route-vertical-pick text:first-child { min-width: 0; overflow-wrap: anywhere; }
 .unified-editor-sheet .editor-details .review-text-action { text-align: left; }
 .unified-editor-sheet .editor-cancel { min-height: 64rpx; margin-top: 4rpx; padding: 12rpx 0; background: transparent; line-height: 1.5; }
+.unified-editor-sheet .editor-actions-row { display: flex; align-items: stretch; gap: 16rpx; }
+.unified-editor-sheet .editor-actions-row .sheet-confirm { flex: 1; min-width: 0; margin: 0; }
+.unified-editor-sheet .editor-judgment-btn {
+  flex: 0 0 auto;
+  min-height: 88rpx;
+  margin: 0;
+  padding: 20rpx 28rpx;
+  border: 0;
+  border-radius: var(--theme-radius-medium, 18rpx);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-strong);
+  font-size: var(--font-body, 28rpx);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.unified-editor-sheet .channel-breakdown {
+  margin: 4rpx 0 20rpx;
+  padding: 20rpx 24rpx 16rpx;
+  border: 1rpx solid var(--ui-line);
+  border-radius: var(--theme-radius-medium, 18rpx);
+  background: var(--ui-surface);
+}
+.unified-editor-sheet .channel-breakdown-amounts { display: flex; align-items: flex-end; }
+.unified-editor-sheet .channel-breakdown-item { flex: 1; min-width: 0; }
+.unified-editor-sheet .channel-breakdown-label { display: block; color: var(--ui-muted); font-size: 22rpx; line-height: 1.4; white-space: nowrap; }
+.unified-editor-sheet .channel-breakdown-value { display: block; margin-top: 4rpx; overflow-wrap: anywhere; color: var(--ui-ink); font-size: 26rpx; font-weight: 500; line-height: 1.3; }
+.unified-editor-sheet .channel-breakdown-total { color: var(--ui-accent-strong); }
+.unified-editor-sheet .channel-breakdown-fee-pending { color: var(--theme-warning, #a76416); }
+.unified-editor-sheet .channel-breakdown-op { flex: 0 0 auto; padding: 0 6rpx; color: var(--ui-subtle); font-size: 22rpx; line-height: 1.3; }
+.unified-editor-sheet .channel-breakdown-note { display: block; margin-top: 14rpx; padding-top: 12rpx; border-top: 1rpx solid var(--ui-line); color: var(--ui-muted); font-size: 22rpx; line-height: 1.5; }
+.unified-editor-sheet .channel-confirm { padding-bottom: 8rpx; }
+.unified-editor-sheet .channel-confirm .ownership-option { margin-top: 0; }
 .editor-mode-choices { display: flex; flex-wrap: wrap; gap: 12rpx; margin: 20rpx 0; }
 .editor-mode-choices button {
   flex: 1 1 180rpx;

@@ -145,7 +145,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   )
 
   assert.deepEqual(applied, [])
-  assert.equal(rows.length, 32)
+  assert.equal(rows.length, 33)
   assert.equal(rows[25].version, '0026_loan_charge_lifecycle.sql')
   assert.equal(rows[26].version, '0027_installment_history_balance.sql')
   assert.equal(rows[27].version, '0028_installment_confirmation_facts.sql')
@@ -153,6 +153,7 @@ test('migration is repeatable and checksum-protected', { skip: !hasDatabase }, a
   assert.equal(rows[29].version, '0030_user_initialization_version.sql')
   assert.equal(rows[30].version, '0031_bank_channel_decisions.sql')
   assert.equal(rows[31].version, '0032_category_meal_name.sql')
+  assert.equal(rows[32].version, '0033_import_file_display_name.sql')
   const connection = await pool.getConnection()
   try {
     const statements = splitSqlStatements(require('node:fs').readFileSync(path.join(migrationsDirectory, rows[28].version), 'utf8'))

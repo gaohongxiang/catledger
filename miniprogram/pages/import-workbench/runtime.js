@@ -61,6 +61,11 @@ async function resumeInitialLoad(page) {
   const initial = page._pendingInitialLoad
   if (!initial || !initial.visible || initial.attempt || !getApp().hasLoginApproval()) return
   page._viewActive = true
+  if (!page._viewOwner) {
+    page._viewOwner = currentOwner()
+    page._viewScope = readCache.getSession()
+    page.syncFileRenamePending()
+  }
   const attempt = initial.attempt = {}
   let loaded
   if (!initial.updateId && pendingPrepare()) loaded = await page.createFinanceUpdate({ recoveryOnly: true })
@@ -78,7 +83,7 @@ async function resumeInitialLoad(page) {
 
 module.exports = {
   applyPendingBackgroundView() {
-    if (this._pendingBackgroundView && !this.data.currentIssue && !this.data.duplicateEditSheet && !this.data.reviewDetailSheet && !this.data.reviewEditSheet && !this.data.accountChoiceSheet && !this.data.accountRecordsSheet && !this.data.pairingSheet) {
+    if (this._pendingBackgroundView && !this.data.fileNameEdit && !this.data.fileRenamePending && !this.data.currentIssue && !this.data.duplicateEditSheet && !this.data.reviewDetailSheet && !this.data.reviewEditSheet && !this.data.accountChoiceSheet && !this.data.accountRecordsSheet && !this.data.pairingSheet) {
       const view = this._pendingBackgroundView; this._pendingBackgroundView = null; this.applyUpdateView(view, true)
     }
     // 配对入口卡片可能因隐藏或过期被清空，且本次视图应用未触发整页重读；按当前资格兜底重拉一次。
@@ -97,6 +102,7 @@ module.exports = {
     this._requestIds = {}
     this._sourceFiles = new Map()
     this._accountUiDrafts = new Map()
+    this.syncFileRenamePending()
     const updateId = options && options.fresh !== '1' && options.updateId || null
     this._pendingInitialLoad = { updateId, restoreLast: !(options && options.fresh === '1'), eventId: options && options.evidenceEventId, visible: true, attempt: null }
     loginGuard.run(this, () => resumeInitialLoad(this))
@@ -126,6 +132,8 @@ module.exports = {
     }
     this._viewOwner = owner; this._viewScope = scope
     this._viewActive = true
+    this.syncFileRenamePending()
+    this.restoreFileNameEdit()
     themeService.bindPage(this)
     const revision = getApp().globalData.ledgerRevision || 0
     if (returning && this._prepareRestore && !this.data.update && !this._pendingInitialLoad) {
@@ -152,7 +160,8 @@ module.exports = {
     this.cancelPagedReads()
     this.setData({ currentIssue: null, currentMembers: [], issueEvents: [], issueRelations: [], issueVisibleEvents: [],
         evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, reviewDetailSheet: null, reviewEditSheet: null, accountRecordsSheet: null, finalDetailSheet: null, accountChoiceSheet: null, directorySheet: null,
-        bankMappingSheet: null, busy: false, accountStepBusy: false, accountStepProgressText: '' })
+        bankMappingSheet: null, fileNameEdit: this.data.fileNameEdit && !this.data.fileNameEdit.saving ? this.data.fileNameEdit : null,
+        busy: false, accountStepBusy: false, accountStepProgressText: '' })
     this.finishInputEditing()
   },
   onUnload() {
@@ -184,6 +193,7 @@ module.exports = {
   },
   cancelPagedReads() {
     this.cancelExcludedGroup()
+    this._fileRenameToken = null
     this._reviewDetailToken = null
     this._reviewEditToken = null
     if (this.cancelPairingEntry) this.cancelPairingEntry()
@@ -221,6 +231,8 @@ module.exports = {
 
   createFinanceUpdate: async function (settings) {
     if (!this._viewActive || !getApp().hasLoginApproval() || this.data.busy) return
+    if (this.blockFileNameEdit()) return
+    if (this.blockPendingFileRename()) return
     if (this.data.update && this.data.update.updateId) {
       if (this.data.refreshRequired) await this.retryPagedView()
       else await this.loadUpdate(this.data.update.updateId)
@@ -367,6 +379,8 @@ module.exports = {
 
   goToStep: async function (event) {
     if (this.data.busy || this.data.accountStepBusy) return
+    if (this.blockFileNameEdit()) return
+    if (this.blockPendingFileRename()) return
     const step = Number(event.currentTarget.dataset.step)
     if (!Number.isInteger(step) || step < 1 || step > this.data.unlockedStep) return
     if (step > 2) return this.finishDraftStep(step)
@@ -387,6 +401,7 @@ module.exports = {
   },
 
   startAnother: function () {
+    if (this.blockFileNameEdit()) return
     this._pendingInitialLoad = null
     this._prepareRestore = false
     this._pendingBackgroundView = null
@@ -414,7 +429,7 @@ module.exports = {
     this._duplicateLoadToken = null
     this.setData({
         phase: 'idle', currentStep: 1, unlockedStep: 1, busy: false, restoreUpdateId: '', abandoningRestore: false, preparePending: false,
-        files: [], bankMappingSheet: null, fileAttentionSheet: null, update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
+        files: [], bankMappingSheet: null, fileAttentionSheet: null, fileNameEdit: null, update: null, sources: [], events: [], issues: [], fundsFlowGroups: [], finalDetailSheet: null, finalDetailParent: null,
         recordSummary: { totalCount: 0, activeCount: 0, excludedCount: 0, duplicateCount: 0 },
         reviewedEvents: [], categoryWaitingEvents: [], noCategoryEvents: [],
         accountIssues: [], reviewIssues: [], reviewGroups: [], verificationIssues: [], categoryIssues: [], categoryCards: [], categoryQuery: '', reviewQuery: '', categoryEventCount: 0, categorizedEvents: [], categorizedEventCount: 0, activeCategoryStatus: 'pending', categoryStatusTabs: model.organizerRecordState([], [], []).categoryStatusTabs, activeReviewTab: 'review', activeReviewStatus: 'pending', excludedReviewGroups: [], duplicateReviewEvents: [], openIssueCount: 0,
@@ -434,6 +449,7 @@ module.exports = {
         issueEvents: [], issueRelations: [], evidenceSheet: null, categoryEditSheet: null, duplicateEditSheet: null, reviewDetailSheet: null, reviewEditSheet: null
       })
     this._accountUiDrafts.clear()
+    this.syncFileRenamePending()
   },
 
   applyUpdateView: function (view, background, restoreToFirstStep, quiet, keepStep) {
@@ -445,7 +461,7 @@ module.exports = {
           errorMessage: view.update.status === 'posted' ? '已入账，明细待刷新' : '操作已保存，明细待刷新', refreshRequired: true })
       return
     }
-    if (background && (this._editingInput || this.data.currentIssue || this.data.evidenceSheet || this.data.reviewDetailSheet || this.data.reviewEditSheet || this.data.categoryEditSheet || this.data.duplicateEditSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
+    if (background && (this._editingInput || this.data.fileNameEdit || this.data.fileRenamePending || this.data.currentIssue || this.data.evidenceSheet || this.data.reviewDetailSheet || this.data.reviewEditSheet || this.data.categoryEditSheet || this.data.duplicateEditSheet || this.data.accountChoiceSheet || this.data.accountRecordsSheet || this.data.pairingSheet)) {
       this._pendingBackgroundView = view
       if (this._viewSession && this._viewSession.summary.viewVersion !== view.viewVersion) {
         if (this.data.currentIssue) this.setData({ issueStale: true, issueCanSubmit: false })
@@ -460,6 +476,10 @@ module.exports = {
     }
     const same = this._viewSession && this._viewSession.summary.update.updateId === view.update.updateId
     const changed = !same || this._viewSession.summary.viewVersion !== view.viewVersion
+    if (this.data.fileNameEdit && this.data.fileNameEdit.sourceId && (!same || view.update.status !== 'review')) {
+      this._fileRenameToken = null
+      this.setData({ fileNameEdit: null })
+    }
     if (!same) { if (this._viewSession) this._viewSession.close(); this._viewSession = createViewSession(this, view) }
     else this._viewSession.accept(view)
     if (changed) { this._mainPager = null; this._businessData = null }
@@ -470,7 +490,8 @@ module.exports = {
     const step = view.update.status !== 'review' ? 4 : restoreToFirstStep ? 1
     : background || (same && (keepStep || (current >= 1 && current <= workflow))) ? current : workflow
     const patch = Object.assign({}, workbench, { reviewStatusTabs: model.reviewStatusTabs(workbench.reviewStatusTabs), update: view.update, sources: view.sources.map(source => ({ sourceId: source.sourceId,
-              fileName: source.fileName, sourceType: source.sourceType, summary: source.summary })), coverage: view.coverage, posting: view.posting,
+              importId: source.importId || '', fileName: source.fileName, originalFileName: source.originalFileName || source.fileName,
+              sourceType: source.sourceType, summary: source.summary })), coverage: view.coverage, posting: view.posting,
         phase: { posted: 'done', undone: 'undone', abandoned: 'abandoned' }[view.update.status] || 'review',
         currentStep: step, unlockedStep: workflow, openIssueCount: open, busy: false, errorMessage: '', refreshRequired: false })
     if (step !== 4) { patch.finalSummary = {}; patch.fundsFlowGroups = [] }

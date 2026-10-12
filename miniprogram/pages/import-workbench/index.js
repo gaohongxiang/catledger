@@ -1,6 +1,7 @@
 const model = require('./model')
 const runtime = require('./runtime')
 const uploadFlow = require('./upload-flow')
+const fileRename = require('./file-rename')
 const accountReview = require('./account-review')
 const transactionReview = require('./transaction-review')
 const pairingReview = require('./pairing-review')
@@ -29,6 +30,8 @@ const initialData = Object.assign({}, pairingReview.initialData, {
     files: [],
     bankMappingSheet: null,
     fileAttentionSheet: null,
+    fileNameEdit: null,
+    fileRenamePending: false,
     historicalCandidates: [],
     historicalPage: null,
     historicalSelection: '',
@@ -184,6 +187,15 @@ Page({
   syncUploadSummary: uploadFlow.syncUploadSummary,
   retryFile: uploadFlow.retryFile,
   removeFile: uploadFlow.removeFile,
+  openFileRename: fileRename.openFileRename,
+  closeFileRename: fileRename.closeFileRename,
+  inputFileRename: fileRename.inputFileRename,
+  saveFileRename: fileRename.saveFileRename,
+  resumeFileRename: fileRename.resumeFileRename,
+  syncFileRenamePending: fileRename.syncFileRenamePending,
+  blockPendingFileRename: fileRename.blockPendingFileRename,
+  blockFileNameEdit: fileRename.blockFileNameEdit,
+  restoreFileNameEdit: fileRename.restoreFileNameEdit,
   createFinanceUpdate: runtime.createFinanceUpdate,
   refreshAccountGroups: runtime.refreshAccountGroups,
   loadUpdate: runtime.loadUpdate,

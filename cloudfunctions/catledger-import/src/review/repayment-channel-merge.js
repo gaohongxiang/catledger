@@ -6,13 +6,15 @@ const { FIELD_MASK } = require('../manual-field-mask')
 const { mergeOrigins } = require('./merge-origins')
 const { insertMany } = require('../sql-batch')
 
-async function completePlatformTarget(connection, uid, updateId, primary, actionId) {
+async function completePlatformTarget(connection, uid, updateId, primary, actionId, bankIssueIds = []) {
   // 逐对确认只完成当前笔的还入账户，共享账户组的其他成员仍自行核对。
   const [members] = await connection.execute(`SELECT m.member_id AS memberId,m.issue_id AS issueId
     FROM catledger_review_issue_members m JOIN catledger_review_issues i ON i.uid=m.uid AND i.issue_id=m.issue_id
     WHERE m.uid=? AND m.update_id=? AND m.object_type='event' AND m.object_id=?
       AND m.member_role IN ('mapping_to','payment_target') AND i.issue_type='account_mapping'
-      AND i.status IN ('open','resolved')`, [uid, updateId, primary.eventId])
+      AND i.status IN ('open','resolved')
+      ${bankIssueIds.length ? `AND i.issue_id NOT IN (${bankIssueIds.map(() => '?').join(',')})` : ''}`,
+  [uid, updateId, primary.eventId, ...bankIssueIds])
   for (const member of members) await connection.execute(`DELETE FROM catledger_review_issue_members
     WHERE uid=? AND update_id=? AND member_id=?`, [uid, updateId, member.memberId])
   for (const issueId of new Set(members.map(member => member.issueId))) {
@@ -69,19 +71,32 @@ async function migrateBankAccount(connection, uid, updateId, bank, primary, acti
   return [...new Set(members.map(member => member.issueId))].sort()
 }
 
+async function confirmDetails(connection, uid, updateId, event, actionId) {
+  if (!channel.relationValid(event)) throw importError('VALIDATION_ERROR')
+  const pending = channel.resolutionFor(event)
+  if (pending.repaymentConfirmed === true) return event
+  const [[category]] = pending.feeMinor === '0' ? [[]] : await connection.execute(`SELECT category_id AS categoryId
+    FROM catledger_categories WHERE uid=? AND system_key='finance__service' AND kind='expense' AND archived_at IS NULL LIMIT 1`, [uid])
+  const resolution = { ...pending, repaymentConfirmed: true, detailsActionId: actionId,
+    feeCategoryId: category && category.categoryId || null }
+  const next = { ...event, fieldSources: { ...event.fieldSources, repaymentChannelResolution: resolution },
+    reasonCodes: (event.reasonCodes || []).filter(reason => reason !== 'repayment_channel_details_required') }
+  await completePlatformTarget(connection, uid, updateId, next, actionId, resolution.bankAccountIssueIds || [])
+  await stageTargetReferences(connection, uid, updateId, next, [resolution.platformTargetReference], actionId)
+  return next
+}
+
 async function confirmedPrimary(connection, uid, updateId, pair, actionId) {
   const facts = channel.pairFacts(pair.bank, pair.platform)
-  if (!facts || pair.repaymentConfirmed !== true) throw importError('VALIDATION_ERROR')
+  if (!facts) throw importError('VALIDATION_ERROR')
   const bankRows = pair.bank.relationEvidence.rows, platformRows = pair.platform.relationEvidence.rows
   const primary = mergeText(pair.platform, [pair.bank, pair.platform])
   const projection = primary.fieldSources.fundsProjection
   const bankReference = pair.bank.fieldSources.ledgerAccountReference
   if (!projection || !projection.from || !bankReference || !bankReference.paymentMethodKey) throw importError('VALIDATION_ERROR')
-  const [[category]] = facts.feeMinor === '0' ? [[]] : await connection.execute(`SELECT category_id AS categoryId
-    FROM catledger_categories WHERE uid=? AND system_key='finance__service' AND kind='expense' AND archived_at IS NULL LIMIT 1`, [uid])
-  const resolution = { version: channel.VERSION, confirmedBy: 'user', repaymentConfirmed: true, actionId,
+  const resolution = { version: channel.VERSION, confirmedBy: 'user', repaymentConfirmed: false, actionId,
     totalMinor: facts.totalMinor, repaymentMinor: facts.repaymentMinor, feeMinor: facts.feeMinor,
-    targetAccountId: facts.targetAccountId, feeCategoryId: category && category.categoryId || null,
+    targetAccountId: facts.targetAccountId, feeCategoryId: null,
     localAt: primary.localAt, utcAt: primary.utcAt, platformType: platformRows[0].sourceType,
     platformTargetReference: projection.to || null,
     bankRowIds: bankRows.map(row => row.rowId), platformRowIds: platformRows.map(row => row.rowId),
@@ -102,10 +117,9 @@ async function confirmedPrimary(connection, uid, updateId, pair, actionId) {
     WHERE uid=? AND update_id=? AND relation_type='repayment_of' AND status='proposed' AND manual=0
       AND ((source_event_id=? AND target_event_id=?) OR (source_event_id=? AND target_event_id=?))`,
   [uid, updateId, pair.bank.eventId, pair.platform.eventId, pair.platform.eventId, pair.bank.eventId])
-  await completePlatformTarget(connection, uid, updateId, primary, actionId)
   resolution.bankAccountIssueIds = await migrateBankAccount(connection, uid, updateId, pair.bank, next, actionId)
-  await stageTargetReferences(connection, uid, updateId, next, [bankReference, resolution.platformTargetReference], actionId)
-  return next
+  await stageTargetReferences(connection, uid, updateId, next, [bankReference], actionId)
+  return pair.repaymentConfirmed === true ? confirmDetails(connection, uid, updateId, next, actionId) : next
 }
 
-module.exports = { confirmedPrimary }
+module.exports = { confirmedPrimary, confirmDetails }

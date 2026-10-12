@@ -159,7 +159,7 @@ async function summary(connection, uid, updateId) {
     manual_field_mask AS manualFieldMask${pairing ? `,
       ((COALESCE((SELECT d.currency FROM catledger_finance_update_account_drafts d
           WHERE d.uid = e.uid AND d.update_id = e.update_id AND d.draft_account_id = e.ledger_account_id),
-        (SELECT a.currency FROM catledger_accounts a WHERE a.uid = e.uid AND a.account_id = e.ledger_account_id AND a.archived_at IS NULL)) = e.currency)
+        (SELECT a.currency FROM catledger_accounts a WHERE a.uid = e.uid AND a.account_id = e.ledger_account_id AND a.archived_at IS NULL)) = e.currency OR e.economic_nature = 'repayment')
         AND NOT EXISTS (SELECT 1 FROM catledger_economic_event_transactions t
           WHERE t.uid = e.uid AND t.update_id = e.update_id AND t.event_id = e.event_id)) AS pairingAvailable` : ''} FROM catledger_economic_events${pairing ? ' e' : ''} WHERE uid = ? AND update_id = ?`, [uid, updateId])
   const events = rows.map(row => ({ ...row, status: publicEvent(row).status, reasonCodes: parseJson(row.reasonCodes, []), fieldSources: parseJson(row.fieldSources, {}) }))
@@ -176,9 +176,22 @@ async function summary(connection, uid, updateId) {
     FROM catledger_review_issues WHERE uid = ? AND update_id = ? GROUP BY issue_type, status`, [uid, updateId])
   const coverageEvidence = state.update.status === 'abandoned' ? { rows: [], evidence: [] } : await selectCoverageEvidence(connection, uid, updateId, { pairing })
   // 复用本次摘要已读取的事件、问题成员与证据，不再调用 graph 或扫描整批候选。
-  const pairingSuggestedCount = pairing ? pairingGraph(hydrateEvidence(events.filter(event => Number(event.pairingAvailable)),
-    coverageEvidence.rows, coverageEvidence.evidence.filter(link => link.evidenceRole !== 'discarded')),
-  pending.flatMap(row => parseJson(row.pairingIssueIds, []).filter(Boolean).map(issueId => ({ eventId: row.eventId, issueId })))).suggestedCount : 0
+  const pairingEvents = pairing ? hydrateEvidence(events.filter(event => Number(event.pairingAvailable)),
+    coverageEvidence.rows, coverageEvidence.evidence.filter(link => link.evidenceRole !== 'discarded')) : []
+  // 还款判断不以付款端已经补齐为前提；账户类型与到账端校验仍与候选分页相同。
+  if (pairingEvents.some(event => event.economicNature === 'repayment')) {
+    const [accounts] = await connection.execute(`SELECT account_id AS accountId,name,type,currency,archived_at AS archivedAt
+      FROM catledger_accounts WHERE uid = ? AND archived_at IS NULL
+      UNION ALL SELECT draft_account_id AS accountId,name,type,currency,NULL AS archivedAt
+      FROM catledger_finance_update_account_drafts WHERE uid = ? AND update_id = ? AND materialized_at IS NULL`, [uid, uid, updateId])
+    const byAccount = new Map(accounts.map(account => [account.accountId, account]))
+    for (const event of pairingEvents) {
+      event.ledgerAccountFacts = byAccount.get(event.ledgerAccountId) || null
+      event.counterpartyAccountFacts = byAccount.get(event.counterpartyLedgerAccountId) || null
+    }
+  }
+  const pairingSuggestedCount = pairing ? pairingGraph(pairingEvents,
+    pending.flatMap(row => parseJson(row.pairingIssueIds, []).filter(Boolean).map(issueId => ({ eventId: row.eventId, issueId })))).suggestedCount : 0
   const coverage = buildCoverageReport({ sources, events, ...coverageEvidence })
   coverage.openBlockingIssues = issueCounts.filter(row => row.status === 'open').reduce((n, row) => n + Number(row.blockingCount), 0)
   coverage.selectedEventsReadyToPost = coverage.selectedEventsReadyToPost && coverage.openBlockingIssues === 0 && state.update.planVersion === PLAN_VERSION
@@ -434,11 +447,14 @@ async function evidencePage(connection, uid, context, state) {
   const [rows] = await connection.execute(`SELECT v.evidence_id AS evidenceId, v.evidence_role AS evidenceRole,
     r.row_id AS rowId, r.source_row_number AS rowNumber, r.source_locator AS sourceLocator,
     r.raw_snapshot_version AS rawSnapshotVersion, r.parser_version AS parserVersion,
-    s.source_type_snapshot AS sourceType, s.file_name_snapshot AS fileName
+    s.source_type_snapshot AS sourceType, COALESCE(f.display_name, s.file_name_snapshot) AS fileName,
+    f.display_name AS displayName, s.file_name_snapshot AS originalFileName
     FROM catledger_event_evidence v JOIN catledger_import_rows r ON r.uid = v.uid AND r.row_id = v.row_id
     JOIN catledger_finance_update_sources s ON s.uid = r.uid AND s.update_id = v.update_id AND s.batch_id = r.batch_id
+    JOIN catledger_import_files f ON f.uid = s.uid AND f.import_id = s.import_id
     WHERE v.uid = ? AND v.update_id = ? AND v.event_id = ? AND v.evidence_id > ? ORDER BY v.evidence_id LIMIT ?`, [uid, state.update.updateId, eventId, page.last, page.size + 1])
-  return { ...finishPage(context, state, page, rows.map(row => ({ ...row, detailRequired: true })), count.total, 'evidenceId', 'evidence'), eventId }
+  return { ...finishPage(context, state, page, rows.map(({ displayName, originalFileName, ...row }) => ({ ...row,
+    ...(displayName ? { originalFileName } : {}), detailRequired: true })), count.total, 'evidenceId', 'evidence'), eventId }
 }
 
 const OPTIONS = Object.freeze({

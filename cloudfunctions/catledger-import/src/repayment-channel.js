@@ -118,9 +118,10 @@ function evidenceDigest(rows) {
     row.rawTransactionType, row.rawStatus, row.paymentMethodKey, row.paymentMethod, row.counterparty, row.item])).sort())
 }
 function resolutionFor(event) { return event.fieldSources && event.fieldSources.repaymentChannelResolution || null }
-function valid(event) {
+// 同笔来源关系独立于手续费确认；待补全分项时仍须保护冻结金额、账户及证据。
+function relationValid(event) {
   const value = resolutionFor(event), fields = event.fieldSources || {}
-  return Boolean(value && value.version === VERSION && value.confirmedBy === 'user' && value.repaymentConfirmed === true &&
+  return Boolean(value && value.version === VERSION && value.confirmedBy === 'user' && typeof value.repaymentConfirmed === 'boolean' &&
     positive(value.totalMinor) && positive(value.repaymentMinor) && nonnegative(value.feeMinor) &&
     BigInt(value.totalMinor) === BigInt(value.repaymentMinor) + BigInt(value.feeMinor) &&
     event.economicNature === 'repayment' && event.flowDirection === 'neutral' && event.currency === 'CNY' && event.sourceDirection !== 'income' &&
@@ -131,8 +132,11 @@ function valid(event) {
     !fields.editorOverrides?.incompleteComposition && !fields.editorOverrides?.incompleteRepayment &&
     (!fields.editorOverrides?.composition || fields.editorOverrides.composition === 'single'))
 }
+function valid(event) {
+  return relationValid(event) && resolutionFor(event).repaymentConfirmed === true
+}
 function evidenceValid(event, rows) {
-  if (!valid(event)) return false
+  if (!relationValid(event)) return false
   const value = resolutionFor(event), expected = new Set([...value.bankRowIds || [], ...value.platformRowIds || []])
   if (!expected.size || rows.length !== expected.size || rows.some(row => !expected.has(row.rowId)) || evidenceDigest(rows) !== value.basisDigest) return false
   return rows.every(row => {
@@ -144,12 +148,15 @@ function evidenceValid(event, rows) {
         : row.sourceType === value.platformType && ['expense', 'neutral'].includes(row.direction))
   })
 }
+function postingEvidenceValid(event, rows) {
+  return valid(event) && evidenceValid(event, rows)
+}
 function semanticRows(event, rows) {
   return evidenceValid(event, rows) ? rows.filter(row => resolutionFor(event).platformRowIds.includes(row.rowId)) : rows
 }
 function publicResolution(event) {
   const value = resolutionFor(event)
-  return value ? { version: 1, totalMinor: value.totalMinor, repaymentMinor: value.repaymentMinor,
+  return value ? { version: 1, confirmed: value.repaymentConfirmed === true, totalMinor: value.totalMinor, repaymentMinor: value.repaymentMinor,
     feeMinor: value.feeMinor, targetAccountId: value.targetAccountId } : null
 }
 function drafts(event) {
@@ -162,4 +169,5 @@ function drafts(event) {
   return result
 }
 
-module.exports = { VERSION, pairFacts, pairKey, edges, evidenceDigest, resolutionFor, valid, evidenceValid, semanticRows, publicResolution, drafts }
+module.exports = { VERSION, pairFacts, pairKey, edges, evidenceDigest, resolutionFor, relationValid, valid,
+  evidenceValid, postingEvidenceValid, semanticRows, publicResolution, drafts }

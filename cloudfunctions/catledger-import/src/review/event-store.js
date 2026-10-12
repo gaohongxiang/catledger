@@ -94,7 +94,7 @@ async function eventContext(connection, uid, updateId, eventId) {
 
 async function validateEventReferences(connection, uid, event, catalog = null, { forUpdate = true } = {}) {
   const fieldSources = event && event.fieldSources || {}
-  if (fieldSources.repaymentChannelResolution && !require('../repayment-channel').valid(event)) throw importError('VALIDATION_ERROR')
+  if (fieldSources.repaymentChannelResolution && !require('../repayment-channel').relationValid(event)) throw importError('VALIDATION_ERROR')
   const plan = eventAllocation(event)
   if (plan.kind === 'conflict') throw importError('VALIDATION_ERROR')
   const hasAllocationDraft = Object.prototype.hasOwnProperty.call(fieldSources, 'repaymentAllocationVersion') ||

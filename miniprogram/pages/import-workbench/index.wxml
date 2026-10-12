@@ -54,6 +54,7 @@
 
   <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
   <button wx:if="{{preparePending && !update}}" class="primary-button" bindtap="createFinanceUpdate" disabled="{{busy}}">继续整理上次账单</button>
+  <view wx:if="{{fileRenamePending}}" class="file-rename-recovery"><text>上次改名结果待确认</text><button class="text-action" bindtap="resumeFileRename" disabled="{{busy}}">继续确认</button></view>
 
   <block wx:if="{{currentStep === 1 && (!update || phase === 'organizing')}}">
     <view wx:if="{{!files.length && phase !== 'loading' && phase !== 'organizing' && !restoreUpdateId && !preparePending}}" data-ui="empty-picker" class="file-picker-empty">
@@ -74,17 +75,27 @@
         <text class="file-batch-count money-number">{{files.length}} / 5 份</text>
       </view>
       <view class="file-list">
-        <view wx:for="{{files}}" wx:key="clientId" class="file-strip" data-id="{{item.clientId}}" bindtap="tapFileRow" hover-class="{{item.state === 'mapping' || item.state === 'failed' ? 'file-strip-hover' : 'none'}}">
+        <view wx:for="{{files}}" wx:key="clientId" class="file-strip {{fileNameEdit && fileNameEdit.clientId === item.clientId ? 'file-strip-editing' : ''}}" data-id="{{item.clientId}}" bindtap="tapFileRow" hover-class="{{!fileNameEdit && (item.state === 'mapping' || item.state === 'failed') ? 'file-strip-hover' : 'none'}}">
           <view class="file-mark file-mark-{{item.state}}"><text>{{index + 1}}</text></view>
           <view class="file-copy">
-            <text class="file-name">{{item.name}}</text>
+            <view wx:if="{{fileNameEdit && fileNameEdit.clientId === item.clientId}}" data-ui="file-name-editor" class="file-name-form" catchtap="preventTouchMove">
+              <input class="file-name-input {{fileNameEdit.error ? 'field-error-shake' : ''}}" name="fileName" aria-label="账单名称" value="{{fileNameEdit.value}}" placeholder="账单名称" maxlength="-1" focus="{{!fileNameEdit.pending}}" disabled="{{fileNameEdit.saving || fileNameEdit.pending}}" bindinput="inputFileRename" bindblur="inputFileRename" bindconfirm="saveFileRename" confirm-type="done" cursor-spacing="24" />
+              <text class="file-name-suffix">{{fileNameEdit.suffix}}</text>
+            </view>
+            <text wx:else class="file-name">{{item.name}}</text>
+            <text wx:if="{{fileNameEdit && fileNameEdit.clientId === item.clientId && fileNameEdit.error}}" class="file-name-error">{{fileNameEdit.error}}</text>
             <text class="file-meta {{item.state === 'mapping' || item.state === 'failed' ? 'file-meta-action' : ''}}">{{item.sizeText}} · {{item.stateText}}{{item.summary ? ' · ' + item.summary.valid + ' 条' : ''}}</text>
             <text wx:if="{{item.errorMessage}}" class="file-error">{{item.errorMessage}}</text>
             <view class="file-progress {{item.state === 'preparing' || item.state === 'uploading' || item.state === 'parsing' ? 'file-progress-active' : 'file-progress-idle'}}"><view class="file-progress-value" style="width: {{item.state === 'preparing' ? 8 : item.progress}}%;"></view></view>
           </view>
           <view class="file-row-side">
-            <view wx:if="{{item.state === 'queued' || item.state === 'failed' || item.state === 'ready' || item.state === 'duplicate' || item.state === 'mapping'}}" class="file-row-actions">
-              <view class="file-small-action file-remove {{busy ? 'file-small-action-disabled' : ''}}" data-id="{{item.clientId}}" catchtap="removeFile" aria-role="button">删除</view>
+            <view wx:if="{{fileNameEdit && fileNameEdit.clientId === item.clientId}}" class="file-row-actions file-name-actions">
+              <view class="file-small-action {{fileNameEdit.saving ? 'file-small-action-disabled' : ''}}" catchtap="closeFileRename" aria-role="button" aria-label="{{fileNameEdit.pending ? '收起改名结果' : '取消修改账单名称'}}" aria-disabled="{{fileNameEdit.saving}}"><image class="file-action-icon" src="/assets/icons/close.svg" mode="aspectFit" /></view>
+              <view class="file-small-action {{fileNameEdit.saving ? 'file-small-action-disabled' : ''}}" catchtap="saveFileRename" aria-role="button" aria-label="{{fileNameEdit.pending ? '确认上次改名结果' : '保存账单名称'}}" aria-disabled="{{fileNameEdit.saving}}"><view class="file-name-confirm"><view wx:if="{{fileNameEdit.saving}}" class="file-name-spinner"></view><image wx:else class="file-action-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view></view>
+            </view>
+            <view wx:elif="{{item.state === 'queued' || item.state === 'failed' || item.state === 'ready' || item.state === 'duplicate' || item.state === 'mapping'}}" class="file-row-actions">
+              <view class="file-small-action file-edit {{busy ? 'file-small-action-disabled' : ''}}" data-id="{{item.clientId}}" catchtap="openFileRename" aria-role="button" aria-label="编辑账单名称" aria-disabled="{{busy}}"><image class="file-action-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view>
+              <view class="file-small-action file-remove {{busy || fileRenamePending ? 'file-small-action-disabled' : ''}}" data-id="{{item.clientId}}" catchtap="removeFile" aria-role="button" aria-label="删除账单" aria-disabled="{{busy || fileRenamePending}}"><image class="file-action-icon" src="/assets/icons/trash.svg" mode="aspectFit" /></view>
             </view>
             <text wx:else class="file-row-state">{{item.stateText}}</text>
           </view>
@@ -98,7 +109,7 @@
         <text class="file-limit">上限 5 份 · 单份 5 MB</text>
       </view>
       <view wx:if="{{uploadSummary.queued > 0 || phase === 'uploading'}}" class="file-picker-action">
-        <button data-ui="parse-action" wx:if="{{uploadSummary.queued > 0 || phase === 'uploading'}}" class="primary-button stage-primary parse-button {{phase === 'uploading' ? 'parse-button-loading' : ''}}" bindtap="startUpload" disabled="{{busy || uploadSummary.queued === 0 || files.length > maxFiles}}">
+        <button data-ui="parse-action" wx:if="{{uploadSummary.queued > 0 || phase === 'uploading'}}" class="primary-button stage-primary parse-button {{phase === 'uploading' ? 'parse-button-loading' : ''}}" bindtap="startUpload" disabled="{{busy || fileRenamePending || uploadSummary.queued === 0 || files.length > maxFiles}}">
           <view class="parse-button-content"><view wx:if="{{phase === 'uploading'}}" class="parse-button-spinner"></view><text>{{phase === 'uploading' ? '解析中' : '开始解析'}}</text></view>
         </button>
         <text class="stage-action-summary file-picker-summary content-inset">{{phase === 'uploading' ? '解析中…' : (uploadSummary.queued ? '待解析 ' + uploadSummary.queued + ' 份' : (uploadSummary.failed ? '请重试失败文件或继续添加' : '文件已读取'))}}</text>
@@ -141,9 +152,24 @@
     <view class="file-batch parsed-sources">
       <view class="file-batch-head content-inset"><text class="file-batch-title">来源文件</text><text class="file-batch-count money-number">{{sources.length}} 份</text></view>
       <view class="file-list">
-        <view wx:for="{{sources}}" wx:key="sourceId" class="file-strip">
+        <view wx:for="{{sources}}" wx:key="sourceId" class="file-strip {{fileNameEdit && fileNameEdit.sourceId === item.sourceId ? 'file-strip-editing' : ''}}">
           <view class="file-mark"><text>{{index + 1}}</text></view>
-          <view class="file-copy"><text class="file-name">{{item.fileName}}</text><text class="file-meta">{{item.sourceType}} · {{item.summary.valid}} 条记录</text></view>
+          <view class="file-copy">
+            <view wx:if="{{fileNameEdit && fileNameEdit.sourceId === item.sourceId}}" data-ui="source-name-editor" class="file-name-form">
+              <input class="file-name-input {{fileNameEdit.error ? 'field-error-shake' : ''}}" name="sourceFileName" aria-label="账单名称" value="{{fileNameEdit.value}}" placeholder="账单名称" maxlength="-1" focus="{{!fileNameEdit.pending}}" disabled="{{fileNameEdit.saving || fileNameEdit.pending}}" bindinput="inputFileRename" bindblur="inputFileRename" bindconfirm="saveFileRename" confirm-type="done" cursor-spacing="24" />
+              <text class="file-name-suffix">{{fileNameEdit.suffix}}</text>
+            </view>
+            <text wx:else class="file-name">{{item.fileName}}</text>
+            <text wx:if="{{fileNameEdit && fileNameEdit.sourceId === item.sourceId && fileNameEdit.error}}" class="file-name-error">{{fileNameEdit.error}}</text>
+            <text class="file-meta">{{item.sourceType}} · {{item.summary.valid}} 条记录</text>
+          </view>
+          <view wx:if="{{update.status === 'review' && item.importId}}" class="file-row-side">
+            <view wx:if="{{fileNameEdit && fileNameEdit.sourceId === item.sourceId}}" class="file-row-actions file-name-actions">
+              <view class="file-small-action {{fileNameEdit.saving ? 'file-small-action-disabled' : ''}}" catchtap="closeFileRename" aria-role="button" aria-label="{{fileNameEdit.pending ? '收起改名结果' : '取消修改账单名称'}}" aria-disabled="{{fileNameEdit.saving}}"><image class="file-action-icon" src="/assets/icons/close.svg" mode="aspectFit" /></view>
+              <view class="file-small-action {{fileNameEdit.saving || fileNameEdit.loading ? 'file-small-action-disabled' : ''}}" catchtap="saveFileRename" aria-role="button" aria-label="{{fileNameEdit.pending ? '确认上次改名结果' : '保存账单名称'}}" aria-disabled="{{fileNameEdit.saving || fileNameEdit.loading}}"><view class="file-name-confirm"><view wx:if="{{fileNameEdit.saving || fileNameEdit.loading}}" class="file-name-spinner"></view><image wx:else class="file-action-icon" src="/assets/icons/check.svg" mode="aspectFit" /></view></view>
+            </view>
+            <view wx:else class="file-small-action file-edit {{busy ? 'file-small-action-disabled' : ''}}" data-source-id="{{item.sourceId}}" catchtap="openFileRename" aria-role="button" aria-label="编辑账单名称" aria-disabled="{{busy}}"><image class="file-action-icon" src="/assets/icons/pencil.svg" mode="aspectFit" /></view>
+          </view>
         </view>
       </view>
     </view>
@@ -157,7 +183,7 @@
           <button class="stage-previous" bindtap="abandonUpdate" disabled="{{busy}}">放弃本批</button>
           <button class="primary-button stage-primary" data-step="2" bindtap="goToStep" disabled="{{busy || unlockedStep < 2}}">下一步：确认账户</button>
         </block>
-        <button wx:else data-ui="next-accounts" class="primary-button stage-primary" bindtap="createFinanceUpdate" loading="{{phase === 'organizing'}}" disabled="{{busy || uploadSummary.ready === 0}}">{{phase === 'organizing' ? '正在准备账户' : '下一步：确认账户'}}</button>
+        <button wx:else data-ui="next-accounts" class="primary-button stage-primary" bindtap="createFinanceUpdate" loading="{{phase === 'organizing'}}" disabled="{{busy || fileRenamePending || uploadSummary.ready === 0}}">{{phase === 'organizing' ? '正在准备账户' : '下一步：确认账户'}}</button>
       </view>
     </view>
   </block>

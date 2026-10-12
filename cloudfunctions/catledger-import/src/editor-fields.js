@@ -23,7 +23,7 @@ function funds(event) {
 function accountRolesValid(event, accounts) {
   const fields = event.fieldSources || {}, primary = fields.installment
   if (fields.repaymentChannelResolution) {
-    return require('./repayment-channel').valid(event) &&
+    return require('./repayment-channel').relationValid(event) &&
       (!event.ledgerAccountId || ASSETS.has(accounts.get(event.ledgerAccountId)?.type)) &&
       accounts.get(event.counterpartyLedgerAccountId)?.type === 'credit'
   }

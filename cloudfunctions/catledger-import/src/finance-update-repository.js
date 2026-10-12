@@ -464,6 +464,7 @@ function publicSource(row) {
     sourceType: row.sourceType,
     sourceFormat: row.sourceFormat,
     fileName: row.fileName,
+    ...(row.displayName ? { originalFileName: row.originalFileName } : {}),
     parserVersion: row.parserVersion,
     normalizationVersion: row.normalizationVersion,
     identityVersion: row.identityVersion,
@@ -478,17 +479,18 @@ function publicSource(row) {
 
 async function selectSources(connection, uid, updateId) {
   const [rows] = await connection.execute(
-    `SELECT source_id AS sourceId, source_order AS sourceOrder, import_id AS importId,
-            batch_id AS batchId, source_type_snapshot AS sourceType,
-            source_format_snapshot AS sourceFormat, file_name_snapshot AS fileName,
-            parser_version AS parserVersion, normalization_version AS normalizationVersion,
-            identity_version AS identityVersion, total_row_count AS totalRowCount,
-            valid_row_count AS validRowCount, invalid_row_count AS invalidRowCount,
+    `SELECT s.source_id AS sourceId, s.source_order AS sourceOrder, s.import_id AS importId,
+            s.batch_id AS batchId, s.source_type_snapshot AS sourceType,
+            s.source_format_snapshot AS sourceFormat, COALESCE(f.display_name, s.file_name_snapshot) AS fileName,
+            f.display_name AS displayName, s.file_name_snapshot AS originalFileName,
+            s.parser_version AS parserVersion, s.normalization_version AS normalizationVersion,
+            s.identity_version AS identityVersion, s.total_row_count AS totalRowCount,
+            s.valid_row_count AS validRowCount, s.invalid_row_count AS invalidRowCount,
             (SELECT batch.analysis_json FROM catledger_import_batches batch
-              WHERE batch.uid = catledger_finance_update_sources.uid
-                AND batch.batch_id = catledger_finance_update_sources.batch_id) AS analysis
-       FROM catledger_finance_update_sources
-      WHERE uid = ? AND update_id = ? ORDER BY source_order`,
+              WHERE batch.uid = s.uid AND batch.batch_id = s.batch_id) AS analysis
+       FROM catledger_finance_update_sources s
+       JOIN catledger_import_files f ON f.uid = s.uid AND f.import_id = s.import_id
+      WHERE s.uid = ? AND s.update_id = ? ORDER BY s.source_order`,
     [uid, updateId]
   )
   return rows.map(publicSource)
@@ -574,7 +576,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
             r.source_row_number AS rowNumber, r.counterparty_raw AS counterparty,
             r.item_raw AS item, r.note_raw AS sourceNote, r.normalized_direction AS sourceDirection,
             r.payment_method_raw AS paymentMethod, r.status_raw AS sourceStatus,
-            s.source_type_snapshot AS sourceType, s.file_name_snapshot AS fileName
+            s.source_type_snapshot AS sourceType, COALESCE(source_file.display_name, s.file_name_snapshot) AS fileName
        FROM catledger_economic_events e
        LEFT JOIN catledger_categories category ON category.uid = e.uid AND category.category_id = e.category_id
        LEFT JOIN catledger_categories parent_category ON parent_category.uid = category.uid AND parent_category.category_id = category.parent_id
@@ -589,6 +591,7 @@ async function selectEvents(connection, uid, updateId, { includeFieldSources = f
          ON r.uid = primary_evidence.uid AND r.row_id = primary_evidence.row_id
        LEFT JOIN catledger_finance_update_sources s
          ON s.uid = r.uid AND s.update_id = e.update_id AND s.batch_id = r.batch_id
+       LEFT JOIN catledger_import_files source_file ON source_file.uid = s.uid AND source_file.import_id = s.import_id
       WHERE e.uid = ? AND e.update_id = ?${eventIds ? ` AND e.event_id IN (${eventIds.map(() => '?').join(',')})` : ''}
       ORDER BY e.event_local_at IS NULL, e.event_local_at, e.event_id`,
     [uid, updateId, ...(eventIds || []), uid, updateId, ...(eventIds || [])]
@@ -738,7 +741,7 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
             subject_event.amount_minor AS subjectAmountMinor,
             subject_event.currency AS subjectCurrency,
             source.source_type_snapshot AS subjectSourceType,
-            source.file_name_snapshot AS subjectFileName,
+            COALESCE(source_file.display_name, source.file_name_snapshot) AS subjectFileName,
             source_row.payment_method_raw AS subjectPaymentMethod,
             source_row.status_raw AS subjectRawStatus,
             source_row.item_raw AS subjectItem,
@@ -768,6 +771,7 @@ async function selectIssues(connection, uid, updateId, { status = null, issueIds
        LEFT JOIN catledger_finance_update_sources source
          ON source.uid = source_row.uid AND source.update_id = issue.update_id
         AND source.batch_id = source_row.batch_id
+       LEFT JOIN catledger_import_files source_file ON source_file.uid = source.uid AND source_file.import_id = source.import_id
       WHERE issue.uid = ? AND issue.update_id = ?${statusSql}${idsSql}
       ORDER BY issue.status = 'open' DESC, issue.created_at, issue.issue_id`,
     values

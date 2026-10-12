@@ -3,6 +3,7 @@ const cloudUpload = require('../../services/cloud-upload-policy')
 const loginGuard = require('../../services/login-guard')
 const model = require('./model')
 const bankMapping = require('./bank-mapping')
+const { importPatch } = require('./file-rename')
 const readCache = require('../../services/read-cache')
 const { publicError, ERROR_MESSAGES } = require('./presentation')
 
@@ -13,10 +14,12 @@ const FILE_PIPELINE_CONCURRENCY = MAX_FILES
 module.exports = {
   MAX_FILES,
   chooseFiles: function () {
+    if (this.data.busy || this.blockFileNameEdit()) return
     loginGuard.run(this, this.openFilePicker.bind(this))
   },
 
   openFilePicker: function () {
+    if (this.data.busy || this.blockFileNameEdit()) return
     const self = this
     const remaining = MAX_FILES - this.data.files.length
     if (remaining <= 0) return
@@ -49,6 +52,8 @@ module.exports = {
           return {
             clientId: clientId,
             name: file.name,
+            originalName: file.name,
+            displayName: '',
             size: file.size,
             sizeText: model.formatFileSize(file.size),
             state: 'queued',
@@ -107,13 +112,19 @@ module.exports = {
   startUpload: async function () {
     const queuedFiles = this.data.files.filter(function (file) { return file.state === 'queued' })
     if (this.data.busy || queuedFiles.length === 0 || this.data.files.length > MAX_FILES) return
+    if (this.blockFileNameEdit()) return
+    if (this.blockPendingFileRename()) return
     this.setData({ phase: 'uploading', busy: true, errorMessage: '' })
     const requestId = importApi.createRequestId()
     this._requestIds.prepareMany = requestId
     try {
       const prepared = await this.request('imports.prepareMany', {
         requestId: requestId,
-        files: queuedFiles.map(function (file) { return { fileName: file.name, size: file.size } })
+        files: queuedFiles.map(function (file) {
+          const item = { fileName: file.originalName || file.name, size: file.size }
+          if (file.displayName) item.displayName = file.displayName
+          return item
+        })
       })
       const preparedByClientId = new Map(queuedFiles.map(function (file, index) {
         return [file.clientId, prepared.files[index]]
@@ -121,7 +132,7 @@ module.exports = {
       const files = this.data.files.map(function (file) {
         const server = preparedByClientId.get(file.clientId)
         if (!server) return file
-        return Object.assign({}, file, {
+        return Object.assign({}, file, importPatch(file, server), {
           state: 'preparing', stateText: model.fileStateText('preparing'),
           importId: server.importId, importVersion: server.version,
           cloudPath: server.cloudPath
@@ -229,6 +240,8 @@ module.exports = {
         timezoneOffsetMinutes: new Date().getTimezoneOffset()
       }, options || (file.bankMapping ? { bankMapping: file.bankMapping } : {})))
       if (canApply && !canApply()) return
+      const namePatch = importPatch(file, result.import)
+      this.setFileState(clientId, namePatch)
       if (result.mappingRequired && result.bankPreview) {
         if (!this._bankPreviews) this._bankPreviews = new Map()
         this._bankPreviews.set(clientId, result.bankPreview)
@@ -240,7 +253,7 @@ module.exports = {
             statementKind: previous.draft.statementKind, positiveDirection: previous.draft.positiveDirection,
             debitDirection: previous.draft.debitDirection
           }) : undefined
-          const next = bankMapping.view(clientId, file.name, result.bankPreview, draft)
+          const next = bankMapping.view(clientId, namePatch.name || file.name, result.bankPreview, draft)
           next.advanced = previous.advanced
           this.setData({ bankMappingSheet: next })
         }
@@ -287,6 +300,8 @@ module.exports = {
 
   openBankMapping: async function (event) {
     if (this.data.busy) return
+    if (this.blockFileNameEdit()) return
+    if (this.blockPendingFileRename()) return
     const id = event.currentTarget.dataset.id
     let file = this.data.files.find(item => item.clientId === id)
     if (!file) return
@@ -314,6 +329,7 @@ module.exports = {
 
   openFileAttention: function (event) {
     if (this.data.busy) return
+    if (this.blockFileNameEdit()) return
     const data = event.currentTarget.dataset
     const file = this.data.files.find(item => data.id ? item.clientId === data.id : item.state === data.state)
     if (!file) return
@@ -424,6 +440,8 @@ module.exports = {
 
   confirmBankMapping: async function () {
     if (this.data.busy || !this.data.bankMappingSheet) return
+    if (this.blockFileNameEdit()) return
+    if (this.blockPendingFileRename()) return
     if (this.data.bankMappingSheet.previewPending && !await this.refreshBankPreview()) return
     const sheet = this.data.bankMappingSheet, result = bankMapping.payload(sheet)
     if (result.error) { this.setData({ 'bankMappingSheet.error': result.error }); return }
@@ -449,6 +467,8 @@ module.exports = {
 
   retryFile: async function (event) {
     if (this.data.busy) return
+    if (this.blockFileNameEdit()) return
+    if (this.blockPendingFileRename()) return
     const clientId = event.currentTarget.dataset.id
     const file = this.data.files.find(function (item) { return item.clientId === clientId })
     if (!file) return
@@ -462,6 +482,8 @@ module.exports = {
 
   removeFile: async function (event) {
     if (this.data.busy) return
+    if (this.blockFileNameEdit()) return
+    if (this.blockPendingFileRename()) return
     const clientId = event.currentTarget.dataset.id
     const file = this.data.files.find(function (item) { return item.clientId === clientId })
     if (!file) return

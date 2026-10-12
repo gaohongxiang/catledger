@@ -21,10 +21,14 @@ for (const [sourceType, economicNature, reasonField] of [['wechat', 'expense', '
     const data = channelFixture(2, sourceType, economicNature, reasonField)
     const h = setup(1, data), page = h.page
     h.pairs[0].platform.sourceType = sourceType; h.pairs[0].economicNature = economicNature
-    await h.flush()
+    await page.setStep({ currentStep: 3 })
+    const card = page.data.reviewGroups[0].issues[0]
     const detailReads = h.calls.filter(call => call.action === 'reviewIssues.get').length
-    await page.openIssue(tap('synthetic-issue'))
+    await page.openPendingRecord({ currentTarget: { dataset: { id: card.eventId, issueId: card.issueId } } })
+    assert.equal(page.data.reviewEditSheet, null, '点待核对卡片不经过普通编辑页或二次入口')
     assert.equal(page.data.currentIssue, null)
+    assert.equal(page.data.pairingSheet.title, '判断是否同一笔')
+    assert.equal(page.data.pairingSheet.issueId, card.issueId)
     assert.equal(page.data.pairingSheet.mode, 'ambiguous')
     assert.equal(page.data.pairingRows[0].natureLabel, economicNature === 'refund' ? '退款' : '消费')
     assert.equal(h.calls.filter(call => call.action === 'reviewIssues.get').length, detailReads, '已有摘要直接路由，不先拉旧整组详情')
@@ -93,4 +97,19 @@ test('其他同笔问题保持原有主记录默认选择', async () => {
   await page.confirmSame()
   assert.equal(page._draftSession.state.entries[0].decision.primaryEventId, 'synthetic-event-0')
   page.onUnload()
+})
+
+test('同笔关系页的查看并修改本笔仍进入选中事件的编辑页', async t => {
+  const h = runtime(fixture(2, true)), page = h.page
+  t.after(() => page.onUnload())
+  await page.setStep({ currentStep: 3 })
+  const card = page.data.reviewGroups[0].issues[1]
+  await page.openPendingRecord({ currentTarget: { dataset: { id: card.eventId, issueId: card.issueId } } })
+  assert.equal(page.data.currentIssue.issueId, card.issueId)
+  assert.equal(page.data.reviewEditSheet, null)
+  await page.openPendingRecord({ currentTarget: { dataset: { id: card.eventId, issueId: card.issueId } } })
+  assert.equal(page.data.currentIssue, null)
+  assert.equal(page.data.reviewEditSheet.eventId, card.eventId)
+  assert.equal(page.data.reviewEditSheet.loading, false)
+  assert.equal(page.data.reviewEditSheet.error, '')
 })

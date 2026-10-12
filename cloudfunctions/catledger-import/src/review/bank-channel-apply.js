@@ -22,7 +22,6 @@ async function applyPairs(connection, uid, updateId, pairs, actionId, { persistD
   for (const pair of pairs) {
     if (!bankChannelPair(pair.bank, pair.platform) ||
       hasSourceIdentityConflict(pair.bank.relationEvidence.rows.concat(pair.platform.relationEvidence.rows))) throw importError('IDENTITY_CONFLICT')
-    if (pair.pairKind === 'repayment' && pair.decision === 'same' && pair.repaymentConfirmed !== true) throw importError('VALIDATION_ERROR')
   }
   if (persistDecisions) await remember(connection, uid, pairs, actionId)
   // 仅撤销受影响的旧派生问题；余下成员由同一次收尾按剩余边重建。

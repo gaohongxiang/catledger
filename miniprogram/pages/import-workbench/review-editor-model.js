@@ -50,11 +50,14 @@ function create(row) {
     periodInput: String(row.installment?.periodNumber || ''), totalTermsInput: String(row.installment?.totalTerms || ''),
     refund: null, dirty: {}, dormant: {}, acknowledgedChanges: [] }
   if (channel) Object.assign(draft, { economicNature: 'repayment', amountInput: yuan(channel.totalMinor),
-    [repaymentTargetKey(row)]: channel.targetAccountId, owner: 'self', composition: 'single', parts: [], repaymentMode: 'ordinary' })
+    [repaymentTargetKey(row)]: channel.targetAccountId, owner: 'self', composition: 'single', parts: [], repaymentMode: 'ordinary',
+    repaymentChannelConfirmed: channel.confirmed !== false })
   return draft
 }
 function change(row, draft, key, value) {
-  if (repaymentChannelOf(row) && ![repaymentPayerKey(row), 'counterparty', 'note', 'acknowledgedChanges'].includes(key)) return draft
+  const channel = repaymentChannelOf(row)
+  if (key === 'repaymentChannelConfirmed' && (!channel || channel.confirmed !== false || typeof value !== 'boolean')) return draft
+  if (channel && ![repaymentPayerKey(row), 'counterparty', 'note', 'acknowledgedChanges', 'repaymentChannelConfirmed'].includes(key)) return draft
   const next = { ...draft, dirty: { ...draft.dirty, [key]: true }, dormant: { ...draft.dormant } }
   if (key === 'economicNature') {
     if (!NATURES.some(item => item.value === value) || detail.principalOf(row)) return draft
@@ -163,7 +166,7 @@ function derive(row, draft, catalogs = {}) {
     const fixed = ['economicNature', 'amountInput', 'date', 'time', repaymentTargetKey(row), 'owner', 'otherTreatment',
       'composition', 'parts', 'repaymentMode', 'loanMode', 'loanId', 'loanVersion', 'principalInput', 'interestInput', 'feeInput',
       'interestTreatment', 'feeTreatment', 'interestCategoryId', 'feeCategoryId', 'chargeAllocations', 'categoryId', 'refund', 'evidenceNote', 'periodInput', 'totalTermsInput']
-    if (fixed.some(key => JSON.stringify(draft[key]) !== JSON.stringify(original[key]))) invalid('repaymentChannel', '这组还款已确认金额、时间和目标；请先修改同笔判断，再分别核对原记录')
+    if (fixed.some(key => JSON.stringify(draft[key]) !== JSON.stringify(original[key]))) invalid('repaymentChannel', '这组还款的金额、时间和还入账户来自来源；请先修改同笔判断，再分别核对原记录')
   }
   const put = (key, value, before) => { if (value !== before) output[key] = value }
   if (draft.dirty.economicNature || effectiveNature !== row.economicNature || (row.reasonCodes || []).includes('row_transaction_type_unknown') && effectiveNature !== 'unknown') output.economicNature = effectiveNature
@@ -188,6 +191,10 @@ function derive(row, draft, catalogs = {}) {
     if (draft.counterpartyLedgerAccountId) output.counterpartyLedgerAccountId = draft.counterpartyLedgerAccountId
   }
   const decisions = {}
+  if (channel && channel.confirmed === false) {
+    if (draft.repaymentChannelConfirmed === true) decisions.repaymentChannel = { confirmed: true }
+    else missing.push('还入账户及手续费确认')
+  }
   if (!channel && row.repaymentOwnership && draft.economicNature !== 'repayment' && draft.dirty.economicNature) decisions.ownership = null
   if (!channel && draft.economicNature === 'repayment' && !principal && (draft.owner !== original.owner || draft.dirty.owner || draft.dirty.otherTreatment ||
     draft.dirty.economicNature || !row.repaymentOwnership && effectiveNature === 'repayment')) {
@@ -276,7 +283,10 @@ function derive(row, draft, catalogs = {}) {
     natureOptions: options, natureIndex: Math.max(0, options.findIndex(item => item.value === draft.economicNature)),
     natureLabel: principal ? '分期本金出账' : options.find(item => item.value === draft.economicNature)?.label || '性质待确认',
     routeFields, bankSuggestion,
-    repaymentChannel: channel ? { repaymentText: yuan(channel.repaymentMinor), feeText: yuan(channel.feeMinor), totalText: yuan(channel.totalMinor) } : null,
+    repaymentChannel: channel ? { repaymentText: yuan(channel.repaymentMinor), feeText: yuan(channel.feeMinor), totalText: yuan(channel.totalMinor),
+      confirmed: channel.confirmed !== false,
+      ...(channel.confirmed === false ? { confirmationText: '确认还入「' + (routeFields.find(field => field.label === '还入账户')?.name || channel.targetAccountName || '此账户') + '」，' +
+        (String(channel.feeMinor) === '0' ? '无手续费' : '差额 ¥' + yuan(channel.feeMinor) + ' 为手续费') } : {}) } : null,
     title: draft.economicNature === 'repayment' && !principal ? '确认还款' : '核对交易',
     summaryParty: draft.counterparty,
     summaryTime: [draft.date, draft.time.slice(0, 5)].filter(Boolean).join(' '),
@@ -302,6 +312,7 @@ function derive(row, draft, catalogs = {}) {
 function restore(row, payload) {
   let draft = create(row)
   const fields = payload.fields || {}, decisions = payload.decisions || {}
+  if (decisions.repaymentChannel?.confirmed === true && repaymentChannelOf(row)) draft.repaymentChannelConfirmed = true
   if (has(fields, 'economicNature')) draft = change(row, draft, 'economicNature', fields.economicNature)
   const ownership = decisions.ownership
   if (ownership) {

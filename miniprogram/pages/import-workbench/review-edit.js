@@ -178,7 +178,8 @@ module.exports = {
   changeEditorMode(event) {
     const { field, value } = event.currentTarget.dataset
     const choices = { owner: ['self','other'], otherTreatment: ['expense','pending'], repaymentMode: ['ordinary','loan'],
-      composition: ['single','payment','repayment'], loanMode: ['defer','associate'], interestTreatment: ['expense','accrued'], feeTreatment: ['expense','accrued'] }
+      composition: ['single','payment','repayment'], loanMode: ['defer','associate'], interestTreatment: ['expense','accrued'], feeTreatment: ['expense','accrued'],
+      repaymentChannelConfirmed: [true, false] }
     if (!choices[field]?.includes(value)) return
     const token = this._reviewEditToken
     if (!editable(this, token) || field === 'owner' && value === 'other' && token.draft.composition === 'repayment') return

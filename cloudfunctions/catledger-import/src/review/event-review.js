@@ -77,7 +77,7 @@ async function setReview(connection, uid, data, requestDigest, { updateId, event
 
 // 与旧 setReview 共用外层用户锁、幂等回执和批次版本，不新增写协议或嵌套事务。
 async function saveEditor(connection, uid, data, requestDigest, update, event) {
-  const next = require('./editor-policy').prepare(event, data)
+  let next = require('./editor-policy').prepare(event, data)
   await require('./editor-refund').validateExpectations(connection, uid, event, data.expectedRelations)
   if (event.fieldSources.installment && (data.sourceCorrection || ['ledgerAccountId','amountMinor','occurredLocalAt'].some(key => Object.hasOwn(data.fields || {}, key)))) {
     const [[claimed]] = await connection.execute('SELECT COUNT(*) AS count FROM catledger_installment_items WHERE uid=? AND source_event_id=? AND active=1', [uid, event.eventId])
@@ -86,6 +86,11 @@ async function saveEditor(connection, uid, data, requestDigest, update, event) {
   const actionId = await insertAction(connection, uid, { updateId: event.updateId, expectedVersion: Number(update.version),
     appliedVersion: Number(update.version) + 1, actionType: 'set_event_review', requestDigest,
     decision: data, reasons: ['review_manually_changed'] })
+  if (data.decisions && data.decisions.repaymentChannel) {
+    const [verified] = await require('./bank-channel-hydration').hydrate(connection, uid, event.updateId, [next])
+    if (!require('../repayment-channel').evidenceValid(verified, verified.relationEvidence.rows)) throw importError('VALIDATION_ERROR')
+    next = await require('./repayment-channel-merge').confirmDetails(connection, uid, event.updateId, verified, actionId)
+  }
   if (next.fieldSources.loanRepayment) next.fieldSources.loanRepayment = await require('./repayment').prepareRepayment(connection, uid, event.updateId, next, next.fieldSources.loanRepayment, { editor: true })
   await require('./editor-refund').apply(connection, uid, event, next, data)
   const openBlockingIssues = await require('./issue-store').refreshEditedEventIssues(connection, uid, event.updateId, next, actionId)

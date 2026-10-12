@@ -116,6 +116,7 @@
       "import_id",
       "state",
       "original_file_name",
+      "display_name",
       "declared_size",
       "actual_size",
       "file_extension",

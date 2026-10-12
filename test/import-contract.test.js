@@ -13,7 +13,7 @@ test('导入公共契约与事件云函数动作保持一致', function () {
   const handler = function () {}
   const handlers = createActionHandlers({
     commandResult: handler,
-    commit: handler, discard: handler, discardFile: handler, get: handler, getFile: handler,
+    commit: handler, discard: handler, discardFile: handler, get: handler, getFile: handler, renameFile: handler,
     parse: handler, parseFile: handler, prepare: handler, prepareMany: handler,
     financeUpdateList: handler, financeUpdateRows: handler, financeUpdateSummary: handler, financeUpdateOptions: handler, economicEventList: handler, economicEventDetail: handler, reviewIssueMembers: handler,
     financeUpdateAbandon: handler, financeUpdateCreate: handler, financeUpdateGet: handler,
@@ -122,7 +122,8 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(markup, /<view wx:if="\{\{!files.length && phase !== 'loading' && phase !== 'organizing' && !restoreUpdateId && !preparePending\}\}" data-ui="empty-picker" class="file-picker-empty">/)
   assert.match(markup, /class="file-row-side"/)
   assert.match(markup, /class="file-progress \{\{item\.state === 'preparing'/)
-  assert.match(styles, /\.file-row-side \{[^}]*flex: 0 0 64rpx;/)
+  assert.match(styles, /\.file-row-side \{[^}]*flex: 0 0 136rpx;/)
+  assert.match(markup, /catchtap="openFileRename" aria-role="button"[^>]*aria-label="编辑账单名称"[^>]*><image[^>]*src="\/assets\/icons\/pencil\.svg"/)
   assert.match(styles, /\.file-progress-idle \.file-progress-value \{ width: 0 !important; \}/)
   assert.match(styles, /\.account-decision-row \{[^}]*min-height: 88rpx;/)
   assert.match(styles, /\.account-compact-name \{[^}]*height: 88rpx;[^}]*line-height: normal;/)
@@ -134,7 +135,7 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(markup, /phase === 'files_ready' \|\| phase === 'organizing'/)
   assert.match(markup, /phase === 'organizing' \? '正在准备账户' : '下一步：确认账户'/)
   assert.doesNotMatch(markup, /正在整理解析结果/)
-  assert.match(markup, /disabled="\{\{busy \|\| uploadSummary\.queued === 0 \|\| files\.length > maxFiles\}\}"/)
+  assert.match(markup, /disabled="\{\{busy \|\| fileRenamePending \|\| uploadSummary\.queued === 0 \|\| files\.length > maxFiles\}\}"/)
   assert.match(markup, /只继续整理读取成功的账单/)
   assert.doesNotMatch(source + markup, /activeUpdateId|active_update|resumeExistingUpdate|继续原来的进度|>继续</)
   assert.match(repository, /actionType: 'replace_unposted_update'/)
@@ -142,13 +143,13 @@ test('导入工作台以多文件 FinanceUpdate 和 ReviewIssue 取代逐行 pos
   assert.match(repository, /duplicateDisposition: replacedUpdateId \? 'replaced_unposted_update' : 'reused_unposted'/)
   assert.match(source, /!result\.batch \|\| !result\.batch\.batchId/)
   assert.match(markup, /至少成功解析 1 份账单后才可继续/)
-  assert.match(markup, /catchtap="removeFile" aria-role="button">删除<\/view>/)
+  assert.match(markup, /catchtap="removeFile" aria-role="button"[^>]*aria-label="删除账单"[^>]*><image[^>]*src="\/assets\/icons\/trash\.svg"/)
   assert.match(markup, /bindtap="tapFileRow"/)
   assert.doesNotMatch(markup, /file-next-action/)
   assert.match(styles, /\.file-copy \{ width: 0; min-width: 0; overflow: hidden; flex: 1 1 0%; \}/)
   assert.match(styles, /\.file-small-action \{[^}]*width: 64rpx;[^}]*flex: 0 0 64rpx;/)
   assert.doesNotMatch(styles.match(/\.file-error \{[^}]*\}/)[0], /max-height|overflow: hidden/)
-  assert.match(styles, /\.file-row-side \{[^}]*width: 64rpx;[^}]*flex: 0 0 64rpx;/)
+  assert.match(styles, /\.file-row-side \{[^}]*width: 136rpx;[^}]*flex: 0 0 136rpx;/)
   assert.ok(markup.indexOf('class="file-batch"') < markup.indexOf('class="file-picker-actions"'))
   assert.doesNotMatch(markup, /以前|之前/)
   assert.doesNotMatch(markup, /本次所有账单都会回滚/)

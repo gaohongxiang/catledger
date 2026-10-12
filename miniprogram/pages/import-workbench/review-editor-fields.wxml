@@ -19,13 +19,6 @@
       </view>
     </view>
   </view>
-  <view wx:if="{{editor.repaymentChannel}}" class="mapping-fields">
-    <view class="mapping-field"><text class="mapping-label">还款到账</text><text>¥{{editor.repaymentChannel.repaymentText}}</text></view>
-    <view class="mapping-field"><text class="mapping-label">手续费</text><text>¥{{editor.repaymentChannel.feeText}}</text></view>
-    <view class="mapping-field"><text class="mapping-label">合计扣款</text><text>¥{{editor.repaymentChannel.totalText}}</text></view>
-    <text class="sheet-copy">金额、日期与还入账户已由两份原文确认。需修改时，请先修改同笔判断，拆开核对。</text>
-    <text wx:if="{{editor.fieldErrors.repaymentChannel}}" class="editor-field-error">{{editor.fieldErrors.repaymentChannel}}</text>
-  </view>
   <button wx:if="{{editor.routeFields.length === 1 && canEdit && editor.supported && !editor.routeFields[0].readonly}}" class="repayment-mode-row {{!editor.routeFields[0].accountId ? 'editor-route-missing' : ''}}" data-target="{{editor.routeFields[0].target}}" bindtap="openDirectory" disabled="{{disabled}}" aria-label="{{(editor.routeFields[0].accountId ? '修改' : '选择') + editor.routeFields[0].label}}">
     <text class="repayment-mode-label">{{editor.routeFields[0].label}}{{!editor.routeFields[0].accountId ? ' · 必选' : ''}}</text>
     <text class="repayment-mode-value">{{editor.routeFields[0].name || '请选择' + editor.routeFields[0].label}}<text class="repayment-mode-chevron" aria-hidden="true">›</text></text>
@@ -42,6 +35,20 @@
         <block wx:else><text class="route-vertical-label">{{item.label}}</text><text class="route-vertical-name">{{item.name || '待补充'}}</text></block>
       </view>
     </view>
+  </view>
+  <view wx:if="{{editor.repaymentChannel}}" class="channel-breakdown">
+    <view class="channel-breakdown-amounts">
+      <view class="channel-breakdown-item"><text class="channel-breakdown-label">还款到账</text><text class="channel-breakdown-value money-number">¥{{editor.repaymentChannel.repaymentText}}</text></view>
+      <text class="channel-breakdown-op" aria-hidden="true">＋</text>
+      <view class="channel-breakdown-item"><text class="channel-breakdown-label">{{editor.repaymentChannel.confirmed ? '手续费' : '差额 · 待核对'}}</text><text class="channel-breakdown-value money-number {{editor.repaymentChannel.confirmed ? '' : 'channel-breakdown-fee-pending'}}">¥{{editor.repaymentChannel.feeText}}</text></view>
+      <text class="channel-breakdown-op" aria-hidden="true">＝</text>
+      <view class="channel-breakdown-item"><text class="channel-breakdown-label">合计扣款</text><text class="channel-breakdown-value money-number channel-breakdown-total">¥{{editor.repaymentChannel.totalText}}</text></view>
+    </view>
+    <text class="channel-breakdown-note">金额与还入账户来自两份原文；修改请先拆开同笔判断</text>
+    <text wx:if="{{editor.fieldErrors.repaymentChannel}}" class="editor-field-error">{{editor.fieldErrors.repaymentChannel}}</text>
+  </view>
+  <view wx:if="{{editor.repaymentChannel && !editor.repaymentChannel.confirmed}}" class="ownership-treatment channel-confirm">
+    <button wx:if="{{canEdit && editor.supported}}" class="ownership-option {{draft.repaymentChannelConfirmed ? 'ownership-option-selected' : ''}}" data-field="repaymentChannelConfirmed" data-value="{{!draft.repaymentChannelConfirmed}}" bindtap="changeEditorMode" disabled="{{disabled}}" aria-role="checkbox" aria-checked="{{draft.repaymentChannelConfirmed}}"><view class="ownership-treatment-copy"><text class="ownership-treatment-title">{{editor.repaymentChannel.confirmationText}}</text><text class="ownership-treatment-detail">勾选后保存；不确定可先保留待核对</text></view><view class="ownership-treatment-check" aria-hidden="true" /></button>
   </view>
   <view wx:if="{{canEdit && editor.bankSuggestion}}" class="bank-suggestion">
     <view class="bank-suggestion-summary"><text class="bank-suggestion-copy">未提供尾号，请核对</text><button wx:for="{{editor.bankSuggestion.candidates}}" wx:key="accountId" class="funds-suggestion" data-id="{{item.accountId}}" bindtap="selectEditorSuggestion" disabled="{{disabled}}" aria-label="{{'使用建议账户：' + item.name}}"><text class="funds-suggestion-name">使用：{{item.name}}</text></button></view>

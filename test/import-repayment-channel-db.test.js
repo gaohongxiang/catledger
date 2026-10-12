@@ -12,7 +12,7 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
   const lab = await isolatedMysql()
   try {
     const apiPool = await lab.role('api', grants.api), importPool = await lab.role('import', grants.importer)
-    async function setup({ count = 1, mapPayer = true, mapTarget = true, differentTarget = false, extraPlatform = false,
+    async function setup({ count = 1, mapPayer = true, mapTarget = true, differentTarget = false, extraPlatform = false, separateDates = false,
       target = '合成银行信用卡(1234)', direction = '支出', feeCategory = true, total = '500.50' } = {}) {
       const subject = 'synthetic-repayment-channel-' + randomUUID()
       const services = localServices({ apiPool, importPool, subject })
@@ -29,14 +29,15 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       assert.ok(category, '合成用户应具有系统手续费分类')
       if (!feeCategory) await lab.owner.execute('UPDATE catledger_categories SET archived_at = CURRENT_TIMESTAMP(3) WHERE uid = ? AND category_id = ?', [user.uid, category.id])
       const prefix = randomUUID()
+      const dateFor = i => `2026-09-${String(2 + (separateDates ? i : 0)).padStart(2, '0')}`
       const contents = [
         Buffer.from(['导出信息:合成还款验收',
           '交易时间,交易分类,交易对方,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注',
-          ...Array.from({ length: count }, (_, i) => `2026-09-02 08:${String(35 + i).padStart(2, '0')}:45,信用借还,${target},信用卡还款,${direction},${total},余额,还款成功,SYNTHETIC-REPAYMENT-${prefix}-${i},,`),
+          ...Array.from({ length: count }, (_, i) => `${dateFor(i)} 08:${String(35 + i).padStart(2, '0')}:45,信用借还,${target},信用卡还款,${direction},${total},余额,还款成功,SYNTHETIC-REPAYMENT-${prefix}-${i},,`),
           ...(extraPlatform ? [`2026-09-03 08:35:45,信用借还,${target},信用卡还款,支出,200.00,余额,还款成功,SYNTHETIC-REPAYMENT-${prefix}-UNPAIRED,,`] : [])
         ].join('\n')),
         Buffer.from(['交易日期,交易金额,收支,交易类型,摘要,账户,交易流水号',
-          ...Array.from({ length: count }, (_, i) => `2026-09-02 09:${String(10 + i).padStart(2, '0')},500.00,收入,,支付宝还款,9999000011111234,SYNTHETIC-BANK-REPAYMENT-${prefix}-${i}`)
+          ...Array.from({ length: count }, (_, i) => `${dateFor(i)} 09:${String(10 + i).padStart(2, '0')},500.00,收入,,支付宝还款,9999000011111234,SYNTHETIC-BANK-REPAYMENT-${prefix}-${i}`)
         ].join('\n'))
       ]
       const c = { services, subject, api, imp, uid: user.uid, creditId, payerId, otherCreditId,
@@ -62,7 +63,7 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       }
       c.updateId = await c.prepare()
       c.summary = () => imp('financeUpdates.summary', { updateId: c.updateId })
-      c.pairings = (data = {}) => imp('reviewIssues.pairings', { updateId: c.updateId, mode: 'ambiguous', pageSize: 20, ...data })
+      c.pairings = (data = {}) => imp('reviewIssues.pairings', { updateId: c.updateId, mode: 'suggested', pageSize: 20, ...data })
       c.resolve = data => imp('reviewIssues.resolvePairings', { requestId: randomUUID(), updateId: c.updateId, ...data })
       c.recheck = async () => imp('financeUpdates.organize', { requestId: randomUUID(), updateId: c.updateId, version: (await c.summary()).update.version })
       c.postInput = async () => ({ requestId: randomUUID(), updateId: c.updateId, version: (await c.summary()).update.version })
@@ -84,9 +85,10 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       }
       c.events = async () => (await lab.owner.execute(`SELECT event_id AS eventId, economic_nature AS nature,
         amount_minor AS amountMinor, ledger_account_id AS ledgerAccountId,
-        counterparty_ledger_account_id AS counterpartId, version, status, field_sources_json AS sources
+        counterparty_ledger_account_id AS counterpartId, version, status, field_sources_json AS sources, reason_codes_json AS reasons
         FROM catledger_economic_events WHERE uid = ? AND update_id = ? ORDER BY event_id`, [c.uid, c.updateId]))[0]
-        .map(row => ({ ...row, amountMinor: String(row.amountMinor), version: Number(row.version), sources: parseJson(row.sources, {}) }))
+        .map(row => ({ ...row, amountMinor: String(row.amountMinor), version: Number(row.version),
+          sources: parseJson(row.sources, {}), reasons: parseJson(row.reasons, []) }))
       c.transactions = async () => (await lab.owner.execute(`SELECT transaction_id AS id, type, amount_minor AS amountMinor,
         source_account_id AS sourceId, destination_account_id AS destinationId, category_id AS categoryId
         FROM catledger_transactions WHERE uid = ? AND origin = 'import' AND deleted_at IS NULL ORDER BY type, transaction_id`, [c.uid]))[0]
@@ -95,6 +97,22 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
         account_id AS accountId, event_id AS eventId FROM catledger_finance_update_account_mapping_drafts
         WHERE uid = ? AND update_id = ? ORDER BY source_type, payment_method_key, event_id`, [c.uid, c.updateId]))[0]
       c.balance = async id => (await api('accounts.list')).accounts.find(row => row.accountId === id).bookBalanceMinor
+      c.same = async (pairIndex = 0) => {
+        const page = await c.pairings(), pair = page.items[pairIndex]
+        assert.ok(pair, '应有明确可核对的还款候选')
+        await c.resolve({ scopeToken: page.scopeToken, selection: { mode: 'include',
+          pairs: [{ pairKey: pair.pairKey, decision: 'same' }] } })
+        return pair
+      }
+      c.detailsInput = async (eventId, fields = {}) => {
+        const events = await c.events(), event = eventId ? events.find(row => row.eventId === eventId) : events[0]
+        assert.ok(event)
+        return { requestId: randomUUID(), updateId: c.updateId, updateVersion: (await c.summary()).update.version,
+          eventId: event.eventId, eventVersion: event.version, editorVersion: 1, fields,
+          decisions: { repaymentChannel: { confirmed: true } } }
+      }
+      c.details = async (eventId, fields) => imp('financeUpdates.setReview', await c.detailsInput(eventId, fields))
+      // 旧客户端明确确认全部明细的协议继续兼容。
       c.confirm = async (pairIndex = 0) => {
         const page = await c.pairings(), pair = page.items[pairIndex]
         assert.ok(pair, '应有明确可核对的还款候选')
@@ -132,7 +150,7 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       assert.equal(statistics.summary.incomeMinor, '0')
     }
 
-    await t.test('同日异时的500元到账与500.50元扣款由用户确认，一次还款加一次手续费且双来源保留', async () => {
+    await t.test('先确认500元到账与500.50元扣款为同笔，再确认还款明细；期间不计费用、不提前补平台目标映射', async () => {
       const c = await setup({ mapTarget: false })
       const page = await c.pairings()
       assert.equal(page.total, 1)
@@ -148,18 +166,62 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       assert.ok(targetIssue); assert.equal(targetIssue.status, 'open')
       assert.deepEqual(pair.repayment, { version: 1, totalMinor: '50050', repaymentMinor: '50000', feeMinor: '50',
         targetAccountId: c.creditId, targetAccountName: '合成银行信用卡1234', targetConfirmed: false })
-      assert.equal((await c.pairings({ mode: 'suggested' })).total, 0)
+      assert.equal((await c.pairings({ mode: 'suggested' })).total, 1)
+      assert.equal((await c.pairings({ mode: 'ambiguous' })).total, 0)
+      assert.equal((await c.summary()).workbench.pairingSuggestedCount, 1)
       const issues = (await c.imp('reviewIssues.list', { updateId: c.updateId, status: 'open' })).items
       const issue = issues.find(item => item.primaryReasonCode === 'bank_channel_same_event_candidate')
       assert.ok(issue)
       assert.equal((await c.pairings({ issueId: issue.issueId })).total, 1)
       await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
-      await c.confirm()
+      await c.same()
+      const [pending] = await c.events()
+      assert.equal((await c.events()).length, 1)
+      assert.equal(pending.eventId, pair.platform.eventId)
+      assert.equal(pending.status, 'needs_action')
+      assert.ok(pending.reasons.includes('repayment_channel_details_required'))
+      assert.equal(pending.reasons.includes('core_fields_conflict'), false)
+      assert.equal(pending.sources.repaymentChannelResolution.repaymentConfirmed, false)
+      assert.equal(pending.sources.repaymentChannelResolution.feeCategoryId, null)
+      assert.equal((await c.drafts()).some(row => row.referenceKey === targetIssue.accountContext.paymentMethodKey), false)
+      assert.deepEqual((await c.drafts()).filter(row => row.accountId === c.creditId).map(row => row.sourceType), ['bank'])
+      const [[pendingTarget]] = await lab.owner.execute(`SELECT status,member_count AS count FROM catledger_review_issues
+        WHERE uid=? AND issue_id=?`, [c.uid, targetIssue.issueId])
+      assert.equal(pendingTarget.status, 'open'); assert.equal(Number(pendingTarget.count), 1)
+      assert.equal((await c.pairings()).total, 0)
+      assert.equal((await c.summary()).workbench.finalSummary.expenseText, '¥0.00')
+      const pendingPage = await c.imp('economicEvents.list', { updateId: c.updateId, status: 'needs_action' })
+      assert.equal(pendingPage.total, 1)
+      assert.equal(pendingPage.items[0].repaymentChannel.confirmed, false)
+      assert.equal(pendingPage.items[0].summaryExpenseMinor, undefined, '费用摘要字段只附在支出视图，待核对记录保留总扣款')
+      const pendingView = require('../miniprogram/pages/import-workbench/model').eventView(pendingPage.items[0])
+      assert.equal(pendingView.amountText, '¥500.50')
+      assert.notEqual(pendingView.displayTitle, '还款手续费')
+      assert.equal((await c.imp('economicEvents.list', { updateId: c.updateId, view: 'expense' })).total, 0)
+      await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
+      await c.imp('financeUpdates.setReview', { requestId: randomUUID(), updateId: c.updateId,
+        updateVersion: (await c.summary()).update.version, eventId: pending.eventId, eventVersion: pending.version,
+        editorVersion: 1, fields: { note: '合成先确认同笔后补明细' } })
+      await c.recheck()
+      const [stable] = await c.events()
+      assert.equal(stable.eventId, pending.eventId)
+      assert.equal(stable.status, 'needs_action')
+      assert.deepEqual(stable.sources.repaymentChannelResolution, pending.sources.repaymentChannelResolution)
+      assert.equal(stable.reasons.includes('core_fields_conflict'), false)
+      assert.equal((await c.pairings()).total, 0)
+      assert.equal((await c.drafts()).some(row => row.referenceKey === targetIssue.accountContext.paymentMethodKey), false,
+        '待补明细期间改备注和重整均不能提前写入平台目标引用')
+      assert.equal((await c.transactions()).length, 0)
+      assert.equal(await c.balance(c.payerId), '100000')
+      assert.equal(await c.balance(c.creditId), '-100000')
+      await c.details()
       const [merged] = await c.events()
       assert.equal(merged.eventId, pair.platform.eventId)
       assert.equal(merged.amountMinor, '50050'); assert.equal(merged.nature, 'repayment')
       assert.equal(merged.ledgerAccountId, c.payerId); assert.equal(merged.counterpartId, c.creditId)
       assert.ok(merged.sources.repaymentChannelResolution)
+      assert.equal(merged.sources.repaymentChannelResolution.repaymentConfirmed, true)
+      assert.equal(merged.sources.repaymentChannelResolution.feeCategoryId, c.feeCategoryId)
       const drafts = await c.drafts(), targets = drafts.filter(row => row.accountId === c.creditId)
       assert.deepEqual(targets.map(row => row.sourceType), ['alipay', 'bank'])
       assert.ok(drafts.every(row => row.eventId === merged.eventId))
@@ -208,23 +270,52 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       assert.equal((await c.transactions()).length, 0)
     })
 
-    await t.test('未明确确认差额、批量全选均拒绝；原请求并发与重试只保存一次', async () => {
+    await t.test('同笔和明细确认的原请求分别支持并发及重试，伪造明细状态仍拒绝', async () => {
       const c = await setup({ direction: '不计收支' }), page = await c.pairings(), pair = page.items[0]
       assert.ok(pair); assert.equal(pair.repayment.targetConfirmed, true)
       const before = await c.events(), version = (await c.summary()).update.version
-      for (const selection of [
-        { mode: 'include', pairs: [{ pairKey: pair.pairKey, decision: 'same' }] },
-        { mode: 'include', pairs: [{ pairKey: pair.pairKey, decision: 'same', repaymentConfirmed: false }] },
-        { mode: 'all_except', excludedPairKeys: [] }
-      ]) await assert.rejects(c.resolve({ scopeToken: page.scopeToken, selection }), { publicCode: 'VALIDATION_ERROR' })
+      await assert.rejects(c.resolve({ scopeToken: page.scopeToken, selection: {
+        mode: 'include', pairs: [{ pairKey: pair.pairKey, decision: 'same', repaymentConfirmed: false }]
+      } }), { publicCode: 'VALIDATION_ERROR' })
       assert.deepEqual(await c.events(), before)
       assert.equal((await c.summary()).update.version, version)
       const request = { requestId: randomUUID(), scopeToken: page.scopeToken, selection: { mode: 'include',
-        pairs: [{ pairKey: pair.pairKey, decision: 'same', repaymentConfirmed: true }] } }
+        pairs: [{ pairKey: pair.pairKey, decision: 'same' }] } }
       const [first, replay] = await Promise.all([c.resolve(request), c.resolve(request)])
       assert.deepEqual(replay, first); assert.deepEqual(await c.resolve(request), first)
       assert.equal((await c.events()).length, 1)
+      assert.equal((await c.events())[0].sources.repaymentChannelResolution.repaymentConfirmed, false)
+      await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
+      const details = await c.detailsInput()
+      await assert.rejects(c.imp('financeUpdates.setReview', { ...details, requestId: randomUUID(),
+        decisions: { repaymentChannel: { confirmed: false } } }), { publicCode: 'VALIDATION_ERROR' })
+      await assert.rejects(c.imp('financeUpdates.setReview', { ...details, requestId: randomUUID(),
+        decisions: { repaymentChannel: { confirmed: true, feeMinor: '0' } } }), { publicCode: 'VALIDATION_ERROR' })
+      const [saved, repeated] = await Promise.all([
+        c.imp('financeUpdates.setReview', details), c.imp('financeUpdates.setReview', details)
+      ])
+      assert.deepEqual(repeated, saved)
+      assert.deepEqual(await c.imp('financeUpdates.setReview', details), saved)
       await c.post(); await assertMoney(c)
+    })
+
+    await t.test('建议批量先合并不重叠的还款来源，每笔仍独立等待明细确认', async () => {
+      const c = await setup({ count: 2, separateDates: true, mapTarget: false }), page = await c.pairings()
+      assert.equal(page.total, 2)
+      assert.equal(page.suggestedTotal, 2)
+      assert.equal((await c.summary()).workbench.pairingSuggestedCount, 2)
+      await c.resolve({ scopeToken: page.scopeToken, selection: { mode: 'all_except', excludedPairKeys: [] } })
+      const events = await c.events()
+      assert.equal(events.length, 2)
+      assert.ok(events.every(event => event.status === 'needs_action' && event.sources.repaymentChannelResolution.repaymentConfirmed === false))
+      assert.equal((await c.pairings()).total, 0)
+      assert.equal((await c.summary()).workbench.finalSummary.expenseCount, 0)
+      await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
+      await c.details(events[0].eventId)
+      assert.equal((await c.events()).filter(event => event.status === 'ready').length, 1)
+      await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
+      await c.details(events[1].eventId)
+      await c.post(); await assertMoney(c, 2)
     })
 
     await t.test('已确认不同目标或原目标尾号冲突不生成还款候选', async () => {
@@ -249,20 +340,24 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
     })
 
-    await t.test('付款账户未知仍可核对同笔，确认后继续阻止入账，补齐付款账户才允许扣款', async () => {
+    await t.test('付款账户未知仍有唯一同笔建议，补齐账户后仍需明细确认才允许扣款', async () => {
       const c = await setup({ mapPayer: false })
-      await c.confirm()
+      assert.equal((await c.pairings()).suggestedTotal, 1)
+      assert.equal((await c.summary()).workbench.pairingSuggestedCount, 1)
+      await c.same()
       const [merged] = await c.events()
       assert.equal(merged.ledgerAccountId, null)
       assert.equal(merged.counterpartId, c.creditId)
       await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
       assert.equal((await c.transactions()).length, 0)
       await c.map({ payer: true, targetAccount: true })
+      await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
+      await c.details()
       await c.post(); await assertMoney(c)
     })
 
     await t.test('同日两条银行加两条平台保留四个候选，只接受不重叠的一对一人工选择', async () => {
-      const c = await setup({ count: 2 }), page = await c.pairings()
+      const c = await setup({ count: 2 }), page = await c.pairings({ mode: 'ambiguous' })
       assert.equal(page.total, 4)
       const a = page.items[0]
       const b = page.items.find(pair => pair.bank.eventId !== a.bank.eventId && pair.platform.eventId !== a.platform.eventId)
@@ -308,7 +403,7 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       assert.deepEqual((await c.events()).map(row => row.eventId), before.map(row => row.eventId))
       assert.equal((await c.events()).find(event => event.eventId === bank.eventId).nature, 'repayment')
       assert.equal((await c.pairings()).total, 1)
-      await c.confirm()
+      await c.same()
       const [merged] = await c.events()
       for (let attempt = 0; attempt < 2; attempt++) {
         await lab.owner.execute("UPDATE catledger_finance_updates SET plan_version = 'organizer-plan-v33' WHERE uid = ? AND update_id = ?", [c.uid, c.updateId])
@@ -320,12 +415,17 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
         assert.equal(events[0].ledgerAccountId, c.payerId)
         assert.equal(events[0].counterpartId, c.creditId)
         assert.deepEqual(events[0].sources.repaymentChannelResolution, merged.sources.repaymentChannelResolution)
+        assert.equal(events[0].status, 'needs_action')
+        assert.equal(events[0].reasons.includes('core_fields_conflict'), false)
+        assert.equal((await c.pairings()).total, 0)
       }
+      await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
+      await c.details()
       await c.post(); await assertMoney(c)
     })
 
-    await t.test('入账前拆回两条记录恢复各自账户，再次合并仍需明确确认还款与手续费', async () => {
-      const c = await setup({ mapTarget: false }), before = await c.events(), pair = await c.confirm()
+    await t.test('待补明细的同笔记录可拆回原账户，再合并仍只确认来源关系', async () => {
+      const c = await setup({ mapTarget: false }), before = await c.events(), pair = await c.same()
       const preview = await c.imp('economicEvents.duplicateReview', { updateId: c.updateId, eventId: pair.platform.eventId })
       assert.equal(preview.canSplit, true)
       await c.imp('financeUpdates.reviseDuplicate', { requestId: randomUUID(), updateId: c.updateId,
@@ -353,11 +453,12 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
         eventId: pair.platform.eventId, eventVersion: distinct.eventVersion, decision: 'same',
         pairKey: distinct.pairs[0].pairKey, otherEventId: distinct.pairs[0].otherEventId,
         otherEventVersion: distinct.pairs[0].otherEventVersion }
-      await assert.rejects(c.imp('financeUpdates.reviseDuplicate', repeat), { publicCode: 'VALIDATION_ERROR' })
-      const confirmed = { ...repeat, requestId: randomUUID(), repaymentConfirmed: true }
-      const result = await c.imp('financeUpdates.reviseDuplicate', confirmed)
-      assert.deepEqual(await c.imp('financeUpdates.reviseDuplicate', confirmed), result)
+      const result = await c.imp('financeUpdates.reviseDuplicate', repeat)
+      assert.deepEqual(await c.imp('financeUpdates.reviseDuplicate', repeat), result)
       assert.equal((await c.events()).length, 1)
+      assert.equal((await c.events())[0].sources.repaymentChannelResolution.repaymentConfirmed, false)
+      await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
+      await c.details()
       await c.post(); await assertMoney(c)
     })
 
@@ -431,7 +532,10 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
           assert.deepEqual(await c.events(), before, '不能用同笔确认覆盖已人工确认的独立关系')
           await lab.owner.execute(`UPDATE catledger_economic_event_relations SET status='proposed',manual=0 WHERE uid=? AND relation_id=?`, [c.uid, relation.id])
         }
-        const pair = await c.confirm()
+        const pair = await c.same()
+        assert.equal((await c.events())[0].sources.repaymentChannelResolution.repaymentConfirmed, false)
+        await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
+        await c.details()
         const [[selfLinks]] = await lab.owner.execute(`SELECT COUNT(*) AS count FROM catledger_economic_event_relations
           WHERE uid=? AND update_id=? AND source_event_id=target_event_id AND status NOT IN ('rejected','undone')`, [c.uid, c.updateId])
         assert.equal(Number(selfLinks.count), 0)
@@ -457,10 +561,10 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
       }
     })
 
-    await t.test('合并搬移证据及入账费用分别注入故障，整组回滚后原请求可重试', async () => {
-      const c = await setup(), page = await c.pairings(), before = await c.events()
+    await t.test('同笔合并、明细确认和入账分别注入故障，各阶段回滚后原请求可重试', async () => {
+      const c = await setup({ mapTarget: false }), page = await c.pairings(), before = await c.events()
       const merge = { requestId: randomUUID(), scopeToken: page.scopeToken, selection: { mode: 'include',
-        pairs: [{ pairKey: page.items[0].pairKey, decision: 'same', repaymentConfirmed: true }] } }
+        pairs: [{ pairKey: page.items[0].pairKey, decision: 'same' }] } }
       let failed = false
       const faultPool = { async getConnection() {
         const connection = await importPool.getConnection()
@@ -480,6 +584,27 @@ test('还款渠道核对：真实解析、最小权限、手续费守恒与原�
         FROM catledger_event_evidence WHERE uid = ? AND update_id = ?`, [c.uid, c.updateId])
       assert.equal(Number(evidence.n), 2); assert.equal(Number(evidence.events), 2)
       await c.resolve(merge)
+      const pending = await c.events(), pendingMappings = await c.drafts(), details = await c.detailsInput()
+      let detailsFailed = false
+      const detailFaultPool = { async getConnection() {
+        const connection = await importPool.getConnection()
+        return new Proxy(connection, { get(target, property) {
+          if (property === 'execute') return async (sql, values) => {
+            if (!detailsFailed && sql.includes('UPDATE catledger_economic_events')) {
+              detailsFailed = true; throw new Error('synthetic-repayment-detail-fault')
+            }
+            return target.execute(sql, values)
+          }
+          return typeof target[property] === 'function' ? target[property].bind(target) : target[property]
+        } })
+      } }
+      const detailFault = localServices({ apiPool, importPool: detailFaultPool, subject: c.subject, objects: c.services.objects })
+      await assert.rejects(call(detailFault.import, 'financeUpdates.setReview', details), { publicCode: 'INTERNAL_ERROR' })
+      assert.equal(detailsFailed, true)
+      assert.deepEqual(await c.events(), pending)
+      assert.deepEqual(await c.drafts(), pendingMappings, '平台目标映射必须与明细状态共同回滚')
+      await assert.rejects(c.post(), { publicCode: 'UNRESOLVED_IMPORT' })
+      await c.imp('financeUpdates.setReview', details)
       const posting = await c.postInput(), merged = await c.events()
       await lab.owner.query(`CREATE TRIGGER synthetic_repayment_fee_rollback BEFORE INSERT ON catledger_transactions FOR EACH ROW
         BEGIN IF NEW.uid = '${c.uid}' AND NEW.type = 'expense' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic repayment fee rollback'; END IF; END`)

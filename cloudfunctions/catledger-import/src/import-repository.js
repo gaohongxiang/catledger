@@ -31,7 +31,7 @@ async function insertRows(connection, prefix, rows, suffix = '') {
 
 async function selectImportFile(connection, uid, importId, { forUpdate = false } = {}) {
   const [rows] = await connection.execute(
-    `SELECT import_id AS importId, state, original_file_name AS fileName,
+    `SELECT import_id AS importId, state, original_file_name AS fileName, display_name AS displayName,
             declared_size AS declaredSize, actual_size AS actualSize,
             file_extension AS extension, mime_type AS mimeType,
             content_sha256 AS contentSha256,
@@ -79,6 +79,7 @@ function publicImport(file, batch = null) {
     importId: file.importId,
     state: file.state,
     fileName: file.fileName,
+    ...(file.displayName ? { displayName: file.displayName } : {}),
     declaredSize: Number(file.declaredSize),
     actualSize: file.actualSize == null ? null : Number(file.actualSize),
     extension: file.extension,
@@ -111,6 +112,17 @@ function publicBatch(batch) {
     },
     errorCode: batch.errorCode
   }
+}
+
+async function setImportDisplayName(connection, uid, file, displayName) {
+  if ((file.displayName || null) === displayName) return file
+  await connection.execute(`UPDATE catledger_import_files SET display_name = ?, version = version + 1
+    WHERE uid = ? AND import_id = ?`, [displayName, uid, file.importId])
+  // 名称影响摘要、来源和历史；推进所引用批次的视图版本，旧页面须先刷新。
+  await connection.execute(`UPDATE catledger_finance_updates u
+    JOIN catledger_finance_update_sources s ON s.uid = u.uid AND s.update_id = u.update_id
+    SET u.version = u.version + 1 WHERE u.uid = ? AND s.import_id = ?`, [uid, file.importId])
+  return { ...file, displayName, version: Number(file.version) + 1 }
 }
 
 async function findDuplicateFile(connection, uid, importId, contentSha256) {
@@ -446,7 +458,13 @@ async function persistParsedImport(connection, uid, {
             [uid, duplicate.importId]
           )
         }
-        const reusableFile = await selectImportFile(connection, uid, duplicate.importId)
+        let reusableFile = await selectImportFile(connection, uid, duplicate.importId)
+        if (file.displayName) {
+          const { normalizeDisplayName } = require('./file-display-name')
+          const name = file.displayName.slice(0, file.displayName.lastIndexOf('.')) +
+            reusableFile.fileName.slice(reusableFile.fileName.lastIndexOf('.'))
+          reusableFile = await setImportDisplayName(connection, uid, reusableFile, normalizeDisplayName(name, reusableFile.fileName))
+        }
         const refreshed = duplicateBatch.parseFingerprint === documentParseFingerprint(document, contentSha256, timezoneOffsetMinutes)
           ? { import: publicImport(reusableFile, duplicateBatch), batch: publicBatch(duplicateBatch) }
           : await persistParsedBatch(connection, uid, {
@@ -587,6 +605,7 @@ module.exports = {
   persistParsedImport,
   publicBatch,
   publicImport,
+  setImportDisplayName,
   selectImportFile,
   selectLatestBatch
 }

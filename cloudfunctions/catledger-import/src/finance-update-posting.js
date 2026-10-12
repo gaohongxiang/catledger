@@ -522,7 +522,7 @@ function createFinanceUpdatePosting({ getPool }) {
         const channelEvents = ready.filter(repaymentChannel.resolutionFor)
         if (channelEvents.length) {
           const hydrated = await require('./review/bank-channel-hydration').hydrate(connection, uid, updateId, channelEvents)
-          if (hydrated.some(event => !repaymentChannel.evidenceValid(event, event.relationEvidence.rows))) throw importError('UNRESOLVED_IMPORT')
+          if (hydrated.some(event => !repaymentChannel.postingEvidenceValid(event, event.relationEvidence.rows))) throw importError('UNRESOLVED_IMPORT')
         }
         const contexts = await loadEventContexts(connection, uid, updateId)
         for (const event of ready) {

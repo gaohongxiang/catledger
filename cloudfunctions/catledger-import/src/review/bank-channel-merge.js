@@ -7,7 +7,7 @@ async function confirmedPrimary(connection, uid, updateId, events, requestedId, 
   if (!required && !hasBankPlatformEvidence(hydrated)) return null
   const platforms = hydrated.filter(event => ['wechat', 'alipay'].includes(event.sourceType))
   const banks = hydrated.filter(event => event.sourceType === 'bank')
-  // 普通“同一笔”请求没有明确采用还入账户和手续费，必须走逐对还款确认。
+  // 还款通过专用配对合并保留到账与扣款两侧事实，不能沿用普通消费的等额合并。
   if (hydrated.some(event => event.economicNature === 'repayment')) throw importError('VALIDATION_ERROR')
   // 多个平台或多笔银行候选不能一次合成一笔；交给独立记录裁决。
   if (platforms.length !== 1 || banks.length !== 1 || hydrated.length !== 2 || !bankChannelPair(banks[0], platforms[0])) throw importError('VALIDATION_ERROR')

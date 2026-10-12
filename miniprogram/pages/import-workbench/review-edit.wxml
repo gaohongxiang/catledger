@@ -9,7 +9,6 @@
       <block wx:elif="{{reviewEditSheet.record}}">
         <text wx:if="{{!reviewEditSheet.editor.supported}}" class="inline-error">{{reviewEditSheet.editor.readonlyReason}}</text>
         <template is="review-editor-fields" data="{{editor: reviewEditSheet.editor, draft: reviewEditSheet.draft, sheet: reviewEditSheet, canEdit: true, disabled: reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved || !reviewEditSheet.editor.supported}}" />
-        <button wx:if="{{reviewEditSheet.editor.repaymentChannel}}" class="review-text-action" bindtap="openEditorRepaymentJudgment" disabled="{{reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved}}">修改同笔判断 ›</button>
         <button wx:if="{{reviewEditSheet.groupReview}}" class="review-text-action" bindtap="openEditorIssue" disabled="{{reviewEditSheet.saving || reviewEditSheet.pending}}">核对来源／同笔关系（显示完整范围） ›</button>
         <skeleton-rows wx:if="{{reviewEditSheet.evidenceLoading}}" rows="{{2}}" />
         <view wx:for="{{reviewEditSheet.sources}}" wx:key="evidenceId" class="evidence-card">
@@ -27,6 +26,10 @@
       <text wx:if="{{reviewEditSheet.error}}" class="inline-error">{{reviewEditSheet.error}}</text>
       <text wx:if="{{reviewEditSheet.editor.canSave && !reviewEditSheet.editor.complete}}" class="sheet-copy">可保存当前草稿，剩余事项仍需核对；保存不会改变正式余额。</text>
       <button wx:if="{{reviewEditSheet.saved || (reviewEditSheet.stale && !reviewEditSheet.pending)}}" class="sheet-confirm sheet-confirm-wide" bindtap="refreshReviewEdit" disabled="{{reviewEditSheet.saving}}">{{reviewEditSheet.saved ? '刷新列表' : '重新核验'}}</button>
+      <view wx:elif="{{reviewEditSheet.editor.repaymentChannel}}" class="editor-actions-row">
+        <button class="editor-judgment-btn" bindtap="openEditorRepaymentJudgment" disabled="{{reviewEditSheet.saving || reviewEditSheet.stale || reviewEditSheet.pending || reviewEditSheet.saved}}">修改同笔判断</button>
+        <button class="sheet-confirm" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.editor.complete ? '保存本笔核对' : '保存本笔草稿'}}</button>
+      </view>
       <button wx:else class="sheet-confirm sheet-confirm-wide" bindtap="saveReviewEdit" loading="{{reviewEditSheet.saving}}" disabled="{{reviewEditSheet.loading || reviewEditSheet.saving || !reviewEditSheet.canSave}}">{{reviewEditSheet.pending ? '确认上次保存结果' : reviewEditSheet.editor.complete ? '保存本笔核对' : '保存本笔草稿'}}</button>
       <button class="evidence-return editor-cancel" bindtap="closeReviewEdit" disabled="{{reviewEditSheet.saving}}">取消修改</button>
     </view>

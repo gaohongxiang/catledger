@@ -3,6 +3,7 @@ const { createFinanceUpdateHistory } = require('./finance-update-history')
 const { selectSources } = require('./finance-update-repository')
 const { createFinanceUpdateRead } = require('./finance-update-read')
 const { randomUUID } = require('node:crypto')
+const { normalizeDisplayName } = require('./file-display-name')
 
 const { digestParts, sha256 } = require('./digest')
 const { importError } = require('./errors')
@@ -14,6 +15,7 @@ const {
   markParseFailure,
   persistParsedImport,
   publicImport,
+  setImportDisplayName,
   selectImportFile
 } = require('./import-repository')
 const { executeIdempotentMutation, executeUserRead } = require('./import-transaction')
@@ -86,20 +88,22 @@ function createImportService({ getPool, storage }) {
 
   async function insertPreparedFile(connection, uid, data) {
     const { fileName, extension } = normalizeFileName(data.fileName)
+    const displayName = data.displayName == null ? null : normalizeDisplayName(data.displayName, fileName)
     const declaredSize = validateDeclaredSize(data.size)
     const importId = randomUUID()
     const cloudPath = createObjectKey(uid, importId, extension)
     await connection.execute(
       `INSERT INTO catledger_import_files
-         (uid, import_id, state, original_file_name, declared_size,
+         (uid, import_id, state, original_file_name, display_name, declared_size,
           file_extension, storage_object_key)
-       VALUES (?, ?, 'awaiting_upload', ?, ?, ?, ?)`,
-      [uid, importId, fileName, declaredSize, extension, cloudPath]
+       VALUES (?, ?, 'awaiting_upload', ?, ?, ?, ?, ?)`,
+      [uid, importId, fileName, displayName, declaredSize, extension, cloudPath]
     )
     return {
       importId,
       cloudPath,
       fileName,
+      ...(displayName ? { displayName } : {}),
       acceptedFormats: [...ACCEPTED_EXTENSIONS],
       maxBytes: MAX_FILE_BYTES,
       version: 1
@@ -236,6 +240,19 @@ function createImportService({ getPool, storage }) {
     })
   }
 
+  async function renameFile(context) {
+    return executeIdempotentMutation({ getPool, ...context, action: 'imports.renameFile',
+      operation: async (connection, uid, data, _requestDigest, receiptId) => {
+        const importId = validateUuid(data.importId), version = validateVersion(data.version)
+        const file = await selectImportFile(connection, uid, importId, { forUpdate: true })
+        if (file.state === 'discarded' || Number(file.version) !== version) throw importError('CONFLICT')
+        const displayName = normalizeDisplayName(data.displayName, file.fileName)
+        const current = await setImportDisplayName(connection, uid, file, displayName)
+        return { protocolVersion: 2, kind: 'file-receipt', receiptId, action: 'imports.renameFile', import: publicImport(current) }
+      }
+    })
+  }
+
   async function cleanup(context, importId, fileID, result) {
     if (result.contentState === 'deleted') return result
     if (!fileID || !await storage.remove(fileID)) {
@@ -319,6 +336,7 @@ function createImportService({ getPool, storage }) {
   return {
     discardFile,
     getFile,
+    renameFile,
     parseFile,
     prepareMany,
     financeUpdateAbandon: abandonFinanceUpdate,

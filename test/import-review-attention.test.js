@@ -62,6 +62,15 @@ for (const [direction, expected] of [['expense', '还入账户待确认'], ['inc
   })
 }
 
+test('还款已判断同笔后显示剩余还款核对，不再要求重复判断来源', () => {
+  const row = event({ economicNature: 'repayment', sourceDirection: 'expense',
+    counterpartyLedgerAccountId: 'synthetic-credit', reasonCodes: ['repayment_channel_details_required'] })
+  const result = reviewAttention(row, [issue('details', 'transfer_accounts', 'repayment_channel_details_required')])
+  assert.equal(result.pendingIssue.issueId, 'details')
+  assert.deepEqual(labels(result), ['还款信息待核对'])
+  assert.equal(presentation.pendingCard({ ...row, ...result }, false).label, '还款｜还款信息待核对')
+})
+
 test('未知性质、未确认本人归属时不提前称还入账户', () => {
   for (const row of [event({ reasonCodes: ['repayment_account_required'] }), event({ economicNature: 'repayment',
     repaymentOwnershipRequired: true, reasonCodes: ['repayment_ownership_required', 'repayment_account_required'] })]) {
@@ -147,13 +156,15 @@ test('真实 Page 同组未知与已知性质都先判同笔；刷新后各自�
   }
   await page.setStep({ currentStep: 3 })
   let selected
-  page.openReviewEdit = ev => { selected = ev.currentTarget.dataset }
+  page.openIssue = ev => { selected = { ...ev.currentTarget.dataset, entry: 'issue' } }
+  page.openReviewEdit = ev => { selected = { ...ev.currentTarget.dataset, entry: 'editor' } }
   let cards = page.data.reviewGroups[0].issues
   assert.equal(cards[0].label, '判断是否同一笔 · 性质待确认（同组 2 笔）')
   assert.equal(cards[1].label, '判断是否同一笔｜支出｜付款账户待确认')
   for (const card of cards) {
     assert.equal(card.batchDecision, '处理')
-    page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected.id, card.eventId); assert.equal(selected.focusIssueId, 'pair')
+    page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId }))
+    assert.deepEqual(selected, { id: 'pair', entry: 'issue' })
   }
   pairing = false
   h.summary = { ...h.summary, viewVersion: 'synthetic-updated-attention', update: { ...h.summary.update, version: 2 } }
@@ -164,6 +175,7 @@ test('真实 Page 同组未知与已知性质都先判同笔；刷新后各自�
   for (const [index, nextIssue] of ['nature', 'account'].entries()) {
     const card = cards[index]
     page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId })); assert.equal(selected.id, card.eventId); assert.equal(selected.focusIssueId, nextIssue)
+    assert.equal(selected.entry, 'editor')
   }
   assert.ok(h.patches.every(bytes => bytes <= 65536))
   page.onUnload()
@@ -203,6 +215,30 @@ test('普通字段编辑不能冒充同笔处理入口', () => {
   assert.equal(result.pendingIssue.issueId, 'pair')
   assert.equal(result.reviewAttention.steps[0].key, 'same_event')
 })
+
+for (const [type, reason, needsAccount] of [['field_conflict', 'core_fields_conflict', false],
+  ['account_mapping', 'ledger_account_required', true]]) {
+  test('真实 Page 同笔前先处理当前必需事项：' + reason, async t => {
+    const data = fixture(1, true)
+    data.events[0].reasonCodes = [reason, 'same_event_candidate']
+    if (needsAccount) data.events[0].ledgerAccountId = null
+    data.issues.unshift(issue('prerequisite', type, reason, { subjectEventIds: [data.events[0].eventId] }))
+    const h = runtime(data), page = h.page
+    t.after(() => page.onUnload())
+    h.intercept = action => action === 'economicEvents.list'
+      ? { protocolVersion: 2, viewVersion: h.summary.viewVersion, total: 1, nextCursor: null,
+        items: data.events.map(row => ({ ...row, ...reviewAttention(row, data.issues) })) } : undefined
+    await page.setStep({ currentStep: 3 })
+    const card = page.data.reviewGroups[0].issues[0]
+    assert.equal(card.issueId, 'prerequisite')
+    assert.match(card.label, /判断是否同一笔/)
+    await page.openPendingRecord(tap({ id: card.eventId, issueId: card.issueId }))
+    assert.equal(page.data.pairingSheet, null)
+    assert.equal(page.data.currentIssue, null)
+    assert.equal(page.data.reviewEditSheet.eventId, card.eventId)
+    assert.equal(page._reviewEditToken.focusIssueId, 'prerequisite')
+  })
+}
 
 test('五十笔长摘要与多项待核对同时出现，提示不截断且原生更新不超预算', async () => {
   const h = runtime(fixture(50, true))
